@@ -1,0 +1,36 @@
+{
+  "name": "branorte-crm",
+  "version": "1.0.0",
+  "description": "Branorte CRM - Sistema de Controle de Contatos",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "import": "npx tsx scripts/import-contacts.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "@tanstack/react-query": "^5.17.0",
+    "clsx": "^2.1.0",
+    "date-fns": "^3.3.1",
+    "lucide-react": "^0.321.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.21.3",
+    "recharts": "^3.8.0",
+    "tailwind-merge": "^2.2.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.55",
+    "@types/react-dom": "^18.2.19",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.17",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.1",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.12"
+  }
+}
