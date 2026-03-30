@@ -20,6 +20,14 @@ function getOrcamento(origin: string | null): string | null {
   return match ? match[1] : null
 }
 
+function getOrcDescricao(notes: string | null): string | null {
+  if (!notes) return null
+  const firstLine = notes.split('\n')[0].trim()
+  // Se a primeira linha NAO comeca com "Orcamento" eh a descricao do produto
+  if (firstLine && !firstLine.startsWith('Orcamento')) return firstLine
+  return null
+}
+
 export function Contacts() {
   const [filters, setFilters] = useState<ContactFilters>({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, page: 0 })
   const [searchInput, setSearchInput] = useState('')
@@ -125,9 +133,16 @@ export function Contacts() {
                         </td>
                         <td className="px-4 py-3">
                           {orc ? (
-                            <Badge className="bg-amber-50 text-amber-700 border border-amber-200">
-                              <FileText className="h-3 w-3" /> {orc}
-                            </Badge>
+                            <div className="flex flex-col gap-0.5">
+                              <Badge className="bg-amber-50 text-amber-700 border border-amber-200 w-fit">
+                                <FileText className="h-3 w-3" /> {orc}
+                              </Badge>
+                              {getOrcDescricao(c.notes) && (
+                                <span className="text-xs text-text-muted truncate max-w-[200px]" title={getOrcDescricao(c.notes)!}>
+                                  {getOrcDescricao(c.notes)}
+                                </span>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-sm text-text-muted">-</span>
                           )}
@@ -177,6 +192,9 @@ export function Contacts() {
                           <Badge className="bg-amber-50 text-amber-700 border border-amber-200">
                             <FileText className="h-3 w-3" /> {orc}
                           </Badge>
+                        )}
+                        {orc && getOrcDescricao(c.notes) && (
+                          <span className="text-xs text-text-muted">{getOrcDescricao(c.notes)}</span>
                         )}
                         {statusOpt && <Badge className={statusOpt.color}>{statusOpt.label}</Badge>}
                         {c.vendor_id && vendorMap[c.vendor_id] && <span className="text-xs text-text-muted">{vendorMap[c.vendor_id!]}</span>}
