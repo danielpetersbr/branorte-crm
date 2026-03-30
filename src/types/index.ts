@@ -27,6 +27,7 @@ export interface ContactFilters {
   estado: string
   vendor_id: string
   status: string
+  orcamento: boolean
   page: number
 }
 

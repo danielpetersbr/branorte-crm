@@ -9,13 +9,19 @@ import { Card } from '@/components/ui/Card'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatNumber, formatPhone, whatsappLink } from '@/lib/utils'
 import { useVendorMap } from '@/hooks/useVendorMap'
-import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, FileText } from 'lucide-react'
 import { ESTADOS_BR, STATUS_OPTIONS, PAGE_SIZE } from '@/types'
 import type { ContactFilters, Contact } from '@/types'
 import { ContactDetail } from '@/components/contacts/ContactDetail'
 
+function getOrcamento(origin: string | null): string | null {
+  if (!origin) return null
+  const match = origin.match(/^Orcamento\s+(.+)$/)
+  return match ? match[1] : null
+}
+
 export function Contacts() {
-  const [filters, setFilters] = useState<ContactFilters>({ search: '', estado: '', vendor_id: '', status: '', page: 0 })
+  const [filters, setFilters] = useState<ContactFilters>({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, page: 0 })
   const [searchInput, setSearchInput] = useState('')
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
 
@@ -34,11 +40,11 @@ export function Contacts() {
   }, [searchInput])
 
   const clearFilters = () => {
-    setFilters({ search: '', estado: '', vendor_id: '', status: '', page: 0 })
+    setFilters({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, page: 0 })
     setSearchInput('')
   }
 
-  const hasFilters = filters.search || filters.estado || filters.vendor_id || filters.status
+  const hasFilters = filters.search || filters.estado || filters.vendor_id || filters.status || filters.orcamento
 
   return (
     <div className="p-4 lg:p-8 space-y-4">
@@ -64,6 +70,15 @@ export function Contacts() {
             value={filters.vendor_id} onChange={e => setFilters(f => ({ ...f, vendor_id: e.target.value, page: 0 }))} className="lg:w-48" />
           <Select options={STATUS_OPTIONS.map(s => ({ value: s.value, label: s.label }))} placeholder="Status"
             value={filters.status} onChange={e => setFilters(f => ({ ...f, status: e.target.value, page: 0 }))} className="lg:w-36" />
+          <Button
+            variant={filters.orcamento ? 'primary' : 'secondary'}
+            size="md"
+            onClick={() => setFilters(f => ({ ...f, orcamento: !f.orcamento, page: 0 }))}
+            className="shrink-0"
+          >
+            <FileText className="h-4 w-4" />
+            Orcamentos
+          </Button>
           {hasFilters && (
             <Button variant="ghost" size="sm" onClick={clearFilters}><X className="h-4 w-4" /> Limpar</Button>
           )}
@@ -82,6 +97,7 @@ export function Contacts() {
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Telefone</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Estado</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Vendedor</th>
+                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Orcamento</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Status</th>
                     <th className="text-right text-xs font-medium text-text-muted px-4 py-3">Acoes</th>
                   </tr>
@@ -90,6 +106,7 @@ export function Contacts() {
                   {contacts.map(c => {
                     const statusOpt = STATUS_OPTIONS.find(s => s.value === c.status)
                     const tel = c.telefone_normalizado || c.phone || ''
+                    const orc = getOrcamento(c.origin)
                     return (
                       <tr key={c.id} className="hover:bg-surface-secondary cursor-pointer transition-colors"
                         onClick={() => setSelectedContact(c)}>
@@ -105,6 +122,15 @@ export function Contacts() {
                         </td>
                         <td className="px-4 py-3">
                           <span className="text-sm text-text-secondary">{(c.vendor_id ? vendorMap[c.vendor_id] : null) ?? '-'}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {orc ? (
+                            <Badge className="bg-amber-50 text-amber-700 border border-amber-200">
+                              <FileText className="h-3 w-3" /> {orc}
+                            </Badge>
+                          ) : (
+                            <span className="text-sm text-text-muted">-</span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           {statusOpt && <Badge className={statusOpt.color}>{statusOpt.label}</Badge>}
@@ -138,14 +164,20 @@ export function Contacts() {
             {contacts.map(c => {
               const statusOpt = STATUS_OPTIONS.find(s => s.value === c.status)
               const tel = c.telefone_normalizado || c.phone || ''
+              const orc = getOrcamento(c.origin)
               return (
                 <Card key={c.id} hover onClick={() => setSelectedContact(c)} className="p-4">
                   <div className="flex items-start justify-between">
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-text-primary truncate">{c.name || '(sem nome)'}</p>
                       <p className="text-sm text-text-secondary font-mono mt-0.5">{formatPhone(tel)}</p>
-                      <div className="flex items-center gap-2 mt-2">
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
                         {c.state && <Badge className="bg-blue-50 text-blue-700">{c.state}</Badge>}
+                        {orc && (
+                          <Badge className="bg-amber-50 text-amber-700 border border-amber-200">
+                            <FileText className="h-3 w-3" /> {orc}
+                          </Badge>
+                        )}
                         {statusOpt && <Badge className={statusOpt.color}>{statusOpt.label}</Badge>}
                         {c.vendor_id && vendorMap[c.vendor_id] && <span className="text-xs text-text-muted">{vendorMap[c.vendor_id!]}</span>}
                       </div>

@@ -23,6 +23,7 @@ export function useContacts(filters: ContactFilters) {
         query = query.eq('vendor_id', filters.vendor_id)
       }
       if (filters.status) query = query.eq('status', filters.status)
+      if (filters.orcamento) query = query.like('origin', 'Orcamento%')
 
       const from = filters.page * PAGE_SIZE
       const to = from + PAGE_SIZE - 1
