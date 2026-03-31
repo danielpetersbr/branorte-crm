@@ -10,7 +10,7 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatNumber, formatPhone, whatsappLink } from '@/lib/utils'
 import { useVendorMap } from '@/hooks/useVendorMap'
 import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, FileText } from 'lucide-react'
-import { ESTADOS_BR, STATUS_OPTIONS, PAGE_SIZE } from '@/types'
+import { ESTADOS_BR, STATUS_OPTIONS, TEMPERATURA_OPTIONS, FUNIL_OPTIONS, PAGE_SIZE } from '@/types'
 import type { ContactFilters, Contact } from '@/types'
 import { ContactDetail } from '@/components/contacts/ContactDetail'
 
@@ -29,7 +29,7 @@ function getOrcDescricao(notes: string | null): string | null {
 }
 
 export function Contacts() {
-  const [filters, setFilters] = useState<ContactFilters>({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, page: 0 })
+  const [filters, setFilters] = useState<ContactFilters>({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, temperatura: '', page: 0 })
   const [searchInput, setSearchInput] = useState('')
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
 
@@ -48,11 +48,11 @@ export function Contacts() {
   }, [searchInput])
 
   const clearFilters = () => {
-    setFilters({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, page: 0 })
+    setFilters({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, temperatura: '', page: 0 })
     setSearchInput('')
   }
 
-  const hasFilters = filters.search || filters.estado || filters.vendor_id || filters.status || filters.orcamento
+  const hasFilters = filters.search || filters.estado || filters.vendor_id || filters.status || filters.orcamento || filters.temperatura
 
   return (
     <div className="p-4 lg:p-8 space-y-4">
@@ -76,6 +76,8 @@ export function Contacts() {
             value={filters.estado} onChange={e => setFilters(f => ({ ...f, estado: e.target.value, page: 0 }))} className="lg:w-28" />
           <Select options={vendors.map(v => ({ value: v.id, label: v.name }))} placeholder="Vendedor"
             value={filters.vendor_id} onChange={e => setFilters(f => ({ ...f, vendor_id: e.target.value, page: 0 }))} className="lg:w-48" />
+          <Select options={TEMPERATURA_OPTIONS.map(t => ({ value: t.value, label: `${t.icon} ${t.label}` }))} placeholder="Temperatura"
+            value={filters.temperatura} onChange={e => setFilters(f => ({ ...f, temperatura: e.target.value, page: 0 }))} className="lg:w-36" />
           <Select options={STATUS_OPTIONS.map(s => ({ value: s.value, label: s.label }))} placeholder="Status"
             value={filters.status} onChange={e => setFilters(f => ({ ...f, status: e.target.value, page: 0 }))} className="lg:w-36" />
           <Button
@@ -103,30 +105,35 @@ export function Contacts() {
                   <tr className="bg-surface-secondary border-b border-surface-border">
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Nome</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Telefone</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Estado</th>
+                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Temp</th>
+                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Funil</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Vendedor</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Orcamento</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Status</th>
                     <th className="text-right text-xs font-medium text-text-muted px-4 py-3">Acoes</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-border">
                   {contacts.map(c => {
-                    const statusOpt = STATUS_OPTIONS.find(s => s.value === c.status)
                     const tel = c.telefone_normalizado || c.phone || ''
                     const orc = getOrcamento(c.origin)
+                    const tempOpt = TEMPERATURA_OPTIONS.find(t => t.value === c.temperatura)
+                    const funilOpt = FUNIL_OPTIONS.find(f => f.value === c.estagio_funil)
                     return (
                       <tr key={c.id} className="hover:bg-surface-secondary cursor-pointer transition-colors"
                         onClick={() => setSelectedContact(c)}>
                         <td className="px-4 py-3">
                           <span className="text-sm font-medium text-text-primary">{c.name || '(sem nome)'}</span>
                           {c.city && <span className="text-xs text-text-muted ml-2">{c.city}</span>}
+                          {c.state && <Badge className="bg-blue-50 text-blue-700 ml-1">{c.state}</Badge>}
                         </td>
                         <td className="px-4 py-3">
                           <span className="text-sm text-text-secondary font-mono">{formatPhone(tel)}</span>
                         </td>
                         <td className="px-4 py-3">
-                          {c.state && <Badge className="bg-blue-50 text-blue-700">{c.state}</Badge>}
+                          {tempOpt ? <Badge className={tempOpt.color}>{tempOpt.icon} {tempOpt.label}</Badge> : <span className="text-text-muted">-</span>}
+                        </td>
+                        <td className="px-4 py-3">
+                          {funilOpt ? <Badge className={funilOpt.color}>{funilOpt.label}</Badge> : <span className="text-text-muted">-</span>}
                         </td>
                         <td className="px-4 py-3">
                           <span className="text-sm text-text-secondary">{(c.vendor_id ? vendorMap[c.vendor_id] : null) ?? '-'}</span>
@@ -146,9 +153,6 @@ export function Contacts() {
                           ) : (
                             <span className="text-sm text-text-muted">-</span>
                           )}
-                        </td>
-                        <td className="px-4 py-3">
-                          {statusOpt && <Badge className={statusOpt.color}>{statusOpt.label}</Badge>}
                         </td>
                         <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1">

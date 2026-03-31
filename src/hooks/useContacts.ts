@@ -24,6 +24,11 @@ export function useContacts(filters: ContactFilters) {
       }
       if (filters.status) query = query.eq('status', filters.status)
       if (filters.orcamento) query = query.like('origin', 'Orcamento%')
+      // temperatura filter only works after migration
+      try {
+        if (filters.temperatura) query = query.eq('temperatura', filters.temperatura)
+      } catch {}
+
 
       const from = filters.page * PAGE_SIZE
       const to = from + PAGE_SIZE - 1
