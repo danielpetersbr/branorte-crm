@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { useVendors } from '@/hooks/useVendors'
-import { useUpdateContact } from '@/hooks/useContacts'
+import { useUpdateContact, useContact } from '@/hooks/useContacts'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Select } from '@/components/ui/Select'
@@ -20,8 +20,10 @@ export function ContactDetail({ contact, onClose }: Props) {
   const { data: vendors = [] } = useVendors()
   const updateContact = useUpdateContact()
 
-  const meta = parseCrmMeta(contact.notes)
-  const humanNotes = getHumanNotes(contact.notes)
+  // Keep local notes state so sequential saves don't overwrite each other
+  const [localNotes, setLocalNotes] = useState(contact.notes)
+  const meta = parseCrmMeta(localNotes)
+  const humanNotes = getHumanNotes(localNotes)
 
   const [noteText, setNoteText] = useState('')
   const [valorInput, setValorInput] = useState(String(meta.valor || ''))
@@ -43,24 +45,25 @@ export function ContactDetail({ contact, onClose }: Props) {
   }
 
   const orc = getOrcamento(contact.origin)
-  const orcDesc = getOrcDescricao(contact.notes)
+  const orcDesc = getOrcDescricao(localNotes)
 
   const saveNotes = (newNotes: string) => {
+    setLocalNotes(newNotes)
     updateContact.mutate({ id: contact.id, notes: newNotes })
   }
 
   const handleTempChange = (temp: string) => {
-    saveNotes(updateCrmMeta(contact.notes, { temp }))
+    saveNotes(updateCrmMeta(localNotes, { temp }))
   }
 
   const handleFunilChange = (funil: string) => {
-    saveNotes(updateCrmMeta(contact.notes, { funil }))
+    saveNotes(updateCrmMeta(localNotes, { funil }))
   }
 
   const handleRegistrarTentativa = (resultado: string) => {
     const tentativas = (meta.tentativas || 0) + 1
     const ultimo = new Date().toISOString()
-    let updated = updateCrmMeta(contact.notes, { tentativas, ultimo })
+    let updated = updateCrmMeta(localNotes, { tentativas, ultimo })
     // Add human note
     const m2 = parseCrmMeta(updated)
     const h2 = getHumanNotes(updated)
@@ -74,7 +77,7 @@ export function ContactDetail({ contact, onClose }: Props) {
       // Also update funil to primeiro_contato if still novo_lead
       if (!meta.funil || meta.funil === 'novo_lead') {
         setTimeout(() => {
-          const fresh = updateCrmMeta(contact.notes, { tentativas, ultimo, funil: 'primeiro_contato' })
+          const fresh = updateCrmMeta(localNotes, { tentativas, ultimo, funil: 'primeiro_contato' })
           // Re-add the note
           const fm = parseCrmMeta(fresh)
           fm.tentativas = tentativas
@@ -90,21 +93,21 @@ export function ContactDetail({ contact, onClose }: Props) {
 
   const handleSaveNote = () => {
     if (!noteText.trim()) return
-    saveNotes(addHumanNote(contact.notes, noteText.trim()))
+    saveNotes(addHumanNote(localNotes, noteText.trim()))
     setNoteText('')
   }
 
   const handleSaveValor = () => {
     const val = parseFloat(valorInput.replace(/[^\d.,]/g, '').replace(',', '.'))
-    if (!isNaN(val)) saveNotes(updateCrmMeta(contact.notes, { valor: val }))
+    if (!isNaN(val)) saveNotes(updateCrmMeta(localNotes, { valor: val }))
   }
 
   const handleSaveFollowup = () => {
-    if (followupDate) saveNotes(updateCrmMeta(contact.notes, { followup: followupDate }))
+    if (followupDate) saveNotes(updateCrmMeta(localNotes, { followup: followupDate }))
   }
 
   const handleMotivo = (motivo: string) => {
-    saveNotes(updateCrmMeta(contact.notes, { motivo }))
+    saveNotes(updateCrmMeta(localNotes, { motivo }))
   }
 
   return (
