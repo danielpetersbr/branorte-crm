@@ -23,7 +23,11 @@ export function useContacts(filters: ContactFilters) {
         query = query.eq('vendor_id', filters.vendor_id)
       }
       if (filters.status) query = query.eq('status', filters.status)
-      if (filters.orcamento) query = query.like('origin', 'Orcamento%')
+      if (filters.orcamento_ano) {
+        query = query.like('origin', `Orcamento ${filters.orcamento_ano}-%`)
+      } else if (filters.orcamento) {
+        query = query.like('origin', 'Orcamento%')
+      }
       if (filters.temperatura) query = query.like('notes', `%"temp":"${filters.temperatura}"%`)
 
       const from = filters.page * PAGE_SIZE

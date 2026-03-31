@@ -36,7 +36,10 @@ function getOrcDescricao(notes: string | null): string | null {
 }
 
 export function Contacts() {
-  const [filters, setFilters] = useState<ContactFilters>({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, temperatura: '', page: 0 })
+  const currentYear = new Date().getFullYear()
+  const orcamentoAnos = Array.from({ length: currentYear - 2017 }, (_, i) => String(currentYear - i))
+
+  const [filters, setFilters] = useState<ContactFilters>({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, orcamento_ano: '', temperatura: '', page: 0 })
   const [searchInput, setSearchInput] = useState('')
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
 
@@ -55,11 +58,11 @@ export function Contacts() {
   }, [searchInput])
 
   const clearFilters = () => {
-    setFilters({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, temperatura: '', page: 0 })
+    setFilters({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, orcamento_ano: '', temperatura: '', page: 0 })
     setSearchInput('')
   }
 
-  const hasFilters = filters.search || filters.estado || filters.vendor_id || filters.status || filters.orcamento || filters.temperatura
+  const hasFilters = filters.search || filters.estado || filters.vendor_id || filters.status || filters.orcamento || filters.orcamento_ano || filters.temperatura
 
   return (
     <div className="p-4 lg:p-8 space-y-4">
@@ -86,14 +89,21 @@ export function Contacts() {
           <Select options={TEMPERATURA_OPTIONS.map(t => ({ value: t.value, label: `${t.icon} ${t.label}` }))} placeholder="Temperatura"
             value={filters.temperatura} onChange={e => setFilters(f => ({ ...f, temperatura: e.target.value, page: 0 }))} className="lg:w-40" />
           <Button
-            variant={filters.orcamento ? 'primary' : 'secondary'}
+            variant={filters.orcamento || filters.orcamento_ano ? 'primary' : 'secondary'}
             size="md"
-            onClick={() => setFilters(f => ({ ...f, orcamento: !f.orcamento, page: 0 }))}
+            onClick={() => setFilters(f => ({ ...f, orcamento: !f.orcamento, orcamento_ano: '', page: 0 }))}
             className="shrink-0"
           >
             <FileText className="h-4 w-4" />
             Orcamentos
           </Button>
+          <Select
+            options={orcamentoAnos.map(y => ({ value: y, label: y }))}
+            placeholder="Ano"
+            value={filters.orcamento_ano}
+            onChange={e => setFilters(f => ({ ...f, orcamento_ano: e.target.value, orcamento: false, page: 0 }))}
+            className="lg:w-24"
+          />
           {hasFilters && (
             <Button variant="ghost" size="sm" onClick={clearFilters}><X className="h-4 w-4" /> Limpar</Button>
           )}

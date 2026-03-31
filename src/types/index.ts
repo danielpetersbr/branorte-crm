@@ -38,6 +38,7 @@ export interface ContactFilters {
   vendor_id: string
   status: string
   orcamento: boolean
+  orcamento_ano: string
   temperatura: string
   page: number
 }
