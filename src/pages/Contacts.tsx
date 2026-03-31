@@ -84,9 +84,7 @@ export function Contacts() {
           <Select options={vendors.map(v => ({ value: v.id, label: v.name }))} placeholder="Vendedor"
             value={filters.vendor_id} onChange={e => setFilters(f => ({ ...f, vendor_id: e.target.value, page: 0 }))} className="lg:w-48" />
           <Select options={TEMPERATURA_OPTIONS.map(t => ({ value: t.value, label: `${t.icon} ${t.label}` }))} placeholder="Temperatura"
-            value={filters.temperatura} onChange={e => setFilters(f => ({ ...f, temperatura: e.target.value, page: 0 }))} className="lg:w-36" />
-          <Select options={STATUS_OPTIONS.map(s => ({ value: s.value, label: s.label }))} placeholder="Status"
-            value={filters.status} onChange={e => setFilters(f => ({ ...f, status: e.target.value, page: 0 }))} className="lg:w-36" />
+            value={filters.temperatura} onChange={e => setFilters(f => ({ ...f, temperatura: e.target.value, page: 0 }))} className="lg:w-40" />
           <Button
             variant={filters.orcamento ? 'primary' : 'secondary'}
             size="md"
