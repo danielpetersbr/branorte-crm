@@ -1,11 +1,12 @@
 import { Outlet, NavLink } from 'react-router-dom'
-import { LayoutDashboard, Users, UserPlus } from 'lucide-react'
+import { LayoutDashboard, Users, UserPlus, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const links = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/contatos', label: 'Contatos', icon: Users },
   { to: '/atribuir', label: 'Atribuir', icon: UserPlus },
+  { to: '/orcamentos', label: 'Orçamentos', icon: FileText },
 ]
 
 export function Layout() {

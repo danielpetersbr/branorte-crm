@@ -30,6 +30,7 @@ export interface Contact {
   ultimo_contato: string | null
   motivo_perda: string | null
   tentativas: number | null
+  data_orcamento: string | null
 }
 
 export interface ContactFilters {
