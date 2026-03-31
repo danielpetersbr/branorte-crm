@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 interface OrcRow {
   origin: string | null
   vendor_id: string | null
-  data_orcamento: string | null
+  data_orcamento?: string | null
 }
 
 export interface OrcYearStat {
@@ -19,36 +19,49 @@ export interface OrcMonthStat {
 }
 
 const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+const PAGE_SIZE = 1000
+
+async function fetchAllOrcamentos(vendorFilter?: string): Promise<OrcRow[]> {
+  const rows: OrcRow[] = []
+  let offset = 0
+  let withDate = true
+
+  while (true) {
+    const selectCols = withDate ? 'origin, vendor_id, data_orcamento' : 'origin, vendor_id'
+    let q = supabase
+      .from('contacts')
+      .select(selectCols)
+      .like('origin', 'Orcamento%')
+      .range(offset, offset + PAGE_SIZE - 1)
+
+    if (vendorFilter && vendorFilter !== 'todos') {
+      q = q.eq('vendor_id', vendorFilter)
+    }
+
+    const result = await q
+
+    // If data_orcamento column doesn't exist yet, retry without it
+    if (result.error && withDate) {
+      withDate = false
+      continue
+    }
+    if (result.error) throw result.error
+
+    const page = (result.data ?? []) as OrcRow[]
+    rows.push(...page)
+
+    if (page.length < PAGE_SIZE) break
+    offset += PAGE_SIZE
+  }
+
+  return rows
+}
 
 export function useOrcamentoStats(vendorFilter?: string) {
   return useQuery({
     queryKey: ['orcamento-stats', vendorFilter],
     queryFn: async () => {
-      let query = supabase
-        .from('contacts')
-        .select('origin, vendor_id, data_orcamento')
-        .like('origin', 'Orcamento%')
-
-      if (vendorFilter && vendorFilter !== 'todos') {
-        query = query.eq('vendor_id', vendorFilter)
-      }
-
-      let result = await query
-
-      // data_orcamento column may not exist yet — fall back without it
-      if (result.error) {
-        let q2 = supabase
-          .from('contacts')
-          .select('origin, vendor_id')
-          .like('origin', 'Orcamento%')
-        if (vendorFilter && vendorFilter !== 'todos') {
-          q2 = q2.eq('vendor_id', vendorFilter)
-        }
-        result = await q2
-        if (result.error) throw result.error
-      }
-
-      const rows = (result.data ?? []) as OrcRow[]
+      const rows = await fetchAllOrcamentos(vendorFilter)
 
       const byYear: Record<string, number> = {}
       const byMonth: Record<string, number> = {}
@@ -56,7 +69,7 @@ export function useOrcamentoStats(vendorFilter?: string) {
 
       for (const row of rows) {
         // Extract year from "Orcamento YYYY-NNNN"
-        const yearMatch = row.origin?.match(/Orca(?:mento)? (\d{4})-/)
+        const yearMatch = row.origin?.match(/Orcamento (\d{4})-/)
         const year = yearMatch?.[1]
         if (year) {
           byYear[year] = (byYear[year] ?? 0) + 1
@@ -64,7 +77,7 @@ export function useOrcamentoStats(vendorFilter?: string) {
 
         if (row.data_orcamento) {
           hasMonthData = true
-          const monthKey = row.data_orcamento.slice(0, 7) // 'YYYY-MM'
+          const monthKey = row.data_orcamento.slice(0, 7)
           byMonth[monthKey] = (byMonth[monthKey] ?? 0) + 1
         }
       }
