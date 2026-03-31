@@ -33,10 +33,22 @@ export function useOrcamentoStats(vendorFilter?: string) {
         query = query.eq('vendor_id', vendorFilter)
       }
 
-      const { data, error } = await query
-      if (error) throw error
+      let result = await query
 
-      const rows = (data ?? []) as OrcRow[]
+      // data_orcamento column may not exist yet — fall back without it
+      if (result.error) {
+        let q2 = supabase
+          .from('contacts')
+          .select('origin, vendor_id')
+          .like('origin', 'Orcamento%')
+        if (vendorFilter && vendorFilter !== 'todos') {
+          q2 = q2.eq('vendor_id', vendorFilter)
+        }
+        result = await q2
+        if (result.error) throw result.error
+      }
+
+      const rows = (result.data ?? []) as OrcRow[]
 
       const byYear: Record<string, number> = {}
       const byMonth: Record<string, number> = {}
