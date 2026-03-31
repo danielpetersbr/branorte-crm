@@ -11,6 +11,7 @@ import { formatNumber, formatPhone, whatsappLink } from '@/lib/utils'
 import { useVendorMap } from '@/hooks/useVendorMap'
 import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, FileText } from 'lucide-react'
 import { ESTADOS_BR, STATUS_OPTIONS, TEMPERATURA_OPTIONS, FUNIL_OPTIONS, PAGE_SIZE } from '@/types'
+import { parseCrmMeta } from '@/lib/crm-fields'
 import type { ContactFilters, Contact } from '@/types'
 import { ContactDetail } from '@/components/contacts/ContactDetail'
 
@@ -22,9 +23,15 @@ function getOrcamento(origin: string | null): string | null {
 
 function getOrcDescricao(notes: string | null): string | null {
   if (!notes) return null
-  const firstLine = notes.split('\n')[0].trim()
-  // Se a primeira linha NAO comeca com "Orcamento" eh a descricao do produto
-  if (firstLine && !firstLine.startsWith('Orcamento')) return firstLine
+  const lines = notes.split('\n')
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    if (trimmed.startsWith('{')) continue        // Skip JSON metadata
+    if (trimmed.startsWith('Orcamento')) continue // Skip "Orcamento 2026-XXXX"
+    if (trimmed.startsWith('[')) continue          // Skip "[31/03/2026] Atendeu..."
+    return trimmed
+  }
   return null
 }
 
@@ -116,8 +123,9 @@ export function Contacts() {
                   {contacts.map(c => {
                     const tel = c.telefone_normalizado || c.phone || ''
                     const orc = getOrcamento(c.origin)
-                    const tempOpt = TEMPERATURA_OPTIONS.find(t => t.value === c.temperatura)
-                    const funilOpt = FUNIL_OPTIONS.find(f => f.value === c.estagio_funil)
+                    const meta = parseCrmMeta(c.notes)
+                    const tempOpt = TEMPERATURA_OPTIONS.find(t => t.value === meta.temp)
+                    const funilOpt = FUNIL_OPTIONS.find(f => f.value === meta.funil)
                     return (
                       <tr key={c.id} className="hover:bg-surface-secondary cursor-pointer transition-colors"
                         onClick={() => setSelectedContact(c)}>
@@ -181,9 +189,11 @@ export function Contacts() {
           {/* Mobile cards */}
           <div className="lg:hidden space-y-2">
             {contacts.map(c => {
-              const statusOpt = STATUS_OPTIONS.find(s => s.value === c.status)
               const tel = c.telefone_normalizado || c.phone || ''
               const orc = getOrcamento(c.origin)
+              const mobileM = parseCrmMeta(c.notes)
+              const mobileTempOpt = TEMPERATURA_OPTIONS.find(t => t.value === mobileM.temp)
+              const mobileFunilOpt = FUNIL_OPTIONS.find(f => f.value === mobileM.funil)
               return (
                 <Card key={c.id} hover onClick={() => setSelectedContact(c)} className="p-4">
                   <div className="flex items-start justify-between">
@@ -191,16 +201,10 @@ export function Contacts() {
                       <p className="font-medium text-text-primary truncate">{c.name || '(sem nome)'}</p>
                       <p className="text-sm text-text-secondary font-mono mt-0.5">{formatPhone(tel)}</p>
                       <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        {mobileTempOpt && <Badge className={mobileTempOpt.color}>{mobileTempOpt.icon}</Badge>}
                         {c.state && <Badge className="bg-blue-50 text-blue-700">{c.state}</Badge>}
-                        {orc && (
-                          <Badge className="bg-amber-50 text-amber-700 border border-amber-200">
-                            <FileText className="h-3 w-3" /> {orc}
-                          </Badge>
-                        )}
-                        {orc && getOrcDescricao(c.notes) && (
-                          <span className="text-xs text-text-muted">{getOrcDescricao(c.notes)}</span>
-                        )}
-                        {statusOpt && <Badge className={statusOpt.color}>{statusOpt.label}</Badge>}
+                        {mobileFunilOpt && <Badge className={mobileFunilOpt.color}>{mobileFunilOpt.label}</Badge>}
+                        {orc && <Badge className="bg-amber-50 text-amber-700 border border-amber-200"><FileText className="h-3 w-3" /> {orc}</Badge>}
                         {c.vendor_id && vendorMap[c.vendor_id] && <span className="text-xs text-text-muted">{vendorMap[c.vendor_id!]}</span>}
                       </div>
                     </div>
