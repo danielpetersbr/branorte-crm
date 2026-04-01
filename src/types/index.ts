@@ -41,6 +41,7 @@ export interface ContactFilters {
   status: string
   orcamento: boolean
   orcamento_ano: string
+  orcamento_mes: string
   temperatura: string
   page: number
 }

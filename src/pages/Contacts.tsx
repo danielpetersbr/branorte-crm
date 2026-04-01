@@ -39,7 +39,8 @@ export function Contacts() {
   const currentYear = new Date().getFullYear()
   const orcamentoAnos = Array.from({ length: currentYear - 2011 }, (_, i) => String(currentYear - i))
 
-  const [filters, setFilters] = useState<ContactFilters>({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, orcamento_ano: '', temperatura: '', page: 0 })
+  const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+  const [filters, setFilters] = useState<ContactFilters>({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, orcamento_ano: '', orcamento_mes: '', temperatura: '', page: 0 })
   const [searchInput, setSearchInput] = useState('')
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
 
@@ -58,7 +59,7 @@ export function Contacts() {
   }, [searchInput])
 
   const clearFilters = () => {
-    setFilters({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, orcamento_ano: '', temperatura: '', page: 0 })
+    setFilters({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, orcamento_ano: '', orcamento_mes: '', temperatura: '', page: 0 })
     setSearchInput('')
   }
 
@@ -101,9 +102,18 @@ export function Contacts() {
             options={orcamentoAnos.map(y => ({ value: y, label: y }))}
             placeholder="Ano"
             value={filters.orcamento_ano}
-            onChange={e => setFilters(f => ({ ...f, orcamento_ano: e.target.value, orcamento: false, page: 0 }))}
+            onChange={e => setFilters(f => ({ ...f, orcamento_ano: e.target.value, orcamento_mes: '', orcamento: false, page: 0 }))}
             className="lg:w-24"
           />
+          {filters.orcamento_ano && (
+            <Select
+              options={MESES.map((m, i) => ({ value: String(i + 1), label: m }))}
+              placeholder="Mês"
+              value={filters.orcamento_mes}
+              onChange={e => setFilters(f => ({ ...f, orcamento_mes: e.target.value, page: 0 }))}
+              className="lg:w-24"
+            />
+          )}
           {hasFilters && (
             <Button variant="ghost" size="sm" onClick={clearFilters}><X className="h-4 w-4" /> Limpar</Button>
           )}

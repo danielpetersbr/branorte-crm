@@ -25,6 +25,13 @@ export function useContacts(filters: ContactFilters) {
       if (filters.status) query = query.eq('status', filters.status)
       if (filters.orcamento_ano) {
         query = query.like('origin', `Orcamento ${filters.orcamento_ano}-%`)
+        if (filters.orcamento_mes) {
+          const m = Number(filters.orcamento_mes)
+          const month = String(m).padStart(2, '0')
+          const yr = Number(filters.orcamento_ano)
+          const nextMonth = m === 12 ? `${yr + 1}-01-01` : `${yr}-${String(m + 1).padStart(2, '0')}-01`
+          query = query.gte('data_orcamento', `${yr}-${month}-01`).lt('data_orcamento', nextMonth)
+        }
       } else if (filters.orcamento) {
         query = query.like('origin', 'Orcamento%')
       }
