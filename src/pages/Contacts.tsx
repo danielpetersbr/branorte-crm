@@ -37,7 +37,7 @@ function getOrcDescricao(notes: string | null): string | null {
 
 export function Contacts() {
   const currentYear = new Date().getFullYear()
-  const orcamentoAnos = Array.from({ length: currentYear - 2017 }, (_, i) => String(currentYear - i))
+  const orcamentoAnos = Array.from({ length: currentYear - 2011 }, (_, i) => String(currentYear - i))
 
   const [filters, setFilters] = useState<ContactFilters>({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, orcamento_ano: '', temperatura: '', page: 0 })
   const [searchInput, setSearchInput] = useState('')
