@@ -129,8 +129,8 @@ export function Contacts() {
                 </thead>
                 <tbody className="divide-y divide-surface-border">
                   {contacts.map(c => {
-                    const rawTel = c.telefone_normalizado || c.phone || ''
-                    const tel = rawTel.startsWith('ORC-') ? '' : rawTel
+                    const isOrcPhone = (c.phone || '').startsWith('ORC-')
+                    const tel = isOrcPhone ? '' : (c.telefone_normalizado || c.phone || '')
                     const orc = getOrcamento(c.origin)
                     const meta = parseCrmMeta(c.notes)
                     const tempOpt = TEMPERATURA_OPTIONS.find(t => t.value === meta.temp)
@@ -198,8 +198,8 @@ export function Contacts() {
           {/* Mobile cards */}
           <div className="lg:hidden space-y-2">
             {contacts.map(c => {
-              const rawTel2 = c.telefone_normalizado || c.phone || ''
-              const tel = rawTel2.startsWith('ORC-') ? '' : rawTel2
+              const isOrcPhone2 = (c.phone || '').startsWith('ORC-')
+              const tel = isOrcPhone2 ? '' : (c.telefone_normalizado || c.phone || '')
               const orc = getOrcamento(c.origin)
               const mobileM = parseCrmMeta(c.notes)
               const mobileTempOpt = TEMPERATURA_OPTIONS.find(t => t.value === mobileM.temp)
