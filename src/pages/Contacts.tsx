@@ -161,9 +161,9 @@ export function Contacts() {
                               <Badge className="bg-amber-50 text-amber-700 border border-amber-200 w-fit">
                                 <FileText className="h-3 w-3" /> {orc}
                               </Badge>
-                              {getOrcDescricao(c.notes) && (
-                                <span className="text-xs text-text-muted truncate max-w-[200px]" title={getOrcDescricao(c.notes)!}>
-                                  {getOrcDescricao(c.notes)}
+                              {(c.descricao_orcamento || getOrcDescricao(c.notes)) && (
+                                <span className="text-xs text-text-muted truncate max-w-[200px]" title={c.descricao_orcamento || getOrcDescricao(c.notes) || ''}>
+                                  {c.descricao_orcamento || getOrcDescricao(c.notes)}
                                 </span>
                               )}
                             </div>

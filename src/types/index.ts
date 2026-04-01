@@ -31,6 +31,7 @@ export interface Contact {
   motivo_perda: string | null
   tentativas: number | null
   data_orcamento: string | null
+  descricao_orcamento: string | null
 }
 
 export interface ContactFilters {
