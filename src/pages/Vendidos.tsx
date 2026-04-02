@@ -11,6 +11,7 @@ import { formatPhone, whatsappLink } from '@/lib/utils'
 import { useVendorMap } from '@/hooks/useVendorMap'
 import { useVendors } from '@/hooks/useVendors'
 import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, CheckCircle, FileText } from 'lucide-react'
+import { ESTADOS_BR } from '@/types'
 import type { Contact } from '@/types'
 
 const PAGE_SIZE = 50
@@ -24,7 +25,7 @@ function getOrcamento(origin: string | null): string | null {
   return match ? match[1] : null
 }
 
-function useSoldContacts(filters: { search: string; vendor_id: string; ano: string; mes: string; page: number }) {
+function useSoldContacts(filters: { search: string; vendor_id: string; estado: string; ano: string; mes: string; page: number }) {
   return useQuery({
     queryKey: ['vendidos', filters],
     queryFn: async () => {
@@ -39,6 +40,7 @@ function useSoldContacts(filters: { search: string; vendor_id: string; ano: stri
         query = query.or(`name.ilike.%${filters.search}%,phone.ilike.%${filters.search}%,descricao_orcamento.ilike.%${filters.search}%`)
       }
       if (filters.vendor_id) query = query.eq('vendor_id', filters.vendor_id)
+      if (filters.estado) query = query.eq('state', filters.estado)
       if (filters.ano) {
         query = query.like('origin', `Orcamento ${filters.ano}-%`)
       }
@@ -77,7 +79,7 @@ function useSoldStats() {
 }
 
 export function Vendidos() {
-  const [filters, setFilters] = useState({ search: '', vendor_id: '', ano: '', mes: '', page: 0 })
+  const [filters, setFilters] = useState({ search: '', vendor_id: '', estado: '', ano: '', mes: '', page: 0 })
   const [searchInput, setSearchInput] = useState('')
 
   const { data, isLoading } = useSoldContacts(filters)
@@ -88,10 +90,10 @@ export function Vendidos() {
   const contacts = data?.contacts ?? []
   const total = data?.total ?? 0
   const totalPages = Math.ceil(total / PAGE_SIZE)
-  const hasFilters = filters.search || filters.vendor_id || filters.ano || filters.mes
+  const hasFilters = filters.search || filters.vendor_id || filters.estado || filters.ano || filters.mes
 
   const clearFilters = () => {
-    setFilters({ search: '', vendor_id: '', ano: '', mes: '', page: 0 })
+    setFilters({ search: '', vendor_id: '', estado: '', ano: '', mes: '', page: 0 })
     setSearchInput('')
   }
 
@@ -127,6 +129,13 @@ export function Vendidos() {
             value={filters.vendor_id}
             onChange={e => setFilters(f => ({ ...f, vendor_id: e.target.value, page: 0 }))}
             className="lg:w-44"
+          />
+          <Select
+            options={ESTADOS_BR.map(e => ({ value: e, label: e }))}
+            placeholder="Estado"
+            value={filters.estado}
+            onChange={e => setFilters(f => ({ ...f, estado: e.target.value, page: 0 }))}
+            className="lg:w-24"
           />
           <Select
             options={ANOS.map(y => ({ value: y, label: y }))}
