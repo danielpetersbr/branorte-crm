@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from 'react-router-dom'
-import { LayoutDashboard, Users, UserPlus, FileText } from 'lucide-react'
+import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const links = [
@@ -7,6 +7,7 @@ const links = [
   { to: '/contatos', label: 'Contatos', icon: Users },
   { to: '/atribuir', label: 'Atribuir', icon: UserPlus },
   { to: '/orcamentos', label: 'Orçamentos', icon: FileText },
+  { to: '/vendidos', label: 'Vendidos', icon: CheckCircle },
 ]
 
 export function Layout() {

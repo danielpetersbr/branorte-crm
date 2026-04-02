@@ -5,6 +5,7 @@ import { Dashboard } from '@/pages/Dashboard'
 import { Contacts } from '@/pages/Contacts'
 import { Assign } from '@/pages/Assign'
 import { Orcamentos } from '@/pages/Orcamentos'
+import { Vendidos } from '@/pages/Vendidos'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,6 +26,7 @@ export default function App() {
             <Route path="/contatos" element={<Contacts />} />
             <Route path="/atribuir" element={<Assign />} />
             <Route path="/orcamentos" element={<Orcamentos />} />
+            <Route path="/vendidos" element={<Vendidos />} />
           </Route>
         </Routes>
       </BrowserRouter>
