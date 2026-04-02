@@ -33,7 +33,7 @@ function useSoldContacts(filters: { search: string; vendor_id: string; ano: stri
         .select('*', { count: 'exact' })
         .eq('status', 'FECHADO')
         .like('origin', 'Orcamento%')
-        .order('updated_at', { ascending: false })
+        .order('origin', { ascending: false })
 
       if (filters.search) {
         query = query.or(`name.ilike.%${filters.search}%,phone.ilike.%${filters.search}%,descricao_orcamento.ilike.%${filters.search}%`)
