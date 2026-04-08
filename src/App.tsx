@@ -6,6 +6,7 @@ import { Contacts } from '@/pages/Contacts'
 import { Assign } from '@/pages/Assign'
 import { Orcamentos } from '@/pages/Orcamentos'
 import { Vendidos } from '@/pages/Vendidos'
+import { PasswordGate } from '@/components/PasswordGate'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -19,17 +20,19 @@ const queryClient = new QueryClient({
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Routes>
-          <Route element={<Layout />}>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/contatos" element={<Contacts />} />
-            <Route path="/atribuir" element={<Assign />} />
-            <Route path="/orcamentos" element={<Orcamentos />} />
-            <Route path="/vendidos" element={<Vendidos />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+      <PasswordGate>
+        <BrowserRouter>
+          <Routes>
+            <Route element={<Layout />}>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/contatos" element={<Contacts />} />
+              <Route path="/atribuir" element={<Assign />} />
+              <Route path="/orcamentos" element={<Orcamentos />} />
+              <Route path="/vendidos" element={<Vendidos />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </PasswordGate>
     </QueryClientProvider>
   )
 }
