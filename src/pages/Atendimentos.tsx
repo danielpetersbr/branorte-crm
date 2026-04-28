@@ -29,7 +29,50 @@ const STATUS_STYLE: Record<StatusReal, { color: string; label: string }> = {
   'Perdido': { color: 'bg-red-100 text-red-700 border border-red-200', label: 'Perdido' },
 }
 
+const FINALIDADE_STYLE: Record<string, string> = {
+  'Fábrica para consumo': 'bg-blue-50 text-blue-700 border border-blue-200',
+  'Fábrica para vender': 'bg-orange-50 text-orange-700 border border-orange-200',
+  'Consumo e vender': 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+}
+
+const QUANDO_STYLE: Record<string, string> = {
+  'Agora': 'bg-red-50 text-red-700 border border-red-200',
+  'Em até 3 meses': 'bg-amber-50 text-amber-700 border border-amber-200',
+  'Estou pesquisando': 'bg-gray-100 text-gray-600 border border-gray-200',
+}
+
 const AUDITORIA_BASE = 'https://branorte-auditoria.vercel.app'
+
+interface PerfilFabricaProps {
+  finalidade: string | null
+  quantos: string | null
+  capacidade: string | null
+  quando: string | null
+}
+
+function PerfilFabricaCell({ finalidade, quantos, capacidade, quando }: PerfilFabricaProps) {
+  const has = finalidade || quantos || capacidade || quando
+  if (!has) return <span className="text-xs text-text-muted">-</span>
+  return (
+    <div className="flex flex-col gap-0.5 min-w-[180px]">
+      {finalidade && (
+        <Badge className={`${FINALIDADE_STYLE[finalidade] ?? 'bg-gray-50 text-gray-700 border border-gray-200'} text-[10px] px-1.5 py-0.5 self-start`}>
+          {finalidade}
+        </Badge>
+      )}
+      {(quantos || capacidade) && (
+        <span className="text-[11px] text-text-secondary leading-tight">
+          {[quantos && `${quantos} animais`, capacidade].filter(Boolean).join(' · ')}
+        </span>
+      )}
+      {quando && (
+        <Badge className={`${QUANDO_STYLE[quando] ?? 'bg-gray-50 text-gray-700 border border-gray-200'} text-[10px] px-1.5 py-0.5 self-start`}>
+          {quando}
+        </Badge>
+      )}
+    </div>
+  )
+}
 
 export function Atendimentos() {
   const [filters, setFilters] = useState({
@@ -170,18 +213,15 @@ export function Atendimentos() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-surface-border bg-surface-secondary">
-                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Nome</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Telefone</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Vendedor</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Status</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Animal · Qtd · Precisa</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3" title="Fábrica para consumo / vender / Consumo e vender">Finalidade</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3" title="Quantos animais o cliente declarou ter">Qtd animais</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3" title="Capacidade desejada">Capacidade</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3" title="Quando pretende investir">Quando</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Criativo</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Última msg</th>
-                    <th className="text-right text-xs font-medium text-text-muted px-4 py-3">Ações</th>
+                    <th className="text-left text-xs font-medium text-text-muted px-3 py-3 whitespace-nowrap">Nome</th>
+                    <th className="text-left text-xs font-medium text-text-muted px-3 py-3 whitespace-nowrap">Telefone</th>
+                    <th className="text-left text-xs font-medium text-text-muted px-3 py-3 whitespace-nowrap">Vendedor</th>
+                    <th className="text-left text-xs font-medium text-text-muted px-3 py-3 whitespace-nowrap">Status</th>
+                    <th className="text-left text-xs font-medium text-text-muted px-3 py-3 whitespace-nowrap">Animal · Qtd · Precisa</th>
+                    <th className="text-left text-xs font-medium text-text-muted px-3 py-3 whitespace-nowrap" title="Finalidade · Qtd animais · Capacidade · Quando investir">Perfil fábrica</th>
+                    <th className="text-left text-xs font-medium text-text-muted px-3 py-3 whitespace-nowrap">Criativo</th>
+                    <th className="text-left text-xs font-medium text-text-muted px-3 py-3 whitespace-nowrap">Última msg</th>
+                    <th className="text-right text-xs font-medium text-text-muted px-3 py-3 whitespace-nowrap">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-border">
@@ -197,77 +237,49 @@ export function Atendimentos() {
                     const criativoNome = r.criativo_facebook?.nome_oficial || r.criativo_facebook?.headline
                     return (
                       <tr key={r.id} className="hover:bg-green-50/30 transition-colors">
-                        <td className="px-4 py-3">
-                          <span className="text-sm font-medium text-text-primary">
+                        <td className="px-3 py-3 whitespace-nowrap">
+                          <span className="text-sm font-semibold text-text-primary">
                             {r.nome || '(sem nome)'}
                           </span>
                           {uf && uf !== '—' && uf !== 'INTL' && (
-                            <Badge className="bg-blue-50 text-blue-700 ml-2">{uf}</Badge>
+                            <Badge className="bg-blue-50 text-blue-700 ml-1.5 text-[10px] px-1 py-0">{uf}</Badge>
                           )}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3 whitespace-nowrap">
                           <span className="text-sm text-text-secondary font-mono">
                             {tel ? formatPhone(tel) : '-'}
                           </span>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3 whitespace-nowrap">
                           <span className="text-sm text-text-secondary">{r.responsavel ?? '-'}</span>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3 whitespace-nowrap">
                           {statusStyle ? (
-                            <Badge className={statusStyle.color}>{statusStyle.label}</Badge>
+                            <Badge className={`${statusStyle.color} whitespace-nowrap`}>{statusStyle.label}</Badge>
                           ) : (
                             <span className="text-xs text-text-muted">{r.status_real ?? '-'}</span>
                           )}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3">
                           <span
-                            className="text-xs text-text-secondary truncate max-w-[260px] block"
+                            className="text-xs text-text-secondary truncate max-w-[220px] block"
                             title={animalLine}
                           >
                             {animalLine}
                           </span>
                         </td>
-                        <td className="px-4 py-3">
-                          {r.finalidade_fabrica ? (
-                            <span className="text-xs text-text-secondary truncate max-w-[160px] block" title={r.finalidade_fabrica}>
-                              {r.finalidade_fabrica}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-text-muted">-</span>
-                          )}
+                        <td className="px-3 py-3">
+                          <PerfilFabricaCell
+                            finalidade={r.finalidade_fabrica}
+                            quantos={r.quantos_animais}
+                            capacidade={r.capacidade_producao}
+                            quando={r.quando_investir}
+                          />
                         </td>
-                        <td className="px-4 py-3">
-                          {r.quantos_animais ? (
-                            <span className="text-xs text-text-secondary truncate max-w-[120px] block" title={r.quantos_animais}>
-                              {r.quantos_animais}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-text-muted">-</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          {r.capacidade_producao ? (
-                            <span className="text-xs text-text-secondary truncate max-w-[140px] block" title={r.capacidade_producao}>
-                              {r.capacidade_producao}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-text-muted">-</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          {r.quando_investir ? (
-                            <span className="text-xs text-text-secondary truncate max-w-[140px] block" title={r.quando_investir}>
-                              {r.quando_investir}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-text-muted">-</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3">
                           {criativoNome ? (
                             <span
-                              className="text-xs text-text-muted truncate max-w-[180px] block"
+                              className="text-xs text-text-muted truncate max-w-[160px] block"
                               title={`${r.criativo_codigo ?? ''} · ${criativoNome}`}
                             >
                               {criativoNome}
@@ -276,12 +288,12 @@ export function Atendimentos() {
                             <span className="text-xs text-text-muted">-</span>
                           )}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3 whitespace-nowrap">
                           <span className="text-xs text-text-muted">
                             {r.ultima_msg ? formatRelative(r.ultima_msg) : '-'}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-right">
+                        <td className="px-3 py-3 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1">
                             {tel && (
                               <>
@@ -319,7 +331,7 @@ export function Atendimentos() {
                   })}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={12} className="px-4 py-8 text-center text-text-muted">
+                      <td colSpan={9} className="px-4 py-8 text-center text-text-muted">
                         Nenhum atendimento encontrado.
                       </td>
                     </tr>
