@@ -1,7 +1,83 @@
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-surface-secondary text-text-primary antialiased;
+@layer base {
+  :root {
+    /* Surface */
+    --bg: 240 10% 99%;
+    --surface: 240 6% 97%;
+    --surface-2: 240 8% 95%;
+    --border: 240 6% 90%;
+    --border-strong: 240 6% 82%;
+
+    /* Ink */
+    --ink: 240 10% 12%;
+    --ink-muted: 240 5% 45%;
+    --ink-faint: 240 4% 65%;
+
+    /* Semantic */
+    --success: 152 60% 40%;
+    --success-bg: 152 70% 96%;
+    --warning: 38 92% 50%;
+    --warning-bg: 38 100% 96%;
+    --danger: 0 72% 51%;
+    --danger-bg: 0 80% 97%;
+    --info: 217 91% 60%;
+    --info-bg: 217 95% 96%;
+    --accent: 152 60% 40%;
+    --accent-bg: 152 70% 96%;
+  }
+
+  .dark {
+    --bg: 240 10% 7%;
+    --surface: 240 8% 11%;
+    --surface-2: 240 7% 14%;
+    --border: 240 6% 18%;
+    --border-strong: 240 5% 26%;
+
+    --ink: 240 5% 96%;
+    --ink-muted: 240 4% 70%;
+    --ink-faint: 240 3% 50%;
+
+    --success-bg: 152 50% 12%;
+    --warning-bg: 38 60% 12%;
+    --danger-bg: 0 60% 14%;
+    --info-bg: 217 60% 14%;
+    --accent-bg: 152 50% 12%;
+  }
+
+  html, body {
+    background: hsl(var(--bg));
+    color: hsl(var(--ink));
+    font-family: 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-feature-settings: 'cv11', 'ss01', 'ss03';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .font-mono {
+    font-family: 'Geist Mono', ui-monospace, 'JetBrains Mono', monospace;
+  }
+}
+
+@layer components {
+  /* Pulsing dot for live/new lead indicators */
+  .pulse-dot::before {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 9999px;
+    background: hsl(var(--success));
+    opacity: 0.4;
+    animation: pulse-ring 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  @keyframes pulse-ring {
+    0%, 100% { transform: scale(0.85); opacity: 0.6; }
+    50%      { transform: scale(1.5); opacity: 0; }
+  }
 }

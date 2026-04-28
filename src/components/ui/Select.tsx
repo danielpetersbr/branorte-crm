@@ -9,23 +9,25 @@ interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
   ({ options, placeholder, className, ...props }, ref) => {
+    const hasValue = !!props.value
     return (
       <div className="relative">
         <select
           ref={ref}
           className={cn(
-            'w-full h-9 rounded-lg border border-surface-border bg-white px-3 pr-8 text-sm',
-            'text-text-primary appearance-none cursor-pointer',
-            'focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors', className
+            'h-9 rounded-md border bg-surface px-3 pr-8 text-[13px] appearance-none cursor-pointer transition-all',
+            'focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30',
+            hasValue ? 'border-accent/40 text-ink' : 'border-border text-ink-muted',
+            className,
           )}
           {...props}
         >
           {placeholder && <option value="">{placeholder}</option>}
           {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
-        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted pointer-events-none" />
+        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-ink-faint pointer-events-none" />
       </div>
     )
-  }
+  },
 )
 Select.displayName = 'Select'

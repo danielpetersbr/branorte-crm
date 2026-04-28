@@ -5,17 +5,17 @@ interface CardProps { children: React.ReactNode; className?: string; hover?: boo
 export function Card({ children, className, hover, onClick }: CardProps) {
   return (
     <div onClick={onClick} className={cn(
-      'bg-white rounded-xl border border-surface-border',
-      hover && 'cursor-pointer transition-shadow hover:shadow-md',
-      onClick && 'cursor-pointer', className
+      'bg-surface rounded-lg border border-border',
+      hover && 'cursor-pointer transition-all duration-150 hover:border-border-strong hover:shadow-sm',
+      onClick && 'cursor-pointer', className,
     )}>{children}</div>
   )
 }
 
 export function CardHeader({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn('p-5 border-b border-surface-border', className)}>{children}</div>
+  return <div className={cn('px-5 py-4 border-b border-border', className)}>{children}</div>
 }
 
 export function CardContent({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn('p-5', className)}>{children}</div>
+  return <div className={cn('px-5 py-4', className)}>{children}</div>
 }

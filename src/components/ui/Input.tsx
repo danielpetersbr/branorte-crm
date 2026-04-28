@@ -9,19 +9,19 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ leftIcon, className, ...props }, ref) => {
     return (
       <div className="relative">
-        {leftIcon && <div className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted">{leftIcon}</div>}
+        {leftIcon && <div className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint">{leftIcon}</div>}
         <input
           ref={ref}
           className={cn(
-            'w-full h-9 rounded-lg border border-surface-border bg-white px-3 text-sm',
-            'text-text-primary placeholder:text-text-muted',
-            'focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors',
-            leftIcon && 'pl-9', className
+            'w-full h-9 rounded-md border border-border bg-surface px-3 text-[13px]',
+            'text-ink placeholder:text-ink-faint',
+            'focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-all',
+            leftIcon && 'pl-9', className,
           )}
           {...props}
         />
       </div>
     )
-  }
+  },
 )
 Input.displayName = 'Input'

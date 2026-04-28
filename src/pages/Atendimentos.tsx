@@ -1,75 +1,130 @@
 import { useState } from 'react'
-import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, MessageSquare, ExternalLink } from 'lucide-react'
+import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, ExternalLink, Flame, AlarmClock, AlertTriangle, CheckCircle2, Inbox } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
+import { Avatar } from '@/components/ui/Avatar'
+import { StatusDot } from '@/components/ui/StatusDot'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTimeShort } from '@/lib/utils'
 import { ufFromTelefone } from '@/lib/ddd-uf'
 import { ESTADOS_BR } from '@/types'
-import {
-  ATENDIMENTO_PAGE_SIZE,
-  STATUS_REAL_VALUES,
-  type StatusReal,
-} from '@/types/atendimento'
-import {
-  useAtendimentos,
-  useAtendimentoKpis,
-  useAtendimentoResponsaveis,
-} from '@/hooks/useAtendimentos'
+import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, type StatusReal } from '@/types/atendimento'
+import { useAtendimentos, useAtendimentoKpis, useAtendimentoResponsaveis } from '@/hooks/useAtendimentos'
 
-const STATUS_STYLE: Record<StatusReal, { color: string; label: string }> = {
-  'Vendido': { color: 'bg-green-100 text-green-800 border border-green-200', label: 'Vendido' },
-  'Em-andamento': { color: 'bg-blue-100 text-blue-700 border border-blue-200', label: 'Em andamento' },
-  'Aguardando-Vendedor': { color: 'bg-amber-100 text-amber-700 border border-amber-200', label: 'Aguardando' },
-  'Abandonado': { color: 'bg-gray-100 text-gray-600 border border-gray-200', label: 'Abandonado' },
-  'Sem-Resposta': { color: 'bg-rose-100 text-rose-700 border border-rose-200', label: 'Sem resposta' },
-  'Perdido': { color: 'bg-red-100 text-red-700 border border-red-200', label: 'Perdido' },
+type Tone = 'success' | 'warning' | 'danger' | 'info' | 'accent' | 'neutral'
+
+const STATUS_TONE: Record<StatusReal, { tone: Tone; label: string }> = {
+  'Vendido':              { tone: 'success', label: 'Vendido' },
+  'Em-andamento':         { tone: 'info',    label: 'Em andamento' },
+  'Aguardando-Vendedor':  { tone: 'warning', label: 'Aguardando' },
+  'Abandonado':           { tone: 'neutral', label: 'Abandonado' },
+  'Sem-Resposta':         { tone: 'danger',  label: 'Sem resposta' },
+  'Perdido':              { tone: 'danger',  label: 'Perdido' },
 }
 
-const FINALIDADE_STYLE: Record<string, string> = {
-  'Fábrica para consumo': 'bg-blue-50 text-blue-700 border border-blue-200',
-  'Fábrica para vender': 'bg-orange-50 text-orange-700 border border-orange-200',
-  'Consumo e vender': 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+const FINALIDADE_TONE: Record<string, Tone> = {
+  'Fábrica para consumo':  'info',
+  'Fábrica para vender':   'warning',
+  'Consumo e vender':      'success',
 }
 
-const QUANDO_STYLE: Record<string, string> = {
-  'Agora': 'bg-red-50 text-red-700 border border-red-200',
-  'Em até 3 meses': 'bg-amber-50 text-amber-700 border border-amber-200',
-  'Estou pesquisando': 'bg-gray-100 text-gray-600 border border-gray-200',
+const QUANDO_TONE: Record<string, Tone> = {
+  'Agora':              'danger',
+  'Em até 3 meses':     'warning',
+  'Estou pesquisando':  'neutral',
 }
 
 const AUDITORIA_BASE = 'https://branorte-auditoria.vercel.app'
 
-interface PerfilFabricaProps {
+function isHotLead(quando: string | null): boolean {
+  return quando === 'Agora'
+}
+
+function isFreshLead(dateStr: string | null | undefined): boolean {
+  if (!dateStr) return false
+  const minutesAgo = (Date.now() - new Date(dateStr).getTime()) / 60000
+  return minutesAgo < 30
+}
+
+interface PerfilFabricaCellProps {
   finalidade: string | null
   quantos: string | null
   capacidade: string | null
   quando: string | null
 }
 
-function PerfilFabricaCell({ finalidade, quantos, capacidade, quando }: PerfilFabricaProps) {
-  const has = finalidade || quantos || capacidade || quando
-  if (!has) return <span className="text-xs text-text-muted">-</span>
+function PerfilFabricaCell({ finalidade, quantos, capacidade, quando }: PerfilFabricaCellProps) {
+  if (!finalidade && !quantos && !capacidade && !quando) {
+    return <span className="text-[11px] text-ink-faint">—</span>
+  }
   return (
-    <div className="flex flex-col gap-0.5 min-w-[180px]">
+    <div className="flex flex-col gap-1 min-w-[170px]">
       {finalidade && (
-        <Badge className={`${FINALIDADE_STYLE[finalidade] ?? 'bg-gray-50 text-gray-700 border border-gray-200'} text-[10px] px-1.5 py-0.5 self-start`}>
+        <Badge className={`bg-${FINALIDADE_TONE[finalidade] ?? 'neutral'}-bg text-${FINALIDADE_TONE[finalidade] ?? 'neutral'} self-start`}
+               style={{ background: `hsl(var(--${FINALIDADE_TONE[finalidade] ?? 'surface-2'}-bg))`, color: `hsl(var(--${FINALIDADE_TONE[finalidade] ?? 'ink-muted'}))` }}>
           {finalidade}
         </Badge>
       )}
       {(quantos || capacidade) && (
-        <span className="text-[11px] text-text-secondary leading-tight">
+        <span className="text-[11px] text-ink-muted leading-tight tabular-nums">
           {[quantos && `${quantos} animais`, capacidade].filter(Boolean).join(' · ')}
         </span>
       )}
       {quando && (
-        <Badge className={`${QUANDO_STYLE[quando] ?? 'bg-gray-50 text-gray-700 border border-gray-200'} text-[10px] px-1.5 py-0.5 self-start`}>
+        <Badge style={{ background: `hsl(var(--${QUANDO_TONE[quando] ?? 'surface-2'}-bg))`, color: `hsl(var(--${QUANDO_TONE[quando] ?? 'ink-muted'}))` }}
+               className="self-start gap-1">
+          {quando === 'Agora' && <Flame className="h-2.5 w-2.5" />}
+          {quando === 'Em até 3 meses' && <AlarmClock className="h-2.5 w-2.5" />}
           {quando}
         </Badge>
       )}
+    </div>
+  )
+}
+
+interface KpiCardProps {
+  label: string
+  value: number
+  hero?: boolean
+  tone?: Tone
+  icon?: typeof Flame
+  hint?: string
+}
+
+function KpiCard({ label, value, hero, tone = 'neutral', icon: Icon, hint }: KpiCardProps) {
+  const accentClass: Record<Tone, string> = {
+    success: 'before:bg-success',
+    warning: 'before:bg-warning',
+    danger:  'before:bg-danger',
+    info:    'before:bg-info',
+    accent:  'before:bg-accent',
+    neutral: 'before:bg-border',
+  }
+  return (
+    <div className={`relative overflow-hidden rounded-lg bg-surface border border-border ${hero ? 'p-5' : 'p-4'}
+                     before:absolute before:inset-y-0 before:left-0 before:w-[3px] ${accentClass[tone]}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className={`text-[10px] uppercase tracking-widest font-medium ${tone === 'neutral' ? 'text-ink-faint' : `text-${tone}`}`}
+             style={{ color: tone !== 'neutral' ? `hsl(var(--${tone}))` : undefined }}>
+            {label}
+          </p>
+          <p className={`mt-1 font-semibold tabular-nums tracking-tight text-ink ${hero ? 'text-3xl' : 'text-2xl'}`}>
+            {formatNumber(value)}
+          </p>
+          {hint && <p className="text-[11px] text-ink-faint mt-0.5">{hint}</p>}
+        </div>
+        {Icon && (
+          <div className={`h-8 w-8 rounded-md flex items-center justify-center shrink-0
+                          ${tone === 'neutral' ? 'bg-surface-2' : ''}`}
+               style={tone !== 'neutral' ? { background: `hsl(var(--${tone}-bg))`, color: `hsl(var(--${tone}))` } : undefined}>
+            <Icon className="h-4 w-4" />
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -99,17 +154,19 @@ export function Atendimentos() {
   }
 
   return (
-    <div className="p-4 lg:p-8 space-y-4">
+    <div className="px-6 py-5 space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
-            <MessageSquare className="h-7 w-7 text-green-600" />
+          <h1 className="text-[22px] font-semibold text-ink tracking-tight leading-tight">
             Atendimentos
           </h1>
-          <p className="text-sm text-text-muted mt-1">
+          <p className="text-[13px] text-ink-muted mt-0.5">
             {kpis ? (
-              <><span className="font-semibold text-green-600">{formatNumber(kpis.total)}</span> conversas (1 por cliente)</>
+              <>
+                <span className="font-medium text-ink tabular-nums">{formatNumber(kpis.total)}</span>
+                <span className="text-ink-faint"> conversas · 1 por cliente</span>
+              </>
             ) : 'Carregando...'}
           </p>
         </div>
@@ -117,164 +174,184 @@ export function Atendimentos() {
           href={`${AUDITORIA_BASE}/atendimentos`}
           target="_blank"
           rel="noopener"
-          className="hidden sm:inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-green-700 transition-colors"
+          className="inline-flex items-center gap-1.5 text-[12px] text-ink-muted hover:text-ink transition-colors"
         >
-          Versao completa <ExternalLink className="h-3 w-3" />
+          Versão completa <ExternalLink className="h-3 w-3" />
         </a>
       </div>
 
-      {/* KPI cards */}
+      {/* KPIs - hierarquia: 2 hero + 4 small */}
       {kpis && (
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
-          {STATUS_REAL_VALUES.map(s => (
-            <Card key={s} className="p-3">
-              <p className="text-[11px] uppercase tracking-wide text-text-muted">{STATUS_STYLE[s].label}</p>
-              <p className="text-2xl font-bold text-text-primary mt-1">{formatNumber(kpis.byStatus[s] ?? 0)}</p>
-            </Card>
-          ))}
+          <KpiCard label="Vendido"  value={kpis.byStatus['Vendido'] ?? 0}              hero tone={kpis.byStatus['Vendido'] ? 'success' : 'danger'}
+                   icon={CheckCircle2} hint={kpis.byStatus['Vendido'] === 0 ? 'Nenhum no recorte' : undefined} />
+          <KpiCard label="Em andamento" value={kpis.byStatus['Em-andamento'] ?? 0}     hero tone="info"
+                   icon={Flame} />
+          <KpiCard label="Aguardando" value={kpis.byStatus['Aguardando-Vendedor'] ?? 0}      tone="warning" icon={AlarmClock} />
+          <KpiCard label="Sem resposta" value={kpis.byStatus['Sem-Resposta'] ?? 0}           tone="danger"  icon={AlertTriangle} />
+          <KpiCard label="Abandonado" value={kpis.byStatus['Abandonado'] ?? 0}               tone="neutral" />
+          <KpiCard label="Perdido"    value={kpis.byStatus['Perdido'] ?? 0}                  tone="neutral" />
         </div>
       )}
 
       {/* Filtros */}
-      <Card className="p-4">
-        <div className="flex flex-wrap gap-3 items-center">
-          <Input
-            placeholder="Buscar por nome ou telefone..."
-            leftIcon={<Search className="h-4 w-4" />}
+      <div className="flex flex-wrap gap-2 items-center">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-ink-faint pointer-events-none" />
+          <input
+            placeholder="Buscar nome ou telefone..."
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && setFilters(f => ({ ...f, search: searchInput, page: 0 }))}
-            className="lg:w-96"
+            className="w-full h-9 pl-9 pr-3 rounded-md bg-surface border border-border text-[13px]
+                       focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-all
+                       placeholder:text-ink-faint"
           />
-          <Select
-            options={(responsaveis ?? []).map(r => ({ value: r, label: r }))}
-            placeholder="Vendedor"
-            value={filters.responsavel}
-            onChange={e => setFilters(f => ({ ...f, responsavel: e.target.value, page: 0 }))}
-            className="lg:w-48"
-          />
-          <Select
-            options={STATUS_REAL_VALUES.map(s => ({ value: s, label: STATUS_STYLE[s].label }))}
-            placeholder="Status"
-            value={filters.status_real}
-            onChange={e => setFilters(f => ({ ...f, status_real: e.target.value, page: 0 }))}
-            className="lg:w-44"
-          />
-          <Select
-            options={ESTADOS_BR.map(uf => ({ value: uf, label: uf }))}
-            placeholder="UF"
-            value={filters.uf}
-            onChange={e => setFilters(f => ({ ...f, uf: e.target.value, page: 0 }))}
-            className="lg:w-24"
-          />
-          {hasFilters && (
-            <Button variant="ghost" size="sm" onClick={clearFilters}>
-              <X className="h-4 w-4" /> Limpar
-            </Button>
-          )}
         </div>
-      </Card>
+        <Select
+          options={(responsaveis ?? []).map(r => ({ value: r, label: r }))}
+          placeholder="Vendedor"
+          value={filters.responsavel}
+          onChange={e => setFilters(f => ({ ...f, responsavel: e.target.value, page: 0 }))}
+          className="lg:w-44"
+        />
+        <Select
+          options={STATUS_REAL_VALUES.map(s => ({ value: s, label: STATUS_TONE[s].label }))}
+          placeholder="Status"
+          value={filters.status_real}
+          onChange={e => setFilters(f => ({ ...f, status_real: e.target.value, page: 0 }))}
+          className="lg:w-40"
+        />
+        <Select
+          options={ESTADOS_BR.map(uf => ({ value: uf, label: uf }))}
+          placeholder="UF"
+          value={filters.uf}
+          onChange={e => setFilters(f => ({ ...f, uf: e.target.value, page: 0 }))}
+          className="lg:w-24"
+        />
+        {hasFilters && (
+          <Button variant="ghost" size="sm" onClick={clearFilters}>
+            <X className="h-3.5 w-3.5" /> Limpar
+          </Button>
+        )}
+      </div>
 
+      {/* Tabela */}
       {isLoading ? (
         <PageLoading />
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-text-muted">
+            <p className="text-[12px] text-ink-faint tabular-nums">
               {formatNumber(total)} resultado{total !== 1 ? 's' : ''}
             </p>
             {totalPages > 1 && (
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={filters.page === 0}
-                  onClick={() => setFilters(f => ({ ...f, page: f.page - 1 }))}
-                >
-                  <ChevronLeft className="h-4 w-4" />
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="sm" disabled={filters.page === 0}
+                        onClick={() => setFilters(f => ({ ...f, page: f.page - 1 }))}>
+                  <ChevronLeft className="h-3.5 w-3.5" />
                 </Button>
-                <span className="text-sm text-text-secondary">
+                <span className="text-[12px] text-ink-muted tabular-nums px-2">
                   {filters.page + 1} / {totalPages}
                 </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={filters.page >= totalPages - 1}
-                  onClick={() => setFilters(f => ({ ...f, page: f.page + 1 }))}
-                >
-                  <ChevronRight className="h-4 w-4" />
+                <Button variant="ghost" size="sm" disabled={filters.page >= totalPages - 1}
+                        onClick={() => setFilters(f => ({ ...f, page: f.page + 1 }))}>
+                  <ChevronRight className="h-3.5 w-3.5" />
                 </Button>
               </div>
             )}
           </div>
 
-          <Card className="overflow-hidden">
+          <Card className="overflow-hidden p-0">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-surface-border bg-surface-secondary">
-                    <th className="text-left text-xs font-medium text-text-muted px-3 py-3 whitespace-nowrap" title="Data/hora que o lead chegou">Chegou</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-3 py-3 whitespace-nowrap">Nome</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-3 py-3 whitespace-nowrap">Telefone</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-3 py-3 whitespace-nowrap">Vendedor</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-3 py-3 whitespace-nowrap">Status</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-3 py-3 whitespace-nowrap">Animal · Qtd · Precisa</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-3 py-3 whitespace-nowrap" title="Finalidade · Qtd animais · Capacidade · Quando investir">Perfil fábrica</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-3 py-3 whitespace-nowrap">Criativo</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-3 py-3 whitespace-nowrap">Última msg</th>
-                    <th className="text-right text-xs font-medium text-text-muted px-3 py-3 whitespace-nowrap">Ações</th>
+                  <tr className="border-b border-border bg-surface/50">
+                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Chegou</th>
+                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Lead</th>
+                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Telefone</th>
+                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Vendedor</th>
+                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Status</th>
+                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Animal · Qtd · Precisa</th>
+                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Perfil fábrica</th>
+                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Criativo</th>
+                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Última msg</th>
+                    <th className="text-right text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-surface-border">
+                <tbody>
                   {rows.map(r => {
                     const tel = (r.telefone || '').replace(/\D/g, '')
                     const uf = ufFromTelefone(r.telefone)
                     const status = (r.status_real ?? '') as StatusReal
-                    const statusStyle = STATUS_STYLE[status]
+                    const statusInfo = STATUS_TONE[status]
                     const animal = r.qual_animal && r.qual_animal !== 'não informado' ? r.qual_animal : null
                     const qtd = r.quantidade && r.quantidade !== '0' ? r.quantidade : null
                     const precisa = r.o_que_precisa
-                    const animalLine = [animal, qtd, precisa].filter(Boolean).join(' · ') || '-'
+                    const animalLine = [animal, qtd, precisa].filter(Boolean).join(' · ')
                     const criativoNome = r.criativo_facebook?.nome_oficial || r.criativo_facebook?.headline
+                    const isHot = isHotLead(r.quando_investir ?? null)
+                    const isFresh = isFreshLead(r.primeira_data ?? r.created_at)
                     return (
-                      <tr key={r.id} className="hover:bg-green-50/30 transition-colors">
-                        <td className="px-3 py-3 whitespace-nowrap" title={r.primeira_data ?? r.created_at ?? ''}>
-                          <span className="text-xs text-text-secondary font-mono">
+                      <tr key={r.id}
+                          className={`group border-b border-border/60 last:border-0 transition-colors
+                                     ${isHot ? 'bg-danger-bg/30 hover:bg-danger-bg/50' : 'hover:bg-surface'}`}
+                          style={isHot ? { borderLeft: '2px solid hsl(var(--danger))' } : undefined}>
+                        <td className="px-3 py-2.5 whitespace-nowrap" title={r.primeira_data ?? r.created_at ?? ''}>
+                          <span className="text-[11px] text-ink-muted font-mono tabular-nums">
                             {formatDateTimeShort(r.primeira_data ?? r.created_at)}
                           </span>
                         </td>
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          <span className="text-sm font-semibold text-text-primary">
-                            {r.nome || '(sem nome)'}
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          <div className="flex items-center gap-2.5 min-w-[180px]">
+                            <Avatar name={r.nome} size="md" pulse={isFresh} />
+                            <div className="leading-tight">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[13px] font-medium text-ink">
+                                  {r.nome || <span className="text-ink-faint italic font-normal">sem nome</span>}
+                                </span>
+                                {uf && uf !== '—' && uf !== 'INTL' && (
+                                  <span className="text-[10px] tabular-nums px-1 py-0 rounded bg-surface-2 text-ink-muted font-medium">
+                                    {uf}
+                                  </span>
+                                )}
+                              </div>
+                              {isHot && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-danger mt-0.5">
+                                  <Flame className="h-2.5 w-2.5" /> Lead quente
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          <span className="text-[12px] text-ink-muted font-mono tabular-nums">
+                            {tel ? formatPhone(tel) : '—'}
                           </span>
-                          {uf && uf !== '—' && uf !== 'INTL' && (
-                            <Badge className="bg-blue-50 text-blue-700 ml-1.5 text-[10px] px-1 py-0">{uf}</Badge>
-                          )}
                         </td>
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          <span className="text-sm text-text-secondary font-mono">
-                            {tel ? formatPhone(tel) : '-'}
-                          </span>
-                        </td>
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          <span className="text-sm text-text-secondary">{r.responsavel ?? '-'}</span>
-                        </td>
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          {statusStyle ? (
-                            <Badge className={`${statusStyle.color} whitespace-nowrap`}>{statusStyle.label}</Badge>
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          {r.responsavel ? (
+                            <div className="flex items-center gap-1.5">
+                              <Avatar name={r.responsavel} size="sm" />
+                              <span className="text-[12px] text-ink-muted">{r.responsavel}</span>
+                            </div>
                           ) : (
-                            <span className="text-xs text-text-muted">{r.status_real ?? '-'}</span>
+                            <span className="text-[11px] text-ink-faint italic">a definir</span>
                           )}
                         </td>
-                        <td className="px-3 py-3">
-                          <span
-                            className="text-xs text-text-secondary truncate max-w-[220px] block"
-                            title={animalLine}
-                          >
-                            {animalLine}
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          {statusInfo ? (
+                            <StatusDot tone={statusInfo.tone} label={statusInfo.label} />
+                          ) : (
+                            <span className="text-[11px] text-ink-faint">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <span className="text-[12px] text-ink-muted truncate max-w-[220px] block" title={animalLine}>
+                            {animalLine || <span className="text-ink-faint">—</span>}
                           </span>
                         </td>
-                        <td className="px-3 py-3">
+                        <td className="px-3 py-2.5">
                           <PerfilFabricaCell
                             finalidade={r.finalidade_fabrica}
                             quantos={r.quantos_animais}
@@ -282,53 +359,48 @@ export function Atendimentos() {
                             quando={r.quando_investir}
                           />
                         </td>
-                        <td className="px-3 py-3">
+                        <td className="px-3 py-2.5">
                           {criativoNome ? (
-                            <span
-                              className="text-xs text-text-muted truncate max-w-[160px] block"
-                              title={`${r.criativo_codigo ?? ''} · ${criativoNome}`}
-                            >
-                              {criativoNome}
+                            <div className="flex items-center gap-1.5 min-w-0 max-w-[180px]">
+                              {r.criativo_codigo && (
+                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-2 text-ink-muted shrink-0">
+                                  {r.criativo_codigo}
+                                </span>
+                              )}
+                              <span className="text-[11px] text-ink-faint truncate" title={criativoNome}>
+                                {criativoNome}
+                              </span>
+                            </div>
+                          ) : r.criativo_codigo ? (
+                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-2 text-ink-muted">
+                              {r.criativo_codigo}
                             </span>
                           ) : (
-                            <span className="text-xs text-text-muted">-</span>
+                            <span className="text-[11px] text-ink-faint">—</span>
                           )}
                         </td>
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          <span className="text-xs text-text-muted">
-                            {r.ultima_msg ? formatRelative(r.ultima_msg) : '-'}
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          <span className="text-[11px] text-ink-faint tabular-nums">
+                            {r.ultima_msg ? formatRelative(r.ultima_msg) : '—'}
                           </span>
                         </td>
-                        <td className="px-3 py-3 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-1">
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                             {tel && (
                               <>
-                                <a
-                                  href={whatsappLink(tel)}
-                                  target="_blank"
-                                  rel="noopener"
-                                  title="WhatsApp"
-                                  className="p-1.5 rounded-lg hover:bg-green-50 text-green-600 transition-colors"
-                                >
-                                  <MessageCircle className="h-4 w-4" />
+                                <a href={whatsappLink(tel)} target="_blank" rel="noopener" title="WhatsApp"
+                                   className="h-7 w-7 inline-flex items-center justify-center rounded-md text-success hover:bg-success-bg transition-colors">
+                                  <MessageCircle className="h-3.5 w-3.5" />
                                 </a>
-                                <a
-                                  href={`tel:+${tel}`}
-                                  title="Ligar"
-                                  className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-600 transition-colors"
-                                >
-                                  <Phone className="h-4 w-4" />
+                                <a href={`tel:+${tel}`} title="Ligar"
+                                   className="h-7 w-7 inline-flex items-center justify-center rounded-md text-info hover:bg-info-bg transition-colors">
+                                  <Phone className="h-3.5 w-3.5" />
                                 </a>
                               </>
                             )}
-                            <a
-                              href={`${AUDITORIA_BASE}/atendimentos/${r.id}`}
-                              target="_blank"
-                              rel="noopener"
-                              title="Abrir no Auditoria"
-                              className="p-1.5 rounded-lg hover:bg-amber-50 text-amber-600 transition-colors"
-                            >
-                              <ExternalLink className="h-4 w-4" />
+                            <a href={`${AUDITORIA_BASE}/atendimentos/${r.id}`} target="_blank" rel="noopener" title="Abrir auditoria"
+                               className="h-7 w-7 inline-flex items-center justify-center rounded-md text-ink-faint hover:text-ink hover:bg-surface-2 transition-colors">
+                              <ExternalLink className="h-3.5 w-3.5" />
                             </a>
                           </div>
                         </td>
@@ -337,8 +409,18 @@ export function Atendimentos() {
                   })}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="px-4 py-8 text-center text-text-muted">
-                        Nenhum atendimento encontrado.
+                      <td colSpan={10} className="px-4 py-16 text-center">
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="h-10 w-10 rounded-full bg-surface-2 flex items-center justify-center">
+                            <Inbox className="h-5 w-5 text-ink-faint" />
+                          </div>
+                          <p className="text-[13px] text-ink-muted font-medium">Nenhum atendimento encontrado</p>
+                          {hasFilters && (
+                            <button onClick={clearFilters} className="text-[12px] text-accent hover:underline">
+                              Limpar filtros
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   )}
