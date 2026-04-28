@@ -34,6 +34,21 @@ export function formatRelative(dateStr: string): string {
   }
 }
 
+// Formata "28/04 23:03" — compacto p/ tabela
+export function formatDateTimeShort(dateStr: string | null | undefined): string {
+  if (!dateStr) return '-'
+  try {
+    const d = parseISO(dateStr)
+    const dd = String(d.getDate()).padStart(2, '0')
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const hh = String(d.getHours()).padStart(2, '0')
+    const mi = String(d.getMinutes()).padStart(2, '0')
+    return `${dd}/${mm} ${hh}:${mi}`
+  } catch {
+    return dateStr
+  }
+}
+
 export function estadoNome(uf: string): string {
   const map: Record<string, string> = {
     AC: 'Acre', AL: 'Alagoas', AM: 'Amazonas', AP: 'Amapa',

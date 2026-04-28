@@ -6,7 +6,7 @@ import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
-import { formatPhone, whatsappLink, formatRelative, formatNumber } from '@/lib/utils'
+import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTimeShort } from '@/lib/utils'
 import { ufFromTelefone } from '@/lib/ddd-uf'
 import { ESTADOS_BR } from '@/types'
 import {
@@ -213,6 +213,7 @@ export function Atendimentos() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-surface-border bg-surface-secondary">
+                    <th className="text-left text-xs font-medium text-text-muted px-3 py-3 whitespace-nowrap" title="Data/hora que o lead chegou">Chegou</th>
                     <th className="text-left text-xs font-medium text-text-muted px-3 py-3 whitespace-nowrap">Nome</th>
                     <th className="text-left text-xs font-medium text-text-muted px-3 py-3 whitespace-nowrap">Telefone</th>
                     <th className="text-left text-xs font-medium text-text-muted px-3 py-3 whitespace-nowrap">Vendedor</th>
@@ -237,6 +238,11 @@ export function Atendimentos() {
                     const criativoNome = r.criativo_facebook?.nome_oficial || r.criativo_facebook?.headline
                     return (
                       <tr key={r.id} className="hover:bg-green-50/30 transition-colors">
+                        <td className="px-3 py-3 whitespace-nowrap" title={r.primeira_data ?? r.created_at ?? ''}>
+                          <span className="text-xs text-text-secondary font-mono">
+                            {formatDateTimeShort(r.primeira_data ?? r.created_at)}
+                          </span>
+                        </td>
                         <td className="px-3 py-3 whitespace-nowrap">
                           <span className="text-sm font-semibold text-text-primary">
                             {r.nome || '(sem nome)'}
@@ -331,7 +337,7 @@ export function Atendimentos() {
                   })}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={9} className="px-4 py-8 text-center text-text-muted">
+                      <td colSpan={10} className="px-4 py-8 text-center text-text-muted">
                         Nenhum atendimento encontrado.
                       </td>
                     </tr>
