@@ -3,7 +3,8 @@ import { useOrcamentoStats } from '@/hooks/useOrcamentoStats'
 import { Card, CardContent } from '@/components/ui/Card'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatNumber } from '@/lib/utils'
-import { FileText, TrendingUp, Calendar, BarChart2 } from 'lucide-react'
+import { FileText, TrendingUp, Calendar, BarChart2, LayoutDashboard, List } from 'lucide-react'
+import { OrcamentosLista } from '@/pages/OrcamentosLista'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell,
@@ -31,6 +32,8 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 
 export function Orcamentos() {
   const [viewMode, setViewMode] = useState<'year' | 'month'>('year')
+  const [tab, setTab] = useState<'painel' | 'lista'>('painel')
+  const [statusFiltroLista, setStatusFiltroLista] = useState<string>('')
 
   const { data, isLoading } = useOrcamentoStats()
 
@@ -63,7 +66,29 @@ export function Orcamentos() {
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
-          {hasMonthData && (
+          <div className="flex rounded-lg border border-surface-border overflow-hidden">
+            <button
+              onClick={() => setTab('painel')}
+              className={`px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                tab === 'painel'
+                  ? 'bg-brand-600 text-white'
+                  : 'bg-white text-text-secondary hover:bg-surface-tertiary'
+              }`}
+            >
+              <LayoutDashboard className="h-4 w-4" /> Painel
+            </button>
+            <button
+              onClick={() => setTab('lista')}
+              className={`px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                tab === 'lista'
+                  ? 'bg-brand-600 text-white'
+                  : 'bg-white text-text-secondary hover:bg-surface-tertiary'
+              }`}
+            >
+              <List className="h-4 w-4" /> Lista
+            </button>
+          </div>
+          {tab === 'painel' && hasMonthData && (
             <div className="flex rounded-lg border border-surface-border overflow-hidden">
               <button
                 onClick={() => setViewMode('year')}
@@ -90,6 +115,9 @@ export function Orcamentos() {
         </div>
       </div>
 
+      {tab === 'lista' && <OrcamentosLista statusInicial={statusFiltroLista} />}
+      {tab === 'painel' && (
+      <>
       {/* KPI cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
@@ -167,11 +195,16 @@ export function Orcamentos() {
                 const meta = STATUS_LABELS[s.status] ?? { label: s.status, color: 'bg-gray-50 text-gray-700 border-gray-200' }
                 const pct = total > 0 ? (s.count / total * 100) : 0
                 return (
-                  <div key={s.status} className={`rounded-lg border ${meta.color} p-3`}>
+                  <button
+                    key={s.status}
+                    onClick={() => { setStatusFiltroLista(s.status); setTab('lista') }}
+                    className={`rounded-lg border ${meta.color} p-3 text-left hover:shadow-md hover:scale-[1.02] active:scale-100 transition-all cursor-pointer`}
+                    title="Clique para ver os orçamentos deste status"
+                  >
                     <p className="text-[11px] uppercase tracking-wide opacity-80">{meta.label}</p>
                     <p className="text-2xl font-bold mt-1">{formatNumber(s.count)}</p>
                     <p className="text-[11px] opacity-70 mt-0.5">{pct.toFixed(1)}% do total</p>
-                  </div>
+                  </button>
                 )
               })}
             </div>
@@ -275,6 +308,8 @@ export function Orcamentos() {
           </div>
         </CardContent>
       </Card>
+      </>
+      )}
     </div>
   )
 }
