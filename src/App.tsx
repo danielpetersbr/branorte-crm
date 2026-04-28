@@ -6,6 +6,7 @@ import { Contacts } from '@/pages/Contacts'
 import { Assign } from '@/pages/Assign'
 import { Orcamentos } from '@/pages/Orcamentos'
 import { Vendidos } from '@/pages/Vendidos'
+import { Atendimentos } from '@/pages/Atendimentos'
 import { PasswordGate } from '@/components/PasswordGate'
 
 const queryClient = new QueryClient({
@@ -29,6 +30,7 @@ export default function App() {
               <Route path="/atribuir" element={<Assign />} />
               <Route path="/orcamentos" element={<Orcamentos />} />
               <Route path="/vendidos" element={<Vendidos />} />
+              <Route path="/atendimentos" element={<Atendimentos />} />
             </Route>
           </Routes>
         </BrowserRouter>

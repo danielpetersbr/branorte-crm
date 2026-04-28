@@ -68,9 +68,15 @@ export function useOrcamentoStats(vendorFilter?: string) {
       let hasMonthData = false
 
       for (const row of rows) {
-        // Extract year from "Orcamento YYYY-NNNN"
-        const yearMatch = row.origin?.match(/Orcamento (\d{4})-/)
-        const year = yearMatch?.[1]
+        // Preferir data_orcamento (data real) ao parsing do origin.
+        // Origin no banco vem como "Orcamento AAAA" (sem o número do orçamento).
+        let year: string | undefined
+        if (row.data_orcamento) {
+          year = row.data_orcamento.slice(0, 4)
+        } else {
+          const yearMatch = row.origin?.match(/Orcamento (\d{4})/)
+          year = yearMatch?.[1]
+        }
         if (year) {
           byYear[year] = (byYear[year] ?? 0) + 1
         }
