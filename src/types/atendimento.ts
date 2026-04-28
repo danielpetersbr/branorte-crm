@@ -56,6 +56,10 @@ export interface Atendimento {
   qual_animal: string | null
   quantidade: string | null
   o_que_precisa: string | null
+  finalidade_fabrica: string | null
+  quantos_animais: string | null
+  capacidade_producao: string | null
+  quando_investir: string | null
   needs_enrichment: boolean | null
   is_internal: boolean | null
   last_message_at: string | null

@@ -175,6 +175,10 @@ export function Atendimentos() {
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Vendedor</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Status</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Animal · Qtd · Precisa</th>
+                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3" title="Fábrica para consumo / vender / Consumo e vender">Finalidade</th>
+                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3" title="Quantos animais o cliente declarou ter">Qtd animais</th>
+                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3" title="Capacidade desejada">Capacidade</th>
+                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3" title="Quando pretende investir">Quando</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Criativo</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Última msg</th>
                     <th className="text-right text-xs font-medium text-text-muted px-4 py-3">Ações</th>
@@ -223,6 +227,42 @@ export function Atendimentos() {
                           >
                             {animalLine}
                           </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {r.finalidade_fabrica ? (
+                            <span className="text-xs text-text-secondary truncate max-w-[160px] block" title={r.finalidade_fabrica}>
+                              {r.finalidade_fabrica}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-text-muted">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {r.quantos_animais ? (
+                            <span className="text-xs text-text-secondary truncate max-w-[120px] block" title={r.quantos_animais}>
+                              {r.quantos_animais}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-text-muted">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {r.capacidade_producao ? (
+                            <span className="text-xs text-text-secondary truncate max-w-[140px] block" title={r.capacidade_producao}>
+                              {r.capacidade_producao}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-text-muted">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {r.quando_investir ? (
+                            <span className="text-xs text-text-secondary truncate max-w-[140px] block" title={r.quando_investir}>
+                              {r.quando_investir}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-text-muted">-</span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           {criativoNome ? (
@@ -279,7 +319,7 @@ export function Atendimentos() {
                   })}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="px-4 py-8 text-center text-text-muted">
+                      <td colSpan={12} className="px-4 py-8 text-center text-text-muted">
                         Nenhum atendimento encontrado.
                       </td>
                     </tr>
