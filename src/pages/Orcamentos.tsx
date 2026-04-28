@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useOrcamentoStats } from '@/hooks/useOrcamentoStats'
-import { useVendors } from '@/hooks/useVendors'
 import { Card, CardContent } from '@/components/ui/Card'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatNumber } from '@/lib/utils'
@@ -16,16 +15,28 @@ const BRAND_COLORS = [
   '#10b981', '#34d399', '#6ee7b7',
 ]
 
+// Cores e legendas amigáveis pra cada status do kanban-de-pasta da Branorte.
+const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  'Em-andamento':         { label: 'Em andamento',           color: 'bg-blue-50 text-blue-700 border-blue-200' },
+  'Em-producao':          { label: 'Em produção',            color: 'bg-amber-50 text-amber-700 border-amber-200' },
+  'Pronto-carregamento':  { label: 'Pronto p/ carregamento', color: 'bg-orange-50 text-orange-700 border-orange-200' },
+  'Enviado':              { label: 'Enviado',                color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  'Contrato-fechado':     { label: 'Contrato fechado',       color: 'bg-green-50 text-green-700 border-green-200' },
+  'Desistiu':             { label: 'Desistiu',               color: 'bg-gray-50 text-gray-600 border-gray-200' },
+  'Perdido-concorrente':  { label: 'Perdido p/ concorrente', color: 'bg-red-50 text-red-700 border-red-200' },
+  'Proforma':             { label: 'Proforma',               color: 'bg-violet-50 text-violet-700 border-violet-200' },
+  'Em-andamento-silos':   { label: 'Em andamento (silos)',   color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
+  'Historico':            { label: 'Histórico (2012-2018)',  color: 'bg-stone-50 text-stone-600 border-stone-200' },
+}
+
 export function Orcamentos() {
-  const [vendorFilter, setVendorFilter] = useState('todos')
   const [viewMode, setViewMode] = useState<'year' | 'month'>('year')
 
-  const { data: vendors } = useVendors()
-  const { data, isLoading } = useOrcamentoStats(vendorFilter)
+  const { data, isLoading } = useOrcamentoStats()
 
   if (isLoading || !data) return <PageLoading />
 
-  const { total, yearStats, monthStats, hasMonthData } = data
+  const { total, yearStats, monthStats, statusStats, hasMonthData } = data
 
   const busiestYear = yearStats.length > 0
     ? yearStats.reduce((a, b) => a.count > b.count ? a : b)
@@ -46,23 +57,12 @@ export function Orcamentos() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-text-primary">Orçamentos</h1>
-          <p className="text-sm text-text-secondary mt-1">Volume histórico de orçamentos enviados</p>
+          <p className="text-sm text-text-secondary mt-1">
+            Inventário do drive de rede Z:\1 - Comercial\3 - Orçamento — {formatNumber(total)} arquivos únicos
+          </p>
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
-          {/* Vendor filter */}
-          <select
-            value={vendorFilter}
-            onChange={e => setVendorFilter(e.target.value)}
-            className="text-sm border border-surface-border rounded-lg px-3 py-2 bg-white text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-500"
-          >
-            <option value="todos">Todos os vendedores</option>
-            {(vendors ?? []).map(v => (
-              <option key={v.id} value={v.id}>{v.name}</option>
-            ))}
-          </select>
-
-          {/* View mode toggle — only show when monthly data is available */}
           {hasMonthData && (
             <div className="flex rounded-lg border border-surface-border overflow-hidden">
               <button
@@ -152,6 +152,33 @@ export function Orcamentos() {
         </Card>
       </div>
 
+      {/* Status breakdown (kanban-de-pasta) */}
+      {statusStats.length > 0 && (
+        <Card>
+          <CardContent>
+            <div className="flex items-baseline justify-between mb-4 gap-2 flex-wrap">
+              <h2 className="font-semibold text-text-primary">Pipeline (kanban-de-pasta)</h2>
+              <span className="text-xs text-text-muted">
+                Status derivado da subpasta no drive Z:\
+              </span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              {statusStats.map(s => {
+                const meta = STATUS_LABELS[s.status] ?? { label: s.status, color: 'bg-gray-50 text-gray-700 border-gray-200' }
+                const pct = total > 0 ? (s.count / total * 100) : 0
+                return (
+                  <div key={s.status} className={`rounded-lg border ${meta.color} p-3`}>
+                    <p className="text-[11px] uppercase tracking-wide opacity-80">{meta.label}</p>
+                    <p className="text-2xl font-bold mt-1">{formatNumber(s.count)}</p>
+                    <p className="text-[11px] opacity-70 mt-0.5">{pct.toFixed(1)}% do total</p>
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Main chart */}
       <Card>
         <CardContent>
@@ -159,9 +186,9 @@ export function Orcamentos() {
             <h2 className="font-semibold text-text-primary">
               Orçamentos por {viewMode === 'year' ? 'Ano' : 'Mês'}
             </h2>
-            {!hasMonthData && (
+            {viewMode === 'month' && (
               <span className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2 py-1 rounded-full">
-                Visão mensal disponível após executar update_dates.py
+                Mês baseado em data de modificação do arquivo
               </span>
             )}
           </div>

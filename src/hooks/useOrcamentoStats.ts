@@ -2,9 +2,9 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 
 interface OrcRow {
-  origin: string | null
-  vendor_id: string | null
-  data_orcamento?: string | null
+  ano: number | null
+  mtime_iso: string | null
+  status_kanban: string | null
 }
 
 export interface OrcYearStat {
@@ -18,73 +18,58 @@ export interface OrcMonthStat {
   count: number
 }
 
+export interface OrcStatusStat {
+  status: string
+  count: number
+}
+
 const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
 const PAGE_SIZE = 1000
 
-async function fetchAllOrcamentos(vendorFilter?: string): Promise<OrcRow[]> {
-  const rows: OrcRow[] = []
+async function fetchAllRows(): Promise<{ rows: OrcRow[]; total: number }> {
+  const all: OrcRow[] = []
   let offset = 0
-  let withDate = true
+  let total = 0
 
   while (true) {
-    const selectCols = withDate ? 'origin, vendor_id, data_orcamento' : 'origin, vendor_id'
-    let q = supabase
-      .from('contacts')
-      .select(selectCols)
-      .like('origin', 'Orcamento%')
+    const { data, error, count } = await supabase
+      .from('orcamentos_files')
+      .select('ano, mtime_iso, status_kanban', { count: 'exact' })
+      .order('id', { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1)
 
-    if (vendorFilter && vendorFilter !== 'todos') {
-      q = q.eq('vendor_id', vendorFilter)
-    }
-
-    const result = await q
-
-    // If data_orcamento column doesn't exist yet, retry without it
-    if (result.error && withDate) {
-      withDate = false
-      continue
-    }
-    if (result.error) throw result.error
-
-    const page = (result.data ?? []) as OrcRow[]
-    rows.push(...page)
-
+    if (error) throw error
+    if (count != null) total = count
+    const page = (data ?? []) as OrcRow[]
+    all.push(...page)
     if (page.length < PAGE_SIZE) break
     offset += PAGE_SIZE
   }
 
-  return rows
+  return { rows: all, total }
 }
 
-export function useOrcamentoStats(vendorFilter?: string) {
+export function useOrcamentoStats() {
   return useQuery({
-    queryKey: ['orcamento-stats', vendorFilter],
+    queryKey: ['orcamento-stats-v2'],
     queryFn: async () => {
-      const rows = await fetchAllOrcamentos(vendorFilter)
+      const { rows, total } = await fetchAllRows()
 
       const byYear: Record<string, number> = {}
       const byMonth: Record<string, number> = {}
-      let hasMonthData = false
+      const byStatus: Record<string, number> = {}
 
       for (const row of rows) {
-        // Preferir data_orcamento (data real) ao parsing do origin.
-        // Origin no banco vem como "Orcamento AAAA" (sem o número do orçamento).
-        let year: string | undefined
-        if (row.data_orcamento) {
-          year = row.data_orcamento.slice(0, 4)
-        } else {
-          const yearMatch = row.origin?.match(/Orcamento (\d{4})/)
-          year = yearMatch?.[1]
+        if (row.ano != null) {
+          const y = String(row.ano)
+          byYear[y] = (byYear[y] ?? 0) + 1
         }
-        if (year) {
-          byYear[year] = (byYear[year] ?? 0) + 1
-        }
-
-        if (row.data_orcamento) {
-          hasMonthData = true
-          const monthKey = row.data_orcamento.slice(0, 7)
+        if (row.mtime_iso) {
+          const monthKey = row.mtime_iso.slice(0, 7)
           byMonth[monthKey] = (byMonth[monthKey] ?? 0) + 1
+        }
+        if (row.status_kanban) {
+          byStatus[row.status_kanban] = (byStatus[row.status_kanban] ?? 0) + 1
         }
       }
 
@@ -100,13 +85,18 @@ export function useOrcamentoStats(vendorFilter?: string) {
         })
         .sort((a, b) => a.month.localeCompare(b.month))
 
+      const statusStats: OrcStatusStat[] = Object.entries(byStatus)
+        .map(([status, count]) => ({ status, count }))
+        .sort((a, b) => b.count - a.count)
+
       return {
-        total: rows.length,
+        total: total || rows.length,
         yearStats,
         monthStats,
-        hasMonthData,
+        statusStats,
+        hasMonthData: monthStats.length > 0,
       }
     },
-    staleTime: 300_000,
+    staleTime: 5 * 60_000,
   })
 }
