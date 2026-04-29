@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from 'react-router-dom'
-import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun } from 'lucide-react'
+import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { useAtendimentoKpis } from '@/hooks/useAtendimentos'
@@ -35,9 +35,21 @@ function useDarkMode(): [boolean, () => void] {
   return [dark, () => setDark(d => !d)]
 }
 
+function useCollapsed(): [boolean, () => void] {
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem('sidebar-collapsed') === '1'
+  })
+  useEffect(() => {
+    localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0')
+  }, [collapsed])
+  return [collapsed, () => setCollapsed(c => !c)]
+}
+
 export function Layout() {
   const { data: kpis } = useAtendimentoKpis()
-  const [dark, toggle] = useDarkMode()
+  const [dark, toggleDark] = useDarkMode()
+  const [collapsed, toggleCollapsed] = useCollapsed()
 
   const counts: Partial<Record<NonNullable<NavItem['countKey']>, number>> = {
     atendimentos: kpis?.total,
@@ -48,8 +60,10 @@ export function Layout() {
       key={l.to}
       to={l.to}
       end={l.to === '/'}
+      title={collapsed ? l.label : undefined}
       className={({ isActive }) => cn(
-        'group relative flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-all duration-150',
+        'group relative flex items-center rounded-md text-[13px] font-medium transition-all duration-150',
+        collapsed ? 'justify-center h-9 w-9' : 'gap-2.5 px-3 py-2',
         isActive
           ? 'bg-accent-bg text-accent'
           : 'text-ink-muted hover:text-ink hover:bg-surface-2',
@@ -57,16 +71,20 @@ export function Layout() {
     >
       {({ isActive }: { isActive: boolean }) => (
         <>
-          {isActive && <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-r bg-accent" />}
+          {isActive && !collapsed && <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-r bg-accent" />}
           <l.icon className={cn('h-[15px] w-[15px] shrink-0', isActive ? 'text-accent' : 'text-ink-faint group-hover:text-ink-muted')} />
-          <span className="flex-1">{l.label}</span>
-          {l.countKey && counts[l.countKey] !== undefined && (
-            <span className={cn(
-              'text-[10px] tabular-nums px-1.5 py-0.5 rounded-md font-mono',
-              isActive ? 'bg-accent/10 text-accent' : 'bg-surface-2 text-ink-faint',
-            )}>
-              {counts[l.countKey]}
-            </span>
+          {!collapsed && (
+            <>
+              <span className="flex-1">{l.label}</span>
+              {l.countKey && counts[l.countKey] !== undefined && (
+                <span className={cn(
+                  'text-[10px] tabular-nums px-1.5 py-0.5 rounded-md font-mono',
+                  isActive ? 'bg-accent/10 text-accent' : 'bg-surface-2 text-ink-faint',
+                )}>
+                  {counts[l.countKey]}
+                </span>
+              )}
+            </>
           )}
         </>
       )}
@@ -75,34 +93,61 @@ export function Layout() {
 
   return (
     <div className="min-h-screen flex flex-col lg:flex-row bg-bg">
-      <aside className="hidden lg:flex flex-col w-60 border-r border-border bg-bg">
-        <div className="flex items-center gap-2.5 px-5 h-14 border-b border-border">
-          <div className="h-7 w-7 rounded-md bg-accent flex items-center justify-center shadow-sm">
+      <aside className={cn(
+        'hidden lg:flex flex-col border-r border-border bg-bg transition-all duration-200',
+        collapsed ? 'w-14' : 'w-60',
+      )}>
+        {/* Brand + collapse button */}
+        <div className={cn('flex items-center h-14 border-b border-border', collapsed ? 'justify-center px-2' : 'gap-2.5 px-5')}>
+          <div className="h-7 w-7 rounded-md bg-accent flex items-center justify-center shadow-sm shrink-0">
             <span className="text-white font-bold text-[13px] tracking-tight">B</span>
           </div>
-          <div className="leading-tight">
-            <h1 className="font-semibold text-ink text-[13px] tracking-tight">Branorte</h1>
-            <p className="text-[10px] text-ink-faint -mt-0.5 uppercase tracking-wider">CRM</p>
-          </div>
+          {!collapsed && (
+            <>
+              <div className="leading-tight flex-1">
+                <h1 className="font-semibold text-ink text-[13px] tracking-tight">Branorte</h1>
+                <p className="text-[10px] text-ink-faint -mt-0.5 uppercase tracking-wider">CRM</p>
+              </div>
+              <button
+                onClick={toggleCollapsed}
+                title="Minimizar menu"
+                className="h-7 w-7 inline-flex items-center justify-center rounded-md text-ink-faint hover:text-ink hover:bg-surface-2 transition-colors"
+              >
+                <ChevronsLeft className="h-3.5 w-3.5" />
+              </button>
+            </>
+          )}
         </div>
 
-        <nav className="flex-1 p-3 flex flex-col gap-0.5">
-          <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-1">Operação</div>
+        <nav className={cn('flex-1 flex flex-col gap-0.5', collapsed ? 'p-2 items-center' : 'p-3')}>
+          {!collapsed && <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-1">Operação</div>}
           {PRIMARY.map(renderItem)}
-          <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-4">Financeiro</div>
+          {!collapsed && <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-4">Financeiro</div>}
+          {collapsed && <div className="my-2 w-8 h-px bg-border" />}
           {SECONDARY.map(renderItem)}
         </nav>
 
-        <div className="border-t border-border p-3 flex items-center justify-between">
-          <span className="inline-flex items-center gap-1.5 text-[11px] text-ink-faint">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full rounded-full bg-success opacity-60 animate-ping" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-success" />
+        <div className={cn('border-t border-border', collapsed ? 'p-2 flex flex-col items-center gap-1' : 'p-3 flex items-center justify-between')}>
+          {!collapsed && (
+            <span className="inline-flex items-center gap-1.5 text-[11px] text-ink-faint">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-success opacity-60 animate-ping" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-success" />
+              </span>
+              Online
             </span>
-            Online
-          </span>
+          )}
+          {collapsed && (
+            <button
+              onClick={toggleCollapsed}
+              title="Expandir menu"
+              className="h-7 w-7 inline-flex items-center justify-center rounded-md text-ink-faint hover:text-ink hover:bg-surface-2 transition-colors"
+            >
+              <ChevronsRight className="h-3.5 w-3.5" />
+            </button>
+          )}
           <button
-            onClick={toggle}
+            onClick={toggleDark}
             title={dark ? 'Tema claro' : 'Tema escuro'}
             className="h-7 w-7 inline-flex items-center justify-center rounded-md text-ink-faint hover:text-ink hover:bg-surface-2 transition-colors"
           >
