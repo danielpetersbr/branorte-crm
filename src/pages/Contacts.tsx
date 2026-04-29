@@ -31,9 +31,17 @@ function getOrcDescricao(notes: string | null): string | null {
     if (trimmed.startsWith('{')) continue        // Skip JSON metadata
     if (trimmed.startsWith('Orcamento')) continue // Skip "Orcamento 2026-XXXX"
     if (trimmed.startsWith('[')) continue          // Skip "[31/03/2026] Atendeu..."
+    if (trimmed.startsWith('Auto-criado')) continue // Skip stub auto-link notes
+    if (trimmed.startsWith('Bucket pra')) continue  // Skip bucket "[Sem cliente]"
     return trimmed
   }
   return null
+}
+
+// Phones placeholder: 'ORC-...' (legacy) e 'AUTO-...' (stubs auto-link) não são fones reais.
+function isPlaceholderPhone(phone: string | null | undefined): boolean {
+  if (!phone) return false
+  return phone.startsWith('ORC-') || phone.startsWith('AUTO-')
 }
 
 export function Contacts() {
@@ -144,8 +152,8 @@ export function Contacts() {
                 </thead>
                 <tbody className="divide-y divide-surface-border">
                   {contacts.map(c => {
-                    const isOrcPhone = (c.phone || '').startsWith('ORC-')
-                    const tel = isOrcPhone ? '' : (c.telefone_normalizado || c.phone || '')
+                    const placeholder = isPlaceholderPhone(c.phone)
+                    const tel = placeholder ? '' : (c.telefone_normalizado || c.phone || '')
                     const orc = getOrcamento(c.origin)
                     const orcsLinkados = orcamentosMap?.get(c.id) ?? []
                     const meta = parseCrmMeta(c.notes)
@@ -238,8 +246,8 @@ export function Contacts() {
           {/* Mobile cards */}
           <div className="lg:hidden space-y-2">
             {contacts.map(c => {
-              const isOrcPhone2 = (c.phone || '').startsWith('ORC-')
-              const tel = isOrcPhone2 ? '' : (c.telefone_normalizado || c.phone || '')
+              const placeholder2 = isPlaceholderPhone(c.phone)
+              const tel = placeholder2 ? '' : (c.telefone_normalizado || c.phone || '')
               const orc = getOrcamento(c.origin)
               const orcsLinkadosM = orcamentosMap?.get(c.id) ?? []
               const mobileM = parseCrmMeta(c.notes)

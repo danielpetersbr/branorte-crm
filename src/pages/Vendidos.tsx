@@ -224,8 +224,9 @@ export function Vendidos() {
                 </thead>
                 <tbody className="divide-y divide-surface-border">
                   {contacts.map(c => {
-                    const isOrcPhone = (c.phone || '').startsWith('ORC-')
-                    const tel = isOrcPhone ? '' : (c.telefone_normalizado || c.phone || '')
+                    const phoneStr = c.phone || ''
+                    const placeholder = phoneStr.startsWith('ORC-') || phoneStr.startsWith('AUTO-')
+                    const tel = placeholder ? '' : (c.telefone_normalizado || c.phone || '')
                     const orc = getOrcamento(c.origin)
                     const orcsLinkados = orcamentosMap?.get(c.id) ?? []
                     return (
