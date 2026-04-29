@@ -75,9 +75,14 @@ export function useAtendimentos(filters: AtendimentoFilters) {
         .eq('is_internal', false)
         .order('ultima_msg', { ascending: false, nullsFirst: false })
 
-      // Vendor vê só seus atendimentos (matching responsavel via primeiro nome)
+      // Vendor vê seus atendimentos + sem responsavel (não-atribuídos, "a definir", etc.)
       if (vendorFirst) {
-        query = query.ilike('responsavel', `${vendorFirst}%`)
+        query = query.or(
+          `responsavel.ilike.${vendorFirst}%,` +
+          `responsavel.is.null,` +
+          `responsavel.eq.,` +
+          `responsavel.eq.a definir`
+        )
       }
 
       if (filters.search) {
@@ -134,8 +139,15 @@ function startOfTodayISO(): string {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applyBaseFilters(query: any, filters?: Partial<AtendimentoFilters>, vendorFirst?: string | null): any {
   let q = query
-  // Vendor scope: força filtro responsavel ILIKE 'Vendor%' antes de qualquer outra coisa
-  if (vendorFirst) q = q.ilike('responsavel', `${vendorFirst}%`)
+  // Vendor scope: vê seus + não-atribuídos
+  if (vendorFirst) {
+    q = q.or(
+      `responsavel.ilike.${vendorFirst}%,` +
+      `responsavel.is.null,` +
+      `responsavel.eq.,` +
+      `responsavel.eq.a definir`
+    )
+  }
   if (filters?.search) {
     const escaped = filters.search.replace(/[%_]/g, c => `\\${c}`)
     q = q.or(`nome.ilike.%${escaped}%,telefone.ilike.%${escaped}%`)
