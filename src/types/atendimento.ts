@@ -62,6 +62,7 @@ export interface Atendimento {
   quando_investir: string | null
   tocou_botao_em: string | null
   motivo_contato: string | null
+  origem: string | null
   needs_enrichment: boolean | null
   is_internal: boolean | null
   last_message_at: string | null

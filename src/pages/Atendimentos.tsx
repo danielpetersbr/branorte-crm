@@ -301,6 +301,7 @@ export function Atendimentos() {
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Lead</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Estado</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Telefone</th>
+                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Origem</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Criativo</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Motivo do contato</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Finalidade da fábrica</th>
@@ -375,6 +376,28 @@ export function Atendimentos() {
                           <span className="text-[12px] text-ink-muted font-mono tabular-nums">
                             {tel ? formatPhone(tel) : '—'}
                           </span>
+                        </td>
+                        {/* ORIGEM */}
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          {r.origem ? (() => {
+                            const o = r.origem.toLowerCase()
+                            const tone =
+                              o.includes('whatsapp') ? 'success' :
+                              o.includes('instagram') ? 'danger' :
+                              o.includes('site') || o.includes('web') ? 'info' :
+                              o.includes('facebook') ? 'info' :
+                              'neutral'
+                            return (
+                              <Badge style={{
+                                background: `hsl(var(--${tone}-bg))`,
+                                color: `hsl(var(--${tone}))`,
+                              }}>
+                                {r.origem}
+                              </Badge>
+                            )
+                          })() : (
+                            <span className="text-[11px] text-ink-faint">—</span>
+                          )}
                         </td>
                         {/* CRIATIVO */}
                         <td className="px-3 py-2.5">
@@ -497,7 +520,7 @@ export function Atendimentos() {
                   })}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={13} className="px-4 py-16 text-center">
+                      <td colSpan={14} className="px-4 py-16 text-center">
                         <div className="flex flex-col items-center gap-2">
                           <div className="h-10 w-10 rounded-full bg-surface-2 flex items-center justify-center">
                             <Inbox className="h-5 w-5 text-ink-faint" />
