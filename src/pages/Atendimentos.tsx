@@ -444,11 +444,11 @@ export function Atendimentos() {
                           )}
                         </td>
                         {/* TOCOU NO BOTAO */}
-                        <td className="px-3 py-2.5 whitespace-nowrap" title={r.tocou_botao_em ?? ''}>
+                        <td className="px-3 py-2.5 whitespace-nowrap" title={r.tocou_botao_em ? `Em ${formatRelative(r.tocou_botao_em)}` : ''}>
                           {r.tocou_botao_em ? (
                             <span className="inline-flex items-center gap-1 text-[11px] font-medium text-success">
                               <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                              {formatRelative(r.tocou_botao_em)}
+                              Sim
                             </span>
                           ) : (
                             <span className="text-[11px] text-ink-faint">—</span>
