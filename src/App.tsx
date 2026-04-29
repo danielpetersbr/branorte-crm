@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Layout } from '@/components/layout/Layout'
 import { Dashboard } from '@/pages/Dashboard'
@@ -7,7 +7,12 @@ import { Assign } from '@/pages/Assign'
 import { Orcamentos } from '@/pages/Orcamentos'
 import { Vendidos } from '@/pages/Vendidos'
 import { Atendimentos } from '@/pages/Atendimentos'
-import { PasswordGate } from '@/components/PasswordGate'
+import { Login } from '@/pages/Login'
+import { Signup } from '@/pages/Signup'
+import { Pendente } from '@/pages/Pendente'
+import { AdminUsuarios } from '@/pages/AdminUsuarios'
+import { useAuth } from '@/hooks/useAuth'
+import { PageLoading } from '@/components/ui/LoadingSpinner'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -18,23 +23,55 @@ const queryClient = new QueryClient({
   },
 })
 
+function AppRoutes() {
+  const { session, profile, loading } = useAuth()
+  const loc = useLocation()
+
+  if (loading) return <PageLoading />
+
+  // Não logado → /login (exceto /signup)
+  if (!session) {
+    if (loc.pathname === '/signup') {
+      return <Signup />
+    }
+    if (loc.pathname === '/login') {
+      return <Login />
+    }
+    return <Navigate to="/login" replace state={{ from: loc.pathname }} />
+  }
+
+  // Logado mas sem profile aprovado → /pendente
+  if (!profile || !profile.approved_at || profile.role === 'pending' || profile.role === 'rejected') {
+    return <Pendente />
+  }
+
+  // Aprovado → app
+  return (
+    <Routes>
+      <Route element={<Layout />}>
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/contatos" element={<Contacts />} />
+        <Route path="/atribuir" element={<Assign />} />
+        <Route path="/orcamentos" element={<Orcamentos />} />
+        <Route path="/vendidos" element={<Vendidos />} />
+        <Route path="/atendimentos" element={<Atendimentos />} />
+        {profile.role === 'admin' && (
+          <Route path="/admin/usuarios" element={<AdminUsuarios />} />
+        )}
+      </Route>
+      <Route path="/login" element={<Navigate to="/" replace />} />
+      <Route path="/signup" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  )
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <PasswordGate>
-        <BrowserRouter>
-          <Routes>
-            <Route element={<Layout />}>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/contatos" element={<Contacts />} />
-              <Route path="/atribuir" element={<Assign />} />
-              <Route path="/orcamentos" element={<Orcamentos />} />
-              <Route path="/vendidos" element={<Vendidos />} />
-              <Route path="/atendimentos" element={<Atendimentos />} />
-            </Route>
-          </Routes>
-        </BrowserRouter>
-      </PasswordGate>
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
     </QueryClientProvider>
   )
 }

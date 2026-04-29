@@ -1,8 +1,9 @@
 import { Outlet, NavLink } from 'react-router-dom'
-import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight } from 'lucide-react'
+import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, Shield, LogOut } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { useAtendimentoKpis } from '@/hooks/useAtendimentos'
+import { useAuth } from '@/hooks/useAuth'
 
 interface NavItem {
   to: string
@@ -50,6 +51,8 @@ export function Layout() {
   const { data: kpis } = useAtendimentoKpis()
   const [dark, toggleDark] = useDarkMode()
   const [collapsed, toggleCollapsed] = useCollapsed()
+  const { profile, signOut } = useAuth()
+  const isAdmin = profile?.role === 'admin'
 
   const counts: Partial<Record<NonNullable<NavItem['countKey']>, number>> = {
     atendimentos: kpis?.total,
@@ -125,6 +128,13 @@ export function Layout() {
           {!collapsed && <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-4">Financeiro</div>}
           {collapsed && <div className="my-2 w-8 h-px bg-border" />}
           {SECONDARY.map(renderItem)}
+          {isAdmin && (
+            <>
+              {!collapsed && <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-4">Admin</div>}
+              {collapsed && <div className="my-2 w-8 h-px bg-border" />}
+              {renderItem({ to: '/admin/usuarios', label: 'Usuários', icon: Shield })}
+            </>
+          )}
         </nav>
 
         <div className={cn('border-t border-border', collapsed ? 'p-2 flex flex-col items-center gap-1' : 'p-3 flex items-center justify-between')}>
@@ -153,6 +163,15 @@ export function Layout() {
           >
             {dark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
           </button>
+          {profile && (
+            <button
+              onClick={signOut}
+              title={`Sair (${profile.email})`}
+              className="h-7 w-7 inline-flex items-center justify-center rounded-md text-ink-faint hover:text-red-600 hover:bg-surface-2 transition-colors"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
       </aside>
 
