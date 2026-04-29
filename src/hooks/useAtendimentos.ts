@@ -3,12 +3,42 @@ import { supabaseAuditoria } from '@/lib/supabase'
 import { ATENDIMENTO_PAGE_SIZE, type Atendimento, type StatusReal } from '@/types/atendimento'
 import { DDD_TO_UF } from '@/lib/ddd-uf'
 
+export type DataPreset = '' | 'hoje' | 'ontem' | '7d' | '30d' | 'mes'
+
 export interface AtendimentoFilters {
   search: string
   responsavel: string
   status_real: string
   uf: string
+  data: DataPreset
   page: number
+}
+
+function dateRangeFromPreset(preset: DataPreset): { from?: string; to?: string } {
+  if (!preset) return {}
+  const now = new Date()
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0)
+  const endOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999)
+  if (preset === 'hoje') {
+    return { from: startOfDay(now).toISOString(), to: endOfDay(now).toISOString() }
+  }
+  if (preset === 'ontem') {
+    const y = new Date(now); y.setDate(y.getDate() - 1)
+    return { from: startOfDay(y).toISOString(), to: endOfDay(y).toISOString() }
+  }
+  if (preset === '7d') {
+    const f = new Date(now); f.setDate(f.getDate() - 6)
+    return { from: startOfDay(f).toISOString(), to: endOfDay(now).toISOString() }
+  }
+  if (preset === '30d') {
+    const f = new Date(now); f.setDate(f.getDate() - 29)
+    return { from: startOfDay(f).toISOString(), to: endOfDay(now).toISOString() }
+  }
+  if (preset === 'mes') {
+    const f = new Date(now.getFullYear(), now.getMonth(), 1)
+    return { from: startOfDay(f).toISOString(), to: endOfDay(now).toISOString() }
+  }
+  return {}
 }
 
 export function useAtendimentos(filters: AtendimentoFilters) {
@@ -27,6 +57,9 @@ export function useAtendimentos(filters: AtendimentoFilters) {
       }
       if (filters.responsavel) query = query.eq('responsavel', filters.responsavel)
       if (filters.status_real) query = query.eq('status_real', filters.status_real)
+      const range = dateRangeFromPreset(filters.data)
+      if (range.from) query = query.gte('data', range.from)
+      if (range.to)   query = query.lte('data', range.to)
       if (filters.uf) {
         const ddds = Object.entries(DDD_TO_UF)
           .filter(([, uf]) => uf === filters.uf)

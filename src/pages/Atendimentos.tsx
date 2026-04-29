@@ -12,7 +12,15 @@ import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTime
 import { ufFromTelefone } from '@/lib/ddd-uf'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, type StatusReal } from '@/types/atendimento'
-import { useAtendimentos, useAtendimentoKpis, useAtendimentoResponsaveis } from '@/hooks/useAtendimentos'
+import { useAtendimentos, useAtendimentoKpis, useAtendimentoResponsaveis, type DataPreset } from '@/hooks/useAtendimentos'
+
+const DATA_PRESETS: { value: DataPreset; label: string }[] = [
+  { value: 'hoje',  label: 'Hoje' },
+  { value: 'ontem', label: 'Ontem' },
+  { value: '7d',    label: 'Últimos 7 dias' },
+  { value: '30d',   label: 'Últimos 30 dias' },
+  { value: 'mes',   label: 'Este mês' },
+]
 
 type Tone = 'success' | 'warning' | 'danger' | 'info' | 'accent' | 'neutral'
 
@@ -136,11 +144,19 @@ function KpiCard({ label, value, hero, tone = 'neutral', icon: Icon, hint }: Kpi
 }
 
 export function Atendimentos() {
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = useState<{
+    search: string
+    responsavel: string
+    status_real: string
+    uf: string
+    data: DataPreset
+    page: number
+  }>({
     search: '',
     responsavel: '',
     status_real: '',
     uf: '',
+    data: '',
     page: 0,
   })
   const [searchInput, setSearchInput] = useState('')
@@ -152,10 +168,10 @@ export function Atendimentos() {
   const rows = data?.rows ?? []
   const total = data?.total ?? 0
   const totalPages = Math.ceil(total / ATENDIMENTO_PAGE_SIZE)
-  const hasFilters = filters.search || filters.responsavel || filters.status_real || filters.uf
+  const hasFilters = filters.search || filters.responsavel || filters.status_real || filters.uf || filters.data
 
   const clearFilters = () => {
-    setFilters({ search: '', responsavel: '', status_real: '', uf: '', page: 0 })
+    setFilters({ search: '', responsavel: '', status_real: '', uf: '', data: '', page: 0 })
     setSearchInput('')
   }
 
@@ -214,6 +230,13 @@ export function Atendimentos() {
                        placeholder:text-ink-faint"
           />
         </div>
+        <Select
+          options={DATA_PRESETS.map(p => ({ value: p.value, label: p.label }))}
+          placeholder="Qualquer data"
+          value={filters.data}
+          onChange={e => setFilters(f => ({ ...f, data: e.target.value as DataPreset, page: 0 }))}
+          className="lg:w-44"
+        />
         <Select
           options={(responsaveis ?? []).map(r => ({ value: r, label: r }))}
           placeholder="Vendedor"
