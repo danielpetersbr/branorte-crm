@@ -478,7 +478,7 @@ export function Atendimentos() {
                               }
                             }}
                             title="Excluir lead"
-                            className="h-7 w-7 inline-flex items-center justify-center rounded-md text-ink-faint hover:text-danger hover:bg-danger-bg opacity-0 group-hover:opacity-100 transition-all"
+                            className="h-7 w-7 inline-flex items-center justify-center rounded-md text-ink-faint/60 hover:text-danger hover:bg-danger-bg transition-all"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
