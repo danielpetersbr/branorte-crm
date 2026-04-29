@@ -137,16 +137,41 @@ export function Layout() {
           )}
         </nav>
 
-        <div className={cn('border-t border-border', collapsed ? 'p-2 flex flex-col items-center gap-1' : 'p-3 flex items-center justify-between')}>
-          {!collapsed && (
-            <span className="inline-flex items-center gap-1.5 text-[11px] text-ink-faint">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="absolute inline-flex h-full w-full rounded-full bg-success opacity-60 animate-ping" />
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-success" />
-              </span>
-              Online
-            </span>
-          )}
+        {/* User card clicável → /perfil */}
+        {profile && !collapsed && (
+          <NavLink
+            to="/perfil"
+            className={({ isActive }) => cn(
+              'border-t border-border px-3 py-2.5 flex items-center gap-2.5 transition-colors',
+              isActive ? 'bg-accent-bg' : 'hover:bg-surface-2'
+            )}
+          >
+            <div className="h-7 w-7 rounded-full bg-accent flex items-center justify-center text-white text-[11px] font-bold shrink-0">
+              {(profile.display_name ?? profile.email)[0].toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0 leading-tight">
+              <p className="text-[12px] font-medium text-ink truncate">{profile.display_name ?? '—'}</p>
+              <p className="text-[10px] text-ink-faint truncate">{profile.email}</p>
+            </div>
+          </NavLink>
+        )}
+        {profile && collapsed && (
+          <NavLink
+            to="/perfil"
+            title={`Perfil (${profile.email})`}
+            className={({ isActive }) => cn(
+              'border-t border-border p-2 flex items-center justify-center transition-colors',
+              isActive ? 'bg-accent-bg' : 'hover:bg-surface-2'
+            )}
+          >
+            <div className="h-7 w-7 rounded-full bg-accent flex items-center justify-center text-white text-[11px] font-bold">
+              {(profile.display_name ?? profile.email)[0].toUpperCase()}
+            </div>
+          </NavLink>
+        )}
+
+        {/* Toolbar inferior */}
+        <div className={cn('border-t border-border', collapsed ? 'p-2 flex flex-col items-center gap-1' : 'p-2 flex items-center justify-end gap-1')}>
           {collapsed && (
             <button
               onClick={toggleCollapsed}

@@ -11,6 +11,7 @@ import { Login } from '@/pages/Login'
 import { Signup } from '@/pages/Signup'
 import { Pendente } from '@/pages/Pendente'
 import { AdminUsuarios } from '@/pages/AdminUsuarios'
+import { Perfil } from '@/pages/Perfil'
 import { useAuth } from '@/hooks/useAuth'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 
@@ -55,6 +56,7 @@ function AppRoutes() {
         <Route path="/orcamentos" element={<Orcamentos />} />
         <Route path="/vendidos" element={<Vendidos />} />
         <Route path="/atendimentos" element={<Atendimentos />} />
+        <Route path="/perfil" element={<Perfil />} />
         {profile.role === 'admin' && (
           <Route path="/admin/usuarios" element={<AdminUsuarios />} />
         )}
