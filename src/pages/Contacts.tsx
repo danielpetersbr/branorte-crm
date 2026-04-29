@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/Card'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatNumber, formatPhone, whatsappLink } from '@/lib/utils'
 import { useVendorMap } from '@/hooks/useVendorMap'
+import { useContactsOrcamentos } from '@/hooks/useContactsOrcamentos'
 import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, FileText } from 'lucide-react'
 import { ESTADOS_BR, STATUS_OPTIONS, TEMPERATURA_OPTIONS, FUNIL_OPTIONS, PAGE_SIZE } from '@/types'
 import { parseCrmMeta } from '@/lib/crm-fields'
@@ -53,6 +54,10 @@ export function Contacts() {
   const contacts = data?.contacts ?? []
   const total = data?.total ?? 0
   const totalPages = Math.ceil(total / PAGE_SIZE)
+
+  // Cruzamento com orcamentos_files: traz nº dos orçamentos pra cada contato visível.
+  const contactIds = contacts.map(c => c.id)
+  const { data: orcamentosMap } = useContactsOrcamentos(contactIds)
 
   const handleSearch = useCallback(() => {
     setFilters(f => ({ ...f, search: searchInput, page: 0 }))
@@ -142,6 +147,7 @@ export function Contacts() {
                     const isOrcPhone = (c.phone || '').startsWith('ORC-')
                     const tel = isOrcPhone ? '' : (c.telefone_normalizado || c.phone || '')
                     const orc = getOrcamento(c.origin)
+                    const orcsLinkados = orcamentosMap?.get(c.id) ?? []
                     const meta = parseCrmMeta(c.notes)
                     const tempOpt = TEMPERATURA_OPTIONS.find(t => t.value === meta.temp)
                     const funilOpt = FUNIL_OPTIONS.find(f => f.value === meta.funil)
@@ -166,7 +172,31 @@ export function Contacts() {
                           <span className="text-sm text-text-secondary">{(c.vendor_id ? vendorMap[c.vendor_id] : null) ?? '-'}</span>
                         </td>
                         <td className="px-4 py-3">
-                          {orc ? (
+                          {orcsLinkados.length > 0 ? (
+                            <div className="flex flex-col gap-0.5">
+                              <div className="flex items-center gap-1 flex-wrap">
+                                <Badge
+                                  className="bg-amber-50 text-amber-700 border border-amber-200 w-fit"
+                                  title={`${orcsLinkados[0].cliente} · ${orcsLinkados[0].path_principal}`}
+                                >
+                                  <FileText className="h-3 w-3" /> {orcsLinkados[0].ano}-{orcsLinkados[0].numero}
+                                </Badge>
+                                {orcsLinkados.length > 1 && (
+                                  <Badge
+                                    className="bg-stone-100 text-stone-600 text-[10px]"
+                                    title={orcsLinkados.slice(1).map(o => `${o.ano}-${o.numero}`).join(', ')}
+                                  >
+                                    +{orcsLinkados.length - 1}
+                                  </Badge>
+                                )}
+                              </div>
+                              {(c.descricao_orcamento || getOrcDescricao(c.notes)) && (
+                                <span className="text-xs text-text-muted truncate max-w-[200px]" title={c.descricao_orcamento || getOrcDescricao(c.notes) || ''}>
+                                  {c.descricao_orcamento || getOrcDescricao(c.notes)}
+                                </span>
+                              )}
+                            </div>
+                          ) : orc ? (
                             <div className="flex flex-col gap-0.5">
                               <Badge className="bg-amber-50 text-amber-700 border border-amber-200 w-fit">
                                 <FileText className="h-3 w-3" /> {orc}
@@ -211,6 +241,7 @@ export function Contacts() {
               const isOrcPhone2 = (c.phone || '').startsWith('ORC-')
               const tel = isOrcPhone2 ? '' : (c.telefone_normalizado || c.phone || '')
               const orc = getOrcamento(c.origin)
+              const orcsLinkadosM = orcamentosMap?.get(c.id) ?? []
               const mobileM = parseCrmMeta(c.notes)
               const mobileTempOpt = TEMPERATURA_OPTIONS.find(t => t.value === mobileM.temp)
               const mobileFunilOpt = FUNIL_OPTIONS.find(f => f.value === mobileM.funil)
@@ -224,7 +255,14 @@ export function Contacts() {
                         {mobileTempOpt && <Badge className={mobileTempOpt.color}>{mobileTempOpt.icon}</Badge>}
                         {c.state && <Badge className="bg-blue-50 text-blue-700">{c.state}</Badge>}
                         {mobileFunilOpt && <Badge className={mobileFunilOpt.color}>{mobileFunilOpt.label}</Badge>}
-                        {orc && <Badge className="bg-amber-50 text-amber-700 border border-amber-200"><FileText className="h-3 w-3" /> {orc}</Badge>}
+                        {orcsLinkadosM.length > 0 ? (
+                          <Badge className="bg-amber-50 text-amber-700 border border-amber-200" title={orcsLinkadosM.slice(1, 4).map(o => `${o.ano}-${o.numero}`).join(', ')}>
+                            <FileText className="h-3 w-3" /> {orcsLinkadosM[0].ano}-{orcsLinkadosM[0].numero}
+                            {orcsLinkadosM.length > 1 && <span className="ml-1 text-[10px] opacity-70">+{orcsLinkadosM.length - 1}</span>}
+                          </Badge>
+                        ) : orc ? (
+                          <Badge className="bg-amber-50 text-amber-700 border border-amber-200"><FileText className="h-3 w-3" /> {orc}</Badge>
+                        ) : null}
                         {c.vendor_id && vendorMap[c.vendor_id] && <span className="text-xs text-text-muted">{vendorMap[c.vendor_id!]}</span>}
                       </div>
                     </div>

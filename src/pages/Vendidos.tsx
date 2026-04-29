@@ -10,6 +10,7 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatPhone, whatsappLink } from '@/lib/utils'
 import { useVendorMap } from '@/hooks/useVendorMap'
 import { useVendors } from '@/hooks/useVendors'
+import { useContactsOrcamentos } from '@/hooks/useContactsOrcamentos'
 import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, CheckCircle, FileText } from 'lucide-react'
 import { ESTADOS_BR } from '@/types'
 import type { Contact } from '@/types'
@@ -90,6 +91,9 @@ export function Vendidos() {
   const contacts = data?.contacts ?? []
   const total = data?.total ?? 0
   const totalPages = Math.ceil(total / PAGE_SIZE)
+
+  const contactIds = contacts.map(c => c.id)
+  const { data: orcamentosMap } = useContactsOrcamentos(contactIds)
   const hasFilters = filters.search || filters.vendor_id || filters.estado || filters.ano || filters.mes
 
   const clearFilters = () => {
@@ -202,6 +206,7 @@ export function Vendidos() {
                     const isOrcPhone = (c.phone || '').startsWith('ORC-')
                     const tel = isOrcPhone ? '' : (c.telefone_normalizado || c.phone || '')
                     const orc = getOrcamento(c.origin)
+                    const orcsLinkados = orcamentosMap?.get(c.id) ?? []
                     return (
                       <tr key={c.id} className="hover:bg-green-50/30 transition-colors">
                         <td className="px-4 py-3">
@@ -215,11 +220,28 @@ export function Vendidos() {
                           <span className="text-sm text-text-secondary">{(c.vendor_id ? vendorMap[c.vendor_id] : null) ?? '-'}</span>
                         </td>
                         <td className="px-4 py-3">
-                          {orc && (
+                          {orcsLinkados.length > 0 ? (
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <Badge
+                                className="bg-green-50 text-green-700 border border-green-200 w-fit"
+                                title={`${orcsLinkados[0].cliente} · ${orcsLinkados[0].path_principal}`}
+                              >
+                                <CheckCircle className="h-3 w-3" /> {orcsLinkados[0].ano}-{orcsLinkados[0].numero}
+                              </Badge>
+                              {orcsLinkados.length > 1 && (
+                                <Badge
+                                  className="bg-stone-100 text-stone-600 text-[10px]"
+                                  title={orcsLinkados.slice(1).map(o => `${o.ano}-${o.numero}`).join(', ')}
+                                >
+                                  +{orcsLinkados.length - 1}
+                                </Badge>
+                              )}
+                            </div>
+                          ) : orc ? (
                             <Badge className="bg-green-50 text-green-700 border border-green-200 w-fit">
                               <CheckCircle className="h-3 w-3" /> {orc}
                             </Badge>
-                          )}
+                          ) : null}
                         </td>
                         <td className="px-4 py-3">
                           <span className="text-xs text-text-muted truncate max-w-[250px] block" title={c.descricao_orcamento || ''}>
