@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { Avatar } from '@/components/ui/Avatar'
 import { StatusDot } from '@/components/ui/StatusDot'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
-import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTimeShort } from '@/lib/utils'
+import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTimeShort, estadoNome } from '@/lib/utils'
 import { ufFromTelefone } from '@/lib/ddd-uf'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, type StatusReal } from '@/types/atendimento'
@@ -269,6 +269,7 @@ export function Atendimentos() {
                   <tr className="border-b border-border bg-surface/50">
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Chegou</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Lead</th>
+                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Estado</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Telefone</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Criativo</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Momento de compra</th>
@@ -299,26 +300,32 @@ export function Atendimentos() {
                         </td>
                         {/* LEAD */}
                         <td className="px-3 py-2.5 whitespace-nowrap">
-                          <div className="flex items-center gap-2.5 min-w-[180px]">
+                          <div className="flex items-center gap-2.5 min-w-[170px]">
                             <Avatar name={r.nome} size="md" pulse={isFresh} />
                             <div className="leading-tight">
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-[13px] font-medium text-ink">
-                                  {r.nome || <span className="text-ink-faint italic font-normal">sem nome</span>}
-                                </span>
-                                {uf && uf !== '—' && uf !== 'INTL' && (
-                                  <span className="text-[10px] tabular-nums px-1 py-0 rounded bg-surface-2 text-ink-muted font-medium">
-                                    {uf}
-                                  </span>
-                                )}
-                              </div>
+                              <span className="text-[13px] font-medium text-ink">
+                                {r.nome || <span className="text-ink-faint italic font-normal">sem nome</span>}
+                              </span>
                               {isHot && (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-danger mt-0.5">
-                                  <Flame className="h-2.5 w-2.5" /> Lead quente
+                                <span className="block text-[10px] font-medium text-danger mt-0.5">
+                                  <Flame className="inline h-2.5 w-2.5 mr-0.5" /> Lead quente
                                 </span>
                               )}
                             </div>
                           </div>
+                        </td>
+                        {/* ESTADO */}
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          {uf && uf !== '—' && uf !== 'INTL' ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-2 text-ink-muted">
+                                {uf}
+                              </span>
+                              <span className="text-[12px] text-ink-muted">{estadoNome(uf)}</span>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-ink-faint">—</span>
+                          )}
                         </td>
                         {/* TELEFONE */}
                         <td className="px-3 py-2.5 whitespace-nowrap">
@@ -394,7 +401,7 @@ export function Atendimentos() {
                   })}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="px-4 py-16 text-center">
+                      <td colSpan={9} className="px-4 py-16 text-center">
                         <div className="flex flex-col items-center gap-2">
                           <div className="h-10 w-10 rounded-full bg-surface-2 flex items-center justify-center">
                             <Inbox className="h-5 w-5 text-ink-faint" />
