@@ -37,6 +37,12 @@ const QUANDO_TONE: Record<string, Tone> = {
   'Estou pesquisando':  'neutral',
 }
 
+const MOTIVO_TONE: Record<string, Tone> = {
+  'Montar uma Fábrica': 'success',
+  'Só um equipamento':  'info',
+  'Outros assuntos':    'neutral',
+}
+
 const AUDITORIA_BASE = 'https://branorte-auditoria.vercel.app'
 
 function isHotLead(quando: string | null): boolean {
@@ -272,6 +278,7 @@ export function Atendimentos() {
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Estado</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Telefone</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Criativo</th>
+                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Motivo do contato</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Momento de compra</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Finalidade da fábrica</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Animal</th>
@@ -354,6 +361,19 @@ export function Atendimentos() {
                             <span className="text-[11px] text-ink-faint">—</span>
                           )}
                         </td>
+                        {/* MOTIVO DO CONTATO */}
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          {r.motivo_contato ? (
+                            <Badge style={{
+                              background: `hsl(var(--${MOTIVO_TONE[r.motivo_contato] ?? 'surface-2'}-bg))`,
+                              color: `hsl(var(--${MOTIVO_TONE[r.motivo_contato] ?? 'ink-muted'}))`,
+                            }}>
+                              {r.motivo_contato}
+                            </Badge>
+                          ) : (
+                            <span className="text-[11px] text-ink-faint">—</span>
+                          )}
+                        </td>
                         {/* MOMENTO DE COMPRA */}
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           {r.quando_investir ? (
@@ -425,7 +445,7 @@ export function Atendimentos() {
                   })}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={11} className="px-4 py-16 text-center">
+                      <td colSpan={12} className="px-4 py-16 text-center">
                         <div className="flex flex-col items-center gap-2">
                           <div className="h-10 w-10 rounded-full bg-surface-2 flex items-center justify-center">
                             <Inbox className="h-5 w-5 text-ink-faint" />
