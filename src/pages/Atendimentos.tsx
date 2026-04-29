@@ -276,6 +276,7 @@ export function Atendimentos() {
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Finalidade da fábrica</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Animal</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Qtd</th>
+                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap" title="Cliente clicou no botão FALAR COM CONSULTOR">Tocou no botão</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Vendedor</th>
                   </tr>
                 </thead>
@@ -397,6 +398,17 @@ export function Atendimentos() {
                             <span className="text-[11px] text-ink-faint">—</span>
                           )}
                         </td>
+                        {/* TOCOU NO BOTAO */}
+                        <td className="px-3 py-2.5 whitespace-nowrap" title={r.tocou_botao_em ?? ''}>
+                          {r.tocou_botao_em ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-success">
+                              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                              {formatRelative(r.tocou_botao_em)}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-ink-faint">—</span>
+                          )}
+                        </td>
                         {/* VENDEDOR */}
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           {r.responsavel ? (
@@ -413,7 +425,7 @@ export function Atendimentos() {
                   })}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="px-4 py-16 text-center">
+                      <td colSpan={11} className="px-4 py-16 text-center">
                         <div className="flex flex-col items-center gap-2">
                           <div className="h-10 w-10 rounded-full bg-surface-2 flex items-center justify-center">
                             <Inbox className="h-5 w-5 text-ink-faint" />
