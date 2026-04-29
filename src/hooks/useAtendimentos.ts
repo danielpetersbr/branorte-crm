@@ -83,39 +83,77 @@ export function useAtendimentos(filters: AtendimentoFilters) {
 
 export interface AtendimentoKpis {
   total: number
+  hoje: number
+  quentes: number
+  clicaramBotao: number
+  naoClicaram: number
+  qualificados: number
+  emAndamento: number
   byStatus: Record<StatusReal, number>
+}
+
+function startOfTodayISO(): string {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  return d.toISOString()
 }
 
 export function useAtendimentoKpis() {
   return useQuery({
     queryKey: ['atendimentos-kpis'],
     queryFn: async (): Promise<AtendimentoKpis> => {
-      // 1 query agregada por status_real (Supabase REST não tem GROUP BY direto, então
-      // fazemos uma chamada por status — barato porque são 6 buckets só).
-      const statuses: StatusReal[] = [
-        'Vendido', 'Em-andamento', 'Aguardando-Vendedor',
-        'Abandonado', 'Sem-Resposta', 'Perdido',
-      ]
-      const totalReq = supabaseAuditoria
+      const baseQ = () => supabaseAuditoria
         .from('atendimentos_por_cliente')
         .select('*', { count: 'exact', head: true })
         .eq('is_internal', false)
-      const statusReqs = statuses.map(s =>
-        supabaseAuditoria
-          .from('atendimentos_por_cliente')
-          .select('*', { count: 'exact', head: true })
-          .eq('is_internal', false)
-          .eq('status_real', s)
-      )
-      const [totalRes, ...statusRes] = await Promise.all([totalReq, ...statusReqs])
+
+      const todayIso = startOfTodayISO()
+
+      const [
+        totalRes,
+        hojeRes,
+        quentesRes,
+        clicaramRes,
+        naoClicaramRes,
+        qualificadosRes,
+        emAndamentoRes,
+        // Mantem byStatus pra qualquer outro lugar que use
+        vendidoRes, abandonadoRes, semRespostaRes, aguardandoRes, perdidoRes,
+      ] = await Promise.all([
+        baseQ(),
+        baseQ().gte('data', todayIso),
+        baseQ().eq('quando_investir', 'Agora'),
+        baseQ().not('tocou_botao_em', 'is', null),
+        baseQ().is('tocou_botao_em', null),
+        baseQ().not('finalidade_fabrica', 'is', null).not('qual_animal', 'is', null),
+        baseQ().eq('status_real', 'Em-andamento'),
+        baseQ().eq('status_real', 'Vendido'),
+        baseQ().eq('status_real', 'Abandonado'),
+        baseQ().eq('status_real', 'Sem-Resposta'),
+        baseQ().eq('status_real', 'Aguardando-Vendedor'),
+        baseQ().eq('status_real', 'Perdido'),
+      ])
       if (totalRes.error) throw totalRes.error
 
-      const byStatus = {} as Record<StatusReal, number>
-      statuses.forEach((s, i) => {
-        byStatus[s] = statusRes[i].count ?? 0
-      })
+      const byStatus = {
+        'Vendido':              vendidoRes.count ?? 0,
+        'Em-andamento':         emAndamentoRes.count ?? 0,
+        'Aguardando-Vendedor':  aguardandoRes.count ?? 0,
+        'Abandonado':           abandonadoRes.count ?? 0,
+        'Sem-Resposta':         semRespostaRes.count ?? 0,
+        'Perdido':              perdidoRes.count ?? 0,
+      } as Record<StatusReal, number>
 
-      return { total: totalRes.count ?? 0, byStatus }
+      return {
+        total:          totalRes.count ?? 0,
+        hoje:           hojeRes.count ?? 0,
+        quentes:        quentesRes.count ?? 0,
+        clicaramBotao:  clicaramRes.count ?? 0,
+        naoClicaram:    naoClicaramRes.count ?? 0,
+        qualificados:   qualificadosRes.count ?? 0,
+        emAndamento:    emAndamentoRes.count ?? 0,
+        byStatus,
+      }
     },
   })
 }

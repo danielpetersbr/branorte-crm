@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, ExternalLink, Flame, AlarmClock, AlertTriangle, CheckCircle2, Inbox, Trash2 } from 'lucide-react'
+import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, ExternalLink, Flame, AlarmClock, CheckCircle2, Inbox, Trash2, Calendar, Hand, ListChecks, MessageSquareDot, EyeOff } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -206,14 +206,14 @@ export function Atendimentos() {
       {/* KPIs - hierarquia: 2 hero + 4 small */}
       {kpis && (
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
-          <KpiCard label="Vendido"  value={kpis.byStatus['Vendido'] ?? 0}              hero tone={kpis.byStatus['Vendido'] ? 'success' : 'danger'}
-                   icon={CheckCircle2} hint={kpis.byStatus['Vendido'] === 0 ? 'Nenhum no recorte' : undefined} />
-          <KpiCard label="Em andamento" value={kpis.byStatus['Em-andamento'] ?? 0}     hero tone="info"
-                   icon={Flame} />
-          <KpiCard label="Aguardando" value={kpis.byStatus['Aguardando-Vendedor'] ?? 0}      tone="warning" icon={AlarmClock} />
-          <KpiCard label="Sem resposta" value={kpis.byStatus['Sem-Resposta'] ?? 0}           tone="danger"  icon={AlertTriangle} />
-          <KpiCard label="Abandonado" value={kpis.byStatus['Abandonado'] ?? 0}               tone="neutral" />
-          <KpiCard label="Perdido"    value={kpis.byStatus['Perdido'] ?? 0}                  tone="neutral" />
+          <KpiCard label="Hoje"     value={kpis.hoje}          hero tone="accent"
+                   icon={Calendar}  hint={kpis.hoje === 0 ? 'Nenhum lead hoje' : 'leads novos'} />
+          <KpiCard label="Quentes"  value={kpis.quentes}       hero tone="danger"
+                   icon={Flame}     hint={kpis.quentes ? 'Quer comprar agora' : undefined} />
+          <KpiCard label="Clicaram botão"     value={kpis.clicaramBotao}   tone="success"  icon={Hand} />
+          <KpiCard label="Não clicaram"       value={kpis.naoClicaram}     tone="warning"  icon={EyeOff} />
+          <KpiCard label="Qualificados"       value={kpis.qualificados}    tone="info"     icon={ListChecks} />
+          <KpiCard label="Em andamento"       value={kpis.emAndamento}     tone="neutral"  icon={MessageSquareDot} />
         </div>
       )}
 
