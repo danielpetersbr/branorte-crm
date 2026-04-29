@@ -10,7 +10,7 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatNumber, formatPhone, whatsappLink } from '@/lib/utils'
 import { useVendorMap } from '@/hooks/useVendorMap'
 import { useContactsOrcamentos } from '@/hooks/useContactsOrcamentos'
-import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, FileText } from 'lucide-react'
+import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, FileText, Copy, Check } from 'lucide-react'
 import { ESTADOS_BR, STATUS_OPTIONS, TEMPERATURA_OPTIONS, FUNIL_OPTIONS, PAGE_SIZE, CONTACT_SORT_OPTIONS } from '@/types'
 import { parseCrmMeta } from '@/lib/crm-fields'
 import type { ContactFilters, Contact, ContactSortKey } from '@/types'
@@ -42,6 +42,32 @@ function getOrcDescricao(notes: string | null): string | null {
 function isPlaceholderPhone(phone: string | null | undefined): boolean {
   if (!phone) return false
   return phone.startsWith('ORC-') || phone.startsWith('AUTO-')
+}
+
+// Botão pequeno que copia o telefone (formato +55XXXXXXXXXXX ou só dígitos) pro clipboard.
+function CopyPhoneButton({ phone }: { phone: string }) {
+  const [copied, setCopied] = useState(false)
+  const handle = async (e: React.MouseEvent) => {
+    e.stopPropagation()  // Não dispara onClick da row
+    try {
+      await navigator.clipboard.writeText(phone)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      window.prompt('Copie o telefone:', phone)
+    }
+  }
+  return (
+    <button
+      onClick={handle}
+      title={copied ? 'Copiado!' : `Copiar ${phone}`}
+      className={`p-1 rounded hover:bg-surface-tertiary transition-colors ${
+        copied ? 'text-green-600' : 'text-text-muted hover:text-text-primary'
+      }`}
+    >
+      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
+  )
 }
 
 export function Contacts() {
@@ -169,7 +195,14 @@ export function Contacts() {
                           <span className="text-sm font-medium text-text-primary">{c.name || '(sem nome)'}</span>
                         </td>
                         <td className="px-4 py-3">
-                          <span className="text-sm text-text-secondary font-mono">{formatPhone(tel)}</span>
+                          {tel ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-sm text-text-secondary font-mono">{formatPhone(tel)}</span>
+                              <CopyPhoneButton phone={tel} />
+                            </div>
+                          ) : (
+                            <span className="text-text-muted">-</span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           {c.city ? (
@@ -264,7 +297,14 @@ export function Contacts() {
                   <div className="flex items-start justify-between">
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-text-primary truncate">{c.name || '(sem nome)'}</p>
-                      <p className="text-sm text-text-secondary font-mono mt-0.5">{formatPhone(tel)}</p>
+                      {tel ? (
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <p className="text-sm text-text-secondary font-mono">{formatPhone(tel)}</p>
+                          <CopyPhoneButton phone={tel} />
+                        </div>
+                      ) : (
+                        <p className="text-sm text-text-muted mt-0.5">-</p>
+                      )}
                       <div className="flex items-center gap-2 mt-2 flex-wrap">
                         {mobileTempOpt && <Badge className={mobileTempOpt.color}>{mobileTempOpt.icon}</Badge>}
                         {c.state && <Badge className="bg-blue-50 text-blue-700">{c.state}</Badge>}

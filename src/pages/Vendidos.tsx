@@ -11,7 +11,7 @@ import { formatPhone, whatsappLink } from '@/lib/utils'
 import { useVendorMap } from '@/hooks/useVendorMap'
 import { useVendors } from '@/hooks/useVendors'
 import { useContactsOrcamentos } from '@/hooks/useContactsOrcamentos'
-import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, CheckCircle, FileText } from 'lucide-react'
+import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, CheckCircle, FileText, Copy, Check } from 'lucide-react'
 import { ESTADOS_BR } from '@/types'
 import type { Contact } from '@/types'
 
@@ -24,6 +24,31 @@ function getOrcamento(origin: string | null): string | null {
   if (!origin) return null
   const match = origin.match(/^Orcamento\s+(.+)$/)
   return match ? match[1] : null
+}
+
+function CopyPhoneButton({ phone }: { phone: string }) {
+  const [copied, setCopied] = useState(false)
+  const handle = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      await navigator.clipboard.writeText(phone)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      window.prompt('Copie o telefone:', phone)
+    }
+  }
+  return (
+    <button
+      onClick={handle}
+      title={copied ? 'Copiado!' : `Copiar ${phone}`}
+      className={`p-1 rounded hover:bg-surface-tertiary transition-colors ${
+        copied ? 'text-green-600' : 'text-text-muted hover:text-text-primary'
+      }`}
+    >
+      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
+  )
 }
 
 function useSoldContacts(filters: { search: string; vendor_id: string; estado: string; ano: string; mes: string; page: number }) {
@@ -236,7 +261,14 @@ export function Vendidos() {
                           {c.state && <Badge className="bg-blue-50 text-blue-700 ml-2">{c.state}</Badge>}
                         </td>
                         <td className="px-4 py-3">
-                          <span className="text-sm text-text-secondary font-mono">{tel ? formatPhone(tel) : '-'}</span>
+                          {tel ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-sm text-text-secondary font-mono">{formatPhone(tel)}</span>
+                              <CopyPhoneButton phone={tel} />
+                            </div>
+                          ) : (
+                            <span className="text-sm text-text-muted">-</span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <span className="text-sm text-text-secondary">{(c.vendor_id ? vendorMap[c.vendor_id] : null) ?? '-'}</span>
