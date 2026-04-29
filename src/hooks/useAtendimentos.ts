@@ -78,6 +78,9 @@ export function useAtendimentos(filters: AtendimentoFilters) {
       return { rows: (data ?? []) as Atendimento[], total: count ?? 0 }
     },
     placeholderData: prev => prev,
+    refetchInterval: 30_000,                  // polling a cada 30s
+    refetchIntervalInBackground: false,       // pausa quando aba nao tem foco
+    refetchOnWindowFocus: true,               // atualiza ao voltar pra aba
   })
 }
 
@@ -189,6 +192,9 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
         byStatus,
       }
     },
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   })
 }
 
