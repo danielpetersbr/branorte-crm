@@ -210,10 +210,10 @@ export function Atendimentos() {
                    icon={Calendar}  hint={kpis.hoje === 0 ? 'Nenhum lead hoje' : 'leads novos'} />
           <KpiCard label="Quentes"  value={kpis.quentes}       hero tone="danger"
                    icon={Flame}     hint={kpis.quentes ? 'Quer comprar agora' : undefined} />
-          <KpiCard label="Clicaram botão"     value={kpis.clicaramBotao}   tone="success"  icon={Hand} />
-          <KpiCard label="Não clicaram"       value={kpis.naoClicaram}     tone="warning"  icon={EyeOff} />
-          <KpiCard label="Qualificados"       value={kpis.qualificados}    tone="info"     icon={ListChecks} />
-          <KpiCard label="Em andamento"       value={kpis.emAndamento}     tone="neutral"  icon={MessageSquareDot} />
+          <KpiCard label="Não engajaram"      value={kpis.naoEngajaram}    tone="neutral"  icon={EyeOff}            hint="nem começou o bot" />
+          <KpiCard label="Em andamento"       value={kpis.emAndamento}     tone="warning"  icon={MessageSquareDot}  hint="no meio do fluxo" />
+          <KpiCard label="Clicaram botão"     value={kpis.clicaramBotao}   tone="success"  icon={Hand}              hint="completaram fluxo" />
+          <KpiCard label="Qualificados"       value={kpis.qualificados}    tone="info"     icon={ListChecks}        hint="dados completos" />
         </div>
       )}
 

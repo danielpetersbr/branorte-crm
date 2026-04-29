@@ -86,7 +86,7 @@ export interface AtendimentoKpis {
   hoje: number
   quentes: number
   clicaramBotao: number
-  naoClicaram: number
+  naoEngajaram: number
   qualificados: number
   emAndamento: number
   byStatus: Record<StatusReal, number>
@@ -147,7 +147,7 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
         hojeRes,
         quentesRes,
         clicaramRes,
-        naoClicaramRes,
+        naoEngajaramRes,
         qualificadosRes,
         emAndamentoRes,
         vendidoRes, abandonadoRes, semRespostaRes, aguardandoRes, perdidoRes,
@@ -156,9 +156,11 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
         baseQ().gte('data', todayIso),
         baseQ().eq('quando_investir', 'Agora'),
         baseQ().not('tocou_botao_em', 'is', null),
-        baseQ().is('tocou_botao_em', null),
+        // Nao engajaram: chegou no anuncio mas nem clicou no primeiro botao (motivo_contato)
+        baseQ().is('motivo_contato', null).is('tocou_botao_em', null),
         baseQ().not('finalidade_fabrica', 'is', null).not('qual_animal', 'is', null),
-        baseQ().eq('status_real', 'Em-andamento'),
+        // Em andamento: clicou no MOTIVO mas nao clicou no botao final
+        baseQ().not('motivo_contato', 'is', null).is('tocou_botao_em', null),
         baseQ().eq('status_real', 'Vendido'),
         baseQ().eq('status_real', 'Abandonado'),
         baseQ().eq('status_real', 'Sem-Resposta'),
@@ -181,7 +183,7 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
         hoje:           hojeRes.count ?? 0,
         quentes:        quentesRes.count ?? 0,
         clicaramBotao:  clicaramRes.count ?? 0,
-        naoClicaram:    naoClicaramRes.count ?? 0,
+        naoEngajaram:   naoEngajaramRes.count ?? 0,
         qualificados:   qualificadosRes.count ?? 0,
         emAndamento:    emAndamentoRes.count ?? 0,
         byStatus,
