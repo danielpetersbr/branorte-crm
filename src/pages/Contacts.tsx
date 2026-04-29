@@ -147,6 +147,7 @@ export function Contacts() {
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Estado</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Vendedor</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Orcamento</th>
+                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Data orcamento</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-border">
@@ -182,43 +183,41 @@ export function Contacts() {
                         </td>
                         <td className="px-4 py-3">
                           {orcsLinkados.length > 0 ? (
-                            <div className="flex flex-col gap-0.5">
-                              <div className="flex items-center gap-1 flex-wrap">
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <Badge
+                                className="bg-amber-50 text-amber-700 border border-amber-200 w-fit"
+                                title={`${orcsLinkados[0].cliente} · ${orcsLinkados[0].path_principal}`}
+                              >
+                                <FileText className="h-3 w-3" /> {orcsLinkados[0].ano}-{orcsLinkados[0].numero}
+                              </Badge>
+                              {orcsLinkados.length > 1 && (
                                 <Badge
-                                  className="bg-amber-50 text-amber-700 border border-amber-200 w-fit"
-                                  title={`${orcsLinkados[0].cliente} · ${orcsLinkados[0].path_principal}`}
+                                  className="bg-stone-100 text-stone-600 text-[10px]"
+                                  title={orcsLinkados.slice(1).map(o => `${o.ano}-${o.numero}`).join(', ')}
                                 >
-                                  <FileText className="h-3 w-3" /> {orcsLinkados[0].ano}-{orcsLinkados[0].numero}
+                                  +{orcsLinkados.length - 1}
                                 </Badge>
-                                {orcsLinkados.length > 1 && (
-                                  <Badge
-                                    className="bg-stone-100 text-stone-600 text-[10px]"
-                                    title={orcsLinkados.slice(1).map(o => `${o.ano}-${o.numero}`).join(', ')}
-                                  >
-                                    +{orcsLinkados.length - 1}
-                                  </Badge>
-                                )}
-                              </div>
-                              {(c.descricao_orcamento || getOrcDescricao(c.notes)) && (
-                                <span className="text-xs text-text-muted truncate max-w-[200px]" title={c.descricao_orcamento || getOrcDescricao(c.notes) || ''}>
-                                  {c.descricao_orcamento || getOrcDescricao(c.notes)}
-                                </span>
                               )}
                             </div>
                           ) : orc ? (
-                            <div className="flex flex-col gap-0.5">
-                              <Badge className="bg-amber-50 text-amber-700 border border-amber-200 w-fit">
-                                <FileText className="h-3 w-3" /> {orc}
-                              </Badge>
-                              {(c.descricao_orcamento || getOrcDescricao(c.notes)) && (
-                                <span className="text-xs text-text-muted truncate max-w-[200px]" title={c.descricao_orcamento || getOrcDescricao(c.notes) || ''}>
-                                  {c.descricao_orcamento || getOrcDescricao(c.notes)}
-                                </span>
-                              )}
-                            </div>
+                            <Badge className="bg-amber-50 text-amber-700 border border-amber-200 w-fit">
+                              <FileText className="h-3 w-3" /> {orc}
+                            </Badge>
                           ) : (
                             <span className="text-sm text-text-muted">-</span>
                           )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {(() => {
+                            const dateStr = orcsLinkados[0]?.mtime_iso || c.data_orcamento
+                            if (!dateStr) return <span className="text-sm text-text-muted">-</span>
+                            const d = new Date(dateStr)
+                            if (isNaN(d.getTime())) return <span className="text-sm text-text-muted">-</span>
+                            const dd = String(d.getDate()).padStart(2, '0')
+                            const mm = String(d.getMonth() + 1).padStart(2, '0')
+                            const yy = d.getFullYear()
+                            return <span className="text-sm text-text-secondary font-mono tabular-nums">{`${dd}/${mm}/${yy}`}</span>
+                          })()}
                         </td>
                       </tr>
                     )
