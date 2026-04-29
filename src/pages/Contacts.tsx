@@ -10,6 +10,7 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatNumber, formatPhone, whatsappLink } from '@/lib/utils'
 import { useVendorMap } from '@/hooks/useVendorMap'
 import { useContactsOrcamentos } from '@/hooks/useContactsOrcamentos'
+import { useAuth } from '@/hooks/useAuth'
 import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, FileText, Copy, Check } from 'lucide-react'
 import { ESTADOS_BR, STATUS_OPTIONS, TEMPERATURA_OPTIONS, FUNIL_OPTIONS, PAGE_SIZE, CONTACT_SORT_OPTIONS } from '@/types'
 import { parseCrmMeta } from '@/lib/crm-fields'
@@ -83,8 +84,17 @@ export function Contacts() {
   const { data, isLoading } = useContacts(filters)
   const updateContact = useUpdateContact()
   const vendorMap = useVendorMap()
+  const { profile } = useAuth()
 
-  const vendors = vendorsData ?? []
+  // Vendor só vê dropdown com ele mesmo + "não atribuído". Admin vê todos.
+  const isVendor = profile?.role === 'vendor'
+  const vendors = isVendor && profile?.vendor_id
+    ? (vendorsData ?? []).filter(v => v.id === profile.vendor_id)
+    : (vendorsData ?? [])
+  const vendorSelectOptions = [
+    { value: 'unassigned', label: 'Não atribuído' },
+    ...vendors.map(v => ({ value: v.id, label: v.name })),
+  ]
   const contacts = data?.contacts ?? []
   const total = data?.total ?? 0
   const totalPages = Math.ceil(total / PAGE_SIZE)
@@ -126,7 +136,7 @@ export function Contacts() {
             value={filters.sort} onChange={e => setFilters(f => ({ ...f, sort: e.target.value as ContactSortKey, page: 0 }))} className="lg:w-48" />
           <Select options={ESTADOS_BR.map(uf => ({ value: uf, label: uf }))} placeholder="Estado"
             value={filters.estado} onChange={e => setFilters(f => ({ ...f, estado: e.target.value, page: 0 }))} className="lg:w-28" />
-          <Select options={vendors.map(v => ({ value: v.id, label: v.name }))} placeholder="Vendedor"
+          <Select options={vendorSelectOptions} placeholder="Vendedor"
             value={filters.vendor_id} onChange={e => setFilters(f => ({ ...f, vendor_id: e.target.value, page: 0 }))} className="lg:w-48" />
           <Select options={TEMPERATURA_OPTIONS.map(t => ({ value: t.value, label: `${t.icon} ${t.label}` }))} placeholder="Temperatura"
             value={filters.temperatura} onChange={e => setFilters(f => ({ ...f, temperatura: e.target.value, page: 0 }))} className="lg:w-40" />

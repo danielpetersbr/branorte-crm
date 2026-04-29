@@ -246,12 +246,16 @@ export function useAtendimentoResponsaveis() {
   return useQuery({
     queryKey: ['atendimentos-responsaveis'],
     queryFn: async () => {
+      const vendorFirst = await getCurrentVendorFirstName()
       // Distinct via: pegar responsaveis únicos da view (limit grande).
-      const { data, error } = await supabaseAuditoria
+      let query = supabaseAuditoria
         .from('atendimentos_por_cliente')
         .select('responsavel')
         .eq('is_internal', false)
         .not('responsavel', 'is', null)
+      // Vendor: só seu nome no dropdown
+      if (vendorFirst) query = query.ilike('responsavel', `${vendorFirst}%`)
+      const { data, error } = await query
         .limit(2000)
       if (error) throw error
       const set = new Set<string>()

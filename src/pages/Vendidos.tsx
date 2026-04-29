@@ -10,6 +10,7 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatPhone, whatsappLink } from '@/lib/utils'
 import { useVendorMap } from '@/hooks/useVendorMap'
 import { useVendors } from '@/hooks/useVendors'
+import { useAuth } from '@/hooks/useAuth'
 import { useContactsOrcamentos } from '@/hooks/useContactsOrcamentos'
 import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, CheckCircle, FileText, Copy, Check } from 'lucide-react'
 import { ESTADOS_BR } from '@/types'
@@ -132,6 +133,15 @@ export function Vendidos() {
   const { data, isLoading } = useSoldContacts(filters)
   const { data: totalSold } = useSoldStats()
   const { data: vendorsData } = useVendors()
+  const { profile } = useAuth()
+  const isVendor = profile?.role === 'vendor'
+  const vendorOpts = isVendor && profile?.vendor_id
+    ? (vendorsData ?? []).filter(v => v.id === profile.vendor_id)
+    : (vendorsData ?? [])
+  const vendorSelectOptions = [
+    { value: 'unassigned', label: 'Não atribuído' },
+    ...vendorOpts.map(v => ({ value: v.id, label: v.name })),
+  ]
   const vendorMap = useVendorMap()
 
   const contacts = data?.contacts ?? []
@@ -174,7 +184,7 @@ export function Vendidos() {
             className="lg:w-96"
           />
           <Select
-            options={(vendorsData ?? []).map(v => ({ value: v.id, label: v.name }))}
+            options={vendorSelectOptions}
             placeholder="Vendedor"
             value={filters.vendor_id}
             onChange={e => setFilters(f => ({ ...f, vendor_id: e.target.value, page: 0 }))}
