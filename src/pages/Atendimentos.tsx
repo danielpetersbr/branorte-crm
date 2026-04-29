@@ -162,7 +162,7 @@ export function Atendimentos() {
   const [searchInput, setSearchInput] = useState('')
 
   const { data, isLoading } = useAtendimentos(filters)
-  const { data: kpis } = useAtendimentoKpis()
+  const { data: kpis } = useAtendimentoKpis(filters)
   const { data: responsaveis } = useAtendimentoResponsaveis()
   const deleteMut = useDeleteAtendimento()
 

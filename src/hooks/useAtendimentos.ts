@@ -98,14 +98,47 @@ function startOfTodayISO(): string {
   return d.toISOString()
 }
 
-export function useAtendimentoKpis() {
+// Aplica os filtros base (search/responsavel/status/uf/data) na query head-only.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyBaseFilters(query: any, filters?: Partial<AtendimentoFilters>): any {
+  let q = query
+  if (filters?.search) {
+    const escaped = filters.search.replace(/[%_]/g, c => `\\${c}`)
+    q = q.or(`nome.ilike.%${escaped}%,telefone.ilike.%${escaped}%`)
+  }
+  if (filters?.responsavel) q = q.eq('responsavel', filters.responsavel)
+  if (filters?.status_real) q = q.eq('status_real', filters.status_real)
+  if (filters?.uf) {
+    const ddds = Object.entries(DDD_TO_UF).filter(([, uf]) => uf === filters.uf).map(([d]) => d)
+    if (ddds.length > 0) q = q.or(ddds.map(d => `telefone.like.+55${d}%`).join(','))
+  }
+  if (filters?.data) {
+    const range = dateRangeFromPreset(filters.data)
+    if (range.from) q = q.gte('data', range.from)
+    if (range.to)   q = q.lte('data', range.to)
+  }
+  return q
+}
+
+export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
+  // Cache key estavel ignorando page (KPIs nao paginam)
+  const filterKey = JSON.stringify({
+    search: filters?.search ?? '',
+    responsavel: filters?.responsavel ?? '',
+    status_real: filters?.status_real ?? '',
+    uf: filters?.uf ?? '',
+    data: filters?.data ?? '',
+  })
   return useQuery({
-    queryKey: ['atendimentos-kpis'],
+    queryKey: ['atendimentos-kpis', filterKey],
     queryFn: async (): Promise<AtendimentoKpis> => {
-      const baseQ = () => supabaseAuditoria
-        .from('atendimentos_por_cliente')
-        .select('*', { count: 'exact', head: true })
-        .eq('is_internal', false)
+      const baseQ = () => {
+        const q = supabaseAuditoria
+          .from('atendimentos_por_cliente')
+          .select('*', { count: 'exact', head: true })
+          .eq('is_internal', false)
+        return applyBaseFilters(q, filters)
+      }
 
       const todayIso = startOfTodayISO()
 
@@ -117,7 +150,6 @@ export function useAtendimentoKpis() {
         naoClicaramRes,
         qualificadosRes,
         emAndamentoRes,
-        // Mantem byStatus pra qualquer outro lugar que use
         vendidoRes, abandonadoRes, semRespostaRes, aguardandoRes, perdidoRes,
       ] = await Promise.all([
         baseQ(),
