@@ -185,20 +185,32 @@ export function Contacts() {
                         </td>
                         <td className="px-4 py-3">
                           {orcsLinkados.length > 0 ? (
-                            <div className="flex items-center gap-1 flex-wrap">
-                              <Badge
-                                className="bg-amber-50 text-amber-700 border border-amber-200 w-fit"
-                                title={`${orcsLinkados[0].cliente} · ${orcsLinkados[0].path_principal}`}
-                              >
-                                <FileText className="h-3 w-3" /> {orcsLinkados[0].ano}-{orcsLinkados[0].numero}
-                              </Badge>
-                              {orcsLinkados.length > 1 && (
+                            <div className="flex flex-col gap-0.5">
+                              <div className="flex items-center gap-1 flex-wrap">
                                 <Badge
-                                  className="bg-stone-100 text-stone-600 text-[10px]"
-                                  title={orcsLinkados.slice(1).map(o => `${o.ano}-${o.numero}`).join(', ')}
+                                  className="bg-amber-50 text-amber-700 border border-amber-200 w-fit"
+                                  title={`${orcsLinkados[0].cliente} · ${orcsLinkados[0].path_principal}`}
                                 >
-                                  +{orcsLinkados.length - 1}
+                                  <FileText className="h-3 w-3" /> {orcsLinkados[0].ano}-{orcsLinkados[0].numero}
                                 </Badge>
+                                {orcsLinkados.length > 1 && (
+                                  <Badge
+                                    className="bg-stone-100 text-stone-600 text-[10px]"
+                                    title={orcsLinkados.slice(1).map(o => `${o.ano}-${o.numero}${o.equipamento ? ' · ' + o.equipamento : ''}`).join('\n')}
+                                  >
+                                    +{orcsLinkados.length - 1}
+                                  </Badge>
+                                )}
+                              </div>
+                              {orcsLinkados[0].equipamento && (
+                                <span className="text-xs text-text-secondary truncate max-w-[260px]" title={orcsLinkados[0].equipamento}>
+                                  {orcsLinkados[0].equipamento}
+                                </span>
+                              )}
+                              {!orcsLinkados[0].equipamento && (c.descricao_orcamento || getOrcDescricao(c.notes)) && (
+                                <span className="text-xs text-text-muted truncate max-w-[260px]" title={c.descricao_orcamento || getOrcDescricao(c.notes) || ''}>
+                                  {c.descricao_orcamento || getOrcDescricao(c.notes)}
+                                </span>
                               )}
                             </div>
                           ) : orc ? (
@@ -250,8 +262,16 @@ export function Contacts() {
                         {c.state && <Badge className="bg-blue-50 text-blue-700">{c.state}</Badge>}
                         {mobileFunilOpt && <Badge className={mobileFunilOpt.color}>{mobileFunilOpt.label}</Badge>}
                         {orcsLinkadosM.length > 0 ? (
-                          <Badge className="bg-amber-50 text-amber-700 border border-amber-200" title={orcsLinkadosM.slice(1, 4).map(o => `${o.ano}-${o.numero}`).join(', ')}>
+                          <Badge
+                            className="bg-amber-50 text-amber-700 border border-amber-200"
+                            title={orcsLinkadosM[0].equipamento ?? orcsLinkadosM.slice(1, 4).map(o => `${o.ano}-${o.numero}`).join(', ')}
+                          >
                             <FileText className="h-3 w-3" /> {orcsLinkadosM[0].ano}-{orcsLinkadosM[0].numero}
+                            {orcsLinkadosM[0].equipamento && (
+                              <span className="ml-1 text-[10px] opacity-80 truncate max-w-[140px] inline-block align-bottom">
+                                · {orcsLinkadosM[0].equipamento}
+                              </span>
+                            )}
                             {orcsLinkadosM.length > 1 && <span className="ml-1 text-[10px] opacity-70">+{orcsLinkadosM.length - 1}</span>}
                           </Badge>
                         ) : orc ? (

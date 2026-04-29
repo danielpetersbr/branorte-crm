@@ -253,7 +253,7 @@ export function Vendidos() {
                               {orcsLinkados.length > 1 && (
                                 <Badge
                                   className="bg-stone-100 text-stone-600 text-[10px]"
-                                  title={orcsLinkados.slice(1).map(o => `${o.ano}-${o.numero}`).join(', ')}
+                                  title={orcsLinkados.slice(1).map(o => `${o.ano}-${o.numero}${o.equipamento ? ' · ' + o.equipamento : ''}`).join('\n')}
                                 >
                                   +{orcsLinkados.length - 1}
                                 </Badge>
@@ -266,9 +266,14 @@ export function Vendidos() {
                           ) : null}
                         </td>
                         <td className="px-4 py-3">
-                          <span className="text-xs text-text-muted truncate max-w-[250px] block" title={c.descricao_orcamento || ''}>
-                            {c.descricao_orcamento || '-'}
-                          </span>
+                          {(() => {
+                            const produto = c.descricao_orcamento || orcsLinkados[0]?.equipamento || ''
+                            return (
+                              <span className="text-xs text-text-muted truncate max-w-[280px] block" title={produto}>
+                                {produto || '-'}
+                              </span>
+                            )
+                          })()}
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1">

@@ -9,6 +9,7 @@ export interface ContactOrcamentoSummary {
   mtime_iso: string | null
   path_principal: string
   cliente: string
+  equipamento: string | null
 }
 
 /**
@@ -29,7 +30,7 @@ export function useContactsOrcamentos(contactIds: string[]) {
       if (contactIds.length === 0) return new Map<string, ContactOrcamentoSummary[]>()
       const { data, error } = await supabase
         .from('orcamentos_files')
-        .select('id, contact_id, ano, numero, status_kanban, mtime_iso, path_principal, cliente')
+        .select('id, contact_id, ano, numero, status_kanban, mtime_iso, path_principal, cliente, equipamento')
         .in('contact_id', contactIds)
         .order('ano', { ascending: false })
         .order('numero', { ascending: false })
@@ -46,6 +47,7 @@ export function useContactsOrcamentos(contactIds: string[]) {
           mtime_iso: r.mtime_iso,
           path_principal: r.path_principal,
           cliente: r.cliente,
+          equipamento: r.equipamento,
         })
         map.set(r.contact_id, arr)
       }
