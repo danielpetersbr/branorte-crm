@@ -296,21 +296,21 @@ export function Atendimentos() {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-border bg-surface/50">
-                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Chegou</th>
-                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Lead</th>
-                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Estado</th>
-                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Telefone</th>
-                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Origem</th>
-                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Criativo</th>
-                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Motivo do contato</th>
-                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Finalidade da fábrica</th>
-                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Animal</th>
-                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Qtd</th>
-                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Momento de compra</th>
-                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap" title="Cliente clicou no botão FALAR COM CONSULTOR">Tocou no botão</th>
-                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Vendedor</th>
-                    <th className="text-right text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap"></th>
+                  <tr className="border-b border-border bg-surface/50 [&>th]:text-left [&>th]:text-[10px] [&>th]:uppercase [&>th]:tracking-wider [&>th]:font-semibold [&>th]:text-ink-faint [&>th]:px-2 [&>th]:py-2.5 [&>th]:whitespace-nowrap">
+                    <th>Chegou</th>
+                    <th>Lead</th>
+                    <th className="hidden md:table-cell">Estado</th>
+                    <th>Telefone</th>
+                    <th className="hidden lg:table-cell">Origem</th>
+                    <th className="hidden 2xl:table-cell">Criativo</th>
+                    <th className="hidden lg:table-cell">Motivo</th>
+                    <th className="hidden 2xl:table-cell">Finalidade</th>
+                    <th className="hidden xl:table-cell">Animal</th>
+                    <th className="hidden xl:table-cell">Qtd</th>
+                    <th className="hidden lg:table-cell">Momento</th>
+                    <th className="hidden 2xl:table-cell" title="Cliente clicou no botão FALAR COM CONSULTOR">Botão</th>
+                    <th>Vendedor</th>
+                    <th className="!text-right"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -350,7 +350,7 @@ export function Atendimentos() {
                           </div>
                         </td>
                         {/* ESTADO */}
-                        <td className="px-3 py-2.5 whitespace-nowrap">
+                        <td className="hidden md:table-cell px-2 py-2.5 whitespace-nowrap">
                           {uf && uf !== '—' && uf !== 'INTL' ? (
                             <div className="flex items-center gap-1.5">
                               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-2 text-ink-muted">
@@ -378,7 +378,7 @@ export function Atendimentos() {
                           </span>
                         </td>
                         {/* ORIGEM */}
-                        <td className="px-3 py-2.5 whitespace-nowrap">
+                        <td className="hidden lg:table-cell px-2 py-2.5 whitespace-nowrap">
                           {r.origem ? (() => {
                             const o = r.origem.toLowerCase()
                             const tone =
@@ -400,7 +400,7 @@ export function Atendimentos() {
                           )}
                         </td>
                         {/* CRIATIVO */}
-                        <td className="px-3 py-2.5">
+                        <td className="hidden 2xl:table-cell px-2 py-2.5">
                           {r.criativo_codigo || criativoNome ? (
                             <div className="flex items-center gap-1.5 min-w-0 max-w-[200px]">
                               {r.criativo_codigo && (
@@ -419,7 +419,7 @@ export function Atendimentos() {
                           )}
                         </td>
                         {/* MOTIVO DO CONTATO */}
-                        <td className="px-3 py-2.5 whitespace-nowrap">
+                        <td className="hidden lg:table-cell px-2 py-2.5 whitespace-nowrap">
                           {r.motivo_contato ? (
                             <Badge style={{
                               background: `hsl(var(--${MOTIVO_TONE[r.motivo_contato] ?? 'surface-2'}-bg))`,
@@ -432,7 +432,7 @@ export function Atendimentos() {
                           )}
                         </td>
                         {/* FINALIDADE DA FÁBRICA */}
-                        <td className="px-3 py-2.5 whitespace-nowrap">
+                        <td className="hidden 2xl:table-cell px-2 py-2.5 whitespace-nowrap">
                           {r.finalidade_fabrica ? (
                             <Badge style={{
                               background: `hsl(var(--${finTone ?? 'surface-2'}-bg))`,
@@ -445,7 +445,7 @@ export function Atendimentos() {
                           )}
                         </td>
                         {/* ANIMAL */}
-                        <td className="px-3 py-2.5 whitespace-nowrap">
+                        <td className="hidden xl:table-cell px-2 py-2.5 whitespace-nowrap">
                           {r.qual_animal ? (
                             <span className="text-[12px] text-ink-muted">{r.qual_animal}</span>
                           ) : (
@@ -453,7 +453,7 @@ export function Atendimentos() {
                           )}
                         </td>
                         {/* QTD */}
-                        <td className="px-3 py-2.5 whitespace-nowrap">
+                        <td className="hidden xl:table-cell px-2 py-2.5 whitespace-nowrap">
                           {r.quantos_animais ? (
                             <span className="text-[12px] text-ink-muted tabular-nums">{r.quantos_animais}</span>
                           ) : (
@@ -461,7 +461,7 @@ export function Atendimentos() {
                           )}
                         </td>
                         {/* MOMENTO DE COMPRA */}
-                        <td className="px-3 py-2.5 whitespace-nowrap">
+                        <td className="hidden lg:table-cell px-2 py-2.5 whitespace-nowrap">
                           {r.quando_investir ? (
                             <Badge style={{
                               background: `hsl(var(--${quandoTone ?? 'surface-2'}-bg))`,
@@ -476,7 +476,7 @@ export function Atendimentos() {
                           )}
                         </td>
                         {/* TOCOU NO BOTAO */}
-                        <td className="px-3 py-2.5 whitespace-nowrap" title={r.tocou_botao_em ? `Em ${formatRelative(r.tocou_botao_em)}` : ''}>
+                        <td className="hidden 2xl:table-cell px-2 py-2.5 whitespace-nowrap" title={r.tocou_botao_em ? `Em ${formatRelative(r.tocou_botao_em)}` : ''}>
                           {r.tocou_botao_em ? (
                             <span className="inline-flex items-center gap-1 text-[11px] font-medium text-success">
                               <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
