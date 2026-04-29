@@ -34,6 +34,15 @@ export interface Contact {
   descricao_orcamento: string | null
 }
 
+export type ContactSortKey =
+  | 'recente'
+  | 'antigo'
+  | 'nome_az'
+  | 'nome_za'
+  | 'orcamento_recente'
+  | 'orcamento_antigo'
+  | 'estado_az'
+
 export interface ContactFilters {
   search: string
   estado: string
@@ -43,8 +52,19 @@ export interface ContactFilters {
   orcamento_ano: string
   orcamento_mes: string
   temperatura: string
+  sort: ContactSortKey
   page: number
 }
+
+export const CONTACT_SORT_OPTIONS: { value: ContactSortKey; label: string }[] = [
+  { value: 'recente',           label: 'Mais recentes' },
+  { value: 'antigo',            label: 'Mais antigos' },
+  { value: 'nome_az',           label: 'Nome A → Z' },
+  { value: 'nome_za',           label: 'Nome Z → A' },
+  { value: 'orcamento_recente', label: 'Orçamento mais novo' },
+  { value: 'orcamento_antigo',  label: 'Orçamento mais antigo' },
+  { value: 'estado_az',         label: 'Estado A → Z' },
+]
 
 export const ESTADOS_BR = [
   'AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT',

@@ -11,9 +11,9 @@ import { formatNumber, formatPhone, whatsappLink } from '@/lib/utils'
 import { useVendorMap } from '@/hooks/useVendorMap'
 import { useContactsOrcamentos } from '@/hooks/useContactsOrcamentos'
 import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, FileText } from 'lucide-react'
-import { ESTADOS_BR, STATUS_OPTIONS, TEMPERATURA_OPTIONS, FUNIL_OPTIONS, PAGE_SIZE } from '@/types'
+import { ESTADOS_BR, STATUS_OPTIONS, TEMPERATURA_OPTIONS, FUNIL_OPTIONS, PAGE_SIZE, CONTACT_SORT_OPTIONS } from '@/types'
 import { parseCrmMeta } from '@/lib/crm-fields'
-import type { ContactFilters, Contact } from '@/types'
+import type { ContactFilters, Contact, ContactSortKey } from '@/types'
 import { ContactDetail } from '@/components/contacts/ContactDetail'
 
 function getOrcamento(origin: string | null): string | null {
@@ -49,7 +49,7 @@ export function Contacts() {
   const orcamentoAnos = Array.from({ length: currentYear - 2011 }, (_, i) => String(currentYear - i))
 
   const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
-  const [filters, setFilters] = useState<ContactFilters>({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, orcamento_ano: '', orcamento_mes: '', temperatura: '', page: 0 })
+  const [filters, setFilters] = useState<ContactFilters>({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, orcamento_ano: '', orcamento_mes: '', temperatura: '', sort: 'recente', page: 0 })
   const [searchInput, setSearchInput] = useState('')
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
 
@@ -72,7 +72,7 @@ export function Contacts() {
   }, [searchInput])
 
   const clearFilters = () => {
-    setFilters({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, orcamento_ano: '', orcamento_mes: '', temperatura: '', page: 0 })
+    setFilters({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, orcamento_ano: '', orcamento_mes: '', temperatura: '', sort: 'recente' as ContactSortKey, page: 0 })
     setSearchInput('')
   }
 
@@ -96,6 +96,8 @@ export function Contacts() {
                 value={searchInput} onChange={e => setSearchInput(e.target.value)} />
             </form>
           </div>
+          <Select options={CONTACT_SORT_OPTIONS} placeholder="Ordenar"
+            value={filters.sort} onChange={e => setFilters(f => ({ ...f, sort: e.target.value as ContactSortKey, page: 0 }))} className="lg:w-48" />
           <Select options={ESTADOS_BR.map(uf => ({ value: uf, label: uf }))} placeholder="Estado"
             value={filters.estado} onChange={e => setFilters(f => ({ ...f, estado: e.target.value, page: 0 }))} className="lg:w-28" />
           <Select options={vendors.map(v => ({ value: v.id, label: v.name }))} placeholder="Vendedor"

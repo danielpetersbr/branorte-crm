@@ -8,10 +8,21 @@ export function useContacts(filters: ContactFilters) {
   return useQuery({
     queryKey: ['contacts', filters],
     queryFn: async () => {
+      const sortKey = filters.sort || 'recente'
+      const sortMap: Record<string, { col: string; asc: boolean; nullsFirst?: boolean }> = {
+        recente:           { col: 'created_at',     asc: false },
+        antigo:            { col: 'created_at',     asc: true },
+        nome_az:           { col: 'name',           asc: true,  nullsFirst: false },
+        nome_za:           { col: 'name',           asc: false, nullsFirst: false },
+        orcamento_recente: { col: 'data_orcamento', asc: false, nullsFirst: false },
+        orcamento_antigo:  { col: 'data_orcamento', asc: true,  nullsFirst: false },
+        estado_az:         { col: 'state',          asc: true,  nullsFirst: false },
+      }
+      const so = sortMap[sortKey] ?? sortMap.recente
       let query = supabase
         .from('contacts')
         .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false })
+        .order(so.col, { ascending: so.asc, nullsFirst: so.nullsFirst ?? !so.asc })
 
       if (filters.search) {
         query = query.or(`name.ilike.%${filters.search}%,phone.ilike.%${filters.search}%`)
