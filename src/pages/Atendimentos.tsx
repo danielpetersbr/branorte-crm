@@ -270,38 +270,34 @@ export function Atendimentos() {
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Chegou</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Lead</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Telefone</th>
-                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Vendedor</th>
-                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Status</th>
-                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Animal · Qtd · Precisa</th>
-                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Perfil fábrica</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Criativo</th>
-                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Última msg</th>
-                    <th className="text-right text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap"></th>
+                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Momento de compra</th>
+                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Finalidade da fábrica</th>
+                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Animal</th>
+                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Qtd</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map(r => {
                     const tel = (r.telefone || '').replace(/\D/g, '')
                     const uf = ufFromTelefone(r.telefone)
-                    const status = (r.status_real ?? '') as StatusReal
-                    const statusInfo = STATUS_TONE[status]
-                    const animal = r.qual_animal && r.qual_animal !== 'não informado' ? r.qual_animal : null
-                    const qtd = r.quantidade && r.quantidade !== '0' ? r.quantidade : null
-                    const precisa = r.o_que_precisa
-                    const animalLine = [animal, qtd, precisa].filter(Boolean).join(' · ')
                     const criativoNome = r.criativo_facebook?.nome_oficial || r.criativo_facebook?.headline
                     const isHot = isHotLead(r.quando_investir ?? null)
                     const isFresh = isFreshLead(r.primeira_data ?? r.created_at)
+                    const finTone = r.finalidade_fabrica ? FINALIDADE_TONE[r.finalidade_fabrica] : null
+                    const quandoTone = r.quando_investir ? QUANDO_TONE[r.quando_investir] : null
                     return (
                       <tr key={r.id}
                           className={`group border-b border-border/60 last:border-0 transition-colors
-                                     ${isHot ? 'bg-danger-bg/30 hover:bg-danger-bg/50' : 'hover:bg-surface'}`}
-                          style={isHot ? { borderLeft: '2px solid hsl(var(--danger))' } : undefined}>
+                                     ${isHot ? 'bg-danger-bg/40 hover:bg-danger-bg/60' : 'hover:bg-surface'}`}
+                          style={isHot ? { boxShadow: 'inset 3px 0 0 0 hsl(var(--danger))' } : undefined}>
+                        {/* CHEGOU */}
                         <td className="px-3 py-2.5 whitespace-nowrap" title={r.primeira_data ?? r.created_at ?? ''}>
                           <span className="text-[11px] text-ink-muted font-mono tabular-nums">
                             {formatDateTimeShort(r.primeira_data ?? r.created_at)}
                           </span>
                         </td>
+                        {/* LEAD */}
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           <div className="flex items-center gap-2.5 min-w-[180px]">
                             <Avatar name={r.nome} size="md" pulse={isFresh} />
@@ -324,92 +320,81 @@ export function Atendimentos() {
                             </div>
                           </div>
                         </td>
+                        {/* TELEFONE */}
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           <span className="text-[12px] text-ink-muted font-mono tabular-nums">
                             {tel ? formatPhone(tel) : '—'}
                           </span>
                         </td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">
-                          {r.responsavel ? (
-                            <div className="flex items-center gap-1.5">
-                              <Avatar name={r.responsavel} size="sm" />
-                              <span className="text-[12px] text-ink-muted">{r.responsavel}</span>
-                            </div>
-                          ) : (
-                            <span className="text-[11px] text-ink-faint italic">a definir</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">
-                          {statusInfo ? (
-                            <StatusDot tone={statusInfo.tone} label={statusInfo.label} />
-                          ) : (
-                            <span className="text-[11px] text-ink-faint">—</span>
-                          )}
-                        </td>
+                        {/* CRIATIVO */}
                         <td className="px-3 py-2.5">
-                          <span className="text-[12px] text-ink-muted truncate max-w-[220px] block" title={animalLine}>
-                            {animalLine || <span className="text-ink-faint">—</span>}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <PerfilFabricaCell
-                            finalidade={r.finalidade_fabrica}
-                            quantos={r.quantos_animais}
-                            capacidade={r.capacidade_producao}
-                            quando={r.quando_investir}
-                          />
-                        </td>
-                        <td className="px-3 py-2.5">
-                          {criativoNome ? (
-                            <div className="flex items-center gap-1.5 min-w-0 max-w-[180px]">
+                          {r.criativo_codigo || criativoNome ? (
+                            <div className="flex items-center gap-1.5 min-w-0 max-w-[200px]">
                               {r.criativo_codigo && (
                                 <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-2 text-ink-muted shrink-0">
                                   {r.criativo_codigo}
                                 </span>
                               )}
-                              <span className="text-[11px] text-ink-faint truncate" title={criativoNome}>
-                                {criativoNome}
-                              </span>
+                              {criativoNome && (
+                                <span className="text-[11px] text-ink-faint truncate" title={criativoNome}>
+                                  {criativoNome}
+                                </span>
+                              )}
                             </div>
-                          ) : r.criativo_codigo ? (
-                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-2 text-ink-muted">
-                              {r.criativo_codigo}
-                            </span>
                           ) : (
                             <span className="text-[11px] text-ink-faint">—</span>
                           )}
                         </td>
+                        {/* MOMENTO DE COMPRA */}
                         <td className="px-3 py-2.5 whitespace-nowrap">
-                          <span className="text-[11px] text-ink-faint tabular-nums">
-                            {r.ultima_msg ? formatRelative(r.ultima_msg) : '—'}
-                          </span>
+                          {r.quando_investir ? (
+                            <Badge style={{
+                              background: `hsl(var(--${quandoTone ?? 'surface-2'}-bg))`,
+                              color: `hsl(var(--${quandoTone ?? 'ink-muted'}))`,
+                            }} className="gap-1">
+                              {r.quando_investir === 'Agora' && <Flame className="h-2.5 w-2.5" />}
+                              {r.quando_investir === 'Em até 3 meses' && <AlarmClock className="h-2.5 w-2.5" />}
+                              {r.quando_investir}
+                            </Badge>
+                          ) : (
+                            <span className="text-[11px] text-ink-faint">—</span>
+                          )}
                         </td>
-                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {tel && (
-                              <>
-                                <a href={whatsappLink(tel)} target="_blank" rel="noopener" title="WhatsApp"
-                                   className="h-7 w-7 inline-flex items-center justify-center rounded-md text-success hover:bg-success-bg transition-colors">
-                                  <MessageCircle className="h-3.5 w-3.5" />
-                                </a>
-                                <a href={`tel:+${tel}`} title="Ligar"
-                                   className="h-7 w-7 inline-flex items-center justify-center rounded-md text-info hover:bg-info-bg transition-colors">
-                                  <Phone className="h-3.5 w-3.5" />
-                                </a>
-                              </>
-                            )}
-                            <a href={`${AUDITORIA_BASE}/atendimentos/${r.id}`} target="_blank" rel="noopener" title="Abrir auditoria"
-                               className="h-7 w-7 inline-flex items-center justify-center rounded-md text-ink-faint hover:text-ink hover:bg-surface-2 transition-colors">
-                              <ExternalLink className="h-3.5 w-3.5" />
-                            </a>
-                          </div>
+                        {/* FINALIDADE DA FÁBRICA */}
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          {r.finalidade_fabrica ? (
+                            <Badge style={{
+                              background: `hsl(var(--${finTone ?? 'surface-2'}-bg))`,
+                              color: `hsl(var(--${finTone ?? 'ink-muted'}))`,
+                            }}>
+                              {r.finalidade_fabrica}
+                            </Badge>
+                          ) : (
+                            <span className="text-[11px] text-ink-faint">—</span>
+                          )}
+                        </td>
+                        {/* ANIMAL */}
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          {r.qual_animal ? (
+                            <span className="text-[12px] text-ink-muted">{r.qual_animal}</span>
+                          ) : (
+                            <span className="text-[11px] text-ink-faint">—</span>
+                          )}
+                        </td>
+                        {/* QTD */}
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          {r.quantos_animais ? (
+                            <span className="text-[12px] text-ink-muted tabular-nums">{r.quantos_animais}</span>
+                          ) : (
+                            <span className="text-[11px] text-ink-faint">—</span>
+                          )}
                         </td>
                       </tr>
                     )
                   })}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="px-4 py-16 text-center">
+                      <td colSpan={8} className="px-4 py-16 text-center">
                         <div className="flex flex-col items-center gap-2">
                           <div className="h-10 w-10 rounded-full bg-surface-2 flex items-center justify-center">
                             <Inbox className="h-5 w-5 text-ink-faint" />
