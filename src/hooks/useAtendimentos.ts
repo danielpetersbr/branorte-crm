@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabaseAuditoria } from '@/lib/supabase'
 import { ATENDIMENTO_PAGE_SIZE, type Atendimento, type StatusReal } from '@/types/atendimento'
 import { DDD_TO_UF } from '@/lib/ddd-uf'
@@ -139,5 +139,24 @@ export function useAtendimentoResponsaveis() {
       return Array.from(set).sort()
     },
     staleTime: 5 * 60_000,
+  })
+}
+
+// Exclui um atendimento (ou todas as rows do mesmo cliente, via auditoria_ids).
+// Usa RPC SECURITY DEFINER pq anon nao tem DELETE direto na tabela.
+export function useDeleteAtendimento() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      if (!ids.length) throw new Error('Nenhum id pra excluir')
+      const { data, error } = await supabaseAuditoria.rpc('delete_atendimentos', { p_ids: ids })
+      if (error) throw error
+      return data as { success: boolean; deleted?: number; error?: string }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['atendimentos'] })
+      qc.invalidateQueries({ queryKey: ['atendimentos-kpis'] })
+      qc.invalidateQueries({ queryKey: ['atendimentos-responsaveis'] })
+    },
   })
 }

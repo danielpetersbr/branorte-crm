@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, ExternalLink, Flame, AlarmClock, AlertTriangle, CheckCircle2, Inbox } from 'lucide-react'
+import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, ExternalLink, Flame, AlarmClock, AlertTriangle, CheckCircle2, Inbox, Trash2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -12,7 +12,7 @@ import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTime
 import { ufFromTelefone } from '@/lib/ddd-uf'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, type StatusReal } from '@/types/atendimento'
-import { useAtendimentos, useAtendimentoKpis, useAtendimentoResponsaveis, type DataPreset } from '@/hooks/useAtendimentos'
+import { useAtendimentos, useAtendimentoKpis, useAtendimentoResponsaveis, useDeleteAtendimento, type DataPreset } from '@/hooks/useAtendimentos'
 
 const DATA_PRESETS: { value: DataPreset; label: string }[] = [
   { value: 'hoje',  label: 'Hoje' },
@@ -164,6 +164,7 @@ export function Atendimentos() {
   const { data, isLoading } = useAtendimentos(filters)
   const { data: kpis } = useAtendimentoKpis()
   const { data: responsaveis } = useAtendimentoResponsaveis()
+  const deleteMut = useDeleteAtendimento()
 
   const rows = data?.rows ?? []
   const total = data?.total ?? 0
@@ -308,6 +309,7 @@ export function Atendimentos() {
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Momento de compra</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap" title="Cliente clicou no botão FALAR COM CONSULTOR">Tocou no botão</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Vendedor</th>
+                    <th className="text-right text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -463,12 +465,30 @@ export function Atendimentos() {
                             <span className="text-[11px] text-ink-faint italic">a definir</span>
                           )}
                         </td>
+                        {/* AÇÕES */}
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                          <button
+                            type="button"
+                            disabled={deleteMut.isPending}
+                            onClick={() => {
+                              const ids = (r.auditoria_ids && r.auditoria_ids.length > 0) ? r.auditoria_ids : [r.id]
+                              const label = r.nome || r.telefone || 'lead'
+                              if (window.confirm(`Excluir lead "${label}"?\n\nEssa ação remove ${ids.length} ${ids.length === 1 ? 'registro' : 'registros'} do banco. Não pode ser desfeita.`)) {
+                                deleteMut.mutate(ids)
+                              }
+                            }}
+                            title="Excluir lead"
+                            className="h-7 w-7 inline-flex items-center justify-center rounded-md text-ink-faint hover:text-danger hover:bg-danger-bg opacity-0 group-hover:opacity-100 transition-all"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </td>
                       </tr>
                     )
                   })}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={12} className="px-4 py-16 text-center">
+                      <td colSpan={13} className="px-4 py-16 text-center">
                         <div className="flex flex-col items-center gap-2">
                           <div className="h-10 w-10 rounded-full bg-surface-2 flex items-center justify-center">
                             <Inbox className="h-5 w-5 text-ink-faint" />
