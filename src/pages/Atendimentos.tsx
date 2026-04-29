@@ -9,7 +9,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { StatusDot } from '@/components/ui/StatusDot'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTimeShort, estadoNome } from '@/lib/utils'
-import { ufFromTelefone } from '@/lib/ddd-uf'
+import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, type StatusReal } from '@/types/atendimento'
 import { useAtendimentos, useAtendimentoKpis, useAtendimentoResponsaveis, useDeleteAtendimento, type DataPreset } from '@/hooks/useAtendimentos'
@@ -357,9 +357,18 @@ export function Atendimentos() {
                               </span>
                               <span className="text-[12px] text-ink-muted">{estadoNome(uf)}</span>
                             </div>
-                          ) : (
-                            <span className="text-[11px] text-ink-faint">—</span>
-                          )}
+                          ) : (() => {
+                            const pais = paisDoTelefone(r.telefone)
+                            if (!pais) return <span className="text-[11px] text-ink-faint">—</span>
+                            return (
+                              <div className="flex items-center gap-1.5" title="Lead internacional">
+                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-info/10 text-info">
+                                  {pais.sigla}
+                                </span>
+                                <span className="text-[12px] text-ink-muted">{pais.nome}</span>
+                              </div>
+                            )
+                          })()}
                         </td>
                         {/* TELEFONE */}
                         <td className="px-3 py-2.5 whitespace-nowrap">
