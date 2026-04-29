@@ -276,6 +276,7 @@ export function Atendimentos() {
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Finalidade da fábrica</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Animal</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Qtd</th>
+                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Vendedor</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -396,12 +397,23 @@ export function Atendimentos() {
                             <span className="text-[11px] text-ink-faint">—</span>
                           )}
                         </td>
+                        {/* VENDEDOR */}
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          {r.responsavel ? (
+                            <div className="flex items-center gap-1.5">
+                              <Avatar name={r.responsavel} size="sm" />
+                              <span className="text-[12px] text-ink-muted">{r.responsavel}</span>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-ink-faint italic">a definir</span>
+                          )}
+                        </td>
                       </tr>
                     )
                   })}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={9} className="px-4 py-16 text-center">
+                      <td colSpan={10} className="px-4 py-16 text-center">
                         <div className="flex flex-col items-center gap-2">
                           <div className="h-10 w-10 rounded-full bg-surface-2 flex items-center justify-center">
                             <Inbox className="h-5 w-5 text-ink-faint" />
