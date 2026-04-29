@@ -1,7 +1,30 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { supabaseAuditoria } from '@/lib/supabase'
+import { supabaseAuditoria, supabase } from '@/lib/supabase'
 import { ATENDIMENTO_PAGE_SIZE, type Atendimento, type StatusReal } from '@/types/atendimento'
 import { DDD_TO_UF } from '@/lib/ddd-uf'
+
+/**
+ * Pega primeiro nome do vendedor logado. NULL se admin (sem filtro)
+ * ou se não-vendor. Usado pra filtrar atendimentos por
+ * responsavel ILIKE 'Vendor%' já que RLS em auditoria schema é complexa.
+ */
+async function getCurrentVendorFirstName(): Promise<string | null> {
+  const { data: sess } = await supabase.auth.getSession()
+  if (!sess.session) return null
+  const { data: profile } = await supabase
+    .from('user_profiles')
+    .select('role, vendor_id')
+    .eq('id', sess.session.user.id)
+    .maybeSingle()
+  if (!profile || profile.role !== 'vendor' || !profile.vendor_id) return null
+  const { data: vendor } = await supabase
+    .from('vendors')
+    .select('name')
+    .eq('id', profile.vendor_id)
+    .maybeSingle()
+  if (!vendor?.name) return null
+  return vendor.name.split(/\s+/)[0]  // só primeiro nome (ex: "GUSTAVO" → match "Gustavo Vicente")
+}
 
 export type DataPreset = '' | 'hoje' | 'ontem' | '7d' | '30d' | 'mes'
 
@@ -45,11 +68,17 @@ export function useAtendimentos(filters: AtendimentoFilters) {
   return useQuery({
     queryKey: ['atendimentos', filters],
     queryFn: async () => {
+      const vendorFirst = await getCurrentVendorFirstName()
       let query = supabaseAuditoria
         .from('atendimentos_por_cliente')
         .select('*', { count: 'exact' })
         .eq('is_internal', false)
         .order('ultima_msg', { ascending: false, nullsFirst: false })
+
+      // Vendor vê só seus atendimentos (matching responsavel via primeiro nome)
+      if (vendorFirst) {
+        query = query.ilike('responsavel', `${vendorFirst}%`)
+      }
 
       if (filters.search) {
         const escaped = filters.search.replace(/[%_]/g, c => `\\${c}`)
@@ -103,8 +132,10 @@ function startOfTodayISO(): string {
 
 // Aplica os filtros base (search/responsavel/status/uf/data) na query head-only.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function applyBaseFilters(query: any, filters?: Partial<AtendimentoFilters>): any {
+function applyBaseFilters(query: any, filters?: Partial<AtendimentoFilters>, vendorFirst?: string | null): any {
   let q = query
+  // Vendor scope: força filtro responsavel ILIKE 'Vendor%' antes de qualquer outra coisa
+  if (vendorFirst) q = q.ilike('responsavel', `${vendorFirst}%`)
   if (filters?.search) {
     const escaped = filters.search.replace(/[%_]/g, c => `\\${c}`)
     q = q.or(`nome.ilike.%${escaped}%,telefone.ilike.%${escaped}%`)
@@ -135,12 +166,13 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
   return useQuery({
     queryKey: ['atendimentos-kpis', filterKey],
     queryFn: async (): Promise<AtendimentoKpis> => {
+      const vendorFirst = await getCurrentVendorFirstName()
       const baseQ = () => {
         const q = supabaseAuditoria
           .from('atendimentos_por_cliente')
           .select('*', { count: 'exact', head: true })
           .eq('is_internal', false)
-        return applyBaseFilters(q, filters)
+        return applyBaseFilters(q, filters, vendorFirst)
       }
 
       const todayIso = startOfTodayISO()
