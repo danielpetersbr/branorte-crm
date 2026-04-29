@@ -279,10 +279,10 @@ export function Atendimentos() {
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Telefone</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Criativo</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Motivo do contato</th>
-                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Momento de compra</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Finalidade da fábrica</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Animal</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Qtd</th>
+                    <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Momento de compra</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap" title="Cliente clicou no botão FALAR COM CONSULTOR">Tocou no botão</th>
                     <th className="text-left text-[10px] uppercase tracking-wider font-semibold text-ink-faint px-3 py-2.5 whitespace-nowrap">Vendedor</th>
                   </tr>
@@ -374,21 +374,6 @@ export function Atendimentos() {
                             <span className="text-[11px] text-ink-faint">—</span>
                           )}
                         </td>
-                        {/* MOMENTO DE COMPRA */}
-                        <td className="px-3 py-2.5 whitespace-nowrap">
-                          {r.quando_investir ? (
-                            <Badge style={{
-                              background: `hsl(var(--${quandoTone ?? 'surface-2'}-bg))`,
-                              color: `hsl(var(--${quandoTone ?? 'ink-muted'}))`,
-                            }} className="gap-1">
-                              {r.quando_investir === 'Agora' && <Flame className="h-2.5 w-2.5" />}
-                              {r.quando_investir === 'Em até 3 meses' && <AlarmClock className="h-2.5 w-2.5" />}
-                              {r.quando_investir}
-                            </Badge>
-                          ) : (
-                            <span className="text-[11px] text-ink-faint">—</span>
-                          )}
-                        </td>
                         {/* FINALIDADE DA FÁBRICA */}
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           {r.finalidade_fabrica ? (
@@ -414,6 +399,21 @@ export function Atendimentos() {
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           {r.quantos_animais ? (
                             <span className="text-[12px] text-ink-muted tabular-nums">{r.quantos_animais}</span>
+                          ) : (
+                            <span className="text-[11px] text-ink-faint">—</span>
+                          )}
+                        </td>
+                        {/* MOMENTO DE COMPRA */}
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          {r.quando_investir ? (
+                            <Badge style={{
+                              background: `hsl(var(--${quandoTone ?? 'surface-2'}-bg))`,
+                              color: `hsl(var(--${quandoTone ?? 'ink-muted'}))`,
+                            }} className="gap-1">
+                              {r.quando_investir === 'Agora' && <Flame className="h-2.5 w-2.5" />}
+                              {r.quando_investir === 'Em até 3 meses' && <AlarmClock className="h-2.5 w-2.5" />}
+                              {r.quando_investir}
+                            </Badge>
                           ) : (
                             <span className="text-[11px] text-ink-faint">—</span>
                           )}
