@@ -24,16 +24,41 @@ export function useContacts(filters: ContactFilters) {
       }
       if (filters.status) query = query.eq('status', filters.status)
       if (filters.orcamento_ano) {
-        query = query.like('origin', `Orcamento ${filters.orcamento_ano}-%`)
+        // Cruza com orcamentos_files: pega contact_ids que têm orçamento neste ano
+        // (eventualmente filtrando por mês via mtime_iso). Mais preciso do que parsear
+        // origin — o origin no banco é só "Orcamento AAAA" sem o número.
+        let orcQ = supabase
+          .from('orcamentos_files')
+          .select('contact_id')
+          .eq('ano', Number(filters.orcamento_ano))
+          .not('contact_id', 'is', null)
+          .limit(10000)
         if (filters.orcamento_mes) {
           const m = Number(filters.orcamento_mes)
           const month = String(m).padStart(2, '0')
           const yr = Number(filters.orcamento_ano)
-          const nextMonth = m === 12 ? `${yr + 1}-01-01` : `${yr}-${String(m + 1).padStart(2, '0')}-01`
-          query = query.gte('data_orcamento', `${yr}-${month}-01`).lt('data_orcamento', nextMonth)
+          const nextYr = m === 12 ? yr + 1 : yr
+          const nextM = m === 12 ? '01' : String(m + 1).padStart(2, '0')
+          orcQ = orcQ
+            .gte('mtime_iso', `${yr}-${month}-01T00:00:00Z`)
+            .lt('mtime_iso', `${nextYr}-${nextM}-01T00:00:00Z`)
         }
+        const { data: orcRows, error: orcErr } = await orcQ
+        if (orcErr) throw orcErr
+        const idsSet = new Set<string>()
+        for (const r of (orcRows ?? []) as { contact_id: string | null }[]) {
+          if (r.contact_id) idsSet.add(r.contact_id)
+        }
+        const ids = Array.from(idsSet)
+        if (ids.length === 0) {
+          return { contacts: [], total: 0 }
+        }
+        query = query.in('id', ids)
       } else if (filters.orcamento) {
-        query = query.like('origin', 'Orcamento%')
+        // Toggle sem ano: catch tanto "Orcamento AAAA" (origin antigo) quanto
+        // "Orçamento (auto-link)" / "Orçamento (auto-link bucket)" (stubs criados
+        // ao linkar 100% dos orçamentos a contatos).
+        query = query.or('origin.ilike.Orcamento%,origin.ilike.Orçamento%')
       }
       if (filters.temperatura) query = query.like('notes', `%"temp":"${filters.temperatura}"%`)
 

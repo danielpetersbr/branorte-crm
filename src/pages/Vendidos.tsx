@@ -34,7 +34,7 @@ function useSoldContacts(filters: { search: string; vendor_id: string; estado: s
         .from('contacts')
         .select('*', { count: 'exact' })
         .eq('status', 'FECHADO')
-        .like('origin', 'Orcamento%')
+        .or('origin.ilike.Orcamento%,origin.ilike.Orçamento%')
         .order('origin', { ascending: false })
 
       if (filters.search) {
@@ -43,14 +43,35 @@ function useSoldContacts(filters: { search: string; vendor_id: string; estado: s
       if (filters.vendor_id) query = query.eq('vendor_id', filters.vendor_id)
       if (filters.estado) query = query.eq('state', filters.estado)
       if (filters.ano) {
-        query = query.like('origin', `Orcamento ${filters.ano}-%`)
-      }
-      if (filters.ano && filters.mes) {
-        const m = Number(filters.mes)
-        const month = String(m).padStart(2, '0')
-        const yr = Number(filters.ano)
-        const nextMonth = m === 12 ? `${yr + 1}-01-01` : `${yr}-${String(m + 1).padStart(2, '0')}-01`
-        query = query.gte('data_orcamento', `${yr}-${month}-01`).lt('data_orcamento', nextMonth)
+        // Cruza com orcamentos_files: pega contact_ids que têm orçamento neste ano
+        // (eventualmente filtrando por mês via mtime_iso).
+        let orcQ = supabase
+          .from('orcamentos_files')
+          .select('contact_id')
+          .eq('ano', Number(filters.ano))
+          .not('contact_id', 'is', null)
+          .limit(10000)
+        if (filters.mes) {
+          const m = Number(filters.mes)
+          const month = String(m).padStart(2, '0')
+          const yr = Number(filters.ano)
+          const nextYr = m === 12 ? yr + 1 : yr
+          const nextM = m === 12 ? '01' : String(m + 1).padStart(2, '0')
+          orcQ = orcQ
+            .gte('mtime_iso', `${yr}-${month}-01T00:00:00Z`)
+            .lt('mtime_iso', `${nextYr}-${nextM}-01T00:00:00Z`)
+        }
+        const { data: orcRows, error: orcErr } = await orcQ
+        if (orcErr) throw orcErr
+        const idsSet = new Set<string>()
+        for (const r of (orcRows ?? []) as { contact_id: string | null }[]) {
+          if (r.contact_id) idsSet.add(r.contact_id)
+        }
+        const ids = Array.from(idsSet)
+        if (ids.length === 0) {
+          return { contacts: [], total: 0 }
+        }
+        query = query.in('id', ids)
       }
 
       const from = filters.page * PAGE_SIZE
