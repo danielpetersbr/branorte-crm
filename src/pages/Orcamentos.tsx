@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useOrcamentoStats } from '@/hooks/useOrcamentoStats'
 import { useVendors } from '@/hooks/useVendors'
 import { Card, CardContent } from '@/components/ui/Card'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatNumber } from '@/lib/utils'
-import { FileText, TrendingUp, Calendar, BarChart2, LayoutDashboard, List } from 'lucide-react'
+import { FileText, TrendingUp, Calendar, BarChart2 } from 'lucide-react'
 import { OrcamentosLista } from '@/pages/OrcamentosLista'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -19,7 +20,8 @@ const BRAND_COLORS = [
 
 export function Orcamentos() {
   const [viewMode, setViewMode] = useState<'year' | 'month'>('year')
-  const [tab, setTab] = useState<'painel' | 'lista'>('painel')
+  const loc = useLocation()
+  const tab: 'painel' | 'lista' = loc.pathname.startsWith('/orcamentos/lista') ? 'lista' : 'painel'
 
   const { data, isLoading } = useOrcamentoStats()
   const { data: vendorsList } = useVendors({ incluirInativos: true })
@@ -64,54 +66,30 @@ export function Orcamentos() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3 flex-wrap">
+        {tab === 'painel' && hasMonthData && (
           <div className="flex rounded-lg border border-surface-border overflow-hidden">
             <button
-              onClick={() => setTab('painel')}
-              className={`px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1.5 ${
-                tab === 'painel'
+              onClick={() => setViewMode('year')}
+              className={`px-3 py-2 text-sm font-medium transition-colors ${
+                viewMode === 'year'
                   ? 'bg-brand-600 text-white'
                   : 'bg-white text-text-secondary hover:bg-surface-tertiary'
               }`}
             >
-              <LayoutDashboard className="h-4 w-4" /> Painel
+              Anual
             </button>
             <button
-              onClick={() => setTab('lista')}
-              className={`px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1.5 ${
-                tab === 'lista'
+              onClick={() => setViewMode('month')}
+              className={`px-3 py-2 text-sm font-medium transition-colors ${
+                viewMode === 'month'
                   ? 'bg-brand-600 text-white'
                   : 'bg-white text-text-secondary hover:bg-surface-tertiary'
               }`}
             >
-              <List className="h-4 w-4" /> Lista
+              Mensal
             </button>
           </div>
-          {tab === 'painel' && hasMonthData && (
-            <div className="flex rounded-lg border border-surface-border overflow-hidden">
-              <button
-                onClick={() => setViewMode('year')}
-                className={`px-3 py-2 text-sm font-medium transition-colors ${
-                  viewMode === 'year'
-                    ? 'bg-brand-600 text-white'
-                    : 'bg-white text-text-secondary hover:bg-surface-tertiary'
-                }`}
-              >
-                Anual
-              </button>
-              <button
-                onClick={() => setViewMode('month')}
-                className={`px-3 py-2 text-sm font-medium transition-colors ${
-                  viewMode === 'month'
-                    ? 'bg-brand-600 text-white'
-                    : 'bg-white text-text-secondary hover:bg-surface-tertiary'
-                }`}
-              >
-                Mensal
-              </button>
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
       {tab === 'lista' && <OrcamentosLista />}

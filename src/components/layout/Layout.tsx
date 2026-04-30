@@ -1,5 +1,5 @@
-import { Outlet, NavLink } from 'react-router-dom'
-import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, Shield, LogOut } from 'lucide-react'
+import { Outlet, NavLink, useLocation } from 'react-router-dom'
+import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, Shield, LogOut, BarChart2, List } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { useAtendimentoKpis } from '@/hooks/useAtendimentos'
@@ -10,6 +10,8 @@ interface NavItem {
   label: string
   icon: typeof LayoutDashboard
   countKey?: 'atendimentos'
+  children?: NavItem[]
+  matchPrefix?: boolean  // se true, parent fica ativo quando path começa com `to`
 }
 
 const PRIMARY: NavItem[] = [
@@ -19,7 +21,16 @@ const PRIMARY: NavItem[] = [
   { to: '/atribuir', label: 'Atribuir', icon: UserPlus },
 ]
 const SECONDARY: NavItem[] = [
-  { to: '/orcamentos', label: 'Orçamentos', icon: FileText },
+  {
+    to: '/orcamentos',
+    label: 'Orçamentos',
+    icon: FileText,
+    matchPrefix: true,
+    children: [
+      { to: '/orcamentos', label: 'Painel', icon: BarChart2 },
+      { to: '/orcamentos/lista', label: 'Lista', icon: List },
+    ],
+  },
   { to: '/vendidos', label: 'Vendidos', icon: CheckCircle },
 ]
 
@@ -52,47 +63,90 @@ export function Layout() {
   const [dark, toggleDark] = useDarkMode()
   const [collapsed, toggleCollapsed] = useCollapsed()
   const { profile, signOut } = useAuth()
+  const loc = useLocation()
   const isAdmin = profile?.role === 'admin'
 
   const counts: Partial<Record<NonNullable<NavItem['countKey']>, number>> = {
     atendimentos: kpis?.total,
   }
 
-  const renderItem = (l: NavItem) => (
+  const renderChild = (c: NavItem) => (
     <NavLink
-      key={l.to}
-      to={l.to}
-      end={l.to === '/'}
-      title={collapsed ? l.label : undefined}
+      key={c.to}
+      to={c.to}
+      end
+      title={collapsed ? c.label : undefined}
       className={({ isActive }) => cn(
-        'group relative flex items-center rounded-md text-[13px] font-medium transition-all duration-150',
-        collapsed ? 'justify-center h-9 w-9' : 'gap-2.5 px-3 py-2',
+        'group relative flex items-center rounded-md text-[12px] font-medium transition-all duration-150',
+        collapsed ? 'justify-center h-8 w-8' : 'gap-2 pl-7 pr-3 py-1.5',
         isActive
-          ? 'bg-accent-bg text-accent'
+          ? 'text-accent'
           : 'text-ink-muted hover:text-ink hover:bg-surface-2',
       )}
     >
       {({ isActive }: { isActive: boolean }) => (
         <>
-          {isActive && !collapsed && <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-r bg-accent" />}
-          <l.icon className={cn('h-[15px] w-[15px] shrink-0', isActive ? 'text-accent' : 'text-ink-faint group-hover:text-ink-muted')} />
-          {!collapsed && (
-            <>
-              <span className="flex-1">{l.label}</span>
-              {l.countKey && counts[l.countKey] !== undefined && (
-                <span className={cn(
-                  'text-[10px] tabular-nums px-1.5 py-0.5 rounded-md font-mono',
-                  isActive ? 'bg-accent/10 text-accent' : 'bg-surface-2 text-ink-faint',
-                )}>
-                  {counts[l.countKey]}
-                </span>
-              )}
-            </>
-          )}
+          <c.icon className={cn('h-[13px] w-[13px] shrink-0', isActive ? 'text-accent' : 'text-ink-faint group-hover:text-ink-muted')} />
+          {!collapsed && <span className="flex-1">{c.label}</span>}
         </>
       )}
     </NavLink>
   )
+
+  const renderItem = (l: NavItem) => {
+    const parentActive = l.matchPrefix
+      ? loc.pathname === l.to || loc.pathname.startsWith(l.to + '/')
+      : false
+    const showChildren = !collapsed && l.children && parentActive
+
+    return (
+      <div key={l.to}>
+        <NavLink
+          to={l.to}
+          end={l.to === '/' && !l.matchPrefix}
+          title={collapsed ? l.label : undefined}
+          className={({ isActive }) => {
+            const active = l.matchPrefix ? parentActive : isActive
+            return cn(
+              'group relative flex items-center rounded-md text-[13px] font-medium transition-all duration-150',
+              collapsed ? 'justify-center h-9 w-9' : 'gap-2.5 px-3 py-2',
+              active
+                ? 'bg-accent-bg text-accent'
+                : 'text-ink-muted hover:text-ink hover:bg-surface-2',
+            )
+          }}
+        >
+          {({ isActive }: { isActive: boolean }) => {
+            const active = l.matchPrefix ? parentActive : isActive
+            return (
+              <>
+                {active && !collapsed && <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-r bg-accent" />}
+                <l.icon className={cn('h-[15px] w-[15px] shrink-0', active ? 'text-accent' : 'text-ink-faint group-hover:text-ink-muted')} />
+                {!collapsed && (
+                  <>
+                    <span className="flex-1">{l.label}</span>
+                    {l.countKey && counts[l.countKey] !== undefined && (
+                      <span className={cn(
+                        'text-[10px] tabular-nums px-1.5 py-0.5 rounded-md font-mono',
+                        active ? 'bg-accent/10 text-accent' : 'bg-surface-2 text-ink-faint',
+                      )}>
+                        {counts[l.countKey]}
+                      </span>
+                    )}
+                  </>
+                )}
+              </>
+            )
+          }}
+        </NavLink>
+        {showChildren && (
+          <div className="mt-0.5 flex flex-col gap-0.5">
+            {l.children!.map(renderChild)}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen flex flex-col lg:flex-row bg-bg">

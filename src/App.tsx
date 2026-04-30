@@ -56,6 +56,7 @@ function AppRoutes() {
         <Route path="/contatos" element={<Contacts />} />
         <Route path="/atribuir" element={<Assign />} />
         <Route path="/orcamentos" element={<Orcamentos />} />
+        <Route path="/orcamentos/lista" element={<Orcamentos />} />
         <Route path="/vendidos" element={<Vendidos />} />
         <Route path="/atendimentos" element={<Atendimentos />} />
         <Route path="/perfil" element={<Perfil />} />
