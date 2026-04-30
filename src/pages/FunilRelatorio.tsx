@@ -1,13 +1,13 @@
 import { useState } from 'react'
-import { Filter, TrendingUp, Users, MessageSquare, Hand, FileText, CheckCircle, EyeOff, Tag } from 'lucide-react'
+import { Filter, TrendingUp, Users, MessageSquare, Hand, FileText, CheckCircle, EyeOff } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
-import { Badge } from '@/components/ui/Badge'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { Select } from '@/components/ui/Select'
 import { formatNumber } from '@/lib/utils'
 import { useFunilPorVendedor, type FunilStage } from '@/hooks/useFunilPorVendedor'
 import { useEtiquetas, groupEtiquetasByVendedor, type WascriptEtiqueta } from '@/hooks/useEtiquetas'
+import { classificarEtiquetas, CATEGORIA_META, type EtiquetaCategoria } from '@/lib/etiquetas-classify'
 
 const PERIODO_OPTS = [
   { value: '7', label: 'Últimos 7 dias' },
@@ -96,55 +96,8 @@ function FunilCard({ stage, etiquetas }: { stage: FunilStage; etiquetas?: Wascri
         })}
       </div>
 
-      {/* Etiquetas Wascript do vendedor */}
-      {!isAdefinir && (() => {
-        const visiveis = (etiquetas ?? []).filter(
-          e => !['NAO LIDAS','FAVORITOS','GRUPOS'].includes(e.etiqueta_nome_normalizado)
-        )
-        const totalContatos = visiveis.reduce((acc, e) => acc + (e.total_contatos ?? 0), 0)
-        return (
-          <div className="pt-2 border-t border-border/60 space-y-1.5">
-            <div className="flex items-center justify-between gap-1.5 text-[10px] uppercase tracking-wider text-ink-faint">
-              <div className="flex items-center gap-1.5">
-                <Tag className="h-3 w-3" />
-                <span>Etiquetas WhatsApp</span>
-                <span className="font-mono">({visiveis.length})</span>
-              </div>
-              {totalContatos > 0 && (
-                <span className="font-mono text-ink tabular-nums normal-case">
-                  {formatNumber(totalContatos)} <span className="text-ink-faint lowercase">contatos</span>
-                </span>
-              )}
-            </div>
-            {visiveis.length > 0 ? (
-              <div className="flex flex-wrap gap-1">
-                {visiveis.map(e => (
-                  <Badge
-                    key={e.id}
-                    title={`ID Wascript: ${e.etiqueta_id_wascript}${e.is_canonica ? ' · canônica' : ' · custom'}`}
-                    className={
-                      e.is_canonica
-                        ? 'text-[10px] bg-info-bg/40 text-info border border-info/20 inline-flex items-center gap-1'
-                        : 'text-[10px] bg-surface-2 text-ink-muted border border-border inline-flex items-center gap-1'
-                    }
-                  >
-                    <span>{e.etiqueta_nome}</span>
-                    {e.total_contatos > 0 && (
-                      <span className="font-mono tabular-nums text-ink font-semibold">
-                        {formatNumber(e.total_contatos)}
-                      </span>
-                    )}
-                  </Badge>
-                ))}
-              </div>
-            ) : (
-              <p className="text-[11px] text-warning italic">
-                ⚠ Sem etiquetas configuradas no WhatsApp dele
-              </p>
-            )}
-          </div>
-        )
-      })()}
+      {/* Etiquetas Wascript do vendedor — classificadas semanticamente */}
+      {!isAdefinir && <EtiquetasResumo etiquetas={etiquetas} />}
     </Card>
   )
 }
@@ -216,6 +169,125 @@ export function FunilRelatorio() {
           Sem dados de atendimento no período selecionado.
         </Card>
       )}
+    </div>
+  )
+}
+
+// ============================================================================
+// Bloco de etiquetas WhatsApp do vendedor: KPIs + barra de saúde + lista.
+// ============================================================================
+function EtiquetasResumo({ etiquetas }: { etiquetas?: WascriptEtiqueta[] }) {
+  const { totalContatos, porCategoria, scoreSaude, etiquetas: lista } = classificarEtiquetas(etiquetas)
+
+  if (totalContatos === 0) {
+    return (
+      <div className="pt-2 border-t border-border/60">
+        <p className="text-[11px] text-warning italic">
+          ⚠ Sem etiquetas configuradas no WhatsApp dele
+        </p>
+      </div>
+    )
+  }
+
+  // Ordem fixa pros chips de categoria (negativos por último)
+  const ordemCat: EtiquetaCategoria[] = ['novo', 'quente', 'orcamento', 'vendido', 'morto', 'outros']
+
+  // Score de saúde: cor baseada no valor
+  const scoreColor =
+    scoreSaude >= 60 ? 'text-success' :
+    scoreSaude >= 35 ? 'text-warning' :
+    'text-danger'
+
+  // Barra empilhada de saúde — uma divisão por categoria, largura proporcional
+  const segs = ordemCat
+    .filter(c => porCategoria[c] > 0)
+    .map(c => ({
+      cat: c,
+      pct: (porCategoria[c] / totalContatos) * 100,
+    }))
+
+  return (
+    <div className="pt-2 border-t border-border/60 space-y-2">
+      {/* Header: total + score saúde */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[10px] uppercase tracking-wider text-ink-faint">
+          WhatsApp <span className="font-mono text-ink">({lista.length})</span>
+        </div>
+        <div className="flex items-baseline gap-1.5">
+          <span className="font-mono text-ink tabular-nums text-[13px] font-semibold">
+            {formatNumber(totalContatos)}
+          </span>
+          <span className="text-[10px] text-ink-faint uppercase tracking-wider">contatos</span>
+          <span className={`ml-2 font-mono tabular-nums text-[12px] font-bold ${scoreColor}`} title="Saúde do funil = (vivos+vendidos) / total">
+            {scoreSaude}%
+          </span>
+        </div>
+      </div>
+
+      {/* Barra empilhada de saúde */}
+      <div className="h-2 rounded-full bg-surface-2 overflow-hidden flex">
+        {segs.map(s => (
+          <div
+            key={s.cat}
+            title={`${CATEGORIA_META[s.cat].label}: ${formatNumber(porCategoria[s.cat])} (${s.pct.toFixed(0)}%)`}
+            className="h-full transition-all duration-500"
+            style={{ width: `${s.pct}%`, background: `hsl(var(${CATEGORIA_META[s.cat].colorVar}))` }}
+          />
+        ))}
+      </div>
+
+      {/* Chips de categoria (resumo) */}
+      <div className="grid grid-cols-3 gap-1.5">
+        {ordemCat.filter(c => porCategoria[c] > 0).map(c => {
+          const meta = CATEGORIA_META[c]
+          return (
+            <div
+              key={c}
+              className={`flex items-center justify-between gap-1 px-1.5 py-1 rounded ${meta.bgClass}/40`}
+            >
+              <span className="text-[10px] truncate flex items-center gap-1">
+                <span aria-hidden>{meta.emoji}</span>
+                <span className={`font-medium ${meta.textClass}`}>{meta.label}</span>
+              </span>
+              <span className={`font-mono tabular-nums text-[11px] font-semibold ${meta.textClass}`}>
+                {formatNumber(porCategoria[c])}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Lista das top etiquetas (mostra até 6, resto colapsa) */}
+      <div className="space-y-1 pt-1">
+        {lista.slice(0, 6).map((e, i) => {
+          const meta = CATEGORIA_META[e.categoria]
+          const pct = (e.total / totalContatos) * 100
+          return (
+            <div key={`${e.categoria}-${e.nome}-${i}`} className="space-y-0.5">
+              <div className="flex items-center justify-between gap-2 text-[11px]">
+                <span className="text-ink-muted truncate flex items-center gap-1">
+                  <span className="opacity-70" aria-hidden>{meta.emoji}</span>
+                  <span>{e.nome}</span>
+                </span>
+                <span className="font-mono tabular-nums text-ink font-medium shrink-0">
+                  {formatNumber(e.total)}
+                </span>
+              </div>
+              <div className="h-1 rounded-full bg-surface-2 overflow-hidden">
+                <div
+                  className="h-full transition-all duration-500"
+                  style={{ width: `${pct}%`, background: `hsl(var(${meta.colorVar}))` }}
+                />
+              </div>
+            </div>
+          )
+        })}
+        {lista.length > 6 && (
+          <p className="text-[10px] text-ink-faint text-center pt-0.5">
+            + {lista.length - 6} etiqueta{lista.length - 6 > 1 ? 's' : ''} menor{lista.length - 6 > 1 ? 'es' : ''}
+          </p>
+        )}
+      </div>
     </div>
   )
 }
