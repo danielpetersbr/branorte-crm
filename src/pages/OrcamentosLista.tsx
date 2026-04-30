@@ -69,7 +69,6 @@ function StatusEditable({ orcamento, effectiveStatus }: { orcamento: OrcamentoFi
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute z-50 mt-1 w-52 rounded-md border border-surface-border bg-bg shadow-lg py-1 max-h-80 overflow-auto">
-            <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-text-muted">Vendedor</div>
             {STATUS_VENDEDOR_KEYS.map(s => (
               <button
                 key={s}
@@ -78,18 +77,6 @@ function StatusEditable({ orcamento, effectiveStatus }: { orcamento: OrcamentoFi
                 className={`w-full text-left text-xs px-3 py-1.5 hover:bg-surface-2 transition-colors ${effectiveStatus === s ? 'bg-accent-bg text-accent font-medium' : ''}`}
               >
                 {STATUS_VENDEDOR[s].label}
-              </button>
-            ))}
-            <div className="border-t border-surface-border my-1" />
-            <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-text-muted">Status da pasta</div>
-            {STATUS_PASTA_KEYS.map(s => (
-              <button
-                key={s}
-                onClick={() => change(s)}
-                disabled={updateMut.isPending}
-                className={`w-full text-left text-xs px-3 py-1.5 hover:bg-surface-2 transition-colors ${effectiveStatus === s ? 'bg-accent-bg text-accent font-medium' : ''}`}
-              >
-                {STATUS_PASTA[s].label}
               </button>
             ))}
             {isManual && (
