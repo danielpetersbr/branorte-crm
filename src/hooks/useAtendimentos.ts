@@ -311,6 +311,33 @@ export function useAtribuirAtendimento() {
   })
 }
 
+// Atribui lead a um vendedor especifico pelo nome (sem precisar do user_id auth).
+// Usado pelo admin pra atribuir pra qualquer vendedor da equipe.
+export function useAtribuirVendedor() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (args: { auditoria_ids: string[]; vendor_name: string; vendor_user_id?: string | null }) => {
+      if (!args.auditoria_ids.length) throw new Error('Nenhum id')
+      if (!args.vendor_name?.trim()) throw new Error('Nome do vendedor obrigatorio')
+      const { error, data } = await supabaseAuditoria
+        .from('auditoria_atendimentos')
+        .update({
+          responsavel: args.vendor_name,
+          responsavel_user_id: args.vendor_user_id ?? null,
+        })
+        .in('id', args.auditoria_ids)
+        .select('id')
+      if (error) throw error
+      return (data ?? []).length
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['atendimentos'] })
+      qc.invalidateQueries({ queryKey: ['atendimentos-kpis'] })
+      qc.invalidateQueries({ queryKey: ['atendimentos-responsaveis'] })
+    },
+  })
+}
+
 // Atualiza o status_vendedor (Novo, Em atendimento, Proposta enviada, Negociando,
 // Fechou, Nao fechou, Sem retorno) em todas as rows do cliente.
 export function useUpdateStatusVendedor() {

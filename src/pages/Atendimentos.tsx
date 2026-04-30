@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Avatar } from '@/components/ui/Avatar'
 import { StatusVendedorPicker } from '@/components/StatusVendedorPicker'
+import { AtribuirVendedorPicker } from '@/components/AtribuirVendedorPicker'
 import { StatusDot } from '@/components/ui/StatusDot'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTimeShort, estadoNome } from '@/lib/utils'
@@ -501,32 +502,8 @@ export function Atendimentos() {
                                 </div>
                               )
                             }
-                            // Lead sem vendedor: botão proeminente "Pegar pra mim"
-                            if (myVendorName && profile?.id) {
-                              return (
-                                <button
-                                  type="button"
-                                  disabled={atribuirMut.isPending}
-                                  onClick={() => {
-                                    atribuirMut.mutate({
-                                      auditoria_ids: ids,
-                                      user_id: profile.id,
-                                      user_name: myVendorName,
-                                    })
-                                  }}
-                                  title={`Atribuir este atendimento pra ${myVendorName}`}
-                                  className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md
-                                             bg-info-bg/60 text-info border border-info/30
-                                             hover:bg-info-bg hover:border-info/60 hover:shadow-sm
-                                             transition-all text-[11px] font-medium
-                                             disabled:opacity-50 disabled:cursor-wait"
-                                >
-                                  <UserPlus className="h-3.5 w-3.5" />
-                                  Pegar pra mim
-                                </button>
-                              )
-                            }
-                            return <span className="text-[11px] text-ink-faint italic">a definir</span>
+                            // Lead sem vendedor: dropdown (admin) ou botao "Pegar pra mim" (vendor)
+                            return <AtribuirVendedorPicker auditoriaIds={ids} />
                           })()}
                         </td>
                         {/* STATUS DO VENDEDOR */}
