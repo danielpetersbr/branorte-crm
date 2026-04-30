@@ -297,15 +297,18 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
   const prev = previousRange(range)
   const todayIso = now.toISOString().slice(0, 10)
 
-  // Filtra rows pra periodo atual
-  const filtered = range ? rows.filter(r => inRange(r.data, range)) : rows
-  const filteredPrev = prev ? rows.filter(r => inRange(r.data, prev)) : []
+  // Filtra rows pra periodo atual usando ATIVIDADE (last_message_at).
+  // Isso alinha com /atendimentos. Lead antigo que voltou a falar hoje conta como "Hoje".
+  const filtered = range ? rows.filter(r => inRange(r.last_message_at ?? r.data, range)) : rows
+  const filteredPrev = prev ? rows.filter(r => inRange(r.last_message_at ?? r.data, prev)) : []
 
   // ============================ KPIs com tendencia =========================
   const computeKpis = (rs: RawRow[]) => {
     let hoje = 0, quentes = 0, qualificados = 0
     for (const r of rs) {
-      const day = dayKey(r.data)
+      // "Hoje" = teve atividade hoje (last_message_at), nao chegada (data)
+      const ativIso = r.last_message_at ?? r.data
+      const day = dayKey(ativIso)
       if (day === todayIso) hoje++
       const fin = normFinalidade(r.finalidade_fabrica)
       const animal = normAnimal(r.qual_animal)
@@ -700,12 +703,13 @@ function buildSparkSeries(
   const today = new Date().toISOString().slice(0, 10)
 
   for (const r of rows) {
-    if (!r.data) continue
-    const t = new Date(r.data).getTime()
+    const refIso = r.last_message_at ?? r.data
+    if (!refIso) continue
+    const t = new Date(refIso).getTime()
     if (t < range.from.getTime() || t > range.to.getTime()) continue
     const idx = Math.min(buckets - 1, Math.max(0, Math.floor((t - range.from.getTime()) / bucketMs)))
     total[idx]++
-    if (r.data.slice(0, 10) === today) hoje[idx]++
+    if (refIso.slice(0, 10) === today) hoje[idx]++
     if (normQuando(r.quando_investir) === 'Agora') quentes[idx]++
     const fin = normFinalidade(r.finalidade_fabrica)
     const animal = normAnimal(r.qual_animal)
