@@ -161,7 +161,7 @@ export function Layout() {
       <aside className={cn(
         'hidden md:flex flex-col border-r border-border bg-bg transition-all duration-200',
         'sticky top-0 h-screen overflow-y-auto shrink-0',
-        collapsed ? 'w-14' : 'w-60',
+        collapsed ? 'w-14' : 'w-64',
       )}>
         {/* Brand + avatar + collapse */}
         <div className={cn('flex items-center h-14 border-b border-border', collapsed ? 'justify-center px-2' : 'gap-2 px-4')}>
