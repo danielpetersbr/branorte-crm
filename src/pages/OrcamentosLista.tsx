@@ -136,15 +136,19 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
             onChange={e => setFilters(f => ({ ...f, ano: e.target.value, mes: '', page: 0 }))}
             className="lg:w-28"
           />
-          {filters.ano && (
-            <Select
-              options={MESES.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m }))}
-              placeholder="Mês"
-              value={filters.mes}
-              onChange={e => setFilters(f => ({ ...f, mes: e.target.value, page: 0 }))}
-              className="lg:w-28"
-            />
-          )}
+          <Select
+            options={MESES.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m }))}
+            placeholder="Mês"
+            value={filters.mes}
+            onChange={e => setFilters(f => ({
+              ...f,
+              mes: e.target.value,
+              // Se selecionou Mês sem Ano, assume ano atual
+              ano: e.target.value && !f.ano ? String(new Date().getFullYear()) : f.ano,
+              page: 0,
+            }))}
+            className="lg:w-28"
+          />
           <Select
             options={vendorSelectOptions}
             placeholder="Vendedor"
