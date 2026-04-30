@@ -6,8 +6,7 @@ import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
-import { formatNumber, formatRelative, whatsappLink } from '@/lib/utils'
-import { MessageCircle } from 'lucide-react'
+import { formatNumber, formatRelative } from '@/lib/utils'
 
 /**
  * Normaliza e formata qualquer phone bruto pra padrão +55 (DD) XXXXX-XXXX.
@@ -386,18 +385,6 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
                                   {phone.display}
                                 </span>
                                 <CopyContatoButton value={phone.copyable} ariaLabel="Copiar telefone:" />
-                                {phone.isBR && (
-                                  <a
-                                    href={whatsappLink(phone.copyable.replace(/\D/g, ''))}
-                                    target="_blank"
-                                    rel="noopener"
-                                    title="Abrir WhatsApp"
-                                    onClick={e => e.stopPropagation()}
-                                    className="p-1 rounded hover:bg-green-50 text-green-600 transition-colors"
-                                  >
-                                    <MessageCircle className="h-3.5 w-3.5" />
-                                  </a>
-                                )}
                               </div>
                             )
                           })()}
