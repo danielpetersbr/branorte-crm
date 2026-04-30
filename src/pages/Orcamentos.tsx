@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useOrcamentoStats } from '@/hooks/useOrcamentoStats'
+import { useVendors } from '@/hooks/useVendors'
 import { Card, CardContent } from '@/components/ui/Card'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatNumber } from '@/lib/utils'
@@ -21,6 +22,19 @@ export function Orcamentos() {
   const [tab, setTab] = useState<'painel' | 'lista'>('painel')
 
   const { data, isLoading } = useOrcamentoStats()
+  const { data: vendorsList } = useVendors({ incluirInativos: true })
+
+  const vendorChartData = useMemo(() => {
+    if (!data?.vendorStats) return []
+    const nameById = new Map((vendorsList ?? []).map(v => [v.id, v.name]))
+    return data.vendorStats
+      .map(v => ({
+        name: v.vendor_id == null ? 'Sem vendedor' : (nameById.get(v.vendor_id) ?? '—'),
+        count: v.count,
+        unassigned: v.vendor_id == null,
+      }))
+      .sort((a, b) => b.count - a.count)
+  }, [data?.vendorStats, vendorsList])
 
   if (isLoading || !data) return <PageLoading />
 
@@ -207,6 +221,45 @@ export function Orcamentos() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Vendor chart */}
+      {vendorChartData.length > 0 && (
+        <Card>
+          <CardContent>
+            <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+              <h2 className="font-semibold text-text-primary">Orçamentos por Vendedor</h2>
+              <span className="text-xs text-text-muted">
+                Extraído do .txt (Pedro enviou para o cliente…) — vazio = não identificado
+              </span>
+            </div>
+            <div style={{ height: Math.max(280, vendorChartData.length * 32 + 40) }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={vendorChartData}
+                  layout="vertical"
+                  margin={{ top: 4, right: 24, left: 8, bottom: 4 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" tickFormatter={(v: number) => formatNumber(v)} tick={{ fontSize: 12 }} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} width={110} />
+                  <Tooltip
+                    formatter={(v: number) => [formatNumber(v), 'Orçamentos']}
+                    labelFormatter={(label) => `Vendedor: ${label}`}
+                  />
+                  <Bar dataKey="count" radius={[0, 6, 6, 0]} maxBarSize={28}>
+                    {vendorChartData.map((row, i) => (
+                      <Cell
+                        key={i}
+                        fill={row.unassigned ? '#9ca3af' : BRAND_COLORS[i % BRAND_COLORS.length]}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Year breakdown table */}
       <Card>
