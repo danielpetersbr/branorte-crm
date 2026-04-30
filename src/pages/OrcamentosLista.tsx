@@ -68,15 +68,28 @@ function StatusEditable({ orcamento, effectiveStatus }: { orcamento: OrcamentoFi
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute z-50 mt-1 w-48 rounded-md border border-surface-border bg-bg shadow-lg py-1 max-h-72 overflow-auto">
-            {STATUS_ALL.map(s => (
+          <div className="absolute z-50 mt-1 w-52 rounded-md border border-surface-border bg-bg shadow-lg py-1 max-h-80 overflow-auto">
+            <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-text-muted">Vendedor</div>
+            {STATUS_VENDEDOR_KEYS.map(s => (
               <button
                 key={s}
                 onClick={() => change(s)}
                 disabled={updateMut.isPending}
                 className={`w-full text-left text-xs px-3 py-1.5 hover:bg-surface-2 transition-colors ${effectiveStatus === s ? 'bg-accent-bg text-accent font-medium' : ''}`}
               >
-                {STATUS_LABELS[s]?.label ?? s}
+                {STATUS_VENDEDOR[s].label}
+              </button>
+            ))}
+            <div className="border-t border-surface-border my-1" />
+            <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-text-muted">Status da pasta</div>
+            {STATUS_PASTA_KEYS.map(s => (
+              <button
+                key={s}
+                onClick={() => change(s)}
+                disabled={updateMut.isPending}
+                className={`w-full text-left text-xs px-3 py-1.5 hover:bg-surface-2 transition-colors ${effectiveStatus === s ? 'bg-accent-bg text-accent font-medium' : ''}`}
+              >
+                {STATUS_PASTA[s].label}
               </button>
             ))}
             {isManual && (
@@ -133,7 +146,16 @@ import { useVendors } from '@/hooks/useVendors'
 import { useAuth } from '@/hooks/useAuth'
 import { useOrcamentosChamados } from '@/hooks/useOrcamentosChamados'
 
-const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+// Status do vendedor (marcação manual no CRM) — fica em status_manual.
+const STATUS_VENDEDOR: Record<string, { label: string; color: string }> = {
+  'VENDIDO':           { label: 'Vendido',           color: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+  'NEGOCIANDO':        { label: 'Negociando',        color: 'bg-yellow-100 text-yellow-800 border-yellow-300' },
+  'INTERESSE-FUTURO':  { label: 'Interesse futuro',  color: 'bg-sky-100 text-sky-800 border-sky-300' },
+  'PERDIDO':           { label: 'Perdido',           color: 'bg-red-100 text-red-800 border-red-300' },
+}
+
+// Status da pasta (kanban-de-pasta) — derivado da subpasta no drive Z:\.
+const STATUS_PASTA: Record<string, { label: string; color: string }> = {
   'Em-andamento':         { label: 'Em andamento',           color: 'bg-blue-50 text-blue-700 border-blue-200' },
   'Em-producao':          { label: 'Em produção',            color: 'bg-amber-50 text-amber-700 border-amber-200' },
   'Pronto-carregamento':  { label: 'Pronto p/ carregamento', color: 'bg-orange-50 text-orange-700 border-orange-200' },
@@ -146,7 +168,9 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   'Historico':            { label: 'Histórico',              color: 'bg-stone-50 text-stone-600 border-stone-200' },
 }
 
-const STATUS_ALL = Object.keys(STATUS_LABELS)
+const STATUS_LABELS: Record<string, { label: string; color: string }> = { ...STATUS_VENDEDOR, ...STATUS_PASTA }
+const STATUS_VENDEDOR_KEYS = Object.keys(STATUS_VENDEDOR)
+const STATUS_PASTA_KEYS = Object.keys(STATUS_PASTA)
 const ANOS = Array.from({ length: 15 }, (_, i) => String(2026 - i))
 const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
 
