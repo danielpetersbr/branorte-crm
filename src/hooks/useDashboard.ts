@@ -228,6 +228,7 @@ export interface DashboardData {
   kpiHoje: KpiSerie
   kpiQuentes: KpiSerie
   kpiQualificados: KpiSerie
+  kpiBotao: KpiSerie
   // Funil do bot
   funil: FunilEtapa[]
   // Funil real pos-bot
@@ -304,7 +305,7 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
 
   // ============================ KPIs com tendencia =========================
   const computeKpis = (rs: RawRow[]) => {
-    let hoje = 0, quentes = 0, qualificados = 0
+    let hoje = 0, quentes = 0, qualificados = 0, tocouBotaoKpi = 0
     for (const r of rs) {
       // "Hoje" = teve atividade hoje (last_message_at), nao chegada (data)
       const ativIso = r.last_message_at ?? r.data
@@ -316,8 +317,10 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
       const momento = normQuando(r.quando_investir)
       if (momento === 'Agora') quentes++
       if (fin && animal && qtd && momento) qualificados++
+      // Tocou no botao final (completou todo o fluxo do bot)
+      if (fin && animal && qtd && momento && r.tocou_botao_em) tocouBotaoKpi++
     }
-    return { total: rs.length, hoje, quentes, qualificados }
+    return { total: rs.length, hoje, quentes, qualificados, tocouBotaoKpi }
   }
 
   const cur = computeKpis(filtered)
@@ -336,6 +339,7 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
   const kpiHoje = mkKpi(cur.hoje, prevK.hoje, 'hoje')
   const kpiQuentes = mkKpi(cur.quentes, prevK.quentes, 'quentes')
   const kpiQualificados = mkKpi(cur.qualificados, prevK.qualificados, 'qualificados')
+  const kpiBotao = mkKpi(cur.tocouBotaoKpi, prevK.tocouBotaoKpi, 'botao')
 
   // ============================ Restante (sobre `filtered`) ================
 
@@ -659,6 +663,7 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
     kpiHoje,
     kpiQuentes,
     kpiQualificados,
+    kpiBotao,
     funil,
     funilReal,
     leadsPorDia,
@@ -694,11 +699,12 @@ function buildSparkSeries(
   rows: RawRow[],
   range: DateRange,
   buckets: number,
-): { total: number[]; hoje: number[]; quentes: number[]; qualificados: number[] } {
+): { total: number[]; hoje: number[]; quentes: number[]; qualificados: number[]; botao: number[] } {
   const total = new Array(buckets).fill(0)
   const hoje = new Array(buckets).fill(0)
   const quentes = new Array(buckets).fill(0)
   const qualificados = new Array(buckets).fill(0)
+  const botao = new Array(buckets).fill(0)
   const ms = range.to.getTime() - range.from.getTime()
   const bucketMs = ms / buckets || 1
   const today = new Date().toISOString().slice(0, 10)
@@ -717,6 +723,7 @@ function buildSparkSeries(
     const qtd = r.quantos_animais?.trim() || null
     const momento = normQuando(r.quando_investir)
     if (fin && animal && qtd && momento) qualificados[idx]++
+    if (fin && animal && qtd && momento && r.tocou_botao_em) botao[idx]++
   }
-  return { total, hoje, quentes, qualificados }
+  return { total, hoje, quentes, qualificados, botao }
 }

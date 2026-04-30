@@ -5,7 +5,7 @@ import {
   Area, AreaChart, Cell, Pie, PieChart,
   ResponsiveContainer, Tooltip,
 } from 'recharts'
-import { Flame, TrendingUp, Users, CheckCircle2, ArrowDown, ArrowUp, ExternalLink } from 'lucide-react'
+import { Flame, TrendingUp, Users, CheckCircle2, ArrowDown, ArrowUp, ExternalLink, Hand } from 'lucide-react'
 
 const PRESET_LABELS: { value: DashboardPreset; label: string }[] = [
   { value: '',     label: 'Tudo' },
@@ -107,9 +107,10 @@ export function Dashboard() {
 
   const heroKpis = [
     { label: preset ? 'Leads no período' : 'Total de leads', kpi: data.kpiTotal, icon: Users, color: COLORS.ink, sub: preset ? periodoLabel.toLowerCase() : 'desde o início' },
-    { label: 'Hoje',         kpi: data.kpiHoje, icon: TrendingUp, color: COLORS.info, sub: 'leads novos' },
-    { label: 'Quentes',      kpi: data.kpiQuentes, icon: Flame, color: COLORS.danger, sub: 'querem comprar agora' },
-    { label: 'Qualificados', kpi: data.kpiQualificados, icon: CheckCircle2, color: COLORS.accent, sub: 'preencheram tudo' },
+    { label: 'Hoje',           kpi: data.kpiHoje, icon: TrendingUp, color: COLORS.info, sub: 'leads novos' },
+    { label: 'Quentes',        kpi: data.kpiQuentes, icon: Flame, color: COLORS.danger, sub: 'querem comprar agora' },
+    { label: 'Qualificados',   kpi: data.kpiQualificados, icon: CheckCircle2, color: COLORS.accent, sub: 'preencheram tudo' },
+    { label: 'Tocou no botão', kpi: data.kpiBotao, icon: Hand, color: 'hsl(280 65% 60%)', sub: 'completaram fluxo' },
   ]
 
   return (
@@ -157,7 +158,7 @@ export function Dashboard() {
       </div>
 
       {/* HERO KPIs com sparkline + delta */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {heroKpis.map(k => (
           <KpiHero key={k.label} {...k} showDelta={showDelta} />
         ))}
