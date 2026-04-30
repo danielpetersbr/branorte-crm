@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, ExternalLink, Flame, AlarmClock, CheckCircle2, Inbox, Trash2, Calendar, Hand, ListChecks, MessageSquareDot, EyeOff } from 'lucide-react'
+import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, Flame, AlarmClock, CheckCircle2, Inbox, Trash2, Calendar, Hand, ListChecks, MessageSquareDot, EyeOff } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -51,7 +51,6 @@ const MOTIVO_TONE: Record<string, Tone> = {
   'Outros assuntos':    'neutral',
 }
 
-const AUDITORIA_BASE = 'https://branorte-auditoria.vercel.app'
 
 function isHotLead(quando: string | null): boolean {
   return quando === 'Agora'
@@ -193,14 +192,6 @@ export function Atendimentos() {
             ) : 'Carregando...'}
           </p>
         </div>
-        <a
-          href={`${AUDITORIA_BASE}/atendimentos`}
-          target="_blank"
-          rel="noopener"
-          className="inline-flex items-center gap-1.5 text-[12px] text-ink-muted hover:text-ink transition-colors"
-        >
-          Versão completa <ExternalLink className="h-3 w-3" />
-        </a>
       </div>
 
       {/* KPIs - hierarquia: 2 hero + 4 small */}
