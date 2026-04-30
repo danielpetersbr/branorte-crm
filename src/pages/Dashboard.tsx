@@ -1,12 +1,13 @@
 import { useDashboard } from '@/hooks/useDashboard'
 import {
-  Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart,
+  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
-import { Flame, TrendingUp, Users, CheckCircle2 } from 'lucide-react'
+import { Flame, TrendingUp, Users, CheckCircle2, ArrowDown } from 'lucide-react'
 
 const COLORS = {
   accent: 'hsl(152 60% 40%)',
+  accentSoft: 'hsl(152 60% 40% / 0.15)',
   warn: 'hsl(38 92% 50%)',
   danger: 'hsl(0 72% 51%)',
   info: 'hsl(217 91% 60%)',
@@ -107,49 +108,34 @@ export function Dashboard() {
 
       {/* GRID 2 COL */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* 1. FUNIL */}
+        {/* 1. FUNIL DE QUALIFICAÇÃO — refeito como funil visual real */}
         <Card>
           <CardHeader
             title="Funil de qualificação"
-            subtitle="Onde os leads desistem do bot"
+            subtitle={`Baseado em ${fmtN(data.leadsBotNovo)} leads que entraram via webhook do bot`}
           />
-          <div className="h-[280px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.funil} layout="vertical" margin={{ top: 4, right: 60, left: 8, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={COLORS.border} />
-                <XAxis type="number" hide />
-                <YAxis
-                  type="category"
-                  dataKey="etapa"
-                  width={130}
-                  tick={{ fontSize: 11, fill: COLORS.ink }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip
-                  contentStyle={{ background: 'hsl(var(--surface))', border: `1px solid ${COLORS.border}`, borderRadius: 6, fontSize: 12 }}
-                  formatter={((v: number, _n: unknown, p: { payload?: { pct?: number } }) => [`${fmtN(v)} (${(p.payload?.pct ?? 0).toFixed(1)}%)`, 'Leads']) as never}
-                  cursor={{ fill: 'hsl(var(--surface-2))' }}
-                />
-                <Bar dataKey="valor" radius={[0, 4, 4, 0]} barSize={20}>
-                  {data.funil.map((_, i) => (
-                    <Cell key={i} fill={i === 0 ? COLORS.accent : `hsla(152, 60%, ${40 + i * 4}%, ${1 - i * 0.05})`} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <FunilVisual etapas={data.funil} />
         </Card>
 
-        {/* 2. LEADS POR DIA */}
+        {/* 2. LEADS POR DIA — area chart com 2 series */}
         <Card>
           <CardHeader
             title="Leads por dia"
-            subtitle="Últimos 30 dias"
+            subtitle={data.leadsPorDia.length > 0 ? `${data.leadsPorDia.length} dias com atividade` : 'Sem dados'}
           />
           <div className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data.leadsPorDia} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
+              <AreaChart data={data.leadsPorDia} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="gradTotal" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={COLORS.info} stopOpacity={0.4} />
+                    <stop offset="100%" stopColor={COLORS.info} stopOpacity={0.02} />
+                  </linearGradient>
+                  <linearGradient id="gradQualif" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={COLORS.accent} stopOpacity={0.5} />
+                    <stop offset="100%" stopColor={COLORS.accent} stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} vertical={false} />
                 <XAxis
                   dataKey="dia"
@@ -157,132 +143,66 @@ export function Dashboard() {
                   axisLine={false}
                   tickLine={false}
                   tickFormatter={(v: string) => v.slice(8, 10) + '/' + v.slice(5, 7)}
-                  interval={4}
+                  interval="preserveStartEnd"
+                  minTickGap={30}
                 />
-                <YAxis tick={{ fontSize: 10, fill: COLORS.inkFaint }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: COLORS.inkFaint }} axisLine={false} tickLine={false} width={32} />
                 <Tooltip
                   contentStyle={{ background: 'hsl(var(--surface))', border: `1px solid ${COLORS.border}`, borderRadius: 6, fontSize: 12 }}
-                  formatter={((v: number) => [fmtN(v), 'Leads']) as never}
-                  labelFormatter={((l: string) => new Date(l).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', weekday: 'short' })) as never}
+                  formatter={((v: number, n: string) => [fmtN(v), n === 'total' ? 'Total' : 'Qualificados']) as never}
+                  labelFormatter={((l: string) => new Date(l + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', weekday: 'short' })) as never}
                 />
-                <Line
+                <Area
                   type="monotone"
-                  dataKey="leads"
+                  dataKey="total"
+                  stroke={COLORS.info}
+                  strokeWidth={2}
+                  fill="url(#gradTotal)"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="qualificados"
                   stroke={COLORS.accent}
                   strokeWidth={2}
-                  dot={{ r: 2, fill: COLORS.accent }}
-                  activeDot={{ r: 5 }}
+                  fill="url(#gradQualif)"
                 />
-              </LineChart>
+                <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} iconType="circle" iconSize={8} />
+              </AreaChart>
             </ResponsiveContainer>
           </div>
         </Card>
 
-        {/* 3. POR CRIATIVO */}
-        <Card>
+        {/* 3. CTR POR CRIATIVO — lista compacta com mini-barras */}
+        <Card className="lg:col-span-2">
           <CardHeader
-            title="CTR por criativo"
-            subtitle="Volume vs % qualificados — Top 10"
-          />
-          <div className="h-[320px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={data.porCriativo.map(c => ({
-                  ...c,
-                  label: `${c.codigo} ${c.nome.length > 18 ? c.nome.slice(0, 16) + '…' : c.nome}`,
-                }))}
-                layout="vertical"
-                margin={{ top: 4, right: 16, left: 8, bottom: 4 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={COLORS.border} />
-                <XAxis type="number" tick={{ fontSize: 10, fill: COLORS.inkFaint }} axisLine={false} tickLine={false} />
-                <YAxis
-                  type="category"
-                  dataKey="label"
-                  width={170}
-                  tick={{ fontSize: 11, fill: COLORS.ink }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip
-                  contentStyle={{ background: 'hsl(var(--surface))', border: `1px solid ${COLORS.border}`, borderRadius: 6, fontSize: 12 }}
-                  formatter={((v: number, n: string) => n === 'total' ? [fmtN(v), 'Leads'] : [fmtN(v), 'Qualificados']) as never}
-                />
-                <Legend wrapperStyle={{ fontSize: 11 }} iconType="circle" iconSize={8} />
-                <Bar dataKey="total" name="Leads" fill={COLORS.info} radius={[0, 3, 3, 0]} barSize={10} />
-                <Bar dataKey="qualificados" name="Qualificados" fill={COLORS.accent} radius={[0, 3, 3, 0]} barSize={10} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          {/* lista CTR % */}
-          <div className="mt-3 space-y-1 text-[11px]">
-            {data.porCriativo.slice(0, 5).map(c => (
-              <div key={c.codigo} className="flex justify-between text-ink-muted">
-                <span className="font-mono">{c.codigo}</span>
-                <span className={c.ctr >= 10 ? 'text-accent' : c.ctr === 0 ? 'text-danger' : 'text-warning'}>
-                  CTR {c.ctr.toFixed(1)}%
-                </span>
+            title="Performance por criativo"
+            subtitle="Volume × % de qualificados"
+            right={
+              <div className="flex gap-3 text-[10px] text-ink-faint">
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-accent" /> Qualificou</span>
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-surface-2 border border-border" /> Não qualificou</span>
               </div>
-            ))}
-          </div>
+            }
+          />
+          <CriativosList criativos={data.porCriativo} />
         </Card>
 
-        {/* 4. POR ORIGEM */}
+        {/* 4. CONVERSÃO POR ORIGEM — refeito */}
         <Card>
           <CardHeader
-            title="Conversão por origem"
-            subtitle="Qual canal traz lead que qualifica"
+            title="Conversão por canal"
+            subtitle="Volume e % qualificados (exclui leads sem origem)"
           />
-          <div className="h-[280px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.porOrigem} margin={{ top: 4, right: 16, left: -10, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} vertical={false} />
-                <XAxis dataKey="origem" tick={{ fontSize: 11, fill: COLORS.ink }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: COLORS.inkFaint }} axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={{ background: 'hsl(var(--surface))', border: `1px solid ${COLORS.border}`, borderRadius: 6, fontSize: 12 }}
-                  formatter={((v: number) => [fmtN(v), '']) as never}
-                />
-                <Legend wrapperStyle={{ fontSize: 11 }} iconType="circle" iconSize={8} />
-                <Bar dataKey="total" name="Total" fill={COLORS.info} radius={[3, 3, 0, 0]} barSize={28} />
-                <Bar dataKey="qualificados" name="Qualificados" fill={COLORS.accent} radius={[3, 3, 0, 0]} barSize={28} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <OrigemList origens={data.porOrigem} />
         </Card>
 
         {/* 5. POR VENDEDOR */}
         <Card>
           <CardHeader
             title="Distribuição por vendedor"
-            subtitle="Quantos leads cada um recebeu"
+            subtitle="Volume e qualificados"
           />
-          <div className="h-[280px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.porVendedor.slice(0, 12)} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={COLORS.border} />
-                <XAxis type="number" tick={{ fontSize: 10, fill: COLORS.inkFaint }} axisLine={false} tickLine={false} />
-                <YAxis
-                  type="category"
-                  dataKey="vendedor"
-                  width={110}
-                  tick={{ fontSize: 11, fill: COLORS.ink }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip
-                  contentStyle={{ background: 'hsl(var(--surface))', border: `1px solid ${COLORS.border}`, borderRadius: 6, fontSize: 12 }}
-                  formatter={((v: number) => [fmtN(v), 'Leads']) as never}
-                  cursor={{ fill: 'hsl(var(--surface-2))' }}
-                />
-                <Bar dataKey="total" radius={[0, 3, 3, 0]} barSize={16}>
-                  {data.porVendedor.slice(0, 12).map((v, i) => (
-                    <Cell key={i} fill={v.vendedor === 'Sem vendedor' ? COLORS.inkFaint : COLORS.accent} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <VendedorList vendedores={data.porVendedor.slice(0, 10)} />
         </Card>
 
         {/* 6. MOMENTO DE COMPRA */}
@@ -350,8 +270,8 @@ export function Dashboard() {
                   formatter={((v: number) => [fmtN(v), '']) as never}
                 />
                 <Legend wrapperStyle={{ fontSize: 11 }} iconType="circle" iconSize={8} />
-                <Bar dataKey="vender" name="Vender" stackId="a" fill={COLORS.accent} radius={[0, 0, 0, 0]} barSize={36} />
-                <Bar dataKey="consumo" name="Consumo" stackId="a" fill={COLORS.info} radius={[0, 0, 0, 0]} barSize={36} />
+                <Bar dataKey="vender" name="Vender" stackId="a" fill={COLORS.accent} barSize={36} />
+                <Bar dataKey="consumo" name="Consumo" stackId="a" fill={COLORS.info} barSize={36} />
                 <Bar dataKey="ambos" name="Ambos" stackId="a" fill={COLORS.warn} radius={[3, 3, 0, 0]} barSize={36} />
               </BarChart>
             </ResponsiveContainer>
@@ -362,7 +282,7 @@ export function Dashboard() {
         <Card>
           <CardHeader
             title="Quando chegam os leads"
-            subtitle="Mapa dia da semana × hora"
+            subtitle="Mapa dia × hora"
           />
           <div className="overflow-x-auto pb-2">
             <DiaHoraHeatmap data={data.diaXHora} />
@@ -372,7 +292,7 @@ export function Dashboard() {
 
       {/* GRID FULL WIDTH */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* 9. UF — Top 15 */}
+        {/* 9. UF */}
         <Card className="lg:col-span-2">
           <CardHeader
             title="Distribuição por estado"
@@ -454,24 +374,181 @@ export function Dashboard() {
   )
 }
 
-// Heatmap dia × hora (componente interno) ----------------------------------
+// Funil visual com formato real (largura proporcional + drop-off entre etapas)
+function FunilVisual({ etapas }: { etapas: { etapa: string; valor: number; pctTopo: number; pctAnterior: number }[] }) {
+  const topo = Math.max(1, etapas[0]?.valor ?? 1)
+  return (
+    <div className="space-y-1.5">
+      {etapas.map((e, i) => {
+        const widthPct = topo > 0 ? (e.valor / topo) * 100 : 0
+        const dropOff = i > 0 ? 100 - e.pctAnterior : 0
+        const isOk = i === 0 || e.pctAnterior >= 70
+        const isWarn = i > 0 && e.pctAnterior >= 30 && e.pctAnterior < 70
+        const isBad = i > 0 && e.pctAnterior < 30
+        return (
+          <div key={e.etapa}>
+            {i > 0 && (
+              <div className="flex items-center justify-end gap-1 pr-2 mb-0.5">
+                <ArrowDown className="h-3 w-3 text-ink-faint" />
+                <span className={`text-[10px] tabular-nums ${
+                  isOk ? 'text-accent' : isWarn ? 'text-warning' : 'text-danger'
+                }`}>
+                  {e.pctAnterior.toFixed(0)}% conv · -{dropOff.toFixed(0)}%
+                </span>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <div className="w-[140px] text-[11px] text-ink-muted shrink-0">{e.etapa}</div>
+              <div className="flex-1 h-7 bg-surface-2 rounded-md relative overflow-hidden">
+                <div
+                  className="absolute inset-y-0 left-0 transition-all flex items-center justify-end pr-2"
+                  style={{
+                    width: `${Math.max(widthPct, 4)}%`,
+                    background: i === 0
+                      ? COLORS.accent
+                      : isBad
+                        ? 'hsl(0 70% 55% / 0.7)'
+                        : isWarn
+                          ? 'hsl(38 90% 55% / 0.75)'
+                          : `hsl(152 60% ${42 + i * 3}%)`,
+                  }}
+                >
+                  {widthPct > 15 && (
+                    <span className="text-[10px] font-mono text-white tabular-nums">
+                      {e.valor}
+                    </span>
+                  )}
+                </div>
+                {widthPct <= 15 && (
+                  <span
+                    className="absolute inset-y-0 flex items-center text-[10px] font-mono text-ink tabular-nums"
+                    style={{ left: `calc(${Math.max(widthPct, 4)}% + 4px)` }}
+                  >
+                    {e.valor}
+                  </span>
+                )}
+              </div>
+              <div className="w-[42px] text-right text-[11px] font-mono text-ink-faint tabular-nums shrink-0">
+                {e.pctTopo.toFixed(0)}%
+              </div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// Lista compacta de criativos com mini-barra split (qualificados / nao qualificados)
+function CriativosList({ criativos }: { criativos: { codigo: string; nome: string; total: number; qualificados: number; ctr: number }[] }) {
+  if (!criativos.length) {
+    return <p className="text-sm text-ink-faint">Nenhum criativo registrado.</p>
+  }
+  const maxTotal = Math.max(...criativos.map(c => c.total))
+  // Ordena por CTR decrescente, com tie-break por volume
+  const sorted = [...criativos].sort((a, b) => {
+    if (b.ctr !== a.ctr) return b.ctr - a.ctr
+    return b.total - a.total
+  })
+  return (
+    <div className="space-y-2">
+      {sorted.map(c => {
+        const widthPct = (c.total / maxTotal) * 100
+        const qualifPct = c.total > 0 ? (c.qualificados / c.total) * 100 : 0
+        const ctrColor = c.ctr >= 15 ? 'text-accent' : c.ctr >= 5 ? 'text-warning' : c.total > 5 ? 'text-danger' : 'text-ink-faint'
+        return (
+          <div key={c.codigo} className="grid grid-cols-[100px_1fr_60px_70px] items-center gap-3 text-[11px]">
+            <div className="font-mono text-ink-faint truncate">{c.codigo}</div>
+            <div className="min-w-0">
+              <div className="text-ink truncate mb-1">{c.nome}</div>
+              <div className="h-2 bg-surface-2 rounded-sm relative overflow-hidden" style={{ width: `${Math.max(widthPct, 4)}%` }}>
+                <div className="absolute inset-y-0 left-0 bg-accent" style={{ width: `${qualifPct}%` }} />
+                <div className="absolute inset-y-0 right-0 bg-info/40" style={{ width: `${100 - qualifPct}%` }} />
+              </div>
+            </div>
+            <div className="text-right text-ink font-mono tabular-nums">{c.total}</div>
+            <div className={`text-right font-mono tabular-nums ${ctrColor}`}>
+              {c.ctr.toFixed(1)}% CTR
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// Lista de origens com barras + CTR colorido
+function OrigemList({ origens }: { origens: { origem: string; total: number; qualificados: number; ctr: number }[] }) {
+  if (!origens.length) {
+    return <p className="text-sm text-ink-faint">Sem leads com origem registrada.</p>
+  }
+  const maxTotal = Math.max(...origens.map(o => o.total))
+  return (
+    <div className="space-y-3">
+      {origens.map(o => {
+        const widthPct = (o.total / maxTotal) * 100
+        const qualifWidth = o.total > 0 ? (o.qualificados / o.total) * 100 : 0
+        const ctrColor = o.ctr >= 10 ? 'text-accent' : o.ctr >= 3 ? 'text-warning' : 'text-danger'
+        return (
+          <div key={o.origem}>
+            <div className="flex items-baseline justify-between mb-1.5">
+              <span className="text-[12px] text-ink font-medium">{o.origem}</span>
+              <div className="flex items-center gap-3 text-[11px] font-mono tabular-nums">
+                <span className="text-ink-muted">{o.qualificados}/{o.total}</span>
+                <span className={ctrColor}>{o.ctr.toFixed(1)}%</span>
+              </div>
+            </div>
+            <div className="h-3 bg-surface-2 rounded-md relative overflow-hidden" style={{ width: `${Math.max(widthPct, 4)}%` }}>
+              <div className="absolute inset-y-0 left-0 bg-info/40" style={{ width: '100%' }} />
+              <div className="absolute inset-y-0 left-0 bg-accent" style={{ width: `${qualifWidth}%` }} />
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// Lista de vendedores com barra + qualificados
+function VendedorList({ vendedores }: { vendedores: { vendedor: string; total: number; qualificados: number }[] }) {
+  if (!vendedores.length) return <p className="text-sm text-ink-faint">Sem vendedores.</p>
+  const max = Math.max(...vendedores.map(v => v.total))
+  return (
+    <div className="space-y-2">
+      {vendedores.map(v => {
+        const widthPct = (v.total / max) * 100
+        const qualifWidth = v.total > 0 ? (v.qualificados / v.total) * 100 : 0
+        const isUnassigned = v.vendedor === 'Sem vendedor'
+        return (
+          <div key={v.vendedor} className="grid grid-cols-[140px_1fr_60px] items-center gap-3 text-[11px]">
+            <div className={`truncate ${isUnassigned ? 'text-ink-faint italic' : 'text-ink'}`}>
+              {v.vendedor}
+            </div>
+            <div className="h-3 bg-surface-2 rounded-md relative overflow-hidden" style={{ width: `${Math.max(widthPct, 4)}%` }}>
+              <div className="absolute inset-y-0 left-0" style={{ width: '100%', background: isUnassigned ? COLORS.inkFaint : COLORS.info, opacity: 0.35 }} />
+              <div className="absolute inset-y-0 left-0 bg-accent" style={{ width: `${qualifWidth}%` }} />
+            </div>
+            <div className="text-right font-mono tabular-nums text-ink">{v.total}</div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// Heatmap dia × hora
 function DiaHoraHeatmap({ data }: { data: { weekday: number; hour: number; valor: number }[] }) {
   const max = Math.max(1, ...data.map(d => d.valor))
-
-  // Agrupa por weekday
   const grid: Record<number, Record<number, number>> = {}
   for (const d of data) {
     grid[d.weekday] = grid[d.weekday] ?? {}
     grid[d.weekday][d.hour] = d.valor
   }
-
-  // Mostra 24h, mas pula horas vazias se quiser. Aqui mostra todas.
   const hours = Array.from({ length: 24 }, (_, i) => i)
-  const days = [0, 1, 2, 3, 4, 5, 6] // Dom-Sáb
+  const days = [0, 1, 2, 3, 4, 5, 6]
 
   return (
     <div className="text-[10px]">
-      {/* Header de horas */}
       <div className="flex">
         <div className="w-9 shrink-0" />
         {hours.map(h => (
@@ -480,7 +557,6 @@ function DiaHoraHeatmap({ data }: { data: { weekday: number; hour: number; valor
           </div>
         ))}
       </div>
-      {/* Linhas */}
       {days.map(wd => (
         <div key={wd} className="flex items-center gap-0.5 mt-0.5">
           <div className="w-9 shrink-0 text-ink-muted font-medium">{WEEKDAY_SHORT[wd]}</div>

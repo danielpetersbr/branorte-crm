@@ -71,6 +71,12 @@ function normOrigem(v: string | null | undefined): string {
   return s
 }
 
+// Retorna origem se ela é "valida" (lead chegou via webhook do bot novo). Null se nao tem origem.
+function normalizedOrigemRaw(v: string | null | undefined): string | null {
+  const o = normOrigem(v)
+  return o === 'Sem origem' ? null : o
+}
+
 function ufFrom(tel: string | null): string {
   if (!tel) return 'SEM'
   const pais = paisDoTelefone(tel)
@@ -97,19 +103,27 @@ function weekdayOf(iso: string | null | undefined): number | null {
   return d.getDay() // 0=Dom, 6=Sab
 }
 
+export interface FunilEtapa {
+  etapa: string
+  valor: number
+  pctTopo: number       // % vs topo do funil (Iniciou bot)
+  pctAnterior: number   // % conversao da etapa anterior pra essa
+}
+
 export interface DashboardData {
   totalLeads: number
+  leadsBotNovo: number  // leads que entraram via webhook do bot novo
   hoje: number
   quentes: number
   qualificados: number
   comTelefone: number
-  // Funil
-  funil: { etapa: string; valor: number; pct: number }[]
+  // Funil (so leads do bot novo)
+  funil: FunilEtapa[]
   // Series
-  leadsPorDia: { dia: string; leads: number }[]
+  leadsPorDia: { dia: string; total: number; qualificados: number }[]
   porCriativo: { codigo: string; nome: string; total: number; qualificados: number; ctr: number }[]
   porOrigem: { origem: string; total: number; qualificados: number; ctr: number }[]
-  porVendedor: { vendedor: string; total: number }[]
+  porVendedor: { vendedor: string; total: number; qualificados: number }[]
   porMomento: { momento: string; valor: number; cor: string }[]
   porAnimalFinalidade: { animal: string; vender: number; consumo: number; ambos: number; total: number }[]
   porUf: { uf: string; total: number }[]
@@ -147,6 +161,10 @@ function aggregate(rows: RawRow[]): DashboardData {
   let quentes = 0
   let qualificados = 0
   let comTelefone = 0
+  let leadsBotNovo = 0
+  // Etapas do funil — SO contam leads que entraram pelo webhook do bot novo.
+  // Detecta pelo "origem" preenchida (WhatsApp 4502/1144/Instagram).
+  let entrouNoBot = 0
   let clicouMotivo = 0
   let escolheuFinalidade = 0
   let escolheuAnimal = 0
@@ -155,10 +173,10 @@ function aggregate(rows: RawRow[]): DashboardData {
   let tocouBotao = 0
 
   // Maps
-  const byDay = new Map<string, number>()
+  const byDay = new Map<string, { total: number; qualificados: number }>()
   const byCriativo = new Map<string, { codigo: string; nome: string; total: number; qualificados: number }>()
   const byOrigem = new Map<string, { total: number; qualificados: number }>()
-  const byVendor = new Map<string, number>()
+  const byVendor = new Map<string, { total: number; qualificados: number }>()
   const byMomento = new Map<string, number>()
   const byAnimalFinalidade = new Map<string, { animal: string; vender: number; consumo: number; ambos: number; total: number }>()
   const byUf = new Map<string, number>()
@@ -189,12 +207,20 @@ function aggregate(rows: RawRow[]): DashboardData {
     const momento = normQuando(r.quando_investir)
     const botao = !!r.tocou_botao_em
 
-    if (motivo) clicouMotivo++
-    if (fin) escolheuFinalidade++
-    if (animal) escolheuAnimal++
-    if (qtd) escolheuQtd++
-    if (momento) escolheuMomento++
-    if (botao) tocouBotao++
+    // Lead "do bot novo" = entrou via webhook do bot atual (tem origem)
+    const isBotNovo = !!normalizedOrigemRaw(r.origem)
+    if (isBotNovo) leadsBotNovo++
+
+    // Funil so conta leads do bot novo (monotonico decrescente)
+    if (isBotNovo) {
+      entrouNoBot++
+      if (motivo) clicouMotivo++
+      if (motivo && fin) escolheuFinalidade++
+      if (motivo && fin && animal) escolheuAnimal++
+      if (motivo && fin && animal && qtd) escolheuQtd++
+      if (motivo && fin && animal && qtd && momento) escolheuMomento++
+      if (botao) tocouBotao++
+    }
 
     if (momento === 'Agora') quentes++
     const isQualificado = !!fin && !!animal && !!qtd && !!momento
@@ -208,7 +234,10 @@ function aggregate(rows: RawRow[]): DashboardData {
 
     // Series por dia (ultimos 30)
     if (day && day >= start30Iso) {
-      byDay.set(day, (byDay.get(day) ?? 0) + 1)
+      const cur = byDay.get(day) ?? { total: 0, qualificados: 0 }
+      cur.total++
+      if (isQualificado) cur.qualificados++
+      byDay.set(day, cur)
     }
 
     // Por criativo
@@ -231,7 +260,10 @@ function aggregate(rows: RawRow[]): DashboardData {
 
     // Por vendedor
     const vendedor = r.responsavel?.trim() || 'Sem vendedor'
-    byVendor.set(vendedor, (byVendor.get(vendedor) ?? 0) + 1)
+    const vc = byVendor.get(vendedor) ?? { total: 0, qualificados: 0 }
+    vc.total++
+    if (isQualificado) vc.qualificados++
+    byVendor.set(vendedor, vc)
 
     // Momento de compra
     if (momento) {
@@ -261,25 +293,43 @@ function aggregate(rows: RawRow[]): DashboardData {
     }
   }
 
-  // Funil
-  const funil = [
-    { etapa: 'Iniciou bot', valor: total },
-    { etapa: 'Clicou motivo', valor: clicouMotivo },
+  // Funil — etapas monotonicas (cada etapa exige todas anteriores).
+  // pctTopo = % do total que chegou ate a etapa
+  // pctAnterior = % de conversao DA etapa anterior PRA essa
+  const etapasRaw = [
+    { etapa: 'Entrou no bot',      valor: entrouNoBot },
+    { etapa: 'Clicou motivo',      valor: clicouMotivo },
     { etapa: 'Escolheu finalidade', valor: escolheuFinalidade },
-    { etapa: 'Escolheu animal', valor: escolheuAnimal },
-    { etapa: 'Escolheu qtd', valor: escolheuQtd },
-    { etapa: 'Escolheu momento', valor: escolheuMomento },
-    { etapa: 'Tocou botão final', valor: tocouBotao },
-  ].map(e => ({ ...e, pct: total > 0 ? (e.valor / total) * 100 : 0 }))
+    { etapa: 'Escolheu animal',    valor: escolheuAnimal },
+    { etapa: 'Escolheu qtd',       valor: escolheuQtd },
+    { etapa: 'Escolheu momento',   valor: escolheuMomento },
+    { etapa: 'Tocou botão final',  valor: tocouBotao },
+  ]
+  const topo = etapasRaw[0].valor || 1
+  const funil: FunilEtapa[] = etapasRaw.map((e, i) => {
+    const prev = i > 0 ? etapasRaw[i - 1].valor : e.valor
+    return {
+      etapa: e.etapa,
+      valor: e.valor,
+      pctTopo: (e.valor / topo) * 100,
+      pctAnterior: prev > 0 ? (e.valor / prev) * 100 : 0,
+    }
+  })
 
-  // Leads por dia (preenche dias zerados)
-  const leadsPorDia: { dia: string; leads: number }[] = []
+  // Leads por dia — corta dias zerados ANTES do primeiro dia com dado.
+  const leadsPorDia: { dia: string; total: number; qualificados: number }[] = []
+  const allDays: { dia: string; total: number; qualificados: number }[] = []
   const cursor = new Date(start30)
   for (let i = 0; i < 30; i++) {
     const k = cursor.toISOString().slice(0, 10)
-    leadsPorDia.push({ dia: k, leads: byDay.get(k) ?? 0 })
+    const d = byDay.get(k) ?? { total: 0, qualificados: 0 }
+    allDays.push({ dia: k, total: d.total, qualificados: d.qualificados })
     cursor.setDate(cursor.getDate() + 1)
   }
+  // Encontra primeiro dia com lead (pelo menos 1)
+  const firstActive = allDays.findIndex(d => d.total > 0)
+  if (firstActive >= 0) leadsPorDia.push(...allDays.slice(firstActive))
+  else leadsPorDia.push(...allDays)
 
   // Por criativo (top 10 por total, com CTR)
   const porCriativo = Array.from(byCriativo.values())
@@ -287,14 +337,15 @@ function aggregate(rows: RawRow[]): DashboardData {
     .sort((a, b) => b.total - a.total)
     .slice(0, 10)
 
-  // Por origem
+  // Por origem — exclui "Sem origem" (legado, distorce escala)
   const porOrigem = Array.from(byOrigem.entries())
+    .filter(([origem]) => origem !== 'Sem origem')
     .map(([origem, v]) => ({ origem, total: v.total, qualificados: v.qualificados, ctr: v.total > 0 ? (v.qualificados / v.total) * 100 : 0 }))
     .sort((a, b) => b.total - a.total)
 
   // Por vendedor
   const porVendedor = Array.from(byVendor.entries())
-    .map(([vendedor, t]) => ({ vendedor, total: t }))
+    .map(([vendedor, v]) => ({ vendedor, total: v.total, qualificados: v.qualificados }))
     .sort((a, b) => b.total - a.total)
 
   // Momento de compra (com cores semânticas)
@@ -326,6 +377,7 @@ function aggregate(rows: RawRow[]): DashboardData {
 
   return {
     totalLeads: total,
+    leadsBotNovo,
     hoje,
     quentes,
     qualificados,
