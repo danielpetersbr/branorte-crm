@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Search, Copy, Check, ChevronLeft, ChevronRight, X, FileText, Filter } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
@@ -267,6 +267,10 @@ interface Props {
 }
 
 export function OrcamentosLista({ statusInicial = '' }: Props) {
+  const { profile } = useAuth()
+  const isVendor = profile?.role === 'vendor'
+  const vendorTravado = isVendor ? (profile?.vendor_id ?? '') : ''
+
   const [filters, setFilters] = useState<{
     search: string
     ano: string
@@ -278,11 +282,19 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
     search: '',
     ano: '',
     mes: '',
-    vendor_id: '',
+    vendor_id: vendorTravado,
     comContato: '',
     page: 0,
   })
   const [searchInput, setSearchInput] = useState('')
+
+  // Sincroniza vendor_id quando profile carrega tarde (auth assíncrono).
+  useEffect(() => {
+    if (vendorTravado && filters.vendor_id !== vendorTravado) {
+      setFilters(f => ({ ...f, vendor_id: vendorTravado, page: 0 }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vendorTravado])
 
   // Suprime warning de prop não usada (statusInicial herdado de versão anterior)
   void statusInicial
@@ -291,25 +303,25 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
   const vendorMap = useVendorMap()
   const { data: vendorsData } = useVendors()
   const { chamados, marcar, desmarcar } = useOrcamentosChamados()
-  const { profile } = useAuth()
   const rows = data?.rows ?? []
   const total = data?.total ?? 0
   const totalPages = Math.ceil(total / ORCAMENTOS_PAGE_SIZE)
 
-  // Vendor só vê seu nome no filtro; admin vê todos
-  const isVendor = profile?.role === 'vendor'
+  // Vendor só vê seu nome (travado); admin vê todos.
   const vendorOpts = isVendor && profile?.vendor_id
     ? (vendorsData ?? []).filter(v => v.id === profile.vendor_id)
     : (vendorsData ?? [])
   const vendorSelectOptions = [
-    { value: 'unassigned', label: 'Sem vendedor' },
+    ...(isVendor ? [] : [{ value: 'unassigned', label: 'Sem vendedor' }]),
     ...vendorOpts.map(v => ({ value: v.id, label: v.name })),
   ]
 
-  const hasFilters = filters.search || filters.ano || filters.mes || filters.vendor_id || filters.comContato
+  // Pra vendor, vendor_id sempre = seu próprio id, então não conta como filtro "extra".
+  const hasFilters = filters.search || filters.ano || filters.mes
+    || (!isVendor && filters.vendor_id) || filters.comContato
 
   const clear = () => {
-    setFilters({ search: '', ano: '', mes: '', vendor_id: '', comContato: '', page: 0 })
+    setFilters({ search: '', ano: '', mes: '', vendor_id: vendorTravado, comContato: '', page: 0 })
     setSearchInput('')
   }
 
@@ -350,6 +362,8 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
             placeholder="Vendedor"
             value={filters.vendor_id}
             onChange={e => setFilters(f => ({ ...f, vendor_id: e.target.value, page: 0 }))}
+            disabled={isVendor}
+            title={isVendor ? 'Você só vê seus próprios orçamentos' : undefined}
             className="lg:w-44"
           />
           <Select
