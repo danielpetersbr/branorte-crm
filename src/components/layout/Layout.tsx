@@ -122,27 +122,12 @@ export function Layout() {
           )}
         </div>
 
-        <nav className={cn('flex-1 flex flex-col gap-0.5', collapsed ? 'p-2 items-center' : 'p-3')}>
-          {!collapsed && <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-1">Operação</div>}
-          {PRIMARY.map(renderItem)}
-          {!collapsed && <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-4">Financeiro</div>}
-          {collapsed && <div className="my-2 w-8 h-px bg-border" />}
-          {SECONDARY.map(renderItem)}
-          {isAdmin && (
-            <>
-              {!collapsed && <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-4">Admin</div>}
-              {collapsed && <div className="my-2 w-8 h-px bg-border" />}
-              {renderItem({ to: '/admin/usuarios', label: 'Usuários', icon: Shield })}
-            </>
-          )}
-        </nav>
-
-        {/* User card clicável → /perfil */}
+        {/* User card no topo (logo abaixo do brand) */}
         {profile && !collapsed && (
           <NavLink
             to="/perfil"
             className={({ isActive }) => cn(
-              'border-t border-border px-3 py-2.5 flex items-center gap-2.5 transition-colors',
+              'border-b border-border px-3 py-2.5 flex items-center gap-2.5 transition-colors',
               isActive ? 'bg-accent-bg' : 'hover:bg-surface-2'
             )}
           >
@@ -160,7 +145,7 @@ export function Layout() {
             to="/perfil"
             title={`Perfil (${profile.email})`}
             className={({ isActive }) => cn(
-              'border-t border-border p-2 flex items-center justify-center transition-colors',
+              'border-b border-border p-2 flex items-center justify-center transition-colors',
               isActive ? 'bg-accent-bg' : 'hover:bg-surface-2'
             )}
           >
@@ -169,6 +154,21 @@ export function Layout() {
             </div>
           </NavLink>
         )}
+
+        <nav className={cn('flex-1 flex flex-col gap-0.5', collapsed ? 'p-2 items-center' : 'p-3')}>
+          {!collapsed && <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-1">Operação</div>}
+          {PRIMARY.map(renderItem)}
+          {!collapsed && <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-4">Financeiro</div>}
+          {collapsed && <div className="my-2 w-8 h-px bg-border" />}
+          {SECONDARY.map(renderItem)}
+          {isAdmin && (
+            <>
+              {!collapsed && <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-4">Admin</div>}
+              {collapsed && <div className="my-2 w-8 h-px bg-border" />}
+              {renderItem({ to: '/admin/usuarios', label: 'Usuários', icon: Shield })}
+            </>
+          )}
+        </nav>
 
         {/* Toolbar inferior */}
         <div className={cn('border-t border-border', collapsed ? 'p-2 flex flex-col items-center gap-1' : 'p-2 flex items-center justify-end gap-1')}>
