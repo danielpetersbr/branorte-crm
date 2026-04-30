@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { Filter, TrendingUp, Users, MessageSquare, Hand, FileText, CheckCircle, EyeOff } from 'lucide-react'
+import { Filter, TrendingUp, Users, MessageSquare, Hand, FileText, CheckCircle, EyeOff, Tag } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
+import { Badge } from '@/components/ui/Badge'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { Select } from '@/components/ui/Select'
 import { formatNumber } from '@/lib/utils'
 import { useFunilPorVendedor, type FunilStage } from '@/hooks/useFunilPorVendedor'
+import { useEtiquetas, groupEtiquetasByVendedor, type WascriptEtiqueta } from '@/hooks/useEtiquetas'
 
 const PERIODO_OPTS = [
   { value: '7', label: 'Últimos 7 dias' },
@@ -32,7 +34,7 @@ const STAGES: StageDef[] = [
   { key: 'vendido',              label: 'Vendido',          icon: CheckCircle,     tone: 'success' },
 ]
 
-function FunilCard({ stage }: { stage: FunilStage }) {
+function FunilCard({ stage, etiquetas }: { stage: FunilStage; etiquetas?: WascriptEtiqueta[] }) {
   const max = stage.total_leads || 1
   const isAdefinir = stage.vendedor === 'A DEFINIR'
 
@@ -93,6 +95,40 @@ function FunilCard({ stage }: { stage: FunilStage }) {
           )
         })}
       </div>
+
+      {/* Etiquetas Wascript do vendedor */}
+      {!isAdefinir && (
+        <div className="pt-2 border-t border-border/60 space-y-1.5">
+          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-ink-faint">
+            <Tag className="h-3 w-3" />
+            <span>Etiquetas WhatsApp</span>
+            <span className="font-mono">({etiquetas?.length ?? 0})</span>
+          </div>
+          {etiquetas && etiquetas.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {etiquetas
+                .filter(e => !['NAO LIDAS','FAVORITOS','GRUPOS'].includes(e.etiqueta_nome_normalizado))
+                .map(e => (
+                  <Badge
+                    key={e.id}
+                    title={`ID Wascript: ${e.etiqueta_id_wascript}${e.is_canonica ? ' · canônica' : ' · custom'}`}
+                    className={
+                      e.is_canonica
+                        ? 'text-[10px] bg-info-bg/40 text-info border border-info/20'
+                        : 'text-[10px] bg-surface-2 text-ink-muted border border-border'
+                    }
+                  >
+                    {e.etiqueta_nome}
+                  </Badge>
+                ))}
+            </div>
+          ) : (
+            <p className="text-[11px] text-warning italic">
+              ⚠ Sem etiquetas configuradas no WhatsApp dele
+            </p>
+          )}
+        </div>
+      )}
     </Card>
   )
 }
@@ -100,6 +136,8 @@ function FunilCard({ stage }: { stage: FunilStage }) {
 export function Funil() {
   const [periodoDias, setPeriodoDias] = useState('30')
   const { data, isLoading } = useFunilPorVendedor(Number(periodoDias))
+  const { data: etiquetasAll } = useEtiquetas()
+  const etiquetasByVendedor = etiquetasAll ? groupEtiquetasByVendedor(etiquetasAll) : null
 
   const totals = (data ?? []).reduce(
     (acc, s) => ({
@@ -147,9 +185,13 @@ export function Funil() {
         <PageLoading />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
-          {(data ?? []).map(stage => (
-            <FunilCard key={stage.vendedor} stage={stage} />
-          ))}
+          {(data ?? []).map(stage => {
+            // Match: tenta nome exato (PEDRO DELLA GIUSTINA -> tenta PEDRO DELLA GIUSTINA, depois PEDRO)
+            const firstName = stage.vendedor.split(' ')[0].toUpperCase()
+            const etiquetas = etiquetasByVendedor?.get(stage.vendedor.toUpperCase())
+              ?? etiquetasByVendedor?.get(firstName)
+            return <FunilCard key={stage.vendedor} stage={stage} etiquetas={etiquetas} />
+          })}
         </div>
       )}
 
