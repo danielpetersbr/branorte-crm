@@ -208,7 +208,7 @@ export function Layout() {
         <nav className={cn('flex-1 flex flex-col gap-0.5', collapsed ? 'p-2 items-center' : 'p-3')}>
           {!collapsed && <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-1">Operação</div>}
           {PRIMARY.map(renderItem)}
-          {!collapsed && <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-4">Financeiro</div>}
+          {!collapsed && <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-4">Orçamentos</div>}
           {collapsed && <div className="my-2 w-8 h-px bg-border" />}
           {SECONDARY.map(renderItem)}
           {isAdmin && (
