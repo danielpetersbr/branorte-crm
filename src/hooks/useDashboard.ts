@@ -317,8 +317,8 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
       const momento = normQuando(r.quando_investir)
       if (momento === 'Agora') quentes++
       if (fin && animal && qtd && momento) qualificados++
-      // Tocou no botao final (completou todo o fluxo do bot)
-      if (fin && animal && qtd && momento && r.tocou_botao_em) tocouBotaoKpi++
+      // Tocou no botao = tocou em qualquer momento (nao exige qualificar antes)
+      if (r.tocou_botao_em) tocouBotaoKpi++
     }
     return { total: rs.length, hoje, quentes, qualificados, tocouBotaoKpi }
   }
@@ -727,7 +727,7 @@ function buildSparkSeries(
     const qtd = r.quantos_animais?.trim() || null
     const momento = normQuando(r.quando_investir)
     if (fin && animal && qtd && momento) qualificados[idx]++
-    if (fin && animal && qtd && momento && r.tocou_botao_em) botao[idx]++
+    if (r.tocou_botao_em) botao[idx]++
   }
   return { total, hoje, quentes, qualificados, botao }
 }
