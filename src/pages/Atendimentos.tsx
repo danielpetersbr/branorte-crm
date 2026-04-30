@@ -6,6 +6,7 @@ import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Avatar } from '@/components/ui/Avatar'
+import { StatusVendedorPicker } from '@/components/StatusVendedorPicker'
 import { StatusDot } from '@/components/ui/StatusDot'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTimeShort, estadoNome } from '@/lib/utils'
@@ -311,6 +312,7 @@ export function Atendimentos() {
                     <th className="hidden lg:table-cell">Momento</th>
                     <th className="hidden 2xl:table-cell" title="Cliente clicou no botão FALAR COM CONSULTOR">Botão</th>
                     <th>Vendedor</th>
+                    <th>Status</th>
                     <th className="!text-right"></th>
                   </tr>
                 </thead>
@@ -526,6 +528,13 @@ export function Atendimentos() {
                             }
                             return <span className="text-[11px] text-ink-faint italic">a definir</span>
                           })()}
+                        </td>
+                        {/* STATUS DO VENDEDOR */}
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          <StatusVendedorPicker
+                            value={r.status_vendedor ?? null}
+                            auditoriaIds={(r.auditoria_ids && r.auditoria_ids.length > 0) ? r.auditoria_ids : [r.id]}
+                          />
                         </td>
                         {/* AÇÕES */}
                         <td className="px-3 py-2.5 text-right whitespace-nowrap">

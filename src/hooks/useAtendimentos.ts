@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabaseAuditoria, supabase } from '@/lib/supabase'
-import { ATENDIMENTO_PAGE_SIZE, type Atendimento, type StatusReal } from '@/types/atendimento'
+import { ATENDIMENTO_PAGE_SIZE, type Atendimento, type StatusReal, type StatusVendedor } from '@/types/atendimento'
 import { DDD_TO_UF } from '@/lib/ddd-uf'
 
 /**
@@ -307,6 +307,28 @@ export function useAtribuirAtendimento() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['atendimentos'] })
       qc.invalidateQueries({ queryKey: ['atendimentos-responsaveis'] })
+    },
+  })
+}
+
+// Atualiza o status_vendedor (Novo, Em atendimento, Proposta enviada, Negociando,
+// Fechou, Nao fechou, Sem retorno) em todas as rows do cliente.
+export function useUpdateStatusVendedor() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (args: { auditoria_ids: string[]; status: StatusVendedor | null }) => {
+      if (!args.auditoria_ids.length) throw new Error('Nenhum id')
+      const { error, data } = await supabaseAuditoria
+        .from('auditoria_atendimentos')
+        .update({ status_vendedor: args.status })
+        .in('id', args.auditoria_ids)
+        .select('id')
+      if (error) throw error
+      return (data ?? []).length
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['atendimentos'] })
+      qc.invalidateQueries({ queryKey: ['atendimentos-kpis'] })
     },
   })
 }

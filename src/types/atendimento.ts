@@ -8,6 +8,39 @@ export type StatusReal =
   | 'Sem-Resposta'
   | 'Perdido'
 
+// Status que o VENDEDOR marca manualmente. Independente do status_real (sistema).
+export type StatusVendedor =
+  | 'novo'         // lead chegou, vendedor ainda nao atendeu
+  | 'atendendo'    // em conversa
+  | 'proposta'     // mandou orcamento/proforma
+  | 'negociando'   // cliente respondeu, ajustando
+  | 'fechou'       // VENDEU
+  | 'nao_fechou'   // perdido (concorrente, sem budget, etc.)
+  | 'sem_retorno'  // cliente sumiu
+
+export const STATUS_VENDEDOR_VALUES: StatusVendedor[] = [
+  'novo', 'atendendo', 'proposta', 'negociando', 'fechou', 'nao_fechou', 'sem_retorno',
+]
+
+export interface StatusVendedorMeta {
+  value: StatusVendedor
+  label: string
+  emoji: string
+  // Cor HSL (mesma usada nos design tokens)
+  bg: string  // background do badge
+  fg: string  // texto/borda do badge
+}
+
+export const STATUS_VENDEDOR_MAP: Record<StatusVendedor, StatusVendedorMeta> = {
+  novo:        { value: 'novo',        label: 'Novo',             emoji: '🆕', bg: 'hsl(240 5% 35%)',  fg: 'hsl(240 6% 90%)' },
+  atendendo:   { value: 'atendendo',   label: 'Em atendimento',   emoji: '💬', bg: 'hsl(217 91% 60%)', fg: 'hsl(0 0% 100%)' },
+  proposta:    { value: 'proposta',    label: 'Proposta enviada', emoji: '💰', bg: 'hsl(38 92% 50%)',  fg: 'hsl(0 0% 100%)' },
+  negociando:  { value: 'negociando',  label: 'Negociando',       emoji: '🤝', bg: 'hsl(28 92% 55%)',  fg: 'hsl(0 0% 100%)' },
+  fechou:      { value: 'fechou',      label: 'Fechou',           emoji: '✅', bg: 'hsl(152 60% 40%)', fg: 'hsl(0 0% 100%)' },
+  nao_fechou:  { value: 'nao_fechou',  label: 'Não fechou',       emoji: '❌', bg: 'hsl(0 72% 51%)',   fg: 'hsl(0 0% 100%)' },
+  sem_retorno: { value: 'sem_retorno', label: 'Sem retorno',      emoji: '😴', bg: 'hsl(240 5% 50%)',  fg: 'hsl(240 6% 90%)' },
+}
+
 export const STATUS_REAL_VALUES: StatusReal[] = [
   'Vendido',
   'Em-andamento',
@@ -87,6 +120,7 @@ export interface Atendimento {
   dispatch_vendedor_nome: string | null
   foi_dispatched: boolean | null
   dispatch_equipamento_avulso: boolean | null
+  status_vendedor: StatusVendedor | null
 }
 
 export const ATENDIMENTO_PAGE_SIZE = 50
