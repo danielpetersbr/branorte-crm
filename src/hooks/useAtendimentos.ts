@@ -311,6 +311,55 @@ export function useAtribuirAtendimento() {
   })
 }
 
+// Carrega todos os atendimentos pro Kanban (sem paginar). Limita 1000 por seguranca.
+// Filtros: search, responsavel, uf, data — mesmo schema do /atendimentos.
+export function useAtendimentosFunil(filters: Omit<AtendimentoFilters, 'status_real' | 'page'>) {
+  return useQuery({
+    queryKey: ['atendimentos-funil', filters],
+    queryFn: async () => {
+      const vendorFirst = await getCurrentVendorFirstName()
+      let query = supabaseAuditoria
+        .from('atendimentos_por_cliente')
+        .select('*')
+        .eq('is_internal', false)
+        .order('last_message_at', { ascending: false, nullsFirst: false })
+        .limit(1000)
+
+      if (vendorFirst) {
+        query = query.or(
+          `responsavel.ilike.${vendorFirst}%,` +
+          `responsavel.is.null,` +
+          `responsavel.eq.,` +
+          `responsavel.eq.a definir`
+        )
+      }
+
+      if (filters.search) {
+        const escaped = filters.search.replace(/[%_]/g, c => `\\${c}`)
+        query = query.or(`nome.ilike.%${escaped}%,telefone.ilike.%${escaped}%`)
+      }
+      if (filters.responsavel) query = query.eq('responsavel', filters.responsavel)
+      if (filters.uf) {
+        const ddds = Object.entries(DDD_TO_UF).filter(([, uf]) => uf === filters.uf).map(([ddd]) => ddd)
+        if (ddds.length > 0) {
+          query = query.or(ddds.map(ddd => `telefone.like.+55${ddd}%`).join(','))
+        }
+      }
+      const range = dateRangeFromPreset(filters.data)
+      if (range.from) query = query.gte('last_message_at', range.from)
+      if (range.to)   query = query.lte('last_message_at', range.to)
+
+      const { data, error } = await query
+      if (error) throw error
+      return (data ?? []) as Atendimento[]
+    },
+    placeholderData: prev => prev,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+  })
+}
+
 // Atribui lead a um vendedor especifico pelo nome (sem precisar do user_id auth).
 // Usado pelo admin pra atribuir pra qualquer vendedor da equipe.
 export function useAtribuirVendedor() {
