@@ -288,3 +288,47 @@ export function useDeleteAtendimento() {
     },
   })
 }
+
+// Atribui atendimento ao usuario logado ('Pegar pra mim').
+// Atualiza TODOS auditoria_ids do cliente.
+export function useAtribuirAtendimento() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (args: { auditoria_ids: string[]; user_id: string; user_name: string }) => {
+      if (!args.auditoria_ids.length) throw new Error('Nenhum id')
+      const { data, error } = await supabase.rpc('atendimento_atribuir', {
+        p_auditoria_ids: args.auditoria_ids,
+        p_user_id: args.user_id,
+        p_user_name: args.user_name,
+      })
+      if (error) throw error
+      return data as number
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['atendimentos'] })
+      qc.invalidateQueries({ queryKey: ['atendimentos-responsaveis'] })
+    },
+  })
+}
+
+// Fecha (resolve) ou reabre atendimento.
+// fechar=true seta finished_at=now(); fechar=false seta NULL.
+export function useResolverAtendimento() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (args: { auditoria_ids: string[]; user_id: string; fechar: boolean }) => {
+      if (!args.auditoria_ids.length) throw new Error('Nenhum id')
+      const { data, error } = await supabase.rpc('atendimento_resolver', {
+        p_auditoria_ids: args.auditoria_ids,
+        p_user_id: args.user_id,
+        p_fechar: args.fechar,
+      })
+      if (error) throw error
+      return data as number
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['atendimentos'] })
+      qc.invalidateQueries({ queryKey: ['atendimentos-kpis'] })
+    },
+  })
+}

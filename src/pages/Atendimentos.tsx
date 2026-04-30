@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, Flame, AlarmClock, CheckCircle2, Inbox, Trash2, Calendar, Hand, ListChecks, MessageSquareDot, EyeOff } from 'lucide-react'
+import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, Flame, AlarmClock, CheckCircle2, Inbox, Trash2, Calendar, Hand, ListChecks, MessageSquareDot, EyeOff, UserPlus, Check, RotateCcw } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -12,7 +12,9 @@ import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTime
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, type StatusReal } from '@/types/atendimento'
-import { useAtendimentos, useAtendimentoKpis, useAtendimentoResponsaveis, useDeleteAtendimento, type DataPreset } from '@/hooks/useAtendimentos'
+import { useAtendimentos, useAtendimentoKpis, useAtendimentoResponsaveis, useDeleteAtendimento, useAtribuirAtendimento, useResolverAtendimento, type DataPreset } from '@/hooks/useAtendimentos'
+import { useAuth } from '@/hooks/useAuth'
+import { useVendors } from '@/hooks/useVendors'
 
 const DATA_PRESETS: { value: DataPreset; label: string }[] = [
   { value: 'hoje',  label: 'Hoje' },
@@ -164,6 +166,14 @@ export function Atendimentos() {
   const { data: kpis } = useAtendimentoKpis(filters)
   const { data: responsaveis } = useAtendimentoResponsaveis()
   const deleteMut = useDeleteAtendimento()
+  const atribuirMut = useAtribuirAtendimento()
+  const resolverMut = useResolverAtendimento()
+  const { profile } = useAuth()
+  const { data: vendorsData } = useVendors()
+  // Nome de exibição do vendedor logado para gravar em auditoria.responsavel.
+  const myVendorName = profile?.vendor_id
+    ? (vendorsData ?? []).find(v => v.id === profile.vendor_id)?.name
+    : (profile?.display_name || profile?.email?.split('@')[0])
 
   const rows = data?.rows ?? []
   const total = data?.total ?? 0
@@ -490,21 +500,72 @@ export function Atendimentos() {
                         </td>
                         {/* AÇÕES */}
                         <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                          <button
-                            type="button"
-                            disabled={deleteMut.isPending}
-                            onClick={() => {
-                              const ids = (r.auditoria_ids && r.auditoria_ids.length > 0) ? r.auditoria_ids : [r.id]
-                              const label = r.nome || r.telefone || 'lead'
-                              if (window.confirm(`Excluir lead "${label}"?\n\nEssa ação remove ${ids.length} ${ids.length === 1 ? 'registro' : 'registros'} do banco. Não pode ser desfeita.`)) {
-                                deleteMut.mutate(ids)
-                              }
-                            }}
-                            title="Excluir lead"
-                            className="h-7 w-7 inline-flex items-center justify-center rounded-md text-ink-faint/60 hover:text-danger hover:bg-danger-bg transition-all"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                          {(() => {
+                            const ids = (r.auditoria_ids && r.auditoria_ids.length > 0) ? r.auditoria_ids : [r.id]
+                            const isFechado = !!r.finished_at
+                            const isMine = !!(profile?.id && r.responsavel_user_id === profile.id)
+                            const semVendedor = !r.responsavel_user_id && (!r.responsavel || r.responsavel === 'a definir')
+                            const canPegarPraMim = !!profile?.id && !!myVendorName && (semVendedor || (!isMine && profile?.role === 'admin'))
+                            return (
+                              <div className="inline-flex items-center gap-1">
+                                {/* PEGAR PRA MIM */}
+                                {canPegarPraMim && (
+                                  <button
+                                    type="button"
+                                    disabled={atribuirMut.isPending}
+                                    onClick={() => {
+                                      atribuirMut.mutate({
+                                        auditoria_ids: ids,
+                                        user_id: profile!.id,
+                                        user_name: myVendorName!,
+                                      })
+                                    }}
+                                    title={semVendedor ? 'Pegar pra mim' : `Atribuir pra mim (${myVendorName})`}
+                                    className="h-7 w-7 inline-flex items-center justify-center rounded-md text-ink-faint/70 hover:text-info hover:bg-info-bg transition-all"
+                                  >
+                                    <UserPlus className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                                {/* FECHAR / REABRIR */}
+                                {profile?.id && (
+                                  <button
+                                    type="button"
+                                    disabled={resolverMut.isPending}
+                                    onClick={() => {
+                                      resolverMut.mutate({
+                                        auditoria_ids: ids,
+                                        user_id: profile.id,
+                                        fechar: !isFechado,
+                                      })
+                                    }}
+                                    title={isFechado ? 'Reabrir atendimento' : 'Fechar atendimento'}
+                                    className={`h-7 w-7 inline-flex items-center justify-center rounded-md transition-all ${
+                                      isFechado
+                                        ? 'text-warning hover:text-warning hover:bg-warning-bg'
+                                        : 'text-success/70 hover:text-success hover:bg-success-bg'
+                                    }`}
+                                  >
+                                    {isFechado ? <RotateCcw className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
+                                  </button>
+                                )}
+                                {/* EXCLUIR */}
+                                <button
+                                  type="button"
+                                  disabled={deleteMut.isPending}
+                                  onClick={() => {
+                                    const label = r.nome || r.telefone || 'lead'
+                                    if (window.confirm(`Excluir lead "${label}"?\n\nEssa ação remove ${ids.length} ${ids.length === 1 ? 'registro' : 'registros'} do banco. Não pode ser desfeita.`)) {
+                                      deleteMut.mutate(ids)
+                                    }
+                                  }}
+                                  title="Excluir lead"
+                                  className="h-7 w-7 inline-flex items-center justify-center rounded-md text-ink-faint/60 hover:text-danger hover:bg-danger-bg transition-all"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            )
+                          })()}
                         </td>
                       </tr>
                     )
