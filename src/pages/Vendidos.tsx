@@ -64,7 +64,7 @@ function useSoldContacts(filters: { search: string; vendor_id: string; estado: s
         .order('origin', { ascending: false })
 
       if (filters.search) {
-        query = query.or(`name.ilike.%${filters.search}%,phone.ilike.%${filters.search}%,descricao_orcamento.ilike.%${filters.search}%`)
+        query = query.or(`name.ilike.%${filters.search}%,phone.ilike.%${filters.search}%,descricao_orcamento.ilike.%${filters.search}%,city.ilike.%${filters.search}%`)
       }
       if (filters.vendor_id) query = query.eq('vendor_id', filters.vendor_id)
       if (filters.estado) query = query.eq('state', filters.estado)
@@ -176,7 +176,7 @@ export function Vendidos() {
       <Card className="p-4">
         <div className="flex flex-wrap gap-3 items-center">
           <Input
-            placeholder="Buscar por nome, telefone ou produto..."
+            placeholder="Buscar por nome, telefone, cidade ou produto..."
             leftIcon={<Search className="h-4 w-4" />}
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
@@ -250,8 +250,11 @@ export function Vendidos() {
                 <thead>
                   <tr className="border-b border-surface-border bg-surface-secondary">
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Nome</th>
+                    <th className="text-left text-xs font-medium text-text-muted px-3 py-3 w-12">UF</th>
+                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Cidade</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Telefone</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Vendedor</th>
+                    <th className="text-left text-xs font-medium text-text-muted px-3 py-3">Data</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Orçamento</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Produto</th>
                     <th className="text-right text-xs font-medium text-text-muted px-4 py-3">Ações</th>
@@ -264,11 +267,24 @@ export function Vendidos() {
                     const tel = placeholder ? '' : (c.telefone_normalizado || c.phone || '')
                     const orc = getOrcamento(c.origin)
                     const orcsLinkados = orcamentosMap?.get(c.id) ?? []
+                    const dataOrc = c.data_orcamento || orcsLinkados[0]?.mtime_iso || null
+                    const dataFmt = dataOrc ? new Date(dataOrc).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' }) : ''
                     return (
                       <tr key={c.id} className="hover:bg-green-50/30 transition-colors">
                         <td className="px-4 py-3">
                           <span className="text-sm font-medium text-text-primary">{c.name || '(sem nome)'}</span>
-                          {c.state && <Badge className="bg-blue-50 text-blue-700 ml-2">{c.state}</Badge>}
+                        </td>
+                        <td className="px-3 py-3">
+                          {c.state ? (
+                            <Badge className="bg-blue-50 text-blue-700 font-mono text-[11px]">{c.state}</Badge>
+                          ) : (
+                            <span className="text-xs text-text-muted">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-xs text-text-secondary truncate max-w-[160px] block" title={c.city || ''}>
+                            {c.city || <span className="text-text-muted">-</span>}
+                          </span>
                         </td>
                         <td className="px-4 py-3">
                           {tel ? (
@@ -282,6 +298,9 @@ export function Vendidos() {
                         </td>
                         <td className="px-4 py-3">
                           <span className="text-sm text-text-secondary">{(c.vendor_id ? vendorMap[c.vendor_id] : null) ?? '-'}</span>
+                        </td>
+                        <td className="px-3 py-3">
+                          <span className="text-xs text-text-muted font-mono whitespace-nowrap">{dataFmt || '-'}</span>
                         </td>
                         <td className="px-4 py-3">
                           {orcsLinkados.length > 0 ? (
@@ -311,7 +330,7 @@ export function Vendidos() {
                           {(() => {
                             const produto = c.descricao_orcamento || orcsLinkados[0]?.equipamento || ''
                             return (
-                              <span className="text-xs text-text-muted truncate max-w-[280px] block" title={produto}>
+                              <span className="text-xs text-text-muted truncate max-w-[260px] block" title={produto}>
                                 {produto || '-'}
                               </span>
                             )
@@ -338,7 +357,7 @@ export function Vendidos() {
                   })}
                   {contacts.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-text-muted">
+                      <td colSpan={9} className="px-4 py-8 text-center text-text-muted">
                         Nenhum resultado encontrado.
                       </td>
                     </tr>
