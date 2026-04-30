@@ -157,10 +157,10 @@ export function Layout() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row bg-bg">
+    <div className="min-h-screen flex flex-col md:flex-row bg-bg">
       <aside className={cn(
-        'hidden lg:flex flex-col border-r border-border bg-bg transition-all duration-200',
-        'sticky top-0 h-screen overflow-y-auto',
+        'hidden md:flex flex-col border-r border-border bg-bg transition-all duration-200',
+        'sticky top-0 h-screen overflow-y-auto shrink-0',
         collapsed ? 'w-14' : 'w-60',
       )}>
         {/* Brand + avatar + collapse */}
@@ -258,11 +258,11 @@ export function Layout() {
         </div>
       </aside>
 
-      <main className="flex-1 min-w-0 min-h-screen pb-16 lg:pb-0">
+      <main className="flex-1 min-w-0 min-h-screen pb-16 md:pb-0">
         <Outlet />
       </main>
 
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-bg/95 backdrop-blur border-t border-border flex items-center justify-around px-2 py-1.5 z-50">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-bg/95 backdrop-blur border-t border-border flex items-center justify-around px-2 py-1.5 z-50">
         {PRIMARY.concat(SECONDARY).slice(0, 5).map(l => (
           <NavLink
             key={l.to}
