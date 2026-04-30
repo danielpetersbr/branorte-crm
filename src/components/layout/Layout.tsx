@@ -98,6 +98,7 @@ export function Layout() {
     <div className="min-h-screen flex flex-col lg:flex-row bg-bg">
       <aside className={cn(
         'hidden lg:flex flex-col border-r border-border bg-bg transition-all duration-200',
+        'sticky top-0 h-screen overflow-y-auto',
         collapsed ? 'w-14' : 'w-60',
       )}>
         {/* Brand + user + theme + logout + collapse (tudo numa linha) */}
