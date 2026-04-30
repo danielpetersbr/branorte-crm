@@ -97,6 +97,13 @@ function StatusEditable({ orcamento, effectiveStatus }: { orcamento: OrcamentoFi
   )
 }
 
+// Calcula dias entre data ISO e hoje. NULL = -1 (sentinela).
+function diasDesde(iso: string | null): number {
+  if (!iso) return -1
+  const dias = Math.floor((Date.now() - new Date(iso).getTime()) / 86400_000)
+  return Math.max(0, dias)
+}
+
 // Editor inline da data de último contato. Click → input date.
 function UltimoContatoEditable({ orcamento }: { orcamento: OrcamentoFile }) {
   const [editing, setEditing] = useState(false)
@@ -104,6 +111,9 @@ function UltimoContatoEditable({ orcamento }: { orcamento: OrcamentoFile }) {
 
   const valor = orcamento.ultimo_contato_em
   const valorParaInput = valor ? valor.slice(0, 10) : ''  // YYYY-MM-DD
+  const dias = diasDesde(valor)
+  const eFrio = dias === -1 || dias > DIAS_FRIO   // -1 = nunca contatado tb conta como frio
+  const eMedio = dias > DIAS_RECENTE && dias <= DIAS_FRIO
 
   const salvar = (novo: string) => {
     setEditing(false)
@@ -136,20 +146,26 @@ function UltimoContatoEditable({ orcamento }: { orcamento: OrcamentoFile }) {
     return (
       <button
         onClick={e => { e.stopPropagation(); setEditing(true) }}
-        title="Marcar data do último contato"
-        className="text-xs text-text-muted hover:text-text-primary hover:bg-surface-2 px-2 py-1 rounded transition-colors"
+        title="Nunca contatado — clique pra marcar"
+        className="text-xs px-2 py-1 rounded transition-colors bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50"
       >
-        + marcar
+        nunca
       </button>
     )
   }
+
+  const corBadge = eFrio
+    ? 'bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50'
+    : eMedio
+      ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50'
+      : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50'
 
   return (
     <div className="flex items-center gap-1">
       <button
         onClick={e => { e.stopPropagation(); setEditing(true) }}
-        title="Editar data"
-        className="text-xs text-text-secondary hover:text-text-primary hover:bg-surface-2 px-2 py-1 rounded transition-colors tabular-nums"
+        title={`${dias} dias atrás · clique pra editar`}
+        className={`text-xs px-2 py-1 rounded transition-colors tabular-nums ${corBadge}`}
       >
         {formatRelative(valor)}
       </button>
@@ -194,7 +210,11 @@ import {
   useUpdateOrcamentoStatus,
   useUpdateUltimoContato,
   ORCAMENTOS_PAGE_SIZE,
+  DIAS_FRIO,
+  DIAS_RECENTE,
   type OrcamentoFile,
+  type FollowUpFilter,
+  type OrcamentoSort,
 } from '@/hooks/useOrcamentosFiles'
 import { useVendorMap } from '@/hooks/useVendorMap'
 import { useVendors } from '@/hooks/useVendors'
@@ -272,6 +292,8 @@ type ListaFilters = {
   mes: string
   vendor_id: string
   comContato: '' | 'sim' | 'nao'
+  followUp: FollowUpFilter
+  sort: OrcamentoSort
   page: number
 }
 
@@ -295,12 +317,22 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
 
   const [filters, setFilters] = useState<ListaFilters>(() => {
     const saved = loadFilters()
-    return saved ?? {
+    if (saved) {
+      // backward-compat: garante novos campos
+      return {
+        ...saved,
+        followUp: (saved as ListaFilters).followUp ?? '',
+        sort: (saved as ListaFilters).sort ?? 'recente',
+      }
+    }
+    return {
       search: '',
       ano: '',
       mes: '',
       vendor_id: vendorTravado,
       comContato: '',
+      followUp: '',
+      sort: 'recente',
       page: 0,
     }
   })
@@ -341,10 +373,14 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
 
   // Pra vendor, vendor_id sempre = seu próprio id, então não conta como filtro "extra".
   const hasFilters = filters.search || filters.ano || filters.mes
-    || (!isVendor && filters.vendor_id) || filters.comContato
+    || (!isVendor && filters.vendor_id) || filters.comContato || filters.followUp
+    || filters.sort !== 'recente'
 
   const clear = () => {
-    setFilters({ search: '', ano: '', mes: '', vendor_id: vendorTravado, comContato: '', page: 0 })
+    setFilters({
+      search: '', ano: '', mes: '', vendor_id: vendorTravado,
+      comContato: '', followUp: '', sort: 'recente', page: 0,
+    })
     setSearchInput('')
   }
 
@@ -395,6 +431,28 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
             value={filters.comContato}
             onChange={e => setFilters(f => ({ ...f, comContato: e.target.value as '' | 'sim' | 'nao', page: 0 }))}
             className="lg:w-40"
+          />
+          <Select
+            options={[
+              { value: 'vencido',     label: `Frios (+${DIAS_FRIO}d)` },
+              { value: 'sem_contato', label: 'Nunca contatados' },
+              { value: 'medio',       label: `Médio (${DIAS_RECENTE + 1}-${DIAS_FRIO}d)` },
+              { value: 'recente',     label: `Recentes (≤${DIAS_RECENTE}d)` },
+            ]}
+            placeholder="Follow-up"
+            value={filters.followUp}
+            onChange={e => setFilters(f => ({ ...f, followUp: e.target.value as FollowUpFilter, page: 0 }))}
+            className="lg:w-44"
+          />
+          <Select
+            options={[
+              { value: 'recente',   label: 'Mais recentes' },
+              { value: 'follow_up', label: 'Sem contato há +tempo' },
+            ]}
+            placeholder="Ordenar"
+            value={filters.sort}
+            onChange={e => setFilters(f => ({ ...f, sort: e.target.value as OrcamentoSort, page: 0 }))}
+            className="lg:w-52"
           />
           {hasFilters && (
             <Button variant="ghost" size="sm" onClick={clear}>

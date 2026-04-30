@@ -20,7 +20,7 @@ export function Assign() {
   const [page, setPage] = useState(0)
 
   const { data: vendors = [] } = useVendors()
-  const { data, isLoading } = useContacts({ search, estado, vendor_id: 'unassigned', status: '', orcamento: false, temperatura: '', page })
+  const { data, isLoading } = useContacts({ search, estado, vendor_id: 'unassigned', status: '', orcamento: false, orcamento_ano: '', orcamento_mes: '', temperatura: '', sort: 'recente', page })
   const bulkAssign = useBulkAssign()
 
   const contacts = data?.contacts ?? []

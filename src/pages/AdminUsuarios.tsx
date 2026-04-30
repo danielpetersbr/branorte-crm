@@ -42,7 +42,7 @@ export function AdminUsuarios() {
   const [vendorId, setVendorId] = useState<string>('')
 
   const updateUser = useMutation({
-    mutationFn: async (u: { id: string; role: 'admin' | 'vendor' | 'rejected'; vendor_id?: string | null }) => {
+    mutationFn: async (u: { id: string; role: 'admin' | 'vendor' | 'rejected' | 'pending'; vendor_id?: string | null }) => {
       const patch: Partial<UserRow> & { approved_at: string | null } = {
         role: u.role,
         vendor_id: u.vendor_id ?? null,

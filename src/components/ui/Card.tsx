@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils'
 
-interface CardProps { children: React.ReactNode; className?: string; hover?: boolean; onClick?: () => void }
+interface CardProps { children: React.ReactNode; className?: string; hover?: boolean; onClick?: (e: React.MouseEvent<HTMLDivElement>) => void }
 
 export function Card({ children, className, hover, onClick }: CardProps) {
   return (

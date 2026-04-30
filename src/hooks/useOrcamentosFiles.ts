@@ -28,14 +28,23 @@ export interface OrcamentoFile {
   ultimo_contato_by: string | null
 }
 
+export type FollowUpFilter = '' | 'sem_contato' | 'recente' | 'medio' | 'vencido'
+export type OrcamentoSort = 'recente' | 'follow_up'
+
 export interface OrcamentosFilters {
   search: string         // busca em cliente + equipamento
   ano: string            // '' = todos
   mes: string            // '' = todos. '01'..'12'
   vendor_id: string      // '' = todos. 'unassigned' = sem vendor
   comContato: '' | 'sim' | 'nao'
+  followUp: FollowUpFilter  // filtro por dias desde ultimo_contato_em
+  sort: OrcamentoSort       // 'recente' = mtime; 'follow_up' = mais antigos sem contato primeiro
   page: number
 }
+
+// Limite de dias pra considerar lead "frio" — sem contato recente.
+export const DIAS_FRIO = 14
+export const DIAS_RECENTE = 7
 
 export const ORCAMENTOS_PAGE_SIZE = 50
 
@@ -71,10 +80,35 @@ export function useOrcamentosFiles(filters: OrcamentosFilters) {
       if (filters.comContato === 'sim') query = query.not('contact_id', 'is', null)
       if (filters.comContato === 'nao') query = query.is('contact_id', null)
 
-      // Mais recentes primeiro (mtime). Empate quebrado por id desc (=ordem de import).
-      query = query
-        .order('mtime_iso', { ascending: false, nullsFirst: false })
-        .order('id', { ascending: false })
+      // Filtro de follow-up — baseado em dias desde ultimo_contato_em
+      if (filters.followUp) {
+        const now = Date.now()
+        const limiteRecente = new Date(now - DIAS_RECENTE * 86400_000).toISOString()
+        const limiteFrio    = new Date(now - DIAS_FRIO    * 86400_000).toISOString()
+        if (filters.followUp === 'sem_contato') {
+          query = query.is('ultimo_contato_em', null)
+        } else if (filters.followUp === 'recente') {
+          query = query.gte('ultimo_contato_em', limiteRecente)
+        } else if (filters.followUp === 'medio') {
+          query = query.gte('ultimo_contato_em', limiteFrio).lt('ultimo_contato_em', limiteRecente)
+        } else if (filters.followUp === 'vencido') {
+          // Vencido = nunca contatou OU contatou há mais de DIAS_FRIO dias
+          query = query.or(`ultimo_contato_em.is.null,ultimo_contato_em.lt.${limiteFrio}`)
+        }
+      }
+
+      // Sort
+      if (filters.sort === 'follow_up') {
+        // Mais antigos sem contato primeiro (NULL = nunca falou, prioridade alta)
+        query = query
+          .order('ultimo_contato_em', { ascending: true, nullsFirst: true })
+          .order('id', { ascending: false })
+      } else {
+        // Default: mais recentes primeiro (mtime). Empate quebrado por id desc.
+        query = query
+          .order('mtime_iso', { ascending: false, nullsFirst: false })
+          .order('id', { ascending: false })
+      }
 
       const from = filters.page * ORCAMENTOS_PAGE_SIZE
       query = query.range(from, from + ORCAMENTOS_PAGE_SIZE - 1)
