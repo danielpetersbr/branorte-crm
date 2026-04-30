@@ -438,7 +438,7 @@ function DonutMomento({ data }: { data: { momento: string; valor: number; cor: s
         </ResponsiveContainer>
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
           <span className="text-3xl font-semibold text-ink tabular-nums leading-none">{fmtN(total)}</span>
-          <span className="text-[10px] text-ink-faint mt-1 uppercase tracking-widest">leads ativos</span>
+          <span className="text-[10px] text-ink-faint mt-1 uppercase tracking-widest">leads no período</span>
         </div>
       </div>
       <div className="space-y-2.5 pr-2 min-w-[150px]">

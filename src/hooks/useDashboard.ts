@@ -483,6 +483,7 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
     }
 
     if (momento) byMomento.set(momento, (byMomento.get(momento) ?? 0) + 1)
+    else byMomento.set('Não respondeu', (byMomento.get('Não respondeu') ?? 0) + 1)
 
     if (animal) {
       const cur = byAnimalFinalidade.get(animal) ?? { animal, vender: 0, consumo: 0, ambos: 0, total: 0 }
@@ -596,10 +597,13 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
     'Agora': 'hsl(0 72% 51%)',
     'Em até 3 meses': 'hsl(38 92% 50%)',
     'Pesquisando': 'hsl(217 91% 60%)',
+    'Não respondeu': 'hsl(240 5% 35%)',  // cinza pra "n/d"
   }
+  // Ordena: Agora primeiro (mais urgente), depois 3 meses, Pesquisando, e 'Nao respondeu' por ultimo
+  const ORDEM_MOMENTO = ['Agora', 'Em até 3 meses', 'Pesquisando', 'Não respondeu']
   const porMomento = Array.from(byMomento.entries())
     .map(([momento, valor]) => ({ momento, valor, cor: COR_MOMENTO[momento] ?? 'hsl(240 5% 45%)' }))
-    .sort((a, b) => b.valor - a.valor)
+    .sort((a, b) => ORDEM_MOMENTO.indexOf(a.momento) - ORDEM_MOMENTO.indexOf(b.momento))
 
   const porAnimalFinalidade = Array.from(byAnimalFinalidade.values()).sort((a, b) => b.total - a.total)
 
