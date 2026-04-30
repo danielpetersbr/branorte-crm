@@ -97,6 +97,73 @@ function StatusEditable({ orcamento, effectiveStatus }: { orcamento: OrcamentoFi
   )
 }
 
+// Editor inline da data de último contato. Click → input date.
+function UltimoContatoEditable({ orcamento }: { orcamento: OrcamentoFile }) {
+  const [editing, setEditing] = useState(false)
+  const updateMut = useUpdateUltimoContato()
+
+  const valor = orcamento.ultimo_contato_em
+  const valorParaInput = valor ? valor.slice(0, 10) : ''  // YYYY-MM-DD
+
+  const salvar = (novo: string) => {
+    setEditing(false)
+    if (!novo) {
+      updateMut.mutate({ id: orcamento.id, dataIso: null })
+    } else {
+      // Ancora em meio-dia UTC pra não bagunçar com fuso
+      updateMut.mutate({ id: orcamento.id, dataIso: `${novo}T12:00:00Z` })
+    }
+  }
+
+  if (editing) {
+    return (
+      <input
+        type="date"
+        defaultValue={valorParaInput}
+        autoFocus
+        onBlur={e => salvar(e.target.value)}
+        onClick={e => e.stopPropagation()}
+        onKeyDown={e => {
+          if (e.key === 'Escape') setEditing(false)
+          if (e.key === 'Enter') salvar((e.target as HTMLInputElement).value)
+        }}
+        className="text-xs px-2 py-1 rounded border border-surface-border bg-bg w-32"
+      />
+    )
+  }
+
+  if (!valor) {
+    return (
+      <button
+        onClick={e => { e.stopPropagation(); setEditing(true) }}
+        title="Marcar data do último contato"
+        className="text-xs text-text-muted hover:text-text-primary hover:bg-surface-2 px-2 py-1 rounded transition-colors"
+      >
+        + marcar
+      </button>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        onClick={e => { e.stopPropagation(); setEditing(true) }}
+        title="Editar data"
+        className="text-xs text-text-secondary hover:text-text-primary hover:bg-surface-2 px-2 py-1 rounded transition-colors tabular-nums"
+      >
+        {formatRelative(valor)}
+      </button>
+      <button
+        onClick={e => { e.stopPropagation(); salvar('') }}
+        title="Limpar"
+        className="p-0.5 rounded text-text-muted hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </div>
+  )
+}
+
 function CopyContatoButton({ value, ariaLabel, onCopy }: { value: string; ariaLabel: string; onCopy?: () => void }) {
   const [copied, setCopied] = useState(false)
   const handle = async (e: React.MouseEvent) => {
@@ -125,6 +192,7 @@ function CopyContatoButton({ value, ariaLabel, onCopy }: { value: string; ariaLa
 import {
   useOrcamentosFiles,
   useUpdateOrcamentoStatus,
+  useUpdateUltimoContato,
   ORCAMENTOS_PAGE_SIZE,
   type OrcamentoFile,
 } from '@/hooks/useOrcamentosFiles'
@@ -351,6 +419,7 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Ano · Nº</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Vendedor</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Status</th>
+                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Último contato</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Formatos</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Modificado</th>
                     <th className="text-right text-xs font-medium text-text-muted px-4 py-3">Ações</th>
@@ -433,6 +502,9 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
                           <StatusEditable orcamento={r} effectiveStatus={effectiveStatus} />
                         </td>
                         <td className="px-4 py-3">
+                          <UltimoContatoEditable orcamento={r} />
+                        </td>
+                        <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-1">
                             {(r.extensoes_disponiveis ?? []).map(ext => (
                               <span
@@ -457,7 +529,7 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
                   })}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={9} className="px-4 py-8 text-center text-text-muted">
+                      <td colSpan={10} className="px-4 py-8 text-center text-text-muted">
                         Nenhum orçamento encontrado.
                       </td>
                     </tr>

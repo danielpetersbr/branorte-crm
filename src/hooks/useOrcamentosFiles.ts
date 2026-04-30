@@ -24,6 +24,8 @@ export interface OrcamentoFile {
   docx_ac: string | null
   status_manual: string | null
   status_manual_at: string | null
+  ultimo_contato_em: string | null
+  ultimo_contato_by: string | null
 }
 
 export interface OrcamentosFilters {
@@ -86,6 +88,29 @@ export function useOrcamentosFiles(filters: OrcamentosFilters) {
     },
     placeholderData: prev => prev,
     staleTime: 60_000,
+  })
+}
+
+/** Atualiza ultimo_contato_em (vendor marca quando falou com o lead). */
+export function useUpdateUltimoContato() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, dataIso }: { id: number; dataIso: string | null }) => {
+      const { data: sess } = await supabase.auth.getSession()
+      const userId = sess.session?.user.id ?? null
+      const { error } = await supabase
+        .from('orcamentos_files')
+        .update({
+          ultimo_contato_em: dataIso,
+          ultimo_contato_by: dataIso ? userId : null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['orcamentos-files'] })
+    },
   })
 }
 
