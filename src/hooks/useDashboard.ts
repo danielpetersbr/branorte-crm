@@ -52,6 +52,7 @@ interface RawRow {
   orcamento_enviado: boolean | null
   orcamento_valor: number | null
   status_real: string | null
+  status_vendedor: string | null
   finished_at: string | null
 }
 
@@ -272,7 +273,7 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
       const { data, error } = await supabaseAuditoria
         .from('atendimentos_por_cliente')
         .select(
-          'id, nome, telefone, responsavel, criativo_codigo, criativo_facebook, origem, motivo_contato, finalidade_fabrica, qual_animal, quantos_animais, capacidade_producao, quando_investir, tocou_botao_em, data, ultima_msg, last_message_at, is_internal, chegou_no_vendedor, orcamento_enviado, orcamento_valor, status_real, finished_at'
+          'id, nome, telefone, responsavel, criativo_codigo, criativo_facebook, origem, motivo_contato, finalidade_fabrica, qual_animal, quantos_animais, capacidade_producao, quando_investir, tocou_botao_em, data, ultima_msg, last_message_at, is_internal, chegou_no_vendedor, orcamento_enviado, orcamento_valor, status_real, status_vendedor, finished_at'
         )
         .eq('is_internal', false)
         .order('data', { ascending: false, nullsFirst: false })
@@ -349,6 +350,7 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
   let leadsBotNovo = 0
   let comTelefone = 0
   let qualificadosTotal = 0
+  let qualificadosBotNovo = 0   // qualificou + entrou via bot novo (topo do funil real)
   let chegouVendedorTotal = 0
   let orcamentoEnviadoTotal = 0
   let vendidoTotal = 0
@@ -426,9 +428,12 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
 
     const isQualificado = !!fin && !!animal && !!qtd && !!momento
     if (isQualificado) qualificadosTotal++
-    if (r.chegou_no_vendedor) chegouVendedorTotal++
-    if (r.orcamento_enviado) orcamentoEnviadoTotal++
-    if ((r.status_real || '').toLowerCase().includes('vendid')) vendidoTotal++
+    // Funil pos-bot — so conta leads do bot novo (origem preenchida) que qualificaram.
+    // Sem isso, mistura leads antigos do Digisac onde chegou_no_vendedor ja era true.
+    if (isBotNovo && isQualificado) qualificadosBotNovo++
+    if (isBotNovo && isQualificado && r.chegou_no_vendedor) chegouVendedorTotal++
+    if (isBotNovo && isQualificado && r.orcamento_enviado) orcamentoEnviadoTotal++
+    if (isBotNovo && isQualificado && r.status_vendedor === 'fechou') vendidoTotal++
 
     // Qualidade
     const camposPreenchidos = [motivo, fin, animal, qtd, momento, botao].filter(Boolean).length
@@ -553,11 +558,12 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
   })
 
   // ============================ Funil REAL pos-bot ============================
+  // Topo = leads do bot novo que qualificaram. Etapas seguintes sao subset disso.
   const funilRealRaw = [
-    { etapa: 'Qualificou',          valor: qualificadosTotal },
+    { etapa: 'Qualificou',          valor: qualificadosBotNovo },
     { etapa: 'Chegou no vendedor',  valor: chegouVendedorTotal },
     { etapa: 'Orçamento enviado',   valor: orcamentoEnviadoTotal },
-    { etapa: 'Vendido',             valor: vendidoTotal },
+    { etapa: 'Fechou',              valor: vendidoTotal },
   ]
   const topoReal = funilRealRaw[0].valor || 1
   const funilReal: FunilEtapa[] = funilRealRaw.map((e, i) => {

@@ -164,15 +164,26 @@ export function Dashboard() {
         ))}
       </div>
 
-      {/* FUNIL DO BOT (hero) + LEADS POR DIA */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <Card>
+      {/* FUNIL DO BOT (hero) + FUNIL POS-BOT */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <Card className="lg:col-span-2">
           <CardHeader
             title="Funil de qualificação (bot)"
             subtitle={`${fmtN(data.leadsBotNovo)} leads que entraram via webhook`}
           />
           <FunilHero etapas={data.funil} />
         </Card>
+        <Card>
+          <CardHeader
+            title="Funil de vendas (pós-bot)"
+            subtitle="Qualificou → vendedor → orçamento → fechou"
+          />
+          <FunilCompacto etapas={data.funilReal} />
+        </Card>
+      </div>
+
+      {/* LEADS POR DIA */}
+      <div className="grid grid-cols-1 gap-5">
         <Card>
           <CardHeader
             title="Leads por dia"
@@ -358,6 +369,51 @@ function FunilHero({ etapas }: { etapas: FunilEtapa[] }) {
               <div className="w-[60px] text-right text-[12px] font-mono text-ink-muted tabular-nums shrink-0">
                 {e.pctTopo.toFixed(0)}%
               </div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// Funil compacto pra "funil real" pos-bot
+function FunilCompacto({ etapas }: { etapas: FunilEtapa[] }) {
+  const topo = Math.max(1, etapas[0]?.valor ?? 1)
+  if (etapas[0].valor === 0) {
+    return (
+      <div className="text-center py-8 text-[12px] text-ink-faint">
+        Nenhum lead qualificado ainda no período.
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-3">
+      {etapas.map((e, i) => {
+        const widthPct = topo > 0 ? (e.valor / topo) * 100 : 0
+        const isOk = i === 0 || e.pctAnterior >= 50
+        const isBad = i > 0 && e.pctAnterior < 20
+        return (
+          <div key={e.etapa}>
+            <div className="flex items-baseline justify-between mb-1">
+              <span className="text-[11px] text-ink">{e.etapa}</span>
+              <span className="text-[11px] font-mono tabular-nums">
+                <span className="text-ink">{fmtN(e.valor)}</span>
+                {i > 0 && (
+                  <span className={`ml-2 ${isBad ? 'text-danger' : isOk ? 'text-accent' : 'text-warning'}`}>
+                    {e.pctAnterior.toFixed(0)}%
+                  </span>
+                )}
+              </span>
+            </div>
+            <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: `${Math.max(widthPct, 2)}%`,
+                  background: i === 0 ? COLORS.accent : isBad ? COLORS.danger : `hsl(152 60% ${44 + i * 4}%)`,
+                }}
+              />
             </div>
           </div>
         )
