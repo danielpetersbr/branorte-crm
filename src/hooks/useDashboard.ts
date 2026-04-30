@@ -416,7 +416,8 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
       if (motivo && fin && animal) escolheuAnimal++
       if (motivo && fin && animal && qtd) escolheuQtd++
       if (motivo && fin && animal && qtd && momento) escolheuMomento++
-      if (botao) tocouBotao++
+      // Botao final exige TODAS as etapas anteriores — funil monotonico
+      if (motivo && fin && animal && qtd && momento && botao) tocouBotao++
     }
 
     const isQualificado = !!fin && !!animal && !!qtd && !!momento
