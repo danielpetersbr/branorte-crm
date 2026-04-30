@@ -352,7 +352,7 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
                     const meta = STATUS_LABELS[effectiveStatus] ?? { label: effectiveStatus, color: 'bg-gray-50 text-gray-700 border-gray-200' }
                     const jaChamado = chamados.has(r.id)
                     return (
-                      <tr key={r.id} className={`transition-colors ${jaChamado ? 'bg-green-50/60 hover:bg-green-100/60' : 'hover:bg-green-50/30'}`}>
+                      <tr key={r.id} className={`transition-colors ${jaChamado ? 'bg-green-50/60 hover:bg-green-100/60 dark:bg-green-900/30 dark:hover:bg-green-900/40' : 'hover:bg-green-50/30 dark:hover:bg-green-900/15'}`}>
                         <td className="px-4 py-3 align-top">
                           <div className="flex items-start gap-2">
                             <FileText className="h-4 w-4 text-text-muted mt-0.5 shrink-0" />
@@ -397,7 +397,7 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
                                   <button
                                     onClick={e => { e.stopPropagation(); desmarcar(r.id) }}
                                     title="Desmarcar como chamado"
-                                    className="p-0.5 rounded text-green-700 hover:bg-green-100 transition-colors"
+                                    className="p-0.5 rounded text-green-700 hover:bg-green-100 dark:text-green-300 dark:hover:bg-green-800/50 transition-colors"
                                   >
                                     <X className="h-3 w-3" />
                                   </button>
