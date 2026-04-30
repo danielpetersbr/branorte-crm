@@ -266,27 +266,50 @@ interface Props {
   statusInicial?: string
 }
 
+type ListaFilters = {
+  search: string
+  ano: string
+  mes: string
+  vendor_id: string
+  comContato: '' | 'sim' | 'nao'
+  page: number
+}
+
+const FILTERS_STORAGE_KEY = 'branorte:orcamentos-filtros'
+
+function loadFilters(): ListaFilters | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(FILTERS_STORAGE_KEY)
+    if (!raw) return null
+    return JSON.parse(raw) as ListaFilters
+  } catch {
+    return null
+  }
+}
+
 export function OrcamentosLista({ statusInicial = '' }: Props) {
   const { profile } = useAuth()
   const isVendor = profile?.role === 'vendor'
   const vendorTravado = isVendor ? (profile?.vendor_id ?? '') : ''
 
-  const [filters, setFilters] = useState<{
-    search: string
-    ano: string
-    mes: string
-    vendor_id: string
-    comContato: '' | 'sim' | 'nao'
-    page: number
-  }>({
-    search: '',
-    ano: '',
-    mes: '',
-    vendor_id: vendorTravado,
-    comContato: '',
-    page: 0,
+  const [filters, setFilters] = useState<ListaFilters>(() => {
+    const saved = loadFilters()
+    return saved ?? {
+      search: '',
+      ano: '',
+      mes: '',
+      vendor_id: vendorTravado,
+      comContato: '',
+      page: 0,
+    }
   })
-  const [searchInput, setSearchInput] = useState('')
+  const [searchInput, setSearchInput] = useState(() => loadFilters()?.search ?? '')
+
+  // Persiste filtros no localStorage (exceto search — que precisa do Enter explícito).
+  useEffect(() => {
+    try { localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(filters)) } catch { /* quota */ }
+  }, [filters])
 
   // Sincroniza vendor_id quando profile carrega tarde (auth assíncrono).
   useEffect(() => {
