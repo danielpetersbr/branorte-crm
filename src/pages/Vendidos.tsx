@@ -249,12 +249,12 @@ export function Vendidos() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-surface-border bg-surface-secondary">
+                    <th className="text-left text-xs font-medium text-text-muted px-3 py-3">Data</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Nome</th>
                     <th className="text-left text-xs font-medium text-text-muted px-3 py-3 w-12">UF</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Cidade</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Telefone</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Vendedor</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-3 py-3">Data</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Orçamento</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Produto</th>
                   </tr>
@@ -270,6 +270,9 @@ export function Vendidos() {
                     const dataFmt = dataOrc ? new Date(dataOrc).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' }) : ''
                     return (
                       <tr key={c.id} className="hover:bg-green-50/30 transition-colors">
+                        <td className="px-3 py-3">
+                          <span className="text-xs text-text-muted font-mono whitespace-nowrap">{dataFmt || '-'}</span>
+                        </td>
                         <td className="px-4 py-3">
                           <span className="text-sm font-medium text-text-primary">{c.name || '(sem nome)'}</span>
                         </td>
@@ -297,9 +300,6 @@ export function Vendidos() {
                         </td>
                         <td className="px-4 py-3">
                           <span className="text-sm text-text-secondary">{(c.vendor_id ? vendorMap[c.vendor_id] : null) ?? '-'}</span>
-                        </td>
-                        <td className="px-3 py-3">
-                          <span className="text-xs text-text-muted font-mono whitespace-nowrap">{dataFmt || '-'}</span>
                         </td>
                         <td className="px-4 py-3">
                           {orcsLinkados.length > 0 ? (
