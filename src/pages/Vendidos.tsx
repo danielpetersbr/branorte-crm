@@ -7,12 +7,12 @@ import { Badge } from '@/components/ui/Badge'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
-import { formatPhone, whatsappLink } from '@/lib/utils'
+import { formatPhone } from '@/lib/utils'
 import { useVendorMap } from '@/hooks/useVendorMap'
 import { useVendors } from '@/hooks/useVendors'
 import { useAuth } from '@/hooks/useAuth'
 import { useContactsOrcamentos } from '@/hooks/useContactsOrcamentos'
-import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, CheckCircle, FileText, Copy, Check } from 'lucide-react'
+import { Search, ChevronLeft, ChevronRight, X, CheckCircle, Copy, Check } from 'lucide-react'
 import { ESTADOS_BR } from '@/types'
 import type { Contact } from '@/types'
 
@@ -257,7 +257,6 @@ export function Vendidos() {
                     <th className="text-left text-xs font-medium text-text-muted px-3 py-3">Data</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Orçamento</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Produto</th>
-                    <th className="text-right text-xs font-medium text-text-muted px-4 py-3">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-border">
@@ -336,28 +335,12 @@ export function Vendidos() {
                             )
                           })()}
                         </td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            {tel && (
-                              <>
-                                <a href={whatsappLink(tel)} target="_blank" rel="noopener"
-                                  className="p-1.5 rounded-lg hover:bg-green-50 text-green-600 transition-colors">
-                                  <MessageCircle className="h-4 w-4" />
-                                </a>
-                                <a href={`tel:${tel}`}
-                                  className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-600 transition-colors">
-                                  <Phone className="h-4 w-4" />
-                                </a>
-                              </>
-                            )}
-                          </div>
-                        </td>
                       </tr>
                     )
                   })}
                   {contacts.length === 0 && (
                     <tr>
-                      <td colSpan={9} className="px-4 py-8 text-center text-text-muted">
+                      <td colSpan={8} className="px-4 py-8 text-center text-text-muted">
                         Nenhum resultado encontrado.
                       </td>
                     </tr>
