@@ -101,14 +101,14 @@ export function Layout() {
         'sticky top-0 h-screen overflow-y-auto',
         collapsed ? 'w-14' : 'w-60',
       )}>
-        {/* Brand + user + theme + logout + collapse (tudo numa linha) */}
-        <div className={cn('flex items-center h-14 border-b border-border', collapsed ? 'justify-center px-2' : 'gap-1.5 px-3')}>
+        {/* Brand + avatar + collapse */}
+        <div className={cn('flex items-center h-14 border-b border-border', collapsed ? 'justify-center px-2' : 'gap-2 px-4')}>
           <div className="h-7 w-7 rounded-md bg-accent flex items-center justify-center shadow-sm shrink-0">
             <span className="text-white font-bold text-[13px] tracking-tight">B</span>
           </div>
           {!collapsed && (
             <>
-              <div className="leading-tight flex-1 min-w-0 ml-1">
+              <div className="leading-tight flex-1 min-w-0">
                 <h1 className="font-semibold text-ink text-[13px] tracking-tight">Branorte</h1>
                 <p className="text-[10px] text-ink-faint -mt-0.5 uppercase tracking-wider">CRM</p>
               </div>
@@ -123,22 +123,6 @@ export function Layout() {
                 >
                   {(profile.display_name ?? profile.email)[0].toUpperCase()}
                 </NavLink>
-              )}
-              <button
-                onClick={toggleDark}
-                title={dark ? 'Tema claro' : 'Tema escuro'}
-                className="h-7 w-7 inline-flex items-center justify-center rounded-md text-ink-faint hover:text-ink hover:bg-surface-2 transition-colors shrink-0"
-              >
-                {dark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
-              </button>
-              {profile && (
-                <button
-                  onClick={signOut}
-                  title={`Sair (${profile.email})`}
-                  className="h-7 w-7 inline-flex items-center justify-center rounded-md text-ink-faint hover:text-red-600 hover:bg-surface-2 transition-colors shrink-0"
-                >
-                  <LogOut className="h-3.5 w-3.5" />
-                </button>
               )}
               <button
                 onClick={toggleCollapsed}
@@ -182,9 +166,9 @@ export function Layout() {
           )}
         </nav>
 
-        {/* Toolbar inferior só aparece em modo collapsed (icons stacked) */}
-        {collapsed && (
-          <div className="border-t border-border p-2 flex flex-col items-center gap-1">
+        {/* Toolbar inferior — sempre visível (sidebar é sticky h-screen) */}
+        <div className={cn('border-t border-border', collapsed ? 'p-2 flex flex-col items-center gap-1' : 'p-2 flex items-center justify-end gap-1')}>
+          {collapsed && (
             <button
               onClick={toggleCollapsed}
               title="Expandir menu"
@@ -192,24 +176,24 @@ export function Layout() {
             >
               <ChevronsRight className="h-3.5 w-3.5" />
             </button>
+          )}
+          <button
+            onClick={toggleDark}
+            title={dark ? 'Tema claro' : 'Tema escuro'}
+            className="h-7 w-7 inline-flex items-center justify-center rounded-md text-ink-faint hover:text-ink hover:bg-surface-2 transition-colors"
+          >
+            {dark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+          </button>
+          {profile && (
             <button
-              onClick={toggleDark}
-              title={dark ? 'Tema claro' : 'Tema escuro'}
-              className="h-7 w-7 inline-flex items-center justify-center rounded-md text-ink-faint hover:text-ink hover:bg-surface-2 transition-colors"
+              onClick={signOut}
+              title={`Sair (${profile.email})`}
+              className="h-7 w-7 inline-flex items-center justify-center rounded-md text-ink-faint hover:text-red-600 hover:bg-surface-2 transition-colors"
             >
-              {dark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+              <LogOut className="h-3.5 w-3.5" />
             </button>
-            {profile && (
-              <button
-                onClick={signOut}
-                title={`Sair (${profile.email})`}
-                className="h-7 w-7 inline-flex items-center justify-center rounded-md text-ink-faint hover:text-red-600 hover:bg-surface-2 transition-colors"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-        )}
+          )}
+        </div>
       </aside>
 
       <main className="flex-1 min-h-screen pb-16 lg:pb-0">
