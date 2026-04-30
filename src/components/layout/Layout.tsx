@@ -97,7 +97,7 @@ export function Layout() {
     const parentActive = l.matchPrefix
       ? loc.pathname === l.to || loc.pathname.startsWith(l.to + '/')
       : false
-    const showChildren = !collapsed && l.children && parentActive
+    const showChildren = !collapsed && !!l.children
 
     return (
       <div key={l.to}>
