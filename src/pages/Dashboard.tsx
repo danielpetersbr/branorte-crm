@@ -1,9 +1,30 @@
-import { useDashboard } from '@/hooks/useDashboard'
+import { useEffect, useState } from 'react'
+import { useDashboard, type DashboardPreset } from '@/hooks/useDashboard'
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { Flame, TrendingUp, Users, CheckCircle2, ArrowDown } from 'lucide-react'
+
+const PRESET_LABELS: { value: DashboardPreset; label: string }[] = [
+  { value: '',     label: 'Tudo' },
+  { value: 'hoje', label: 'Hoje' },
+  { value: 'ontem', label: 'Ontem' },
+  { value: '7d',   label: '7 dias' },
+  { value: '30d',  label: '30 dias' },
+  { value: 'mes',  label: 'Este mês' },
+]
+
+function usePresetFilter(): [DashboardPreset, (p: DashboardPreset) => void] {
+  const [preset, setPreset] = useState<DashboardPreset>(() => {
+    if (typeof window === 'undefined') return ''
+    return (localStorage.getItem('dashboard-preset') as DashboardPreset) || ''
+  })
+  useEffect(() => {
+    localStorage.setItem('dashboard-preset', preset)
+  }, [preset])
+  return [preset, setPreset]
+}
 
 const COLORS = {
   accent: 'hsl(152 60% 40%)',
@@ -43,7 +64,8 @@ function fmtN(n: number): string {
 const WEEKDAY_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
 export function Dashboard() {
-  const { data, isLoading, error } = useDashboard()
+  const [preset, setPreset] = usePresetFilter()
+  const { data, isLoading, error } = useDashboard({ preset })
 
   if (isLoading) {
     return (
@@ -77,11 +99,36 @@ export function Dashboard() {
 
   return (
     <div className="p-4 lg:p-6 space-y-5 max-w-[1600px]">
-      {/* Header */}
-      <div className="flex items-baseline justify-between">
+      {/* Header + filtros */}
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-ink tracking-tight">Dashboard</h1>
-          <p className="text-xs text-ink-faint mt-0.5">{fmtN(data.totalLeads)} leads · atualiza a cada 60s</p>
+          <p className="text-xs text-ink-faint mt-0.5">
+            {fmtN(data.totalLeads)} leads
+            {preset && (
+              <span className="text-accent"> · filtro: {PRESET_LABELS.find(p => p.value === preset)?.label}</span>
+            )}
+            <span className="text-ink-faint"> · atualiza a cada 60s</span>
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {PRESET_LABELS.map(p => {
+            const active = preset === p.value
+            return (
+              <button
+                key={p.value}
+                onClick={() => setPreset(p.value)}
+                className={
+                  'h-8 px-3 rounded-md text-[12px] font-medium border transition-colors ' +
+                  (active
+                    ? 'bg-accent-bg text-accent border-accent/30'
+                    : 'bg-surface text-ink-muted border-border hover:text-ink hover:border-border-strong')
+                }
+              >
+                {p.label}
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -295,35 +342,10 @@ export function Dashboard() {
         {/* 9. UF */}
         <Card className="lg:col-span-2">
           <CardHeader
-            title="Distribuição por estado"
-            subtitle={`Top 15 estados / países (${fmtN(data.porUf.reduce((s, u) => s + u.total, 0))} leads geolocalizados)`}
+            title="Distribuição geográfica"
+            subtitle={`${fmtN(data.porUf.reduce((s, u) => s + u.total, 0))} leads · ${data.porUf.filter(u => u.isBrasil).length} estados BR · ${data.porUf.filter(u => !u.isBrasil).length} países`}
           />
-          <div className="h-[320px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.porUf} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={COLORS.border} />
-                <XAxis type="number" tick={{ fontSize: 10, fill: COLORS.inkFaint }} axisLine={false} tickLine={false} />
-                <YAxis
-                  type="category"
-                  dataKey="uf"
-                  width={50}
-                  tick={{ fontSize: 11, fill: COLORS.ink, fontFamily: 'Geist Mono' }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip
-                  contentStyle={{ background: 'hsl(var(--surface))', border: `1px solid ${COLORS.border}`, borderRadius: 6, fontSize: 12 }}
-                  formatter={((v: number) => [fmtN(v), 'Leads']) as never}
-                  cursor={{ fill: 'hsl(var(--surface-2))' }}
-                />
-                <Bar dataKey="total" radius={[0, 3, 3, 0]} barSize={14}>
-                  {data.porUf.map((u, i) => (
-                    <Cell key={i} fill={u.uf === 'SEM' || u.uf === 'INTL' ? COLORS.inkFaint : `hsl(152 60% ${40 + i * 2}%)`} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <UfList items={data.porUf} />
         </Card>
 
         {/* 10. SCORE QUALIDADE GAUGE */}
@@ -532,6 +554,69 @@ function VendedorList({ vendedores }: { vendedores: { vendedor: string; total: n
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// Lista de estados/paises em 2 colunas com mini-barra + % + nome completo
+function UfList({ items }: { items: { uf: string; nome: string; total: number; pct: number; isBrasil: boolean }[] }) {
+  if (!items.length) return <p className="text-sm text-ink-faint">Sem leads geolocalizados.</p>
+  const max = Math.max(...items.map(i => i.total))
+  const brasil = items.filter(i => i.isBrasil)
+  const intl = items.filter(i => !i.isBrasil)
+
+  const Row = ({ item }: { item: typeof items[number] }) => {
+    const widthPct = (item.total / max) * 100
+    const isTop = item.total === max
+    return (
+      <div className="grid grid-cols-[36px_1fr_56px_44px] items-center gap-2 text-[11px] py-1">
+        <span className="font-mono text-ink-faint">{item.uf}</span>
+        <div className="min-w-0">
+          <div className="text-ink truncate mb-1">{item.nome}</div>
+          <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full"
+              style={{
+                width: `${Math.max(widthPct, 3)}%`,
+                background: item.isBrasil
+                  ? (isTop ? 'hsl(152 60% 45%)' : `hsl(152 60% ${40 + (1 - widthPct / 100) * 15}%)`)
+                  : 'hsl(217 91% 60%)',
+              }}
+            />
+          </div>
+        </div>
+        <span className="text-right font-mono tabular-nums text-ink">{item.total}</span>
+        <span className="text-right font-mono tabular-nums text-ink-faint">{item.pct.toFixed(1)}%</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      {brasil.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-[10px] uppercase tracking-widest text-ink-faint">Brasil</span>
+            <span className="h-px flex-1 bg-border" />
+            <span className="text-[10px] text-ink-faint tabular-nums">{brasil.length} estados</span>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-0.5">
+            {brasil.map(b => <Row key={b.uf} item={b} />)}
+          </div>
+        </div>
+      )}
+      {intl.length > 0 && (
+        <div className="pt-2">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-[10px] uppercase tracking-widest text-info">Internacional</span>
+            <span className="h-px flex-1 bg-border" />
+            <span className="text-[10px] text-ink-faint tabular-nums">{intl.length} países</span>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-0.5">
+            {intl.map(i => <Row key={i.uf} item={i} />)}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

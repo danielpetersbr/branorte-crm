@@ -25,6 +25,59 @@ interface RawRow {
 
 const DASHBOARD_LIMIT = 5000
 
+// Nome dos estados BR + paises principais (pra mostrar no grafico de UF)
+const UF_NOMES: Record<string, string> = {
+  AC: 'Acre',           AL: 'Alagoas',          AM: 'Amazonas',           AP: 'Amapá',
+  BA: 'Bahia',          CE: 'Ceará',            DF: 'Distrito Federal',   ES: 'Espírito Santo',
+  GO: 'Goiás',          MA: 'Maranhão',         MG: 'Minas Gerais',       MS: 'Mato Grosso do Sul',
+  MT: 'Mato Grosso',    PA: 'Pará',             PB: 'Paraíba',            PE: 'Pernambuco',
+  PI: 'Piauí',          PR: 'Paraná',           RJ: 'Rio de Janeiro',     RN: 'Rio Grande do Norte',
+  RO: 'Rondônia',       RR: 'Roraima',          RS: 'Rio Grande do Sul',  SC: 'Santa Catarina',
+  SE: 'Sergipe',        SP: 'São Paulo',        TO: 'Tocantins',
+  // Internacionais
+  AR: 'Argentina',      PY: 'Paraguai',         UY: 'Uruguai',            CL: 'Chile',
+  CO: 'Colômbia',       PE_PAIS: 'Peru',        BO: 'Bolívia',            EC: 'Equador',
+  VE: 'Venezuela',      US: 'EUA/Canadá',       PT: 'Portugal',           ES_PAIS: 'Espanha',
+  MX: 'México',         DE: 'Alemanha',         FR: 'França',             IT: 'Itália',
+  GB: 'Reino Unido',    INTL: 'Internacional',  SEM: 'Sem origem',
+}
+
+// Conjunto de siglas que representam paises (nao estados BR)
+const PAIS_SIGLAS = new Set(['AR', 'PY', 'UY', 'CL', 'CO', 'BO', 'EC', 'VE', 'US', 'PT', 'MX', 'DE', 'FR', 'IT', 'GB', 'INTL'])
+
+export type DashboardPreset = '' | 'hoje' | 'ontem' | '7d' | '30d' | 'mes'
+
+export interface DashboardFilters {
+  preset: DashboardPreset
+}
+
+function dateRangeFromPreset(preset: DashboardPreset): { from?: string; to?: string } {
+  if (!preset) return {}
+  const now = new Date()
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0)
+  const endOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999)
+  if (preset === 'hoje') {
+    return { from: startOfDay(now).toISOString(), to: endOfDay(now).toISOString() }
+  }
+  if (preset === 'ontem') {
+    const y = new Date(now); y.setDate(y.getDate() - 1)
+    return { from: startOfDay(y).toISOString(), to: endOfDay(y).toISOString() }
+  }
+  if (preset === '7d') {
+    const f = new Date(now); f.setDate(f.getDate() - 6)
+    return { from: startOfDay(f).toISOString(), to: endOfDay(now).toISOString() }
+  }
+  if (preset === '30d') {
+    const f = new Date(now); f.setDate(f.getDate() - 29)
+    return { from: startOfDay(f).toISOString(), to: endOfDay(now).toISOString() }
+  }
+  if (preset === 'mes') {
+    const f = new Date(now.getFullYear(), now.getMonth(), 1)
+    return { from: startOfDay(f).toISOString(), to: endOfDay(now).toISOString() }
+  }
+  return {}
+}
+
 function stripEmoji(s: string | null | undefined): string {
   if (!s) return ''
   // Remove emojis + chars de controle, normaliza whitespace
@@ -40,7 +93,10 @@ function normAnimal(v: string | null | undefined): string | null {
   if (/bovin|gado|boi|vaca/.test(s)) return 'Bovinos'
   if (/su[íi]n|porco/.test(s)) return 'Suínos'
   if (/ave|frango|galinha/.test(s)) return 'Aves'
-  return stripEmoji(v)
+  // Fluxo novo do bot so tem Bovinos/Suinos/Aves. Valores legados
+  // (avulso, esteira transportadora, extrusora, etc.) sao equipamentos
+  // do fluxo antigo — descartar pra nao poluir o grafico.
+  return null
 }
 
 function normFinalidade(v: string | null | undefined): string | null {
@@ -126,16 +182,17 @@ export interface DashboardData {
   porVendedor: { vendedor: string; total: number; qualificados: number }[]
   porMomento: { momento: string; valor: number; cor: string }[]
   porAnimalFinalidade: { animal: string; vender: number; consumo: number; ambos: number; total: number }[]
-  porUf: { uf: string; total: number }[]
+  porUf: { uf: string; nome: string; total: number; pct: number; isBrasil: boolean }[]
   diaXHora: { weekday: number; hour: number; valor: number }[]
   qualidade: { completos: number; parciais: number; vazios: number; pctCompleto: number }
 }
 
-export function useDashboard() {
+export function useDashboard(filters: DashboardFilters = { preset: '' }) {
+  const range = dateRangeFromPreset(filters.preset)
   return useQuery({
-    queryKey: ['dashboard-data'],
+    queryKey: ['dashboard-data', filters],
     queryFn: async (): Promise<DashboardData> => {
-      const { data, error } = await supabaseAuditoria
+      let q = supabaseAuditoria
         .from('atendimentos_por_cliente')
         .select(
           'id, nome, telefone, responsavel, criativo_codigo, criativo_facebook, origem, motivo_contato, finalidade_fabrica, qual_animal, quantos_animais, capacidade_producao, quando_investir, tocou_botao_em, data, ultima_msg, is_internal'
@@ -144,12 +201,18 @@ export function useDashboard() {
         .order('data', { ascending: false, nullsFirst: false })
         .limit(DASHBOARD_LIMIT)
 
+      // Filtra por data de chegada (data) — alinhado com semantica "leads que chegaram"
+      if (range.from) q = q.gte('data', range.from)
+      if (range.to)   q = q.lte('data', range.to)
+
+      const { data, error } = await q
       if (error) throw error
       const rows = (data ?? []) as RawRow[]
       return aggregate(rows)
     },
     staleTime: 60_000,
     refetchInterval: 60_000,
+    placeholderData: prev => prev,
   })
 }
 
@@ -361,11 +424,19 @@ function aggregate(rows: RawRow[]): DashboardData {
   // Animal x Finalidade
   const porAnimalFinalidade = Array.from(byAnimalFinalidade.values()).sort((a, b) => b.total - a.total)
 
-  // UF (top 15)
+  // UF — enriquecida com nome completo, % do total e flag BR vs Internacional
+  const totalGeo = Array.from(byUf.entries()).filter(([uf]) => uf !== 'SEM').reduce((s, [, n]) => s + n, 0)
   const porUf = Array.from(byUf.entries())
-    .map(([uf, total]) => ({ uf, total }))
+    .filter(([uf]) => uf !== 'SEM')  // exclui sem geo
+    .map(([uf, total]) => ({
+      uf,
+      nome: UF_NOMES[uf] ?? uf,
+      total,
+      pct: totalGeo > 0 ? (total / totalGeo) * 100 : 0,
+      isBrasil: UF_NOMES[uf] !== undefined && uf !== 'INTL' && !PAIS_SIGLAS.has(uf),
+    }))
     .sort((a, b) => b.total - a.total)
-    .slice(0, 15)
+    .slice(0, 20)
 
   // Dia x Hora — todas as 24*7 cells
   const diaXHora: { weekday: number; hour: number; valor: number }[] = []
