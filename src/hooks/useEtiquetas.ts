@@ -9,6 +9,7 @@ export interface WascriptEtiqueta {
   etiqueta_nome: string
   etiqueta_nome_normalizado: string
   is_canonica: boolean
+  total_contatos: number
   synced_at: string
 }
 
@@ -24,6 +25,7 @@ export function useEtiquetas() {
         .from('wascript_etiquetas')
         .select('*')
         .order('vendedor_nome')
+        .order('total_contatos', { ascending: false })
         .order('etiqueta_nome_normalizado')
       if (error) throw error
       return (data ?? []) as WascriptEtiqueta[]

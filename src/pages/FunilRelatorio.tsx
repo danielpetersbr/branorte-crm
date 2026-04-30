@@ -97,38 +97,54 @@ function FunilCard({ stage, etiquetas }: { stage: FunilStage; etiquetas?: Wascri
       </div>
 
       {/* Etiquetas Wascript do vendedor */}
-      {!isAdefinir && (
-        <div className="pt-2 border-t border-border/60 space-y-1.5">
-          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-ink-faint">
-            <Tag className="h-3 w-3" />
-            <span>Etiquetas WhatsApp</span>
-            <span className="font-mono">({etiquetas?.length ?? 0})</span>
-          </div>
-          {etiquetas && etiquetas.length > 0 ? (
-            <div className="flex flex-wrap gap-1">
-              {etiquetas
-                .filter(e => !['NAO LIDAS','FAVORITOS','GRUPOS'].includes(e.etiqueta_nome_normalizado))
-                .map(e => (
+      {!isAdefinir && (() => {
+        const visiveis = (etiquetas ?? []).filter(
+          e => !['NAO LIDAS','FAVORITOS','GRUPOS'].includes(e.etiqueta_nome_normalizado)
+        )
+        const totalContatos = visiveis.reduce((acc, e) => acc + (e.total_contatos ?? 0), 0)
+        return (
+          <div className="pt-2 border-t border-border/60 space-y-1.5">
+            <div className="flex items-center justify-between gap-1.5 text-[10px] uppercase tracking-wider text-ink-faint">
+              <div className="flex items-center gap-1.5">
+                <Tag className="h-3 w-3" />
+                <span>Etiquetas WhatsApp</span>
+                <span className="font-mono">({visiveis.length})</span>
+              </div>
+              {totalContatos > 0 && (
+                <span className="font-mono text-ink tabular-nums normal-case">
+                  {formatNumber(totalContatos)} <span className="text-ink-faint lowercase">contatos</span>
+                </span>
+              )}
+            </div>
+            {visiveis.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                {visiveis.map(e => (
                   <Badge
                     key={e.id}
                     title={`ID Wascript: ${e.etiqueta_id_wascript}${e.is_canonica ? ' · canônica' : ' · custom'}`}
                     className={
                       e.is_canonica
-                        ? 'text-[10px] bg-info-bg/40 text-info border border-info/20'
-                        : 'text-[10px] bg-surface-2 text-ink-muted border border-border'
+                        ? 'text-[10px] bg-info-bg/40 text-info border border-info/20 inline-flex items-center gap-1'
+                        : 'text-[10px] bg-surface-2 text-ink-muted border border-border inline-flex items-center gap-1'
                     }
                   >
-                    {e.etiqueta_nome}
+                    <span>{e.etiqueta_nome}</span>
+                    {e.total_contatos > 0 && (
+                      <span className="font-mono tabular-nums text-ink font-semibold">
+                        {formatNumber(e.total_contatos)}
+                      </span>
+                    )}
                   </Badge>
                 ))}
-            </div>
-          ) : (
-            <p className="text-[11px] text-warning italic">
-              ⚠ Sem etiquetas configuradas no WhatsApp dele
-            </p>
-          )}
-        </div>
-      )}
+              </div>
+            ) : (
+              <p className="text-[11px] text-warning italic">
+                ⚠ Sem etiquetas configuradas no WhatsApp dele
+              </p>
+            )}
+          </div>
+        )
+      })()}
     </Card>
   )
 }
