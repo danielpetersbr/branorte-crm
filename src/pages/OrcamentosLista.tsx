@@ -235,11 +235,6 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
                             <div className="min-w-0">
                               <p className="text-sm font-medium text-text-primary">
                                 {r.cliente}
-                                {r.contact_id && (
-                                  <Badge className="bg-emerald-50 text-emerald-700 ml-2 text-[10px]">
-                                    contato
-                                  </Badge>
-                                )}
                               </p>
                               {r.equipamento && (
                                 <p
