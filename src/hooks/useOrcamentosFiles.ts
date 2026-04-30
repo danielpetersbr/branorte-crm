@@ -30,6 +30,7 @@ export interface OrcamentoFile {
 
 export type FollowUpFilter = '' | 'sem_contato' | 'recente' | 'medio' | 'vencido'
 export type OrcamentoSort = 'recente' | 'follow_up'
+export type StatusVendedorFilter = '' | 'VENDIDO' | 'NEGOCIANDO' | 'INTERESSE-FUTURO' | 'PERDIDO' | 'sem_status'
 
 export interface OrcamentosFilters {
   search: string         // busca em cliente + equipamento
@@ -38,6 +39,7 @@ export interface OrcamentosFilters {
   vendor_id: string      // '' = todos. 'unassigned' = sem vendor
   comContato: '' | 'sim' | 'nao'
   followUp: FollowUpFilter  // filtro por dias desde ultimo_contato_em
+  statusVendedor: StatusVendedorFilter  // filtro por status_manual marcado pelo vendor
   sort: OrcamentoSort       // 'recente' = mtime; 'follow_up' = mais antigos sem contato primeiro
   page: number
 }
@@ -79,6 +81,13 @@ export function useOrcamentosFiles(filters: OrcamentosFilters) {
       }
       if (filters.comContato === 'sim') query = query.not('contact_id', 'is', null)
       if (filters.comContato === 'nao') query = query.is('contact_id', null)
+
+      // Filtro de status manual (vendedor marcou)
+      if (filters.statusVendedor === 'sem_status') {
+        query = query.is('status_manual', null)
+      } else if (filters.statusVendedor) {
+        query = query.eq('status_manual', filters.statusVendedor)
+      }
 
       // Filtro de follow-up — baseado em dias desde ultimo_contato_em
       if (filters.followUp) {

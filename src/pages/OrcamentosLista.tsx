@@ -215,6 +215,7 @@ import {
   type OrcamentoFile,
   type FollowUpFilter,
   type OrcamentoSort,
+  type StatusVendedorFilter,
 } from '@/hooks/useOrcamentosFiles'
 import { useVendorMap } from '@/hooks/useVendorMap'
 import { useVendors } from '@/hooks/useVendors'
@@ -293,6 +294,7 @@ type ListaFilters = {
   vendor_id: string
   comContato: '' | 'sim' | 'nao'
   followUp: FollowUpFilter
+  statusVendedor: StatusVendedorFilter
   sort: OrcamentoSort
   page: number
 }
@@ -318,10 +320,10 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
   const [filters, setFilters] = useState<ListaFilters>(() => {
     const saved = loadFilters()
     if (saved) {
-      // backward-compat: garante novos campos
       return {
         ...saved,
         followUp: (saved as ListaFilters).followUp ?? '',
+        statusVendedor: (saved as ListaFilters).statusVendedor ?? '',
         sort: (saved as ListaFilters).sort ?? 'recente',
       }
     }
@@ -332,6 +334,7 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
       vendor_id: vendorTravado,
       comContato: '',
       followUp: '',
+      statusVendedor: '',
       sort: 'recente',
       page: 0,
     }
@@ -374,12 +377,12 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
   // Pra vendor, vendor_id sempre = seu próprio id, então não conta como filtro "extra".
   const hasFilters = filters.search || filters.ano || filters.mes
     || (!isVendor && filters.vendor_id) || filters.comContato || filters.followUp
-    || filters.sort !== 'recente'
+    || filters.statusVendedor || filters.sort !== 'recente'
 
   const clear = () => {
     setFilters({
       search: '', ano: '', mes: '', vendor_id: vendorTravado,
-      comContato: '', followUp: '', sort: 'recente', page: 0,
+      comContato: '', followUp: '', statusVendedor: '', sort: 'recente', page: 0,
     })
     setSearchInput('')
   }
@@ -431,6 +434,19 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
             value={filters.comContato}
             onChange={e => setFilters(f => ({ ...f, comContato: e.target.value as '' | 'sim' | 'nao', page: 0 }))}
             className="lg:w-40"
+          />
+          <Select
+            options={[
+              { value: 'VENDIDO',          label: 'Vendido' },
+              { value: 'NEGOCIANDO',       label: 'Negociando' },
+              { value: 'INTERESSE-FUTURO', label: 'Interesse futuro' },
+              { value: 'PERDIDO',          label: 'Perdido' },
+              { value: 'sem_status',       label: 'Sem status' },
+            ]}
+            placeholder="Status do vendedor"
+            value={filters.statusVendedor}
+            onChange={e => setFilters(f => ({ ...f, statusVendedor: e.target.value as StatusVendedorFilter, page: 0 }))}
+            className="lg:w-44"
           />
           <Select
             options={[

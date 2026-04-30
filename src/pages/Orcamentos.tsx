@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { useOrcamentoStats } from '@/hooks/useOrcamentoStats'
 import { useVendors } from '@/hooks/useVendors'
+import { usePipelineVendedor } from '@/hooks/usePipelineVendedor'
 import { Card, CardContent } from '@/components/ui/Card'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatNumber } from '@/lib/utils'
-import { FileText, TrendingUp, Calendar, BarChart2 } from 'lucide-react'
+import { FileText, TrendingUp, Calendar, BarChart2, Trophy, Handshake, Hourglass, XCircle, Snowflake } from 'lucide-react'
 import { OrcamentosLista } from '@/pages/OrcamentosLista'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -25,6 +26,7 @@ export function Orcamentos() {
 
   const { data, isLoading } = useOrcamentoStats()
   const { data: vendorsList } = useVendors({ incluirInativos: true })
+  const { data: pipeline } = usePipelineVendedor()
 
   const vendorChartData = useMemo(() => {
     if (!data?.vendorStats) return []
@@ -156,6 +158,130 @@ export function Orcamentos() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Pipeline pessoal do vendedor (ou agregado pra admin) */}
+      {pipeline && (
+        <Card>
+          <CardContent>
+            <div className="flex items-baseline justify-between mb-4 gap-2 flex-wrap">
+              <h2 className="font-semibold text-text-primary">
+                {pipeline.scope === 'meu' ? 'Meu pipeline' : 'Pipeline geral'}
+              </h2>
+              <span className="text-xs text-text-muted">
+                {pipeline.scope === 'meu'
+                  ? 'Apenas seus orçamentos · clique pra filtrar a lista'
+                  : 'Todos os vendedores · clique pra filtrar a lista'}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              <Link
+                to="/orcamentos/lista"
+                onClick={() => {
+                  try {
+                    const raw = localStorage.getItem('branorte:orcamentos-filtros')
+                    const f = raw ? JSON.parse(raw) : {}
+                    localStorage.setItem('branorte:orcamentos-filtros', JSON.stringify({ ...f, statusVendedor: 'VENDIDO', page: 0 }))
+                  } catch { /* noop */ }
+                }}
+                className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 hover:shadow-md transition-all dark:bg-emerald-900/20 dark:border-emerald-800/50"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Trophy className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  <p className="text-[11px] uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Vendido</p>
+                </div>
+                <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">{formatNumber(pipeline.vendido)}</p>
+                {pipeline.vendidoEsteMes > 0 && (
+                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5">+{pipeline.vendidoEsteMes} este mês</p>
+                )}
+              </Link>
+
+              <Link
+                to="/orcamentos/lista"
+                onClick={() => {
+                  try {
+                    const raw = localStorage.getItem('branorte:orcamentos-filtros')
+                    const f = raw ? JSON.parse(raw) : {}
+                    localStorage.setItem('branorte:orcamentos-filtros', JSON.stringify({ ...f, statusVendedor: 'NEGOCIANDO', page: 0 }))
+                  } catch { /* noop */ }
+                }}
+                className="rounded-lg border border-yellow-200 bg-yellow-50 p-3 hover:shadow-md transition-all dark:bg-yellow-900/20 dark:border-yellow-800/50"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Handshake className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+                  <p className="text-[11px] uppercase tracking-wide text-yellow-700 dark:text-yellow-300">Negociando</p>
+                </div>
+                <p className="text-2xl font-bold text-yellow-700 dark:text-yellow-300">{formatNumber(pipeline.negociando)}</p>
+              </Link>
+
+              <Link
+                to="/orcamentos/lista"
+                onClick={() => {
+                  try {
+                    const raw = localStorage.getItem('branorte:orcamentos-filtros')
+                    const f = raw ? JSON.parse(raw) : {}
+                    localStorage.setItem('branorte:orcamentos-filtros', JSON.stringify({ ...f, statusVendedor: 'INTERESSE-FUTURO', page: 0 }))
+                  } catch { /* noop */ }
+                }}
+                className="rounded-lg border border-sky-200 bg-sky-50 p-3 hover:shadow-md transition-all dark:bg-sky-900/20 dark:border-sky-800/50"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Hourglass className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+                  <p className="text-[11px] uppercase tracking-wide text-sky-700 dark:text-sky-300">Interesse futuro</p>
+                </div>
+                <p className="text-2xl font-bold text-sky-700 dark:text-sky-300">{formatNumber(pipeline.interesseFuturo)}</p>
+              </Link>
+
+              <Link
+                to="/orcamentos/lista"
+                onClick={() => {
+                  try {
+                    const raw = localStorage.getItem('branorte:orcamentos-filtros')
+                    const f = raw ? JSON.parse(raw) : {}
+                    localStorage.setItem('branorte:orcamentos-filtros', JSON.stringify({ ...f, statusVendedor: 'PERDIDO', page: 0 }))
+                  } catch { /* noop */ }
+                }}
+                className="rounded-lg border border-red-200 bg-red-50 p-3 hover:shadow-md transition-all dark:bg-red-900/20 dark:border-red-800/50"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                  <p className="text-[11px] uppercase tracking-wide text-red-700 dark:text-red-300">Perdido</p>
+                </div>
+                <p className="text-2xl font-bold text-red-700 dark:text-red-300">{formatNumber(pipeline.perdido)}</p>
+              </Link>
+
+              <Link
+                to="/orcamentos/lista"
+                onClick={() => {
+                  try {
+                    const raw = localStorage.getItem('branorte:orcamentos-filtros')
+                    const f = raw ? JSON.parse(raw) : {}
+                    localStorage.setItem('branorte:orcamentos-filtros', JSON.stringify({ ...f, followUp: 'vencido', sort: 'follow_up', page: 0 }))
+                  } catch { /* noop */ }
+                }}
+                className="rounded-lg border border-orange-200 bg-orange-50 p-3 hover:shadow-md transition-all dark:bg-orange-900/20 dark:border-orange-800/50"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Snowflake className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                  <p className="text-[11px] uppercase tracking-wide text-orange-700 dark:text-orange-300">Frios pra retomar</p>
+                </div>
+                <p className="text-2xl font-bold text-orange-700 dark:text-orange-300">{formatNumber(pipeline.frios)}</p>
+                <p className="text-[10px] text-orange-600 dark:text-orange-400 mt-0.5">+14 dias sem contato</p>
+              </Link>
+
+              <div className="rounded-lg border border-surface-border bg-surface-tertiary p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <FileText className="h-4 w-4 text-text-muted" />
+                  <p className="text-[11px] uppercase tracking-wide text-text-muted">
+                    {pipeline.scope === 'meu' ? 'Meus totais' : 'Atribuídos'}
+                  </p>
+                </div>
+                <p className="text-2xl font-bold text-text-primary">{formatNumber(pipeline.totalAtribuido)}</p>
+                <p className="text-[10px] text-text-muted mt-0.5">{formatNumber(pipeline.semStatus)} sem status</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Main chart */}
       <Card>
