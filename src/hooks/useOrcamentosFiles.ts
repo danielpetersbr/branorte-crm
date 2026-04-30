@@ -17,6 +17,8 @@ export interface OrcamentoFile {
   mtime_iso: string | null
   size_bytes_principal: number | null
   contact_id: string | null
+  vendor_id: string | null
+  vendor_raw: string | null
 }
 
 export interface OrcamentosFilters {

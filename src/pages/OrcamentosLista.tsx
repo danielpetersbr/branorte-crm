@@ -12,6 +12,7 @@ import {
   ORCAMENTOS_PAGE_SIZE,
   type OrcamentoFile,
 } from '@/hooks/useOrcamentosFiles'
+import { useVendorMap } from '@/hooks/useVendorMap'
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   'Em-andamento':         { label: 'Em andamento',           color: 'bg-blue-50 text-blue-700 border-blue-200' },
@@ -83,6 +84,7 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
   const [searchInput, setSearchInput] = useState('')
 
   const { data, isLoading } = useOrcamentosFiles(filters)
+  const vendorMap = useVendorMap()
   const rows = data?.rows ?? []
   const total = data?.total ?? 0
   const totalPages = Math.ceil(total / ORCAMENTOS_PAGE_SIZE)
@@ -183,6 +185,7 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
                   <tr className="border-b border-surface-border bg-surface-secondary">
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Cliente · Equipamento</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Ano · Nº</th>
+                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Vendedor</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Status</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Formatos</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Modificado</th>
@@ -222,6 +225,15 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
                           {r.ano} · {r.numero}
                         </td>
                         <td className="px-4 py-3">
+                          {r.vendor_id && vendorMap[r.vendor_id] ? (
+                            <span className="text-sm text-text-secondary">{vendorMap[r.vendor_id]}</span>
+                          ) : r.vendor_raw ? (
+                            <span className="text-xs text-text-muted italic" title="Não mapeado a vendedor cadastrado">{r.vendor_raw}</span>
+                          ) : (
+                            <span className="text-xs text-text-muted">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
                           <Badge className={meta.color}>{meta.label}</Badge>
                         </td>
                         <td className="px-4 py-3">
@@ -249,7 +261,7 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
                   })}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-text-muted">
+                      <td colSpan={7} className="px-4 py-8 text-center text-text-muted">
                         Nenhum orçamento encontrado.
                       </td>
                     </tr>
