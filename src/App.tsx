@@ -8,6 +8,7 @@ import { Assign } from '@/pages/Assign'
 import { Orcamentos } from '@/pages/Orcamentos'
 import { Vendidos } from '@/pages/Vendidos'
 import { Atendimentos } from '@/pages/Atendimentos'
+import { Funil } from '@/pages/Funil'
 import { Login } from '@/pages/Login'
 import { Signup } from '@/pages/Signup'
 import { Pendente } from '@/pages/Pendente'
@@ -59,6 +60,7 @@ function AppRoutes() {
         <Route path="/orcamentos/lista" element={<Orcamentos />} />
         <Route path="/vendidos" element={<Vendidos />} />
         <Route path="/atendimentos" element={<Atendimentos />} />
+        <Route path="/funil" element={<Funil />} />
         <Route path="/perfil" element={<Perfil />} />
         {profile.role === 'admin' && (
           <Route path="/admin/usuarios" element={<AdminUsuarios />} />
