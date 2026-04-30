@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useDashboard, type DashboardPreset, type FunilEtapa, type LeadAging, type SlaVendedor, type LeadEmRisco } from '@/hooks/useDashboard'
+import { useDashboard, type DashboardPreset, type FunilEtapa, type SlaVendedor } from '@/hooks/useDashboard'
 import {
   Area, AreaChart, Cell, Pie, PieChart,
   ResponsiveContainer, Tooltip,
 } from 'recharts'
-import { Flame, TrendingUp, Users, CheckCircle2, ArrowDown, ArrowUp, ArrowUpRight, AlertTriangle, Target, BarChart3, Phone, MessageSquare, Clock, ExternalLink } from 'lucide-react'
+import { Flame, TrendingUp, Users, CheckCircle2, ArrowDown, ArrowUp, ExternalLink } from 'lucide-react'
 
 const PRESET_LABELS: { value: DashboardPreset; label: string }[] = [
   { value: '',     label: 'Tudo' },
@@ -157,15 +157,9 @@ export function Dashboard() {
         ))}
       </div>
 
-      {/* FORECAST + LEADS EM RISCO (linha critica) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <ForecastCard f={data.forecast} />
-        <LeadsEmRiscoCard leads={data.leadsEmRisco} className="lg:col-span-2" />
-      </div>
-
-      {/* FUNIL DO BOT (hero, span-2) + LEAD AGING */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <Card className="lg:col-span-2">
+      {/* FUNIL DO BOT (hero) + LEADS POR DIA */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <Card>
           <CardHeader
             title="Funil de qualificação (bot)"
             subtitle={`${fmtN(data.leadsBotNovo)} leads que entraram via webhook`}
@@ -174,28 +168,10 @@ export function Dashboard() {
         </Card>
         <Card>
           <CardHeader
-            title="Funil real (pós-bot)"
-            subtitle="Qualificou → vendedor → orçamento → fechou"
-          />
-          <FunilCompacto etapas={data.funilReal} />
-        </Card>
-      </div>
-
-      {/* LEAD AGING + LEADS POR DIA */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <Card>
-          <CardHeader
-            title="Lead aging"
-            subtitle="Leads ativos sem resposta há..."
-          />
-          <LeadAgingPanel data={data.leadAging} />
-        </Card>
-        <Card className="lg:col-span-2">
-          <CardHeader
             title="Leads por dia"
             subtitle={data.leadsPorDia.length > 0 ? `${data.leadsPorDia.length} dias com atividade` : 'Sem dados'}
           />
-          <div className="h-[260px]">
+          <div className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={data.leadsPorDia} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
                 <defs>
@@ -221,11 +197,11 @@ export function Dashboard() {
         </Card>
       </div>
 
-      {/* PERFORMANCE COMERCIAL — Win rate por vendedor */}
+      {/* PERFORMANCE COMERCIAL — Distribuicao por vendedor */}
       <Card>
         <CardHeader
-          title="Performance por vendedor"
-          subtitle="Volume · qualificados · chegou no vendedor · orçamentos · fechados · win rate"
+          title="Distribuição por vendedor"
+          subtitle="Quantos leads cada vendedor recebeu e quantos qualificaram"
         />
         <SlaTable rows={data.slaPorVendedor} />
       </Card>
@@ -382,246 +358,40 @@ function FunilHero({ etapas }: { etapas: FunilEtapa[] }) {
   )
 }
 
-// Funil compacto pra "funil real" pos-bot
-function FunilCompacto({ etapas }: { etapas: FunilEtapa[] }) {
-  const topo = Math.max(1, etapas[0]?.valor ?? 1)
-  return (
-    <div className="space-y-2">
-      {etapas.map((e, i) => {
-        const widthPct = topo > 0 ? (e.valor / topo) * 100 : 0
-        const isOk = i === 0 || e.pctAnterior >= 50
-        const isBad = i > 0 && e.pctAnterior < 20
-        return (
-          <div key={e.etapa}>
-            <div className="flex items-baseline justify-between mb-1">
-              <span className="text-[11px] text-ink">{e.etapa}</span>
-              <span className="text-[11px] font-mono tabular-nums">
-                <span className="text-ink">{fmtN(e.valor)}</span>
-                {i > 0 && (
-                  <span className={`ml-2 ${isBad ? 'text-danger' : isOk ? 'text-accent' : 'text-warning'}`}>
-                    {e.pctAnterior.toFixed(0)}%
-                  </span>
-                )}
-              </span>
-            </div>
-            <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full"
-                style={{
-                  width: `${Math.max(widthPct, 2)}%`,
-                  background: i === 0 ? COLORS.accent : isBad ? COLORS.danger : `hsl(152 60% ${44 + i * 4}%)`,
-                }}
-              />
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-// Lead Aging Panel
-function LeadAgingPanel({ data }: { data: LeadAging[] }) {
-  const totalLeads = data.reduce((s, x) => s + x.leads, 0)
-  const totalValor = data.reduce((s, x) => s + x.valor, 0)
-  if (totalLeads === 0) {
-    return <p className="text-sm text-ink-faint py-8 text-center">Nenhum lead parado. ✨</p>
-  }
-  return (
-    <div className="space-y-3">
-      <div className="flex items-baseline justify-between border-b border-border pb-3">
-        <span className="text-[11px] uppercase tracking-widest text-ink-faint">Total parado</span>
-        <div className="text-right">
-          <p className="text-2xl font-semibold text-ink tabular-nums leading-none">{fmtN(totalLeads)}</p>
-          {totalValor > 0 && (
-            <p className="text-[11px] text-warning tabular-nums mt-1">{fmtBRL(totalValor)} em risco</p>
-          )}
-        </div>
-      </div>
-      {data.map(d => {
-        const pct = totalLeads > 0 ? (d.leads / totalLeads) * 100 : 0
-        const isCritical = d.faixa === '+30d' || d.faixa === '7d-30d'
-        return (
-          <div key={d.faixa}>
-            <div className="flex items-baseline justify-between mb-1">
-              <span className="text-[11px] flex items-center gap-2">
-                <Clock className={`h-3 w-3 ${isCritical ? 'text-danger' : 'text-ink-faint'}`} />
-                <span className={isCritical ? 'text-ink font-medium' : 'text-ink-muted'}>{d.faixa}</span>
-              </span>
-              <span className="text-[11px] font-mono tabular-nums">
-                <span className="text-ink">{fmtN(d.leads)}</span>
-                {d.valor > 0 && <span className="text-ink-faint ml-2">{fmtBRL(d.valor)}</span>}
-              </span>
-            </div>
-            <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full"
-                style={{
-                  width: `${Math.max(pct, 2)}%`,
-                  background: isCritical ? COLORS.danger : COLORS.warn,
-                }}
-              />
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-// Forecast vs Meta
-function ForecastCard({ f }: { f: { vendidoMes: number; pedidosMes: number; diaDoMes: number; diasNoMes: number; ritmoDia: number; projecao: number; meta: number; pctMeta: number; pctProjecao: number } }) {
-  const faltam = Math.max(0, f.meta - f.vendidoMes)
-  const diasRestantes = f.diasNoMes - f.diaDoMes
-  const necessarioPorDia = diasRestantes > 0 ? faltam / diasRestantes : 0
-  const noRitmo = f.projecao >= f.meta
-  return (
-    <Card>
-      <CardHeader
-        title="Forecast vs Meta"
-        subtitle={`Mês corrente · dia ${f.diaDoMes}/${f.diasNoMes}`}
-      />
-      <div className="space-y-4">
-        <div>
-          <div className="flex items-baseline justify-between mb-2">
-            <span className="text-[11px] uppercase tracking-widest text-ink-faint">Vendido</span>
-            <span className="text-2xl font-semibold text-ink tabular-nums">{fmtBRL(f.vendidoMes)}</span>
-          </div>
-          <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full"
-              style={{
-                width: `${Math.min(f.pctMeta, 100)}%`,
-                background: noRitmo ? COLORS.accent : f.pctMeta >= 50 ? COLORS.warn : COLORS.danger,
-              }}
-            />
-          </div>
-          <div className="flex items-baseline justify-between mt-1">
-            <span className="text-[10px] text-ink-faint">{f.pedidosMes} pedidos</span>
-            <span className="text-[10px] font-mono text-ink-faint tabular-nums">
-              {f.pctMeta.toFixed(1)}% / {fmtBRL(f.meta)}
-            </span>
-          </div>
-        </div>
-
-        <div className="border-t border-border pt-3 grid grid-cols-2 gap-3">
-          <div>
-            <p className="text-[10px] uppercase tracking-widest text-ink-faint">Projeção mês</p>
-            <p className={`text-base font-semibold tabular-nums mt-1 ${noRitmo ? 'text-accent' : 'text-warning'}`}>
-              {fmtBRL(f.projecao)}
-            </p>
-            <p className="text-[10px] text-ink-faint mt-0.5">{f.pctProjecao.toFixed(0)}% da meta</p>
-          </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-widest text-ink-faint">Faltam</p>
-            <p className="text-base font-semibold text-ink tabular-nums mt-1">{fmtBRL(faltam)}</p>
-            {diasRestantes > 0 && (
-              <p className="text-[10px] text-ink-faint mt-0.5">{fmtBRL(necessarioPorDia)}/dia</p>
-            )}
-          </div>
-        </div>
-
-        {!noRitmo && faltam > 0 && (
-          <div className="flex items-start gap-2 p-2 rounded-md bg-warning-bg text-warning">
-            <Target className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-            <span className="text-[11px] leading-tight">
-              No ritmo atual ({fmtBRL(f.ritmoDia)}/dia), vai ficar a {fmtBRL(f.meta - f.projecao)} da meta.
-            </span>
-          </div>
-        )}
-      </div>
-    </Card>
-  )
-}
-
-// Leads em risco (top 5-8)
-function LeadsEmRiscoCard({ leads, className = '' }: { leads: LeadEmRisco[]; className?: string }) {
-  const valorTotal = leads.reduce((s, l) => s + (l.valor ?? 0), 0)
-  return (
-    <Card className={className}>
-      <CardHeader
-        title="Leads em risco"
-        subtitle={`${leads.length} leads quentes/com orçamento sem resposta há +24h`}
-        right={
-          valorTotal > 0 ? (
-            <div className="flex items-center gap-1.5 text-[11px] text-danger">
-              <AlertTriangle className="h-3 w-3" />
-              <span className="font-mono tabular-nums">{fmtBRL(valorTotal)} em risco</span>
-            </div>
-          ) : null
-        }
-      />
-      {leads.length === 0 ? (
-        <p className="text-sm text-ink-faint py-6 text-center">Nenhum lead em risco no momento.</p>
-      ) : (
-        <div className="divide-y divide-border">
-          {leads.map(l => (
-            <div key={l.id} className="py-2 flex items-center gap-3 hover:bg-surface-2/50 -mx-2 px-2 rounded-md transition-colors">
-              <span className="h-2 w-2 rounded-full bg-danger animate-pulse shrink-0" />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[12px] font-medium text-ink truncate">
-                    {l.nome ?? <span className="italic text-ink-faint">sem nome</span>}
-                  </span>
-                  {l.momento === 'Agora' && (
-                    <span className="text-[9px] uppercase tracking-widest bg-danger-bg text-danger px-1.5 py-0.5 rounded">Quente</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-3 text-[10px] text-ink-faint mt-0.5">
-                  {l.telefone && <span className="font-mono inline-flex items-center gap-1"><Phone className="h-2.5 w-2.5" />{l.telefone}</span>}
-                  {l.vendedor && <span className="inline-flex items-center gap-1"><Users className="h-2.5 w-2.5" />{l.vendedor}</span>}
-                </div>
-              </div>
-              <div className="text-right shrink-0">
-                <p className="text-[11px] text-danger font-mono tabular-nums">{fmtHoras(l.horasSemResposta)}</p>
-                {l.valor != null && l.valor > 0 && (
-                  <p className="text-[10px] text-ink-muted font-mono tabular-nums">{fmtBRL(l.valor)}</p>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </Card>
-  )
-}
-
-// Tabela SLA / Win rate
+// Tabela vendedores (simplificada — so volume e qualificacao)
 function SlaTable({ rows }: { rows: SlaVendedor[] }) {
   if (!rows.length) return <p className="text-sm text-ink-faint">Sem vendedores.</p>
+  const maxLeads = Math.max(...rows.map(r => r.totalLeads))
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-[12px]">
         <thead>
           <tr className="text-[10px] uppercase tracking-widest text-ink-faint border-b border-border">
             <th className="text-left font-medium py-2 pr-2">Vendedor</th>
+            <th className="text-left font-medium py-2 px-2 w-[40%]">Distribuição</th>
             <th className="text-right font-medium py-2 px-2">Leads</th>
             <th className="text-right font-medium py-2 px-2">Qualif</th>
-            <th className="text-right font-medium py-2 px-2">Pendentes</th>
-            <th className="text-right font-medium py-2 px-2">Idade média</th>
-            <th className="text-right font-medium py-2 px-2">Orç</th>
-            <th className="text-right font-medium py-2 px-2">Vendidos</th>
-            <th className="text-right font-medium py-2 pl-2">Win rate</th>
+            <th className="text-right font-medium py-2 pl-2">% Qualif</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
           {rows.map(v => {
-            const wrColor = v.winRate >= 5 ? 'text-accent' : v.winRate >= 1 ? 'text-warning' : 'text-ink-faint'
-            const idadeColor = v.idadeMediaHoras >= 48 ? 'text-danger' : v.idadeMediaHoras >= 24 ? 'text-warning' : 'text-ink-muted'
-            const pendColor = v.pendentes >= 5 ? 'text-danger font-semibold' : v.pendentes > 0 ? 'text-warning' : 'text-ink-faint'
+            const widthPct = maxLeads > 0 ? (v.totalLeads / maxLeads) * 100 : 0
+            const qualifPct = v.totalLeads > 0 ? (v.qualificados / v.totalLeads) * 100 : 0
+            const ctrColor = qualifPct >= 15 ? 'text-accent' : qualifPct >= 5 ? 'text-warning' : 'text-ink-faint'
             return (
               <tr key={v.vendedor} className="hover:bg-surface-2/50 transition-colors">
                 <td className="py-2 pr-2 text-ink">{v.vendedor}</td>
+                <td className="py-2 px-2">
+                  <div className="h-2 bg-surface-2 rounded-full relative overflow-hidden" style={{ width: `${Math.max(widthPct, 4)}%` }}>
+                    <div className="absolute inset-y-0 left-0 bg-info/40" style={{ width: '100%' }} />
+                    <div className="absolute inset-y-0 left-0 bg-accent" style={{ width: `${qualifPct}%` }} />
+                  </div>
+                </td>
                 <td className="py-2 px-2 text-right font-mono tabular-nums text-ink">{v.totalLeads}</td>
                 <td className="py-2 px-2 text-right font-mono tabular-nums text-ink-muted">{v.qualificados}</td>
-                <td className={`py-2 px-2 text-right font-mono tabular-nums ${pendColor}`}>{v.pendentes}</td>
-                <td className={`py-2 px-2 text-right font-mono tabular-nums ${idadeColor}`}>
-                  {v.idadeMediaHoras > 0 ? fmtHoras(v.idadeMediaHoras) : '—'}
-                </td>
-                <td className="py-2 px-2 text-right font-mono tabular-nums text-ink-muted">{v.orcamentos}</td>
-                <td className="py-2 px-2 text-right font-mono tabular-nums text-ink">{v.vendidos}</td>
-                <td className={`py-2 pl-2 text-right font-mono tabular-nums ${wrColor}`}>
-                  {v.winRate.toFixed(1)}%
+                <td className={`py-2 pl-2 text-right font-mono tabular-nums ${ctrColor}`}>
+                  {qualifPct.toFixed(1)}%
                 </td>
               </tr>
             )
