@@ -489,14 +489,43 @@ export function Atendimentos() {
                         </td>
                         {/* VENDEDOR */}
                         <td className="px-3 py-2.5 whitespace-nowrap">
-                          {r.responsavel ? (
-                            <div className="flex items-center gap-1.5">
-                              <Avatar name={r.responsavel} size="sm" />
-                              <span className="text-[12px] text-ink-muted">{r.responsavel}</span>
-                            </div>
-                          ) : (
-                            <span className="text-[11px] text-ink-faint italic">a definir</span>
-                          )}
+                          {(() => {
+                            const ids = (r.auditoria_ids && r.auditoria_ids.length > 0) ? r.auditoria_ids : [r.id]
+                            if (r.responsavel) {
+                              return (
+                                <div className="flex items-center gap-1.5">
+                                  <Avatar name={r.responsavel} size="sm" />
+                                  <span className="text-[12px] text-ink-muted">{r.responsavel}</span>
+                                </div>
+                              )
+                            }
+                            // Lead sem vendedor: botão proeminente "Pegar pra mim"
+                            if (myVendorName && profile?.id) {
+                              return (
+                                <button
+                                  type="button"
+                                  disabled={atribuirMut.isPending}
+                                  onClick={() => {
+                                    atribuirMut.mutate({
+                                      auditoria_ids: ids,
+                                      user_id: profile.id,
+                                      user_name: myVendorName,
+                                    })
+                                  }}
+                                  title={`Atribuir este atendimento pra ${myVendorName}`}
+                                  className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md
+                                             bg-info-bg/60 text-info border border-info/30
+                                             hover:bg-info-bg hover:border-info/60 hover:shadow-sm
+                                             transition-all text-[11px] font-medium
+                                             disabled:opacity-50 disabled:cursor-wait"
+                                >
+                                  <UserPlus className="h-3.5 w-3.5" />
+                                  Pegar pra mim
+                                </button>
+                              )
+                            }
+                            return <span className="text-[11px] text-ink-faint italic">a definir</span>
+                          })()}
                         </td>
                         {/* AÇÕES */}
                         <td className="px-3 py-2.5 text-right whitespace-nowrap">
@@ -504,23 +533,24 @@ export function Atendimentos() {
                             const ids = (r.auditoria_ids && r.auditoria_ids.length > 0) ? r.auditoria_ids : [r.id]
                             const isFechado = !!r.finished_at
                             const isMine = !!(profile?.id && r.responsavel_user_id === profile.id)
-                            const semVendedor = !r.responsavel_user_id && (!r.responsavel || r.responsavel === 'a definir')
-                            const canPegarPraMim = !!profile?.id && !!myVendorName && (semVendedor || (!isMine && profile?.role === 'admin'))
+                            // Reatribuir só faz sentido pra admin (vendedor já tem botão grande na col Vendedor quando lead 'a definir')
+                            const canReatribuir = !!profile?.id && !!myVendorName && !!r.responsavel && !isMine && profile?.role === 'admin'
                             return (
                               <div className="inline-flex items-center gap-1">
-                                {/* PEGAR PRA MIM */}
-                                {canPegarPraMim && (
+                                {/* REATRIBUIR PRA MIM (admin) */}
+                                {canReatribuir && (
                                   <button
                                     type="button"
                                     disabled={atribuirMut.isPending}
                                     onClick={() => {
+                                      if (!window.confirm(`Reatribuir lead de "${r.responsavel}" pra você (${myVendorName})?`)) return
                                       atribuirMut.mutate({
                                         auditoria_ids: ids,
                                         user_id: profile!.id,
                                         user_name: myVendorName!,
                                       })
                                     }}
-                                    title={semVendedor ? 'Pegar pra mim' : `Atribuir pra mim (${myVendorName})`}
+                                    title={`Reatribuir pra mim (${myVendorName})`}
                                     className="h-7 w-7 inline-flex items-center justify-center rounded-md text-ink-faint/70 hover:text-info hover:bg-info-bg transition-all"
                                   >
                                     <UserPlus className="h-3.5 w-3.5" />
