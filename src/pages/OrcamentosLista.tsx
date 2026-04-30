@@ -97,13 +97,14 @@ function StatusEditable({ orcamento, effectiveStatus }: { orcamento: OrcamentoFi
   )
 }
 
-function CopyContatoButton({ value, ariaLabel }: { value: string; ariaLabel: string }) {
+function CopyContatoButton({ value, ariaLabel, onCopy }: { value: string; ariaLabel: string; onCopy?: () => void }) {
   const [copied, setCopied] = useState(false)
   const handle = async (e: React.MouseEvent) => {
     e.stopPropagation()
     try {
       await navigator.clipboard.writeText(value)
       setCopied(true)
+      onCopy?.()
       setTimeout(() => setCopied(false), 1500)
     } catch {
       window.prompt(ariaLabel, value)
@@ -130,6 +131,7 @@ import {
 import { useVendorMap } from '@/hooks/useVendorMap'
 import { useVendors } from '@/hooks/useVendors'
 import { useAuth } from '@/hooks/useAuth'
+import { useOrcamentosChamados } from '@/hooks/useOrcamentosChamados'
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   'Em-andamento':         { label: 'Em andamento',           color: 'bg-blue-50 text-blue-700 border-blue-200' },
@@ -209,6 +211,7 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
   const { data, isLoading } = useOrcamentosFiles(filters)
   const vendorMap = useVendorMap()
   const { data: vendorsData } = useVendors()
+  const { chamados, marcar, desmarcar } = useOrcamentosChamados()
   const { profile } = useAuth()
   const rows = data?.rows ?? []
   const total = data?.total ?? 0
@@ -347,8 +350,9 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
                     // Status efetivo: manual override > kanban-de-pasta
                     const effectiveStatus = r.status_manual ?? r.status_kanban
                     const meta = STATUS_LABELS[effectiveStatus] ?? { label: effectiveStatus, color: 'bg-gray-50 text-gray-700 border-gray-200' }
+                    const jaChamado = chamados.has(r.id)
                     return (
-                      <tr key={r.id} className="hover:bg-green-50/30 transition-colors">
+                      <tr key={r.id} className={`transition-colors ${jaChamado ? 'bg-green-50/60 hover:bg-green-100/60' : 'hover:bg-green-50/30'}`}>
                         <td className="px-4 py-3 align-top">
                           <div className="flex items-start gap-2">
                             <FileText className="h-4 w-4 text-text-muted mt-0.5 shrink-0" />
@@ -384,7 +388,20 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
                                 <span className={`text-xs font-mono tabular-nums ${phone.isBR ? 'text-text-secondary' : 'text-text-muted'}`}>
                                   {phone.display}
                                 </span>
-                                <CopyContatoButton value={phone.copyable} ariaLabel="Copiar telefone:" />
+                                <CopyContatoButton
+                                  value={phone.copyable}
+                                  ariaLabel="Copiar telefone:"
+                                  onCopy={() => marcar(r.id)}
+                                />
+                                {jaChamado && (
+                                  <button
+                                    onClick={e => { e.stopPropagation(); desmarcar(r.id) }}
+                                    title="Desmarcar como chamado"
+                                    className="p-0.5 rounded text-green-700 hover:bg-green-100 transition-colors"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                )}
                               </div>
                             )
                           })()}
