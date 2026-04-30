@@ -5,6 +5,13 @@ import { cn } from '@/lib/utils'
 import { useAtendimentoKpis } from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
 
+// Abrevia numero pra caber no badge: 1234 -> 1.2k
+function fmtCount(n: number): string {
+  if (n < 1000) return String(n)
+  const k = n / 1000
+  return (k >= 10 ? Math.round(k) : k.toFixed(1).replace('.0', '')) + 'k'
+}
+
 interface NavItem {
   to: string
   label: string
@@ -124,13 +131,13 @@ export function Layout() {
                 <l.icon className={cn('h-[15px] w-[15px] shrink-0', active ? 'text-accent' : 'text-ink-faint group-hover:text-ink-muted')} />
                 {!collapsed && (
                   <>
-                    <span className="flex-1">{l.label}</span>
+                    <span className="flex-1 truncate">{l.label}</span>
                     {l.countKey && counts[l.countKey] !== undefined && (
                       <span className={cn(
-                        'text-[10px] tabular-nums px-1.5 py-0.5 rounded-md font-mono',
+                        'text-[10px] tabular-nums px-1.5 py-0.5 rounded-md font-mono shrink-0',
                         active ? 'bg-accent/10 text-accent' : 'bg-surface-2 text-ink-faint',
                       )}>
-                        {counts[l.countKey]}
+                        {fmtCount(counts[l.countKey] as number)}
                       </span>
                     )}
                   </>
