@@ -6,10 +6,125 @@ import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
-import { formatNumber, formatRelative, formatPhone, whatsappLink } from '@/lib/utils'
+import { formatNumber, formatRelative, whatsappLink } from '@/lib/utils'
 import { MessageCircle } from 'lucide-react'
+
+/**
+ * Normaliza e formata qualquer phone bruto pra padrão +55 (DD) XXXXX-XXXX.
+ * Se não conseguir interpretar como BR, retorna { display: raw, copyable: rawDigits, isBR: false }.
+ */
+function normalizeBRPhone(raw: string | null | undefined): { display: string; copyable: string; isBR: boolean } | null {
+  if (!raw) return null
+  const digits = raw.replace(/\D/g, '').replace(/^0+/, '')
+  if (digits.length === 0) return null
+  // Se 13 dígitos e começa com 55 → BR completo
+  if (digits.length === 13 && digits.startsWith('55')) {
+    const ddd = digits.slice(2, 4), mid = digits.slice(4, 9), end = digits.slice(9)
+    return { display: `+55 (${ddd}) ${mid}-${end}`, copyable: `+${digits}`, isBR: true }
+  }
+  // 12 dígitos com 55 (faltando 9 do celular) → insere 9
+  if (digits.length === 12 && digits.startsWith('55')) {
+    const fixed = digits.slice(0, 4) + '9' + digits.slice(4)
+    const ddd = fixed.slice(2, 4), mid = fixed.slice(4, 9), end = fixed.slice(9)
+    return { display: `+55 (${ddd}) ${mid}-${end}`, copyable: `+${fixed}`, isBR: true }
+  }
+  // 11 dígitos sem 55 → assume BR celular (DDD+9+8)
+  if (digits.length === 11) {
+    const ddd = digits.slice(0, 2), mid = digits.slice(2, 7), end = digits.slice(7)
+    return { display: `+55 (${ddd}) ${mid}-${end}`, copyable: `+55${digits}`, isBR: true }
+  }
+  // 10 dígitos sem 55 → BR fixo OU celular antigo sem 9 (insere 9)
+  if (digits.length === 10) {
+    const ddd = digits.slice(0, 2), rest = digits.slice(2)
+    const fixed = '9' + rest  // assume celular faltando 9
+    return { display: `+55 (${ddd}) ${fixed.slice(0, 5)}-${fixed.slice(5)}`, copyable: `+55${ddd}${fixed}`, isBR: true }
+  }
+  // Não interpretável como BR → mostra raw, copiable só dígitos
+  return { display: raw, copyable: digits, isBR: false }
+}
+
+function StatusEditable({ orcamento, effectiveStatus }: { orcamento: OrcamentoFile; effectiveStatus: string }) {
+  const [open, setOpen] = useState(false)
+  const updateMut = useUpdateOrcamentoStatus()
+  const meta = STATUS_LABELS[effectiveStatus] ?? { label: effectiveStatus, color: 'bg-gray-50 text-gray-700 border-gray-200' }
+  const isManual = !!orcamento.status_manual
+
+  const change = (newStatus: string | null) => {
+    setOpen(false)
+    updateMut.mutate({ id: orcamento.id, status: newStatus })
+  }
+
+  return (
+    <div className="relative inline-block">
+      <button
+        onClick={() => setOpen(o => !o)}
+        title={isManual ? `Definido manualmente (cancele pra voltar ao kanban da pasta)` : `Status auto da pasta · clique pra mudar manualmente`}
+        className="inline-flex items-center"
+      >
+        <Badge className={`${meta.color} cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-offset-bg hover:ring-current/30 transition-all ${isManual ? 'border-dashed' : ''}`}>
+          {meta.label}
+          {isManual && <span className="ml-1 text-[9px] opacity-70">✎</span>}
+        </Badge>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute z-50 mt-1 w-48 rounded-md border border-surface-border bg-bg shadow-lg py-1 max-h-72 overflow-auto">
+            {STATUS_ALL.map(s => (
+              <button
+                key={s}
+                onClick={() => change(s)}
+                disabled={updateMut.isPending}
+                className={`w-full text-left text-xs px-3 py-1.5 hover:bg-surface-2 transition-colors ${effectiveStatus === s ? 'bg-accent-bg text-accent font-medium' : ''}`}
+              >
+                {STATUS_LABELS[s]?.label ?? s}
+              </button>
+            ))}
+            {isManual && (
+              <>
+                <div className="border-t border-surface-border my-1" />
+                <button
+                  onClick={() => change(null)}
+                  className="w-full text-left text-xs px-3 py-1.5 text-text-muted hover:bg-surface-2 transition-colors"
+                >
+                  Voltar ao auto (pasta)
+                </button>
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function CopyContatoButton({ value, ariaLabel }: { value: string; ariaLabel: string }) {
+  const [copied, setCopied] = useState(false)
+  const handle = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      window.prompt(ariaLabel, value)
+    }
+  }
+  return (
+    <button
+      onClick={handle}
+      title={copied ? 'Copiado!' : `Copiar ${value}`}
+      className={`p-1 rounded hover:bg-surface-tertiary transition-colors ${
+        copied ? 'text-green-600' : 'text-text-muted hover:text-text-primary'
+      }`}
+    >
+      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
+  )
+}
 import {
   useOrcamentosFiles,
+  useUpdateOrcamentoStatus,
   ORCAMENTOS_PAGE_SIZE,
   type OrcamentoFile,
 } from '@/hooks/useOrcamentosFiles'
@@ -230,7 +345,9 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
                 </thead>
                 <tbody className="divide-y divide-surface-border">
                   {rows.map((r: OrcamentoFile) => {
-                    const meta = STATUS_LABELS[r.status_kanban] ?? { label: r.status_kanban, color: 'bg-gray-50 text-gray-700 border-gray-200' }
+                    // Status efetivo: manual override > kanban-de-pasta
+                    const effectiveStatus = r.status_manual ?? r.status_kanban
+                    const meta = STATUS_LABELS[effectiveStatus] ?? { label: effectiveStatus, color: 'bg-gray-50 text-gray-700 border-gray-200' }
                     return (
                       <tr key={r.id} className="hover:bg-green-50/30 transition-colors">
                         <td className="px-4 py-3 align-top">
@@ -260,28 +377,30 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          {r.docx_phone_normalizado && r.docx_phone_normalizado.length === 13 ? (
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-xs font-mono text-text-secondary tabular-nums">
-                                {formatPhone(r.docx_phone_normalizado)}
-                              </span>
-                              <a
-                                href={whatsappLink(r.docx_phone_normalizado)}
-                                target="_blank"
-                                rel="noopener"
-                                title="Abrir WhatsApp"
-                                className="p-1 rounded hover:bg-green-50 text-green-600 transition-colors"
-                              >
-                                <MessageCircle className="h-3.5 w-3.5" />
-                              </a>
-                            </div>
-                          ) : r.docx_phone ? (
-                            <span className="text-xs font-mono text-text-muted" title="Telefone fora do padrão BR — não dá pra abrir WhatsApp">
-                              {r.docx_phone}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-text-muted">—</span>
-                          )}
+                          {(() => {
+                            const phone = normalizeBRPhone(r.docx_phone || r.docx_phone_normalizado)
+                            if (!phone) return <span className="text-xs text-text-muted">—</span>
+                            return (
+                              <div className="flex items-center gap-1">
+                                <span className={`text-xs font-mono tabular-nums ${phone.isBR ? 'text-text-secondary' : 'text-text-muted'}`}>
+                                  {phone.display}
+                                </span>
+                                <CopyContatoButton value={phone.copyable} ariaLabel="Copiar telefone:" />
+                                {phone.isBR && (
+                                  <a
+                                    href={whatsappLink(phone.copyable.replace(/\D/g, ''))}
+                                    target="_blank"
+                                    rel="noopener"
+                                    title="Abrir WhatsApp"
+                                    onClick={e => e.stopPropagation()}
+                                    className="p-1 rounded hover:bg-green-50 text-green-600 transition-colors"
+                                  >
+                                    <MessageCircle className="h-3.5 w-3.5" />
+                                  </a>
+                                )}
+                              </div>
+                            )
+                          })()}
                         </td>
                         <td className="px-4 py-3 text-sm font-mono text-text-secondary tabular-nums">
                           {r.ano} · {r.numero}
@@ -296,7 +415,7 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <Badge className={meta.color}>{meta.label}</Badge>
+                          <StatusEditable orcamento={r} effectiveStatus={effectiveStatus} />
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-1">

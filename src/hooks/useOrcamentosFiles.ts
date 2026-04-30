@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 
 export interface OrcamentoFile {
@@ -22,6 +22,8 @@ export interface OrcamentoFile {
   docx_phone: string | null
   docx_phone_normalizado: string | null
   docx_ac: string | null
+  status_manual: string | null
+  status_manual_at: string | null
 }
 
 export interface OrcamentosFilters {
@@ -84,5 +86,29 @@ export function useOrcamentosFiles(filters: OrcamentosFilters) {
     },
     placeholderData: prev => prev,
     staleTime: 60_000,
+  })
+}
+
+/** Atualiza status_manual de um orçamento (vendor pode mudar status visualmente). */
+export function useUpdateOrcamentoStatus() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: string | null }) => {
+      const { data: sess } = await supabase.auth.getSession()
+      const userId = sess.session?.user.id ?? null
+      const { error } = await supabase
+        .from('orcamentos_files')
+        .update({
+          status_manual: status,
+          status_manual_at: status ? new Date().toISOString() : null,
+          status_manual_by: status ? userId : null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['orcamentos-files'] })
+    },
   })
 }
