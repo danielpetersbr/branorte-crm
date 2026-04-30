@@ -19,12 +19,16 @@ export interface OrcamentoFile {
   contact_id: string | null
   vendor_id: string | null
   vendor_raw: string | null
+  docx_phone: string | null
+  docx_phone_normalizado: string | null
+  docx_ac: string | null
 }
 
 export interface OrcamentosFilters {
   search: string         // busca em cliente + equipamento
   ano: string            // '' = todos
-  status: string         // '' = todos
+  mes: string            // '' = todos. '01'..'12'
+  vendor_id: string      // '' = todos. 'unassigned' = sem vendor
   comContato: '' | 'sim' | 'nao'
   page: number
 }
@@ -44,7 +48,22 @@ export function useOrcamentosFiles(filters: OrcamentosFilters) {
         query = query.or(`cliente.ilike.%${escaped}%,equipamento.ilike.%${escaped}%`)
       }
       if (filters.ano) query = query.eq('ano', Number(filters.ano))
-      if (filters.status) query = query.eq('status_kanban', filters.status)
+      if (filters.mes && filters.ano) {
+        // mes 1-12 + ano → range mtime_iso
+        const m = Number(filters.mes)
+        const yr = Number(filters.ano)
+        const monthStr = String(m).padStart(2, '0')
+        const nextYr = m === 12 ? yr + 1 : yr
+        const nextMonth = m === 12 ? '01' : String(m + 1).padStart(2, '0')
+        query = query
+          .gte('mtime_iso', `${yr}-${monthStr}-01T00:00:00Z`)
+          .lt('mtime_iso', `${nextYr}-${nextMonth}-01T00:00:00Z`)
+      }
+      if (filters.vendor_id === 'unassigned') {
+        query = query.is('vendor_id', null)
+      } else if (filters.vendor_id) {
+        query = query.eq('vendor_id', filters.vendor_id)
+      }
       if (filters.comContato === 'sim') query = query.not('contact_id', 'is', null)
       if (filters.comContato === 'nao') query = query.is('contact_id', null)
 

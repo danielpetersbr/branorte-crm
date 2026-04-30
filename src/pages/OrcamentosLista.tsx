@@ -6,13 +6,16 @@ import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
-import { formatNumber, formatRelative } from '@/lib/utils'
+import { formatNumber, formatRelative, formatPhone, whatsappLink } from '@/lib/utils'
+import { MessageCircle } from 'lucide-react'
 import {
   useOrcamentosFiles,
   ORCAMENTOS_PAGE_SIZE,
   type OrcamentoFile,
 } from '@/hooks/useOrcamentosFiles'
 import { useVendorMap } from '@/hooks/useVendorMap'
+import { useVendors } from '@/hooks/useVendors'
+import { useAuth } from '@/hooks/useAuth'
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   'Em-andamento':         { label: 'Em andamento',           color: 'bg-blue-50 text-blue-700 border-blue-200' },
@@ -29,6 +32,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 
 const STATUS_ALL = Object.keys(STATUS_LABELS)
 const ANOS = Array.from({ length: 15 }, (_, i) => String(2026 - i))
+const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
 
 // Converte path interno (Z:/foo/bar) pra formato Windows (Z:\foo\bar) — o que cola no Explorer.
 function toWindowsPath(p: string): string {
@@ -71,28 +75,45 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
   const [filters, setFilters] = useState<{
     search: string
     ano: string
-    status: string
+    mes: string
+    vendor_id: string
     comContato: '' | 'sim' | 'nao'
     page: number
   }>({
     search: '',
     ano: '',
-    status: statusInicial,
+    mes: '',
+    vendor_id: '',
     comContato: '',
     page: 0,
   })
   const [searchInput, setSearchInput] = useState('')
 
+  // Suprime warning de prop não usada (statusInicial herdado de versão anterior)
+  void statusInicial
+
   const { data, isLoading } = useOrcamentosFiles(filters)
   const vendorMap = useVendorMap()
+  const { data: vendorsData } = useVendors()
+  const { profile } = useAuth()
   const rows = data?.rows ?? []
   const total = data?.total ?? 0
   const totalPages = Math.ceil(total / ORCAMENTOS_PAGE_SIZE)
 
-  const hasFilters = filters.search || filters.ano || filters.status || filters.comContato
+  // Vendor só vê seu nome no filtro; admin vê todos
+  const isVendor = profile?.role === 'vendor'
+  const vendorOpts = isVendor && profile?.vendor_id
+    ? (vendorsData ?? []).filter(v => v.id === profile.vendor_id)
+    : (vendorsData ?? [])
+  const vendorSelectOptions = [
+    { value: 'unassigned', label: 'Sem vendedor' },
+    ...vendorOpts.map(v => ({ value: v.id, label: v.name })),
+  ]
+
+  const hasFilters = filters.search || filters.ano || filters.mes || filters.vendor_id || filters.comContato
 
   const clear = () => {
-    setFilters({ search: '', ano: '', status: '', comContato: '', page: 0 })
+    setFilters({ search: '', ano: '', mes: '', vendor_id: '', comContato: '', page: 0 })
     setSearchInput('')
   }
 
@@ -112,15 +133,24 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
             options={ANOS.map(a => ({ value: a, label: a }))}
             placeholder="Ano"
             value={filters.ano}
-            onChange={e => setFilters(f => ({ ...f, ano: e.target.value, page: 0 }))}
+            onChange={e => setFilters(f => ({ ...f, ano: e.target.value, mes: '', page: 0 }))}
             className="lg:w-28"
           />
+          {filters.ano && (
+            <Select
+              options={MESES.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m }))}
+              placeholder="Mês"
+              value={filters.mes}
+              onChange={e => setFilters(f => ({ ...f, mes: e.target.value, page: 0 }))}
+              className="lg:w-28"
+            />
+          )}
           <Select
-            options={STATUS_ALL.map(s => ({ value: s, label: STATUS_LABELS[s].label }))}
-            placeholder="Status"
-            value={filters.status}
-            onChange={e => setFilters(f => ({ ...f, status: e.target.value, page: 0 }))}
-            className="lg:w-56"
+            options={vendorSelectOptions}
+            placeholder="Vendedor"
+            value={filters.vendor_id}
+            onChange={e => setFilters(f => ({ ...f, vendor_id: e.target.value, page: 0 }))}
+            className="lg:w-44"
           />
           <Select
             options={[{ value: 'sim', label: 'Com contato' }, { value: 'nao', label: 'Sem contato' }]}
@@ -184,6 +214,8 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
                 <thead>
                   <tr className="border-b border-surface-border bg-surface-secondary">
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Cliente · Equipamento</th>
+                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">A/C</th>
+                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Contato</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Ano · Nº</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Vendedor</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Status</th>
@@ -220,6 +252,37 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
                               )}
                             </div>
                           </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {r.docx_ac ? (
+                            <span className="text-sm text-text-secondary">{r.docx_ac}</span>
+                          ) : (
+                            <span className="text-xs text-text-muted">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {r.docx_phone_normalizado && r.docx_phone_normalizado.length === 13 ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-mono text-text-secondary tabular-nums">
+                                {formatPhone(r.docx_phone_normalizado)}
+                              </span>
+                              <a
+                                href={whatsappLink(r.docx_phone_normalizado)}
+                                target="_blank"
+                                rel="noopener"
+                                title="Abrir WhatsApp"
+                                className="p-1 rounded hover:bg-green-50 text-green-600 transition-colors"
+                              >
+                                <MessageCircle className="h-3.5 w-3.5" />
+                              </a>
+                            </div>
+                          ) : r.docx_phone ? (
+                            <span className="text-xs font-mono text-text-muted" title="Telefone fora do padrão BR — não dá pra abrir WhatsApp">
+                              {r.docx_phone}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-text-muted">—</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-sm font-mono text-text-secondary tabular-nums">
                           {r.ano} · {r.numero}
@@ -261,7 +324,7 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
                   })}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-text-muted">
+                      <td colSpan={9} className="px-4 py-8 text-center text-text-muted">
                         Nenhum orçamento encontrado.
                       </td>
                     </tr>
