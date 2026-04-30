@@ -100,21 +100,33 @@ export function Layout() {
         'hidden lg:flex flex-col border-r border-border bg-bg transition-all duration-200',
         collapsed ? 'w-14' : 'w-60',
       )}>
-        {/* Brand + collapse button */}
-        <div className={cn('flex items-center h-14 border-b border-border', collapsed ? 'justify-center px-2' : 'gap-2.5 px-5')}>
+        {/* Brand + user avatar + collapse */}
+        <div className={cn('flex items-center h-14 border-b border-border', collapsed ? 'justify-center px-2' : 'gap-2 px-4')}>
           <div className="h-7 w-7 rounded-md bg-accent flex items-center justify-center shadow-sm shrink-0">
             <span className="text-white font-bold text-[13px] tracking-tight">B</span>
           </div>
           {!collapsed && (
             <>
-              <div className="leading-tight flex-1">
+              <div className="leading-tight flex-1 min-w-0">
                 <h1 className="font-semibold text-ink text-[13px] tracking-tight">Branorte</h1>
                 <p className="text-[10px] text-ink-faint -mt-0.5 uppercase tracking-wider">CRM</p>
               </div>
+              {profile && (
+                <NavLink
+                  to="/perfil"
+                  title={`${profile.display_name ?? '—'} · ${profile.email}`}
+                  className={({ isActive }) => cn(
+                    'h-7 w-7 rounded-full flex items-center justify-center text-white text-[11px] font-semibold shrink-0 ring-2 ring-transparent transition-all',
+                    isActive ? 'bg-accent-700 ring-accent/40' : 'bg-accent hover:ring-accent/30'
+                  )}
+                >
+                  {(profile.display_name ?? profile.email)[0].toUpperCase()}
+                </NavLink>
+              )}
               <button
                 onClick={toggleCollapsed}
                 title="Minimizar menu"
-                className="h-7 w-7 inline-flex items-center justify-center rounded-md text-ink-faint hover:text-ink hover:bg-surface-2 transition-colors"
+                className="h-7 w-7 inline-flex items-center justify-center rounded-md text-ink-faint hover:text-ink hover:bg-surface-2 transition-colors shrink-0"
               >
                 <ChevronsLeft className="h-3.5 w-3.5" />
               </button>
@@ -122,24 +134,7 @@ export function Layout() {
           )}
         </div>
 
-        {/* User card no topo (logo abaixo do brand) */}
-        {profile && !collapsed && (
-          <NavLink
-            to="/perfil"
-            className={({ isActive }) => cn(
-              'border-b border-border px-3 py-2.5 flex items-center gap-2.5 transition-colors',
-              isActive ? 'bg-accent-bg' : 'hover:bg-surface-2'
-            )}
-          >
-            <div className="h-7 w-7 rounded-full bg-accent flex items-center justify-center text-white text-[11px] font-bold shrink-0">
-              {(profile.display_name ?? profile.email)[0].toUpperCase()}
-            </div>
-            <div className="flex-1 min-w-0 leading-tight">
-              <p className="text-[12px] font-medium text-ink truncate">{profile.display_name ?? '—'}</p>
-              <p className="text-[10px] text-ink-faint truncate">{profile.email}</p>
-            </div>
-          </NavLink>
-        )}
+        {/* Avatar pequeno no modo collapsed (abaixo do brand) */}
         {profile && collapsed && (
           <NavLink
             to="/perfil"
