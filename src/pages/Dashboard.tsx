@@ -99,11 +99,17 @@ export function Dashboard() {
     )
   }
 
+  // Delta so faz sentido quando ha filtro de periodo (compara com periodo anterior)
+  const showDelta = !!preset
+  const periodoLabel = preset
+    ? PRESET_LABELS.find(p => p.value === preset)?.label ?? 'período'
+    : 'no total'
+
   const heroKpis = [
-    { label: 'Total de leads', kpi: data.kpiTotal, icon: Users, color: COLORS.ink, sub: 'no período' },
-    { label: 'Hoje',           kpi: data.kpiHoje, icon: TrendingUp, color: COLORS.info, sub: 'leads novos' },
-    { label: 'Quentes',        kpi: data.kpiQuentes, icon: Flame, color: COLORS.danger, sub: 'querem comprar agora' },
-    { label: 'Qualificados',   kpi: data.kpiQualificados, icon: CheckCircle2, color: COLORS.accent, sub: 'preencheram tudo' },
+    { label: preset ? 'Leads no período' : 'Total de leads', kpi: data.kpiTotal, icon: Users, color: COLORS.ink, sub: preset ? periodoLabel.toLowerCase() : 'desde o início' },
+    { label: 'Hoje',         kpi: data.kpiHoje, icon: TrendingUp, color: COLORS.info, sub: 'leads novos' },
+    { label: 'Quentes',      kpi: data.kpiQuentes, icon: Flame, color: COLORS.danger, sub: 'querem comprar agora' },
+    { label: 'Qualificados', kpi: data.kpiQualificados, icon: CheckCircle2, color: COLORS.accent, sub: 'preencheram tudo' },
   ]
 
   return (
@@ -153,7 +159,7 @@ export function Dashboard() {
       {/* HERO KPIs com sparkline + delta */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {heroKpis.map(k => (
-          <KpiHero key={k.label} {...k} />
+          <KpiHero key={k.label} {...k} showDelta={showDelta} />
         ))}
       </div>
 
@@ -250,14 +256,15 @@ export function Dashboard() {
 // COMPONENTES
 // ============================================================================
 
-function KpiHero({ label, kpi, icon: Icon, color, sub }: {
+function KpiHero({ label, kpi, icon: Icon, color, sub, showDelta: showDeltaProp = true }: {
   label: string;
   kpi: { valor: number; deltaPct: number; sparkline: number[] };
   icon: typeof Users;
   color: string;
   sub: string;
+  showDelta?: boolean;
 }) {
-  const showDelta = Math.abs(kpi.deltaPct) > 0.5
+  const showDelta = showDeltaProp && Math.abs(kpi.deltaPct) > 0.5
   const positivo = kpi.deltaPct > 0
   const sparkData = kpi.sparkline.map((v, i) => ({ i, v }))
   const gid = `spark-${label.replace(/\s+/g, '')}`
