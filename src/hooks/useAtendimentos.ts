@@ -92,8 +92,10 @@ export function useAtendimentos(filters: AtendimentoFilters) {
       if (filters.responsavel) query = query.eq('responsavel', filters.responsavel)
       if (filters.status_real) query = query.eq('status_real', filters.status_real)
       const range = dateRangeFromPreset(filters.data)
-      if (range.from) query = query.gte('data', range.from)
-      if (range.to)   query = query.lte('data', range.to)
+      // Filtra por ULTIMA ATIVIDADE, nao por primeira interacao.
+      // Assim "Hoje" mostra tb leads antigos que mandaram webhook hoje.
+      if (range.from) query = query.gte('last_message_at', range.from)
+      if (range.to)   query = query.lte('last_message_at', range.to)
       if (filters.uf) {
         const ddds = Object.entries(DDD_TO_UF)
           .filter(([, uf]) => uf === filters.uf)
@@ -160,8 +162,8 @@ function applyBaseFilters(query: any, filters?: Partial<AtendimentoFilters>, ven
   }
   if (filters?.data) {
     const range = dateRangeFromPreset(filters.data)
-    if (range.from) q = q.gte('data', range.from)
-    if (range.to)   q = q.lte('data', range.to)
+    if (range.from) q = q.gte('last_message_at', range.from)
+    if (range.to)   q = q.lte('last_message_at', range.to)
   }
   return q
 }
@@ -200,7 +202,7 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
         vendidoRes, abandonadoRes, semRespostaRes, aguardandoRes, perdidoRes,
       ] = await Promise.all([
         baseQ(),
-        baseQ().gte('data', todayIso),
+        baseQ().gte('last_message_at', todayIso),
         baseQ().eq('quando_investir', 'Agora'),
         baseQ().not('tocou_botao_em', 'is', null),
         // Nao engajaram: chegou no anuncio mas nem clicou no primeiro botao (motivo_contato)
