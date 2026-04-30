@@ -258,7 +258,7 @@ export function Layout() {
         </div>
       </aside>
 
-      <main className="flex-1 min-h-screen pb-16 lg:pb-0">
+      <main className="flex-1 min-w-0 min-h-screen pb-16 lg:pb-0">
         <Outlet />
       </main>
 
