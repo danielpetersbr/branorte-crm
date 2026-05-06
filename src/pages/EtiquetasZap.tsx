@@ -59,84 +59,91 @@ function calcularFunil(data: WascriptEtiqueta[] | undefined): FunilStage[] {
     }
   }
 
-  const prosp = sumBy(e => PROSPECCAO_NOMES.has(e.etiqueta_nome_normalizado))
   const novo  = sumBy(e => NOVO_LEAD_NOMES.has(e.etiqueta_nome_normalizado))
+  const prosp = sumBy(e => PROSPECCAO_NOMES.has(e.etiqueta_nome_normalizado))
   const foll  = sumBy(e => FOLLOW_UP_NOMES.has(e.etiqueta_nome_normalizado))
 
-  return [
-    { label: 'Prospecção', emoji: '🎯', ...prosp, colorClass: 'bg-info',     textClass: 'text-info' },
-    { label: 'Novo Lead',  emoji: '🆕', ...novo,  colorClass: 'bg-warning',  textClass: 'text-warning' },
-    { label: 'Follow Up',  emoji: '🤝', ...foll,  colorClass: 'bg-accent',   textClass: 'text-accent' },
+  // Ordenar por volume decrescente -> sempre vira um funil de verdade que afunila
+  const raw = [
+    { label: 'Novo Lead',  emoji: '🆕', ...novo,  colorClass: 'bg-info',    textClass: 'text-info' },
+    { label: 'Prospecção', emoji: '🎯', ...prosp, colorClass: 'bg-warning', textClass: 'text-warning' },
+    { label: 'Follow Up',  emoji: '🤝', ...foll,  colorClass: 'bg-accent',  textClass: 'text-accent' },
   ]
+  return raw.sort((a, b) => b.total - a.total)
 }
 
 function FunilStages({ data }: { data: WascriptEtiqueta[] | undefined }) {
   const stages = useMemo(() => calcularFunil(data), [data])
-  const max = stages.reduce((m, s) => Math.max(m, s.total), 1)
+  const topo = stages[0]?.total ?? 0
 
   return (
-    <Card className="p-4 space-y-3">
-      <div className="flex items-center justify-between mb-1">
+    <Card className="p-4 space-y-4">
+      <div className="flex items-center justify-between">
         <h3 className="text-[12px] font-semibold text-ink uppercase tracking-wider">
           Funil de etiquetas
         </h3>
         <span className="text-[11px] text-ink-faint">
-          Prospecção → Novo Lead → Follow Up
+          {stages.map(s => s.label).join(' → ')}
         </span>
       </div>
 
-      <div className="space-y-2">
+      {/* Funil centralizado */}
+      <div className="space-y-1.5">
         {stages.map((stage, idx) => {
-          const widthPct = (stage.total / max) * 100
-          const prevTotal = idx > 0 ? stages[idx - 1].total : null
-          const conv = prevTotal && prevTotal > 0 ? (stage.total / prevTotal) * 100 : null
+          const widthPct = topo > 0 ? Math.max(8, (stage.total / topo) * 100) : 8
+          const prev = idx > 0 ? stages[idx - 1].total : null
+          const conv = prev && prev > 0 ? (stage.total / prev) * 100 : null
+          const dropPct = prev && prev > 0 ? ((prev - stage.total) / prev) * 100 : null
 
           return (
-            <div key={stage.label} className="space-y-1">
+            <div key={stage.label}>
               {/* Conversão entre etapas */}
               {conv !== null && (
-                <div className="flex items-center justify-center text-[10px] text-ink-faint -my-0.5">
-                  <span className="tabular-nums">↓ {conv.toFixed(1)}% passa pra próxima etapa</span>
+                <div className="flex items-center justify-center gap-2 py-1 text-[10px] text-ink-faint">
+                  <span className="text-success tabular-nums">▼ {conv.toFixed(1)}%</span>
+                  <span className="text-border">·</span>
+                  <span className="text-danger tabular-nums">{dropPct!.toFixed(1)}% perdido</span>
                 </div>
               )}
 
-              <div className="flex items-stretch gap-2">
-                {/* Label fixa */}
-                <div className="w-32 shrink-0 flex items-center gap-2 text-[12px] font-medium text-ink">
-                  <span>{stage.emoji}</span>
-                  <span>{stage.label}</span>
-                </div>
-
-                {/* Barra proporcional */}
-                <div className="flex-1 relative h-9 bg-surface-2 rounded-md overflow-hidden border border-border">
+              <div className="flex justify-center">
+                <div
+                  className="relative transition-all"
+                  style={{ width: `${widthPct}%`, minWidth: '180px' }}
+                >
                   <div
-                    className={`absolute inset-y-0 left-0 ${stage.colorClass} opacity-80 transition-all`}
-                    style={{ width: `${widthPct}%` }}
-                  />
-                  <div className="absolute inset-0 flex items-center justify-between px-3">
-                    <span className="text-[11px] text-ink font-medium drop-shadow-sm">
-                      {stage.porVendedor.length} {stage.porVendedor.length === 1 ? 'vendedor' : 'vendedores'}
-                    </span>
-                    <span className={`text-[16px] font-bold tabular-nums ${stage.textClass}`}>
-                      {formatNumber(stage.total)}
-                    </span>
+                    className={`relative h-14 rounded-lg ${stage.colorClass} shadow-sm overflow-hidden`}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-black/10" />
+                    <div className="absolute inset-0 flex items-center justify-between px-4">
+                      <div className="flex items-center gap-2 text-white">
+                        <span className="text-[18px]">{stage.emoji}</span>
+                        <div className="leading-tight">
+                          <div className="text-[13px] font-semibold">{stage.label}</div>
+                          <div className="text-[9px] opacity-80 uppercase tracking-wider">
+                            {stage.porVendedor.length} {stage.porVendedor.length === 1 ? 'vendedor' : 'vendedores'}
+                          </div>
+                        </div>
+                      </div>
+                      <span className="text-[24px] font-bold tabular-nums text-white drop-shadow">
+                        {formatNumber(stage.total)}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </div>
 
-              {/* Breakdown por vendedor (top 3) */}
-              {stage.porVendedor.length > 0 && (
-                <div className="ml-32 pl-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-ink-faint">
-                  {stage.porVendedor.slice(0, 6).map(v => (
-                    <span key={v.vendedor} className="tabular-nums">
-                      {v.vendedor}: <span className="text-ink-muted font-medium">{v.count}</span>
-                    </span>
-                  ))}
-                  {stage.porVendedor.length > 6 && (
-                    <span className="text-ink-faint">+{stage.porVendedor.length - 6}</span>
+                  {/* Breakdown por vendedor abaixo */}
+                  {stage.porVendedor.length > 0 && (
+                    <div className="mt-1.5 px-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-ink-faint justify-center">
+                      {stage.porVendedor.slice(0, 8).map(v => (
+                        <span key={v.vendedor} className="tabular-nums whitespace-nowrap">
+                          <span className="text-ink-muted">{v.vendedor}</span>{' '}
+                          <span className="text-ink font-semibold">{v.count}</span>
+                        </span>
+                      ))}
+                    </div>
                   )}
                 </div>
-              )}
+              </div>
             </div>
           )
         })}
