@@ -41,9 +41,9 @@ function classify(nomeNormalizado: string): EtiquetaCategoria {
   if (n.startsWith('ORCAMENTO')) return 'orcamento'
 
   // QUENTE / EM ANDAMENTO
-  if (n === 'PROSPECCAO' || n === 'FOLLOW UP' || n === 'FOLLOWUP' || n === 'INTERESSE FUTURO'
-      || n === '2A TENTATIVA' || n === 'LEAD QUENTE' || n === 'QUENTE'
-      || n === 'AGUARDANDO' || n === 'AGUARDANDO RESPOSTA') return 'quente'
+  if (n === 'PROSPECCAO' || n === 'PROSPECCOES' || n === 'FOLLOW UP' || n === 'FOLLOWUP' || n === 'FALLOW UP'
+      || n === 'INTERESSE FUTURO' || n === '2A TENTATIVA' || n === 'LEAD QUENTE' || n === 'QUENTE'
+      || n === 'AGUARDANDO' || n === 'AGUARDANDO RESPOSTA' || n === 'AGENDAMENTO') return 'quente'
 
   // MORTO / PERDIDO
   if (n === 'NUNCA RESPONDEU' || n === 'NAO RESPONDEU MAIS' || n === 'NAO TEM INTERESSE'
