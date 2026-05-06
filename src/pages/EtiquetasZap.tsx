@@ -7,6 +7,9 @@ import { Input } from '@/components/ui/Input'
 import { formatNumber } from '@/lib/utils'
 import { useEtiquetas, groupEtiquetasByVendedor, type WascriptEtiqueta } from '@/hooks/useEtiquetas'
 
+// Vendedores esperados na integração Wascript. Mostra card mesmo sem etiquetas.
+const VENDEDORES_ESPERADOS = ['EDILSON JR', 'PEDRO', 'JARDEL', 'EDER', 'ALVARO', 'RAMON', 'GUSTAVO', 'DANIEL']
+
 function fmtSyncedAt(iso: string): string {
   const d = new Date(iso)
   const now = new Date()
@@ -66,7 +69,11 @@ function VendedorBlock({ vendedor, etiquetas, filterTerm }: VendedorBlockProps) 
 
       {filtered.length === 0 && (
         <p className="text-[12px] text-ink-faint italic py-2">
-          {term ? 'Nenhuma etiqueta corresponde ao filtro.' : 'Sem etiquetas.'}
+          {term
+            ? 'Nenhuma etiqueta corresponde ao filtro.'
+            : etiquetas.length === 0
+              ? 'Sem etiquetas configuradas no WhatsApp ou token desconectado.'
+              : 'Sem etiquetas.'}
         </p>
       )}
 
@@ -110,10 +117,11 @@ export function EtiquetasZap() {
   const [filterTerm, setFilterTerm] = useState('')
 
   const grupos = useMemo(() => {
-    if (!data) return [] as { vendedor: string; etiquetas: WascriptEtiqueta[] }[]
-    const map = groupEtiquetasByVendedor(data)
-    return Array.from(map.entries())
-      .map(([vendedor, etiquetas]) => ({ vendedor, etiquetas }))
+    const map = data ? groupEtiquetasByVendedor(data) : new Map<string, WascriptEtiqueta[]>()
+    // Une vendedores que vieram da query com a lista esperada (garante que GUSTAVO/DANIEL apareçam)
+    const nomes = new Set<string>([...map.keys(), ...VENDEDORES_ESPERADOS.map(v => v.toUpperCase())])
+    return Array.from(nomes)
+      .map(vendedor => ({ vendedor, etiquetas: map.get(vendedor) ?? [] }))
       .sort((a, b) => {
         const totalA = a.etiquetas.reduce((s, e) => s + e.total_contatos, 0)
         const totalB = b.etiquetas.reduce((s, e) => s + e.total_contatos, 0)
@@ -122,13 +130,12 @@ export function EtiquetasZap() {
   }, [data])
 
   const totals = useMemo(() => {
-    if (!data) return { vendedores: 0, etiquetas: 0, contatos: 0 }
     return {
-      vendedores: new Set(data.map(e => e.vendedor_nome)).size,
-      etiquetas: data.length,
-      contatos: data.reduce((s, e) => s + e.total_contatos, 0),
+      vendedores: grupos.length,
+      etiquetas: grupos.reduce((s, g) => s + g.etiquetas.length, 0),
+      contatos: grupos.reduce((s, g) => s + g.etiquetas.reduce((ss, e) => ss + e.total_contatos, 0), 0),
     }
-  }, [data])
+  }, [grupos])
 
   if (isLoading) return <PageLoading />
 
