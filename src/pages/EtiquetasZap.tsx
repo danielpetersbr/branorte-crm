@@ -6,7 +6,7 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { Input } from '@/components/ui/Input'
 import { formatNumber } from '@/lib/utils'
 import { useEtiquetas, groupEtiquetasByVendedor, type WascriptEtiqueta } from '@/hooks/useEtiquetas'
-import { classificarEtiquetas, CATEGORIA_META, type EtiquetaCategoria } from '@/lib/etiquetas-classify'
+import { classificarEtiquetas, CATEGORIA_META } from '@/lib/etiquetas-classify'
 
 // Vendedores esperados na integração Wascript. Mostra card mesmo sem etiquetas.
 const VENDEDORES_ESPERADOS = ['EDILSON JR', 'PEDRO', 'JARDEL', 'EDER', 'ALVARO', 'RAMON', 'GUSTAVO', 'DANIEL']
@@ -22,9 +22,6 @@ function fmtSyncedAt(iso: string): string {
   const diffD = Math.round(diffH / 24)
   return `há ${diffD}d`
 }
-
-// Ordem de exibição do dashboard (em negociação primeiro, mortos por último)
-const CATEGORIAS_ORDEM: EtiquetaCategoria[] = ['novo', 'quente', 'orcamento', 'vendido', 'morto', 'outros']
 
 interface DashboardProps {
   data: WascriptEtiqueta[] | undefined
@@ -239,72 +236,6 @@ function DashboardEtiquetas({ data }: DashboardProps) {
         </Card>
       </div>
 
-      {/* Por categoria — barra empilhada + grid */}
-      <Card className="p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-[12px] font-semibold text-ink uppercase tracking-wider">
-            Distribuição por categoria
-          </h3>
-          <span className="text-[11px] text-ink-faint tabular-nums">
-            {formatNumber(total)} contatos no total
-          </span>
-        </div>
-
-        {/* Barra empilhada horizontal */}
-        {total > 0 && (
-          <div className="flex h-6 rounded-md overflow-hidden border border-border mb-3">
-            {CATEGORIAS_ORDEM.map(cat => {
-              const v = resumo.porCategoria[cat]
-              if (v === 0) return null
-              const pct = (v / total) * 100
-              const meta = CATEGORIA_META[cat]
-              const colorMap: Record<EtiquetaCategoria, string> = {
-                novo: 'bg-info',
-                quente: 'bg-warning',
-                orcamento: 'bg-accent',
-                vendido: 'bg-success',
-                morto: 'bg-danger',
-                outros: 'bg-ink-faint',
-              }
-              return (
-                <div
-                  key={cat}
-                  className={`${colorMap[cat]} flex items-center justify-center text-[10px] font-medium text-white transition-all`}
-                  style={{ width: `${pct}%` }}
-                  title={`${meta.label}: ${formatNumber(v)} (${pct.toFixed(1)}%)`}
-                >
-                  {pct >= 6 && `${pct.toFixed(0)}%`}
-                </div>
-              )
-            })}
-          </div>
-        )}
-
-        {/* Grid de cards por categoria */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-          {CATEGORIAS_ORDEM.map(cat => {
-            const v = resumo.porCategoria[cat]
-            const meta = CATEGORIA_META[cat]
-            const pct = total > 0 ? (v / total) * 100 : 0
-            return (
-              <div key={cat} className={`rounded-md p-2.5 ${meta.bgClass}`}>
-                <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider font-medium">
-                  <span>{meta.emoji}</span>
-                  <span className={meta.textClass}>{meta.label}</span>
-                </div>
-                <div className="mt-1 flex items-baseline gap-1">
-                  <span className={`text-[18px] font-bold tabular-nums ${meta.textClass}`}>
-                    {formatNumber(v)}
-                  </span>
-                  <span className="text-[10px] text-ink-faint tabular-nums">
-                    {pct > 0 ? `${pct.toFixed(0)}%` : ''}
-                  </span>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </Card>
     </div>
   )
 }
