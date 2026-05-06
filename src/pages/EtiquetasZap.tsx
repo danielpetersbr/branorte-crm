@@ -72,12 +72,29 @@ function calcularFunil(data: WascriptEtiqueta[] | undefined): FunilStage[] {
   return raw.sort((a, b) => b.total - a.total)
 }
 
+// Mapping de classes Tailwind -> hex pra usar em SVG
+const COLOR_HEX: Record<string, string> = {
+  'bg-info':    '#3b82f6',
+  'bg-warning': '#f59e0b',
+  'bg-accent':  '#10b981',
+}
+
 function FunilStages({ data }: { data: WascriptEtiqueta[] | undefined }) {
   const stages = useMemo(() => calcularFunil(data), [data])
   const topo = stages[0]?.total ?? 0
 
+  // Geometria do funil (SVG)
+  const VB_W = 1000          // viewbox width
+  const STAGE_H = 90         // altura de cada etapa
+  const GAP = 4              // gap visual entre slices (cria efeito segmentado)
+  const TIP = 0.35           // largura da última base (% da última etapa). 0 = ponta total, 1 = retângulo
+  const CENTER = VB_W / 2
+
+  // Largura proporcional (em px do viewBox) pra um valor
+  const widthFor = (v: number) => topo > 0 ? Math.max(60, (v / topo) * VB_W) : VB_W
+
   return (
-    <Card className="p-4 space-y-4">
+    <Card className="p-4 space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-[12px] font-semibold text-ink uppercase tracking-wider">
           Funil de etiquetas
@@ -87,63 +104,102 @@ function FunilStages({ data }: { data: WascriptEtiqueta[] | undefined }) {
         </span>
       </div>
 
-      {/* Funil centralizado */}
-      <div className="space-y-1.5">
+      {/* Funil SVG real */}
+      <div className="relative">
+        <svg
+          viewBox={`0 0 ${VB_W} ${stages.length * STAGE_H}`}
+          className="w-full h-auto"
+          preserveAspectRatio="xMidYMid meet"
+          role="img"
+          aria-label="Funil de etiquetas"
+        >
+          <defs>
+            {stages.map((s, i) => (
+              <linearGradient key={i} id={`grad-${i}`} x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stopColor={COLOR_HEX[s.colorClass] ?? '#888'} stopOpacity="1" />
+                <stop offset="100%" stopColor={COLOR_HEX[s.colorClass] ?? '#888'} stopOpacity="0.85" />
+              </linearGradient>
+            ))}
+          </defs>
+
+          {stages.map((stage, idx) => {
+            const topVal = stage.total
+            const bottomVal = idx < stages.length - 1
+              ? stages[idx + 1].total
+              : Math.max(stage.total * TIP, topo * 0.05) // ponta final
+            const wTop = widthFor(topVal)
+            const wBot = widthFor(bottomVal)
+
+            const yTop = idx * STAGE_H + (idx > 0 ? GAP / 2 : 0)
+            const yBot = (idx + 1) * STAGE_H - (idx < stages.length - 1 ? GAP / 2 : 0)
+
+            const x1 = CENTER - wTop / 2
+            const x2 = CENTER + wTop / 2
+            const x3 = CENTER + wBot / 2
+            const x4 = CENTER - wBot / 2
+
+            return (
+              <g key={stage.label}>
+                <polygon
+                  points={`${x1},${yTop} ${x2},${yTop} ${x3},${yBot} ${x4},${yBot}`}
+                  fill={`url(#grad-${idx})`}
+                />
+                {/* Label dentro do trapezoide */}
+                <text
+                  x={CENTER}
+                  y={yTop + STAGE_H / 2 - 8}
+                  textAnchor="middle"
+                  fill="white"
+                  className="font-semibold"
+                  style={{ fontSize: '20px' }}
+                >
+                  {stage.emoji} {stage.label}
+                </text>
+                <text
+                  x={CENTER}
+                  y={yTop + STAGE_H / 2 + 18}
+                  textAnchor="middle"
+                  fill="white"
+                  style={{ fontSize: '28px', fontWeight: 700, fontFamily: 'ui-monospace,monospace' }}
+                >
+                  {formatNumber(stage.total)}
+                </text>
+              </g>
+            )
+          })}
+        </svg>
+      </div>
+
+      {/* Conversões + breakdown */}
+      <div className="space-y-2 pt-2">
         {stages.map((stage, idx) => {
-          const widthPct = topo > 0 ? Math.max(8, (stage.total / topo) * 100) : 8
           const prev = idx > 0 ? stages[idx - 1].total : null
           const conv = prev && prev > 0 ? (stage.total / prev) * 100 : null
-          const dropPct = prev && prev > 0 ? ((prev - stage.total) / prev) * 100 : null
 
           return (
-            <div key={stage.label}>
-              {/* Conversão entre etapas */}
+            <div key={stage.label} className="flex items-start gap-3">
+              <div className="w-32 shrink-0 flex items-center gap-2 text-[12px] font-medium text-ink">
+                <span>{stage.emoji}</span>
+                <span>{stage.label}</span>
+                <span className="text-[16px] font-bold tabular-nums" style={{ color: COLOR_HEX[stage.colorClass] }}>
+                  {formatNumber(stage.total)}
+                </span>
+              </div>
               {conv !== null && (
-                <div className="flex items-center justify-center gap-2 py-1 text-[10px] text-ink-faint">
-                  <span className="text-success tabular-nums">▼ {conv.toFixed(1)}%</span>
-                  <span className="text-border">·</span>
-                  <span className="text-danger tabular-nums">{dropPct!.toFixed(1)}% perdido</span>
+                <div className="text-[10px] text-ink-faint pt-1 tabular-nums shrink-0 w-20">
+                  ↓ {conv.toFixed(1)}%
                 </div>
               )}
-
-              <div className="flex justify-center">
-                <div
-                  className="relative transition-all"
-                  style={{ width: `${widthPct}%`, minWidth: '180px' }}
-                >
-                  <div
-                    className={`relative h-14 rounded-lg ${stage.colorClass} shadow-sm overflow-hidden`}
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-black/10" />
-                    <div className="absolute inset-0 flex items-center justify-between px-4">
-                      <div className="flex items-center gap-2 text-white">
-                        <span className="text-[18px]">{stage.emoji}</span>
-                        <div className="leading-tight">
-                          <div className="text-[13px] font-semibold">{stage.label}</div>
-                          <div className="text-[9px] opacity-80 uppercase tracking-wider">
-                            {stage.porVendedor.length} {stage.porVendedor.length === 1 ? 'vendedor' : 'vendedores'}
-                          </div>
-                        </div>
-                      </div>
-                      <span className="text-[24px] font-bold tabular-nums text-white drop-shadow">
-                        {formatNumber(stage.total)}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Breakdown por vendedor abaixo */}
-                  {stage.porVendedor.length > 0 && (
-                    <div className="mt-1.5 px-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-ink-faint justify-center">
-                      {stage.porVendedor.slice(0, 8).map(v => (
-                        <span key={v.vendedor} className="tabular-nums whitespace-nowrap">
-                          <span className="text-ink-muted">{v.vendedor}</span>{' '}
-                          <span className="text-ink font-semibold">{v.count}</span>
-                        </span>
-                      ))}
-                    </div>
-                  )}
+              {stage.porVendedor.length > 0 && (
+                <div className="flex-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-ink-faint pt-1">
+                  {stage.porVendedor.slice(0, 8).map(v => (
+                    <span key={v.vendedor} className="tabular-nums whitespace-nowrap">
+                      <span className="text-ink-muted">{v.vendedor}</span>{' '}
+                      <span className="text-ink font-semibold">{v.count}</span>
+                    </span>
+                  ))}
                 </div>
-              </div>
+              )}
             </div>
           )
         })}
@@ -163,9 +219,9 @@ function DashboardEtiquetas({ data }: DashboardProps) {
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {/* Big card: Em negociação */}
-        <Card className="p-4 md:col-span-1 border-accent/30 bg-accent-bg/20">
+        <Card className="p-4 border-accent/30 bg-accent-bg/20">
           <div className="flex items-center gap-2 text-accent text-[11px] uppercase tracking-wider font-medium">
             <Handshake className="h-3.5 w-3.5" />
             <span>Em negociação</span>
@@ -188,32 +244,6 @@ function DashboardEtiquetas({ data }: DashboardProps) {
           <p className="text-[10px] text-ink-faint mt-1 tabular-nums">
             {total > 0 ? `${Math.round((negociacao / total) * 100)}% de ${formatNumber(total)} totais` : '—'}
           </p>
-        </Card>
-
-        {/* Health score */}
-        <Card className="p-4">
-          <div className="text-[11px] uppercase tracking-wider text-ink-faint font-medium">
-            Saúde do funil
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className={`text-[28px] font-bold tabular-nums ${
-              resumo.scoreSaude >= 60 ? 'text-success' : resumo.scoreSaude >= 30 ? 'text-warning' : 'text-danger'
-            }`}>
-              {resumo.scoreSaude}
-            </span>
-            <span className="text-[12px] text-ink-muted">/ 100</span>
-          </div>
-          <p className="text-[11px] text-ink-faint mt-1">
-            (Vivos + Vendidos) / Total
-          </p>
-          <div className="mt-3 h-1.5 bg-surface-2 rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all ${
-                resumo.scoreSaude >= 60 ? 'bg-success' : resumo.scoreSaude >= 30 ? 'bg-warning' : 'bg-danger'
-              }`}
-              style={{ width: `${resumo.scoreSaude}%` }}
-            />
-          </div>
         </Card>
 
         {/* Vendidos destaque */}
