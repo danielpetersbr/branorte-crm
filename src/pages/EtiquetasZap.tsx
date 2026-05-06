@@ -30,8 +30,123 @@ interface DashboardProps {
   data: WascriptEtiqueta[] | undefined
 }
 
-// Variantes de "FOLLOW UP" reconhecidas (após normalização: UPPER + sem acento + trim)
+// Variantes de cada etapa após normalização (UPPER + sem acento + trim)
 const FOLLOW_UP_NOMES = new Set(['FOLLOW UP', 'FOLLOWUP', 'FALLOW UP', 'FOLLOW-UP'])
+const NOVO_LEAD_NOMES = new Set(['NOVO LEAD', 'NOVOS LEADS', 'LEAD NOVO'])
+const PROSPECCAO_NOMES = new Set(['PROSPECCAO', 'PROSPECCOES'])
+
+interface FunilStage {
+  label: string
+  emoji: string
+  total: number
+  porVendedor: { vendedor: string; count: number }[]
+  colorClass: string
+  textClass: string
+}
+
+function calcularFunil(data: WascriptEtiqueta[] | undefined): FunilStage[] {
+  const items = data ?? []
+  const sumBy = (predicate: (e: WascriptEtiqueta) => boolean) => {
+    const porVendedor = new Map<string, number>()
+    let total = 0
+    for (const e of items) {
+      if (!predicate(e)) continue
+      total += e.total_contatos
+      porVendedor.set(e.vendedor_nome, (porVendedor.get(e.vendedor_nome) ?? 0) + e.total_contatos)
+    }
+    return {
+      total,
+      porVendedor: Array.from(porVendedor.entries())
+        .map(([vendedor, count]) => ({ vendedor, count }))
+        .sort((a, b) => b.count - a.count),
+    }
+  }
+
+  const prosp = sumBy(e => PROSPECCAO_NOMES.has(e.etiqueta_nome_normalizado))
+  const novo  = sumBy(e => NOVO_LEAD_NOMES.has(e.etiqueta_nome_normalizado))
+  const foll  = sumBy(e => FOLLOW_UP_NOMES.has(e.etiqueta_nome_normalizado))
+
+  return [
+    { label: 'Prospecção', emoji: '🎯', ...prosp, colorClass: 'bg-info',     textClass: 'text-info' },
+    { label: 'Novo Lead',  emoji: '🆕', ...novo,  colorClass: 'bg-warning',  textClass: 'text-warning' },
+    { label: 'Follow Up',  emoji: '🤝', ...foll,  colorClass: 'bg-accent',   textClass: 'text-accent' },
+  ]
+}
+
+function FunilStages({ data }: { data: WascriptEtiqueta[] | undefined }) {
+  const stages = useMemo(() => calcularFunil(data), [data])
+  const max = stages.reduce((m, s) => Math.max(m, s.total), 1)
+
+  return (
+    <Card className="p-4 space-y-3">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-[12px] font-semibold text-ink uppercase tracking-wider">
+          Funil de etiquetas
+        </h3>
+        <span className="text-[11px] text-ink-faint">
+          Prospecção → Novo Lead → Follow Up
+        </span>
+      </div>
+
+      <div className="space-y-2">
+        {stages.map((stage, idx) => {
+          const widthPct = (stage.total / max) * 100
+          const prevTotal = idx > 0 ? stages[idx - 1].total : null
+          const conv = prevTotal && prevTotal > 0 ? (stage.total / prevTotal) * 100 : null
+
+          return (
+            <div key={stage.label} className="space-y-1">
+              {/* Conversão entre etapas */}
+              {conv !== null && (
+                <div className="flex items-center justify-center text-[10px] text-ink-faint -my-0.5">
+                  <span className="tabular-nums">↓ {conv.toFixed(1)}% passa pra próxima etapa</span>
+                </div>
+              )}
+
+              <div className="flex items-stretch gap-2">
+                {/* Label fixa */}
+                <div className="w-32 shrink-0 flex items-center gap-2 text-[12px] font-medium text-ink">
+                  <span>{stage.emoji}</span>
+                  <span>{stage.label}</span>
+                </div>
+
+                {/* Barra proporcional */}
+                <div className="flex-1 relative h-9 bg-surface-2 rounded-md overflow-hidden border border-border">
+                  <div
+                    className={`absolute inset-y-0 left-0 ${stage.colorClass} opacity-80 transition-all`}
+                    style={{ width: `${widthPct}%` }}
+                  />
+                  <div className="absolute inset-0 flex items-center justify-between px-3">
+                    <span className="text-[11px] text-ink font-medium drop-shadow-sm">
+                      {stage.porVendedor.length} {stage.porVendedor.length === 1 ? 'vendedor' : 'vendedores'}
+                    </span>
+                    <span className={`text-[16px] font-bold tabular-nums ${stage.textClass}`}>
+                      {formatNumber(stage.total)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Breakdown por vendedor (top 3) */}
+              {stage.porVendedor.length > 0 && (
+                <div className="ml-32 pl-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-ink-faint">
+                  {stage.porVendedor.slice(0, 6).map(v => (
+                    <span key={v.vendedor} className="tabular-nums">
+                      {v.vendedor}: <span className="text-ink-muted font-medium">{v.count}</span>
+                    </span>
+                  ))}
+                  {stage.porVendedor.length > 6 && (
+                    <span className="text-ink-faint">+{stage.porVendedor.length - 6}</span>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </Card>
+  )
+}
 
 function DashboardEtiquetas({ data }: DashboardProps) {
   const resumo = useMemo(() => classificarEtiquetas(data), [data])
@@ -350,6 +465,8 @@ export function EtiquetasZap() {
       </header>
 
       <DashboardEtiquetas data={data} />
+
+      <FunilStages data={data} />
 
       <div className="max-w-md pt-2">
         <Input
