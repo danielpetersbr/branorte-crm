@@ -10,6 +10,7 @@ import { Vendidos } from '@/pages/Vendidos'
 import { Atendimentos } from '@/pages/Atendimentos'
 import { Funil } from '@/pages/Funil'
 import { FunilRelatorio } from '@/pages/FunilRelatorio'
+import { EtiquetasZap } from '@/pages/EtiquetasZap'
 import { Login } from '@/pages/Login'
 import { Signup } from '@/pages/Signup'
 import { Pendente } from '@/pages/Pendente'
@@ -63,6 +64,7 @@ function AppRoutes() {
         <Route path="/atendimentos" element={<Atendimentos />} />
         <Route path="/funil" element={<Funil />} />
         <Route path="/funil/relatorio" element={<FunilRelatorio />} />
+        <Route path="/etiquetas-zap" element={<EtiquetasZap />} />
         <Route path="/perfil" element={<Perfil />} />
         {profile.role === 'admin' && (
           <Route path="/admin/usuarios" element={<AdminUsuarios />} />
