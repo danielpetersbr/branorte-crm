@@ -59,42 +59,31 @@ function calcularFunil(data: WascriptEtiqueta[] | undefined): FunilStage[] {
     }
   }
 
-  const novo  = sumBy(e => NOVO_LEAD_NOMES.has(e.etiqueta_nome_normalizado))
   const prosp = sumBy(e => PROSPECCAO_NOMES.has(e.etiqueta_nome_normalizado))
+  const novo  = sumBy(e => NOVO_LEAD_NOMES.has(e.etiqueta_nome_normalizado))
   const foll  = sumBy(e => FOLLOW_UP_NOMES.has(e.etiqueta_nome_normalizado))
 
-  // Ordenar por volume decrescente -> sempre vira um funil de verdade que afunila
-  const raw = [
-    { label: 'Novo Lead',  emoji: '🆕', ...novo,  colorClass: 'bg-info',    textClass: 'text-info' },
-    { label: 'Prospecção', emoji: '🎯', ...prosp, colorClass: 'bg-warning', textClass: 'text-warning' },
+  // Ordem fixa, fluxo do processo comercial: Prospecção -> Novo Lead -> Follow Up
+  return [
+    { label: 'Prospecção', emoji: '🎯', ...prosp, colorClass: 'bg-info',    textClass: 'text-info' },
+    { label: 'Novo Lead',  emoji: '🆕', ...novo,  colorClass: 'bg-warning', textClass: 'text-warning' },
     { label: 'Follow Up',  emoji: '🤝', ...foll,  colorClass: 'bg-accent',  textClass: 'text-accent' },
   ]
-  return raw.sort((a, b) => b.total - a.total)
 }
 
-// Mapping de classes Tailwind -> hex pra usar em SVG
-const COLOR_HEX: Record<string, string> = {
-  'bg-info':    '#3b82f6',
-  'bg-warning': '#f59e0b',
-  'bg-accent':  '#10b981',
+// Mapping de classes -> hex (gradiente de duas tonalidades pra cada etapa)
+const COLOR_GRAD: Record<string, { from: string; to: string; ring: string }> = {
+  'bg-info':    { from: '#60a5fa', to: '#2563eb', ring: 'rgba(59,130,246,0.35)' },
+  'bg-warning': { from: '#fbbf24', to: '#d97706', ring: 'rgba(245,158,11,0.35)' },
+  'bg-accent':  { from: '#34d399', to: '#059669', ring: 'rgba(16,185,129,0.40)' },
 }
 
 function FunilStages({ data }: { data: WascriptEtiqueta[] | undefined }) {
   const stages = useMemo(() => calcularFunil(data), [data])
-  const topo = stages[0]?.total ?? 0
-
-  // Geometria do funil (SVG)
-  const VB_W = 1000          // viewbox width
-  const STAGE_H = 90         // altura de cada etapa
-  const GAP = 4              // gap visual entre slices (cria efeito segmentado)
-  const TIP = 0.35           // largura da última base (% da última etapa). 0 = ponta total, 1 = retângulo
-  const CENTER = VB_W / 2
-
-  // Largura proporcional (em px do viewBox) pra um valor
-  const widthFor = (v: number) => topo > 0 ? Math.max(60, (v / topo) * VB_W) : VB_W
+  const max = stages.reduce((m, s) => Math.max(m, s.total), 1)
 
   return (
-    <Card className="p-4 space-y-3">
+    <Card className="p-5 space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-[12px] font-semibold text-ink uppercase tracking-wider">
           Funil de etiquetas
@@ -104,98 +93,87 @@ function FunilStages({ data }: { data: WascriptEtiqueta[] | undefined }) {
         </span>
       </div>
 
-      {/* Funil SVG real */}
-      <div className="relative">
-        <svg
-          viewBox={`0 0 ${VB_W} ${stages.length * STAGE_H}`}
-          className="w-full h-auto"
-          preserveAspectRatio="xMidYMid meet"
-          role="img"
-          aria-label="Funil de etiquetas"
-        >
-          <defs>
-            {stages.map((s, i) => (
-              <linearGradient key={i} id={`grad-${i}`} x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stopColor={COLOR_HEX[s.colorClass] ?? '#888'} stopOpacity="1" />
-                <stop offset="100%" stopColor={COLOR_HEX[s.colorClass] ?? '#888'} stopOpacity="0.85" />
-              </linearGradient>
-            ))}
-          </defs>
-
-          {stages.map((stage, idx) => {
-            const topVal = stage.total
-            const bottomVal = idx < stages.length - 1
-              ? stages[idx + 1].total
-              : Math.max(stage.total * TIP, topo * 0.05) // ponta final
-            const wTop = widthFor(topVal)
-            const wBot = widthFor(bottomVal)
-
-            const yTop = idx * STAGE_H + (idx > 0 ? GAP / 2 : 0)
-            const yBot = (idx + 1) * STAGE_H - (idx < stages.length - 1 ? GAP / 2 : 0)
-
-            const x1 = CENTER - wTop / 2
-            const x2 = CENTER + wTop / 2
-            const x3 = CENTER + wBot / 2
-            const x4 = CENTER - wBot / 2
-
-            return (
-              <g key={stage.label}>
-                <polygon
-                  points={`${x1},${yTop} ${x2},${yTop} ${x3},${yBot} ${x4},${yBot}`}
-                  fill={`url(#grad-${idx})`}
-                />
-                {/* Label dentro do trapezoide */}
-                <text
-                  x={CENTER}
-                  y={yTop + STAGE_H / 2 - 8}
-                  textAnchor="middle"
-                  fill="white"
-                  className="font-semibold"
-                  style={{ fontSize: '20px' }}
-                >
-                  {stage.emoji} {stage.label}
-                </text>
-                <text
-                  x={CENTER}
-                  y={yTop + STAGE_H / 2 + 18}
-                  textAnchor="middle"
-                  fill="white"
-                  style={{ fontSize: '28px', fontWeight: 700, fontFamily: 'ui-monospace,monospace' }}
-                >
-                  {formatNumber(stage.total)}
-                </text>
-              </g>
-            )
-          })}
-        </svg>
-      </div>
-
-      {/* Conversões + breakdown */}
-      <div className="space-y-2 pt-2">
+      {/* Funil moderno: pills com gradiente + conectores */}
+      <div className="space-y-2">
         {stages.map((stage, idx) => {
+          const widthPct = Math.max(20, (stage.total / max) * 100)
+          const grad = COLOR_GRAD[stage.colorClass] ?? COLOR_GRAD['bg-info']
           const prev = idx > 0 ? stages[idx - 1].total : null
           const conv = prev && prev > 0 ? (stage.total / prev) * 100 : null
+          const isUp = conv !== null && conv > 100
 
           return (
-            <div key={stage.label} className="flex items-start gap-3">
-              <div className="w-32 shrink-0 flex items-center gap-2 text-[12px] font-medium text-ink">
-                <span>{stage.emoji}</span>
-                <span>{stage.label}</span>
-                <span className="text-[16px] font-bold tabular-nums" style={{ color: COLOR_HEX[stage.colorClass] }}>
-                  {formatNumber(stage.total)}
-                </span>
-              </div>
+            <div key={stage.label}>
+              {/* Conector + badge de conversão entre etapas */}
               {conv !== null && (
-                <div className="text-[10px] text-ink-faint pt-1 tabular-nums shrink-0 w-20">
-                  ↓ {conv.toFixed(1)}%
+                <div className="flex items-center justify-center -my-1 relative z-10">
+                  <div
+                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold tabular-nums backdrop-blur-sm border ${
+                      isUp
+                        ? 'bg-success-bg/80 text-success border-success/30'
+                        : 'bg-danger-bg/80 text-danger border-danger/30'
+                    }`}
+                  >
+                    {isUp ? '↑' : '↓'} {conv.toFixed(1)}%
+                  </div>
                 </div>
               )}
+
+              {/* Pill da etapa */}
+              <div className="flex justify-center">
+                <div
+                  className="relative h-[72px] rounded-2xl overflow-hidden transition-all duration-500 ease-out"
+                  style={{
+                    width: `${widthPct}%`,
+                    minWidth: '240px',
+                    background: `linear-gradient(135deg, ${grad.from} 0%, ${grad.to} 100%)`,
+                    boxShadow: `0 8px 24px -8px ${grad.ring}, inset 0 1px 0 rgba(255,255,255,0.2)`,
+                  }}
+                >
+                  {/* Brilho sutil topo */}
+                  <div className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/15 to-transparent pointer-events-none" />
+
+                  {/* Conteúdo */}
+                  <div className="absolute inset-0 flex items-center justify-between px-5 text-white">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="h-9 w-9 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-[18px] shrink-0">
+                        {stage.emoji}
+                      </div>
+                      <div className="leading-tight min-w-0">
+                        <div className="text-[14px] font-semibold tracking-tight truncate">{stage.label}</div>
+                        <div className="text-[10px] opacity-80 uppercase tracking-wider">
+                          {stage.porVendedor.length} vendedor{stage.porVendedor.length === 1 ? '' : 'es'}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div
+                        className="text-[28px] font-bold tabular-nums leading-none"
+                        style={{ textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}
+                      >
+                        {formatNumber(stage.total)}
+                      </div>
+                      <div className="text-[9px] uppercase tracking-wider opacity-80 mt-0.5">contatos</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Breakdown por vendedor (chips) */}
               {stage.porVendedor.length > 0 && (
-                <div className="flex-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-ink-faint pt-1">
+                <div className="mt-2 flex flex-wrap gap-1.5 justify-center">
                   {stage.porVendedor.slice(0, 8).map(v => (
-                    <span key={v.vendedor} className="tabular-nums whitespace-nowrap">
-                      <span className="text-ink-muted">{v.vendedor}</span>{' '}
-                      <span className="text-ink font-semibold">{v.count}</span>
+                    <span
+                      key={v.vendedor}
+                      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-surface-2 border border-border text-[10px]"
+                    >
+                      <span className="text-ink-muted">{v.vendedor}</span>
+                      <span
+                        className="font-semibold tabular-nums"
+                        style={{ color: grad.to }}
+                      >
+                        {v.count}
+                      </span>
                     </span>
                   ))}
                 </div>
