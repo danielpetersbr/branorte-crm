@@ -30,10 +30,16 @@ interface DashboardProps {
   data: WascriptEtiqueta[] | undefined
 }
 
+// Variantes de "FOLLOW UP" reconhecidas (após normalização: UPPER + sem acento + trim)
+const FOLLOW_UP_NOMES = new Set(['FOLLOW UP', 'FOLLOWUP', 'FALLOW UP', 'FOLLOW-UP'])
+
 function DashboardEtiquetas({ data }: DashboardProps) {
   const resumo = useMemo(() => classificarEtiquetas(data), [data])
 
-  const negociacao = resumo.porCategoria.novo + resumo.porCategoria.quente + resumo.porCategoria.orcamento
+  // "Em negociação" = só FOLLOW UP (e variantes de grafia) — somatório de todos os vendedores
+  const negociacao = (data ?? [])
+    .filter(e => FOLLOW_UP_NOMES.has(e.etiqueta_nome_normalizado))
+    .reduce((s, e) => s + e.total_contatos, 0)
   const total = resumo.totalContatos
 
   return (
@@ -50,7 +56,7 @@ function DashboardEtiquetas({ data }: DashboardProps) {
             <span className="text-[12px] text-ink-muted">contatos</span>
           </div>
           <p className="text-[11px] text-ink-faint mt-1">
-            Novos + Quentes + Orçamento
+            Etiqueta FOLLOW UP em todos os vendedores
           </p>
           {total > 0 && (
             <div className="mt-3 h-1.5 bg-surface-2 rounded-full overflow-hidden">
