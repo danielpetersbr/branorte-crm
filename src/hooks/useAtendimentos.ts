@@ -64,6 +64,94 @@ function dateRangeFromPreset(preset: DataPreset): { from?: string; to?: string }
   return {}
 }
 
+// Normaliza telefone pra formato e164 sem +. Estratégia tolerante:
+//   "+55 (33) 9946-6579" → "5533999466579"
+//   "(33) 9946-6579"     → "33999466579"  (sem 55)
+//   "5533999466579"      → "5533999466579"
+// Retorna ARRAY de variações pra dar match mesmo se número estiver salvo
+// sem o "55" no CRM mas com no WA (ou vice-versa).
+function phoneVariants(p: string | null | undefined): string[] {
+  if (!p) return []
+  const d = String(p).replace(/[^\d]/g, '')
+  if (!d) return []
+  const variants = new Set<string>()
+  variants.add(d)
+  if (!d.startsWith('55') && d.length >= 10) variants.add('55' + d)
+  if (d.startsWith('55') && d.length >= 12) variants.add(d.slice(2))
+  return [...variants]
+}
+
+export type WaLabelMap = Record<string, { id: string; name: string; color?: string | null; vendedor: string }[]>
+
+export function useWaLabelsByPhones(phones: (string | null | undefined)[], enabled = true) {
+  // Coleta variações de todos os phones únicos
+  const allPhones = [...new Set(phones.flatMap(phoneVariants))].filter(p => p && p.length >= 10)
+  return useQuery({
+    queryKey: ['wa-labels-by-phones', allPhones.sort().join(',')],
+    enabled: enabled && allPhones.length > 0,
+    queryFn: async (): Promise<WaLabelMap> => {
+      if (allPhones.length === 0) return {}
+      // Fetch chats que casam com algum phone
+      const { data: chatRows, error } = await supabase
+        .from('wa_chat_labels')
+        .select('phone, label_ids, vendedor_nome')
+        .in('phone', allPhones)
+      if (error) throw error
+      if (!chatRows || chatRows.length === 0) return {}
+      // Coleta todos label_ids únicos pra resolver nomes via wascript_etiquetas
+      const allLabelIds = new Set<string>()
+      const allVendors = new Set<string>()
+      for (const row of chatRows) {
+        for (const id of (row.label_ids || [])) allLabelIds.add(String(id))
+        if (row.vendedor_nome) allVendors.add(String(row.vendedor_nome))
+      }
+      const labelInfo: Record<string, { name: string; color?: string | null }> = {}
+      if (allLabelIds.size > 0 && allVendors.size > 0) {
+        const { data: labelRows } = await supabase
+          .from('wascript_etiquetas')
+          .select('etiqueta_id, etiqueta_nome, cor, vendedor_nome')
+          .in('etiqueta_id', [...allLabelIds])
+          .in('vendedor_nome', [...allVendors])
+        for (const lr of (labelRows ?? [])) {
+          // chave inclui vendedor pra evitar colisão entre vendedores diferentes
+          labelInfo[`${lr.vendedor_nome}::${lr.etiqueta_id}`] = {
+            name: String(lr.etiqueta_nome || ''),
+            color: lr.cor ?? null,
+          }
+        }
+      }
+      // Constrói o map { phone → labels[] }
+      const map: WaLabelMap = {}
+      for (const row of chatRows) {
+        const phone = String(row.phone)
+        const labels = (row.label_ids || []).map((id: string) => {
+          const info = labelInfo[`${row.vendedor_nome}::${id}`]
+          return {
+            id: String(id),
+            name: info?.name || `#${id}`,
+            color: info?.color ?? null,
+            vendedor: String(row.vendedor_nome || ''),
+          }
+        })
+        map[phone] = labels
+      }
+      return map
+    },
+    refetchInterval: 45_000,
+    refetchIntervalInBackground: false,
+    staleTime: 30_000,
+  })
+}
+
+// Helper pra usar no componente: dado um phone do CRM, busca as labels do map
+export function lookupWaLabels(map: WaLabelMap | undefined, phone: string | null | undefined) {
+  if (!map || !phone) return []
+  for (const v of phoneVariants(phone)) {
+    if (map[v]) return map[v]
+  }
+  return []
+}
+
 export function useAtendimentos(filters: AtendimentoFilters) {
   return useQuery({
     queryKey: ['atendimentos', filters],

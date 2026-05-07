@@ -14,7 +14,7 @@ import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTime
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, type StatusReal } from '@/types/atendimento'
-import { useAtendimentos, useAtendimentoKpis, useAtendimentoResponsaveis, useDeleteAtendimento, useAtribuirAtendimento, useResolverAtendimento, type DataPreset } from '@/hooks/useAtendimentos'
+import { useAtendimentos, useAtendimentoKpis, useAtendimentoResponsaveis, useDeleteAtendimento, useAtribuirAtendimento, useResolverAtendimento, useWaLabelsByPhones, lookupWaLabels, type DataPreset } from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 
@@ -167,6 +167,9 @@ export function Atendimentos() {
   const { data, isLoading } = useAtendimentos(filters)
   const { data: kpis } = useAtendimentoKpis(filters)
   const { data: responsaveis } = useAtendimentoResponsaveis()
+  // Etiquetas WA por telefone — fetcha em paralelo aos atendimentos
+  const phonesAtuais = (data?.rows ?? []).map(r => r.telefone)
+  const { data: waLabelsMap } = useWaLabelsByPhones(phonesAtuais)
   const deleteMut = useDeleteAtendimento()
   const atribuirMut = useAtribuirAtendimento()
   const resolverMut = useResolverAtendimento()
@@ -311,6 +314,7 @@ export function Atendimentos() {
                     <th className="hidden xl:table-cell">Animal</th>
                     <th className="hidden xl:table-cell">Qtd</th>
                     <th className="hidden lg:table-cell">Momento</th>
+                    <th className="hidden xl:table-cell" title="Etiqueta atribuída no WhatsApp do vendedor">Etiqueta WA</th>
                     <th className="hidden 2xl:table-cell" title="Cliente clicou no botão FALAR COM CONSULTOR">Botão</th>
                     <th>Vendedor</th>
                     <th>Status</th>
@@ -479,6 +483,34 @@ export function Atendimentos() {
                             <span className="text-[11px] text-ink-faint">—</span>
                           )}
                         </td>
+                        {/* ETIQUETA WA — sincronizada do WhatsApp do vendedor */}
+                        <td className="hidden xl:table-cell px-2 py-2.5 whitespace-nowrap">
+                          {(() => {
+                            const labels = lookupWaLabels(waLabelsMap, r.telefone)
+                            if (labels.length === 0) return <span className="text-[11px] text-ink-faint">—</span>
+                            return (
+                              <div className="flex flex-wrap gap-1 max-w-[180px]">
+                                {labels.slice(0, 3).map(l => (
+                                  <Badge
+                                    key={l.id}
+                                    className="text-[10px] font-semibold"
+                                    style={{
+                                      background: 'rgba(16,185,129,0.12)',
+                                      color: '#10b981',
+                                      border: '1px solid rgba(16,185,129,0.3)',
+                                    }}
+                                    title={`${l.name}${l.vendedor ? ` (${l.vendedor})` : ''}`}
+                                  >
+                                    {l.name}
+                                  </Badge>
+                                ))}
+                                {labels.length > 3 && (
+                                  <span className="text-[10px] text-ink-faint">+{labels.length - 3}</span>
+                                )}
+                              </div>
+                            )
+                          })()}
+                        </td>
                         {/* TOCOU NO BOTAO */}
                         <td className="hidden 2xl:table-cell px-2 py-2.5 whitespace-nowrap" title={r.tocou_botao_em ? `Em ${formatRelative(r.tocou_botao_em)}` : ''}>
                           {r.tocou_botao_em ? (
@@ -588,7 +620,7 @@ export function Atendimentos() {
                   })}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={14} className="px-4 py-16 text-center">
+                      <td colSpan={16} className="px-4 py-16 text-center">
                         <div className="flex flex-col items-center gap-2">
                           <div className="h-10 w-10 rounded-full bg-surface-2 flex items-center justify-center">
                             <Inbox className="h-5 w-5 text-ink-faint" />
