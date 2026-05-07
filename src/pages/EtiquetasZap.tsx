@@ -79,6 +79,8 @@ interface DashboardProps {
 const FOLLOW_UP_NOMES = new Set(['FOLLOW UP', 'FOLLOWUP', 'FALLOW UP', 'FOLLOW-UP'])
 const NOVO_LEAD_NOMES = new Set(['NOVO LEAD', 'NOVOS LEADS', 'LEAD NOVO'])
 const PROSPECCAO_NOMES = new Set(['PROSPECCAO', 'PROSPECCOES'])
+const SEGUNDA_TENTATIVA_NOMES = new Set(['2A TENTATIVA', '2 TENTATIVA', '2ª TENTATIVA'])
+const INTERESSE_FUTURO_NOMES = new Set(['INTERESSE FUTURO', 'INTERESSE FUTURA'])
 
 interface FunilStage {
   label: string
@@ -108,22 +110,28 @@ function calcularFunil(data: WascriptEtiqueta[] | undefined): FunilStage[] {
   }
 
   const prosp = sumBy(e => PROSPECCAO_NOMES.has(e.etiqueta_nome_normalizado))
+  const tent2 = sumBy(e => SEGUNDA_TENTATIVA_NOMES.has(e.etiqueta_nome_normalizado))
   const novo  = sumBy(e => NOVO_LEAD_NOMES.has(e.etiqueta_nome_normalizado))
   const foll  = sumBy(e => FOLLOW_UP_NOMES.has(e.etiqueta_nome_normalizado))
+  const futuro = sumBy(e => INTERESSE_FUTURO_NOMES.has(e.etiqueta_nome_normalizado))
 
-  // Ordem fixa, fluxo do processo comercial: Prospecção -> Novo Lead -> Follow Up
+  // Ordem oficial do funil de vendas Branorte
   return [
-    { label: 'Prospecção', emoji: '🎯', ...prosp, colorClass: 'bg-info',    textClass: 'text-info' },
-    { label: 'Novo Lead',  emoji: '🆕', ...novo,  colorClass: 'bg-warning', textClass: 'text-warning' },
-    { label: 'Follow Up',  emoji: '🤝', ...foll,  colorClass: 'bg-accent',  textClass: 'text-accent' },
+    { label: 'Prospecção',       emoji: '🎯', ...prosp,  colorClass: 'bg-info',     textClass: 'text-info' },
+    { label: '2ª Tentativa',     emoji: '🔁', ...tent2,  colorClass: 'bg-cyan',     textClass: 'text-cyan' },
+    { label: 'Novo Lead',        emoji: '🆕', ...novo,   colorClass: 'bg-warning',  textClass: 'text-warning' },
+    { label: 'Follow Up',        emoji: '🤝', ...foll,   colorClass: 'bg-accent',   textClass: 'text-accent' },
+    { label: 'Interesse Futuro', emoji: '💭', ...futuro, colorClass: 'bg-purple',   textClass: 'text-purple' },
   ]
 }
 
 // Mapping de classes -> hex (gradiente de duas tonalidades pra cada etapa)
 const COLOR_GRAD: Record<string, { from: string; to: string; ring: string }> = {
   'bg-info':    { from: '#60a5fa', to: '#2563eb', ring: 'rgba(59,130,246,0.35)' },
+  'bg-cyan':    { from: '#22d3ee', to: '#0891b2', ring: 'rgba(34,211,238,0.35)' },
   'bg-warning': { from: '#fbbf24', to: '#d97706', ring: 'rgba(245,158,11,0.35)' },
   'bg-accent':  { from: '#34d399', to: '#059669', ring: 'rgba(16,185,129,0.40)' },
+  'bg-purple':  { from: '#a78bfa', to: '#7c3aed', ring: 'rgba(167,139,250,0.35)' },
 }
 
 function FunilStages({ data }: { data: WascriptEtiqueta[] | undefined }) {
