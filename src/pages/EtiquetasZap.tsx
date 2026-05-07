@@ -11,6 +11,49 @@ import { classificarEtiquetas, CATEGORIA_META } from '@/lib/etiquetas-classify'
 // Vendedores esperados na integração Wascript. Mostra card mesmo sem etiquetas.
 const VENDEDORES_ESPERADOS = ['EDILSON JR', 'PEDRO', 'JARDEL', 'EDER', 'ALVARO', 'RAMON', 'GUSTAVO']
 
+// Ordem oficial do funil de vendas Branorte. Etiquetas fora dessa lista vão no final.
+const ORDEM_FUNIL: string[] = [
+  // FUNIL DE VENDAS
+  'PROSPECCAO',
+  '2A TENTATIVA',
+  'NOVO LEAD',
+  'FOLLOW UP',
+  'INTERESSE FUTURO',
+  'VENDIDO',
+  // MOTIVO DE FECHAMENTO
+  'NAO RESPONDEU MAIS',
+  'NUNCA RESPONDEU',
+  'NAO TEM INTERESSE',
+  'COMPROU DO CONCORRENTE',
+  'SO BASE DE PRECO',
+  'FORA DO ORCAMENTO',
+  'NAO FABRICAMOS',
+  'OUTROS ASSUNTOS',
+  // EXTRAS
+  'ORCAMENTO ENVIADO',
+  'LEAD QUENTE',
+]
+
+// Aliases conhecidos pra mapear typos/variantes ao nome canônico
+const ALIASES: Record<string, string> = {
+  'FALLOW UP': 'FOLLOW UP',
+  'FALLOWUP': 'FOLLOW UP',
+  'FOLLOWUP': 'FOLLOW UP',
+  'COMPROU DO COMCORRENTE': 'COMPROU DO CONCORRENTE',
+  'PROSPECCOES': 'PROSPECCAO',
+  'PROSPECCAO ': 'PROSPECCAO',
+  'NOVOS LEADS': 'NOVO LEAD',
+  'LEAD NOVO': 'NOVO LEAD',
+  'VENDIDOS': 'VENDIDO',
+  'RESOLVIDOS': 'RESOLVIDO',
+}
+
+function ordemDe(etiqueta: { etiqueta_nome_normalizado: string }): number {
+  const nome = ALIASES[etiqueta.etiqueta_nome_normalizado] ?? etiqueta.etiqueta_nome_normalizado
+  const idx = ORDEM_FUNIL.indexOf(nome)
+  return idx === -1 ? 999 : idx  // não-canônicas vão pro final
+}
+
 function fmtSyncedAt(iso: string): string {
   const d = new Date(iso)
   const now = new Date()
@@ -269,12 +312,19 @@ function VendedorBlock({ vendedor, etiquetas, filterTerm }: VendedorBlockProps) 
   )
 
   const term = filterTerm.trim().toLowerCase()
-  const filtered = term
+  const filteredRaw = term
     ? etiquetas.filter(e =>
         e.etiqueta_nome.toLowerCase().includes(term) ||
         e.etiqueta_nome_normalizado.toLowerCase().includes(term),
       )
     : etiquetas
+  // Ordenação: pelo funil oficial; etiquetas fora do funil vão no final, ordenadas por contagem
+  const filtered = [...filteredRaw].sort((a, b) => {
+    const oa = ordemDe(a)
+    const ob = ordemDe(b)
+    if (oa !== ob) return oa - ob
+    return b.total_contatos - a.total_contatos
+  })
 
   const max = filtered.reduce((m, e) => Math.max(m, e.total_contatos), 0) || 1
 
