@@ -4,7 +4,7 @@ import type Konva from 'konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import {
   Factory, Eraser, Download, Crosshair, MousePointer2, Minus, Square, Undo2, Redo2,
-  Pencil, Circle as CircleIcon, Type, Ruler, Trash2, Lock,
+  Pencil, Circle as CircleIcon, Type, Ruler, Trash2, Lock, ArrowLeftRight,
 } from 'lucide-react'
 
 const PX_PER_METER = 50
@@ -15,7 +15,7 @@ const ZOOM_STEP = 1.05
 const HISTORY_MAX = 50
 const WALL_THICKNESS_M = 0.2
 
-type Tool = 'select' | 'wall' | 'area' | 'circle' | 'text' | 'pencil' | 'distance' | 'erase'
+type Tool = 'select' | 'wall' | 'area' | 'circle' | 'text' | 'pencil' | 'distance' | 'cota' | 'erase'
 type EquipKind = 'silo' | 'moinho' | 'mixer' | 'peletizadora' | 'ensacadeira'
 
 interface EquipDef { kind: EquipKind; label: string; widthM: number; heightM: number; fill: string; stroke: string }
@@ -33,7 +33,8 @@ interface Area { id: string; xM: number; yM: number; widthM: number; heightM: nu
 interface Sketch { id: string; pointsM: number[]; color: string; thickness: number }
 interface CircleShape { id: string; cxM: number; cyM: number; rM: number; stroke: string }
 interface TextItem { id: string; xM: number; yM: number; text: string; color: string }
-interface Snapshot { shapes: PlacedShape[]; walls: Wall[]; areas: Area[]; sketches: Sketch[]; circles: CircleShape[]; texts: TextItem[] }
+interface Cota { id: string; x0: number; y0: number; x1: number; y1: number; offsetM: number }
+interface Snapshot { shapes: PlacedShape[]; walls: Wall[]; areas: Area[]; sketches: Sketch[]; circles: CircleShape[]; texts: TextItem[]; cotas: Cota[] }
 
 const snap = (v: number, step = SNAP_METERS) => Math.round(v / step) * step
 const uid = () => Math.random().toString(36).slice(2, 9)
@@ -59,6 +60,8 @@ export function Projeto() {
   const [sketches, setSketches] = useState<Sketch[]>([])
   const [circles, setCircles] = useState<CircleShape[]>([])
   const [texts, setTexts] = useState<TextItem[]>([])
+  const [cotas, setCotas] = useState<Cota[]>([])
+  const [pendingCota, setPendingCota] = useState<{ x0: number; y0: number } | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const [tool, setTool] = useState<Tool>('select')
@@ -87,6 +90,7 @@ export function Projeto() {
   const sketchesRef = useRef(sketches); sketchesRef.current = sketches
   const circlesRef = useRef(circles); circlesRef.current = circles
   const textsRef = useRef(texts); textsRef.current = texts
+  const cotasRef = useRef(cotas); cotasRef.current = cotas
 
   const [history, setHistory] = useState<Snapshot[]>([])
   const [redoStack, setRedoStack] = useState<Snapshot[]>([])
@@ -94,6 +98,7 @@ export function Projeto() {
   const snapshotNow = (): Snapshot => ({
     shapes: [...shapesRef.current], walls: [...wallsRef.current], areas: [...areasRef.current],
     sketches: [...sketchesRef.current], circles: [...circlesRef.current], texts: [...textsRef.current],
+    cotas: [...cotasRef.current],
   })
 
   const pushHistory = () => {
@@ -104,8 +109,10 @@ export function Projeto() {
   const applySnapshot = (s: Snapshot) => {
     setShapes(s.shapes); setWalls(s.walls); setAreas(s.areas)
     setSketches(s.sketches); setCircles(s.circles); setTexts(s.texts)
+    setCotas(s.cotas || [])
     setSelectedId(null); setPendingWall(null); setPendingArea(null)
     setPendingSketch(null); setPendingCircle(null); setPendingDistance(null); setDistanceResult(null)
+    setPendingCota(null)
   }
 
   const undo = () => {
@@ -144,6 +151,7 @@ export function Projeto() {
   useEffect(() => {
     setPendingWall(null); setPendingArea(null); setPendingSketch(null)
     setPendingCircle(null); setPendingDistance(null); setDistanceResult(null)
+    setPendingCota(null)
     isPenciling.current = false
   }, [tool])
 
@@ -165,7 +173,7 @@ export function Projeto() {
       if (e.key === 'F8') { e.preventDefault(); setOrtho(o => !o); return }
       if (e.key === 'Escape') {
         setPendingWall(null); setPendingArea(null); setPendingCircle(null)
-        setPendingDistance(null); setDistanceResult(null); setSelectedId(null); return
+        setPendingDistance(null); setDistanceResult(null); setPendingCota(null); setSelectedId(null); return
       }
       if (e.key === 'Enter' && pendingWall && pendingWall.length >= 4) { finalizeWall(); return }
       if (e.key === 'Delete' && selectedId) {
@@ -176,6 +184,7 @@ export function Projeto() {
         setSketches(p => p.filter(s => s.id !== selectedId))
         setCircles(p => p.filter(c => c.id !== selectedId))
         setTexts(p => p.filter(t => t.id !== selectedId))
+        setCotas(p => p.filter(c => c.id !== selectedId))
         setSelectedId(null)
         return
       }
@@ -188,6 +197,7 @@ export function Projeto() {
       else if (k === 't') setTool('text')
       else if (k === 'p') setTool('pencil')
       else if (k === 'd') setTool('distance')
+      else if (k === 'q') setTool('cota')
       else if (k === 'e') setTool('erase')
       else if (k === 'z') resetCamera()
     }
@@ -292,6 +302,20 @@ export function Projeto() {
       }
       return
     }
+    if (tool === 'cota') {
+      if (!pendingCota) {
+        setPendingCota({ x0: sx, y0: sy })
+      } else {
+        const [ex, ey] = applyOrtho(pendingCota.x0, pendingCota.y0, sx, sy, ortho)
+        const dM = Math.sqrt((ex - pendingCota.x0) ** 2 + (ey - pendingCota.y0) ** 2)
+        if (dM > 0.05) {
+          pushHistory()
+          setCotas(prev => [...prev, { id: uid(), x0: pendingCota.x0, y0: pendingCota.y0, x1: ex, y1: ey, offsetM: 0.6 }])
+        }
+        setPendingCota(null)
+      }
+      return
+    }
     if (tool === 'erase') {
       // Apaga o que clicou (se tiver clicado em algo). Stage = nada.
       const target = e.target
@@ -305,6 +329,7 @@ export function Projeto() {
       setSketches(p => p.filter(s => s.id !== id))
       setCircles(p => p.filter(c => c.id !== id))
       setTexts(p => p.filter(t => t.id !== id))
+      setCotas(p => p.filter(c => c.id !== id))
       return
     }
 
@@ -451,7 +476,7 @@ export function Projeto() {
   // Cursor
   const cursor = spaceDown
     ? 'grab'
-    : (tool === 'wall' || tool === 'area' || tool === 'circle' || tool === 'text' || tool === 'pencil' || tool === 'distance')
+    : (tool === 'wall' || tool === 'area' || tool === 'circle' || tool === 'text' || tool === 'pencil' || tool === 'distance' || tool === 'cota')
       ? 'crosshair'
       : tool === 'erase' ? 'not-allowed' : 'default'
 
@@ -490,6 +515,14 @@ export function Projeto() {
     return { x0: pendingDistance.xM, y0: pendingDistance.yM, x1: ex, y1: ey, dM }
   }, [pendingDistance, cursorM, ortho])
 
+  // Preview da cota (durante criação)
+  const cotaPreview = useMemo(() => {
+    if (!pendingCota || !cursorM) return null
+    const [ex, ey] = applyOrtho(pendingCota.x0, pendingCota.y0, cursorM.x, cursorM.y, ortho)
+    const dM = Math.sqrt((ex - pendingCota.x0) ** 2 + (ey - pendingCota.y0) ** 2)
+    return { x0: pendingCota.x0, y0: pendingCota.y0, x1: ex, y1: ey, dM }
+  }, [pendingCota, cursorM, ortho])
+
   const ToolBtn = ({ id, icon: Icon, label, shortcut }: { id: Tool; icon: typeof MousePointer2; label: string; shortcut: string }) => {
     const active = tool === id
     return (
@@ -525,6 +558,7 @@ export function Projeto() {
           <ToolBtn id="text" icon={Type} label="Texto" shortcut="T" />
           <ToolBtn id="pencil" icon={Pencil} label="Lápis" shortcut="P" />
           <ToolBtn id="distance" icon={Ruler} label="Medir" shortcut="D" />
+          <ToolBtn id="cota" icon={ArrowLeftRight} label="Cota" shortcut="Q" />
           <ToolBtn id="erase" icon={Trash2} label="Apagar" shortcut="E" />
         </div>
 
@@ -591,6 +625,7 @@ export function Projeto() {
           {tool === 'text' && 'Texto — clique no canvas, abre prompt pra digitar'}
           {tool === 'pencil' && 'Lápis — pressiona e arrasta pra desenhar à mão livre'}
           {tool === 'distance' && 'Medir — clique 2 pontos, distância em metros aparece'}
+          {tool === 'cota' && 'Cota — clique 2 pontos pra cravar a medida no desenho (Shift = ortho)'}
           {tool === 'erase' && 'Apagar — clique numa shape pra remover imediatamente'}
         </span>
         <span className="flex items-center gap-3">
@@ -697,7 +732,7 @@ export function Projeto() {
               )}
 
               {/* Indicador visual de snap — mostra onde o próximo clique vai grudar */}
-              {cursorM && (tool === 'wall' || tool === 'area' || tool === 'circle' || tool === 'distance' || tool === 'text') && (
+              {cursorM && (tool === 'wall' || tool === 'area' || tool === 'circle' || tool === 'distance' || tool === 'cota' || tool === 'text') && (
                 <>
                   <KCircle x={cursorM.x * PX_PER_METER} y={cursorM.y * PX_PER_METER}
                     radius={8 / scale}
@@ -797,6 +832,76 @@ export function Projeto() {
               })}
             </Layer>
 
+            {/* Cotas (medidas fixas no desenho) */}
+            <Layer>
+              {cotas.map(c => {
+                const selected = c.id === selectedId
+                const dx = c.x1 - c.x0, dy = c.y1 - c.y0
+                const dM = Math.sqrt(dx * dx + dy * dy)
+                if (dM < 0.001) return null
+                // Vetor unitário e perpendicular (pra ticks)
+                const ux = dx / dM, uy = dy / dM
+                const px = -uy, py = ux
+                const tickM = 0.25
+                // Pontos em pixels
+                const x0p = c.x0 * PX_PER_METER, y0p = c.y0 * PX_PER_METER
+                const x1p = c.x1 * PX_PER_METER, y1p = c.y1 * PX_PER_METER
+                const tk = tickM * PX_PER_METER
+                const cor = selected ? '#0ea5e9' : '#1f2937'
+                const midX = (x0p + x1p) / 2
+                const midY = (y0p + y1p) / 2
+                // Offset do label perpendicular à linha
+                const offPx = 14 / scale
+                const lblX = midX + px * offPx
+                const lblY = midY + py * offPx
+                // Ângulo da linha pra rotacionar o texto
+                let ang = Math.atan2(dy, dx) * 180 / Math.PI
+                if (ang > 90 || ang < -90) ang += 180  // mantém texto sempre legível
+                return (
+                  <Group key={c.id} id={c.id}
+                    onClick={() => tool === 'select' && setSelectedId(c.id)}
+                    onTap={() => tool === 'select' && setSelectedId(c.id)}>
+                    {/* Linha principal */}
+                    <Line points={[x0p, y0p, x1p, y1p]} stroke={cor} strokeWidth={(selected ? 2 : 1.2) / scale} />
+                    {/* Ticks perpendiculares nos extremos */}
+                    <Line points={[x0p - px * tk, y0p - py * tk, x0p + px * tk, y0p + py * tk]} stroke={cor} strokeWidth={1.2 / scale} />
+                    <Line points={[x1p - px * tk, y1p - py * tk, x1p + px * tk, y1p + py * tk]} stroke={cor} strokeWidth={1.2 / scale} />
+                    {/* Label com a medida */}
+                    <KText x={lblX} y={lblY}
+                      text={`${dM.toFixed(2)} m`}
+                      fontSize={12 / scale} fontStyle="bold"
+                      fill={cor} rotation={ang} />
+                  </Group>
+                )
+              })}
+
+              {/* Preview da cota durante criação */}
+              {cotaPreview && cotaPreview.dM > 0.05 && (() => {
+                const d = cotaPreview
+                const dx = d.x1 - d.x0, dy = d.y1 - d.y0
+                const dM = d.dM
+                const ux = dx / dM, uy = dy / dM
+                const px = -uy, py = ux
+                const tk = 0.25 * PX_PER_METER
+                const x0p = d.x0 * PX_PER_METER, y0p = d.y0 * PX_PER_METER
+                const x1p = d.x1 * PX_PER_METER, y1p = d.y1 * PX_PER_METER
+                const midX = (x0p + x1p) / 2, midY = (y0p + y1p) / 2
+                const offPx = 14 / scale
+                let ang = Math.atan2(dy, dx) * 180 / Math.PI
+                if (ang > 90 || ang < -90) ang += 180
+                return (
+                  <>
+                    <Line points={[x0p, y0p, x1p, y1p]} stroke="#0ea5e9" strokeWidth={1.5 / scale} dash={[6 / scale, 3 / scale]} />
+                    <Line points={[x0p - px * tk, y0p - py * tk, x0p + px * tk, y0p + py * tk]} stroke="#0ea5e9" strokeWidth={1.2 / scale} />
+                    <Line points={[x1p - px * tk, y1p - py * tk, x1p + px * tk, y1p + py * tk]} stroke="#0ea5e9" strokeWidth={1.2 / scale} />
+                    <KText x={midX + px * offPx} y={midY + py * offPx}
+                      text={`${dM.toFixed(2)} m`} fontSize={12 / scale} fontStyle="bold"
+                      fill="#0ea5e9" rotation={ang} />
+                  </>
+                )
+              })()}
+            </Layer>
+
             {/* Distância (preview + resultado) */}
             <Layer listening={false}>
               {(distancePreview || distanceResult) && (() => {
@@ -817,10 +922,10 @@ export function Projeto() {
             </Layer>
           </Stage>
 
-          {!shapes.length && !walls.length && !areas.length && !sketches.length && !circles.length && !texts.length && (
+          {!shapes.length && !walls.length && !areas.length && !sketches.length && !circles.length && !texts.length && !cotas.length && (
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
               <div className="text-ink-muted text-[12px] bg-bg/85 px-4 py-2 rounded-md border border-border shadow-sm">
-                Atalhos: S Selecionar · L Linha · R Retângulo · C Círculo · T Texto · P Lápis · D Medir · E Apagar · F8 Ortho · Z Centralizar
+                Atalhos: S Selecionar · L Linha · R Retângulo · C Círculo · T Texto · P Lápis · D Medir · Q Cota · E Apagar · F8 Ortho · Z Centralizar
               </div>
             </div>
           )}
