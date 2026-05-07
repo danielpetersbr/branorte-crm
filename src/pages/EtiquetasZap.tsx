@@ -9,7 +9,7 @@ import { useEtiquetas, groupEtiquetasByVendedor, type WascriptEtiqueta } from '@
 import { classificarEtiquetas, CATEGORIA_META } from '@/lib/etiquetas-classify'
 
 // Vendedores esperados na integração Wascript. Mostra card mesmo sem etiquetas.
-const VENDEDORES_ESPERADOS = ['EDILSON JR', 'PEDRO', 'JARDEL', 'EDER', 'ALVARO', 'RAMON', 'GUSTAVO', 'DANIEL']
+const VENDEDORES_ESPERADOS = ['EDILSON JR', 'PEDRO', 'JARDEL', 'EDER', 'ALVARO', 'RAMON', 'GUSTAVO']
 
 function fmtSyncedAt(iso: string): string {
   const d = new Date(iso)
