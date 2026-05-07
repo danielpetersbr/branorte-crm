@@ -321,11 +321,6 @@ function VendedorBlock({ vendedor, etiquetas, filterTerm }: VendedorBlockProps) 
                   <span className="truncate" title={e.etiqueta_nome}>
                     {e.etiqueta_nome}
                   </span>
-                  {e.is_canonica && (
-                    <span className="text-[9px] uppercase tracking-wider text-accent bg-accent-bg px-1 py-0.5 rounded shrink-0">
-                      canônica
-                    </span>
-                  )}
                 </div>
                 <span className="text-[12px] font-semibold tabular-nums text-ink shrink-0">
                   {formatNumber(e.total_contatos)}
