@@ -3,7 +3,7 @@ import { Stage, Layer, Rect, Line, Text, Group, Circle } from 'react-konva'
 import type Konva from 'konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import {
-  Factory, Eraser, Download, Crosshair, MousePointer2, Minus, Square, Undo2,
+  Factory, Eraser, Download, Crosshair, MousePointer2, Minus, Square, Undo2, Pencil,
 } from 'lucide-react'
 
 const PX_PER_METER = 50
@@ -14,7 +14,7 @@ const ZOOM_STEP = 1.05
 const HISTORY_MAX = 50
 const WALL_THICKNESS_M = 0.2
 
-type Tool = 'select' | 'wall' | 'area'
+type Tool = 'select' | 'wall' | 'area' | 'pencil'
 type EquipKind = 'silo' | 'moinho' | 'mixer' | 'peletizadora' | 'ensacadeira'
 
 interface EquipDef {
@@ -59,10 +59,18 @@ interface Area {
   heightM: number
 }
 
+interface Sketch {
+  id: string
+  pointsM: number[] // [x1,y1,x2,y2,...] em metros, sem snap
+  color: string
+  thickness: number // px (espessura visual constante)
+}
+
 interface Snapshot {
   shapes: PlacedShape[]
   walls: Wall[]
   areas: Area[]
+  sketches: Sketch[]
 }
 
 const snap = (v: number, step = SNAP_METERS) => Math.round(v / step) * step
@@ -79,11 +87,15 @@ export function Projeto() {
   const [shapes, setShapes] = useState<PlacedShape[]>([])
   const [walls, setWalls] = useState<Wall[]>([])
   const [areas, setAreas] = useState<Area[]>([])
+  const [sketches, setSketches] = useState<Sketch[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const [tool, setTool] = useState<Tool>('select')
+  const [pencilColor, setPencilColor] = useState<string>('#1f2937') // padrão cinza escuro
   const [pendingWall, setPendingWall] = useState<number[] | null>(null) // pontos em metros
   const [pendingArea, setPendingArea] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
+  const [pendingSketch, setPendingSketch] = useState<number[] | null>(null) // pontos em metros, livres
+  const isPenciling = useRef(false)
   const [cursorM, setCursorM] = useState<{ x: number; y: number } | null>(null)
 
   const [spaceDown, setSpaceDown] = useState(false)
@@ -96,12 +108,13 @@ export function Projeto() {
   const shapesRef = useRef(shapes); shapesRef.current = shapes
   const wallsRef = useRef(walls); wallsRef.current = walls
   const areasRef = useRef(areas); areasRef.current = areas
+  const sketchesRef = useRef(sketches); sketchesRef.current = sketches
   const [history, setHistory] = useState<Snapshot[]>([])
 
   const pushHistory = () => {
     setHistory(h => [
       ...h.slice(-(HISTORY_MAX - 1)),
-      { shapes: [...shapesRef.current], walls: [...wallsRef.current], areas: [...areasRef.current] },
+      { shapes: [...shapesRef.current], walls: [...wallsRef.current], areas: [...areasRef.current], sketches: [...sketchesRef.current] },
     ])
   }
   const undo = () => {
@@ -111,9 +124,11 @@ export function Projeto() {
       setShapes(last.shapes)
       setWalls(last.walls)
       setAreas(last.areas)
+      setSketches(last.sketches)
       setSelectedId(null)
       setPendingWall(null)
       setPendingArea(null)
+      setPendingSketch(null)
       return h.slice(0, -1)
     })
   }
@@ -154,12 +169,14 @@ export function Projeto() {
         setShapes(prev => prev.filter(s => s.id !== selectedId))
         setWalls(prev => prev.filter(w => w.id !== selectedId))
         setAreas(prev => prev.filter(a => a.id !== selectedId))
+        setSketches(prev => prev.filter(s => s.id !== selectedId))
         setSelectedId(null)
         return
       }
       if (e.key === '1') setTool('select')
       if (e.key === '2') setTool('wall')
       if (e.key === '3') setTool('area')
+      if (e.key === '4') setTool('pencil')
     }
     const up = (e: KeyboardEvent) => { if (e.code === 'Space') setSpaceDown(false) }
     window.addEventListener('keydown', down)
@@ -168,7 +185,7 @@ export function Projeto() {
   }, [selectedId, pendingWall])
 
   // Quando troca tool, cancela operação pendente
-  useEffect(() => { setPendingWall(null); setPendingArea(null) }, [tool])
+  useEffect(() => { setPendingWall(null); setPendingArea(null); setPendingSketch(null); isPenciling.current = false }, [tool])
 
   // Zoom relativo ao cursor
   const handleWheel = (e: KonvaEventObject<WheelEvent>) => {
@@ -214,6 +231,13 @@ export function Projeto() {
       return
     }
 
+    if (tool === 'pencil') {
+      // Começa um sketch freehand — sem snap, captura raw
+      isPenciling.current = true
+      setPendingSketch([w.x, w.y])
+      return
+    }
+
     if (tool === 'area') {
       if (!pendingArea) {
         setPendingArea({ x0: sx, y0: sy, x1: sx, y1: sy })
@@ -251,11 +275,31 @@ export function Projeto() {
     if (tool === 'area' && pendingArea) {
       setPendingArea({ ...pendingArea, x1: sx, y1: sy })
     }
+    if (tool === 'pencil' && isPenciling.current) {
+      // Adiciona ponto raw (sem snap) ao sketch atual
+      setPendingSketch(prev => prev ? [...prev, w.x, w.y] : [w.x, w.y])
+    }
   }
 
   const handleMouseUp = () => {
     isPanning.current = false
     panStart.current = null
+
+    // Finaliza sketch do lápis
+    if (tool === 'pencil' && isPenciling.current) {
+      isPenciling.current = false
+      const pts = pendingSketch
+      setPendingSketch(null)
+      if (pts && pts.length >= 4) {
+        pushHistory()
+        setSketches(prev => [...prev, {
+          id: uid(),
+          pointsM: [...pts],
+          color: pencilColor,
+          thickness: 3,
+        }])
+      }
+    }
   }
 
   const handleStageDblClick = () => {
@@ -350,11 +394,11 @@ export function Projeto() {
   }
 
   const limpar = () => {
-    if (shapes.length === 0 && walls.length === 0 && areas.length === 0) return
+    if (shapes.length === 0 && walls.length === 0 && areas.length === 0 && sketches.length === 0) return
     if (!confirm('Remover TUDO do canvas?')) return
     pushHistory()
-    setShapes([]); setWalls([]); setAreas([])
-    setSelectedId(null); setPendingWall(null); setPendingArea(null)
+    setShapes([]); setWalls([]); setAreas([]); setSketches([])
+    setSelectedId(null); setPendingWall(null); setPendingArea(null); setPendingSketch(null)
   }
 
   const exportarPNG = () => {
@@ -369,7 +413,13 @@ export function Projeto() {
   const resetCamera = () => { setScale(1); setPos({ x: size.width / 2, y: size.height / 2 }) }
 
   // Cursor
-  const cursor = spaceDown ? 'grab' : tool === 'wall' || tool === 'area' ? 'crosshair' : 'default'
+  const cursor = spaceDown
+    ? 'grab'
+    : tool === 'wall' || tool === 'area'
+    ? 'crosshair'
+    : tool === 'pencil'
+    ? 'crosshair'
+    : 'default'
 
   // Preview da parede em desenho
   const wallPreviewPx = useMemo(() => {
@@ -422,7 +472,25 @@ export function Projeto() {
           <ToolBtn id="select" icon={MousePointer2} label="Selecionar" shortcut="1" />
           <ToolBtn id="wall" icon={Minus} label="Parede" shortcut="2" />
           <ToolBtn id="area" icon={Square} label="Área" shortcut="3" />
+          <ToolBtn id="pencil" icon={Pencil} label="Lápis" shortcut="4" />
         </div>
+
+        {tool === 'pencil' && (
+          <div className="flex items-center gap-1 mr-2 pr-2 border-r border-border">
+            {['#1f2937', '#dc2626', '#2563eb', '#16a34a', '#f59e0b', '#9333ea'].map(c => (
+              <button
+                key={c}
+                onClick={() => setPencilColor(c)}
+                title={`Cor ${c}`}
+                className={
+                  'h-6 w-6 rounded-full border-2 transition ' +
+                  (pencilColor === c ? 'border-ink scale-110' : 'border-border hover:border-ink-muted')
+                }
+                style={{ background: c }}
+              />
+            ))}
+          </div>
+        )}
 
         <button
           onClick={undo}
@@ -448,6 +516,7 @@ export function Projeto() {
           <span>Eq: <strong className="text-ink">{shapes.length}</strong></span>
           <span>Pa: <strong className="text-ink">{walls.length}</strong></span>
           <span>Ár: <strong className="text-ink">{areas.length}</strong></span>
+          <span>Ds: <strong className="text-ink">{sketches.length}</strong></span>
           <span>Zoom: <strong className="text-ink">{(scale * 100).toFixed(0)}%</strong></span>
         </div>
       </div>
@@ -457,6 +526,7 @@ export function Projeto() {
         {tool === 'select' && <span>Modo Selecionar — clique numa shape pra selecionar · Delete remove · arraste pra mover</span>}
         {tool === 'wall' && <span>Modo Parede — clique pra adicionar pontos · Enter ou duplo-clique finaliza · Esc cancela</span>}
         {tool === 'area' && <span>Modo Área — clique no canto inicial e depois no canto oposto · Esc cancela</span>}
+        {tool === 'pencil' && <span>Modo Lápis — pressiona e arrasta pra desenhar à mão livre · solta pra finalizar o traço</span>}
       </div>
 
       <div className="flex flex-1 min-h-0">
@@ -608,6 +678,40 @@ export function Projeto() {
                     return dots
                   })()}
                 </>
+              )}
+            </Layer>
+
+            {/* Desenhos à mão livre (lápis) */}
+            <Layer>
+              {sketches.map(sk => {
+                const selected = sk.id === selectedId
+                return (
+                  <Line
+                    key={sk.id}
+                    points={sk.pointsM.map(v => v * PX_PER_METER)}
+                    stroke={selected ? '#0ea5e9' : sk.color}
+                    strokeWidth={sk.thickness / scale}
+                    tension={0.4}
+                    lineCap="round"
+                    lineJoin="round"
+                    onClick={() => tool === 'select' && setSelectedId(sk.id)}
+                    onTap={() => tool === 'select' && setSelectedId(sk.id)}
+                    hitStrokeWidth={Math.max(12, sk.thickness + 8) / scale}
+                  />
+                )
+              })}
+
+              {/* Preview do sketch sendo desenhado */}
+              {pendingSketch && pendingSketch.length >= 4 && (
+                <Line
+                  points={pendingSketch.map(v => v * PX_PER_METER)}
+                  stroke={pencilColor}
+                  strokeWidth={3 / scale}
+                  tension={0.4}
+                  lineCap="round"
+                  lineJoin="round"
+                  opacity={0.85}
+                />
               )}
             </Layer>
 
