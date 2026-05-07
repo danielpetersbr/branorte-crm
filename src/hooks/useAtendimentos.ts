@@ -107,16 +107,17 @@ export function useWaLabelsByPhones(phones: (string | null | undefined)[], enabl
       }
       const labelInfo: Record<string, { name: string; color?: string | null }> = {}
       if (allLabelIds.size > 0 && allVendors.size > 0) {
+        // Schema real: etiqueta_id_wascript (integer), sem coluna de cor
+        const idsAsNumbers = [...allLabelIds].map(id => parseInt(id, 10)).filter(n => Number.isFinite(n))
         const { data: labelRows } = await supabase
           .from('wascript_etiquetas')
-          .select('etiqueta_id, etiqueta_nome, cor, vendedor_nome')
-          .in('etiqueta_id', [...allLabelIds])
+          .select('etiqueta_id_wascript, etiqueta_nome, vendedor_nome')
+          .in('etiqueta_id_wascript', idsAsNumbers)
           .in('vendedor_nome', [...allVendors])
         for (const lr of (labelRows ?? [])) {
-          // chave inclui vendedor pra evitar colisão entre vendedores diferentes
-          labelInfo[`${lr.vendedor_nome}::${lr.etiqueta_id}`] = {
+          labelInfo[`${lr.vendedor_nome}::${lr.etiqueta_id_wascript}`] = {
             name: String(lr.etiqueta_nome || ''),
-            color: lr.cor ?? null,
+            color: null,  // tabela real não tem cor
           }
         }
       }
