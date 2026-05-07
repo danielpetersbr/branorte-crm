@@ -16,6 +16,10 @@ interface AtividadeRow {
   atualizado_em: string
 }
 
+// Vendedores ocultos do dashboard (admins/testes que distorcem ranking).
+// Comparação é case-insensitive e por includes.
+const VENDEDORES_OCULTOS = ['DANIEL']
+
 const CORES_VENDEDOR: Record<string, string> = {
   EDILSON: '#3b82f6',
   'EDILSON JR': '#3b82f6',
@@ -61,7 +65,13 @@ export function AtividadeDiaria() {
       .select('*')
       .gte('dia', desdeStr)
       .order('dia', { ascending: true })
-    if (!error && data) setRows(data as AtividadeRow[])
+    if (!error && data) {
+      const filtradas = (data as AtividadeRow[]).filter(r => {
+        const nome = r.vendedor_nome.toUpperCase()
+        return !VENDEDORES_OCULTOS.some(oculto => nome.includes(oculto))
+      })
+      setRows(filtradas)
+    }
     setLoading(false)
   }
 
