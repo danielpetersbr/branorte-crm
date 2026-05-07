@@ -54,6 +54,11 @@ function ordemDe(etiqueta: { etiqueta_nome_normalizado: string }): number {
   return idx === -1 ? 999 : idx  // não-canônicas vão pro final
 }
 
+// Corrige typos visualmente sem alterar dado salvo
+function nomeExibicao(etiqueta: { etiqueta_nome: string; etiqueta_nome_normalizado: string }): string {
+  return ALIASES[etiqueta.etiqueta_nome_normalizado] ?? etiqueta.etiqueta_nome
+}
+
 function fmtSyncedAt(iso: string): string {
   const d = new Date(iso)
   const now = new Date()
@@ -368,8 +373,8 @@ function VendedorBlock({ vendedor, etiquetas, filterTerm }: VendedorBlockProps) 
               <div className="flex items-center justify-between gap-2 text-[12px]">
                 <div className="flex items-center gap-1.5 text-ink min-w-0">
                   <Tag className="h-3 w-3 text-ink-faint shrink-0" />
-                  <span className="truncate" title={e.etiqueta_nome}>
-                    {e.etiqueta_nome}
+                  <span className="truncate" title={`${e.etiqueta_nome} (no WhatsApp)`}>
+                    {nomeExibicao(e)}
                   </span>
                 </div>
                 <span className="text-[12px] font-semibold tabular-nums text-ink shrink-0">
