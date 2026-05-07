@@ -27,7 +27,16 @@ const PRIMARY: NavItem[] = [
   { to: '/contatos', label: 'Contatos', icon: Users },
   { to: '/atribuir', label: 'Atribuir', icon: UserPlus },
   { to: '/funil', label: 'Funil', icon: GitBranch },
-  { to: '/etiquetas-zap', label: 'Etiquetas Zap', icon: Tag },
+  {
+    to: '/etiquetas-zap',
+    label: 'Etiquetas Zap',
+    icon: Tag,
+    matchPrefix: true,
+    children: [
+      { to: '/etiquetas-zap', label: 'Cards', icon: List },
+      { to: '/etiquetas-zap/graficos', label: 'Gráficos', icon: BarChart2 },
+    ],
+  },
 ]
 const SECONDARY: NavItem[] = [
   {
