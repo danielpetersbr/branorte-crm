@@ -318,7 +318,17 @@ interface VendedorBlockProps {
 }
 
 function VendedorBlock({ vendedor, etiquetas, filterTerm }: VendedorBlockProps) {
-  const total = etiquetas.reduce((s, e) => s + e.total_contatos, 0)
+  // Extrai stats especiais (markers de inbox e total chats)
+  const semEtiquetaRow = etiquetas.find(e => e.etiqueta_nome === '(SEM ETIQUETA)')
+  const totalChatsRow = etiquetas.find(e => e.etiqueta_nome === '(TOTAL CHATS)')
+  const semEtiqueta = semEtiquetaRow?.total_contatos ?? null
+  const totalChats = totalChatsRow?.total_contatos ?? null
+  // Etiquetas reais (sem os markers)
+  const etiquetasReais = etiquetas.filter(e =>
+    !['(SEM ETIQUETA)', '(TOTAL CHATS)'].includes(e.etiqueta_nome)
+  )
+
+  const total = etiquetasReais.reduce((s, e) => s + e.total_contatos, 0)
   const lastSync = etiquetas.reduce(
     (max, e) => (e.synced_at > max ? e.synced_at : max),
     etiquetas[0]?.synced_at ?? '',
@@ -326,11 +336,11 @@ function VendedorBlock({ vendedor, etiquetas, filterTerm }: VendedorBlockProps) 
 
   const term = filterTerm.trim().toLowerCase()
   const filteredRaw = term
-    ? etiquetas.filter(e =>
+    ? etiquetasReais.filter(e =>
         e.etiqueta_nome.toLowerCase().includes(term) ||
         e.etiqueta_nome_normalizado.toLowerCase().includes(term),
       )
-    : etiquetas
+    : etiquetasReais
   // Ordenação: pelo funil oficial; etiquetas fora do funil vão no final, ordenadas por contagem
   const filtered = [...filteredRaw].sort((a, b) => {
     const oa = ordemDe(a)
@@ -349,7 +359,10 @@ function VendedorBlock({ vendedor, etiquetas, filterTerm }: VendedorBlockProps) 
           <div className="leading-tight min-w-0">
             <h3 className="text-[14px] font-semibold text-ink truncate">{vendedor}</h3>
             <p className="text-[10px] text-ink-faint uppercase tracking-wider mt-0.5">
-              {etiquetas.length} etiquetas · {formatNumber(total)} contatos
+              {etiquetasReais.length} etiquetas · {formatNumber(total)} contatos
+              {totalChats !== null && (
+                <span> · {formatNumber(totalChats)} chats</span>
+              )}
             </p>
           </div>
         </div>
@@ -362,6 +375,22 @@ function VendedorBlock({ vendedor, etiquetas, filterTerm }: VendedorBlockProps) 
           </div>
         )}
       </div>
+
+      {/* Alerta inbox: chats sem etiqueta */}
+      {semEtiqueta !== null && semEtiqueta > 0 && (
+        <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-md bg-warning-bg/20 border border-warning/30">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[14px]">📥</span>
+            <div className="leading-tight">
+              <div className="text-[11px] font-semibold text-warning">Inbox sem triagem</div>
+              <div className="text-[9px] text-ink-faint uppercase tracking-wider">chats sem etiqueta aplicada</div>
+            </div>
+          </div>
+          <span className="text-[18px] font-bold tabular-nums text-warning shrink-0">
+            {formatNumber(semEtiqueta)}
+          </span>
+        </div>
+      )}
 
       {filtered.length === 0 && (
         <p className="text-[12px] text-ink-faint italic py-2">
