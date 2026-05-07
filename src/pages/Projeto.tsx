@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 
 const PX_PER_METER = 50
-const SNAP_METERS = 0.5
+const SNAP_METERS = 1     // alinhado com a grade visível (1 linha = 1 metro)
 const MIN_SCALE = 0.2
 const MAX_SCALE = 5
 const ZOOM_STEP = 1.05
@@ -693,6 +693,20 @@ export function Projeto() {
                       dots.push(<KCircle key={i} x={pendingWall[i] * PX_PER_METER} y={pendingWall[i + 1] * PX_PER_METER} radius={5 / scale} fill="#0ea5e9" />)
                     return dots
                   })()}
+                </>
+              )}
+
+              {/* Indicador visual de snap — mostra onde o próximo clique vai grudar */}
+              {cursorM && (tool === 'wall' || tool === 'area' || tool === 'circle' || tool === 'distance' || tool === 'text') && (
+                <>
+                  <KCircle x={cursorM.x * PX_PER_METER} y={cursorM.y * PX_PER_METER}
+                    radius={8 / scale}
+                    stroke="#22c55e" strokeWidth={2 / scale}
+                    fill="rgba(34,197,94,0.15)" />
+                  <Line points={[cursorM.x * PX_PER_METER - 6 / scale, cursorM.y * PX_PER_METER, cursorM.x * PX_PER_METER + 6 / scale, cursorM.y * PX_PER_METER]}
+                    stroke="#22c55e" strokeWidth={1 / scale} />
+                  <Line points={[cursorM.x * PX_PER_METER, cursorM.y * PX_PER_METER - 6 / scale, cursorM.x * PX_PER_METER, cursorM.y * PX_PER_METER + 6 / scale]}
+                    stroke="#22c55e" strokeWidth={1 / scale} />
                 </>
               )}
             </Layer>
