@@ -51,7 +51,7 @@ function fmtData(d: string): string {
 export function AtividadeDiaria() {
   const [rows, setRows] = useState<AtividadeRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [periodo, setPeriodo] = useState<7 | 14 | 30>(7)
+  const [periodo, setPeriodo] = useState<1 | 7 | 14 | 30>(7)
   const [metrica, setMetrica] = useState<'chats_ativos' | 'msgs_estimadas'>('chats_ativos')
 
   async function carregar() {
@@ -138,13 +138,13 @@ export function AtividadeDiaria() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1 bg-zinc-900 rounded-lg p-1 border border-zinc-800">
-            {[7, 14, 30].map(p => (
+            {([1, 7, 14, 30] as const).map(p => (
               <button
                 key={p}
-                onClick={() => setPeriodo(p as 7 | 14 | 30)}
+                onClick={() => setPeriodo(p)}
                 className={`px-3 py-1.5 rounded text-xs font-semibold transition ${periodo === p ? 'bg-emerald-500 text-white' : 'text-zinc-400 hover:text-zinc-100'}`}
               >
-                {p}d
+                {p === 1 ? 'Hoje' : `${p}d`}
               </button>
             ))}
           </div>
@@ -190,24 +190,28 @@ export function AtividadeDiaria() {
         </Card>
         <Card className="p-5">
           <div className="text-xs text-zinc-500 uppercase tracking-wide mb-1">
-            Total {periodo}d · chats
+            {periodo === 1 ? 'Hoje · chats' : `Total ${periodo}d · chats`}
           </div>
           <div className="text-3xl font-bold text-blue-400">{formatNumber(totaisPeriodo.chats)}</div>
-          <div className="text-xs text-zinc-500 mt-1">~{Math.round(totaisPeriodo.chats / periodo)}/dia</div>
+          {periodo > 1 && (
+            <div className="text-xs text-zinc-500 mt-1">~{Math.round(totaisPeriodo.chats / periodo)}/dia</div>
+          )}
         </Card>
         <Card className="p-5">
           <div className="text-xs text-zinc-500 uppercase tracking-wide mb-1">
-            Total {periodo}d · msgs
+            {periodo === 1 ? 'Hoje · msgs' : `Total ${periodo}d · msgs`}
           </div>
           <div className="text-3xl font-bold text-orange-400">{formatNumber(totaisPeriodo.msgs)}</div>
-          <div className="text-xs text-zinc-500 mt-1">~{Math.round(totaisPeriodo.msgs / periodo)}/dia</div>
+          {periodo > 1 && (
+            <div className="text-xs text-zinc-500 mt-1">~{Math.round(totaisPeriodo.msgs / periodo)}/dia</div>
+          )}
         </Card>
       </div>
 
       {/* Gráfico empilhado */}
       <Card className="p-5">
         <div className="text-sm font-bold uppercase tracking-wide text-zinc-300 mb-4">
-          {metrica === 'chats_ativos' ? '👥 Chats ativos' : '💬 Mensagens trocadas'} por vendedor · últimos {periodo} dias
+          {metrica === 'chats_ativos' ? '👥 Chats ativos' : '💬 Mensagens trocadas'} por vendedor · {periodo === 1 ? 'hoje' : `últimos ${periodo} dias`}
         </div>
         {dadosGrafico.length === 0 ? (
           <div className="h-72 flex items-center justify-center text-zinc-500 text-sm">
