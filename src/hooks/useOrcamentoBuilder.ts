@@ -176,13 +176,18 @@ export interface CriarOrcamentoInput {
   forma_pagamento?: string | null
   prazo_entrega?: string | null
   status?: 'rascunho' | 'enviado' | 'aprovado' | 'perdido'
+  // Override do numero (se vier da pasta Z:). Se nao fornecido, usa DB sequence.
+  numero_override?: { ano: number; sequencial: number; numero: string } | null
 }
 
 export function useCriarOrcamento() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: CriarOrcamentoInput): Promise<OrcamentoGerado> => {
-      const { ano, sequencial, numero } = await obterProximoNumero()
+      // Se veio numero da pasta Z:, usa. Senao busca proximo do banco.
+      const { ano, sequencial, numero } = input.numero_override
+        ? input.numero_override
+        : await obterProximoNumero()
 
       // Cria/atualiza cliente se tiver nome
       let cliente_id = input.cliente_id ?? null

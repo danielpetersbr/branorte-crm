@@ -317,6 +317,15 @@ export function OrcamentoBuilder() {
     if (!modeloSelecionado || !cliNome.trim()) return
     setGerando(true)
     try {
+      // Se vier da pasta Z: (numeroFonte=='pasta' e scanInfo populado), usa esse numero
+      const numeroOverride = (numeroFonte === 'pasta' && scanInfo)
+        ? {
+            ano: scanInfo.ano,
+            sequencial: scanInfo.ultimo + 1,
+            numero: formatarNumero(scanInfo.ano, scanInfo.ultimo + 1),
+          }
+        : null
+
       const orc = await criar.mutateAsync({
         vendedor_nome: profile?.display_name?.toUpperCase() || 'DESCONHECIDO',
         cliente_nome: cliNome.trim(),
@@ -334,6 +343,7 @@ export function OrcamentoBuilder() {
         forma_pagamento: formaPagamentoOut.forma_pagamento || null,
         prazo_entrega: prazoEntrega.trim() || null,
         status: opcoes.status,
+        numero_override: numeroOverride,
       })
       setOrcamentoSalvo({ numero: orc.numero, id: orc.id })
 
