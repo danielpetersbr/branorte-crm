@@ -285,8 +285,8 @@ export function OrcamentoBuilder() {
       data_venda: pgDataVenda ? formaPagamentoOut.data_venda : null,
     })
 
-    // PDF identico ao Word: renderiza o .docx em HTML e captura como imagem
-    const pdfBlob = await docxParaPdf(docxBlob, { scale: 2 })
+    // (PDF nao e gerado automaticamente — vendedor abre .docx no Word e
+    // usa Ctrl+P > Microsoft Print to PDF pra ter PDF identico)
 
     const vendedor = profile?.display_name || 'Vendedor'
     const nota = montarNotaTxt(vendedor, hoje)
@@ -297,9 +297,8 @@ export function OrcamentoBuilder() {
       modelo_basename: modeloSelecionado.basename,
     })
 
-    // 4) Escreve os 3 arquivos na pasta do mes
+    // 4) Escreve os 2 arquivos na pasta do mes (.docx + .txt — PDF e gerado pelo Word)
     await escreverArquivo(pastaMes, `${base}.docx`, docxBlob)
-    await escreverArquivo(pastaMes, `${base}.pdf`, pdfBlob)
     await escreverArquivo(pastaMes, `${base} - ${vendedor}.txt`, nota)
   }
 
@@ -416,8 +415,11 @@ export function OrcamentoBuilder() {
           <p className="text-[14px] text-ink-muted mb-3">
             Cliente: <strong>{cliNome}</strong> · Total: <strong>{formatBRL(totalProposta)}</strong>
           </p>
-          <p className="text-[12px] text-ink-faint mb-6">
-            📁 Salvo em <code className="bg-surface-3 px-1 rounded">Orçamentos 2026 / {mes}</code> (.docx + .pdf + .txt)
+          <p className="text-[12px] text-ink-faint mb-2">
+            📁 Salvo em <code className="bg-surface-3 px-1 rounded">Orçamentos 2026 / {mes}</code> (.docx + .txt)
+          </p>
+          <p className="text-[11px] text-warning mb-6">
+            📑 <strong>Próximo passo:</strong> abra o .docx no Word, faça Ctrl+P → "Microsoft Print to PDF" → salve na mesma pasta com o mesmo nome.
           </p>
           <div className="flex gap-3 justify-center">
             <button
@@ -1163,12 +1165,12 @@ export function OrcamentoBuilder() {
           </div>
 
           <div className="text-[11px] text-ink-muted bg-info-bg/15 border border-info/30 rounded-md p-3 space-y-1">
-            <p><strong>"Salvar na pasta Z:"</strong> grava 3 arquivos automaticamente em <code className="bg-surface-3 px-1 rounded">Z:\1 - Comercial\3 - Orçamento\2026\Orçamentos 2026\{`{mês}`}\</code>:</p>
+            <p><strong>"Salvar na pasta Z:"</strong> grava 2 arquivos automaticamente em <code className="bg-surface-3 px-1 rounded">Z:\1 - Comercial\3 - Orçamento\2026\Orçamentos 2026\{`{mês}`}\</code>:</p>
             <ul className="ml-4 space-y-0.5 text-[10px]">
               <li>📄 <code>{`{numero}`} - Cliente.docx</code> (formato oficial Branorte)</li>
-              <li>📑 <code>{`{numero}`} - Cliente.pdf</code></li>
               <li>📝 <code>{`{numero}`} - Cliente - {profile?.display_name || 'Vendedor'}.txt</code> (data de envio)</li>
             </ul>
+            <p className="text-[10px] mt-2">📑 <strong>Pra gerar o PDF idêntico ao Word:</strong> abre o .docx, Ctrl+P → "Microsoft Print to PDF" → salva na mesma pasta. Word produz PDF 100% fiel.</p>
             <p className="text-[10px]">Se a pasta do mês não existir, é criada automaticamente.</p>
           </div>
 
