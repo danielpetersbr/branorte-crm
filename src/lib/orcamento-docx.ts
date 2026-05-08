@@ -223,6 +223,52 @@ function substituirPrazoEntrega(xml: string, valor: string): string {
   return xml
 }
 
+// Preenche o nome do cliente na assinatura (lado direito, ao lado de "Metalúrgica BBA LTDA")
+function preencherAssinaturaCliente(xml: string, cliente: string): string {
+  if (!cliente) return xml
+  const escaped = xmlEscape(cliente.toUpperCase().slice(0, 60))
+
+  // Acha "BBA LTDA" (pode estar dividido em runs: "BBA " + "LTDA")
+  // Procura sequencia <w:t>...BBA...</w:t>...<w:t>...LTDA</w:t> próximas
+  const bbaIdx = xml.search(/<w:t(?:\s[^>]*)?>[^<]*?BBA\s*<\/w:t>/i)
+  if (bbaIdx < 0) return xml
+  const ltdaRe = /<w:t(?:\s[^>]*)?>[^<]*?LTDA<\/w:t>/i
+  const ltdaMatch = ltdaRe.exec(xml.slice(bbaIdx, bbaIdx + 600))
+  if (!ltdaMatch) return xml
+  const afterLtda = bbaIdx + ltdaMatch.index + ltdaMatch[0].length
+
+  // Acha o fim do paragrafo
+  const endP = xml.indexOf('</w:p>', afterLtda)
+  if (endP < 0 || endP - afterLtda > 3000) return xml
+
+  const between = xml.slice(afterLtda, endP)
+
+  // Acha a ULTIMA run com APENAS whitespace
+  const wsRuns: { index: number; full: string; ws: string }[] = []
+  const wsRe = /<w:t(?:\s[^>]*)?>(\s+)<\/w:t>/g
+  let m
+  while ((m = wsRe.exec(between)) !== null) {
+    wsRuns.push({ index: m.index, full: m[0], ws: m[1] })
+  }
+  if (wsRuns.length === 0) return xml
+
+  const lastWs = wsRuns[wsRuns.length - 1]
+  // Preserva o tamanho — distribui espaços ao redor do nome pra manter alinhamento
+  const total = lastWs.ws.length
+  const left = Math.max(1, Math.floor((total - escaped.length) / 2))
+  const right = Math.max(1, total - escaped.length - left)
+  const novoConteudo = ' '.repeat(left) + escaped + ' '.repeat(right)
+  const newWsRun = lastWs.full.replace(
+    /(<w:t(?:\s[^>]*)?>)(\s+)(<\/w:t>)/,
+    (_m, openT, _ws, closeT) => {
+      const open = openT.includes('xml:space') ? openT : openT.replace('<w:t', '<w:t xml:space="preserve"')
+      return `${open}${novoConteudo}${closeT}`
+    },
+  )
+  const betweenNovo = between.slice(0, lastWs.index) + newWsRun + between.slice(lastWs.index + lastWs.full.length)
+  return xml.slice(0, afterLtda) + betweenNovo + xml.slice(endP)
+}
+
 // Substitui DATA: ___ por DATA: dd/mm/yyyy
 function substituirData(xml: string, data: string): string {
   const escaped = xmlEscape(data)
@@ -259,6 +305,7 @@ export async function gerarOrcamentoDocx(input: DocxInput): Promise<Blob> {
   if (input.forma_pagamento) xml = substituirFormaPagamento(xml, input.forma_pagamento)
   if (input.prazo_entrega)   xml = substituirPrazoEntrega(xml, input.prazo_entrega)
   if (input.data_venda)      xml = substituirDataVenda(xml, input.data_venda)
+  xml = preencherAssinaturaCliente(xml, input.cliente_nome)
   xml = preencherCampo(xml, 'CLIENTE:', input.cliente_nome)
 
   const c = input.cliente_dados
