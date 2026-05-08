@@ -20,6 +20,7 @@ interface DocxInput {
   cliente_dados: ClienteDados
   forma_pagamento?: string | null  // ex: "À vista 5% desconto" — substitui "a combinar"
   prazo_entrega?: string | null    // override do default "90 dias (úteis)"
+  data_venda?: string | null       // ex: "15/05/2026" — substitui "Data da venda – a combinar"
 }
 
 // Escapa pra XML (& < > " ')
@@ -115,6 +116,33 @@ function substituirNumero(xml: string, numero: string): string {
   return out
 }
 
+// Substitui "Data da venda – a combinar" por data real
+function substituirDataVenda(xml: string, valor: string): string {
+  if (!valor) return xml
+  const escaped = xmlEscape(valor)
+  const re = /(<w:t(?:\s[^>]*)?>)([^<]*?[Dd]ata\s+da\s+venda\s*[\-–—]\s*)(a\s+combinar)([^<]*?)(<\/w:t>)/i
+  if (re.test(xml)) {
+    return xml.replace(re, (_m, openT, prefix, _old, suffix, closeT) => {
+      const open = openT.includes('xml:space') ? openT : openT.replace('<w:t', '<w:t xml:space="preserve"')
+      return `${open}${prefix}${escaped}${suffix}${closeT}`
+    })
+  }
+  // Fallback: procura "a combinar" perto de "Data da venda"
+  const idx = xml.search(/Data\s+da\s+venda/i)
+  if (idx >= 0) {
+    const tail = xml.slice(idx)
+    const replaced = tail.replace(
+      /(<w:t(?:\s[^>]*)?>)([^<]*?)(a\s+combinar)([^<]*?)(<\/w:t>)/i,
+      (_m, openT, prefix, _old, suffix, closeT) => {
+        const open = openT.includes('xml:space') ? openT : openT.replace('<w:t', '<w:t xml:space="preserve"')
+        return `${open}${prefix}${escaped}${suffix}${closeT}`
+      },
+    )
+    return xml.slice(0, idx) + replaced
+  }
+  return xml
+}
+
 // Substitui "Forma de pagamento – a combinar" por valor real
 // O texto pode estar quebrado em runs (Word). Estratégia:
 // match flexível em qualquer <w:t> que contenha "Forma de pagamento" + "combinar"
@@ -207,6 +235,7 @@ export async function gerarOrcamentoDocx(input: DocxInput): Promise<Blob> {
   xml = substituirData(xml, input.data)
   if (input.forma_pagamento) xml = substituirFormaPagamento(xml, input.forma_pagamento)
   if (input.prazo_entrega)   xml = substituirPrazoEntrega(xml, input.prazo_entrega)
+  if (input.data_venda)      xml = substituirDataVenda(xml, input.data_venda)
   xml = preencherCampo(xml, 'CLIENTE:', input.cliente_nome)
 
   const c = input.cliente_dados

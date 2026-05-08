@@ -20,7 +20,8 @@ import {
   isFolderScanSupported, pickOrcamentoFolder, getStoredFolderHandle,
   scanFolderForLastNumber, formatarNumero,
 } from '@/lib/orcamento-folder-scan'
-import { FolderOpen, RefreshCw } from 'lucide-react'
+import { FolderOpen, RefreshCw, Calendar, CreditCard } from 'lucide-react'
+import { construirFormaPagamento, type TipoPagamento, type FormaPagamentoConfig } from '@/lib/forma-pagamento'
 
 type Step = 1 | 2 | 3 | 4
 
@@ -91,8 +92,18 @@ export function OrcamentoBuilder() {
 
   // Step 4 — Gerar
   const [observacoes, setObservacoes] = useState('')
-  const [formaPagamento, setFormaPagamento] = useState('')
   const [prazoEntrega, setPrazoEntrega] = useState('')
+  // Forma de pagamento estruturada
+  const [pgTipo, setPgTipo] = useState<TipoPagamento>('avista')
+  const [pgDataVenda, setPgDataVenda] = useState<string>('')
+  const [pgAvistaMeio, setPgAvistaMeio] = useState<'pix' | 'transferencia' | 'boleto' | 'dinheiro' | ''>('pix')
+  const [pgAvistaDesconto, setPgAvistaDesconto] = useState<number>(5)
+  const [pgNumParcelas, setPgNumParcelas] = useState<number>(3)
+  const [pgIntervalo, setPgIntervalo] = useState<number>(30)
+  const [pgPrimeiraEm, setPgPrimeiraEm] = useState<string>('')
+  const [pgEntradaPct, setPgEntradaPct] = useState<number>(50)
+  const [pgParcelasApos, setPgParcelasApos] = useState<number>(1)
+  const [pgCustom, setPgCustom] = useState<string>('')
   const [numeroAtual, setNumeroAtual] = useState<string>('')
   const [gerando, setGerando] = useState(false)
   const [orcamentoSalvo, setOrcamentoSalvo] = useState<{ numero: string; id: number } | null>(null)
@@ -113,6 +124,25 @@ export function OrcamentoBuilder() {
     [motores],
   )
   const totalProposta = totalEquip + totalMotores
+
+  // Constrói a string de forma de pagamento
+  const formaPagamentoCfg: FormaPagamentoConfig = {
+    tipo: pgTipo,
+    data_venda: pgDataVenda || undefined,
+    avista_meio: pgAvistaMeio || undefined,
+    avista_desconto_pct: pgAvistaDesconto || undefined,
+    num_parcelas: pgNumParcelas,
+    intervalo_dias: pgIntervalo,
+    primeira_em: pgPrimeiraEm || undefined,
+    entrada_pct: pgEntradaPct,
+    parcelas_apos_entrada: pgParcelasApos,
+    texto_custom: pgCustom || undefined,
+  }
+  const formaPagamentoOut = useMemo(() => construirFormaPagamento(formaPagamentoCfg), [
+    pgTipo, pgDataVenda, pgAvistaMeio, pgAvistaDesconto,
+    pgNumParcelas, pgIntervalo, pgPrimeiraEm,
+    pgEntradaPct, pgParcelasApos, pgCustom,
+  ])
 
   // Quando seleciona modelo, copia para state editável
   useEffect(() => {
@@ -227,7 +257,7 @@ export function OrcamentoBuilder() {
         total_motores: totalMotores,
         total_proposta: totalProposta,
         observacoes: observacoes.trim() || null,
-        forma_pagamento: formaPagamento.trim() || null,
+        forma_pagamento: formaPagamentoOut.forma_pagamento || null,
         prazo_entrega: prazoEntrega.trim() || null,
         status: opcoes.status,
       })
@@ -240,8 +270,9 @@ export function OrcamentoBuilder() {
           data: new Date().toLocaleDateString('pt-BR'),
           cliente_nome: cliNome,
           cliente_dados: cliDados,
-          forma_pagamento: formaPagamento.trim() || null,
+          forma_pagamento: formaPagamentoOut.forma_pagamento || null,
           prazo_entrega: prazoEntrega.trim() || null,
+          data_venda: pgDataVenda ? formaPagamentoOut.data_venda : null,
         })
       } else if (opcoes.formato === 'pdf') {
         baixarOrcamentoPdf({
@@ -821,44 +852,195 @@ export function OrcamentoBuilder() {
             </div>
           </div>
 
-          {/* Forma de pagamento + prazo de entrega */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Condição de Pagamento (builder estruturado) */}
+          <div className="p-4 bg-surface-2 rounded-md border border-border space-y-3">
+            <h3 className="text-[12px] font-bold text-ink uppercase tracking-wider flex items-center gap-2">
+              <CreditCard className="h-4 w-4 text-accent" />
+              Condição de Pagamento
+            </h3>
+
+            {/* Linha 1: Data da venda */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] uppercase tracking-wider text-ink-muted font-medium flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  Data prevista da venda
+                </label>
+                <input
+                  type="date"
+                  value={pgDataVenda}
+                  onChange={e => setPgDataVenda(e.target.value)}
+                  className="mt-1 w-full px-2 py-1.5 bg-bg border border-border rounded text-[12px] text-ink focus:border-accent outline-none"
+                />
+                <div className="text-[10px] text-ink-faint mt-0.5">Vazio = "a combinar"</div>
+              </div>
+              <div>
+                <label className="text-[11px] uppercase tracking-wider text-ink-muted font-medium">Prazo de entrega</label>
+                <Input
+                  value={prazoEntrega}
+                  onChange={e => setPrazoEntrega(e.target.value)}
+                  placeholder="Padrão: 90 dias (úteis)"
+                  className="mt-1"
+                />
+              </div>
+            </div>
+
+            {/* Tipo de pagamento — segmentado */}
             <div>
-              <label className="text-[11px] uppercase tracking-wider text-ink-muted font-medium">
-                Forma de pagamento
-              </label>
-              <Input
-                value={formaPagamento}
-                onChange={e => setFormaPagamento(e.target.value)}
-                placeholder='Ex: "À vista 5% desconto" ou "30/60/90 dias"'
-                className="mt-1"
-              />
-              <div className="text-[10px] text-ink-faint mt-1">
-                Substitui "a combinar" no .docx. Sugestões:
-                {' '}
-                {['À vista 5% desconto', '50% entrada + 50% no envio', '30/60/90 dias', 'Boleto à vista', 'PIX 7% desconto'].map(s => (
+              <label className="text-[11px] uppercase tracking-wider text-ink-muted font-medium">Tipo</label>
+              <div className="mt-1 grid grid-cols-4 gap-1 bg-bg border border-border rounded-md p-1">
+                {([
+                  { v: 'avista', l: 'À vista' },
+                  { v: 'parcelado', l: 'Parcelado' },
+                  { v: 'entrada', l: 'Entrada + Parcelas' },
+                  { v: 'personalizado', l: 'Personalizado' },
+                ] as const).map(t => (
                   <button
-                    key={s}
+                    key={t.v}
                     type="button"
-                    onClick={() => setFormaPagamento(s)}
-                    className="inline-block mx-0.5 px-1.5 py-0.5 rounded bg-surface-2 hover:bg-surface-3 text-ink-muted hover:text-ink"
+                    onClick={() => setPgTipo(t.v)}
+                    className={`text-[11px] py-1.5 px-2 rounded font-semibold transition-all ${
+                      pgTipo === t.v
+                        ? 'bg-accent text-white shadow-sm'
+                        : 'text-ink-muted hover:bg-surface-3 hover:text-ink'
+                    }`}
                   >
-                    {s}
+                    {t.l}
                   </button>
                 ))}
               </div>
             </div>
-            <div>
-              <label className="text-[11px] uppercase tracking-wider text-ink-muted font-medium">
-                Prazo de entrega
-              </label>
-              <Input
-                value={prazoEntrega}
-                onChange={e => setPrazoEntrega(e.target.value)}
-                placeholder="Padrão: 90 dias (úteis)"
-                className="mt-1"
-              />
-              <div className="text-[10px] text-ink-faint mt-1">Deixe em branco pra usar o padrão.</div>
+
+            {/* Campos condicionais */}
+            {pgTipo === 'avista' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] uppercase tracking-wider text-ink-muted font-medium">Meio</label>
+                  <select
+                    value={pgAvistaMeio}
+                    onChange={e => setPgAvistaMeio(e.target.value as any)}
+                    className="mt-1 w-full px-2 py-1.5 bg-bg border border-border rounded text-[12px] text-ink focus:border-accent outline-none"
+                  >
+                    <option value="pix">PIX</option>
+                    <option value="transferencia">Transferência</option>
+                    <option value="boleto">Boleto</option>
+                    <option value="dinheiro">Dinheiro</option>
+                    <option value="">Não especificar</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] uppercase tracking-wider text-ink-muted font-medium">Desconto</label>
+                  <div className="mt-1 flex items-center gap-2">
+                    <input
+                      type="number"
+                      step="0.5"
+                      min={0} max={20}
+                      value={pgAvistaDesconto}
+                      onChange={e => setPgAvistaDesconto(parseFloat(e.target.value) || 0)}
+                      className="flex-1 px-2 py-1.5 bg-bg border border-border rounded text-[12px] text-ink focus:border-accent outline-none"
+                    />
+                    <span className="text-[12px] text-ink-faint">%</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {pgTipo === 'parcelado' && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-[11px] uppercase tracking-wider text-ink-muted font-medium">Nº de parcelas</label>
+                  <input
+                    type="number" min={2} max={12}
+                    value={pgNumParcelas}
+                    onChange={e => setPgNumParcelas(parseInt(e.target.value) || 3)}
+                    className="mt-1 w-full px-2 py-1.5 bg-bg border border-border rounded text-[12px] text-ink focus:border-accent outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] uppercase tracking-wider text-ink-muted font-medium">Intervalo</label>
+                  <select
+                    value={pgIntervalo}
+                    onChange={e => setPgIntervalo(parseInt(e.target.value))}
+                    className="mt-1 w-full px-2 py-1.5 bg-bg border border-border rounded text-[12px] text-ink focus:border-accent outline-none"
+                  >
+                    <option value={30}>A cada 30 dias</option>
+                    <option value={45}>A cada 45 dias</option>
+                    <option value={60}>A cada 60 dias</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] uppercase tracking-wider text-ink-muted font-medium">1ª parcela em</label>
+                  <input
+                    type="date"
+                    value={pgPrimeiraEm}
+                    onChange={e => setPgPrimeiraEm(e.target.value)}
+                    className="mt-1 w-full px-2 py-1.5 bg-bg border border-border rounded text-[12px] text-ink focus:border-accent outline-none"
+                  />
+                </div>
+              </div>
+            )}
+
+            {pgTipo === 'entrada' && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-[11px] uppercase tracking-wider text-ink-muted font-medium">Entrada</label>
+                  <div className="mt-1 flex items-center gap-2">
+                    <input
+                      type="number" min={10} max={90} step={5}
+                      value={pgEntradaPct}
+                      onChange={e => setPgEntradaPct(parseFloat(e.target.value) || 50)}
+                      className="flex-1 px-2 py-1.5 bg-bg border border-border rounded text-[12px] text-ink focus:border-accent outline-none"
+                    />
+                    <span className="text-[12px] text-ink-faint">%</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[11px] uppercase tracking-wider text-ink-muted font-medium">Parcelas restantes</label>
+                  <input
+                    type="number" min={1} max={12}
+                    value={pgParcelasApos}
+                    onChange={e => setPgParcelasApos(parseInt(e.target.value) || 1)}
+                    className="mt-1 w-full px-2 py-1.5 bg-bg border border-border rounded text-[12px] text-ink focus:border-accent outline-none"
+                  />
+                  <div className="text-[10px] text-ink-faint mt-0.5">1 = pagamento no envio</div>
+                </div>
+                <div>
+                  <label className="text-[11px] uppercase tracking-wider text-ink-muted font-medium">Intervalo</label>
+                  <select
+                    value={pgIntervalo}
+                    onChange={e => setPgIntervalo(parseInt(e.target.value))}
+                    className="mt-1 w-full px-2 py-1.5 bg-bg border border-border rounded text-[12px] text-ink focus:border-accent outline-none"
+                  >
+                    <option value={30}>30 dias</option>
+                    <option value={45}>45 dias</option>
+                    <option value={60}>60 dias</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {pgTipo === 'personalizado' && (
+              <div>
+                <label className="text-[11px] uppercase tracking-wider text-ink-muted font-medium">Texto livre</label>
+                <Input
+                  value={pgCustom}
+                  onChange={e => setPgCustom(e.target.value)}
+                  placeholder="Ex: 70% no aceite + 30% após teste"
+                  className="mt-1"
+                />
+              </div>
+            )}
+
+            {/* Preview */}
+            <div className="border-t border-border pt-3 space-y-1.5">
+              <div className="flex items-baseline gap-2">
+                <span className="text-[10px] uppercase tracking-wider text-ink-faint font-bold w-32 shrink-0">Data da venda:</span>
+                <span className="text-[12px] font-mono text-ink">{formaPagamentoOut.data_venda}</span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-[10px] uppercase tracking-wider text-ink-faint font-bold w-32 shrink-0">Forma de pagamento:</span>
+                <span className="text-[12px] font-mono font-bold text-accent">{formaPagamentoOut.forma_pagamento}</span>
+              </div>
             </div>
           </div>
 
