@@ -223,27 +223,53 @@ function substituirPrazoEntrega(xml: string, valor: string): string {
   return xml
 }
 
+// Compacta whitespace exagerada na linha do cabecalho (CLIENTE/A/C/FONE).
+// Os templates Branorte tem 80+ espaços de "alinhamento" entre os labels que,
+// quando os valores sao preenchidos, fazem a linha exceder a largura da pagina
+// e o Word quebra "FONE: 48998313374" deixando o numero numa linha separada.
+//
+// Solucao: encontra o paragrafo que tem CLIENTE: + FONE: e substitui whitespace
+// runs com >12 chars por exatamente 4 espacos (mantem separacao visual sem
+// estourar a largura).
+function compactarHeaderCliente(xml: string): string {
+  const pRe = /<w:p[^>]*>(?:(?:(?!<\/w:p>)[\s\S])*?CLIENTE:(?:(?!<\/w:p>)[\s\S])*?FONE:(?:(?!<\/w:p>)[\s\S])*?)<\/w:p>/i
+  const match = pRe.exec(xml)
+  if (!match) return xml
+
+  const compactado = match[0].replace(
+    /(<w:t(?:\s[^>]*)?>)(\s{12,})(<\/w:t>)/g,
+    (_m, openT, _ws, closeT) => {
+      const open = openT.includes('xml:space') ? openT : openT.replace('<w:t', '<w:t xml:space="preserve"')
+      return `${open}    ${closeT}`  // 4 espaços de separação
+    },
+  )
+  return xml.slice(0, match.index) + compactado + xml.slice(match.index + match[0].length)
+}
+
 // Preenche o nome do cliente na assinatura (lado direito, ao lado de "Metalúrgica BBA LTDA")
+// IMPORTANTE: precisa pegar a ULTIMA ocorrencia de BBA+LTDA (a assinatura no fim do doc),
+// nao a primeira (que é "BRANORTE - Metalúrgica BBA Ltda" na secao DADOS DO FABRICANTE).
 function preencherAssinaturaCliente(xml: string, cliente: string): string {
   if (!cliente) return xml
   const escaped = xmlEscape(cliente.toUpperCase().slice(0, 60))
 
-  // Acha "BBA LTDA" (pode estar dividido em runs: "BBA " + "LTDA")
-  // Procura sequencia <w:t>...BBA...</w:t>...<w:t>...LTDA</w:t> próximas
-  const bbaIdx = xml.search(/<w:t(?:\s[^>]*)?>[^<]*?BBA\s*<\/w:t>/i)
-  if (bbaIdx < 0) return xml
-  const ltdaRe = /<w:t(?:\s[^>]*)?>[^<]*?LTDA<\/w:t>/i
-  const ltdaMatch = ltdaRe.exec(xml.slice(bbaIdx, bbaIdx + 600))
-  if (!ltdaMatch) return xml
-  const afterLtda = bbaIdx + ltdaMatch.index + ltdaMatch[0].length
+  // Busca todas as ocorrencias de BBA + LTDA proximas (assinatura é a ultima)
+  // Pattern flexivel: aceita "BBA" + ate 50 chars (whitespace + tags) + "LTDA"
+  const pairRe = /<w:t(?:\s[^>]*)?>[^<]*?BBA\s*<\/w:t>(?:[\s\S]{0,200}?)<w:t(?:\s[^>]*)?>[^<]*?LTDA[^<]*?<\/w:t>/gi
+  const todas = [...xml.matchAll(pairRe)]
+  if (todas.length === 0) return xml
 
-  // Acha o fim do paragrafo
+  // Pega a ULTIMA (= assinatura, a primeira é DADOS DO FABRICANTE)
+  const ultima = todas[todas.length - 1]
+  const afterLtda = (ultima.index ?? 0) + ultima[0].length
+
+  // Acha o fim do paragrafo da assinatura
   const endP = xml.indexOf('</w:p>', afterLtda)
   if (endP < 0 || endP - afterLtda > 3000) return xml
 
   const between = xml.slice(afterLtda, endP)
 
-  // Acha a ULTIMA run com APENAS whitespace
+  // Acha a ULTIMA run com APENAS whitespace dentro do paragrafo
   const wsRuns: { index: number; full: string; ws: string }[] = []
   const wsRe = /<w:t(?:\s[^>]*)?>(\s+)<\/w:t>/g
   let m
@@ -253,7 +279,6 @@ function preencherAssinaturaCliente(xml: string, cliente: string): string {
   if (wsRuns.length === 0) return xml
 
   const lastWs = wsRuns[wsRuns.length - 1]
-  // Preserva o tamanho — distribui espaços ao redor do nome pra manter alinhamento
   const total = lastWs.ws.length
   const left = Math.max(1, Math.floor((total - escaped.length) / 2))
   const right = Math.max(1, total - escaped.length - left)
@@ -306,6 +331,8 @@ export async function gerarOrcamentoDocx(input: DocxInput): Promise<Blob> {
   if (input.prazo_entrega)   xml = substituirPrazoEntrega(xml, input.prazo_entrega)
   if (input.data_venda)      xml = substituirDataVenda(xml, input.data_venda)
   xml = preencherAssinaturaCliente(xml, input.cliente_nome)
+  // Compacta whitespace exagerada antes de preencher CLIENTE/A/C/FONE (evita line wrap)
+  xml = compactarHeaderCliente(xml)
   xml = preencherCampo(xml, 'CLIENTE:', input.cliente_nome)
 
   const c = input.cliente_dados
