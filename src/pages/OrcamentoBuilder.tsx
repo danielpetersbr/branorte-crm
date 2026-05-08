@@ -15,6 +15,7 @@ import {
 } from '@/hooks/useOrcamentoBuilder'
 import { useAuth } from '@/hooks/useAuth'
 import { baixarOrcamentoPdf } from '@/lib/orcamento-pdf'
+import { baixarOrcamentoDocx } from '@/lib/orcamento-docx'
 
 type Step = 1 | 2 | 3 | 4
 
@@ -146,7 +147,7 @@ export function OrcamentoBuilder() {
     setSearchCli('')
   }
 
-  async function handleGerar(opcoes: { baixar: boolean; status: 'rascunho' | 'enviado' }) {
+  async function handleGerar(opcoes: { formato: 'docx' | 'pdf' | 'nenhum'; status: 'rascunho' | 'enviado' }) {
     if (!modeloSelecionado || !cliNome.trim()) return
     setGerando(true)
     try {
@@ -167,7 +168,16 @@ export function OrcamentoBuilder() {
         status: opcoes.status,
       })
       setOrcamentoSalvo({ numero: orc.numero, id: orc.id })
-      if (opcoes.baixar) {
+
+      if (opcoes.formato === 'docx' && modeloSelecionado.template_path) {
+        await baixarOrcamentoDocx({
+          template_path: modeloSelecionado.template_path,
+          numero: orc.numero,
+          data: new Date().toLocaleDateString('pt-BR'),
+          cliente_nome: cliNome,
+          cliente_dados: cliDados,
+        })
+      } else if (opcoes.formato === 'pdf') {
         baixarOrcamentoPdf({
           numero: orc.numero,
           data: new Date().toLocaleDateString('pt-BR'),
@@ -228,21 +238,16 @@ export function OrcamentoBuilder() {
             </button>
             <button
               className="bg-surface-2 hover:bg-surface-3 text-ink font-semibold px-5 py-2.5 rounded-md flex items-center gap-2"
-              onClick={() => baixarOrcamentoPdf({
+              onClick={() => modeloSelecionado?.template_path && baixarOrcamentoDocx({
+                template_path: modeloSelecionado.template_path,
                 numero: orcamentoSalvo.numero,
                 data: new Date().toLocaleDateString('pt-BR'),
                 cliente_nome: cliNome,
                 cliente_dados: cliDados,
-                voltagem: modeloSelecionado!.voltagem,
-                itens, acessorios, motores,
-                total_equipamentos: totalEquip,
-                total_motores: totalMotores,
-                total_proposta: totalProposta,
-                observacoes: observacoes.trim() || null,
               })}
             >
               <FileDown className="h-4 w-4" />
-              Baixar PDF de novo
+              Baixar .docx de novo
             </button>
           </div>
         </Card>
@@ -714,6 +719,10 @@ export function OrcamentoBuilder() {
             />
           </div>
 
+          <div className="text-[11px] text-ink-muted bg-info-bg/15 border border-info/30 rounded-md p-3">
+            <strong>Como funciona:</strong> o orçamento é gerado a partir do <strong>.docx oficial Branorte</strong> (mesmo arquivo que vocês usam hoje), só preenchendo os campos do cliente. O resultado é IDÊNTICO ao formato atual — pode abrir no Word e salvar como PDF.
+          </div>
+
           <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
             <button
               onClick={() => setStep(3)}
@@ -725,7 +734,7 @@ export function OrcamentoBuilder() {
             <span className="flex-1" />
             <button
               disabled={gerando}
-              onClick={() => handleGerar({ baixar: false, status: 'rascunho' })}
+              onClick={() => handleGerar({ formato: 'nenhum', status: 'rascunho' })}
               className="bg-surface-2 hover:bg-surface-3 disabled:opacity-50 text-ink font-semibold px-4 py-2 rounded-md flex items-center gap-2"
             >
               <Save className="h-4 w-4" />
@@ -733,11 +742,11 @@ export function OrcamentoBuilder() {
             </button>
             <button
               disabled={gerando}
-              onClick={() => handleGerar({ baixar: true, status: 'enviado' })}
+              onClick={() => handleGerar({ formato: 'docx', status: 'enviado' })}
               className="bg-accent hover:bg-accent-700 disabled:opacity-50 text-white font-semibold px-5 py-2.5 rounded-md flex items-center gap-2"
             >
               <FileDown className="h-4 w-4" />
-              Gerar PDF + Salvar
+              {gerando ? 'Gerando…' : 'Gerar .docx Branorte'}
             </button>
           </div>
         </Card>

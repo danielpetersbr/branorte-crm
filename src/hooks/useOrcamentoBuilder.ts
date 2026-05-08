@@ -40,6 +40,7 @@ export interface OrcamentoModelo {
   total_motores: number
   total_proposta: number
   arquivo_origem: string | null
+  template_path: string | null
   ativo: boolean
 }
 
