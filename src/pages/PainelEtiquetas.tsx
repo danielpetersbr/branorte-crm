@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatNumber } from '@/lib/utils'
-import { Activity, AlertCircle, Clock, Flame, BarChart3 } from 'lucide-react'
+import { Activity, AlertCircle, Clock, Flame, BarChart3, Reply } from 'lucide-react'
 import { usePainelEtiquetas, type AggregacaoEtiqueta } from '@/hooks/useChatsPorEtiqueta'
 import {
   Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis, LabelList,
@@ -133,7 +133,7 @@ export function PainelEtiquetas() {
         </p>
       </header>
 
-      {/* Kanban-style: cada etiqueta com contagem de parados em destaque */}
+      {/* Kanban-style: cada etiqueta com contagem de parados + aguardando em destaque */}
       <div className="overflow-x-auto -mx-4 md:-mx-6 px-4 md:px-6 pb-2">
         <div className="flex gap-2 min-w-max">
           {data.porEtiqueta.slice(0, 12).map(e => {
@@ -144,7 +144,7 @@ export function PainelEtiquetas() {
               <button
                 key={e.nomeCanonico}
                 onClick={() => setFiltroEtiqueta(e.nomeCanonico)}
-                className="text-left rounded-lg border bg-bg hover:bg-surface-2/50 transition-all p-3 min-w-[180px] shrink-0"
+                className="text-left rounded-lg border bg-bg hover:bg-surface-2/50 transition-all p-3 min-w-[200px] shrink-0"
                 style={{ borderColor: cor + '55', borderTopWidth: '3px', borderTopColor: cor }}
               >
                 <div className="flex items-start justify-between gap-2 mb-2">
@@ -155,9 +155,21 @@ export function PainelEtiquetas() {
                     {e.total}
                   </div>
                 </div>
+                {/* Aguardando resposta — destaque máximo (cliente esperando) */}
+                {e.aguardando > 0 && (
+                  <div className="flex items-baseline gap-1.5 mb-1.5 px-2 py-1 rounded bg-warning-bg/30 border border-warning/30">
+                    <Reply className="h-3 w-3 text-warning shrink-0" />
+                    <span className="text-[18px] font-bold tabular-nums leading-none text-warning">
+                      {e.aguardando}
+                    </span>
+                    <span className="text-[9px] uppercase tracking-wider text-warning font-bold">
+                      aguardando você
+                    </span>
+                  </div>
+                )}
                 {/* Parados em destaque */}
                 <div className="flex items-baseline gap-1.5 mb-2">
-                  <span className={`text-[24px] font-bold tabular-nums leading-none ${isAlerta ? 'text-danger' : 'text-ink'}`}>
+                  <span className={`text-[22px] font-bold tabular-nums leading-none ${isAlerta ? 'text-danger' : 'text-ink'}`}>
                     {e.parado}
                   </span>
                   <span className="text-[10px] uppercase tracking-wider text-ink-faint">
@@ -193,7 +205,7 @@ export function PainelEtiquetas() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <Card className="p-4">
           <div className="text-[10px] uppercase tracking-wider text-ink-muted font-medium flex items-center gap-1">
             <Activity className="h-3 w-3" />
@@ -225,6 +237,14 @@ export function PainelEtiquetas() {
           </div>
           <div className="mt-1 text-[24px] font-bold tabular-nums text-ink">{formatNumber(t.parado)}</div>
           <div className="text-[10px] text-ink-faint mt-0.5">&gt;3 dias · {pctParado.toFixed(1)}%</div>
+        </Card>
+        <Card className="p-4 border-warning/40 bg-warning-bg/15">
+          <div className="text-[10px] uppercase tracking-wider text-warning font-medium flex items-center gap-1">
+            <Reply className="h-3 w-3" />
+            Aguardando você
+          </div>
+          <div className="mt-1 text-[24px] font-bold tabular-nums text-ink">{formatNumber(t.aguardando)}</div>
+          <div className="text-[10px] text-ink-faint mt-0.5">cliente foi o último</div>
         </Card>
       </div>
 
@@ -300,7 +320,7 @@ export function PainelEtiquetas() {
                 {detalhesEtiqueta.nomeCanonico}
               </h2>
               <p className="text-[11px] text-ink-muted mt-0.5">
-                {detalhesEtiqueta.total} chats · {detalhesEtiqueta.parado} parados · {detalhesEtiqueta.fresco} frescos
+                {detalhesEtiqueta.total} chats · <span className="text-warning font-semibold">{detalhesEtiqueta.aguardando} aguardando você</span> · {detalhesEtiqueta.parado} parados · {detalhesEtiqueta.fresco} frescos
               </p>
             </div>
             <button

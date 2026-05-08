@@ -5,6 +5,9 @@ export interface ChatRow {
   phone: string
   vendedor_nome: string
   label_ids: string[]
+  last_message_at?: string | null
+  last_message_from_me?: boolean | null
+  last_message_preview?: string | null
 }
 
 export interface EtiquetaInfo {
@@ -59,6 +62,7 @@ export interface ChatComEtiqueta {
   vendedor: string
   etiquetas: EtiquetaInfo[]
   lastMessageAt: string | null
+  lastMessageFromMe: boolean | null  // true = vendedor, false = cliente, null = sem dado
   status: StatusTemporal
 }
 
@@ -69,6 +73,7 @@ export interface AggregacaoEtiqueta {
   recente: number
   parado: number
   semDado: number
+  aguardando: number  // cliente esperando resposta do vendedor
   porVendedor: Record<string, number>
 }
 
@@ -82,6 +87,7 @@ export interface PainelEtiquetasData {
     recente: number
     parado: number
     semDado: number
+    aguardando: number
   }
 }
 
@@ -96,13 +102,16 @@ export function usePainelEtiquetas() {
       // 1) Fetch wa_chat_labels (chats reais)
       const { data: chatRows, error: errChat } = await supabase
         .from('wa_chat_labels')
-        .select('phone, vendedor_nome, label_ids')
+        .select('phone, vendedor_nome, label_ids, last_message_at, last_message_from_me, last_message_preview')
         .order('vendedor_nome')
       if (errChat) throw errChat
       const chats: ChatRow[] = (chatRows ?? []).map((r: any) => ({
         phone: String(r.phone),
         vendedor_nome: String(r.vendedor_nome || ''),
         label_ids: (r.label_ids || []).map((x: any) => String(x)),
+        last_message_at: r.last_message_at || null,
+        last_message_from_me: typeof r.last_message_from_me === 'boolean' ? r.last_message_from_me : null,
+        last_message_preview: r.last_message_preview || null,
       }))
 
       // 2) Coleta IDs/vendedores únicos pra resolver via wascript_etiquetas
@@ -173,17 +182,22 @@ export function usePainelEtiquetas() {
           const info = labelMap[key]
           if (info) ets.push(info)
         }
-        // Last message at: testa todas as variantes
-        let last: string | null = null
-        for (const v of phoneVariants(c.phone)) {
-          const m = lastMsgMap.get(v)
-          if (m && (!last || new Date(m).getTime() > new Date(last).getTime())) last = m
+        // Last message: prefere o que veio direto da extensão (mais fresco e tem fromMe)
+        // Fallback pra atendimentos.last_message_at
+        let last: string | null = c.last_message_at ?? null
+        let fromMe: boolean | null = typeof c.last_message_from_me === 'boolean' ? c.last_message_from_me : null
+        if (!last) {
+          for (const v of phoneVariants(c.phone)) {
+            const m = lastMsgMap.get(v)
+            if (m && (!last || new Date(m).getTime() > new Date(last).getTime())) last = m
+          }
         }
         return {
           phone: c.phone,
           vendedor: c.vendedor_nome,
           etiquetas: ets,
           lastMessageAt: last,
+          lastMessageFromMe: fromMe,
           status: classificarStatusTemporal(last),
         }
       })
@@ -193,6 +207,7 @@ export function usePainelEtiquetas() {
       const vendSet = new Set<string>()
       for (const chat of chatsEnriquecidos) {
         if (chat.vendedor) vendSet.add(chat.vendedor)
+        const aguardando = chat.lastMessageFromMe === false  // cliente foi o último a falar
         // Cada chat conta uma vez por etiqueta canônica única
         const canonsDoChat = new Set(chat.etiquetas.map(e => e.nomeCanonico))
         for (const canon of canonsDoChat) {
@@ -204,6 +219,7 @@ export function usePainelEtiquetas() {
               recente: 0,
               parado: 0,
               semDado: 0,
+              aguardando: 0,
               porVendedor: {},
             })
           }
@@ -213,6 +229,7 @@ export function usePainelEtiquetas() {
           else if (chat.status === 'recente') a.recente += 1
           else if (chat.status === 'parado') a.parado += 1
           else a.semDado += 1
+          if (aguardando) a.aguardando += 1
           a.porVendedor[chat.vendedor] = (a.porVendedor[chat.vendedor] || 0) + 1
         }
       }
@@ -224,8 +241,9 @@ export function usePainelEtiquetas() {
         else if (c.status === 'recente') acc.recente += 1
         else if (c.status === 'parado') acc.parado += 1
         else acc.semDado += 1
+        if (c.lastMessageFromMe === false) acc.aguardando += 1
         return acc
-      }, { chats: 0, fresco: 0, recente: 0, parado: 0, semDado: 0 })
+      }, { chats: 0, fresco: 0, recente: 0, parado: 0, semDado: 0, aguardando: 0 })
 
       return {
         chats: chatsEnriquecidos,
