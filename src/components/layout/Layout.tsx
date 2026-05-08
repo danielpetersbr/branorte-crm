@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory } from 'lucide-react'
+import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { useAtendimentoKpis } from '@/hooks/useAtendimentos'
@@ -35,6 +35,7 @@ const PRIMARY: NavItem[] = [
     children: [
       { to: '/etiquetas-zap', label: 'Cards', icon: List },
       { to: '/etiquetas-zap/graficos', label: 'Gráficos', icon: BarChart2 },
+      { to: '/etiquetas-zap/painel', label: 'Painel Status', icon: AlertCircle },
     ],
   },
   { to: '/atividade-diaria', label: 'Atividade Diária', icon: Activity },

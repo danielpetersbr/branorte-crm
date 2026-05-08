@@ -12,6 +12,7 @@ import { Funil } from '@/pages/Funil'
 import { FunilRelatorio } from '@/pages/FunilRelatorio'
 import { EtiquetasZap } from '@/pages/EtiquetasZap'
 import { EtiquetasZapGraficos } from '@/pages/EtiquetasZapGraficos'
+import { PainelEtiquetas } from '@/pages/PainelEtiquetas'
 import { AtividadeDiaria } from '@/pages/AtividadeDiaria'
 import { Projeto } from '@/pages/Projeto'
 import { Login } from '@/pages/Login'
@@ -69,6 +70,7 @@ function AppRoutes() {
         <Route path="/funil/relatorio" element={<FunilRelatorio />} />
         <Route path="/etiquetas-zap" element={<EtiquetasZap />} />
         <Route path="/etiquetas-zap/graficos" element={<EtiquetasZapGraficos />} />
+        <Route path="/etiquetas-zap/painel" element={<PainelEtiquetas />} />
         <Route path="/atividade-diaria" element={<AtividadeDiaria />} />
         <Route path="/projeto" element={<Projeto />} />
         <Route path="/perfil" element={<Perfil />} />
