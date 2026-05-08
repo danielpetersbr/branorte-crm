@@ -13,6 +13,7 @@ import { FunilRelatorio } from '@/pages/FunilRelatorio'
 import { EtiquetasZap } from '@/pages/EtiquetasZap'
 import { EtiquetasZapGraficos } from '@/pages/EtiquetasZapGraficos'
 import { PainelEtiquetas } from '@/pages/PainelEtiquetas'
+import { OrcamentoBuilder } from '@/pages/OrcamentoBuilder'
 import { AtividadeDiaria } from '@/pages/AtividadeDiaria'
 import { Projeto } from '@/pages/Projeto'
 import { Login } from '@/pages/Login'
@@ -64,6 +65,7 @@ function AppRoutes() {
         <Route path="/atribuir" element={<Assign />} />
         <Route path="/orcamentos" element={<Orcamentos />} />
         <Route path="/orcamentos/lista" element={<Orcamentos />} />
+        <Route path="/orcamentos/novo" element={<OrcamentoBuilder />} />
         <Route path="/vendidos" element={<Vendidos />} />
         <Route path="/atendimentos" element={<Atendimentos />} />
         <Route path="/funil" element={<Funil />} />

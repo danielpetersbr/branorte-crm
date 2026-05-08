@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle } from 'lucide-react'
+import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { useAtendimentoKpis } from '@/hooks/useAtendimentos'
@@ -47,6 +47,7 @@ const SECONDARY: NavItem[] = [
     icon: FileText,
     matchPrefix: true,
     children: [
+      { to: '/orcamentos/novo', label: 'Novo', icon: Sparkles },
       { to: '/orcamentos', label: 'Painel', icon: BarChart2 },
       { to: '/orcamentos/lista', label: 'Lista', icon: List },
     ],

@@ -14,6 +14,8 @@
     "@tanstack/react-query": "^5.17.0",
     "clsx": "^2.1.0",
     "date-fns": "^3.3.1",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.7",
     "konva": "^9.3.16",
     "lucide-react": "^0.321.0",
     "pg": "^8.20.0",
