@@ -16,6 +16,11 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import { baixarOrcamentoPdf } from '@/lib/orcamento-pdf'
 import { baixarOrcamentoDocx } from '@/lib/orcamento-docx'
+import {
+  isFolderScanSupported, pickOrcamentoFolder, getStoredFolderHandle,
+  scanFolderForLastNumber, formatarNumero,
+} from '@/lib/orcamento-folder-scan'
+import { FolderOpen, RefreshCw } from 'lucide-react'
 
 type Step = 1 | 2 | 3 | 4
 
@@ -86,9 +91,13 @@ export function OrcamentoBuilder() {
 
   // Step 4 — Gerar
   const [observacoes, setObservacoes] = useState('')
+  const [formaPagamento, setFormaPagamento] = useState('')
+  const [prazoEntrega, setPrazoEntrega] = useState('')
   const [numeroAtual, setNumeroAtual] = useState<string>('')
   const [gerando, setGerando] = useState(false)
   const [orcamentoSalvo, setOrcamentoSalvo] = useState<{ numero: string; id: number } | null>(null)
+  const [scanInfo, setScanInfo] = useState<{ ultimo: number; total: number; ano: number } | null>(null)
+  const [scanLoading, setScanLoading] = useState(false)
 
   const modeloSelecionado = useMemo(
     () => modelos?.find(m => m.id === modeloId) ?? null,
@@ -114,12 +123,61 @@ export function OrcamentoBuilder() {
     }
   }, [modeloSelecionado])
 
-  // Pre-busca próximo número quando entra no step 4
+  // Pre-busca próximo número quando entra no step 4 (prefere folder scan)
   useEffect(() => {
     if (step === 4 && !numeroAtual) {
-      obterProximoNumero().then(r => setNumeroAtual(r.numero)).catch(() => setNumeroAtual('—'))
+      ;(async () => {
+        try {
+          const handle = await getStoredFolderHandle()
+          if (handle) {
+            const scan = await scanFolderForLastNumber(handle)
+            setScanInfo({ ultimo: scan.ultimoNumero, total: scan.total, ano: scan.ano })
+            setNumeroAtual(formatarNumero(scan.ano, scan.proximoNumero))
+            return
+          }
+        } catch {}
+        // Fallback: usa banco
+        try {
+          const r = await obterProximoNumero()
+          setNumeroAtual(r.numero)
+        } catch {
+          setNumeroAtual('—')
+        }
+      })()
     }
   }, [step, numeroAtual])
+
+  async function handlePickFolder() {
+    setScanLoading(true)
+    try {
+      const handle = await pickOrcamentoFolder()
+      const scan = await scanFolderForLastNumber(handle)
+      setScanInfo({ ultimo: scan.ultimoNumero, total: scan.total, ano: scan.ano })
+      setNumeroAtual(formatarNumero(scan.ano, scan.proximoNumero))
+    } catch (e) {
+      alert('Erro: ' + (e as Error).message)
+    } finally {
+      setScanLoading(false)
+    }
+  }
+
+  async function handleRescanFolder() {
+    setScanLoading(true)
+    try {
+      const handle = await getStoredFolderHandle()
+      if (!handle) {
+        alert('Nenhuma pasta selecionada. Clique em "Escolher pasta Z:".')
+        return
+      }
+      const scan = await scanFolderForLastNumber(handle)
+      setScanInfo({ ultimo: scan.ultimoNumero, total: scan.total, ano: scan.ano })
+      setNumeroAtual(formatarNumero(scan.ano, scan.proximoNumero))
+    } catch (e) {
+      alert('Erro: ' + (e as Error).message)
+    } finally {
+      setScanLoading(false)
+    }
+  }
 
   const modelosFiltrados = useMemo(() => {
     if (!modelos) return []
@@ -165,6 +223,8 @@ export function OrcamentoBuilder() {
         total_motores: totalMotores,
         total_proposta: totalProposta,
         observacoes: observacoes.trim() || null,
+        forma_pagamento: formaPagamento.trim() || null,
+        prazo_entrega: prazoEntrega.trim() || null,
         status: opcoes.status,
       })
       setOrcamentoSalvo({ numero: orc.numero, id: orc.id })
@@ -176,6 +236,8 @@ export function OrcamentoBuilder() {
           data: new Date().toLocaleDateString('pt-BR'),
           cliente_nome: cliNome,
           cliente_dados: cliDados,
+          forma_pagamento: formaPagamento.trim() || null,
+          prazo_entrega: prazoEntrega.trim() || null,
         })
       } else if (opcoes.formato === 'pdf') {
         baixarOrcamentoPdf({
@@ -685,6 +747,51 @@ export function OrcamentoBuilder() {
             <Eye className="h-4 w-4" /> Conferir e Gerar
           </h2>
 
+          {/* Sincronizar com pasta Z: */}
+          {isFolderScanSupported() ? (
+            <div className="p-3 bg-info-bg/15 border border-info/30 rounded-md space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <FolderOpen className="h-4 w-4 text-info shrink-0" />
+                <span className="text-[12px] font-semibold text-info">Próximo número</span>
+                <span className="flex-1" />
+                <button
+                  type="button"
+                  disabled={scanLoading}
+                  onClick={handlePickFolder}
+                  className="text-[11px] px-2.5 py-1 rounded bg-info/20 hover:bg-info/30 text-info font-semibold flex items-center gap-1"
+                >
+                  <FolderOpen className="h-3 w-3" />
+                  Escolher pasta Z:
+                </button>
+                <button
+                  type="button"
+                  disabled={scanLoading}
+                  onClick={handleRescanFolder}
+                  title="Reler pasta atual"
+                  className="text-[11px] px-2.5 py-1 rounded bg-surface-2 hover:bg-surface-3 text-ink-muted hover:text-ink font-semibold flex items-center gap-1"
+                >
+                  <RefreshCw className={`h-3 w-3 ${scanLoading ? 'animate-spin' : ''}`} />
+                  {scanLoading ? 'Lendo...' : 'Reler'}
+                </button>
+              </div>
+              {scanInfo ? (
+                <div className="text-[11px] text-ink-muted">
+                  Pasta lida: <strong className="text-ink">{scanInfo.total} arquivos</strong> de {scanInfo.ano}
+                  {' · '}último: <strong className="text-ink font-mono">{formatarNumero(scanInfo.ano, scanInfo.ultimo)}</strong>
+                  {' · '}próximo: <strong className="text-success font-mono">{formatarNumero(scanInfo.ano, scanInfo.ultimo + 1)}</strong>
+                </div>
+              ) : (
+                <div className="text-[11px] text-ink-muted">
+                  Aponte para a pasta <code className="bg-surface-3 px-1 rounded">Z:\1 - Comercial\3 - Orçamento\2026</code> uma vez. O navegador lembra a permissão.
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="p-2 bg-warning-bg/15 border border-warning/30 rounded-md text-[11px] text-warning">
+              Seu navegador não suporta leitura da pasta Z: (use Chrome ou Edge). Número está vindo do banco.
+            </div>
+          )}
+
           {/* Resumo do orçamento */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[12px]">
             <div className="p-3 bg-surface-2 rounded-md">
@@ -707,13 +814,54 @@ export function OrcamentoBuilder() {
             </div>
           </div>
 
+          {/* Forma de pagamento + prazo de entrega */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] uppercase tracking-wider text-ink-muted font-medium">
+                Forma de pagamento
+              </label>
+              <Input
+                value={formaPagamento}
+                onChange={e => setFormaPagamento(e.target.value)}
+                placeholder='Ex: "À vista 5% desconto" ou "30/60/90 dias"'
+                className="mt-1"
+              />
+              <div className="text-[10px] text-ink-faint mt-1">
+                Substitui "a combinar" no .docx. Sugestões:
+                {' '}
+                {['À vista 5% desconto', '50% entrada + 50% no envio', '30/60/90 dias', 'Boleto à vista', 'PIX 7% desconto'].map(s => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setFormaPagamento(s)}
+                    className="inline-block mx-0.5 px-1.5 py-0.5 rounded bg-surface-2 hover:bg-surface-3 text-ink-muted hover:text-ink"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-[11px] uppercase tracking-wider text-ink-muted font-medium">
+                Prazo de entrega
+              </label>
+              <Input
+                value={prazoEntrega}
+                onChange={e => setPrazoEntrega(e.target.value)}
+                placeholder="Padrão: 90 dias (úteis)"
+                className="mt-1"
+              />
+              <div className="text-[10px] text-ink-faint mt-1">Deixe em branco pra usar o padrão.</div>
+            </div>
+          </div>
+
           {/* Observações */}
           <div>
             <label className="text-[11px] uppercase tracking-wider text-ink-muted font-medium">Observações (opcional)</label>
             <textarea
               value={observacoes}
               onChange={e => setObservacoes(e.target.value)}
-              placeholder="Notas adicionais que aparecem no PDF..."
+              placeholder="Notas adicionais..."
               rows={3}
               className="mt-1 w-full p-2 bg-surface-2 border border-border rounded-md text-[12px] text-ink focus:border-accent outline-none"
             />

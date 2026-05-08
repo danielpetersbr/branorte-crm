@@ -18,6 +18,8 @@ interface DocxInput {
   data: string                   // dd/mm/yyyy
   cliente_nome: string
   cliente_dados: ClienteDados
+  forma_pagamento?: string | null  // ex: "À vista 5% desconto" — substitui "a combinar"
+  prazo_entrega?: string | null    // override do default "90 dias (úteis)"
 }
 
 // Escapa pra XML (& < > " ')
@@ -59,26 +61,113 @@ function preencherCampo(xml: string, label: string, valor: string): string {
   return xml
 }
 
-// Substitui ORÇAMENTO N° YYYY - NNNN com novo número
+// Substitui ORÇAMENTO N° YYYY - NNNN — número fica quebrado em 2-3 runs
+// no Word (ex: "ORÇAMENTO N° 202" + "5" + " – 0000   "). Estratégia:
+// 1) Substitui "ORÇAMENTO N° 202" por "ORÇAMENTO N° {NUMERO}"
+// 2) Limpa runs seguintes que tem "5" sozinho ou "– 0000" preservando os espaços
 function substituirNumero(xml: string, numero: string): string {
   const escaped = xmlEscape(numero)
-  // Match flexível: "ORÇAMENTO N°" + qualquer texto até "<\/w:t>" (ou pode estar quebrado em runs)
-  // Caso 1: tudo em 1 run: <w:t>ORÇAMENTO N° 2025 - 0000<\/w:t>
-  const re1 = /(<w:t(?:\s[^>]*)?>)([^<]*?ORÇAMENTO\s+N[°º]\s+)([0-9]{4}\s*[\-–—]\s*[0-9]{1,4})(\s*<\/w:t>)/i
-  if (re1.test(xml)) {
-    return xml.replace(re1, (_m, openT, prefix, _oldNum, closeT) => {
+  let out = xml
+
+  // Caso "tudo num run só" (templates simples)
+  const reFull = /(<w:t(?:\s[^>]*)?>)([^<]*?ORÇAMENTO\s+N[°º]\s+)(202[0-9]\s*[\-–—]\s*[0-9]{1,4})([^<]*?)(<\/w:t>)/i
+  if (reFull.test(out)) {
+    return out.replace(reFull, (_m, openT, prefix, _oldNum, suffix, closeT) => {
       const open = openT.includes('xml:space') ? openT : openT.replace('<w:t', '<w:t xml:space="preserve"')
-      return `${open}${prefix}${escaped}${closeT}`
+      return `${open}${prefix}${escaped}${suffix}${closeT}`
     })
   }
-  // Caso 2: número quebrado em runs separados (mais comum no Word real)
-  // Tenta substituir só o "2025 - 0000" onde quer que esteja
-  const re2 = /(<w:t(?:\s[^>]*)?>)\s*(202[0-9]\s*[\-–—]\s*[0-9]{4})\s*(<\/w:t>)/i
-  if (re2.test(xml)) {
-    return xml.replace(re2, (_m, openT, _old, closeT) => {
+
+  // Caso "número quebrado em runs" (Word real)
+  // Step 1: <w:t>ORÇAMENTO N° 202</w:t> → <w:t>ORÇAMENTO N° {NUMERO_COMPLETO}</w:t>
+  // Captura o início e troca pelo número completo
+  out = out.replace(
+    /(<w:t(?:\s[^>]*)?>)([^<]*?ORÇAMENTO\s+N[°º]\s+)202([0-9]?)(<\/w:t>)/i,
+    (_m, openT, prefix, _digit, closeT) => {
       const open = openT.includes('xml:space') ? openT : openT.replace('<w:t', '<w:t xml:space="preserve"')
-      return `${open}${escaped}${closeT}`
+      return `${open}${prefix}${escaped}${closeT}`
+    },
+  )
+
+  // Step 2: zera o run isolado que tinha o último dígito do ano (ex: "5" sozinho)
+  // Match conservador: <w:t>UM_DIGITO</w:t> imediatamente após posição do número
+  // Identificamos pela proximidade ao "ORÇAMENTO" — limita a 200 chars depois
+  const idxOrc = out.indexOf(escaped)
+  if (idxOrc !== -1) {
+    const before = out.slice(0, idxOrc + escaped.length + 50)
+    const tail = out.slice(idxOrc + escaped.length + 50)
+    const tailFixed = tail
+      // Run "<w:t>5</w:t>" ou similar com 1 digito
+      .replace(/^([\s\S]{0,400}?)(<w:t(?:\s[^>]*)?>[0-9]<\/w:t>)/, (_m, pre, _run) => {
+        return pre + '<w:t></w:t>'
+      })
+      // Run "<w:t> – 0000   ...</w:t>" → "<w:t>   ...</w:t>" (mantém espaços p/ alinhamento)
+      .replace(
+        /(<w:t(?:\s[^>]*)?>)([^<]*?[\-–—]\s*0{2,4})([^<]*?)(<\/w:t>)/i,
+        (_m, openT, _numPart, suffix, closeT) => {
+          const open = openT.includes('xml:space') ? openT : openT.replace('<w:t', '<w:t xml:space="preserve"')
+          return `${open}${suffix}${closeT}`
+        },
+      )
+    out = before + tailFixed
+  }
+
+  return out
+}
+
+// Substitui "Forma de pagamento – a combinar" por valor real
+// O texto pode estar quebrado em runs (Word). Estratégia:
+// match flexível em qualquer <w:t> que contenha "Forma de pagamento" + "combinar"
+function substituirFormaPagamento(xml: string, valor: string): string {
+  if (!valor) return xml
+  const escaped = xmlEscape(valor)
+  // Caso 1: tudo num run só
+  const re1 = /(<w:t(?:\s[^>]*)?>)([^<]*?[Ff]orma\s+de\s+pagamento\s*[\-–—]\s*)(a\s+combinar)([^<]*?)(<\/w:t>)/i
+  if (re1.test(xml)) {
+    return xml.replace(re1, (_m, openT, prefix, _old, suffix, closeT) => {
+      const open = openT.includes('xml:space') ? openT : openT.replace('<w:t', '<w:t xml:space="preserve"')
+      return `${open}${prefix}${escaped}${suffix}${closeT}`
     })
+  }
+  // Caso 2: só substitui "a combinar" próximo de "Forma de pagamento"
+  const idxFP = xml.search(/Forma\s+de\s+pagamento/i)
+  if (idxFP >= 0) {
+    const tail = xml.slice(idxFP)
+    const replaced = tail.replace(
+      /(<w:t(?:\s[^>]*)?>)([^<]*?)(a\s+combinar)([^<]*?)(<\/w:t>)/i,
+      (_m, openT, prefix, _old, suffix, closeT) => {
+        const open = openT.includes('xml:space') ? openT : openT.replace('<w:t', '<w:t xml:space="preserve"')
+        return `${open}${prefix}${escaped}${suffix}${closeT}`
+      },
+    )
+    return xml.slice(0, idxFP) + replaced
+  }
+  return xml
+}
+
+// Substitui prazo de entrega (default "90 dias (úteis)")
+function substituirPrazoEntrega(xml: string, valor: string): string {
+  if (!valor) return xml
+  const escaped = xmlEscape(valor)
+  const re = /(<w:t(?:\s[^>]*)?>)([^<]*?[Pp]razo\s+de\s+entrega\s*[\-–—]\s*)(90\s+dias\s*\([úu]teis\))([^<]*?)(<\/w:t>)/i
+  if (re.test(xml)) {
+    return xml.replace(re, (_m, openT, prefix, _old, suffix, closeT) => {
+      const open = openT.includes('xml:space') ? openT : openT.replace('<w:t', '<w:t xml:space="preserve"')
+      return `${open}${prefix}${escaped}${suffix}${closeT}`
+    })
+  }
+  // Fallback: procura "90 dias" perto de "Prazo de entrega"
+  const idx = xml.search(/Prazo\s+de\s+entrega/i)
+  if (idx >= 0) {
+    const tail = xml.slice(idx)
+    const replaced = tail.replace(
+      /(<w:t(?:\s[^>]*)?>)([^<]*?)(90\s+dias\s*\([úu]teis\)|90\s+dias)([^<]*?)(<\/w:t>)/i,
+      (_m, openT, prefix, _old, suffix, closeT) => {
+        const open = openT.includes('xml:space') ? openT : openT.replace('<w:t', '<w:t xml:space="preserve"')
+        return `${open}${prefix}${escaped}${suffix}${closeT}`
+      },
+    )
+    return xml.slice(0, idx) + replaced
   }
   return xml
 }
@@ -116,6 +205,8 @@ export async function gerarOrcamentoDocx(input: DocxInput): Promise<Blob> {
   // 3) Substitui campos
   xml = substituirNumero(xml, input.numero)
   xml = substituirData(xml, input.data)
+  if (input.forma_pagamento) xml = substituirFormaPagamento(xml, input.forma_pagamento)
+  if (input.prazo_entrega)   xml = substituirPrazoEntrega(xml, input.prazo_entrega)
   xml = preencherCampo(xml, 'CLIENTE:', input.cliente_nome)
 
   const c = input.cliente_dados

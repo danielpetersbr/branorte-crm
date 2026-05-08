@@ -173,6 +173,8 @@ export interface CriarOrcamentoInput {
   total_motores: number
   total_proposta: number
   observacoes?: string | null
+  forma_pagamento?: string | null
+  prazo_entrega?: string | null
   status?: 'rascunho' | 'enviado' | 'aprovado' | 'perdido'
 }
 
@@ -224,6 +226,8 @@ export function useCriarOrcamento() {
         total_motores: input.total_motores,
         total_proposta: input.total_proposta,
         observacoes: input.observacoes ?? null,
+        forma_pagamento: input.forma_pagamento ?? null,
+        prazo_entrega: input.prazo_entrega ?? null,
         status: input.status ?? 'rascunho',
       }
       const { data, error } = await supabase
