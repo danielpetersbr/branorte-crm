@@ -14,10 +14,11 @@ import {
   type OrcamentoAcessorios, type ClienteDados,
 } from '@/hooks/useOrcamentoBuilder'
 import { useAuth } from '@/hooks/useAuth'
-import { baixarOrcamentoPdf, gerarOrcamentoPdf } from '@/lib/orcamento-pdf'
+import { baixarOrcamentoPdf } from '@/lib/orcamento-pdf'
 import {
   baixarOrcamentoDocx, gerarOrcamentoDocx, nomeBaseArquivo, montarNotaTxt,
 } from '@/lib/orcamento-docx'
+import { docxParaPdf } from '@/lib/docx-to-pdf'
 import {
   isFolderScanSupported, pickOrcamentoFolder, getStoredFolderHandle,
   scanFolderForLastNumber, formatarNumero, ensureWritePermission,
@@ -284,19 +285,8 @@ export function OrcamentoBuilder() {
       data_venda: pgDataVenda ? formaPagamentoOut.data_venda : null,
     })
 
-    const pdfDoc = gerarOrcamentoPdf({
-      numero: orc.numero,
-      data: hoje.toLocaleDateString('pt-BR'),
-      cliente_nome: cliNome,
-      cliente_dados: cliDados,
-      voltagem: modeloSelecionado.voltagem,
-      itens, acessorios, motores,
-      total_equipamentos: totalEquip,
-      total_motores: totalMotores,
-      total_proposta: totalProposta,
-      observacoes: observacoes.trim() || null,
-    })
-    const pdfBlob = pdfDoc.output('blob')
+    // PDF identico ao Word: renderiza o .docx em HTML e captura como imagem
+    const pdfBlob = await docxParaPdf(docxBlob, { scale: 2 })
 
     const vendedor = profile?.display_name || 'Vendedor'
     const nota = montarNotaTxt(vendedor, hoje)

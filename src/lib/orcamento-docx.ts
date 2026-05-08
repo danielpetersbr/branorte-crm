@@ -63,57 +63,69 @@ function preencherCampo(xml: string, label: string, valor: string): string {
 }
 
 // Substitui ORÇAMENTO N° YYYY - NNNN — número fica quebrado em 2-3 runs
-// no Word (ex: "ORÇAMENTO N° 202" + "5" + " – 0000   "). Estratégia:
-// 1) Substitui "ORÇAMENTO N° 202" por "ORÇAMENTO N° {NUMERO}"
-// 2) Limpa runs seguintes que tem "5" sozinho ou "– 0000" preservando os espaços
+// no Word (ex: "ORÇAMENTO N° 202" + "5" + " – 0000   "). Estratégia robusta:
+// 1) Acha range [ORÇAMENTO ... DATA:] no XML
+// 2) Substitui texto do PRIMEIRO <w:t> contendo "ORÇAMENTO" pelo número completo
+// 3) Limpa TUDO o que sobrar de número (single digits, "– 0000") nos runs seguintes
+//    até DATA: — preserva os espaços de alinhamento
 function substituirNumero(xml: string, numero: string): string {
   const escaped = xmlEscape(numero)
-  let out = xml
 
-  // Caso "tudo num run só" (templates simples)
-  const reFull = /(<w:t(?:\s[^>]*)?>)([^<]*?ORÇAMENTO\s+N[°º]\s+)(202[0-9]\s*[\-–—]\s*[0-9]{1,4})([^<]*?)(<\/w:t>)/i
-  if (reFull.test(out)) {
-    return out.replace(reFull, (_m, openT, prefix, _oldNum, suffix, closeT) => {
-      const open = openT.includes('xml:space') ? openT : openT.replace('<w:t', '<w:t xml:space="preserve"')
-      return `${open}${prefix}${escaped}${suffix}${closeT}`
-    })
+  // Acha primeiro <w:t> que contem ORÇAMENTO
+  const orcRunRe = /<w:t(?:\s[^>]*)?>[^<]*?ORÇAMENTO\s+N[°º]\s+202[0-9]?[^<]*?<\/w:t>/i
+  const orcMatch = orcRunRe.exec(xml)
+  if (!orcMatch) {
+    // Fallback simples — só tenta substituir num run só
+    return xml.replace(
+      /(<w:t(?:\s[^>]*)?>)([^<]*?ORÇAMENTO\s+N[°º]\s+)(202[0-9]\s*[\-–—]\s*[0-9]{1,4})([^<]*?)(<\/w:t>)/i,
+      (_m, openT, prefix, _oldNum, suffix, closeT) => {
+        const open = openT.includes('xml:space') ? openT : openT.replace('<w:t', '<w:t xml:space="preserve"')
+        return `${open}${prefix}${escaped}${suffix}${closeT}`
+      },
+    )
   }
 
-  // Caso "número quebrado em runs" (Word real)
-  // Step 1: <w:t>ORÇAMENTO N° 202</w:t> → <w:t>ORÇAMENTO N° {NUMERO_COMPLETO}</w:t>
-  // Captura o início e troca pelo número completo
-  out = out.replace(
-    /(<w:t(?:\s[^>]*)?>)([^<]*?ORÇAMENTO\s+N[°º]\s+)202([0-9]?)(<\/w:t>)/i,
-    (_m, openT, prefix, _digit, closeT) => {
+  const startIdx = orcMatch.index
+  const orcRunEnd = startIdx + orcMatch[0].length
+
+  // Acha "DATA:" depois — define limite do range a limpar
+  const dataIdx = xml.indexOf('DATA', orcRunEnd)
+  const cutoff = dataIdx > 0 && dataIdx - orcRunEnd < 4000 ? dataIdx : orcRunEnd + 2000
+
+  // Step 1: substitui texto do primeiro run pelo número completo
+  const orcRunNova = orcMatch[0].replace(
+    /(<w:t(?:\s[^>]*)?>)([^<]*?ORÇAMENTO\s+N[°º]\s+)(202[0-9]?)([^<]*?)(<\/w:t>)/i,
+    (_m, openT, prefix, _digits, suffix, closeT) => {
       const open = openT.includes('xml:space') ? openT : openT.replace('<w:t', '<w:t xml:space="preserve"')
-      return `${open}${prefix}${escaped}${closeT}`
+      return `${open}${prefix}${escaped}${suffix}${closeT}`
     },
   )
 
-  // Step 2: zera o run isolado que tinha o último dígito do ano (ex: "5" sozinho)
-  // Match conservador: <w:t>UM_DIGITO</w:t> imediatamente após posição do número
-  // Identificamos pela proximidade ao "ORÇAMENTO" — limita a 200 chars depois
-  const idxOrc = out.indexOf(escaped)
-  if (idxOrc !== -1) {
-    const before = out.slice(0, idxOrc + escaped.length + 50)
-    const tail = out.slice(idxOrc + escaped.length + 50)
-    const tailFixed = tail
-      // Run "<w:t>5</w:t>" ou similar com 1 digito
-      .replace(/^([\s\S]{0,400}?)(<w:t(?:\s[^>]*)?>[0-9]<\/w:t>)/, (_m, pre, _run) => {
-        return pre + '<w:t></w:t>'
-      })
-      // Run "<w:t> – 0000   ...</w:t>" → "<w:t>   ...</w:t>" (mantém espaços p/ alinhamento)
-      .replace(
-        /(<w:t(?:\s[^>]*)?>)([^<]*?[\-–—]\s*0{2,4})([^<]*?)(<\/w:t>)/i,
-        (_m, openT, _numPart, suffix, closeT) => {
-          const open = openT.includes('xml:space') ? openT : openT.replace('<w:t', '<w:t xml:space="preserve"')
-          return `${open}${suffix}${closeT}`
-        },
-      )
-    out = before + tailFixed
-  }
+  // Step 2: no intervalo entre fim do run de ORÇAMENTO e DATA:, limpa residuos
+  const intervalo = xml.slice(orcRunEnd, cutoff)
+  const intervaloLimpo = intervalo
+    // Run com 1 digito sozinho (último dígito do ano em run separado)
+    .replace(/<w:t(\s[^>]*)?>[0-9]<\/w:t>/g, (m, attrs) => `<w:t${attrs || ''}></w:t>`)
+    // Run com "– 0000" / "- 0000" (zeros do placeholder) — preserva espaços de alinhamento
+    .replace(
+      /(<w:t(?:\s[^>]*)?>)([^<]*?)([\-–—]\s*0{2,5})([^<]*?)(<\/w:t>)/g,
+      (_m, openT, prefixSpaces, _dashZeros, suffixSpaces, closeT) => {
+        const open = openT.includes('xml:space') ? openT : openT.replace('<w:t', '<w:t xml:space="preserve"')
+        return `${open}${prefixSpaces}${suffixSpaces}${closeT}`
+      },
+    )
+    // Runs com APENAS "0000" (sem dash)
+    .replace(
+      /(<w:t(?:\s[^>]*)?>)([^<]*?)(0{3,5})([^<]*?)(<\/w:t>)/g,
+      (m, openT, prefixSpaces, _zeros, suffixSpaces, closeT) => {
+        // Só limpa se for o "0000" do placeholder (sem outros números antes/depois)
+        if (/[0-9]/.test(prefixSpaces) || /[0-9]/.test(suffixSpaces)) return m
+        const open = openT.includes('xml:space') ? openT : openT.replace('<w:t', '<w:t xml:space="preserve"')
+        return `${open}${prefixSpaces}${suffixSpaces}${closeT}`
+      },
+    )
 
-  return out
+  return xml.slice(0, startIdx) + orcRunNova + intervaloLimpo + xml.slice(cutoff)
 }
 
 // Substitui "Data da venda – a combinar" por data real
