@@ -85,7 +85,12 @@ const MESES_NOMES = [
 
 // Normaliza string removendo acentos/cedilha pra match insensivel
 function normalizeName(s: string): string {
-  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')  // remove diacriticos
+    .replace(/ç/g, 'c')                // safety
+    .trim()
 }
 
 // Detecta se um diretorio JA contem subpastas de meses (1 - Janeiro, etc.)
@@ -97,7 +102,7 @@ async function temPastasDeMeses(dirHandle: any): Promise<boolean> {
     for (const m of MESES_NOMES.slice(1)) {
       if (norm.includes(normalizeName(m))) {
         count++
-        if (count >= 2) return true  // pelo menos 2 meses → confirma
+        if (count >= 2) return true
         break
       }
     }
@@ -105,68 +110,93 @@ async function temPastasDeMeses(dirHandle: any): Promise<boolean> {
   return false
 }
 
-interface ObterPastaOpts {
-  data?: Date
-  /** Se true, pergunta antes de criar pasta nova. Default true. */
-  confirmCreate?: boolean
+// Navega ate Orçamentos {ano}/{N - Mes}/ criando se nao existir.
+// Aceita 3 cenarios pro rootHandle:
+//  A) Z:\1 - Comercial\3 - Orçamento\{ano}\  → procura "Orçamentos {ano}" dentro
+//  B) Z:\...\Orçamentos {ano}\               → ja e o container, pula 1 nivel
+//  C) Z:\...\{ano}\Orçamentos {ano}\{Mes}\   → ja e a propria pasta do mes
+//
+// NUNCA cria silenciosamente - se nao acha, retorna { ok: false, sugestao }
+export interface ResolveResult {
+  ok: boolean
+  pastaMes?: any
+  caminho?: string         // descricao do caminho navegado
+  motivo?: string          // descrição do problema se ok=false
+  sugestaoCriar?: () => Promise<any>  // funcao que cria a estrutura faltante e retorna handle
 }
 
-// Navega ate `Orçamentos {ano}\{N - Mes}\` criando se nao existir.
-// Aceita 3 cenarios pro rootHandle:
-//  A) Z:\1 - Comercial\3 - Orçamento\{ano}\  (entra em "Orçamentos {ano}", depois mes)
-//  B) Z:\1 - Comercial\3 - Orçamento\{ano}\Orçamentos {ano}\  (já é o container — pula 1 nivel)
-//  C) qualquer pasta que tenha 1-Janeiro, 2-Fevereiro, ... direto dentro
-export async function obterPastaDoMes(rootHandle: any, data: Date | ObterPastaOpts = new Date()): Promise<any> {
-  const opts: ObterPastaOpts = data instanceof Date ? { data } : (data as ObterPastaOpts)
-  const dt = opts.data || new Date()
-  const confirmCreate = opts.confirmCreate !== false
-
+export async function resolverPastaDoMes(rootHandle: any, dt: Date = new Date()): Promise<ResolveResult> {
   const ano = dt.getFullYear()
   const mes = dt.getMonth() + 1
   const mesNome = MESES_NOMES[mes]
 
-  // Detecta cenário B/C: rootHandle JA tem meses dentro? Use direto.
-  const rootJaTemMeses = await temPastasDeMeses(rootHandle)
-  let orcAnoHandle: any = rootJaTemMeses ? rootHandle : null
+  // Logs pra debug
+  const entriesNomes: string[] = []
+  for await (const [name, entry] of rootHandle.entries()) {
+    if (entry.kind === 'directory') entriesNomes.push(name)
+  }
 
-  // Cenário A: procurar "Orçamentos {ano}" dentro do root
-  if (!orcAnoHandle) {
+  // Cenário C: rootHandle É a pasta do mês? Olha o nome
+  const rootName = (rootHandle as any).name || ''
+  if (normalizeName(rootName).includes(normalizeName(mesNome))) {
+    return { ok: true, pastaMes: rootHandle, caminho: `(pasta selecionada é "${rootName}")` }
+  }
+
+  // Cenário B: rootHandle ja contem meses dentro
+  if (await temPastasDeMeses(rootHandle)) {
+    // Busca pasta do mes atual
     for await (const [name, entry] of rootHandle.entries()) {
       if (entry.kind !== 'directory') continue
-      const norm = normalizeName(name)
-      if (norm.includes(`orcamentos ${ano}`) || norm.includes(`orcamento ${ano}`)) {
-        orcAnoHandle = entry
-        break
+      if (normalizeName(name).includes(normalizeName(mesNome))) {
+        return { ok: true, pastaMes: entry, caminho: `${rootName}/${name}` }
+      }
+    }
+    // Achou meses mas não o atual — sugere criar
+    return {
+      ok: false,
+      motivo: `A pasta tem meses mas nao tem "${mes} - ${mesNome}".`,
+      sugestaoCriar: async () => {
+        return await rootHandle.getDirectoryHandle(`${mes} - ${mesNome}`, { create: true })
+      },
+    }
+  }
+
+  // Cenário A: procura "Orçamentos {ano}" dentro
+  for await (const [name, entry] of rootHandle.entries()) {
+    if (entry.kind !== 'directory') continue
+    const norm = normalizeName(name)
+    if (norm.includes(`orcamentos ${ano}`) || norm.includes(`orcamento ${ano}`)) {
+      // Achou — entra e procura mes
+      for await (const [mNome, mEntry] of entry.entries()) {
+        if (mEntry.kind !== 'directory') continue
+        if (normalizeName(mNome).includes(normalizeName(mesNome))) {
+          return { ok: true, pastaMes: mEntry, caminho: `${rootName}/${name}/${mNome}` }
+        }
+      }
+      // Não tem mes - sugere criar
+      return {
+        ok: false,
+        motivo: `Achei "${name}" mas falta "${mes} - ${mesNome}".`,
+        sugestaoCriar: async () => {
+          return await entry.getDirectoryHandle(`${mes} - ${mesNome}`, { create: true })
+        },
       }
     }
   }
 
-  if (!orcAnoHandle) {
-    if (confirmCreate) {
-      const ok = confirm(
-        `Não achei a pasta "Orçamentos ${ano}" dentro da pasta selecionada.\n\n` +
-        `Deseja CRIAR uma nova pasta "Orçamentos ${ano}" aqui?\n\n` +
-        `Se NÃO, cancele e selecione a pasta correta (geralmente Z:\\1 - Comercial\\3 - Orçamento\\${ano}).`
-      )
-      if (!ok) throw new Error('Operação cancelada — selecione a pasta correta')
-    }
-    orcAnoHandle = await rootHandle.getDirectoryHandle(`Orçamentos ${ano}`, { create: true })
+  // Nada encontrado — pasta selecionada parece errada
+  return {
+    ok: false,
+    motivo: `Pasta selecionada nao parece ser de orcamentos. Pastas dentro dela: ${entriesNomes.slice(0, 5).join(', ')}${entriesNomes.length > 5 ? '...' : ''}`,
   }
+}
 
-  // Procura pasta do mes ("5 - Maio", "05 - Maio", "Maio")
-  for await (const [name, entry] of orcAnoHandle.entries()) {
-    if (entry.kind !== 'directory') continue
-    const norm = normalizeName(name)
-    if (norm.includes(normalizeName(mesNome))) {
-      return entry
-    }
-  }
-  // Não achou — cria com confirmacao
-  if (confirmCreate) {
-    const ok = confirm(`Criar pasta "${mes} - ${mesNome}" dentro de "Orçamentos ${ano}"?`)
-    if (!ok) throw new Error('Operação cancelada')
-  }
-  return await orcAnoHandle.getDirectoryHandle(`${mes} - ${mesNome}`, { create: true })
+// API antiga (compat) — usa resolverPastaDoMes mas FALHA explicitamente sem confirm
+export async function obterPastaDoMes(rootHandle: any, data: Date = new Date()): Promise<any> {
+  const r = await resolverPastaDoMes(rootHandle, data)
+  if (r.ok) return r.pastaMes
+  if (r.sugestaoCriar) return await r.sugestaoCriar()
+  throw new Error(r.motivo || 'Pasta nao resolvida')
 }
 
 // Escreve um arquivo (texto ou blob) num diretorio

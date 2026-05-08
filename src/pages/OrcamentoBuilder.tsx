@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useCallback } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -21,7 +21,7 @@ import {
 import {
   isFolderScanSupported, pickOrcamentoFolder, getStoredFolderHandle,
   scanFolderForLastNumber, formatarNumero, ensureWritePermission,
-  obterPastaDoMes, escreverArquivo,
+  resolverPastaDoMes, escreverArquivo,
 } from '@/lib/orcamento-folder-scan'
 import { FolderOpen, RefreshCw, Calendar, CreditCard, FolderPlus } from 'lucide-react'
 import { construirFormaPagamento, type TipoPagamento, type FormaPagamentoConfig } from '@/lib/forma-pagamento'
@@ -256,9 +256,21 @@ export function OrcamentoBuilder() {
     const ok = await ensureWritePermission(handle)
     if (!ok) throw new Error('Permissão de escrita negada')
 
-    // 2) Navega ate Orçamentos {ano}\{mes}\
+    // 2) Resolve a pasta do mês (sem criar nova "Orçamentos {ano}" silenciosamente)
     const hoje = new Date()
-    const pastaMes = await obterPastaDoMes(handle, hoje)
+    const resolved = await resolverPastaDoMes(handle, hoje)
+    let pastaMes
+    if (resolved.ok) {
+      pastaMes = resolved.pastaMes
+    } else if (resolved.sugestaoCriar) {
+      // Só falta a pasta do mês — criar é seguro
+      pastaMes = await resolved.sugestaoCriar()
+    } else {
+      throw new Error(
+        `Pasta selecionada errada. ${resolved.motivo}\n\n` +
+        `Use "Reler pasta" e selecione: Z:\\1 - Comercial\\3 - Orçamento\\${hoje.getFullYear()}`
+      )
+    }
 
     // 3) Gera os 3 arquivos
     const docxBlob = await gerarOrcamentoDocx({
