@@ -112,6 +112,7 @@ export function OrcamentoBuilder() {
   const [orcamentoSalvo, setOrcamentoSalvo] = useState<{ numero: string; id: number } | null>(null)
   const [scanInfo, setScanInfo] = useState<{ ultimo: number; total: number; ano: number } | null>(null)
   const [scanLoading, setScanLoading] = useState(false)
+  const [numeroFonte, setNumeroFonte] = useState<'pasta' | 'banco' | null>(null)
 
   const modeloSelecionado = useMemo(
     () => modelos?.find(m => m.id === modeloId) ?? null,
@@ -166,6 +167,7 @@ export function OrcamentoBuilder() {
             const scan = await scanFolderForLastNumber(handle)
             setScanInfo({ ultimo: scan.ultimoNumero, total: scan.total, ano: scan.ano })
             setNumeroAtual(formatarNumero(scan.ano, scan.proximoNumero))
+            setNumeroFonte('pasta')
             return
           }
         } catch {}
@@ -173,8 +175,10 @@ export function OrcamentoBuilder() {
         try {
           const r = await obterProximoNumero()
           setNumeroAtual(r.numero)
+          setNumeroFonte('banco')
         } catch {
           setNumeroAtual('—')
+          setNumeroFonte(null)
         }
       })()
     }
@@ -187,8 +191,10 @@ export function OrcamentoBuilder() {
       const scan = await scanFolderForLastNumber(handle)
       setScanInfo({ ultimo: scan.ultimoNumero, total: scan.total, ano: scan.ano })
       setNumeroAtual(formatarNumero(scan.ano, scan.proximoNumero))
+      setNumeroFonte('pasta')
     } catch (e) {
-      alert('Erro: ' + (e as Error).message)
+      const msg = (e as Error).message
+      if (!/abort|cancel/i.test(msg)) alert('Erro: ' + msg)
     } finally {
       setScanLoading(false)
     }
@@ -199,18 +205,15 @@ export function OrcamentoBuilder() {
     try {
       let handle = await getStoredFolderHandle()
       if (!handle) {
-        // Não tem pasta salva — abre picker direto (sem alert)
         handle = await pickOrcamentoFolder()
       }
       const scan = await scanFolderForLastNumber(handle)
       setScanInfo({ ultimo: scan.ultimoNumero, total: scan.total, ano: scan.ano })
       setNumeroAtual(formatarNumero(scan.ano, scan.proximoNumero))
+      setNumeroFonte('pasta')
     } catch (e) {
-      // Usuário cancelou o picker — silencioso
       const msg = (e as Error).message
-      if (!/abort|cancel/i.test(msg)) {
-        alert('Erro: ' + msg)
-      }
+      if (!/abort|cancel/i.test(msg)) alert('Erro: ' + msg)
     } finally {
       setScanLoading(false)
     }
@@ -863,46 +866,54 @@ export function OrcamentoBuilder() {
 
           {/* Sincronizar com pasta Z: */}
           {isFolderScanSupported() ? (
-            <div className="p-3 bg-info-bg/15 border border-info/30 rounded-md space-y-2">
-              <div className="flex items-center gap-2 flex-wrap">
-                <FolderOpen className="h-4 w-4 text-info shrink-0" />
-                <span className="text-[12px] font-semibold text-info">Próximo número</span>
-                <span className="flex-1" />
-                {scanInfo ? (
-                  <button
-                    type="button"
-                    disabled={scanLoading}
-                    onClick={handleRescanFolder}
-                    title="Reler pasta atual"
-                    className="text-[11px] px-2.5 py-1 rounded bg-info/20 hover:bg-info/30 text-info font-semibold flex items-center gap-1"
-                  >
-                    <RefreshCw className={`h-3 w-3 ${scanLoading ? 'animate-spin' : ''}`} />
-                    {scanLoading ? 'Lendo...' : 'Reler pasta'}
-                  </button>
-                ) : (
+            numeroFonte === 'banco' ? (
+              <div className="p-4 bg-danger-bg/15 border-2 border-danger/40 rounded-md space-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[18px]">⚠️</span>
+                  <span className="text-[13px] font-bold text-danger">Número provisório do banco</span>
+                  <span className="flex-1" />
                   <button
                     type="button"
                     disabled={scanLoading}
                     onClick={handlePickFolder}
-                    className="text-[11px] px-2.5 py-1 rounded bg-info/20 hover:bg-info/30 text-info font-semibold flex items-center gap-1"
+                    className="text-[12px] px-3 py-1.5 rounded bg-danger hover:bg-danger-700 disabled:opacity-50 text-white font-bold flex items-center gap-1.5"
                   >
-                    <FolderOpen className="h-3 w-3" />
-                    {scanLoading ? 'Lendo...' : 'Escolher pasta Z:'}
+                    <FolderOpen className="h-3.5 w-3.5" />
+                    {scanLoading ? 'Lendo...' : 'Escolher pasta Z: (correto)'}
                   </button>
+                </div>
+                <div className="text-[11px] text-ink-muted">
+                  O número exibido vem do banco do CRM (que pode estar atrás dos arquivos reais). Pra ler direto da pasta Z:, clique no botão e selecione:
+                </div>
+                <code className="block text-[11px] bg-surface-3 px-2 py-1 rounded font-mono text-ink">Z:\1 - Comercial\3 - Orçamento\2026</code>
+                <div className="text-[10px] text-ink-faint">O navegador lembra essa permissão e usa o número correto da próxima vez.</div>
+              </div>
+            ) : (
+              <div className="p-3 bg-success-bg/15 border border-success/30 rounded-md space-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <FolderOpen className="h-4 w-4 text-success shrink-0" />
+                  <span className="text-[12px] font-semibold text-success">Lido direto da pasta Z:</span>
+                  <span className="flex-1" />
+                  <button
+                    type="button"
+                    disabled={scanLoading}
+                    onClick={handleRescanFolder}
+                    title="Reler pasta"
+                    className="text-[11px] px-2.5 py-1 rounded bg-success/20 hover:bg-success/30 text-success font-semibold flex items-center gap-1"
+                  >
+                    <RefreshCw className={`h-3 w-3 ${scanLoading ? 'animate-spin' : ''}`} />
+                    {scanLoading ? 'Lendo...' : 'Reler pasta'}
+                  </button>
+                </div>
+                {scanInfo && (
+                  <div className="text-[11px] text-ink-muted">
+                    {scanInfo.total} arquivos de {scanInfo.ano}
+                    {' · '}último: <strong className="text-ink font-mono">{formatarNumero(scanInfo.ano, scanInfo.ultimo)}</strong>
+                    {' · '}próximo: <strong className="text-success font-mono">{formatarNumero(scanInfo.ano, scanInfo.ultimo + 1)}</strong>
+                  </div>
                 )}
               </div>
-              {scanInfo ? (
-                <div className="text-[11px] text-ink-muted">
-                  Pasta lida: <strong className="text-ink">{scanInfo.total} arquivos</strong> de {scanInfo.ano}
-                  {' · '}último: <strong className="text-ink font-mono">{formatarNumero(scanInfo.ano, scanInfo.ultimo)}</strong>
-                  {' · '}próximo: <strong className="text-success font-mono">{formatarNumero(scanInfo.ano, scanInfo.ultimo + 1)}</strong>
-                </div>
-              ) : (
-                <div className="text-[11px] text-ink-muted">
-                  Número atual vem do banco. Pra ler direto da pasta Z:, clique em "Escolher pasta Z:" e selecione <code className="bg-surface-3 px-1 rounded">Z:\1 - Comercial\3 - Orçamento\2026</code>. O navegador lembra a permissão.
-                </div>
-              )}
-            </div>
+            )
           ) : (
             <div className="p-2 bg-warning-bg/15 border border-warning/30 rounded-md text-[11px] text-warning">
               Seu navegador não suporta leitura da pasta Z: (use Chrome ou Edge). Número está vindo do banco.
@@ -911,9 +922,13 @@ export function OrcamentoBuilder() {
 
           {/* Resumo do orçamento */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[12px]">
-            <div className="p-3 bg-surface-2 rounded-md">
-              <div className="text-[10px] uppercase tracking-wider text-ink-muted mb-1">Número</div>
-              <div className="font-mono font-bold text-accent text-[16px]">{numeroAtual || 'carregando...'}</div>
+            <div className={`p-3 rounded-md ${numeroFonte === 'banco' ? 'bg-danger-bg/20 border border-danger/30' : 'bg-surface-2'}`}>
+              <div className={`text-[10px] uppercase tracking-wider mb-1 ${numeroFonte === 'banco' ? 'text-danger' : 'text-ink-muted'}`}>
+                Número {numeroFonte === 'pasta' ? '(da pasta Z:)' : numeroFonte === 'banco' ? '(provisório do banco ⚠️)' : ''}
+              </div>
+              <div className={`font-mono font-bold text-[16px] ${numeroFonte === 'banco' ? 'text-danger' : 'text-success'}`}>
+                {numeroAtual || 'carregando...'}
+              </div>
             </div>
             <div className="p-3 bg-surface-2 rounded-md">
               <div className="text-[10px] uppercase tracking-wider text-ink-muted mb-1">Cliente</div>
