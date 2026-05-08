@@ -10,7 +10,6 @@
     "import": "npx tsx scripts/import-contacts.ts"
   },
   "dependencies": {
-    "@nativedocuments/docx-wasm": "^2.2.13-1561490777",
     "@supabase/supabase-js": "^2.39.0",
     "@tanstack/react-query": "^5.17.0",
     "clsx": "^2.1.0",

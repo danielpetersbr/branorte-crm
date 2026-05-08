@@ -19,7 +19,6 @@ import {
   baixarOrcamentoDocx, gerarOrcamentoDocx, nomeBaseArquivo, montarNotaTxt,
 } from '@/lib/orcamento-docx'
 import { docxParaPdf } from '@/lib/docx-to-pdf'
-import { isDocxWasmConfigured, gerarPdfDoDocxWasm } from '@/lib/docx-wasm-pdf'
 import {
   isFolderScanSupported, pickOrcamentoFolder, getStoredFolderHandle,
   scanFolderForLastNumber, formatarNumero, ensureWritePermission,
@@ -286,15 +285,8 @@ export function OrcamentoBuilder() {
       data_venda: pgDataVenda ? formaPagamentoOut.data_venda : null,
     })
 
-    // PDF idêntico ao Word via docx-wasm (NativeDocuments) — só se configurado
-    let pdfBlob: Blob | null = null
-    if (isDocxWasmConfigured()) {
-      try {
-        pdfBlob = await gerarPdfDoDocxWasm(docxBlob)
-      } catch (e) {
-        console.warn('Falha gerar PDF via docx-wasm, salvando só .docx:', e)
-      }
-    }
+    // PDF: vendedor abre o .docx no Word e salva como PDF (idêntico)
+    const pdfBlob: Blob | null = null
 
     const vendedor = profile?.display_name || 'Vendedor'
     const nota = montarNotaTxt(vendedor, hoje)
@@ -448,13 +440,11 @@ export function OrcamentoBuilder() {
             Cliente: <strong>{cliNome}</strong> · Total: <strong>{formatBRL(totalProposta)}</strong>
           </p>
           <p className="text-[12px] text-ink-faint mb-2">
-            📁 Salvo em <code className="bg-surface-3 px-1 rounded">Orçamentos 2026 / {mes}</code> ({isDocxWasmConfigured() ? '.docx + .pdf + .txt' : '.docx + .txt'})
+            📁 Salvo em <code className="bg-surface-3 px-1 rounded">Orçamentos 2026 / {mes}</code> (.docx + .txt)
           </p>
-          {!isDocxWasmConfigured() && (
-            <p className="text-[11px] text-warning mb-6">
-              📑 <strong>PDF:</strong> abra o .docx no Word, Ctrl+P → "Microsoft Print to PDF" → salve na mesma pasta.
-            </p>
-          )}
+          <p className="text-[11px] text-warning mb-6">
+            📑 <strong>PDF:</strong> abra o .docx no Word, Ctrl+P → "Microsoft Print to PDF" → salve na mesma pasta.
+          </p>
           <div className="flex gap-3 justify-center">
             <button
               className="bg-accent hover:bg-accent-700 text-white font-semibold px-5 py-2.5 rounded-md flex items-center gap-2"
@@ -1202,14 +1192,9 @@ export function OrcamentoBuilder() {
             <p><strong>"Salvar na pasta Z:"</strong> grava em <code className="bg-surface-3 px-1 rounded">Z:\1 - Comercial\3 - Orçamento\2026\Orçamentos 2026\{`{mês}`}\</code>:</p>
             <ul className="ml-4 space-y-0.5 text-[10px]">
               <li>📄 <code>{`{numero}`} - Cliente.docx</code> (formato oficial Branorte)</li>
-              {isDocxWasmConfigured() && (
-                <li>📑 <code>{`{numero}`} - Cliente.pdf</code> (idêntico ao Word — gerado por docx-wasm)</li>
-              )}
               <li>📝 <code>{`{numero}`} - Cliente - {profile?.display_name || 'Vendedor'}.txt</code> (data de envio)</li>
             </ul>
-            {!isDocxWasmConfigured() && (
-              <p className="text-[10px] mt-2">📑 <strong>PDF não configurado.</strong> Pra gerar PDF automaticamente igual ao Word, configure as envs <code className="bg-surface-3 px-1 rounded">VITE_ND_DEV_ID</code> + <code className="bg-surface-3 px-1 rounded">VITE_ND_DEV_SECRET</code> no Vercel (registrar em developers.nativedocuments.com).</p>
-            )}
+            <p className="text-[10px] mt-2">📑 <strong>PDF:</strong> abra o .docx no Word e use Ctrl+P → "Microsoft Print to PDF" → salve na mesma pasta. Word produz PDF 100% idêntico.</p>
             <p className="text-[10px]">Se a pasta do mês não existir, é criada automaticamente.</p>
           </div>
 
