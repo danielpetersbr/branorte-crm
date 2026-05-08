@@ -30,8 +30,26 @@ const ALIASES: Record<string, string> = {
   'RESOLVIDOS': 'RESOLVIDO',
 }
 
+// Etiquetas que NÃO fazem parte do funil — não devem aparecer no painel
+const ETIQUETAS_HIDDEN = new Set([
+  'BRANORTE',
+  'TRANSPORTADORAS',
+  'TRANSPORTADORA',
+  'FAVORITOS',
+  'GRUPOS',
+  'NAO LIDAS',
+  'NAO LIDA',
+  'FUNCIONARIO',
+  'FUNCIONARIOS',
+  'PESSOAL',
+])
+
 function canonicalize(nomeNormalizado: string): string {
   return ALIASES[nomeNormalizado] ?? nomeNormalizado
+}
+
+export function isEtiquetaFunil(nomeCanonico: string): boolean {
+  return !ETIQUETAS_HIDDEN.has(nomeCanonico)
 }
 
 // Variantes de phone pra match em atendimentos (com/sem 55)
@@ -202,14 +220,18 @@ export function usePainelEtiquetas() {
         }
       })
 
-      // 5) Agregação por etiqueta canônica
+      // 5) Agregação por etiqueta canônica (filtrando lixo)
       const aggMap = new Map<string, AggregacaoEtiqueta>()
       const vendSet = new Set<string>()
       for (const chat of chatsEnriquecidos) {
         if (chat.vendedor) vendSet.add(chat.vendedor)
         const aguardando = chat.lastMessageFromMe === false  // cliente foi o último a falar
-        // Cada chat conta uma vez por etiqueta canônica única
-        const canonsDoChat = new Set(chat.etiquetas.map(e => e.nomeCanonico))
+        // Cada chat conta uma vez por etiqueta canônica única (apenas etiquetas de funil)
+        const canonsDoChat = new Set(
+          chat.etiquetas
+            .map(e => e.nomeCanonico)
+            .filter(isEtiquetaFunil)
+        )
         for (const canon of canonsDoChat) {
           if (!aggMap.has(canon)) {
             aggMap.set(canon, {

@@ -119,6 +119,8 @@ export function PainelEtiquetas() {
 
   const t = data.totaisGerais
   const pctParado = t.chats > 0 ? (t.parado / t.chats) * 100 : 0
+  // Detecta se ainda não chegou dado temporal (extensão antiga em todos vendedores)
+  const semDadoTemporal = t.chats > 0 && t.semDado === t.chats
 
   return (
     <div className="p-4 md:p-6 space-y-4 max-w-[1600px] mx-auto">
@@ -133,6 +135,20 @@ export function PainelEtiquetas() {
         </p>
       </header>
 
+      {/* Banner: extensão antiga (sem dado temporal) */}
+      {semDadoTemporal && (
+        <Card className="p-3 border-warning/40 bg-warning-bg/15">
+          <p className="text-[12px] text-warning font-medium flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            Status temporal indisponível
+          </p>
+          <p className="text-[11px] text-ink-muted mt-1">
+            Os vendedores precisam atualizar a extensão Branorte WA Sync para a versão mais recente (≥ 0.57.0).
+            Após atualizar, em ~30s os dados de "fresco/parado/aguardando" começam a aparecer aqui.
+          </p>
+        </Card>
+      )}
+
       {/* Kanban-style: cada etiqueta com contagem de parados + aguardando em destaque */}
       <div className="overflow-x-auto -mx-4 md:-mx-6 px-4 md:px-6 pb-2">
         <div className="flex gap-2 min-w-max">
@@ -140,6 +156,7 @@ export function PainelEtiquetas() {
             const cor = corDaEtiqueta(e.nomeCanonico)
             const pctParado = e.total > 0 ? (e.parado / e.total) * 100 : 0
             const isAlerta = e.parado > 0 && pctParado >= 50
+            const semTemporal = e.fresco === 0 && e.recente === 0 && e.parado === 0
             return (
               <button
                 key={e.nomeCanonico}
@@ -151,52 +168,72 @@ export function PainelEtiquetas() {
                   <div className="text-[11px] font-bold uppercase tracking-wider truncate flex-1" style={{ color: cor }}>
                     {e.nomeCanonico}
                   </div>
-                  <div className="text-[11px] font-bold tabular-nums px-1.5 py-0.5 rounded bg-surface-2 text-ink shrink-0">
+                </div>
+                {/* Total grande — sempre */}
+                <div className="flex items-baseline gap-1.5 mb-2">
+                  <span className="text-[28px] font-bold tabular-nums leading-none text-ink">
                     {e.total}
-                  </div>
+                  </span>
+                  <span className="text-[10px] uppercase tracking-wider text-ink-faint">
+                    chats
+                  </span>
                 </div>
                 {/* Aguardando resposta — destaque máximo (cliente esperando) */}
                 {e.aguardando > 0 && (
                   <div className="flex items-baseline gap-1.5 mb-1.5 px-2 py-1 rounded bg-warning-bg/30 border border-warning/30">
                     <Reply className="h-3 w-3 text-warning shrink-0" />
-                    <span className="text-[18px] font-bold tabular-nums leading-none text-warning">
+                    <span className="text-[16px] font-bold tabular-nums leading-none text-warning">
                       {e.aguardando}
                     </span>
                     <span className="text-[9px] uppercase tracking-wider text-warning font-bold">
-                      aguardando você
+                      aguardando
                     </span>
                   </div>
                 )}
-                {/* Parados em destaque */}
-                <div className="flex items-baseline gap-1.5 mb-2">
-                  <span className={`text-[22px] font-bold tabular-nums leading-none ${isAlerta ? 'text-danger' : 'text-ink'}`}>
-                    {e.parado}
-                  </span>
-                  <span className="text-[10px] uppercase tracking-wider text-ink-faint">
-                    parados ({pctParado.toFixed(0)}%)
-                  </span>
-                </div>
-                {/* Mini barra empilhada */}
-                <div className="flex h-1.5 rounded-full overflow-hidden bg-surface-2">
-                  {e.fresco > 0 && (
-                    <div style={{ flex: e.fresco, backgroundColor: STATUS_COLORS.fresco }} title={`${e.fresco} frescos`} />
-                  )}
-                  {e.recente > 0 && (
-                    <div style={{ flex: e.recente, backgroundColor: STATUS_COLORS.recente }} title={`${e.recente} recentes`} />
-                  )}
-                  {e.parado > 0 && (
-                    <div style={{ flex: e.parado, backgroundColor: STATUS_COLORS.parado }} title={`${e.parado} parados`} />
-                  )}
-                  {e.semDado > 0 && (
-                    <div style={{ flex: e.semDado, backgroundColor: STATUS_COLORS.semDado }} title={`${e.semDado} sem dado`} />
-                  )}
-                </div>
-                {/* Detalhe miúdo */}
-                <div className="mt-1.5 flex items-center justify-between text-[9px] text-ink-faint tabular-nums">
-                  <span>🟢 {e.fresco}</span>
-                  <span>🟡 {e.recente}</span>
-                  <span className={isAlerta ? 'text-danger font-bold' : ''}>🔴 {e.parado}</span>
-                  {e.semDado > 0 && <span>⚫ {e.semDado}</span>}
+                {/* Parados (apenas se houver dado temporal) */}
+                {!semTemporal && (
+                  <>
+                    <div className="flex items-baseline gap-1.5 mb-2">
+                      <span className={`text-[18px] font-bold tabular-nums leading-none ${isAlerta ? 'text-danger' : 'text-ink'}`}>
+                        {e.parado}
+                      </span>
+                      <span className="text-[10px] uppercase tracking-wider text-ink-faint">
+                        parados ({pctParado.toFixed(0)}%)
+                      </span>
+                    </div>
+                    <div className="flex h-1.5 rounded-full overflow-hidden bg-surface-2">
+                      {e.fresco > 0 && (
+                        <div style={{ flex: e.fresco, backgroundColor: STATUS_COLORS.fresco }} title={`${e.fresco} frescos`} />
+                      )}
+                      {e.recente > 0 && (
+                        <div style={{ flex: e.recente, backgroundColor: STATUS_COLORS.recente }} title={`${e.recente} recentes`} />
+                      )}
+                      {e.parado > 0 && (
+                        <div style={{ flex: e.parado, backgroundColor: STATUS_COLORS.parado }} title={`${e.parado} parados`} />
+                      )}
+                      {e.semDado > 0 && (
+                        <div style={{ flex: e.semDado, backgroundColor: STATUS_COLORS.semDado }} title={`${e.semDado} sem dado`} />
+                      )}
+                    </div>
+                    <div className="mt-1.5 flex items-center justify-between text-[9px] text-ink-faint tabular-nums">
+                      <span>🟢 {e.fresco}</span>
+                      <span>🟡 {e.recente}</span>
+                      <span className={isAlerta ? 'text-danger font-bold' : ''}>🔴 {e.parado}</span>
+                      {e.semDado > 0 && <span>⚫ {e.semDado}</span>}
+                    </div>
+                  </>
+                )}
+                {/* Por vendedor (sempre visível) */}
+                <div className="mt-2 pt-2 border-t border-border/50 space-y-0.5">
+                  {Object.entries(e.porVendedor)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 4)
+                    .map(([vend, count]) => (
+                      <div key={vend} className="flex items-center justify-between text-[10px] text-ink-faint">
+                        <span className="truncate">{vend.split(' ')[0]}</span>
+                        <span className="tabular-nums font-bold text-ink-muted">{count}</span>
+                      </div>
+                    ))}
                 </div>
               </button>
             )
@@ -204,7 +241,8 @@ export function PainelEtiquetas() {
         </div>
       </div>
 
-      {/* KPIs */}
+      {/* KPIs (só com dado temporal) */}
+      {!semDadoTemporal && (
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <Card className="p-4">
           <div className="text-[10px] uppercase tracking-wider text-ink-muted font-medium flex items-center gap-1">
@@ -247,13 +285,42 @@ export function PainelEtiquetas() {
           <div className="text-[10px] text-ink-faint mt-0.5">cliente foi o último</div>
         </Card>
       </div>
+      )}
+
+      {/* KPIs simplificados quando sem dado temporal */}
+      {semDadoTemporal && (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <Card className="p-4">
+            <div className="text-[10px] uppercase tracking-wider text-ink-muted font-medium flex items-center gap-1">
+              <Activity className="h-3 w-3" />
+              Total de chats
+            </div>
+            <div className="mt-1 text-[24px] font-bold tabular-nums text-ink">{formatNumber(t.chats)}</div>
+            <div className="text-[10px] text-ink-faint mt-0.5">com etiqueta</div>
+          </Card>
+          <Card className="p-4">
+            <div className="text-[10px] uppercase tracking-wider text-ink-muted font-medium">
+              Etiquetas no funil
+            </div>
+            <div className="mt-1 text-[24px] font-bold tabular-nums text-ink">{data.porEtiqueta.length}</div>
+            <div className="text-[10px] text-ink-faint mt-0.5">categorias usadas</div>
+          </Card>
+          <Card className="p-4">
+            <div className="text-[10px] uppercase tracking-wider text-ink-muted font-medium">
+              Vendedores ativos
+            </div>
+            <div className="mt-1 text-[24px] font-bold tabular-nums text-ink">{data.vendedores.length}</div>
+            <div className="text-[10px] text-ink-faint mt-0.5">sincronizando</div>
+          </Card>
+        </div>
+      )}
 
       {/* Stacked bar: chats por etiqueta */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="p-4 lg:col-span-2">
+      <div className={`grid grid-cols-1 ${semDadoTemporal ? '' : 'lg:grid-cols-3'} gap-4`}>
+        <Card className={`p-4 ${semDadoTemporal ? '' : 'lg:col-span-2'}`}>
           <h2 className="text-[13px] font-semibold text-ink mb-3 flex items-center gap-2">
             <BarChart3 className="h-4 w-4 text-accent" />
-            Chats por etiqueta (status temporal)
+            Chats por etiqueta {semDadoTemporal ? '' : '(status temporal)'}
           </h2>
           <ResponsiveContainer width="100%" height={Math.max(360, dadosBarras.length * 32)}>
             <BarChart data={dadosBarras} layout="vertical" margin={{ top: 0, right: 30, left: 0, bottom: 0 }}>
@@ -271,43 +338,55 @@ export function PainelEtiquetas() {
                 contentStyle={{ background: '#11151c', border: '1px solid #1f2937', borderRadius: 6, fontSize: 11 }}
                 formatter={(v: number, name: string) => [v, name]}
               />
-              <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
-              <Bar dataKey="Fresco" stackId="a" fill={STATUS_COLORS.fresco} onClick={(d: any) => setFiltroEtiqueta(d.nome)} cursor="pointer" />
-              <Bar dataKey="Recente" stackId="a" fill={STATUS_COLORS.recente} onClick={(d: any) => setFiltroEtiqueta(d.nome)} cursor="pointer" />
-              <Bar dataKey="Parado" stackId="a" fill={STATUS_COLORS.parado} onClick={(d: any) => setFiltroEtiqueta(d.nome)} cursor="pointer" />
-              <Bar dataKey="SemDado" stackId="a" fill={STATUS_COLORS.semDado} onClick={(d: any) => setFiltroEtiqueta(d.nome)} cursor="pointer">
-                <LabelList dataKey="total" position="right" style={{ fontSize: 11, fill: '#e7e9ee', fontWeight: 700 }} />
-              </Bar>
+              {semDadoTemporal ? (
+                // Sem dado temporal: barra única com cor da etiqueta
+                <Bar dataKey="total" onClick={(d: any) => setFiltroEtiqueta(d.nome)} cursor="pointer">
+                  {dadosBarras.map((d, i) => <Cell key={i} fill={corDaEtiqueta(d.nome)} />)}
+                  <LabelList dataKey="total" position="right" style={{ fontSize: 11, fill: '#e7e9ee', fontWeight: 700 }} />
+                </Bar>
+              ) : (
+                <>
+                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
+                  <Bar dataKey="Fresco" stackId="a" fill={STATUS_COLORS.fresco} onClick={(d: any) => setFiltroEtiqueta(d.nome)} cursor="pointer" />
+                  <Bar dataKey="Recente" stackId="a" fill={STATUS_COLORS.recente} onClick={(d: any) => setFiltroEtiqueta(d.nome)} cursor="pointer" />
+                  <Bar dataKey="Parado" stackId="a" fill={STATUS_COLORS.parado} onClick={(d: any) => setFiltroEtiqueta(d.nome)} cursor="pointer" />
+                  <Bar dataKey="SemDado" stackId="a" fill={STATUS_COLORS.semDado} onClick={(d: any) => setFiltroEtiqueta(d.nome)} cursor="pointer">
+                    <LabelList dataKey="total" position="right" style={{ fontSize: 11, fill: '#e7e9ee', fontWeight: 700 }} />
+                  </Bar>
+                </>
+              )}
             </BarChart>
           </ResponsiveContainer>
         </Card>
 
-        <Card className="p-4">
-          <h2 className="text-[13px] font-semibold text-ink mb-3 flex items-center gap-2">
-            <Activity className="h-4 w-4 text-accent" />
-            Distribuição geral
-          </h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={dadosPie}
-                dataKey="value"
-                nameKey="name"
-                cx="50%" cy="50%"
-                innerRadius={50} outerRadius={90}
-                paddingAngle={2}
-                label={(d: any) => `${d.value}`}
-                labelLine={false}
-              >
-                {dadosPie.map((d, i) => <Cell key={i} fill={d.fill} />)}
-              </Pie>
-              <Tooltip
-                contentStyle={{ background: '#11151c', border: '1px solid #1f2937', borderRadius: 6, fontSize: 11 }}
-              />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-            </PieChart>
-          </ResponsiveContainer>
-        </Card>
+        {!semDadoTemporal && (
+          <Card className="p-4">
+            <h2 className="text-[13px] font-semibold text-ink mb-3 flex items-center gap-2">
+              <Activity className="h-4 w-4 text-accent" />
+              Distribuição geral
+            </h2>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={dadosPie}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%" cy="50%"
+                  innerRadius={50} outerRadius={90}
+                  paddingAngle={2}
+                  label={(d: any) => `${d.value}`}
+                  labelLine={false}
+                >
+                  {dadosPie.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                </Pie>
+                <Tooltip
+                  contentStyle={{ background: '#11151c', border: '1px solid #1f2937', borderRadius: 6, fontSize: 11 }}
+                />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </Card>
+        )}
       </div>
 
       {/* Detalhe quando clica numa etiqueta */}
@@ -421,15 +500,17 @@ export function PainelEtiquetas() {
       )}
 
       {/* Footer com legenda */}
-      <Card className="p-3 bg-surface-2/30">
-        <div className="flex flex-wrap items-center gap-3 text-[11px]">
-          <span className="text-ink-muted font-medium">Status temporal (última mensagem):</span>
-          <StatusBadge status="fresco" />
-          <StatusBadge status="recente" />
-          <StatusBadge status="parado" />
-          <StatusBadge status="semDado" />
-        </div>
-      </Card>
+      {!semDadoTemporal && (
+        <Card className="p-3 bg-surface-2/30">
+          <div className="flex flex-wrap items-center gap-3 text-[11px]">
+            <span className="text-ink-muted font-medium">Status temporal (última mensagem):</span>
+            <StatusBadge status="fresco" />
+            <StatusBadge status="recente" />
+            <StatusBadge status="parado" />
+            <StatusBadge status="semDado" />
+          </div>
+        </Card>
+      )}
     </div>
   )
 }
