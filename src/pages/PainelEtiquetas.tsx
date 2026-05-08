@@ -133,6 +133,65 @@ export function PainelEtiquetas() {
         </p>
       </header>
 
+      {/* Kanban-style: cada etiqueta com contagem de parados em destaque */}
+      <div className="overflow-x-auto -mx-4 md:-mx-6 px-4 md:px-6 pb-2">
+        <div className="flex gap-2 min-w-max">
+          {data.porEtiqueta.slice(0, 12).map(e => {
+            const cor = corDaEtiqueta(e.nomeCanonico)
+            const pctParado = e.total > 0 ? (e.parado / e.total) * 100 : 0
+            const isAlerta = e.parado > 0 && pctParado >= 50
+            return (
+              <button
+                key={e.nomeCanonico}
+                onClick={() => setFiltroEtiqueta(e.nomeCanonico)}
+                className="text-left rounded-lg border bg-bg hover:bg-surface-2/50 transition-all p-3 min-w-[180px] shrink-0"
+                style={{ borderColor: cor + '55', borderTopWidth: '3px', borderTopColor: cor }}
+              >
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="text-[11px] font-bold uppercase tracking-wider truncate flex-1" style={{ color: cor }}>
+                    {e.nomeCanonico}
+                  </div>
+                  <div className="text-[11px] font-bold tabular-nums px-1.5 py-0.5 rounded bg-surface-2 text-ink shrink-0">
+                    {e.total}
+                  </div>
+                </div>
+                {/* Parados em destaque */}
+                <div className="flex items-baseline gap-1.5 mb-2">
+                  <span className={`text-[24px] font-bold tabular-nums leading-none ${isAlerta ? 'text-danger' : 'text-ink'}`}>
+                    {e.parado}
+                  </span>
+                  <span className="text-[10px] uppercase tracking-wider text-ink-faint">
+                    parados ({pctParado.toFixed(0)}%)
+                  </span>
+                </div>
+                {/* Mini barra empilhada */}
+                <div className="flex h-1.5 rounded-full overflow-hidden bg-surface-2">
+                  {e.fresco > 0 && (
+                    <div style={{ flex: e.fresco, backgroundColor: STATUS_COLORS.fresco }} title={`${e.fresco} frescos`} />
+                  )}
+                  {e.recente > 0 && (
+                    <div style={{ flex: e.recente, backgroundColor: STATUS_COLORS.recente }} title={`${e.recente} recentes`} />
+                  )}
+                  {e.parado > 0 && (
+                    <div style={{ flex: e.parado, backgroundColor: STATUS_COLORS.parado }} title={`${e.parado} parados`} />
+                  )}
+                  {e.semDado > 0 && (
+                    <div style={{ flex: e.semDado, backgroundColor: STATUS_COLORS.semDado }} title={`${e.semDado} sem dado`} />
+                  )}
+                </div>
+                {/* Detalhe miúdo */}
+                <div className="mt-1.5 flex items-center justify-between text-[9px] text-ink-faint tabular-nums">
+                  <span>🟢 {e.fresco}</span>
+                  <span>🟡 {e.recente}</span>
+                  <span className={isAlerta ? 'text-danger font-bold' : ''}>🔴 {e.parado}</span>
+                  {e.semDado > 0 && <span>⚫ {e.semDado}</span>}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card className="p-4">
