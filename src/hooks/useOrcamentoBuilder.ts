@@ -185,9 +185,22 @@ export function useCriarOrcamento() {
   return useMutation({
     mutationFn: async (input: CriarOrcamentoInput): Promise<OrcamentoGerado> => {
       // Se veio numero da pasta Z:, usa. Senao busca proximo do banco.
-      const { ano, sequencial, numero } = input.numero_override
+      let { ano, sequencial, numero } = input.numero_override
         ? input.numero_override
         : await obterProximoNumero()
+
+      // Resolve conflito de numero duplicado no banco — incrementa ate achar livre
+      // (acontece quando uma tentativa anterior gravou no banco mas falhou em outro lugar)
+      for (let tentativa = 0; tentativa < 20; tentativa++) {
+        const { data: existente } = await supabase
+          .from('orcamentos_gerados')
+          .select('id')
+          .eq('numero', numero)
+          .maybeSingle()
+        if (!existente) break  // numero livre
+        sequencial += 1
+        numero = `${ano} - ${String(sequencial).padStart(4, '0')}`
+      }
 
       // Cria/atualiza cliente se tiver nome
       let cliente_id = input.cliente_id ?? null
@@ -235,13 +248,24 @@ export function useCriarOrcamento() {
         prazo_entrega: input.prazo_entrega ?? null,
         status: input.status ?? 'rascunho',
       }
-      const { data, error } = await supabase
-        .from('orcamentos_gerados')
-        .insert(payload)
-        .select()
-        .single()
-      if (error) throw error
-      return data as OrcamentoGerado
+      // Tenta inserir; se ainda assim der duplicate (race), incrementa e tenta de novo
+      let lastErr: any = null
+      for (let r = 0; r < 5; r++) {
+        const tryPayload = { ...payload, numero, sequencial }
+        const { data, error } = await supabase
+          .from('orcamentos_gerados')
+          .insert(tryPayload)
+          .select()
+          .single()
+        if (!error) return data as OrcamentoGerado
+        lastErr = error
+        const isDup = String(error.message || '').toLowerCase().includes('duplicate') ||
+                       String(error.code || '') === '23505'
+        if (!isDup) throw error
+        sequencial += 1
+        numero = `${ano} - ${String(sequencial).padStart(4, '0')}`
+      }
+      throw lastErr || new Error('Não foi possível gerar número único')
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['orcamentos-gerados'] })
