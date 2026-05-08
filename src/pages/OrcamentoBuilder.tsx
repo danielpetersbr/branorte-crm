@@ -306,14 +306,35 @@ export function OrcamentoBuilder() {
     if (!modeloSelecionado || !cliNome.trim()) return
     setGerando(true)
     try {
-      // Se vier da pasta Z: (numeroFonte=='pasta' e scanInfo populado), usa esse numero
-      const numeroOverride = (numeroFonte === 'pasta' && scanInfo)
+      // RESCAN da pasta SEMPRE antes de salvar — pega o numero REAL do ultimo arquivo
+      // (evita usar numero velho do scan inicial que pode ter ficado desatualizado)
+      let numeroOverride = (numeroFonte === 'pasta' && scanInfo)
         ? {
             ano: scanInfo.ano,
             sequencial: scanInfo.ultimo + 1,
             numero: formatarNumero(scanInfo.ano, scanInfo.ultimo + 1),
           }
         : null
+
+      if (opcoes.formato === 'pasta' && isFolderScanSupported()) {
+        try {
+          const handle = await getStoredFolderHandle(true)
+          if (handle) {
+            const fresh = await scanFolderForLastNumber(handle)
+            numeroOverride = {
+              ano: fresh.ano,
+              sequencial: fresh.proximoNumero,
+              numero: formatarNumero(fresh.ano, fresh.proximoNumero),
+            }
+            // Atualiza UI também
+            setScanInfo({ ultimo: fresh.ultimoNumero, total: fresh.total, ano: fresh.ano })
+            setNumeroAtual(numeroOverride.numero)
+            setNumeroFonte('pasta')
+          }
+        } catch {
+          // Se falhar, mantém o numeroOverride anterior (do scan inicial)
+        }
+      }
 
       const orc = await criar.mutateAsync({
         vendedor_nome: profile?.display_name?.toUpperCase() || 'DESCONHECIDO',
