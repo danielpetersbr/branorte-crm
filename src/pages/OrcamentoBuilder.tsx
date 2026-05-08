@@ -14,13 +14,16 @@ import {
   type OrcamentoAcessorios, type ClienteDados,
 } from '@/hooks/useOrcamentoBuilder'
 import { useAuth } from '@/hooks/useAuth'
-import { baixarOrcamentoPdf } from '@/lib/orcamento-pdf'
-import { baixarOrcamentoDocx } from '@/lib/orcamento-docx'
+import { baixarOrcamentoPdf, gerarOrcamentoPdf } from '@/lib/orcamento-pdf'
+import {
+  baixarOrcamentoDocx, gerarOrcamentoDocx, nomeBaseArquivo, montarNotaTxt,
+} from '@/lib/orcamento-docx'
 import {
   isFolderScanSupported, pickOrcamentoFolder, getStoredFolderHandle,
-  scanFolderForLastNumber, formatarNumero,
+  scanFolderForLastNumber, formatarNumero, ensureWritePermission,
+  obterPastaDoMes, escreverArquivo,
 } from '@/lib/orcamento-folder-scan'
-import { FolderOpen, RefreshCw, Calendar, CreditCard } from 'lucide-react'
+import { FolderOpen, RefreshCw, Calendar, CreditCard, FolderPlus } from 'lucide-react'
 import { construirFormaPagamento, type TipoPagamento, type FormaPagamentoConfig } from '@/lib/forma-pagamento'
 
 type Step = 1 | 2 | 3 | 4
@@ -239,7 +242,63 @@ export function OrcamentoBuilder() {
     setSearchCli('')
   }
 
-  async function handleGerar(opcoes: { formato: 'docx' | 'pdf' | 'nenhum'; status: 'rascunho' | 'enviado' }) {
+  async function salvarNaPasta(orc: { numero: string }): Promise<void> {
+    if (!modeloSelecionado?.template_path) return
+    // 1) Garante handle com permissão de escrita
+    let handle = await getStoredFolderHandle(true)
+    if (!handle) {
+      handle = await pickOrcamentoFolder(true)
+      if (!handle) throw new Error('Pasta não selecionada')
+    }
+    const ok = await ensureWritePermission(handle)
+    if (!ok) throw new Error('Permissão de escrita negada')
+
+    // 2) Navega ate Orçamentos {ano}\{mes}\
+    const hoje = new Date()
+    const pastaMes = await obterPastaDoMes(handle, hoje)
+
+    // 3) Gera os 3 arquivos
+    const docxBlob = await gerarOrcamentoDocx({
+      template_path: modeloSelecionado.template_path,
+      numero: orc.numero,
+      data: hoje.toLocaleDateString('pt-BR'),
+      cliente_nome: cliNome,
+      cliente_dados: cliDados,
+      forma_pagamento: formaPagamentoOut.forma_pagamento || null,
+      prazo_entrega: prazoEntrega.trim() || null,
+      data_venda: pgDataVenda ? formaPagamentoOut.data_venda : null,
+    })
+
+    const pdfDoc = gerarOrcamentoPdf({
+      numero: orc.numero,
+      data: hoje.toLocaleDateString('pt-BR'),
+      cliente_nome: cliNome,
+      cliente_dados: cliDados,
+      voltagem: modeloSelecionado.voltagem,
+      itens, acessorios, motores,
+      total_equipamentos: totalEquip,
+      total_motores: totalMotores,
+      total_proposta: totalProposta,
+      observacoes: observacoes.trim() || null,
+    })
+    const pdfBlob = pdfDoc.output('blob')
+
+    const vendedor = profile?.display_name || 'Vendedor'
+    const nota = montarNotaTxt(vendedor, hoje)
+
+    const base = nomeBaseArquivo({
+      numero: orc.numero,
+      cliente_nome: cliNome,
+      modelo_basename: modeloSelecionado.basename,
+    })
+
+    // 4) Escreve os 3 arquivos na pasta do mes
+    await escreverArquivo(pastaMes, `${base}.docx`, docxBlob)
+    await escreverArquivo(pastaMes, `${base}.pdf`, pdfBlob)
+    await escreverArquivo(pastaMes, `${base} - ${vendedor}.txt`, nota)
+  }
+
+  async function handleGerar(opcoes: { formato: 'docx' | 'pdf' | 'nenhum' | 'pasta'; status: 'rascunho' | 'enviado' }) {
     if (!modeloSelecionado || !cliNome.trim()) return
     setGerando(true)
     try {
@@ -263,7 +322,23 @@ export function OrcamentoBuilder() {
       })
       setOrcamentoSalvo({ numero: orc.numero, id: orc.id })
 
-      if (opcoes.formato === 'docx' && modeloSelecionado.template_path) {
+      if (opcoes.formato === 'pasta') {
+        try {
+          await salvarNaPasta(orc)
+        } catch (e) {
+          alert('Erro salvando na pasta Z: ' + (e as Error).message + '\n\nVou baixar o .docx aqui pra você.')
+          await baixarOrcamentoDocx({
+            template_path: modeloSelecionado.template_path!,
+            numero: orc.numero,
+            data: new Date().toLocaleDateString('pt-BR'),
+            cliente_nome: cliNome,
+            cliente_dados: cliDados,
+            forma_pagamento: formaPagamentoOut.forma_pagamento || null,
+            prazo_entrega: prazoEntrega.trim() || null,
+            data_venda: pgDataVenda ? formaPagamentoOut.data_venda : null,
+          })
+        }
+      } else if (opcoes.formato === 'docx' && modeloSelecionado.template_path) {
         await baixarOrcamentoDocx({
           template_path: modeloSelecionado.template_path,
           numero: orc.numero,
@@ -314,6 +389,7 @@ export function OrcamentoBuilder() {
 
   // Tela de sucesso
   if (orcamentoSalvo) {
+    const mes = new Date().toLocaleDateString('pt-BR', { month: 'long' })
     return (
       <div className="p-6 max-w-2xl mx-auto">
         <Card className="p-8 text-center border-success/40 bg-success-bg/10">
@@ -322,8 +398,11 @@ export function OrcamentoBuilder() {
           <p className="text-[16px] text-ink-muted mb-1">
             Número: <span className="font-mono font-bold text-accent">{orcamentoSalvo.numero}</span>
           </p>
-          <p className="text-[14px] text-ink-muted mb-6">
+          <p className="text-[14px] text-ink-muted mb-3">
             Cliente: <strong>{cliNome}</strong> · Total: <strong>{formatBRL(totalProposta)}</strong>
+          </p>
+          <p className="text-[12px] text-ink-faint mb-6">
+            📁 Salvo em <code className="bg-surface-3 px-1 rounded">Orçamentos 2026 / {mes}</code> (.docx + .pdf + .txt)
           </p>
           <div className="flex gap-3 justify-center">
             <button
@@ -1056,8 +1135,14 @@ export function OrcamentoBuilder() {
             />
           </div>
 
-          <div className="text-[11px] text-ink-muted bg-info-bg/15 border border-info/30 rounded-md p-3">
-            <strong>Como funciona:</strong> o orçamento é gerado a partir do <strong>.docx oficial Branorte</strong> (mesmo arquivo que vocês usam hoje), só preenchendo os campos do cliente. O resultado é IDÊNTICO ao formato atual — pode abrir no Word e salvar como PDF.
+          <div className="text-[11px] text-ink-muted bg-info-bg/15 border border-info/30 rounded-md p-3 space-y-1">
+            <p><strong>"Salvar na pasta Z:"</strong> grava 3 arquivos automaticamente em <code className="bg-surface-3 px-1 rounded">Z:\1 - Comercial\3 - Orçamento\2026\Orçamentos 2026\{`{mês}`}\</code>:</p>
+            <ul className="ml-4 space-y-0.5 text-[10px]">
+              <li>📄 <code>{`{numero}`} - Cliente.docx</code> (formato oficial Branorte)</li>
+              <li>📑 <code>{`{numero}`} - Cliente.pdf</code></li>
+              <li>📝 <code>{`{numero}`} - Cliente - {profile?.display_name || 'Vendedor'}.txt</code> (data de envio)</li>
+            </ul>
+            <p className="text-[10px]">Se a pasta do mês não existir, é criada automaticamente.</p>
           </div>
 
           <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
@@ -1075,15 +1160,24 @@ export function OrcamentoBuilder() {
               className="bg-surface-2 hover:bg-surface-3 disabled:opacity-50 text-ink font-semibold px-4 py-2 rounded-md flex items-center gap-2"
             >
               <Save className="h-4 w-4" />
-              Salvar rascunho
+              Rascunho
             </button>
             <button
               disabled={gerando}
               onClick={() => handleGerar({ formato: 'docx', status: 'enviado' })}
-              className="bg-accent hover:bg-accent-700 disabled:opacity-50 text-white font-semibold px-5 py-2.5 rounded-md flex items-center gap-2"
+              className="bg-surface-2 hover:bg-surface-3 disabled:opacity-50 text-ink font-semibold px-4 py-2 rounded-md flex items-center gap-2"
+              title="Baixar .docx pro computador (sem salvar na pasta Z:)"
             >
               <FileDown className="h-4 w-4" />
-              {gerando ? 'Gerando…' : 'Gerar .docx Branorte'}
+              Só baixar .docx
+            </button>
+            <button
+              disabled={gerando}
+              onClick={() => handleGerar({ formato: 'pasta', status: 'enviado' })}
+              className="bg-accent hover:bg-accent-700 disabled:opacity-50 text-white font-semibold px-5 py-2.5 rounded-md flex items-center gap-2"
+            >
+              <FolderPlus className="h-4 w-4" />
+              {gerando ? 'Salvando…' : 'Salvar na pasta Z:'}
             </button>
           </div>
         </Card>

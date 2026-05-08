@@ -51,25 +51,80 @@ async function verifyPermission(handle: any, write = false): Promise<boolean> {
   return false
 }
 
-export async function pickOrcamentoFolder(): Promise<any | null> {
+export async function pickOrcamentoFolder(write = true): Promise<any | null> {
   if (!isFolderScanSupported()) {
     throw new Error('Navegador sem suporte a File System Access (use Chrome ou Edge)')
   }
   const handle = await (window as any).showDirectoryPicker({
     id: 'branorte-orcamentos',
-    mode: 'read',
+    mode: write ? 'readwrite' : 'read',
     startIn: 'documents',
   })
   await dbSet(HANDLE_KEY, handle)
   return handle
 }
 
-export async function getStoredFolderHandle(): Promise<any | null> {
+export async function getStoredFolderHandle(write = false): Promise<any | null> {
   const handle = await dbGet<any>(HANDLE_KEY)
   if (!handle) return null
-  const ok = await verifyPermission(handle, false)
+  const ok = await verifyPermission(handle, write)
   if (!ok) return null
   return handle
+}
+
+// Garante permissao de escrita no handle salvo (pede se necessario)
+export async function ensureWritePermission(handle: any): Promise<boolean> {
+  return await verifyPermission(handle, true)
+}
+
+// Mapeia mes (1-12) → nome da pasta padrão Branorte
+const MESES_NOMES = [
+  '', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+]
+
+// Navega ate `Orçamentos {ano}\{N - Mes}\` criando se nao existir.
+// O handle raiz aponta pra Z:\1 - Comercial\3 - Orçamento\{ano}\
+export async function obterPastaDoMes(rootHandle: any, data: Date): Promise<any> {
+  const ano = data.getFullYear()
+  const mes = data.getMonth() + 1
+  const mesNome = MESES_NOMES[mes]
+
+  // Tenta achar a pasta "Orçamentos {ano}" (com ou sem cedilha/acento)
+  let orcAnoHandle: any = null
+  for await (const [name, entry] of rootHandle.entries()) {
+    if (entry.kind !== 'directory') continue
+    const norm = name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    if (norm.includes(`orcamentos ${ano}`) || norm.includes(`orcamento ${ano}`)) {
+      orcAnoHandle = entry
+      break
+    }
+  }
+  if (!orcAnoHandle) {
+    orcAnoHandle = await rootHandle.getDirectoryHandle(`Orçamentos ${ano}`, { create: true })
+  }
+
+  // Tenta achar pasta do mes ("5 - Maio", "05 - Maio", etc.)
+  for await (const [name, entry] of orcAnoHandle.entries()) {
+    if (entry.kind !== 'directory') continue
+    const norm = name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    if (norm.includes(mesNome.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''))) {
+      return entry
+    }
+  }
+  return await orcAnoHandle.getDirectoryHandle(`${mes} - ${mesNome}`, { create: true })
+}
+
+// Escreve um arquivo (texto ou blob) num diretorio
+export async function escreverArquivo(
+  dirHandle: any,
+  nome: string,
+  conteudo: Blob | string,
+): Promise<void> {
+  const fileHandle = await dirHandle.getFileHandle(nome, { create: true })
+  const writable = await fileHandle.createWritable()
+  await writable.write(conteudo)
+  await writable.close()
 }
 
 // Escaneia a pasta procurando arquivos no padrão "YYYY - NNNN - ..."
