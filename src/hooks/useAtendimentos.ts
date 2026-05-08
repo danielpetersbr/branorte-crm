@@ -78,6 +78,11 @@ function phoneVariants(p: string | null | undefined): string[] {
   variants.add(d)
   if (!d.startsWith('55') && d.length >= 10) variants.add('55' + d)
   if (d.startsWith('55') && d.length >= 12) variants.add(d.slice(2))
+  // Variante com/sem 9º dígito de celular (BR mobile pode aparecer dos dois jeitos)
+  if (d.startsWith('55') && d.length === 13 && d[4] === '9') variants.add(d.slice(0, 4) + d.slice(5))
+  if (d.startsWith('55') && d.length === 12) variants.add(d.slice(0, 4) + '9' + d.slice(4))
+  if (!d.startsWith('55') && d.length === 11 && d[2] === '9') variants.add(d.slice(0, 2) + d.slice(3))
+  if (!d.startsWith('55') && d.length === 10) variants.add(d.slice(0, 2) + '9' + d.slice(2))
   return [...variants]
 }
 

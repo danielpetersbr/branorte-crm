@@ -54,11 +54,16 @@ export function isEtiquetaFunil(nomeCanonico: string): boolean {
 
 // Variantes de phone pra match em atendimentos (com/sem 55)
 function phoneVariants(phone: string): string[] {
-  const digits = phone.replace(/\D/g, '')
-  if (!digits) return []
-  const out = new Set<string>([digits])
-  if (digits.startsWith('55') && digits.length >= 12) out.add(digits.slice(2))
-  if (!digits.startsWith('55')) out.add('55' + digits)
+  const d = phone.replace(/\D/g, '')
+  if (!d) return []
+  const out = new Set<string>([d])
+  if (d.startsWith('55') && d.length >= 12) out.add(d.slice(2))
+  if (!d.startsWith('55')) out.add('55' + d)
+  // Variante com/sem 9º dígito de celular (BR mobile pode aparecer dos dois jeitos)
+  if (d.startsWith('55') && d.length === 13 && d[4] === '9') out.add(d.slice(0, 4) + d.slice(5))
+  if (d.startsWith('55') && d.length === 12) out.add(d.slice(0, 4) + '9' + d.slice(4))
+  if (!d.startsWith('55') && d.length === 11 && d[2] === '9') out.add(d.slice(0, 2) + d.slice(3))
+  if (!d.startsWith('55') && d.length === 10) out.add(d.slice(0, 2) + '9' + d.slice(2))
   return [...out]
 }
 
