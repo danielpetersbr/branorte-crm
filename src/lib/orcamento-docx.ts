@@ -105,8 +105,8 @@ function substituirNumero(xml: string, numero: string): string {
   const intervalo = xml.slice(orcRunEnd, cutoff)
   const intervaloLimpo = intervalo
     // Run com 1 digito sozinho (último dígito do ano em run separado)
-    .replace(/<w:t(\s[^>]*)?>[0-9]<\/w:t>/g, (m, attrs) => `<w:t${attrs || ''}></w:t>`)
-    // Run com "– 0000" / "- 0000" (zeros do placeholder) — preserva espaços de alinhamento
+    .replace(/<w:t(\s[^>]*)?>[0-9]<\/w:t>/g, (_m, attrs) => `<w:t${attrs || ''}></w:t>`)
+    // Run com "– 0000" / "- 0000" tudo junto (zeros do placeholder) — preserva espaços
     .replace(
       /(<w:t(?:\s[^>]*)?>)([^<]*?)([\-–—]\s*0{2,5})([^<]*?)(<\/w:t>)/g,
       (_m, openT, prefixSpaces, _dashZeros, suffixSpaces, closeT) => {
@@ -118,10 +118,21 @@ function substituirNumero(xml: string, numero: string): string {
     .replace(
       /(<w:t(?:\s[^>]*)?>)([^<]*?)(0{3,5})([^<]*?)(<\/w:t>)/g,
       (m, openT, prefixSpaces, _zeros, suffixSpaces, closeT) => {
-        // Só limpa se for o "0000" do placeholder (sem outros números antes/depois)
         if (/[0-9]/.test(prefixSpaces) || /[0-9]/.test(suffixSpaces)) return m
         const open = openT.includes('xml:space') ? openT : openT.replace('<w:t', '<w:t xml:space="preserve"')
         return `${open}${prefixSpaces}${suffixSpaces}${closeT}`
+      },
+    )
+    // Runs com APENAS dash residual (ex: "<w:t> – </w:t>") — remove o dash, mantem espaços
+    .replace(
+      /(<w:t(?:\s[^>]*)?>)([^<\d\w]*?)([\-–—])([^<\d\w]*?)(<\/w:t>)/g,
+      (m, openT, prefix, _dash, suffix, closeT) => {
+        // Só limpa se NAO houver letras/digitos antes ou depois (= dash isolado)
+        // Garantia extra: o conteudo total nao pode ter palavra util
+        const conteudoSemDash = (prefix + suffix).trim()
+        if (conteudoSemDash.length > 0) return m  // tem outra coisa, deixa
+        const open = openT.includes('xml:space') ? openT : openT.replace('<w:t', '<w:t xml:space="preserve"')
+        return `${open}${prefix}${suffix}${closeT}`
       },
     )
 
