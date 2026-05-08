@@ -164,16 +164,20 @@ export function OrcamentoBuilder() {
   async function handleRescanFolder() {
     setScanLoading(true)
     try {
-      const handle = await getStoredFolderHandle()
+      let handle = await getStoredFolderHandle()
       if (!handle) {
-        alert('Nenhuma pasta selecionada. Clique em "Escolher pasta Z:".')
-        return
+        // Não tem pasta salva — abre picker direto (sem alert)
+        handle = await pickOrcamentoFolder()
       }
       const scan = await scanFolderForLastNumber(handle)
       setScanInfo({ ultimo: scan.ultimoNumero, total: scan.total, ano: scan.ano })
       setNumeroAtual(formatarNumero(scan.ano, scan.proximoNumero))
     } catch (e) {
-      alert('Erro: ' + (e as Error).message)
+      // Usuário cancelou o picker — silencioso
+      const msg = (e as Error).message
+      if (!/abort|cancel/i.test(msg)) {
+        alert('Erro: ' + msg)
+      }
     } finally {
       setScanLoading(false)
     }
@@ -754,25 +758,28 @@ export function OrcamentoBuilder() {
                 <FolderOpen className="h-4 w-4 text-info shrink-0" />
                 <span className="text-[12px] font-semibold text-info">Próximo número</span>
                 <span className="flex-1" />
-                <button
-                  type="button"
-                  disabled={scanLoading}
-                  onClick={handlePickFolder}
-                  className="text-[11px] px-2.5 py-1 rounded bg-info/20 hover:bg-info/30 text-info font-semibold flex items-center gap-1"
-                >
-                  <FolderOpen className="h-3 w-3" />
-                  Escolher pasta Z:
-                </button>
-                <button
-                  type="button"
-                  disabled={scanLoading}
-                  onClick={handleRescanFolder}
-                  title="Reler pasta atual"
-                  className="text-[11px] px-2.5 py-1 rounded bg-surface-2 hover:bg-surface-3 text-ink-muted hover:text-ink font-semibold flex items-center gap-1"
-                >
-                  <RefreshCw className={`h-3 w-3 ${scanLoading ? 'animate-spin' : ''}`} />
-                  {scanLoading ? 'Lendo...' : 'Reler'}
-                </button>
+                {scanInfo ? (
+                  <button
+                    type="button"
+                    disabled={scanLoading}
+                    onClick={handleRescanFolder}
+                    title="Reler pasta atual"
+                    className="text-[11px] px-2.5 py-1 rounded bg-info/20 hover:bg-info/30 text-info font-semibold flex items-center gap-1"
+                  >
+                    <RefreshCw className={`h-3 w-3 ${scanLoading ? 'animate-spin' : ''}`} />
+                    {scanLoading ? 'Lendo...' : 'Reler pasta'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={scanLoading}
+                    onClick={handlePickFolder}
+                    className="text-[11px] px-2.5 py-1 rounded bg-info/20 hover:bg-info/30 text-info font-semibold flex items-center gap-1"
+                  >
+                    <FolderOpen className="h-3 w-3" />
+                    {scanLoading ? 'Lendo...' : 'Escolher pasta Z:'}
+                  </button>
+                )}
               </div>
               {scanInfo ? (
                 <div className="text-[11px] text-ink-muted">
@@ -782,7 +789,7 @@ export function OrcamentoBuilder() {
                 </div>
               ) : (
                 <div className="text-[11px] text-ink-muted">
-                  Aponte para a pasta <code className="bg-surface-3 px-1 rounded">Z:\1 - Comercial\3 - Orçamento\2026</code> uma vez. O navegador lembra a permissão.
+                  Número atual vem do banco. Pra ler direto da pasta Z:, clique em "Escolher pasta Z:" e selecione <code className="bg-surface-3 px-1 rounded">Z:\1 - Comercial\3 - Orçamento\2026</code>. O navegador lembra a permissão.
                 </div>
               )}
             </div>
