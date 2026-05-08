@@ -247,6 +247,9 @@ export function OrcamentoBuilder() {
     setSearchCli('')
   }
 
+  // Resultado do salvamento — usado no success message
+  const [arquivosSalvos, setArquivosSalvos] = useState<{ docx: boolean; pdf: boolean; txt: boolean; caminho: string; pdfErro?: string } | null>(null)
+
   async function salvarNaPasta(orc: { numero: string }): Promise<void> {
     if (!modeloSelecionado?.template_path) return
     // 1) Garante handle com permissão de escrita
@@ -256,17 +259,19 @@ export function OrcamentoBuilder() {
       if (!handle) throw new Error('Pasta não selecionada')
     }
     const ok = await ensureWritePermission(handle)
-    if (!ok) throw new Error('Permissão de escrita negada')
+    if (!ok) throw new Error('Permissão de escrita negada — Chrome/Edge tem que pedir permissão pra escrever na pasta')
 
-    // 2) Resolve a pasta do mês (sem criar nova "Orçamentos {ano}" silenciosamente)
+    // 2) Resolve a pasta do mês
     const hoje = new Date()
     const resolved = await resolverPastaDoMes(handle, hoje)
     let pastaMes
+    let caminhoUsado: string
     if (resolved.ok) {
       pastaMes = resolved.pastaMes
+      caminhoUsado = resolved.caminho || 'pasta selecionada'
     } else if (resolved.sugestaoCriar) {
-      // Só falta a pasta do mês — criar é seguro
       pastaMes = await resolved.sugestaoCriar()
+      caminhoUsado = `(pasta criada) ${resolved.motivo}`
     } else {
       throw new Error(
         `Pasta selecionada errada. ${resolved.motivo}\n\n` +
@@ -274,7 +279,7 @@ export function OrcamentoBuilder() {
       )
     }
 
-    // 3) Gera os 3 arquivos
+    // 3) Gera o .docx
     const docxBlob = await gerarOrcamentoDocx({
       template_path: modeloSelecionado.template_path,
       numero: orc.numero,
@@ -286,31 +291,51 @@ export function OrcamentoBuilder() {
       data_venda: pgDataVenda ? formaPagamentoOut.data_venda : null,
     })
 
-    // PDF idêntico ao Word via Gotenberg (LibreOffice headless) — só se configurado
+    // 4) Gera o PDF via Gotenberg (se configurado)
     let pdfBlob: Blob | null = null
+    let pdfErro: string | undefined
     if (isGotenbergConfigured()) {
       try {
         pdfBlob = await gerarPdfDoDocxGotenberg(docxBlob)
       } catch (e) {
-        console.warn('Falha gerar PDF via Gotenberg, salvando só .docx:', e)
+        pdfErro = (e as Error).message || 'erro desconhecido'
+        console.warn('Falha gerar PDF via Gotenberg:', pdfErro)
       }
     }
 
     const vendedor = profile?.display_name || 'Vendedor'
     const nota = montarNotaTxt(vendedor, hoje)
-
     const base = nomeBaseArquivo({
       numero: orc.numero,
       cliente_nome: cliNome,
       modelo_basename: modeloSelecionado.basename,
     })
 
-    // 4) Escreve arquivos na pasta do mes (.docx + .txt + .pdf opcional)
-    await escreverArquivo(pastaMes, `${base}.docx`, docxBlob)
-    await escreverArquivo(pastaMes, `${base} - ${vendedor}.txt`, nota)
-    if (pdfBlob) {
-      await escreverArquivo(pastaMes, `${base}.pdf`, pdfBlob)
+    // 5) Escreve cada arquivo, rastreando o resultado individual
+    const resultado = { docx: false, pdf: false, txt: false, caminho: caminhoUsado, pdfErro }
+    try {
+      await escreverArquivo(pastaMes, `${base}.docx`, docxBlob)
+      resultado.docx = true
+    } catch (e) {
+      console.error('Falha .docx:', e)
+      throw new Error(`.docx não pôde ser salvo: ${(e as Error).message}`)
     }
+    try {
+      await escreverArquivo(pastaMes, `${base} - ${vendedor}.txt`, nota)
+      resultado.txt = true
+    } catch (e) {
+      console.warn('Falha .txt:', e)
+    }
+    if (pdfBlob) {
+      try {
+        await escreverArquivo(pastaMes, `${base}.pdf`, pdfBlob)
+        resultado.pdf = true
+      } catch (e) {
+        console.warn('Falha .pdf:', e)
+        resultado.pdfErro = (e as Error).message
+      }
+    }
+    setArquivosSalvos(resultado)
   }
 
   async function handleGerar(opcoes: { formato: 'docx' | 'pdf' | 'nenhum' | 'pasta'; status: 'rascunho' | 'enviado' }) {
@@ -429,6 +454,7 @@ export function OrcamentoBuilder() {
     setObservacoes('')
     setNumeroAtual('')
     setOrcamentoSalvo(null)
+    setArquivosSalvos(null)
   }
 
   if (loadingMods) return <PageLoading />
@@ -447,12 +473,34 @@ export function OrcamentoBuilder() {
           <p className="text-[14px] text-ink-muted mb-3">
             Cliente: <strong>{cliNome}</strong> · Total: <strong>{formatBRL(totalProposta)}</strong>
           </p>
-          <p className="text-[12px] text-ink-faint mb-2">
-            📁 Salvo em <code className="bg-surface-3 px-1 rounded">Orçamentos 2026 / {mes}</code> ({isGotenbergConfigured() ? '.docx + .pdf + .txt' : '.docx + .txt'})
-          </p>
-          {!isGotenbergConfigured() && (
-            <p className="text-[11px] text-warning mb-6">
-              📑 <strong>PDF:</strong> abra o .docx no Word, Ctrl+P → "Microsoft Print to PDF" → salve na mesma pasta.
+          {arquivosSalvos ? (
+            <div className="text-[12px] text-ink-faint mb-4 space-y-1">
+              <p>📁 <strong>Pasta:</strong> <code className="bg-surface-3 px-1 rounded">{arquivosSalvos.caminho}</code></p>
+              <ul className="space-y-0.5 mt-2">
+                <li className={arquivosSalvos.docx ? 'text-success' : 'text-danger'}>
+                  {arquivosSalvos.docx ? '✅' : '❌'} .docx (formato Branorte)
+                </li>
+                <li className={arquivosSalvos.txt ? 'text-success' : 'text-danger'}>
+                  {arquivosSalvos.txt ? '✅' : '❌'} .txt (data de envio)
+                </li>
+                {isGotenbergConfigured() && (
+                  <li className={arquivosSalvos.pdf ? 'text-success' : 'text-warning'}>
+                    {arquivosSalvos.pdf ? '✅ .pdf (idêntico ao Word)' : `⚠️ .pdf falhou${arquivosSalvos.pdfErro ? ': ' + arquivosSalvos.pdfErro.slice(0, 80) : ''}`}
+                  </li>
+                )}
+              </ul>
+              {!arquivosSalvos.pdf && (
+                <p className="text-[11px] text-warning mt-2">
+                  📑 PDF não foi gerado. Abra o .docx no Word e use Ctrl+P → "Microsoft Print to PDF" → salve na mesma pasta.
+                  {arquivosSalvos.pdfErro?.toLowerCase().includes('timeout') && (
+                    <span> (Render dorme com inatividade — primeira chamada após 15min idle leva 30-60s. Tenta de novo.)</span>
+                  )}
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-[12px] text-ink-faint mb-4">
+              📁 Salvo em <code className="bg-surface-3 px-1 rounded">Orçamentos 2026 / {mes}</code>
             </p>
           )}
           <div className="flex gap-3 justify-center">
