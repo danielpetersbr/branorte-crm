@@ -612,83 +612,126 @@ export function PainelEtiquetas() {
         </Card>
       )}
 
-      {/* Matriz vendedor x etiqueta — fonte: `cards` via endpoint vendedor-x-etiqueta
-          (todos vendedores com cards reais, não só os que usaram extensão antiga) */}
+      {/* Matriz vendedor x etiqueta — todas as etiquetas, ordenadas pelo funil */}
       {dataVE && dataVE.linhas.length > 0 && (() => {
-        // Top 10 etiquetas por total
-        const topCols = dataVE.colunas.slice(0, 10)
+        // Ordem: funil ativo PRIMEIRO (jornada do lead) → resto por total desc
+        const ORDEM_JORNADA = [
+          'PROSPECCAO', '2a TENTATIVA', '2A TENTATIVA', 'NOVO LEAD',
+          'FOLLOW UP', 'LEAD QUENTE',
+          'ORCAMENTO ENVIADO', 'INTERESSE FUTURO', 'VENDIDO',
+        ]
+        const ordenadas = [...dataVE.colunas]
+          .filter(c => c.total > 0)  // só mostra etiquetas com pelo menos 1 chat
+          .sort((a, b) => {
+            const ia = ORDEM_JORNADA.indexOf(a.etiqueta)
+            const ib = ORDEM_JORNADA.indexOf(b.etiqueta)
+            if (ia !== -1 && ib !== -1) return ia - ib
+            if (ia !== -1) return -1
+            if (ib !== -1) return 1
+            return b.total - a.total
+          })
         return (
-          <Card className="p-4 overflow-x-auto">
-            <h2 className="text-[13px] font-semibold text-ink mb-3 flex items-center gap-2">
-              <BarChart3 className="h-4 w-4 text-accent" />
-              Vendedor × Etiqueta
-              <span className="text-[10px] font-normal text-ink-muted ml-1">
-                · {dataVE.linhas.length} vendedores · {formatNumber(dataVE.total_geral)} cards
-              </span>
-            </h2>
-            <table className="w-full border-collapse min-w-[600px]">
-              <thead>
-                <tr>
-                  <th className="text-left text-[10px] uppercase tracking-wider text-ink-faint font-medium px-2 py-2 sticky left-0 bg-bg">Vendedor</th>
-                  {topCols.map(col => (
+          <Card className="p-4">
+            <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
+              <h2 className="text-[13px] font-semibold text-ink flex items-center gap-2">
+                <BarChart3 className="h-4 w-4 text-accent" />
+                Vendedor × Etiqueta
+                <span className="text-[10px] font-normal text-ink-muted ml-1">
+                  · {dataVE.linhas.length} vendedores · {formatNumber(dataVE.total_geral)} cards · {ordenadas.length} etiquetas
+                </span>
+              </h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="border-collapse" style={{ minWidth: `${180 + ordenadas.length * 56 + 60}px` }}>
+                <thead>
+                  <tr>
                     <th
-                      key={col.stage_id}
-                      className="text-center text-[10px] uppercase tracking-wider font-medium px-2 py-2 cursor-pointer hover:bg-surface-2"
-                      style={{ color: corDaEtiqueta(col.etiqueta) }}
-                      onClick={() => setFiltroEtiqueta(col.etiqueta)}
-                      title="Clique para detalhes"
+                      className="text-left text-[10px] uppercase tracking-wider text-ink-faint font-medium px-3 py-2 sticky left-0 bg-bg z-10 align-bottom"
+                      style={{ minWidth: 180, height: 100 }}
                     >
-                      {col.etiqueta.length > 14 ? col.etiqueta.slice(0, 12) + '…' : col.etiqueta}
+                      Vendedor
                     </th>
-                  ))}
-                  <th className="text-center text-[10px] uppercase tracking-wider text-ink-faint font-medium px-2 py-2">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dataVE.linhas.map(linha => (
-                  <tr key={linha.vendedor_id} className="border-t border-border hover:bg-surface-2/50">
-                    <td className="px-2 py-2 sticky left-0 bg-bg">
-                      <div className="flex items-center gap-2">
-                        <Avatar name={linha.vendedor} size="sm" />
-                        <span className="text-[12px] font-medium text-ink">{linha.vendedor}</span>
-                      </div>
-                    </td>
-                    {topCols.map(col => {
-                      const cell = linha.celulas[col.etiqueta]
-                      const count = cell?.total || 0
-                      const intensity = col.total > 0 ? Math.min(1, count / Math.max(1, col.total / dataVE.linhas.length * 2)) : 0
-                      return (
-                        <td key={col.stage_id} className="px-2 py-1 text-center text-[12px] font-medium tabular-nums">
-                          {count > 0 ? (
-                            <span
-                              className="inline-block px-2 py-0.5 rounded text-ink"
-                              style={{
-                                backgroundColor: `${corDaEtiqueta(col.etiqueta)}${Math.round(intensity * 60 + 10).toString(16).padStart(2, '0')}`,
-                              }}
-                              title={`${count} total · 🔥 ${cell?.fresco||0} fresco · ⚡ ${cell?.recente||0} recente · 🔴 ${cell?.parado||0} parado`}
-                            >
-                              {count}
-                            </span>
-                          ) : (
-                            <span className="text-ink-faint">·</span>
-                          )}
-                        </td>
-                      )
-                    })}
-                    <td className="px-2 py-2 text-center text-[12px] font-bold tabular-nums text-ink">{linha.total}</td>
+                    {ordenadas.map(col => (
+                      <th
+                        key={col.stage_id}
+                        className="cursor-pointer hover:bg-surface-2 align-bottom"
+                        style={{ width: 56, height: 100, padding: 0 }}
+                        onClick={() => setFiltroEtiqueta(col.etiqueta)}
+                        title={`${col.etiqueta} · ${col.total} chats`}
+                      >
+                        <div
+                          className="font-bold text-[10px] tracking-wide whitespace-nowrap"
+                          style={{
+                            writingMode: 'vertical-rl',
+                            transform: 'rotate(180deg)',
+                            color: corDaEtiqueta(col.etiqueta),
+                            paddingTop: 8,
+                            paddingBottom: 8,
+                            margin: '0 auto',
+                            textAlign: 'left',
+                          }}
+                        >
+                          {col.etiqueta}
+                        </div>
+                      </th>
+                    ))}
+                    <th
+                      className="text-center text-[10px] uppercase tracking-wider text-ink-faint font-medium px-3 py-2 align-bottom"
+                      style={{ minWidth: 60, height: 100 }}
+                    >
+                      Total
+                    </th>
                   </tr>
-                ))}
-                <tr className="border-t-2 border-border bg-surface-2/30">
-                  <td className="px-2 py-2 sticky left-0 bg-surface-2/50 text-[10px] uppercase tracking-wider text-ink-muted font-medium">Total</td>
-                  {topCols.map(col => (
-                    <td key={col.stage_id} className="px-2 py-2 text-center text-[12px] font-bold tabular-nums text-ink">{col.total}</td>
+                </thead>
+                <tbody>
+                  {dataVE.linhas.map(linha => (
+                    <tr key={linha.vendedor_id} className="border-t border-border hover:bg-surface-2/50">
+                      <td className="px-3 py-2 sticky left-0 bg-bg z-10">
+                        <div className="flex items-center gap-2">
+                          <Avatar name={linha.vendedor} size="sm" />
+                          <span className="text-[12px] font-medium text-ink">{linha.vendedor}</span>
+                        </div>
+                      </td>
+                      {ordenadas.map(col => {
+                        const cell = linha.celulas[col.etiqueta]
+                        const count = cell?.total || 0
+                        const intensity = col.total > 0 ? Math.min(1, count / Math.max(1, col.total / dataVE.linhas.length * 2)) : 0
+                        return (
+                          <td key={col.stage_id} className="px-1 py-1 text-center text-[12px] font-medium tabular-nums">
+                            {count > 0 ? (
+                              <span
+                                className="inline-block px-2 py-0.5 rounded text-ink min-w-[28px]"
+                                style={{
+                                  backgroundColor: `${corDaEtiqueta(col.etiqueta)}${Math.round(intensity * 80 + 20).toString(16).padStart(2, '0')}`,
+                                }}
+                                title={`${count} total · 🔥 ${cell?.fresco||0} fresco · ⚡ ${cell?.recente||0} recente · 🔴 ${cell?.parado||0} parado`}
+                              >
+                                {count}
+                              </span>
+                            ) : (
+                              <span className="text-ink-faint">·</span>
+                            )}
+                          </td>
+                        )
+                      })}
+                      <td className="px-3 py-2 text-center text-[13px] font-bold tabular-nums text-ink">{linha.total}</td>
+                    </tr>
                   ))}
-                  <td className="px-2 py-2 text-center text-[12px] font-bold tabular-nums text-ink">
-                    {dataVE.total_geral}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+                  <tr className="border-t-2 border-border bg-surface-2/30">
+                    <td className="px-3 py-2 sticky left-0 bg-surface-2/50 z-10 text-[10px] uppercase tracking-wider text-ink-muted font-medium">Total</td>
+                    {ordenadas.map(col => (
+                      <td key={col.stage_id} className="px-1 py-2 text-center text-[12px] font-bold tabular-nums text-ink">{col.total}</td>
+                    ))}
+                    <td className="px-3 py-2 text-center text-[13px] font-bold tabular-nums text-ink">
+                      {dataVE.total_geral}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div className="text-[10px] text-ink-faint mt-2 italic">
+              Etiquetas ordenadas: funil ativo (PROSPECCAO → VENDIDO) → demais por volume. Passe o mouse na célula pra ver breakdown temporal.
+            </div>
           </Card>
         )
       })()}
