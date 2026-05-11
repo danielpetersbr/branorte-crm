@@ -3,50 +3,87 @@ import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import {
-  Sparkles, Search, Plus, Minus, Trash2, ShoppingCart, Package,
-  Zap, Filter, X, AlertCircle, Star,
+  Sparkles, Search, Plus, Minus, Trash2, Package,
+  Zap, X, AlertCircle, Star, FileText, Eye, ListChecks,
 } from 'lucide-react'
 import {
-  useCatalogoItems, useCatalogoMotores, useCatalogoAcessorios,
+  useCatalogoItems, useCatalogoMotores,
   agruparPorCategoria, acharMotorCompativel,
   type CatalogoItem, type CatalogoMotor,
 } from '@/hooks/useCatalogo'
 
 type Voltagem = 'monofasico' | 'trifasico'
+type ModoVisao = 'preview' | 'edicao'
 
 interface CarrinhoItem {
-  uid: string             // unique id (item.id + timestamp pra permitir duplicatas)
+  uid: string
   catalogo_id: number
   categoria: string
   nome: string
   specs: string[]
   qtd: number
-  valor: number           // valor unitario (pode ter sido editado)
-  valor_original: number  // valor do catalogo (pra mostrar se mudou)
+  valor: number
+  valor_original: number
   motor_cv: number | null
   motor_polos: number | null
   motor_qtd: number
-  motor_valor: number     // valor do motor (somado * qtd)
+  motor_valor_unit: number  // valor unitário do motor (não multiplicado)
 }
 
 function formatBRL(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 }
 
+function formatBRLBare(v: number): string {
+  return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
 function gerarUid(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+}
+
+// Agrupa motores iguais (mesmo CV/polos)
+interface MotorAgrupado {
+  cv: number
+  polos: number
+  qtd: number
+  valor_unit: number
+  valor_total: number
+}
+
+function agruparMotores(carrinho: CarrinhoItem[]): MotorAgrupado[] {
+  const m = new Map<string, MotorAgrupado>()
+  for (const it of carrinho) {
+    if (!it.motor_cv || !it.motor_polos) continue
+    const qtdMotor = it.motor_qtd * it.qtd
+    const key = `${it.motor_cv}-${it.motor_polos}`
+    const e = m.get(key)
+    if (e) {
+      e.qtd += qtdMotor
+      e.valor_total += it.motor_valor_unit * qtdMotor
+    } else {
+      m.set(key, {
+        cv: it.motor_cv,
+        polos: it.motor_polos,
+        qtd: qtdMotor,
+        valor_unit: it.motor_valor_unit,
+        valor_total: it.motor_valor_unit * qtdMotor,
+      })
+    }
+  }
+  return [...m.values()].sort((a, b) => b.cv - a.cv)
 }
 
 export function OrcamentoMontar() {
   const { data: items, isLoading: loadingItems } = useCatalogoItems()
   const { data: motores, isLoading: loadingMotores } = useCatalogoMotores()
-  const { data: acessorios } = useCatalogoAcessorios()
 
   const [busca, setBusca] = useState('')
   const [categoria, setCategoria] = useState<string | null>(null)
   const [voltagem, setVoltagem] = useState<Voltagem>('trifasico')
   const [carrinho, setCarrinho] = useState<CarrinhoItem[]>([])
   const [showOnlyPopular, setShowOnlyPopular] = useState(false)
+  const [modoVisao, setModoVisao] = useState<ModoVisao>('preview')
 
   const categorias = useMemo(() => agruparPorCategoria(items ?? []), [items])
 
@@ -64,13 +101,15 @@ export function OrcamentoMontar() {
     })
   }, [items, categoria, busca, showOnlyPopular])
 
+  const motoresAgrupados = useMemo(() => agruparMotores(carrinho), [carrinho])
+
   const totalItems = useMemo(
     () => carrinho.reduce((s, c) => s + (c.valor * c.qtd), 0),
     [carrinho],
   )
   const totalMotores = useMemo(
-    () => carrinho.reduce((s, c) => s + c.motor_valor, 0),
-    [carrinho],
+    () => motoresAgrupados.reduce((s, m) => s + m.valor_total, 0),
+    [motoresAgrupados],
   )
   const totalGeral = totalItems + totalMotores
 
@@ -78,8 +117,6 @@ export function OrcamentoMontar() {
     const motorMatch = item.motor_padrao_cv && item.motor_padrao_polos && motores
       ? acharMotorCompativel(motores, Number(item.motor_padrao_cv), item.motor_padrao_polos, voltagem)
       : null
-
-    const motor_valor = motorMatch ? Number(motorMatch.valor) * (item.motor_padrao_qtd || 1) : 0
 
     setCarrinho(c => [...c, {
       uid: gerarUid(),
@@ -93,7 +130,7 @@ export function OrcamentoMontar() {
       motor_cv: item.motor_padrao_cv ? Number(item.motor_padrao_cv) : null,
       motor_polos: item.motor_padrao_polos,
       motor_qtd: item.motor_padrao_qtd || 1,
-      motor_valor,
+      motor_valor_unit: motorMatch ? Number(motorMatch.valor) : 0,
     }])
   }
 
@@ -115,14 +152,13 @@ export function OrcamentoMontar() {
     if (confirm('Limpar carrinho?')) setCarrinho([])
   }
 
-  // Re-calcula motores quando voltagem muda
   function aplicarVoltagem(novaVoltagem: Voltagem) {
     setVoltagem(novaVoltagem)
     if (!motores) return
     setCarrinho(c => c.map(it => {
       if (!it.motor_cv || !it.motor_polos) return it
       const motor = acharMotorCompativel(motores, it.motor_cv, it.motor_polos, novaVoltagem)
-      return { ...it, motor_valor: motor ? Number(motor.valor) * it.motor_qtd : it.motor_valor }
+      return { ...it, motor_valor_unit: motor ? Number(motor.valor) : it.motor_valor_unit }
     }))
   }
 
@@ -138,7 +174,7 @@ export function OrcamentoMontar() {
             Montar Orçamento Personalizado
           </h1>
           <p className="text-[11px] text-ink-faint mt-0.5">
-            Selecione items do catálogo. Motor e preço são adicionados automaticamente.
+            Adicione items à esquerda. Veja o orçamento se montando à direita.
           </p>
         </div>
 
@@ -167,8 +203,8 @@ export function OrcamentoMontar() {
         </div>
       </div>
 
-      {/* Grid 2 colunas: catálogo + carrinho */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-3 min-h-0">
+      {/* Grid 2 colunas: catálogo + preview */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_460px] gap-3 min-h-0">
         {/* CATÁLOGO */}
         <Card className="flex flex-col min-h-0 overflow-hidden">
           <div className="p-3 border-b border-border space-y-2">
@@ -245,11 +281,17 @@ export function OrcamentoMontar() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {itemsFiltrados.slice(0, 200).map(item => (
-                  <CardItem key={item.id} item={item} voltagem={voltagem} motores={motores ?? []} onAdd={() => adicionarItem(item)} />
+                  <CardItem
+                    key={item.id}
+                    item={item}
+                    voltagem={voltagem}
+                    motores={motores ?? []}
+                    onAdd={() => adicionarItem(item)}
+                  />
                 ))}
                 {itemsFiltrados.length > 200 && (
                   <div className="col-span-full text-center py-3 text-[11px] text-ink-faint italic">
-                    Mostrando 200 de {itemsFiltrados.length} items. Use a busca pra filtrar mais.
+                    Mostrando 200 de {itemsFiltrados.length}. Use a busca pra filtrar mais.
                   </div>
                 )}
               </div>
@@ -257,36 +299,72 @@ export function OrcamentoMontar() {
           </div>
         </Card>
 
-        {/* CARRINHO */}
+        {/* PREVIEW DO ORÇAMENTO */}
         <Card className="flex flex-col min-h-0 overflow-hidden">
-          <div className="p-3 border-b border-border flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <ShoppingCart className="h-4 w-4 text-accent" />
-              <h2 className="text-[13px] font-bold text-ink">Carrinho</h2>
-              <span className="text-[10px] text-ink-faint">({carrinho.length} {carrinho.length === 1 ? 'item' : 'items'})</span>
-            </div>
-            {carrinho.length > 0 && (
+          {/* Toolbar do preview */}
+          <div className="p-2 border-b border-border flex items-center justify-between bg-surface-2/30">
+            <div className="flex items-center gap-1">
               <button
-                onClick={limparCarrinho}
-                className="text-[10px] text-danger hover:text-danger/70 flex items-center gap-1"
+                onClick={() => setModoVisao('preview')}
+                className={`text-[10px] px-2 py-1 rounded font-semibold flex items-center gap-1 transition-all ${
+                  modoVisao === 'preview'
+                    ? 'bg-accent text-white'
+                    : 'text-ink-muted hover:bg-surface-3'
+                }`}
               >
-                <Trash2 className="h-3 w-3" />
-                Limpar
+                <Eye className="h-3 w-3" />
+                Preview
               </button>
-            )}
+              <button
+                onClick={() => setModoVisao('edicao')}
+                className={`text-[10px] px-2 py-1 rounded font-semibold flex items-center gap-1 transition-all ${
+                  modoVisao === 'edicao'
+                    ? 'bg-accent text-white'
+                    : 'text-ink-muted hover:bg-surface-3'
+                }`}
+              >
+                <ListChecks className="h-3 w-3" />
+                Edição
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-ink-faint">
+                {carrinho.length} {carrinho.length === 1 ? 'item' : 'items'}
+              </span>
+              {carrinho.length > 0 && (
+                <button
+                  onClick={limparCarrinho}
+                  className="text-[10px] text-danger hover:text-danger/70 flex items-center gap-1"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  Limpar
+                </button>
+              )}
+            </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto">
+          {/* Conteúdo do preview / edição */}
+          <div className="flex-1 overflow-y-auto bg-white">
             {carrinho.length === 0 ? (
-              <div className="text-center py-12 text-ink-faint">
-                <ShoppingCart className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                <p className="text-[12px]">Carrinho vazio</p>
-                <p className="text-[10px] mt-1">Clique nos items à esquerda</p>
+              <div className="text-center py-16 text-ink-faint">
+                <FileText className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                <p className="text-[12px] font-semibold">Orçamento em branco</p>
+                <p className="text-[10px] mt-1">Adicione items à esquerda pra começar</p>
               </div>
+            ) : modoVisao === 'preview' ? (
+              <OrcamentoPreview
+                carrinho={carrinho}
+                motoresAgrupados={motoresAgrupados}
+                voltagem={voltagem}
+                totalItems={totalItems}
+                totalMotores={totalMotores}
+                totalGeral={totalGeral}
+                onRemove={removerItem}
+              />
             ) : (
               <div className="divide-y divide-border">
                 {carrinho.map(it => (
-                  <CarrinhoLinha
+                  <CarrinhoLinhaEdicao
                     key={it.uid}
                     item={it}
                     onRemove={() => removerItem(it.uid)}
@@ -298,6 +376,7 @@ export function OrcamentoMontar() {
             )}
           </div>
 
+          {/* Footer com total + ação */}
           {carrinho.length > 0 && (
             <div className="border-t border-border p-3 space-y-1.5 bg-surface-2/50">
               <div className="flex justify-between text-[11px] text-ink-muted">
@@ -306,28 +385,146 @@ export function OrcamentoMontar() {
               </div>
               {totalMotores > 0 && (
                 <div className="flex justify-between text-[11px] text-ink-muted">
-                  <span>Motores</span>
+                  <span>Motores ({motoresAgrupados.length})</span>
                   <span className="font-semibold">{formatBRL(totalMotores)}</span>
                 </div>
               )}
               <div className="flex justify-between text-[14px] font-bold text-ink pt-1 border-t border-border">
-                <span>TOTAL</span>
+                <span>TOTAL DA PROPOSTA</span>
                 <span className="text-accent">{formatBRL(totalGeral)}</span>
               </div>
-
               <button
                 disabled={carrinho.length === 0}
                 onClick={() => alert('Geração de .docx personalizado vem na próxima fase 🚧')}
-                className="w-full mt-2 bg-accent hover:bg-accent-700 text-white text-[12px] font-semibold py-2 rounded disabled:opacity-50 flex items-center justify-center gap-1.5"
+                className="w-full mt-2 bg-accent hover:bg-accent-700 text-white text-[12px] font-semibold py-2 rounded disabled:opacity-50"
               >
-                Continuar para gerar orçamento →
+                Continuar para gerar .docx →
               </button>
-              <p className="text-[9px] text-ink-faint text-center italic">
-                Cliente + dados extras na próxima tela
-              </p>
             </div>
           )}
         </Card>
+      </div>
+    </div>
+  )
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Preview estilo orçamento real (papel A4 simulado)
+// ──────────────────────────────────────────────────────────────────────────
+
+function OrcamentoPreview({
+  carrinho, motoresAgrupados, voltagem,
+  totalItems, totalMotores, totalGeral, onRemove,
+}: {
+  carrinho: CarrinhoItem[]
+  motoresAgrupados: MotorAgrupado[]
+  voltagem: Voltagem
+  totalItems: number
+  totalMotores: number
+  totalGeral: number
+  onRemove: (uid: string) => void
+}) {
+  return (
+    <div className="p-5 text-[10px] text-gray-900 leading-relaxed font-serif">
+      {/* Header simulando o orçamento real */}
+      <div className="text-center mb-4 pb-3 border-b-2 border-gray-300">
+        <div className="text-[14px] font-bold tracking-wide">METALÚRGICA BBA LTDA</div>
+        <div className="text-[9px] text-gray-600 mt-1">
+          Av. Brasil, 1234 · São Lourenço do Sul · RS · CNPJ XX.XXX.XXX/0001-XX
+        </div>
+        <div className="text-[12px] font-bold mt-3">
+          ORÇAMENTO Nº <span className="text-gray-400">[a definir]</span>
+        </div>
+      </div>
+
+      {/* Cliente (placeholder) */}
+      <div className="mb-4 text-[10px] space-y-0.5 bg-gray-50 p-2 rounded border border-gray-200">
+        <div className="flex"><span className="w-24 font-semibold">CLIENTE:</span><span className="text-gray-400 italic">[preencher na próxima etapa]</span></div>
+        <div className="flex"><span className="w-24 font-semibold">CIDADE:</span><span className="text-gray-400 italic">—</span></div>
+        <div className="flex"><span className="w-24 font-semibold">FONE:</span><span className="text-gray-400 italic">—</span></div>
+        <div className="flex"><span className="w-24 font-semibold">VOLTAGEM:</span><span className="font-bold uppercase">{voltagem === 'monofasico' ? 'Monofásico' : 'Trifásico'}</span></div>
+      </div>
+
+      {/* ITENS ORÇADOS */}
+      <div className="font-bold text-[11px] mb-2 pb-1 border-b border-gray-300">
+        ITENS ORÇADOS:
+      </div>
+
+      <div className="space-y-3 mb-4">
+        {carrinho.map((it, idx) => {
+          const letra = String.fromCharCode(65 + idx)  // A, B, C, D...
+          const subtotal = it.valor * it.qtd
+          return (
+            <div key={it.uid} className="group relative pl-1">
+              <div className="flex items-start gap-2">
+                <div className="font-bold w-12 shrink-0">
+                  {letra} - {String(it.qtd).padStart(2, '0')}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold uppercase">{it.nome}</div>
+                  {it.motor_cv && (
+                    <div className="text-[9px] text-gray-600 mt-0.5">
+                      Motor {it.motor_cv} CV {it.motor_polos} polos {voltagem}
+                      {it.motor_qtd > 1 && ` (qtd ${it.motor_qtd})`}
+                    </div>
+                  )}
+                  <div className="text-right font-semibold mt-1">
+                    VALOR R$ {formatBRLBare(subtotal)}
+                  </div>
+                </div>
+                <button
+                  onClick={() => onRemove(it.uid)}
+                  className="opacity-0 group-hover:opacity-100 text-red-600 hover:text-red-800 transition-opacity p-0.5"
+                  title="Remover item"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* MOTORES NOVOS */}
+      {motoresAgrupados.length > 0 && (
+        <>
+          <div className="font-bold text-[11px] mb-2 pt-3 border-t-2 border-gray-300">
+            MOTORES NOVOS:
+          </div>
+          <div className="space-y-1 mb-4 ml-1">
+            {motoresAgrupados.map(m => (
+              <div key={`${m.cv}-${m.polos}`} className="flex justify-between">
+                <span>
+                  - {m.cv} CV {m.polos} polos {voltagem}{m.qtd > 1 && ` (qtd ${m.qtd})`}
+                </span>
+                <span className="font-semibold">R$ {formatBRLBare(m.valor_total)}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* TOTAIS */}
+      <div className="border-t-2 border-gray-400 pt-3 space-y-1">
+        <div className="flex justify-between text-[10px]">
+          <span>VALOR TOTAL DE EQUIPAMENTOS</span>
+          <span className="font-bold">R$ {formatBRLBare(totalItems)}</span>
+        </div>
+        {totalMotores > 0 && (
+          <div className="flex justify-between text-[10px]">
+            <span>VALOR TOTAL DE MOTORES</span>
+            <span className="font-bold">R$ {formatBRLBare(totalMotores)}</span>
+          </div>
+        )}
+        <div className="flex justify-between text-[12px] font-bold pt-2 border-t border-gray-300 bg-yellow-50 px-2 py-1.5 rounded mt-2">
+          <span>VALOR TOTAL DA PROPOSTA COM MOTOR NOVO</span>
+          <span>R$ {formatBRLBare(totalGeral)}</span>
+        </div>
+      </div>
+
+      {/* Termos resumidos */}
+      <div className="mt-4 pt-3 border-t border-gray-300 text-[8px] text-gray-500 italic leading-relaxed">
+        Demais cláusulas (prazo de entrega, forma de pagamento, garantia, observações) serão preenchidas na próxima etapa.
       </div>
     </div>
   )
@@ -409,10 +606,10 @@ function CardItem({
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// Linha do carrinho (direita)
+// Linha do carrinho em modo EDIÇÃO (controles compactos)
 // ──────────────────────────────────────────────────────────────────────────
 
-function CarrinhoLinha({
+function CarrinhoLinhaEdicao({
   item, onRemove, onQtd, onValor,
 }: {
   item: CarrinhoItem
@@ -422,7 +619,8 @@ function CarrinhoLinha({
 }) {
   const [editingValor, setEditingValor] = useState(false)
   const subtotal = item.valor * item.qtd
-  const totalLinha = subtotal + item.motor_valor
+  const motorTotal = item.motor_valor_unit * item.motor_qtd * item.qtd
+  const totalLinha = subtotal + motorTotal
 
   return (
     <div className="p-2.5 hover:bg-surface-2/40">
@@ -439,26 +637,22 @@ function CarrinhoLinha({
               <Zap className="h-2 w-2" />
               Motor {item.motor_cv}CV {item.motor_polos}p
               {item.motor_qtd > 1 && ` x${item.motor_qtd}`}
-              {item.motor_valor > 0 && ` — ${formatBRL(item.motor_valor)}`}
-              {item.motor_valor === 0 && (
+              {item.motor_valor_unit > 0 && ` — ${formatBRL(motorTotal)}`}
+              {item.motor_valor_unit === 0 && (
                 <span className="text-warning ml-1 flex items-center gap-0.5">
                   <AlertCircle className="h-2.5 w-2.5" />
-                  não achei motor
+                  sem motor cadastrado
                 </span>
               )}
             </div>
           )}
         </div>
-        <button
-          onClick={onRemove}
-          className="text-ink-faint hover:text-danger shrink-0"
-        >
+        <button onClick={onRemove} className="text-ink-faint hover:text-danger shrink-0">
           <Trash2 className="h-3 w-3" />
         </button>
       </div>
 
       <div className="flex items-center gap-2">
-        {/* Quantidade */}
         <div className="flex items-center bg-surface-2 rounded">
           <button
             onClick={() => onQtd(item.qtd - 1)}
@@ -476,7 +670,6 @@ function CarrinhoLinha({
           </button>
         </div>
 
-        {/* Valor unitário (editável) */}
         <div className="flex-1 text-right">
           {editingValor ? (
             <input
