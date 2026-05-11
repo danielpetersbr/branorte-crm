@@ -86,28 +86,32 @@ export function PainelEtiquetas() {
       }))
   }, [data])
 
-  // 🎯 Funil de vendas isolado — só os 5 estágios ATIVOS da jornada
-  // ORCAMENTO ENVIADO, INTERESSE FUTURO e VENDIDO ficam no gráfico geral
-  // (não são etapas de funil ativo).
+  // 🎯 Funil de vendas isolado — 5 estágios ATIVOS da jornada
+  // Agrega de dataVE (todos os 7 vendedores via tabela cards), não de
+  // wa_chat_labels que só tem 3 vendedores.
   const ORDEM_FUNIL = [
-    'PROSPECCAO', '2A TENTATIVA', 'NOVO LEAD',
+    'PROSPECCAO', '2a TENTATIVA', 'NOVO LEAD',
     'FOLLOW UP', 'LEAD QUENTE',
   ]
   const dadosFunil = useMemo(() => {
-    if (!data) return []
-    const map = new Map(data.porEtiqueta.map(e => [e.nomeCanonico, e]))
+    if (!dataVE) return []
     return ORDEM_FUNIL
-      .map(nome => map.get(nome))
-      .filter((e): e is AggregacaoEtiqueta => !!e && e.total > 0)
-      .map(e => ({
-        nome: e.nomeCanonico,
-        Fresco: e.fresco,
-        Recente: e.recente,
-        Parado: e.parado,
-        SemDado: e.semDado,
-        total: e.total,
-      }))
-  }, [data])
+      .map(nome => {
+        // Soma a etiqueta em todos os vendedores
+        let fresco = 0, recente = 0, parado = 0, semDado = 0, total = 0
+        for (const linha of dataVE.linhas) {
+          const c = linha.celulas[nome]
+          if (!c) continue
+          fresco += c.fresco
+          recente += c.recente
+          parado += c.parado
+          semDado += c.sem_dado
+          total += c.total
+        }
+        return { nome, Fresco: fresco, Recente: recente, Parado: parado, SemDado: semDado, total }
+      })
+      .filter(d => d.total > 0)
+  }, [dataVE])
 
   const dadosPie = useMemo(() => {
     if (!data) return []
@@ -176,10 +180,32 @@ export function PainelEtiquetas() {
         </Card>
       )}
 
-      {/* Kanban-style: cada etiqueta com contagem de parados + aguardando em destaque */}
+      {/* Kanban-style: cada etiqueta com contagem de parados + aguardando em destaque
+          Ordem: jornada do funil (PROSPECCAO → LEAD QUENTE → ORCAMENTO → INTERESSE → VENDIDO),
+          depois o resto (NUNCA RESPONDEU, NAO TEM INTERESSE, etc) por total descendente */}
       <div className="overflow-x-auto -mx-4 md:-mx-6 px-4 md:px-6 pb-2">
         <div className="flex gap-2 min-w-max">
-          {data.porEtiqueta.slice(0, 12).map(e => {
+          {(() => {
+            const ORDEM_JORNADA = [
+              'PROSPECCAO', '2A TENTATIVA', '2a TENTATIVA', 'NOVO LEAD',
+              'FOLLOW UP', 'LEAD QUENTE',
+              'ORCAMENTO ENVIADO', 'INTERESSE FUTURO', 'VENDIDO',
+            ]
+            const arr = [...data.porEtiqueta]
+            arr.sort((a, b) => {
+              const ia = ORDEM_JORNADA.indexOf(a.nomeCanonico)
+              const ib = ORDEM_JORNADA.indexOf(b.nomeCanonico)
+              // Ambos no funil → segue ordem da jornada
+              if (ia !== -1 && ib !== -1) return ia - ib
+              // Só a no funil → a vem antes
+              if (ia !== -1) return -1
+              // Só b no funil → b vem antes
+              if (ib !== -1) return 1
+              // Nenhum no funil → ordena por total desc
+              return b.total - a.total
+            })
+            return arr.slice(0, 12)
+          })().map(e => {
             const cor = corDaEtiqueta(e.nomeCanonico)
             const pctParado = e.total > 0 ? (e.parado / e.total) * 100 : 0
             const isAlerta = e.parado > 0 && pctParado >= 50
@@ -394,32 +420,27 @@ export function PainelEtiquetas() {
         </Card>
       )}
 
-      {/* 🎯 FUNIL POR VENDEDOR — mesma jornada de 5 estágios, individual por vendedor */}
+      {/* 🚨 PARADOS POR VENDEDOR — só etapas do funil ativo, só Parados (3-30d) */}
       {dataVE && dataVE.linhas.length > 0 && (
         <Card className="p-4">
           <h2 className="text-[13px] font-semibold text-ink mb-3 flex items-center gap-2">
-            <Flame className="h-4 w-4 text-accent" />
-            Funil por vendedor
+            <AlertCircle className="h-4 w-4 text-danger" />
+            Parados no funil por vendedor
             <span className="text-[10px] font-normal text-ink-muted ml-1">
-              · 5 estágios ativos · status temporal
+              · só clientes parados &gt;3d nas 5 etapas ativas
             </span>
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             {dataVE.linhas.map(linha => {
               const ETAPAS = ['PROSPECCAO', '2a TENTATIVA', 'NOVO LEAD', 'FOLLOW UP', 'LEAD QUENTE']
-              const dadosVendor = ETAPAS.map(et => {
-                const c = linha.celulas[et]
-                return {
-                  nome: et,
-                  Fresco: c?.fresco || 0,
-                  Recente: c?.recente || 0,
-                  Parado: c?.parado || 0,
-                  SemDado: c?.sem_dado || 0,
-                  total: c?.total || 0,
-                }
-              })
+              const dadosVendor = ETAPAS.map(et => ({
+                nome: et,
+                Parado: linha.celulas[et]?.parado || 0,
+                total: linha.celulas[et]?.total || 0,
+              }))
+              const totalParados = dadosVendor.reduce((a, b) => a + b.Parado, 0)
               const totalFunil = dadosVendor.reduce((a, b) => a + b.total, 0)
-              const ativos = dadosVendor.reduce((a, b) => a + b.Fresco + b.Recente, 0)
+              const pctParado = totalFunil > 0 ? Math.round((totalParados / totalFunil) * 100) : 0
               return (
                 <div key={linha.vendedor_id} className="border border-border rounded-lg p-3 bg-surface-2/30">
                   <div className="flex items-center justify-between mb-2">
@@ -428,8 +449,8 @@ export function PainelEtiquetas() {
                       <span className="text-[12px] font-semibold text-ink">{linha.vendedor}</span>
                     </div>
                     <div className="text-right">
-                      <div className="text-[14px] font-bold tabular-nums text-ink">{totalFunil}</div>
-                      <div className="text-[9px] text-ink-faint uppercase tracking-wider">no funil</div>
+                      <div className="text-[16px] font-bold tabular-nums text-danger">{totalParados}</div>
+                      <div className="text-[9px] text-ink-faint uppercase tracking-wider">parados</div>
                     </div>
                   </div>
                   <ResponsiveContainer width="100%" height={140}>
@@ -446,22 +467,19 @@ export function PainelEtiquetas() {
                       <Tooltip
                         cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                         contentStyle={{ background: '#11151c', border: '1px solid #1f2937', borderRadius: 6, fontSize: 10 }}
-                        formatter={(v: number, name: string) => [v, name]}
+                        formatter={(v: number) => [v, 'Parados']}
                       />
-                      <Bar dataKey="Fresco" stackId="a" fill={STATUS_COLORS.fresco} />
-                      <Bar dataKey="Recente" stackId="a" fill={STATUS_COLORS.recente} />
-                      <Bar dataKey="Parado" stackId="a" fill={STATUS_COLORS.parado} />
-                      <Bar dataKey="SemDado" stackId="a" fill={STATUS_COLORS.semDado}>
-                        <LabelList dataKey="total" position="right" style={{ fontSize: 9, fill: '#e7e9ee', fontWeight: 700 }} />
+                      <Bar dataKey="Parado" fill={STATUS_COLORS.parado}>
+                        <LabelList dataKey="Parado" position="right" style={{ fontSize: 10, fill: '#fca5a5', fontWeight: 700 }} formatter={(v: number) => v > 0 ? v : ''} />
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
                   <div className="flex items-center justify-between mt-1 pt-2 border-t border-border/50">
                     <span className="text-[9px] text-ink-faint uppercase tracking-wider">
-                      <span className="text-accent font-bold">{ativos}</span> ativos &lt;3d
+                      {totalFunil} total no funil
                     </span>
                     <span className="text-[9px] text-ink-faint">
-                      {totalFunil > 0 ? Math.round((ativos / totalFunil) * 100) : 0}% saudável
+                      <span className="text-danger font-bold">{pctParado}%</span> parado
                     </span>
                   </div>
                 </div>
