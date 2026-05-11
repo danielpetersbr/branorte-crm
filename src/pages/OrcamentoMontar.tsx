@@ -751,7 +751,7 @@ function OrcamentoPreview({
           { icon: '▶️', label: 'YouTube',     href: 'https://www.youtube.com/@mbranorte' },
           { icon: '📘', label: 'Facebook',    href: 'https://www.facebook.com/branorte.metalurgica' },
           { icon: '✈️', label: 'Telegram',    href: 'https://t.me/mbranorte' },
-          { icon: '💬', label: 'WhatsApp',    href: 'https://wa.me/5548996984660' },
+          { icon: '💬', label: 'WhatsApp',    href: 'https://api.whatsapp.com/send/?phone=48984692860&text&type=phone_number&app_absent=0' },
           { icon: '📞', label: 'Telefone',    href: 'tel:+554836584502' },
           { icon: '📍', label: 'Localização', href: 'https://maps.google.com/?q=Metal%C3%BArgica+BBA+Branorte+Gr%C3%A3o+Par%C3%A1+SC' },
         ].map(({ icon, label, href }) => (
