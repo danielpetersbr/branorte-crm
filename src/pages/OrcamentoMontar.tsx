@@ -565,50 +565,76 @@ function OrcamentoPreview({
   )
 
   return (
-    <div className="px-7 py-6 text-[10px] text-gray-900 leading-relaxed font-sans bg-white">
-      {/* Logo BRANORTE — banner profissional com underline */}
-      <div className="text-center pb-4 border-b-2 border-emerald-600">
-        <div className="inline-block text-[32px] font-black tracking-tight leading-none">
-          <span className="text-emerald-600">BRA</span><span className="text-gray-900">NORTE</span>
-        </div>
-        <div className="text-[8px] tracking-[0.25em] uppercase text-gray-500 mt-1 font-semibold">
-          Metalúrgica BBA Ltda · Grão Pará · SC
-        </div>
-      </div>
+    <div className="text-[10px] text-gray-900 leading-relaxed font-sans bg-white">
+      {/* Barra superior verde fina (acento de marca) */}
+      <div className="h-1 bg-gradient-to-r from-emerald-700 via-emerald-500 to-emerald-700" />
 
-      {/* Cabeçalho: ORÇAMENTO N° + DATA */}
-      <div className="flex justify-between items-baseline text-[11px] font-bold mt-4 mb-4">
-        <div className="text-gray-900">
-          ORÇAMENTO N°: <span className="text-gray-400 font-semibold">[a definir]</span>
-        </div>
-        <div className="text-gray-900">
-          DATA: <span className="text-gray-400 font-semibold">{hoje}</span>
-        </div>
-      </div>
-
-      {/* Bloco do cliente — fundo levemente cinza pra destacar */}
-      <div className="bg-gray-50 border border-gray-200 rounded px-3 py-2.5 mb-2">
-        <div className="flex gap-4 text-[10px]">
-          <div className="flex-1 space-y-1">
-            {camposEsquerda.map(([label, val, placeholder]) => (
-              <div key={label} className="flex">
-                <span className="font-bold w-20 shrink-0 text-gray-700">{label}:</span>
-                <span className={placeholder ? 'text-gray-400 italic' : 'text-gray-400'}>{val}</span>
-              </div>
-            ))}
+      {/* Cabeçalho principal: identidade da marca */}
+      <div className="px-7 pt-6 pb-5 border-b border-gray-300">
+        <div className="text-center">
+          <div className="inline-flex items-baseline gap-0 text-[36px] font-black tracking-tight leading-none">
+            <span className="text-emerald-600">BRA</span><span className="text-gray-900">NORTE</span>
           </div>
-          <div className="w-44 space-y-1 border-l border-gray-300 pl-3">
-            {camposDireita.map(([label, val]) => (
-              <div key={label} className="flex">
-                <span className="font-bold w-12 shrink-0 text-gray-700">{label}:</span>
-                <span className="text-gray-400">{val}</span>
-              </div>
-            ))}
+          <div className="mt-1.5 flex items-center justify-center gap-2 text-[7.5px] tracking-[0.3em] uppercase text-gray-500 font-bold">
+            <span className="h-px w-8 bg-gray-300" />
+            <span>Metalúrgica BBA Ltda</span>
+            <span className="text-gray-400">·</span>
+            <span>Grão Pará / SC</span>
+            <span className="h-px w-8 bg-gray-300" />
+          </div>
+          <div className="text-[8px] tracking-wide text-gray-500 mt-1">
+            CNPJ 16.935.999/0001-09 · (48) 3658-4502 · patrick@mbranorte.com.br
           </div>
         </div>
       </div>
 
-      <SectionHeader>Itens orçados abaixo</SectionHeader>
+      {/* Faixa do documento — ORÇAMENTO N° + DATA com tratamento de "título do documento" */}
+      <div className="bg-gray-900 text-white px-7 py-2.5 flex justify-between items-center">
+        <div className="flex items-baseline gap-3">
+          <span className="text-[8.5px] uppercase tracking-[0.3em] text-emerald-400 font-bold">Orçamento</span>
+          <span className="text-[14px] font-bold tracking-wider">N° <span className="text-emerald-300">[a definir]</span></span>
+        </div>
+        <div className="text-[10px] font-semibold text-gray-300">
+          <span className="text-[8.5px] uppercase tracking-[0.2em] text-gray-400 mr-1.5">Data</span>
+          {hoje}
+        </div>
+      </div>
+
+      {/* Bloco do cliente — card limpo */}
+      <div className="px-7 pt-5">
+        <div className="text-[8px] uppercase tracking-[0.25em] font-bold text-gray-500 mb-2">Dados do cliente</div>
+        <div className="border border-gray-200 rounded-md overflow-hidden">
+          <div className="grid grid-cols-3 divide-x divide-gray-200">
+            <div className="col-span-2 px-4 py-3 space-y-1.5">
+              {camposEsquerda.map(([label, val, placeholder]) => (
+                <div key={label} className="flex items-baseline border-b border-gray-100 pb-1 last:border-0 last:pb-0">
+                  <span className="text-[8.5px] uppercase tracking-wider font-bold w-24 shrink-0 text-gray-600">{label}</span>
+                  <span className={`text-[10px] ${placeholder ? 'text-gray-400 italic' : 'text-gray-300'}`}>{val}</span>
+                </div>
+              ))}
+            </div>
+            <div className="px-4 py-3 space-y-1.5 bg-gray-50/50">
+              {camposDireita.map(([label, val]) => (
+                <div key={label} className="flex items-baseline border-b border-gray-100 pb-1 last:border-0 last:pb-0">
+                  <span className="text-[8.5px] uppercase tracking-wider font-bold w-12 shrink-0 text-gray-600">{label}</span>
+                  <span className="text-[10px] text-gray-300">{val}</span>
+                </div>
+              ))}
+              {/* preenche espaço com linhas vazias para alinhar altura */}
+              <div className="opacity-0 pb-1 border-b border-transparent"><span className="text-[10px]">·</span></div>
+              <div className="opacity-0 pb-1 border-b border-transparent"><span className="text-[10px]">·</span></div>
+              <div className="opacity-0 pb-1 border-b border-transparent"><span className="text-[10px]">·</span></div>
+              <div className="opacity-0 pb-1 border-b border-transparent"><span className="text-[10px]">·</span></div>
+              <div className="opacity-0 pb-1 border-b border-transparent"><span className="text-[10px]">·</span></div>
+              <div className="opacity-0 pb-1 border-b border-transparent"><span className="text-[10px]">·</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Wrapper do conteúdo restante */}
+      <div className="px-7 pb-6">
+        <SectionHeader>Itens orçados abaixo</SectionHeader>
 
       <div className="space-y-5">
         {carrinho.map((it, idx) => {
@@ -754,19 +780,26 @@ function OrcamentoPreview({
       <SectionHeader>Nossas Redes Sociais</SectionHeader>
       <div className="grid grid-cols-4 gap-2 text-[9px] text-gray-700">
         {[
-          ['📧', 'E-mail'],
-          ['📷', 'Instagram'],
-          ['▶️', 'YouTube'],
-          ['📘', 'Facebook'],
-          ['✈️', 'Telegram'],
-          ['💬', 'WhatsApp'],
-          ['📞', 'Telefone'],
-          ['📍', 'Localização'],
-        ].map(([icon, label]) => (
-          <div key={label} className="flex flex-col items-center gap-0.5 py-1">
-            <div className="text-[16px] leading-none">{icon}</div>
-            <div className="text-[8.5px] font-semibold text-gray-600">{label}</div>
-          </div>
+          { icon: '📧', label: 'E-mail',      href: 'mailto:patrick@mbranorte.com.br' },
+          { icon: '📷', label: 'Instagram',   href: 'https://instagram.com/mbranorte' },
+          { icon: '▶️', label: 'YouTube',     href: 'https://www.youtube.com/@metalurgicabranortebba9217' },
+          { icon: '📘', label: 'Facebook',    href: 'https://www.facebook.com/metalurgicabranorte' },
+          { icon: '✈️', label: 'Telegram',    href: 'https://t.me/mbranorte' },
+          { icon: '💬', label: 'WhatsApp',    href: 'https://wa.me/5548996984660' },
+          { icon: '📞', label: 'Telefone',    href: 'tel:+554836584502' },
+          { icon: '📍', label: 'Localização', href: 'https://maps.google.com/?q=Metal%C3%BArgica+BBA+Branorte+Gr%C3%A3o+Par%C3%A1+SC' },
+        ].map(({ icon, label, href }) => (
+          <a
+            key={label}
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex flex-col items-center gap-0.5 py-1.5 rounded hover:bg-emerald-50 transition-colors group"
+            title={href}
+          >
+            <div className="text-[18px] leading-none group-hover:scale-110 transition-transform">{icon}</div>
+            <div className="text-[8.5px] font-semibold text-gray-600 group-hover:text-emerald-700">{label}</div>
+          </a>
         ))}
       </div>
       <div className="text-center text-[8px] italic text-gray-400 mt-1">PARA INTERAGIR CLIQUE NO ÍCONE</div>
@@ -880,6 +913,7 @@ function OrcamentoPreview({
         <span>Orçamento · Branorte BBA</span>
         <span>Página 1</span>
       </div>
+      </div>{/* /wrapper px-7 pb-6 */}
     </div>
   )
 }
