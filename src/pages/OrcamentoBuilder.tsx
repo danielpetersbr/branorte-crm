@@ -33,7 +33,7 @@ import { construirFormaPagamento, type TipoPagamento, type FormaPagamentoConfig 
 
 type Step = 1 | 2 | 3 | 4
 
-const PACOTES = ['COMPACTA 01', 'COMPACTA 02', 'COMPACTA 03', 'MINI FABRICA']
+const PACOTES_PADRAO = ['COMPACTA 01', 'COMPACTA 02', 'COMPACTA 03', 'MINI FABRICA']
 
 function formatBRL(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
@@ -236,6 +236,15 @@ export function OrcamentoBuilder() {
       return true
     })
   }, [modelos, filtroPacote, filtroVoltagem])
+
+  // Pacotes disponiveis: junta os padrao + custom (uploads dos usuarios)
+  const pacotesDisponiveis = useMemo(() => {
+    const dosModelos = new Set((modelos ?? []).map(m => m.pacote))
+    // Ordena: padrao primeiro, custom depois (alfabético)
+    const padrao = PACOTES_PADRAO.filter(p => dosModelos.has(p))
+    const custom = [...dosModelos].filter(p => !PACOTES_PADRAO.includes(p)).sort()
+    return [...padrao, ...custom]
+  }, [modelos])
 
   function aplicarCliente(c: typeof clientesSugeridos extends (infer T)[] | undefined ? T : never) {
     if (!c) return
@@ -674,7 +683,7 @@ export function OrcamentoBuilder() {
             >
               Todos pacotes
             </button>
-            {PACOTES.map(p => (
+            {pacotesDisponiveis.map(p => (
               <button
                 key={p}
                 onClick={() => setFiltroPacote(filtroPacote === p ? null : p)}
