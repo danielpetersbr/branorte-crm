@@ -9,10 +9,12 @@ import {
 } from 'lucide-react'
 import {
   useOrcamentoModelos, useClientesOrcamento, useCriarOrcamento,
-  obterProximoNumero,
+  obterProximoNumero, subirModeloCustomizado,
   type OrcamentoModelo, type OrcamentoItem, type OrcamentoMotor,
   type OrcamentoAcessorios, type ClienteDados,
 } from '@/hooks/useOrcamentoBuilder'
+import { useQueryClient } from '@tanstack/react-query'
+import { UploadModeloModal } from '@/components/UploadModeloModal'
 import { useAuth } from '@/hooks/useAuth'
 import { baixarOrcamentoPdf } from '@/lib/orcamento-pdf'
 import {
@@ -26,7 +28,7 @@ import {
   scanFolderForLastNumber, formatarNumero, ensureWritePermission,
   resolverPastaDoMes, escreverArquivo,
 } from '@/lib/orcamento-folder-scan'
-import { FolderOpen, RefreshCw, Calendar, CreditCard, FolderPlus } from 'lucide-react'
+import { FolderOpen, RefreshCw, Calendar, CreditCard, FolderPlus, Upload, X } from 'lucide-react'
 import { construirFormaPagamento, type TipoPagamento, type FormaPagamentoConfig } from '@/lib/forma-pagamento'
 
 type Step = 1 | 2 | 3 | 4
@@ -77,6 +79,10 @@ export function OrcamentoBuilder() {
   const { profile } = useAuth()
   const { data: modelos, isLoading: loadingMods } = useOrcamentoModelos()
   const criar = useCriarOrcamento()
+  const queryClient = useQueryClient()
+
+  // Modal de upload de modelo customizado
+  const [uploadOpen, setUploadOpen] = useState(false)
 
   const [step, setStep] = useState<Step>(1)
 
@@ -643,10 +649,20 @@ export function OrcamentoBuilder() {
       {/* ============== STEP 2 — Modelo ============== */}
       {step === 2 && (
         <Card className="p-5 space-y-4">
-          <h2 className="text-[14px] font-semibold text-ink flex items-center gap-2">
-            <Package className="h-4 w-4" /> Escolher Modelo
-            <span className="text-[11px] text-ink-faint font-normal ml-2">{modelosFiltrados.length} de {modelos?.length ?? 0}</span>
-          </h2>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-[14px] font-semibold text-ink flex items-center gap-2 flex-1">
+              <Package className="h-4 w-4" /> Escolher Modelo
+              <span className="text-[11px] text-ink-faint font-normal ml-2">{modelosFiltrados.length} de {modelos?.length ?? 0}</span>
+            </h2>
+            <button
+              onClick={() => setUploadOpen(true)}
+              className="text-[12px] px-3 py-1.5 rounded bg-info-bg/30 hover:bg-info-bg/50 text-info border border-info/40 font-semibold flex items-center gap-1.5"
+              title="Subir um novo .docx pro catálogo (ex: orçamento só de martelos e peneiras)"
+            >
+              <Upload className="h-3.5 w-3.5" />
+              Subir modelo
+            </button>
+          </div>
 
           {/* Filtros */}
           <div className="flex flex-wrap gap-2">
@@ -1302,6 +1318,17 @@ export function OrcamentoBuilder() {
           </div>
         </Card>
       )}
+
+      {/* Modal de upload de modelo customizado (acessivel do Step 2) */}
+      <UploadModeloModal
+        open={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        onSuccess={async (novoId) => {
+          await queryClient.invalidateQueries({ queryKey: ['orcamento-modelos'] })
+          setModeloId(novoId)
+          setUploadOpen(false)
+        }}
+      />
     </div>
   )
 }

@@ -88,6 +88,72 @@ export interface OrcamentoGerado {
   updated_at: string
 }
 
+export interface SubirModeloInput {
+  basename: string                  // ex: "Avulso - Martelos e Peneiras"
+  pacote: string                    // ex: "ACESSÓRIOS", "PEÇAS", "OUTROS"
+  voltagem: 'monofasico' | 'trifasico'
+  is_master: boolean
+  is_jr: boolean
+  com_balanca: boolean
+  com_ensacadeira: boolean
+  com_chupim: boolean
+  producao_kgh: number | null
+  armazenamento_kg: number | null
+  itens: OrcamentoItem[]
+  acessorios: OrcamentoAcessorios | null
+  motores: OrcamentoMotor[]
+  total_equipamentos: number
+  total_motores: number
+  total_proposta: number
+  arquivo_docx: File | Blob          // o .docx em si pra subir no Storage
+}
+
+// Faz upload do .docx pro bucket + cria registro em orcamento_modelos
+export async function subirModeloCustomizado(input: SubirModeloInput): Promise<OrcamentoModelo> {
+  const slug = `custom-${Date.now()}-${input.basename.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 60)}`
+  const templatePath = `v1/${slug}.docx`
+
+  // 1) Upload do .docx pro bucket
+  const { error: upErr } = await supabase.storage
+    .from('orcamento-templates')
+    .upload(templatePath, input.arquivo_docx, {
+      contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      upsert: true,
+    })
+  if (upErr) throw new Error(`Falha upload .docx: ${upErr.message}`)
+
+  // 2) Insere em orcamento_modelos
+  const payload = {
+    slug,
+    basename: input.basename,
+    pacote: input.pacote,
+    voltagem: input.voltagem,
+    is_master: input.is_master,
+    is_jr: input.is_jr,
+    com_balanca: input.com_balanca,
+    com_ensacadeira: input.com_ensacadeira,
+    com_chupim: input.com_chupim,
+    producao_kgh: input.producao_kgh,
+    armazenamento_kg: input.armazenamento_kg,
+    itens: input.itens as any,
+    acessorios: input.acessorios as any,
+    motores: input.motores as any,
+    total_equipamentos: input.total_equipamentos,
+    total_motores: input.total_motores,
+    total_proposta: input.total_proposta,
+    template_path: templatePath,
+    arquivo_origem: '(upload manual)',
+    ativo: true,
+  }
+  const { data, error } = await supabase
+    .from('orcamento_modelos')
+    .insert(payload)
+    .select()
+    .single()
+  if (error) throw new Error(`Falha salvar modelo: ${error.message}`)
+  return data as OrcamentoModelo
+}
+
 // Lista todos os modelos (catalogo Branorte)
 export function useOrcamentoModelos() {
   return useQuery({
