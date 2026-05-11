@@ -14,6 +14,7 @@ import { EtiquetasZap } from '@/pages/EtiquetasZap'
 import { EtiquetasZapGraficos } from '@/pages/EtiquetasZapGraficos'
 import { PainelEtiquetas } from '@/pages/PainelEtiquetas'
 import { OrcamentoBuilder } from '@/pages/OrcamentoBuilder'
+import { OrcamentoMontar } from '@/pages/OrcamentoMontar'
 import { AtividadeDiaria } from '@/pages/AtividadeDiaria'
 import { Projeto } from '@/pages/Projeto'
 import { Login } from '@/pages/Login'
@@ -66,6 +67,7 @@ function AppRoutes() {
         <Route path="/orcamentos" element={<Orcamentos />} />
         <Route path="/orcamentos/lista" element={<Orcamentos />} />
         <Route path="/orcamentos/novo" element={<OrcamentoBuilder />} />
+        <Route path="/orcamentos/montar" element={<OrcamentoMontar />} />
         <Route path="/vendidos" element={<Vendidos />} />
         <Route path="/atendimentos" element={<Atendimentos />} />
         <Route path="/funil" element={<Funil />} />
