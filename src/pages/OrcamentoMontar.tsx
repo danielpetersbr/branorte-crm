@@ -490,46 +490,59 @@ function OrcamentoPreview({
 }) {
   const voltagemLabel = voltagem === 'monofasico' ? 'Monofásico' : 'Trifásico'
   const motoresTitle = voltagem === 'monofasico' ? 'Motores Monofásicos:' : 'Motores Trifásicos:'
+  const mostrarTotalEquip = carrinho.length > 1  // template real só mostra subtotal com 2+ itens
+
+  // Campos do cliente (cada um em sua linha — bate com o .docx)
+  const camposCliente: Array<[string, string]> = [
+    ['CLIENTE', '[preencher]'],
+    ['A/C', '—'],
+    ['FONE', '—'],
+    ['CIDADE', '—'],
+    ['BAIRRO', '—'],
+    ['ENDEREÇO', '—'],
+    ['CEP', '—'],
+    ['CPF/CNPJ', '—'],
+    ['I.E.', '—'],
+    ['E-MAIL', '—'],
+  ]
+
   return (
     <div className="p-6 text-[10px] text-gray-900 leading-relaxed font-serif bg-white">
-      {/* Cabeçalho real: ORÇAMENTO N° xxx / DATA: xxx (idêntico ao .docx) */}
-      <div className="flex justify-between items-baseline mb-4">
-        <div className="text-[12px] font-bold">
-          ORÇAMENTO N° <span className="text-gray-400">[a definir]</span>
-        </div>
-        <div className="text-[12px] font-bold">
-          DATA: <span className="text-gray-400">__/__/____</span>
-        </div>
+      {/* Cabeçalho real: SÓ "ORÇAMENTO N°" (sem DATA — template não tem) */}
+      <div className="text-[12px] font-bold mb-3">
+        ORÇAMENTO N° <span className="text-gray-400">[a definir]</span>
       </div>
 
-      {/* Cliente (placeholder — preenchido na próxima etapa) */}
-      <div className="mb-2 text-[10px]">
-        <div className="flex flex-wrap gap-x-6 gap-y-0.5">
-          <span><span className="font-bold">CLIENTE:</span> <span className="text-gray-400 italic">[preencher]</span></span>
-          <span><span className="font-bold">A/C:</span> <span className="text-gray-400 italic">—</span></span>
-          <span><span className="font-bold">FONE:</span> <span className="text-gray-400 italic">—</span></span>
-        </div>
-        <div className="text-gray-400 italic mt-0.5">
-          CIDADE / BAIRRO / ENDEREÇO / CEP / CPF·CNPJ / I.E. / E-MAIL — preencher na próxima etapa
+      {/* Cliente — cada label em sua linha (igual .docx) */}
+      <div className="mb-3 text-[10px] space-y-0.5">
+        {camposCliente.map(([label, val]) => (
+          <div key={label} className="flex">
+            <span className="font-bold w-24 shrink-0">{label}:</span>
+            <span className={val === '[preencher]' || val === '—' ? 'text-gray-400 italic' : ''}>{val}</span>
+          </div>
+        ))}
+        <div className="flex">
+          <span className="font-bold w-24 shrink-0">VOLTAGEM:</span>
+          <span className="font-bold uppercase">{voltagemLabel}</span>
         </div>
       </div>
 
       <hr className="my-3 border-gray-300" />
 
       {/* ITENS ORÇADOS ABAIXO: */}
-      <div className="font-bold text-[11px] mb-2">
+      <div className="font-bold text-[11px] mb-3">
         ITENS ORÇADOS ABAIXO:
       </div>
 
-      <div className="space-y-3 mb-3">
+      <div className="space-y-4 mb-3">
         {carrinho.map((it, idx) => {
           const letra = String.fromCharCode(65 + idx)
           const subtotal = it.valor * it.qtd
           return (
             <div key={it.uid} className="group relative">
               <div className="flex justify-between items-start gap-2">
-                <div className="font-bold text-[10px] flex-1 min-w-0">
-                  {letra} - {String(it.qtd).padStart(2, '0')} – <span className="uppercase">{it.nome}</span>
+                <div className="font-bold text-[10px] flex-1 min-w-0 uppercase">
+                  {letra} - {String(it.qtd).padStart(2, '0')} – {it.nome}
                 </div>
                 <button
                   onClick={() => onRemove(it.uid)}
@@ -539,15 +552,29 @@ function OrcamentoPreview({
                   <X className="h-3 w-3" />
                 </button>
               </div>
-              <div className="pl-3 text-[9.5px] text-gray-700 mt-0.5 space-y-0.5">
+              {/* Specs com dot leaders (igual .docx: "Corpo em chapa..............1,5 mm") */}
+              <div className="pl-6 text-[9.5px] text-gray-700 mt-1 space-y-0.5">
                 {it.specs.length > 0
-                  ? it.specs.map((s, i) => <div key={i}>- {s}</div>)
+                  ? it.specs.map((s, i) => {
+                      // Tenta separar "label valor" — se tem números no final, faz dot leader
+                      const m = s.match(/^(.+?)\s+([\d,.]+\s*[a-zA-Zçãõéí°²³]*\.?)$/)
+                      if (m) {
+                        return (
+                          <div key={i} className="flex items-baseline">
+                            <span>- {m[1].trim()}</span>
+                            <span className="flex-1 mx-1 border-b border-dotted border-gray-400 translate-y-[-2px]" />
+                            <span>{m[2].trim()}</span>
+                          </div>
+                        )
+                      }
+                      return <div key={i}>- {s}</div>
+                    })
                   : it.motor_cv && (
                       <div>- Motor {it.motor_cv} CV {it.motor_polos} polos {voltagemLabel.toLowerCase()}{it.motor_qtd > 1 && ` (qtd ${it.motor_qtd})`}</div>
                     )
                 }
               </div>
-              <div className="flex justify-between pl-3 mt-1 text-[10px] font-bold">
+              <div className="flex justify-between mt-2 text-[10px] font-bold">
                 <span>VALOR</span>
                 <span>R$ {formatBRLBare(subtotal)}</span>
               </div>
@@ -556,13 +583,15 @@ function OrcamentoPreview({
         })}
       </div>
 
-      {/* VALOR TOTAL DE EQUIPAMENTOS (fundo cinza igual PDF) */}
-      <div className="flex justify-between text-[10px] font-bold bg-gray-100 px-2 py-1.5 rounded">
-        <span>VALOR TOTAL DE EQUIPAMENTOS</span>
-        <span>R$ {formatBRLBare(totalItems)}</span>
-      </div>
+      {/* VALOR TOTAL DE EQUIPAMENTOS — só com 2+ itens (igual .docx) */}
+      {mostrarTotalEquip && (
+        <div className="flex justify-between text-[10px] font-bold bg-gray-100 px-2 py-1.5 rounded mb-3">
+          <span>VALOR TOTAL DE EQUIPAMENTOS</span>
+          <span>R$ {formatBRLBare(totalItems)}</span>
+        </div>
+      )}
 
-      {/* Motores (tabela TIPO | NOVO) */}
+      {/* Motores (tabela TIPO | NOVO igual .docx) */}
       {motoresAgrupados.length > 0 && (
         <div className="mt-4">
           <div className="font-bold text-[10px] mb-1">{motoresTitle}</div>
@@ -577,37 +606,33 @@ function OrcamentoPreview({
               {motoresAgrupados.map(m => (
                 <tr key={`${m.cv}-${m.polos}`} className="border-b border-gray-200">
                   <td className="py-0.5 text-gray-700">
-                    {m.cv} CV {m.polos} polos{m.qtd > 1 && ` (qtd ${m.qtd})`}
+                    - {m.cv} CV {m.polos} polos{m.qtd > 1 && ` (qtd ${m.qtd})`}
                   </td>
                   <td className="py-0.5 text-right text-gray-700">R$ {formatBRLBare(m.valor_total)}</td>
                 </tr>
               ))}
-              <tr className="border-t border-gray-400 font-bold">
-                <td className="py-1">TOTAL</td>
-                <td className="py-1 text-right">R$ {formatBRLBare(totalMotores)}</td>
-              </tr>
             </tbody>
           </table>
         </div>
       )}
 
-      {/* VALOR TOTAL DA PROPOSTA (fundo verde claro + borda verde, igual PDF) */}
+      {/* VALOR TOTAL DA PROPOSTA (fundo verde + borda — igual PDF) */}
       <div className="flex justify-between text-[11px] font-bold mt-3 px-2 py-2 rounded border border-emerald-500 bg-emerald-50 text-emerald-900">
         <span>VALOR TOTAL DA PROPOSTA COM MOTOR NOVO</span>
         <span>R$ {formatBRLBare(totalGeral)}</span>
       </div>
 
-      {/* Termos (resumidos — completos só no arquivo final) */}
-      <div className="mt-4 text-[9px] text-gray-700 space-y-0.5">
+      {/* Termos (igual .docx, ordem exata) */}
+      <div className="mt-4 text-[9.5px] text-gray-700 space-y-0.5">
         <div>- Data da venda – <span className="text-gray-400 italic">a combinar</span></div>
-        <div>- Prazo de entrega – <span className="text-gray-400 italic">90 dias (úteis)</span></div>
+        <div>- Prazo de entrega – 90 dias (úteis)</div>
         <div>- Forma de pagamento – <span className="text-gray-400 italic">a combinar</span></div>
-        <div>- Frete – por conta do cliente</div>
-        <div>- Validade da proposta – 10 dias após o envio.</div>
+        <div>- Frete - por conta do cliente</div>
+        <div>- Validade da proposta - 10 dias após o envio.</div>
       </div>
 
       <div className="mt-4 pt-3 border-t border-gray-300 text-[8px] text-gray-500 italic leading-relaxed">
-        Dados do fabricante, conta para depósito, tributos, garantia e cláusula de cancelamento entram automaticamente no .docx/.pdf final.
+        Dados do fabricante, redes sociais, conta para depósito, tributos, garantia e cláusula de cancelamento entram automaticamente no .docx/.pdf final.
       </div>
     </div>
   )
