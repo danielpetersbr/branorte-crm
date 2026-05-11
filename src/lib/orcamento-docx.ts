@@ -356,6 +356,48 @@ export async function gerarOrcamentoDocx(input: DocxInput): Promise<Blob> {
   return out
 }
 
+// Prepara uma versão do .docx pra conversão PDF: remove bordas de tabela/célula
+// que o LibreOffice renderiza visíveis mas o Word esconde (default divergente).
+// O .docx ORIGINAL salvo na pasta Z: permanece intacto — só essa versão é
+// modificada antes de mandar pro Gotenberg gerar o PDF.
+export async function prepararDocxParaPdf(docxBlob: Blob): Promise<Blob> {
+  const arrayBuffer = await docxBlob.arrayBuffer()
+  const zip = new PizZip(arrayBuffer)
+
+  // Lê e modifica word/document.xml
+  const docXml = zip.file('word/document.xml')
+  if (docXml) {
+    let xml = docXml.asText()
+    xml = xml
+      // tblBorders com conteúdo → nil (sem borda visível)
+      .replace(/<w:tblBorders[^>]*>[\s\S]*?<\/w:tblBorders>/g,
+        '<w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/></w:tblBorders>')
+      .replace(/<w:tblBorders[^>]*\/>/g, '<w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/></w:tblBorders>')
+      // tcBorders → nil (cell borders)
+      .replace(/<w:tcBorders[^>]*>[\s\S]*?<\/w:tcBorders>/g,
+        '<w:tcBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/></w:tcBorders>')
+      .replace(/<w:tcBorders[^>]*\/>/g, '<w:tcBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/></w:tcBorders>')
+    zip.file('word/document.xml', xml)
+  }
+
+  // Tambem limpa em styles.xml (caso bordas estejam definidas em estilos default)
+  const stylesXml = zip.file('word/styles.xml')
+  if (stylesXml) {
+    let xml = stylesXml.asText()
+    xml = xml
+      .replace(/<w:tblBorders[^>]*>[\s\S]*?<\/w:tblBorders>/g,
+        '<w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/></w:tblBorders>')
+      .replace(/<w:tcBorders[^>]*>[\s\S]*?<\/w:tcBorders>/g,
+        '<w:tcBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/></w:tcBorders>')
+    zip.file('word/styles.xml', xml)
+  }
+
+  return zip.generate({
+    type: 'blob',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  })
+}
+
 export async function baixarOrcamentoDocx(input: DocxInput): Promise<void> {
   const blob = await gerarOrcamentoDocx(input)
   const safeNome = input.cliente_nome.replace(/[^a-zA-Z0-9 ]/g, '').slice(0, 50).trim()

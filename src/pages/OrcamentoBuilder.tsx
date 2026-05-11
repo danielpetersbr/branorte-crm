@@ -16,7 +16,8 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import { baixarOrcamentoPdf } from '@/lib/orcamento-pdf'
 import {
-  baixarOrcamentoDocx, gerarOrcamentoDocx, nomeBaseArquivo, montarNotaTxt,
+  baixarOrcamentoDocx, gerarOrcamentoDocx, prepararDocxParaPdf,
+  nomeBaseArquivo, montarNotaTxt,
 } from '@/lib/orcamento-docx'
 import { docxParaPdf } from '@/lib/docx-to-pdf'
 import { isGotenbergConfigured, gerarPdfDoDocxGotenberg } from '@/lib/gotenberg-pdf'
@@ -292,11 +293,14 @@ export function OrcamentoBuilder() {
     })
 
     // 4) Gera o PDF via Gotenberg (se configurado)
+    //    Usa versão "limpa" do docx (sem bordas extras) só pro PDF —
+    //    o .docx salvo na pasta é o original.
     let pdfBlob: Blob | null = null
     let pdfErro: string | undefined
     if (isGotenbergConfigured()) {
       try {
-        pdfBlob = await gerarPdfDoDocxGotenberg(docxBlob)
+        const docxParaPdf = await prepararDocxParaPdf(docxBlob)
+        pdfBlob = await gerarPdfDoDocxGotenberg(docxParaPdf)
       } catch (e) {
         pdfErro = (e as Error).message || 'erro desconhecido'
         console.warn('Falha gerar PDF via Gotenberg:', pdfErro)
