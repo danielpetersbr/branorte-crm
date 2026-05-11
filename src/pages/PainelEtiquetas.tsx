@@ -5,6 +5,7 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatNumber } from '@/lib/utils'
 import { Activity, AlertCircle, Clock, Flame, BarChart3, Reply } from 'lucide-react'
 import { usePainelEtiquetas, type AggregacaoEtiqueta } from '@/hooks/useChatsPorEtiqueta'
+import { useVendedorXEtiqueta } from '@/hooks/useVendedorXEtiqueta'
 import {
   Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis, LabelList,
   PieChart, Pie, Legend,
@@ -66,6 +67,9 @@ function StatusBadge({ status }: { status: 'fresco' | 'recente' | 'parado' | 'se
 
 export function PainelEtiquetas() {
   const { data, isLoading, error } = usePainelEtiquetas()
+  // Fonte alternativa pra Matriz Vendedor × Etiqueta: usa tabela `cards`
+  // (todos vendedores com cards reais, não só os que populam wa_chat_labels)
+  const { data: dataVE } = useVendedorXEtiqueta()
   const [filtroEtiqueta, setFiltroEtiqueta] = useState<string | null>(null)
 
   const dadosBarras = useMemo(() => {
@@ -425,53 +429,60 @@ export function PainelEtiquetas() {
         </Card>
       )}
 
-      {/* Matriz vendedor x etiqueta */}
-      {matriz && matriz.vendedores.length > 0 && (
-        <Card className="p-4 overflow-x-auto">
-          <h2 className="text-[13px] font-semibold text-ink mb-3 flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-accent" />
-            Vendedor × Etiqueta
-          </h2>
-          <table className="w-full border-collapse min-w-[600px]">
-            <thead>
-              <tr>
-                <th className="text-left text-[10px] uppercase tracking-wider text-ink-faint font-medium px-2 py-2 sticky left-0 bg-bg">Vendedor</th>
-                {matriz.etiquetas.map(e => (
-                  <th
-                    key={e.nomeCanonico}
-                    className="text-center text-[10px] uppercase tracking-wider font-medium px-2 py-2 cursor-pointer hover:bg-surface-2"
-                    style={{ color: corDaEtiqueta(e.nomeCanonico) }}
-                    onClick={() => setFiltroEtiqueta(e.nomeCanonico)}
-                    title="Clique para detalhes"
-                  >
-                    {e.nomeCanonico.length > 14 ? e.nomeCanonico.slice(0, 12) + '…' : e.nomeCanonico}
-                  </th>
-                ))}
-                <th className="text-center text-[10px] uppercase tracking-wider text-ink-faint font-medium px-2 py-2">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {matriz.vendedores.map(v => {
-                const totalVend = matriz.etiquetas.reduce((acc, e) => acc + (e.porVendedor[v] || 0), 0)
-                return (
-                  <tr key={v} className="border-t border-border hover:bg-surface-2/50">
+      {/* Matriz vendedor x etiqueta — fonte: `cards` via endpoint vendedor-x-etiqueta
+          (todos vendedores com cards reais, não só os que usaram extensão antiga) */}
+      {dataVE && dataVE.linhas.length > 0 && (() => {
+        // Top 10 etiquetas por total
+        const topCols = dataVE.colunas.slice(0, 10)
+        return (
+          <Card className="p-4 overflow-x-auto">
+            <h2 className="text-[13px] font-semibold text-ink mb-3 flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-accent" />
+              Vendedor × Etiqueta
+              <span className="text-[10px] font-normal text-ink-muted ml-1">
+                · {dataVE.linhas.length} vendedores · {formatNumber(dataVE.total_geral)} cards
+              </span>
+            </h2>
+            <table className="w-full border-collapse min-w-[600px]">
+              <thead>
+                <tr>
+                  <th className="text-left text-[10px] uppercase tracking-wider text-ink-faint font-medium px-2 py-2 sticky left-0 bg-bg">Vendedor</th>
+                  {topCols.map(col => (
+                    <th
+                      key={col.stage_id}
+                      className="text-center text-[10px] uppercase tracking-wider font-medium px-2 py-2 cursor-pointer hover:bg-surface-2"
+                      style={{ color: corDaEtiqueta(col.etiqueta) }}
+                      onClick={() => setFiltroEtiqueta(col.etiqueta)}
+                      title="Clique para detalhes"
+                    >
+                      {col.etiqueta.length > 14 ? col.etiqueta.slice(0, 12) + '…' : col.etiqueta}
+                    </th>
+                  ))}
+                  <th className="text-center text-[10px] uppercase tracking-wider text-ink-faint font-medium px-2 py-2">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dataVE.linhas.map(linha => (
+                  <tr key={linha.vendedor_id} className="border-t border-border hover:bg-surface-2/50">
                     <td className="px-2 py-2 sticky left-0 bg-bg">
                       <div className="flex items-center gap-2">
-                        <Avatar name={v} size="sm" />
-                        <span className="text-[12px] font-medium text-ink">{v}</span>
+                        <Avatar name={linha.vendedor} size="sm" />
+                        <span className="text-[12px] font-medium text-ink">{linha.vendedor}</span>
                       </div>
                     </td>
-                    {matriz.etiquetas.map(e => {
-                      const count = e.porVendedor[v] || 0
-                      const intensity = e.total > 0 ? Math.min(1, count / Math.max(1, e.total / matriz.vendedores.length * 2)) : 0
+                    {topCols.map(col => {
+                      const cell = linha.celulas[col.etiqueta]
+                      const count = cell?.total || 0
+                      const intensity = col.total > 0 ? Math.min(1, count / Math.max(1, col.total / dataVE.linhas.length * 2)) : 0
                       return (
-                        <td key={e.nomeCanonico} className="px-2 py-1 text-center text-[12px] font-medium tabular-nums">
+                        <td key={col.stage_id} className="px-2 py-1 text-center text-[12px] font-medium tabular-nums">
                           {count > 0 ? (
                             <span
                               className="inline-block px-2 py-0.5 rounded text-ink"
                               style={{
-                                backgroundColor: count > 0 ? `${corDaEtiqueta(e.nomeCanonico)}${Math.round(intensity * 60 + 10).toString(16).padStart(2, '0')}` : 'transparent',
+                                backgroundColor: `${corDaEtiqueta(col.etiqueta)}${Math.round(intensity * 60 + 10).toString(16).padStart(2, '0')}`,
                               }}
+                              title={`${count} total · 🔥 ${cell?.fresco||0} fresco · ⚡ ${cell?.recente||0} recente · 🔴 ${cell?.parado||0} parado`}
                             >
                               {count}
                             </span>
@@ -481,23 +492,23 @@ export function PainelEtiquetas() {
                         </td>
                       )
                     })}
-                    <td className="px-2 py-2 text-center text-[12px] font-bold tabular-nums text-ink">{totalVend}</td>
+                    <td className="px-2 py-2 text-center text-[12px] font-bold tabular-nums text-ink">{linha.total}</td>
                   </tr>
-                )
-              })}
-              <tr className="border-t-2 border-border bg-surface-2/30">
-                <td className="px-2 py-2 sticky left-0 bg-surface-2/50 text-[10px] uppercase tracking-wider text-ink-muted font-medium">Total</td>
-                {matriz.etiquetas.map(e => (
-                  <td key={e.nomeCanonico} className="px-2 py-2 text-center text-[12px] font-bold tabular-nums text-ink">{e.total}</td>
                 ))}
-                <td className="px-2 py-2 text-center text-[12px] font-bold tabular-nums text-ink">
-                  {matriz.etiquetas.reduce((a, e) => a + e.total, 0)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </Card>
-      )}
+                <tr className="border-t-2 border-border bg-surface-2/30">
+                  <td className="px-2 py-2 sticky left-0 bg-surface-2/50 text-[10px] uppercase tracking-wider text-ink-muted font-medium">Total</td>
+                  {topCols.map(col => (
+                    <td key={col.stage_id} className="px-2 py-2 text-center text-[12px] font-bold tabular-nums text-ink">{col.total}</td>
+                  ))}
+                  <td className="px-2 py-2 text-center text-[12px] font-bold tabular-nums text-ink">
+                    {dataVE.total_geral}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </Card>
+        )
+      })()}
 
       {/* Footer com legenda */}
       {!semDadoTemporal && (
