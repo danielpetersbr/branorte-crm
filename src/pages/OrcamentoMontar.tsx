@@ -11,6 +11,7 @@ import {
   agruparPorCategoria, acharMotorCompativel,
   type CatalogoItem, type CatalogoMotor,
 } from '@/hooks/useCatalogo'
+import { FinalizarMontarModal, type CarrinhoSnapshot } from '@/components/FinalizarMontarModal'
 
 type Voltagem = 'monofasico' | 'trifasico'
 type ModoVisao = 'preview' | 'edicao'
@@ -84,6 +85,8 @@ export function OrcamentoMontar() {
   const [carrinho, setCarrinho] = useState<CarrinhoItem[]>([])
   const [showOnlyPopular, setShowOnlyPopular] = useState(false)
   const [modoVisao, setModoVisao] = useState<ModoVisao>('preview')
+  const [finalizarOpen, setFinalizarOpen] = useState(false)
+  const [sucesso, setSucesso] = useState<{ numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean } | null>(null)
 
   const categorias = useMemo(() => agruparPorCategoria(items ?? []), [items])
 
@@ -395,15 +398,60 @@ export function OrcamentoMontar() {
               </div>
               <button
                 disabled={carrinho.length === 0}
-                onClick={() => alert('Geração de .docx personalizado vem na próxima fase 🚧')}
+                onClick={() => setFinalizarOpen(true)}
                 className="w-full mt-2 bg-accent hover:bg-accent-700 text-white text-[12px] font-semibold py-2 rounded disabled:opacity-50"
               >
-                Continuar para gerar .docx →
+                Continuar para gerar .docx + PDF →
               </button>
             </div>
           )}
         </Card>
       </div>
+
+      {/* Modal de finalização */}
+      <FinalizarMontarModal
+        open={finalizarOpen}
+        snapshot={{
+          voltagem,
+          itens: carrinho.map(c => ({
+            nome: c.nome,
+            qtd: c.qtd,
+            valor: c.valor,
+            specs: c.specs,
+            motor_cv: c.motor_cv,
+            motor_polos: c.motor_polos,
+            motor_qtd: c.motor_qtd,
+            motor_valor_unit: c.motor_valor_unit,
+          })),
+          motoresAgrupados,
+          totalItems,
+          totalMotores,
+          totalGeral,
+        } as CarrinhoSnapshot}
+        onClose={() => setFinalizarOpen(false)}
+        onSuccess={info => {
+          setSucesso(info)
+          setFinalizarOpen(false)
+          setCarrinho([])
+        }}
+      />
+
+      {/* Feedback de sucesso */}
+      {sucesso && (
+        <div className="fixed bottom-4 right-4 z-50 bg-success-bg/20 border border-success/50 rounded-lg p-4 shadow-lg max-w-md">
+          <div className="flex items-start gap-2">
+            <div className="text-[13px] font-bold text-success">✓ Orçamento {sucesso.numero} gerado</div>
+            <button onClick={() => setSucesso(null)} className="ml-auto text-ink-faint hover:text-ink">
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+          <div className="text-[11px] text-ink-muted mt-1">
+            {sucesso.salvouNaPasta && '📁 Salvo na pasta Z:'}
+            {sucesso.baixouDocx && '⬇️ .docx baixado'}
+            {sucesso.baixouPdf && ' · PDF baixado'}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
