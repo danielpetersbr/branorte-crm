@@ -34,9 +34,11 @@ export interface CarrinhoSnapshot {
     valor_unit: number
     valor_total: number
   }>
-  totalItems: number
+  acessorios: { pct: number; items: string[]; valor: number } | null
+  totalItems: number          // só os itens, sem acessórios
   totalMotores: number
-  totalGeral: number
+  totalEquip: number          // itens + acessórios (= "VALOR TOTAL DE EQUIPAMENTOS")
+  totalGeral: number          // totalEquip + totalMotores
 }
 
 interface Props {
@@ -270,9 +272,11 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
         modelo_basename: 'PERSONALIZADO',
         voltagem: snapshot.voltagem,
         itens: itensDb,
-        acessorios: null,
+        acessorios: snapshot.acessorios
+          ? { items: snapshot.acessorios.items, valor: snapshot.acessorios.valor }
+          : null,
         motores: motoresDb,
-        total_equipamentos: snapshot.totalItems,
+        total_equipamentos: snapshot.totalEquip,
         total_motores: snapshot.totalMotores,
         total_proposta: snapshot.totalGeral,
         observacoes: observacoes.trim() || null,
@@ -301,7 +305,10 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
         voltagem: snapshot.voltagem,
         itens: itensDocx,
         motores: motoresDocx,
-        totalEquip: snapshot.totalItems,
+        acessorios: snapshot.acessorios
+          ? { pct: snapshot.acessorios.pct, items: snapshot.acessorios.items, valor: snapshot.acessorios.valor }
+          : null,
+        totalEquip: snapshot.totalEquip,
         totalMotores: snapshot.totalMotores,
         totalProposta: snapshot.totalGeral,
         formaPagamento: formaPgOut.forma_pagamento || null,

@@ -40,6 +40,12 @@ export interface CustomDocxCliente {
   email?: string | null
 }
 
+export interface CustomDocxAcessorios {
+  pct: number                   // % sobre total de itens (informativo)
+  items: string[]               // lista de acessórios (bullets)
+  valor: number                 // valor já calculado
+}
+
 export interface GerarCustomDocxOpts {
   numero: string                          // "2026 - 0691"
   dataEmissao: string                     // "11/05/2026"
@@ -47,7 +53,8 @@ export interface GerarCustomDocxOpts {
   voltagem: 'monofasico' | 'trifasico'
   itens: CustomDocxItem[]
   motores: CustomDocxMotor[]
-  totalEquip: number
+  acessorios?: CustomDocxAcessorios | null
+  totalEquip: number                      // itens + acessórios
   totalMotores: number
   totalProposta: number
   formaPagamento?: string | null
@@ -190,6 +197,36 @@ export async function gerarOrcamentoCustomDocx(opts: GerarCustomDocxOpts): Promi
           r('VALOR', true),
           new TextRun({ text: '\t', size: 20 }),
           r(`R$ ${formatBRL(subtotal)}`, true),
+        ],
+        tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX }],
+        spacing: { after: 100 },
+      })
+    )
+  }
+
+  // ─── ACESSÓRIOS (se houver) ─────────────────────────────────────────
+  if (opts.acessorios && opts.acessorios.valor > 0) {
+    itensSection.push(
+      new Paragraph({
+        children: [r('- ACESSÓRIOS', true, 22)],
+        spacing: { before: 200, after: 60 },
+      })
+    )
+    for (const acc of opts.acessorios.items.slice(0, 20)) {
+      itensSection.push(
+        new Paragraph({
+          children: [r(acc)],
+          bullet: { level: 0 },
+          spacing: { after: 20 },
+        })
+      )
+    }
+    itensSection.push(
+      new Paragraph({
+        children: [
+          r('VALOR', true),
+          new TextRun({ text: '\t', size: 20 }),
+          r(`R$ ${formatBRL(opts.acessorios.valor)}`, true),
         ],
         tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX }],
         spacing: { after: 100 },

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -84,6 +84,9 @@ export function OrcamentoMontar() {
   const [categoria, setCategoria] = useState<string | null>(null)
   const [voltagem, setVoltagem] = useState<Voltagem>('trifasico')
   const [carrinho, setCarrinho] = useState<CarrinhoItem[]>([])
+  // Acessórios: bloco opcional com valor calculado como % do total de equipamentos
+  const [acessorios, setAcessorios] = useState<{ pct: number; items: string[] } | null>(null)
+  const [acessoriosOpen, setAcessoriosOpen] = useState(false)
   const [showOnlyPopular, setShowOnlyPopular] = useState(false)
   const [showOnlyOficiais, setShowOnlyOficiais] = useState(true)  // default: só items curados
   const [modoVisao, setModoVisao] = useState<ModoVisao>('preview')
@@ -119,7 +122,13 @@ export function OrcamentoMontar() {
     () => motoresAgrupados.reduce((s, m) => s + m.valor_total, 0),
     [motoresAgrupados],
   )
-  const totalGeral = totalItems + totalMotores
+  // Valor dos acessórios = % do total de equipamentos (arredondado em centavos)
+  const valorAcessorios = useMemo(
+    () => acessorios ? Math.round((totalItems * acessorios.pct) / 100 * 100) / 100 : 0,
+    [acessorios, totalItems],
+  )
+  const totalEquip = totalItems + valorAcessorios   // entra no "VALOR TOTAL DE EQUIPAMENTOS"
+  const totalGeral = totalEquip + totalMotores
 
   function adicionarItem(item: CatalogoItem) {
     const motorMatch = item.motor_padrao_cv && item.motor_padrao_polos && motores
@@ -379,7 +388,13 @@ export function OrcamentoMontar() {
                 voltagem={voltagem}
                 totalItems={totalItems}
                 totalMotores={totalMotores}
+                totalEquip={totalEquip}
                 totalGeral={totalGeral}
+                acessorios={acessorios}
+                valorAcessorios={valorAcessorios}
+                onAddAcessorios={() => setAcessoriosOpen(true)}
+                onEditAcessorios={() => setAcessoriosOpen(true)}
+                onRemoveAcessorios={() => setAcessorios(null)}
                 onRemove={removerItem}
               />
             ) : (
@@ -404,6 +419,12 @@ export function OrcamentoMontar() {
                 <span>Equipamentos</span>
                 <span className="font-semibold">{formatBRL(totalItems)}</span>
               </div>
+              {acessorios && (
+                <div className="flex justify-between text-[11px] text-ink-muted">
+                  <span>Acessórios ({acessorios.pct}%)</span>
+                  <span className="font-semibold">{formatBRL(valorAcessorios)}</span>
+                </div>
+              )}
               {totalMotores > 0 && (
                 <div className="flex justify-between text-[11px] text-ink-muted">
                   <span>Motores ({motoresAgrupados.length})</span>
@@ -442,8 +463,10 @@ export function OrcamentoMontar() {
             motor_valor_unit: c.motor_valor_unit,
           })),
           motoresAgrupados,
+          acessorios: acessorios ? { pct: acessorios.pct, items: acessorios.items, valor: valorAcessorios } : null,
           totalItems,
           totalMotores,
+          totalEquip,
           totalGeral,
         } as CarrinhoSnapshot}
         onClose={() => setFinalizarOpen(false)}
@@ -451,7 +474,17 @@ export function OrcamentoMontar() {
           setSucesso(info)
           setFinalizarOpen(false)
           setCarrinho([])
+          setAcessorios(null)
         }}
+      />
+
+      {/* Modal de Acessórios */}
+      <AcessoriosModal
+        open={acessoriosOpen}
+        initial={acessorios}
+        onClose={() => setAcessoriosOpen(false)}
+        onSave={cfg => { setAcessorios(cfg); setAcessoriosOpen(false) }}
+        onRemove={() => { setAcessorios(null); setAcessoriosOpen(false) }}
       />
 
       {/* Feedback de sucesso */}
@@ -480,18 +513,28 @@ export function OrcamentoMontar() {
 
 function OrcamentoPreview({
   carrinho, motoresAgrupados, voltagem,
-  totalItems, totalMotores, totalGeral, onRemove,
+  totalItems, totalMotores, totalEquip, totalGeral,
+  acessorios, valorAcessorios,
+  onAddAcessorios, onEditAcessorios, onRemoveAcessorios,
+  onRemove,
 }: {
   carrinho: CarrinhoItem[]
   motoresAgrupados: MotorAgrupado[]
   voltagem: Voltagem
   totalItems: number
   totalMotores: number
+  totalEquip: number
   totalGeral: number
+  acessorios: { pct: number; items: string[] } | null
+  valorAcessorios: number
+  onAddAcessorios: () => void
+  onEditAcessorios: () => void
+  onRemoveAcessorios: () => void
   onRemove: (uid: string) => void
 }) {
   const motoresTitle = voltagem === 'monofasico' ? 'Motores Monofásicos:' : 'Motores Trifásicos:'
-  const mostrarTotalEquip = carrinho.length > 1  // template real só mostra subtotal com 2+ itens
+  // Mostra "VALOR TOTAL DE EQUIPAMENTOS" se tem 2+ itens OU se tem bloco acessórios
+  const mostrarTotalEquip = carrinho.length > 1 || acessorios !== null
   const hoje = new Date().toLocaleDateString('pt-BR')
 
   // Cliente: 2 colunas (igual orçamento real)
@@ -602,11 +645,43 @@ function OrcamentoPreview({
         })}
       </div>
 
-      {/* VALOR TOTAL DE EQUIPAMENTOS — só com 2+ itens */}
+      {/* ACESSÓRIOS: bloco com lista de itens + valor calculado por % do total */}
+      {acessorios ? (
+        <div className="group mt-3 mb-1">
+          <div className="flex items-baseline justify-between gap-2">
+            <div className="font-bold text-[10px]">- ACESSÓRIOS <span className="text-gray-500 font-normal">({acessorios.pct}% sobre equipamentos)</span></div>
+            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={onEditAcessorios} className="text-[9px] text-blue-600 hover:underline">editar</button>
+              <button onClick={onRemoveAcessorios} className="text-[9px] text-red-600 hover:underline">remover</button>
+            </div>
+          </div>
+          <div className="pl-3 text-[9.5px] text-gray-700 mt-0.5 space-y-0">
+            {acessorios.items.length > 0
+              ? acessorios.items.map((s, i) => <div key={i}>- {s}</div>)
+              : <div className="text-gray-400 italic">(nenhum item listado — clique em "editar")</div>
+            }
+          </div>
+          <div className="mt-1 pt-1 border-t border-gray-300 flex justify-between text-[10px] font-bold">
+            <span>VALOR</span>
+            <span>R$ {formatBRLBare(valorAcessorios)}</span>
+          </div>
+        </div>
+      ) : (
+        carrinho.length > 0 && (
+          <button
+            onClick={onAddAcessorios}
+            className="w-full mt-2 mb-1 py-1.5 text-[10px] text-blue-600 hover:bg-blue-50 border border-dashed border-blue-300 rounded transition-colors"
+          >
+            + Adicionar Acessórios (% do total de equipamentos)
+          </button>
+        )
+      )}
+
+      {/* VALOR TOTAL DE EQUIPAMENTOS — com 2+ itens OU com acessórios */}
       {mostrarTotalEquip && (
         <div className="flex justify-between text-[10px] font-bold border-y border-gray-400 py-1 mb-3">
           <span>VALOR TOTAL DE EQUIPAMENTOS</span>
-          <span>R$ {formatBRLBare(totalItems)}</span>
+          <span>R$ {formatBRLBare(totalEquip)}</span>
         </div>
       )}
 
@@ -841,6 +916,114 @@ function CarrinhoLinhaEdicao({
           <div className="text-[11px] font-bold text-ink">
             {formatBRL(totalLinha)}
           </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Modal de Acessórios (% sobre equipamentos + lista de itens)
+// ──────────────────────────────────────────────────────────────────────────
+
+function AcessoriosModal({
+  open, initial, onClose, onSave, onRemove,
+}: {
+  open: boolean
+  initial: { pct: number; items: string[] } | null
+  onClose: () => void
+  onSave: (cfg: { pct: number; items: string[] }) => void
+  onRemove: () => void
+}) {
+  const [pct, setPct] = useState<number>(initial?.pct ?? 5)
+  const [itemsTxt, setItemsTxt] = useState<string>(
+    (initial?.items ?? [
+      'Painel elétrico',
+      'Caixa de comando',
+      'Suporte para bag',
+    ]).join('\n')
+  )
+
+  // Reseta ao abrir o modal pra pegar o estado atual
+  useEffect(() => {
+    if (open) {
+      setPct(initial?.pct ?? 5)
+      setItemsTxt((initial?.items ?? ['Painel elétrico', 'Caixa de comando', 'Suporte para bag']).join('\n'))
+    }
+  }, [open, initial])
+
+  if (!open) return null
+
+  function handleSalvar() {
+    const items = itemsTxt.split('\n').map(l => l.trim()).filter(Boolean)
+    onSave({ pct: Math.max(0, Math.min(100, pct)), items })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-surface-1 border border-border rounded-lg max-w-md w-full p-5" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-[15px] font-bold text-ink">Acessórios do orçamento</h2>
+          <button onClick={onClose} className="text-ink-faint hover:text-ink">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <p className="text-[11px] text-ink-muted mb-3">
+          O valor é calculado como uma <strong>porcentagem do total de equipamentos</strong>. Os itens listados aparecem como bullets na seção ACESSÓRIOS do orçamento.
+        </p>
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-[11px] font-semibold text-ink-muted block mb-1">% sobre equipamentos</label>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                step={0.5}
+                value={pct}
+                onChange={e => setPct(Number(e.target.value))}
+                className="w-24 text-center"
+              />
+              <span className="text-[12px] text-ink-muted">%</span>
+              <div className="text-[10px] text-ink-faint ml-auto">ex: 5% / 10% / 15%</div>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-semibold text-ink-muted block mb-1">Itens (um por linha)</label>
+            <textarea
+              value={itemsTxt}
+              onChange={e => setItemsTxt(e.target.value)}
+              rows={8}
+              className="w-full bg-surface-2 border border-border rounded p-2 text-[11px] text-ink resize-none focus:outline-none focus:border-accent"
+              placeholder="Painel elétrico&#10;Caixa de comando&#10;Suporte para bag"
+            />
+          </div>
+        </div>
+
+        <div className="flex gap-2 mt-4">
+          <button
+            onClick={handleSalvar}
+            className="flex-1 bg-accent hover:bg-accent-700 text-white text-[12px] font-semibold py-2 rounded"
+          >
+            Salvar
+          </button>
+          {initial && (
+            <button
+              onClick={onRemove}
+              className="px-3 py-2 text-[12px] text-danger hover:bg-danger/10 rounded border border-danger/30"
+            >
+              Remover
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="px-3 py-2 text-[12px] text-ink-muted hover:bg-surface-2 rounded"
+          >
+            Cancelar
+          </button>
         </div>
       </div>
     </div>
