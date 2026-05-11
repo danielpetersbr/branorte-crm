@@ -649,9 +649,9 @@ function OrcamentoPreview({
       {acessorios ? (
         <div className="group mt-3 mb-1">
           <div className="flex items-baseline justify-between gap-2">
-            <div className="font-bold text-[10px]">- ACESSÓRIOS <span className="text-gray-500 font-normal">({acessorios.pct}% sobre equipamentos)</span></div>
+            <div className="font-bold text-[10px]">- ACESSÓRIOS</div>
             <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button onClick={onEditAcessorios} className="text-[9px] text-blue-600 hover:underline">editar</button>
+              <button onClick={onEditAcessorios} className="text-[9px] text-blue-600 hover:underline">editar ({acessorios.pct}%)</button>
               <button onClick={onRemoveAcessorios} className="text-[9px] text-red-600 hover:underline">remover</button>
             </div>
           </div>
@@ -960,8 +960,8 @@ function AcessoriosModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-surface-1 border border-border rounded-lg max-w-md w-full p-5" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-bg border border-border rounded-lg max-w-md w-full p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-[15px] font-bold text-ink">Acessórios do orçamento</h2>
           <button onClick={onClose} className="text-ink-faint hover:text-ink">
