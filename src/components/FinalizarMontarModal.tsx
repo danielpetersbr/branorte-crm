@@ -26,6 +26,7 @@ export interface CarrinhoSnapshot {
     motor_polos: number | null
     motor_qtd: number
     motor_valor_unit: number
+    foto_url?: string | null
   }>
   motoresAgrupados: Array<{
     cv: number
@@ -240,6 +241,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
         motor_cv: it.motor_cv,
         motor_polos: it.motor_polos,
         motor_qtd: it.motor_qtd,
+        foto_url: it.foto_url ?? null,
       }))
 
       const motoresDocx: CustomDocxMotor[] = snapshot.motoresAgrupados.map(m => ({

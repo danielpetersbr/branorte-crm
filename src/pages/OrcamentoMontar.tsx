@@ -461,6 +461,7 @@ export function OrcamentoMontar() {
             motor_polos: c.motor_polos,
             motor_qtd: c.motor_qtd,
             motor_valor_unit: c.motor_valor_unit,
+            foto_url: c.foto_url,
           })),
           motoresAgrupados,
           acessorios: acessorios ? { pct: acessorios.pct, items: acessorios.items, valor: valorAcessorios } : null,
