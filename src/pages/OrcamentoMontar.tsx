@@ -555,55 +555,72 @@ function OrcamentoPreview({
     ['FONE', '—'],
   ]
 
+  // Helper: cabeçalho de seção (linha + label uppercase pequeno)
+  const SectionHeader = ({ children }: { children: React.ReactNode }) => (
+    <div className="mt-5 mb-2">
+      <div className="text-[10px] font-bold tracking-wider uppercase text-gray-700 pb-1.5 border-b-2 border-gray-800">
+        {children}
+      </div>
+    </div>
+  )
+
   return (
-    <div className="p-6 text-[10px] text-gray-900 leading-relaxed font-sans bg-white">
-      {/* Logo BRANORTE (banner igual o orçamento real) */}
-      <div className="text-center mb-4">
-        <div className="inline-block text-[28px] font-black tracking-tight leading-none">
-          <span className="text-emerald-600">BRA</span><span className="text-black">NORTE</span>
+    <div className="px-7 py-6 text-[10px] text-gray-900 leading-relaxed font-sans bg-white">
+      {/* Logo BRANORTE — banner profissional com underline */}
+      <div className="text-center pb-4 border-b-2 border-emerald-600">
+        <div className="inline-block text-[32px] font-black tracking-tight leading-none">
+          <span className="text-emerald-600">BRA</span><span className="text-gray-900">NORTE</span>
+        </div>
+        <div className="text-[8px] tracking-[0.25em] uppercase text-gray-500 mt-1 font-semibold">
+          Metalúrgica BBA Ltda · Grão Pará · SC
         </div>
       </div>
 
-      {/* Cabeçalho: ORÇAMENTO N° (esquerda) | DATA (direita) */}
-      <div className="flex justify-between items-baseline text-[10.5px] font-bold mb-2 pt-1 border-t border-gray-300">
-        <div>ORÇAMENTO N°: <span className="text-gray-400">[a definir]</span></div>
-        <div>DATA: <span className="text-gray-400">{hoje}</span></div>
-      </div>
-
-      {/* Cliente — 2 colunas (igual PDF real) */}
-      <div className="flex gap-4 mb-3 text-[10px]">
-        <div className="flex-1 space-y-0.5">
-          {camposEsquerda.map(([label, val, placeholder]) => (
-            <div key={label} className="flex">
-              <span className="font-bold w-20 shrink-0">{label}:</span>
-              <span className={placeholder ? 'text-gray-400 italic' : 'text-gray-400'}>{val}</span>
-            </div>
-          ))}
+      {/* Cabeçalho: ORÇAMENTO N° + DATA */}
+      <div className="flex justify-between items-baseline text-[11px] font-bold mt-4 mb-4">
+        <div className="text-gray-900">
+          ORÇAMENTO N°: <span className="text-gray-400 font-semibold">[a definir]</span>
         </div>
-        <div className="w-44 space-y-0.5">
-          {camposDireita.map(([label, val]) => (
-            <div key={label} className="flex">
-              <span className="font-bold w-12 shrink-0">{label}:</span>
-              <span className="text-gray-400">{val}</span>
-            </div>
-          ))}
+        <div className="text-gray-900">
+          DATA: <span className="text-gray-400 font-semibold">{hoje}</span>
         </div>
       </div>
 
-      {/* ITENS ORÇADOS ABAIXO: */}
-      <div className="font-bold text-[10px] mb-2 mt-3">
-        ITENS ORÇADOS ABAIXO:
+      {/* Bloco do cliente — fundo levemente cinza pra destacar */}
+      <div className="bg-gray-50 border border-gray-200 rounded px-3 py-2.5 mb-2">
+        <div className="flex gap-4 text-[10px]">
+          <div className="flex-1 space-y-1">
+            {camposEsquerda.map(([label, val, placeholder]) => (
+              <div key={label} className="flex">
+                <span className="font-bold w-20 shrink-0 text-gray-700">{label}:</span>
+                <span className={placeholder ? 'text-gray-400 italic' : 'text-gray-400'}>{val}</span>
+              </div>
+            ))}
+          </div>
+          <div className="w-44 space-y-1 border-l border-gray-300 pl-3">
+            {camposDireita.map(([label, val]) => (
+              <div key={label} className="flex">
+                <span className="font-bold w-12 shrink-0 text-gray-700">{label}:</span>
+                <span className="text-gray-400">{val}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
-      <div className="space-y-3 mb-2">
+      <SectionHeader>Itens orçados abaixo</SectionHeader>
+
+      <div className="space-y-5">
         {carrinho.map((it, idx) => {
           const letra = String.fromCharCode(65 + idx)
           const subtotal = it.valor * it.qtd
           return (
             <div key={it.uid} className="group relative">
-              <div className="flex justify-between items-start gap-2">
-                <div className="font-bold text-[10px] flex-1 min-w-0">
-                  {letra} - {String(it.qtd).padStart(2, '0')} – <span className="uppercase">{it.nome}</span>
+              <div className="flex justify-between items-start gap-2 mb-1.5">
+                <div className="font-bold text-[10.5px] flex-1 min-w-0 text-gray-900">
+                  <span className="text-emerald-700">{letra} - {String(it.qtd).padStart(2, '0')}</span>
+                  <span className="text-gray-400 mx-1">–</span>
+                  <span className="uppercase">{it.nome}</span>
                 </div>
                 <button
                   onClick={() => onRemove(it.uid)}
@@ -613,124 +630,255 @@ function OrcamentoPreview({
                   <X className="h-3 w-3" />
                 </button>
               </div>
-              {/* Specs à esquerda + foto do equipamento à direita (igual PDF) */}
-              <div className="flex gap-3 mt-1">
-                <div className="flex-1 min-w-0 pl-3 text-[9.5px] text-gray-700 space-y-0">
+              <div className="flex gap-3">
+                <div className="flex-1 min-w-0 pl-3 text-[9.5px] text-gray-700 space-y-0.5">
                   {it.specs.length > 0
-                    ? it.specs.map((s, i) => <div key={i}>- {s}</div>)
+                    ? it.specs.map((s, i) => <div key={i} className="flex gap-1.5"><span className="text-gray-400">•</span><span>{s}</span></div>)
                     : it.motor_cv && (
-                        <div>- Acionamento: motor {it.motor_cv} CV {it.motor_polos} polos{it.motor_qtd > 1 && ` (qtd ${it.motor_qtd})`}</div>
+                        <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Acionamento: motor {it.motor_cv} CV {it.motor_polos} polos{it.motor_qtd > 1 && ` (qtd ${it.motor_qtd})`}</span></div>
                       )
                   }
                 </div>
                 {it.foto_url && (
-                  <div className="shrink-0 w-24 flex flex-col items-center">
-                    <img
-                      src={it.foto_url}
-                      alt={it.nome}
-                      className="w-24 h-24 object-contain border border-gray-200 rounded bg-white"
-                      loading="lazy"
-                    />
-                    <div className="text-[7px] text-gray-400 italic mt-0.5">Imagem ilustrativa</div>
+                  <div className="shrink-0 w-28 flex flex-col items-center">
+                    <div className="w-28 h-28 bg-white border border-gray-300 rounded p-1 flex items-center justify-center">
+                      <img
+                        src={it.foto_url}
+                        alt={it.nome}
+                        className="max-w-full max-h-full object-contain"
+                        loading="lazy"
+                      />
+                    </div>
+                    <div className="text-[7px] text-gray-400 italic mt-1 tracking-wide">Imagem ilustrativa</div>
                   </div>
                 )}
               </div>
-              {/* VALOR com linha fina acima (igual PDF) */}
-              <div className="mt-2 pt-1 border-t border-gray-300 flex justify-between text-[10px] font-bold">
-                <span>VALOR</span>
-                <span>R$ {formatBRLBare(subtotal)}</span>
+              <div className="mt-2.5 pt-1.5 border-t border-gray-300 flex justify-between text-[10.5px] font-bold tracking-wide">
+                <span className="text-gray-700">VALOR</span>
+                <span className="text-gray-900">R$ {formatBRLBare(subtotal)}</span>
               </div>
             </div>
           )
         })}
       </div>
 
-      {/* ACESSÓRIOS: bloco com lista de itens + valor calculado por % do total */}
+      {/* ACESSÓRIOS */}
       {acessorios ? (
-        <div className="group mt-3 mb-1">
-          <div className="flex items-baseline justify-between gap-2">
-            <div className="font-bold text-[10px]">- ACESSÓRIOS</div>
+        <div className="group mt-5">
+          <div className="flex items-baseline justify-between gap-2 mb-1.5">
+            <div className="font-bold text-[10.5px] text-gray-900">
+              <span className="text-emerald-700">— ACESSÓRIOS</span>
+            </div>
             <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
               <button onClick={onEditAcessorios} className="text-[9px] text-blue-600 hover:underline">editar ({acessorios.pct}%)</button>
               <button onClick={onRemoveAcessorios} className="text-[9px] text-red-600 hover:underline">remover</button>
             </div>
           </div>
-          <div className="pl-3 text-[9.5px] text-gray-700 mt-0.5 space-y-0">
+          <div className="pl-3 text-[9.5px] text-gray-700 space-y-0.5">
             {acessorios.items.length > 0
-              ? acessorios.items.map((s, i) => <div key={i}>- {s}</div>)
+              ? acessorios.items.map((s, i) => <div key={i} className="flex gap-1.5"><span className="text-gray-400">•</span><span>{s}</span></div>)
               : <div className="text-gray-400 italic">(nenhum item listado — clique em "editar")</div>
             }
           </div>
-          <div className="mt-1 pt-1 border-t border-gray-300 flex justify-between text-[10px] font-bold">
-            <span>VALOR</span>
-            <span>R$ {formatBRLBare(valorAcessorios)}</span>
+          <div className="mt-2.5 pt-1.5 border-t border-gray-300 flex justify-between text-[10.5px] font-bold tracking-wide">
+            <span className="text-gray-700">VALOR</span>
+            <span className="text-gray-900">R$ {formatBRLBare(valorAcessorios)}</span>
           </div>
         </div>
       ) : (
         carrinho.length > 0 && (
           <button
             onClick={onAddAcessorios}
-            className="w-full mt-2 mb-1 py-1.5 text-[10px] text-blue-600 hover:bg-blue-50 border border-dashed border-blue-300 rounded transition-colors"
+            className="w-full mt-4 py-2 text-[10px] font-semibold text-blue-700 hover:bg-blue-50 border border-dashed border-blue-300 rounded transition-colors"
           >
-            + Adicionar Acessórios (% do total de equipamentos)
+            + Adicionar Acessórios
           </button>
         )
       )}
 
-      {/* VALOR TOTAL DE EQUIPAMENTOS — com 2+ itens OU com acessórios */}
+      {/* VALOR TOTAL DE EQUIPAMENTOS */}
       {mostrarTotalEquip && (
-        <div className="flex justify-between text-[10px] font-bold border-y border-gray-400 py-1 mb-3">
-          <span>VALOR TOTAL DE EQUIPAMENTOS</span>
-          <span>R$ {formatBRLBare(totalEquip)}</span>
+        <div className="flex justify-between text-[10.5px] font-bold mt-4 px-3 py-2 bg-gray-100 border-y border-gray-400 tracking-wide">
+          <span className="text-gray-800 uppercase">Valor total de equipamentos</span>
+          <span className="text-gray-900">R$ {formatBRLBare(totalEquip)}</span>
         </div>
       )}
 
-      {/* Motores (tabela TIPO | NOVO igual .docx) */}
+      {/* Motores */}
       {motoresAgrupados.length > 0 && (
-        <div className="mt-3">
-          <div className="font-bold text-[10px] mb-1">{motoresTitle}</div>
+        <div className="mt-5">
+          <div className="font-bold text-[10px] tracking-wider uppercase text-gray-700 pb-1.5 border-b-2 border-gray-800 mb-2">
+            {motoresTitle.replace(':', '')}
+          </div>
           <table className="w-full text-[9.5px] border-collapse">
             <thead>
-              <tr className="border-y border-gray-400">
-                <th className="text-left font-bold py-1">TIPO</th>
-                <th className="text-right font-bold py-1">NOVO</th>
+              <tr>
+                <th className="text-left font-bold py-1.5 text-gray-600 uppercase tracking-wider text-[9px]">Tipo</th>
+                <th className="text-right font-bold py-1.5 text-gray-600 uppercase tracking-wider text-[9px]">Novo</th>
               </tr>
             </thead>
             <tbody>
               {motoresAgrupados.map(m => (
-                <tr key={`${m.cv}-${m.polos}`} className="border-b border-gray-200">
-                  <td className="py-0.5">
-                    - {m.cv} CV {m.polos} polos{m.qtd > 1 && ` (qtd ${m.qtd})`}
+                <tr key={`${m.cv}-${m.polos}`} className="border-t border-gray-200">
+                  <td className="py-1 text-gray-800">
+                    <span className="text-gray-400 mr-1.5">•</span>
+                    {m.cv} CV {m.polos} polos{m.qtd > 1 && ` (qtd ${m.qtd})`}
                   </td>
-                  <td className="py-0.5 text-right">R$ {formatBRLBare(m.valor_total)}</td>
+                  <td className="py-1 text-right text-gray-800">R$ {formatBRLBare(m.valor_total)}</td>
                 </tr>
               ))}
-              <tr className="border-t border-gray-400 font-bold">
-                <td className="py-1">TOTAL</td>
-                <td className="py-1 text-right">R$ {formatBRLBare(totalMotores)}</td>
+              <tr className="border-t-2 border-gray-700 font-bold">
+                <td className="py-1.5 text-gray-900">TOTAL</td>
+                <td className="py-1.5 text-right text-gray-900">R$ {formatBRLBare(totalMotores)}</td>
               </tr>
             </tbody>
           </table>
         </div>
       )}
 
-      {/* VALOR TOTAL DA PROPOSTA — barra com fundo bem clarinho (azul-acinzentado igual PDF) */}
-      <div className="flex justify-between text-[11px] font-bold mt-4 px-2 py-2 border-y-2 border-gray-700 bg-slate-50">
-        <span>VALOR TOTAL DA PROPOSTA COM MOTOR NOVO</span>
-        <span>R$ {formatBRLBare(totalGeral)}</span>
+      {/* VALOR TOTAL DA PROPOSTA — destaque máximo */}
+      <div className="flex justify-between items-center text-[12px] font-black mt-6 px-3 py-3 border-l-4 border-emerald-600 bg-emerald-50/60 shadow-sm tracking-wide">
+        <span className="text-gray-900 uppercase">Valor total da proposta com motor novo</span>
+        <span className="text-emerald-800 text-[13px]">R$ {formatBRLBare(totalGeral)}</span>
       </div>
 
-      {/* Termos (igual .docx, ordem e formato exatos) */}
-      <div className="mt-3 text-[9.5px] text-gray-800 space-y-0">
-        <div>- Data da venda – <span className="text-gray-400 italic">a combinar</span></div>
-        <div>- Prazo de entrega – 90 dias (úteis)</div>
-        <div>- Forma de pagamento – <span className="text-gray-400 italic">a combinar</span></div>
-        <div>- Frete - por conta do cliente</div>
-        <div>- Validade da proposta - 10 dias após o envio.</div>
+      {/* Termos comerciais */}
+      <div className="mt-5 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded text-[9.5px] text-gray-800 space-y-1">
+        <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Data da venda – <span className="text-gray-400 italic">a combinar</span></span></div>
+        <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Prazo de entrega – 90 dias (úteis)</span></div>
+        <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Forma de pagamento – <span className="text-gray-400 italic">a combinar</span></span></div>
+        <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Frete – por conta do cliente</span></div>
+        <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Validade da proposta – 10 dias após o envio</span></div>
       </div>
 
-      <div className="mt-4 pt-2 border-t border-gray-300 text-[8px] text-gray-500 italic leading-snug">
-        Próximas páginas do .docx/.pdf final: Redes Sociais · Dados do Fabricante · Vendedores · Conta para Depósito · Observações · Tributos · Cláusula de Cancelamento · Garantia · Assinaturas.
+      <SectionHeader>Nossas Redes Sociais</SectionHeader>
+      <div className="grid grid-cols-4 gap-2 text-[9px] text-gray-700">
+        {[
+          ['📧', 'E-mail'],
+          ['📷', 'Instagram'],
+          ['▶️', 'YouTube'],
+          ['📘', 'Facebook'],
+          ['✈️', 'Telegram'],
+          ['💬', 'WhatsApp'],
+          ['📞', 'Telefone'],
+          ['📍', 'Localização'],
+        ].map(([icon, label]) => (
+          <div key={label} className="flex flex-col items-center gap-0.5 py-1">
+            <div className="text-[16px] leading-none">{icon}</div>
+            <div className="text-[8.5px] font-semibold text-gray-600">{label}</div>
+          </div>
+        ))}
+      </div>
+      <div className="text-center text-[8px] italic text-gray-400 mt-1">PARA INTERAGIR CLIQUE NO ÍCONE</div>
+
+      <SectionHeader>Dados do Fabricante</SectionHeader>
+      <div className="text-[9.5px] text-gray-800 space-y-0.5">
+        <div><span className="font-bold">Empresa:</span> BRANORTE – Metalúrgica BBA Ltda</div>
+        <div><span className="font-bold">Endereço:</span> Rodovia SC 370 km 139, Nº 1390</div>
+        <div><span className="font-bold">Cidade:</span> Grão Pará – SC · <span className="font-bold">CEP:</span> 88890-000</div>
+        <div><span className="font-bold">Telefone:</span> (48) 3658-4502 / (48) 3658-7453</div>
+        <div><span className="font-bold">CNPJ:</span> 16.935.999/0001-09 · <span className="font-bold">I.E.:</span> 256.847.320</div>
+        <div><span className="font-bold">E-mail:</span> patrick@mbranorte.com.br</div>
+      </div>
+
+      {/* Vendedores: 4 colunas */}
+      <div className="grid grid-cols-4 gap-2 mt-3 text-[9px] text-center">
+        {[
+          ['Patrick Alves', '(48) 9 9698-4660'],
+          ['Edilson', '(48) 9 9991-2329'],
+          ['Daniel', '(48) 9 8469-2860'],
+          ['Branorte', '(48) 3658-4502'],
+        ].map(([nome, tel]) => (
+          <div key={nome} className="py-1.5 px-1 bg-gray-50 border border-gray-200 rounded">
+            <div className="font-bold text-gray-800 text-[9.5px]">{nome}</div>
+            <div className="text-gray-600 mt-0.5">{tel}</div>
+          </div>
+        ))}
+      </div>
+
+      <SectionHeader>Conta para Depósito</SectionHeader>
+      <div className="grid grid-cols-3 gap-3 text-[9px] text-gray-800">
+        <div className="space-y-0.5">
+          <div className="font-bold uppercase tracking-wide text-gray-900 mb-1 pb-0.5 border-b border-gray-300">Banco do Brasil</div>
+          <div>Agência: <strong>0738-2</strong></div>
+          <div>Conta: <strong>39551-X</strong></div>
+          <div>Metalúrgica BBA</div>
+          <div className="text-[8.5px] text-gray-500">CNPJ: 16.935.999/0001-09</div>
+        </div>
+        <div className="space-y-0.5">
+          <div className="font-bold uppercase tracking-wide text-gray-900 mb-1 pb-0.5 border-b border-gray-300">Sicoob Credivale</div>
+          <div>Cooperativa: <strong>3078</strong></div>
+          <div>Banco: <strong>756</strong></div>
+          <div>Conta: <strong>109909-4</strong></div>
+          <div className="text-[8.5px] text-gray-500">CNPJ: 16.935.999/0001-09</div>
+        </div>
+        <div className="space-y-0.5">
+          <div className="font-bold uppercase tracking-wide text-gray-900 mb-1 pb-0.5 border-b border-gray-300">PIX</div>
+          <div className="text-[8.5px] text-gray-600">CNPJ:</div>
+          <div className="font-mono"><strong>16935999000109</strong></div>
+          <div className="text-[8.5px] text-gray-500 mt-1">SICOOB · Metalúrgica BBA</div>
+        </div>
+      </div>
+
+      <SectionHeader>Caixa Postal</SectionHeader>
+      <div className="text-[9.5px] text-gray-800 space-y-0.5">
+        <div><span className="font-bold">Caixa Postal:</span> Nº 149 · <span className="font-bold">CEP:</span> 88750-970</div>
+        <div><span className="font-bold">Cidade:</span> Braço do Norte – SC</div>
+        <div>Metalúrgica BBA · CNPJ: 16.935.999/0001-09</div>
+      </div>
+
+      <SectionHeader>Observação <span className="text-gray-400 font-normal normal-case tracking-normal text-[9px]">— por conta do cliente</span></SectionHeader>
+      <div className="text-[9.5px] text-gray-800 space-y-0.5 pl-2">
+        <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Painel elétrico</span></div>
+        <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Montagem dos equipamentos orçados acima (se necessário)</span></div>
+        <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Muck (se necessário)</span></div>
+        <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Despesa com obras civil (se necessário)</span></div>
+        <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Instalação elétrica dos equipamentos (se necessário)</span></div>
+      </div>
+
+      <SectionHeader>Tributos</SectionHeader>
+      <div className="text-[9px] text-gray-700 leading-snug space-y-1.5 text-justify">
+        <p>
+          As condições desta proposta consideram os impostos e taxas vigentes, quando da elaboração da mesma sendo que quaisquer alterações sobre os tributos Municipais, Estaduais e Federais serão repassados ou de responsabilidade do cliente, incluindo pagamento ou documento de exoneração fiscal da diferença do ICMS ao Estado de destino ou custos de caminhão parado em posto fiscal da fronteira.
+        </p>
+        <p>
+          Sendo o contratante não contribuinte de ICMS, este deverá obrigatoriamente depositar para a contratada até o dia do embarque o valor correspondente ao diferencial de alíquota de ICMS referente ao objeto deste contrato, para que a CONTRATADA possa então pagar este diferencial, cujo comprovante de pagamento será enviado com a nota fiscal de vendas das mercadorias.
+        </p>
+      </div>
+
+      <SectionHeader>Cláusula de Cancelamento</SectionHeader>
+      <div className="text-[9px] text-gray-700 leading-snug text-justify">
+        Caso o comprador deseje cancelar o pedido, fica estabelecido que será cobrada uma taxa de cancelamento no valor de <strong>10% do preço total do produto</strong>. Essa taxa é destinada a cobrir eventuais perdas financeiras decorrentes do cancelamento, incluindo custos de produção, armazenamento e distribuição.
+      </div>
+
+      <SectionHeader>Garantia</SectionHeader>
+      <div className="text-[9px] text-gray-700 leading-snug space-y-1.5 text-justify">
+        <p>
+          Os equipamentos fornecidos pela metalúrgica BRANORTE estão garantidos pelo prazo de <strong>12 (doze) meses</strong> contados da data de entrega dos mesmos, quanto ao funcionamento, desde que sejam armazenados, montados e operados dentro das condições para as quais foram projetados. Durante o prazo de garantia serão substituídas as peças que apresentarem defeitos, ficando as despesas de frete das peças, deslocamento, estadia e alimentação dos técnicos montadores por conta do cliente. Expirado o prazo de garantia, forneceremos assistência técnica mediante solicitação. Ficam excluídos da garantia os seguintes itens: canalizações e dispositivos de interligação.
+        </p>
+        <p>
+          Componentes fabricados e/ou montados por terceiros, tais como: motores elétricos, redutores, chaves elétricas, quadro de comando elétrico, correias, rolamentos (tendo somente a garantia fornecida pelos respectivos fabricantes), bem como toda e qualquer obra civil que é de responsabilidade do cliente.
+        </p>
+      </div>
+
+      {/* Assinaturas */}
+      <div className="mt-10 grid grid-cols-2 gap-8 px-2">
+        <div className="text-center">
+          <div className="border-t border-gray-700 pt-1.5 text-[9.5px] font-bold text-gray-800">
+            Metalúrgica BBA LTDA
+          </div>
+        </div>
+        <div className="text-center">
+          <div className="border-t border-gray-700 pt-1.5 text-[9.5px] font-bold text-gray-800">
+            <span className="text-gray-400 italic">[Cliente]</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer página */}
+      <div className="mt-6 pt-2 border-t border-gray-200 flex justify-between text-[7.5px] text-gray-400">
+        <span>Orçamento · Branorte BBA</span>
+        <span>Página 1</span>
       </div>
     </div>
   )
