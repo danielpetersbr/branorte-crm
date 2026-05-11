@@ -604,12 +604,12 @@ function OrcamentoPreview({
       <div className="mt-5">
         <SectionHeader>Itens orçados abaixo</SectionHeader>
 
-      <div className="space-y-5">
+      <div className="space-y-3">
         {carrinho.map((it, idx) => {
           const letra = String.fromCharCode(65 + idx)
           const subtotal = it.valor * it.qtd
           return (
-            <div key={it.uid} className="group relative">
+            <div key={it.uid} className="group relative border border-gray-300 rounded-md p-3 bg-white shadow-sm">
               <div className="flex justify-between items-start gap-2 mb-1.5">
                 <div className="font-bold text-[10.5px] flex-1 min-w-0 text-gray-900">
                   <span className="text-emerald-700">{letra} - {String(it.qtd).padStart(2, '0')}</span>
@@ -658,7 +658,7 @@ function OrcamentoPreview({
 
       {/* ACESSÓRIOS */}
       {acessorios ? (
-        <div className="group mt-5">
+        <div className="group mt-3 border border-gray-300 rounded-md p-3 bg-white shadow-sm">
           <div className="flex items-baseline justify-between gap-2 mb-1.5">
             <div className="font-bold text-[10.5px] text-gray-900">
               <span className="text-emerald-700">— ACESSÓRIOS</span>
@@ -700,7 +700,7 @@ function OrcamentoPreview({
 
       {/* Motores */}
       {motoresAgrupados.length > 0 && (
-        <div className="mt-5">
+        <div className="mt-3 border border-gray-300 rounded-md p-3 bg-white shadow-sm">
           <div className="font-bold text-[10px] tracking-wider uppercase text-gray-700 pb-1.5 border-b-2 border-gray-800 mb-2">
             {motoresTitle.replace(':', '')}
           </div>
