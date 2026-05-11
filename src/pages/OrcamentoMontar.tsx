@@ -537,22 +537,17 @@ function OrcamentoPreview({
   const mostrarTotalEquip = carrinho.length > 1 || acessorios !== null
   const hoje = new Date().toLocaleDateString('pt-BR')
 
-  // Cliente: 2 colunas (igual orçamento real)
-  // ESQUERDA: CLIENTE, CIDADE, BAIRRO, ENDEREÇO, CEP, CPF/CNPJ, I.E., E-MAIL
-  // DIREITA:  A/C, FONE
-  const camposEsquerda: Array<[string, string, boolean]> = [
-    ['CLIENTE', '[preencher]', true],
-    ['CIDADE', '—', false],
-    ['BAIRRO', '—', false],
-    ['ENDEREÇO', '—', false],
-    ['CEP', '—', false],
-    ['CPF/CNPJ', '—', false],
-    ['I.E.', '—', false],
-    ['E-MAIL', '—', false],
-  ]
-  const camposDireita: Array<[string, string]> = [
-    ['A/C', '—'],
-    ['FONE', '—'],
+  // Campos do cliente — layout igual ao template Word:
+  // Linha 1 (3 cols): CLIENTE | A/C | FONE
+  // Linhas seguintes (1 col): CIDADE, BAIRRO, ENDEREÇO, CEP, CPF/CNPJ, I.E., E-MAIL
+  const camposEmpilhados: Array<[string, string]> = [
+    ['CIDADE', '—'],
+    ['BAIRRO', '—'],
+    ['ENDEREÇO', '—'],
+    ['CEP', '—'],
+    ['CPF/CNPJ', '—'],
+    ['I.E.', '—'],
+    ['E-MAIL', '—'],
   ]
 
   // Helper: cabeçalho de seção (linha + label uppercase pequeno)
@@ -566,74 +561,45 @@ function OrcamentoPreview({
 
   return (
     <div className="text-[10px] text-gray-900 leading-relaxed font-sans bg-white">
-      {/* Barra superior verde fina (acento de marca) */}
-      <div className="h-1 bg-gradient-to-r from-emerald-700 via-emerald-500 to-emerald-700" />
-
-      {/* Cabeçalho principal: identidade da marca */}
-      <div className="px-7 pt-6 pb-5 border-b border-gray-300">
-        <div className="text-center">
-          <div className="inline-flex items-baseline gap-0 text-[36px] font-black tracking-tight leading-none">
+      {/* PÁGINA — moldura preta igual o template Word */}
+      <div className="m-4 border border-gray-900 px-6 pt-5 pb-6">
+        {/* Logo BRANORTE — grande, centralizado, sem tagline (igual o template) */}
+        <div className="text-center mb-5">
+          <div className="inline-block text-[44px] font-black tracking-tight leading-none">
             <span className="text-emerald-600">BRA</span><span className="text-gray-900">NORTE</span>
           </div>
-          <div className="mt-1.5 flex items-center justify-center gap-2 text-[7.5px] tracking-[0.3em] uppercase text-gray-500 font-bold">
-            <span className="h-px w-8 bg-gray-300" />
-            <span>Metalúrgica BBA Ltda</span>
-            <span className="text-gray-400">·</span>
-            <span>Grão Pará / SC</span>
-            <span className="h-px w-8 bg-gray-300" />
-          </div>
-          <div className="text-[8px] tracking-wide text-gray-500 mt-1">
-            CNPJ 16.935.999/0001-09 · (48) 3658-4502 · contato@mbranorte.com.br
-          </div>
         </div>
-      </div>
 
-      {/* Faixa do documento — ORÇAMENTO N° + DATA com tratamento de "título do documento" */}
-      <div className="bg-gray-900 text-white px-7 py-2.5 flex justify-between items-center">
-        <div className="flex items-baseline gap-3">
-          <span className="text-[8.5px] uppercase tracking-[0.3em] text-emerald-400 font-bold">Orçamento</span>
-          <span className="text-[14px] font-bold tracking-wider">N° <span className="text-emerald-300">[a definir]</span></span>
+        {/* Linha 1: ORÇAMENTO N° (esquerda) | DATA (direita) */}
+        <div className="flex justify-between items-baseline text-[11px] font-bold text-gray-900 mb-1.5">
+          <div>ORÇAMENTO N° <span className="text-gray-400 font-semibold">[a definir]</span></div>
+          <div>DATA: <span className="text-gray-400 font-semibold">{hoje}</span></div>
         </div>
-        <div className="text-[10px] font-semibold text-gray-300">
-          <span className="text-[8.5px] uppercase tracking-[0.2em] text-gray-400 mr-1.5">Data</span>
-          {hoje}
-        </div>
-      </div>
 
-      {/* Bloco do cliente — card limpo */}
-      <div className="px-7 pt-5">
-        <div className="text-[8px] uppercase tracking-[0.25em] font-bold text-gray-500 mb-2">Dados do cliente</div>
-        <div className="border border-gray-200 rounded-md overflow-hidden">
-          <div className="grid grid-cols-3 divide-x divide-gray-200">
-            <div className="col-span-2 px-4 py-3 space-y-1.5">
-              {camposEsquerda.map(([label, val, placeholder]) => (
-                <div key={label} className="flex items-baseline border-b border-gray-100 pb-1 last:border-0 last:pb-0">
-                  <span className="text-[8.5px] uppercase tracking-wider font-bold w-24 shrink-0 text-gray-600">{label}</span>
-                  <span className={`text-[10px] ${placeholder ? 'text-gray-400 italic' : 'text-gray-300'}`}>{val}</span>
-                </div>
-              ))}
+        {/* Linha 2: CLIENTE | A/C | FONE — 3 colunas (igual template) */}
+        <div className="grid grid-cols-3 gap-4 text-[11px] font-bold text-gray-900 mb-1">
+          <div>
+            CLIENTE: <span className="text-gray-400 italic font-semibold">[preencher]</span>
+          </div>
+          <div className="text-center">
+            A/C: <span className="text-gray-400 font-semibold">—</span>
+          </div>
+          <div className="text-right">
+            FONE: <span className="text-gray-400 font-semibold">—</span>
+          </div>
+        </div>
+
+        {/* Demais campos: cada um em sua linha (igual template) */}
+        <div className="text-[11px] font-bold text-gray-900 space-y-0.5">
+          {camposEmpilhados.map(([label, val]) => (
+            <div key={label}>
+              {label}: <span className="text-gray-400 font-semibold ml-1">{val}</span>
             </div>
-            <div className="px-4 py-3 space-y-1.5 bg-gray-50/50">
-              {camposDireita.map(([label, val]) => (
-                <div key={label} className="flex items-baseline border-b border-gray-100 pb-1 last:border-0 last:pb-0">
-                  <span className="text-[8.5px] uppercase tracking-wider font-bold w-12 shrink-0 text-gray-600">{label}</span>
-                  <span className="text-[10px] text-gray-300">{val}</span>
-                </div>
-              ))}
-              {/* preenche espaço com linhas vazias para alinhar altura */}
-              <div className="opacity-0 pb-1 border-b border-transparent"><span className="text-[10px]">·</span></div>
-              <div className="opacity-0 pb-1 border-b border-transparent"><span className="text-[10px]">·</span></div>
-              <div className="opacity-0 pb-1 border-b border-transparent"><span className="text-[10px]">·</span></div>
-              <div className="opacity-0 pb-1 border-b border-transparent"><span className="text-[10px]">·</span></div>
-              <div className="opacity-0 pb-1 border-b border-transparent"><span className="text-[10px]">·</span></div>
-              <div className="opacity-0 pb-1 border-b border-transparent"><span className="text-[10px]">·</span></div>
-            </div>
-          </div>
+          ))}
         </div>
-      </div>
 
-      {/* Wrapper do conteúdo restante */}
-      <div className="px-7 pb-6">
+      {/* Wrapper do conteúdo restante (continua dentro da moldura preta) */}
+      <div className="mt-5">
         <SectionHeader>Itens orçados abaixo</SectionHeader>
 
       <div className="space-y-5">
@@ -781,7 +747,7 @@ function OrcamentoPreview({
       <div className="grid grid-cols-4 gap-2 text-[9px] text-gray-700">
         {[
           { icon: '📧', label: 'E-mail',      href: 'mailto:contato@mbranorte.com.br' },
-          { icon: '📷', label: 'Instagram',   href: 'https://instagram.com/mbranorte' },
+          { icon: '📷', label: 'Instagram',   href: 'https://www.instagram.com/branorte_metalurgica/' },
           { icon: '▶️', label: 'YouTube',     href: 'https://www.youtube.com/@metalurgicabranortebba9217' },
           { icon: '📘', label: 'Facebook',    href: 'https://www.facebook.com/metalurgicabranorte' },
           { icon: '✈️', label: 'Telegram',    href: 'https://t.me/mbranorte' },
@@ -913,7 +879,8 @@ function OrcamentoPreview({
         <span>Orçamento · Branorte BBA</span>
         <span>Página 1</span>
       </div>
-      </div>{/* /wrapper px-7 pb-6 */}
+      </div>{/* /wrapper mt-5 (conteúdo) */}
+      </div>{/* /moldura preta */}
     </div>
   )
 }

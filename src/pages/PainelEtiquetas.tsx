@@ -69,7 +69,7 @@ export function PainelEtiquetas() {
   const { data, isLoading, error } = usePainelEtiquetas()
   // Fonte alternativa pra Matriz Vendedor × Etiqueta: usa tabela `cards`
   // (todos vendedores com cards reais, não só os que populam wa_chat_labels)
-  const { data: dataVE } = useVendedorXEtiqueta()
+  const { data: dataVE } = useVendedorXEtiqueta({ incluirSemCards: true })
   const [filtroEtiqueta, setFiltroEtiqueta] = useState<string | null>(null)
 
   const dadosBarras = useMemo(() => {
@@ -459,6 +459,31 @@ export function PainelEtiquetas() {
               const totalAtivos = dadosVendor.reduce((a, b) => a + b.Fresco + b.Recente, 0)
               const totalFunil = dadosVendor.reduce((a, b) => a + b.total, 0)
               const pctParado = totalFunil > 0 ? Math.round((totalParados / totalFunil) * 100) : 0
+              const semDados = linha.total === 0
+              if (semDados) {
+                return (
+                  <div key={linha.vendedor_id} className="border border-dashed border-border/60 rounded-lg p-3 bg-surface-2/20 flex flex-col">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2 opacity-70">
+                        <Avatar name={linha.vendedor} size="sm" />
+                        <span className="text-[12px] font-semibold text-ink-muted">{linha.vendedor}</span>
+                      </div>
+                      <span className="text-[9px] px-2 py-0.5 rounded-full bg-warning/15 text-warning font-semibold tracking-wider">
+                        SINCRONIZANDO
+                      </span>
+                    </div>
+                    <div className="flex-1 flex items-center justify-center min-h-[100px] text-center">
+                      <div>
+                        <AlertCircle className="h-5 w-5 text-warning/70 mx-auto mb-1" />
+                        <div className="text-[10px] text-ink-muted leading-snug max-w-[180px] mx-auto">
+                          Vendedor sincroniza,<br/>mas chats não vieram mapeados.<br/>
+                          <span className="text-ink-faint">(possível WA Business · @lid)</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              }
               return (
                 <div key={linha.vendedor_id} className="border border-border rounded-lg p-3 bg-surface-2/30">
                   <div className="flex items-center justify-between mb-2">
