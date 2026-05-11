@@ -364,10 +364,10 @@ async function buildItemTable(item: CustomDocxItem, voltagemTxt: string): Promis
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: {
-      top: { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' },
-      bottom: { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' },
-      left: { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' },
-      right: { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' },
+      top: { style: BorderStyle.SINGLE, size: 8, color: '9CA3AF' },
+      bottom: { style: BorderStyle.SINGLE, size: 8, color: '9CA3AF' },
+      left: { style: BorderStyle.SINGLE, size: 8, color: '9CA3AF' },
+      right: { style: BorderStyle.SINGLE, size: 8, color: '9CA3AF' },
       insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
       insideVertical: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
     },
@@ -405,10 +405,10 @@ function buildAcessorios(acc: CustomDocxAcessorios): Table {
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: {
-      top: { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' },
-      bottom: { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' },
-      left: { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' },
-      right: { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' },
+      top: { style: BorderStyle.SINGLE, size: 8, color: '9CA3AF' },
+      bottom: { style: BorderStyle.SINGLE, size: 8, color: '9CA3AF' },
+      left: { style: BorderStyle.SINGLE, size: 8, color: '9CA3AF' },
+      right: { style: BorderStyle.SINGLE, size: 8, color: '9CA3AF' },
       insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
       insideVertical: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
     },
@@ -499,10 +499,10 @@ function buildMotores(motores: CustomDocxMotor[], voltagem: 'monofasico' | 'trif
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: {
-      top: { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' },
-      bottom: { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' },
-      left: { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' },
-      right: { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' },
+      top: { style: BorderStyle.SINGLE, size: 8, color: '9CA3AF' },
+      bottom: { style: BorderStyle.SINGLE, size: 8, color: '9CA3AF' },
+      left: { style: BorderStyle.SINGLE, size: 8, color: '9CA3AF' },
+      right: { style: BorderStyle.SINGLE, size: 8, color: '9CA3AF' },
       insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
       insideVertical: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
     },
@@ -955,6 +955,12 @@ export async function gerarOrcamentoCustomDocx(opts: GerarCustomDocxOpts): Promi
       properties: {
         page: {
           margin: { top: 720, right: 720, bottom: 720, left: 720 },  // 0,5 inch
+          borders: {
+            pageBorderTop: { style: BorderStyle.SINGLE, size: 8, color: '000000', space: 16 },
+            pageBorderBottom: { style: BorderStyle.SINGLE, size: 8, color: '000000', space: 16 },
+            pageBorderLeft: { style: BorderStyle.SINGLE, size: 8, color: '000000', space: 16 },
+            pageBorderRight: { style: BorderStyle.SINGLE, size: 8, color: '000000', space: 16 },
+          },
         },
       },
       children: blocos,
