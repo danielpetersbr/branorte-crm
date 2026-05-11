@@ -199,16 +199,36 @@ export async function obterPastaDoMes(rootHandle: any, data: Date = new Date()):
   throw new Error(r.motivo || 'Pasta nao resolvida')
 }
 
-// Escreve um arquivo (texto ou blob) num diretorio
+// Escreve um arquivo (texto ou blob) num diretorio + VERIFICA que ele realmente existe
 export async function escreverArquivo(
   dirHandle: any,
   nome: string,
   conteudo: Blob | string,
 ): Promise<void> {
-  const fileHandle = await dirHandle.getFileHandle(nome, { create: true })
-  const writable = await fileHandle.createWritable()
+  let fileHandle: any
+  try {
+    fileHandle = await dirHandle.getFileHandle(nome, { create: true })
+  } catch (e) {
+    throw new Error(`Não consegui criar "${nome}" na pasta: ${(e as Error).message}`)
+  }
+  let writable: any
+  try {
+    writable = await fileHandle.createWritable()
+  } catch (e) {
+    throw new Error(`Pasta sem permissão de escrita pra "${nome}": ${(e as Error).message}`)
+  }
   await writable.write(conteudo)
   await writable.close()
+  // VERIFICA: relê o arquivo da pasta pra confirmar que existe
+  try {
+    const verify = await dirHandle.getFileHandle(nome)
+    const f = await verify.getFile()
+    if (!f || f.size === 0) {
+      throw new Error(`Arquivo "${nome}" foi criado mas está vazio (escrita falhou silenciosamente)`)
+    }
+  } catch (e) {
+    throw new Error(`Escrita de "${nome}" não pôde ser verificada: ${(e as Error).message}`)
+  }
 }
 
 // Escaneia a pasta procurando arquivos no padrão "YYYY - NNNN - ..."
