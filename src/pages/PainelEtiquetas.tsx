@@ -476,7 +476,12 @@ export function PainelEtiquetas() {
                   </ResponsiveContainer>
                   <div className="flex items-center justify-between mt-1 pt-2 border-t border-border/50">
                     <span className="text-[9px] text-ink-faint uppercase tracking-wider">
-                      {totalFunil} total no funil
+                      {totalFunil} no funil
+                      {linha.sem_etiqueta && linha.sem_etiqueta.total > 0 && (
+                        <span className="ml-2 text-warning">
+                          · <span className="font-bold">{linha.sem_etiqueta.total}</span> sem etiqueta
+                        </span>
+                      )}
                     </span>
                     <span className="text-[9px] text-ink-faint">
                       <span className="text-danger font-bold">{pctParado}%</span> parado
@@ -486,6 +491,18 @@ export function PainelEtiquetas() {
               )
             })}
           </div>
+          {/* Resumo geral no rodapé */}
+          {dataVE.total_sem_etiqueta > 0 && (
+            <div className="mt-3 pt-3 border-t border-border/50 flex items-center gap-2 text-[11px]">
+              <AlertCircle className="h-3.5 w-3.5 text-warning shrink-0" />
+              <span className="text-warning font-medium">
+                {dataVE.total_sem_etiqueta} chats sem etiqueta
+              </span>
+              <span className="text-ink-muted">
+                · precisam de classificação inicial
+              </span>
+            </div>
+          )}
         </Card>
       )}
 

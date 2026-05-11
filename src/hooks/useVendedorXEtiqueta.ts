@@ -18,6 +18,7 @@ export interface LinhaVE {
   vendedor_id: string
   vendedor: string
   total: number
+  sem_etiqueta: CelulaVE  // cards do vendedor sem pipeline_stage_id
   celulas: Record<string, CelulaVE>
 }
 
@@ -32,6 +33,7 @@ export interface VendedorXEtiquetaData {
   ok: boolean
   gerado_em: string
   total_geral: number
+  total_sem_etiqueta: number
   filtros: { incluir_sem_cards: boolean; periodo_dias: number | 'all' }
   colunas: ColunaVE[]
   linhas: LinhaVE[]
