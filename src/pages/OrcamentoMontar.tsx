@@ -748,8 +748,8 @@ function OrcamentoPreview({
         {[
           { icon: '📧', label: 'E-mail',      href: 'mailto:contato@mbranorte.com.br' },
           { icon: '📷', label: 'Instagram',   href: 'https://www.instagram.com/branorte_metalurgica/' },
-          { icon: '▶️', label: 'YouTube',     href: 'https://www.youtube.com/@metalurgicabranortebba9217' },
-          { icon: '📘', label: 'Facebook',    href: 'https://www.facebook.com/metalurgicabranorte' },
+          { icon: '▶️', label: 'YouTube',     href: 'https://www.youtube.com/@mbranorte' },
+          { icon: '📘', label: 'Facebook',    href: 'https://www.facebook.com/branorte.metalurgica' },
           { icon: '✈️', label: 'Telegram',    href: 'https://t.me/mbranorte' },
           { icon: '💬', label: 'WhatsApp',    href: 'https://wa.me/5548996984660' },
           { icon: '📞', label: 'Telefone',    href: 'tel:+554836584502' },
