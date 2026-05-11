@@ -431,25 +431,32 @@ export function PainelEtiquetas() {
         </Card>
       )}
 
-      {/* 🚨 PARADOS POR VENDEDOR — só etapas do funil ativo, só Parados (3-30d) */}
+      {/* 🎯 FUNIL POR VENDEDOR — total por etapa, status temporal stacked */}
       {dataVE && dataVE.linhas.length > 0 && (
         <Card className="p-4">
           <h2 className="text-[13px] font-semibold text-ink mb-3 flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 text-danger" />
-            Parados no funil por vendedor
+            <Flame className="h-4 w-4 text-accent" />
+            Funil por vendedor
             <span className="text-[10px] font-normal text-ink-muted ml-1">
-              · só clientes parados &gt;3d nas 5 etapas ativas
+              · 5 etapas ativas · barra mostra total · cor mostra status temporal
             </span>
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             {dataVE.linhas.map(linha => {
               const ETAPAS = ['PROSPECCAO', '2a TENTATIVA', 'NOVO LEAD', 'FOLLOW UP', 'LEAD QUENTE']
-              const dadosVendor = ETAPAS.map(et => ({
-                nome: et,
-                Parado: linha.celulas[et]?.parado || 0,
-                total: linha.celulas[et]?.total || 0,
-              }))
+              const dadosVendor = ETAPAS.map(et => {
+                const c = linha.celulas[et]
+                return {
+                  nome: et,
+                  Fresco: c?.fresco || 0,
+                  Recente: c?.recente || 0,
+                  Parado: c?.parado || 0,
+                  SemDado: c?.sem_dado || 0,
+                  total: c?.total || 0,
+                }
+              })
               const totalParados = dadosVendor.reduce((a, b) => a + b.Parado, 0)
+              const totalAtivos = dadosVendor.reduce((a, b) => a + b.Fresco + b.Recente, 0)
               const totalFunil = dadosVendor.reduce((a, b) => a + b.total, 0)
               const pctParado = totalFunil > 0 ? Math.round((totalParados / totalFunil) * 100) : 0
               return (
@@ -460,12 +467,12 @@ export function PainelEtiquetas() {
                       <span className="text-[12px] font-semibold text-ink">{linha.vendedor}</span>
                     </div>
                     <div className="text-right">
-                      <div className="text-[16px] font-bold tabular-nums text-danger">{totalParados}</div>
-                      <div className="text-[9px] text-ink-faint uppercase tracking-wider">parados</div>
+                      <div className="text-[16px] font-bold tabular-nums text-ink">{totalFunil}</div>
+                      <div className="text-[9px] text-ink-faint uppercase tracking-wider">no funil</div>
                     </div>
                   </div>
                   <ResponsiveContainer width="100%" height={140}>
-                    <BarChart data={dadosVendor} layout="vertical" margin={{ top: 0, right: 24, left: 0, bottom: 0 }}>
+                    <BarChart data={dadosVendor} layout="vertical" margin={{ top: 0, right: 28, left: 0, bottom: 0 }}>
                       <XAxis type="number" tick={{ fontSize: 9, fill: '#9ca3af' }} axisLine={false} tickLine={false} hide />
                       <YAxis
                         dataKey="nome"
@@ -478,24 +485,27 @@ export function PainelEtiquetas() {
                       <Tooltip
                         cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                         contentStyle={{ background: '#11151c', border: '1px solid #1f2937', borderRadius: 6, fontSize: 10 }}
-                        formatter={(v: number) => [v, 'Parados']}
+                        formatter={(v: number, name: string) => [v, name]}
                       />
-                      <Bar dataKey="Parado" fill={STATUS_COLORS.parado}>
-                        <LabelList dataKey="Parado" position="right" style={{ fontSize: 10, fill: '#fca5a5', fontWeight: 700 }} formatter={(v: number) => v > 0 ? v : ''} />
+                      <Bar dataKey="Fresco" stackId="a" fill={STATUS_COLORS.fresco} />
+                      <Bar dataKey="Recente" stackId="a" fill={STATUS_COLORS.recente} />
+                      <Bar dataKey="Parado" stackId="a" fill={STATUS_COLORS.parado} />
+                      <Bar dataKey="SemDado" stackId="a" fill={STATUS_COLORS.semDado}>
+                        <LabelList dataKey="total" position="right" style={{ fontSize: 10, fill: '#e7e9ee', fontWeight: 700 }} formatter={(v: number) => v > 0 ? v : ''} />
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
-                  <div className="flex items-center justify-between mt-1 pt-2 border-t border-border/50">
-                    <span className="text-[9px] text-ink-faint uppercase tracking-wider">
-                      {totalFunil} no funil
+                  <div className="flex items-center justify-between mt-1 pt-2 border-t border-border/50 text-[9px]">
+                    <span className="text-ink-faint uppercase tracking-wider">
+                      <span className="text-accent font-bold">{totalAtivos}</span> ativos
                       {linha.sem_etiqueta && linha.sem_etiqueta.total > 0 && (
-                        <span className="ml-2 text-warning">
-                          · <span className="font-bold">{linha.sem_etiqueta.total}</span> sem etiqueta
-                        </span>
+                        <span className="ml-2 text-warning">· <span className="font-bold">{linha.sem_etiqueta.total}</span> s/etiq</span>
                       )}
                     </span>
-                    <span className="text-[9px] text-ink-faint">
-                      <span className="text-danger font-bold">{pctParado}%</span> parado
+                    <span className="text-ink-faint">
+                      <span className={pctParado >= 70 ? 'text-danger font-bold' : pctParado >= 40 ? 'text-warning font-bold' : 'text-accent font-bold'}>
+                        {pctParado}%
+                      </span> parado
                     </span>
                   </div>
                 </div>
