@@ -15,6 +15,22 @@ const PACOTES_SUGESTAO = [
   'ACESSÓRIOS', 'PEÇAS DE REPOSIÇÃO', 'MOTORES', 'OUTROS',
 ]
 
+// Pacotes que NÃO precisam de voltagem (peças, acessórios soltos, etc.)
+const PACOTES_SEM_VOLTAGEM = ['ACESSÓRIOS', 'PEÇAS DE REPOSIÇÃO', 'MOTORES', 'OUTROS']
+
+// Detecta pacote pelo nome do arquivo (Peneiras → ACESSÓRIOS, etc.)
+function detectarPacote(nome: string): string {
+  const n = nome.toLowerCase()
+  if (/compacta\s*0?3/.test(n)) return 'COMPACTA 03'
+  if (/compacta\s*0?2/.test(n)) return 'COMPACTA 02'
+  if (/compacta\s*0?1/.test(n)) return 'COMPACTA 01'
+  if (/mini\s*f[áa]brica/.test(n)) return 'MINI FABRICA'
+  if (/peneiras?|martelos?|chupim|moinho|crivos?/.test(n)) return 'ACESSÓRIOS'
+  if (/motor(es)?/.test(n)) return 'MOTORES'
+  if (/pe[çc]as?\s+de\s+reposi/.test(n)) return 'PEÇAS DE REPOSIÇÃO'
+  return 'ACESSÓRIOS'
+}
+
 export function UploadModeloModal({ open, onClose, onSuccess }: Props) {
   const [file, setFile] = useState<File | null>(null)
   const [parsed, setParsed] = useState<ParsedModelo | null>(null)
@@ -38,6 +54,9 @@ export function UploadModeloModal({ open, onClose, onSuccess }: Props) {
       // Auto-preenche basename do nome do arquivo
       const cleanName = f.name.replace(/\.docx$/i, '').replace(/^\([^)]*\)\s*/, '')
       setBasename(cleanName)
+      // Auto-detecta pacote (Peneiras → ACESSÓRIOS, Compacta 01 → COMPACTA 01, etc.)
+      const pacoteDetectado = detectarPacote(f.name)
+      setPacote(pacoteDetectado)
     } catch (e) {
       setErro('Não consegui parsear o .docx: ' + (e as Error).message)
       setParsed(null)
@@ -56,13 +75,16 @@ export function UploadModeloModal({ open, onClose, onSuccess }: Props) {
       setErro('Não achei VALOR TOTAL DA PROPOSTA no .docx. Verifica o arquivo.')
       return
     }
+    // Pacotes "sem voltagem" (ACESSÓRIOS, PEÇAS, etc.) salvam sempre como "trifasico" no banco
+    // (a coluna do DB exige um valor, mas é ignorado na UI)
+    const voltagemFinal = PACOTES_SEM_VOLTAGEM.includes(pacote) ? 'trifasico' : voltagem
     setSalvando(true)
     setErro(null)
     try {
       const modelo = await subirModeloCustomizado({
         basename: basename.trim(),
         pacote,
-        voltagem,
+        voltagem: voltagemFinal,
         is_master: false,
         is_jr: false,
         com_balanca: false,
@@ -144,12 +166,18 @@ export function UploadModeloModal({ open, onClose, onSuccess }: Props) {
               <div className="p-3 bg-success-bg/15 border border-success/30 rounded-md text-[12px]">
                 <div className="flex items-center gap-2 mb-2">
                   <Check className="h-4 w-4 text-success" />
-                  <span className="font-semibold text-success">Arquivo parseado: {file.name}</span>
+                  <span className="font-semibold text-success">Arquivo carregado: {file.name}</span>
                 </div>
                 <ul className="space-y-0.5 text-[11px] text-ink-muted ml-6">
-                  <li>{parsed.itens.length} {parsed.itens.length === 1 ? 'item' : 'items'} de equipamento</li>
-                  <li>{parsed.motores.length} {parsed.motores.length === 1 ? 'motor' : 'motores'}</li>
-                  <li>{parsed.acessorios ? `${parsed.acessorios.items.length} acessórios` : 'sem seção de acessórios'}</li>
+                  {parsed.itens.length > 0 && (
+                    <li>{parsed.itens.length} {parsed.itens.length === 1 ? 'item' : 'items'} de equipamento detectados</li>
+                  )}
+                  {parsed.motores.length > 0 && (
+                    <li>{parsed.motores.length} {parsed.motores.length === 1 ? 'motor' : 'motores'}</li>
+                  )}
+                  {parsed.acessorios && parsed.acessorios.items.length > 0 && (
+                    <li>{parsed.acessorios.items.length} acessórios na seção</li>
+                  )}
                   {parsed.total_proposta && (
                     <li className="text-ink font-semibold">
                       Total: R$ {parsed.total_proposta.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
@@ -157,6 +185,9 @@ export function UploadModeloModal({ open, onClose, onSuccess }: Props) {
                   )}
                   {!parsed.total_proposta && (
                     <li className="text-warning">⚠️ Não achei VALOR TOTAL DA PROPOSTA — vai precisar editar manualmente.</li>
+                  )}
+                  {parsed.itens.length === 0 && parsed.motores.length === 0 && (
+                    <li className="text-[10px] italic">O .docx será usado como template completo (sem parsing de items individuais — funciona pra modelos avulsos).</li>
                   )}
                 </ul>
               </div>
@@ -200,33 +231,39 @@ export function UploadModeloModal({ open, onClose, onSuccess }: Props) {
                   />
                 </div>
 
-                <div>
-                  <label className="text-[11px] uppercase tracking-wider text-ink-muted font-medium">Voltagem</label>
-                  <div className="mt-1 flex gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setVoltagem('monofasico')}
-                      className={`flex-1 text-[12px] py-1.5 rounded font-semibold ${
-                        voltagem === 'monofasico'
-                          ? 'bg-warning text-white'
-                          : 'bg-surface-2 text-ink-muted hover:bg-surface-3'
-                      }`}
-                    >
-                      Monofásico
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setVoltagem('trifasico')}
-                      className={`flex-1 text-[12px] py-1.5 rounded font-semibold ${
-                        voltagem === 'trifasico'
-                          ? 'bg-info text-white'
-                          : 'bg-surface-2 text-ink-muted hover:bg-surface-3'
-                      }`}
-                    >
-                      Trifásico
-                    </button>
+                {!PACOTES_SEM_VOLTAGEM.includes(pacote) ? (
+                  <div>
+                    <label className="text-[11px] uppercase tracking-wider text-ink-muted font-medium">Voltagem</label>
+                    <div className="mt-1 flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setVoltagem('monofasico')}
+                        className={`flex-1 text-[12px] py-1.5 rounded font-semibold ${
+                          voltagem === 'monofasico'
+                            ? 'bg-warning text-white'
+                            : 'bg-surface-2 text-ink-muted hover:bg-surface-3'
+                        }`}
+                      >
+                        Monofásico
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setVoltagem('trifasico')}
+                        className={`flex-1 text-[12px] py-1.5 rounded font-semibold ${
+                          voltagem === 'trifasico'
+                            ? 'bg-info text-white'
+                            : 'bg-surface-2 text-ink-muted hover:bg-surface-3'
+                        }`}
+                      >
+                        Trifásico
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="text-[10px] text-ink-faint italic">
+                    Pacote "{pacote}" não usa voltagem — campo escondido.
+                  </div>
+                )}
               </div>
             </>
           )}

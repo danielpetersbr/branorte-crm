@@ -86,6 +86,29 @@ export function PainelEtiquetas() {
       }))
   }, [data])
 
+  // 🎯 Funil de vendas isolado — só etiquetas do funil ativo (PROSPECCAO → VENDIDO)
+  // Ordenado pela jornada (não pelo total), pra leitura natural top→down.
+  const ORDEM_FUNIL = [
+    'PROSPECCAO', '2A TENTATIVA', 'NOVO LEAD',
+    'FOLLOW UP', 'LEAD QUENTE', 'ORCAMENTO ENVIADO',
+    'INTERESSE FUTURO', 'VENDIDO',
+  ]
+  const dadosFunil = useMemo(() => {
+    if (!data) return []
+    const map = new Map(data.porEtiqueta.map(e => [e.nomeCanonico, e]))
+    return ORDEM_FUNIL
+      .map(nome => map.get(nome))
+      .filter((e): e is AggregacaoEtiqueta => !!e && e.total > 0)
+      .map(e => ({
+        nome: e.nomeCanonico,
+        Fresco: e.fresco,
+        Recente: e.recente,
+        Parado: e.parado,
+        SemDado: e.semDado,
+        total: e.total,
+      }))
+  }, [data])
+
   const dadosPie = useMemo(() => {
     if (!data) return []
     return [
