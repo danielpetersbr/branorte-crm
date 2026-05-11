@@ -989,80 +989,123 @@ function CarrinhoLinhaEdicao({
   const subtotal = item.valor * item.qtd
   const motorTotal = item.motor_valor_unit * item.motor_qtd * item.qtd
   const totalLinha = subtotal + motorTotal
+  const valorEditado = item.valor !== item.valor_original
 
   return (
-    <div className="p-2.5 hover:bg-surface-2/40">
-      <div className="flex items-start justify-between gap-2 mb-1.5">
-        <div className="flex-1 min-w-0">
-          <div className="text-[9px] uppercase tracking-wider text-ink-faint font-bold">
-            {item.categoria}
-          </div>
-          <div className="text-[11px] font-semibold text-ink leading-tight">
-            {item.nome}
-          </div>
-          {item.motor_cv && (
-            <div className="text-[9px] text-ink-faint flex items-center gap-1 mt-0.5">
-              <Zap className="h-2 w-2" />
-              Motor {item.motor_cv}CV {item.motor_polos}p
-              {item.motor_qtd > 1 && ` x${item.motor_qtd}`}
-              {item.motor_valor_unit > 0 && ` — ${formatBRL(motorTotal)}`}
-              {item.motor_valor_unit === 0 && (
-                <span className="text-warning ml-1 flex items-center gap-0.5">
-                  <AlertCircle className="h-2.5 w-2.5" />
-                  sem motor cadastrado
-                </span>
-              )}
+    <div className="p-3 hover:bg-surface-2/30 transition-colors group">
+      <div className="flex gap-3">
+        {/* Foto à esquerda */}
+        <div className="shrink-0">
+          {item.foto_url ? (
+            <img
+              src={item.foto_url}
+              alt={item.nome}
+              className="w-14 h-14 object-cover rounded border border-border bg-white"
+              loading="lazy"
+            />
+          ) : (
+            <div className="w-14 h-14 rounded border border-border bg-surface-2 flex items-center justify-center text-ink-faint">
+              <Package className="h-5 w-5" />
             </div>
           )}
         </div>
-        <button onClick={onRemove} className="text-ink-faint hover:text-danger shrink-0">
-          <Trash2 className="h-3 w-3" />
-        </button>
-      </div>
 
-      <div className="flex items-center gap-2">
-        <div className="flex items-center bg-surface-2 rounded">
-          <button
-            onClick={() => onQtd(item.qtd - 1)}
-            disabled={item.qtd <= 1}
-            className="px-1.5 py-0.5 text-ink-muted hover:text-ink disabled:opacity-30"
-          >
-            <Minus className="h-3 w-3" />
-          </button>
-          <span className="text-[11px] font-semibold w-6 text-center">{item.qtd}</span>
-          <button
-            onClick={() => onQtd(item.qtd + 1)}
-            className="px-1.5 py-0.5 text-ink-muted hover:text-ink"
-          >
-            <Plus className="h-3 w-3" />
-          </button>
-        </div>
-
-        <div className="flex-1 text-right">
-          {editingValor ? (
-            <input
-              type="number"
-              value={item.valor}
-              onChange={e => onValor(Number(e.target.value) || 0)}
-              onBlur={() => setEditingValor(false)}
-              onKeyDown={e => { if (e.key === 'Enter') setEditingValor(false) }}
-              autoFocus
-              className="w-24 text-[11px] text-right bg-surface-2 border border-accent rounded px-1 py-0.5"
-            />
-          ) : (
-            <button
-              onClick={() => setEditingValor(true)}
-              className="text-[11px] text-ink-muted hover:text-ink"
-              title="Clique pra editar"
-            >
-              {formatBRL(item.valor)}
-              {item.valor !== item.valor_original && (
-                <span className="text-[9px] text-warning ml-1">(editado)</span>
+        {/* Info + controles à direita */}
+        <div className="flex-1 min-w-0">
+          {/* Header: categoria + nome + remover */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <div className="text-[9px] uppercase tracking-wider text-ink-faint font-bold">
+                {item.categoria}
+              </div>
+              <div className="text-[12px] font-semibold text-ink leading-tight">
+                {item.nome}
+              </div>
+              {item.motor_cv && (
+                <div className="text-[10px] text-ink-muted mt-1 flex items-center gap-1.5">
+                  <Zap className="h-2.5 w-2.5 text-warning" />
+                  <span>Motor {item.motor_cv} CV {item.motor_polos} polos{item.motor_qtd > 1 && ` (x${item.motor_qtd})`}</span>
+                  {item.motor_valor_unit > 0
+                    ? <span className="text-ink-faint">— {formatBRL(item.motor_valor_unit * item.motor_qtd)}/un</span>
+                    : (
+                      <span className="text-warning flex items-center gap-0.5">
+                        <AlertCircle className="h-2.5 w-2.5" />
+                        sem motor cadastrado
+                      </span>
+                    )
+                  }
+                </div>
               )}
+            </div>
+            <button
+              onClick={onRemove}
+              className="text-ink-faint hover:text-danger shrink-0 p-1 opacity-50 group-hover:opacity-100 transition-opacity"
+              title="Remover item"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
             </button>
-          )}
-          <div className="text-[11px] font-bold text-ink">
-            {formatBRL(totalLinha)}
+          </div>
+
+          {/* Controles: qtd + valor unit + total */}
+          <div className="flex items-center justify-between gap-3 mt-2.5 pt-2 border-t border-border/50">
+            {/* Quantidade */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[9px] uppercase tracking-wider text-ink-faint font-semibold">Qtd</span>
+              <div className="flex items-center bg-surface-2 border border-border rounded">
+                <button
+                  onClick={() => onQtd(item.qtd - 1)}
+                  disabled={item.qtd <= 1}
+                  className="px-1.5 py-1 text-ink-muted hover:text-ink hover:bg-surface-3 disabled:opacity-30 disabled:hover:bg-transparent rounded-l"
+                >
+                  <Minus className="h-3 w-3" />
+                </button>
+                <span className="text-[12px] font-bold w-7 text-center text-ink">{item.qtd}</span>
+                <button
+                  onClick={() => onQtd(item.qtd + 1)}
+                  className="px-1.5 py-1 text-ink-muted hover:text-ink hover:bg-surface-3 rounded-r"
+                >
+                  <Plus className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+
+            {/* Valor unitário (editável) */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[9px] uppercase tracking-wider text-ink-faint font-semibold">Unit.</span>
+              {editingValor ? (
+                <input
+                  type="number"
+                  value={item.valor}
+                  onChange={e => onValor(Number(e.target.value) || 0)}
+                  onBlur={() => setEditingValor(false)}
+                  onKeyDown={e => { if (e.key === 'Enter') setEditingValor(false) }}
+                  autoFocus
+                  className="w-24 text-[11px] text-right bg-surface-1 border border-accent rounded px-1.5 py-0.5"
+                />
+              ) : (
+                <button
+                  onClick={() => setEditingValor(true)}
+                  className={`text-[11px] px-2 py-0.5 rounded border ${valorEditado ? 'border-warning/40 bg-warning/10 text-warning' : 'border-border bg-surface-2 text-ink hover:border-accent/50'}`}
+                  title="Clique pra editar"
+                >
+                  {formatBRL(item.valor)}
+                  {valorEditado && <span className="ml-1 text-[9px]">●</span>}
+                </button>
+              )}
+            </div>
+
+            {/* Total da linha */}
+            <div className="text-right ml-auto">
+              <div className="text-[9px] uppercase tracking-wider text-ink-faint font-semibold">Total</div>
+              <div className="text-[13px] font-bold text-accent leading-tight">
+                {formatBRL(totalLinha)}
+              </div>
+              {motorTotal > 0 && (
+                <div className="text-[8.5px] text-ink-faint leading-tight">
+                  equip {formatBRL(subtotal)} + motor {formatBRL(motorTotal)}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
