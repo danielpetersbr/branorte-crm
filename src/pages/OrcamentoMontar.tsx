@@ -488,61 +488,77 @@ function OrcamentoPreview({
   totalGeral: number
   onRemove: (uid: string) => void
 }) {
-  const voltagemLabel = voltagem === 'monofasico' ? 'Monofásico' : 'Trifásico'
   const motoresTitle = voltagem === 'monofasico' ? 'Motores Monofásicos:' : 'Motores Trifásicos:'
   const mostrarTotalEquip = carrinho.length > 1  // template real só mostra subtotal com 2+ itens
+  const hoje = new Date().toLocaleDateString('pt-BR')
 
-  // Campos do cliente (cada um em sua linha — bate com o .docx)
-  const camposCliente: Array<[string, string]> = [
-    ['CLIENTE', '[preencher]'],
+  // Cliente: 2 colunas (igual orçamento real)
+  // ESQUERDA: CLIENTE, CIDADE, BAIRRO, ENDEREÇO, CEP, CPF/CNPJ, I.E., E-MAIL
+  // DIREITA:  A/C, FONE
+  const camposEsquerda: Array<[string, string, boolean]> = [
+    ['CLIENTE', '[preencher]', true],
+    ['CIDADE', '—', false],
+    ['BAIRRO', '—', false],
+    ['ENDEREÇO', '—', false],
+    ['CEP', '—', false],
+    ['CPF/CNPJ', '—', false],
+    ['I.E.', '—', false],
+    ['E-MAIL', '—', false],
+  ]
+  const camposDireita: Array<[string, string]> = [
     ['A/C', '—'],
     ['FONE', '—'],
-    ['CIDADE', '—'],
-    ['BAIRRO', '—'],
-    ['ENDEREÇO', '—'],
-    ['CEP', '—'],
-    ['CPF/CNPJ', '—'],
-    ['I.E.', '—'],
-    ['E-MAIL', '—'],
   ]
 
   return (
-    <div className="p-6 text-[10px] text-gray-900 leading-relaxed font-serif bg-white">
-      {/* Cabeçalho real: SÓ "ORÇAMENTO N°" (sem DATA — template não tem) */}
-      <div className="text-[12px] font-bold mb-3">
-        ORÇAMENTO N° <span className="text-gray-400">[a definir]</span>
-      </div>
-
-      {/* Cliente — cada label em sua linha (igual .docx) */}
-      <div className="mb-3 text-[10px] space-y-0.5">
-        {camposCliente.map(([label, val]) => (
-          <div key={label} className="flex">
-            <span className="font-bold w-24 shrink-0">{label}:</span>
-            <span className={val === '[preencher]' || val === '—' ? 'text-gray-400 italic' : ''}>{val}</span>
-          </div>
-        ))}
-        <div className="flex">
-          <span className="font-bold w-24 shrink-0">VOLTAGEM:</span>
-          <span className="font-bold uppercase">{voltagemLabel}</span>
+    <div className="p-6 text-[10px] text-gray-900 leading-relaxed font-sans bg-white">
+      {/* Logo BRANORTE (banner igual o orçamento real) */}
+      <div className="text-center mb-4">
+        <div className="inline-block text-[28px] font-black tracking-tight leading-none">
+          <span className="text-emerald-600">BRA</span><span className="text-black">NORTE</span>
         </div>
       </div>
 
-      <hr className="my-3 border-gray-300" />
+      {/* Cabeçalho: ORÇAMENTO N° (esquerda) | DATA (direita) */}
+      <div className="flex justify-between items-baseline text-[10.5px] font-bold mb-2 pt-1 border-t border-gray-300">
+        <div>ORÇAMENTO N°: <span className="text-gray-400">[a definir]</span></div>
+        <div>DATA: <span className="text-gray-400">{hoje}</span></div>
+      </div>
+
+      {/* Cliente — 2 colunas (igual PDF real) */}
+      <div className="flex gap-4 mb-3 text-[10px]">
+        <div className="flex-1 space-y-0.5">
+          {camposEsquerda.map(([label, val, placeholder]) => (
+            <div key={label} className="flex">
+              <span className="font-bold w-20 shrink-0">{label}:</span>
+              <span className={placeholder ? 'text-gray-400 italic' : 'text-gray-400'}>{val}</span>
+            </div>
+          ))}
+        </div>
+        <div className="w-44 space-y-0.5">
+          {camposDireita.map(([label, val]) => (
+            <div key={label} className="flex">
+              <span className="font-bold w-12 shrink-0">{label}:</span>
+              <span className="text-gray-400">{val}</span>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* ITENS ORÇADOS ABAIXO: */}
-      <div className="font-bold text-[11px] mb-3">
+      <div className="font-bold text-[10px] mb-2 mt-3">
         ITENS ORÇADOS ABAIXO:
       </div>
 
-      <div className="space-y-4 mb-3">
+      <div className="space-y-3 mb-2">
         {carrinho.map((it, idx) => {
           const letra = String.fromCharCode(65 + idx)
           const subtotal = it.valor * it.qtd
           return (
             <div key={it.uid} className="group relative">
               <div className="flex justify-between items-start gap-2">
-                <div className="font-bold text-[10px] flex-1 min-w-0 uppercase">
-                  {letra} - {String(it.qtd).padStart(2, '0')} – {it.nome}
+                <div className="font-bold text-[10px] flex-1 min-w-0">
+                  {letra} - {String(it.qtd).padStart(2, '0')} – <span className="uppercase">{it.nome}</span>
                 </div>
                 <button
                   onClick={() => onRemove(it.uid)}
@@ -552,29 +568,17 @@ function OrcamentoPreview({
                   <X className="h-3 w-3" />
                 </button>
               </div>
-              {/* Specs com dot leaders (igual .docx: "Corpo em chapa..............1,5 mm") */}
-              <div className="pl-6 text-[9.5px] text-gray-700 mt-1 space-y-0.5">
+              {/* Specs (sem dot leaders — orçamento real renderiza como texto comum) */}
+              <div className="pl-3 text-[9.5px] text-gray-700 mt-0.5 space-y-0">
                 {it.specs.length > 0
-                  ? it.specs.map((s, i) => {
-                      // Tenta separar "label valor" — se tem números no final, faz dot leader
-                      const m = s.match(/^(.+?)\s+([\d,.]+\s*[a-zA-Zçãõéí°²³]*\.?)$/)
-                      if (m) {
-                        return (
-                          <div key={i} className="flex items-baseline">
-                            <span>- {m[1].trim()}</span>
-                            <span className="flex-1 mx-1 border-b border-dotted border-gray-400 translate-y-[-2px]" />
-                            <span>{m[2].trim()}</span>
-                          </div>
-                        )
-                      }
-                      return <div key={i}>- {s}</div>
-                    })
+                  ? it.specs.map((s, i) => <div key={i}>- {s}</div>)
                   : it.motor_cv && (
-                      <div>- Motor {it.motor_cv} CV {it.motor_polos} polos {voltagemLabel.toLowerCase()}{it.motor_qtd > 1 && ` (qtd ${it.motor_qtd})`}</div>
+                      <div>- Acionamento: motor {it.motor_cv} CV {it.motor_polos} polos{it.motor_qtd > 1 && ` (qtd ${it.motor_qtd})`}</div>
                     )
                 }
               </div>
-              <div className="flex justify-between mt-2 text-[10px] font-bold">
+              {/* VALOR com linha fina acima e abaixo (igual PDF) */}
+              <div className="mt-2 pt-1 border-t border-gray-300 flex justify-between text-[10px] font-bold">
                 <span>VALOR</span>
                 <span>R$ {formatBRLBare(subtotal)}</span>
               </div>
@@ -583,9 +587,9 @@ function OrcamentoPreview({
         })}
       </div>
 
-      {/* VALOR TOTAL DE EQUIPAMENTOS — só com 2+ itens (igual .docx) */}
+      {/* VALOR TOTAL DE EQUIPAMENTOS — só com 2+ itens */}
       {mostrarTotalEquip && (
-        <div className="flex justify-between text-[10px] font-bold bg-gray-100 px-2 py-1.5 rounded mb-3">
+        <div className="flex justify-between text-[10px] font-bold border-y border-gray-400 py-1 mb-3">
           <span>VALOR TOTAL DE EQUIPAMENTOS</span>
           <span>R$ {formatBRLBare(totalItems)}</span>
         </div>
@@ -593,7 +597,7 @@ function OrcamentoPreview({
 
       {/* Motores (tabela TIPO | NOVO igual .docx) */}
       {motoresAgrupados.length > 0 && (
-        <div className="mt-4">
+        <div className="mt-3">
           <div className="font-bold text-[10px] mb-1">{motoresTitle}</div>
           <table className="w-full text-[9.5px] border-collapse">
             <thead>
@@ -605,25 +609,29 @@ function OrcamentoPreview({
             <tbody>
               {motoresAgrupados.map(m => (
                 <tr key={`${m.cv}-${m.polos}`} className="border-b border-gray-200">
-                  <td className="py-0.5 text-gray-700">
+                  <td className="py-0.5">
                     - {m.cv} CV {m.polos} polos{m.qtd > 1 && ` (qtd ${m.qtd})`}
                   </td>
-                  <td className="py-0.5 text-right text-gray-700">R$ {formatBRLBare(m.valor_total)}</td>
+                  <td className="py-0.5 text-right">R$ {formatBRLBare(m.valor_total)}</td>
                 </tr>
               ))}
+              <tr className="border-t border-gray-400 font-bold">
+                <td className="py-1">TOTAL</td>
+                <td className="py-1 text-right">R$ {formatBRLBare(totalMotores)}</td>
+              </tr>
             </tbody>
           </table>
         </div>
       )}
 
-      {/* VALOR TOTAL DA PROPOSTA (fundo verde + borda — igual PDF) */}
-      <div className="flex justify-between text-[11px] font-bold mt-3 px-2 py-2 rounded border border-emerald-500 bg-emerald-50 text-emerald-900">
+      {/* VALOR TOTAL DA PROPOSTA — barra com fundo bem clarinho (azul-acinzentado igual PDF) */}
+      <div className="flex justify-between text-[11px] font-bold mt-4 px-2 py-2 border-y-2 border-gray-700 bg-slate-50">
         <span>VALOR TOTAL DA PROPOSTA COM MOTOR NOVO</span>
         <span>R$ {formatBRLBare(totalGeral)}</span>
       </div>
 
-      {/* Termos (igual .docx, ordem exata) */}
-      <div className="mt-4 text-[9.5px] text-gray-700 space-y-0.5">
+      {/* Termos (igual .docx, ordem e formato exatos) */}
+      <div className="mt-3 text-[9.5px] text-gray-800 space-y-0">
         <div>- Data da venda – <span className="text-gray-400 italic">a combinar</span></div>
         <div>- Prazo de entrega – 90 dias (úteis)</div>
         <div>- Forma de pagamento – <span className="text-gray-400 italic">a combinar</span></div>
@@ -631,8 +639,8 @@ function OrcamentoPreview({
         <div>- Validade da proposta - 10 dias após o envio.</div>
       </div>
 
-      <div className="mt-4 pt-3 border-t border-gray-300 text-[8px] text-gray-500 italic leading-relaxed">
-        Dados do fabricante, redes sociais, conta para depósito, tributos, garantia e cláusula de cancelamento entram automaticamente no .docx/.pdf final.
+      <div className="mt-4 pt-2 border-t border-gray-300 text-[8px] text-gray-500 italic leading-snug">
+        Próximas páginas do .docx/.pdf final: Redes Sociais · Dados do Fabricante · Vendedores · Conta para Depósito · Observações · Tributos · Cláusula de Cancelamento · Garantia · Assinaturas.
       </div>
     </div>
   )
