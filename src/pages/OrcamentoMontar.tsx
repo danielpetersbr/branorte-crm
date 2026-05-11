@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/Input'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import {
   Sparkles, Search, Plus, Minus, Trash2, Package,
-  Zap, X, AlertCircle, Star, FileText, Eye, ListChecks,
+  Zap, X, AlertCircle, Star, FileText, Eye, ListChecks, Check,
 } from 'lucide-react'
 import {
   useCatalogoItems, useCatalogoMotores,
@@ -84,6 +84,7 @@ export function OrcamentoMontar() {
   const [voltagem, setVoltagem] = useState<Voltagem>('trifasico')
   const [carrinho, setCarrinho] = useState<CarrinhoItem[]>([])
   const [showOnlyPopular, setShowOnlyPopular] = useState(false)
+  const [showOnlyOficiais, setShowOnlyOficiais] = useState(true)  // default: só items curados
   const [modoVisao, setModoVisao] = useState<ModoVisao>('preview')
   const [finalizarOpen, setFinalizarOpen] = useState(false)
   const [sucesso, setSucesso] = useState<{ numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean } | null>(null)
@@ -94,6 +95,7 @@ export function OrcamentoMontar() {
     if (!items) return []
     const buscaLower = busca.trim().toLowerCase()
     return items.filter(it => {
+      if (showOnlyOficiais && !it.is_oficial) return false
       if (categoria && it.categoria !== categoria) return false
       if (showOnlyPopular && it.ocorrencias < 5) return false
       if (buscaLower) {
@@ -102,7 +104,9 @@ export function OrcamentoMontar() {
       }
       return true
     })
-  }, [items, categoria, busca, showOnlyPopular])
+  }, [items, categoria, busca, showOnlyPopular, showOnlyOficiais])
+
+  const totalOficiais = useMemo(() => (items ?? []).filter(i => i.is_oficial).length, [items])
 
   const motoresAgrupados = useMemo(() => agruparMotores(carrinho), [carrinho])
 
@@ -230,6 +234,18 @@ export function OrcamentoMontar() {
             </div>
 
             <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                onClick={() => setShowOnlyOficiais(p => !p)}
+                className={`text-[10px] px-2 py-1 rounded font-semibold flex items-center gap-1 transition-all ${
+                  showOnlyOficiais
+                    ? 'bg-success text-white'
+                    : 'bg-surface-2 text-ink-muted hover:bg-surface-3'
+                }`}
+                title={showOnlyOficiais ? `Mostrando só items curados (${totalOficiais}). Click pra ver todos.` : 'Mostrando todos. Click pra filtrar só items curados.'}
+              >
+                <Check className="h-3 w-3" />
+                Só oficiais ({totalOficiais})
+              </button>
               <button
                 onClick={() => setShowOnlyPopular(p => !p)}
                 className={`text-[10px] px-2 py-1 rounded font-semibold flex items-center gap-1 transition-all ${
@@ -603,12 +619,26 @@ function CardItem({
       onClick={onAdd}
       className="text-left p-2.5 rounded-md border border-border hover:border-accent/40 hover:bg-surface-2 transition-all group"
     >
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-start gap-2">
+        {item.foto_url && (
+          <img
+            src={item.foto_url}
+            alt={item.nome_curto}
+            className="w-12 h-12 object-cover rounded border border-border shrink-0"
+            loading="lazy"
+          />
+        )}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 mb-0.5">
+          <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
             <span className="text-[9px] uppercase tracking-wider text-ink-muted font-bold">
               {item.categoria}
             </span>
+            {item.is_oficial && (
+              <span className="text-[8px] bg-success/20 text-success px-1 py-0.5 rounded font-bold flex items-center gap-0.5">
+                <Check className="h-2 w-2" />
+                oficial
+              </span>
+            )}
             {isPopular && (
               <span className="text-[8px] bg-accent/15 text-accent px-1 py-0.5 rounded font-bold flex items-center gap-0.5">
                 <Star className="h-2 w-2" />

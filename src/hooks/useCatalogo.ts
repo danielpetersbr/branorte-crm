@@ -19,6 +19,10 @@ export interface CatalogoItem {
   ativo: boolean
   ordem: number
   ocorrencias: number
+  is_oficial: boolean
+  foto_url: string | null
+  descricao: string | null
+  acessorios_relacionados_ids: number[]
 }
 
 export interface CatalogoMotor {

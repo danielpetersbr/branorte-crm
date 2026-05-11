@@ -49,6 +49,7 @@ const SECONDARY: NavItem[] = [
     children: [
       { to: '/orcamentos/novo', label: 'Novo (Modelo)', icon: Sparkles },
       { to: '/orcamentos/montar', label: 'Montar Custom', icon: Package },
+      { to: '/orcamentos/catalogo-admin', label: 'Catálogo (Admin)', icon: Shield },
       { to: '/orcamentos', label: 'Painel', icon: BarChart2 },
       { to: '/orcamentos/lista', label: 'Lista', icon: List },
     ],
