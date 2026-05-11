@@ -29,6 +29,7 @@ interface CarrinhoItem {
   motor_polos: number | null
   motor_qtd: number
   motor_valor_unit: number  // valor unitário do motor (não multiplicado)
+  foto_url: string | null   // foto do equipamento (mostra no preview, igual orçamento real)
 }
 
 function formatBRL(v: number): string {
@@ -138,6 +139,7 @@ export function OrcamentoMontar() {
       motor_polos: item.motor_padrao_polos,
       motor_qtd: item.motor_padrao_qtd || 1,
       motor_valor_unit: motorMatch ? Number(motorMatch.valor) : 0,
+      foto_url: item.foto_url || null,
     }])
   }
 
@@ -568,16 +570,29 @@ function OrcamentoPreview({
                   <X className="h-3 w-3" />
                 </button>
               </div>
-              {/* Specs (sem dot leaders — orçamento real renderiza como texto comum) */}
-              <div className="pl-3 text-[9.5px] text-gray-700 mt-0.5 space-y-0">
-                {it.specs.length > 0
-                  ? it.specs.map((s, i) => <div key={i}>- {s}</div>)
-                  : it.motor_cv && (
-                      <div>- Acionamento: motor {it.motor_cv} CV {it.motor_polos} polos{it.motor_qtd > 1 && ` (qtd ${it.motor_qtd})`}</div>
-                    )
-                }
+              {/* Specs à esquerda + foto do equipamento à direita (igual PDF) */}
+              <div className="flex gap-3 mt-1">
+                <div className="flex-1 min-w-0 pl-3 text-[9.5px] text-gray-700 space-y-0">
+                  {it.specs.length > 0
+                    ? it.specs.map((s, i) => <div key={i}>- {s}</div>)
+                    : it.motor_cv && (
+                        <div>- Acionamento: motor {it.motor_cv} CV {it.motor_polos} polos{it.motor_qtd > 1 && ` (qtd ${it.motor_qtd})`}</div>
+                      )
+                  }
+                </div>
+                {it.foto_url && (
+                  <div className="shrink-0 w-24 flex flex-col items-center">
+                    <img
+                      src={it.foto_url}
+                      alt={it.nome}
+                      className="w-24 h-24 object-contain border border-gray-200 rounded bg-white"
+                      loading="lazy"
+                    />
+                    <div className="text-[7px] text-gray-400 italic mt-0.5">Imagem ilustrativa</div>
+                  </div>
+                )}
               </div>
-              {/* VALOR com linha fina acima e abaixo (igual PDF) */}
+              {/* VALOR com linha fina acima (igual PDF) */}
               <div className="mt-2 pt-1 border-t border-gray-300 flex justify-between text-[10px] font-bold">
                 <span>VALOR</span>
                 <span>R$ {formatBRLBare(subtotal)}</span>
