@@ -1,38 +1,40 @@
-// Converte .docx em .pdf via Gotenberg (LibreOffice headless).
-// Resultado IDÊNTICO ao Word "Salvar como PDF" porque é o mesmo motor.
+// Converte .docx em .pdf via Edge Function (Supabase) que faz proxy pro Gotenberg.
+// Edge Function resolve o CORS — chamada direta do browser pro Render falha.
 //
-// Setup:
-// 1. Deploy gotenberg/gotenberg:8 no Render (ou qualquer Docker host)
-// 2. Defina VITE_GOTENBERG_URL=https://branorte-gotenberg.onrender.com no Vercel
-// 3. Pronto — PDF gerado automaticamente quando salvar na pasta Z:
+// Resultado IDÊNTICO ao Word "Salvar como PDF" porque Gotenberg usa LibreOffice
+// (mesmo motor que Word usa quando exporta PDF).
 
-const GOTENBERG_URL = ((import.meta as any).env?.VITE_GOTENBERG_URL || '').replace(/\/+$/, '')
+import { supabase } from '@/lib/supabase'
 
+// Sempre ON quando supabase tá configurado (URL/key sempre populados no CRM)
 export function isGotenbergConfigured(): boolean {
-  return !!GOTENBERG_URL
+  return true
 }
 
 export async function gerarPdfDoDocxGotenberg(docxBlob: Blob): Promise<Blob> {
-  if (!GOTENBERG_URL) {
-    throw new Error('Gotenberg não configurado: defina VITE_GOTENBERG_URL no Vercel')
-  }
-
   const form = new FormData()
   form.append('files', docxBlob, 'orcamento.docx')
-  // Garante PDF/A-1b pra arquivamento (opcional, comente se causar problemas)
-  // form.append('pdfa', 'PDF/A-1b')
 
-  const r = await fetch(`${GOTENBERG_URL}/forms/libreoffice/convert`, {
+  // supabase.functions.invoke retorna { data, error } — usa fetch direto pra ler binary PDF
+  const { data: sessao } = await supabase.auth.getSession()
+  const token = sessao.session?.access_token
+  if (!token) throw new Error('Sessão expirou. Faça login de novo.')
+
+  const url = `${(import.meta as any).env.VITE_SUPABASE_URL || 'https://flwbeevtvjiouxdjmziv.supabase.co'}/functions/v1/docx-to-pdf`
+  const r = await fetch(url, {
     method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}` },
     body: form,
-    // free tier do Render dorme após 15min — cold start até 60s
-    signal: AbortSignal.timeout(120_000),
+    signal: AbortSignal.timeout(180_000),  // 3min — tolera cold start do Render
   })
 
   if (!r.ok) {
-    const errorText = await r.text().catch(() => '')
-    throw new Error(`Gotenberg falhou (${r.status}): ${errorText.slice(0, 200)}`)
+    let detail = ''
+    try {
+      const j = await r.json()
+      detail = j.detail || j.message || j.error || ''
+    } catch {}
+    throw new Error(`PDF não gerado (${r.status})${detail ? ': ' + detail.slice(0, 200) : ''}`)
   }
-
   return await r.blob()
 }
