@@ -342,6 +342,58 @@ export function PainelEtiquetas() {
         </div>
       )}
 
+      {/* 🎯 FUNIL DE VENDAS ISOLADO — só etiquetas ativas do funil, em ordem da jornada */}
+      {dadosFunil.length > 0 && (
+        <Card className="p-4 border-accent/30 bg-gradient-to-br from-bg to-surface-2/30">
+          <div className="flex items-baseline justify-between mb-3 gap-2 flex-wrap">
+            <h2 className="text-[13px] font-semibold text-ink flex items-center gap-2">
+              <Flame className="h-4 w-4 text-accent" />
+              Funil de vendas <span className="text-ink-faint font-normal text-[11px]">(jornada do lead)</span>
+            </h2>
+            <div className="flex gap-3 text-[10px] text-ink-muted">
+              <span><span className="font-bold text-ink">{dadosFunil.reduce((a,b)=>a+b.total,0)}</span> chats no funil</span>
+              {!semDadoTemporal && (
+                <span>· <span className="text-accent font-bold">{dadosFunil.reduce((a,b)=>a+b.Fresco+b.Recente,0)}</span> ativos &lt;3d</span>
+              )}
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={Math.max(280, dadosFunil.length * 38)}>
+            <BarChart data={dadosFunil} layout="vertical" margin={{ top: 0, right: 40, left: 0, bottom: 0 }}>
+              <XAxis type="number" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+              <YAxis
+                dataKey="nome"
+                type="category"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 11, fill: '#e7e9ee', fontWeight: 600 }}
+                width={160}
+              />
+              <Tooltip
+                cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+                contentStyle={{ background: '#11151c', border: '1px solid #1f2937', borderRadius: 6, fontSize: 11 }}
+                formatter={(v: number, name: string) => [v, name]}
+              />
+              {semDadoTemporal ? (
+                <Bar dataKey="total" onClick={(d: any) => setFiltroEtiqueta(d.nome)} cursor="pointer">
+                  {dadosFunil.map((d, i) => <Cell key={i} fill={corDaEtiqueta(d.nome)} />)}
+                  <LabelList dataKey="total" position="right" style={{ fontSize: 11, fill: '#e7e9ee', fontWeight: 700 }} />
+                </Bar>
+              ) : (
+                <>
+                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
+                  <Bar dataKey="Fresco" stackId="a" fill={STATUS_COLORS.fresco} onClick={(d: any) => setFiltroEtiqueta(d.nome)} cursor="pointer" />
+                  <Bar dataKey="Recente" stackId="a" fill={STATUS_COLORS.recente} onClick={(d: any) => setFiltroEtiqueta(d.nome)} cursor="pointer" />
+                  <Bar dataKey="Parado" stackId="a" fill={STATUS_COLORS.parado} onClick={(d: any) => setFiltroEtiqueta(d.nome)} cursor="pointer" />
+                  <Bar dataKey="SemDado" stackId="a" fill={STATUS_COLORS.semDado} onClick={(d: any) => setFiltroEtiqueta(d.nome)} cursor="pointer">
+                    <LabelList dataKey="total" position="right" style={{ fontSize: 11, fill: '#e7e9ee', fontWeight: 700 }} />
+                  </Bar>
+                </>
+              )}
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+      )}
+
       {/* Stacked bar: chats por etiqueta */}
       <div className={`grid grid-cols-1 ${semDadoTemporal ? '' : 'lg:grid-cols-3'} gap-4`}>
         <Card className={`p-4 ${semDadoTemporal ? '' : 'lg:col-span-2'}`}>
