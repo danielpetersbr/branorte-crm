@@ -7,7 +7,7 @@ import {
 } from '@/hooks/useOrcamentoBuilder'
 import { useAuth } from '@/hooks/useAuth'
 import { gerarOrcamentoCustomDocx, type CustomDocxItem, type CustomDocxMotor } from '@/lib/orcamento-custom-docx'
-import { gerarPdfDoDocxGotenberg, isGotenbergConfigured } from '@/lib/gotenberg-pdf'
+import { gerarPdfDoPreview } from '@/lib/preview-to-pdf'
 import {
   isFolderScanSupported, pickOrcamentoFolder, getStoredFolderHandle,
   scanFolderForLastNumber, formatarNumero, ensureWritePermission,
@@ -320,16 +320,59 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
         vendedorNome: profile?.display_name ?? undefined,
       })
 
-      // 5) Gera PDF via Gotenberg
+      // 5) Gera PDF a partir do preview (HTML → canvas → PDF), garantindo
+      //    que o PDF seja IDENTICO ao preview da tela.
       let pdfBlob: Blob | null = null
       let pdfErro: string | null = null
-      if (isGotenbergConfigured()) {
-        try {
-          pdfBlob = await gerarPdfDoDocxGotenberg(docxBlob)
-        } catch (e) {
-          pdfErro = (e as Error).message
-          console.warn('Falha PDF:', pdfErro)
-        }
+      try {
+        pdfBlob = await gerarPdfDoPreview({
+          carrinho: snapshot.itens.map((it, idx) => ({
+            uid: `pdf-${idx}`,
+            categoria: '',
+            nome: it.nome,
+            specs: it.specs,
+            qtd: it.qtd,
+            valor: it.valor,
+            motor_cv: it.motor_cv,
+            motor_polos: it.motor_polos,
+            motor_qtd: it.motor_qtd,
+            motor_valor_unit: it.motor_valor_unit,
+            foto_url: it.foto_url ?? null,
+          })),
+          motoresAgrupados: snapshot.motoresAgrupados,
+          voltagem: snapshot.voltagem,
+          totalItems: snapshot.totalItems,
+          totalMotores: snapshot.totalMotores,
+          totalEquip: snapshot.totalEquip,
+          totalGeral: snapshot.totalGeral,
+          acessorios: snapshot.acessorios
+            ? { pct: snapshot.acessorios.pct, items: snapshot.acessorios.items }
+            : null,
+          valorAcessorios: snapshot.acessorios?.valor ?? 0,
+          numero: orc.numero,
+          dataEmissao: dataEmissaoBR,
+          cliente: {
+            nome: cliNome.trim(),
+            ac: cliDados.ac,
+            fone: cliDados.fone,
+            cidade: cliDados.cidade,
+            bairro: cliDados.bairro,
+            endereco: cliDados.endereco,
+            cep: cliDados.cep,
+            cnpj: cliDados.cnpj,
+            ie: cliDados.ie,
+            email: cliDados.email,
+          },
+          terms: {
+            dataVenda: pgDataVenda ? formaPgOut.data_venda : null,
+            prazoEntrega: prazoEntrega.trim() || null,
+            formaPagamento: formaPgOut.forma_pagamento || null,
+          },
+          observacoesExtra: observacoes.trim() || null,
+        })
+      } catch (e) {
+        pdfErro = (e as Error).message
+        console.warn('Falha PDF:', pdfErro)
       }
 
       const base = nomeBase(orc.numero, cliNome)
