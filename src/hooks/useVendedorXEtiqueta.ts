@@ -32,9 +32,12 @@ export interface ColunaVE {
 export interface VendedorXEtiquetaData {
   ok: boolean
   gerado_em: string
+  fonte?: string  // 'wa_chat_labels' = real WhatsApp Web
+  vendedores_sincronizando?: number
+  vendedores_total_ativos?: number
   total_geral: number
   total_sem_etiqueta: number
-  filtros: { incluir_sem_cards: boolean; periodo_dias: number | 'all' }
+  filtros?: { incluir_sem_cards: boolean; periodo_dias: number | 'all' }
   colunas: ColunaVE[]
   linhas: LinhaVE[]
 }

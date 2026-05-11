@@ -166,6 +166,21 @@ export function PainelEtiquetas() {
         </p>
       </header>
 
+      {/* 🆕 Banner: vendedores sem extensão sincronizando */}
+      {dataVE && dataVE.vendedores_sincronizando !== undefined && dataVE.vendedores_total_ativos !== undefined &&
+       dataVE.vendedores_sincronizando < dataVE.vendedores_total_ativos && (
+        <Card className="p-3 border-warning/40 bg-warning-bg/15">
+          <p className="text-[12px] text-warning font-medium flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            {dataVE.vendedores_total_ativos - dataVE.vendedores_sincronizando} vendedores sem extensão sincronizando
+          </p>
+          <p className="text-[11px] text-ink-muted mt-1">
+            Só {dataVE.vendedores_sincronizando}/{dataVE.vendedores_total_ativos} vendedores aparecem porque os outros precisam instalar a extensão Branorte WA Sync no Chrome.
+            Pasta: <code className="text-warning">Z:\1 - Comercial\1 - Area de vendas\DANIEL\branorte-extensao\</code>
+          </p>
+        </Card>
+      )}
+
       {/* Banner: extensão antiga (sem dado temporal) */}
       {semDadoTemporal && (
         <Card className="p-3 border-warning/40 bg-warning-bg/15">
