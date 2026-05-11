@@ -563,11 +563,13 @@ function OrcamentoPreview({
     <div className="text-[10px] text-gray-900 leading-relaxed font-sans bg-white">
       {/* PÁGINA — moldura preta igual o template Word */}
       <div className="m-4 border border-gray-900 px-6 pt-5 pb-6">
-        {/* Logo BRANORTE — grande, centralizado, sem tagline (igual o template) */}
+        {/* Logo BRANORTE — imagem oficial extraída do template Word */}
         <div className="text-center mb-5">
-          <div className="inline-block text-[44px] font-black tracking-tight leading-none">
-            <span className="text-emerald-600">BRA</span><span className="text-gray-900">NORTE</span>
-          </div>
+          <img
+            src="/branorte-logo.png"
+            alt="BRANORTE"
+            className="inline-block h-12 w-auto"
+          />
         </div>
 
         {/* Linha 1: ORÇAMENTO N° (esquerda) | DATA (direita) */}
