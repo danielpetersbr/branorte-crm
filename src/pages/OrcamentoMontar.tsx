@@ -583,7 +583,7 @@ function OrcamentoPreview({
             <span className="h-px w-8 bg-gray-300" />
           </div>
           <div className="text-[8px] tracking-wide text-gray-500 mt-1">
-            CNPJ 16.935.999/0001-09 · (48) 3658-4502 · patrick@mbranorte.com.br
+            CNPJ 16.935.999/0001-09 · (48) 3658-4502 · contato@mbranorte.com.br
           </div>
         </div>
       </div>
@@ -780,7 +780,7 @@ function OrcamentoPreview({
       <SectionHeader>Nossas Redes Sociais</SectionHeader>
       <div className="grid grid-cols-4 gap-2 text-[9px] text-gray-700">
         {[
-          { icon: '📧', label: 'E-mail',      href: 'mailto:patrick@mbranorte.com.br' },
+          { icon: '📧', label: 'E-mail',      href: 'mailto:contato@mbranorte.com.br' },
           { icon: '📷', label: 'Instagram',   href: 'https://instagram.com/mbranorte' },
           { icon: '▶️', label: 'YouTube',     href: 'https://www.youtube.com/@metalurgicabranortebba9217' },
           { icon: '📘', label: 'Facebook',    href: 'https://www.facebook.com/metalurgicabranorte' },
@@ -811,7 +811,7 @@ function OrcamentoPreview({
         <div><span className="font-bold">Cidade:</span> Grão Pará – SC · <span className="font-bold">CEP:</span> 88890-000</div>
         <div><span className="font-bold">Telefone:</span> (48) 3658-4502 / (48) 3658-7453</div>
         <div><span className="font-bold">CNPJ:</span> 16.935.999/0001-09 · <span className="font-bold">I.E.:</span> 256.847.320</div>
-        <div><span className="font-bold">E-mail:</span> patrick@mbranorte.com.br</div>
+        <div><span className="font-bold">E-mail:</span> contato@mbranorte.com.br</div>
       </div>
 
       {/* Vendedores: 4 colunas */}
