@@ -488,107 +488,126 @@ function OrcamentoPreview({
   totalGeral: number
   onRemove: (uid: string) => void
 }) {
+  const voltagemLabel = voltagem === 'monofasico' ? 'Monofásico' : 'Trifásico'
+  const motoresTitle = voltagem === 'monofasico' ? 'Motores Monofásicos:' : 'Motores Trifásicos:'
   return (
-    <div className="p-5 text-[10px] text-gray-900 leading-relaxed font-serif">
-      {/* Header simulando o orçamento real */}
-      <div className="text-center mb-4 pb-3 border-b-2 border-gray-300">
-        <div className="text-[14px] font-bold tracking-wide">METALÚRGICA BBA LTDA</div>
-        <div className="text-[9px] text-gray-600 mt-1">
-          Av. Brasil, 1234 · São Lourenço do Sul · RS · CNPJ XX.XXX.XXX/0001-XX
+    <div className="p-6 text-[10px] text-gray-900 leading-relaxed font-serif bg-white">
+      {/* Cabeçalho real: ORÇAMENTO N° xxx / DATA: xxx (idêntico ao .docx) */}
+      <div className="flex justify-between items-baseline mb-4">
+        <div className="text-[12px] font-bold">
+          ORÇAMENTO N° <span className="text-gray-400">[a definir]</span>
         </div>
-        <div className="text-[12px] font-bold mt-3">
-          ORÇAMENTO Nº <span className="text-gray-400">[a definir]</span>
+        <div className="text-[12px] font-bold">
+          DATA: <span className="text-gray-400">__/__/____</span>
         </div>
       </div>
 
-      {/* Cliente (placeholder) */}
-      <div className="mb-4 text-[10px] space-y-0.5 bg-gray-50 p-2 rounded border border-gray-200">
-        <div className="flex"><span className="w-24 font-semibold">CLIENTE:</span><span className="text-gray-400 italic">[preencher na próxima etapa]</span></div>
-        <div className="flex"><span className="w-24 font-semibold">CIDADE:</span><span className="text-gray-400 italic">—</span></div>
-        <div className="flex"><span className="w-24 font-semibold">FONE:</span><span className="text-gray-400 italic">—</span></div>
-        <div className="flex"><span className="w-24 font-semibold">VOLTAGEM:</span><span className="font-bold uppercase">{voltagem === 'monofasico' ? 'Monofásico' : 'Trifásico'}</span></div>
+      {/* Cliente (placeholder — preenchido na próxima etapa) */}
+      <div className="mb-2 text-[10px]">
+        <div className="flex flex-wrap gap-x-6 gap-y-0.5">
+          <span><span className="font-bold">CLIENTE:</span> <span className="text-gray-400 italic">[preencher]</span></span>
+          <span><span className="font-bold">A/C:</span> <span className="text-gray-400 italic">—</span></span>
+          <span><span className="font-bold">FONE:</span> <span className="text-gray-400 italic">—</span></span>
+        </div>
+        <div className="text-gray-400 italic mt-0.5">
+          CIDADE / BAIRRO / ENDEREÇO / CEP / CPF·CNPJ / I.E. / E-MAIL — preencher na próxima etapa
+        </div>
       </div>
 
-      {/* ITENS ORÇADOS */}
-      <div className="font-bold text-[11px] mb-2 pb-1 border-b border-gray-300">
-        ITENS ORÇADOS:
+      <hr className="my-3 border-gray-300" />
+
+      {/* ITENS ORÇADOS ABAIXO: */}
+      <div className="font-bold text-[11px] mb-2">
+        ITENS ORÇADOS ABAIXO:
       </div>
 
-      <div className="space-y-3 mb-4">
+      <div className="space-y-3 mb-3">
         {carrinho.map((it, idx) => {
-          const letra = String.fromCharCode(65 + idx)  // A, B, C, D...
+          const letra = String.fromCharCode(65 + idx)
           const subtotal = it.valor * it.qtd
           return (
-            <div key={it.uid} className="group relative pl-1">
-              <div className="flex items-start gap-2">
-                <div className="font-bold w-12 shrink-0">
-                  {letra} - {String(it.qtd).padStart(2, '0')}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold uppercase">{it.nome}</div>
-                  {it.motor_cv && (
-                    <div className="text-[9px] text-gray-600 mt-0.5">
-                      Motor {it.motor_cv} CV {it.motor_polos} polos {voltagem}
-                      {it.motor_qtd > 1 && ` (qtd ${it.motor_qtd})`}
-                    </div>
-                  )}
-                  <div className="text-right font-semibold mt-1">
-                    VALOR R$ {formatBRLBare(subtotal)}
-                  </div>
+            <div key={it.uid} className="group relative">
+              <div className="flex justify-between items-start gap-2">
+                <div className="font-bold text-[10px] flex-1 min-w-0">
+                  {letra} - {String(it.qtd).padStart(2, '0')} – <span className="uppercase">{it.nome}</span>
                 </div>
                 <button
                   onClick={() => onRemove(it.uid)}
-                  className="opacity-0 group-hover:opacity-100 text-red-600 hover:text-red-800 transition-opacity p-0.5"
+                  className="opacity-0 group-hover:opacity-100 text-red-600 hover:text-red-800 transition-opacity p-0.5 shrink-0"
                   title="Remover item"
                 >
                   <X className="h-3 w-3" />
                 </button>
+              </div>
+              <div className="pl-3 text-[9.5px] text-gray-700 mt-0.5 space-y-0.5">
+                {it.specs.length > 0
+                  ? it.specs.map((s, i) => <div key={i}>- {s}</div>)
+                  : it.motor_cv && (
+                      <div>- Motor {it.motor_cv} CV {it.motor_polos} polos {voltagemLabel.toLowerCase()}{it.motor_qtd > 1 && ` (qtd ${it.motor_qtd})`}</div>
+                    )
+                }
+              </div>
+              <div className="flex justify-between pl-3 mt-1 text-[10px] font-bold">
+                <span>VALOR</span>
+                <span>R$ {formatBRLBare(subtotal)}</span>
               </div>
             </div>
           )
         })}
       </div>
 
-      {/* MOTORES NOVOS */}
-      {motoresAgrupados.length > 0 && (
-        <>
-          <div className="font-bold text-[11px] mb-2 pt-3 border-t-2 border-gray-300">
-            MOTORES NOVOS:
-          </div>
-          <div className="space-y-1 mb-4 ml-1">
-            {motoresAgrupados.map(m => (
-              <div key={`${m.cv}-${m.polos}`} className="flex justify-between">
-                <span>
-                  - {m.cv} CV {m.polos} polos {voltagem}{m.qtd > 1 && ` (qtd ${m.qtd})`}
-                </span>
-                <span className="font-semibold">R$ {formatBRLBare(m.valor_total)}</span>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      {/* TOTAIS */}
-      <div className="border-t-2 border-gray-400 pt-3 space-y-1">
-        <div className="flex justify-between text-[10px]">
-          <span>VALOR TOTAL DE EQUIPAMENTOS</span>
-          <span className="font-bold">R$ {formatBRLBare(totalItems)}</span>
-        </div>
-        {totalMotores > 0 && (
-          <div className="flex justify-between text-[10px]">
-            <span>VALOR TOTAL DE MOTORES</span>
-            <span className="font-bold">R$ {formatBRLBare(totalMotores)}</span>
-          </div>
-        )}
-        <div className="flex justify-between text-[12px] font-bold pt-2 border-t border-gray-300 bg-yellow-50 px-2 py-1.5 rounded mt-2">
-          <span>VALOR TOTAL DA PROPOSTA COM MOTOR NOVO</span>
-          <span>R$ {formatBRLBare(totalGeral)}</span>
-        </div>
+      {/* VALOR TOTAL DE EQUIPAMENTOS (fundo cinza igual PDF) */}
+      <div className="flex justify-between text-[10px] font-bold bg-gray-100 px-2 py-1.5 rounded">
+        <span>VALOR TOTAL DE EQUIPAMENTOS</span>
+        <span>R$ {formatBRLBare(totalItems)}</span>
       </div>
 
-      {/* Termos resumidos */}
+      {/* Motores (tabela TIPO | NOVO) */}
+      {motoresAgrupados.length > 0 && (
+        <div className="mt-4">
+          <div className="font-bold text-[10px] mb-1">{motoresTitle}</div>
+          <table className="w-full text-[9.5px] border-collapse">
+            <thead>
+              <tr className="border-y border-gray-400">
+                <th className="text-left font-bold py-1">TIPO</th>
+                <th className="text-right font-bold py-1">NOVO</th>
+              </tr>
+            </thead>
+            <tbody>
+              {motoresAgrupados.map(m => (
+                <tr key={`${m.cv}-${m.polos}`} className="border-b border-gray-200">
+                  <td className="py-0.5 text-gray-700">
+                    {m.cv} CV {m.polos} polos{m.qtd > 1 && ` (qtd ${m.qtd})`}
+                  </td>
+                  <td className="py-0.5 text-right text-gray-700">R$ {formatBRLBare(m.valor_total)}</td>
+                </tr>
+              ))}
+              <tr className="border-t border-gray-400 font-bold">
+                <td className="py-1">TOTAL</td>
+                <td className="py-1 text-right">R$ {formatBRLBare(totalMotores)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* VALOR TOTAL DA PROPOSTA (fundo verde claro + borda verde, igual PDF) */}
+      <div className="flex justify-between text-[11px] font-bold mt-3 px-2 py-2 rounded border border-emerald-500 bg-emerald-50 text-emerald-900">
+        <span>VALOR TOTAL DA PROPOSTA COM MOTOR NOVO</span>
+        <span>R$ {formatBRLBare(totalGeral)}</span>
+      </div>
+
+      {/* Termos (resumidos — completos só no arquivo final) */}
+      <div className="mt-4 text-[9px] text-gray-700 space-y-0.5">
+        <div>- Data da venda – <span className="text-gray-400 italic">a combinar</span></div>
+        <div>- Prazo de entrega – <span className="text-gray-400 italic">90 dias (úteis)</span></div>
+        <div>- Forma de pagamento – <span className="text-gray-400 italic">a combinar</span></div>
+        <div>- Frete – por conta do cliente</div>
+        <div>- Validade da proposta – 10 dias após o envio.</div>
+      </div>
+
       <div className="mt-4 pt-3 border-t border-gray-300 text-[8px] text-gray-500 italic leading-relaxed">
-        Demais cláusulas (prazo de entrega, forma de pagamento, garantia, observações) serão preenchidas na próxima etapa.
+        Dados do fabricante, conta para depósito, tributos, garantia e cláusula de cancelamento entram automaticamente no .docx/.pdf final.
       </div>
     </div>
   )
