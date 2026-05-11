@@ -86,12 +86,12 @@ export function PainelEtiquetas() {
       }))
   }, [data])
 
-  // 🎯 Funil de vendas isolado — só etiquetas do funil ativo (PROSPECCAO → VENDIDO)
-  // Ordenado pela jornada (não pelo total), pra leitura natural top→down.
+  // 🎯 Funil de vendas isolado — só os 5 estágios ATIVOS da jornada
+  // ORCAMENTO ENVIADO, INTERESSE FUTURO e VENDIDO ficam no gráfico geral
+  // (não são etapas de funil ativo).
   const ORDEM_FUNIL = [
     'PROSPECCAO', '2A TENTATIVA', 'NOVO LEAD',
-    'FOLLOW UP', 'LEAD QUENTE', 'ORCAMENTO ENVIADO',
-    'INTERESSE FUTURO', 'VENDIDO',
+    'FOLLOW UP', 'LEAD QUENTE',
   ]
   const dadosFunil = useMemo(() => {
     if (!data) return []
