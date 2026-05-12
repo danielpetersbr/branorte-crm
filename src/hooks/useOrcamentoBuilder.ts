@@ -250,20 +250,25 @@ export function useCriarOrcamento() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: CriarOrcamentoInput): Promise<OrcamentoGerado> => {
-      // Se veio numero da pasta Z:, usa. Senao busca proximo do banco.
-      let { ano, sequencial, numero } = input.numero_override
-        ? input.numero_override
-        : await obterProximoNumero()
+      // Pega numero do override (pasta Z) E do banco, escolhe o MAIOR + 1.
+      // Evita conflito quando a pasta tem numero antigo mas o banco ja avancou.
+      const fromBank = await obterProximoNumero()
+      const fromOverride = input.numero_override
+      let ano = fromOverride?.ano ?? fromBank.ano
+      let sequencial = Math.max(
+        fromOverride?.sequencial ?? 0,
+        fromBank.sequencial,
+      )
+      let numero = `${ano} - ${String(sequencial).padStart(4, '0')}`
 
-      // Resolve conflito de numero duplicado no banco — incrementa ate achar livre
-      // (acontece quando uma tentativa anterior gravou no banco mas falhou em outro lugar)
-      for (let tentativa = 0; tentativa < 20; tentativa++) {
+      // Resolve conflito: se numero ja existe, incrementa ate achar livre
+      for (let tentativa = 0; tentativa < 50; tentativa++) {
         const { data: existente } = await supabase
           .from('orcamentos_gerados')
           .select('id')
           .eq('numero', numero)
           .maybeSingle()
-        if (!existente) break  // numero livre
+        if (!existente) break
         sequencial += 1
         numero = `${ano} - ${String(sequencial).padStart(4, '0')}`
       }
@@ -316,7 +321,7 @@ export function useCriarOrcamento() {
       }
       // Tenta inserir; se ainda assim der duplicate (race), incrementa e tenta de novo
       let lastErr: any = null
-      for (let r = 0; r < 5; r++) {
+      for (let r = 0; r < 30; r++) {
         const tryPayload = { ...payload, numero, sequencial }
         const { data, error } = await supabase
           .from('orcamentos_gerados')
