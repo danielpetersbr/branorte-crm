@@ -82,10 +82,14 @@ export async function gerarPdfDoPreview(
     } else {
       // Multi-pagina: corta o canvas em fatias do tamanho da pagina A4
       const sliceHeightPx = Math.floor(pageHeightMm / mmPerPx)
+      // Tolerancia: ignorar overflow < 8% da pagina (evita pagina extra so com footer)
+      const minRemainingPx = Math.floor(sliceHeightPx * 0.08)
       let yPx = 0
       let pageIdx = 0
       while (yPx < canvas.height) {
         const remainingPx = canvas.height - yPx
+        // Se sobrou pouco e ja temos pelo menos 1 pagina, joga o resto na ultima pagina (nao cria nova)
+        if (pageIdx > 0 && remainingPx < minRemainingPx) break
         const thisSliceHeightPx = Math.min(sliceHeightPx, remainingPx)
 
         // Cria canvas temporario pra fatia
