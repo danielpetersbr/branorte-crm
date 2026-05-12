@@ -206,6 +206,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   const innerRef = useRef<HTMLDivElement>(null)
   const [pageBreaks, setPageBreaks] = useState<number[]>([])
   const [pageHeight, setPageHeight] = useState<number>(0)
+  // Folhas calculadas: cada uma tem top/bottom em CSS px relativos ao innerRef
+  // Usadas pra desenhar moldura preta INDEPENDENTE em volta de cada folha
+  const [folhas, setFolhas] = useState<Array<{ top: number; bottom: number }>>([])
 
   useLayoutEffect(() => {
     if (renderMode || !containerRef.current || !innerRef.current) return
@@ -241,6 +244,10 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
       // Insere SPACERS reais entre folhas
       const containerTop = innerRef.current.getBoundingClientRect().top + window.scrollY
       const allEls = Array.from(innerRef.current.querySelectorAll('div, table')) as HTMLElement[]
+      const spacerHeight = 30  // px (mesmo do CSS abaixo)
+      // Posicoes Y atuais de cada spacer DEPOIS de inserido (acumulam offset)
+      const spacerYs: number[] = []
+      let acumOffset = 0
       for (let i = 0; i < breaks.length; i++) {
         const breakY = breaks[i]
         let bestEl: HTMLElement | null = null
@@ -259,27 +266,42 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
         if (bestEl && bestEl.parentNode) {
           const gap = document.createElement('div')
           gap.className = 'page-gap-spacer'
-          // Spacer simula gap entre folhas A4: cinza escuro estendido lateralmente
-          // pra "esconder" as bordas laterais da moldura grande, dando ilusao de 2 folhas separadas
           gap.style.cssText = [
-            'height: 30px',
-            'background: #6b7280',  // cinza medio (cor de fundo do app)
-            'margin: 0 -25px',  // estende ALEM da borda da moldura (-24px overlap)
-            'border-top: 1px solid #111827',  // FECHA a folha anterior (borda inferior preta)
-            'border-bottom: 1px solid #111827',  // ABRE a folha nova (borda superior preta)
+            `height: ${spacerHeight}px`,
+            'background: transparent',  // deixa o BG da app aparecer (gap real entre folhas)
+            'margin: 0 -28px',  // estende ALEM da moldura
             'display: flex',
             'align-items: center',
             'justify-content: center',
             'font-size: 9px',
             'font-weight: bold',
-            'color: #f3f4f6',
+            'color: #6b7280',
             'letter-spacing: 0.1em',
             'text-transform: uppercase',
           ].join(';')
-          gap.textContent = `Folha ${i + 1} / ${breaks.length + 1} · próxima abaixo`
+          gap.textContent = `↓ Folha ${i + 2} / ${breaks.length + 1} ↓`
           bestEl.parentNode.insertBefore(gap, bestEl.nextSibling)
+          // Calcula Y do spacer (posicao top apos insert) — sera usada pra desenhar moldura
+          spacerYs.push(bestBottom + acumOffset)
+          acumOffset += spacerHeight
         }
       }
+      // Calcula folhas (top, bottom) pra renderizar moldura preta independente
+      requestAnimationFrame(() => {
+        if (!innerRef.current) return
+        const totalH = innerRef.current.offsetHeight
+        const novasFolhas: Array<{ top: number; bottom: number }> = []
+        let prevBottom = 0
+        for (const sY of spacerYs) {
+          // sY foi calculado ANTES dos offsets — agora a posicao real e (sY)
+          // bordas: folha vai de prevBottom ate sY
+          novasFolhas.push({ top: prevBottom, bottom: sY })
+          prevBottom = sY + spacerHeight
+        }
+        // Ultima folha
+        novasFolhas.push({ top: prevBottom, bottom: totalH })
+        setFolhas(novasFolhas)
+      })
       // Libera observer DEPOIS do paint
       requestAnimationFrame(() => {
         requestAnimationFrame(() => { isInternalMutation = false })
@@ -309,7 +331,19 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
   return (
     <div ref={containerRef} className="text-[10px] text-gray-900 leading-relaxed font-sans bg-white">
-      <div ref={innerRef} className="m-4 border border-gray-900 px-6 pt-5 pb-6 relative">
+      <div ref={innerRef} className={`m-4 px-6 pt-5 pb-6 relative ${renderMode || folhas.length === 0 ? 'border border-gray-900' : ''}`}>
+        {/* Molduras INDEPENDENTES por folha A4 (so em modo edit + multi-pagina) */}
+        {!renderMode && folhas.length > 1 && (
+          <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
+            {folhas.map((f, i) => (
+              <div
+                key={i}
+                className="absolute left-0 right-0 border border-gray-900"
+                style={{ top: `${f.top}px`, height: `${f.bottom - f.top}px` }}
+              />
+            ))}
+          </div>
+        )}
         {!renderMode && pageHeight > 0 && pageBreaks.length === 0 && carrinho.length > 0 && (
           <div className="absolute top-2 right-2 bg-green-600 text-white text-[9px] font-bold px-2 py-0.5 rounded shadow z-10 pointer-events-none">
             ✓ 1 folha A4
