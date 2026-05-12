@@ -9,7 +9,7 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Send, Play, Pause, Trash2, Plus, Users, Clock, AlertCircle, CheckCircle2, XCircle, RefreshCw } from 'lucide-react'
+import { Send, Play, Pause, Trash2, Plus, Users, Clock, AlertCircle, CheckCircle2, XCircle, RefreshCw, FlaskConical, Zap, Wifi, WifiOff } from 'lucide-react'
 
 type Vendedor = {
   vendedor_nome: string
@@ -82,6 +82,33 @@ export function Disparos() {
     },
     refetchInterval: 10000,
   })
+
+  // WhatsApp Web aberto/fechado por vendedor (último sync < 90s = aberto)
+  const { data: ultimosSyncs } = useQuery<Record<string, string>>({
+    queryKey: ['vendor-last-sync'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('wa_sync_debug')
+        .select('vendedor_nome, recebido_em')
+        .gte('recebido_em', new Date(Date.now() - 5 * 60_000).toISOString())
+        .order('recebido_em', { ascending: false })
+        .limit(200)
+      const mapa: Record<string, string> = {}
+      for (const row of (data || [])) {
+        if (!mapa[row.vendedor_nome]) mapa[row.vendedor_nome] = row.recebido_em
+      }
+      return mapa
+    },
+    refetchInterval: 10000,
+  })
+  function isWaAberto(vendedor: string): boolean {
+    const ts = ultimosSyncs?.[vendedor]
+    if (!ts) return false
+    return Date.now() - new Date(ts).getTime() < 90_000
+  }
+
+  // Modal de teste
+  const [testeVendedor, setTesteVendedor] = useState<string | null>(null)
 
   // Campanhas
   const { data: campanhas } = useQuery<Campanha[]>({
@@ -162,12 +189,19 @@ export function Disparos() {
         </h2>
         {loadingV ? <PageLoading /> : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
-            {(vendedores ?? []).map(v => (
+            {(vendedores ?? []).map(v => {
+              const waAberto = isWaAberto(v.vendedor_nome)
+              return (
               <div key={v.vendedor_nome} className={`border rounded-lg p-3 ${v.online ? 'border-accent/40 bg-accent/5' : 'border-border bg-surface-2/30'}`}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <Avatar name={v.vendedor_nome} size="sm" />
                     <span className="text-[12px] font-semibold text-ink">{v.vendedor_nome}</span>
+                    <span title={waAberto ? 'WhatsApp Web aberto' : 'WhatsApp Web fechado'}>
+                      {waAberto
+                        ? <Wifi className="h-3 w-3 text-emerald-400" />
+                        : <WifiOff className="h-3 w-3 text-red-400" />}
+                    </span>
                   </div>
                   <button
                     onClick={() => toggleVendedor.mutate({ nome: v.vendedor_nome, online: !v.online })}
@@ -176,7 +210,7 @@ export function Disparos() {
                     {v.online ? '● ONLINE' : '○ OFFLINE'}
                   </button>
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-[10px]">
+                <div className="grid grid-cols-3 gap-2 text-[10px] mb-2">
                   <div>
                     <div className="text-ink-faint uppercase tracking-wider">Hoje</div>
                     <div className="text-ink font-bold text-[13px]">{v.enviados_hoje}</div>
@@ -194,8 +228,16 @@ export function Disparos() {
                     />
                   </div>
                 </div>
+                <button
+                  onClick={() => setTesteVendedor(v.vendedor_nome)}
+                  disabled={!waAberto}
+                  className="w-full text-[10px] py-1 rounded border border-accent/40 text-accent hover:bg-accent/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1"
+                  title={waAberto ? 'Disparar 1 mensagem-teste deste vendedor' : 'WhatsApp Web do vendedor precisa estar aberto'}
+                >
+                  <FlaskConical className="h-3 w-3" /> Testar comigo
+                </button>
               </div>
-            ))}
+            )})}
           </div>
         )}
       </Card>
@@ -270,6 +312,108 @@ export function Disparos() {
           vendedores={vendedores ?? []}
         />
       )}
+
+      {/* MODAL DE TESTE */}
+      {testeVendedor && (
+        <ModalTeste
+          vendedor={testeVendedor}
+          onClose={() => setTesteVendedor(null)}
+          onSuccess={(campId) => {
+            setTesteVendedor(null)
+            setCampSelecionada(campId)
+            qc.invalidateQueries({ queryKey: ['dispatch-campaigns'] })
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ============================================================================
+// Modal de Teste
+// ============================================================================
+function ModalTeste({ vendedor, onClose, onSuccess }: { vendedor: string; onClose: () => void; onSuccess: (campId: string) => void }) {
+  const [telefone, setTelefone] = useState('')
+  const [nome, setNome] = useState('Teste')
+  const [mensagem, setMensagem] = useState(`Olá {{nome}}, aqui é o ${vendedor} da Branorte. Esta é uma mensagem-teste.`)
+  const [enviando, setEnviando] = useState(false)
+  const [resultado, setResultado] = useState<string | null>(null)
+
+  async function disparar() {
+    const tel = normalizaTelefone(telefone)
+    if (tel.length < 12) {
+      setResultado('❌ Telefone inválido. Use DDD + número (ex: 48999999999).')
+      return
+    }
+    setEnviando(true)
+    setResultado(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const r = await fetch('https://flwbeevtvjiouxdjmziv.supabase.co/functions/v1/dispatch-test', {
+        method: 'POST',
+        headers: { 'authorization': `Bearer ${session?.access_token ?? ''}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ vendedor_nome: vendedor, telefone: tel, nome: nome.trim() || 'Teste', mensagem: mensagem.trim() }),
+      })
+      const j = await r.json()
+      if (!j.ok) {
+        setResultado('❌ Erro: ' + (j.error || 'desconhecido'))
+        return
+      }
+      setResultado('✅ ' + j.msg)
+      setTimeout(() => onSuccess(j.campaign_id), 1200)
+    } catch (e: any) {
+      setResultado('❌ Erro de rede: ' + (e?.message ?? ''))
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  // Preview da mensagem com {{nome}} resolvido
+  const preview = mensagem.replace(/\{\{\s*nome\s*\}\}/g, nome || '[nome]').replace(/\{\{\s*vendedor\s*\}\}/g, vendedor)
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-surface-1 border border-border rounded-xl max-w-lg w-full p-5 space-y-3" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-bold text-ink flex items-center gap-2">
+            <FlaskConical className="h-5 w-5 text-accent" /> Teste de disparo
+          </h3>
+          <button onClick={onClose} className="text-ink-muted hover:text-ink">✕</button>
+        </div>
+        <p className="text-[11px] text-ink-muted">
+          <strong className="text-accent">{vendedor}</strong> vai enviar 1 mensagem do WhatsApp dele em 5-15s.
+        </p>
+        <div>
+          <label className="text-[10px] text-ink-faint uppercase">Seu telefone (DDD+número)</label>
+          <Input value={telefone} onChange={e => setTelefone(e.target.value)} placeholder="48999999999" />
+        </div>
+        <div>
+          <label className="text-[10px] text-ink-faint uppercase">Nome (que vai no template)</label>
+          <Input value={nome} onChange={e => setNome(e.target.value)} placeholder="Teste" />
+        </div>
+        <div>
+          <label className="text-[10px] text-ink-faint uppercase">Mensagem</label>
+          <textarea
+            value={mensagem} onChange={e => setMensagem(e.target.value)} rows={3}
+            className="w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-ink text-sm"
+          />
+        </div>
+        <div className="border-l-2 border-accent bg-accent/5 rounded p-2">
+          <div className="text-[9px] text-ink-faint uppercase mb-1">Preview que o cliente vai ver</div>
+          <div className="text-[12px] text-ink whitespace-pre-line">{preview}</div>
+        </div>
+        {resultado && (
+          <div className={`text-[11px] p-2 rounded ${resultado.startsWith('✅') ? 'bg-emerald-500/10 text-emerald-300' : 'bg-red-500/10 text-red-300'}`}>
+            {resultado}
+          </div>
+        )}
+        <div className="flex gap-2 pt-1">
+          <Button variant="primary" onClick={disparar} loading={enviando}>
+            <Zap className="h-4 w-4 mr-1" /> Disparar agora
+          </Button>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+        </div>
+      </div>
     </div>
   )
 }
