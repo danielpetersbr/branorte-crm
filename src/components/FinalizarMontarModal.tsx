@@ -6,8 +6,8 @@ import {
   type ClienteDados, type OrcamentoItem, type OrcamentoMotor,
 } from '@/hooks/useOrcamentoBuilder'
 import { useAuth } from '@/hooks/useAuth'
-import { gerarOrcamentoCustomDocx, type CustomDocxItem, type CustomDocxMotor } from '@/lib/orcamento-custom-docx'
 import { gerarPdfDoPreview } from '@/lib/preview-to-pdf'
+import { gerarDocxDoPreview } from '@/lib/preview-to-docx'
 import {
   isFolderScanSupported, pickOrcamentoFolder, getStoredFolderHandle,
   scanFolderForLastNumber, formatarNumero, ensureWritePermission,
