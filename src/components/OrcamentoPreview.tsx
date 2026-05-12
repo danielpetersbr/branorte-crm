@@ -90,6 +90,7 @@ export interface OrcamentoPreviewProps {
   onFotoChange?: (dataURL: string | null) => void
   onUpdateNome?: (uid: string, novoNome: string) => void
   onUpdateTerm?: (key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento', valor: string) => void
+  onMoverItem?: (uid: string, direcao: 'cima' | 'baixo') => void
 }
 
 function formatBRLBare(v: number): string {
@@ -179,7 +180,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     renderMode = false,
     tensaoMotores = null, onUpdateTensaoMotores,
     desconto, onUpdateDesconto,
-    onAddAcessorios, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateTerm,
+    onAddAcessorios, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateTerm, onMoverItem,
   } = props
   const [editingNomeUid, setEditingNomeUid] = useState<string | null>(null)
   const [editingNomeValor, setEditingNomeValor] = useState<string>('')
@@ -538,14 +539,35 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                         </span>
                       )}
                     </div>
-                    {!renderMode && onRemove && it.uid && (
-                      <button
-                        onClick={() => onRemove(it.uid!)}
-                        className="opacity-0 group-hover:opacity-100 text-red-600 hover:text-red-800 transition-opacity p-0.5 shrink-0"
-                        title="Remover item"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
+                    {!renderMode && it.uid && (
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 shrink-0 print:hidden">
+                        {onMoverItem && idx > 0 && (
+                          <button
+                            onClick={() => onMoverItem(it.uid!, 'cima')}
+                            className="text-gray-500 hover:text-blue-600 p-0.5 leading-none"
+                            title="Subir item"
+                            type="button"
+                          >▲</button>
+                        )}
+                        {onMoverItem && idx < carrinho.length - 1 && (
+                          <button
+                            onClick={() => onMoverItem(it.uid!, 'baixo')}
+                            className="text-gray-500 hover:text-blue-600 p-0.5 leading-none"
+                            title="Descer item"
+                            type="button"
+                          >▼</button>
+                        )}
+                        {onRemove && (
+                          <button
+                            onClick={() => onRemove(it.uid!)}
+                            className="text-red-600 hover:text-red-800 p-0.5"
+                            title="Remover item"
+                            type="button"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                   <div className="flex gap-3">
