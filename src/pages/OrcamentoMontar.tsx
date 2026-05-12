@@ -209,6 +209,19 @@ export function OrcamentoMontar() {
     if (confirm('Limpar carrinho?')) setCarrinho([])
   }
 
+  function moverItem(uid: string, direcao: 'cima' | 'baixo') {
+    setCarrinho(c => {
+      const idx = c.findIndex(it => it.uid === uid)
+      if (idx === -1) return c
+      const novo = idx + (direcao === 'cima' ? -1 : 1)
+      if (novo < 0 || novo >= c.length) return c
+      const novaLista = [...c]
+      const [item] = novaLista.splice(idx, 1)
+      novaLista.splice(novo, 0, item)
+      return novaLista
+    })
+  }
+
   function aplicarVoltagem(novaVoltagem: Voltagem) {
     setVoltagem(novaVoltagem)
     if (!motores) return
@@ -514,6 +527,7 @@ export function OrcamentoMontar() {
                 onUpdateDesconto={setDescontoCfg}
                 terms={{ dataVenda: dataVendaTxt, prazoEntrega: prazoEntregaTxt, formaPagamento: formaPagamentoTxt }}
                 onUpdateTerm={atualizarTermo}
+                onMoverItem={moverItem}
               />
             ) : (
               <div className="divide-y divide-border">
