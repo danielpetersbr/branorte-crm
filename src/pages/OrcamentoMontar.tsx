@@ -607,6 +607,7 @@ export function OrcamentoMontar() {
             prazoEntrega: prazoEntregaTxt || null,
             formaPagamento: formaPagamentoTxt || null,
           },
+          parcelas: parcelasPagamento,
         } as CarrinhoSnapshot}
         onClose={() => setFinalizarOpen(false)}
         onSuccess={info => {

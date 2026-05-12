@@ -343,6 +343,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
         // Edições inline da preview — mantém PDF/DOCX idênticos à preview
         tensaoMotores: snapshot.tensaoMotores ?? null,
         desconto: snapshot.desconto ?? null,
+        parcelas: snapshot.parcelas ?? [],
       }
       const docxBlob = await gerarDocxDoPreview(previewProps)
 
