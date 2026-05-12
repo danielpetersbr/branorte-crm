@@ -222,8 +222,8 @@ export function OrcamentoMontar() {
         </div>
       </div>
 
-      {/* Grid 2 colunas: catálogo + preview */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_460px] gap-3 min-h-0">
+      {/* Grid 2 colunas: catálogo + preview (largura A4 ~640px @ 96dpi) */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_640px] gap-3 min-h-0">
         {/* CATÁLOGO */}
         <Card className="flex flex-col min-h-0 overflow-hidden">
           <div className="p-3 border-b border-border space-y-2">
