@@ -204,7 +204,6 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   // Page break visualization (so em modo edit, nao no PDF render)
   const containerRef = useRef<HTMLDivElement>(null)
   const innerRef = useRef<HTMLDivElement>(null)
-  const fotoInputRef = useRef<HTMLInputElement>(null)
   const [pageBreaks, setPageBreaks] = useState<number[]>([])
   const [pageHeight, setPageHeight] = useState<number>(0)
 
@@ -351,7 +350,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
           {fotoPrincipal ? (
             <div data-no-break className="group relative mb-3 border border-gray-300 rounded-md p-2 bg-white shadow-sm">
-              <div className="w-full flex items-center justify-center bg-white" style={{ minHeight: '300px' }}>
+              <div className="w-full flex items-center justify-center bg-white">
                 <img
                   src={fotoPrincipal}
                   alt="Foto da fábrica"
@@ -363,12 +362,22 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
               <div className="text-right text-[8px] italic text-gray-500 mt-1">Imagem ilustrativa</div>
               {!renderMode && onFotoChange && (
                 <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition flex gap-1">
-                  <button
-                    onClick={() => fotoInputRef.current?.click()}
-                    className="text-[10px] bg-blue-600 text-white px-2 py-1 rounded shadow hover:bg-blue-700"
-                  >
+                  <label className="cursor-pointer text-[10px] bg-blue-600 text-white px-2 py-1 rounded shadow hover:bg-blue-700">
                     Trocar
-                  </button>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        if (!f) return
+                        const reader = new FileReader()
+                        reader.onload = () => onFotoChange(reader.result as string)
+                        reader.readAsDataURL(f)
+                        e.target.value = ''
+                      }}
+                    />
+                  </label>
                   <button
                     onClick={() => onFotoChange(null)}
                     className="text-[10px] bg-red-600 text-white px-2 py-1 rounded shadow hover:bg-red-700"
@@ -379,30 +388,22 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
               )}
             </div>
           ) : (!renderMode && onFotoChange) && (
-            <button
-              onClick={() => fotoInputRef.current?.click()}
-              className="w-full mb-3 py-12 text-center border-2 border-dashed border-blue-300 rounded-md text-blue-700 hover:bg-blue-50 hover:border-blue-500 transition cursor-pointer"
-            >
-              <div className="text-[24px] mb-1">📷</div>
-              <div className="text-[12px] font-bold">+ Adicionar Foto Principal</div>
-              <div className="text-[10px] text-gray-500 mt-1">(opcional — aparece grande aqui no orçamento)</div>
-            </button>
-          )}
-          {!renderMode && onFotoChange && (
-            <input
-              ref={fotoInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0]
-                if (!f) return
-                const reader = new FileReader()
-                reader.onload = () => onFotoChange(reader.result as string)
-                reader.readAsDataURL(f)
-                e.target.value = ''
-              }}
-            />
+            <label className="block w-full mb-3 py-2 text-center border border-dashed border-blue-300 rounded text-blue-700 hover:bg-blue-50 hover:border-blue-500 transition cursor-pointer">
+              <span className="text-[10px] font-semibold">📷  + Adicionar Foto Principal (opcional)</span>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (!f) return
+                  const reader = new FileReader()
+                  reader.onload = () => onFotoChange(reader.result as string)
+                  reader.readAsDataURL(f)
+                  e.target.value = ''
+                }}
+              />
+            </label>
           )}
 
           <div className="space-y-3">
