@@ -410,7 +410,7 @@ export function PainelEtiquetas() {
               <Tooltip
                 cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                 contentStyle={{ background: '#11151c', border: '1px solid #1f2937', borderRadius: 6, fontSize: 11 }}
-                formatter={(v: number, name: string) => [v, name]}
+                formatter={((v: number, name: string) => [v, name]) as any}
               />
               {/* Só Parados — Fresco/Recente/SemDado escondidos pra focar no que precisa ação */}
               <Bar
@@ -423,7 +423,7 @@ export function PainelEtiquetas() {
                   dataKey="Parado"
                   position="right"
                   style={{ fontSize: 11, fill: '#fca5a5', fontWeight: 700 }}
-                  formatter={(v: number) => v > 0 ? v : ''}
+                  formatter={((v: number) => v > 0 ? v : '') as any}
                 />
               </Bar>
             </BarChart>
@@ -510,13 +510,13 @@ export function PainelEtiquetas() {
                       <Tooltip
                         cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                         contentStyle={{ background: '#11151c', border: '1px solid #1f2937', borderRadius: 6, fontSize: 10 }}
-                        formatter={(v: number, name: string) => [v, name]}
+                        formatter={((v: number, name: string) => [v, name]) as any}
                       />
                       <Bar dataKey="Fresco" stackId="a" fill={STATUS_COLORS.fresco} />
                       <Bar dataKey="Recente" stackId="a" fill={STATUS_COLORS.recente} />
                       <Bar dataKey="Parado" stackId="a" fill={STATUS_COLORS.parado} />
                       <Bar dataKey="SemDado" stackId="a" fill={STATUS_COLORS.semDado}>
-                        <LabelList dataKey="total" position="right" style={{ fontSize: 10, fill: '#e7e9ee', fontWeight: 700 }} formatter={(v: number) => v > 0 ? v : ''} />
+                        <LabelList dataKey="total" position="right" style={{ fontSize: 10, fill: '#e7e9ee', fontWeight: 700 }} formatter={((v: number) => v > 0 ? v : '') as any} />
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
@@ -573,7 +573,7 @@ export function PainelEtiquetas() {
               <Tooltip
                 cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                 contentStyle={{ background: '#11151c', border: '1px solid #1f2937', borderRadius: 6, fontSize: 11 }}
-                formatter={(v: number, name: string) => [v, name]}
+                formatter={((v: number, name: string) => [v, name]) as any}
               />
               {semDadoTemporal ? (
                 // Sem dado temporal: barra única com cor da etiqueta

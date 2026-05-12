@@ -318,7 +318,7 @@ export function OrcamentoMontar() {
                 )}
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-1.5">
+              <div className="flex flex-col gap-1.5">
                 {itemsFiltrados.slice(0, 200).map(item => (
                   <CardItem
                     key={item.id}
@@ -719,7 +719,7 @@ function CardItem({
             </span>
             {item.is_oficial && <Check className="h-2.5 w-2.5 text-success shrink-0" />}
           </div>
-          <div className="text-[12px] font-semibold text-ink leading-tight line-clamp-2" title={item.nome_curto}>
+          <div className="text-[13px] font-semibold text-ink leading-snug" title={item.nome_curto}>
             {item.nome_curto}
           </div>
         </div>

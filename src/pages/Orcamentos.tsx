@@ -299,7 +299,7 @@ export function Orcamentos() {
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
-                data={chartData}
+                data={chartData as any}
                 margin={{ top: 4, right: 4, left: 0, bottom: viewMode === 'month' ? 60 : 4 }}
               >
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -312,7 +312,7 @@ export function Orcamentos() {
                 />
                 <YAxis tickFormatter={(v: number) => formatNumber(v)} width={55} />
                 <Tooltip
-                  formatter={(v: number) => [formatNumber(v), 'Orçamentos']}
+                  formatter={((v: number) => [formatNumber(v), 'Orçamentos']) as any}
                   labelFormatter={(label) => `${viewMode === 'year' ? 'Ano' : 'Mês'}: ${label}`}
                 />
                 <Bar dataKey="count" radius={[6, 6, 0, 0]} maxBarSize={60}>
@@ -347,7 +347,7 @@ export function Orcamentos() {
                   <XAxis type="number" tickFormatter={(v: number) => formatNumber(v)} tick={{ fontSize: 12 }} />
                   <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} width={110} />
                   <Tooltip
-                    formatter={(v: number) => [formatNumber(v), 'Orçamentos']}
+                    formatter={((v: number) => [formatNumber(v), 'Orçamentos']) as any}
                     labelFormatter={(label) => `Vendedor: ${label}`}
                   />
                   <Bar dataKey="count" radius={[0, 6, 6, 0]} maxBarSize={28}>

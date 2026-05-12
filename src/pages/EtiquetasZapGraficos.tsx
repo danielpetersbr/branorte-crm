@@ -162,7 +162,7 @@ function MotivosDoVendedor({ stats }: { stats: VendedorStats }) {
           cursor={{ fill: 'rgba(255,255,255,0.05)' }}
           contentStyle={{ background: '#11151c', border: '1px solid #1f2937', borderRadius: 6, fontSize: 11 }}
           labelStyle={{ color: '#9ca3af' }}
-          formatter={(v: number) => [v, 'contatos']}
+          formatter={((v: number) => [v, 'contatos']) as any}
         />
         <Bar dataKey="value" radius={[0, 4, 4, 0]}>
           {data.map((d, i) => <Cell key={i} fill={d.cor} />)}
@@ -170,7 +170,7 @@ function MotivosDoVendedor({ stats }: { stats: VendedorStats }) {
             dataKey="value"
             position="right"
             style={{ fontSize: 11, fill: '#e7e9ee', fontWeight: 600 }}
-            formatter={(v: number) => v > 0 ? v : ''}
+            formatter={((v: number) => v > 0 ? v : '') as any}
           />
         </Bar>
       </BarChart>
@@ -358,7 +358,7 @@ export function EtiquetasZapGraficos() {
                 dataKey="value"
                 position="top"
                 style={{ fontSize: 10, fill: '#e7e9ee', fontWeight: 600 }}
-                formatter={(v: number) => v > 0 ? v : ''}
+                formatter={((v: number) => v > 0 ? v : '') as any}
               />
             </Bar>
           </BarChart>
@@ -381,7 +381,7 @@ export function EtiquetasZapGraficos() {
                 </p>
               </div>
               {s.conversao === 0 && s.totalFunil > 0 && (
-                <AlertTriangle className="h-4 w-4 text-warning" titleAccess="Sem conversão" />
+                <AlertTriangle className="h-4 w-4 text-warning" aria-label="Sem conversão" />
               )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
