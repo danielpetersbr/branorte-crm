@@ -612,14 +612,20 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             padding: 4,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             overflow: 'hidden',
+                            boxSizing: 'border-box',
                           }}
                         >
                           <img
                             src={it.foto_url}
                             alt={it.nome}
-                            width={150}
-                            height={150}
-                            style={{ width: 150, height: 150, objectFit: 'contain', display: 'block' }}
+                            style={{
+                              maxWidth: '100%',
+                              maxHeight: '100%',
+                              width: 'auto',
+                              height: 'auto',
+                              objectFit: 'contain',
+                              display: 'block',
+                            }}
                             loading="lazy"
                             crossOrigin="anonymous"
                           />
