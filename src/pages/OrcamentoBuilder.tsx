@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useCallback } from 'react'
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -84,43 +84,55 @@ export function OrcamentoBuilder() {
   // Modal de upload de modelo customizado
   const [uploadOpen, setUploadOpen] = useState(false)
 
-  const [step, setStep] = useState<Step>(1)
+  // ── Persistencia de form em localStorage ──
+  // Salva tudo automatico, restaura ao montar. Limpa quando salva orcamento.
+  const PERSIST_KEY = 'orcamento-builder-draft-v1'
+  const _restored = (() => {
+    try {
+      const raw = typeof window !== 'undefined' ? window.localStorage.getItem(PERSIST_KEY) : null
+      return raw ? JSON.parse(raw) : null
+    } catch { return null }
+  })()
+
+  const [step, setStep] = useState<Step>(_restored?.step ?? 1)
 
   // Step 1 — Cliente (pré-preenche de ?nome=&phone= se vier da extensão WA)
   const _qsParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
-  const _initNome = _qsParams.get('nome') || ''
+  const _initNome = _restored?.cliNome || _qsParams.get('nome') || ''
   const _initPhone = _qsParams.get('phone') || ''
   const _fromExt = _qsParams.get('from') === 'ext'  // veio embedado pela extensão Branorte
   const _chatId = _qsParams.get('chat_id') || ''
   const [cliNome, setCliNome] = useState(_initNome)
-  const [cliDados, setCliDados] = useState<ClienteDados>(_initPhone ? { fone: _initPhone } : {})
+  const [cliDados, setCliDados] = useState<ClienteDados>(
+    _restored?.cliDados ?? (_initPhone ? { fone: _initPhone } : {})
+  )
   const [searchCli, setSearchCli] = useState('')
   const { data: clientesSugeridos } = useClientesOrcamento(searchCli)
 
   // Step 2 — Modelo
-  const [filtroPacote, setFiltroPacote] = useState<string | null>(null)
-  const [filtroVoltagem, setFiltroVoltagem] = useState<'monofasico' | 'trifasico' | null>(null)
-  const [modeloId, setModeloId] = useState<number | null>(null)
+  const [filtroPacote, setFiltroPacote] = useState<string | null>(_restored?.filtroPacote ?? null)
+  const [filtroVoltagem, setFiltroVoltagem] = useState<'monofasico' | 'trifasico' | null>(_restored?.filtroVoltagem ?? null)
+  const [modeloId, setModeloId] = useState<number | null>(_restored?.modeloId ?? null)
 
   // Step 3 — Itens (cópia editável do modelo)
-  const [itens, setItens] = useState<OrcamentoItem[]>([])
-  const [acessorios, setAcessorios] = useState<OrcamentoAcessorios | null>(null)
-  const [motores, setMotores] = useState<OrcamentoMotor[]>([])
+  const [itens, setItens] = useState<OrcamentoItem[]>(_restored?.itens ?? [])
+  const [acessorios, setAcessorios] = useState<OrcamentoAcessorios | null>(_restored?.acessorios ?? null)
+  const [motores, setMotores] = useState<OrcamentoMotor[]>(_restored?.motores ?? [])
 
   // Step 4 — Gerar
-  const [observacoes, setObservacoes] = useState('')
-  const [prazoEntrega, setPrazoEntrega] = useState('')
+  const [observacoes, setObservacoes] = useState(_restored?.observacoes ?? '')
+  const [prazoEntrega, setPrazoEntrega] = useState(_restored?.prazoEntrega ?? '')
   // Forma de pagamento estruturada
-  const [pgTipo, setPgTipo] = useState<TipoPagamento>('avista')
-  const [pgDataVenda, setPgDataVenda] = useState<string>('')
-  const [pgAvistaMeio, setPgAvistaMeio] = useState<'pix' | 'transferencia' | 'boleto' | 'dinheiro' | ''>('pix')
-  const [pgAvistaDesconto, setPgAvistaDesconto] = useState<number>(5)
-  const [pgNumParcelas, setPgNumParcelas] = useState<number>(3)
-  const [pgIntervalo, setPgIntervalo] = useState<number>(30)
-  const [pgPrimeiraEm, setPgPrimeiraEm] = useState<string>('')
-  const [pgEntradaPct, setPgEntradaPct] = useState<number>(50)
-  const [pgParcelasApos, setPgParcelasApos] = useState<number>(1)
-  const [pgCustom, setPgCustom] = useState<string>('')
+  const [pgTipo, setPgTipo] = useState<TipoPagamento>(_restored?.pgTipo ?? 'avista')
+  const [pgDataVenda, setPgDataVenda] = useState<string>(_restored?.pgDataVenda ?? '')
+  const [pgAvistaMeio, setPgAvistaMeio] = useState<'pix' | 'transferencia' | 'boleto' | 'dinheiro' | ''>(_restored?.pgAvistaMeio ?? 'pix')
+  const [pgAvistaDesconto, setPgAvistaDesconto] = useState<number>(_restored?.pgAvistaDesconto ?? 5)
+  const [pgNumParcelas, setPgNumParcelas] = useState<number>(_restored?.pgNumParcelas ?? 3)
+  const [pgIntervalo, setPgIntervalo] = useState<number>(_restored?.pgIntervalo ?? 30)
+  const [pgPrimeiraEm, setPgPrimeiraEm] = useState<string>(_restored?.pgPrimeiraEm ?? '')
+  const [pgEntradaPct, setPgEntradaPct] = useState<number>(_restored?.pgEntradaPct ?? 50)
+  const [pgParcelasApos, setPgParcelasApos] = useState<number>(_restored?.pgParcelasApos ?? 1)
+  const [pgCustom, setPgCustom] = useState<string>(_restored?.pgCustom ?? '')
   const [numeroAtual, setNumeroAtual] = useState<string>('')
   const [gerando, setGerando] = useState(false)
   const [orcamentoSalvo, setOrcamentoSalvo] = useState<{ numero: string; id: number } | null>(null)
@@ -141,6 +153,34 @@ export function OrcamentoBuilder() {
     window.addEventListener('beforeunload', handler)
     return () => window.removeEventListener('beforeunload', handler)
   }, [cliNome, orcamentoSalvo, _fromExt])
+
+  // Persistencia: salva form em localStorage a cada mudanca (debounce 200ms)
+  useEffect(() => {
+    if (orcamentoSalvo) {
+      // Limpa rascunho quando orcamento e finalizado
+      try { window.localStorage.removeItem(PERSIST_KEY) } catch {}
+      return
+    }
+    const t = setTimeout(() => {
+      try {
+        const draft = {
+          step, cliNome, cliDados,
+          filtroPacote, filtroVoltagem, modeloId,
+          itens, acessorios, motores,
+          observacoes, prazoEntrega,
+          pgTipo, pgDataVenda, pgAvistaMeio, pgAvistaDesconto,
+          pgNumParcelas, pgIntervalo, pgPrimeiraEm,
+          pgEntradaPct, pgParcelasApos, pgCustom,
+        }
+        window.localStorage.setItem(PERSIST_KEY, JSON.stringify(draft))
+      } catch {}
+    }, 200)
+    return () => clearTimeout(t)
+  }, [step, cliNome, cliDados, filtroPacote, filtroVoltagem, modeloId,
+      itens, acessorios, motores, observacoes, prazoEntrega,
+      pgTipo, pgDataVenda, pgAvistaMeio, pgAvistaDesconto,
+      pgNumParcelas, pgIntervalo, pgPrimeiraEm,
+      pgEntradaPct, pgParcelasApos, pgCustom, orcamentoSalvo])
   const [scanInfo, setScanInfo] = useState<{ ultimo: number; total: number; ano: number } | null>(null)
   const [scanLoading, setScanLoading] = useState(false)
   const [numeroFonte, setNumeroFonte] = useState<'pasta' | 'banco' | null>(null)
@@ -180,11 +220,14 @@ export function OrcamentoBuilder() {
   ])
 
   // Quando seleciona modelo, copia para state editável
+  // (so dispara quando modelo MUDA — nao quando restaura state do localStorage)
+  const lastModeloIdRef = useRef<number | null>(_restored?.modeloId ?? null)
   useEffect(() => {
-    if (modeloSelecionado) {
+    if (modeloSelecionado && modeloSelecionado.id !== lastModeloIdRef.current) {
       setItens(JSON.parse(JSON.stringify(modeloSelecionado.itens)))
       setAcessorios(modeloSelecionado.acessorios ? JSON.parse(JSON.stringify(modeloSelecionado.acessorios)) : null)
       setMotores(JSON.parse(JSON.stringify(modeloSelecionado.motores)))
+      lastModeloIdRef.current = modeloSelecionado.id
     }
   }, [modeloSelecionado])
 
@@ -486,6 +529,8 @@ export function OrcamentoBuilder() {
   }
 
   function novoOrcamento() {
+    try { window.localStorage.removeItem(PERSIST_KEY) } catch {}
+    lastModeloIdRef.current = null
     setStep(1)
     setCliNome('')
     setCliDados({})
