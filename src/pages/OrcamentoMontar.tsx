@@ -93,6 +93,7 @@ export function OrcamentoMontar() {
   const [modoVisao, setModoVisao] = useState<ModoVisao>('preview')
   const [finalizarOpen, setFinalizarOpen] = useState(false)
   const [sucesso, setSucesso] = useState<{ numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean } | null>(null)
+  const [fotoPrincipal, setFotoPrincipal] = useState<string | null>(null)
 
   const categorias = useMemo(() => agruparPorCategoria(items ?? []), [items])
 
@@ -359,6 +360,33 @@ export function OrcamentoMontar() {
               </button>
             </div>
             <div className="flex items-center gap-2">
+              {/* Foto principal — upload */}
+              <label className="text-[10px] px-2 py-1 rounded font-semibold flex items-center gap-1 cursor-pointer bg-surface-2 text-ink-muted hover:bg-surface-3 transition-all" title="Adicionar foto principal (fábrica/instalação)">
+                <FileText className="h-3 w-3" />
+                {fotoPrincipal ? 'Trocar foto' : '+ Foto'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0]
+                    if (!f) return
+                    const reader = new FileReader()
+                    reader.onload = () => setFotoPrincipal(reader.result as string)
+                    reader.readAsDataURL(f)
+                    e.target.value = ''  // permite re-selecionar mesmo arquivo
+                  }}
+                />
+              </label>
+              {fotoPrincipal && (
+                <button
+                  onClick={() => setFotoPrincipal(null)}
+                  className="text-[10px] text-danger hover:text-danger/70"
+                  title="Remover foto"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
               <span className="text-[10px] text-ink-faint">
                 {carrinho.length} {carrinho.length === 1 ? 'item' : 'items'}
               </span>
@@ -393,6 +421,7 @@ export function OrcamentoMontar() {
                 totalGeral={totalGeral}
                 acessorios={acessorios}
                 valorAcessorios={valorAcessorios}
+                fotoPrincipal={fotoPrincipal}
                 onAddAcessorios={() => setAcessoriosOpen(true)}
                 onEditAcessorios={() => setAcessoriosOpen(true)}
                 onRemoveAcessorios={() => setAcessorios(null)}
@@ -470,6 +499,7 @@ export function OrcamentoMontar() {
           totalMotores,
           totalEquip,
           totalGeral,
+          fotoPrincipal,
         } as CarrinhoSnapshot}
         onClose={() => setFinalizarOpen(false)}
         onSuccess={info => {
