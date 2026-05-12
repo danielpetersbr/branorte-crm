@@ -286,19 +286,24 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           acumOffset += spacerHeight
         }
       }
-      // Calcula folhas (top, bottom) pra renderizar moldura preta independente
+      // Calcula folhas (top, bottom) LENDO POSICAO REAL dos spacers no DOM
+      // (depois do reflow os spacers ja estao na posicao final)
       requestAnimationFrame(() => {
         if (!innerRef.current) return
+        void spacerYs  // valores antigos calculados pre-insert ficam pra reference
+        const containerTopReal = innerRef.current.getBoundingClientRect().top + window.scrollY
         const totalH = innerRef.current.offsetHeight
+        const spacersReal = Array.from(innerRef.current.querySelectorAll('.page-gap-spacer')) as HTMLElement[]
         const novasFolhas: Array<{ top: number; bottom: number }> = []
         let prevBottom = 0
-        for (const sY of spacerYs) {
-          // sY foi calculado ANTES dos offsets — agora a posicao real e (sY)
-          // bordas: folha vai de prevBottom ate sY
-          novasFolhas.push({ top: prevBottom, bottom: sY })
-          prevBottom = sY + spacerHeight
+        for (const sp of spacersReal) {
+          const r = sp.getBoundingClientRect()
+          const spTop = r.top + window.scrollY - containerTopReal
+          const spBot = r.bottom + window.scrollY - containerTopReal
+          novasFolhas.push({ top: prevBottom, bottom: spTop })
+          prevBottom = spBot
         }
-        // Ultima folha
+        // Ultima folha (apos ultimo spacer ate o fim)
         novasFolhas.push({ top: prevBottom, bottom: totalH })
         setFolhas(novasFolhas)
       })
