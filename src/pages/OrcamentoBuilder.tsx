@@ -586,12 +586,23 @@ export function OrcamentoBuilder() {
       const { data: { session } } = await supabase.auth.getSession()
 
       // 1) Pega telefone do vendedor via extensão (WID capturado pelo WhatsApp Web)
-      const { telefone: telefoneExt, vendedor: vendedorExt } = await getTelefoneVendedorDaExtensao()
+      let { telefone: telefoneExt, vendedor: vendedorExt } = await getTelefoneVendedorDaExtensao()
+      // Fallback: se extensão não respondeu (versão antiga), usa localStorage ou prompt
       if (!telefoneExt) {
-        throw new Error('Não consegui detectar seu telefone. Abra o WhatsApp Web em outra aba e tente novamente.')
+        const saved = localStorage.getItem('branorte_meu_telefone_wa') || ''
+        const tel = window.prompt(
+          'Não consegui detectar seu telefone automaticamente.\n\n' +
+          'Digite SEU número de WhatsApp (DDD + número, ex: 48999999999):',
+          saved.replace(/^55/, '')
+        )
+        if (!tel) throw new Error('Telefone não fornecido')
+        const digits = tel.replace(/[^\d]/g, '')
+        if (digits.length < 10 || digits.length > 13) throw new Error('Telefone inválido (use DDD + número)')
+        telefoneExt = digits.startsWith('55') ? digits : '55' + digits
+        localStorage.setItem('branorte_meu_telefone_wa', telefoneExt)
       }
       setEnviandoWAMsg('Fazendo upload do PDF...')
-      const vendedor = vendedorExt.toUpperCase().trim()
+      const vendedor = (vendedorExt || '').toUpperCase().trim()
 
       // Upload PDF pro bucket público
       const filename = `${orcamentoSalvo?.numero || Date.now()}-${cliNome.replace(/[^a-zA-Z0-9]+/g, '_')}.pdf`
