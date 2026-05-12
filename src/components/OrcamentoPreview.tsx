@@ -1029,6 +1029,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                               </div>
                             )}
                           </div>
+                          {temParcelas && !dataVendaTxt && !renderMode && (
+                            <div className="text-[10px] bg-amber-50 border border-amber-300 text-amber-800 px-2 py-1.5 rounded mb-1.5 print:hidden">
+                              ⚠️ <strong>Preencha "Data da venda"</strong> acima pra calcular as datas das parcelas (NF + X dias)
+                            </div>
+                          )}
                           {temParcelas ? (
                             <table className="w-full text-[12px] border-collapse mt-0.5">
                               <thead>
@@ -1074,14 +1079,14 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                               />
                                             )}
                                           </div>
-                                          <div className="text-[9.5px] text-blue-700 font-bold mt-0.5 tabular-nums">
-                                            📅 {dataCalculada(p)}
+                                          <div className={`text-[11px] font-bold mt-1 tabular-nums ${dataVendaTxt ? 'text-emerald-700' : 'text-amber-600'}`}>
+                                            📅 {dataVendaTxt ? dataCalculada(p) : 'preencha Data da venda no topo'}
                                           </div>
                                         </div>
                                       ) : (
                                         <div>
-                                          <div className="uppercase font-semibold">{dataLabel(p)}</div>
-                                          <div className="text-[9.5px] text-gray-600 tabular-nums">{dataCalculada(p)}</div>
+                                          <div className="uppercase font-semibold text-[10.5px]">{dataLabel(p)}</div>
+                                          <div className="text-[11px] text-emerald-700 font-bold tabular-nums mt-0.5">{dataCalculada(p)}</div>
                                         </div>
                                       )}
                                     </td>
