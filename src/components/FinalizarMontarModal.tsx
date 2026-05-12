@@ -49,6 +49,16 @@ export interface CarrinhoSnapshot {
     prazoEntrega?: string | null
     formaPagamento?: string | null
   }
+  // Parcelas estruturadas (tabela DATA/MÉTODO/VALOR)
+  parcelas?: Array<{
+    id: string
+    dataTipo: 'no_pedido' | 'na_nf' | 'apos_nf' | 'data_fixa'
+    dias?: number
+    dataFixa?: string
+    metodo: 'PIX' | 'BOLETO' | 'DINHEIRO' | 'TRANSFERENCIA' | 'CARTAO' | ''
+    pct?: number
+    valor?: number
+  }>
 }
 
 interface Props {

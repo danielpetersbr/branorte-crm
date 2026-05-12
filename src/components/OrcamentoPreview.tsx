@@ -1044,37 +1044,45 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                   <tr key={p.id} className="border-b border-gray-200">
                                     <td className="py-1 px-2">
                                       {!renderMode && onUpdateParcelas ? (
-                                        <div className="flex items-center gap-1">
-                                          <select
-                                            value={p.dataTipo}
-                                            onChange={e => updateParcela(p.id, { dataTipo: e.target.value as ParcelaPagamento['dataTipo'] })}
-                                            className="text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded"
-                                          >
-                                            <option value="no_pedido">No pedido</option>
-                                            <option value="na_nf">Na NF</option>
-                                            <option value="apos_nf">Após NF (dias)</option>
-                                            <option value="data_fixa">Data fixa</option>
-                                          </select>
-                                          {p.dataTipo === 'apos_nf' && (
-                                            <input
-                                              type="number" min={1} max={365}
-                                              value={p.dias ?? 30}
-                                              onChange={e => updateParcela(p.id, { dias: parseInt(e.target.value) || 0 })}
-                                              className="w-12 text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded text-center"
-                                            />
-                                          )}
-                                          {p.dataTipo === 'data_fixa' && (
-                                            <input
-                                              type="text"
-                                              value={p.dataFixa || ''}
-                                              onChange={e => updateParcela(p.id, { dataFixa: e.target.value })}
-                                              placeholder="DD/MM/AAAA"
-                                              className="w-20 text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded"
-                                            />
-                                          )}
+                                        <div>
+                                          <div className="flex items-center gap-1">
+                                            <select
+                                              value={p.dataTipo}
+                                              onChange={e => updateParcela(p.id, { dataTipo: e.target.value as ParcelaPagamento['dataTipo'] })}
+                                              className="text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded"
+                                            >
+                                              <option value="no_pedido">No pedido</option>
+                                              <option value="na_nf">Na NF</option>
+                                              <option value="apos_nf">Após NF (dias)</option>
+                                              <option value="data_fixa">Data fixa</option>
+                                            </select>
+                                            {p.dataTipo === 'apos_nf' && (
+                                              <input
+                                                type="number" min={1} max={365}
+                                                value={p.dias ?? 30}
+                                                onChange={e => updateParcela(p.id, { dias: parseInt(e.target.value) || 0 })}
+                                                className="w-12 text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded text-center"
+                                              />
+                                            )}
+                                            {p.dataTipo === 'data_fixa' && (
+                                              <input
+                                                type="text"
+                                                value={p.dataFixa || ''}
+                                                onChange={e => updateParcela(p.id, { dataFixa: e.target.value })}
+                                                placeholder="DD/MM/AAAA"
+                                                className="w-20 text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded"
+                                              />
+                                            )}
+                                          </div>
+                                          <div className="text-[9.5px] text-blue-700 font-bold mt-0.5 tabular-nums">
+                                            📅 {dataCalculada(p)}
+                                          </div>
                                         </div>
                                       ) : (
-                                        <span className="uppercase font-semibold">{dataLabel(p)}</span>
+                                        <div>
+                                          <div className="uppercase font-semibold">{dataLabel(p)}</div>
+                                          <div className="text-[9.5px] text-gray-600 tabular-nums">{dataCalculada(p)}</div>
+                                        </div>
                                       )}
                                     </td>
                                     <td className="py-1 px-2">
