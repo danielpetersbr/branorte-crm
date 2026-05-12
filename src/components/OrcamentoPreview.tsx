@@ -759,7 +759,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                 {temDesconto && (
                   <div data-no-break className="flex justify-between items-center mt-2 px-5 py-4 border-2 border-emerald-700 rounded-lg tracking-wide text-[17px] font-black bg-emerald-50/50">
                     <span className="text-emerald-900 uppercase leading-tight">
-                      Valor total com desconto{desconto?.tipo === 'pct' ? ` (${desconto.valor}%)` : ''}
+                      Valor total com desconto
                     </span>
                     <span className="text-emerald-900 text-[18px] leading-tight tabular-nums">
                       R$ {formatBRLBare(totalFinal)}
