@@ -23,6 +23,7 @@ import { Signup } from '@/pages/Signup'
 import { Pendente } from '@/pages/Pendente'
 import { AdminUsuarios } from '@/pages/AdminUsuarios'
 import { Perfil } from '@/pages/Perfil'
+import { Disparos } from '@/pages/Disparos'
 import { useAuth } from '@/hooks/useAuth'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 
@@ -80,6 +81,9 @@ function AppRoutes() {
         <Route path="/atividade-diaria" element={<AtividadeDiaria />} />
         <Route path="/projeto" element={<Projeto />} />
         <Route path="/perfil" element={<Perfil />} />
+        {profile.role === 'admin' && (
+          <Route path="/disparos" element={<Disparos />} />
+        )}
         {profile.role === 'admin' && (
           <Route path="/admin/usuarios" element={<AdminUsuarios />} />
         )}
