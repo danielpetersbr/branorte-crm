@@ -31,6 +31,8 @@ export interface PreviewMotor {
   valor_unit: number
   valor_total: number
   item_nome?: string  // se vier, mostra "de qual item" o motor é
+  item_uid?: string   // pra callback de trocar tensão
+  tensao?: 220 | 380 | 660  // tensão escolhida pelo vendedor
 }
 
 export interface PreviewClienteDados {
@@ -81,6 +83,7 @@ export interface OrcamentoPreviewProps {
   onRemove?: (uid: string) => void
   onFotoChange?: (dataURL: string | null) => void
   onUpdateNome?: (uid: string, novoNome: string) => void
+  onUpdateTensao?: (item_uid: string, tensao: 220 | 380 | 660) => void
 }
 
 function formatBRLBare(v: number): string {
@@ -160,7 +163,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     acessorios, valorAcessorios,
     numero, dataEmissao, cliente, terms, observacoesExtra, fotoPrincipal,
     renderMode = false,
-    onAddAcessorios, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome,
+    onAddAcessorios, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateTensao,
   } = props
   const [editingNomeUid, setEditingNomeUid] = useState<string | null>(null)
   const [editingNomeValor, setEditingNomeValor] = useState<string>('')
@@ -618,19 +621,50 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {motoresAgrupados.map((m, idx) => (
-                    <tr key={`${m.cv}-${m.polos}-${idx}`} className="border-t border-gray-200">
-                      <td className="py-1.5 text-gray-800">
-                        <span className="text-gray-400 mr-1.5">•</span>
-                        <span className="font-semibold">{m.cv} CV {m.polos} polos</span>
-                        {m.item_nome && (
-                          <span className="text-gray-500"> · <span className="italic">{m.item_nome}</span></span>
-                        )}
-                        {m.qtd > 1 && <span className="text-gray-500"> (×{m.qtd})</span>}
-                      </td>
-                      <td className="py-1.5 text-right text-gray-800 tabular-nums">R$ {formatBRLBare(m.valor_total)}</td>
-                    </tr>
-                  ))}
+                  {motoresAgrupados.map((m, idx) => {
+                    const incluso = m.valor_total === 0
+                    const tensao = m.tensao || 220
+                    const opcoesTensao: (220 | 380 | 660)[] = voltagem === 'monofasico' ? [220] : [220, 380, 660]
+                    const isInteractive = !renderMode && !!onUpdateTensao && !!m.item_uid && opcoesTensao.length > 1
+                    return (
+                      <tr key={`${m.cv}-${m.polos}-${idx}`} className="border-t border-gray-200">
+                        <td className="py-1.5 text-gray-800">
+                          <span className="text-gray-400 mr-1.5">•</span>
+                          <span className="font-semibold">{m.cv} CV {m.polos} polos</span>
+                          {' '}
+                          {isInteractive ? (
+                            <span className="inline-flex gap-0.5 ml-1 align-middle">
+                              {opcoesTensao.map(v => (
+                                <button
+                                  key={v}
+                                  onClick={() => onUpdateTensao!(m.item_uid!, v)}
+                                  className={`text-[9px] px-1.5 py-0.5 rounded font-bold transition-all ${
+                                    tensao === v
+                                      ? 'bg-blue-600 text-white'
+                                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                  }`}
+                                  title={`Tensão ${v}V`}
+                                >
+                                  {v}V
+                                </button>
+                              ))}
+                            </span>
+                          ) : (
+                            <span className="text-blue-700 font-semibold ml-1">{tensao}V</span>
+                          )}
+                          {m.item_nome && (
+                            <span className="text-gray-500"> · <span className="italic">{m.item_nome}</span></span>
+                          )}
+                          {m.qtd > 1 && <span className="text-gray-500"> (×{m.qtd})</span>}
+                        </td>
+                        <td className="py-1.5 text-right text-gray-800 tabular-nums">
+                          {incluso
+                            ? <span className="text-gray-500 italic">incluso</span>
+                            : <>R$ {formatBRLBare(m.valor_total)}</>}
+                        </td>
+                      </tr>
+                    )
+                  })}
                   <tr className="border-t-2 border-gray-700 font-bold">
                     <td className="py-2 text-gray-900">TOTAL</td>
                     <td className="py-2 text-right text-gray-900 tabular-nums">R$ {formatBRLBare(totalMotores)}</td>

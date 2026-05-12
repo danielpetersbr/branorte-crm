@@ -32,6 +32,7 @@ interface CarrinhoItem {
   motor_polos: number | null
   motor_qtd: number
   motor_valor_unit: number  // valor unitário do motor (não multiplicado)
+  motor_tensao?: 220 | 380 | 660  // tensão do motor (220 default; mono só 220, tri todas)
   foto_url: string | null   // foto do equipamento (mostra no preview, igual orçamento real)
 }
 
@@ -47,6 +48,16 @@ function gerarUid(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 }
 
+// Detecta se o motor do item já vem incluso no preço do equipamento.
+// Padrões no docx Branorte: "Acionamento ... (incluso)", "Motorredutor X CV (Incluso)", etc.
+// Quando incluso = true, motor_valor_unit deve ser 0 pra não cobrar duas vezes.
+function motorJaInclusoNoItem(specs: string[]): boolean {
+  if (!specs || specs.length === 0) return false
+  const motorKeywords = /acionamento|motorredutor|moto\s*redutor|pot[êe]ncia|\bcv\b/i
+  const inclusoMarker = /\(\s*inclus[oa]\.?\s*\)/i
+  return specs.some(s => motorKeywords.test(s) && inclusoMarker.test(s))
+}
+
 // Lista motores por item (não agrupa CV iguais — 1 linha por item do carrinho que tem motor)
 interface MotorAgrupado {
   cv: number
@@ -55,6 +66,8 @@ interface MotorAgrupado {
   valor_unit: number
   valor_total: number
   item_nome?: string       // nome do item que usa esse motor (pra mostrar no listagem)
+  item_uid?: string        // uid do item, pra trocar tensão via callback
+  tensao?: 220 | 380 | 660 // tensão do motor
 }
 
 function agruparMotores(carrinho: CarrinhoItem[]): MotorAgrupado[] {
@@ -69,6 +82,8 @@ function agruparMotores(carrinho: CarrinhoItem[]): MotorAgrupado[] {
       valor_unit: it.motor_valor_unit,
       valor_total: it.motor_valor_unit * qtdMotor,
       item_nome: it.nome_custom || it.nome,
+      item_uid: it.uid,
+      tensao: it.motor_tensao || 220,
     })
   }
   // Ordena por CV desc pra ficar agrupado visualmente
@@ -136,6 +151,9 @@ export function OrcamentoMontar() {
   const totalGeral = totalEquip + totalMotores
 
   function adicionarItem(item: CatalogoItem) {
+    const specs = item.specs || []
+    const motorIncluso = motorJaInclusoNoItem(specs)
+
     const motorMatch = item.motor_padrao_cv && item.motor_padrao_polos && motores
       ? acharMotorCompativel(motores, Number(item.motor_padrao_cv), item.motor_padrao_polos, voltagem)
       : null
@@ -145,14 +163,15 @@ export function OrcamentoMontar() {
       catalogo_id: item.id,
       categoria: item.categoria,
       nome: item.nome_curto,
-      specs: item.specs || [],
+      specs,
       qtd: 1,
       valor: Number(item.valor),
       valor_original: Number(item.valor),
       motor_cv: item.motor_padrao_cv ? Number(item.motor_padrao_cv) : null,
       motor_polos: item.motor_padrao_polos,
       motor_qtd: item.motor_padrao_qtd || 1,
-      motor_valor_unit: motorMatch ? Number(motorMatch.valor) : 0,
+      // Se a spec já marca "(incluso)", motor não é cobrado de novo.
+      motor_valor_unit: motorIncluso ? 0 : (motorMatch ? Number(motorMatch.valor) : 0),
       foto_url: item.foto_url || null,
     }])
   }
@@ -174,6 +193,10 @@ export function OrcamentoMontar() {
     setCarrinho(c => c.map(it => it.uid === uid ? { ...it, nome_custom: novoNome } : it))
   }
 
+  function alterarTensaoMotor(uid: string, tensao: 220 | 380 | 660) {
+    setCarrinho(c => c.map(it => it.uid === uid ? { ...it, motor_tensao: tensao } : it))
+  }
+
   function limparCarrinho() {
     if (carrinho.length === 0) return
     if (confirm('Limpar carrinho?')) setCarrinho([])
@@ -184,6 +207,8 @@ export function OrcamentoMontar() {
     if (!motores) return
     setCarrinho(c => c.map(it => {
       if (!it.motor_cv || !it.motor_polos) return it
+      // Motor incluso continua com valor 0 mesmo ao trocar voltagem.
+      if (motorJaInclusoNoItem(it.specs)) return { ...it, motor_valor_unit: 0 }
       const motor = acharMotorCompativel(motores, it.motor_cv, it.motor_polos, novaVoltagem)
       return { ...it, motor_valor_unit: motor ? Number(motor.valor) : it.motor_valor_unit }
     }))
@@ -416,6 +441,7 @@ export function OrcamentoMontar() {
                 onRemove={removerItem}
                 onFotoChange={setFotoPrincipal}
                 onUpdateNome={alterarNome}
+                onUpdateTensao={alterarTensaoMotor}
               />
             ) : (
               <div className="divide-y divide-border">

@@ -64,7 +64,8 @@ export async function parseDocxModelo(file: File | Blob): Promise<ParsedModelo> 
   const texto = extractText(xml)
 
   // Items: começa com letra A-G + " - QTD - " + nome + specs + VALOR R$ X
-  const ITEM_RE = /(?:^|\n)([A-G])\s*[\-–—]\s*(\d{1,2})\s*[\-–—]\s*([^\n]+)\n([\s\S]*?)\n\s*VALOR\s+R\$\s*([\d.]+,\d{2})/g
+  // [ \t]* tolera espaço/tab antes da letra (alguns docx Branorte têm o item C indentado).
+  const ITEM_RE = /(?:^|\n)[ \t]*([A-G])\s*[\-–—]\s*(\d{1,2})\s*[\-–—]\s*([^\n]+)\n([\s\S]*?)\n\s*VALOR\s+R\$\s*([\d.]+,\d{2})/g
   const itens: ParsedItem[] = []
   let m: RegExpExecArray | null
   while ((m = ITEM_RE.exec(texto)) !== null) {
