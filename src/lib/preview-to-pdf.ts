@@ -34,10 +34,9 @@ export async function gerarPdfDoPreview(
   const pageHeightMm = opts.pageHeight ?? 297
   // scale alto = texto mais nítido. 3 é o sweet spot pra A4.
   const scale = opts.scale ?? 3
-  // 750px ≈ 90dpi pra A4 — container ESTREITO faz texto sair MAIOR no PDF final
-  // (mais legível no celular, que é onde o cliente abre).
-  // Calculo: fonte 11px num container 750 = 1.47% da largura → 3mm no PDF A4 (boa leitura mobile)
-  const containerWidthPx = opts.containerWidthPx ?? 750
+  // 1024px = breakpoint lg do Tailwind (classes responsivas continuam funcionando).
+  // Container menor (ex: 750) QUEBRA o layout do OrcamentoPreview (testado).
+  const containerWidthPx = opts.containerWidthPx ?? 1024
 
   // 1) Cria container off-screen com largura fixa pra o preview renderizar consistente
   const host = document.createElement('div')
