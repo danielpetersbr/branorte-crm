@@ -86,6 +86,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
   // Dados extras
   const [prazoEntrega, setPrazoEntrega] = useState('')
   const [observacoes, setObservacoes] = useState('')
+  const [fotoPrincipal, setFotoPrincipal] = useState<string | null>(null)  // dataURL da foto da fabrica
 
   // Forma de pagamento
   const [pgTipo, setPgTipo] = useState<TipoPagamento>('avista')
@@ -373,6 +374,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
             formaPagamento: formaPgOut.forma_pagamento || null,
           },
           observacoesExtra: observacoes.trim() || null,
+          fotoPrincipal: fotoPrincipal,
         })
       } catch (e) {
         pdfErro = (e as Error).message
@@ -635,6 +637,42 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
               rows={3}
               className="w-full mt-1 px-2 py-1.5 text-[12px] bg-surface-2 border border-border rounded-md focus:outline-none focus:border-accent"
             />
+          </div>
+
+          {/* Foto principal — aparece grande no orcamento, antes dos items */}
+          <div>
+            <label className="text-[11px] uppercase tracking-wider text-ink-muted font-semibold">
+              Foto principal (fábrica/instalação)
+              <span className="text-[10px] text-ink-faint normal-case font-normal ml-2">— opcional, aparece grande antes dos items</span>
+            </label>
+            <div className="mt-1 flex items-center gap-2">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={async (e) => {
+                  const f = e.target.files?.[0]
+                  if (!f) return
+                  const reader = new FileReader()
+                  reader.onload = () => setFotoPrincipal(reader.result as string)
+                  reader.readAsDataURL(f)
+                }}
+                className="text-[11px] flex-1"
+              />
+              {fotoPrincipal && (
+                <button
+                  onClick={() => setFotoPrincipal(null)}
+                  className="text-[10px] text-danger hover:underline px-2"
+                >
+                  Remover
+                </button>
+              )}
+            </div>
+            {fotoPrincipal && (
+              <div className="mt-2 border border-border rounded p-2 bg-surface-2/30">
+                <img src={fotoPrincipal} alt="preview" className="max-h-32 mx-auto" />
+                <div className="text-center text-[9px] text-ink-faint mt-1">Pré-visualização</div>
+              </div>
+            )}
           </div>
 
           {erro && (

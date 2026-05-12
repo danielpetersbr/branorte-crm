@@ -67,6 +67,7 @@ export interface OrcamentoPreviewProps {
   cliente?: PreviewClienteDados
   terms?: PreviewTerms
   observacoesExtra?: string | null
+  fotoPrincipal?: string | null  // dataURL ou URL — renderiza foto grande antes dos items
 
   // Modo render: esconde botões interativos (pra capturar pra PDF limpo)
   renderMode?: boolean
@@ -153,7 +154,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     carrinho, motoresAgrupados, voltagem,
     totalItems, totalMotores, totalEquip, totalGeral,
     acessorios, valorAcessorios,
-    numero, dataEmissao, cliente, terms, observacoesExtra,
+    numero, dataEmissao, cliente, terms, observacoesExtra, fotoPrincipal,
     renderMode = false,
     onAddAcessorios, onEditAcessorios, onRemoveAcessorios, onRemove,
   } = props
@@ -346,6 +347,21 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
         <div className="mt-5">
           <SectionHeader>Itens orçados abaixo</SectionHeader>
 
+          {fotoPrincipal && (
+            <div data-no-break className="mb-3 border border-gray-300 rounded-md p-2 bg-white shadow-sm">
+              <div className="w-full flex items-center justify-center bg-white" style={{ minHeight: '300px' }}>
+                <img
+                  src={fotoPrincipal}
+                  alt="Foto da fábrica"
+                  className="max-w-full h-auto object-contain"
+                  style={{ maxHeight: '450px' }}
+                  crossOrigin="anonymous"
+                />
+              </div>
+              <div className="text-right text-[8px] italic text-gray-500 mt-1">Imagem ilustrativa</div>
+            </div>
+          )}
+
           <div className="space-y-3">
             {carrinho.map((it, idx) => {
               const letra = String.fromCharCode(65 + idx)
@@ -484,7 +500,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           </div>
 
           {/* Termos comerciais */}
-          <div className="mt-5 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded text-[9.5px] text-gray-800 space-y-1">
+          <div data-no-break className="mt-5 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded text-[9.5px] text-gray-800 space-y-1">
             <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>
               Data da venda – {dataVendaIsPlaceholder
                 ? <span className="text-gray-400 italic">a combinar</span>
@@ -500,24 +516,28 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Validade da proposta – 10 dias após o envio</span></div>
           </div>
 
-          <SectionHeader>Nossas Redes Sociais</SectionHeader>
-          <div className="text-[9.5px] text-gray-800 space-y-0.5">
-            <div><span className="font-bold">Instagram:</span> @branorte_metalurgica</div>
-            <div><span className="font-bold">YouTube:</span> @mbranorte</div>
-            <div><span className="font-bold">Facebook:</span> branorte.metalurgica</div>
+          <div data-no-break>
+            <SectionHeader>Nossas Redes Sociais</SectionHeader>
+            <div className="text-[9.5px] text-gray-800 space-y-0.5">
+              <div><span className="font-bold">Instagram:</span> @branorte_metalurgica</div>
+              <div><span className="font-bold">YouTube:</span> @mbranorte</div>
+              <div><span className="font-bold">Facebook:</span> branorte.metalurgica</div>
+            </div>
           </div>
 
-          <SectionHeader>Dados do Fabricante</SectionHeader>
-          <div className="text-[9.5px] text-gray-800 space-y-0.5">
-            <div><span className="font-bold">Empresa:</span> BRANORTE – Metalúrgica BBA Ltda</div>
-            <div><span className="font-bold">Endereço:</span> Rodovia SC 370 km 139, Nº 1390</div>
-            <div><span className="font-bold">Cidade:</span> Grão Pará – SC · <span className="font-bold">CEP:</span> 88890-000</div>
-            <div><span className="font-bold">Telefone:</span> (48) 3658-4502 / (48) 3658-7453</div>
-            <div><span className="font-bold">CNPJ:</span> 16.935.999/0001-09 · <span className="font-bold">I.E.:</span> 256.847.320</div>
-            <div><span className="font-bold">E-mail:</span> contato@mbranorte.com.br</div>
+          <div data-no-break>
+            <SectionHeader>Dados do Fabricante</SectionHeader>
+            <div className="text-[9.5px] text-gray-800 space-y-0.5">
+              <div><span className="font-bold">Empresa:</span> BRANORTE – Metalúrgica BBA Ltda</div>
+              <div><span className="font-bold">Endereço:</span> Rodovia SC 370 km 139, Nº 1390</div>
+              <div><span className="font-bold">Cidade:</span> Grão Pará – SC · <span className="font-bold">CEP:</span> 88890-000</div>
+              <div><span className="font-bold">Telefone:</span> (48) 3658-4502 / (48) 3658-7453</div>
+              <div><span className="font-bold">CNPJ:</span> 16.935.999/0001-09 · <span className="font-bold">I.E.:</span> 256.847.320</div>
+              <div><span className="font-bold">E-mail:</span> contato@mbranorte.com.br</div>
+            </div>
           </div>
 
-          <div className="grid grid-cols-4 gap-2 mt-3 text-[9px] text-center">
+          <div data-no-break className="grid grid-cols-4 gap-2 mt-3 text-[9px] text-center">
             {[
               ['Patrick Alves', '(48) 9 9698-4660'],
               ['Edilson', '(48) 9 9991-2329'],
@@ -531,82 +551,94 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             ))}
           </div>
 
-          <SectionHeader>Conta para Depósito</SectionHeader>
-          <div className="grid grid-cols-3 gap-3 text-[9px] text-gray-800">
-            <div className="space-y-0.5">
-              <div className="font-bold uppercase tracking-wide text-gray-900 mb-1 pb-0.5 border-b border-gray-300">Banco do Brasil</div>
-              <div>Agência: <strong>0738-2</strong></div>
-              <div>Conta: <strong>39551-X</strong></div>
-              <div>Metalúrgica BBA</div>
-              <div className="text-[8.5px] text-gray-500">CNPJ: 16.935.999/0001-09</div>
-            </div>
-            <div className="space-y-0.5">
-              <div className="font-bold uppercase tracking-wide text-gray-900 mb-1 pb-0.5 border-b border-gray-300">Sicoob Credivale</div>
-              <div>Cooperativa: <strong>3078</strong></div>
-              <div>Banco: <strong>756</strong></div>
-              <div>Conta: <strong>109909-4</strong></div>
-              <div className="text-[8.5px] text-gray-500">CNPJ: 16.935.999/0001-09</div>
-            </div>
-            <div className="space-y-0.5">
-              <div className="font-bold uppercase tracking-wide text-gray-900 mb-1 pb-0.5 border-b border-gray-300">PIX</div>
-              <div className="text-[8.5px] text-gray-600">CNPJ:</div>
-              <div className="font-mono"><strong>16935999000109</strong></div>
-              <div className="text-[8.5px] text-gray-500 mt-1">SICOOB · Metalúrgica BBA</div>
+          <div data-no-break>
+            <SectionHeader>Conta para Depósito</SectionHeader>
+            <div className="grid grid-cols-3 gap-3 text-[9px] text-gray-800">
+              <div className="space-y-0.5">
+                <div className="font-bold uppercase tracking-wide text-gray-900 mb-1 pb-0.5 border-b border-gray-300">Banco do Brasil</div>
+                <div>Agência: <strong>0738-2</strong></div>
+                <div>Conta: <strong>39551-X</strong></div>
+                <div>Metalúrgica BBA</div>
+                <div className="text-[8.5px] text-gray-500">CNPJ: 16.935.999/0001-09</div>
+              </div>
+              <div className="space-y-0.5">
+                <div className="font-bold uppercase tracking-wide text-gray-900 mb-1 pb-0.5 border-b border-gray-300">Sicoob Credivale</div>
+                <div>Cooperativa: <strong>3078</strong></div>
+                <div>Banco: <strong>756</strong></div>
+                <div>Conta: <strong>109909-4</strong></div>
+                <div className="text-[8.5px] text-gray-500">CNPJ: 16.935.999/0001-09</div>
+              </div>
+              <div className="space-y-0.5">
+                <div className="font-bold uppercase tracking-wide text-gray-900 mb-1 pb-0.5 border-b border-gray-300">PIX</div>
+                <div className="text-[8.5px] text-gray-600">CNPJ:</div>
+                <div className="font-mono"><strong>16935999000109</strong></div>
+                <div className="text-[8.5px] text-gray-500 mt-1">SICOOB · Metalúrgica BBA</div>
+              </div>
             </div>
           </div>
 
-          <SectionHeader>Caixa Postal</SectionHeader>
-          <div className="text-[9.5px] text-gray-800 space-y-0.5">
-            <div><span className="font-bold">Caixa Postal:</span> Nº 149 · <span className="font-bold">CEP:</span> 88750-970</div>
-            <div><span className="font-bold">Cidade:</span> Braço do Norte – SC</div>
-            <div>Metalúrgica BBA · CNPJ: 16.935.999/0001-09</div>
+          <div data-no-break>
+            <SectionHeader>Caixa Postal</SectionHeader>
+            <div className="text-[9.5px] text-gray-800 space-y-0.5">
+              <div><span className="font-bold">Caixa Postal:</span> Nº 149 · <span className="font-bold">CEP:</span> 88750-970</div>
+              <div><span className="font-bold">Cidade:</span> Braço do Norte – SC</div>
+              <div>Metalúrgica BBA · CNPJ: 16.935.999/0001-09</div>
+            </div>
           </div>
 
-          <SectionHeader>Observação <span className="text-gray-400 font-normal normal-case tracking-normal text-[9px]">— por conta do cliente</span></SectionHeader>
-          <div className="text-[9.5px] text-gray-800 space-y-0.5 pl-2">
-            <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Painel elétrico</span></div>
-            <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Montagem dos equipamentos orçados acima (se necessário)</span></div>
-            <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Muck (se necessário)</span></div>
-            <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Despesa com obras civil (se necessário)</span></div>
-            <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Instalação elétrica dos equipamentos (se necessário)</span></div>
+          <div data-no-break>
+            <SectionHeader>Observação <span className="text-gray-400 font-normal normal-case tracking-normal text-[9px]">— por conta do cliente</span></SectionHeader>
+            <div className="text-[9.5px] text-gray-800 space-y-0.5 pl-2">
+              <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Painel elétrico</span></div>
+              <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Montagem dos equipamentos orçados acima (se necessário)</span></div>
+              <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Muck (se necessário)</span></div>
+              <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Despesa com obras civil (se necessário)</span></div>
+              <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Instalação elétrica dos equipamentos (se necessário)</span></div>
+            </div>
           </div>
 
           {observacoesExtra && observacoesExtra.trim() && (
-            <>
+            <div data-no-break>
               <SectionHeader>Observações</SectionHeader>
               <div className="text-[9.5px] text-gray-800 leading-snug whitespace-pre-wrap">
                 {observacoesExtra}
               </div>
-            </>
+            </div>
           )}
 
-          <SectionHeader>Tributos</SectionHeader>
-          <div className="text-[9px] text-gray-700 leading-snug space-y-1.5 text-justify">
-            <p>
-              As condições desta proposta consideram os impostos e taxas vigentes, quando da elaboração da mesma sendo que quaisquer alterações sobre os tributos Municipais, Estaduais e Federais serão repassados ou de responsabilidade do cliente, incluindo pagamento ou documento de exoneração fiscal da diferença do ICMS ao Estado de destino ou custos de caminhão parado em posto fiscal da fronteira.
-            </p>
-            <p>
-              Sendo o contratante não contribuinte de ICMS, este deverá obrigatoriamente depositar para a contratada até o dia do embarque o valor correspondente ao diferencial de alíquota de ICMS referente ao objeto deste contrato, para que a CONTRATADA possa então pagar este diferencial, cujo comprovante de pagamento será enviado com a nota fiscal de vendas das mercadorias.
-            </p>
+          <div data-no-break>
+            <SectionHeader>Tributos</SectionHeader>
+            <div className="text-[9px] text-gray-700 leading-snug space-y-1.5 text-justify">
+              <p>
+                As condições desta proposta consideram os impostos e taxas vigentes, quando da elaboração da mesma sendo que quaisquer alterações sobre os tributos Municipais, Estaduais e Federais serão repassados ou de responsabilidade do cliente, incluindo pagamento ou documento de exoneração fiscal da diferença do ICMS ao Estado de destino ou custos de caminhão parado em posto fiscal da fronteira.
+              </p>
+              <p>
+                Sendo o contratante não contribuinte de ICMS, este deverá obrigatoriamente depositar para a contratada até o dia do embarque o valor correspondente ao diferencial de alíquota de ICMS referente ao objeto deste contrato, para que a CONTRATADA possa então pagar este diferencial, cujo comprovante de pagamento será enviado com a nota fiscal de vendas das mercadorias.
+              </p>
+            </div>
           </div>
 
-          <SectionHeader>Cláusula de Cancelamento</SectionHeader>
-          <div className="text-[9px] text-gray-700 leading-snug text-justify">
-            Caso o comprador deseje cancelar o pedido, fica estabelecido que será cobrada uma taxa de cancelamento no valor de <strong>10% do preço total do produto</strong>. Essa taxa é destinada a cobrir eventuais perdas financeiras decorrentes do cancelamento, incluindo custos de produção, armazenamento e distribuição.
+          <div data-no-break>
+            <SectionHeader>Cláusula de Cancelamento</SectionHeader>
+            <div className="text-[9px] text-gray-700 leading-snug text-justify">
+              Caso o comprador deseje cancelar o pedido, fica estabelecido que será cobrada uma taxa de cancelamento no valor de <strong>10% do preço total do produto</strong>. Essa taxa é destinada a cobrir eventuais perdas financeiras decorrentes do cancelamento, incluindo custos de produção, armazenamento e distribuição.
+            </div>
           </div>
 
-          <SectionHeader>Garantia</SectionHeader>
-          <div className="text-[9px] text-gray-700 leading-snug space-y-1.5 text-justify">
-            <p>
-              Os equipamentos fornecidos pela metalúrgica BRANORTE estão garantidos pelo prazo de <strong>12 (doze) meses</strong> contados da data de entrega dos mesmos, quanto ao funcionamento, desde que sejam armazenados, montados e operados dentro das condições para as quais foram projetados. Durante o prazo de garantia serão substituídas as peças que apresentarem defeitos, ficando as despesas de frete das peças, deslocamento, estadia e alimentação dos técnicos montadores por conta do cliente. Expirado o prazo de garantia, forneceremos assistência técnica mediante solicitação. Ficam excluídos da garantia os seguintes itens: canalizações e dispositivos de interligação.
-            </p>
-            <p>
-              Componentes fabricados e/ou montados por terceiros, tais como: motores elétricos, redutores, chaves elétricas, quadro de comando elétrico, correias, rolamentos (tendo somente a garantia fornecida pelos respectivos fabricantes), bem como toda e qualquer obra civil que é de responsabilidade do cliente.
-            </p>
+          <div data-no-break>
+            <SectionHeader>Garantia</SectionHeader>
+            <div className="text-[9px] text-gray-700 leading-snug space-y-1.5 text-justify">
+              <p>
+                Os equipamentos fornecidos pela metalúrgica BRANORTE estão garantidos pelo prazo de <strong>12 (doze) meses</strong> contados da data de entrega dos mesmos, quanto ao funcionamento, desde que sejam armazenados, montados e operados dentro das condições para as quais foram projetados. Durante o prazo de garantia serão substituídas as peças que apresentarem defeitos, ficando as despesas de frete das peças, deslocamento, estadia e alimentação dos técnicos montadores por conta do cliente. Expirado o prazo de garantia, forneceremos assistência técnica mediante solicitação. Ficam excluídos da garantia os seguintes itens: canalizações e dispositivos de interligação.
+              </p>
+              <p>
+                Componentes fabricados e/ou montados por terceiros, tais como: motores elétricos, redutores, chaves elétricas, quadro de comando elétrico, correias, rolamentos (tendo somente a garantia fornecida pelos respectivos fabricantes), bem como toda e qualquer obra civil que é de responsabilidade do cliente.
+              </p>
+            </div>
           </div>
 
           {/* Assinaturas */}
-          <div className="mt-10 grid grid-cols-2 gap-8 px-2">
+          <div data-no-break className="mt-10 grid grid-cols-2 gap-8 px-2">
             <div className="text-center">
               <div className="border-t border-gray-700 pt-1.5 text-[9.5px] font-bold text-gray-800">
                 Metalúrgica BBA LTDA

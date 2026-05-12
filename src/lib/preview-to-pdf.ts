@@ -56,6 +56,16 @@ export async function gerarPdfDoPreview(
     // 3) Aguarda render + carregamento de imagens (logo + fotos dos equipamentos)
     await waitForImagesAndPaint(host)
 
+    // 3.5) Captura posicoes Y (em CSS px do host) dos blocos [data-no-break] ANTES de capturar
+    const hostTop = host.getBoundingClientRect().top + window.scrollY
+    const noBreakRanges: Array<{ topPx: number; bottomPx: number }> = []
+    host.querySelectorAll('[data-no-break]').forEach((el) => {
+      const r = (el as HTMLElement).getBoundingClientRect()
+      const top = r.top + window.scrollY - hostTop
+      const bottom = r.bottom + window.scrollY - hostTop
+      if (bottom > top + 4) noBreakRanges.push({ topPx: top, bottomPx: bottom })
+    })
+
     // 4) Captura como canvas
     const canvas = await html2canvas(host, {
       scale,
@@ -67,6 +77,12 @@ export async function gerarPdfDoPreview(
       width: containerWidthPx,
       windowWidth: containerWidthPx,
     })
+
+    // Converte ranges de CSS px → canvas px (com scale aplicado)
+    const noBreakCanvasRanges = noBreakRanges.map(r => ({
+      top: Math.floor(r.topPx * scale),
+      bottom: Math.ceil(r.bottomPx * scale),
+    }))
 
     // 5) Converte canvas pra PDF A4 (multi-pagina se necessario)
     const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
@@ -102,41 +118,73 @@ export async function gerarPdfDoPreview(
         return true
       }
 
+      // Verifica se Y cai dentro de algum bloco no-break
+      function isInsideNoBreak(y: number): { inside: boolean; topY?: number; bottomY?: number } {
+        for (const r of noBreakCanvasRanges) {
+          if (y > r.top + 1 && y < r.bottom - 1) {
+            return { inside: true, topY: r.top, bottomY: r.bottom }
+          }
+        }
+        return { inside: false }
+      }
+
       // Helper: encontra a melhor linha de corte perto do ideal
-      // Procura ATÉ 12% antes do ideal e até 3% depois (preferencia pra cortar antes)
-      function findCutY(idealY: number, maxY: number): number {
-        const lookBack = Math.floor(sliceHeightPx * 0.12)
-        const lookAhead = Math.floor(sliceHeightPx * 0.03)
-        const minY = Math.max(idealY - lookBack, 1)
-        const maxYClamp = Math.min(idealY + lookAhead, maxY - 1)
-        // Busca de baixo pra cima (perto do ideal e indo pra tras)
-        // Acumula sequencia de linhas brancas, retorna o MEIO de uma sequencia gorda
+      // PRIMEIRO: se cai dentro de no-break, move pra ANTES dele
+      // DEPOIS: procura linha em branco pra refinar
+      function findCutY(idealY: number, maxY: number, sliceStart: number): number {
+        // 1) Move idealY pra fora de qualquer no-break (iterativamente)
+        let y = idealY
+        for (let iter = 0; iter < 10; iter++) {
+          const r = isInsideNoBreak(y)
+          if (!r.inside) break
+          // Tenta antes
+          y = r.topY! - 4
+          // Se moveu pra ANTES do sliceStart (pagina vazia), tenta DEPOIS
+          if (y <= sliceStart + 50) {
+            y = r.bottomY! + 4
+          }
+        }
+        // 2) Refina: procura linha branca proxima
+        const lookBack = Math.floor(sliceHeightPx * 0.10)
+        const lookAhead = Math.floor(sliceHeightPx * 0.02)
+        const minY = Math.max(y - lookBack, sliceStart + 50)
+        const maxYClamp = Math.min(y + lookAhead, maxY - 1)
         let bestY = -1
         let bestRunLen = 0
         let runStart = -1
-        for (let y = minY; y <= maxYClamp; y++) {
-          if (isLineBlank(y)) {
-            if (runStart < 0) runStart = y
-          } else {
+        for (let y2 = minY; y2 <= maxYClamp; y2++) {
+          // Skip Y que cai em no-break (pode ter linha branca dentro de bloco branco)
+          if (isInsideNoBreak(y2).inside) {
             if (runStart >= 0) {
-              const runLen = y - runStart
-              // Prefere uma sequencia >= 4px e que esteja perto do idealY
+              const runLen = y2 - runStart
               if (runLen >= 3 && runLen >= bestRunLen) {
                 bestRunLen = runLen
-                bestY = Math.floor((runStart + y) / 2)
+                bestY = Math.floor((runStart + y2) / 2)
+              }
+              runStart = -1
+            }
+            continue
+          }
+          if (isLineBlank(y2)) {
+            if (runStart < 0) runStart = y2
+          } else {
+            if (runStart >= 0) {
+              const runLen = y2 - runStart
+              if (runLen >= 3 && runLen >= bestRunLen) {
+                bestRunLen = runLen
+                bestY = Math.floor((runStart + y2) / 2)
               }
               runStart = -1
             }
           }
         }
-        // Sequencia que terminou no fim do range
         if (runStart >= 0) {
           const runLen = maxYClamp - runStart + 1
           if (runLen >= 3 && runLen >= bestRunLen) {
             bestY = Math.floor((runStart + maxYClamp) / 2)
           }
         }
-        return bestY > 0 ? bestY : idealY
+        return bestY > 0 ? bestY : y
       }
 
       // Tolerancia: ignorar overflow < 8% da pagina (evita pagina extra so com footer)
@@ -152,9 +200,9 @@ export async function gerarPdfDoPreview(
           // Última fatia — pega tudo que sobrou
           thisSliceHeightPx = remainingPx
         } else {
-          // Procura linha branca perto do limite ideal
+          // Procura linha branca perto do limite ideal — respeitando data-no-break
           const idealY = yPx + sliceHeightPx
-          const cutY = findCutY(idealY, canvas.height)
+          const cutY = findCutY(idealY, canvas.height, yPx)
           thisSliceHeightPx = cutY - yPx
         }
 
