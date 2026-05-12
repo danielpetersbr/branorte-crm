@@ -338,8 +338,8 @@ export function OrcamentoMontar() {
         </div>
       </div>
 
-      {/* Grid 2 colunas: catálogo flexível + preview fixo 900px (A4 + margem) */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_900px] gap-3 min-h-0">
+      {/* Grid 2 colunas: catálogo fixo 340px (suficiente pros cards) + preview pega TODO o resto */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)] gap-3 min-h-0">
         {/* CATÁLOGO */}
         <Card className="flex flex-col min-h-0 overflow-hidden">
           <div className="p-3 border-b border-border space-y-2">
