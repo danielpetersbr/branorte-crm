@@ -187,7 +187,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                 <div key={it.uid || idx} className="group relative border border-gray-300 rounded-md p-3 bg-white shadow-sm">
                   <div className="flex justify-between items-start gap-2 mb-1.5">
                     <div className="font-bold text-[10.5px] flex-1 min-w-0 text-gray-900">
-                      <span className="text-emerald-700">{letra} - {String(it.qtd).padStart(2, '0')}</span>
+                      <span className="text-gray-900">{letra} - {String(it.qtd).padStart(2, '0')}</span>
                       <span className="text-gray-400 mx-1">–</span>
                       <span className="uppercase">{it.nome}</span>
                     </div>
@@ -239,7 +239,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             <div className="group mt-3 border border-gray-300 rounded-md p-3 bg-white shadow-sm">
               <div className="flex items-baseline justify-between gap-2 mb-1.5">
                 <div className="font-bold text-[10.5px] text-gray-900">
-                  <span className="text-emerald-700">— ACESSÓRIOS</span>
+                  <span className="text-gray-900">— ACESSÓRIOS</span>
                 </div>
                 {!renderMode && (onEditAcessorios || onRemoveAcessorios) && (
                   <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -349,11 +349,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                 href={href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex flex-col items-center gap-0.5 py-1.5 rounded hover:bg-emerald-50 transition-colors group"
+                className="flex flex-col items-center gap-0.5 py-1.5 rounded hover:bg-gray-100 transition-colors group"
                 title={href}
               >
                 <div className="text-[18px] leading-none group-hover:scale-110 transition-transform">{icon}</div>
-                <div className="text-[8.5px] font-semibold text-gray-600 group-hover:text-emerald-700">{label}</div>
+                <div className="text-[8.5px] font-semibold text-gray-600 group-hover:text-gray-900">{label}</div>
               </a>
             ))}
           </div>
