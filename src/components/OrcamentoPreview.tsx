@@ -600,8 +600,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       }
                     </div>
                     {it.foto_url && (
-                      <div className="shrink-0 w-28 flex flex-col items-center">
-                        <div className="w-28 h-28 bg-white border border-gray-300 rounded p-1 flex items-center justify-center">
+                      <div className="shrink-0 w-40 flex flex-col items-center">
+                        <div className="w-40 h-40 bg-white border border-gray-300 rounded p-1 flex items-center justify-center">
                           <img
                             src={it.foto_url}
                             alt={it.nome}

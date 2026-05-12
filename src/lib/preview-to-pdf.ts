@@ -281,13 +281,10 @@ async function decorarPaginas(pdf: jsPDF, pageW: number, pageH: number) {
     pdf.setFillColor(0, 168, 89)
     pdf.rect(0, 0, pageW, 1.5, 'F')
 
-    // Mini logo no canto sup direito — só pgs 2+ (na 1ª o logo grande já tá no header)
-    if (p > 1 && logo) {
-      // Logo: ~28mm largura x ~7mm altura (proporcao do branorte-logo.png)
-      pdf.addImage(logo, 'PNG', pageW - 32, 4, 28, 7, undefined, 'FAST')
-    }
+    // (Mini logo removido das pgs 2+ — competia espaco com conteudo. A faixa verde
+    //  no topo + footer ja servem de branding)
 
-    // Rodapé: "Página X de Y" + assinatura
+    // Rodapé: "Página X de Y" + assinatura limpa (so BRANORTE, sem Metalurgica BBA)
     pdf.setFontSize(7)
     pdf.setTextColor(140, 140, 140)
     pdf.text(
@@ -298,7 +295,7 @@ async function decorarPaginas(pdf: jsPDF, pageW: number, pageH: number) {
     )
     pdf.setTextColor(170, 170, 170)
     pdf.text(
-      'BRANORTE · Metalúrgica BBA · contato@mbranorte.com.br · (48) 3658-4502',
+      'BRANORTE · contato@mbranorte.com.br · (48) 3658-4502',
       pageW / 2,
       pageH - 2.5,
       { align: 'center' },
