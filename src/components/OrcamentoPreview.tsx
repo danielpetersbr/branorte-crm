@@ -812,13 +812,25 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                 const isPh = !valor || !valor.trim()
                 if (!renderMode && onUpdateTerm) {
                   if (key === 'dataVenda') {
-                    // Date picker nativo
                     return (
                       <input
                         type="date"
                         value={brToIso(valor || '')}
                         onChange={e => onUpdateTerm(key, e.target.value ? isoToBr(e.target.value) : '')}
                         className={`bg-transparent border-b border-dashed border-gray-300 hover:border-blue-500 focus:border-blue-600 focus:outline-none px-1 cursor-pointer ${isPh ? 'text-gray-400' : 'text-gray-800'}`}
+                      />
+                    )
+                  }
+                  // formaPagamento → textarea full-width (texto pode ser longo)
+                  if (key === 'formaPagamento') {
+                    return (
+                      <textarea
+                        defaultValue={valor || ''}
+                        key={valor || 'empty'}
+                        onBlur={e => onUpdateTerm(key, e.target.value)}
+                        placeholder={placeholder}
+                        rows={(valor || '').length > 80 ? 2 : 1}
+                        className={`w-full resize-none bg-transparent border-b border-dashed border-gray-300 hover:border-blue-500 focus:border-blue-600 focus:outline-none px-1 ${isPh ? 'italic text-gray-400' : 'text-gray-800'}`}
                       />
                     )
                   }
@@ -889,53 +901,50 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   <div className="flex gap-1.5 items-center"><span className="text-gray-400">•</span><span>Data da venda – {renderTerm('Data da venda', dataVendaTxt, 'a combinar', 'dataVenda')}</span></div>
                   <div className="flex gap-1.5 items-center"><span className="text-gray-400">•</span><span>Prazo de entrega – {renderTerm('Prazo de entrega', prazoEntregaTxt, '90 dias (úteis)', 'prazoEntrega')}</span></div>
                   <div className="flex gap-1.5 items-start">
-                    <span className="text-gray-400">•</span>
-                    <div className="flex-1">
-                      <div>Forma de pagamento – {renderTerm('Forma de pagamento', formaPagamentoTxt, 'a combinar', 'formaPagamento')}</div>
-                      {!renderMode && onUpdateTerm && (
-                        <div className="mt-2 print:hidden">
-                          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">
-                            Sugestões — clique para preencher
-                          </div>
-                          <div className="flex flex-wrap gap-1.5">
-                            {templatesFP.map(t => {
-                              const built = t.build()
-                              const selected = formaPagamentoTxt === built
-                              return (
-                                <button
-                                  key={t.id}
-                                  type="button"
-                                  onClick={() => onUpdateTerm('formaPagamento', selected ? '' : built)}
-                                  className={`text-[11px] px-2.5 py-1 rounded-md font-semibold border transition-all ${
-                                    selected
-                                      ? 'bg-blue-600 text-white border-blue-700 shadow-sm'
-                                      : 'bg-white hover:bg-blue-50 text-blue-700 border-blue-300 hover:border-blue-400'
-                                  }`}
-                                  title={built}
-                                >
-                                  {selected && <span className="mr-1">✓</span>}
-                                  {t.label}
-                                </button>
-                              )
-                            })}
+                    <span className="text-gray-400 mt-0.5">•</span>
+                    <div className="flex-1 min-w-0">
+                      {/* Linha 1: label + select de templates (compacto) */}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-semibold">Forma de pagamento:</span>
+                        {!renderMode && onUpdateTerm && (
+                          <select
+                            value={(() => {
+                              const found = templatesFP.find(t => t.build() === formaPagamentoTxt)
+                              return found ? found.id : (formaPagamentoTxt ? '__custom' : '')
+                            })()}
+                            onChange={e => {
+                              const v = e.target.value
+                              if (!v) onUpdateTerm('formaPagamento', '')
+                              else if (v === '__custom') return  // já é custom
+                              else {
+                                const tpl = templatesFP.find(t => t.id === v)
+                                if (tpl) onUpdateTerm('formaPagamento', tpl.build())
+                              }
+                            }}
+                            className="text-[10.5px] px-1.5 py-0.5 bg-blue-50 border border-blue-300 rounded font-semibold text-blue-700 hover:bg-blue-100 cursor-pointer focus:outline-none focus:border-blue-500 print:hidden"
+                          >
+                            <option value="">— Escolher template —</option>
+                            {templatesFP.map(t => (
+                              <option key={t.id} value={t.id}>{t.label}</option>
+                            ))}
                             {formaPagamentoTxt && !templatesFP.some(t => t.build() === formaPagamentoTxt) && (
-                              <button
-                                type="button"
-                                onClick={() => onUpdateTerm('formaPagamento', '')}
-                                className="text-[11px] px-2.5 py-1 rounded-md bg-gray-50 hover:bg-gray-100 text-gray-600 font-semibold border border-gray-300"
-                                title="Limpar campo"
-                              >
-                                ✕ limpar
-                              </button>
+                              <option value="__custom">Customizado (texto livre)</option>
                             )}
-                          </div>
-                          {formaPagamentoTxt && !templatesFP.some(t => t.build() === formaPagamentoTxt) && (
-                            <div className="text-[10px] text-gray-500 italic mt-1.5">
-                              Texto customizado — clique numa sugestão pra substituir
-                            </div>
-                          )}
-                        </div>
-                      )}
+                          </select>
+                        )}
+                        {!renderMode && onUpdateTerm && formaPagamentoTxt && (
+                          <button
+                            type="button"
+                            onClick={() => onUpdateTerm('formaPagamento', '')}
+                            className="text-[10px] text-gray-500 hover:text-red-600 px-1 print:hidden"
+                            title="Limpar"
+                          >✕</button>
+                        )}
+                      </div>
+                      {/* Linha 2: valor renderizado (campo editável ou texto) — ocupa largura total */}
+                      <div className="mt-1 leading-snug">
+                        {renderTerm('Forma de pagamento', formaPagamentoTxt, 'a combinar', 'formaPagamento')}
+                      </div>
                     </div>
                   </div>
                   <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Frete – por conta do cliente</span></div>
