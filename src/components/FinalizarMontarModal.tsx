@@ -47,7 +47,7 @@ interface Props {
   open: boolean
   snapshot: CarrinhoSnapshot
   onClose: () => void
-  onSuccess: (info: { numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean }) => void
+  onSuccess: (info: { numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string }) => void
 }
 
 function formatBRL(v: number): string {
@@ -403,7 +403,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
         }
       }
 
-      onSuccess({ numero: orc.numero, baixouDocx, baixouPdf, salvouNaPasta })
+      onSuccess({ numero: orc.numero, baixouDocx, baixouPdf, salvouNaPasta, pdfBlob, cliente: cliNome.trim() })
       if (pdfErro) alert(`Orçamento gerado, mas PDF falhou: ${pdfErro}\n.docx foi gerado normalmente.`)
     } catch (e) {
       setErro((e as Error).message)

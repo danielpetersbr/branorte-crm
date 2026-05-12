@@ -4,8 +4,9 @@ import { Input } from '@/components/ui/Input'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import {
   Sparkles, Search, Plus, Minus, Trash2, Package,
-  Zap, X, AlertCircle, Star, FileText, Eye, ListChecks, Check,
+  Zap, X, AlertCircle, Star, FileText, Eye, ListChecks, Check, Loader2,
 } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 import {
   useCatalogoItems, useCatalogoMotores,
   agruparPorCategoria, acharMotorCompativel,
@@ -92,7 +93,9 @@ export function OrcamentoMontar() {
   const [showOnlyOficiais, setShowOnlyOficiais] = useState(true)  // default: só items curados
   const [modoVisao, setModoVisao] = useState<ModoVisao>('preview')
   const [finalizarOpen, setFinalizarOpen] = useState(false)
-  const [sucesso, setSucesso] = useState<{ numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean } | null>(null)
+  const [sucesso, setSucesso] = useState<{ numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string } | null>(null)
+  const [enviandoWA, setEnviandoWA] = useState<'idle' | 'enviando' | 'enviado' | 'erro'>('idle')
+  const [enviandoWAMsg, setEnviandoWAMsg] = useState<string>('')
   const [fotoPrincipal, setFotoPrincipal] = useState<string | null>(null)
 
   const categorias = useMemo(() => agruparPorCategoria(items ?? []), [items])
@@ -508,6 +511,68 @@ export function OrcamentoMontar() {
             {sucesso.baixouDocx && '⬇️ .docx baixado'}
             {sucesso.baixouPdf && ' · PDF baixado'}
           </div>
+          {sucesso.pdfBlob && enviandoWA !== 'enviado' && (
+            <button
+              onClick={async () => {
+                setEnviandoWA('enviando')
+                setEnviandoWAMsg('Detectando vendedor...')
+                try {
+                  // Pega telefone via postMessage da extensão (se aberto via popup)
+                  let telefone = await new Promise<string>((resolve) => {
+                    const onMsg = (ev: MessageEvent) => {
+                      if (ev.data?.type === 'branorte:vendor-info') {
+                        window.removeEventListener('message', onMsg)
+                        resolve(ev.data.telefone || '')
+                      }
+                    }
+                    window.addEventListener('message', onMsg)
+                    try { window.opener?.postMessage({ type: 'branorte:request-vendor-info' }, '*') } catch {}
+                    setTimeout(() => { window.removeEventListener('message', onMsg); resolve('') }, 3000)
+                  })
+                  if (!telefone) {
+                    const saved = localStorage.getItem('branorte_meu_telefone_wa') || ''
+                    const tel = window.prompt('Digite SEU número de WhatsApp (DDD + número):', saved.replace(/^55/, ''))
+                    if (!tel) throw new Error('Cancelado')
+                    const d = tel.replace(/[^\d]/g, '')
+                    if (d.length < 10) throw new Error('Telefone inválido')
+                    telefone = d.startsWith('55') ? d : '55' + d
+                    localStorage.setItem('branorte_meu_telefone_wa', telefone)
+                  }
+                  setEnviandoWAMsg('Fazendo upload do PDF...')
+                  const filename = `${sucesso.numero}-${(sucesso.cliente || 'cliente').replace(/[^a-zA-Z0-9]+/g,'_')}.pdf`
+                  const path = `orcamentos/${new Date().toISOString().slice(0,7)}/${filename}`
+                  const { error: upErr } = await supabase.storage.from('qr-media').upload(path, sucesso.pdfBlob!, { contentType: 'application/pdf', upsert: true })
+                  if (upErr) throw new Error('Upload: ' + upErr.message)
+                  const { data: pub } = supabase.storage.from('qr-media').getPublicUrl(path)
+                  const { data: { session } } = await supabase.auth.getSession()
+                  const r = await fetch('https://flwbeevtvjiouxdjmziv.supabase.co/functions/v1/orcamento-enviar-meu-zap', {
+                    method: 'POST',
+                    headers: { 'authorization': `Bearer ${session?.access_token ?? ''}`, 'content-type': 'application/json' },
+                    body: JSON.stringify({ telefone_destino: telefone, pdf_url: pub.publicUrl, filename, cliente_nome: sucesso.cliente }),
+                  })
+                  const j = await r.json()
+                  if (!j.ok) throw new Error(j.error || 'erro')
+                  setEnviandoWA('enviado')
+                  setEnviandoWAMsg(j.msg)
+                } catch (e: any) {
+                  setEnviandoWA('erro')
+                  setEnviandoWAMsg(e?.message || 'erro')
+                }
+              }}
+              disabled={enviandoWA === 'enviando'}
+              className="mt-2 w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-[11px] font-semibold px-3 py-1.5 rounded flex items-center justify-center gap-1.5"
+            >
+              {enviandoWA === 'enviando'
+                ? <><Loader2 className="h-3 w-3 animate-spin" /> Enviando...</>
+                : <>📲 Enviar pro meu WhatsApp</>}
+            </button>
+          )}
+          {enviandoWA === 'enviado' && (
+            <div className="text-[10px] text-emerald-300 mt-1">✅ {enviandoWAMsg}</div>
+          )}
+          {enviandoWA === 'erro' && (
+            <div className="text-[10px] text-red-400 mt-1">❌ {enviandoWAMsg}</div>
+          )}
         </div>
       )}
     </div>
