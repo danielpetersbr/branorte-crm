@@ -701,49 +701,51 @@ function CardItem({
   return (
     <button
       onClick={onAdd}
-      className="text-left p-1.5 rounded border border-border hover:border-accent hover:bg-surface-2 transition-all group flex items-center gap-1.5"
+      className="text-left p-2 rounded-lg border border-border hover:border-accent hover:bg-surface-2 transition-all group flex items-center gap-2.5 relative"
     >
       {item.foto_url ? (
         <img
           src={item.foto_url}
           alt={item.nome_curto}
-          className="w-9 h-9 object-cover rounded border border-border shrink-0"
+          className="w-14 h-14 object-cover rounded-md border border-border shrink-0"
           loading="lazy"
         />
       ) : (
-        <div className="w-9 h-9 rounded border border-border bg-surface-2 shrink-0 flex items-center justify-center text-ink-faint">
-          <Package className="h-3.5 w-3.5" />
+        <div className="w-14 h-14 rounded-md border border-border bg-surface-2 shrink-0 flex items-center justify-center text-ink-faint">
+          <Package className="h-5 w-5" />
         </div>
       )}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1 mb-0.5">
-          <span className="text-[8px] uppercase tracking-wider text-ink-muted font-bold truncate">
-            {item.categoria}
-          </span>
-          {item.is_oficial && (
-            <Check className="h-2.5 w-2.5 text-success shrink-0" />
+      <div className="flex-1 min-w-0 self-stretch flex flex-col justify-between py-0.5">
+        <div>
+          <div className="flex items-center gap-1 mb-0.5">
+            <span className="text-[9px] uppercase tracking-wider text-accent font-bold truncate">
+              {item.categoria}
+            </span>
+            {item.is_oficial && <Check className="h-2.5 w-2.5 text-success shrink-0" />}
+          </div>
+          <div className="text-[12px] font-semibold text-ink leading-tight line-clamp-2" title={item.nome_curto}>
+            {item.nome_curto}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 mt-1">
+          {item.motor_padrao_cv && (
+            <div className="text-[9px] text-ink-faint leading-none flex items-center gap-0.5">
+              ⚡ <span>{item.motor_padrao_cv} CV {item.motor_padrao_polos}p</span>
+            </div>
           )}
         </div>
-        <div className="text-[11px] font-semibold text-ink truncate leading-tight">
-          {item.nome_curto}
-        </div>
-        {item.motor_padrao_cv && (
-          <div className="text-[9px] text-ink-faint truncate">
-            ⚡ {item.motor_padrao_cv} CV {item.motor_padrao_polos}p
-          </div>
-        )}
       </div>
-      <div className="text-right shrink-0">
-        <div className="text-[11px] font-bold text-ink leading-tight">
+      <div className="text-right shrink-0 self-stretch flex flex-col justify-center">
+        <div className="text-[12px] font-bold text-ink leading-tight tabular-nums">
           {formatBRL(Number(item.valor))}
         </div>
         {motorValor > 0 && (
-          <div className="text-[9px] font-semibold text-accent leading-tight">
+          <div className="text-[10px] font-semibold text-accent leading-tight tabular-nums mt-0.5">
             ={formatBRL(totalComMotor)}
           </div>
         )}
       </div>
-      <Plus className="h-3 w-3 text-accent opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+      <Plus className="h-3.5 w-3.5 text-accent opacity-0 group-hover:opacity-100 transition-opacity shrink-0 absolute top-1.5 right-1.5" />
     </button>
   )
 }
