@@ -110,32 +110,40 @@ function findBreakNear(container: HTMLElement, idealY: number, tolerance: number
     return { top: r.top + window.scrollY - containerTop, bottom: r.bottom + window.scrollY - containerTop }
   }
 
-  // 1) Se idealY cai dentro de algum no-break, move pra antes (com margem de 8px)
-  let y = idealY
-  for (let iter = 0; iter < 5; iter++) {
-    let moved = false
+  // Helper: retorna o bloco no-break que contém o Y (ou null)
+  const findContaining = (y: number): HTMLElement | null => {
     for (const el of noBreakEls) {
       const { top, bottom } = localTop(el)
-      // Se Y cai dentro do bloco (com margem)
-      if (y > top + 2 && y < bottom + 2) {
-        y = top - 8
-        moved = true
-        break
-      }
+      if (y > top + 2 && y < bottom + 2) return el
     }
-    if (!moved) break
+    return null
   }
 
-  // Se foi movido pra MUITO antes (perdemos > 30% da pagina), eh melhor empurrar pra DEPOIS do no-break
-  // (a pagina anterior fica curta demais)
+  // 1) Se idealY cai dentro de algum no-break, tenta mover pra antes (com margem de 8px)
+  let y = idealY
+  for (let iter = 0; iter < 8; iter++) {
+    const hit = findContaining(y)
+    if (!hit) break
+    const { top } = localTop(hit)
+    y = top - 8
+  }
+
+  // Se foi movido pra MUITO antes (perdemos > 30% da pagina), eh melhor empurrar pra DEPOIS do no-break original
   if (idealY - y > tolerance * 3) {
-    // Procura no-break que tava no caminho e usa seu bottom
-    for (const el of noBreakEls) {
-      const { top, bottom } = localTop(el)
-      if (top <= idealY + 2 && bottom >= y - 2 && bottom < idealY + tolerance) {
-        return bottom + 4
-      }
+    // Pega o bloco originalmente atingido (em idealY) e move pra seu bottom
+    const originalHit = findContaining(idealY)
+    if (originalHit) {
+      const { bottom } = localTop(originalHit)
+      return bottom + 4
     }
+  }
+
+  // Garantia final: se ainda está dentro de algum bloco apos os 8 iters,
+  // empurra pro fim do bloco (preferimos pagina mais cheia a quebra ruim)
+  const stillIn = findContaining(y)
+  if (stillIn) {
+    const { bottom } = localTop(stillIn)
+    return bottom + 4
   }
 
   // 2) Refino: cola no fim de algum elemento entre (y-tolerance, y) pra ficar limpo
