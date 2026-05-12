@@ -825,12 +825,12 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
                 {/* VALOR TOTAL COM DESCONTO — caixa destacada (renderiza no PDF tb) */}
                 {temDesconto && (
-                  <div data-no-break className="mt-2 px-6 py-5 border-2 border-emerald-700 rounded-lg tracking-wide bg-emerald-50/50">
-                    <div className="flex justify-between items-center gap-4 min-h-[28px] text-[19px] font-black">
-                      <span className="text-emerald-900 uppercase leading-[1] flex-1">
-                        Valor total com desconto
+                  <div data-no-break className="mt-2 px-6 py-5 border-2 border-emerald-700 rounded-lg tracking-wide bg-emerald-50/60">
+                    <div className="flex justify-between items-center gap-4 text-[20px] font-black">
+                      <span className="text-emerald-900 uppercase flex-1 leading-normal">
+                        Valor total com desconto{desconto?.tipo === 'pct' ? ` (${desconto.valor}%)` : ''}
                       </span>
-                      <span className="text-emerald-900 text-[20px] leading-[1] tabular-nums whitespace-nowrap">
+                      <span className="text-emerald-900 text-[22px] tabular-nums whitespace-nowrap leading-normal">
                         R$ {formatBRLBare(totalFinal)}
                       </span>
                     </div>
