@@ -80,17 +80,83 @@ export async function gerarPdfDoPreview(
       const imgData = canvas.toDataURL('image/jpeg', 0.92)
       pdf.addImage(imgData, 'JPEG', 0, 0, pageWidthMm, totalHeightMm, undefined, 'FAST')
     } else {
-      // Multi-pagina: corta o canvas em fatias do tamanho da pagina A4
+      // Multi-pagina: smart slicing — corta SO em linhas em branco
+      // pra nao quebrar texto/blocos no meio da pagina A4
       const sliceHeightPx = Math.floor(pageHeightMm / mmPerPx)
+      // Lê o canvas inteiro 1 vez pra procurar linhas em branco
+      const fullCtx = canvas.getContext('2d')!
+      const imageData = fullCtx.getImageData(0, 0, canvas.width, canvas.height)
+      const data = imageData.data
+      const W = canvas.width
+
+      // Helper: linha Y é "branca/clara"? (todos pixels >= threshold)
+      // Uso threshold 245 (quase branco) e amostra a cada 4 px pra performance
+      function isLineBlank(y: number): boolean {
+        const rowOffset = y * W * 4
+        for (let x = 0; x < W; x += 4) {
+          const i = rowOffset + x * 4
+          // RGB médio
+          const avg = (data[i] + data[i + 1] + data[i + 2]) / 3
+          if (avg < 245) return false
+        }
+        return true
+      }
+
+      // Helper: encontra a melhor linha de corte perto do ideal
+      // Procura ATÉ 12% antes do ideal e até 3% depois (preferencia pra cortar antes)
+      function findCutY(idealY: number, maxY: number): number {
+        const lookBack = Math.floor(sliceHeightPx * 0.12)
+        const lookAhead = Math.floor(sliceHeightPx * 0.03)
+        const minY = Math.max(idealY - lookBack, 1)
+        const maxYClamp = Math.min(idealY + lookAhead, maxY - 1)
+        // Busca de baixo pra cima (perto do ideal e indo pra tras)
+        // Acumula sequencia de linhas brancas, retorna o MEIO de uma sequencia gorda
+        let bestY = -1
+        let bestRunLen = 0
+        let runStart = -1
+        for (let y = minY; y <= maxYClamp; y++) {
+          if (isLineBlank(y)) {
+            if (runStart < 0) runStart = y
+          } else {
+            if (runStart >= 0) {
+              const runLen = y - runStart
+              // Prefere uma sequencia >= 4px e que esteja perto do idealY
+              if (runLen >= 3 && runLen >= bestRunLen) {
+                bestRunLen = runLen
+                bestY = Math.floor((runStart + y) / 2)
+              }
+              runStart = -1
+            }
+          }
+        }
+        // Sequencia que terminou no fim do range
+        if (runStart >= 0) {
+          const runLen = maxYClamp - runStart + 1
+          if (runLen >= 3 && runLen >= bestRunLen) {
+            bestY = Math.floor((runStart + maxYClamp) / 2)
+          }
+        }
+        return bestY > 0 ? bestY : idealY
+      }
+
       // Tolerancia: ignorar overflow < 8% da pagina (evita pagina extra so com footer)
       const minRemainingPx = Math.floor(sliceHeightPx * 0.08)
       let yPx = 0
       let pageIdx = 0
       while (yPx < canvas.height) {
         const remainingPx = canvas.height - yPx
-        // Se sobrou pouco e ja temos pelo menos 1 pagina, joga o resto na ultima pagina (nao cria nova)
         if (pageIdx > 0 && remainingPx < minRemainingPx) break
-        const thisSliceHeightPx = Math.min(sliceHeightPx, remainingPx)
+
+        let thisSliceHeightPx: number
+        if (remainingPx <= sliceHeightPx) {
+          // Última fatia — pega tudo que sobrou
+          thisSliceHeightPx = remainingPx
+        } else {
+          // Procura linha branca perto do limite ideal
+          const idealY = yPx + sliceHeightPx
+          const cutY = findCutY(idealY, canvas.height)
+          thisSliceHeightPx = cutY - yPx
+        }
 
         // Cria canvas temporario pra fatia
         const sliceCanvas = document.createElement('canvas')
