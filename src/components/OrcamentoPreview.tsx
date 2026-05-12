@@ -82,33 +82,66 @@ function formatBRLBare(v: number): string {
   return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-// Procura uma posicao de quebra "boa" perto do Y ideal:
-// pega o elemento que termina mais proximo (e antes) de Y, e usa o bottom dele.
-// tolerance: quanto pode procurar pra cima/baixo (em px)
+// Encontra posicao de quebra que NAO corta blocos atomicos.
+// Estrategia:
+//  1) Se idealY cai dentro de algum [data-no-break], move pra ANTES dele (top - margem)
+//  2) Repete ate nenhum no-break ser atingido
+//  3) Refina: pega o bottom de algum elemento entre (Y-15%, Y) pra colar a quebra no fim de bloco
 function findBreakNear(container: HTMLElement, idealY: number, tolerance: number): number {
-  // Walk all descendant elements (depth limitado pra perf), pega quem fica entre [idealY-tol, idealY+tol/3]
-  const minY = idealY - tolerance
-  const maxY = idealY + tolerance / 3
   const containerTop = container.getBoundingClientRect().top + window.scrollY
-  let bestBottom = idealY
-  let bestDistance = Infinity
-  // Filhos diretos sao mais relevantes (sections, cards)
-  const candidates: HTMLElement[] = []
-  for (const child of Array.from(container.children) as HTMLElement[]) {
-    candidates.push(child)
-    // Inclui netos pra capturar mais granularidade (cards de item etc)
-    for (const grand of Array.from(child.children) as HTMLElement[]) {
-      candidates.push(grand)
+  const noBreakEls = Array.from(container.querySelectorAll('[data-no-break]')) as HTMLElement[]
+
+  const localTop = (el: HTMLElement) => {
+    const r = el.getBoundingClientRect()
+    return { top: r.top + window.scrollY - containerTop, bottom: r.bottom + window.scrollY - containerTop }
+  }
+
+  // 1) Se idealY cai dentro de algum no-break, move pra antes (com margem de 8px)
+  let y = idealY
+  for (let iter = 0; iter < 5; iter++) {
+    let moved = false
+    for (const el of noBreakEls) {
+      const { top, bottom } = localTop(el)
+      // Se Y cai dentro do bloco (com margem)
+      if (y > top + 2 && y < bottom + 2) {
+        y = top - 8
+        moved = true
+        break
+      }
+    }
+    if (!moved) break
+  }
+
+  // Se foi movido pra MUITO antes (perdemos > 30% da pagina), eh melhor empurrar pra DEPOIS do no-break
+  // (a pagina anterior fica curta demais)
+  if (idealY - y > tolerance * 3) {
+    // Procura no-break que tava no caminho e usa seu bottom
+    for (const el of noBreakEls) {
+      const { top, bottom } = localTop(el)
+      if (top <= idealY + 2 && bottom >= y - 2 && bottom < idealY + tolerance) {
+        return bottom + 4
+      }
     }
   }
-  for (const el of candidates) {
-    const rect = el.getBoundingClientRect()
-    const elBottom = rect.bottom + window.scrollY - containerTop
-    if (elBottom >= minY && elBottom <= maxY) {
-      const d = Math.abs(elBottom - idealY)
-      if (d < bestDistance) {
-        bestDistance = d
-        bestBottom = elBottom
+
+  // 2) Refino: cola no fim de algum elemento entre (y-tolerance, y) pra ficar limpo
+  const minRefine = y - tolerance
+  let bestBottom = y
+  let bestDist = Infinity
+  const allBlocks: HTMLElement[] = []
+  for (const child of Array.from(container.children) as HTMLElement[]) {
+    allBlocks.push(child)
+    for (const g of Array.from(child.children) as HTMLElement[]) {
+      allBlocks.push(g)
+    }
+  }
+  for (const el of allBlocks) {
+    const { bottom } = localTop(el)
+    if (bottom >= minRefine && bottom <= y + 4) {
+      const d = Math.abs(y - bottom)
+      if (d < bestDist) {
+        bestDist = d
+        bestBottom = bottom
       }
     }
   }
@@ -174,47 +207,89 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
   useLayoutEffect(() => {
     if (renderMode || !containerRef.current || !innerRef.current) return
-    const ro = new ResizeObserver(() => {
+
+    // Limpa gaps anteriores
+    const cleanGaps = () => {
+      innerRef.current?.querySelectorAll('.page-gap-spacer').forEach(el => el.remove())
+    }
+
+    const recalc = () => {
+      cleanGaps()
       const w = innerRef.current!.offsetWidth
       const h = innerRef.current!.offsetHeight
-      // A4 ratio: 210mm x 297mm. Altura proporcional a largura
       const A4_H = w * (297 / 210)
       setPageHeight(A4_H)
-      // Calcula pontos de quebra (smart slicing eh feito no PDF — aqui marca aproximacao)
+
       const breaks: number[] = []
       let y = A4_H
-      while (y < h) {
-        // Procura proximo elemento filho que termina perto de Y, e ajusta pra DEPOIS dele
-        // (evita visualizar quebra no meio de bloco)
+      let safety = 0
+      while (y < h && safety++ < 20) {
         const adjusted = findBreakNear(innerRef.current!, y, A4_H * 0.10)
         breaks.push(adjusted)
+        // Pula a posicao onde inseriremos o gap (40px) pra calcular proxima
         y = adjusted + A4_H
       }
       setPageBreaks(breaks)
+
+      // Insere SPACERS reais que empurram o conteudo (simulando folha separada)
+      // (DEPOIS de setar state pra DOM ja ter os elementos)
+      requestAnimationFrame(() => {
+        if (!innerRef.current) return
+        const containerTop = innerRef.current.getBoundingClientRect().top + window.scrollY
+        const allEls = Array.from(innerRef.current.querySelectorAll('div, table')) as HTMLElement[]
+        // ordena por bottom Y
+        for (let i = 0; i < breaks.length; i++) {
+          const breakY = breaks[i]
+          let bestEl: HTMLElement | null = null
+          let bestBottom = -1
+          for (const el of allEls) {
+            // Pula elementos que ja sao spacers
+            if (el.classList.contains('page-gap-spacer')) continue
+            // Pula elementos que sao filhos de no-break (queremos parar ANTES do bloco)
+            const noBreakParent = el.closest('[data-no-break]')
+            if (noBreakParent && noBreakParent !== el) continue
+            const r = el.getBoundingClientRect()
+            const bottom = r.bottom + window.scrollY - containerTop
+            if (bottom <= breakY + 4 && bottom > bestBottom) {
+              bestBottom = bottom
+              bestEl = el
+            }
+          }
+          if (bestEl && bestEl.parentNode) {
+            const gap = document.createElement('div')
+            gap.className = 'page-gap-spacer'
+            gap.setAttribute('data-page', String(i + 1))
+            gap.style.cssText = 'height:36px;background:#e5e7eb;margin:8px -24px;border-top:2px dashed #ef4444;border-bottom:2px dashed #ef4444;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:bold;color:#dc2626;letter-spacing:0.05em;'
+            gap.textContent = `↑ FIM FOLHA ${i + 1} · INÍCIO FOLHA ${i + 2} ↓`
+            bestEl.parentNode.insertBefore(gap, bestEl.nextSibling)
+          }
+        }
+      })
+    }
+
+    const ro = new ResizeObserver(() => {
+      // debounce simples: cancela se ja vai recalcular
+      requestAnimationFrame(recalc)
     })
     ro.observe(innerRef.current)
-    return () => ro.disconnect()
+    recalc()
+    return () => {
+      ro.disconnect()
+      cleanGaps()
+    }
   }, [renderMode, carrinho, motoresAgrupados, acessorios])
 
   return (
     <div ref={containerRef} className="text-[10px] text-gray-900 leading-relaxed font-sans bg-white">
       <div ref={innerRef} className="m-4 border border-gray-900 px-6 pt-5 pb-6 relative">
-        {!renderMode && pageBreaks.map((y, i) => (
-          <div
-            key={i}
-            className="absolute left-0 right-0 pointer-events-none z-10"
-            style={{ top: `${y}px`, height: 0 }}
-          >
-            <div className="border-t-2 border-dashed border-red-500/70 -mx-6 relative">
-              <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-red-500 text-white text-[9px] font-bold px-2 py-0.5 rounded shadow">
-                ↑ FIM PÁGINA {i + 1} · ↓ PÁGINA {i + 2}
-              </div>
-            </div>
-          </div>
-        ))}
         {!renderMode && pageHeight > 0 && pageBreaks.length === 0 && carrinho.length > 0 && (
-          <div className="absolute top-2 right-2 bg-green-500 text-white text-[9px] font-bold px-2 py-0.5 rounded shadow z-10 pointer-events-none">
-            ✓ Cabe em 1 página
+          <div className="absolute top-2 right-2 bg-green-600 text-white text-[9px] font-bold px-2 py-0.5 rounded shadow z-10 pointer-events-none">
+            ✓ 1 folha A4
+          </div>
+        )}
+        {!renderMode && pageBreaks.length > 0 && (
+          <div className="absolute top-2 right-2 bg-blue-600 text-white text-[9px] font-bold px-2 py-0.5 rounded shadow z-10 pointer-events-none">
+            {pageBreaks.length + 1} folhas A4
           </div>
         )}
         {/* Logo */}
@@ -266,7 +341,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
               const letra = String.fromCharCode(65 + idx)
               const subtotal = it.valor * it.qtd
               return (
-                <div key={it.uid || idx} className="group relative border border-gray-300 rounded-md p-3 bg-white shadow-sm">
+                <div key={it.uid || idx} data-no-break className="group relative border border-gray-300 rounded-md p-3 bg-white shadow-sm">
                   <div className="flex justify-between items-start gap-2 mb-1.5">
                     <div className="font-bold text-[10.5px] flex-1 min-w-0 text-gray-900">
                       <span className="text-gray-900">{letra} - {String(it.qtd).padStart(2, '0')}</span>
@@ -318,7 +393,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
           {/* ACESSÓRIOS */}
           {acessorios ? (
-            <div className="group mt-3 border border-gray-300 rounded-md p-3 bg-white shadow-sm">
+            <div data-no-break className="group mt-3 border border-gray-300 rounded-md p-3 bg-white shadow-sm">
               <div className="flex items-baseline justify-between gap-2 mb-1.5">
                 <div className="font-bold text-[10.5px] text-gray-900">
                   <span className="text-gray-900">— ACESSÓRIOS</span>
@@ -354,15 +429,15 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
           {/* VALOR TOTAL DE EQUIPAMENTOS */}
           {mostrarTotalEquip && (
-            <div className="flex justify-between text-[10.5px] font-bold mt-4 px-3 py-2 bg-gray-100 border-y border-gray-400 tracking-wide">
-              <span className="text-gray-800 uppercase">Valor total de equipamentos</span>
+            <div data-no-break className="flex justify-between text-[10.5px] font-bold mt-4 px-4 py-2 border-2 border-gray-700 rounded-lg tracking-wide">
+              <span className="text-gray-900 uppercase">Valor total de equipamentos</span>
               <span className="text-gray-900">R$ {formatBRLBare(totalEquip)}</span>
             </div>
           )}
 
           {/* Motores */}
           {motoresAgrupados.length > 0 && (
-            <div className="mt-3 border border-gray-300 rounded-md p-3 bg-white shadow-sm">
+            <div data-no-break className="mt-3 border border-gray-300 rounded-md p-3 bg-white shadow-sm">
               <div className="font-bold text-[10px] tracking-wider uppercase text-gray-700 pb-1.5 border-b-2 border-gray-800 mb-2">
                 {motoresTitle.replace(':', '')}
               </div>
@@ -393,7 +468,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           )}
 
           {/* VALOR TOTAL DA PROPOSTA */}
-          <div className="flex justify-between items-center text-[12px] font-black mt-6 px-4 py-3 border-2 border-gray-900 rounded-lg tracking-wide">
+          <div data-no-break className="flex justify-between items-center text-[12px] font-black mt-6 px-4 py-3 border-2 border-gray-900 rounded-lg tracking-wide">
             <span className="text-gray-900 uppercase">Valor total da proposta com motor novo</span>
             <span className="text-gray-900 text-[13px]">R$ {formatBRLBare(totalGeral)}</span>
           </div>
