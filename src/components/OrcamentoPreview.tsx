@@ -826,8 +826,12 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             )
           })()}
 
-          {/* Termos comerciais — campos editáveis em modo edit */}
-          <div data-no-break className="mt-5 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded text-[14.5px] text-gray-800 space-y-1.5">
+          {/* Termos comerciais — campos editáveis em modo edit
+              CSS Fragmentation: força bloco a NÃO quebrar entre páginas */}
+          <div
+            data-no-break
+            style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}
+            className="mt-5 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded text-[14.5px] text-gray-800 space-y-1.5">
             {(() => {
               // Converte string BR (DD/MM/AAAA) → ISO (AAAA-MM-DD) e vice-versa pra <input type="date">
               const brToIso = (br: string) => {
@@ -1062,7 +1066,10 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             </div>
                           )}
                           {temParcelas ? (
-                            <table className="w-full text-[12px] border-collapse mt-0.5">
+                            <table
+                              data-no-break
+                              style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}
+                              className="w-full text-[12px] border-collapse mt-0.5">
                               <thead>
                                 <tr className="bg-gray-100 border-b-2 border-gray-700">
                                   <th className="text-left py-1.5 px-2 font-bold text-gray-700 uppercase tracking-wider text-[11px]">Data</th>
@@ -1073,7 +1080,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                               </thead>
                               <tbody>
                                 {arr.map(p => (
-                                  <tr key={p.id} className="border-b border-gray-200">
+                                  <tr key={p.id} style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }} className="border-b border-gray-200">
                                     <td className="py-1 px-2">
                                       {!renderMode && onUpdateParcelas ? (
                                         <div>
