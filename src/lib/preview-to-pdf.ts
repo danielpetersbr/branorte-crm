@@ -32,8 +32,10 @@ export async function gerarPdfDoPreview(
 ): Promise<Blob> {
   const pageWidthMm = opts.pageWidth ?? 210
   const pageHeightMm = opts.pageHeight ?? 297
-  const scale = opts.scale ?? 2.5
-  const containerWidthPx = opts.containerWidthPx ?? 1024
+  // scale alto = texto mais nítido. 3 é o sweet spot pra A4.
+  const scale = opts.scale ?? 3
+  // 1100px ≈ 130dpi pra A4 — texto sai maior e mais legível.
+  const containerWidthPx = opts.containerWidthPx ?? 1100
 
   // 1) Cria container off-screen com largura fixa pra o preview renderizar consistente
   const host = document.createElement('div')

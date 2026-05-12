@@ -35,8 +35,8 @@ export async function gerarDocxDoPreview(
 ): Promise<Blob> {
   const pageWidthMm = opts.pageWidth ?? 210
   const pageHeightMm = opts.pageHeight ?? 297
-  const scale = opts.scale ?? 2.5
-  const containerWidthPx = opts.containerWidthPx ?? 1024
+  const scale = opts.scale ?? 3
+  const containerWidthPx = opts.containerWidthPx ?? 1100
 
   // 1) Cria container off-screen
   const host = document.createElement('div')

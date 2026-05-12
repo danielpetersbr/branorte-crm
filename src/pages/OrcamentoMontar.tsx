@@ -14,6 +14,7 @@ import {
 } from '@/hooks/useCatalogo'
 import { FinalizarMontarModal, type CarrinhoSnapshot } from '@/components/FinalizarMontarModal'
 import { OrcamentoPreview } from '@/components/OrcamentoPreview'
+import { useOrcamentoModelos, type OrcamentoModelo } from '@/hooks/useOrcamentoBuilder'
 
 type Voltagem = 'monofasico' | 'trifasico'
 type ModoVisao = 'preview' | 'edicao'
@@ -218,6 +219,61 @@ export function OrcamentoMontar() {
       const motor = acharMotorCompativel(motores, it.motor_cv, it.motor_polos, novaVoltagem)
       return { ...it, motor_valor_unit: motor ? Number(motor.valor) : it.motor_valor_unit }
     }))
+  }
+
+  // Carrega um modelo pronto (orcamento_modelos) no carrinho do Montar Custom
+  function carregarDoModelo(modelo: OrcamentoModelo) {
+    if (carrinho.length > 0 && !confirm('Substituir os items atuais pelos do modelo?')) return
+    const novos: CarrinhoItem[] = []
+    // 1) Items do modelo viram CarrinhoItem; motores distribuídos round-robin
+    modelo.itens.forEach((it, i) => {
+      const motor = modelo.motores[i] || null
+      novos.push({
+        uid: gerarUid(),
+        catalogo_id: -1,
+        categoria: 'MODELO',
+        nome: it.nome,
+        specs: it.specs || [],
+        qtd: it.qtd || 1,
+        valor: Number(it.valor) || 0,
+        valor_original: Number(it.valor) || 0,
+        motor_cv: motor ? motor.cv : null,
+        motor_polos: motor ? motor.polos : null,
+        motor_qtd: 1,
+        motor_valor_unit: motor ? Number(motor.valor) : 0,
+        foto_url: null,
+      })
+    })
+    // 2) Motores extras (mais motores que items) → items dummy só com motor
+    for (let i = modelo.itens.length; i < modelo.motores.length; i++) {
+      const m = modelo.motores[i]
+      novos.push({
+        uid: gerarUid(),
+        catalogo_id: -1,
+        categoria: 'MOTOR',
+        nome: `Motor ${m.cv} CV ${m.polos} polos`,
+        specs: [`Tensão a confirmar (220V / 380V / 660V)`],
+        qtd: 1,
+        valor: 0,
+        valor_original: 0,
+        motor_cv: m.cv,
+        motor_polos: m.polos,
+        motor_qtd: 1,
+        motor_valor_unit: Number(m.valor) || 0,
+        foto_url: null,
+      })
+    }
+    setCarrinho(novos)
+    // 3) Acessórios — converte { items, valor } → { pct, items }
+    if (modelo.acessorios && modelo.acessorios.items?.length) {
+      const totalNovo = novos.reduce((s, it) => s + it.valor * it.qtd, 0)
+      const pct = totalNovo > 0 ? Math.round((modelo.acessorios.valor / totalNovo) * 100) : 5
+      setAcessorios({ pct: Math.max(1, Math.min(50, pct)), items: modelo.acessorios.items })
+    } else {
+      setAcessorios(null)
+    }
+    // 4) Voltagem do modelo
+    if (modelo.voltagem) aplicarVoltagem(modelo.voltagem)
   }
 
   if (loadingItems || loadingMotores) return <PageLoading />
