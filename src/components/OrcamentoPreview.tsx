@@ -208,15 +208,21 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   useLayoutEffect(() => {
     if (renderMode || !containerRef.current || !innerRef.current) return
 
-    // Limpa gaps anteriores
+    let isInternalMutation = false
+    let lastWidth = 0
+    let pendingTimer: any = null
+
     const cleanGaps = () => {
       innerRef.current?.querySelectorAll('.page-gap-spacer').forEach(el => el.remove())
     }
 
     const recalc = () => {
+      if (!innerRef.current) return
+      isInternalMutation = true
       cleanGaps()
-      const w = innerRef.current!.offsetWidth
-      const h = innerRef.current!.offsetHeight
+      const w = innerRef.current.offsetWidth
+      const h = innerRef.current.offsetHeight
+      lastWidth = w
       const A4_H = w * (297 / 210)
       setPageHeight(A4_H)
 
@@ -224,57 +230,61 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
       let y = A4_H
       let safety = 0
       while (y < h && safety++ < 20) {
-        const adjusted = findBreakNear(innerRef.current!, y, A4_H * 0.10)
+        const adjusted = findBreakNear(innerRef.current, y, A4_H * 0.10)
         breaks.push(adjusted)
-        // Pula a posicao onde inseriremos o gap (40px) pra calcular proxima
         y = adjusted + A4_H
       }
       setPageBreaks(breaks)
 
-      // Insere SPACERS reais que empurram o conteudo (simulando folha separada)
-      // (DEPOIS de setar state pra DOM ja ter os elementos)
-      requestAnimationFrame(() => {
-        if (!innerRef.current) return
-        const containerTop = innerRef.current.getBoundingClientRect().top + window.scrollY
-        const allEls = Array.from(innerRef.current.querySelectorAll('div, table')) as HTMLElement[]
-        // ordena por bottom Y
-        for (let i = 0; i < breaks.length; i++) {
-          const breakY = breaks[i]
-          let bestEl: HTMLElement | null = null
-          let bestBottom = -1
-          for (const el of allEls) {
-            // Pula elementos que ja sao spacers
-            if (el.classList.contains('page-gap-spacer')) continue
-            // Pula elementos que sao filhos de no-break (queremos parar ANTES do bloco)
-            const noBreakParent = el.closest('[data-no-break]')
-            if (noBreakParent && noBreakParent !== el) continue
-            const r = el.getBoundingClientRect()
-            const bottom = r.bottom + window.scrollY - containerTop
-            if (bottom <= breakY + 4 && bottom > bestBottom) {
-              bestBottom = bottom
-              bestEl = el
-            }
-          }
-          if (bestEl && bestEl.parentNode) {
-            const gap = document.createElement('div')
-            gap.className = 'page-gap-spacer'
-            gap.setAttribute('data-page', String(i + 1))
-            gap.style.cssText = 'height:36px;background:#e5e7eb;margin:8px -24px;border-top:2px dashed #ef4444;border-bottom:2px dashed #ef4444;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:bold;color:#dc2626;letter-spacing:0.05em;'
-            gap.textContent = `↑ FIM FOLHA ${i + 1} · INÍCIO FOLHA ${i + 2} ↓`
-            bestEl.parentNode.insertBefore(gap, bestEl.nextSibling)
+      // Insere SPACERS reais entre folhas
+      const containerTop = innerRef.current.getBoundingClientRect().top + window.scrollY
+      const allEls = Array.from(innerRef.current.querySelectorAll('div, table')) as HTMLElement[]
+      for (let i = 0; i < breaks.length; i++) {
+        const breakY = breaks[i]
+        let bestEl: HTMLElement | null = null
+        let bestBottom = -1
+        for (const el of allEls) {
+          if (el.classList.contains('page-gap-spacer')) continue
+          const noBreakParent = el.closest('[data-no-break]')
+          if (noBreakParent && noBreakParent !== el) continue
+          const r = el.getBoundingClientRect()
+          const bottom = r.bottom + window.scrollY - containerTop
+          if (bottom <= breakY + 4 && bottom > bestBottom) {
+            bestBottom = bottom
+            bestEl = el
           }
         }
+        if (bestEl && bestEl.parentNode) {
+          const gap = document.createElement('div')
+          gap.className = 'page-gap-spacer'
+          gap.style.cssText = 'height:36px;background:#e5e7eb;margin:8px -24px;border-top:2px dashed #ef4444;border-bottom:2px dashed #ef4444;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:bold;color:#dc2626;letter-spacing:0.05em;'
+          gap.textContent = `↑ FIM FOLHA ${i + 1} · INÍCIO FOLHA ${i + 2} ↓`
+          bestEl.parentNode.insertBefore(gap, bestEl.nextSibling)
+        }
+      }
+      // Libera observer DEPOIS do paint
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => { isInternalMutation = false })
       })
     }
 
+    const debouncedRecalc = () => {
+      clearTimeout(pendingTimer)
+      pendingTimer = setTimeout(recalc, 50)
+    }
+
+    // Observer SO reage a mudanca de LARGURA (nao altura — altura muda quando inserimos spacers)
     const ro = new ResizeObserver(() => {
-      // debounce simples: cancela se ja vai recalcular
-      requestAnimationFrame(recalc)
+      if (isInternalMutation) return
+      const newW = innerRef.current?.offsetWidth ?? 0
+      if (Math.abs(newW - lastWidth) < 2) return  // ignora pequenas variacoes
+      debouncedRecalc()
     })
     ro.observe(innerRef.current)
     recalc()
     return () => {
       ro.disconnect()
+      clearTimeout(pendingTimer)
       cleanGaps()
     }
   }, [renderMode, carrinho, motoresAgrupados, acessorios])
