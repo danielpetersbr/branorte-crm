@@ -36,7 +36,8 @@ export async function gerarDocxDoPreview(
   const pageWidthMm = opts.pageWidth ?? 210
   const pageHeightMm = opts.pageHeight ?? 297
   const scale = opts.scale ?? 3
-  const containerWidthPx = opts.containerWidthPx ?? 1100
+  // Container estreito (750) = fonte sai MAIOR no DOCX final (mobile-friendly)
+  const containerWidthPx = opts.containerWidthPx ?? 750
 
   // 1) Cria container off-screen
   const host = document.createElement('div')
