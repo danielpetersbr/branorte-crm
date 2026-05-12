@@ -13,7 +13,7 @@ import {
   type CatalogoItem, type CatalogoMotor,
 } from '@/hooks/useCatalogo'
 import { FinalizarMontarModal, type CarrinhoSnapshot } from '@/components/FinalizarMontarModal'
-import { OrcamentoPreview } from '@/components/OrcamentoPreview'
+import { OrcamentoPreview, type ParcelaPagamento } from '@/components/OrcamentoPreview'
 import { useOrcamentoModelos, type OrcamentoModelo } from '@/hooks/useOrcamentoBuilder'
 
 type Voltagem = 'monofasico' | 'trifasico'

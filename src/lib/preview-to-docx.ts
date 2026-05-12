@@ -271,6 +271,23 @@ async function canvasToArrayBuffer(canvas: HTMLCanvasElement): Promise<ArrayBuff
 }
 
 async function waitForImagesAndPaint(host: HTMLElement): Promise<void> {
+  // 0) Espera React MONTAR — host precisa ter children. Polling com timeout.
+  const mountStart = Date.now()
+  while (host.children.length === 0 && Date.now() - mountStart < 5000) {
+    await new Promise(r => setTimeout(r, 50))
+  }
+  // Espera content "estabilizar": altura precisa parar de crescer entre frames.
+  let lastHeight = -1
+  let stableFrames = 0
+  const stabStart = Date.now()
+  while (stableFrames < 3 && Date.now() - stabStart < 5000) {
+    await new Promise(r => requestAnimationFrame(r))
+    const h = host.offsetHeight
+    if (h === lastHeight && h > 100) stableFrames++
+    else stableFrames = 0
+    lastHeight = h
+  }
+
   const imgs = Array.from(host.querySelectorAll('img'))
   await Promise.all(imgs.map(img => {
     if (img.complete && img.naturalWidth > 0) return Promise.resolve()
@@ -282,5 +299,5 @@ async function waitForImagesAndPaint(host: HTMLElement): Promise<void> {
     })
   }))
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(null))))
-  await new Promise(r => setTimeout(r, 200))
+  await new Promise(r => setTimeout(r, 300))
 }
