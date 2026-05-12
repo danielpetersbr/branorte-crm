@@ -292,28 +292,33 @@ export function OrcamentoMontar() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] uppercase tracking-wider text-ink-muted font-semibold">Voltagem:</span>
-          <button
-            onClick={() => aplicarVoltagem('monofasico')}
-            className={`text-[11px] px-3 py-1.5 rounded font-semibold transition-all ${
-              voltagem === 'monofasico'
-                ? 'bg-warning text-white'
-                : 'bg-surface-2 text-ink-muted hover:bg-surface-3'
-            }`}
-          >
-            Monofásico
-          </button>
-          <button
-            onClick={() => aplicarVoltagem('trifasico')}
-            className={`text-[11px] px-3 py-1.5 rounded font-semibold transition-all ${
-              voltagem === 'trifasico'
-                ? 'bg-info text-white'
-                : 'bg-surface-2 text-ink-muted hover:bg-surface-3'
-            }`}
-          >
-            Trifásico
-          </button>
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Seletor de modelo pronto */}
+          <SelectorModelo onCarregar={carregarDoModelo} />
+
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] uppercase tracking-wider text-ink-muted font-semibold">Voltagem:</span>
+            <button
+              onClick={() => aplicarVoltagem('monofasico')}
+              className={`text-[11px] px-3 py-1.5 rounded font-semibold transition-all ${
+                voltagem === 'monofasico'
+                  ? 'bg-warning text-white'
+                  : 'bg-surface-2 text-ink-muted hover:bg-surface-3'
+              }`}
+            >
+              Monofásico
+            </button>
+            <button
+              onClick={() => aplicarVoltagem('trifasico')}
+              className={`text-[11px] px-3 py-1.5 rounded font-semibold transition-all ${
+                voltagem === 'trifasico'
+                  ? 'bg-info text-white'
+                  : 'bg-surface-2 text-ink-muted hover:bg-surface-3'
+              }`}
+            >
+              Trifásico
+            </button>
+          </div>
         </div>
       </div>
 
@@ -770,6 +775,79 @@ export function OrcamentoMontar() {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+
+// ──────────────────────────────────────────────────────────────────────────
+// Selector de modelo pronto (carrega items + motores + acessórios do banco)
+// ──────────────────────────────────────────────────────────────────────────
+function SelectorModelo({ onCarregar }: { onCarregar: (m: OrcamentoModelo) => void }) {
+  const { data: modelos, isLoading } = useOrcamentoModelos()
+  const [open, setOpen] = useState(false)
+  const [busca, setBusca] = useState('')
+  const filtrados = useMemo(() => {
+    if (!modelos) return []
+    if (!busca.trim()) return modelos
+    const q = busca.toLowerCase()
+    return modelos.filter(m =>
+      m.basename.toLowerCase().includes(q) ||
+      (m.pacote || '').toLowerCase().includes(q)
+    )
+  }, [modelos, busca])
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="text-[11px] px-3 py-1.5 rounded font-semibold bg-accent/15 hover:bg-accent/25 text-accent border border-accent/30 flex items-center gap-1.5"
+        title="Carregar items a partir de um modelo pronto"
+      >
+        <Package className="h-3.5 w-3.5" />
+        Carregar Modelo {modelos && `(${modelos.length})`}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute top-full right-0 mt-1 w-[420px] max-h-[60vh] overflow-hidden bg-bg border border-border rounded-lg shadow-2xl z-50 flex flex-col">
+            <div className="p-2 border-b border-border bg-surface-2">
+              <input
+                type="text"
+                value={busca}
+                onChange={e => setBusca(e.target.value)}
+                placeholder="Buscar modelo (ex: compacta, mini fabrica)..."
+                className="w-full px-2 py-1.5 bg-bg border border-border rounded text-[11px] text-ink focus:border-accent outline-none"
+                autoFocus
+              />
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {isLoading && <div className="p-4 text-[11px] text-ink-muted text-center">Carregando modelos…</div>}
+              {!isLoading && filtrados.length === 0 && <div className="p-4 text-[11px] text-ink-muted text-center">Nenhum modelo encontrado</div>}
+              {filtrados.map(m => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => { onCarregar(m); setOpen(false); setBusca('') }}
+                  className="w-full text-left px-3 py-2 hover:bg-surface-2 border-b border-border/50 group"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold text-ink truncate">{m.basename}</span>
+                    <span className="text-[10px] font-bold text-success tabular-nums shrink-0">{formatBRL(Number(m.total_proposta))}</span>
+                  </div>
+                  <div className="text-[9px] text-ink-faint mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    {m.pacote && <span className="px-1 py-0.5 rounded bg-surface-3 text-accent font-bold">{m.pacote}</span>}
+                    <span className="text-blue-400 font-medium">{m.voltagem}</span>
+                    {m.is_master && <span className="text-warning font-bold">MASTER</span>}
+                    {m.is_jr && <span className="text-info font-bold">JR</span>}
+                    <span>· {m.itens.length} items · {m.motores.length} motores</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
       )}
     </div>
   )
