@@ -597,38 +597,38 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
           {/* VALOR TOTAL DE EQUIPAMENTOS */}
           {mostrarTotalEquip && (
-            <div data-no-break className="flex justify-between text-[10.5px] font-bold mt-4 px-4 py-2 border-2 border-gray-700 rounded-lg tracking-wide">
-              <span className="text-gray-900 uppercase">Valor total de equipamentos</span>
-              <span className="text-gray-900">R$ {formatBRLBare(totalEquip)}</span>
+            <div data-no-break className="flex justify-between items-center text-[12px] font-bold mt-4 px-5 py-3 border-2 border-gray-700 rounded-lg tracking-wide">
+              <span className="text-gray-900 uppercase leading-none">Valor total de equipamentos</span>
+              <span className="text-gray-900 leading-none tabular-nums">R$ {formatBRLBare(totalEquip)}</span>
             </div>
           )}
 
           {/* Motores */}
           {motoresAgrupados.length > 0 && (
-            <div data-no-break className="mt-3 border border-gray-300 rounded-md p-3 bg-white shadow-sm">
-              <div className="font-bold text-[10px] tracking-wider uppercase text-gray-700 pb-1.5 border-b-2 border-gray-800 mb-2">
+            <div data-no-break className="mt-3 border border-gray-300 rounded-md p-4 bg-white shadow-sm">
+              <div className="font-bold text-[11px] tracking-wider uppercase text-gray-700 pb-2 border-b-2 border-gray-800 mb-2.5">
                 {motoresTitle.replace(':', '')}
               </div>
-              <table className="w-full text-[9.5px] border-collapse">
+              <table className="w-full text-[11px] border-collapse">
                 <thead>
                   <tr>
-                    <th className="text-left font-bold py-1.5 text-gray-600 uppercase tracking-wider text-[9px]">Tipo</th>
-                    <th className="text-right font-bold py-1.5 text-gray-600 uppercase tracking-wider text-[9px]">Novo</th>
+                    <th className="text-left font-bold py-2 text-gray-600 uppercase tracking-wider text-[10px]">Tipo</th>
+                    <th className="text-right font-bold py-2 text-gray-600 uppercase tracking-wider text-[10px]">Novo</th>
                   </tr>
                 </thead>
                 <tbody>
                   {motoresAgrupados.map(m => (
                     <tr key={`${m.cv}-${m.polos}`} className="border-t border-gray-200">
-                      <td className="py-1 text-gray-800">
+                      <td className="py-1.5 text-gray-800">
                         <span className="text-gray-400 mr-1.5">•</span>
                         {m.cv} CV {m.polos} polos{m.qtd > 1 && ` (qtd ${m.qtd})`}
                       </td>
-                      <td className="py-1 text-right text-gray-800">R$ {formatBRLBare(m.valor_total)}</td>
+                      <td className="py-1.5 text-right text-gray-800 tabular-nums">R$ {formatBRLBare(m.valor_total)}</td>
                     </tr>
                   ))}
                   <tr className="border-t-2 border-gray-700 font-bold">
-                    <td className="py-1.5 text-gray-900">TOTAL</td>
-                    <td className="py-1.5 text-right text-gray-900">R$ {formatBRLBare(totalMotores)}</td>
+                    <td className="py-2 text-gray-900">TOTAL</td>
+                    <td className="py-2 text-right text-gray-900 tabular-nums">R$ {formatBRLBare(totalMotores)}</td>
                   </tr>
                 </tbody>
               </table>
@@ -636,9 +636,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           )}
 
           {/* VALOR TOTAL DA PROPOSTA */}
-          <div data-no-break className="flex justify-between items-center text-[12px] font-black mt-6 px-4 py-3 border-2 border-gray-900 rounded-lg tracking-wide">
-            <span className="text-gray-900 uppercase">Valor total da proposta com motor novo</span>
-            <span className="text-gray-900 text-[13px]">R$ {formatBRLBare(totalGeral)}</span>
+          <div data-no-break className="flex justify-between items-center text-[14px] font-black mt-6 px-5 py-4 border-2 border-gray-900 rounded-lg tracking-wide">
+            <span className="text-gray-900 uppercase leading-none">Valor total da proposta com motor novo</span>
+            <span className="text-gray-900 text-[15px] leading-none tabular-nums">R$ {formatBRLBare(totalGeral)}</span>
           </div>
 
           {/* Termos comerciais */}
