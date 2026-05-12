@@ -1013,11 +1013,23 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/)
                       return m ? `${m[3]}/${m[2]}/${m[1]}` : iso
                     }
-                    function addDays(brDate: string, days: number): string {
+                    function addDaysCorridos(brDate: string, days: number): string {
                       const iso = brToIso(brDate)
                       if (!iso) return ''
                       const d = new Date(iso + 'T12:00:00')
                       d.setDate(d.getDate() + days)
+                      return isoToBr(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)
+                    }
+                    function addDiasUteis(brDate: string, days: number): string {
+                      const iso = brToIso(brDate)
+                      if (!iso) return ''
+                      const d = new Date(iso + 'T12:00:00')
+                      let restantes = days
+                      while (restantes > 0) {
+                        d.setDate(d.getDate() + 1)
+                        const dow = d.getDay()  // 0=dom 6=sab
+                        if (dow !== 0 && dow !== 6) restantes--
+                      }
                       return isoToBr(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)
                     }
                     // Extrai número de dias do prazo de entrega ("90 dias (úteis)" → 90)
@@ -1025,18 +1037,27 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       const m = (txt || '').match(/(\d+)\s*dias?/i)
                       return m ? parseInt(m[1], 10) : 90
                     }
+                    // Detecta se prazo é "úteis" (default) ou "corridos"
+                    function prazoEhUteis(txt: string): boolean {
+                      return !/corrido/i.test(txt || '')
+                    }
+                    function addDiasPrazo(base: string, days: number): string {
+                      return prazoEhUteis(prazoEntregaTxt)
+                        ? addDiasUteis(base, days)
+                        : addDaysCorridos(base, days)
+                    }
                     function dataCalculada(p: ParcelaPagamento): string {
                       const base = dataVendaTxt
                       if (p.dataTipo === 'no_pedido') return base || '—'
                       if (p.dataTipo === 'na_nf') {
                         // Na emissão da NF = data da venda + prazo de entrega
                         if (!base) return '—'
-                        return addDays(base, parsePrazoDias(prazoEntregaTxt))
+                        return addDiasPrazo(base, parsePrazoDias(prazoEntregaTxt))
                       }
                       if (p.dataTipo === 'apos_nf') {
                         // X dias APÓS a NF = base + prazoEntrega + X dias
                         if (!base) return `+${p.dias || 30}d após NF`
-                        return addDays(base, parsePrazoDias(prazoEntregaTxt) + (p.dias || 30))
+                        return addDiasPrazo(base, parsePrazoDias(prazoEntregaTxt) + (p.dias || 30))
                       }
                       if (p.dataTipo === 'data_fixa') return p.dataFixa || '—'
                       return '—'
