@@ -236,26 +236,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
         } catch {}
       }
 
-      // 2) Mapeia carrinho pra formato do builder
-      const itensDocx: CustomDocxItem[] = snapshot.itens.map((it, idx) => ({
-        letra: String.fromCharCode(65 + idx),
-        qtd: it.qtd,
-        nome: it.nome,
-        specs: it.specs,
-        valor: it.valor,
-        motor_cv: it.motor_cv,
-        motor_polos: it.motor_polos,
-        motor_qtd: it.motor_qtd,
-        foto_url: it.foto_url ?? null,
-      }))
-
-      const motoresDocx: CustomDocxMotor[] = snapshot.motoresAgrupados.map(m => ({
-        cv: m.cv,
-        polos: m.polos,
-        qtd: m.qtd,
-        valor_unit: m.valor_unit,
-        valor_total: m.valor_total,
-      }))
+      // 2) (removido) — antes mapeava pro gerador docx-lib, hoje gerarDocxDoPreview
+      //   reusa previewProps direto, nao precisa de transformacao intermediaria.
 
       // 3) Cria registro no DB
       const itensDb: OrcamentoItem[] = snapshot.itens.map((it, idx) => ({

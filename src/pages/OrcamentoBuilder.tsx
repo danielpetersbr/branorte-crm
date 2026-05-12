@@ -140,6 +140,9 @@ export function OrcamentoBuilder() {
   const [pdfBlobAtual, setPdfBlobAtual] = useState<Blob | null>(null)
   const [enviandoWA, setEnviandoWA] = useState<'idle' | 'enviando' | 'enviado' | 'erro'>('idle')
   const [enviandoWAMsg, setEnviandoWAMsg] = useState<string>('')
+  const [waPromptOpen, setWaPromptOpen] = useState(false)
+  const [waPromptValue, setWaPromptValue] = useState('')
+  const [waPromptResolve, setWaPromptResolve] = useState<((v: string | null) => void) | null>(null)
 
   // Aviso antes de fechar popup do orçamento se tiver dados não-salvos
   useEffect(() => {
@@ -632,14 +635,16 @@ export function OrcamentoBuilder() {
 
       // 1) Pega telefone do vendedor via extensão (WID capturado pelo WhatsApp Web)
       let { telefone: telefoneExt, vendedor: vendedorExt } = await getTelefoneVendedorDaExtensao()
-      // Fallback: se extensão não respondeu (versão antiga), usa localStorage ou prompt
+      // Fallback: se extensão não respondeu (versão antiga), usa localStorage ou modal
       if (!telefoneExt) {
         const saved = localStorage.getItem('branorte_meu_telefone_wa') || ''
-        const tel = window.prompt(
-          'Não consegui detectar seu telefone automaticamente.\n\n' +
-          'Digite SEU número de WhatsApp (DDD + número, ex: 48999999999):',
-          saved.replace(/^55/, '')
-        )
+        setWaPromptValue(saved.replace(/^55/, ''))
+        const tel = await new Promise<string | null>((resolve) => {
+          setWaPromptResolve(() => resolve)
+          setWaPromptOpen(true)
+        })
+        setWaPromptOpen(false)
+        setWaPromptResolve(null)
         if (!tel) throw new Error('Telefone não fornecido')
         const digits = tel.replace(/[^\d]/g, '')
         if (digits.length < 10 || digits.length > 13) throw new Error('Telefone inválido (use DDD + número)')
@@ -1607,6 +1612,58 @@ export function OrcamentoBuilder() {
           setUploadOpen(false)
         }}
       />
+
+      {/* Modal estilizado pra pedir telefone WA (substitui prompt() feio) */}
+      {waPromptOpen && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4"
+          onClick={() => { waPromptResolve?.(null); setWaPromptOpen(false) }}
+        >
+          <div
+            className="bg-bg border border-border rounded-xl shadow-2xl max-w-md w-full overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-emerald-600/15 border-b border-emerald-600/30 px-5 py-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-emerald-600 flex items-center justify-center">
+                <svg className="h-5 w-5 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 6.31a7.85 7.85 0 0 0-13.4 5.6 7.85 7.85 0 0 0 1.05 3.94L4 20l4.27-1.12a7.85 7.85 0 0 0 3.74.95h.01a7.86 7.86 0 0 0 5.58-13.52z"/></svg>
+              </div>
+              <div>
+                <div className="text-[13px] font-bold text-ink">SEU WhatsApp</div>
+                <div className="text-[11px] text-ink-faint">Não consegui detectar automaticamente — digite seu número</div>
+              </div>
+            </div>
+            <div className="p-5">
+              <label className="text-[11px] uppercase tracking-wider text-ink-muted font-semibold">Telefone (DDD + número)</label>
+              <input
+                autoFocus
+                type="tel"
+                value={waPromptValue}
+                onChange={(e) => setWaPromptValue(e.target.value.replace(/[^\d]/g, '').slice(0, 13))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && waPromptValue.replace(/\D/g, '').length >= 10) {
+                    waPromptResolve?.(waPromptValue)
+                  }
+                  if (e.key === 'Escape') { waPromptResolve?.(null); setWaPromptOpen(false) }
+                }}
+                placeholder="48984692860"
+                className="mt-1 w-full px-3 py-2.5 text-[15px] bg-surface-2 border border-border rounded-md focus:outline-none focus:border-emerald-500 text-ink"
+              />
+              <div className="text-[10px] text-ink-faint mt-1.5">Ex: 48984692860 (sem +55, sem espaços, sem traços)</div>
+            </div>
+            <div className="bg-surface-2 px-5 py-3 flex justify-end gap-2 border-t border-border">
+              <button
+                onClick={() => { waPromptResolve?.(null); setWaPromptOpen(false) }}
+                className="text-[12px] px-4 py-2 rounded text-ink-muted hover:bg-surface-3 transition"
+              >Cancelar</button>
+              <button
+                onClick={() => waPromptResolve?.(waPromptValue)}
+                disabled={waPromptValue.replace(/\D/g, '').length < 10}
+                className="text-[12px] px-5 py-2 rounded bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-semibold transition"
+              >Confirmar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
