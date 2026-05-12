@@ -844,18 +844,33 @@ function SelectorModelo({ onCarregar }: { onCarregar: (m: OrcamentoModelo) => vo
                   key={m.id}
                   type="button"
                   onClick={() => { onCarregar(m); setOpen(false); setBusca('') }}
-                  className="w-full text-left px-3 py-2 hover:bg-surface-2 border-b border-border/50 group"
+                  className="w-full text-left px-3 py-2 hover:bg-surface-2 border-b border-border/50 group flex items-center gap-2.5"
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-semibold text-ink truncate">{m.basename}</span>
-                    <span className="text-[10px] font-bold text-success tabular-nums shrink-0">{formatBRL(Number(m.total_proposta))}</span>
-                  </div>
-                  <div className="text-[9px] text-ink-faint mt-0.5 flex items-center gap-1.5 flex-wrap">
-                    {m.pacote && <span className="px-1 py-0.5 rounded bg-surface-3 text-accent font-bold">{m.pacote}</span>}
-                    <span className="text-blue-400 font-medium">{m.voltagem}</span>
-                    {m.is_master && <span className="text-warning font-bold">MASTER</span>}
-                    {m.is_jr && <span className="text-info font-bold">JR</span>}
-                    <span>· {m.itens.length} items · {m.motores.length} motores</span>
+                  {m.foto_url ? (
+                    <img
+                      src={m.foto_url}
+                      alt={m.basename}
+                      className="w-12 h-12 object-cover rounded-md border border-border shrink-0 bg-white"
+                      loading="lazy"
+                      onError={e => { e.currentTarget.style.display = 'none' }}
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-md border border-border bg-surface-2 shrink-0 flex items-center justify-center text-ink-faint">
+                      <Package className="h-4 w-4" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-semibold text-ink truncate">{m.basename}</span>
+                      <span className="text-[10px] font-bold text-success tabular-nums shrink-0">{formatBRL(Number(m.total_proposta))}</span>
+                    </div>
+                    <div className="text-[9px] text-ink-faint mt-0.5 flex items-center gap-1.5 flex-wrap">
+                      {m.pacote && <span className="px-1 py-0.5 rounded bg-surface-3 text-accent font-bold">{m.pacote}</span>}
+                      <span className="text-blue-400 font-medium">{m.voltagem}</span>
+                      {m.is_master && <span className="text-warning font-bold">MASTER</span>}
+                      {m.is_jr && <span className="text-info font-bold">JR</span>}
+                      <span>· {m.itens.length} items · {m.motores.length} motores</span>
+                    </div>
                   </div>
                 </button>
               ))}
