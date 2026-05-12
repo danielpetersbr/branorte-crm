@@ -684,7 +684,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     })}
                     <tr className="border-t-2 border-gray-700 font-bold">
                       <td className="py-2 text-gray-900">TOTAL</td>
-                      <td className="py-2 text-right text-gray-900 tabular-nums">R$ {formatBRLBare(totalMotores)}</td>
+                      <td className="py-2 text-right text-gray-900 tabular-nums">
+                        {totalMotores > 0 ? `R$ ${formatBRLBare(totalMotores)}` : ''}
+                      </td>
                     </tr>
                   </tbody>
                 </table>
@@ -761,9 +763,31 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           {/* Termos comerciais — campos editáveis em modo edit */}
           <div data-no-break className="mt-5 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded text-[11px] text-gray-800 space-y-1.5">
             {(() => {
+              // Converte string BR (DD/MM/AAAA) → ISO (AAAA-MM-DD) e vice-versa pra <input type="date">
+              const brToIso = (br: string) => {
+                const m = br.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+                if (!m) return ''
+                return `${m[3]}-${m[2]}-${m[1]}`
+              }
+              const isoToBr = (iso: string) => {
+                const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+                if (!m) return iso
+                return `${m[3]}/${m[2]}/${m[1]}`
+              }
               const renderTerm = (_label: string, valor: string | null | undefined, placeholder: string, key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento') => {
                 const isPh = !valor || !valor.trim()
                 if (!renderMode && onUpdateTerm) {
+                  if (key === 'dataVenda') {
+                    // Date picker nativo
+                    return (
+                      <input
+                        type="date"
+                        value={brToIso(valor || '')}
+                        onChange={e => onUpdateTerm(key, e.target.value ? isoToBr(e.target.value) : '')}
+                        className={`bg-transparent border-b border-dashed border-gray-300 hover:border-blue-500 focus:border-blue-600 focus:outline-none px-1 cursor-pointer ${isPh ? 'text-gray-400' : 'text-gray-800'}`}
+                      />
+                    )
+                  }
                   return (
                     <input
                       type="text"
