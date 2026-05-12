@@ -90,6 +90,8 @@ export function OrcamentoBuilder() {
   const _qsParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
   const _initNome = _qsParams.get('nome') || ''
   const _initPhone = _qsParams.get('phone') || ''
+  const _fromExt = _qsParams.get('from') === 'ext'  // veio embedado pela extensão Branorte
+  const _chatId = _qsParams.get('chat_id') || ''
   const [cliNome, setCliNome] = useState(_initNome)
   const [cliDados, setCliDados] = useState<ClienteDados>(_initPhone ? { fone: _initPhone } : {})
   const [searchCli, setSearchCli] = useState('')
@@ -487,6 +489,60 @@ export function OrcamentoBuilder() {
     setEnviandoWAMsg('')
   }
 
+  // Envia o PDF DIRETO pro chat aberto via postMessage pra extensão Branorte
+  async function enviarPdfProClienteViaExt() {
+    if (!pdfBlobAtual) {
+      setEnviandoWA('erro')
+      setEnviandoWAMsg('PDF não disponível em memória. Gere o orçamento novamente.')
+      return
+    }
+    setEnviandoWA('enviando')
+    setEnviandoWAMsg('Fazendo upload do PDF...')
+    try {
+      const { supabase } = await import('@/lib/supabase')
+      const filename = `${orcamentoSalvo?.numero || Date.now()}-${cliNome.replace(/[^a-zA-Z0-9]+/g, '_')}.pdf`
+      const path = `orcamentos/${new Date().toISOString().slice(0,7)}/${filename}`
+      const { error: upErr } = await supabase.storage
+        .from('qr-media')
+        .upload(path, pdfBlobAtual, { contentType: 'application/pdf', upsert: true })
+      if (upErr) throw new Error('Upload falhou: ' + upErr.message)
+      const { data: pub } = supabase.storage.from('qr-media').getPublicUrl(path)
+      if (!pub?.publicUrl) throw new Error('URL não gerada')
+
+      setEnviandoWAMsg('Enviando pelo seu WhatsApp...')
+      // Listener pra resposta da extensão
+      const resultPromise = new Promise<{ ok: boolean; erro?: string }>((resolve) => {
+        const onMsg = (ev: MessageEvent) => {
+          if (ev.data?.type === 'branorte:send-pdf-result') {
+            window.removeEventListener('message', onMsg)
+            resolve(ev.data)
+          }
+        }
+        window.addEventListener('message', onMsg)
+        setTimeout(() => { window.removeEventListener('message', onMsg); resolve({ ok: false, erro: 'timeout' }) }, 30000)
+      })
+      window.parent.postMessage({
+        type: 'branorte:send-pdf-to-chat',
+        pdfUrl: pub.publicUrl,
+        filename,
+        caption: `📄 Orçamento ${orcamentoSalvo?.numero || ''} — ${cliNome}`,
+      }, '*')
+      const result = await resultPromise
+      if (result.ok) {
+        setEnviandoWA('enviado')
+        setEnviandoWAMsg('✅ Enviado pro chat aberto do WhatsApp!')
+        // Fecha modal automático em 2s
+        setTimeout(() => { try { window.parent.postMessage({ type: 'branorte:close-orc-modal' }, '*') } catch {} }, 2000)
+      } else {
+        setEnviandoWA('erro')
+        setEnviandoWAMsg('Erro no envio: ' + (result.erro || 'falhou'))
+      }
+    } catch (e: any) {
+      setEnviandoWA('erro')
+      setEnviandoWAMsg(e?.message || 'erro')
+    }
+  }
+
   // Envia o PDF gerado pro próprio WhatsApp do vendedor logado
   async function enviarPdfProMeuWhatsApp() {
     if (!pdfBlobAtual) {
@@ -584,20 +640,33 @@ export function OrcamentoBuilder() {
               📁 Salvo em <code className="bg-surface-3 px-1 rounded">Orçamentos 2026 / {mes}</code>
             </p>
           )}
-          {/* Bloco enviar pro meu WhatsApp */}
+          {/* Bloco enviar PDF — botões variam se veio da extensão (from=ext) */}
           {pdfBlobAtual && enviandoWA !== 'enviado' && (
             <div className="mb-4 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
-              <button
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2.5 rounded-md flex items-center gap-2 disabled:opacity-50 mx-auto"
-                onClick={enviarPdfProMeuWhatsApp}
-                disabled={enviandoWA === 'enviando' || gerando}
-              >
-                {enviandoWA === 'enviando'
-                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Enviando...</>
-                  : <>📲 Enviar PDF pro meu WhatsApp</>}
-              </button>
+              <div className="flex flex-wrap gap-2 justify-center">
+                {_fromExt && (
+                  <button
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2.5 rounded-md flex items-center gap-2 disabled:opacity-50"
+                    onClick={enviarPdfProClienteViaExt}
+                    disabled={enviandoWA === 'enviando' || gerando}
+                  >
+                    {enviandoWA === 'enviando'
+                      ? <><Loader2 className="h-4 w-4 animate-spin" /> Enviando...</>
+                      : <>💬 Enviar pro cliente ({_initNome || 'chat aberto'})</>}
+                  </button>
+                )}
+                <button
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5 rounded-md flex items-center gap-2 disabled:opacity-50"
+                  onClick={enviarPdfProMeuWhatsApp}
+                  disabled={enviandoWA === 'enviando' || gerando}
+                >
+                  {enviandoWA === 'enviando'
+                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Enviando...</>
+                    : <>📲 Enviar pro meu WhatsApp</>}
+                </button>
+              </div>
               {enviandoWAMsg && (
-                <div className={`text-[12px] mt-2 ${enviandoWA === 'erro' ? 'text-red-400' : 'text-emerald-300'}`}>
+                <div className={`text-[12px] mt-2 text-center ${enviandoWA === 'erro' ? 'text-red-400' : 'text-emerald-300'}`}>
                   {enviandoWAMsg}
                 </div>
               )}
