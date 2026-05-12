@@ -777,10 +777,12 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             const temDesconto = !!desconto && descontoValor > 0
             return (
               <>
-                <div data-no-break className="mt-6 px-6 py-5 border-2 border-gray-900 rounded-lg tracking-wide">
-                  <div className={`flex justify-between items-center gap-4 min-h-[28px] ${temDesconto ? 'text-[17px] font-bold' : 'text-[19px] font-black'}`}>
-                    <span className="text-gray-900 uppercase leading-[1] flex-1">Valor total da proposta com motor novo</span>
-                    <span className={`text-gray-900 leading-[1] tabular-nums whitespace-nowrap ${temDesconto ? 'text-[18px] text-gray-500 line-through decoration-1' : 'text-[20px]'}`}>
+                <div data-no-break className={`mt-6 px-6 py-4 border-2 rounded-lg tracking-wide ${temDesconto ? 'border-gray-400 bg-gray-50/40' : 'border-gray-900'}`}>
+                  <div className={`flex justify-between items-center gap-4 ${temDesconto ? 'text-[15px] font-semibold' : 'text-[19px] font-black'}`}>
+                    <span className={`uppercase flex-1 leading-normal ${temDesconto ? 'text-gray-500' : 'text-gray-900'}`}>
+                      Valor total da proposta com motor novo{temDesconto && ' (sem desconto)'}
+                    </span>
+                    <span className={`tabular-nums whitespace-nowrap leading-normal ${temDesconto ? 'text-[16px] text-gray-500' : 'text-[20px] text-gray-900'}`}>
                       R$ {formatBRLBare(totalGeral)}
                     </span>
                   </div>
@@ -1243,16 +1245,15 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                     )}
                                   </tr>
                                 ))}
-                                <tr className="border-t-2 border-gray-700 font-bold bg-gray-50">
-                                  <td className="py-1.5 px-2 uppercase text-[11px] tracking-wider" colSpan={2}>Total</td>
-                                  <td className="py-1.5 px-2 text-right">
-                                    <span className={`text-[11px] mr-2 ${Math.abs(totalPct - 100) < 0.5 ? 'text-emerald-700' : 'text-amber-700'}`}>
-                                      {totalPct.toFixed(2)}%
-                                    </span>
-                                    <span className="tabular-nums">R$ {formatBRLBare(totalParcelas)}</span>
-                                  </td>
-                                  {!renderMode && <td className="print:hidden"></td>}
-                                </tr>
+                                {/* Linha TOTAL — só no modo edit, e SÓ se soma != 100% (aviso de validação) */}
+                                {!renderMode && Math.abs(totalPct - 100) > 0.5 && (
+                                  <tr className="border-t border-amber-300 bg-amber-50 print:hidden">
+                                    <td className="py-1 px-2 text-[10px] text-amber-800 italic" colSpan={3}>
+                                      ⚠️ Soma das parcelas: <strong>{totalPct.toFixed(2)}%</strong> (R$ {formatBRLBare(totalParcelas)}) — ajuste pra fechar 100%
+                                    </td>
+                                    {!renderMode && <td className="print:hidden"></td>}
+                                  </tr>
+                                )}
                               </tbody>
                             </table>
                           ) : (
