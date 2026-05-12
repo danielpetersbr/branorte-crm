@@ -41,6 +41,7 @@ export interface OrcamentoModelo {
   total_proposta: number
   arquivo_origem: string | null
   template_path: string | null
+  foto_url: string | null  // thumbnail representativa (derivada de catalogo_items)
   ativo: boolean
 }
 

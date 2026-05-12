@@ -52,6 +52,18 @@ export interface PreviewTerms {
   formaPagamento?: string | null
 }
 
+// Parcela estruturada de pagamento
+export interface ParcelaPagamento {
+  id: string
+  dataTipo: 'no_pedido' | 'na_nf' | 'apos_nf' | 'data_fixa'
+  dias?: number          // usado quando dataTipo='apos_nf'
+  dataFixa?: string      // usado quando dataTipo='data_fixa' (formato BR DD/MM/AAAA)
+  metodo: 'PIX' | 'BOLETO' | 'DINHEIRO' | 'TRANSFERENCIA' | 'CARTAO' | ''
+  // Apenas UM dos dois: pct ou valor manual
+  pct?: number
+  valor?: number
+}
+
 export interface OrcamentoPreviewProps {
   carrinho: PreviewItem[]
   motoresAgrupados: PreviewMotor[]
@@ -91,6 +103,10 @@ export interface OrcamentoPreviewProps {
   onUpdateNome?: (uid: string, novoNome: string) => void
   onUpdateTerm?: (key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento', valor: string) => void
   onMoverItem?: (uid: string, direcao: 'cima' | 'baixo') => void
+
+  // Parcelas estruturadas (alternativa ao texto livre de formaPagamento)
+  parcelas?: ParcelaPagamento[]
+  onUpdateParcelas?: (p: ParcelaPagamento[]) => void
 }
 
 function formatBRLBare(v: number): string {
@@ -181,6 +197,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     tensaoMotores = null, onUpdateTensaoMotores,
     desconto, onUpdateDesconto,
     onAddAcessorios, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateTerm, onMoverItem,
+    parcelas, onUpdateParcelas,
   } = props
   const [editingNomeUid, setEditingNomeUid] = useState<string | null>(null)
   const [editingNomeValor, setEditingNomeValor] = useState<string>('')
@@ -386,12 +403,13 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             {pageBreaks.length + 1} folhas A4
           </div>
         )}
-        {/* Logo */}
-        <div className="text-center mb-5">
+        {/* Logo — inline styles pra garantir render correto no PDF/DOCX */}
+        <div className="text-center mb-5" style={{ textAlign: 'center', marginBottom: 20 }}>
           <img
             src="/branorte-logo.png"
             alt="BRANORTE"
             className="inline-block h-12 w-auto"
+            style={{ display: 'inline-block', height: 48, width: 'auto', maxWidth: '100%' }}
             crossOrigin="anonymous"
           />
         </div>
@@ -540,19 +558,21 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       )}
                     </div>
                     {!renderMode && it.uid && (
-                      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 shrink-0 print:hidden">
-                        {onMoverItem && idx > 0 && (
+                      <div className="flex items-center gap-0.5 shrink-0 print:hidden">
+                        {onMoverItem && (
                           <button
                             onClick={() => onMoverItem(it.uid!, 'cima')}
-                            className="text-gray-500 hover:text-blue-600 p-0.5 leading-none"
+                            disabled={idx === 0}
+                            className="text-gray-400 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed bg-gray-50 hover:bg-blue-50 border border-gray-200 rounded px-1.5 py-0.5 text-[14px] leading-none font-bold transition-all"
                             title="Subir item"
                             type="button"
                           >▲</button>
                         )}
-                        {onMoverItem && idx < carrinho.length - 1 && (
+                        {onMoverItem && (
                           <button
                             onClick={() => onMoverItem(it.uid!, 'baixo')}
-                            className="text-gray-500 hover:text-blue-600 p-0.5 leading-none"
+                            disabled={idx === carrinho.length - 1}
+                            className="text-gray-400 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed bg-gray-50 hover:bg-blue-50 border border-gray-200 rounded px-1.5 py-0.5 text-[14px] leading-none font-bold transition-all"
                             title="Descer item"
                             type="button"
                           >▼</button>
@@ -560,7 +580,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                         {onRemove && (
                           <button
                             onClick={() => onRemove(it.uid!)}
-                            className="text-red-600 hover:text-red-800 p-0.5"
+                            className="text-red-500 hover:text-white hover:bg-red-600 bg-red-50 border border-red-200 rounded p-1 transition-all"
                             title="Remover item"
                             type="button"
                           >
@@ -810,13 +830,25 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                 const isPh = !valor || !valor.trim()
                 if (!renderMode && onUpdateTerm) {
                   if (key === 'dataVenda') {
-                    // Date picker nativo
                     return (
                       <input
                         type="date"
                         value={brToIso(valor || '')}
                         onChange={e => onUpdateTerm(key, e.target.value ? isoToBr(e.target.value) : '')}
                         className={`bg-transparent border-b border-dashed border-gray-300 hover:border-blue-500 focus:border-blue-600 focus:outline-none px-1 cursor-pointer ${isPh ? 'text-gray-400' : 'text-gray-800'}`}
+                      />
+                    )
+                  }
+                  // formaPagamento → textarea full-width (texto pode ser longo)
+                  if (key === 'formaPagamento') {
+                    return (
+                      <textarea
+                        defaultValue={valor || ''}
+                        key={valor || 'empty'}
+                        onBlur={e => onUpdateTerm(key, e.target.value)}
+                        placeholder={placeholder}
+                        rows={(valor || '').length > 80 ? 2 : 1}
+                        className={`w-full resize-none bg-transparent border-b border-dashed border-gray-300 hover:border-blue-500 focus:border-blue-600 focus:outline-none px-1 ${isPh ? 'italic text-gray-400' : 'text-gray-800'}`}
                       />
                     )
                   }
@@ -886,56 +918,207 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                 <>
                   <div className="flex gap-1.5 items-center"><span className="text-gray-400">•</span><span>Data da venda – {renderTerm('Data da venda', dataVendaTxt, 'a combinar', 'dataVenda')}</span></div>
                   <div className="flex gap-1.5 items-center"><span className="text-gray-400">•</span><span>Prazo de entrega – {renderTerm('Prazo de entrega', prazoEntregaTxt, '90 dias (úteis)', 'prazoEntrega')}</span></div>
-                  <div className="flex gap-1.5 items-start">
-                    <span className="text-gray-400">•</span>
-                    <div className="flex-1">
-                      <div>Forma de pagamento – {renderTerm('Forma de pagamento', formaPagamentoTxt, 'a combinar', 'formaPagamento')}</div>
-                      {!renderMode && onUpdateTerm && (
-                        <div className="mt-2 print:hidden">
-                          <div className="text-[12px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">
-                            Sugestões — clique para preencher
-                          </div>
-                          <div className="flex flex-wrap gap-1.5">
-                            {templatesFP.map(t => {
-                              const built = t.build()
-                              const selected = formaPagamentoTxt === built
-                              return (
-                                <button
-                                  key={t.id}
-                                  type="button"
-                                  onClick={() => onUpdateTerm('formaPagamento', selected ? '' : built)}
-                                  className={`text-[13px] px-2.5 py-1 rounded-md font-semibold border transition-all ${
-                                    selected
-                                      ? 'bg-blue-600 text-white border-blue-700 shadow-sm'
-                                      : 'bg-white hover:bg-blue-50 text-blue-700 border-blue-300 hover:border-blue-400'
-                                  }`}
-                                  title={built}
+                  {/* TABELA DE PARCELAS DE PAGAMENTO (estruturada) */}
+                  {(() => {
+                    const arr = parcelas || []
+                    const temParcelas = arr.length > 0
+                    function novoId() { return `p-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` }
+                    function calcValor(p: ParcelaPagamento): number {
+                      if (typeof p.valor === 'number') return p.valor
+                      if (typeof p.pct === 'number') return Math.round((totalGeral * p.pct / 100) * 100) / 100
+                      return 0
+                    }
+                    function dataLabel(p: ParcelaPagamento): string {
+                      if (p.dataTipo === 'no_pedido') return 'NO PEDIDO'
+                      if (p.dataTipo === 'na_nf') return 'NA EMISSÃO DA NOTA'
+                      if (p.dataTipo === 'apos_nf') return `${p.dias || 30} DIAS APÓS A NOTA`
+                      if (p.dataTipo === 'data_fixa') return p.dataFixa || 'DATA FIXA'
+                      return ''
+                    }
+                    function updateParcela(id: string, patch: Partial<ParcelaPagamento>) {
+                      if (!onUpdateParcelas) return
+                      onUpdateParcelas(arr.map(p => p.id === id ? { ...p, ...patch } : p))
+                    }
+                    function removeParcela(id: string) {
+                      if (!onUpdateParcelas) return
+                      onUpdateParcelas(arr.filter(p => p.id !== id))
+                    }
+                    function addParcela(preset?: Partial<ParcelaPagamento>) {
+                      if (!onUpdateParcelas) return
+                      onUpdateParcelas([...arr, { id: novoId(), dataTipo: 'na_nf', metodo: 'PIX', pct: 0, ...(preset || {}) }])
+                    }
+                    function applyTemplate(tipo: string) {
+                      if (!onUpdateParcelas) return
+                      const id1 = novoId(), id2 = novoId(), id3 = novoId(), id4 = novoId()
+                      if (tipo === 'avista') onUpdateParcelas([{ id: id1, dataTipo: 'no_pedido', metodo: 'PIX', pct: 100 }])
+                      else if (tipo === '50_50') onUpdateParcelas([
+                        { id: id1, dataTipo: 'no_pedido', metodo: 'PIX', pct: 50 },
+                        { id: id2, dataTipo: 'na_nf', metodo: 'PIX', pct: 50 },
+                      ])
+                      else if (tipo === '30_60_90') onUpdateParcelas([
+                        { id: id1, dataTipo: 'apos_nf', dias: 30, metodo: 'BOLETO', pct: 33.34 },
+                        { id: id2, dataTipo: 'apos_nf', dias: 60, metodo: 'BOLETO', pct: 33.33 },
+                        { id: id3, dataTipo: 'apos_nf', dias: 90, metodo: 'BOLETO', pct: 33.33 },
+                      ])
+                      else if (tipo === 'pedido_nf_30_60') onUpdateParcelas([
+                        { id: id1, dataTipo: 'no_pedido', metodo: 'PIX', pct: 25 },
+                        { id: id2, dataTipo: 'na_nf', metodo: 'PIX', pct: 25 },
+                        { id: id3, dataTipo: 'apos_nf', dias: 30, metodo: 'BOLETO', pct: 25 },
+                        { id: id4, dataTipo: 'apos_nf', dias: 60, metodo: 'BOLETO', pct: 25 },
+                      ])
+                    }
+                    const totalPct = arr.reduce((s, p) => s + (typeof p.pct === 'number' ? p.pct : 0), 0)
+                    const totalParcelas = arr.reduce((s, p) => s + calcValor(p), 0)
+                    return (
+                      <div className="flex gap-1.5 items-start">
+                        <span className="text-gray-400 mt-0.5">•</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="font-semibold">Forma de pagamento:</span>
+                            {!renderMode && onUpdateParcelas && (
+                              <div className="flex items-center gap-1 print:hidden">
+                                <select
+                                  onChange={e => { if (e.target.value) { applyTemplate(e.target.value); e.target.value = '' } }}
+                                  className="text-[12px] px-1 py-0.5 bg-blue-50 border border-blue-300 rounded text-blue-700 cursor-pointer focus:outline-none"
+                                  defaultValue=""
                                 >
-                                  {selected && <span className="mr-1">✓</span>}
-                                  {t.label}
-                                </button>
-                              )
-                            })}
-                            {formaPagamentoTxt && !templatesFP.some(t => t.build() === formaPagamentoTxt) && (
-                              <button
-                                type="button"
-                                onClick={() => onUpdateTerm('formaPagamento', '')}
-                                className="text-[13px] px-2.5 py-1 rounded-md bg-gray-50 hover:bg-gray-100 text-gray-600 font-semibold border border-gray-300"
-                                title="Limpar campo"
-                              >
-                                ✕ limpar
-                              </button>
+                                  <option value="">📋 Templates</option>
+                                  <option value="avista">100% à vista</option>
+                                  <option value="50_50">50% pedido + 50% NF</option>
+                                  <option value="30_60_90">3× 30/60/90 dias</option>
+                                  <option value="pedido_nf_30_60">25/25/25/25 pedido+NF+30+60</option>
+                                </select>
+                                <button
+                                  type="button"
+                                  onClick={() => addParcela()}
+                                  className="text-[12px] px-1.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded text-emerald-700 font-bold"
+                                  title="Adicionar parcela"
+                                >+ Parcela</button>
+                                {temParcelas && (
+                                  <button
+                                    type="button"
+                                    onClick={() => { if (confirm('Limpar todas as parcelas?')) onUpdateParcelas([]) }}
+                                    className="text-[12px] text-gray-500 hover:text-red-600 px-1"
+                                    title="Limpar"
+                                  >✕</button>
+                                )}
+                              </div>
                             )}
                           </div>
-                          {formaPagamentoTxt && !templatesFP.some(t => t.build() === formaPagamentoTxt) && (
-                            <div className="text-[12px] text-gray-500 italic mt-1.5">
-                              Texto customizado — clique numa sugestão pra substituir
-                            </div>
+                          {temParcelas ? (
+                            <table className="w-full text-[12px] border-collapse mt-0.5">
+                              <thead>
+                                <tr className="bg-gray-100 border-b-2 border-gray-700">
+                                  <th className="text-left py-1.5 px-2 font-bold text-gray-700 uppercase tracking-wider text-[11px]">Data</th>
+                                  <th className="text-left py-1.5 px-2 font-bold text-gray-700 uppercase tracking-wider text-[11px]">Método</th>
+                                  <th className="text-right py-1.5 px-2 font-bold text-gray-700 uppercase tracking-wider text-[11px]">Valor</th>
+                                  {!renderMode && <th className="w-6 print:hidden"></th>}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {arr.map(p => (
+                                  <tr key={p.id} className="border-b border-gray-200">
+                                    <td className="py-1 px-2">
+                                      {!renderMode && onUpdateParcelas ? (
+                                        <div className="flex items-center gap-1">
+                                          <select
+                                            value={p.dataTipo}
+                                            onChange={e => updateParcela(p.id, { dataTipo: e.target.value as ParcelaPagamento['dataTipo'] })}
+                                            className="text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded"
+                                          >
+                                            <option value="no_pedido">No pedido</option>
+                                            <option value="na_nf">Na NF</option>
+                                            <option value="apos_nf">Após NF (dias)</option>
+                                            <option value="data_fixa">Data fixa</option>
+                                          </select>
+                                          {p.dataTipo === 'apos_nf' && (
+                                            <input
+                                              type="number" min={1} max={365}
+                                              value={p.dias ?? 30}
+                                              onChange={e => updateParcela(p.id, { dias: parseInt(e.target.value) || 0 })}
+                                              className="w-12 text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded text-center"
+                                            />
+                                          )}
+                                          {p.dataTipo === 'data_fixa' && (
+                                            <input
+                                              type="text"
+                                              value={p.dataFixa || ''}
+                                              onChange={e => updateParcela(p.id, { dataFixa: e.target.value })}
+                                              placeholder="DD/MM/AAAA"
+                                              className="w-20 text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded"
+                                            />
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <span className="uppercase font-semibold">{dataLabel(p)}</span>
+                                      )}
+                                    </td>
+                                    <td className="py-1 px-2">
+                                      {!renderMode && onUpdateParcelas ? (
+                                        <select
+                                          value={p.metodo}
+                                          onChange={e => updateParcela(p.id, { metodo: e.target.value as ParcelaPagamento['metodo'] })}
+                                          className="text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded"
+                                        >
+                                          <option value="">—</option>
+                                          <option value="PIX">PIX</option>
+                                          <option value="BOLETO">BOLETO</option>
+                                          <option value="DINHEIRO">DINHEIRO</option>
+                                          <option value="TRANSFERENCIA">TRANSFERÊNCIA</option>
+                                          <option value="CARTAO">CARTÃO</option>
+                                        </select>
+                                      ) : (
+                                        <span className="font-semibold">{p.metodo}</span>
+                                      )}
+                                    </td>
+                                    <td className="py-1 px-2 text-right">
+                                      {!renderMode && onUpdateParcelas ? (
+                                        <div className="flex items-center justify-end gap-0.5">
+                                          <input
+                                            type="number" min={0} max={100} step={0.01}
+                                            value={p.pct ?? ''}
+                                            onChange={e => updateParcela(p.id, { pct: e.target.value === '' ? undefined : parseFloat(e.target.value), valor: undefined })}
+                                            placeholder="%"
+                                            className="w-14 text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded text-right"
+                                          />
+                                          <span className="text-gray-500 text-[11px]">% =</span>
+                                          <span className="font-bold tabular-nums text-gray-900 min-w-[60px] text-right">R$ {formatBRLBare(calcValor(p))}</span>
+                                        </div>
+                                      ) : (
+                                        <span className="font-bold tabular-nums">R$ {formatBRLBare(calcValor(p))}</span>
+                                      )}
+                                    </td>
+                                    {!renderMode && onUpdateParcelas && (
+                                      <td className="py-1 px-1 text-center print:hidden">
+                                        <button
+                                          type="button"
+                                          onClick={() => removeParcela(p.id)}
+                                          className="text-red-500 hover:text-red-700 text-[16px] leading-none"
+                                          title="Remover"
+                                        >×</button>
+                                      </td>
+                                    )}
+                                  </tr>
+                                ))}
+                                <tr className="border-t-2 border-gray-700 font-bold bg-gray-50">
+                                  <td className="py-1.5 px-2 uppercase text-[11px] tracking-wider" colSpan={2}>Total</td>
+                                  <td className="py-1.5 px-2 text-right">
+                                    <span className={`text-[11px] mr-2 ${Math.abs(totalPct - 100) < 0.5 ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                      {totalPct.toFixed(2)}%
+                                    </span>
+                                    <span className="tabular-nums">R$ {formatBRLBare(totalParcelas)}</span>
+                                  </td>
+                                  {!renderMode && <td className="print:hidden"></td>}
+                                </tr>
+                              </tbody>
+                            </table>
+                          ) : (
+                            <div>{renderTerm('Forma de pagamento', formaPagamentoTxt, 'a combinar (use templates ou + Parcela)', 'formaPagamento')}</div>
                           )}
                         </div>
-                      )}
-                    </div>
-                  </div>
+                      </div>
+                    )
+                  })()}
                   <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Frete – por conta do cliente</span></div>
                   <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Validade da proposta – 10 dias após o envio</span></div>
                 </>
