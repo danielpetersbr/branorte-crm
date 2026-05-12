@@ -334,32 +334,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           </div>
 
           <SectionHeader>Nossas Redes Sociais</SectionHeader>
-          <div className="grid grid-cols-4 gap-2 text-[9px] text-gray-700">
-            {[
-              { icon: '📧', label: 'E-mail',      href: 'mailto:contato@mbranorte.com.br' },
-              { icon: '📷', label: 'Instagram',   href: 'https://www.instagram.com/branorte_metalurgica/' },
-              { icon: '▶️', label: 'YouTube',     href: 'https://www.youtube.com/@mbranorte' },
-              { icon: '📘', label: 'Facebook',    href: 'https://www.facebook.com/branorte.metalurgica' },
-              { icon: '💬', label: 'WhatsApp',    href: 'https://api.whatsapp.com/send/?phone=5548984692860&text&type=phone_number&app_absent=0' },
-              { icon: '📞', label: 'Telefone',    href: 'tel:+554836584502' },
-              { icon: '📍', label: 'Localização', href: 'https://maps.google.com/?q=Metal%C3%BArgica+BBA+Branorte+Gr%C3%A3o+Par%C3%A1+SC' },
-            ].map(({ icon, label, href }) => (
-              <a
-                key={label}
-                href={href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex flex-col items-center gap-0.5 py-1.5 rounded hover:bg-gray-100 transition-colors group"
-                title={href}
-              >
-                <div className="text-[18px] leading-none group-hover:scale-110 transition-transform">{icon}</div>
-                <div className="text-[8.5px] font-semibold text-gray-600 group-hover:text-gray-900">{label}</div>
-              </a>
-            ))}
+          <div className="text-[9.5px] text-gray-800 space-y-0.5">
+            <div><span className="font-bold">Instagram:</span> @branorte_metalurgica</div>
+            <div><span className="font-bold">YouTube:</span> @mbranorte</div>
+            <div><span className="font-bold">Facebook:</span> branorte.metalurgica</div>
           </div>
-          {!renderMode && (
-            <div className="text-center text-[8px] italic text-gray-400 mt-1">PARA INTERAGIR CLIQUE NO ÍCONE</div>
-          )}
 
           <SectionHeader>Dados do Fabricante</SectionHeader>
           <div className="text-[9.5px] text-gray-800 space-y-0.5">
