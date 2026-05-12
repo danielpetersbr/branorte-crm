@@ -230,10 +230,76 @@ export async function gerarPdfDoPreview(
       }
     }
 
+    // 6) Decora todas as páginas: faixa verde Branorte no topo,
+    //    mini logo no canto sup direito (apenas pgs 2+) e "Página X de Y" no rodapé
+    await decorarPaginas(pdf, pageWidthMm, pageHeightMm)
+
     return pdf.output('blob')
   } finally {
     try { root?.unmount() } catch {}
     try { document.body.removeChild(host) } catch {}
+  }
+}
+
+/** Carrega o logo Branorte como dataURL (1x, cacheado) */
+let _logoCache: string | null = null
+async function carregarLogoBranorte(): Promise<string | null> {
+  if (_logoCache) return _logoCache
+  try {
+    const res = await fetch('/branorte-logo.png')
+    if (!res.ok) return null
+    const blob = await res.blob()
+    _logoCache = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = () => reject(reader.error)
+      reader.readAsDataURL(blob)
+    })
+    return _logoCache
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Aplica em TODAS as páginas:
+ *  - Faixa verde Branorte 1.5mm no topo
+ *  - Mini logo no canto superior direito (apenas pgs 2+, pra nao competir com o header grande da pg1)
+ *  - "Página X de Y" + assinatura discreta no rodapé
+ */
+async function decorarPaginas(pdf: jsPDF, pageW: number, pageH: number) {
+  const totalPages = pdf.getNumberOfPages()
+  const logo = await carregarLogoBranorte()
+
+  for (let p = 1; p <= totalPages; p++) {
+    pdf.setPage(p)
+
+    // Faixa verde Branorte (#00A859) no topo
+    pdf.setFillColor(0, 168, 89)
+    pdf.rect(0, 0, pageW, 1.5, 'F')
+
+    // Mini logo no canto sup direito — só pgs 2+ (na 1ª o logo grande já tá no header)
+    if (p > 1 && logo) {
+      // Logo: ~28mm largura x ~7mm altura (proporcao do branorte-logo.png)
+      pdf.addImage(logo, 'PNG', pageW - 32, 4, 28, 7, undefined, 'FAST')
+    }
+
+    // Rodapé: "Página X de Y" + assinatura
+    pdf.setFontSize(7)
+    pdf.setTextColor(140, 140, 140)
+    pdf.text(
+      `Página ${p} de ${totalPages}`,
+      pageW / 2,
+      pageH - 5.5,
+      { align: 'center' },
+    )
+    pdf.setTextColor(170, 170, 170)
+    pdf.text(
+      'BRANORTE · Metalúrgica BBA · contato@mbranorte.com.br · (48) 3658-4502',
+      pageW / 2,
+      pageH - 2.5,
+      { align: 'center' },
+    )
   }
 }
 
