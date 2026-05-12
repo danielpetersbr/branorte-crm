@@ -403,13 +403,15 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             {pageBreaks.length + 1} folhas A4
           </div>
         )}
-        {/* Logo — inline styles pra garantir render correto no PDF/DOCX */}
+        {/* Logo — dimensoes EXPLICITAS pra evitar bug do html2canvas com width:auto
+            Logo natural eh 2715x427 (ratio 6.36). Forco 305x48 pra renderizar consistente */}
         <div className="text-center mb-5" style={{ textAlign: 'center', marginBottom: 20 }}>
           <img
             src="/branorte-logo.png"
             alt="BRANORTE"
-            className="inline-block h-12 w-auto"
-            style={{ display: 'inline-block', height: 48, width: 'auto', maxWidth: '100%' }}
+            width={305}
+            height={48}
+            style={{ display: 'inline-block', width: 305, height: 48, maxWidth: '100%' }}
             crossOrigin="anonymous"
           />
         </div>
@@ -600,12 +602,24 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       }
                     </div>
                     {it.foto_url && (
-                      <div className="shrink-0 w-40 flex flex-col items-center">
-                        <div className="w-40 h-40 bg-white border border-gray-300 rounded p-1 flex items-center justify-center">
+                      <div className="shrink-0" style={{ width: 160 }}>
+                        <div
+                          style={{
+                            width: 160, height: 160,
+                            background: '#fff',
+                            border: '1px solid #d1d5db',
+                            borderRadius: 4,
+                            padding: 4,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            overflow: 'hidden',
+                          }}
+                        >
                           <img
                             src={it.foto_url}
                             alt={it.nome}
-                            className="max-w-full max-h-full object-contain"
+                            width={150}
+                            height={150}
+                            style={{ width: 150, height: 150, objectFit: 'contain', display: 'block' }}
                             loading="lazy"
                             crossOrigin="anonymous"
                           />
