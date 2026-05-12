@@ -311,9 +311,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           )}
 
           {/* VALOR TOTAL DA PROPOSTA */}
-          <div className="flex justify-between items-center text-[12px] font-black mt-6 px-3 py-3 border-l-4 border-emerald-600 bg-emerald-50/60 shadow-sm tracking-wide">
+          <div className="flex justify-between items-center text-[12px] font-black mt-6 px-4 py-3 border-2 border-gray-900 rounded-lg tracking-wide">
             <span className="text-gray-900 uppercase">Valor total da proposta com motor novo</span>
-            <span className="text-emerald-800 text-[13px]">R$ {formatBRLBare(totalGeral)}</span>
+            <span className="text-gray-900 text-[13px]">R$ {formatBRLBare(totalGeral)}</span>
           </div>
 
           {/* Termos comerciais */}
