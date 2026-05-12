@@ -380,7 +380,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
   return (
     <div ref={containerRef} className="text-[15px] text-gray-900 leading-relaxed font-sans bg-white">
-      <div ref={innerRef} className={`m-4 px-6 pt-5 pb-6 relative ${renderMode || folhas.length === 0 ? 'border border-gray-900' : ''}`}>
+      <div ref={innerRef} className={`m-4 px-6 pt-5 pb-6 relative ${renderMode ? '' : (folhas.length === 0 ? 'border border-gray-900' : '')}`}>
         {/* Molduras INDEPENDENTES por folha A4 (so em modo edit + multi-pagina) */}
         {!renderMode && folhas.length > 1 && (
           <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
