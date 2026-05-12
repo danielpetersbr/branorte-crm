@@ -777,12 +777,12 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             const temDesconto = !!desconto && descontoValor > 0
             return (
               <>
-                <div data-no-break className={`mt-6 px-6 py-4 border-2 rounded-lg tracking-wide ${temDesconto ? 'border-gray-400 bg-gray-50/40' : 'border-gray-900'}`}>
-                  <div className={`flex justify-between items-center gap-4 ${temDesconto ? 'text-[15px] font-semibold' : 'text-[19px] font-black'}`}>
-                    <span className={`uppercase flex-1 leading-normal ${temDesconto ? 'text-gray-500' : 'text-gray-900'}`}>
+                <div data-no-break className={`mt-6 px-6 py-5 border-2 rounded-lg tracking-wide ${temDesconto ? 'border-gray-400 bg-gray-50/40' : 'border-gray-900'}`}>
+                  <div className={`flex justify-between items-center gap-4 min-h-[32px] ${temDesconto ? 'text-[15px] font-semibold' : 'text-[19px] font-black'}`}>
+                    <span className={`uppercase flex-1 leading-tight ${temDesconto ? 'text-gray-500' : 'text-gray-900'}`}>
                       Valor total da proposta com motor novo{temDesconto && ' (sem desconto)'}
                     </span>
-                    <span className={`tabular-nums whitespace-nowrap leading-normal ${temDesconto ? 'text-[16px] text-gray-500' : 'text-[20px] text-gray-900'}`}>
+                    <span className={`tabular-nums whitespace-nowrap leading-tight ${temDesconto ? 'text-[16px] text-gray-500' : 'text-[20px] text-gray-900'}`}>
                       R$ {formatBRLBare(totalGeral)}
                     </span>
                   </div>
@@ -826,11 +826,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                 {/* VALOR TOTAL COM DESCONTO — caixa destacada (renderiza no PDF tb) */}
                 {temDesconto && (
                   <div data-no-break className="mt-2 px-6 py-5 border-2 border-emerald-700 rounded-lg tracking-wide bg-emerald-50/60">
-                    <div className="flex justify-between items-center gap-4 text-[20px] font-black">
-                      <span className="text-emerald-900 uppercase flex-1 leading-normal">
-                        Valor total com desconto{desconto?.tipo === 'pct' ? ` (${desconto.valor}%)` : ''}
+                    <div className="flex justify-between items-center gap-4 min-h-[40px] text-[20px] font-black">
+                      <span className="text-emerald-900 uppercase flex-1 leading-tight">
+                        Valor total com desconto
                       </span>
-                      <span className="text-emerald-900 text-[22px] tabular-nums whitespace-nowrap leading-normal">
+                      <span className="text-emerald-900 text-[22px] tabular-nums whitespace-nowrap leading-tight">
                         R$ {formatBRLBare(totalFinal)}
                       </span>
                     </div>
