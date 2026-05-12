@@ -869,26 +869,46 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     <div className="flex-1">
                       <div>Forma de pagamento – {renderTerm('Forma de pagamento', formaPagamentoTxt, 'a combinar', 'formaPagamento')}</div>
                       {!renderMode && onUpdateTerm && (
-                        <div className="mt-1 flex flex-wrap gap-1 print:hidden">
-                          {templatesFP.map(t => (
-                            <button
-                              key={t.id}
-                              type="button"
-                              onClick={() => onUpdateTerm('formaPagamento', t.build())}
-                              className="text-[10.5px] px-1.5 py-0.5 rounded bg-blue-100 hover:bg-blue-200 text-blue-800 font-semibold border border-blue-300 transition-colors"
-                              title={t.build()}
-                            >
-                              {t.label}
-                            </button>
-                          ))}
-                          {formaPagamentoTxt && (
-                            <button
-                              type="button"
-                              onClick={() => onUpdateTerm('formaPagamento', '')}
-                              className="text-[10.5px] px-1.5 py-0.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold border border-gray-300"
-                            >
-                              ✕ limpar
-                            </button>
+                        <div className="mt-2 print:hidden">
+                          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">
+                            Sugestões — clique para preencher
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {templatesFP.map(t => {
+                              const built = t.build()
+                              const selected = formaPagamentoTxt === built
+                              return (
+                                <button
+                                  key={t.id}
+                                  type="button"
+                                  onClick={() => onUpdateTerm('formaPagamento', selected ? '' : built)}
+                                  className={`text-[11px] px-2.5 py-1 rounded-md font-semibold border transition-all ${
+                                    selected
+                                      ? 'bg-blue-600 text-white border-blue-700 shadow-sm'
+                                      : 'bg-white hover:bg-blue-50 text-blue-700 border-blue-300 hover:border-blue-400'
+                                  }`}
+                                  title={built}
+                                >
+                                  {selected && <span className="mr-1">✓</span>}
+                                  {t.label}
+                                </button>
+                              )
+                            })}
+                            {formaPagamentoTxt && !templatesFP.some(t => t.build() === formaPagamentoTxt) && (
+                              <button
+                                type="button"
+                                onClick={() => onUpdateTerm('formaPagamento', '')}
+                                className="text-[11px] px-2.5 py-1 rounded-md bg-gray-50 hover:bg-gray-100 text-gray-600 font-semibold border border-gray-300"
+                                title="Limpar campo"
+                              >
+                                ✕ limpar
+                              </button>
+                            )}
+                          </div>
+                          {formaPagamentoTxt && !templatesFP.some(t => t.build() === formaPagamentoTxt) && (
+                            <div className="text-[10px] text-gray-500 italic mt-1.5">
+                              Texto customizado — clique numa sugestão pra substituir
+                            </div>
                           )}
                         </div>
                       )}
