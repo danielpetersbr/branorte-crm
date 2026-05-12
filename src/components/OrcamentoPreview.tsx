@@ -949,6 +949,30 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       if (p.dataTipo === 'data_fixa') return p.dataFixa || 'DATA FIXA'
                       return ''
                     }
+                    // Calcula a data efetiva da parcela em formato BR (DD/MM/AAAA)
+                    function brToIso(br: string): string {
+                      const m = (br || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+                      return m ? `${m[3]}-${m[2]}-${m[1]}` : ''
+                    }
+                    function isoToBr(iso: string): string {
+                      const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+                      return m ? `${m[3]}/${m[2]}/${m[1]}` : iso
+                    }
+                    function addDays(brDate: string, days: number): string {
+                      const iso = brToIso(brDate)
+                      if (!iso) return ''
+                      const d = new Date(iso + 'T12:00:00')
+                      d.setDate(d.getDate() + days)
+                      return isoToBr(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)
+                    }
+                    function dataCalculada(p: ParcelaPagamento): string {
+                      const base = dataVendaTxt
+                      if (p.dataTipo === 'no_pedido') return base || '—'
+                      if (p.dataTipo === 'na_nf') return base || '—'  // NF emitida no pedido
+                      if (p.dataTipo === 'apos_nf') return base ? addDays(base, p.dias || 30) : `+${p.dias || 30}d`
+                      if (p.dataTipo === 'data_fixa') return p.dataFixa || '—'
+                      return '—'
+                    }
                     function updateParcela(id: string, patch: Partial<ParcelaPagamento>) {
                       if (!onUpdateParcelas) return
                       onUpdateParcelas(arr.map(p => p.id === id ? { ...p, ...patch } : p))
@@ -1019,6 +1043,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                               </div>
                             )}
                           </div>
+                          {temParcelas && !dataVendaTxt && !renderMode && (
+                            <div className="text-[10px] bg-amber-50 border border-amber-300 text-amber-800 px-2 py-1.5 rounded mb-1.5 print:hidden">
+                              ⚠️ <strong>Preencha "Data da venda"</strong> acima pra calcular as datas das parcelas (NF + X dias)
+                            </div>
+                          )}
                           {temParcelas ? (
                             <table className="w-full text-[12px] border-collapse mt-0.5">
                               <thead>
@@ -1034,37 +1063,45 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                   <tr key={p.id} className="border-b border-gray-200">
                                     <td className="py-1 px-2">
                                       {!renderMode && onUpdateParcelas ? (
-                                        <div className="flex items-center gap-1">
-                                          <select
-                                            value={p.dataTipo}
-                                            onChange={e => updateParcela(p.id, { dataTipo: e.target.value as ParcelaPagamento['dataTipo'] })}
-                                            className="text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded"
-                                          >
-                                            <option value="no_pedido">No pedido</option>
-                                            <option value="na_nf">Na NF</option>
-                                            <option value="apos_nf">Após NF (dias)</option>
-                                            <option value="data_fixa">Data fixa</option>
-                                          </select>
-                                          {p.dataTipo === 'apos_nf' && (
-                                            <input
-                                              type="number" min={1} max={365}
-                                              value={p.dias ?? 30}
-                                              onChange={e => updateParcela(p.id, { dias: parseInt(e.target.value) || 0 })}
-                                              className="w-12 text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded text-center"
-                                            />
-                                          )}
-                                          {p.dataTipo === 'data_fixa' && (
-                                            <input
-                                              type="text"
-                                              value={p.dataFixa || ''}
-                                              onChange={e => updateParcela(p.id, { dataFixa: e.target.value })}
-                                              placeholder="DD/MM/AAAA"
-                                              className="w-20 text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded"
-                                            />
-                                          )}
+                                        <div>
+                                          <div className="flex items-center gap-1">
+                                            <select
+                                              value={p.dataTipo}
+                                              onChange={e => updateParcela(p.id, { dataTipo: e.target.value as ParcelaPagamento['dataTipo'] })}
+                                              className="text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded"
+                                            >
+                                              <option value="no_pedido">No pedido</option>
+                                              <option value="na_nf">Na NF</option>
+                                              <option value="apos_nf">Após NF (dias)</option>
+                                              <option value="data_fixa">Data fixa</option>
+                                            </select>
+                                            {p.dataTipo === 'apos_nf' && (
+                                              <input
+                                                type="number" min={1} max={365}
+                                                value={p.dias ?? 30}
+                                                onChange={e => updateParcela(p.id, { dias: parseInt(e.target.value) || 0 })}
+                                                className="w-12 text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded text-center"
+                                              />
+                                            )}
+                                            {p.dataTipo === 'data_fixa' && (
+                                              <input
+                                                type="text"
+                                                value={p.dataFixa || ''}
+                                                onChange={e => updateParcela(p.id, { dataFixa: e.target.value })}
+                                                placeholder="DD/MM/AAAA"
+                                                className="w-20 text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded"
+                                              />
+                                            )}
+                                          </div>
+                                          <div className={`text-[11px] font-bold mt-1 tabular-nums ${dataVendaTxt ? 'text-emerald-700' : 'text-amber-600'}`}>
+                                            📅 {dataVendaTxt ? dataCalculada(p) : 'preencha Data da venda no topo'}
+                                          </div>
                                         </div>
                                       ) : (
-                                        <span className="uppercase font-semibold">{dataLabel(p)}</span>
+                                        <div>
+                                          <div className="uppercase font-semibold text-[10.5px]">{dataLabel(p)}</div>
+                                          <div className="text-[11px] text-emerald-700 font-bold tabular-nums mt-0.5">{dataCalculada(p)}</div>
+                                        </div>
                                       )}
                                     </td>
                                     <td className="py-1 px-2">

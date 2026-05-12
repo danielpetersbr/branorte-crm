@@ -338,8 +338,8 @@ export function OrcamentoMontar() {
         </div>
       </div>
 
-      {/* Grid 2 colunas: catálogo + preview (largura A4 ~794px @ 96dpi) */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_760px] gap-3 min-h-0">
+      {/* Grid 2 colunas: catálogo fixo 340px (suficiente pros cards) + preview pega TODO o resto */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)] gap-3 min-h-0">
         {/* CATÁLOGO */}
         <Card className="flex flex-col min-h-0 overflow-hidden">
           <div className="p-3 border-b border-border space-y-2">
@@ -607,6 +607,7 @@ export function OrcamentoMontar() {
             prazoEntrega: prazoEntregaTxt || null,
             formaPagamento: formaPagamentoTxt || null,
           },
+          parcelas: parcelasPagamento,
         } as CarrinhoSnapshot}
         onClose={() => setFinalizarOpen(false)}
         onSuccess={info => {

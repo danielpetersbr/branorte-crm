@@ -49,6 +49,16 @@ export interface CarrinhoSnapshot {
     prazoEntrega?: string | null
     formaPagamento?: string | null
   }
+  // Parcelas estruturadas (tabela DATA/MÉTODO/VALOR)
+  parcelas?: Array<{
+    id: string
+    dataTipo: 'no_pedido' | 'na_nf' | 'apos_nf' | 'data_fixa'
+    dias?: number
+    dataFixa?: string
+    metodo: 'PIX' | 'BOLETO' | 'DINHEIRO' | 'TRANSFERENCIA' | 'CARTAO' | ''
+    pct?: number
+    valor?: number
+  }>
 }
 
 interface Props {
@@ -333,6 +343,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
         // Edições inline da preview — mantém PDF/DOCX idênticos à preview
         tensaoMotores: snapshot.tensaoMotores ?? null,
         desconto: snapshot.desconto ?? null,
+        parcelas: snapshot.parcelas ?? [],
       }
       const docxBlob = await gerarDocxDoPreview(previewProps)
 
