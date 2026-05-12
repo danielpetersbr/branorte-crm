@@ -28,6 +28,7 @@ export interface CustomDocxMotor {
   qtd: number
   valor_unit: number
   valor_total: number
+  item_nome?: string
 }
 
 export interface CustomDocxCliente {
@@ -467,7 +468,9 @@ function buildMotores(motores: CustomDocxMotor[], voltagem: 'monofasico' | 'trif
         borders: { ...NO_BORDERS, top: { style: BorderStyle.SINGLE, size: 2, color: 'E5E7EB' } },
         children: [new Paragraph({ children: [
           r('•  ', { color: '9CA3AF', size: 17 }),
-          r(`${m.cv} CV ${m.polos} polos${m.qtd > 1 ? ` (qtd ${m.qtd})` : ''}`, { size: 17 }),
+          r(`${m.cv} CV ${m.polos} polos`, { size: 17, bold: true }),
+          ...(m.item_nome ? [r(` · ${m.item_nome}`, { size: 17, color: '6B7280', italics: true })] : []),
+          ...(m.qtd > 1 ? [r(` (×${m.qtd})`, { size: 17, color: '6B7280' })] : []),
         ] })],
       }),
       new TableCell({

@@ -30,6 +30,7 @@ export interface PreviewMotor {
   qtd: number
   valor_unit: number
   valor_total: number
+  item_nome?: string  // se vier, mostra "de qual item" o motor é
 }
 
 export interface PreviewClienteDados {
@@ -617,11 +618,15 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {motoresAgrupados.map(m => (
-                    <tr key={`${m.cv}-${m.polos}`} className="border-t border-gray-200">
+                  {motoresAgrupados.map((m, idx) => (
+                    <tr key={`${m.cv}-${m.polos}-${idx}`} className="border-t border-gray-200">
                       <td className="py-1.5 text-gray-800">
                         <span className="text-gray-400 mr-1.5">•</span>
-                        {m.cv} CV {m.polos} polos{m.qtd > 1 && ` (qtd ${m.qtd})`}
+                        <span className="font-semibold">{m.cv} CV {m.polos} polos</span>
+                        {m.item_nome && (
+                          <span className="text-gray-500"> · <span className="italic">{m.item_nome}</span></span>
+                        )}
+                        {m.qtd > 1 && <span className="text-gray-500"> (×{m.qtd})</span>}
                       </td>
                       <td className="py-1.5 text-right text-gray-800 tabular-nums">R$ {formatBRLBare(m.valor_total)}</td>
                     </tr>

@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/Input'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import {
   Sparkles, Search, Plus, Minus, Trash2, Package,
-  Zap, X, AlertCircle, Star, FileText, Eye, ListChecks, Check, Loader2,
+  Zap, X, AlertCircle, Star, FileText, Eye, ListChecks, Check, Loader2, FolderOpen,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import {
@@ -47,36 +47,32 @@ function gerarUid(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 }
 
-// Agrupa motores iguais (mesmo CV/polos)
+// Lista motores por item (não agrupa CV iguais — 1 linha por item do carrinho que tem motor)
 interface MotorAgrupado {
   cv: number
   polos: number
-  qtd: number
+  qtd: number              // motor_qtd * item.qtd (motores totais)
   valor_unit: number
   valor_total: number
+  item_nome?: string       // nome do item que usa esse motor (pra mostrar no listagem)
 }
 
 function agruparMotores(carrinho: CarrinhoItem[]): MotorAgrupado[] {
-  const m = new Map<string, MotorAgrupado>()
+  const linhas: MotorAgrupado[] = []
   for (const it of carrinho) {
     if (!it.motor_cv || !it.motor_polos) continue
     const qtdMotor = it.motor_qtd * it.qtd
-    const key = `${it.motor_cv}-${it.motor_polos}`
-    const e = m.get(key)
-    if (e) {
-      e.qtd += qtdMotor
-      e.valor_total += it.motor_valor_unit * qtdMotor
-    } else {
-      m.set(key, {
-        cv: it.motor_cv,
-        polos: it.motor_polos,
-        qtd: qtdMotor,
-        valor_unit: it.motor_valor_unit,
-        valor_total: it.motor_valor_unit * qtdMotor,
-      })
-    }
+    linhas.push({
+      cv: it.motor_cv,
+      polos: it.motor_polos,
+      qtd: qtdMotor,
+      valor_unit: it.motor_valor_unit,
+      valor_total: it.motor_valor_unit * qtdMotor,
+      item_nome: it.nome_custom || it.nome,
+    })
   }
-  return [...m.values()].sort((a, b) => b.cv - a.cv)
+  // Ordena por CV desc pra ficar agrupado visualmente
+  return linhas.sort((a, b) => b.cv - a.cv)
 }
 
 export function OrcamentoMontar() {
