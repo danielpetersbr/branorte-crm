@@ -6,6 +6,7 @@ import {
 import { Input } from '@/components/ui/Input'
 import {
   useAtualizarItemCatalogo,
+  useCriarItemCatalogo,
   useToggleOficialCatalogo,
   useDeletarItemCatalogo,
   useUploadFotoCatalogo,
@@ -59,14 +60,38 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const atualizar = useAtualizarItemCatalogo()
+  const criar = useCriarItemCatalogo()
   const toggleOficial = useToggleOficialCatalogo()
   const deletar = useDeletarItemCatalogo()
   const uploadFoto = useUploadFotoCatalogo()
   const removerFoto = useRemoverFotoCatalogo()
 
-  // ─── Reseta estado quando item muda ──────────────────────────────
+  // ─── Reseta estado quando item muda (ou quando vai criar novo) ──
   useEffect(() => {
-    if (!item) return
+    if (!open) return
+    if (!item) {
+      // Modo CRIAR — reseta tudo pra vazio
+      setIsOficial(false)
+      setCategoria('')
+      setNomeCurto('')
+      setNomeCompleto('')
+      setDescricao('')
+      setSpecs([])
+      setNovaSpec('')
+      setValor('')
+      setMotorCv('')
+      setMotorPolos('')
+      setMotorQtd('1')
+      setCapKg('')
+      setCapLitros('')
+      setAcessoriosIds([])
+      setBuscaAcessorio('')
+      setNotasCuradoria('')
+      setErroValidacao(null)
+      setPreviewFoto(null)
+      return
+    }
+    // Modo EDITAR — preenche com dados do item
     setIsOficial(item.is_oficial)
     setCategoria(item.categoria || '')
     setNomeCurto(item.nome_curto || '')
@@ -85,7 +110,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
     setNotasCuradoria(item.notas_curadoria || '')
     setErroValidacao(null)
     setPreviewFoto(null)
-  }, [item])
+  }, [item, open])
 
   // Limpa preview ao fechar
   useEffect(() => {
@@ -186,18 +211,21 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
   }
 
   async function handleSalvar() {
-    if (!item) return
     if (!nomeCurto.trim()) {
       setErroValidacao('Nome curto é obrigatório.')
+      return
+    }
+    if (!categoria.trim()) {
+      setErroValidacao('Categoria é obrigatória.')
       return
     }
     setErroValidacao(null)
 
     const updates: Partial<CatalogoItemAdmin> = {
       is_oficial: isOficial,
-      categoria: categoria.trim(),
+      categoria: categoria.trim().toUpperCase(),
       nome_curto: nomeCurto.trim(),
-      nome_completo: nomeCompleto.trim(),
+      nome_completo: nomeCompleto.trim() || nomeCurto.trim(),
       descricao: descricao.trim() || null,
       specs: specs.filter(s => s.trim().length > 0),
       valor: valor === '' ? 0 : Number(valor) || 0,
@@ -212,7 +240,12 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
     }
 
     try {
-      await atualizar.mutateAsync({ id: item.id, updates })
+      if (item) {
+        await atualizar.mutateAsync({ id: item.id, updates })
+      } else {
+        // Modo CRIAR
+        await criar.mutateAsync(updates)
+      }
       onSaved()
       onClose()
     } catch (err) {
@@ -244,8 +277,8 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
     }
   }
 
-  const fotoAtual = previewFoto || item.foto_url
-  const salvando = atualizar.isPending
+  const fotoAtual = previewFoto || item?.foto_url
+  const salvando = atualizar.isPending || criar.isPending
   const uploading = uploadFoto.isPending
   const excluindo = deletar.isPending
 
@@ -256,10 +289,12 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-bg z-10">
           <div className="min-w-0">
             <h2 className="text-[14px] font-semibold text-ink truncate">
-              Editar item · #{item.id}
+              {item ? `Editar item · #${item.id}` : '+ Novo Produto'}
             </h2>
             <p className="text-[11px] text-ink-faint truncate">
-              {item.categoria || 'Sem categoria'} · {item.ocorrencias}× usado
+              {item
+                ? `${item.categoria || 'Sem categoria'} · ${item.ocorrencias}× usado`
+                : 'Cadastrar item novo no catálogo'}
             </p>
           </div>
           <button
@@ -280,15 +315,17 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
             </label>
             <div className="relative w-[200px] h-[200px] border border-border rounded-md overflow-hidden bg-surface-2 flex items-center justify-center">
               {fotoAtual ? (
-                <img src={fotoAtual} alt={item.nome_curto} className="w-full h-full object-cover" />
+                <img src={fotoAtual} alt={item?.nome_curto || 'preview'} className="w-full h-full object-cover" />
               ) : (
                 <button
                   type="button"
                   onClick={abrirSeletor}
-                  className="w-full h-full flex flex-col items-center justify-center gap-2 text-ink-faint hover:text-accent hover:bg-surface-3 transition"
+                  disabled={!item}
+                  className="w-full h-full flex flex-col items-center justify-center gap-2 text-ink-faint hover:text-accent hover:bg-surface-3 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={!item ? 'Salve primeiro pra adicionar foto' : ''}
                 >
                   <Upload className="w-8 h-8" />
-                  <span className="text-[11px]">Clique pra enviar</span>
+                  <span className="text-[11px]">{item ? 'Clique pra enviar' : 'Salve 1° pra adicionar foto'}</span>
                 </button>
               )}
               {uploading && (
@@ -308,13 +345,13 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
               <button
                 type="button"
                 onClick={abrirSeletor}
-                disabled={uploading}
+                disabled={uploading || !item}
                 className="flex-1 text-[11px] px-2 py-1.5 rounded border border-border bg-surface-2 hover:bg-surface-3 text-ink-muted hover:text-ink transition disabled:opacity-50 flex items-center justify-center gap-1"
               >
                 <Camera className="w-3 h-3" />
                 Trocar
               </button>
-              {item.foto_url && (
+              {item?.foto_url && (
                 <button
                   type="button"
                   onClick={handleRemoverFoto}
@@ -633,15 +670,17 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
 
         {/* ── Footer ──────────────────────────────────────────────── */}
         <div className="flex items-center justify-between gap-3 px-5 py-4 border-t border-border bg-surface-2 sticky bottom-0">
-          <button
-            type="button"
-            onClick={handleExcluir}
-            disabled={excluindo || salvando}
-            className="text-[12px] text-danger hover:bg-danger-bg px-2 py-1 rounded transition flex items-center gap-1 disabled:opacity-40"
-          >
-            {excluindo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-            Excluir item
-          </button>
+          {item ? (
+            <button
+              type="button"
+              onClick={handleExcluir}
+              disabled={excluindo || salvando}
+              className="text-[12px] text-danger hover:bg-danger-bg px-2 py-1 rounded transition flex items-center gap-1 disabled:opacity-40"
+            >
+              {excluindo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+              Excluir item
+            </button>
+          ) : <div />}
           <div className="flex items-center gap-2">
             <button
               type="button"

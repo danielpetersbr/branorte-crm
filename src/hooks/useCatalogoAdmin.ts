@@ -75,6 +75,33 @@ export function useAtualizarItemCatalogo() {
   })
 }
 
+// Cria item novo (INSERT)
+export function useCriarItemCatalogo() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (novo: Partial<CatalogoItemAdmin>) => {
+      const payload = {
+        ...novo,
+        ativo: true,
+        ocorrencias: 0,
+        criado_em: new Date().toISOString(),
+        atualizado_em: new Date().toISOString(),
+      }
+      const { data, error } = await supabase
+        .from('catalogo_items')
+        .insert(payload)
+        .select('*')
+        .single()
+      if (error) throw error
+      return data as CatalogoItemAdmin
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['catalogo-items'] })
+      queryClient.invalidateQueries({ queryKey: ['catalogo-items-admin'] })
+    },
+  })
+}
+
 // Toggle do flag "oficial"
 export function useToggleOficialCatalogo() {
   const queryClient = useQueryClient()

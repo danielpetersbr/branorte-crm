@@ -122,16 +122,24 @@ export function CatalogoAdmin() {
     <div className="min-h-screen bg-bg">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
         {/* ── Header ─────────────────────────────────────────────── */}
-        <div className="mb-6">
-          <div className="flex items-center gap-2 mb-1">
-            <Settings2 className="w-5 h-5 text-accent" />
-            <h1 className="text-[18px] font-semibold text-ink">
-              Admin do Catálogo de Produtos
-            </h1>
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Settings2 className="w-5 h-5 text-accent" />
+              <h1 className="text-[18px] font-semibold text-ink">
+                Admin do Catálogo de Produtos
+              </h1>
+            </div>
+            <p className="text-[13px] text-ink-muted">
+              Cure cada item com foto, motor e acessórios. Só items "Oficiais" aparecem no builder do vendedor.
+            </p>
           </div>
-          <p className="text-[13px] text-ink-muted">
-            Cure cada item com foto, motor e acessórios. Só items "Oficiais" aparecem no builder do vendedor.
-          </p>
+          <button
+            onClick={() => { setItemEditando(null); setModalOpen(true) }}
+            className="text-[12px] px-4 py-2 rounded bg-accent hover:bg-accent-700 text-white font-semibold flex items-center gap-1.5 shadow shrink-0"
+          >
+            <span className="text-[16px] leading-none">+</span> Novo Produto
+          </button>
         </div>
 
         {/* ── Stats banner ───────────────────────────────────────── */}
