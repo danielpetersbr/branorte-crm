@@ -86,9 +86,12 @@ export function OrcamentoBuilder() {
 
   const [step, setStep] = useState<Step>(1)
 
-  // Step 1 — Cliente
-  const [cliNome, setCliNome] = useState('')
-  const [cliDados, setCliDados] = useState<ClienteDados>({})
+  // Step 1 — Cliente (pré-preenche de ?nome=&phone= se vier da extensão WA)
+  const _qsParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
+  const _initNome = _qsParams.get('nome') || ''
+  const _initPhone = _qsParams.get('phone') || ''
+  const [cliNome, setCliNome] = useState(_initNome)
+  const [cliDados, setCliDados] = useState<ClienteDados>(_initPhone ? { fone: _initPhone } : {})
   const [searchCli, setSearchCli] = useState('')
   const { data: clientesSugeridos } = useClientesOrcamento(searchCli)
 
@@ -119,6 +122,10 @@ export function OrcamentoBuilder() {
   const [numeroAtual, setNumeroAtual] = useState<string>('')
   const [gerando, setGerando] = useState(false)
   const [orcamentoSalvo, setOrcamentoSalvo] = useState<{ numero: string; id: number } | null>(null)
+  // PDF blob mantido em memória pra enviar pro próprio WhatsApp do vendedor
+  const [pdfBlobAtual, setPdfBlobAtual] = useState<Blob | null>(null)
+  const [enviandoWA, setEnviandoWA] = useState<'idle' | 'enviando' | 'enviado' | 'erro'>('idle')
+  const [enviandoWAMsg, setEnviandoWAMsg] = useState<string>('')
   const [scanInfo, setScanInfo] = useState<{ ultimo: number; total: number; ano: number } | null>(null)
   const [scanLoading, setScanLoading] = useState(false)
   const [numeroFonte, setNumeroFonte] = useState<'pasta' | 'banco' | null>(null)
@@ -316,6 +323,7 @@ export function OrcamentoBuilder() {
       try {
         const docxParaPdf = await prepararDocxParaPdf(docxBlob)
         pdfBlob = await gerarPdfDoDocxGotenberg(docxParaPdf)
+        if (pdfBlob) setPdfBlobAtual(pdfBlob)
       } catch (e) {
         pdfErro = (e as Error).message || 'erro desconhecido'
         console.warn('Falha gerar PDF via Gotenberg:', pdfErro)
@@ -474,6 +482,55 @@ export function OrcamentoBuilder() {
     setNumeroAtual('')
     setOrcamentoSalvo(null)
     setArquivosSalvos(null)
+    setPdfBlobAtual(null)
+    setEnviandoWA('idle')
+    setEnviandoWAMsg('')
+  }
+
+  // Envia o PDF gerado pro próprio WhatsApp do vendedor logado
+  async function enviarPdfProMeuWhatsApp() {
+    if (!pdfBlobAtual) {
+      setEnviandoWA('erro')
+      setEnviandoWAMsg('PDF não disponível em memória. Gere o orçamento novamente.')
+      return
+    }
+    setEnviandoWA('enviando')
+    setEnviandoWAMsg('Fazendo upload do PDF...')
+    try {
+      const { supabase } = await import('@/lib/supabase')
+      const { data: { session } } = await supabase.auth.getSession()
+      const vendedor = (profile?.display_name || '').toUpperCase().trim()
+      if (!vendedor) throw new Error('Vendedor não identificado no perfil')
+
+      // Upload PDF pro bucket público
+      const filename = `${orcamentoSalvo?.numero || Date.now()}-${cliNome.replace(/[^a-zA-Z0-9]+/g, '_')}.pdf`
+      const path = `orcamentos/${new Date().toISOString().slice(0,7)}/${filename}`
+      const { error: upErr } = await supabase.storage
+        .from('qr-media')
+        .upload(path, pdfBlobAtual, { contentType: 'application/pdf', upsert: true })
+      if (upErr) throw new Error('Upload falhou: ' + upErr.message)
+      const { data: pub } = supabase.storage.from('qr-media').getPublicUrl(path)
+      if (!pub?.publicUrl) throw new Error('URL pública não gerada')
+
+      setEnviandoWAMsg('Agendando envio pro seu WhatsApp...')
+      const r = await fetch('https://flwbeevtvjiouxdjmziv.supabase.co/functions/v1/orcamento-enviar-meu-zap', {
+        method: 'POST',
+        headers: { 'authorization': `Bearer ${session?.access_token ?? ''}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          vendedor_nome: vendedor,
+          pdf_url: pub.publicUrl,
+          filename,
+          cliente_nome: cliNome,
+        }),
+      })
+      const j = await r.json()
+      if (!j.ok) throw new Error(j.error + ': ' + (j.detail || ''))
+      setEnviandoWA('enviado')
+      setEnviandoWAMsg(j.msg || 'Agendado!')
+    } catch (e: any) {
+      setEnviandoWA('erro')
+      setEnviandoWAMsg(e?.message || 'erro')
+    }
   }
 
   if (loadingMods) return <PageLoading />
@@ -526,6 +583,30 @@ export function OrcamentoBuilder() {
             <p className="text-[12px] text-ink-faint mb-4">
               📁 Salvo em <code className="bg-surface-3 px-1 rounded">Orçamentos 2026 / {mes}</code>
             </p>
+          )}
+          {/* Bloco enviar pro meu WhatsApp */}
+          {pdfBlobAtual && enviandoWA !== 'enviado' && (
+            <div className="mb-4 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+              <button
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2.5 rounded-md flex items-center gap-2 disabled:opacity-50 mx-auto"
+                onClick={enviarPdfProMeuWhatsApp}
+                disabled={enviandoWA === 'enviando' || gerando}
+              >
+                {enviandoWA === 'enviando'
+                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Enviando...</>
+                  : <>📲 Enviar PDF pro meu WhatsApp</>}
+              </button>
+              {enviandoWAMsg && (
+                <div className={`text-[12px] mt-2 ${enviandoWA === 'erro' ? 'text-red-400' : 'text-emerald-300'}`}>
+                  {enviandoWAMsg}
+                </div>
+              )}
+            </div>
+          )}
+          {enviandoWA === 'enviado' && (
+            <div className="mb-4 p-3 bg-emerald-500/20 border border-emerald-500/40 rounded-lg text-emerald-300 text-[13px]">
+              ✅ {enviandoWAMsg || 'Enviado! Confere o WhatsApp.'}
+            </div>
           )}
           <div className="flex gap-3 justify-center">
             <button
