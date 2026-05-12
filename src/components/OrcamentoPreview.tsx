@@ -12,6 +12,7 @@ export interface PreviewItem {
   catalogo_id?: number
   categoria: string
   nome: string
+  nome_custom?: string | null  // se preenchido, sobrescreve nome no display
   specs: string[]
   qtd: number
   valor: number
@@ -78,6 +79,7 @@ export interface OrcamentoPreviewProps {
   onRemoveAcessorios?: () => void
   onRemove?: (uid: string) => void
   onFotoChange?: (dataURL: string | null) => void
+  onUpdateNome?: (uid: string, novoNome: string) => void
 }
 
 function formatBRLBare(v: number): string {
@@ -157,8 +159,10 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     acessorios, valorAcessorios,
     numero, dataEmissao, cliente, terms, observacoesExtra, fotoPrincipal,
     renderMode = false,
-    onAddAcessorios, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange,
+    onAddAcessorios, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome,
   } = props
+  const [editingNomeUid, setEditingNomeUid] = useState<string | null>(null)
+  const [editingNomeValor, setEditingNomeValor] = useState<string>('')
   void totalItems  // mostrado no footer do builder, não no preview
 
   const motoresTitle = voltagem === 'monofasico' ? 'Motores Monofásicos:' : 'Motores Trifásicos:'
@@ -479,7 +483,38 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     <div className="font-bold text-[10.5px] flex-1 min-w-0 text-gray-900">
                       <span className="text-gray-900">{letra} - {String(it.qtd).padStart(2, '0')}</span>
                       <span className="text-gray-400 mx-1">–</span>
-                      <span className="uppercase">{it.nome}</span>
+                      {!renderMode && onUpdateNome && editingNomeUid === it.uid ? (
+                        <input
+                          autoFocus
+                          value={editingNomeValor}
+                          onChange={(e) => setEditingNomeValor(e.target.value)}
+                          onBlur={() => {
+                            const v = editingNomeValor.trim()
+                            if (v && v !== (it.nome_custom || it.nome)) {
+                              onUpdateNome(it.uid!, v)
+                            }
+                            setEditingNomeUid(null)
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
+                            if (e.key === 'Escape') { setEditingNomeUid(null) }
+                          }}
+                          className="uppercase text-[10.5px] font-bold text-gray-900 bg-yellow-50 border border-blue-400 rounded px-1 py-0 outline-none w-[80%]"
+                        />
+                      ) : (
+                        <span
+                          className={`uppercase ${!renderMode && onUpdateNome ? 'cursor-text hover:bg-yellow-50 rounded px-0.5' : ''}`}
+                          title={!renderMode && onUpdateNome ? 'Click pra editar nome' : undefined}
+                          onClick={() => {
+                            if (!renderMode && onUpdateNome && it.uid) {
+                              setEditingNomeValor(it.nome_custom || it.nome)
+                              setEditingNomeUid(it.uid)
+                            }
+                          }}
+                        >
+                          {it.nome_custom || it.nome}
+                        </span>
+                      )}
                     </div>
                     {!renderMode && onRemove && it.uid && (
                       <button

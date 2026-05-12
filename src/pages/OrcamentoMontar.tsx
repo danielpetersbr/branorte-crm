@@ -23,6 +23,7 @@ interface CarrinhoItem {
   catalogo_id: number
   categoria: string
   nome: string
+  nome_custom?: string | null  // sobrescreve nome se vendedor editou inline
   specs: string[]
   qtd: number
   valor: number
@@ -168,6 +169,10 @@ export function OrcamentoMontar() {
 
   function alterarValor(uid: string, novoValor: number) {
     setCarrinho(c => c.map(it => it.uid === uid ? { ...it, valor: novoValor } : it))
+  }
+
+  function alterarNome(uid: string, novoNome: string) {
+    setCarrinho(c => c.map(it => it.uid === uid ? { ...it, nome_custom: novoNome } : it))
   }
 
   function limparCarrinho() {
@@ -411,6 +416,7 @@ export function OrcamentoMontar() {
                 onRemoveAcessorios={() => setAcessorios(null)}
                 onRemove={removerItem}
                 onFotoChange={setFotoPrincipal}
+                onUpdateNome={alterarNome}
               />
             ) : (
               <div className="divide-y divide-border">
@@ -461,7 +467,7 @@ export function OrcamentoMontar() {
         snapshot={{
           voltagem,
           itens: carrinho.map(c => ({
-            nome: c.nome,
+            nome: c.nome_custom || c.nome,  // usa nome customizado se vendedor editou
             qtd: c.qtd,
             valor: c.valor,
             specs: c.specs,
