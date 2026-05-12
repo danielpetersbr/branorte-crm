@@ -84,8 +84,9 @@ function agruparMotores(carrinho: CarrinhoItem[]): MotorAgrupado[] {
       item_nome: it.nome_custom || it.nome,
     })
   }
-  // Ordena por CV desc pra ficar agrupado visualmente
-  return linhas.sort((a, b) => b.cv - a.cv)
+  // Mantém na ORDEM DOS ITEMS do carrinho — quando reordenar items via ▲▼,
+  // os motores seguem junto naturalmente.
+  return linhas
 }
 
 export function OrcamentoMontar() {
