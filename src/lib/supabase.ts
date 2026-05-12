@@ -6,6 +6,14 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIU
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 // Cliente paralelo apontando para o schema "auditoria" (mesmas creds, view `atendimentos_por_cliente`).
+// Auth desabilitado pra evitar warning "Multiple GoTrueClient instances" — esse client
+// so faz queries; sessao vem do client principal acima.
 export const supabaseAuditoria = createClient(supabaseUrl, supabaseAnonKey, {
   db: { schema: 'auditoria' },
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+    detectSessionInUrl: false,
+    storageKey: 'sb-flwbeevtvjiouxdjmziv-auth-token-auditoria',
+  },
 })
