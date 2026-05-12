@@ -1316,64 +1316,84 @@ export function OrcamentoBuilder() {
             </div>
             <div className="p-3 bg-success-bg/15 border border-success/30 rounded-md">
               <div className="text-[10px] uppercase tracking-wider text-success mb-1">Total Proposta</div>
-              <div className="font-bold text-success text-[20px] tabular-nums">{formatBRL(totalProposta)}</div>
+              <div className={`font-bold tabular-nums ${(pgTipo === 'avista' && pgAvistaDesconto > 0) ? 'text-ink-muted text-[14px] line-through decoration-1' : 'text-success text-[20px]'}`}>
+                {formatBRL(totalProposta)}
+              </div>
+              {pgTipo === 'avista' && pgAvistaDesconto > 0 && (
+                <div className="mt-1 pt-1 border-t border-success/30">
+                  <div className="text-[9px] uppercase tracking-wider text-success">com desconto de {pgAvistaDesconto}%</div>
+                  <div className="font-bold text-success text-[22px] tabular-nums">
+                    {formatBRL(totalProposta * (1 - pgAvistaDesconto / 100))}
+                  </div>
+                  <div className="text-[10px] text-success/80 tabular-nums">
+                    economia: {formatBRL(totalProposta * pgAvistaDesconto / 100)}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Condição de Pagamento (builder estruturado) */}
-          <div className="p-4 bg-surface-2 rounded-md border border-border space-y-3">
-            <h3 className="text-[12px] font-bold text-ink uppercase tracking-wider flex items-center gap-2">
-              <CreditCard className="h-4 w-4 text-accent" />
-              Condição de Pagamento
-            </h3>
+          <div className="p-4 bg-gradient-to-br from-surface-2 to-surface-3/40 rounded-lg border border-border space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-[13px] font-bold text-ink flex items-center gap-2">
+                <CreditCard className="h-4 w-4 text-accent" />
+                Condição de Pagamento
+              </h3>
+              {/* Resumo visual da forma selecionada */}
+              <div className="text-[10px] text-ink-muted">
+                {pgTipo === 'avista' && pgAvistaDesconto > 0 && <span className="px-2 py-0.5 bg-success/15 text-success rounded">-{pgAvistaDesconto}% à vista</span>}
+                {pgTipo === 'parcelado' && <span className="px-2 py-0.5 bg-accent/15 text-accent rounded">{pgNumParcelas}× a cada {pgIntervalo}d</span>}
+                {pgTipo === 'entrada' && <span className="px-2 py-0.5 bg-accent/15 text-accent rounded">{pgEntradaPct}% + {pgParcelasApos}×</span>}
+              </div>
+            </div>
 
-            {/* Linha 1: Data da venda */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {/* Bloco 1: Datas */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pb-3 border-b border-border/50">
               <div>
-                <label className="text-[11px] uppercase tracking-wider text-ink-muted font-medium flex items-center gap-1">
+                <label className="text-[10px] uppercase tracking-wider text-ink-muted font-semibold flex items-center gap-1 mb-1">
                   <Calendar className="h-3 w-3" />
-                  Data prevista da venda
+                  Data da venda
                 </label>
                 <input
                   type="date"
                   value={pgDataVenda}
                   onChange={e => setPgDataVenda(e.target.value)}
-                  className="mt-1 w-full px-2 py-1.5 bg-bg border border-border rounded text-[12px] text-ink focus:border-accent outline-none"
+                  className="w-full px-3 py-2 bg-bg border border-border rounded-md text-[12px] text-ink focus:border-accent outline-none"
                 />
                 <div className="text-[10px] text-ink-faint mt-0.5">Vazio = "a combinar"</div>
               </div>
               <div>
-                <label className="text-[11px] uppercase tracking-wider text-ink-muted font-medium">Prazo de entrega</label>
+                <label className="text-[10px] uppercase tracking-wider text-ink-muted font-semibold mb-1 block">Prazo de entrega</label>
                 <Input
                   value={prazoEntrega}
                   onChange={e => setPrazoEntrega(e.target.value)}
                   placeholder="Padrão: 90 dias (úteis)"
-                  className="mt-1"
                 />
               </div>
             </div>
 
-            {/* Tipo de pagamento — segmentado */}
+            {/* Bloco 2: Tipo de pagamento — pills maiores */}
             <div>
-              <label className="text-[11px] uppercase tracking-wider text-ink-muted font-medium">Tipo</label>
-              <div className="mt-1 grid grid-cols-4 gap-1 bg-bg border border-border rounded-md p-1">
+              <label className="text-[10px] uppercase tracking-wider text-ink-muted font-semibold mb-2 block">Forma de pagamento</label>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 {([
-                  { v: 'avista', l: 'À vista' },
-                  { v: 'parcelado', l: 'Parcelado' },
-                  { v: 'entrada', l: 'Entrada + Parcelas' },
-                  { v: 'personalizado', l: 'Personalizado' },
+                  { v: 'avista', l: 'À vista', i: '💰' },
+                  { v: 'parcelado', l: 'Parcelado', i: '📅' },
+                  { v: 'entrada', l: 'Entrada + Parcelas', i: '➕' },
+                  { v: 'personalizado', l: 'Personalizado', i: '✏️' },
                 ] as const).map(t => (
                   <button
                     key={t.v}
                     type="button"
                     onClick={() => setPgTipo(t.v)}
-                    className={`text-[11px] py-1.5 px-2 rounded font-semibold transition-all ${
+                    className={`text-[11px] py-2.5 px-3 rounded-md font-semibold transition-all border ${
                       pgTipo === t.v
-                        ? 'bg-accent text-white shadow-sm'
-                        : 'text-ink-muted hover:bg-surface-3 hover:text-ink'
+                        ? 'bg-accent text-white border-accent shadow-md'
+                        : 'bg-bg text-ink-muted border-border hover:bg-surface-3 hover:text-ink'
                     }`}
                   >
-                    {t.l}
+                    <span className="mr-1.5">{t.i}</span>{t.l}
                   </button>
                 ))}
               </div>
