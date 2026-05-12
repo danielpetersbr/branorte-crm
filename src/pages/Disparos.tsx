@@ -83,28 +83,37 @@ export function Disparos() {
     refetchInterval: 10000,
   })
 
-  // WhatsApp Web aberto/fechado por vendedor (último sync < 90s = aberto)
-  const { data: ultimosSyncs } = useQuery<Record<string, string>>({
-    queryKey: ['vendor-last-sync'],
+  // WhatsApp Web aberto/fechado + versão da extensão por vendedor
+  const { data: vendorRuntime } = useQuery<Record<string, { ts: string; versao: string }>>({
+    queryKey: ['vendor-runtime'],
     queryFn: async () => {
       const { data } = await supabase
         .from('wa_sync_debug')
-        .select('vendedor_nome, recebido_em')
+        .select('vendedor_nome, recebido_em, client_version')
         .gte('recebido_em', new Date(Date.now() - 5 * 60_000).toISOString())
         .order('recebido_em', { ascending: false })
-        .limit(200)
-      const mapa: Record<string, string> = {}
+        .limit(300)
+      const mapa: Record<string, { ts: string; versao: string }> = {}
       for (const row of (data || [])) {
-        if (!mapa[row.vendedor_nome]) mapa[row.vendedor_nome] = row.recebido_em
+        if (!mapa[row.vendedor_nome]) {
+          mapa[row.vendedor_nome] = { ts: row.recebido_em, versao: row.client_version ?? '?' }
+        }
       }
       return mapa
     },
     refetchInterval: 10000,
   })
   function isWaAberto(vendedor: string): boolean {
-    const ts = ultimosSyncs?.[vendedor]
+    const ts = vendorRuntime?.[vendedor]?.ts
     if (!ts) return false
     return Date.now() - new Date(ts).getTime() < 90_000
+  }
+  function temDispatch(vendedor: string): boolean {
+    // Dispatch só existe a partir de v1.1.0
+    const v = vendorRuntime?.[vendedor]?.versao
+    if (!v) return false
+    const [maj, min] = v.split('.').map(n => parseInt(n, 10) || 0)
+    return maj > 1 || (maj === 1 && min >= 1)
   }
 
   // Modal de teste
@@ -191,6 +200,8 @@ export function Disparos() {
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
             {(vendedores ?? []).map(v => {
               const waAberto = isWaAberto(v.vendedor_nome)
+              const dispatchOk = temDispatch(v.vendedor_nome)
+              const versao = vendorRuntime?.[v.vendedor_nome]?.versao
               return (
               <div key={v.vendedor_nome} className={`border rounded-lg p-3 ${v.online ? 'border-accent/40 bg-accent/5' : 'border-border bg-surface-2/30'}`}>
                 <div className="flex items-center justify-between mb-2">
@@ -202,6 +213,11 @@ export function Disparos() {
                         ? <Wifi className="h-3 w-3 text-emerald-400" />
                         : <WifiOff className="h-3 w-3 text-red-400" />}
                     </span>
+                    {versao && (
+                      <span className={`text-[9px] px-1 rounded ${dispatchOk ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300'}`} title={dispatchOk ? 'Versão suporta disparo' : 'Versão antiga sem disparo — recarregar Chrome'}>
+                        v{versao}
+                      </span>
+                    )}
                   </div>
                   <button
                     onClick={() => toggleVendedor.mutate({ nome: v.vendedor_nome, online: !v.online })}
@@ -230,11 +246,12 @@ export function Disparos() {
                 </div>
                 <button
                   onClick={() => setTesteVendedor(v.vendedor_nome)}
-                  disabled={!waAberto}
+                  disabled={!waAberto || !dispatchOk}
                   className="w-full text-[10px] py-1 rounded border border-accent/40 text-accent hover:bg-accent/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1"
-                  title={waAberto ? 'Disparar 1 mensagem-teste deste vendedor' : 'WhatsApp Web do vendedor precisa estar aberto'}
+                  title={!waAberto ? 'WhatsApp Web do vendedor fechado' : !dispatchOk ? `Versão ${versao || 'antiga'} sem disparo — pedir pra recarregar Chrome` : 'Disparar 1 mensagem-teste deste vendedor'}
                 >
-                  <FlaskConical className="h-3 w-3" /> Testar comigo
+                  <FlaskConical className="h-3 w-3" />
+                  {!dispatchOk ? 'recarregar Chrome' : !waAberto ? 'WA fechado' : 'Testar comigo'}
                 </button>
               </div>
             )})}
