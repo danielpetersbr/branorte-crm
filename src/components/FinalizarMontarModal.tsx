@@ -53,8 +53,12 @@ function formatBRL(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 }
 
-function nomeBase(numero: string, cliente: string): string {
+function nomeBase(numero: string, cliente: string, isTest = false): string {
   const sanitize = (s: string) => s.replace(/[<>:"/\\|?*]/g, '').slice(0, 80).trim()
+  if (isTest) {
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(11, 19)  // HH-MM-SS
+    return `TESTE-${ts}-${sanitize(cliente || 'cliente')} (${numero})`
+  }
   return `${numero} - ${sanitize(cliente || 'Sem cliente')} (Personalizado)`
 }
 
@@ -375,7 +379,13 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
         console.warn('Falha PDF:', pdfErro)
       }
 
-      const base = nomeBase(orc.numero, cliNome)
+      // Detecta modo teste: se rootHandle salvo tem 'teste' no nome
+      let isTesteMode = false
+      try {
+        const h = await getStoredFolderHandle()
+        if (h && (h as any).name && /teste/i.test((h as any).name)) isTesteMode = true
+      } catch {}
+      const base = nomeBase(orc.numero, cliNome, isTesteMode)
       let baixouDocx = false, baixouPdf = false, salvouNaPasta = false
 
       // 6a) Salvar na pasta Z: se solicitado

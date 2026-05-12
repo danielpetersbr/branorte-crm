@@ -142,6 +142,11 @@ export async function resolverPastaDoMes(rootHandle: any, dt: Date = new Date())
     return { ok: true, pastaMes: rootHandle, caminho: `(pasta selecionada é "${rootName}")` }
   }
 
+  // Cenário T (teste/debug): pasta com "teste" no nome → salva direto sem subpasta
+  if (normalizeName(rootName).includes('teste')) {
+    return { ok: true, pastaMes: rootHandle, caminho: `(modo teste — salvando direto em "${rootName}")` }
+  }
+
   // Cenário B: rootHandle ja contem meses dentro
   if (await temPastasDeMeses(rootHandle)) {
     // Busca pasta do mes atual
