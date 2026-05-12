@@ -35,6 +35,8 @@ interface CarrinhoItem {
   foto_url: string | null   // foto do equipamento (mostra no preview, igual orçamento real)
 }
 
+type TensaoMotor = 220 | 380 | 660 | null
+
 function formatBRL(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 }
@@ -45,6 +47,16 @@ function formatBRLBare(v: number): string {
 
 function gerarUid(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+}
+
+// Detecta se o motor do item já vem incluso no preço do equipamento.
+// Padrões no docx Branorte: "Acionamento ... (incluso)", "Motorredutor X CV (Incluso)", etc.
+// Quando incluso = true, motor_valor_unit deve ser 0 pra não cobrar duas vezes.
+function motorJaInclusoNoItem(specs: string[]): boolean {
+  if (!specs || specs.length === 0) return false
+  const motorKeywords = /acionamento|motorredutor|moto\s*redutor|pot[êe]ncia|\bcv\b/i
+  const inclusoMarker = /\(\s*inclus[oa]\.?\s*\)/i
+  return specs.some(s => motorKeywords.test(s) && inclusoMarker.test(s))
 }
 
 // Lista motores por item (não agrupa CV iguais — 1 linha por item do carrinho que tem motor)
@@ -82,6 +94,8 @@ export function OrcamentoMontar() {
   const [busca, setBusca] = useState('')
   const [categoria, setCategoria] = useState<string | null>(null)
   const [voltagem, setVoltagem] = useState<Voltagem>('trifasico')
+  // Tensão dos motores (global pra todos). null = "tensão a confirmar".
+  const [tensaoMotores, setTensaoMotores] = useState<TensaoMotor>(null)
   const [carrinho, setCarrinho] = useState<CarrinhoItem[]>([])
   // Acessórios: bloco opcional com valor calculado como % do total de equipamentos
   const [acessorios, setAcessorios] = useState<{ pct: number; items: string[] } | null>(null)
@@ -97,6 +111,17 @@ export function OrcamentoMontar() {
   const [waPromptValue, setWaPromptValue] = useState('')
   const [waPromptResolve, setWaPromptResolve] = useState<((v: string | null) => void) | null>(null)
   const [fotoPrincipal, setFotoPrincipal] = useState<string | null>(null)
+  // Desconto + termos editáveis inline no preview
+  const [descontoCfg, setDescontoCfg] = useState<{ tipo: 'pct' | 'valor'; valor: number } | null>(null)
+  const [dataVendaTxt, setDataVendaTxt] = useState('')
+  const [prazoEntregaTxt, setPrazoEntregaTxt] = useState('')
+  const [formaPagamentoTxt, setFormaPagamentoTxt] = useState('')
+
+  function atualizarTermo(key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento', v: string) {
+    if (key === 'dataVenda') setDataVendaTxt(v)
+    else if (key === 'prazoEntrega') setPrazoEntregaTxt(v)
+    else if (key === 'formaPagamento') setFormaPagamentoTxt(v)
+  }
 
   const categorias = useMemo(() => agruparPorCategoria(items ?? []), [items])
 
@@ -136,6 +161,9 @@ export function OrcamentoMontar() {
   const totalGeral = totalEquip + totalMotores
 
   function adicionarItem(item: CatalogoItem) {
+    const specs = item.specs || []
+    const motorIncluso = motorJaInclusoNoItem(specs)
+
     const motorMatch = item.motor_padrao_cv && item.motor_padrao_polos && motores
       ? acharMotorCompativel(motores, Number(item.motor_padrao_cv), item.motor_padrao_polos, voltagem)
       : null
@@ -145,14 +173,15 @@ export function OrcamentoMontar() {
       catalogo_id: item.id,
       categoria: item.categoria,
       nome: item.nome_curto,
-      specs: item.specs || [],
+      specs,
       qtd: 1,
       valor: Number(item.valor),
       valor_original: Number(item.valor),
       motor_cv: item.motor_padrao_cv ? Number(item.motor_padrao_cv) : null,
       motor_polos: item.motor_padrao_polos,
       motor_qtd: item.motor_padrao_qtd || 1,
-      motor_valor_unit: motorMatch ? Number(motorMatch.valor) : 0,
+      // Se a spec já marca "(incluso)", motor não é cobrado de novo.
+      motor_valor_unit: motorIncluso ? 0 : (motorMatch ? Number(motorMatch.valor) : 0),
       foto_url: item.foto_url || null,
     }])
   }
@@ -184,6 +213,8 @@ export function OrcamentoMontar() {
     if (!motores) return
     setCarrinho(c => c.map(it => {
       if (!it.motor_cv || !it.motor_polos) return it
+      // Motor incluso continua com valor 0 mesmo ao trocar voltagem.
+      if (motorJaInclusoNoItem(it.specs)) return { ...it, motor_valor_unit: 0 }
       const motor = acharMotorCompativel(motores, it.motor_cv, it.motor_polos, novaVoltagem)
       return { ...it, motor_valor_unit: motor ? Number(motor.valor) : it.motor_valor_unit }
     }))
@@ -416,6 +447,12 @@ export function OrcamentoMontar() {
                 onRemove={removerItem}
                 onFotoChange={setFotoPrincipal}
                 onUpdateNome={alterarNome}
+                tensaoMotores={tensaoMotores}
+                onUpdateTensaoMotores={setTensaoMotores}
+                desconto={descontoCfg}
+                onUpdateDesconto={setDescontoCfg}
+                terms={{ dataVenda: dataVendaTxt, prazoEntrega: prazoEntregaTxt, formaPagamento: formaPagamentoTxt }}
+                onUpdateTerm={atualizarTermo}
               />
             ) : (
               <div className="divide-y divide-border">
