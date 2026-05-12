@@ -863,6 +863,45 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       />
                     )
                   }
+                  // prazoEntrega → input numérico de dias + select úteis/corridos
+                  if (key === 'prazoEntrega') {
+                    // Parse: "90 dias (úteis)" → { dias: 90, tipo: 'uteis' }
+                    const m = (valor || '').match(/^\s*(\d+)\s*dias?\s*\(\s*(úteis|uteis|corridos)\s*\)\s*$/i)
+                    const dias = m ? parseInt(m[1], 10) : (valor && valor.trim() ? 0 : 90)
+                    const tipo: 'uteis' | 'corridos' = m && /corrido/i.test(m[2]) ? 'corridos' : 'uteis'
+                    const tipoLabel = tipo === 'uteis' ? 'úteis' : 'corridos'
+                    const writeBack = (d: number, t: 'uteis' | 'corridos') => {
+                      const tl = t === 'uteis' ? 'úteis' : 'corridos'
+                      onUpdateTerm(key, `${d} dias (${tl})`)
+                    }
+                    return (
+                      <span className="inline-flex items-center gap-1 align-baseline">
+                        <input
+                          type="number"
+                          min={1}
+                          max={365}
+                          value={dias || ''}
+                          onChange={e => {
+                            const d = parseInt(e.target.value, 10)
+                            if (!isNaN(d) && d > 0) writeBack(d, tipo)
+                          }}
+                          placeholder="90"
+                          className="bg-transparent border-b border-dashed border-gray-300 hover:border-blue-500 focus:border-blue-600 focus:outline-none px-1 w-[55px] text-center text-gray-800 tabular-nums"
+                        />
+                        <span className="text-gray-600">dias</span>
+                        <select
+                          value={tipo}
+                          onChange={e => writeBack(dias || 90, e.target.value as 'uteis' | 'corridos')}
+                          className="bg-transparent border border-gray-300 hover:border-blue-500 focus:border-blue-600 focus:outline-none rounded px-1.5 py-0 text-gray-800 cursor-pointer"
+                          title="Tipo de contagem"
+                        >
+                          <option value="uteis">(úteis)</option>
+                          <option value="corridos">(corridos)</option>
+                        </select>
+                        {!valor && <span className="text-gray-400 italic text-xs ml-1">default: 90 dias {tipoLabel}</span>}
+                      </span>
+                    )
+                  }
                   // formaPagamento → textarea full-width (texto pode ser longo)
                   if (key === 'formaPagamento') {
                     return (
