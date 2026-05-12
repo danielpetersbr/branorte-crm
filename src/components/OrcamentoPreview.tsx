@@ -684,7 +684,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     })}
                     <tr className="border-t-2 border-gray-700 font-bold">
                       <td className="py-2 text-gray-900">TOTAL</td>
-                      <td className="py-2 text-right text-gray-900 tabular-nums">R$ {formatBRLBare(totalMotores)}</td>
+                      <td className="py-2 text-right text-gray-900 tabular-nums">
+                        {totalMotores > 0 ? `R$ ${formatBRLBare(totalMotores)}` : ''}
+                      </td>
                     </tr>
                   </tbody>
                 </table>
