@@ -426,6 +426,7 @@ export function OrcamentoMontar() {
                 onEditAcessorios={() => setAcessoriosOpen(true)}
                 onRemoveAcessorios={() => setAcessorios(null)}
                 onRemove={removerItem}
+                onFotoChange={setFotoPrincipal}
               />
             ) : (
               <div className="divide-y divide-border">

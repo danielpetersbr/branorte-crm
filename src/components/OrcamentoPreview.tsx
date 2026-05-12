@@ -77,6 +77,7 @@ export interface OrcamentoPreviewProps {
   onEditAcessorios?: () => void
   onRemoveAcessorios?: () => void
   onRemove?: (uid: string) => void
+  onFotoChange?: (dataURL: string | null) => void
 }
 
 function formatBRLBare(v: number): string {
@@ -156,7 +157,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     acessorios, valorAcessorios,
     numero, dataEmissao, cliente, terms, observacoesExtra, fotoPrincipal,
     renderMode = false,
-    onAddAcessorios, onEditAcessorios, onRemoveAcessorios, onRemove,
+    onAddAcessorios, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange,
   } = props
   void totalItems  // mostrado no footer do builder, não no preview
 
@@ -203,6 +204,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   // Page break visualization (so em modo edit, nao no PDF render)
   const containerRef = useRef<HTMLDivElement>(null)
   const innerRef = useRef<HTMLDivElement>(null)
+  const fotoInputRef = useRef<HTMLInputElement>(null)
   const [pageBreaks, setPageBreaks] = useState<number[]>([])
   const [pageHeight, setPageHeight] = useState<number>(0)
 
@@ -347,8 +349,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
         <div className="mt-5">
           <SectionHeader>Itens orçados abaixo</SectionHeader>
 
-          {fotoPrincipal && (
-            <div data-no-break className="mb-3 border border-gray-300 rounded-md p-2 bg-white shadow-sm">
+          {fotoPrincipal ? (
+            <div data-no-break className="group relative mb-3 border border-gray-300 rounded-md p-2 bg-white shadow-sm">
               <div className="w-full flex items-center justify-center bg-white" style={{ minHeight: '300px' }}>
                 <img
                   src={fotoPrincipal}
@@ -359,7 +361,48 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                 />
               </div>
               <div className="text-right text-[8px] italic text-gray-500 mt-1">Imagem ilustrativa</div>
+              {!renderMode && onFotoChange && (
+                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition flex gap-1">
+                  <button
+                    onClick={() => fotoInputRef.current?.click()}
+                    className="text-[10px] bg-blue-600 text-white px-2 py-1 rounded shadow hover:bg-blue-700"
+                  >
+                    Trocar
+                  </button>
+                  <button
+                    onClick={() => onFotoChange(null)}
+                    className="text-[10px] bg-red-600 text-white px-2 py-1 rounded shadow hover:bg-red-700"
+                  >
+                    ✕ Remover
+                  </button>
+                </div>
+              )}
             </div>
+          ) : (!renderMode && onFotoChange) && (
+            <button
+              onClick={() => fotoInputRef.current?.click()}
+              className="w-full mb-3 py-12 text-center border-2 border-dashed border-blue-300 rounded-md text-blue-700 hover:bg-blue-50 hover:border-blue-500 transition cursor-pointer"
+            >
+              <div className="text-[24px] mb-1">📷</div>
+              <div className="text-[12px] font-bold">+ Adicionar Foto Principal</div>
+              <div className="text-[10px] text-gray-500 mt-1">(opcional — aparece grande aqui no orçamento)</div>
+            </button>
+          )}
+          {!renderMode && onFotoChange && (
+            <input
+              ref={fotoInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (!f) return
+                const reader = new FileReader()
+                reader.onload = () => onFotoChange(reader.result as string)
+                reader.readAsDataURL(f)
+                e.target.value = ''
+              }}
+            />
           )}
 
           <div className="space-y-3">
