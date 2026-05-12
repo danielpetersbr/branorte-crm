@@ -41,6 +41,14 @@ export interface CarrinhoSnapshot {
   totalEquip: number          // itens + acessórios (= "VALOR TOTAL DE EQUIPAMENTOS")
   totalGeral: number          // totalEquip + totalMotores
   fotoPrincipal?: string | null
+  // Edições inline da preview — usadas pelo PDF/DOCX pra sair igual à preview.
+  tensaoMotores?: 220 | 380 | 660 | null
+  desconto?: { tipo: 'pct' | 'valor'; valor: number } | null
+  termsInline?: {
+    dataVenda?: string | null
+    prazoEntrega?: string | null
+    formaPagamento?: string | null
+  }
 }
 
 interface Props {
@@ -315,12 +323,16 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
           email: cliDados.email,
         },
         terms: {
-          dataVenda: pgDataVenda ? formaPgOut.data_venda : null,
-          prazoEntrega: prazoEntrega.trim() || null,
-          formaPagamento: formaPgOut.forma_pagamento || null,
+          // Modal vence se preenchido, senão usa o que foi editado inline na preview
+          dataVenda: (pgDataVenda ? formaPgOut.data_venda : null) || snapshot.termsInline?.dataVenda || null,
+          prazoEntrega: prazoEntrega.trim() || snapshot.termsInline?.prazoEntrega || null,
+          formaPagamento: formaPgOut.forma_pagamento || snapshot.termsInline?.formaPagamento || null,
         },
         observacoesExtra: observacoes.trim() || null,
         fotoPrincipal: snapshot.fotoPrincipal ?? null,
+        // Edições inline da preview — mantém PDF/DOCX idênticos à preview
+        tensaoMotores: snapshot.tensaoMotores ?? null,
+        desconto: snapshot.desconto ?? null,
       }
       const docxBlob = await gerarDocxDoPreview(previewProps)
 

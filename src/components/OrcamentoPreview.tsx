@@ -810,11 +810,88 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   ? <span className="text-gray-400 italic">{placeholder}</span>
                   : <span>{valor}</span>
               }
+              // Templates de forma de pagamento — calculam datas a partir da Data da Venda
+              function addDaysBR(brDate: string, days: number): string {
+                const iso = brToIso(brDate)
+                if (!iso) return ''
+                const d = new Date(iso + 'T12:00:00')
+                d.setDate(d.getDate() + days)
+                const dd = String(d.getDate()).padStart(2, '0')
+                const mm = String(d.getMonth() + 1).padStart(2, '0')
+                return `${dd}/${mm}/${d.getFullYear()}`
+              }
+              const baseDate = dataVendaTxt
+              const templatesFP: { id: string; label: string; build: () => string }[] = [
+                {
+                  id: 'avista_pix5',
+                  label: 'À vista PIX (5% desc)',
+                  build: () => 'À vista no PIX com 5% de desconto',
+                },
+                {
+                  id: 'pedido_nf',
+                  label: '50% pedido + 50% NF',
+                  build: () => `50% no pedido${baseDate ? ` (${baseDate})` : ''} + 50% na emissão da NF`,
+                },
+                {
+                  id: '30_60_90',
+                  label: '30/60/90 dias NF',
+                  build: () => {
+                    if (!baseDate) return '1/3 em 30d · 1/3 em 60d · 1/3 em 90d após NF'
+                    return `1/3 em 30d (${addDaysBR(baseDate, 30)}) · 1/3 em 60d (${addDaysBR(baseDate, 60)}) · 1/3 em 90d (${addDaysBR(baseDate, 90)})`
+                  },
+                },
+                {
+                  id: 'pedido70_30d',
+                  label: '30% pedido + 70% 30d',
+                  build: () => {
+                    const d30 = baseDate ? ` (${addDaysBR(baseDate, 30)})` : ''
+                    const dpedido = baseDate ? ` (${baseDate})` : ''
+                    return `30% no pedido${dpedido} + 70% em 30 dias${d30}`
+                  },
+                },
+                {
+                  id: 'entrada_3x',
+                  label: '50% pedido + 3× após NF',
+                  build: () => {
+                    if (!baseDate) return '50% no pedido + 3× 30/60/90 dias após NF'
+                    return `50% no pedido (${baseDate}) + 3× em ${addDaysBR(baseDate, 30)} · ${addDaysBR(baseDate, 60)} · ${addDaysBR(baseDate, 90)}`
+                  },
+                },
+              ]
               return (
                 <>
                   <div className="flex gap-1.5 items-center"><span className="text-gray-400">•</span><span>Data da venda – {renderTerm('Data da venda', dataVendaTxt, 'a combinar', 'dataVenda')}</span></div>
                   <div className="flex gap-1.5 items-center"><span className="text-gray-400">•</span><span>Prazo de entrega – {renderTerm('Prazo de entrega', prazoEntregaTxt, '90 dias (úteis)', 'prazoEntrega')}</span></div>
-                  <div className="flex gap-1.5 items-center"><span className="text-gray-400">•</span><span>Forma de pagamento – {renderTerm('Forma de pagamento', formaPagamentoTxt, 'a combinar', 'formaPagamento')}</span></div>
+                  <div className="flex gap-1.5 items-start">
+                    <span className="text-gray-400">•</span>
+                    <div className="flex-1">
+                      <div>Forma de pagamento – {renderTerm('Forma de pagamento', formaPagamentoTxt, 'a combinar', 'formaPagamento')}</div>
+                      {!renderMode && onUpdateTerm && (
+                        <div className="mt-1 flex flex-wrap gap-1 print:hidden">
+                          {templatesFP.map(t => (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => onUpdateTerm('formaPagamento', t.build())}
+                              className="text-[9px] px-1.5 py-0.5 rounded bg-blue-100 hover:bg-blue-200 text-blue-800 font-semibold border border-blue-300 transition-colors"
+                              title={t.build()}
+                            >
+                              {t.label}
+                            </button>
+                          ))}
+                          {formaPagamentoTxt && (
+                            <button
+                              type="button"
+                              onClick={() => onUpdateTerm('formaPagamento', '')}
+                              className="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold border border-gray-300"
+                            >
+                              ✕ limpar
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                   <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Frete – por conta do cliente</span></div>
                   <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Validade da proposta – 10 dias após o envio</span></div>
                 </>
