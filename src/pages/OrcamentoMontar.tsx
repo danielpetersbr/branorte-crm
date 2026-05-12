@@ -311,7 +311,7 @@ export function OrcamentoMontar() {
                 )}
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-1.5">
                 {itemsFiltrados.slice(0, 200).map(item => (
                   <CardItem
                     key={item.id}
@@ -372,6 +372,14 @@ export function OrcamentoMontar() {
                   Limpar
                 </button>
               )}
+              <button
+                disabled={carrinho.length === 0}
+                onClick={() => setFinalizarOpen(true)}
+                className="text-[11px] bg-accent hover:bg-accent-700 text-white font-semibold px-3 py-1.5 rounded disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1"
+              >
+                <FileText className="h-3 w-3" />
+                Gerar .docx + PDF
+              </button>
             </div>
           </div>
 
@@ -439,13 +447,6 @@ export function OrcamentoMontar() {
                 <span>TOTAL DA PROPOSTA</span>
                 <span className="text-accent">{formatBRL(totalGeral)}</span>
               </div>
-              <button
-                disabled={carrinho.length === 0}
-                onClick={() => setFinalizarOpen(true)}
-                className="w-full mt-2 bg-accent hover:bg-accent-700 text-white text-[12px] font-semibold py-2 rounded disabled:opacity-50"
-              >
-                Continuar para gerar .docx + PDF →
-              </button>
             </div>
           )}
         </Card>
@@ -532,73 +533,52 @@ function CardItem({
   const motorValor = motorMatch ? Number(motorMatch.valor) * (item.motor_padrao_qtd || 1) : 0
   const totalComMotor = Number(item.valor) + motorValor
 
-  const isPopular = item.ocorrencias >= 20
-
   return (
     <button
       onClick={onAdd}
-      className="text-left p-2.5 rounded-md border border-border hover:border-accent/40 hover:bg-surface-2 transition-all group"
+      className="text-left p-1.5 rounded border border-border hover:border-accent hover:bg-surface-2 transition-all group flex items-center gap-1.5"
     >
-      <div className="flex items-start gap-2">
-        {item.foto_url && (
-          <img
-            src={item.foto_url}
-            alt={item.nome_curto}
-            className="w-12 h-12 object-cover rounded border border-border shrink-0"
-            loading="lazy"
-          />
+      {item.foto_url ? (
+        <img
+          src={item.foto_url}
+          alt={item.nome_curto}
+          className="w-9 h-9 object-cover rounded border border-border shrink-0"
+          loading="lazy"
+        />
+      ) : (
+        <div className="w-9 h-9 rounded border border-border bg-surface-2 shrink-0 flex items-center justify-center text-ink-faint">
+          <Package className="h-3.5 w-3.5" />
+        </div>
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1 mb-0.5">
+          <span className="text-[8px] uppercase tracking-wider text-ink-muted font-bold truncate">
+            {item.categoria}
+          </span>
+          {item.is_oficial && (
+            <Check className="h-2.5 w-2.5 text-success shrink-0" />
+          )}
+        </div>
+        <div className="text-[11px] font-semibold text-ink truncate leading-tight">
+          {item.nome_curto}
+        </div>
+        {item.motor_padrao_cv && (
+          <div className="text-[9px] text-ink-faint truncate">
+            ⚡ {item.motor_padrao_cv} CV {item.motor_padrao_polos}p
+          </div>
         )}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
-            <span className="text-[9px] uppercase tracking-wider text-ink-muted font-bold">
-              {item.categoria}
-            </span>
-            {item.is_oficial && (
-              <span className="text-[8px] bg-success/20 text-success px-1 py-0.5 rounded font-bold flex items-center gap-0.5">
-                <Check className="h-2 w-2" />
-                oficial
-              </span>
-            )}
-            {isPopular && (
-              <span className="text-[8px] bg-accent/15 text-accent px-1 py-0.5 rounded font-bold flex items-center gap-0.5">
-                <Star className="h-2 w-2" />
-                {item.ocorrencias}x
-              </span>
-            )}
-          </div>
-          <div className="text-[12px] font-semibold text-ink truncate">
-            {item.nome_curto}
-          </div>
-          {item.motor_padrao_cv && (
-            <div className="text-[10px] text-ink-faint mt-0.5 flex items-center gap-1">
-              <Zap className="h-2.5 w-2.5" />
-              Motor {item.motor_padrao_cv} CV {item.motor_padrao_polos}p
-              {(item.motor_padrao_qtd || 1) > 1 && ` (x${item.motor_padrao_qtd})`}
-            </div>
-          )}
-        </div>
-        <div className="text-right shrink-0">
-          <div className="text-[12px] font-bold text-ink">
-            {formatBRL(Number(item.valor))}
-          </div>
-          {motorValor > 0 && (
-            <div className="text-[9px] text-ink-faint">
-              + motor {formatBRL(motorValor)}
-            </div>
-          )}
-          {motorValor > 0 && (
-            <div className="text-[10px] font-semibold text-accent">
-              = {formatBRL(totalComMotor)}
-            </div>
-          )}
-        </div>
       </div>
-      <div className="mt-2 flex items-center justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-        <span className="text-[10px] text-accent font-semibold flex items-center gap-1">
-          <Plus className="h-3 w-3" />
-          Adicionar
-        </span>
+      <div className="text-right shrink-0">
+        <div className="text-[11px] font-bold text-ink leading-tight">
+          {formatBRL(Number(item.valor))}
+        </div>
+        {motorValor > 0 && (
+          <div className="text-[9px] font-semibold text-accent leading-tight">
+            ={formatBRL(totalComMotor)}
+          </div>
+        )}
       </div>
+      <Plus className="h-3 w-3 text-accent opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
     </button>
   )
 }
