@@ -35,8 +35,8 @@ export async function gerarDocxDoPreview(
 ): Promise<Blob> {
   const pageWidthMm = opts.pageWidth ?? 210
   const pageHeightMm = opts.pageHeight ?? 297
-  const scale = opts.scale ?? 2
-  const containerWidthPx = opts.containerWidthPx ?? 800
+  const scale = opts.scale ?? 2.5
+  const containerWidthPx = opts.containerWidthPx ?? 1024
 
   // 1) Cria container off-screen
   const host = document.createElement('div')
@@ -264,7 +264,7 @@ async function canvasToArrayBuffer(canvas: HTMLCanvasElement): Promise<ArrayBuff
         reader.readAsArrayBuffer(blob)
       },
       'image/jpeg',
-      0.92,
+      0.96,
     )
   })
 }

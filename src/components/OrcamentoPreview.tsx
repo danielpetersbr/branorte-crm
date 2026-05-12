@@ -200,7 +200,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   // Helper: cabeçalho de seção
   const SectionHeader = ({ children }: { children: React.ReactNode }) => (
     <div className="mt-5 mb-2">
-      <div className="text-[10px] font-bold tracking-wider uppercase text-gray-700 pb-1.5 border-b-2 border-gray-800">
+      <div className="text-[11.5px] font-bold tracking-wider uppercase text-gray-700 pb-1.5 border-b-2 border-gray-800">
         {children}
       </div>
     </div>
@@ -340,7 +340,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   }, [renderMode, carrinho, motoresAgrupados, acessorios])
 
   return (
-    <div ref={containerRef} className="text-[10px] text-gray-900 leading-relaxed font-sans bg-white">
+    <div ref={containerRef} className="text-[11.5px] text-gray-900 leading-relaxed font-sans bg-white">
       <div ref={innerRef} className={`m-4 px-6 pt-5 pb-6 relative ${renderMode || folhas.length === 0 ? 'border border-gray-900' : ''}`}>
         {/* Molduras INDEPENDENTES por folha A4 (so em modo edit + multi-pagina) */}
         {!renderMode && folhas.length > 1 && (
@@ -355,12 +355,12 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           </div>
         )}
         {!renderMode && pageHeight > 0 && pageBreaks.length === 0 && carrinho.length > 0 && (
-          <div className="absolute top-2 right-2 bg-green-600 text-white text-[9px] font-bold px-2 py-0.5 rounded shadow z-10 pointer-events-none">
+          <div className="absolute top-2 right-2 bg-green-600 text-white text-[10.5px] font-bold px-2 py-0.5 rounded shadow z-10 pointer-events-none">
             ✓ 1 folha A4
           </div>
         )}
         {!renderMode && pageBreaks.length > 0 && (
-          <div className="absolute top-2 right-2 bg-blue-600 text-white text-[9px] font-bold px-2 py-0.5 rounded shadow z-10 pointer-events-none">
+          <div className="absolute top-2 right-2 bg-blue-600 text-white text-[10.5px] font-bold px-2 py-0.5 rounded shadow z-10 pointer-events-none">
             {pageBreaks.length + 1} folhas A4
           </div>
         )}
@@ -375,7 +375,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
         </div>
 
         {/* ORÇAMENTO N° | DATA */}
-        <div className="flex justify-between items-baseline text-[11px] font-bold text-gray-900 mb-1.5">
+        <div className="flex justify-between items-baseline text-[12.5px] font-bold text-gray-900 mb-1.5">
           <div>
             ORÇAMENTO N°{' '}
             <span className={numeroIsPlaceholder ? 'text-gray-400 font-semibold' : 'text-gray-700 font-semibold'}>
@@ -386,7 +386,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
         </div>
 
         {/* CLIENTE | A/C | FONE */}
-        <div className="grid grid-cols-3 gap-4 text-[11px] font-bold text-gray-900 mb-1">
+        <div className="grid grid-cols-3 gap-4 text-[12.5px] font-bold text-gray-900 mb-1">
           <div>
             CLIENTE:{' '}
             {cli.nome
@@ -398,7 +398,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
         </div>
 
         {/* Demais campos do cliente empilhados */}
-        <div className="text-[11px] font-bold text-gray-900 space-y-0.5">
+        <div className="text-[12.5px] font-bold text-gray-900 space-y-0.5">
           {camposEmpilhados.map(([label, val]) => (
             <div key={label}>{label}: {valOrPlaceholder(val)}</div>
           ))}
@@ -419,7 +419,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   crossOrigin="anonymous"
                 />
               </div>
-              <div className="text-right text-[8px] italic text-gray-500 mt-1">Imagem ilustrativa</div>
+              <div className="text-right text-[9.5px] italic text-gray-500 mt-1">Imagem ilustrativa</div>
               {!renderMode && onFotoChange && (
                 <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition flex gap-1">
                   <button
@@ -438,13 +438,13 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       }
                       inp.click()
                     }}
-                    className="text-[10px] bg-blue-600 text-white px-2 py-1 rounded shadow hover:bg-blue-700"
+                    className="text-[11.5px] bg-blue-600 text-white px-2 py-1 rounded shadow hover:bg-blue-700"
                   >
                     Trocar
                   </button>
                   <button
                     onClick={() => onFotoChange(null)}
-                    className="text-[10px] bg-red-600 text-white px-2 py-1 rounded shadow hover:bg-red-700"
+                    className="text-[11.5px] bg-red-600 text-white px-2 py-1 rounded shadow hover:bg-red-700"
                   >
                     ✕ Remover
                   </button>
@@ -468,7 +468,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                 }
                 inp.click()
               }}
-              className="block w-full mb-3 py-2 text-center border border-dashed border-blue-300 rounded text-blue-700 hover:bg-blue-50 hover:border-blue-500 transition cursor-pointer text-[10px] font-semibold"
+              className="block w-full mb-3 py-2 text-center border border-dashed border-blue-300 rounded text-blue-700 hover:bg-blue-50 hover:border-blue-500 transition cursor-pointer text-[11.5px] font-semibold"
             >
               📷 + Adicionar Foto Principal (opcional)
             </button>
@@ -481,7 +481,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
               return (
                 <div key={it.uid || idx} data-no-break className="group relative border border-gray-300 rounded-md p-3 bg-white shadow-sm">
                   <div className="flex justify-between items-start gap-2 mb-1.5">
-                    <div className="font-bold text-[10.5px] flex-1 min-w-0 text-gray-900">
+                    <div className="font-bold text-[12px] flex-1 min-w-0 text-gray-900">
                       <span className="text-gray-900">{letra} - {String(it.qtd).padStart(2, '0')}</span>
                       <span className="text-gray-400 mx-1">–</span>
                       {!renderMode && onUpdateNome && editingNomeUid === it.uid ? (
@@ -500,7 +500,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
                             if (e.key === 'Escape') { setEditingNomeUid(null) }
                           }}
-                          className="uppercase text-[10.5px] font-bold text-gray-900 bg-yellow-50 border border-blue-400 rounded px-1 py-0 outline-none w-[80%]"
+                          className="uppercase text-[12px] font-bold text-gray-900 bg-yellow-50 border border-blue-400 rounded px-1 py-0 outline-none w-[80%]"
                         />
                       ) : (
                         <span
@@ -528,7 +528,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     )}
                   </div>
                   <div className="flex gap-3">
-                    <div className="flex-1 min-w-0 pl-3 text-[9.5px] text-gray-700 space-y-0.5">
+                    <div className="flex-1 min-w-0 pl-3 text-[11px] text-gray-700 space-y-0.5">
                       {it.specs.length > 0
                         ? it.specs.map((s, i) => <div key={i} className="flex gap-1.5"><span className="text-gray-400">•</span><span>{s}</span></div>)
                         : it.motor_cv && (
@@ -547,11 +547,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             crossOrigin="anonymous"
                           />
                         </div>
-                        <div className="text-[7px] text-gray-400 italic mt-1 tracking-wide">Imagem ilustrativa</div>
+                        <div className="text-[8.5px] text-gray-400 italic mt-1 tracking-wide">Imagem ilustrativa</div>
                       </div>
                     )}
                   </div>
-                  <div className="mt-2.5 pt-1.5 border-t border-gray-300 flex justify-between text-[10.5px] font-bold tracking-wide">
+                  <div className="mt-2.5 pt-1.5 border-t border-gray-300 flex justify-between text-[12px] font-bold tracking-wide">
                     <span className="text-gray-700">VALOR</span>
                     <span className="text-gray-900">R$ {formatBRLBare(subtotal)}</span>
                   </div>
@@ -564,23 +564,23 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           {acessorios ? (
             <div data-no-break className="group mt-3 border border-gray-300 rounded-md p-3 bg-white shadow-sm">
               <div className="flex items-baseline justify-between gap-2 mb-1.5">
-                <div className="font-bold text-[10.5px] text-gray-900">
+                <div className="font-bold text-[12px] text-gray-900">
                   <span className="text-gray-900">— ACESSÓRIOS</span>
                 </div>
                 {!renderMode && (onEditAcessorios || onRemoveAcessorios) && (
                   <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {onEditAcessorios && <button onClick={onEditAcessorios} className="text-[9px] text-blue-600 hover:underline">editar ({acessorios.pct}%)</button>}
-                    {onRemoveAcessorios && <button onClick={onRemoveAcessorios} className="text-[9px] text-red-600 hover:underline">remover</button>}
+                    {onEditAcessorios && <button onClick={onEditAcessorios} className="text-[10.5px] text-blue-600 hover:underline">editar ({acessorios.pct}%)</button>}
+                    {onRemoveAcessorios && <button onClick={onRemoveAcessorios} className="text-[10.5px] text-red-600 hover:underline">remover</button>}
                   </div>
                 )}
               </div>
-              <div className="pl-3 text-[9.5px] text-gray-700 space-y-0.5">
+              <div className="pl-3 text-[11px] text-gray-700 space-y-0.5">
                 {acessorios.items.length > 0
                   ? acessorios.items.map((s, i) => <div key={i} className="flex gap-1.5"><span className="text-gray-400">•</span><span>{s}</span></div>)
                   : <div className="text-gray-400 italic">(nenhum item listado{!renderMode ? ' — clique em "editar"' : ''})</div>
                 }
               </div>
-              <div className="mt-2.5 pt-1.5 border-t border-gray-300 flex justify-between text-[10.5px] font-bold tracking-wide">
+              <div className="mt-2.5 pt-1.5 border-t border-gray-300 flex justify-between text-[12px] font-bold tracking-wide">
                 <span className="text-gray-700">VALOR</span>
                 <span className="text-gray-900">R$ {formatBRLBare(valorAcessorios)}</span>
               </div>
@@ -589,7 +589,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             !renderMode && onAddAcessorios && carrinho.length > 0 && (
               <button
                 onClick={onAddAcessorios}
-                className="w-full mt-4 py-2 text-[10px] font-semibold text-blue-700 hover:bg-blue-50 border border-dashed border-blue-300 rounded transition-colors"
+                className="w-full mt-4 py-2 text-[11.5px] font-semibold text-blue-700 hover:bg-blue-50 border border-dashed border-blue-300 rounded transition-colors"
               >
                 + Adicionar Acessórios
               </button>
@@ -598,23 +598,23 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
           {/* VALOR TOTAL DE EQUIPAMENTOS */}
           {mostrarTotalEquip && (
-            <div data-no-break className="flex justify-between items-center text-[12px] font-bold mt-4 px-5 py-3 border-2 border-gray-700 rounded-lg tracking-wide">
-              <span className="text-gray-900 uppercase leading-none">Valor total de equipamentos</span>
-              <span className="text-gray-900 leading-none tabular-nums">R$ {formatBRLBare(totalEquip)}</span>
+            <div data-no-break className="flex justify-between items-center text-[13.5px] font-bold mt-4 px-5 py-3 border-2 border-gray-700 rounded-lg tracking-wide">
+              <span className="text-gray-900 uppercase leading-tight">Valor total de equipamentos</span>
+              <span className="text-gray-900 leading-tight tabular-nums">R$ {formatBRLBare(totalEquip)}</span>
             </div>
           )}
 
           {/* Motores */}
           {motoresAgrupados.length > 0 && (
             <div data-no-break className="mt-3 border border-gray-300 rounded-md p-4 bg-white shadow-sm">
-              <div className="font-bold text-[11px] tracking-wider uppercase text-gray-700 pb-2 border-b-2 border-gray-800 mb-2.5">
+              <div className="font-bold text-[12.5px] tracking-wider uppercase text-gray-700 pb-2 border-b-2 border-gray-800 mb-2.5">
                 {motoresTitle.replace(':', '')}
               </div>
-              <table className="w-full text-[11px] border-collapse">
+              <table className="w-full text-[12.5px] border-collapse">
                 <thead>
                   <tr>
-                    <th className="text-left font-bold py-2 text-gray-600 uppercase tracking-wider text-[10px]">Tipo</th>
-                    <th className="text-right font-bold py-2 text-gray-600 uppercase tracking-wider text-[10px]">Novo</th>
+                    <th className="text-left font-bold py-2 text-gray-600 uppercase tracking-wider text-[11.5px]">Tipo</th>
+                    <th className="text-right font-bold py-2 text-gray-600 uppercase tracking-wider text-[11.5px]">Novo</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -641,13 +641,13 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           )}
 
           {/* VALOR TOTAL DA PROPOSTA */}
-          <div data-no-break className="flex justify-between items-center text-[14px] font-black mt-6 px-5 py-4 border-2 border-gray-900 rounded-lg tracking-wide">
-            <span className="text-gray-900 uppercase leading-none">Valor total da proposta com motor novo</span>
-            <span className="text-gray-900 text-[15px] leading-none tabular-nums">R$ {formatBRLBare(totalGeral)}</span>
+          <div data-no-break className="flex justify-between items-center text-[15.5px] font-black mt-6 px-5 py-4 border-2 border-gray-900 rounded-lg tracking-wide">
+            <span className="text-gray-900 uppercase leading-tight">Valor total da proposta com motor novo</span>
+            <span className="text-gray-900 text-[16.5px] leading-tight tabular-nums">R$ {formatBRLBare(totalGeral)}</span>
           </div>
 
           {/* Termos comerciais */}
-          <div data-no-break className="mt-5 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded text-[9.5px] text-gray-800 space-y-1">
+          <div data-no-break className="mt-5 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded text-[11px] text-gray-800 space-y-1">
             <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>
               Data da venda – {dataVendaIsPlaceholder
                 ? <span className="text-gray-400 italic">a combinar</span>
@@ -665,7 +665,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
           <div data-no-break>
             <SectionHeader>Nossas Redes Sociais</SectionHeader>
-            <div className="text-[9.5px] text-gray-800 space-y-0.5">
+            <div className="text-[11px] text-gray-800 space-y-0.5">
               <div><span className="font-bold">Instagram:</span> @branorte_metalurgica</div>
               <div><span className="font-bold">YouTube:</span> @mbranorte</div>
               <div><span className="font-bold">Facebook:</span> branorte.metalurgica</div>
@@ -674,7 +674,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
           <div data-no-break>
             <SectionHeader>Dados do Fabricante</SectionHeader>
-            <div className="text-[9.5px] text-gray-800 space-y-0.5">
+            <div className="text-[11px] text-gray-800 space-y-0.5">
               <div><span className="font-bold">Empresa:</span> BRANORTE – Metalúrgica BBA Ltda</div>
               <div><span className="font-bold">Endereço:</span> Rodovia SC 370 km 139, Nº 1390</div>
               <div><span className="font-bold">Cidade:</span> Grão Pará – SC · <span className="font-bold">CEP:</span> 88890-000</div>
@@ -684,7 +684,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             </div>
           </div>
 
-          <div data-no-break className="grid grid-cols-4 gap-2 mt-3 text-[9px] text-center">
+          <div data-no-break className="grid grid-cols-4 gap-2 mt-3 text-[10.5px] text-center">
             {[
               ['Patrick Alves', '(48) 9 9698-4660'],
               ['Edilson', '(48) 9 9991-2329'],
@@ -692,7 +692,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
               ['Branorte', '(48) 3658-4502'],
             ].map(([nome, tel]) => (
               <div key={nome} className="py-1.5 px-1 bg-gray-50 border border-gray-200 rounded">
-                <div className="font-bold text-gray-800 text-[9.5px]">{nome}</div>
+                <div className="font-bold text-gray-800 text-[11px]">{nome}</div>
                 <div className="text-gray-600 mt-0.5">{tel}</div>
               </div>
             ))}
@@ -700,33 +700,33 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
           <div data-no-break>
             <SectionHeader>Conta para Depósito</SectionHeader>
-            <div className="grid grid-cols-3 gap-3 text-[9px] text-gray-800">
+            <div className="grid grid-cols-3 gap-3 text-[10.5px] text-gray-800">
               <div className="space-y-0.5">
                 <div className="font-bold uppercase tracking-wide text-gray-900 mb-1 pb-0.5 border-b border-gray-300">Banco do Brasil</div>
                 <div>Agência: <strong>0738-2</strong></div>
                 <div>Conta: <strong>39551-X</strong></div>
                 <div>Metalúrgica BBA</div>
-                <div className="text-[8.5px] text-gray-500">CNPJ: 16.935.999/0001-09</div>
+                <div className="text-[10px] text-gray-500">CNPJ: 16.935.999/0001-09</div>
               </div>
               <div className="space-y-0.5">
                 <div className="font-bold uppercase tracking-wide text-gray-900 mb-1 pb-0.5 border-b border-gray-300">Sicoob Credivale</div>
                 <div>Cooperativa: <strong>3078</strong></div>
                 <div>Banco: <strong>756</strong></div>
                 <div>Conta: <strong>109909-4</strong></div>
-                <div className="text-[8.5px] text-gray-500">CNPJ: 16.935.999/0001-09</div>
+                <div className="text-[10px] text-gray-500">CNPJ: 16.935.999/0001-09</div>
               </div>
               <div className="space-y-0.5">
                 <div className="font-bold uppercase tracking-wide text-gray-900 mb-1 pb-0.5 border-b border-gray-300">PIX</div>
-                <div className="text-[8.5px] text-gray-600">CNPJ:</div>
+                <div className="text-[10px] text-gray-600">CNPJ:</div>
                 <div className="font-mono"><strong>16935999000109</strong></div>
-                <div className="text-[8.5px] text-gray-500 mt-1">SICOOB · Metalúrgica BBA</div>
+                <div className="text-[10px] text-gray-500 mt-1">SICOOB · Metalúrgica BBA</div>
               </div>
             </div>
           </div>
 
           <div data-no-break>
             <SectionHeader>Caixa Postal</SectionHeader>
-            <div className="text-[9.5px] text-gray-800 space-y-0.5">
+            <div className="text-[11px] text-gray-800 space-y-0.5">
               <div><span className="font-bold">Caixa Postal:</span> Nº 149 · <span className="font-bold">CEP:</span> 88750-970</div>
               <div><span className="font-bold">Cidade:</span> Braço do Norte – SC</div>
               <div>Metalúrgica BBA · CNPJ: 16.935.999/0001-09</div>
@@ -734,8 +734,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           </div>
 
           <div data-no-break>
-            <SectionHeader>Observação <span className="text-gray-400 font-normal normal-case tracking-normal text-[9px]">— por conta do cliente</span></SectionHeader>
-            <div className="text-[9.5px] text-gray-800 space-y-0.5 pl-2">
+            <SectionHeader>Observação <span className="text-gray-400 font-normal normal-case tracking-normal text-[10.5px]">— por conta do cliente</span></SectionHeader>
+            <div className="text-[11px] text-gray-800 space-y-0.5 pl-2">
               <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Painel elétrico</span></div>
               <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Montagem dos equipamentos orçados acima (se necessário)</span></div>
               <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Muck (se necessário)</span></div>
@@ -747,7 +747,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           {observacoesExtra && observacoesExtra.trim() && (
             <div data-no-break>
               <SectionHeader>Observações</SectionHeader>
-              <div className="text-[9.5px] text-gray-800 leading-snug whitespace-pre-wrap">
+              <div className="text-[11px] text-gray-800 leading-snug whitespace-pre-wrap">
                 {observacoesExtra}
               </div>
             </div>
@@ -755,7 +755,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
           <div data-no-break>
             <SectionHeader>Tributos</SectionHeader>
-            <div className="text-[9px] text-gray-700 leading-snug space-y-1.5 text-justify">
+            <div className="text-[10.5px] text-gray-700 leading-snug space-y-1.5 text-justify">
               <p>
                 As condições desta proposta consideram os impostos e taxas vigentes, quando da elaboração da mesma sendo que quaisquer alterações sobre os tributos Municipais, Estaduais e Federais serão repassados ou de responsabilidade do cliente, incluindo pagamento ou documento de exoneração fiscal da diferença do ICMS ao Estado de destino ou custos de caminhão parado em posto fiscal da fronteira.
               </p>
@@ -767,14 +767,14 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
           <div data-no-break>
             <SectionHeader>Cláusula de Cancelamento</SectionHeader>
-            <div className="text-[9px] text-gray-700 leading-snug text-justify">
+            <div className="text-[10.5px] text-gray-700 leading-snug text-justify">
               Caso o comprador deseje cancelar o pedido, fica estabelecido que será cobrada uma taxa de cancelamento no valor de <strong>10% do preço total do produto</strong>. Essa taxa é destinada a cobrir eventuais perdas financeiras decorrentes do cancelamento, incluindo custos de produção, armazenamento e distribuição.
             </div>
           </div>
 
           <div data-no-break>
             <SectionHeader>Garantia</SectionHeader>
-            <div className="text-[9px] text-gray-700 leading-snug space-y-1.5 text-justify">
+            <div className="text-[10.5px] text-gray-700 leading-snug space-y-1.5 text-justify">
               <p>
                 Os equipamentos fornecidos pela metalúrgica BRANORTE estão garantidos pelo prazo de <strong>12 (doze) meses</strong> contados da data de entrega dos mesmos, quanto ao funcionamento, desde que sejam armazenados, montados e operados dentro das condições para as quais foram projetados. Durante o prazo de garantia serão substituídas as peças que apresentarem defeitos, ficando as despesas de frete das peças, deslocamento, estadia e alimentação dos técnicos montadores por conta do cliente. Expirado o prazo de garantia, forneceremos assistência técnica mediante solicitação. Ficam excluídos da garantia os seguintes itens: canalizações e dispositivos de interligação.
               </p>
@@ -787,12 +787,12 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           {/* Assinaturas */}
           <div data-no-break className="mt-10 grid grid-cols-2 gap-8 px-2">
             <div className="text-center">
-              <div className="border-t border-gray-700 pt-1.5 text-[9.5px] font-bold text-gray-800">
+              <div className="border-t border-gray-700 pt-1.5 text-[11px] font-bold text-gray-800">
                 Metalúrgica BBA LTDA
               </div>
             </div>
             <div className="text-center">
-              <div className="border-t border-gray-700 pt-1.5 text-[9.5px] font-bold text-gray-800">
+              <div className="border-t border-gray-700 pt-1.5 text-[11px] font-bold text-gray-800">
                 {cli.nome
                   ? <span>{cli.nome}</span>
                   : <span className="text-gray-400 italic">[Cliente]</span>}
@@ -801,7 +801,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           </div>
 
           {/* Footer */}
-          <div className="mt-6 pt-2 border-t border-gray-200 flex justify-between text-[7.5px] text-gray-400">
+          <div className="mt-6 pt-2 border-t border-gray-200 flex justify-between text-[9px] text-gray-400">
             <span>Orçamento · Branorte BBA</span>
             <span>Página 1</span>
           </div>

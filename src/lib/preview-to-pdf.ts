@@ -32,8 +32,8 @@ export async function gerarPdfDoPreview(
 ): Promise<Blob> {
   const pageWidthMm = opts.pageWidth ?? 210
   const pageHeightMm = opts.pageHeight ?? 297
-  const scale = opts.scale ?? 2
-  const containerWidthPx = opts.containerWidthPx ?? 800
+  const scale = opts.scale ?? 2.5
+  const containerWidthPx = opts.containerWidthPx ?? 1024
 
   // 1) Cria container off-screen com largura fixa pra o preview renderizar consistente
   const host = document.createElement('div')
@@ -93,8 +93,8 @@ export async function gerarPdfDoPreview(
 
     if (totalHeightMm <= pageHeightMm + 0.5) {
       // Cabe em 1 pagina so
-      const imgData = canvas.toDataURL('image/jpeg', 0.92)
-      pdf.addImage(imgData, 'JPEG', 0, 0, pageWidthMm, totalHeightMm, undefined, 'FAST')
+      const imgData = canvas.toDataURL('image/jpeg', 0.96)
+      pdf.addImage(imgData, 'JPEG', 0, 0, pageWidthMm, totalHeightMm, undefined, 'SLOW')
     } else {
       // Multi-pagina: smart slicing — corta SO em linhas em branco
       // pra nao quebrar texto/blocos no meio da pagina A4
@@ -219,11 +219,11 @@ export async function gerarPdfDoPreview(
           0, 0, canvas.width, thisSliceHeightPx,
         )
 
-        const imgData = sliceCanvas.toDataURL('image/jpeg', 0.92)
+        const imgData = sliceCanvas.toDataURL('image/jpeg', 0.96)
         const sliceHeightMm = thisSliceHeightPx * mmPerPx
 
         if (pageIdx > 0) pdf.addPage()
-        pdf.addImage(imgData, 'JPEG', 0, 0, pageWidthMm, sliceHeightMm, undefined, 'FAST')
+        pdf.addImage(imgData, 'JPEG', 0, 0, pageWidthMm, sliceHeightMm, undefined, 'SLOW')
 
         yPx += thisSliceHeightPx
         pageIdx += 1
