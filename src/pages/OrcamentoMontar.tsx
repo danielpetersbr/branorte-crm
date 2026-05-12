@@ -118,6 +118,8 @@ export function OrcamentoMontar() {
   const [dataVendaTxt, setDataVendaTxt] = useState('')
   const [prazoEntregaTxt, setPrazoEntregaTxt] = useState('')
   const [formaPagamentoTxt, setFormaPagamentoTxt] = useState('')
+  // Parcelas estruturadas (tabela DATA/MÉTODO/VALOR) — alternativa ao texto livre acima
+  const [parcelasPagamento, setParcelasPagamento] = useState<ParcelaPagamento[]>([])
 
   function atualizarTermo(key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento', v: string) {
     if (key === 'dataVenda') setDataVendaTxt(v)
@@ -529,6 +531,8 @@ export function OrcamentoMontar() {
                 terms={{ dataVenda: dataVendaTxt, prazoEntrega: prazoEntregaTxt, formaPagamento: formaPagamentoTxt }}
                 onUpdateTerm={atualizarTermo}
                 onMoverItem={moverItem}
+                parcelas={parcelasPagamento}
+                onUpdateParcelas={setParcelasPagamento}
               />
             ) : (
               <div className="divide-y divide-border">
