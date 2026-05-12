@@ -31,8 +31,6 @@ export interface PreviewMotor {
   valor_unit: number
   valor_total: number
   item_nome?: string  // se vier, mostra "de qual item" o motor é
-  item_uid?: string   // pra callback de trocar tensão
-  tensao?: 220 | 380 | 660  // tensão escolhida pelo vendedor
 }
 
 export interface PreviewClienteDados {
@@ -76,6 +74,14 @@ export interface OrcamentoPreviewProps {
   // Modo render: esconde botões interativos (pra capturar pra PDF limpo)
   renderMode?: boolean
 
+  // Tensão dos motores (global pra todos). null = "a confirmar".
+  tensaoMotores?: 220 | 380 | 660 | null
+  onUpdateTensaoMotores?: (tensao: 220 | 380 | 660 | null) => void
+
+  // Desconto opcional (mostra valor com desconto abaixo do total)
+  desconto?: { tipo: 'pct' | 'valor'; valor: number } | null
+  onUpdateDesconto?: (d: { tipo: 'pct' | 'valor'; valor: number } | null) => void
+
   // Callbacks (apenas no modo edit)
   onAddAcessorios?: () => void
   onEditAcessorios?: () => void
@@ -83,7 +89,7 @@ export interface OrcamentoPreviewProps {
   onRemove?: (uid: string) => void
   onFotoChange?: (dataURL: string | null) => void
   onUpdateNome?: (uid: string, novoNome: string) => void
-  onUpdateTensao?: (item_uid: string, tensao: 220 | 380 | 660) => void
+  onUpdateTerm?: (key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento', valor: string) => void
 }
 
 function formatBRLBare(v: number): string {
@@ -163,7 +169,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     acessorios, valorAcessorios,
     numero, dataEmissao, cliente, terms, observacoesExtra, fotoPrincipal,
     renderMode = false,
-    onAddAcessorios, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateTensao,
+    tensaoMotores = null, onUpdateTensaoMotores,
+    desconto, onUpdateDesconto,
+    onAddAcessorios, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateTerm,
   } = props
   const [editingNomeUid, setEditingNomeUid] = useState<string | null>(null)
   const [editingNomeValor, setEditingNomeValor] = useState<string>('')
@@ -608,93 +616,178 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           )}
 
           {/* Motores */}
-          {motoresAgrupados.length > 0 && (
-            <div data-no-break className="mt-3 border border-gray-300 rounded-md p-4 bg-white shadow-sm">
-              <div className="font-bold text-[11px] tracking-wider uppercase text-gray-700 pb-2 border-b-2 border-gray-800 mb-2.5">
-                {motoresTitle.replace(':', '')}
+          {motoresAgrupados.length > 0 && (() => {
+            const opcoesTensao: (220 | 380 | 660)[] = voltagem === 'monofasico' ? [220] : [220, 380, 660]
+            const tensaoInteractive = !renderMode && !!onUpdateTensaoMotores
+            const tensaoLabel = tensaoMotores ? `${tensaoMotores}V` : 'tensão a confirmar'
+            return (
+              <div data-no-break className="mt-3 border border-gray-300 rounded-md p-4 bg-white shadow-sm">
+                <div className="flex items-center justify-between gap-3 pb-2 border-b-2 border-gray-800 mb-2.5">
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="font-bold text-[11px] tracking-wider uppercase text-gray-700">
+                      {motoresTitle.replace(':', '')}
+                    </span>
+                    {tensaoInteractive ? (
+                      <span className="inline-flex gap-1 items-center">
+                        {opcoesTensao.map(v => (
+                          <button
+                            key={v}
+                            onClick={() => onUpdateTensaoMotores!(tensaoMotores === v ? null : v)}
+                            className={`text-[10px] px-2 py-0.5 rounded font-bold transition-all ${
+                              tensaoMotores === v
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                            }`}
+                            title={`Tensão ${v}V (clique no selecionado pra voltar a "a confirmar")`}
+                          >
+                            {v}V
+                          </button>
+                        ))}
+                        {!tensaoMotores && (
+                          <span className="text-[10px] text-gray-400 italic ml-1">tensão a confirmar</span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className={`text-[10px] font-semibold ${tensaoMotores ? 'text-blue-700' : 'text-gray-400 italic'}`}>
+                        {tensaoLabel}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <table className="w-full text-[11px] border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="text-left font-bold py-2 text-gray-600 uppercase tracking-wider text-[10px]">Tipo</th>
+                      <th className="text-right font-bold py-2 text-gray-600 uppercase tracking-wider text-[10px]">Novo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {motoresAgrupados.map((m, idx) => {
+                      const incluso = m.valor_total === 0
+                      return (
+                        <tr key={`${m.cv}-${m.polos}-${idx}`} className="border-t border-gray-200">
+                          <td className="py-1.5 text-gray-800">
+                            <span className="text-gray-400 mr-1.5">•</span>
+                            <span className="font-semibold">{m.cv} CV {m.polos} polos</span>
+                            {m.item_nome && (
+                              <span className="text-gray-500"> · <span className="italic">{m.item_nome}</span></span>
+                            )}
+                            {m.qtd > 1 && <span className="text-gray-500"> (×{m.qtd})</span>}
+                          </td>
+                          <td className="py-1.5 text-right text-gray-800 tabular-nums">
+                            {incluso
+                              ? <span className="text-gray-500 italic">incluso</span>
+                              : <>R$ {formatBRLBare(m.valor_total)}</>}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                    <tr className="border-t-2 border-gray-700 font-bold">
+                      <td className="py-2 text-gray-900">TOTAL</td>
+                      <td className="py-2 text-right text-gray-900 tabular-nums">R$ {formatBRLBare(totalMotores)}</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
-              <table className="w-full text-[11px] border-collapse">
-                <thead>
-                  <tr>
-                    <th className="text-left font-bold py-2 text-gray-600 uppercase tracking-wider text-[10px]">Tipo</th>
-                    <th className="text-right font-bold py-2 text-gray-600 uppercase tracking-wider text-[10px]">Novo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {motoresAgrupados.map((m, idx) => {
-                    const incluso = m.valor_total === 0
-                    const tensao = m.tensao || 220
-                    const opcoesTensao: (220 | 380 | 660)[] = voltagem === 'monofasico' ? [220] : [220, 380, 660]
-                    const isInteractive = !renderMode && !!onUpdateTensao && !!m.item_uid && opcoesTensao.length > 1
-                    return (
-                      <tr key={`${m.cv}-${m.polos}-${idx}`} className="border-t border-gray-200">
-                        <td className="py-1.5 text-gray-800">
-                          <span className="text-gray-400 mr-1.5">•</span>
-                          <span className="font-semibold">{m.cv} CV {m.polos} polos</span>
-                          {' '}
-                          {isInteractive ? (
-                            <span className="inline-flex gap-0.5 ml-1 align-middle">
-                              {opcoesTensao.map(v => (
-                                <button
-                                  key={v}
-                                  onClick={() => onUpdateTensao!(m.item_uid!, v)}
-                                  className={`text-[9px] px-1.5 py-0.5 rounded font-bold transition-all ${
-                                    tensao === v
-                                      ? 'bg-blue-600 text-white'
-                                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                                  }`}
-                                  title={`Tensão ${v}V`}
-                                >
-                                  {v}V
-                                </button>
-                              ))}
-                            </span>
-                          ) : (
-                            <span className="text-blue-700 font-semibold ml-1">{tensao}V</span>
-                          )}
-                          {m.item_nome && (
-                            <span className="text-gray-500"> · <span className="italic">{m.item_nome}</span></span>
-                          )}
-                          {m.qtd > 1 && <span className="text-gray-500"> (×{m.qtd})</span>}
-                        </td>
-                        <td className="py-1.5 text-right text-gray-800 tabular-nums">
-                          {incluso
-                            ? <span className="text-gray-500 italic">incluso</span>
-                            : <>R$ {formatBRLBare(m.valor_total)}</>}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                  <tr className="border-t-2 border-gray-700 font-bold">
-                    <td className="py-2 text-gray-900">TOTAL</td>
-                    <td className="py-2 text-right text-gray-900 tabular-nums">R$ {formatBRLBare(totalMotores)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          )}
+            )
+          })()}
 
           {/* VALOR TOTAL DA PROPOSTA */}
-          <div data-no-break className="flex justify-between items-center text-[14px] font-black mt-6 px-5 py-4 border-2 border-gray-900 rounded-lg tracking-wide">
-            <span className="text-gray-900 uppercase leading-none">Valor total da proposta com motor novo</span>
-            <span className="text-gray-900 text-[15px] leading-none tabular-nums">R$ {formatBRLBare(totalGeral)}</span>
-          </div>
+          {(() => {
+            const descontoValor = desconto
+              ? (desconto.tipo === 'pct' ? totalGeral * (desconto.valor / 100) : desconto.valor)
+              : 0
+            const totalFinal = Math.max(0, totalGeral - descontoValor)
+            const temDesconto = !!desconto && descontoValor > 0
+            return (
+              <>
+                <div data-no-break className={`flex justify-between items-center mt-6 px-5 py-4 border-2 border-gray-900 rounded-lg tracking-wide ${temDesconto ? 'text-[12px] font-bold' : 'text-[14px] font-black'}`}>
+                  <span className="text-gray-900 uppercase leading-none">Valor total da proposta com motor novo</span>
+                  <span className={`text-gray-900 leading-none tabular-nums ${temDesconto ? 'text-[13px] text-gray-500 line-through decoration-1' : 'text-[15px]'}`}>
+                    R$ {formatBRLBare(totalGeral)}
+                  </span>
+                </div>
 
-          {/* Termos comerciais */}
-          <div data-no-break className="mt-5 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded text-[9.5px] text-gray-800 space-y-1">
-            <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>
-              Data da venda – {dataVendaIsPlaceholder
-                ? <span className="text-gray-400 italic">a combinar</span>
-                : <span>{dataVendaTxt}</span>}
-            </span></div>
-            <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Prazo de entrega – {prazoEntregaTxt}</span></div>
-            <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>
-              Forma de pagamento – {formaPgIsPlaceholder
-                ? <span className="text-gray-400 italic">a combinar</span>
-                : <span>{formaPagamentoTxt}</span>}
-            </span></div>
-            <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Frete – por conta do cliente</span></div>
-            <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Validade da proposta – 10 dias após o envio</span></div>
+                {/* Caixa editável de desconto + total final (modo edit) */}
+                {!renderMode && onUpdateDesconto && (
+                  <div className="mt-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2 text-[11px] print:hidden">
+                    <span className="text-blue-900 font-semibold">Desconto:</span>
+                    <select
+                      value={desconto?.tipo || ''}
+                      onChange={e => {
+                        const v = e.target.value
+                        if (!v) onUpdateDesconto(null)
+                        else onUpdateDesconto({ tipo: v as 'pct' | 'valor', valor: desconto?.valor || 0 })
+                      }}
+                      className="text-[11px] px-2 py-1 border border-blue-300 rounded bg-white"
+                    >
+                      <option value="">Nenhum</option>
+                      <option value="pct">% percentual</option>
+                      <option value="valor">R$ manual</option>
+                    </select>
+                    {desconto && (
+                      <input
+                        type="number"
+                        step="0.01" min={0}
+                        value={desconto.valor || ''}
+                        onChange={e => onUpdateDesconto({ tipo: desconto.tipo, valor: parseFloat(e.target.value) || 0 })}
+                        className="w-24 text-[11px] px-2 py-1 border border-blue-300 rounded bg-white"
+                        placeholder={desconto.tipo === 'pct' ? '5' : '500.00'}
+                      />
+                    )}
+                    {desconto && (
+                      <span className="text-blue-700 text-[10px]">
+                        = R$ {formatBRLBare(descontoValor)} de abatimento
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* VALOR TOTAL COM DESCONTO — caixa destacada (renderiza no PDF tb) */}
+                {temDesconto && (
+                  <div data-no-break className="flex justify-between items-center mt-2 px-5 py-4 border-2 border-emerald-700 rounded-lg tracking-wide text-[14px] font-black bg-emerald-50/50">
+                    <span className="text-emerald-900 uppercase leading-none">
+                      Valor total com desconto{desconto?.tipo === 'pct' ? ` (${desconto.valor}%)` : ''}
+                    </span>
+                    <span className="text-emerald-900 text-[16px] leading-none tabular-nums">
+                      R$ {formatBRLBare(totalFinal)}
+                    </span>
+                  </div>
+                )}
+              </>
+            )
+          })()}
+
+          {/* Termos comerciais — campos editáveis em modo edit */}
+          <div data-no-break className="mt-5 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded text-[10.5px] text-gray-800 space-y-1.5">
+            {(() => {
+              const renderTerm = (label: string, valor: string | null | undefined, placeholder: string, key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento') => {
+                const isPh = !valor || !valor.trim()
+                if (!renderMode && onUpdateTerm) {
+                  return (
+                    <input
+                      type="text"
+                      defaultValue={valor || ''}
+                      onBlur={e => onUpdateTerm(key, e.target.value)}
+                      placeholder={placeholder}
+                      className={`bg-transparent border-b border-dashed border-gray-300 hover:border-blue-500 focus:border-blue-600 focus:outline-none px-1 min-w-[140px] ${isPh ? 'italic text-gray-400' : 'text-gray-800'}`}
+                    />
+                  )
+                }
+                return isPh
+                  ? <span className="text-gray-400 italic">{placeholder}</span>
+                  : <span>{valor}</span>
+              }
+              return (
+                <>
+                  <div className="flex gap-1.5 items-center"><span className="text-gray-400">•</span><span>Data da venda – {renderTerm('Data da venda', dataVendaTxt, 'a combinar', 'dataVenda')}</span></div>
+                  <div className="flex gap-1.5 items-center"><span className="text-gray-400">•</span><span>Prazo de entrega – {renderTerm('Prazo de entrega', prazoEntregaTxt, '90 dias (úteis)', 'prazoEntrega')}</span></div>
+                  <div className="flex gap-1.5 items-center"><span className="text-gray-400">•</span><span>Forma de pagamento – {renderTerm('Forma de pagamento', formaPagamentoTxt, 'a combinar', 'formaPagamento')}</span></div>
+                  <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Frete – por conta do cliente</span></div>
+                  <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Validade da proposta – 10 dias após o envio</span></div>
+                </>
+              )
+            })()}
           </div>
 
           <div data-no-break>

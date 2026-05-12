@@ -32,9 +32,10 @@ interface CarrinhoItem {
   motor_polos: number | null
   motor_qtd: number
   motor_valor_unit: number  // valor unitário do motor (não multiplicado)
-  motor_tensao?: 220 | 380 | 660  // tensão do motor (220 default; mono só 220, tri todas)
   foto_url: string | null   // foto do equipamento (mostra no preview, igual orçamento real)
 }
+
+type TensaoMotor = 220 | 380 | 660 | null
 
 function formatBRL(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
@@ -66,8 +67,6 @@ interface MotorAgrupado {
   valor_unit: number
   valor_total: number
   item_nome?: string       // nome do item que usa esse motor (pra mostrar no listagem)
-  item_uid?: string        // uid do item, pra trocar tensão via callback
-  tensao?: 220 | 380 | 660 // tensão do motor
 }
 
 function agruparMotores(carrinho: CarrinhoItem[]): MotorAgrupado[] {
@@ -82,8 +81,6 @@ function agruparMotores(carrinho: CarrinhoItem[]): MotorAgrupado[] {
       valor_unit: it.motor_valor_unit,
       valor_total: it.motor_valor_unit * qtdMotor,
       item_nome: it.nome_custom || it.nome,
-      item_uid: it.uid,
-      tensao: it.motor_tensao || 220,
     })
   }
   // Ordena por CV desc pra ficar agrupado visualmente
@@ -97,6 +94,8 @@ export function OrcamentoMontar() {
   const [busca, setBusca] = useState('')
   const [categoria, setCategoria] = useState<string | null>(null)
   const [voltagem, setVoltagem] = useState<Voltagem>('trifasico')
+  // Tensão dos motores (global pra todos). null = "tensão a confirmar".
+  const [tensaoMotores, setTensaoMotores] = useState<TensaoMotor>(null)
   const [carrinho, setCarrinho] = useState<CarrinhoItem[]>([])
   // Acessórios: bloco opcional com valor calculado como % do total de equipamentos
   const [acessorios, setAcessorios] = useState<{ pct: number; items: string[] } | null>(null)
@@ -112,6 +111,17 @@ export function OrcamentoMontar() {
   const [waPromptValue, setWaPromptValue] = useState('')
   const [waPromptResolve, setWaPromptResolve] = useState<((v: string | null) => void) | null>(null)
   const [fotoPrincipal, setFotoPrincipal] = useState<string | null>(null)
+  // Desconto + termos editáveis inline no preview
+  const [descontoCfg, setDescontoCfg] = useState<{ tipo: 'pct' | 'valor'; valor: number } | null>(null)
+  const [dataVendaTxt, setDataVendaTxt] = useState('')
+  const [prazoEntregaTxt, setPrazoEntregaTxt] = useState('')
+  const [formaPagamentoTxt, setFormaPagamentoTxt] = useState('')
+
+  function atualizarTermo(key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento', v: string) {
+    if (key === 'dataVenda') setDataVendaTxt(v)
+    else if (key === 'prazoEntrega') setPrazoEntregaTxt(v)
+    else if (key === 'formaPagamento') setFormaPagamentoTxt(v)
+  }
 
   const categorias = useMemo(() => agruparPorCategoria(items ?? []), [items])
 
@@ -191,10 +201,6 @@ export function OrcamentoMontar() {
 
   function alterarNome(uid: string, novoNome: string) {
     setCarrinho(c => c.map(it => it.uid === uid ? { ...it, nome_custom: novoNome } : it))
-  }
-
-  function alterarTensaoMotor(uid: string, tensao: 220 | 380 | 660) {
-    setCarrinho(c => c.map(it => it.uid === uid ? { ...it, motor_tensao: tensao } : it))
   }
 
   function limparCarrinho() {
@@ -441,7 +447,12 @@ export function OrcamentoMontar() {
                 onRemove={removerItem}
                 onFotoChange={setFotoPrincipal}
                 onUpdateNome={alterarNome}
-                onUpdateTensao={alterarTensaoMotor}
+                tensaoMotores={tensaoMotores}
+                onUpdateTensaoMotores={setTensaoMotores}
+                desconto={descontoCfg}
+                onUpdateDesconto={setDescontoCfg}
+                terms={{ dataVenda: dataVendaTxt, prazoEntrega: prazoEntregaTxt, formaPagamento: formaPagamentoTxt }}
+                onUpdateTerm={atualizarTermo}
               />
             ) : (
               <div className="divide-y divide-border">
