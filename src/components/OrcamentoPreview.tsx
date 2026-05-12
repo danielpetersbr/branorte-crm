@@ -935,6 +935,30 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       if (p.dataTipo === 'data_fixa') return p.dataFixa || 'DATA FIXA'
                       return ''
                     }
+                    // Calcula a data efetiva da parcela em formato BR (DD/MM/AAAA)
+                    function brToIso(br: string): string {
+                      const m = (br || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+                      return m ? `${m[3]}-${m[2]}-${m[1]}` : ''
+                    }
+                    function isoToBr(iso: string): string {
+                      const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+                      return m ? `${m[3]}/${m[2]}/${m[1]}` : iso
+                    }
+                    function addDays(brDate: string, days: number): string {
+                      const iso = brToIso(brDate)
+                      if (!iso) return ''
+                      const d = new Date(iso + 'T12:00:00')
+                      d.setDate(d.getDate() + days)
+                      return isoToBr(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)
+                    }
+                    function dataCalculada(p: ParcelaPagamento): string {
+                      const base = dataVendaTxt
+                      if (p.dataTipo === 'no_pedido') return base || '—'
+                      if (p.dataTipo === 'na_nf') return base || '—'  // NF emitida no pedido
+                      if (p.dataTipo === 'apos_nf') return base ? addDays(base, p.dias || 30) : `+${p.dias || 30}d`
+                      if (p.dataTipo === 'data_fixa') return p.dataFixa || '—'
+                      return '—'
+                    }
                     function updateParcela(id: string, patch: Partial<ParcelaPagamento>) {
                       if (!onUpdateParcelas) return
                       onUpdateParcelas(arr.map(p => p.id === id ? { ...p, ...patch } : p))
