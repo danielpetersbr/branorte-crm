@@ -259,8 +259,24 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
         if (bestEl && bestEl.parentNode) {
           const gap = document.createElement('div')
           gap.className = 'page-gap-spacer'
-          gap.style.cssText = 'height:36px;background:#e5e7eb;margin:8px -24px;border-top:2px dashed #ef4444;border-bottom:2px dashed #ef4444;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:bold;color:#dc2626;letter-spacing:0.05em;'
-          gap.textContent = `↑ FIM FOLHA ${i + 1} · INÍCIO FOLHA ${i + 2} ↓`
+          // Spacer simula gap entre folhas A4: cinza escuro estendido lateralmente
+          // pra "esconder" as bordas laterais da moldura grande, dando ilusao de 2 folhas separadas
+          gap.style.cssText = [
+            'height: 30px',
+            'background: #6b7280',  // cinza medio (cor de fundo do app)
+            'margin: 0 -25px',  // estende ALEM da borda da moldura (-24px overlap)
+            'border-top: 1px solid #111827',  // FECHA a folha anterior (borda inferior preta)
+            'border-bottom: 1px solid #111827',  // ABRE a folha nova (borda superior preta)
+            'display: flex',
+            'align-items: center',
+            'justify-content: center',
+            'font-size: 9px',
+            'font-weight: bold',
+            'color: #f3f4f6',
+            'letter-spacing: 0.1em',
+            'text-transform: uppercase',
+          ].join(';')
+          gap.textContent = `Folha ${i + 1} / ${breaks.length + 1} · próxima abaixo`
           bestEl.parentNode.insertBefore(gap, bestEl.nextSibling)
         }
       }
