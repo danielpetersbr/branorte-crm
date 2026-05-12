@@ -675,9 +675,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
           {/* VALOR TOTAL DE EQUIPAMENTOS */}
           {mostrarTotalEquip && (
-            <div data-no-break className="flex justify-between items-center text-[17px] font-bold mt-4 px-5 py-3 border-2 border-gray-700 rounded-lg tracking-wide">
-              <span className="text-gray-900 uppercase leading-tight">Valor total de equipamentos</span>
-              <span className="text-gray-900 leading-tight tabular-nums">R$ {formatBRLBare(totalEquip)}</span>
+            <div data-no-break className="mt-4 px-6 py-4 border-2 border-gray-700 rounded-lg tracking-wide">
+              <div className="flex justify-between items-center gap-4 min-h-[24px] text-[17px] font-bold">
+                <span className="text-gray-900 uppercase leading-[1] flex-1">Valor total de equipamentos</span>
+                <span className="text-gray-900 leading-[1] tabular-nums whitespace-nowrap">R$ {formatBRLBare(totalEquip)}</span>
+              </div>
             </div>
           )}
 
@@ -769,11 +771,13 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             const temDesconto = !!desconto && descontoValor > 0
             return (
               <>
-                <div data-no-break className={`flex justify-between items-center mt-6 px-5 py-4 border-2 border-gray-900 rounded-lg tracking-wide ${temDesconto ? 'text-[17px] font-bold' : 'text-[19px] font-black'}`}>
-                  <span className="text-gray-900 uppercase leading-tight">Valor total da proposta com motor novo</span>
-                  <span className={`text-gray-900 leading-tight tabular-nums ${temDesconto ? 'text-[18px] text-gray-500 line-through decoration-1' : 'text-[20px]'}`}>
-                    R$ {formatBRLBare(totalGeral)}
-                  </span>
+                <div data-no-break className="mt-6 px-6 py-5 border-2 border-gray-900 rounded-lg tracking-wide">
+                  <div className={`flex justify-between items-center gap-4 min-h-[28px] ${temDesconto ? 'text-[17px] font-bold' : 'text-[19px] font-black'}`}>
+                    <span className="text-gray-900 uppercase leading-[1] flex-1">Valor total da proposta com motor novo</span>
+                    <span className={`text-gray-900 leading-[1] tabular-nums whitespace-nowrap ${temDesconto ? 'text-[18px] text-gray-500 line-through decoration-1' : 'text-[20px]'}`}>
+                      R$ {formatBRLBare(totalGeral)}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Caixa editável de desconto + total final (modo edit) */}
@@ -813,13 +817,15 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
                 {/* VALOR TOTAL COM DESCONTO — caixa destacada (renderiza no PDF tb) */}
                 {temDesconto && (
-                  <div data-no-break className="flex justify-between items-center mt-2 px-5 py-4 border-2 border-emerald-700 rounded-lg tracking-wide text-[19px] font-black bg-emerald-50/50">
-                    <span className="text-emerald-900 uppercase leading-tight">
-                      Valor total com desconto
-                    </span>
-                    <span className="text-emerald-900 text-[20px] leading-tight tabular-nums">
-                      R$ {formatBRLBare(totalFinal)}
-                    </span>
+                  <div data-no-break className="mt-2 px-6 py-5 border-2 border-emerald-700 rounded-lg tracking-wide bg-emerald-50/50">
+                    <div className="flex justify-between items-center gap-4 min-h-[28px] text-[19px] font-black">
+                      <span className="text-emerald-900 uppercase leading-[1] flex-1">
+                        Valor total com desconto
+                      </span>
+                      <span className="text-emerald-900 text-[20px] leading-[1] tabular-nums whitespace-nowrap">
+                        R$ {formatBRLBare(totalFinal)}
+                      </span>
+                    </div>
                   </div>
                 )}
               </>
