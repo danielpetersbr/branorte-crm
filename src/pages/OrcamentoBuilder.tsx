@@ -128,6 +128,19 @@ export function OrcamentoBuilder() {
   const [pdfBlobAtual, setPdfBlobAtual] = useState<Blob | null>(null)
   const [enviandoWA, setEnviandoWA] = useState<'idle' | 'enviando' | 'enviado' | 'erro'>('idle')
   const [enviandoWAMsg, setEnviandoWAMsg] = useState<string>('')
+
+  // Aviso antes de fechar popup do orçamento se tiver dados não-salvos
+  useEffect(() => {
+    if (!_fromExt) return
+    const handler = (e: BeforeUnloadEvent) => {
+      if (cliNome.trim() && !orcamentoSalvo) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [cliNome, orcamentoSalvo, _fromExt])
   const [scanInfo, setScanInfo] = useState<{ ultimo: number; total: number; ano: number } | null>(null)
   const [scanLoading, setScanLoading] = useState(false)
   const [numeroFonte, setNumeroFonte] = useState<'pasta' | 'banco' | null>(null)
@@ -543,6 +556,22 @@ export function OrcamentoBuilder() {
     }
   }
 
+  // Pede o telefone do vendedor pra extensão Branorte (capturado via WPP)
+  async function getTelefoneVendedorDaExtensao(): Promise<{ telefone: string; vendedor: string }> {
+    return new Promise((resolve) => {
+      const onMsg = (ev: MessageEvent) => {
+        if (ev.data?.type === 'branorte:vendor-info') {
+          window.removeEventListener('message', onMsg)
+          resolve({ telefone: ev.data.telefone || '', vendedor: ev.data.vendedor_nome || '' })
+        }
+      }
+      window.addEventListener('message', onMsg)
+      try { window.opener?.postMessage({ type: 'branorte:request-vendor-info' }, '*') } catch {}
+      try { window.parent?.postMessage({ type: 'branorte:request-vendor-info' }, '*') } catch {}
+      setTimeout(() => { window.removeEventListener('message', onMsg); resolve({ telefone: '', vendedor: '' }) }, 3000)
+    })
+  }
+
   // Envia o PDF gerado pro próprio WhatsApp do vendedor logado
   async function enviarPdfProMeuWhatsApp() {
     if (!pdfBlobAtual) {
@@ -551,12 +580,18 @@ export function OrcamentoBuilder() {
       return
     }
     setEnviandoWA('enviando')
-    setEnviandoWAMsg('Fazendo upload do PDF...')
+    setEnviandoWAMsg('Detectando vendedor logado no WhatsApp...')
     try {
       const { supabase } = await import('@/lib/supabase')
       const { data: { session } } = await supabase.auth.getSession()
-      const vendedor = (profile?.display_name || '').toUpperCase().trim()
-      if (!vendedor) throw new Error('Vendedor não identificado no perfil')
+
+      // 1) Pega telefone do vendedor via extensão (WID capturado pelo WhatsApp Web)
+      const { telefone: telefoneExt, vendedor: vendedorExt } = await getTelefoneVendedorDaExtensao()
+      if (!telefoneExt) {
+        throw new Error('Não consegui detectar seu telefone. Abra o WhatsApp Web em outra aba e tente novamente.')
+      }
+      setEnviandoWAMsg('Fazendo upload do PDF...')
+      const vendedor = vendedorExt.toUpperCase().trim()
 
       // Upload PDF pro bucket público
       const filename = `${orcamentoSalvo?.numero || Date.now()}-${cliNome.replace(/[^a-zA-Z0-9]+/g, '_')}.pdf`
@@ -574,6 +609,7 @@ export function OrcamentoBuilder() {
         headers: { 'authorization': `Bearer ${session?.access_token ?? ''}`, 'content-type': 'application/json' },
         body: JSON.stringify({
           vendedor_nome: vendedor,
+          telefone_destino: telefoneExt,
           pdf_url: pub.publicUrl,
           filename,
           cliente_nome: cliNome,
