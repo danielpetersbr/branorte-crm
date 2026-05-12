@@ -965,11 +965,24 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       d.setDate(d.getDate() + days)
                       return isoToBr(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)
                     }
+                    // Extrai número de dias do prazo de entrega ("90 dias (úteis)" → 90)
+                    function parsePrazoDias(txt: string): number {
+                      const m = (txt || '').match(/(\d+)\s*dias?/i)
+                      return m ? parseInt(m[1], 10) : 90
+                    }
                     function dataCalculada(p: ParcelaPagamento): string {
                       const base = dataVendaTxt
                       if (p.dataTipo === 'no_pedido') return base || '—'
-                      if (p.dataTipo === 'na_nf') return base || '—'  // NF emitida no pedido
-                      if (p.dataTipo === 'apos_nf') return base ? addDays(base, p.dias || 30) : `+${p.dias || 30}d`
+                      if (p.dataTipo === 'na_nf') {
+                        // Na emissão da NF = data da venda + prazo de entrega
+                        if (!base) return '—'
+                        return addDays(base, parsePrazoDias(prazoEntregaTxt))
+                      }
+                      if (p.dataTipo === 'apos_nf') {
+                        // X dias APÓS a NF = base + prazoEntrega + X dias
+                        if (!base) return `+${p.dias || 30}d após NF`
+                        return addDays(base, parsePrazoDias(prazoEntregaTxt) + (p.dias || 30))
+                      }
                       if (p.dataTipo === 'data_fixa') return p.dataFixa || '—'
                       return '—'
                     }
