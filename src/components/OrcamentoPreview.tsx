@@ -5,6 +5,7 @@
 //     e cliente/numero/data/terms preenchidos. Esconde os botões interativos.
 
 import { X } from 'lucide-react'
+import { useLayoutEffect, useRef, useState } from 'react'
 
 export interface PreviewItem {
   uid?: string
@@ -81,6 +82,39 @@ function formatBRLBare(v: number): string {
   return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+// Procura uma posicao de quebra "boa" perto do Y ideal:
+// pega o elemento que termina mais proximo (e antes) de Y, e usa o bottom dele.
+// tolerance: quanto pode procurar pra cima/baixo (em px)
+function findBreakNear(container: HTMLElement, idealY: number, tolerance: number): number {
+  // Walk all descendant elements (depth limitado pra perf), pega quem fica entre [idealY-tol, idealY+tol/3]
+  const minY = idealY - tolerance
+  const maxY = idealY + tolerance / 3
+  const containerTop = container.getBoundingClientRect().top + window.scrollY
+  let bestBottom = idealY
+  let bestDistance = Infinity
+  // Filhos diretos sao mais relevantes (sections, cards)
+  const candidates: HTMLElement[] = []
+  for (const child of Array.from(container.children) as HTMLElement[]) {
+    candidates.push(child)
+    // Inclui netos pra capturar mais granularidade (cards de item etc)
+    for (const grand of Array.from(child.children) as HTMLElement[]) {
+      candidates.push(grand)
+    }
+  }
+  for (const el of candidates) {
+    const rect = el.getBoundingClientRect()
+    const elBottom = rect.bottom + window.scrollY - containerTop
+    if (elBottom >= minY && elBottom <= maxY) {
+      const d = Math.abs(elBottom - idealY)
+      if (d < bestDistance) {
+        bestDistance = d
+        bestBottom = elBottom
+      }
+    }
+  }
+  return bestBottom
+}
+
 export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   const {
     carrinho, motoresAgrupados, voltagem,
@@ -132,9 +166,57 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     </div>
   )
 
+  // Page break visualization (so em modo edit, nao no PDF render)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const innerRef = useRef<HTMLDivElement>(null)
+  const [pageBreaks, setPageBreaks] = useState<number[]>([])
+  const [pageHeight, setPageHeight] = useState<number>(0)
+
+  useLayoutEffect(() => {
+    if (renderMode || !containerRef.current || !innerRef.current) return
+    const ro = new ResizeObserver(() => {
+      const w = innerRef.current!.offsetWidth
+      const h = innerRef.current!.offsetHeight
+      // A4 ratio: 210mm x 297mm. Altura proporcional a largura
+      const A4_H = w * (297 / 210)
+      setPageHeight(A4_H)
+      // Calcula pontos de quebra (smart slicing eh feito no PDF — aqui marca aproximacao)
+      const breaks: number[] = []
+      let y = A4_H
+      while (y < h) {
+        // Procura proximo elemento filho que termina perto de Y, e ajusta pra DEPOIS dele
+        // (evita visualizar quebra no meio de bloco)
+        const adjusted = findBreakNear(innerRef.current!, y, A4_H * 0.10)
+        breaks.push(adjusted)
+        y = adjusted + A4_H
+      }
+      setPageBreaks(breaks)
+    })
+    ro.observe(innerRef.current)
+    return () => ro.disconnect()
+  }, [renderMode, carrinho, motoresAgrupados, acessorios])
+
   return (
-    <div className="text-[10px] text-gray-900 leading-relaxed font-sans bg-white">
-      <div className="m-4 border border-gray-900 px-6 pt-5 pb-6">
+    <div ref={containerRef} className="text-[10px] text-gray-900 leading-relaxed font-sans bg-white">
+      <div ref={innerRef} className="m-4 border border-gray-900 px-6 pt-5 pb-6 relative">
+        {!renderMode && pageBreaks.map((y, i) => (
+          <div
+            key={i}
+            className="absolute left-0 right-0 pointer-events-none z-10"
+            style={{ top: `${y}px`, height: 0 }}
+          >
+            <div className="border-t-2 border-dashed border-red-500/70 -mx-6 relative">
+              <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-red-500 text-white text-[9px] font-bold px-2 py-0.5 rounded shadow">
+                ↑ FIM PÁGINA {i + 1} · ↓ PÁGINA {i + 2}
+              </div>
+            </div>
+          </div>
+        ))}
+        {!renderMode && pageHeight > 0 && pageBreaks.length === 0 && carrinho.length > 0 && (
+          <div className="absolute top-2 right-2 bg-green-500 text-white text-[9px] font-bold px-2 py-0.5 rounded shadow z-10 pointer-events-none">
+            ✓ Cabe em 1 página
+          </div>
+        )}
         {/* Logo */}
         <div className="text-center mb-5">
           <img
