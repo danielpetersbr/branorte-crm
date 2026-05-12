@@ -97,6 +97,9 @@ export function OrcamentoMontar() {
   const [sucesso, setSucesso] = useState<{ numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string } | null>(null)
   const [enviandoWA, setEnviandoWA] = useState<'idle' | 'enviando' | 'enviado' | 'erro'>('idle')
   const [enviandoWAMsg, setEnviandoWAMsg] = useState<string>('')
+  const [waPromptOpen, setWaPromptOpen] = useState(false)
+  const [waPromptValue, setWaPromptValue] = useState('')
+  const [waPromptResolve, setWaPromptResolve] = useState<((v: string | null) => void) | null>(null)
   const [fotoPrincipal, setFotoPrincipal] = useState<string | null>(null)
 
   const categorias = useMemo(() => agruparPorCategoria(items ?? []), [items])
@@ -503,19 +506,42 @@ export function OrcamentoMontar() {
         onRemove={() => { setAcessorios(null); setAcessoriosOpen(false) }}
       />
 
-      {/* Feedback de sucesso */}
+      {/* Feedback de sucesso — toast premium */}
       {sucesso && (
-        <div className="fixed bottom-4 right-4 z-50 bg-success-bg/20 border border-success/50 rounded-lg p-4 shadow-lg max-w-md">
-          <div className="flex items-start gap-2">
-            <div className="text-[13px] font-bold text-success">✓ Orçamento {sucesso.numero} gerado</div>
-            <button onClick={() => setSucesso(null)} className="ml-auto text-ink-faint hover:text-ink">
-              <X className="h-3 w-3" />
+        <div className="fixed bottom-6 right-6 z-50 bg-bg border border-success rounded-xl shadow-2xl max-w-sm w-[360px] overflow-hidden">
+          {/* Header */}
+          <div className="bg-success/15 border-b border-success/30 px-4 py-3 flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full bg-success flex items-center justify-center shrink-0">
+              <Check className="h-5 w-5 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[11px] uppercase tracking-wider text-success font-bold">Orçamento gerado</div>
+              <div className="text-[16px] font-bold text-ink leading-tight">Nº {sucesso.numero}</div>
+            </div>
+            <button onClick={() => setSucesso(null)} className="text-ink-faint hover:text-ink p-1 -m-1 rounded hover:bg-surface-2">
+              <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="text-[11px] text-ink-muted mt-1">
-            {sucesso.salvouNaPasta && '📁 Salvo na pasta Z:'}
-            {sucesso.baixouDocx && '⬇️ .docx baixado'}
-            {sucesso.baixouPdf && ' · PDF baixado'}
+          {/* Body — status de cada saída */}
+          <div className="px-4 py-3 space-y-1.5 text-[11px]">
+            {sucesso.salvouNaPasta && (
+              <div className="flex items-center gap-2 text-ink-muted">
+                <FolderOpen className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                <span>Salvo na pasta Z:</span>
+              </div>
+            )}
+            {sucesso.baixouDocx && (
+              <div className="flex items-center gap-2 text-ink-muted">
+                <FileText className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                <span>.docx baixado</span>
+              </div>
+            )}
+            {sucesso.baixouPdf && (
+              <div className="flex items-center gap-2 text-ink-muted">
+                <FileText className="h-3.5 w-3.5 text-red-400 shrink-0" />
+                <span>PDF baixado</span>
+              </div>
+            )}
           </div>
           {sucesso.pdfBlob && enviandoWA !== 'enviado' && (
             <button
@@ -537,7 +563,13 @@ export function OrcamentoMontar() {
                   })
                   if (!telefone) {
                     const saved = localStorage.getItem('branorte_meu_telefone_wa') || ''
-                    const tel = window.prompt('Digite SEU número de WhatsApp (DDD + número):', saved.replace(/^55/, ''))
+                    setWaPromptValue(saved.replace(/^55/, ''))
+                    const tel = await new Promise<string | null>((resolve) => {
+                      setWaPromptResolve(() => resolve)
+                      setWaPromptOpen(true)
+                    })
+                    setWaPromptOpen(false)
+                    setWaPromptResolve(null)
                     if (!tel) throw new Error('Cancelado')
                     const d = tel.replace(/[^\d]/g, '')
                     if (d.length < 10) throw new Error('Telefone inválido')
@@ -566,19 +598,81 @@ export function OrcamentoMontar() {
                 }
               }}
               disabled={enviandoWA === 'enviando'}
-              className="mt-2 w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-[11px] font-semibold px-3 py-1.5 rounded flex items-center justify-center gap-1.5"
+              className="w-full bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-60 text-white text-[12px] font-semibold py-2.5 flex items-center justify-center gap-2 transition"
             >
               {enviandoWA === 'enviando'
-                ? <><Loader2 className="h-3 w-3 animate-spin" /> Enviando...</>
-                : <>📲 Enviar pro meu WhatsApp</>}
+                ? <><Loader2 className="h-4 w-4 animate-spin" /> {enviandoWAMsg || 'Enviando...'}</>
+                : <><svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 6.31a7.85 7.85 0 0 0-13.4 5.6 7.85 7.85 0 0 0 1.05 3.94L4 20l4.27-1.12a7.85 7.85 0 0 0 3.74.95h.01a7.86 7.86 0 0 0 5.58-13.52zm-5.58 12.07h-.01a6.52 6.52 0 0 1-3.32-.91l-.24-.14-2.46.65.66-2.4-.16-.25a6.5 6.5 0 0 1-1-3.42 6.52 6.52 0 0 1 11.13-4.61 6.48 6.48 0 0 1 1.91 4.61 6.52 6.52 0 0 1-6.51 6.47z"/></svg> Enviar pro meu WhatsApp</>}
             </button>
           )}
           {enviandoWA === 'enviado' && (
-            <div className="text-[10px] text-emerald-300 mt-1">✅ {enviandoWAMsg}</div>
+            <div className="px-4 py-2.5 bg-emerald-600/15 border-t border-emerald-600/30 text-[11px] text-emerald-300 flex items-start gap-2">
+              <Check className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <span>{enviandoWAMsg}</span>
+            </div>
           )}
           {enviandoWA === 'erro' && (
-            <div className="text-[10px] text-red-400 mt-1">❌ {enviandoWAMsg}</div>
+            <div className="px-4 py-2.5 bg-red-600/15 border-t border-red-600/30 text-[11px] text-red-400 flex items-start gap-2">
+              <X className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <span>{enviandoWAMsg}</span>
+            </div>
           )}
+        </div>
+      )}
+
+      {/* Modal estilizado pra pedir telefone WhatsApp (substitui prompt() feio) */}
+      {waPromptOpen && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4"
+          onClick={() => { waPromptResolve?.(null); setWaPromptOpen(false) }}
+        >
+          <div
+            className="bg-bg border border-border rounded-xl shadow-2xl max-w-md w-full overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-emerald-600/15 border-b border-emerald-600/30 px-5 py-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-emerald-600 flex items-center justify-center">
+                <svg className="h-5 w-5 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 6.31a7.85 7.85 0 0 0-13.4 5.6 7.85 7.85 0 0 0 1.05 3.94L4 20l4.27-1.12a7.85 7.85 0 0 0 3.74.95h.01a7.86 7.86 0 0 0 5.58-13.52z"/></svg>
+              </div>
+              <div>
+                <div className="text-[13px] font-bold text-ink">SEU WhatsApp</div>
+                <div className="text-[11px] text-ink-faint">Pra mandar o PDF pro seu próprio número</div>
+              </div>
+            </div>
+            <div className="p-5">
+              <label className="text-[11px] uppercase tracking-wider text-ink-muted font-semibold">Telefone (DDD + número)</label>
+              <input
+                autoFocus
+                type="tel"
+                value={waPromptValue}
+                onChange={(e) => setWaPromptValue(e.target.value.replace(/[^\d]/g, '').slice(0, 13))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && waPromptValue.replace(/\D/g, '').length >= 10) {
+                    waPromptResolve?.(waPromptValue)
+                  }
+                  if (e.key === 'Escape') { waPromptResolve?.(null); setWaPromptOpen(false) }
+                }}
+                placeholder="48984692860"
+                className="mt-1 w-full px-3 py-2.5 text-[15px] bg-surface-2 border border-border rounded-md focus:outline-none focus:border-emerald-500 text-ink"
+              />
+              <div className="text-[10px] text-ink-faint mt-1.5">Ex: 48984692860 (sem +55, sem espaços, sem traços)</div>
+            </div>
+            <div className="bg-surface-2 px-5 py-3 flex justify-end gap-2 border-t border-border">
+              <button
+                onClick={() => { waPromptResolve?.(null); setWaPromptOpen(false) }}
+                className="text-[12px] px-4 py-2 rounded text-ink-muted hover:bg-surface-3 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => waPromptResolve?.(waPromptValue)}
+                disabled={waPromptValue.replace(/\D/g, '').length < 10}
+                className="text-[12px] px-5 py-2 rounded bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-semibold transition"
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
