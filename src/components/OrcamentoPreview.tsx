@@ -540,19 +540,21 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       )}
                     </div>
                     {!renderMode && it.uid && (
-                      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 shrink-0 print:hidden">
-                        {onMoverItem && idx > 0 && (
+                      <div className="flex items-center gap-0.5 shrink-0 print:hidden">
+                        {onMoverItem && (
                           <button
                             onClick={() => onMoverItem(it.uid!, 'cima')}
-                            className="text-gray-500 hover:text-blue-600 p-0.5 leading-none"
+                            disabled={idx === 0}
+                            className="text-gray-400 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed bg-gray-50 hover:bg-blue-50 border border-gray-200 rounded px-1.5 py-0.5 text-[12px] leading-none font-bold transition-all"
                             title="Subir item"
                             type="button"
                           >▲</button>
                         )}
-                        {onMoverItem && idx < carrinho.length - 1 && (
+                        {onMoverItem && (
                           <button
                             onClick={() => onMoverItem(it.uid!, 'baixo')}
-                            className="text-gray-500 hover:text-blue-600 p-0.5 leading-none"
+                            disabled={idx === carrinho.length - 1}
+                            className="text-gray-400 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed bg-gray-50 hover:bg-blue-50 border border-gray-200 rounded px-1.5 py-0.5 text-[12px] leading-none font-bold transition-all"
                             title="Descer item"
                             type="button"
                           >▼</button>
@@ -560,7 +562,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                         {onRemove && (
                           <button
                             onClick={() => onRemove(it.uid!)}
-                            className="text-red-600 hover:text-red-800 p-0.5"
+                            className="text-red-500 hover:text-white hover:bg-red-600 bg-red-50 border border-red-200 rounded p-1 transition-all"
                             title="Remover item"
                             type="button"
                           >
