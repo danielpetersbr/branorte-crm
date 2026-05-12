@@ -268,7 +268,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
       // Insere SPACERS reais entre folhas
       const containerTop = innerRef.current.getBoundingClientRect().top + window.scrollY
       const allEls = Array.from(innerRef.current.querySelectorAll('div, table')) as HTMLElement[]
-      const spacerHeight = 30  // px (mesmo do CSS abaixo)
+      const spacerHeight = 80  // px — gap visual entre folhas (incluindo respiro topo/baixo)
       // Posicoes Y atuais de cada spacer DEPOIS de inserido (acumulam offset)
       const spacerYs: number[] = []
       let acumOffset = 0
@@ -292,15 +292,17 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           gap.className = 'page-gap-spacer'
           gap.style.cssText = [
             `height: ${spacerHeight}px`,
+            'box-sizing: border-box',
             'background: transparent',  // deixa o BG da app aparecer (gap real entre folhas)
             'margin: 0 -28px',  // estende ALEM da moldura
+            'padding: 28px 0',  // ↑ desgruda o texto do conteudo da folha (28 acima + 28 abaixo + ~24 do texto)
             'display: flex',
             'align-items: center',
             'justify-content: center',
-            'font-size: 9px',
+            'font-size: 10px',
             'font-weight: bold',
             'color: #6b7280',
-            'letter-spacing: 0.1em',
+            'letter-spacing: 0.15em',
             'text-transform: uppercase',
           ].join(';')
           gap.textContent = `↓ Folha ${i + 2} / ${breaks.length + 1} ↓`
