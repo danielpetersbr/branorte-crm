@@ -520,6 +520,13 @@ export function OrcamentoMontar() {
           totalEquip,
           totalGeral,
           fotoPrincipal,
+          tensaoMotores,
+          desconto: descontoCfg,
+          termsInline: {
+            dataVenda: dataVendaTxt || null,
+            prazoEntrega: prazoEntregaTxt || null,
+            formaPagamento: formaPagamentoTxt || null,
+          },
         } as CarrinhoSnapshot}
         onClose={() => setFinalizarOpen(false)}
         onSuccess={info => {
