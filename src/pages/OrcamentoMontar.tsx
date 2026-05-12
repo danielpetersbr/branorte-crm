@@ -447,7 +447,7 @@ export function OrcamentoMontar() {
         </Card>
 
         {/* PREVIEW DO ORÇAMENTO — sticky no desktop pra não rolar com a lista esquerda */}
-        <Card className="flex flex-col min-h-0 overflow-hidden lg:sticky lg:top-3 lg:self-start lg:max-h-[calc(100vh-1.5rem)] lg:h-[calc(100vh-1.5rem)]">
+        <Card className="flex flex-col w-full min-w-0 min-h-0 overflow-hidden lg:sticky lg:top-3 lg:self-start lg:justify-self-stretch lg:max-h-[calc(100vh-1.5rem)] lg:h-[calc(100vh-1.5rem)]">
           {/* Toolbar do preview */}
           <div className="p-2 border-b border-border flex items-center justify-between bg-surface-2/30">
             <div className="flex items-center gap-1">
