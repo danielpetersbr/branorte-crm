@@ -348,23 +348,6 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
         <div className="mt-5">
           <SectionHeader>Itens orçados abaixo</SectionHeader>
 
-          {/* Input file FORA do label (htmlFor) pra evitar conflitos de DOM mutation */}
-          {!renderMode && onFotoChange && (
-            <input
-              id="orcamento-foto-input"
-              type="file"
-              accept="image/*"
-              style={{ position: 'absolute', left: '-9999px', width: 1, height: 1 }}
-              onChange={(e) => {
-                const f = e.target.files?.[0]
-                if (!f) return
-                const reader = new FileReader()
-                reader.onload = () => onFotoChange(reader.result as string)
-                reader.readAsDataURL(f)
-                e.target.value = ''
-              }}
-            />
-          )}
           {fotoPrincipal ? (
             <div data-no-break className="group relative mb-3 border border-gray-300 rounded-md p-2 bg-white shadow-sm">
               <div className="w-full flex items-center justify-center bg-white">
@@ -379,9 +362,26 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
               <div className="text-right text-[8px] italic text-gray-500 mt-1">Imagem ilustrativa</div>
               {!renderMode && onFotoChange && (
                 <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition flex gap-1">
-                  <label htmlFor="orcamento-foto-input" className="cursor-pointer text-[10px] bg-blue-600 text-white px-2 py-1 rounded shadow hover:bg-blue-700">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      const inp = document.createElement('input')
+                      inp.type = 'file'
+                      inp.accept = 'image/*'
+                      inp.onchange = () => {
+                        const f = inp.files?.[0]
+                        if (!f) return
+                        const r = new FileReader()
+                        r.onload = () => onFotoChange(r.result as string)
+                        r.readAsDataURL(f)
+                      }
+                      inp.click()
+                    }}
+                    className="text-[10px] bg-blue-600 text-white px-2 py-1 rounded shadow hover:bg-blue-700"
+                  >
                     Trocar
-                  </label>
+                  </button>
                   <button
                     onClick={() => onFotoChange(null)}
                     className="text-[10px] bg-red-600 text-white px-2 py-1 rounded shadow hover:bg-red-700"
@@ -392,12 +392,26 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
               )}
             </div>
           ) : (!renderMode && onFotoChange) && (
-            <label
-              htmlFor="orcamento-foto-input"
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                const inp = document.createElement('input')
+                inp.type = 'file'
+                inp.accept = 'image/*'
+                inp.onchange = () => {
+                  const f = inp.files?.[0]
+                  if (!f) return
+                  const r = new FileReader()
+                  r.onload = () => onFotoChange(r.result as string)
+                  r.readAsDataURL(f)
+                }
+                inp.click()
+              }}
               className="block w-full mb-3 py-2 text-center border border-dashed border-blue-300 rounded text-blue-700 hover:bg-blue-50 hover:border-blue-500 transition cursor-pointer text-[10px] font-semibold"
             >
               📷 + Adicionar Foto Principal (opcional)
-            </label>
+            </button>
           )}
 
           <div className="space-y-3">
