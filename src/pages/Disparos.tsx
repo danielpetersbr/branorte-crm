@@ -1620,11 +1620,14 @@ function AutomacaoPegarPraMimCard() {
                     <td className={`px-2 py-1 tabular-nums ${e.leads_processados > 0 ? 'text-emerald-300 font-bold' : 'text-ink-muted'}`}>{e.leads_processados}</td>
                     <td className="px-2 py-1 text-ink-muted tabular-nums">{e.leads_pulados_duplicados}</td>
                     <td className="px-2 py-1 text-ink-muted text-[9px]">
-                      {e.motivo_skip
-                        ? <span className="text-amber-300">⊘ {e.motivo_skip}</span>
-                        : e.distribuicao
-                          ? Object.entries(e.distribuicao).map(([k, v]) => `${k}:${v}`).join(' · ')
-                          : '—'}
+                      {e.distribuicao && Object.keys(e.distribuicao).length > 0 ? (
+                        <>
+                          {e.motivo_skip === 'execucao_manual' && <span className="text-accent mr-1">[manual]</span>}
+                          {Object.entries(e.distribuicao).map(([k, v]) => `${k}:${v}`).join(' · ')}
+                        </>
+                      ) : e.motivo_skip ? (
+                        <span className="text-amber-300">⊘ {e.motivo_skip}</span>
+                      ) : '—'}
                     </td>
                   </tr>
                 ))}
