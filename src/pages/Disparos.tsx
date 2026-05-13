@@ -1005,29 +1005,40 @@ function DistribuicaoGlobalCard({ vendedores }: { vendedores: Vendedor[] }) {
       )}
 
       {/* Sliders por vendedor */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
         {online.map((v, i) => {
           const valor = Number(local[v.vendedor_nome] ?? 0)
           const cor = cores[i % cores.length]
+          const corAccent = cor.replace('bg-', 'accent-')
           return (
-            <div key={v.vendedor_nome} className="border border-border rounded-lg p-2.5 bg-surface-2/30">
-              <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className={`h-2 w-2 rounded-full ${cor}`} />
-                  <span className="text-[11px] font-bold text-ink truncate">{v.vendedor_nome}</span>
+            <div key={v.vendedor_nome} className={`border ${valor > 0 ? 'border-accent/30' : 'border-border'} rounded-lg p-3 bg-surface-2/50 transition-colors`}>
+              <div className="flex items-center justify-between mb-2 gap-2">
+                <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                  <span className={`h-2.5 w-2.5 rounded-full ${cor} flex-shrink-0`} />
+                  <span className="text-[12px] font-bold text-ink truncate">{v.vendedor_nome}</span>
                 </div>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => ajustar(v.vendedor_nome, -5)} className="w-5 h-5 rounded bg-surface-1 border border-border hover:bg-red-500/20 hover:text-red-300 text-[12px] leading-none flex items-center justify-center" title="-5%">−</button>
-                  <input
-                    type="number" min={0} max={100} step="1"
-                    value={valor === 0 ? '' : valor}
-                    onChange={e => setLocal({ ...local, [v.vendedor_nome]: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
-                    onBlur={() => persistirUm(v.vendedor_nome, valor)}
-                    placeholder="0"
-                    className="w-12 bg-surface-1 border border-border rounded px-1 py-0.5 text-ink text-[12px] font-bold tabular-nums text-center"
-                  />
-                  <span className="text-[10px] text-ink-faint">%</span>
-                  <button onClick={() => ajustar(v.vendedor_nome, 5)} className="w-5 h-5 rounded bg-surface-1 border border-border hover:bg-emerald-500/20 hover:text-emerald-300 text-[12px] leading-none flex items-center justify-center" title="+5%">+</button>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button
+                    onClick={() => ajustar(v.vendedor_nome, -5)}
+                    className="w-6 h-6 rounded bg-slate-900 border border-slate-700 text-ink hover:bg-red-500/30 hover:text-red-200 hover:border-red-500/50 text-[14px] font-bold leading-none flex items-center justify-center transition-colors"
+                    title="-5%"
+                  >−</button>
+                  <div className="relative">
+                    <input
+                      type="number" min={0} max={100} step="1"
+                      value={valor === 0 ? '' : valor}
+                      onChange={e => setLocal({ ...local, [v.vendedor_nome]: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
+                      onBlur={() => persistirUm(v.vendedor_nome, valor)}
+                      placeholder="0"
+                      className="w-14 bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-white text-[14px] font-bold tabular-nums text-center focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                  </div>
+                  <span className="text-[11px] text-ink-muted font-semibold">%</span>
+                  <button
+                    onClick={() => ajustar(v.vendedor_nome, 5)}
+                    className="w-6 h-6 rounded bg-slate-900 border border-slate-700 text-ink hover:bg-emerald-500/30 hover:text-emerald-200 hover:border-emerald-500/50 text-[14px] font-bold leading-none flex items-center justify-center transition-colors"
+                    title="+5%"
+                  >+</button>
                 </div>
               </div>
               <input
@@ -1036,13 +1047,13 @@ function DistribuicaoGlobalCard({ vendedores }: { vendedores: Vendedor[] }) {
                 onChange={e => setLocal({ ...local, [v.vendedor_nome]: Number(e.target.value) })}
                 onMouseUp={() => persistirUm(v.vendedor_nome, valor)}
                 onTouchEnd={() => persistirUm(v.vendedor_nome, valor)}
-                className="w-full accent-emerald-500 h-1"
+                className={`w-full h-1.5 ${corAccent} cursor-pointer`}
               />
-              {soma > 0 && valor > 0 && (
-                <div className="text-[9px] text-ink-faint mt-1">
-                  → {Math.round((valor / soma) * 100)} de cada 100 leads
-                </div>
-              )}
+              <div className="text-[10px] text-ink-faint mt-1.5 min-h-[14px]">
+                {soma > 0 && valor > 0
+                  ? <>recebe <span className="text-ink font-semibold">{Math.round((valor / soma) * 100)}</span> de cada 100 leads</>
+                  : valor === 0 ? <span className="text-ink-faint/50">— não recebe leads —</span> : null}
+              </div>
             </div>
           )
         })}
