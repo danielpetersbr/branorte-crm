@@ -1532,10 +1532,10 @@ function AutomacaoPegarPraMimCard() {
       </div>
 
       {/* Config */}
-      <details open={editando} className="border border-border rounded-lg p-2 bg-surface-2/30">
-        <summary onClick={() => setEditando(v => !v)} className="cursor-pointer text-[11px] text-ink-muted hover:text-ink">
+      <div className="border border-border rounded-lg p-2 bg-surface-2/30">
+        <button type="button" onClick={() => setEditando(v => !v)} className="text-[11px] text-ink-muted hover:text-ink flex items-center gap-1">
           ⚙️ Configuração {editando ? '▲' : '▼'}
-        </summary>
+        </button>
         {editando && (
           <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
             <div>
@@ -1588,7 +1588,7 @@ function AutomacaoPegarPraMimCard() {
             </div>
           </div>
         )}
-      </details>
+      </div>
 
       {/* Log de execuções */}
       <div className="mt-3">
