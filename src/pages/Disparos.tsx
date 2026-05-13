@@ -113,19 +113,26 @@ export function Disparos() {
 
   // WhatsApp Web aberto/fechado + versão da extensão por vendedor
   // Janela ampliada de 5min → 30min pra capturar quem pingou recentemente.
-  const { data: vendorRuntime } = useQuery<Record<string, { ts: string; versao: string }>>({
+  // diag.sem_wa_aberto = heartbeat de extensão viva mas WA Web fechado.
+  type Runtime = { ts: string; versao: string; semWa: boolean; heartbeatOnly: boolean }
+  const { data: vendorRuntime } = useQuery<Record<string, Runtime>>({
     queryKey: ['vendor-runtime'],
     queryFn: async () => {
       const { data } = await supabase
         .from('wa_sync_debug')
-        .select('vendedor_nome, recebido_em, client_version')
+        .select('vendedor_nome, recebido_em, client_version, diag')
         .gte('recebido_em', new Date(Date.now() - 30 * 60_000).toISOString())
         .order('recebido_em', { ascending: false })
         .limit(500)
-      const mapa: Record<string, { ts: string; versao: string }> = {}
-      for (const row of (data || [])) {
+      const mapa: Record<string, Runtime> = {}
+      for (const row of (data || []) as any[]) {
         if (!mapa[row.vendedor_nome]) {
-          mapa[row.vendedor_nome] = { ts: row.recebido_em, versao: row.client_version ?? '?' }
+          mapa[row.vendedor_nome] = {
+            ts: row.recebido_em,
+            versao: row.client_version ?? '?',
+            semWa: !!row.diag?.sem_wa_aberto,
+            heartbeatOnly: !!row.diag?.heartbeat_only,
+          }
         }
       }
       return mapa
@@ -134,12 +141,14 @@ export function Disparos() {
   })
 
   // Status consolidado por vendedor:
-  // - desligado:    admin desligou no painel (v.online=false)
-  // - ativo:        pingou nos ultimos 3min, versao OK, esta online
-  // - lento:        pingou entre 3-15min atras (talvez WA open mas sem atividade)
-  // - desconectado: pingou > 15min OU nunca pingou
-  // - versao_antiga: pingou mas versao < 1.1 (sem suporte a disparo)
-  type StatusVendedor = 'desligado' | 'ativo' | 'lento' | 'desconectado' | 'versao_antiga'
+  // - desligado:     admin desligou no painel (v.online=false)
+  // - ativo:         pingou nos últimos 3min, versão OK, WA aberto com dados
+  // - aguardando:    extensão pingando mas WPP ainda não hidratou (heartbeat sem dados)
+  // - wa_fechado:    extensão viva, mas vendedor fechou WhatsApp Web
+  // - lento:         pingou entre 3-15min atrás
+  // - desconectado:  pingou > 15min OU nunca pingou
+  // - versao_antiga: pingou mas versão < 1.1 (sem suporte a disparo)
+  type StatusVendedor = 'desligado' | 'ativo' | 'aguardando' | 'wa_fechado' | 'lento' | 'desconectado' | 'versao_antiga'
   function statusVendedor(v: Vendedor): { status: StatusVendedor; pingSec: number | null; versao: string | null } {
     const runtime = vendorRuntime?.[v.vendedor_nome]
     if (!v.online) return { status: 'desligado', pingSec: null, versao: runtime?.versao ?? null }
@@ -149,9 +158,12 @@ export function Disparos() {
     const [maj, min] = (runtime.versao || '0.0').split('.').map(n => parseInt(n, 10) || 0)
     const versaoOk = maj > 1 || (maj === 1 && min >= 1)
     if (!versaoOk) return { status: 'versao_antiga', pingSec: sec, versao: runtime.versao }
-    if (sec < 180) return { status: 'ativo', pingSec: sec, versao: runtime.versao }
-    if (sec < 900) return { status: 'lento', pingSec: sec, versao: runtime.versao }
-    return { status: 'desconectado', pingSec: sec, versao: runtime.versao }
+    if (sec >= 900) return { status: 'desconectado', pingSec: sec, versao: runtime.versao }
+    if (sec >= 180) return { status: 'lento', pingSec: sec, versao: runtime.versao }
+    // ping recente — verifica subestado via diag
+    if (runtime.semWa) return { status: 'wa_fechado', pingSec: sec, versao: runtime.versao }
+    if (runtime.heartbeatOnly) return { status: 'aguardando', pingSec: sec, versao: runtime.versao }
+    return { status: 'ativo', pingSec: sec, versao: runtime.versao }
   }
 
   function tempoRelativo(sec: number | null): string {
@@ -245,8 +257,10 @@ export function Disparos() {
               · {(vendedores ?? []).filter(v => statusVendedor(v).status === 'ativo').length} ativo{(vendedores ?? []).filter(v => statusVendedor(v).status === 'ativo').length === 1 ? '' : 's'} de {(vendedores ?? []).length}
             </span>
           </h2>
-          <div className="flex gap-3 text-[10px] text-ink-muted">
+          <div className="flex gap-2.5 text-[10px] text-ink-muted flex-wrap">
             <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> ativo</span>
+            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-cyan-400" /> aguardando WA</span>
+            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-orange-400" /> WA fechado</span>
             <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> lento</span>
             <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-red-400" /> desconectado</span>
             <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-slate-500" /> desligado</span>
@@ -259,9 +273,11 @@ export function Disparos() {
               const podeDisparar = st.status === 'ativo'
               const stCfg = {
                 ativo:         { cor: 'border-emerald-500/40 bg-emerald-500/5',  dot: 'bg-emerald-400', txt: 'text-emerald-300', label: 'ATIVO',         hint: 'Pronto pra disparar' },
+                aguardando:    { cor: 'border-cyan-500/40 bg-cyan-500/5',        dot: 'bg-cyan-400',    txt: 'text-cyan-300',    label: 'AGUARDANDO WA', hint: 'Chrome ok, mas WA Web ainda carregando — peça pra abrir e logar' },
+                wa_fechado:    { cor: 'border-orange-500/40 bg-orange-500/5',    dot: 'bg-orange-400',  txt: 'text-orange-300',  label: 'WA FECHADO',    hint: 'Extensão viva mas WhatsApp Web foi fechado — peça pra abrir web.whatsapp.com' },
                 lento:         { cor: 'border-amber-500/40 bg-amber-500/5',      dot: 'bg-amber-400',   txt: 'text-amber-300',   label: 'LENTO',         hint: 'WA aberto mas resposta atrasada' },
                 versao_antiga: { cor: 'border-amber-500/40 bg-amber-500/5',      dot: 'bg-amber-400',   txt: 'text-amber-300',   label: 'RECARREGAR',    hint: 'Versão antiga — recarregar Chrome' },
-                desconectado:  { cor: 'border-red-500/30 bg-red-500/5',          dot: 'bg-red-400',     txt: 'text-red-300',     label: 'DESCONECTADO', hint: 'Sem ping recente — WA fechado?' },
+                desconectado:  { cor: 'border-red-500/30 bg-red-500/5',          dot: 'bg-red-400',     txt: 'text-red-300',     label: 'DESCONECTADO', hint: 'Sem ping recente — Chrome fechado ou PC dormindo' },
                 desligado:     { cor: 'border-border bg-surface-2/30',           dot: 'bg-slate-500',   txt: 'text-slate-400',   label: 'DESLIGADO',     hint: 'Admin desligou no painel' },
               }[st.status]
               return (
