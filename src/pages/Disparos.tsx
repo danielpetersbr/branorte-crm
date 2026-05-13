@@ -1453,13 +1453,18 @@ function AutomacaoPegarPraMimCard() {
   })
 
   async function executarAgora() {
-    const r = await fetch('https://flwbeevtvjiouxdjmziv.supabase.co/functions/v1/dispatch-auto-tick', { method: 'POST' })
+    const r = await fetch('https://flwbeevtvjiouxdjmziv.supabase.co/functions/v1/dispatch-auto-tick', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ force: true }),
+    })
     const j = await r.json()
     qc.invalidateQueries({ queryKey: ['automacao-config'] })
     qc.invalidateQueries({ queryKey: ['automacao-execucoes'] })
     qc.invalidateQueries({ queryKey: ['leads-aguardando-count'] })
-    if (j.skipped) alert('Pulou: ' + j.skipped)
-    else if (j.ok) alert(`Executado: ${j.processados ?? 0} leads disparados`)
+    if (j.skipped) alert('Pulou: ' + j.skipped + (j.dia ? ` (dia ${j.dia})` : '') + (j.agora ? ` (agora ${j.agora})` : ''))
+    else if (j.ok) alert(`✓ Executado: ${j.processados ?? 0} leads disparados\n` +
+      `Distribuição: ${Object.entries(j.distribuicao ?? {}).map(([k,v]) => `${k}:${v}`).join(', ') || '—'}`)
     else alert('Erro: ' + (j.error ?? ''))
   }
 
