@@ -6,10 +6,10 @@ import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
-import { supabase } from '@/lib/supabase'
+import { supabase, supabaseAuditoria } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Send, Play, Pause, Trash2, Plus, Users, Clock, AlertCircle, FlaskConical, Zap, Key, Copy, Check, Trash, Activity } from 'lucide-react'
+import { Send, Play, Pause, Trash2, Plus, Users, Clock, AlertCircle, FlaskConical, Zap, Key, Copy, Check, Trash, Activity, Bot, RotateCw } from 'lucide-react'
 
 const SUPA_URL = 'https://flwbeevtvjiouxdjmziv.supabase.co'
 const EDGE_EXTERNAL = `${SUPA_URL}/functions/v1/dispatch-external`
@@ -415,6 +415,8 @@ export function Disparos() {
       />
 
       {/* API EXTERNA (ReplyAgent, n8n etc.) */}
+      <AutomacaoPegarPraMimCard />
+
       <ApiExternaCard />
 
       {/* LISTA DE CAMPANHAS */}
@@ -1372,5 +1374,263 @@ function CopyBtn({ text, label, big }: { text: string; label?: string; big?: boo
       {copiou ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
       {label ?? (copiou ? 'Copiado' : 'Copiar')}
     </button>
+  )
+}
+
+// ============================================================================
+// AutomacaoPegarPraMimCard — automação que pega leads sem vendedor
+// ============================================================================
+type AutomacaoConfig = {
+  id: number
+  ativa: boolean
+  intervalo_min: number
+  leads_por_ciclo: number
+  mensagem_template: string
+  horario_inicio: string
+  horario_fim: string
+  dias_semana: number[]
+  anti_duplicidade_horas: number
+  ultima_execucao_em: string | null
+  proxima_execucao_em: string | null
+  total_disparos_acum: number
+}
+type AutomacaoExecucao = {
+  id: string
+  executado_em: string
+  leads_aguardando: number | null
+  leads_processados: number
+  leads_pulados_duplicados: number
+  leads_invalidos: number
+  distribuicao: Record<string, number> | null
+  motivo_skip: string | null
+}
+
+function AutomacaoPegarPraMimCard() {
+  const qc = useQueryClient()
+  const [editando, setEditando] = useState(false)
+  const [logExpandido, setLogExpandido] = useState(false)
+
+  const { data: cfg } = useQuery<AutomacaoConfig>({
+    queryKey: ['automacao-config'],
+    queryFn: async () => {
+      const { data } = await supabase.from('dispatch_automacao_config').select('*').eq('id', 1).single()
+      return data as AutomacaoConfig
+    },
+    refetchInterval: 5000,
+  })
+
+  const { data: aguardando } = useQuery<number>({
+    queryKey: ['leads-aguardando-count'],
+    queryFn: async () => {
+      const { count } = await supabaseAuditoria
+        .from('atendimentos_por_cliente')
+        .select('id', { count: 'exact', head: true })
+        .or('responsavel.is.null,responsavel.eq.')
+        .not('telefone', 'is', null)
+        .eq('is_internal', false)
+      return count ?? 0
+    },
+    refetchInterval: 15000,
+  })
+
+  const { data: execucoes } = useQuery<AutomacaoExecucao[]>({
+    queryKey: ['automacao-execucoes'],
+    queryFn: async () => {
+      const { data } = await supabase.from('dispatch_automacao_execucao')
+        .select('*').order('executado_em', { ascending: false }).limit(20)
+      return (data as AutomacaoExecucao[]) ?? []
+    },
+    refetchInterval: 10000,
+  })
+
+  const salvarConfig = useMutation({
+    mutationFn: async (updates: Partial<AutomacaoConfig>) => {
+      const { error } = await supabase.from('dispatch_automacao_config').update(updates).eq('id', 1)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['automacao-config'] }),
+    onError: (e: any) => alert('Erro ao salvar: ' + e?.message),
+  })
+
+  async function executarAgora() {
+    const r = await fetch('https://flwbeevtvjiouxdjmziv.supabase.co/functions/v1/dispatch-auto-tick', { method: 'POST' })
+    const j = await r.json()
+    qc.invalidateQueries({ queryKey: ['automacao-config'] })
+    qc.invalidateQueries({ queryKey: ['automacao-execucoes'] })
+    qc.invalidateQueries({ queryKey: ['leads-aguardando-count'] })
+    if (j.skipped) alert('Pulou: ' + j.skipped)
+    else if (j.ok) alert(`Executado: ${j.processados ?? 0} leads disparados`)
+    else alert('Erro: ' + (j.error ?? ''))
+  }
+
+  if (!cfg) return null
+
+  const segUltima = cfg.ultima_execucao_em ? Math.floor((Date.now() - new Date(cfg.ultima_execucao_em).getTime()) / 1000) : null
+  const segProxima = cfg.proxima_execucao_em ? Math.floor((new Date(cfg.proxima_execucao_em).getTime() - Date.now()) / 1000) : null
+  function fmtSeg(s: number | null): string {
+    if (s === null) return '—'
+    if (s < 0) return 'agora'
+    if (s < 60) return `${s}s`
+    if (s < 3600) return `${Math.floor(s/60)}min ${s%60}s`
+    return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}min`
+  }
+  const ult5 = (execucoes ?? []).filter(e => e.executado_em > new Date(Date.now() - 5 * 60_000).toISOString())
+  const disparadosHoje = (execucoes ?? [])
+    .filter(e => e.executado_em.slice(0,10) === new Date().toISOString().slice(0,10))
+    .reduce((s, e) => s + (e.leads_processados ?? 0), 0)
+
+  return (
+    <Card className={`p-4 ${cfg.ativa ? 'border-emerald-500/40 bg-emerald-500/5' : ''}`}>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div>
+          <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
+            <Bot className="h-4 w-4 text-accent" />
+            Automação "Pegar pra mim" — distribui leads sem vendedor automaticamente
+          </h2>
+          <p className="text-[10px] text-ink-muted mt-0.5">
+            A cada {cfg.intervalo_min}min pega até {cfg.leads_por_ciclo} leads sem vendedor e dispara via WhatsApp dos vendedores ativos.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={executarAgora} title="Executar agora (ignora intervalo)"
+            className="text-[10px] px-2 py-1.5 rounded bg-surface-2 text-ink border border-border hover:bg-surface-3 flex items-center gap-1">
+            <RotateCw className="h-3 w-3" /> executar agora
+          </button>
+          <button
+            onClick={() => salvarConfig.mutate({ ativa: !cfg.ativa })}
+            className={`text-[11px] px-3 py-1.5 rounded-lg font-bold transition-colors ${
+              cfg.ativa
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30'
+                : 'bg-slate-700 text-slate-300 border border-slate-600 hover:bg-slate-600'
+            }`}
+          >
+            {cfg.ativa ? '● ATIVA — clique para pausar' : '○ PAUSADA — clique para ativar'}
+          </button>
+        </div>
+      </div>
+
+      {/* Métricas */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+        <div className="bg-surface-2/50 rounded-lg p-2 border border-border">
+          <div className="text-[9px] text-ink-faint uppercase tracking-wider">Leads aguardando</div>
+          <div className="text-ink font-bold text-[20px] tabular-nums">{aguardando ?? '—'}</div>
+        </div>
+        <div className="bg-surface-2/50 rounded-lg p-2 border border-border">
+          <div className="text-[9px] text-ink-faint uppercase tracking-wider">Disparados hoje</div>
+          <div className="text-emerald-300 font-bold text-[20px] tabular-nums">{disparadosHoje}</div>
+        </div>
+        <div className="bg-surface-2/50 rounded-lg p-2 border border-border">
+          <div className="text-[9px] text-ink-faint uppercase tracking-wider">Última execução</div>
+          <div className="text-ink font-bold text-[13px] leading-tight">{fmtSeg(segUltima)} atrás</div>
+          {ult5.length > 0 && <div className="text-[9px] text-ink-faint">{ult5.length} ciclos nos últ. 5min</div>}
+        </div>
+        <div className="bg-surface-2/50 rounded-lg p-2 border border-border">
+          <div className="text-[9px] text-ink-faint uppercase tracking-wider">Próxima execução</div>
+          <div className="text-accent font-bold text-[13px] leading-tight">{cfg.ativa ? `em ${fmtSeg(segProxima)}` : '—'}</div>
+          <div className="text-[9px] text-ink-faint">total acumulado: {cfg.total_disparos_acum}</div>
+        </div>
+      </div>
+
+      {/* Config */}
+      <details open={editando} className="border border-border rounded-lg p-2 bg-surface-2/30">
+        <summary onClick={() => setEditando(v => !v)} className="cursor-pointer text-[11px] text-ink-muted hover:text-ink">
+          ⚙️ Configuração {editando ? '▲' : '▼'}
+        </summary>
+        {editando && (
+          <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div>
+              <label className="text-[10px] text-ink-faint uppercase">Intervalo (min)</label>
+              <Input type="number" min={1} max={60} defaultValue={cfg.intervalo_min}
+                onBlur={e => salvarConfig.mutate({ intervalo_min: Math.max(1, Number(e.target.value) || 5) })} />
+            </div>
+            <div>
+              <label className="text-[10px] text-ink-faint uppercase">Leads por ciclo</label>
+              <Input type="number" min={1} max={100} defaultValue={cfg.leads_por_ciclo}
+                onBlur={e => salvarConfig.mutate({ leads_por_ciclo: Math.max(1, Number(e.target.value) || 10) })} />
+            </div>
+            <div>
+              <label className="text-[10px] text-ink-faint uppercase">Início</label>
+              <Input type="time" defaultValue={String(cfg.horario_inicio).slice(0,5)}
+                onBlur={e => salvarConfig.mutate({ horario_inicio: e.target.value + ':00' })} />
+            </div>
+            <div>
+              <label className="text-[10px] text-ink-faint uppercase">Fim</label>
+              <Input type="time" defaultValue={String(cfg.horario_fim).slice(0,5)}
+                onBlur={e => salvarConfig.mutate({ horario_fim: e.target.value + ':00' })} />
+            </div>
+            <div className="col-span-2 md:col-span-4">
+              <label className="text-[10px] text-ink-faint uppercase">Mensagem (use &#123;&#123;nome&#125;&#125; e &#123;&#123;vendedor&#125;&#125;)</label>
+              <textarea defaultValue={cfg.mensagem_template} rows={2}
+                onBlur={e => salvarConfig.mutate({ mensagem_template: e.target.value })}
+                className="w-full bg-surface-2 border border-border rounded px-2 py-1.5 text-ink text-[12px]" />
+            </div>
+            <div className="col-span-2 md:col-span-4">
+              <label className="text-[10px] text-ink-faint uppercase mb-1 block">Dias da semana</label>
+              <div className="flex gap-1">
+                {[
+                  { v: 1, l: 'Seg' }, { v: 2, l: 'Ter' }, { v: 3, l: 'Qua' },
+                  { v: 4, l: 'Qui' }, { v: 5, l: 'Sex' }, { v: 6, l: 'Sab' }, { v: 7, l: 'Dom' },
+                ].map(d => {
+                  const ativo = cfg.dias_semana?.includes(d.v)
+                  return (
+                    <button key={d.v}
+                      onClick={() => {
+                        const novo = ativo ? cfg.dias_semana.filter(x => x !== d.v) : [...cfg.dias_semana, d.v].sort()
+                        salvarConfig.mutate({ dias_semana: novo })
+                      }}
+                      className={`text-[10px] px-2 py-1 rounded border ${
+                        ativo ? 'bg-accent/20 text-accent border-accent/40' : 'bg-surface-2 text-ink-muted border-border'
+                      }`}
+                    >{d.l}</button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+      </details>
+
+      {/* Log de execuções */}
+      <div className="mt-3">
+        <button onClick={() => setLogExpandido(v => !v)} className="text-[11px] text-ink-muted hover:text-ink flex items-center gap-1">
+          📜 Últimas execuções {logExpandido ? '▲' : '▼'} <span className="text-ink-faint">({(execucoes ?? []).length})</span>
+        </button>
+        {logExpandido && (
+          <div className="mt-2 border border-border rounded overflow-hidden max-h-64 overflow-y-auto">
+            <table className="w-full text-[10px]">
+              <thead className="bg-surface-2/60 sticky top-0">
+                <tr>
+                  <th className="text-left px-2 py-1 text-ink-muted">Quando</th>
+                  <th className="text-left px-2 py-1 text-ink-muted">Aguardando</th>
+                  <th className="text-left px-2 py-1 text-ink-muted">Processados</th>
+                  <th className="text-left px-2 py-1 text-ink-muted">Duplicados</th>
+                  <th className="text-left px-2 py-1 text-ink-muted">Distribuição / Motivo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(execucoes ?? []).map(e => (
+                  <tr key={e.id} className="border-t border-border/40">
+                    <td className="px-2 py-1 text-ink-muted whitespace-nowrap">{new Date(e.executado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
+                    <td className="px-2 py-1 text-ink tabular-nums">{e.leads_aguardando ?? '—'}</td>
+                    <td className={`px-2 py-1 tabular-nums ${e.leads_processados > 0 ? 'text-emerald-300 font-bold' : 'text-ink-muted'}`}>{e.leads_processados}</td>
+                    <td className="px-2 py-1 text-ink-muted tabular-nums">{e.leads_pulados_duplicados}</td>
+                    <td className="px-2 py-1 text-ink-muted text-[9px]">
+                      {e.motivo_skip
+                        ? <span className="text-amber-300">⊘ {e.motivo_skip}</span>
+                        : e.distribuicao
+                          ? Object.entries(e.distribuicao).map(([k, v]) => `${k}:${v}`).join(' · ')
+                          : '—'}
+                    </td>
+                  </tr>
+                ))}
+                {(execucoes ?? []).length === 0 && (
+                  <tr><td colSpan={5} className="text-center py-4 text-ink-faint">Nenhuma execução ainda — ative a automação acima</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </Card>
   )
 }
