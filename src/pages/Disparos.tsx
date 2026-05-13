@@ -9,7 +9,7 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Send, Play, Pause, Trash2, Plus, Users, Clock, AlertCircle, CheckCircle2, XCircle, RefreshCw, FlaskConical, Zap, Wifi, WifiOff, Key, Copy, Check, ExternalLink, Eye, EyeOff, Trash, Activity } from 'lucide-react'
+import { Send, Play, Pause, Trash2, Plus, Users, Clock, AlertCircle, FlaskConical, Zap, Key, Copy, Check, Trash, Activity } from 'lucide-react'
 
 const SUPA_URL = 'https://flwbeevtvjiouxdjmziv.supabase.co'
 const EDGE_EXTERNAL = `${SUPA_URL}/functions/v1/dispatch-external`
@@ -112,15 +112,16 @@ export function Disparos() {
   })
 
   // WhatsApp Web aberto/fechado + versão da extensão por vendedor
+  // Janela ampliada de 5min → 30min pra capturar quem pingou recentemente.
   const { data: vendorRuntime } = useQuery<Record<string, { ts: string; versao: string }>>({
     queryKey: ['vendor-runtime'],
     queryFn: async () => {
       const { data } = await supabase
         .from('wa_sync_debug')
         .select('vendedor_nome, recebido_em, client_version')
-        .gte('recebido_em', new Date(Date.now() - 5 * 60_000).toISOString())
+        .gte('recebido_em', new Date(Date.now() - 30 * 60_000).toISOString())
         .order('recebido_em', { ascending: false })
-        .limit(300)
+        .limit(500)
       const mapa: Record<string, { ts: string; versao: string }> = {}
       for (const row of (data || [])) {
         if (!mapa[row.vendedor_nome]) {
@@ -131,17 +132,33 @@ export function Disparos() {
     },
     refetchInterval: 10000,
   })
-  function isWaAberto(vendedor: string): boolean {
-    const ts = vendorRuntime?.[vendedor]?.ts
-    if (!ts) return false
-    return Date.now() - new Date(ts).getTime() < 90_000
+
+  // Status consolidado por vendedor:
+  // - desligado:    admin desligou no painel (v.online=false)
+  // - ativo:        pingou nos ultimos 3min, versao OK, esta online
+  // - lento:        pingou entre 3-15min atras (talvez WA open mas sem atividade)
+  // - desconectado: pingou > 15min OU nunca pingou
+  // - versao_antiga: pingou mas versao < 1.1 (sem suporte a disparo)
+  type StatusVendedor = 'desligado' | 'ativo' | 'lento' | 'desconectado' | 'versao_antiga'
+  function statusVendedor(v: Vendedor): { status: StatusVendedor; pingSec: number | null; versao: string | null } {
+    const runtime = vendorRuntime?.[v.vendedor_nome]
+    if (!v.online) return { status: 'desligado', pingSec: null, versao: runtime?.versao ?? null }
+    if (!runtime) return { status: 'desconectado', pingSec: null, versao: null }
+    const sec = (Date.now() - new Date(runtime.ts).getTime()) / 1000
+    // valida versao
+    const [maj, min] = (runtime.versao || '0.0').split('.').map(n => parseInt(n, 10) || 0)
+    const versaoOk = maj > 1 || (maj === 1 && min >= 1)
+    if (!versaoOk) return { status: 'versao_antiga', pingSec: sec, versao: runtime.versao }
+    if (sec < 180) return { status: 'ativo', pingSec: sec, versao: runtime.versao }
+    if (sec < 900) return { status: 'lento', pingSec: sec, versao: runtime.versao }
+    return { status: 'desconectado', pingSec: sec, versao: runtime.versao }
   }
-  function temDispatch(vendedor: string): boolean {
-    // Dispatch só existe a partir de v1.1.0
-    const v = vendorRuntime?.[vendedor]?.versao
-    if (!v) return false
-    const [maj, min] = v.split('.').map(n => parseInt(n, 10) || 0)
-    return maj > 1 || (maj === 1 && min >= 1)
+
+  function tempoRelativo(sec: number | null): string {
+    if (sec === null) return 'sem ping'
+    if (sec < 60) return `${Math.round(sec)}s atrás`
+    if (sec < 3600) return `${Math.round(sec / 60)}min atrás`
+    return `${Math.round(sec / 3600)}h atrás`
   }
 
   // Modal de teste
@@ -220,66 +237,99 @@ export function Disparos() {
 
       {/* PAINEL VENDEDORES */}
       <Card className="p-4">
-        <h2 className="text-sm font-semibold text-ink mb-3 flex items-center gap-2">
-          <Users className="h-4 w-4 text-accent" />
-          Vendedores · ligue/desligue + ajuste %
-        </h2>
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
+            <Users className="h-4 w-4 text-accent" />
+            Vendedores
+            <span className="text-ink-faint font-normal text-[11px]">
+              · {(vendedores ?? []).filter(v => statusVendedor(v).status === 'ativo').length} ativos de {(vendedores ?? []).length}
+            </span>
+          </h2>
+          <div className="flex gap-3 text-[10px] text-ink-muted">
+            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> ativo</span>
+            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> lento</span>
+            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-red-400" /> desconectado</span>
+            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-slate-500" /> desligado</span>
+          </div>
+        </div>
         {loadingV ? <PageLoading /> : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
             {(vendedores ?? []).map(v => {
-              const waAberto = isWaAberto(v.vendedor_nome)
-              const dispatchOk = temDispatch(v.vendedor_nome)
-              const versao = vendorRuntime?.[v.vendedor_nome]?.versao
+              const st = statusVendedor(v)
+              const podeDisparar = st.status === 'ativo'
+              const stCfg = {
+                ativo:         { cor: 'border-emerald-500/40 bg-emerald-500/5',  dot: 'bg-emerald-400', txt: 'text-emerald-300', label: 'ATIVO',         hint: 'Pronto pra disparar' },
+                lento:         { cor: 'border-amber-500/40 bg-amber-500/5',      dot: 'bg-amber-400',   txt: 'text-amber-300',   label: 'LENTO',         hint: 'WA aberto mas resposta atrasada' },
+                versao_antiga: { cor: 'border-amber-500/40 bg-amber-500/5',      dot: 'bg-amber-400',   txt: 'text-amber-300',   label: 'RECARREGAR',    hint: 'Versão antiga — recarregar Chrome' },
+                desconectado:  { cor: 'border-red-500/30 bg-red-500/5',          dot: 'bg-red-400',     txt: 'text-red-300',     label: 'DESCONECTADO', hint: 'Sem ping recente — WA fechado?' },
+                desligado:     { cor: 'border-border bg-surface-2/30',           dot: 'bg-slate-500',   txt: 'text-slate-400',   label: 'DESLIGADO',     hint: 'Admin desligou no painel' },
+              }[st.status]
               return (
-              <div key={v.vendedor_nome} className={`border rounded-lg p-3 ${v.online ? 'border-accent/40 bg-accent/5' : 'border-border bg-surface-2/30'}`}>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
+              <div key={v.vendedor_nome} className={`border rounded-xl p-3 transition-all ${stCfg.cor}`}>
+                <div className="flex items-center justify-between mb-2.5">
+                  <div className="flex items-center gap-2 min-w-0">
                     <Avatar name={v.vendedor_nome} size="sm" />
-                    <span className="text-[12px] font-semibold text-ink">{v.vendedor_nome}</span>
-                    <span title={waAberto ? 'WhatsApp Web aberto' : 'WhatsApp Web fechado'}>
-                      {waAberto
-                        ? <Wifi className="h-3 w-3 text-emerald-400" />
-                        : <WifiOff className="h-3 w-3 text-red-400" />}
-                    </span>
-                    {versao && (
-                      <span className={`text-[9px] px-1 rounded ${dispatchOk ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300'}`} title={dispatchOk ? 'Versão suporta disparo' : 'Versão antiga sem disparo — recarregar Chrome'}>
-                        v{versao}
-                      </span>
-                    )}
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-bold text-ink truncate">{v.vendedor_nome}</div>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className={`h-1.5 w-1.5 rounded-full ${stCfg.dot} ${st.status === 'ativo' ? 'animate-pulse' : ''}`} />
+                        <span className={`text-[9px] font-bold tracking-wider ${stCfg.txt}`} title={stCfg.hint}>
+                          {stCfg.label}
+                        </span>
+                        <span className="text-[9px] text-ink-faint">· {tempoRelativo(st.pingSec)}</span>
+                        {st.versao && (
+                          <span className="text-[9px] text-ink-faint">· v{st.versao}</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                   <button
                     onClick={() => toggleVendedor.mutate({ nome: v.vendedor_nome, online: !v.online })}
-                    className={`text-[10px] px-2 py-1 rounded-full font-bold tracking-wide ${v.online ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-500/20 text-slate-400'}`}
+                    title={v.online ? 'Clique pra desligar' : 'Clique pra ligar'}
+                    className={`text-[9px] px-2 py-1 rounded-full font-bold tracking-wide transition-all flex-shrink-0 ${
+                      v.online ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30' : 'bg-slate-700/50 text-slate-400 hover:bg-slate-600/50'
+                    }`}
                   >
-                    {v.online ? '● ONLINE' : '○ OFFLINE'}
+                    {v.online ? '◉ LIGADO' : '○ DESLIG.'}
                   </button>
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-[10px] mb-2">
-                  <div>
-                    <div className="text-ink-faint uppercase tracking-wider">Hoje</div>
-                    <div className="text-ink font-bold text-[13px]">{v.enviados_hoje}</div>
+
+                <div className="grid grid-cols-3 gap-1.5 mb-2">
+                  <div className="bg-surface-2/50 rounded-lg p-1.5 border border-border/40">
+                    <div className="text-[8px] text-ink-faint uppercase tracking-wider">Hoje</div>
+                    <div className="text-ink font-bold text-[15px] tabular-nums leading-tight">{v.enviados_hoje}</div>
                   </div>
-                  <div>
-                    <div className="text-ink-faint uppercase tracking-wider">Última h</div>
-                    <div className="text-ink font-bold text-[13px]">{v.enviados_ultima_hora}/{v.max_per_hour}</div>
+                  <div className="bg-surface-2/50 rounded-lg p-1.5 border border-border/40">
+                    <div className="text-[8px] text-ink-faint uppercase tracking-wider">Última hora</div>
+                    <div className="text-ink font-bold text-[13px] tabular-nums leading-tight">
+                      {v.enviados_ultima_hora}<span className="text-ink-faint text-[10px]">/{v.max_per_hour}</span>
+                    </div>
+                    <div className="h-0.5 bg-surface-1 rounded-full mt-0.5 overflow-hidden">
+                      <div className="h-full bg-accent transition-all" style={{ width: `${Math.min(100, (v.enviados_ultima_hora / Math.max(1, v.max_per_hour)) * 100)}%` }} />
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-ink-faint uppercase tracking-wider">% share</label>
+                  <div className="bg-surface-2/50 rounded-lg p-1.5 border border-border/40">
+                    <label className="text-[8px] text-ink-faint uppercase tracking-wider">% share</label>
                     <input
-                      type="number" min={0} max={100} defaultValue={v.share_percent}
+                      type="number" min={0} max={100} step="0.1" defaultValue={v.share_percent}
                       onBlur={e => setShare.mutate({ nome: v.vendedor_nome, percent: Number(e.target.value) || 0 })}
-                      className="w-full bg-surface-2 border border-border rounded px-1.5 py-0.5 text-ink text-[12px] font-bold"
+                      className="w-full bg-transparent text-ink text-[13px] font-bold tabular-nums leading-tight focus:outline-none"
                     />
                   </div>
                 </div>
+
                 <button
                   onClick={() => setTesteVendedor(v.vendedor_nome)}
-                  disabled={!waAberto || !dispatchOk}
-                  className="w-full text-[10px] py-1 rounded border border-accent/40 text-accent hover:bg-accent/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1"
-                  title={!waAberto ? 'WhatsApp Web do vendedor fechado' : !dispatchOk ? `Versão ${versao || 'antiga'} sem disparo — pedir pra recarregar Chrome` : 'Disparar 1 mensagem-teste deste vendedor'}
+                  disabled={!podeDisparar}
+                  className={`w-full text-[10px] py-1.5 rounded-lg font-medium flex items-center justify-center gap-1.5 transition-all ${
+                    podeDisparar
+                      ? 'bg-accent/15 text-accent hover:bg-accent/25 border border-accent/40'
+                      : 'bg-surface-2/40 text-ink-faint border border-border cursor-not-allowed'
+                  }`}
+                  title={stCfg.hint}
                 >
                   <FlaskConical className="h-3 w-3" />
-                  {!dispatchOk ? 'recarregar Chrome' : !waAberto ? 'WA fechado' : 'Testar comigo'}
+                  {podeDisparar ? 'Testar disparo' : stCfg.label.toLowerCase()}
                 </button>
               </div>
             )})}
