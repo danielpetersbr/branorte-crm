@@ -42,6 +42,7 @@ type ApiLog = {
 type Vendedor = {
   vendedor_nome: string
   online: boolean
+  bloqueado: boolean
   share_percent: number
   max_per_hour: number
   enviados_hoje: number
@@ -74,6 +75,8 @@ type Lead = {
   telefone: string
   vars_json: Record<string, any> | null
   vendedor_atribuido: string | null
+  redirecionado_de: string | null
+  redirecionado_motivo: string | null
   status: string
   enviado_em: string | null
   erro_msg: string | null
@@ -228,6 +231,16 @@ export function Disparos() {
   const toggleVendedor = useMutation({
     mutationFn: async ({ nome, online }: { nome: string; online: boolean }) => {
       await supabase.from('vendor_dispatch_status').update({ online }).eq('vendedor_nome', nome)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['vendor-dispatch-status'] }),
+  })
+
+  // Toggle vendedor bloqueado (não recebe nada nas distribuições)
+  const toggleBloqueado = useMutation({
+    mutationFn: async ({ nome, bloqueado }: { nome: string; bloqueado: boolean }) => {
+      const upd: any = { bloqueado }
+      if (bloqueado) upd.share_percent = 0 // zera o % automaticamente
+      await supabase.from('vendor_dispatch_status').update(upd).eq('vendedor_nome', nome)
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['vendor-dispatch-status'] }),
   })
@@ -392,7 +405,10 @@ export function Disparos() {
       )}
 
       {/* DISTRIBUIÇÃO GLOBAL (% padrão) */}
-      <DistribuicaoGlobalCard vendedores={vendedores ?? []} />
+      <DistribuicaoGlobalCard
+        vendedores={vendedores ?? []}
+        onToggleBloqueado={(nome, bloqueado) => toggleBloqueado.mutate({ nome, bloqueado })}
+      />
 
       {/* API EXTERNA (ReplyAgent, n8n etc.) */}
       <ApiExternaCard />
@@ -866,7 +882,17 @@ function DetalheCampanha({ campanha, leads, vendedores }: { campanha: Campanha; 
                 <tr key={l.id} className="border-t border-border/40 hover:bg-surface-2/30">
                   <td className="px-3 py-1.5 text-ink">{l.nome ?? '—'}</td>
                   <td className="px-3 py-1.5 text-ink font-mono">{l.telefone}</td>
-                  <td className="px-3 py-1.5 text-ink">{l.vendedor_atribuido ?? '—'}</td>
+                  <td className="px-3 py-1.5 text-ink">
+                    {l.vendedor_atribuido ?? '—'}
+                    {l.redirecionado_de && (
+                      <span
+                        title={`Era pra ir pro ${l.redirecionado_de}, mas ele estava ${l.redirecionado_motivo}. Foi redirecionado pra ${l.vendedor_atribuido}.`}
+                        className="ml-1.5 text-[9px] px-1 py-0.5 bg-orange-500/15 text-orange-300 rounded font-bold border border-orange-500/30 cursor-help"
+                      >
+                        ↩ era pro {l.redirecionado_de}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-1.5">
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${lbl.cor}`}>{lbl.txt}</span>
                   </td>
@@ -897,9 +923,12 @@ function DetalheCampanha({ campanha, leads, vendedores }: { campanha: Campanha; 
 // ============================================================================
 // DistribuicaoGlobalCard — painel de % global (default p/ campanhas externas)
 // ============================================================================
-function DistribuicaoGlobalCard({ vendedores }: { vendedores: Vendedor[] }) {
+function DistribuicaoGlobalCard({ vendedores, onToggleBloqueado }: { vendedores: Vendedor[]; onToggleBloqueado: (nome: string, bloqueado: boolean) => void }) {
   const qc = useQueryClient()
+  // Todos os online (mesmo bloqueados aparecem na lista pra dar opção de desbloquear)
   const online = useMemo(() => vendedores.filter(v => v.online), [vendedores])
+  // Soma é só dos NÃO bloqueados
+  const ativos = useMemo(() => online.filter(v => !v.bloqueado), [online])
   // estado local p/ slider responsivo (commit no slider end)
   const [local, setLocal] = useState<Record<string, number>>({})
   // sincroniza local com server quando muda
@@ -925,10 +954,11 @@ function DistribuicaoGlobalCard({ vendedores }: { vendedores: Vendedor[] }) {
   }
 
   function igualar() {
-    if (online.length === 0) return
-    const each = Math.round((100 / online.length) * 100) / 100
+    if (ativos.length === 0) return
+    const each = Math.round((100 / ativos.length) * 100) / 100
     const novo: Record<string, number> = {}
-    for (const v of online) novo[v.vendedor_nome] = each
+    // Bloqueados ficam 0; só os ativos recebem
+    for (const v of online) novo[v.vendedor_nome] = v.bloqueado ? 0 : each
     setLocal(novo)
     persistirTodos(novo)
   }
@@ -1010,20 +1040,39 @@ function DistribuicaoGlobalCard({ vendedores }: { vendedores: Vendedor[] }) {
           const valor = Number(local[v.vendedor_nome] ?? 0)
           const cor = cores[i % cores.length]
           const corAccent = cor.replace('bg-', 'accent-')
+          const bloq = v.bloqueado
           return (
-            <div key={v.vendedor_nome} className={`border ${valor > 0 ? 'border-accent/30' : 'border-border'} rounded-lg p-3 bg-surface-2/50 transition-colors`}>
+            <div key={v.vendedor_nome} className={`border rounded-lg p-3 transition-colors ${
+              bloq ? 'border-red-500/30 bg-red-500/5 opacity-75' :
+              valor > 0 ? 'border-accent/30 bg-surface-2/50' : 'border-border bg-surface-2/50'
+            }`}>
               <div className="flex items-center justify-between mb-2 gap-2">
                 <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                  <span className={`h-2.5 w-2.5 rounded-full ${cor} flex-shrink-0`} />
-                  <span className="text-[12px] font-bold text-ink truncate">{v.vendedor_nome}</span>
+                  <span className={`h-2.5 w-2.5 rounded-full ${bloq ? 'bg-red-500/50' : cor} flex-shrink-0`} />
+                  <span className={`text-[12px] font-bold truncate ${bloq ? 'text-ink-muted line-through' : 'text-ink'}`}>{v.vendedor_nome}</span>
+                  {bloq && <span className="text-[8px] px-1 py-0.5 bg-red-500/20 text-red-300 rounded font-bold flex-shrink-0">BLOQUEADO</span>}
                 </div>
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <button
-                    onClick={() => ajustar(v.vendedor_nome, -5)}
-                    className="w-6 h-6 rounded bg-slate-900 border border-slate-700 text-ink hover:bg-red-500/30 hover:text-red-200 hover:border-red-500/50 text-[14px] font-bold leading-none flex items-center justify-center transition-colors"
-                    title="-5%"
-                  >−</button>
-                  <div className="relative">
+                <button
+                  onClick={() => onToggleBloqueado(v.vendedor_nome, !bloq)}
+                  title={bloq ? 'Desbloquear — voltar a receber leads' : 'Bloquear — não receber mais leads (será ignorado em Dividir igualmente e nos disparos)'}
+                  className={`text-[9px] px-1.5 py-0.5 rounded font-bold tracking-wide flex-shrink-0 transition-colors ${
+                    bloq
+                      ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 border border-emerald-500/30'
+                      : 'bg-slate-800 text-ink-muted hover:bg-red-500/20 hover:text-red-300 border border-slate-700'
+                  }`}
+                >
+                  {bloq ? '✓ DESBLOQUEAR' : '✕ BLOQUEAR'}
+                </button>
+              </div>
+
+              {!bloq && (
+                <>
+                  <div className="flex items-center justify-end gap-1 mb-2">
+                    <button
+                      onClick={() => ajustar(v.vendedor_nome, -5)}
+                      className="w-6 h-6 rounded bg-slate-900 border border-slate-700 text-ink hover:bg-red-500/30 hover:text-red-200 hover:border-red-500/50 text-[14px] font-bold leading-none flex items-center justify-center transition-colors"
+                      title="-5%"
+                    >−</button>
                     <input
                       type="number" min={0} max={100} step="1"
                       value={valor === 0 ? '' : valor}
@@ -1032,28 +1081,33 @@ function DistribuicaoGlobalCard({ vendedores }: { vendedores: Vendedor[] }) {
                       placeholder="0"
                       className="w-14 bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-white text-[14px] font-bold tabular-nums text-center focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     />
+                    <span className="text-[11px] text-ink-muted font-semibold">%</span>
+                    <button
+                      onClick={() => ajustar(v.vendedor_nome, 5)}
+                      className="w-6 h-6 rounded bg-slate-900 border border-slate-700 text-ink hover:bg-emerald-500/30 hover:text-emerald-200 hover:border-emerald-500/50 text-[14px] font-bold leading-none flex items-center justify-center transition-colors"
+                      title="+5%"
+                    >+</button>
                   </div>
-                  <span className="text-[11px] text-ink-muted font-semibold">%</span>
-                  <button
-                    onClick={() => ajustar(v.vendedor_nome, 5)}
-                    className="w-6 h-6 rounded bg-slate-900 border border-slate-700 text-ink hover:bg-emerald-500/30 hover:text-emerald-200 hover:border-emerald-500/50 text-[14px] font-bold leading-none flex items-center justify-center transition-colors"
-                    title="+5%"
-                  >+</button>
+                  <input
+                    type="range" min={0} max={100} step={1}
+                    value={valor}
+                    onChange={e => setLocal({ ...local, [v.vendedor_nome]: Number(e.target.value) })}
+                    onMouseUp={() => persistirUm(v.vendedor_nome, valor)}
+                    onTouchEnd={() => persistirUm(v.vendedor_nome, valor)}
+                    className={`w-full h-1.5 ${corAccent} cursor-pointer`}
+                  />
+                  <div className="text-[10px] text-ink-faint mt-1.5 min-h-[14px]">
+                    {soma > 0 && valor > 0
+                      ? <>recebe <span className="text-ink font-semibold">{Math.round((valor / soma) * 100)}</span> de cada 100 leads</>
+                      : valor === 0 ? <span className="text-ink-faint/50">— não recebe leads —</span> : null}
+                  </div>
+                </>
+              )}
+              {bloq && (
+                <div className="text-[10px] text-red-300/70 italic mt-1">
+                  Não recebe leads. Disparos que cairiam aqui vão para outro vendedor disponível, com anotação no histórico.
                 </div>
-              </div>
-              <input
-                type="range" min={0} max={100} step={1}
-                value={valor}
-                onChange={e => setLocal({ ...local, [v.vendedor_nome]: Number(e.target.value) })}
-                onMouseUp={() => persistirUm(v.vendedor_nome, valor)}
-                onTouchEnd={() => persistirUm(v.vendedor_nome, valor)}
-                className={`w-full h-1.5 ${corAccent} cursor-pointer`}
-              />
-              <div className="text-[10px] text-ink-faint mt-1.5 min-h-[14px]">
-                {soma > 0 && valor > 0
-                  ? <>recebe <span className="text-ink font-semibold">{Math.round((valor / soma) * 100)}</span> de cada 100 leads</>
-                  : valor === 0 ? <span className="text-ink-faint/50">— não recebe leads —</span> : null}
-              </div>
+              )}
             </div>
           )
         })}
