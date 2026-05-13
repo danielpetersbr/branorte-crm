@@ -155,10 +155,10 @@ export function Disparos() {
   }
 
   function tempoRelativo(sec: number | null): string {
-    if (sec === null) return 'sem ping'
-    if (sec < 60) return `${Math.round(sec)}s atrás`
-    if (sec < 3600) return `${Math.round(sec / 60)}min atrás`
-    return `${Math.round(sec / 3600)}h atrás`
+    if (sec === null) return 'sem sinal'
+    if (sec < 60) return `há ${Math.round(sec)}s`
+    if (sec < 3600) return `há ${Math.round(sec / 60)}min`
+    return `há ${Math.round(sec / 3600)}h`
   }
 
   // Modal de teste
@@ -242,7 +242,7 @@ export function Disparos() {
             <Users className="h-4 w-4 text-accent" />
             Vendedores
             <span className="text-ink-faint font-normal text-[11px]">
-              · {(vendedores ?? []).filter(v => statusVendedor(v).status === 'ativo').length} ativos de {(vendedores ?? []).length}
+              · {(vendedores ?? []).filter(v => statusVendedor(v).status === 'ativo').length} ativo{(vendedores ?? []).filter(v => statusVendedor(v).status === 'ativo').length === 1 ? '' : 's'} de {(vendedores ?? []).length}
             </span>
           </h2>
           <div className="flex gap-3 text-[10px] text-ink-muted">
@@ -296,7 +296,7 @@ export function Disparos() {
 
                 <div className="grid grid-cols-3 gap-1.5 mb-2">
                   <div className="bg-surface-2/50 rounded-lg p-1.5 border border-border/40">
-                    <div className="text-[8px] text-ink-faint uppercase tracking-wider">Hoje</div>
+                    <div className="text-[8px] text-ink-faint uppercase tracking-wider">Enviados hoje</div>
                     <div className="text-ink font-bold text-[15px] tabular-nums leading-tight">{v.enviados_hoje}</div>
                   </div>
                   <div className="bg-surface-2/50 rounded-lg p-1.5 border border-border/40">
@@ -309,12 +309,8 @@ export function Disparos() {
                     </div>
                   </div>
                   <div className="bg-surface-2/50 rounded-lg p-1.5 border border-border/40">
-                    <label className="text-[8px] text-ink-faint uppercase tracking-wider">% share</label>
-                    <input
-                      type="number" min={0} max={100} step="0.1" defaultValue={v.share_percent}
-                      onBlur={e => setShare.mutate({ nome: v.vendedor_nome, percent: Number(e.target.value) || 0 })}
-                      className="w-full bg-transparent text-ink text-[13px] font-bold tabular-nums leading-tight focus:outline-none"
-                    />
+                    <div className="text-[8px] text-ink-faint uppercase tracking-wider">Fatia de leads</div>
+                    <div className="text-ink font-bold text-[15px] tabular-nums leading-tight">{Number(v.share_percent).toFixed(0)}<span className="text-ink-faint text-[10px]">%</span></div>
                   </div>
                 </div>
 
@@ -860,68 +856,154 @@ function DetalheCampanha({ campanha, leads, vendedores }: { campanha: Campanha; 
 // ============================================================================
 function DistribuicaoGlobalCard({ vendedores }: { vendedores: Vendedor[] }) {
   const qc = useQueryClient()
-  const online = vendedores.filter(v => v.online)
-  const soma = useMemo(() => online.reduce((s, v) => s + (Number(v.share_percent) || 0), 0), [online])
-  const proximoDe100 = soma >= 99.5 && soma <= 100.5
+  const online = useMemo(() => vendedores.filter(v => v.online), [vendedores])
+  // estado local p/ slider responsivo (commit no slider end)
+  const [local, setLocal] = useState<Record<string, number>>({})
+  // sincroniza local com server quando muda
+  useEffect(() => {
+    const novo: Record<string, number> = {}
+    for (const v of online) novo[v.vendedor_nome] = Number(v.share_percent) || 0
+    setLocal(novo)
+  }, [online.map(v => `${v.vendedor_nome}:${v.share_percent}`).join('|')])
 
-  async function setPesos(novo: Record<string, number>) {
-    const updates = Object.entries(novo).map(([nome, p]) =>
-      supabase.from('vendor_dispatch_status').update({ share_percent: p }).eq('vendedor_nome', nome)
-    )
-    await Promise.all(updates)
+  const soma = useMemo(() => Object.values(local).reduce((s, n) => s + (Number(n) || 0), 0), [local])
+  const proximoDe100 = soma >= 99.5 && soma <= 100.5
+  const cores = ['bg-emerald-500', 'bg-cyan-500', 'bg-purple-500', 'bg-amber-500', 'bg-blue-500', 'bg-pink-500', 'bg-orange-500', 'bg-rose-500', 'bg-teal-500']
+
+  async function persistirUm(nome: string, valor: number) {
+    await supabase.from('vendor_dispatch_status').update({ share_percent: valor }).eq('vendedor_nome', nome)
     qc.invalidateQueries({ queryKey: ['vendor-dispatch-status'] })
   }
+  async function persistirTodos(novo: Record<string, number>) {
+    await Promise.all(Object.entries(novo).map(([nome, p]) =>
+      supabase.from('vendor_dispatch_status').update({ share_percent: p }).eq('vendedor_nome', nome)
+    ))
+    qc.invalidateQueries({ queryKey: ['vendor-dispatch-status'] })
+  }
+
   function igualar() {
     if (online.length === 0) return
     const each = Math.round((100 / online.length) * 100) / 100
     const novo: Record<string, number> = {}
     for (const v of online) novo[v.vendedor_nome] = each
-    setPesos(novo)
+    setLocal(novo)
+    persistirTodos(novo)
   }
   function normalizar() {
     if (soma <= 0) return igualar()
     const fator = 100 / soma
     const novo: Record<string, number> = {}
-    for (const v of online) novo[v.vendedor_nome] = Math.round((Number(v.share_percent) || 0) * fator * 100) / 100
-    setPesos(novo)
+    for (const [k, val] of Object.entries(local)) novo[k] = Math.round((Number(val) || 0) * fator * 100) / 100
+    setLocal(novo)
+    persistirTodos(novo)
+  }
+  function zerar() {
+    const novo: Record<string, number> = {}
+    for (const v of online) novo[v.vendedor_nome] = 0
+    setLocal(novo)
+    persistirTodos(novo)
+  }
+  function ajustar(nome: string, delta: number) {
+    const atual = Number(local[nome] ?? 0)
+    const novo = Math.max(0, Math.min(100, atual + delta))
+    setLocal({ ...local, [nome]: novo })
+    persistirUm(nome, novo)
   }
 
   return (
     <Card className="p-4">
-      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-        <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
-          <Activity className="h-4 w-4 text-accent" />
-          Distribuição global · padrão p/ campanhas externas
-        </h2>
-        <div className="flex items-center gap-2">
-          <div className={`text-[11px] font-bold tabular-nums ${proximoDe100 ? 'text-emerald-400' : soma > 0 ? 'text-amber-400' : 'text-ink-faint'}`}>
-            soma: {soma.toFixed(1)}{proximoDe100 ? ' ✓' : soma > 0 ? ' (ajuste)' : ''}
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div>
+          <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
+            <Activity className="h-4 w-4 text-accent" />
+            Quanto cada vendedor recebe
+          </h2>
+          <p className="text-[10px] text-ink-muted mt-0.5">
+            Define a fatia de leads que cada um recebe. Vale também para chamadas externas (ReplyAgent / n8n) que não enviam pesos.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className={`text-[12px] font-bold tabular-nums px-2 py-1 rounded ${proximoDe100 ? 'bg-emerald-500/15 text-emerald-300' : soma > 0 ? 'bg-amber-500/15 text-amber-300' : 'bg-surface-2 text-ink-faint'}`}>
+            soma: {soma.toFixed(0)}%{proximoDe100 ? ' ✓' : ''}
           </div>
-          <button onClick={igualar} className="text-[10px] px-2 py-1 rounded bg-accent/10 text-accent border border-accent/30 hover:bg-accent/20">
-            Igualar 100%
+          <button onClick={igualar} className="text-[10px] px-2 py-1 rounded bg-accent/10 text-accent border border-accent/30 hover:bg-accent/20 font-medium">
+            Dividir igualmente
           </button>
           <button onClick={normalizar} disabled={soma <= 0} className="text-[10px] px-2 py-1 rounded bg-surface-2 text-ink border border-border hover:bg-surface-3 disabled:opacity-40">
-            Normalizar
+            Ajustar p/ 100%
+          </button>
+          <button onClick={zerar} className="text-[10px] px-2 py-1 rounded bg-surface-2 text-ink-muted border border-border hover:bg-red-500/10 hover:text-red-300">
+            Zerar tudo
           </button>
         </div>
       </div>
-      <p className="text-[10px] text-ink-muted mb-2">
-        Estes % são o padrão usado quando ReplyAgent/n8n chamam <code className="text-accent">dispatch-external</code> sem pesos específicos.
-        Soma proporcional — não precisa dar 100, mas é bom prática.
-      </p>
-      {soma > 0 && (
-        <div className="flex h-4 rounded overflow-hidden border border-border bg-surface-2">
-          {online.filter(v => Number(v.share_percent) > 0).map((v, i) => {
-            const pct = (Number(v.share_percent) / soma) * 100
-            const cores = ['bg-emerald-500', 'bg-accent', 'bg-purple-500', 'bg-amber-500', 'bg-blue-500', 'bg-pink-500', 'bg-cyan-500', 'bg-orange-500', 'bg-rose-500']
+
+      {/* Barra de proporção visual */}
+      {soma > 0 ? (
+        <div className="flex h-6 rounded-lg overflow-hidden border border-border bg-surface-2 mb-3">
+          {online.filter(v => Number(local[v.vendedor_nome] ?? 0) > 0).map((v, i) => {
+            const pct = (Number(local[v.vendedor_nome] ?? 0) / soma) * 100
             return (
-              <div key={v.vendedor_nome} className={`${cores[i % cores.length]} flex items-center justify-center text-[8px] font-bold text-black/70 transition-all`} style={{ width: `${pct}%` }} title={`${v.vendedor_nome}: ${pct.toFixed(1)}%`}>
-                {pct >= 8 ? v.vendedor_nome.substring(0, 3) : ''}
+              <div
+                key={v.vendedor_nome}
+                className={`${cores[i % cores.length]} flex items-center justify-center text-[10px] font-bold text-black/80 transition-all`}
+                style={{ width: `${pct}%` }}
+                title={`${v.vendedor_nome}: ${pct.toFixed(1)}%`}
+              >
+                {pct >= 6 ? v.vendedor_nome.substring(0, Math.max(2, Math.floor(pct / 4))) : ''}
               </div>
             )
           })}
         </div>
+      ) : (
+        <div className="h-6 rounded-lg border border-dashed border-border bg-surface-2/40 mb-3 flex items-center justify-center text-[10px] text-ink-faint">
+          Sem distribuição definida — clique em "Dividir igualmente" pra começar
+        </div>
       )}
+
+      {/* Sliders por vendedor */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+        {online.map((v, i) => {
+          const valor = Number(local[v.vendedor_nome] ?? 0)
+          const cor = cores[i % cores.length]
+          return (
+            <div key={v.vendedor_nome} className="border border-border rounded-lg p-2.5 bg-surface-2/30">
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className={`h-2 w-2 rounded-full ${cor}`} />
+                  <span className="text-[11px] font-bold text-ink truncate">{v.vendedor_nome}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => ajustar(v.vendedor_nome, -5)} className="w-5 h-5 rounded bg-surface-1 border border-border hover:bg-red-500/20 hover:text-red-300 text-[12px] leading-none flex items-center justify-center" title="-5%">−</button>
+                  <input
+                    type="number" min={0} max={100} step="1"
+                    value={valor === 0 ? '' : valor}
+                    onChange={e => setLocal({ ...local, [v.vendedor_nome]: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
+                    onBlur={() => persistirUm(v.vendedor_nome, valor)}
+                    placeholder="0"
+                    className="w-12 bg-surface-1 border border-border rounded px-1 py-0.5 text-ink text-[12px] font-bold tabular-nums text-center"
+                  />
+                  <span className="text-[10px] text-ink-faint">%</span>
+                  <button onClick={() => ajustar(v.vendedor_nome, 5)} className="w-5 h-5 rounded bg-surface-1 border border-border hover:bg-emerald-500/20 hover:text-emerald-300 text-[12px] leading-none flex items-center justify-center" title="+5%">+</button>
+                </div>
+              </div>
+              <input
+                type="range" min={0} max={100} step={1}
+                value={valor}
+                onChange={e => setLocal({ ...local, [v.vendedor_nome]: Number(e.target.value) })}
+                onMouseUp={() => persistirUm(v.vendedor_nome, valor)}
+                onTouchEnd={() => persistirUm(v.vendedor_nome, valor)}
+                className="w-full accent-emerald-500 h-1"
+              />
+              {soma > 0 && valor > 0 && (
+                <div className="text-[9px] text-ink-faint mt-1">
+                  → {Math.round((valor / soma) * 100)} de cada 100 leads
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
     </Card>
   )
 }
