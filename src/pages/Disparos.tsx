@@ -114,30 +114,37 @@ export function Disparos() {
   // WhatsApp Web aberto/fechado + versão da extensão por vendedor
   // Janela ampliada de 5min → 30min pra capturar quem pingou recentemente.
   // diag.sem_wa_aberto = heartbeat de extensão viva mas WA Web fechado.
-  type Runtime = { ts: string; versao: string; semWa: boolean; heartbeatOnly: boolean }
+  // diag.wpp_ready = WPPConnect hidratou (true = pronto pra disparar)
+  type Runtime = { ts: string; versao: string; semWa: boolean; heartbeatOnly: boolean; wppReady: boolean }
   const { data: vendorRuntime } = useQuery<Record<string, Runtime>>({
     queryKey: ['vendor-runtime'],
     queryFn: async () => {
       const { data } = await supabase
         .from('wa_sync_debug')
-        .select('vendedor_nome, recebido_em, client_version, diag')
+        .select('vendedor_nome, recebido_em, client_version, diag, etiquetas_count, total_chats')
         .gte('recebido_em', new Date(Date.now() - 30 * 60_000).toISOString())
         .order('recebido_em', { ascending: false })
         .limit(500)
       const mapa: Record<string, Runtime> = {}
       for (const row of (data || []) as any[]) {
         if (!mapa[row.vendedor_nome]) {
+          const heartbeatOnly = !!row.diag?.heartbeat_only
+          // WPP está pronto se: o diag explicitamente diz, OU se tem chats/etiquetas
+          // (significa que o ping trouxe dados reais, não foi só heartbeat).
+          const wppReady = row.diag?.wpp_ready === true
+            || (!heartbeatOnly && ((row.etiquetas_count ?? 0) > 0 || (row.total_chats ?? 0) > 0))
           mapa[row.vendedor_nome] = {
             ts: row.recebido_em,
             versao: row.client_version ?? '?',
             semWa: !!row.diag?.sem_wa_aberto,
-            heartbeatOnly: !!row.diag?.heartbeat_only,
+            heartbeatOnly,
+            wppReady,
           }
         }
       }
       return mapa
     },
-    refetchInterval: 10000,
+    refetchInterval: 5000,
   })
 
   // Status consolidado por vendedor:
@@ -162,6 +169,9 @@ export function Disparos() {
     if (sec >= 180) return { status: 'lento', pingSec: sec, versao: runtime.versao }
     // ping recente — verifica subestado via diag
     if (runtime.semWa) return { status: 'wa_fechado', pingSec: sec, versao: runtime.versao }
+    // Se WPP está pronto, vendedor pode disparar → ATIVO (mesmo que heartbeat)
+    if (runtime.wppReady) return { status: 'ativo', pingSec: sec, versao: runtime.versao }
+    // Só fica "aguardando WA" se WPP ainda não hidratou
     if (runtime.heartbeatOnly) return { status: 'aguardando', pingSec: sec, versao: runtime.versao }
     return { status: 'ativo', pingSec: sec, versao: runtime.versao }
   }
