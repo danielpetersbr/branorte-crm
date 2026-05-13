@@ -239,10 +239,14 @@ export function Disparos() {
   const toggleBloqueado = useMutation({
     mutationFn: async ({ nome, bloqueado }: { nome: string; bloqueado: boolean }) => {
       const upd: any = { bloqueado }
-      if (bloqueado) upd.share_percent = 0 // zera o % automaticamente
-      await supabase.from('vendor_dispatch_status').update(upd).eq('vendedor_nome', nome)
+      if (bloqueado) upd.share_percent = 0
+      const { error } = await supabase.from('vendor_dispatch_status').update(upd).eq('vendedor_nome', nome)
+      if (error) throw error
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['vendor-dispatch-status'] }),
+    onError: (err: any) => {
+      alert('Não foi possível bloquear/desbloquear: ' + (err?.message || err))
+    },
   })
 
   // Update share_percent
@@ -943,13 +947,21 @@ function DistribuicaoGlobalCard({ vendedores, onToggleBloqueado }: { vendedores:
   const cores = ['bg-emerald-500', 'bg-cyan-500', 'bg-purple-500', 'bg-amber-500', 'bg-blue-500', 'bg-pink-500', 'bg-orange-500', 'bg-rose-500', 'bg-teal-500']
 
   async function persistirUm(nome: string, valor: number) {
-    await supabase.from('vendor_dispatch_status').update({ share_percent: valor }).eq('vendedor_nome', nome)
+    const { error } = await supabase.from('vendor_dispatch_status').update({ share_percent: valor }).eq('vendedor_nome', nome)
+    if (error) {
+      alert('Não foi possível salvar % do ' + nome + ': ' + error.message)
+      return
+    }
     qc.invalidateQueries({ queryKey: ['vendor-dispatch-status'] })
   }
   async function persistirTodos(novo: Record<string, number>) {
-    await Promise.all(Object.entries(novo).map(([nome, p]) =>
+    const results = await Promise.all(Object.entries(novo).map(([nome, p]) =>
       supabase.from('vendor_dispatch_status').update({ share_percent: p }).eq('vendedor_nome', nome)
     ))
+    const erros = results.filter(r => r.error).map(r => r.error?.message)
+    if (erros.length > 0) {
+      alert('Erro ao salvar pesos: ' + erros[0])
+    }
     qc.invalidateQueries({ queryKey: ['vendor-dispatch-status'] })
   }
 
