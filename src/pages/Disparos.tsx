@@ -9,7 +9,35 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Send, Play, Pause, Trash2, Plus, Users, Clock, AlertCircle, CheckCircle2, XCircle, RefreshCw, FlaskConical, Zap, Wifi, WifiOff } from 'lucide-react'
+import { Send, Play, Pause, Trash2, Plus, Users, Clock, AlertCircle, CheckCircle2, XCircle, RefreshCw, FlaskConical, Zap, Wifi, WifiOff, Key, Copy, Check, ExternalLink, Eye, EyeOff, Trash, Activity } from 'lucide-react'
+
+const SUPA_URL = 'https://flwbeevtvjiouxdjmziv.supabase.co'
+const EDGE_EXTERNAL = `${SUPA_URL}/functions/v1/dispatch-external`
+
+type ApiKey = {
+  id: string
+  nome: string
+  key_prefix: string
+  ativa: boolean
+  criado_em: string
+  ultima_uso_em: string | null
+  total_chamadas: number
+  notas: string | null
+}
+
+type ApiLog = {
+  id: string
+  api_key_nome: string | null
+  origem: string | null
+  campaign_id: string | null
+  status_code: number
+  total_contatos: number | null
+  total_atribuidos: number | null
+  total_duplicados: number | null
+  payload_resumo: any
+  erro: string | null
+  criado_em: string
+}
 
 type Vendedor = {
   vendedor_nome: string
@@ -263,6 +291,7 @@ export function Disparos() {
       {novaCampForm && (
         <Card className="p-4">
           <NovaCampanhaForm
+            vendedores={vendedores ?? []}
             onCancel={() => setNovaCampForm(false)}
             onCreated={(id) => {
               setNovaCampForm(false)
@@ -272,6 +301,12 @@ export function Disparos() {
           />
         </Card>
       )}
+
+      {/* DISTRIBUIÇÃO GLOBAL (% padrão) */}
+      <DistribuicaoGlobalCard vendedores={vendedores ?? []} />
+
+      {/* API EXTERNA (ReplyAgent, n8n etc.) */}
+      <ApiExternaCard />
 
       {/* LISTA DE CAMPANHAS */}
       <Card className="p-4">
@@ -438,7 +473,7 @@ function ModalTeste({ vendedor, onClose, onSuccess }: { vendedor: string; onClos
 // ============================================================================
 // Form nova campanha
 // ============================================================================
-function NovaCampanhaForm({ onCancel, onCreated }: { onCancel: () => void; onCreated: (id: string) => void }) {
+function NovaCampanhaForm({ onCancel, onCreated, vendedores }: { onCancel: () => void; onCreated: (id: string) => void; vendedores: Vendedor[] }) {
   const [nome, setNome] = useState('')
   const [mensagem, setMensagem] = useState('Olá {{nome}}, aqui é o {{vendedor}} da Branorte. Tudo bem?')
   const [regra, setRegra] = useState<'igualitaria' | 'round_robin' | 'porcentagem' | 'manual'>('igualitaria')
@@ -446,14 +481,20 @@ function NovaCampanhaForm({ onCancel, onCreated }: { onCancel: () => void; onCre
   const [hi, setHi] = useState('08:00')
   const [hf, setHf] = useState('18:00')
   const [salvando, setSalvando] = useState(false)
+  const [pesosCamp, setPesosCamp] = useState<Record<string, number>>({})
 
   async function criar() {
     if (!nome.trim() || !mensagem.trim()) return alert('preencha nome e mensagem')
+    if (regra === 'porcentagem') {
+      const soma = Object.values(pesosCamp).reduce((s, n) => s + (Number(n) || 0), 0)
+      if (soma <= 0) return alert('defina pesos > 0 para pelo menos um vendedor (ou use "Copiar do painel global")')
+    }
     setSalvando(true)
     const { data, error } = await supabase.from('dispatch_campaign').insert({
       nome: nome.trim(),
       mensagem_template: mensagem.trim(),
       regra_distribuicao: regra,
+      porcentagens_json: regra === 'porcentagem' ? pesosCamp : null,
       status: 'rascunho',
       rate_max_por_hora: rate,
       horario_inicio: hi,
@@ -485,10 +526,10 @@ function NovaCampanhaForm({ onCancel, onCreated }: { onCancel: () => void; onCre
             value={regra}
             onChange={e => setRegra(e.target.value as any)}
             options={[
-              { value: 'igualitaria',  label: 'Igualitária' },
-              { value: 'round_robin',  label: 'Round-robin' },
-              { value: 'porcentagem',  label: '% por vendedor' },
-              { value: 'manual',       label: 'Manual' },
+              { value: 'igualitaria',  label: 'Igualitária (peso 1 cada)' },
+              { value: 'round_robin',  label: 'Round-robin (alterna)' },
+              { value: 'porcentagem',  label: '% por vendedor (peso)' },
+              { value: 'manual',       label: 'Manual (eu atribuo)' },
             ]}
           />
         </div>
@@ -505,9 +546,128 @@ function NovaCampanhaForm({ onCancel, onCreated }: { onCancel: () => void; onCre
           <Input type="time" value={hf} onChange={e => setHf(e.target.value)} />
         </div>
       </div>
+      <div className="text-[10px] text-ink-muted px-2 py-1.5 bg-surface-2/50 rounded">
+        {regra === 'igualitaria' && '⚖️ Sorteio com peso igual para todos os vendedores online.'}
+        {regra === 'round_robin' && '🔁 Alterna sequencialmente entre os vendedores online (1º Alvaro, 2º Daniel, 3º Eder...).'}
+        {regra === 'porcentagem' && '🎯 Sorteio ponderado pelos pesos abaixo. Não precisa dar 100 — é proporcional (ex: 30/20/10 = 50%/33%/17%).'}
+        {regra === 'manual' && '✋ Você atribui lead por lead. Distribuir não atribui automaticamente.'}
+      </div>
+
+      {regra === 'porcentagem' && (
+        <WeightEditor
+          vendedores={vendedores.filter(v => v.online)}
+          pesos={pesosCamp}
+          onChange={setPesosCamp}
+          allowCopyGlobal
+        />
+      )}
+
       <div className="flex gap-2">
         <Button variant="primary" onClick={criar} loading={salvando}>Criar campanha</Button>
         <Button variant="secondary" onClick={onCancel}>Cancelar</Button>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// WeightEditor — editor de pesos com validação e preview
+// ============================================================================
+function WeightEditor({
+  vendedores, pesos, onChange, allowCopyGlobal = false,
+}: {
+  vendedores: Vendedor[]
+  pesos: Record<string, number>
+  onChange: (p: Record<string, number>) => void
+  allowCopyGlobal?: boolean
+}) {
+  const soma = useMemo(() => Object.values(pesos).reduce((s, n) => s + (Number(n) || 0), 0), [pesos])
+  const proximoDe100 = soma >= 99.5 && soma <= 100.5
+
+  function setPeso(nome: string, val: number) {
+    onChange({ ...pesos, [nome]: Math.max(0, val) })
+  }
+  function igualar() {
+    const each = Math.round((100 / vendedores.length) * 100) / 100
+    const novo: Record<string, number> = {}
+    for (const v of vendedores) novo[v.vendedor_nome] = each
+    onChange(novo)
+  }
+  function normalizar() {
+    if (soma <= 0) return igualar()
+    const fator = 100 / soma
+    const novo: Record<string, number> = {}
+    for (const [k, v] of Object.entries(pesos)) novo[k] = Math.round(Number(v) * fator * 100) / 100
+    onChange(novo)
+  }
+  function copiarGlobal() {
+    const novo: Record<string, number> = {}
+    for (const v of vendedores) novo[v.vendedor_nome] = Number(v.share_percent) || 0
+    onChange(novo)
+  }
+  function zerar() {
+    onChange({})
+  }
+
+  // Preview: se 100 leads, quantos vão pra cada
+  const preview = useMemo(() => {
+    if (soma <= 0) return {}
+    const r: Record<string, number> = {}
+    for (const v of vendedores) {
+      const p = Number(pesos[v.vendedor_nome] ?? 0)
+      r[v.vendedor_nome] = Math.round((p / soma) * 100)
+    }
+    return r
+  }, [pesos, soma, vendedores])
+
+  return (
+    <div className="border border-border rounded-lg p-3 space-y-2 bg-surface-2/30">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <label className="text-[11px] font-semibold text-ink uppercase tracking-wider">Pesos por vendedor</label>
+        <div className={`text-[11px] font-bold tabular-nums ${proximoDe100 ? 'text-emerald-400' : soma > 0 ? 'text-amber-400' : 'text-ink-faint'}`}>
+          soma: {soma.toFixed(1)}{proximoDe100 ? ' ✓' : ''}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5">
+        {vendedores.map(v => {
+          const peso = Number(pesos[v.vendedor_nome] ?? 0)
+          const pct = preview[v.vendedor_nome] ?? 0
+          return (
+            <div key={v.vendedor_nome} className="flex items-center gap-1.5 bg-surface-2 border border-border rounded px-2 py-1">
+              <Avatar name={v.vendedor_nome} size="sm" />
+              <div className="flex-1 min-w-0">
+                <div className="text-[10px] text-ink font-semibold truncate">{v.vendedor_nome}</div>
+                {soma > 0 && (
+                  <div className="text-[8px] text-ink-faint">→ {pct}/100 leads</div>
+                )}
+              </div>
+              <input
+                type="number" min={0} step="0.1" value={peso || ''}
+                onChange={e => setPeso(v.vendedor_nome, Number(e.target.value) || 0)}
+                placeholder="0"
+                className="w-12 bg-surface-1 border border-border rounded px-1 py-0.5 text-ink text-[11px] font-bold text-right"
+              />
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="flex gap-1.5 flex-wrap">
+        <button onClick={igualar} className="text-[10px] px-2 py-1 rounded bg-accent/10 text-accent border border-accent/30 hover:bg-accent/20">
+          Igualar entre todos
+        </button>
+        <button onClick={normalizar} disabled={soma <= 0} className="text-[10px] px-2 py-1 rounded bg-surface-2 text-ink border border-border hover:bg-surface-3 disabled:opacity-40">
+          Normalizar p/ 100%
+        </button>
+        {allowCopyGlobal && (
+          <button onClick={copiarGlobal} className="text-[10px] px-2 py-1 rounded bg-surface-2 text-ink border border-border hover:bg-surface-3">
+            Copiar do painel global
+          </button>
+        )}
+        <button onClick={zerar} className="text-[10px] px-2 py-1 rounded bg-surface-2 text-ink-muted border border-border hover:bg-red-500/10 hover:text-red-400">
+          Zerar tudo
+        </button>
       </div>
     </div>
   )
@@ -642,5 +802,323 @@ function DetalheCampanha({ campanha, leads, vendedores }: { campanha: Campanha; 
         )}
       </div>
     </Card>
+  )
+}
+
+// ============================================================================
+// DistribuicaoGlobalCard — painel de % global (default p/ campanhas externas)
+// ============================================================================
+function DistribuicaoGlobalCard({ vendedores }: { vendedores: Vendedor[] }) {
+  const qc = useQueryClient()
+  const online = vendedores.filter(v => v.online)
+  const soma = useMemo(() => online.reduce((s, v) => s + (Number(v.share_percent) || 0), 0), [online])
+  const proximoDe100 = soma >= 99.5 && soma <= 100.5
+
+  async function setPesos(novo: Record<string, number>) {
+    const updates = Object.entries(novo).map(([nome, p]) =>
+      supabase.from('vendor_dispatch_status').update({ share_percent: p }).eq('vendedor_nome', nome)
+    )
+    await Promise.all(updates)
+    qc.invalidateQueries({ queryKey: ['vendor-dispatch-status'] })
+  }
+  function igualar() {
+    if (online.length === 0) return
+    const each = Math.round((100 / online.length) * 100) / 100
+    const novo: Record<string, number> = {}
+    for (const v of online) novo[v.vendedor_nome] = each
+    setPesos(novo)
+  }
+  function normalizar() {
+    if (soma <= 0) return igualar()
+    const fator = 100 / soma
+    const novo: Record<string, number> = {}
+    for (const v of online) novo[v.vendedor_nome] = Math.round((Number(v.share_percent) || 0) * fator * 100) / 100
+    setPesos(novo)
+  }
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+        <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
+          <Activity className="h-4 w-4 text-accent" />
+          Distribuição global · padrão p/ campanhas externas
+        </h2>
+        <div className="flex items-center gap-2">
+          <div className={`text-[11px] font-bold tabular-nums ${proximoDe100 ? 'text-emerald-400' : soma > 0 ? 'text-amber-400' : 'text-ink-faint'}`}>
+            soma: {soma.toFixed(1)}{proximoDe100 ? ' ✓' : soma > 0 ? ' (ajuste)' : ''}
+          </div>
+          <button onClick={igualar} className="text-[10px] px-2 py-1 rounded bg-accent/10 text-accent border border-accent/30 hover:bg-accent/20">
+            Igualar 100%
+          </button>
+          <button onClick={normalizar} disabled={soma <= 0} className="text-[10px] px-2 py-1 rounded bg-surface-2 text-ink border border-border hover:bg-surface-3 disabled:opacity-40">
+            Normalizar
+          </button>
+        </div>
+      </div>
+      <p className="text-[10px] text-ink-muted mb-2">
+        Estes % são o padrão usado quando ReplyAgent/n8n chamam <code className="text-accent">dispatch-external</code> sem pesos específicos.
+        Soma proporcional — não precisa dar 100, mas é bom prática.
+      </p>
+      {soma > 0 && (
+        <div className="flex h-4 rounded overflow-hidden border border-border bg-surface-2">
+          {online.filter(v => Number(v.share_percent) > 0).map((v, i) => {
+            const pct = (Number(v.share_percent) / soma) * 100
+            const cores = ['bg-emerald-500', 'bg-accent', 'bg-purple-500', 'bg-amber-500', 'bg-blue-500', 'bg-pink-500', 'bg-cyan-500', 'bg-orange-500', 'bg-rose-500']
+            return (
+              <div key={v.vendedor_nome} className={`${cores[i % cores.length]} flex items-center justify-center text-[8px] font-bold text-black/70 transition-all`} style={{ width: `${pct}%` }} title={`${v.vendedor_nome}: ${pct.toFixed(1)}%`}>
+                {pct >= 8 ? v.vendedor_nome.substring(0, 3) : ''}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </Card>
+  )
+}
+
+// ============================================================================
+// ApiExternaCard — gerenciar keys + log de chamadas
+// ============================================================================
+function ApiExternaCard() {
+  const [aberto, setAberto] = useState(false)
+  const [novaKey, setNovaKey] = useState<{ key: string; nome: string } | null>(null)
+
+  const { data: keys, refetch: refetchKeys } = useQuery<ApiKey[]>({
+    queryKey: ['dispatch-api-keys'],
+    queryFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      const r = await fetch(`${SUPA_URL}/functions/v1/dispatch-api-key`, {
+        method: 'POST',
+        headers: { 'authorization': `Bearer ${session?.access_token ?? ''}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'list' }),
+      })
+      const j = await r.json()
+      return j.keys ?? []
+    },
+    enabled: aberto,
+  })
+
+  const { data: logs } = useQuery<ApiLog[]>({
+    queryKey: ['dispatch-api-logs'],
+    queryFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      const r = await fetch(`${SUPA_URL}/functions/v1/dispatch-api-key`, {
+        method: 'POST',
+        headers: { 'authorization': `Bearer ${session?.access_token ?? ''}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'logs', limit: 20 }),
+      })
+      const j = await r.json()
+      return j.logs ?? []
+    },
+    enabled: aberto,
+    refetchInterval: aberto ? 15000 : false,
+  })
+
+  async function criarKey() {
+    const nome = prompt('Nome da chave (ex: ReplyAgent prod):')
+    if (!nome?.trim()) return
+    const { data: { session } } = await supabase.auth.getSession()
+    const r = await fetch(`${SUPA_URL}/functions/v1/dispatch-api-key`, {
+      method: 'POST',
+      headers: { 'authorization': `Bearer ${session?.access_token ?? ''}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'create', nome: nome.trim() }),
+    })
+    const j = await r.json()
+    if (!j.ok) return alert('erro: ' + (j.error ?? ''))
+    setNovaKey({ key: j.key, nome: nome.trim() })
+    refetchKeys()
+  }
+
+  async function revogarKey(id: string, nome: string) {
+    if (!confirm(`Revogar chave "${nome}"? Quem usar essa chave vai começar a falhar.`)) return
+    const { data: { session } } = await supabase.auth.getSession()
+    await fetch(`${SUPA_URL}/functions/v1/dispatch-api-key`, {
+      method: 'POST',
+      headers: { 'authorization': `Bearer ${session?.access_token ?? ''}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'revoke', id }),
+    })
+    refetchKeys()
+  }
+
+  return (
+    <Card className="p-4">
+      <button onClick={() => setAberto(v => !v)} className="w-full flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
+          <Key className="h-4 w-4 text-accent" />
+          API externa · disparar de ReplyAgent / n8n / webhook
+        </h2>
+        <span className="text-[10px] text-ink-muted">{aberto ? '▲ fechar' : '▼ abrir'}</span>
+      </button>
+
+      {aberto && (
+        <div className="mt-3 space-y-3">
+          <div className="border border-border rounded-lg p-3 bg-surface-2/30 space-y-2">
+            <div className="text-[11px] font-semibold text-ink">Endpoint</div>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-[10px] bg-surface-1 border border-border rounded px-2 py-1 text-accent break-all">
+                POST {EDGE_EXTERNAL}
+              </code>
+              <CopyBtn text={EDGE_EXTERNAL} />
+            </div>
+            <div className="text-[10px] text-ink-muted">
+              Headers: <code className="text-accent">x-api-key: bnd_xxx</code> · <code className="text-accent">content-type: application/json</code>
+            </div>
+            <details className="text-[10px]">
+              <summary className="cursor-pointer text-accent hover:underline">Exemplo de payload</summary>
+              <pre className="mt-1 bg-surface-1 border border-border rounded p-2 text-[9px] text-ink-muted overflow-x-auto">{JSON.stringify({
+                campaign_name: 'Leads ReplyAgent 14/11',
+                message_template: 'Olá {{nome}}, aqui é o {{vendedor}} da Branorte. Vi seu interesse...',
+                external_ref: 'replyagent-batch-2026-11-14',
+                distribution: { type: 'global' },
+                contacts: [
+                  { phone: '48999999999', name: 'João' },
+                  { phone: '48988888888', name: 'Maria', vars: { produto: 'Ração 25kg' } },
+                ],
+              }, null, 2)}</pre>
+              <div className="mt-1 text-ink-muted">
+                <strong>distribution.type:</strong>{' '}
+                <code>global</code> (usa % do painel acima) ·{' '}
+                <code>igualitaria</code> ·{' '}
+                <code>round_robin</code> ·{' '}
+                <code>porcentagem</code> (com <code>weights: {`{ALVARO: 30, DANIEL: 70}`}</code>)
+              </div>
+            </details>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[11px] font-semibold text-ink">API Keys</div>
+              <Button variant="primary" onClick={criarKey}>
+                <Plus className="h-3 w-3 mr-1" /> Gerar nova chave
+              </Button>
+            </div>
+            {(keys ?? []).length === 0 ? (
+              <div className="text-[10px] text-ink-muted text-center py-3 border border-dashed border-border rounded">
+                Nenhuma chave criada. Clique em "Gerar nova chave" pra começar.
+              </div>
+            ) : (
+              <div className="border border-border rounded overflow-hidden">
+                <table className="w-full text-[11px]">
+                  <thead className="bg-surface-2/60">
+                    <tr>
+                      <th className="text-left px-3 py-1.5 text-ink-muted font-medium">Nome</th>
+                      <th className="text-left px-3 py-1.5 text-ink-muted font-medium">Prefixo</th>
+                      <th className="text-left px-3 py-1.5 text-ink-muted font-medium">Status</th>
+                      <th className="text-left px-3 py-1.5 text-ink-muted font-medium">Chamadas</th>
+                      <th className="text-left px-3 py-1.5 text-ink-muted font-medium">Último uso</th>
+                      <th className="w-8"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(keys ?? []).map(k => (
+                      <tr key={k.id} className="border-t border-border/40">
+                        <td className="px-3 py-1 text-ink">{k.nome}</td>
+                        <td className="px-3 py-1 text-ink-muted font-mono text-[10px]">{k.key_prefix}</td>
+                        <td className="px-3 py-1">
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded ${k.ativa ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-500/20 text-slate-400'}`}>
+                            {k.ativa ? 'ATIVA' : 'REVOGADA'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-1 text-ink tabular-nums">{k.total_chamadas}</td>
+                        <td className="px-3 py-1 text-ink-muted text-[10px]">
+                          {k.ultima_uso_em ? new Date(k.ultima_uso_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—'}
+                        </td>
+                        <td className="px-2 py-1">
+                          {k.ativa && (
+                            <button onClick={() => revogarKey(k.id, k.nome)} className="text-ink-faint hover:text-red-400" title="Revogar">
+                              <Trash className="h-3 w-3" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div className="text-[11px] font-semibold text-ink mb-2">Últimas chamadas externas</div>
+            {(logs ?? []).length === 0 ? (
+              <div className="text-[10px] text-ink-muted text-center py-3 border border-dashed border-border rounded">
+                Nenhuma chamada externa ainda.
+              </div>
+            ) : (
+              <div className="border border-border rounded overflow-hidden max-h-64 overflow-y-auto">
+                <table className="w-full text-[10px]">
+                  <thead className="bg-surface-2/60 sticky top-0">
+                    <tr>
+                      <th className="text-left px-2 py-1 text-ink-muted">Quando</th>
+                      <th className="text-left px-2 py-1 text-ink-muted">Chave</th>
+                      <th className="text-left px-2 py-1 text-ink-muted">Status</th>
+                      <th className="text-left px-2 py-1 text-ink-muted">Contatos</th>
+                      <th className="text-left px-2 py-1 text-ink-muted">Atribuídos</th>
+                      <th className="text-left px-2 py-1 text-ink-muted">Dup.</th>
+                      <th className="text-left px-2 py-1 text-ink-muted">Erro</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(logs ?? []).map(l => (
+                      <tr key={l.id} className="border-t border-border/40">
+                        <td className="px-2 py-1 text-ink-muted">{new Date(l.criado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</td>
+                        <td className="px-2 py-1 text-ink">{l.api_key_nome ?? '—'}</td>
+                        <td className="px-2 py-1">
+                          <span className={`px-1 rounded ${l.status_code === 200 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-500/20 text-red-300'}`}>
+                            {l.status_code}
+                          </span>
+                        </td>
+                        <td className="px-2 py-1 text-ink tabular-nums">{l.total_contatos ?? '—'}</td>
+                        <td className="px-2 py-1 text-ink tabular-nums">{l.total_atribuidos ?? '—'}</td>
+                        <td className="px-2 py-1 text-ink-muted tabular-nums">{l.total_duplicados ?? '—'}</td>
+                        <td className="px-2 py-1 text-red-400 text-[9px] max-w-32 truncate">{l.erro ?? ''}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal mostrando key recém-criada (única vez) */}
+      {novaKey && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-surface-1 border border-accent rounded-xl max-w-lg w-full p-5 space-y-3">
+            <h3 className="text-base font-bold text-ink flex items-center gap-2">
+              <Key className="h-5 w-5 text-accent" /> Chave gerada: {novaKey.nome}
+            </h3>
+            <div className="bg-amber-500/10 border border-amber-500/40 rounded p-2 text-[11px] text-amber-300">
+              ⚠️ Esta é a única vez que essa chave será mostrada. Copie e guarde agora em local seguro.
+            </div>
+            <div className="bg-surface-2 border border-border rounded p-2 font-mono text-[11px] text-accent break-all">
+              {novaKey.key}
+            </div>
+            <div className="flex gap-2">
+              <CopyBtn text={novaKey.key} label="Copiar chave" big />
+              <Button variant="secondary" onClick={() => setNovaKey(null)}>Fechar</Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </Card>
+  )
+}
+
+function CopyBtn({ text, label, big }: { text: string; label?: string; big?: boolean }) {
+  const [copiou, setCopiou] = useState(false)
+  return (
+    <button
+      onClick={async () => {
+        await navigator.clipboard.writeText(text)
+        setCopiou(true)
+        setTimeout(() => setCopiou(false), 1500)
+      }}
+      className={`${big ? 'px-3 py-2 text-[12px]' : 'px-2 py-1 text-[10px]'} rounded border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 flex items-center gap-1`}
+    >
+      {copiou ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+      {label ?? (copiou ? 'Copiado' : 'Copiar')}
+    </button>
   )
 }
