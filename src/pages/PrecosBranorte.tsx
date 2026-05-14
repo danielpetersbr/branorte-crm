@@ -14,6 +14,7 @@ const CATEGORIA_LABEL: Record<string, string> = {
   ELEVADOR: 'Elevador de Caneca',
   CAIXA: 'Caixas',
   SILO: 'Silos',
+  CACAMBA: 'Caçamba de Pesagem',
   PRE_LIMPEZA: 'Pré-Limpeza',
   PENEIRA: 'Peneiras',
   BRETE: 'Brete Casqueador',
@@ -36,6 +37,11 @@ const SUBCATEGORIA_LABEL: Record<string, string> = {
   PICADOS: 'Picados',
   RACAO: 'Ração',
   MILHO: 'Milho',
+  PESAGEM: 'Pesagem',
+  PECA: 'Peça',
+  ELETRONICA: 'Eletrônica',
+  MECANICA: 'Mecânica',
+  CELULA: 'Célula de Carga',
   DIVERSOS: 'Diversos',
 }
 
@@ -320,7 +326,7 @@ function TabelaPorCategoria({ items, mostrarMotor }: { items: PrecoBranorte[]; m
   const cat = items[0].categoria
   if (cat === 'SILO') return <TabelaSilos items={items} />
   if (cat === 'CAIXA') return <TabelaCaixas items={items} />
-  if (cat === 'MISTURADOR') return <TabelaMisturadores items={items} />
+  if (cat === 'MISTURADOR' || cat === 'CACAMBA') return <TabelaMisturadores items={items} />
   return <TabelaPrecos items={items} mostrarMotor={mostrarMotor} />
 }
 
