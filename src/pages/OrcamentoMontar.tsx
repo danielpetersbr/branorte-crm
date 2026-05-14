@@ -77,6 +77,7 @@ interface MotorAgrupado {
   valor_unit: number
   valor_total: number
   item_nome?: string       // nome do item que usa esse motor (pra mostrar no listagem)
+  item_uid?: string        // uid do CarrinhoItem que origem o motor (pra editar de volta)
 }
 
 function agruparMotores(carrinho: CarrinhoItem[]): MotorAgrupado[] {
@@ -91,6 +92,7 @@ function agruparMotores(carrinho: CarrinhoItem[]): MotorAgrupado[] {
       valor_unit: it.motor_valor_unit,
       valor_total: it.motor_valor_unit * qtdMotor,
       item_nome: it.nome_custom || it.nome,
+      item_uid: it.uid,
     })
   }
   // Mantém na ORDEM DOS ITEMS do carrinho — quando reordenar items via ▲▼,
@@ -356,6 +358,21 @@ export function OrcamentoMontar() {
       novaLista.splice(novo, 0, item)
       return novaLista
     })
+  }
+
+  // Troca o motor de um item especifico do carrinho. Usado pelo picker no preview.
+  function trocarMotorDoItem(itemUid: string, novoMotor: CatalogoMotor) {
+    setCarrinho(c => c.map(it => {
+      if (it.uid !== itemUid) return it
+      // Se o item tem motor incluso (spec '(incluso)'), nao cobra o motor.
+      const incluso = motorJaInclusoNoItem(it.specs)
+      return {
+        ...it,
+        motor_cv: Number(novoMotor.cv),
+        motor_polos: novoMotor.polos,
+        motor_valor_unit: incluso ? 0 : Number(novoMotor.valor),
+      }
+    }))
   }
 
   function aplicarVoltagem(novaVoltagem: Voltagem) {
@@ -727,6 +744,8 @@ export function OrcamentoMontar() {
                 onMoverItem={moverItem}
                 parcelas={parcelasPagamento}
                 onUpdateParcelas={setParcelasPagamento}
+                motoresDisponiveis={motores ?? []}
+                onTrocarMotor={trocarMotorDoItem}
               />
             ) : (
               <div className="divide-y divide-border">

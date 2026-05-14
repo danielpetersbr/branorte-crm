@@ -31,6 +31,16 @@ export interface PreviewMotor {
   valor_unit: number
   valor_total: number
   item_nome?: string  // se vier, mostra "de qual item" o motor é
+  item_uid?: string   // uid do CarrinhoItem origem — usado pelo onTrocarMotor
+}
+
+// Motor do catálogo central (catalogo_motores). Passado pra o picker de troca.
+export interface MotorCatalogoOption {
+  id: number
+  cv: number
+  polos: number
+  voltagem: string
+  valor: number
 }
 
 export interface PreviewClienteDados {
@@ -107,6 +117,10 @@ export interface OrcamentoPreviewProps {
   // Parcelas estruturadas (alternativa ao texto livre de formaPagamento)
   parcelas?: ParcelaPagamento[]
   onUpdateParcelas?: (p: ParcelaPagamento[]) => void
+
+  // Troca de motor: lista de motores do catálogo central + callback ao escolher
+  motoresDisponiveis?: MotorCatalogoOption[]
+  onTrocarMotor?: (itemUid: string, novoMotor: MotorCatalogoOption) => void
 }
 
 function formatBRLBare(v: number): string {
@@ -198,9 +212,12 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     desconto, onUpdateDesconto,
     onAddAcessorios, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateTerm, onMoverItem,
     parcelas, onUpdateParcelas,
+    motoresDisponiveis, onTrocarMotor,
   } = props
   const [editingNomeUid, setEditingNomeUid] = useState<string | null>(null)
   const [editingNomeValor, setEditingNomeValor] = useState<string>('')
+  // Estado do picker de troca de motor (qual linha tem o dropdown aberto)
+  const [trocarMotorIdx, setTrocarMotorIdx] = useState<number | null>(null)
   void totalItems  // mostrado no footer do builder, não no preview
 
   const motoresTitle = voltagem === 'monofasico' ? 'Motores Monofásicos:' : 'Motores Trifásicos:'
@@ -738,15 +755,74 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   <tbody>
                     {motoresAgrupados.map((m, idx) => {
                       const incluso = m.valor_total === 0
+                      const podeTrocar = !renderMode && !incluso && !!onTrocarMotor && !!m.item_uid && !!motoresDisponiveis?.length
+                      const aberto = trocarMotorIdx === idx
                       return (
                         <tr key={`${m.cv}-${m.polos}-${idx}`} className="border-t border-gray-200">
-                          <td className="py-1.5 text-gray-800">
+                          <td className="py-1.5 text-gray-800 relative">
                             <span className="text-gray-400 mr-1.5">•</span>
-                            <span className="font-semibold">{m.cv} CV {m.polos} polos</span>
+                            {podeTrocar ? (
+                              <button
+                                type="button"
+                                onClick={() => setTrocarMotorIdx(aberto ? null : idx)}
+                                className="font-semibold underline decoration-dotted underline-offset-2 decoration-gray-400 hover:decoration-blue-500 hover:text-blue-700 cursor-pointer print:no-underline print:text-gray-800"
+                                title="Clique pra trocar o motor"
+                              >
+                                {m.cv} CV {m.polos} polos
+                              </button>
+                            ) : (
+                              <span className="font-semibold">{m.cv} CV {m.polos} polos</span>
+                            )}
                             {m.item_nome && (
                               <span className="text-gray-500"> · <span className="italic">{m.item_nome}</span></span>
                             )}
                             {m.qtd > 1 && <span className="text-gray-500"> (×{m.qtd})</span>}
+
+                            {/* Popover de troca de motor */}
+                            {aberto && podeTrocar && m.item_uid && motoresDisponiveis && (
+                              <div
+                                className="absolute z-40 mt-1 left-0 top-full bg-white border border-gray-300 rounded-md shadow-xl w-[340px] max-h-[60vh] overflow-y-auto print:hidden"
+                                onMouseLeave={() => setTrocarMotorIdx(null)}
+                              >
+                                <div className="px-3 py-2 border-b border-gray-200 flex items-center justify-between bg-gray-50">
+                                  <span className="text-[11px] uppercase font-bold text-gray-600 tracking-wider">Trocar motor</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setTrocarMotorIdx(null)}
+                                    className="text-gray-400 hover:text-gray-700"
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                                <div className="p-1">
+                                  {motoresDisponiveis
+                                    .slice()
+                                    .sort((a, b) => Number(a.cv) - Number(b.cv) || a.polos - b.polos || a.voltagem.localeCompare(b.voltagem))
+                                    .map(opt => {
+                                      const isAtual = Number(opt.cv) === m.cv && opt.polos === m.polos
+                                      return (
+                                        <button
+                                          key={opt.id}
+                                          type="button"
+                                          onClick={() => {
+                                            onTrocarMotor!(m.item_uid!, opt)
+                                            setTrocarMotorIdx(null)
+                                          }}
+                                          className={`w-full text-left px-2 py-1.5 rounded text-[12px] flex items-center justify-between gap-2 hover:bg-blue-50 transition-colors ${
+                                            isAtual ? 'bg-blue-100 font-semibold' : ''
+                                          }`}
+                                        >
+                                          <span className="text-gray-800">
+                                            {Number(opt.cv)} CV {opt.polos} polos
+                                            <span className="text-gray-500 ml-1.5 text-[10px] uppercase">{opt.voltagem}</span>
+                                          </span>
+                                          <span className="text-gray-600 tabular-nums text-[11px]">R$ {formatBRLBare(Number(opt.valor))}</span>
+                                        </button>
+                                      )
+                                    })}
+                                </div>
+                              </div>
+                            )}
                           </td>
                           <td className="py-1.5 text-right text-gray-800 tabular-nums">
                             {incluso
