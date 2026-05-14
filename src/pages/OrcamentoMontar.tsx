@@ -1272,6 +1272,14 @@ function CardItem({
               {item.categoria}
             </span>
             {item.is_oficial && <Check className="h-2.5 w-2.5 text-success shrink-0" />}
+            {item.preco_branorte_id && (
+              <span
+                className="text-[8px] uppercase font-bold px-1 py-[1px] rounded bg-success/15 text-success border border-success/30 shrink-0"
+                title="Preço sincronizado com a Tabela de Preços Branorte oficial"
+              >
+                $ Oficial
+              </span>
+            )}
             {item.funcao_opcoes && item.funcao_opcoes.length > 1 && (
               <span
                 className="text-[8px] uppercase font-bold px-1 py-[1px] rounded bg-info/20 text-info border border-info/30 shrink-0"

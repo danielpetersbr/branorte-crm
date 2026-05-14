@@ -33,6 +33,8 @@ export interface CatalogoItem {
   ocultar_funcao_no_pdf: boolean
   /** FK ao catalogo_motores. Quando preenchido, o preço do motor é sempre o atual da tabela central. */
   motor_id: number | null
+  /** FK ao precos_branorte. Quando preenchido, o item segue o preço oficial da planilha Branorte. */
+  preco_branorte_id: number | null
 }
 
 export interface CatalogoMotor {
