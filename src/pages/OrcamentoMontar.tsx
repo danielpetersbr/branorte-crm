@@ -360,17 +360,57 @@ export function OrcamentoMontar() {
     })
   }
 
+  // Atualiza specs do item refletindo o novo motor (substitui CV e polos
+  // nas linhas relacionadas a acionamento/motor/potencia).
+  function atualizarSpecsComMotor(
+    specs: string[], novoCv: number, novoPolos: number,
+  ): string[] {
+    // Formato BR: 10 → "10", 1.5 → "1,5"
+    const cvStr = Number.isInteger(novoCv) ? String(novoCv) : String(novoCv).replace('.', ',')
+    // Regex de CV: aceita "10 CV", "1,5 CV", "1.5CV", "1.5 cv"
+    const reCv = /(\d+(?:[,.]\d+)?)\s*CV\b/gi
+    // Regex de polos: "4 polos", "2 polos"
+    const rePolos = /(\d)\s*polos?\b/gi
+    // Palavras que indicam que a linha eh sobre o motor
+    const motorKw = /acionamento|motorredutor|moto\s*redutor|pot[êe]ncia|\bcv\b|polos?/i
+
+    return specs.map(line => {
+      if (!motorKw.test(line)) return line
+      // Substitui CV mantendo a unidade
+      let novo = line.replace(reCv, `${cvStr} CV`)
+      // Substitui polos
+      novo = novo.replace(rePolos, `${novoPolos} polos`)
+      return novo
+    })
+  }
+
+  // Atualiza o nome do item refletindo o novo motor — só se o nome JA continha CV
+  // (ex: "TRITURADOR DE GRÃOS 10 CV" -> "TRITURADOR DE GRÃOS 20 CV").
+  // Caso contrario mantem o nome intacto (nem todo item tem CV no nome).
+  function atualizarNomeComMotor(nome: string, novoCv: number): string {
+    const cvStr = Number.isInteger(novoCv) ? String(novoCv) : String(novoCv).replace('.', ',')
+    const reCv = /(\d+(?:[,.]\d+)?)\s*CV\b/i
+    if (!reCv.test(nome)) return nome
+    return nome.replace(reCv, `${cvStr} CV`)
+  }
+
   // Troca o motor de um item especifico do carrinho. Usado pelo picker no preview.
   function trocarMotorDoItem(itemUid: string, novoMotor: CatalogoMotor) {
     setCarrinho(c => c.map(it => {
       if (it.uid !== itemUid) return it
       // Se o item tem motor incluso (spec '(incluso)'), nao cobra o motor.
       const incluso = motorJaInclusoNoItem(it.specs)
+      const novoCv = Number(novoMotor.cv)
+      const novoPolos = novoMotor.polos
       return {
         ...it,
-        motor_cv: Number(novoMotor.cv),
-        motor_polos: novoMotor.polos,
+        motor_cv: novoCv,
+        motor_polos: novoPolos,
         motor_valor_unit: incluso ? 0 : Number(novoMotor.valor),
+        // Atualiza specs (acionamento/potencia) e nome (se tinha CV embutido).
+        specs: atualizarSpecsComMotor(it.specs, novoCv, novoPolos),
+        nome: atualizarNomeComMotor(it.nome, novoCv),
+        nome_custom: it.nome_custom ? atualizarNomeComMotor(it.nome_custom, novoCv) : it.nome_custom,
       }
     }))
   }
