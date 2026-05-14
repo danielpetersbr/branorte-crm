@@ -18,6 +18,7 @@ import { OrcamentoPreview, type ParcelaPagamento } from '@/components/OrcamentoP
 import { useOrcamentoModelos, type OrcamentoModelo } from '@/hooks/useOrcamentoBuilder'
 import { useOrcamentoDraft } from '@/hooks/useOrcamentoDraft'
 import { useAuth } from '@/hooks/useAuth'
+import { usePrecosBranorte, type PrecoBranorte } from '@/hooks/usePrecosBranorte'
 
 type Voltagem = 'monofasico' | 'trifasico'
 type ModoVisao = 'preview' | 'edicao'
@@ -272,6 +273,63 @@ export function OrcamentoMontar() {
         console.error('[catalogo_items_pendentes] falha ao gravar:', err)
       }
     }
+  }
+
+  // Modal de picker de transportador (do precos_branorte)
+  const [transportadorPickerOpen, setTransportadorPickerOpen] = useState(false)
+  const { data: precos } = usePrecosBranorte()
+  const transportadores = useMemo(
+    () => (precos ?? []).filter(p => p.categoria === 'TRANSPORTADOR'),
+    [precos],
+  )
+
+  // Adiciona item ao carrinho direto de uma entrada de precos_branorte
+  // (usado pelo picker de transportador: monta nome, specs, motor a partir
+  // dos dados oficiais da planilha)
+  function adicionarItemDePreco(p: PrecoBranorte) {
+    // Specs geradas dinamicamente com base nos dados do precos_branorte
+    const specsGeradas: string[] = []
+    // Extrai diâmetro e comprimento da descrição (ex: "chupim 160 x 3,5 m")
+    const mDim = p.descricao.match(/(\d{2,3})\s*[xX]\s*([\d,\.]+)\s*m/i)
+    if (mDim) {
+      specsGeradas.push(`Diâmetro: ${mDim[1]} mm`)
+      specsGeradas.push(`Comprimento: ${mDim[2]} metros`)
+    }
+    specsGeradas.push('Construção: Tubo em chapa n. 14')
+    specsGeradas.push('Hélice em chapa expandida, unidas por mancais.')
+    specsGeradas.push('Funil de entrada medindo 500 mm x 500 mm')
+    if (p.capacidade) {
+      specsGeradas.push(`Produção até: ${p.capacidade.replace('TON/H', 'ton/hora')}`)
+    }
+    specsGeradas.push('Produto: Peso específico 0,75 ton./m³')
+    if (p.potencia) {
+      specsGeradas.push(`Acionamento: Polias e correias, potência ${p.potencia} (motor não incluso)`)
+    }
+
+    // Motor: lookup no catalogo_motores via cv+polos
+    let motor_valor_unit = 0
+    let motor_polos = p.motor_polos ?? 4
+    if (p.motor_cv && motores) {
+      const m = acharMotorCompativel(motores, Number(p.motor_cv), motor_polos, voltagem)
+      if (m) motor_valor_unit = Number(m.valor)
+    }
+
+    setCarrinho(c => [...c, {
+      uid: gerarUid(),
+      catalogo_id: -1,  // origem precos_branorte (não tem catalogo_id)
+      categoria: 'TRANSPORTADOR',
+      nome: p.descricao,
+      specs: specsGeradas,
+      qtd: 1,
+      valor: Number(p.valor_equipamento ?? 0),
+      valor_original: Number(p.valor_equipamento ?? 0),
+      motor_cv: p.motor_cv ? Number(p.motor_cv) : null,
+      motor_polos: motor_polos,
+      motor_qtd: 1,
+      motor_valor_unit,
+      foto_url: null,
+      usa_inversor: false,
+    }])
   }
 
   function adicionarItem(item: CatalogoItem, funcaoEscolhida?: string) {
@@ -687,15 +745,40 @@ export function OrcamentoMontar() {
               </div>
             ) : (
               <div className="flex flex-col gap-1.5">
-                {itemsFiltrados.slice(0, 200).map(item => (
-                  <CardItem
-                    key={item.id}
-                    item={item}
-                    voltagem={voltagem}
-                    motores={motores ?? []}
-                    onAdd={() => adicionarItem(item)}
-                  />
-                ))}
+                {/* Meta-card Transportador: aparece quando filtro é TRANSPORTADOR ou nenhum */}
+                {(categoria === null || categoria === 'TRANSPORTADOR') && !busca && transportadores.length > 0 && (
+                  <button
+                    onClick={() => setTransportadorPickerOpen(true)}
+                    className="text-left p-2 rounded-lg border-2 border-dashed border-accent/40 hover:border-accent hover:bg-accent/5 transition-all group flex items-center gap-2.5 relative"
+                  >
+                    <div className="w-14 h-14 rounded-md border border-accent/30 bg-accent/10 shrink-0 flex items-center justify-center">
+                      <Sparkles className="h-6 w-6 text-accent" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1 mb-0.5">
+                        <span className="text-[9px] uppercase tracking-wider text-accent font-bold">TRANSPORTADOR</span>
+                        <span className="text-[8px] uppercase font-bold px-1 py-[1px] rounded bg-success/15 text-success border border-success/30">
+                          $ Oficial · {transportadores.length} medidas
+                        </span>
+                      </div>
+                      <div className="text-[13px] font-semibold text-ink">Transportador Helicoidal</div>
+                      <div className="text-[10px] text-ink-faint mt-0.5">Clique para escolher medida + produção</div>
+                    </div>
+                    <Plus className="h-4 w-4 text-accent shrink-0" />
+                  </button>
+                )}
+                {itemsFiltrados
+                  .filter(it => it.categoria !== 'TRANSPORTADOR' || busca) // esconde transportador individual se nao tiver busca
+                  .slice(0, 200)
+                  .map(item => (
+                    <CardItem
+                      key={item.id}
+                      item={item}
+                      voltagem={voltagem}
+                      motores={motores ?? []}
+                      onAdd={() => adicionarItem(item)}
+                    />
+                  ))}
                 {itemsFiltrados.length > 200 && (
                   <div className="col-span-full text-center py-3 text-[11px] text-ink-faint italic">
                     Mostrando 200 de {itemsFiltrados.length}. Use a busca pra filtrar mais.
@@ -900,6 +983,17 @@ export function OrcamentoMontar() {
         onAdd={async data => {
           await adicionarItemCustomizado(data)
           setCustomOpen(false)
+        }}
+      />
+
+      {/* Modal de seleção de Transportador (puxa de precos_branorte) */}
+      <TransportadorPickerModal
+        open={transportadorPickerOpen}
+        transportadores={transportadores}
+        onClose={() => setTransportadorPickerOpen(false)}
+        onPick={p => {
+          adicionarItemDePreco(p)
+          setTransportadorPickerOpen(false)
         }}
       />
 
@@ -1971,6 +2065,180 @@ function CustomItemModal({
               </>
             )}
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Modal: picker de Transportador (lista direto de precos_branorte)
+// Vendedor escolhe TIPO (Chupim/Calha) + DIÂMETRO + MEDIDA → item entra
+// no carrinho com preço oficial e specs geradas dinamicamente.
+// ──────────────────────────────────────────────────────────────────────────
+
+function TransportadorPickerModal({
+  open, transportadores, onClose, onPick,
+}: {
+  open: boolean
+  transportadores: PrecoBranorte[]
+  onClose: () => void
+  onPick: (p: PrecoBranorte) => void
+}) {
+  const [tipo, setTipo] = useState<'todos' | 'CHUPIM' | 'HELICOIDAL'>('todos')
+  const [diametro, setDiametro] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (open) { setTipo('todos'); setDiametro(null) }
+  }, [open])
+
+  // Extrai diâmetro do nome (chupim 160 x 3,5 m → 160; TH 250 X 5 m → 250)
+  function getDiam(p: PrecoBranorte): string | null {
+    const m = p.descricao.match(/(\d{2,3})\s*[xX]/)
+    return m ? m[1] : null
+  }
+
+  const filtrados = useMemo(() => {
+    return transportadores
+      .filter(p => tipo === 'todos' ? true : p.subcategoria === tipo)
+      .filter(p => diametro ? getDiam(p) === diametro : true)
+      .sort((a, b) => a.ordem - b.ordem)
+  }, [transportadores, tipo, diametro])
+
+  const diametrosDisponiveis = useMemo(() => {
+    const set = new Set<string>()
+    for (const p of transportadores) {
+      if (tipo !== 'todos' && p.subcategoria !== tipo) continue
+      const d = getDiam(p)
+      if (d) set.add(d)
+    }
+    return [...set].sort((a, b) => Number(a) - Number(b))
+  }, [transportadores, tipo])
+
+  if (!open) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-bg border border-border rounded-xl max-w-4xl w-full shadow-2xl flex flex-col max-h-[90vh]"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-4 py-3 border-b border-border flex items-start gap-3">
+          <Sparkles className="h-5 w-5 text-accent shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <div className="text-[10px] uppercase tracking-wider text-accent font-bold">
+              Tabela de Preços oficial
+            </div>
+            <div className="text-[15px] font-bold text-ink leading-tight">
+              Selecionar Transportador Helicoidal
+            </div>
+            <div className="text-[11px] text-ink-muted mt-0.5">
+              {transportadores.length} medidas disponíveis · escolha tipo, diâmetro e clique no tamanho desejado
+            </div>
+          </div>
+          <button onClick={onClose} className="text-ink-faint hover:text-ink p-1 -m-1">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Filtros */}
+        <div className="px-4 py-2 border-b border-border bg-surface-2/30 flex flex-wrap gap-2 items-center">
+          <span className="text-[10px] uppercase font-bold text-ink-muted">Tipo:</span>
+          {[
+            { v: 'todos', l: 'Todos' },
+            { v: 'CHUPIM', l: 'Chupim' },
+            { v: 'HELICOIDAL', l: 'Calha (TH)' },
+          ].map(o => (
+            <button
+              key={o.v}
+              onClick={() => { setTipo(o.v as any); setDiametro(null) }}
+              className={`text-[11px] px-2 py-1 rounded font-semibold transition-all ${
+                tipo === o.v ? 'bg-accent text-white' : 'bg-surface-2 text-ink-muted hover:bg-surface-3'
+              }`}
+            >
+              {o.l}
+            </button>
+          ))}
+          <div className="w-px h-5 bg-border mx-1" />
+          <span className="text-[10px] uppercase font-bold text-ink-muted">Diâmetro:</span>
+          <button
+            onClick={() => setDiametro(null)}
+            className={`text-[11px] px-2 py-1 rounded font-semibold transition-all ${
+              !diametro ? 'bg-accent text-white' : 'bg-surface-2 text-ink-muted hover:bg-surface-3'
+            }`}
+          >
+            Todos
+          </button>
+          {diametrosDisponiveis.map(d => (
+            <button
+              key={d}
+              onClick={() => setDiametro(d)}
+              className={`text-[11px] px-2 py-1 rounded font-semibold transition-all ${
+                diametro === d ? 'bg-accent text-white' : 'bg-surface-2 text-ink-muted hover:bg-surface-3'
+              }`}
+            >
+              ⌀ {d}mm
+            </button>
+          ))}
+        </div>
+
+        {/* Lista */}
+        <div className="flex-1 overflow-y-auto">
+          {filtrados.length === 0 ? (
+            <div className="text-center py-12 text-ink-faint">
+              <Package className="h-10 w-10 mx-auto mb-2 opacity-30" />
+              <p className="text-[12px]">Nenhum transportador com esses filtros.</p>
+            </div>
+          ) : (
+            <table className="w-full text-[12px]">
+              <thead className="bg-surface-2/50 text-ink-muted sticky top-0">
+                <tr>
+                  <th className="text-left px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Medida</th>
+                  <th className="text-left px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Tipo</th>
+                  <th className="text-left px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Produção</th>
+                  <th className="text-left px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Potência</th>
+                  <th className="text-right px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Equipamento</th>
+                  <th className="px-1 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtrados.map(p => (
+                  <tr
+                    key={p.id}
+                    onClick={() => onPick(p)}
+                    className="border-t border-border/40 hover:bg-accent/10 cursor-pointer group"
+                  >
+                    <td className="px-3 py-1.5 text-ink font-semibold">{p.descricao}</td>
+                    <td className="px-3 py-1.5 text-[10px]">
+                      {p.subcategoria === 'CHUPIM'
+                        ? <span className="px-1.5 py-0.5 rounded bg-info/15 text-info font-bold">Chupim</span>
+                        : <span className="px-1.5 py-0.5 rounded bg-warning/15 text-warning font-bold">Calha TH</span>}
+                    </td>
+                    <td className="px-3 py-1.5 text-ink-muted text-[11px]">{p.capacidade || '—'}</td>
+                    <td className="px-3 py-1.5 text-ink-muted text-[11px]">{p.potencia || '—'}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums font-bold text-ink">
+                      {p.valor_equipamento
+                        ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(p.valor_equipamento))
+                        : '—'}
+                    </td>
+                    <td className="px-1 py-1.5">
+                      <Plus className="h-3.5 w-3.5 text-accent opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-4 py-2.5 border-t border-border bg-surface-2/30 flex items-center justify-between text-[10px] text-ink-faint">
+          <span>{filtrados.length} {filtrados.length === 1 ? 'medida' : 'medidas'} listadas</span>
+          <span>Clique na linha pra adicionar ao orçamento</span>
         </div>
       </div>
     </div>
