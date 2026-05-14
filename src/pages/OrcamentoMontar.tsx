@@ -275,60 +275,96 @@ export function OrcamentoMontar() {
     }
   }
 
-  // Modal de picker de transportador (do precos_branorte)
+  // Modais de pickers (cada categoria tem seu próprio meta-card)
   const [transportadorPickerOpen, setTransportadorPickerOpen] = useState(false)
+  const [misturadorPickerOpen, setMisturadorPickerOpen] = useState(false)
+  const [moinhoPickerOpen, setMoinhoPickerOpen] = useState(false)
+  const [caixaPickerOpen, setCaixaPickerOpen] = useState(false)
+
   const { data: precos } = usePrecosBranorte()
   const transportadores = useMemo(
     () => (precos ?? []).filter(p => p.categoria === 'TRANSPORTADOR'),
     [precos],
   )
+  const misturadoresPreco = useMemo(
+    () => (precos ?? []).filter(p => p.categoria === 'MISTURADOR'),
+    [precos],
+  )
+  const moinhosPreco = useMemo(
+    () => (precos ?? []).filter(p => p.categoria === 'MOINHO'),
+    [precos],
+  )
+  const caixasPreco = useMemo(
+    () => (precos ?? []).filter(p => p.categoria === 'CAIXA'),
+    [precos],
+  )
 
-  // Adiciona item ao carrinho direto de uma entrada de precos_branorte
-  // (usado pelo picker de transportador: monta nome, specs, motor a partir
-  // dos dados oficiais da planilha)
-  function adicionarItemDePreco(p: PrecoBranorte) {
-    // Specs geradas dinamicamente com base nos dados do precos_branorte
-    const specsGeradas: string[] = []
-    // Extrai diâmetro e comprimento da descrição (ex: "chupim 160 x 3,5 m")
-    const mDim = p.descricao.match(/(\d{2,3})\s*[xX]\s*([\d,\.]+)\s*m/i)
-    if (mDim) {
-      specsGeradas.push(`Diâmetro: ${mDim[1]} mm`)
-      specsGeradas.push(`Comprimento: ${mDim[2]} metros`)
-    }
-    specsGeradas.push('Construção: Tubo em chapa n. 14')
-    specsGeradas.push('Hélice em chapa expandida, unidas por mancais.')
-    specsGeradas.push('Funil de entrada medindo 500 mm x 500 mm')
-    if (p.capacidade) {
-      specsGeradas.push(`Produção até: ${p.capacidade.replace('TON/H', 'ton/hora')}`)
-    }
-    specsGeradas.push('Produto: Peso específico 0,75 ton./m³')
-    if (p.potencia) {
-      specsGeradas.push(`Acionamento: Polias e correias, potência ${p.potencia} (motor não incluso)`)
+  // Adiciona item ao carrinho direto de uma entrada de precos_branorte.
+  // Faz lookup do catalogo_items linkado (via preco_branorte_id) pra puxar
+  // foto e specs curadas. Se não tiver match, gera specs dinamicamente.
+  function adicionarItemDePreco(p: PrecoBranorte, categoriaForcada?: string) {
+    const cat = categoriaForcada ?? p.categoria
+    // Tenta achar o catalogo_item linkado via preco_branorte_id
+    const ciLinkado = (items ?? []).find(ci => ci.preco_branorte_id === p.id && ci.ativo)
+
+    // Specs: prefere as curadas do catalogo_item; senão gera dinamicamente
+    let specsFinal: string[]
+    if (ciLinkado && ciLinkado.specs && ciLinkado.specs.length > 0) {
+      specsFinal = ciLinkado.specs
+    } else {
+      const specsGeradas: string[] = []
+      // Extrai diâmetro e comprimento (chupim/TH 160 x 3,5 m)
+      const mDim = p.descricao.match(/(\d{2,3})\s*[xX]\s*([\d,\.]+)\s*m/i)
+      if (mDim && cat === 'TRANSPORTADOR') {
+        specsGeradas.push(`Diâmetro: ${mDim[1]} mm`)
+        specsGeradas.push(`Comprimento: ${mDim[2]} metros`)
+        specsGeradas.push('Construção: Tubo em chapa n. 14')
+        specsGeradas.push('Hélice em chapa expandida, unidas por mancais.')
+        specsGeradas.push('Funil de entrada medindo 500 mm x 500 mm')
+      }
+      if (p.capacidade) {
+        specsGeradas.push(`Capacidade/Produção: ${p.capacidade.replace('TON/H', 'ton/hora')}`)
+      }
+      if (p.capacidade_litros) {
+        specsGeradas.push(`Volume: ${p.capacidade_litros} L`)
+      }
+      if (p.dimensoes) {
+        specsGeradas.push(`Dimensões: ${p.dimensoes} mm`)
+      }
+      if (p.potencia) {
+        const sufixo = cat === 'TRANSPORTADOR' ? ' (motor não incluso)' : ''
+        specsGeradas.push(`Acionamento: potência ${p.potencia}${sufixo}`)
+      }
+      specsFinal = specsGeradas
     }
 
     // Motor: lookup no catalogo_motores via cv+polos
     let motor_valor_unit = 0
-    let motor_polos = p.motor_polos ?? 4
-    if (p.motor_cv && motores) {
-      const m = acharMotorCompativel(motores, Number(p.motor_cv), motor_polos, voltagem)
+    const motor_polos = p.motor_polos ?? (ciLinkado?.motor_padrao_polos ?? 4)
+    const motor_cv_n = p.motor_cv ?? (ciLinkado?.motor_padrao_cv ? Number(ciLinkado.motor_padrao_cv) : null)
+    if (motor_cv_n && motores) {
+      const m = acharMotorCompativel(motores, Number(motor_cv_n), motor_polos, voltagem)
       if (m) motor_valor_unit = Number(m.valor)
     }
 
+    // Detecta motor incluso pela spec (mesmo padrão usado no adicionarItem original)
+    const motorIncluso = motorJaInclusoNoItem(specsFinal)
+
     setCarrinho(c => [...c, {
       uid: gerarUid(),
-      catalogo_id: -1,  // origem precos_branorte (não tem catalogo_id)
-      categoria: 'TRANSPORTADOR',
-      nome: p.descricao,
-      specs: specsGeradas,
+      catalogo_id: ciLinkado?.id ?? -1,
+      categoria: cat,
+      nome: ciLinkado?.nome_curto || p.descricao,
+      specs: specsFinal,
       qtd: 1,
       valor: Number(p.valor_equipamento ?? 0),
       valor_original: Number(p.valor_equipamento ?? 0),
-      motor_cv: p.motor_cv ? Number(p.motor_cv) : null,
+      motor_cv: motor_cv_n ? Number(motor_cv_n) : null,
       motor_polos: motor_polos,
-      motor_qtd: 1,
-      motor_valor_unit,
-      foto_url: null,
-      usa_inversor: false,
+      motor_qtd: ciLinkado?.motor_padrao_qtd ?? 1,
+      motor_valor_unit: motorIncluso ? 0 : motor_valor_unit,
+      foto_url: ciLinkado?.foto_url ?? null,
+      usa_inversor: !!(ciLinkado?.usa_inversor),
     }])
   }
 
@@ -745,30 +781,51 @@ export function OrcamentoMontar() {
               </div>
             ) : (
               <div className="flex flex-col gap-1.5">
-                {/* Meta-card Transportador: aparece quando filtro é TRANSPORTADOR ou nenhum */}
-                {(categoria === null || categoria === 'TRANSPORTADOR') && !busca && transportadores.length > 0 && (
-                  <button
-                    onClick={() => setTransportadorPickerOpen(true)}
-                    className="text-left p-2 rounded-lg border-2 border-dashed border-accent/40 hover:border-accent hover:bg-accent/5 transition-all group flex items-center gap-2.5 relative"
-                  >
-                    <div className="w-14 h-14 rounded-md border border-accent/30 bg-accent/10 shrink-0 flex items-center justify-center">
-                      <Sparkles className="h-6 w-6 text-accent" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1 mb-0.5">
-                        <span className="text-[9px] uppercase tracking-wider text-accent font-bold">TRANSPORTADOR</span>
-                        <span className="text-[8px] uppercase font-bold px-1 py-[1px] rounded bg-success/15 text-success border border-success/30">
-                          $ Oficial · {transportadores.length} medidas
-                        </span>
-                      </div>
-                      <div className="text-[13px] font-semibold text-ink">Transportador Helicoidal</div>
-                      <div className="text-[10px] text-ink-faint mt-0.5">Clique para escolher medida + produção</div>
-                    </div>
-                    <Plus className="h-4 w-4 text-accent shrink-0" />
-                  </button>
+                {/* Meta-cards oficiais — substituem variantes individuais por 1 entrada
+                    com modal de seleção (puxa de precos_branorte) */}
+                {!busca && (
+                  <>
+                    {(categoria === null || categoria === 'TRANSPORTADOR') && transportadores.length > 0 && (
+                      <MetaCard
+                        categoria="TRANSPORTADOR"
+                        titulo="Transportador Helicoidal"
+                        descricao="Chupim e Calha TH — escolha tipo, diâmetro e medida"
+                        qtd={transportadores.length}
+                        onClick={() => setTransportadorPickerOpen(true)}
+                      />
+                    )}
+                    {(categoria === null || categoria === 'MISTURADOR') && misturadoresPreco.length > 0 && (
+                      <MetaCard
+                        categoria="MISTURADOR"
+                        titulo="Misturador"
+                        descricao="Vertical, Horizontal S/Pulmão e C/Pulmão"
+                        qtd={misturadoresPreco.length}
+                        onClick={() => setMisturadorPickerOpen(true)}
+                      />
+                    )}
+                    {(categoria === null || categoria === 'MOINHO') && moinhosPreco.length > 0 && (
+                      <MetaCard
+                        categoria="MOINHO"
+                        titulo="Moinho Martelo"
+                        descricao="Famílias BNMM-1 a BNMM-7 (3 a 100 CV)"
+                        qtd={moinhosPreco.length}
+                        onClick={() => setMoinhoPickerOpen(true)}
+                      />
+                    )}
+                    {(categoria === null || categoria === 'CAIXA') && caixasPreco.length > 0 && (
+                      <MetaCard
+                        categoria="CAIXA"
+                        titulo="Caixa"
+                        descricao="Recepção e Picados (volume + dimensões)"
+                        qtd={caixasPreco.length}
+                        onClick={() => setCaixaPickerOpen(true)}
+                      />
+                    )}
+                  </>
                 )}
                 {itemsFiltrados
-                  .filter(it => it.categoria !== 'TRANSPORTADOR' || busca) // esconde transportador individual se nao tiver busca
+                  // Esconde individuais das categorias que tem meta-card (a menos que busca esteja ativa)
+                  .filter(it => busca || !['TRANSPORTADOR', 'MISTURADOR', 'MOINHO', 'CAIXA'].includes(it.categoria))
                   .slice(0, 200)
                   .map(item => (
                     <CardItem
@@ -990,11 +1047,51 @@ export function OrcamentoMontar() {
       <TransportadorPickerModal
         open={transportadorPickerOpen}
         transportadores={transportadores}
+        catalogoItems={items ?? []}
         onClose={() => setTransportadorPickerOpen(false)}
         onPick={p => {
           adicionarItemDePreco(p)
           setTransportadorPickerOpen(false)
         }}
+      />
+
+      {/* Picker genérico Misturador */}
+      <CategoriaPickerModal
+        open={misturadorPickerOpen}
+        titulo="Misturador"
+        items={misturadoresPreco}
+        catalogoItems={items ?? []}
+        labelSub={{ VERTICAL: 'Vertical', HORIZONTAL_SPULMAO: 'Horiz. S/Pulmão', HORIZONTAL_CPULMAO: 'Horiz. C/Pulmão' }}
+        ordemSub={['VERTICAL', 'HORIZONTAL_SPULMAO', 'HORIZONTAL_CPULMAO']}
+        colKgPratica
+        onClose={() => setMisturadorPickerOpen(false)}
+        onPick={p => { adicionarItemDePreco(p); setMisturadorPickerOpen(false) }}
+      />
+
+      {/* Picker genérico Moinho */}
+      <CategoriaPickerModal
+        open={moinhoPickerOpen}
+        titulo="Moinho Martelo"
+        items={moinhosPreco}
+        catalogoItems={items ?? []}
+        labelSub={{ MARTELO: 'Martelo' }}
+        ordemSub={['MARTELO']}
+        onClose={() => setMoinhoPickerOpen(false)}
+        onPick={p => { adicionarItemDePreco(p); setMoinhoPickerOpen(false) }}
+      />
+
+      {/* Picker genérico Caixa */}
+      <CategoriaPickerModal
+        open={caixaPickerOpen}
+        titulo="Caixa"
+        items={caixasPreco}
+        catalogoItems={items ?? []}
+        labelSub={{ RECEPCAO: 'Recepção', PICADOS: 'Picados' }}
+        ordemSub={['RECEPCAO', 'PICADOS']}
+        colMilhoKg
+        colDimensoes
+        onClose={() => setCaixaPickerOpen(false)}
+        onPick={p => { adicionarItemDePreco(p); setCaixaPickerOpen(false) }}
       />
 
       {/* Modal de escolha de função — aberto quando o item tem várias funções
@@ -2078,15 +2175,23 @@ function CustomItemModal({
 // ──────────────────────────────────────────────────────────────────────────
 
 function TransportadorPickerModal({
-  open, transportadores, onClose, onPick,
+  open, transportadores, catalogoItems, onClose, onPick,
 }: {
   open: boolean
   transportadores: PrecoBranorte[]
+  catalogoItems: CatalogoItem[]
   onClose: () => void
   onPick: (p: PrecoBranorte) => void
 }) {
   const [tipo, setTipo] = useState<'todos' | 'CHUPIM' | 'HELICOIDAL'>('todos')
   const [diametro, setDiametro] = useState<string | null>(null)
+  const fotoPorPrecoId = useMemo(() => {
+    const m = new Map<number, string>()
+    for (const ci of catalogoItems) {
+      if (ci.preco_branorte_id && ci.foto_url) m.set(ci.preco_branorte_id, ci.foto_url)
+    }
+    return m
+  }, [catalogoItems])
 
   useEffect(() => {
     if (open) { setTipo('todos'); setDiametro(null) }
@@ -2197,6 +2302,7 @@ function TransportadorPickerModal({
             <table className="w-full text-[12px]">
               <thead className="bg-surface-2/50 text-ink-muted sticky top-0">
                 <tr>
+                  <th className="px-3 py-2 text-[10px] uppercase font-semibold tracking-wider w-14">Foto</th>
                   <th className="text-left px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Medida</th>
                   <th className="text-left px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Tipo</th>
                   <th className="text-left px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Produção</th>
@@ -2206,12 +2312,23 @@ function TransportadorPickerModal({
                 </tr>
               </thead>
               <tbody>
-                {filtrados.map(p => (
+                {filtrados.map(p => {
+                  const foto = fotoPorPrecoId.get(p.id)
+                  return (
                   <tr
                     key={p.id}
                     onClick={() => onPick(p)}
                     className="border-t border-border/40 hover:bg-accent/10 cursor-pointer group"
                   >
+                    <td className="px-2 py-1">
+                      {foto ? (
+                        <img src={foto} alt={p.descricao} className="w-10 h-10 object-cover rounded border border-border" loading="lazy" />
+                      ) : (
+                        <div className="w-10 h-10 rounded border border-border bg-surface-2 flex items-center justify-center text-ink-faint">
+                          <Package className="h-4 w-4" />
+                        </div>
+                      )}
+                    </td>
                     <td className="px-3 py-1.5 text-ink font-semibold">{p.descricao}</td>
                     <td className="px-3 py-1.5 text-[10px]">
                       {p.subcategoria === 'CHUPIM'
@@ -2229,7 +2346,7 @@ function TransportadorPickerModal({
                       <Plus className="h-3.5 w-3.5 text-accent opacity-0 group-hover:opacity-100 transition-opacity" />
                     </td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           )}
@@ -2238,7 +2355,223 @@ function TransportadorPickerModal({
         {/* Footer */}
         <div className="px-4 py-2.5 border-t border-border bg-surface-2/30 flex items-center justify-between text-[10px] text-ink-faint">
           <span>{filtrados.length} {filtrados.length === 1 ? 'medida' : 'medidas'} listadas</span>
-          <span>Clique na linha pra adicionar ao orçamento</span>
+          <span>Foto vem do catálogo curado (vendedor)</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// MetaCard genérico do catálogo (1 entrada → abre picker da categoria)
+// ──────────────────────────────────────────────────────────────────────────
+
+function MetaCard({
+  categoria, titulo, descricao, qtd, onClick,
+}: {
+  categoria: string
+  titulo: string
+  descricao: string
+  qtd: number
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="text-left p-2 rounded-lg border-2 border-dashed border-accent/40 hover:border-accent hover:bg-accent/5 transition-all group flex items-center gap-2.5 relative"
+    >
+      <div className="w-14 h-14 rounded-md border border-accent/30 bg-accent/10 shrink-0 flex items-center justify-center">
+        <Sparkles className="h-6 w-6 text-accent" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1 mb-0.5">
+          <span className="text-[9px] uppercase tracking-wider text-accent font-bold">{categoria}</span>
+          <span className="text-[8px] uppercase font-bold px-1 py-[1px] rounded bg-success/15 text-success border border-success/30">
+            $ Oficial · {qtd} {qtd === 1 ? 'item' : 'itens'}
+          </span>
+        </div>
+        <div className="text-[13px] font-semibold text-ink">{titulo}</div>
+        <div className="text-[10px] text-ink-faint mt-0.5">{descricao}</div>
+      </div>
+      <Plus className="h-4 w-4 text-accent shrink-0" />
+    </button>
+  )
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// CategoriaPickerModal: picker genérico (Misturador, Moinho, Caixa).
+// Mostra foto puxada do catalogo_items linkado via preco_branorte_id.
+// ──────────────────────────────────────────────────────────────────────────
+
+interface PickerProps {
+  open: boolean
+  titulo: string
+  items: PrecoBranorte[]
+  catalogoItems: CatalogoItem[]
+  labelSub: Record<string, string>
+  ordemSub: string[]
+  colKgPratica?: boolean
+  colMilhoKg?: boolean
+  colDimensoes?: boolean
+  onClose: () => void
+  onPick: (p: PrecoBranorte) => void
+}
+
+function CategoriaPickerModal(props: PickerProps) {
+  const {
+    open, titulo, items, catalogoItems, labelSub, ordemSub,
+    colKgPratica, colMilhoKg, colDimensoes, onClose, onPick,
+  } = props
+  const [subSel, setSubSel] = useState<string | null>(null)
+
+  useEffect(() => { if (open) setSubSel(null) }, [open])
+
+  const filtrados = useMemo(() => {
+    const arr = subSel ? items.filter(p => p.subcategoria === subSel) : items
+    return arr.slice().sort((a, b) => {
+      const ia = ordemSub.indexOf(a.subcategoria ?? '')
+      const ib = ordemSub.indexOf(b.subcategoria ?? '')
+      if (ia !== ib) return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
+      return a.ordem - b.ordem
+    })
+  }, [items, subSel, ordemSub])
+
+  const fotoPorPrecoId = useMemo(() => {
+    const m = new Map<number, string>()
+    for (const ci of catalogoItems) {
+      if (ci.preco_branorte_id && ci.foto_url) m.set(ci.preco_branorte_id, ci.foto_url)
+    }
+    return m
+  }, [catalogoItems])
+
+  if (!open) return null
+
+  const subsDisponiveis = ordemSub.filter(s => items.some(p => p.subcategoria === s))
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-bg border border-border rounded-xl max-w-5xl w-full shadow-2xl flex flex-col max-h-[90vh]"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="px-4 py-3 border-b border-border flex items-start gap-3">
+          <Sparkles className="h-5 w-5 text-accent shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <div className="text-[10px] uppercase tracking-wider text-accent font-bold">Tabela de Preços oficial</div>
+            <div className="text-[15px] font-bold text-ink leading-tight">Selecionar {titulo}</div>
+            <div className="text-[11px] text-ink-muted mt-0.5">
+              {items.length} variantes · clique numa linha pra adicionar ao orçamento (foto vem do catálogo)
+            </div>
+          </div>
+          <button onClick={onClose} className="text-ink-faint hover:text-ink p-1 -m-1">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {subsDisponiveis.length > 1 && (
+          <div className="px-4 py-2 border-b border-border bg-surface-2/30 flex flex-wrap gap-2 items-center">
+            <span className="text-[10px] uppercase font-bold text-ink-muted">Tipo:</span>
+            <button
+              onClick={() => setSubSel(null)}
+              className={`text-[11px] px-2 py-1 rounded font-semibold transition-all ${
+                !subSel ? 'bg-accent text-white' : 'bg-surface-2 text-ink-muted hover:bg-surface-3'
+              }`}
+            >Todos</button>
+            {subsDisponiveis.map(s => (
+              <button
+                key={s}
+                onClick={() => setSubSel(subSel === s ? null : s)}
+                className={`text-[11px] px-2 py-1 rounded font-semibold transition-all ${
+                  subSel === s ? 'bg-accent text-white' : 'bg-surface-2 text-ink-muted hover:bg-surface-3'
+                }`}
+              >{labelSub[s] ?? s}</button>
+            ))}
+          </div>
+        )}
+
+        <div className="flex-1 overflow-y-auto">
+          <table className="w-full text-[12px]">
+            <thead className="bg-surface-2/50 text-ink-muted sticky top-0">
+              <tr>
+                <th className="px-3 py-2 text-[10px] uppercase font-semibold tracking-wider w-14">Foto</th>
+                <th className="text-left px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Modelo</th>
+                {subsDisponiveis.length > 1 && (
+                  <th className="text-left px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Tipo</th>
+                )}
+                <th className="text-left px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Capacidade</th>
+                {colKgPratica && (
+                  <th className="text-right px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Kg prática</th>
+                )}
+                {colMilhoKg && (
+                  <th className="text-right px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Milho 0,65</th>
+                )}
+                {colDimensoes && (
+                  <th className="text-left px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Dim. (mm)</th>
+                )}
+                <th className="text-left px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Potência</th>
+                <th className="text-right px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Equipamento</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtrados.map(p => {
+                const foto = fotoPorPrecoId.get(p.id)
+                return (
+                  <tr
+                    key={p.id}
+                    onClick={() => onPick(p)}
+                    className="border-t border-border/40 hover:bg-accent/10 cursor-pointer"
+                  >
+                    <td className="px-2 py-1">
+                      {foto ? (
+                        <img src={foto} alt={p.descricao} className="w-10 h-10 object-cover rounded border border-border" loading="lazy" />
+                      ) : (
+                        <div className="w-10 h-10 rounded border border-border bg-surface-2 flex items-center justify-center text-ink-faint">
+                          <Package className="h-4 w-4" />
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 py-1.5 text-ink">
+                      {p.codigo && <span className="font-mono font-bold text-[11px]">{p.codigo}</span>}
+                      {p.codigo && p.descricao !== p.codigo && (
+                        <span className="text-ink-muted text-[11px] ml-1">· {p.descricao}</span>
+                      )}
+                      {!p.codigo && <span className="font-semibold">{p.descricao}</span>}
+                    </td>
+                    {subsDisponiveis.length > 1 && (
+                      <td className="px-3 py-1.5 text-[10px] text-ink-muted">
+                        {labelSub[p.subcategoria ?? ''] ?? p.subcategoria}
+                      </td>
+                    )}
+                    <td className="px-3 py-1.5 text-ink-muted text-[11px]">{p.capacidade || '—'}</td>
+                    {colKgPratica && (
+                      <td className="px-3 py-1.5 text-right tabular-nums text-[11px] text-warning font-semibold">
+                        {p.capacidade_kg_pratica ? Number(p.capacidade_kg_pratica).toLocaleString('pt-BR') + ' kg' : '—'}
+                      </td>
+                    )}
+                    {colMilhoKg && (
+                      <td className="px-3 py-1.5 text-right tabular-nums text-[11px] text-warning font-semibold">
+                        {p.capacidade_kg_milho ? Number(p.capacidade_kg_milho).toLocaleString('pt-BR') + ' kg' : '—'}
+                      </td>
+                    )}
+                    {colDimensoes && (
+                      <td className="px-3 py-1.5 text-ink-faint text-[10px] font-mono">{p.dimensoes || '—'}</td>
+                    )}
+                    <td className="px-3 py-1.5 text-ink-muted text-[11px]">{p.potencia || '—'}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums font-bold text-ink">
+                      {p.valor_equipamento
+                        ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(p.valor_equipamento))
+                        : '—'}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="px-4 py-2.5 border-t border-border bg-surface-2/30 flex items-center justify-between text-[10px] text-ink-faint">
+          <span>{filtrados.length} {filtrados.length === 1 ? 'variante' : 'variantes'}</span>
+          <span>Foto vem do catálogo curado (vendedor)</span>
         </div>
       </div>
     </div>
