@@ -1488,112 +1488,203 @@ function AutomacaoPegarPraMimCard() {
     .filter(e => e.executado_em.slice(0,10) === new Date().toISOString().slice(0,10))
     .reduce((s, e) => s + (e.leads_processados ?? 0), 0)
 
+  // ── Resumo do schedule (chip) ────────────────────────────────────────
+  const diasMap: Record<number, string> = { 1: 'Seg', 2: 'Ter', 3: 'Qua', 4: 'Qui', 5: 'Sex', 6: 'Sáb', 7: 'Dom' }
+  const diasSorted = [...(cfg.dias_semana ?? [])].sort((a, b) => a - b)
+  const diasResumo = diasSorted.length === 7 ? 'todos os dias'
+    : diasSorted.length === 5 && diasSorted.join(',') === '1,2,3,4,5' ? 'Seg–Sex'
+    : diasSorted.map(d => diasMap[d]).join(' · ') || '—'
+  const horaResumo = `${String(cfg.horario_inicio).slice(0, 5)} → ${String(cfg.horario_fim).slice(0, 5)}`
+
+  // ── Tracker das últimas 50 execuções (estilo Tremor) ─────────────────
+  const tracker = (execucoes ?? []).slice(0, 50).slice().reverse()
+
   return (
-    <Card className={`p-4 ${cfg.ativa ? 'border-emerald-500/40 bg-emerald-500/5' : ''}`}>
-      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <div>
-          <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
-            <Bot className="h-4 w-4 text-accent" />
-            Automação "Pegar pra mim" — distribui leads sem vendedor automaticamente
-          </h2>
-          <p className="text-[10px] text-ink-muted mt-0.5">
-            A cada {cfg.intervalo_min}min pega até {cfg.leads_por_ciclo} leads sem vendedor e dispara via WhatsApp dos vendedores ativos.
-          </p>
+    <Card className={`overflow-hidden transition-colors ${cfg.ativa ? 'border-success/40' : 'border-border'}`}>
+      {/* ─── HEADER ─── */}
+      <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex items-start gap-3 min-w-0">
+          <div className={`shrink-0 h-10 w-10 rounded-lg flex items-center justify-center ${cfg.ativa ? 'bg-success/15 text-success' : 'bg-surface-2 text-ink-muted'}`}>
+            <Bot className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-[15px] font-semibold text-ink leading-tight">Pegar pra mim</h2>
+              <Badge className={cfg.ativa ? 'bg-success/15 text-success' : 'bg-surface-2 text-ink-muted'}>
+                <span className={`h-1.5 w-1.5 rounded-full ${cfg.ativa ? 'bg-success animate-pulse' : 'bg-ink-faint'}`} />
+                {cfg.ativa ? 'ativa' : 'pausada'}
+              </Badge>
+            </div>
+            <p className="text-[12px] text-ink-muted mt-0.5">
+              Distribui leads sem vendedor automaticamente via WhatsApp dos vendedores ativos.
+            </p>
+            <div className="mt-2 flex items-center flex-wrap gap-x-3 gap-y-1 text-[11px] text-ink-muted">
+              <span className="inline-flex items-center gap-1.5">
+                <Clock className="h-3 w-3" />
+                a cada <span className="text-ink font-medium tabular-nums">{cfg.intervalo_min}min</span>
+              </span>
+              <span className="text-ink-faint">·</span>
+              <span>até <span className="text-ink font-medium tabular-nums">{cfg.leads_por_ciclo}</span> leads/ciclo</span>
+              <span className="text-ink-faint">·</span>
+              <span className="tabular-nums text-ink">{horaResumo}</span>
+              <span className="text-ink-faint">·</span>
+              <span className="text-ink">{diasResumo}</span>
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={executarAgora} title="Executar agora (ignora intervalo)"
-            className="text-[10px] px-2 py-1.5 rounded bg-surface-2 text-ink border border-border hover:bg-surface-3 flex items-center gap-1">
-            <RotateCw className="h-3 w-3" /> executar agora
-          </button>
-          <button
+        <div className="flex items-center gap-2 shrink-0">
+          <Button variant="secondary" size="sm" onClick={executarAgora} title="Executar agora (ignora intervalo)">
+            <RotateCw className="h-3.5 w-3.5" /> executar agora
+          </Button>
+          <Button
+            size="sm"
             onClick={() => salvarConfig.mutate({ ativa: !cfg.ativa })}
-            className={`text-[11px] px-3 py-1.5 rounded-lg font-bold transition-colors ${
-              cfg.ativa
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30'
-                : 'bg-slate-700 text-slate-300 border border-slate-600 hover:bg-slate-600'
-            }`}
+            className={cfg.ativa
+              ? 'bg-success/15 text-success border border-success/40 hover:bg-success/20'
+              : 'bg-surface-2 text-ink-muted border border-border hover:bg-surface-2/60 hover:text-ink'}
           >
-            {cfg.ativa ? '● ATIVA — clique para pausar' : '○ PAUSADA — clique para ativar'}
-          </button>
+            {cfg.ativa ? <><Pause className="h-3.5 w-3.5" /> Pausar</> : <><Play className="h-3.5 w-3.5" /> Ativar</>}
+          </Button>
         </div>
       </div>
 
-      {/* Métricas */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
-        <div className="bg-surface-2/50 rounded-lg p-2 border border-border">
-          <div className="text-[9px] text-ink-faint uppercase tracking-wider">Leads aguardando</div>
-          <div className="text-ink font-bold text-[20px] tabular-nums">{aguardando ?? '—'}</div>
+      {/* ─── STATS ─── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-border border-b border-border">
+        <div className="p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">Leads aguardando</span>
+            <Users className="h-3.5 w-3.5 text-ink-faint" />
+          </div>
+          <div className="mt-1.5 text-ink font-semibold text-[28px] leading-none tabular-nums">{aguardando ?? '—'}</div>
+          <div className="mt-1 text-[11px] text-ink-faint">na fila de distribuição</div>
         </div>
-        <div className="bg-surface-2/50 rounded-lg p-2 border border-border">
-          <div className="text-[9px] text-ink-faint uppercase tracking-wider">Disparados hoje</div>
-          <div className="text-emerald-300 font-bold text-[20px] tabular-nums">{disparadosHoje}</div>
+        <div className="p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">Disparados hoje</span>
+            <Send className="h-3.5 w-3.5 text-ink-faint" />
+          </div>
+          <div className={`mt-1.5 font-semibold text-[28px] leading-none tabular-nums ${disparadosHoje > 0 ? 'text-success' : 'text-ink'}`}>
+            {disparadosHoje}
+          </div>
+          <div className="mt-1 text-[11px] text-ink-faint">acumulado: <span className="tabular-nums text-ink-muted">{cfg.total_disparos_acum}</span></div>
         </div>
-        <div className="bg-surface-2/50 rounded-lg p-2 border border-border">
-          <div className="text-[9px] text-ink-faint uppercase tracking-wider">Última execução</div>
-          <div className="text-ink font-bold text-[13px] leading-tight">{fmtSeg(segUltima)} atrás</div>
-          {ult5.length > 0 && <div className="text-[9px] text-ink-faint">{ult5.length} ciclos nos últ. 5min</div>}
+        <div className="p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">Última execução</span>
+            <Clock className="h-3.5 w-3.5 text-ink-faint" />
+          </div>
+          <div className="mt-1.5 text-ink font-semibold text-[20px] leading-none">{fmtSeg(segUltima)}</div>
+          <div className="mt-1 text-[11px] text-ink-faint">
+            {ult5.length > 0 ? <><span className="tabular-nums text-success">{ult5.length}</span> ciclos nos últ. 5min</> : 'atrás'}
+          </div>
         </div>
-        <div className="bg-surface-2/50 rounded-lg p-2 border border-border">
-          <div className="text-[9px] text-ink-faint uppercase tracking-wider">Próxima execução</div>
-          <div className="text-accent font-bold text-[13px] leading-tight">{cfg.ativa ? `em ${fmtSeg(segProxima)}` : '—'}</div>
-          <div className="text-[9px] text-ink-faint">total acumulado: {cfg.total_disparos_acum}</div>
+        <div className="p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">Próxima execução</span>
+            <Activity className="h-3.5 w-3.5 text-ink-faint" />
+          </div>
+          <div className={`mt-1.5 font-semibold text-[20px] leading-none ${cfg.ativa ? 'text-accent' : 'text-ink-muted'}`}>
+            {cfg.ativa ? `em ${fmtSeg(segProxima)}` : 'pausada'}
+          </div>
+          <div className="mt-1 text-[11px] text-ink-faint">{cfg.ativa ? 'agendada' : 'reative para retomar'}</div>
         </div>
       </div>
 
-      {/* Config */}
-      <div className="border border-border rounded-lg p-2 bg-surface-2/30">
-        <button type="button" onClick={() => setEditando(v => !v)} className="text-[11px] text-ink-muted hover:text-ink flex items-center gap-1">
-          ⚙️ Configuração {editando ? '▲' : '▼'}
+      {/* ─── TRACKER (últimas 50 execuções) ─── */}
+      {tracker.length > 0 && (
+        <div className="px-5 py-3 border-b border-border">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] text-ink-faint uppercase tracking-wider font-medium">Histórico recente</span>
+            <span className="text-[10px] text-ink-faint">últimas {tracker.length} execuções →</span>
+          </div>
+          <div className="flex items-end gap-[2px] h-7">
+            {tracker.map((e) => {
+              const ok = e.leads_processados > 0
+              const skip = !ok && e.motivo_skip
+              const cls = ok
+                ? 'bg-success/70 hover:bg-success'
+                : skip
+                ? 'bg-warning/40 hover:bg-warning/70'
+                : 'bg-ink-faint/30 hover:bg-ink-faint/60'
+              const tip = `${new Date(e.executado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}\n${
+                ok ? `${e.leads_processados} processados` : skip ? `pulado: ${e.motivo_skip}` : 'sem leads'
+              }`
+              const h = ok ? Math.min(28, 8 + e.leads_processados * 1.5) : 6
+              return (
+                <div key={e.id} title={tip}
+                  className={`flex-1 min-w-[3px] rounded-sm transition-colors cursor-help ${cls}`}
+                  style={{ height: `${h}px` }}
+                />
+              )
+            })}
+          </div>
+          <div className="mt-2 flex items-center gap-3 text-[10px] text-ink-faint">
+            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-success/70" /> processou</span>
+            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-warning/40" /> pulado</span>
+            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-ink-faint/30" /> sem leads</span>
+          </div>
+        </div>
+      )}
+
+      {/* ─── CONFIG (collapsible) ─── */}
+      <div className="px-5 py-3 border-b border-border">
+        <button type="button" onClick={() => setEditando(v => !v)}
+          className="text-[12px] text-ink-muted hover:text-ink flex items-center gap-1.5 font-medium transition-colors">
+          <span className={`inline-block transition-transform ${editando ? 'rotate-90' : ''}`}>▶</span>
+          Configuração
+          <span className="text-ink-faint font-normal text-[11px]">— intervalo, janela horária, mensagem, dias</span>
         </button>
         {editando && (
-          <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
             <div>
-              <label className="text-[10px] text-ink-faint uppercase">Intervalo (min)</label>
+              <label className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">Intervalo (min)</label>
               <Input type="number" min={1} max={60} defaultValue={cfg.intervalo_min}
                 onBlur={e => salvarConfig.mutate({ intervalo_min: Math.max(1, Number(e.target.value) || 5) })} />
             </div>
             <div>
-              <label className="text-[10px] text-ink-faint uppercase">Leads por ciclo</label>
+              <label className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">Leads por ciclo</label>
               <Input type="number" min={1} max={100} defaultValue={cfg.leads_por_ciclo}
                 onBlur={e => salvarConfig.mutate({ leads_por_ciclo: Math.max(1, Number(e.target.value) || 10) })} />
             </div>
             <div>
-              <label className="text-[10px] text-ink-faint uppercase">Início</label>
+              <label className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">Início</label>
               <Input type="time" defaultValue={String(cfg.horario_inicio).slice(0,5)}
                 onBlur={e => salvarConfig.mutate({ horario_inicio: e.target.value + ':00' })} />
             </div>
             <div>
-              <label className="text-[10px] text-ink-faint uppercase">Fim</label>
+              <label className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">Fim</label>
               <Input type="time" defaultValue={String(cfg.horario_fim).slice(0,5)}
                 onBlur={e => salvarConfig.mutate({ horario_fim: e.target.value + ':00' })} />
             </div>
             <div className="col-span-2 md:col-span-4">
-              <label className="text-[10px] text-ink-faint uppercase">Mensagem (use &#123;&#123;nome&#125;&#125; e &#123;&#123;vendedor&#125;&#125;)</label>
-              <textarea defaultValue={cfg.mensagem_template} rows={2}
+              <label className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">
+                Mensagem <span className="text-ink-faint normal-case font-normal ml-1">use <code className="text-accent font-mono">&#123;&#123;nome&#125;&#125;</code> e <code className="text-accent font-mono">&#123;&#123;vendedor&#125;&#125;</code></span>
+              </label>
+              <textarea defaultValue={cfg.mensagem_template} rows={3}
                 onBlur={e => salvarConfig.mutate({ mensagem_template: e.target.value })}
-                className="w-full bg-surface-2 border border-border rounded px-2 py-1.5 text-ink text-[12px]" />
+                className="mt-1 w-full bg-surface-2 border border-border rounded-md px-3 py-2 text-ink text-[13px] focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent/60" />
             </div>
-            <div>
-              <label className="text-[10px] text-ink-faint uppercase">Intervalo entre envios (s)</label>
-              <div className="flex items-center gap-1">
+            <div className="col-span-2">
+              <label className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">Intervalo entre envios (seg)</label>
+              <div className="mt-1 flex items-center gap-2">
                 <Input type="number" min={5} max={300} defaultValue={cfg.intervalo_envio_min_seg ?? 15}
                   onBlur={e => salvarConfig.mutate({ intervalo_envio_min_seg: Math.max(5, Number(e.target.value) || 15) })}
                   title="mínimo" />
-                <span className="text-ink-faint text-[11px]">a</span>
+                <span className="text-ink-faint text-[12px]">a</span>
                 <Input type="number" min={5} max={300} defaultValue={cfg.intervalo_envio_max_seg ?? 30}
                   onBlur={e => salvarConfig.mutate({ intervalo_envio_max_seg: Math.max(5, Number(e.target.value) || 30) })}
                   title="máximo" />
               </div>
-              <div className="text-[9px] text-ink-faint mt-0.5">
-                {cfg.intervalo_envio_min_seg ?? 15}–{cfg.intervalo_envio_max_seg ?? 30}s · ↓ rápido / ↑ anti-bot
+              <div className="mt-1 text-[10px] text-ink-faint">
+                {cfg.intervalo_envio_min_seg ?? 15}–{cfg.intervalo_envio_max_seg ?? 30}s · ↓ rápido · ↑ anti-bot
               </div>
             </div>
             <div className="col-span-2 md:col-span-4">
-              <label className="text-[10px] text-ink-faint uppercase mb-1 block">Dias da semana</label>
-              <div className="flex gap-1">
+              <label className="text-[10px] text-ink-faint uppercase tracking-wider font-medium mb-1.5 block">Dias da semana</label>
+              <div className="flex gap-1.5 flex-wrap">
                 {[
                   { v: 1, l: 'Seg' }, { v: 2, l: 'Ter' }, { v: 3, l: 'Qua' },
-                  { v: 4, l: 'Qui' }, { v: 5, l: 'Sex' }, { v: 6, l: 'Sab' }, { v: 7, l: 'Dom' },
+                  { v: 4, l: 'Qui' }, { v: 5, l: 'Sex' }, { v: 6, l: 'Sáb' }, { v: 7, l: 'Dom' },
                 ].map(d => {
                   const ativo = cfg.dias_semana?.includes(d.v)
                   return (
@@ -1602,8 +1693,10 @@ function AutomacaoPegarPraMimCard() {
                         const novo = ativo ? cfg.dias_semana.filter(x => x !== d.v) : [...cfg.dias_semana, d.v].sort()
                         salvarConfig.mutate({ dias_semana: novo })
                       }}
-                      className={`text-[10px] px-2 py-1 rounded border ${
-                        ativo ? 'bg-accent/20 text-accent border-accent/40' : 'bg-surface-2 text-ink-muted border-border'
+                      className={`text-[11px] px-3 py-1.5 rounded-md font-medium border transition-colors ${
+                        ativo
+                          ? 'bg-accent/15 text-accent border-accent/40'
+                          : 'bg-surface-2 text-ink-muted border-border hover:text-ink hover:border-border-strong'
                       }`}
                     >{d.l}</button>
                   )
@@ -1614,81 +1707,96 @@ function AutomacaoPegarPraMimCard() {
         )}
       </div>
 
-      {/* Log de execuções */}
-      <div className="mt-3">
-        <button onClick={() => setLogExpandido(v => !v)} className="text-[11px] text-ink-muted hover:text-ink flex items-center gap-1">
-          📜 Últimas execuções {logExpandido ? '▲' : '▼'} <span className="text-ink-faint">({(execucoes ?? []).length})</span>
+      {/* ─── EXECUÇÕES (tabela detalhada) ─── */}
+      <div className="px-5 py-3">
+        <button onClick={() => setLogExpandido(v => !v)}
+          className="text-[12px] text-ink-muted hover:text-ink flex items-center gap-1.5 font-medium transition-colors">
+          <span className={`inline-block transition-transform ${logExpandido ? 'rotate-90' : ''}`}>▶</span>
+          Detalhes das execuções
+          <span className="text-ink-faint font-normal text-[11px]">({(execucoes ?? []).length})</span>
         </button>
         {logExpandido && (
-          <div className="mt-2 border border-border rounded overflow-hidden max-h-64 overflow-y-auto">
-            <table className="w-full text-[10px]">
-              <thead className="bg-surface-2/60 sticky top-0">
-                <tr>
-                  <th className="text-left px-2 py-1 text-ink-muted">Quando</th>
-                  <th className="text-left px-2 py-1 text-ink-muted">Aguardando</th>
-                  <th className="text-left px-2 py-1 text-ink-muted">Processados</th>
-                  <th className="text-left px-2 py-1 text-ink-muted">Duplicados</th>
-                  <th className="text-left px-2 py-1 text-ink-muted">Distribuição / Motivo</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(execucoes ?? []).map(e => {
-                  const isExpanded = !!expanded[e.id]
-                  const temTelefones = e.distribuicao_telefones && Object.keys(e.distribuicao_telefones).length > 0
-                  return (
-                  <Fragment key={e.id}>
-                    <tr className="border-t border-border/40 hover:bg-surface-2/30 cursor-pointer"
-                        onClick={() => temTelefones && setExpanded(s => ({ ...s, [e.id]: !s[e.id] }))}>
-                      <td className="px-2 py-1 text-ink-muted whitespace-nowrap">
-                        {temTelefones && <span className="text-ink-faint mr-1">{isExpanded ? '▼' : '▶'}</span>}
-                        {new Date(e.executado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                      </td>
-                      <td className="px-2 py-1 text-ink tabular-nums">{e.leads_aguardando ?? '—'}</td>
-                      <td className={`px-2 py-1 tabular-nums ${e.leads_processados > 0 ? 'text-emerald-300 font-bold' : 'text-ink-muted'}`}>{e.leads_processados}</td>
-                      <td className="px-2 py-1 text-ink-muted tabular-nums">{e.leads_pulados_duplicados}</td>
-                      <td className="px-2 py-1 text-ink-muted text-[9px]">
-                        {e.distribuicao && Object.keys(e.distribuicao).length > 0 ? (
-                          <>
-                            {e.motivo_skip === 'execucao_manual' && <span className="text-accent mr-1">[manual]</span>}
-                            {Object.entries(e.distribuicao).map(([k, v]) => `${k}:${v}`).join(' · ')}
-                          </>
-                        ) : e.motivo_skip ? (
-                          <span className="text-amber-300">⊘ {e.motivo_skip}</span>
-                        ) : '—'}
+          <div className="mt-3 border border-border rounded-md overflow-hidden">
+            <div className="max-h-72 overflow-y-auto">
+              <table className="w-full text-[12px]">
+                <thead className="bg-surface-2/60 sticky top-0 backdrop-blur">
+                  <tr>
+                    <th className="text-left px-3 py-2 text-ink-faint uppercase text-[10px] tracking-wider font-medium">Quando</th>
+                    <th className="text-right px-3 py-2 text-ink-faint uppercase text-[10px] tracking-wider font-medium">Aguard.</th>
+                    <th className="text-right px-3 py-2 text-ink-faint uppercase text-[10px] tracking-wider font-medium">Processados</th>
+                    <th className="text-right px-3 py-2 text-ink-faint uppercase text-[10px] tracking-wider font-medium">Duplic.</th>
+                    <th className="text-left px-3 py-2 text-ink-faint uppercase text-[10px] tracking-wider font-medium">Distribuição / motivo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(execucoes ?? []).map(e => {
+                    const isExpanded = !!expanded[e.id]
+                    const temTelefones = e.distribuicao_telefones && Object.keys(e.distribuicao_telefones).length > 0
+                    return (
+                      <Fragment key={e.id}>
+                        <tr className="border-t border-border/40 hover:bg-surface-2/40 transition-colors"
+                          onClick={() => temTelefones && setExpanded(s => ({ ...s, [e.id]: !s[e.id] }))}
+                          style={{ cursor: temTelefones ? 'pointer' : 'default' }}>
+                          <td className="px-3 py-2 text-ink-muted whitespace-nowrap font-mono text-[11px]">
+                            <span className="text-ink-faint mr-1.5 inline-block w-2">{temTelefones ? (isExpanded ? '▼' : '▶') : ''}</span>
+                            {new Date(e.executado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                          </td>
+                          <td className="px-3 py-2 text-ink tabular-nums text-right">{e.leads_aguardando ?? '—'}</td>
+                          <td className={`px-3 py-2 tabular-nums text-right font-semibold ${e.leads_processados > 0 ? 'text-success' : 'text-ink-faint'}`}>
+                            {e.leads_processados}
+                          </td>
+                          <td className="px-3 py-2 text-ink-muted tabular-nums text-right">{e.leads_pulados_duplicados}</td>
+                          <td className="px-3 py-2 text-[11px]">
+                            {e.distribuicao && Object.keys(e.distribuicao).length > 0 ? (
+                              <span className="text-ink-muted">
+                                {e.motivo_skip === 'execucao_manual' && (
+                                  <Badge className="bg-accent/15 text-accent mr-1.5">manual</Badge>
+                                )}
+                                {Object.entries(e.distribuicao).map(([k, v]) => `${k}:${v}`).join(' · ')}
+                              </span>
+                            ) : e.motivo_skip ? (
+                              <Badge className="bg-warning/15 text-warning">⊘ {e.motivo_skip}</Badge>
+                            ) : <span className="text-ink-faint">—</span>}
+                          </td>
+                        </tr>
+                        {isExpanded && temTelefones && (
+                          <tr className="bg-surface-2/40">
+                            <td colSpan={5} className="px-3 py-3">
+                              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+                                {Object.entries(e.distribuicao_telefones!).map(([vendedor, telefones]) => (
+                                  <div key={vendedor} className="bg-surface border border-border rounded-md p-2.5">
+                                    <div className="text-[12px] font-semibold text-ink mb-1.5 flex items-center gap-1.5">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-success" />
+                                      {vendedor}
+                                      <span className="text-ink-faint font-normal text-[11px]">({telefones.length})</span>
+                                    </div>
+                                    <div className="space-y-1">
+                                      {telefones.map((t, i) => (
+                                        <div key={i} className="text-[11px] flex items-center gap-2">
+                                          <span className="font-mono text-accent">+{t.tel}</span>
+                                          {t.nome && <span className="text-ink-muted truncate">— {t.nome}</span>}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    )
+                  })}
+                  {(execucoes ?? []).length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="text-center py-6 text-ink-faint text-[12px]">
+                        Nenhuma execução ainda — ative a automação acima
                       </td>
                     </tr>
-                    {isExpanded && temTelefones && (
-                      <tr className="bg-surface-2/40">
-                        <td colSpan={5} className="px-2 py-2">
-                          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
-                            {Object.entries(e.distribuicao_telefones!).map(([vendedor, telefones]) => (
-                              <div key={vendedor} className="bg-surface-2 border border-border rounded p-2">
-                                <div className="text-[10px] font-bold text-ink mb-1 flex items-center gap-1">
-                                  <span className="text-emerald-300">●</span>
-                                  {vendedor} <span className="text-ink-faint font-normal">({telefones.length})</span>
-                                </div>
-                                <div className="space-y-0.5">
-                                  {telefones.map((t, i) => (
-                                    <div key={i} className="text-[10px] flex items-center gap-1.5">
-                                      <span className="font-mono text-accent">+{t.tel}</span>
-                                      {t.nome && <span className="text-ink-muted truncate">— {t.nome}</span>}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                  )
-                })}
-                {(execucoes ?? []).length === 0 && (
-                  <tr><td colSpan={5} className="text-center py-4 text-ink-faint">Nenhuma execução ainda — ative a automação acima</td></tr>
-                )}
-              </tbody>
-            </table>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
