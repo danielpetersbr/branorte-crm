@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, Fragment } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -1402,6 +1402,7 @@ type AutomacaoExecucao = {
   leads_pulados_duplicados: number
   leads_invalidos: number
   distribuicao: Record<string, number> | null
+  distribuicao_telefones: Record<string, Array<{ tel: string; nome: string | null }>> | null
   motivo_skip: string | null
 }
 
@@ -1437,11 +1438,12 @@ function AutomacaoPegarPraMimCard() {
     queryKey: ['automacao-execucoes'],
     queryFn: async () => {
       const { data } = await supabase.from('dispatch_automacao_execucao')
-        .select('*').order('executado_em', { ascending: false }).limit(20)
+        .select('*').order('executado_em', { ascending: false }).limit(50)
       return (data as AutomacaoExecucao[]) ?? []
     },
     refetchInterval: 10000,
   })
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
   const salvarConfig = useMutation({
     mutationFn: async (updates: Partial<AutomacaoConfig>) => {
@@ -1613,24 +1615,58 @@ function AutomacaoPegarPraMimCard() {
                 </tr>
               </thead>
               <tbody>
-                {(execucoes ?? []).map(e => (
-                  <tr key={e.id} className="border-t border-border/40">
-                    <td className="px-2 py-1 text-ink-muted whitespace-nowrap">{new Date(e.executado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
-                    <td className="px-2 py-1 text-ink tabular-nums">{e.leads_aguardando ?? '—'}</td>
-                    <td className={`px-2 py-1 tabular-nums ${e.leads_processados > 0 ? 'text-emerald-300 font-bold' : 'text-ink-muted'}`}>{e.leads_processados}</td>
-                    <td className="px-2 py-1 text-ink-muted tabular-nums">{e.leads_pulados_duplicados}</td>
-                    <td className="px-2 py-1 text-ink-muted text-[9px]">
-                      {e.distribuicao && Object.keys(e.distribuicao).length > 0 ? (
-                        <>
-                          {e.motivo_skip === 'execucao_manual' && <span className="text-accent mr-1">[manual]</span>}
-                          {Object.entries(e.distribuicao).map(([k, v]) => `${k}:${v}`).join(' · ')}
-                        </>
-                      ) : e.motivo_skip ? (
-                        <span className="text-amber-300">⊘ {e.motivo_skip}</span>
-                      ) : '—'}
-                    </td>
-                  </tr>
-                ))}
+                {(execucoes ?? []).map(e => {
+                  const isExpanded = !!expanded[e.id]
+                  const temTelefones = e.distribuicao_telefones && Object.keys(e.distribuicao_telefones).length > 0
+                  return (
+                  <Fragment key={e.id}>
+                    <tr className="border-t border-border/40 hover:bg-surface-2/30 cursor-pointer"
+                        onClick={() => temTelefones && setExpanded(s => ({ ...s, [e.id]: !s[e.id] }))}>
+                      <td className="px-2 py-1 text-ink-muted whitespace-nowrap">
+                        {temTelefones && <span className="text-ink-faint mr-1">{isExpanded ? '▼' : '▶'}</span>}
+                        {new Date(e.executado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                      </td>
+                      <td className="px-2 py-1 text-ink tabular-nums">{e.leads_aguardando ?? '—'}</td>
+                      <td className={`px-2 py-1 tabular-nums ${e.leads_processados > 0 ? 'text-emerald-300 font-bold' : 'text-ink-muted'}`}>{e.leads_processados}</td>
+                      <td className="px-2 py-1 text-ink-muted tabular-nums">{e.leads_pulados_duplicados}</td>
+                      <td className="px-2 py-1 text-ink-muted text-[9px]">
+                        {e.distribuicao && Object.keys(e.distribuicao).length > 0 ? (
+                          <>
+                            {e.motivo_skip === 'execucao_manual' && <span className="text-accent mr-1">[manual]</span>}
+                            {Object.entries(e.distribuicao).map(([k, v]) => `${k}:${v}`).join(' · ')}
+                          </>
+                        ) : e.motivo_skip ? (
+                          <span className="text-amber-300">⊘ {e.motivo_skip}</span>
+                        ) : '—'}
+                      </td>
+                    </tr>
+                    {isExpanded && temTelefones && (
+                      <tr className="bg-surface-2/40">
+                        <td colSpan={5} className="px-2 py-2">
+                          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+                            {Object.entries(e.distribuicao_telefones!).map(([vendedor, telefones]) => (
+                              <div key={vendedor} className="bg-surface-2 border border-border rounded p-2">
+                                <div className="text-[10px] font-bold text-ink mb-1 flex items-center gap-1">
+                                  <span className="text-emerald-300">●</span>
+                                  {vendedor} <span className="text-ink-faint font-normal">({telefones.length})</span>
+                                </div>
+                                <div className="space-y-0.5">
+                                  {telefones.map((t, i) => (
+                                    <div key={i} className="text-[10px] flex items-center gap-1.5">
+                                      <span className="font-mono text-accent">+{t.tel}</span>
+                                      {t.nome && <span className="text-ink-muted truncate">— {t.nome}</span>}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                  )
+                })}
                 {(execucoes ?? []).length === 0 && (
                   <tr><td colSpan={5} className="text-center py-4 text-ink-faint">Nenhuma execução ainda — ative a automação acima</td></tr>
                 )}
