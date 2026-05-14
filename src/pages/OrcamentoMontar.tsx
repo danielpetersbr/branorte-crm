@@ -5,6 +5,7 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import {
   Sparkles, Search, Plus, Minus, Trash2, Package,
   Zap, X, AlertCircle, Star, FileText, Eye, ListChecks, Check, Loader2, FolderOpen,
+  Save, RotateCcw,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import {
@@ -15,6 +16,7 @@ import {
 import { FinalizarMontarModal, type CarrinhoSnapshot } from '@/components/FinalizarMontarModal'
 import { OrcamentoPreview, type ParcelaPagamento } from '@/components/OrcamentoPreview'
 import { useOrcamentoModelos, type OrcamentoModelo } from '@/hooks/useOrcamentoBuilder'
+import { useOrcamentoDraft } from '@/hooks/useOrcamentoDraft'
 
 type Voltagem = 'monofasico' | 'trifasico'
 type ModoVisao = 'preview' | 'edicao'
@@ -34,6 +36,8 @@ interface CarrinhoItem {
   motor_qtd: number
   motor_valor_unit: number  // valor unitário do motor (não multiplicado)
   foto_url: string | null   // foto do equipamento (mostra no preview, igual orçamento real)
+  /** Quando true, motor sempre cotado como trifásico (inversor faz mono = trif). */
+  usa_inversor?: boolean
 }
 
 type TensaoMotor = 220 | 380 | 660 | null
@@ -121,6 +125,48 @@ export function OrcamentoMontar() {
   // Parcelas estruturadas (tabela DATA/MÉTODO/VALOR) — alternativa ao texto livre acima
   const [parcelasPagamento, setParcelasPagamento] = useState<ParcelaPagamento[]>([])
 
+  // Snapshot do estado p/ autosave. Inclui tudo que o vendedor pode ter mudado
+  // (carrinho, acessorios, voltagem, termos, etc). Excluido: filtros de busca, modais.
+  const draftSnapshot = useMemo(() => ({
+    carrinho,
+    acessorios,
+    voltagem,
+    tensaoMotores,
+    descontoCfg,
+    dataVendaTxt,
+    prazoEntregaTxt,
+    formaPagamentoTxt,
+    parcelasPagamento,
+    fotoPrincipal,
+  }), [
+    carrinho, acessorios, voltagem, tensaoMotores, descontoCfg,
+    dataVendaTxt, prazoEntregaTxt, formaPagamentoTxt, parcelasPagamento, fotoPrincipal,
+  ])
+
+  // Autosave so liga depois que catalogo carregar (evita salvar snapshot vazio
+  // antes do usuario interagir). Banner de recuperacao aparece se draft existir.
+  const draft = useOrcamentoDraft(draftSnapshot, !loadingItems && !loadingMotores)
+
+  function restaurarRascunho() {
+    if (!draft.recovered) return
+    const d = draft.recovered.data
+    setCarrinho(d.carrinho ?? [])
+    setAcessorios(d.acessorios ?? null)
+    setVoltagem(d.voltagem ?? 'trifasico')
+    setTensaoMotores(d.tensaoMotores ?? null)
+    setDescontoCfg(d.descontoCfg ?? null)
+    setDataVendaTxt(d.dataVendaTxt ?? '')
+    setPrazoEntregaTxt(d.prazoEntregaTxt ?? '')
+    setFormaPagamentoTxt(d.formaPagamentoTxt ?? '')
+    setParcelasPagamento(d.parcelasPagamento ?? [])
+    setFotoPrincipal(d.fotoPrincipal ?? null)
+    draft.dismissRecovered()
+  }
+
+  function descartarRascunho() {
+    draft.clearDraft()
+  }
+
   function atualizarTermo(key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento', v: string) {
     if (key === 'dataVenda') setDataVendaTxt(v)
     else if (key === 'prazoEntrega') setPrazoEntregaTxt(v)
@@ -168,8 +214,12 @@ export function OrcamentoMontar() {
     const specs = item.specs || []
     const motorIncluso = motorJaInclusoNoItem(specs)
 
+    // Item com inversor: motor sempre cotado como trifasico (cheaper),
+    // mesmo se vendedor marcou monofasico no header.
+    const voltagemEfetiva: Voltagem = item.usa_inversor ? 'trifasico' : voltagem
+
     const motorMatch = item.motor_padrao_cv && item.motor_padrao_polos && motores
-      ? acharMotorCompativel(motores, Number(item.motor_padrao_cv), item.motor_padrao_polos, voltagem)
+      ? acharMotorCompativel(motores, Number(item.motor_padrao_cv), item.motor_padrao_polos, voltagemEfetiva)
       : null
 
     setCarrinho(c => [...c, {
@@ -187,6 +237,7 @@ export function OrcamentoMontar() {
       // Se a spec já marca "(incluso)", motor não é cobrado de novo.
       motor_valor_unit: motorIncluso ? 0 : (motorMatch ? Number(motorMatch.valor) : 0),
       foto_url: item.foto_url || null,
+      usa_inversor: !!item.usa_inversor,
     }])
   }
 
@@ -232,7 +283,9 @@ export function OrcamentoMontar() {
       if (!it.motor_cv || !it.motor_polos) return it
       // Motor incluso continua com valor 0 mesmo ao trocar voltagem.
       if (motorJaInclusoNoItem(it.specs)) return { ...it, motor_valor_unit: 0 }
-      const motor = acharMotorCompativel(motores, it.motor_cv, it.motor_polos, novaVoltagem)
+      // Item com inversor: cotar sempre como trifásico (preço fixo independente da voltagem).
+      const voltagemEfetiva: Voltagem = it.usa_inversor ? 'trifasico' : novaVoltagem
+      const motor = acharMotorCompativel(motores, it.motor_cv, it.motor_polos, voltagemEfetiva)
       return { ...it, motor_valor_unit: motor ? Number(motor.valor) : it.motor_valor_unit }
     }))
   }
@@ -294,8 +347,54 @@ export function OrcamentoMontar() {
 
   if (loadingItems || loadingMotores) return <PageLoading />
 
+  // Indicador visual do autosave: status atual + horario do ultimo save.
+  const draftStatusLabel = (() => {
+    if (draft.status === 'saving') return 'Salvando rascunho...'
+    if (draft.status === 'error') return 'Falha ao salvar rascunho'
+    if (draft.lastSavedAt) {
+      const hh = String(draft.lastSavedAt.getHours()).padStart(2, '0')
+      const mm = String(draft.lastSavedAt.getMinutes()).padStart(2, '0')
+      const ss = String(draft.lastSavedAt.getSeconds()).padStart(2, '0')
+      return `Rascunho salvo às ${hh}:${mm}:${ss}`
+    }
+    return null
+  })()
+
   return (
     <div className="h-full flex flex-col gap-3 p-3">
+      {/* Banner de recuperacao de rascunho */}
+      {draft.recovered && draft.recovered.data?.carrinho?.length ? (
+        <div className="bg-warning/10 border border-warning/40 rounded-lg px-3 py-2.5 flex items-start gap-3">
+          <RotateCcw className="h-4 w-4 text-warning shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <div className="text-[12px] font-semibold text-ink">
+              Rascunho não finalizado encontrado
+            </div>
+            <div className="text-[11px] text-ink-muted mt-0.5">
+              {draft.recovered.data.carrinho.length} {draft.recovered.data.carrinho.length === 1 ? 'item' : 'itens'} salvos automaticamente em{' '}
+              {new Date(draft.recovered.saved_at).toLocaleString('pt-BR', {
+                day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+              })}. Quer recuperar?
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={restaurarRascunho}
+              className="text-[11px] bg-warning hover:bg-warning/90 text-white font-semibold px-3 py-1.5 rounded flex items-center gap-1"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Recuperar
+            </button>
+            <button
+              onClick={descartarRascunho}
+              className="text-[11px] text-ink-muted hover:text-ink font-medium px-2 py-1.5"
+            >
+              Descartar
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
@@ -303,8 +402,14 @@ export function OrcamentoMontar() {
             <Sparkles className="h-5 w-5 text-accent" />
             Montar Orçamento Personalizado
           </h1>
-          <p className="text-[11px] text-ink-faint mt-0.5">
-            Adicione items à esquerda. Veja o orçamento se montando à direita.
+          <p className="text-[11px] text-ink-faint mt-0.5 flex items-center gap-2">
+            <span>Adicione items à esquerda. Veja o orçamento se montando à direita.</span>
+            {draftStatusLabel && (
+              <span className={`inline-flex items-center gap-1 ${draft.status === 'error' ? 'text-danger' : 'text-success'}`}>
+                <Save className="h-3 w-3" />
+                {draftStatusLabel}
+              </span>
+            )}
           </p>
         </div>
 
@@ -615,6 +720,8 @@ export function OrcamentoMontar() {
           setFinalizarOpen(false)
           setCarrinho([])
           setAcessorios(null)
+          // Orcamento gerado → rascunho ja virou orcamento real, pode apagar.
+          draft.clearDraft()
         }}
       />
 

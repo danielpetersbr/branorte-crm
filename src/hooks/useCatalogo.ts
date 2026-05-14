@@ -23,6 +23,8 @@ export interface CatalogoItem {
   foto_url: string | null
   descricao: string | null
   acessorios_relacionados_ids: number[]
+  /** Quando true, motor associado usa inversor → preço igual em mono e trif. */
+  usa_inversor: boolean
 }
 
 export interface CatalogoMotor {
