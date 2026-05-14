@@ -8,6 +8,7 @@ import {
 } from '@/hooks/usePrecosBranorte'
 
 const CATEGORIA_LABEL: Record<string, string> = {
+  COMPACTA: 'Fábricas Compactas (pacotes)',
   TRANSPORTADOR: 'Transportadores',
   MOINHO: 'Moinho Martelo',
   MISTURADOR: 'Misturadores',
@@ -42,11 +43,18 @@ const SUBCATEGORIA_LABEL: Record<string, string> = {
   ELETRONICA: 'Eletrônica',
   MECANICA: 'Mecânica',
   CELULA: 'Célula de Carga',
+  '01': 'Linha 01',
+  '01 MASTER': 'Linha 01 Master',
+  '02': 'Linha 02',
+  '02 MASTER': 'Linha 02 Master',
+  '03': 'Linha 03',
+  '03 MASTER': 'Linha 03 Master',
   DIVERSOS: 'Diversos',
 }
 
 // Ordem fixa por categoria — VERTICAL → S/Pulmão → C/Pulmão
 const SUBCAT_ORDER: Record<string, string[]> = {
+  COMPACTA: ['01', '01 MASTER', '02', '02 MASTER', '03', '03 MASTER'],
   MISTURADOR: ['VERTICAL', 'HORIZONTAL_SPULMAO', 'HORIZONTAL_CPULMAO'],
   TRANSPORTADOR: ['CHUPIM', 'HELICOIDAL'],
   SILO: ['RACAO', 'MILHO'],
@@ -320,10 +328,49 @@ function TabelaPrecos({ items, mostrarMotor }: { items: PrecoBranorte[]; mostrar
   )
 }
 
+// COMPACTAS: pacote fechado de equipamentos com preços diferenciados
+// (equipamento + motor trif/mono, e c/ balança incluído nas observações)
+function TabelaCompactas({ items }: { items: PrecoBranorte[] }) {
+  if (items.length === 0) return null
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[12px]">
+        <thead className="bg-surface-2/50 sticky top-0">
+          <tr>
+            <th className={TH + ' w-44'}>Modelo</th>
+            <th className={TH} title="Produção em kg/h · Armazenamento em kg">Capacidade</th>
+            <th className={THR}>Só equipamento</th>
+            <th className={THR}>C/ Motor Trif.</th>
+            <th className={THR}>C/ Motor Mono.</th>
+            <th className={TH}>Versão c/ balança incluída</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map(it => (
+            <tr key={it.id} className="border-t border-border/40 hover:bg-surface-2/30">
+              <td className={TD + ' text-ink font-mono font-bold text-[11px]'}>
+                {it.codigo || it.descricao}
+              </td>
+              <td className={TD + ' text-ink-muted text-[11px]'}>{it.capacidade || '—'}</td>
+              <td className={TD}><ValorEditor id={it.id} field="valor_equipamento" valor={it.valor_equipamento} /></td>
+              <td className={TD}><ValorEditor id={it.id} field="valor_com_motor_trif" valor={it.valor_com_motor_trif} /></td>
+              <td className={TD}><ValorEditor id={it.id} field="valor_com_motor_mono" valor={it.valor_com_motor_mono} /></td>
+              <td className={TD + ' text-[10px] text-ink-faint'}>
+                {it.observacoes || '—'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 // Dispatcher por categoria
 function TabelaPorCategoria({ items, mostrarMotor }: { items: PrecoBranorte[]; mostrarMotor: boolean }) {
   if (items.length === 0) return null
   const cat = items[0].categoria
+  if (cat === 'COMPACTA') return <TabelaCompactas items={items} />
   if (cat === 'SILO') return <TabelaSilos items={items} />
   if (cat === 'CAIXA') return <TabelaCaixas items={items} />
   if (cat === 'MISTURADOR' || cat === 'CACAMBA') return <TabelaMisturadores items={items} />
