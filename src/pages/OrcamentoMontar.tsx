@@ -1453,16 +1453,14 @@ function AcessoriosModal({
 }) {
   const { data: catalogoAcc } = useCatalogoAcessorios()
   const [pct, setPct] = useState<number>(initial?.pct ?? 5)
-  const [selecionados, setSelecionados] = useState<string[]>(
-    initial?.items ?? ['Painel elétrico', 'Caixa de comando', 'Suporte para bag']
-  )
+  const [selecionados, setSelecionados] = useState<string[]>(initial?.items ?? [])
   const [busca, setBusca] = useState('')
   const [livre, setLivre] = useState('')
 
   useEffect(() => {
     if (open) {
       setPct(initial?.pct ?? 5)
-      setSelecionados(initial?.items ?? ['Painel elétrico', 'Caixa de comando', 'Suporte para bag'])
+      setSelecionados(initial?.items ?? [])
       setBusca('')
       setLivre('')
     }
