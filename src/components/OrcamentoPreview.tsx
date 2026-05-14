@@ -111,6 +111,7 @@ export interface OrcamentoPreviewProps {
   onRemove?: (uid: string) => void
   onFotoChange?: (dataURL: string | null) => void
   onUpdateNome?: (uid: string, novoNome: string) => void
+  onUpdateSpec?: (uid: string, idx: number, valor: string) => void
   onUpdateTerm?: (key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento', valor: string) => void
   onMoverItem?: (uid: string, direcao: 'cima' | 'baixo') => void
 
@@ -210,12 +211,15 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     renderMode = false,
     tensaoMotores = null, onUpdateTensaoMotores,
     desconto, onUpdateDesconto,
-    onAddAcessorios, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateTerm, onMoverItem,
+    onAddAcessorios, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onUpdateTerm, onMoverItem,
     parcelas, onUpdateParcelas,
     motoresDisponiveis, onTrocarMotor,
   } = props
   const [editingNomeUid, setEditingNomeUid] = useState<string | null>(null)
   const [editingNomeValor, setEditingNomeValor] = useState<string>('')
+  // Edição inline de spec (bullet) — duplo-click ativa
+  const [editingSpecKey, setEditingSpecKey] = useState<string | null>(null) // formato "uid|idx"
+  const [editingSpecValor, setEditingSpecValor] = useState<string>('')
   // Estado do picker de troca de motor (qual linha tem o dropdown aberto)
   const [trocarMotorIdx, setTrocarMotorIdx] = useState<number | null>(null)
   void totalItems  // mostrado no footer do builder, não no preview
@@ -612,7 +616,45 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   <div className="flex gap-3">
                     <div className="flex-1 min-w-0 pl-3 text-[14.5px] text-gray-700 space-y-0.5">
                       {it.specs.length > 0
-                        ? it.specs.map((s, i) => <div key={i} className="flex gap-1.5"><span className="text-gray-400">•</span><span>{s}</span></div>)
+                        ? it.specs.map((s, i) => {
+                            const key = `${it.uid ?? idx}|${i}`
+                            const editavel = !renderMode && !!onUpdateSpec && !!it.uid
+                            const editando = editingSpecKey === key
+                            return (
+                              <div key={i} className="flex gap-1.5">
+                                <span className="text-gray-400">•</span>
+                                {editando ? (
+                                  <input
+                                    autoFocus
+                                    value={editingSpecValor}
+                                    onChange={(e) => setEditingSpecValor(e.target.value)}
+                                    onBlur={() => {
+                                      const v = editingSpecValor.trim()
+                                      if (v && v !== s && onUpdateSpec && it.uid) {
+                                        onUpdateSpec(it.uid, i, v)
+                                      }
+                                      setEditingSpecKey(null)
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
+                                      if (e.key === 'Escape') setEditingSpecKey(null)
+                                    }}
+                                    className="flex-1 bg-yellow-50 border border-blue-400 rounded px-1 py-0 outline-none text-[14.5px] text-gray-700"
+                                  />
+                                ) : (
+                                  <span
+                                    className={editavel ? 'cursor-text hover:bg-yellow-50 rounded px-0.5' : ''}
+                                    title={editavel ? 'Duplo-click para editar' : undefined}
+                                    onDoubleClick={() => {
+                                      if (!editavel) return
+                                      setEditingSpecValor(s)
+                                      setEditingSpecKey(key)
+                                    }}
+                                  >{s}</span>
+                                )}
+                              </div>
+                            )
+                          })
                         : it.motor_cv && (
                             <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Acionamento: motor {it.motor_cv} CV {it.motor_polos} polos{it.motor_qtd > 1 && ` (qtd ${it.motor_qtd})`}</span></div>
                           )
@@ -1298,63 +1340,46 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                     <td className="py-1 px-2 text-right">
                                       {!renderMode && onUpdateParcelas ? (
                                         (() => {
-                                          // Tipo do input: se a parcela ja tem valor manual em R$, usa modo R$.
-                                          // Default = %. Vendedor pode alternar clicando no badge.
-                                          const modoValor = typeof p.valor === 'number'
+                                          // Ambos inputs editaveis. Sync bidirecional automatico:
+                                          //  - Editar % → salva pct, R$ recalcula como pct*total
+                                          //  - Editar R$ → salva valor, % recalcula como valor/total*100
+                                          // O "modo armazenado" (pct vs valor) muda conforme ultimo input editado.
+                                          const pctMostrado = typeof p.pct === 'number'
+                                            ? p.pct
+                                            : (totalGeral > 0 && typeof p.valor === 'number'
+                                                ? Math.round((p.valor / totalGeral) * 10000) / 100
+                                                : '')
+                                          const valorMostrado = typeof p.valor === 'number'
+                                            ? p.valor
+                                            : (typeof p.pct === 'number'
+                                                ? Math.round((totalGeral * p.pct / 100) * 100) / 100
+                                                : '')
                                           return (
-                                            <div className="flex items-center justify-end gap-0.5">
-                                              {modoValor ? (
-                                                <input
-                                                  type="number" min={0} step={0.01}
-                                                  value={p.valor ?? ''}
-                                                  onChange={e => updateParcela(p.id, {
-                                                    valor: e.target.value === '' ? undefined : parseFloat(e.target.value),
-                                                    pct: undefined,
-                                                  })}
-                                                  placeholder="R$"
-                                                  className="w-20 text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded text-right"
-                                                />
-                                              ) : (
-                                                <input
-                                                  type="number" min={0} max={100} step={0.01}
-                                                  value={p.pct ?? ''}
-                                                  onChange={e => updateParcela(p.id, {
-                                                    pct: e.target.value === '' ? undefined : parseFloat(e.target.value),
-                                                    valor: undefined,
-                                                  })}
-                                                  placeholder="%"
-                                                  className="w-14 text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded text-right"
-                                                />
-                                              )}
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  // Alterna entre % e R$. Converte o valor atual mantendo equivalencia.
-                                                  if (modoValor) {
-                                                    // R$ → %: calcula % baseado no totalGeral
-                                                    const pct = totalGeral > 0 && typeof p.valor === 'number'
-                                                      ? Math.round((p.valor / totalGeral) * 10000) / 100
-                                                      : 0
-                                                    updateParcela(p.id, { pct, valor: undefined })
-                                                  } else {
-                                                    // % → R$: calcula valor baseado no totalGeral
-                                                    const valor = typeof p.pct === 'number'
-                                                      ? Math.round((totalGeral * p.pct / 100) * 100) / 100
-                                                      : 0
-                                                    updateParcela(p.id, { valor, pct: undefined })
-                                                  }
-                                                }}
-                                                className={`text-[10px] px-1 py-0.5 rounded font-bold cursor-pointer transition-all ${
-                                                  modoValor
-                                                    ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                                }`}
-                                                title="Alternar entre % e R$"
-                                              >
-                                                {modoValor ? 'R$' : '%'}
-                                              </button>
-                                              <span className="text-gray-500 text-[11px]">=</span>
-                                              <span className="font-bold tabular-nums text-gray-900 min-w-[60px] text-right">R$ {formatBRLBare(calcValor(p))}</span>
+                                            <div className="flex items-center justify-end gap-1">
+                                              <input
+                                                type="number" min={0} max={100} step={0.01}
+                                                value={pctMostrado}
+                                                onChange={e => updateParcela(p.id, {
+                                                  pct: e.target.value === '' ? undefined : parseFloat(e.target.value),
+                                                  valor: undefined,
+                                                })}
+                                                placeholder="%"
+                                                title="% sobre o total. Editar atualiza o R$ automaticamente."
+                                                className="w-14 text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded text-right hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none"
+                                              />
+                                              <span className="text-gray-500 text-[11px]">% =</span>
+                                              <span className="text-gray-700 text-[12px] font-bold">R$</span>
+                                              <input
+                                                type="number" min={0} step={0.01}
+                                                value={valorMostrado}
+                                                onChange={e => updateParcela(p.id, {
+                                                  valor: e.target.value === '' ? undefined : parseFloat(e.target.value),
+                                                  pct: undefined,
+                                                })}
+                                                placeholder="0,00"
+                                                title="Valor em R$. Editar fixa o valor (% recalcula automaticamente)."
+                                                className="w-24 text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded text-right font-bold tabular-nums hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none"
+                                              />
                                             </div>
                                           )
                                         })()

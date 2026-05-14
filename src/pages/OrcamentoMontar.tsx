@@ -342,6 +342,15 @@ export function OrcamentoMontar() {
     setCarrinho(c => c.map(it => it.uid === uid ? { ...it, nome_custom: novoNome } : it))
   }
 
+  function alterarSpec(uid: string, idx: number, valor: string) {
+    setCarrinho(c => c.map(it => {
+      if (it.uid !== uid) return it
+      const novas = it.specs.slice()
+      novas[idx] = valor
+      return { ...it, specs: novas }
+    }))
+  }
+
   function limparCarrinho() {
     if (carrinho.length === 0) return
     if (confirm('Limpar carrinho?')) setCarrinho([])
@@ -775,6 +784,7 @@ export function OrcamentoMontar() {
                 onRemove={removerItem}
                 onFotoChange={setFotoPrincipal}
                 onUpdateNome={alterarNome}
+                onUpdateSpec={alterarSpec}
                 tensaoMotores={tensaoMotores}
                 onUpdateTensaoMotores={setTensaoMotores}
                 desconto={descontoCfg}
