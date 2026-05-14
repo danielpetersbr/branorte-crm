@@ -24,6 +24,7 @@ import { Pendente } from '@/pages/Pendente'
 import { AdminUsuarios } from '@/pages/AdminUsuarios'
 import { Perfil } from '@/pages/Perfil'
 import { Disparos } from '@/pages/Disparos'
+import { MotoresAdmin } from '@/pages/MotoresAdmin'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 
@@ -98,6 +99,7 @@ function AppRoutes() {
         <Route path="/orcamentos/novo" element={<OrcamentoBuilder />} />
         <Route path="/orcamentos/montar" element={<OrcamentoMontar />} />
         <Route path="/orcamentos/catalogo-admin" element={<CatalogoAdmin />} />
+        <Route path="/orcamentos/motores" element={<MotoresAdmin />} />
         <Route path="/vendidos" element={<Vendidos />} />
         <Route path="/atendimentos" element={<Atendimentos />} />
         <Route path="/funil" element={<Funil />} />

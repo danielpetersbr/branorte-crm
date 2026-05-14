@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Sparkles, Package, Send } from 'lucide-react'
+import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Sparkles, Package, Send, Zap } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { useAtendimentoKpis } from '@/hooks/useAtendimentos'
@@ -50,6 +50,7 @@ const SECONDARY: NavItem[] = [
       { to: '/orcamentos/novo', label: 'Novo (Modelo)', icon: Sparkles },
       { to: '/orcamentos/montar', label: 'Montar Custom', icon: Package },
       { to: '/orcamentos/catalogo-admin', label: 'Catálogo (Admin)', icon: Shield },
+      { to: '/orcamentos/motores', label: 'Motores (Preços)', icon: Zap },
       { to: '/orcamentos', label: 'Painel', icon: BarChart2 },
       { to: '/orcamentos/lista', label: 'Lista', icon: List },
     ],
