@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from '@tanstack/react-query'
 import { Layout } from '@/components/layout/Layout'
 import { Dashboard } from '@/pages/Dashboard'
 import { Analytics } from '@/pages/Analytics'
@@ -27,7 +27,23 @@ import { Disparos } from '@/pages/Disparos'
 import { useAuth } from '@/hooks/useAuth'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 
+// Loga TODO erro de query/mutation no console. Evita falha silenciosa.
+// Erros visuais aparecem no SyncIndicator da Atendimentos (e outras páginas podem opt-in).
 const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error, query) => {
+      const key = JSON.stringify(query.queryKey)
+      // eslint-disable-next-line no-console
+      console.error('[rq:query]', key, error)
+    },
+  }),
+  mutationCache: new MutationCache({
+    onError: (error, _vars, _ctx, mutation) => {
+      const key = JSON.stringify(mutation.options.mutationKey ?? 'unknown')
+      // eslint-disable-next-line no-console
+      console.error('[rq:mutation]', key, error)
+    },
+  }),
   defaultOptions: {
     queries: {
       retry: 1,
@@ -35,6 +51,17 @@ const queryClient = new QueryClient({
     },
   },
 })
+
+// Log auxiliar verbose: timestamps de fetch das queries principais.
+// Ativar via `localStorage.setItem('debug-rq','1')` no console e recarregar.
+if (typeof window !== 'undefined' && window.localStorage?.getItem('debug-rq') === '1') {
+  queryClient.getQueryCache().subscribe(event => {
+    if (event.type === 'updated' && event.action?.type === 'success') {
+      // eslint-disable-next-line no-console
+      console.log(`[rq] ${new Date().toISOString().slice(11, 19)} ${JSON.stringify(event.query.queryKey)}`)
+    }
+  })
+}
 
 function AppRoutes() {
   const { session, profile, loading } = useAuth()

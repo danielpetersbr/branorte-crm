@@ -222,6 +222,7 @@ export interface AtendimentoKpis {
   naoEngajaram: number
   qualificados: number
   emAndamento: number
+  paraPegar: number  // leads sem responsavel (null, vazio, "a definir") — disponíveis pra puxar
   byStatus: Record<StatusReal, number>
 }
 
@@ -293,6 +294,7 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
         naoEngajaramRes,
         qualificadosRes,
         emAndamentoRes,
+        paraPegarRes,
         vendidoRes, abandonadoRes, semRespostaRes, aguardandoRes, perdidoRes,
       ] = await Promise.all([
         baseQ(),
@@ -304,6 +306,8 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
         baseQ().not('finalidade_fabrica', 'is', null).not('qual_animal', 'is', null),
         // Em andamento: clicou no MOTIVO mas nao clicou no botao final
         baseQ().not('motivo_contato', 'is', null).is('tocou_botao_em', null),
+        // Pra pegar: sem responsavel — null, vazio, ou "a definir"
+        baseQ().or('responsavel.is.null,responsavel.eq.,responsavel.eq.a definir'),
         baseQ().eq('status_real', 'Vendido'),
         baseQ().eq('status_real', 'Abandonado'),
         baseQ().eq('status_real', 'Sem-Resposta'),
@@ -329,6 +333,7 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
         naoEngajaram:   naoEngajaramRes.count ?? 0,
         qualificados:   qualificadosRes.count ?? 0,
         emAndamento:    emAndamentoRes.count ?? 0,
+        paraPegar:      paraPegarRes.count ?? 0,
         byStatus,
       }
     },

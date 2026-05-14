@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, Flame, AlarmClock, CheckCircle2, Inbox, Trash2, Calendar, Hand, ListChecks, MessageSquareDot, EyeOff, UserPlus, Check, RotateCcw } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, Flame, AlarmClock, CheckCircle2, Inbox, Trash2, Calendar, Hand, ListChecks, MessageSquareDot, EyeOff, UserPlus, Check, RotateCcw, RefreshCw, AlertCircle } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -146,6 +146,61 @@ function KpiCard({ label, value, hero, tone = 'neutral', icon: Icon, hint }: Kpi
   )
 }
 
+interface SyncIndicatorProps {
+  isFetching: boolean
+  dataUpdatedAt: number
+  error: Error | null
+  onRefetch: () => void
+}
+
+function SyncIndicator({ isFetching, dataUpdatedAt, error, onRefetch }: SyncIndicatorProps) {
+  // Re-renderiza a cada 5s pra atualizar o "há Xs"
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setTick(n => n + 1), 5000)
+    return () => clearInterval(t)
+  }, [])
+
+  const ageMs = dataUpdatedAt ? Date.now() - dataUpdatedAt : null
+  const ageLabel = ageMs == null
+    ? '—'
+    : ageMs < 5000  ? 'agora'
+    : ageMs < 60000 ? `${Math.floor(ageMs/1000)}s atrás`
+    : ageMs < 3600000 ? `${Math.floor(ageMs/60000)}min atrás`
+    : `${Math.floor(ageMs/3600000)}h atrás`
+
+  // Vermelho se >2min sem atualizar (algo travou)
+  const isStale = ageMs != null && ageMs > 2 * 60_000
+  const isError = !!error
+
+  let cls = 'border-border bg-surface text-ink-muted'
+  let dot = 'bg-emerald-500'
+  if (isError) { cls = 'border-red-500/40 bg-red-500/5 text-red-300'; dot = 'bg-red-500' }
+  else if (isStale) { cls = 'border-amber-500/40 bg-amber-500/5 text-amber-300'; dot = 'bg-amber-500' }
+  else if (isFetching) { dot = 'bg-blue-400 animate-pulse' }
+
+  return (
+    <div className={`flex items-center gap-2 text-[11px] px-2.5 py-1.5 rounded-md border ${cls}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+      {isError ? (
+        <span className="flex items-center gap-1">
+          <AlertCircle className="h-3 w-3" />
+          erro: {error.message.slice(0, 60)}
+        </span>
+      ) : (
+        <span>{isFetching ? 'atualizando…' : `atualizado ${ageLabel}`}</span>
+      )}
+      <button
+        onClick={onRefetch}
+        title="Forçar atualização"
+        className="ml-1 hover:text-ink transition-colors"
+      >
+        <RefreshCw className={`h-3 w-3 ${isFetching ? 'animate-spin' : ''}`} />
+      </button>
+    </div>
+  )
+}
+
 export function Atendimentos() {
   const [filters, setFilters] = useState<{
     search: string
@@ -164,7 +219,7 @@ export function Atendimentos() {
   })
   const [searchInput, setSearchInput] = useState('')
 
-  const { data, isLoading } = useAtendimentos(filters)
+  const { data, isLoading, isFetching, dataUpdatedAt, error: atendimentosError, refetch } = useAtendimentos(filters)
   const { data: kpis } = useAtendimentoKpis(filters)
   const { data: responsaveis } = useAtendimentoResponsaveis()
   // Etiquetas WA por telefone — fetcha em paralelo aos atendimentos
@@ -207,11 +262,19 @@ export function Atendimentos() {
             ) : 'Carregando...'}
           </p>
         </div>
+        <SyncIndicator
+          isFetching={isFetching}
+          dataUpdatedAt={dataUpdatedAt}
+          error={atendimentosError as Error | null}
+          onRefetch={() => refetch()}
+        />
       </div>
 
-      {/* KPIs - hierarquia: 2 hero + 4 small */}
+      {/* KPIs - hierarquia: 3 hero + 4 small */}
       {kpis && (
-        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-7 gap-3">
+          <KpiCard label="Pra pegar" value={kpis.paraPegar}     hero tone="warning"
+                   icon={UserPlus}  hint={kpis.paraPegar === 0 ? 'Fila vazia' : 'Sem vendedor — puxe!'} />
           <KpiCard label="Hoje"     value={kpis.hoje}          hero tone="accent"
                    icon={Calendar}  hint={kpis.hoje === 0 ? 'Nenhum lead hoje' : 'leads novos'} />
           <KpiCard label="Quentes"  value={kpis.quentes}       hero tone="danger"
