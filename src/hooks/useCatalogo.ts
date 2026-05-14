@@ -25,6 +25,12 @@ export interface CatalogoItem {
   acessorios_relacionados_ids: number[]
   /** Quando true, motor associado usa inversor → preço igual em mono e trif. */
   usa_inversor: boolean
+  /** Lista de funções que o vendedor pode escolher ao adicionar (ex: alimentação/descarga). Vazio = sem escolha. */
+  funcao_opcoes: string[]
+  /** Chave de agrupamento (ex: HELICOIDAL_160x3.5). Usada para deduplicar variantes do mesmo equipamento. */
+  tamanho_codigo: string | null
+  /** Quando true, a função escolhida não aparece no PDF final (uso interno apenas). */
+  ocultar_funcao_no_pdf: boolean
 }
 
 export interface CatalogoMotor {

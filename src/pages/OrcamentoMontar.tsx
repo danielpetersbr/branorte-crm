@@ -38,6 +38,10 @@ interface CarrinhoItem {
   foto_url: string | null   // foto do equipamento (mostra no preview, igual orçamento real)
   /** Quando true, motor sempre cotado como trifásico (inversor faz mono = trif). */
   usa_inversor?: boolean
+  /** Função escolhida pelo vendedor (alimentação/descarga/etc). */
+  funcao_selecionada?: string | null
+  /** Quando true, funcao_selecionada NÃO aparece no PDF (uso interno apenas). */
+  ocultar_funcao_no_pdf?: boolean
 }
 
 type TensaoMotor = 220 | 380 | 660 | null
@@ -210,7 +214,20 @@ export function OrcamentoMontar() {
   const totalEquip = totalItems + valorAcessorios   // entra no "VALOR TOTAL DE EQUIPAMENTOS"
   const totalGeral = totalEquip + totalMotores
 
-  function adicionarItem(item: CatalogoItem) {
+  // Item pendente de escolha de função (modal). Null = nenhum modal aberto.
+  const [escolherFuncaoFor, setEscolherFuncaoFor] = useState<CatalogoItem | null>(null)
+
+  function adicionarItem(item: CatalogoItem, funcaoEscolhida?: string) {
+    // Se o item tem multiplas funcoes e o vendedor ainda nao escolheu,
+    // abre o modal pra escolher. Adicao real acontece no callback do modal.
+    if (
+      item.funcao_opcoes && item.funcao_opcoes.length > 1
+      && funcaoEscolhida === undefined
+    ) {
+      setEscolherFuncaoFor(item)
+      return
+    }
+
     const specs = item.specs || []
     const motorIncluso = motorJaInclusoNoItem(specs)
 
@@ -222,11 +239,19 @@ export function OrcamentoMontar() {
       ? acharMotorCompativel(motores, Number(item.motor_padrao_cv), item.motor_padrao_polos, voltagemEfetiva)
       : null
 
+    // Se a funcao deve aparecer no PDF, sufixa no nome_custom. Caso contrario,
+    // preserva o nome generico (funcao fica so em funcao_selecionada, uso interno).
+    const funcao = funcaoEscolhida ?? (item.funcao_opcoes?.[0] ?? null)
+    const nomeCustom = funcao && !item.ocultar_funcao_no_pdf
+      ? `${item.nome_curto} (${funcao})`
+      : null
+
     setCarrinho(c => [...c, {
       uid: gerarUid(),
       catalogo_id: item.id,
       categoria: item.categoria,
       nome: item.nome_curto,
+      nome_custom: nomeCustom,
       specs,
       qtd: 1,
       valor: Number(item.valor),
@@ -238,6 +263,8 @@ export function OrcamentoMontar() {
       motor_valor_unit: motorIncluso ? 0 : (motorMatch ? Number(motorMatch.valor) : 0),
       foto_url: item.foto_url || null,
       usa_inversor: !!item.usa_inversor,
+      funcao_selecionada: funcao,
+      ocultar_funcao_no_pdf: !!item.ocultar_funcao_no_pdf,
     }])
   }
 
@@ -734,6 +761,59 @@ export function OrcamentoMontar() {
         onRemove={() => { setAcessorios(null); setAcessoriosOpen(false) }}
       />
 
+      {/* Modal de escolha de função — aberto quando o item tem várias funções
+          (ex: transportador → alimentação/descarga/etc) */}
+      {escolherFuncaoFor && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+          onClick={() => setEscolherFuncaoFor(null)}
+        >
+          <div
+            className="bg-bg border border-border rounded-xl max-w-md w-full shadow-2xl overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 border-b border-border flex items-start gap-3">
+              <Package className="h-5 w-5 text-accent shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <div className="text-[10px] uppercase tracking-wider text-accent font-bold">
+                  Escolha a função
+                </div>
+                <div className="text-[14px] font-bold text-ink leading-tight">
+                  {escolherFuncaoFor.nome_curto}
+                </div>
+                {escolherFuncaoFor.ocultar_funcao_no_pdf && (
+                  <div className="text-[10px] text-ink-faint mt-1">
+                    A função é só pra produção — não aparece no PDF final.
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => setEscolherFuncaoFor(null)}
+                className="text-ink-faint hover:text-ink p-1 -m-1"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-3 max-h-[60vh] overflow-y-auto flex flex-col gap-1.5">
+              {escolherFuncaoFor.funcao_opcoes.map(fn => (
+                <button
+                  key={fn}
+                  onClick={() => {
+                    const item = escolherFuncaoFor
+                    setEscolherFuncaoFor(null)
+                    adicionarItem(item, fn)
+                  }}
+                  className="text-left px-3 py-2 rounded-lg border border-border hover:border-accent hover:bg-surface-2 transition-all text-[12px] font-medium text-ink flex items-center gap-2"
+                >
+                  <Plus className="h-3.5 w-3.5 text-accent shrink-0" />
+                  <span className="flex-1">{fn}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Feedback de sucesso — toast premium */}
       {sucesso && (
         <div className="fixed bottom-6 right-6 z-50 bg-bg border border-success rounded-xl shadow-2xl max-w-sm w-[360px] overflow-hidden">
@@ -1038,6 +1118,14 @@ function CardItem({
               {item.categoria}
             </span>
             {item.is_oficial && <Check className="h-2.5 w-2.5 text-success shrink-0" />}
+            {item.funcao_opcoes && item.funcao_opcoes.length > 1 && (
+              <span
+                className="text-[8px] uppercase font-bold px-1 py-[1px] rounded bg-info/20 text-info border border-info/30 shrink-0"
+                title={`Escolha de função obrigatória ao adicionar: ${item.funcao_opcoes.join(', ')}`}
+              >
+                {item.funcao_opcoes.length} opções
+              </span>
+            )}
           </div>
           <div className="text-[13px] font-semibold text-ink leading-snug" title={item.nome_curto}>
             {item.nome_curto}
