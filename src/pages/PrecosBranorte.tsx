@@ -28,8 +28,8 @@ const SUBCATEGORIA_LABEL: Record<string, string> = {
   HELICOIDAL: 'Tipo Calha (TH)',
   MARTELO: 'Martelo',
   VERTICAL: 'Vertical',
-  HORIZONTAL_CPULMAO: 'Horizontal C/ Pulmão',
-  HORIZONTAL_SPULMAO: 'Horizontal S/ Pulmão',
+  HORIZONTAL_SPULMAO: 'Horizontal — Sem Pulmão',
+  HORIZONTAL_CPULMAO: 'Horizontal — Com Pulmão',
   COMPLETO: 'Completo',
   COMPONENTE: 'Componente (Pé/Padrão)',
   RECEPCAO: 'Recepção',
@@ -39,9 +39,31 @@ const SUBCATEGORIA_LABEL: Record<string, string> = {
   DIVERSOS: 'Diversos',
 }
 
+// Ordem fixa por categoria — VERTICAL → S/Pulmão → C/Pulmão
+const SUBCAT_ORDER: Record<string, string[]> = {
+  MISTURADOR: ['VERTICAL', 'HORIZONTAL_SPULMAO', 'HORIZONTAL_CPULMAO'],
+  TRANSPORTADOR: ['CHUPIM', 'HELICOIDAL'],
+  SILO: ['RACAO', 'MILHO'],
+  CAIXA: ['RECEPCAO', 'PICADOS'],
+  ELEVADOR: ['COMPLETO', 'COMPONENTE'],
+}
+
 function formatBRL(v: number | null): string {
   if (v == null) return '—'
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
+}
+
+function formatLitros(v: number | null): string {
+  if (v == null) return '—'
+  return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(v) + ' L'
+}
+
+function formatPeso(kg: number | null): string {
+  if (kg == null) return '—'
+  if (kg >= 1000) {
+    return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(kg / 1000) + ' ton'
+  }
+  return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(kg) + ' kg'
 }
 
 // Editor inline de campo numerico (valor)
@@ -98,44 +120,190 @@ function ValorEditor({ id, field, valor }: { id: number; field: keyof PrecoBrano
   )
 }
 
-function TabelaPrecos({ items, mostrarMotor }: { items: PrecoBranorte[]; mostrarMotor: boolean }) {
+const TH = 'text-left px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider whitespace-nowrap text-ink-muted'
+const THR = 'text-right px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider whitespace-nowrap text-ink-muted'
+const TD = 'px-3 py-1.5'
+
+// SILOS: colunas geométricas dedicadas
+function TabelaSilos({ items }: { items: PrecoBranorte[] }) {
   if (items.length === 0) return null
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-[12px]">
-        <thead className="bg-surface-2/50 text-ink-muted sticky top-0">
+        <thead className="bg-surface-2/50 sticky top-0">
           <tr>
-            <th className="text-left px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider w-32">Código</th>
-            <th className="text-left px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Descrição</th>
-            <th className="text-left px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Capacidade</th>
-            <th className="text-left px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Potência</th>
-            <th className="text-right px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Equipamento</th>
-            {mostrarMotor && (
-              <>
-                <th className="text-right px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">+ Trif</th>
-                <th className="text-right px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">+ Mono</th>
-              </>
-            )}
-            <th className="text-left px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Obs.</th>
+            <th className={TH + ' w-32'}>Código</th>
+            <th className={TH}>Descrição</th>
+            <th className={THR}>Capacidade</th>
+            <th className={THR}>Volume</th>
+            <th className={THR}>⌀ Diâm.</th>
+            <th className={THR}>Altura</th>
+            <th className={THR}>Anéis</th>
+            <th className={TH}>Funil</th>
+            <th className={THR}>Equipamento</th>
           </tr>
         </thead>
         <tbody>
           {items.map(it => (
             <tr key={it.id} className="border-t border-border/40 hover:bg-surface-2/30">
-              <td className="px-3 py-1.5 text-ink-muted font-mono text-[11px]">
+              <td className={TD + ' text-ink-muted font-mono text-[11px] font-semibold'}>
                 {it.codigo || <span className="text-ink-faint italic">—</span>}
               </td>
-              <td className="px-3 py-1.5 text-ink font-medium">{it.descricao}</td>
-              <td className="px-3 py-1.5 text-ink-muted text-[11px]">{it.capacidade || '—'}</td>
-              <td className="px-3 py-1.5 text-ink-muted text-[11px]">{it.potencia || '—'}</td>
-              <td className="px-3 py-1.5"><ValorEditor id={it.id} field="valor_equipamento" valor={it.valor_equipamento} /></td>
+              <td className={TD + ' text-ink font-medium'}>{it.descricao}</td>
+              <td className={TD + ' text-right tabular-nums text-[11px] text-warning font-bold'}>
+                {it.capacidade_ton ? `${Number(it.capacidade_ton).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ton` : '—'}
+              </td>
+              <td className={TD + ' text-right tabular-nums text-[11px] text-ink'}>
+                {it.volume_m3 ? `${Number(it.volume_m3).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} m³` : '—'}
+              </td>
+              <td className={TD + ' text-right tabular-nums text-[11px] text-ink-muted'}>
+                {it.diametro_m ? `${Number(it.diametro_m).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m` : '—'}
+              </td>
+              <td className={TD + ' text-right tabular-nums text-[11px] text-ink-muted'}>
+                {it.altura_m ? `${Number(it.altura_m).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m` : '—'}
+              </td>
+              <td className={TD + ' text-right tabular-nums text-[11px] text-ink-muted'}>
+                {it.aneis_qtd ?? '—'}
+              </td>
+              <td className={TD + ' text-[11px]'}>
+                {it.funil_tipo === 'PLANO'
+                  ? <span className="px-1.5 py-0.5 rounded bg-info/20 text-info font-bold text-[10px]">PLANO</span>
+                  : it.funil_tipo
+                    ? <span className="px-1.5 py-0.5 rounded bg-surface-2 border border-border font-bold text-[10px]">{it.funil_tipo}°</span>
+                    : '—'}
+              </td>
+              <td className={TD}><ValorEditor id={it.id} field="valor_equipamento" valor={it.valor_equipamento} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// CAIXAS: volume + peso milho (0,65)
+function TabelaCaixas({ items }: { items: PrecoBranorte[] }) {
+  if (items.length === 0) return null
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[12px]">
+        <thead className="bg-surface-2/50 sticky top-0">
+          <tr>
+            <th className={TH + ' w-36'}>Código</th>
+            <th className={TH}>Descrição</th>
+            <th className={THR}>Volume</th>
+            <th className={THR} title="Peso de milho picado (densidade 0,65 g/cm³)">Milho · 0,65</th>
+            <th className={TH}>Dimensões (mm)</th>
+            <th className={THR}>Equipamento</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map(it => (
+            <tr key={it.id} className="border-t border-border/40 hover:bg-surface-2/30">
+              <td className={TD + ' text-ink-muted font-mono text-[11px] font-semibold'}>
+                {it.codigo || <span className="text-ink-faint italic">—</span>}
+              </td>
+              <td className={TD + ' text-ink font-medium'}>
+                {it.descricao.replace(/\s*-\s*\d+\s*M[³3]?\s*$/, '').replace(/\s*-\s*\d+\s*$/, '')}
+              </td>
+              <td className={TD + ' text-right tabular-nums text-[11px] text-ink'}>
+                {formatLitros(it.capacidade_litros ? Number(it.capacidade_litros) : null)}
+              </td>
+              <td className={TD + ' text-right tabular-nums text-[11px] text-warning font-bold'}>
+                {formatPeso(it.capacidade_kg_milho ? Number(it.capacidade_kg_milho) : null)}
+              </td>
+              <td className={TD + ' text-ink-faint text-[10px] font-mono'}>{it.dimensoes || '—'}</td>
+              <td className={TD}><ValorEditor id={it.id} field="valor_equipamento" valor={it.valor_equipamento} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// MISTURADORES: litros + kg prática + 3 valores motor
+function TabelaMisturadores({ items }: { items: PrecoBranorte[] }) {
+  if (items.length === 0) return null
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[12px]">
+        <thead className="bg-surface-2/50 sticky top-0">
+          <tr>
+            <th className={TH + ' w-32'}>Código</th>
+            <th className={THR}>Capacidade</th>
+            <th className={THR} title="Capacidade prática em kg (≈ litros ÷ 2)">Kg prática</th>
+            <th className={TH}>Potência</th>
+            <th className={THR}>Equipamento</th>
+            <th className={THR}>+ Trif</th>
+            <th className={THR}>+ Mono</th>
+            <th className={THR}>+ Redutor</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map(it => (
+            <tr key={it.id} className="border-t border-border/40 hover:bg-surface-2/30">
+              <td className={TD + ' text-ink-muted font-mono text-[11px] font-semibold'}>
+                {it.codigo || <span className="text-ink-faint italic">—</span>}
+              </td>
+              <td className={TD + ' text-right tabular-nums text-[11px] text-ink'}>
+                {formatLitros(it.capacidade_litros ? Number(it.capacidade_litros) : null)}
+              </td>
+              <td className={TD + ' text-right tabular-nums text-[11px] text-warning font-bold'}>
+                {formatPeso(it.capacidade_kg_pratica ? Number(it.capacidade_kg_pratica) : null)}
+              </td>
+              <td className={TD + ' text-ink-muted text-[11px]'}>{it.potencia || '—'}</td>
+              <td className={TD}><ValorEditor id={it.id} field="valor_equipamento" valor={it.valor_equipamento} /></td>
+              <td className={TD}><ValorEditor id={it.id} field="valor_com_motor_trif" valor={it.valor_com_motor_trif} /></td>
+              <td className={TD}><ValorEditor id={it.id} field="valor_com_motor_mono" valor={it.valor_com_motor_mono} /></td>
+              <td className={TD}><ValorEditor id={it.id} field="valor_com_motorredutor" valor={it.valor_com_motorredutor} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// Tabela genérica padrão (Transportador, Moinho, Elevador, Pré-limpeza, etc)
+function TabelaPrecos({ items, mostrarMotor }: { items: PrecoBranorte[]; mostrarMotor: boolean }) {
+  if (items.length === 0) return null
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[12px]">
+        <thead className="bg-surface-2/50 sticky top-0">
+          <tr>
+            <th className={TH + ' w-32'}>Código</th>
+            <th className={TH}>Descrição</th>
+            <th className={TH}>Capacidade</th>
+            <th className={TH}>Potência</th>
+            <th className={THR}>Equipamento</th>
+            {mostrarMotor && (
+              <>
+                <th className={THR}>+ Trif</th>
+                <th className={THR}>+ Mono</th>
+              </>
+            )}
+            <th className={TH}>Obs.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map(it => (
+            <tr key={it.id} className="border-t border-border/40 hover:bg-surface-2/30">
+              <td className={TD + ' text-ink-muted font-mono text-[11px]'}>
+                {it.codigo || <span className="text-ink-faint italic">—</span>}
+              </td>
+              <td className={TD + ' text-ink font-medium'}>{it.descricao}</td>
+              <td className={TD + ' text-ink-muted text-[11px]'}>{it.capacidade || '—'}</td>
+              <td className={TD + ' text-ink-muted text-[11px]'}>{it.potencia || '—'}</td>
+              <td className={TD}><ValorEditor id={it.id} field="valor_equipamento" valor={it.valor_equipamento} /></td>
               {mostrarMotor && (
                 <>
-                  <td className="px-3 py-1.5"><ValorEditor id={it.id} field="valor_com_motor_trif" valor={it.valor_com_motor_trif} /></td>
-                  <td className="px-3 py-1.5"><ValorEditor id={it.id} field="valor_com_motor_mono" valor={it.valor_com_motor_mono} /></td>
+                  <td className={TD}><ValorEditor id={it.id} field="valor_com_motor_trif" valor={it.valor_com_motor_trif} /></td>
+                  <td className={TD}><ValorEditor id={it.id} field="valor_com_motor_mono" valor={it.valor_com_motor_mono} /></td>
                 </>
               )}
-              <td className="px-3 py-1.5 text-ink-faint text-[10px]">
+              <td className={TD + ' text-ink-faint text-[10px]'}>
                 {[it.dimensoes, it.observacoes].filter(Boolean).join(' · ')}
               </td>
             </tr>
@@ -144,6 +312,16 @@ function TabelaPrecos({ items, mostrarMotor }: { items: PrecoBranorte[]; mostrar
       </table>
     </div>
   )
+}
+
+// Dispatcher por categoria
+function TabelaPorCategoria({ items, mostrarMotor }: { items: PrecoBranorte[]; mostrarMotor: boolean }) {
+  if (items.length === 0) return null
+  const cat = items[0].categoria
+  if (cat === 'SILO') return <TabelaSilos items={items} />
+  if (cat === 'CAIXA') return <TabelaCaixas items={items} />
+  if (cat === 'MISTURADOR') return <TabelaMisturadores items={items} />
+  return <TabelaPrecos items={items} mostrarMotor={mostrarMotor} />
 }
 
 export function PrecosBranorte() {
@@ -164,7 +342,7 @@ export function PrecosBranorte() {
     })
   }, [precos, busca, catSelecionada])
 
-  // Agrupa por categoria > subcategoria
+  // Agrupa por categoria > subcategoria, respeitando SUBCAT_ORDER
   const grupos = useMemo(() => {
     const map = new Map<string, Map<string | null, PrecoBranorte[]>>()
     for (const p of filtrados) {
@@ -173,7 +351,22 @@ export function PrecosBranorte() {
       if (!sub.has(p.subcategoria)) sub.set(p.subcategoria, [])
       sub.get(p.subcategoria)!.push(p)
     }
-    return map
+    // Reordena subcategorias conforme SUBCAT_ORDER
+    const ordered = new Map<string, Map<string | null, PrecoBranorte[]>>()
+    for (const [cat, subs] of map.entries()) {
+      const order = SUBCAT_ORDER[cat] ?? []
+      const sortedSub = new Map<string | null, PrecoBranorte[]>()
+      // Primeiro insere as subcategorias na ordem definida
+      for (const subName of order) {
+        if (subs.has(subName)) sortedSub.set(subName, subs.get(subName)!)
+      }
+      // Depois insere as remanescentes (sem ordem definida)
+      for (const [subName, items] of subs.entries()) {
+        if (!sortedSub.has(subName)) sortedSub.set(subName, items)
+      }
+      ordered.set(cat, sortedSub)
+    }
+    return ordered
   }, [filtrados])
 
   const categorias = useMemo(() => {
@@ -191,7 +384,6 @@ export function PrecosBranorte() {
   return (
     <div className="min-h-screen bg-bg">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-        {/* Header */}
         <div className="mb-5">
           <div className="flex items-center gap-2 mb-1">
             <BookOpen className="w-5 h-5 text-accent" />
@@ -203,7 +395,6 @@ export function PrecosBranorte() {
           </p>
         </div>
 
-        {/* Busca + filtros */}
         <div className="bg-surface border border-border rounded-lg p-3 mb-4 space-y-3">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-ink-faint" />
@@ -247,7 +438,6 @@ export function PrecosBranorte() {
           )}
         </div>
 
-        {/* Grupos */}
         <div className="space-y-4">
           {[...grupos.entries()].map(([cat, subs]) => (
             <div key={cat} className="bg-surface border border-border rounded-lg overflow-hidden">
@@ -271,7 +461,7 @@ export function PrecosBranorte() {
                         <span className="text-[10px] text-ink-faint ml-2">{items.length}</span>
                       </div>
                     )}
-                    <TabelaPrecos items={items} mostrarMotor={mostrarMotor} />
+                    <TabelaPorCategoria items={items} mostrarMotor={mostrarMotor} />
                   </div>
                 )
               })}
