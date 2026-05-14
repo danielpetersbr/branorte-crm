@@ -229,6 +229,7 @@ export function OrcamentoMontar() {
     motor_cv: number | null
     motor_polos: number | null
     descricao: string | null
+    foto_url: string | null
     enviarParaAprovacao: boolean
   }) {
     const motorMatch = data.motor_cv && data.motor_polos && motores
@@ -247,7 +248,7 @@ export function OrcamentoMontar() {
       motor_polos: data.motor_polos,
       motor_qtd: data.motor_cv ? 1 : 0,
       motor_valor_unit: motorMatch ? Number(motorMatch.valor) : 0,
-      foto_url: null,
+      foto_url: data.foto_url,
     }])
 
     // Se vendedor marcou pra enviar pro admin avaliar, grava em catalogo_items_pendentes
@@ -260,6 +261,7 @@ export function OrcamentoMontar() {
           motor_padrao_cv: data.motor_cv,
           motor_padrao_polos: data.motor_polos,
           descricao: data.descricao,
+          foto_url: data.foto_url,
           criado_por: profile?.id ?? null,
           criado_por_email: profile?.email ?? null,
         })
@@ -1630,6 +1632,7 @@ function CustomItemModal({
     motor_cv: number | null
     motor_polos: number | null
     descricao: string | null
+    foto_url: string | null
     enviarParaAprovacao: boolean
   }) => Promise<void>
 }) {
@@ -1641,18 +1644,52 @@ function CustomItemModal({
   const [descricao, setDescricao] = useState('')
   const [enviarParaAprovacao, setEnviarParaAprovacao] = useState(false)
   const [salvando, setSalvando] = useState(false)
+  const [fotoUrl, setFotoUrl] = useState<string | null>(null)
+  const [uploadingFoto, setUploadingFoto] = useState(false)
+  const [erroUpload, setErroUpload] = useState<string | null>(null)
 
   useEffect(() => {
     if (open) {
       setNome(''); setCategoria('CUSTOM'); setValor('')
       setMotorCv(''); setMotorPolos(''); setDescricao('')
       setEnviarParaAprovacao(false); setSalvando(false)
+      setFotoUrl(null); setUploadingFoto(false); setErroUpload(null)
     }
   }, [open])
 
   if (!open) return null
 
   const valido = nome.trim().length >= 3 && typeof valor === 'number' && valor > 0
+
+  async function handleUploadFoto(file: File) {
+    if (!file) return
+    if (file.size > 8 * 1024 * 1024) {
+      setErroUpload('Imagem muito grande (máx. 8MB)')
+      return
+    }
+    if (!file.type.startsWith('image/')) {
+      setErroUpload('Arquivo precisa ser uma imagem')
+      return
+    }
+    setErroUpload(null)
+    setUploadingFoto(true)
+    try {
+      const ext = (file.name.split('.').pop() || file.type.split('/').pop() || 'jpg').toLowerCase()
+      const ts = Date.now()
+      const rand = Math.random().toString(36).slice(2, 7)
+      const path = `custom/${ts}-${rand}.${ext}`
+      const { error: upErr } = await supabase.storage
+        .from('catalogo-fotos')
+        .upload(path, file, { upsert: false, contentType: file.type || undefined })
+      if (upErr) throw upErr
+      const { data: pub } = supabase.storage.from('catalogo-fotos').getPublicUrl(path)
+      setFotoUrl(pub.publicUrl)
+    } catch (err: any) {
+      setErroUpload(err?.message || 'Falha no upload')
+    } finally {
+      setUploadingFoto(false)
+    }
+  }
 
   async function handleSubmit() {
     if (!valido || salvando) return
@@ -1665,6 +1702,7 @@ function CustomItemModal({
         motor_cv: typeof motorCv === 'number' && motorCv > 0 ? motorCv : null,
         motor_polos: typeof motorPolos === 'number' && motorPolos > 0 ? motorPolos : null,
         descricao: descricao.trim() || null,
+        foto_url: fotoUrl,
         enviarParaAprovacao,
       })
     } finally {
@@ -1761,6 +1799,66 @@ function CustomItemModal({
               placeholder="Detalhes técnicos, observações..."
               className="w-full bg-surface-2 border border-border rounded px-2 py-1.5 text-[12px] text-ink min-h-[60px]"
             />
+          </div>
+
+          <div>
+            <label className="text-[10px] uppercase font-bold text-ink-muted block mb-1">Foto do produto (opcional)</label>
+            {fotoUrl ? (
+              <div className="flex items-center gap-3">
+                <img
+                  src={fotoUrl}
+                  alt="Pré-visualização"
+                  className="w-20 h-20 object-cover rounded border border-border bg-white"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[11px] text-success font-semibold flex items-center gap-1">
+                    <Check className="h-3 w-3" />
+                    Imagem carregada
+                  </div>
+                  <button
+                    onClick={() => setFotoUrl(null)}
+                    className="text-[10px] text-danger hover:underline mt-0.5"
+                  >
+                    Remover e trocar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <label className={`flex items-center justify-center gap-2 px-3 py-3 border border-dashed border-border rounded text-[11px] font-semibold transition-all ${
+                uploadingFoto
+                  ? 'opacity-50 cursor-wait'
+                  : 'text-ink-muted hover:border-accent hover:text-accent cursor-pointer'
+              }`}>
+                {uploadingFoto ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Enviando...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-3.5 w-3.5" />
+                    Selecionar imagem (JPG/PNG até 8MB)
+                  </>
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={uploadingFoto}
+                  onChange={e => {
+                    const f = e.target.files?.[0]
+                    if (f) handleUploadFoto(f)
+                    e.target.value = ''  // permite reupload do mesmo arquivo
+                  }}
+                />
+              </label>
+            )}
+            {erroUpload && (
+              <div className="text-[10px] text-danger mt-1 flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" />
+                {erroUpload}
+              </div>
+            )}
           </div>
 
           <label className="flex items-start gap-2 text-[11px] text-ink-muted cursor-pointer p-2 rounded hover:bg-surface-2 transition-all">
