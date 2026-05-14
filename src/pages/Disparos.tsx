@@ -1392,6 +1392,7 @@ type AutomacaoConfig = {
   anti_duplicidade_horas: number
   intervalo_envio_min_seg: number
   intervalo_envio_max_seg: number
+  max_leads_por_vendedor_ciclo: number
   ultima_execucao_em: string | null
   proxima_execucao_em: string | null
   total_disparos_acum: number
@@ -1524,7 +1525,7 @@ function AutomacaoPegarPraMimCard() {
                 a cada <span className="text-ink font-medium tabular-nums">{cfg.intervalo_min}min</span>
               </span>
               <span className="text-ink-faint">·</span>
-              <span>até <span className="text-ink font-medium tabular-nums">{cfg.leads_por_ciclo}</span> leads/ciclo</span>
+              <span><span className="text-ink font-medium tabular-nums">{cfg.max_leads_por_vendedor_ciclo ?? 1}</span> lead/vendedor (cap {cfg.leads_por_ciclo})</span>
               <span className="text-ink-faint">·</span>
               <span className="tabular-nums text-ink">{horaResumo}</span>
               <span className="text-ink-faint">·</span>
@@ -1642,9 +1643,20 @@ function AutomacaoPegarPraMimCard() {
                 onBlur={e => salvarConfig.mutate({ intervalo_min: Math.max(1, Number(e.target.value) || 5) })} />
             </div>
             <div>
-              <label className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">Leads por ciclo</label>
+              <label className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">Leads por vendedor / ciclo</label>
+              <Input type="number" min={1} max={10} defaultValue={cfg.max_leads_por_vendedor_ciclo ?? 1}
+                onBlur={e => salvarConfig.mutate({ max_leads_por_vendedor_ciclo: Math.max(1, Number(e.target.value) || 1) })} />
+              <div className="text-[9px] text-ink-faint mt-0.5">
+                Cada vendedor recebe N leads a cada ciclo. 1 = 1 cliente/5min por vendedor.
+              </div>
+            </div>
+            <div>
+              <label className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">Cap total / ciclo</label>
               <Input type="number" min={1} max={100} defaultValue={cfg.leads_por_ciclo}
                 onBlur={e => salvarConfig.mutate({ leads_por_ciclo: Math.max(1, Number(e.target.value) || 10) })} />
+              <div className="text-[9px] text-ink-faint mt-0.5">
+                Limite máximo absoluto (caso tenha muitos vendedores).
+              </div>
             </div>
             <div>
               <label className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">Início</label>
