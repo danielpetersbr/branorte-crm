@@ -1390,6 +1390,8 @@ type AutomacaoConfig = {
   horario_fim: string
   dias_semana: number[]
   anti_duplicidade_horas: number
+  intervalo_envio_min_seg: number
+  intervalo_envio_max_seg: number
   ultima_execucao_em: string | null
   proxima_execucao_em: string | null
   total_disparos_acum: number
@@ -1570,6 +1572,21 @@ function AutomacaoPegarPraMimCard() {
               <textarea defaultValue={cfg.mensagem_template} rows={2}
                 onBlur={e => salvarConfig.mutate({ mensagem_template: e.target.value })}
                 className="w-full bg-surface-2 border border-border rounded px-2 py-1.5 text-ink text-[12px]" />
+            </div>
+            <div>
+              <label className="text-[10px] text-ink-faint uppercase">Intervalo entre envios (s)</label>
+              <div className="flex items-center gap-1">
+                <Input type="number" min={5} max={300} defaultValue={cfg.intervalo_envio_min_seg ?? 15}
+                  onBlur={e => salvarConfig.mutate({ intervalo_envio_min_seg: Math.max(5, Number(e.target.value) || 15) })}
+                  title="mínimo" />
+                <span className="text-ink-faint text-[11px]">a</span>
+                <Input type="number" min={5} max={300} defaultValue={cfg.intervalo_envio_max_seg ?? 30}
+                  onBlur={e => salvarConfig.mutate({ intervalo_envio_max_seg: Math.max(5, Number(e.target.value) || 30) })}
+                  title="máximo" />
+              </div>
+              <div className="text-[9px] text-ink-faint mt-0.5">
+                {cfg.intervalo_envio_min_seg ?? 15}–{cfg.intervalo_envio_max_seg ?? 30}s · ↓ rápido / ↑ anti-bot
+              </div>
             </div>
             <div className="col-span-2 md:col-span-4">
               <label className="text-[10px] text-ink-faint uppercase mb-1 block">Dias da semana</label>
