@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { Session } from '@supabase/supabase-js'
 
@@ -17,11 +17,13 @@ export interface AuthState {
   loading: boolean
 }
 
-/**
- * Hook que mantém sessão Supabase Auth + carrega user_profile do logado.
- * Usado por App.tsx pra decidir guard (login, /pendente, app).
- */
-export function useAuth(): AuthState & { signOut: () => Promise<void> } {
+type AuthContextValue = AuthState & { signOut: () => Promise<void> }
+
+const AuthContext = createContext<AuthContextValue | null>(null)
+
+// Provider único — fica no topo do app, executa getSession()/profile fetch UMA vez.
+// Todas as chamadas a useAuth() compartilham o mesmo estado, sem refetch ao trocar de página.
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
@@ -61,12 +63,11 @@ export function useAuth(): AuthState & { signOut: () => Promise<void> } {
     }
     let cancel = false
     // Só mostra full-page loading se ainda não temos profile (primeiro load).
-    // Refresh subsequente fica em background — não pisca tela.
     setProfile(prev => {
       if (!prev || prev.id !== userId) setLoading(true)
       return prev
     })
-    // Timeout de 8s: se a query travar (rede ruim, RLS lenta), libera a UI mesmo assim.
+    // Timeout de 8s: libera a UI se a query travar (rede ruim, RLS lenta).
     const timeoutId = window.setTimeout(() => {
       if (cancel) return
       setLoading(false)
@@ -106,5 +107,19 @@ export function useAuth(): AuthState & { signOut: () => Promise<void> } {
     setProfile(null)
   }
 
-  return { session, profile, loading, signOut }
+  return (
+    <AuthContext.Provider value={{ session, profile, loading, signOut }}>
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+/**
+ * Consome o AuthContext. Lança erro se chamado fora do AuthProvider.
+ * Todas as 14 chamadas espalhadas pelo app compartilham o mesmo estado.
+ */
+export function useAuth(): AuthContextValue {
+  const ctx = useContext(AuthContext)
+  if (!ctx) throw new Error('useAuth deve ser usado dentro de <AuthProvider>')
+  return ctx
 }

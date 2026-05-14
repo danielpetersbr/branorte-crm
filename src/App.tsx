@@ -24,7 +24,7 @@ import { Pendente } from '@/pages/Pendente'
 import { AdminUsuarios } from '@/pages/AdminUsuarios'
 import { Perfil } from '@/pages/Perfil'
 import { Disparos } from '@/pages/Disparos'
-import { useAuth } from '@/hooks/useAuth'
+import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 
 // Loga TODO erro de query/mutation no console. Evita falha silenciosa.
@@ -125,9 +125,11 @@ function AppRoutes() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
+      <AuthProvider>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </AuthProvider>
     </QueryClientProvider>
   )
 }
