@@ -280,6 +280,14 @@ export function OrcamentoMontar() {
   const [misturadorPickerOpen, setMisturadorPickerOpen] = useState(false)
   const [moinhoPickerOpen, setMoinhoPickerOpen] = useState(false)
   const [caixaPickerOpen, setCaixaPickerOpen] = useState(false)
+  const [siloPickerOpen, setSiloPickerOpen] = useState(false)
+  const [elevadorPickerOpen, setElevadorPickerOpen] = useState(false)
+  const [cacambaPickerOpen, setCacambaPickerOpen] = useState(false)
+  const [preLimpezaPickerOpen, setPreLimpezaPickerOpen] = useState(false)
+  const [peneiraPickerOpen, setPeneiraPickerOpen] = useState(false)
+  const [helicoidePickerOpen, setHelicoidePickerOpen] = useState(false)
+  const [balancaPickerOpen, setBalancaPickerOpen] = useState(false)
+  const [compactaPickerOpen, setCompactaPickerOpen] = useState(false)
 
   const { data: precos } = usePrecosBranorte()
   const transportadores = useMemo(
@@ -298,6 +306,16 @@ export function OrcamentoMontar() {
     () => (precos ?? []).filter(p => p.categoria === 'CAIXA'),
     [precos],
   )
+  const silosPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'SILO'), [precos])
+  const elevadoresPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'ELEVADOR'), [precos])
+  const cacambasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'CACAMBA'), [precos])
+  const preLimpezasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'PRE_LIMPEZA'), [precos])
+  const peneirasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'PENEIRA'), [precos])
+  const helicoidesPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'HELICOIDE'), [precos])
+  const balancasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'BALANCA'), [precos])
+  const compactasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'COMPACTA'), [precos])
+  const ensacadeirasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'ENSACADEIRA'), [precos])
+  const elevadorSacariaPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'ELEVADOR_SACARIA'), [precos])
 
   // Adiciona item ao carrinho direto de uma entrada de precos_branorte.
   // Faz lookup do catalogo_items linkado (via preco_branorte_id) pra puxar
@@ -820,6 +838,33 @@ export function OrcamentoMontar() {
                         qtd={caixasPreco.length}
                         onClick={() => setCaixaPickerOpen(true)}
                       />
+                    )}
+                    {(categoria === null || categoria === 'SILO') && silosPreco.length > 0 && (
+                      <MetaCard categoria="SILO" titulo="Silo" descricao="Ração e Milho (capacidade ton + geométrico)" qtd={silosPreco.length} onClick={() => setSiloPickerOpen(true)} />
+                    )}
+                    {(categoria === null || categoria === 'ELEVADOR') && elevadoresPreco.length > 0 && (
+                      <MetaCard categoria="ELEVADOR" titulo="Elevador de Caneca" descricao="EC-2310/4010/5013 — vários comprimentos" qtd={elevadoresPreco.length} onClick={() => setElevadorPickerOpen(true)} />
+                    )}
+                    {(categoria === null || categoria === 'CACAMBA') && cacambasPreco.length > 0 && (
+                      <MetaCard categoria="CACAMBA" titulo="Caçamba de Pesagem" descricao="BNCP600/1000/1900/3000" qtd={cacambasPreco.length} onClick={() => setCacambaPickerOpen(true)} />
+                    )}
+                    {(categoria === null || categoria === 'PRE-LIMPEZA' || categoria === 'PRE_LIMPEZA') && preLimpezasPreco.length > 0 && (
+                      <MetaCard categoria="PRE-LIMPEZA" titulo="Pré-Limpeza" descricao="3, 5, 7 e 10 ton/h" qtd={preLimpezasPreco.length} onClick={() => setPreLimpezaPickerOpen(true)} />
+                    )}
+                    {(categoria === null || categoria === 'PENEIRA') && peneirasPreco.length > 0 && (
+                      <MetaCard categoria="PENEIRA" titulo="Peneira de Moinho" descricao="5 tamanhos (7,5 a 50 CV)" qtd={peneirasPreco.length} onClick={() => setPeneiraPickerOpen(true)} />
+                    )}
+                    {(categoria === null || categoria === 'HELICOIDE') && helicoidesPreco.length > 0 && (
+                      <MetaCard categoria="HELICOIDE" titulo="Helicóide (peça)" descricao="⌀75 a ⌀300 — valor por metro" qtd={helicoidesPreco.length} onClick={() => setHelicoidePickerOpen(true)} />
+                    )}
+                    {(categoria === null || categoria === 'BALANCA') && balancasPreco.length > 0 && (
+                      <MetaCard categoria="BALANÇA" titulo="Balança" descricao="Eletrônica, Mecânica e Célula de Carga" qtd={balancasPreco.length} onClick={() => setBalancaPickerOpen(true)} />
+                    )}
+                    {(categoria === null || categoria === 'ENSACADEIRA') && ensacadeirasPreco.length > 0 && (
+                      <MetaCard categoria="ENSACADEIRA" titulo="Ensacadeira" descricao="Saco Aberto e Valvulado c/ painel" qtd={ensacadeirasPreco.length} onClick={() => setHelicoidePickerOpen(false)} />
+                    )}
+                    {(categoria === null || categoria === 'COMPACTA') && compactasPreco.length > 0 && (
+                      <MetaCard categoria="COMPACTA" titulo="Fábricas Compactas (pacote)" descricao="Linhas 01, 01M, 02, 02M (75 a 500 kg/h)" qtd={compactasPreco.length} onClick={() => setCompactaPickerOpen(true)} />
                     )}
                   </>
                 )}

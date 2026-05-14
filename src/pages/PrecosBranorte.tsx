@@ -328,35 +328,65 @@ function TabelaPrecos({ items, mostrarMotor }: { items: PrecoBranorte[]; mostrar
   )
 }
 
-// COMPACTAS: pacote fechado de equipamentos com preços diferenciados
-// (equipamento + motor trif/mono, e c/ balança incluído nas observações)
+// COMPACTAS: pacote fechado de equipamentos. 4 variantes de preço:
+//   - Só equipamento (sem motor, sem balança)
+//   - + Motor Trif / + Motor Mono
+//   - + Motor Trif + Balança / + Motor Mono + Balança
 function TabelaCompactas({ items }: { items: PrecoBranorte[] }) {
   if (items.length === 0) return null
+
+  function fmt(v: number | null): string {
+    if (v == null) return '—'
+    return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(v)
+  }
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-[12px]">
         <thead className="bg-surface-2/50 sticky top-0">
           <tr>
-            <th className={TH + ' w-44'}>Modelo</th>
-            <th className={TH} title="Produção em kg/h · Armazenamento em kg">Capacidade</th>
-            <th className={THR}>Só equipamento</th>
-            <th className={THR}>C/ Motor Trif.</th>
-            <th className={THR}>C/ Motor Mono.</th>
-            <th className={TH}>Versão c/ balança incluída</th>
+            <th className={TH + ' w-32'} rowSpan={2}>Linha</th>
+            <th className={THR + ' w-24'} rowSpan={2}>Produção</th>
+            <th className={THR + ' w-24'} rowSpan={2}>Armaz.</th>
+            <th className={THR + ' w-36'} rowSpan={2} title="Equipamento sem motor e sem balança">Só Equipamento</th>
+            <th className="text-center px-3 py-1 font-semibold uppercase text-[10px] tracking-wider whitespace-nowrap text-ink-muted border-l border-border/40" colSpan={2}>+ Motor</th>
+            <th className="text-center px-3 py-1 font-semibold uppercase text-[10px] tracking-wider whitespace-nowrap text-ink-muted border-l border-border/40" colSpan={2}>+ Motor + Balança</th>
+          </tr>
+          <tr>
+            <th className={THR + ' border-l border-border/40 text-info'}>Trifásico</th>
+            <th className={THR + ' text-warning'}>Monofásico</th>
+            <th className={THR + ' border-l border-border/40 text-info'}>Trifásico</th>
+            <th className={THR + ' text-warning'}>Monofásico</th>
           </tr>
         </thead>
         <tbody>
           {items.map(it => (
             <tr key={it.id} className="border-t border-border/40 hover:bg-surface-2/30">
               <td className={TD + ' text-ink font-mono font-bold text-[11px]'}>
-                {it.codigo || it.descricao}
+                {it.subcategoria?.includes('MASTER')
+                  ? <span className="px-1.5 py-0.5 rounded bg-warning/15 text-warning text-[10px] font-bold">Master</span>
+                  : <span className="px-1.5 py-0.5 rounded bg-info/15 text-info text-[10px] font-bold">Linha {it.subcategoria}</span>}
               </td>
-              <td className={TD + ' text-ink-muted text-[11px]'}>{it.capacidade || '—'}</td>
-              <td className={TD}><ValorEditor id={it.id} field="valor_equipamento" valor={it.valor_equipamento} /></td>
-              <td className={TD}><ValorEditor id={it.id} field="valor_com_motor_trif" valor={it.valor_com_motor_trif} /></td>
-              <td className={TD}><ValorEditor id={it.id} field="valor_com_motor_mono" valor={it.valor_com_motor_mono} /></td>
-              <td className={TD + ' text-[10px] text-ink-faint'}>
-                {it.observacoes || '—'}
+              <td className={TD + ' text-right tabular-nums text-[12px] text-ink font-semibold'}>
+                {it.producao_kgh ? `${it.producao_kgh} kg/h` : '—'}
+              </td>
+              <td className={TD + ' text-right tabular-nums text-[12px] text-ink'}>
+                {it.armazenamento_kg ? `${fmt(it.armazenamento_kg)} kg` : '—'}
+              </td>
+              <td className={TD + ' border-r border-border/40'}>
+                <ValorEditor id={it.id} field="valor_equipamento" valor={it.valor_equipamento} />
+              </td>
+              <td className={TD + ' border-l border-border/40 bg-info/5'}>
+                <ValorEditor id={it.id} field="valor_com_motor_trif" valor={it.valor_com_motor_trif} />
+              </td>
+              <td className={TD + ' bg-warning/5'}>
+                <ValorEditor id={it.id} field="valor_com_motor_mono" valor={it.valor_com_motor_mono} />
+              </td>
+              <td className={TD + ' border-l border-border/40 bg-info/10'}>
+                <ValorEditor id={it.id} field="valor_com_motor_trif_balanca" valor={it.valor_com_motor_trif_balanca} />
+              </td>
+              <td className={TD + ' bg-warning/10'}>
+                <ValorEditor id={it.id} field="valor_com_motor_mono_balanca" valor={it.valor_com_motor_mono_balanca} />
               </td>
             </tr>
           ))}

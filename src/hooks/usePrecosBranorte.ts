@@ -15,7 +15,11 @@ export interface PrecoBranorte {
   valor_equipamento: number | null
   valor_com_motor_trif: number | null
   valor_com_motor_mono: number | null
+  valor_com_motor_trif_balanca: number | null
+  valor_com_motor_mono_balanca: number | null
   valor_com_motorredutor: number | null
+  producao_kgh: number | null
+  armazenamento_kg: number | null
   dimensoes: string | null
   capacidade_litros: number | null
   capacidade_kg_milho: number | null
