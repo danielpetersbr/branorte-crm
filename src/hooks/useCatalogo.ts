@@ -31,6 +31,8 @@ export interface CatalogoItem {
   tamanho_codigo: string | null
   /** Quando true, a função escolhida não aparece no PDF final (uso interno apenas). */
   ocultar_funcao_no_pdf: boolean
+  /** FK ao catalogo_motores. Quando preenchido, o preço do motor é sempre o atual da tabela central. */
+  motor_id: number | null
 }
 
 export interface CatalogoMotor {

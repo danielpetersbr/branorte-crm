@@ -1098,6 +1098,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     }
                     const totalPct = arr.reduce((s, p) => s + (typeof p.pct === 'number' ? p.pct : 0), 0)
                     const totalParcelas = arr.reduce((s, p) => s + calcValor(p), 0)
+                    // Soma das parcelas em R$ vs total do orcamento (valida cobertura)
+                    const diffParcelas = totalGeral > 0 ? totalParcelas - totalGeral : 0
+                    const fechouValor = totalGeral > 0 && Math.abs(diffParcelas) < 0.01
                     return (
                       <div className="flex gap-1.5 items-start">
                         <span className="text-gray-400 mt-0.5">•</span>
@@ -1218,17 +1221,67 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                     </td>
                                     <td className="py-1 px-2 text-right">
                                       {!renderMode && onUpdateParcelas ? (
-                                        <div className="flex items-center justify-end gap-0.5">
-                                          <input
-                                            type="number" min={0} max={100} step={0.01}
-                                            value={p.pct ?? ''}
-                                            onChange={e => updateParcela(p.id, { pct: e.target.value === '' ? undefined : parseFloat(e.target.value), valor: undefined })}
-                                            placeholder="%"
-                                            className="w-14 text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded text-right"
-                                          />
-                                          <span className="text-gray-500 text-[11px]">% =</span>
-                                          <span className="font-bold tabular-nums text-gray-900 min-w-[60px] text-right">R$ {formatBRLBare(calcValor(p))}</span>
-                                        </div>
+                                        (() => {
+                                          // Tipo do input: se a parcela ja tem valor manual em R$, usa modo R$.
+                                          // Default = %. Vendedor pode alternar clicando no badge.
+                                          const modoValor = typeof p.valor === 'number'
+                                          return (
+                                            <div className="flex items-center justify-end gap-0.5">
+                                              {modoValor ? (
+                                                <input
+                                                  type="number" min={0} step={0.01}
+                                                  value={p.valor ?? ''}
+                                                  onChange={e => updateParcela(p.id, {
+                                                    valor: e.target.value === '' ? undefined : parseFloat(e.target.value),
+                                                    pct: undefined,
+                                                  })}
+                                                  placeholder="R$"
+                                                  className="w-20 text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded text-right"
+                                                />
+                                              ) : (
+                                                <input
+                                                  type="number" min={0} max={100} step={0.01}
+                                                  value={p.pct ?? ''}
+                                                  onChange={e => updateParcela(p.id, {
+                                                    pct: e.target.value === '' ? undefined : parseFloat(e.target.value),
+                                                    valor: undefined,
+                                                  })}
+                                                  placeholder="%"
+                                                  className="w-14 text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded text-right"
+                                                />
+                                              )}
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  // Alterna entre % e R$. Converte o valor atual mantendo equivalencia.
+                                                  if (modoValor) {
+                                                    // R$ → %: calcula % baseado no totalGeral
+                                                    const pct = totalGeral > 0 && typeof p.valor === 'number'
+                                                      ? Math.round((p.valor / totalGeral) * 10000) / 100
+                                                      : 0
+                                                    updateParcela(p.id, { pct, valor: undefined })
+                                                  } else {
+                                                    // % → R$: calcula valor baseado no totalGeral
+                                                    const valor = typeof p.pct === 'number'
+                                                      ? Math.round((totalGeral * p.pct / 100) * 100) / 100
+                                                      : 0
+                                                    updateParcela(p.id, { valor, pct: undefined })
+                                                  }
+                                                }}
+                                                className={`text-[10px] px-1 py-0.5 rounded font-bold cursor-pointer transition-all ${
+                                                  modoValor
+                                                    ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                }`}
+                                                title="Alternar entre % e R$"
+                                              >
+                                                {modoValor ? 'R$' : '%'}
+                                              </button>
+                                              <span className="text-gray-500 text-[11px]">=</span>
+                                              <span className="font-bold tabular-nums text-gray-900 min-w-[60px] text-right">R$ {formatBRLBare(calcValor(p))}</span>
+                                            </div>
+                                          )
+                                        })()
                                       ) : (
                                         <span className="font-bold tabular-nums">R$ {formatBRLBare(calcValor(p))}</span>
                                       )}
@@ -1245,11 +1298,12 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                     )}
                                   </tr>
                                 ))}
-                                {/* Linha TOTAL — só no modo edit, e SÓ se soma != 100% (aviso de validação) */}
-                                {!renderMode && Math.abs(totalPct - 100) > 0.5 && (
+                                {/* Linha TOTAL — só no modo edit. Avisa quando a soma das parcelas
+                                    nao fecha com o total do orcamento (em R$, considerando tanto pct quanto valor manual). */}
+                                {!renderMode && !fechouValor && totalGeral > 0 && (
                                   <tr className="border-t border-amber-300 bg-amber-50 print:hidden">
                                     <td className="py-1 px-2 text-[10px] text-amber-800 italic" colSpan={3}>
-                                      ⚠️ Soma das parcelas: <strong>{totalPct.toFixed(2)}%</strong> (R$ {formatBRLBare(totalParcelas)}) — ajuste pra fechar 100%
+                                      ⚠️ Soma das parcelas: <strong>R$ {formatBRLBare(totalParcelas)}</strong> de R$ {formatBRLBare(totalGeral)} ({totalPct > 0 && `${totalPct.toFixed(2)}% · `}{diffParcelas > 0 ? '+' : ''}{formatBRLBare(diffParcelas)}) — ajuste pra fechar
                                     </td>
                                     {!renderMode && <td className="print:hidden"></td>}
                                   </tr>

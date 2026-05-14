@@ -81,3 +81,19 @@
     50%      { transform: scale(1.5); opacity: 0; }
   }
 }
+
+/* Blocos com data-no-break sao tratados pelo algoritmo de slicing do
+   preview-to-pdf.ts (html2canvas). Estas regras CSS sao GARANTIA EXTRA
+   para impressao nativa (Ctrl+P) e qualquer fallback que use o motor
+   de paginacao do browser. */
+[data-no-break] {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+@media print {
+  [data-no-break] {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+}

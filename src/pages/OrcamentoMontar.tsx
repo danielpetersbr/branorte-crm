@@ -9,14 +9,15 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import {
-  useCatalogoItems, useCatalogoMotores,
+  useCatalogoItems, useCatalogoMotores, useCatalogoAcessorios,
   agruparPorCategoria, acharMotorCompativel,
-  type CatalogoItem, type CatalogoMotor,
+  type CatalogoItem, type CatalogoMotor, type CatalogoAcessorio,
 } from '@/hooks/useCatalogo'
 import { FinalizarMontarModal, type CarrinhoSnapshot } from '@/components/FinalizarMontarModal'
 import { OrcamentoPreview, type ParcelaPagamento } from '@/components/OrcamentoPreview'
 import { useOrcamentoModelos, type OrcamentoModelo } from '@/hooks/useOrcamentoBuilder'
 import { useOrcamentoDraft } from '@/hooks/useOrcamentoDraft'
+import { useAuth } from '@/hooks/useAuth'
 
 type Voltagem = 'monofasico' | 'trifasico'
 type ModoVisao = 'preview' | 'edicao'
@@ -216,6 +217,58 @@ export function OrcamentoMontar() {
 
   // Item pendente de escolha de função (modal). Null = nenhum modal aberto.
   const [escolherFuncaoFor, setEscolherFuncaoFor] = useState<CatalogoItem | null>(null)
+  // Modal de "adicionar produto personalizado" (ad-hoc)
+  const [customOpen, setCustomOpen] = useState(false)
+  const { profile } = useAuth()
+
+  // Adiciona um item livre ao carrinho (nao precisa estar no catalogo).
+  async function adicionarItemCustomizado(data: {
+    nome: string
+    categoria: string
+    valor: number
+    motor_cv: number | null
+    motor_polos: number | null
+    descricao: string | null
+    enviarParaAprovacao: boolean
+  }) {
+    const motorMatch = data.motor_cv && data.motor_polos && motores
+      ? acharMotorCompativel(motores, data.motor_cv, data.motor_polos, voltagem)
+      : null
+    setCarrinho(c => [...c, {
+      uid: gerarUid(),
+      catalogo_id: -1,  // marker: item nao oficial / customizado
+      categoria: data.categoria || 'CUSTOM',
+      nome: data.nome,
+      specs: data.descricao ? [data.descricao] : [],
+      qtd: 1,
+      valor: data.valor,
+      valor_original: data.valor,
+      motor_cv: data.motor_cv,
+      motor_polos: data.motor_polos,
+      motor_qtd: data.motor_cv ? 1 : 0,
+      motor_valor_unit: motorMatch ? Number(motorMatch.valor) : 0,
+      foto_url: null,
+    }])
+
+    // Se vendedor marcou pra enviar pro admin avaliar, grava em catalogo_items_pendentes
+    if (data.enviarParaAprovacao) {
+      try {
+        await supabase.from('catalogo_items_pendentes').insert({
+          nome_curto: data.nome,
+          categoria: data.categoria || 'CUSTOM',
+          valor: data.valor,
+          motor_padrao_cv: data.motor_cv,
+          motor_padrao_polos: data.motor_polos,
+          descricao: data.descricao,
+          criado_por: profile?.id ?? null,
+          criado_por_email: profile?.email ?? null,
+        })
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[catalogo_items_pendentes] falha ao gravar:', err)
+      }
+    }
+  }
 
   function adicionarItem(item: CatalogoItem, funcaoEscolhida?: string) {
     // Se o item tem multiplas funcoes e o vendedor ainda nao escolheu,
@@ -492,6 +545,13 @@ export function OrcamentoMontar() {
                 </button>
               )}
             </div>
+            <button
+              onClick={() => setCustomOpen(true)}
+              className="w-full text-[11px] py-1.5 px-2 rounded font-semibold flex items-center justify-center gap-1.5 bg-accent/15 hover:bg-accent/25 text-accent border border-accent/30 transition-all"
+            >
+              <Plus className="h-3 w-3" />
+              Adicionar produto personalizado
+            </button>
 
             <div className="flex items-center gap-1.5 flex-wrap">
               <button
@@ -759,6 +819,17 @@ export function OrcamentoMontar() {
         onClose={() => setAcessoriosOpen(false)}
         onSave={cfg => { setAcessorios(cfg); setAcessoriosOpen(false) }}
         onRemove={() => { setAcessorios(null); setAcessoriosOpen(false) }}
+      />
+
+      {/* Modal de produto personalizado (ad-hoc) */}
+      <CustomItemModal
+        open={customOpen}
+        categorias={categorias.map(c => c.categoria)}
+        onClose={() => setCustomOpen(false)}
+        onAdd={async data => {
+          await adicionarItemCustomizado(data)
+          setCustomOpen(false)
+        }}
       />
 
       {/* Modal de escolha de função — aberto quando o item tem várias funções
@@ -1307,80 +1378,208 @@ function AcessoriosModal({
   onSave: (cfg: { pct: number; items: string[] }) => void
   onRemove: () => void
 }) {
+  const { data: catalogoAcc } = useCatalogoAcessorios()
   const [pct, setPct] = useState<number>(initial?.pct ?? 5)
-  const [itemsTxt, setItemsTxt] = useState<string>(
-    (initial?.items ?? [
-      'Painel elétrico',
-      'Caixa de comando',
-      'Suporte para bag',
-    ]).join('\n')
+  const [selecionados, setSelecionados] = useState<string[]>(
+    initial?.items ?? ['Painel elétrico', 'Caixa de comando', 'Suporte para bag']
   )
+  const [busca, setBusca] = useState('')
+  const [livre, setLivre] = useState('')
 
-  // Reseta ao abrir o modal pra pegar o estado atual
   useEffect(() => {
     if (open) {
       setPct(initial?.pct ?? 5)
-      setItemsTxt((initial?.items ?? ['Painel elétrico', 'Caixa de comando', 'Suporte para bag']).join('\n'))
+      setSelecionados(initial?.items ?? ['Painel elétrico', 'Caixa de comando', 'Suporte para bag'])
+      setBusca('')
+      setLivre('')
     }
   }, [open, initial])
 
+  // Top sugeridos (top 12 por ocorrencias)
+  const sugeridos = useMemo(() => {
+    const arr = (catalogoAcc ?? []).slice().sort((a, b) => b.ocorrencias - a.ocorrencias)
+    return arr.slice(0, 12)
+  }, [catalogoAcc])
+
+  const filtrados = useMemo(() => {
+    if (!catalogoAcc) return []
+    const q = busca.trim().toLowerCase()
+    if (!q) return []
+    return catalogoAcc
+      .filter(a => a.nome.toLowerCase().includes(q) && !selecionados.includes(a.nome))
+      .slice(0, 30)
+  }, [catalogoAcc, busca, selecionados])
+
   if (!open) return null
 
+  function toggleAcessorio(nome: string) {
+    setSelecionados(prev =>
+      prev.includes(nome) ? prev.filter(x => x !== nome) : [...prev, nome],
+    )
+  }
+
+  function removerSel(nome: string) {
+    setSelecionados(prev => prev.filter(x => x !== nome))
+  }
+
+  function adicionarLivre() {
+    const txt = livre.trim()
+    if (txt && !selecionados.includes(txt)) {
+      setSelecionados(prev => [...prev, txt])
+      setLivre('')
+    }
+  }
+
   function handleSalvar() {
-    const items = itemsTxt.split('\n').map(l => l.trim()).filter(Boolean)
-    onSave({ pct: Math.max(0, Math.min(100, pct)), items })
+    onSave({ pct: Math.max(0, Math.min(100, pct)), items: selecionados })
   }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-bg border border-border rounded-lg max-w-md w-full p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3">
+      <div className="bg-bg border border-border rounded-lg max-w-2xl w-full shadow-2xl flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-3 border-b border-border flex items-center justify-between">
           <h2 className="text-[15px] font-bold text-ink">Acessórios do orçamento</h2>
           <button onClick={onClose} className="text-ink-faint hover:text-ink">
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <p className="text-[11px] text-ink-muted mb-3">
-          O valor é calculado como uma <strong>porcentagem do total de equipamentos</strong>. Os itens listados aparecem como bullets na seção ACESSÓRIOS do orçamento.
-        </p>
-
-        <div className="space-y-3">
-          <div>
-            <label className="text-[11px] font-semibold text-ink-muted block mb-1">% sobre equipamentos</label>
-            <div className="flex items-center gap-2">
-              <Input
-                type="number"
-                min={0}
-                max={100}
-                step={0.5}
-                value={pct}
-                onChange={e => setPct(Number(e.target.value))}
-                className="w-24 text-center"
-              />
-              <span className="text-[12px] text-ink-muted">%</span>
-              <div className="text-[10px] text-ink-faint ml-auto">ex: 5% / 10% / 15%</div>
-            </div>
-          </div>
-
-          <div>
-            <label className="text-[11px] font-semibold text-ink-muted block mb-1">Itens (um por linha)</label>
-            <textarea
-              value={itemsTxt}
-              onChange={e => setItemsTxt(e.target.value)}
-              rows={8}
-              className="w-full bg-surface-2 border border-border rounded p-2 text-[11px] text-ink resize-none focus:outline-none focus:border-accent"
-              placeholder="Painel elétrico&#10;Caixa de comando&#10;Suporte para bag"
+        <div className="px-5 py-3 border-b border-border bg-surface-2/30">
+          <label className="text-[11px] font-semibold text-ink-muted block mb-1">
+            % sobre equipamentos (valor cobrado)
+          </label>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              step={0.5}
+              value={pct}
+              onChange={e => setPct(Number(e.target.value))}
+              className="w-24 text-center"
             />
+            <span className="text-[12px] text-ink-muted">%</span>
+            <div className="text-[10px] text-ink-faint ml-auto">ex: 5% / 10% / 15%</div>
           </div>
         </div>
 
-        <div className="flex gap-2 mt-4">
+        <div className="flex-1 overflow-y-auto p-5 space-y-3">
+          {/* Selecionados */}
+          {selecionados.length > 0 && (
+            <div>
+              <label className="text-[10px] uppercase font-bold text-success block mb-1.5">
+                Selecionados ({selecionados.length})
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {selecionados.map(nome => (
+                  <span
+                    key={nome}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-success/15 border border-success/30 text-[11px] text-ink"
+                  >
+                    {nome}
+                    <button
+                      onClick={() => removerSel(nome)}
+                      className="text-ink-faint hover:text-danger"
+                      title="Remover"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Sugeridos (top por uso) */}
+          {sugeridos.length > 0 && (
+            <div>
+              <label className="text-[10px] uppercase font-bold text-ink-muted block mb-1.5 flex items-center gap-1.5">
+                <Star className="h-3 w-3 text-warning" /> Mais usados nos orçamentos
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {sugeridos.map(a => {
+                  const ativo = selecionados.includes(a.nome)
+                  return (
+                    <button
+                      key={a.id}
+                      onClick={() => toggleAcessorio(a.nome)}
+                      className={`text-[11px] px-2 py-1 rounded-full border transition-all ${
+                        ativo
+                          ? 'bg-success text-white border-success'
+                          : 'bg-surface-2 border-border hover:border-accent text-ink-muted'
+                      }`}
+                      title={`Usado em ${a.ocorrencias} orçamentos`}
+                    >
+                      {ativo ? '✓ ' : '+ '}{a.nome}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Busca no catálogo */}
+          <div>
+            <label className="text-[10px] uppercase font-bold text-ink-muted block mb-1.5">
+              Buscar no catálogo ({catalogoAcc?.length ?? 0} acessórios)
+            </label>
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-ink-faint" />
+              <Input
+                value={busca}
+                onChange={e => setBusca(e.target.value)}
+                placeholder="Ex: bandeja, registro, sensor..."
+                className="pl-7"
+              />
+            </div>
+            {filtrados.length > 0 && (
+              <div className="mt-2 flex flex-col gap-0.5 max-h-48 overflow-y-auto border border-border rounded">
+                {filtrados.map(a => (
+                  <button
+                    key={a.id}
+                    onClick={() => toggleAcessorio(a.nome)}
+                    className="text-left px-2 py-1.5 hover:bg-surface-2 text-[11px] text-ink flex items-center justify-between gap-2 border-b border-border/30 last:border-b-0"
+                  >
+                    <span className="flex-1 truncate">{a.nome}</span>
+                    {a.ocorrencias > 0 && (
+                      <span className="text-[9px] text-ink-faint shrink-0">{a.ocorrencias}x</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Texto livre */}
+          <div>
+            <label className="text-[10px] uppercase font-bold text-ink-muted block mb-1.5">
+              Adicionar livre (não está no catálogo)
+            </label>
+            <div className="flex gap-1.5">
+              <Input
+                value={livre}
+                onChange={e => setLivre(e.target.value)}
+                placeholder="Digite e tecle Enter"
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); adicionarLivre() } }}
+                className="flex-1"
+              />
+              <button
+                onClick={adicionarLivre}
+                disabled={!livre.trim()}
+                className="px-3 py-1.5 bg-accent/15 hover:bg-accent/25 text-accent text-[11px] font-semibold rounded border border-accent/30 disabled:opacity-40"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-5 py-3 border-t border-border flex gap-2">
           <button
             onClick={handleSalvar}
             className="flex-1 bg-accent hover:bg-accent-700 text-white text-[12px] font-semibold py-2 rounded"
           >
-            Salvar
+            Salvar ({selecionados.length} {selecionados.length === 1 ? 'item' : 'itens'})
           </button>
           {initial && (
             <button
@@ -1395,6 +1594,197 @@ function AcessoriosModal({
             className="px-3 py-2 text-[12px] text-ink-muted hover:bg-surface-2 rounded"
           >
             Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Modal: adicionar produto personalizado (ad-hoc) ao carrinho
+// ──────────────────────────────────────────────────────────────────────────
+
+function CustomItemModal({
+  open, categorias, onClose, onAdd,
+}: {
+  open: boolean
+  categorias: string[]
+  onClose: () => void
+  onAdd: (data: {
+    nome: string
+    categoria: string
+    valor: number
+    motor_cv: number | null
+    motor_polos: number | null
+    descricao: string | null
+    enviarParaAprovacao: boolean
+  }) => Promise<void>
+}) {
+  const [nome, setNome] = useState('')
+  const [categoria, setCategoria] = useState('CUSTOM')
+  const [valor, setValor] = useState<number | ''>('')
+  const [motorCv, setMotorCv] = useState<number | ''>('')
+  const [motorPolos, setMotorPolos] = useState<number | ''>('')
+  const [descricao, setDescricao] = useState('')
+  const [enviarParaAprovacao, setEnviarParaAprovacao] = useState(false)
+  const [salvando, setSalvando] = useState(false)
+
+  useEffect(() => {
+    if (open) {
+      setNome(''); setCategoria('CUSTOM'); setValor('')
+      setMotorCv(''); setMotorPolos(''); setDescricao('')
+      setEnviarParaAprovacao(false); setSalvando(false)
+    }
+  }, [open])
+
+  if (!open) return null
+
+  const valido = nome.trim().length >= 3 && typeof valor === 'number' && valor > 0
+
+  async function handleSubmit() {
+    if (!valido || salvando) return
+    setSalvando(true)
+    try {
+      await onAdd({
+        nome: nome.trim(),
+        categoria: categoria || 'CUSTOM',
+        valor: Number(valor),
+        motor_cv: typeof motorCv === 'number' && motorCv > 0 ? motorCv : null,
+        motor_polos: typeof motorPolos === 'number' && motorPolos > 0 ? motorPolos : null,
+        descricao: descricao.trim() || null,
+        enviarParaAprovacao,
+      })
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-bg border border-border rounded-xl max-w-lg w-full shadow-2xl overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="px-4 py-3 border-b border-border flex items-start gap-3">
+          <Plus className="h-5 w-5 text-accent shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <div className="text-[10px] uppercase tracking-wider text-accent font-bold">Produto personalizado</div>
+            <div className="text-[14px] font-bold text-ink leading-tight">Adicionar item fora do catálogo</div>
+          </div>
+          <button onClick={onClose} className="text-ink-faint hover:text-ink p-1 -m-1">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto">
+          <div>
+            <label className="text-[10px] uppercase font-bold text-ink-muted block mb-1">Nome do produto *</label>
+            <Input
+              value={nome}
+              onChange={e => setNome(e.target.value)}
+              placeholder="Ex: Caixa metálica 800L com tampa"
+              autoFocus
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] uppercase font-bold text-ink-muted block mb-1">Categoria</label>
+              <select
+                value={categoria}
+                onChange={e => setCategoria(e.target.value)}
+                className="w-full bg-surface-2 border border-border rounded px-2 py-1.5 text-[12px] text-ink"
+              >
+                <option value="CUSTOM">CUSTOM (genérico)</option>
+                {categorias.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] uppercase font-bold text-ink-muted block mb-1">Valor unitário (R$) *</label>
+              <Input
+                type="number"
+                value={valor}
+                onChange={e => setValor(e.target.value ? Number(e.target.value) : '')}
+                placeholder="0,00"
+                min="0"
+                step="0.01"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] uppercase font-bold text-ink-muted block mb-1">Motor CV (opcional)</label>
+              <Input
+                type="number"
+                value={motorCv}
+                onChange={e => setMotorCv(e.target.value ? Number(e.target.value) : '')}
+                placeholder="Ex: 3"
+                min="0"
+                step="0.5"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase font-bold text-ink-muted block mb-1">Polos (opcional)</label>
+              <Input
+                type="number"
+                value={motorPolos}
+                onChange={e => setMotorPolos(e.target.value ? Number(e.target.value) : '')}
+                placeholder="Ex: 4"
+                min="2"
+                max="8"
+                step="2"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[10px] uppercase font-bold text-ink-muted block mb-1">Descrição / especificações (opcional)</label>
+            <textarea
+              value={descricao}
+              onChange={e => setDescricao(e.target.value)}
+              placeholder="Detalhes técnicos, observações..."
+              className="w-full bg-surface-2 border border-border rounded px-2 py-1.5 text-[12px] text-ink min-h-[60px]"
+            />
+          </div>
+
+          <label className="flex items-start gap-2 text-[11px] text-ink-muted cursor-pointer p-2 rounded hover:bg-surface-2 transition-all">
+            <input
+              type="checkbox"
+              checked={enviarParaAprovacao}
+              onChange={e => setEnviarParaAprovacao(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              <strong className="text-ink">Sugerir cadastro oficial</strong> · Envia esse item pro admin
+              avaliar e (se aprovado) adicionar ao catálogo permanente.
+            </span>
+          </label>
+        </div>
+
+        <div className="px-4 py-3 border-t border-border flex items-center justify-between gap-2">
+          <button onClick={onClose} className="px-3 py-2 text-[12px] text-ink-muted hover:bg-surface-2 rounded">
+            Cancelar
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!valido || salvando}
+            className="px-4 py-2 text-[12px] bg-accent hover:bg-accent-700 text-white font-semibold rounded disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+          >
+            {salvando ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Adicionando...
+              </>
+            ) : (
+              <>
+                <Plus className="h-3.5 w-3.5" />
+                Adicionar ao carrinho
+              </>
+            )}
           </button>
         </div>
       </div>
