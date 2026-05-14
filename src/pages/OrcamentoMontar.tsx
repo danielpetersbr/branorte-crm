@@ -866,6 +866,18 @@ export function OrcamentoMontar() {
               </button>
             </div>
             <div className="p-3 max-h-[60vh] overflow-y-auto flex flex-col gap-1.5">
+              {/* Opção "sem função" — adiciona o item sem nenhuma função/parêntese */}
+              <button
+                onClick={() => {
+                  const item = escolherFuncaoFor
+                  setEscolherFuncaoFor(null)
+                  adicionarItem(item, '')
+                }}
+                className="text-left px-3 py-2 rounded-lg border border-dashed border-border hover:border-accent hover:bg-surface-2 transition-all text-[12px] font-medium text-ink-muted italic flex items-center gap-2"
+              >
+                <Plus className="h-3.5 w-3.5 text-ink-faint shrink-0" />
+                <span className="flex-1">Sem função (deixar em branco)</span>
+              </button>
               {escolherFuncaoFor.funcao_opcoes.map(fn => (
                 <button
                   key={fn}
