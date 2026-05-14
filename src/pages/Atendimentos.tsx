@@ -380,7 +380,6 @@ export function Atendimentos() {
                     <th className="hidden xl:table-cell" title="Etiqueta atribuída no WhatsApp do vendedor">Etiqueta WA</th>
                     <th className="hidden 2xl:table-cell" title="Cliente clicou no botão FALAR COM CONSULTOR">Botão</th>
                     <th>Vendedor</th>
-                    <th>Status</th>
                     <th className="!text-right"></th>
                   </tr>
                 </thead>
@@ -600,13 +599,6 @@ export function Atendimentos() {
                             // Lead sem vendedor: dropdown (admin) ou botao "Pegar pra mim" (vendor)
                             return <AtribuirVendedorPicker auditoriaIds={ids} />
                           })()}
-                        </td>
-                        {/* STATUS DO VENDEDOR */}
-                        <td className="px-3 py-2.5 whitespace-nowrap">
-                          <StatusVendedorPicker
-                            value={r.status_vendedor ?? null}
-                            auditoriaIds={(r.auditoria_ids && r.auditoria_ids.length > 0) ? r.auditoria_ids : [r.id]}
-                          />
                         </td>
                         {/* AÇÕES */}
                         <td className="px-3 py-2.5 text-right whitespace-nowrap">
