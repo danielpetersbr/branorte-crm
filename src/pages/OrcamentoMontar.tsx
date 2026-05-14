@@ -19,6 +19,10 @@ import { useOrcamentoModelos, type OrcamentoModelo } from '@/hooks/useOrcamentoB
 import { useOrcamentoDraft } from '@/hooks/useOrcamentoDraft'
 import { useAuth } from '@/hooks/useAuth'
 import { usePrecosBranorte, type PrecoBranorte } from '@/hooks/usePrecosBranorte'
+import {
+  recomendarMotorChupim, FATOR_MATERIAL, FATOR_INCLINACAO,
+  type MaterialChupim, type InclinacaoChupim,
+} from '@/lib/calcChupim'
 
 type Voltagem = 'monofasico' | 'trifasico'
 type ModoVisao = 'preview' | 'edicao'
@@ -275,6 +279,10 @@ export function OrcamentoMontar() {
     }
   }
 
+  // Configuração de cálculo de potência do chupim (fórmula Branorte)
+  const [chupimMaterial, setChupimMaterial] = useState<MaterialChupim>('MILHO')
+  const [chupimInclinacao, setChupimInclinacao] = useState<InclinacaoChupim>(0)
+
   // Modais de pickers (cada categoria tem seu próprio meta-card)
   const [transportadorPickerOpen, setTransportadorPickerOpen] = useState(false)
   const [misturadorPickerOpen, setMisturadorPickerOpen] = useState(false)
@@ -358,8 +366,19 @@ export function OrcamentoMontar() {
 
     // Motor: lookup no catalogo_motores via cv+polos
     let motor_valor_unit = 0
-    const motor_polos = p.motor_polos ?? (ciLinkado?.motor_padrao_polos ?? 4)
-    const motor_cv_n = p.motor_cv ?? (ciLinkado?.motor_padrao_cv ? Number(ciLinkado.motor_padrao_cv) : null)
+    let motor_polos = p.motor_polos ?? (ciLinkado?.motor_padrao_polos ?? 4)
+    let motor_cv_n: number | null = p.motor_cv ?? (ciLinkado?.motor_padrao_cv ? Number(ciLinkado.motor_padrao_cv) : null)
+
+    // CHUPIM: aplica fórmula oficial Branorte (POT=(C+(Q*L*K)/200)*b*1,36)
+    // arredondando pro próximo motor maior. Substitui o motor padrão da planilha.
+    if (cat === 'TRANSPORTADOR' && p.subcategoria === 'CHUPIM') {
+      const rec = recomendarMotorChupim(p.descricao, p.capacidade, chupimMaterial, chupimInclinacao)
+      if (rec) {
+        motor_cv_n = rec.cvMotor
+        motor_polos = 4  // chupim sempre 4 polos
+      }
+    }
+
     if (motor_cv_n && motores) {
       const m = acharMotorCompativel(motores, Number(motor_cv_n), motor_polos, voltagem)
       if (m) motor_valor_unit = Number(m.valor)
@@ -1093,6 +1112,10 @@ export function OrcamentoMontar() {
         open={transportadorPickerOpen}
         transportadores={transportadores}
         catalogoItems={items ?? []}
+        material={chupimMaterial}
+        inclinacao={chupimInclinacao}
+        onMaterial={setChupimMaterial}
+        onInclinacao={setChupimInclinacao}
         onClose={() => setTransportadorPickerOpen(false)}
         onPick={p => {
           adicionarItemDePreco(p)
@@ -2220,11 +2243,17 @@ function CustomItemModal({
 // ──────────────────────────────────────────────────────────────────────────
 
 function TransportadorPickerModal({
-  open, transportadores, catalogoItems, onClose, onPick,
+  open, transportadores, catalogoItems,
+  material, inclinacao, onMaterial, onInclinacao,
+  onClose, onPick,
 }: {
   open: boolean
   transportadores: PrecoBranorte[]
   catalogoItems: CatalogoItem[]
+  material: MaterialChupim
+  inclinacao: InclinacaoChupim
+  onMaterial: (m: MaterialChupim) => void
+  onInclinacao: (i: InclinacaoChupim) => void
   onClose: () => void
   onPick: (p: PrecoBranorte) => void
 }) {
@@ -2336,6 +2365,40 @@ function TransportadorPickerModal({
           ))}
         </div>
 
+        {/* Configuração da fórmula de potência (Chupim) */}
+        {(tipo === 'todos' || tipo === 'CHUPIM') && (
+          <div className="px-4 py-2 border-b border-border bg-info/5 flex flex-wrap gap-3 items-center text-[11px]">
+            <span className="text-[10px] uppercase font-bold text-info">⚡ Cálculo de motor:</span>
+            <div className="flex items-center gap-1">
+              <span className="text-ink-muted">Material:</span>
+              <select
+                value={material}
+                onChange={e => onMaterial(e.target.value as MaterialChupim)}
+                className="text-[11px] px-2 py-0.5 bg-surface-2 border border-border rounded text-ink"
+              >
+                {(Object.keys(FATOR_MATERIAL) as MaterialChupim[]).map(k => (
+                  <option key={k} value={k}>{k} (K={FATOR_MATERIAL[k]})</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-ink-muted">Inclinação:</span>
+              <select
+                value={inclinacao}
+                onChange={e => onInclinacao(Number(e.target.value) as InclinacaoChupim)}
+                className="text-[11px] px-2 py-0.5 bg-surface-2 border border-border rounded text-ink"
+              >
+                {(Object.keys(FATOR_INCLINACAO).map(Number) as InclinacaoChupim[]).map(g => (
+                  <option key={g} value={g}>{g}° (b={FATOR_INCLINACAO[g]})</option>
+                ))}
+              </select>
+            </div>
+            <span className="text-[10px] text-ink-faint ml-auto">
+              POT = (0,4 + (Q·L·K)/200) × b × 1,36 → próximo motor maior
+            </span>
+          </div>
+        )}
+
         {/* Lista */}
         <div className="flex-1 overflow-y-auto">
           {filtrados.length === 0 ? (
@@ -2351,7 +2414,10 @@ function TransportadorPickerModal({
                   <th className="text-left px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Medida</th>
                   <th className="text-left px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Tipo</th>
                   <th className="text-left px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Produção</th>
-                  <th className="text-left px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Potência</th>
+                  <th className="text-left px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Pot. Planilha</th>
+                  <th className="text-left px-3 py-2 font-semibold uppercase text-[10px] tracking-wider bg-info/15" title="Calculado pela fórmula com material e inclinação selecionados">
+                    Motor Recomendado
+                  </th>
                   <th className="text-right px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Equipamento</th>
                   <th className="px-1 py-2"></th>
                 </tr>
@@ -2382,6 +2448,21 @@ function TransportadorPickerModal({
                     </td>
                     <td className="px-3 py-1.5 text-ink-muted text-[11px]">{p.capacidade || '—'}</td>
                     <td className="px-3 py-1.5 text-ink-muted text-[11px]">{p.potencia || '—'}</td>
+                    <td className="px-3 py-1.5 text-[11px] bg-info/5">
+                      {(() => {
+                        if (p.subcategoria !== 'CHUPIM') return <span className="text-ink-faint italic">—</span>
+                        const rec = recomendarMotorChupim(p.descricao, p.capacidade, material, inclinacao)
+                        if (!rec) return <span className="text-ink-faint italic">—</span>
+                        return (
+                          <span>
+                            <span className="font-bold text-info">{rec.cvMotor} CV</span>
+                            <span className="text-[9px] text-ink-faint ml-1">
+                              (calc {rec.cvCalculado.toFixed(2)})
+                            </span>
+                          </span>
+                        )
+                      })()}
+                    </td>
                     <td className="px-3 py-1.5 text-right tabular-nums font-bold text-ink">
                       {p.valor_equipamento
                         ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(p.valor_equipamento))
