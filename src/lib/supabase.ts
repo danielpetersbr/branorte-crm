@@ -1,7 +1,13 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://flwbeevtvjiouxdjmziv.supabase.co'
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsd2JlZXZ0dmppb3V4ZGpteml2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTEwNDA2NzYsImV4cCI6MjA2NjYxNjY3Nn0.HLYYomR0p-4MQ39rlvOekjOIqpH96tWc_qZ4M1t1irA'
+// SEM fallback hardcoded — força configuração via env. Se Vercel/local não
+// tiver VITE_SUPABASE_URL/KEY setados, a build/runtime falha cedo (visível)
+// em vez de silenciosamente usar credenciais antigas após rotação.
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY são obrigatórios. Configure em Vercel > Settings > Environment Variables.')
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
