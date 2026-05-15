@@ -756,7 +756,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             <div data-no-break className="group mt-3 border border-gray-300 rounded-md p-3 bg-white shadow-sm">
               <div className="flex items-baseline justify-between gap-2 mb-1.5">
                 <div className="font-bold text-[15.5px] text-gray-900">
-                  <span className="text-gray-900">{String.fromCharCode(65 + carrinho.length)} - {String(acessorios.items.length).padStart(2, '0')} — ACESSÓRIOS</span>
+                  <span className="text-gray-900">{String.fromCharCode(65 + carrinho.length)} — ACESSÓRIOS</span>
                 </div>
                 {!renderMode && (onEditAcessorios || onRemoveAcessorios) && (
                   <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
