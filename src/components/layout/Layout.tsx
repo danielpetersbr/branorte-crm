@@ -1,6 +1,7 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Sparkles, Package, Send, Zap, BookOpen } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Sparkles, Package, Zap, BookOpen, Settings } from 'lucide-react'
+import { useEffect, useState, Suspense } from 'react'
+import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { cn } from '@/lib/utils'
 import { useAtendimentoKpis } from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
@@ -52,13 +53,14 @@ const SECONDARY: NavItem[] = [
       { to: '/orcamentos/catalogo-admin', label: 'Catálogo (Admin)', icon: Shield },
       { to: '/orcamentos/motores', label: 'Motores (Preços)', icon: Zap },
       { to: '/orcamentos/precos', label: 'Tabela de Preços', icon: BookOpen },
+      { to: '/admin/transportador-funcoes', label: 'Funções do Transportador', icon: GitBranch },
       { to: '/orcamentos', label: 'Painel', icon: BarChart2 },
       { to: '/orcamentos/lista', label: 'Lista', icon: List },
     ],
   },
   { to: '/vendidos', label: 'Vendidos', icon: CheckCircle },
   { to: '/projeto', label: 'Projeto', icon: Factory },
-  { to: '/disparos', label: 'Disparos', icon: Send },
+  { to: '/disparos', label: 'Roteamento', icon: GitBranch },
 ]
 
 function useDarkMode(): [boolean, () => void] {
@@ -262,6 +264,7 @@ export function Layout() {
               {!collapsed && <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-4">Admin</div>}
               {collapsed && <div className="my-2 w-8 h-px bg-border" />}
               {renderItem({ to: '/admin/usuarios', label: 'Usuários', icon: Shield })}
+              {renderItem({ to: '/admin/transportador-funcoes', label: 'Funções Chupim', icon: Settings })}
             </>
           )}
         </nav>
@@ -297,7 +300,9 @@ export function Layout() {
       </aside>
 
       <main className="flex-1 min-w-0 min-h-screen pb-16 md:pb-0">
-        <Outlet />
+        <Suspense fallback={<PageLoading />}>
+          <Outlet />
+        </Suspense>
       </main>
 
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-bg/95 backdrop-blur border-t border-border flex items-center justify-around px-2 py-1.5 z-50">

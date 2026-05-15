@@ -1,33 +1,38 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from '@tanstack/react-query'
+import { lazy } from 'react'
 import { Layout } from '@/components/layout/Layout'
 import { Dashboard } from '@/pages/Dashboard'
-import { Analytics } from '@/pages/Analytics'
-import { Contacts } from '@/pages/Contacts'
-import { Assign } from '@/pages/Assign'
-import { Orcamentos } from '@/pages/Orcamentos'
-import { Vendidos } from '@/pages/Vendidos'
 import { Atendimentos } from '@/pages/Atendimentos'
-import { Funil } from '@/pages/Funil'
-import { FunilRelatorio } from '@/pages/FunilRelatorio'
-import { EtiquetasZap } from '@/pages/EtiquetasZap'
-import { EtiquetasZapGraficos } from '@/pages/EtiquetasZapGraficos'
-import { PainelEtiquetas } from '@/pages/PainelEtiquetas'
-import { OrcamentoBuilder } from '@/pages/OrcamentoBuilder'
-import { OrcamentoMontar } from '@/pages/OrcamentoMontar'
-import { CatalogoAdmin } from '@/pages/CatalogoAdmin'
-import { AtividadeDiaria } from '@/pages/AtividadeDiaria'
-import { Projeto } from '@/pages/Projeto'
 import { Login } from '@/pages/Login'
 import { Signup } from '@/pages/Signup'
 import { Pendente } from '@/pages/Pendente'
-import { AdminUsuarios } from '@/pages/AdminUsuarios'
-import { Perfil } from '@/pages/Perfil'
-import { Disparos } from '@/pages/Disparos'
-import { MotoresAdmin } from '@/pages/MotoresAdmin'
-import { PrecosBranorte } from '@/pages/PrecosBranorte'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
+
+// Páginas grandes ou pouco-acessadas vão lazy pra reduzir bundle inicial
+// (era 2.9MB tudo junto). Cada uma carrega só quando vendedor navega pra ela.
+const Analytics = lazy(() => import('@/pages/Analytics').then(m => ({ default: m.Analytics })))
+const Contacts = lazy(() => import('@/pages/Contacts').then(m => ({ default: m.Contacts })))
+const Assign = lazy(() => import('@/pages/Assign').then(m => ({ default: m.Assign })))
+const Orcamentos = lazy(() => import('@/pages/Orcamentos').then(m => ({ default: m.Orcamentos })))
+const Vendidos = lazy(() => import('@/pages/Vendidos').then(m => ({ default: m.Vendidos })))
+const Funil = lazy(() => import('@/pages/Funil').then(m => ({ default: m.Funil })))
+const FunilRelatorio = lazy(() => import('@/pages/FunilRelatorio').then(m => ({ default: m.FunilRelatorio })))
+const EtiquetasZap = lazy(() => import('@/pages/EtiquetasZap').then(m => ({ default: m.EtiquetasZap })))
+const EtiquetasZapGraficos = lazy(() => import('@/pages/EtiquetasZapGraficos').then(m => ({ default: m.EtiquetasZapGraficos })))
+const PainelEtiquetas = lazy(() => import('@/pages/PainelEtiquetas').then(m => ({ default: m.PainelEtiquetas })))
+const OrcamentoBuilder = lazy(() => import('@/pages/OrcamentoBuilder').then(m => ({ default: m.OrcamentoBuilder })))
+const OrcamentoMontar = lazy(() => import('@/pages/OrcamentoMontar').then(m => ({ default: m.OrcamentoMontar })))
+const CatalogoAdmin = lazy(() => import('@/pages/CatalogoAdmin').then(m => ({ default: m.CatalogoAdmin })))
+const AtividadeDiaria = lazy(() => import('@/pages/AtividadeDiaria').then(m => ({ default: m.AtividadeDiaria })))
+const Projeto = lazy(() => import('@/pages/Projeto').then(m => ({ default: m.Projeto })))
+const AdminUsuarios = lazy(() => import('@/pages/AdminUsuarios').then(m => ({ default: m.AdminUsuarios })))
+const AdminTransportadorFuncoes = lazy(() => import('@/pages/AdminTransportadorFuncoes'))
+const Perfil = lazy(() => import('@/pages/Perfil').then(m => ({ default: m.Perfil })))
+const Disparos = lazy(() => import('@/pages/Disparos').then(m => ({ default: m.Disparos })))
+const MotoresAdmin = lazy(() => import('@/pages/MotoresAdmin').then(m => ({ default: m.MotoresAdmin })))
+const PrecosBranorte = lazy(() => import('@/pages/PrecosBranorte').then(m => ({ default: m.PrecosBranorte })))
 
 // Loga TODO erro de query/mutation no console. Evita falha silenciosa.
 // Erros visuais aparecem no SyncIndicator da Atendimentos (e outras páginas podem opt-in).
@@ -88,6 +93,7 @@ function AppRoutes() {
   }
 
   // Aprovado → app
+  // Layout envolve <Outlet> em <Suspense> pra carregar chunks lazy de cada página.
   return (
     <Routes>
       <Route element={<Layout />}>
@@ -117,6 +123,9 @@ function AppRoutes() {
         )}
         {profile.role === 'admin' && (
           <Route path="/admin/usuarios" element={<AdminUsuarios />} />
+        )}
+        {profile.role === 'admin' && (
+          <Route path="/admin/transportador-funcoes" element={<AdminTransportadorFuncoes />} />
         )}
       </Route>
       <Route path="/login" element={<Navigate to="/" replace />} />

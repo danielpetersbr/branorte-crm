@@ -1,43 +1,11 @@
-import { useEffect, useMemo, useState, Fragment } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Card } from '@/components/ui/Card'
-import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
-import { Select } from '@/components/ui/Select'
-import { Badge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
-import { supabase, supabaseAuditoria } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Send, Play, Pause, Trash2, Plus, Users, Clock, AlertCircle, FlaskConical, Zap, Key, Copy, Check, Trash, Activity, Bot, RotateCw } from 'lucide-react'
-
-const SUPA_URL = 'https://flwbeevtvjiouxdjmziv.supabase.co'
-const EDGE_EXTERNAL = `${SUPA_URL}/functions/v1/dispatch-external`
-
-type ApiKey = {
-  id: string
-  nome: string
-  key_prefix: string
-  ativa: boolean
-  criado_em: string
-  ultima_uso_em: string | null
-  total_chamadas: number
-  notas: string | null
-}
-
-type ApiLog = {
-  id: string
-  api_key_nome: string | null
-  origem: string | null
-  campaign_id: string | null
-  status_code: number
-  total_contatos: number | null
-  total_atribuidos: number | null
-  total_duplicados: number | null
-  payload_resumo: any
-  erro: string | null
-  criado_em: string
-}
+import { GitBranch, Users, AlertCircle, Activity } from 'lucide-react'
 
 type Vendedor = {
   vendedor_nome: string
@@ -50,59 +18,9 @@ type Vendedor = {
   ultimo_envio_em: string | null
 }
 
-type Campanha = {
-  id: string
-  nome: string
-  mensagem_template: string
-  regra_distribuicao: 'igualitaria' | 'round_robin' | 'porcentagem' | 'manual'
-  porcentagens_json: Record<string, number> | null
-  status: 'rascunho' | 'ativa' | 'pausada' | 'concluida'
-  rate_max_por_hora: number
-  intervalo_min_seg: number
-  intervalo_max_seg: number
-  horario_inicio: string
-  horario_fim: string
-  dias_semana: number[]
-  criado_em: string
-  iniciado_em: string | null
-  concluido_em: string | null
-}
-
-type Lead = {
-  id: string
-  campaign_id: string
-  nome: string | null
-  telefone: string
-  vars_json: Record<string, any> | null
-  vendedor_atribuido: string | null
-  redirecionado_de: string | null
-  redirecionado_motivo: string | null
-  status: string
-  enviado_em: string | null
-  erro_msg: string | null
-}
-
-const STATUS_LABELS: Record<string, { txt: string; cor: string }> = {
-  pendente:    { txt: 'Pendente', cor: 'bg-slate-500/20 text-slate-300' },
-  enfileirado: { txt: 'Enfileirado', cor: 'bg-blue-500/20 text-blue-300' },
-  enviado:     { txt: 'Enviado', cor: 'bg-emerald-500/20 text-emerald-300' },
-  falhou:      { txt: 'Falhou', cor: 'bg-red-500/20 text-red-300' },
-  duplicado:   { txt: 'Duplicado', cor: 'bg-amber-500/20 text-amber-300' },
-  respondido:  { txt: 'Respondeu', cor: 'bg-purple-500/20 text-purple-300' },
-  cancelado:   { txt: 'Cancelado', cor: 'bg-slate-500/20 text-slate-300' },
-}
-
-function normalizaTelefone(raw: string): string {
-  const d = String(raw).replace(/[^\d]/g, '')
-  if (d.length === 11 || d.length === 10) return '55' + d
-  return d
-}
-
 export function Disparos() {
   const { profile } = useAuth()
   const qc = useQueryClient()
-  const [campSelecionada, setCampSelecionada] = useState<string | null>(null)
-  const [novaCampForm, setNovaCampForm] = useState(false)
 
   // Vendedores status
   const { data: vendedores, isLoading: loadingV } = useQuery<Vendedor[]>({
@@ -114,10 +32,8 @@ export function Disparos() {
     refetchInterval: 10000,
   })
 
-  // WhatsApp Web aberto/fechado + versão da extensão por vendedor
-  // Janela ampliada de 5min → 30min pra capturar quem pingou recentemente.
-  // diag.sem_wa_aberto = heartbeat de extensão viva mas WA Web fechado.
-  // diag.wpp_ready = WPPConnect hidratou (true = pronto pra disparar)
+  // Heartbeat da extensão por vendedor (só pra saber se está online/com WA aberto).
+  // Não dispara nada — é só sinal de disponibilidade pra roteamento.
   type Runtime = { ts: string; versao: string; semWa: boolean; heartbeatOnly: boolean; wppReady: boolean; semChatsHaTempo: boolean }
   const { data: vendorRuntime } = useQuery<Record<string, Runtime>>({
     queryKey: ['vendor-runtime'],
@@ -128,7 +44,6 @@ export function Disparos() {
         .gte('recebido_em', new Date(Date.now() - 30 * 60_000).toISOString())
         .order('recebido_em', { ascending: false })
         .limit(500)
-      // Conta pings dos últimos 5min por vendedor pra detectar "WA vazio há tempo"
       const pingsRecentes: Record<string, { total: number; comDados: number }> = {}
       const cincoMinAtras = Date.now() - 5 * 60_000
       for (const row of (data || []) as any[]) {
@@ -142,11 +57,8 @@ export function Disparos() {
       for (const row of (data || []) as any[]) {
         if (!mapa[row.vendedor_nome]) {
           const heartbeatOnly = !!row.diag?.heartbeat_only
-          // WPP está pronto se: o diag explicitamente diz, OU se tem chats/etiquetas
-          // (significa que o ping trouxe dados reais, não foi só heartbeat).
           const wppReady = row.diag?.wpp_ready === true
             || (!heartbeatOnly && ((row.etiquetas_count ?? 0) > 0 || (row.total_chats ?? 0) > 0))
-          // WA vazio há tempo: ≥5 pings nos últimos 5min, TODOS sem dados (suspeita logout)
           const pr = pingsRecentes[row.vendedor_nome] ?? { total: 0, comDados: 0 }
           const semChatsHaTempo = pr.total >= 5 && pr.comDados === 0
           mapa[row.vendedor_nome] = {
@@ -164,33 +76,21 @@ export function Disparos() {
     refetchInterval: 5000,
   })
 
-  // Status consolidado por vendedor:
-  // - desligado:     admin desligou no painel (v.online=false)
-  // - ativo:         pingou nos últimos 3min, versão OK, WA aberto com dados
-  // - aguardando:    extensão pingando mas WPP ainda não hidratou (heartbeat sem dados)
-  // - wa_fechado:    extensão viva, mas vendedor fechou WhatsApp Web
-  // - lento:         pingou entre 3-15min atrás
-  // - desconectado:  pingou > 15min OU nunca pingou
-  // - versao_antiga: pingou mas versão < 1.1 (sem suporte a disparo)
+  // Status consolidado por vendedor (apenas disponibilidade pra receber lead — não envia nada).
   type StatusVendedor = 'desligado' | 'ativo' | 'aguardando' | 'wa_fechado' | 'verificar_wa' | 'lento' | 'desconectado' | 'versao_antiga'
   function statusVendedor(v: Vendedor): { status: StatusVendedor; pingSec: number | null; versao: string | null } {
     const runtime = vendorRuntime?.[v.vendedor_nome]
     if (!v.online) return { status: 'desligado', pingSec: null, versao: runtime?.versao ?? null }
     if (!runtime) return { status: 'desconectado', pingSec: null, versao: null }
     const sec = (Date.now() - new Date(runtime.ts).getTime()) / 1000
-    // valida versao
     const [maj, min] = (runtime.versao || '0.0').split('.').map(n => parseInt(n, 10) || 0)
     const versaoOk = maj > 1 || (maj === 1 && min >= 1)
     if (!versaoOk) return { status: 'versao_antiga', pingSec: sec, versao: runtime.versao }
     if (sec >= 900) return { status: 'desconectado', pingSec: sec, versao: runtime.versao }
     if (sec >= 180) return { status: 'lento', pingSec: sec, versao: runtime.versao }
-    // ping recente — verifica subestado via diag
     if (runtime.semWa) return { status: 'wa_fechado', pingSec: sec, versao: runtime.versao }
-    // WA vazio há tempo (≥5 pings sem dados nos últimos 5min) — provável logout
     if (runtime.semChatsHaTempo) return { status: 'verificar_wa', pingSec: sec, versao: runtime.versao }
-    // Se WPP está pronto, vendedor pode disparar → ATIVO (mesmo que heartbeat)
     if (runtime.wppReady) return { status: 'ativo', pingSec: sec, versao: runtime.versao }
-    // Só fica "aguardando WA" se WPP ainda não hidratou
     if (runtime.heartbeatOnly) return { status: 'aguardando', pingSec: sec, versao: runtime.versao }
     return { status: 'ativo', pingSec: sec, versao: runtime.versao }
   }
@@ -202,32 +102,7 @@ export function Disparos() {
     return `há ${Math.round(sec / 3600)}h`
   }
 
-  // Modal de teste
-  const [testeVendedor, setTesteVendedor] = useState<string | null>(null)
-
-  // Campanhas
-  const { data: campanhas } = useQuery<Campanha[]>({
-    queryKey: ['dispatch-campaigns'],
-    queryFn: async () => {
-      const { data } = await supabase.from('dispatch_campaign').select('*').order('criado_em', { ascending: false }).limit(50)
-      return data || []
-    },
-    refetchInterval: 15000,
-  })
-
-  // Leads da campanha selecionada
-  const { data: leads } = useQuery<Lead[]>({
-    queryKey: ['dispatch-leads', campSelecionada],
-    queryFn: async () => {
-      if (!campSelecionada) return []
-      const { data } = await supabase.from('dispatch_lead').select('*').eq('campaign_id', campSelecionada).order('criado_em', { ascending: true }).limit(500)
-      return data || []
-    },
-    enabled: !!campSelecionada,
-    refetchInterval: 5000,
-  })
-
-  // Toggle vendedor online
+  // Toggle vendedor online — controla se ele entra no rodízio de leads
   const toggleVendedor = useMutation({
     mutationFn: async ({ nome, online }: { nome: string; online: boolean }) => {
       await supabase.from('vendor_dispatch_status').update({ online }).eq('vendedor_nome', nome)
@@ -235,7 +110,7 @@ export function Disparos() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['vendor-dispatch-status'] }),
   })
 
-  // Toggle vendedor bloqueado (não recebe nada nas distribuições)
+  // Toggle vendedor bloqueado — fica visível mas não recebe leads
   const toggleBloqueado = useMutation({
     mutationFn: async ({ nome, bloqueado }: { nome: string; bloqueado: boolean }) => {
       const upd: any = { bloqueado }
@@ -249,45 +124,26 @@ export function Disparos() {
     },
   })
 
-  // Update share_percent
-  const setShare = useMutation({
-    mutationFn: async ({ nome, percent }: { nome: string; percent: number }) => {
-      await supabase.from('vendor_dispatch_status').update({ share_percent: percent }).eq('vendedor_nome', nome)
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['vendor-dispatch-status'] }),
-  })
-
-  // Pausa/retoma campanha
-  const setCampStatus = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      await supabase.from('dispatch_campaign').update({ status }).eq('id', id)
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['dispatch-campaigns'] }),
-  })
-
   if (!profile) return <PageLoading />
   if (profile.role !== 'admin') {
     return (
       <div className="p-8 text-center">
         <AlertCircle className="h-12 w-12 text-warning mx-auto mb-2" />
         <h2 className="text-xl font-bold text-ink">Acesso restrito</h2>
-        <p className="text-ink-muted">Apenas administradores podem usar a Central de Disparo.</p>
+        <p className="text-ink-muted">Apenas administradores podem usar a Central de Roteamento.</p>
       </div>
     )
   }
 
   return (
     <div className="p-4 space-y-4">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-ink flex items-center gap-2">
-            <Send className="h-6 w-6 text-accent" /> Central de Disparo
-          </h1>
-          <p className="text-ink-muted text-sm">Envia mensagens pelo WhatsApp dos vendedores · sem API oficial</p>
-        </div>
-        <Button variant="primary" onClick={() => setNovaCampForm(v => !v)}>
-          <Plus className="h-4 w-4 mr-1" /> Nova campanha
-        </Button>
+      <header>
+        <h1 className="text-2xl font-bold text-ink flex items-center gap-2">
+          <GitBranch className="h-6 w-6 text-accent" /> Central de Roteamento
+        </h1>
+        <p className="text-ink-muted text-sm">
+          Define qual vendedor atende cada lead que cai na central. O envio da mensagem inicial fica por conta do ReplyAgent — esta página não dispara mensagens pela extensão dos vendedores.
+        </p>
       </header>
 
       {/* PAINEL VENDEDORES */}
@@ -313,25 +169,24 @@ export function Disparos() {
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
             {(vendedores ?? []).map(v => {
               const st = statusVendedor(v)
-              const podeDisparar = st.status === 'ativo'
               const stCfg = {
-                ativo:         { cor: 'border-emerald-500/40 bg-emerald-500/5',  dot: 'bg-emerald-400', txt: 'text-emerald-300', label: 'ATIVO',         hint: 'Pronto pra disparar' },
+                ativo:         { cor: 'border-emerald-500/40 bg-emerald-500/5',  dot: 'bg-emerald-400', txt: 'text-emerald-300', label: 'ATIVO',         hint: 'Disponível para receber leads' },
                 aguardando:    { cor: 'border-cyan-500/40 bg-cyan-500/5',        dot: 'bg-cyan-400',    txt: 'text-cyan-300',    label: 'AGUARDANDO WA', hint: 'Chrome ok, mas WA Web ainda carregando — peça pra abrir e logar' },
                 wa_fechado:    { cor: 'border-orange-500/40 bg-orange-500/5',    dot: 'bg-orange-400',  txt: 'text-orange-300',  label: 'WA FECHADO',    hint: 'Extensão viva mas WhatsApp Web foi fechado — peça pra abrir web.whatsapp.com' },
                 verificar_wa:  { cor: 'border-orange-500/40 bg-orange-500/5',    dot: 'bg-orange-400',  txt: 'text-orange-300',  label: 'VERIFICAR WA',  hint: 'Extensão viva, mas WhatsApp Web retorna 0 chats há vários minutos. Provavelmente deslogado — peça pra ele abrir web.whatsapp.com e escanear o QR code.' },
                 lento:         { cor: 'border-amber-500/40 bg-amber-500/5',      dot: 'bg-amber-400',   txt: 'text-amber-300',   label: 'LENTO',         hint: 'WA aberto mas resposta atrasada' },
                 versao_antiga: { cor: 'border-amber-500/40 bg-amber-500/5',      dot: 'bg-amber-400',   txt: 'text-amber-300',   label: 'RECARREGAR',    hint: 'Versão antiga — recarregar Chrome' },
                 desconectado:  { cor: 'border-red-500/30 bg-red-500/5',          dot: 'bg-red-400',     txt: 'text-red-300',     label: 'DESCONECTADO', hint: 'Sem ping recente — Chrome fechado ou PC dormindo' },
-                desligado:     { cor: 'border-border bg-surface-2/30',           dot: 'bg-slate-500',   txt: 'text-slate-400',   label: 'DESLIGADO',     hint: 'Admin desligou no painel' },
+                desligado:     { cor: 'border-border bg-surface-2/30',           dot: 'bg-slate-500',   txt: 'text-slate-400',   label: 'DESLIGADO',     hint: 'Admin desligou no painel — não recebe leads' },
               }[st.status]
               return (
               <div key={v.vendedor_nome} className={`border rounded-xl p-3 transition-all ${stCfg.cor}`}>
-                <div className="flex items-center justify-between mb-2.5">
+                <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <Avatar name={v.vendedor_nome} size="sm" />
                     <div className="min-w-0">
                       <div className="text-[13px] font-bold text-ink truncate">{v.vendedor_nome}</div>
-                      <div className="flex items-center gap-1.5 mt-0.5">
+                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                         <span className={`h-1.5 w-1.5 rounded-full ${stCfg.dot} ${st.status === 'ativo' ? 'animate-pulse' : ''}`} />
                         <span className={`text-[9px] font-bold tracking-wider ${stCfg.txt}`} title={stCfg.hint}>
                           {stCfg.label}
@@ -341,11 +196,14 @@ export function Disparos() {
                           <span className="text-[9px] text-ink-faint">· v{st.versao}</span>
                         )}
                       </div>
+                      <div className="mt-1 text-[10px] text-ink-muted">
+                        fatia: <span className="text-ink font-semibold tabular-nums">{Number(v.share_percent).toFixed(0)}%</span>
+                      </div>
                     </div>
                   </div>
                   <button
                     onClick={() => toggleVendedor.mutate({ nome: v.vendedor_nome, online: !v.online })}
-                    title={v.online ? 'Clique pra desligar' : 'Clique pra ligar'}
+                    title={v.online ? 'Clique pra desligar (sai do rodízio)' : 'Clique pra ligar (entra no rodízio)'}
                     className={`text-[9px] px-2 py-1 rounded-full font-bold tracking-wide transition-all flex-shrink-0 ${
                       v.online ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30' : 'bg-slate-700/50 text-slate-400 hover:bg-slate-600/50'
                     }`}
@@ -353,591 +211,30 @@ export function Disparos() {
                     {v.online ? '◉ LIGADO' : '○ DESLIG.'}
                   </button>
                 </div>
-
-                <div className="grid grid-cols-3 gap-1.5 mb-2">
-                  <div className="bg-surface-2/50 rounded-lg p-1.5 border border-border/40">
-                    <div className="text-[8px] text-ink-faint uppercase tracking-wider">Enviados hoje</div>
-                    <div className="text-ink font-bold text-[15px] tabular-nums leading-tight">{v.enviados_hoje}</div>
-                  </div>
-                  <div className="bg-surface-2/50 rounded-lg p-1.5 border border-border/40">
-                    <div className="text-[8px] text-ink-faint uppercase tracking-wider">Última hora</div>
-                    <div className="text-ink font-bold text-[13px] tabular-nums leading-tight">
-                      {v.enviados_ultima_hora}<span className="text-ink-faint text-[10px]">/{v.max_per_hour}</span>
-                    </div>
-                    <div className="h-0.5 bg-surface-1 rounded-full mt-0.5 overflow-hidden">
-                      <div className="h-full bg-accent transition-all" style={{ width: `${Math.min(100, (v.enviados_ultima_hora / Math.max(1, v.max_per_hour)) * 100)}%` }} />
-                    </div>
-                  </div>
-                  <div className="bg-surface-2/50 rounded-lg p-1.5 border border-border/40">
-                    <div className="text-[8px] text-ink-faint uppercase tracking-wider">Fatia de leads</div>
-                    <div className="text-ink font-bold text-[15px] tabular-nums leading-tight">{Number(v.share_percent).toFixed(0)}<span className="text-ink-faint text-[10px]">%</span></div>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => setTesteVendedor(v.vendedor_nome)}
-                  disabled={!podeDisparar}
-                  className={`w-full text-[10px] py-1.5 rounded-lg font-medium flex items-center justify-center gap-1.5 transition-all ${
-                    podeDisparar
-                      ? 'bg-accent/15 text-accent hover:bg-accent/25 border border-accent/40'
-                      : 'bg-surface-2/40 text-ink-faint border border-border cursor-not-allowed'
-                  }`}
-                  title={stCfg.hint}
-                >
-                  <FlaskConical className="h-3 w-3" />
-                  {podeDisparar ? 'Testar disparo' : stCfg.label.toLowerCase()}
-                </button>
               </div>
             )})}
           </div>
         )}
       </Card>
 
-      {/* FORM NOVA CAMPANHA */}
-      {novaCampForm && (
-        <Card className="p-4">
-          <NovaCampanhaForm
-            vendedores={vendedores ?? []}
-            onCancel={() => setNovaCampForm(false)}
-            onCreated={(id) => {
-              setNovaCampForm(false)
-              setCampSelecionada(id)
-              qc.invalidateQueries({ queryKey: ['dispatch-campaigns'] })
-            }}
-          />
-        </Card>
-      )}
-
       {/* DISTRIBUIÇÃO GLOBAL (% padrão) */}
       <DistribuicaoGlobalCard
         vendedores={vendedores ?? []}
         onToggleBloqueado={(nome, bloqueado) => toggleBloqueado.mutate({ nome, bloqueado })}
       />
-
-      {/* API EXTERNA (ReplyAgent, n8n etc.) */}
-      <AutomacaoPegarPraMimCard />
-
-      <ApiExternaCard />
-
-      {/* LISTA DE CAMPANHAS */}
-      <Card className="p-4">
-        <h2 className="text-sm font-semibold text-ink mb-3 flex items-center gap-2">
-          <Clock className="h-4 w-4 text-accent" /> Campanhas
-        </h2>
-        <div className="space-y-2">
-          {(campanhas ?? []).map(c => {
-            const ativo = campSelecionada === c.id
-            return (
-              <div
-                key={c.id}
-                className={`border rounded-lg p-3 cursor-pointer transition-all ${ativo ? 'border-accent bg-accent/5' : 'border-border hover:bg-surface-2/40'}`}
-                onClick={() => setCampSelecionada(ativo ? null : c.id)}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-ink font-semibold text-[13px]">{c.nome}</div>
-                    <div className="text-ink-muted text-[10px] mt-0.5">
-                      {c.regra_distribuicao} · {c.rate_max_por_hora}/h · {c.horario_inicio.slice(0,5)}-{c.horario_fim.slice(0,5)}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={c.status === 'rascunho' ? 'outline' : 'default'}>
-                      {c.status}
-                    </Badge>
-                    {c.status === 'ativa' && (
-                      <button onClick={(e) => { e.stopPropagation(); setCampStatus.mutate({ id: c.id, status: 'pausada' }) }} className="text-warning hover:text-warning/80">
-                        <Pause className="h-4 w-4" />
-                      </button>
-                    )}
-                    {c.status === 'pausada' && (
-                      <button onClick={(e) => { e.stopPropagation(); setCampStatus.mutate({ id: c.id, status: 'ativa' }) }} className="text-emerald-400 hover:text-emerald-300">
-                        <Play className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-          {(campanhas ?? []).length === 0 && (
-            <div className="text-center py-6 text-ink-muted text-sm">
-              Nenhuma campanha. Clique em "Nova campanha" pra começar.
-            </div>
-          )}
-        </div>
-      </Card>
-
-      {/* DETALHE DA CAMPANHA SELECIONADA */}
-      {campSelecionada && campanhas?.find(c => c.id === campSelecionada) && (
-        <DetalheCampanha
-          campanha={campanhas.find(c => c.id === campSelecionada)!}
-          leads={leads ?? []}
-          vendedores={vendedores ?? []}
-        />
-      )}
-
-      {/* MODAL DE TESTE */}
-      {testeVendedor && (
-        <ModalTeste
-          vendedor={testeVendedor}
-          onClose={() => setTesteVendedor(null)}
-          onSuccess={(campId) => {
-            setTesteVendedor(null)
-            setCampSelecionada(campId)
-            qc.invalidateQueries({ queryKey: ['dispatch-campaigns'] })
-          }}
-        />
-      )}
     </div>
   )
 }
 
 // ============================================================================
-// Modal de Teste
-// ============================================================================
-function ModalTeste({ vendedor, onClose, onSuccess }: { vendedor: string; onClose: () => void; onSuccess: (campId: string) => void }) {
-  const [telefone, setTelefone] = useState('')
-  const [nome, setNome] = useState('Teste')
-  const [mensagem, setMensagem] = useState(`Olá {{nome}}, aqui é o ${vendedor} da Branorte. Esta é uma mensagem-teste.`)
-  const [enviando, setEnviando] = useState(false)
-  const [resultado, setResultado] = useState<string | null>(null)
-
-  async function disparar() {
-    const tel = normalizaTelefone(telefone)
-    if (tel.length < 12) {
-      setResultado('❌ Telefone inválido. Use DDD + número (ex: 48999999999).')
-      return
-    }
-    setEnviando(true)
-    setResultado(null)
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      const r = await fetch('https://flwbeevtvjiouxdjmziv.supabase.co/functions/v1/dispatch-test', {
-        method: 'POST',
-        headers: { 'authorization': `Bearer ${session?.access_token ?? ''}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ vendedor_nome: vendedor, telefone: tel, nome: nome.trim() || 'Teste', mensagem: mensagem.trim() }),
-      })
-      const j = await r.json()
-      if (!j.ok) {
-        setResultado('❌ Erro: ' + (j.error || 'desconhecido'))
-        return
-      }
-      setResultado('✅ ' + j.msg)
-      setTimeout(() => onSuccess(j.campaign_id), 1200)
-    } catch (e: any) {
-      setResultado('❌ Erro de rede: ' + (e?.message ?? ''))
-    } finally {
-      setEnviando(false)
-    }
-  }
-
-  // Preview da mensagem com {{nome}} resolvido
-  const preview = mensagem.replace(/\{\{\s*nome\s*\}\}/g, nome || '[nome]').replace(/\{\{\s*vendedor\s*\}\}/g, vendedor)
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-surface-1 border border-border rounded-xl max-w-lg w-full p-5 space-y-3" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <h3 className="text-base font-bold text-ink flex items-center gap-2">
-            <FlaskConical className="h-5 w-5 text-accent" /> Teste de disparo
-          </h3>
-          <button onClick={onClose} className="text-ink-muted hover:text-ink">✕</button>
-        </div>
-        <p className="text-[11px] text-ink-muted">
-          <strong className="text-accent">{vendedor}</strong> vai enviar 1 mensagem do WhatsApp dele em 5-15s.
-        </p>
-        <div>
-          <label className="text-[10px] text-ink-faint uppercase">Seu telefone (DDD+número)</label>
-          <Input value={telefone} onChange={e => setTelefone(e.target.value)} placeholder="48999999999" />
-        </div>
-        <div>
-          <label className="text-[10px] text-ink-faint uppercase">Nome (que vai no template)</label>
-          <Input value={nome} onChange={e => setNome(e.target.value)} placeholder="Teste" />
-        </div>
-        <div>
-          <label className="text-[10px] text-ink-faint uppercase">Mensagem</label>
-          <textarea
-            value={mensagem} onChange={e => setMensagem(e.target.value)} rows={3}
-            className="w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-ink text-sm"
-          />
-        </div>
-        <div className="border-l-2 border-accent bg-accent/5 rounded p-2">
-          <div className="text-[9px] text-ink-faint uppercase mb-1">Preview que o cliente vai ver</div>
-          <div className="text-[12px] text-ink whitespace-pre-line">{preview}</div>
-        </div>
-        {resultado && (
-          <div className={`text-[11px] p-2 rounded ${resultado.startsWith('✅') ? 'bg-emerald-500/10 text-emerald-300' : 'bg-red-500/10 text-red-300'}`}>
-            {resultado}
-          </div>
-        )}
-        <div className="flex gap-2 pt-1">
-          <Button variant="primary" onClick={disparar} loading={enviando}>
-            <Zap className="h-4 w-4 mr-1" /> Disparar agora
-          </Button>
-          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ============================================================================
-// Form nova campanha
-// ============================================================================
-function NovaCampanhaForm({ onCancel, onCreated, vendedores }: { onCancel: () => void; onCreated: (id: string) => void; vendedores: Vendedor[] }) {
-  const [nome, setNome] = useState('')
-  const [mensagem, setMensagem] = useState('Olá {{nome}}, aqui é o {{vendedor}} da Branorte. Tudo bem?')
-  const [regra, setRegra] = useState<'igualitaria' | 'round_robin' | 'porcentagem' | 'manual'>('igualitaria')
-  const [rate, setRate] = useState(30)
-  const [hi, setHi] = useState('08:00')
-  const [hf, setHf] = useState('18:00')
-  const [salvando, setSalvando] = useState(false)
-  const [pesosCamp, setPesosCamp] = useState<Record<string, number>>({})
-
-  async function criar() {
-    if (!nome.trim() || !mensagem.trim()) return alert('preencha nome e mensagem')
-    if (regra === 'porcentagem') {
-      const soma = Object.values(pesosCamp).reduce((s, n) => s + (Number(n) || 0), 0)
-      if (soma <= 0) return alert('defina pesos > 0 para pelo menos um vendedor (ou use "Copiar do painel global")')
-    }
-    setSalvando(true)
-    const { data, error } = await supabase.from('dispatch_campaign').insert({
-      nome: nome.trim(),
-      mensagem_template: mensagem.trim(),
-      regra_distribuicao: regra,
-      porcentagens_json: regra === 'porcentagem' ? pesosCamp : null,
-      status: 'rascunho',
-      rate_max_por_hora: rate,
-      horario_inicio: hi,
-      horario_fim: hf,
-    }).select('id').single()
-    setSalvando(false)
-    if (error) return alert('erro: ' + error.message)
-    onCreated(data.id)
-  }
-
-  return (
-    <div className="space-y-3">
-      <h3 className="text-sm font-semibold text-ink">Nova campanha</h3>
-      <Input value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome da campanha (ex: Leads Meta Ads Outubro)" />
-      <textarea
-        value={mensagem}
-        onChange={e => setMensagem(e.target.value)}
-        rows={4}
-        className="w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-ink text-sm"
-        placeholder="Mensagem (use {{nome}}, {{vendedor}}, ou outras variáveis)"
-      />
-      <div className="text-[10px] text-ink-faint">
-        Variáveis disponíveis: <code className="text-accent">&#123;&#123;nome&#125;&#125;</code>, <code className="text-accent">&#123;&#123;vendedor&#125;&#125;</code>, e qualquer chave do JSON de cada lead.
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        <div>
-          <label className="text-[10px] text-ink-faint uppercase">Distribuição</label>
-          <Select
-            value={regra}
-            onChange={e => setRegra(e.target.value as any)}
-            options={[
-              { value: 'igualitaria',  label: 'Igualitária (peso 1 cada)' },
-              { value: 'round_robin',  label: 'Round-robin (alterna)' },
-              { value: 'porcentagem',  label: '% por vendedor (peso)' },
-              { value: 'manual',       label: 'Manual (eu atribuo)' },
-            ]}
-          />
-        </div>
-        <div>
-          <label className="text-[10px] text-ink-faint uppercase">Max/hora por vendedor</label>
-          <Input type="number" value={rate} onChange={e => setRate(Number(e.target.value) || 30)} />
-        </div>
-        <div>
-          <label className="text-[10px] text-ink-faint uppercase">Início</label>
-          <Input type="time" value={hi} onChange={e => setHi(e.target.value)} />
-        </div>
-        <div>
-          <label className="text-[10px] text-ink-faint uppercase">Fim</label>
-          <Input type="time" value={hf} onChange={e => setHf(e.target.value)} />
-        </div>
-      </div>
-      <div className="text-[10px] text-ink-muted px-2 py-1.5 bg-surface-2/50 rounded">
-        {regra === 'igualitaria' && '⚖️ Sorteio com peso igual para todos os vendedores online.'}
-        {regra === 'round_robin' && '🔁 Alterna sequencialmente entre os vendedores online (1º Alvaro, 2º Daniel, 3º Eder...).'}
-        {regra === 'porcentagem' && '🎯 Sorteio ponderado pelos pesos abaixo. Não precisa dar 100 — é proporcional (ex: 30/20/10 = 50%/33%/17%).'}
-        {regra === 'manual' && '✋ Você atribui lead por lead. Distribuir não atribui automaticamente.'}
-      </div>
-
-      {regra === 'porcentagem' && (
-        <WeightEditor
-          vendedores={vendedores.filter(v => v.online)}
-          pesos={pesosCamp}
-          onChange={setPesosCamp}
-          allowCopyGlobal
-        />
-      )}
-
-      <div className="flex gap-2">
-        <Button variant="primary" onClick={criar} loading={salvando}>Criar campanha</Button>
-        <Button variant="secondary" onClick={onCancel}>Cancelar</Button>
-      </div>
-    </div>
-  )
-}
-
-// ============================================================================
-// WeightEditor — editor de pesos com validação e preview
-// ============================================================================
-function WeightEditor({
-  vendedores, pesos, onChange, allowCopyGlobal = false,
-}: {
-  vendedores: Vendedor[]
-  pesos: Record<string, number>
-  onChange: (p: Record<string, number>) => void
-  allowCopyGlobal?: boolean
-}) {
-  const soma = useMemo(() => Object.values(pesos).reduce((s, n) => s + (Number(n) || 0), 0), [pesos])
-  const proximoDe100 = soma >= 99.5 && soma <= 100.5
-
-  function setPeso(nome: string, val: number) {
-    onChange({ ...pesos, [nome]: Math.max(0, val) })
-  }
-  function igualar() {
-    const each = Math.round((100 / vendedores.length) * 100) / 100
-    const novo: Record<string, number> = {}
-    for (const v of vendedores) novo[v.vendedor_nome] = each
-    onChange(novo)
-  }
-  function normalizar() {
-    if (soma <= 0) return igualar()
-    const fator = 100 / soma
-    const novo: Record<string, number> = {}
-    for (const [k, v] of Object.entries(pesos)) novo[k] = Math.round(Number(v) * fator * 100) / 100
-    onChange(novo)
-  }
-  function copiarGlobal() {
-    const novo: Record<string, number> = {}
-    for (const v of vendedores) novo[v.vendedor_nome] = Number(v.share_percent) || 0
-    onChange(novo)
-  }
-  function zerar() {
-    onChange({})
-  }
-
-  // Preview: se 100 leads, quantos vão pra cada
-  const preview = useMemo(() => {
-    if (soma <= 0) return {}
-    const r: Record<string, number> = {}
-    for (const v of vendedores) {
-      const p = Number(pesos[v.vendedor_nome] ?? 0)
-      r[v.vendedor_nome] = Math.round((p / soma) * 100)
-    }
-    return r
-  }, [pesos, soma, vendedores])
-
-  return (
-    <div className="border border-border rounded-lg p-3 space-y-2 bg-surface-2/30">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <label className="text-[11px] font-semibold text-ink uppercase tracking-wider">Pesos por vendedor</label>
-        <div className={`text-[11px] font-bold tabular-nums ${proximoDe100 ? 'text-emerald-400' : soma > 0 ? 'text-amber-400' : 'text-ink-faint'}`}>
-          soma: {soma.toFixed(1)}{proximoDe100 ? ' ✓' : ''}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5">
-        {vendedores.map(v => {
-          const peso = Number(pesos[v.vendedor_nome] ?? 0)
-          const pct = preview[v.vendedor_nome] ?? 0
-          return (
-            <div key={v.vendedor_nome} className="flex items-center gap-1.5 bg-surface-2 border border-border rounded px-2 py-1">
-              <Avatar name={v.vendedor_nome} size="sm" />
-              <div className="flex-1 min-w-0">
-                <div className="text-[10px] text-ink font-semibold truncate">{v.vendedor_nome}</div>
-                {soma > 0 && (
-                  <div className="text-[8px] text-ink-faint">→ {pct}/100 leads</div>
-                )}
-              </div>
-              <input
-                type="number" min={0} step="0.1" value={peso || ''}
-                onChange={e => setPeso(v.vendedor_nome, Number(e.target.value) || 0)}
-                placeholder="0"
-                className="w-12 bg-surface-1 border border-border rounded px-1 py-0.5 text-ink text-[11px] font-bold text-right"
-              />
-            </div>
-          )
-        })}
-      </div>
-
-      <div className="flex gap-1.5 flex-wrap">
-        <button onClick={igualar} className="text-[10px] px-2 py-1 rounded bg-accent/10 text-accent border border-accent/30 hover:bg-accent/20">
-          Igualar entre todos
-        </button>
-        <button onClick={normalizar} disabled={soma <= 0} className="text-[10px] px-2 py-1 rounded bg-surface-2 text-ink border border-border hover:bg-surface-3 disabled:opacity-40">
-          Normalizar p/ 100%
-        </button>
-        {allowCopyGlobal && (
-          <button onClick={copiarGlobal} className="text-[10px] px-2 py-1 rounded bg-surface-2 text-ink border border-border hover:bg-surface-3">
-            Copiar do painel global
-          </button>
-        )}
-        <button onClick={zerar} className="text-[10px] px-2 py-1 rounded bg-surface-2 text-ink-muted border border-border hover:bg-red-500/10 hover:text-red-400">
-          Zerar tudo
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// ============================================================================
-// Detalhe da campanha — lista de leads + add + distribuir
-// ============================================================================
-function DetalheCampanha({ campanha, leads, vendedores }: { campanha: Campanha; leads: Lead[]; vendedores: Vendedor[] }) {
-  const qc = useQueryClient()
-  const [colando, setColando] = useState('')
-
-  const stats = useMemo(() => {
-    const counts: Record<string, number> = {}
-    for (const l of leads) counts[l.status] = (counts[l.status] || 0) + 1
-    return counts
-  }, [leads])
-
-  async function adicionarColados() {
-    const linhas = colando.split('\n').map(l => l.trim()).filter(Boolean)
-    if (linhas.length === 0) return
-    const rows = linhas.map(linha => {
-      const [tel, ...resto] = linha.split(/[,;|\t]/).map(x => x.trim())
-      const nome = resto.join(' ').trim() || null
-      const telefone = normalizaTelefone(tel)
-      return { campaign_id: campanha.id, telefone, nome, vars_json: nome ? { nome } : {} }
-    }).filter(r => r.telefone && r.telefone.length >= 12)
-
-    if (rows.length === 0) return alert('nenhum telefone válido')
-    const { error } = await supabase.from('dispatch_lead').insert(rows)
-    if (error) return alert('erro: ' + error.message)
-    setColando('')
-    qc.invalidateQueries({ queryKey: ['dispatch-leads', campanha.id] })
-  }
-
-  async function distribuir() {
-    const { data: { session } } = await supabase.auth.getSession()
-    const r = await fetch('https://flwbeevtvjiouxdjmziv.supabase.co/functions/v1/dispatch-distribute', {
-      method: 'POST',
-      headers: { 'authorization': `Bearer ${session?.access_token ?? ''}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ campaign_id: campanha.id }),
-    })
-    const j = await r.json()
-    if (!j.ok) return alert('erro: ' + (j.error || ''))
-    alert(`Distribuído: ${j.atribuidos} leads enfileirados, ${j.duplicados} duplicados`)
-    qc.invalidateQueries({ queryKey: ['dispatch-leads', campanha.id] })
-    qc.invalidateQueries({ queryKey: ['dispatch-campaigns'] })
-  }
-
-  async function deletarLead(id: string) {
-    await supabase.from('dispatch_lead').delete().eq('id', id)
-    qc.invalidateQueries({ queryKey: ['dispatch-leads', campanha.id] })
-  }
-
-  return (
-    <Card className="p-4 space-y-4">
-      <header>
-        <h2 className="text-base font-bold text-ink">{campanha.nome}</h2>
-        <p className="text-ink-muted text-[10px] mt-1 whitespace-pre-line">{campanha.mensagem_template}</p>
-      </header>
-
-      <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
-        {Object.entries(STATUS_LABELS).map(([k, v]) => (
-          <div key={k} className={`rounded-lg px-3 py-2 ${v.cor}`}>
-            <div className="text-[10px] uppercase opacity-70">{v.txt}</div>
-            <div className="text-[16px] font-bold tabular-nums">{stats[k] ?? 0}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="border border-border rounded-lg p-3 bg-surface-2/30">
-        <label className="text-[11px] text-ink-muted block mb-1">Cole leads (1 por linha · <code>telefone, nome</code>)</label>
-        <textarea
-          value={colando}
-          onChange={e => setColando(e.target.value)}
-          rows={4}
-          className="w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-ink text-sm font-mono"
-          placeholder={'5548999999999, João Silva\n5548988888888, Maria'}
-        />
-        <div className="flex gap-2 mt-2">
-          <Button variant="secondary" onClick={adicionarColados} disabled={!colando.trim()}>
-            <Plus className="h-4 w-4 mr-1" /> Adicionar à fila
-          </Button>
-          <Button variant="primary" onClick={distribuir} disabled={(stats.pendente ?? 0) === 0}>
-            <Send className="h-4 w-4 mr-1" /> Distribuir {stats.pendente ?? 0} leads
-          </Button>
-        </div>
-      </div>
-
-      {/* TABELA DE LEADS */}
-      <div className="border border-border rounded-lg overflow-hidden">
-        <table className="w-full text-[11px]">
-          <thead className="bg-surface-2/60">
-            <tr>
-              <th className="text-left px-3 py-2 text-ink-muted font-medium">Nome</th>
-              <th className="text-left px-3 py-2 text-ink-muted font-medium">Telefone</th>
-              <th className="text-left px-3 py-2 text-ink-muted font-medium">Vendedor</th>
-              <th className="text-left px-3 py-2 text-ink-muted font-medium">Status</th>
-              <th className="text-left px-3 py-2 text-ink-muted font-medium">Enviado</th>
-              <th className="w-8"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {leads.slice(0, 200).map(l => {
-              const lbl = STATUS_LABELS[l.status] ?? { txt: l.status, cor: 'bg-slate-500/20 text-slate-300' }
-              return (
-                <tr key={l.id} className="border-t border-border/40 hover:bg-surface-2/30">
-                  <td className="px-3 py-1.5 text-ink">{l.nome ?? '—'}</td>
-                  <td className="px-3 py-1.5 text-ink font-mono">{l.telefone}</td>
-                  <td className="px-3 py-1.5 text-ink">
-                    {l.vendedor_atribuido ?? '—'}
-                    {l.redirecionado_de && (
-                      <span
-                        title={`Era pra ir pro ${l.redirecionado_de}, mas ele estava ${l.redirecionado_motivo}. Foi redirecionado pra ${l.vendedor_atribuido}.`}
-                        className="ml-1.5 text-[9px] px-1 py-0.5 bg-orange-500/15 text-orange-300 rounded font-bold border border-orange-500/30 cursor-help"
-                      >
-                        ↩ era pro {l.redirecionado_de}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-1.5">
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${lbl.cor}`}>{lbl.txt}</span>
-                  </td>
-                  <td className="px-3 py-1.5 text-ink-muted">
-                    {l.enviado_em ? new Date(l.enviado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—'}
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <button onClick={() => deletarLead(l.id)} className="text-ink-faint hover:text-red-400">
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  </td>
-                </tr>
-              )
-            })}
-            {leads.length === 0 && (
-              <tr><td colSpan={6} className="text-center py-6 text-ink-muted">Cole leads acima pra começar</td></tr>
-            )}
-          </tbody>
-        </table>
-        {leads.length > 200 && (
-          <div className="text-center py-2 text-ink-faint text-[10px]">mostrando 200 de {leads.length} leads</div>
-        )}
-      </div>
-    </Card>
-  )
-}
-
-// ============================================================================
-// DistribuicaoGlobalCard — painel de % global (default p/ campanhas externas)
+// DistribuicaoGlobalCard — painel de % global de roteamento
 // ============================================================================
 function DistribuicaoGlobalCard({ vendedores, onToggleBloqueado }: { vendedores: Vendedor[]; onToggleBloqueado: (nome: string, bloqueado: boolean) => void }) {
   const qc = useQueryClient()
   // Todos os online (mesmo bloqueados aparecem na lista pra dar opção de desbloquear)
   const online = useMemo(() => vendedores.filter(v => v.online), [vendedores])
-  // Soma é só dos NÃO bloqueados
   const ativos = useMemo(() => online.filter(v => !v.bloqueado), [online])
-  // estado local p/ slider responsivo (commit no slider end)
   const [local, setLocal] = useState<Record<string, number>>({})
-  // sincroniza local com server quando muda
   useEffect(() => {
     const novo: Record<string, number> = {}
     for (const v of online) novo[v.vendedor_nome] = Number(v.share_percent) || 0
@@ -971,7 +268,6 @@ function DistribuicaoGlobalCard({ vendedores, onToggleBloqueado }: { vendedores:
     if (ativos.length === 0) return
     const each = Math.round((100 / ativos.length) * 100) / 100
     const novo: Record<string, number> = {}
-    // Bloqueados ficam 0; só os ativos recebem
     for (const v of online) novo[v.vendedor_nome] = v.bloqueado ? 0 : each
     setLocal(novo)
     persistirTodos(novo)
@@ -1006,7 +302,7 @@ function DistribuicaoGlobalCard({ vendedores, onToggleBloqueado }: { vendedores:
             Quanto cada vendedor recebe
           </h2>
           <p className="text-[10px] text-ink-muted mt-0.5">
-            Define a fatia de leads que cada um recebe. Vale também para chamadas externas (ReplyAgent / n8n) que não enviam pesos.
+            Define a fatia de leads que cada vendedor recebe quando um lead chega na central. Vale para chamadas do ReplyAgent / n8n que não enviam pesos próprios.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -1068,7 +364,7 @@ function DistribuicaoGlobalCard({ vendedores, onToggleBloqueado }: { vendedores:
                 </div>
                 <button
                   onClick={() => onToggleBloqueado(v.vendedor_nome, !bloq)}
-                  title={bloq ? 'Desbloquear — voltar a receber leads' : 'Bloquear — não receber mais leads (será ignorado em Dividir igualmente e nos disparos)'}
+                  title={bloq ? 'Desbloquear — voltar a receber leads' : 'Bloquear — não receber mais leads (será ignorado em Dividir igualmente e no roteamento)'}
                   className={`text-[9px] px-1.5 py-0.5 rounded font-bold tracking-wide flex-shrink-0 transition-colors ${
                     bloq
                       ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 border border-emerald-500/30'
@@ -1119,698 +415,12 @@ function DistribuicaoGlobalCard({ vendedores, onToggleBloqueado }: { vendedores:
               )}
               {bloq && (
                 <div className="text-[10px] text-red-300/70 italic mt-1">
-                  Não recebe leads. Disparos que cairiam aqui vão para outro vendedor disponível, com anotação no histórico.
+                  Não recebe leads. Leads que cairiam aqui vão para outro vendedor disponível, com anotação no histórico.
                 </div>
               )}
             </div>
           )
         })}
-      </div>
-    </Card>
-  )
-}
-
-// ============================================================================
-// ApiExternaCard — gerenciar keys + log de chamadas
-// ============================================================================
-function ApiExternaCard() {
-  const [aberto, setAberto] = useState(false)
-  const [novaKey, setNovaKey] = useState<{ key: string; nome: string } | null>(null)
-
-  const { data: keys, refetch: refetchKeys } = useQuery<ApiKey[]>({
-    queryKey: ['dispatch-api-keys'],
-    queryFn: async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      const r = await fetch(`${SUPA_URL}/functions/v1/dispatch-api-key`, {
-        method: 'POST',
-        headers: { 'authorization': `Bearer ${session?.access_token ?? ''}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ action: 'list' }),
-      })
-      const j = await r.json()
-      return j.keys ?? []
-    },
-    enabled: aberto,
-  })
-
-  const { data: logs } = useQuery<ApiLog[]>({
-    queryKey: ['dispatch-api-logs'],
-    queryFn: async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      const r = await fetch(`${SUPA_URL}/functions/v1/dispatch-api-key`, {
-        method: 'POST',
-        headers: { 'authorization': `Bearer ${session?.access_token ?? ''}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ action: 'logs', limit: 20 }),
-      })
-      const j = await r.json()
-      return j.logs ?? []
-    },
-    enabled: aberto,
-    refetchInterval: aberto ? 15000 : false,
-  })
-
-  async function criarKey() {
-    const nome = prompt('Nome da chave (ex: ReplyAgent prod):')
-    if (!nome?.trim()) return
-    const { data: { session } } = await supabase.auth.getSession()
-    const r = await fetch(`${SUPA_URL}/functions/v1/dispatch-api-key`, {
-      method: 'POST',
-      headers: { 'authorization': `Bearer ${session?.access_token ?? ''}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'create', nome: nome.trim() }),
-    })
-    const j = await r.json()
-    if (!j.ok) return alert('erro: ' + (j.error ?? ''))
-    setNovaKey({ key: j.key, nome: nome.trim() })
-    refetchKeys()
-  }
-
-  async function revogarKey(id: string, nome: string) {
-    if (!confirm(`Revogar chave "${nome}"? Quem usar essa chave vai começar a falhar.`)) return
-    const { data: { session } } = await supabase.auth.getSession()
-    await fetch(`${SUPA_URL}/functions/v1/dispatch-api-key`, {
-      method: 'POST',
-      headers: { 'authorization': `Bearer ${session?.access_token ?? ''}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'revoke', id }),
-    })
-    refetchKeys()
-  }
-
-  return (
-    <Card className="p-4">
-      <button onClick={() => setAberto(v => !v)} className="w-full flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
-          <Key className="h-4 w-4 text-accent" />
-          API externa · disparar de ReplyAgent / n8n / webhook
-        </h2>
-        <span className="text-[10px] text-ink-muted">{aberto ? '▲ fechar' : '▼ abrir'}</span>
-      </button>
-
-      {aberto && (
-        <div className="mt-3 space-y-3">
-          <div className="border border-border rounded-lg p-3 bg-surface-2/30 space-y-2">
-            <div className="text-[11px] font-semibold text-ink">Endpoint</div>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 text-[10px] bg-surface-1 border border-border rounded px-2 py-1 text-accent break-all">
-                POST {EDGE_EXTERNAL}
-              </code>
-              <CopyBtn text={EDGE_EXTERNAL} />
-            </div>
-            <div className="text-[10px] text-ink-muted">
-              Headers: <code className="text-accent">x-api-key: bnd_xxx</code> · <code className="text-accent">content-type: application/json</code>
-            </div>
-            <details className="text-[10px]">
-              <summary className="cursor-pointer text-accent hover:underline">Exemplo de payload</summary>
-              <pre className="mt-1 bg-surface-1 border border-border rounded p-2 text-[9px] text-ink-muted overflow-x-auto">{JSON.stringify({
-                campaign_name: 'Leads ReplyAgent 14/11',
-                message_template: 'Olá {{nome}}, aqui é o {{vendedor}} da Branorte. Vi seu interesse...',
-                external_ref: 'replyagent-batch-2026-11-14',
-                distribution: { type: 'global' },
-                contacts: [
-                  { phone: '48999999999', name: 'João' },
-                  { phone: '48988888888', name: 'Maria', vars: { produto: 'Ração 25kg' } },
-                ],
-              }, null, 2)}</pre>
-              <div className="mt-1 text-ink-muted">
-                <strong>distribution.type:</strong>{' '}
-                <code>global</code> (usa % do painel acima) ·{' '}
-                <code>igualitaria</code> ·{' '}
-                <code>round_robin</code> ·{' '}
-                <code>porcentagem</code> (com <code>weights: {`{ALVARO: 30, DANIEL: 70}`}</code>)
-              </div>
-            </details>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-[11px] font-semibold text-ink">API Keys</div>
-              <Button variant="primary" onClick={criarKey}>
-                <Plus className="h-3 w-3 mr-1" /> Gerar nova chave
-              </Button>
-            </div>
-            {(keys ?? []).length === 0 ? (
-              <div className="text-[10px] text-ink-muted text-center py-3 border border-dashed border-border rounded">
-                Nenhuma chave criada. Clique em "Gerar nova chave" pra começar.
-              </div>
-            ) : (
-              <div className="border border-border rounded overflow-hidden">
-                <table className="w-full text-[11px]">
-                  <thead className="bg-surface-2/60">
-                    <tr>
-                      <th className="text-left px-3 py-1.5 text-ink-muted font-medium">Nome</th>
-                      <th className="text-left px-3 py-1.5 text-ink-muted font-medium">Prefixo</th>
-                      <th className="text-left px-3 py-1.5 text-ink-muted font-medium">Status</th>
-                      <th className="text-left px-3 py-1.5 text-ink-muted font-medium">Chamadas</th>
-                      <th className="text-left px-3 py-1.5 text-ink-muted font-medium">Último uso</th>
-                      <th className="w-8"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(keys ?? []).map(k => (
-                      <tr key={k.id} className="border-t border-border/40">
-                        <td className="px-3 py-1 text-ink">{k.nome}</td>
-                        <td className="px-3 py-1 text-ink-muted font-mono text-[10px]">{k.key_prefix}</td>
-                        <td className="px-3 py-1">
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded ${k.ativa ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-500/20 text-slate-400'}`}>
-                            {k.ativa ? 'ATIVA' : 'REVOGADA'}
-                          </span>
-                        </td>
-                        <td className="px-3 py-1 text-ink tabular-nums">{k.total_chamadas}</td>
-                        <td className="px-3 py-1 text-ink-muted text-[10px]">
-                          {k.ultima_uso_em ? new Date(k.ultima_uso_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—'}
-                        </td>
-                        <td className="px-2 py-1">
-                          {k.ativa && (
-                            <button onClick={() => revogarKey(k.id, k.nome)} className="text-ink-faint hover:text-red-400" title="Revogar">
-                              <Trash className="h-3 w-3" />
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          <div>
-            <div className="text-[11px] font-semibold text-ink mb-2">Últimas chamadas externas</div>
-            {(logs ?? []).length === 0 ? (
-              <div className="text-[10px] text-ink-muted text-center py-3 border border-dashed border-border rounded">
-                Nenhuma chamada externa ainda.
-              </div>
-            ) : (
-              <div className="border border-border rounded overflow-hidden max-h-64 overflow-y-auto">
-                <table className="w-full text-[10px]">
-                  <thead className="bg-surface-2/60 sticky top-0">
-                    <tr>
-                      <th className="text-left px-2 py-1 text-ink-muted">Quando</th>
-                      <th className="text-left px-2 py-1 text-ink-muted">Chave</th>
-                      <th className="text-left px-2 py-1 text-ink-muted">Status</th>
-                      <th className="text-left px-2 py-1 text-ink-muted">Contatos</th>
-                      <th className="text-left px-2 py-1 text-ink-muted">Atribuídos</th>
-                      <th className="text-left px-2 py-1 text-ink-muted">Dup.</th>
-                      <th className="text-left px-2 py-1 text-ink-muted">Erro</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(logs ?? []).map(l => (
-                      <tr key={l.id} className="border-t border-border/40">
-                        <td className="px-2 py-1 text-ink-muted">{new Date(l.criado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</td>
-                        <td className="px-2 py-1 text-ink">{l.api_key_nome ?? '—'}</td>
-                        <td className="px-2 py-1">
-                          <span className={`px-1 rounded ${l.status_code === 200 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-500/20 text-red-300'}`}>
-                            {l.status_code}
-                          </span>
-                        </td>
-                        <td className="px-2 py-1 text-ink tabular-nums">{l.total_contatos ?? '—'}</td>
-                        <td className="px-2 py-1 text-ink tabular-nums">{l.total_atribuidos ?? '—'}</td>
-                        <td className="px-2 py-1 text-ink-muted tabular-nums">{l.total_duplicados ?? '—'}</td>
-                        <td className="px-2 py-1 text-red-400 text-[9px] max-w-32 truncate">{l.erro ?? ''}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Modal mostrando key recém-criada (única vez) */}
-      {novaKey && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="bg-surface-1 border border-accent rounded-xl max-w-lg w-full p-5 space-y-3">
-            <h3 className="text-base font-bold text-ink flex items-center gap-2">
-              <Key className="h-5 w-5 text-accent" /> Chave gerada: {novaKey.nome}
-            </h3>
-            <div className="bg-amber-500/10 border border-amber-500/40 rounded p-2 text-[11px] text-amber-300">
-              ⚠️ Esta é a única vez que essa chave será mostrada. Copie e guarde agora em local seguro.
-            </div>
-            <div className="bg-surface-2 border border-border rounded p-2 font-mono text-[11px] text-accent break-all">
-              {novaKey.key}
-            </div>
-            <div className="flex gap-2">
-              <CopyBtn text={novaKey.key} label="Copiar chave" big />
-              <Button variant="secondary" onClick={() => setNovaKey(null)}>Fechar</Button>
-            </div>
-          </div>
-        </div>
-      )}
-    </Card>
-  )
-}
-
-function CopyBtn({ text, label, big }: { text: string; label?: string; big?: boolean }) {
-  const [copiou, setCopiou] = useState(false)
-  return (
-    <button
-      onClick={async () => {
-        await navigator.clipboard.writeText(text)
-        setCopiou(true)
-        setTimeout(() => setCopiou(false), 1500)
-      }}
-      className={`${big ? 'px-3 py-2 text-[12px]' : 'px-2 py-1 text-[10px]'} rounded border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 flex items-center gap-1`}
-    >
-      {copiou ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-      {label ?? (copiou ? 'Copiado' : 'Copiar')}
-    </button>
-  )
-}
-
-// ============================================================================
-// AutomacaoPegarPraMimCard — automação que pega leads sem vendedor
-// ============================================================================
-type AutomacaoConfig = {
-  id: number
-  ativa: boolean
-  intervalo_min: number
-  leads_por_ciclo: number
-  mensagem_template: string
-  horario_inicio: string
-  horario_fim: string
-  dias_semana: number[]
-  anti_duplicidade_horas: number
-  intervalo_envio_min_seg: number
-  intervalo_envio_max_seg: number
-  max_leads_por_vendedor_ciclo: number
-  ultima_execucao_em: string | null
-  proxima_execucao_em: string | null
-  total_disparos_acum: number
-}
-type AutomacaoExecucao = {
-  id: string
-  executado_em: string
-  leads_aguardando: number | null
-  leads_processados: number
-  leads_pulados_duplicados: number
-  leads_invalidos: number
-  distribuicao: Record<string, number> | null
-  distribuicao_telefones: Record<string, Array<{ tel: string; nome: string | null }>> | null
-  motivo_skip: string | null
-}
-
-function AutomacaoPegarPraMimCard() {
-  const qc = useQueryClient()
-  const [editando, setEditando] = useState(false)
-  const [logExpandido, setLogExpandido] = useState(false)
-
-  const { data: cfg } = useQuery<AutomacaoConfig>({
-    queryKey: ['automacao-config'],
-    queryFn: async () => {
-      const { data } = await supabase.from('dispatch_automacao_config').select('*').eq('id', 1).single()
-      return data as AutomacaoConfig
-    },
-    refetchInterval: 5000,
-  })
-
-  const { data: aguardando } = useQuery<number>({
-    queryKey: ['leads-aguardando-count'],
-    queryFn: async () => {
-      const { count } = await supabaseAuditoria
-        .from('atendimentos_por_cliente')
-        .select('id', { count: 'exact', head: true })
-        .or('responsavel.is.null,responsavel.eq.')
-        .not('telefone', 'is', null)
-        .eq('is_internal', false)
-      return count ?? 0
-    },
-    refetchInterval: 15000,
-  })
-
-  const { data: execucoes } = useQuery<AutomacaoExecucao[]>({
-    queryKey: ['automacao-execucoes'],
-    queryFn: async () => {
-      const { data } = await supabase.from('dispatch_automacao_execucao')
-        .select('*').order('executado_em', { ascending: false }).limit(50)
-      return (data as AutomacaoExecucao[]) ?? []
-    },
-    refetchInterval: 10000,
-  })
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-
-  const salvarConfig = useMutation({
-    mutationFn: async (updates: Partial<AutomacaoConfig>) => {
-      const { error } = await supabase.from('dispatch_automacao_config').update(updates).eq('id', 1)
-      if (error) throw error
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['automacao-config'] }),
-    onError: (e: any) => alert('Erro ao salvar: ' + e?.message),
-  })
-
-  async function executarAgora() {
-    const r = await fetch('https://flwbeevtvjiouxdjmziv.supabase.co/functions/v1/dispatch-auto-tick', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ force: true }),
-    })
-    const j = await r.json()
-    qc.invalidateQueries({ queryKey: ['automacao-config'] })
-    qc.invalidateQueries({ queryKey: ['automacao-execucoes'] })
-    qc.invalidateQueries({ queryKey: ['leads-aguardando-count'] })
-    if (j.skipped) alert('Pulou: ' + j.skipped + (j.dia ? ` (dia ${j.dia})` : '') + (j.agora ? ` (agora ${j.agora})` : ''))
-    else if (j.ok) alert(`✓ Executado: ${j.processados ?? 0} leads disparados\n` +
-      `Distribuição: ${Object.entries(j.distribuicao ?? {}).map(([k,v]) => `${k}:${v}`).join(', ') || '—'}`)
-    else alert('Erro: ' + (j.error ?? ''))
-  }
-
-  if (!cfg) return null
-
-  const segUltima = cfg.ultima_execucao_em ? Math.floor((Date.now() - new Date(cfg.ultima_execucao_em).getTime()) / 1000) : null
-  const segProxima = cfg.proxima_execucao_em ? Math.floor((new Date(cfg.proxima_execucao_em).getTime() - Date.now()) / 1000) : null
-  function fmtSeg(s: number | null): string {
-    if (s === null) return '—'
-    if (s < 0) return 'agora'
-    if (s < 60) return `${s}s`
-    if (s < 3600) return `${Math.floor(s/60)}min ${s%60}s`
-    return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}min`
-  }
-  const ult5 = (execucoes ?? []).filter(e => e.executado_em > new Date(Date.now() - 5 * 60_000).toISOString())
-  const disparadosHoje = (execucoes ?? [])
-    .filter(e => e.executado_em.slice(0,10) === new Date().toISOString().slice(0,10))
-    .reduce((s, e) => s + (e.leads_processados ?? 0), 0)
-
-  // ── Resumo do schedule (chip) ────────────────────────────────────────
-  const diasMap: Record<number, string> = { 1: 'Seg', 2: 'Ter', 3: 'Qua', 4: 'Qui', 5: 'Sex', 6: 'Sáb', 7: 'Dom' }
-  const diasSorted = [...(cfg.dias_semana ?? [])].sort((a, b) => a - b)
-  const diasResumo = diasSorted.length === 7 ? 'todos os dias'
-    : diasSorted.length === 5 && diasSorted.join(',') === '1,2,3,4,5' ? 'Seg–Sex'
-    : diasSorted.map(d => diasMap[d]).join(' · ') || '—'
-  const horaResumo = `${String(cfg.horario_inicio).slice(0, 5)} → ${String(cfg.horario_fim).slice(0, 5)}`
-
-  // ── Tracker das últimas 50 execuções (estilo Tremor) ─────────────────
-  const tracker = (execucoes ?? []).slice(0, 50).slice().reverse()
-
-  return (
-    <Card className={`overflow-hidden transition-colors ${cfg.ativa ? 'border-success/40' : 'border-border'}`}>
-      {/* ─── HEADER ─── */}
-      <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-3 flex-wrap">
-        <div className="flex items-start gap-3 min-w-0">
-          <div className={`shrink-0 h-10 w-10 rounded-lg flex items-center justify-center ${cfg.ativa ? 'bg-success/15 text-success' : 'bg-surface-2 text-ink-muted'}`}>
-            <Bot className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-[15px] font-semibold text-ink leading-tight">Pegar pra mim</h2>
-              <Badge className={cfg.ativa ? 'bg-success/15 text-success' : 'bg-surface-2 text-ink-muted'}>
-                <span className={`h-1.5 w-1.5 rounded-full ${cfg.ativa ? 'bg-success animate-pulse' : 'bg-ink-faint'}`} />
-                {cfg.ativa ? 'ativa' : 'pausada'}
-              </Badge>
-            </div>
-            <p className="text-[12px] text-ink-muted mt-0.5">
-              Distribui leads sem vendedor automaticamente via WhatsApp dos vendedores ativos.
-            </p>
-            <div className="mt-2 flex items-center flex-wrap gap-x-3 gap-y-1 text-[11px] text-ink-muted">
-              <span className="inline-flex items-center gap-1.5">
-                <Clock className="h-3 w-3" />
-                a cada <span className="text-ink font-medium tabular-nums">{cfg.intervalo_min}min</span>
-              </span>
-              <span className="text-ink-faint">·</span>
-              <span><span className="text-ink font-medium tabular-nums">{cfg.max_leads_por_vendedor_ciclo ?? 1}</span> lead/vendedor (cap {cfg.leads_por_ciclo})</span>
-              <span className="text-ink-faint">·</span>
-              <span className="tabular-nums text-ink">{horaResumo}</span>
-              <span className="text-ink-faint">·</span>
-              <span className="text-ink">{diasResumo}</span>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Button variant="secondary" size="sm" onClick={executarAgora} title="Executar agora (ignora intervalo)">
-            <RotateCw className="h-3.5 w-3.5" /> executar agora
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => salvarConfig.mutate({ ativa: !cfg.ativa })}
-            className={cfg.ativa
-              ? 'bg-success/15 text-success border border-success/40 hover:bg-success/20'
-              : 'bg-surface-2 text-ink-muted border border-border hover:bg-surface-2/60 hover:text-ink'}
-          >
-            {cfg.ativa ? <><Pause className="h-3.5 w-3.5" /> Pausar</> : <><Play className="h-3.5 w-3.5" /> Ativar</>}
-          </Button>
-        </div>
-      </div>
-
-      {/* ─── STATS ─── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-border border-b border-border">
-        <div className="p-4">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">Leads aguardando</span>
-            <Users className="h-3.5 w-3.5 text-ink-faint" />
-          </div>
-          <div className="mt-1.5 text-ink font-semibold text-[28px] leading-none tabular-nums">{aguardando ?? '—'}</div>
-          <div className="mt-1 text-[11px] text-ink-faint">na fila de distribuição</div>
-        </div>
-        <div className="p-4">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">Disparados hoje</span>
-            <Send className="h-3.5 w-3.5 text-ink-faint" />
-          </div>
-          <div className={`mt-1.5 font-semibold text-[28px] leading-none tabular-nums ${disparadosHoje > 0 ? 'text-success' : 'text-ink'}`}>
-            {disparadosHoje}
-          </div>
-          <div className="mt-1 text-[11px] text-ink-faint">acumulado: <span className="tabular-nums text-ink-muted">{cfg.total_disparos_acum}</span></div>
-        </div>
-        <div className="p-4">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">Última execução</span>
-            <Clock className="h-3.5 w-3.5 text-ink-faint" />
-          </div>
-          <div className="mt-1.5 text-ink font-semibold text-[20px] leading-none">{fmtSeg(segUltima)}</div>
-          <div className="mt-1 text-[11px] text-ink-faint">
-            {ult5.length > 0 ? <><span className="tabular-nums text-success">{ult5.length}</span> ciclos nos últ. 5min</> : 'atrás'}
-          </div>
-        </div>
-        <div className="p-4">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">Próxima execução</span>
-            <Activity className="h-3.5 w-3.5 text-ink-faint" />
-          </div>
-          <div className={`mt-1.5 font-semibold text-[20px] leading-none ${cfg.ativa ? 'text-accent' : 'text-ink-muted'}`}>
-            {cfg.ativa ? `em ${fmtSeg(segProxima)}` : 'pausada'}
-          </div>
-          <div className="mt-1 text-[11px] text-ink-faint">{cfg.ativa ? 'agendada' : 'reative para retomar'}</div>
-        </div>
-      </div>
-
-      {/* ─── TRACKER (últimas 50 execuções) ─── */}
-      {tracker.length > 0 && (
-        <div className="px-5 py-3 border-b border-border">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] text-ink-faint uppercase tracking-wider font-medium">Histórico recente</span>
-            <span className="text-[10px] text-ink-faint">últimas {tracker.length} execuções →</span>
-          </div>
-          <div className="flex items-end gap-[2px] h-7">
-            {tracker.map((e) => {
-              const ok = e.leads_processados > 0
-              const skip = !ok && e.motivo_skip
-              const cls = ok
-                ? 'bg-success/70 hover:bg-success'
-                : skip
-                ? 'bg-warning/40 hover:bg-warning/70'
-                : 'bg-ink-faint/30 hover:bg-ink-faint/60'
-              const tip = `${new Date(e.executado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}\n${
-                ok ? `${e.leads_processados} processados` : skip ? `pulado: ${e.motivo_skip}` : 'sem leads'
-              }`
-              const h = ok ? Math.min(28, 8 + e.leads_processados * 1.5) : 6
-              return (
-                <div key={e.id} title={tip}
-                  className={`flex-1 min-w-[3px] rounded-sm transition-colors cursor-help ${cls}`}
-                  style={{ height: `${h}px` }}
-                />
-              )
-            })}
-          </div>
-          <div className="mt-2 flex items-center gap-3 text-[10px] text-ink-faint">
-            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-success/70" /> processou</span>
-            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-warning/40" /> pulado</span>
-            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-ink-faint/30" /> sem leads</span>
-          </div>
-        </div>
-      )}
-
-      {/* ─── CONFIG (collapsible) ─── */}
-      <div className="px-5 py-3 border-b border-border">
-        <button type="button" onClick={() => setEditando(v => !v)}
-          className="text-[12px] text-ink-muted hover:text-ink flex items-center gap-1.5 font-medium transition-colors">
-          <span className={`inline-block transition-transform ${editando ? 'rotate-90' : ''}`}>▶</span>
-          Configuração
-          <span className="text-ink-faint font-normal text-[11px]">— intervalo, janela horária, mensagem, dias</span>
-        </button>
-        {editando && (
-          <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div>
-              <label className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">Intervalo (min)</label>
-              <Input type="number" min={1} max={60} defaultValue={cfg.intervalo_min}
-                onBlur={e => salvarConfig.mutate({ intervalo_min: Math.max(1, Number(e.target.value) || 5) })} />
-            </div>
-            <div>
-              <label className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">Leads por vendedor / ciclo</label>
-              <Input type="number" min={1} max={10} defaultValue={cfg.max_leads_por_vendedor_ciclo ?? 1}
-                onBlur={e => salvarConfig.mutate({ max_leads_por_vendedor_ciclo: Math.max(1, Number(e.target.value) || 1) })} />
-              <div className="text-[9px] text-ink-faint mt-0.5">
-                Cada vendedor recebe N leads a cada ciclo. 1 = 1 cliente/5min por vendedor.
-              </div>
-            </div>
-            <div>
-              <label className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">Cap total / ciclo</label>
-              <Input type="number" min={1} max={100} defaultValue={cfg.leads_por_ciclo}
-                onBlur={e => salvarConfig.mutate({ leads_por_ciclo: Math.max(1, Number(e.target.value) || 10) })} />
-              <div className="text-[9px] text-ink-faint mt-0.5">
-                Limite máximo absoluto (caso tenha muitos vendedores).
-              </div>
-            </div>
-            <div>
-              <label className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">Início</label>
-              <Input type="time" defaultValue={String(cfg.horario_inicio).slice(0,5)}
-                onBlur={e => salvarConfig.mutate({ horario_inicio: e.target.value + ':00' })} />
-            </div>
-            <div>
-              <label className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">Fim</label>
-              <Input type="time" defaultValue={String(cfg.horario_fim).slice(0,5)}
-                onBlur={e => salvarConfig.mutate({ horario_fim: e.target.value + ':00' })} />
-            </div>
-            <div className="col-span-2 md:col-span-4">
-              <label className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">
-                Mensagem <span className="text-ink-faint normal-case font-normal ml-1">use <code className="text-accent font-mono">&#123;&#123;nome&#125;&#125;</code> e <code className="text-accent font-mono">&#123;&#123;vendedor&#125;&#125;</code></span>
-              </label>
-              <textarea defaultValue={cfg.mensagem_template} rows={3}
-                onBlur={e => salvarConfig.mutate({ mensagem_template: e.target.value })}
-                className="mt-1 w-full bg-surface-2 border border-border rounded-md px-3 py-2 text-ink text-[13px] focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent/60" />
-            </div>
-            <div className="col-span-2">
-              <label className="text-[10px] text-ink-faint uppercase tracking-wider font-medium">Intervalo entre envios (seg)</label>
-              <div className="mt-1 flex items-center gap-2">
-                <Input type="number" min={5} max={300} defaultValue={cfg.intervalo_envio_min_seg ?? 15}
-                  onBlur={e => salvarConfig.mutate({ intervalo_envio_min_seg: Math.max(5, Number(e.target.value) || 15) })}
-                  title="mínimo" />
-                <span className="text-ink-faint text-[12px]">a</span>
-                <Input type="number" min={5} max={300} defaultValue={cfg.intervalo_envio_max_seg ?? 30}
-                  onBlur={e => salvarConfig.mutate({ intervalo_envio_max_seg: Math.max(5, Number(e.target.value) || 30) })}
-                  title="máximo" />
-              </div>
-              <div className="mt-1 text-[10px] text-ink-faint">
-                {cfg.intervalo_envio_min_seg ?? 15}–{cfg.intervalo_envio_max_seg ?? 30}s · ↓ rápido · ↑ anti-bot
-              </div>
-            </div>
-            <div className="col-span-2 md:col-span-4">
-              <label className="text-[10px] text-ink-faint uppercase tracking-wider font-medium mb-1.5 block">Dias da semana</label>
-              <div className="flex gap-1.5 flex-wrap">
-                {[
-                  { v: 1, l: 'Seg' }, { v: 2, l: 'Ter' }, { v: 3, l: 'Qua' },
-                  { v: 4, l: 'Qui' }, { v: 5, l: 'Sex' }, { v: 6, l: 'Sáb' }, { v: 7, l: 'Dom' },
-                ].map(d => {
-                  const ativo = cfg.dias_semana?.includes(d.v)
-                  return (
-                    <button key={d.v}
-                      onClick={() => {
-                        const novo = ativo ? cfg.dias_semana.filter(x => x !== d.v) : [...cfg.dias_semana, d.v].sort()
-                        salvarConfig.mutate({ dias_semana: novo })
-                      }}
-                      className={`text-[11px] px-3 py-1.5 rounded-md font-medium border transition-colors ${
-                        ativo
-                          ? 'bg-accent/15 text-accent border-accent/40'
-                          : 'bg-surface-2 text-ink-muted border-border hover:text-ink hover:border-border-strong'
-                      }`}
-                    >{d.l}</button>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ─── EXECUÇÕES (tabela detalhada) ─── */}
-      <div className="px-5 py-3">
-        <button onClick={() => setLogExpandido(v => !v)}
-          className="text-[12px] text-ink-muted hover:text-ink flex items-center gap-1.5 font-medium transition-colors">
-          <span className={`inline-block transition-transform ${logExpandido ? 'rotate-90' : ''}`}>▶</span>
-          Detalhes das execuções
-          <span className="text-ink-faint font-normal text-[11px]">({(execucoes ?? []).length})</span>
-        </button>
-        {logExpandido && (
-          <div className="mt-3 border border-border rounded-md overflow-hidden">
-            <div className="max-h-72 overflow-y-auto">
-              <table className="w-full text-[12px]">
-                <thead className="bg-surface-2/60 sticky top-0 backdrop-blur">
-                  <tr>
-                    <th className="text-left px-3 py-2 text-ink-faint uppercase text-[10px] tracking-wider font-medium">Quando</th>
-                    <th className="text-right px-3 py-2 text-ink-faint uppercase text-[10px] tracking-wider font-medium">Aguard.</th>
-                    <th className="text-right px-3 py-2 text-ink-faint uppercase text-[10px] tracking-wider font-medium">Processados</th>
-                    <th className="text-right px-3 py-2 text-ink-faint uppercase text-[10px] tracking-wider font-medium">Duplic.</th>
-                    <th className="text-left px-3 py-2 text-ink-faint uppercase text-[10px] tracking-wider font-medium">Distribuição / motivo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(execucoes ?? []).map(e => {
-                    const isExpanded = !!expanded[e.id]
-                    const temTelefones = e.distribuicao_telefones && Object.keys(e.distribuicao_telefones).length > 0
-                    return (
-                      <Fragment key={e.id}>
-                        <tr className="border-t border-border/40 hover:bg-surface-2/40 transition-colors"
-                          onClick={() => temTelefones && setExpanded(s => ({ ...s, [e.id]: !s[e.id] }))}
-                          style={{ cursor: temTelefones ? 'pointer' : 'default' }}>
-                          <td className="px-3 py-2 text-ink-muted whitespace-nowrap font-mono text-[11px]">
-                            <span className="text-ink-faint mr-1.5 inline-block w-2">{temTelefones ? (isExpanded ? '▼' : '▶') : ''}</span>
-                            {new Date(e.executado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                          </td>
-                          <td className="px-3 py-2 text-ink tabular-nums text-right">{e.leads_aguardando ?? '—'}</td>
-                          <td className={`px-3 py-2 tabular-nums text-right font-semibold ${e.leads_processados > 0 ? 'text-success' : 'text-ink-faint'}`}>
-                            {e.leads_processados}
-                          </td>
-                          <td className="px-3 py-2 text-ink-muted tabular-nums text-right">{e.leads_pulados_duplicados}</td>
-                          <td className="px-3 py-2 text-[11px]">
-                            {e.distribuicao && Object.keys(e.distribuicao).length > 0 ? (
-                              <span className="text-ink-muted">
-                                {e.motivo_skip === 'execucao_manual' && (
-                                  <Badge className="bg-accent/15 text-accent mr-1.5">manual</Badge>
-                                )}
-                                {Object.entries(e.distribuicao).map(([k, v]) => `${k}:${v}`).join(' · ')}
-                              </span>
-                            ) : e.motivo_skip ? (
-                              <Badge className="bg-warning/15 text-warning">⊘ {e.motivo_skip}</Badge>
-                            ) : <span className="text-ink-faint">—</span>}
-                          </td>
-                        </tr>
-                        {isExpanded && temTelefones && (
-                          <tr className="bg-surface-2/40">
-                            <td colSpan={5} className="px-3 py-3">
-                              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
-                                {Object.entries(e.distribuicao_telefones!).map(([vendedor, telefones]) => (
-                                  <div key={vendedor} className="bg-surface border border-border rounded-md p-2.5">
-                                    <div className="text-[12px] font-semibold text-ink mb-1.5 flex items-center gap-1.5">
-                                      <span className="h-1.5 w-1.5 rounded-full bg-success" />
-                                      {vendedor}
-                                      <span className="text-ink-faint font-normal text-[11px]">({telefones.length})</span>
-                                    </div>
-                                    <div className="space-y-1">
-                                      {telefones.map((t, i) => (
-                                        <div key={i} className="text-[11px] flex items-center gap-2">
-                                          <span className="font-mono text-accent">+{t.tel}</span>
-                                          {t.nome && <span className="text-ink-muted truncate">— {t.nome}</span>}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
-                    )
-                  })}
-                  {(execucoes ?? []).length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="text-center py-6 text-ink-faint text-[12px]">
-                        Nenhuma execução ainda — ative a automação acima
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
       </div>
     </Card>
   )
