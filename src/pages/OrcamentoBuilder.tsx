@@ -975,37 +975,51 @@ export function OrcamentoBuilder() {
                 <button
                   key={m.id}
                   onClick={() => setModeloId(m.id)}
-                  className={`text-left p-3 rounded-md border transition-all ${
+                  className={`text-left p-3 rounded-md border transition-all flex gap-3 ${
                     selected
                       ? 'border-accent bg-accent-bg/20 ring-2 ring-accent/30'
                       : 'border-border bg-surface-2 hover:border-accent/40'
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-2 mb-1">
-                    <div className="text-[12px] font-bold text-ink truncate flex-1">{m.basename}</div>
-                    {selected && <Check className="h-4 w-4 text-accent shrink-0" />}
-                  </div>
-                  <div className="flex flex-wrap gap-1 text-[10px] mb-2">
-                    <span className="px-1.5 py-0.5 rounded bg-accent-bg/30 text-accent font-bold">{m.pacote}</span>
-                    <span className={`px-1.5 py-0.5 rounded font-bold ${
-                      m.voltagem === 'trifasico' ? 'bg-info-bg/30 text-info' : 'bg-warning-bg/30 text-warning'
-                    }`}>
-                      {m.voltagem}
-                    </span>
-                    {m.is_master && <span className="px-1.5 py-0.5 rounded bg-warning-bg/30 text-warning font-bold">MASTER</span>}
-                    {m.is_jr && <span className="px-1.5 py-0.5 rounded bg-info-bg/30 text-info font-bold">JR</span>}
-                    {m.com_balanca && <span className="px-1.5 py-0.5 rounded bg-surface-3 text-ink-muted">+balança</span>}
-                    {m.com_ensacadeira && <span className="px-1.5 py-0.5 rounded bg-surface-3 text-ink-muted">+ensacadeira</span>}
-                  </div>
-                  <div className="flex items-baseline justify-between gap-2 text-[11px]">
-                    <span className="text-ink-faint">
-                      {m.producao_kgh ? `${m.producao_kgh} kg/h` : ''}
-                      {m.armazenamento_kg ? ` · ${m.armazenamento_kg} kg` : ''}
-                    </span>
-                    <span className="font-bold text-success tabular-nums">{formatBRL(m.total_proposta)}</span>
-                  </div>
-                  <div className="text-[10px] text-ink-faint mt-1">
-                    {m.itens.length} items + {m.motores.length} motores
+                  {m.foto_url ? (
+                    <img
+                      src={m.foto_url}
+                      alt={m.basename}
+                      className="w-16 h-16 object-cover rounded bg-surface-3 shrink-0"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded bg-surface-3 shrink-0 flex items-center justify-center text-ink-faint text-[10px]">
+                      sem foto
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <div className="text-[12px] font-bold text-ink truncate flex-1">{m.basename}</div>
+                      {selected && <Check className="h-4 w-4 text-accent shrink-0" />}
+                    </div>
+                    <div className="flex flex-wrap gap-1 text-[10px] mb-2">
+                      <span className="px-1.5 py-0.5 rounded bg-accent-bg/30 text-accent font-bold">{m.pacote}</span>
+                      <span className={`px-1.5 py-0.5 rounded font-bold ${
+                        m.voltagem === 'trifasico' ? 'bg-info-bg/30 text-info' : 'bg-warning-bg/30 text-warning'
+                      }`}>
+                        {m.voltagem}
+                      </span>
+                      {m.is_master && <span className="px-1.5 py-0.5 rounded bg-warning-bg/30 text-warning font-bold">MASTER</span>}
+                      {m.is_jr && <span className="px-1.5 py-0.5 rounded bg-info-bg/30 text-info font-bold">JR</span>}
+                      {m.com_balanca && <span className="px-1.5 py-0.5 rounded bg-surface-3 text-ink-muted">+balança</span>}
+                      {m.com_ensacadeira && <span className="px-1.5 py-0.5 rounded bg-surface-3 text-ink-muted">+ensacadeira</span>}
+                    </div>
+                    <div className="flex items-baseline justify-between gap-2 text-[11px]">
+                      <span className="text-ink-faint">
+                        {m.producao_kgh ? `${m.producao_kgh} kg/h` : ''}
+                        {m.armazenamento_kg ? ` · ${m.armazenamento_kg} kg` : ''}
+                      </span>
+                      <span className="font-bold text-success tabular-nums">{formatBRL(m.total_proposta)}</span>
+                    </div>
+                    <div className="text-[10px] text-ink-faint mt-1">
+                      {m.itens.length} items + {m.motores.length} motores
+                    </div>
                   </div>
                 </button>
               )
