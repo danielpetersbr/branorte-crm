@@ -338,7 +338,7 @@ export function OrcamentoMontar() {
   // Configuração de cálculo de potência do chupim (fórmula Branorte)
   // Material/inclinação default — usado como pré-seleção no modal de confirmação por item.
   const [chupimMaterial, setChupimMaterial] = useState<MaterialChupim>('MILHO')
-  const [chupimInclinacao, setChupimInclinacao] = useState<InclinacaoChupim>(0)
+  const [chupimInclinacao, setChupimInclinacao] = useState<InclinacaoChupim>(45)
   // Modal de confirmação por chupim: abre quando vendedor clica num chupim no picker.
   // Permite escolher material/inclinação específicos pra AQUELE item antes de adicionar.
   const [confirmarChupim, setConfirmarChupim] = useState<PrecoBranorte | null>(null)
