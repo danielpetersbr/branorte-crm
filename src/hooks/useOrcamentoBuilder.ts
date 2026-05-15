@@ -216,19 +216,38 @@ export function useOrcamentosGerados(filters?: { vendedor_nome?: string; status?
 export async function obterProximoNumero(): Promise<{ ano: number; sequencial: number; numero: string }> {
   const ano = new Date().getFullYear()
 
-  // PASTA Z:\ é a FONTE DA VERDADE (mantida pelo job desktop branorte-sync
-  // que escaneia recursivo todas subpastas de mes). Banco serve apenas pra
-  // garantir unicidade via INSERT-retry quando 2 vendedores criam ao mesmo
-  // tempo (race condition).
+  // PASTA Z:\ é a FONTE DA VERDADE (mantida pelo job desktop branorte-sync).
   //
-  // Estratégia: pega ultimo_sequencial da pasta + 1. Se o INSERT no banco
-  // detectar duplicata (alguém ja criou esse número), o caller (criarOrcamento)
-  // tem um retry-loop que incrementa até achar livre.
-  const { data: pastaIdx } = await supabase
-    .from('pasta_orcamento_index')
-    .select('ultimo_sequencial')
-    .eq('ano', ano)
-    .maybeSingle()
+  // Estratégia: dispara um broadcast Realtime "scan-now" pro desktop fazer
+  // scan IMEDIATO da pasta. Aguarda até 3s o index atualizar (polling a cada
+  // 250ms), aí lê o ultimo_sequencial. Se o desktop nao tiver respondido,
+  // usa o valor mais recente disponivel (fallback grácil).
+  const tsRequest = Date.now()
+  try {
+    const ch = supabase.channel('force-scan-pasta')
+    await ch.subscribe()
+    await ch.send({ type: 'broadcast', event: 'scan-now', payload: { ts: tsRequest } })
+    // Não espera resposta — só dispara. Polling abaixo aguarda o effect.
+    setTimeout(() => { try { supabase.removeChannel(ch) } catch {} }, 5000)
+  } catch (e) {
+    console.warn('Falha disparar force-scan, usando ultima leitura do index:', e)
+  }
+
+  // Polling: aguarda até 3s o atualizado_em do index ficar > tsRequest
+  let pastaIdx: { ultimo_sequencial: number; atualizado_em: string } | null = null
+  const deadline = Date.now() + 3000
+  while (Date.now() < deadline) {
+    const { data } = await supabase
+      .from('pasta_orcamento_index')
+      .select('ultimo_sequencial, atualizado_em')
+      .eq('ano', ano)
+      .maybeSingle()
+    pastaIdx = data ?? null
+    if (pastaIdx?.atualizado_em && new Date(pastaIdx.atualizado_em).getTime() >= tsRequest - 500) {
+      break // index foi atualizado pelo scan que pedimos
+    }
+    await new Promise(r => setTimeout(r, 250))
+  }
 
   const seqPasta = Number(pastaIdx?.ultimo_sequencial ?? 0)
   const seq = seqPasta + 1

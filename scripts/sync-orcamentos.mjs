@@ -209,3 +209,21 @@ log(`Iniciando sync. DEST=${DEST_BASE} | POLL=${POLL_INTERVAL_MS}ms | LOG=${LOG_
 // Roda imediato + interval
 tick()
 setInterval(tick, POLL_INTERVAL_MS)
+
+// REALTIME: escuta canal "force-scan" do Supabase. Quando frontend
+// abre o modal Finalizar e chama supabase.channel('force-scan').send(),
+// fazemos scan IMEDIATO da pasta (sem esperar o proximo tick de 5s).
+// Garante que mobile sempre pega o numero mais novo da pasta.
+const channel = supa.channel('force-scan-pasta')
+channel
+  .on('broadcast', { event: 'scan-now' }, async () => {
+    log('REALTIME: force-scan recebido — scan imediato')
+    try {
+      await scanPastaUpdateIndex()
+    } catch (e) {
+      log(`ERR realtime scan: ${e?.message ?? e}`)
+    }
+  })
+  .subscribe((status) => {
+    if (status === 'SUBSCRIBED') log('REALTIME: subscribed em force-scan-pasta')
+  })
