@@ -365,7 +365,6 @@ export function OrcamentoMontar() {
   const [ensacadeiraPickerOpen, setEnsacadeiraPickerOpen] = useState(false)
   const [alimentadorPickerOpen, setAlimentadorPickerOpen] = useState(false)
   const [descargaPickerOpen, setDescargaPickerOpen] = useState(false)
-  const [marteloPickerOpen, setMarteloPickerOpen] = useState(false)
   const [moegaPickerOpen, setMoegaPickerOpen] = useState(false)
   const [passarelaPickerOpen, setPassarelaPickerOpen] = useState(false)
   const [suporteBagPickerOpen, setSuporteBagPickerOpen] = useState(false)
@@ -414,7 +413,6 @@ export function OrcamentoMontar() {
   // Categorias pequenas (1-5 itens cada) — antes ficavam soltas no grid, agora cada uma tem meta-card.
   const alimentadoresPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'ALIMENTADOR'), [precos])
   const descargasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'DESCARGA'), [precos])
-  const martelosPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'MARTELOS'), [precos])
   const moegasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'MOEGA'), [precos])
   const passarelasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'PASSARELA'), [precos])
   const suporteBagPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'SUPORTE_BAG'), [precos])
@@ -1184,9 +1182,6 @@ export function OrcamentoMontar() {
                     {(categoria === null || categoria === 'DESCARGA') && descargasPreco.length > 0 && (
                       <MetaCard categoria="DESCARGA" titulo="Descarga (acessório)" descricao="Duas vias 160 e 210 mm" qtd={descargasPreco.length} onClick={() => setDescargaPickerOpen(true)} />
                     )}
-                    {(categoria === null || categoria === 'MARTELOS') && martelosPreco.length > 0 && (
-                      <MetaCard categoria="MARTELOS" titulo="Moinho de Martelo (avulso)" descricao="20 CV (motor 2 polos)" qtd={martelosPreco.length} onClick={() => setMarteloPickerOpen(true)} />
-                    )}
                     {(categoria === null || categoria === 'MOEGA') && moegasPreco.length > 0 && (
                       <MetaCard categoria="MOEGA" titulo="Moega de Entrada" descricao="Caixa de entrada com helicoide" qtd={moegasPreco.length} onClick={() => setMoegaPickerOpen(true)} />
                     )}
@@ -1654,17 +1649,6 @@ export function OrcamentoMontar() {
         ordemSub={[]}
         onClose={() => setDescargaPickerOpen(false)}
         onPick={p => { adicionarItemDePreco(p); setDescargaPickerOpen(false) }}
-      />
-
-      <CategoriaPickerModal
-        open={marteloPickerOpen}
-        titulo="Moinho de Martelo (avulso)"
-        items={martelosPreco}
-        catalogoItems={items ?? []}
-        labelSub={{}}
-        ordemSub={[]}
-        onClose={() => setMarteloPickerOpen(false)}
-        onPick={p => { adicionarItemDePreco(p); setMarteloPickerOpen(false) }}
       />
 
       <CategoriaPickerModal
