@@ -48,17 +48,29 @@ export function useCriarFeedback() {
         const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path)
         screenshot_url = pub.publicUrl
       }
-      const { data, error } = await supabase.from('roadmap_feedback').insert({
-        tipo: input.tipo,
-        titulo: input.titulo.trim(),
-        descricao: input.descricao.trim() || null,
-        url_origem: input.url_origem || null,
-        screenshot_url,
-        criado_por: input.criado_por,
-        criado_por_nome: input.criado_por_nome,
-      }).select('*').single()
-      if (error) throw error
-      return data as RoadmapFeedback
+      // Insere via endpoint Vercel /api/feedback (bypassa RLS com service role).
+      // RLS bloqueia INSERT direto pelo cliente — endpoint valida JWT antes.
+      const { data: { session } } = await supabase.auth.getSession()
+      const jwt = session?.access_token
+      if (!jwt) throw new Error('nao_logado')
+
+      const r = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: {
+          'authorization': `Bearer ${jwt}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          tipo: input.tipo,
+          titulo: input.titulo.trim(),
+          descricao: input.descricao.trim() || null,
+          url_origem: input.url_origem || null,
+          screenshot_url,
+        }),
+      })
+      const j = await r.json()
+      if (!r.ok || j?.error) throw new Error(j?.detail || j?.error || `HTTP ${r.status}`)
+      return j.feedback as RoadmapFeedback
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['roadmap-feedback'] }),
   })
