@@ -1015,7 +1015,7 @@ export function OrcamentoBuilder() {
                         {m.producao_kgh ? `${m.producao_kgh} kg/h` : ''}
                         {m.armazenamento_kg ? ` · ${m.armazenamento_kg} kg` : ''}
                       </span>
-                      <span className="font-bold text-success tabular-nums">{formatBRL(m.total_proposta)}</span>
+                      <span className="font-bold text-success tabular-nums">{formatBRL(Number(m.total_proposta) + Number(m.acessorios?.valor || 0))}</span>
                     </div>
                     <div className="text-[10px] text-ink-faint mt-1">
                       {m.itens.length} items + {m.motores.length} motores
