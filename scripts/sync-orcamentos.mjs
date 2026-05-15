@@ -124,16 +124,62 @@ async function markAsProcessed(remotePath) {
 async function tick() {
   try {
     const pendentes = await listAllPendentes()
-    if (pendentes.length === 0) {
-      // log('nada pra sincronizar')
-      return
-    }
-    log(`${pendentes.length} arquivo(s) pendente(s)`)
-    for (const f of pendentes) {
-      await processFile(f.path)
+    if (pendentes.length > 0) {
+      log(`${pendentes.length} arquivo(s) pendente(s)`)
+      for (const f of pendentes) {
+        await processFile(f.path)
+      }
     }
   } catch (e) {
     log(`ERR tick: ${e?.message ?? e}`)
+  }
+
+  // Tambem escaneia a pasta Z:\YYYY\Orcamentos YYYY pra detectar
+  // orcamentos que vendedor salvou DIRETO la (fora do CRM). Atualiza
+  // tabela pasta_orcamento_index pra mobile/desktop calcularem proximo
+  // numero unico.
+  try {
+    await scanPastaUpdateIndex()
+  } catch (e) {
+    log(`ERR scan pasta: ${e?.message ?? e}`)
+  }
+}
+
+async function scanPastaUpdateIndex() {
+  const ano = new Date().getFullYear()
+  const dir = path.join(DEST_BASE, String(ano), `Orçamentos ${ano}`)
+  if (!existsSync(dir)) return
+  const files = await fs.readdir(dir)
+  // Padrao de arquivo: "YYYY-XXXX-cliente.pdf" ou "YYYY-XXXX-cliente.docx"
+  // (pode ter espacos/parenteses tambem). Pega o maior XXXX.
+  const re = new RegExp(`^${ano}\\s*-?\\s*(\\d{3,5})\\b`)
+  let maxSeq = 0
+  let maxArq = ''
+  for (const f of files) {
+    const m = f.match(re)
+    if (m) {
+      const n = parseInt(m[1], 10)
+      if (n > maxSeq) { maxSeq = n; maxArq = f }
+    }
+  }
+  if (maxSeq === 0) return // pasta vazia ou sem arquivos no padrao
+
+  // Upsert na tabela
+  const { error } = await supa.from('pasta_orcamento_index').upsert({
+    ano,
+    ultimo_sequencial: maxSeq,
+    ultimo_arquivo: maxArq,
+    atualizado_em: new Date().toISOString(),
+  }, { onConflict: 'ano' })
+  if (error) {
+    log(`WARN nao consegui atualizar pasta_orcamento_index: ${error.message}`)
+  } else {
+    // log so quando muda
+    const cached = scanPastaUpdateIndex._lastSeq
+    if (cached !== maxSeq) {
+      log(`pasta_orcamento_index atualizado: ano=${ano} ultimo=${maxSeq} (${maxArq})`)
+      scanPastaUpdateIndex._lastSeq = maxSeq
+    }
   }
 }
 

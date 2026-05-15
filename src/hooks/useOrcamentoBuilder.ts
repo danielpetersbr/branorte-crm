@@ -215,9 +215,24 @@ export function useOrcamentosGerados(filters?: { vendedor_nome?: string; status?
 // Busca proximo numero (lê do banco e calcula 2026 - XXXX)
 export async function obterProximoNumero(): Promise<{ ano: number; sequencial: number; numero: string }> {
   const ano = new Date().getFullYear()
-  const { data, error } = await supabase.rpc('proximo_orcamento_sequencial', { p_ano: ano })
-  if (error) throw error
-  const seq = Number(data) || 1
+
+  // Consulta paralela: banco (orcamentos_gerados) + index da pasta Z:\
+  // (mantido pelo job desktop branorte-sync). Pega MAX dos dois +1 pra
+  // garantir numero unico mesmo se vendedor salvou direto na pasta.
+  const [{ data: rpcData }, { data: pastaIdx }] = await Promise.all([
+    supabase.rpc('proximo_orcamento_sequencial', { p_ano: ano }),
+    supabase
+      .from('pasta_orcamento_index')
+      .select('ultimo_sequencial')
+      .eq('ano', ano)
+      .maybeSingle(),
+  ])
+
+  const seqBanco = Number(rpcData) || 1
+  // RPC ja retorna o "proximo" (max+1). Pasta retorna ULTIMO usado.
+  const seqPasta = pastaIdx?.ultimo_sequencial ? Number(pastaIdx.ultimo_sequencial) + 1 : 0
+  const seq = Math.max(seqBanco, seqPasta)
+
   return {
     ano,
     sequencial: seq,
