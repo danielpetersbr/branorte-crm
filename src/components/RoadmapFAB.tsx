@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
-import { MessageSquarePlus, X, Bug, Lightbulb, Sparkles, Upload, Loader2, Check, ImageIcon } from 'lucide-react'
+import { MessageSquarePlus, X, Bug, Lightbulb, Sparkles, Upload, Loader2, Check, ImageIcon, Camera } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useCriarFeedback, type RoadmapTipo } from '@/hooks/useRoadmap'
 
@@ -24,8 +24,37 @@ export function RoadmapFAB() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [enviado, setEnviado] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  const [capturando, setCapturando] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const criar = useCriarFeedback()
+
+  // Captura a tela atual (o que está atrás do modal) via html2canvas.
+  // Esconde o modal temporariamente pro print não pegar ele mesmo.
+  async function capturarTela() {
+    setCapturando(true)
+    setOpen(false)
+    try {
+      // 2 frames pra garantir que o React desmontou o modal antes do canvas
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+      const html2canvas = (await import('html2canvas')).default
+      const canvas = await html2canvas(document.body, {
+        scale: window.devicePixelRatio || 1,
+        logging: false,
+        backgroundColor: null,
+        useCORS: true,
+      })
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png', 0.92))
+      if (blob) {
+        const file = new File([blob], `screenshot-${Date.now()}.png`, { type: 'image/png' })
+        setScreenshot(file)
+      }
+    } catch (e) {
+      setErro('Falha ao capturar tela: ' + (e as Error).message)
+    } finally {
+      setCapturando(false)
+      setOpen(true)
+    }
+  }
 
   // Reset ao fechar
   useEffect(() => {
@@ -217,7 +246,7 @@ export function RoadmapFAB() {
                   {/* Screenshot */}
                   <div>
                     <label className="block text-[11px] uppercase font-bold text-ink-muted mb-1">
-                      Screenshot (opcional, Ctrl+V cola)
+                      Screenshot (opcional)
                     </label>
                     {previewUrl ? (
                       <div className="relative inline-block">
@@ -232,14 +261,26 @@ export function RoadmapFAB() {
                         </button>
                       </div>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="w-full border-2 border-dashed border-border rounded p-4 text-center text-[12px] text-ink-muted hover:border-accent hover:bg-accent/5 transition flex flex-col items-center gap-1"
-                      >
-                        <ImageIcon className="w-5 h-5" />
-                        <span>Clique pra anexar ou cole com Ctrl+V</span>
-                      </button>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={capturarTela}
+                          disabled={capturando}
+                          className="border-2 border-dashed border-accent/40 bg-accent/5 rounded p-3 text-center text-[12px] text-accent hover:bg-accent/10 hover:border-accent transition flex flex-col items-center gap-1 disabled:opacity-50 font-semibold"
+                          title="Captura a tela atual automaticamente"
+                        >
+                          <Camera className="w-5 h-5" />
+                          <span>Capturar tela</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="border-2 border-dashed border-border rounded p-3 text-center text-[12px] text-ink-muted hover:border-accent hover:bg-accent/5 transition flex flex-col items-center gap-1"
+                        >
+                          <ImageIcon className="w-5 h-5" />
+                          <span>Anexar / Ctrl+V</span>
+                        </button>
+                      </div>
                     )}
                     <input
                       ref={fileInputRef}

@@ -167,6 +167,9 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
 
   const [gerando, setGerando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  // Status do envio WhatsApp (mostra feedback ao vendedor)
+  const [waStatus, setWaStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
+  const [waMsg, setWaMsg] = useState<string>('')
 
   // Carrega número quando abre o modal
   useEffect(() => {
@@ -529,6 +532,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
       // Independente de como salvou (pasta/servidor/download), faz upload temporario
       // pra _envios/ (path com `_` é ignorado pelo sync) e dispara edge function.
       if (enviarMeuZap && pdfBlob) {
+        setWaStatus('sending')
+        setWaMsg('Enviando pro seu WhatsApp...')
         try {
           const ano = String(hoje.getFullYear())
           const mes = String(hoje.getMonth() + 1).padStart(2, '0')
@@ -540,10 +545,10 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
 
           const { data: signed, error: sErr } = await supabase.storage
             .from('orcamentos-pendentes')
-            .createSignedUrl(envioPath, 60 * 60 * 24 * 7) // 7 dias
+            .createSignedUrl(envioPath, 60 * 60 * 24 * 7)
           if (sErr || !signed?.signedUrl) throw new Error('signed_url: ' + (sErr?.message ?? 'sem url'))
 
-          const { error: fnErr } = await supabase.functions.invoke('orcamento-enviar-meu-zap', {
+          const { data: fnData, error: fnErr } = await supabase.functions.invoke('orcamento-enviar-meu-zap', {
             body: {
               vendedor_nome: profile?.display_name?.toUpperCase() || undefined,
               pdf_url: signed.signedUrl,
@@ -552,10 +557,15 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
               caption: `📄 Orçamento ${orc.numero} — ${cliNome.trim()}\n\nPersonalizado: ${descricao || sugestao}\nGerado em ${dataEmissaoBR}\n\n👇 Encaminhe pro cliente`,
             },
           })
-          if (fnErr) throw new Error('edge_fn: ' + fnErr.message)
+          if (fnErr) throw new Error(fnErr.message)
+          if (fnData?.error) throw new Error(fnData.detail || fnData.error)
+          setWaStatus('sent')
+          setWaMsg(fnData?.msg || `PDF enviado pro seu WhatsApp. Chega em até 30s.`)
         } catch (e) {
-          console.warn('Falha enviar pro WhatsApp do vendedor:', e)
-          // Nao bloqueia: vendedor ainda tem o PDF baixado/na pasta
+          const m = (e as Error).message
+          console.warn('Falha enviar pro WhatsApp do vendedor:', m)
+          setWaStatus('error')
+          setWaMsg(`Não consegui enviar pro seu WhatsApp: ${m}`)
         }
       }
 
@@ -818,6 +828,22 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
               </div>
             </div>
           </label>
+
+          {/* Status do envio WhatsApp */}
+          {waStatus !== 'idle' && (
+            <div
+              className={`p-3 rounded-md text-[11px] flex items-start gap-2 border ${
+                waStatus === 'sending' ? 'bg-warning-bg/15 border-warning/30 text-warning' :
+                waStatus === 'sent' ? 'bg-success-bg/15 border-success/30 text-success' :
+                'bg-danger-bg/15 border-danger/30 text-danger'
+              }`}
+            >
+              {waStatus === 'sending' && <Loader2 className="h-3.5 w-3.5 animate-spin mt-0.5 shrink-0" />}
+              {waStatus === 'sent' && <Check className="h-3.5 w-3.5 mt-0.5 shrink-0" />}
+              {waStatus === 'error' && <X className="h-3.5 w-3.5 mt-0.5 shrink-0" />}
+              <div className="flex-1">{waMsg}</div>
+            </div>
+          )}
 
           {erro && (
             <div className="p-3 bg-danger-bg/15 border border-danger/30 rounded-md text-[11px] text-danger">
