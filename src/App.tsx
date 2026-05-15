@@ -107,7 +107,8 @@ function AppRoutes() {
         <Route path="/atribuir" element={<Assign />} />
         <Route path="/orcamentos" element={<Orcamentos />} />
         <Route path="/orcamentos/lista" element={<Orcamentos />} />
-        <Route path="/orcamentos/novo" element={<OrcamentoBuilder />} />
+        {/* /orcamentos/novo descontinuado: redireciona pro Montar Custom (links antigos continuam funcionando) */}
+        <Route path="/orcamentos/novo" element={<Navigate to="/orcamentos/montar" replace />} />
         <Route path="/orcamentos/montar" element={<OrcamentoMontar />} />
         <Route path="/orcamentos/catalogo-admin" element={<CatalogoAdmin />} />
         <Route path="/orcamentos/motores" element={<MotoresAdmin />} />
