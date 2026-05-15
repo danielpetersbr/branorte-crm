@@ -171,6 +171,11 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
   const [waStatus, setWaStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
   const [waMsg, setWaMsg] = useState<string>('')
 
+  // Reseta status WhatsApp ao reabrir
+  useEffect(() => {
+    if (open) { setWaStatus('idle'); setWaMsg(''); setErro(null) }
+  }, [open])
+
   // Carrega número quando abre o modal
   useEffect(() => {
     if (!open) return
