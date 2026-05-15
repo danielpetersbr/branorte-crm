@@ -36,6 +36,7 @@ const Disparos = lazy(() => import('@/pages/Disparos').then(m => ({ default: m.D
 const MotoresAdmin = lazy(() => import('@/pages/MotoresAdmin').then(m => ({ default: m.MotoresAdmin })))
 const PrecosBranorte = lazy(() => import('@/pages/PrecosBranorte').then(m => ({ default: m.PrecosBranorte })))
 const OrcamentosConversao = lazy(() => import('@/pages/OrcamentosConversao').then(m => ({ default: m.OrcamentosConversao })))
+const Roadmap = lazy(() => import('@/pages/Roadmap').then(m => ({ default: m.Roadmap })))
 
 // Loga TODO erro de query/mutation no console. Evita falha silenciosa.
 // Erros visuais aparecem no SyncIndicator da Atendimentos (e outras páginas podem opt-in).
@@ -130,6 +131,9 @@ function AppRoutes() {
         )}
         {profile.role === 'admin' && (
           <Route path="/admin/transportador-funcoes" element={<AdminTransportadorFuncoes />} />
+        )}
+        {profile.role === 'admin' && (
+          <Route path="/roadmap" element={<Roadmap />} />
         )}
       </Route>
       <Route path="/login" element={<Navigate to="/" replace />} />

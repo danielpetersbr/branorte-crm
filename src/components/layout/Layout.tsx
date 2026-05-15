@@ -1,10 +1,11 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Sparkles, Package, Zap, BookOpen, Settings, TrendingUp } from 'lucide-react'
+import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Sparkles, Package, Zap, BookOpen, Settings, TrendingUp, MessageSquarePlus } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { cn } from '@/lib/utils'
 import { useAtendimentoKpis } from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
+import { RoadmapFAB } from '@/components/RoadmapFAB'
 
 // Abrevia numero pra caber no badge: 1234 -> 1.2k
 function fmtCount(n: number): string {
@@ -266,6 +267,7 @@ export function Layout() {
               {collapsed && <div className="my-2 w-8 h-px bg-border" />}
               {renderItem({ to: '/admin/usuarios', label: 'Usuários', icon: Shield })}
               {renderItem({ to: '/admin/transportador-funcoes', label: 'Funções Chupim', icon: Settings })}
+              {renderItem({ to: '/roadmap', label: 'Roadmap & Feedback', icon: MessageSquarePlus })}
             </>
           )}
         </nav>
@@ -305,6 +307,9 @@ export function Layout() {
           <Outlet />
         </Suspense>
       </main>
+
+      {/* FAB global de feedback (visivel em todas as paginas autenticadas) */}
+      <RoadmapFAB />
 
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-bg/95 backdrop-blur border-t border-border flex items-center justify-around px-2 py-1.5 z-50">
         {PRIMARY.concat(SECONDARY).slice(0, 5).map(l => (
