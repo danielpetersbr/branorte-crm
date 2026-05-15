@@ -20,13 +20,15 @@ export const FATOR_MATERIAL = {
 } as const
 export type MaterialChupim = keyof typeof FATOR_MATERIAL
 
-// Fatores b por inclinação em graus (tabela oficial)
+// Fatores b por inclinação em graus (tabela oficial Branorte)
+// 45° = interpolação linear entre 40° (1.75) e 50° (1.95) = 1.85
 export const FATOR_INCLINACAO: Record<number, number> = {
   0: 1.0,
   10: 1.2,
   20: 1.35,
   30: 1.55,
   40: 1.75,
+  45: 1.85,
   50: 1.95,
   60: 2.15,
 }
