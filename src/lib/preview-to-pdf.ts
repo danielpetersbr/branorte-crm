@@ -32,8 +32,9 @@ export async function gerarPdfDoPreview(
 ): Promise<Blob> {
   const pageWidthMm = opts.pageWidth ?? 210
   const pageHeightMm = opts.pageHeight ?? 297
-  // scale alto = texto mais nítido. 3 é o sweet spot pra A4.
-  const scale = opts.scale ?? 3
+  // scale alto = texto mais nítido. 4 = high-DPI sharp, sem custo perceptível
+  // de tempo (html2canvas é o gargalo, não a quantidade de pixels).
+  const scale = opts.scale ?? 4
   // 1024px = breakpoint lg do Tailwind (classes responsivas continuam funcionando).
   // Container menor (ex: 750) QUEBRA o layout do OrcamentoPreview (testado).
   const containerWidthPx = opts.containerWidthPx ?? 1024
@@ -95,9 +96,10 @@ export async function gerarPdfDoPreview(
     const totalHeightMm = canvas.height * mmPerPx
 
     if (totalHeightMm <= pageHeightMm + 0.5) {
-      // Cabe em 1 pagina so
-      const imgData = canvas.toDataURL('image/jpeg', 0.96)
-      pdf.addImage(imgData, 'JPEG', 0, 0, pageWidthMm, totalHeightMm, undefined, 'SLOW')
+      // Cabe em 1 pagina so. PNG = lossless, evita banding/strikethrough
+      // artifacts que JPEG produz nas bordas de fatias horizontais.
+      const imgData = canvas.toDataURL('image/png')
+      pdf.addImage(imgData, 'PNG', 0, 0, pageWidthMm, totalHeightMm, undefined, 'FAST')
     } else {
       // Multi-pagina: smart slicing — corta SO em linhas em branco
       // pra nao quebrar texto/blocos no meio da pagina A4
@@ -222,11 +224,13 @@ export async function gerarPdfDoPreview(
           0, 0, canvas.width, thisSliceHeightPx,
         )
 
-        const imgData = sliceCanvas.toDataURL('image/jpeg', 0.96)
+        // PNG = lossless. JPEG criava banding horizontal nas bordas do slice
+        // (o "strikethrough" que aparecia em algumas linhas tipo Endereço).
+        const imgData = sliceCanvas.toDataURL('image/png')
         const sliceHeightMm = thisSliceHeightPx * mmPerPx
 
         if (pageIdx > 0) pdf.addPage()
-        pdf.addImage(imgData, 'JPEG', 0, 0, pageWidthMm, sliceHeightMm, undefined, 'SLOW')
+        pdf.addImage(imgData, 'PNG', 0, 0, pageWidthMm, sliceHeightMm, undefined, 'FAST')
 
         yPx += thisSliceHeightPx
         pageIdx += 1

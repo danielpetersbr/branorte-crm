@@ -35,7 +35,7 @@ export async function gerarDocxDoPreview(
 ): Promise<Blob> {
   const pageWidthMm = opts.pageWidth ?? 210
   const pageHeightMm = opts.pageHeight ?? 297
-  const scale = opts.scale ?? 3
+  const scale = opts.scale ?? 4
   // 1024px = lg breakpoint Tailwind. Container menor quebra o layout do OrcamentoPreview.
   const containerWidthPx = opts.containerWidthPx ?? 1024
 
@@ -227,7 +227,7 @@ export async function gerarDocxDoPreview(
         new Paragraph({
           children: [
             new ImageRun({
-              type: 'jpg' as any,
+              type: 'png' as any,
               data: slice.blob,
               transformation: {
                 // Em pixels (docx converte). Usa 96 DPI: 1mm ≈ 3.78px
@@ -264,8 +264,7 @@ async function canvasToArrayBuffer(canvas: HTMLCanvasElement): Promise<ArrayBuff
         reader.onerror = () => reject(reader.error)
         reader.readAsArrayBuffer(blob)
       },
-      'image/jpeg',
-      0.96,
+      'image/png',
     )
   })
 }
