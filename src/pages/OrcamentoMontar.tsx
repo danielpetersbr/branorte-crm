@@ -379,7 +379,7 @@ export function OrcamentoMontar() {
   // Picker de MODELOS de pacote (Compactas + Mini Fabrica) — abre os 65 modelos
   // estruturados de orcamento_modelos. Ao escolher um, carrega TODOS os itens
   // (transportador + moinho + misturador) pra ficar idêntico ao orçamento original.
-  const [pacoteModeloPickerOpen, setPacoteModeloPickerOpen] = useState(false)
+  const [pacotePicker, setPacotePicker] = useState<{ open: boolean; initialPacote?: string }>({ open: false })
   const [ensacadeiraPickerOpen, setEnsacadeiraPickerOpen] = useState(false)
   const [alimentadorPickerOpen, setAlimentadorPickerOpen] = useState(false)
   const [descargaPickerOpen, setDescargaPickerOpen] = useState(false)
@@ -1034,6 +1034,37 @@ export function OrcamentoMontar() {
         </div>
       </div>
 
+      {/* ⚡ Modelos Prontos — atalho destacado pros 65 pacotes Compactas + Mini Fábrica */}
+      <div className="bg-gradient-to-r from-accent/10 via-accent/5 to-transparent border border-accent/30 rounded-lg px-3 py-2.5">
+        <div className="flex items-start gap-3 flex-wrap">
+          <div className="flex items-center gap-2 shrink-0">
+            <Sparkles className="h-4 w-4 text-accent" />
+            <div>
+              <div className="text-[10px] uppercase font-bold text-accent tracking-wider">Modelos Prontos</div>
+              <div className="text-[11px] text-ink-muted">Carrega itens + motores + acessórios de uma vez</div>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-1.5 ml-auto">
+            {[
+              { label: 'Compacta 01', pacote: 'COMPACTA 01', qtd: 22 },
+              { label: 'Compacta 02', pacote: 'COMPACTA 02', qtd: 21 },
+              { label: 'Compacta 03', pacote: 'COMPACTA 03', qtd: 20 },
+              { label: 'Mini Fábrica', pacote: 'MINI FABRICA', qtd: 2 },
+            ].map(b => (
+              <button
+                key={b.pacote}
+                onClick={() => setPacotePicker({ open: true, initialPacote: b.pacote })}
+                className="text-[11px] px-3 py-1.5 rounded-md font-semibold bg-accent/15 hover:bg-accent/25 text-accent border border-accent/30 flex items-center gap-1.5 transition-colors"
+              >
+                <Package className="h-3.5 w-3.5" />
+                {b.label}
+                <span className="text-[10px] opacity-70">({b.qtd})</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* Tabs mobile-only — alterna entre catálogo e preview pra não empilhar */}
       <div className="lg:hidden flex items-center gap-1 bg-surface-2 rounded-lg p-1">
         <button
@@ -1219,7 +1250,7 @@ export function OrcamentoMontar() {
                       <MetaCard categoria="ENSACADEIRA" titulo="Ensacadeira" descricao="Saco Aberto e Valvulado c/ painel" qtd={ensacadeirasPreco.length} onClick={() => setEnsacadeiraPickerOpen(true)} />
                     )}
                     {(categoria === null || categoria === 'COMPACTA') && (
-                      <MetaCard categoria="COMPACTA" titulo="Fábricas Compactas (pacote)" descricao="Linhas 01, 01M, 02, 02M (75 a 500 kg/h) — kits completos prontos" qtd={65} onClick={() => setPacoteModeloPickerOpen(true)} />
+                      <MetaCard categoria="COMPACTA" titulo="Fábricas Compactas (pacote)" descricao="Linhas 01, 01M, 02, 02M (75 a 500 kg/h) — kits completos prontos" qtd={65} onClick={() => setPacotePicker({ open: true })} />
                     )}
                     {(categoria === null || categoria === 'ALIMENTADOR') && alimentadoresPreco.length > 0 && (
                       <MetaCard categoria="ALIMENTADOR" titulo="Alimentador" descricao="160 e 210 (com levante ou direto)" qtd={alimentadoresPreco.length} onClick={() => setAlimentadorPickerOpen(true)} />
@@ -1745,9 +1776,10 @@ export function OrcamentoMontar() {
       {/* Picker de MODELOS de pacote (Compactas + Mini Fabrica): carrega TODOS os items
           do modelo (transportador + moinho + misturador + acessórios + motores). */}
       <PacoteModeloPickerModal
-        open={pacoteModeloPickerOpen}
-        onClose={() => setPacoteModeloPickerOpen(false)}
-        onPick={m => { carregarDoModelo(m); setPacoteModeloPickerOpen(false) }}
+        open={pacotePicker.open}
+        initialPacote={pacotePicker.initialPacote}
+        onClose={() => setPacotePicker({ open: false })}
+        onPick={m => { carregarDoModelo(m); setPacotePicker({ open: false }) }}
       />
 
       {/* Ensacadeira */}
@@ -2119,11 +2151,12 @@ export function OrcamentoMontar() {
 // Mostra os 65 modelos com itens estruturados, com filtro por pacote e voltagem.
 // Ao clicar, carrega TODOS os itens (transportador + moinho + misturador + acessórios + motores).
 function PacoteModeloPickerModal({
-  open, onClose, onPick,
+  open, onClose, onPick, initialPacote,
 }: {
   open: boolean
   onClose: () => void
   onPick: (m: OrcamentoModelo) => void
+  initialPacote?: string
 }) {
   const { data: modelos, isLoading } = useOrcamentoModelos()
   const [pacote, setPacote] = useState<string | 'todos'>('todos')
@@ -2131,8 +2164,8 @@ function PacoteModeloPickerModal({
   const [busca, setBusca] = useState('')
 
   useEffect(() => {
-    if (open) { setPacote('todos'); setVoltagem('todos'); setBusca('') }
-  }, [open])
+    if (open) { setPacote(initialPacote ?? 'todos'); setVoltagem('todos'); setBusca('') }
+  }, [open, initialPacote])
 
   // Só os pacotes COMPACTA + MINI FABRICA (são os com itens estruturados)
   const pacotesDisponiveis = useMemo(() => {
