@@ -52,6 +52,13 @@ interface CarrinhoItem {
 
 type TensaoMotor = 220 | 380 | 660 | null
 
+// Componente adicional NÃO fabricado pela Branorte (painel elétrico, balança, célula de carga…)
+export interface ComponenteExtra {
+  id: string
+  nome: string
+  valor: number
+}
+
 function formatBRL(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 }
@@ -136,6 +143,9 @@ export function OrcamentoMontar() {
   const [formaPagamentoTxt, setFormaPagamentoTxt] = useState('')
   // Parcelas estruturadas (tabela DATA/MÉTODO/VALOR) — alternativa ao texto livre acima
   const [parcelasPagamento, setParcelasPagamento] = useState<ParcelaPagamento[]>([])
+  // Componentes adicionais (NÃO fabricados pela Branorte) — painel elétrico, balança, célula de carga, etc.
+  // Cada item: nome livre + valor R$. Vai pro totalGeral mas NÃO é "equipamento" nem "motor".
+  const [componentesExtras, setComponentesExtras] = useState<ComponenteExtra[]>([])
 
   // Snapshot do estado p/ autosave. Inclui tudo que o vendedor pode ter mudado
   // (carrinho, acessorios, voltagem, termos, etc). Excluido: filtros de busca, modais.
@@ -150,9 +160,11 @@ export function OrcamentoMontar() {
     formaPagamentoTxt,
     parcelasPagamento,
     fotoPrincipal,
+    componentesExtras,
   }), [
     carrinho, acessorios, voltagem, tensaoMotores, descontoCfg,
     dataVendaTxt, prazoEntregaTxt, formaPagamentoTxt, parcelasPagamento, fotoPrincipal,
+    componentesExtras,
   ])
 
   // Autosave so liga depois que catalogo carregar (evita salvar snapshot vazio
@@ -172,6 +184,7 @@ export function OrcamentoMontar() {
     setFormaPagamentoTxt(d.formaPagamentoTxt ?? '')
     setParcelasPagamento(d.parcelasPagamento ?? [])
     setFotoPrincipal(d.fotoPrincipal ?? null)
+    setComponentesExtras(d.componentesExtras ?? [])
     draft.dismissRecovered()
   }
 
@@ -220,7 +233,11 @@ export function OrcamentoMontar() {
     [acessorios, totalItems],
   )
   const totalEquip = totalItems + valorAcessorios   // entra no "VALOR TOTAL DE EQUIPAMENTOS"
-  const totalGeral = totalEquip + totalMotores
+  const totalComponentesExtras = useMemo(
+    () => componentesExtras.reduce((s, c) => s + (Number(c.valor) || 0), 0),
+    [componentesExtras],
+  )
+  const totalGeral = totalEquip + totalMotores + totalComponentesExtras
 
   // Item pendente de escolha de função (modal). Null = nenhum modal aberto.
   const [escolherFuncaoFor, setEscolherFuncaoFor] = useState<CatalogoItem | null>(null)
@@ -989,6 +1006,9 @@ export function OrcamentoMontar() {
                 onFotoChange={setFotoPrincipal}
                 onUpdateNome={alterarNome}
                 onUpdateSpec={alterarSpec}
+                onUpdateQtd={alterarQtd}
+                componentesExtras={componentesExtras}
+                onUpdateComponentesExtras={setComponentesExtras}
                 tensaoMotores={tensaoMotores}
                 onUpdateTensaoMotores={setTensaoMotores}
                 desconto={descontoCfg}

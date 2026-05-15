@@ -74,6 +74,13 @@ export interface ParcelaPagamento {
   valor?: number
 }
 
+// Componente extra (não fabricado pela Branorte)
+export interface PreviewComponenteExtra {
+  id: string
+  nome: string
+  valor: number
+}
+
 export interface OrcamentoPreviewProps {
   carrinho: PreviewItem[]
   motoresAgrupados: PreviewMotor[]
@@ -84,6 +91,8 @@ export interface OrcamentoPreviewProps {
   totalGeral: number
   acessorios: { pct: number; items: string[] } | null
   valorAcessorios: number
+  componentesExtras?: PreviewComponenteExtra[]
+  onUpdateComponentesExtras?: (items: PreviewComponenteExtra[]) => void
 
   // Render-mode overrides (opcional). Quando passados, usa em vez dos placeholders.
   numero?: string
@@ -112,6 +121,7 @@ export interface OrcamentoPreviewProps {
   onFotoChange?: (dataURL: string | null) => void
   onUpdateNome?: (uid: string, novoNome: string) => void
   onUpdateSpec?: (uid: string, idx: number, valor: string) => void
+  onUpdateQtd?: (uid: string, novaQtd: number) => void
   onUpdateTerm?: (key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento', valor: string) => void
   onMoverItem?: (uid: string, direcao: 'cima' | 'baixo') => void
 
@@ -211,7 +221,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     renderMode = false,
     tensaoMotores = null, onUpdateTensaoMotores,
     desconto, onUpdateDesconto,
-    onAddAcessorios, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onUpdateTerm, onMoverItem,
+    onAddAcessorios, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onUpdateQtd, onUpdateTerm, onMoverItem,
+    componentesExtras = [], onUpdateComponentesExtras,
     parcelas, onUpdateParcelas,
     motoresDisponiveis, onTrocarMotor,
   } = props
@@ -220,6 +231,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   // Edição inline de spec (bullet) — duplo-click ativa
   const [editingSpecKey, setEditingSpecKey] = useState<string | null>(null) // formato "uid|idx"
   const [editingSpecValor, setEditingSpecValor] = useState<string>('')
+  // Edição inline de quantidade (o "01" no header do item)
+  const [editingQtdUid, setEditingQtdUid] = useState<string | null>(null)
+  const [editingQtdValor, setEditingQtdValor] = useState<string>('')
+  // Picker de componente extra (popover do "+ Adicionar")
+  const [extraPickerOpen, setExtraPickerOpen] = useState(false)
   // Estado do picker de troca de motor (qual linha tem o dropdown aberto)
   const [trocarMotorIdx, setTrocarMotorIdx] = useState<number | null>(null)
   void totalItems  // mostrado no footer do builder, não no preview
@@ -545,7 +561,37 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                 <div key={it.uid || idx} data-no-break className="group relative border border-gray-300 rounded-md p-3 bg-white shadow-sm">
                   <div className="flex justify-between items-start gap-2 mb-1.5">
                     <div className="font-bold text-[15.5px] flex-1 min-w-0 text-gray-900">
-                      <span className="text-gray-900">{letra} - {String(it.qtd).padStart(2, '0')}</span>
+                      <span className="text-gray-900">{letra} - </span>
+                      {!renderMode && onUpdateQtd && editingQtdUid === it.uid ? (
+                        <input
+                          autoFocus
+                          type="number" min={1} max={99} step={1}
+                          value={editingQtdValor}
+                          onChange={(e) => setEditingQtdValor(e.target.value)}
+                          onBlur={() => {
+                            const n = Math.max(1, Math.min(99, parseInt(editingQtdValor, 10) || 1))
+                            if (n !== it.qtd && it.uid) onUpdateQtd(it.uid, n)
+                            setEditingQtdUid(null)
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
+                            if (e.key === 'Escape') setEditingQtdUid(null)
+                          }}
+                          className="w-12 text-[15.5px] font-bold text-gray-900 bg-yellow-50 border border-blue-400 rounded px-1 py-0 outline-none text-center tabular-nums"
+                          onFocus={(e) => e.currentTarget.select()}
+                        />
+                      ) : (
+                        <span
+                          className={`tabular-nums ${!renderMode && onUpdateQtd ? 'cursor-text hover:bg-yellow-50 rounded px-1' : ''}`}
+                          title={!renderMode && onUpdateQtd ? 'Click pra alterar quantidade' : undefined}
+                          onClick={() => {
+                            if (!renderMode && onUpdateQtd && it.uid) {
+                              setEditingQtdValor(String(it.qtd))
+                              setEditingQtdUid(it.uid)
+                            }
+                          }}
+                        >{String(it.qtd).padStart(2, '0')}</span>
+                      )}
                       <span className="text-gray-400 mx-1">–</span>
                       {!renderMode && onUpdateNome && editingNomeUid === it.uid ? (
                         <input
@@ -882,6 +928,151 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     </tr>
                   </tbody>
                 </table>
+              </div>
+            )
+          })()}
+
+          {/* COMPONENTES ADICIONAIS — itens NÃO fabricados pela Branorte (painel, balança, célula de carga…) */}
+          {(() => {
+            const interactive = !renderMode && !!onUpdateComponentesExtras
+            // Não renderiza nada se vazio E não tá em modo edit
+            if (componentesExtras.length === 0 && !interactive) return null
+            const totalExtras = componentesExtras.reduce((s, c) => s + (Number(c.valor) || 0), 0)
+            const PRESETS = [
+              'Painel elétrico',
+              'Balança',
+              'Célula de carga',
+              'Inversor de frequência',
+              'CLP / Automação',
+              'Compressor',
+              'Estrutura metálica',
+              'Tubulação',
+            ]
+            function novoIdExtra() { return `cx-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` }
+            function adicionar(nome: string) {
+              if (!onUpdateComponentesExtras) return
+              onUpdateComponentesExtras([...componentesExtras, { id: novoIdExtra(), nome, valor: 0 }])
+              setExtraPickerOpen(false)
+            }
+            function atualizar(id: string, patch: Partial<PreviewComponenteExtra>) {
+              if (!onUpdateComponentesExtras) return
+              onUpdateComponentesExtras(componentesExtras.map(c => c.id === id ? { ...c, ...patch } : c))
+            }
+            function remover(id: string) {
+              if (!onUpdateComponentesExtras) return
+              onUpdateComponentesExtras(componentesExtras.filter(c => c.id !== id))
+            }
+            return (
+              <div data-no-break className="mt-3 border border-gray-300 rounded-md p-4 bg-white shadow-sm">
+                <div className="flex items-center justify-between gap-3 pb-2 border-b-2 border-gray-800 mb-2.5">
+                  <span className="font-bold text-[16px] tracking-wider uppercase text-gray-700">
+                    Componentes adicionais
+                  </span>
+                  <span className="text-[12px] text-gray-400 italic">não fabricados pela Branorte</span>
+                </div>
+                {componentesExtras.length === 0 ? (
+                  <div className="text-[13px] text-gray-400 italic py-2">Nenhum componente adicional. Clique em "+ Adicionar" pra incluir painel elétrico, balança, célula de carga, etc.</div>
+                ) : (
+                  <table className="w-full text-[16px] border-collapse">
+                    <thead>
+                      <tr>
+                        <th className="text-left font-bold py-2 text-gray-600 uppercase tracking-wider text-[15px]">Componente</th>
+                        <th className="text-right font-bold py-2 text-gray-600 uppercase tracking-wider text-[15px] w-[160px]">Valor</th>
+                        {interactive && <th className="w-8 print:hidden"></th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {componentesExtras.map((c) => (
+                        <tr key={c.id} className="border-t border-gray-200">
+                          <td className="py-1.5 text-gray-800">
+                            <span className="text-gray-400 mr-1.5">•</span>
+                            {interactive ? (
+                              <input
+                                value={c.nome}
+                                onChange={e => atualizar(c.id, { nome: e.target.value })}
+                                placeholder="nome do componente"
+                                className="font-semibold text-[15px] bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 outline-none px-1 py-0 w-[60%]"
+                              />
+                            ) : (
+                              <span className="font-semibold">{c.nome}</span>
+                            )}
+                          </td>
+                          <td className="py-1.5 text-right text-gray-800 tabular-nums">
+                            {interactive ? (
+                              <span className="inline-flex items-center gap-1 justify-end">
+                                <span className="text-gray-500 text-[13px]">R$</span>
+                                <input
+                                  type="number" min={0} step={0.01}
+                                  value={c.valor || ''}
+                                  onChange={e => atualizar(c.id, { valor: parseFloat(e.target.value) || 0 })}
+                                  placeholder="0,00"
+                                  className="w-28 text-right text-[15px] font-bold tabular-nums px-2 py-0.5 bg-white border border-gray-300 rounded hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none"
+                                />
+                              </span>
+                            ) : (
+                              <>R$ {formatBRLBare(c.valor)}</>
+                            )}
+                          </td>
+                          {interactive && (
+                            <td className="text-center print:hidden">
+                              <button
+                                type="button"
+                                onClick={() => remover(c.id)}
+                                className="text-red-500 hover:text-white hover:bg-red-600 bg-red-50 border border-red-200 rounded p-1 transition-all"
+                                title="Remover"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                      <tr className="border-t-2 border-gray-700 font-bold">
+                        <td className="py-2 text-gray-900">TOTAL</td>
+                        <td className="py-2 text-right text-gray-900 tabular-nums">
+                          {totalExtras > 0 ? `R$ ${formatBRLBare(totalExtras)}` : ''}
+                        </td>
+                        {interactive && <td className="print:hidden"></td>}
+                      </tr>
+                    </tbody>
+                  </table>
+                )}
+                {interactive && (
+                  <div className="mt-3 relative print:hidden">
+                    <button
+                      type="button"
+                      onClick={() => setExtraPickerOpen(v => !v)}
+                      className="text-[12px] px-3 py-1.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 font-semibold transition-all"
+                    >+ Adicionar componente</button>
+                    {extraPickerOpen && (
+                      <div
+                        className="absolute z-40 mt-1 left-0 top-full bg-white border border-gray-300 rounded-md shadow-xl w-[280px] print:hidden"
+                        onMouseLeave={() => setExtraPickerOpen(false)}
+                      >
+                        <div className="px-3 py-2 border-b border-gray-200 bg-gray-50 text-[10px] uppercase font-bold text-gray-600 tracking-wider">
+                          Sugestões
+                        </div>
+                        <div className="p-1 max-h-[40vh] overflow-y-auto">
+                          {PRESETS.map(p => (
+                            <button
+                              key={p}
+                              type="button"
+                              onClick={() => adicionar(p)}
+                              className="w-full text-left px-2 py-1.5 rounded text-[13px] hover:bg-blue-50 transition-colors text-gray-800"
+                            >{p}</button>
+                          ))}
+                          <div className="border-t border-gray-200 mt-1 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => adicionar('')}
+                              className="w-full text-left px-2 py-1.5 rounded text-[13px] hover:bg-yellow-50 transition-colors text-gray-700 italic"
+                            >+ Outro (digitar manualmente)</button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )
           })()}
