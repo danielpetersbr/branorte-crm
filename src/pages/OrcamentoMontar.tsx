@@ -363,6 +363,13 @@ export function OrcamentoMontar() {
   // (transportador + moinho + misturador) pra ficar idêntico ao orçamento original.
   const [pacoteModeloPickerOpen, setPacoteModeloPickerOpen] = useState(false)
   const [ensacadeiraPickerOpen, setEnsacadeiraPickerOpen] = useState(false)
+  const [alimentadorPickerOpen, setAlimentadorPickerOpen] = useState(false)
+  const [descargaPickerOpen, setDescargaPickerOpen] = useState(false)
+  const [marteloPickerOpen, setMarteloPickerOpen] = useState(false)
+  const [moegaPickerOpen, setMoegaPickerOpen] = useState(false)
+  const [passarelaPickerOpen, setPassarelaPickerOpen] = useState(false)
+  const [suporteBagPickerOpen, setSuporteBagPickerOpen] = useState(false)
+  const [outrosPickerOpen, setOutrosPickerOpen] = useState(false)
 
   const { data: precos } = usePrecosBranorte()
   const transportadores = useMemo(
@@ -404,6 +411,14 @@ export function OrcamentoMontar() {
   const compactasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'COMPACTA'), [precos])
   const ensacadeirasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'ENSACADEIRA'), [precos])
   const elevadorSacariaPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'ELEVADOR_SACARIA'), [precos])
+  // Categorias pequenas (1-5 itens cada) — antes ficavam soltas no grid, agora cada uma tem meta-card.
+  const alimentadoresPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'ALIMENTADOR'), [precos])
+  const descargasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'DESCARGA'), [precos])
+  const martelosPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'MARTELOS'), [precos])
+  const moegasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'MOEGA'), [precos])
+  const passarelasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'PASSARELA'), [precos])
+  const suporteBagPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'SUPORTE_BAG'), [precos])
+  const outrosPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'OUTROS'), [precos])
 
   // Formata CV pra usar em specs: "1.5" -> "1,5", "2" -> "2,0"
   function formatCvSpec(cv: number): string {
@@ -1156,6 +1171,27 @@ export function OrcamentoMontar() {
                     {(categoria === null || categoria === 'COMPACTA') && (
                       <MetaCard categoria="COMPACTA" titulo="Fábricas Compactas (pacote)" descricao="Linhas 01, 01M, 02, 02M (75 a 500 kg/h) — kits completos prontos" qtd={65} onClick={() => setPacoteModeloPickerOpen(true)} />
                     )}
+                    {(categoria === null || categoria === 'ALIMENTADOR') && alimentadoresPreco.length > 0 && (
+                      <MetaCard categoria="ALIMENTADOR" titulo="Alimentador" descricao="160 e 210 (com levante ou direto)" qtd={alimentadoresPreco.length} onClick={() => setAlimentadorPickerOpen(true)} />
+                    )}
+                    {(categoria === null || categoria === 'DESCARGA') && descargasPreco.length > 0 && (
+                      <MetaCard categoria="DESCARGA" titulo="Descarga (acessório)" descricao="Duas vias 160 e 210 mm" qtd={descargasPreco.length} onClick={() => setDescargaPickerOpen(true)} />
+                    )}
+                    {(categoria === null || categoria === 'MARTELOS') && martelosPreco.length > 0 && (
+                      <MetaCard categoria="MARTELOS" titulo="Moinho de Martelo (avulso)" descricao="20 CV (motor 2 polos)" qtd={martelosPreco.length} onClick={() => setMarteloPickerOpen(true)} />
+                    )}
+                    {(categoria === null || categoria === 'MOEGA') && moegasPreco.length > 0 && (
+                      <MetaCard categoria="MOEGA" titulo="Moega de Entrada" descricao="Caixa de entrada com helicoide" qtd={moegasPreco.length} onClick={() => setMoegaPickerOpen(true)} />
+                    )}
+                    {(categoria === null || categoria === 'PASSARELA') && passarelasPreco.length > 0 && (
+                      <MetaCard categoria="PASSARELA" titulo="Passarela" descricao="Com guarda-corpo 21 e 25 m" qtd={passarelasPreco.length} onClick={() => setPassarelaPickerOpen(true)} />
+                    )}
+                    {(categoria === null || categoria === 'SUPORTE_BAG' || categoria === 'SUPORTE BAG') && suporteBagPreco.length > 0 && (
+                      <MetaCard categoria="SUPORTE_BAG" titulo="Suporte de Big Bag" descricao="Estruturas pra Big Bag" qtd={suporteBagPreco.length} onClick={() => setSuporteBagPickerOpen(true)} />
+                    )}
+                    {(categoria === null || categoria === 'OUTROS') && outrosPreco.length > 0 && (
+                      <MetaCard categoria="OUTROS" titulo="Diversos" descricao="Caixa, embaladeira, esteira, Redler" qtd={outrosPreco.length} onClick={() => setOutrosPickerOpen(true)} />
+                    )}
                   </>
                 )}
                 {itemsFiltrados
@@ -1166,6 +1202,8 @@ export function OrcamentoMontar() {
                     'TRANSPORTADOR', 'MISTURADOR', 'MOINHO', 'CAIXA',
                     'SILO', 'ELEVADOR', 'CACAMBA', 'PRE-LIMPEZA', 'PRE_LIMPEZA',
                     'PENEIRA', 'HELICOIDE', 'BALANCA', 'ENSACADEIRA', 'COMPACTA',
+                    'ALIMENTADOR', 'DESCARGA', 'MARTELOS', 'MOEGA', 'PASSARELA',
+                    'SUPORTE_BAG', 'SUPORTE BAG', 'OUTROS',
                   ].includes(it.categoria))
                   .slice(0, 200)
                   .map(item => (
@@ -1585,6 +1623,85 @@ export function OrcamentoMontar() {
         ordemSub={['DIVERSOS']}
         onClose={() => setEnsacadeiraPickerOpen(false)}
         onPick={p => { adicionarItemDePreco(p); setEnsacadeiraPickerOpen(false) }}
+      />
+
+      {/* Categorias menores — antes eram items soltos no grid, agora cada uma tem meta-card.
+          Sem subcategoria estruturada — labelSub default cobre 1 grupo "Diversos". */}
+      <CategoriaPickerModal
+        open={alimentadorPickerOpen}
+        titulo="Alimentador"
+        items={alimentadoresPreco}
+        catalogoItems={items ?? []}
+        labelSub={{}}
+        ordemSub={[]}
+        onClose={() => setAlimentadorPickerOpen(false)}
+        onPick={p => { adicionarItemDePreco(p); setAlimentadorPickerOpen(false) }}
+      />
+
+      <CategoriaPickerModal
+        open={descargaPickerOpen}
+        titulo="Descarga (acessório)"
+        items={descargasPreco}
+        catalogoItems={items ?? []}
+        labelSub={{}}
+        ordemSub={[]}
+        onClose={() => setDescargaPickerOpen(false)}
+        onPick={p => { adicionarItemDePreco(p); setDescargaPickerOpen(false) }}
+      />
+
+      <CategoriaPickerModal
+        open={marteloPickerOpen}
+        titulo="Moinho de Martelo (avulso)"
+        items={martelosPreco}
+        catalogoItems={items ?? []}
+        labelSub={{}}
+        ordemSub={[]}
+        onClose={() => setMarteloPickerOpen(false)}
+        onPick={p => { adicionarItemDePreco(p); setMarteloPickerOpen(false) }}
+      />
+
+      <CategoriaPickerModal
+        open={moegaPickerOpen}
+        titulo="Moega de Entrada"
+        items={moegasPreco}
+        catalogoItems={items ?? []}
+        labelSub={{}}
+        ordemSub={[]}
+        onClose={() => setMoegaPickerOpen(false)}
+        onPick={p => { adicionarItemDePreco(p); setMoegaPickerOpen(false) }}
+      />
+
+      <CategoriaPickerModal
+        open={passarelaPickerOpen}
+        titulo="Passarela"
+        items={passarelasPreco}
+        catalogoItems={items ?? []}
+        labelSub={{}}
+        ordemSub={[]}
+        onClose={() => setPassarelaPickerOpen(false)}
+        onPick={p => { adicionarItemDePreco(p); setPassarelaPickerOpen(false) }}
+      />
+
+      <CategoriaPickerModal
+        open={suporteBagPickerOpen}
+        titulo="Suporte de Big Bag"
+        items={suporteBagPreco}
+        catalogoItems={items ?? []}
+        labelSub={{}}
+        ordemSub={[]}
+        onClose={() => setSuporteBagPickerOpen(false)}
+        onPick={p => { adicionarItemDePreco(p); setSuporteBagPickerOpen(false) }}
+      />
+
+      <CategoriaPickerModal
+        open={outrosPickerOpen}
+        titulo="Diversos"
+        items={outrosPreco}
+        catalogoItems={items ?? []}
+        labelSub={{}}
+        ordemSub={[]}
+        onClose={() => setOutrosPickerOpen(false)}
+        onPick={p => { adicionarItemDePreco(p); setOutrosPickerOpen(false) }}
       />
 
       {/* Modal de escolha de função — aberto quando o item tem várias funções
