@@ -1033,17 +1033,61 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
 
 
 // ─── AUTO-PREENCHER CLIENTE ─────────────────────────────────────────────
-// Cola texto bagunçado (CNPJ, nome, fone, endereço…) e parser extrai os campos.
-// MVP: regex-based (offline, instantâneo). Futuro: IA via Edge Function.
+// Cola texto bagunçado (CNPJ, nome, fone, endereço…) e extrai os campos.
+// MODO RÁPIDO (regex local): offline, instantâneo, 80% dos casos.
+// MODO IA (Gemini Flash via Edge Function): pra textos complexos / conversacionais.
 function AutoPreencherCliente({ onApply }: { onApply: (r: ReturnType<typeof parseClienteText>) => void }) {
   const [aberto, setAberto] = useState(false)
   const [texto, setTexto] = useState('')
   const [resultado, setResultado] = useState<ReturnType<typeof parseClienteText> | null>(null)
+  const [carregandoIA, setCarregandoIA] = useState(false)
+  const [erroIA, setErroIA] = useState<string | null>(null)
 
-  function processar() {
+  function processarRegex() {
+    setErroIA(null)
     const r = parseClienteText(texto)
     setResultado(r)
     onApply(r)
+  }
+
+  async function processarIA() {
+    setErroIA(null)
+    setCarregandoIA(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('parse-cliente-ia', {
+        body: { texto },
+      })
+      if (error) throw error
+      if (data?.error) throw new Error(data.error)
+      const p = data?.parsed
+      if (!p) throw new Error('resposta vazia')
+      // Converte pra ParseResult (compatível com regex)
+      const r: ReturnType<typeof parseClienteText> = {
+        cliente_nome: p.cliente_nome ?? '',
+        dados: {
+          ac: p.ac ?? undefined,
+          fone: p.fone ?? undefined,
+          cidade: p.cidade ?? undefined,
+          bairro: p.bairro ?? undefined,
+          endereco: p.endereco ?? undefined,
+          cep: p.cep ?? undefined,
+          cnpj: p.cnpj ?? undefined,
+          ie: p.ie ?? undefined,
+          email: p.email ?? undefined,
+        },
+        naoReconhecido: [],
+      }
+      // Limpa undefined pra não sobrescrever campos com vazio
+      Object.keys(r.dados).forEach(k => {
+        if ((r.dados as any)[k] == null) delete (r.dados as any)[k]
+      })
+      setResultado(r)
+      onApply(r)
+    } catch (e) {
+      setErroIA('Falha na IA: ' + ((e as Error).message || 'erro desconhecido') + '. Tente o modo rápido.')
+    } finally {
+      setCarregandoIA(false)
+    }
   }
 
   if (!aberto) {
@@ -1074,14 +1118,25 @@ function AutoPreencherCliente({ onApply }: { onApply: (r: ReturnType<typeof pars
         rows={5}
         className="w-full text-[11px] px-2 py-1.5 border border-purple-200 rounded bg-white outline-none focus:border-purple-400"
       />
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         <button
           type="button"
-          onClick={processar}
-          disabled={!texto.trim()}
+          onClick={processarRegex}
+          disabled={!texto.trim() || carregandoIA}
           className="text-[11px] px-3 py-1.5 rounded bg-purple-600 text-white font-bold hover:bg-purple-700 disabled:opacity-50"
+          title="Extração local instantânea (regex). Ideal pra texto estruturado."
         >
-          ✨ Preencher
+          ⚡ Preencher rápido
+        </button>
+        <button
+          type="button"
+          onClick={processarIA}
+          disabled={!texto.trim() || carregandoIA}
+          className="text-[11px] px-3 py-1.5 rounded bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5"
+          title="IA Gemini Flash — melhor pra textos conversacionais/complexos. ~2s."
+        >
+          {carregandoIA ? <Loader2 className="h-3 w-3 animate-spin" /> : '🧠'}
+          {carregandoIA ? 'IA pensando...' : 'Preencher com IA'}
         </button>
         {resultado && (
           <span className="text-[11px] text-ink-muted self-center">
@@ -1090,6 +1145,9 @@ function AutoPreencherCliente({ onApply }: { onApply: (r: ReturnType<typeof pars
           </span>
         )}
       </div>
+      {erroIA && (
+        <div className="text-[10px] text-danger bg-danger-bg/15 border border-danger/30 rounded px-2 py-1">{erroIA}</div>
+      )}
       {resultado && resultado.naoReconhecido.length > 0 && (
         <details className="text-[10px] text-ink-faint">
           <summary className="cursor-pointer hover:text-ink-muted">Linhas não reconhecidas (preencha manualmente)</summary>
