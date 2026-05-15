@@ -9,6 +9,7 @@ import { Signup } from '@/pages/Signup'
 import { Pendente } from '@/pages/Pendente'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
+import { InstallPrompt } from '@/components/InstallPrompt'
 
 // Páginas grandes ou pouco-acessadas vão lazy pra reduzir bundle inicial
 // (era 2.9MB tudo junto). Cada uma carrega só quando vendedor navega pra ela.
@@ -143,6 +144,7 @@ export default function App() {
       <AuthProvider>
         <BrowserRouter>
           <AppRoutes />
+          <InstallPrompt />
         </BrowserRouter>
       </AuthProvider>
     </QueryClientProvider>

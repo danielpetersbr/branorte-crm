@@ -2,21 +2,30 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Branorte CRM</title>
     <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
+
+    <!-- PWA: instalável no celular (Android/iOS) e desktop -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#00A859" />
+    <meta name="application-name" content="Branorte CRM" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Branorte" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+
     <script>
-      // Auto-cleanup de service workers velhos + cache (resolve stale UI persistente)
+      // Registra service worker novo (sw.js). Antes só limpava SWs antigos.
+      // SW novo cuida do cache pra PWA install funcionar + offline básico.
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(regs => {
-          regs.forEach(r => r.unregister())
-        }).catch(() => {})
-      }
-      if ('caches' in window) {
-        caches.keys().then(names => names.forEach(n => caches.delete(n))).catch(() => {})
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(() => {})
+        })
       }
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
