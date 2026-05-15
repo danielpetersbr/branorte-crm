@@ -21,9 +21,9 @@ import { useAuth } from '@/hooks/useAuth'
 import { usePrecosBranorte, type PrecoBranorte } from '@/hooks/usePrecosBranorte'
 import {
   recomendarMotorChupim, FATOR_MATERIAL, FATOR_INCLINACAO,
-  FUNCAO_TRANSPORTADOR_POLOS,
-  type MaterialChupim, type InclinacaoChupim, type FuncaoTransportador,
+  type MaterialChupim, type InclinacaoChupim,
 } from '@/lib/calcChupim'
+import { useTransportadorFuncoes, useCriarTransportadorFuncao, type TransportadorFuncao } from '@/hooks/useTransportadorFuncoes'
 
 type Voltagem = 'monofasico' | 'trifasico'
 type ModoVisao = 'preview' | 'edicao'
@@ -429,7 +429,7 @@ export function OrcamentoMontar() {
   function adicionarItemDePreco(
     p: PrecoBranorte,
     categoriaForcada?: string,
-    chupimOpts?: { material: MaterialChupim; inclinacao: InclinacaoChupim; polos?: 4 | 6 },
+    chupimOpts?: { material: MaterialChupim; inclinacao: InclinacaoChupim; polos?: 4 | 6; funcao?: TransportadorFuncao },
   ) {
     const cat = categoriaForcada ?? p.categoria
     // Tenta achar o catalogo_item linkado via preco_branorte_id
@@ -518,11 +518,17 @@ export function OrcamentoMontar() {
       }
     }
 
+    // Nome do item: se tem função (chupim), concatena entre parênteses no fim.
+    // Ex: "Chupim 160 x 3,5 m (Alimentação do silo)"
+    const nomeBase = ciLinkado?.nome_curto || formatarNomeDePreco(p)
+    const sufixoFuncao = chupimOpts?.funcao
+      ? ` (${chupimOpts.funcao.nome_curto || chupimOpts.funcao.nome})`
+      : ''
     setCarrinho(c => [...c, {
       uid: gerarUid(),
       catalogo_id: ciLinkado?.id ?? -1,
       categoria: cat,
-      nome: ciLinkado?.nome_curto || formatarNomeDePreco(p),
+      nome: nomeBase + sufixoFuncao,
       specs: specsFinal,
       qtd: 1,
       valor: Number(p.valor_equipamento ?? 0),
@@ -1266,18 +1272,17 @@ export function OrcamentoMontar() {
         }}
       />
 
-      {/* Modal de confirmação por chupim: material + inclinação + função (polos) específicos */}
+      {/* Modal de confirmação por chupim: material + inclinação + função (polos + nome) específicos */}
       <ConfirmarChupimModal
         chupim={confirmarChupim}
         materialDefault={chupimMaterial}
         inclinacaoDefault={chupimInclinacao}
         voltagem={voltagem}
         onCancel={() => setConfirmarChupim(null)}
-        onConfirm={(p, material, inclinacao, _funcao, polos) => {
-          // Atualiza os defaults com a última escolha (próximo chupim já pré-selecionado igual)
+        onConfirm={(p, material, inclinacao, funcao, polos) => {
           setChupimMaterial(material)
           setChupimInclinacao(inclinacao)
-          adicionarItemDePreco(p, undefined, { material, inclinacao, polos })
+          adicionarItemDePreco(p, undefined, { material, inclinacao, polos, funcao })
           setConfirmarChupim(null)
           setTransportadorPickerOpen(false)
         }}
@@ -2402,11 +2407,10 @@ function CustomItemModal({
 // no carrinho com preço oficial e specs geradas dinamicamente.
 // ──────────────────────────────────────────────────────────────────────────
 
-// Modal de confirmação por chupim. Vendedor escolhe material/inclinação ANTES de adicionar.
-// Mostra o motor recomendado em tempo real conforme os parâmetros mudam.
-// Se voltagem=trifasico, vendedor também escolhe FUNÇÃO do transportador
-// — algumas funções específicas (alimentação horizontal de silos, moinho martelo)
-// usam motor 6 polos em vez do default de 4 polos.
+// Modal de confirmação por chupim. Vendedor escolhe material/inclinação/função
+// ANTES de adicionar. Mostra o motor recomendado em tempo real.
+// Função é OBRIGATÓRIA — vai pro nome do item entre parênteses (ex: "Chupim 160
+// x 3,5 m (Alimentação do silo)") e determina os polos do motor (trifásico: 4 ou 6).
 function ConfirmarChupimModal({
   chupim, materialDefault, inclinacaoDefault, voltagem, onCancel, onConfirm,
 }: {
@@ -2415,27 +2419,60 @@ function ConfirmarChupimModal({
   inclinacaoDefault: InclinacaoChupim
   voltagem: Voltagem
   onCancel: () => void
-  onConfirm: (p: PrecoBranorte, material: MaterialChupim, inclinacao: InclinacaoChupim, funcao: FuncaoTransportador, polos: 4 | 6) => void
+  onConfirm: (p: PrecoBranorte, material: MaterialChupim, inclinacao: InclinacaoChupim, funcao: TransportadorFuncao, polos: 4 | 6) => void
 }) {
   const [material, setMaterial] = useState<MaterialChupim>(materialDefault)
   const [inclinacao, setInclinacao] = useState<InclinacaoChupim>(inclinacaoDefault)
-  const [funcao, setFuncao] = useState<FuncaoTransportador>('')
+  const [funcaoId, setFuncaoId] = useState<number | null>(null)
+  const { data: funcoes } = useTransportadorFuncoes()
+  const criarFuncao = useCriarTransportadorFuncao()
+  // UI inline pra cadastrar nova função sem sair do modal
+  const [novaFuncaoOpen, setNovaFuncaoOpen] = useState(false)
+  const [novaFuncaoNome, setNovaFuncaoNome] = useState('')
+  const [novaFuncaoCurto, setNovaFuncaoCurto] = useState('')
+  const [novaFuncaoPolos, setNovaFuncaoPolos] = useState<4 | 6>(4)
 
   // Reset pros defaults toda vez que abrir com chupim novo
   useEffect(() => {
     if (chupim) {
       setMaterial(materialDefault)
       setInclinacao(inclinacaoDefault)
-      setFuncao('')
+      setFuncaoId(null)
+      setNovaFuncaoOpen(false)
+      setNovaFuncaoNome('')
+      setNovaFuncaoCurto('')
+      setNovaFuncaoPolos(4)
     }
   }, [chupim, materialDefault, inclinacaoDefault])
 
   if (!chupim) return null
 
+  const funcaoSelecionada = (funcoes ?? []).find(f => f.id === funcaoId) ?? null
   const rec = recomendarMotorChupim(chupim.descricao, chupim.capacidade, material, inclinacao)
   const motorCvDefault = chupim.motor_cv ? Number(chupim.motor_cv) : null
-  // Polos: 6 se função específica, 4 default. Monofásico sempre usa default 4.
-  const polos: 4 | 6 = voltagem === 'trifasico' ? FUNCAO_TRANSPORTADOR_POLOS[funcao] : 4
+  // Polos: vem da função selecionada (trifásico). Monofásico sempre 4.
+  const polos: 4 | 6 = voltagem === 'trifasico' ? (funcaoSelecionada?.polos ?? 4) : 4
+  // Função é obrigatória pra adicionar
+  const podeAdicionar = !!funcaoSelecionada
+
+  async function handleCriarFuncao() {
+    const nome = novaFuncaoNome.trim()
+    if (!nome) return
+    try {
+      const nova = await criarFuncao.mutateAsync({
+        nome,
+        nome_curto: novaFuncaoCurto.trim() || null,
+        polos: novaFuncaoPolos,
+      })
+      setFuncaoId(nova.id)
+      setNovaFuncaoOpen(false)
+      setNovaFuncaoNome('')
+      setNovaFuncaoCurto('')
+      setNovaFuncaoPolos(4)
+    } catch (e: any) {
+      alert('Erro ao cadastrar função: ' + (e?.message || e))
+    }
+  }
 
   return (
     <div
@@ -2500,32 +2537,96 @@ function ConfirmarChupimModal({
             </p>
           </div>
 
-          {/* Função do transportador — só mostra se trifásico (define polos 4 vs 6) */}
-          {voltagem === 'trifasico' && (
-            <div>
-              <label className="block text-[11px] uppercase font-bold text-ink-muted mb-1">
-                Função do transportador
-              </label>
+          {/* Função do transportador — OBRIGATÓRIA. Vai pro nome do item entre
+              parênteses e (se trifásico) determina os polos do motor (4 ou 6). */}
+          <div>
+            <label className="block text-[11px] uppercase font-bold text-ink-muted mb-1">
+              Função do transportador <span className="text-danger">*</span>
+            </label>
+            <div className="flex items-stretch gap-1">
               <select
-                value={funcao}
-                onChange={e => setFuncao(e.target.value as FuncaoTransportador)}
-                className="w-full text-[13px] px-3 py-2 bg-surface-2 border border-border rounded text-ink"
+                value={funcaoId ?? ''}
+                onChange={e => setFuncaoId(e.target.value ? Number(e.target.value) : null)}
+                className={`flex-1 text-[13px] px-3 py-2 bg-surface-2 border rounded text-ink ${funcaoId === null ? 'border-warning/60' : 'border-border'}`}
               >
-                <option value="">— sem função específica (4 polos)</option>
-                {(Object.keys(FUNCAO_TRANSPORTADOR_POLOS) as FuncaoTransportador[])
-                  .filter(f => f !== '')
-                  .map(f => (
-                    <option key={f} value={f}>
-                      {f} ({FUNCAO_TRANSPORTADOR_POLOS[f]} polos)
-                    </option>
-                  ))}
+                <option value="">— escolha a função…</option>
+                {(funcoes ?? []).map(f => (
+                  <option key={f.id} value={f.id}>
+                    {f.nome_curto || f.nome}{voltagem === 'trifasico' ? ` (${f.polos} polos)` : ''}
+                  </option>
+                ))}
               </select>
-              <p className="text-[10px] text-ink-faint mt-1">
-                Define os polos do motor. Default é 4 polos. Funções de alta carga
-                (alimentação horizontal de silos, moinho martelo) usam 6 polos.
-              </p>
+              <button
+                type="button"
+                onClick={() => setNovaFuncaoOpen(v => !v)}
+                className="text-[12px] px-2 py-1 rounded bg-accent/10 text-accent border border-accent/30 hover:bg-accent/20 font-bold whitespace-nowrap"
+                title="Cadastrar nova função"
+              >+ Nova</button>
             </div>
-          )}
+            <p className="text-[10px] text-ink-faint mt-1">
+              Aparece no nome do item entre parênteses. {voltagem === 'trifasico' && 'Define os polos do motor (4 ou 6).'}
+            </p>
+
+            {/* Form inline pra cadastrar nova função */}
+            {novaFuncaoOpen && (
+              <div className="mt-2 p-3 bg-surface-2 border border-accent/40 rounded space-y-2">
+                <div className="text-[10px] uppercase font-bold text-accent">Cadastrar nova função</div>
+                <div>
+                  <label className="block text-[10px] text-ink-muted mb-0.5">Nome completo</label>
+                  <input
+                    autoFocus
+                    value={novaFuncaoNome}
+                    onChange={e => setNovaFuncaoNome(e.target.value)}
+                    placeholder="ex: Coleta de pó (vertical)"
+                    className="w-full text-[12px] px-2 py-1 bg-bg border border-border rounded text-ink"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-ink-muted mb-0.5">
+                    Nome curto <span className="text-ink-faint">(usado no nome do item — opcional)</span>
+                  </label>
+                  <input
+                    value={novaFuncaoCurto}
+                    onChange={e => setNovaFuncaoCurto(e.target.value)}
+                    placeholder="ex: Coleta de pó"
+                    className="w-full text-[12px] px-2 py-1 bg-bg border border-border rounded text-ink"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-ink-muted mb-0.5">
+                    Polos do motor (apenas trifásico)
+                  </label>
+                  <div className="flex gap-1">
+                    {([4, 6] as const).map(p => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setNovaFuncaoPolos(p)}
+                        className={`flex-1 text-[12px] py-1.5 rounded border font-bold transition-colors ${
+                          novaFuncaoPolos === p
+                            ? 'bg-accent/20 text-accent border-accent/60'
+                            : 'bg-bg text-ink-muted border-border hover:text-ink'
+                        }`}
+                      >{p} polos</button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center justify-end gap-1 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setNovaFuncaoOpen(false)}
+                    className="text-[11px] px-2 py-1 rounded text-ink-muted hover:bg-surface-3"
+                  >Cancelar</button>
+                  <button
+                    type="button"
+                    onClick={handleCriarFuncao}
+                    disabled={!novaFuncaoNome.trim() || criarFuncao.isPending}
+                    className="text-[11px] px-3 py-1 rounded bg-accent text-white font-bold hover:bg-accent/90 disabled:opacity-40"
+                  >{criarFuncao.isPending ? 'Salvando…' : 'Cadastrar'}</button>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Resultado do cálculo */}
           <div className="bg-info/5 border border-info/30 rounded-lg p-3 mt-3">
@@ -2550,9 +2651,9 @@ function ConfirmarChupimModal({
                     ⚠ Substitui motor padrão da planilha ({motorCvDefault} CV) — devido a {material} a {inclinacao}°.
                   </div>
                 )}
-                {voltagem === 'trifasico' && polos === 6 && (
+                {voltagem === 'trifasico' && polos === 6 && funcaoSelecionada && (
                   <div className="text-[10px] text-warning mt-1">
-                    ⚠ 6 polos (em vez de 4) por causa da função: {funcao}.
+                    ⚠ 6 polos (em vez de 4) por causa da função: {funcaoSelecionada.nome_curto || funcaoSelecionada.nome}.
                   </div>
                 )}
               </div>
@@ -2573,8 +2674,10 @@ function ConfirmarChupimModal({
             Cancelar
           </button>
           <button
-            onClick={() => onConfirm(chupim, material, inclinacao, funcao, polos)}
-            className="text-[12px] px-4 py-1.5 rounded font-bold bg-accent text-white hover:bg-accent/90"
+            onClick={() => funcaoSelecionada && onConfirm(chupim, material, inclinacao, funcaoSelecionada, polos)}
+            disabled={!podeAdicionar}
+            className="text-[12px] px-4 py-1.5 rounded font-bold bg-accent text-white hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed"
+            title={!podeAdicionar ? 'Escolha a função do transportador' : undefined}
           >
             Adicionar {rec ? `(${rec.cvMotor} CV · ${polos}p)` : ''}
           </button>
