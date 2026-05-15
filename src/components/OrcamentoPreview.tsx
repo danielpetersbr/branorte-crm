@@ -159,11 +159,13 @@ function findBreakNear(container: HTMLElement, idealY: number, tolerance: number
     return { top: r.top + window.scrollY - containerTop, bottom: r.bottom + window.scrollY - containerTop }
   }
 
-  // Helper: retorna o bloco no-break que contém o Y (ou null)
+  // Helper: retorna o bloco no-break que contém o Y (ou null).
+  // Expande o limite superior em 24px pra capturar a margin-top do SectionHeader
+  // (mt-5 = 20px), que tecnicamente fica fora do bbox mas visualmente faz parte da seção.
   const findContaining = (y: number): HTMLElement | null => {
     for (const el of noBreakEls) {
       const { top, bottom } = localTop(el)
-      if (y > top + 2 && y < bottom + 2) return el
+      if (y > top - 24 && y < bottom + 2) return el
     }
     return null
   }
