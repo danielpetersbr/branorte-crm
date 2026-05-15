@@ -144,6 +144,9 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
     if (!descricaoTocada && open) setDescricao(sugestao)
   }, [sugestao, descricaoTocada, open])
 
+  // Enviar PDF pro proprio WhatsApp do vendedor (ele encaminha pro cliente)
+  const [enviarMeuZap, setEnviarMeuZap] = useState(true)
+
   // Forma de pagamento
   const [pgTipo, setPgTipo] = useState<TipoPagamento>('avista')
   const [pgDataVenda, setPgDataVenda] = useState<string>('')
@@ -522,6 +525,40 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
         }
       }
 
+      // 7) Enviar PDF pro WhatsApp do proprio vendedor (ele encaminha pro cliente)
+      // Independente de como salvou (pasta/servidor/download), faz upload temporario
+      // pra _envios/ (path com `_` é ignorado pelo sync) e dispara edge function.
+      if (enviarMeuZap && pdfBlob) {
+        try {
+          const ano = String(hoje.getFullYear())
+          const mes = String(hoje.getMonth() + 1).padStart(2, '0')
+          const envioPath = `_envios/${ano}/${mes}/${base}.pdf`
+          const { error: upErr } = await supabase.storage
+            .from('orcamentos-pendentes')
+            .upload(envioPath, pdfBlob, { contentType: 'application/pdf', upsert: true })
+          if (upErr) throw new Error('upload envio: ' + upErr.message)
+
+          const { data: signed, error: sErr } = await supabase.storage
+            .from('orcamentos-pendentes')
+            .createSignedUrl(envioPath, 60 * 60 * 24 * 7) // 7 dias
+          if (sErr || !signed?.signedUrl) throw new Error('signed_url: ' + (sErr?.message ?? 'sem url'))
+
+          const { error: fnErr } = await supabase.functions.invoke('orcamento-enviar-meu-zap', {
+            body: {
+              vendedor_nome: profile?.display_name?.toUpperCase() || undefined,
+              pdf_url: signed.signedUrl,
+              filename: `${base}.pdf`,
+              cliente_nome: cliNome.trim(),
+              caption: `📄 Orçamento ${orc.numero} — ${cliNome.trim()}\n\nPersonalizado: ${descricao || sugestao}\nGerado em ${dataEmissaoBR}\n\n👇 Encaminhe pro cliente`,
+            },
+          })
+          if (fnErr) throw new Error('edge_fn: ' + fnErr.message)
+        } catch (e) {
+          console.warn('Falha enviar pro WhatsApp do vendedor:', e)
+          // Nao bloqueia: vendedor ainda tem o PDF baixado/na pasta
+        }
+      }
+
       onSuccess({ numero: orc.numero, baixouDocx, baixouPdf, salvouNaPasta, pdfBlob, cliente: cliNome.trim() })
       if (pdfErro) alert(`Orçamento gerado, mas PDF falhou: ${pdfErro}\n.docx foi gerado normalmente.`)
     } catch (e) {
@@ -763,6 +800,24 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
               <img src={snapshot.fotoPrincipal} alt="preview" className="max-h-32 mx-auto" />
             </div>
           )}
+
+          {/* Enviar PDF pro WhatsApp do proprio vendedor (encaminha pro cliente) */}
+          <label className="flex items-start gap-2 p-3 border border-border rounded-md bg-surface-2/30 cursor-pointer hover:bg-surface-2/50 transition-colors">
+            <input
+              type="checkbox"
+              checked={enviarMeuZap}
+              onChange={e => setEnviarMeuZap(e.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-accent"
+            />
+            <div className="flex-1">
+              <div className="text-[12px] font-semibold text-ink flex items-center gap-1.5">
+                📲 Enviar PDF pro meu WhatsApp
+              </div>
+              <div className="text-[10px] text-ink-faint mt-0.5">
+                O orçamento chega no seu Zap em até 30s. Você só encaminha pro cliente.
+              </div>
+            </div>
+          </label>
 
           {erro && (
             <div className="p-3 bg-danger-bg/15 border border-danger/30 rounded-md text-[11px] text-danger">
