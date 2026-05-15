@@ -634,6 +634,20 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           {it.nome_custom || it.nome}
                         </span>
                       )}
+                      {/* Badge da voltagem do motor — visivel ao lado de cada item.
+                          Mono = laranja, Tri = azul. Compacto pra nao ocupar muito espaco. */}
+                      {!renderMode && it.motor_cv != null && (
+                        <span
+                          className={`inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider align-middle ${
+                            voltagem === 'monofasico'
+                              ? 'bg-orange-100 text-orange-700 border border-orange-300'
+                              : 'bg-blue-100 text-blue-700 border border-blue-300'
+                          }`}
+                          title={`Motor ${voltagem === 'monofasico' ? 'monofásico (220V)' : 'trifásico (220/380/660V)'}`}
+                        >
+                          ⚡{voltagem === 'monofasico' ? 'Mono' : 'Trif'}
+                        </span>
+                      )}
                     </div>
                     {!renderMode && it.uid && (
                       <div className="flex items-center gap-0.5 shrink-0 print:hidden">

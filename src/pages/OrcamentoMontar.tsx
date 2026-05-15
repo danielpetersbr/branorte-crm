@@ -973,30 +973,6 @@ export function OrcamentoMontar() {
         <div className="flex items-center gap-3 flex-wrap">
           {/* Seletor de modelo pronto */}
           <SelectorModelo onCarregar={carregarDoModelo} />
-
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] uppercase tracking-wider text-ink-muted font-semibold">Voltagem:</span>
-            <button
-              onClick={() => aplicarVoltagem('monofasico')}
-              className={`text-[11px] px-3 py-1.5 rounded font-semibold transition-all ${
-                voltagem === 'monofasico'
-                  ? 'bg-warning text-white'
-                  : 'bg-surface-2 text-ink-muted hover:bg-surface-3'
-              }`}
-            >
-              Monofásico
-            </button>
-            <button
-              onClick={() => aplicarVoltagem('trifasico')}
-              className={`text-[11px] px-3 py-1.5 rounded font-semibold transition-all ${
-                voltagem === 'trifasico'
-                  ? 'bg-info text-white'
-                  : 'bg-surface-2 text-ink-muted hover:bg-surface-3'
-              }`}
-            >
-              Trifásico
-            </button>
-          </div>
         </div>
       </div>
 
@@ -1266,6 +1242,32 @@ export function OrcamentoMontar() {
               >
                 <ListChecks className="h-4 w-4" />
                 Edição
+              </button>
+            </div>
+            {/* Voltagem dos motores — perto dos items, mais visivel que no header global */}
+            <div className="flex items-center gap-1 bg-surface rounded-md p-0.5 border border-border">
+              <span className="text-[10px] uppercase tracking-wider text-ink-faint font-bold px-2">⚡</span>
+              <button
+                onClick={() => aplicarVoltagem('monofasico')}
+                className={`text-[12px] px-3 py-1.5 rounded font-semibold transition-all min-h-[34px] ${
+                  voltagem === 'monofasico'
+                    ? 'bg-warning text-white shadow-sm'
+                    : 'text-ink-muted hover:bg-surface-3'
+                }`}
+                title="Motor monofásico (220V)"
+              >
+                Mono
+              </button>
+              <button
+                onClick={() => aplicarVoltagem('trifasico')}
+                className={`text-[12px] px-3 py-1.5 rounded font-semibold transition-all min-h-[34px] ${
+                  voltagem === 'trifasico'
+                    ? 'bg-info text-white shadow-sm'
+                    : 'text-ink-muted hover:bg-surface-3'
+                }`}
+                title="Motor trifásico (220/380/660V)"
+              >
+                Trif
               </button>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
