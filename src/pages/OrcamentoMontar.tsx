@@ -1846,6 +1846,45 @@ export function OrcamentoMontar() {
               </div>
             )}
           </div>
+          {/* COMPARTILHAR via share sheet nativo do celular (Web Share API).
+              Em mobile abre menu com WhatsApp, Drive, Email, Files, AirDrop.
+              Em desktop sem share API, fallback pra abrir/salvar PDF.
+              Vendedor em campo manda direto pro cliente OU pro Drive da empresa. */}
+          {sucesso.pdfBlob && (
+            <button
+              onClick={async () => {
+                if (!sucesso.pdfBlob) return
+                const filename = `${sucesso.numero}-${(sucesso.cliente || 'cliente').replace(/[^a-zA-Z0-9]+/g, '_')}.pdf`
+                const file = new File([sucesso.pdfBlob], filename, { type: 'application/pdf' })
+                try {
+                  if ((navigator as any).canShare?.({ files: [file] })) {
+                    await (navigator as any).share({
+                      files: [file],
+                      title: `Orçamento ${sucesso.numero}`,
+                      text: `Orçamento Branorte ${sucesso.numero} — ${sucesso.cliente}`,
+                    })
+                  } else {
+                    // Fallback desktop: abre o PDF em nova aba
+                    const url = URL.createObjectURL(sucesso.pdfBlob)
+                    window.open(url, '_blank')
+                    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+                  }
+                } catch (e: any) {
+                  // AbortError é normal (user cancelou share), ignora
+                  if (e?.name !== 'AbortError') alert('Erro ao compartilhar: ' + (e?.message || e))
+                }
+              }}
+              className="w-full bg-info hover:bg-info/90 active:bg-info/80 text-white text-[12px] font-semibold py-2.5 flex items-center justify-center gap-2 transition border-t border-border"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+                <polyline points="16 6 12 2 8 6"/>
+                <line x1="12" y1="2" x2="12" y2="15"/>
+              </svg>
+              Compartilhar PDF (WhatsApp, Drive, Email…)
+            </button>
+          )}
+
           {sucesso.pdfBlob && enviandoWA !== 'enviado' && (
             <button
               onClick={async () => {

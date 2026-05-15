@@ -222,7 +222,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
     }
   }
 
-  async function handleGerar(opcoes: { salvarNaPasta: boolean }) {
+  async function handleGerar(opcoes: { salvarNaPasta: boolean; salvarNoServidor?: boolean }) {
     // Validações antes de gravar — evita orçamento órfão (sem cliente, vazio, R$ 0)
     if (!cliNome.trim()) {
       setErro('Nome do cliente é obrigatório')
@@ -410,6 +410,42 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
         } catch (e) {
           console.warn('Falha salvar pasta:', e)
           // Fallback: baixa direto
+          baixarBlob(docxBlob, `${base}.docx`)
+          baixouDocx = true
+          if (pdfBlob) {
+            baixarBlob(pdfBlob, `${base}.pdf`)
+            baixouPdf = true
+          }
+        }
+      } else if (opcoes.salvarNoServidor) {
+        // 6c) Mobile: upload pro Supabase Storage. Job desktop sincroniza
+        // depois com a pasta Z:\. Path organizado por ano/mes pra facilitar:
+        // orcamentos-pendentes/2026/05/2026-0803-cliente_nome.{docx,pdf}
+        try {
+          const ano = String(hoje.getFullYear())
+          const mes = String(hoje.getMonth() + 1).padStart(2, '0')
+          const folder = `${ano}/${mes}`
+          const docxPath = `${folder}/${base}.docx`
+          const { error: docxErr } = await supabase.storage
+            .from('orcamentos-pendentes')
+            .upload(docxPath, docxBlob, {
+              contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              upsert: true,
+            })
+          if (docxErr) throw new Error('Upload .docx: ' + docxErr.message)
+          baixouDocx = true
+
+          if (pdfBlob) {
+            const pdfPath = `${folder}/${base}.pdf`
+            const { error: pdfErr2 } = await supabase.storage
+              .from('orcamentos-pendentes')
+              .upload(pdfPath, pdfBlob, { contentType: 'application/pdf', upsert: true })
+            if (!pdfErr2) baixouPdf = true
+          }
+          salvouNaPasta = true // marca como "salvo" pra UX igual desktop
+        } catch (e) {
+          console.warn('Falha upload Storage:', e)
+          // Fallback: baixa local
           baixarBlob(docxBlob, `${base}.docx`)
           baixouDocx = true
           if (pdfBlob) {
@@ -664,15 +700,26 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
             <FileDown className="h-3.5 w-3.5" />
             Baixar .docx + PDF
           </button>
-          <button
-            onClick={() => handleGerar({ salvarNaPasta: true })}
-            disabled={gerando || !cliNome.trim() || !isFolderScanSupported()}
-            className="text-[12px] px-5 py-2 rounded bg-accent hover:bg-accent-700 text-white font-semibold disabled:opacity-50 flex items-center gap-1.5"
-            title={!isFolderScanSupported() ? 'Use Chrome/Edge pra salvar direto na pasta Z:' : ''}
-          >
-            {gerando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderOpen className="h-3.5 w-3.5" />}
-            {gerando ? 'Gerando...' : 'Salvar na pasta Z:'}
-          </button>
+          {isFolderScanSupported() ? (
+            <button
+              onClick={() => handleGerar({ salvarNaPasta: true })}
+              disabled={gerando || !cliNome.trim()}
+              className="text-[12px] px-5 py-2 rounded bg-accent hover:bg-accent-700 text-white font-semibold disabled:opacity-50 flex items-center gap-1.5"
+            >
+              {gerando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderOpen className="h-3.5 w-3.5" />}
+              {gerando ? 'Gerando...' : 'Salvar na pasta Z:'}
+            </button>
+          ) : (
+            <button
+              onClick={() => handleGerar({ salvarNaPasta: false, salvarNoServidor: true })}
+              disabled={gerando || !cliNome.trim()}
+              className="text-[12px] px-5 py-2 rounded bg-accent hover:bg-accent/90 text-white font-semibold disabled:opacity-50 flex items-center gap-1.5"
+              title="Mobile: faz upload pro servidor. PC do escritório sincroniza com Z:\1 - Comercial\3 - Orçamento\2026\Orçamentos 2026 automaticamente."
+            >
+              {gerando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderOpen className="h-3.5 w-3.5" />}
+              {gerando ? 'Enviando...' : 'Salvar no servidor'}
+            </button>
+          )}
         </div>
       </div>
     </div>
