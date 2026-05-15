@@ -342,6 +342,25 @@ export function OrcamentoMontar() {
   const ensacadeirasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'ENSACADEIRA'), [precos])
   const elevadorSacariaPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'ELEVADOR_SACARIA'), [precos])
 
+  // Formata nome de uma entrada de precos_branorte pro padrão Branorte
+  // (mais profissional que o nome cru da planilha)
+  function formatarNomeDePreco(p: PrecoBranorte): string {
+    const cat = p.categoria
+    const sub = p.subcategoria
+    // Transportador Chupim: "chupim 160 x 3,5 m" → "TRANSPORTADOR HELICOIDAL 160 X 3,5 M"
+    if (cat === 'TRANSPORTADOR' && sub === 'CHUPIM') {
+      const m = p.descricao.match(/chupim\s+(\d+)\s*[xX]\s*([\d,.]+)\s*m/i)
+      if (m) return `TRANSPORTADOR HELICOIDAL ${m[1]} X ${m[2]} M`
+    }
+    // Transportador Calha (TH): "TH 250 X 5,0 m" → "TRANSPORTADOR HELICOIDAL CALHA TH 250 X 5,0 M"
+    if (cat === 'TRANSPORTADOR' && sub === 'HELICOIDAL') {
+      const m = p.descricao.match(/TH\s+(\d+)\s*[xX]\s*([\d,.]+)\s*m/i)
+      if (m) return `TRANSPORTADOR HELICOIDAL CALHA TH ${m[1]} X ${m[2]} M`
+    }
+    // Default: usa descrição mas em UPPERCASE
+    return p.descricao.toUpperCase()
+  }
+
   // Adiciona item ao carrinho direto de uma entrada de precos_branorte.
   // Faz lookup do catalogo_items linkado (via preco_branorte_id) pra puxar
   // foto e specs curadas. Se não tiver match, gera specs dinamicamente.
@@ -408,7 +427,7 @@ export function OrcamentoMontar() {
       uid: gerarUid(),
       catalogo_id: ciLinkado?.id ?? -1,
       categoria: cat,
-      nome: ciLinkado?.nome_curto || p.descricao,
+      nome: ciLinkado?.nome_curto || formatarNomeDePreco(p),
       specs: specsFinal,
       qtd: 1,
       valor: Number(p.valor_equipamento ?? 0),
