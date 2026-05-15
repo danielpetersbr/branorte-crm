@@ -359,6 +359,11 @@ export function OrcamentoMontar() {
   const ensacadeirasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'ENSACADEIRA'), [precos])
   const elevadorSacariaPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'ELEVADOR_SACARIA'), [precos])
 
+  // Formata CV pra usar em specs: "1.5" -> "1,5", "2" -> "2,0"
+  function formatCvSpec(cv: number): string {
+    return cv.toFixed(1).replace('.', ',')
+  }
+
   // Formata nome de uma entrada de precos_branorte pro padrão Branorte
   // (mais profissional que o nome cru da planilha)
   function formatarNomeDePreco(p: PrecoBranorte): string {
@@ -438,6 +443,17 @@ export function OrcamentoMontar() {
       if (rec) {
         motor_cv_n = rec.cvMotor
         motor_polos = 4  // chupim sempre 4 polos
+        // Sincroniza a spec "Acionamento: potência X CV" com o motor recalculado
+        // pra não ter conflito entre a descrição (planilha) e o motor cotado (fórmula).
+        // Match flexível: substitui o número antes de "CV" na linha Acionamento.
+        const acionamentoNovo = `Acionamento: potência ${formatCvSpec(rec.cvMotor)} CV ${motor_polos} polos (motor não incluso)`
+        const idxAcc = specsFinal.findIndex(s => /^Acionamento\b/i.test(s))
+        if (idxAcc >= 0) {
+          specsFinal = [...specsFinal]
+          specsFinal[idxAcc] = acionamentoNovo
+        } else {
+          specsFinal = [...specsFinal, acionamentoNovo]
+        }
       }
     }
 
