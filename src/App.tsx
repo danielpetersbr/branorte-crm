@@ -145,6 +145,7 @@ export default function App() {
       <AuthProvider>
         <BrowserRouter>
           <AppRoutes />
+          <MobileFAB />
           <InstallPrompt />
         </BrowserRouter>
       </AuthProvider>
