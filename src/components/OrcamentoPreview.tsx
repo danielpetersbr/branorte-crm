@@ -684,8 +684,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-3">
-                    <div className="flex-1 min-w-0 pl-3 text-[14.5px] text-gray-700 space-y-0.5">
+                  <div className="flex flex-col gap-3">
+                    <div className="pl-3 text-[14.5px] text-gray-700 space-y-0.5">
                       {it.specs.length > 0
                         ? it.specs.map((s, i) => {
                             const key = `${it.uid ?? idx}|${i}`
@@ -732,14 +732,16 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       }
                     </div>
                     {it.foto_url && (
-                      <div className="shrink-0" style={{ width: 160 }}>
+                      <div className="w-full flex flex-col items-center mt-1">
                         <div
                           style={{
-                            width: 160, height: 160,
+                            width: '100%',
+                            maxWidth: 520,
+                            height: 320,
                             background: '#fff',
                             border: '1px solid #d1d5db',
                             borderRadius: 4,
-                            padding: 4,
+                            padding: 8,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             overflow: 'hidden',
                             boxSizing: 'border-box',
