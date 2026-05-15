@@ -164,6 +164,9 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
   const [numeroFonte, setNumeroFonte] = useState<'pasta' | 'banco' | null>(null)
   const [scanInfo, setScanInfo] = useState<{ ultimo: number; total: number; ano: number } | null>(null)
   const [scanLoading, setScanLoading] = useState(false)
+  // True quando vendedor TEM pasta Z: configurada e acessivel localmente.
+  // Se false, o botao 'Salvar' vai pro servidor (PC do escritorio sincroniza).
+  const [temPastaLocal, setTemPastaLocal] = useState<boolean>(false)
 
   const [gerando, setGerando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
@@ -176,7 +179,10 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
     if (open) { setWaStatus('idle'); setWaMsg(''); setErro(null) }
   }, [open])
 
-  // Carrega número quando abre o modal
+  // Carrega número quando abre o modal.
+  // Estrategia: tenta pasta local PRIMEIRO (mais rapido + autoritativo se Daniel),
+  // se falhar (vendedor sem Z: ou pasta inacessivel) cai pro banco que e atualizado
+  // em tempo real pelo daemon do PC do escritorio via Supabase Realtime.
   useEffect(() => {
     if (!open) return
     if (numeroAtual) return
@@ -188,9 +194,14 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
           setScanInfo({ ultimo: scan.ultimoNumero, total: scan.total, ano: scan.ano })
           setNumeroAtual(formatarNumero(scan.ano, scan.proximoNumero))
           setNumeroFonte('pasta')
+          setTemPastaLocal(true)
           return
         }
-      } catch {}
+      } catch {
+        // Pasta esta configurada mas nao acessivel (ex: Z:\ desconectado, vendedor mudou de PC)
+        // Cai pro banco automaticamente
+      }
+      setTemPastaLocal(false)
       try {
         const r = await obterProximoNumero()
         setNumeroAtual(r.numero)
@@ -245,6 +256,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
       setScanInfo({ ultimo: scan.ultimoNumero, total: scan.total, ano: scan.ano })
       setNumeroAtual(formatarNumero(scan.ano, scan.proximoNumero))
       setNumeroFonte('pasta')
+      setTemPastaLocal(true)
     } catch (e) {
       const msg = (e as Error).message
       if (!/abort|cancel/i.test(msg)) alert('Erro: ' + msg)
@@ -261,6 +273,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
       setScanInfo({ ultimo: scan.ultimoNumero, total: scan.total, ano: scan.ano })
       setNumeroAtual(formatarNumero(scan.ano, scan.proximoNumero))
       setNumeroFonte('pasta')
+      setTemPastaLocal(true)
     } catch (e) {
       const msg = (e as Error).message
       if (!/abort|cancel/i.test(msg)) alert('Erro: ' + msg)
@@ -669,35 +682,42 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
           <div className="p-3 border border-border rounded-md">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[11px] uppercase tracking-wider text-ink-muted font-semibold">Número do orçamento</span>
-              <span className={`text-[9px] px-1.5 py-0.5 rounded ${numeroFonte === 'pasta' ? 'bg-success-bg/30 text-success' : 'bg-warning-bg/30 text-warning'}`}>
-                {numeroFonte === 'pasta' ? '📁 da pasta Z:' : '🗄️ do banco'}
+              <span
+                className={`text-[9px] px-1.5 py-0.5 rounded ${numeroFonte === 'pasta' ? 'bg-success-bg/30 text-success' : 'bg-success-bg/30 text-success'}`}
+                title="Numero validado em tempo real contra a pasta Z: do escritorio (via daemon de sincronizacao)"
+              >
+                {numeroFonte === 'pasta' ? '📁 pasta local' : '✅ pasta Z: (escritório)'}
               </span>
             </div>
             <div className="flex items-center gap-2">
               <div className="text-[18px] font-bold text-accent">{numeroAtual || '—'}</div>
-              {isFolderScanSupported() && (
-                <>
-                  <button
-                    onClick={handleRescan}
-                    disabled={scanLoading}
-                    className="text-[10px] text-ink-muted hover:text-ink flex items-center gap-1 ml-auto disabled:opacity-30"
-                    title="Re-escanear pasta"
-                  >
-                    {scanLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                    Reler pasta
-                  </button>
-                  {!scanInfo && (
-                    <button
-                      onClick={handlePickFolder}
-                      className="text-[10px] text-accent hover:underline flex items-center gap-1"
-                    >
-                      <FolderOpen className="h-3 w-3" />
-                      Escolher pasta
-                    </button>
-                  )}
-                </>
+              {isFolderScanSupported() && temPastaLocal && (
+                <button
+                  onClick={handleRescan}
+                  disabled={scanLoading}
+                  className="text-[10px] text-ink-muted hover:text-ink flex items-center gap-1 ml-auto disabled:opacity-30"
+                  title="Re-escanear pasta local"
+                >
+                  {scanLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                  Reler pasta
+                </button>
+              )}
+              {isFolderScanSupported() && !temPastaLocal && (
+                <button
+                  onClick={handlePickFolder}
+                  className="text-[10px] text-ink-faint hover:text-accent flex items-center gap-1 ml-auto"
+                  title="Avancado: configurar pasta Z: nesse navegador (so admin)"
+                >
+                  <FolderOpen className="h-3 w-3" />
+                  Configurar pasta local (admin)
+                </button>
               )}
             </div>
+            {!temPastaLocal && (
+              <div className="text-[10px] text-ink-faint mt-1.5 leading-relaxed">
+                ℹ️ Vai salvar no servidor — o PC do escritório copia automaticamente pra pasta Z:\1 - Comercial\3 - Orçamento. Você não precisa ter Z: mapeado.
+              </div>
+            )}
           </div>
 
           {/* Descrição (vai pro nome do arquivo) */}
@@ -916,11 +936,16 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
             <FileDown className="h-4 w-4" />
             Baixar .docx + PDF
           </button>
-          {isFolderScanSupported() ? (
+          {/* Decisao do botao 'Salvar':
+              - temPastaLocal=true (Daniel/admin com Z: configurado): salva direto na pasta
+              - senao: sobe pro servidor e o PC do escritorio sincroniza com Z:\
+              isFolderScanSupported determina apenas se o navegador da suporte. */}
+          {isFolderScanSupported() && temPastaLocal ? (
             <button
               onClick={() => handleGerar({ salvarNaPasta: true })}
               disabled={gerando || !cliNome.trim()}
               className="text-[13px] px-5 py-2.5 rounded bg-accent hover:bg-accent-700 text-white font-bold disabled:opacity-50 flex items-center justify-center gap-1.5 min-h-[44px] shadow-sm"
+              title="Salva direto na pasta Z: configurada neste navegador"
             >
               {gerando ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderOpen className="h-4 w-4" />}
               {gerando ? 'Gerando...' : 'Salvar na pasta Z:'}
@@ -930,7 +955,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
               onClick={() => handleGerar({ salvarNaPasta: false, salvarNoServidor: true })}
               disabled={gerando || !cliNome.trim()}
               className="text-[13px] px-5 py-2.5 rounded bg-accent hover:bg-accent/90 text-white font-bold disabled:opacity-50 flex items-center justify-center gap-1.5 min-h-[44px] shadow-sm"
-              title="Mobile: faz upload pro servidor. PC do escritório sincroniza com Z:\1 - Comercial\3 - Orçamento\2026\Orçamentos 2026 automaticamente."
+              title="Faz upload pro servidor. PC do escritório (Daniel) sincroniza automaticamente com Z:\1 - Comercial\3 - Orçamento. Funciona em qualquer dispositivo."
             >
               {gerando ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderOpen className="h-4 w-4" />}
               {gerando ? 'Enviando...' : 'Salvar no servidor'}
