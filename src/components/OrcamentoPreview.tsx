@@ -970,7 +970,6 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   <span className="font-bold text-[16px] tracking-wider uppercase text-gray-700">
                     Componentes adicionais
                   </span>
-                  <span className="text-[12px] text-gray-400 italic">não fabricados pela Branorte</span>
                 </div>
                 {componentesExtras.length === 0 ? (
                   <div className="text-[13px] text-gray-400 italic py-2">Nenhum componente adicional. Clique em "+ Adicionar" pra incluir painel elétrico, balança, célula de carga, etc.</div>
@@ -1658,8 +1657,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             <SectionHeader>Dados do Fabricante</SectionHeader>
             <div className="text-[14.5px] text-gray-800 space-y-0.5">
               <div><span className="font-bold">Empresa:</span> BRANORTE – Metalúrgica BBA Ltda</div>
-              <div><span className="font-bold">Endereço:</span> Rodovia SC 370 km 139, Nº 1390</div>
-              <div><span className="font-bold">Cidade:</span> Grão Pará – SC · <span className="font-bold">CEP:</span> 88890-000</div>
+              <div><span className="font-bold">Endereço:</span> Rodovia SC 370, km 139, Nº 1390 — Grão Pará/SC · CEP 88890-000</div>
               <div><span className="font-bold">Telefone:</span> (48) 3658-4502 / (48) 3658-7453</div>
               <div><span className="font-bold">CNPJ:</span> 16.935.999/0001-09 · <span className="font-bold">I.E.:</span> 256.847.320</div>
               <div><span className="font-bold">E-mail:</span> contato@mbranorte.com.br</div>
