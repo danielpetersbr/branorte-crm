@@ -7,6 +7,7 @@ import {
 } from '@/hooks/useOrcamentoBuilder'
 import { useAuth } from '@/hooks/useAuth'
 import { gerarPdfDoPreview } from '@/lib/preview-to-pdf'
+import { gerarDocxDoPreview } from '@/lib/preview-to-docx'
 import { gerarOrcamentoCustomDocx } from '@/lib/orcamento-custom-docx'
 import {
   isFolderScanSupported, pickOrcamentoFolder, getStoredFolderHandle,
@@ -424,9 +425,13 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
         parcelas: snapshot.parcelas ?? [],
         componentesExtras: snapshot.componentesExtras ?? [],
       }
-      // Word EDITÁVEL — texto estruturado real (parágrafos, tabelas, runs), não imagem.
-      // Vendedor pode abrir no Word e editar qualquer texto/valor.
-      const docxBlob = await gerarOrcamentoCustomDocx({
+      // Word VISUAL — imagem do preview (idêntico ao PDF visualmente, mas não editável).
+      // É o formato principal — vendedor envia pro cliente.
+      const docxBlob = await gerarDocxDoPreview(previewProps)
+
+      // Word EDITÁVEL — gerado em paralelo, salvo com sufixo " - EDITAVEL.docx".
+      // Use quando precisar ajustar texto/valor depois.
+      const docxEditavelBlob = await gerarOrcamentoCustomDocx({
         numero: orc.numero,
         dataEmissao: dataEmissaoBR,
         cliente: {
@@ -505,6 +510,9 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
               throw new Error(resolved.motivo)
             }
             await escreverArquivo(pastaMes, `${base}.docx`, docxBlob)
+            // Versão EDITÁVEL salva em paralelo. Mesma pasta, sufixo " - EDITAVEL"
+            try { await escreverArquivo(pastaMes, `${base} - EDITAVEL.docx`, docxEditavelBlob) }
+            catch (e) { console.warn('Falha salvar EDITAVEL:', e) }
             if (pdfBlob) await escreverArquivo(pastaMes, `${base}.pdf`, pdfBlob)
             // .txt com data de envio (igual modelo pronto). Usado p/ rastrear
             // quando o vendedor enviou o orçamento pro cliente.
@@ -520,6 +528,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
           console.warn('Falha salvar pasta:', e)
           // Fallback: baixa direto
           baixarBlob(docxBlob, `${base}.docx`)
+          baixarBlob(docxEditavelBlob, `${base} - EDITAVEL.docx`)
           baixouDocx = true
           if (pdfBlob) {
             baixarBlob(pdfBlob, `${base}.pdf`)
@@ -543,6 +552,15 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
             })
           if (docxErr) throw new Error('Upload .docx: ' + docxErr.message)
           baixouDocx = true
+
+          // Upload paralelo do EDITAVEL.docx (best-effort, não bloqueia)
+          try {
+            const docxEditavelPath = `${folder}/${base} - EDITAVEL.docx`
+            await supabase.storage.from('orcamentos-pendentes').upload(docxEditavelPath, docxEditavelBlob, {
+              contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              upsert: true,
+            })
+          } catch (e) { console.warn('Falha upload EDITAVEL:', e) }
 
           if (pdfBlob) {
             const pdfPath = `${folder}/${base}.pdf`
@@ -580,6 +598,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
       } else {
         // 6b) Download direto
         baixarBlob(docxBlob, `${base}.docx`)
+        baixarBlob(docxEditavelBlob, `${base} - EDITAVEL.docx`)
         baixouDocx = true
         if (pdfBlob) {
           baixarBlob(pdfBlob, `${base}.pdf`)

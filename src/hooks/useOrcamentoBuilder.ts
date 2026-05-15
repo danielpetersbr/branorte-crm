@@ -191,6 +191,54 @@ export function useClientesOrcamento(search: string) {
   })
 }
 
+// Carrega 1 orçamento pelo id (pra modo edição)
+export function useOrcamentoGerado(id: number | null) {
+  return useQuery({
+    queryKey: ['orcamento-gerado', id],
+    queryFn: async (): Promise<OrcamentoGerado | null> => {
+      if (!id) return null
+      const { data, error } = await supabase
+        .from('orcamentos_gerados')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle()
+      if (error) throw error
+      return (data ?? null) as OrcamentoGerado | null
+    },
+    enabled: !!id,
+    staleTime: 0, // sempre busca fresh ao entrar em edição
+  })
+}
+
+// UPDATE de orçamento existente. Mantém numero/sequencial originais.
+export function useAtualizarOrcamento() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: { id: number } & Partial<CriarOrcamentoInput>): Promise<OrcamentoGerado> => {
+      const { id, numero_override: _no, ...rest } = input as any
+      void _no
+      const payload: any = {
+        ...rest,
+        updated_at: new Date().toISOString(),
+      }
+      // Remove campos undefined (mantém comportamento idempotente)
+      Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k])
+      const { data, error } = await supabase
+        .from('orcamentos_gerados')
+        .update(payload)
+        .eq('id', id)
+        .select()
+        .single()
+      if (error) throw error
+      return data as OrcamentoGerado
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['orcamentos-gerados'] })
+      qc.invalidateQueries({ queryKey: ['orcamento-gerado'] })
+    },
+  })
+}
+
 // Lista orçamentos gerados (recentes)
 export function useOrcamentosGerados(filters?: { vendedor_nome?: string; status?: string }) {
   return useQuery({
