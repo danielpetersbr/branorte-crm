@@ -964,7 +964,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     <tr className="border-t-2 border-gray-700 font-bold">
                       <td className="py-2 text-gray-900">TOTAL</td>
                       <td className="py-2 text-right text-gray-900 tabular-nums">
-                        {totalMotores > 0 ? `R$ ${formatBRLBare(totalMotores)}` : ''}
+                        {totalMotores > 0
+                          ? `R$ ${formatBRLBare(totalMotores)}`
+                          : <span className="text-gray-400 italic text-[13px]">tudo incluso</span>}
                       </td>
                     </tr>
                   </tbody>
@@ -996,6 +998,20 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             }
             function atualizar(id: string, patch: Partial<PreviewComponenteExtra>) {
               if (!onUpdateComponentesExtras) return
+              // Match automatico: se vendedor digitou nome que bate com item do cadastro
+              // E o valor atual eh 0, auto-preenche o preco.
+              if (patch.nome != null && componentesAdicionaisCatalogo.length > 0) {
+                const atual = componentesExtras.find(c => c.id === id)
+                if (atual && (!atual.valor || atual.valor === 0)) {
+                  const nomeNorm = patch.nome.trim().toLowerCase()
+                  const match = componentesAdicionaisCatalogo.find(c =>
+                    c.nome.trim().toLowerCase() === nomeNorm
+                  )
+                  if (match?.valorSugerido && match.valorSugerido > 0) {
+                    patch = { ...patch, valor: match.valorSugerido }
+                  }
+                }
+              }
               onUpdateComponentesExtras(componentesExtras.map(c => c.id === id ? { ...c, ...patch } : c))
             }
             function remover(id: string) {
@@ -1026,12 +1042,22 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           <td className="py-1.5 text-gray-800">
                             <span className="text-gray-400 mr-1.5">•</span>
                             {interactive ? (
-                              <input
-                                value={c.nome}
-                                onChange={e => atualizar(c.id, { nome: e.target.value })}
-                                placeholder="nome do componente"
-                                className="font-semibold text-[15px] bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 outline-none px-1 py-0 w-[60%]"
-                              />
+                              <>
+                                <input
+                                  value={c.nome}
+                                  onChange={e => atualizar(c.id, { nome: e.target.value })}
+                                  placeholder="nome do componente"
+                                  list={`componentes-cadastro-list`}
+                                  className="font-semibold text-[15px] bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 outline-none px-1 py-0 w-[60%]"
+                                />
+                                <datalist id={`componentes-cadastro-list`}>
+                                  {componentesAdicionaisCatalogo.map(opt => (
+                                    <option key={opt.id} value={opt.nome}>
+                                      {opt.valorSugerido && opt.valorSugerido > 0 ? `R$ ${opt.valorSugerido.toFixed(2)}` : 'sem preço'}
+                                    </option>
+                                  ))}
+                                </datalist>
+                              </>
                             ) : (
                               <span className="font-semibold">{c.nome}</span>
                             )}
@@ -1042,7 +1068,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                 value={c.valor}
                                 onChange={v => atualizar(c.id, { valor: v })}
                                 prefix
-                                className="w-28 text-[15px] font-bold"
+                                className={`w-28 text-[15px] font-bold ${(!c.valor || c.valor === 0) ? 'border-amber-400 bg-amber-50' : ''}`}
                               />
                             ) : (
                               <>R$ {formatBRLBare(c.valor)}</>
@@ -1065,7 +1091,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       <tr className="border-t-2 border-gray-700 font-bold">
                         <td className="py-2 text-gray-900">TOTAL</td>
                         <td className="py-2 text-right text-gray-900 tabular-nums">
-                          {totalExtras > 0 ? `R$ ${formatBRLBare(totalExtras)}` : ''}
+                          {totalExtras > 0
+                            ? `R$ ${formatBRLBare(totalExtras)}`
+                            : <span className="text-amber-600 italic text-[13px]">⚠ preencha o preço</span>}
                         </td>
                         {interactive && <td className="print:hidden"></td>}
                       </tr>
