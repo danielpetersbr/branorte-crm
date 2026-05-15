@@ -78,6 +78,12 @@ async function listAllPendentes(prefix = '') {
   return out
 }
 
+// Nome da subpasta do mes na estrutura Z:\ — formato "5 - Maio"
+const MES_NOMES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
+function nomePastaMes(mes /* 1..12 */) {
+  return `${mes} - ${MES_NOMES[mes - 1]}`
+}
+
 async function processFile(remotePath) {
   // remotePath formato: "2026/05/2026-0803-cliente.pdf"
   const segs = remotePath.split('/')
@@ -86,10 +92,11 @@ async function processFile(remotePath) {
     return
   }
   const ano = segs[0]
+  const mes = parseInt(segs[1], 10)  // "05" -> 5
   const filename = segs[segs.length - 1]
 
-  // Estrutura local: Z:\1 - Comercial\3 - Orçamento\YYYY\Orçamentos YYYY\<filename>
-  const destDir = path.join(DEST_BASE, ano, `Orçamentos ${ano}`)
+  // Estrutura local: Z:\...\YYYY\Orçamentos YYYY\<M> - <NomeMes>\<filename>
+  const destDir = path.join(DEST_BASE, ano, `Orçamentos ${ano}`, nomePastaMes(mes))
   const destPath = path.join(destDir, filename)
 
   // Se ja existe local, pula (idempotente caso script reinicie)
@@ -147,22 +154,36 @@ async function tick() {
 
 async function scanPastaUpdateIndex() {
   const ano = new Date().getFullYear()
-  const dir = path.join(DEST_BASE, String(ano), `Orçamentos ${ano}`)
-  if (!existsSync(dir)) return
-  const files = await fs.readdir(dir)
-  // Padrao de arquivo: "YYYY-XXXX-cliente.pdf" ou "YYYY-XXXX-cliente.docx"
-  // (pode ter espacos/parenteses tambem). Pega o maior XXXX.
+  const baseDir = path.join(DEST_BASE, String(ano), `Orçamentos ${ano}`)
+  if (!existsSync(baseDir)) return
+
+  // Estrutura real: Orçamentos YYYY/<M - NomeMes>/<arquivos>.pdf|docx
+  // Varre TODAS as subpastas de mes (1 - Janeiro até 12 - Dezembro).
   const re = new RegExp(`^${ano}\\s*-?\\s*(\\d{3,5})\\b`)
   let maxSeq = 0
   let maxArq = ''
-  for (const f of files) {
-    const m = f.match(re)
-    if (m) {
-      const n = parseInt(m[1], 10)
-      if (n > maxSeq) { maxSeq = n; maxArq = f }
+
+  const subpastas = await fs.readdir(baseDir).catch(() => [])
+  for (const sub of subpastas) {
+    const subDir = path.join(baseDir, sub)
+    let stat
+    try { stat = await fs.stat(subDir) } catch { continue }
+    if (!stat.isDirectory()) continue
+
+    const files = await fs.readdir(subDir).catch(() => [])
+    for (const f of files) {
+      const m = f.match(re)
+      if (m) {
+        const n = parseInt(m[1], 10)
+        if (n > maxSeq) { maxSeq = n; maxArq = `${sub}/${f}` }
+      }
     }
   }
-  if (maxSeq === 0) return // pasta vazia ou sem arquivos no padrao
+
+  if (maxSeq === 0) {
+    log(`scan: nenhum arquivo no padrao ${ano}-XXXX encontrado em ${baseDir}`)
+    return
+  }
 
   // Upsert na tabela
   const { error } = await supa.from('pasta_orcamento_index').upsert({
