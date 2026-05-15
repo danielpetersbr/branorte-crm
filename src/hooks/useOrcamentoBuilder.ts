@@ -81,6 +81,7 @@ export interface OrcamentoGerado {
   total_equipamentos: number
   total_motores: number
   total_proposta: number
+  componentes_extras: Array<{ id: string; nome: string; valor: number }> | null
   observacoes: string | null
   status: 'rascunho' | 'enviado' | 'aprovado' | 'perdido'
   pdf_url: string | null
@@ -245,6 +246,8 @@ export interface CriarOrcamentoInput {
   status?: 'rascunho' | 'enviado' | 'aprovado' | 'perdido'
   // Override do numero (se vier da pasta Z:). Se nao fornecido, usa DB sequence.
   numero_override?: { ano: number; sequencial: number; numero: string } | null
+  // Componentes adicionais (NÃO fabricados pela Branorte) — painel, balança, célula de carga…
+  componentes_extras?: Array<{ id: string; nome: string; valor: number }> | null
 }
 
 export function useCriarOrcamento() {
@@ -319,6 +322,7 @@ export function useCriarOrcamento() {
         forma_pagamento: input.forma_pagamento ?? null,
         prazo_entrega: input.prazo_entrega ?? null,
         status: input.status ?? 'rascunho',
+        componentes_extras: input.componentes_extras ?? null,
       }
       // Tenta inserir; se ainda assim der duplicate (race), incrementa e tenta de novo
       let lastErr: any = null

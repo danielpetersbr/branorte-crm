@@ -6,6 +6,7 @@
 
 import { X } from 'lucide-react'
 import { useLayoutEffect, useRef, useState } from 'react'
+import { BRLInput } from '@/components/ui/BRLInput'
 
 export interface PreviewItem {
   uid?: string
@@ -1000,16 +1001,12 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           </td>
                           <td className="py-1.5 text-right text-gray-800 tabular-nums">
                             {interactive ? (
-                              <span className="inline-flex items-center gap-1 justify-end">
-                                <span className="text-gray-500 text-[13px]">R$</span>
-                                <input
-                                  type="number" min={0} step={0.01}
-                                  value={c.valor || ''}
-                                  onChange={e => atualizar(c.id, { valor: parseFloat(e.target.value) || 0 })}
-                                  placeholder="0,00"
-                                  className="w-28 text-right text-[15px] font-bold tabular-nums px-2 py-0.5 bg-white border border-gray-300 rounded hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none"
-                                />
-                              </span>
+                              <BRLInput
+                                value={c.valor}
+                                onChange={v => atualizar(c.id, { valor: v })}
+                                prefix
+                                className="w-28 text-[15px] font-bold"
+                              />
                             ) : (
                               <>R$ {formatBRLBare(c.valor)}</>
                             )}
@@ -1588,16 +1585,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                               />
                                               <span className="text-gray-500 text-[11px]">% =</span>
                                               <span className="text-gray-700 text-[12px] font-bold">R$</span>
-                                              <input
-                                                type="number" min={0} step={0.01}
-                                                value={valorMostrado}
-                                                onChange={e => updateParcela(p.id, {
-                                                  valor: e.target.value === '' ? undefined : parseFloat(e.target.value),
-                                                  pct: undefined,
-                                                })}
-                                                placeholder="0,00"
+                                              <BRLInput
+                                                value={typeof valorMostrado === 'number' ? valorMostrado : 0}
+                                                onChange={v => updateParcela(p.id, { valor: v, pct: undefined })}
                                                 title="Valor em R$. Editar fixa o valor (% recalcula automaticamente)."
-                                                className="w-24 text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded text-right font-bold tabular-nums hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none"
+                                                className="w-24 text-[12px] font-bold"
                                               />
                                             </div>
                                           )

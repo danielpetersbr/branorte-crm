@@ -50,3 +50,27 @@ export function useCriarTransportadorFuncao() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['transportador-funcoes'] }),
   })
 }
+
+export function useAtualizarTransportadorFuncao() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, patch }: { id: number; patch: Partial<Pick<TransportadorFuncao, 'nome' | 'nome_curto' | 'polos' | 'ordem' | 'ativo'>> }) => {
+      const { error } = await supabase.from('transportador_funcoes').update(patch).eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transportador-funcoes'] }),
+  })
+}
+
+export function useDeletarTransportadorFuncao() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: number) => {
+      // Soft-delete: marca ativo=false. Preserva integridade pra orçamentos antigos
+      // que podem ter referenciado essa função no nome do item.
+      const { error } = await supabase.from('transportador_funcoes').update({ ativo: false }).eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transportador-funcoes'] }),
+  })
+}

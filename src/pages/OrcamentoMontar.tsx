@@ -356,6 +356,7 @@ export function OrcamentoMontar() {
   const [helicoidePickerOpen, setHelicoidePickerOpen] = useState(false)
   const [balancaPickerOpen, setBalancaPickerOpen] = useState(false)
   const [compactaPickerOpen, setCompactaPickerOpen] = useState(false)
+  const [ensacadeiraPickerOpen, setEnsacadeiraPickerOpen] = useState(false)
 
   const { data: precos } = usePrecosBranorte()
   const transportadores = useMemo(
@@ -1017,7 +1018,7 @@ export function OrcamentoMontar() {
                       <MetaCard categoria="BALANÇA" titulo="Balança" descricao="Eletrônica, Mecânica e Célula de Carga" qtd={balancasPreco.length} onClick={() => setBalancaPickerOpen(true)} />
                     )}
                     {(categoria === null || categoria === 'ENSACADEIRA') && ensacadeirasPreco.length > 0 && (
-                      <MetaCard categoria="ENSACADEIRA" titulo="Ensacadeira" descricao="Saco Aberto e Valvulado c/ painel" qtd={ensacadeirasPreco.length} onClick={() => setHelicoidePickerOpen(false)} />
+                      <MetaCard categoria="ENSACADEIRA" titulo="Ensacadeira" descricao="Saco Aberto e Valvulado c/ painel" qtd={ensacadeirasPreco.length} onClick={() => setEnsacadeiraPickerOpen(true)} />
                     )}
                     {(categoria === null || categoria === 'COMPACTA') && compactasPreco.length > 0 && (
                       <MetaCard categoria="COMPACTA" titulo="Fábricas Compactas (pacote)" descricao="Linhas 01, 01M, 02, 02M (75 a 500 kg/h)" qtd={compactasPreco.length} onClick={() => setCompactaPickerOpen(true)} />
@@ -1325,6 +1326,118 @@ export function OrcamentoMontar() {
         colDimensoes
         onClose={() => setCaixaPickerOpen(false)}
         onPick={p => { adicionarItemDePreco(p); setCaixaPickerOpen(false) }}
+      />
+
+      {/* Silo */}
+      <CategoriaPickerModal
+        open={siloPickerOpen}
+        titulo="Silo"
+        items={silosPreco}
+        catalogoItems={items ?? []}
+        labelSub={{ RACAO: 'Ração', MILHO: 'Milho' }}
+        ordemSub={['RACAO', 'MILHO']}
+        colSiloDims
+        onClose={() => setSiloPickerOpen(false)}
+        onPick={p => { adicionarItemDePreco(p); setSiloPickerOpen(false) }}
+      />
+
+      {/* Elevador */}
+      <CategoriaPickerModal
+        open={elevadorPickerOpen}
+        titulo="Elevador de Caneca"
+        items={elevadoresPreco}
+        catalogoItems={items ?? []}
+        labelSub={{ COMPLETO: 'Completo', COMPONENTE: 'Componente (Pé/Padrão)' }}
+        ordemSub={['COMPLETO', 'COMPONENTE']}
+        colDimensoes
+        onClose={() => setElevadorPickerOpen(false)}
+        onPick={p => { adicionarItemDePreco(p); setElevadorPickerOpen(false) }}
+      />
+
+      {/* Caçamba */}
+      <CategoriaPickerModal
+        open={cacambaPickerOpen}
+        titulo="Caçamba de Pesagem"
+        items={cacambasPreco}
+        catalogoItems={items ?? []}
+        labelSub={{ PESAGEM: 'Pesagem' }}
+        ordemSub={['PESAGEM']}
+        colKgPratica
+        onClose={() => setCacambaPickerOpen(false)}
+        onPick={p => { adicionarItemDePreco(p); setCacambaPickerOpen(false) }}
+      />
+
+      {/* Pré-Limpeza */}
+      <CategoriaPickerModal
+        open={preLimpezaPickerOpen}
+        titulo="Pré-Limpeza"
+        items={preLimpezasPreco}
+        catalogoItems={items ?? []}
+        labelSub={{}}
+        ordemSub={[]}
+        onClose={() => setPreLimpezaPickerOpen(false)}
+        onPick={p => { adicionarItemDePreco(p); setPreLimpezaPickerOpen(false) }}
+      />
+
+      {/* Peneira */}
+      <CategoriaPickerModal
+        open={peneiraPickerOpen}
+        titulo="Peneira de Moinho"
+        items={peneirasPreco}
+        catalogoItems={items ?? []}
+        labelSub={{}}
+        ordemSub={[]}
+        onClose={() => setPeneiraPickerOpen(false)}
+        onPick={p => { adicionarItemDePreco(p); setPeneiraPickerOpen(false) }}
+      />
+
+      {/* Helicóide */}
+      <CategoriaPickerModal
+        open={helicoidePickerOpen}
+        titulo="Helicóide (peça)"
+        items={helicoidesPreco}
+        catalogoItems={items ?? []}
+        labelSub={{ PECA: 'Peça' }}
+        ordemSub={['PECA']}
+        onClose={() => setHelicoidePickerOpen(false)}
+        onPick={p => { adicionarItemDePreco(p); setHelicoidePickerOpen(false) }}
+      />
+
+      {/* Balança */}
+      <CategoriaPickerModal
+        open={balancaPickerOpen}
+        titulo="Balança"
+        items={balancasPreco}
+        catalogoItems={items ?? []}
+        labelSub={{ ELETRONICA: 'Eletrônica', MECANICA: 'Mecânica', CELULA: 'Célula de Carga' }}
+        ordemSub={['ELETRONICA', 'MECANICA', 'CELULA']}
+        onClose={() => setBalancaPickerOpen(false)}
+        onPick={p => { adicionarItemDePreco(p); setBalancaPickerOpen(false) }}
+      />
+
+      {/* Compacta (pacote fechado) */}
+      <CategoriaPickerModal
+        open={compactaPickerOpen}
+        titulo="Fábricas Compactas"
+        items={compactasPreco}
+        catalogoItems={items ?? []}
+        labelSub={{ '01': 'Linha 01', '01 MASTER': 'Linha 01 Master', '02': 'Linha 02', '02 MASTER': 'Linha 02 Master' }}
+        ordemSub={['01', '01 MASTER', '02', '02 MASTER']}
+        colCompacta
+        onClose={() => setCompactaPickerOpen(false)}
+        onPick={p => { adicionarItemDePreco(p); setCompactaPickerOpen(false) }}
+      />
+
+      {/* Ensacadeira */}
+      <CategoriaPickerModal
+        open={ensacadeiraPickerOpen}
+        titulo="Ensacadeira"
+        items={ensacadeirasPreco}
+        catalogoItems={items ?? []}
+        labelSub={{ DIVERSOS: 'Diversos' }}
+        ordemSub={['DIVERSOS']}
+        onClose={() => setEnsacadeiraPickerOpen(false)}
+        onPick={p => { adicionarItemDePreco(p); setEnsacadeiraPickerOpen(false) }}
       />
 
       {/* Modal de escolha de função — aberto quando o item tem várias funções
@@ -2994,6 +3107,8 @@ interface PickerProps {
   colKgPratica?: boolean
   colMilhoKg?: boolean
   colDimensoes?: boolean
+  colSiloDims?: boolean   // colunas geométricas pra silo (volume, ⌀, altura, anéis, funil)
+  colCompacta?: boolean   // colunas pra Compacta (produção, armaz., trif+bal., mono+bal.)
   onClose: () => void
   onPick: (p: PrecoBranorte) => void
 }
@@ -3001,7 +3116,7 @@ interface PickerProps {
 function CategoriaPickerModal(props: PickerProps) {
   const {
     open, titulo, items, catalogoItems, labelSub, ordemSub,
-    colKgPratica, colMilhoKg, colDimensoes, onClose, onPick,
+    colKgPratica, colMilhoKg, colDimensoes, colSiloDims, colCompacta, onClose, onPick,
   } = props
   const [subSel, setSubSel] = useState<string | null>(null)
 
@@ -3089,8 +3204,28 @@ function CategoriaPickerModal(props: PickerProps) {
                 {colDimensoes && (
                   <th className="text-left px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Dim. (mm)</th>
                 )}
+                {colSiloDims && (
+                  <>
+                    <th className="text-right px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Volume</th>
+                    <th className="text-right px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">⌀ Diâm.</th>
+                    <th className="text-right px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Altura</th>
+                    <th className="text-left px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Funil</th>
+                  </>
+                )}
+                {colCompacta && (
+                  <>
+                    <th className="text-right px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Produção</th>
+                    <th className="text-right px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Armaz.</th>
+                  </>
+                )}
                 <th className="text-left px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Potência</th>
                 <th className="text-right px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">Equipamento</th>
+                {colCompacta && (
+                  <>
+                    <th className="text-right px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">+ Trif</th>
+                    <th className="text-right px-3 py-2 font-semibold uppercase text-[10px] tracking-wider">+ Mono</th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -3137,12 +3272,52 @@ function CategoriaPickerModal(props: PickerProps) {
                     {colDimensoes && (
                       <td className="px-3 py-1.5 text-ink-faint text-[10px] font-mono">{p.dimensoes || '—'}</td>
                     )}
+                    {colSiloDims && (
+                      <>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-[11px] text-ink">
+                          {p.volume_m3 ? `${Number(p.volume_m3).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} m³` : '—'}
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-[11px] text-ink-muted">
+                          {p.diametro_m ? `${Number(p.diametro_m).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m` : '—'}
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-[11px] text-ink-muted">
+                          {p.altura_m ? `${Number(p.altura_m).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m` : '—'}
+                        </td>
+                        <td className="px-3 py-1.5 text-[11px]">
+                          {p.funil_tipo === 'PLANO'
+                            ? <span className="px-1.5 py-0.5 rounded bg-info/20 text-info font-bold text-[10px]">PLANO</span>
+                            : p.funil_tipo
+                              ? <span className="px-1.5 py-0.5 rounded bg-surface-2 border border-border font-bold text-[10px]">{p.funil_tipo}°</span>
+                              : '—'}
+                        </td>
+                      </>
+                    )}
+                    {colCompacta && (
+                      <>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-[11px] text-ink font-semibold">
+                          {p.producao_kgh ? `${p.producao_kgh} kg/h` : '—'}
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-[11px] text-ink">
+                          {p.armazenamento_kg ? `${Number(p.armazenamento_kg).toLocaleString('pt-BR')} kg` : '—'}
+                        </td>
+                      </>
+                    )}
                     <td className="px-3 py-1.5 text-ink-muted text-[11px]">{p.potencia || '—'}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums font-bold text-ink">
                       {p.valor_equipamento
                         ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(p.valor_equipamento))
                         : '—'}
                     </td>
+                    {colCompacta && (
+                      <>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-[11px] text-info">
+                          {p.valor_com_motor_trif ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(p.valor_com_motor_trif)) : '—'}
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-[11px] text-warning">
+                          {p.valor_com_motor_mono ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(p.valor_com_motor_mono)) : '—'}
+                        </td>
+                      </>
+                    )}
                   </tr>
                 )
               })}

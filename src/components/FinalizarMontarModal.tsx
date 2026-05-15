@@ -293,6 +293,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
         prazo_entrega: prazoEntrega.trim() || null,
         status: 'rascunho',
         numero_override: numeroOverride,
+        componentes_extras: snapshot.componentesExtras ?? null,
       })
 
       // 4) Gera .docx (mesma estrategia do PDF — captura preview HTML como imagem)
