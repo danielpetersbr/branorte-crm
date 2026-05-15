@@ -1229,52 +1229,58 @@ export function OrcamentoMontar() {
 
         {/* PREVIEW DO ORÇAMENTO — sticky no desktop pra não rolar com a lista esquerda */}
         <Card className={`flex flex-col w-full min-w-0 min-h-0 overflow-hidden lg:sticky lg:top-3 lg:self-start lg:justify-self-stretch lg:max-h-[calc(100vh-1.5rem)] lg:h-[calc(100vh-1.5rem)] ${mobileTab === 'catalogo' ? 'hidden lg:flex' : ''}`}>
-          {/* Toolbar do preview */}
-          <div className="p-2 border-b border-border flex items-center justify-between bg-surface-2/30">
-            <div className="flex items-center gap-1">
+          {/* Toolbar do preview — botões maiores + CTA principal destacado */}
+          <div className="p-3 border-b border-border flex items-center justify-between bg-surface-2/30 flex-wrap gap-2">
+            <div className="flex items-center gap-1 bg-surface rounded-md p-0.5 border border-border">
               <button
                 onClick={() => setModoVisao('preview')}
-                className={`text-[10px] px-2 py-1 rounded font-semibold flex items-center gap-1 transition-all ${
+                className={`text-[12px] px-3 py-1.5 rounded font-semibold flex items-center gap-1.5 transition-all min-h-[34px] ${
                   modoVisao === 'preview'
-                    ? 'bg-accent text-white'
+                    ? 'bg-accent text-white shadow-sm'
                     : 'text-ink-muted hover:bg-surface-3'
                 }`}
+                title="Visualizar como vai sair no PDF"
               >
-                <Eye className="h-3 w-3" />
+                <Eye className="h-4 w-4" />
                 Preview
               </button>
               <button
                 onClick={() => setModoVisao('edicao')}
-                className={`text-[10px] px-2 py-1 rounded font-semibold flex items-center gap-1 transition-all ${
+                className={`text-[12px] px-3 py-1.5 rounded font-semibold flex items-center gap-1.5 transition-all min-h-[34px] ${
                   modoVisao === 'edicao'
-                    ? 'bg-accent text-white'
+                    ? 'bg-accent text-white shadow-sm'
                     : 'text-ink-muted hover:bg-surface-3'
                 }`}
+                title="Editar items linha-a-linha"
               >
-                <ListChecks className="h-3 w-3" />
+                <ListChecks className="h-4 w-4" />
                 Edição
               </button>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-ink-faint">
-                {carrinho.length} {carrinho.length === 1 ? 'item' : 'items'}
-              </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-surface border border-border">
+                <span className="text-[11px] text-ink-faint">{carrinho.length}</span>
+                <span className="text-[11px] text-ink-muted">{carrinho.length === 1 ? 'item' : 'items'}</span>
+              </div>
               {carrinho.length > 0 && (
                 <button
                   onClick={limparCarrinho}
-                  className="text-[10px] text-danger hover:text-danger/70 flex items-center gap-1"
+                  className="text-[11px] text-danger hover:bg-danger/10 px-2 py-1.5 rounded flex items-center gap-1 min-h-[34px] transition-colors"
+                  title="Limpar todos os items"
                 >
-                  <Trash2 className="h-3 w-3" />
-                  Limpar
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Limpar</span>
                 </button>
               )}
               <button
                 disabled={carrinho.length === 0}
                 onClick={() => setFinalizarOpen(true)}
-                className="text-[11px] bg-accent hover:bg-accent-700 text-white font-semibold px-3 py-1.5 rounded disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1"
+                className="text-[13px] bg-accent hover:bg-accent/90 text-white font-bold px-4 py-2 rounded-md disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm min-h-[40px] transition-all"
+                title={carrinho.length === 0 ? 'Adicione items primeiro' : 'Finalizar e gerar PDF + DOCX'}
               >
-                <FileText className="h-3 w-3" />
-                Gerar .docx + PDF
+                <FileText className="h-4 w-4" />
+                <span className="hidden sm:inline">Finalizar e gerar</span>
+                <span className="sm:hidden">Gerar</span>
               </button>
             </div>
           </div>
@@ -1282,10 +1288,51 @@ export function OrcamentoMontar() {
           {/* Conteúdo do preview / edição */}
           <div className="flex-1 overflow-y-auto bg-white">
             {carrinho.length === 0 ? (
-              <div className="text-center py-16 text-ink-faint">
-                <FileText className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                <p className="text-[12px] font-semibold">Orçamento em branco</p>
-                <p className="text-[10px] mt-1">Adicione items à esquerda pra começar</p>
+              <div className="px-6 py-12 text-center max-w-md mx-auto">
+                <div className="h-16 w-16 mx-auto mb-4 rounded-2xl bg-accent/10 flex items-center justify-center">
+                  <FileText className="h-8 w-8 text-accent" />
+                </div>
+                <h3 className="text-[16px] font-bold text-gray-900">Comece adicionando o primeiro item</h3>
+                <p className="text-[13px] text-gray-500 mt-1.5 mb-5">Escolha pelo atalho abaixo ou navegue no catálogo à esquerda.</p>
+                <div className="grid grid-cols-2 gap-2 text-left">
+                  <button
+                    onClick={() => { setMobileTab('catalogo'); setTransportadorPickerOpen(true) }}
+                    className="group p-3 rounded-lg border border-gray-200 hover:border-accent hover:bg-accent/5 transition-all"
+                  >
+                    <div className="text-[13px] font-bold text-gray-900 group-hover:text-accent">🚛 Transportador</div>
+                    <div className="text-[11px] text-gray-500 mt-0.5">Chupim, helicoidal, calha</div>
+                  </button>
+                  <button
+                    onClick={() => { setMobileTab('catalogo'); setMoinhoPickerOpen(true) }}
+                    className="group p-3 rounded-lg border border-gray-200 hover:border-accent hover:bg-accent/5 transition-all"
+                  >
+                    <div className="text-[13px] font-bold text-gray-900 group-hover:text-accent">⚙️ Moinho</div>
+                    <div className="text-[11px] text-gray-500 mt-0.5">Martelo, peneira</div>
+                  </button>
+                  <button
+                    onClick={() => { setMobileTab('catalogo'); setMisturadorPickerOpen(true) }}
+                    className="group p-3 rounded-lg border border-gray-200 hover:border-accent hover:bg-accent/5 transition-all"
+                  >
+                    <div className="text-[13px] font-bold text-gray-900 group-hover:text-accent">🥄 Misturador</div>
+                    <div className="text-[11px] text-gray-500 mt-0.5">Vertical, horizontal</div>
+                  </button>
+                  <button
+                    onClick={() => { setMobileTab('catalogo'); setSiloPickerOpen(true) }}
+                    className="group p-3 rounded-lg border border-gray-200 hover:border-accent hover:bg-accent/5 transition-all"
+                  >
+                    <div className="text-[13px] font-bold text-gray-900 group-hover:text-accent">🏗️ Silo</div>
+                    <div className="text-[11px] text-gray-500 mt-0.5">Ração, milho, geométrico</div>
+                  </button>
+                </div>
+                <button
+                  onClick={() => { setMobileTab('catalogo'); setCustomOpen(true) }}
+                  className="mt-3 w-full p-2.5 rounded-lg border border-dashed border-gray-300 text-[12px] text-gray-600 hover:border-accent hover:text-accent transition-colors"
+                >
+                  + Produto personalizado (não-catálogo)
+                </button>
+                <p className="text-[10px] text-gray-400 mt-4">
+                  💡 Dica: você pode também carregar um modelo pronto pelo botão no topo
+                </p>
               </div>
             ) : modoVisao === 'preview' ? (
               <OrcamentoPreview
