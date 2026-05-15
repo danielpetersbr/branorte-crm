@@ -396,11 +396,15 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         prazo_entrega: prazoEntrega.trim() || null,
         componentes_extras: snapshot.componentesExtras ?? null,
       }
+      // Status: se vai distribuir (pasta/servidor) marca como ENVIADO,
+      // se so vai baixar pro PC do vendedor mantem RASCUNHO (ele decide se manda)
+      const statusFinal: 'rascunho' | 'enviado' =
+        (opcoes.salvarNaPasta || opcoes.salvarNoServidor) ? 'enviado' : 'rascunho'
       const orc = editingId
-        ? await atualizar.mutateAsync({ id: editingId, ...payloadComum })
+        ? await atualizar.mutateAsync({ id: editingId, ...payloadComum, status: statusFinal })
         : await criar.mutateAsync({
             ...payloadComum,
-            status: 'rascunho',
+            status: statusFinal,
             numero_override: numeroOverride,
           })
 

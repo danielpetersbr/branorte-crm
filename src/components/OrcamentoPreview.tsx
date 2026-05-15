@@ -504,12 +504,14 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                 <img
                   src={fotoPrincipal}
                   alt="Foto da fábrica"
-                  className="max-w-full h-auto object-contain"
-                  style={{ maxHeight: '450px' }}
+                  className="h-auto object-contain"
+                  // Reduzido pra nao explodir o PDF — 450px estourava a primeira pagina
+                  // empurrando todos os itens orcados pra pagina 2.
+                  style={{ maxHeight: '220px', maxWidth: '70%' }}
                   crossOrigin="anonymous"
                 />
               </div>
-              <div className="text-right text-[13px] italic text-gray-500 mt-1">Imagem ilustrativa</div>
+              <div className="text-right text-[11px] italic text-gray-500 mt-0.5">Imagem ilustrativa</div>
               {!renderMode && onFotoChange && (
                 <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition flex gap-1">
                   <button
