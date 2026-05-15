@@ -734,46 +734,22 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             </div>
           </div>
 
-          {/* Número */}
+          {/* Número — sempre vem da pasta Z: do PC do escritorio (via Realtime broadcast).
+              Independe de qual vendedor/dispositivo: PC do Daniel e a unica fonte de verdade. */}
           <div className="p-3 border border-border rounded-md">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[11px] uppercase tracking-wider text-ink-muted font-semibold">Número do orçamento</span>
               <span
-                className={`text-[9px] px-1.5 py-0.5 rounded ${numeroFonte === 'pasta' ? 'bg-success-bg/30 text-success' : 'bg-success-bg/30 text-success'}`}
-                title="Numero validado em tempo real contra a pasta Z: do escritorio (via daemon de sincronizacao)"
+                className="text-[9px] px-1.5 py-0.5 rounded bg-success-bg/30 text-success"
+                title="Próximo número disponível na pasta Z:\1 - Comercial\3 - Orçamento (consultado em tempo real)"
               >
-                {numeroFonte === 'pasta' ? '📁 pasta local' : '✅ pasta Z: (escritório)'}
+                ✅ pasta Z: (escritório)
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="text-[18px] font-bold text-accent">{numeroAtual || '—'}</div>
-              {isFolderScanSupported() && temPastaLocal && (
-                <button
-                  onClick={handleRescan}
-                  disabled={scanLoading}
-                  className="text-[10px] text-ink-muted hover:text-ink flex items-center gap-1 ml-auto disabled:opacity-30"
-                  title="Re-escanear pasta local"
-                >
-                  {scanLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                  Reler pasta
-                </button>
-              )}
-              {isFolderScanSupported() && !temPastaLocal && (
-                <button
-                  onClick={handlePickFolder}
-                  className="text-[10px] text-ink-faint hover:text-accent flex items-center gap-1 ml-auto"
-                  title="Avancado: configurar pasta Z: nesse navegador (so admin)"
-                >
-                  <FolderOpen className="h-3 w-3" />
-                  Configurar pasta local (admin)
-                </button>
-              )}
+            <div className="text-[18px] font-bold text-accent">{numeroAtual || '—'}</div>
+            <div className="text-[10px] text-ink-faint mt-1.5 leading-relaxed">
+              📁 Salvo automaticamente em <span className="font-mono">Z:\1 - Comercial\3 - Orçamento</span> pelo PC do escritório.
             </div>
-            {!temPastaLocal && (
-              <div className="text-[10px] text-ink-faint mt-1.5 leading-relaxed">
-                ℹ️ Vai salvar no servidor — o PC do escritório copia automaticamente pra pasta Z:\1 - Comercial\3 - Orçamento. Você não precisa ter Z: mapeado.
-              </div>
-            )}
           </div>
 
           {/* Descrição (vai pro nome do arquivo) */}
@@ -1000,31 +976,19 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             <FileDown className="h-4 w-4" />
             Baixar .docx + PDF
           </button>
-          {/* Decisao do botao 'Salvar':
-              - temPastaLocal=true (Daniel/admin com Z: configurado): salva direto na pasta
-              - senao: sobe pro servidor e o PC do escritorio sincroniza com Z:\
-              isFolderScanSupported determina apenas se o navegador da suporte. */}
-          {isFolderScanSupported() && temPastaLocal ? (
-            <button
-              onClick={() => handleGerar({ salvarNaPasta: true })}
-              disabled={gerando || !cliNome.trim()}
-              className="text-[13px] px-5 py-2.5 rounded bg-accent hover:bg-accent-700 text-white font-bold disabled:opacity-50 flex items-center justify-center gap-1.5 min-h-[44px] shadow-sm"
-              title="Salva direto na pasta Z: configurada neste navegador"
-            >
-              {gerando ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderOpen className="h-4 w-4" />}
-              {gerando ? 'Gerando...' : 'Salvar na pasta Z:'}
-            </button>
-          ) : (
-            <button
-              onClick={() => handleGerar({ salvarNaPasta: false, salvarNoServidor: true })}
-              disabled={gerando || !cliNome.trim()}
-              className="text-[13px] px-5 py-2.5 rounded bg-accent hover:bg-accent/90 text-white font-bold disabled:opacity-50 flex items-center justify-center gap-1.5 min-h-[44px] shadow-sm"
-              title="Faz upload pro servidor. PC do escritório (Daniel) sincroniza automaticamente com Z:\1 - Comercial\3 - Orçamento. Funciona em qualquer dispositivo."
-            >
-              {gerando ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderOpen className="h-4 w-4" />}
-              {gerando ? 'Enviando...' : 'Salvar no servidor'}
-            </button>
-          )}
+          {/* TODOS salvam pelo servidor — independente do vendedor estar no PC do
+              escritorio ou no celular. O daemon (PM2) no PC do Daniel pega tudo do
+              bucket orcamentos-pendentes e copia pra Z:\. Garante numeracao certa
+              e nao depende do vendedor ter Z: mapeado. */}
+          <button
+            onClick={() => handleGerar({ salvarNaPasta: false, salvarNoServidor: true })}
+            disabled={gerando || !cliNome.trim()}
+            className="text-[13px] px-5 py-2.5 rounded bg-accent hover:bg-accent/90 text-white font-bold disabled:opacity-50 flex items-center justify-center gap-1.5 min-h-[44px] shadow-sm"
+            title="Salva pra pasta Z:\1 - Comercial\3 - Orçamento — sincronizado pelo PC do escritório"
+          >
+            {gerando ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderOpen className="h-4 w-4" />}
+            {gerando ? 'Salvando...' : 'Salvar na pasta'}
+          </button>
         </div>
       </div>
     </div>

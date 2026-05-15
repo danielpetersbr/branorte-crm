@@ -13,23 +13,27 @@ const CORS_HEADERS = {
 const SYSTEM_PROMPT = `Você extrai dados de cliente brasileiro de textos bagunçados e retorna SEMPRE em JSON estruturado.
 
 Campos a extrair (deixe null se não tiver):
-- cliente_nome: nome da pessoa ou razão social
-- ac: A/C (aos cuidados de) — nome de contato dentro da empresa
-- fone: telefone formatado "(DD) NNNNN-NNNN"
-- cidade: nome da cidade
-- bairro: bairro
-- endereco: rua/avenida + número (sem cidade)
+- cliente_nome: nome da empresa/fazenda/razão social OU nome da pessoa
+- ac: A/C (aos cuidados de) — nome do proprietário/responsável/contato
+- fone: telefone formatado "(DD) NNNNN-NNNN" (mantém o 9 inicial dos celulares!)
+- cidade: nome da cidade (SEM o estado)
+- bairro: bairro (ex: "Centro", "Zona Rural", "Jardim Botânico")
+- endereco: rua/avenida + número + complemento (linha completa, sem cidade/bairro/CEP)
 - cep: CEP formatado "XXXXX-XXX"
-- cnpj: CNPJ "XX.XXX.XXX/XXXX-XX" OU CPF "XXX.XXX.XXX-XX"
-- ie: inscrição estadual (string como veio, sem formatar)
+- cnpj: CNPJ "XX.XXX.XXX/XXXX-XX" OU CPF "XXX.XXX.XXX-XX" (mesmo campo)
+- ie: inscrição estadual (mantém formato original)
 - email: email válido
 
 REGRAS:
 - Não invente dados. Se não tem, retorne null.
-- Formate telefone, CNPJ, CEP nos padrões brasileiros.
-- "cnpj" aceita CPF tb (use o mesmo campo).
-- Se for pessoa física e mencionou "fazenda do João", cliente_nome = "João" (pessoa, não nome do imóvel).
-- Não chute bairro se não tiver certeza.
+- Formate telefone, CNPJ, CEP, CPF nos padrões brasileiros.
+- Telefone com 9 dígitos (celular) mantém o 9: "77 998382244" → "(77) 99838-2244".
+- Se texto tem EMPRESA/FAZENDA + nome de pessoa (ex: "FAZENDA SUSSUARANA\\nRógeris Pedrazzi"):
+  → cliente_nome = nome da fazenda/empresa
+  → ac = nome da pessoa
+- Endereço pode ser longo com vírgulas (ex: "Rodovia TO 118, em direção a Aurora, 4km..."): pegue a linha INTEIRA até onde aparecer bairro/cidade/CEP.
+- Padrão "Bairro - Cidade/UF" no endereço: extraia bairro e cidade separados.
+- Não chute bairro se não houver indicação clara.
 
 Retorne APENAS o JSON, sem markdown, sem comentários.`
 
@@ -94,8 +98,8 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    // Gemini Flash 1.5 — barato + rápido. Structured output via responseSchema.
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`
+    // Gemini Flash latest — barato + rápido. Structured output via responseSchema.
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`
     const geminiResp = await fetch(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

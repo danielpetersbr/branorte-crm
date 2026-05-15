@@ -48,12 +48,15 @@ function extrairCpf(text: string): string | null {
 }
 
 function extrairTelefone(text: string): string | null {
-  // (48) 99999-9999, 48 99999-9999, 48999999999, +55 48 99999-9999
-  const m = text.match(/(?:\+?55\s*)?\(?(\d{2})\)?\s*9?\s*(\d{4,5})[-\s]?(\d{4})/)
+  // (48) 99999-9999, 48 99999-9999, 48999999999, +55 48 99999-9999, 77 998382244
+  // O 9 inicial do celular É parte do número, mantém na captura.
+  const m = text.match(/(?:\+?55\s*)?\(?(\d{2})\)?\s*(9?\d{4,5})[-\s]?(\d{4})/)
   if (m) {
     const ddd = m[1]
     const p1 = m[2]
     const p2 = m[3]
+    // Garante 5 dígitos no celular (DD 9XXXX-XXXX). Se vier "9838" + "2244" (8 dig só),
+    // assume fixo "(DD) NNNN-NNNN". Senão "(DD) NNNNN-NNNN".
     return `(${ddd}) ${p1}-${p2}`
   }
   return null
@@ -81,20 +84,30 @@ function extrairIE(text: string): string | null {
   return null
 }
 
-function extrairCidadeEstado(text: string): { cidade: string | null; estado: string | null } {
-  // "Florianópolis - SC" / "Florianópolis/SC" / "Florianopolis SC"
+function extrairCidadeEstado(text: string): { cidade: string | null; estado: string | null; bairroSugerido: string | null } {
+  // "Florianópolis - SC" / "Florianópolis/SC" / "Bairro - Cidade/UF" / "Zona Rural - Taguatinga/TO"
   for (const uf of ESTADOS_BR) {
-    const re = new RegExp(`([A-ZÁ-Üa-zá-ü\\s]{2,40}?)\\s*[-/]?\\s*${uf}\\b`, 'g')
+    // Captura bairro opcional ANTES da cidade quando tem "Bairro - Cidade/UF"
+    const reComBairro = new RegExp(`([A-ZÁ-Üa-zá-ü\\s]{3,40}?)\\s*[-]\\s*([A-ZÁ-Üa-zá-ü\\s]{3,40}?)\\s*[/]\\s*${uf}\\b`)
+    const m1 = reComBairro.exec(text)
+    if (m1) {
+      const bairro = limpar(m1[1])
+      const cidade = limpar(m1[2])
+      if (bairro.length >= 3 && cidade.length >= 3 && !/CNPJ|CPF|RUA|AV\.|R\./i.test(cidade)) {
+        return { cidade, estado: uf, bairroSugerido: bairro }
+      }
+    }
+    // Fallback: só cidade/UF
+    const re = new RegExp(`([A-ZÁ-Üa-zá-ü\\s]{2,40}?)\\s*[-/]?\\s*${uf}\\b`)
     const m = re.exec(text)
     if (m) {
       const cidade = limpar(m[1])
-      // Filtra falso positivo (ex: "ENDEREÇO XYZ - SC" → cidade seria "ENDEREÇO XYZ")
       if (cidade.length >= 3 && cidade.length <= 40 && !/CNPJ|CPF|RUA|AV\.|R\./i.test(cidade)) {
-        return { cidade, estado: uf }
+        return { cidade, estado: uf, bairroSugerido: null }
       }
     }
   }
-  return { cidade: null, estado: null }
+  return { cidade: null, estado: null, bairroSugerido: null }
 }
 
 function extrairLabelado(text: string, labels: string[]): string | null {
@@ -110,31 +123,66 @@ function extrairLabelado(text: string, labels: string[]): string | null {
   return null
 }
 
-function extrairNome(text: string, jaExtraido: Set<string>): string | null {
+// Retorna nome + A/C (proprietário/responsável).
+// Caso comum: empresa/fazenda ALL CAPS + nome próprio Mixed Case
+// Ex: "FAZENDA SUSSUARANA\nRógeris Pedrazzi" → nome=FAZENDA, ac=Rógeris
+function extrairNomeEAC(text: string, jaExtraido: Set<string>): { nome: string | null; acSugerido: string | null } {
   // Tenta labels primeiro
   const labelado = extrairLabelado(text, [
     'nome\\s+do\\s+cliente', 'razão\\s+social', 'razao\\s+social',
     'cliente', 'nome', 'fantasia', 'empresa',
   ])
-  if (labelado) return labelado
 
-  // Senão pega a primeira linha que pareça nome (palavras capitalizadas, sem dígitos)
+  // Coleta TODAS as linhas candidatas a nome (sem dígitos, capitalizadas, sem labels)
+  const candidatos: string[] = []
   for (const linha of text.split('\n').map(l => l.trim()).filter(Boolean)) {
     if (jaExtraido.has(linha)) continue
     if (/\d/.test(linha)) continue
     if (linha.length < 3 || linha.length > 80) continue
-    // Heurística: pelo menos 2 palavras, primeira letra maiúscula
+    // Pula linhas que parecem labels com valor (com ":")
+    if (/^[A-Za-zÀ-ÿ\s]+:\s*$/.test(linha)) continue
+    if (/^(endere[çc]o|telefone|fone|email|e-mail|cep|cnpj|cpf|i\.?e\.?|inscri[çc][ãa]o)\s*[:.]?\s*$/i.test(linha)) continue
+    // Pelo menos 2 palavras, primeira letra maiúscula
     const palavras = linha.split(/\s+/)
     if (palavras.length < 2) continue
     if (!/^[A-ZÁ-Ü]/.test(palavras[0])) continue
-    return linha
+    candidatos.push(linha)
   }
-  return null
+
+  if (labelado && !candidatos.length) return { nome: labelado, acSugerido: null }
+
+  if (candidatos.length === 0) return { nome: labelado, acSugerido: null }
+  if (candidatos.length === 1) return { nome: labelado ?? candidatos[0], acSugerido: null }
+
+  // 2+ candidatos: detecta padrão EMPRESA (ALL CAPS ou tem "FAZENDA"/"SITIO"/"LTDA"…) vs PESSOA (Mixed Case)
+  const isEmpresa = (s: string) => {
+    if (/\b(LTDA|S\.?A\.?|ME|EIRELI|EPP|FAZENDA|SITIO|S[ÍI]TIO|GRANJA|AGROPECU[ÁA]RIA|COMERCIO|COM[ÉE]RCIO|IND[ÚU]STRIA|INDUSTRIAL)\b/i.test(s)) return true
+    // Heurística: maioria das letras é uppercase → empresa
+    const letras = s.replace(/[^A-Za-zÀ-ÿ]/g, '')
+    if (!letras) return false
+    const upper = letras.replace(/[^A-ZÁ-Ü]/g, '').length
+    return upper / letras.length > 0.7
+  }
+
+  const primeira = candidatos[0]
+  const segunda = candidatos[1]
+  if (isEmpresa(primeira) && !isEmpresa(segunda)) {
+    // Empresa primeiro, proprietário depois
+    return { nome: primeira, acSugerido: segunda }
+  }
+  if (!isEmpresa(primeira) && isEmpresa(segunda)) {
+    return { nome: segunda, acSugerido: primeira }
+  }
+  // Ambíguo: fica com label se houver, senão primeira linha
+  return { nome: labelado ?? primeira, acSugerido: candidatos[1] }
 }
 
 function extrairEndereco(text: string): string | null {
-  // Linha contendo "Rua", "Av.", "Avenida", "R.", "Rod." + texto
-  const m = text.match(/(?:^|\n)\s*((?:rua|av\.?|avenida|r\.|rod\.?|rodovia|estrada|alameda|al\.?|travessa|trav\.?|praça)\s+[^\n,]+(?:,\s*\d+[^\n]*)?)/i)
+  // Tenta label "Endereço:" primeiro — captura tudo até ENTER (linha inteira)
+  const labelado = extrairLabelado(text, ['endere[çc]o', 'logradouro'])
+  if (labelado) return labelado
+  // Senão linha contendo "Rua", "Av.", "Avenida", "R.", "Rod." + texto
+  const m = text.match(/(?:^|\n)\s*((?:rua|av\.?|avenida|r\.|rod\.?|rodovia|estrada|alameda|al\.?|travessa|trav\.?|praça)\s+[^\n]+)/i)
   if (m) return limpar(m[1])
   return null
 }
@@ -160,10 +208,11 @@ export function parseClienteText(raw: string): ParseResult {
   const cep = extrairCep(text)
   const email = extrairEmail(text)
   const ie = extrairIE(text)
-  const { cidade } = extrairCidadeEstado(text)
+  const { cidade, bairroSugerido } = extrairCidadeEstado(text)
   const endereco = extrairEndereco(text)
-  const bairro = extrairBairro(text)
-  const ac = extrairAC(text)
+  const bairroLabel = extrairBairro(text)
+  const bairro = bairroLabel ?? bairroSugerido
+  const acLabel = extrairAC(text)
 
   // Marca o que já foi pego pra evitar usar como nome
   const jaExtraido = new Set<string>()
@@ -175,7 +224,9 @@ export function parseClienteText(raw: string): ParseResult {
   if (cidade) jaExtraido.add(cidade)
   if (endereco) jaExtraido.add(endereco)
 
-  const nome = extrairNome(text, jaExtraido) ?? ''
+  const { nome: nomeRaw, acSugerido } = extrairNomeEAC(text, jaExtraido)
+  const nome = nomeRaw ?? ''
+  const ac = acLabel ?? acSugerido
 
   const dados: ClienteDados = {}
   if (ac) dados.ac = ac
