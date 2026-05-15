@@ -36,20 +36,21 @@ export function useCriarFeedback() {
       criado_por: string | null
       criado_por_nome: string | null
     }): Promise<RoadmapFeedback> => {
-      let screenshot_url: string | null = null
+      // Le screenshot como base64 (RLS de storage.objects bloqueia upload direto
+      // do cliente, entao envia pro endpoint Vercel que sobe via service role).
+      let screenshot_base64: string | null = null
+      let screenshot_mime: string | null = null
       if (input.screenshot) {
-        const ts = Date.now()
-        const ext = (input.screenshot.name.split('.').pop() || input.screenshot.type.split('/').pop() || 'png').toLowerCase()
-        const path = `${ts}-${Math.random().toString(36).slice(2, 8)}.${ext}`
-        const { error: upErr } = await supabase.storage
-          .from(BUCKET)
-          .upload(path, input.screenshot, { upsert: false, contentType: input.screenshot.type || undefined })
-        if (upErr) throw upErr
-        const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path)
-        screenshot_url = pub.publicUrl
+        screenshot_mime = input.screenshot.type || 'image/png'
+        screenshot_base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(String(reader.result || ''))
+          reader.onerror = () => reject(reader.error || new Error('read_failed'))
+          reader.readAsDataURL(input.screenshot!)
+        })
       }
+
       // Insere via endpoint Vercel /api/feedback (bypassa RLS com service role).
-      // RLS bloqueia INSERT direto pelo cliente — endpoint valida JWT antes.
       const { data: { session } } = await supabase.auth.getSession()
       const jwt = session?.access_token
       if (!jwt) throw new Error('nao_logado')
@@ -65,7 +66,8 @@ export function useCriarFeedback() {
           titulo: input.titulo.trim(),
           descricao: input.descricao.trim() || null,
           url_origem: input.url_origem || null,
-          screenshot_url,
+          screenshot_base64,
+          screenshot_mime,
         }),
       })
       const j = await r.json()
