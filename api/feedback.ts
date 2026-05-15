@@ -10,9 +10,8 @@ export const config = {
   },
 }
 
-const SUPA_URL = process.env.VITE_SUPABASE_URL!
+const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!
 const SVC_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
-const ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY!
 
 interface FeedbackBody {
   tipo: 'bug' | 'sugestao' | 'melhoria'
@@ -33,12 +32,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'OPTIONS') return res.status(204).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' })
 
-  // Valida usuario logado via JWT
+  if (!SUPA_URL || !SVC_KEY) {
+    return res.status(500).json({ error: 'env_missing', detail: 'SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set' })
+  }
+
+  // Valida usuario logado via JWT (service role aceita validar token)
   const auth = (req.headers.authorization || '').replace(/^Bearer\s+/i, '')
   if (!auth) return res.status(401).json({ error: 'no_auth' })
 
-  const supaAuth = createClient(SUPA_URL, ANON_KEY, { auth: { persistSession: false } })
-  const { data: u, error: uErr } = await supaAuth.auth.getUser(auth)
+  const supa = createClient(SUPA_URL, SVC_KEY, { auth: { persistSession: false } })
+  const { data: u, error: uErr } = await supa.auth.getUser(auth)
   if (uErr || !u?.user) return res.status(401).json({ error: 'invalid_jwt', detail: uErr?.message })
 
   const body = req.body as FeedbackBody
@@ -46,8 +49,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const titulo = String(body?.titulo || '').trim()
   if (!tipo || !titulo) return res.status(400).json({ error: 'missing_fields' })
   if (!['bug', 'sugestao', 'melhoria'].includes(tipo)) return res.status(400).json({ error: 'invalid_tipo' })
-
-  const supa = createClient(SUPA_URL, SVC_KEY, { auth: { persistSession: false } })
 
   // Upload do screenshot via service role (bypassa RLS de storage.objects).
   // Cliente nao consegue subir direto pq RLS bloqueia INSERT em storage.objects
