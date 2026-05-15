@@ -234,6 +234,23 @@ export function OrcamentoMontar() {
     draft.clearDraft()
   }
 
+  // ─── EDIÇÃO DE ORÇAMENTO SALVO ──────────────────────────────────────────
+  // Se URL tem ?id=N, carrega orcamentos_gerados[N] e popula o carrinho.
+  // Save flow detecta editingId pra fazer UPDATE em vez de INSERT.
+  const [searchParams] = useSearchParams()
+  const editingIdParam = searchParams.get('id')
+  const editingId = editingIdParam ? Number(editingIdParam) : null
+  const { data: orcamentoEditando, isLoading: loadingOrcamento } = useOrcamentoGerado(editingId)
+  const [orcamentoHidratado, setOrcamentoHidratado] = useState(false)
+  // Estado pra hidratar o modal FinalizarMontarModal com dados do orcamento salvo
+  const [initialModal, setInitialModal] = useState<{
+    cliente_nome: string
+    cliente_dados: any
+    observacoes: string | null
+    forma_pagamento: string | null
+    prazo_entrega: string | null
+  } | null>(null)
+
   function atualizarTermo(key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento', v: string) {
     if (key === 'dataVenda') setDataVendaTxt(v)
     else if (key === 'prazoEntrega') setPrazoEntregaTxt(v)
@@ -903,7 +920,47 @@ export function OrcamentoMontar() {
     }
   }
 
-  if (loadingItems || loadingMotores) return <PageLoading />
+  // Hidrata estado a partir do orçamento salvo (modo edição via ?id=N).
+  // Roda uma vez quando orcamentoEditando E catálogo estão prontos.
+  useEffect(() => {
+    if (orcamentoHidratado) return
+    if (!editingId || !orcamentoEditando) return
+    if (loadingItems || loadingMotores) return
+    const o = orcamentoEditando
+    // Converte OrcamentoGerado → shape OrcamentoModelo pra reusar carregarDoModelo
+    const modeloShape: OrcamentoModelo = {
+      id: -1,
+      slug: `editing-${o.id}`,
+      basename: o.modelo_basename || 'Orçamento personalizado',
+      pacote: 'CUSTOM',
+      voltagem: o.voltagem,
+      is_master: false, is_jr: false,
+      com_balanca: false, com_ensacadeira: false, com_chupim: false,
+      producao_kgh: null, armazenamento_kg: null,
+      itens: o.itens,
+      acessorios: o.acessorios,
+      motores: o.motores,
+      total_equipamentos: o.total_equipamentos,
+      total_motores: o.total_motores,
+      total_proposta: o.total_proposta,
+      arquivo_origem: null, template_path: null, foto_url: null,
+      ativo: true,
+    }
+    carregarDoModelo(modeloShape)
+    // Hidrata componentes extras + observacoes + termos
+    if (o.componentes_extras) setComponentesExtras(o.componentes_extras as any)
+    // Guarda dados que vão pro modal FinalizarMontar
+    setInitialModal({
+      cliente_nome: o.cliente_nome,
+      cliente_dados: o.cliente_dados,
+      observacoes: o.observacoes,
+      forma_pagamento: o.forma_pagamento ?? null,
+      prazo_entrega: o.prazo_entrega ?? null,
+    })
+    setOrcamentoHidratado(true)
+  }, [editingId, orcamentoEditando, loadingItems, loadingMotores, orcamentoHidratado])
+
+  if (loadingItems || loadingMotores || (editingId && loadingOrcamento)) return <PageLoading />
 
   // Indicador visual do autosave: status atual + horario do ultimo save.
   const draftStatusLabel = (() => {
@@ -1444,6 +1501,8 @@ export function OrcamentoMontar() {
       {/* Modal de finalização */}
       <FinalizarMontarModal
         open={finalizarOpen}
+        editingId={editingId}
+        initialModal={initialModal}
         snapshot={{
           voltagem,
           itens: carrinho.map(c => ({

@@ -36,6 +36,7 @@ const Disparos = lazy(() => import('@/pages/Disparos').then(m => ({ default: m.D
 const MotoresAdmin = lazy(() => import('@/pages/MotoresAdmin').then(m => ({ default: m.MotoresAdmin })))
 const PrecosBranorte = lazy(() => import('@/pages/PrecosBranorte').then(m => ({ default: m.PrecosBranorte })))
 const OrcamentosConversao = lazy(() => import('@/pages/OrcamentosConversao').then(m => ({ default: m.OrcamentosConversao })))
+const OrcamentosSalvos = lazy(() => import('@/pages/OrcamentosSalvos').then(m => ({ default: m.OrcamentosSalvos })))
 const Roadmap = lazy(() => import('@/pages/Roadmap').then(m => ({ default: m.Roadmap })))
 
 // Loga TODO erro de query/mutation no console. Evita falha silenciosa.
@@ -110,6 +111,7 @@ function AppRoutes() {
         {/* /orcamentos/novo descontinuado: redireciona pro Montar Custom (links antigos continuam funcionando) */}
         <Route path="/orcamentos/novo" element={<Navigate to="/orcamentos/montar" replace />} />
         <Route path="/orcamentos/montar" element={<OrcamentoMontar />} />
+        <Route path="/orcamentos/salvos" element={<OrcamentosSalvos />} />
         <Route path="/orcamentos/catalogo-admin" element={<CatalogoAdmin />} />
         <Route path="/orcamentos/motores" element={<MotoresAdmin />} />
         <Route path="/orcamentos/precos" element={<PrecosBranorte />} />

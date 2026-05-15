@@ -83,6 +83,8 @@ export interface OrcamentoGerado {
   total_proposta: number
   componentes_extras: Array<{ id: string; nome: string; valor: number }> | null
   observacoes: string | null
+  forma_pagamento: string | null
+  prazo_entrega: string | null
   status: 'rascunho' | 'enviado' | 'aprovado' | 'perdido'
   pdf_url: string | null
   enviado_em: string | null

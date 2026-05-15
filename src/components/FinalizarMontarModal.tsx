@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { X, Check, Loader2, FileText, FileDown, FolderOpen, RefreshCw, Calendar, CreditCard } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import {
-  useClientesOrcamento, obterProximoNumero, useCriarOrcamento,
+  useClientesOrcamento, obterProximoNumero, useCriarOrcamento, useAtualizarOrcamento,
   type ClienteDados, type OrcamentoItem, type OrcamentoMotor,
 } from '@/hooks/useOrcamentoBuilder'
 import { useAuth } from '@/hooks/useAuth'
@@ -71,6 +71,16 @@ interface Props {
   snapshot: CarrinhoSnapshot
   onClose: () => void
   onSuccess: (info: { numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string }) => void
+  // Modo edição: se setado, faz UPDATE em orcamentos_gerados[editingId] em vez de INSERT.
+  editingId?: number | null
+  // Valores iniciais carregados do orçamento sendo editado (pra pre-popular cliente/observacoes/etc)
+  initialModal?: {
+    cliente_nome: string
+    cliente_dados: any
+    observacoes: string | null
+    forma_pagamento: string | null
+    prazo_entrega: string | null
+  } | null
 }
 
 function formatBRL(v: number): string {
@@ -122,9 +132,10 @@ function baixarBlob(blob: Blob, nome: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Props) {
+export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editingId, initialModal }: Props) {
   const { profile } = useAuth()
   const criar = useCriarOrcamento()
+  const atualizar = useAtualizarOrcamento()
 
   // Cliente
   const [cliNome, setCliNome] = useState('')
@@ -179,6 +190,21 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
   useEffect(() => {
     if (open) { setWaStatus('idle'); setWaMsg(''); setErro(null) }
   }, [open])
+
+  // Modo edição: pré-popula campos do modal com dados do orçamento sendo editado.
+  // Roda 1x quando o modal abre OU quando initialModal chega.
+  useEffect(() => {
+    if (!open || !initialModal) return
+    setCliNome(initialModal.cliente_nome ?? '')
+    setCliDados(initialModal.cliente_dados ?? {})
+    setObservacoes(initialModal.observacoes ?? '')
+    setPrazoEntrega(initialModal.prazo_entrega ?? '')
+    // forma_pagamento vira free-text no campo custom (mais simples que tentar reverter pra TipoPagamento)
+    if (initialModal.forma_pagamento) {
+      setPgTipo('personalizado')
+      setPgCustom(initialModal.forma_pagamento)
+    }
+  }, [open, initialModal])
 
   // Carrega número quando abre o modal.
   // Estrategia: tenta pasta local PRIMEIRO (mais rapido + autoritativo se Daniel),
@@ -349,7 +375,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
         valor: m.valor_total,
       }))
 
-      const orc = await criar.mutateAsync({
+      // Modo edição vs criação: editingId → UPDATE (mantém numero/sequencial), senão INSERT
+      const payloadComum = {
         vendedor_nome: profile?.display_name?.toUpperCase() || 'DESCONHECIDO',
         cliente_nome: cliNome.trim(),
         cliente_dados: cliDados,
@@ -367,10 +394,15 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
         observacoes: observacoes.trim() || null,
         forma_pagamento: formaPgOut.forma_pagamento || null,
         prazo_entrega: prazoEntrega.trim() || null,
-        status: 'rascunho',
-        numero_override: numeroOverride,
         componentes_extras: snapshot.componentesExtras ?? null,
-      })
+      }
+      const orc = editingId
+        ? await atualizar.mutateAsync({ id: editingId, ...payloadComum })
+        : await criar.mutateAsync({
+            ...payloadComum,
+            status: 'rascunho',
+            numero_override: numeroOverride,
+          })
 
       // 4) Gera .docx (mesma estrategia do PDF — captura preview HTML como imagem)
       const previewProps = {

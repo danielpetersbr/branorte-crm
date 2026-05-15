@@ -50,6 +50,7 @@ const SECONDARY: NavItem[] = [
     matchPrefix: true,
     children: [
       { to: '/orcamentos/montar', label: 'Montar Custom', icon: Package },
+      { to: '/orcamentos/salvos', label: 'Salvos (Editar)', icon: List },
       { to: '/orcamentos/catalogo-admin', label: 'Catálogo (Admin)', icon: Shield },
       { to: '/orcamentos/motores', label: 'Motores (Preços)', icon: Zap },
       { to: '/orcamentos/precos', label: 'Tabela de Preços', icon: BookOpen },
