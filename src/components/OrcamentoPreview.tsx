@@ -119,6 +119,9 @@ export interface OrcamentoPreviewProps {
 
   // Callbacks (apenas no modo edit)
   onAddAcessorios?: () => void
+  /** Callback pra abrir o catálogo (ou modal de pickers) e adicionar mais um item.
+   *  Aparece como botão "+ Adicionar mais um item" abaixo do último item. */
+  onAddItem?: () => void
   onEditAcessorios?: () => void
   onRemoveAcessorios?: () => void
   onRemove?: (uid: string) => void
@@ -225,7 +228,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     renderMode = false,
     tensaoMotores = null, onUpdateTensaoMotores,
     desconto, onUpdateDesconto,
-    onAddAcessorios, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onUpdateQtd, onUpdateTerm, onMoverItem,
+    onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onUpdateQtd, onUpdateTerm, onMoverItem,
     componentesExtras = [], onUpdateComponentesExtras, componentesAdicionaisCatalogo = [],
     parcelas, onUpdateParcelas,
     motoresDisponiveis, onTrocarMotor,
@@ -753,6 +756,18 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
               )
             })}
           </div>
+
+          {/* + Adicionar mais um item — mesmo padrão visual do "+ Adicionar Acessórios".
+              Vendedor scrolla até embaixo do último item e ja tem botão pra adicionar
+              mais sem precisar voltar pro tab Catálogo. */}
+          {!renderMode && onAddItem && carrinho.length > 0 && (
+            <button
+              onClick={onAddItem}
+              className="w-full mt-3 py-2 text-[15px] font-semibold text-blue-700 hover:bg-blue-50 border border-dashed border-blue-300 rounded transition-colors print:hidden"
+            >
+              + Adicionar mais um item
+            </button>
+          )}
 
           {/* ACESSÓRIOS — letra auto-incrementada após o último item */}
           {acessorios ? (

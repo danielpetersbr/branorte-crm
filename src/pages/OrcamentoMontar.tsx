@@ -1347,6 +1347,7 @@ export function OrcamentoMontar() {
                 valorAcessorios={valorAcessorios}
                 fotoPrincipal={fotoPrincipal}
                 onAddAcessorios={() => setAcessoriosOpen(true)}
+                onAddItem={() => setMobileTab('catalogo')}
                 onEditAcessorios={() => setAcessoriosOpen(true)}
                 onRemoveAcessorios={() => setAcessorios(null)}
                 onRemove={removerItem}
@@ -1383,60 +1384,6 @@ export function OrcamentoMontar() {
               </div>
             )}
 
-            {/* + Adicionar mais item — aparece quando carrinho tem items.
-                Atalhos rápidos pros pickers principais sem precisar voltar pro Catálogo.
-                Em mobile, alterna pra tab Catálogo ao mesmo tempo (caso modal abra atrás). */}
-            {carrinho.length > 0 && (
-              <div className="bg-white border-t-2 border-dashed border-gray-200 px-4 py-5">
-                <div className="text-center text-[12px] uppercase tracking-wider font-bold text-gray-500 mb-3">
-                  + Adicionar mais um item
-                </div>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 max-w-2xl mx-auto">
-                  <button
-                    onClick={() => { setMobileTab('catalogo'); setTransportadorPickerOpen(true) }}
-                    className="group p-3 rounded-lg border border-gray-200 hover:border-accent hover:bg-accent/5 transition-all text-left"
-                  >
-                    <div className="text-[12px] font-bold text-gray-900 group-hover:text-accent">🚛 Transportador</div>
-                    <div className="text-[10px] text-gray-500 mt-0.5">Chupim, helicoidal</div>
-                  </button>
-                  <button
-                    onClick={() => { setMobileTab('catalogo'); setMoinhoPickerOpen(true) }}
-                    className="group p-3 rounded-lg border border-gray-200 hover:border-accent hover:bg-accent/5 transition-all text-left"
-                  >
-                    <div className="text-[12px] font-bold text-gray-900 group-hover:text-accent">⚙️ Moinho</div>
-                    <div className="text-[10px] text-gray-500 mt-0.5">Martelo, peneira</div>
-                  </button>
-                  <button
-                    onClick={() => { setMobileTab('catalogo'); setMisturadorPickerOpen(true) }}
-                    className="group p-3 rounded-lg border border-gray-200 hover:border-accent hover:bg-accent/5 transition-all text-left"
-                  >
-                    <div className="text-[12px] font-bold text-gray-900 group-hover:text-accent">🥄 Misturador</div>
-                    <div className="text-[10px] text-gray-500 mt-0.5">Vertical, horizontal</div>
-                  </button>
-                  <button
-                    onClick={() => { setMobileTab('catalogo'); setSiloPickerOpen(true) }}
-                    className="group p-3 rounded-lg border border-gray-200 hover:border-accent hover:bg-accent/5 transition-all text-left"
-                  >
-                    <div className="text-[12px] font-bold text-gray-900 group-hover:text-accent">🏗️ Silo</div>
-                    <div className="text-[10px] text-gray-500 mt-0.5">Ração, milho</div>
-                  </button>
-                </div>
-                <div className="mt-2 grid grid-cols-2 gap-2 max-w-2xl mx-auto">
-                  <button
-                    onClick={() => setMobileTab('catalogo')}
-                    className="p-2 rounded-lg border border-dashed border-gray-300 text-[11px] font-semibold text-gray-600 hover:border-accent hover:text-accent transition-colors"
-                  >
-                    📋 Ver catálogo completo
-                  </button>
-                  <button
-                    onClick={() => { setMobileTab('catalogo'); setCustomOpen(true) }}
-                    className="p-2 rounded-lg border border-dashed border-gray-300 text-[11px] font-semibold text-gray-600 hover:border-accent hover:text-accent transition-colors"
-                  >
-                    ✨ Produto personalizado
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Footer com total + ação */}
