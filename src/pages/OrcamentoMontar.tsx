@@ -358,6 +358,10 @@ export function OrcamentoMontar() {
   const [helicoidePickerOpen, setHelicoidePickerOpen] = useState(false)
   const [balancaPickerOpen, setBalancaPickerOpen] = useState(false)
   const [compactaPickerOpen, setCompactaPickerOpen] = useState(false)
+  // Picker de MODELOS de pacote (Compactas + Mini Fabrica) — abre os 65 modelos
+  // estruturados de orcamento_modelos. Ao escolher um, carrega TODOS os itens
+  // (transportador + moinho + misturador) pra ficar idêntico ao orçamento original.
+  const [pacoteModeloPickerOpen, setPacoteModeloPickerOpen] = useState(false)
   const [ensacadeiraPickerOpen, setEnsacadeiraPickerOpen] = useState(false)
 
   const { data: precos } = usePrecosBranorte()
@@ -712,29 +716,130 @@ export function OrcamentoMontar() {
   // Carrega um modelo pronto (orcamento_modelos) no carrinho do Montar Custom
   function carregarDoModelo(modelo: OrcamentoModelo) {
     if (carrinho.length > 0 && !confirm('Substituir os items atuais pelos do modelo?')) return
+    const catalogoItems = items ?? []
+    const fotoMapTransp = montarMapaFotosTransportador(catalogoItems)
+
+    // Helpers locais ---------------------------------------------------------
+
+    // Extrai CV de um spec ou nome de item. Ex: "potência 2,0 CV" → 2.0
+    function extrairCvDeTexto(...textos: string[]): number | null {
+      for (const t of textos) {
+        if (!t) continue
+        const m = t.match(/(\d+(?:[.,]\d+)?)\s*CV\b/i)
+        if (m) return parseFloat(m[1].replace(',', '.'))
+      }
+      return null
+    }
+
+    // Normaliza nome (remove "(...)" sufixos, uppercase, sem acentos)
+    function normalizar(s: string): string {
+      return s
+        .normalize('NFKD').replace(/[̀-ͯ]/g, '')
+        .replace(/\(.+?\)/g, '')  // remove "(150 kg)", "(motor não incluso)"...
+        .replace(/[^A-Za-z0-9 ]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim().toUpperCase()
+    }
+
+    // Acha o catalogo_item mais similar pelo nome.
+    function acharCatalogoSimilar(nomeItem: string): CatalogoItem | null {
+      const norm = normalizar(nomeItem)
+      if (!norm) return null
+      let melhor: { ci: CatalogoItem; score: number } | null = null
+      for (const ci of catalogoItems) {
+        if (!ci.ativo) continue
+        const ciNorm = normalizar(ci.nome_curto)
+        if (!ciNorm) continue
+        // Score: 1.0 se match exato; senão calcula fração de tokens em comum
+        let score = 0
+        if (ciNorm === norm) score = 1.0
+        else if (norm.includes(ciNorm) || ciNorm.includes(norm)) score = 0.85
+        else {
+          const tokensA = new Set(norm.split(' ').filter(t => t.length >= 2))
+          const tokensB = new Set(ciNorm.split(' ').filter(t => t.length >= 2))
+          if (tokensA.size && tokensB.size) {
+            let inter = 0
+            tokensA.forEach(t => { if (tokensB.has(t)) inter++ })
+            score = inter / Math.max(tokensA.size, tokensB.size)
+          }
+        }
+        if (score >= 0.6 && (!melhor || score > melhor.score)) {
+          melhor = { ci, score }
+        }
+      }
+      return melhor?.ci ?? null
+    }
+
+    // Detecta subcategoria pra TRANSPORTADOR a partir do nome
+    function detectarSubTransportador(nome: string): 'CHUPIM' | 'HELICOIDAL' | null {
+      const n = normalizar(nome)
+      if (!n.includes('TRANSPORTADOR') && !n.includes('CHUPIM') && !n.includes('CALHA')) return null
+      return /CALHA|\bTH\b/.test(n) ? 'HELICOIDAL' : 'CHUPIM'
+    }
+
+    // -----------------------------------------------------------------------
+    // 1) Pareia motores → itens pelo CV detectado no spec (em vez de round-robin)
+    const motoresRestantes = [...modelo.motores]
+    function pegarMotorPorCv(cvAlvo: number | null) {
+      if (cvAlvo == null) return null
+      const idx = motoresRestantes.findIndex(m => Math.abs(Number(m.cv) - cvAlvo) < 0.01)
+      if (idx < 0) return null
+      return motoresRestantes.splice(idx, 1)[0]
+    }
+
+    // 2) Constrói carrinho a partir dos itens do modelo
     const novos: CarrinhoItem[] = []
-    // 1) Items do modelo viram CarrinhoItem; motores distribuídos round-robin
-    modelo.itens.forEach((it, i) => {
-      const motor = modelo.motores[i] || null
+    modelo.itens.forEach(it => {
+      const cvDoSpec = extrairCvDeTexto(...(it.specs ?? []), it.nome)
+      const motor = pegarMotorPorCv(cvDoSpec)
+      const ci = acharCatalogoSimilar(it.nome)
+
+      // Categoria: do catálogo se achou, senão tenta inferir do nome
+      let categoria = ci?.categoria
+      if (!categoria) {
+        const n = normalizar(it.nome)
+        if (n.includes('TRANSPORTADOR') || n.includes('CHUPIM') || n.includes('CALHA')) categoria = 'TRANSPORTADOR'
+        else if (n.includes('MOINHO') || n.includes('MARTELO') || n.includes('TRITURADOR')) categoria = 'MOINHO'
+        else if (n.includes('MISTURADOR')) categoria = 'MISTURADOR'
+        else if (n.includes('SILO')) categoria = 'SILO'
+        else if (n.includes('ELEVADOR')) categoria = 'ELEVADOR'
+        else if (n.includes('PENEIRA')) categoria = 'PENEIRA'
+        else if (n.includes('CACAMBA') || n.includes('CACAMBA') || n.includes('PESAGEM')) categoria = 'CACAMBA'
+        else if (n.includes('ENSACADEIRA')) categoria = 'ENSACADEIRA'
+        else categoria = 'MODELO'
+      }
+
+      // Foto: 1) catálogo similar  2) fallback transportador por diâmetro
+      let foto = ci?.foto_url ?? null
+      const subTransp = detectarSubTransportador(it.nome)
+      if (!foto && subTransp) {
+        const md = it.nome.match(/(\d{2,3})\s*[xX]/)
+        if (md) foto = fotoMapTransp.get(`${subTransp}:${md[1]}`) ?? null
+      }
+
+      // Motor incluso? (spec diz "incluso/motorredutor")
+      const motorIncluso = motorJaInclusoNoItem(it.specs ?? [])
+
       novos.push({
         uid: gerarUid(),
-        catalogo_id: -1,
-        categoria: 'MODELO',
+        catalogo_id: ci?.id ?? -1,
+        categoria,
         nome: it.nome,
         specs: it.specs || [],
         qtd: it.qtd || 1,
         valor: Number(it.valor) || 0,
         valor_original: Number(it.valor) || 0,
-        motor_cv: motor ? motor.cv : null,
-        motor_polos: motor ? motor.polos : null,
-        motor_qtd: 1,
-        motor_valor_unit: motor ? Number(motor.valor) : 0,
-        foto_url: null,
+        motor_cv: motor ? Number(motor.cv) : (cvDoSpec ?? null),
+        motor_polos: motor ? motor.polos : (ci?.motor_padrao_polos ?? 4),
+        motor_qtd: motor ? 1 : (motorIncluso ? 0 : (cvDoSpec ? 1 : 0)),
+        motor_valor_unit: motorIncluso ? 0 : (motor ? Number(motor.valor) : 0),
+        foto_url: foto,
+        usa_inversor: !!(ci?.usa_inversor),
       })
     })
-    // 2) Motores extras (mais motores que items) → items dummy só com motor
-    for (let i = modelo.itens.length; i < modelo.motores.length; i++) {
-      const m = modelo.motores[i]
+
+    // 3) Motores que NÃO casaram com nenhum item → items dummy (igual antes)
+    for (const m of motoresRestantes) {
       novos.push({
         uid: gerarUid(),
         catalogo_id: -1,
@@ -744,15 +849,17 @@ export function OrcamentoMontar() {
         qtd: 1,
         valor: 0,
         valor_original: 0,
-        motor_cv: m.cv,
+        motor_cv: Number(m.cv),
         motor_polos: m.polos,
         motor_qtd: 1,
         motor_valor_unit: Number(m.valor) || 0,
         foto_url: null,
       })
     }
+
     setCarrinho(novos)
-    // 3) Acessórios — converte { items, valor } → { pct, items }
+
+    // 4) Acessórios — converte { items, valor } → { pct, items }
     if (modelo.acessorios && modelo.acessorios.items?.length) {
       const totalNovo = novos.reduce((s, it) => s + it.valor * it.qtd, 0)
       const pct = totalNovo > 0 ? Math.round((modelo.acessorios.valor / totalNovo) * 100) : 5
@@ -760,7 +867,8 @@ export function OrcamentoMontar() {
     } else {
       setAcessorios(null)
     }
-    // 4) Voltagem do modelo
+
+    // 5) Voltagem do modelo
     if (modelo.voltagem) aplicarVoltagem(modelo.voltagem)
   }
 
@@ -1045,8 +1153,8 @@ export function OrcamentoMontar() {
                     {(categoria === null || categoria === 'ENSACADEIRA') && ensacadeirasPreco.length > 0 && (
                       <MetaCard categoria="ENSACADEIRA" titulo="Ensacadeira" descricao="Saco Aberto e Valvulado c/ painel" qtd={ensacadeirasPreco.length} onClick={() => setEnsacadeiraPickerOpen(true)} />
                     )}
-                    {(categoria === null || categoria === 'COMPACTA') && compactasPreco.length > 0 && (
-                      <MetaCard categoria="COMPACTA" titulo="Fábricas Compactas (pacote)" descricao="Linhas 01, 01M, 02, 02M (75 a 500 kg/h)" qtd={compactasPreco.length} onClick={() => setCompactaPickerOpen(true)} />
+                    {(categoria === null || categoria === 'COMPACTA') && (
+                      <MetaCard categoria="COMPACTA" titulo="Fábricas Compactas (pacote)" descricao="Linhas 01, 01M, 02, 02M (75 a 500 kg/h) — kits completos prontos" qtd={65} onClick={() => setPacoteModeloPickerOpen(true)} />
                     )}
                   </>
                 )}
@@ -1446,10 +1554,10 @@ export function OrcamentoMontar() {
         onPick={p => { adicionarItemDePreco(p); setBalancaPickerOpen(false) }}
       />
 
-      {/* Compacta (pacote fechado) */}
+      {/* Compacta (pacote fechado - preços avulsos, fallback se vendedor abrir via outro caminho) */}
       <CategoriaPickerModal
         open={compactaPickerOpen}
-        titulo="Fábricas Compactas"
+        titulo="Fábricas Compactas (preço único)"
         items={compactasPreco}
         catalogoItems={items ?? []}
         labelSub={{ '01': 'Linha 01', '01 MASTER': 'Linha 01 Master', '02': 'Linha 02', '02 MASTER': 'Linha 02 Master' }}
@@ -1457,6 +1565,14 @@ export function OrcamentoMontar() {
         colCompacta
         onClose={() => setCompactaPickerOpen(false)}
         onPick={p => { adicionarItemDePreco(p); setCompactaPickerOpen(false) }}
+      />
+
+      {/* Picker de MODELOS de pacote (Compactas + Mini Fabrica): carrega TODOS os items
+          do modelo (transportador + moinho + misturador + acessórios + motores). */}
+      <PacoteModeloPickerModal
+        open={pacoteModeloPickerOpen}
+        onClose={() => setPacoteModeloPickerOpen(false)}
+        onPick={m => { carregarDoModelo(m); setPacoteModeloPickerOpen(false) }}
       />
 
       {/* Ensacadeira */}
@@ -1713,6 +1829,158 @@ export function OrcamentoMontar() {
 // ──────────────────────────────────────────────────────────────────────────
 // Selector de modelo pronto (carrega items + motores + acessórios do banco)
 // ──────────────────────────────────────────────────────────────────────────
+// Picker grande de modelos de pacote (Compactas + Mini Fabrica).
+// Mostra os 65 modelos com itens estruturados, com filtro por pacote e voltagem.
+// Ao clicar, carrega TODOS os itens (transportador + moinho + misturador + acessórios + motores).
+function PacoteModeloPickerModal({
+  open, onClose, onPick,
+}: {
+  open: boolean
+  onClose: () => void
+  onPick: (m: OrcamentoModelo) => void
+}) {
+  const { data: modelos, isLoading } = useOrcamentoModelos()
+  const [pacote, setPacote] = useState<string | 'todos'>('todos')
+  const [voltagem, setVoltagem] = useState<'todos' | 'monofasico' | 'trifasico'>('todos')
+  const [busca, setBusca] = useState('')
+
+  useEffect(() => {
+    if (open) { setPacote('todos'); setVoltagem('todos'); setBusca('') }
+  }, [open])
+
+  // Só os pacotes COMPACTA + MINI FABRICA (são os com itens estruturados)
+  const pacotesDisponiveis = useMemo(() => {
+    if (!modelos) return [] as string[]
+    const set = new Set<string>()
+    for (const m of modelos) {
+      if (m.itens && m.itens.length > 0 && m.pacote) set.add(m.pacote)
+    }
+    return [...set].sort()
+  }, [modelos])
+
+  const filtrados = useMemo(() => {
+    if (!modelos) return [] as OrcamentoModelo[]
+    const q = busca.toLowerCase().trim()
+    return modelos
+      .filter(m => m.itens && m.itens.length > 0)
+      .filter(m => pacote === 'todos' || m.pacote === pacote)
+      .filter(m => voltagem === 'todos' || m.voltagem === voltagem)
+      .filter(m => !q || m.basename.toLowerCase().includes(q))
+      .sort((a, b) => (a.producao_kgh ?? 0) - (b.producao_kgh ?? 0) || a.basename.localeCompare(b.basename))
+  }, [modelos, pacote, voltagem, busca])
+
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-bg border border-border rounded-xl max-w-4xl w-full shadow-2xl flex flex-col max-h-[90vh]"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-4 py-3 border-b border-border flex items-start gap-3">
+          <Sparkles className="h-5 w-5 text-accent shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <div className="text-[10px] uppercase tracking-wider text-accent font-bold">Kits completos · pré-montados</div>
+            <div className="text-[15px] font-bold text-ink leading-tight">Fábricas Compactas + Mini Fábrica</div>
+            <div className="text-[11px] text-ink-muted mt-0.5">
+              {modelos ? `${filtrados.length} de ${modelos.filter(m => m.itens?.length).length}` : '…'} modelos · carrega todos os items + motores + acessórios de uma vez
+            </div>
+          </div>
+          <button onClick={onClose} className="text-ink-faint hover:text-ink p-1 -m-1"><X className="h-4 w-4" /></button>
+        </div>
+
+        {/* Filtros */}
+        <div className="px-4 py-2 border-b border-border bg-surface-2/30 flex flex-wrap gap-2 items-center">
+          <span className="text-[10px] uppercase font-bold text-ink-muted">Pacote:</span>
+          <button
+            onClick={() => setPacote('todos')}
+            className={`text-[11px] px-2 py-1 rounded font-semibold ${pacote === 'todos' ? 'bg-accent text-white' : 'bg-surface-2 text-ink-muted hover:bg-surface-3'}`}
+          >Todos</button>
+          {pacotesDisponiveis.map(p => (
+            <button
+              key={p}
+              onClick={() => setPacote(p)}
+              className={`text-[11px] px-2 py-1 rounded font-semibold ${pacote === p ? 'bg-accent text-white' : 'bg-surface-2 text-ink-muted hover:bg-surface-3'}`}
+            >{p}</button>
+          ))}
+          <div className="w-px h-5 bg-border mx-1" />
+          <span className="text-[10px] uppercase font-bold text-ink-muted">Voltagem:</span>
+          {([['todos','Todas'], ['monofasico','Mono'], ['trifasico','Tri']] as const).map(([v, l]) => (
+            <button
+              key={v}
+              onClick={() => setVoltagem(v)}
+              className={`text-[11px] px-2 py-1 rounded font-semibold ${voltagem === v ? 'bg-accent text-white' : 'bg-surface-2 text-ink-muted hover:bg-surface-3'}`}
+            >{l}</button>
+          ))}
+          <input
+            type="text"
+            value={busca}
+            onChange={e => setBusca(e.target.value)}
+            placeholder="Buscar (ex: 75150, master, jr)..."
+            className="ml-auto px-2 py-1 bg-surface-2 border border-border rounded text-[11px] text-ink focus:border-accent outline-none w-44"
+          />
+        </div>
+
+        {/* Lista */}
+        <div className="flex-1 overflow-y-auto">
+          {isLoading ? (
+            <div className="text-center py-12 text-ink-faint text-[12px]">Carregando modelos…</div>
+          ) : filtrados.length === 0 ? (
+            <div className="text-center py-12 text-ink-faint text-[12px]">Nenhum modelo com esses filtros.</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-3">
+              {filtrados.map(m => (
+                <button
+                  key={m.id}
+                  onClick={() => onPick(m)}
+                  className="text-left p-3 rounded-lg border border-border hover:border-accent hover:bg-surface-2 transition-all flex items-start gap-3"
+                >
+                  {m.foto_url ? (
+                    <img
+                      src={m.foto_url}
+                      alt={m.basename}
+                      className="w-16 h-16 object-cover rounded border border-border shrink-0 bg-white"
+                      loading="lazy"
+                      onError={e => { e.currentTarget.style.display = 'none' }}
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded border border-border bg-surface-2 shrink-0 flex items-center justify-center text-ink-faint">
+                      <Package className="h-5 w-5" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-[12px] font-bold text-ink leading-tight">{m.basename}</span>
+                      <span className="text-[11px] font-bold text-success tabular-nums shrink-0">{formatBRL(Number(m.total_proposta))}</span>
+                    </div>
+                    <div className="text-[10px] text-ink-faint mt-1 flex items-center gap-1.5 flex-wrap">
+                      {m.pacote && <span className="px-1.5 py-0.5 rounded bg-accent/15 text-accent font-bold">{m.pacote}</span>}
+                      <span className={m.voltagem === 'trifasico' ? 'text-info' : 'text-warning'}>{m.voltagem}</span>
+                      {m.is_master && <span className="text-warning font-bold">MASTER</span>}
+                      {m.is_jr && <span className="text-info font-bold">JR</span>}
+                      {m.producao_kgh && <span>· {m.producao_kgh} kg/h</span>}
+                      {m.armazenamento_kg && <span>· {m.armazenamento_kg} kg</span>}
+                    </div>
+                    <div className="text-[10px] text-ink-muted mt-1">
+                      {m.itens.length} {m.itens.length === 1 ? 'item' : 'itens'} · {m.motores.length} {m.motores.length === 1 ? 'motor' : 'motores'}
+                      {m.acessorios && m.acessorios.items?.length ? ` · ${m.acessorios.items.length} acessórios` : ''}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="px-4 py-2 border-t border-border bg-surface-2/30 text-[10px] text-ink-faint">
+          ⓘ Clique num modelo: substitui o carrinho pelos itens dele. Linkados automaticamente ao catálogo (foto + categoria + motor por CV detectado).
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function SelectorModelo({ onCarregar }: { onCarregar: (m: OrcamentoModelo) => void }) {
   const { data: modelos, isLoading } = useOrcamentoModelos()
   const [open, setOpen] = useState(false)
