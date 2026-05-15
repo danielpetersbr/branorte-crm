@@ -7,7 +7,7 @@ import {
 } from '@/hooks/useOrcamentoBuilder'
 import { useAuth } from '@/hooks/useAuth'
 import { gerarPdfDoPreview } from '@/lib/preview-to-pdf'
-import { gerarDocxDoPreview } from '@/lib/preview-to-docx'
+import { gerarOrcamentoCustomDocx } from '@/lib/orcamento-custom-docx'
 import {
   isFolderScanSupported, pickOrcamentoFolder, getStoredFolderHandle,
   scanFolderForLastNumber, formatarNumero, ensureWritePermission,
@@ -411,7 +411,48 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
         parcelas: snapshot.parcelas ?? [],
         componentesExtras: snapshot.componentesExtras ?? [],
       }
-      const docxBlob = await gerarDocxDoPreview(previewProps)
+      // Word EDITÁVEL — texto estruturado real (parágrafos, tabelas, runs), não imagem.
+      // Vendedor pode abrir no Word e editar qualquer texto/valor.
+      const docxBlob = await gerarOrcamentoCustomDocx({
+        numero: orc.numero,
+        dataEmissao: dataEmissaoBR,
+        cliente: {
+          nome: cliNome.trim(),
+          ac: cliDados.ac,
+          fone: cliDados.fone,
+          cidade: cliDados.cidade,
+          bairro: cliDados.bairro,
+          endereco: cliDados.endereco,
+          cep: cliDados.cep,
+          cnpj: cliDados.cnpj,
+          ie: cliDados.ie,
+          email: cliDados.email,
+        },
+        voltagem: snapshot.voltagem,
+        itens: snapshot.itens.map((it, idx) => ({
+          letra: String.fromCharCode(65 + idx),
+          qtd: it.qtd,
+          nome: it.nome,
+          specs: it.specs,
+          valor: it.valor,
+          motor_cv: it.motor_cv,
+          motor_polos: it.motor_polos,
+          motor_qtd: it.motor_qtd,
+          foto_url: it.foto_url ?? null,
+        })),
+        motores: snapshot.motoresAgrupados,
+        acessorios: snapshot.acessorios
+          ? { pct: snapshot.acessorios.pct, items: snapshot.acessorios.items, valor: snapshot.acessorios.valor }
+          : null,
+        totalEquip: snapshot.totalEquip,
+        totalMotores: snapshot.totalMotores,
+        totalProposta: snapshot.totalGeral,
+        formaPagamento: formaPgOut.forma_pagamento || snapshot.termsInline?.formaPagamento || null,
+        dataVenda: (pgDataVenda ? formaPgOut.data_venda : null) || snapshot.termsInline?.dataVenda || null,
+        prazoEntrega: prazoEntrega.trim() || snapshot.termsInline?.prazoEntrega || null,
+        observacoes: observacoes.trim() || null,
+        vendedorNome: profile?.display_name || 'Vendedor',
+      })
 
       // 5) Gera PDF a partir do MESMO previewProps que ja foi usado pro DOCX
       let pdfBlob: Blob | null = null
