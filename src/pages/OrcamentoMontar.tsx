@@ -297,8 +297,12 @@ export function OrcamentoMontar() {
   }
 
   // Configuração de cálculo de potência do chupim (fórmula Branorte)
+  // Material/inclinação default — usado como pré-seleção no modal de confirmação por item.
   const [chupimMaterial, setChupimMaterial] = useState<MaterialChupim>('MILHO')
   const [chupimInclinacao, setChupimInclinacao] = useState<InclinacaoChupim>(0)
+  // Modal de confirmação por chupim: abre quando vendedor clica num chupim no picker.
+  // Permite escolher material/inclinação específicos pra AQUELE item antes de adicionar.
+  const [confirmarChupim, setConfirmarChupim] = useState<PrecoBranorte | null>(null)
 
   // Modais de pickers (cada categoria tem seu próprio meta-card)
   const [transportadorPickerOpen, setTransportadorPickerOpen] = useState(false)
@@ -377,7 +381,12 @@ export function OrcamentoMontar() {
   // Adiciona item ao carrinho direto de uma entrada de precos_branorte.
   // Faz lookup do catalogo_items linkado (via preco_branorte_id) pra puxar
   // foto e specs curadas. Se não tiver match, gera specs dinamicamente.
-  function adicionarItemDePreco(p: PrecoBranorte, categoriaForcada?: string) {
+  // chupimOpts: override de material/inclinação POR ITEM (vem do modal de confirmação).
+  function adicionarItemDePreco(
+    p: PrecoBranorte,
+    categoriaForcada?: string,
+    chupimOpts?: { material: MaterialChupim; inclinacao: InclinacaoChupim },
+  ) {
     const cat = categoriaForcada ?? p.categoria
     // Tenta achar o catalogo_item linkado via preco_branorte_id
     const ciLinkado = (items ?? []).find(ci => ci.preco_branorte_id === p.id && ci.ativo)
@@ -420,8 +429,12 @@ export function OrcamentoMontar() {
 
     // CHUPIM: aplica fórmula oficial Branorte (POT=(C+(Q*L*K)/200)*b*1,36)
     // arredondando pro próximo motor maior. Substitui o motor padrão da planilha.
+    // Usa override do modal se vendedor confirmou material/inclinação POR ITEM,
+    // senão usa defaults da sessão.
     if (cat === 'TRANSPORTADOR' && p.subcategoria === 'CHUPIM') {
-      const rec = recomendarMotorChupim(p.descricao, p.capacidade, chupimMaterial, chupimInclinacao)
+      const mat = chupimOpts?.material ?? chupimMaterial
+      const inc = chupimOpts?.inclinacao ?? chupimInclinacao
+      const rec = recomendarMotorChupim(p.descricao, p.capacidade, mat, inc)
       if (rec) {
         motor_cv_n = rec.cvMotor
         motor_polos = 4  // chupim sempre 4 polos
@@ -1171,7 +1184,30 @@ export function OrcamentoMontar() {
         onInclinacao={setChupimInclinacao}
         onClose={() => setTransportadorPickerOpen(false)}
         onPick={p => {
-          adicionarItemDePreco(p)
+          // Chupim: abre modal de confirmação pra escolher material + inclinação POR ITEM
+          // (vendedor pode ter chupins diferentes pra contextos diferentes no mesmo orçamento).
+          // Outros transportadores (Calha TH): adiciona direto.
+          if (p.subcategoria === 'CHUPIM') {
+            setConfirmarChupim(p)
+          } else {
+            adicionarItemDePreco(p)
+            setTransportadorPickerOpen(false)
+          }
+        }}
+      />
+
+      {/* Modal de confirmação por chupim: material + inclinação específicos */}
+      <ConfirmarChupimModal
+        chupim={confirmarChupim}
+        materialDefault={chupimMaterial}
+        inclinacaoDefault={chupimInclinacao}
+        onCancel={() => setConfirmarChupim(null)}
+        onConfirm={(p, material, inclinacao) => {
+          // Atualiza os defaults com a última escolha (próximo chupim já pré-selecionado igual)
+          setChupimMaterial(material)
+          setChupimInclinacao(inclinacao)
+          adicionarItemDePreco(p, undefined, { material, inclinacao })
+          setConfirmarChupim(null)
           setTransportadorPickerOpen(false)
         }}
       />
@@ -2294,6 +2330,146 @@ function CustomItemModal({
 // Vendedor escolhe TIPO (Chupim/Calha) + DIÂMETRO + MEDIDA → item entra
 // no carrinho com preço oficial e specs geradas dinamicamente.
 // ──────────────────────────────────────────────────────────────────────────
+
+// Modal de confirmação por chupim. Vendedor escolhe material/inclinação ANTES de adicionar.
+// Mostra o motor recomendado em tempo real conforme os parâmetros mudam.
+function ConfirmarChupimModal({
+  chupim, materialDefault, inclinacaoDefault, onCancel, onConfirm,
+}: {
+  chupim: PrecoBranorte | null
+  materialDefault: MaterialChupim
+  inclinacaoDefault: InclinacaoChupim
+  onCancel: () => void
+  onConfirm: (p: PrecoBranorte, material: MaterialChupim, inclinacao: InclinacaoChupim) => void
+}) {
+  const [material, setMaterial] = useState<MaterialChupim>(materialDefault)
+  const [inclinacao, setInclinacao] = useState<InclinacaoChupim>(inclinacaoDefault)
+
+  // Reset pros defaults toda vez que abrir com chupim novo
+  useEffect(() => {
+    if (chupim) {
+      setMaterial(materialDefault)
+      setInclinacao(inclinacaoDefault)
+    }
+  }, [chupim, materialDefault, inclinacaoDefault])
+
+  if (!chupim) return null
+
+  const rec = recomendarMotorChupim(chupim.descricao, chupim.capacidade, material, inclinacao)
+  const motorCvDefault = chupim.motor_cv ? Number(chupim.motor_cv) : null
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4"
+      onClick={onCancel}
+    >
+      <div
+        className="bg-bg border border-border rounded-xl max-w-md w-full shadow-2xl"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-4 py-3 border-b border-border flex items-start gap-3">
+          <Sparkles className="h-5 w-5 text-accent shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <div className="text-[10px] uppercase tracking-wider text-accent font-bold">
+              Cálculo de motor por item
+            </div>
+            <div className="text-[15px] font-bold text-ink leading-tight">
+              {chupim.descricao}
+            </div>
+            <div className="text-[11px] text-ink-muted mt-0.5">
+              Capacidade: {chupim.capacidade || '—'} · Pot. planilha: {chupim.potencia || '—'}
+            </div>
+          </div>
+          <button onClick={onCancel} className="text-ink-faint hover:text-ink p-1 -m-1">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Form */}
+        <div className="px-4 py-4 space-y-3">
+          <div>
+            <label className="block text-[11px] uppercase font-bold text-ink-muted mb-1">
+              Material transportado
+            </label>
+            <select
+              value={material}
+              onChange={e => setMaterial(e.target.value as MaterialChupim)}
+              className="w-full text-[13px] px-3 py-2 bg-surface-2 border border-border rounded text-ink"
+            >
+              {(Object.keys(FATOR_MATERIAL) as MaterialChupim[]).map(k => (
+                <option key={k} value={k}>{k} (K = {FATOR_MATERIAL[k]})</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[11px] uppercase font-bold text-ink-muted mb-1">
+              Inclinação de instalação
+            </label>
+            <select
+              value={inclinacao}
+              onChange={e => setInclinacao(Number(e.target.value) as InclinacaoChupim)}
+              className="w-full text-[13px] px-3 py-2 bg-surface-2 border border-border rounded text-ink"
+            >
+              {(Object.keys(FATOR_INCLINACAO).map(Number) as InclinacaoChupim[]).map(g => (
+                <option key={g} value={g}>{g}° (b = {FATOR_INCLINACAO[g]})</option>
+              ))}
+            </select>
+            <p className="text-[10px] text-ink-faint mt-1">
+              Quanto maior o ângulo, maior a potência necessária.
+            </p>
+          </div>
+
+          {/* Resultado do cálculo */}
+          <div className="bg-info/5 border border-info/30 rounded-lg p-3 mt-3">
+            <div className="text-[10px] uppercase font-bold text-info mb-1">
+              ⚡ Motor recomendado
+            </div>
+            {rec ? (
+              <div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-[24px] font-bold text-info">{rec.cvMotor} CV</span>
+                  <span className="text-[11px] text-ink-faint">
+                    (calculado: {rec.cvCalculado.toFixed(2)} CV → próximo maior)
+                  </span>
+                </div>
+                <div className="text-[10px] text-ink-faint mt-1 font-mono">
+                  POT = (0,4 + ({rec.Q}·{rec.L}·{FATOR_MATERIAL[material]})/200) × {FATOR_INCLINACAO[inclinacao]} × 1,36
+                </div>
+                {motorCvDefault && motorCvDefault !== rec.cvMotor && (
+                  <div className="text-[10px] text-warning mt-1">
+                    ⚠ Substitui motor padrão da planilha ({motorCvDefault} CV) — devido a {material} a {inclinacao}°.
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-[11px] text-ink-faint italic">
+                Sem capacidade ou comprimento detectáveis na descrição — vai usar motor padrão da planilha ({motorCvDefault ?? '—'} CV).
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="px-4 py-3 border-t border-border flex items-center justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="text-[12px] px-3 py-1.5 rounded font-semibold bg-surface-2 text-ink-muted hover:bg-surface-3"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={() => onConfirm(chupim, material, inclinacao)}
+            className="text-[12px] px-4 py-1.5 rounded font-bold bg-accent text-white hover:bg-accent/90"
+          >
+            Adicionar {rec ? `(${rec.cvMotor} CV)` : ''}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function TransportadorPickerModal({
   open, transportadores, catalogoItems,
