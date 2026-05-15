@@ -93,6 +93,9 @@ export interface OrcamentoPreviewProps {
   valorAcessorios: number
   componentesExtras?: PreviewComponenteExtra[]
   onUpdateComponentesExtras?: (items: PreviewComponenteExtra[]) => void
+  // Sugestões puxadas do cadastro (precos_branorte) — apresentadas no popover "+ Adicionar"
+  // com valor já preenchido. Vendedor pode editar depois. Se vazio, usa só presets fixos.
+  componentesAdicionaisCatalogo?: Array<{ id: string; nome: string; valorSugerido: number | null }>
 
   // Render-mode overrides (opcional). Quando passados, usa em vez dos placeholders.
   numero?: string
@@ -222,7 +225,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     tensaoMotores = null, onUpdateTensaoMotores,
     desconto, onUpdateDesconto,
     onAddAcessorios, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onUpdateQtd, onUpdateTerm, onMoverItem,
-    componentesExtras = [], onUpdateComponentesExtras,
+    componentesExtras = [], onUpdateComponentesExtras, componentesAdicionaisCatalogo = [],
     parcelas, onUpdateParcelas,
     motoresDisponiveis, onTrocarMotor,
   } = props
@@ -938,10 +941,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             // Não renderiza nada se vazio E não tá em modo edit
             if (componentesExtras.length === 0 && !interactive) return null
             const totalExtras = componentesExtras.reduce((s, c) => s + (Number(c.valor) || 0), 0)
+            // Presets sem preço — pra coisas que não estão no cadastro ainda (vendedor digita o R$)
             const PRESETS = [
               'Painel elétrico',
-              'Balança',
-              'Célula de carga',
               'Inversor de frequência',
               'CLP / Automação',
               'Compressor',
@@ -949,9 +951,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
               'Tubulação',
             ]
             function novoIdExtra() { return `cx-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` }
-            function adicionar(nome: string) {
+            function adicionar(nome: string, valor: number = 0) {
               if (!onUpdateComponentesExtras) return
-              onUpdateComponentesExtras([...componentesExtras, { id: novoIdExtra(), nome, valor: 0 }])
+              onUpdateComponentesExtras([...componentesExtras, { id: novoIdExtra(), nome, valor }])
               setExtraPickerOpen(false)
             }
             function atualizar(id: string, patch: Partial<PreviewComponenteExtra>) {
@@ -1046,13 +1048,39 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     >+ Adicionar componente</button>
                     {extraPickerOpen && (
                       <div
-                        className="absolute z-40 mt-1 left-0 top-full bg-white border border-gray-300 rounded-md shadow-xl w-[280px] print:hidden"
+                        className="absolute z-40 mt-1 left-0 top-full bg-white border border-gray-300 rounded-md shadow-xl w-[340px] max-h-[60vh] overflow-y-auto print:hidden"
                         onMouseLeave={() => setExtraPickerOpen(false)}
                       >
-                        <div className="px-3 py-2 border-b border-gray-200 bg-gray-50 text-[10px] uppercase font-bold text-gray-600 tracking-wider">
-                          Sugestões
+                        {/* Section 1: do cadastro (precos_branorte) — com preço já sugerido */}
+                        {componentesAdicionaisCatalogo.length > 0 && (
+                          <>
+                            <div className="px-3 py-2 border-b border-gray-200 bg-blue-50/60 text-[10px] uppercase font-bold text-blue-700 tracking-wider">
+                              Do cadastro de preços
+                            </div>
+                            <div className="p-1">
+                              {componentesAdicionaisCatalogo.map(c => (
+                                <button
+                                  key={c.id}
+                                  type="button"
+                                  onClick={() => adicionar(c.nome, c.valorSugerido ?? 0)}
+                                  className="w-full text-left px-2 py-1.5 rounded text-[13px] hover:bg-blue-50 transition-colors text-gray-800 flex items-center justify-between gap-2"
+                                >
+                                  <span>{c.nome}</span>
+                                  <span className="text-[11px] tabular-nums text-gray-500">
+                                    {c.valorSugerido != null && c.valorSugerido > 0
+                                      ? `R$ ${formatBRLBare(c.valorSugerido)}`
+                                      : <span className="italic text-gray-400">sem preço</span>}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                        {/* Section 2: presets fixos sem preço (não estão no cadastro ainda) */}
+                        <div className="px-3 py-2 border-b border-t border-gray-200 bg-gray-50 text-[10px] uppercase font-bold text-gray-600 tracking-wider">
+                          Outros componentes (digite o valor)
                         </div>
-                        <div className="p-1 max-h-[40vh] overflow-y-auto">
+                        <div className="p-1">
                           {PRESETS.map(p => (
                             <button
                               key={p}
@@ -1061,13 +1089,14 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                               className="w-full text-left px-2 py-1.5 rounded text-[13px] hover:bg-blue-50 transition-colors text-gray-800"
                             >{p}</button>
                           ))}
-                          <div className="border-t border-gray-200 mt-1 pt-1">
-                            <button
-                              type="button"
-                              onClick={() => adicionar('')}
-                              className="w-full text-left px-2 py-1.5 rounded text-[13px] hover:bg-yellow-50 transition-colors text-gray-700 italic"
-                            >+ Outro (digitar manualmente)</button>
-                          </div>
+                        </div>
+                        {/* Section 3: livre */}
+                        <div className="border-t border-gray-200 p-1">
+                          <button
+                            type="button"
+                            onClick={() => adicionar('')}
+                            className="w-full text-left px-2 py-1.5 rounded text-[13px] hover:bg-yellow-50 transition-colors text-gray-700 italic"
+                          >+ Outro (digitar manualmente)</button>
                         </div>
                       </div>
                     )}

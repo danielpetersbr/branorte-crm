@@ -327,6 +327,19 @@ export function OrcamentoMontar() {
     () => (precos ?? []).filter(p => p.categoria === 'MOINHO'),
     [precos],
   )
+  // Componentes adicionais disponíveis (NÃO fabricados pela Branorte) — vem da tabela de preços.
+  // Hoje: BALANCA (eletrônicas, mecânicas, célula de carga). Futuro: adicionar outras categorias
+  // ao banco e elas aparecem aqui sem mudar código.
+  const componentesAdicionaisCatalogo = useMemo(
+    () => (precos ?? [])
+      .filter(p => p.categoria === 'BALANCA')
+      .map(p => ({
+        id: `pb-${p.id}`,
+        nome: p.descricao,
+        valorSugerido: p.valor_equipamento != null ? Number(p.valor_equipamento) : null,
+      })),
+    [precos],
+  )
   const caixasPreco = useMemo(
     () => (precos ?? []).filter(p => p.categoria === 'CAIXA'),
     [precos],
@@ -1028,6 +1041,7 @@ export function OrcamentoMontar() {
                 onUpdateQtd={alterarQtd}
                 componentesExtras={componentesExtras}
                 onUpdateComponentesExtras={setComponentesExtras}
+                componentesAdicionaisCatalogo={componentesAdicionaisCatalogo}
                 tensaoMotores={tensaoMotores}
                 onUpdateTensaoMotores={setTensaoMotores}
                 desconto={descontoCfg}
