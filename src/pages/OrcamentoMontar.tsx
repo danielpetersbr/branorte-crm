@@ -21,7 +21,8 @@ import { useAuth } from '@/hooks/useAuth'
 import { usePrecosBranorte, type PrecoBranorte } from '@/hooks/usePrecosBranorte'
 import {
   recomendarMotorChupim, FATOR_MATERIAL, FATOR_INCLINACAO,
-  type MaterialChupim, type InclinacaoChupim,
+  FUNCAO_TRANSPORTADOR_POLOS,
+  type MaterialChupim, type InclinacaoChupim, type FuncaoTransportador,
 } from '@/lib/calcChupim'
 
 type Voltagem = 'monofasico' | 'trifasico'
@@ -428,7 +429,7 @@ export function OrcamentoMontar() {
   function adicionarItemDePreco(
     p: PrecoBranorte,
     categoriaForcada?: string,
-    chupimOpts?: { material: MaterialChupim; inclinacao: InclinacaoChupim },
+    chupimOpts?: { material: MaterialChupim; inclinacao: InclinacaoChupim; polos?: 4 | 6 },
   ) {
     const cat = categoriaForcada ?? p.categoria
     // Tenta achar o catalogo_item linkado via preco_branorte_id
@@ -480,7 +481,10 @@ export function OrcamentoMontar() {
       const rec = recomendarMotorChupim(p.descricao, p.capacidade, mat, inc)
       if (rec) {
         motor_cv_n = rec.cvMotor
-        motor_polos = 4  // chupim sempre 4 polos
+        // Polos: vem da função do transportador (modal). Default 4. Algumas funções
+        // (alimentação horizontal de silos, moinho martelo) usam 6 polos.
+        // Monofásico sempre 4 polos.
+        motor_polos = voltagem === 'trifasico' ? (chupimOpts?.polos ?? 4) : 4
         // Sincroniza a spec "Acionamento: potência X CV" com o motor recalculado
         // pra não ter conflito entre a descrição (planilha) e o motor cotado (fórmula).
         // Match flexível: substitui o número antes de "CV" na linha Acionamento.
@@ -1262,17 +1266,18 @@ export function OrcamentoMontar() {
         }}
       />
 
-      {/* Modal de confirmação por chupim: material + inclinação específicos */}
+      {/* Modal de confirmação por chupim: material + inclinação + função (polos) específicos */}
       <ConfirmarChupimModal
         chupim={confirmarChupim}
         materialDefault={chupimMaterial}
         inclinacaoDefault={chupimInclinacao}
+        voltagem={voltagem}
         onCancel={() => setConfirmarChupim(null)}
-        onConfirm={(p, material, inclinacao) => {
+        onConfirm={(p, material, inclinacao, _funcao, polos) => {
           // Atualiza os defaults com a última escolha (próximo chupim já pré-selecionado igual)
           setChupimMaterial(material)
           setChupimInclinacao(inclinacao)
-          adicionarItemDePreco(p, undefined, { material, inclinacao })
+          adicionarItemDePreco(p, undefined, { material, inclinacao, polos })
           setConfirmarChupim(null)
           setTransportadorPickerOpen(false)
         }}
@@ -2399,23 +2404,29 @@ function CustomItemModal({
 
 // Modal de confirmação por chupim. Vendedor escolhe material/inclinação ANTES de adicionar.
 // Mostra o motor recomendado em tempo real conforme os parâmetros mudam.
+// Se voltagem=trifasico, vendedor também escolhe FUNÇÃO do transportador
+// — algumas funções específicas (alimentação horizontal de silos, moinho martelo)
+// usam motor 6 polos em vez do default de 4 polos.
 function ConfirmarChupimModal({
-  chupim, materialDefault, inclinacaoDefault, onCancel, onConfirm,
+  chupim, materialDefault, inclinacaoDefault, voltagem, onCancel, onConfirm,
 }: {
   chupim: PrecoBranorte | null
   materialDefault: MaterialChupim
   inclinacaoDefault: InclinacaoChupim
+  voltagem: Voltagem
   onCancel: () => void
-  onConfirm: (p: PrecoBranorte, material: MaterialChupim, inclinacao: InclinacaoChupim) => void
+  onConfirm: (p: PrecoBranorte, material: MaterialChupim, inclinacao: InclinacaoChupim, funcao: FuncaoTransportador, polos: 4 | 6) => void
 }) {
   const [material, setMaterial] = useState<MaterialChupim>(materialDefault)
   const [inclinacao, setInclinacao] = useState<InclinacaoChupim>(inclinacaoDefault)
+  const [funcao, setFuncao] = useState<FuncaoTransportador>('')
 
   // Reset pros defaults toda vez que abrir com chupim novo
   useEffect(() => {
     if (chupim) {
       setMaterial(materialDefault)
       setInclinacao(inclinacaoDefault)
+      setFuncao('')
     }
   }, [chupim, materialDefault, inclinacaoDefault])
 
@@ -2423,6 +2434,8 @@ function ConfirmarChupimModal({
 
   const rec = recomendarMotorChupim(chupim.descricao, chupim.capacidade, material, inclinacao)
   const motorCvDefault = chupim.motor_cv ? Number(chupim.motor_cv) : null
+  // Polos: 6 se função específica, 4 default. Monofásico sempre usa default 4.
+  const polos: 4 | 6 = voltagem === 'trifasico' ? FUNCAO_TRANSPORTADOR_POLOS[funcao] : 4
 
   return (
     <div
@@ -2487,6 +2500,33 @@ function ConfirmarChupimModal({
             </p>
           </div>
 
+          {/* Função do transportador — só mostra se trifásico (define polos 4 vs 6) */}
+          {voltagem === 'trifasico' && (
+            <div>
+              <label className="block text-[11px] uppercase font-bold text-ink-muted mb-1">
+                Função do transportador
+              </label>
+              <select
+                value={funcao}
+                onChange={e => setFuncao(e.target.value as FuncaoTransportador)}
+                className="w-full text-[13px] px-3 py-2 bg-surface-2 border border-border rounded text-ink"
+              >
+                <option value="">— sem função específica (4 polos)</option>
+                {(Object.keys(FUNCAO_TRANSPORTADOR_POLOS) as FuncaoTransportador[])
+                  .filter(f => f !== '')
+                  .map(f => (
+                    <option key={f} value={f}>
+                      {f} ({FUNCAO_TRANSPORTADOR_POLOS[f]} polos)
+                    </option>
+                  ))}
+              </select>
+              <p className="text-[10px] text-ink-faint mt-1">
+                Define os polos do motor. Default é 4 polos. Funções de alta carga
+                (alimentação horizontal de silos, moinho martelo) usam 6 polos.
+              </p>
+            </div>
+          )}
+
           {/* Resultado do cálculo */}
           <div className="bg-info/5 border border-info/30 rounded-lg p-3 mt-3">
             <div className="text-[10px] uppercase font-bold text-info mb-1">
@@ -2494,8 +2534,10 @@ function ConfirmarChupimModal({
             </div>
             {rec ? (
               <div>
-                <div className="flex items-baseline gap-2">
+                <div className="flex items-baseline gap-2 flex-wrap">
                   <span className="text-[24px] font-bold text-info">{rec.cvMotor} CV</span>
+                  <span className="text-[16px] font-semibold text-info">·</span>
+                  <span className="text-[16px] font-semibold text-info">{polos} polos</span>
                   <span className="text-[11px] text-ink-faint">
                     (calculado: {rec.cvCalculado.toFixed(2)} CV → próximo maior)
                   </span>
@@ -2508,10 +2550,15 @@ function ConfirmarChupimModal({
                     ⚠ Substitui motor padrão da planilha ({motorCvDefault} CV) — devido a {material} a {inclinacao}°.
                   </div>
                 )}
+                {voltagem === 'trifasico' && polos === 6 && (
+                  <div className="text-[10px] text-warning mt-1">
+                    ⚠ 6 polos (em vez de 4) por causa da função: {funcao}.
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-[11px] text-ink-faint italic">
-                Sem capacidade ou comprimento detectáveis na descrição — vai usar motor padrão da planilha ({motorCvDefault ?? '—'} CV).
+                Sem capacidade ou comprimento detectáveis na descrição — vai usar motor padrão da planilha ({motorCvDefault ?? '—'} CV{voltagem === 'trifasico' ? `, ${polos} polos` : ''}).
               </div>
             )}
           </div>
@@ -2526,10 +2573,10 @@ function ConfirmarChupimModal({
             Cancelar
           </button>
           <button
-            onClick={() => onConfirm(chupim, material, inclinacao)}
+            onClick={() => onConfirm(chupim, material, inclinacao, funcao, polos)}
             className="text-[12px] px-4 py-1.5 rounded font-bold bg-accent text-white hover:bg-accent/90"
           >
-            Adicionar {rec ? `(${rec.cvMotor} CV)` : ''}
+            Adicionar {rec ? `(${rec.cvMotor} CV · ${polos}p)` : ''}
           </button>
         </div>
       </div>

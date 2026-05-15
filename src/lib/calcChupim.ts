@@ -34,6 +34,23 @@ export const FATOR_INCLINACAO: Record<number, number> = {
 }
 export type InclinacaoChupim = keyof typeof FATOR_INCLINACAO
 
+// Função do transportador → polos do motor (apenas TRIFÁSICO).
+// Default = 4 polos. Algumas funções específicas exigem 6 polos por causa
+// do torque/velocidade necessária na operação.
+//   - Alimentação horizontal de silos: precisa torque alto, baixa rotação → 6
+//   - Alimentação/descarga do moinho martelo: idem → 6
+// Valor '' (vazio) = "sem função definida" → usa default 4 polos.
+export const FUNCAO_TRANSPORTADOR_POLOS: Record<string, 4 | 6> = {
+  '': 4,
+  'Alimentação dos silos (horizontal)': 6,
+  'Alimentação do moinho martelo': 6,
+  'Descarga do moinho martelo': 6,
+  'Transferência geral': 4,
+  'Alimentação geral': 4,
+  'Descarga geral': 4,
+}
+export type FuncaoTransportador = keyof typeof FUNCAO_TRANSPORTADOR_POLOS
+
 // CV disponíveis nos motores oficiais Branorte (PDF 2026)
 export const CVS_DISPONIVEIS = [
   1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 7.5,
