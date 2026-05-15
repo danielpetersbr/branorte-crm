@@ -59,6 +59,8 @@ export interface CarrinhoSnapshot {
     pct?: number
     valor?: number
   }>
+  // Componentes adicionais (não fabricados pela Branorte) — painel, balança, célula de carga…
+  componentesExtras?: Array<{ id: string; nome: string; valor: number }>
 }
 
 interface Props {
@@ -344,6 +346,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
         tensaoMotores: snapshot.tensaoMotores ?? null,
         desconto: snapshot.desconto ?? null,
         parcelas: snapshot.parcelas ?? [],
+        componentesExtras: snapshot.componentesExtras ?? [],
       }
       const docxBlob = await gerarDocxDoPreview(previewProps)
 

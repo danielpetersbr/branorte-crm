@@ -67,6 +67,44 @@ function formatBRLBare(v: number): string {
   return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+// ─── Fallback de foto pra TRANSPORTADOR (chupim/calha TH) ─────────────────
+// Mesma foto pra todos os comprimentos do mesmo diâmetro+tipo. Ex: chupim 160 x 1m
+// e chupim 160 x 8m mostram a mesma imagem (só muda comprimento).
+//
+// Estratégia: ao montar a tela, extrai (diametro, sub) do nome de cada catalogo_item
+// que TEM foto e cria um mapa "DIAM:SUB -> primeira_foto". Quando o vendedor olha
+// um chupim sem linkagem específica, pega a foto da família.
+type TransportadorSub = 'CHUPIM' | 'HELICOIDAL'
+function detectarTransportador(nome: string): { diametro: string | null; sub: TransportadorSub | null } {
+  const m = nome.match(/(\d{2,3})\s*[xX]/)
+  const diametro = m ? m[1] : null
+  // CALHA TH: nome contém "CALHA" ou "TH" antes do diâmetro
+  const isCalha = /\bCALHA\b|\bTH\s+\d/i.test(nome)
+  const sub: TransportadorSub | null = diametro ? (isCalha ? 'HELICOIDAL' : 'CHUPIM') : null
+  return { diametro, sub }
+}
+function montarMapaFotosTransportador(catalogoItems: CatalogoItem[]): Map<string, string> {
+  const m = new Map<string, string>()
+  for (const ci of catalogoItems) {
+    if (!ci.ativo || ci.categoria !== 'TRANSPORTADOR' || !ci.foto_url) continue
+    const { diametro, sub } = detectarTransportador(ci.nome_curto)
+    if (!diametro || !sub) continue
+    const key = `${sub}:${diametro}`
+    // Preferência: nomes "limpos" (sem "AMPLIAÇÃO", "SUPORTE", "BIG BAG", "INOX")
+    // sobrescrevem variantes. Assim a foto representativa é a do equipamento padrão.
+    const isVariante = /AMPLIA[ÇC][AÃ]O|SUPORTE|BIG\s*BAG|INOX|ADAPTA/i.test(ci.nome_curto)
+    if (!m.has(key) || !isVariante) {
+      // Só substitui se o que tava era variante e o novo é "limpo"
+      if (!m.has(key)) {
+        m.set(key, ci.foto_url)
+      } else if (!isVariante) {
+        m.set(key, ci.foto_url)
+      }
+    }
+  }
+  return m
+}
+
 function gerarUid(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 }
@@ -465,6 +503,17 @@ export function OrcamentoMontar() {
     // Detecta motor incluso pela spec (mesmo padrão usado no adicionarItem original)
     const motorIncluso = motorJaInclusoNoItem(specsFinal)
 
+    // Foto: 1) catálogo linkado direto, 2) fallback por (subcategoria, diâmetro)
+    // pra transportadores — todo chupim 160 mostra mesma foto independente do comprimento
+    let fotoFinal: string | null = ciLinkado?.foto_url ?? null
+    if (!fotoFinal && cat === 'TRANSPORTADOR' && p.subcategoria) {
+      const { diametro } = detectarTransportador(p.descricao)
+      if (diametro) {
+        const mapa = montarMapaFotosTransportador(items ?? [])
+        fotoFinal = mapa.get(`${p.subcategoria}:${diametro}`) ?? null
+      }
+    }
+
     setCarrinho(c => [...c, {
       uid: gerarUid(),
       catalogo_id: ciLinkado?.id ?? -1,
@@ -478,7 +527,7 @@ export function OrcamentoMontar() {
       motor_polos: motor_polos,
       motor_qtd: ciLinkado?.motor_padrao_qtd ?? 1,
       motor_valor_unit: motorIncluso ? 0 : motor_valor_unit,
-      foto_url: ciLinkado?.foto_url ?? null,
+      foto_url: fotoFinal,
       usa_inversor: !!(ciLinkado?.usa_inversor),
     }])
   }
@@ -1157,6 +1206,7 @@ export function OrcamentoMontar() {
             formaPagamento: formaPagamentoTxt || null,
           },
           parcelas: parcelasPagamento,
+          componentesExtras: componentesExtras,
         } as CarrinhoSnapshot}
         onClose={() => setFinalizarOpen(false)}
         onSuccess={info => {
@@ -2511,6 +2561,10 @@ function TransportadorPickerModal({
     }
     return m
   }, [catalogoItems])
+  // Fallback de foto por (subcategoria, diâmetro). Usado quando o preço específico
+  // não tem catálogo linkado — assume que todo chupim 160 (independente do comprimento)
+  // tem a mesma aparência.
+  const fotoFallback = useMemo(() => montarMapaFotosTransportador(catalogoItems), [catalogoItems])
 
   useEffect(() => {
     if (open) { setTipo('todos'); setDiametro(null) }
@@ -2669,7 +2723,13 @@ function TransportadorPickerModal({
               </thead>
               <tbody>
                 {filtrados.map(p => {
-                  const foto = fotoPorPrecoId.get(p.id)
+                  // 1) Foto exata via linkagem catalogo_items.preco_branorte_id
+                  // 2) Fallback: foto de qualquer catalogo do mesmo tipo+diâmetro
+                  let foto = fotoPorPrecoId.get(p.id)
+                  if (!foto && p.subcategoria) {
+                    const { diametro: d } = detectarTransportador(p.descricao)
+                    if (d) foto = fotoFallback.get(`${p.subcategoria}:${d}`)
+                  }
                   return (
                   <tr
                     key={p.id}
