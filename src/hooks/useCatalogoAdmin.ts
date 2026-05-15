@@ -2,7 +2,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import type { CatalogoItem } from './useCatalogo'
 
-// Item do catálogo com todos os campos de curadoria
+// Item do catálogo com todos os campos de curadoria.
+// Quando `is_virtual=true`, o registro veio só de precos_branorte e ainda não tem
+// catalogo_items próprio. id eh negativo (-preco_branorte_id) como sentinel pro UI;
+// no primeiro save/upload, o sistema cria a row real e troca o id.
 export interface CatalogoItemAdmin extends CatalogoItem {
   is_oficial: boolean
   descricao: string | null
@@ -12,6 +15,7 @@ export interface CatalogoItemAdmin extends CatalogoItem {
   notas_curadoria: string | null
   atualizado_por: string | null
   atualizado_em: string | null
+  is_virtual?: boolean
 }
 
 const BUCKET_FOTOS = 'catalogo-fotos'
@@ -25,26 +29,151 @@ export function extrairPathDaUrl(url: string): string | null {
   return match ? match[1] : null
 }
 
-// Lista TODOS os items (inclusive ativo=false), ordenados para painel de curadoria
+// Constrói item virtual a partir de uma linha de precos_branorte (quando ela ainda
+// não tem catalogo_items linkado). Usa id negativo como sentinel — UI mostra normal,
+// mas no save/upload o hook cria a row real e troca o id.
+function precoToVirtualItem(preco: {
+  id: number
+  categoria: string
+  subcategoria: string | null
+  descricao: string
+  capacidade: string | null
+  valor_equipamento: number | null
+  motor_cv: number | null
+  motor_polos: number | null
+  observacoes: string | null
+  ordem: number
+}): CatalogoItemAdmin {
+  return {
+    id: -preco.id,
+    categoria: preco.categoria,
+    subcategoria: preco.subcategoria,
+    nome_curto: preco.descricao,
+    nome_completo: preco.descricao,
+    specs: [],
+    capacidade_kg: null,
+    capacidade_litros: null,
+    potencia_cv: preco.motor_cv,
+    motor_padrao_cv: preco.motor_cv,
+    motor_padrao_polos: preco.motor_polos,
+    motor_padrao_qtd: 1,
+    valor: preco.valor_equipamento ?? 0,
+    imagem_url: null,
+    ativo: true,
+    ordem: preco.ordem,
+    ocorrencias: 0,
+    is_oficial: true, // vive em precos_branorte = é oficial por definição
+    foto_url: null,
+    descricao: preco.observacoes,
+    acessorios_relacionados_ids: [],
+    items_relacionados_ids: [],
+    notas_curadoria: null,
+    atualizado_por: null,
+    atualizado_em: null,
+    usa_inversor: false,
+    funcao_opcoes: [],
+    tamanho_codigo: null,
+    ocultar_funcao_no_pdf: false,
+    motor_id: null,
+    preco_branorte_id: preco.id,
+    is_virtual: true,
+  }
+}
+
+// Lista TODOS os items orçáveis (catalogo_items + precos_branorte sem link).
+// O catálogo admin agora é a "single pane of glass" pra curadoria de imagem/specs:
+// items reais em catalogo_items aparecem como sempre; items que só existem em
+// precos_branorte (a fonte de verdade pro preço) aparecem como "virtuais" — quando
+// vendedor edita/uploada foto, o hook cria a row real automaticamente.
 export function useCatalogoItemsAdmin() {
   return useQuery({
     queryKey: ['catalogo-items-admin'],
     queryFn: async (): Promise<CatalogoItemAdmin[]> => {
-      const { data, error } = await supabase
-        .from('catalogo_items')
-        .select('*')
-        .order('is_oficial', { ascending: false })
-        .order('ocorrencias', { ascending: false })
-        .order('categoria', { ascending: true })
-        .order('nome_curto', { ascending: true })
-      if (error) throw error
-      return (data ?? []) as CatalogoItemAdmin[]
+      const [itemsRes, precosRes] = await Promise.all([
+        supabase
+          .from('catalogo_items')
+          .select('*')
+          .order('is_oficial', { ascending: false })
+          .order('ocorrencias', { ascending: false })
+          .order('categoria', { ascending: true })
+          .order('nome_curto', { ascending: true }),
+        supabase
+          .from('precos_branorte')
+          .select('id, categoria, subcategoria, descricao, capacidade, valor_equipamento, motor_cv, motor_polos, observacoes, ordem')
+          .eq('ativo', true),
+      ])
+      if (itemsRes.error) throw itemsRes.error
+      if (precosRes.error) throw precosRes.error
+      const items = (itemsRes.data ?? []) as CatalogoItemAdmin[]
+      const precos = (precosRes.data ?? []) as Parameters<typeof precoToVirtualItem>[0][]
+
+      const precosComLink = new Set(
+        items.filter(i => i.preco_branorte_id != null).map(i => i.preco_branorte_id as number)
+      )
+      const virtuais: CatalogoItemAdmin[] = precos
+        .filter(p => !precosComLink.has(p.id))
+        .map(precoToVirtualItem)
+
+      // Reais primeiro (curados), virtuais depois (sem foto/specs ainda)
+      return [...items, ...virtuais]
     },
     staleTime: 30_000,
   })
 }
 
-// Atualiza qualquer subset de campos do item
+// Helper interno: garante que o item tem row real em catalogo_items.
+// Se for virtual (id < 0), faz INSERT linkando ao preco_branorte e retorna o id novo.
+// Se já existir, retorna o id atual sem mexer.
+async function garantirRowReal(
+  id: number,
+  baseUpdates: Partial<CatalogoItemAdmin> = {},
+): Promise<number> {
+  if (id > 0) return id
+  // É virtual — preciso buscar a row de precos_branorte pra criar catalogo_items
+  const precoId = -id
+  const { data: preco, error: precoErr } = await supabase
+    .from('precos_branorte')
+    .select('id, categoria, subcategoria, descricao, valor_equipamento, motor_cv, motor_polos')
+    .eq('id', precoId)
+    .single()
+  if (precoErr) throw precoErr
+  const p = preco as {
+    id: number
+    categoria: string
+    subcategoria: string | null
+    descricao: string
+    valor_equipamento: number | null
+    motor_cv: number | null
+    motor_polos: number | null
+  }
+  const payload = {
+    categoria: p.categoria,
+    subcategoria: p.subcategoria,
+    nome_curto: p.descricao,
+    nome_completo: p.descricao,
+    valor: p.valor_equipamento ?? 0,
+    motor_padrao_cv: p.motor_cv,
+    motor_padrao_polos: p.motor_polos,
+    motor_padrao_qtd: 1,
+    preco_branorte_id: p.id,
+    is_oficial: true,
+    ativo: true,
+    ocorrencias: 0,
+    specs: [],
+    ...baseUpdates,
+    atualizado_em: new Date().toISOString(),
+  }
+  const { data: novo, error: insertErr } = await supabase
+    .from('catalogo_items')
+    .insert(payload)
+    .select('id')
+    .single()
+  if (insertErr) throw insertErr
+  return (novo as { id: number }).id
+}
+
+// Atualiza qualquer subset de campos do item. Se for virtual, cria a row real
+// embutindo os updates no INSERT inicial (em vez de INSERT vazio + UPDATE depois).
 export function useAtualizarItemCatalogo() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -55,8 +184,22 @@ export function useAtualizarItemCatalogo() {
       id: number
       updates: Partial<CatalogoItemAdmin>
     }) => {
+      // Remove campo sentinel antes de mandar pro DB (não existe na tabela)
+      const { is_virtual: _isv, ...cleanUpdates } = updates as Partial<CatalogoItemAdmin> & { is_virtual?: boolean }
+      void _isv
+      if (id < 0) {
+        // Virtual → cria row real com todos os updates de uma vez
+        const newId = await garantirRowReal(id, cleanUpdates)
+        const { data, error } = await supabase
+          .from('catalogo_items')
+          .select('*')
+          .eq('id', newId)
+          .single()
+        if (error) throw error
+        return data as CatalogoItemAdmin
+      }
       const payload = {
-        ...updates,
+        ...cleanUpdates,
         atualizado_em: new Date().toISOString(),
       }
       const { data, error } = await supabase
@@ -75,16 +218,17 @@ export function useAtualizarItemCatalogo() {
   })
 }
 
-// Cria item novo (INSERT)
+// Cria item novo (INSERT) — usado pelo modo "novo item" no admin (fora do fluxo virtual)
 export function useCriarItemCatalogo() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (novo: Partial<CatalogoItemAdmin>) => {
+      const { is_virtual: _isv, ...clean } = novo as Partial<CatalogoItemAdmin> & { is_virtual?: boolean }
+      void _isv
       const payload = {
-        ...novo,
+        ...clean,
         ativo: true,
         ocorrencias: 0,
-        criado_em: new Date().toISOString(),
         atualizado_em: new Date().toISOString(),
       }
       const { data, error } = await supabase
@@ -102,7 +246,8 @@ export function useCriarItemCatalogo() {
   })
 }
 
-// Toggle do flag "oficial"
+// Toggle do flag "oficial". Virtual items já são oficiais (vivem em precos_branorte),
+// mas se vendedor quiser desmarcar, o hook cria a row real com is_oficial=false.
 export function useToggleOficialCatalogo() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -113,13 +258,14 @@ export function useToggleOficialCatalogo() {
       id: number
       is_oficial: boolean
     }) => {
+      const realId = await garantirRowReal(id, { is_oficial })
       const { data, error } = await supabase
         .from('catalogo_items')
         .update({
           is_oficial,
           atualizado_em: new Date().toISOString(),
         })
-        .eq('id', id)
+        .eq('id', realId)
         .select('*')
         .single()
       if (error) throw error
@@ -132,18 +278,20 @@ export function useToggleOficialCatalogo() {
   })
 }
 
-// Soft delete: marca ativo=false
+// Soft delete: marca ativo=false. Em virtual, cria row real só pra desativar
+// (preserva preco_branorte intacto — pra desativar lá, usar /orcamentos/precos).
 export function useDeletarItemCatalogo() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (id: number) => {
+      const realId = await garantirRowReal(id, { ativo: false })
       const { data, error } = await supabase
         .from('catalogo_items')
         .update({
           ativo: false,
           atualizado_em: new Date().toISOString(),
         })
-        .eq('id', id)
+        .eq('id', realId)
         .select('*')
         .single()
       if (error) throw error
@@ -156,7 +304,8 @@ export function useDeletarItemCatalogo() {
   })
 }
 
-// Upload de foto: envia ao bucket, pega URL pública e atualiza foto_url do item
+// Upload de foto: envia ao bucket, pega URL pública e atualiza foto_url do item.
+// Pra items virtuais, cria a row real ANTES do upload (pra ter id real no path).
 export function useUploadFotoCatalogo() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -167,13 +316,14 @@ export function useUploadFotoCatalogo() {
       id: number
       file: File
     }): Promise<{ url: string }> => {
+      const realId = await garantirRowReal(id)
       const extFromName = file.name.includes('.')
         ? file.name.split('.').pop()
         : null
       const extFromType = file.type.split('/').pop()
       const ext = (extFromName || extFromType || 'jpg').toLowerCase()
       const timestamp = Date.now()
-      const path = `items/${id}-${timestamp}.${ext}`
+      const path = `items/${realId}-${timestamp}.${ext}`
 
       const { error: uploadError } = await supabase.storage
         .from(BUCKET_FOTOS)
@@ -195,7 +345,7 @@ export function useUploadFotoCatalogo() {
           foto_url: url,
           atualizado_em: new Date().toISOString(),
         })
-        .eq('id', id)
+        .eq('id', realId)
       if (updateError) throw updateError
 
       return { url }
@@ -207,11 +357,12 @@ export function useUploadFotoCatalogo() {
   })
 }
 
-// Remove foto: deleta do bucket e limpa foto_url do item
+// Remove foto: deleta do bucket e limpa foto_url. Virtual sem foto não faz nada.
 export function useRemoverFotoCatalogo() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (id: number) => {
+      if (id < 0) return { id } // virtual nunca tem foto
       const { data: item, error: fetchError } = await supabase
         .from('catalogo_items')
         .select('foto_url')
@@ -248,7 +399,8 @@ export function useRemoverFotoCatalogo() {
   })
 }
 
-// Estatísticas agregadas do catálogo para o painel admin
+// Estatísticas agregadas. Agora cruza precos_branorte (fonte de verdade pro total)
+// com catalogo_items (curadoria de foto/specs). Gap = items orçáveis ainda sem foto.
 export interface CatalogoStats {
   total: number
   oficiais: number
@@ -261,28 +413,23 @@ export function useStatsCatalogo() {
   return useQuery({
     queryKey: ['catalogo-stats'],
     queryFn: async (): Promise<CatalogoStats> => {
-      const base = () =>
-        supabase
-          .from('catalogo_items')
-          .select('*', { count: 'exact', head: true })
-
-      const [totalRes, oficiaisRes, comFotoRes, comMotorRes] = await Promise.all([
-        base().eq('ativo', true),
-        base().eq('ativo', true).eq('is_oficial', true),
-        base().eq('ativo', true).not('foto_url', 'is', null),
-        base().eq('ativo', true).not('motor_padrao_cv', 'is', null),
+      const [precosRes, comFotoRes, comMotorRes, oficiaisRes] = await Promise.all([
+        supabase.from('precos_branorte').select('id', { count: 'exact', head: true }).eq('ativo', true),
+        supabase.from('catalogo_items').select('id', { count: 'exact', head: true }).eq('ativo', true).not('foto_url', 'is', null),
+        supabase.from('precos_branorte').select('id', { count: 'exact', head: true }).eq('ativo', true).not('motor_cv', 'is', null),
+        supabase.from('catalogo_items').select('id', { count: 'exact', head: true }).eq('ativo', true).eq('is_oficial', true),
       ])
 
-      if (totalRes.error) throw totalRes.error
-      if (oficiaisRes.error) throw oficiaisRes.error
+      if (precosRes.error) throw precosRes.error
       if (comFotoRes.error) throw comFotoRes.error
       if (comMotorRes.error) throw comMotorRes.error
+      if (oficiaisRes.error) throw oficiaisRes.error
 
-      const total = totalRes.count ?? 0
-      const oficiais = oficiaisRes.count ?? 0
+      const total = precosRes.count ?? 0
       const com_foto = comFotoRes.count ?? 0
       const com_motor = comMotorRes.count ?? 0
-      const pendentes = Math.max(total - oficiais, 0)
+      const oficiais = oficiaisRes.count ?? 0
+      const pendentes = Math.max(total - com_foto, 0)
 
       return { total, oficiais, pendentes, com_foto, com_motor }
     },

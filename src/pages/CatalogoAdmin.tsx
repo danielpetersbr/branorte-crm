@@ -365,8 +365,14 @@ function CatalogoCardItem({ item, onClick, onToggleOficial, togglePending }: Car
               </span>
             )}
           </div>
-          <p className="text-[10px] text-ink-faint">
-            Usado {item.ocorrencias}× · #{item.id}
+          <p className="text-[10px] text-ink-faint flex items-center gap-1.5">
+            {item.is_virtual ? (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-info/15 text-info border border-info/30 uppercase tracking-wider">
+                Sem foto/specs · só preço
+              </span>
+            ) : (
+              <>Usado {item.ocorrencias}× · #{item.id}</>
+            )}
             {!item.ativo && ' · INATIVO'}
           </p>
         </div>
