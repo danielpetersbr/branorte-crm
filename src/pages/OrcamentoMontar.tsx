@@ -717,12 +717,22 @@ export function OrcamentoMontar() {
     if (!motores) return
     setCarrinho(c => c.map(it => {
       if (!it.motor_cv || !it.motor_polos) return it
-      // Motor incluso continua com valor 0 mesmo ao trocar voltagem.
-      if (motorJaInclusoNoItem(it.specs)) return { ...it, motor_valor_unit: 0 }
-      // Item com inversor: cotar sempre como trifásico (preço fixo independente da voltagem).
+      // Item com inversor: cotar sempre como trifásico, polos não muda.
       const voltagemEfetiva: Voltagem = it.usa_inversor ? 'trifasico' : novaVoltagem
-      const motor = acharMotorCompativel(motores, it.motor_cv, it.motor_polos, voltagemEfetiva)
-      return { ...it, motor_valor_unit: motor ? Number(motor.valor) : it.motor_valor_unit }
+      // Monofásico só existe em 4 polos. Se trocou pra mono e item tinha 6 polos,
+      // força 4 polos + atualiza specs/nome pra refletir. Tri mantém os polos atuais
+      // (pode ter sido escolhido por função de transportador 6 polos, etc.).
+      const polosFinais = (voltagemEfetiva === 'monofasico' && it.motor_polos !== 4) ? 4 : it.motor_polos
+      const polosMudou = polosFinais !== it.motor_polos
+      // Motor incluso continua com valor 0 mesmo ao trocar voltagem.
+      const incluso = motorJaInclusoNoItem(it.specs)
+      const motor = acharMotorCompativel(motores, it.motor_cv, polosFinais, voltagemEfetiva)
+      return {
+        ...it,
+        motor_polos: polosFinais,
+        motor_valor_unit: incluso ? 0 : (motor ? Number(motor.valor) : it.motor_valor_unit),
+        specs: polosMudou ? atualizarSpecsComMotor(it.specs, it.motor_cv, polosFinais) : it.specs,
+      }
     }))
   }
 
@@ -1021,6 +1031,7 @@ export function OrcamentoMontar() {
             <div className="relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-ink-faint" />
               <Input
+                id="catalogo-busca-input"
                 value={busca}
                 onChange={e => setBusca(e.target.value)}
                 placeholder="Buscar item (ex: triturador, caçamba, transportador)..."
@@ -1347,7 +1358,20 @@ export function OrcamentoMontar() {
                 valorAcessorios={valorAcessorios}
                 fotoPrincipal={fotoPrincipal}
                 onAddAcessorios={() => setAcessoriosOpen(true)}
-                onAddItem={() => setMobileTab('catalogo')}
+                onAddItem={() => {
+                  // Mobile: alterna pro tab Catálogo (que tava escondido)
+                  setMobileTab('catalogo')
+                  // Desktop + mobile: rola pro topo do catálogo + foca o input de busca
+                  // Timeout pra tab trocar antes de scrollar
+                  setTimeout(() => {
+                    const input = document.getElementById('catalogo-busca-input') as HTMLInputElement | null
+                    if (input) {
+                      input.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                      input.focus()
+                      input.select()
+                    }
+                  }, 100)
+                }}
                 onEditAcessorios={() => setAcessoriosOpen(true)}
                 onRemoveAcessorios={() => setAcessorios(null)}
                 onRemove={removerItem}

@@ -14,6 +14,8 @@ import {
   resolverPastaDoMes, escreverArquivo,
 } from '@/lib/orcamento-folder-scan'
 import { construirFormaPagamento, type TipoPagamento, type FormaPagamentoConfig } from '@/lib/forma-pagamento'
+import { montarNotaTxt } from '@/lib/orcamento-docx'
+import { supabase } from '@/lib/supabase'
 
 export interface CarrinhoSnapshot {
   voltagem: 'monofasico' | 'trifasico'
@@ -405,6 +407,14 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
             }
             await escreverArquivo(pastaMes, `${base}.docx`, docxBlob)
             if (pdfBlob) await escreverArquivo(pastaMes, `${base}.pdf`, pdfBlob)
+            // .txt com data de envio (igual modelo pronto). Usado p/ rastrear
+            // quando o vendedor enviou o orçamento pro cliente.
+            try {
+              const vendedorNome = profile?.display_name || 'Vendedor'
+              const notaTxt = montarNotaTxt(vendedorNome, hoje)
+              const txtBlob = new Blob([notaTxt], { type: 'text/plain;charset=utf-8' })
+              await escreverArquivo(pastaMes, `${base} - ${vendedorNome}.txt`, txtBlob)
+            } catch (txtErr) { console.warn('Falha .txt:', txtErr) }
             salvouNaPasta = true
           }
         } catch (e) {
@@ -442,6 +452,19 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
               .upload(pdfPath, pdfBlob, { contentType: 'application/pdf', upsert: true })
             if (!pdfErr2) baixouPdf = true
           }
+          // .txt com data envio (igual modelo pronto). Sync desktop copia tudo
+          // junto pra Z:\...\Orçamentos YYYY\<M> - <Mes>\
+          try {
+            const vendedorNome = profile?.display_name || 'Vendedor'
+            const notaTxt = montarNotaTxt(vendedorNome, hoje)
+            const txtPath = `${folder}/${base} - ${vendedorNome}.txt`
+            await supabase.storage
+              .from('orcamentos-pendentes')
+              .upload(txtPath, new Blob([notaTxt], { type: 'text/plain;charset=utf-8' }), {
+                contentType: 'text/plain;charset=utf-8',
+                upsert: true,
+              })
+          } catch (txtErr) { console.warn('Falha .txt upload:', txtErr) }
           salvouNaPasta = true // marca como "salvo" pra UX igual desktop
         } catch (e) {
           console.error('Falha upload Storage:', e)

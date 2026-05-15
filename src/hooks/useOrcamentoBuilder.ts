@@ -216,22 +216,22 @@ export function useOrcamentosGerados(filters?: { vendedor_nome?: string; status?
 export async function obterProximoNumero(): Promise<{ ano: number; sequencial: number; numero: string }> {
   const ano = new Date().getFullYear()
 
-  // Consulta paralela: banco (orcamentos_gerados) + index da pasta Z:\
-  // (mantido pelo job desktop branorte-sync). Pega MAX dos dois +1 pra
-  // garantir numero unico mesmo se vendedor salvou direto na pasta.
-  const [{ data: rpcData }, { data: pastaIdx }] = await Promise.all([
-    supabase.rpc('proximo_orcamento_sequencial', { p_ano: ano }),
-    supabase
-      .from('pasta_orcamento_index')
-      .select('ultimo_sequencial')
-      .eq('ano', ano)
-      .maybeSingle(),
-  ])
+  // PASTA Z:\ é a FONTE DA VERDADE (mantida pelo job desktop branorte-sync
+  // que escaneia recursivo todas subpastas de mes). Banco serve apenas pra
+  // garantir unicidade via INSERT-retry quando 2 vendedores criam ao mesmo
+  // tempo (race condition).
+  //
+  // Estratégia: pega ultimo_sequencial da pasta + 1. Se o INSERT no banco
+  // detectar duplicata (alguém ja criou esse número), o caller (criarOrcamento)
+  // tem um retry-loop que incrementa até achar livre.
+  const { data: pastaIdx } = await supabase
+    .from('pasta_orcamento_index')
+    .select('ultimo_sequencial')
+    .eq('ano', ano)
+    .maybeSingle()
 
-  const seqBanco = Number(rpcData) || 1
-  // RPC ja retorna o "proximo" (max+1). Pasta retorna ULTIMO usado.
-  const seqPasta = pastaIdx?.ultimo_sequencial ? Number(pastaIdx.ultimo_sequencial) + 1 : 0
-  const seq = Math.max(seqBanco, seqPasta)
+  const seqPasta = Number(pastaIdx?.ultimo_sequencial ?? 0)
+  const seq = seqPasta + 1
 
   return {
     ano,
