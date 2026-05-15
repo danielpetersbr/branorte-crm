@@ -17,6 +17,7 @@ import {
 import { construirFormaPagamento, type TipoPagamento, type FormaPagamentoConfig } from '@/lib/forma-pagamento'
 import { montarNotaTxt } from '@/lib/orcamento-docx'
 import { supabase } from '@/lib/supabase'
+import { parseClienteText } from '@/lib/parse-cliente-text'
 
 export interface CarrinhoSnapshot {
   voltagem: 'monofasico' | 'trifasico'
@@ -803,6 +804,14 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             </div>
           </div>
 
+          {/* Auto-preencher cliente */}
+          <AutoPreencherCliente
+            onApply={(r) => {
+              if (r.cliente_nome) setCliNome(r.cliente_nome)
+              setCliDados(d => ({ ...d, ...r.dados }))
+            }}
+          />
+
           {/* Cliente */}
           <div>
             <label className="text-[11px] uppercase tracking-wider text-ink-muted font-semibold">Cliente *</label>
@@ -1018,6 +1027,77 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+
+// ─── AUTO-PREENCHER CLIENTE ─────────────────────────────────────────────
+// Cola texto bagunçado (CNPJ, nome, fone, endereço…) e parser extrai os campos.
+// MVP: regex-based (offline, instantâneo). Futuro: IA via Edge Function.
+function AutoPreencherCliente({ onApply }: { onApply: (r: ReturnType<typeof parseClienteText>) => void }) {
+  const [aberto, setAberto] = useState(false)
+  const [texto, setTexto] = useState('')
+  const [resultado, setResultado] = useState<ReturnType<typeof parseClienteText> | null>(null)
+
+  function processar() {
+    const r = parseClienteText(texto)
+    setResultado(r)
+    onApply(r)
+  }
+
+  if (!aberto) {
+    return (
+      <button
+        type="button"
+        onClick={() => setAberto(true)}
+        className="text-[11px] px-2.5 py-1.5 rounded bg-purple-100 text-purple-700 border border-purple-300 font-bold hover:bg-purple-200 transition flex items-center gap-1.5"
+        title="Cola dados do cliente (qualquer formato) e preenche automaticamente"
+      >
+        🤖 Auto-preencher cliente
+      </button>
+    )
+  }
+
+  return (
+    <div className="p-2.5 border border-purple-300 rounded-md bg-purple-50/40 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] uppercase tracking-wider text-purple-700 font-semibold flex items-center gap-1">
+          🤖 Auto-preencher
+        </span>
+        <button onClick={() => { setAberto(false); setTexto(''); setResultado(null) }} className="text-[10px] text-ink-faint hover:text-ink">Fechar</button>
+      </div>
+      <textarea
+        value={texto}
+        onChange={e => setTexto(e.target.value)}
+        placeholder="Cola aqui qualquer texto com dados do cliente:&#10;&#10;Empresa: Fazenda São João&#10;CNPJ 12.345.678/0001-90&#10;Rua das Flores 100 - Centro, Florianópolis/SC&#10;CEP 88000-000 · Fone (48) 99999-9999&#10;contato@fazenda.com.br"
+        rows={5}
+        className="w-full text-[11px] px-2 py-1.5 border border-purple-200 rounded bg-white outline-none focus:border-purple-400"
+      />
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={processar}
+          disabled={!texto.trim()}
+          className="text-[11px] px-3 py-1.5 rounded bg-purple-600 text-white font-bold hover:bg-purple-700 disabled:opacity-50"
+        >
+          ✨ Preencher
+        </button>
+        {resultado && (
+          <span className="text-[11px] text-ink-muted self-center">
+            {Object.values(resultado.dados).filter(Boolean).length + (resultado.cliente_nome ? 1 : 0)} campo(s) preenchido(s)
+            {resultado.naoReconhecido.length > 0 && ` · ${resultado.naoReconhecido.length} linha(s) não reconhecida(s)`}
+          </span>
+        )}
+      </div>
+      {resultado && resultado.naoReconhecido.length > 0 && (
+        <details className="text-[10px] text-ink-faint">
+          <summary className="cursor-pointer hover:text-ink-muted">Linhas não reconhecidas (preencha manualmente)</summary>
+          <ul className="mt-1 pl-3 space-y-0.5 list-disc list-inside">
+            {resultado.naoReconhecido.map((l, i) => <li key={i}>{l}</li>)}
+          </ul>
+        </details>
+      )}
     </div>
   )
 }
