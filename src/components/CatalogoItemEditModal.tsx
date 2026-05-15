@@ -16,6 +16,11 @@ import {
 } from '@/hooks/useCatalogoAdmin'
 import { useCatalogoAcessorios } from '@/hooks/useCatalogo'
 import { useAuth } from '@/hooks/useAuth'
+import {
+  ATRIBUTOS_POR_CATEGORIA,
+  parseSpecsParaAtributos,
+  atributosParaSpecs,
+} from '@/lib/categoria-atributos'
 
 interface Props {
   open: boolean
@@ -44,6 +49,9 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
   const [descricao, setDescricao] = useState('')
   const [specs, setSpecs] = useState<string[]>([])
   const [novaSpec, setNovaSpec] = useState('')
+  // Atributos estruturados por categoria (ex: capacidade_ton pra SILO).
+  // Sao serializados/desserializados de/pra `specs` no banco.
+  const [atributos, setAtributos] = useState<Record<string, string>>({})
   const [valor, setValor] = useState<string>('')
   const [motorCv, setMotorCv] = useState<string>('')
   const [motorPolos, setMotorPolos] = useState<string>('')
@@ -78,6 +86,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
       setDescricao('')
       setSpecs([])
       setNovaSpec('')
+      setAtributos({})
       setValor('')
       setMotorCv('')
       setMotorPolos('')
@@ -97,7 +106,10 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
     setNomeCurto(item.nome_curto || '')
     setNomeCompleto(item.nome_completo || '')
     setDescricao(item.descricao || '')
-    setSpecs(Array.isArray(item.specs) ? [...item.specs] : [])
+    // Parseia specs: separa atributos estruturados (Capacidade: 200 ton) de specs livres
+    const parsed = parseSpecsParaAtributos(Array.isArray(item.specs) ? item.specs : [], item.categoria || '')
+    setAtributos(parsed.atributos)
+    setSpecs(parsed.specsLivres)
     setNovaSpec('')
     setValor(item.valor != null ? String(item.valor) : '')
     setMotorCv(item.motor_padrao_cv != null ? String(item.motor_padrao_cv) : '')
@@ -118,6 +130,12 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
       setPreviewFoto(null)
     }
   }, [open])
+
+  // Quando categoria muda, recalcula as defs (atributos sao mantidos pelo state)
+  const atributoDefs = useMemo(() =>
+    ATRIBUTOS_POR_CATEGORIA[categoria.trim().toUpperCase()] || [],
+    [categoria],
+  )
 
   // ─── Sugestão de categorias (autocomplete) ───────────────────────
   const categoriasSugeridas = useMemo(() => {
@@ -227,7 +245,8 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
       nome_curto: nomeCurto.trim(),
       nome_completo: nomeCompleto.trim() || nomeCurto.trim(),
       descricao: descricao.trim() || null,
-      specs: specs.filter(s => s.trim().length > 0),
+      // Junta atributos estruturados + specs livres
+      specs: atributosParaSpecs(atributos, specs.filter(s => s.trim().length > 0), categoria),
       valor: valor === '' ? 0 : Number(valor) || 0,
       motor_padrao_cv: motorCv === '' ? null : Number(motorCv) || null,
       motor_padrao_polos: motorPolos === '' ? null : Number(motorPolos) || null,
@@ -448,10 +467,54 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
               />
             </div>
 
-            {/* Specs (lista editável) */}
+            {/* Atributos especificos por categoria */}
+            {atributoDefs.length > 0 && (
+              <div className="p-3 border border-accent/30 bg-accent/5 rounded-md">
+                <div className="flex items-center gap-2 mb-2.5">
+                  <span className="text-[11px] font-semibold text-accent uppercase tracking-wide">
+                    Atributos do {categoria}
+                  </span>
+                  <span className="text-[10px] text-ink-faint">
+                    (campos específicos pra essa categoria)
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {atributoDefs.map(def => (
+                    <div key={def.key}>
+                      <label className="text-[10px] text-ink-muted block mb-0.5">
+                        {def.label}{def.unidade ? ` (${def.unidade})` : ''}
+                      </label>
+                      {def.tipo === 'select' ? (
+                        <select
+                          value={atributos[def.key] || ''}
+                          onChange={e => setAtributos(a => ({ ...a, [def.key]: e.target.value }))}
+                          className="w-full h-9 rounded-md border border-border bg-surface px-2 text-[13px] text-ink focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30"
+                        >
+                          <option value="">—</option>
+                          {def.opcoes!.map(op => <option key={op} value={op}>{op}</option>)}
+                        </select>
+                      ) : (
+                        <Input
+                          type={def.tipo === 'number' ? 'number' : 'text'}
+                          step={def.tipo === 'number' ? 'any' : undefined}
+                          value={atributos[def.key] || ''}
+                          onChange={e => setAtributos(a => ({ ...a, [def.key]: e.target.value }))}
+                          placeholder={def.placeholder}
+                        />
+                      )}
+                      {def.hint && (
+                        <p className="text-[9px] text-ink-faint mt-0.5">{def.hint}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Specs livres (lista editável) — atributos extras fora do schema */}
             <div>
               <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1.5">
-                Specs técnicas
+                {atributoDefs.length > 0 ? 'Specs adicionais (livre)' : 'Specs técnicas'}
               </label>
               <div className="flex flex-col gap-1.5">
                 {specs.map((s, i) => (
