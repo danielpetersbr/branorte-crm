@@ -885,6 +885,13 @@ export function OrcamentoMontar() {
 
     // 5) Voltagem do modelo
     if (modelo.voltagem) aplicarVoltagem(modelo.voltagem)
+
+    // 6) Foto Principal: usa a foto representativa do modelo (ex: render da Compacta 01).
+    //    Aparece logo abaixo do cabeçalho do orçamento. Vendedor pode trocar
+    //    depois clicando em "+ Trocar foto" se quiser.
+    if (modelo.foto_url) {
+      setFotoPrincipal(modelo.foto_url)
+    }
   }
 
   if (loadingItems || loadingMotores) return <PageLoading />
