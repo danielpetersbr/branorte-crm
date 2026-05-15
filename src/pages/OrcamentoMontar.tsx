@@ -1051,8 +1051,14 @@ export function OrcamentoMontar() {
                   </>
                 )}
                 {itemsFiltrados
-                  // Esconde individuais das categorias que tem meta-card (a menos que busca esteja ativa)
-                  .filter(it => busca || !['TRANSPORTADOR', 'MISTURADOR', 'MOINHO', 'CAIXA'].includes(it.categoria))
+                  // Esconde individuais das categorias que tem meta-card (a menos que busca esteja ativa).
+                  // Sem isso, item oficial individual aparece SOLTO no grid duplicando o que o
+                  // picker do meta-card ja cobre.
+                  .filter(it => busca || ![
+                    'TRANSPORTADOR', 'MISTURADOR', 'MOINHO', 'CAIXA',
+                    'SILO', 'ELEVADOR', 'CACAMBA', 'PRE-LIMPEZA', 'PRE_LIMPEZA',
+                    'PENEIRA', 'HELICOIDE', 'BALANCA', 'ENSACADEIRA', 'COMPACTA',
+                  ].includes(it.categoria))
                   .slice(0, 200)
                   .map(item => (
                     <CardItem
