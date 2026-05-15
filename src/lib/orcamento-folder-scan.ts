@@ -40,6 +40,13 @@ async function dbSet(key: string, value: any): Promise<void> {
 }
 
 export function isFolderScanSupported(): boolean {
+  if (typeof window === 'undefined') return false
+  // showDirectoryPicker existe em Chrome Android mas LANCA erro quando chamado
+  // (File System Access API só funciona em Chrome desktop). Detectamos mobile
+  // via userAgent pra evitar mostrar botao "Salvar na pasta" que vai falhar.
+  const ua = navigator.userAgent || ''
+  const isMobile = /Android|iPhone|iPad|iPod|Mobile|Opera Mini/i.test(ua)
+  if (isMobile) return false
   return typeof (window as any).showDirectoryPicker === 'function'
 }
 

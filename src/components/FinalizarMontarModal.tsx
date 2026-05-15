@@ -444,14 +444,16 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
           }
           salvouNaPasta = true // marca como "salvo" pra UX igual desktop
         } catch (e) {
-          console.warn('Falha upload Storage:', e)
-          // Fallback: baixa local
+          console.error('Falha upload Storage:', e)
+          // NAO faz fallback silencioso — vendedor PRECISA saber que nao foi pro servidor
+          // pra poder retentar / contatar suporte. Tambem baixa local pra nao perder o trabalho.
           baixarBlob(docxBlob, `${base}.docx`)
           baixouDocx = true
           if (pdfBlob) {
             baixarBlob(pdfBlob, `${base}.pdf`)
             baixouPdf = true
           }
+          setErro(`Upload pro servidor FALHOU: ${(e as Error).message}. Arquivos baixados localmente como fallback. Tente de novo ou peça ajuda.`)
         }
       } else {
         // 6b) Download direto
