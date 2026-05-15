@@ -149,11 +149,11 @@ export function Perfil() {
             />
           </label>
           <label className="block">
-            <span className="text-xs text-text-muted">Nova senha (mín. 6 chars)</span>
+            <span className="text-xs text-text-muted">Nova senha (mín. 10 chars)</span>
             <input
               type="password"
               required
-              minLength={6}
+              minLength={10}
               value={newPwd}
               onChange={e => setNewPwd(e.target.value)}
               className="w-full mt-1 px-3 py-2 rounded-md border border-surface-border bg-bg text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
