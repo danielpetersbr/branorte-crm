@@ -12,6 +12,9 @@ export interface PrecoBranorte {
   potencia: string | null
   motor_cv: number | null
   motor_polos: number | null
+  // 2o motor (alguns equipamentos como pré-limpeza tem peneira + vibrador). Nullable.
+  motor_cv_2: number | null
+  motor_polos_2: number | null
   valor_equipamento: number | null
   valor_com_motor_trif: number | null
   valor_com_motor_mono: number | null

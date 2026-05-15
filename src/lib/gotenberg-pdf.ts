@@ -20,9 +20,7 @@ export async function gerarPdfDoDocxGotenberg(docxBlob: Blob): Promise<Blob> {
   const token = sessao.session?.access_token
   if (!token) throw new Error('Sessão expirou. Faça login de novo.')
 
-  const baseUrl = (import.meta as any).env.VITE_SUPABASE_URL
-  if (!baseUrl) throw new Error('VITE_SUPABASE_URL ausente')
-  const url = `${baseUrl}/functions/v1/docx-to-pdf`
+  const url = `${(import.meta as any).env.VITE_SUPABASE_URL || 'https://flwbeevtvjiouxdjmziv.supabase.co'}/functions/v1/docx-to-pdf`
   const r = await fetch(url, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${token}` },
