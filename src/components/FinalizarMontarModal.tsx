@@ -684,39 +684,41 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
           )}
         </div>
 
-        <div className="flex justify-end gap-2 p-4 border-t border-border sticky bottom-0 bg-bg">
+        {/* Footer: empilha em mobile, lado-a-lado em desktop. CTA principal
+            em cima (mais touch-friendly) e ocupa largura total. */}
+        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 p-4 border-t border-border sticky bottom-0 bg-bg">
           <button
             onClick={onClose}
             disabled={gerando}
-            className="text-[12px] px-4 py-2 rounded bg-surface-2 hover:bg-surface-3 text-ink-muted hover:text-ink font-semibold disabled:opacity-50"
+            className="text-[13px] px-4 py-2.5 rounded bg-surface-2 hover:bg-surface-3 text-ink-muted hover:text-ink font-semibold disabled:opacity-50 min-h-[44px]"
           >
             Cancelar
           </button>
           <button
             onClick={() => handleGerar({ salvarNaPasta: false })}
             disabled={gerando || !cliNome.trim()}
-            className="text-[12px] px-4 py-2 rounded bg-surface-2 hover:bg-surface-3 text-ink-muted hover:text-ink font-semibold disabled:opacity-50 flex items-center gap-1.5"
+            className="text-[13px] px-4 py-2.5 rounded bg-surface-2 hover:bg-surface-3 text-ink-muted hover:text-ink font-semibold disabled:opacity-50 flex items-center justify-center gap-1.5 min-h-[44px]"
           >
-            <FileDown className="h-3.5 w-3.5" />
+            <FileDown className="h-4 w-4" />
             Baixar .docx + PDF
           </button>
           {isFolderScanSupported() ? (
             <button
               onClick={() => handleGerar({ salvarNaPasta: true })}
               disabled={gerando || !cliNome.trim()}
-              className="text-[12px] px-5 py-2 rounded bg-accent hover:bg-accent-700 text-white font-semibold disabled:opacity-50 flex items-center gap-1.5"
+              className="text-[13px] px-5 py-2.5 rounded bg-accent hover:bg-accent-700 text-white font-bold disabled:opacity-50 flex items-center justify-center gap-1.5 min-h-[44px] shadow-sm"
             >
-              {gerando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderOpen className="h-3.5 w-3.5" />}
+              {gerando ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderOpen className="h-4 w-4" />}
               {gerando ? 'Gerando...' : 'Salvar na pasta Z:'}
             </button>
           ) : (
             <button
               onClick={() => handleGerar({ salvarNaPasta: false, salvarNoServidor: true })}
               disabled={gerando || !cliNome.trim()}
-              className="text-[12px] px-5 py-2 rounded bg-accent hover:bg-accent/90 text-white font-semibold disabled:opacity-50 flex items-center gap-1.5"
+              className="text-[13px] px-5 py-2.5 rounded bg-accent hover:bg-accent/90 text-white font-bold disabled:opacity-50 flex items-center justify-center gap-1.5 min-h-[44px] shadow-sm"
               title="Mobile: faz upload pro servidor. PC do escritório sincroniza com Z:\1 - Comercial\3 - Orçamento\2026\Orçamentos 2026 automaticamente."
             >
-              {gerando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderOpen className="h-3.5 w-3.5" />}
+              {gerando ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderOpen className="h-4 w-4" />}
               {gerando ? 'Enviando...' : 'Salvar no servidor'}
             </button>
           )}
