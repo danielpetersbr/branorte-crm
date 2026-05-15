@@ -1828,9 +1828,13 @@ export function OrcamentoMontar() {
           {/* Body — status de cada saída */}
           <div className="px-4 py-3 space-y-1.5 text-[11px]">
             {sucesso.salvouNaPasta && (
-              <div className="flex items-center gap-2 text-ink-muted">
-                <FolderOpen className="h-3.5 w-3.5 text-blue-400 shrink-0" />
-                <span>Salvo na pasta Z:</span>
+              <div className="flex items-start gap-2 text-ink-muted">
+                <FolderOpen className="h-3.5 w-3.5 text-blue-400 shrink-0 mt-0.5" />
+                <span>
+                  {typeof window !== 'undefined' && !('showDirectoryPicker' in window)
+                    ? <>Enviado pro servidor — vai aparecer em <code className="text-[10px] bg-surface-2 px-1 rounded">Z:\1 - Comercial\3 - Orçamento\2026\Orçamentos 2026\</code> em até 30s.</>
+                    : <>Salvo na pasta Z:</>}
+                </span>
               </div>
             )}
             {sucesso.baixouDocx && (

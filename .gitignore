@@ -4,3 +4,4 @@ dist
 *.local
 /import-orcamentos.ts
 .vercel
+scripts/.env
