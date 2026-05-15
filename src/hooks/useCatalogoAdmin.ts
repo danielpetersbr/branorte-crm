@@ -80,11 +80,14 @@ function precoToVirtualItem(preco: {
   }
 }
 
-// Lista TODOS os items orçáveis (catalogo_items + precos_branorte sem link).
-// O catálogo admin agora é a "single pane of glass" pra curadoria de imagem/specs:
-// items reais em catalogo_items aparecem como sempre; items que só existem em
-// precos_branorte (a fonte de verdade pro preço) aparecem como "virtuais" — quando
-// vendedor edita/uploada foto, o hook cria a row real automaticamente.
+// Lista todos os items orçáveis ESPELHANDO precos_branorte (fonte de verdade):
+// - catalogo_items linkados a precos_branorte (foto + specs curadas)
+// - virtuais pros precos_branorte sem catalogo_items ainda
+// - catalogo_items "oficiais" sem link (produtos ad-hoc cadastrados pelo vendedor
+//   mas ainda não migrados pra precos_branorte) — preserva fluxo de aprovação
+//
+// O que NÃO aparece: catalogo_items legacy sem link e sem is_oficial (lixo de
+// OCR de orçamentos antigos). Esses são ~430 items que poluiriam o admin.
 export function useCatalogoItemsAdmin() {
   return useQuery({
     queryKey: ['catalogo-items-admin'],
@@ -93,6 +96,8 @@ export function useCatalogoItemsAdmin() {
         supabase
           .from('catalogo_items')
           .select('*')
+          // Espelha precos_branorte: linkados OU oficiais (ad-hoc aguardando migração)
+          .or('preco_branorte_id.not.is.null,is_oficial.eq.true')
           .order('is_oficial', { ascending: false })
           .order('ocorrencias', { ascending: false })
           .order('categoria', { ascending: true })
@@ -413,22 +418,31 @@ export function useStatsCatalogo() {
   return useQuery({
     queryKey: ['catalogo-stats'],
     queryFn: async (): Promise<CatalogoStats> => {
-      const [precosRes, comFotoRes, comMotorRes, oficiaisRes] = await Promise.all([
+      // Stats coerentes com o que o admin mostra: precos_branorte + ad-hoc oficiais
+      const [precosRes, adhocRes, comFotoLinkRes, comFotoAdhocRes, comMotorRes] = await Promise.all([
         supabase.from('precos_branorte').select('id', { count: 'exact', head: true }).eq('ativo', true),
-        supabase.from('catalogo_items').select('id', { count: 'exact', head: true }).eq('ativo', true).not('foto_url', 'is', null),
+        supabase.from('catalogo_items').select('id', { count: 'exact', head: true })
+          .eq('ativo', true).eq('is_oficial', true).is('preco_branorte_id', null),
+        supabase.from('catalogo_items').select('id', { count: 'exact', head: true })
+          .eq('ativo', true).not('preco_branorte_id', 'is', null).not('foto_url', 'is', null),
+        supabase.from('catalogo_items').select('id', { count: 'exact', head: true })
+          .eq('ativo', true).eq('is_oficial', true).is('preco_branorte_id', null).not('foto_url', 'is', null),
         supabase.from('precos_branorte').select('id', { count: 'exact', head: true }).eq('ativo', true).not('motor_cv', 'is', null),
-        supabase.from('catalogo_items').select('id', { count: 'exact', head: true }).eq('ativo', true).eq('is_oficial', true),
       ])
 
       if (precosRes.error) throw precosRes.error
-      if (comFotoRes.error) throw comFotoRes.error
+      if (adhocRes.error) throw adhocRes.error
+      if (comFotoLinkRes.error) throw comFotoLinkRes.error
+      if (comFotoAdhocRes.error) throw comFotoAdhocRes.error
       if (comMotorRes.error) throw comMotorRes.error
-      if (oficiaisRes.error) throw oficiaisRes.error
 
-      const total = precosRes.count ?? 0
-      const com_foto = comFotoRes.count ?? 0
+      const precos = precosRes.count ?? 0
+      const adhoc = adhocRes.count ?? 0
+      const com_foto = (comFotoLinkRes.count ?? 0) + (comFotoAdhocRes.count ?? 0)
       const com_motor = comMotorRes.count ?? 0
-      const oficiais = oficiaisRes.count ?? 0
+      const total = precos + adhoc
+      // "Oficial" = curado (tem foto). "Pendente" = falta curar (sem foto).
+      const oficiais = com_foto
       const pendentes = Math.max(total - com_foto, 0)
 
       return { total, oficiais, pendentes, com_foto, com_motor }

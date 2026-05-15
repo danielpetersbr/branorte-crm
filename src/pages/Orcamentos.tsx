@@ -6,7 +6,8 @@ import { usePipelineVendedor } from '@/hooks/usePipelineVendedor'
 import { Card, CardContent } from '@/components/ui/Card'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatNumber } from '@/lib/utils'
-import { FileText, TrendingUp, Calendar, BarChart2, Trophy, Handshake, Hourglass, XCircle, Snowflake } from 'lucide-react'
+import { FileText, TrendingUp, Calendar, BarChart2, Trophy, Handshake, Hourglass, XCircle, Snowflake, FilePlus2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { OrcamentosLista } from '@/pages/OrcamentosLista'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -61,11 +62,21 @@ export function Orcamentos() {
     <div className="p-4 lg:p-8 space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Orçamentos</h1>
-          <p className="text-sm text-text-secondary mt-1">
-            Inventário do drive de rede Z:\1 - Comercial\3 - Orçamento — {formatNumber(total)} arquivos únicos
-          </p>
+        <div className="flex items-start gap-4 flex-wrap flex-1">
+          <div>
+            <h1 className="text-2xl font-bold text-text-primary">Orçamentos</h1>
+            <p className="text-sm text-text-secondary mt-1">
+              Inventário do drive de rede Z:\1 - Comercial\3 - Orçamento — {formatNumber(total)} arquivos únicos
+            </p>
+          </div>
+          <Link
+            to="/orcamentos/montar"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md bg-accent text-white text-[13px] font-bold hover:bg-accent/90 shadow-sm transition-all whitespace-nowrap"
+            title="Iniciar novo orçamento personalizado"
+          >
+            <FilePlus2 className="h-4 w-4" />
+            Novo orçamento
+          </Link>
         </div>
 
         {tab === 'painel' && hasMonthData && (

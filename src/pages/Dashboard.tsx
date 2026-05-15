@@ -5,7 +5,7 @@ import {
   Area, AreaChart, Cell, Pie, PieChart,
   ResponsiveContainer, Tooltip,
 } from 'recharts'
-import { Flame, TrendingUp, Users, CheckCircle2, ArrowDown, ArrowUp, ExternalLink, Hand } from 'lucide-react'
+import { Flame, TrendingUp, Users, CheckCircle2, ArrowDown, ArrowUp, ExternalLink, Hand, FilePlus2 } from 'lucide-react'
 
 const PRESET_LABELS: { value: DashboardPreset; label: string }[] = [
   { value: '',     label: 'Tudo' },
@@ -127,7 +127,15 @@ export function Dashboard() {
             <span className="text-ink-faint"> · atualiza a cada 60s</span>
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <Link
+            to="/orcamentos/montar"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md bg-accent text-white text-[13px] font-bold hover:bg-accent/90 shadow-sm transition-all"
+            title="Iniciar novo orçamento personalizado"
+          >
+            <FilePlus2 className="h-4 w-4" />
+            Novo orçamento
+          </Link>
           <Link
             to="/analytics"
             className="text-[12px] text-ink-muted hover:text-ink inline-flex items-center gap-1"

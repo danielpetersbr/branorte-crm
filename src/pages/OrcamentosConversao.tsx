@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Card } from '@/components/ui/Card'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { useOrcamentosConversao } from '@/hooks/useOrcamentosConversao'
-import { TrendingUp, FileText, CheckCircle, XCircle, Clock, Trophy, DollarSign, Send } from 'lucide-react'
+import { TrendingUp, FileText, CheckCircle, Clock, Trophy, DollarSign, Send, FilePlus2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 const JANELAS = [
   { dias: 7, label: '7 dias' },
@@ -38,7 +39,15 @@ export function OrcamentosConversao() {
             Funil de orçamento → venda. Ticket médio, taxa de conversão e ranking por vendedor.
           </p>
         </div>
-        <div className="flex items-center gap-1 bg-surface-2 rounded-lg p-1">
+        <div className="flex items-center gap-3 flex-wrap">
+          <Link
+            to="/orcamentos/montar"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md bg-accent text-white text-[13px] font-bold hover:bg-accent/90 shadow-sm transition-all whitespace-nowrap"
+          >
+            <FilePlus2 className="h-4 w-4" />
+            Novo orçamento
+          </Link>
+          <div className="flex items-center gap-1 bg-surface-2 rounded-lg p-1">
           {JANELAS.map(j => (
             <button
               key={j.dias}
@@ -50,6 +59,7 @@ export function OrcamentosConversao() {
               }`}
             >{j.label}</button>
           ))}
+          </div>
         </div>
       </header>
 
