@@ -76,13 +76,38 @@ function formatBRL(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 }
 
-function nomeBase(numero: string, cliente: string, isTest = false): string {
+function nomeBase(numero: string, cliente: string, descricao: string, isTest = false): string {
   const sanitize = (s: string) => s.replace(/[<>:"/\\|?*]/g, '').slice(0, 80).trim()
+  const desc = sanitize(descricao || 'Personalizado').slice(0, 100) || 'Personalizado'
   if (isTest) {
-    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(11, 19)  // HH-MM-SS
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(11, 19)
     return `TESTE-${ts}-${sanitize(cliente || 'cliente')} (${numero})`
   }
-  return `${numero} - ${sanitize(cliente || 'Sem cliente')} (Personalizado)`
+  return `${numero} - ${sanitize(cliente || 'Sem cliente')} (${desc})`
+}
+
+// Auto-sugere descrição curta a partir dos itens do carrinho.
+// Ex: "Transportador 6m + Painel" / "Moinho + Misturador" / "Silo Pulmão 5T"
+function sugerirDescricao(snapshot: CarrinhoSnapshot): string {
+  const nomes = snapshot.itens.map(it => it.nome.trim()).filter(Boolean)
+  if (nomes.length === 0) return 'Personalizado'
+
+  // Pega palavra-chave principal de cada item (primeira palavra significativa)
+  const palavrasChave = nomes.map(n => {
+    // Remove medidas (6m, 10m), números soltos, parênteses
+    const limpo = n.replace(/\([^)]*\)/g, '').replace(/\d+\s*[mt]\b/gi, '').trim()
+    // Pega ate 3 primeiras palavras com >2 chars
+    const palavras = limpo.split(/\s+/).filter(p => p.length > 2).slice(0, 3)
+    return palavras.join(' ').trim()
+  }).filter(Boolean)
+
+  // Dedup mantendo ordem
+  const unicas = Array.from(new Set(palavrasChave))
+
+  if (unicas.length === 0) return 'Personalizado'
+  if (unicas.length === 1) return unicas[0]
+  if (unicas.length === 2) return unicas.join(' + ')
+  return `${unicas[0]} + ${unicas[1]} +${unicas.length - 2}`
 }
 
 function baixarBlob(blob: Blob, nome: string) {
@@ -109,6 +134,15 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
   // Dados extras
   const [prazoEntrega, setPrazoEntrega] = useState('')
   const [observacoes, setObservacoes] = useState('')
+  // Descrição curta — vai pro nome do arquivo em vez de "Personalizado"
+  // Auto-sugere a partir dos itens do carrinho, mas vendedor pode editar.
+  const [descricao, setDescricao] = useState('')
+  const [descricaoTocada, setDescricaoTocada] = useState(false)
+  const sugestao = useMemo(() => sugerirDescricao(snapshot), [snapshot])
+  // Atualiza sugestao automatica quando carrinho muda (se vendedor nao editou ainda)
+  useEffect(() => {
+    if (!descricaoTocada && open) setDescricao(sugestao)
+  }, [sugestao, descricaoTocada, open])
 
   // Forma de pagamento
   const [pgTipo, setPgTipo] = useState<TipoPagamento>('avista')
@@ -384,7 +418,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
         const h = await getStoredFolderHandle()
         if (h && (h as any).name && /teste/i.test((h as any).name)) isTesteMode = true
       } catch {}
-      const base = nomeBase(orc.numero, cliNome, isTesteMode)
+      const base = nomeBase(orc.numero, cliNome, descricao || sugestao, isTesteMode)
       let baixouDocx = false, baixouPdf = false, salvouNaPasta = false
 
       // 6a) Salvar na pasta Z: se solicitado
@@ -570,6 +604,34 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
                   )}
                 </>
               )}
+            </div>
+          </div>
+
+          {/* Descrição (vai pro nome do arquivo) */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[11px] uppercase tracking-wider text-ink-muted font-semibold">
+                Descrição do orçamento
+              </label>
+              {descricaoTocada && descricao !== sugestao && (
+                <button
+                  type="button"
+                  onClick={() => { setDescricao(sugestao); setDescricaoTocada(false) }}
+                  className="text-[10px] text-accent hover:underline"
+                  title="Voltar para sugestão automática"
+                >
+                  ↺ Auto: {sugestao}
+                </button>
+              )}
+            </div>
+            <Input
+              value={descricao}
+              onChange={e => { setDescricao(e.target.value); setDescricaoTocada(true) }}
+              placeholder={sugestao}
+              maxLength={100}
+            />
+            <div className="text-[10px] text-ink-faint mt-1">
+              Vai pro nome do arquivo: <span className="font-mono text-ink-muted">{numeroAtual || '...'} - {cliNome || 'Cliente'} ({descricao || sugestao})</span>
             </div>
           </div>
 
