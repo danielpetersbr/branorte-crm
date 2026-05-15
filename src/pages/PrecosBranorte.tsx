@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
-import { Search, Loader2, Check, Tags, BookOpen } from 'lucide-react'
+import { Search, Loader2, Check, Tags, BookOpen, RefreshCw, AlertCircle, Camera, Link2 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import {
-  usePrecosBranorte, useUpdatePrecoBranorte,
+  usePrecosBranorte, useUpdatePrecoBranorte, useSyncTodosModelos, usePrecosAudit,
   type PrecoBranorte,
 } from '@/hooks/usePrecosBranorte'
 
@@ -407,6 +407,63 @@ function TabelaPorCategoria({ items, mostrarMotor }: { items: PrecoBranorte[]; m
   return <TabelaPrecos items={items} mostrarMotor={mostrarMotor} />
 }
 
+// Sincroniza todos os 319 orcamento_modelos com os preços vigentes
+// (o trigger já cobre updates futuros; este botão é pro backfill / força bruta)
+function BotaoSincronizarModelos() {
+  const sync = useSyncTodosModelos()
+  return (
+    <button
+      onClick={() => sync.mutate()}
+      disabled={sync.isPending}
+      className="text-[12px] px-3 py-2 rounded bg-accent hover:bg-accent-700 text-white font-semibold flex items-center gap-1.5 shadow disabled:opacity-50"
+      title="Recalcula todos os templates de orçamento com os preços atuais"
+    >
+      {sync.isPending
+        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        : <RefreshCw className="h-3.5 w-3.5" />}
+      Sincronizar templates
+      {sync.data && (
+        <span className="text-[10px] opacity-80 ml-1">
+          ({sync.data.modelos_atualizados} atualizados)
+        </span>
+      )}
+    </button>
+  )
+}
+
+// Painel de auditoria — mostra quanto do catálogo oficial tá íntegro
+function PainelAuditoria() {
+  const { data: audit } = usePrecosAudit()
+  if (!audit) return null
+  const cards = [
+    { label: 'Itens oficiais ativos', valor: audit.total_ativos, icon: BookOpen, color: 'text-accent', alerta: false },
+    { label: 'Sem foto', valor: audit.sem_foto, icon: Camera, color: 'text-amber-400', alerta: audit.sem_foto > 0 },
+    { label: 'Sem link c/ preços', valor: audit.sem_link_oficial, icon: Link2, color: 'text-rose-400', alerta: audit.sem_link_oficial > 0 },
+    { label: 'Preço > 30 dias', valor: audit.desatualizados_30d, icon: AlertCircle, color: 'text-orange-400', alerta: audit.desatualizados_30d > 50 },
+  ]
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+      {cards.map(c => {
+        const Icon = c.icon
+        return (
+          <div
+            key={c.label}
+            className={`bg-surface border rounded-lg p-3 ${c.alerta ? 'border-amber-500/40' : 'border-border'}`}
+          >
+            <div className="flex items-center gap-1.5 mb-1">
+              <Icon className={`w-3.5 h-3.5 ${c.color}`} />
+              <span className="text-[10px] text-ink-muted uppercase tracking-wide">{c.label}</span>
+            </div>
+            <div className={`text-[20px] font-bold tabular-nums ${c.alerta ? c.color : 'text-ink'}`}>
+              {c.valor}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export function PrecosBranorte() {
   const { data: precos, isLoading } = usePrecosBranorte()
   const [busca, setBusca] = useState('')
@@ -467,16 +524,21 @@ export function PrecosBranorte() {
   return (
     <div className="min-h-screen bg-bg">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-        <div className="mb-5">
-          <div className="flex items-center gap-2 mb-1">
-            <BookOpen className="w-5 h-5 text-accent" />
-            <h1 className="text-[18px] font-semibold text-ink">Tabela de Preços Branorte</h1>
+        <div className="mb-3 flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <BookOpen className="w-5 h-5 text-accent" />
+              <h1 className="text-[18px] font-semibold text-ink">Tabela de Preços Branorte</h1>
+            </div>
+            <p className="text-[12px] text-ink-muted">
+              Banco oficial extraído da planilha 06/2025 — {totalGeral} equipamentos em {categorias.length} categorias.
+              Clique em qualquer valor pra editar (Enter salva).
+            </p>
           </div>
-          <p className="text-[12px] text-ink-muted">
-            Banco oficial extraído da planilha 06/2025 — {totalGeral} equipamentos em {categorias.length} categorias.
-            Clique em qualquer valor pra editar (Enter salva).
-          </p>
+          <BotaoSincronizarModelos />
         </div>
+
+        <PainelAuditoria />
 
         <div className="bg-surface border border-border rounded-lg p-3 mb-4 space-y-3">
           <div className="relative">

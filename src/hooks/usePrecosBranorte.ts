@@ -69,3 +69,52 @@ export function useUpdatePrecoBranorte() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['precos-branorte'] }),
   })
 }
+
+// Força sync de todos os 319 orcamento_modelos com os preços vigentes
+export function useSyncTodosModelos() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (): Promise<{ modelos_atualizados: number; soma_proposta: number }> => {
+      const { data, error } = await supabase.rpc('sync_todos_modelos')
+      if (error) throw error
+      const row = Array.isArray(data) ? data[0] : data
+      return row as { modelos_atualizados: number; soma_proposta: number }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['orcamento-modelos'] })
+    },
+  })
+}
+
+// Estatísticas de integridade do catálogo (pra painel de auditoria)
+export interface PrecosAuditStats {
+  total_ativos: number
+  sem_foto: number
+  sem_link_oficial: number
+  desatualizados_30d: number
+}
+export function usePrecosAudit() {
+  return useQuery({
+    queryKey: ['precos-audit'],
+    queryFn: async (): Promise<PrecosAuditStats> => {
+      const [{ count: total }, { count: semLink }, { count: desatualizados }] = await Promise.all([
+        supabase.from('catalogo_items').select('id', { count: 'exact', head: true }).eq('ativo', true).eq('is_oficial', true),
+        supabase.from('catalogo_items').select('id', { count: 'exact', head: true })
+          .eq('ativo', true).eq('is_oficial', true).is('preco_branorte_id', null)
+          .in('categoria', ['TRANSPORTADOR', 'MISTURADOR', 'MOINHO', 'CAIXA', 'SILO', 'ELEVADOR', 'CACAMBA', 'PRE-LIMPEZA', 'PRE_LIMPEZA', 'ENSACADEIRA']),
+        supabase.from('precos_branorte').select('id', { count: 'exact', head: true })
+          .eq('ativo', true).lt('updated_at', new Date(Date.now() - 30 * 86400 * 1000).toISOString()),
+      ])
+      const { count: semFoto } = await supabase
+        .from('catalogo_items').select('id', { count: 'exact', head: true })
+        .eq('ativo', true).eq('is_oficial', true).is('foto_url', null)
+      return {
+        total_ativos: total ?? 0,
+        sem_foto: semFoto ?? 0,
+        sem_link_oficial: semLink ?? 0,
+        desatualizados_30d: desatualizados ?? 0,
+      }
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+}

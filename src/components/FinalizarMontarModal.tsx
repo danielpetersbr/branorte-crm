@@ -223,9 +223,24 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess }: Pro
   }
 
   async function handleGerar(opcoes: { salvarNaPasta: boolean }) {
+    // Validações antes de gravar — evita orçamento órfão (sem cliente, vazio, R$ 0)
     if (!cliNome.trim()) {
-      setErro('Nome do cliente obrigatório')
+      setErro('Nome do cliente é obrigatório')
       return
+    }
+    if (!snapshot.itens || snapshot.itens.length === 0) {
+      setErro('Adicione pelo menos um item ao carrinho antes de gerar')
+      return
+    }
+    if (!snapshot.totalGeral || snapshot.totalGeral <= 0) {
+      setErro('Valor total do orçamento está zerado — confira os preços dos itens')
+      return
+    }
+    // Avisa se item tem valor zerado (vendedor esqueceu de cotar)
+    const itemSemValor = snapshot.itens.find(it => !it.valor || it.valor <= 0)
+    if (itemSemValor) {
+      const ok = confirm(`O item "${itemSemValor.nome}" está com R$ 0,00. Gerar mesmo assim?`)
+      if (!ok) return
     }
     setGerando(true)
     setErro(null)

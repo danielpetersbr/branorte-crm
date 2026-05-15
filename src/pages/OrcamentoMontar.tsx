@@ -167,6 +167,8 @@ export function OrcamentoMontar() {
   const [showOnlyPopular, setShowOnlyPopular] = useState(false)
   const [showOnlyOficiais, setShowOnlyOficiais] = useState(true)  // default: só items curados
   const [modoVisao, setModoVisao] = useState<ModoVisao>('preview')
+  // Mobile-only: alterna entre catálogo e preview (ambos ocupam tela cheia em mobile)
+  const [mobileTab, setMobileTab] = useState<'catalogo' | 'preview'>('catalogo')
   const [finalizarOpen, setFinalizarOpen] = useState(false)
   const [sucesso, setSucesso] = useState<{ numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string } | null>(null)
   const [enviandoWA, setEnviandoWA] = useState<'idle' | 'enviando' | 'enviado' | 'erro'>('idle')
@@ -472,11 +474,11 @@ export function OrcamentoMontar() {
     let motor_polos = p.motor_polos ?? (ciLinkado?.motor_padrao_polos ?? 4)
     let motor_cv_n: number | null = p.motor_cv ?? (ciLinkado?.motor_padrao_cv ? Number(ciLinkado.motor_padrao_cv) : null)
 
-    // CHUPIM: aplica fórmula oficial Branorte (POT=(C+(Q*L*K)/200)*b*1,36)
+    // CHUPIM + CALHA TH: aplica fórmula oficial Branorte (POT=(C+(Q*L*K)/200)*b*1,36)
     // arredondando pro próximo motor maior. Substitui o motor padrão da planilha.
     // Usa override do modal se vendedor confirmou material/inclinação POR ITEM,
-    // senão usa defaults da sessão.
-    if (cat === 'TRANSPORTADOR' && p.subcategoria === 'CHUPIM') {
+    // senão usa defaults da sessão. Mesma física pros dois tipos de helicoidal.
+    if (cat === 'TRANSPORTADOR' && (p.subcategoria === 'CHUPIM' || p.subcategoria === 'HELICOIDAL')) {
       const mat = chupimOpts?.material ?? chupimMaterial
       const inc = chupimOpts?.inclinacao ?? chupimInclinacao
       const rec = recomendarMotorChupim(p.descricao, p.capacidade, mat, inc)
@@ -860,10 +862,33 @@ export function OrcamentoMontar() {
         </div>
       </div>
 
+      {/* Tabs mobile-only — alterna entre catálogo e preview pra não empilhar */}
+      <div className="lg:hidden flex items-center gap-1 bg-surface-2 rounded-lg p-1">
+        <button
+          onClick={() => setMobileTab('catalogo')}
+          className={`flex-1 text-[12px] px-3 py-2 rounded-md font-semibold transition-colors ${
+            mobileTab === 'catalogo' ? 'bg-accent text-white' : 'text-ink-muted'
+          }`}
+        >📋 Catálogo</button>
+        <button
+          onClick={() => setMobileTab('preview')}
+          className={`flex-1 text-[12px] px-3 py-2 rounded-md font-semibold transition-colors relative ${
+            mobileTab === 'preview' ? 'bg-accent text-white' : 'text-ink-muted'
+          }`}
+        >
+          📄 Preview
+          {carrinho.length > 0 && (
+            <span className={`absolute -top-1 -right-1 text-[10px] font-bold rounded-full h-5 min-w-[20px] px-1 flex items-center justify-center ${
+              mobileTab === 'preview' ? 'bg-white text-accent' : 'bg-accent text-white'
+            }`}>{carrinho.length}</span>
+          )}
+        </button>
+      </div>
+
       {/* Grid 2 colunas: catálogo fixo 340px (suficiente pros cards) + preview pega TODO o resto */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)] gap-3 min-h-0">
-        {/* CATÁLOGO */}
-        <Card className="flex flex-col min-h-0 overflow-hidden">
+        {/* CATÁLOGO — em mobile, esconde se tab=preview */}
+        <Card className={`flex flex-col min-h-0 overflow-hidden ${mobileTab === 'preview' ? 'hidden lg:flex' : ''}`}>
           <div className="p-3 border-b border-border space-y-2">
             <div className="relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-ink-faint" />
@@ -1049,7 +1074,7 @@ export function OrcamentoMontar() {
         </Card>
 
         {/* PREVIEW DO ORÇAMENTO — sticky no desktop pra não rolar com a lista esquerda */}
-        <Card className="flex flex-col w-full min-w-0 min-h-0 overflow-hidden lg:sticky lg:top-3 lg:self-start lg:justify-self-stretch lg:max-h-[calc(100vh-1.5rem)] lg:h-[calc(100vh-1.5rem)]">
+        <Card className={`flex flex-col w-full min-w-0 min-h-0 overflow-hidden lg:sticky lg:top-3 lg:self-start lg:justify-self-stretch lg:max-h-[calc(100vh-1.5rem)] lg:h-[calc(100vh-1.5rem)] ${mobileTab === 'catalogo' ? 'hidden lg:flex' : ''}`}>
           {/* Toolbar do preview */}
           <div className="p-2 border-b border-border flex items-center justify-between bg-surface-2/30">
             <div className="flex items-center gap-1">
@@ -1261,10 +1286,10 @@ export function OrcamentoMontar() {
         onInclinacao={setChupimInclinacao}
         onClose={() => setTransportadorPickerOpen(false)}
         onPick={p => {
-          // Chupim: abre modal de confirmação pra escolher material + inclinação POR ITEM
-          // (vendedor pode ter chupins diferentes pra contextos diferentes no mesmo orçamento).
-          // Outros transportadores (Calha TH): adiciona direto.
-          if (p.subcategoria === 'CHUPIM') {
+          // Chupim + Calha TH (HELICOIDAL): mesma fórmula de motor, ambos abrem o modal
+          // pra vendedor confirmar material/inclinação/função POR ITEM. Quem não é
+          // helicoidal cai aqui? Não chega — picker só lista TRANSPORTADOR.
+          if (p.subcategoria === 'CHUPIM' || p.subcategoria === 'HELICOIDAL') {
             setConfirmarChupim(p)
           } else {
             adicionarItemDePreco(p)
@@ -3018,7 +3043,8 @@ function TransportadorPickerModal({
                     <td className="px-3 py-1.5 text-ink-muted text-[11px]">{p.potencia || '—'}</td>
                     <td className="px-3 py-1.5 text-[11px] bg-info/5">
                       {(() => {
-                        if (p.subcategoria !== 'CHUPIM') return <span className="text-ink-faint italic">—</span>
+                        // Fórmula vale pros dois tipos de helicoidal (CHUPIM e HELICOIDAL/Calha TH)
+                        if (p.subcategoria !== 'CHUPIM' && p.subcategoria !== 'HELICOIDAL') return <span className="text-ink-faint italic">—</span>
                         const rec = recomendarMotorChupim(p.descricao, p.capacidade, material, inclinacao)
                         if (!rec) return <span className="text-ink-faint italic">—</span>
                         return (
