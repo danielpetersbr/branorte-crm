@@ -1020,8 +1020,11 @@ export function OrcamentoMontar() {
       setAcessorios(null)
     }
 
-    // 5) Voltagem do modelo
-    if (modelo.voltagem) aplicarVoltagem(modelo.voltagem)
+    // 5) Voltagem do modelo — apenas seta o state, SEM recalcular motores
+    // (preserva motor_valor_unit do snapshot do modelo, mantendo total exato
+    // igual ao banco/card). Se vendedor TROCAR a voltagem depois, aí sim
+    // aplicarVoltagem atualiza com precos atuais do catalogo central.
+    if (modelo.voltagem) setVoltagem(modelo.voltagem)
 
     // 6) Foto Principal: usa a foto representativa do modelo (ex: render da Compacta 01).
     //    Aparece logo abaixo do cabeçalho do orçamento. Vendedor pode trocar
