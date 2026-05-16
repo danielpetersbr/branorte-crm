@@ -1158,7 +1158,7 @@ export function OrcamentoMontar() {
               <div className="text-[11px] text-ink-muted">Carrega itens + motores + acessórios de uma vez</div>
             </div>
           </div>
-          <div className="flex flex-wrap gap-1.5 ml-auto">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-1.5 sm:ml-auto w-full sm:w-auto">
             {[
               { label: 'Compacta 01', pacote: 'COMPACTA 01', qtd: 22 },
               { label: 'Compacta 02', pacote: 'COMPACTA 02', qtd: 21 },
@@ -1168,9 +1168,9 @@ export function OrcamentoMontar() {
               <button
                 key={b.pacote}
                 onClick={() => setPacotePicker({ open: true, initialPacote: b.pacote })}
-                className="text-[11px] px-3 py-1.5 rounded-md font-semibold bg-accent/15 hover:bg-accent/25 text-accent border border-accent/30 flex items-center gap-1.5 transition-colors"
+                className="text-[13px] sm:text-[11px] px-3 py-2.5 sm:py-1.5 rounded-md font-semibold bg-accent/15 active:bg-accent/35 hover:bg-accent/25 text-accent border border-accent/30 flex items-center justify-center sm:justify-start gap-1.5 transition-colors min-h-[44px] sm:min-h-0"
               >
-                <Package className="h-3.5 w-3.5" />
+                <Package className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
                 {b.label}
                 <span className="text-[10px] opacity-70">({b.qtd})</span>
               </button>
@@ -1183,14 +1183,14 @@ export function OrcamentoMontar() {
       <div className="lg:hidden flex items-center gap-1 bg-surface-2 rounded-lg p-1">
         <button
           onClick={() => setMobileTab('catalogo')}
-          className={`flex-1 text-[12px] px-3 py-2 rounded-md font-semibold transition-colors ${
-            mobileTab === 'catalogo' ? 'bg-accent text-white' : 'text-ink-muted'
+          className={`flex-1 text-[14px] px-3 py-3 rounded-md font-bold transition-colors min-h-[48px] ${
+            mobileTab === 'catalogo' ? 'bg-accent text-white' : 'text-ink-muted active:bg-surface-3'
           }`}
         >📋 Catálogo</button>
         <button
           onClick={() => setMobileTab('preview')}
-          className={`flex-1 text-[12px] px-3 py-2 rounded-md font-semibold transition-colors relative ${
-            mobileTab === 'preview' ? 'bg-accent text-white' : 'text-ink-muted'
+          className={`flex-1 text-[14px] px-3 py-3 rounded-md font-bold transition-colors relative min-h-[48px] ${
+            mobileTab === 'preview' ? 'bg-accent text-white' : 'text-ink-muted active:bg-surface-3'
           }`}
         >
           📄 Preview
@@ -2447,7 +2447,7 @@ function SelectorModelo({ onCarregar }: { onCarregar: (m: OrcamentoModelo) => vo
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute top-full right-0 mt-1 w-[420px] max-h-[60vh] overflow-hidden bg-bg border border-border rounded-lg shadow-2xl z-50 flex flex-col">
+          <div className="fixed sm:absolute top-[60px] sm:top-full left-2 right-2 sm:left-auto sm:right-0 sm:mt-1 sm:w-[420px] max-h-[70vh] sm:max-h-[60vh] overflow-hidden bg-bg border border-border rounded-lg shadow-2xl z-50 flex flex-col">
             <div className="p-2 border-b border-border bg-surface-2">
               <input
                 type="text"
