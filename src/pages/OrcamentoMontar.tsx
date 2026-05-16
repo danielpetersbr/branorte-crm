@@ -488,12 +488,14 @@ export function OrcamentoMontar() {
     const eCompacta23 = /COMPACTA\s*0?[23]\b/.test(nome)
     if (!eCompacta23) return
 
-    const NOME_BALANCA = 'Balança Eletrônica 2000 kg'
+    const NOME_BALANCA = 'Balança Eletrônica'
+    // Match relaxado (qualquer 'Balança Eletrônica' nos componentes ja conta)
     const jaExiste = componentesExtras.some(c =>
-      /balan.a.*el.tr.nica.*2000/i.test(c.nome.trim())
+      /balan.a.*el.tr.nica/i.test(c.nome.trim())
     )
     if (jaExiste) return
 
+    // Busca preco da Balanca Eletronica 2000kg no cadastro
     const balancaPreco = (precos ?? []).find(p =>
       p.categoria === 'BALANCA' && /balan.a.*el.tr.nica.*2000/i.test(p.descricao)
     )
@@ -515,7 +517,7 @@ export function OrcamentoMontar() {
     const temCompacta23 = carrinho.some(it => /COMPACTA\s*0?[23]\b/i.test(it.nome))
     if (!temCompacta23) return
     const jaTemBalanca = componentesExtras.some(c =>
-      /balan.a.*el.tr.nica.*2000/i.test(c.nome.trim())
+      /balan.a.*el.tr.nica/i.test(c.nome.trim())
     )
     if (jaTemBalanca) return
     const balancaPreco = precos.find(p =>
@@ -524,7 +526,7 @@ export function OrcamentoMontar() {
     const valor = balancaPreco?.valor_equipamento ? Number(balancaPreco.valor_equipamento) : 8728
     setComponentesExtras(arr => [...arr, {
       id: `auto-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      nome: 'Balança Eletrônica 2000 kg',
+      nome: 'Balança Eletrônica',
       valor,
     }])
   }, [carrinho, precos, componentesExtras])
