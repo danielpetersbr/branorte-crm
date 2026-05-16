@@ -327,19 +327,25 @@ export function Layout() {
       {/* FAB global de feedback (visivel em todas as paginas autenticadas) */}
       <RoadmapFAB />
 
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-bg/95 backdrop-blur border-t border-border flex items-center justify-around px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] z-50">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-bg/95 backdrop-blur border-t border-border flex items-center justify-around px-2 py-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] z-50">
         {PRIMARY.concat(SECONDARY).slice(0, 5).map(l => (
           <NavLink
             key={l.to}
             to={l.to}
             end={l.to === '/'}
             className={({ isActive }) => cn(
-              'flex flex-col items-center gap-0.5 px-3 py-1.5 text-[10px] font-medium rounded-md min-w-[60px]',
-              isActive ? 'text-accent' : 'text-ink-faint',
+              'flex flex-col items-center gap-0.5 px-2 py-1.5 text-[10px] font-medium rounded-xl min-w-[58px] transition-all',
+              isActive
+                ? 'text-accent bg-accent-bg/60'
+                : 'text-ink-faint hover:text-ink-muted active:bg-surface-2',
             )}
           >
-            <l.icon className="h-[18px] w-[18px]" />
-            {l.label}
+            {({ isActive }: { isActive: boolean }) => (
+              <>
+                <l.icon className={cn('h-[18px] w-[18px] transition-transform', isActive && 'scale-110')} />
+                <span className={cn(isActive && 'font-semibold')}>{l.label}</span>
+              </>
+            )}
           </NavLink>
         ))}
       </nav>

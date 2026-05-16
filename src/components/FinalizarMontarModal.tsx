@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { X, Check, Loader2, FileText, FileDown, FolderOpen, RefreshCw, Calendar, CreditCard } from 'lucide-react'
+import { X, Check, Loader2, FileText, FileDown, FolderOpen, RefreshCw, Calendar, CreditCard, ChevronRight } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import {
   useClientesOrcamento, obterProximoNumero, useCriarOrcamento, useAtualizarOrcamento,
@@ -852,29 +852,53 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             )}
           </div>
 
-          {/* Dados do cliente (compacto) — grid 2 colunas + inputmode apropriado */}
+          {/* Dados do cliente (compacto) — basicos visiveis, avancados em accordion */}
           <div className="grid grid-cols-2 gap-2">
             <Input placeholder="A/C (contato)" autoComplete="name" value={cliDados.ac ?? ''} onChange={e => setCliDados(d => ({ ...d, ac: e.target.value }))} />
             <Input placeholder="Telefone" type="tel" inputMode="tel" autoComplete="tel" value={cliDados.fone ?? ''} onChange={e => setCliDados(d => ({ ...d, fone: e.target.value }))} />
             <Input placeholder="Endereço" autoComplete="street-address" value={cliDados.endereco ?? ''} onChange={e => setCliDados(d => ({ ...d, endereco: e.target.value }))} className="col-span-2" />
             <Input placeholder="Bairro" value={cliDados.bairro ?? ''} onChange={e => setCliDados(d => ({ ...d, bairro: e.target.value }))} />
             <Input placeholder="CEP" inputMode="numeric" autoComplete="postal-code" value={cliDados.cep ?? ''} onChange={e => setCliDados(d => ({ ...d, cep: e.target.value }))} />
-            {/* Cidade + UF lado a lado no mesmo input */}
             <div className="col-span-2 flex gap-2">
               <Input placeholder="Cidade" autoComplete="address-level2" value={cliDados.cidade ?? ''} onChange={e => setCliDados(d => ({ ...d, cidade: e.target.value }))} className="flex-1" />
               <Input placeholder="UF" autoComplete="address-level1" value={cliDados.uf ?? ''} onChange={e => setCliDados(d => ({ ...d, uf: e.target.value.toUpperCase().slice(0, 2) }))} className="w-16 uppercase text-center" maxLength={2} />
             </div>
-            <Input placeholder="CPF / CNPJ" inputMode="numeric" value={cliDados.cnpj ?? ''} onChange={e => setCliDados(d => ({ ...d, cnpj: e.target.value }))} />
-            <Input placeholder="Inscrição Estadual" inputMode="numeric" value={cliDados.ie ?? ''} onChange={e => setCliDados(d => ({ ...d, ie: e.target.value }))} />
-            <Input placeholder="E-mail" type="email" inputMode="email" autoComplete="email" value={cliDados.email ?? ''} onChange={e => setCliDados(d => ({ ...d, email: e.target.value }))} className="col-span-2" />
           </div>
-
-          {/* Forma de pagamento */}
-          <div className="p-3 border border-border rounded-md space-y-2">
-            <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-ink-muted font-semibold">
-              <CreditCard className="h-3 w-3" />
-              Forma de pagamento
+          <details
+            className="group rounded-md border border-border bg-surface-2/20"
+            // Abre auto se vendedor ja preencheu algum desses campos
+            open={!!(cliDados.cnpj || cliDados.ie || cliDados.email)}
+          >
+            <summary className="cursor-pointer flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-wider text-ink-muted font-semibold hover:text-ink select-none">
+              <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+              Mais dados do cliente (CPF, IE, e-mail)
+            </summary>
+            <div className="grid grid-cols-2 gap-2 px-3 pb-3">
+              <Input placeholder="CPF / CNPJ" inputMode="numeric" value={cliDados.cnpj ?? ''} onChange={e => setCliDados(d => ({ ...d, cnpj: e.target.value }))} />
+              <Input placeholder="Inscrição Estadual" inputMode="numeric" value={cliDados.ie ?? ''} onChange={e => setCliDados(d => ({ ...d, ie: e.target.value }))} />
+              <Input placeholder="E-mail" type="email" inputMode="email" autoComplete="email" value={cliDados.email ?? ''} onChange={e => setCliDados(d => ({ ...d, email: e.target.value }))} className="col-span-2" />
             </div>
+          </details>
+
+          {/* Forma de pagamento — accordion (abre default em rascunho novo,
+              fica fechado se ja tem prazo/forma preenchidos pra economizar scroll) */}
+          <details
+            className="group rounded-md border border-border bg-surface-2/20"
+            open={!formaPgOut.forma_pagamento}
+          >
+            <summary className="cursor-pointer flex items-center justify-between gap-2 px-3 py-2 select-none hover:text-ink">
+              <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-ink-muted font-semibold">
+                <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+                <CreditCard className="h-3 w-3" />
+                Forma de pagamento
+              </div>
+              {formaPgOut.forma_pagamento && (
+                <span className="text-[10px] text-ink-faint truncate max-w-[55%]" title={formaPgOut.forma_pagamento}>
+                  {formaPgOut.forma_pagamento}
+                </span>
+              )}
+            </summary>
+            <div className="px-3 pb-3 space-y-2">
             <div className="flex gap-1 flex-wrap">
               {([['avista', 'À vista'], ['parcelado', 'Parcelado'], ['entrada', 'Entrada+Parcelas'], ['personalizado', 'Personalizado']] as const).map(([t, l]) => (
                 <button
@@ -930,28 +954,40 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
                 </div>
               )}
             </div>
-            {formaPgOut.forma_pagamento && (
-              <div className="text-[10px] italic text-ink-faint border-t border-border pt-1.5">
-                Pré-visualização: <span className="font-medium text-ink-muted">{formaPgOut.forma_pagamento}</span>
-              </div>
-            )}
-          </div>
+            </div>
+          </details>
 
-          {/* Prazo entrega + observações */}
-          <div>
-            <label className="text-[11px] uppercase tracking-wider text-ink-muted font-semibold">Prazo de entrega</label>
-            <Input value={prazoEntrega} onChange={e => setPrazoEntrega(e.target.value)} placeholder="Ex: 30 dias após confirmação do pagamento" className="mt-1" />
-          </div>
-          <div>
-            <label className="text-[11px] uppercase tracking-wider text-ink-muted font-semibold">Observações</label>
-            <textarea
-              value={observacoes}
-              onChange={e => setObservacoes(e.target.value)}
-              placeholder="Observações adicionais (opcional)..."
-              rows={3}
-              className="w-full mt-1 px-2 py-1.5 text-[12px] bg-surface-2 border border-border rounded-md focus:outline-none focus:border-accent"
-            />
-          </div>
+          {/* Prazo + observacoes — accordion (opcional, vendedor abre se precisar) */}
+          <details
+            className="group rounded-md border border-border bg-surface-2/20"
+            open={!!(prazoEntrega || observacoes)}
+          >
+            <summary className="cursor-pointer flex items-center justify-between gap-2 px-3 py-2 select-none hover:text-ink">
+              <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-ink-muted font-semibold">
+                <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+                Prazo de entrega e observações
+              </div>
+              {(prazoEntrega || observacoes) && (
+                <span className="text-[10px] text-ink-faint">{[prazoEntrega && 'prazo', observacoes && 'obs'].filter(Boolean).join(' + ')}</span>
+              )}
+            </summary>
+            <div className="px-3 pb-3 space-y-2">
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-ink-muted font-semibold">Prazo de entrega</label>
+                <Input value={prazoEntrega} onChange={e => setPrazoEntrega(e.target.value)} placeholder="Ex: 30 dias após confirmação do pagamento" className="mt-1" />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-ink-muted font-semibold">Observações</label>
+                <textarea
+                  value={observacoes}
+                  onChange={e => setObservacoes(e.target.value)}
+                  placeholder="Observações adicionais (opcional)..."
+                  rows={3}
+                  className="w-full mt-1 px-2 py-1.5 text-[12px] bg-surface-2 border border-border rounded-md focus:outline-none focus:border-accent"
+                />
+              </div>
+            </div>
+          </details>
 
           {snapshot.fotoPrincipal && (
             <div className="border border-border rounded p-2 bg-surface-2/30">
@@ -1106,7 +1142,7 @@ function AutoPreencherCliente({ onApply }: { onApply: (r: ReturnType<typeof pars
       <button
         type="button"
         onClick={() => setAberto(true)}
-        className="text-[11px] px-2.5 py-1.5 rounded bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold hover:opacity-90 transition flex items-center gap-1.5 shadow-sm"
+        className="text-[11px] px-2.5 py-1.5 rounded-md border border-accent/40 text-accent bg-accent-bg/50 hover:bg-accent-bg/80 font-semibold transition flex items-center gap-1.5"
         title="Cola dados do cliente (qualquer formato) e preenche automaticamente"
       >
         ✨ Auto-preencher
@@ -1119,15 +1155,15 @@ function AutoPreencherCliente({ onApply }: { onApply: (r: ReturnType<typeof pars
     : 0
 
   return (
-    <div className="rounded-lg border border-purple-300 dark:border-purple-700 bg-gradient-to-br from-purple-50/60 to-pink-50/40 dark:from-purple-950/40 dark:to-pink-950/30 overflow-hidden">
+    <div className="rounded-md border border-border bg-surface-2/30 overflow-hidden">
       {/* Header compacto */}
-      <div className="flex items-center justify-between px-3 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white">
-        <span className="text-[11px] uppercase tracking-wider font-bold flex items-center gap-1.5">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+        <span className="text-[11px] uppercase tracking-wider font-semibold text-ink-muted flex items-center gap-1.5">
           ✨ Auto-preencher
         </span>
         <button
           onClick={() => { setAberto(false); setTexto(''); setResultado(null); setErroIA(null) }}
-          className="text-[14px] leading-none opacity-80 hover:opacity-100"
+          className="text-ink-faint hover:text-ink text-[16px] leading-none px-1"
           title="Fechar"
         >×</button>
       </div>
@@ -1137,8 +1173,8 @@ function AutoPreencherCliente({ onApply }: { onApply: (r: ReturnType<typeof pars
           value={texto}
           onChange={e => setTexto(e.target.value)}
           placeholder="Cola qualquer texto com dados do cliente — nome, CNPJ, endereço, telefone, email…"
-          rows={4}
-          className="w-full text-[12px] px-2.5 py-2 border border-purple-200 dark:border-purple-800 rounded-md bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 placeholder:text-gray-400 dark:placeholder:text-slate-500 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-200 dark:focus:ring-purple-700 resize-none"
+          rows={3}
+          className="w-full text-[12px] px-2.5 py-2 border border-border rounded-md bg-surface text-ink placeholder:text-ink-faint outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 resize-none"
         />
 
         <div className="grid grid-cols-2 gap-2">
@@ -1146,7 +1182,7 @@ function AutoPreencherCliente({ onApply }: { onApply: (r: ReturnType<typeof pars
             type="button"
             onClick={processarRegex}
             disabled={!texto.trim() || carregandoIA}
-            className="text-[12px] px-3 py-2 rounded-md bg-white dark:bg-slate-900 border-2 border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 font-bold hover:bg-purple-50 dark:hover:bg-purple-950 disabled:opacity-50 flex items-center justify-center gap-1.5"
+            className="text-[12px] px-3 py-2 rounded-md bg-surface border border-border text-ink-muted font-semibold hover:text-ink hover:border-border-strong disabled:opacity-50 flex items-center justify-center gap-1.5"
             title="Extração local instantânea (regex). Ideal pra texto estruturado."
           >
             ⚡ Rápido
@@ -1155,7 +1191,7 @@ function AutoPreencherCliente({ onApply }: { onApply: (r: ReturnType<typeof pars
             type="button"
             onClick={processarIA}
             disabled={!texto.trim() || carregandoIA}
-            className="text-[12px] px-3 py-2 rounded-md bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm"
+            className="text-[12px] px-3 py-2 rounded-md bg-accent text-white font-semibold hover:bg-accent/90 disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm"
             title="IA Gemini — melhor pra textos complexos. ~2s."
           >
             {carregandoIA ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : '🧠'}

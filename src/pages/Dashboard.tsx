@@ -114,17 +114,17 @@ export function Dashboard() {
   ]
 
   return (
-    <div className="p-4 lg:p-6 space-y-5 max-w-[1700px]">
+    <div className="p-3 lg:p-6 space-y-3 lg:space-y-5 max-w-[1700px]">
       {/* Header + filtros */}
-      <div className="flex flex-wrap items-end justify-between gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-semibold text-ink tracking-tight">Dashboard</h1>
-          <p className="text-xs text-ink-faint mt-1">
+          <h1 className="text-2xl lg:text-3xl font-semibold text-ink tracking-tight">Dashboard</h1>
+          <p className="text-[11px] lg:text-xs text-ink-faint mt-0.5 lg:mt-1">
             {fmtN(data.totalLeads)} leads
             {preset && (
-              <span className="text-accent"> · filtro: {PRESET_LABELS.find(p => p.value === preset)?.label}</span>
+              <span className="text-accent"> · {PRESET_LABELS.find(p => p.value === preset)?.label}</span>
             )}
-            <span className="text-ink-faint"> · atualiza a cada 60s</span>
+            <span className="text-ink-faint"> · atualiza 60s</span>
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
@@ -289,18 +289,18 @@ function KpiHero({ label, kpi, icon: Icon, color, sub, showDelta: showDeltaProp 
   const sparkData = kpi.sparkline.map((v, i) => ({ i, v }))
   const gid = `spark-${label.replace(/\s+/g, '')}`
   return (
-    <div className="bg-surface border border-border rounded-xl p-5 transition-colors hover:border-border-strong relative overflow-hidden">
-      <div className="flex items-start justify-between mb-1">
-        <p className="text-[10px] uppercase tracking-[0.08em] text-ink-faint font-medium">{label}</p>
-        <Icon className="h-3.5 w-3.5" style={{ color }} />
+    <div className="bg-surface border border-border rounded-xl p-3 sm:p-5 transition-colors hover:border-border-strong relative overflow-hidden">
+      <div className="flex items-start justify-between mb-0.5">
+        <p className="text-[9px] sm:text-[10px] uppercase tracking-[0.08em] text-ink-faint font-medium leading-tight">{label}</p>
+        <Icon className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" style={{ color }} />
       </div>
-      <p className="text-[40px] leading-[1.1] font-semibold tracking-tight tabular-nums" style={{ color }}>
+      <p className="text-[26px] sm:text-[40px] leading-[1.05] font-semibold tracking-tight tabular-nums" style={{ color }}>
         {fmtN(kpi.valor)}
       </p>
-      <div className="flex items-center justify-between mt-1.5">
-        <p className="text-[11px] text-ink-faint">{sub}</p>
+      <div className="flex items-center justify-between mt-0.5 sm:mt-1.5">
+        <p className="text-[10px] sm:text-[11px] text-ink-faint leading-tight">{sub}</p>
         {showDelta && (
-          <span className={`inline-flex items-center gap-0.5 text-[11px] font-medium tabular-nums ${
+          <span className={`inline-flex items-center gap-0.5 text-[10px] sm:text-[11px] font-medium tabular-nums ${
             positivo ? 'text-accent' : 'text-danger'
           }`}>
             {positivo ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
@@ -309,7 +309,7 @@ function KpiHero({ label, kpi, icon: Icon, color, sub, showDelta: showDeltaProp 
         )}
       </div>
       {/* Sparkline */}
-      <div className="absolute bottom-0 left-0 right-0 h-10 opacity-60 pointer-events-none">
+      <div className="absolute bottom-0 left-0 right-0 h-7 sm:h-10 opacity-60 pointer-events-none">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={sparkData}>
             <defs>
