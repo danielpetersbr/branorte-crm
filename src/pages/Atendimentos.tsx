@@ -361,7 +361,115 @@ export function Atendimentos() {
             )}
           </div>
 
-          <Card className="overflow-hidden p-0">
+          {/* ─── MOBILE: cards verticais ─── */}
+          <div className="md:hidden space-y-2">
+            {rows.map(r => {
+              const tel = (r.telefone || '').replace(/\D/g, '')
+              const uf = ufFromTelefone(r.telefone)
+              const isHot = isHotLead(r.quando_investir ?? null)
+              const isFresh = isFreshLead(r.primeira_data ?? r.created_at)
+              const status = STATUS_TONE[r.status_real]
+              const ids = (r.auditoria_ids && r.auditoria_ids.length > 0) ? r.auditoria_ids : [r.id]
+              const isFechado = !!r.finished_at
+              return (
+                <div
+                  key={r.id}
+                  className={`rounded-lg border p-3 ${
+                    isHot
+                      ? 'bg-danger-bg/40 border-danger/30'
+                      : 'bg-surface border-border'
+                  }`}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <Avatar name={r.nome} size="md" pulse={isFresh} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="text-[13px] font-semibold text-ink truncate">
+                            {r.nome || <span className="text-ink-faint italic font-normal">sem nome</span>}
+                          </div>
+                          <div className="text-[11px] text-ink-faint font-mono tabular-nums mt-0.5">
+                            {tel ? formatPhone(tel) : '—'}
+                            {uf && uf !== '—' && uf !== 'INTL' && (
+                              <span className="ml-1.5 px-1 rounded bg-surface-2 text-ink-muted">{uf}</span>
+                            )}
+                          </div>
+                        </div>
+                        <span className="text-[10px] text-ink-faint shrink-0 mt-0.5">
+                          {formatRelative(r.last_message_at ?? r.primeira_data ?? r.created_at)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                        {status && (
+                          <Badge style={{
+                            background: `hsl(var(--${status.tone}-bg))`,
+                            color: `hsl(var(--${status.tone}))`,
+                          }} className="text-[10px]">{status.label}</Badge>
+                        )}
+                        {isHot && (
+                          <span className="text-[10px] font-semibold text-danger inline-flex items-center gap-0.5">
+                            <Flame className="h-3 w-3" />Quente
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-border/60 flex items-center justify-between gap-2">
+                    {r.responsavel ? (
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <Avatar name={r.responsavel} size="sm" />
+                        <span className="text-[12px] text-ink-muted truncate">{r.responsavel}</span>
+                      </div>
+                    ) : (
+                      <div className="flex-1"><AtribuirVendedorPicker auditoriaIds={ids} /></div>
+                    )}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {tel && (
+                        <a
+                          href={whatsappLink(tel)}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Abrir WhatsApp"
+                          className="h-8 w-8 inline-flex items-center justify-center rounded-md text-success hover:bg-success-bg"
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                        </a>
+                      )}
+                      {profile?.id && (
+                        <button
+                          type="button"
+                          disabled={resolverMut.isPending}
+                          onClick={() => resolverMut.mutate({ auditoria_ids: ids, user_id: profile.id, fechar: !isFechado })}
+                          title={isFechado ? 'Reabrir' : 'Fechar'}
+                          className={`h-8 w-8 inline-flex items-center justify-center rounded-md transition-all ${
+                            isFechado
+                              ? 'text-warning hover:bg-warning-bg'
+                              : 'text-success/70 hover:text-success hover:bg-success-bg'
+                          }`}
+                        >
+                          {isFechado ? <RotateCcw className="h-4 w-4" /> : <Check className="h-4 w-4" />}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+            {rows.length === 0 && (
+              <Card className="p-8 text-center">
+                <Inbox className="h-6 w-6 text-ink-faint mx-auto mb-2" />
+                <p className="text-[13px] text-ink-muted">Nenhum atendimento encontrado</p>
+                {hasFilters && (
+                  <button onClick={clearFilters} className="text-[12px] text-accent hover:underline mt-2">
+                    Limpar filtros
+                  </button>
+                )}
+              </Card>
+            )}
+          </div>
+
+          {/* ─── DESKTOP: tabela completa ─── */}
+          <Card className="hidden md:block overflow-hidden p-0">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
