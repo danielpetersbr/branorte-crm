@@ -6,6 +6,7 @@ import {
   type ClienteDados, type OrcamentoItem, type OrcamentoMotor,
 } from '@/hooks/useOrcamentoBuilder'
 import { useAuth } from '@/hooks/useAuth'
+import { useVendors } from '@/hooks/useVendors'
 import { gerarPdfDoPreview } from '@/lib/preview-to-pdf'
 import { gerarDocxDoPreview } from '@/lib/preview-to-docx'
 import { gerarOrcamentoCustomDocx } from '@/lib/orcamento-custom-docx'
@@ -135,6 +136,20 @@ function baixarBlob(blob: Blob, nome: string) {
 
 export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editingId, initialModal }: Props) {
   const { profile } = useAuth()
+  const { data: vendorsAtivos } = useVendors()
+  const vendedoresContato = useMemo(() => {
+    if (!vendorsAtivos) return []
+    return vendorsAtivos
+      .filter(v => v.telefone && v.name && !/^branorte$/i.test(v.name))
+      .map(v => {
+        const d = String(v.telefone).replace(/\D/g, '')
+        let tel = v.telefone || ''
+        if (d.length === 12 && d.startsWith('55')) tel = `(${d.slice(2,4)}) 9 ${d.slice(4,8)}-${d.slice(8)}`
+        else if (d.length === 13 && d.startsWith('55')) tel = `(${d.slice(2,4)}) ${d.slice(4,5)} ${d.slice(5,9)}-${d.slice(9)}`
+        const nome = v.name.charAt(0).toUpperCase() + v.name.slice(1).toLowerCase()
+        return { nome, telefone: tel }
+      })
+  }, [vendorsAtivos])
   const criar = useCriarOrcamento()
   const atualizar = useAtualizarOrcamento()
 
@@ -461,6 +476,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         desconto: snapshot.desconto ?? null,
         parcelas: snapshot.parcelas ?? [],
         componentesExtras: snapshot.componentesExtras ?? [],
+        vendedoresContato,
+        vendedorResponsavelNome: profile?.display_name || null,
       }
       // Word VISUAL — imagem do preview (idêntico ao PDF visualmente, mas não editável).
       // É o formato principal — vendedor envia pro cliente.

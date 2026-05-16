@@ -139,6 +139,12 @@ export interface OrcamentoPreviewProps {
   // Troca de motor: lista de motores do catálogo central + callback ao escolher
   motoresDisponiveis?: MotorCatalogoOption[]
   onTrocarMotor?: (itemUid: string, novoMotor: MotorCatalogoOption) => void
+
+  // Vendedores Branorte pra grid de contatos no rodape. Quando passado, renderiza
+  // dinamicamente em vez do hardcoded antigo (que so tinha 3 vendedores).
+  // O vendedorResponsavelNome destaca quem ta vendendo esse orcamento.
+  vendedoresContato?: Array<{ nome: string; telefone: string }>
+  vendedorResponsavelNome?: string | null
 }
 
 function formatBRLBare(v: number): string {
@@ -234,6 +240,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     componentesExtras = [], onUpdateComponentesExtras, componentesAdicionaisCatalogo = [],
     parcelas, onUpdateParcelas,
     motoresDisponiveis, onTrocarMotor,
+    vendedoresContato, vendedorResponsavelNome,
   } = props
   const [editingNomeUid, setEditingNomeUid] = useState<string | null>(null)
   const [editingNomeValor, setEditingNomeValor] = useState<string>('')
@@ -1735,19 +1742,48 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             </div>
           </div>
 
-          <div data-no-break className="grid grid-cols-4 gap-2 mt-3 text-[14px] text-center">
-            {[
-              ['Patrick Alves', '(48) 9 9698-4660'],
-              ['Edilson', '(48) 9 9991-2329'],
-              ['Daniel', '(48) 9 8469-2860'],
-              ['Branorte', '(48) 3658-4502'],
-            ].map(([nome, tel]) => (
-              <div key={nome} className="py-1.5 px-1 bg-gray-50 border border-gray-200 rounded">
-                <div className="font-bold text-gray-800 text-[14.5px]">{nome}</div>
-                <div className="text-gray-600 mt-0.5">{tel}</div>
+          {(() => {
+            // Usa lista dinâmica do banco se passada, senão fallback hardcoded antigo
+            const lista = (vendedoresContato && vendedoresContato.length > 0)
+              ? vendedoresContato
+              : [
+                { nome: 'Patrick Alves', telefone: '(48) 9 9698-4660' },
+                { nome: 'Edilson', telefone: '(48) 9 9991-2329' },
+                { nome: 'Daniel', telefone: '(48) 9 8469-2860' },
+              ]
+            // Sempre adiciona Branorte geral no final se nao estiver na lista
+            const temBranorte = lista.some(v => /^branorte$/i.test(v.nome.trim()))
+            const finalList = temBranorte ? lista : [...lista, { nome: 'Branorte', telefone: '(48) 3658-4502' }]
+            // Limita a 8 cards pra nao explodir o layout (grid 4 colunas, 2 linhas)
+            const display = finalList.slice(0, 8)
+            // Normaliza nome do vendedor responsavel pra match
+            const respNorm = (vendedorResponsavelNome || '').trim().toLowerCase()
+            return (
+              <div data-no-break className="grid grid-cols-4 gap-2 mt-3 text-[14px] text-center">
+                {display.map(({ nome, telefone }) => {
+                  const isResp = respNorm && nome.trim().toLowerCase().startsWith(respNorm.split(/\s+/)[0])
+                  return (
+                    <div
+                      key={nome}
+                      className={`py-1.5 px-1 rounded border-2 ${
+                        isResp
+                          ? 'bg-blue-50 border-blue-500'
+                          : 'bg-gray-50 border-gray-200'
+                      }`}
+                    >
+                      {isResp && (
+                        <div className="text-[10px] uppercase font-bold text-blue-700 tracking-wider mb-0.5">
+                          ★ seu vendedor
+                        </div>
+                      )}
+                      <div className={`font-bold text-[14.5px] ${isResp ? 'text-blue-900' : 'text-gray-800'}`}>{nome}</div>
+                      <div className={isResp ? 'text-blue-800 mt-0.5' : 'text-gray-600 mt-0.5'}>{telefone}</div>
+                    </div>
+                  )
+                })}
               </div>
-            ))}
-          </div>
+            )
+          })()}
 
           <div data-no-break>
             <SectionHeader>Conta para Depósito</SectionHeader>

@@ -19,6 +19,7 @@ import { useOrcamentoModelos, useOrcamentoGerado, type OrcamentoModelo } from '@
 import { useSearchParams } from 'react-router-dom'
 import { useOrcamentoDraft } from '@/hooks/useOrcamentoDraft'
 import { useAuth } from '@/hooks/useAuth'
+import { useVendors } from '@/hooks/useVendors'
 import { usePrecosBranorte, type PrecoBranorte } from '@/hooks/usePrecosBranorte'
 import {
   recomendarMotorChupim, FATOR_MATERIAL, FATOR_INCLINACAO,
@@ -303,6 +304,24 @@ export function OrcamentoMontar() {
   // Modal de "adicionar produto personalizado" (ad-hoc)
   const [customOpen, setCustomOpen] = useState(false)
   const { profile } = useAuth()
+  const { data: vendorsAtivos } = useVendors()
+  // Formata telefone Branorte (12 digitos) pra (DDD) 9 XXXX-XXXX
+  const vendedoresContato = useMemo(() => {
+    if (!vendorsAtivos) return []
+    return vendorsAtivos
+      .filter(v => v.telefone && v.name && !/^branorte$/i.test(v.name))
+      .map(v => {
+        const d = String(v.telefone).replace(/\D/g, '')
+        let tel = v.telefone || ''
+        // 554884692860 (12) -> (48) 9 8469-2860
+        if (d.length === 12 && d.startsWith('55')) tel = `(${d.slice(2,4)}) 9 ${d.slice(4,8)}-${d.slice(8)}`
+        // 5548998313374 (13) -> (48) 9 9831-3374
+        else if (d.length === 13 && d.startsWith('55')) tel = `(${d.slice(2,4)}) ${d.slice(4,5)} ${d.slice(5,9)}-${d.slice(9)}`
+        // Capitaliza nome (DANIEL -> Daniel)
+        const nome = v.name.charAt(0).toUpperCase() + v.name.slice(1).toLowerCase()
+        return { nome, telefone: tel }
+      })
+  }, [vendorsAtivos])
 
   // Adiciona um item livre ao carrinho (nao precisa estar no catalogo).
   async function adicionarItemCustomizado(data: {
@@ -1515,6 +1534,8 @@ export function OrcamentoMontar() {
                 onUpdateParcelas={setParcelasPagamento}
                 motoresDisponiveis={motores ?? []}
                 onTrocarMotor={trocarMotorDoItem}
+                vendedoresContato={vendedoresContato}
+                vendedorResponsavelNome={profile?.display_name || null}
               />
             ) : (
               <div className="divide-y divide-border">
