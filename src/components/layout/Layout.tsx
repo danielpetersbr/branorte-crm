@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Sparkles, Package, Zap, BookOpen, Settings, TrendingUp, MessageSquarePlus } from 'lucide-react'
+import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Sparkles, Package, Zap, BookOpen, Settings, TrendingUp, MessageSquarePlus, FilePlus2 } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { cn } from '@/lib/utils'
@@ -63,6 +63,18 @@ const SECONDARY: NavItem[] = [
   { to: '/vendidos', label: 'Vendidos', icon: CheckCircle },
   { to: '/projeto', label: 'Projeto', icon: Factory },
   { to: '/disparos', label: 'Roteamento', icon: GitBranch },
+]
+
+// Bottom nav mobile — 5 destinos mais usados pelo vendedor no dia-a-dia.
+// Tirei "Atribuir" (ficou redundante com fallback wa_chat_labels) e "Funil"
+// (acessivel pelo dashboard). Substitui por "Novo orcamento" e "Vendidos"
+// que sao acoes de venda diretas.
+const MOBILE_NAV: NavItem[] = [
+  { to: '/', label: 'Início', icon: LayoutDashboard },
+  { to: '/atendimentos', label: 'Atender', icon: MessageSquare, countKey: 'atendimentos' },
+  { to: '/orcamentos/montar', label: 'Orçar', icon: FilePlus2 },
+  { to: '/vendidos', label: 'Vendidos', icon: CheckCircle },
+  { to: '/contatos', label: 'Contatos', icon: Users },
 ]
 
 // MIGRACAO 2026-05-16: app virou dark-default. Usa key 'theme-v2' pra
@@ -328,7 +340,7 @@ export function Layout() {
       <RoadmapFAB />
 
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-bg/95 backdrop-blur border-t border-border flex items-center justify-around px-2 py-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] z-50">
-        {PRIMARY.concat(SECONDARY).slice(0, 5).map(l => (
+        {MOBILE_NAV.map(l => (
           <NavLink
             key={l.to}
             to={l.to}
