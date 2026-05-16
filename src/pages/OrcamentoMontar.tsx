@@ -508,17 +508,45 @@ export function OrcamentoMontar() {
     }])
   }
 
-  // Watcher: sempre que carrinho mudar, verifica se tem Compacta 02/03 e adiciona
-  // balanca eletronica 2000kg automaticamente nos componentes adicionais.
-  // Cobre TODOS os caminhos de adicao: catalogo, precos, customizado, carregar modelo,
-  // load draft, etc. Roda so quando precos ja foi carregado pra usar valor real.
+  // ========================================================================
+  // INTELIGENCIA DEFINITIVA — BALANÇA NUNCA MAIS COMO ITEM
+  // ========================================================================
+  // Esta logica garante que balança eletronica NUNCA aparece como item
+  // (letra A/B/C/F/etc) no carrinho. Se detectar, MOVE pra componentes_extras
+  // automaticamente. Idempotente — roda sempre que carrinho/extras muda.
+  //
+  // Cobre TODOS os cenarios:
+  //   - Vendedor adiciona Compacta 02/03 → balança vai pros extras
+  //   - Carregar modelo antigo que tinha balança como item → migra automaticamente
+  //   - Load draft com balança como item → migra automaticamente
+  //   - Abrir orçamento salvo antigo que tinha balança como item → migra
+  //   - Vendedor manualmente adiciona "Balança" pelo catalogo → migra pros extras
+  // ========================================================================
   useEffect(() => {
     if (!precos) return
+    const BALANCA_RE = /balan.a.*el.tr.nica/i
+
+    // 1) Remove qualquer item-balança do carrinho e renumera letras
+    const balancaNoCarrinho = carrinho.findIndex(it => BALANCA_RE.test(it.nome))
+    if (balancaNoCarrinho !== -1) {
+      const valor = Number(carrinho[balancaNoCarrinho].valor) || 8728
+      setCarrinho(c => c.filter((_, i) => i !== balancaNoCarrinho))
+      // Adiciona como componente extra se ainda nao tem
+      setComponentesExtras(arr => {
+        if (arr.some(c => BALANCA_RE.test(c.nome.trim()))) return arr
+        return [...arr, {
+          id: `migrated-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          nome: 'Balança Eletrônica',
+          valor,
+        }]
+      })
+      return // sai pra rodar de novo apos o estado atualizar
+    }
+
+    // 2) Auto-add quando tem Compacta 02/03 e nao tem balança nos extras
     const temCompacta23 = carrinho.some(it => /COMPACTA\s*0?[23]\b/i.test(it.nome))
     if (!temCompacta23) return
-    const jaTemBalanca = componentesExtras.some(c =>
-      /balan.a.*el.tr.nica/i.test(c.nome.trim())
-    )
+    const jaTemBalanca = componentesExtras.some(c => BALANCA_RE.test(c.nome.trim()))
     if (jaTemBalanca) return
     const balancaPreco = precos.find(p =>
       p.categoria === 'BALANCA' && /balan.a.*el.tr.nica.*2000/i.test(p.descricao)

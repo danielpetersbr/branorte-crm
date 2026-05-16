@@ -436,14 +436,16 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
       {/* Em mobile, padding menor pra ganhar espaço lateral. Tabelas internas
           (motores, parcelas, componentes) já têm overflow-x próprio quando precisam. */}
       <div ref={innerRef} className={`m-2 lg:m-4 px-3 lg:px-6 pt-4 lg:pt-5 pb-5 lg:pb-6 relative ${renderMode ? '' : (folhas.length === 0 ? 'border border-gray-900' : '')}`}>
-        {/* Molduras INDEPENDENTES por folha A4 (so em modo edit + multi-pagina) */}
+        {/* Molduras INDEPENDENTES por folha A4 (so em modo edit + multi-pagina).
+            z-index NEGATIVO pra ficar ATRAS do conteudo (estava cortando cards
+            de acessorios visualmente). Border mais clara pra ser menos intrusiva. */}
         {!renderMode && folhas.length > 1 && (
-          <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
+          <div className="absolute inset-0 pointer-events-none" aria-hidden="true" style={{ zIndex: 0 }}>
             {folhas.map((f, i) => (
               <div
                 key={i}
-                className="absolute left-0 right-0 border border-gray-900"
-                style={{ top: `${f.top}px`, height: `${f.bottom - f.top}px` }}
+                className="absolute left-0 right-0 border border-gray-300"
+                style={{ top: `${f.top}px`, height: `${f.bottom - f.top}px`, zIndex: 0 }}
               />
             ))}
           </div>
@@ -506,7 +508,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           <SectionHeader>Itens orçados abaixo</SectionHeader>
 
           {fotoPrincipal ? (
-            <div data-no-break className="group relative mb-3 border border-gray-700 rounded-md p-2 bg-white shadow-sm">
+            <div data-no-break className="group relative mb-3 border border-gray-700 rounded-md p-2 bg-white shadow-sm" style={{ zIndex: 1 }}>
               <div className="w-full flex items-center justify-center bg-white">
                 <img
                   src={fotoPrincipal}
@@ -578,7 +580,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
               const letra = String.fromCharCode(65 + idx)
               const subtotal = it.valor * it.qtd
               return (
-                <div key={it.uid || idx} data-no-break className="group relative border border-gray-700 rounded-md p-3 bg-white shadow-sm">
+                <div key={it.uid || idx} data-no-break className="group relative border border-gray-700 rounded-md p-3 bg-white shadow-sm" style={{ zIndex: 1 }}>
                   <div className="flex justify-between items-start gap-2 mb-1.5">
                     <div className="font-bold text-[15.5px] flex-1 min-w-0 text-gray-900">
                       <span className="text-gray-900">{letra} - </span>
@@ -803,9 +805,10 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             </button>
           )}
 
-          {/* ACESSÓRIOS — letra auto-incrementada após o último item */}
+          {/* ACESSÓRIOS — letra auto-incrementada após o último item.
+              relative + bg-white pra ficar ACIMA das molduras absolutas das folhas A4 */}
           {acessorios ? (
-            <div data-no-break className="group mt-3 border border-gray-700 rounded-md p-3 bg-white shadow-sm">
+            <div data-no-break className="group mt-3 border border-gray-700 rounded-md p-3 bg-white shadow-sm relative" style={{ zIndex: 1 }}>
               <div className="flex items-baseline justify-between gap-2 mb-1.5">
                 <div className="font-bold text-[15.5px] text-gray-900">
                   <span className="text-gray-900">{String.fromCharCode(65 + carrinho.length)} — ACESSÓRIOS</span>
@@ -862,7 +865,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             const tensaoInteractive = !renderMode && !!onUpdateTensaoMotores
             const tensaoLabel = tensaoMotores ? `${tensaoMotores}V` : 'tensão a confirmar'
             return (
-              <div data-no-break className="mt-3 border border-gray-700 rounded-md p-4 bg-white shadow-sm">
+              <div data-no-break className="mt-3 border border-gray-700 rounded-md p-4 bg-white shadow-sm relative" style={{ zIndex: 1 }}>
                 <div className="flex items-center justify-between gap-3 pb-2 border-b-2 border-gray-800 mb-2.5">
                   <div className="flex items-baseline gap-2 flex-wrap">
                     <span className="font-bold text-[16px] tracking-wider uppercase text-gray-700">
@@ -1040,7 +1043,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
               onUpdateComponentesExtras(componentesExtras.filter(c => c.id !== id))
             }
             return (
-              <div data-no-break className="mt-3 border border-gray-700 rounded-md p-4 bg-white shadow-sm">
+              <div data-no-break className="mt-3 border border-gray-700 rounded-md p-4 bg-white shadow-sm relative" style={{ zIndex: 1 }}>
                 <div className="flex items-center justify-between gap-3 pb-2 border-b-2 border-gray-800 mb-2.5">
                   <span className="font-bold text-[16px] tracking-wider uppercase text-gray-700">
                     Componentes adicionais

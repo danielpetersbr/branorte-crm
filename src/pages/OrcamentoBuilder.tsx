@@ -227,12 +227,31 @@ export function OrcamentoBuilder() {
   const lastModeloIdRef = useRef<number | null>(_restored?.modeloId ?? null)
   useEffect(() => {
     if (modeloSelecionado && modeloSelecionado.id !== lastModeloIdRef.current) {
-      setItens(JSON.parse(JSON.stringify(modeloSelecionado.itens)))
+      // INTELIGENCIA: filtra balança eletronica fora dos itens — ela NUNCA deve
+      // aparecer como item (letra A/B/C/F/etc). Pertence a 'componentes adicionais'.
+      // Se o modelo antigo tinha balança como item, remove e renumera letras.
+      const BALANCA_RE = /balan.a.*el.tr.nica/i
+      const itensModelo: OrcamentoItem[] = JSON.parse(JSON.stringify(modeloSelecionado.itens))
+      const itensSemBalanca = itensModelo
+        .filter(it => !BALANCA_RE.test(it.nome || ''))
+        .map((it, i) => ({ ...it, letra: String.fromCharCode(65 + i) }))
+      setItens(itensSemBalanca)
       setAcessorios(modeloSelecionado.acessorios ? JSON.parse(JSON.stringify(modeloSelecionado.acessorios)) : null)
       setMotores(JSON.parse(JSON.stringify(modeloSelecionado.motores)))
       lastModeloIdRef.current = modeloSelecionado.id
     }
   }, [modeloSelecionado])
+
+  // Watcher: garante que balanca NUNCA fica nos itens (proteção pos-load)
+  useEffect(() => {
+    const BALANCA_RE = /balan.a.*el.tr.nica/i
+    const temBalanca = itens.some(it => BALANCA_RE.test(it.nome || ''))
+    if (!temBalanca) return
+    setItens(arr => arr
+      .filter(it => !BALANCA_RE.test(it.nome || ''))
+      .map((it, i) => ({ ...it, letra: String.fromCharCode(65 + i) }))
+    )
+  }, [itens])
 
   // Pre-busca próximo número quando entra no step 4 (prefere folder scan)
   useEffect(() => {
