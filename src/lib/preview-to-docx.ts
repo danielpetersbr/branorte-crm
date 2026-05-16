@@ -35,9 +35,9 @@ export async function gerarDocxDoPreview(
 ): Promise<Blob> {
   const pageWidthMm = opts.pageWidth ?? 210
   const pageHeightMm = opts.pageHeight ?? 297
-  const scale = opts.scale ?? 4
-  // 1024px = lg breakpoint Tailwind. Container menor quebra o layout do OrcamentoPreview.
-  const containerWidthPx = opts.containerWidthPx ?? 1024
+  const scale = opts.scale ?? 5
+  // 800px = A4 portrait (210mm). Garante fonts no tamanho real do PDF.
+  const containerWidthPx = opts.containerWidthPx ?? 800
 
   // 1) Cria container off-screen
   const host = document.createElement('div')

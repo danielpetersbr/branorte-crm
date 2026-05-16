@@ -992,23 +992,14 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           >
             Cancelar
           </button>
-          <button
-            onClick={() => handleGerar({ salvarNaPasta: false })}
-            disabled={gerando || !cliNome.trim()}
-            className="text-[12px] px-3 py-2.5 rounded bg-surface-2 hover:bg-surface-3 text-ink-faint hover:text-ink-muted font-semibold disabled:opacity-50 flex items-center justify-center gap-1.5 min-h-[44px]"
-            title="Avançado: apenas baixa os arquivos sem salvar na pasta do servidor"
-          >
-            <FileDown className="h-3.5 w-3.5" />
-            Só baixar
-          </button>
-          {/* TODOS salvam pelo servidor — independente do vendedor estar no PC do
-              escritorio ou no celular. O daemon (PM2) no PC do Daniel pega tudo do
-              bucket orcamentos-pendentes e copia pra Z:\. Garante numeracao certa
-              e nao depende do vendedor ter Z: mapeado. */}
+          {/* UM unico botao: sempre salva no servidor (que sincroniza com Z:\)
+              + manda pro WhatsApp do vendedor se checkbox marcada.
+              Removido botao 'Só baixar' que causava confusao — user clicava
+              nele por engano e o arquivo nao ia pra pasta. */}
           <button
             onClick={() => handleGerar({ salvarNaPasta: false, salvarNoServidor: true })}
             disabled={gerando || !cliNome.trim()}
-            className="text-[13px] px-5 py-2.5 rounded bg-accent hover:bg-accent/90 text-white font-bold disabled:opacity-50 flex items-center justify-center gap-1.5 min-h-[44px] shadow-sm"
+            className="text-[13px] px-5 py-2.5 rounded bg-accent hover:bg-accent/90 text-white font-bold disabled:opacity-50 flex items-center justify-center gap-1.5 min-h-[44px] shadow-sm flex-1 sm:flex-initial"
             title="Salva pra pasta Z:\1 - Comercial\3 - Orçamento — sincronizado pelo PC do escritório"
           >
             {gerando ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderOpen className="h-4 w-4" />}
