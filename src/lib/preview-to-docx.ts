@@ -35,8 +35,9 @@ export async function gerarDocxDoPreview(
 ): Promise<Blob> {
   const pageWidthMm = opts.pageWidth ?? 210
   const pageHeightMm = opts.pageHeight ?? 297
-  const scale = opts.scale ?? 5
-  // 1024px = breakpoint lg Tailwind. Reverti de 800 (quebrava preview).
+  // Mobile usa scale menor — iOS Safari estoura memoria com scale alto
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768
+  const scale = opts.scale ?? (isMobile ? 2 : 5)
   const containerWidthPx = opts.containerWidthPx ?? 1024
 
   // 1) Cria container off-screen
@@ -67,8 +68,8 @@ export async function gerarDocxDoPreview(
       if (bottom > top + 4) noBreakRanges.push({ topPx: top, bottomPx: bottom })
     })
 
-    // 4) Captura como canvas
-    const canvas = await html2canvas(host, {
+    // 4) Captura como canvas (foreignObjectRendering=false p/ iOS Safari)
+    const captura = async () => html2canvas(host, {
       scale,
       useCORS: true,
       allowTaint: true,
@@ -77,7 +78,18 @@ export async function gerarDocxDoPreview(
       imageTimeout: 15000,
       width: containerWidthPx,
       windowWidth: containerWidthPx,
+      foreignObjectRendering: false,
     })
+    let canvas = await captura()
+    if (!canvas || canvas.height < 100) {
+      console.warn('[docx] canvas pequeno (h=' + canvas?.height + '), retry...')
+      await new Promise(r => setTimeout(r, 800))
+      canvas = await captura()
+      if (!canvas || canvas.height < 100) {
+        throw new Error('html2canvas devolveu canvas vazio (preview nao renderizou)')
+      }
+    }
+    console.log(`[docx] canvas OK ${canvas.width}x${canvas.height}px (scale=${scale})`)
 
     const noBreakCanvasRanges = noBreakRanges.map(r => ({
       top: Math.floor(r.topPx * scale),

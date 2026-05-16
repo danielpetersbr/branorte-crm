@@ -32,11 +32,11 @@ export async function gerarPdfDoPreview(
 ): Promise<Blob> {
   const pageWidthMm = opts.pageWidth ?? 210
   const pageHeightMm = opts.pageHeight ?? 297
-  // scale 5 = high-DPI muito nitido (texto sharp no PDF)
-  const scale = opts.scale ?? 5
-  // 1024px = breakpoint lg do Tailwind (classes lg: ativam). Reverti de 800
-  // porque preview ficava QUEBRADO (PDF saindo todo branco). Fonts ficam
-  // menores no PDF mas legiveis com scale 5.
+  // scale: 5 em desktop, 2 em mobile. iOS Safari/PWA estoura memoria
+  // com scale alto e gera CANVAS BRANCO (bug confirmado em iPad/iPhone).
+  // 2 ainda fica legivel com a fonte maior do renderMode.
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768
+  const scale = opts.scale ?? (isMobile ? 2 : 5)
   const containerWidthPx = opts.containerWidthPx ?? 1024
 
   // 1) Cria container off-screen com largura fixa pra o preview renderizar consistente
@@ -71,7 +71,10 @@ export async function gerarPdfDoPreview(
     })
 
     // 4) Captura como canvas
-    const canvas = await html2canvas(host, {
+    // foreignObjectRendering=false forca uso do canvas tradicional (em vez de
+    // SVG foreignObject). Necessario porque iOS Safari TEM BUG conhecido que
+    // gera canvas BRANCO quando usa foreignObject (especialmente em PWA).
+    const captura = async () => html2canvas(host, {
       scale,
       useCORS: true,
       allowTaint: true,
@@ -80,7 +83,21 @@ export async function gerarPdfDoPreview(
       imageTimeout: 15000,
       width: containerWidthPx,
       windowWidth: containerWidthPx,
+      foreignObjectRendering: false,
     })
+
+    let canvas = await captura()
+    // Defesa: se canvas saiu vazio (height 0 ou too small), tenta DE NOVO
+    // apos paint extra. Bug iOS PWA: 1a captura as vezes pega antes do paint.
+    if (!canvas || canvas.height < 100) {
+      console.warn('[pdf] canvas pequeno demais (h=' + canvas?.height + '), retry...')
+      await new Promise(r => setTimeout(r, 800))
+      canvas = await captura()
+      if (!canvas || canvas.height < 100) {
+        throw new Error('html2canvas devolveu canvas vazio — preview nao renderizou (iOS Safari PWA bug?)')
+      }
+    }
+    console.log(`[pdf] canvas OK ${canvas.width}x${canvas.height}px (scale=${scale})`)
 
     // Converte ranges de CSS px → canvas px (com scale aplicado)
     const noBreakCanvasRanges = noBreakRanges.map(r => ({

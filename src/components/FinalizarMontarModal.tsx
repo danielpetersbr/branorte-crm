@@ -415,15 +415,16 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         prazo_entrega: prazoEntrega.trim() || null,
         componentes_extras: snapshot.componentesExtras ?? null,
       }
-      // Status: se vai distribuir (pasta/servidor) marca como ENVIADO,
-      // se so vai baixar pro PC do vendedor mantem RASCUNHO (ele decide se manda)
-      const statusFinal: 'rascunho' | 'enviado' =
-        (opcoes.salvarNaPasta || opcoes.salvarNoServidor) ? 'enviado' : 'rascunho'
+      // Status: SEMPRE cria como 'rascunho'. O /api/orcamento-confirm muda
+      // pra 'enviado' SE o upload realmente chegou no Storage. Isso evita
+      // 'status mentindo' (bug: 0793-0795 ficaram 'enviado' sem arquivo).
+      // Pra salvarNaPasta (FileSystem local) tambem mantem rascunho — ja que
+      // ali a gente tambem nao tem garantia 100% sem ler de volta.
       const orc = editingId
-        ? await atualizar.mutateAsync({ id: editingId, ...payloadComum, status: statusFinal })
+        ? await atualizar.mutateAsync({ id: editingId, ...payloadComum, status: 'rascunho' })
         : await criar.mutateAsync({
             ...payloadComum,
-            status: statusFinal,
+            status: 'rascunho',
             numero_override: numeroOverride,
           })
 
@@ -638,6 +639,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             txtBlob,
             sendWhatsApp: enviarMeuZap && !!pdfBlob,
             whatsAppCaption: `📄 Orçamento ${orc.numero} — ${cliNome.trim()}\n\nPersonalizado: ${descricao || sugestao}\nGerado em ${dataEmissaoBR}\n\n👇 Encaminhe pro cliente`,
+            onProgress: (s) => setGerandoStep(s),
           })
           baixouDocx = true
           if (pdfBlob) baixouPdf = true

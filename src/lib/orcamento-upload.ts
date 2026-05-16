@@ -6,19 +6,20 @@ import { supabase } from './supabase'
 
 export interface OrcamentoUploadInput {
   orcamentoId: number
-  numero: string         // '2026 - 0795'
-  ano: string            // '2026'
-  mes: string            // '05'
-  base: string           // '2026 - 0795 - Cliente (Descricao)' (sem extensao)
-  vendedorNome: string   // 'Daniel Peters' (nome completo)
+  numero: string
+  ano: string
+  mes: string
+  base: string
+  vendedorNome: string
   clienteNome: string
   docxBlob: Blob
   docxEditavelBlob: Blob
   pdfBlob: Blob | null
   txtBlob: Blob
-  // WhatsApp
   sendWhatsApp: boolean
   whatsAppCaption?: string
+  /** Callback opcional pra mostrar progresso no UI ("Enviando docx (2.4MB)...") */
+  onProgress?: (step: string) => void
 }
 
 export interface OrcamentoUploadResult {
@@ -38,30 +39,39 @@ interface PresignResponse {
   envio?: PresignedFile
 }
 
-// Faz PUT no signed URL. Supabase aceita PUT direto com header `x-upsert: true`.
+// fetch com timeout. iOS Safari pode pendurar requests indefinidamente.
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const ac = new AbortController()
+  const t = setTimeout(() => ac.abort(), timeoutMs)
+  try {
+    return await fetch(url, { ...init, signal: ac.signal })
+  } finally {
+    clearTimeout(t)
+  }
+}
+
 async function putSigned(file: PresignedFile, blob: Blob, contentType: string, label: string): Promise<void> {
-  const t0 = Date.now()
-  // Retry 2x — rede mobile pode ser instavel
+  const sizeKb = Math.round(blob.size / 1024)
   let lastErr: Error | null = null
   for (let attempt = 1; attempt <= 2; attempt++) {
+    const t0 = Date.now()
     try {
-      const r = await fetch(file.url, {
+      const r = await fetchWithTimeout(file.url, {
         method: 'PUT',
-        headers: {
-          'content-type': contentType,
-          'x-upsert': 'true',
-        },
+        headers: { 'content-type': contentType, 'x-upsert': 'true' },
         body: blob,
-      })
+      }, 90_000) // 90s timeout por upload — generoso pra rede mobile ruim
       if (!r.ok) {
         const text = await r.text().catch(() => '')
         throw new Error(`HTTP ${r.status}: ${text.slice(0, 200)}`)
       }
-      console.log(`[upload-${label}] OK em ${Date.now() - t0}ms (${blob.size} bytes)`)
+      console.log(`[upload-${label}] ✅ ${sizeKb}KB em ${Date.now() - t0}ms`)
       return
     } catch (e) {
       lastErr = e as Error
-      console.warn(`[upload-${label}] tentativa ${attempt} falhou:`, lastErr.message)
+      const ms = Date.now() - t0
+      const isAbort = lastErr.name === 'AbortError' || /abort/i.test(lastErr.message)
+      console.warn(`[upload-${label}] ❌ tentativa ${attempt} falhou em ${ms}ms: ${isAbort ? 'TIMEOUT 90s' : lastErr.message}`)
       if (attempt < 2) await new Promise(r => setTimeout(r, 1500))
     }
   }
@@ -69,78 +79,79 @@ async function putSigned(file: PresignedFile, blob: Blob, contentType: string, l
 }
 
 export async function uploadOrcamentoViaServer(input: OrcamentoUploadInput): Promise<OrcamentoUploadResult> {
-  // 1. Pega JWT do usuario logado
-  const { data: sess } = await supabase.auth.getSession()
-  const jwt = sess?.session?.access_token
-  if (!jwt) throw new Error('Sessao expirada. Faca login de novo.')
+  const log = (s: string) => { console.log(`[orc-upload] ${s}`); input.onProgress?.(s) }
 
-  // 2. Solicita signed URLs ao endpoint /api/orcamento-presign
-  console.log('[orc-upload] solicitando presign...')
-  const presignR = await fetch('/api/orcamento-presign', {
+  // 1. Pega JWT do usuario logado. Refresh se stale.
+  log('Verificando sessao...')
+  let { data: sess } = await supabase.auth.getSession()
+  let jwt = sess?.session?.access_token
+  if (!jwt) {
+    // Tenta refresh — pode ser que session esta no localStorage mas expired
+    const { data: refreshed } = await supabase.auth.refreshSession()
+    jwt = refreshed?.session?.access_token
+  }
+  if (!jwt) throw new Error('Sessao expirada. Faca login de novo (saia e entre).')
+
+  // 2. /api/orcamento-presign
+  log('Solicitando URLs de upload...')
+  const presignR = await fetchWithTimeout('/api/orcamento-presign', {
     method: 'POST',
-    headers: {
-      'authorization': `Bearer ${jwt}`,
-      'content-type': 'application/json',
-    },
+    headers: { 'authorization': `Bearer ${jwt}`, 'content-type': 'application/json' },
     body: JSON.stringify({
-      ano: input.ano,
-      mes: input.mes,
-      base: input.base,
+      ano: input.ano, mes: input.mes, base: input.base,
       vendedor_nome: input.vendedorNome,
       withWhatsApp: input.sendWhatsApp,
     }),
-  })
+  }, 30_000)
   if (!presignR.ok) {
     const text = await presignR.text().catch(() => '')
     throw new Error(`presign HTTP ${presignR.status}: ${text.slice(0, 200)}`)
   }
   const presign = await presignR.json() as PresignResponse
-  console.log('[orc-upload] presign OK, subindo arquivos...')
+  console.log('[orc-upload] presign OK')
 
-  // 3. Sobe em PARALELO via signed URLs (Supabase Storage direto, sem limite Vercel)
+  // 3. Sobe em PARALELO via signed URLs
+  const docxKB = Math.round(input.docxBlob.size / 1024)
+  const pdfKB = input.pdfBlob ? Math.round(input.pdfBlob.size / 1024) : 0
+  log(`Subindo ${docxKB}KB docx${pdfKB ? ` + ${pdfKB}KB pdf` : ''}...`)
+
   const docxMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-  const uploads: Array<Promise<void>> = [
-    putSigned(presign.docx, input.docxBlob, docxMime, 'docx'),
-    putSigned(presign.docxEditavel, input.docxEditavelBlob, docxMime, 'docxEditavel'),
-    putSigned(presign.txt, input.txtBlob, 'text/plain;charset=utf-8', 'txt'),
+  const ops: Array<{ label: string; promise: Promise<void> }> = [
+    { label: 'docx', promise: putSigned(presign.docx, input.docxBlob, docxMime, 'docx') },
+    { label: 'docxEditavel', promise: putSigned(presign.docxEditavel, input.docxEditavelBlob, docxMime, 'docxEditavel') },
+    { label: 'txt', promise: putSigned(presign.txt, input.txtBlob, 'text/plain;charset=utf-8', 'txt') },
   ]
   if (input.pdfBlob && presign.pdf) {
-    uploads.push(putSigned(presign.pdf, input.pdfBlob, 'application/pdf', 'pdf'))
+    ops.push({ label: 'pdf', promise: putSigned(presign.pdf, input.pdfBlob, 'application/pdf', 'pdf') })
   }
   if (input.sendWhatsApp && input.pdfBlob && presign.envio) {
-    uploads.push(putSigned(presign.envio, input.pdfBlob, 'application/pdf', 'envio'))
+    ops.push({ label: 'envio', promise: putSigned(presign.envio, input.pdfBlob, 'application/pdf', 'envio') })
   }
 
-  // Aguarda todos. Se docx/envio falhar, propaga; se pdf/txt falhar, log mas continua
-  // (PDF/TXT sao auxiliares — DOCX e o que conta pra Z:\)
-  const results = await Promise.allSettled(uploads)
-  const docxOk = results[0]?.status === 'fulfilled'
-  if (!docxOk) {
-    const reason = (results[0] as PromiseRejectedResult).reason
+  const results = await Promise.allSettled(ops.map(o => o.promise))
+  const falhos = results
+    .map((r, i) => ({ r, label: ops[i].label }))
+    .filter(x => x.r.status === 'rejected')
+
+  // docx e o critico — se falhar, propaga
+  const docxResult = results[0]
+  if (docxResult.status === 'rejected') {
+    const reason: any = docxResult.reason
     throw new Error('Upload do .docx falhou: ' + (reason?.message || reason))
   }
-  // Outros falhos vao como warning
-  const falhos = results
-    .map((r, i) => ({ r, label: ['docx', 'docxEditavel', 'txt', 'pdf', 'envio'][i] }))
-    .filter(x => x.r.status === 'rejected')
   if (falhos.length > 0) {
-    console.warn('[orc-upload] uploads falhos:', falhos.map(f => f.label).join(', '))
+    log(`Aviso: ${falhos.length}/${ops.length} uploads falharam (${falhos.map(f => f.label).join(', ')})`)
   }
 
-  // 4. Confirma upload + dispara WhatsApp opcional
+  // 4. /api/orcamento-confirm — atualiza status + dispara WhatsApp
+  log('Confirmando + WhatsApp...')
   const primeiroNome = input.vendedorNome.trim().split(/\s+/)[0]?.toUpperCase()
-  console.log('[orc-upload] confirmando + whatsapp...')
-  const confirmR = await fetch('/api/orcamento-confirm', {
+  const confirmR = await fetchWithTimeout('/api/orcamento-confirm', {
     method: 'POST',
-    headers: {
-      'authorization': `Bearer ${jwt}`,
-      'content-type': 'application/json',
-    },
+    headers: { 'authorization': `Bearer ${jwt}`, 'content-type': 'application/json' },
     body: JSON.stringify({
       orcamento_id: input.orcamentoId,
-      ano: input.ano,
-      mes: input.mes,
-      base: input.base,
+      ano: input.ano, mes: input.mes, base: input.base,
       send_whatsapp: input.sendWhatsApp && input.pdfBlob != null,
       whatsapp_envio_path: presign.envio?.path,
       whatsapp_caption: input.whatsAppCaption,
@@ -148,18 +159,18 @@ export async function uploadOrcamentoViaServer(input: OrcamentoUploadInput): Pro
       vendedor_nome: primeiroNome,
       cliente_nome: input.clienteNome,
     }),
-  })
+  }, 60_000)
   if (!confirmR.ok) {
     const text = await confirmR.text().catch(() => '')
     throw new Error(`confirm HTTP ${confirmR.status}: ${text.slice(0, 200)}`)
   }
   const confirm = await confirmR.json()
-  console.log('[orc-upload] tudo OK:', confirm)
+  console.log('[orc-upload] confirm OK:', confirm)
 
   return {
     ok: true,
     arquivos: confirm.arquivos || [],
     whatsapp: confirm.whatsapp,
-    detalhes: falhos.length > 0 ? `Avisos: ${falhos.map(f => f.label).join(', ')} falharam` : undefined,
+    detalhes: falhos.length > 0 ? `${falhos.map(f => f.label).join(', ')} falharam` : undefined,
   }
 }
