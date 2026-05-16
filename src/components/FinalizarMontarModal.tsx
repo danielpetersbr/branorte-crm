@@ -19,6 +19,7 @@ import { construirFormaPagamento, type TipoPagamento, type FormaPagamentoConfig 
 import { montarNotaTxt } from '@/lib/orcamento-docx'
 import { supabase } from '@/lib/supabase'
 import { parseClienteText, titleCasePtBr } from '@/lib/parse-cliente-text'
+import { uploadOrcamentoViaServer } from '@/lib/orcamento-upload'
 
 export interface CarrinhoSnapshot {
   voltagem: 'monofasico' | 'trifasico'
@@ -615,68 +616,50 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           }
         }
       } else if (opcoes.salvarNoServidor) {
-        // 6c) Upload pro Supabase Storage. Daemon sincroniza com Z:\.
+        // 6c) Upload via /api/orcamento-presign + /api/orcamento-confirm
+        // (server-side, bypassa RLS/session stale, dispara WhatsApp atomicamente).
         setGerandoStep('Enviando pro servidor...')
+        const vendedorNome = profile?.display_name || 'Vendedor'
+        const notaTxt = montarNotaTxt(vendedorNome, hoje)
+        const txtBlob = new Blob([notaTxt], { type: 'text/plain;charset=utf-8' })
+        const ano = String(hoje.getFullYear())
+        const mes = String(hoje.getMonth() + 1).padStart(2, '0')
+
         try {
-          const ano = String(hoje.getFullYear())
-          const mes = String(hoje.getMonth() + 1).padStart(2, '0')
-          const folder = `${ano}/${mes}`
-          const docxPath = `${folder}/${base}.docx`
-          console.log('[salvar-pasta] iniciando upload', { docxPath, docxSize: docxBlob.size, pdfSize: pdfBlob?.size ?? 0 })
-
-          // Retry: até 3x com delay exponencial (rede móvel pode ser instável)
-          let docxErr: any = null
-          for (let attempt = 1; attempt <= 3; attempt++) {
-            const { error } = await supabase.storage
-              .from('orcamentos-pendentes')
-              .upload(docxPath, docxBlob, {
-                contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                upsert: true,
-              })
-            if (!error) { docxErr = null; break }
-            docxErr = error
-            console.warn(`[salvar-pasta] upload .docx tentativa ${attempt} falhou:`, error.message)
-            if (attempt < 3) await new Promise(r => setTimeout(r, 1000 * attempt))
-          }
-          if (docxErr) throw new Error('Upload .docx falhou apos 3 tentativas: ' + docxErr.message)
-          console.log('[salvar-pasta] .docx upload OK')
+          const upRes = await uploadOrcamentoViaServer({
+            orcamentoId: orc.id,
+            numero: orc.numero,
+            ano, mes, base,
+            vendedorNome,
+            clienteNome: cliNome.trim(),
+            docxBlob,
+            docxEditavelBlob,
+            pdfBlob,
+            txtBlob,
+            sendWhatsApp: enviarMeuZap && !!pdfBlob,
+            whatsAppCaption: `📄 Orçamento ${orc.numero} — ${cliNome.trim()}\n\nPersonalizado: ${descricao || sugestao}\nGerado em ${dataEmissaoBR}\n\n👇 Encaminhe pro cliente`,
+          })
           baixouDocx = true
-
-          // Upload paralelo do EDITAVEL.docx (best-effort, não bloqueia)
-          try {
-            const docxEditavelPath = `${folder}/${base} - EDITAVEL.docx`
-            await supabase.storage.from('orcamentos-pendentes').upload(docxEditavelPath, docxEditavelBlob, {
-              contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-              upsert: true,
-            })
-          } catch (e) { console.warn('Falha upload EDITAVEL:', e) }
-
-          if (pdfBlob) {
-            const pdfPath = `${folder}/${base}.pdf`
-            const { error: pdfErr2 } = await supabase.storage
-              .from('orcamentos-pendentes')
-              .upload(pdfPath, pdfBlob, { contentType: 'application/pdf', upsert: true })
-            if (!pdfErr2) baixouPdf = true
+          if (pdfBlob) baixouPdf = true
+          salvouNaPasta = true
+          // WhatsApp status (vem do server)
+          if (enviarMeuZap && pdfBlob) {
+            if (upRes.whatsapp?.ok) {
+              setWaStatus('sent')
+              setWaMsg(upRes.whatsapp.msg || 'PDF enviado pro seu WhatsApp.')
+            } else if (upRes.whatsapp?.error) {
+              setWaStatus('error')
+              setWaMsg(`WhatsApp falhou: ${upRes.whatsapp.error}`)
+            }
           }
-          // .txt com data envio (igual modelo pronto). Sync desktop copia tudo
-          // junto pra Z:\...\Orçamentos YYYY\<M> - <Mes>\
-          try {
-            const vendedorNome = profile?.display_name || 'Vendedor'
-            const notaTxt = montarNotaTxt(vendedorNome, hoje)
-            const txtPath = `${folder}/${base} - ${vendedorNome}.txt`
-            await supabase.storage
-              .from('orcamentos-pendentes')
-              .upload(txtPath, new Blob([notaTxt], { type: 'text/plain;charset=utf-8' }), {
-                contentType: 'text/plain;charset=utf-8',
-                upsert: true,
-              })
-          } catch (txtErr) { console.warn('Falha .txt upload:', txtErr) }
-          salvouNaPasta = true // marca como "salvo" pra UX igual desktop
+          if (upRes.detalhes) {
+            console.warn('[salvar-pasta]', upRes.detalhes)
+          }
         } catch (e) {
-          console.error('Falha upload Storage:', e)
-          // NAO faz fallback silencioso — vendedor PRECISA saber que nao foi pro servidor
-          // pra poder retentar / contatar suporte. Tambem baixa local pra nao perder o trabalho.
+          console.error('Falha upload via server:', e)
+          // Fallback: baixa local pra nao perder trabalho + erro visivel
           baixarBlob(docxBlob, `${base}.docx`)
+          baixarBlob(docxEditavelBlob, `${base} - EDITAVEL.docx`)
           baixouDocx = true
           if (pdfBlob) {
             baixarBlob(pdfBlob, `${base}.pdf`)
@@ -696,9 +679,9 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       }
 
       // 7) Enviar PDF pro WhatsApp do proprio vendedor (ele encaminha pro cliente)
-      // Independente de como salvou (pasta/servidor/download), faz upload temporario
-      // pra _envios/ (path com `_` é ignorado pelo sync) e dispara edge function.
-      if (enviarMeuZap && pdfBlob) {
+      // Se foi salvarNoServidor, o WhatsApp ja foi disparado pelo helper /api/orcamento-confirm.
+      // Esse bloco serve so pros casos salvarNaPasta (FileSystem local) ou download direto.
+      if (enviarMeuZap && pdfBlob && !opcoes.salvarNoServidor) {
         setWaStatus('sending')
         setWaMsg('Enviando pro seu WhatsApp...')
         try {

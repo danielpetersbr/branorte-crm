@@ -5,3 +5,6 @@ dist
 /import-orcamentos.ts
 .vercel
 scripts/.env
+
+.env*.local
+.env.production
