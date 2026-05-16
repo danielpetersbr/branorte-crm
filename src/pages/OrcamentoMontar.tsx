@@ -333,6 +333,7 @@ export function OrcamentoMontar() {
       motor_valor_unit: motorMatch ? Number(motorMatch.valor) : 0,
       foto_url: data.foto_url,
     }])
+    autoAdicionarBalancaSeCompacta(data.nome)
 
     // Se vendedor marcou pra enviar pro admin avaliar, grava em catalogo_items_pendentes
     if (data.enviarParaAprovacao) {
@@ -460,6 +461,34 @@ export function OrcamentoMontar() {
     return p.descricao.toUpperCase()
   }
 
+  // REGRA DE NEGOCIO: Compacta 02/03 SEMPRE acompanha balanca eletronica 2000kg
+  // como componente adicional (R$ 8.728). Vendedor pode remover depois.
+  // Disparado apos adicionar qualquer item Compacta 02 ou 03.
+  function autoAdicionarBalancaSeCompacta(nomeItem: string) {
+    const nome = nomeItem.toUpperCase()
+    const eCompacta23 = /COMPACTA\s*0?[23]\b/.test(nome)
+    if (!eCompacta23) return
+
+    const NOME_BALANCA = 'Balança Eletrônica 2000 kg'
+    // Ja tem alguma balanca eletronica 2000kg nos componentes? evita duplicar
+    const jaExiste = componentesExtras.some(c =>
+      /balan.a.*el.tr.nica.*2000/i.test(c.nome.trim())
+    )
+    if (jaExiste) return
+
+    // Busca preco no cadastro precos_branorte (categoria BALANCA)
+    const balancaPreco = (precos ?? []).find(p =>
+      p.categoria === 'BALANCA' && /balan.a.*el.tr.nica.*2000/i.test(p.descricao)
+    )
+    const valor = balancaPreco?.valor_equipamento ? Number(balancaPreco.valor_equipamento) : 8728
+
+    setComponentesExtras(arr => [...arr, {
+      id: `auto-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      nome: NOME_BALANCA,
+      valor,
+    }])
+  }
+
   // Adiciona item ao carrinho direto de uma entrada de precos_branorte.
   // Faz lookup do catalogo_items linkado (via preco_branorte_id) pra puxar
   // foto e specs curadas. Se não tiver match, gera specs dinamicamente.
@@ -578,6 +607,7 @@ export function OrcamentoMontar() {
       foto_url: fotoFinal,
       usa_inversor: !!(ciLinkado?.usa_inversor),
     }])
+    autoAdicionarBalancaSeCompacta(nomeBase)
   }
 
   function adicionarItem(item: CatalogoItem, funcaoEscolhida?: string) {
@@ -629,6 +659,7 @@ export function OrcamentoMontar() {
       funcao_selecionada: funcao,
       ocultar_funcao_no_pdf: !!item.ocultar_funcao_no_pdf,
     }])
+    autoAdicionarBalancaSeCompacta(item.nome_curto)
   }
 
   function removerItem(uid: string) {
