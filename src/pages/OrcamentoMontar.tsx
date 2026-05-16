@@ -5,7 +5,7 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import {
   Sparkles, Search, Plus, Minus, Trash2, Package,
   Zap, X, AlertCircle, Star, FileText, Eye, ListChecks, Check, Loader2, FolderOpen,
-  Save, RotateCcw,
+  Save, RotateCcw, ChevronRight,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import {
@@ -173,7 +173,10 @@ export function OrcamentoMontar() {
   const [showOnlyOficiais, setShowOnlyOficiais] = useState(true)  // default: só items curados
   const [modoVisao, setModoVisao] = useState<ModoVisao>('preview')
   // Mobile-only: alterna entre catálogo e preview (ambos ocupam tela cheia em mobile)
-  const [mobileTab, setMobileTab] = useState<'catalogo' | 'preview'>('catalogo')
+  // Default = 'preview': mobile abre direto na previa do orcamento. Catalogo
+  // vira sheet/tab secundaria. Vendedor ve o que esta montando, e abre
+  // catalogo so quando precisa adicionar item.
+  const [mobileTab, setMobileTab] = useState<'catalogo' | 'preview'>('preview')
   const [finalizarOpen, setFinalizarOpen] = useState(false)
   const [sucesso, setSucesso] = useState<{ numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string } | null>(null)
   const [enviandoWA, setEnviandoWA] = useState<'idle' | 'enviando' | 'enviado' | 'erro'>('idle')
@@ -1148,58 +1151,63 @@ export function OrcamentoMontar() {
         </div>
       </div>
 
-      {/* ⚡ Modelos Prontos — atalho destacado pros 65 pacotes Compactas + Mini Fábrica */}
-      <div className="bg-gradient-to-r from-accent/10 via-accent/5 to-transparent border border-accent/30 rounded-lg px-3 py-2.5">
-        <div className="flex items-start gap-3 flex-wrap">
-          <div className="flex items-center gap-2 shrink-0">
-            <Sparkles className="h-4 w-4 text-accent" />
-            <div>
-              <div className="text-[10px] uppercase font-bold text-accent tracking-wider">Modelos Prontos</div>
-              <div className="text-[11px] text-ink-muted">Carrega itens + motores + acessórios de uma vez</div>
-            </div>
+      {/* ⚡ Modelos Prontos — atalho pros 65 pacotes Compactas + Mini Fabrica.
+          Em mobile: collapsible, default fechado se ja tem itens no carrinho. */}
+      <details
+        className="group bg-gradient-to-r from-accent/10 via-accent/5 to-transparent border border-accent/30 rounded-lg overflow-hidden"
+        open={carrinho.length === 0}
+      >
+        <summary className="cursor-pointer flex items-center gap-2 px-3 py-2 select-none">
+          <ChevronRight className="h-3.5 w-3.5 text-accent transition-transform group-open:rotate-90" />
+          <Sparkles className="h-4 w-4 text-accent" />
+          <div className="flex-1">
+            <div className="text-[10px] uppercase font-bold text-accent tracking-wider">Modelos Prontos</div>
+            <div className="text-[11px] text-ink-muted hidden sm:block">Carrega itens + motores + acessórios de uma vez</div>
           </div>
-          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-1.5 sm:ml-auto w-full sm:w-auto">
-            {[
-              { label: 'Compacta 01', pacote: 'COMPACTA 01', qtd: 22 },
-              { label: 'Compacta 02', pacote: 'COMPACTA 02', qtd: 21 },
-              { label: 'Compacta 03', pacote: 'COMPACTA 03', qtd: 20 },
-              { label: 'Mini Fábrica', pacote: 'MINI FABRICA', qtd: 2 },
-            ].map(b => (
-              <button
-                key={b.pacote}
-                onClick={() => setPacotePicker({ open: true, initialPacote: b.pacote })}
-                className="text-[13px] sm:text-[11px] px-3 py-2.5 sm:py-1.5 rounded-md font-semibold bg-accent/15 active:bg-accent/35 hover:bg-accent/25 text-accent border border-accent/30 flex items-center justify-center sm:justify-start gap-1.5 transition-colors min-h-[44px] sm:min-h-0"
-              >
-                <Package className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
-                {b.label}
-                <span className="text-[10px] opacity-70">({b.qtd})</span>
-              </button>
-            ))}
-          </div>
+          <span className="text-[10px] text-ink-faint">4 pacotes</span>
+        </summary>
+        <div className="px-3 pb-2.5 grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-1.5">
+          {[
+            { label: 'Compacta 01', pacote: 'COMPACTA 01', qtd: 22 },
+            { label: 'Compacta 02', pacote: 'COMPACTA 02', qtd: 21 },
+            { label: 'Compacta 03', pacote: 'COMPACTA 03', qtd: 20 },
+            { label: 'Mini Fábrica', pacote: 'MINI FABRICA', qtd: 2 },
+          ].map(b => (
+            <button
+              key={b.pacote}
+              onClick={() => setPacotePicker({ open: true, initialPacote: b.pacote })}
+              className="text-[13px] sm:text-[11px] px-3 py-2.5 sm:py-1.5 rounded-md font-semibold bg-accent/15 active:bg-accent/35 hover:bg-accent/25 text-accent border border-accent/30 flex items-center justify-center sm:justify-start gap-1.5 transition-colors min-h-[44px] sm:min-h-0"
+            >
+              <Package className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
+              {b.label}
+              <span className="text-[10px] opacity-70">({b.qtd})</span>
+            </button>
+          ))}
         </div>
-      </div>
+      </details>
 
-      {/* Tabs mobile-only — alterna entre catálogo e preview pra não empilhar */}
+      {/* Tabs mobile-only — Preview e o foco, Catalogo e secao secundaria pra adicionar.
+          Preview vem primeiro porque e default; Catalogo pra acao "+ adicionar item" */}
       <div className="lg:hidden flex items-center gap-1 bg-surface-2 rounded-lg p-1">
-        <button
-          onClick={() => setMobileTab('catalogo')}
-          className={`flex-1 text-[14px] px-3 py-3 rounded-md font-bold transition-colors min-h-[48px] ${
-            mobileTab === 'catalogo' ? 'bg-accent text-white' : 'text-ink-muted active:bg-surface-3'
-          }`}
-        >📋 Catálogo</button>
         <button
           onClick={() => setMobileTab('preview')}
           className={`flex-1 text-[14px] px-3 py-3 rounded-md font-bold transition-colors relative min-h-[48px] ${
             mobileTab === 'preview' ? 'bg-accent text-white' : 'text-ink-muted active:bg-surface-3'
           }`}
         >
-          📄 Preview
+          📄 Orçamento
           {carrinho.length > 0 && (
             <span className={`absolute -top-1 -right-1 text-[10px] font-bold rounded-full h-5 min-w-[20px] px-1 flex items-center justify-center ${
               mobileTab === 'preview' ? 'bg-white text-accent' : 'bg-accent text-white'
             }`}>{carrinho.length}</span>
           )}
         </button>
+        <button
+          onClick={() => setMobileTab('catalogo')}
+          className={`flex-1 text-[14px] px-3 py-3 rounded-md font-bold transition-colors min-h-[48px] ${
+            mobileTab === 'catalogo' ? 'bg-accent text-white' : 'text-ink-muted active:bg-surface-3'
+          }`}
+        >+ Adicionar</button>
       </div>
 
       {/* Grid 2 colunas: catálogo fixo 340px (suficiente pros cards) + preview pega TODO o resto */}
