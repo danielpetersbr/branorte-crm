@@ -1752,47 +1752,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             </div>
           </div>
 
-          {(() => {
-            // Usa lista dinâmica do banco se passada, senão fallback hardcoded antigo
-            const lista = (vendedoresContato && vendedoresContato.length > 0)
-              ? vendedoresContato
-              : [
-                { nome: 'Patrick Alves', telefone: '(48) 9 9698-4660' },
-                { nome: 'Edilson', telefone: '(48) 9 9991-2329' },
-                { nome: 'Daniel', telefone: '(48) 9 8469-2860' },
-              ]
-            // Sempre adiciona Branorte geral no final se nao estiver na lista
-            const temBranorte = lista.some(v => /^branorte$/i.test(v.nome.trim()))
-            const finalList = temBranorte ? lista : [...lista, { nome: 'Branorte', telefone: '(48) 3658-4502' }]
-            // Limita a 8 cards pra nao explodir o layout (grid 4 colunas, 2 linhas)
-            const display = finalList.slice(0, 8)
-            // Normaliza nome do vendedor responsavel pra match
-            const respNorm = (vendedorResponsavelNome || '').trim().toLowerCase()
-            return (
-              <div data-no-break className="grid grid-cols-4 gap-2 mt-3 text-[13px] text-center">
-                {display.map(({ nome, telefone }) => {
-                  const isResp = respNorm && nome.trim().toLowerCase().startsWith(respNorm.split(/\s+/)[0])
-                  return (
-                    <div
-                      key={nome}
-                      className={`py-2 px-1.5 rounded border min-h-[52px] flex flex-col justify-center items-center leading-tight ${
-                        isResp
-                          ? 'bg-blue-50 border-blue-400'
-                          : 'bg-gray-50 border-gray-200'
-                      }`}
-                    >
-                      <div className={`font-bold text-[13.5px] truncate w-full ${isResp ? 'text-blue-900' : 'text-gray-800'}`}>
-                        {nome}
-                      </div>
-                      <div className={`text-[12.5px] tabular-nums whitespace-nowrap mt-0.5 ${isResp ? 'text-blue-800' : 'text-gray-600'}`}>
-                        {telefone}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )
-          })()}
+          {/* Grid de vendedores REMOVIDO (user pediu — poluia o rodape).
+              Contato principal continua no header 'DADOS DO FABRICANTE' acima. */}
 
           <div data-no-break>
             <SectionHeader>Conta para Depósito</SectionHeader>
