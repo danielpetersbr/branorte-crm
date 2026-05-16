@@ -432,7 +432,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   }, [renderMode, carrinho, motoresAgrupados, acessorios])
 
   return (
-    <div ref={containerRef} className="text-[15px] text-gray-900 leading-relaxed font-sans bg-white">
+    <div ref={containerRef} className={`text-gray-900 leading-relaxed font-sans bg-white ${renderMode ? 'text-[16px]' : 'text-[15px]'}`}>
       {/* Em mobile, padding menor pra ganhar espaço lateral. Tabelas internas
           (motores, parcelas, componentes) já têm overflow-x próprio quando precisam. */}
       {/* Borda UNICA envolvendo o orcamento inteiro (nao mais por folha — molduras
@@ -516,15 +516,20 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
           {fotoPrincipal ? (
             <div data-no-break className="group relative mb-3 border border-gray-700 rounded-md p-2 bg-white shadow-sm" style={{ zIndex: 1 }}>
-              <div className="w-full flex items-center justify-center bg-white">
+              <div className="w-full flex items-center justify-center bg-white" style={{ minHeight: '300px' }}>
                 <img
                   src={fotoPrincipal}
                   alt="Foto da fábrica"
-                  className="h-auto object-contain"
-                  // Foto principal MAIOR pra destacar o desenho da fabrica.
-                  // Pode encostar nas bordas (user pediu) — 380px de altura,
-                  // 100% largura. Itens orcados ficam abaixo numa pagina nova.
-                  style={{ maxHeight: '380px', maxWidth: '100%', width: '100%' }}
+                  // object-contain preserva aspect ratio (NUNCA estica)
+                  // width/height auto + max constraint pra nao amassar
+                  style={{
+                    maxHeight: '380px',
+                    maxWidth: '100%',
+                    width: 'auto',
+                    height: 'auto',
+                    objectFit: 'contain',
+                    display: 'block',
+                  }}
                   crossOrigin="anonymous"
                 />
               </div>

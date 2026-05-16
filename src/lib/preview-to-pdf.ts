@@ -32,12 +32,14 @@ export async function gerarPdfDoPreview(
 ): Promise<Blob> {
   const pageWidthMm = opts.pageWidth ?? 210
   const pageHeightMm = opts.pageHeight ?? 297
-  // scale alto = texto mais nítido. 4 = high-DPI sharp, sem custo perceptível
-  // de tempo (html2canvas é o gargalo, não a quantidade de pixels).
-  const scale = opts.scale ?? 4
-  // 1024px = breakpoint lg do Tailwind (classes responsivas continuam funcionando).
-  // Container menor (ex: 750) QUEBRA o layout do OrcamentoPreview (testado).
-  const containerWidthPx = opts.containerWidthPx ?? 1024
+  // scale 5 = high-DPI muito nitido (era 4)
+  const scale = opts.scale ?? 5
+  // 800px ≈ A4 portrait em 96dpi (210mm = ~793px). Renderiza no MESMO tamanho
+  // que vai pro PDF — fonts ficam absolutas (nao mais 'scaled down').
+  // OBS: classes responsivas Tailwind 'lg:' (1024px+) NAO ativam, mas no
+  // OrcamentoPreview os elementos principais usam media queries m-2 lg:m-4
+  // que tem fallback aceitavel pra <1024.
+  const containerWidthPx = opts.containerWidthPx ?? 800
 
   // 1) Cria container off-screen com largura fixa pra o preview renderizar consistente
   const host = document.createElement('div')
