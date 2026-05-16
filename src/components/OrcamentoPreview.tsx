@@ -435,17 +435,24 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     <div ref={containerRef} className="text-[15px] text-gray-900 leading-relaxed font-sans bg-white">
       {/* Em mobile, padding menor pra ganhar espaço lateral. Tabelas internas
           (motores, parcelas, componentes) já têm overflow-x próprio quando precisam. */}
-      <div ref={innerRef} className={`m-2 lg:m-4 px-3 lg:px-6 pt-4 lg:pt-5 pb-5 lg:pb-6 relative ${renderMode ? '' : (folhas.length === 0 ? 'border border-gray-900' : '')}`}>
-        {/* Molduras INDEPENDENTES por folha A4 (so em modo edit + multi-pagina).
-            z-index NEGATIVO pra ficar ATRAS do conteudo (estava cortando cards
-            de acessorios visualmente). Border mais clara pra ser menos intrusiva. */}
+      {/* Borda UNICA envolvendo o orcamento inteiro (nao mais por folha — molduras
+          por folha estavam riscando os cards no meio). Linhas pontilhadas indicam
+          quebra de pagina A4 sem ficar visualmente intrusivo. */}
+      <div ref={innerRef} className={`m-2 lg:m-4 px-3 lg:px-6 pt-4 lg:pt-5 pb-5 lg:pb-6 relative ${renderMode ? '' : 'border border-gray-900'}`}>
+        {/* Marcadores de quebra de pagina (so linha pontilhada horizontal) */}
         {!renderMode && folhas.length > 1 && (
           <div className="absolute inset-0 pointer-events-none" aria-hidden="true" style={{ zIndex: 0 }}>
-            {folhas.map((f, i) => (
+            {folhas.slice(0, -1).map((f, i) => (
               <div
                 key={i}
-                className="absolute left-0 right-0 border border-gray-300"
-                style={{ top: `${f.top}px`, height: `${f.bottom - f.top}px`, zIndex: 0 }}
+                className="absolute left-4 right-4"
+                style={{
+                  top: `${f.bottom}px`,
+                  height: 0,
+                  borderTop: '1px dashed #d1d5db',
+                  zIndex: 0,
+                }}
+                aria-label={`Quebra folha ${i + 1}`}
               />
             ))}
           </div>
