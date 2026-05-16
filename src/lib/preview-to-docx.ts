@@ -36,8 +36,8 @@ export async function gerarDocxDoPreview(
   const pageWidthMm = opts.pageWidth ?? 210
   const pageHeightMm = opts.pageHeight ?? 297
   const scale = opts.scale ?? 5
-  // 800px = A4 portrait (210mm). Garante fonts no tamanho real do PDF.
-  const containerWidthPx = opts.containerWidthPx ?? 800
+  // 1024px = breakpoint lg Tailwind. Reverti de 800 (quebrava preview).
+  const containerWidthPx = opts.containerWidthPx ?? 1024
 
   // 1) Cria container off-screen
   const host = document.createElement('div')
