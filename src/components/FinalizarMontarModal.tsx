@@ -591,21 +591,30 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           }
         }
       } else if (opcoes.salvarNoServidor) {
-        // 6c) Mobile: upload pro Supabase Storage. Job desktop sincroniza
-        // depois com a pasta Z:\. Path organizado por ano/mes pra facilitar:
-        // orcamentos-pendentes/2026/05/2026-0803-cliente_nome.{docx,pdf}
+        // 6c) Upload pro Supabase Storage. Daemon sincroniza com Z:\.
         try {
           const ano = String(hoje.getFullYear())
           const mes = String(hoje.getMonth() + 1).padStart(2, '0')
           const folder = `${ano}/${mes}`
           const docxPath = `${folder}/${base}.docx`
-          const { error: docxErr } = await supabase.storage
-            .from('orcamentos-pendentes')
-            .upload(docxPath, docxBlob, {
-              contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-              upsert: true,
-            })
-          if (docxErr) throw new Error('Upload .docx: ' + docxErr.message)
+          console.log('[salvar-pasta] iniciando upload', { docxPath, docxSize: docxBlob.size, pdfSize: pdfBlob?.size ?? 0 })
+
+          // Retry: até 3x com delay exponencial (rede móvel pode ser instável)
+          let docxErr: any = null
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            const { error } = await supabase.storage
+              .from('orcamentos-pendentes')
+              .upload(docxPath, docxBlob, {
+                contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                upsert: true,
+              })
+            if (!error) { docxErr = null; break }
+            docxErr = error
+            console.warn(`[salvar-pasta] upload .docx tentativa ${attempt} falhou:`, error.message)
+            if (attempt < 3) await new Promise(r => setTimeout(r, 1000 * attempt))
+          }
+          if (docxErr) throw new Error('Upload .docx falhou apos 3 tentativas: ' + docxErr.message)
+          console.log('[salvar-pasta] .docx upload OK')
           baixouDocx = true
 
           // Upload paralelo do EDITAVEL.docx (best-effort, não bloqueia)
