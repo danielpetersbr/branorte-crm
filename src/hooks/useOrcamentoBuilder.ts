@@ -162,7 +162,8 @@ export async function subirModeloCustomizado(input: SubirModeloInput): Promise<O
 // Lista todos os modelos (catalogo Branorte)
 export function useOrcamentoModelos() {
   return useQuery({
-    queryKey: ['orcamento-modelos'],
+    // queryKey bumped v3 — invalidar caches antigos com total_proposta sem acessorios
+    queryKey: ['orcamento-modelos-v3'],
     queryFn: async (): Promise<OrcamentoModelo[]> => {
       const { data, error } = await supabase
         .from('orcamento_modelos')
@@ -174,9 +175,10 @@ export function useOrcamentoModelos() {
       if (error) throw error
       return (data ?? []) as OrcamentoModelo[]
     },
-    staleTime: 60_000,         // 1min — catalogo nao deveria ser cacheado por 1h
-    refetchOnMount: 'always',  // sempre revalida ao abrir a tela
-    refetchOnWindowFocus: true, // revalida ao voltar pra aba
+    staleTime: 0,              // sempre considera dados stale
+    gcTime: 60_000,            // limpa do cache apos 1 min sem uso
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   })
 }
 
