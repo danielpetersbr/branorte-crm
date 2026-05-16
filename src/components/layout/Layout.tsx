@@ -67,13 +67,26 @@ const SECONDARY: NavItem[] = [
 
 function useDarkMode(): [boolean, () => void] {
   const [dark, setDark] = useState(() => {
-    if (typeof window === 'undefined') return false
-    return document.documentElement.classList.contains('dark') || localStorage.getItem('theme') === 'dark'
+    if (typeof window === 'undefined') return true
+    const saved = localStorage.getItem('theme')
+    if (saved === 'dark') return true
+    if (saved === 'light') return false
+    // Sem preferencia salva: usa prefers-color-scheme do sistema (com fallback dark)
+    if (window.matchMedia('(prefers-color-scheme: dark)').matches) return true
+    return true // Default agora e DARK — mais moderno
   })
   useEffect(() => {
     const root = document.documentElement
-    if (dark) { root.classList.add('dark'); localStorage.setItem('theme', 'dark') }
-    else      { root.classList.remove('dark'); localStorage.setItem('theme', 'light') }
+    if (dark) {
+      root.classList.add('dark')
+      localStorage.setItem('theme', 'dark')
+      // Atualiza meta theme-color pra status bar do iOS PWA combinar
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#0d0d11')
+    } else {
+      root.classList.remove('dark')
+      localStorage.setItem('theme', 'light')
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#fafafb')
+    }
   }, [dark])
   return [dark, () => setDark(d => !d)]
 }

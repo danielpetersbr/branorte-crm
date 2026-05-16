@@ -11,7 +11,9 @@
 
     <!-- PWA: instalável no celular (Android/iOS) e desktop -->
     <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#00A859" />
+    <meta name="theme-color" content="#0d0d11" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#fafafb" media="(prefers-color-scheme: light)" />
+    <meta name="color-scheme" content="dark light" />
     <meta name="application-name" content="Branorte CRM" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -20,6 +22,19 @@
     <link rel="apple-touch-icon" href="/icon.svg" />
 
     <script>
+      // FLASH-FREE THEME: aplica .dark ANTES do React render pra evitar
+      // flash branco em PWA dark mode. Roda inline antes do bundle JS.
+      (function() {
+        try {
+          var saved = localStorage.getItem('theme')
+          var dark = saved === 'dark' ||
+            (saved !== 'light' && (saved === null || window.matchMedia('(prefers-color-scheme: dark)').matches || true))
+          if (dark) document.documentElement.classList.add('dark')
+        } catch (_) {
+          document.documentElement.classList.add('dark') // fallback: dark
+        }
+      })()
+
       // Registra service worker novo (sw.js). Antes só limpava SWs antigos.
       // SW novo cuida do cache pra PWA install funcionar + offline básico.
       if ('serviceWorker' in navigator) {

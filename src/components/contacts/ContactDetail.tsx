@@ -113,8 +113,8 @@ export function ContactDetail({ contact, onClose }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-white shadow-xl overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b border-surface-border p-4 flex items-center justify-between z-10">
+      <div className="relative w-full max-w-lg bg-bg shadow-xl overflow-y-auto">
+        <div className="sticky top-0 bg-bg border-b border-border p-4 flex items-center justify-between z-10">
           <h2 className="font-semibold text-lg text-text-primary">Detalhes do Contato</h2>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-surface-tertiary">
             <X className="h-5 w-5 text-text-muted" />
@@ -216,7 +216,7 @@ export function ContactDetail({ contact, onClose }: Props) {
                   className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
                     meta.temp === t.value
                       ? t.color + ' ring-2 ring-offset-1 ring-current'
-                      : 'bg-white text-text-muted border-surface-border hover:bg-surface-secondary'
+                      : 'bg-surface text-ink-muted border-border hover:bg-surface-2'
                   }`}
                 >
                   {t.icon} {t.label}
