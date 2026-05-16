@@ -65,28 +65,31 @@ const SECONDARY: NavItem[] = [
   { to: '/disparos', label: 'Roteamento', icon: GitBranch },
 ]
 
+// MIGRACAO 2026-05-16: app virou dark-default. Usa key 'theme-v2' pra
+// IGNORAR 'theme: light' salvo antes (usuario nao escolheu light de fato,
+// era o default antigo). Quem clicar no toggle aqui pra frente vira 'v2'.
 function useDarkMode(): [boolean, () => void] {
   const [dark, setDark] = useState(() => {
     if (typeof window === 'undefined') return true
-    const saved = localStorage.getItem('theme')
+    const saved = localStorage.getItem('theme-v2')
     if (saved === 'dark') return true
     if (saved === 'light') return false
-    // Sem preferencia salva: usa prefers-color-scheme do sistema (com fallback dark)
-    if (window.matchMedia('(prefers-color-scheme: dark)').matches) return true
-    return true // Default agora e DARK — mais moderno
+    // Sem preferencia v2: ignora 'theme' antigo, default dark
+    return true
   })
   useEffect(() => {
     const root = document.documentElement
     if (dark) {
       root.classList.add('dark')
-      localStorage.setItem('theme', 'dark')
-      // Atualiza meta theme-color pra status bar do iOS PWA combinar
+      localStorage.setItem('theme-v2', 'dark')
       document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#0d0d11')
     } else {
       root.classList.remove('dark')
-      localStorage.setItem('theme', 'light')
+      localStorage.setItem('theme-v2', 'light')
       document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#fafafb')
     }
+    // Limpa key legada pra evitar confusao
+    try { localStorage.removeItem('theme') } catch {}
   }, [dark])
   return [dark, () => setDark(d => !d)]
 }

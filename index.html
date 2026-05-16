@@ -24,14 +24,15 @@
     <script>
       // FLASH-FREE THEME: aplica .dark ANTES do React render pra evitar
       // flash branco em PWA dark mode. Roda inline antes do bundle JS.
+      // Usa key 'theme-v2' (migracao do 'theme' antigo) pra dark default funcionar
+      // mesmo pra usuarios que ja tinham 'light' salvo no localStorage.
       (function() {
         try {
-          var saved = localStorage.getItem('theme')
-          var dark = saved === 'dark' ||
-            (saved !== 'light' && (saved === null || window.matchMedia('(prefers-color-scheme: dark)').matches || true))
-          if (dark) document.documentElement.classList.add('dark')
+          var saved = localStorage.getItem('theme-v2')
+          // Default dark a nao ser que user EXPLICITAMENTE escolheu light na v2
+          if (saved !== 'light') document.documentElement.classList.add('dark')
         } catch (_) {
-          document.documentElement.classList.add('dark') // fallback: dark
+          document.documentElement.classList.add('dark')
         }
       })()
 
