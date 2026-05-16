@@ -302,7 +302,7 @@ export function Layout() {
         </div>
       </aside>
 
-      <main className="flex-1 min-w-0 min-h-screen pb-16 md:pb-0">
+      <main className="flex-1 min-w-0 min-h-screen pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
         <Suspense fallback={<PageLoading />}>
           <Outlet />
         </Suspense>
@@ -311,7 +311,7 @@ export function Layout() {
       {/* FAB global de feedback (visivel em todas as paginas autenticadas) */}
       <RoadmapFAB />
 
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-bg/95 backdrop-blur border-t border-border flex items-center justify-around px-2 py-1.5 z-50">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-bg/95 backdrop-blur border-t border-border flex items-center justify-around px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] z-50">
         {PRIMARY.concat(SECONDARY).slice(0, 5).map(l => (
           <NavLink
             key={l.to}

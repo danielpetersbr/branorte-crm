@@ -718,7 +718,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => !gerando && onClose()}>
       <div
-        className="bg-bg border border-border rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto"
+        className="bg-bg border border-border rounded-lg max-w-3xl w-full max-h-[100dvh] sm:max-h-[90vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-bg z-10">
@@ -833,21 +833,21 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             )}
           </div>
 
-          {/* Dados do cliente (compacto) — grid 2 colunas */}
+          {/* Dados do cliente (compacto) — grid 2 colunas + inputmode apropriado */}
           <div className="grid grid-cols-2 gap-2">
-            <Input placeholder="A/C (contato)" value={cliDados.ac ?? ''} onChange={e => setCliDados(d => ({ ...d, ac: e.target.value }))} className="text-[12px]" />
-            <Input placeholder="Telefone" value={cliDados.fone ?? ''} onChange={e => setCliDados(d => ({ ...d, fone: e.target.value }))} className="text-[12px]" />
-            <Input placeholder="Endereço" value={cliDados.endereco ?? ''} onChange={e => setCliDados(d => ({ ...d, endereco: e.target.value }))} className="text-[12px] col-span-2" />
-            <Input placeholder="Bairro" value={cliDados.bairro ?? ''} onChange={e => setCliDados(d => ({ ...d, bairro: e.target.value }))} className="text-[12px]" />
-            <Input placeholder="CEP" value={cliDados.cep ?? ''} onChange={e => setCliDados(d => ({ ...d, cep: e.target.value }))} className="text-[12px]" />
+            <Input placeholder="A/C (contato)" autoComplete="name" value={cliDados.ac ?? ''} onChange={e => setCliDados(d => ({ ...d, ac: e.target.value }))} />
+            <Input placeholder="Telefone" type="tel" inputMode="tel" autoComplete="tel" value={cliDados.fone ?? ''} onChange={e => setCliDados(d => ({ ...d, fone: e.target.value }))} />
+            <Input placeholder="Endereço" autoComplete="street-address" value={cliDados.endereco ?? ''} onChange={e => setCliDados(d => ({ ...d, endereco: e.target.value }))} className="col-span-2" />
+            <Input placeholder="Bairro" value={cliDados.bairro ?? ''} onChange={e => setCliDados(d => ({ ...d, bairro: e.target.value }))} />
+            <Input placeholder="CEP" inputMode="numeric" autoComplete="postal-code" value={cliDados.cep ?? ''} onChange={e => setCliDados(d => ({ ...d, cep: e.target.value }))} />
             {/* Cidade + UF lado a lado no mesmo input */}
             <div className="col-span-2 flex gap-2">
-              <Input placeholder="Cidade" value={cliDados.cidade ?? ''} onChange={e => setCliDados(d => ({ ...d, cidade: e.target.value }))} className="text-[12px] flex-1" />
-              <Input placeholder="UF" value={cliDados.uf ?? ''} onChange={e => setCliDados(d => ({ ...d, uf: e.target.value.toUpperCase().slice(0, 2) }))} className="text-[12px] w-16 uppercase text-center" maxLength={2} />
+              <Input placeholder="Cidade" autoComplete="address-level2" value={cliDados.cidade ?? ''} onChange={e => setCliDados(d => ({ ...d, cidade: e.target.value }))} className="flex-1" />
+              <Input placeholder="UF" autoComplete="address-level1" value={cliDados.uf ?? ''} onChange={e => setCliDados(d => ({ ...d, uf: e.target.value.toUpperCase().slice(0, 2) }))} className="w-16 uppercase text-center" maxLength={2} />
             </div>
-            <Input placeholder="CPF / CNPJ" value={cliDados.cnpj ?? ''} onChange={e => setCliDados(d => ({ ...d, cnpj: e.target.value }))} className="text-[12px]" />
-            <Input placeholder="Inscrição Estadual" value={cliDados.ie ?? ''} onChange={e => setCliDados(d => ({ ...d, ie: e.target.value }))} className="text-[12px]" />
-            <Input placeholder="E-mail" value={cliDados.email ?? ''} onChange={e => setCliDados(d => ({ ...d, email: e.target.value }))} className="text-[12px] col-span-2" />
+            <Input placeholder="CPF / CNPJ" inputMode="numeric" value={cliDados.cnpj ?? ''} onChange={e => setCliDados(d => ({ ...d, cnpj: e.target.value }))} />
+            <Input placeholder="Inscrição Estadual" inputMode="numeric" value={cliDados.ie ?? ''} onChange={e => setCliDados(d => ({ ...d, ie: e.target.value }))} />
+            <Input placeholder="E-mail" type="email" inputMode="email" autoComplete="email" value={cliDados.email ?? ''} onChange={e => setCliDados(d => ({ ...d, email: e.target.value }))} className="col-span-2" />
           </div>
 
           {/* Forma de pagamento */}
@@ -984,7 +984,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
 
         {/* Footer: empilha em mobile, lado-a-lado em desktop. CTA principal
             em cima (mais touch-friendly) e ocupa largura total. */}
-        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 p-4 border-t border-border sticky bottom-0 bg-bg">
+        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] border-t border-border sticky bottom-0 bg-bg">
           <button
             onClick={onClose}
             disabled={gerando}

@@ -73,7 +73,32 @@ export default {
         lg: '12px',
         xl: '16px',
       },
+      // Safe-area utilities pra iOS (notch/home bar)
+      // Uso: pb-safe, pt-safe, pl-safe, pr-safe, h-safe-screen
+      spacing: {
+        safe: 'env(safe-area-inset-bottom)',
+        'safe-top': 'env(safe-area-inset-top)',
+        'safe-left': 'env(safe-area-inset-left)',
+        'safe-right': 'env(safe-area-inset-right)',
+      },
+      maxHeight: {
+        'dvh': '100dvh',
+        'dvh-safe': 'calc(100dvh - env(safe-area-inset-bottom))',
+      },
     },
   },
-  plugins: [],
+  plugins: [
+    // Utilitarios pb-safe / pt-safe / pl-safe / pr-safe
+    function ({ addUtilities }) {
+      addUtilities({
+        '.pb-safe': { paddingBottom: 'env(safe-area-inset-bottom)' },
+        '.pt-safe': { paddingTop: 'env(safe-area-inset-top)' },
+        '.pl-safe': { paddingLeft: 'env(safe-area-inset-left)' },
+        '.pr-safe': { paddingRight: 'env(safe-area-inset-right)' },
+        '.mb-safe': { marginBottom: 'env(safe-area-inset-bottom)' },
+        '.mt-safe': { marginTop: 'env(safe-area-inset-top)' },
+        '.bottom-safe': { bottom: 'env(safe-area-inset-bottom)' },
+      })
+    },
+  ],
 }

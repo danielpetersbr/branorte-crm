@@ -24,7 +24,8 @@ export function MobileFAB() {
       to="/orcamentos/montar"
       title="Novo orçamento"
       aria-label="Novo orçamento"
-      className="lg:hidden fixed bottom-20 right-4 z-40 h-14 w-14 rounded-full bg-accent text-white shadow-2xl flex items-center justify-center hover:bg-accent/90 active:scale-95 transition-all"
+      className="lg:hidden fixed right-4 z-40 h-14 w-14 rounded-full bg-accent text-white shadow-2xl flex items-center justify-center hover:bg-accent/90 active:scale-95 transition-all"
+      style={{ bottom: 'calc(5rem + env(safe-area-inset-bottom))' }}
     >
       <FilePlus2 className="h-6 w-6" />
     </Link>

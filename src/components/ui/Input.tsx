@@ -13,7 +13,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         <input
           ref={ref}
           className={cn(
-            'w-full h-9 rounded-md border border-border bg-surface px-3 text-[13px]',
+            // Mobile-first: min-h 44px (Apple/WCAG touch target). Desktop fica sm:h-9.
+            'w-full min-h-[44px] sm:min-h-0 sm:h-9 rounded-md border border-border bg-surface px-3 text-[14px] sm:text-[13px]',
             'text-ink placeholder:text-ink-faint',
             'focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-all',
             leftIcon && 'pl-9', className,
