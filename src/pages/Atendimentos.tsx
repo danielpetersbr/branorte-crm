@@ -240,6 +240,19 @@ export function Atendimentos() {
   const totalPages = Math.ceil(total / ATENDIMENTO_PAGE_SIZE)
   const hasFilters = filters.search || filters.responsavel || filters.status_real || filters.uf || filters.data
 
+  // Resolve o "vendedor efetivo" do lead. Prioridade:
+  // 1. auditoria.responsavel (atribuido manualmente no CRM)
+  // 2. wa_chat_labels.vendedor (lead esta no WhatsApp de um vendedor com etiqueta)
+  // Returns { name, source } ou null. 'source=wa' indica origem WhatsApp
+  // (vendedor ja esta atendendo no Zap mas ninguem clicou "Pegar pra mim" no CRM)
+  function vendedorEfetivo(r: typeof rows[number]): { name: string; source: 'crm' | 'wa' } | null {
+    if (r.responsavel && r.responsavel.trim()) return { name: r.responsavel, source: 'crm' }
+    const labels = lookupWaLabels(waLabelsMap, r.telefone)
+    const vendedorFromWa = labels.find(l => l.vendedor)?.vendedor
+    if (vendedorFromWa) return { name: vendedorFromWa, source: 'wa' }
+    return null
+  }
+
   const clearFilters = () => {
     setFilters({ search: '', responsavel: '', status_real: '', uf: '', data: '', page: 0 })
     setSearchInput('')
@@ -415,14 +428,19 @@ export function Atendimentos() {
                     </div>
                   </div>
                   <div className="mt-3 pt-3 border-t border-border/60 flex items-center justify-between gap-2">
-                    {r.responsavel ? (
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <Avatar name={r.responsavel} size="sm" />
-                        <span className="text-[12px] text-ink-muted truncate">{r.responsavel}</span>
-                      </div>
-                    ) : (
-                      <div className="flex-1"><AtribuirVendedorPicker auditoriaIds={ids} /></div>
-                    )}
+                    {(() => {
+                      const v = vendedorEfetivo(r)
+                      if (v) return (
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Avatar name={v.name} size="sm" />
+                          <span className="text-[12px] text-ink-muted truncate">{v.name}</span>
+                          {v.source === 'wa' && (
+                            <span title="Etiqueta no WhatsApp do vendedor" className="text-[9px] px-1 py-px rounded bg-success-bg/40 text-success font-mono">WA</span>
+                          )}
+                        </div>
+                      )
+                      return <div className="flex-1"><AtribuirVendedorPicker auditoriaIds={ids} /></div>
+                    })()}
                     <div className="flex items-center gap-1 shrink-0">
                       {tel && (
                         <a
@@ -692,19 +710,23 @@ export function Atendimentos() {
                             <span className="text-[11px] text-ink-faint">—</span>
                           )}
                         </td>
-                        {/* VENDEDOR */}
+                        {/* VENDEDOR — fallback de wa_chat_labels quando responsavel vazio */}
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           {(() => {
                             const ids = (r.auditoria_ids && r.auditoria_ids.length > 0) ? r.auditoria_ids : [r.id]
-                            if (r.responsavel) {
+                            const v = vendedorEfetivo(r)
+                            if (v) {
                               return (
                                 <div className="flex items-center gap-1.5">
-                                  <Avatar name={r.responsavel} size="sm" />
-                                  <span className="text-[12px] text-ink-muted">{r.responsavel}</span>
+                                  <Avatar name={v.name} size="sm" />
+                                  <span className="text-[12px] text-ink-muted">{v.name}</span>
+                                  {v.source === 'wa' && (
+                                    <span title="Vendedor identificado por etiqueta no WhatsApp dele (ainda nao 'pego' formalmente no CRM)" className="text-[9px] px-1 py-px rounded bg-success-bg/40 text-success font-mono">WA</span>
+                                  )}
                                 </div>
                               )
                             }
-                            // Lead sem vendedor: dropdown (admin) ou botao "Pegar pra mim" (vendor)
+                            // Lead sem vendedor (nem CRM nem WA): dropdown (admin) ou "Pegar pra mim"
                             return <AtribuirVendedorPicker auditoriaIds={ids} />
                           })()}
                         </td>
