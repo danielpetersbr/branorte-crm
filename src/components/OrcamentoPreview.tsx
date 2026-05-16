@@ -560,7 +560,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                 }
                 inp.click()
               }}
-              className="block w-full mb-3 py-2 text-center border border-dashed border-blue-300 rounded text-blue-700 hover:bg-blue-50 hover:border-blue-500 transition cursor-pointer text-[15px] font-semibold"
+              className="block w-full mb-3 py-2 text-center border border-dashed border-blue-300 rounded text-blue-700 hover:bg-blue-50 hover:border-blue-500 transition cursor-pointer text-[15px] font-semibold print:hidden"
             >
               📷 + Adicionar Foto Principal (opcional)
             </button>
@@ -770,7 +770,14 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   </div>
                   <div className="mt-2.5 pt-1.5 border-t border-gray-300 flex justify-between text-[15.5px] font-bold tracking-wide">
                     <span className="text-gray-700">VALOR</span>
-                    <span className="text-gray-900">R$ {formatBRLBare(subtotal)}</span>
+                    {subtotal > 0 ? (
+                      <span className="text-gray-900">R$ {formatBRLBare(subtotal)}</span>
+                    ) : (
+                      <span className="text-amber-600 italic text-[13px] print:text-gray-900 print:not-italic">
+                        <span className="print:hidden">⚠ sem preço — preencha</span>
+                        <span className="hidden print:inline">a consultar</span>
+                      </span>
+                    )}
                   </div>
                 </div>
               )
@@ -783,7 +790,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           {!renderMode && onAddItem && carrinho.length > 0 && (
             <button
               onClick={onAddItem}
-              className="w-full mt-3 py-2 text-[15px] font-semibold text-blue-700 hover:bg-blue-50 border border-dashed border-blue-300 rounded transition-colors print:hidden"
+              className="w-full mt-4 mb-2 py-2 text-[15px] font-semibold text-blue-700 hover:bg-blue-50 border border-dashed border-blue-300 rounded transition-colors print:hidden"
             >
               + Adicionar mais um item
             </button>
@@ -811,7 +818,14 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
               </div>
               <div className="mt-2.5 pt-1.5 border-t border-gray-300 flex justify-between text-[15.5px] font-bold tracking-wide">
                 <span className="text-gray-700">VALOR</span>
-                <span className="text-gray-900">R$ {formatBRLBare(valorAcessorios)}</span>
+                {valorAcessorios > 0 ? (
+                  <span className="text-gray-900">R$ {formatBRLBare(valorAcessorios)}</span>
+                ) : (
+                  <span className="text-amber-600 italic text-[13px] print:text-gray-900 print:not-italic">
+                    <span className="print:hidden">⚠ {acessorios.pct}% × R$ 0,00 = R$ 0,00 (precifique os itens acima)</span>
+                    <span className="hidden print:inline">R$ 0,00</span>
+                  </span>
+                )}
               </div>
             </div>
           ) : (
