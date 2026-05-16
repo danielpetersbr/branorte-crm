@@ -174,7 +174,9 @@ export function useOrcamentoModelos() {
       if (error) throw error
       return (data ?? []) as OrcamentoModelo[]
     },
-    staleTime: 60 * 60 * 1000,  // 1h — catalogo muda raramente
+    staleTime: 60_000,         // 1min — catalogo nao deveria ser cacheado por 1h
+    refetchOnMount: 'always',  // sempre revalida ao abrir a tela
+    refetchOnWindowFocus: true, // revalida ao voltar pra aba
   })
 }
 
