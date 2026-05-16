@@ -550,7 +550,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                 />
               </div>
               <div className="text-right text-[11px] italic text-gray-500 mt-0.5">Imagem ilustrativa</div>
-              {!renderMode && onFotoChange && (
+              {/* Botoes Trocar/Remover — so DESKTOP (hover funciona).
+                  Em mobile o iOS Safari forca hover-state ao tocar e os botoes
+                  ficavam permanentemente sobrepostos a foto. Mobile usa o
+                  bloco "Foto Principal" no carrinho/catalogo pra trocar. */}
+              {!renderMode && !isMobile && onFotoChange && (
                 <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition flex gap-1">
                   <button
                     type="button"
@@ -568,13 +572,13 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       }
                       inp.click()
                     }}
-                    className="text-[15px] bg-blue-600 text-white px-2 py-1 rounded shadow hover:bg-blue-700"
+                    className="text-[12px] bg-blue-600/90 text-white px-2 py-1 rounded shadow hover:bg-blue-700"
                   >
                     Trocar
                   </button>
                   <button
                     onClick={() => onFotoChange(null)}
-                    className="text-[15px] bg-red-600 text-white px-2 py-1 rounded shadow hover:bg-red-700"
+                    className="text-[12px] bg-red-600/90 text-white px-2 py-1 rounded shadow hover:bg-red-700"
                   >
                     ✕ Remover
                   </button>
