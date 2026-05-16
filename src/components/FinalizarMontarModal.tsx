@@ -681,9 +681,11 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             .createSignedUrl(envioPath, 60 * 60 * 24 * 7)
           if (sErr || !signed?.signedUrl) throw new Error('signed_url: ' + (sErr?.message ?? 'sem url'))
 
+          // Passa SÓ o primeiro nome em UPPERCASE (vendors.name eh 'DANIEL' nao 'DANIEL PETERS')
+          const primeiroNome = profile?.display_name?.trim().split(/\s+/)[0]?.toUpperCase() || undefined
           const { data: fnData, error: fnErr } = await supabase.functions.invoke('orcamento-enviar-meu-zap', {
             body: {
-              vendedor_nome: profile?.display_name?.toUpperCase() || undefined,
+              vendedor_nome: primeiroNome,
               pdf_url: signed.signedUrl,
               filename: `${base}.pdf`,
               cliente_nome: cliNome.trim(),
@@ -993,10 +995,11 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           <button
             onClick={() => handleGerar({ salvarNaPasta: false })}
             disabled={gerando || !cliNome.trim()}
-            className="text-[13px] px-4 py-2.5 rounded bg-surface-2 hover:bg-surface-3 text-ink-muted hover:text-ink font-semibold disabled:opacity-50 flex items-center justify-center gap-1.5 min-h-[44px]"
+            className="text-[12px] px-3 py-2.5 rounded bg-surface-2 hover:bg-surface-3 text-ink-faint hover:text-ink-muted font-semibold disabled:opacity-50 flex items-center justify-center gap-1.5 min-h-[44px]"
+            title="Avançado: apenas baixa os arquivos sem salvar na pasta do servidor"
           >
-            <FileDown className="h-4 w-4" />
-            Baixar .docx + PDF
+            <FileDown className="h-3.5 w-3.5" />
+            Só baixar
           </button>
           {/* TODOS salvam pelo servidor — independente do vendedor estar no PC do
               escritorio ou no celular. O daemon (PM2) no PC do Daniel pega tudo do
