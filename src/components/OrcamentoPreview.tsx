@@ -851,7 +851,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
           {/* VALOR TOTAL DE EQUIPAMENTOS */}
           {mostrarTotalEquip && (
-            <div data-no-break className="mt-4 px-6 py-4 border-2 border-gray-700 rounded-lg tracking-wide">
+            <div data-no-break className="mt-4 px-6 py-4 border-2 border-gray-700 rounded-lg tracking-wide relative bg-white" style={{ zIndex: 1 }}>
               <div className="flex justify-between items-center gap-4 min-h-[24px] text-[17px] font-bold">
                 <span className="text-gray-900 uppercase leading-[1] flex-1">Valor total de equipamentos</span>
                 <span className="text-gray-900 leading-[1] tabular-nums whitespace-nowrap">R$ {formatBRLBare(totalEquip)}</span>
@@ -1200,7 +1200,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             const temDesconto = !!desconto && descontoValor > 0
             return (
               <>
-                <div data-no-break className={`mt-6 px-6 py-5 border-2 rounded-lg tracking-wide ${temDesconto ? 'border-gray-400 bg-gray-50/40' : 'border-gray-900'}`}>
+                <div data-no-break className={`mt-6 px-6 py-5 border-2 rounded-lg tracking-wide relative bg-white ${temDesconto ? 'border-gray-400 bg-gray-50/40' : 'border-gray-900'}`} style={{ zIndex: 1 }}>
                   <div className={`flex justify-between items-center gap-4 min-h-[32px] ${temDesconto ? 'text-[15px] font-semibold' : 'text-[19px] font-black'}`}>
                     <span className={`uppercase flex-1 leading-tight ${temDesconto ? 'text-gray-500' : 'text-gray-900'}`}>
                       Valor total da proposta com motor novo{temDesconto && ' (sem desconto)'}
@@ -1248,7 +1248,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
                 {/* VALOR TOTAL COM DESCONTO — caixa destacada (renderiza no PDF tb) */}
                 {temDesconto && (
-                  <div data-no-break className="mt-2 px-6 py-5 border-2 border-emerald-700 rounded-lg tracking-wide bg-emerald-50/60">
+                  <div data-no-break className="mt-2 px-6 py-5 border-2 border-emerald-700 rounded-lg tracking-wide bg-emerald-50/60 relative" style={{ zIndex: 1 }}>
                     <div className="flex justify-between items-center gap-4 min-h-[40px] text-[20px] font-black">
                       <span className="text-emerald-900 uppercase flex-1 leading-tight">
                         Valor total com desconto
