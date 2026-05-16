@@ -2374,7 +2374,7 @@ function PacoteModeloPickerModal({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
                       <span className="text-[12px] font-bold text-ink leading-tight">{m.basename}</span>
-                      <span className="text-[11px] font-bold text-success tabular-nums shrink-0">{formatBRL(Number(m.total_proposta) + Number(m.acessorios?.valor || 0))}</span>
+                      <span className="text-[11px] font-bold text-success tabular-nums shrink-0">{formatBRL(Number(m.total_proposta))}</span>
                     </div>
                     <div className="text-[10px] text-ink-faint mt-1 flex items-center gap-1.5 flex-wrap">
                       {m.pacote && <span className="px-1.5 py-0.5 rounded bg-accent/15 text-accent font-bold">{m.pacote}</span>}
@@ -2467,7 +2467,7 @@ function SelectorModelo({ onCarregar }: { onCarregar: (m: OrcamentoModelo) => vo
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[11px] font-semibold text-ink truncate">{m.basename}</span>
-                      <span className="text-[10px] font-bold text-success tabular-nums shrink-0">{formatBRL(Number(m.total_proposta) + Number(m.acessorios?.valor || 0))}</span>
+                      <span className="text-[10px] font-bold text-success tabular-nums shrink-0">{formatBRL(Number(m.total_proposta))}</span>
                     </div>
                     <div className="text-[9px] text-ink-faint mt-0.5 flex items-center gap-1.5 flex-wrap">
                       {m.pacote && <span className="px-1 py-0.5 rounded bg-surface-3 text-accent font-bold">{m.pacote}</span>}
