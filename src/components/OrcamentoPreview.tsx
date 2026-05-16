@@ -5,7 +5,7 @@
 //     e cliente/numero/data/terms preenchidos. Esconde os botões interativos.
 
 import { X } from 'lucide-react'
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { BRLInput } from '@/components/ui/BRLInput'
 
 export interface PreviewItem {
@@ -304,9 +304,22 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   // Folhas calculadas: cada uma tem top/bottom em CSS px relativos ao innerRef
   // Usadas pra desenhar moldura preta INDEPENDENTE em volta de cada folha
   const [folhas, setFolhas] = useState<Array<{ top: number; bottom: number }>>([])
+  // Em MOBILE nao mostra marcadores de quebra A4 — eles sobrepoem o conteudo
+  // (spacers DOM injetados ficam por cima do texto/logo) e nao agregam valor
+  // no celular onde o user nao esta editando layout pra impressao
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' && window.innerWidth < 768
+  )
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)')
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
 
   useLayoutEffect(() => {
-    if (renderMode || !containerRef.current || !innerRef.current) return
+    // Skip em mobile — marcadores poluem visual sem agregar valor
+    if (renderMode || isMobile || !containerRef.current || !innerRef.current) return
 
     let isInternalMutation = false
     let lastWidth = 0
@@ -429,7 +442,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
       clearTimeout(pendingTimer)
       cleanGaps()
     }
-  }, [renderMode, carrinho, motoresAgrupados, acessorios])
+  }, [renderMode, isMobile, carrinho, motoresAgrupados, acessorios])
 
   return (
     <div ref={containerRef} className={`text-gray-900 leading-relaxed font-sans bg-white ${renderMode ? 'text-[19px]' : 'text-[15px]'}`}>
@@ -440,7 +453,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           quebra de pagina A4 sem ficar visualmente intrusivo. */}
       <div ref={innerRef} className={`m-2 lg:m-4 px-3 lg:px-6 pt-4 lg:pt-5 pb-5 lg:pb-6 relative ${renderMode ? '' : 'border border-gray-900'}`}>
         {/* Marcadores de quebra de pagina (so linha pontilhada horizontal) */}
-        {!renderMode && folhas.length > 1 && (
+        {!renderMode && !isMobile && folhas.length > 1 && (
           <div className="absolute inset-0 pointer-events-none" aria-hidden="true" style={{ zIndex: 0 }}>
             {folhas.slice(0, -1).map((f, i) => (
               <div
@@ -457,12 +470,13 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             ))}
           </div>
         )}
-        {!renderMode && pageHeight > 0 && pageBreaks.length === 0 && carrinho.length > 0 && (
+        {/* Badges de folhas A4 — so em desktop (em mobile ficam poluindo) */}
+        {!renderMode && !isMobile && pageHeight > 0 && pageBreaks.length === 0 && carrinho.length > 0 && (
           <div className="absolute top-2 right-2 bg-green-600 text-white text-[14px] font-bold px-2 py-0.5 rounded shadow z-10 pointer-events-none">
             ✓ 1 folha A4
           </div>
         )}
-        {!renderMode && pageBreaks.length > 0 && (
+        {!renderMode && !isMobile && pageBreaks.length > 0 && (
           <div className="absolute top-2 right-2 bg-blue-600 text-white text-[14px] font-bold px-2 py-0.5 rounded shadow z-10 pointer-events-none">
             {pageBreaks.length + 1} folhas A4
           </div>
