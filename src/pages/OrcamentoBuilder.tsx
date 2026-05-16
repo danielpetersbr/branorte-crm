@@ -227,7 +227,27 @@ export function OrcamentoBuilder() {
   const lastModeloIdRef = useRef<number | null>(_restored?.modeloId ?? null)
   useEffect(() => {
     if (modeloSelecionado && modeloSelecionado.id !== lastModeloIdRef.current) {
-      setItens(JSON.parse(JSON.stringify(modeloSelecionado.itens)))
+      const itensModelo: OrcamentoItem[] = JSON.parse(JSON.stringify(modeloSelecionado.itens))
+      // Regra de negocio: Compacta 02/03 sempre acompanha Balanca Eletronica 2000kg
+      // (R\$ 8.728). Se modelo nao trouxer ja embutido, adiciona como item extra.
+      const ePackCompacta23 = /COMPACTA\s*0?[23]\b/i.test(modeloSelecionado.pacote || '')
+        || /COMPACTA\s*0?[23]\b/i.test(modeloSelecionado.basename || '')
+      if (ePackCompacta23) {
+        const jaTemBalanca = itensModelo.some(it =>
+          /balan.a.*el.tr.nica.*2000/i.test(it.nome)
+        )
+        if (!jaTemBalanca) {
+          const proximaLetra = String.fromCharCode(65 + itensModelo.length)
+          itensModelo.push({
+            letra: proximaLetra,
+            qtd: 1,
+            nome: 'Balança Eletrônica 2000 kg',
+            specs: ['Capacidade: 2.000 kg', 'Pesagem digital de alta precisão'],
+            valor: 8728,
+          })
+        }
+      }
+      setItens(itensModelo)
       setAcessorios(modeloSelecionado.acessorios ? JSON.parse(JSON.stringify(modeloSelecionado.acessorios)) : null)
       setMotores(JSON.parse(JSON.stringify(modeloSelecionado.motores)))
       lastModeloIdRef.current = modeloSelecionado.id
