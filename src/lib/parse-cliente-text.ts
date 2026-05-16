@@ -34,15 +34,17 @@ const PREPOSICOES_MINUSCULAS = new Set([
 const SIGLAS_MAIUSCULAS = new Set([
   'SA', 'S.A.', 'EIRELI', 'ME', 'EPP', 'MEI', 'CIA', 'AS', 'ABNT', 'BR', 'BBA',
 ])
-function titleCasePtBr(s: string): string {
+export function titleCasePtBr(s: string): string {
   if (!s) return s
-  // Se ja tem mistura de maiusculas/minusculas, presume que ja foi normalizado
+  // Se ja tem mistura de maiusculas/minusculas (Pascal/camel case), nao mexe
+  // (preserva 'iPhone', 'McDonald', 'José da Silva')
   const letras = s.replace(/[^A-Za-zÀ-ÿ]/g, '')
   if (letras.length === 0) return s
   const upperCount = letras.replace(/[^A-ZÀ-Ý]/g, '').length
   const ratio = upperCount / letras.length
-  // Se < 60% maiusculas, ja ta razoavel — nao mexe (preserva 'iPhone', 'McDonald')
-  if (ratio < 0.6) return s
+  // So pula se claramente nao eh CAPS: < 30% das letras sao uppercase
+  // (Joao da Silva tem ~17% upper → pula. FAZENDA SUSSUARANA tem 100% → normaliza)
+  if (ratio < 0.3) return s
 
   return s
     .toLowerCase()

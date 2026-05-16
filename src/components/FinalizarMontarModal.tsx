@@ -18,7 +18,7 @@ import {
 import { construirFormaPagamento, type TipoPagamento, type FormaPagamentoConfig } from '@/lib/forma-pagamento'
 import { montarNotaTxt } from '@/lib/orcamento-docx'
 import { supabase } from '@/lib/supabase'
-import { parseClienteText } from '@/lib/parse-cliente-text'
+import { parseClienteText, titleCasePtBr } from '@/lib/parse-cliente-text'
 
 export interface CarrinhoSnapshot {
   voltagem: 'monofasico' | 'trifasico'
@@ -831,18 +831,21 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             )}
           </div>
 
-          {/* Dados do cliente (compacto) — grid 6 colunas pra caber UF separado */}
-          <div className="grid grid-cols-6 gap-2">
-            <Input placeholder="A/C (contato)" value={cliDados.ac ?? ''} onChange={e => setCliDados(d => ({ ...d, ac: e.target.value }))} className="text-[12px] col-span-3" />
-            <Input placeholder="Telefone" value={cliDados.fone ?? ''} onChange={e => setCliDados(d => ({ ...d, fone: e.target.value }))} className="text-[12px] col-span-3" />
-            <Input placeholder="Endereço" value={cliDados.endereco ?? ''} onChange={e => setCliDados(d => ({ ...d, endereco: e.target.value }))} className="text-[12px] col-span-6" />
-            <Input placeholder="Bairro" value={cliDados.bairro ?? ''} onChange={e => setCliDados(d => ({ ...d, bairro: e.target.value }))} className="text-[12px] col-span-3" />
-            <Input placeholder="Cidade" value={cliDados.cidade ?? ''} onChange={e => setCliDados(d => ({ ...d, cidade: e.target.value }))} className="text-[12px] col-span-2" />
-            <Input placeholder="UF" value={cliDados.uf ?? ''} onChange={e => setCliDados(d => ({ ...d, uf: e.target.value.toUpperCase().slice(0, 2) }))} className="text-[12px] col-span-1 uppercase" maxLength={2} />
-            <Input placeholder="CEP" value={cliDados.cep ?? ''} onChange={e => setCliDados(d => ({ ...d, cep: e.target.value }))} className="text-[12px] col-span-2" />
-            <Input placeholder="CPF / CNPJ" value={cliDados.cnpj ?? ''} onChange={e => setCliDados(d => ({ ...d, cnpj: e.target.value }))} className="text-[12px] col-span-2" />
-            <Input placeholder="Inscrição Estadual" value={cliDados.ie ?? ''} onChange={e => setCliDados(d => ({ ...d, ie: e.target.value }))} className="text-[12px] col-span-2" />
-            <Input placeholder="E-mail" value={cliDados.email ?? ''} onChange={e => setCliDados(d => ({ ...d, email: e.target.value }))} className="text-[12px] col-span-6" />
+          {/* Dados do cliente (compacto) — grid 2 colunas */}
+          <div className="grid grid-cols-2 gap-2">
+            <Input placeholder="A/C (contato)" value={cliDados.ac ?? ''} onChange={e => setCliDados(d => ({ ...d, ac: e.target.value }))} className="text-[12px]" />
+            <Input placeholder="Telefone" value={cliDados.fone ?? ''} onChange={e => setCliDados(d => ({ ...d, fone: e.target.value }))} className="text-[12px]" />
+            <Input placeholder="Endereço" value={cliDados.endereco ?? ''} onChange={e => setCliDados(d => ({ ...d, endereco: e.target.value }))} className="text-[12px] col-span-2" />
+            <Input placeholder="Bairro" value={cliDados.bairro ?? ''} onChange={e => setCliDados(d => ({ ...d, bairro: e.target.value }))} className="text-[12px]" />
+            <Input placeholder="CEP" value={cliDados.cep ?? ''} onChange={e => setCliDados(d => ({ ...d, cep: e.target.value }))} className="text-[12px]" />
+            {/* Cidade + UF lado a lado no mesmo input */}
+            <div className="col-span-2 flex gap-2">
+              <Input placeholder="Cidade" value={cliDados.cidade ?? ''} onChange={e => setCliDados(d => ({ ...d, cidade: e.target.value }))} className="text-[12px] flex-1" />
+              <Input placeholder="UF" value={cliDados.uf ?? ''} onChange={e => setCliDados(d => ({ ...d, uf: e.target.value.toUpperCase().slice(0, 2) }))} className="text-[12px] w-16 uppercase text-center" maxLength={2} />
+            </div>
+            <Input placeholder="CPF / CNPJ" value={cliDados.cnpj ?? ''} onChange={e => setCliDados(d => ({ ...d, cnpj: e.target.value }))} className="text-[12px]" />
+            <Input placeholder="Inscrição Estadual" value={cliDados.ie ?? ''} onChange={e => setCliDados(d => ({ ...d, ie: e.target.value }))} className="text-[12px]" />
+            <Input placeholder="E-mail" value={cliDados.email ?? ''} onChange={e => setCliDados(d => ({ ...d, email: e.target.value }))} className="text-[12px] col-span-2" />
           </div>
 
           {/* Forma de pagamento */}
@@ -1045,15 +1048,17 @@ function AutoPreencherCliente({ onApply }: { onApply: (r: ReturnType<typeof pars
       const p = data?.parsed
       if (!p) throw new Error('resposta vazia')
       // Converte pra ParseResult (compatível com regex)
+      // Normaliza casing antes de aplicar (Gemini retorna meio aleatorio)
+      const tc = (v: string | null | undefined) => v ? titleCasePtBr(v) : undefined
       const r: ReturnType<typeof parseClienteText> = {
-        cliente_nome: p.cliente_nome ?? '',
+        cliente_nome: tc(p.cliente_nome) ?? '',
         dados: {
-          ac: p.ac ?? undefined,
+          ac: tc(p.ac),
           fone: p.fone ?? undefined,
-          cidade: p.cidade ?? undefined,
-          uf: p.uf ?? undefined,
-          bairro: p.bairro ?? undefined,
-          endereco: p.endereco ?? undefined,
+          cidade: tc(p.cidade),
+          uf: p.uf ? String(p.uf).toUpperCase().slice(0, 2) : undefined,
+          bairro: tc(p.bairro),
+          endereco: tc(p.endereco),
           cep: p.cep ?? undefined,
           cnpj: p.cnpj ?? undefined,
           ie: p.ie ?? undefined,
@@ -1111,7 +1116,8 @@ function AutoPreencherCliente({ onApply }: { onApply: (r: ReturnType<typeof pars
           onChange={e => setTexto(e.target.value)}
           placeholder="Cola qualquer texto com dados do cliente — nome, CNPJ, endereço, telefone, email…"
           rows={4}
-          className="w-full text-[12px] px-2.5 py-2 border border-purple-200 rounded-md bg-white outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-200 resize-none"
+          className="w-full text-[12px] px-2.5 py-2 border border-purple-200 rounded-md bg-white text-gray-900 placeholder:text-gray-400 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-200 resize-none"
+          style={{ color: '#111827', backgroundColor: '#ffffff' }}
         />
 
         <div className="grid grid-cols-2 gap-2">
