@@ -1759,25 +1759,24 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             // Normaliza nome do vendedor responsavel pra match
             const respNorm = (vendedorResponsavelNome || '').trim().toLowerCase()
             return (
-              <div data-no-break className="grid grid-cols-4 gap-2 mt-3 text-[14px] text-center">
+              <div data-no-break className="grid grid-cols-4 gap-2 mt-3 text-[13px] text-center">
                 {display.map(({ nome, telefone }) => {
                   const isResp = respNorm && nome.trim().toLowerCase().startsWith(respNorm.split(/\s+/)[0])
                   return (
                     <div
                       key={nome}
-                      className={`py-1.5 px-1 rounded border-2 ${
+                      className={`py-2 px-1.5 rounded border min-h-[52px] flex flex-col justify-center items-center leading-tight ${
                         isResp
-                          ? 'bg-blue-50 border-blue-500'
+                          ? 'bg-blue-50 border-blue-400'
                           : 'bg-gray-50 border-gray-200'
                       }`}
                     >
-                      {isResp && (
-                        <div className="text-[10px] uppercase font-bold text-blue-700 tracking-wider mb-0.5">
-                          ★ seu vendedor
-                        </div>
-                      )}
-                      <div className={`font-bold text-[14.5px] ${isResp ? 'text-blue-900' : 'text-gray-800'}`}>{nome}</div>
-                      <div className={isResp ? 'text-blue-800 mt-0.5' : 'text-gray-600 mt-0.5'}>{telefone}</div>
+                      <div className={`font-bold text-[13.5px] truncate w-full ${isResp ? 'text-blue-900' : 'text-gray-800'}`}>
+                        {nome}
+                      </div>
+                      <div className={`text-[12.5px] tabular-nums whitespace-nowrap mt-0.5 ${isResp ? 'text-blue-800' : 'text-gray-600'}`}>
+                        {telefone}
+                      </div>
                     </div>
                   )
                 })}

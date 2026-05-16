@@ -49,6 +49,7 @@ export interface ClienteDados {
   ac?: string
   fone?: string
   cidade?: string
+  uf?: string       // sigla UF: SP, SC, RS, etc
   bairro?: string
   endereco?: string
   cep?: string

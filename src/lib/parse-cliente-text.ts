@@ -23,6 +23,43 @@ function limpar(t: string): string {
   return t.replace(/\s+/g, ' ').trim()
 }
 
+// Title Case respeitando regras pt-BR:
+// - "FAZENDA SUSSUARANA" → "Fazenda Sussuarana"
+// - "joão da silva" → "João da Silva" (preposições minúsculas no meio)
+// - "RUA DAS FLORES, 123" → "Rua das Flores, 123" (números/pontuação mantidos)
+// - "LTDA" → "Ltda" / "S.A." mantém
+const PREPOSICOES_MINUSCULAS = new Set([
+  'de', 'do', 'da', 'dos', 'das', 'e', 'o', 'a', 'em', 'na', 'no', 'nas', 'nos', 'para',
+])
+const SIGLAS_MAIUSCULAS = new Set([
+  'SA', 'S.A.', 'EIRELI', 'ME', 'EPP', 'MEI', 'CIA', 'AS', 'ABNT', 'BR', 'BBA',
+])
+function titleCasePtBr(s: string): string {
+  if (!s) return s
+  // Se ja tem mistura de maiusculas/minusculas, presume que ja foi normalizado
+  const letras = s.replace(/[^A-Za-zÀ-ÿ]/g, '')
+  if (letras.length === 0) return s
+  const upperCount = letras.replace(/[^A-ZÀ-Ý]/g, '').length
+  const ratio = upperCount / letras.length
+  // Se < 60% maiusculas, ja ta razoavel — nao mexe (preserva 'iPhone', 'McDonald')
+  if (ratio < 0.6) return s
+
+  return s
+    .toLowerCase()
+    .split(/(\s+|[,.])/)
+    .map((tok, i, arr) => {
+      if (/^\s+$/.test(tok) || /^[,.]$/.test(tok)) return tok
+      const upper = tok.toUpperCase()
+      if (SIGLAS_MAIUSCULAS.has(upper)) return upper
+      // Preposicoes minusculas (so se NAO for a primeira palavra)
+      const palavrasAntes = arr.slice(0, i).filter(t => !/^\s+$/.test(t) && !/^[,.]$/.test(t))
+      if (palavrasAntes.length > 0 && PREPOSICOES_MINUSCULAS.has(tok)) return tok
+      // Capitaliza
+      return tok.charAt(0).toUpperCase() + tok.slice(1)
+    })
+    .join('')
+}
+
 function extrairCnpj(text: string): string | null {
   // 16.935.999/0001-09  ou  16935999000109
   const m = text.match(/(\d{2}[.\s]?\d{3}[.\s]?\d{3}\/?\d{4}[-\s]?\d{2})/)
@@ -208,11 +245,17 @@ export function parseClienteText(raw: string): ParseResult {
   const cep = extrairCep(text)
   const email = extrairEmail(text)
   const ie = extrairIE(text)
-  const { cidade, bairroSugerido } = extrairCidadeEstado(text)
-  const endereco = extrairEndereco(text)
+  const { cidade: cidadeRaw, estado, bairroSugerido } = extrairCidadeEstado(text)
+  const enderecoRaw = extrairEndereco(text)
   const bairroLabel = extrairBairro(text)
-  const bairro = bairroLabel ?? bairroSugerido
+  const bairroRaw = bairroLabel ?? bairroSugerido
   const acLabel = extrairAC(text)
+
+  // Normaliza casing (CAPS → Title Case)
+  const cidade = cidadeRaw ? titleCasePtBr(cidadeRaw) : null
+  const endereco = enderecoRaw ? titleCasePtBr(enderecoRaw) : null
+  const bairro = bairroRaw ? titleCasePtBr(bairroRaw) : null
+  const uf = estado // ja vem em UPPER (SC, TO, etc)
 
   // Marca o que já foi pego pra evitar usar como nome
   const jaExtraido = new Set<string>()
@@ -225,18 +268,20 @@ export function parseClienteText(raw: string): ParseResult {
   if (endereco) jaExtraido.add(endereco)
 
   const { nome: nomeRaw, acSugerido } = extrairNomeEAC(text, jaExtraido)
-  const nome = nomeRaw ?? ''
-  const ac = acLabel ?? acSugerido
+  const nome = titleCasePtBr(nomeRaw ?? '')
+  const acRaw = acLabel ?? acSugerido
+  const ac = acRaw ? titleCasePtBr(acRaw) : null
 
   const dados: ClienteDados = {}
   if (ac) dados.ac = ac
   if (fone) dados.fone = fone
   if (cidade) dados.cidade = cidade
+  if (uf) dados.uf = uf
   if (bairro) dados.bairro = bairro
   if (endereco) dados.endereco = endereco
   if (cep) dados.cep = cep
   if (cnpj) dados.cnpj = cnpj
-  else if (cpf) dados.cnpj = cpf  // ClienteDados tem só "cnpj", aceita CPF tb pra PF
+  else if (cpf) dados.cnpj = cpf
   if (ie) dados.ie = ie
   if (email) dados.email = email
 

@@ -280,6 +280,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       ac: c.ac ?? undefined,
       fone: c.fone ?? undefined,
       cidade: c.cidade ?? undefined,
+      uf: (c as any).uf ?? undefined,
       bairro: c.bairro ?? undefined,
       endereco: c.endereco ?? undefined,
       cep: c.cep ?? undefined,
@@ -830,17 +831,18 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             )}
           </div>
 
-          {/* Dados do cliente (compacto) */}
-          <div className="grid grid-cols-2 gap-2">
-            <Input placeholder="A/C" value={cliDados.ac ?? ''} onChange={e => setCliDados(d => ({ ...d, ac: e.target.value }))} className="text-[12px]" />
-            <Input placeholder="Telefone" value={cliDados.fone ?? ''} onChange={e => setCliDados(d => ({ ...d, fone: e.target.value }))} className="text-[12px]" />
-            <Input placeholder="Cidade" value={cliDados.cidade ?? ''} onChange={e => setCliDados(d => ({ ...d, cidade: e.target.value }))} className="text-[12px]" />
-            <Input placeholder="Bairro" value={cliDados.bairro ?? ''} onChange={e => setCliDados(d => ({ ...d, bairro: e.target.value }))} className="text-[12px]" />
-            <Input placeholder="Endereço" value={cliDados.endereco ?? ''} onChange={e => setCliDados(d => ({ ...d, endereco: e.target.value }))} className="text-[12px] col-span-2" />
-            <Input placeholder="CEP" value={cliDados.cep ?? ''} onChange={e => setCliDados(d => ({ ...d, cep: e.target.value }))} className="text-[12px]" />
-            <Input placeholder="CPF/CNPJ" value={cliDados.cnpj ?? ''} onChange={e => setCliDados(d => ({ ...d, cnpj: e.target.value }))} className="text-[12px]" />
-            <Input placeholder="I.E." value={cliDados.ie ?? ''} onChange={e => setCliDados(d => ({ ...d, ie: e.target.value }))} className="text-[12px]" />
-            <Input placeholder="E-mail" value={cliDados.email ?? ''} onChange={e => setCliDados(d => ({ ...d, email: e.target.value }))} className="text-[12px]" />
+          {/* Dados do cliente (compacto) — grid 6 colunas pra caber UF separado */}
+          <div className="grid grid-cols-6 gap-2">
+            <Input placeholder="A/C (contato)" value={cliDados.ac ?? ''} onChange={e => setCliDados(d => ({ ...d, ac: e.target.value }))} className="text-[12px] col-span-3" />
+            <Input placeholder="Telefone" value={cliDados.fone ?? ''} onChange={e => setCliDados(d => ({ ...d, fone: e.target.value }))} className="text-[12px] col-span-3" />
+            <Input placeholder="Endereço" value={cliDados.endereco ?? ''} onChange={e => setCliDados(d => ({ ...d, endereco: e.target.value }))} className="text-[12px] col-span-6" />
+            <Input placeholder="Bairro" value={cliDados.bairro ?? ''} onChange={e => setCliDados(d => ({ ...d, bairro: e.target.value }))} className="text-[12px] col-span-3" />
+            <Input placeholder="Cidade" value={cliDados.cidade ?? ''} onChange={e => setCliDados(d => ({ ...d, cidade: e.target.value }))} className="text-[12px] col-span-2" />
+            <Input placeholder="UF" value={cliDados.uf ?? ''} onChange={e => setCliDados(d => ({ ...d, uf: e.target.value.toUpperCase().slice(0, 2) }))} className="text-[12px] col-span-1 uppercase" maxLength={2} />
+            <Input placeholder="CEP" value={cliDados.cep ?? ''} onChange={e => setCliDados(d => ({ ...d, cep: e.target.value }))} className="text-[12px] col-span-2" />
+            <Input placeholder="CPF / CNPJ" value={cliDados.cnpj ?? ''} onChange={e => setCliDados(d => ({ ...d, cnpj: e.target.value }))} className="text-[12px] col-span-2" />
+            <Input placeholder="Inscrição Estadual" value={cliDados.ie ?? ''} onChange={e => setCliDados(d => ({ ...d, ie: e.target.value }))} className="text-[12px] col-span-2" />
+            <Input placeholder="E-mail" value={cliDados.email ?? ''} onChange={e => setCliDados(d => ({ ...d, email: e.target.value }))} className="text-[12px] col-span-6" />
           </div>
 
           {/* Forma de pagamento */}
@@ -1049,6 +1051,7 @@ function AutoPreencherCliente({ onApply }: { onApply: (r: ReturnType<typeof pars
           ac: p.ac ?? undefined,
           fone: p.fone ?? undefined,
           cidade: p.cidade ?? undefined,
+          uf: p.uf ?? undefined,
           bairro: p.bairro ?? undefined,
           endereco: p.endereco ?? undefined,
           cep: p.cep ?? undefined,
@@ -1076,67 +1079,87 @@ function AutoPreencherCliente({ onApply }: { onApply: (r: ReturnType<typeof pars
       <button
         type="button"
         onClick={() => setAberto(true)}
-        className="text-[11px] px-2.5 py-1.5 rounded bg-purple-100 text-purple-700 border border-purple-300 font-bold hover:bg-purple-200 transition flex items-center gap-1.5"
+        className="text-[11px] px-2.5 py-1.5 rounded bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold hover:opacity-90 transition flex items-center gap-1.5 shadow-sm"
         title="Cola dados do cliente (qualquer formato) e preenche automaticamente"
       >
-        🤖 Auto-preencher cliente
+        ✨ Auto-preencher
       </button>
     )
   }
 
+  const camposPreenchidos = resultado
+    ? Object.values(resultado.dados).filter(Boolean).length + (resultado.cliente_nome ? 1 : 0)
+    : 0
+
   return (
-    <div className="p-2.5 border border-purple-300 rounded-md bg-purple-50/40 space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] uppercase tracking-wider text-purple-700 font-semibold flex items-center gap-1">
-          🤖 Auto-preencher
+    <div className="rounded-lg border border-purple-300 bg-gradient-to-br from-purple-50/60 to-pink-50/40 overflow-hidden">
+      {/* Header compacto */}
+      <div className="flex items-center justify-between px-3 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white">
+        <span className="text-[11px] uppercase tracking-wider font-bold flex items-center gap-1.5">
+          ✨ Auto-preencher
         </span>
-        <button onClick={() => { setAberto(false); setTexto(''); setResultado(null) }} className="text-[10px] text-ink-faint hover:text-ink">Fechar</button>
+        <button
+          onClick={() => { setAberto(false); setTexto(''); setResultado(null); setErroIA(null) }}
+          className="text-[14px] leading-none opacity-80 hover:opacity-100"
+          title="Fechar"
+        >×</button>
       </div>
-      <textarea
-        value={texto}
-        onChange={e => setTexto(e.target.value)}
-        placeholder="Cola aqui qualquer texto com dados do cliente:&#10;&#10;Empresa: Fazenda São João&#10;CNPJ 12.345.678/0001-90&#10;Rua das Flores 100 - Centro, Florianópolis/SC&#10;CEP 88000-000 · Fone (48) 99999-9999&#10;contato@fazenda.com.br"
-        rows={5}
-        className="w-full text-[11px] px-2 py-1.5 border border-purple-200 rounded bg-white outline-none focus:border-purple-400"
-      />
-      <div className="flex gap-2 flex-wrap">
-        <button
-          type="button"
-          onClick={processarRegex}
-          disabled={!texto.trim() || carregandoIA}
-          className="text-[11px] px-3 py-1.5 rounded bg-purple-600 text-white font-bold hover:bg-purple-700 disabled:opacity-50"
-          title="Extração local instantânea (regex). Ideal pra texto estruturado."
-        >
-          ⚡ Preencher rápido
-        </button>
-        <button
-          type="button"
-          onClick={processarIA}
-          disabled={!texto.trim() || carregandoIA}
-          className="text-[11px] px-3 py-1.5 rounded bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5"
-          title="IA Gemini Flash — melhor pra textos conversacionais/complexos. ~2s."
-        >
-          {carregandoIA ? <Loader2 className="h-3 w-3 animate-spin" /> : '🧠'}
-          {carregandoIA ? 'IA pensando...' : 'Preencher com IA'}
-        </button>
+
+      <div className="p-3 space-y-2.5">
+        <textarea
+          value={texto}
+          onChange={e => setTexto(e.target.value)}
+          placeholder="Cola qualquer texto com dados do cliente — nome, CNPJ, endereço, telefone, email…"
+          rows={4}
+          className="w-full text-[12px] px-2.5 py-2 border border-purple-200 rounded-md bg-white outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-200 resize-none"
+        />
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={processarRegex}
+            disabled={!texto.trim() || carregandoIA}
+            className="text-[12px] px-3 py-2 rounded-md bg-white border-2 border-purple-300 text-purple-700 font-bold hover:bg-purple-50 disabled:opacity-50 flex items-center justify-center gap-1.5"
+            title="Extração local instantânea (regex). Ideal pra texto estruturado."
+          >
+            ⚡ Rápido
+          </button>
+          <button
+            type="button"
+            onClick={processarIA}
+            disabled={!texto.trim() || carregandoIA}
+            className="text-[12px] px-3 py-2 rounded-md bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm"
+            title="IA Gemini — melhor pra textos complexos. ~2s."
+          >
+            {carregandoIA ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : '🧠'}
+            {carregandoIA ? 'pensando...' : 'IA'}
+          </button>
+        </div>
+
         {resultado && (
-          <span className="text-[11px] text-ink-muted self-center">
-            {Object.values(resultado.dados).filter(Boolean).length + (resultado.cliente_nome ? 1 : 0)} campo(s) preenchido(s)
-            {resultado.naoReconhecido.length > 0 && ` · ${resultado.naoReconhecido.length} linha(s) não reconhecida(s)`}
-          </span>
+          <div className="flex items-center gap-1.5 text-[11px] px-2 py-1.5 bg-success-bg/30 text-success border border-success/30 rounded">
+            <Check className="h-3 w-3" />
+            <span className="font-semibold">{resultado.cliente_nome || 'Cliente'}</span>
+            <span className="text-ink-muted">· {camposPreenchidos} campo(s)</span>
+            {resultado.naoReconhecido.length > 0 && (
+              <span className="text-warning ml-auto">{resultado.naoReconhecido.length} ignorada(s)</span>
+            )}
+          </div>
+        )}
+
+        {erroIA && (
+          <div className="text-[11px] text-danger bg-danger-bg/15 border border-danger/30 rounded px-2 py-1.5">{erroIA}</div>
+        )}
+
+        {resultado && resultado.naoReconhecido.length > 0 && (
+          <details className="text-[10px] text-ink-faint">
+            <summary className="cursor-pointer hover:text-ink-muted">Linhas ignoradas (preencha manualmente)</summary>
+            <ul className="mt-1 pl-3 space-y-0.5 list-disc list-inside">
+              {resultado.naoReconhecido.map((l, i) => <li key={i}>{l}</li>)}
+            </ul>
+          </details>
         )}
       </div>
-      {erroIA && (
-        <div className="text-[10px] text-danger bg-danger-bg/15 border border-danger/30 rounded px-2 py-1">{erroIA}</div>
-      )}
-      {resultado && resultado.naoReconhecido.length > 0 && (
-        <details className="text-[10px] text-ink-faint">
-          <summary className="cursor-pointer hover:text-ink-muted">Linhas não reconhecidas (preencha manualmente)</summary>
-          <ul className="mt-1 pl-3 space-y-0.5 list-disc list-inside">
-            {resultado.naoReconhecido.map((l, i) => <li key={i}>{l}</li>)}
-          </ul>
-        </details>
-      )}
     </div>
   )
 }
