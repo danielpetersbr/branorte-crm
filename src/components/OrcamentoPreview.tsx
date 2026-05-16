@@ -521,9 +521,10 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   src={fotoPrincipal}
                   alt="Foto da fábrica"
                   className="h-auto object-contain"
-                  // Reduzido pra nao explodir o PDF — 450px estourava a primeira pagina
-                  // empurrando todos os itens orcados pra pagina 2.
-                  style={{ maxHeight: '220px', maxWidth: '70%' }}
+                  // Foto principal MAIOR pra destacar o desenho da fabrica.
+                  // Pode encostar nas bordas (user pediu) — 380px de altura,
+                  // 100% largura. Itens orcados ficam abaixo numa pagina nova.
+                  style={{ maxHeight: '380px', maxWidth: '100%', width: '100%' }}
                   crossOrigin="anonymous"
                 />
               </div>
