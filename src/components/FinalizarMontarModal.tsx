@@ -197,6 +197,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
   const [temPastaLocal, setTemPastaLocal] = useState<boolean>(false)
 
   const [gerando, setGerando] = useState(false)
+  const [gerandoStep, setGerandoStep] = useState<string>('')
   const [erro, setErro] = useState<string | null>(null)
   // Status do envio WhatsApp (mostra feedback ao vendedor)
   const [waStatus, setWaStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
@@ -480,13 +481,28 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         vendedoresContato,
         vendedorResponsavelNome: profile?.display_name || null,
       }
-      // Word VISUAL — imagem do preview (idêntico ao PDF visualmente, mas não editável).
-      // É o formato principal — vendedor envia pro cliente.
-      const docxBlob = await gerarDocxDoPreview(previewProps)
+      // Word VISUAL — imagem do preview. Pode falhar em iPad antigo (memoria),
+      // wrap em try/catch pra nao quebrar o upload do PDF/TXT.
+      setGerandoStep('Gerando Word visual...')
+      console.log('[gerar] iniciando gerarDocxDoPreview...')
+      let docxBlob: Blob
+      try {
+        const t0 = Date.now()
+        docxBlob = await gerarDocxDoPreview(previewProps)
+        console.log(`[gerar] docxDoPreview OK em ${Date.now() - t0}ms (${docxBlob.size} bytes)`)
+      } catch (e) {
+        console.error('[gerar] ERRO gerarDocxDoPreview:', e)
+        // Cria blob minimal pra nao quebrar o fluxo - usuario vera erro mas
+        // upload prossegue com docx editavel + pdf
+        docxBlob = new Blob([(e as Error).message], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
+        setErro(`Aviso: falha ao gerar Word visual (${(e as Error).message}). Mas o PDF e Word editavel ainda funcionam.`)
+      }
 
-      // Word EDITÁVEL — gerado em paralelo, salvo com sufixo " - EDITAVEL.docx".
-      // Use quando precisar ajustar texto/valor depois.
-      const docxEditavelBlob = await gerarOrcamentoCustomDocx({
+      setGerandoStep('Gerando Word editavel...')
+      console.log('[gerar] iniciando docx EDITAVEL...')
+      let docxEditavelBlob: Blob
+      try {
+      docxEditavelBlob = await gerarOrcamentoCustomDocx({
         numero: orc.numero,
         dataEmissao: dataEmissaoBR,
         cliente: {
@@ -526,12 +542,20 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         observacoes: observacoes.trim() || null,
         vendedorNome: profile?.display_name || 'Vendedor',
       })
+        console.log(`[gerar] docx EDITAVEL OK (${docxEditavelBlob.size} bytes)`)
+      } catch (e) {
+        console.error('[gerar] ERRO docx editavel:', e)
+        docxEditavelBlob = new Blob([(e as Error).message], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
+      }
 
       // 5) Gera PDF a partir do MESMO previewProps que ja foi usado pro DOCX
+      setGerandoStep('Gerando PDF...')
       let pdfBlob: Blob | null = null
       let pdfErro: string | null = null
       try {
+        const t0 = Date.now()
         pdfBlob = await gerarPdfDoPreview(previewProps)
+        console.log(`[gerar] pdf OK em ${Date.now() - t0}ms (${pdfBlob.size} bytes)`)
       } catch (e) {
         pdfErro = (e as Error).message
         console.warn('Falha PDF:', pdfErro)
@@ -592,6 +616,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         }
       } else if (opcoes.salvarNoServidor) {
         // 6c) Upload pro Supabase Storage. Daemon sincroniza com Z:\.
+        setGerandoStep('Enviando pro servidor...')
         try {
           const ano = String(hoje.getFullYear())
           const mes = String(hoje.getMonth() + 1).padStart(2, '0')
@@ -987,6 +1012,15 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           {erro && (
             <div className="p-3 bg-danger-bg/15 border border-danger/30 rounded-md text-[11px] text-danger">
               {erro}
+            </div>
+          )}
+
+          {/* Indicador de progresso durante a geração — mostra em qual etapa
+              esta travando, ajuda a diagnosticar travamentos no PWA mobile */}
+          {gerando && gerandoStep && (
+            <div className="p-3 bg-accent/10 border border-accent/30 rounded-md text-[11px] text-accent flex items-center gap-2">
+              <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+              <div className="font-semibold">{gerandoStep}</div>
             </div>
           )}
         </div>
