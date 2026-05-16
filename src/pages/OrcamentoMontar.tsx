@@ -489,13 +489,11 @@ export function OrcamentoMontar() {
     if (!eCompacta23) return
 
     const NOME_BALANCA = 'Balança Eletrônica 2000 kg'
-    // Ja tem alguma balanca eletronica 2000kg nos componentes? evita duplicar
     const jaExiste = componentesExtras.some(c =>
       /balan.a.*el.tr.nica.*2000/i.test(c.nome.trim())
     )
     if (jaExiste) return
 
-    // Busca preco no cadastro precos_branorte (categoria BALANCA)
     const balancaPreco = (precos ?? []).find(p =>
       p.categoria === 'BALANCA' && /balan.a.*el.tr.nica.*2000/i.test(p.descricao)
     )
@@ -507,6 +505,29 @@ export function OrcamentoMontar() {
       valor,
     }])
   }
+
+  // Watcher: sempre que carrinho mudar, verifica se tem Compacta 02/03 e adiciona
+  // balanca eletronica 2000kg automaticamente nos componentes adicionais.
+  // Cobre TODOS os caminhos de adicao: catalogo, precos, customizado, carregar modelo,
+  // load draft, etc. Roda so quando precos ja foi carregado pra usar valor real.
+  useEffect(() => {
+    if (!precos) return
+    const temCompacta23 = carrinho.some(it => /COMPACTA\s*0?[23]\b/i.test(it.nome))
+    if (!temCompacta23) return
+    const jaTemBalanca = componentesExtras.some(c =>
+      /balan.a.*el.tr.nica.*2000/i.test(c.nome.trim())
+    )
+    if (jaTemBalanca) return
+    const balancaPreco = precos.find(p =>
+      p.categoria === 'BALANCA' && /balan.a.*el.tr.nica.*2000/i.test(p.descricao)
+    )
+    const valor = balancaPreco?.valor_equipamento ? Number(balancaPreco.valor_equipamento) : 8728
+    setComponentesExtras(arr => [...arr, {
+      id: `auto-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      nome: 'Balança Eletrônica 2000 kg',
+      valor,
+    }])
+  }, [carrinho, precos, componentesExtras])
 
   // Adiciona item ao carrinho direto de uma entrada de precos_branorte.
   // Faz lookup do catalogo_items linkado (via preco_branorte_id) pra puxar
