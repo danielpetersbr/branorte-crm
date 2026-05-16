@@ -16,6 +16,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 import { UploadModeloModal } from '@/components/UploadModeloModal'
 import { useAuth } from '@/hooks/useAuth'
+import { supabase } from '@/lib/supabase'
 import { baixarOrcamentoPdf } from '@/lib/orcamento-pdf'
 import {
   baixarOrcamentoDocx, gerarOrcamentoDocx, prepararDocxParaPdf,
@@ -338,34 +339,10 @@ export function OrcamentoBuilder() {
 
   async function salvarNaPasta(orc: { numero: string }): Promise<void> {
     if (!modeloSelecionado?.template_path) return
-    // 1) Garante handle com permissão de escrita
-    let handle = await getStoredFolderHandle(true)
-    if (!handle) {
-      handle = await pickOrcamentoFolder(true)
-      if (!handle) throw new Error('Pasta não selecionada')
-    }
-    const ok = await ensureWritePermission(handle)
-    if (!ok) throw new Error('Permissão de escrita negada — Chrome/Edge tem que pedir permissão pra escrever na pasta')
 
-    // 2) Resolve a pasta do mês
     const hoje = new Date()
-    const resolved = await resolverPastaDoMes(handle, hoje)
-    let pastaMes
-    let caminhoUsado: string
-    if (resolved.ok) {
-      pastaMes = resolved.pastaMes
-      caminhoUsado = resolved.caminho || 'pasta selecionada'
-    } else if (resolved.sugestaoCriar) {
-      pastaMes = await resolved.sugestaoCriar()
-      caminhoUsado = `(pasta criada) ${resolved.motivo}`
-    } else {
-      throw new Error(
-        `Pasta selecionada errada. ${resolved.motivo}\n\n` +
-        `Use "Reler pasta" e selecione: Z:\\1 - Comercial\\3 - Orçamento\\${hoje.getFullYear()}`
-      )
-    }
 
-    // 3) Gera o .docx
+    // 1) Gera o .docx via template (mesmo que antes)
     const docxBlob = await gerarOrcamentoDocx({
       template_path: modeloSelecionado.template_path,
       numero: orc.numero,
@@ -377,9 +354,7 @@ export function OrcamentoBuilder() {
       data_venda: pgDataVenda ? formaPagamentoOut.data_venda : null,
     })
 
-    // 4) Gera o PDF via Gotenberg (se configurado)
-    //    Usa versão "limpa" do docx (sem bordas extras) só pro PDF —
-    //    o .docx salvo na pasta é o original.
+    // 2) Gera PDF via Gotenberg (se configurado)
     let pdfBlob: Blob | null = null
     let pdfErro: string | undefined
     if (isGotenbergConfigured()) {
@@ -401,30 +376,45 @@ export function OrcamentoBuilder() {
       modelo_basename: modeloSelecionado.basename,
     })
 
-    // 5) Escreve cada arquivo, rastreando o resultado individual
-    const resultado = { docx: false, pdf: false, txt: false, caminho: caminhoUsado, pdfErro }
+    // 3) Upload pro Storage Supabase (daemon copia pra Z:\ automaticamente).
+    // Caminho: orcamentos-pendentes/YYYY/MM/<nome>.{docx,pdf,txt}
+    const ano = String(hoje.getFullYear())
+    const mes = String(hoje.getMonth() + 1).padStart(2, '0')
+    const folder = `${ano}/${mes}`
+    const resultado = { docx: false, pdf: false, txt: false, caminho: `Z:\\1 - Comercial\\3 - Orçamento\\${ano}\\Orçamentos ${ano} (via servidor)`, pdfErro }
+
+    // .docx (obrigatorio)
+    const { error: docxErr } = await supabase.storage.from('orcamentos-pendentes')
+      .upload(`${folder}/${base}.docx`, docxBlob, {
+        contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        upsert: true,
+      })
+    if (docxErr) throw new Error(`.docx nao pode ser uploaded: ${docxErr.message}`)
+    resultado.docx = true
+
+    // .txt (best-effort)
     try {
-      await escreverArquivo(pastaMes, `${base}.docx`, docxBlob)
-      resultado.docx = true
-    } catch (e) {
-      console.error('Falha .docx:', e)
-      throw new Error(`.docx não pôde ser salvo: ${(e as Error).message}`)
-    }
-    try {
-      await escreverArquivo(pastaMes, `${base} - ${vendedor}.txt`, nota)
-      resultado.txt = true
-    } catch (e) {
-      console.warn('Falha .txt:', e)
-    }
+      const txtBlob = new Blob([nota], { type: 'text/plain;charset=utf-8' })
+      const { error: txtErr } = await supabase.storage.from('orcamentos-pendentes')
+        .upload(`${folder}/${base} - ${vendedor}.txt`, txtBlob, {
+          contentType: 'text/plain;charset=utf-8',
+          upsert: true,
+        })
+      if (!txtErr) resultado.txt = true
+    } catch (e) { console.warn('Falha .txt:', e) }
+
+    // .pdf (best-effort)
     if (pdfBlob) {
       try {
-        await escreverArquivo(pastaMes, `${base}.pdf`, pdfBlob)
-        resultado.pdf = true
-      } catch (e) {
-        console.warn('Falha .pdf:', e)
-        resultado.pdfErro = (e as Error).message
-      }
+        const { error: pdfErr } = await supabase.storage.from('orcamentos-pendentes')
+          .upload(`${folder}/${base}.pdf`, pdfBlob, {
+            contentType: 'application/pdf',
+            upsert: true,
+          })
+        if (!pdfErr) resultado.pdf = true
+      } catch (e) { console.warn('Falha .pdf:', e); resultado.pdfErro = (e as Error).message }
     }
+
     setArquivosSalvos(resultado)
   }
 

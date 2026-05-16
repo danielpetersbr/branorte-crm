@@ -516,14 +516,16 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
           {fotoPrincipal ? (
             <div data-no-break className="group relative mb-3 border border-gray-700 rounded-md p-2 bg-white shadow-sm" style={{ zIndex: 1 }}>
-              <div className="w-full flex items-center justify-center bg-white" style={{ minHeight: '300px' }}>
+              <div className="w-full flex items-center justify-center bg-white">
                 <img
                   src={fotoPrincipal}
                   alt="Foto da fábrica"
                   // object-contain preserva aspect ratio (NUNCA estica)
-                  // width/height auto + max constraint pra nao amassar
+                  // 280px = bom destaque sem dominar a pagina (era 380 e fazia
+                  // o PDF ficar com 9 paginas — itens orçados ficavam pra cabar
+                  // em paginas separadas com espaço em branco gigante antes).
                   style={{
-                    maxHeight: '380px',
+                    maxHeight: '280px',
                     maxWidth: '100%',
                     width: 'auto',
                     height: 'auto',
