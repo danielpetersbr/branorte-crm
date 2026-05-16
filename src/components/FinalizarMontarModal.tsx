@@ -1119,7 +1119,7 @@ function AutoPreencherCliente({ onApply }: { onApply: (r: ReturnType<typeof pars
     : 0
 
   return (
-    <div className="rounded-lg border border-purple-300 bg-gradient-to-br from-purple-50/60 to-pink-50/40 overflow-hidden">
+    <div className="rounded-lg border border-purple-300 dark:border-purple-700 bg-gradient-to-br from-purple-50/60 to-pink-50/40 dark:from-purple-950/40 dark:to-pink-950/30 overflow-hidden">
       {/* Header compacto */}
       <div className="flex items-center justify-between px-3 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white">
         <span className="text-[11px] uppercase tracking-wider font-bold flex items-center gap-1.5">
@@ -1138,8 +1138,7 @@ function AutoPreencherCliente({ onApply }: { onApply: (r: ReturnType<typeof pars
           onChange={e => setTexto(e.target.value)}
           placeholder="Cola qualquer texto com dados do cliente — nome, CNPJ, endereço, telefone, email…"
           rows={4}
-          className="w-full text-[12px] px-2.5 py-2 border border-purple-200 rounded-md bg-white text-gray-900 placeholder:text-gray-400 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-200 resize-none"
-          style={{ color: '#111827', backgroundColor: '#ffffff' }}
+          className="w-full text-[12px] px-2.5 py-2 border border-purple-200 dark:border-purple-800 rounded-md bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 placeholder:text-gray-400 dark:placeholder:text-slate-500 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-200 dark:focus:ring-purple-700 resize-none"
         />
 
         <div className="grid grid-cols-2 gap-2">
@@ -1147,7 +1146,7 @@ function AutoPreencherCliente({ onApply }: { onApply: (r: ReturnType<typeof pars
             type="button"
             onClick={processarRegex}
             disabled={!texto.trim() || carregandoIA}
-            className="text-[12px] px-3 py-2 rounded-md bg-white border-2 border-purple-300 text-purple-700 font-bold hover:bg-purple-50 disabled:opacity-50 flex items-center justify-center gap-1.5"
+            className="text-[12px] px-3 py-2 rounded-md bg-white dark:bg-slate-900 border-2 border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 font-bold hover:bg-purple-50 dark:hover:bg-purple-950 disabled:opacity-50 flex items-center justify-center gap-1.5"
             title="Extração local instantânea (regex). Ideal pra texto estruturado."
           >
             ⚡ Rápido
