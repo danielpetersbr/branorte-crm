@@ -164,7 +164,10 @@ export function OrcamentoMontar() {
   const [tensaoMotores, setTensaoMotores] = useState<TensaoMotor>(null)
   const [carrinho, setCarrinho] = useState<CarrinhoItem[]>([])
   // Acessórios: bloco opcional com valor calculado como % do total de equipamentos
-  const [acessorios, setAcessorios] = useState<{ pct: number; items: string[] } | null>(null)
+  // valorFixo: opcional. Quando setado (vem de modelo carregado), tem prioridade
+  // sobre o calculo pct*itens — evita perder centavos no arredondamento.
+  // Limpo pra null quando vendedor edita o pct manualmente.
+  const [acessorios, setAcessorios] = useState<{ pct: number; items: string[]; valorFixo?: number | null } | null>(null)
   const [acessoriosOpen, setAcessoriosOpen] = useState(false)
   const [showOnlyPopular, setShowOnlyPopular] = useState(false)
   const [showOnlyOficiais, setShowOnlyOficiais] = useState(true)  // default: só items curados
@@ -288,10 +291,12 @@ export function OrcamentoMontar() {
     [motoresAgrupados],
   )
   // Valor dos acessórios = % do total de equipamentos (arredondado em centavos)
-  const valorAcessorios = useMemo(
-    () => acessorios ? Math.round((totalItems * acessorios.pct) / 100 * 100) / 100 : 0,
-    [acessorios, totalItems],
-  )
+  const valorAcessorios = useMemo(() => {
+    if (!acessorios) return 0
+    // Prioriza valorFixo (vem de modelo carregado direto do banco - sem perder centavos)
+    if (acessorios.valorFixo != null && acessorios.valorFixo > 0) return acessorios.valorFixo
+    return Math.round((totalItems * acessorios.pct) / 100 * 100) / 100
+  }, [acessorios, totalItems])
   const totalEquip = totalItems + valorAcessorios   // entra no "VALOR TOTAL DE EQUIPAMENTOS"
   const totalComponentesExtras = useMemo(
     () => componentesExtras.reduce((s, c) => s + (Number(c.valor) || 0), 0),
@@ -1001,11 +1006,16 @@ export function OrcamentoMontar() {
 
     setCarrinho(novos)
 
-    // 4) Acessórios — converte { items, valor } → { pct, items }
+    // 4) Acessórios: preserva o VALOR EXATO do modelo (evita perder centavos
+    // no arredondamento do pct). O pct fica como referencia visual ('Acessórios (8%)').
     if (modelo.acessorios && modelo.acessorios.items?.length) {
       const totalNovo = novos.reduce((s, it) => s + it.valor * it.qtd, 0)
       const pct = totalNovo > 0 ? Math.round((modelo.acessorios.valor / totalNovo) * 100) : 5
-      setAcessorios({ pct: Math.max(1, Math.min(50, pct)), items: modelo.acessorios.items })
+      setAcessorios({
+        pct: Math.max(1, Math.min(50, pct)),
+        items: modelo.acessorios.items,
+        valorFixo: modelo.acessorios.valor, // ← preserva o valor exato do banco
+      })
     } else {
       setAcessorios(null)
     }
@@ -1683,7 +1693,11 @@ export function OrcamentoMontar() {
         open={acessoriosOpen}
         initial={acessorios}
         onClose={() => setAcessoriosOpen(false)}
-        onSave={cfg => { setAcessorios(cfg); setAcessoriosOpen(false) }}
+        onSave={cfg => {
+          // Vendedor editou — limpa valorFixo pra recalcular via pct
+          setAcessorios({ ...cfg, valorFixo: null })
+          setAcessoriosOpen(false)
+        }}
         onRemove={() => { setAcessorios(null); setAcessoriosOpen(false) }}
       />
 
