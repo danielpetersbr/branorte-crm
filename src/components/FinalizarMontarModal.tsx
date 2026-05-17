@@ -175,6 +175,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
 
   // Enviar PDF pro proprio WhatsApp do vendedor (ele encaminha pro cliente)
   const [enviarMeuZap, setEnviarMeuZap] = useState(true)
+  const [pdfAltaQualidade, setPdfAltaQualidade] = useState(false)
 
   // Forma de pagamento
   const [pgTipo, setPgTipo] = useState<TipoPagamento>('avista')
@@ -328,7 +329,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
     }
   }
 
-  async function handleGerar(opcoes: { salvarNaPasta: boolean; salvarNoServidor?: boolean }) {
+  async function handleGerar(opcoes: { salvarNaPasta: boolean; salvarNoServidor?: boolean; pdfQuality?: 'normal' | 'high' }) {
     // Validações antes de gravar — evita orçamento órfão (sem cliente, vazio, R$ 0)
     if (!cliNome.trim()) {
       setErro('Nome do cliente é obrigatório')
@@ -556,7 +557,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       let pdfErro: string | null = null
       try {
         const t0 = Date.now()
-        pdfBlob = await gerarPdfDoPreview(previewProps)
+        pdfBlob = await gerarPdfDoPreview(previewProps, { quality: opcoes.pdfQuality })
         console.log(`[gerar] pdf OK em ${Date.now() - t0}ms (${pdfBlob.size} bytes)`)
       } catch (e) {
         pdfErro = (e as Error).message
@@ -1014,6 +1015,24 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             </div>
           </label>
 
+          {/* PDF em alta resolução — scale 8 desktop / 4 mobile (≈300 DPI). +memória. */}
+          <label className="flex items-start gap-2 p-3 border border-border rounded-md bg-surface-2/30 cursor-pointer hover:bg-surface-2/50 transition-colors">
+            <input
+              type="checkbox"
+              checked={pdfAltaQualidade}
+              onChange={e => setPdfAltaQualidade(e.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-accent"
+            />
+            <div className="flex-1">
+              <div className="text-[12px] font-semibold text-ink flex items-center gap-1.5">
+                🎨 PDF alta qualidade (≈300 DPI)
+              </div>
+              <div className="text-[10px] text-ink-faint mt-0.5">
+                Renderiza em alta resolução pra impressão premium. Demora mais e gera arquivo maior. Em celular pode travar PDFs longos.
+              </div>
+            </div>
+          </label>
+
           {/* Status do envio WhatsApp */}
           {waStatus !== 'idle' && (
             <div
@@ -1061,7 +1080,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
               Removido botao 'Só baixar' que causava confusao — user clicava
               nele por engano e o arquivo nao ia pra pasta. */}
           <button
-            onClick={() => handleGerar({ salvarNaPasta: false, salvarNoServidor: true })}
+            onClick={() => handleGerar({ salvarNaPasta: false, salvarNoServidor: true, pdfQuality: pdfAltaQualidade ? 'high' : 'normal' })}
             disabled={gerando || !cliNome.trim()}
             className="text-[13px] px-5 py-2.5 rounded bg-accent hover:bg-accent/90 text-white font-bold disabled:opacity-50 flex items-center justify-center gap-1.5 min-h-[44px] shadow-sm flex-1 sm:flex-initial"
             title="Salva pra pasta Z:\1 - Comercial\3 - Orçamento — sincronizado pelo PC do escritório"

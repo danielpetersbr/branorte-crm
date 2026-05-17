@@ -20,6 +20,11 @@ interface GerarPdfOpts {
   scale?: number
   /** Largura em PIXELS do container offscreen onde a preview e renderizada (default 800px ≈ proporcional A4) */
   containerWidthPx?: number
+  /**
+   * Qualidade do PDF. `normal` = scale 5 desktop / 2 mobile (default).
+   * `high` = scale 8 desktop / 4 mobile (≈300 DPI). Cuidado: mobile pode estourar memoria em PDFs longos.
+   */
+  quality?: 'normal' | 'high'
 }
 
 /**
@@ -32,11 +37,14 @@ export async function gerarPdfDoPreview(
 ): Promise<Blob> {
   const pageWidthMm = opts.pageWidth ?? 210
   const pageHeightMm = opts.pageHeight ?? 297
-  // scale: 5 em desktop, 2 em mobile. iOS Safari/PWA estoura memoria
-  // com scale alto e gera CANVAS BRANCO (bug confirmado em iPad/iPhone).
-  // 2 ainda fica legivel com a fonte maior do renderMode.
+  // scale: 5 em desktop, 2 em mobile (default 'normal'). iOS Safari/PWA estoura
+  // memoria com scale alto e gera CANVAS BRANCO (bug confirmado em iPad/iPhone).
+  // 'high' = 8 desktop / 4 mobile (≈300 DPI) — use pra impressao premium.
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768
-  const scale = opts.scale ?? (isMobile ? 2 : 5)
+  const isHighQuality = opts.quality === 'high'
+  const scale = opts.scale ?? (isHighQuality
+    ? (isMobile ? 4 : 8)
+    : (isMobile ? 2 : 5))
   const containerWidthPx = opts.containerWidthPx ?? 1024
 
   // 1) Cria container off-screen com largura fixa pra o preview renderizar consistente
