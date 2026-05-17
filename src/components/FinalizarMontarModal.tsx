@@ -8,6 +8,7 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 import { gerarPdfDoPreview } from '@/lib/preview-to-pdf'
+import { gerarPdfServerSide } from '@/lib/pdf-server'
 import { gerarDocxDoPreview } from '@/lib/preview-to-docx'
 import { gerarOrcamentoCustomDocx } from '@/lib/orcamento-custom-docx'
 import {
@@ -557,7 +558,21 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       let pdfErro: string | null = null
       try {
         const t0 = Date.now()
-        pdfBlob = await gerarPdfDoPreview(previewProps, { quality: opcoes.pdfQuality })
+        // Quando 'high' qualidade: tenta server-side (Puppeteer/Chrome) que gera
+        // PDF nativo vetorial. Se cair, fallback pro client-side com scale 8.
+        if (opcoes.pdfQuality === 'high') {
+          try {
+            setGerandoStep('Gerando PDF vetorial (servidor)...')
+            pdfBlob = await gerarPdfServerSide(previewProps)
+            console.log(`[gerar] pdf SERVER OK (${pdfBlob.size} bytes)`)
+          } catch (serverErr) {
+            console.warn('[gerar] PDF server falhou, fallback client:', serverErr)
+            setGerandoStep('Servidor indisponível, gerando local em alta qualidade...')
+            pdfBlob = await gerarPdfDoPreview(previewProps, { quality: 'high' })
+          }
+        } else {
+          pdfBlob = await gerarPdfDoPreview(previewProps, { quality: opcoes.pdfQuality })
+        }
         console.log(`[gerar] pdf OK em ${Date.now() - t0}ms (${pdfBlob.size} bytes)`)
       } catch (e) {
         pdfErro = (e as Error).message
@@ -1015,7 +1030,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             </div>
           </label>
 
-          {/* PDF em alta resolução — scale 8 desktop / 4 mobile (≈300 DPI). +memória. */}
+          {/* PDF vetorial: tenta server-side (Puppeteer/Chrome), fallback scale 8 client. */}
           <label className="flex items-start gap-2 p-3 border border-border rounded-md bg-surface-2/30 cursor-pointer hover:bg-surface-2/50 transition-colors">
             <input
               type="checkbox"
@@ -1025,10 +1040,10 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             />
             <div className="flex-1">
               <div className="text-[12px] font-semibold text-ink flex items-center gap-1.5">
-                🎨 PDF alta qualidade (≈300 DPI)
+                🎨 PDF alta qualidade (vetorial)
               </div>
               <div className="text-[10px] text-ink-faint mt-0.5">
-                Renderiza em alta resolução pra impressão premium. Demora mais e gera arquivo maior. Em celular pode travar PDFs longos.
+                Renderiza no servidor (Chrome real) — texto selecionável, zoom infinito, ideal pra impressão. Demora ~5-10s a mais. Se o servidor falhar, cai pro modo local em alta resolução.
               </div>
             </div>
           </label>

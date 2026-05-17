@@ -38,6 +38,10 @@ const OrcamentosConversao = lazy(() => import('@/pages/OrcamentosConversao').the
 const OrcamentosSalvos = lazy(() => import('@/pages/OrcamentosSalvos').then(m => ({ default: m.OrcamentosSalvos })))
 const Roadmap = lazy(() => import('@/pages/Roadmap').then(m => ({ default: m.Roadmap })))
 
+// /print/orcamento é importado direto (sem lazy) pra evitar precisar de Suspense
+// no fallback antes do auth. Rota usada APENAS pelo Puppeteer server-side.
+import PrintOrcamento from '@/pages/PrintOrcamento'
+
 // Loga TODO erro de query/mutation no console. Evita falha silenciosa.
 // Erros visuais aparecem no SyncIndicator da Atendimentos (e outras páginas podem opt-in).
 const queryClient = new QueryClient({
@@ -77,6 +81,12 @@ if (typeof window !== 'undefined' && window.localStorage?.getItem('debug-rq') ==
 function AppRoutes() {
   const { session, profile, loading } = useAuth()
   const loc = useLocation()
+
+  // Rota pública /print — usada pelo Puppeteer pra renderizar OrcamentoPreview
+  // sem chrome do app. Dados injetados via window.__BRANORTE_PRINT__ pelo Puppeteer.
+  if (loc.pathname === '/print/orcamento') {
+    return <PrintOrcamento />
+  }
 
   if (loading) return <PageLoading />
 
