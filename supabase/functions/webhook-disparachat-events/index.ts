@@ -1,6 +1,7 @@
-// webhook-disparachat-events v21 (2026-05-17) — auto-atribuição de vendedor via RPC quando ReplyAgent não manda vendedor_designado
-//   ANTES: lead chegava com responsavel=null se IA não transferiu, ficava órfão em /atendimentos
-//   AGORA: se vendorName é null, chama wa_atribuir_vendedor_ana → round-robin, fila justa
+// webhook-disparachat-events v22 (2026-05-17) — auto-atribuição SEMPRE quando ReplyAgent não manda vendedor_designado
+//   v20: lead chegava com responsavel=null se IA não transferiu, ficava órfão
+//   v21: auto-atribui EXCETO ia_started (mas IA quase nunca transfere → continuava órfão)
+//   v22: auto-atribui INCLUSIVE em ia_started — vendedor vê o lead desde o início, mesmo IA atendendo
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -211,10 +212,10 @@ Deno.serve(async (req) => {
     const finalQualif = qualifFromEvent ?? qualifFromTags;
 
     // AUTO-ATRIBUIÇÃO: se ReplyAgent não mandou vendedor_designado, chama RPC pra atribuir via round-robin.
-    // Só chama se atendimento ainda NÃO existe (evita reatribuir cliente recorrente).
-    // Skip pra ia_started (IA acabou de começar, deixa IA decidir antes).
+    // Sempre atribui (inclusive em ia_started/Pendente-IA) — vendedor vê o lead desde o início.
+    // Anti-duplicidade: se cliente já tem responsavel salvo, mantém o atual (não reatribui).
     let assignedVendor: string | null = vendorName;
-    const podeAutoAtribuir = !vendorName && cfg.event_type !== "ia_started" && !!name;
+    const podeAutoAtribuir = !vendorName && !!name;
     if (podeAutoAtribuir) {
       try {
         // Check se já existe atendimento com responsavel pra esse telefone
@@ -302,12 +303,16 @@ Deno.serve(async (req) => {
       const existingId = Array.isArray(existingRows) && existingRows[0]?.id;
 
       if (existingId) {
+        // UPDATE: NÃO sobrescrever 'data' (primeiro contato original).
+        // Só atualiza campos de estado atual (last_message_at, status, vendor, etc).
+        const { data: _origData, ...updateRow } = atendimentoRow as Record<string, unknown>;
+        void _origData;
         const r2 = await fetch(
           `${SUPABASE_URL}/rest/v1/auditoria_atendimentos?id=eq.${existingId}`,
           {
             method: "PATCH",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_KEY}`, "apikey": SERVICE_KEY, "Content-Profile": "auditoria", "Prefer": "return=minimal" },
-            body: JSON.stringify(atendimentoRow),
+            body: JSON.stringify(updateRow),
           },
         );
         results.auditoria_atendimentos = `UPDATE ${r2.status}`;
