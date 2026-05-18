@@ -1,7 +1,11 @@
-// webhook-disparachat-events v22 (2026-05-17) — auto-atribuição SEMPRE quando ReplyAgent não manda vendedor_designado
+// webhook-disparachat-events v23 (2026-05-18) — Ana V16.22 compat + revert auto-assign em ia_started
 //   v20: lead chegava com responsavel=null se IA não transferiu, ficava órfão
 //   v21: auto-atribui EXCETO ia_started (mas IA quase nunca transfere → continuava órfão)
 //   v22: auto-atribui INCLUSIVE em ia_started — vendedor vê o lead desde o início, mesmo IA atendendo
+//   v23 (Ana V16.22+): Ana qualifica 100% antes do handoff via atribuir_vendedor — NÃO auto-atribuir em
+//        ia_started senão vendedor aparece atribuído antes da Ana decidir.
+//        Também mapeia novos campos da Ana: cf.finalidade → finalidade_fabrica, cf.interesse_principal
+//        → motivo_contato, tag LEAD-QUENTE/MORNO/FRIO → quando_investir, cf.quantidade → quantos_animais.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -204,18 +208,62 @@ Deno.serve(async (req) => {
     } catch (e) { results.lead_events_error = String(e); }
 
     const conversationSynthetic = `ra:${contactIdExternal ?? normalizedPhoneDigits}`;
-    const hasEnrichmentData = !!(cf.animal && cf.quantidade_animais && cf.formulacao);
+    // V23: Ana V16.22 salva quantidade como `quantidade` (não `quantidade_animais`)
+    const cfQuantidade = cf.quantidade ?? cf.quantidade_animais ?? null;
+    const hasEnrichmentData = !!(cf.animal && cfQuantidade && cf.formulacao);
     const isFinished = cfg.event_type === "ia_finished" || cfg.event_type === "ia_nunca_respondeu";
 
     const qualifFromEvent = mapQualificacao(tagUp, cfg.reason);
     const qualifFromTags = extractQualifFromTags(contactTags);
     const finalQualif = qualifFromEvent ?? qualifFromTags;
 
-    // AUTO-ATRIBUIÇÃO: se ReplyAgent não mandou vendedor_designado, chama RPC pra atribuir via round-robin.
-    // Sempre atribui (inclusive em ia_started/Pendente-IA) — vendedor vê o lead desde o início.
+    // V23: extrair "quando_investir" das tags de temperatura aplicadas pela Ana
+    const extractQuandoFromTags = (tags: unknown): string | null => {
+      if (!Array.isArray(tags)) return null;
+      const up = tags.map((t) => String(t).toUpperCase());
+      if (up.includes("LEAD-QUENTE")) return "Agora";
+      if (up.includes("LEAD-MORNO")) return "Em até 3 meses";
+      if (up.includes("LEAD-FRIO")) return "Pesquisando";
+      return null;
+    };
+
+    // V23: derivar motivo_contato — tenta cf direto, senão deriva de campos presentes
+    const deriveMotivoContato = (): string | null => {
+      // 1. Tenta cf.motivo_contato ou cf.interesse_principal direto
+      if (cf.motivo_contato) return String(cf.motivo_contato);
+      const interesse = String(cf.interesse_principal ?? "").toLowerCase();
+      if (interesse === "fabrica_racao") return "Montar uma Fábrica";
+      if (interesse === "equipamento") {
+        const eq = cf.equipamento ? ` ${cf.equipamento}` : "";
+        return `Equipamento${eq}`.trim();
+      }
+      // 2. FALLBACK: deriva pela presença de campos (Ana V16.22 mapeia atributo→field)
+      if (cf.equipamento) return `Equipamento ${cf.equipamento}`.trim();
+      if (cf.animal || cf.formulacao) return "Montar uma Fábrica";
+      return null;
+    };
+
+    // V23: derivar finalidade_fabrica — várias chaves possíveis
+    const deriveFinalidadeFabrica = (): string | null => {
+      // Tenta múltiplas chaves de slug
+      const raw = cf.finalidade ?? cf.finalidade_fabrica ?? cf.finalidade_da_fabrica
+        ?? cf["finalidade-da-fabrica"] ?? cf["deseja-produzir"] ?? null;
+      const fin = String(raw ?? "").toLowerCase().trim();
+      if (!fin) return null;
+      if (fin === "consumo_proprio" || fin.includes("consumo")) return "Fábrica para consumo";
+      if (fin === "revenda" || fin.includes("revenda") || fin.includes("vender")) return "Fábrica para revenda";
+      if (fin === "misto" || fin.includes("misto")) return "Fábrica para consumo e revenda";
+      // Se for texto livre que não match, retorna ele mesmo
+      return raw ? String(raw) : null;
+    };
+
+    // AUTO-ATRIBUIÇÃO (v23): só atribui DEPOIS que IA transferiu ou em eventos terminais.
+    // V22 atribuía SEMPRE inclusive em ia_started → causava bug de "vendedor atribuído antes
+    // da Ana qualificar". Como agora a Ana V16.22 qualifica 100% antes do handoff via tool
+    // atribuir_vendedor, esse RPC já cuida da atribuição na hora certa — não precisa forçar.
     // Anti-duplicidade: se cliente já tem responsavel salvo, mantém o atual (não reatribui).
     let assignedVendor: string | null = vendorName;
-    const podeAutoAtribuir = !vendorName && !!name;
+    const podeAutoAtribuir = !vendorName && !!name && cfg.event_type !== "ia_started";
     if (podeAutoAtribuir) {
       try {
         // Check se já existe atendimento com responsavel pra esse telefone
@@ -262,8 +310,12 @@ Deno.serve(async (req) => {
       respondeu_a_ia: respondeuAiV20,  // V20: só true se hasRealMessage
       transferred_by_ai: cfg.event_type === "ia_transferred",
       qual_animal: cf.animal ?? null,
-      quantidade: cf.quantidade_animais ?? null,
+      quantidade: cfQuantidade,                  // V23: aceita cf.quantidade OU cf.quantidade_animais
+      quantos_animais: cfQuantidade,             // V23: popular ambos (CRM lê dos dois)
       o_que_precisa: cf.formulacao ?? cf.equipamento ?? null,
+      finalidade_fabrica: deriveFinalidadeFabrica(),       // V23: mapeia cf.finalidade
+      motivo_contato: deriveMotivoContato(),               // V23: mapeia cf.interesse_principal
+      quando_investir: extractQuandoFromTags(contactTags), // V23: mapeia tag LEAD-QUENTE/MORNO/FRIO
       channel_type: channel,
       criativo_codigo: ad,
       criativo_facebook: criativoData ?? null,
@@ -274,7 +326,7 @@ Deno.serve(async (req) => {
       tentativa_n: cfg.tentativa ?? null,
       ai_context_summary: (() => {
         const parts = [];
-        if (cf.animal && cf.quantidade_animais) parts.push(`${cf.animal} · ${cf.quantidade_animais} · ${cf.formulacao ?? "n/d"}`);
+        if (cf.animal && cfQuantidade) parts.push(`${cf.animal} · ${cfQuantidade} · ${cf.formulacao ?? "n/d"}`);
         if (cfg.tentativa) {
           if (cfg.tentativa === 99) parts.push("💀 NUNCA RESPONDEU");
           else parts.push(`🔁 ${cfg.tentativa}ª tentativa`);

@@ -37,9 +37,19 @@ const STATUS_TONE: Record<StatusReal, { tone: Tone; label: string }> = {
   'Perdido':              { tone: 'danger',  label: 'Perdido' },
 }
 
+// Coluna "Tipo de Ração" — agora exibe formulação (o_que_precisa) ao invés de consumo/revenda
 const FINALIDADE_TONE: Record<string, Tone> = {
+  // Formulações (Ana V16.22)
+  'ração completa':       'info',
+  'proteinado':           'warning',
+  'sal mineral':           'accent',
+  'postura':              'info',
+  'corte':                'warning',
+  'ração':                'info',
+  // Legacy (consumo/revenda — backwards compat)
   'Fábrica para consumo':  'info',
   'Fábrica para vender':   'warning',
+  'Fábrica para revenda':  'warning',
   'Consumo e vender':      'success',
 }
 
@@ -120,24 +130,39 @@ function KpiCard({ label, value, hero, tone = 'neutral', icon: Icon, hint }: Kpi
     accent:  'before:bg-accent',
     neutral: 'before:bg-border',
   }
+  // Gradiente sutil + hover lift pra dar profundidade
+  const gradientStyle = tone !== 'neutral'
+    ? {
+        background: `linear-gradient(135deg, hsl(var(--surface)) 0%, hsl(var(--surface)) 60%, hsl(var(--${tone}-bg)) 100%)`,
+      }
+    : undefined
   return (
-    <div className={`relative overflow-hidden rounded-lg bg-surface border border-border ${hero ? 'p-5' : 'p-4'}
-                     before:absolute before:inset-y-0 before:left-0 before:w-[3px] ${accentClass[tone]}`}>
+    <div
+      className={`group relative overflow-hidden rounded-xl bg-surface border border-border ${hero ? 'p-5' : 'p-4'}
+                  before:absolute before:inset-y-0 before:left-0 before:w-[3px] ${accentClass[tone]}
+                  transition-all duration-200 hover:border-${tone === 'neutral' ? 'border' : tone}/40
+                  hover:shadow-lg hover:shadow-${tone === 'neutral' ? 'black' : tone}/5 hover:-translate-y-0.5`}
+      style={gradientStyle}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className={`text-[10px] uppercase tracking-widest font-medium ${tone === 'neutral' ? 'text-ink-faint' : `text-${tone}`}`}
+          <p className={`text-[10px] uppercase tracking-widest font-semibold ${tone === 'neutral' ? 'text-ink-faint' : `text-${tone}`}`}
              style={{ color: tone !== 'neutral' ? `hsl(var(--${tone}))` : undefined }}>
             {label}
           </p>
-          <p className={`mt-1 font-semibold tabular-nums tracking-tight text-ink ${hero ? 'text-3xl' : 'text-2xl'}`}>
+          <p className={`mt-1 font-bold tabular-nums tracking-tight text-ink ${hero ? 'text-3xl' : 'text-2xl'}`}>
             {formatNumber(value)}
           </p>
-          {hint && <p className="text-[11px] text-ink-faint mt-0.5">{hint}</p>}
+          {hint && <p className="text-[11px] text-ink-faint mt-0.5 leading-tight">{hint}</p>}
         </div>
         {Icon && (
-          <div className={`h-8 w-8 rounded-md flex items-center justify-center shrink-0
+          <div className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 transition-transform group-hover:scale-110
                           ${tone === 'neutral' ? 'bg-surface-2' : ''}`}
-               style={tone !== 'neutral' ? { background: `hsl(var(--${tone}-bg))`, color: `hsl(var(--${tone}))` } : undefined}>
+               style={tone !== 'neutral' ? {
+                 background: `hsl(var(--${tone}-bg))`,
+                 color: `hsl(var(--${tone}))`,
+                 boxShadow: `inset 0 0 0 1px hsl(var(--${tone}) / 0.15)`,
+               } : undefined}>
             <Icon className="h-4 w-4" />
           </div>
         )}
@@ -259,18 +284,26 @@ export function Atendimentos() {
   }
 
   return (
-    <div className="px-6 py-5 space-y-5">
+    <div className="px-6 py-6 space-y-6 max-w-[1800px] mx-auto">
       {/* Header */}
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-[22px] font-semibold text-ink tracking-tight leading-tight">
-            Atendimentos
-          </h1>
-          <p className="text-[13px] text-ink-muted mt-0.5">
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-ink tracking-tight leading-none bg-gradient-to-br from-ink to-ink/70 bg-clip-text">
+              Atendimentos
+            </h1>
+            {kpis && kpis.quentes > 0 && (
+              <Badge className="gap-1 px-2 py-0.5" style={{ background: 'hsl(var(--danger-bg))', color: 'hsl(var(--danger))' }}>
+                <Flame className="h-3 w-3" />
+                <span className="text-[11px] font-semibold">{kpis.quentes} quente{kpis.quentes !== 1 ? 's' : ''}</span>
+              </Badge>
+            )}
+          </div>
+          <p className="text-[13px] text-ink-muted mt-1.5">
             {kpis ? (
               <>
-                <span className="font-medium text-ink tabular-nums">{formatNumber(kpis.total)}</span>
-                <span className="text-ink-faint"> conversas · 1 por cliente</span>
+                <span className="font-semibold text-ink tabular-nums">{formatNumber(kpis.total)}</span>
+                <span className="text-ink-faint"> conversas · 1 por cliente · atualização automática</span>
               </>
             ) : 'Carregando...'}
           </p>
@@ -488,10 +521,10 @@ export function Atendimentos() {
 
           {/* ─── DESKTOP: tabela completa ─── */}
           <Card className="hidden md:block overflow-hidden p-0">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto">
               <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border bg-surface/50 [&>th]:text-left [&>th]:text-[10px] [&>th]:uppercase [&>th]:tracking-wider [&>th]:font-semibold [&>th]:text-ink-faint [&>th]:px-2 [&>th]:py-2.5 [&>th]:whitespace-nowrap">
+                <thead className="sticky top-0 z-10 bg-surface backdrop-blur-sm">
+                  <tr className="border-b border-border bg-surface-2/40 [&>th]:text-left [&>th]:text-[10px] [&>th]:uppercase [&>th]:tracking-wider [&>th]:font-bold [&>th]:text-ink-muted [&>th]:px-2 [&>th]:py-3 [&>th]:whitespace-nowrap">
                     <th>Chegou</th>
                     <th>Lead</th>
                     <th className="hidden md:table-cell">Estado</th>
@@ -499,7 +532,7 @@ export function Atendimentos() {
                     <th className="hidden lg:table-cell">Origem</th>
                     <th className="hidden 2xl:table-cell">Criativo</th>
                     <th className="hidden lg:table-cell">Motivo</th>
-                    <th className="hidden 2xl:table-cell">Finalidade</th>
+                    <th className="hidden 2xl:table-cell" title="Tipo de ração que o cliente quer produzir (ou equipamento)">Tipo de Ração</th>
                     <th className="hidden xl:table-cell">Animal</th>
                     <th className="hidden xl:table-cell">Qtd</th>
                     <th className="hidden lg:table-cell">Momento</th>
@@ -520,8 +553,10 @@ export function Atendimentos() {
                     const quandoTone = r.quando_investir ? QUANDO_TONE[r.quando_investir] : null
                     return (
                       <tr key={r.id}
-                          className={`group border-b border-border/60 last:border-0 transition-colors
-                                     ${isHot ? 'bg-danger-bg/40 hover:bg-danger-bg/60' : 'hover:bg-surface'}`}
+                          className={`group border-b border-border/40 last:border-0 transition-all duration-150
+                                     ${isHot
+                                        ? 'bg-danger-bg/30 hover:bg-danger-bg/50'
+                                        : 'hover:bg-surface-2/50 hover:shadow-sm'}`}
                           style={isHot ? { boxShadow: 'inset 3px 0 0 0 hsl(var(--danger))' } : undefined}>
                         {/* CHEGOU */}
                         <td className="px-3 py-2.5 whitespace-nowrap" title={r.primeira_data ?? r.created_at ?? ''}>
@@ -627,18 +662,22 @@ export function Atendimentos() {
                             <span className="text-[11px] text-ink-faint">—</span>
                           )}
                         </td>
-                        {/* FINALIDADE DA FÁBRICA */}
+                        {/* TIPO DE RAÇÃO (ou equipamento) — Ana V16.22 não pergunta finalidade,
+                            pergunta o TIPO (ração completa, proteinado, sal mineral, postura, corte) */}
                         <td className="hidden 2xl:table-cell px-2 py-2.5 whitespace-nowrap">
-                          {r.finalidade_fabrica ? (
-                            <Badge style={{
-                              background: `hsl(var(--${finTone ?? 'surface-2'}-bg))`,
-                              color: `hsl(var(--${finTone ?? 'ink-muted'}))`,
-                            }}>
-                              {r.finalidade_fabrica}
-                            </Badge>
-                          ) : (
-                            <span className="text-[11px] text-ink-faint">—</span>
-                          )}
+                          {(() => {
+                            const tipo = r.o_que_precisa || r.finalidade_fabrica
+                            if (!tipo) return <span className="text-[11px] text-ink-faint">—</span>
+                            const tone = FINALIDADE_TONE[tipo] ?? 'neutral'
+                            return (
+                              <Badge style={{
+                                background: `hsl(var(--${tone}-bg))`,
+                                color: `hsl(var(--${tone}))`,
+                              }} className="capitalize">
+                                {tipo}
+                              </Badge>
+                            )
+                          })()}
                         </td>
                         {/* ANIMAL */}
                         <td className="hidden xl:table-cell px-2 py-2.5 whitespace-nowrap">
