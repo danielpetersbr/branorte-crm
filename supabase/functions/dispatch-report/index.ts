@@ -1,5 +1,9 @@
-// dispatch-report v6: extensão reporta resultado do envio. Atualiza outbound_dispatch.
-// Status válidos: enviado | falhou. (Internamente: sent | failed)
+// dispatch-report v7: extensão reporta resultado do envio. Atualiza outbound_dispatch
+// E, se enviado com sucesso, propaga o nome do vendedor pra auditoria.auditoria_atendimentos
+// (resolve o bug de leads ficarem com responsavel=null mesmo quando o vendedor já
+// respondeu via extensão).
+//
+// Status válidos: enviado | falhou | skipped.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -18,6 +22,31 @@ const json = (body: unknown, init?: ResponseInit) =>
     ...init,
     headers: { ...CORS, 'content-type': 'application/json', ...(init?.headers ?? {}) },
   });
+
+// Cache em memória do mapa vendedor_nome (UPPERCASE) → nome canônico (Title Case).
+// Edge functions reciclam, então isso só dura o lifetime da instância — ok pra
+// reduzir queries em chamadas seguidas.
+let vendorCache: Map<string, string> | null = null;
+let vendorCacheAt = 0;
+const VENDOR_CACHE_TTL_MS = 5 * 60_000; // 5 min
+
+async function obterMapaVendedores(sb: ReturnType<typeof createClient>): Promise<Map<string, string>> {
+  if (vendorCache && Date.now() - vendorCacheAt < VENDOR_CACHE_TTL_MS) return vendorCache;
+  // Lê de auditoria.vendedores (fonte oficial dos nomes canônicos do CRM).
+  // Chave: UPPER(primeiro nome) — bate com o vendedor_nome enviado pela extensão.
+  const { data } = await sb.schema('auditoria').from('vendedores').select('nome, ativo');
+  const map = new Map<string, string>();
+  for (const v of (data ?? []) as Array<{ nome: string; ativo: boolean | null }>) {
+    if (v.ativo === false) continue;
+    const firstUp = String(v.nome || '').trim().split(/\s+/)[0]?.toUpperCase();
+    if (firstUp) map.set(firstUp, v.nome);
+  }
+  // Aliases conhecidos da extensão (caso o usuário use abreviação diferente)
+  if (map.has('EDILSON') && !map.has('EDILSON JR')) map.set('EDILSON JR', map.get('EDILSON')!);
+  vendorCache = map;
+  vendorCacheAt = Date.now();
+  return map;
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
@@ -51,8 +80,82 @@ Deno.serve(async (req: Request) => {
   };
 
   const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
-  const { error } = await sb.from('outbound_dispatch').update(patch).eq('id', id);
+
+  // 1) Atualiza o dispatch (comportamento original)
+  const { data: updatedDispatch, error } = await sb
+    .from('outbound_dispatch')
+    .update(patch)
+    .eq('id', id)
+    .select('cliente_telefone, vendedor_nome')
+    .maybeSingle();
   if (error) return json({ ok: false, error: 'update_falhou', message: error.message }, { status: 500 });
 
-  return json({ ok: true, lead_id: id, status: statusCanon });
+  // 2) NOVO (v7): se enviado com sucesso, marca o vendedor como responsável no atendimento.
+  // Só preenche se atualmente está null (não sobrescreve atribuição manual do CRM
+  // nem atribuição via webhook-disparachat-events ia_transferred).
+  //
+  // ATENÇÃO ao formato de telefone:
+  // - outbound_dispatch.cliente_telefone: às vezes 12 dígitos (5511991234567 sem 9 móvel)
+  // - auditoria.auditoria_atendimentos.telefone_norm: geralmente 13 dígitos (com 9)
+  // Tentamos N variantes pra cobrir essas inconsistências.
+  let atendimentoUpdate: { matched: number; nome_canonico: string | null; variant_used: string | null } =
+    { matched: 0, nome_canonico: null, variant_used: null };
+  if (statusCanon === 'sent' && updatedDispatch?.cliente_telefone && updatedDispatch?.vendedor_nome) {
+    const phoneDigits = String(updatedDispatch.cliente_telefone).replace(/[^0-9]/g, '');
+    const vendedorUp = String(updatedDispatch.vendedor_nome).trim().toUpperCase();
+
+    if (phoneDigits.length >= 10 && vendedorUp) {
+      const mapa = await obterMapaVendedores(sb);
+      const nomeCanonico = mapa.get(vendedorUp) ?? updatedDispatch.vendedor_nome;
+      atendimentoUpdate.nome_canonico = nomeCanonico;
+
+      // Gera variantes do telefone pra cobrir formato com/sem 9 móvel BR.
+      // Ex: 551897295195 (12d) → também tenta 5518997295195 (13d, com 9 após DDD)
+      const variants = new Set<string>();
+      variants.add(phoneDigits);
+      // Se 12 dígitos e começa com 55, insere 9 após DDD (posições 0-3)
+      if (phoneDigits.length === 12 && phoneDigits.startsWith('55')) {
+        variants.add(phoneDigits.slice(0, 4) + '9' + phoneDigits.slice(4));
+      }
+      // Se 13 dígitos com 9 móvel, também tenta sem o 9 (caso atendimento gravou sem)
+      if (phoneDigits.length === 13 && phoneDigits.startsWith('55') && phoneDigits[4] === '9') {
+        variants.add(phoneDigits.slice(0, 4) + phoneDigits.slice(5));
+      }
+
+      // Procura primeiro registro com qualquer variante + responsavel null
+      const { data: candidatos, error: selErr } = await sb
+        .schema('auditoria')
+        .from('auditoria_atendimentos')
+        .select('id, telefone_norm, responsavel')
+        .in('telefone_norm', [...variants])
+        .is('responsavel', null);
+
+      if (selErr) {
+        return json({ ok: true, lead_id: id, status: statusCanon, atendimento_select_warn: selErr.message });
+      }
+
+      const ids = (candidatos ?? []).map(c => c.id);
+      if (ids.length > 0) {
+        const { error: upErr } = await sb
+          .schema('auditoria')
+          .from('auditoria_atendimentos')
+          .update({ responsavel: nomeCanonico })
+          .in('id', ids);
+        if (upErr) {
+          return json({ ok: true, lead_id: id, status: statusCanon, atendimento_update_warn: upErr.message });
+        }
+        atendimentoUpdate.matched = ids.length;
+        atendimentoUpdate.variant_used = (candidatos ?? [])[0]?.telefone_norm ?? null;
+      }
+    }
+  }
+
+  return json({
+    ok: true,
+    lead_id: id,
+    status: statusCanon,
+    atendimentos_atualizados: atendimentoUpdate.matched,
+    vendedor_aplicado: atendimentoUpdate.nome_canonico,
+    telefone_match: atendimentoUpdate.variant_used,
+  });
 });
