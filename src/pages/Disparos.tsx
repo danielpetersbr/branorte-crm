@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { GitBranch, Users, AlertCircle, Activity } from 'lucide-react'
+import { GitBranch, Users, AlertCircle, Activity, Send, Copy, Check } from 'lucide-react'
 
 type Vendedor = {
   vendedor_nome: string
@@ -144,7 +144,7 @@ export function Disparos() {
           <GitBranch className="h-6 w-6 text-accent" /> Central de Roteamento
         </h1>
         <p className="text-ink-muted text-sm">
-          Define qual vendedor atende cada lead que cai na central. O envio da mensagem inicial fica por conta do ReplyAgent — esta página não dispara mensagens pela extensão dos vendedores.
+          Define qual vendedor atende cada lead que cai na central. Se o webhook do ReplyAgent mandar o campo <code className="text-accent">mensagem</code>, o WhatsApp do vendedor inicia o contato com o cliente automaticamente (via extensão Branorte).
         </p>
       </header>
 
@@ -224,6 +224,9 @@ export function Disparos() {
         vendedores={vendedores ?? []}
         onToggleBloqueado={(nome, bloqueado) => toggleBloqueado.mutate({ nome, bloqueado })}
       />
+
+      {/* OUTBOUND DISPATCH — webhook do ReplyAgent + log */}
+      <OutboundDispatchCard />
     </div>
   )
 }
@@ -425,5 +428,162 @@ function DistribuicaoGlobalCard({ vendedores, onToggleBloqueado }: { vendedores:
         })}
       </div>
     </Card>
+  )
+}
+
+// ============================================================================
+// OutboundDispatchCard — webhook do ReplyAgent + log dos últimos envios
+// ============================================================================
+type DispatchRow = {
+  id: string
+  vendedor_nome: string
+  cliente_telefone: string
+  cliente_nome: string | null
+  mensagem: string
+  status: 'pending' | 'sending' | 'sent' | 'failed' | 'skipped'
+  erro: string | null
+  msg_id: string | null
+  created_at: string
+  sent_at: string | null
+}
+
+const WEBHOOK_URL = 'https://branorte-auditoria.vercel.app/api/leads/dispatch'
+
+function OutboundDispatchCard() {
+  const [copied, setCopied] = useState<string | null>(null)
+  const { data: rows, isLoading } = useQuery<DispatchRow[]>({
+    queryKey: ['outbound-dispatch-log'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('outbound_dispatch')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(30)
+      return (data ?? []) as DispatchRow[]
+    },
+    refetchInterval: 5000,
+  })
+
+  // Realtime opcional: refetch quando uma linha muda (status update)
+  useEffect(() => {
+    const ch = supabase
+      .channel('outbound_dispatch_admin')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'outbound_dispatch' }, () => {
+        // refetch via invalidation acontece pelo polling 5s; aqui só pra futuro
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [])
+
+  const copy = async (text: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(key)
+      setTimeout(() => setCopied(null), 1500)
+    } catch {}
+  }
+
+  const exampleBody = JSON.stringify({
+    whatsapp: '{{primary_whatsapp}}',
+    nome: '{{first_name}}',
+    vendedor: 'Alvaro',
+    mensagem: 'Oi {{first_name}}, aqui é o Alvaro da Branorte. Vi seu interesse — posso te ajudar?',
+  }, null, 2)
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
+          <Send className="h-4 w-4 text-accent" />
+          Envio inicial via WhatsApp do vendedor
+          <span className="text-ink-faint font-normal text-[11px]">· últimos {rows?.length ?? 0} envios</span>
+        </h2>
+      </div>
+
+      {/* Webhook config — pra colar no ReplyAgent */}
+      <div className="border border-border rounded-lg p-3 mb-3 bg-surface-2/30">
+        <div className="text-[11px] uppercase tracking-wider text-ink-faint mb-2 font-semibold">Configuração no ReplyAgent</div>
+        <div className="grid gap-2 text-[12px]">
+          <div className="flex items-start gap-2">
+            <div className="text-ink-muted shrink-0 w-16">URL</div>
+            <code className="flex-1 font-mono text-ink bg-bg p-1.5 rounded text-[11px] break-all">{WEBHOOK_URL}</code>
+            <button onClick={() => copy(WEBHOOK_URL, 'url')} className="shrink-0 text-ink-muted hover:text-accent">
+              {copied === 'url' ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+            </button>
+          </div>
+          <div className="flex items-start gap-2">
+            <div className="text-ink-muted shrink-0 w-16">Método</div>
+            <code className="font-mono text-ink bg-bg px-1.5 py-0.5 rounded text-[11px]">POST</code>
+          </div>
+          <div className="flex items-start gap-2">
+            <div className="text-ink-muted shrink-0 w-16">Body</div>
+            <pre className="flex-1 font-mono text-ink bg-bg p-1.5 rounded text-[10px] leading-tight overflow-x-auto">{exampleBody}</pre>
+            <button onClick={() => copy(exampleBody, 'body')} className="shrink-0 text-ink-muted hover:text-accent">
+              {copied === 'body' ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+            </button>
+          </div>
+        </div>
+        <div className="text-[10px] text-ink-faint mt-2">
+          O campo <code className="text-accent">vendedor</code> bate com o vendedor configurado na extensão. Se a extensão dele estiver com WhatsApp aberto, dispara em até 30s.
+        </div>
+      </div>
+
+      {/* Log */}
+      {isLoading ? (
+        <PageLoading />
+      ) : (rows?.length ?? 0) === 0 ? (
+        <div className="text-center py-6 text-ink-muted text-[12px]">
+          Nenhum envio ainda. Configure o webhook no ReplyAgent e faça um teste.
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[11px]">
+            <thead className="text-ink-muted">
+              <tr className="border-b border-border">
+                <th className="text-left px-2 py-1.5 font-semibold">Quando</th>
+                <th className="text-left px-2 py-1.5 font-semibold">Vendedor</th>
+                <th className="text-left px-2 py-1.5 font-semibold">Cliente</th>
+                <th className="text-left px-2 py-1.5 font-semibold">Mensagem</th>
+                <th className="text-left px-2 py-1.5 font-semibold">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {(rows ?? []).map(r => (
+                <tr key={r.id} className="hover:bg-surface-2/30">
+                  <td className="px-2 py-1.5 text-ink-faint whitespace-nowrap font-mono text-[10px]">
+                    {new Date(r.created_at).toLocaleString('pt-BR', { hour12: false })}
+                  </td>
+                  <td className="px-2 py-1.5 text-ink font-semibold">{r.vendedor_nome}</td>
+                  <td className="px-2 py-1.5">
+                    <div className="text-ink">{r.cliente_nome ?? '—'}</div>
+                    <div className="text-ink-faint font-mono text-[10px]">+{r.cliente_telefone}</div>
+                  </td>
+                  <td className="px-2 py-1.5 text-ink-muted max-w-md truncate" title={r.mensagem}>{r.mensagem}</td>
+                  <td className="px-2 py-1.5"><DispatchStatusBadge row={r} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  )
+}
+
+function DispatchStatusBadge({ row }: { row: DispatchRow }) {
+  const cfg = {
+    pending:  { label: 'pendente', cls: 'bg-amber-500/10 text-amber-300 border-amber-500/30' },
+    sending:  { label: 'enviando', cls: 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30' },
+    sent:     { label: 'enviado',  cls: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' },
+    failed:   { label: 'falhou',   cls: 'bg-red-500/10 text-red-300 border-red-500/30' },
+    skipped:  { label: 'pulado',   cls: 'bg-slate-500/10 text-slate-300 border-slate-500/30' },
+  }[row.status]
+  return (
+    <span
+      className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase border ${cfg.cls}`}
+      title={row.erro ?? undefined}
+    >
+      {cfg.label}
+    </span>
   )
 }
