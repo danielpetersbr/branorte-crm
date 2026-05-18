@@ -1,4 +1,7 @@
-// webhook-disparachat-events v23 (2026-05-18) — Ana V16.22 compat + revert auto-assign em ia_started
+// webhook-disparachat-events v24 (2026-05-18) — dedup bidirecional FB↔WA
+//   v24: FB chega ~0.5s ANTES do WA. Quando o WA chega, procura órfão FB do
+//        mesmo nome em <90s e faz MERGE (UPDATE), em vez de criar duplicata.
+//        A dedup anterior (v23) só cobria WA→FB.
 //   v20: lead chegava com responsavel=null se IA não transferiu, ficava órfão
 //   v21: auto-atribui EXCETO ia_started (mas IA quase nunca transfere → continuava órfão)
 //   v22: auto-atribui INCLUSIVE em ia_started — vendedor vê o lead desde o início, mesmo IA atendendo
@@ -376,7 +379,35 @@ Deno.serve(async (req) => {
         { headers: { "Authorization": `Bearer ${SERVICE_KEY}`, "apikey": SERVICE_KEY, "Accept-Profile": "auditoria" } },
       );
       const existingRows = existsRes.ok ? await existsRes.json() : [];
-      const existingId = Array.isArray(existingRows) && existingRows[0]?.id;
+      let existingId = Array.isArray(existingRows) && existingRows[0]?.id;
+
+      // V24 DEDUP BIDIRECIONAL: o ChatbotSystem dispara 2 webhooks ~simultâneos:
+      // (1) channel=facebook (sem phone, ~0.5s ANTES)
+      // (2) channel=whatsapp (com phone)
+      // A dedup anterior (linha ~349) só pegava o caso WA→FB. Agora cobrimos
+      // FB→WA: quando o WA chega e não acha pelo telefone, procura um FB
+      // órfão do mesmo nome criado nos últimos 90s e merge nele (UPDATE),
+      // em vez de criar duplicata.
+      if (!existingId && channel === "whatsapp" && name && normalizedPhoneDigits) {
+        try {
+          const cutoff = new Date(Date.now() - 90_000).toISOString();
+          // ATENÇÃO: telefone_norm do órfão é string vazia "" (não NULL).
+          // Generaliza pra QUALQUER canal não-whatsapp (facebook, instagram, etc.)
+          // que tenha o mesmo nome e chegou nos últimos 90s sem telefone.
+          const orphanRes = await fetch(
+            `${SUPABASE_URL}/rest/v1/auditoria_atendimentos?nome=eq.${encodeURIComponent(name)}&channel_type=neq.whatsapp&or=(telefone_norm.is.null,telefone_norm.eq.)&data=gte.${cutoff}&select=id,channel_type&order=data.desc&limit=1`,
+            { headers: { "Authorization": `Bearer ${SERVICE_KEY}`, "apikey": SERVICE_KEY, "Accept-Profile": "auditoria" } },
+          );
+          if (orphanRes.ok) {
+            const orphanRows = await orphanRes.json();
+            if (Array.isArray(orphanRows) && orphanRows[0]?.id) {
+              existingId = orphanRows[0].id;
+              results.orphan_merged = { id: orphanRows[0].id, was_channel: orphanRows[0].channel_type };
+              log(`MERGE ${orphanRows[0].channel_type}_orphan ${orphanRows[0].id} → enriquecendo com dados WA`);
+            }
+          }
+        } catch (e) { results.orphan_check_error = String(e); }
+      }
 
       if (existingId) {
         // UPDATE: NÃO sobrescrever 'data' (primeiro contato original).
