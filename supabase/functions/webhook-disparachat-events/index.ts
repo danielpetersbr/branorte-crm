@@ -349,11 +349,12 @@ Deno.serve(async (req) => {
         atendimentoRow.como_finalizou = "Sem-resposta";
       }
     }
-    // V23 DEDUP: chatbotsystem dispara ~simultaneamente 2 webhooks pro mesmo lead
-    // (1) Facebook sem telefone (channel=facebook, telefone_norm vazio)
-    // (2) WhatsApp com telefone (channel=whatsapp, telefone_norm preenchido)
-    // → Pula a inserção do Facebook órfão se existe WhatsApp row mesmo nome <10min
-    if (channel === "facebook" && (!normalizedPhoneDigits || normalizedPhoneDigits === "") && name) {
+    // V24 DEDUP (FB/IG → WA): chatbotsystem dispara 2 webhooks pro mesmo lead
+    // (1) Facebook/Instagram sem telefone (canal não-WA, telefone_norm vazio)
+    // (2) WhatsApp com telefone
+    // Quando o FB/IG órfão chega DEPOIS do WA, pulamos a inserção (caso WA primeiro).
+    // (O caso oposto — WA depois do FB/IG — é tratado mais abaixo com MERGE.)
+    if (channel !== "whatsapp" && (!normalizedPhoneDigits || normalizedPhoneDigits === "") && name) {
       try {
         const tenMinAgo = new Date(Date.now() - 10 * 60_000).toISOString();
         const dupCheck = await fetch(
@@ -363,9 +364,9 @@ Deno.serve(async (req) => {
         if (dupCheck.ok) {
           const dupRows = await dupCheck.json();
           if (Array.isArray(dupRows) && dupRows.length > 0) {
-            log(`SKIP fb_orphan: dup com WhatsApp ${dupRows[0].id}`);
+            log(`SKIP ${channel}_orphan: dup com WhatsApp ${dupRows[0].id}`);
             return new Response(
-              JSON.stringify({ ok: true, skip: "fb_orphan_dup_avoided", whatsapp_row: dupRows[0].id, results }),
+              JSON.stringify({ ok: true, skip: "orphan_dup_avoided", channel_skipped: channel, whatsapp_row: dupRows[0].id, results }),
               { headers: { ...corsHeaders, "Content-Type": "application/json" } },
             );
           }
