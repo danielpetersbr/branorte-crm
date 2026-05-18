@@ -346,6 +346,30 @@ Deno.serve(async (req) => {
         atendimentoRow.como_finalizou = "Sem-resposta";
       }
     }
+    // V23 DEDUP: chatbotsystem dispara ~simultaneamente 2 webhooks pro mesmo lead
+    // (1) Facebook sem telefone (channel=facebook, telefone_norm vazio)
+    // (2) WhatsApp com telefone (channel=whatsapp, telefone_norm preenchido)
+    // → Pula a inserção do Facebook órfão se existe WhatsApp row mesmo nome <10min
+    if (channel === "facebook" && (!normalizedPhoneDigits || normalizedPhoneDigits === "") && name) {
+      try {
+        const tenMinAgo = new Date(Date.now() - 10 * 60_000).toISOString();
+        const dupCheck = await fetch(
+          `${SUPABASE_URL}/rest/v1/auditoria_atendimentos?nome=eq.${encodeURIComponent(name)}&channel_type=eq.whatsapp&data=gte.${tenMinAgo}&select=id&limit=1`,
+          { headers: { "Authorization": `Bearer ${SERVICE_KEY}`, "apikey": SERVICE_KEY, "Accept-Profile": "auditoria" } },
+        );
+        if (dupCheck.ok) {
+          const dupRows = await dupCheck.json();
+          if (Array.isArray(dupRows) && dupRows.length > 0) {
+            log(`SKIP fb_orphan: dup com WhatsApp ${dupRows[0].id}`);
+            return new Response(
+              JSON.stringify({ ok: true, skip: "fb_orphan_dup_avoided", whatsapp_row: dupRows[0].id, results }),
+              { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+            );
+          }
+        }
+      } catch (e) { results.dedup_check_error = String(e); }
+    }
+
     try {
       const existsRes = await fetch(
         `${SUPABASE_URL}/rest/v1/auditoria_atendimentos?telefone_norm=eq.${normalizedPhoneDigits}&select=id&limit=1`,
