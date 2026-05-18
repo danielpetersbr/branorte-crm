@@ -6,7 +6,7 @@ export interface UserProfile {
   id: string
   email: string
   display_name: string | null
-  role: 'admin' | 'vendor' | 'pending' | 'rejected'
+  role: 'admin' | 'vendor' | 'marketing' | 'pending' | 'rejected'
   vendor_id: string | null
   approved_at: string | null
 }

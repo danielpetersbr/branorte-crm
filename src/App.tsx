@@ -8,6 +8,7 @@ import { Login } from '@/pages/Login'
 import { Signup } from '@/pages/Signup'
 import { Pendente } from '@/pages/Pendente'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
+import { useCan } from '@/hooks/usePermissions'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { InstallPrompt } from '@/components/InstallPrompt'
 
@@ -29,6 +30,7 @@ const CatalogoAdmin = lazy(() => import('@/pages/CatalogoAdmin').then(m => ({ de
 const AtividadeDiaria = lazy(() => import('@/pages/AtividadeDiaria').then(m => ({ default: m.AtividadeDiaria })))
 const Projeto = lazy(() => import('@/pages/Projeto').then(m => ({ default: m.Projeto })))
 const AdminUsuarios = lazy(() => import('@/pages/AdminUsuarios').then(m => ({ default: m.AdminUsuarios })))
+const AdminPermissoes = lazy(() => import('@/pages/AdminPermissoes').then(m => ({ default: m.AdminPermissoes })))
 const AdminTransportadorFuncoes = lazy(() => import('@/pages/AdminTransportadorFuncoes'))
 const Perfil = lazy(() => import('@/pages/Perfil').then(m => ({ default: m.Perfil })))
 const Disparos = lazy(() => import('@/pages/Disparos').then(m => ({ default: m.Disparos })))
@@ -80,6 +82,7 @@ if (typeof window !== 'undefined' && window.localStorage?.getItem('debug-rq') ==
 
 function AppRoutes() {
   const { session, profile, loading } = useAuth()
+  const can = useCan()
   const loc = useLocation()
 
   // Rota pública /print — usada pelo Puppeteer pra renderizar OrcamentoPreview
@@ -135,16 +138,19 @@ function AppRoutes() {
         <Route path="/atividade-diaria" element={<AtividadeDiaria />} />
         <Route path="/projeto" element={<Projeto />} />
         <Route path="/perfil" element={<Perfil />} />
-        {profile.role === 'admin' && (
+        {can('menu.disparos') && (
           <Route path="/disparos" element={<Disparos />} />
         )}
-        {profile.role === 'admin' && (
+        {can('menu.admin_usuarios') && (
           <Route path="/admin/usuarios" element={<AdminUsuarios />} />
         )}
-        {profile.role === 'admin' && (
+        {can('menu.admin_permissoes') && (
+          <Route path="/admin/permissoes" element={<AdminPermissoes />} />
+        )}
+        {can('menu.admin_transportador_funcoes') && (
           <Route path="/admin/transportador-funcoes" element={<AdminTransportadorFuncoes />} />
         )}
-        {profile.role === 'admin' && (
+        {can('menu.roadmap') && (
           <Route path="/roadmap" element={<Roadmap />} />
         )}
       </Route>

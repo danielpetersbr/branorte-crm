@@ -4,6 +4,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { useCan } from '@/hooks/usePermissions'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { GitBranch, Users, AlertCircle, Activity } from 'lucide-react'
 
@@ -20,6 +21,7 @@ type Vendedor = {
 
 export function Disparos() {
   const { profile } = useAuth()
+  const can = useCan()
   const qc = useQueryClient()
 
   // Vendedores status
@@ -125,12 +127,12 @@ export function Disparos() {
   })
 
   if (!profile) return <PageLoading />
-  if (profile.role !== 'admin') {
+  if (!can('menu.disparos')) {
     return (
       <div className="p-8 text-center">
         <AlertCircle className="h-12 w-12 text-warning mx-auto mb-2" />
         <h2 className="text-xl font-bold text-ink">Acesso restrito</h2>
-        <p className="text-ink-muted">Apenas administradores podem usar a Central de Roteamento.</p>
+        <p className="text-ink-muted">Sua função não tem permissão pra usar a Central de Roteamento.</p>
       </div>
     )
   }

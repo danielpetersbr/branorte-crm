@@ -9,11 +9,14 @@ import { Select } from '@/components/ui/Select'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { Check, X } from 'lucide-react'
 
+type AssignableRole = 'admin' | 'vendor' | 'marketing'
+type AnyRole = AssignableRole | 'pending' | 'rejected'
+
 interface UserRow {
   id: string
   email: string
   display_name: string | null
-  role: 'admin' | 'vendor' | 'pending' | 'rejected'
+  role: AnyRole
   vendor_id: string | null
   approved_at: string | null
   created_at: string
@@ -38,11 +41,11 @@ export function AdminUsuarios() {
   const { data: vendorsData } = useVendors({ incluirInativos: true })
   const qc = useQueryClient()
   const [editing, setEditing] = useState<UserRow | null>(null)
-  const [role, setRole] = useState<'admin' | 'vendor'>('vendor')
+  const [role, setRole] = useState<AssignableRole>('vendor')
   const [vendorId, setVendorId] = useState<string>('')
 
   const updateUser = useMutation({
-    mutationFn: async (u: { id: string; role: 'admin' | 'vendor' | 'rejected' | 'pending'; vendor_id?: string | null }) => {
+    mutationFn: async (u: { id: string; role: AnyRole; vendor_id?: string | null }) => {
       const patch: Partial<UserRow> & { approved_at: string | null } = {
         role: u.role,
         vendor_id: u.vendor_id ?? null,
@@ -64,7 +67,7 @@ export function AdminUsuarios() {
 
   const users = data ?? []
   const pending = users.filter(u => u.role === 'pending')
-  const approved = users.filter(u => u.role === 'admin' || u.role === 'vendor')
+  const approved = users.filter(u => u.role === 'admin' || u.role === 'vendor' || u.role === 'marketing')
   const rejected = users.filter(u => u.role === 'rejected')
 
   return (
@@ -86,7 +89,7 @@ export function AdminUsuarios() {
 
       <Section title="Usuários ativos" rows={approved} onEdit={u => {
         setEditing(u)
-        setRole(u.role === 'admin' ? 'admin' : 'vendor')
+        setRole((u.role === 'admin' || u.role === 'marketing') ? u.role : 'vendor')
         setVendorId(u.vendor_id ?? '')
       }} />
 
@@ -104,8 +107,12 @@ export function AdminUsuarios() {
                 <span className="text-xs text-text-muted">Role</span>
                 <Select
                   value={role}
-                  onChange={e => setRole(e.target.value as 'admin' | 'vendor')}
-                  options={[{ value: 'admin', label: 'Admin (vê tudo)' }, { value: 'vendor', label: 'Vendedor (só seus leads)' }]}
+                  onChange={e => setRole(e.target.value as AssignableRole)}
+                  options={[
+                    { value: 'admin', label: 'Admin (vê tudo)' },
+                    { value: 'vendor', label: 'Vendedor (só seus leads)' },
+                    { value: 'marketing', label: 'Marketing (configurável em Permissões)' },
+                  ]}
                   className="w-full mt-1"
                 />
               </label>
@@ -214,10 +221,11 @@ function Section({ title, rows, muted, onApprove, onReject, onEdit, onRestore }:
 
 function RoleBadge({ role }: { role: UserRow['role'] }) {
   const m: Record<UserRow['role'], { label: string; cls: string }> = {
-    admin:    { label: 'Admin',    cls: 'bg-purple-50 text-purple-700 border border-purple-200' },
-    vendor:   { label: 'Vendedor', cls: 'bg-blue-50 text-blue-700 border border-blue-200' },
-    pending:  { label: 'Pendente', cls: 'bg-amber-50 text-amber-700 border border-amber-200' },
-    rejected: { label: 'Rejeitado', cls: 'bg-red-50 text-red-700 border border-red-200' },
+    admin:     { label: 'Admin',     cls: 'bg-purple-50 text-purple-700 border border-purple-200' },
+    vendor:    { label: 'Vendedor',  cls: 'bg-blue-50 text-blue-700 border border-blue-200' },
+    marketing: { label: 'Marketing', cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200' },
+    pending:   { label: 'Pendente',  cls: 'bg-amber-50 text-amber-700 border border-amber-200' },
+    rejected:  { label: 'Rejeitado', cls: 'bg-red-50 text-red-700 border border-red-200' },
   }
   const v = m[role]
   return <Badge className={v.cls}>{v.label}</Badge>

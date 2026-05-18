@@ -5,6 +5,7 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { cn } from '@/lib/utils'
 import { useAtendimentoKpis } from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
+import { useCan } from '@/hooks/usePermissions'
 import { RoadmapFAB } from '@/components/RoadmapFAB'
 
 // Abrevia numero pra caber no badge: 1234 -> 1.2k
@@ -21,26 +22,28 @@ interface NavItem {
   countKey?: 'atendimentos'
   children?: NavItem[]
   matchPrefix?: boolean  // se true, parent fica ativo quando path começa com `to`
+  permKey?: string  // se setado, só mostra quando can(permKey) === true
 }
 
 const PRIMARY: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/atendimentos', label: 'Atendimentos', icon: MessageSquare, countKey: 'atendimentos' },
-  { to: '/contatos', label: 'Contatos', icon: Users },
-  { to: '/atribuir', label: 'Atribuir', icon: UserPlus },
-  { to: '/funil', label: 'Funil', icon: GitBranch },
+  { to: '/atendimentos', label: 'Atendimentos', icon: MessageSquare, countKey: 'atendimentos', permKey: 'menu.atendimentos' },
+  { to: '/contatos', label: 'Contatos', icon: Users, permKey: 'menu.contatos' },
+  { to: '/atribuir', label: 'Atribuir', icon: UserPlus, permKey: 'menu.atribuir' },
+  { to: '/funil', label: 'Funil', icon: GitBranch, permKey: 'menu.funil' },
   {
     to: '/etiquetas-zap',
     label: 'Etiquetas Zap',
     icon: Tag,
     matchPrefix: true,
+    permKey: 'menu.etiquetas_zap',
     children: [
       { to: '/etiquetas-zap', label: 'Cards', icon: List },
       { to: '/etiquetas-zap/graficos', label: 'Gráficos', icon: BarChart2 },
       { to: '/etiquetas-zap/painel', label: 'Painel Status', icon: AlertCircle },
     ],
   },
-  { to: '/atividade-diaria', label: 'Atividade Diária', icon: Activity },
+  { to: '/atividade-diaria', label: 'Atividade Diária', icon: Activity, permKey: 'menu.atividade_diaria' },
 ]
 const SECONDARY: NavItem[] = [
   {
@@ -48,6 +51,7 @@ const SECONDARY: NavItem[] = [
     label: 'Orçamentos',
     icon: FileText,
     matchPrefix: true,
+    permKey: 'menu.orcamentos',
     children: [
       { to: '/orcamentos/montar', label: 'Montar Custom', icon: Package },
       { to: '/orcamentos/salvos', label: 'Salvos (Editar)', icon: List },
@@ -60,9 +64,9 @@ const SECONDARY: NavItem[] = [
       { to: '/orcamentos/lista', label: 'Lista', icon: List },
     ],
   },
-  { to: '/vendidos', label: 'Vendidos', icon: CheckCircle },
-  { to: '/projeto', label: 'Projeto', icon: Factory },
-  { to: '/disparos', label: 'Roteamento', icon: GitBranch },
+  { to: '/vendidos', label: 'Vendidos', icon: CheckCircle, permKey: 'menu.vendidos' },
+  { to: '/projeto', label: 'Projeto', icon: Factory, permKey: 'menu.projeto' },
+  { to: '/disparos', label: 'Roteamento', icon: GitBranch, permKey: 'menu.disparos' },
 ]
 
 // Bottom nav mobile — 5 destinos mais usados pelo vendedor no dia-a-dia.
@@ -141,8 +145,11 @@ export function Layout() {
   const [dark, toggleDark] = useDarkMode()
   const [collapsed, toggleCollapsed] = useCollapsed()
   const { profile, signOut } = useAuth()
+  const can = useCan()
   const loc = useLocation()
-  const isAdmin = profile?.role === 'admin'
+  const visible = (item: NavItem) => !item.permKey || can(item.permKey)
+  const primary = PRIMARY.filter(visible)
+  const secondary = SECONDARY.filter(visible)
 
   const counts: Partial<Record<NonNullable<NavItem['countKey']>, number>> = {
     atendimentos: kpis?.total,
@@ -285,17 +292,18 @@ export function Layout() {
 
         <nav className={cn('flex-1 flex flex-col gap-0.5', collapsed ? 'p-2 items-center' : 'p-3')}>
           {!collapsed && <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-1">Operação</div>}
-          {PRIMARY.map(renderItem)}
-          {!collapsed && <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-4">Orçamentos</div>}
-          {collapsed && <div className="my-2 w-8 h-px bg-border" />}
-          {SECONDARY.map(renderItem)}
-          {isAdmin && (
+          {primary.map(renderItem)}
+          {secondary.length > 0 && !collapsed && <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-4">Orçamentos</div>}
+          {secondary.length > 0 && collapsed && <div className="my-2 w-8 h-px bg-border" />}
+          {secondary.map(renderItem)}
+          {(can('menu.admin_usuarios') || can('menu.admin_permissoes') || can('menu.admin_transportador_funcoes') || can('menu.roadmap')) && (
             <>
               {!collapsed && <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-4">Admin</div>}
               {collapsed && <div className="my-2 w-8 h-px bg-border" />}
-              {renderItem({ to: '/admin/usuarios', label: 'Usuários', icon: Shield })}
-              {renderItem({ to: '/admin/transportador-funcoes', label: 'Funções Chupim', icon: Settings })}
-              {renderItem({ to: '/roadmap', label: 'Roadmap & Feedback', icon: MessageSquarePlus })}
+              {can('menu.admin_usuarios') && renderItem({ to: '/admin/usuarios', label: 'Usuários', icon: Shield })}
+              {can('menu.admin_permissoes') && renderItem({ to: '/admin/permissoes', label: 'Permissões', icon: Settings })}
+              {can('menu.admin_transportador_funcoes') && renderItem({ to: '/admin/transportador-funcoes', label: 'Funções Chupim', icon: Settings })}
+              {can('menu.roadmap') && renderItem({ to: '/roadmap', label: 'Roadmap & Feedback', icon: MessageSquarePlus })}
             </>
           )}
         </nav>
