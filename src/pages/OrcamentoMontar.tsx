@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -16,6 +16,7 @@ import {
 import { FinalizarMontarModal, type CarrinhoSnapshot } from '@/components/FinalizarMontarModal'
 import { OrcamentoPreview, type ParcelaPagamento } from '@/components/OrcamentoPreview'
 import { useOrcamentoModelos, useOrcamentoGerado, type OrcamentoModelo } from '@/hooks/useOrcamentoBuilder'
+import { OrcamentoAIChat } from '@/components/orcamento/OrcamentoAIChat'
 import { useSearchParams } from 'react-router-dom'
 import { useOrcamentoDraft } from '@/hooks/useOrcamentoDraft'
 import { useAuth } from '@/hooks/useAuth'
@@ -220,6 +221,78 @@ export function OrcamentoMontar() {
   // antes do usuario interagir). Banner de recuperacao aparece se draft existir.
   const draft = useOrcamentoDraft(draftSnapshot, !loadingItems && !loadingMotores)
 
+  // ─── HISTÓRICO PRA UNDO (Ctrl+Z) ──────────────────────────────────────────
+  // Guarda snapshots anteriores do estado pra vendedor desfazer mudanças
+  // acidentais (remover item sem querer, mudar valor errado, etc).
+  // Cap em 50 entradas pra não explodir memória. Limpa quando troca pra
+  // outro orçamento (editingId) ou quando finaliza.
+  type DraftSnap = typeof draftSnapshot
+  const [historyStack, setHistoryStack] = useState<DraftSnap[]>([])
+  const isApplyingUndoRef = useRef(false)
+  const lastSnapshotRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    // Só rastreia depois que catálogo carregou (evita snapshots vazios iniciais)
+    if (loadingItems || loadingMotores) return
+
+    // Quando estamos restaurando um snapshot via undo, atualiza o ref e sai
+    // sem empilhar (senão a própria restauração viraria nova entrada).
+    if (isApplyingUndoRef.current) {
+      isApplyingUndoRef.current = false
+      lastSnapshotRef.current = JSON.stringify(draftSnapshot)
+      return
+    }
+
+    const serialized = JSON.stringify(draftSnapshot)
+    if (serialized === lastSnapshotRef.current) return
+
+    const prev = lastSnapshotRef.current
+    lastSnapshotRef.current = serialized
+
+    // Primeira vez: só registra o estado, não tem o que empilhar ainda
+    if (prev === null) return
+
+    setHistoryStack(stack => {
+      const prevSnap = JSON.parse(prev) as DraftSnap
+      const next = [...stack, prevSnap]
+      return next.length > 50 ? next.slice(-50) : next
+    })
+  }, [draftSnapshot, loadingItems, loadingMotores])
+
+  function desfazer() {
+    if (historyStack.length === 0) return
+    const prev = historyStack[historyStack.length - 1]
+    isApplyingUndoRef.current = true
+    setCarrinho(prev.carrinho ?? [])
+    setAcessorios(prev.acessorios ?? null)
+    setVoltagem(prev.voltagem ?? 'trifasico')
+    setTensaoMotores(prev.tensaoMotores ?? null)
+    setDescontoCfg(prev.descontoCfg ?? null)
+    setDataVendaTxt(prev.dataVendaTxt ?? '')
+    setPrazoEntregaTxt(prev.prazoEntregaTxt ?? '')
+    setFormaPagamentoTxt(prev.formaPagamentoTxt ?? '')
+    setParcelasPagamento(prev.parcelasPagamento ?? [])
+    setFotoPrincipal(prev.fotoPrincipal ?? null)
+    setComponentesExtras(prev.componentesExtras ?? [])
+    setHistoryStack(stack => stack.slice(0, -1))
+  }
+
+  // Ctrl+Z / Cmd+Z: desfaz. Ignora quando foco tá em input/textarea pra não
+  // atropelar o undo nativo do navegador na digitação.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const isUndo = (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z'
+      if (!isUndo) return
+      const target = e.target as HTMLElement | null
+      const tag = target?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return
+      e.preventDefault()
+      desfazer()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [historyStack])
+
   function restaurarRascunho() {
     if (!draft.recovered) return
     const d = draft.recovered.data
@@ -417,6 +490,10 @@ export function OrcamentoMontar() {
   const [outrosPickerOpen, setOutrosPickerOpen] = useState(false)
 
   const { data: precos } = usePrecosBranorte()
+  // Lista de modelos de pacote — usado pelo copiloto IA pra resolver onCarregarPacote.
+  // (Outros componentes mais abaixo no arquivo carregam de novo; ok porque o hook
+  // usa React Query e dedup automaticamente.)
+  const { data: modelos } = useOrcamentoModelos()
   const transportadores = useMemo(
     () => (precos ?? []).filter(p => p.categoria === 'TRANSPORTADOR'),
     [precos],
@@ -1486,6 +1563,15 @@ export function OrcamentoMontar() {
                 <span className="text-[11px] text-ink-faint">{carrinho.length}</span>
                 <span className="text-[11px] text-ink-muted">{carrinho.length === 1 ? 'item' : 'items'}</span>
               </div>
+              <button
+                onClick={desfazer}
+                disabled={historyStack.length === 0}
+                className="text-[11px] text-ink-muted hover:bg-surface-3 px-2 py-1.5 rounded flex items-center gap-1 min-h-[34px] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                title={historyStack.length === 0 ? 'Nada para desfazer' : `Desfazer última alteração (Ctrl+Z) — ${historyStack.length} ${historyStack.length === 1 ? 'passo' : 'passos'} disponíveis`}
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Voltar</span>
+              </button>
               {carrinho.length > 0 && (
                 <button
                   onClick={limparCarrinho}
@@ -2267,6 +2353,48 @@ export function OrcamentoMontar() {
           </div>
         </div>
       )}
+
+      {/* Copiloto IA — botão flutuante + drawer lateral. Faz consultas (leitura)
+          e propõe ações de escrita (vendedor aprova clicando nos cards do chat).
+          O carrinho_resumo dá contexto pra IA referenciar itens já adicionados. */}
+      <OrcamentoAIChat
+        contexto={{
+          orcamento_id: editingId,
+          cliente_nome: initialModal?.cliente_nome ?? null,
+          carrinho_resumo: carrinho.length > 0
+            ? carrinho.slice(0, 10).map(c =>
+                `- ${c.qtd}x ${c.nome} (${new Intl.NumberFormat('pt-BR', {
+                  style: 'currency', currency: 'BRL'
+                }).format(c.valor * c.qtd)})`
+              ).join('\n') + (carrinho.length > 10 ? `\n…e mais ${carrinho.length - 10} itens` : '')
+            : null,
+        }}
+        onAdicionarItem={(preco_id, qtd) => {
+          const p = (precos ?? []).find(x => x.id === preco_id)
+          if (!p) return
+          // Adiciona N vezes (cada chamada cria entrada qtd=1). Pra MVP serve;
+          // vendedor pode consolidar manualmente depois se quiser.
+          for (let i = 0; i < Math.max(1, qtd || 1); i++) {
+            adicionarItemDePreco(p)
+          }
+        }}
+        onCarregarPacote={(modelo_id) => {
+          const m = (modelos ?? []).find(x => x.id === modelo_id)
+          if (!m) return
+          carregarDoModelo(m)  // já pergunta via confirm() se carrinho não tá vazio
+        }}
+        onPreencherCliente={(dados) => {
+          // Merge nos dados do modal de finalização. Quando o vendedor clicar
+          // em "Finalizar", o FinalizarMontarModal abre com esses campos preenchidos.
+          setInitialModal(prev => ({
+            cliente_nome: dados.nome ?? prev?.cliente_nome ?? '',
+            cliente_dados: { ...(prev?.cliente_dados ?? {}), ...dados },
+            observacoes: prev?.observacoes ?? null,
+            forma_pagamento: prev?.forma_pagamento ?? null,
+            prazo_entrega: prev?.prazo_entrega ?? null,
+          }))
+        }}
+      />
     </div>
   )
 }
