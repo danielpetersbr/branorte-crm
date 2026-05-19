@@ -74,7 +74,7 @@ interface Props {
   open: boolean
   snapshot: CarrinhoSnapshot
   onClose: () => void
-  onSuccess: (info: { numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string }) => void
+  onSuccess: (info: { numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string; erro?: string | null; pdfErro?: string | null }) => void
   // Modo edição: se setado, faz UPDATE em orcamentos_gerados[editingId] em vez de INSERT.
   editingId?: number | null
   // Valores iniciais carregados do orçamento sendo editado (pra pre-popular cliente/observacoes/etc)
@@ -201,14 +201,25 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
 
   const [gerando, setGerando] = useState(false)
   const [gerandoStep, setGerandoStep] = useState<string>('')
+  // Progresso 0-100 pra barra. Cada etapa do handleGerar empurra o valor.
+  // Setado junto com gerandoStep via setStep(label, pct).
+  const [gerandoProgress, setGerandoProgress] = useState<number>(0)
   const [erro, setErro] = useState<string | null>(null)
   // Status do envio WhatsApp (mostra feedback ao vendedor)
   const [waStatus, setWaStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
   const [waMsg, setWaMsg] = useState<string>('')
 
+  // Atualiza step + percentual. Garante que o pct nunca anda pra trás
+  // (uploadOrcamentoViaServer chama onProgress várias vezes — manteria a barra
+  // estável mesmo se mensagens chegarem fora de ordem).
+  function setStep(label: string, pct: number) {
+    setGerandoStep(label)
+    setGerandoProgress(p => Math.max(p, Math.min(99, pct)))
+  }
+
   // Reseta status WhatsApp ao reabrir
   useEffect(() => {
-    if (open) { setWaStatus('idle'); setWaMsg(''); setErro(null) }
+    if (open) { setWaStatus('idle'); setWaMsg(''); setErro(null); setGerandoProgress(0); setGerandoStep('') }
   }, [open])
 
   // Modo edição: pré-popula campos do modal com dados do orçamento sendo editado.
@@ -352,6 +363,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
     }
     setGerando(true)
     setErro(null)
+    setGerandoProgress(0)
+    setStep('Preparando orçamento...', 3)
     try {
       const hoje = new Date()
       const dataEmissaoBR = hoje.toLocaleDateString('pt-BR')
@@ -364,6 +377,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
 
       if (opcoes.salvarNaPasta && isFolderScanSupported()) {
         try {
+          setStep('Conferindo número na pasta...', 6)
           const handle = await getStoredFolderHandle(true)
           if (handle) {
             const fresh = await scanFolderForLastNumber(handle)
@@ -396,6 +410,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         valor: m.valor_total,
       }))
 
+      setStep(editingId ? 'Atualizando orçamento no banco...' : 'Salvando orçamento no banco...', 10)
       // Modo edição vs criação: editingId → UPDATE (mantém numero/sequencial), senão INSERT
       const payloadComum = {
         vendedor_nome: profile?.display_name?.toUpperCase() || 'DESCONHECIDO',
@@ -487,7 +502,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       }
       // Word VISUAL — imagem do preview. Pode falhar em iPad antigo (memoria),
       // wrap em try/catch pra nao quebrar o upload do PDF/TXT.
-      setGerandoStep('Gerando Word visual...')
+      setStep('Gerando Word visual...', 22)
       console.log('[gerar] iniciando gerarDocxDoPreview...')
       let docxBlob: Blob
       try {
@@ -502,7 +517,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         setErro(`Aviso: falha ao gerar Word visual (${(e as Error).message}). Mas o PDF e Word editavel ainda funcionam.`)
       }
 
-      setGerandoStep('Gerando Word editavel...')
+      setStep('Gerando Word editável...', 38)
       console.log('[gerar] iniciando docx EDITAVEL...')
       let docxEditavelBlob: Blob
       try {
@@ -553,7 +568,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       }
 
       // 5) Gera PDF a partir do MESMO previewProps que ja foi usado pro DOCX
-      setGerandoStep('Gerando PDF...')
+      setStep('Gerando PDF...', 55)
       let pdfBlob: Blob | null = null
       let pdfErro: string | null = null
       try {
@@ -562,12 +577,12 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         // PDF nativo vetorial. Se cair, fallback pro client-side com scale 8.
         if (opcoes.pdfQuality === 'high') {
           try {
-            setGerandoStep('Gerando PDF vetorial (servidor)...')
+            setStep('Gerando PDF vetorial (servidor)...', 60)
             pdfBlob = await gerarPdfServerSide(previewProps)
             console.log(`[gerar] pdf SERVER OK (${pdfBlob.size} bytes)`)
           } catch (serverErr) {
             console.warn('[gerar] PDF server falhou, fallback client:', serverErr)
-            setGerandoStep('Servidor indisponível, gerando local em alta qualidade...')
+            setStep('Servidor indisponível, gerando local em alta qualidade...', 60)
             pdfBlob = await gerarPdfDoPreview(previewProps, { quality: 'high' })
           }
         } else {
@@ -588,6 +603,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       const base = nomeBase(orc.numero, cliNome, descricao || sugestao, isTesteMode)
       let baixouDocx = false, baixouPdf = false, salvouNaPasta = false
 
+      setStep('Preparando para salvar...', 70)
       // 6a) Salvar na pasta Z: se solicitado
       if (opcoes.salvarNaPasta) {
         try {
@@ -635,7 +651,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       } else if (opcoes.salvarNoServidor) {
         // 6c) Upload via /api/orcamento-presign + /api/orcamento-confirm
         // (server-side, bypassa RLS/session stale, dispara WhatsApp atomicamente).
-        setGerandoStep('Enviando pro servidor...')
+        setStep('Enviando pro servidor...', 75)
         const vendedorNome = profile?.display_name || 'Vendedor'
         const notaTxt = montarNotaTxt(vendedorNome, hoje)
         const txtBlob = new Blob([notaTxt], { type: 'text/plain;charset=utf-8' })
@@ -655,7 +671,12 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             txtBlob,
             sendWhatsApp: enviarMeuZap && !!pdfBlob,
             whatsAppCaption: `📄 Orçamento ${orc.numero} — ${cliNome.trim()}\n\nPersonalizado: ${descricao || sugestao}\nGerado em ${dataEmissaoBR}\n\n👇 Encaminhe pro cliente`,
-            onProgress: (s) => setGerandoStep(s),
+            onProgress: (s) => {
+              // Heurística: cada update do upload empurra +3% (cap em 92%).
+              // Mensagem do server vence o label local.
+              setGerandoStep(s)
+              setGerandoProgress(p => Math.min(92, Math.max(p, p + 3)))
+            },
           })
           baixouDocx = true
           if (pdfBlob) baixouPdf = true
@@ -700,6 +721,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       // Se foi salvarNoServidor, o WhatsApp ja foi disparado pelo helper /api/orcamento-confirm.
       // Esse bloco serve so pros casos salvarNaPasta (FileSystem local) ou download direto.
       if (enviarMeuZap && pdfBlob && !opcoes.salvarNoServidor) {
+        setStep('Enviando pro seu WhatsApp...', 95)
         setWaStatus('sending')
         setWaMsg('Enviando pro seu WhatsApp...')
         try {
@@ -739,12 +761,20 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         }
       }
 
-      onSuccess({ numero: orc.numero, baixouDocx, baixouPdf, salvouNaPasta, pdfBlob, cliente: cliNome.trim() })
+      setGerandoStep('Pronto!')
+      setGerandoProgress(100)
+      onSuccess({ numero: orc.numero, baixouDocx, baixouPdf, salvouNaPasta, pdfBlob, cliente: cliNome.trim(), erro, pdfErro })
       if (pdfErro) alert(`Orçamento gerado, mas PDF falhou: ${pdfErro}\n.docx foi gerado normalmente.`)
     } catch (e) {
       setErro((e as Error).message)
     } finally {
-      setGerando(false)
+      // Mantém barra cheia visível por meio segundo antes de liberar o modal —
+      // sensação de "concluído" pro vendedor (senão a barra some no meio).
+      setTimeout(() => {
+        setGerando(false)
+        setGerandoProgress(0)
+        setGerandoStep('')
+      }, 500)
     }
   }
 
@@ -765,6 +795,34 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             <X className="h-4 w-4" />
           </button>
         </div>
+
+        {/* Barra de progresso — sticky logo abaixo do header. Aparece só durante
+            o salvamento. Mostra etapa atual + % pra vendedor saber que está
+            rolando (especialmente útil em mobile/3G onde os PDFs demoram). */}
+        {gerando && (
+          <div className="sticky top-[57px] z-10 bg-bg border-b border-border px-4 py-3">
+            <div className="flex items-center justify-between mb-1.5 gap-3">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0 text-accent" />
+                <span className="text-[12px] font-semibold text-ink truncate">
+                  {gerandoStep || 'Salvando...'}
+                </span>
+              </div>
+              <span className="text-[11px] font-bold text-accent tabular-nums shrink-0">
+                {Math.round(gerandoProgress)}%
+              </span>
+            </div>
+            <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-accent rounded-full transition-all duration-500 ease-out"
+                style={{ width: `${gerandoProgress}%` }}
+              />
+            </div>
+            <div className="text-[10px] text-ink-faint mt-1.5 leading-snug">
+              Não feche essa janela. Arquivos sobem pro servidor e o PC do escritório sincroniza pra pasta <span className="font-mono">Z:\</span> automaticamente.
+            </div>
+          </div>
+        )}
 
         <div className="p-4 space-y-4">
           {/* Resumo carrinho */}
@@ -1070,14 +1128,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             </div>
           )}
 
-          {/* Indicador de progresso durante a geração — mostra em qual etapa
-              esta travando, ajuda a diagnosticar travamentos no PWA mobile */}
-          {gerando && gerandoStep && (
-            <div className="p-3 bg-accent/10 border border-accent/30 rounded-md text-[11px] text-accent flex items-center gap-2">
-              <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
-              <div className="font-semibold">{gerandoStep}</div>
-            </div>
-          )}
+          {/* Indicador de progresso movido pro topo (barra sticky abaixo do header). */}
         </div>
 
         {/* Footer: empilha em mobile, lado-a-lado em desktop. CTA principal

@@ -5,7 +5,7 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import {
   Sparkles, Search, Plus, Minus, Trash2, Package,
   Zap, X, AlertCircle, Star, FileText, Eye, ListChecks, Check, Loader2, FolderOpen,
-  Save, RotateCcw, ChevronRight,
+  Save, RotateCcw, ChevronRight, RefreshCw,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import {
@@ -179,7 +179,7 @@ export function OrcamentoMontar() {
   // catalogo so quando precisa adicionar item.
   const [mobileTab, setMobileTab] = useState<'catalogo' | 'preview'>('preview')
   const [finalizarOpen, setFinalizarOpen] = useState(false)
-  const [sucesso, setSucesso] = useState<{ numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string } | null>(null)
+  const [sucesso, setSucesso] = useState<{ numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string; erro?: string | null; pdfErro?: string | null } | null>(null)
   const [enviandoWA, setEnviandoWA] = useState<'idle' | 'enviando' | 'enviado' | 'erro'>('idle')
   const [enviandoWAMsg, setEnviandoWAMsg] = useState<string>('')
   const [waPromptOpen, setWaPromptOpen] = useState(false)
@@ -2141,16 +2141,23 @@ export function OrcamentoMontar() {
         </div>
       )}
 
-      {/* Feedback de sucesso — toast premium */}
-      {sucesso && (
-        <div className="fixed bottom-6 right-6 z-50 bg-bg border border-success rounded-xl shadow-2xl max-w-sm w-[360px] overflow-hidden">
+      {/* Feedback de sucesso — toast premium. Fica VERMELHO se algo falhou. */}
+      {sucesso && (() => {
+        const algoFalhou = !!(sucesso.erro || sucesso.pdfErro || (!sucesso.salvouNaPasta && !sucesso.baixouDocx))
+        const corBg = algoFalhou ? 'bg-danger/15 border-danger/30' : 'bg-success/15 border-success/30'
+        const corText = algoFalhou ? 'text-danger' : 'text-success'
+        const corBorda = algoFalhou ? 'border-danger' : 'border-success'
+        const iconBg = algoFalhou ? 'bg-danger' : 'bg-success'
+        const titulo = algoFalhou ? 'FALHA AO SALVAR' : 'Orçamento gerado'
+        return (
+        <div className={`fixed bottom-6 right-6 z-50 bg-bg border ${corBorda} rounded-xl shadow-2xl max-w-sm w-[360px] overflow-hidden`}>
           {/* Header */}
-          <div className="bg-success/15 border-b border-success/30 px-4 py-3 flex items-start gap-3">
-            <div className="w-8 h-8 rounded-full bg-success flex items-center justify-center shrink-0">
-              <Check className="h-5 w-5 text-white" />
+          <div className={`${corBg} border-b px-4 py-3 flex items-start gap-3`}>
+            <div className={`w-8 h-8 rounded-full ${iconBg} flex items-center justify-center shrink-0`}>
+              {algoFalhou ? <AlertCircle className="h-5 w-5 text-white" /> : <Check className="h-5 w-5 text-white" />}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-[11px] uppercase tracking-wider text-success font-bold">Orçamento gerado</div>
+              <div className={`text-[11px] uppercase tracking-wider ${corText} font-bold`}>{titulo}</div>
               <div className="text-[16px] font-bold text-ink leading-tight">Nº {sucesso.numero}</div>
             </div>
             <button onClick={() => setSucesso(null)} className="text-ink-faint hover:text-ink p-1 -m-1 rounded hover:bg-surface-2">
@@ -2181,12 +2188,42 @@ export function OrcamentoMontar() {
                 <span>PDF baixado</span>
               </div>
             )}
+            {/* Erros — surfacing pro vendedor saber que deu ruim */}
+            {sucesso.erro && (
+              <div className="flex items-start gap-2 text-danger text-[10.5px] bg-danger/10 border border-danger/30 rounded p-2 mt-1">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <span><strong>Upload falhou:</strong> {sucesso.erro}</span>
+              </div>
+            )}
+            {sucesso.pdfErro && (
+              <div className="flex items-start gap-2 text-warning text-[10.5px] bg-warning/10 border border-warning/30 rounded p-2 mt-1">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <span><strong>PDF não gerou:</strong> {sucesso.pdfErro}</span>
+              </div>
+            )}
+            {algoFalhou && !sucesso.erro && !sucesso.pdfErro && (
+              <div className="flex items-start gap-2 text-danger text-[10.5px] bg-danger/10 border border-danger/30 rounded p-2 mt-1">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <span><strong>Nada foi salvo!</strong> O orçamento ficou como rascunho. Clique "Tentar de novo" abaixo.</span>
+              </div>
+            )}
           </div>
+          {/* Botão Tentar de novo — só aparece se falhou */}
+          {algoFalhou && (
+            <button
+              onClick={() => { setSucesso(null); setFinalizarOpen(true); }}
+              className="w-full bg-danger hover:bg-danger/90 text-white text-[12px] font-semibold py-2.5 flex items-center justify-center gap-2 transition border-t border-border"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Tentar de novo
+            </button>
+          )}
           {/* COMPARTILHAR via share sheet nativo do celular (Web Share API).
               Em mobile abre menu com WhatsApp, Drive, Email, Files, AirDrop.
               Em desktop sem share API, fallback pra abrir/salvar PDF.
               Vendedor em campo manda direto pro cliente OU pro Drive da empresa. */}
-          {sucesso.pdfBlob && (
+          {/* Botão Compartilhar — só faz sentido se o PDF gerou */}
+          {sucesso.pdfBlob ? (
             <button
               onClick={async () => {
                 if (!sucesso.pdfBlob) return
@@ -2219,6 +2256,11 @@ export function OrcamentoMontar() {
               </svg>
               Compartilhar PDF (WhatsApp, Drive, Email…)
             </button>
+          ) : !algoFalhou && (
+            <div className="w-full bg-surface-2 text-ink-faint text-[11px] py-2.5 flex items-center justify-center gap-2 border-t border-border">
+              <AlertCircle className="h-3.5 w-3.5" />
+              <span>PDF não disponível pra compartilhar</span>
+            </div>
           )}
 
           {sucesso.pdfBlob && enviandoWA !== 'enviado' && (
@@ -2296,7 +2338,8 @@ export function OrcamentoMontar() {
             </div>
           )}
         </div>
-      )}
+        )
+      })()}
 
       {/* Modal estilizado pra pedir telefone WhatsApp (substitui prompt() feio) */}
       {waPromptOpen && (
