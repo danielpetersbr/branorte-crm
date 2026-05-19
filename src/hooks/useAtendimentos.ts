@@ -223,7 +223,7 @@ export interface AtendimentoKpis {
   total: number
   hoje: number
   quentes: number
-  contatados: number  // leads que o vendedor já recebeu via Wascript (foi_dispatched=true)
+  contatados: number  // leads com vendedor responsável atribuído (não null, vazio ou "a definir")
   naoEngajaram: number
   qualificados: number
   emAndamento: number
@@ -305,8 +305,8 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
         baseQ(),
         baseQ().gte('last_message_at', todayIso),
         baseQ().eq('quando_investir', 'Agora'),
-        // Contatados: vendedor já recebeu o lead via Wascript (1ª msg disparada)
-        baseQ().eq('foi_dispatched', true),
+        // Contatados: lead tem vendedor responsável atribuído (não "a definir")
+        baseQ().not('responsavel', 'is', null).neq('responsavel', '').neq('responsavel', 'a definir'),
         // Nao engajaram: chegou no anuncio mas nem clicou no primeiro botao (motivo_contato)
         baseQ().is('motivo_contato', null).is('tocou_botao_em', null),
         baseQ().not('finalidade_fabrica', 'is', null).not('qual_animal', 'is', null),
