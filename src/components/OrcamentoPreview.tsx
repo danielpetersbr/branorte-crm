@@ -91,7 +91,7 @@ export interface OrcamentoPreviewProps {
   totalMotores: number
   totalEquip: number
   totalGeral: number
-  acessorios: { pct: number; items: string[] } | null
+  acessorios: { pct: number; items: string[]; valorFixo?: number | null } | null
   valorAcessorios: number
   componentesExtras?: PreviewComponenteExtra[]
   onUpdateComponentesExtras?: (items: PreviewComponenteExtra[]) => void
@@ -849,7 +849,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                 </div>
                 {!renderMode && (onEditAcessorios || onRemoveAcessorios) && (
                   <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {onEditAcessorios && <button onClick={onEditAcessorios} className="text-[14px] text-blue-600 hover:underline">editar ({acessorios.pct}%)</button>}
+                    {onEditAcessorios && <button onClick={onEditAcessorios} className="text-[14px] text-blue-600 hover:underline">editar ({acessorios.valorFixo != null && acessorios.valorFixo > 0 ? 'R$ fixo' : `${acessorios.pct}%`})</button>}
                     {onRemoveAcessorios && <button onClick={onRemoveAcessorios} className="text-[14px] text-red-600 hover:underline">remover</button>}
                   </div>
                 )}

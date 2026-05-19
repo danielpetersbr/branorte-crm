@@ -1749,7 +1749,7 @@ export function OrcamentoMontar() {
               </div>
               {acessorios && (
                 <div className="flex justify-between text-[11px] text-ink-muted">
-                  <span>Acessórios ({acessorios.pct}%)</span>
+                  <span>Acessórios ({acessorios.valorFixo != null && acessorios.valorFixo > 0 ? 'R$ fixo' : `${acessorios.pct}%`})</span>
                   <span className="font-semibold">{formatBRL(valorAcessorios)}</span>
                 </div>
               )}
@@ -1821,8 +1821,9 @@ export function OrcamentoMontar() {
         initial={acessorios}
         onClose={() => setAcessoriosOpen(false)}
         onSave={cfg => {
-          // Vendedor editou — limpa valorFixo pra recalcular via pct
-          setAcessorios({ ...cfg, valorFixo: null })
+          // cfg.valorFixo definido = vendedor escolheu valor fixo (R$);
+          // null = modo %, recalcula via pct sobre os equipamentos.
+          setAcessorios({ pct: cfg.pct, items: cfg.items, valorFixo: cfg.valorFixo })
           setAcessoriosOpen(false)
         }}
         onRemove={() => { setAcessorios(null); setAcessoriosOpen(false) }}
@@ -2974,20 +2975,26 @@ function AcessoriosModal({
   open, initial, onClose, onSave, onRemove,
 }: {
   open: boolean
-  initial: { pct: number; items: string[] } | null
+  initial: { pct: number; items: string[]; valorFixo?: number | null } | null
   onClose: () => void
-  onSave: (cfg: { pct: number; items: string[] }) => void
+  onSave: (cfg: { pct: number; items: string[]; valorFixo: number | null }) => void
   onRemove: () => void
 }) {
   const { data: catalogoAcc } = useCatalogoAcessorios()
+  const initialModo: 'pct' | 'valor' =
+    initial?.valorFixo != null && initial.valorFixo > 0 ? 'valor' : 'pct'
+  const [modo, setModo] = useState<'pct' | 'valor'>(initialModo)
   const [pct, setPct] = useState<number>(initial?.pct ?? 5)
+  const [valorFixo, setValorFixo] = useState<number>(initial?.valorFixo ?? 0)
   const [selecionados, setSelecionados] = useState<string[]>(initial?.items ?? [])
   const [busca, setBusca] = useState('')
   const [livre, setLivre] = useState('')
 
   useEffect(() => {
     if (open) {
+      setModo(initial?.valorFixo != null && initial.valorFixo > 0 ? 'valor' : 'pct')
       setPct(initial?.pct ?? 5)
+      setValorFixo(initial?.valorFixo ?? 0)
       setSelecionados(initial?.items ?? [])
       setBusca('')
       setLivre('')
@@ -3030,7 +3037,13 @@ function AcessoriosModal({
   }
 
   function handleSalvar() {
-    onSave({ pct: Math.max(0, Math.min(100, pct)), items: selecionados })
+    const pctClamp = Math.max(0, Math.min(100, pct))
+    if (modo === 'valor') {
+      const vf = Math.max(0, Number(valorFixo) || 0)
+      onSave({ pct: pctClamp, items: selecionados, valorFixo: vf > 0 ? vf : null })
+    } else {
+      onSave({ pct: pctClamp, items: selecionados, valorFixo: null })
+    }
   }
 
   return (
@@ -3044,22 +3057,65 @@ function AcessoriosModal({
         </div>
 
         <div className="px-5 py-3 border-b border-border bg-surface-2/30">
-          <label className="text-[11px] font-semibold text-ink-muted block mb-1">
-            % sobre equipamentos (valor cobrado)
-          </label>
-          <div className="flex items-center gap-2">
-            <Input
-              type="number"
-              min={0}
-              max={100}
-              step={0.5}
-              value={pct}
-              onChange={e => setPct(Number(e.target.value))}
-              className="w-24 text-center"
-            />
-            <span className="text-[12px] text-ink-muted">%</span>
-            <div className="text-[10px] text-ink-faint ml-auto">ex: 5% / 10% / 15%</div>
+          <div className="flex items-center gap-1 mb-2">
+            <button
+              type="button"
+              onClick={() => setModo('pct')}
+              className={`text-[11px] px-2.5 py-1 rounded font-semibold border ${
+                modo === 'pct'
+                  ? 'bg-accent text-white border-accent'
+                  : 'bg-surface-2 text-ink-muted border-border hover:border-accent'
+              }`}
+            >% sobre equipamentos</button>
+            <button
+              type="button"
+              onClick={() => setModo('valor')}
+              className={`text-[11px] px-2.5 py-1 rounded font-semibold border ${
+                modo === 'valor'
+                  ? 'bg-accent text-white border-accent'
+                  : 'bg-surface-2 text-ink-muted border-border hover:border-accent'
+              }`}
+            >R$ valor fixo</button>
           </div>
+          {modo === 'pct' ? (
+            <>
+              <label className="text-[11px] font-semibold text-ink-muted block mb-1">
+                % sobre equipamentos (valor cobrado)
+              </label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.5}
+                  value={pct}
+                  onChange={e => setPct(Number(e.target.value))}
+                  className="w-24 text-center"
+                />
+                <span className="text-[12px] text-ink-muted">%</span>
+                <div className="text-[10px] text-ink-faint ml-auto">ex: 5% / 10% / 15%</div>
+              </div>
+            </>
+          ) : (
+            <>
+              <label className="text-[11px] font-semibold text-ink-muted block mb-1">
+                Valor fixo dos acessórios (R$)
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] text-ink-muted">R$</span>
+                <Input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={valorFixo}
+                  onChange={e => setValorFixo(Number(e.target.value))}
+                  className="w-36 text-center"
+                  placeholder="0,00"
+                />
+                <div className="text-[10px] text-ink-faint ml-auto">ex: 6.500,00 — valor cobrado direto</div>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-3">
