@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Avatar } from '@/components/ui/Avatar'
 import { StatusVendedorPicker } from '@/components/StatusVendedorPicker'
+import { CriativoHoverBadge } from '@/components/CriativoHoverBadge'
 import { AtribuirVendedorPicker } from '@/components/AtribuirVendedorPicker'
 import { StatusDot } from '@/components/ui/StatusDot'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -663,9 +664,17 @@ export function Atendimentos() {
                           {r.criativo_codigo || criativoNome ? (
                             <div className="flex items-center gap-1.5 min-w-0 max-w-[200px]">
                               {r.criativo_codigo && (
-                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-2 text-ink-muted shrink-0">
-                                  {r.criativo_codigo}
-                                </span>
+                                <CriativoHoverBadge
+                                  codigo={r.criativo_codigo}
+                                  fallback={r.criativo_facebook ? {
+                                    codigo: r.criativo_codigo,
+                                    nome_oficial: r.criativo_facebook.nome_oficial ?? null,
+                                    headline: r.criativo_facebook.headline ?? null,
+                                    image_url: null,
+                                    source_url: null,
+                                    total_leads: null,
+                                  } : null}
+                                />
                               )}
                               {criativoNome && (
                                 <span className="text-[11px] text-ink-faint truncate" title={criativoNome}>
