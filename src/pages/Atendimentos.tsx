@@ -539,27 +539,27 @@ export function Atendimentos() {
             )}
           </div>
 
-          {/* ─── DESKTOP: tabela completa ─── */}
+          {/* ─── DESKTOP: tabela completa (sem scroll horizontal — cabe na tela) ─── */}
           <Card className="hidden md:block overflow-hidden p-0">
-            <div className="overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto">
-              <table className="w-full">
+            <div className="max-h-[calc(100vh-280px)] overflow-y-auto overflow-x-hidden">
+              <table className="w-full table-fixed">
                 <thead className="sticky top-0 z-10 bg-surface backdrop-blur-sm">
-                  <tr className="border-b border-border bg-surface-2/40 [&>th]:text-left [&>th]:text-[10px] [&>th]:uppercase [&>th]:tracking-wider [&>th]:font-bold [&>th]:text-ink-muted [&>th]:px-2 [&>th]:py-3 [&>th]:whitespace-nowrap">
-                    <th>Chegou</th>
-                    <th>Lead</th>
-                    <th className="hidden md:table-cell">Estado</th>
-                    <th>Telefone</th>
-                    <th className="hidden lg:table-cell">Origem</th>
-                    <th className="hidden 2xl:table-cell">Criativo</th>
-                    <th className="hidden lg:table-cell">Motivo</th>
-                    <th className="hidden 2xl:table-cell" title="Pra que serve a fábrica: consumo, venda ou os dois (Ana V16.24)">Finalidade</th>
-                    <th className="hidden xl:table-cell">Animal</th>
-                    <th className="hidden xl:table-cell" title="Cabeças (consumo) — vazio se for venda (ver Produção/h)">Qtd</th>
-                    <th className="hidden xl:table-cell" title="Produção desejada quando é venda (kg/h)">Produção/h</th>
-                    <th>Vendedor</th>
-                    <th className="hidden xl:table-cell" title="Etiqueta atribuída no WhatsApp do vendedor">Etiqueta WA</th>
-                    <th className="hidden 2xl:table-cell" title="Cliente clicou no botão FALAR COM CONSULTOR">Botão</th>
-                    <th className="!text-right"></th>
+                  <tr className="border-b border-border bg-surface-2/40 [&>th]:text-left [&>th]:text-[10px] [&>th]:uppercase [&>th]:tracking-wider [&>th]:font-bold [&>th]:text-ink-muted [&>th]:px-1.5 [&>th]:py-3 [&>th]:whitespace-nowrap">
+                    <th className="w-[78px]">Chegou</th>
+                    <th className="w-[120px]">Lead</th>
+                    <th className="hidden md:table-cell w-[110px]">Estado</th>
+                    <th className="w-[140px]">Telefone</th>
+                    <th className="hidden lg:table-cell w-[100px]">Origem</th>
+                    <th className="hidden 2xl:table-cell w-[110px]">Criativo</th>
+                    <th className="hidden lg:table-cell w-[160px]">Motivo</th>
+                    <th className="hidden 2xl:table-cell w-[110px]" title="Pra que serve a fábrica: consumo, venda ou os dois (Ana V16.24)">Finalidade</th>
+                    <th className="hidden xl:table-cell w-[72px]">Animal</th>
+                    <th className="hidden xl:table-cell w-[56px]" title="Cabeças (consumo) — vazio se for venda (ver Produção/h)">Qtd</th>
+                    <th className="hidden xl:table-cell w-[80px]" title="Produção desejada quando é venda (kg/h)">Produção/h</th>
+                    <th className="w-[90px]">Vendedor</th>
+                    <th className="hidden 2xl:table-cell w-[120px]" title="Etiqueta atribuída no WhatsApp do vendedor">Etiqueta WA</th>
+                    <th className="hidden 2xl:table-cell w-[64px]" title="Cliente clicou no botão FALAR COM CONSULTOR">Botão</th>
+                    <th className="!text-right w-[44px]"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -581,13 +581,13 @@ export function Atendimentos() {
                                         : 'odd:bg-surface even:bg-surface-2/20 hover:bg-surface-2/60 hover:shadow-sm'}`}
                           style={isHot ? { boxShadow: 'inset 3px 0 0 0 hsl(var(--danger))' } : undefined}>
                         {/* CHEGOU */}
-                        <td className="px-3 py-2.5 whitespace-nowrap" title={r.primeira_data ?? r.created_at ?? ''}>
+                        <td className="px-2 py-2.5 whitespace-nowrap" title={r.primeira_data ?? r.created_at ?? ''}>
                           <span className="text-[11px] text-ink-muted font-mono tabular-nums">
                             {formatDateTimeShort(r.primeira_data ?? r.created_at)}
                           </span>
                         </td>
                         {/* LEAD — só primeiro nome pra não esticar a coluna */}
-                        <td className="px-3 py-2.5 whitespace-nowrap">
+                        <td className="px-2 py-2.5 whitespace-nowrap">
                           <div className="flex items-center max-w-[110px]">
                             <div className="leading-tight min-w-0">
                               <span className="text-[13px] font-medium text-ink truncate block" title={nomeReal ?? ''}>
@@ -606,7 +606,7 @@ export function Atendimentos() {
                           </div>
                         </td>
                         {/* ESTADO */}
-                        <td className="hidden md:table-cell px-2 py-2.5 whitespace-nowrap">
+                        <td className="hidden md:table-cell px-1.5 py-2.5 whitespace-nowrap">
                           {uf && uf !== '—' && uf !== 'INTL' ? (
                             <div className="flex items-center gap-1.5">
                               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-2 text-ink-muted">
@@ -628,11 +628,11 @@ export function Atendimentos() {
                           })()}
                         </td>
                         {/* TELEFONE — formato cru +5548... com botão de copiar */}
-                        <td className="px-3 py-2.5 whitespace-nowrap">
+                        <td className="px-2 py-2.5 whitespace-nowrap">
                           <PhoneCopyButton telefone={r.telefone} />
                         </td>
                         {/* ORIGEM */}
-                        <td className="hidden lg:table-cell px-2 py-2.5 whitespace-nowrap">
+                        <td className="hidden lg:table-cell px-1.5 py-2.5 whitespace-nowrap">
                           {r.origem ? (() => {
                             const o = r.origem.toLowerCase()
                             const tone =
@@ -654,7 +654,7 @@ export function Atendimentos() {
                           )}
                         </td>
                         {/* CRIATIVO */}
-                        <td className="hidden 2xl:table-cell px-2 py-2.5">
+                        <td className="hidden 2xl:table-cell px-1.5 py-2.5">
                           {r.criativo_codigo || criativoNome ? (
                             <div className="flex items-center gap-1.5 min-w-0 max-w-[200px]">
                               {r.criativo_codigo && (
@@ -681,7 +681,7 @@ export function Atendimentos() {
                           )}
                         </td>
                         {/* MOTIVO DO CONTATO + nome do equipamento (o_que_precisa OU criativo) */}
-                        <td className="hidden lg:table-cell px-2 py-2.5">
+                        <td className="hidden lg:table-cell px-1.5 py-2.5">
                           {(() => {
                             const motivo = humanizeMotivo(r.motivo_contato)
                             if (!motivo) return <EmptyCell />
@@ -710,7 +710,7 @@ export function Atendimentos() {
                         </td>
                         {/* FINALIDADE — Ana V16.24 pergunta isso logo após o nome.
                             consumo_proprio / revenda / misto. Substitui a coluna antiga "Tipo de Ração". */}
-                        <td className="hidden 2xl:table-cell px-2 py-2.5 whitespace-nowrap">
+                        <td className="hidden 2xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
                           {(() => {
                             const fin = r.finalidade_fabrica
                             if (!fin) return <EmptyCell />
@@ -727,7 +727,7 @@ export function Atendimentos() {
                           })()}
                         </td>
                         {/* ANIMAL */}
-                        <td className="hidden xl:table-cell px-2 py-2.5 whitespace-nowrap">
+                        <td className="hidden xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
                           {r.qual_animal ? (
                             <span className="text-[12px] text-ink-muted">{r.qual_animal}</span>
                           ) : (
@@ -735,7 +735,7 @@ export function Atendimentos() {
                           )}
                         </td>
                         {/* QTD (cabeças) — V16.24: vazio quando finalidade=revenda (vendedor não pergunta qtd nesse caso) */}
-                        <td className="hidden xl:table-cell px-2 py-2.5 whitespace-nowrap">
+                        <td className="hidden xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
                           {r.quantos_animais ? (
                             <span className="text-[12px] text-ink-muted tabular-nums">{r.quantos_animais}</span>
                           ) : (
@@ -743,7 +743,7 @@ export function Atendimentos() {
                           )}
                         </td>
                         {/* PRODUÇÃO/H (kg/h) — V16.24: usado quando finalidade=venda (substitui Momento) */}
-                        <td className="hidden xl:table-cell px-2 py-2.5 whitespace-nowrap">
+                        <td className="hidden xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
                           {r.capacidade_producao ? (
                             <span className="text-[12px] text-ink-muted tabular-nums">{r.capacidade_producao}</span>
                           ) : (
@@ -751,7 +751,7 @@ export function Atendimentos() {
                           )}
                         </td>
                         {/* VENDEDOR — só primeiro nome (sem avatar) */}
-                        <td className="px-2 py-2.5 whitespace-nowrap w-[72px]">
+                        <td className="px-1.5 py-2.5 whitespace-nowrap w-[72px]">
                           {(() => {
                             const ids = (r.auditoria_ids && r.auditoria_ids.length > 0) ? r.auditoria_ids : [r.id]
                             const v = vendedorEfetivo(r)
@@ -778,7 +778,7 @@ export function Atendimentos() {
                             o cliente no Zap (ex: aparecia "NAO RESPONDEU MAIS" do
                             Pedro quando o responsável real era o Gustavo). Agora
                             filtra pelo first-name UPPERCASE do vendedor efetivo. */}
-                        <td className="hidden xl:table-cell px-2 py-2.5 whitespace-nowrap">
+                        <td className="hidden xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
                           {(() => {
                             const allLabels = lookupWaLabels(waLabelsMap, r.telefone)
                             if (allLabels.length === 0) return <EmptyCell />
@@ -814,7 +814,7 @@ export function Atendimentos() {
                           })()}
                         </td>
                         {/* TOCOU NO BOTAO */}
-                        <td className="hidden 2xl:table-cell px-2 py-2.5 whitespace-nowrap" title={r.tocou_botao_em ? `Em ${formatRelative(r.tocou_botao_em)}` : ''}>
+                        <td className="hidden 2xl:table-cell px-1.5 py-2.5 whitespace-nowrap" title={r.tocou_botao_em ? `Em ${formatRelative(r.tocou_botao_em)}` : ''}>
                           {r.tocou_botao_em ? (
                             <span className="inline-flex items-center gap-1 text-[11px] font-medium text-success">
                               <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -825,7 +825,7 @@ export function Atendimentos() {
                           )}
                         </td>
                         {/* AÇÕES */}
-                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                        <td className="px-2 py-2.5 text-right whitespace-nowrap">
                           {(() => {
                             const ids = (r.auditoria_ids && r.auditoria_ids.length > 0) ? r.auditoria_ids : [r.id]
                             return (
