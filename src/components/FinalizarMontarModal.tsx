@@ -12,6 +12,7 @@ import { gerarPdfServerSide } from '@/lib/pdf-server'
 import { gerarOrcamentoCustomDocx } from '@/lib/orcamento-custom-docx'
 import { gerarDocxViaHtml } from '@/lib/preview-to-docx-html'
 import { convertPdfToDocx } from '@/lib/pdf-to-docx'
+import { preencherTemplateOrcamento } from '@/lib/orcamento-template-fill'
 import {
   isFolderScanSupported, pickOrcamentoFolder, getStoredFolderHandle,
   scanFolderForLastNumber, formatarNumero, ensureWritePermission,
@@ -574,13 +575,14 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         vendedoresContato,
         vendedorResponsavelNome: profile?.display_name || null,
       }
-      // ESTRATEGIA NOVA: PDF primeiro (perfeito via Puppeteer) → DOCX deriva
-      // do PDF via ConvertAPI (~95% fidelidade, editavel). PDF eh source of truth.
+      // ESTRATEGIA: PDF primeiro (perfeito via Puppeteer) + DOCX via template
+      // Word-native (100% fidelidade ao que VOCE desenhou no Word).
       //
-      // Cascade de fallbacks DOCX:
-      //   1. PDF → ConvertAPI (BEST: 95% identico ao PDF, editavel)
-      //   2. html-to-docx (MID: 85% via HTML inlined)
-      //   3. custom docx lib (WORST: 70% reconstruido manualmente)
+      // Cascade DOCX (do MELHOR pro pior):
+      //   0. TEMPLATE Word-native (BEST: 100% Word-native, editavel total)
+      //   1. PDF → ConvertAPI (95% identico ao PDF, editavel) — precisa API key
+      //   2. html-to-docx (85% via HTML inlined)
+      //   3. custom docx lib (70% reconstruido manualmente)
 
       // 4) PDF — gera ANTES do docx (que agora deriva dele)
       setStep('Gerando PDF...', 30)
@@ -607,22 +609,55 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         console.warn('Falha PDF:', pdfErro)
       }
 
-      // 4b) DOCX — converte PDF → DOCX via ConvertAPI (fidelidade maxima)
-      setStep('Convertendo Word editável...', 50)
-      let docxBlob: Blob
-      let docxFonte: 'convertapi' | 'html-to-docx' | 'custom' = 'custom'
+      // 4b) DOCX cascade
+      setStep('Gerando Word editável...', 50)
+      let docxBlob: Blob = null as any
+      let docxFonte: 'template' | 'convertapi' | 'html-to-docx' | 'custom' = 'custom'
+
+      // Tier 0: TEMPLATE Word-native (BEST — 100% fiel ao que voce desenhou)
+      try {
+        docxBlob = await preencherTemplateOrcamento({
+          numero: orc.numero,
+          data_emissao: dataEmissaoBR,
+          cliente: {
+            nome: cliNome.trim(), ac: cliDados.ac, fone: cliDados.fone,
+            cidade: cliDados.cidade, bairro: cliDados.bairro, endereco: cliDados.endereco,
+            cep: cliDados.cep, cnpj: cliDados.cnpj, ie: cliDados.ie, email: cliDados.email,
+          },
+          voltagem: snapshot.voltagem,
+          itens: snapshot.itens.map((it, idx) => ({
+            letra: String.fromCharCode(65 + idx),
+            qtd: it.qtd, nome: it.nome, specs: it.specs, valor: it.valor,
+          })),
+          motores: snapshot.motoresAgrupados.map(m => ({
+            cv: m.cv, polos: m.polos, valor_total: m.valor_total, item_nome: (m as any).item_nome,
+          })),
+          acessorios: snapshot.acessorios
+            ? { items: snapshot.acessorios.items, valor: snapshot.acessorios.valor }
+            : null,
+          total_equipamentos: snapshot.totalEquip,
+          total_motores: snapshot.totalMotores,
+          total_proposta: snapshot.totalGeral,
+          data_venda: (pgDataVenda ? formaPgOut.data_venda : null) || snapshot.termsInline?.dataVenda || null,
+          prazo_entrega: prazoEntrega.trim() || snapshot.termsInline?.prazoEntrega || null,
+          forma_pagamento: formaPgOut.forma_pagamento || snapshot.termsInline?.formaPagamento || null,
+        })
+        docxFonte = 'template'
+        console.log(`[gerar] docx (TEMPLATE Word-native) OK (${docxBlob.size} bytes)`)
+      } catch (tplErr) {
+        console.warn('[gerar] template-fill falhou, fallback ConvertAPI:', tplErr)
+        docxBlob = null as any
+      }
+
       // Tier 1: PDF → ConvertAPI (best path)
-      if (pdfBlob) {
+      if (!docxBlob && pdfBlob) {
         try {
           docxBlob = await convertPdfToDocx(pdfBlob, `${orc.numero}.pdf`)
           docxFonte = 'convertapi'
           console.log(`[gerar] docx (ConvertAPI) OK (${docxBlob.size} bytes)`)
         } catch (cvErr) {
           console.warn('[gerar] ConvertAPI falhou, fallback html-to-docx:', cvErr)
-          docxBlob = null as any
         }
-      } else {
-        docxBlob = null as any
       }
       // Tier 2: html-to-docx (se ConvertAPI falhou)
       if (!docxBlob) {
