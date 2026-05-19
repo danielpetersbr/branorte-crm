@@ -556,9 +556,9 @@ export function Atendimentos() {
                     <th className="hidden xl:table-cell">Animal</th>
                     <th className="hidden xl:table-cell" title="Cabeças (consumo) — vazio se for venda (ver Produção/h)">Qtd</th>
                     <th className="hidden xl:table-cell" title="Produção desejada quando é venda (kg/h)">Produção/h</th>
+                    <th>Vendedor</th>
                     <th className="hidden xl:table-cell" title="Etiqueta atribuída no WhatsApp do vendedor">Etiqueta WA</th>
                     <th className="hidden 2xl:table-cell" title="Cliente clicou no botão FALAR COM CONSULTOR">Botão</th>
-                    <th>Vendedor</th>
                     <th className="!text-right"></th>
                   </tr>
                 </thead>
@@ -748,6 +748,29 @@ export function Atendimentos() {
                             <EmptyCell />
                           )}
                         </td>
+                        {/* VENDEDOR — só primeiro nome (sem avatar) */}
+                        <td className="px-2 py-2.5 whitespace-nowrap w-[72px]">
+                          {(() => {
+                            const ids = (r.auditoria_ids && r.auditoria_ids.length > 0) ? r.auditoria_ids : [r.id]
+                            const v = vendedorEfetivo(r)
+                            if (v) {
+                              const firstName = v.name.trim().split(/\s+/)[0]
+                              return (
+                                <span
+                                  className="text-[12px] text-ink-muted truncate block max-w-[70px] capitalize"
+                                  title={`${v.name}${v.source === 'wa' ? ' (via etiqueta WA)' : ''}`}
+                                >
+                                  {firstName.toLowerCase()}
+                                </span>
+                              )
+                            }
+                            return (
+                              <div className="flex items-center justify-center">
+                                <AtribuirVendedorPicker auditoriaIds={ids} compact />
+                              </div>
+                            )
+                          })()}
+                        </td>
                         {/* ETIQUETA WA — etiquetas do VENDEDOR RESPONSÁVEL apenas.
                             Antes mostrava etiquetas de qualquer vendedor que tivesse
                             o cliente no Zap (ex: aparecia "NAO RESPONDEU MAIS" do
@@ -798,30 +821,6 @@ export function Atendimentos() {
                           ) : (
                             <EmptyCell />
                           )}
-                        </td>
-                        {/* VENDEDOR — só primeiro nome (sem avatar) */}
-                        <td className="px-2 py-2.5 whitespace-nowrap w-[72px]">
-                          {(() => {
-                            const ids = (r.auditoria_ids && r.auditoria_ids.length > 0) ? r.auditoria_ids : [r.id]
-                            const v = vendedorEfetivo(r)
-                            if (v) {
-                              const firstName = v.name.trim().split(/\s+/)[0]
-                              return (
-                                <span
-                                  className="text-[12px] text-ink-muted truncate block max-w-[70px] capitalize"
-                                  title={`${v.name}${v.source === 'wa' ? ' (via etiqueta WA)' : ''}`}
-                                >
-                                  {firstName.toLowerCase()}
-                                </span>
-                              )
-                            }
-                            // Lead sem vendedor (nem CRM nem WA): só o ícone "Pegar pra mim"
-                            return (
-                              <div className="flex items-center justify-center">
-                                <AtribuirVendedorPicker auditoriaIds={ids} compact />
-                              </div>
-                            )
-                          })()}
                         </td>
                         {/* AÇÕES */}
                         <td className="px-3 py-2.5 text-right whitespace-nowrap">
