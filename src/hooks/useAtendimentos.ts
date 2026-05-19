@@ -223,7 +223,7 @@ export interface AtendimentoKpis {
   total: number
   hoje: number
   quentes: number
-  clicaramBotao: number
+  contatados: number  // leads que o vendedor já recebeu via Wascript (foi_dispatched=true)
   naoEngajaram: number
   qualificados: number
   emAndamento: number
@@ -295,7 +295,7 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
         totalRes,
         hojeRes,
         quentesRes,
-        clicaramRes,
+        contatadosRes,
         naoEngajaramRes,
         qualificadosRes,
         emAndamentoRes,
@@ -305,7 +305,8 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
         baseQ(),
         baseQ().gte('last_message_at', todayIso),
         baseQ().eq('quando_investir', 'Agora'),
-        baseQ().not('tocou_botao_em', 'is', null),
+        // Contatados: vendedor já recebeu o lead via Wascript (1ª msg disparada)
+        baseQ().eq('foi_dispatched', true),
         // Nao engajaram: chegou no anuncio mas nem clicou no primeiro botao (motivo_contato)
         baseQ().is('motivo_contato', null).is('tocou_botao_em', null),
         baseQ().not('finalidade_fabrica', 'is', null).not('qual_animal', 'is', null),
@@ -331,14 +332,14 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
       } as Record<StatusReal, number>
 
       return {
-        total:          totalRes.count ?? 0,
-        hoje:           hojeRes.count ?? 0,
-        quentes:        quentesRes.count ?? 0,
-        clicaramBotao:  clicaramRes.count ?? 0,
-        naoEngajaram:   naoEngajaramRes.count ?? 0,
-        qualificados:   qualificadosRes.count ?? 0,
-        emAndamento:    emAndamentoRes.count ?? 0,
-        paraPegar:      paraPegarRes.count ?? 0,
+        total:           totalRes.count ?? 0,
+        hoje:            hojeRes.count ?? 0,
+        quentes:         quentesRes.count ?? 0,
+        contatados:      contatadosRes.count ?? 0,
+        naoEngajaram:    naoEngajaramRes.count ?? 0,
+        qualificados:    qualificadosRes.count ?? 0,
+        emAndamento:     emAndamentoRes.count ?? 0,
+        paraPegar:       paraPegarRes.count ?? 0,
         byStatus,
       }
     },

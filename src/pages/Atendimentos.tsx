@@ -361,7 +361,7 @@ export function Atendimentos() {
                    icon={Flame}     hint={kpis.quentes ? 'Quer comprar agora' : undefined} />
           <KpiCard label="Não engajaram"      value={kpis.naoEngajaram}    tone="neutral"  icon={EyeOff}            hint="nem começou o bot" />
           <KpiCard label="Em andamento"       value={kpis.emAndamento}     tone="warning"  icon={MessageSquareDot}  hint="no meio do fluxo" />
-          <KpiCard label="Clicaram botão"     value={kpis.clicaramBotao}   tone="success"  icon={Hand}              hint="completaram fluxo" />
+          <KpiCard label="Contatados"         value={kpis.contatados}      tone="success"  icon={Hand}              hint="vendedor já abordou" />
           <KpiCard label="Qualificados"       value={kpis.qualificados}    tone="info"     icon={ListChecks}        hint="dados completos" />
         </div>
       )}
