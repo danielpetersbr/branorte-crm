@@ -533,17 +533,21 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
           {fotoPrincipal ? (
             <div data-no-break className="group relative mb-3 border border-gray-700 rounded-md p-2 bg-white shadow-sm" style={{ zIndex: 1 }}>
-              <div className="w-full flex items-center justify-center bg-white">
+              <div
+                className="w-full flex items-center justify-center bg-white"
+                // Hero shot: maior que as fotos dos itens (320px) mas com teto
+                // de altura pra não ocupar a página inteira no PDF quando a
+                // imagem é alta/retrato (ex: diagrama de órgãos).
+                style={{ maxHeight: 440, overflow: 'hidden' }}
+              >
                 <img
                   src={fotoPrincipal}
                   alt="Foto da fábrica"
-                  // Hero shot: ocupa a largura TODA do container, altura livre
-                  // (preserva aspect ratio via object-contain). Primeira coisa
-                  // que o cliente vê — máximo impacto visual.
                   style={{
-                    width: '100%',
-                    height: 'auto',
                     maxWidth: '100%',
+                    maxHeight: 440,
+                    width: 'auto',
+                    height: 'auto',
                     objectFit: 'contain',
                     display: 'block',
                   }}
