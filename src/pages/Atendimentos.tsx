@@ -555,7 +555,7 @@ export function Atendimentos() {
                     <th className="hidden 2xl:table-cell w-[100px]" title="Pra que serve a fábrica: consumo, venda ou os dois (Ana V16.24)">Finalidade</th>
                     <th className="hidden 2xl:table-cell w-[60px]">Animal</th>
                     <th className="hidden 2xl:table-cell w-[50px]" title="Cabeças (consumo) — vazio se for venda (ver Produção/h)">Qtd</th>
-                    <th className="hidden 2xl:table-cell w-[72px]" title="Produção desejada quando é venda (kg/h)">Produção/h</th>
+                    <th className="hidden 2xl:table-cell w-[64px]" title="Produção desejada quando é venda (kg/h)">Kg/h</th>
                     <th className="w-[88px]">Vendedor</th>
                     <th className="hidden 2xl:table-cell w-[110px]" title="Etiqueta atribuída no WhatsApp do vendedor">Etiqueta WA</th>
                     <th className="hidden 2xl:table-cell w-[56px]" title="Cliente clicou no botão FALAR COM CONSULTOR">Botão</th>
