@@ -534,14 +534,13 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                 <img
                   src={fotoPrincipal}
                   alt="Foto da fábrica"
-                  // object-contain preserva aspect ratio (NUNCA estica)
-                  // 500px = foto principal grande, destaque máximo da fábrica.
-                  // É o "hero shot" do orçamento — primeira coisa que o cliente vê.
+                  // Hero shot: ocupa a largura TODA do container, altura livre
+                  // (preserva aspect ratio via object-contain). Primeira coisa
+                  // que o cliente vê — máximo impacto visual.
                   style={{
-                    maxHeight: '500px',
-                    maxWidth: '100%',
-                    width: 'auto',
+                    width: '100%',
                     height: 'auto',
+                    maxWidth: '100%',
                     objectFit: 'contain',
                     display: 'block',
                   }}
