@@ -4,7 +4,7 @@
 //  2) Modo render — usado pelo gerador de PDF (preview-to-pdf.ts) com renderMode=true
 //     e cliente/numero/data/terms preenchidos. Esconde os botões interativos.
 
-import { X } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { BRLInput } from '@/components/ui/BRLInput'
 
@@ -255,6 +255,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   const [extraPickerOpen, setExtraPickerOpen] = useState(false)
   // Estado do picker de troca de motor (qual linha tem o dropdown aberto)
   const [trocarMotorIdx, setTrocarMotorIdx] = useState<number | null>(null)
+  const [motorBusca, setMotorBusca] = useState('')
   void totalItems  // mostrado no footer do builder, não no preview
 
   const motoresTitle = voltagem === 'monofasico' ? 'Motores Monofásicos:' : 'Motores Trifásicos:'
@@ -949,7 +950,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             {podeTrocar ? (
                               <button
                                 type="button"
-                                onClick={() => setTrocarMotorIdx(aberto ? null : idx)}
+                                onClick={() => { setMotorBusca(''); setTrocarMotorIdx(aberto ? null : idx) }}
                                 className="font-semibold underline decoration-dotted underline-offset-2 decoration-gray-400 hover:decoration-blue-500 hover:text-blue-700 cursor-pointer print:no-underline print:text-gray-800"
                                 title="Clique pra trocar o motor"
                               >
@@ -963,48 +964,81 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             )}
                             {m.qtd > 1 && <span className="text-gray-500"> (×{m.qtd})</span>}
 
-                            {/* Popover de troca de motor */}
+                            {/* Modal de troca de motor (overlay fixo — não fica atrás dos blocos seguintes) */}
                             {aberto && podeTrocar && m.item_uid && motoresDisponiveis && (
                               <div
-                                className="absolute z-40 mt-1 left-0 top-full bg-white border border-gray-300 rounded-md shadow-xl w-[340px] max-h-[60vh] overflow-y-auto print:hidden"
-                                onMouseLeave={() => setTrocarMotorIdx(null)}
+                                className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-4 print:hidden"
+                                onClick={() => setTrocarMotorIdx(null)}
                               >
-                                <div className="px-3 py-2 border-b border-gray-200 flex items-center justify-between bg-gray-50">
-                                  <span className="text-[11px] uppercase font-bold text-gray-600 tracking-wider">Trocar motor</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => setTrocarMotorIdx(null)}
-                                    className="text-gray-400 hover:text-gray-700"
-                                  >
-                                    <X className="h-3.5 w-3.5" />
-                                  </button>
-                                </div>
-                                <div className="p-1">
-                                  {motoresDisponiveis
-                                    .slice()
-                                    .sort((a, b) => Number(a.cv) - Number(b.cv) || a.polos - b.polos || a.voltagem.localeCompare(b.voltagem))
-                                    .map(opt => {
-                                      const isAtual = Number(opt.cv) === m.cv && opt.polos === m.polos
-                                      return (
-                                        <button
-                                          key={opt.id}
-                                          type="button"
-                                          onClick={() => {
-                                            onTrocarMotor!(m.item_uid!, opt)
-                                            setTrocarMotorIdx(null)
-                                          }}
-                                          className={`w-full text-left px-2 py-1.5 rounded text-[12px] flex items-center justify-between gap-2 hover:bg-blue-50 transition-colors ${
-                                            isAtual ? 'bg-blue-100 font-semibold' : ''
-                                          }`}
-                                        >
-                                          <span className="text-gray-800">
-                                            {Number(opt.cv)} CV {opt.polos} polos
-                                            <span className="text-gray-500 ml-1.5 text-[10px] uppercase">{opt.voltagem}</span>
-                                          </span>
-                                          <span className="text-gray-600 tabular-nums text-[11px]">R$ {formatBRLBare(Number(opt.valor))}</span>
-                                        </button>
-                                      )
-                                    })}
+                                <div
+                                  className="bg-white border border-gray-300 rounded-lg shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col overflow-hidden"
+                                  onClick={e => e.stopPropagation()}
+                                >
+                                  <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between bg-gray-50 shrink-0">
+                                    <div className="min-w-0">
+                                      <div className="text-[12px] uppercase font-bold text-gray-600 tracking-wider">Trocar motor</div>
+                                      <div className="text-[11px] text-gray-500 truncate">
+                                        Atual: {m.cv} CV {m.polos} polos{m.item_nome && ` · ${m.item_nome}`}
+                                      </div>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => setTrocarMotorIdx(null)}
+                                      className="text-gray-400 hover:text-gray-700 shrink-0 ml-2"
+                                    >
+                                      <X className="h-4 w-4" />
+                                    </button>
+                                  </div>
+                                  <div className="p-2 border-b border-gray-200 shrink-0">
+                                    <div className="relative">
+                                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+                                      <input
+                                        type="text"
+                                        value={motorBusca}
+                                        onChange={e => setMotorBusca(e.target.value)}
+                                        placeholder="Buscar motor (ex: 5 CV, 4 polos, trifasico)..."
+                                        autoFocus
+                                        className="w-full pl-8 pr-2 py-1.5 bg-white border border-gray-300 rounded text-[12px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="p-1 overflow-y-auto">
+                                    {(() => {
+                                      const q = motorBusca.trim().toLowerCase()
+                                      const lista = motoresDisponiveis
+                                        .slice()
+                                        .sort((a, b) => Number(a.cv) - Number(b.cv) || a.polos - b.polos || a.voltagem.localeCompare(b.voltagem))
+                                        .filter(opt => {
+                                          if (!q) return true
+                                          return `${Number(opt.cv)} cv ${opt.polos} polos ${opt.voltagem}`.toLowerCase().includes(q)
+                                        })
+                                      if (lista.length === 0) {
+                                        return <div className="px-3 py-6 text-[12px] text-gray-400 text-center">Nenhum motor encontrado</div>
+                                      }
+                                      return lista.map(opt => {
+                                        const isAtual = Number(opt.cv) === m.cv && opt.polos === m.polos
+                                        return (
+                                          <button
+                                            key={opt.id}
+                                            type="button"
+                                            onClick={() => {
+                                              onTrocarMotor!(m.item_uid!, opt)
+                                              setTrocarMotorIdx(null)
+                                            }}
+                                            className={`w-full text-left px-3 py-2 rounded text-[13px] flex items-center justify-between gap-2 hover:bg-blue-50 transition-colors ${
+                                              isAtual ? 'bg-blue-100 font-semibold' : ''
+                                            }`}
+                                          >
+                                            <span className="text-gray-800">
+                                              {Number(opt.cv)} CV {opt.polos} polos
+                                              <span className="text-gray-500 ml-1.5 text-[11px] uppercase">{opt.voltagem}</span>
+                                            </span>
+                                            <span className="text-gray-600 tabular-nums text-[12px]">R$ {formatBRLBare(Number(opt.valor))}</span>
+                                          </button>
+                                        )
+                                      })
+                                    })()}
+                                  </div>
                                 </div>
                               </div>
                             )}
