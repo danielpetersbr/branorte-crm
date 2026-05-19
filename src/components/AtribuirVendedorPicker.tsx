@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth'
 
 interface Props {
   auditoriaIds: string[]
+  compact?: boolean  // só ícone (sem texto "Pegar pra mim") — usado em colunas estreitas
 }
 
 /**
@@ -13,7 +14,7 @@ interface Props {
  * - vendor: botao simples "Pegar pra mim" (atribui ao proprio user)
  * - admin:  botao "Pegar pra mim" + setinha pra dropdown com TODOS vendedores
  */
-export function AtribuirVendedorPicker({ auditoriaIds }: Props) {
+export function AtribuirVendedorPicker({ auditoriaIds, compact }: Props) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const { profile } = useAuth()
@@ -59,14 +60,15 @@ export function AtribuirVendedorPicker({ auditoriaIds }: Props) {
         disabled={isPending}
         onClick={handleSelf}
         title={`Atribuir este atendimento pra ${myVendorName}`}
-        className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md
+        className={`inline-flex items-center justify-center gap-1.5 h-7 rounded-md
                    bg-info-bg/60 text-info border border-info/30
                    hover:bg-info-bg hover:border-info/60 hover:shadow-sm
                    transition-all text-[11px] font-medium
-                   disabled:opacity-50 disabled:cursor-wait"
+                   disabled:opacity-50 disabled:cursor-wait
+                   ${compact ? 'w-7 px-0' : 'px-2.5'}`}
       >
         <UserPlus className="h-3.5 w-3.5" />
-        Pegar pra mim
+        {!compact && 'Pegar pra mim'}
       </button>
     )
   }
@@ -81,14 +83,15 @@ export function AtribuirVendedorPicker({ auditoriaIds }: Props) {
         disabled={isPending || !myVendorName}
         onClick={handleSelf}
         title={myVendorName ? `Atribuir pra ${myVendorName}` : 'Atribuir'}
-        className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-2 rounded-l-md
+        className={`inline-flex items-center justify-center gap-1.5 h-7 rounded-l-md
                    bg-info-bg/60 text-info border border-info/30
                    hover:bg-info-bg hover:border-info/60 hover:shadow-sm
                    transition-all text-[11px] font-medium
-                   disabled:opacity-50 disabled:cursor-wait"
+                   disabled:opacity-50 disabled:cursor-wait
+                   ${compact ? 'w-7 px-0' : 'pl-2.5 pr-2'}`}
       >
         <UserPlus className="h-3.5 w-3.5" />
-        Pegar pra mim
+        {!compact && 'Pegar pra mim'}
       </button>
       <button
         type="button"

@@ -589,12 +589,12 @@ export function Atendimentos() {
                             {formatDateTimeShort(r.primeira_data ?? r.created_at)}
                           </span>
                         </td>
-                        {/* LEAD */}
+                        {/* LEAD — só primeiro nome pra não esticar a coluna */}
                         <td className="px-3 py-2.5 whitespace-nowrap">
-                          <div className="flex items-center min-w-[170px]">
-                            <div className="leading-tight">
-                              <span className="text-[13px] font-medium text-ink">
-                                {nomeReal ?? (
+                          <div className="flex items-center max-w-[110px]">
+                            <div className="leading-tight min-w-0">
+                              <span className="text-[13px] font-medium text-ink truncate block" title={nomeReal ?? ''}>
+                                {nomeReal ? nomeReal.trim().split(/\s+/)[0] : (
                                   <span className="text-ink-faint italic font-normal">
                                     {tel ? `+${tel.slice(-4)}` : 'Sem nome'}
                                   </span>
@@ -786,24 +786,24 @@ export function Atendimentos() {
                             <EmptyCell />
                           )}
                         </td>
-                        {/* VENDEDOR — fallback de wa_chat_labels quando responsavel vazio */}
-                        <td className="px-3 py-2.5 whitespace-nowrap">
+                        {/* VENDEDOR — só ícone (avatar OU botão compact "Pegar pra mim") */}
+                        <td className="px-2 py-2.5 whitespace-nowrap w-[56px]">
                           {(() => {
                             const ids = (r.auditoria_ids && r.auditoria_ids.length > 0) ? r.auditoria_ids : [r.id]
                             const v = vendedorEfetivo(r)
                             if (v) {
                               return (
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center justify-center" title={`${v.name}${v.source === 'wa' ? ' (via etiqueta WA)' : ''}`}>
                                   <Avatar name={v.name} size="sm" />
-                                  <span className="text-[12px] text-ink-muted">{v.name}</span>
-                                  {v.source === 'wa' && (
-                                    <span title="Vendedor identificado por etiqueta no WhatsApp dele (ainda nao 'pego' formalmente no CRM)" className="text-[9px] px-1 py-px rounded bg-success-bg/40 text-success font-mono">WA</span>
-                                  )}
                                 </div>
                               )
                             }
-                            // Lead sem vendedor (nem CRM nem WA): dropdown (admin) ou "Pegar pra mim"
-                            return <AtribuirVendedorPicker auditoriaIds={ids} />
+                            // Lead sem vendedor (nem CRM nem WA): só o ícone "Pegar pra mim"
+                            return (
+                              <div className="flex items-center justify-center">
+                                <AtribuirVendedorPicker auditoriaIds={ids} compact />
+                              </div>
+                            )
                           })()}
                         </td>
                         {/* AÇÕES */}
