@@ -1,4 +1,7 @@
-// webhook-disparachat-events v24 (2026-05-18) — dedup bidirecional FB↔WA
+// webhook-disparachat-events v25 (2026-05-19) — fix dedup check usar phone REAL
+//   v25: a condição "!normalizedPhoneDigits || empty" falhava quando contact_id
+//        era usado como fallback de phone — produzia string não-vazia e dedup era
+//        pulado. Agora checa o payload.contact.phone REAL antes de normalizar.
 //   v24: FB chega ~0.5s ANTES do WA. Quando o WA chega, procura órfão FB do
 //        mesmo nome em <90s e faz MERGE (UPDATE), em vez de criar duplicata.
 //        A dedup anterior (v23) só cobria WA→FB.
@@ -349,12 +352,14 @@ Deno.serve(async (req) => {
         atendimentoRow.como_finalizou = "Sem-resposta";
       }
     }
-    // V24 DEDUP (FB/IG → WA): chatbotsystem dispara 2 webhooks pro mesmo lead
-    // (1) Facebook/Instagram sem telefone (canal não-WA, telefone_norm vazio)
+    // V24/V25 DEDUP (FB/IG → WA): chatbotsystem dispara 2 webhooks pro mesmo lead
+    // (1) Facebook/Instagram sem telefone REAL no payload (mesmo que contact_id
+    //     populate o fallback, o phone real é null/vazio)
     // (2) WhatsApp com telefone
-    // Quando o FB/IG órfão chega DEPOIS do WA, pulamos a inserção (caso WA primeiro).
-    // (O caso oposto — WA depois do FB/IG — é tratado mais abaixo com MERGE.)
-    if (channel !== "whatsapp" && (!normalizedPhoneDigits || normalizedPhoneDigits === "") && name) {
+    // V25 fix: usa phone REAL do payload (não o fallback que vira contact_id).
+    const hasRealPhone = !!(payload.contact?.phone || payload.contact?.primary_whatsapp
+      || payload.contact?.whatsapp_number || payload.phone);
+    if (channel !== "whatsapp" && !hasRealPhone && name) {
       try {
         const tenMinAgo = new Date(Date.now() - 10 * 60_000).toISOString();
         const dupCheck = await fetch(
