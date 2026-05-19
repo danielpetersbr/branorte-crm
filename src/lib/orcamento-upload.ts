@@ -50,7 +50,30 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
   }
 }
 
-async function putSigned(file: PresignedFile, blob: Blob, contentType: string, label: string): Promise<void> {
+// Reporta erro pra Vercel logs quando upload falha todas as retries.
+// Sem await — fire and forget. Nao bloqueia o fluxo de erro principal.
+function reportUploadError(payload: {
+  orcamentoId: number; numero: string; vendedor: string; cliente: string;
+  label: string; blobSize: number; contentType: string;
+  errorMessage: string; errorName: string; attempts: number;
+}) {
+  try {
+    fetch('/api/orcamento-upload-error', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+      keepalive: true,  // continua mesmo se o tab fechar
+    }).catch(() => {})
+  } catch {}
+}
+
+async function putSigned(
+  file: PresignedFile,
+  blob: Blob,
+  contentType: string,
+  label: string,
+  meta?: { orcamentoId: number; numero: string; vendedor: string; cliente: string },
+): Promise<void> {
   const sizeKb = Math.round(blob.size / 1024)
   let lastErr: Error | null = null
   const MAX_ATTEMPTS = 4
@@ -80,6 +103,21 @@ async function putSigned(file: PresignedFile, blob: Blob, contentType: string, l
         await new Promise(r => setTimeout(r, delay))
       }
     }
+  }
+  // Todas as retries falharam — reporta pro servidor pra debug
+  if (meta && lastErr) {
+    reportUploadError({
+      orcamentoId: meta.orcamentoId,
+      numero: meta.numero,
+      vendedor: meta.vendedor,
+      cliente: meta.cliente,
+      label,
+      blobSize: blob.size,
+      contentType,
+      errorMessage: lastErr.message,
+      errorName: lastErr.name,
+      attempts: MAX_ATTEMPTS,
+    })
   }
   throw lastErr || new Error(`upload ${label} falhou`)
 }
@@ -122,16 +160,22 @@ export async function uploadOrcamentoViaServer(input: OrcamentoUploadInput): Pro
   log(`Subindo ${docxKB}KB docx${pdfKB ? ` + ${pdfKB}KB pdf` : ''}...`)
 
   const docxMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  const meta = {
+    orcamentoId: input.orcamentoId,
+    numero: input.numero,
+    vendedor: input.vendedorNome,
+    cliente: input.clienteNome,
+  }
   const ops: Array<{ label: string; promise: Promise<void> }> = [
-    { label: 'docx', promise: putSigned(presign.docx, input.docxBlob, docxMime, 'docx') },
-    { label: 'docxEditavel', promise: putSigned(presign.docxEditavel, input.docxEditavelBlob, docxMime, 'docxEditavel') },
-    { label: 'txt', promise: putSigned(presign.txt, input.txtBlob, 'text/plain;charset=utf-8', 'txt') },
+    { label: 'docx', promise: putSigned(presign.docx, input.docxBlob, docxMime, 'docx', meta) },
+    { label: 'docxEditavel', promise: putSigned(presign.docxEditavel, input.docxEditavelBlob, docxMime, 'docxEditavel', meta) },
+    { label: 'txt', promise: putSigned(presign.txt, input.txtBlob, 'text/plain;charset=utf-8', 'txt', meta) },
   ]
   if (input.pdfBlob && presign.pdf) {
-    ops.push({ label: 'pdf', promise: putSigned(presign.pdf, input.pdfBlob, 'application/pdf', 'pdf') })
+    ops.push({ label: 'pdf', promise: putSigned(presign.pdf, input.pdfBlob, 'application/pdf', 'pdf', meta) })
   }
   if (input.sendWhatsApp && input.pdfBlob && presign.envio) {
-    ops.push({ label: 'envio', promise: putSigned(presign.envio, input.pdfBlob, 'application/pdf', 'envio') })
+    ops.push({ label: 'envio', promise: putSigned(presign.envio, input.pdfBlob, 'application/pdf', 'envio', meta) })
   }
 
   const results = await Promise.allSettled(ops.map(o => o.promise))
