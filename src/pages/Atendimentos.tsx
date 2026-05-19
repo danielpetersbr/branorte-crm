@@ -427,7 +427,9 @@ export function Atendimentos() {
                   }`}
                 >
                   <div className="flex items-start gap-2.5">
-                    <Avatar name={nomeReal ?? '?'} size="md" pulse={isFresh} />
+                    {isFresh && (
+                      <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" title="Lead novo" />
+                    )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
@@ -557,8 +559,10 @@ export function Atendimentos() {
                         </td>
                         {/* LEAD */}
                         <td className="px-3 py-2.5 whitespace-nowrap">
-                          <div className="flex items-center gap-2.5 min-w-[170px]">
-                            <Avatar name={nomeReal ?? '?'} size="md" pulse={isFresh} />
+                          <div className="flex items-center gap-2 min-w-[170px]">
+                            {isFresh && (
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" title="Lead novo" />
+                            )}
                             <div className="leading-tight">
                               <span className="text-[13px] font-medium text-ink">
                                 {nomeReal ?? (
