@@ -63,8 +63,43 @@ const MOTIVO_TONE: Record<string, Tone> = {
   'Montar uma Fábrica': 'success',
   'Só um equipamento':  'info',
   'Outros assuntos':    'neutral',
+  // Raw values vindas da Ana V16.22 (caso de webhook antigo que ainda não rodou v23)
+  'fabrica_racao':      'success',
+  'equipamento':        'info',
 }
 
+// Humaniza valores raw que vêm da Ana V16.22 caso o webhook não tenha traduzido
+function humanizeMotivo(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  const s = String(raw).toLowerCase().trim()
+  if (s === 'fabrica_racao' || s === 'fábrica_ração') return 'Montar uma Fábrica'
+  if (s === 'equipamento') return 'Só um equipamento'
+  return raw
+}
+
+function humanizeTipoRacao(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  const s = String(raw).toLowerCase().trim()
+  // Finalidade (legacy) — humanize underscores
+  if (s === 'consumo_proprio' || s === 'consumo_próprio') return 'Consumo próprio'
+  if (s === 'revenda') return 'Revenda'
+  if (s === 'misto') return 'Consumo e revenda'
+  return raw
+}
+
+function humanizeQuando(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  const s = String(raw).toLowerCase().trim()
+  if (s === 'agora') return 'Agora'
+  if (s === 'pesquisando' || s === 'estou pesquisando') return 'Estou pesquisando'
+  if (s === 'em até 3 meses' || s === 'em ate 3 meses') return 'Em até 3 meses'
+  return raw
+}
+
+// Empty cell estilizada — mais discreta
+function EmptyCell() {
+  return <span className="text-[11px] text-ink-faint/40">—</span>
+}
 
 function isHotLead(quando: string | null): boolean {
   return quando === 'Agora'
@@ -85,7 +120,7 @@ interface PerfilFabricaCellProps {
 
 function PerfilFabricaCell({ finalidade, quantos, capacidade, quando }: PerfilFabricaCellProps) {
   if (!finalidade && !quantos && !capacidade && !quando) {
-    return <span className="text-[11px] text-ink-faint">—</span>
+    return <EmptyCell />
   }
   return (
     <div className="flex flex-col gap-1 min-w-[170px]">
@@ -543,10 +578,10 @@ export function Atendimentos() {
                     const nomeReal = r.nome && !/^\(sem nome\)$/i.test(r.nome.trim()) ? r.nome : null
                     return (
                       <tr key={r.id}
-                          className={`group border-b border-border/40 last:border-0 transition-all duration-150
+                          className={`group border-b border-border/30 last:border-0 transition-all duration-150
                                      ${isHot
                                         ? 'bg-danger-bg/30 hover:bg-danger-bg/50'
-                                        : 'hover:bg-surface-2/50 hover:shadow-sm'}`}
+                                        : 'odd:bg-surface even:bg-surface-2/20 hover:bg-surface-2/60 hover:shadow-sm'}`}
                           style={isHot ? { boxShadow: 'inset 3px 0 0 0 hsl(var(--danger))' } : undefined}>
                         {/* CHEGOU */}
                         <td className="px-3 py-2.5 whitespace-nowrap" title={r.primeira_data ?? r.created_at ?? ''}>
@@ -584,7 +619,7 @@ export function Atendimentos() {
                             </div>
                           ) : (() => {
                             const pais = paisDoTelefone(r.telefone)
-                            if (!pais) return <span className="text-[11px] text-ink-faint">—</span>
+                            if (!pais) return <EmptyCell />
                             return (
                               <div className="flex items-center gap-1.5" title="Lead internacional">
                                 <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-info/10 text-info">
@@ -620,7 +655,7 @@ export function Atendimentos() {
                               </Badge>
                             )
                           })() : (
-                            <span className="text-[11px] text-ink-faint">—</span>
+                            <EmptyCell />
                           )}
                         </td>
                         {/* CRIATIVO */}
@@ -639,29 +674,33 @@ export function Atendimentos() {
                               )}
                             </div>
                           ) : (
-                            <span className="text-[11px] text-ink-faint">—</span>
+                            <EmptyCell />
                           )}
                         </td>
                         {/* MOTIVO DO CONTATO */}
                         <td className="hidden lg:table-cell px-2 py-2.5 whitespace-nowrap">
-                          {r.motivo_contato ? (
-                            <Badge style={{
-                              background: `hsl(var(--${MOTIVO_TONE[r.motivo_contato] ?? 'surface-2'}-bg))`,
-                              color: `hsl(var(--${MOTIVO_TONE[r.motivo_contato] ?? 'ink-muted'}))`,
-                            }}>
-                              {r.motivo_contato}
-                            </Badge>
-                          ) : (
-                            <span className="text-[11px] text-ink-faint">—</span>
-                          )}
+                          {(() => {
+                            const motivo = humanizeMotivo(r.motivo_contato)
+                            if (!motivo) return <EmptyCell />
+                            const tone = MOTIVO_TONE[r.motivo_contato!] ?? MOTIVO_TONE[motivo] ?? 'neutral'
+                            return (
+                              <Badge style={{
+                                background: `hsl(var(--${tone}-bg))`,
+                                color: `hsl(var(--${tone}))`,
+                              }}>
+                                {motivo}
+                              </Badge>
+                            )
+                          })()}
                         </td>
                         {/* TIPO DE RAÇÃO (ou equipamento) — Ana V16.22 não pergunta finalidade,
                             pergunta o TIPO (ração completa, proteinado, sal mineral, postura, corte) */}
                         <td className="hidden 2xl:table-cell px-2 py-2.5 whitespace-nowrap">
                           {(() => {
-                            const tipo = r.o_que_precisa || r.finalidade_fabrica
-                            if (!tipo) return <span className="text-[11px] text-ink-faint">—</span>
-                            const tone = FINALIDADE_TONE[tipo] ?? 'neutral'
+                            const rawTipo = r.o_que_precisa || r.finalidade_fabrica
+                            const tipo = humanizeTipoRacao(rawTipo)
+                            if (!tipo) return <EmptyCell />
+                            const tone = FINALIDADE_TONE[rawTipo!] ?? FINALIDADE_TONE[tipo] ?? 'neutral'
                             return (
                               <Badge style={{
                                 background: `hsl(var(--${tone}-bg))`,
@@ -677,7 +716,7 @@ export function Atendimentos() {
                           {r.qual_animal ? (
                             <span className="text-[12px] text-ink-muted">{r.qual_animal}</span>
                           ) : (
-                            <span className="text-[11px] text-ink-faint">—</span>
+                            <EmptyCell />
                           )}
                         </td>
                         {/* QTD */}
@@ -685,29 +724,32 @@ export function Atendimentos() {
                           {r.quantos_animais ? (
                             <span className="text-[12px] text-ink-muted tabular-nums">{r.quantos_animais}</span>
                           ) : (
-                            <span className="text-[11px] text-ink-faint">—</span>
+                            <EmptyCell />
                           )}
                         </td>
                         {/* MOMENTO DE COMPRA */}
                         <td className="hidden lg:table-cell px-2 py-2.5 whitespace-nowrap">
-                          {r.quando_investir ? (
-                            <Badge style={{
-                              background: `hsl(var(--${quandoTone ?? 'surface-2'}-bg))`,
-                              color: `hsl(var(--${quandoTone ?? 'ink-muted'}))`,
-                            }} className="gap-1">
-                              {r.quando_investir === 'Agora' && <Flame className="h-2.5 w-2.5" />}
-                              {r.quando_investir === 'Em até 3 meses' && <AlarmClock className="h-2.5 w-2.5" />}
-                              {r.quando_investir}
-                            </Badge>
-                          ) : (
-                            <span className="text-[11px] text-ink-faint">—</span>
-                          )}
+                          {(() => {
+                            const quando = humanizeQuando(r.quando_investir)
+                            if (!quando) return <EmptyCell />
+                            const tone = QUANDO_TONE[r.quando_investir!] ?? QUANDO_TONE[quando] ?? 'neutral'
+                            return (
+                              <Badge style={{
+                                background: `hsl(var(--${tone}-bg))`,
+                                color: `hsl(var(--${tone}))`,
+                              }} className="gap-1">
+                                {quando === 'Agora' && <Flame className="h-2.5 w-2.5" />}
+                                {quando === 'Em até 3 meses' && <AlarmClock className="h-2.5 w-2.5" />}
+                                {quando}
+                              </Badge>
+                            )
+                          })()}
                         </td>
                         {/* ETIQUETA WA — sincronizada do WhatsApp do vendedor */}
                         <td className="hidden xl:table-cell px-2 py-2.5 whitespace-nowrap">
                           {(() => {
                             const labels = lookupWaLabels(waLabelsMap, r.telefone)
-                            if (labels.length === 0) return <span className="text-[11px] text-ink-faint">—</span>
+                            if (labels.length === 0) return <EmptyCell />
                             return (
                               <div className="flex flex-wrap gap-1 max-w-[180px]">
                                 {labels.slice(0, 3).map(l => (
@@ -739,7 +781,7 @@ export function Atendimentos() {
                               Sim
                             </span>
                           ) : (
-                            <span className="text-[11px] text-ink-faint">—</span>
+                            <EmptyCell />
                           )}
                         </td>
                         {/* VENDEDOR — fallback de wa_chat_labels quando responsavel vazio */}
