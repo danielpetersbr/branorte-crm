@@ -230,28 +230,26 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
   // Modal fica invisível (headless) e dispara handleGerar direto. Progresso aparece
   // como toast no fim (onSuccess do parent).
   const [headlessMode, setHeadlessMode] = useState(false)
-  // Ref pra evitar closure stale do cliNome dentro do setTimeout. cliNome é
-  // setado por outro useEffect (initialModal) e o setTimeout precisa ler o
-  // valor MAIS RECENTE quando dispara, não o capturado no momento do effect.
-  const cliNomeRef = useRef(cliNome)
-  useEffect(() => { cliNomeRef.current = cliNome }, [cliNome])
+  // Flag pra disparar UMA ÚNICA vez por abertura do modal. Evita doublefire
+  // quando o cliNome atualiza (re-renders).
+  const autoSubmitFiredRef = useRef(false)
 
+  // Reseta o flag toda vez que o modal abre/fecha
   useEffect(() => {
-    if (!open || !autoSubmitOnOpen) { setHeadlessMode(false); return }
-    // Aguarda initialModal preencher cliNome antes de disparar
-    const startTimer = setTimeout(() => {
-      const nomeAtual = cliNomeRef.current.trim()
-      if (!nomeAtual) {
-        setHeadlessMode(false)
-        return
-      }
-      setHeadlessMode(true)
-      // Dispara gerar IMEDIATAMENTE (sem countdown — IA já confirmou os dados em chat)
-      handleGerar({ salvarNaPasta: false, salvarNoServidor: true, pdfQuality: pdfAltaQualidade ? 'high' : 'normal' })
-    }, 600)
-    return () => clearTimeout(startTimer)
+    autoSubmitFiredRef.current = false
+    if (!open) setHeadlessMode(false)
+  }, [open])
+
+  // Watcher: quando modal abre + autoSubmitOnOpen=true + cliNome preenchido → dispara
+  useEffect(() => {
+    if (!open || !autoSubmitOnOpen || autoSubmitFiredRef.current) return
+    if (!cliNome.trim()) return  // aguarda initialModal preencher
+    // Dispara UMA ÚNICA vez
+    autoSubmitFiredRef.current = true
+    setHeadlessMode(true)
+    handleGerar({ salvarNaPasta: false, salvarNoServidor: true, pdfQuality: pdfAltaQualidade ? 'high' : 'normal' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, autoSubmitOnOpen])
+  }, [open, autoSubmitOnOpen, cliNome])
 
   // Modo edição: pré-popula campos do modal com dados do orçamento sendo editado.
   // Roda 1x quando o modal abre OU quando initialModal chega.
