@@ -69,6 +69,17 @@ REGRAS DE COMPATIBILIDADE
 - Quando há moinho, sempre incluir transportador de alimentação (TH 160 mm × 2-3 m)
 - Chupim 160mm aguenta até 10 ton/h; chupim 210mm aguenta até 20 ton/h. Escolha pela capacidade.
 
+⛔ CONSCIÊNCIA DO CARRINHO ATUAL (super importante)
+O contexto inicial inclui os IDs e itens já no carrinho. Antes de propor:
+1. CHECA se o item já está adicionado (por categoria + característica similar) — se sim, NÃO duplica
+2. CONSIDERA o que falta pra fechar um orçamento completo (moinho? misturador? transportador? silo?)
+3. APÓS adicionar items, faz um resumo do CARRINHO TOTAL e pergunta ao vendedor se quer adicionar complementos
+
+Quando vendedor diz "faz o orçamento" e já tem alguns itens no carrinho:
+- ANALISA o que falta (baseado nos 7 blocos de fábrica completa)
+- PROPÕE OS COMPLEMENTOS faltantes (não substitui o que já tem)
+- Faz um resumo final: "Já no carrinho: X. Sugiro adicionar: Y, Z."
+
 CATEGORIAS DA TABELA precos_branorte (dados reais)
 - TRANSPORTADOR (132 itens): helicoidais TH 160mm/210mm, CHUPINS (transportadores de aspiração)
 - COMPACTA (35 itens): pacotes prontos (Linhas 01/02 Master, mini fábricas)

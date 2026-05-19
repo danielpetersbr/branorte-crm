@@ -449,28 +449,50 @@ function ChatMessageBubble({
         <MarkdownLite text={msg.content} />
 
         {/* Cards de ação sugerida (Sprint 2). Só aparecem em mensagens do assistente. */}
-        {!isUser && msg.acoes && msg.acoes.length > 0 && (
-          <div className="mt-2 space-y-1.5">
-            {msg.acoes.map((acao, i) => {
-              const aplicada = msg.acoesAplicadas?.has(i)
-              const podeAplicar =
-                acao.tipo === 'adicionar_item'
-                  ? podeAdicionarItem
-                  : acao.tipo === 'carregar_pacote'
-                  ? podeCarregarPacote
-                  : podePreencherCliente
-              return (
-                <AcaoCard
-                  key={i}
-                  acao={acao}
-                  aplicada={!!aplicada}
-                  podeAplicar={podeAplicar}
-                  onAplicar={() => onAplicarAcao(i)}
-                />
-              )
-            })}
-          </div>
-        )}
+        {!isUser && msg.acoes && msg.acoes.length > 0 && (() => {
+          const fmtBRL = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(n)
+          // Calcula subtotal das ações 'adicionar_item' pendentes (não aplicadas)
+          const subtotalPendente = msg.acoes.reduce((acc, acao, idx) => {
+            if (msg.acoesAplicadas?.has(idx)) return acc
+            if (acao.tipo === 'adicionar_item') {
+              return acc + (acao.preview?.valor_equipamento ?? 0) * acao.quantidade
+            }
+            return acc
+          }, 0)
+          const qtdAdicionar = msg.acoes.filter((a, i) => !msg.acoesAplicadas?.has(i) && a.tipo === 'adicionar_item').length
+          return (
+            <div className="mt-2 space-y-1.5">
+              {msg.acoes.map((acao, i) => {
+                const aplicada = msg.acoesAplicadas?.has(i)
+                const podeAplicar =
+                  acao.tipo === 'adicionar_item'
+                    ? podeAdicionarItem
+                    : acao.tipo === 'carregar_pacote'
+                    ? podeCarregarPacote
+                    : podePreencherCliente
+                return (
+                  <AcaoCard
+                    key={i}
+                    acao={acao}
+                    aplicada={!!aplicada}
+                    podeAplicar={podeAplicar}
+                    onAplicar={() => onAplicarAcao(i)}
+                  />
+                )
+              })}
+              {qtdAdicionar > 1 && subtotalPendente > 0 && (
+                <div className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-accent/10 border border-accent/30 text-[11px]">
+                  <span className="text-ink-muted">
+                    {qtdAdicionar} {qtdAdicionar === 1 ? 'item pendente' : 'itens pendentes'}
+                  </span>
+                  <span className="font-semibold text-accent tabular-nums">
+                    Subtotal: {fmtBRL(subtotalPendente)}
+                  </span>
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
         {!isUser && msg.tool_trace && msg.tool_trace.length > 0 && (
           <div className="mt-1.5 pt-1.5 border-t border-border/40 text-[10px] text-ink-faint flex flex-wrap gap-1">

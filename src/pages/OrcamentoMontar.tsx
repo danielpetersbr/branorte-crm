@@ -2362,11 +2362,15 @@ export function OrcamentoMontar() {
           orcamento_id: editingId,
           cliente_nome: initialModal?.cliente_nome ?? null,
           carrinho_resumo: carrinho.length > 0
-            ? carrinho.slice(0, 10).map(c =>
-                `- ${c.qtd}x ${c.nome} (${new Intl.NumberFormat('pt-BR', {
-                  style: 'currency', currency: 'BRL'
-                }).format(c.valor * c.qtd)})`
-              ).join('\n') + (carrinho.length > 10 ? `\n…e mais ${carrinho.length - 10} itens` : '')
+            ? (() => {
+                const fmt = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(n)
+                const total = carrinho.reduce((acc, c) => acc + c.valor * c.qtd, 0)
+                const linhas = carrinho.slice(0, 15).map(c =>
+                  `- ${c.qtd}x ${c.nome} [id=${c.catalogo_id}] = ${fmt(c.valor * c.qtd)}`
+                )
+                const sufixo = carrinho.length > 15 ? `\n…e mais ${carrinho.length - 15} itens` : ''
+                return `${linhas.join('\n')}${sufixo}\n\nTOTAL ATUAL: ${fmt(total)} (${carrinho.length} ${carrinho.length === 1 ? 'item' : 'itens'})`
+              })()
             : null,
         }}
         onAdicionarItem={(preco_id, qtd) => {
