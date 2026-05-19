@@ -555,10 +555,10 @@ export function Atendimentos() {
                     <th className="hidden lg:table-cell">Origem</th>
                     <th className="hidden 2xl:table-cell">Criativo</th>
                     <th className="hidden lg:table-cell">Motivo</th>
-                    <th className="hidden 2xl:table-cell" title="Tipo de ração que o cliente quer produzir (ou equipamento)">Tipo de Ração</th>
+                    <th className="hidden 2xl:table-cell" title="Pra que serve a fábrica: consumo, venda ou os dois (Ana V16.24)">Finalidade</th>
                     <th className="hidden xl:table-cell">Animal</th>
-                    <th className="hidden xl:table-cell">Qtd</th>
-                    <th className="hidden lg:table-cell">Momento</th>
+                    <th className="hidden xl:table-cell" title="Cabeças (consumo) — vazio se for venda (ver Produção/h)">Qtd</th>
+                    <th className="hidden xl:table-cell" title="Produção desejada quando é venda (kg/h)">Produção/h</th>
                     <th className="hidden xl:table-cell" title="Etiqueta atribuída no WhatsApp do vendedor">Etiqueta WA</th>
                     <th className="hidden 2xl:table-cell" title="Cliente clicou no botão FALAR COM CONSULTOR">Botão</th>
                     <th>Vendedor</th>
@@ -693,20 +693,20 @@ export function Atendimentos() {
                             )
                           })()}
                         </td>
-                        {/* TIPO DE RAÇÃO (ou equipamento) — Ana V16.22 não pergunta finalidade,
-                            pergunta o TIPO (ração completa, proteinado, sal mineral, postura, corte) */}
+                        {/* FINALIDADE — Ana V16.24 pergunta isso logo após o nome.
+                            consumo_proprio / revenda / misto. Substitui a coluna antiga "Tipo de Ração". */}
                         <td className="hidden 2xl:table-cell px-2 py-2.5 whitespace-nowrap">
                           {(() => {
-                            const rawTipo = r.o_que_precisa || r.finalidade_fabrica
-                            const tipo = humanizeTipoRacao(rawTipo)
-                            if (!tipo) return <EmptyCell />
-                            const tone = FINALIDADE_TONE[rawTipo!] ?? FINALIDADE_TONE[tipo] ?? 'neutral'
+                            const fin = r.finalidade_fabrica
+                            if (!fin) return <EmptyCell />
+                            const label = humanizeTipoRacao(fin) ?? fin
+                            const tone = FINALIDADE_TONE[fin] ?? FINALIDADE_TONE[label] ?? 'neutral'
                             return (
                               <Badge style={{
                                 background: `hsl(var(--${tone}-bg))`,
                                 color: `hsl(var(--${tone}))`,
                               }} className="capitalize">
-                                {tipo}
+                                {label}
                               </Badge>
                             )
                           })()}
@@ -719,7 +719,7 @@ export function Atendimentos() {
                             <EmptyCell />
                           )}
                         </td>
-                        {/* QTD */}
+                        {/* QTD (cabeças) — V16.24: vazio quando finalidade=revenda (vendedor não pergunta qtd nesse caso) */}
                         <td className="hidden xl:table-cell px-2 py-2.5 whitespace-nowrap">
                           {r.quantos_animais ? (
                             <span className="text-[12px] text-ink-muted tabular-nums">{r.quantos_animais}</span>
@@ -727,23 +727,13 @@ export function Atendimentos() {
                             <EmptyCell />
                           )}
                         </td>
-                        {/* MOMENTO DE COMPRA */}
-                        <td className="hidden lg:table-cell px-2 py-2.5 whitespace-nowrap">
-                          {(() => {
-                            const quando = humanizeQuando(r.quando_investir)
-                            if (!quando) return <EmptyCell />
-                            const tone = QUANDO_TONE[r.quando_investir!] ?? QUANDO_TONE[quando] ?? 'neutral'
-                            return (
-                              <Badge style={{
-                                background: `hsl(var(--${tone}-bg))`,
-                                color: `hsl(var(--${tone}))`,
-                              }} className="gap-1">
-                                {quando === 'Agora' && <Flame className="h-2.5 w-2.5" />}
-                                {quando === 'Em até 3 meses' && <AlarmClock className="h-2.5 w-2.5" />}
-                                {quando}
-                              </Badge>
-                            )
-                          })()}
+                        {/* PRODUÇÃO/H (kg/h) — V16.24: usado quando finalidade=venda (substitui Momento) */}
+                        <td className="hidden xl:table-cell px-2 py-2.5 whitespace-nowrap">
+                          {r.capacidade_producao ? (
+                            <span className="text-[12px] text-ink-muted tabular-nums">{r.capacidade_producao}</span>
+                          ) : (
+                            <EmptyCell />
+                          )}
                         </td>
                         {/* ETIQUETA WA — etiquetas do VENDEDOR RESPONSÁVEL apenas.
                             Antes mostrava etiquetas de qualquer vendedor que tivesse
