@@ -127,6 +127,10 @@ export function useWaLabelsByPhones(phones: (string | null | undefined)[], enabl
         }
       }
       // Constrói o map { phone → labels[] }
+      // ATENÇÃO: pode existir MAIS DE UMA row pro mesmo phone (1 por vendedor),
+      // porque cada vendedor tem o cliente salvo no Zap dele com etiquetas
+      // próprias. Antes a gente fazia `map[phone] = labels` que SOBRESCREVIA —
+      // perdia as labels dos vendedores processados primeiro. Agora acumula.
       const map: WaLabelMap = {}
       for (const row of chatRows) {
         const phone = String(row.phone)
@@ -139,7 +143,8 @@ export function useWaLabelsByPhones(phones: (string | null | undefined)[], enabl
             vendedor: String(row.vendedor_nome || ''),
           }
         })
-        map[phone] = labels
+        if (!map[phone]) map[phone] = []
+        map[phone].push(...labels)
       }
       return map
     },
