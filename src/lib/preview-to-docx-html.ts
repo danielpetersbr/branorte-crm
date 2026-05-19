@@ -33,6 +33,93 @@ const RELEVANT_PROPS = [
 ]
 
 /**
+ * Converte Flexbox/Grid em <table> equivalente. CRITICO: html-to-docx ignora
+ * Flex/Grid (so entende <table>). Sem essa conversao, todos os layouts
+ * horizontais do preview (vendedores 4-col, contas 3-col, header 2-col)
+ * viram empilhados no Word.
+ *
+ * Estrategia: para cada elemento com display:flex (row) OU display:grid E
+ * com >=2 filhos visiveis, substitui por <table><tr><td>...</td></tr></table>.
+ * Largura distribuida igual entre colunas.
+ */
+function flexToTables(root: HTMLElement) {
+  // Coleta ANTES de mutar (querySelectorAll vivo daria problema)
+  const allEls = Array.from(root.querySelectorAll('*')) as HTMLElement[]
+  for (const el of allEls) {
+    if (!el.isConnected) continue  // foi removido por substituicao anterior
+    const cs = window.getComputedStyle(el)
+    const isFlexRow = cs.display === 'flex' && (cs.flexDirection === 'row' || cs.flexDirection === 'row-reverse' || cs.flexDirection === '')
+    const isGrid = cs.display === 'grid'
+    if (!isFlexRow && !isGrid) continue
+    // Pega filhos diretos visiveis
+    const children = Array.from(el.children).filter(c => {
+      const ccs = window.getComputedStyle(c)
+      return ccs.display !== 'none'
+    }) as HTMLElement[]
+    if (children.length < 2) continue  // 1 filho nao precisa de tabela
+
+    // Cria <table> equivalente
+    const table = document.createElement('table')
+    table.setAttribute('cellspacing', '0')
+    table.setAttribute('cellpadding', '0')
+    // Copia largura do container
+    const widthCss = cs.width
+    table.style.width = widthCss && widthCss !== 'auto' ? widthCss : '100%'
+    table.style.borderCollapse = 'collapse'
+    table.style.tableLayout = 'fixed'
+
+    const tr = document.createElement('tr')
+
+    // Pega gap (flex) ou column-gap (grid) pra simular como padding interno das cells
+    const gapStr = cs.columnGap || cs.gap || '0px'
+    const gapPx = parseFloat(gapStr) || 0
+    const cellPaddingPx = Math.floor(gapPx / 2)
+
+    // Distribuir colunas: tenta usar flex-basis/grid-template-columns; fallback uniforme
+    const gridTplCols = cs.gridTemplateColumns
+    let colWidths: string[] = []
+    if (isGrid && gridTplCols && gridTplCols !== 'none') {
+      // "1fr 1fr" / "100px 1fr" — usa como esta
+      colWidths = gridTplCols.split(/\s+/).filter(Boolean)
+    } else {
+      const pct = `${(100 / children.length).toFixed(2)}%`
+      colWidths = children.map(() => pct)
+    }
+    // Normalize: se sobrar/faltar coluna vs children, ajusta
+    while (colWidths.length < children.length) colWidths.push(`${(100 / children.length).toFixed(2)}%`)
+    colWidths = colWidths.slice(0, children.length)
+
+    children.forEach((child, idx) => {
+      const td = document.createElement('td')
+      td.style.verticalAlign = 'top'
+      td.style.width = colWidths[idx]
+      if (cellPaddingPx > 0) {
+        const left = idx === 0 ? 0 : cellPaddingPx
+        const right = idx === children.length - 1 ? 0 : cellPaddingPx
+        td.style.padding = `0 ${right}px 0 ${left}px`
+      }
+      // Move o filho original pra dentro do <td>
+      td.appendChild(child)
+      tr.appendChild(td)
+    })
+    table.appendChild(tr)
+
+    // Substitui o elemento original pela tabela. Mantem o tag wrapper se for
+    // necessario pra estilo (background, border) — mas o display:flex foi pro
+    // ralo, agora eh layout de tabela mesmo. Substitui direto.
+    el.replaceWith(table)
+    // Preserva styles do container (background, border, padding, margin) na tabela
+    const propsToCopy = ['background-color', 'background', 'border', 'border-top', 'border-bottom', 'border-left', 'border-right', 'padding', 'margin', 'border-radius']
+    for (const p of propsToCopy) {
+      const v = cs.getPropertyValue(p)
+      if (v && v !== 'none' && v !== '0px' && v !== 'rgba(0, 0, 0, 0)') {
+        table.style.setProperty(p, v)
+      }
+    }
+  }
+}
+
+/**
  * Walks DOM, computa estilo de cada elemento e cola como inline style.
  * Pula elementos invisiveis (display:none) pra reduzir tamanho.
  */
@@ -142,7 +229,12 @@ export async function gerarDocxViaHtml(previewProps: OrcamentoPreviewProps): Pro
     // 3) Inline imgs como base64 (pro endpoint conseguir embedar no DOCX)
     await inlineImagesAsBase64(host)
 
-    // 4) Inline computed styles em todos os elementos
+    // 4) Converte Flexbox/Grid em <table> (html-to-docx so entende table)
+    // CRITICO: sem isso, vendedores 4-col, contas 3-col, header 2-col, etc
+    // viram empilhados no Word
+    flexToTables(host)
+
+    // 5) Inline computed styles em todos os elementos
     inlineComputedStyles(host)
 
     // 5) Pega HTML final
