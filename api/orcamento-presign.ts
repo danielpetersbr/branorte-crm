@@ -8,7 +8,7 @@
 // Fluxo:
 //   1. Modal chama POST /api/orcamento-presign com { ano, mes, base, withWhatsApp }
 //   2. Endpoint valida JWT do usuario
-//   3. Retorna { docx: url, docxEditavel: url, pdf: url, txt: url, envio?: url }
+//   3. Retorna { docx: url, pdf: url, txt: url, envio?: url }
 //   4. Cliente faz PUT em paralelo pras URLs (Supabase aceita sem limite Vercel)
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
@@ -33,7 +33,6 @@ interface PresignedFile {
 interface PresignResponse {
   ok: true
   docx: PresignedFile
-  docxEditavel: PresignedFile
   pdf: PresignedFile
   txt: PresignedFile
   envio?: PresignedFile  // so se withWhatsApp
@@ -80,13 +79,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const vendedorNome = String(body?.vendedor_nome || 'Vendedor').trim().slice(0, 50)
 
   try {
-    const [docx, docxEditavel, pdf, txt] = await Promise.all([
+    const [docx, pdf, txt] = await Promise.all([
       makeSigned(supa, `${folder}/${base}.docx`),
-      makeSigned(supa, `${folder}/${base} - EDITAVEL.docx`),
       makeSigned(supa, `${folder}/${base}.pdf`),
       makeSigned(supa, `${folder}/${base} - ${vendedorNome}.txt`),
     ])
-    const result: PresignResponse = { ok: true, docx, docxEditavel, pdf, txt }
+    const result: PresignResponse = { ok: true, docx, pdf, txt }
 
     if (body.withWhatsApp) {
       result.envio = await makeSigned(supa, `_envios/${folder}/${base}.pdf`)

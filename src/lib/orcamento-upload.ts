@@ -13,7 +13,6 @@ export interface OrcamentoUploadInput {
   vendedorNome: string
   clienteNome: string
   docxBlob: Blob
-  docxEditavelBlob: Blob
   pdfBlob: Blob | null
   txtBlob: Blob
   sendWhatsApp: boolean
@@ -33,7 +32,6 @@ interface PresignedFile { path: string; token: string; url: string }
 interface PresignResponse {
   ok: true
   docx: PresignedFile
-  docxEditavel: PresignedFile
   pdf: PresignedFile
   txt: PresignedFile
   envio?: PresignedFile
@@ -168,7 +166,6 @@ export async function uploadOrcamentoViaServer(input: OrcamentoUploadInput): Pro
   }
   const ops: Array<{ label: string; promise: Promise<void> }> = [
     { label: 'docx', promise: putSigned(presign.docx, input.docxBlob, docxMime, 'docx', meta) },
-    { label: 'docxEditavel', promise: putSigned(presign.docxEditavel, input.docxEditavelBlob, docxMime, 'docxEditavel', meta) },
     { label: 'txt', promise: putSigned(presign.txt, input.txtBlob, 'text/plain;charset=utf-8', 'txt', meta) },
   ]
   if (input.pdfBlob && presign.pdf) {

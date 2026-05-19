@@ -9,7 +9,6 @@ import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 import { gerarPdfDoPreview } from '@/lib/preview-to-pdf'
 import { gerarPdfServerSide } from '@/lib/pdf-server'
-import { gerarDocxDoPreview } from '@/lib/preview-to-docx'
 import { gerarOrcamentoCustomDocx } from '@/lib/orcamento-custom-docx'
 import {
   isFolderScanSupported, pickOrcamentoFolder, getStoredFolderHandle,
@@ -565,28 +564,14 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         vendedoresContato,
         vendedorResponsavelNome: profile?.display_name || null,
       }
-      // Word VISUAL — imagem do preview. Pode falhar em iPad antigo (memoria),
-      // wrap em try/catch pra nao quebrar o upload do PDF/TXT.
-      setStep('Gerando Word visual...', 22)
-      console.log('[gerar] iniciando gerarDocxDoPreview...')
+      // Word ÚNICO — editável (lib docx nativa). Vendedor edita qualquer campo
+      // no Word. Não geramos mais a versão imagem (era duplicação, ocupava
+      // espaço e não dava pra editar).
+      setStep('Gerando Word editável...', 30)
+      console.log('[gerar] iniciando docx editável...')
       let docxBlob: Blob
       try {
-        const t0 = Date.now()
-        docxBlob = await gerarDocxDoPreview(previewProps)
-        console.log(`[gerar] docxDoPreview OK em ${Date.now() - t0}ms (${docxBlob.size} bytes)`)
-      } catch (e) {
-        console.error('[gerar] ERRO gerarDocxDoPreview:', e)
-        // Cria blob minimal pra nao quebrar o fluxo - usuario vera erro mas
-        // upload prossegue com docx editavel + pdf
-        docxBlob = new Blob([(e as Error).message], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
-        setErro(`Aviso: falha ao gerar Word visual (${(e as Error).message}). Mas o PDF e Word editavel ainda funcionam.`)
-      }
-
-      setStep('Gerando Word editável...', 38)
-      console.log('[gerar] iniciando docx EDITAVEL...')
-      let docxEditavelBlob: Blob
-      try {
-      docxEditavelBlob = await gerarOrcamentoCustomDocx({
+      docxBlob = await gerarOrcamentoCustomDocx({
         numero: orc.numero,
         dataEmissao: dataEmissaoBR,
         cliente: {
@@ -626,10 +611,11 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         observacoes: observacoes.trim() || null,
         vendedorNome: profile?.display_name || 'Vendedor',
       })
-        console.log(`[gerar] docx EDITAVEL OK (${docxEditavelBlob.size} bytes)`)
+        console.log(`[gerar] docx OK (${docxBlob.size} bytes)`)
       } catch (e) {
-        console.error('[gerar] ERRO docx editavel:', e)
-        docxEditavelBlob = new Blob([(e as Error).message], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
+        console.error('[gerar] ERRO docx:', e)
+        docxBlob = new Blob([(e as Error).message], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
+        setErro(`Aviso: falha ao gerar Word (${(e as Error).message}).`)
       }
 
       // 5) Gera PDF a partir do MESMO previewProps que ja foi usado pro DOCX
@@ -688,9 +674,6 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
               throw new Error(resolved.motivo)
             }
             await escreverArquivo(pastaMes, `${base}.docx`, docxBlob)
-            // Versão EDITÁVEL salva em paralelo. Mesma pasta, sufixo " - EDITAVEL"
-            try { await escreverArquivo(pastaMes, `${base} - EDITAVEL.docx`, docxEditavelBlob) }
-            catch (e) { console.warn('Falha salvar EDITAVEL:', e) }
             if (pdfBlob) await escreverArquivo(pastaMes, `${base}.pdf`, pdfBlob)
             // .txt com data de envio (igual modelo pronto). Usado p/ rastrear
             // quando o vendedor enviou o orçamento pro cliente.
@@ -706,7 +689,6 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           console.warn('Falha salvar pasta:', e)
           // Fallback: baixa direto
           baixarBlob(docxBlob, `${base}.docx`)
-          baixarBlob(docxEditavelBlob, `${base} - EDITAVEL.docx`)
           baixouDocx = true
           if (pdfBlob) {
             baixarBlob(pdfBlob, `${base}.pdf`)
@@ -731,7 +713,6 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             vendedorNome,
             clienteNome: cliNome.trim(),
             docxBlob,
-            docxEditavelBlob,
             pdfBlob,
             txtBlob,
             sendWhatsApp: enviarMeuZap && !!pdfBlob,
@@ -763,7 +744,6 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           console.error('Falha upload via server:', e)
           // Fallback: baixa local pra nao perder trabalho + erro visivel
           baixarBlob(docxBlob, `${base}.docx`)
-          baixarBlob(docxEditavelBlob, `${base} - EDITAVEL.docx`)
           baixouDocx = true
           if (pdfBlob) {
             baixarBlob(pdfBlob, `${base}.pdf`)
@@ -774,7 +754,6 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       } else {
         // 6b) Download direto
         baixarBlob(docxBlob, `${base}.docx`)
-        baixarBlob(docxEditavelBlob, `${base} - EDITAVEL.docx`)
         baixouDocx = true
         if (pdfBlob) {
           baixarBlob(pdfBlob, `${base}.pdf`)
