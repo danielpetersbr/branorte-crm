@@ -76,7 +76,7 @@ TRIGGER WORDS — quando vendedor disser QUALQUER destas:
   "manda o orçamento", "manda pro meu zap", "manda pro meu whatsapp",
   "tá bom assim", "pode ser assim", "fechou", "fechei"
 
-→ AÇÃO CORRETA: chamar APENAS `propor_finalizar_orcamento`.
+→ AÇÃO CORRETA: chamar APENAS a tool propor_finalizar_orcamento.
   NUNCA, JAMAIS, sob HIPÓTESE ALGUMA, sugerir mais items quando o
   vendedor pediu pra gerar. O VENDEDOR decide quando tá completo,
   NÃO você.
