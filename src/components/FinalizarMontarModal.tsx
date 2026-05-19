@@ -247,7 +247,21 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
     // Dispara UMA ÚNICA vez
     autoSubmitFiredRef.current = true
     setHeadlessMode(true)
-    handleGerar({ salvarNaPasta: false, salvarNoServidor: true, pdfQuality: pdfAltaQualidade ? 'high' : 'normal' })
+    // Wrap em IIFE async pra desligar headless mode no final (sucesso OU erro).
+    // Sem isso, em caso de falha o toast 'Gerando...' fica eterno.
+    ;(async () => {
+      try {
+        await handleGerar({ salvarNaPasta: false, salvarNoServidor: true, pdfQuality: pdfAltaQualidade ? 'high' : 'normal' })
+      } catch (e) {
+        console.error('[autoSubmit] handleGerar erro:', e)
+      } finally {
+        // Sai do modo headless. O toast de erro/sucesso do parent (OrcamentoMontar)
+        // assume daqui. O modal mostra o estado normal pra ele tentar de novo.
+        setHeadlessMode(false)
+        // Fecha o modal — toast do parent já tem todas as info que precisa
+        onClose()
+      }
+    })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, autoSubmitOnOpen, cliNome])
 
