@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, Flame, AlarmClock, CheckCircle2, Inbox, Trash2, Calendar, Hand, ListChecks, MessageSquareDot, EyeOff, UserPlus, Check, RotateCcw, RefreshCw, AlertCircle } from 'lucide-react'
+import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, Flame, AlarmClock, CheckCircle2, Inbox, Trash2, Calendar, Hand, ListChecks, MessageSquareDot, EyeOff, UserPlus, RefreshCw, AlertCircle } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -14,7 +14,7 @@ import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTime
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, type StatusReal } from '@/types/atendimento'
-import { useAtendimentos, useAtendimentoKpis, useAtendimentoResponsaveis, useDeleteAtendimento, useAtribuirAtendimento, useResolverAtendimento, useWaLabelsByPhones, lookupWaLabels, type DataPreset } from '@/hooks/useAtendimentos'
+import { useAtendimentos, useAtendimentoKpis, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, type DataPreset } from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 
@@ -251,8 +251,6 @@ export function Atendimentos() {
   const phonesAtuais = (data?.rows ?? []).map(r => r.telefone)
   const { data: waLabelsMap } = useWaLabelsByPhones(phonesAtuais)
   const deleteMut = useDeleteAtendimento()
-  const atribuirMut = useAtribuirAtendimento()
-  const resolverMut = useResolverAtendimento()
   const { profile } = useAuth()
   const { data: vendorsData } = useVendors()
   // Nome de exibição do vendedor logado para gravar em auditoria.responsavel.
@@ -491,21 +489,6 @@ export function Atendimentos() {
                         >
                           <MessageCircle className="h-4 w-4" />
                         </a>
-                      )}
-                      {profile?.id && (
-                        <button
-                          type="button"
-                          disabled={resolverMut.isPending}
-                          onClick={() => resolverMut.mutate({ auditoria_ids: ids, user_id: profile.id, fechar: !isFechado })}
-                          title={isFechado ? 'Reabrir' : 'Fechar'}
-                          className={`h-8 w-8 inline-flex items-center justify-center rounded-md transition-all ${
-                            isFechado
-                              ? 'text-warning hover:bg-warning-bg'
-                              : 'text-success/70 hover:text-success hover:bg-success-bg'
-                          }`}
-                        >
-                          {isFechado ? <RotateCcw className="h-4 w-4" /> : <Check className="h-4 w-4" />}
-                        </button>
                       )}
                     </div>
                   </div>
@@ -785,53 +768,8 @@ export function Atendimentos() {
                         <td className="px-3 py-2.5 text-right whitespace-nowrap">
                           {(() => {
                             const ids = (r.auditoria_ids && r.auditoria_ids.length > 0) ? r.auditoria_ids : [r.id]
-                            const isFechado = !!r.finished_at
-                            const isMine = !!(profile?.id && r.responsavel_user_id === profile.id)
-                            // Reatribuir só faz sentido pra admin (vendedor já tem botão grande na col Vendedor quando lead 'a definir')
-                            const canReatribuir = !!profile?.id && !!myVendorName && !!r.responsavel && !isMine && profile?.role === 'admin'
                             return (
                               <div className="inline-flex items-center gap-1">
-                                {/* REATRIBUIR PRA MIM (admin) */}
-                                {canReatribuir && (
-                                  <button
-                                    type="button"
-                                    disabled={atribuirMut.isPending}
-                                    onClick={() => {
-                                      if (!window.confirm(`Reatribuir lead de "${r.responsavel}" pra você (${myVendorName})?`)) return
-                                      atribuirMut.mutate({
-                                        auditoria_ids: ids,
-                                        user_id: profile!.id,
-                                        user_name: myVendorName!,
-                                      })
-                                    }}
-                                    title={`Reatribuir pra mim (${myVendorName})`}
-                                    className="h-7 w-7 inline-flex items-center justify-center rounded-md text-ink-faint/70 hover:text-info hover:bg-info-bg transition-all"
-                                  >
-                                    <UserPlus className="h-3.5 w-3.5" />
-                                  </button>
-                                )}
-                                {/* FECHAR / REABRIR */}
-                                {profile?.id && (
-                                  <button
-                                    type="button"
-                                    disabled={resolverMut.isPending}
-                                    onClick={() => {
-                                      resolverMut.mutate({
-                                        auditoria_ids: ids,
-                                        user_id: profile.id,
-                                        fechar: !isFechado,
-                                      })
-                                    }}
-                                    title={isFechado ? 'Reabrir atendimento' : 'Fechar atendimento'}
-                                    className={`h-7 w-7 inline-flex items-center justify-center rounded-md transition-all ${
-                                      isFechado
-                                        ? 'text-warning hover:text-warning hover:bg-warning-bg'
-                                        : 'text-success/70 hover:text-success hover:bg-success-bg'
-                                    }`}
-                                  >
-                                    {isFechado ? <RotateCcw className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
-                                  </button>
-                                )}
                                 {/* EXCLUIR */}
                                 <button
                                   type="button"
