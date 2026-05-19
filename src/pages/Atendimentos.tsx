@@ -558,7 +558,6 @@ export function Atendimentos() {
                     <th className="hidden 2xl:table-cell w-[64px]" title="Produção desejada quando é venda (kg/h)">Kg/h</th>
                     <th className="w-[88px]">Vendedor</th>
                     <th className="hidden 2xl:table-cell w-[110px]" title="Etiqueta atribuída no WhatsApp do vendedor">Etiqueta WA</th>
-                    <th className="hidden 2xl:table-cell w-[56px]" title="Cliente clicou no botão FALAR COM CONSULTOR">Botão</th>
                     <th className="!text-right w-[40px]"></th>
                   </tr>
                 </thead>
@@ -812,17 +811,6 @@ export function Atendimentos() {
                               </div>
                             )
                           })()}
-                        </td>
-                        {/* TOCOU NO BOTAO */}
-                        <td className="hidden 2xl:table-cell px-1.5 py-2.5 whitespace-nowrap" title={r.tocou_botao_em ? `Em ${formatRelative(r.tocou_botao_em)}` : ''}>
-                          {r.tocou_botao_em ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-success">
-                              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                              Sim
-                            </span>
-                          ) : (
-                            <EmptyCell />
-                          )}
                         </td>
                         {/* AÇÕES */}
                         <td className="px-2 py-2.5 text-right whitespace-nowrap">
