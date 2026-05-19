@@ -326,12 +326,6 @@ export function Atendimentos() {
             <h1 className="text-2xl font-bold text-ink tracking-tight leading-none">
               Atendimentos
             </h1>
-            {kpis && kpis.quentes > 0 && (
-              <Badge className="gap-1 px-2 py-0.5" style={{ background: 'hsl(var(--danger-bg))', color: 'hsl(var(--danger))' }}>
-                <Flame className="h-3 w-3" />
-                <span className="text-[11px] font-semibold">{kpis.quentes} quente{kpis.quentes !== 1 ? 's' : ''}</span>
-              </Badge>
-            )}
           </div>
           <p className="text-[13px] text-ink-muted mt-1.5">
             {kpis ? (
@@ -350,20 +344,17 @@ export function Atendimentos() {
         />
       </div>
 
-      {/* KPIs - hierarquia: 3 hero + 4 small */}
+      {/* KPIs - funil: ENTRADA → ENGAJAMENTO → QUALIFICAÇÃO → HANDOFF → CONTATO */}
       {kpis && (
-        {/* Sequência do funil: ENTRADA → ENGAJAMENTO → QUALIFICAÇÃO → HANDOFF → CONTATO → URGÊNCIA */}
-        <div className="grid grid-cols-2 lg:grid-cols-7 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
           <KpiCard label="Hoje"           value={kpis.hoje}         hero tone="accent"
                    icon={Calendar}        hint={kpis.hoje === 0 ? 'Nenhum lead hoje' : 'leads novos'} />
           <KpiCard label="Não engajaram"  value={kpis.naoEngajaram}      tone="neutral"  icon={EyeOff}            hint="nem começou o bot" />
           <KpiCard label="Em andamento"   value={kpis.emAndamento}       tone="warning"  icon={MessageSquareDot}  hint="no meio do fluxo" />
-          <KpiCard label="Qualificados"   value={kpis.qualificados}      tone="info"     icon={ListChecks}        hint="dados completos" />
+          <KpiCard label="Qualificados"   value={kpis.qualificados} hero tone="info"     icon={ListChecks}        hint="dados completos" />
           <KpiCard label="Pra pegar"      value={kpis.paraPegar}    hero tone="warning"
                    icon={UserPlus}        hint={kpis.paraPegar === 0 ? 'Fila vazia' : 'Sem vendedor — puxe!'} />
           <KpiCard label="Contatados"     value={kpis.contatados}        tone="success"  icon={Hand}              hint="vendedor já abordou" />
-          <KpiCard label="Quentes"        value={kpis.quentes}      hero tone="danger"
-                   icon={Flame}           hint={kpis.quentes ? 'Quer comprar agora' : undefined} />
         </div>
       )}
 
@@ -687,19 +678,29 @@ export function Atendimentos() {
                             <EmptyCell />
                           )}
                         </td>
-                        {/* MOTIVO DO CONTATO */}
-                        <td className="hidden lg:table-cell px-2 py-2.5 whitespace-nowrap">
+                        {/* MOTIVO DO CONTATO + nome do equipamento (do criativo) */}
+                        <td className="hidden lg:table-cell px-2 py-2.5">
                           {(() => {
                             const motivo = humanizeMotivo(r.motivo_contato)
                             if (!motivo) return <EmptyCell />
                             const tone = MOTIVO_TONE[r.motivo_contato!] ?? MOTIVO_TONE[motivo] ?? 'neutral'
+                            // Mostra nome do equipamento embaixo se for "Só um equipamento"
+                            const ehUmEquipamento = /equipamento/i.test(motivo)
+                            const equipamento = ehUmEquipamento ? criativoNome : null
                             return (
-                              <Badge style={{
-                                background: `hsl(var(--${tone}-bg))`,
-                                color: `hsl(var(--${tone}))`,
-                              }}>
-                                {motivo}
-                              </Badge>
+                              <div className="flex flex-col gap-0.5 min-w-0 max-w-[200px]">
+                                <Badge style={{
+                                  background: `hsl(var(--${tone}-bg))`,
+                                  color: `hsl(var(--${tone}))`,
+                                }} className="w-fit">
+                                  {motivo}
+                                </Badge>
+                                {equipamento && (
+                                  <span className="text-[10.5px] text-ink-faint truncate" title={equipamento}>
+                                    {equipamento}
+                                  </span>
+                                )}
+                              </div>
                             )
                           })()}
                         </td>
