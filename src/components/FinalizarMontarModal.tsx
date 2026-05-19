@@ -11,6 +11,7 @@ import { gerarPdfDoPreview } from '@/lib/preview-to-pdf'
 import { gerarPdfServerSide } from '@/lib/pdf-server'
 import { gerarOrcamentoCustomDocx } from '@/lib/orcamento-custom-docx'
 import { gerarDocxViaHtml } from '@/lib/preview-to-docx-html'
+import { convertPdfToDocx } from '@/lib/pdf-to-docx'
 import {
   isFolderScanSupported, pickOrcamentoFolder, getStoredFolderHandle,
   scanFolderForLastNumber, formatarNumero, ensureWritePermission,
@@ -565,44 +566,83 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         vendedoresContato,
         vendedorResponsavelNome: profile?.display_name || null,
       }
-      // Word ÚNICO — editável via HTML-to-DOCX. Renderiza OrcamentoPreview real,
-      // inlina computed styles, manda pro endpoint /api/orcamento-html-to-docx
-      // que converte com html-to-docx. Resultado: ~85-90% identico ao preview.
-      // Fallback: lib docx manual (orcamento-custom-docx) se HTML falhar.
-      setStep('Gerando Word editável...', 30)
-      let docxBlob: Blob
+      // ESTRATEGIA NOVA: PDF primeiro (perfeito via Puppeteer) → DOCX deriva
+      // do PDF via ConvertAPI (~95% fidelidade, editavel). PDF eh source of truth.
+      //
+      // Cascade de fallbacks DOCX:
+      //   1. PDF → ConvertAPI (BEST: 95% identico ao PDF, editavel)
+      //   2. html-to-docx (MID: 85% via HTML inlined)
+      //   3. custom docx lib (WORST: 70% reconstruido manualmente)
+
+      // 4) PDF — gera ANTES do docx (que agora deriva dele)
+      setStep('Gerando PDF...', 30)
+      let pdfBlob: Blob | null = null
+      let pdfErro: string | null = null
       try {
-        docxBlob = await gerarDocxViaHtml(previewProps)
-        console.log(`[gerar] docx (html-to-docx) OK (${docxBlob.size} bytes)`)
-      } catch (htmlErr) {
-        console.warn('[gerar] html-to-docx falhou, fallback pro custom docx:', htmlErr)
+        const t0 = Date.now()
+        if (opcoes.pdfQuality === 'high') {
+          try {
+            setStep('Gerando PDF vetorial (servidor)...', 35)
+            pdfBlob = await gerarPdfServerSide(previewProps)
+            console.log(`[gerar] pdf SERVER OK (${pdfBlob.size} bytes)`)
+          } catch (serverErr) {
+            console.warn('[gerar] PDF server falhou, fallback client:', serverErr)
+            setStep('Servidor indisponível, gerando local em alta qualidade...', 35)
+            pdfBlob = await gerarPdfDoPreview(previewProps, { quality: 'high' })
+          }
+        } else {
+          pdfBlob = await gerarPdfDoPreview(previewProps, { quality: opcoes.pdfQuality })
+        }
+        console.log(`[gerar] pdf OK em ${Date.now() - t0}ms (${pdfBlob.size} bytes)`)
+      } catch (e) {
+        pdfErro = (e as Error).message
+        console.warn('Falha PDF:', pdfErro)
+      }
+
+      // 4b) DOCX — converte PDF → DOCX via ConvertAPI (fidelidade maxima)
+      setStep('Convertendo Word editável...', 50)
+      let docxBlob: Blob
+      let docxFonte: 'convertapi' | 'html-to-docx' | 'custom' = 'custom'
+      // Tier 1: PDF → ConvertAPI (best path)
+      if (pdfBlob) {
+        try {
+          docxBlob = await convertPdfToDocx(pdfBlob, `${orc.numero}.pdf`)
+          docxFonte = 'convertapi'
+          console.log(`[gerar] docx (ConvertAPI) OK (${docxBlob.size} bytes)`)
+        } catch (cvErr) {
+          console.warn('[gerar] ConvertAPI falhou, fallback html-to-docx:', cvErr)
+          docxBlob = null as any
+        }
+      } else {
+        docxBlob = null as any
+      }
+      // Tier 2: html-to-docx (se ConvertAPI falhou)
+      if (!docxBlob) {
+        try {
+          docxBlob = await gerarDocxViaHtml(previewProps)
+          docxFonte = 'html-to-docx'
+          console.log(`[gerar] docx (html-to-docx) OK (${docxBlob.size} bytes)`)
+        } catch (htmlErr) {
+          console.warn('[gerar] html-to-docx falhou, fallback custom:', htmlErr)
+        }
+      }
+      // Tier 3: custom docx (ultima linha de defesa)
+      if (!docxBlob) {
         try {
           docxBlob = await gerarOrcamentoCustomDocx({
             numero: orc.numero,
             dataEmissao: dataEmissaoBR,
             cliente: {
-              nome: cliNome.trim(),
-              ac: cliDados.ac,
-              fone: cliDados.fone,
-              cidade: cliDados.cidade,
-              bairro: cliDados.bairro,
-              endereco: cliDados.endereco,
-              cep: cliDados.cep,
-              cnpj: cliDados.cnpj,
-              ie: cliDados.ie,
-              email: cliDados.email,
+              nome: cliNome.trim(), ac: cliDados.ac, fone: cliDados.fone,
+              cidade: cliDados.cidade, bairro: cliDados.bairro, endereco: cliDados.endereco,
+              cep: cliDados.cep, cnpj: cliDados.cnpj, ie: cliDados.ie, email: cliDados.email,
             },
             voltagem: snapshot.voltagem,
             itens: snapshot.itens.map((it, idx) => ({
               letra: String.fromCharCode(65 + idx),
-              qtd: it.qtd,
-              nome: it.nome,
-              specs: it.specs,
-              valor: it.valor,
-              motor_cv: it.motor_cv,
-              motor_polos: it.motor_polos,
-              motor_qtd: it.motor_qtd,
-              foto_url: it.foto_url ?? null,
+              qtd: it.qtd, nome: it.nome, specs: it.specs, valor: it.valor,
+              motor_cv: it.motor_cv, motor_polos: it.motor_polos,
+              motor_qtd: it.motor_qtd, foto_url: it.foto_url ?? null,
             })),
             motores: snapshot.motoresAgrupados,
             acessorios: snapshot.acessorios
@@ -617,40 +657,16 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             observacoes: observacoes.trim() || null,
             vendedorNome: profile?.display_name || 'Vendedor',
           })
+          docxFonte = 'custom'
           console.log(`[gerar] docx (custom fallback) OK (${docxBlob.size} bytes)`)
         } catch (e) {
-          console.error('[gerar] ERRO docx (ambos paths):', e)
+          console.error('[gerar] ERRO docx (todos os tiers falharam):', e)
           docxBlob = new Blob([(e as Error).message], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
           setErro(`Aviso: falha ao gerar Word (${(e as Error).message}).`)
         }
       }
-
-      // 5) Gera PDF a partir do MESMO previewProps que ja foi usado pro DOCX
-      setStep('Gerando PDF...', 55)
-      let pdfBlob: Blob | null = null
-      let pdfErro: string | null = null
-      try {
-        const t0 = Date.now()
-        // Quando 'high' qualidade: tenta server-side (Puppeteer/Chrome) que gera
-        // PDF nativo vetorial. Se cair, fallback pro client-side com scale 8.
-        if (opcoes.pdfQuality === 'high') {
-          try {
-            setStep('Gerando PDF vetorial (servidor)...', 60)
-            pdfBlob = await gerarPdfServerSide(previewProps)
-            console.log(`[gerar] pdf SERVER OK (${pdfBlob.size} bytes)`)
-          } catch (serverErr) {
-            console.warn('[gerar] PDF server falhou, fallback client:', serverErr)
-            setStep('Servidor indisponível, gerando local em alta qualidade...', 60)
-            pdfBlob = await gerarPdfDoPreview(previewProps, { quality: 'high' })
-          }
-        } else {
-          pdfBlob = await gerarPdfDoPreview(previewProps, { quality: opcoes.pdfQuality })
-        }
-        console.log(`[gerar] pdf OK em ${Date.now() - t0}ms (${pdfBlob.size} bytes)`)
-      } catch (e) {
-        pdfErro = (e as Error).message
-        console.warn('Falha PDF:', pdfErro)
-      }
+      console.log(`[gerar] docx fonte final: ${docxFonte}`)
+      // pdfErro segue a variavel — usada mais adiante
 
       // Detecta modo teste: se rootHandle salvo tem 'teste' no nome
       let isTesteMode = false
