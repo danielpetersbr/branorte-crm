@@ -169,7 +169,16 @@ export function OrcamentoAIChat({
         }),
       })
 
-      const data = await res.json()
+      // Parse defensivo: se servidor crashar, retorna HTML em vez de JSON
+      const rawText = await res.text()
+      let data: { reply?: string; tool_trace?: unknown; acoes?: unknown; error?: string; detail?: string } = {}
+      try {
+        data = JSON.parse(rawText)
+      } catch {
+        // Resposta nao-JSON (page de erro do Vercel etc) — mostra primeiros 200 chars
+        const snippet = rawText.slice(0, 200).trim()
+        throw new Error(`Servidor erro (HTTP ${res.status}): ${snippet}`)
+      }
       if (!res.ok) throw new Error(data?.error || data?.detail || `HTTP ${res.status}`)
 
       setMessages(prev => [
@@ -581,7 +590,7 @@ export function OrcamentoAIChat({
                 </div>
                 <div className="text-[10px] text-ink-faint mt-2 px-1 flex items-center gap-1">
                   <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-                  gpt-5.4-mini · catálogo oficial · Enter envia, Shift+Enter pula linha
+                  gpt-4o-mini · catálogo oficial · Enter envia, Shift+Enter pula linha
                 </div>
               </>
             )}
