@@ -745,16 +745,28 @@ export function Atendimentos() {
                             )
                           })()}
                         </td>
-                        {/* ETIQUETA WA — sincronizada do WhatsApp do vendedor */}
+                        {/* ETIQUETA WA — etiquetas do VENDEDOR RESPONSÁVEL apenas.
+                            Antes mostrava etiquetas de qualquer vendedor que tivesse
+                            o cliente no Zap (ex: aparecia "NAO RESPONDEU MAIS" do
+                            Pedro quando o responsável real era o Gustavo). Agora
+                            filtra pelo first-name UPPERCASE do vendedor efetivo. */}
                         <td className="hidden xl:table-cell px-2 py-2.5 whitespace-nowrap">
                           {(() => {
-                            const labels = lookupWaLabels(waLabelsMap, r.telefone)
+                            const allLabels = lookupWaLabels(waLabelsMap, r.telefone)
+                            if (allLabels.length === 0) return <EmptyCell />
+                            const v = vendedorEfetivo(r)
+                            const respFirstUp = v ? v.name.trim().split(/\s+/)[0]?.toUpperCase() : null
+                            // Se há vendedor responsável, filtra só as etiquetas dele.
+                            // Se não há (lead "Pra Pegar"), mostra todas (comportamento antigo).
+                            const labels = respFirstUp
+                              ? allLabels.filter(l => l.vendedor?.toUpperCase() === respFirstUp)
+                              : allLabels
                             if (labels.length === 0) return <EmptyCell />
                             return (
                               <div className="flex flex-wrap gap-1 max-w-[180px]">
                                 {labels.slice(0, 3).map(l => (
                                   <Badge
-                                    key={l.id}
+                                    key={l.id + ':' + l.vendedor}
                                     className="text-[10px] font-semibold"
                                     style={{
                                       background: 'rgba(16,185,129,0.12)',
