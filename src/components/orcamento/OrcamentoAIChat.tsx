@@ -240,12 +240,12 @@ export function OrcamentoAIChat({
         if (rafRef.current) cancelAnimationFrame(rafRef.current)
         rafRef.current = null
         setNivelVolume(new Array(24).fill(0))
+        setDuracaoAtual(0)
 
         if (blob.size === 0) return
-        const duracao = Math.round((performance.now() - startTimeRef.current) / 1000)
-        const url = URL.createObjectURL(blob)
-        setAudioReview({ blob, url, duracao })
-        setDuracaoAtual(0)
+        // Auto-envia direto: pula preview, transcreve e manda pro chat na hora.
+        // Pra cancelar, vendedor usa o botao X (cancelarGravacao) durante a gravacao.
+        enviarAudio(blob)
       }
       rec.start()
       recorderRef.current = rec
@@ -331,10 +331,12 @@ export function OrcamentoAIChat({
     }
   }
 
-  async function enviarAudio() {
-    if (!audioReview) return
-    const blob = audioReview.blob
-    descartarPreview()
+  async function enviarAudio(blobDireto?: Blob) {
+    // Aceita blob direto (auto-send apos parar gravacao) OU usa audioReview
+    // (fluxo antigo de preview — mantido pra backward compat caso volte).
+    const blob = blobDireto ?? audioReview?.blob
+    if (!blob) return
+    if (!blobDireto) descartarPreview()
     setTranscrevendo(true)
     setErro(null)
     try {
