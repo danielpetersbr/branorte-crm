@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { X, Check, Loader2, FileText, FileDown, FolderOpen, RefreshCw, Calendar, CreditCard, ChevronRight } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import {
@@ -75,6 +75,10 @@ interface Props {
   snapshot: CarrinhoSnapshot
   onClose: () => void
   onSuccess: (info: { numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string; erro?: string | null; pdfErro?: string | null }) => void
+  /** Sprint 3: quando vem do copiloto IA com cliente pré-preenchido, dispara
+   *  contagem regressiva de 3s e auto-clica Gerar (zero atrito).
+   *  Vendedor vê o botão "Cancelar countdown" pra interromper se quiser editar. */
+  autoSubmitOnOpen?: boolean
   // Modo edição: se setado, faz UPDATE em orcamentos_gerados[editingId] em vez de INSERT.
   editingId?: number | null
   // Valores iniciais carregados do orçamento sendo editado (pra pre-popular cliente/observacoes/etc)
@@ -136,7 +140,7 @@ function baixarBlob(blob: Blob, nome: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editingId, initialModal }: Props) {
+export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editingId, initialModal, autoSubmitOnOpen }: Props) {
   const { profile } = useAuth()
   const { data: vendorsAtivos } = useVendors()
   const vendedoresContato = useMemo(() => {
@@ -221,6 +225,39 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
   useEffect(() => {
     if (open) { setWaStatus('idle'); setWaMsg(''); setErro(null); setGerandoProgress(0); setGerandoStep('') }
   }, [open])
+
+  // Sprint 3: Auto-submit countdown quando vem do copiloto IA com cliente preenchido
+  const [autoSubmitCountdown, setAutoSubmitCountdown] = useState<number | null>(null)
+  const autoSubmitTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  useEffect(() => {
+    if (!open || !autoSubmitOnOpen) return
+    // Aguarda 250ms pro initialModal preencher cliNome antes de checar
+    const startTimer = setTimeout(() => {
+      if (!cliNome.trim()) return  // sem nome, não auto-submita
+      setAutoSubmitCountdown(3)
+      autoSubmitTimerRef.current = setInterval(() => {
+        setAutoSubmitCountdown(prev => {
+          if (prev == null || prev <= 1) {
+            if (autoSubmitTimerRef.current) clearInterval(autoSubmitTimerRef.current)
+            // Auto-clica Gerar com config padrão (salvar no servidor)
+            handleGerar({ salvarNaPasta: false, salvarNoServidor: true, pdfQuality: pdfAltaQualidade ? 'high' : 'normal' })
+            return null
+          }
+          return prev - 1
+        })
+      }, 1000)
+    }, 300)
+    return () => {
+      clearTimeout(startTimer)
+      if (autoSubmitTimerRef.current) clearInterval(autoSubmitTimerRef.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, autoSubmitOnOpen])
+
+  function cancelAutoSubmit() {
+    if (autoSubmitTimerRef.current) clearInterval(autoSubmitTimerRef.current)
+    setAutoSubmitCountdown(null)
+  }
 
   // Modo edição: pré-popula campos do modal com dados do orçamento sendo editado.
   // Roda 1x quando o modal abre OU quando initialModal chega.
@@ -820,6 +857,31 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             </div>
             <div className="text-[10px] text-ink-faint mt-1.5 leading-snug">
               Não feche essa janela. Arquivos sobem pro servidor e o PC do escritório sincroniza pra pasta <span className="font-mono">Z:\</span> automaticamente.
+            </div>
+          </div>
+        )}
+
+        {/* Sprint 3: Banner auto-submit countdown (vem do copiloto IA) */}
+        {autoSubmitCountdown != null && (
+          <div className="sticky top-[57px] z-10 bg-accent/15 border-b border-accent/40 px-4 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <Loader2 className="h-4 w-4 animate-spin shrink-0 text-accent" />
+                <div className="min-w-0">
+                  <div className="text-[12px] font-semibold text-ink">
+                    Gerando automaticamente em {autoSubmitCountdown}s…
+                  </div>
+                  <div className="text-[10px] text-ink-muted leading-snug">
+                    Cliente "{cliNome}" pré-preenchido pelo copiloto. Clique cancelar pra editar manualmente.
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={cancelAutoSubmit}
+                className="text-[11px] font-bold px-3 py-1.5 rounded bg-surface-2 hover:bg-surface-3 text-ink shrink-0"
+              >
+                Cancelar
+              </button>
             </div>
           </div>
         )}

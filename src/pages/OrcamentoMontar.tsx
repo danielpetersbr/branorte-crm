@@ -179,6 +179,8 @@ export function OrcamentoMontar() {
   // catalogo so quando precisa adicionar item.
   const [mobileTab, setMobileTab] = useState<'catalogo' | 'preview'>('preview')
   const [finalizarOpen, setFinalizarOpen] = useState(false)
+  // Sprint 3: marca true quando o copiloto IA dispara a finalização (auto-submit 3s)
+  const [autoSubmitFromIA, setAutoSubmitFromIA] = useState(false)
   const [sucesso, setSucesso] = useState<{ numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string; erro?: string | null; pdfErro?: string | null } | null>(null)
   const [enviandoWA, setEnviandoWA] = useState<'idle' | 'enviando' | 'enviado' | 'erro'>('idle')
   const [enviandoWAMsg, setEnviandoWAMsg] = useState<string>('')
@@ -1771,6 +1773,7 @@ export function OrcamentoMontar() {
         open={finalizarOpen}
         editingId={editingId}
         initialModal={initialModal}
+        autoSubmitOnOpen={autoSubmitFromIA}
         snapshot={{
           voltagem,
           itens: carrinho.map(c => ({
@@ -1801,7 +1804,7 @@ export function OrcamentoMontar() {
           parcelas: parcelasPagamento,
           componentesExtras: componentesExtras,
         } as CarrinhoSnapshot}
-        onClose={() => setFinalizarOpen(false)}
+        onClose={() => { setFinalizarOpen(false); setAutoSubmitFromIA(false); }}
         onSuccess={info => {
           setSucesso(info)
           setFinalizarOpen(false)
@@ -2485,6 +2488,9 @@ export function OrcamentoMontar() {
             alert('Adicione items ao carrinho antes de finalizar. A IA pode te ajudar com isso.')
             return
           }
+          // Auto-submit SE IA pré-preencheu cliente (zero atrito)
+          const temCliente = !!opts.cliente_dados?.nome
+          setAutoSubmitFromIA(temCliente)
           setFinalizarOpen(true)
         }}
       />
