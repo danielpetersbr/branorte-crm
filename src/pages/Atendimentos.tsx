@@ -289,7 +289,7 @@ export function Atendimentos() {
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-ink tracking-tight leading-none bg-gradient-to-br from-ink to-ink/70 bg-clip-text">
+            <h1 className="text-2xl font-bold text-ink tracking-tight leading-none">
               Atendimentos
             </h1>
             {kpis && kpis.quentes > 0 && (
@@ -417,6 +417,8 @@ export function Atendimentos() {
               const status = STATUS_TONE[r.status_real]
               const ids = (r.auditoria_ids && r.auditoria_ids.length > 0) ? r.auditoria_ids : [r.id]
               const isFechado = !!r.finished_at
+              // Trata "(sem nome)" do webhook como nome vazio pra UI ficar consistente
+              const nomeReal = r.nome && !/^\(sem nome\)$/i.test(r.nome.trim()) ? r.nome : null
               return (
                 <div
                   key={r.id}
@@ -427,12 +429,16 @@ export function Atendimentos() {
                   }`}
                 >
                   <div className="flex items-start gap-2.5">
-                    <Avatar name={r.nome} size="md" pulse={isFresh} />
+                    <Avatar name={nomeReal ?? '?'} size="md" pulse={isFresh} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <div className="text-[13px] font-semibold text-ink truncate">
-                            {r.nome || <span className="text-ink-faint italic font-normal">sem nome</span>}
+                            {nomeReal ?? (
+                              <span className="text-ink-faint italic font-normal">
+                                {tel ? `+${tel.slice(-4)}` : 'Sem nome'}
+                              </span>
+                            )}
                           </div>
                           <div className="text-[11px] text-ink-faint font-mono tabular-nums mt-0.5">
                             {tel ? formatPhone(tel) : '—'}
@@ -551,6 +557,8 @@ export function Atendimentos() {
                     const isFresh = isFreshLead(r.primeira_data ?? r.created_at)
                     const finTone = r.finalidade_fabrica ? FINALIDADE_TONE[r.finalidade_fabrica] : null
                     const quandoTone = r.quando_investir ? QUANDO_TONE[r.quando_investir] : null
+                    // Trata "(sem nome)" do webhook como nome vazio (UI fallback fica consistente)
+                    const nomeReal = r.nome && !/^\(sem nome\)$/i.test(r.nome.trim()) ? r.nome : null
                     return (
                       <tr key={r.id}
                           className={`group border-b border-border/40 last:border-0 transition-all duration-150
@@ -567,10 +575,14 @@ export function Atendimentos() {
                         {/* LEAD */}
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           <div className="flex items-center gap-2.5 min-w-[170px]">
-                            <Avatar name={r.nome} size="md" pulse={isFresh} />
+                            <Avatar name={nomeReal ?? '?'} size="md" pulse={isFresh} />
                             <div className="leading-tight">
                               <span className="text-[13px] font-medium text-ink">
-                                {r.nome || <span className="text-ink-faint italic font-normal">sem nome</span>}
+                                {nomeReal ?? (
+                                  <span className="text-ink-faint italic font-normal">
+                                    {tel ? `+${tel.slice(-4)}` : 'Sem nome'}
+                                  </span>
+                                )}
                               </span>
                               {isHot && (
                                 <span className="block text-[10px] font-medium text-danger mt-0.5">

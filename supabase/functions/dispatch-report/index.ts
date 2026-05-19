@@ -1,7 +1,10 @@
-// dispatch-report v7: extensão reporta resultado do envio. Atualiza outbound_dispatch
+// dispatch-report v8: extensão reporta resultado do envio. Atualiza outbound_dispatch
 // E, se enviado com sucesso, propaga o nome do vendedor pra auditoria.auditoria_atendimentos
 // (resolve o bug de leads ficarem com responsavel=null mesmo quando o vendedor já
 // respondeu via extensão).
+//
+// v8 (2026-05-19): aceita msg_id (whatsapp_msg_id) no payload pra preencher o
+// outbound_dispatch.msg_id. Antes vinha sempre vazio (29 dispatches sem tracking).
 //
 // Status válidos: enviado | falhou | skipped.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -55,7 +58,7 @@ Deno.serve(async (req: Request) => {
   const auth = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
   if (auth !== SHARED_SECRET) return json({ ok: false, error: 'unauthorized' }, { status: 401 });
 
-  let body: { lead_id?: string; vendedor_nome?: string; status?: string; mensagem_enviada?: string; erro_msg?: string };
+  let body: { lead_id?: string; vendedor_nome?: string; status?: string; mensagem_enviada?: string; erro_msg?: string; msg_id?: string; whatsapp_msg_id?: string };
   try {
     body = await req.json();
   } catch {
@@ -73,10 +76,14 @@ Deno.serve(async (req: Request) => {
   else if (statusBr === 'skipped') statusCanon = 'skipped';
   if (!statusCanon) return json({ ok: false, error: 'status_invalido', received: statusBr }, { status: 400 });
 
+  // v8: também aceita msg_id (ID da mensagem no WhatsApp) quando a extensão envia.
+  // Sem isso, dispatches viraram 'sent' mas perdiam o tracking de qual mensagem foi.
+  const msgIdRaw = body.msg_id ?? body.whatsapp_msg_id ?? null;
   const patch: Record<string, unknown> = {
     status: statusCanon,
     sent_at: statusCanon === 'sent' ? new Date().toISOString() : null,
     erro: statusCanon === 'failed' ? (body.erro_msg ?? 'sem_detalhes').slice(0, 500) : null,
+    ...(statusCanon === 'sent' && msgIdRaw ? { msg_id: String(msgIdRaw).slice(0, 200) } : {}),
   };
 
   const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
