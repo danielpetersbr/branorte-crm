@@ -551,7 +551,7 @@ export function Atendimentos() {
                     <th className="w-[132px]">Telefone</th>
                     <th className="hidden lg:table-cell w-[88px]">Origem</th>
                     <th className="hidden 2xl:table-cell w-[100px]">Criativo</th>
-                    <th className="hidden lg:table-cell">Motivo</th>
+                    <th className="hidden lg:table-cell w-[140px]">Motivo</th>
                     <th className="hidden 2xl:table-cell w-[100px]" title="Pra que serve a fábrica: consumo, venda ou os dois (Ana V16.24)">Finalidade</th>
                     <th className="hidden 2xl:table-cell w-[60px]">Animal</th>
                     <th className="hidden 2xl:table-cell w-[50px]" title="Cabeças (consumo) — vazio se for venda (ver Produção/h)">Qtd</th>
