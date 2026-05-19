@@ -352,17 +352,18 @@ export function Atendimentos() {
 
       {/* KPIs - hierarquia: 3 hero + 4 small */}
       {kpis && (
+        {/* Sequência do funil: ENTRADA → ENGAJAMENTO → QUALIFICAÇÃO → HANDOFF → CONTATO → URGÊNCIA */}
         <div className="grid grid-cols-2 lg:grid-cols-7 gap-3">
-          <KpiCard label="Pra pegar" value={kpis.paraPegar}     hero tone="warning"
-                   icon={UserPlus}  hint={kpis.paraPegar === 0 ? 'Fila vazia' : 'Sem vendedor — puxe!'} />
-          <KpiCard label="Hoje"     value={kpis.hoje}          hero tone="accent"
-                   icon={Calendar}  hint={kpis.hoje === 0 ? 'Nenhum lead hoje' : 'leads novos'} />
-          <KpiCard label="Quentes"  value={kpis.quentes}       hero tone="danger"
-                   icon={Flame}     hint={kpis.quentes ? 'Quer comprar agora' : undefined} />
-          <KpiCard label="Não engajaram"      value={kpis.naoEngajaram}    tone="neutral"  icon={EyeOff}            hint="nem começou o bot" />
-          <KpiCard label="Em andamento"       value={kpis.emAndamento}     tone="warning"  icon={MessageSquareDot}  hint="no meio do fluxo" />
-          <KpiCard label="Contatados"         value={kpis.contatados}      tone="success"  icon={Hand}              hint="vendedor já abordou" />
-          <KpiCard label="Qualificados"       value={kpis.qualificados}    tone="info"     icon={ListChecks}        hint="dados completos" />
+          <KpiCard label="Hoje"           value={kpis.hoje}         hero tone="accent"
+                   icon={Calendar}        hint={kpis.hoje === 0 ? 'Nenhum lead hoje' : 'leads novos'} />
+          <KpiCard label="Não engajaram"  value={kpis.naoEngajaram}      tone="neutral"  icon={EyeOff}            hint="nem começou o bot" />
+          <KpiCard label="Em andamento"   value={kpis.emAndamento}       tone="warning"  icon={MessageSquareDot}  hint="no meio do fluxo" />
+          <KpiCard label="Qualificados"   value={kpis.qualificados}      tone="info"     icon={ListChecks}        hint="dados completos" />
+          <KpiCard label="Pra pegar"      value={kpis.paraPegar}    hero tone="warning"
+                   icon={UserPlus}        hint={kpis.paraPegar === 0 ? 'Fila vazia' : 'Sem vendedor — puxe!'} />
+          <KpiCard label="Contatados"     value={kpis.contatados}        tone="success"  icon={Hand}              hint="vendedor já abordou" />
+          <KpiCard label="Quentes"        value={kpis.quentes}      hero tone="danger"
+                   icon={Flame}           hint={kpis.quentes ? 'Quer comprar agora' : undefined} />
         </div>
       )}
 
