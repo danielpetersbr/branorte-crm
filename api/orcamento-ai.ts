@@ -36,6 +36,8 @@ REGRAS INQUEBRÁVEIS
 5. Quando o vendedor mencionar "caçamba de pesagem 2000 kg" — IMPORTANTE: a caçamba e a balança são itens SEPARADOS. A maior caçamba é 1900 L (1000 kg de produto). Os "2000 kg" geralmente é a BALANÇA ELETRÔNICA 2000 KG que acompanha. Esclareça isso ativamente.
 6. Valores monetários: sempre formate como R$ X.XXX,XX (com separador de milhar e vírgula decimal).
 7. NUNCA chame propor_* sem antes confirmar o item via consultar_precos/listar_modelos_compacta. Os IDs precisam ser REAIS.
+8. Ao chamar propor_carregar_pacote, SEMPRE passe basename_esperado com o nome EXATO que o vendedor mencionou (ex: "Compacta 02 - 2001000"). A tool valida que o modelo_id bate com esse nome — se não bater, ela retorna erro com a lista correta. Isso previne o bug de ID trocado.
+9. Se o vendedor disser "a primeira" / "a segunda" após uma lista, MAPEIE pra o ID daquela posição na ÚLTIMA chamada de listar_modelos_compacta — NÃO use ID de listas anteriores.
 
 ⛔ REGRA CRÍTICA — NUNCA RESPONDA "NÃO ENCONTREI" SEM TENTAR COMPOR DO ZERO
 Caso real ruim: vendedor pediu "mini fábrica monofásica com misturador 150 kg" → você respondeu "não encontrei modelo" e parou.
@@ -352,14 +354,15 @@ const tools = [
     function: {
       name: 'propor_carregar_pacote',
       description:
-        'Sugere SUBSTITUIR o carrinho atual pelo pacote completo de um modelo de Compacta/Mini Fabrica. Use depois de detalhar_modelo. ATENÇÃO: substitui TODOS os itens atuais — só sugira se o vendedor pediu pra montar do zero.',
+        'Sugere SUBSTITUIR o carrinho atual pelo pacote completo de um modelo de Compacta/Mini Fabrica. Use depois de detalhar_modelo. ATENÇÃO: substitui TODOS os itens atuais — só sugira se o vendedor pediu pra montar do zero. SEMPRE passe basename_esperado pra validar que o modelo_id eh o certo (proteção contra ID trocado).',
       parameters: {
         type: 'object',
         properties: {
-          modelo_id: { type: 'integer', description: 'ID do orcamento_modelos.' },
+          modelo_id: { type: 'integer', description: 'ID do orcamento_modelos. DEVE vir de uma chamada recente de listar_modelos_compacta ou detalhar_modelo.' },
+          basename_esperado: { type: 'string', description: 'Nome do modelo que o vendedor pediu (ex: "Compacta 02 - 2001000" ou "Compacta 02 Master"). Validação: se o pacote retornado tiver basename diferente, a tool retorna erro.' },
           justificativa: { type: 'string', description: 'Por que esse modelo atende o pedido.' },
         },
-        required: ['modelo_id'],
+        required: ['modelo_id', 'basename_esperado'],
       },
     },
   },
@@ -604,9 +607,10 @@ async function tool_propor_adicionar_item(
 async function tool_propor_carregar_pacote(
   supa: SupabaseClient,
   args: Record<string, unknown>
-): Promise<{ acao: AcaoSugerida } | { erro: string }> {
+): Promise<{ acao: AcaoSugerida } | { erro: string; sugestoes?: Array<{ id: number; basename: string }> }> {
   const id = args.modelo_id as number
   const justificativa = (args.justificativa as string) || ''
+  const basenameEsperado = (args.basename_esperado as string) || ''
 
   const { data, error } = await supa
     .from('orcamento_modelos')
@@ -616,6 +620,34 @@ async function tool_propor_carregar_pacote(
     .single()
 
   if (error || !data) return { erro: `modelo_id ${id} não encontrado` }
+
+  // Validação anti-mismatch: se o vendedor pediu "Compacta 02" mas o modelo_id
+  // aponta pra "Compacta 01", aborta e devolve candidatos certos. Bug observado:
+  // LLM listou Compacta 02 mas chamou propor com ID de Compacta 01.
+  if (basenameEsperado) {
+    const norm = (s: string) =>
+      s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '').trim()
+    const got = norm(data.basename || '')
+    const expected = norm(basenameEsperado)
+    // Extrai tokens significativos do esperado (números, palavras 3+ chars)
+    const tokens = basenameEsperado.match(/(\d+|\p{L}{3,})/gu) ?? []
+    const tokensNorm = tokens.map(norm).filter(t => t.length > 0)
+    const tokensFaltando = tokensNorm.filter(t => !got.includes(t))
+    if (tokensFaltando.length > 0 && !got.includes(expected)) {
+      // Busca candidatos certos pra ajudar o LLM a corrigir
+      const orFilter = tokensNorm.map(t => `basename.ilike.%${t}%`).join(',')
+      const { data: cand } = await supa
+        .from('orcamento_modelos')
+        .select('id, basename, total_proposta')
+        .eq('ativo', true)
+        .or(orFilter)
+        .limit(5)
+      return {
+        erro: `MISMATCH: você passou modelo_id=${id} ("${data.basename}") mas o vendedor pediu "${basenameEsperado}". Tokens faltando: ${tokensFaltando.join(', ')}. Use um dos IDs corretos abaixo.`,
+        sugestoes: (cand ?? []).map(c => ({ id: c.id, basename: c.basename })),
+      }
+    }
+  }
 
   const qtdItens = Array.isArray(data.itens) ? (data.itens as unknown[]).length : 0
 
