@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { Avatar } from '@/components/ui/Avatar'
 import { StatusVendedorPicker } from '@/components/StatusVendedorPicker'
 import { CriativoHoverBadge } from '@/components/CriativoHoverBadge'
+import { PhoneCopyButton } from '@/components/PhoneCopyButton'
 import { AtribuirVendedorPicker } from '@/components/AtribuirVendedorPicker'
 import { StatusDot } from '@/components/ui/StatusDot'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -626,11 +627,9 @@ export function Atendimentos() {
                             )
                           })()}
                         </td>
-                        {/* TELEFONE */}
+                        {/* TELEFONE — formato cru +5548... com botão de copiar */}
                         <td className="px-3 py-2.5 whitespace-nowrap">
-                          <span className="text-[12px] text-ink-muted font-mono tabular-nums">
-                            {tel ? formatPhone(tel) : '—'}
-                          </span>
+                          <PhoneCopyButton telefone={r.telefone} />
                         </td>
                         {/* ORIGEM */}
                         <td className="hidden lg:table-cell px-2 py-2.5 whitespace-nowrap">
