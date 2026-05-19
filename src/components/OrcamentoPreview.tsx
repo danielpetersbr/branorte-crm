@@ -6,6 +6,7 @@
 
 import { Search, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { BRLInput } from '@/components/ui/BRLInput'
 
 export interface PreviewItem {
@@ -964,8 +965,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             )}
                             {m.qtd > 1 && <span className="text-gray-500"> (×{m.qtd})</span>}
 
-                            {/* Modal de troca de motor (overlay fixo — não fica atrás dos blocos seguintes) */}
-                            {aberto && podeTrocar && m.item_uid && motoresDisponiveis && (
+                            {/* Modal de troca de motor — portal pro body pra escapar do overflow/sticky do preview */}
+                            {aberto && podeTrocar && m.item_uid && motoresDisponiveis && createPortal(
                               <div
                                 className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-4 print:hidden"
                                 onClick={() => setTrocarMotorIdx(null)}
@@ -1040,7 +1041,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                     })()}
                                   </div>
                                 </div>
-                              </div>
+                              </div>,
+                              document.body
                             )}
                           </td>
                           <td className="py-1.5 text-right text-gray-800 tabular-nums">
