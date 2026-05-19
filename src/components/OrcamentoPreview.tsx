@@ -535,11 +535,10 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   src={fotoPrincipal}
                   alt="Foto da fábrica"
                   // object-contain preserva aspect ratio (NUNCA estica)
-                  // 280px = bom destaque sem dominar a pagina (era 380 e fazia
-                  // o PDF ficar com 9 paginas — itens orçados ficavam pra cabar
-                  // em paginas separadas com espaço em branco gigante antes).
+                  // 500px = foto principal grande, destaque máximo da fábrica.
+                  // É o "hero shot" do orçamento — primeira coisa que o cliente vê.
                   style={{
-                    maxHeight: '280px',
+                    maxHeight: '500px',
                     maxWidth: '100%',
                     width: 'auto',
                     height: 'auto',
