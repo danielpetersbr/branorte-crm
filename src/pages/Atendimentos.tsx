@@ -547,7 +547,7 @@ export function Atendimentos() {
                   <tr className="border-b border-border bg-surface-2/40 [&>th]:text-left [&>th]:text-[10px] [&>th]:uppercase [&>th]:tracking-wider [&>th]:font-bold [&>th]:text-ink-muted [&>th]:px-1.5 [&>th]:py-3 [&>th]:whitespace-nowrap">
                     <th className="w-[72px]">Chegou</th>
                     <th className="w-[110px]">Lead</th>
-                    <th className="hidden md:table-cell w-[100px]">Estado</th>
+                    <th className="hidden md:table-cell w-[48px]">UF</th>
                     <th className="w-[132px]">Telefone</th>
                     <th className="hidden lg:table-cell w-[88px]">Origem</th>
                     <th className="hidden 2xl:table-cell w-[100px]">Criativo</th>
@@ -605,25 +605,25 @@ export function Atendimentos() {
                             </div>
                           </div>
                         </td>
-                        {/* ESTADO */}
+                        {/* ESTADO — só a sigla (com nome completo no tooltip) */}
                         <td className="hidden md:table-cell px-1.5 py-2.5 whitespace-nowrap">
                           {uf && uf !== '—' && uf !== 'INTL' ? (
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-2 text-ink-muted">
-                                {uf}
-                              </span>
-                              <span className="text-[12px] text-ink-muted">{estadoNome(uf)}</span>
-                            </div>
+                            <span
+                              className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-2 text-ink-muted"
+                              title={estadoNome(uf)}
+                            >
+                              {uf}
+                            </span>
                           ) : (() => {
                             const pais = paisDoTelefone(r.telefone)
                             if (!pais) return <EmptyCell />
                             return (
-                              <div className="flex items-center gap-1.5" title="Lead internacional">
-                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-info/10 text-info">
-                                  {pais.sigla}
-                                </span>
-                                <span className="text-[12px] text-ink-muted">{pais.nome}</span>
-                              </div>
+                              <span
+                                className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-info/10 text-info"
+                                title={`Internacional: ${pais.nome}`}
+                              >
+                                {pais.sigla}
+                              </span>
                             )
                           })()}
                         </td>
