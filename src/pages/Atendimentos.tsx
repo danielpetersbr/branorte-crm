@@ -786,20 +786,20 @@ export function Atendimentos() {
                             <EmptyCell />
                           )}
                         </td>
-                        {/* VENDEDOR — avatar + primeiro nome pequeno embaixo */}
-                        <td className="px-2 py-2.5 whitespace-nowrap w-[64px]">
+                        {/* VENDEDOR — só primeiro nome (sem avatar) */}
+                        <td className="px-2 py-2.5 whitespace-nowrap w-[72px]">
                           {(() => {
                             const ids = (r.auditoria_ids && r.auditoria_ids.length > 0) ? r.auditoria_ids : [r.id]
                             const v = vendedorEfetivo(r)
                             if (v) {
                               const firstName = v.name.trim().split(/\s+/)[0]
                               return (
-                                <div className="flex flex-col items-center gap-0.5" title={`${v.name}${v.source === 'wa' ? ' (via etiqueta WA)' : ''}`}>
-                                  <Avatar name={v.name} size="sm" />
-                                  <span className="text-[9px] leading-tight text-ink-muted truncate max-w-[60px] capitalize">
-                                    {firstName.toLowerCase()}
-                                  </span>
-                                </div>
+                                <span
+                                  className="text-[12px] text-ink-muted truncate block max-w-[70px] capitalize"
+                                  title={`${v.name}${v.source === 'wa' ? ' (via etiqueta WA)' : ''}`}
+                                >
+                                  {firstName.toLowerCase()}
+                                </span>
                               )
                             }
                             // Lead sem vendedor (nem CRM nem WA): só o ícone "Pegar pra mim"
