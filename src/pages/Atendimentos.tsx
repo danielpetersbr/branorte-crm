@@ -680,17 +680,19 @@ export function Atendimentos() {
                             <EmptyCell />
                           )}
                         </td>
-                        {/* MOTIVO DO CONTATO + nome do equipamento (do criativo) */}
+                        {/* MOTIVO DO CONTATO + nome do equipamento (o_que_precisa OU criativo) */}
                         <td className="hidden lg:table-cell px-2 py-2.5">
                           {(() => {
                             const motivo = humanizeMotivo(r.motivo_contato)
                             if (!motivo) return <EmptyCell />
                             const tone = MOTIVO_TONE[r.motivo_contato!] ?? MOTIVO_TONE[motivo] ?? 'neutral'
-                            // Mostra nome do equipamento embaixo se for "Só um equipamento"
+                            // Quando motivo='equipamento', mostra o equipamento específico:
+                            // Prioridade 1: o_que_precisa (Ana V16.24 grava 'misturador 150 kg')
+                            // Prioridade 2: nome do criativo do anúncio (fallback)
                             const ehUmEquipamento = /equipamento/i.test(motivo)
-                            const equipamento = ehUmEquipamento ? criativoNome : null
+                            const equipamento = ehUmEquipamento ? (r.o_que_precisa || criativoNome) : null
                             return (
-                              <div className="flex flex-col gap-0.5 min-w-0 max-w-[200px]">
+                              <div className="flex flex-col gap-0.5 min-w-0 max-w-[220px]">
                                 <Badge style={{
                                   background: `hsl(var(--${tone}-bg))`,
                                   color: `hsl(var(--${tone}))`,
@@ -698,7 +700,7 @@ export function Atendimentos() {
                                   {motivo}
                                 </Badge>
                                 {equipamento && (
-                                  <span className="text-[10.5px] text-ink-faint truncate" title={equipamento}>
+                                  <span className="text-[10.5px] text-ink-faint truncate capitalize" title={equipamento}>
                                     {equipamento}
                                   </span>
                                 )}
