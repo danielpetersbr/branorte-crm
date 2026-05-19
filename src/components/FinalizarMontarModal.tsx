@@ -10,6 +10,7 @@ import { useVendors } from '@/hooks/useVendors'
 import { gerarPdfDoPreview } from '@/lib/preview-to-pdf'
 import { gerarPdfServerSide } from '@/lib/pdf-server'
 import { gerarOrcamentoCustomDocx } from '@/lib/orcamento-custom-docx'
+import { gerarDocxViaHtml } from '@/lib/preview-to-docx-html'
 import {
   isFolderScanSupported, pickOrcamentoFolder, getStoredFolderHandle,
   scanFolderForLastNumber, formatarNumero, ensureWritePermission,
@@ -564,58 +565,64 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         vendedoresContato,
         vendedorResponsavelNome: profile?.display_name || null,
       }
-      // Word ÚNICO — editável (lib docx nativa). Vendedor edita qualquer campo
-      // no Word. Não geramos mais a versão imagem (era duplicação, ocupava
-      // espaço e não dava pra editar).
+      // Word ÚNICO — editável via HTML-to-DOCX. Renderiza OrcamentoPreview real,
+      // inlina computed styles, manda pro endpoint /api/orcamento-html-to-docx
+      // que converte com html-to-docx. Resultado: ~85-90% identico ao preview.
+      // Fallback: lib docx manual (orcamento-custom-docx) se HTML falhar.
       setStep('Gerando Word editável...', 30)
-      console.log('[gerar] iniciando docx editável...')
       let docxBlob: Blob
       try {
-      docxBlob = await gerarOrcamentoCustomDocx({
-        numero: orc.numero,
-        dataEmissao: dataEmissaoBR,
-        cliente: {
-          nome: cliNome.trim(),
-          ac: cliDados.ac,
-          fone: cliDados.fone,
-          cidade: cliDados.cidade,
-          bairro: cliDados.bairro,
-          endereco: cliDados.endereco,
-          cep: cliDados.cep,
-          cnpj: cliDados.cnpj,
-          ie: cliDados.ie,
-          email: cliDados.email,
-        },
-        voltagem: snapshot.voltagem,
-        itens: snapshot.itens.map((it, idx) => ({
-          letra: String.fromCharCode(65 + idx),
-          qtd: it.qtd,
-          nome: it.nome,
-          specs: it.specs,
-          valor: it.valor,
-          motor_cv: it.motor_cv,
-          motor_polos: it.motor_polos,
-          motor_qtd: it.motor_qtd,
-          foto_url: it.foto_url ?? null,
-        })),
-        motores: snapshot.motoresAgrupados,
-        acessorios: snapshot.acessorios
-          ? { pct: snapshot.acessorios.pct, items: snapshot.acessorios.items, valor: snapshot.acessorios.valor }
-          : null,
-        totalEquip: snapshot.totalEquip,
-        totalMotores: snapshot.totalMotores,
-        totalProposta: snapshot.totalGeral,
-        formaPagamento: formaPgOut.forma_pagamento || snapshot.termsInline?.formaPagamento || null,
-        dataVenda: (pgDataVenda ? formaPgOut.data_venda : null) || snapshot.termsInline?.dataVenda || null,
-        prazoEntrega: prazoEntrega.trim() || snapshot.termsInline?.prazoEntrega || null,
-        observacoes: observacoes.trim() || null,
-        vendedorNome: profile?.display_name || 'Vendedor',
-      })
-        console.log(`[gerar] docx OK (${docxBlob.size} bytes)`)
-      } catch (e) {
-        console.error('[gerar] ERRO docx:', e)
-        docxBlob = new Blob([(e as Error).message], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
-        setErro(`Aviso: falha ao gerar Word (${(e as Error).message}).`)
+        docxBlob = await gerarDocxViaHtml(previewProps)
+        console.log(`[gerar] docx (html-to-docx) OK (${docxBlob.size} bytes)`)
+      } catch (htmlErr) {
+        console.warn('[gerar] html-to-docx falhou, fallback pro custom docx:', htmlErr)
+        try {
+          docxBlob = await gerarOrcamentoCustomDocx({
+            numero: orc.numero,
+            dataEmissao: dataEmissaoBR,
+            cliente: {
+              nome: cliNome.trim(),
+              ac: cliDados.ac,
+              fone: cliDados.fone,
+              cidade: cliDados.cidade,
+              bairro: cliDados.bairro,
+              endereco: cliDados.endereco,
+              cep: cliDados.cep,
+              cnpj: cliDados.cnpj,
+              ie: cliDados.ie,
+              email: cliDados.email,
+            },
+            voltagem: snapshot.voltagem,
+            itens: snapshot.itens.map((it, idx) => ({
+              letra: String.fromCharCode(65 + idx),
+              qtd: it.qtd,
+              nome: it.nome,
+              specs: it.specs,
+              valor: it.valor,
+              motor_cv: it.motor_cv,
+              motor_polos: it.motor_polos,
+              motor_qtd: it.motor_qtd,
+              foto_url: it.foto_url ?? null,
+            })),
+            motores: snapshot.motoresAgrupados,
+            acessorios: snapshot.acessorios
+              ? { pct: snapshot.acessorios.pct, items: snapshot.acessorios.items, valor: snapshot.acessorios.valor }
+              : null,
+            totalEquip: snapshot.totalEquip,
+            totalMotores: snapshot.totalMotores,
+            totalProposta: snapshot.totalGeral,
+            formaPagamento: formaPgOut.forma_pagamento || snapshot.termsInline?.formaPagamento || null,
+            dataVenda: (pgDataVenda ? formaPgOut.data_venda : null) || snapshot.termsInline?.dataVenda || null,
+            prazoEntrega: prazoEntrega.trim() || snapshot.termsInline?.prazoEntrega || null,
+            observacoes: observacoes.trim() || null,
+            vendedorNome: profile?.display_name || 'Vendedor',
+          })
+          console.log(`[gerar] docx (custom fallback) OK (${docxBlob.size} bytes)`)
+        } catch (e) {
+          console.error('[gerar] ERRO docx (ambos paths):', e)
+          docxBlob = new Blob([(e as Error).message], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
+          setErro(`Aviso: falha ao gerar Word (${(e as Error).message}).`)
+        }
       }
 
       // 5) Gera PDF a partir do MESMO previewProps que ja foi usado pro DOCX
