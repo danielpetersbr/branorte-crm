@@ -11,7 +11,6 @@ import { gerarPdfDoPreview } from '@/lib/preview-to-pdf'
 import { gerarPdfServerSide } from '@/lib/pdf-server'
 import { gerarOrcamentoCustomDocx } from '@/lib/orcamento-custom-docx'
 import { gerarDocxViaHtml } from '@/lib/preview-to-docx-html'
-import { convertPdfToDocx } from '@/lib/pdf-to-docx'
 import {
   isFolderScanSupported, pickOrcamentoFolder, getStoredFolderHandle,
   scanFolderForLastNumber, formatarNumero, ensureWritePermission,
@@ -574,12 +573,14 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         vendedoresContato,
         vendedorResponsavelNome: profile?.display_name || null,
       }
-      // ESTRATEGIA: PDF primeiro (perfeito via Puppeteer) + DOCX espelha o preview.
+      // ESTRATEGIA: PDF eh o produto principal (perfeito via Puppeteer).
+      // DOCX eh fallback editavel — html-to-docx atinge ~85% e nao gasta
+      // conversoes ConvertAPI (250 grátis/mes ficam pra outras coisas).
       //
-      // Cascade DOCX (do MELHOR pro pior):
-      //   1. PDF → ConvertAPI (95% identico ao preview, editavel) — precisa API key
-      //   2. html-to-docx (85% via HTML inlined com Flex→Table conversion)
-      //   3. custom docx lib (70% reconstruido manualmente)
+      // Cascade DOCX:
+      //   1. html-to-docx (~85%, gratis ilimitado)
+      //   2. custom docx lib (~70%, fallback se HTML falhar)
+      //   ConvertAPI removido — text boxes nao agregam fidelidade real
 
       // 4) PDF — gera ANTES do docx (que agora deriva dele)
       setStep('Gerando PDF...', 30)
@@ -606,30 +607,18 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         console.warn('Falha PDF:', pdfErro)
       }
 
-      // 4b) DOCX cascade — espelha o preview React (igual ao PDF)
+      // 4b) DOCX — apenas editavel pra ajustes rapidos. PDF eh o produto final.
       setStep('Gerando Word editável...', 50)
       let docxBlob: Blob = null as any
-      let docxFonte: 'convertapi' | 'html-to-docx' | 'custom' = 'custom'
+      let docxFonte: 'html-to-docx' | 'custom' = 'custom'
 
-      // Tier 1: PDF → ConvertAPI (95% fiel ao PDF — precisa CONVERTAPI_SECRET)
-      if (pdfBlob) {
-        try {
-          docxBlob = await convertPdfToDocx(pdfBlob, `${orc.numero}.pdf`)
-          docxFonte = 'convertapi'
-          console.log(`[gerar] docx (ConvertAPI) OK (${docxBlob.size} bytes)`)
-        } catch (cvErr) {
-          console.warn('[gerar] ConvertAPI falhou, fallback html-to-docx:', cvErr)
-        }
-      }
-      // Tier 2: html-to-docx (renderiza preview, inlina styles, converte)
-      if (!docxBlob) {
-        try {
-          docxBlob = await gerarDocxViaHtml(previewProps)
-          docxFonte = 'html-to-docx'
-          console.log(`[gerar] docx (html-to-docx) OK (${docxBlob.size} bytes)`)
-        } catch (htmlErr) {
-          console.warn('[gerar] html-to-docx falhou, fallback custom:', htmlErr)
-        }
+      // Tier 1: html-to-docx (~85%, gratis, ilimitado)
+      try {
+        docxBlob = await gerarDocxViaHtml(previewProps)
+        docxFonte = 'html-to-docx'
+        console.log(`[gerar] docx (html-to-docx) OK (${docxBlob.size} bytes)`)
+      } catch (htmlErr) {
+        console.warn('[gerar] html-to-docx falhou, fallback custom:', htmlErr)
       }
       // Tier 3: custom docx (ultima linha de defesa)
       if (!docxBlob) {
