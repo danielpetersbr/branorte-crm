@@ -1,4 +1,7 @@
-// webhook-disparachat-events v25 (2026-05-19) — fix dedup check usar phone REAL
+// webhook-disparachat-events v25.1 (2026-05-19) — preservar origem da campanha no merge
+//   v25.1: quando WA mergeia com órfão FB/IG, PRESERVA channel_type e origem
+//          originais. Senão o CRM perdia a atribuição da venda à campanha de
+//          Facebook/Instagram (sobrescrevia tudo pra "whatsapp").
 //   v25: a condição "!normalizedPhoneDigits || empty" falhava quando contact_id
 //        era usado como fallback de phone — produzia string não-vazia e dedup era
 //        pulado. Agora checa o payload.contact.phone REAL antes de normalizar.
@@ -418,8 +421,16 @@ Deno.serve(async (req) => {
       if (existingId) {
         // UPDATE: NÃO sobrescrever 'data' (primeiro contato original).
         // Só atualiza campos de estado atual (last_message_at, status, vendor, etc).
+        // V25.1: se foi MERGE de órfão FB/IG, PRESERVA channel_type e origem
+        // originais — não sobrescreve com "whatsapp". Isso garante que a origem
+        // da campanha (Facebook/Instagram) é mantida no CRM mesmo após WA chegar.
         const { data: _origData, ...updateRow } = atendimentoRow as Record<string, unknown>;
         void _origData;
+        if (results.orphan_merged) {
+          delete (updateRow as Record<string, unknown>).channel_type;
+          delete (updateRow as Record<string, unknown>).origem;
+          log(`MERGE preservou channel_type e origem originais da campanha`);
+        }
         const r2 = await fetch(
           `${SUPABASE_URL}/rest/v1/auditoria_atendimentos?id=eq.${existingId}`,
           {
