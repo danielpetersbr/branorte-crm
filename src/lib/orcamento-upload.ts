@@ -53,26 +53,32 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
 async function putSigned(file: PresignedFile, blob: Blob, contentType: string, label: string): Promise<void> {
   const sizeKb = Math.round(blob.size / 1024)
   let lastErr: Error | null = null
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  const MAX_ATTEMPTS = 4
+  const TIMEOUT_MS = 180_000  // 180s pra rede mobile ruim + PDF pesado
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const t0 = Date.now()
     try {
       const r = await fetchWithTimeout(file.url, {
         method: 'PUT',
         headers: { 'content-type': contentType, 'x-upsert': 'true' },
         body: blob,
-      }, 90_000) // 90s timeout por upload — generoso pra rede mobile ruim
+      }, TIMEOUT_MS)
       if (!r.ok) {
         const text = await r.text().catch(() => '')
         throw new Error(`HTTP ${r.status}: ${text.slice(0, 200)}`)
       }
-      console.log(`[upload-${label}] ✅ ${sizeKb}KB em ${Date.now() - t0}ms`)
+      console.log(`[upload-${label}] ✅ ${sizeKb}KB em ${Date.now() - t0}ms (tentativa ${attempt})`)
       return
     } catch (e) {
       lastErr = e as Error
       const ms = Date.now() - t0
       const isAbort = lastErr.name === 'AbortError' || /abort/i.test(lastErr.message)
-      console.warn(`[upload-${label}] ❌ tentativa ${attempt} falhou em ${ms}ms: ${isAbort ? 'TIMEOUT 90s' : lastErr.message}`)
-      if (attempt < 2) await new Promise(r => setTimeout(r, 1500))
+      console.warn(`[upload-${label}] ❌ tentativa ${attempt}/${MAX_ATTEMPTS} falhou em ${ms}ms: ${isAbort ? `TIMEOUT ${TIMEOUT_MS / 1000}s` : lastErr.message}`)
+      if (attempt < MAX_ATTEMPTS) {
+        // Backoff exponencial: 1.5s, 4s, 10s
+        const delay = 1500 * Math.pow(2.5, attempt - 1)
+        await new Promise(r => setTimeout(r, delay))
+      }
     }
   }
   throw lastErr || new Error(`upload ${label} falhou`)

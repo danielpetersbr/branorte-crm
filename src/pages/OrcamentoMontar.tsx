@@ -1171,6 +1171,33 @@ export function OrcamentoMontar() {
 
   return (
     <div className="h-full flex flex-col gap-3 p-3">
+      {/* Banner CRÍTICO: orçamento existente está em rascunho (upload server falhou).
+          Quando vendedor reabre via ?id=N e a row tá rascunho, mostra alerta
+          permanente até ele reenviar. Sem isso o vendedor acha que tá salvo. */}
+      {editingId && orcamentoEditando?.status === 'rascunho' && (
+        <div className="bg-danger/10 border border-danger/40 rounded-lg px-3 py-2.5 flex items-start gap-3">
+          <AlertCircle className="h-4 w-4 text-danger shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <div className="text-[12px] font-semibold text-ink">
+              ⚠️ Orçamento {orcamentoEditando.numero} NÃO foi salvo no servidor
+            </div>
+            <div className="text-[11px] text-ink-muted mt-0.5">
+              Ficou só no rascunho local — os arquivos não chegaram na pasta Z:.
+              Provavelmente upload falhou por rede instável. Clique <strong>Finalizar e gerar</strong> de novo (todos os dados estão preservados).
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setFinalizarOpen(true)}
+              disabled={carrinho.length === 0}
+              className="text-[11px] px-2.5 py-1.5 rounded bg-danger hover:bg-danger/90 text-white font-bold flex items-center gap-1 shadow-sm disabled:opacity-50"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Reenviar pra pasta
+            </button>
+          </div>
+        </div>
+      )}
       {/* Banner de recuperacao de rascunho */}
       {draft.recovered && draft.recovered.data?.carrinho?.length ? (
         <div className="bg-warning/10 border border-warning/40 rounded-lg px-3 py-2.5 flex items-start gap-3">
