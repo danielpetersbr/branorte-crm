@@ -230,18 +230,25 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
   // Modal fica invisível (headless) e dispara handleGerar direto. Progresso aparece
   // como toast no fim (onSuccess do parent).
   const [headlessMode, setHeadlessMode] = useState(false)
+  // Ref pra evitar closure stale do cliNome dentro do setTimeout. cliNome é
+  // setado por outro useEffect (initialModal) e o setTimeout precisa ler o
+  // valor MAIS RECENTE quando dispara, não o capturado no momento do effect.
+  const cliNomeRef = useRef(cliNome)
+  useEffect(() => { cliNomeRef.current = cliNome }, [cliNome])
+
   useEffect(() => {
     if (!open || !autoSubmitOnOpen) { setHeadlessMode(false); return }
     // Aguarda initialModal preencher cliNome antes de disparar
     const startTimer = setTimeout(() => {
-      if (!cliNome.trim()) {
+      const nomeAtual = cliNomeRef.current.trim()
+      if (!nomeAtual) {
         setHeadlessMode(false)
         return
       }
       setHeadlessMode(true)
       // Dispara gerar IMEDIATAMENTE (sem countdown — IA já confirmou os dados em chat)
       handleGerar({ salvarNaPasta: false, salvarNoServidor: true, pdfQuality: pdfAltaQualidade ? 'high' : 'normal' })
-    }, 400)
+    }, 600)
     return () => clearTimeout(startTimer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, autoSubmitOnOpen])

@@ -90,6 +90,15 @@ TRIGGER WORDS — quando vendedor disser QUALQUER destas:
   4. Pergunta DEVE coletar nome + fone + cidade numa frase só. Não
      pingar pergunta por pergunta.
 
+🎯 TEXTO DA RESPOSTA quando propor_finalizar_orcamento já tem cliente:
+NÃO escreva "clique em Finalizar pra concluir" — vendedor NÃO precisa
+clicar em nada do modal (vai gerar automático). Escreva ALGO ASSIM:
+
+  "Beleza! Quando você clicar em **Aplicar** no card abaixo, vou gerar
+   o orçamento pro <Nome do cliente> e mandar pro seu WhatsApp."
+
+Mantém curto. Só vendedor clicar Aplicar — sistema cuida do resto.
+
 ⛔ ANTI-PADRÃO REAL (caso do Daniel — 19/05):
 - Vendedor: "O orçamento de um misturador vertical de 150 kg monofásico"
 - IA: adicionou 1 item (Misturador 300 L) ✅
