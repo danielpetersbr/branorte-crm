@@ -21,7 +21,7 @@ const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!
 const SVC_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
 const OPENAI_KEY = process.env.OPENAI_API_KEY!
 const OPENAI_MODEL = 'gpt-5.4-mini'
-const MAX_TOOL_ITERATIONS = 14  // aumentado pra IA conseguir compor orçamento do zero (varias tool calls sequenciais)
+const MAX_TOOL_ITERATIONS = 24  // aumentado pra IA conseguir compor orçamento composto grande (11+ itens × 2 calls cada)
 
 const SYSTEM_PROMPT = `Você é o copiloto do CRM Branorte — uma metalúrgica que fabrica equipamentos pra fábricas de ração (transportadores helicoidais, misturadores, silos, caçambas de pesagem, moinhos, ensacadeiras, balanças e fábricas compactas).
 
@@ -47,6 +47,67 @@ COMPORTAMENTO CORRETO: se não tem PACOTE pronto que combine, MONTE do zero junt
   3. Pra cada item, escolhe a opção monofásica (campo valor_com_motor_mono não-nulo) se cliente pediu monofásico
   4. Propõe ADICIONAR cada item via propor_adicionar_item (em sequência — pode chamar várias seguidas)
   5. No fim, faz um resumo do orçamento composto pro vendedor revisar e aprovar item por item
+
+📖 GLOSSÁRIO DE TERMOS DO VENDEDOR → CATÁLOGO
+
+Vendedor usa termos coloquiais que precisam mapear pras categorias certas:
+
+| Termo do vendedor                          | Categoria/Subcategoria do catálogo       | Filtro de busca |
+|--------------------------------------------|------------------------------------------|-----------------|
+| "rosca" / "rosca transportadora"           | TRANSPORTADOR (subcategoria HELICOIDAL)  | busca="TH" + diâmetro/comprimento |
+| "transportador" / "transportador helicoidal" | TRANSPORTADOR (HELICOIDAL)             | idem |
+| "TH" / "TH 210" / "calha TH"               | TRANSPORTADOR (HELICOIDAL — mesma coisa)| idem |
+| "chupim"                                   | TRANSPORTADOR (subcategoria CHUPIM)     | busca="chupim" + diâmetro/comprimento |
+| "caçamba" / "caçamba de pesagem"           | CACAMBA (capacidade em litros)           | capacidade_min/max |
+| "caçamba transportador 210×5m"             | NÃO existe — é confusão de termos. Pergunta ao vendedor: "é caçamba de pesagem (litros) OU transportador helicoidal 210 x 5m? São equipamentos diferentes." |
+| "moinho" / "moinho de martelo"             | MOINHO                                   | motor_cv exato |
+| "misturador" / "misturador horizontal"     | MISTURADOR                               | capacidade em LITROS (não kg) |
+| "caixa" / "caixa de material picado"       | CAIXA                                    | capacidade em kg |
+| "caixa de ração pronta"                    | CAIXA                                    | idem |
+| "silo"                                     | SILO                                     | busca="30" pra silo 30t |
+| "ensacadeira" / "ensacadinha saco aberto"  | ENSACADEIRA                              | motor_cv (mono ≤5, trif >5) |
+| "balança"                                  | BALANCA                                  | capacidade em kg |
+| "elevador" / "elevador de canecas"         | ELEVADOR                                 | — |
+| "peneira" / "pré-limpeza"                  | PENEIRA ou PRE_LIMPEZA                   | — |
+| "moega"                                    | MOEGA                                    | — |
+
+CONVERSÃO DE UNIDADES (importante!):
+- **Misturador** no catálogo é em LITROS. Vendedor fala em kg de RAÇÃO.
+  - Regra prática: **1 kg ração ≈ 2 L** (densidade ração ≈ 0,5 kg/L)
+  - Exemplo: vendedor pede "misturador 500 kg" → busca capacidade_min=900, capacidade_max=1100
+- **Caixa**: vendedor pode falar em kg OU toneladas.
+  - "caixa 4 toneladas" = 4000 kg → capacidade_min=3900, capacidade_max=4100
+- **Silo**: vendedor fala em toneladas. Catálogo varia.
+  - "silo 30 toneladas" → busca="30" na descricao
+
+DIMENSÕES (diâmetro × comprimento):
+Catálogo armazena na coluna 'descricao' como: "TH 200 X 6,0 m" ou "chupim 160 x 6,0 m"
+- Vendedor fala "transportador 210 por 12 metros" → busca="210" + checa comprimento na descricao
+- Catálogo cobre TH: 100, 125, 150, 200 (não tem 210 hoje — se pedir TH 210, mostra TH 200 + alerta)
+- Catálogo cobre chupim: 160, 210 (até 10m de comprimento)
+
+🛠️ WORKFLOW — ORÇAMENTO COMPOSTO LIVRE (caso real Branorte)
+
+Vendedor pode falar um pedido GRANDE com 5-15 itens de uma vez. Exemplo real:
+  "Quero um transportador de 210 por 12 metros, um silo de 30 toneladas,
+   chupim de 160 por 6 metros, moinho de 15 CV, caixa de material picado
+   4000 kg, caçamba pra alimentar misturador, misturador horizontal 500 kg,
+   rosca pra tirar do misturador, caixa de ração pronta 4 toneladas,
+   ensacadinha saco aberto trifásica."
+
+WORKFLOW correto:
+  1. PARSE: extrai cada item da fala em lista (categoria + dimensão/capacidade/CV)
+  2. Pra cada item: chama consultar_precos com o filtro certo (use o GLOSSÁRIO acima)
+  3. Se achar match exato → propor_adicionar_item
+  4. Se achar próximo mas não exato → propor_adicionar_item COM justificativa "mais próximo de X que temos"
+  5. Se NÃO achar nada → adiciona à lista de "não encontrei" + sugere chamar vendedor humano
+  6. NUNCA pare no meio. Processa TODOS os itens da lista mesmo que alguns falhem.
+  7. RESPOSTA FINAL: tabela markdown com 3 seções:
+     - ✅ Adicionados (item, qtd, R$ unit)
+     - ⚠️ Substituídos (pedido X → encontrado Y)
+     - ❌ Não achei (lista o que precisa ser cotado manualmente)
+  8. Mostra subtotal só dos adicionados+substituídos
+  9. Encerra com: "Quer ajustar algo ou já manda finalizar?"
 
 ⚙️ NOMENCLATURA DE MODELOS COMPACTA/MINI FÁBRICA
 Vendedor frequentemente pede modelo no formato **XXX-YYY** ou **XXXxYYY** ou só **XXXYYY**:
@@ -348,6 +409,42 @@ const tools = [
           modelo_id: { type: 'integer', description: 'ID do modelo' },
         },
         required: ['modelo_id'],
+      },
+    },
+  },
+
+  // ====== TOOL DE ORÇAMENTO COMPOSTO (batch) ======
+  // Recebe uma LISTA de pedidos de item em texto livre e busca tudo em 1 round-trip.
+  // Reduz drasticamente o número de tool-calls quando o vendedor manda pedido grande.
+  {
+    type: 'function' as const,
+    function: {
+      name: 'compor_orcamento_composto',
+      description:
+        'BATCH search — recebe uma LISTA de descrições de itens em texto livre (categoria + dimensão/capacidade/CV) e busca todos em paralelo no catálogo. Use quando o vendedor falar 5+ itens de uma vez (orçamento livre composto). Retorna 3 grupos: matches exatos, alternativas próximas, e gaps. DEPOIS chame propor_adicionar_item pra cada match que o vendedor confirmar (ou processe automaticamente os exatos).',
+      parameters: {
+        type: 'object',
+        properties: {
+          itens: {
+            type: 'array',
+            description: 'Lista de itens pedidos pelo vendedor.',
+            items: {
+              type: 'object',
+              properties: {
+                descricao_vendedor: { type: 'string', description: 'O que o vendedor falou exatamente (ex: "transportador 210 por 12 metros", "silo 30 toneladas", "misturador horizontal 500 kg", "moinho 15 CV").' },
+                categoria: { type: 'string', description: 'Categoria mapeada do glossário: TRANSPORTADOR | MISTURADOR | SILO | MOINHO | CAIXA | CACAMBA | ENSACADEIRA | BALANCA | ELEVADOR | PENEIRA | MOEGA | PRE_LIMPEZA.' },
+                subcategoria: { type: 'string', description: 'HELICOIDAL ou CHUPIM (só pra TRANSPORTADOR). Opcional.' },
+                busca: { type: 'string', description: 'Termo de busca textual na descricao (ex: "210", "30 ton", "horizontal"). Opcional.' },
+                motor_cv: { type: 'number', description: 'CV exato (pra moinho/ensacadeira). Opcional.' },
+                capacidade_min: { type: 'number', description: 'Mínimo. Misturador em LITROS (kg×2). Caixa/silo em KG.' },
+                capacidade_max: { type: 'number' },
+                quantidade: { type: 'integer', description: 'Qtd desejada. Default 1.', default: 1 },
+              },
+              required: ['descricao_vendedor', 'categoria'],
+            },
+          },
+        },
+        required: ['itens'],
       },
     },
   },
@@ -739,6 +836,8 @@ async function executarTool(
       return tool_listar_modelos_compacta(supa, args)
     case 'detalhar_modelo':
       return tool_detalhar_modelo(supa, args)
+    case 'compor_orcamento_composto':
+      return tool_compor_orcamento_composto(supa, args)
     case 'propor_adicionar_item':
       return tool_propor_adicionar_item(supa, args)
     case 'propor_carregar_pacote':
@@ -749,6 +848,94 @@ async function executarTool(
       return tool_propor_finalizar_orcamento(args)
     default:
       return { erro: `tool desconhecida: ${name}` }
+  }
+}
+
+// ============================================================================
+// COMPOR ORÇAMENTO COMPOSTO — busca uma lista de itens em paralelo
+// ============================================================================
+//
+// Recebe array de pedidos e busca cada um. Retorna 3 grupos pro LLM decidir
+// como apresentar pro vendedor:
+//   - matches: 1 item exato encontrado → pronto pra propor_adicionar_item
+//   - alternativas: 2-5 próximos quando não há match exato
+//   - gaps: nada parecido encontrado → vendedor humano cota manualmente
+type ItemPedido = {
+  descricao_vendedor: string
+  categoria: string
+  subcategoria?: string
+  busca?: string
+  motor_cv?: number
+  capacidade_min?: number
+  capacidade_max?: number
+  quantidade?: number
+}
+
+async function tool_compor_orcamento_composto(
+  supa: SupabaseClient,
+  args: Record<string, unknown>
+): Promise<unknown> {
+  const itens = (args.itens as ItemPedido[]) || []
+  if (!Array.isArray(itens) || itens.length === 0) {
+    return { erro: 'lista de itens vazia' }
+  }
+
+  const resultados = await Promise.all(
+    itens.map(async (item) => {
+      try {
+        let q = supa
+          .from('precos_branorte')
+          .select('id, categoria, subcategoria, descricao, valor_equipamento, motor_cv, motor_polos, capacidade, potencia')
+          .eq('ativo', true)
+          .order('valor_equipamento', { ascending: true })
+          .limit(8)
+
+        if (item.categoria) q = q.eq('categoria', item.categoria.toUpperCase())
+        if (item.subcategoria) q = q.eq('subcategoria', item.subcategoria.toUpperCase())
+        if (item.busca) q = q.ilike('descricao', `%${item.busca}%`)
+        if (item.motor_cv != null) q = q.eq('motor_cv', item.motor_cv)
+        if (item.capacidade_min != null) q = q.gte('capacidade_kg_pratica', item.capacidade_min)
+        if (item.capacidade_max != null) q = q.lte('capacidade_kg_pratica', item.capacidade_max)
+
+        const { data, error } = await q
+        if (error) return { item, erro: error.message }
+
+        const candidatos = (data ?? []).map(c => ({
+          id: c.id,
+          descricao: c.descricao,
+          valor_unit: c.valor_equipamento ? Number(c.valor_equipamento) : null,
+          motor_cv: c.motor_cv,
+          motor_polos: c.motor_polos,
+          capacidade: c.capacidade,
+          potencia: c.potencia,
+          categoria: c.categoria,
+          subcategoria: c.subcategoria,
+        }))
+
+        if (candidatos.length === 0) {
+          return { item, status: 'gap' as const, candidatos: [] }
+        }
+        if (candidatos.length === 1) {
+          return { item, status: 'match_exato' as const, candidatos }
+        }
+        return { item, status: 'alternativas' as const, candidatos }
+      } catch (e) {
+        return { item, erro: (e as Error).message }
+      }
+    })
+  )
+
+  // Sumário rápido pro LLM tomar decisão
+  const matches = resultados.filter(r => 'status' in r && r.status === 'match_exato')
+  const alternativas = resultados.filter(r => 'status' in r && r.status === 'alternativas')
+  const gaps = resultados.filter(r => 'status' in r && r.status === 'gap')
+
+  return {
+    total_pedidos: itens.length,
+    matches_exatos: matches.length,
+    com_alternativas: alternativas.length,
+    gaps: gaps.length,
+    resultados,
   }
 }
 
