@@ -89,8 +89,8 @@ Catálogo armazena na coluna 'descricao' como: "TH 200 X 6,0 m" ou "chupim 160 x
 🛠️ WORKFLOW — ORÇAMENTO COMPOSTO LIVRE (caso real Branorte)
 
 ⛔ REGRA OBRIGATÓRIA: se o vendedor citar 2 OU MAIS itens na mesma mensagem,
-você DEVE usar a tool `compor_orcamento_composto` em UMA chamada — NÃO faça
-N chamadas separadas de `consultar_precos`. Exceções: zero (sempre use a tool batch).
+você DEVE usar a tool 'compor_orcamento_composto' em UMA chamada — NÃO faça
+N chamadas separadas de 'consultar_precos'. Exceções: zero (sempre use a tool batch).
 
 Vendedor pode falar um pedido GRANDE com 5-15 itens de uma vez. Exemplo real:
   "Quero um transportador de 210 por 12 metros, um silo de 30 toneladas,
@@ -108,7 +108,7 @@ WORKFLOW correto:
   2. **CONVERSÃO DE UNIDADES** ANTES de montar os args:
      - "X toneladas" → X*1000 kg → capacidade_min=X*1000-100, capacidade_max=X*1000+100
      - Misturador "X kg" → X*2 L → capacidade_min=X*2-100, capacidade_max=X*2+100
-     - Silo "X toneladas" → busca="${X}" (silo busca textual)
+     - Silo "X toneladas" → busca igual ao número X (silo busca textual)
   3. Chama UMA vez compor_orcamento_composto({ itens: [...] }) com TODOS os itens
   4. Recebe resposta com matches/alternativas/gaps
   5. Pra cada match_exato → propor_adicionar_item
