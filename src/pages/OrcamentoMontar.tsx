@@ -2398,6 +2398,25 @@ export function OrcamentoMontar() {
             prazo_entrega: prev?.prazo_entrega ?? null,
           }))
         }}
+        onFinalizarOrcamento={(opts) => {
+          // Pré-preenche cliente se IA mandou + abre o modal FinalizarMontarModal.
+          // Vendedor revisa e clica em "Gerar" — fluxo padrão (PDF, save, WhatsApp).
+          if (opts.cliente_dados) {
+            setInitialModal(prev => ({
+              cliente_nome: opts.cliente_dados!.nome ?? prev?.cliente_nome ?? '',
+              cliente_dados: { ...(prev?.cliente_dados ?? {}), ...opts.cliente_dados },
+              observacoes: prev?.observacoes ?? null,
+              forma_pagamento: prev?.forma_pagamento ?? null,
+              prazo_entrega: prev?.prazo_entrega ?? null,
+            }))
+          }
+          // Carrinho vazio? avisa antes de abrir o modal (que pediria items)
+          if (carrinho.length === 0) {
+            alert('Adicione items ao carrinho antes de finalizar. A IA pode te ajudar com isso.')
+            return
+          }
+          setFinalizarOpen(true)
+        }}
       />
     </div>
   )

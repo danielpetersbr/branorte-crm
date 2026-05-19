@@ -46,6 +46,38 @@ COMPORTAMENTO CORRETO: se não tem PACOTE pronto que combine, MONTE do zero junt
   4. Propõe ADICIONAR cada item via propor_adicionar_item (em sequência — pode chamar várias seguidas)
   5. No fim, faz um resumo do orçamento composto pro vendedor revisar e aprovar item por item
 
+⚙️ NOMENCLATURA DE MODELOS COMPACTA/MINI FÁBRICA
+Vendedor frequentemente pede modelo no formato **XXX-YYY** ou **XXXxYYY** ou só **XXXYYY**:
+- XXX = produção em kg/h (75, 100, 150, 200, 300, 500)
+- YYY = armazenamento em kg (150, 300, 500, 1000, 4000)
+Exemplos:
+- "modelo 150-300" → produção 150 kg/h × armazenamento 300 kg
+- "100x500" → 100 kg/h × 500 kg
+- "150500 master mono" → Compacta Master 150 kg/h × 500 kg monofásico
+
+WORKFLOW pra esses pedidos:
+1. listar_modelos_compacta com producao_min/max e armazenamento_min/max (janela ±15%)
+2. Filtrar por voltagem se vendedor disse mono/trif
+3. Filtrar por master/jr se vendedor disse
+4. Se não acha EXATO, mostra os 2-3 mais próximos (NUNCA dizer "não tem")
+5. Se vendedor confirmar o modelo OU pedir "monta logo", propor_carregar_pacote
+6. Se vendedor disser "finaliza e me manda no zap" / "fecha isso" → propor_finalizar_orcamento
+
+⛔ NÃO TEM MODELO 150-300 NO CATÁLOGO REAL (verificado)
+Modelos comuns com 150 kg/h: 150-500, 150-1000.
+Modelos comuns com 300 kg armaz: 100-300.
+Quando vendedor pedir 150-300, ofereça as 2 alternativas mais próximas.
+
+🚀 FINALIZAÇÃO RÁPIDA (Sprint 3)
+Quando vendedor pede o orçamento COMPLETO ("fecha isso", "manda pro meu zap", "finaliza e envia",
+"manda o orçamento", "fecha agora"), o fluxo correto é:
+  1. Garantir que o carrinho tem items (carregar_pacote ou adicionar items individuais)
+  2. propor_finalizar_orcamento (vendedor clica "Aplicar" → modal abre pré-preenchido)
+  3. Vendedor confirma dados do cliente no modal e clica "Gerar"
+  4. Sistema gera PDF/DOCX, salva no servidor e envia pro WhatsApp do vendedor automaticamente
+
+NUNCA prometa "vou enviar pro WhatsApp" sem ter chamado propor_finalizar_orcamento.
+
 WORKFLOW DE ORÇAMENTO COMPLETO DO ZERO
 Quando o vendedor pedir "monta orçamento de mini fábrica X kg/h com Y" (e não houver modelo pronto que case):
   - Defina mentalmente os "blocos" que toda fábrica de ração precisa:
@@ -312,6 +344,31 @@ const tools = [
       },
     },
   },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'propor_finalizar_orcamento',
+      description:
+        'Propõe FINALIZAR o orçamento: abre o modal de finalização (já com WhatsApp marcado), o vendedor confirma os dados do cliente e o PDF/DOCX é gerado + enviado pro WhatsApp dele. Use SÓ depois que o carrinho já tem items adequados. Ideal pra quando vendedor diz "fecha e me manda no zap", "manda o orçamento pro meu WhatsApp", "finaliza isso aí" etc.',
+      parameters: {
+        type: 'object',
+        properties: {
+          enviar_whatsapp: {
+            type: 'boolean',
+            description: 'Pré-marca o checkbox de WhatsApp. Default true (vendedor recebe o PDF).',
+            default: true,
+          },
+          cliente_nome: {
+            type: 'string',
+            description: 'Nome do cliente — SÓ se vendedor disse explicitamente. Senão omitir e modal pede.',
+          },
+          cliente_fone: { type: 'string', description: 'Telefone do cliente, opcional.' },
+          cliente_cidade: { type: 'string', description: 'Cidade do cliente, opcional.' },
+          cliente_cnpj: { type: 'string', description: 'CNPJ/CPF do cliente, opcional.' },
+        },
+      },
+    },
+  },
 ]
 
 // ============================================================================
@@ -458,6 +515,13 @@ type AcaoSugerida =
       tipo: 'preencher_cliente'
       dados: Record<string, string | undefined>
     }
+  | {
+      tipo: 'finalizar_orcamento'
+      // Pré-fill do modal de finalização: opcionais
+      enviar_whatsapp?: boolean
+      cliente_dados?: Record<string, string | undefined>
+      auto_submit?: boolean  // se true e tem dados suficientes, pula modal
+    }
 
 async function tool_propor_adicionar_item(
   supa: SupabaseClient,
@@ -541,6 +605,23 @@ function tool_propor_preencher_cliente(
   return { acao: { tipo: 'preencher_cliente', dados } }
 }
 
+function tool_propor_finalizar_orcamento(args: Record<string, unknown>): { acao: AcaoSugerida } {
+  const enviarWa = args.enviar_whatsapp !== false  // default true
+  const dados: Record<string, string | undefined> = {}
+  if (typeof args.cliente_nome === 'string' && args.cliente_nome.trim()) dados.nome = args.cliente_nome.trim()
+  if (typeof args.cliente_fone === 'string' && args.cliente_fone.trim()) dados.fone = args.cliente_fone.trim()
+  if (typeof args.cliente_cidade === 'string' && args.cliente_cidade.trim()) dados.cidade = args.cliente_cidade.trim()
+  if (typeof args.cliente_cnpj === 'string' && args.cliente_cnpj.trim()) dados.cnpj = args.cliente_cnpj.trim()
+  return {
+    acao: {
+      tipo: 'finalizar_orcamento',
+      enviar_whatsapp: enviarWa,
+      cliente_dados: Object.keys(dados).length > 0 ? dados : undefined,
+      auto_submit: false,  // sempre abre o modal pra confirmar (segurança)
+    },
+  }
+}
+
 async function executarTool(
   supa: SupabaseClient,
   name: string,
@@ -561,6 +642,8 @@ async function executarTool(
       return tool_propor_carregar_pacote(supa, args)
     case 'propor_preencher_cliente':
       return tool_propor_preencher_cliente(args)
+    case 'propor_finalizar_orcamento':
+      return tool_propor_finalizar_orcamento(args)
     default:
       return { erro: `tool desconhecida: ${name}` }
   }

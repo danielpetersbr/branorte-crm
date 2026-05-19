@@ -9,7 +9,7 @@
 // catalogo_motores e orcamento_modelos.
 
 import { useEffect, useRef, useState } from 'react'
-import { Bot, Mic, MicOff, Send, X, Sparkles, Loader2, AlertCircle, Plus, Package, User, Check } from 'lucide-react'
+import { Bot, Mic, MicOff, Send, X, Sparkles, Loader2, AlertCircle, Plus, Package, User, Check, Rocket } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 // ============================================================================
@@ -48,6 +48,12 @@ export type AcaoSugerida =
       tipo: 'preencher_cliente'
       dados: Record<string, string | undefined>
     }
+  | {
+      tipo: 'finalizar_orcamento'
+      enviar_whatsapp?: boolean
+      cliente_dados?: Record<string, string | undefined>
+      auto_submit?: boolean
+    }
 
 interface Msg {
   role: 'user' | 'assistant'
@@ -73,6 +79,8 @@ interface Props {
   onAdicionarItem?: (preco_branorte_id: number, quantidade: number) => void | Promise<void>
   onCarregarPacote?: (modelo_id: number) => void | Promise<void>
   onPreencherCliente?: (dados: Record<string, string | undefined>) => void | Promise<void>
+  // Sprint 3: dispara o modal de finalização (já pré-preenchido com WhatsApp marcado)
+  onFinalizarOrcamento?: (opts: { enviar_whatsapp?: boolean; cliente_dados?: Record<string, string | undefined> }) => void | Promise<void>
 }
 
 const SUGESTOES_INICIAIS = [
@@ -88,6 +96,7 @@ export function OrcamentoAIChat({
   onAdicionarItem,
   onCarregarPacote,
   onPreencherCliente,
+  onFinalizarOrcamento,
 }: Props) {
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<Msg[]>([])
@@ -260,6 +269,11 @@ export function OrcamentoAIChat({
         await onCarregarPacote(acao.modelo_id)
       } else if (acao.tipo === 'preencher_cliente' && onPreencherCliente) {
         await onPreencherCliente(acao.dados)
+      } else if (acao.tipo === 'finalizar_orcamento' && onFinalizarOrcamento) {
+        await onFinalizarOrcamento({
+          enviar_whatsapp: acao.enviar_whatsapp,
+          cliente_dados: acao.cliente_dados,
+        })
       } else {
         setErro('Ação não suportada nesta versão')
         return
@@ -356,6 +370,7 @@ export function OrcamentoAIChat({
                 podeAdicionarItem={!!onAdicionarItem}
                 podeCarregarPacote={!!onCarregarPacote}
                 podePreencherCliente={!!onPreencherCliente}
+                podeFinalizar={!!onFinalizarOrcamento}
               />
             ))}
 
@@ -429,12 +444,14 @@ function ChatMessageBubble({
   podeAdicionarItem,
   podeCarregarPacote,
   podePreencherCliente,
+  podeFinalizar,
 }: {
   msg: Msg
   onAplicarAcao: (idx: number) => void
   podeAdicionarItem: boolean
   podeCarregarPacote: boolean
   podePreencherCliente: boolean
+  podeFinalizar: boolean
 }) {
   const isUser = msg.role === 'user'
   return (
@@ -469,7 +486,11 @@ function ChatMessageBubble({
                     ? podeAdicionarItem
                     : acao.tipo === 'carregar_pacote'
                     ? podeCarregarPacote
-                    : podePreencherCliente
+                    : acao.tipo === 'preencher_cliente'
+                    ? podePreencherCliente
+                    : acao.tipo === 'finalizar_orcamento'
+                    ? podeFinalizar
+                    : false
                 return (
                   <AcaoCard
                     key={i}
@@ -550,7 +571,7 @@ function AcaoCard({
     ]
       .filter(Boolean)
       .join(' · ')
-  } else {
+  } else if (acao.tipo === 'preencher_cliente') {
     icone = <User className="h-3.5 w-3.5" />
     titulo = 'Preencher dados do cliente'
     const campos = Object.keys(acao.dados).length
@@ -559,6 +580,17 @@ function AcaoCard({
       .map(([k, v]) => `${k}: ${v}`)
       .slice(0, 3)
       .join(' · ')
+  } else {
+    // finalizar_orcamento
+    icone = <Rocket className="h-3.5 w-3.5" />
+    titulo = 'Finalizar + Enviar pro meu WhatsApp'
+    subtitulo = acao.enviar_whatsapp !== false
+      ? 'Gera PDF/DOCX, salva e dispara WhatsApp'
+      : 'Gera PDF/DOCX e salva no servidor'
+    const clienteParts = acao.cliente_dados
+      ? Object.entries(acao.cliente_dados).map(([k, v]) => `${k}: ${v}`).slice(0, 2).join(' · ')
+      : null
+    detalhe = clienteParts || 'Modal abre pra confirmar dados do cliente'
   }
 
   return (
