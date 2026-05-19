@@ -786,15 +786,19 @@ export function Atendimentos() {
                             <EmptyCell />
                           )}
                         </td>
-                        {/* VENDEDOR — só ícone (avatar OU botão compact "Pegar pra mim") */}
-                        <td className="px-2 py-2.5 whitespace-nowrap w-[56px]">
+                        {/* VENDEDOR — avatar + primeiro nome pequeno embaixo */}
+                        <td className="px-2 py-2.5 whitespace-nowrap w-[64px]">
                           {(() => {
                             const ids = (r.auditoria_ids && r.auditoria_ids.length > 0) ? r.auditoria_ids : [r.id]
                             const v = vendedorEfetivo(r)
                             if (v) {
+                              const firstName = v.name.trim().split(/\s+/)[0]
                               return (
-                                <div className="flex items-center justify-center" title={`${v.name}${v.source === 'wa' ? ' (via etiqueta WA)' : ''}`}>
+                                <div className="flex flex-col items-center gap-0.5" title={`${v.name}${v.source === 'wa' ? ' (via etiqueta WA)' : ''}`}>
                                   <Avatar name={v.name} size="sm" />
+                                  <span className="text-[9px] leading-tight text-ink-muted truncate max-w-[60px] capitalize">
+                                    {firstName.toLowerCase()}
+                                  </span>
                                 </div>
                               )
                             }
