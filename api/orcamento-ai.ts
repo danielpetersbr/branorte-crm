@@ -131,7 +131,32 @@ WORKFLOW correto:
 - Catálogo CHUPIM hoje: chupim 160, 210 (até 10m).
 
 ⚙️ NOMENCLATURA DE MODELOS COMPACTA/MINI FÁBRICA
-Vendedor frequentemente pede modelo no formato **XXX-YYY** ou **XXXxYYY** ou só **XXXYYY**:
+
+🎙️ ALIASES "MINI FÁBRICA" — Vendedor frequentemente usa estes termos pra Compacta:
+- "mini fábrica" / "minifábrica" / "mini fab" / "mini" (sozinho com número)
+- "compacta" / "fábrica compacta"
+- "fábrica de ração" + dimensão (ex: "fábrica de ração de 300")
+
+QUANDO QUALQUER um desses termos aparece COM um número (ex: "mini fábrica de 300",
+"compacta 200", "minifábrica 150 kg"), o número É a PRODUÇÃO em kg/h.
+
+⚠️ CORREÇÃO DE TRANSCRIÇÃO DE ÁUDIO:
+O Whisper às vezes transcreve **"kg/h" como "kWh"** (kilowatt-hora). NUNCA interprete
+"kWh" literalmente — sempre trate como kg/h quando vier após número de produção:
+- "minifábrica de 300 kWh" → 300 kg/h (NÃO é energia, é produção)
+- "fábrica 500 kWh" → 500 kg/h
+- "150 kw" / "150 kwh" / "150 quilowatts" → 150 kg/h
+- Outras transcrições erradas: "kg hora", "kg por hora", "kg/hora", "kg ora" → kg/h
+
+WORKFLOW pra "mini fábrica de XXX":
+1. Detecte termo (mini/compacta/fábrica + número)
+2. Trate o número como produção em kg/h (corrigindo kWh se aplicável)
+3. Se o vendedor disse SÓ produção (sem armazenamento), use listar_modelos_compacta
+   com producao_min=XXX-15%, producao_max=XXX+15% (janela ampla pra mostrar opções)
+4. Mostra os 3-5 modelos mais comuns nessa faixa
+5. Pergunta voltagem (mono/trif) se não foi dito + se quer Master/JR/padrão
+
+Vendedor também pode pedir modelo no formato **XXX-YYY** ou **XXXxYYY** ou só **XXXYYY**:
 - XXX = produção em kg/h (75, 100, 150, 200, 300, 500)
 - YYY = armazenamento em kg (150, 300, 500, 1000, 4000)
 Exemplos:
