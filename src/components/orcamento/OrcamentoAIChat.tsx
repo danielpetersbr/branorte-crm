@@ -76,10 +76,11 @@ interface Props {
 }
 
 const SUGESTOES_INICIAIS = [
-  'Qual o preço da caçamba de pesagem 1900 L?',
+  'Monta um orçamento de mini fábrica monofásica 150 kg/h',
+  'Quero fábrica de 500 kg/h trifásica com ensacadeira',
   'Lista as Compactas Master entre 100 e 300 kg/h',
+  'Qual o preço da caçamba de pesagem 1900 L?',
   'Quanto custa um motor 5 CV trifásico 4 polos?',
-  'Diferença entre misturador vertical e horizontal',
 ]
 
 export function OrcamentoAIChat({
@@ -281,22 +282,30 @@ export function OrcamentoAIChat({
 
   return (
     <>
-      {/* Botão flutuante (sempre visível) */}
+      {/* Botão flutuante (sempre visível)
+          Posicionado em bottom-left pra não bater com o FAB de Feedback (bottom-right global).
+          Em mobile sobe um pouco pra não bater com a bottom nav. */}
       <button
         onClick={() => setOpen(o => !o)}
-        title="Copiloto IA (Branorte)"
-        className={`fixed bottom-6 right-6 z-40 h-14 w-14 rounded-full shadow-lg flex items-center justify-center transition-all ${
-          open
-            ? 'bg-surface-2 text-ink border border-border hover:bg-surface-3'
-            : 'bg-accent text-white hover:scale-105'
-        }`}
+        title="Copiloto IA — montar orçamento"
+        aria-label="Abrir copiloto IA"
+        className={`fixed bottom-6 left-6 lg:bottom-8 lg:left-8 z-40 h-14 w-14 rounded-full shadow-xl flex items-center justify-center transition-all
+                    ${open
+                      ? 'bg-surface-2 text-ink border border-border hover:bg-surface-3'
+                      : 'bg-gradient-to-br from-accent to-accent/80 text-white hover:scale-105 hover:shadow-2xl ring-1 ring-accent/40'}
+                    max-md:bottom-20`}
       >
-        {open ? <X className="h-5 w-5" /> : <Bot className="h-6 w-6" />}
+        {open ? <X className="h-5 w-5" /> : (
+          <div className="relative">
+            <Bot className="h-6 w-6" />
+            <Sparkles className="h-3 w-3 absolute -top-1 -right-1 text-yellow-300" />
+          </div>
+        )}
       </button>
 
-      {/* Drawer lateral */}
+      {/* Drawer lateral — abre do lado oposto ao FAB (esquerda no desktop, full em mobile) */}
       {open && (
-        <div className="fixed top-0 right-0 z-30 h-screen w-full sm:w-[380px] bg-bg border-l border-border shadow-2xl flex flex-col">
+        <div className="fixed top-0 left-0 z-30 h-screen w-full sm:w-[420px] bg-bg border-r border-border shadow-2xl flex flex-col">
           {/* Header */}
           <div className="px-4 py-3 border-b border-border flex items-center gap-3 bg-surface-2/40">
             <div className="h-9 w-9 rounded-full bg-accent/15 flex items-center justify-center text-accent">
