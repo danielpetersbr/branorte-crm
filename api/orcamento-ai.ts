@@ -63,16 +63,45 @@ Quando o vendedor pedir "monta orçamento de mini fábrica X kg/h com Y" (e não
 
 REGRAS DE COMPATIBILIDADE
 - Monofásico: motores até 5 CV. Acima disso, só trifásico. Se cliente quer mono mas item precisa motor 7.5+ CV, AVISE.
+- Capacidade do misturador (em LITROS) ≈ 2× kg desejados (ex: misturador 300 L = 150 kg ração)
 - Capacidade do misturador deve ser >= 30% da produção horária (batch de ~30 min)
 - Capacidade do silo deve ser >= 5× produção horária (autonomia mínima)
 - Quando há moinho, sempre incluir transportador de alimentação (TH 160 mm × 2-3 m)
+- Chupim 160mm aguenta até 10 ton/h; chupim 210mm aguenta até 20 ton/h. Escolha pela capacidade.
 
-CATEGORIAS DA TABELA precos_branorte
-TRANSPORTADOR (helicoidais 160/210mm, chupins), MISTURADOR (vertical/horizontal, 500-2000 kg),
-MOINHO (martelos 5-20 CV), CAIXA (dosagem, ração pronta), SILO (1-100 ton),
-ELEVADOR, CACAMBA (pesagem 600-3000 L), PRE-LIMPEZA, PENEIRA, HELICOIDE, BALANCA,
-ENSACADEIRA, COMPACTA (pacotes Linhas 01/02 Master), ALIMENTADOR, DESCARGA, MOEGA,
-PASSARELA, SUPORTE_BAG, ELEVADOR_SACARIA, OUTROS.
+CATEGORIAS DA TABELA precos_branorte (dados reais)
+- TRANSPORTADOR (132 itens): helicoidais TH 160mm/210mm, CHUPINS (transportadores de aspiração)
+- COMPACTA (35 itens): pacotes prontos (Linhas 01/02 Master, mini fábricas)
+- ELEVADOR (33 itens): elevadores de canecas, motor 1-5 CV
+- CAIXA (24 itens): caixas de dosagem, ração pronta
+- SILO (23 itens): 1 a 100 toneladas
+- MISTURADOR (22 itens): horizontal/vertical, capacidade em LITROS (300L=150kg até 30 CV)
+- MOINHO (22 itens): martelos, MODELO "BNMMxxx", potência 3 a 100 CV
+- CACAMBA (4 itens): pesagem 600 a 3000 L, motor 1-3 CV
+- HELICOIDE (6), PENEIRA (5), ENSACADEIRA (2), BALANCA (6), ALIMENTADOR (2)
+- PRE_LIMPEZA (3), MOEGA (1), DESCARGA (2), PASSARELA (2), SUPORTE_BAG (2), ELEVADOR_SACARIA (1)
+- OUTROS (4)
+
+NOMENCLATURA REAL DO CATÁLOGO (super importante)
+- **Chupim**: transportador de aspiração. Formato "chupim {diametro} x {comprimento} m".
+  Diâmetros disponíveis: **160mm** ou **210mm**. Comprimentos: 1,0 / 1,5 / 2,0 / 3,0 / ... / 12,0 m (decimais com VÍRGULA).
+  Exemplo cliente: "chupim 160 por 280" = quer chupim 160mm × 2,8m. ATENÇÃO: 2,8m PODE não existir — oferecer 2,0m ou 3,0m.
+- **Moinho**: modelo **BNMM** + potência ou capacidade. Ex: "BNMM130 (3,0 CV 2 POLOS - 300KG/H)". Pra buscar "moinho 3 CV" use motor_cv=3 (NÃO busca textual — vírgula quebra).
+- **Misturador**: descrito em LITROS (não em kg). 300 litros = ~150 kg de ração.
+- **TH 160 / TH 210**: transportador helicoidal de 160mm ou 210mm. Comprimentos variados.
+- **Cacamba de pesagem**: "Caçamba 600 L" até "Caçamba 1900 L". 1900 L = ~1000 kg de produto.
+
+⛔ REGRA DE OURO — NÃO ENCONTROU EXATO? OFEREÇA 3 ALTERNATIVAS PRÓXIMAS
+Quando o cliente pede algo específico e a busca exata não retorna, NUNCA responda "não encontramos" sem antes:
+1. Buscar SEM o filtro mais restritivo (ex: tira motor_cv exato, deixa só categoria)
+2. Pegar os 3-5 mais próximos do que cliente pediu
+3. Apresentar como "Não temos exato, mas as opções mais próximas são: ..."
+
+Exemplos:
+- Cliente: "moinho de 3 CV" → consultar_precos(categoria='MOINHO', motor_cv=3) → ✅ acha BNMM130
+- Cliente: "moinho de 4 CV" → motor_cv=4 vazio → consultar_precos(categoria='MOINHO') → mostra os 3 CV e 5 CV
+- Cliente: "chupim 160 por 280" → busca '160 x 2,8' vazio → consultar_precos(categoria='TRANSPORTADOR', busca='chupim 160') → mostra todos os comprimentos disponíveis
+- Cliente: "misturador 150 kg" → "150 kg" = 300 litros aprox → busca por 300 litros
 
 REGRAS DE AÇÕES PROPOSTAS
 - Use propor_adicionar_item pra cada item individual quando compor do zero
@@ -91,7 +120,7 @@ const tools = [
     function: {
       name: 'consultar_precos',
       description:
-        'Busca itens na tabela oficial de preços (precos_branorte). Use pra consultar preço, motor padrão, capacidade etc. de qualquer equipamento. Retorna até 20 resultados ordenados por relevância.',
+        'Busca itens na tabela oficial de preços (precos_branorte). Use pra consultar preço, motor padrão, capacidade etc. de qualquer equipamento. Retorna até 30 resultados.\n\n⚠️ DICA IMPORTANTE: o campo descricao tem nomenclatura com vírgula decimal ("3,0 CV", "160 x 2,8 m"). Pra buscar por potência exata use motor_cv (numérico), NÃO busca textual. Pra buscar por dimensão use busca com vírgula ("160 x 2,8") ou ponto ("160 x 2.8") — vamos normalizar dos dois jeitos.',
       parameters: {
         type: 'object',
         properties: {
@@ -103,8 +132,15 @@ const tools = [
           busca: {
             type: 'string',
             description:
-              'Termo livre que filtra por descrição (ILIKE %busca%). Ex: "pesagem 1900", "moinho 10 cv", "silo 30 ton". Opcional.',
+              'Termo livre que filtra por descrição (ILIKE %busca%). Ex: "pesagem 1900", "silo 30 ton", "chupim 160", "horizontal 300". Aceita vírgula ou ponto decimal. Opcional.',
           },
+          motor_cv: {
+            type: 'number',
+            description:
+              'Filtro EXATO por potência em CV (campo numérico motor_cv). Use pra "moinho de 3 CV", "transportador 5 CV", etc. NÃO use a busca textual pra isso (vai falhar por vírgula).',
+          },
+          motor_cv_min: { type: 'number', description: 'Filtro mínimo de CV. Opcional.' },
+          motor_cv_max: { type: 'number', description: 'Filtro máximo de CV. Opcional.' },
           capacidade_min: {
             type: 'number',
             description: 'Filtro mínimo em capacidade_kg_pratica ou capacidade_litros. Opcional.',
@@ -255,6 +291,9 @@ const tools = [
 async function tool_consultar_precos(supa: SupabaseClient, args: Record<string, unknown>) {
   const categoria = args.categoria as string | undefined
   const busca = args.busca as string | undefined
+  const motorCv = args.motor_cv as number | undefined
+  const motorCvMin = args.motor_cv_min as number | undefined
+  const motorCvMax = args.motor_cv_max as number | undefined
   const capMin = args.capacidade_min as number | undefined
   const capMax = args.capacidade_max as number | undefined
   const limit = Math.min((args.max_resultados as number) || 15, 30)
@@ -270,7 +309,20 @@ async function tool_consultar_precos(supa: SupabaseClient, args: Record<string, 
     .limit(limit)
 
   if (categoria) q = q.eq('categoria', categoria.toUpperCase())
-  if (busca) q = q.ilike('descricao', `%${busca}%`)
+  if (busca) {
+    // Normaliza vírgula/ponto: cliente pode escrever "160 x 2,8" ou "160 x 2.8"
+    // Catálogo usa vírgula. Aceitar ambos no input criando ORs:
+    const buscaNormalizada = busca.replace(/\./g, ',')  // 2.8 → 2,8
+    const buscaAlternativa = busca.replace(/,/g, '.')   // 2,8 → 2.8
+    if (buscaNormalizada !== buscaAlternativa) {
+      q = q.or(`descricao.ilike.%${buscaNormalizada}%,descricao.ilike.%${buscaAlternativa}%`)
+    } else {
+      q = q.ilike('descricao', `%${busca}%`)
+    }
+  }
+  if (motorCv != null) q = q.eq('motor_cv', motorCv)
+  if (motorCvMin != null) q = q.gte('motor_cv', motorCvMin)
+  if (motorCvMax != null) q = q.lte('motor_cv', motorCvMax)
   if (capMin != null) q = q.gte('capacidade_kg_pratica', capMin)
   if (capMax != null) q = q.lte('capacidade_kg_pratica', capMax)
 
