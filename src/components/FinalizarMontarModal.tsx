@@ -226,38 +226,25 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
     if (open) { setWaStatus('idle'); setWaMsg(''); setErro(null); setGerandoProgress(0); setGerandoStep('') }
   }, [open])
 
-  // Sprint 3: Auto-submit countdown quando vem do copiloto IA com cliente preenchido
-  const [autoSubmitCountdown, setAutoSubmitCountdown] = useState<number | null>(null)
-  const autoSubmitTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Sprint 3: Auto-submit IMEDIATO quando vem do copiloto IA com cliente preenchido.
+  // Modal fica invisível (headless) e dispara handleGerar direto. Progresso aparece
+  // como toast no fim (onSuccess do parent).
+  const [headlessMode, setHeadlessMode] = useState(false)
   useEffect(() => {
-    if (!open || !autoSubmitOnOpen) return
-    // Aguarda 250ms pro initialModal preencher cliNome antes de checar
+    if (!open || !autoSubmitOnOpen) { setHeadlessMode(false); return }
+    // Aguarda initialModal preencher cliNome antes de disparar
     const startTimer = setTimeout(() => {
-      if (!cliNome.trim()) return  // sem nome, não auto-submita
-      setAutoSubmitCountdown(3)
-      autoSubmitTimerRef.current = setInterval(() => {
-        setAutoSubmitCountdown(prev => {
-          if (prev == null || prev <= 1) {
-            if (autoSubmitTimerRef.current) clearInterval(autoSubmitTimerRef.current)
-            // Auto-clica Gerar com config padrão (salvar no servidor)
-            handleGerar({ salvarNaPasta: false, salvarNoServidor: true, pdfQuality: pdfAltaQualidade ? 'high' : 'normal' })
-            return null
-          }
-          return prev - 1
-        })
-      }, 1000)
-    }, 300)
-    return () => {
-      clearTimeout(startTimer)
-      if (autoSubmitTimerRef.current) clearInterval(autoSubmitTimerRef.current)
-    }
+      if (!cliNome.trim()) {
+        setHeadlessMode(false)
+        return
+      }
+      setHeadlessMode(true)
+      // Dispara gerar IMEDIATAMENTE (sem countdown — IA já confirmou os dados em chat)
+      handleGerar({ salvarNaPasta: false, salvarNoServidor: true, pdfQuality: pdfAltaQualidade ? 'high' : 'normal' })
+    }, 400)
+    return () => clearTimeout(startTimer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, autoSubmitOnOpen])
-
-  function cancelAutoSubmit() {
-    if (autoSubmitTimerRef.current) clearInterval(autoSubmitTimerRef.current)
-    setAutoSubmitCountdown(null)
-  }
 
   // Modo edição: pré-popula campos do modal com dados do orçamento sendo editado.
   // Roda 1x quando o modal abre OU quando initialModal chega.
@@ -817,6 +804,25 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
 
   if (!open) return null
 
+  // Headless mode: vem do copiloto IA com cliente já preenchido. Não renderiza
+  // o modal (lógica de gerar roda em background). Vendedor só vê o toast de
+  // sucesso/erro no parent. Toast de progresso aparece em fixed-position.
+  if (headlessMode) {
+    return (
+      <div className="fixed top-6 right-6 z-50 bg-bg border border-accent/40 rounded-lg shadow-2xl px-4 py-3 flex items-center gap-3 max-w-[360px]">
+        <Loader2 className="h-5 w-5 animate-spin text-accent shrink-0" />
+        <div className="min-w-0">
+          <div className="text-[12.5px] font-semibold text-ink truncate">
+            Gerando orçamento pra {cliNome}…
+          </div>
+          <div className="text-[11px] text-ink-muted leading-snug">
+            {gerandoStep || 'PDF + DOCX + salvando na pasta + WhatsApp'}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => !gerando && onClose()}>
       <div
@@ -857,31 +863,6 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             </div>
             <div className="text-[10px] text-ink-faint mt-1.5 leading-snug">
               Não feche essa janela. Arquivos sobem pro servidor e o PC do escritório sincroniza pra pasta <span className="font-mono">Z:\</span> automaticamente.
-            </div>
-          </div>
-        )}
-
-        {/* Sprint 3: Banner auto-submit countdown (vem do copiloto IA) */}
-        {autoSubmitCountdown != null && (
-          <div className="sticky top-[57px] z-10 bg-accent/15 border-b border-accent/40 px-4 py-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 min-w-0 flex-1">
-                <Loader2 className="h-4 w-4 animate-spin shrink-0 text-accent" />
-                <div className="min-w-0">
-                  <div className="text-[12px] font-semibold text-ink">
-                    Gerando automaticamente em {autoSubmitCountdown}s…
-                  </div>
-                  <div className="text-[10px] text-ink-muted leading-snug">
-                    Cliente "{cliNome}" pré-preenchido pelo copiloto. Clique cancelar pra editar manualmente.
-                  </div>
-                </div>
-              </div>
-              <button
-                onClick={cancelAutoSubmit}
-                className="text-[11px] font-bold px-3 py-1.5 rounded bg-surface-2 hover:bg-surface-3 text-ink shrink-0"
-              >
-                Cancelar
-              </button>
             </div>
           </div>
         )}
