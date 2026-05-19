@@ -565,7 +565,7 @@ export function OrcamentoAIChat({
                 </div>
                 <div className="text-[10px] text-ink-faint mt-2 px-1 flex items-center gap-1">
                   <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-                  gpt-4o-mini · catálogo oficial · Enter envia, Shift+Enter pula linha
+                  gpt-5.4-mini · catálogo oficial · Enter envia, Shift+Enter pula linha
                 </div>
               </>
             )}
