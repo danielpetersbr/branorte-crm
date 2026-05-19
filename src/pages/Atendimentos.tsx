@@ -102,8 +102,11 @@ function EmptyCell() {
   return <span className="text-[11px] text-ink-faint/40">—</span>
 }
 
-function isHotLead(quando: string | null): boolean {
-  return quando === 'Agora'
+// Ana V16.24 nao pergunta mais "quando_investir", entao esse sinal nao eh
+// mais confiavel — leads antigos ainda tem o campo preenchido, mas leads
+// novos nao. Desligado pra evitar destaque vermelho enganoso.
+function isHotLead(_quando: string | null): boolean {
+  return false
 }
 
 function isFreshLead(dateStr: string | null | undefined): boolean {
