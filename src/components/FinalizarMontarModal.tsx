@@ -96,22 +96,30 @@ function formatBRL(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 }
 
-function nomeBase(numero: string, cliente: string, descricao: string, isTest = false): string {
+function sanitizeNomeArquivo(s: string): string {
   // Sanitize: remove acentos/cedilha + chars proibidos.
   // Por que normalizar acentos: Supabase Storage rejeita URLs com chars
   // unicode no path (fastify quebra com FST_ERR_BAD_URL: "is not a valid url
   // component"). "GRÃOS" → "GRAOS". Mantém o nome do cliente legível no DB
   // (esse sanitize só afeta o NOME DO ARQUIVO no storage/pasta Z:\).
-  const sanitize = (s: string) =>
-    s.normalize('NFD').replace(/[̀-ͯ]/g, '')  // strip diacritics
-     .replace(/[<>:"/\\|?*]/g, '')                       // chars proibidos Windows/Storage
-     .slice(0, 80).trim()
-  const desc = sanitize(descricao || 'Personalizado').slice(0, 100) || 'Personalizado'
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '')  // strip diacritics
+   .replace(/[<>:"/\\|?*]/g, '')                       // chars proibidos Windows/Storage
+   .slice(0, 80).trim()
+}
+
+function nomeBase(numero: string, cliente: string, descricao: string, isTest = false): string {
+  const desc = sanitizeNomeArquivo(descricao || 'Personalizado').slice(0, 100) || 'Personalizado'
   if (isTest) {
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(11, 19)
-    return `TESTE-${ts}-${sanitize(cliente || 'cliente')} (${numero})`
+    return `TESTE-${ts}-${sanitizeNomeArquivo(cliente || 'cliente')} (${numero})`
   }
-  return `${numero} - ${sanitize(cliente || 'Sem cliente')} (${desc})`
+  return `${numero} - ${sanitizeNomeArquivo(cliente || 'Sem cliente')} (${desc})`
+}
+
+// Nome curto pro filename enviado no WhatsApp: só numero + cliente (sem descricao).
+// O arquivo salvo localmente em Z:\ mantém o nome completo via nomeBase().
+function nomeBaseWhatsApp(numero: string, cliente: string): string {
+  return `${numero} - ${sanitizeNomeArquivo(cliente || 'Sem cliente')}`
 }
 
 // Auto-sugere descrição curta a partir dos itens do carrinho.
@@ -675,6 +683,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         if (h && (h as any).name && /teste/i.test((h as any).name)) isTesteMode = true
       } catch {}
       const base = nomeBase(orc.numero, cliNome, descricao || sugestao, isTesteMode)
+      // Filename curto pro WhatsApp (sem descricao do produto)
+      const baseWhatsApp = nomeBaseWhatsApp(orc.numero, cliNome)
       let baixouDocx = false, baixouPdf = false, salvouNaPasta = false
 
       setStep('Preparando para salvar...', 70)
@@ -739,6 +749,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             pdfBlob,
             txtBlob,
             sendWhatsApp: enviarMeuZap && !!pdfBlob,
+            whatsAppFilename: `${baseWhatsApp}.pdf`,
             whatsAppCaption: `📄 Orçamento ${orc.numero} — ${cliNome.trim()}\n\nPersonalizado: ${descricao || sugestao}\nGerado em ${dataEmissaoBR}\n\n👇 Encaminhe pro cliente`,
             onProgress: (s) => {
               // Heurística: cada update do upload empurra +3% (cap em 92%).
@@ -811,7 +822,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             body: {
               vendedor_nome: primeiroNome,
               pdf_url: signed.signedUrl,
-              filename: `${base}.pdf`,
+              filename: `${baseWhatsApp}.pdf`,
               cliente_nome: cliNome.trim(),
               caption: `📄 Orçamento ${orc.numero} — ${cliNome.trim()}\n\nPersonalizado: ${descricao || sugestao}\nGerado em ${dataEmissaoBR}\n\n👇 Encaminhe pro cliente`,
             },

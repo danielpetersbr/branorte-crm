@@ -17,6 +17,8 @@ export interface OrcamentoUploadInput {
   txtBlob: Blob
   sendWhatsApp: boolean
   whatsAppCaption?: string
+  /** Nome do arquivo PDF anexado no WhatsApp (curto, sem descricao). Default: `${base}.pdf` */
+  whatsAppFilename?: string
   /** Callback opcional pra mostrar progresso no UI ("Enviando docx (2.4MB)...") */
   onProgress?: (step: string) => void
 }
@@ -202,7 +204,7 @@ export async function uploadOrcamentoViaServer(input: OrcamentoUploadInput): Pro
       send_whatsapp: input.sendWhatsApp && input.pdfBlob != null,
       whatsapp_envio_path: presign.envio?.path,
       whatsapp_caption: input.whatsAppCaption,
-      whatsapp_filename: `${input.base}.pdf`,
+      whatsapp_filename: input.whatsAppFilename || `${input.base}.pdf`,
       vendedor_nome: primeiroNome,
       cliente_nome: input.clienteNome,
     }),
