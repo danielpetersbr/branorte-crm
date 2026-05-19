@@ -96,7 +96,15 @@ function formatBRL(v: number): string {
 }
 
 function nomeBase(numero: string, cliente: string, descricao: string, isTest = false): string {
-  const sanitize = (s: string) => s.replace(/[<>:"/\\|?*]/g, '').slice(0, 80).trim()
+  // Sanitize: remove acentos/cedilha + chars proibidos.
+  // Por que normalizar acentos: Supabase Storage rejeita URLs com chars
+  // unicode no path (fastify quebra com FST_ERR_BAD_URL: "is not a valid url
+  // component"). "GRÃOS" → "GRAOS". Mantém o nome do cliente legível no DB
+  // (esse sanitize só afeta o NOME DO ARQUIVO no storage/pasta Z:\).
+  const sanitize = (s: string) =>
+    s.normalize('NFD').replace(/[̀-ͯ]/g, '')  // strip diacritics
+     .replace(/[<>:"/\\|?*]/g, '')                       // chars proibidos Windows/Storage
+     .slice(0, 80).trim()
   const desc = sanitize(descricao || 'Personalizado').slice(0, 100) || 'Personalizado'
   if (isTest) {
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(11, 19)

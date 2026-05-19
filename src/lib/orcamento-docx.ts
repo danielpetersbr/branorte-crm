@@ -415,12 +415,16 @@ export async function baixarOrcamentoDocx(input: DocxInput): Promise<void> {
 
 // Helpers pra montar nome de arquivo + .txt note
 export function nomeBaseArquivo(input: { numero: string; cliente_nome: string; modelo_basename?: string | null; voltagem?: string }): string {
-  const safeNome = input.cliente_nome.replace(/[^a-zA-Z0-9À-ÿ ]/g, '').trim().slice(0, 60)
+  // Normaliza Unicode (strip acentos/cedilha). Por que: Supabase Storage
+  // rejeita URLs com chars unicode no path. "GRÃOS" → "GRAOS", "ção" → "cao".
+  const stripDiacritics = (s: string) =>
+    s.normalize('NFD').replace(/[̀-ͯ]/g, '')
+  const safeNome = stripDiacritics(input.cliente_nome).replace(/[^a-zA-Z0-9 ]/g, '').trim().slice(0, 60)
   // Padrão Branorte: "2026 - 0686 - Cliente (Compacta XX) trifásico"
   let base = `${input.numero} - ${safeNome || 'cliente'}`
   if (input.modelo_basename) {
     // modelo_basename já tem "(Compacta 01 - ...) trifásico"
-    base += ` ${input.modelo_basename.replace(/[\\/:*?"<>|]/g, '').trim()}`
+    base += ` ${stripDiacritics(input.modelo_basename).replace(/[\\/:*?"<>|]/g, '').trim()}`
   }
   return base.slice(0, 180)  // limite seguro pra Windows
 }
