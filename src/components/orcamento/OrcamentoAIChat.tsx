@@ -199,7 +199,17 @@ export function OrcamentoAIChat({
   async function iniciarGravacao() {
     setErro(null)
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // Constraints melhoradas: noise suppression, echo cancel, AGC, mono pra
+      // voz (Whisper roda melhor em mono 16-48kHz). Limpa ruido de fundo.
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
+          sampleRate: 48000,
+        },
+      })
       streamRef.current = stream
 
       // Analyser pra waveform
@@ -211,7 +221,11 @@ export function OrcamentoAIChat({
       audioCtxRef.current = audioCtx
       analyserRef.current = analyser
 
-      const rec = new MediaRecorder(stream, { mimeType: 'audio/webm' })
+      // Opus 128kbps — qualidade ~80% maior que default (~64kbps).
+      // Fallback pro mime default se Opus nao suportado (Safari iOS antigo).
+      const mimePreferido = 'audio/webm;codecs=opus'
+      const mime = MediaRecorder.isTypeSupported(mimePreferido) ? mimePreferido : 'audio/webm'
+      const rec = new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 128000 })
       chunksRef.current = []
       rec.ondataavailable = e => {
         if (e.data.size > 0) chunksRef.current.push(e.data)
@@ -535,14 +549,6 @@ export function OrcamentoAIChat({
             ) : (
               <>
                 <div className="flex items-end gap-2">
-                  <button
-                    onClick={iniciarGravacao}
-                    disabled={enviando || transcrevendo}
-                    title="Gravar áudio"
-                    className="h-11 w-11 shrink-0 rounded-full bg-surface-3 text-ink-muted hover:text-accent hover:bg-accent/10 hover:ring-2 hover:ring-accent/30 flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <Mic className="h-4.5 w-4.5" />
-                  </button>
                   <textarea
                     ref={textareaRef}
                     value={input}
@@ -554,6 +560,14 @@ export function OrcamentoAIChat({
                     className="flex-1 resize-none rounded-2xl bg-bg border border-border px-3.5 py-2.5 text-[13.5px] leading-relaxed text-ink placeholder-ink-faint focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent/60 max-h-[140px] transition-shadow"
                     style={{ minHeight: '44px' }}
                   />
+                  <button
+                    onClick={iniciarGravacao}
+                    disabled={enviando || transcrevendo}
+                    title="Gravar áudio"
+                    className="h-11 w-11 shrink-0 rounded-full bg-surface-3 text-ink-muted hover:text-accent hover:bg-accent/10 hover:ring-2 hover:ring-accent/30 flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Mic className="h-4.5 w-4.5" />
+                  </button>
                   <button
                     onClick={() => enviar()}
                     disabled={!podeEnviar}
