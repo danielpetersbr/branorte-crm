@@ -545,21 +545,21 @@ export function Atendimentos() {
               <table className="w-full table-fixed">
                 <thead className="sticky top-0 z-10 bg-surface backdrop-blur-sm">
                   <tr className="border-b border-border bg-surface-2/40 [&>th]:text-left [&>th]:text-[10px] [&>th]:uppercase [&>th]:tracking-wider [&>th]:font-bold [&>th]:text-ink-muted [&>th]:px-1.5 [&>th]:py-3 [&>th]:whitespace-nowrap">
-                    <th className="w-[78px]">Chegou</th>
-                    <th className="w-[120px]">Lead</th>
-                    <th className="hidden md:table-cell w-[110px]">Estado</th>
-                    <th className="w-[140px]">Telefone</th>
-                    <th className="hidden lg:table-cell w-[100px]">Origem</th>
-                    <th className="hidden 2xl:table-cell w-[110px]">Criativo</th>
-                    <th className="hidden lg:table-cell w-[160px]">Motivo</th>
-                    <th className="hidden 2xl:table-cell w-[110px]" title="Pra que serve a fábrica: consumo, venda ou os dois (Ana V16.24)">Finalidade</th>
-                    <th className="hidden xl:table-cell w-[72px]">Animal</th>
-                    <th className="hidden xl:table-cell w-[56px]" title="Cabeças (consumo) — vazio se for venda (ver Produção/h)">Qtd</th>
-                    <th className="hidden xl:table-cell w-[80px]" title="Produção desejada quando é venda (kg/h)">Produção/h</th>
-                    <th className="w-[90px]">Vendedor</th>
-                    <th className="hidden 2xl:table-cell w-[120px]" title="Etiqueta atribuída no WhatsApp do vendedor">Etiqueta WA</th>
-                    <th className="hidden 2xl:table-cell w-[64px]" title="Cliente clicou no botão FALAR COM CONSULTOR">Botão</th>
-                    <th className="!text-right w-[44px]"></th>
+                    <th className="w-[72px]">Chegou</th>
+                    <th className="w-[110px]">Lead</th>
+                    <th className="hidden md:table-cell w-[100px]">Estado</th>
+                    <th className="w-[132px]">Telefone</th>
+                    <th className="hidden lg:table-cell w-[88px]">Origem</th>
+                    <th className="hidden 2xl:table-cell w-[100px]">Criativo</th>
+                    <th className="hidden lg:table-cell">Motivo</th>
+                    <th className="hidden 2xl:table-cell w-[100px]" title="Pra que serve a fábrica: consumo, venda ou os dois (Ana V16.24)">Finalidade</th>
+                    <th className="hidden 2xl:table-cell w-[60px]">Animal</th>
+                    <th className="hidden 2xl:table-cell w-[50px]" title="Cabeças (consumo) — vazio se for venda (ver Produção/h)">Qtd</th>
+                    <th className="hidden 2xl:table-cell w-[72px]" title="Produção desejada quando é venda (kg/h)">Produção/h</th>
+                    <th className="w-[88px]">Vendedor</th>
+                    <th className="hidden 2xl:table-cell w-[110px]" title="Etiqueta atribuída no WhatsApp do vendedor">Etiqueta WA</th>
+                    <th className="hidden 2xl:table-cell w-[56px]" title="Cliente clicou no botão FALAR COM CONSULTOR">Botão</th>
+                    <th className="!text-right w-[40px]"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -727,7 +727,7 @@ export function Atendimentos() {
                           })()}
                         </td>
                         {/* ANIMAL */}
-                        <td className="hidden xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
+                        <td className="hidden 2xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
                           {r.qual_animal ? (
                             <span className="text-[12px] text-ink-muted">{r.qual_animal}</span>
                           ) : (
@@ -735,7 +735,7 @@ export function Atendimentos() {
                           )}
                         </td>
                         {/* QTD (cabeças) — V16.24: vazio quando finalidade=revenda (vendedor não pergunta qtd nesse caso) */}
-                        <td className="hidden xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
+                        <td className="hidden 2xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
                           {r.quantos_animais ? (
                             <span className="text-[12px] text-ink-muted tabular-nums">{r.quantos_animais}</span>
                           ) : (
@@ -743,7 +743,7 @@ export function Atendimentos() {
                           )}
                         </td>
                         {/* PRODUÇÃO/H (kg/h) — V16.24: usado quando finalidade=venda (substitui Momento) */}
-                        <td className="hidden xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
+                        <td className="hidden 2xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
                           {r.capacidade_producao ? (
                             <span className="text-[12px] text-ink-muted tabular-nums">{r.capacidade_producao}</span>
                           ) : (
@@ -778,7 +778,7 @@ export function Atendimentos() {
                             o cliente no Zap (ex: aparecia "NAO RESPONDEU MAIS" do
                             Pedro quando o responsável real era o Gustavo). Agora
                             filtra pelo first-name UPPERCASE do vendedor efetivo. */}
-                        <td className="hidden xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
+                        <td className="hidden 2xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
                           {(() => {
                             const allLabels = lookupWaLabels(waLabelsMap, r.telefone)
                             if (allLabels.length === 0) return <EmptyCell />
