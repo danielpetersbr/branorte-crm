@@ -162,16 +162,18 @@ export async function gerarPdfDoPreview(
       // PRIMEIRO: se cai dentro de no-break, move pra ANTES dele
       // DEPOIS: procura linha em branco pra refinar
       function findCutY(idealY: number, maxY: number, sliceStart: number): number {
-        // 1) Move idealY pra fora de qualquer no-break (iterativamente)
+        // 1) Move idealY pra fora de qualquer no-break (iterativamente).
+        // Margem de 30px antes / 16px depois pra evitar borda/sombra/padding
+        // do bloco serem cortados.
         let y = idealY
         for (let iter = 0; iter < 10; iter++) {
           const r = isInsideNoBreak(y)
           if (!r.inside) break
           // Tenta antes
-          y = r.topY! - 4
+          y = r.topY! - 30
           // Se moveu pra ANTES do sliceStart (pagina vazia), tenta DEPOIS
           if (y <= sliceStart + 50) {
-            y = r.bottomY! + 4
+            y = r.bottomY! + 16
           }
         }
         // 2) Refina: procura linha branca proxima

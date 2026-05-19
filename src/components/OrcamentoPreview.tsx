@@ -176,13 +176,14 @@ function findBreakNear(container: HTMLElement, idealY: number, tolerance: number
     return null
   }
 
-  // 1) Se idealY cai dentro de algum no-break, tenta mover pra antes (com margem de 8px)
+  // 1) Se idealY cai dentro de algum no-break, tenta mover pra antes (margem 30px
+  // pra dar respiro suficiente — borda/sombra/padding do box nao sao cortados)
   let y = idealY
   for (let iter = 0; iter < 8; iter++) {
     const hit = findContaining(y)
     if (!hit) break
     const { top } = localTop(hit)
-    y = top - 8
+    y = top - 30
   }
 
   // Se foi movido pra MUITO antes (perdemos > 30% da pagina), eh melhor empurrar pra DEPOIS do no-break original
@@ -191,7 +192,7 @@ function findBreakNear(container: HTMLElement, idealY: number, tolerance: number
     const originalHit = findContaining(idealY)
     if (originalHit) {
       const { bottom } = localTop(originalHit)
-      return bottom + 4
+      return bottom + 16
     }
   }
 
@@ -200,7 +201,7 @@ function findBreakNear(container: HTMLElement, idealY: number, tolerance: number
   const stillIn = findContaining(y)
   if (stillIn) {
     const { bottom } = localTop(stillIn)
-    return bottom + 4
+    return bottom + 16
   }
 
   // 2) Refino: cola no fim de algum elemento entre (y-tolerance, y) pra ficar limpo
@@ -1837,10 +1838,10 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           <div data-no-break>
             <SectionHeader>Tributos</SectionHeader>
             <div className="text-[14px] text-gray-700 leading-snug space-y-1.5 text-justify">
-              <p>
+              <p data-no-break>
                 As condições desta proposta consideram os impostos e taxas vigentes, quando da elaboração da mesma sendo que quaisquer alterações sobre os tributos Municipais, Estaduais e Federais serão repassados ou de responsabilidade do cliente, incluindo pagamento ou documento de exoneração fiscal da diferença do ICMS ao Estado de destino ou custos de caminhão parado em posto fiscal da fronteira.
               </p>
-              <p>
+              <p data-no-break>
                 Sendo o contratante não contribuinte de ICMS, este deverá obrigatoriamente depositar para a contratada até o dia do embarque o valor correspondente ao diferencial de alíquota de ICMS referente ao objeto deste contrato, para que a CONTRATADA possa então pagar este diferencial, cujo comprovante de pagamento será enviado com a nota fiscal de vendas das mercadorias.
               </p>
             </div>
@@ -1856,10 +1857,10 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           <div data-no-break>
             <SectionHeader>Garantia</SectionHeader>
             <div className="text-[14px] text-gray-700 leading-snug space-y-1.5 text-justify">
-              <p>
+              <p data-no-break>
                 Os equipamentos fornecidos pela metalúrgica BRANORTE estão garantidos pelo prazo de <strong>12 (doze) meses</strong> contados da data de entrega dos mesmos, quanto ao funcionamento, desde que sejam armazenados, montados e operados dentro das condições para as quais foram projetados. Durante o prazo de garantia serão substituídas as peças que apresentarem defeitos, ficando as despesas de frete das peças, deslocamento, estadia e alimentação dos técnicos montadores por conta do cliente. Expirado o prazo de garantia, forneceremos assistência técnica mediante solicitação. Ficam excluídos da garantia os seguintes itens: canalizações e dispositivos de interligação.
               </p>
-              <p>
+              <p data-no-break>
                 Componentes fabricados e/ou montados por terceiros, tais como: motores elétricos, redutores, chaves elétricas, quadro de comando elétrico, correias, rolamentos (tendo somente a garantia fornecida pelos respectivos fabricantes), bem como toda e qualquer obra civil que é de responsabilidade do cliente.
               </p>
             </div>
