@@ -251,7 +251,21 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
     // Sem isso, em caso de falha o toast 'Gerando...' fica eterno.
     ;(async () => {
       try {
-        await handleGerar({ salvarNaPasta: false, salvarNoServidor: true, pdfQuality: pdfAltaQualidade ? 'high' : 'normal' })
+        // Decide rota: se tem handle da pasta Z:\ (PC do Daniel/escritório),
+        // salva DIRETO lá — pula bucket inteiro. Daemon nem precisa correr.
+        // Vendedores mobile (sem File System Access) caem pro server upload.
+        let temFolderHandle = false
+        if (isFolderScanSupported()) {
+          try {
+            const h = await getStoredFolderHandle()
+            temFolderHandle = !!h
+          } catch { /* sem permissão / handle perdido — cai pro server */ }
+        }
+        await handleGerar({
+          salvarNaPasta: temFolderHandle,
+          salvarNoServidor: !temFolderHandle,
+          pdfQuality: pdfAltaQualidade ? 'high' : 'normal',
+        })
       } catch (e) {
         console.error('[autoSubmit] handleGerar erro:', e)
       } finally {
