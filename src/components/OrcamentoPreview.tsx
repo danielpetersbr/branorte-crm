@@ -858,16 +858,16 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       }
                     </div>
                     {it.foto_url && (
-                      <div className="w-full flex flex-col items-center mt-1">
+                      <div className="w-full flex flex-col items-center mt-1" data-no-break>
                         <div
                           style={{
                             width: '100%',
-                            maxWidth: 480,
-                            maxHeight: 220,
+                            maxWidth: 540,
+                            maxHeight: 360,
                             background: '#fff',
                             border: '1px solid #d1d5db',
                             borderRadius: 4,
-                            padding: 6,
+                            padding: 8,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             overflow: 'hidden',
                             boxSizing: 'border-box',
@@ -878,7 +878,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             alt={it.nome}
                             style={{
                               maxWidth: '100%',
-                              maxHeight: 208,
+                              maxHeight: 344,
                               width: 'auto',
                               height: 'auto',
                               objectFit: 'contain',
