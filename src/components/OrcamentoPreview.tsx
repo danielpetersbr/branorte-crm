@@ -783,7 +783,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           }`}
                           title={it.tungstenio ? 'Tungstênio ativo (R$ 99/un). Clique pra voltar ao aço tratado.' : 'Clique pra cotar em Tungstênio (R$ 99/un)'}
                         >
-                          {it.tungstenio ? '⬡ Tungstênio' : 'W'}
+                          {it.tungstenio ? '⬡ Tungstênio' : 'Ativar Tungstênio'}
                         </button>
                       )}
                     </div>
