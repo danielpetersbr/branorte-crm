@@ -14,7 +14,8 @@ import {
   type CatalogoItem, type CatalogoMotor, type CatalogoAcessorio,
 } from '@/hooks/useCatalogo'
 import { FinalizarMontarModal, type CarrinhoSnapshot } from '@/components/FinalizarMontarModal'
-import { OrcamentoPreview, type ParcelaPagamento } from '@/components/OrcamentoPreview'
+import { OrcamentoPreview, type ParcelaPagamento, type PreviewClienteDados } from '@/components/OrcamentoPreview'
+import { ClienteEditModal } from '@/components/ClienteEditModal'
 import { useOrcamentoModelos, useOrcamentoGerado, type OrcamentoModelo } from '@/hooks/useOrcamentoBuilder'
 import { OrcamentoAIChat } from '@/components/orcamento/OrcamentoAIChat'
 import { useSearchParams } from 'react-router-dom'
@@ -332,6 +333,10 @@ export function OrcamentoMontar() {
     forma_pagamento: string | null
     prazo_entrega: string | null
   } | null>(null)
+
+  // Estado do cliente (preenchido via modal de edição ou IA)
+  const [clienteDados, setClienteDados] = useState<PreviewClienteDados>({})
+  const [clienteModalOpen, setClienteModalOpen] = useState(false)
 
   function atualizarTermo(key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento', v: string) {
     if (key === 'dataVenda') setDataVendaTxt(v)
@@ -1721,6 +1726,8 @@ export function OrcamentoMontar() {
                 onTrocarMotor={trocarMotorDoItem}
                 vendedoresContato={vendedoresContato}
                 vendedorResponsavelNome={profile?.display_name || null}
+                cliente={clienteDados}
+                onEditCliente={() => setClienteModalOpen(true)}
               />
             ) : (
               <div className="divide-y divide-border">
@@ -1825,6 +1832,24 @@ export function OrcamentoMontar() {
           setAcessoriosOpen(false)
         }}
         onRemove={() => { setAcessorios(null); setAcessoriosOpen(false) }}
+      />
+
+      {/* Modal de edição dos dados do cliente (CNPJ/CPF auto-fill) */}
+      <ClienteEditModal
+        open={clienteModalOpen}
+        cliente={clienteDados}
+        onClose={() => setClienteModalOpen(false)}
+        onSave={dados => {
+          setClienteDados(dados)
+          // Sincroniza com initialModal pra quando abrir FinalizarMontarModal
+          setInitialModal(prev => ({
+            cliente_nome: dados.nome || prev?.cliente_nome || '',
+            cliente_dados: { ...dados },
+            observacoes: prev?.observacoes ?? null,
+            forma_pagamento: prev?.forma_pagamento ?? null,
+            prazo_entrega: prev?.prazo_entrega ?? null,
+          }))
+        }}
       />
 
       {/* Modal de produto personalizado (ad-hoc) */}

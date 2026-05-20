@@ -146,6 +146,9 @@ export interface OrcamentoPreviewProps {
   // O vendedorResponsavelNome destaca quem ta vendendo esse orcamento.
   vendedoresContato?: Array<{ nome: string; telefone: string }>
   vendedorResponsavelNome?: string | null
+
+  // Callback pra abrir editor de dados do cliente direto no preview
+  onEditCliente?: () => void
 }
 
 function formatBRLBare(v: number): string {
@@ -243,6 +246,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     parcelas, onUpdateParcelas,
     motoresDisponiveis, onTrocarMotor,
     vendedoresContato, vendedorResponsavelNome,
+    onEditCliente,
   } = props
   const [editingNomeUid, setEditingNomeUid] = useState<string | null>(null)
   const [editingNomeValor, setEditingNomeValor] = useState<string>('')
@@ -509,22 +513,33 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
         </div>
 
         {/* CLIENTE | A/C | FONE */}
-        <div className="grid grid-cols-3 gap-4 text-[16px] font-bold text-gray-900 mb-1">
-          <div>
-            CLIENTE:{' '}
-            {cli.nome
-              ? <span className="text-gray-700 font-semibold ml-1">{cli.nome}</span>
-              : <span className="text-gray-400 italic font-semibold ml-1">[preencher]</span>}
+        <div
+          className={`${!renderMode && onEditCliente ? 'cursor-pointer hover:bg-blue-50/50 -mx-2 px-2 py-1 rounded transition-colors group/cli' : ''}`}
+          onClick={!renderMode && onEditCliente ? onEditCliente : undefined}
+          title={!renderMode && onEditCliente ? 'Clique pra preencher dados do cliente' : undefined}
+        >
+          {!renderMode && onEditCliente && (
+            <div className="text-[10px] text-blue-500 font-semibold mb-0.5 opacity-0 group-hover/cli:opacity-100 transition-opacity">
+              ✏️ Clique pra editar dados do cliente
+            </div>
+          )}
+          <div className="grid grid-cols-3 gap-4 text-[16px] font-bold text-gray-900 mb-1">
+            <div>
+              CLIENTE:{' '}
+              {cli.nome
+                ? <span className="text-gray-700 font-semibold ml-1">{cli.nome}</span>
+                : <span className="text-gray-400 italic font-semibold ml-1">[preencher]</span>}
+            </div>
+            <div className="text-center">A/C: {valOrPlaceholder(cli.ac)}</div>
+            <div className="text-right">FONE: {valOrPlaceholder(cli.fone)}</div>
           </div>
-          <div className="text-center">A/C: {valOrPlaceholder(cli.ac)}</div>
-          <div className="text-right">FONE: {valOrPlaceholder(cli.fone)}</div>
-        </div>
 
-        {/* Demais campos do cliente empilhados */}
-        <div className="text-[16px] font-bold text-gray-900 space-y-0.5">
-          {camposEmpilhados.map(([label, val]) => (
-            <div key={label}>{label}: {valOrPlaceholder(val)}</div>
-          ))}
+          {/* Demais campos do cliente empilhados */}
+          <div className="text-[16px] font-bold text-gray-900 space-y-0.5">
+            {camposEmpilhados.map(([label, val]) => (
+              <div key={label}>{label}: {valOrPlaceholder(val)}</div>
+            ))}
+          </div>
         </div>
 
         {/* Conteúdo */}
