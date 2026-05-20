@@ -801,7 +801,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                       setEditingSpecValor(s)
                                       setEditingSpecKey(key)
                                     }}
-                                  >{s}</span>
+                                  >{/\*\*/.test(s) ? s.split(/(\*\*[^*]+\*\*)/).map((part, pi) =>
+                                    part.startsWith('**') && part.endsWith('**')
+                                      ? <strong key={pi} className="font-bold">{part.slice(2, -2)}</strong>
+                                      : <span key={pi}>{part}</span>
+                                  ) : s}</span>
                                 )}
                               </div>
                             )

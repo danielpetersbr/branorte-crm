@@ -853,13 +853,21 @@ export function OrcamentoMontar() {
       if (novoInox) {
         // Salva specs originais e troca galvanizado → Inox 304
         const specsOriginal = it.specs_original || it.specs.slice()
-        const novasSpecs = it.specs.map(s =>
-          s
-            .replace(/a[çc]o\s*galvanizado/gi, 'Inox 304')
-            .replace(/galvanizado/gi, 'Inox 304')
-            .replace(/a[çc]o\s*carbono/gi, 'Inox 304')
-            .replace(/a[çc]o\s*SAE\s*\d+/gi, 'Inox 304')
-        )
+        const novasSpecs = it.specs.map(s => {
+          // "Corpo em chapa: 1,5mm galvanizado" → "Construído em chapa **Inox 304**"
+          // "Construído em aço galvanizado" → "Construído em chapa **Inox 304**"
+          if (/corpo\s*em\s*chapa/i.test(s) || /constru[ií]do\s*em\s*a[çc]o/i.test(s)) {
+            const espessura = s.match(/[\d,]+\s*mm/i)
+            return espessura
+              ? `Construído em chapa ${espessura[0]} **Inox 304**`
+              : 'Construído em chapa **Inox 304**'
+          }
+          return s
+            .replace(/a[çc]o\s*galvanizado/gi, '**Inox 304**')
+            .replace(/galvanizado/gi, '**Inox 304**')
+            .replace(/a[çc]o\s*carbono/gi, '**Inox 304**')
+            .replace(/a[çc]o\s*SAE\s*\d+/gi, '**Inox 304**')
+        })
         return { ...it, inox: true, valor: novoValor, specs: novasSpecs, specs_original: specsOriginal }
       } else {
         // Restaura specs e valor originais
