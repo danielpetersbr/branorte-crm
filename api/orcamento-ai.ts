@@ -20,7 +20,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js'
 const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!
 const SVC_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
 const OPENAI_KEY = process.env.OPENAI_API_KEY!
-const OPENAI_MODEL = 'gpt-4o-mini'
+const OPENAI_MODEL = 'gpt-4.1-mini'
 const MAX_TOOL_ITERATIONS = 24  // aumentado pra IA conseguir compor orçamento composto grande (11+ itens × 2 calls cada)
 
 const SYSTEM_PROMPT = `Você é o copiloto do CRM Branorte — uma metalúrgica que fabrica equipamentos pra fábricas de ração (transportadores helicoidais, misturadores, silos, caçambas de pesagem, moinhos, ensacadeiras, balanças e fábricas compactas).

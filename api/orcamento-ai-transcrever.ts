@@ -81,14 +81,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const form = new FormData()
   const blob = new Blob([new Uint8Array(buf)], { type: mime })
   form.append('file', blob, `audio.${ext}`)
-  form.append('model', 'whisper-1')
+  form.append('model', 'gpt-4o-mini-transcribe')
   form.append('language', 'pt')
   form.append('response_format', 'json')
-  // Temperature 0 = mais determinístico
-  form.append('temperature', '0')
   // Prompt de contexto: vocabulário técnico Branorte melhora MUITO a precisão.
-  // Whisper usa isso como hint pra termos que soam ambíguos.
-  form.append('prompt', 'Orçamento Branorte. Equipamentos: chupim, transportador helicoidal, TH, rosca transportadora, moinho de martelo, BNMM, misturador vertical, misturador horizontal, caçamba de pesagem, silo, ensacadeira, balança eletrônica, elevador de canecas, pré-limpeza, moega, caixa de ração. Medidas: 160 x 3,0 m, 210 x 12,0 m, TH 200, 500 kg/h, 1000 litros, 42 toneladas. Potência: 1,5 CV, 3 CV, 5 CV, 7,5 CV, 10 CV, 15 CV, 20 CV, monofásico, trifásico. Compacta, mini fábrica, fábrica de ração. Orçamento para cliente, cidade, CNPJ, gerar PDF, mandar no WhatsApp.')
+  form.append('prompt', 'Orçamento Branorte metalúrgica. Equipamentos: chupim, transportador helicoidal, TH, rosca transportadora, moinho de martelo, BNMM, misturador vertical, misturador horizontal, caçamba de pesagem, silo, ensacadeira, balança eletrônica, elevador de canecas, pré-limpeza, moega, caixa de ração. Medidas: 160 x 3,0 m, 210 x 12,0 m, TH 200, 500 kg/h, 1000 litros, 42 toneladas. Potência: 1,5 CV, 3 CV, 5 CV, 7,5 CV, 10 CV, 15 CV, 20 CV, monofásico, trifásico. Compacta, mini fábrica, fábrica de ração. Orçamento para cliente, cidade, CNPJ, gerar PDF, mandar no WhatsApp.')
 
   const startedAt = Date.now()
   const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
