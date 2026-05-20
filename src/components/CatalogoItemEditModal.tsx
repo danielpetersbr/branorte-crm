@@ -427,44 +427,82 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
               </datalist>
             </div>
 
-            {/* Nome curto */}
-            <div>
-              <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1">
-                Nome curto <span className="text-danger">*</span>
-              </label>
-              <Input
-                value={nomeCurto}
-                onChange={e => setNomeCurto(e.target.value)}
-                placeholder="ex: MMC-200"
-              />
-            </div>
+            {/* ── BLOCO ORÇAMENTO — campos que aparecem pro cliente ── */}
+            <div className="p-3 border border-info/30 bg-info/5 rounded-md">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-[11px] font-semibold text-info uppercase tracking-wide">
+                  Visível no orçamento
+                </span>
+                <span className="text-[10px] text-ink-faint">
+                  — o cliente vê exatamente esses textos no PDF
+                </span>
+              </div>
 
-            {/* Nome completo */}
-            <div>
-              <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1">
-                Nome completo
-              </label>
-              <textarea
-                value={nomeCompleto}
-                onChange={e => setNomeCompleto(e.target.value)}
-                rows={2}
-                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-[13px] text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-all resize-none"
-                placeholder="Nome técnico completo do equipamento"
-              />
-            </div>
+              {/* Nome curto */}
+              <div className="mb-3">
+                <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1">
+                  Título do equipamento <span className="text-danger">*</span>
+                </label>
+                <Input
+                  value={nomeCurto}
+                  onChange={e => setNomeCurto(e.target.value)}
+                  placeholder="ex: CAÇAMBA DE PESAGEM 1000 LITROS (500 KG)"
+                />
+                <p className="text-[10px] text-info mt-1">
+                  Aparece como título do item no orçamento (ex: "A — CAÇAMBA DE PESAGEM 1000L")
+                </p>
+              </div>
 
-            {/* Descrição */}
-            <div>
-              <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1">
-                Descrição
-              </label>
-              <textarea
-                value={descricao}
-                onChange={e => setDescricao(e.target.value)}
-                rows={4}
-                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-[13px] text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-all resize-none"
-                placeholder="Descrição comercial / o que esse item resolve"
-              />
+              {/* Nome completo */}
+              <div className="mb-3">
+                <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1">
+                  Nome técnico completo
+                </label>
+                <textarea
+                  value={nomeCompleto}
+                  onChange={e => setNomeCompleto(e.target.value)}
+                  rows={2}
+                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-[13px] text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-all resize-none"
+                  placeholder="Nome completo com especificação (ex: SILO METÁLICO SAB3065 — 200 TON)"
+                />
+                <p className="text-[10px] text-ink-faint mt-1">
+                  Versão completa do nome (se diferente do título)
+                </p>
+              </div>
+
+              {/* Descrição */}
+              <div>
+                <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1">
+                  Descrição comercial
+                </label>
+                <textarea
+                  value={descricao}
+                  onChange={e => setDescricao(e.target.value)}
+                  rows={4}
+                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-[13px] text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-all resize-none"
+                  placeholder="Descreva o equipamento de forma comercial: o que faz, pra que serve, diferenciais. Ex: Silo metálico com capacidade para 200 toneladas, ideal para armazenamento de grãos e ração animal."
+                />
+                <p className="text-[10px] text-info mt-1">
+                  Aparece no corpo do orçamento abaixo do título — escreva pensando no cliente
+                </p>
+              </div>
+
+              {/* Mini preview */}
+              {nomeCurto.trim() && (
+                <div className="mt-3 p-2.5 bg-white/5 border border-border/50 rounded text-[11px]">
+                  <p className="text-[9px] text-ink-faint uppercase tracking-wider mb-1.5">Preview no orçamento</p>
+                  <p className="font-bold text-ink text-[12px]">A — {nomeCurto.trim().toUpperCase()}</p>
+                  {descricao.trim() && (
+                    <p className="text-ink-muted mt-0.5 text-[11px] leading-relaxed">{descricao.trim()}</p>
+                  )}
+                  {specs.length > 0 && (
+                    <ul className="mt-1 text-[10px] text-ink-faint list-disc list-inside">
+                      {specs.slice(0, 3).map((s, i) => <li key={i}>{s}</li>)}
+                      {specs.length > 3 && <li className="text-ink-faint/50">+{specs.length - 3} specs...</li>}
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Atributos especificos por categoria */}
