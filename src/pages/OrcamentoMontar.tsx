@@ -1616,7 +1616,23 @@ export function OrcamentoMontar() {
               )}
               <button
                 disabled={carrinho.length === 0}
-                onClick={() => setFinalizarOpen(true)}
+                onClick={() => {
+                  // Se cliente já preenchido → gera direto (headless)
+                  if (clienteDados.nome?.trim()) {
+                    setInitialModal(prev => ({
+                      cliente_nome: clienteDados.nome || prev?.cliente_nome || '',
+                      cliente_dados: { ...clienteDados },
+                      observacoes: prev?.observacoes ?? null,
+                      forma_pagamento: prev?.forma_pagamento ?? null,
+                      prazo_entrega: prev?.prazo_entrega ?? null,
+                    }))
+                    setAutoSubmitFromIA(true)
+                    setFinalizarOpen(true)
+                  } else {
+                    // Sem cliente → abre editor de cliente primeiro
+                    setClienteModalOpen(true)
+                  }
+                }}
                 className="text-[13px] bg-accent hover:bg-accent/90 text-white font-bold px-4 py-2 rounded-md disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm min-h-[40px] transition-all"
                 title={carrinho.length === 0 ? 'Adicione items primeiro' : 'Finalizar e gerar PDF + DOCX'}
               >
