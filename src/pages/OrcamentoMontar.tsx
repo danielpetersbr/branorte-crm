@@ -1397,41 +1397,21 @@ export function OrcamentoMontar() {
                     com modal de seleção (puxa de precos_branorte) */}
                 {!busca && (
                   <>
-                    {(categoria === null || categoria === 'TRANSPORTADOR') && transportadores.length > 0 && (
-                      <MetaCard
-                        categoria="TRANSPORTADOR"
-                        titulo="Transportador Helicoidal"
-                        descricao="Chupim e Calha TH — escolha tipo, diâmetro e medida"
-                        qtd={transportadores.length}
-                        onClick={() => setTransportadorPickerOpen(true)}
-                      />
+                    {/* Ordem: Fábricas → Transportador → Moinho → Misturador → Caixa → Silo → resto */}
+                    {(categoria === null || categoria === 'COMPACTA') && (
+                      <MetaCard categoria="COMPACTA" titulo="Fábricas Compactas (pacote)" descricao="Linhas 01, 01M, 02, 02M (75 a 500 kg/h) — kits completos prontos" qtd={65} onClick={() => setPacotePicker({ open: true })} />
                     )}
-                    {(categoria === null || categoria === 'MISTURADOR') && misturadoresOficiais.length > 0 && (
-                      <MetaCard
-                        categoria="MISTURADOR"
-                        titulo="Misturador"
-                        descricao="Vertical, Horizontal S/Pulmão e C/Pulmão"
-                        qtd={misturadoresOficiais.length}
-                        onClick={() => setMisturadorPickerOpen(true)}
-                      />
+                    {(categoria === null || categoria === 'TRANSPORTADOR') && transportadores.length > 0 && (
+                      <MetaCard categoria="TRANSPORTADOR" titulo="Transportador Helicoidal" descricao="Chupim e Calha TH — escolha tipo, diâmetro e medida" qtd={transportadores.length} onClick={() => setTransportadorPickerOpen(true)} />
                     )}
                     {(categoria === null || categoria === 'MOINHO') && moinhosOficiais.length > 0 && (
-                      <MetaCard
-                        categoria="MOINHO"
-                        titulo="Moinho Martelo"
-                        descricao="Famílias BNMM-1 a BNMM-7 (3 a 100 CV)"
-                        qtd={moinhosOficiais.length}
-                        onClick={() => setMoinhoPickerOpen(true)}
-                      />
+                      <MetaCard categoria="MOINHO" titulo="Moinho Martelo" descricao="Famílias BNMM-1 a BNMM-7 (3 a 100 CV)" qtd={moinhosOficiais.length} onClick={() => setMoinhoPickerOpen(true)} />
+                    )}
+                    {(categoria === null || categoria === 'MISTURADOR') && misturadoresOficiais.length > 0 && (
+                      <MetaCard categoria="MISTURADOR" titulo="Misturador" descricao="Vertical, Horizontal S/Pulmão e C/Pulmão" qtd={misturadoresOficiais.length} onClick={() => setMisturadorPickerOpen(true)} />
                     )}
                     {(categoria === null || categoria === 'CAIXA') && caixasOficiais.length > 0 && (
-                      <MetaCard
-                        categoria="CAIXA"
-                        titulo="Caixa"
-                        descricao="Recepção e Picados (volume + dimensões)"
-                        qtd={caixasOficiais.length}
-                        onClick={() => setCaixaPickerOpen(true)}
-                      />
+                      <MetaCard categoria="CAIXA" titulo="Caixa" descricao="Recepção e Picados (volume + dimensões)" qtd={caixasOficiais.length} onClick={() => setCaixaPickerOpen(true)} />
                     )}
                     {(categoria === null || categoria === 'SILO') && silosOficiais.length > 0 && (
                       <MetaCard categoria="SILO" titulo="Silo" descricao="Ração e Milho (capacidade ton + geométrico)" qtd={silosOficiais.length} onClick={() => setSiloPickerOpen(true)} />
@@ -1445,6 +1425,9 @@ export function OrcamentoMontar() {
                     {(categoria === null || categoria === 'PRE-LIMPEZA' || categoria === 'PRE_LIMPEZA') && preLimpezasOficiais.length > 0 && (
                       <MetaCard categoria="PRE-LIMPEZA" titulo="Pré-Limpeza" descricao="3, 5, 7 e 10 ton/h" qtd={preLimpezasOficiais.length} onClick={() => setPreLimpezaPickerOpen(true)} />
                     )}
+                    {(categoria === null || categoria === 'ENSACADEIRA') && ensacadeirasOficiais.length > 0 && (
+                      <MetaCard categoria="ENSACADEIRA" titulo="Ensacadeira" descricao="Saco Aberto e Valvulado c/ painel" qtd={ensacadeirasOficiais.length} onClick={() => setEnsacadeiraPickerOpen(true)} />
+                    )}
                     {(categoria === null || categoria === 'PENEIRA') && peneirasOficiais.length > 0 && (
                       <MetaCard categoria="PENEIRA" titulo="Peneira de Moinho" descricao="5 tamanhos (7,5 a 50 CV)" qtd={peneirasOficiais.length} onClick={() => setPeneiraPickerOpen(true)} />
                     )}
@@ -1453,12 +1436,6 @@ export function OrcamentoMontar() {
                     )}
                     {(categoria === null || categoria === 'BALANCA') && balancasOficiais.length > 0 && (
                       <MetaCard categoria="BALANÇA" titulo="Balança" descricao="Eletrônica, Mecânica e Célula de Carga" qtd={balancasOficiais.length} onClick={() => setBalancaPickerOpen(true)} />
-                    )}
-                    {(categoria === null || categoria === 'ENSACADEIRA') && ensacadeirasOficiais.length > 0 && (
-                      <MetaCard categoria="ENSACADEIRA" titulo="Ensacadeira" descricao="Saco Aberto e Valvulado c/ painel" qtd={ensacadeirasOficiais.length} onClick={() => setEnsacadeiraPickerOpen(true)} />
-                    )}
-                    {(categoria === null || categoria === 'COMPACTA') && (
-                      <MetaCard categoria="COMPACTA" titulo="Fábricas Compactas (pacote)" descricao="Linhas 01, 01M, 02, 02M (75 a 500 kg/h) — kits completos prontos" qtd={65} onClick={() => setPacotePicker({ open: true })} />
                     )}
                     {(categoria === null || categoria === 'ALIMENTADOR') && alimentadoresOficiais.length > 0 && (
                       <MetaCard categoria="ALIMENTADOR" titulo="Alimentador" descricao="160 e 210 (com levante ou direto)" qtd={alimentadoresOficiais.length} onClick={() => setAlimentadorPickerOpen(true)} />
