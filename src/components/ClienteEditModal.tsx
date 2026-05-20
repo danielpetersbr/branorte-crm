@@ -84,27 +84,30 @@ async function buscarCnpj(cnpj: string): Promise<BrasilApiCnpj | null> {
 }
 
 // CPF lookup via cpfcnpj.com.br
+// CPF lookup via cpfcnpj.com.br
+// Pacotes: 1=nome, 2=nome+nasc+mae, 3+=endereço (precisa créditos pagos)
 const CPFCNPJ_TOKEN = '670696c045158c1b8fd7e158bc13adcb'
-const CPFCNPJ_PACOTE = '9' // pacote completo (nome, endereço, telefone)
+const CPFCNPJ_PACOTE = '2' // nome + nascimento + mãe + gênero
 
 interface CpfCnpjResult {
   status: number
   cpf: string
   nome: string
   nascimento: string
-  endereco: string
-  numero: string
-  complemento: string
-  bairro: string
-  cep: string
-  cidade: string
-  uf: string
-  mae: string
-  genero: string
-  situacao: string
-  telefones: string[]
-  emails: string[]
+  endereco?: string
+  numero?: string
+  complemento?: string
+  bairro?: string
+  cep?: string
+  cidade?: string
+  uf?: string
+  mae?: string
+  genero?: string
+  situacao?: string
+  telefones?: string[]
+  emails?: string[]
   saldo: number
+  erro?: string
 }
 
 async function buscarCpf(cpf: string): Promise<CpfCnpjResult | null> {
@@ -114,7 +117,17 @@ async function buscarCpf(cpf: string): Promise<CpfCnpjResult | null> {
     const res = await fetch(`https://api.cpfcnpj.com.br/${CPFCNPJ_TOKEN}/${CPFCNPJ_PACOTE}/${d}`)
     if (!res.ok) return null
     const data = await res.json() as CpfCnpjResult
-    if (!data.status || !data.nome) return null
+    if (!data.status || !data.nome) {
+      // Se créditos insuficientes, tentar pacote 1 (mais barato)
+      if (data.erro?.includes('insuficientes')) {
+        const res2 = await fetch(`https://api.cpfcnpj.com.br/${CPFCNPJ_TOKEN}/1/${d}`)
+        if (!res2.ok) return null
+        const data2 = await res2.json() as CpfCnpjResult
+        if (!data2.status || !data2.nome) return null
+        return data2
+      }
+      return null
+    }
     return data
   } catch {
     return null
@@ -198,20 +211,27 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
       const dados = await buscarCpf(d)
       setBuscando(false)
       if (!dados) {
-        setErroBusca('CPF não encontrado ou API indisponível. Preencha manualmente.')
+        setErroBusca(dados?.erro?.includes('insuficientes')
+          ? 'Créditos esgotados na API. Recarregue em cpfcnpj.com.br ou preencha manualmente.'
+          : 'CPF não encontrado ou API indisponível. Preencha manualmente.')
         return
       }
       if (dados.nome) setNome(dados.nome)
-      const endNum = dados.numero ? `${dados.endereco}, ${dados.numero}` : dados.endereco
-      const endFull = dados.complemento ? `${endNum} - ${dados.complemento}` : endNum
-      if (endFull) setEndereco(endFull)
+      if (dados.endereco) {
+        const endNum = dados.numero ? `${dados.endereco}, ${dados.numero}` : dados.endereco
+        const endFull = dados.complemento ? `${endNum} - ${dados.complemento}` : endNum
+        setEndereco(endFull)
+      }
       if (dados.bairro) setBairro(dados.bairro)
       if (dados.cidade) setCidade(dados.cidade)
       if (dados.uf) setUf(dados.uf)
       if (dados.cep) setCep(fmtCep(dados.cep))
       if (dados.telefones?.length) setFone(fmtFone(dados.telefones[0]))
       if (dados.emails?.length) setEmail(dados.emails[0])
-      setSucessoBusca(`✓ Dados de "${dados.nome}" carregados com sucesso`)
+      const temEndereco = !!dados.endereco
+      setSucessoBusca(temEndereco
+        ? `✓ Dados de "${dados.nome}" carregados com sucesso`
+        : `✓ Nome "${dados.nome}" encontrado. Endereço requer plano pago — preencha manualmente.`)
       return
     }
 
