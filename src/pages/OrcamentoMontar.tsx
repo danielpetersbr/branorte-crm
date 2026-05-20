@@ -544,7 +544,7 @@ export function OrcamentoMontar() {
   const moegasOficiais = useMemo(() => filtrarCat('MOEGA'), [oficiais])
   const passarelasOficiais = useMemo(() => filtrarCat('PASSARELA'), [oficiais])
   const suporteBagOficiais = useMemo(() => filtrarCat('SUPORTE_BAG'), [oficiais])
-  const outrosOficiais = useMemo(() => filtrarCat('OUTROS'), [oficiais])
+  const outrosOficiais = useMemo(() => oficiais.filter(ci => (ci.categoria === 'OUTROS' || ci.categoria === 'ACESSORIO') && ci.is_oficial), [oficiais])
 
   // Formata CV pra usar em specs: "1.5" -> "1,5", "2" -> "2,0"
   function formatCvSpec(cv: number): string {
@@ -1467,7 +1467,7 @@ export function OrcamentoMontar() {
                       <MetaCard categoria="SUPORTE_BAG" titulo="Suporte de Big Bag" descricao="Estruturas pra Big Bag" qtd={suporteBagOficiais.length} onClick={() => setSuporteBagPickerOpen(true)} />
                     )}
                     {(categoria === null || categoria === 'OUTROS') && outrosOficiais.length > 0 && (
-                      <MetaCard categoria="OUTROS" titulo="Diversos" descricao="Caixa, embaladeira, esteira, Redler" qtd={outrosOficiais.length} onClick={() => setOutrosPickerOpen(true)} />
+                      <MetaCard categoria="OUTROS" titulo="Diversos / Acessórios" descricao="Martelos, peneiras avulsas, eixos, buchas e outros" qtd={outrosOficiais.length} onClick={() => setOutrosPickerOpen(true)} />
                     )}
                   </>
                 )}
