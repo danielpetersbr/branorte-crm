@@ -887,7 +887,7 @@ export function OrcamentoMontar() {
         const novoValor = qtdMartelos * 99
         const specsOriginal = it.specs_original || it.specs.slice()
         const novasSpecs = specsOriginal.map(s =>
-          /material|a[çc]o\s*tratado/i.test(s) ? 'Material: Tungstênio (vida útil 3x maior)' : s
+          /material|a[çc]o\s*tratado/i.test(s) ? 'Material: Tungstênio' : s
         )
         return { ...it, tungstenio: true, valor: novoValor, valor_original: it.valor_original, specs: novasSpecs, specs_original: specsOriginal }
       } else {
