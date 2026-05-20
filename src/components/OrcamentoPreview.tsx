@@ -514,12 +514,12 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
         {/* CLIENTE | A/C | FONE */}
         <div
-          className={`${!renderMode && onEditCliente ? 'cursor-pointer hover:bg-blue-50/50 -mx-2 px-2 py-1 rounded transition-colors group/cli' : ''}`}
+          className={`relative ${!renderMode && onEditCliente ? 'cursor-pointer hover:bg-blue-50/50 -mx-2 px-2 py-1 rounded transition-colors group/cli' : ''}`}
           onClick={!renderMode && onEditCliente ? onEditCliente : undefined}
           title={!renderMode && onEditCliente ? 'Clique pra preencher dados do cliente' : undefined}
         >
           {!renderMode && onEditCliente && (
-            <div className="text-[10px] text-blue-500 font-semibold mb-0.5 opacity-0 group-hover/cli:opacity-100 transition-opacity">
+            <div className="absolute -top-4 left-1/2 -translate-x-1/2 text-[10px] text-blue-500 font-semibold opacity-0 group-hover/cli:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
               ✏️ Clique pra editar dados do cliente
             </div>
           )}
