@@ -496,18 +496,19 @@ export function OrcamentoMontar() {
   // (Outros componentes mais abaixo no arquivo carregam de novo; ok porque o hook
   // usa React Query e dedup automaticamente.)
   const { data: modelos } = useOrcamentoModelos()
+  // Transportadores ficam em precos_branorte (modal dedicado com fórmula de chupim)
   const transportadores = useMemo(
     () => (precos ?? []).filter(p => p.categoria === 'TRANSPORTADOR'),
     [precos],
   )
-  const misturadoresPreco = useMemo(
-    () => (precos ?? []).filter(p => p.categoria === 'MISTURADOR'),
-    [precos],
-  )
-  const moinhosPreco = useMemo(
-    () => (precos ?? []).filter(p => p.categoria === 'MOINHO'),
-    [precos],
-  )
+
+  // ── Todas as outras categorias puxam do CATÁLOGO CURADO (catalog_items) ──
+  // Só itens is_oficial aparecem pro vendedor. Fotos, specs e preços curados.
+  const oficiais = items ?? []
+  const filtrarCat = (cat: string) => oficiais.filter(ci => ci.categoria === cat && ci.is_oficial)
+
+  const misturadoresOficiais = useMemo(() => filtrarCat('MISTURADOR'), [oficiais])
+  const moinhosOficiais = useMemo(() => filtrarCat('MOINHO'), [oficiais])
   // Componentes adicionais disponíveis (NÃO fabricados pela Branorte) — vem da tabela de preços.
   // Hoje: BALANCA (eletrônicas, mecânicas, célula de carga). Futuro: adicionar outras categorias
   // ao banco e elas aparecem aqui sem mudar código.
@@ -521,27 +522,24 @@ export function OrcamentoMontar() {
       })),
     [precos],
   )
-  const caixasPreco = useMemo(
-    () => (precos ?? []).filter(p => p.categoria === 'CAIXA'),
-    [precos],
-  )
-  const silosPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'SILO'), [precos])
-  const elevadoresPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'ELEVADOR'), [precos])
-  const cacambasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'CACAMBA'), [precos])
-  const preLimpezasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'PRE_LIMPEZA'), [precos])
-  const peneirasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'PENEIRA'), [precos])
-  const helicoidesPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'HELICOIDE'), [precos])
-  const balancasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'BALANCA'), [precos])
-  const compactasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'COMPACTA'), [precos])
-  const ensacadeirasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'ENSACADEIRA'), [precos])
-  const elevadorSacariaPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'ELEVADOR_SACARIA'), [precos])
+  const caixasOficiais = useMemo(() => filtrarCat('CAIXA'), [oficiais])
+  const silosOficiais = useMemo(() => filtrarCat('SILO'), [oficiais])
+  const elevadoresOficiais = useMemo(() => filtrarCat('ELEVADOR'), [oficiais])
+  const cacambasOficiais = useMemo(() => filtrarCat('CACAMBA'), [oficiais])
+  const preLimpezasOficiais = useMemo(() => filtrarCat('PRE_LIMPEZA'), [oficiais])
+  const peneirasOficiais = useMemo(() => filtrarCat('PENEIRA'), [oficiais])
+  const helicoidesOficiais = useMemo(() => filtrarCat('HELICOIDE'), [oficiais])
+  const balancasOficiais = useMemo(() => filtrarCat('BALANCA'), [oficiais])
+  const compactasOficiais = useMemo(() => filtrarCat('COMPACTA'), [oficiais])
+  const ensacadeirasOficiais = useMemo(() => filtrarCat('ENSACADEIRA'), [oficiais])
+  const elevadorSacariaOficiais = useMemo(() => filtrarCat('ELEVADOR_SACARIA'), [oficiais])
   // Categorias pequenas (1-5 itens cada) — antes ficavam soltas no grid, agora cada uma tem meta-card.
-  const alimentadoresPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'ALIMENTADOR'), [precos])
-  const descargasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'DESCARGA'), [precos])
-  const moegasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'MOEGA'), [precos])
-  const passarelasPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'PASSARELA'), [precos])
-  const suporteBagPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'SUPORTE_BAG'), [precos])
-  const outrosPreco = useMemo(() => (precos ?? []).filter(p => p.categoria === 'OUTROS'), [precos])
+  const alimentadoresOficiais = useMemo(() => filtrarCat('ALIMENTADOR'), [oficiais])
+  const descargasOficiais = useMemo(() => filtrarCat('DESCARGA'), [oficiais])
+  const moegasOficiais = useMemo(() => filtrarCat('MOEGA'), [oficiais])
+  const passarelasOficiais = useMemo(() => filtrarCat('PASSARELA'), [oficiais])
+  const suporteBagOficiais = useMemo(() => filtrarCat('SUPORTE_BAG'), [oficiais])
+  const outrosOficiais = useMemo(() => filtrarCat('OUTROS'), [oficiais])
 
   // Formata CV pra usar em specs: "1.5" -> "1,5", "2" -> "2,0"
   function formatCvSpec(cv: number): string {
@@ -1426,77 +1424,77 @@ export function OrcamentoMontar() {
                         onClick={() => setTransportadorPickerOpen(true)}
                       />
                     )}
-                    {(categoria === null || categoria === 'MISTURADOR') && misturadoresPreco.length > 0 && (
+                    {(categoria === null || categoria === 'MISTURADOR') && misturadoresOficiais.length > 0 && (
                       <MetaCard
                         categoria="MISTURADOR"
                         titulo="Misturador"
                         descricao="Vertical, Horizontal S/Pulmão e C/Pulmão"
-                        qtd={misturadoresPreco.length}
+                        qtd={misturadoresOficiais.length}
                         onClick={() => setMisturadorPickerOpen(true)}
                       />
                     )}
-                    {(categoria === null || categoria === 'MOINHO') && moinhosPreco.length > 0 && (
+                    {(categoria === null || categoria === 'MOINHO') && moinhosOficiais.length > 0 && (
                       <MetaCard
                         categoria="MOINHO"
                         titulo="Moinho Martelo"
                         descricao="Famílias BNMM-1 a BNMM-7 (3 a 100 CV)"
-                        qtd={moinhosPreco.length}
+                        qtd={moinhosOficiais.length}
                         onClick={() => setMoinhoPickerOpen(true)}
                       />
                     )}
-                    {(categoria === null || categoria === 'CAIXA') && caixasPreco.length > 0 && (
+                    {(categoria === null || categoria === 'CAIXA') && caixasOficiais.length > 0 && (
                       <MetaCard
                         categoria="CAIXA"
                         titulo="Caixa"
                         descricao="Recepção e Picados (volume + dimensões)"
-                        qtd={caixasPreco.length}
+                        qtd={caixasOficiais.length}
                         onClick={() => setCaixaPickerOpen(true)}
                       />
                     )}
-                    {(categoria === null || categoria === 'SILO') && silosPreco.length > 0 && (
-                      <MetaCard categoria="SILO" titulo="Silo" descricao="Ração e Milho (capacidade ton + geométrico)" qtd={silosPreco.length} onClick={() => setSiloPickerOpen(true)} />
+                    {(categoria === null || categoria === 'SILO') && silosOficiais.length > 0 && (
+                      <MetaCard categoria="SILO" titulo="Silo" descricao="Ração e Milho (capacidade ton + geométrico)" qtd={silosOficiais.length} onClick={() => setSiloPickerOpen(true)} />
                     )}
-                    {(categoria === null || categoria === 'ELEVADOR') && elevadoresPreco.length > 0 && (
-                      <MetaCard categoria="ELEVADOR" titulo="Elevador de Caneca" descricao="EC-2310/4010/5013 — vários comprimentos" qtd={elevadoresPreco.length} onClick={() => setElevadorPickerOpen(true)} />
+                    {(categoria === null || categoria === 'ELEVADOR') && elevadoresOficiais.length > 0 && (
+                      <MetaCard categoria="ELEVADOR" titulo="Elevador de Caneca" descricao="EC-2310/4010/5013 — vários comprimentos" qtd={elevadoresOficiais.length} onClick={() => setElevadorPickerOpen(true)} />
                     )}
-                    {(categoria === null || categoria === 'CACAMBA') && cacambasPreco.length > 0 && (
-                      <MetaCard categoria="CACAMBA" titulo="Caçamba de Pesagem" descricao="BNCP600/1000/1900/3000" qtd={cacambasPreco.length} onClick={() => setCacambaPickerOpen(true)} />
+                    {(categoria === null || categoria === 'CACAMBA') && cacambasOficiais.length > 0 && (
+                      <MetaCard categoria="CACAMBA" titulo="Caçamba de Pesagem" descricao="BNCP600/1000/1900/3000" qtd={cacambasOficiais.length} onClick={() => setCacambaPickerOpen(true)} />
                     )}
-                    {(categoria === null || categoria === 'PRE-LIMPEZA' || categoria === 'PRE_LIMPEZA') && preLimpezasPreco.length > 0 && (
-                      <MetaCard categoria="PRE-LIMPEZA" titulo="Pré-Limpeza" descricao="3, 5, 7 e 10 ton/h" qtd={preLimpezasPreco.length} onClick={() => setPreLimpezaPickerOpen(true)} />
+                    {(categoria === null || categoria === 'PRE-LIMPEZA' || categoria === 'PRE_LIMPEZA') && preLimpezasOficiais.length > 0 && (
+                      <MetaCard categoria="PRE-LIMPEZA" titulo="Pré-Limpeza" descricao="3, 5, 7 e 10 ton/h" qtd={preLimpezasOficiais.length} onClick={() => setPreLimpezaPickerOpen(true)} />
                     )}
-                    {(categoria === null || categoria === 'PENEIRA') && peneirasPreco.length > 0 && (
-                      <MetaCard categoria="PENEIRA" titulo="Peneira de Moinho" descricao="5 tamanhos (7,5 a 50 CV)" qtd={peneirasPreco.length} onClick={() => setPeneiraPickerOpen(true)} />
+                    {(categoria === null || categoria === 'PENEIRA') && peneirasOficiais.length > 0 && (
+                      <MetaCard categoria="PENEIRA" titulo="Peneira de Moinho" descricao="5 tamanhos (7,5 a 50 CV)" qtd={peneirasOficiais.length} onClick={() => setPeneiraPickerOpen(true)} />
                     )}
-                    {(categoria === null || categoria === 'HELICOIDE') && helicoidesPreco.length > 0 && (
-                      <MetaCard categoria="HELICOIDE" titulo="Helicóide (peça)" descricao="⌀75 a ⌀300 — valor por metro" qtd={helicoidesPreco.length} onClick={() => setHelicoidePickerOpen(true)} />
+                    {(categoria === null || categoria === 'HELICOIDE') && helicoidesOficiais.length > 0 && (
+                      <MetaCard categoria="HELICOIDE" titulo="Helicóide (peça)" descricao="⌀75 a ⌀300 — valor por metro" qtd={helicoidesOficiais.length} onClick={() => setHelicoidePickerOpen(true)} />
                     )}
-                    {(categoria === null || categoria === 'BALANCA') && balancasPreco.length > 0 && (
-                      <MetaCard categoria="BALANÇA" titulo="Balança" descricao="Eletrônica, Mecânica e Célula de Carga" qtd={balancasPreco.length} onClick={() => setBalancaPickerOpen(true)} />
+                    {(categoria === null || categoria === 'BALANCA') && balancasOficiais.length > 0 && (
+                      <MetaCard categoria="BALANÇA" titulo="Balança" descricao="Eletrônica, Mecânica e Célula de Carga" qtd={balancasOficiais.length} onClick={() => setBalancaPickerOpen(true)} />
                     )}
-                    {(categoria === null || categoria === 'ENSACADEIRA') && ensacadeirasPreco.length > 0 && (
-                      <MetaCard categoria="ENSACADEIRA" titulo="Ensacadeira" descricao="Saco Aberto e Valvulado c/ painel" qtd={ensacadeirasPreco.length} onClick={() => setEnsacadeiraPickerOpen(true)} />
+                    {(categoria === null || categoria === 'ENSACADEIRA') && ensacadeirasOficiais.length > 0 && (
+                      <MetaCard categoria="ENSACADEIRA" titulo="Ensacadeira" descricao="Saco Aberto e Valvulado c/ painel" qtd={ensacadeirasOficiais.length} onClick={() => setEnsacadeiraPickerOpen(true)} />
                     )}
                     {(categoria === null || categoria === 'COMPACTA') && (
                       <MetaCard categoria="COMPACTA" titulo="Fábricas Compactas (pacote)" descricao="Linhas 01, 01M, 02, 02M (75 a 500 kg/h) — kits completos prontos" qtd={65} onClick={() => setPacotePicker({ open: true })} />
                     )}
-                    {(categoria === null || categoria === 'ALIMENTADOR') && alimentadoresPreco.length > 0 && (
-                      <MetaCard categoria="ALIMENTADOR" titulo="Alimentador" descricao="160 e 210 (com levante ou direto)" qtd={alimentadoresPreco.length} onClick={() => setAlimentadorPickerOpen(true)} />
+                    {(categoria === null || categoria === 'ALIMENTADOR') && alimentadoresOficiais.length > 0 && (
+                      <MetaCard categoria="ALIMENTADOR" titulo="Alimentador" descricao="160 e 210 (com levante ou direto)" qtd={alimentadoresOficiais.length} onClick={() => setAlimentadorPickerOpen(true)} />
                     )}
-                    {(categoria === null || categoria === 'DESCARGA') && descargasPreco.length > 0 && (
-                      <MetaCard categoria="DESCARGA" titulo="Descarga (acessório)" descricao="Duas vias 160 e 210 mm" qtd={descargasPreco.length} onClick={() => setDescargaPickerOpen(true)} />
+                    {(categoria === null || categoria === 'DESCARGA') && descargasOficiais.length > 0 && (
+                      <MetaCard categoria="DESCARGA" titulo="Descarga (acessório)" descricao="Duas vias 160 e 210 mm" qtd={descargasOficiais.length} onClick={() => setDescargaPickerOpen(true)} />
                     )}
-                    {(categoria === null || categoria === 'MOEGA') && moegasPreco.length > 0 && (
-                      <MetaCard categoria="MOEGA" titulo="Moega de Entrada" descricao="Caixa de entrada com helicoide" qtd={moegasPreco.length} onClick={() => setMoegaPickerOpen(true)} />
+                    {(categoria === null || categoria === 'MOEGA') && moegasOficiais.length > 0 && (
+                      <MetaCard categoria="MOEGA" titulo="Moega de Entrada" descricao="Caixa de entrada com helicoide" qtd={moegasOficiais.length} onClick={() => setMoegaPickerOpen(true)} />
                     )}
-                    {(categoria === null || categoria === 'PASSARELA') && passarelasPreco.length > 0 && (
-                      <MetaCard categoria="PASSARELA" titulo="Passarela" descricao="Com guarda-corpo 21 e 25 m" qtd={passarelasPreco.length} onClick={() => setPassarelaPickerOpen(true)} />
+                    {(categoria === null || categoria === 'PASSARELA') && passarelasOficiais.length > 0 && (
+                      <MetaCard categoria="PASSARELA" titulo="Passarela" descricao="Com guarda-corpo 21 e 25 m" qtd={passarelasOficiais.length} onClick={() => setPassarelaPickerOpen(true)} />
                     )}
-                    {(categoria === null || categoria === 'SUPORTE_BAG' || categoria === 'SUPORTE BAG') && suporteBagPreco.length > 0 && (
-                      <MetaCard categoria="SUPORTE_BAG" titulo="Suporte de Big Bag" descricao="Estruturas pra Big Bag" qtd={suporteBagPreco.length} onClick={() => setSuporteBagPickerOpen(true)} />
+                    {(categoria === null || categoria === 'SUPORTE_BAG' || categoria === 'SUPORTE BAG') && suporteBagOficiais.length > 0 && (
+                      <MetaCard categoria="SUPORTE_BAG" titulo="Suporte de Big Bag" descricao="Estruturas pra Big Bag" qtd={suporteBagOficiais.length} onClick={() => setSuporteBagPickerOpen(true)} />
                     )}
-                    {(categoria === null || categoria === 'OUTROS') && outrosPreco.length > 0 && (
-                      <MetaCard categoria="OUTROS" titulo="Diversos" descricao="Caixa, embaladeira, esteira, Redler" qtd={outrosPreco.length} onClick={() => setOutrosPickerOpen(true)} />
+                    {(categoria === null || categoria === 'OUTROS') && outrosOficiais.length > 0 && (
+                      <MetaCard categoria="OUTROS" titulo="Diversos" descricao="Caixa, embaladeira, esteira, Redler" qtd={outrosOficiais.length} onClick={() => setOutrosPickerOpen(true)} />
                     )}
                   </>
                 )}
@@ -1883,139 +1881,139 @@ export function OrcamentoMontar() {
       <CategoriaPickerModal
         open={misturadorPickerOpen}
         titulo="Misturador"
-        items={misturadoresPreco}
-        catalogoItems={items ?? []}
+        items={misturadoresOficiais}
+        precosBranorte={precos ?? []}
         labelSub={{ VERTICAL: 'Vertical', HORIZONTAL_SPULMAO: 'Horiz. S/Pulmão', HORIZONTAL_CPULMAO: 'Horiz. C/Pulmão' }}
         ordemSub={['VERTICAL', 'HORIZONTAL_SPULMAO', 'HORIZONTAL_CPULMAO']}
         colKgPratica
         onClose={() => setMisturadorPickerOpen(false)}
-        onPick={p => { adicionarItemDePreco(p); setMisturadorPickerOpen(false) }}
+        onPick={p => { adicionarItem(p); setMisturadorPickerOpen(false) }}
       />
 
       {/* Picker genérico Moinho */}
       <CategoriaPickerModal
         open={moinhoPickerOpen}
         titulo="Moinho Martelo"
-        items={moinhosPreco}
-        catalogoItems={items ?? []}
+        items={moinhosOficiais}
+        precosBranorte={precos ?? []}
         labelSub={{ MARTELO: 'Martelo' }}
         ordemSub={['MARTELO']}
         onClose={() => setMoinhoPickerOpen(false)}
-        onPick={p => { adicionarItemDePreco(p); setMoinhoPickerOpen(false) }}
+        onPick={p => { adicionarItem(p); setMoinhoPickerOpen(false) }}
       />
 
       {/* Picker genérico Caixa */}
       <CategoriaPickerModal
         open={caixaPickerOpen}
         titulo="Caixa"
-        items={caixasPreco}
-        catalogoItems={items ?? []}
+        items={caixasOficiais}
+        precosBranorte={precos ?? []}
         labelSub={{ RECEPCAO: 'Recepção', PICADOS: 'Picados' }}
         ordemSub={['RECEPCAO', 'PICADOS']}
         colMilhoKg
         colDimensoes
         onClose={() => setCaixaPickerOpen(false)}
-        onPick={p => { adicionarItemDePreco(p); setCaixaPickerOpen(false) }}
+        onPick={p => { adicionarItem(p); setCaixaPickerOpen(false) }}
       />
 
       {/* Silo */}
       <CategoriaPickerModal
         open={siloPickerOpen}
         titulo="Silo"
-        items={silosPreco}
-        catalogoItems={items ?? []}
+        items={silosOficiais}
+        precosBranorte={precos ?? []}
         labelSub={{ RACAO: 'Ração', MILHO: 'Milho' }}
         ordemSub={['RACAO', 'MILHO']}
         colSiloDims
         onClose={() => setSiloPickerOpen(false)}
-        onPick={p => { adicionarItemDePreco(p); setSiloPickerOpen(false) }}
+        onPick={p => { adicionarItem(p); setSiloPickerOpen(false) }}
       />
 
       {/* Elevador */}
       <CategoriaPickerModal
         open={elevadorPickerOpen}
         titulo="Elevador de Caneca"
-        items={elevadoresPreco}
-        catalogoItems={items ?? []}
+        items={elevadoresOficiais}
+        precosBranorte={precos ?? []}
         labelSub={{ COMPLETO: 'Completo', COMPONENTE: 'Componente (Pé/Padrão)' }}
         ordemSub={['COMPLETO', 'COMPONENTE']}
         colDimensoes
         onClose={() => setElevadorPickerOpen(false)}
-        onPick={p => { adicionarItemDePreco(p); setElevadorPickerOpen(false) }}
+        onPick={p => { adicionarItem(p); setElevadorPickerOpen(false) }}
       />
 
       {/* Caçamba */}
       <CategoriaPickerModal
         open={cacambaPickerOpen}
         titulo="Caçamba de Pesagem"
-        items={cacambasPreco}
-        catalogoItems={items ?? []}
+        items={cacambasOficiais}
+        precosBranorte={precos ?? []}
         labelSub={{ PESAGEM: 'Pesagem' }}
         ordemSub={['PESAGEM']}
         colKgPratica
         onClose={() => setCacambaPickerOpen(false)}
-        onPick={p => { adicionarItemDePreco(p); setCacambaPickerOpen(false) }}
+        onPick={p => { adicionarItem(p); setCacambaPickerOpen(false) }}
       />
 
       {/* Pré-Limpeza */}
       <CategoriaPickerModal
         open={preLimpezaPickerOpen}
         titulo="Pré-Limpeza"
-        items={preLimpezasPreco}
-        catalogoItems={items ?? []}
+        items={preLimpezasOficiais}
+        precosBranorte={precos ?? []}
         labelSub={{}}
         ordemSub={[]}
         onClose={() => setPreLimpezaPickerOpen(false)}
-        onPick={p => { adicionarItemDePreco(p); setPreLimpezaPickerOpen(false) }}
+        onPick={p => { adicionarItem(p); setPreLimpezaPickerOpen(false) }}
       />
 
       {/* Peneira */}
       <CategoriaPickerModal
         open={peneiraPickerOpen}
         titulo="Peneira de Moinho"
-        items={peneirasPreco}
-        catalogoItems={items ?? []}
+        items={peneirasOficiais}
+        precosBranorte={precos ?? []}
         labelSub={{}}
         ordemSub={[]}
         onClose={() => setPeneiraPickerOpen(false)}
-        onPick={p => { adicionarItemDePreco(p); setPeneiraPickerOpen(false) }}
+        onPick={p => { adicionarItem(p); setPeneiraPickerOpen(false) }}
       />
 
       {/* Helicóide */}
       <CategoriaPickerModal
         open={helicoidePickerOpen}
         titulo="Helicóide (peça)"
-        items={helicoidesPreco}
-        catalogoItems={items ?? []}
+        items={helicoidesOficiais}
+        precosBranorte={precos ?? []}
         labelSub={{ PECA: 'Peça' }}
         ordemSub={['PECA']}
         onClose={() => setHelicoidePickerOpen(false)}
-        onPick={p => { adicionarItemDePreco(p); setHelicoidePickerOpen(false) }}
+        onPick={p => { adicionarItem(p); setHelicoidePickerOpen(false) }}
       />
 
       {/* Balança */}
       <CategoriaPickerModal
         open={balancaPickerOpen}
         titulo="Balança"
-        items={balancasPreco}
-        catalogoItems={items ?? []}
+        items={balancasOficiais}
+        precosBranorte={precos ?? []}
         labelSub={{ ELETRONICA: 'Eletrônica', MECANICA: 'Mecânica', CELULA: 'Célula de Carga' }}
         ordemSub={['ELETRONICA', 'MECANICA', 'CELULA']}
         onClose={() => setBalancaPickerOpen(false)}
-        onPick={p => { adicionarItemDePreco(p); setBalancaPickerOpen(false) }}
+        onPick={p => { adicionarItem(p); setBalancaPickerOpen(false) }}
       />
 
       {/* Compacta (pacote fechado - preços avulsos, fallback se vendedor abrir via outro caminho) */}
       <CategoriaPickerModal
         open={compactaPickerOpen}
         titulo="Fábricas Compactas (preço único)"
-        items={compactasPreco}
-        catalogoItems={items ?? []}
+        items={compactasOficiais}
+        precosBranorte={precos ?? []}
         labelSub={{ '01': 'Linha 01', '01 MASTER': 'Linha 01 Master', '02': 'Linha 02', '02 MASTER': 'Linha 02 Master' }}
         ordemSub={['01', '01 MASTER', '02', '02 MASTER']}
         colCompacta
         onClose={() => setCompactaPickerOpen(false)}
-        onPick={p => { adicionarItemDePreco(p); setCompactaPickerOpen(false) }}
+        onPick={p => { adicionarItem(p); setCompactaPickerOpen(false) }}
       />
 
       {/* Picker de MODELOS de pacote (Compactas + Mini Fabrica): carrega TODOS os items
@@ -2031,12 +2029,12 @@ export function OrcamentoMontar() {
       <CategoriaPickerModal
         open={ensacadeiraPickerOpen}
         titulo="Ensacadeira"
-        items={ensacadeirasPreco}
-        catalogoItems={items ?? []}
+        items={ensacadeirasOficiais}
+        precosBranorte={precos ?? []}
         labelSub={{ DIVERSOS: 'Diversos' }}
         ordemSub={['DIVERSOS']}
         onClose={() => setEnsacadeiraPickerOpen(false)}
-        onPick={p => { adicionarItemDePreco(p); setEnsacadeiraPickerOpen(false) }}
+        onPick={p => { adicionarItem(p); setEnsacadeiraPickerOpen(false) }}
       />
 
       {/* Categorias menores — antes eram items soltos no grid, agora cada uma tem meta-card.
@@ -2044,67 +2042,67 @@ export function OrcamentoMontar() {
       <CategoriaPickerModal
         open={alimentadorPickerOpen}
         titulo="Alimentador"
-        items={alimentadoresPreco}
-        catalogoItems={items ?? []}
+        items={alimentadoresOficiais}
+        precosBranorte={precos ?? []}
         labelSub={{}}
         ordemSub={[]}
         onClose={() => setAlimentadorPickerOpen(false)}
-        onPick={p => { adicionarItemDePreco(p); setAlimentadorPickerOpen(false) }}
+        onPick={p => { adicionarItem(p); setAlimentadorPickerOpen(false) }}
       />
 
       <CategoriaPickerModal
         open={descargaPickerOpen}
         titulo="Descarga (acessório)"
-        items={descargasPreco}
-        catalogoItems={items ?? []}
+        items={descargasOficiais}
+        precosBranorte={precos ?? []}
         labelSub={{}}
         ordemSub={[]}
         onClose={() => setDescargaPickerOpen(false)}
-        onPick={p => { adicionarItemDePreco(p); setDescargaPickerOpen(false) }}
+        onPick={p => { adicionarItem(p); setDescargaPickerOpen(false) }}
       />
 
       <CategoriaPickerModal
         open={moegaPickerOpen}
         titulo="Moega de Entrada"
-        items={moegasPreco}
-        catalogoItems={items ?? []}
+        items={moegasOficiais}
+        precosBranorte={precos ?? []}
         labelSub={{}}
         ordemSub={[]}
         onClose={() => setMoegaPickerOpen(false)}
-        onPick={p => { adicionarItemDePreco(p); setMoegaPickerOpen(false) }}
+        onPick={p => { adicionarItem(p); setMoegaPickerOpen(false) }}
       />
 
       <CategoriaPickerModal
         open={passarelaPickerOpen}
         titulo="Passarela"
-        items={passarelasPreco}
-        catalogoItems={items ?? []}
+        items={passarelasOficiais}
+        precosBranorte={precos ?? []}
         labelSub={{}}
         ordemSub={[]}
         onClose={() => setPassarelaPickerOpen(false)}
-        onPick={p => { adicionarItemDePreco(p); setPassarelaPickerOpen(false) }}
+        onPick={p => { adicionarItem(p); setPassarelaPickerOpen(false) }}
       />
 
       <CategoriaPickerModal
         open={suporteBagPickerOpen}
         titulo="Suporte de Big Bag"
-        items={suporteBagPreco}
-        catalogoItems={items ?? []}
+        items={suporteBagOficiais}
+        precosBranorte={precos ?? []}
         labelSub={{}}
         ordemSub={[]}
         onClose={() => setSuporteBagPickerOpen(false)}
-        onPick={p => { adicionarItemDePreco(p); setSuporteBagPickerOpen(false) }}
+        onPick={p => { adicionarItem(p); setSuporteBagPickerOpen(false) }}
       />
 
       <CategoriaPickerModal
         open={outrosPickerOpen}
         titulo="Diversos"
-        items={outrosPreco}
-        catalogoItems={items ?? []}
+        items={outrosOficiais}
+        precosBranorte={precos ?? []}
         labelSub={{}}
         ordemSub={[]}
         onClose={() => setOutrosPickerOpen(false)}
-        onPick={p => { adicionarItemDePreco(p); setOutrosPickerOpen(false) }}
+        onPick={p => { adicionarItem(p); setOutrosPickerOpen(false) }}
       />
 
       {/* Modal de escolha de função — aberto quando o item tem várias funções
@@ -4123,15 +4121,16 @@ function MetaCard({
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// CategoriaPickerModal: picker genérico (Misturador, Moinho, Caixa).
-// Mostra foto puxada do catalogo_items linkado via preco_branorte_id.
+// CategoriaPickerModal: picker genérico (Misturador, Moinho, Caixa, etc.)
+// Puxa do catálogo curado (catalog_items). Foto e preço vêm direto do catálogo.
+// Colunas detalhadas (silo dims, compacta, etc.) fazem lookup no precos_branorte.
 // ──────────────────────────────────────────────────────────────────────────
 
 interface PickerProps {
   open: boolean
   titulo: string
-  items: PrecoBranorte[]
-  catalogoItems: CatalogoItem[]
+  items: CatalogoItem[]
+  precosBranorte?: PrecoBranorte[]   // para lookup de colunas detalhadas (silo, compacta, etc.)
   labelSub: Record<string, string>
   ordemSub: string[]
   colKgPratica?: boolean
@@ -4140,12 +4139,12 @@ interface PickerProps {
   colSiloDims?: boolean   // colunas geométricas pra silo (volume, ⌀, altura, anéis, funil)
   colCompacta?: boolean   // colunas pra Compacta (produção, armaz., trif+bal., mono+bal.)
   onClose: () => void
-  onPick: (p: PrecoBranorte) => void
+  onPick: (p: CatalogoItem) => void
 }
 
 function CategoriaPickerModal(props: PickerProps) {
   const {
-    open, titulo, items, catalogoItems, labelSub, ordemSub,
+    open, titulo, items, precosBranorte, labelSub, ordemSub,
     colKgPratica, colMilhoKg, colDimensoes, colSiloDims, colCompacta, onClose, onPick,
   } = props
   const [subSel, setSubSel] = useState<string | null>(null)
@@ -4162,13 +4161,12 @@ function CategoriaPickerModal(props: PickerProps) {
     })
   }, [items, subSel, ordemSub])
 
-  const fotoPorPrecoId = useMemo(() => {
-    const m = new Map<number, string>()
-    for (const ci of catalogoItems) {
-      if (ci.preco_branorte_id && ci.foto_url) m.set(ci.preco_branorte_id, ci.foto_url)
-    }
+  // Lookup reverso: catalog_item → precos_branorte (pra colunas detalhadas)
+  const pbMap = useMemo(() => {
+    const m = new Map<number, PrecoBranorte>()
+    for (const p of precosBranorte ?? []) m.set(p.id, p)
     return m
-  }, [catalogoItems])
+  }, [precosBranorte])
 
   if (!open) return null
 
@@ -4260,7 +4258,13 @@ function CategoriaPickerModal(props: PickerProps) {
             </thead>
             <tbody>
               {filtrados.map(p => {
-                const foto = fotoPorPrecoId.get(p.id)
+                // Lookup reverso pra colunas detalhadas (silo, compacta, caixa, etc.)
+                const pb = p.preco_branorte_id ? pbMap.get(p.preco_branorte_id) : null
+                const capacidadeLabel = p.capacidade_litros
+                  ? `${p.capacidade_litros.toLocaleString('pt-BR')} L`
+                  : p.capacidade_kg
+                    ? `${p.capacidade_kg.toLocaleString('pt-BR')} kg`
+                    : pb?.capacidade || '—'
                 return (
                   <tr
                     key={p.id}
@@ -4268,8 +4272,8 @@ function CategoriaPickerModal(props: PickerProps) {
                     className="border-t border-border/40 hover:bg-accent/10 cursor-pointer"
                   >
                     <td className="px-2 py-1">
-                      {foto ? (
-                        <img src={foto} alt={p.descricao} className="w-10 h-10 object-cover rounded border border-border" loading="lazy" />
+                      {p.foto_url ? (
+                        <img src={p.foto_url} alt={p.nome_curto} className="w-10 h-10 object-cover rounded border border-border" loading="lazy" />
                       ) : (
                         <div className="w-10 h-10 rounded border border-border bg-surface-2 flex items-center justify-center text-ink-faint">
                           <Package className="h-4 w-4" />
@@ -4277,47 +4281,45 @@ function CategoriaPickerModal(props: PickerProps) {
                       )}
                     </td>
                     <td className="px-3 py-1.5 text-ink">
-                      {p.codigo && <span className="font-mono font-bold text-[11px]">{p.codigo}</span>}
-                      {p.codigo && p.descricao !== p.codigo && (
-                        <span className="text-ink-muted text-[11px] ml-1">· {p.descricao}</span>
-                      )}
-                      {!p.codigo && <span className="font-semibold">{p.descricao}</span>}
+                      <span className="font-semibold">{p.nome_curto}</span>
                     </td>
                     {subsDisponiveis.length > 1 && (
                       <td className="px-3 py-1.5 text-[10px] text-ink-muted">
                         {labelSub[p.subcategoria ?? ''] ?? p.subcategoria}
                       </td>
                     )}
-                    <td className="px-3 py-1.5 text-ink-muted text-[11px]">{p.capacidade || '—'}</td>
+                    <td className="px-3 py-1.5 text-ink-muted text-[11px]">{capacidadeLabel}</td>
                     {colKgPratica && (
                       <td className="px-3 py-1.5 text-right tabular-nums text-[11px] text-warning font-semibold">
-                        {p.capacidade_kg_pratica ? Number(p.capacidade_kg_pratica).toLocaleString('pt-BR') + ' kg' : '—'}
+                        {(p.capacidade_kg ?? pb?.capacidade_kg_pratica)
+                          ? Number(p.capacidade_kg ?? pb?.capacidade_kg_pratica).toLocaleString('pt-BR') + ' kg'
+                          : '—'}
                       </td>
                     )}
                     {colMilhoKg && (
                       <td className="px-3 py-1.5 text-right tabular-nums text-[11px] text-warning font-semibold">
-                        {p.capacidade_kg_milho ? Number(p.capacidade_kg_milho).toLocaleString('pt-BR') + ' kg' : '—'}
+                        {pb?.capacidade_kg_milho ? Number(pb.capacidade_kg_milho).toLocaleString('pt-BR') + ' kg' : '—'}
                       </td>
                     )}
                     {colDimensoes && (
-                      <td className="px-3 py-1.5 text-ink-faint text-[10px] font-mono">{p.dimensoes || '—'}</td>
+                      <td className="px-3 py-1.5 text-ink-faint text-[10px] font-mono">{pb?.dimensoes || '—'}</td>
                     )}
                     {colSiloDims && (
                       <>
                         <td className="px-3 py-1.5 text-right tabular-nums text-[11px] text-ink">
-                          {p.volume_m3 ? `${Number(p.volume_m3).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} m³` : '—'}
+                          {pb?.volume_m3 ? `${Number(pb.volume_m3).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} m³` : '—'}
                         </td>
                         <td className="px-3 py-1.5 text-right tabular-nums text-[11px] text-ink-muted">
-                          {p.diametro_m ? `${Number(p.diametro_m).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m` : '—'}
+                          {pb?.diametro_m ? `${Number(pb.diametro_m).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m` : '—'}
                         </td>
                         <td className="px-3 py-1.5 text-right tabular-nums text-[11px] text-ink-muted">
-                          {p.altura_m ? `${Number(p.altura_m).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m` : '—'}
+                          {pb?.altura_m ? `${Number(pb.altura_m).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m` : '—'}
                         </td>
                         <td className="px-3 py-1.5 text-[11px]">
-                          {p.funil_tipo === 'PLANO'
+                          {pb?.funil_tipo === 'PLANO'
                             ? <span className="px-1.5 py-0.5 rounded bg-info/20 text-info font-bold text-[10px]">PLANO</span>
-                            : p.funil_tipo
-                              ? <span className="px-1.5 py-0.5 rounded bg-surface-2 border border-border font-bold text-[10px]">{p.funil_tipo}°</span>
+                            : pb?.funil_tipo
+                              ? <span className="px-1.5 py-0.5 rounded bg-surface-2 border border-border font-bold text-[10px]">{pb.funil_tipo}°</span>
                               : '—'}
                         </td>
                       </>
@@ -4325,26 +4327,28 @@ function CategoriaPickerModal(props: PickerProps) {
                     {colCompacta && (
                       <>
                         <td className="px-3 py-1.5 text-right tabular-nums text-[11px] text-ink font-semibold">
-                          {p.producao_kgh ? `${p.producao_kgh} kg/h` : '—'}
+                          {pb?.producao_kgh ? `${pb.producao_kgh} kg/h` : '—'}
                         </td>
                         <td className="px-3 py-1.5 text-right tabular-nums text-[11px] text-ink">
-                          {p.armazenamento_kg ? `${Number(p.armazenamento_kg).toLocaleString('pt-BR')} kg` : '—'}
+                          {pb?.armazenamento_kg ? `${Number(pb.armazenamento_kg).toLocaleString('pt-BR')} kg` : '—'}
                         </td>
                       </>
                     )}
-                    <td className="px-3 py-1.5 text-ink-muted text-[11px]">{p.potencia || '—'}</td>
+                    <td className="px-3 py-1.5 text-ink-muted text-[11px]">
+                      {p.motor_padrao_cv ? `${String(p.motor_padrao_cv).replace('.', ',')} CV` : pb?.potencia || '—'}
+                    </td>
                     <td className="px-3 py-1.5 text-right tabular-nums font-bold text-ink">
-                      {p.valor_equipamento
-                        ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(p.valor_equipamento))
+                      {p.valor
+                        ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(p.valor))
                         : '—'}
                     </td>
                     {colCompacta && (
                       <>
                         <td className="px-3 py-1.5 text-right tabular-nums text-[11px] text-info">
-                          {p.valor_com_motor_trif ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(p.valor_com_motor_trif)) : '—'}
+                          {pb?.valor_com_motor_trif ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(pb.valor_com_motor_trif)) : '—'}
                         </td>
                         <td className="px-3 py-1.5 text-right tabular-nums text-[11px] text-warning">
-                          {p.valor_com_motor_mono ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(p.valor_com_motor_mono)) : '—'}
+                          {pb?.valor_com_motor_mono ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(pb.valor_com_motor_mono)) : '—'}
                         </td>
                       </>
                     )}
