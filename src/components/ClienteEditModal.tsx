@@ -83,6 +83,44 @@ async function buscarCnpj(cnpj: string): Promise<BrasilApiCnpj | null> {
   }
 }
 
+// CPF lookup via cpfcnpj.com.br
+const CPFCNPJ_TOKEN = '670696c045158c1b8fd7e158bc13adcb'
+const CPFCNPJ_PACOTE = '9' // pacote completo (nome, endereço, telefone)
+
+interface CpfCnpjResult {
+  status: number
+  cpf: string
+  nome: string
+  nascimento: string
+  endereco: string
+  numero: string
+  complemento: string
+  bairro: string
+  cep: string
+  cidade: string
+  uf: string
+  mae: string
+  genero: string
+  situacao: string
+  telefones: string[]
+  emails: string[]
+  saldo: number
+}
+
+async function buscarCpf(cpf: string): Promise<CpfCnpjResult | null> {
+  const d = somenteDigitos(cpf)
+  if (d.length !== 11) return null
+  try {
+    const res = await fetch(`https://api.cpfcnpj.com.br/${CPFCNPJ_TOKEN}/${CPFCNPJ_PACOTE}/${d}`)
+    if (!res.ok) return null
+    const data = await res.json() as CpfCnpjResult
+    if (!data.status || !data.nome) return null
+    return data
+  } catch {
+    return null
+  }
+}
+
 interface ViaCep {
   logradouro: string
   bairro: string
@@ -153,9 +191,27 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
     setSucessoBusca(null)
 
     if (d.length === 11) {
-      setCnpj(fmtCpf(cnpj))
+      // CPF: busca dados cadastrais via cpfcnpj.com.br
+      setBuscando(true)
       setErroBusca(null)
-      setSucessoBusca('CPF formatado. Preencha os dados manualmente.')
+      setCnpj(fmtCpf(cnpj))
+      const dados = await buscarCpf(d)
+      setBuscando(false)
+      if (!dados) {
+        setErroBusca('CPF não encontrado ou API indisponível. Preencha manualmente.')
+        return
+      }
+      if (dados.nome) setNome(dados.nome)
+      const endNum = dados.numero ? `${dados.endereco}, ${dados.numero}` : dados.endereco
+      const endFull = dados.complemento ? `${endNum} - ${dados.complemento}` : endNum
+      if (endFull) setEndereco(endFull)
+      if (dados.bairro) setBairro(dados.bairro)
+      if (dados.cidade) setCidade(dados.cidade)
+      if (dados.uf) setUf(dados.uf)
+      if (dados.cep) setCep(fmtCep(dados.cep))
+      if (dados.telefones?.length) setFone(fmtFone(dados.telefones[0]))
+      if (dados.emails?.length) setEmail(dados.emails[0])
+      setSucessoBusca(`✓ Dados de "${dados.nome}" carregados com sucesso`)
       return
     }
 
@@ -286,7 +342,7 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
             {!erroBusca && !sucessoBusca && somenteDigitos(cnpj).length > 0 && (
               <p className="text-[10px] text-ink-faint mt-1 flex items-center gap-1">
                 {docTipo === 'cnpj' && <><Building2 className="w-3 h-3" /> CNPJ — busca automática via Receita Federal</>}
-                {docTipo === 'cpf' && <><User className="w-3 h-3" /> CPF — preencha os dados manualmente</>}
+                {docTipo === 'cpf' && <><User className="w-3 h-3" /> CPF — busca automática de nome e endereço</>}
                 {docTipo === 'ie' && <><Tractor className="w-3 h-3" /> IE / Produtor Rural — será salvo no campo Inscrição Estadual</>}
               </p>
             )}
