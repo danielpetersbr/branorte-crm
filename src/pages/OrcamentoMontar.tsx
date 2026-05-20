@@ -846,18 +846,32 @@ export function OrcamentoMontar() {
       novas[idx] = valor
 
       // Moinho martelo: se mudou peneira, recalcula capacidade automaticamente
-      // Fórmula: Q = CV × 0.7457 × peneira(mm) × 45 (Luiz Gomide, Ferraz Máquinas)
-      // Formatos possíveis: "Montado com peneira 3,0mm", "Peneira: 3 mm", "peneira 2,0mm"
+      // Pen 3mm usa tabela real (valores comerciais arredondados)
+      // Outras peneiras: Q = CV × 0.7457 × pen(mm) × 45
+      const MOINHO_CAP_3MM: Record<number, number> = {
+        7.5: 1000, 10: 1000, 15: 1800, 20: 2000,
+        30: 3000, 50: 5000, 75: 7500, 100: 10000,
+      }
       const isMoinho = (it.nome || '').toLowerCase().includes('moinho') || novas.some(s => s.toLowerCase().includes('martelo'))
       if (isMoinho && /peneira/i.test(valor)) {
-        // Extrai número antes de "mm": "peneira 2,0mm" → 2.0, "peneira 3 mm" → 3
         const penMatch = valor.match(/(\d+[.,]?\d*)\s*mm/i)
         if (penMatch) {
           const penMm = parseFloat(penMatch[1].replace(',', '.'))
           const cv = it.motor_cv || 0
           if (cv > 0 && penMm > 0) {
-            const kw = cv * 0.7457
-            const novaCapacidade = Math.round(kw * penMm * 45)
+            let novaCapacidade: number
+            if (penMm === 3 && MOINHO_CAP_3MM[cv]) {
+              // Peneira 3mm: usa valor real da tabela comercial
+              novaCapacidade = MOINHO_CAP_3MM[cv]
+            } else {
+              // Outras peneiras: calcula proporcional a partir da ref 3mm
+              const ref3mm = MOINHO_CAP_3MM[cv]
+              if (ref3mm) {
+                novaCapacidade = Math.round(ref3mm * penMm / 3)
+              } else {
+                novaCapacidade = Math.round(cv * 0.7457 * penMm * 45)
+              }
+            }
             const capIdx = novas.findIndex(s => /capacidade/i.test(s))
             if (capIdx >= 0) {
               novas[capIdx] = novas[capIdx].replace(
