@@ -33,9 +33,9 @@ export const ATRIBUTOS_POR_CATEGORIA: Record<string, AtributoDef[]> = {
     { key: 'funcao', label: 'Função', tipo: 'select', opcoes: ['Alimentação', 'Descarga', 'Pulmão', 'Recepção', 'Geral'] },
   ],
   MOINHO: [
-    { key: 'tipo_moinho', label: 'Tipo', tipo: 'select', opcoes: ['Martelo', 'Disco', 'Rolo'] },
-    { key: 'capacidade_kgh', label: 'Capacidade', unidade: 'kg/h', tipo: 'number', placeholder: '500' },
-    { key: 'peneira_mm', label: 'Peneira', unidade: 'mm', tipo: 'number', placeholder: '3' },
+    { key: 'tipo_moinho', label: 'Tipo', tipo: 'select', opcoes: ['Martelo'], hint: 'Todos os moinhos Branorte são de martelo' },
+    { key: 'peneira_mm', label: 'Peneira', unidade: 'mm', tipo: 'select', opcoes: ['1.5', '2', '2.5', '3', '3.5', '4', '5', '6', '8', '10'], hint: 'Padrão: 3,0mm. Peneira menor = moagem mais fina, menor produção' },
+    { key: 'capacidade_kgh', label: 'Capacidade', unidade: 'kg/h', tipo: 'number', placeholder: '1000', hint: 'Ref. milho pen 3mm: 7,5CV≈750 | 10CV≈1.000 | 20CV≈2.000 | 30CV≈3.000 | 50CV≈5.000 | 75CV≈7.500 | 100CV≈10.000' },
     { key: 'aspiracao', label: 'Aspiração', tipo: 'select', opcoes: ['Sim', 'Não'] },
     { key: 'martelos_qtd', label: 'Quantidade de martelos', tipo: 'number', placeholder: '24' },
   ],

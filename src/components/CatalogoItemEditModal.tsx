@@ -137,6 +137,31 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
     [categoria],
   )
 
+  // ─── MOINHO: auto-preenche tipo Martelo e estima capacidade ──────
+  const isMoinho = categoria.trim().toUpperCase() === 'MOINHO'
+
+  useEffect(() => {
+    if (!isMoinho) return
+    // Tipo sempre Martelo
+    setAtributos(a => (a.tipo_moinho && a.tipo_moinho !== '') ? a : { ...a, tipo_moinho: 'Martelo' })
+  }, [isMoinho])
+
+  // Quando motor CV muda em MOINHO, sugere capacidade (pen 3mm ref milho)
+  useEffect(() => {
+    if (!isMoinho || !motorCv) return
+    const cv = Number(motorCv)
+    if (!cv || cv <= 0) return
+    // Só preenche se capacidade estiver vazia (não sobrescreve valor manual)
+    setAtributos(a => {
+      if (a.capacidade_kgh && a.capacidade_kgh !== '') return a
+      // Ref: ~100 kg/h por CV com peneira 3mm, milho
+      const peneira = Number(a.peneira_mm) || 3
+      const fatorPeneira = peneira / 3 // peneira maior = mais produção
+      const capacidade = Math.round(cv * 100 * fatorPeneira)
+      return { ...a, capacidade_kgh: String(capacidade) }
+    })
+  }, [isMoinho, motorCv])
+
   // ─── Sugestão de categorias (autocomplete) ───────────────────────
   const categoriasSugeridas = useMemo(() => {
     if (!todosItems) return []
