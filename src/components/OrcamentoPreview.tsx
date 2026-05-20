@@ -263,6 +263,12 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   const [motorBusca, setMotorBusca] = useState('')
   void totalItems  // mostrado no footer do builder, não no preview
 
+  // Total com desconto (se houver). Usado nas parcelas de pagamento.
+  const _descontoVal = desconto
+    ? (desconto.tipo === 'pct' ? totalGeral * (desconto.valor / 100) : desconto.valor)
+    : 0
+  const totalComDesconto = Math.max(0, totalGeral - _descontoVal)
+
   const motoresTitle = voltagem === 'monofasico' ? 'Motores Monofásicos:' : 'Motores Trifásicos:'
   const mostrarTotalEquip = carrinho.length > 1 || acessorios !== null
   const hoje = dataEmissao || new Date().toLocaleDateString('pt-BR')
@@ -1501,7 +1507,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     function novoId() { return `p-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` }
                     function calcValor(p: ParcelaPagamento): number {
                       if (typeof p.valor === 'number') return p.valor
-                      if (typeof p.pct === 'number') return Math.round((totalGeral * p.pct / 100) * 100) / 100
+                      // Usa totalComDesconto (não totalGeral) pra parcelas refletirem o valor real
+                      const base = totalComDesconto
+                      if (typeof p.pct === 'number') return Math.round((base * p.pct / 100) * 100) / 100
                       return 0
                     }
                     function dataLabel(p: ParcelaPagamento): string {
@@ -1603,9 +1611,10 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     }
                     const totalPct = arr.reduce((s, p) => s + (typeof p.pct === 'number' ? p.pct : 0), 0)
                     const totalParcelas = arr.reduce((s, p) => s + calcValor(p), 0)
-                    // Soma das parcelas em R$ vs total do orcamento (valida cobertura)
-                    const diffParcelas = totalGeral > 0 ? totalParcelas - totalGeral : 0
-                    const fechouValor = totalGeral > 0 && Math.abs(diffParcelas) < 0.01
+                    // Soma das parcelas em R$ vs total COM DESCONTO (valida cobertura)
+                    const baseComparacao = totalComDesconto
+                    const diffParcelas = baseComparacao > 0 ? totalParcelas - baseComparacao : 0
+                    const fechouValor = baseComparacao > 0 && Math.abs(diffParcelas) < 0.01
                     return (
                       <div className="flex gap-1.5 items-start">
                         <span className="text-gray-400 mt-0.5">•</span>
@@ -1783,10 +1792,10 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                 ))}
                                 {/* Linha TOTAL — só no modo edit. Avisa quando a soma das parcelas
                                     nao fecha com o total do orcamento (em R$, considerando tanto pct quanto valor manual). */}
-                                {!renderMode && !fechouValor && totalGeral > 0 && (
+                                {!renderMode && !fechouValor && baseComparacao > 0 && (
                                   <tr className="border-t border-amber-300 bg-amber-50 print:hidden">
                                     <td className="py-1 px-2 text-[10px] text-amber-800 italic" colSpan={3}>
-                                      ⚠️ Soma das parcelas: <strong>R$ {formatBRLBare(totalParcelas)}</strong> de R$ {formatBRLBare(totalGeral)} ({totalPct > 0 && `${totalPct.toFixed(2)}% · `}{diffParcelas > 0 ? '+' : ''}{formatBRLBare(diffParcelas)}) — ajuste pra fechar
+                                      ⚠️ Soma das parcelas: <strong>R$ {formatBRLBare(totalParcelas)}</strong> de R$ {formatBRLBare(baseComparacao)} ({totalPct > 0 && `${totalPct.toFixed(2)}% · `}{diffParcelas > 0 ? '+' : ''}{formatBRLBare(diffParcelas)}) — ajuste pra fechar
                                     </td>
                                     {!renderMode && <td className="print:hidden"></td>}
                                   </tr>
