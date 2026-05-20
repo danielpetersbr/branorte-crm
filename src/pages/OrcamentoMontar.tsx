@@ -55,7 +55,9 @@ interface CarrinhoItem {
   ocultar_funcao_no_pdf?: boolean
   /** Material: undefined/null = galvanizado, '304' = Inox 304 (×2.5), '316' = Inox 316 (×3.5). */
   inox?: '304' | '316' | false
-  /** Specs originais (antes de trocar pra inox) — pra poder restaurar ao desativar. */
+  /** Tungstênio: quando true, valor unitário do martelo = R$ 99. Só pra jogos de martelo. */
+  tungstenio?: boolean
+  /** Specs originais (antes de trocar pra inox/tungstenio) — pra poder restaurar ao desativar. */
   specs_original?: string[]
 }
 
@@ -868,6 +870,28 @@ export function OrcamentoMontar() {
           .replace(/a[çc]o\s*SAE\s*\d+/gi, `**${label}**`)
       })
       return { ...it, inox: proximo, valor: novoValor, specs: novasSpecs, specs_original: specsOriginal }
+    }))
+  }
+
+  // Toggle Tungstênio: valor unitário do martelo = R$ 99 (só pra jogos de martelo)
+  function toggleTungstenio(uid: string) {
+    setCarrinho(c => c.map(it => {
+      if (it.uid !== uid) return it
+      const ativando = !it.tungstenio
+      if (ativando) {
+        // Extrair qtd martelos das specs (ex: "Quantidade: 16 martelos")
+        const specMartelo = it.specs.find(s => /\d+\s*martelo/i.test(s))
+        const matchQtd = specMartelo?.match(/(\d+)\s*martelo/i)
+        const qtdMartelos = matchQtd ? parseInt(matchQtd[1]) : 16
+        const novoValor = qtdMartelos * 99
+        const specsOriginal = it.specs_original || it.specs.slice()
+        const novasSpecs = specsOriginal.map(s =>
+          /material|a[çc]o\s*tratado/i.test(s) ? 'Material: Tungstênio (vida útil 3x maior)' : s
+        )
+        return { ...it, tungstenio: true, valor: novoValor, valor_original: it.valor_original, specs: novasSpecs, specs_original: specsOriginal }
+      } else {
+        return { ...it, tungstenio: false, valor: it.valor_original, specs: it.specs_original || it.specs, specs_original: undefined }
+      }
     }))
   }
 
@@ -1726,6 +1750,7 @@ export function OrcamentoMontar() {
                 onUpdateNome={alterarNome}
                 onUpdateSpec={alterarSpec}
                 onToggleInox={toggleInox}
+                onToggleTungstenio={toggleTungstenio}
                 onUpdateQtd={alterarQtd}
                 componentesExtras={componentesExtras}
                 onUpdateComponentesExtras={setComponentesExtras}

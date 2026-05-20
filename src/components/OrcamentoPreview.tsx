@@ -25,6 +25,7 @@ export interface PreviewItem {
   motor_valor_unit?: number
   foto_url: string | null
   inox?: '304' | '316' | false
+  tungstenio?: boolean
 }
 
 export interface PreviewMotor {
@@ -131,6 +132,7 @@ export interface OrcamentoPreviewProps {
   onUpdateNome?: (uid: string, novoNome: string) => void
   onUpdateSpec?: (uid: string, idx: number, valor: string) => void
   onToggleInox?: (uid: string, tipo?: '304' | '316' | false) => void
+  onToggleTungstenio?: (uid: string) => void
   onUpdateQtd?: (uid: string, novaQtd: number) => void
   onUpdateTerm?: (key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento', valor: string) => void
   onMoverItem?: (uid: string, direcao: 'cima' | 'baixo') => void
@@ -243,7 +245,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     renderMode = false,
     tensaoMotores = null, onUpdateTensaoMotores,
     desconto, onUpdateDesconto,
-    onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onToggleInox, onUpdateQtd, onUpdateTerm, onMoverItem,
+    onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onToggleInox, onToggleTungstenio, onUpdateQtd, onUpdateTerm, onMoverItem,
     componentesExtras = [], onUpdateComponentesExtras, componentesAdicionaisCatalogo = [],
     parcelas, onUpdateParcelas,
     motoresDisponiveis, onTrocarMotor,
@@ -770,6 +772,20 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           </div>
                         )
                       })()}
+                      {/* Toggle Tungstênio — só pra jogos de martelo */}
+                      {!renderMode && onToggleTungstenio && it.uid && /martelo|jogo.*martelo/i.test(it.nome) && (
+                        <button
+                          onClick={() => onToggleTungstenio(it.uid!)}
+                          className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ml-1 cursor-pointer transition-all ${
+                            it.tungstenio
+                              ? 'bg-amber-100 text-amber-700 border border-amber-400 ring-1 ring-amber-300'
+                              : 'bg-gray-100 text-gray-400 border border-gray-200 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-300'
+                          }`}
+                          title={it.tungstenio ? 'Tungstênio ativo (R$ 99/un). Clique pra voltar ao aço tratado.' : 'Clique pra cotar em Tungstênio (R$ 99/un)'}
+                        >
+                          {it.tungstenio ? '⬡ Tungstênio' : 'W'}
+                        </button>
+                      )}
                     </div>
                     {!renderMode && it.uid && (
                       <div className="flex items-center gap-0.5 shrink-0 print:hidden">
