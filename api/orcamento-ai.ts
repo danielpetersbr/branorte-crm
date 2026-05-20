@@ -941,27 +941,41 @@ async function tool_compor_orcamento_composto(
     return { erro: 'lista de itens vazia' }
   }
 
+  // Helper: buscar no catálogo com filtros
+  async function buscarItem(item: ItemPedido, tentativa: 'precisa' | 'ampla') {
+    let q = supa
+      .from('precos_branorte')
+      .select('id, categoria, subcategoria, descricao, valor_equipamento, motor_cv, motor_polos, capacidade, potencia')
+      .eq('ativo', true)
+      .order('valor_equipamento', { ascending: true })
+      .limit(8)
+
+    if (item.categoria) q = q.eq('categoria', item.categoria.toUpperCase())
+
+    if (tentativa === 'precisa') {
+      // Busca com todos os filtros
+      if (item.subcategoria) q = q.eq('subcategoria', item.subcategoria.toUpperCase())
+      if (item.busca) q = q.ilike('descricao', `%${item.busca}%`)
+      if (item.motor_cv != null) q = q.eq('motor_cv', item.motor_cv)
+      if (item.capacidade_min != null) q = q.gte('capacidade_kg_pratica', item.capacidade_min)
+      if (item.capacidade_max != null) q = q.lte('capacidade_kg_pratica', item.capacidade_max)
+    } else {
+      // Busca AMPLA: só categoria, sem filtros restritivos
+      // Traz os 8 mais baratos da categoria pra IA escolher o mais próximo
+    }
+
+    return q
+  }
+
   const resultados = await Promise.all(
     itens.map(async (item) => {
       try {
-        let q = supa
-          .from('precos_branorte')
-          .select('id, categoria, subcategoria, descricao, valor_equipamento, motor_cv, motor_polos, capacidade, potencia')
-          .eq('ativo', true)
-          .order('valor_equipamento', { ascending: true })
-          .limit(8)
+        // Tentativa 1: busca precisa
+        const q1 = await buscarItem(item, 'precisa')
+        const { data: data1, error: err1 } = await q1
+        if (err1) return { item, erro: err1.message }
 
-        if (item.categoria) q = q.eq('categoria', item.categoria.toUpperCase())
-        if (item.subcategoria) q = q.eq('subcategoria', item.subcategoria.toUpperCase())
-        if (item.busca) q = q.ilike('descricao', `%${item.busca}%`)
-        if (item.motor_cv != null) q = q.eq('motor_cv', item.motor_cv)
-        if (item.capacidade_min != null) q = q.gte('capacidade_kg_pratica', item.capacidade_min)
-        if (item.capacidade_max != null) q = q.lte('capacidade_kg_pratica', item.capacidade_max)
-
-        const { data, error } = await q
-        if (error) return { item, erro: error.message }
-
-        const candidatos = (data ?? []).map(c => ({
+        let candidatos = (data1 ?? []).map(c => ({
           id: c.id,
           descricao: c.descricao,
           valor_unit: c.valor_equipamento ? Number(c.valor_equipamento) : null,
@@ -972,6 +986,26 @@ async function tool_compor_orcamento_composto(
           categoria: c.categoria,
           subcategoria: c.subcategoria,
         }))
+
+        // Tentativa 2: se não achou nada e tem busca/capacidade, faz busca AMPLA
+        if (candidatos.length === 0 && (item.busca || item.capacidade_min || item.motor_cv)) {
+          const q2 = await buscarItem(item, 'ampla')
+          const { data: data2 } = await q2
+          candidatos = (data2 ?? []).map(c => ({
+            id: c.id,
+            descricao: c.descricao,
+            valor_unit: c.valor_equipamento ? Number(c.valor_equipamento) : null,
+            motor_cv: c.motor_cv,
+            motor_polos: c.motor_polos,
+            capacidade: c.capacidade,
+            potencia: c.potencia,
+            categoria: c.categoria,
+            subcategoria: c.subcategoria,
+          }))
+          if (candidatos.length > 0) {
+            return { item, status: 'alternativas_amplas' as const, candidatos, nota: `Busca exata "${item.busca || ''}" não encontrou. Estas são as opções disponíveis na categoria ${item.categoria}.` }
+          }
+        }
 
         if (candidatos.length === 0) {
           return { item, status: 'gap' as const, candidatos: [] }
@@ -988,7 +1022,7 @@ async function tool_compor_orcamento_composto(
 
   // Sumário rápido pro LLM tomar decisão
   const matches = resultados.filter(r => 'status' in r && r.status === 'match_exato')
-  const alternativas = resultados.filter(r => 'status' in r && r.status === 'alternativas')
+  const alternativas = resultados.filter(r => 'status' in r && (r.status === 'alternativas' || r.status === 'alternativas_amplas'))
   const gaps = resultados.filter(r => 'status' in r && r.status === 'gap')
 
   return {
@@ -997,6 +1031,7 @@ async function tool_compor_orcamento_composto(
     com_alternativas: alternativas.length,
     gaps: gaps.length,
     resultados,
+    instrucao_para_ia: 'OBRIGATÓRIO: chame propor_adicionar_item pra cada match_exato (use o 1o candidato). Pra alternativas, escolha o mais próximo do pedido e chame propor_adicionar_item com justificativa. Pra gaps, liste como "❌ Não achei". NUNCA termine sem cards de ação.',
   }
 }
 
