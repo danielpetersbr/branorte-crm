@@ -147,7 +147,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
     15:  { martelos: 12, capacidade: 1800, funil: 100 },
     20:  { martelos: 16, capacidade: 2000, funil: 100 },
     30:  { martelos: 24, capacidade: 3600, funil: 50 },
-    50:  { martelos: 24, capacidade: 5000, funil: 50 },
+    50:  { martelos: 36, capacidade: 5000, funil: 50 },
     75:  { martelos: 48, capacidade: 7500, funil: 45 },
     100: { martelos: 64, capacidade: 10000, funil: 50 },
   }
