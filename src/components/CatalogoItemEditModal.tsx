@@ -438,35 +438,18 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
                 </span>
               </div>
 
-              {/* Nome curto */}
+              {/* Título (nome_curto + sincroniza nome_completo) */}
               <div className="mb-3">
                 <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1">
                   Título do equipamento <span className="text-danger">*</span>
                 </label>
                 <Input
                   value={nomeCurto}
-                  onChange={e => setNomeCurto(e.target.value)}
+                  onChange={e => { setNomeCurto(e.target.value); setNomeCompleto(e.target.value) }}
                   placeholder="ex: CAÇAMBA DE PESAGEM 1000 LITROS (500 KG)"
                 />
                 <p className="text-[10px] text-info mt-1">
                   Aparece como título do item no orçamento (ex: "A — CAÇAMBA DE PESAGEM 1000L")
-                </p>
-              </div>
-
-              {/* Nome completo */}
-              <div className="mb-3">
-                <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1">
-                  Nome técnico completo
-                </label>
-                <textarea
-                  value={nomeCompleto}
-                  onChange={e => setNomeCompleto(e.target.value)}
-                  rows={2}
-                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-[13px] text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-all resize-none"
-                  placeholder="Nome completo com especificação (ex: SILO METÁLICO SAB3065 — 200 TON)"
-                />
-                <p className="text-[10px] text-ink-faint mt-1">
-                  Versão completa do nome (se diferente do título)
                 </p>
               </div>
 
