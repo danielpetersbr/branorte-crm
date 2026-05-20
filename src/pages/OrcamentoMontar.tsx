@@ -1350,54 +1350,6 @@ export function OrcamentoMontar() {
               Adicionar produto personalizado
             </button>
 
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <button
-                onClick={() => setShowOnlyOficiais(p => !p)}
-                className={`text-[10px] px-2 py-1 rounded font-semibold flex items-center gap-1 transition-all ${
-                  showOnlyOficiais
-                    ? 'bg-success text-white'
-                    : 'bg-surface-2 text-ink-muted hover:bg-surface-3'
-                }`}
-                title={showOnlyOficiais ? `Mostrando só items curados (${totalOficiais}). Click pra ver todos.` : 'Mostrando todos. Click pra filtrar só items curados.'}
-              >
-                <Check className="h-3 w-3" />
-                Só oficiais ({totalOficiais})
-              </button>
-              <button
-                onClick={() => setShowOnlyPopular(p => !p)}
-                className={`text-[10px] px-2 py-1 rounded font-semibold flex items-center gap-1 transition-all ${
-                  showOnlyPopular
-                    ? 'bg-accent text-white'
-                    : 'bg-surface-2 text-ink-muted hover:bg-surface-3'
-                }`}
-              >
-                <Star className="h-3 w-3" />
-                Só populares
-              </button>
-              <button
-                onClick={() => setCategoria(null)}
-                className={`text-[10px] px-2 py-1 rounded font-semibold transition-all ${
-                  !categoria
-                    ? 'bg-ink text-bg'
-                    : 'bg-surface-2 text-ink-muted hover:bg-surface-3'
-                }`}
-              >
-                Todas ({items?.length ?? 0})
-              </button>
-              {categorias.map(c => (
-                <button
-                  key={c.categoria}
-                  onClick={() => setCategoria(c.categoria === categoria ? null : c.categoria)}
-                  className={`text-[10px] px-2 py-1 rounded font-semibold transition-all ${
-                    categoria === c.categoria
-                      ? 'bg-ink text-bg'
-                      : 'bg-surface-2 text-ink-muted hover:bg-surface-3'
-                  }`}
-                >
-                  {c.categoria} ({c.qtd})
-                </button>
-              ))}
-            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-3">
