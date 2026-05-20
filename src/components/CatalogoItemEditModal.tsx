@@ -44,6 +44,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
   // ─── Estado dos campos editáveis ─────────────────────────────────
   const [isOficial, setIsOficial] = useState(false)
   const [categoria, setCategoria] = useState('')
+  const [subcategoria, setSubcategoria] = useState('')
   const [nomeCurto, setNomeCurto] = useState('')
   const [nomeCompleto, setNomeCompleto] = useState('')
   // descricao é auto-gerada a partir das specs no save
@@ -81,6 +82,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
       // Modo CRIAR — reseta tudo pra vazio
       setIsOficial(false)
       setCategoria('')
+      setSubcategoria('')
       setNomeCurto('')
       setNomeCompleto('')
       setDescricao('')
@@ -103,6 +105,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
     // Modo EDITAR — preenche com dados do item
     setIsOficial(item.is_oficial)
     setCategoria(item.categoria || '')
+    setSubcategoria(item.subcategoria || '')
     setNomeCurto(item.nome_curto || '')
     setNomeCompleto(item.nome_completo || '')
     // descricao é auto-gerada a partir das specs
@@ -267,6 +270,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
     const updates: Partial<CatalogoItemAdmin> = {
       is_oficial: isOficial,
       categoria: categoria.trim().toUpperCase(),
+      subcategoria: subcategoria.trim().toUpperCase() || null,
       nome_curto: nomeCurto.trim(),
       nome_completo: nomeCompleto.trim() || nomeCurto.trim(),
       descricao: specs.filter(s => s.trim()).map(s => `· ${s}`).join('\n') || null,
@@ -434,22 +438,34 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
               </button>
             </div>
 
-            {/* Categoria com sugestões */}
-            <div>
-              <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1">
-                Categoria
-              </label>
-              <Input
-                value={categoria}
-                onChange={e => setCategoria(e.target.value)}
-                list="catalogo-categorias-sugeridas"
-                placeholder="ex: COMPACTA 01"
-              />
-              <datalist id="catalogo-categorias-sugeridas">
-                {categoriasSugeridas.map(c => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
+            {/* Categoria + Subcategoria */}
+            <div className="grid grid-cols-[1fr_1fr] gap-2">
+              <div>
+                <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1">
+                  Categoria
+                </label>
+                <Input
+                  value={categoria}
+                  onChange={e => setCategoria(e.target.value)}
+                  list="catalogo-categorias-sugeridas"
+                  placeholder="ex: CACAMBA"
+                />
+                <datalist id="catalogo-categorias-sugeridas">
+                  {categoriasSugeridas.map(c => (
+                    <option key={c} value={c} />
+                  ))}
+                </datalist>
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1">
+                  Subcategoria
+                </label>
+                <Input
+                  value={subcategoria}
+                  onChange={e => setSubcategoria(e.target.value)}
+                  placeholder="ex: PESAGEM"
+                />
+              </div>
             </div>
 
             {/* ── BLOCO ORÇAMENTO — campos que aparecem pro cliente ── */}
