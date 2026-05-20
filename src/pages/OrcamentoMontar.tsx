@@ -1498,7 +1498,7 @@ export function OrcamentoMontar() {
                     {(categoria === null || categoria === 'SUPORTE_BAG' || categoria === 'SUPORTE BAG') && suporteBagOficiais.length > 0 && (
                       <MetaCard categoria="SUPORTE_BAG" titulo="Suporte de Big Bag" descricao="Estruturas pra Big Bag" qtd={suporteBagOficiais.length} onClick={() => setSuporteBagPickerOpen(true)} />
                     )}
-                    {(categoria === null || categoria === 'OUTROS') && outrosOficiais.length > 0 && (
+                    {(categoria === null || categoria === 'OUTROS' || categoria === 'ACESSORIO') && outrosOficiais.length > 0 && (
                       <MetaCard categoria="OUTROS" titulo="Diversos / Acessórios" descricao="Martelos, peneiras avulsas, eixos, buchas e outros" qtd={outrosOficiais.length} onClick={() => setOutrosPickerOpen(true)} />
                     )}
                   </>
@@ -1512,7 +1512,7 @@ export function OrcamentoMontar() {
                     'SILO', 'ELEVADOR', 'CACAMBA_PESAGEM', 'PRE-LIMPEZA', 'PRE_LIMPEZA',
                     'PENEIRA', 'HELICOIDE', 'BALANCA', 'ENSACADEIRA', 'COMPACTA',
                     'ALIMENTADOR', 'DESCARGA', 'MARTELOS', 'MOEGA', 'PASSARELA',
-                    'SUPORTE_BAG', 'SUPORTE BAG', 'OUTROS',
+                    'SUPORTE_BAG', 'SUPORTE BAG', 'OUTROS', 'ACESSORIO',
                   ].includes(it.categoria))
                   .slice(0, 200)
                   .map(item => (
