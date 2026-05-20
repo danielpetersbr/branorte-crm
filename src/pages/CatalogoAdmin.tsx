@@ -341,11 +341,7 @@ function CatalogoCardItem({ item, onClick, onToggleOficial, togglePending }: Car
             <p className="text-[10px] text-ink-faint uppercase tracking-wide truncate">
               {item.categoria || 'Sem categoria'}
             </p>
-            {item.is_oficial ? (
-              <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-success-bg text-success border border-success/30 uppercase tracking-wider">
-                Oficial
-              </span>
-            ) : (
+            {!item.is_oficial && (
               <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-warning/20 text-warning border border-warning/30 uppercase tracking-wider">
                 Pendente
               </span>
