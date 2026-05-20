@@ -16,6 +16,7 @@ const CATEGORIA_LABEL: Record<string, string> = {
   CAIXA: 'Caixas',
   SILO: 'Silos',
   CACAMBA: 'Caçamba de Pesagem',
+  CACAMBA_PESAGEM: 'Caçamba de Pesagem',
   PRE_LIMPEZA: 'Pré-Limpeza',
   PENEIRA: 'Peneiras',
   BRETE: 'Brete Casqueador',

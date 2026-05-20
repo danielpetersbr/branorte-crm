@@ -65,6 +65,10 @@ export const ATRIBUTOS_POR_CATEGORIA: Record<string, AtributoDef[]> = {
     { key: 'volume_l', label: 'Volume', unidade: 'litros', tipo: 'number', placeholder: '1000' },
     { key: 'pesagem', label: 'Pesagem', tipo: 'select', opcoes: ['Com célula de carga', 'Sem pesagem'] },
   ],
+  CACAMBA_PESAGEM: [
+    { key: 'volume_l', label: 'Volume', unidade: 'litros', tipo: 'number', placeholder: '1000' },
+    { key: 'pesagem', label: 'Pesagem', tipo: 'select', opcoes: ['Com célula de carga', 'Sem pesagem'] },
+  ],
   'PRE-LIMPEZA': [
     { key: 'capacidade_th', label: 'Capacidade', unidade: 't/h', tipo: 'number', placeholder: '10' },
     { key: 'peneiras_qtd', label: 'Peneiras', tipo: 'number', placeholder: '2' },
