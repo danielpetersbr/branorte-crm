@@ -137,28 +137,40 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
     [categoria],
   )
 
-  // ─── MOINHO: auto-preenche tipo Martelo e estima capacidade ──────
+  // ─── MOINHO: auto-preenche specs baseado no motor CV ──────────────
   const isMoinho = categoria.trim().toUpperCase() === 'MOINHO'
+
+  // Tabela real Branorte (extraída dos orçamentos em Z:/Comercial)
+  const MOINHO_SPECS: Record<number, { martelos: number; capacidade: number; funil: number }> = {
+    7.5: { martelos: 16, capacidade: 1000, funil: 50 },
+    10:  { martelos: 12, capacidade: 1400, funil: 50 },
+    15:  { martelos: 12, capacidade: 1800, funil: 100 },
+    20:  { martelos: 16, capacidade: 2000, funil: 100 },
+    30:  { martelos: 24, capacidade: 3600, funil: 50 },
+    50:  { martelos: 24, capacidade: 5000, funil: 50 },
+    75:  { martelos: 48, capacidade: 7500, funil: 45 },
+    100: { martelos: 64, capacidade: 10000, funil: 50 },
+  }
 
   useEffect(() => {
     if (!isMoinho) return
-    // Tipo sempre Martelo
     setAtributos(a => (a.tipo_moinho && a.tipo_moinho !== '') ? a : { ...a, tipo_moinho: 'Martelo' })
   }, [isMoinho])
 
-  // Quando motor CV muda em MOINHO, sugere capacidade (pen 3mm ref milho)
+  // Quando motor CV muda em MOINHO, auto-preenche martelos, capacidade e funil
   useEffect(() => {
     if (!isMoinho || !motorCv) return
     const cv = Number(motorCv)
     if (!cv || cv <= 0) return
-    // Só preenche se capacidade estiver vazia (não sobrescreve valor manual)
+    const ref = MOINHO_SPECS[cv]
     setAtributos(a => {
-      if (a.capacidade_kgh && a.capacidade_kgh !== '') return a
-      // Ref: ~100 kg/h por CV com peneira 3mm, milho
-      const peneira = Number(a.peneira_mm) || 3
-      const fatorPeneira = peneira / 3 // peneira maior = mais produção
-      const capacidade = Math.round(cv * 100 * fatorPeneira)
-      return { ...a, capacidade_kgh: String(capacidade) }
+      const next = { ...a }
+      // Só preenche campos vazios (não sobrescreve edição manual)
+      if (!next.martelos_qtd) next.martelos_qtd = ref ? String(ref.martelos) : ''
+      if (!next.capacidade_kgh) next.capacidade_kgh = ref ? String(ref.capacidade) : String(Math.round(cv * 100))
+      if (!next.funil_l) next.funil_l = ref ? String(ref.funil) : '50'
+      if (!next.peneira_mm) next.peneira_mm = '3'
+      return next
     })
   }, [isMoinho, motorCv])
 

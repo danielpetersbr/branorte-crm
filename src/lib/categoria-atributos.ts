@@ -34,10 +34,11 @@ export const ATRIBUTOS_POR_CATEGORIA: Record<string, AtributoDef[]> = {
   ],
   MOINHO: [
     { key: 'tipo_moinho', label: 'Tipo', tipo: 'select', opcoes: ['Martelo'], hint: 'Todos os moinhos Branorte são de martelo' },
-    { key: 'peneira_mm', label: 'Peneira', unidade: 'mm', tipo: 'select', opcoes: ['1.5', '2', '2.5', '3', '3.5', '4', '5', '6', '8', '10'], hint: 'Padrão: 3,0mm. Peneira menor = moagem mais fina, menor produção' },
-    { key: 'capacidade_kgh', label: 'Capacidade', unidade: 'kg/h', tipo: 'number', placeholder: '1000', hint: 'Ref. milho pen 3mm: 7,5CV≈750 | 10CV≈1.000 | 20CV≈2.000 | 30CV≈3.000 | 50CV≈5.000 | 75CV≈7.500 | 100CV≈10.000' },
+    { key: 'capacidade_kgh', label: 'Capacidade', unidade: 'kg/h', tipo: 'number', placeholder: '1000', hint: 'Pen 3mm milho: 7,5CV=1.000 | 10CV=1.400 | 15CV=1.800 | 20CV=2.000 | 30CV=3.600 | 50CV=5.000 | 75CV=7.500 | 100CV=10.000' },
+    { key: 'peneira_mm', label: 'Peneira', unidade: 'mm', tipo: 'select', opcoes: ['1.2', '1.5', '2', '2.5', '3', '3.5', '4', '5', '6', '8', '10', '12', '16'], hint: 'Padrão: 3,0mm. Peneira menor = moagem mais fina, menor produção' },
+    { key: 'martelos_qtd', label: 'Quantidade de martelos', tipo: 'number', placeholder: '24', hint: '7,5CV=16 | 10CV=12 | 15CV=12 | 20CV=16 | 30CV=24 | 50CV=24 | 75CV=48 | 100CV=64' },
+    { key: 'funil_l', label: 'Funil dosador', unidade: 'Lts', tipo: 'number', placeholder: '50', hint: '7,5-10CV=50L | 15-20CV=100L | 75CV=45L' },
     { key: 'aspiracao', label: 'Aspiração', tipo: 'select', opcoes: ['Sim', 'Não'] },
-    { key: 'martelos_qtd', label: 'Quantidade de martelos', tipo: 'number', placeholder: '24' },
   ],
   MISTURADOR: [
     { key: 'tipo_mist', label: 'Tipo', tipo: 'select', opcoes: ['Vertical', 'Horizontal'] },
