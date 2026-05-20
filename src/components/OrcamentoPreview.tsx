@@ -773,7 +773,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                         )
                       })()}
                       {/* Toggle Tungstênio — só pra jogos de martelo */}
-                      {!renderMode && onToggleTungstenio && it.uid && /martelo|jogo.*martelo/i.test(it.nome) && (
+                      {!renderMode && onToggleTungstenio && it.uid && /jogo.*martelo/i.test(it.nome) && (
                         <button
                           onClick={() => onToggleTungstenio(it.uid!)}
                           className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ml-1 cursor-pointer transition-all ${
