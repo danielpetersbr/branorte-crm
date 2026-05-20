@@ -597,6 +597,35 @@ export function PrecosBranorte() {
               </div>
               {[...subs.entries()].map(([sub, items]) => {
                 const mostrarMotor = items.some(it => it.valor_com_motor_trif != null || it.valor_com_motor_mono != null)
+                // Transportadores: sub-agrupar por diâmetro (160, 210, 150, 200, 250, 300)
+                if (cat === 'TRANSPORTADOR' && (sub === 'CHUPIM' || sub === 'HELICOIDAL')) {
+                  const porDiam = new Map<string, PrecoBranorte[]>()
+                  for (const it of items) {
+                    const m = it.descricao.match(/(\d{3})\s*[xX]/)
+                    const diam = m ? m[1] : '?'
+                    if (!porDiam.has(diam)) porDiam.set(diam, [])
+                    porDiam.get(diam)!.push(it)
+                  }
+                  // Ordenar diâmetros numericamente
+                  const diams = [...porDiam.keys()].sort((a, b) => Number(a) - Number(b))
+                  return diams.map(diam => {
+                    const ditems = porDiam.get(diam)!
+                    const tipoLabel = sub === 'CHUPIM' ? 'Chupim' : 'Calha TH'
+                    return (
+                      <div key={`${sub}-${diam}`}>
+                        <div className="px-3 py-1.5 bg-surface-2/50 border-b border-border/30 flex items-center gap-2">
+                          <span className="text-[10px] uppercase tracking-wider font-bold text-accent">
+                            {tipoLabel} ⌀{diam}mm
+                          </span>
+                          <span className="text-[10px] text-ink-faint">
+                            {ditems.length} medidas · {ditems[0]?.capacidade || ''} · 1,0m a {Math.max(...ditems.map(d => { const mm = d.descricao.match(/([\d,\.]+)\s*m$/i); return mm ? parseFloat(mm[1].replace(',', '.')) : 0 })).toFixed(1).replace('.', ',')}m
+                          </span>
+                        </div>
+                        <TabelaPorCategoria items={ditems} mostrarMotor={mostrarMotor} />
+                      </div>
+                    )
+                  })
+                }
                 return (
                   <div key={sub ?? '_'}>
                     {sub && (
