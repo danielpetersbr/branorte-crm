@@ -53,8 +53,8 @@ interface CarrinhoItem {
   funcao_selecionada?: string | null
   /** Quando true, funcao_selecionada NÃO aparece no PDF (uso interno apenas). */
   ocultar_funcao_no_pdf?: boolean
-  /** Quando true, equipamento cotado em Inox 304 (valor × 2.5, specs trocam galvanizado → inox). */
-  inox?: boolean
+  /** Material: undefined/null = galvanizado, '304' = Inox 304 (×2.5), '316' = Inox 316 (×3.5). */
+  inox?: '304' | '316' | false
   /** Specs originais (antes de trocar pra inox) — pra poder restaurar ao desativar. */
   specs_original?: string[]
 }
@@ -843,33 +843,34 @@ export function OrcamentoMontar() {
     setCarrinho(c => c.map(it => it.uid === uid ? { ...it, nome_custom: novoNome } : it))
   }
 
+  // Cicla: galvanizado → Inox 304 (×2.5) → Inox 316 (×3.5) → galvanizado
   function toggleInox(uid: string) {
     setCarrinho(c => c.map(it => {
       if (it.uid !== uid) return it
-      const novoInox = !it.inox
-      const novoValor = novoInox
-        ? Math.round(it.valor_original * 2.5 * 100) / 100
-        : it.valor_original
-      if (novoInox) {
-        // Salva specs originais e troca galvanizado → Inox 304
-        const specsOriginal = it.specs_original || it.specs.slice()
-        const novasSpecs = it.specs.map(s => {
-          // "Corpo em chapa: 1,5mm galvanizado" → "Construído em chapa **Inox 304**"
-          // "Construído em aço galvanizado" → "Construído em chapa **Inox 304**"
-          if (/corpo\s*em\s*chapa/i.test(s) || /constru[ií]do\s*em\s*a[çc]o/i.test(s)) {
-            return 'Construído em chapa **Inox 304**'
-          }
-          return s
-            .replace(/a[çc]o\s*galvanizado/gi, '**Inox 304**')
-            .replace(/galvanizado/gi, '**Inox 304**')
-            .replace(/a[çc]o\s*carbono/gi, '**Inox 304**')
-            .replace(/a[çc]o\s*SAE\s*\d+/gi, '**Inox 304**')
-        })
-        return { ...it, inox: true, valor: novoValor, specs: novasSpecs, specs_original: specsOriginal }
-      } else {
-        // Restaura specs e valor originais
-        return { ...it, inox: false, valor: novoValor, specs: it.specs_original || it.specs, specs_original: undefined }
+      const ciclo: Array<'304' | '316' | false> = [false, '304', '316']
+      const atual = ciclo.indexOf(it.inox || false)
+      const proximo = ciclo[(atual + 1) % ciclo.length]
+
+      if (!proximo) {
+        // Volta pro galvanizado original
+        return { ...it, inox: false, valor: it.valor_original, specs: it.specs_original || it.specs, specs_original: undefined }
       }
+
+      const fator = proximo === '304' ? 2.5 : 3.5
+      const novoValor = Math.round(it.valor_original * fator * 100) / 100
+      const specsOriginal = it.specs_original || it.specs.slice()
+      const label = `Inox ${proximo}`
+      const novasSpecs = specsOriginal.map(s => {
+        if (/corpo\s*em\s*chapa/i.test(s) || /constru[ií]do\s*em\s*a[çc]o/i.test(s)) {
+          return `Construído em chapa **${label}**`
+        }
+        return s
+          .replace(/a[çc]o\s*galvanizado/gi, `**${label}**`)
+          .replace(/galvanizado/gi, `**${label}**`)
+          .replace(/a[çc]o\s*carbono/gi, `**${label}**`)
+          .replace(/a[çc]o\s*SAE\s*\d+/gi, `**${label}**`)
+      })
+      return { ...it, inox: proximo, valor: novoValor, specs: novasSpecs, specs_original: specsOriginal }
     }))
   }
 

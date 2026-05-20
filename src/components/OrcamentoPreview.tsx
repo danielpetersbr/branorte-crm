@@ -24,7 +24,7 @@ export interface PreviewItem {
   motor_qtd: number
   motor_valor_unit?: number
   foto_url: string | null
-  inox?: boolean
+  inox?: '304' | '316' | false
 }
 
 export interface PreviewMotor {
@@ -721,13 +721,19 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                         <button
                           onClick={() => onToggleInox(it.uid!)}
                           className={`inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider align-middle cursor-pointer transition-all ${
-                            it.inox
-                              ? 'bg-emerald-100 text-emerald-700 border border-emerald-400 ring-1 ring-emerald-300'
-                              : 'bg-gray-100 text-gray-400 border border-gray-200 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-300'
+                            it.inox === '316'
+                              ? 'bg-purple-100 text-purple-700 border border-purple-400 ring-1 ring-purple-300'
+                              : it.inox === '304'
+                                ? 'bg-emerald-100 text-emerald-700 border border-emerald-400 ring-1 ring-emerald-300'
+                                : 'bg-gray-100 text-gray-400 border border-gray-200 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-300'
                           }`}
-                          title={it.inox ? 'Inox 304 ativo (valor ×2,5). Clique pra voltar ao galvanizado.' : 'Clique pra cotar em Inox 304 (valor ×2,5)'}
+                          title={
+                            it.inox === '316' ? 'Inox 316 ativo (×3,5). Clique pra voltar ao galvanizado.'
+                            : it.inox === '304' ? 'Inox 304 ativo (×2,5). Clique pra trocar pra Inox 316 (×3,5).'
+                            : 'Clique pra cotar em Inox 304 (×2,5)'
+                          }
                         >
-                          {it.inox ? '✦ Inox' : 'Inox'}
+                          {it.inox === '316' ? '✦ 316' : it.inox === '304' ? '✦ 304' : 'Inox'}
                         </button>
                       )}
                     </div>
