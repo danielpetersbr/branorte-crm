@@ -90,6 +90,11 @@ export const ATRIBUTOS_POR_CATEGORIA: Record<string, AtributoDef[]> = {
     { key: 'capacidade_th', label: 'Capacidade', unidade: 't/h', tipo: 'number', placeholder: '20' },
     { key: 'volume_m3', label: 'Volume', unidade: 'm³', tipo: 'number', placeholder: '15' },
   ],
+  ACESSORIO: [
+    { key: 'tipo_acessorio', label: 'Tipo', tipo: 'select', opcoes: ['Martelos', 'Eixos e Buchas', 'Peneiras de reposição'] },
+    { key: 'quantidade', label: 'Quantidade', tipo: 'number', placeholder: '12' },
+    { key: 'material', label: 'Material', tipo: 'text', placeholder: 'Aço tratado termicamente' },
+  ],
 }
 
 // Marcador invisivel pra identificar specs estruturadas
