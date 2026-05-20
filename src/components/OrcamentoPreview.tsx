@@ -1740,15 +1740,16 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                           //  - Editar % → salva pct, R$ recalcula como pct*total
                                           //  - Editar R$ → salva valor, % recalcula como valor/total*100
                                           // O "modo armazenado" (pct vs valor) muda conforme ultimo input editado.
+                                          const base = totalComDesconto
                                           const pctMostrado = typeof p.pct === 'number'
                                             ? p.pct
-                                            : (totalGeral > 0 && typeof p.valor === 'number'
-                                                ? Math.round((p.valor / totalGeral) * 10000) / 100
+                                            : (base > 0 && typeof p.valor === 'number'
+                                                ? Math.round((p.valor / base) * 10000) / 100
                                                 : '')
                                           const valorMostrado = typeof p.valor === 'number'
                                             ? p.valor
                                             : (typeof p.pct === 'number'
-                                                ? Math.round((totalGeral * p.pct / 100) * 100) / 100
+                                                ? Math.round((base * p.pct / 100) * 100) / 100
                                                 : '')
                                           return (
                                             <div className="flex items-center justify-end gap-1">
