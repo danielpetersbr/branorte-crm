@@ -104,7 +104,7 @@ export function usePrecosAudit() {
         supabase.from('catalogo_items').select('id', { count: 'exact', head: true }).eq('ativo', true).eq('is_oficial', true),
         supabase.from('catalogo_items').select('id', { count: 'exact', head: true })
           .eq('ativo', true).eq('is_oficial', true).is('preco_branorte_id', null)
-          .in('categoria', ['TRANSPORTADOR', 'MISTURADOR', 'MOINHO', 'CAIXA', 'SILO', 'ELEVADOR', 'CACAMBA', 'PRE-LIMPEZA', 'PRE_LIMPEZA', 'ENSACADEIRA']),
+          .in('categoria', ['TRANSPORTADOR', 'MISTURADOR', 'MOINHO', 'CAIXA', 'SILO', 'ELEVADOR', 'CAÇAMBA DE PESAGEM', 'PRE-LIMPEZA', 'PRE_LIMPEZA', 'ENSACADEIRA']),
         supabase.from('precos_branorte').select('id', { count: 'exact', head: true })
           .eq('ativo', true).lt('updated_at', new Date(Date.now() - 30 * 86400 * 1000).toISOString()),
       ])

@@ -530,7 +530,7 @@ export function OrcamentoMontar() {
   const caixasOficiais = useMemo(() => filtrarCat('CAIXA'), [oficiais])
   const silosOficiais = useMemo(() => filtrarCat('SILO'), [oficiais])
   const elevadoresOficiais = useMemo(() => filtrarCat('ELEVADOR'), [oficiais])
-  const cacambasOficiais = useMemo(() => filtrarCat('CACAMBA'), [oficiais])
+  const cacambasOficiais = useMemo(() => filtrarCat('CAÇAMBA DE PESAGEM'), [oficiais])
   const preLimpezasOficiais = useMemo(() => filtrarCat('PRE_LIMPEZA'), [oficiais])
   const peneirasOficiais = useMemo(() => filtrarCat('PENEIRA'), [oficiais])
   const helicoidesOficiais = useMemo(() => filtrarCat('HELICOIDE'), [oficiais])
@@ -1036,7 +1036,7 @@ export function OrcamentoMontar() {
         else if (n.includes('SILO')) categoria = 'SILO'
         else if (n.includes('ELEVADOR')) categoria = 'ELEVADOR'
         else if (n.includes('PENEIRA')) categoria = 'PENEIRA'
-        else if (n.includes('CACAMBA') || n.includes('CACAMBA') || n.includes('PESAGEM')) categoria = 'CACAMBA'
+        else if (n.includes('CAÇAMBA DE PESAGEM') || n.includes('CAÇAMBA DE PESAGEM') || n.includes('PESAGEM')) categoria = 'CAÇAMBA DE PESAGEM'
         else if (n.includes('ENSACADEIRA')) categoria = 'ENSACADEIRA'
         else categoria = 'MODELO'
       }
@@ -1462,8 +1462,8 @@ export function OrcamentoMontar() {
                     {(categoria === null || categoria === 'ELEVADOR') && elevadoresOficiais.length > 0 && (
                       <MetaCard categoria="ELEVADOR" titulo="Elevador de Caneca" descricao="EC-2310/4010/5013 — vários comprimentos" qtd={elevadoresOficiais.length} onClick={() => setElevadorPickerOpen(true)} />
                     )}
-                    {(categoria === null || categoria === 'CACAMBA') && cacambasOficiais.length > 0 && (
-                      <MetaCard categoria="CACAMBA" titulo="Caçamba de Pesagem" descricao="BNCP600/1000/1900/3000" qtd={cacambasOficiais.length} onClick={() => setCacambaPickerOpen(true)} />
+                    {(categoria === null || categoria === 'CAÇAMBA DE PESAGEM') && cacambasOficiais.length > 0 && (
+                      <MetaCard categoria="CAÇAMBA DE PESAGEM" titulo="Caçamba de Pesagem" descricao="600L / 1000L / 1900L / 3000L" qtd={cacambasOficiais.length} onClick={() => setCacambaPickerOpen(true)} />
                     )}
                     {(categoria === null || categoria === 'PRE-LIMPEZA' || categoria === 'PRE_LIMPEZA') && preLimpezasOficiais.length > 0 && (
                       <MetaCard categoria="PRE-LIMPEZA" titulo="Pré-Limpeza" descricao="3, 5, 7 e 10 ton/h" qtd={preLimpezasOficiais.length} onClick={() => setPreLimpezaPickerOpen(true)} />
@@ -1509,7 +1509,7 @@ export function OrcamentoMontar() {
                   // picker do meta-card ja cobre.
                   .filter(it => busca || ![
                     'TRANSPORTADOR', 'MISTURADOR', 'MOINHO', 'CAIXA',
-                    'SILO', 'ELEVADOR', 'CACAMBA', 'PRE-LIMPEZA', 'PRE_LIMPEZA',
+                    'SILO', 'ELEVADOR', 'CAÇAMBA DE PESAGEM', 'PRE-LIMPEZA', 'PRE_LIMPEZA',
                     'PENEIRA', 'HELICOIDE', 'BALANCA', 'ENSACADEIRA', 'COMPACTA',
                     'ALIMENTADOR', 'DESCARGA', 'MARTELOS', 'MOEGA', 'PASSARELA',
                     'SUPORTE_BAG', 'SUPORTE BAG', 'OUTROS',

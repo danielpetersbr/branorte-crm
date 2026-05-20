@@ -403,7 +403,7 @@ function TabelaPorCategoria({ items, mostrarMotor }: { items: PrecoBranorte[]; m
   if (cat === 'COMPACTA') return <TabelaCompactas items={items} />
   if (cat === 'SILO') return <TabelaSilos items={items} />
   if (cat === 'CAIXA') return <TabelaCaixas items={items} />
-  if (cat === 'MISTURADOR' || cat === 'CACAMBA') return <TabelaMisturadores items={items} />
+  if (cat === 'MISTURADOR' || cat === 'CAÇAMBA DE PESAGEM') return <TabelaMisturadores items={items} />
   return <TabelaPrecos items={items} mostrarMotor={mostrarMotor} />
 }
 
