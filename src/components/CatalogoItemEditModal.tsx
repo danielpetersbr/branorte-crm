@@ -453,27 +453,63 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
                 </p>
               </div>
 
-              {/* Descrição comercial = specs em bullet (mesmo formato da prévia) */}
+              {/* Descrição comercial = specs editáveis (o que editar aqui muda o orçamento) */}
               <div>
                 <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1">
                   Descrição comercial
                 </label>
-                {specs.length > 0 ? (
-                  <div className="w-full rounded-md border border-border bg-surface px-3 py-2.5">
-                    <div className="flex flex-col gap-0.5">
-                      {specs.map((s, i) => (
-                        <p key={i} className="text-[13px] text-ink flex items-start gap-1.5">
-                          <span className="text-ink-faint mt-[2px]">·</span>
-                          <span>{s}</span>
-                        </p>
-                      ))}
+                <div className="w-full rounded-md border border-border bg-surface px-3 py-2.5 flex flex-col gap-1">
+                  {specs.map((s, i) => (
+                    <div key={i} className="flex items-center gap-1.5 group">
+                      <span className="text-ink-faint text-[13px] shrink-0">·</span>
+                      <input
+                        type="text"
+                        value={s}
+                        onChange={e => {
+                          const next = [...specs]
+                          next[i] = e.target.value
+                          setSpecs(next)
+                        }}
+                        className="flex-1 bg-transparent text-[13px] text-ink border-0 border-b border-transparent hover:border-border focus:border-accent outline-none py-0.5 transition-colors"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removerSpec(i)}
+                        className="opacity-0 group-hover:opacity-100 text-ink-faint hover:text-danger p-0.5 transition-opacity"
+                        aria-label="Remover linha"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
                     </div>
+                  ))}
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-ink-faint text-[13px] shrink-0">·</span>
+                    <input
+                      type="text"
+                      value={novaSpec}
+                      onChange={e => setNovaSpec(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          adicionarSpec()
+                        }
+                      }}
+                      placeholder="Adicionar linha..."
+                      className="flex-1 bg-transparent text-[13px] text-ink-faint border-0 border-b border-transparent hover:border-border focus:border-accent outline-none py-0.5 placeholder:text-ink-faint/50 transition-colors"
+                    />
+                    {novaSpec.trim() && (
+                      <button
+                        type="button"
+                        onClick={adicionarSpec}
+                        className="text-accent hover:text-accent/80 p-0.5"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
-                ) : (
-                  <p className="text-[13px] text-ink-faint italic px-3 py-2">Sem specs — adicione nos atributos ou specs livres abaixo</p>
-                )}
+                </div>
                 <p className="text-[10px] text-info mt-1">
-                  Aparece no corpo do orçamento abaixo do título — edite nos atributos e specs abaixo
+                  Edite aqui — é isso que aparece no orçamento do cliente
                 </p>
               </div>
 
@@ -549,49 +585,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
               </div>
             )}
 
-            {/* Specs livres (lista editável) — atributos extras fora do schema */}
-            <div>
-              <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1.5">
-                {atributoDefs.length > 0 ? 'Specs adicionais (livre)' : 'Specs técnicas'}
-              </label>
-              <div className="flex flex-col gap-1.5">
-                {specs.map((s, i) => (
-                  <div key={i} className="flex items-center gap-2 bg-surface-2 border border-border rounded-md px-2.5 py-1.5">
-                    <span className="flex-1 text-[13px] text-ink truncate">{s}</span>
-                    <button
-                      type="button"
-                      onClick={() => removerSpec(i)}
-                      className="text-ink-faint hover:text-danger p-0.5"
-                      aria-label="Remover spec"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
-                <div className="flex gap-1.5 mt-0.5">
-                  <Input
-                    value={novaSpec}
-                    onChange={e => setNovaSpec(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault()
-                        adicionarSpec()
-                      }
-                    }}
-                    placeholder="Nova spec (ex: Capacidade 200kg/h)"
-                  />
-                  <button
-                    type="button"
-                    onClick={adicionarSpec}
-                    disabled={!novaSpec.trim()}
-                    className="text-[12px] px-3 rounded border border-border bg-surface-2 hover:bg-surface-3 text-ink-muted hover:text-ink transition disabled:opacity-40 flex items-center gap-1 shrink-0"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Add
-                  </button>
-                </div>
-              </div>
-            </div>
+            {/* Specs livres foram movidas para a Descrição Comercial acima */}
 
             {/* Preço base */}
             <div>
