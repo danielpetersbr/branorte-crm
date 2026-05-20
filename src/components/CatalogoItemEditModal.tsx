@@ -470,20 +470,46 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
                 </p>
               </div>
 
-              {/* Mini preview */}
+              {/* Preview estilo orçamento real */}
               {nomeCurto.trim() && (
-                <div className="mt-3 p-2.5 bg-white/5 border border-border/50 rounded text-[11px]">
-                  <p className="text-[9px] text-ink-faint uppercase tracking-wider mb-1.5">Preview no orçamento</p>
-                  <p className="font-bold text-ink text-[12px]">A — {nomeCurto.trim().toUpperCase()}</p>
-                  {descricao.trim() && (
-                    <p className="text-ink-muted mt-0.5 text-[11px] leading-relaxed">{descricao.trim()}</p>
-                  )}
-                  {specs.length > 0 && (
-                    <ul className="mt-1 text-[10px] text-ink-faint list-disc list-inside">
-                      {specs.slice(0, 3).map((s, i) => <li key={i}>{s}</li>)}
-                      {specs.length > 3 && <li className="text-ink-faint/50">+{specs.length - 3} specs...</li>}
-                    </ul>
-                  )}
+                <div className="mt-3 rounded-lg overflow-hidden border border-border/60">
+                  <div className="bg-white/[0.03] px-3 py-1.5 border-b border-border/40 flex items-center justify-between">
+                    <span className="text-[9px] text-ink-faint uppercase tracking-widest font-semibold">Preview no orçamento</span>
+                    <span className="text-[8px] text-ink-faint/50">como o cliente vê</span>
+                  </div>
+                  <div className="px-4 py-3 bg-white/[0.02]">
+                    {/* Foto + conteúdo lado a lado */}
+                    <div className="flex gap-3">
+                      {fotoAtual && (
+                        <img src={fotoAtual} alt="" className="w-14 h-14 rounded object-cover border border-border/40 shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-ink text-[13px] leading-tight">A — {nomeCurto.trim().toUpperCase()}</p>
+                        {descricao.trim() && (
+                          <p className="text-ink-muted mt-1 text-[11px] leading-relaxed">{descricao.trim()}</p>
+                        )}
+                      </div>
+                      {valor && (
+                        <div className="text-right shrink-0">
+                          <p className="text-[13px] font-bold text-accent tabular-nums">{formatBRL(Number(valor))}</p>
+                          {motorCv && <p className="text-[9px] text-ink-faint mt-0.5">{motorCv} CV {motorPolos ? `${motorPolos}p` : ''}</p>}
+                        </div>
+                      )}
+                    </div>
+                    {/* Specs */}
+                    {specs.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-border/30">
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+                          {specs.map((s, i) => (
+                            <p key={i} className="text-[10px] text-ink-faint flex items-start gap-1.5">
+                              <span className="text-ink-faint/40 mt-[3px]">•</span>
+                              <span>{s}</span>
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
