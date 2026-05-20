@@ -157,7 +157,14 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
     setAtributos(a => (a.tipo_moinho && a.tipo_moinho !== '') ? a : { ...a, tipo_moinho: 'Martelo' })
   }, [isMoinho])
 
-  // Quando motor CV muda em MOINHO, auto-preenche martelos, capacidade e funil
+  // Calcula capacidade do moinho: Q = Potência(kW) × diâmetro_peneira(mm) × JKW
+  // JKW = 45 para milho brasileiro (Luiz Gomide, Ferraz Máquinas)
+  function calcCapacidadeMoinho(cv: number, peneiraMm: number): number {
+    const kw = cv * 0.7457 // 1 CV = 0.7457 kW
+    return Math.round(kw * peneiraMm * 45)
+  }
+
+  // Quando motor CV muda em MOINHO, auto-preenche martelos, funil e peneira default
   useEffect(() => {
     if (!isMoinho || !motorCv) return
     const cv = Number(motorCv)
@@ -165,14 +172,38 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
     const ref = MOINHO_SPECS[cv]
     setAtributos(a => {
       const next = { ...a }
-      // Só preenche campos vazios (não sobrescreve edição manual)
       if (!next.martelos_qtd) next.martelos_qtd = ref ? String(ref.martelos) : ''
-      if (!next.capacidade_kgh) next.capacidade_kgh = ref ? String(ref.capacidade) : String(Math.round(cv * 100))
-      if (!next.funil_l) next.funil_l = ref ? String(ref.funil) : '50'
+      if (!next.funil_l) next.funil_l = ref ? String(ref.funil) : '45'
       if (!next.peneira_mm) next.peneira_mm = '3'
+      // Capacidade: usa tabela real pra pen 3mm, senão calcula
+      const pen = Number(next.peneira_mm) || 3
+      if (!next.capacidade_kgh) {
+        if (ref && pen === 3) {
+          next.capacidade_kgh = String(ref.capacidade)
+        } else {
+          next.capacidade_kgh = String(calcCapacidadeMoinho(cv, pen))
+        }
+      }
       return next
     })
   }, [isMoinho, motorCv])
+
+  // Quando peneira muda, recalcula capacidade automaticamente
+  useEffect(() => {
+    if (!isMoinho || !motorCv) return
+    const cv = Number(motorCv)
+    const pen = Number(atributos.peneira_mm)
+    if (!cv || cv <= 0 || !pen || pen <= 0) return
+    const ref = MOINHO_SPECS[cv]
+    setAtributos(a => {
+      // Se pen 3mm e tem ref na tabela real, usa o valor real
+      if (ref && pen === 3) {
+        return { ...a, capacidade_kgh: String(ref.capacidade) }
+      }
+      // Senão calcula pela fórmula Q = P × d × JKW
+      return { ...a, capacidade_kgh: String(calcCapacidadeMoinho(cv, pen)) }
+    })
+  }, [atributos.peneira_mm])
 
   // ─── Sugestão de categorias (autocomplete) ───────────────────────
   const categoriasSugeridas = useMemo(() => {
