@@ -136,16 +136,24 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
     setErroBusca(null)
   }, [open, cliente])
 
-  async function handleBuscarCnpj() {
+  const [sucessoBusca, setSucessoBusca] = useState<string | null>(null)
+
+  async function handleBuscarDocumento() {
     const d = somenteDigitos(cnpj)
-    if (d.length !== 14 && d.length !== 11) {
-      setErroBusca('Digite um CNPJ (14 dígitos) ou CPF (11 dígitos)')
+    setSucessoBusca(null)
+    if (d.length < 11) {
+      setErroBusca('Digite um CPF (11 dígitos) ou CNPJ (14 dígitos)')
       return
     }
     if (d.length === 11) {
-      // CPF: só formata, não tem API pública
+      // CPF: formata e tenta buscar endereço pelo CEP se tiver
       setCnpj(fmtCpf(cnpj))
       setErroBusca(null)
+      setSucessoBusca('CPF formatado. Preencha os dados manualmente (não existe API pública pra CPF).')
+      return
+    }
+    if (d.length > 11 && d.length < 14) {
+      setErroBusca('CNPJ incompleto — precisa ter 14 dígitos')
       return
     }
     setBuscando(true)
@@ -153,7 +161,7 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
     const dados = await buscarCnpj(d)
     setBuscando(false)
     if (!dados) {
-      setErroBusca('CNPJ não encontrado ou API indisponível')
+      setErroBusca('CNPJ não encontrado na Receita Federal ou API indisponível. Verifique o número.')
       return
     }
     // Preenche tudo
@@ -168,6 +176,7 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
     setCnpj(fmtCnpj(d))
     if (dados.email) setEmail(dados.email)
     if (dados.ddd_telefone_1) setFone(fmtFone(dados.ddd_telefone_1))
+    setSucessoBusca(`✓ Dados de "${dados.nome_fantasia || dados.razao_social}" carregados da Receita Federal`)
   }
 
   async function handleBuscarCep() {
@@ -230,12 +239,12 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
             <div className="flex gap-2">
               <Input
                 value={cnpj}
-                onChange={e => setCnpj(fmtDocumento(e.target.value))}
+                onChange={e => { setCnpj(fmtDocumento(e.target.value)); setSucessoBusca(null); setErroBusca(null) }}
                 placeholder="Digite CNPJ ou CPF"
-                onKeyDown={e => { if (e.key === 'Enter') handleBuscarCnpj() }}
+                onKeyDown={e => { if (e.key === 'Enter') handleBuscarDocumento() }}
               />
               <button
-                onClick={handleBuscarCnpj}
+                onClick={handleBuscarDocumento}
                 disabled={buscando || docDigitos.length < 11}
                 className="shrink-0 px-3 rounded-md bg-accent hover:bg-accent/90 text-white text-[12px] font-semibold flex items-center gap-1.5 disabled:opacity-40 transition"
               >
@@ -243,11 +252,12 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
                 Buscar
               </button>
             </div>
-            {erroBusca && <p className="text-[10px] text-danger mt-1">{erroBusca}</p>}
-            {!erroBusca && docDigitos.length > 0 && (
+            {erroBusca && <p className="text-[11px] text-danger mt-1">{erroBusca}</p>}
+            {sucessoBusca && <p className="text-[11px] text-success mt-1">{sucessoBusca}</p>}
+            {!erroBusca && !sucessoBusca && docDigitos.length > 0 && (
               <p className="text-[10px] text-ink-faint mt-1 flex items-center gap-1">
                 {isCnpj ? <Building2 className="w-3 h-3" /> : <User className="w-3 h-3" />}
-                {isCnpj ? 'CNPJ — busca automática via Receita Federal' : 'CPF — preencha os dados manualmente'}
+                {isCnpj ? 'CNPJ — clique Buscar pra preencher automaticamente via Receita Federal' : 'CPF — clique Buscar pra formatar, preencha os dados manualmente'}
               </p>
             )}
           </div>

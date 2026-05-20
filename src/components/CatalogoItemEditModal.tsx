@@ -46,7 +46,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
   const [categoria, setCategoria] = useState('')
   const [nomeCurto, setNomeCurto] = useState('')
   const [nomeCompleto, setNomeCompleto] = useState('')
-  const [descricao, setDescricao] = useState('')
+  // descricao é auto-gerada a partir das specs no save
   const [specs, setSpecs] = useState<string[]>([])
   const [novaSpec, setNovaSpec] = useState('')
   // Atributos estruturados por categoria (ex: capacidade_ton pra SILO).
@@ -105,7 +105,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
     setCategoria(item.categoria || '')
     setNomeCurto(item.nome_curto || '')
     setNomeCompleto(item.nome_completo || '')
-    setDescricao(item.descricao || '')
+    // descricao é auto-gerada a partir das specs
     // Parseia specs: separa atributos estruturados (Capacidade: 200 ton) de specs livres
     const parsed = parseSpecsParaAtributos(Array.isArray(item.specs) ? item.specs : [], item.categoria || '')
     setAtributos(parsed.atributos)
@@ -244,7 +244,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
       categoria: categoria.trim().toUpperCase(),
       nome_curto: nomeCurto.trim(),
       nome_completo: nomeCompleto.trim() || nomeCurto.trim(),
-      descricao: descricao.trim() || null,
+      descricao: specs.filter(s => s.trim()).map(s => `· ${s}`).join('\n') || null,
       // Junta atributos estruturados + specs livres
       specs: atributosParaSpecs(atributos, specs.filter(s => s.trim().length > 0), categoria),
       valor: valor === '' ? 0 : Number(valor) || 0,
@@ -453,20 +453,27 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
                 </p>
               </div>
 
-              {/* Descrição */}
+              {/* Descrição comercial = specs em bullet (mesmo formato da prévia) */}
               <div>
                 <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1">
                   Descrição comercial
                 </label>
-                <textarea
-                  value={descricao}
-                  onChange={e => setDescricao(e.target.value)}
-                  rows={4}
-                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-[13px] text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-all resize-none"
-                  placeholder="Descreva o equipamento de forma comercial: o que faz, pra que serve, diferenciais. Ex: Silo metálico com capacidade para 200 toneladas, ideal para armazenamento de grãos e ração animal."
-                />
+                {specs.length > 0 ? (
+                  <div className="w-full rounded-md border border-border bg-surface px-3 py-2.5">
+                    <div className="flex flex-col gap-0.5">
+                      {specs.map((s, i) => (
+                        <p key={i} className="text-[13px] text-ink flex items-start gap-1.5">
+                          <span className="text-ink-faint mt-[2px]">·</span>
+                          <span>{s}</span>
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-[13px] text-ink-faint italic px-3 py-2">Sem specs — adicione nos atributos ou specs livres abaixo</p>
+                )}
                 <p className="text-[10px] text-info mt-1">
-                  Aparece no corpo do orçamento abaixo do título — escreva pensando no cliente
+                  Aparece no corpo do orçamento abaixo do título — edite nos atributos e specs abaixo
                 </p>
               </div>
 
