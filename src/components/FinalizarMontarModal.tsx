@@ -18,6 +18,7 @@ import {
 } from '@/lib/orcamento-folder-scan'
 import { construirFormaPagamento, type TipoPagamento, type FormaPagamentoConfig } from '@/lib/forma-pagamento'
 import { montarNotaTxt } from '@/lib/orcamento-docx'
+import { startGeneration, updateGeneration, finishGeneration } from '@/lib/generation-progress'
 import { supabase } from '@/lib/supabase'
 import { parseClienteText, titleCasePtBr } from '@/lib/parse-cliente-text'
 import { uploadOrcamentoViaServer } from '@/lib/orcamento-upload'
@@ -232,9 +233,11 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
   // Atualiza step + percentual. Garante que o pct nunca anda pra trás
   // (uploadOrcamentoViaServer chama onProgress várias vezes — manteria a barra
   // estável mesmo se mensagens chegarem fora de ordem).
+  // Também atualiza o store global (overlay persiste entre navegações).
   function setStep(label: string, pct: number) {
     setGerandoStep(label)
     setGerandoProgress(p => Math.max(p, Math.min(99, pct)))
+    updateGeneration(label, pct)
   }
 
   // Reseta status WhatsApp ao reabrir
@@ -265,6 +268,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
     setHeadlessMode(true)
     // Wrap em IIFE async pra desligar headless mode no final (sucesso OU erro).
     // Sem isso, em caso de falha o toast 'Gerando...' fica eterno.
+    // Inicia overlay global (persiste entre navegações)
+    startGeneration(cliNome)
     ;(async () => {
       try {
         // Decide rota: se tem handle da pasta Z:\ (PC do Daniel/escritório),
@@ -285,6 +290,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       } catch (e) {
         console.error('[autoSubmit] handleGerar erro:', e)
       } finally {
+        finishGeneration()
         // Sai do modo headless. O toast de erro/sucesso do parent (OrcamentoMontar)
         // assume daqui. O modal mostra o estado normal pra ele tentar de novo.
         setHeadlessMode(false)
@@ -844,24 +850,9 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
 
   if (!open) return null
 
-  // Headless mode: vem do copiloto IA com cliente já preenchido. Não renderiza
-  // o modal (lógica de gerar roda em background). Vendedor só vê o toast de
-  // sucesso/erro no parent. Toast de progresso aparece em fixed-position.
-  if (headlessMode) {
-    return (
-      <div className="fixed top-6 right-6 z-50 bg-bg border border-accent/40 rounded-lg shadow-2xl px-4 py-3 flex items-center gap-3 max-w-[360px]">
-        <Loader2 className="h-5 w-5 animate-spin text-accent shrink-0" />
-        <div className="min-w-0">
-          <div className="text-[12.5px] font-semibold text-ink truncate">
-            Gerando orçamento pra {cliNome}…
-          </div>
-          <div className="text-[11px] text-ink-muted leading-snug">
-            {gerandoStep || 'PDF + DOCX + salvando na pasta + WhatsApp'}
-          </div>
-        </div>
-      </div>
-    )
-  }
+  // Headless mode: overlay global (GenerationOverlay no Layout) mostra progresso.
+  // Este componente não renderiza nada — a lógica roda em background.
+  if (headlessMode) return null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => !gerando && onClose()}>

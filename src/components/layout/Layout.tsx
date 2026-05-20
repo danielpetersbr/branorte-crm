@@ -7,6 +7,7 @@ import { useAtendimentoKpis } from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
 import { RoadmapFAB } from '@/components/RoadmapFAB'
+import { GenerationOverlay } from '@/components/GenerationOverlay'
 
 // Abrevia numero pra caber no badge: 1234 -> 1.2k
 function fmtCount(n: number): string {
@@ -346,6 +347,9 @@ export function Layout() {
 
       {/* FAB global de feedback (visivel em todas as paginas autenticadas) */}
       <RoadmapFAB />
+
+      {/* Overlay global de geração de orçamento (persiste entre navegações) */}
+      <GenerationOverlay />
 
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-bg/95 backdrop-blur border-t border-border flex items-center justify-around px-2 py-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] z-50">
         {MOBILE_NAV.map(l => (
