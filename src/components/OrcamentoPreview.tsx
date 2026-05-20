@@ -551,17 +551,17 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             <div data-no-break className="group relative mb-3 border border-gray-700 rounded-md p-2 bg-white shadow-sm" style={{ zIndex: 1 }}>
               <div
                 className="w-full flex items-center justify-center bg-white"
-                // Hero shot: maior que as fotos dos itens (320px) mas com teto
+                // Hero shot: maior que as fotos dos itens mas com teto
                 // de altura pra não ocupar a página inteira no PDF quando a
                 // imagem é alta/retrato (ex: diagrama de órgãos).
-                style={{ maxHeight: 440, overflow: 'hidden' }}
+                style={{ maxHeight: 380, overflow: 'hidden' }}
               >
                 <img
                   src={fotoPrincipal}
                   alt="Foto da fábrica"
                   style={{
                     maxWidth: '100%',
-                    maxHeight: 440,
+                    maxHeight: 380,
                     width: 'auto',
                     height: 'auto',
                     objectFit: 'contain',
@@ -801,12 +801,12 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                         <div
                           style={{
                             width: '100%',
-                            maxWidth: 520,
-                            height: 320,
+                            maxWidth: 480,
+                            maxHeight: 220,
                             background: '#fff',
                             border: '1px solid #d1d5db',
                             borderRadius: 4,
-                            padding: 8,
+                            padding: 6,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             overflow: 'hidden',
                             boxSizing: 'border-box',
@@ -817,7 +817,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             alt={it.nome}
                             style={{
                               maxWidth: '100%',
-                              maxHeight: '100%',
+                              maxHeight: 208,
                               width: 'auto',
                               height: 'auto',
                               objectFit: 'contain',
@@ -827,7 +827,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             crossOrigin="anonymous"
                           />
                         </div>
-                        <div className="text-[12px] text-gray-400 italic mt-1 tracking-wide">Imagem ilustrativa</div>
+                        <div className="text-[12px] text-gray-400 italic mt-0.5 tracking-wide">Imagem ilustrativa</div>
                       </div>
                     )}
                   </div>
