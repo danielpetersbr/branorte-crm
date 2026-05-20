@@ -529,7 +529,7 @@ const tools = [
     function: {
       name: 'propor_adicionar_item',
       description:
-        'Sugere ADICIONAR um item ao carrinho. Se auto_apply=true, o item é adicionado AUTOMATICAMENTE (sem clique). Use auto_apply=true quando o vendedor pediu claramente e o match é exato. Use auto_apply=false quando é alternativa/substituição que precisa confirmação.',
+        'ADICIONA um item ao carrinho. Por padrão auto_apply=true (item é adicionado AUTOMATICAMENTE). Só passe auto_apply=false quando for alternativa/substituição que precisa confirmação explícita do vendedor.',
       parameters: {
         type: 'object',
         properties: {
@@ -540,12 +540,12 @@ const tools = [
           quantidade: { type: 'integer', description: 'Qtd. Default 1.', default: 1 },
           justificativa: {
             type: 'string',
-            description: 'Frase curta explicando porque esse item (ex: "Alimentação do moinho — TH 160 x 3,5 m com motor 1,5 CV").',
+            description: 'Frase curta explicando porque esse item.',
           },
           auto_apply: {
             type: 'boolean',
-            description: 'Se true, item é adicionado automaticamente ao carrinho sem o vendedor clicar. Use quando pedido é claro e match exato. Default false.',
-            default: false,
+            description: 'DEFAULT TRUE. Item vai direto pro carrinho. Só passe false quando é substituição/alternativa que precisa confirmação.',
+            default: true,
           },
         },
         required: ['preco_branorte_id'],
@@ -784,7 +784,9 @@ async function tool_propor_adicionar_item(
   const id = args.preco_branorte_id as number
   const qtd = (args.quantidade as number) || 1
   const justificativa = (args.justificativa as string) || ''
-  const autoApply = args.auto_apply === true
+  // Default TRUE — LLM frequentemente esquece de mandar auto_apply.
+  // Só é false se explicitamente false.
+  const autoApply = args.auto_apply !== false
 
   // Valida que o ID existe — bloqueia IA de inventar.
   const { data, error } = await supa
@@ -892,18 +894,20 @@ function tool_propor_preencher_cliente(
 
 function tool_propor_finalizar_orcamento(args: Record<string, unknown>): { acao: AcaoSugerida } {
   const enviarWa = args.enviar_whatsapp !== false  // default true
-  const autoSubmit = args.auto_submit === true
   const dados: Record<string, string | undefined> = {}
   if (typeof args.cliente_nome === 'string' && args.cliente_nome.trim()) dados.nome = args.cliente_nome.trim()
   if (typeof args.cliente_fone === 'string' && args.cliente_fone.trim()) dados.fone = args.cliente_fone.trim()
   if (typeof args.cliente_cidade === 'string' && args.cliente_cidade.trim()) dados.cidade = args.cliente_cidade.trim()
   if (typeof args.cliente_cnpj === 'string' && args.cliente_cnpj.trim()) dados.cnpj = args.cliente_cnpj.trim()
+  // Auto-submit se tem nome do cliente (vendedor já forneceu no áudio/texto)
+  // Só é false se explicitamente false OU sem nome do cliente
+  const autoSubmit = args.auto_submit !== false && !!dados.nome
   return {
     acao: {
       tipo: 'finalizar_orcamento',
       enviar_whatsapp: enviarWa,
       cliente_dados: Object.keys(dados).length > 0 ? dados : undefined,
-      auto_submit: autoSubmit,  // se true E tem dados do cliente, gera direto sem modal
+      auto_submit: autoSubmit,
     },
   }
 }
