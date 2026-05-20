@@ -48,14 +48,25 @@ COMPORTAMENTO CORRETO: se não tem PACOTE pronto que combine, MONTE do zero junt
   4. Propõe ADICIONAR cada item via propor_adicionar_item (em sequência — pode chamar várias seguidas)
   5. No fim, faz um resumo do orçamento composto pro vendedor revisar e aprovar item por item
 
-⛔ REGRA OBRIGATÓRIA — QUANDO ACHAR ITENS, SEMPRE PROPOR ADICIONAR
+⛔ REGRA OBRIGATÓRIA — QUANDO ACHAR ITENS, SEMPRE PROPOR ADICIONAR (auto_apply=true)
 Quando o vendedor pede "quero orçamento de X, Y e Z":
-  - NÃO basta listar preços e perguntar se quer adicionar
   - DEVE chamar propor_adicionar_item pra CADA item encontrado
-  - O vendedor vê cards com botão "Aplicar" e confirma com 1 clique
+  - Se o vendedor pediu claramente (não é dúvida/consulta), marque auto_apply=true
+    pra o item ser adicionado AUTOMATICAMENTE sem precisar clicar "Aplicar"
   - Se não achou exato, PROPÕE A ALTERNATIVA MAIS PRÓXIMA com justificativa
+    (nesses casos use auto_apply=false pra vendedor confirmar)
   - Se não achou NADA na categoria, aí sim marca como "❌ Não achei"
   - NUNCA termine sem propor_adicionar_item quando tem matches
+
+QUANDO USAR auto_apply=true (item vai direto pro carrinho):
+  - Vendedor disse claramente: "quero", "monta", "bota", "adiciona", "coloca"
+  - Match exato no catálogo (1 resultado, sem ambiguidade)
+  - Vendedor listou items específicos com medida/modelo exato
+
+QUANDO USAR auto_apply=false (vendedor precisa clicar Aplicar):
+  - Consulta/dúvida: "quanto custa?", "tem?", "qual o preço?"
+  - Alternativa/substituição: pediu X mas só tem Y (precisa confirmação)
+  - Múltiplas opções e vendedor não especificou qual
 
 ⛔ BUSCA DE SILOS — ATENÇÃO ESPECIAL
 Silos no catálogo têm descrição como "SILO 30 TONELADAS", "SILO 42 TONELADAS", "SILO 50 TONELADAS" etc.
@@ -518,7 +529,7 @@ const tools = [
     function: {
       name: 'propor_adicionar_item',
       description:
-        'Sugere ADICIONAR um item ao carrinho do orçamento atual. Use depois de confirmar via consultar_precos qual é o item exato. NÃO modifica nada direto — o vendedor precisa clicar pra confirmar. Sempre justifique brevemente por que esse item.',
+        'Sugere ADICIONAR um item ao carrinho. Se auto_apply=true, o item é adicionado AUTOMATICAMENTE (sem clique). Use auto_apply=true quando o vendedor pediu claramente e o match é exato. Use auto_apply=false quando é alternativa/substituição que precisa confirmação.',
       parameters: {
         type: 'object',
         properties: {
@@ -530,6 +541,11 @@ const tools = [
           justificativa: {
             type: 'string',
             description: 'Frase curta explicando porque esse item (ex: "Alimentação do moinho — TH 160 x 3,5 m com motor 1,5 CV").',
+          },
+          auto_apply: {
+            type: 'boolean',
+            description: 'Se true, item é adicionado automaticamente ao carrinho sem o vendedor clicar. Use quando pedido é claro e match exato. Default false.',
+            default: false,
           },
         },
         required: ['preco_branorte_id'],
@@ -581,18 +597,23 @@ const tools = [
     function: {
       name: 'propor_finalizar_orcamento',
       description:
-        'Propõe FINALIZAR o orçamento: abre o modal de finalização (já com WhatsApp marcado), o vendedor confirma os dados do cliente e o PDF/DOCX é gerado + enviado pro WhatsApp dele. Use SÓ depois que o carrinho já tem items adequados. Ideal pra quando vendedor diz "fecha e me manda no zap", "manda o orçamento pro meu WhatsApp", "finaliza isso aí" etc.',
+        'Propõe FINALIZAR o orçamento e gerar PDF. Se auto_submit=true E tem cliente_nome, o sistema gera AUTOMATICAMENTE sem abrir modal (zero cliques). Use auto_submit=true quando o vendedor já forneceu nome do cliente no mesmo pedido (áudio ou texto). Ideal pra "monta orçamento de X pra cliente Y de cidade Z".',
       parameters: {
         type: 'object',
         properties: {
           enviar_whatsapp: {
             type: 'boolean',
-            description: 'Pré-marca o checkbox de WhatsApp. Default true (vendedor recebe o PDF).',
+            description: 'Pré-marca WhatsApp. Default true.',
             default: true,
+          },
+          auto_submit: {
+            type: 'boolean',
+            description: 'Se true E cliente_nome preenchido, gera PDF automaticamente sem abrir modal. Use quando vendedor já forneceu dados do cliente no pedido. Default false.',
+            default: false,
           },
           cliente_nome: {
             type: 'string',
-            description: 'Nome do cliente — SÓ se vendedor disse explicitamente. Senão omitir e modal pede.',
+            description: 'Nome do cliente — extraído do áudio/texto do vendedor.',
           },
           cliente_fone: { type: 'string', description: 'Telefone do cliente, opcional.' },
           cliente_cidade: { type: 'string', description: 'Cidade do cliente, opcional.' },
@@ -721,6 +742,7 @@ type AcaoSugerida =
       preco_branorte_id: number
       quantidade: number
       justificativa?: string
+      auto_apply?: boolean  // se true, item é adicionado automaticamente sem clique
       // Snapshot dos dados pro card renderizar sem precisar refetch:
       preview?: {
         categoria: string
@@ -762,6 +784,7 @@ async function tool_propor_adicionar_item(
   const id = args.preco_branorte_id as number
   const qtd = (args.quantidade as number) || 1
   const justificativa = (args.justificativa as string) || ''
+  const autoApply = args.auto_apply === true
 
   // Valida que o ID existe — bloqueia IA de inventar.
   const { data, error } = await supa
@@ -779,6 +802,7 @@ async function tool_propor_adicionar_item(
       preco_branorte_id: id,
       quantidade: qtd,
       justificativa,
+      auto_apply: autoApply,
       preview: {
         categoria: data.categoria,
         descricao: data.descricao,
@@ -868,6 +892,7 @@ function tool_propor_preencher_cliente(
 
 function tool_propor_finalizar_orcamento(args: Record<string, unknown>): { acao: AcaoSugerida } {
   const enviarWa = args.enviar_whatsapp !== false  // default true
+  const autoSubmit = args.auto_submit === true
   const dados: Record<string, string | undefined> = {}
   if (typeof args.cliente_nome === 'string' && args.cliente_nome.trim()) dados.nome = args.cliente_nome.trim()
   if (typeof args.cliente_fone === 'string' && args.cliente_fone.trim()) dados.fone = args.cliente_fone.trim()
@@ -878,7 +903,7 @@ function tool_propor_finalizar_orcamento(args: Record<string, unknown>): { acao:
       tipo: 'finalizar_orcamento',
       enviar_whatsapp: enviarWa,
       cliente_dados: Object.keys(dados).length > 0 ? dados : undefined,
-      auto_submit: false,  // sempre abre o modal pra confirmar (segurança)
+      auto_submit: autoSubmit,  // se true E tem dados do cliente, gera direto sem modal
     },
   }
 }

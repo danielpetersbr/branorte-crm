@@ -14,6 +14,7 @@ export type AcaoSugerida =
       preco_branorte_id: number
       quantidade: number
       justificativa?: string
+      auto_apply?: boolean
       preview?: {
         categoria: string
         descricao: string
@@ -181,14 +182,42 @@ export function OrcamentoAIChat({
       }
       if (!res.ok) throw new Error(data?.error || data?.detail || `HTTP ${res.status}`)
 
+      const acoes = data.acoes as AcaoSugerida[] | undefined
+      const autoApplied = new Set<number>()
+
+      // Auto-apply: aplica automaticamente ações marcadas com auto_apply
+      if (acoes?.length) {
+        for (let i = 0; i < acoes.length; i++) {
+          const acao = acoes[i]
+          try {
+            if (acao.tipo === 'adicionar_item' && acao.auto_apply && onAdicionarItem) {
+              await onAdicionarItem(acao.preco_branorte_id, acao.quantidade)
+              autoApplied.add(i)
+            } else if (acao.tipo === 'carregar_pacote' && onCarregarPacote) {
+              // Pacotes sempre auto-apply quando vendedor pediu explicitamente
+              await onCarregarPacote(acao.modelo_id)
+              autoApplied.add(i)
+            } else if (acao.tipo === 'finalizar_orcamento' && acao.auto_submit && onFinalizarOrcamento) {
+              await onFinalizarOrcamento({
+                enviar_whatsapp: acao.enviar_whatsapp,
+                cliente_dados: acao.cliente_dados,
+              })
+              autoApplied.add(i)
+            }
+          } catch {
+            // Se falhar auto-apply, deixa o card manual
+          }
+        }
+      }
+
       setMessages(prev => [
         ...prev,
         {
           role: 'assistant',
           content: data.reply || '(sem resposta)',
           tool_trace: data.tool_trace,
-          acoes: data.acoes as AcaoSugerida[] | undefined,
-          acoesAplicadas: new Set<number>(),
+          acoes,
+          acoesAplicadas: autoApplied,
         },
       ])
     } catch (e) {
