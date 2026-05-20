@@ -847,17 +847,24 @@ export function OrcamentoMontar() {
 
       // Moinho martelo: se mudou peneira, recalcula capacidade automaticamente
       // Fórmula: Q = CV × 0.7457 × peneira(mm) × 45 (Luiz Gomide, Ferraz Máquinas)
-      const isMoinho = it.nome?.toLowerCase().includes('moinho') || novas.some(s => s.toLowerCase().includes('martelo'))
-      const peneiraMatch = valor.match(/peneira[:\s]*(\d+[.,]?\d*)\s*mm/i)
-      if (isMoinho && peneiraMatch) {
-        const penMm = parseFloat(peneiraMatch[1].replace(',', '.'))
-        const cv = it.motor_cv || 0
-        if (cv > 0 && penMm > 0) {
-          const kw = cv * 0.7457
-          const novaCapacidade = Math.round(kw * penMm * 45)
-          const capIdx = novas.findIndex(s => /capacidade/i.test(s))
-          if (capIdx >= 0) {
-            novas[capIdx] = `Capacidade ${novaCapacidade.toLocaleString('pt-BR')} kg/h (na densidade do milho e peneira ${penMm.toLocaleString('pt-BR')}mm)`
+      // Formatos possíveis: "Montado com peneira 3,0mm", "Peneira: 3 mm", "peneira 2,0mm"
+      const isMoinho = (it.nome || '').toLowerCase().includes('moinho') || novas.some(s => s.toLowerCase().includes('martelo'))
+      if (isMoinho && /peneira/i.test(valor)) {
+        // Extrai número antes de "mm": "peneira 2,0mm" → 2.0, "peneira 3 mm" → 3
+        const penMatch = valor.match(/(\d+[.,]?\d*)\s*mm/i)
+        if (penMatch) {
+          const penMm = parseFloat(penMatch[1].replace(',', '.'))
+          const cv = it.motor_cv || 0
+          if (cv > 0 && penMm > 0) {
+            const kw = cv * 0.7457
+            const novaCapacidade = Math.round(kw * penMm * 45)
+            const capIdx = novas.findIndex(s => /capacidade/i.test(s))
+            if (capIdx >= 0) {
+              novas[capIdx] = novas[capIdx].replace(
+                /\d[\d.]*\s*kg\/h.*/i,
+                `${novaCapacidade.toLocaleString('pt-BR')} kg/h (na densidade do milho e peneira ${penMm.toLocaleString('pt-BR')}mm)`
+              )
+            }
           }
         }
       }
