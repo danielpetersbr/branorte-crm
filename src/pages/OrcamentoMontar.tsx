@@ -186,6 +186,7 @@ export function OrcamentoMontar() {
   // catalogo so quando precisa adicionar item.
   const [mobileTab, setMobileTab] = useState<'catalogo' | 'preview'>('preview')
   const [finalizarOpen, setFinalizarOpen] = useState(false)
+  const [saveMode, setSaveMode] = useState<'update' | 'alt' | 'new'>('new')
   // Sprint 3: marca true quando o copiloto IA dispara a finalização (auto-submit 3s)
   const [autoSubmitFromIA, setAutoSubmitFromIA] = useState(false)
   const [sucesso, setSucesso] = useState<{ numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string; erro?: string | null; pdfErro?: string | null } | null>(null)
@@ -1638,32 +1639,63 @@ export function OrcamentoMontar() {
                   <span className="hidden sm:inline">Limpar</span>
                 </button>
               )}
-              <button
-                disabled={carrinho.length === 0}
-                onClick={() => {
-                  // Se cliente já preenchido → gera direto (headless)
-                  if (clienteDados.nome?.trim()) {
-                    setInitialModal(prev => ({
-                      cliente_nome: clienteDados.nome || prev?.cliente_nome || '',
-                      cliente_dados: { ...clienteDados },
-                      observacoes: prev?.observacoes ?? null,
-                      forma_pagamento: prev?.forma_pagamento ?? null,
-                      prazo_entrega: prev?.prazo_entrega ?? null,
-                    }))
-                    setAutoSubmitFromIA(true)
-                    setFinalizarOpen(true)
-                  } else {
-                    // Sem cliente → abre editor de cliente primeiro
-                    setClienteModalOpen(true)
-                  }
-                }}
-                className="text-[13px] bg-accent hover:bg-accent/90 text-white font-bold px-4 py-2 rounded-md disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm min-h-[40px] transition-all"
-                title={carrinho.length === 0 ? 'Adicione items primeiro' : 'Finalizar e gerar PDF + DOCX'}
-              >
-                <FileText className="h-4 w-4" />
-                <span className="hidden sm:inline">Finalizar e gerar</span>
-                <span className="sm:hidden">Gerar</span>
-              </button>
+              {editingId ? (
+                <>
+                  <button
+                    disabled={carrinho.length === 0}
+                    onClick={() => {
+                      setSaveMode('update')
+                      setFinalizarOpen(true)
+                    }}
+                    className="text-[13px] bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2 rounded-md disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm min-h-[40px] transition-all"
+                    title="Salvar alterações no orçamento atual"
+                  >
+                    <FileText className="h-4 w-4" />
+                    <span className="hidden sm:inline">Salvar</span>
+                    <span className="sm:hidden">Salvar</span>
+                  </button>
+                  <button
+                    disabled={carrinho.length === 0}
+                    onClick={() => {
+                      setSaveMode('alt')
+                      setFinalizarOpen(true)
+                    }}
+                    className="text-[13px] bg-transparent hover:bg-accent/10 text-accent font-bold px-3 py-2 rounded-md border border-accent/50 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 min-h-[40px] transition-all"
+                    title="Criar versão alternativa (ALT) deste orçamento"
+                  >
+                    <span className="hidden sm:inline">Salvar como ALT</span>
+                    <span className="sm:hidden">ALT</span>
+                  </button>
+                </>
+              ) : (
+                <button
+                  disabled={carrinho.length === 0}
+                  onClick={() => {
+                    setSaveMode('new')
+                    // Se cliente já preenchido → gera direto (headless)
+                    if (clienteDados.nome?.trim()) {
+                      setInitialModal(prev => ({
+                        cliente_nome: clienteDados.nome || prev?.cliente_nome || '',
+                        cliente_dados: { ...clienteDados },
+                        observacoes: prev?.observacoes ?? null,
+                        forma_pagamento: prev?.forma_pagamento ?? null,
+                        prazo_entrega: prev?.prazo_entrega ?? null,
+                      }))
+                      setAutoSubmitFromIA(true)
+                      setFinalizarOpen(true)
+                    } else {
+                      // Sem cliente → abre editor de cliente primeiro
+                      setClienteModalOpen(true)
+                    }
+                  }}
+                  className="text-[13px] bg-accent hover:bg-accent/90 text-white font-bold px-4 py-2 rounded-md disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm min-h-[40px] transition-all"
+                  title={carrinho.length === 0 ? 'Adicione items primeiro' : 'Finalizar e gerar PDF + DOCX'}
+                >
+                  <FileText className="h-4 w-4" />
+                  <span className="hidden sm:inline">Finalizar e gerar</span>
+                  <span className="sm:hidden">Gerar</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -1819,6 +1851,12 @@ export function OrcamentoMontar() {
       <FinalizarMontarModal
         open={finalizarOpen}
         editingId={editingId}
+        saveMode={saveMode}
+        parentOrcamento={editingId && orcamentoEditando ? {
+          id: orcamentoEditando.parent_id ?? orcamentoEditando.id,
+          numero: orcamentoEditando.numero,
+          numero_base: orcamentoEditando.numero_base ?? orcamentoEditando.numero,
+        } : null}
         initialModal={initialModal}
         autoSubmitOnOpen={autoSubmitFromIA}
         snapshot={{

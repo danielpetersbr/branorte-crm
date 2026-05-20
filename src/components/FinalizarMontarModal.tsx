@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { X, Check, Loader2, FileText, FileDown, FolderOpen, RefreshCw, Calendar, CreditCard, ChevronRight } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import {
-  useClientesOrcamento, obterProximoNumero, useCriarOrcamento, useAtualizarOrcamento,
+  useClientesOrcamento, obterProximoNumero, useCriarOrcamento, useAtualizarOrcamento, useCriarAlteracao,
   type ClienteDados, type OrcamentoItem, type OrcamentoMotor,
 } from '@/hooks/useOrcamentoBuilder'
 import { useAuth } from '@/hooks/useAuth'
@@ -82,6 +82,10 @@ interface Props {
   autoSubmitOnOpen?: boolean
   // Modo edição: se setado, faz UPDATE em orcamentos_gerados[editingId] em vez de INSERT.
   editingId?: number | null
+  // Modo de salvamento: 'new' (default), 'update' (sobrescreve), 'alt' (cria versão alternativa)
+  saveMode?: 'update' | 'alt' | 'new'
+  // Dados do orçamento pai para criação de ALT
+  parentOrcamento?: { id: number; numero: string; numero_base: string } | null
   // Valores iniciais carregados do orçamento sendo editado (pra pre-popular cliente/observacoes/etc)
   initialModal?: {
     cliente_nome: string
@@ -157,7 +161,7 @@ function baixarBlob(blob: Blob, nome: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editingId, initialModal, autoSubmitOnOpen }: Props) {
+export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editingId, initialModal, autoSubmitOnOpen, saveMode = 'new', parentOrcamento }: Props) {
   const { profile } = useAuth()
   const { data: vendorsAtivos } = useVendors()
   const vendedoresContato = useMemo(() => {
@@ -175,6 +179,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
   }, [vendorsAtivos])
   const criar = useCriarOrcamento()
   const atualizar = useAtualizarOrcamento()
+  const criarAlteracao = useCriarAlteracao()
 
   // Cliente
   const [cliNome, setCliNome] = useState('')
@@ -489,8 +494,10 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         valor: m.valor_total,
       }))
 
-      setStep(editingId ? 'Atualizando orçamento no banco...' : 'Salvando orçamento no banco...', 10)
+      const stepLabel = saveMode === 'alt' ? 'Criando alteração...' : editingId ? 'Atualizando orçamento no banco...' : 'Salvando orçamento no banco...'
+      setStep(stepLabel, 10)
       // Modo edição vs criação: editingId → UPDATE (mantém numero/sequencial), senão INSERT
+      // Modo alt: cria nova versão (ALT) vinculada ao pai
       const payloadComum = {
         vendedor_nome: profile?.display_name?.toUpperCase() || 'DESCONHECIDO',
         cliente_nome: cliNome.trim(),
@@ -516,7 +523,15 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       // 'status mentindo' (bug: 0793-0795 ficaram 'enviado' sem arquivo).
       // Pra salvarNaPasta (FileSystem local) tambem mantem rascunho — ja que
       // ali a gente tambem nao tem garantia 100% sem ler de volta.
-      const orc = editingId
+      const orc = saveMode === 'alt' && parentOrcamento
+        ? await criarAlteracao.mutateAsync({
+            ...payloadComum,
+            status: 'rascunho',
+            parent_id: parentOrcamento.id,
+            parent_numero: parentOrcamento.numero,
+            parent_numero_base: parentOrcamento.numero_base,
+          })
+        : editingId
         ? await atualizar.mutateAsync({ id: editingId, ...payloadComum, status: 'rascunho' })
         : await criar.mutateAsync({
             ...payloadComum,

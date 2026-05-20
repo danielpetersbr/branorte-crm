@@ -91,6 +91,9 @@ export interface OrcamentoGerado {
   enviado_em: string | null
   created_at: string
   updated_at: string
+  parent_id: number | null
+  versao_alt: number | null
+  numero_base: string | null
 }
 
 export interface SubirModeloInput {
@@ -412,6 +415,7 @@ export function useCriarOrcamento() {
         prazo_entrega: input.prazo_entrega ?? null,
         status: input.status ?? 'rascunho',
         componentes_extras: input.componentes_extras ?? null,
+        numero_base: numero,
       }
       // Tenta inserir; se ainda assim der duplicate (race), incrementa e tenta de novo
       let lastErr: any = null
@@ -435,6 +439,100 @@ export function useCriarOrcamento() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['orcamentos-gerados'] })
       qc.invalidateQueries({ queryKey: ['orcamento-clientes'] })
+    },
+  })
+}
+
+// Cria ALT (alteração) de um orçamento existente. Mantém numero_base do pai,
+// incrementa versao_alt (ALT1, ALT2...) e gera numero como "2026 - 0844-ALT1".
+export function useCriarAlteracao() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: CriarOrcamentoInput & { parent_id: number; parent_numero: string; parent_numero_base: string }): Promise<OrcamentoGerado> => {
+      const { parent_id, parent_numero, parent_numero_base, numero_override: _no, ...rest } = input as any
+      void _no
+
+      // Busca a maior versao_alt existente para esse parent
+      const { data: existentes } = await supabase
+        .from('orcamentos_gerados')
+        .select('versao_alt')
+        .eq('parent_id', parent_id)
+        .order('versao_alt', { ascending: false })
+        .limit(1)
+      const maxAlt = existentes?.[0]?.versao_alt ?? 0
+      const nextAlt = maxAlt + 1
+
+      // Numero base (sem -ALTx) é sempre o do pai original
+      const numeroBase = parent_numero_base || parent_numero
+      const numero = `${numeroBase}-ALT${nextAlt}`
+
+      // Cria/atualiza cliente se tiver nome
+      let cliente_id = rest.cliente_id ?? null
+      if (!cliente_id && rest.cliente_nome?.trim()) {
+        const { data: cli } = await supabase
+          .from('orcamento_clientes')
+          .insert({
+            nome: rest.cliente_nome.trim(),
+            ac: rest.cliente_dados?.ac ?? null,
+            fone: rest.cliente_dados?.fone ?? null,
+            cidade: rest.cliente_dados?.cidade ?? null,
+            bairro: rest.cliente_dados?.bairro ?? null,
+            endereco: rest.cliente_dados?.endereco ?? null,
+            cep: rest.cliente_dados?.cep ?? null,
+            cnpj: rest.cliente_dados?.cnpj ?? null,
+            ie: rest.cliente_dados?.ie ?? null,
+            email: rest.cliente_dados?.email ?? null,
+          })
+          .select('id')
+          .single()
+        cliente_id = cli?.id ?? null
+      }
+
+      // Usa ano/sequencial do pai (ALTs não consomem sequencial novo)
+      // Extrai ano do numero base (ex: "2026 - 0844" → 2026)
+      const anoMatch = numeroBase.match(/^(\d{4})/)
+      const ano = anoMatch ? Number(anoMatch[1]) : new Date().getFullYear()
+
+      const payload = {
+        numero,
+        ano,
+        sequencial: 0, // ALTs não usam sequencial real
+        data_emissao: new Date().toISOString().split('T')[0],
+        vendedor_nome: rest.vendedor_nome,
+        vendedor_id: rest.vendedor_id ?? null,
+        cliente_id,
+        cliente_nome: rest.cliente_nome?.trim() ?? '',
+        cliente_dados: rest.cliente_dados ?? {},
+        modelo_id: rest.modelo_id ?? null,
+        modelo_basename: rest.modelo_basename ?? null,
+        voltagem: rest.voltagem,
+        itens: rest.itens,
+        acessorios: rest.acessorios ?? null,
+        motores: rest.motores,
+        total_equipamentos: rest.total_equipamentos,
+        total_motores: rest.total_motores,
+        total_proposta: rest.total_proposta,
+        observacoes: rest.observacoes ?? null,
+        forma_pagamento: rest.forma_pagamento ?? null,
+        prazo_entrega: rest.prazo_entrega ?? null,
+        status: rest.status ?? 'rascunho',
+        componentes_extras: rest.componentes_extras ?? null,
+        parent_id,
+        versao_alt: nextAlt,
+        numero_base: numeroBase,
+      }
+      const { data, error } = await supabase
+        .from('orcamentos_gerados')
+        .insert(payload)
+        .select()
+        .single()
+      if (error) throw new Error(`Falha criar alteração: ${error.message}`)
+      return data as OrcamentoGerado
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['orcamentos-gerados'] })
+      qc.invalidateQueries({ queryKey: ['orcamento-clientes'] })
+      qc.invalidateQueries({ queryKey: ['orcamento-gerado'] })
     },
   })
 }
