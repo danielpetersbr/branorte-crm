@@ -205,9 +205,20 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
     const d = somenteDigitos(v)
     if (d.length <= 11) return 'cpf'
     if (d.length === 14) return 'cnpj'
+    // CNPJ colado com dígitos extras (ex: "12345678000199" + lixo) — tenta CNPJ
+    if (d.length > 14 && d.length <= 16 && d.slice(8, 12) === '0001') return 'cnpj'
     return 'ie'
   }
   const docTipo = detectarTipo(cnpj)
+
+  // Tenta extrair CNPJ válido de um texto que pode ter dígitos extras
+  function extrairCnpj(d: string): string | null {
+    // Exatamente 14 → CNPJ direto
+    if (d.length === 14) return d
+    // >14: tenta os primeiros 14 se parecem CNPJ (tem /0001 na posição 8-12)
+    if (d.length > 14 && d.slice(8, 12) === '0001') return d.slice(0, 14)
+    return null
+  }
 
   async function handleBuscarDocumento() {
     const d = somenteDigitos(cnpj)
@@ -221,9 +232,7 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
       const dados = await buscarCpf(d)
       setBuscando(false)
       if (!dados) {
-        setErroBusca(dados?.erro?.includes('insuficientes')
-          ? 'Créditos esgotados na API. Recarregue em cpfcnpj.com.br ou preencha manualmente.'
-          : 'CPF não encontrado ou API indisponível. Preencha manualmente.')
+        setErroBusca('CPF não encontrado ou API indisponível. Preencha manualmente.')
         return
       }
       if (dados.nome) setNome(titleCase(dados.nome))
@@ -245,12 +254,21 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
       return
     }
 
-    if (d.length === 14) {
+    // Tenta extrair CNPJ (funciona pra 14 dígitos exatos ou >14 com padrão 0001)
+    const cnpj14 = extrairCnpj(d)
+    if (cnpj14) {
       setBuscando(true)
       setErroBusca(null)
-      const dados = await buscarCnpj(d)
+      const dados = await buscarCnpj(cnpj14)
       setBuscando(false)
       if (!dados) {
+        // CNPJ não encontrado — se tinha dígitos extras, pode ser IE
+        if (d.length > 14) {
+          setIe(cnpj.trim())
+          setCnpj('')
+          setSucessoBusca('✓ Inscrição salva no campo I.E. Preencha os demais dados manualmente.')
+          return
+        }
         setErroBusca('CNPJ não encontrado na Receita Federal ou API indisponível.')
         return
       }
@@ -262,7 +280,12 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
       setCidade(titleCase(dados.municipio))
       setUf(dados.uf)
       setCep(fmtCep(dados.cep))
-      setCnpj(fmtCnpj(d))
+      setCnpj(fmtCnpj(cnpj14))
+      // Sobra dos dígitos (ex: IE veio colada junto) → salva no campo IE
+      if (d.length > 14) {
+        const sobra = d.slice(14)
+        if (sobra.length >= 8) setIe(sobra)
+      }
       if (dados.email) setEmail(dados.email.toLowerCase())
       if (dados.ddd_telefone_1) setFone(fmtFone(dados.ddd_telefone_1))
       setSucessoBusca(`✓ Dados de "${titleCase(dados.nome_fantasia || dados.razao_social)}" carregados da Receita Federal`)
@@ -274,8 +297,17 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
       return
     }
 
+    if (d.length > 14) {
+      // > 14 dígitos e não parece CNPJ → IE / Inscrição de Produtor Rural
+      setIe(cnpj.trim())
+      setCnpj('')
+      setErroBusca(null)
+      setSucessoBusca('✓ Inscrição salva no campo I.E. Preencha os demais dados manualmente.')
+      return
+    }
+
     if (d.length >= 8) {
-      // IE / Inscrição de Produtor Rural: move pro campo IE
+      // 8-10 dígitos: pode ser IE curta
       setIe(cnpj.trim())
       setCnpj('')
       setErroBusca(null)
