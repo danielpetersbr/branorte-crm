@@ -552,20 +552,18 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           <SectionHeader>Itens orçados abaixo</SectionHeader>
 
           {fotoPrincipal ? (
-            <div data-no-break className="group relative mb-3 border border-gray-700 rounded-md p-2 bg-white shadow-sm" style={{ zIndex: 1 }}>
+            <div data-no-break className="group relative mb-3 border border-gray-700 rounded-md p-2 bg-white shadow-sm" style={{ zIndex: 1, pageBreakAfter: 'always' }}>
               <div
                 className="w-full flex items-center justify-center bg-white"
-                // Hero shot: maior que as fotos dos itens mas com teto
-                // de altura pra não ocupar a página inteira no PDF quando a
-                // imagem é alta/retrato (ex: diagrama de órgãos).
-                style={{ maxHeight: 380, overflow: 'hidden' }}
+                // Hero shot: ocupa a página inteira no PDF. Itens começam na página 2.
+                style={{ minHeight: 600, overflow: 'hidden' }}
               >
                 <img
                   src={fotoPrincipal}
                   alt="Foto da fábrica"
                   style={{
                     maxWidth: '100%',
-                    maxHeight: 380,
+                    maxHeight: 700,
                     width: 'auto',
                     height: 'auto',
                     objectFit: 'contain',
