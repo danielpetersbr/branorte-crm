@@ -3908,11 +3908,30 @@ function TransportadorPickerModal({
     return m ? m[1] : null
   }
 
+  // Extrai comprimento em metros (chupim 210 x 14,0 m → 14.0; TH 200 X 3,5 m → 3.5)
+  function getComprimento(p: PrecoBranorte): number {
+    const m = p.descricao.match(/[xX]\s*(\d+[,.]?\d*)\s*m/i)
+    return m ? parseFloat(m[1].replace(',', '.')) : 999
+  }
+
   const filtrados = useMemo(() => {
     return transportadores
       .filter(p => tipo === 'todos' ? true : p.subcategoria === tipo)
       .filter(p => diametro ? getDiam(p) === diametro : true)
-      .sort((a, b) => a.ordem - b.ordem)
+      .sort((a, b) => {
+        // 1. Agrupar por subcategoria (CHUPIM primeiro, depois HELICOIDAL/TH)
+        const subA = (a.subcategoria || '').toUpperCase()
+        const subB = (b.subcategoria || '').toUpperCase()
+        if (subA !== subB) return subA < subB ? -1 : 1
+
+        // 2. Dentro do mesmo tipo, ordenar por diâmetro crescente
+        const diamA = parseInt(getDiam(a) || '0')
+        const diamB = parseInt(getDiam(b) || '0')
+        if (diamA !== diamB) return diamA - diamB
+
+        // 3. Mesmo diâmetro, ordenar por comprimento crescente
+        return getComprimento(a) - getComprimento(b)
+      })
   }, [transportadores, tipo, diametro])
 
   const diametrosDisponiveis = useMemo(() => {
