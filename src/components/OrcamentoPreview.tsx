@@ -130,7 +130,7 @@ export interface OrcamentoPreviewProps {
   onFotoChange?: (dataURL: string | null) => void
   onUpdateNome?: (uid: string, novoNome: string) => void
   onUpdateSpec?: (uid: string, idx: number, valor: string) => void
-  onToggleInox?: (uid: string) => void
+  onToggleInox?: (uid: string, tipo?: '304' | '316' | false) => void
   onUpdateQtd?: (uid: string, novaQtd: number) => void
   onUpdateTerm?: (key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento', valor: string) => void
   onMoverItem?: (uid: string, direcao: 'cima' | 'baixo') => void
@@ -258,6 +258,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   // Edição inline de quantidade (o "01" no header do item)
   const [editingQtdUid, setEditingQtdUid] = useState<string | null>(null)
   const [editingQtdValor, setEditingQtdValor] = useState<string>('')
+  // Menu de escolha Inox (304 vs 316)
+  const [inoxMenuOpen, setInoxMenuOpen] = useState<string | null>(null)
   // Picker de componente extra (popover do "+ Adicionar")
   const [extraPickerOpen, setExtraPickerOpen] = useState(false)
   // Estado do picker de troca de motor (qual linha tem o dropdown aberto)
@@ -717,25 +719,59 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           ⚡{voltagem === 'monofasico' ? 'Mono' : 'Trif'}
                         </span>
                       )}
-                      {!renderMode && onToggleInox && it.uid && (
-                        <button
-                          onClick={() => onToggleInox(it.uid!)}
-                          className={`inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider align-middle cursor-pointer transition-all ${
-                            it.inox === '316'
-                              ? 'bg-purple-100 text-purple-700 border border-purple-400 ring-1 ring-purple-300'
-                              : it.inox === '304'
-                                ? 'bg-emerald-100 text-emerald-700 border border-emerald-400 ring-1 ring-emerald-300'
-                                : 'bg-gray-100 text-gray-400 border border-gray-200 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-300'
-                          }`}
-                          title={
-                            it.inox === '316' ? 'Inox 316 ativo (×3,5). Clique pra voltar ao galvanizado.'
-                            : it.inox === '304' ? 'Inox 304 ativo (×2,5). Clique pra trocar pra Inox 316 (×3,5).'
-                            : 'Clique pra cotar em Inox 304 (×2,5)'
-                          }
-                        >
-                          {it.inox === '316' ? '✦ 316' : it.inox === '304' ? '✦ 304' : 'Inox'}
-                        </button>
-                      )}
+                      {!renderMode && onToggleInox && it.uid && (() => {
+                        const inoxMenuId = `inox-menu-${it.uid}`
+                        const isOpen = inoxMenuOpen === it.uid
+                        return (
+                          <div className="relative inline-flex ml-2">
+                            <button
+                              onClick={() => {
+                                if (it.inox) {
+                                  onToggleInox(it.uid!, false)
+                                  setInoxMenuOpen(null)
+                                } else {
+                                  setInoxMenuOpen(isOpen ? null : it.uid!)
+                                }
+                              }}
+                              className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider align-middle cursor-pointer transition-all ${
+                                it.inox === '316'
+                                  ? 'bg-purple-100 text-purple-700 border border-purple-400 ring-1 ring-purple-300'
+                                  : it.inox === '304'
+                                    ? 'bg-emerald-100 text-emerald-700 border border-emerald-400 ring-1 ring-emerald-300'
+                                    : 'bg-gray-100 text-gray-400 border border-gray-200 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-300'
+                              }`}
+                              title={
+                                it.inox ? `Inox ${it.inox} ativo. Clique pra voltar ao galvanizado.`
+                                : 'Clique pra cotar em Inox'
+                              }
+                            >
+                              {it.inox ? `✦ ${it.inox}` : 'Inox'}
+                            </button>
+                            {isOpen && !it.inox && (
+                              <>
+                                <div className="fixed inset-0 z-40" onClick={() => setInoxMenuOpen(null)} />
+                                <div id={inoxMenuId} className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-xl p-3 min-w-[180px]">
+                                  <p className="text-[11px] text-gray-500 font-semibold mb-2 uppercase tracking-wide">Qual inox?</p>
+                                  <button
+                                    onClick={() => { onToggleInox(it.uid!, '304'); setInoxMenuOpen(null) }}
+                                    className="w-full text-left px-3 py-2 rounded-md hover:bg-emerald-50 transition-colors flex items-center justify-between group"
+                                  >
+                                    <span className="text-sm font-semibold text-gray-700 group-hover:text-emerald-700">Inox 304</span>
+                                    <span className="text-[10px] text-gray-400 group-hover:text-emerald-600">valor ×2,5</span>
+                                  </button>
+                                  <button
+                                    onClick={() => { onToggleInox(it.uid!, '316'); setInoxMenuOpen(null) }}
+                                    className="w-full text-left px-3 py-2 rounded-md hover:bg-purple-50 transition-colors flex items-center justify-between group"
+                                  >
+                                    <span className="text-sm font-semibold text-gray-700 group-hover:text-purple-700">Inox 316</span>
+                                    <span className="text-[10px] text-gray-400 group-hover:text-purple-600">valor ×3,5</span>
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </div>
                     {!renderMode && it.uid && (
                       <div className="flex items-center gap-0.5 shrink-0 print:hidden">

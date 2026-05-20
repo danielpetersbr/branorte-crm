@@ -843,16 +843,13 @@ export function OrcamentoMontar() {
     setCarrinho(c => c.map(it => it.uid === uid ? { ...it, nome_custom: novoNome } : it))
   }
 
-  // Cicla: galvanizado → Inox 304 (×2.5) → Inox 316 (×3.5) → galvanizado
-  function toggleInox(uid: string) {
+  function toggleInox(uid: string, tipo?: '304' | '316' | false) {
     setCarrinho(c => c.map(it => {
       if (it.uid !== uid) return it
-      const ciclo: Array<'304' | '316' | false> = [false, '304', '316']
-      const atual = ciclo.indexOf(it.inox || false)
-      const proximo = ciclo[(atual + 1) % ciclo.length]
+      // Se tipo explícito, usa ele; senão desativa
+      const proximo = tipo !== undefined ? tipo : false
 
       if (!proximo) {
-        // Volta pro galvanizado original
         return { ...it, inox: false, valor: it.valor_original, specs: it.specs_original || it.specs, specs_original: undefined }
       }
 
