@@ -53,6 +53,10 @@ interface CarrinhoItem {
   funcao_selecionada?: string | null
   /** Quando true, funcao_selecionada NÃO aparece no PDF (uso interno apenas). */
   ocultar_funcao_no_pdf?: boolean
+  /** Quando true, equipamento cotado em Inox 304 (valor × 2.5, specs trocam galvanizado → inox). */
+  inox?: boolean
+  /** Specs originais (antes de trocar pra inox) — pra poder restaurar ao desativar. */
+  specs_original?: string[]
 }
 
 type TensaoMotor = 220 | 380 | 660 | null
@@ -837,6 +841,31 @@ export function OrcamentoMontar() {
 
   function alterarNome(uid: string, novoNome: string) {
     setCarrinho(c => c.map(it => it.uid === uid ? { ...it, nome_custom: novoNome } : it))
+  }
+
+  function toggleInox(uid: string) {
+    setCarrinho(c => c.map(it => {
+      if (it.uid !== uid) return it
+      const novoInox = !it.inox
+      const novoValor = novoInox
+        ? Math.round(it.valor_original * 2.5 * 100) / 100
+        : it.valor_original
+      if (novoInox) {
+        // Salva specs originais e troca galvanizado → Inox 304
+        const specsOriginal = it.specs_original || it.specs.slice()
+        const novasSpecs = it.specs.map(s =>
+          s
+            .replace(/a[çc]o\s*galvanizado/gi, 'Inox 304')
+            .replace(/galvanizado/gi, 'Inox 304')
+            .replace(/a[çc]o\s*carbono/gi, 'Inox 304')
+            .replace(/a[çc]o\s*SAE\s*\d+/gi, 'Inox 304')
+        )
+        return { ...it, inox: true, valor: novoValor, specs: novasSpecs, specs_original: specsOriginal }
+      } else {
+        // Restaura specs e valor originais
+        return { ...it, inox: false, valor: novoValor, specs: it.specs_original || it.specs, specs_original: undefined }
+      }
+    }))
   }
 
   function alterarSpec(uid: string, idx: number, valor: string) {
@@ -1693,6 +1722,7 @@ export function OrcamentoMontar() {
                 onFotoChange={setFotoPrincipal}
                 onUpdateNome={alterarNome}
                 onUpdateSpec={alterarSpec}
+                onToggleInox={toggleInox}
                 onUpdateQtd={alterarQtd}
                 componentesExtras={componentesExtras}
                 onUpdateComponentesExtras={setComponentesExtras}

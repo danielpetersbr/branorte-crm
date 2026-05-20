@@ -24,6 +24,7 @@ export interface PreviewItem {
   motor_qtd: number
   motor_valor_unit?: number
   foto_url: string | null
+  inox?: boolean
 }
 
 export interface PreviewMotor {
@@ -129,6 +130,7 @@ export interface OrcamentoPreviewProps {
   onFotoChange?: (dataURL: string | null) => void
   onUpdateNome?: (uid: string, novoNome: string) => void
   onUpdateSpec?: (uid: string, idx: number, valor: string) => void
+  onToggleInox?: (uid: string) => void
   onUpdateQtd?: (uid: string, novaQtd: number) => void
   onUpdateTerm?: (key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento', valor: string) => void
   onMoverItem?: (uid: string, direcao: 'cima' | 'baixo') => void
@@ -241,7 +243,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     renderMode = false,
     tensaoMotores = null, onUpdateTensaoMotores,
     desconto, onUpdateDesconto,
-    onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onUpdateQtd, onUpdateTerm, onMoverItem,
+    onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onToggleInox, onUpdateQtd, onUpdateTerm, onMoverItem,
     componentesExtras = [], onUpdateComponentesExtras, componentesAdicionaisCatalogo = [],
     parcelas, onUpdateParcelas,
     motoresDisponiveis, onTrocarMotor,
@@ -714,6 +716,19 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                         >
                           ⚡{voltagem === 'monofasico' ? 'Mono' : 'Trif'}
                         </span>
+                      )}
+                      {!renderMode && onToggleInox && it.uid && (
+                        <button
+                          onClick={() => onToggleInox(it.uid!)}
+                          className={`inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider align-middle cursor-pointer transition-all ${
+                            it.inox
+                              ? 'bg-emerald-100 text-emerald-700 border border-emerald-400 ring-1 ring-emerald-300'
+                              : 'bg-gray-100 text-gray-400 border border-gray-200 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-300'
+                          }`}
+                          title={it.inox ? 'Inox 304 ativo (valor ×2,5). Clique pra voltar ao galvanizado.' : 'Clique pra cotar em Inox 304 (valor ×2,5)'}
+                        >
+                          {it.inox ? '✦ Inox' : 'Inox'}
+                        </button>
                       )}
                     </div>
                     {!renderMode && it.uid && (
