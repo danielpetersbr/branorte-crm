@@ -1182,6 +1182,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         messages,
         tools,
         tool_choice: 'auto',
+        parallel_tool_calls: true,
         temperature: 0.2,
       }),
     })
@@ -1226,6 +1227,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Se a tool gerou uma ação sugerida (propor_*), coleta pro response
         const acao = (result as { acao?: AcaoSugerida })?.acao
         if (acao) acoesSugeridas.push(acao)
+
+        // AUTO-PROPOSE: quando consultar_precos retorna resultados e tem 1 match claro,
+        // gera ação automaticamente sem esperar o LLM chamar propor_adicionar_item.
+        // Isso elimina 1 round-trip inteiro e garante que os cards apareçam.
+        if (tc.function.name === 'consultar_precos' || tc.function.name === 'compor_orcamento_composto') {
+          const res2 = result as { resultados?: Array<{ id: number; categoria: string; descricao: string; valor_equipamento: number | null; motor_cv: number | null; motor_polos: number | null; capacidade: string | null }>; total?: number }
+          // Se tem 1-3 resultados e veio com busca específica, auto-propõe o primeiro
+          if (res2.resultados && res2.resultados.length >= 1 && res2.resultados.length <= 3 && (parsedArgs.busca || parsedArgs.categoria)) {
+            const best = res2.resultados[0]
+            if (best.id && best.valor_equipamento) {
+              const jaTemEsseId = acoesSugeridas.some(a => a.tipo === 'adicionar_item' && a.preco_branorte_id === best.id)
+              if (!jaTemEsseId) {
+                acoesSugeridas.push({
+                  tipo: 'adicionar_item',
+                  preco_branorte_id: best.id,
+                  quantidade: 1,
+                  auto_apply: true,
+                  justificativa: best.descricao,
+                  preview: {
+                    categoria: best.categoria,
+                    descricao: best.descricao,
+                    valor_equipamento: Number(best.valor_equipamento),
+                    motor_cv: best.motor_cv ? Number(best.motor_cv) : null,
+                    motor_polos: best.motor_polos,
+                    capacidade: best.capacidade,
+                  },
+                })
+              }
+            }
+          }
+        }
+
         messages.push({
           role: 'tool',
           tool_call_id: tc.id,
