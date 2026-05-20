@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { X, Search, Loader2, Check, Building2, User, Tractor } from 'lucide-react'
+import { X, Search, Loader2, Check, Building2, User, Tractor, ClipboardPaste } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import type { PreviewClienteDados } from './OrcamentoPreview'
+import { parseClienteText, titleCasePtBr } from '@/lib/parse-cliente-text'
 
 interface Props {
   open: boolean
@@ -348,6 +349,28 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
     onClose()
   }
 
+  const [colando, setColando] = useState(false)
+  const [textoColado, setTextoColado] = useState('')
+
+  function handleColar() {
+    if (!textoColado.trim()) return
+    const { cliente_nome, dados } = parseClienteText(textoColado)
+    if (cliente_nome) setNome(titleCasePtBr(cliente_nome))
+    if (dados.ac) setAc(dados.ac)
+    if (dados.fone) setFone(dados.fone)
+    if (dados.cidade) setCidade(dados.cidade)
+    if (dados.uf) setUf(dados.uf)
+    if (dados.bairro) setBairro(dados.bairro)
+    if (dados.endereco) setEndereco(dados.endereco)
+    if (dados.cep) setCep(dados.cep)
+    if (dados.cnpj) setCnpj(dados.cnpj)
+    if (dados.ie) setIe(dados.ie)
+    if (dados.email) setEmail(dados.email)
+    setTextoColado('')
+    setColando(false)
+    setSucessoBusca('✓ Dados extraídos do texto colado')
+  }
+
   if (!open) return null
 
   return (
@@ -362,8 +385,48 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
             <h2 className="text-[15px] font-semibold text-ink">Dados do Cliente</h2>
             <p className="text-[11px] text-ink-faint">Preencha ou digite CNPJ/CPF/IE pra buscar automaticamente</p>
           </div>
-          <button onClick={onClose} className="text-ink-faint hover:text-ink p-1"><X className="w-4 h-4" /></button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setColando(!colando)}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold transition ${
+                colando
+                  ? 'bg-accent text-white'
+                  : 'bg-surface-2 text-ink-muted hover:bg-accent/10 hover:text-accent border border-border'
+              }`}
+              title="Colar dados do cliente (texto bagunçado → auto-preenche)"
+            >
+              <ClipboardPaste className="w-3.5 h-3.5" />
+              Colar
+            </button>
+            <button onClick={onClose} className="text-ink-faint hover:text-ink p-1"><X className="w-4 h-4" /></button>
+          </div>
         </div>
+
+        {/* Área de colar texto */}
+        {colando && (
+          <div className="px-5 py-3 bg-accent/5 border-b border-border">
+            <p className="text-[11px] text-ink-muted mb-1.5">Cole os dados do cliente abaixo (nome, CNPJ, endereço, etc. — em qualquer formato):</p>
+            <textarea
+              autoFocus
+              value={textoColado}
+              onChange={e => setTextoColado(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) handleColar() }}
+              placeholder={"Ex:\nFAZENDA SUSSUARANA\nCNPJ 12.345.678/0001-99\nRua das Flores, 123\nCidade - UF\n(48) 99999-9999"}
+              className="w-full bg-surface-2 border border-border rounded-md px-3 py-2 text-[12px] text-ink resize-none outline-none focus:border-accent"
+              rows={5}
+            />
+            <div className="flex justify-end gap-2 mt-2">
+              <button onClick={() => { setColando(false); setTextoColado('') }} className="text-[11px] text-ink-muted hover:text-ink px-2 py-1">Cancelar</button>
+              <button
+                onClick={handleColar}
+                disabled={!textoColado.trim()}
+                className="text-[11px] font-semibold bg-accent text-white px-3 py-1 rounded hover:bg-accent/90 disabled:opacity-40 transition"
+              >
+                Preencher campos
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Body */}
         <div className="px-5 py-4 overflow-y-auto flex flex-col gap-3">
