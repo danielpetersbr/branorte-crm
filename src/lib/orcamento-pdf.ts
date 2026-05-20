@@ -93,7 +93,7 @@ export function gerarOrcamentoPdf(input: PdfInput): jsPDF {
 
     // Specs com dots
     doc.setFontSize(9.5).setFont('helvetica', 'normal').setTextColor(40, 40, 40)
-    for (const spec of item.specs) {
+    for (const spec of item.specs.filter(s => !/c[oó]digo\s*finame/i.test(s))) {
       y = ensureSpace(doc, y, 5)
       const wrapped = doc.splitTextToSize(`- ${spec}`, CONTENT_W - 8)
       doc.text(wrapped, MARGIN + 6, y)

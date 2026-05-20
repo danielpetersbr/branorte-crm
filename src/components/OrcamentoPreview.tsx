@@ -751,8 +751,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   </div>
                   <div className="flex flex-col gap-3">
                     <div className="pl-3 text-[14.5px] text-gray-700 space-y-0.5">
-                      {it.specs.length > 0
-                        ? it.specs.map((s, i) => {
+                      {it.specs.filter(s => !/c[oó]digo\s*finame/i.test(s)).length > 0
+                        ? it.specs.filter(s => !/c[oó]digo\s*finame/i.test(s)).map((s, i) => {
                             const key = `${it.uid ?? idx}|${i}`
                             const editavel = !renderMode && !!onUpdateSpec && !!it.uid
                             const editando = editingSpecKey === key

@@ -277,7 +277,7 @@ async function buildItemTable(item: CustomDocxItem, voltagemTxt: string): Promis
   // Bullets de specs
   const bulletParas: Paragraph[] = []
   if (item.specs.length > 0) {
-    for (const spec of item.specs.slice(0, 20)) {
+    for (const spec of item.specs.filter(s => !/c[oó]digo\s*finame/i.test(s)).slice(0, 20)) {
       bulletParas.push(bullet(spec, 17))
     }
   } else if (item.motor_cv && item.motor_polos) {
