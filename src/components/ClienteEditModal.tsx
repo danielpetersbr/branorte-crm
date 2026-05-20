@@ -57,6 +57,16 @@ function fmtCep(v: string): string {
   return `${d.slice(0, 5)}-${d.slice(5, 8)}`
 }
 
+// Capitaliza texto que vem TUDO EM MAIÚSCULA da Receita Federal
+// "RIO PEQUENO" → "Rio Pequeno", "BRA NORTE" → "Bra Norte"
+const LOWERCASE_WORDS = new Set(['de', 'do', 'da', 'dos', 'das', 'e', 'em', 'com'])
+function titleCase(s: string): string {
+  if (!s) return s
+  return s.toLowerCase().split(' ').map((w, i) =>
+    i > 0 && LOWERCASE_WORDS.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1)
+  ).join(' ')
+}
+
 interface BrasilApiCnpj {
   razao_social: string
   nome_fantasia: string
@@ -216,22 +226,22 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
           : 'CPF não encontrado ou API indisponível. Preencha manualmente.')
         return
       }
-      if (dados.nome) setNome(dados.nome)
+      if (dados.nome) setNome(titleCase(dados.nome))
       if (dados.endereco) {
         const endNum = dados.numero ? `${dados.endereco}, ${dados.numero}` : dados.endereco
         const endFull = dados.complemento ? `${endNum} - ${dados.complemento}` : endNum
-        setEndereco(endFull)
+        setEndereco(titleCase(endFull))
       }
-      if (dados.bairro) setBairro(dados.bairro)
-      if (dados.cidade) setCidade(dados.cidade)
+      if (dados.bairro) setBairro(titleCase(dados.bairro))
+      if (dados.cidade) setCidade(titleCase(dados.cidade))
       if (dados.uf) setUf(dados.uf)
       if (dados.cep) setCep(fmtCep(dados.cep))
       if (dados.telefones?.length) setFone(fmtFone(dados.telefones[0]))
-      if (dados.emails?.length) setEmail(dados.emails[0])
+      if (dados.emails?.length) setEmail(dados.emails[0].toLowerCase())
       const temEndereco = !!dados.endereco
       setSucessoBusca(temEndereco
-        ? `✓ Dados de "${dados.nome}" carregados com sucesso`
-        : `✓ Nome "${dados.nome}" encontrado. Endereço requer plano pago — preencha manualmente.`)
+        ? `✓ Dados de "${titleCase(dados.nome)}" carregados com sucesso`
+        : `✓ Nome "${titleCase(dados.nome)}" encontrado. Endereço requer plano pago — preencha manualmente.`)
       return
     }
 
@@ -244,18 +254,18 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
         setErroBusca('CNPJ não encontrado na Receita Federal ou API indisponível.')
         return
       }
-      setNome(dados.nome_fantasia || dados.razao_social)
+      setNome(titleCase(dados.nome_fantasia || dados.razao_social))
       const endNum = dados.numero ? `${dados.logradouro}, ${dados.numero}` : dados.logradouro
       const endFull = dados.complemento ? `${endNum} - ${dados.complemento}` : endNum
-      setEndereco(endFull)
-      setBairro(dados.bairro)
-      setCidade(dados.municipio)
+      setEndereco(titleCase(endFull))
+      setBairro(titleCase(dados.bairro))
+      setCidade(titleCase(dados.municipio))
       setUf(dados.uf)
       setCep(fmtCep(dados.cep))
       setCnpj(fmtCnpj(d))
-      if (dados.email) setEmail(dados.email)
+      if (dados.email) setEmail(dados.email.toLowerCase())
       if (dados.ddd_telefone_1) setFone(fmtFone(dados.ddd_telefone_1))
-      setSucessoBusca(`✓ Dados de "${dados.nome_fantasia || dados.razao_social}" carregados da Receita Federal`)
+      setSucessoBusca(`✓ Dados de "${titleCase(dados.nome_fantasia || dados.razao_social)}" carregados da Receita Federal`)
       return
     }
 
@@ -283,9 +293,9 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
     const dados = await buscarCep(d)
     setBuscando(false)
     if (!dados) return
-    if (dados.logradouro) setEndereco(dados.logradouro)
-    if (dados.bairro) setBairro(dados.bairro)
-    if (dados.localidade) setCidade(dados.localidade)
+    if (dados.logradouro) setEndereco(titleCase(dados.logradouro))
+    if (dados.bairro) setBairro(titleCase(dados.bairro))
+    if (dados.localidade) setCidade(titleCase(dados.localidade))
     if (dados.uf) setUf(dados.uf)
     setCep(fmtCep(d))
   }
