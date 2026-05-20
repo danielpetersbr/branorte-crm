@@ -650,10 +650,8 @@ async function tool_consultar_precos(supa: SupabaseClient, args: Record<string, 
 
   if (categoria) q = q.eq('categoria', categoria.toUpperCase())
   if (busca) {
-    // Normaliza vírgula/ponto: cliente pode escrever "160 x 2,8" ou "160 x 2.8"
-    // Catálogo usa vírgula. Aceitar ambos no input criando ORs:
-    const buscaNormalizada = busca.replace(/\./g, ',')  // 2.8 → 2,8
-    const buscaAlternativa = busca.replace(/,/g, '.')   // 2,8 → 2.8
+    const buscaNormalizada = busca.replace(/\./g, ',')
+    const buscaAlternativa = busca.replace(/,/g, '.')
     if (buscaNormalizada !== buscaAlternativa) {
       q = q.or(`descricao.ilike.%${buscaNormalizada}%,descricao.ilike.%${buscaAlternativa}%`)
     } else {
@@ -668,7 +666,40 @@ async function tool_consultar_precos(supa: SupabaseClient, args: Record<string, 
 
   const { data, error } = await q
   if (error) return { erro: error.message }
-  return { resultados: data ?? [], total: (data ?? []).length }
+
+  const resultados = data ?? []
+
+  // Se achou resultados, injeta instrução pro LLM propor automaticamente
+  if (resultados.length > 0) {
+    return {
+      resultados,
+      total: resultados.length,
+      _proximo_passo: 'AGORA chame propor_adicionar_item com o ID do item mais adequado. NÃO responda ao vendedor sem antes criar o card de ação.',
+    }
+  }
+
+  // Se não achou e tinha filtro restritivo, sugere busca ampla
+  if (busca || motorCv || capMin) {
+    // Faz busca ampla automaticamente (só categoria)
+    let q2 = supa
+      .from('precos_branorte')
+      .select('id, categoria, subcategoria, descricao, capacidade, capacidade_kg_pratica, motor_cv, motor_polos, valor_equipamento')
+      .eq('ativo', true)
+      .order('valor_equipamento', { ascending: true })
+      .limit(8)
+    if (categoria) q2 = q2.eq('categoria', categoria.toUpperCase())
+    const { data: data2 } = await q2
+    if (data2 && data2.length > 0) {
+      return {
+        resultados: data2,
+        total: data2.length,
+        _nota: `Busca exata não retornou resultados. Estes são TODOS os itens da categoria ${categoria || 'geral'}. Escolha o mais próximo e chame propor_adicionar_item com justificativa.`,
+        _proximo_passo: 'Chame propor_adicionar_item com o item mais próximo do que o vendedor pediu.',
+      }
+    }
+  }
+
+  return { resultados: [], total: 0 }
 }
 
 async function tool_consultar_motor(supa: SupabaseClient, args: Record<string, unknown>) {
