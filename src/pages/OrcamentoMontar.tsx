@@ -857,10 +857,7 @@ export function OrcamentoMontar() {
           // "Corpo em chapa: 1,5mm galvanizado" → "Construído em chapa **Inox 304**"
           // "Construído em aço galvanizado" → "Construído em chapa **Inox 304**"
           if (/corpo\s*em\s*chapa/i.test(s) || /constru[ií]do\s*em\s*a[çc]o/i.test(s)) {
-            const espessura = s.match(/[\d,]+\s*mm/i)
-            return espessura
-              ? `Construído em chapa ${espessura[0]} **Inox 304**`
-              : 'Construído em chapa **Inox 304**'
+            return 'Construído em chapa **Inox 304**'
           }
           return s
             .replace(/a[çc]o\s*galvanizado/gi, '**Inox 304**')
