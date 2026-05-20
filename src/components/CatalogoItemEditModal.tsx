@@ -140,16 +140,16 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
   // ─── MOINHO: auto-preenche specs baseado no motor CV ──────────────
   const isMoinho = categoria.trim().toUpperCase() === 'MOINHO'
 
-  // Tabela real Branorte (extraída dos orçamentos em Z:/Comercial)
+  // Tabela real Branorte (extraída dos orçamentos 2025-2026 em Z:/Comercial)
   const MOINHO_SPECS: Record<number, { martelos: number; capacidade: number; funil: number }> = {
     7.5: { martelos: 16, capacidade: 1000, funil: 50 },
-    10:  { martelos: 12, capacidade: 1400, funil: 50 },
+    10:  { martelos: 12, capacidade: 1000, funil: 45 },
     15:  { martelos: 12, capacidade: 1800, funil: 100 },
     20:  { martelos: 16, capacidade: 2000, funil: 100 },
-    30:  { martelos: 24, capacidade: 3600, funil: 50 },
-    50:  { martelos: 36, capacidade: 5000, funil: 50 },
+    30:  { martelos: 24, capacidade: 3000, funil: 45 },
+    50:  { martelos: 48, capacidade: 6000, funil: 45 },
     75:  { martelos: 48, capacidade: 7500, funil: 45 },
-    100: { martelos: 64, capacidade: 10000, funil: 50 },
+    100: { martelos: 64, capacidade: 10000, funil: 45 },
   }
 
   useEffect(() => {
