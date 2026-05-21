@@ -42,6 +42,13 @@ export function RoadmapFAB() {
         logging: false,
         backgroundColor: null,
         useCORS: true,
+        // Captura só o viewport (o que o usuário vê), não a página inteira
+        x: window.scrollX,
+        y: window.scrollY,
+        width: window.innerWidth,
+        height: window.innerHeight,
+        windowWidth: window.innerWidth,
+        windowHeight: window.innerHeight,
       })
       const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png', 0.92))
       if (blob) {
