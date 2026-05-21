@@ -265,6 +265,10 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   // Edição inline de valor (duplo-click no "VALOR R$ X.XXX")
   const [editingValorUid, setEditingValorUid] = useState<string | null>(null)
   const [editingValorStr, setEditingValorStr] = useState<string>('')
+  // Modal de senha pra editar valor
+  const [senhaModalUid, setSenhaModalUid] = useState<string | null>(null)
+  const [senhaInput, setSenhaInput] = useState('')
+  const [senhaErro, setSenhaErro] = useState(false)
   // Menu de escolha Inox (304 vs 316)
   const [inoxMenuOpen, setInoxMenuOpen] = useState<string | null>(null)
   // Picker de componente extra (modal do "+ Adicionar")
@@ -946,8 +950,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           title={!renderMode && onUpdateValor ? 'Duplo-clique para editar valor' : undefined}
                           onDoubleClick={() => {
                             if (!renderMode && onUpdateValor && it.uid) {
-                              setEditingValorStr(String(it.valor))
-                              setEditingValorUid(it.uid)
+                              setSenhaModalUid(it.uid)
+                              setSenhaInput('')
+                              setSenhaErro(false)
                             }
                           }}
                         >R$ {formatBRLBare(subtotal)}</span>
@@ -1351,6 +1356,66 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       onClick={() => setExtraPickerOpen(true)}
                       className="text-[12px] px-3 py-1.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 font-semibold transition-all"
                     >+ Adicionar componente</button>
+                    {/* Modal de senha pra editar valor */}
+                    {senhaModalUid && createPortal(
+                      <>
+                        <div className="fixed inset-0 z-[9998] bg-black/50" onClick={() => setSenhaModalUid(null)} />
+                        <div className="fixed z-[9999] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-bg border border-gray-300 dark:border-border rounded-xl shadow-2xl w-[320px] p-5">
+                          <h3 className="text-[14px] font-bold text-gray-900 dark:text-ink mb-3">Editar valor</h3>
+                          <p className="text-[12px] text-gray-500 dark:text-ink-muted mb-3">Digite a senha para liberar a edição:</p>
+                          <input
+                            autoFocus
+                            type="password"
+                            value={senhaInput}
+                            onChange={e => { setSenhaInput(e.target.value); setSenhaErro(false) }}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                if (senhaInput === '2104') {
+                                  const uid = senhaModalUid
+                                  const item = carrinho.find(it => it.uid === uid)
+                                  if (item) {
+                                    setEditingValorStr(String(item.valor))
+                                    setEditingValorUid(uid)
+                                  }
+                                  setSenhaModalUid(null)
+                                  setSenhaInput('')
+                                } else {
+                                  setSenhaErro(true)
+                                }
+                              }
+                              if (e.key === 'Escape') { setSenhaModalUid(null); setSenhaInput('') }
+                            }}
+                            placeholder="Senha"
+                            className={`w-full px-3 py-2 bg-gray-50 dark:bg-surface-2 border rounded-md text-[13px] outline-none ${
+                              senhaErro ? 'border-red-400 ring-1 ring-red-300' : 'border-gray-300 dark:border-border focus:border-accent'
+                            }`}
+                          />
+                          {senhaErro && <p className="text-[11px] text-red-500 mt-1.5">Senha incorreta</p>}
+                          <div className="flex justify-end gap-2 mt-4">
+                            <button onClick={() => { setSenhaModalUid(null); setSenhaInput('') }} className="text-[12px] text-gray-500 hover:text-gray-700 dark:text-ink-muted px-3 py-1.5">Cancelar</button>
+                            <button
+                              onClick={() => {
+                                if (senhaInput === '2104') {
+                                  const uid = senhaModalUid
+                                  const item = carrinho.find(it => it.uid === uid)
+                                  if (item) {
+                                    setEditingValorStr(String(item.valor))
+                                    setEditingValorUid(uid)
+                                  }
+                                  setSenhaModalUid(null)
+                                  setSenhaInput('')
+                                } else {
+                                  setSenhaErro(true)
+                                }
+                              }}
+                              className="text-[12px] font-semibold bg-accent text-white px-4 py-1.5 rounded-md hover:bg-accent/90"
+                            >OK</button>
+                          </div>
+                        </div>
+                      </>,
+                      document.body,
+                    )}
+
                     {/* Modal de componentes — portal pra escapar de qualquer overflow/z-index */}
                     {extraPickerOpen && createPortal(
                       <>
