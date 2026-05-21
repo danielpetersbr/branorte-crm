@@ -2566,7 +2566,11 @@ export function OrcamentoMontar() {
         }}
         onCarregarPacote={(modelo_id) => {
           const m = (modelos ?? []).find(x => x.id === modelo_id)
-          if (!m) return
+          console.log('[CRM] onCarregarPacote id:', modelo_id, 'found:', !!m, 'modelos count:', (modelos ?? []).length)
+          if (!m) {
+            console.warn('[CRM] Modelo não encontrado! ID:', modelo_id)
+            return
+          }
           // Quando vem da IA e já tem itens no carrinho, SOMA (não substitui)
           carregarDoModelo(m, carrinho.length > 0)
         }}

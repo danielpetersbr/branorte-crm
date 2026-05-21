@@ -201,9 +201,10 @@ export function OrcamentoAIChat({
               await onAdicionarItem(acao.preco_branorte_id, acao.quantidade)
               autoApplied.add(i)
             } else if (acao.tipo === 'carregar_pacote' && onCarregarPacote) {
-              // Pacotes sempre auto-apply quando vendedor pediu explicitamente
+              console.log('[IA] Auto-apply pacote modelo_id:', acao.modelo_id)
               await onCarregarPacote(acao.modelo_id)
               autoApplied.add(i)
+              console.log('[IA] Pacote aplicado com sucesso')
             } else if (acao.tipo === 'finalizar_orcamento' && acao.auto_submit && onFinalizarOrcamento) {
               await onFinalizarOrcamento({
                 enviar_whatsapp: acao.enviar_whatsapp,
