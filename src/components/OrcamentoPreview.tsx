@@ -1303,11 +1303,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       onClick={() => setExtraPickerOpen(true)}
                       className="text-[12px] px-3 py-1.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 font-semibold transition-all"
                     >+ Adicionar componente</button>
-                    {/* Modal de componentes — fixed pra não ficar atrás de outros blocos */}
-                    {extraPickerOpen && (
+                    {/* Modal de componentes — portal pra escapar de qualquer overflow/z-index */}
+                    {extraPickerOpen && createPortal(
                       <>
-                        <div className="fixed inset-0 z-50 bg-black/40" onClick={() => setExtraPickerOpen(false)} />
-                        <div className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-bg border border-gray-300 dark:border-border rounded-xl shadow-2xl w-[380px] max-h-[70vh] flex flex-col overflow-hidden">
+                        <div className="fixed inset-0 z-[9998] bg-black/50" onClick={() => setExtraPickerOpen(false)} />
+                        <div className="fixed z-[9999] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-bg border border-gray-300 dark:border-border rounded-xl shadow-2xl w-[380px] max-h-[70vh] flex flex-col overflow-hidden">
                           <div className="px-4 py-3 border-b border-gray-200 dark:border-border flex items-center justify-between">
                             <h3 className="text-[14px] font-bold text-gray-900 dark:text-ink">Adicionar Componente</h3>
                             <button onClick={() => setExtraPickerOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-ink p-1"><X className="w-4 h-4" /></button>
@@ -1378,7 +1378,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             </div>
                           </div>
                         </div>
-                      </>
+                      </>,
+                      document.body,
                     )}
                   </div>
                 )}
