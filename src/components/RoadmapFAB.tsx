@@ -37,18 +37,18 @@ export function RoadmapFAB() {
       // 2 frames pra garantir que o React desmontou o modal antes do canvas
       await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
       const html2canvas = (await import('html2canvas')).default
-      const canvas = await html2canvas(document.body, {
-        scale: window.devicePixelRatio || 1,
+      // Captura só o conteúdo visível do app (não a tela inteira)
+      const appEl = document.getElementById('root') || document.body
+      const rect = appEl.getBoundingClientRect()
+      const canvas = await html2canvas(appEl, {
+        scale: 1,  // 1x pra não ficar gigante
         logging: false,
         backgroundColor: null,
         useCORS: true,
-        // Captura só o viewport (o que o usuário vê), não a página inteira
         x: window.scrollX,
         y: window.scrollY,
-        width: window.innerWidth,
-        height: window.innerHeight,
-        windowWidth: window.innerWidth,
-        windowHeight: window.innerHeight,
+        width: Math.min(rect.width, window.innerWidth),
+        height: Math.min(rect.height, window.innerHeight),
       })
       const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png', 0.92))
       if (blob) {
