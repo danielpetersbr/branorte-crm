@@ -1359,7 +1359,7 @@ export function OrcamentoMontar() {
       {/* ⚡ Modelos Prontos — atalho pros 65 pacotes Compactas + Mini Fabrica.
           Em mobile: collapsible, default fechado se ja tem itens no carrinho. */}
       <details
-        className="group bg-gradient-to-r from-accent/10 via-accent/5 to-transparent border border-accent/30 rounded-lg overflow-hidden"
+        className="group bg-gradient-to-r from-accent/10 via-accent/5 to-transparent border border-accent/30 rounded-lg overflow-hidden hidden"
         open={carrinho.length === 0}
       >
         <summary className="cursor-pointer flex items-center gap-2 px-3 py-2 select-none">
@@ -2777,7 +2777,7 @@ function SelectorModelo({ onCarregar }: { onCarregar: (m: OrcamentoModelo) => vo
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="text-[11px] px-3 py-1.5 rounded font-semibold bg-accent/15 hover:bg-accent/25 text-accent border border-accent/30 flex items-center gap-1.5"
+        className="text-[11px] px-3 py-1.5 rounded font-semibold bg-accent/15 hover:bg-accent/25 text-accent border border-accent/30 items-center gap-1.5 hidden"
         title="Carregar items a partir de um modelo pronto"
       >
         <Package className="h-3.5 w-3.5" />
