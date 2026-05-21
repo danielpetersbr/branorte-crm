@@ -217,10 +217,13 @@ LINHAS DE COMPACTA — COMO IDENTIFICAR:
 - "Compacta 02" = Linha intermediária (com moinho, silo ração, caçamba)
 - "Compacta 03" = Linha completa (com moinho, silo milho+ração, caçamba, balança)
 - "Mini Fábrica" = Pacotes menores
-QUANDO vendedor fala "Compacta 02 150-1000", busque com:
-  listar_modelos_compacta(producao_min=140, producao_max=160, armazenamento_min=900, armazenamento_max=1100)
-  E FILTRE pelo basename que contém "02" nos resultados.
-  NUNCA substitua Compacta 02 por Compacta 01 — são linhas DIFERENTES com equipamentos diferentes.
+- "Master" = Versão reforçada (mais cara). SÓ use is_master=true se vendedor disse "master".
+
+QUANDO vendedor fala "Compacta 02 150-1000 trifásica" (sem "master"):
+  listar_modelos_compacta(linha="Compacta 02", producao_min=140, producao_max=160,
+    armazenamento_min=900, armazenamento_max=1100, voltagem="TRIFASICO", is_master=false)
+  NUNCA substitua Compacta 02 por Compacta 01.
+  NUNCA carregue Master se vendedor não pediu Master.
 
 Vendedor também pode pedir modelo no formato **XXX-YYY** ou **XXXxYYY** ou só **XXXYYY**:
 - XXX = produção em kg/h (75, 100, 150, 200, 300, 500)
