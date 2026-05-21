@@ -152,6 +152,14 @@ export function Layout() {
   const primary = PRIMARY.filter(visible)
   const secondary = SECONDARY.filter(visible)
 
+  // Auto-colapsa sidebar na página de montar orçamento (precisa de espaço máximo)
+  useEffect(() => {
+    if (loc.pathname === '/orcamentos/montar' && !collapsed) {
+      toggleCollapsed()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loc.pathname])
+
   const counts: Partial<Record<NonNullable<NavItem['countKey']>, number>> = {
     atendimentos: kpis?.total,
   }
