@@ -262,8 +262,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   const [editingQtdValor, setEditingQtdValor] = useState<string>('')
   // Menu de escolha Inox (304 vs 316)
   const [inoxMenuOpen, setInoxMenuOpen] = useState<string | null>(null)
-  // Picker de componente extra (popover do "+ Adicionar")
+  // Picker de componente extra (modal do "+ Adicionar")
   const [extraPickerOpen, setExtraPickerOpen] = useState(false)
+  const [extraPickerBusca, setExtraPickerBusca] = useState('')
   // Estado do picker de troca de motor (qual linha tem o dropdown aberto)
   const [trocarMotorIdx, setTrocarMotorIdx] = useState<number | null>(null)
   const [motorBusca, setMotorBusca] = useState('')
@@ -1296,65 +1297,88 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   </table>
                 )}
                 {interactive && (
-                  <div className="mt-3 relative print:hidden">
+                  <div className="mt-3 print:hidden">
                     <button
                       type="button"
-                      onClick={() => setExtraPickerOpen(v => !v)}
+                      onClick={() => setExtraPickerOpen(true)}
                       className="text-[12px] px-3 py-1.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 font-semibold transition-all"
                     >+ Adicionar componente</button>
+                    {/* Modal de componentes — fixed pra não ficar atrás de outros blocos */}
                     {extraPickerOpen && (
-                      <div
-                        className="absolute z-40 mt-1 left-0 top-full bg-white border border-gray-300 rounded-md shadow-xl w-[340px] max-h-[60vh] overflow-y-auto print:hidden"
-                        onMouseLeave={() => setExtraPickerOpen(false)}
-                      >
-                        {/* Section 1: do cadastro (precos_branorte) — com preço já sugerido */}
-                        {componentesAdicionaisCatalogo.length > 0 && (
-                          <>
-                            <div className="px-3 py-2 border-b border-gray-200 bg-blue-50/60 text-[10px] uppercase font-bold text-blue-700 tracking-wider">
-                              Do cadastro de preços
+                      <>
+                        <div className="fixed inset-0 z-50 bg-black/40" onClick={() => setExtraPickerOpen(false)} />
+                        <div className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-bg border border-gray-300 dark:border-border rounded-xl shadow-2xl w-[380px] max-h-[70vh] flex flex-col overflow-hidden">
+                          <div className="px-4 py-3 border-b border-gray-200 dark:border-border flex items-center justify-between">
+                            <h3 className="text-[14px] font-bold text-gray-900 dark:text-ink">Adicionar Componente</h3>
+                            <button onClick={() => setExtraPickerOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-ink p-1"><X className="w-4 h-4" /></button>
+                          </div>
+                          <div className="px-3 py-2 border-b border-gray-100 dark:border-border">
+                            <input
+                              autoFocus
+                              type="text"
+                              placeholder="Buscar componente..."
+                              value={extraPickerBusca}
+                              onChange={e => setExtraPickerBusca(e.target.value)}
+                              className="w-full px-2.5 py-1.5 bg-gray-50 dark:bg-surface-2 border border-gray-200 dark:border-border rounded text-[12px] text-gray-800 dark:text-ink outline-none focus:border-blue-400"
+                            />
+                          </div>
+                          <div className="flex-1 overflow-y-auto">
+                            {/* Section 1: do cadastro (precos_branorte) */}
+                            {componentesAdicionaisCatalogo.filter(c => !extraPickerBusca || c.nome.toLowerCase().includes(extraPickerBusca.toLowerCase())).length > 0 && (
+                              <>
+                                <div className="px-3 py-2 border-b border-gray-200 dark:border-border bg-blue-50/60 dark:bg-accent/10 text-[10px] uppercase font-bold text-blue-700 dark:text-accent tracking-wider">
+                                  Do cadastro de preços
+                                </div>
+                                <div className="p-1">
+                                  {componentesAdicionaisCatalogo
+                                    .filter(c => !extraPickerBusca || c.nome.toLowerCase().includes(extraPickerBusca.toLowerCase()))
+                                    .map(c => (
+                                    <button
+                                      key={c.id}
+                                      type="button"
+                                      onClick={() => { adicionar(c.nome, c.valorSugerido ?? 0); setExtraPickerBusca('') }}
+                                      className="w-full text-left px-3 py-2 rounded-md text-[13px] hover:bg-blue-50 dark:hover:bg-accent/10 transition-colors text-gray-800 dark:text-ink flex items-center justify-between gap-2"
+                                    >
+                                      <span>{c.nome}</span>
+                                      <span className="text-[11px] tabular-nums text-gray-500 dark:text-ink-muted">
+                                        {c.valorSugerido != null && c.valorSugerido > 0
+                                          ? `R$ ${formatBRLBare(c.valorSugerido)}`
+                                          : <span className="italic text-gray-400">sem preço</span>}
+                                      </span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                            {/* Section 2: presets fixos */}
+                            {PRESETS.filter(p => !extraPickerBusca || p.toLowerCase().includes(extraPickerBusca.toLowerCase())).length > 0 && (
+                              <>
+                                <div className="px-3 py-2 border-b border-t border-gray-200 dark:border-border bg-gray-50 dark:bg-surface-2 text-[10px] uppercase font-bold text-gray-600 dark:text-ink-muted tracking-wider">
+                                  Outros componentes (digite o valor)
+                                </div>
+                                <div className="p-1">
+                                  {PRESETS.filter(p => !extraPickerBusca || p.toLowerCase().includes(extraPickerBusca.toLowerCase())).map(p => (
+                                    <button
+                                      key={p}
+                                      type="button"
+                                      onClick={() => { adicionar(p); setExtraPickerBusca('') }}
+                                      className="w-full text-left px-3 py-2 rounded-md text-[13px] hover:bg-blue-50 dark:hover:bg-accent/10 transition-colors text-gray-800 dark:text-ink"
+                                    >{p}</button>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                            {/* Section 3: livre */}
+                            <div className="border-t border-gray-200 dark:border-border p-1">
+                              <button
+                                type="button"
+                                onClick={() => { adicionar(extraPickerBusca || ''); setExtraPickerBusca('') }}
+                                className="w-full text-left px-3 py-2 rounded-md text-[13px] hover:bg-yellow-50 dark:hover:bg-warning/10 transition-colors text-gray-700 dark:text-ink-muted italic"
+                              >{extraPickerBusca ? `+ Adicionar "${extraPickerBusca}"` : '+ Outro (digitar manualmente)'}</button>
                             </div>
-                            <div className="p-1">
-                              {componentesAdicionaisCatalogo.map(c => (
-                                <button
-                                  key={c.id}
-                                  type="button"
-                                  onClick={() => adicionar(c.nome, c.valorSugerido ?? 0)}
-                                  className="w-full text-left px-2 py-1.5 rounded text-[13px] hover:bg-blue-50 transition-colors text-gray-800 flex items-center justify-between gap-2"
-                                >
-                                  <span>{c.nome}</span>
-                                  <span className="text-[11px] tabular-nums text-gray-500">
-                                    {c.valorSugerido != null && c.valorSugerido > 0
-                                      ? `R$ ${formatBRLBare(c.valorSugerido)}`
-                                      : <span className="italic text-gray-400">sem preço</span>}
-                                  </span>
-                                </button>
-                              ))}
-                            </div>
-                          </>
-                        )}
-                        {/* Section 2: presets fixos sem preço (não estão no cadastro ainda) */}
-                        <div className="px-3 py-2 border-b border-t border-gray-200 bg-gray-50 text-[10px] uppercase font-bold text-gray-600 tracking-wider">
-                          Outros componentes (digite o valor)
+                          </div>
                         </div>
-                        <div className="p-1">
-                          {PRESETS.map(p => (
-                            <button
-                              key={p}
-                              type="button"
-                              onClick={() => adicionar(p)}
-                              className="w-full text-left px-2 py-1.5 rounded text-[13px] hover:bg-blue-50 transition-colors text-gray-800"
-                            >{p}</button>
-                          ))}
-                        </div>
-                        {/* Section 3: livre */}
-                        <div className="border-t border-gray-200 p-1">
-                          <button
-                            type="button"
-                            onClick={() => adicionar('')}
-                            className="w-full text-left px-2 py-1.5 rounded text-[13px] hover:bg-yellow-50 transition-colors text-gray-700 italic"
-                          >+ Outro (digitar manualmente)</button>
-                        </div>
-                      </div>
+                      </>
                     )}
                   </div>
                 )}
