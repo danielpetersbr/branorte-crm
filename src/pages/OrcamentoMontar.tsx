@@ -1328,6 +1328,12 @@ export function OrcamentoMontar() {
       forma_pagamento: o.forma_pagamento ?? null,
       prazo_entrega: o.prazo_entrega ?? null,
     })
+    // Preenche dados do cliente no preview (cabeçalho do orçamento)
+    if (o.cliente_dados) {
+      setClienteDados(o.cliente_dados as PreviewClienteDados)
+    } else if (o.cliente_nome) {
+      setClienteDados({ nome: o.cliente_nome })
+    }
     setOrcamentoHidratado(true)
   }, [editingId, orcamentoEditando, loadingItems, loadingMotores, orcamentoHidratado])
 
