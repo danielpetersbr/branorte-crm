@@ -1498,8 +1498,8 @@ export function OrcamentoMontar() {
                     {(categoria === null || categoria === 'CACAMBA_PESAGEM') && cacambasOficiais.length > 0 && (
                       <MetaCard categoria="CACAMBA_PESAGEM" titulo="Caçamba de Pesagem" descricao="600L / 1000L / 1900L / 3000L" qtd={cacambasOficiais.length} onClick={() => setCacambaPickerOpen(true)} />
                     )}
-                    {(categoria === null || categoria === 'PRE-LIMPEZA' || categoria === 'PRE_LIMPEZA') && preLimpezasOficiais.length > 0 && (
-                      <MetaCard categoria="PRE-LIMPEZA" titulo="Pré-Limpeza" descricao="3, 5, 7 e 10 ton/h" qtd={preLimpezasOficiais.length} onClick={() => setPreLimpezaPickerOpen(true)} />
+                    {(categoria === null || categoria === 'PRE_LIMPEZA' || categoria === 'PRE_LIMPEZA') && preLimpezasOficiais.length > 0 && (
+                      <MetaCard categoria="PRE_LIMPEZA" titulo="Pré-Limpeza" descricao="3, 5, 7 e 10 ton/h" qtd={preLimpezasOficiais.length} onClick={() => setPreLimpezaPickerOpen(true)} />
                     )}
                     {(categoria === null || categoria === 'ENSACADEIRA') && ensacadeirasOficiais.length > 0 && (
                       <MetaCard categoria="ENSACADEIRA" titulo="Ensacadeira" descricao="Saco Aberto e Valvulado c/ painel" qtd={ensacadeirasOficiais.length} onClick={() => setEnsacadeiraPickerOpen(true)} />
@@ -1539,7 +1539,7 @@ export function OrcamentoMontar() {
                   // picker do meta-card ja cobre.
                   .filter(it => busca || ![
                     'TRANSPORTADOR', 'MISTURADOR', 'MOINHO', 'CAIXA',
-                    'SILO', 'ELEVADOR', 'CACAMBA_PESAGEM', 'PRE-LIMPEZA', 'PRE_LIMPEZA',
+                    'SILO', 'ELEVADOR', 'CACAMBA_PESAGEM', 'PRE_LIMPEZA', 'PRE_LIMPEZA',
                     'PENEIRA', 'HELICOIDE', 'BALANCA', 'ENSACADEIRA', 'COMPACTA',
                     'ALIMENTADOR', 'DESCARGA', 'MARTELOS', 'MOEGA', 'PASSARELA',
                     'SUPORTE_BAG', 'SUPORTE BAG', 'OUTROS', 'ACESSORIO',

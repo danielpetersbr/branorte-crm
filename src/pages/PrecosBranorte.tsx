@@ -25,6 +25,12 @@ const CATEGORIA_LABEL: Record<string, string> = {
   HELICOIDE: 'Helicóide (peças)',
   BALANCA: 'Balanças',
   ACESSORIO: 'Acessórios (Martelos, Eixos, Buchas)',
+  ALIMENTADOR: 'Alimentadores',
+  DESCARGA: 'Descarga',
+  MOEGA: 'Moega de Entrada',
+  OUTROS: 'Diversos',
+  PASSARELA: 'Passarelas',
+  SUPORTE_BAG: 'Suporte de Big Bag',
 }
 
 const SUBCATEGORIA_LABEL: Record<string, string> = {
