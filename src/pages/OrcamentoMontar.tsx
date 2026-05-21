@@ -2571,8 +2571,9 @@ export function OrcamentoMontar() {
             console.warn('[CRM] Modelo não encontrado! ID:', modelo_id)
             return
           }
-          // Quando vem da IA e já tem itens no carrinho, SOMA (não substitui)
-          carregarDoModelo(m, carrinho.length > 0)
+          // Quando vem da IA, SEMPRE append (a IA pode ter adicionado itens
+          // antes mas o state do React ainda não atualizou neste tick)
+          carregarDoModelo(m, true)
         }}
         onPreencherCliente={(dados) => {
           // Merge nos dados do modal de finalização. Quando o vendedor clicar
