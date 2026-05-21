@@ -665,6 +665,7 @@ export function OrcamentoMontar() {
     p: PrecoBranorte,
     categoriaForcada?: string,
     chupimOpts?: { material: MaterialChupim; inclinacao: InclinacaoChupim; polos?: 4 | 6; funcao?: TransportadorFuncao },
+    quantidade?: number,
   ) {
     const cat = categoriaForcada ?? p.categoria
     // Tenta achar o catalogo_item linkado via preco_branorte_id
@@ -765,7 +766,7 @@ export function OrcamentoMontar() {
       categoria: cat,
       nome: nomeBase + sufixoFuncao,
       specs: specsFinal,
-      qtd: 1,
+      qtd: quantidade ?? 1,
       valor: Number(p.valor_equipamento ?? 0),
       valor_original: Number(p.valor_equipamento ?? 0),
       motor_cv: motor_cv_n ? Number(motor_cv_n) : null,
@@ -2557,11 +2558,7 @@ export function OrcamentoMontar() {
         onAdicionarItem={(preco_id, qtd) => {
           const p = (precos ?? []).find(x => x.id === preco_id)
           if (!p) return
-          // Adiciona N vezes (cada chamada cria entrada qtd=1). Pra MVP serve;
-          // vendedor pode consolidar manualmente depois se quiser.
-          for (let i = 0; i < Math.max(1, qtd || 1); i++) {
-            adicionarItemDePreco(p)
-          }
+          adicionarItemDePreco(p, undefined, undefined, Math.max(1, qtd || 1))
         }}
         onCarregarPacote={(modelo_id) => {
           const m = (modelos ?? []).find(x => x.id === modelo_id)
