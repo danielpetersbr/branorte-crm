@@ -945,6 +945,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           title={!renderMode && onUpdateValor ? 'Duplo-clique para editar valor' : undefined}
                           onDoubleClick={() => {
                             if (!renderMode && onUpdateValor && it.uid) {
+                              const senha = prompt('Digite a senha para editar o valor:')
+                              if (senha !== '2104') {
+                                if (senha !== null) alert('Senha incorreta')
+                                return
+                              }
                               setEditingValorStr(String(it.valor))
                               setEditingValorUid(it.uid)
                             }
