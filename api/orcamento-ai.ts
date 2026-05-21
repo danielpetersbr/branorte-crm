@@ -1047,6 +1047,27 @@ async function tool_compor_orcamento_composto(
 
     if (item.categoria) q = q.eq('categoria', item.categoria.toUpperCase())
 
+    // SILOS: SEMPRE buscar por capacidade_ton, nunca por texto.
+    // Se LLM mandou busca textual pra silo (ex: "silo 40"), extrai o número e usa capacidade_ton.
+    if (item.categoria?.toUpperCase() === 'SILO' && tentativa === 'precisa') {
+      // Extrai tonelagem da busca ou descricao
+      const textoRef = item.busca || item.descricao_vendedor || ''
+      const numMatch = textoRef.match(/(\d+)\s*(ton|t\b)/i) || textoRef.match(/(\d+)/)
+      if (numMatch) {
+        const ton = parseInt(numMatch[1])
+        if (ton > 0 && ton < 10000) {
+          q = q.gte('capacidade_ton', ton * 0.85).lte('capacidade_ton', ton * 1.15)
+          q = q.order('capacidade_ton', { ascending: true })
+          // Pular a busca textual — silos usam capacidade_ton
+          const tonMin = (item as Record<string, unknown>).capacidade_ton_min as number | undefined
+          const tonMax = (item as Record<string, unknown>).capacidade_ton_max as number | undefined
+          if (tonMin != null) q = q.gte('capacidade_ton', tonMin)
+          if (tonMax != null) q = q.lte('capacidade_ton', tonMax)
+          return q
+        }
+      }
+    }
+
     if (tentativa === 'precisa') {
       if (item.subcategoria) q = q.eq('subcategoria', item.subcategoria.toUpperCase())
       if (item.busca) {
