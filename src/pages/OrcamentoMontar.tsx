@@ -1672,7 +1672,7 @@ export function OrcamentoMontar() {
         {/* PREVIEW DO ORÇAMENTO — sticky no desktop pra não rolar com a lista esquerda */}
         <Card className={`flex flex-col w-full min-w-0 min-h-0 overflow-hidden max-h-[calc(100vh-180px)] md:max-h-none lg:sticky lg:top-3 lg:self-start lg:justify-self-stretch lg:max-h-[calc(100vh-1.5rem)] lg:h-[calc(100vh-1.5rem)] ${mobileTab === 'catalogo' ? 'hidden lg:flex' : ''}`}>
           {/* Toolbar do preview — botões maiores + CTA principal destacado */}
-          <div className="p-3 border-b border-border flex items-center justify-between bg-surface-2/30 flex-wrap gap-2">
+          <div className="p-1.5 sm:p-3 border-b border-border flex items-center justify-between bg-surface-2/30 flex-wrap gap-1 sm:gap-2">
             <div className="flex items-center gap-1 bg-surface rounded-md p-0.5 border border-border">
               <button
                 onClick={() => setModoVisao('preview')}
@@ -1725,8 +1725,8 @@ export function OrcamentoMontar() {
                 Trif
               </button>
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-surface border border-border">
+            <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
+              <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-md bg-surface border border-border">
                 <span className="text-[11px] text-ink-faint">{carrinho.length}</span>
                 <span className="text-[11px] text-ink-muted">{carrinho.length === 1 ? 'item' : 'items'}</span>
               </div>
@@ -1837,12 +1837,12 @@ export function OrcamentoMontar() {
           {/* Conteúdo do preview / edição */}
           <div className="flex-1 overflow-y-auto bg-white">
             {carrinho.length === 0 ? (
-              <div className="px-6 py-12 text-center max-w-md mx-auto">
+              <div className="px-3 py-6 sm:px-6 sm:py-12 text-center max-w-md mx-auto">
                 <div className="h-16 w-16 mx-auto mb-4 rounded-2xl bg-accent/10 flex items-center justify-center">
                   <FileText className="h-8 w-8 text-accent" />
                 </div>
                 <h3 className="text-[16px] font-bold text-gray-900">Comece adicionando o primeiro item</h3>
-                <p className="text-[13px] text-gray-500 mt-1.5 mb-5">Escolha pelo atalho abaixo ou navegue no catálogo à esquerda.</p>
+                <p className="text-[13px] text-gray-500 mt-1.5 mb-5">Escolha pelo atalho abaixo ou toque em <span className="lg:hidden">"+ Adicionar"</span><span className="hidden lg:inline">no catálogo à esquerda</span>.</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left">
                   <button
                     onClick={() => { setMobileTab('catalogo'); setTransportadorPickerOpen(true) }}
