@@ -126,7 +126,7 @@ function gerarUid(): string {
 function motorJaInclusoNoItem(specs: string[]): boolean {
   if (!specs || specs.length === 0) return false
   const motorKeywords = /acionamento|motorredutor|moto\s*redutor|pot[êe]ncia|\bcv\b/i
-  const inclusoMarker = /\(\s*inclus[oa]\.?\s*\)/i
+  const inclusoMarker = /\(\s*inclus[oa]s?\.?\s*\)/i
   return specs.some(s => motorKeywords.test(s) && inclusoMarker.test(s))
 }
 
