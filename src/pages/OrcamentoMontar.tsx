@@ -1318,6 +1318,11 @@ export function OrcamentoMontar() {
       ativo: true,
     }
     carregarDoModelo(modeloShape)
+    // Restaura foto principal: busca do modelo original se disponível
+    if (o.modelo_id && modelos) {
+      const modeloOriginal = modelos.find(m => m.id === o.modelo_id)
+      if (modeloOriginal?.foto_url) setFotoPrincipal(modeloOriginal.foto_url)
+    }
     // Hidrata componentes extras + observacoes + termos
     if (o.componentes_extras) setComponentesExtras(o.componentes_extras as any)
     // Guarda dados que vão pro modal FinalizarMontar
@@ -1335,7 +1340,7 @@ export function OrcamentoMontar() {
       setClienteDados({ nome: o.cliente_nome })
     }
     setOrcamentoHidratado(true)
-  }, [editingId, orcamentoEditando, loadingItems, loadingMotores, orcamentoHidratado])
+  }, [editingId, orcamentoEditando, loadingItems, loadingMotores, orcamentoHidratado, modelos])
 
   if (loadingItems || loadingMotores || (editingId && loadingOrcamento)) return <PageLoading />
 
