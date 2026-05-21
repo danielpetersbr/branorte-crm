@@ -212,6 +212,10 @@ export async function gerarDocxViaHtml(previewProps: OrcamentoPreviewProps): Pro
   host.style.width = '794px'  // ~210mm @ 96dpi (A4)
   host.style.background = '#ffffff'
   host.style.zIndex = '-1'
+  // Força light mode pra computed styles não pegarem cores dark (texto branco)
+  const htmlEl = document.documentElement
+  const wasDark = htmlEl.classList.contains('dark')
+  if (wasDark) htmlEl.classList.remove('dark')
   document.body.appendChild(host)
 
   let root: ReturnType<typeof createRoot> | null = null
@@ -260,5 +264,6 @@ export async function gerarDocxViaHtml(previewProps: OrcamentoPreviewProps): Pro
   } finally {
     if (root) root.unmount()
     host.remove()
+    if (wasDark) htmlEl.classList.add('dark')
   }
 }
