@@ -1280,6 +1280,7 @@ export function OrcamentoMontar() {
   return (
     <div
       className="h-full flex flex-col gap-2 p-2 lg:pl-1 lg:pr-2 transition-all duration-200"
+      style={{ marginLeft: aiDrawerOpen ? 460 : 0 }}
     >
       {/* Banner CRÍTICO: orçamento existente está em rascunho (upload server falhou).
           Quando vendedor reabre via ?id=N e a row tá rascunho, mostra alerta
