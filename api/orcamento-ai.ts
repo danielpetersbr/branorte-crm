@@ -795,7 +795,7 @@ async function tool_listar_modelos_compacta(supa: SupabaseClient, args: Record<s
   if (args.producao_max != null) q = q.lte('producao_kgh', args.producao_max as number)
   if (args.armazenamento_min != null) q = q.gte('armazenamento_kg', args.armazenamento_min as number)
   if (args.armazenamento_max != null) q = q.lte('armazenamento_kg', args.armazenamento_max as number)
-  if (args.voltagem) q = q.eq('voltagem', (args.voltagem as string).toUpperCase())
+  if (args.voltagem) q = q.eq('voltagem', (args.voltagem as string).toLowerCase())
   if (typeof args.com_balanca === 'boolean') q = q.eq('com_balanca', args.com_balanca)
   if (typeof args.com_ensacadeira === 'boolean') q = q.eq('com_ensacadeira', args.com_ensacadeira)
   if (typeof args.com_chupim === 'boolean') q = q.eq('com_chupim', args.com_chupim)
