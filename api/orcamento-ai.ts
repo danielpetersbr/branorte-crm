@@ -1049,7 +1049,24 @@ async function tool_compor_orcamento_composto(
 
     if (tentativa === 'precisa') {
       if (item.subcategoria) q = q.eq('subcategoria', item.subcategoria.toUpperCase())
-      if (item.busca) q = q.ilike('descricao', `%${item.busca}%`)
+      if (item.busca) {
+        // Normaliza vírgula/ponto: LLM pode passar "160 x 14" mas catálogo tem "160 x 14,0"
+        const b = item.busca
+        const bComVirgula = b.replace(/\./g, ',')
+        const bComPonto = b.replace(/,/g, '.')
+        if (bComVirgula !== bComPonto) {
+          q = q.or(`descricao.ilike.%${bComVirgula}%,descricao.ilike.%${bComPonto}%`)
+        } else {
+          // Busca flexível: "160 14" → tenta "%160%14%" pra pegar "chupim 160 x 14,0 m"
+          const partes = b.trim().split(/\s+/)
+          if (partes.length >= 2) {
+            const pattern = partes.map(p => `%${p}%`).join('')
+            q = q.ilike('descricao', pattern)
+          } else {
+            q = q.ilike('descricao', `%${b}%`)
+          }
+        }
+      }
       if (item.motor_cv != null) q = q.eq('motor_cv', item.motor_cv)
       if (item.capacidade_min != null) q = q.gte('capacidade_kg_pratica', item.capacidade_min)
       if (item.capacidade_max != null) q = q.lte('capacidade_kg_pratica', item.capacidade_max)
