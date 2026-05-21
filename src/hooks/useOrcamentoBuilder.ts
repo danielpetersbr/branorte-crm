@@ -88,6 +88,7 @@ export interface OrcamentoGerado {
   prazo_entrega: string | null
   status: 'rascunho' | 'enviado' | 'aprovado' | 'perdido'
   pdf_url: string | null
+  foto_principal_url: string | null
   enviado_em: string | null
   created_at: string
   updated_at: string
@@ -340,6 +341,8 @@ export interface CriarOrcamentoInput {
   numero_override?: { ano: number; sequencial: number; numero: string } | null
   // Componentes adicionais (NÃO fabricados pela Branorte) — painel, balança, célula de carga…
   componentes_extras?: Array<{ id: string; nome: string; valor: number }> | null
+  // Foto principal do orçamento (URL pública no Storage após upload)
+  foto_principal_url?: string | null
 }
 
 export function useCriarOrcamento() {
@@ -415,6 +418,7 @@ export function useCriarOrcamento() {
         prazo_entrega: input.prazo_entrega ?? null,
         status: input.status ?? 'rascunho',
         componentes_extras: input.componentes_extras ?? null,
+        foto_principal_url: input.foto_principal_url ?? null,
         numero_base: numero,
       }
       // Tenta inserir; se ainda assim der duplicate (race), incrementa e tenta de novo
@@ -517,6 +521,7 @@ export function useCriarAlteracao() {
         prazo_entrega: rest.prazo_entrega ?? null,
         status: rest.status ?? 'rascunho',
         componentes_extras: rest.componentes_extras ?? null,
+        foto_principal_url: rest.foto_principal_url ?? null,
         parent_id,
         versao_alt: nextAlt,
         numero_base: numeroBase,

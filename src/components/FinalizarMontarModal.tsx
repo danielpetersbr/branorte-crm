@@ -494,6 +494,35 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         valor: m.valor_total,
       }))
 
+      // Upload da foto principal pro Storage (se for dataURL, converte pra blob e sobe)
+      let fotoPrincipalUrl: string | null = null
+      if (snapshot.fotoPrincipal) {
+        if (snapshot.fotoPrincipal.startsWith('data:')) {
+          try {
+            setStep('Subindo foto principal...', 8)
+            const res = await fetch(snapshot.fotoPrincipal)
+            const blob = await res.blob()
+            const ext = blob.type.includes('png') ? 'png' : 'jpg'
+            // Usa timestamp pra evitar cache e colisão
+            const storagePath = `orcamentos/foto-principal-${Date.now()}.${ext}`
+            const { error: upErr } = await supabase.storage
+              .from('catalogo-fotos')
+              .upload(storagePath, blob, { contentType: blob.type, upsert: true })
+            if (upErr) {
+              console.warn('Falha upload foto principal:', upErr.message)
+            } else {
+              const { data: pubData } = supabase.storage.from('catalogo-fotos').getPublicUrl(storagePath)
+              fotoPrincipalUrl = pubData?.publicUrl ?? null
+            }
+          } catch (e) {
+            console.warn('Falha upload foto principal:', (e as Error).message)
+          }
+        } else {
+          // Já é uma URL pública — salva direto
+          fotoPrincipalUrl = snapshot.fotoPrincipal
+        }
+      }
+
       const stepLabel = saveMode === 'alt' ? 'Criando alteração...' : editingId ? 'Atualizando orçamento no banco...' : 'Salvando orçamento no banco...'
       setStep(stepLabel, 10)
       // Modo edição vs criação: editingId → UPDATE (mantém numero/sequencial), senão INSERT
@@ -517,6 +546,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         forma_pagamento: formaPgOut.forma_pagamento || null,
         prazo_entrega: prazoEntrega.trim() || null,
         componentes_extras: snapshot.componentesExtras ?? null,
+        foto_principal_url: fotoPrincipalUrl,
       }
       // Status: SEMPRE cria como 'rascunho'. O /api/orcamento-confirm muda
       // pra 'enviado' SE o upload realmente chegou no Storage. Isso evita

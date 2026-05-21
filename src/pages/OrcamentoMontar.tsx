@@ -1320,10 +1320,15 @@ export function OrcamentoMontar() {
     }
     carregarDoModelo(modeloShape)
     // Restaura foto principal:
-    // 1) Do modelo original (se orçamento veio de pacote)
-    // 2) Fallback: foto do primeiro item do catálogo que tem foto
+    // 1) URL persistida no banco (fonte de verdade — sobrevive a edições)
+    // 2) Fallback: foto do modelo original (se orçamento veio de pacote)
+    // 3) Fallback: foto do primeiro item do catálogo que tem foto
     let fotoRestaurada = false
-    if (o.modelo_id && modelos) {
+    if (o.foto_principal_url) {
+      setFotoPrincipal(o.foto_principal_url)
+      fotoRestaurada = true
+    }
+    if (!fotoRestaurada && o.modelo_id && modelos) {
       const modeloOriginal = modelos.find(m => m.id === o.modelo_id)
       if (modeloOriginal?.foto_url) {
         setFotoPrincipal(modeloOriginal.foto_url)
