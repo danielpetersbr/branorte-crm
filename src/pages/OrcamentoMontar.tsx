@@ -1274,7 +1274,7 @@ export function OrcamentoMontar() {
 
   return (
     <div
-      className="h-full flex flex-col gap-3 p-3 transition-all duration-200"
+      className="h-full flex flex-col gap-2 p-2 lg:pl-1 lg:pr-2 transition-all duration-200"
       style={{ marginLeft: aiDrawerOpen ? 460 : 0 }}
     >
       {/* Banner CRÍTICO: orçamento existente está em rascunho (upload server falhou).
@@ -1421,7 +1421,7 @@ export function OrcamentoMontar() {
       </div>
 
       {/* Grid 2 colunas: catálogo fixo 340px (suficiente pros cards) + preview pega TODO o resto */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)] gap-3 min-h-0">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)] gap-2 min-h-0">
         {/* CATÁLOGO — em mobile, esconde se tab=preview */}
         <Card className={`flex flex-col min-h-0 overflow-hidden ${mobileTab === 'preview' ? 'hidden lg:flex' : ''}`}>
           <div className="p-3 border-b border-border space-y-2">
