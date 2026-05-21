@@ -4223,36 +4223,59 @@ function MetaCard({
   qtd: number
   onClick: () => void
 }) {
-  const storageKey = `metacard-thumb-${categoria}`
-  const [thumb, setThumb] = useState<string | null>(() => {
-    try { return localStorage.getItem(storageKey) } catch { return null }
-  })
+  const thumbPath = `metacard/${categoria.replace(/\s+/g, '_')}.jpg`
+  const thumbUrl = `https://flwbeevtvjiouxdjmziv.supabase.co/storage/v1/object/public/catalogo-fotos/${thumbPath}`
+  const [thumb, setThumb] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+
+  // Tenta carregar a thumb do Storage (cache local pra não ficar batendo)
+  useEffect(() => {
+    const cached = localStorage.getItem(`metacard-url-${categoria}`)
+    if (cached) { setThumb(cached); return }
+    // Checa se existe no Storage
+    const img = new Image()
+    img.onload = () => { setThumb(thumbUrl); localStorage.setItem(`metacard-url-${categoria}`, thumbUrl) }
+    img.onerror = () => { /* sem thumb */ }
+    img.src = thumbUrl + '?t=' + Date.now()
+  }, [categoria, thumbUrl])
 
   function handleContextMenu(e: React.MouseEvent) {
     e.preventDefault()
     const inp = document.createElement('input')
     inp.type = 'file'
     inp.accept = 'image/*'
-    inp.onchange = () => {
+    inp.onchange = async () => {
       const f = inp.files?.[0]
       if (!f) return
-      const reader = new FileReader()
-      reader.onload = () => {
-        const img = new Image()
-        img.onload = () => {
-          const canvas = document.createElement('canvas')
-          canvas.width = 56; canvas.height = 56
-          const ctx = canvas.getContext('2d')!
-          const scale = Math.max(56 / img.width, 56 / img.height)
-          const w = img.width * scale, h = img.height * scale
-          ctx.drawImage(img, (56 - w) / 2, (56 - h) / 2, w, h)
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.8)
-          localStorage.setItem(storageKey, dataUrl)
-          setThumb(dataUrl)
+      setUploading(true)
+      // Resize to 112x112 (2x pra retina)
+      const dataUrl = await new Promise<string>(resolve => {
+        const reader = new FileReader()
+        reader.onload = () => {
+          const img = new Image()
+          img.onload = () => {
+            const canvas = document.createElement('canvas')
+            canvas.width = 112; canvas.height = 112
+            const ctx = canvas.getContext('2d')!
+            const scale = Math.max(112 / img.width, 112 / img.height)
+            const w = img.width * scale, h = img.height * scale
+            ctx.drawImage(img, (112 - w) / 2, (112 - h) / 2, w, h)
+            resolve(canvas.toDataURL('image/jpeg', 0.85))
+          }
+          img.src = reader.result as string
         }
-        img.src = reader.result as string
+        reader.readAsDataURL(f)
+      })
+      // Converte dataUrl pra blob e faz upload pro Storage
+      const res = await fetch(dataUrl)
+      const blob = await res.blob()
+      const { error } = await supabase.storage.from('catalogo-fotos').upload(thumbPath, blob, { upsert: true, contentType: 'image/jpeg' })
+      setUploading(false)
+      if (!error) {
+        const url = thumbUrl + '?t=' + Date.now()
+        setThumb(url)
+        localStorage.setItem(`metacard-url-${categoria}`, url)
       }
-      reader.readAsDataURL(f)
     }
     inp.click()
   }
@@ -4264,8 +4287,10 @@ function MetaCard({
       className="text-left p-2 rounded-lg border-2 border-dashed border-accent/40 hover:border-accent hover:bg-accent/5 transition-all group flex items-center gap-2.5 relative"
       title="Clique pra abrir · Botão direito pra trocar foto"
     >
-      <div className="w-14 h-14 rounded-md border border-accent/30 bg-accent/10 shrink-0 flex items-center justify-center overflow-hidden">
-        {thumb ? (
+      <div className="w-14 h-14 rounded-md border border-accent/30 bg-accent/10 shrink-0 flex items-center justify-center overflow-hidden relative">
+        {uploading ? (
+          <Loader2 className="h-5 w-5 text-accent animate-spin" />
+        ) : thumb ? (
           <img src={thumb} alt={titulo} className="w-full h-full object-cover" />
         ) : (
           <Sparkles className="h-6 w-6 text-accent" />
