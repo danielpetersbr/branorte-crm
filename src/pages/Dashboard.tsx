@@ -176,14 +176,14 @@ export function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <Card className="lg:col-span-2">
           <CardHeader
-            title="Funil de qualificação (bot)"
-            subtitle={`${fmtN(data.leadsBotNovo)} leads que entraram via webhook`}
+            title="Funil de qualificação (IA)"
+            subtitle={`${fmtN(data.totalLeads)} leads no período · qualificação automática`}
           />
           <FunilHero etapas={data.funil} />
         </Card>
         <Card>
           <CardHeader
-            title="Funil de vendas (pós-bot)"
+            title="Funil de vendas (pós-qualificação)"
             subtitle="Qualificou → vendedor → orçamento → fechou"
           />
           <FunilCompacto etapas={data.funilReal} />

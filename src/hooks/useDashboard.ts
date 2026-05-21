@@ -345,12 +345,19 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
   // ============================ Restante (sobre `filtered`) ================
 
   const total = filtered.length
-  let entrouNoBot = 0, clicouMotivo = 0, escolheuFinalidade = 0
-  let escolheuAnimal = 0, escolheuQtd = 0, escolheuMomento = 0, tocouBotao = 0
+  // Funil de qualificação IA (esquerdo)
+  let funilEntrou = 0        // total leads no período
+  let funilEngajou = 0       // respondeu à IA (tem last_message_at > created_at OU status_real != 'novo')
+  let funilQualificou = 0    // motivo_contato AND finalidade_fabrica preenchidos
+  let funilAtribuido = 0     // tem responsavel (vendedor atribuído)
+  let funilOrcamento = 0     // orcamento_enviado = true OR orcamento_valor > 0
+  let funilFechou = 0        // status_real = 'fechou' OR status_vendedor = 'fechou'
+
   let leadsBotNovo = 0
   let comTelefone = 0
   let qualificadosTotal = 0
-  let qualificadosBotNovo = 0   // qualificou + entrou via bot novo (topo do funil real)
+  // Funil pós-bot (direito): Qualificou → Chegou no vendedor → Orçamento → Fechou
+  let qualificadosBotNovo = 0
   let chegouVendedorTotal = 0
   let orcamentoEnviadoTotal = 0
   let vendidoTotal = 0
@@ -415,25 +422,39 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
     const isBotNovo = !!normalizedOrigemRaw(r.origem)
     if (isBotNovo) leadsBotNovo++
 
-    if (isBotNovo) {
-      entrouNoBot++
-      if (motivo) clicouMotivo++
-      if (motivo && fin) escolheuFinalidade++
-      if (motivo && fin && animal) escolheuAnimal++
-      if (motivo && fin && animal && qtd) escolheuQtd++
-      if (motivo && fin && animal && qtd && momento) escolheuMomento++
-      // Botao final exige TODAS as etapas anteriores — funil monotonico
-      if (motivo && fin && animal && qtd && momento && botao) tocouBotao++
+    // --- Funil de qualificação IA (esquerdo) ---
+    funilEntrou++
+
+    // Engajou = respondeu à IA (last_message_at posterior a created_at, ou status_real != 'novo')
+    const statusLower = (r.status_real || '').toLowerCase()
+    const engajou = (
+      (r.last_message_at && r.data && r.last_message_at > r.data) ||
+      (statusLower && statusLower !== 'novo')
+    )
+    if (engajou) funilEngajou++
+
+    // Qualificou = tem motivo_contato E finalidade_fabrica preenchidos
+    const isQualificado = !!motivo && !!fin
+    if (isQualificado) {
+      funilQualificou++
+      qualificadosTotal++
     }
 
-    const isQualificado = !!fin && !!animal && !!qtd && !!momento
-    if (isQualificado) qualificadosTotal++
-    // Funil pos-bot — so conta leads do bot novo (origem preenchida) que qualificaram.
-    // Sem isso, mistura leads antigos do Digisac onde chegou_no_vendedor ja era true.
+    // Atribuído = tem responsavel (vendedor)
+    const vendedor = r.responsavel?.trim() || null
+    if (vendedor) funilAtribuido++
+
+    // Orçamento enviado = orcamento_enviado = true OU orcamento_valor > 0
+    if (r.orcamento_enviado || (r.orcamento_valor && r.orcamento_valor > 0)) funilOrcamento++
+
+    // Fechou = status_real = 'fechou' OU status_vendedor = 'fechou'
+    if (statusLower === 'fechou' || (r.status_vendedor || '').toLowerCase() === 'fechou') funilFechou++
+
+    // --- Funil pós-bot (direito): só bot novo que qualificou ---
     if (isBotNovo && isQualificado) qualificadosBotNovo++
     if (isBotNovo && isQualificado && r.chegou_no_vendedor) chegouVendedorTotal++
     if (isBotNovo && isQualificado && r.orcamento_enviado) orcamentoEnviadoTotal++
-    if (isBotNovo && isQualificado && r.status_vendedor === 'fechou') vendidoTotal++
+    if (isBotNovo && isQualificado && ((r.status_vendedor || '').toLowerCase() === 'fechou' || statusLower === 'fechou')) vendidoTotal++
 
     // Qualidade
     const camposPreenchidos = [motivo, fin, animal, qtd, momento, botao].filter(Boolean).length
@@ -466,7 +487,6 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
     byOrigem.set(origem, oc)
 
     // Vendedor (apenas com responsavel preenchido)
-    const vendedor = r.responsavel?.trim() || null
     if (vendedor) {
       const vc = byVendor.get(vendedor) ?? {
         vendedor, total: 0, qualificados: 0, chegouVendedor: 0,
@@ -535,15 +555,14 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
     }
   }
 
-  // ============================ Funil do bot ============================
+  // ============================ Funil de qualificação IA ============================
   const funilRaw = [
-    { etapa: 'Entrou no bot',       valor: entrouNoBot },
-    { etapa: 'Clicou motivo',       valor: clicouMotivo },
-    { etapa: 'Escolheu finalidade', valor: escolheuFinalidade },
-    { etapa: 'Escolheu animal',     valor: escolheuAnimal },
-    { etapa: 'Escolheu qtd',        valor: escolheuQtd },
-    { etapa: 'Escolheu momento',    valor: escolheuMomento },
-    { etapa: 'Tocou botão final',   valor: tocouBotao },
+    { etapa: 'Entrou',              valor: funilEntrou },
+    { etapa: 'Engajou',             valor: funilEngajou },
+    { etapa: 'Qualificou',          valor: funilQualificou },
+    { etapa: 'Atribuído',           valor: funilAtribuido },
+    { etapa: 'Orçamento enviado',   valor: funilOrcamento },
+    { etapa: 'Fechou',              valor: funilFechou },
   ]
   const topo = funilRaw[0].valor || 1
   const funil: FunilEtapa[] = funilRaw.map((e, i) => {
@@ -557,13 +576,13 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
     }
   })
 
-  // ============================ Funil REAL pos-bot ============================
+  // ============================ Funil de vendas (pós-qualificação) ============================
   // Topo = leads do bot novo que qualificaram. Etapas seguintes sao subset disso.
   const funilRealRaw = [
-    { etapa: 'Qualificou',          valor: qualificadosBotNovo },
-    { etapa: 'Chegou no vendedor',  valor: chegouVendedorTotal },
-    { etapa: 'Orçamento enviado',   valor: orcamentoEnviadoTotal },
-    { etapa: 'Fechou',              valor: vendidoTotal },
+    { etapa: 'Qualificou',           valor: qualificadosBotNovo },
+    { etapa: 'Chegou no vendedor',   valor: chegouVendedorTotal },
+    { etapa: 'Orçamento enviado',    valor: orcamentoEnviadoTotal },
+    { etapa: 'Fechou',               valor: vendidoTotal },
   ]
   const topoReal = funilRealRaw[0].valor || 1
   const funilReal: FunilEtapa[] = funilRealRaw.map((e, i) => {
