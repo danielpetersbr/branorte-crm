@@ -459,22 +459,20 @@ export function OrcamentoAIChat({
 
   return (
     <>
-      {/* FAB */}
-      <button
-        onClick={() => toggleDrawer(!open)}
-        title="IA Branorte — montar orçamento"
-        aria-label="Abrir IA Branorte"
-        className={`fixed bottom-6 left-6 lg:bottom-8 lg:left-8 z-40 h-14 w-14 rounded-full shadow-xl flex items-center justify-center transition-all
-                    bg-gradient-to-br from-accent to-accent/80 text-white hover:scale-105 hover:shadow-2xl ring-2 ring-accent/30
-                    max-md:bottom-20`}
-      >
-        {(
+      {/* FAB — oculto quando drawer está aberto */}
+      {!open && (
+        <button
+          onClick={() => toggleDrawer(true)}
+          title="IA Branorte — montar orçamento"
+          aria-label="Abrir IA Branorte"
+          className="fixed bottom-6 left-6 lg:bottom-8 lg:left-8 z-40 h-14 w-14 rounded-full shadow-xl flex items-center justify-center transition-all bg-gradient-to-br from-accent to-accent/80 text-white hover:scale-105 hover:shadow-2xl ring-2 ring-accent/30 max-md:bottom-20"
+        >
           <div className="relative">
             <Bot className="h-6 w-6" />
-            {!open && <Sparkles className="h-3 w-3 absolute -top-1 -right-1 text-yellow-300 animate-pulse" />}
+            <Sparkles className="h-3 w-3 absolute -top-1 -right-1 text-yellow-300 animate-pulse" />
           </div>
-        )}
-      </button>
+        </button>
+      )}
 
       {/* Drawer */}
       {open && (
@@ -509,9 +507,9 @@ export function OrcamentoAIChat({
           </div>
 
           {/* Histórico */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-3">
             {messages.length === 0 && (
-              <div className="space-y-5 pt-6">
+              <div className="space-y-4 pt-2">
                 <div className="text-center px-4">
                   <div className="text-[17px] font-bold text-ink mb-1.5">Monta o orçamento por voz ou texto</div>
                   <div className="text-[12.5px] text-ink-muted leading-relaxed">
