@@ -1206,7 +1206,56 @@ async function tool_compor_orcamento_composto(
   const resultados = await Promise.all(
     itens.map(async (item) => {
       try {
-        // Tentativa 1: busca precisa
+        // COMPACTA/MINI FÁBRICA: redireciona pra listar_modelos_compacta
+        const descLower = (item.descricao_vendedor || '').toLowerCase()
+        const catLower = (item.categoria || '').toLowerCase()
+        const isCompacta = catLower.includes('compacta') || descLower.includes('compacta') || descLower.includes('mini fábrica') || descLower.includes('mini fabrica') || descLower.includes('minifábrica')
+        if (isCompacta) {
+          // Extrair linha (01, 02, 03) e produção/armazenamento
+          const linhaMatch = descLower.match(/compacta\s*(\d{2})/)
+          const linha = linhaMatch ? `Compacta ${linhaMatch[1]}` : undefined
+          // Extrair números de produção/armazenamento
+          const nums = descLower.match(/(\d{2,3})\s*[-xX×]\s*(\d{3,4})/) || descLower.match(/(\d{2,3})(\d{3,4})/) || descLower.match(/(\d{2,3})\s*(?:mil|000)/)
+          let prodMin, prodMax, armazMin, armazMax
+          if (nums) {
+            const prod = parseInt(nums[1])
+            prodMin = Math.round(prod * 0.85)
+            prodMax = Math.round(prod * 1.15)
+            if (nums[2]) {
+              const armaz = parseInt(nums[2])
+              armazMin = Math.round(armaz * 0.85)
+              armazMax = Math.round(armaz * 1.15)
+            }
+          }
+          const voltMatch = descLower.match(/trif|trifásica|trifasica/) ? 'trifasico' : descLower.match(/mono|monofásica|monofasica/) ? 'monofasico' : undefined
+          const isMaster = descLower.includes('master')
+
+          const listResult = await tool_listar_modelos_compacta(supa, {
+            ...(linha ? { linha } : {}),
+            ...(prodMin ? { producao_min: prodMin, producao_max: prodMax } : {}),
+            ...(armazMin ? { armazenamento_min: armazMin, armazenamento_max: armazMax } : {}),
+            ...(voltMatch ? { voltagem: voltMatch } : {}),
+            ...(isMaster ? { is_master: true } : {}),
+          })
+          const models = (listResult as { resultados?: Array<Record<string, unknown>> }).resultados || []
+          if (models.length > 0) {
+            const best = models[0] as Record<string, unknown>
+            return {
+              item,
+              status: 'compacta_encontrada' as const,
+              modelo: best,
+              candidatos: models.map((m: Record<string, unknown>) => ({
+                id: m.id,
+                descricao: m.basename as string,
+                valor_unit: m.total_proposta ? Number(m.total_proposta) : null,
+                categoria: 'COMPACTA',
+              })),
+            }
+          }
+          return { item, status: 'gap' as const, candidatos: [], nota: `Compacta ${linha || ''} não encontrada no catálogo` }
+        }
+
+        // Tentativa 1: busca precisa (itens individuais)
         const q1 = await buscarItem(item, 'precisa')
         const { data: data1, error: err1 } = await q1
         if (err1) return { item, erro: err1.message }
@@ -1260,14 +1309,23 @@ async function tool_compor_orcamento_composto(
   const matches = resultados.filter(r => 'status' in r && r.status === 'match_exato')
   const alternativas = resultados.filter(r => 'status' in r && (r.status === 'alternativas' || r.status === 'alternativas_amplas'))
   const gaps = resultados.filter(r => 'status' in r && r.status === 'gap')
+  const compactas = resultados.filter(r => 'status' in r && r.status === 'compacta_encontrada')
+
+  // Instrução especial se tem compacta encontrada
+  let instrucaoCompacta = ''
+  if (compactas.length > 0) {
+    const c = compactas[0] as { modelo: Record<string, unknown> }
+    instrucaoCompacta = ` COMPACTA ENCONTRADA: chame propor_carregar_pacote com modelo_id=${c.modelo.id} (${c.modelo.basename}). NÃO use outro ID.`
+  }
 
   return {
     total_pedidos: itens.length,
     matches_exatos: matches.length,
     com_alternativas: alternativas.length,
+    compactas_encontradas: compactas.length,
     gaps: gaps.length,
     resultados,
-    instrucao_para_ia: 'OBRIGATÓRIO: chame propor_adicionar_item pra cada match_exato (use o 1o candidato). Pra alternativas, escolha o mais próximo do pedido e chame propor_adicionar_item com justificativa. Pra gaps, liste como "❌ Não achei". NUNCA termine sem cards de ação.',
+    instrucao_para_ia: 'OBRIGATÓRIO: chame propor_adicionar_item pra cada match_exato. Pra alternativas, escolha o mais próximo. Pra gaps, liste como "❌ Não achei".' + instrucaoCompacta,
   }
 }
 
