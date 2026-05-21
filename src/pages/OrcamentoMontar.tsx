@@ -144,7 +144,7 @@ interface MotorAgrupado {
 function agruparMotores(carrinho: CarrinhoItem[]): MotorAgrupado[] {
   const linhas: MotorAgrupado[] = []
   for (const it of carrinho) {
-    if (!it.motor_cv || !it.motor_polos) continue
+    if (!it.motor_cv || it.motor_polos == null) continue
     const qtdMotor = it.motor_qtd * it.qtd
     const nomeItem = it.nome_custom || it.nome
 
