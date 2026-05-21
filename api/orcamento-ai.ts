@@ -212,6 +212,16 @@ WORKFLOW pra "mini fábrica de XXX":
 6. NUNCA listar modelos sem propor pelo menos 1 automaticamente
 7. Se vendedor disse voltagem (mono/trif), filtre e proponha direto
 
+LINHAS DE COMPACTA — COMO IDENTIFICAR:
+- "Compacta 01" = Linha básica (sem moinho, sem silo)
+- "Compacta 02" = Linha intermediária (com moinho, silo ração, caçamba)
+- "Compacta 03" = Linha completa (com moinho, silo milho+ração, caçamba, balança)
+- "Mini Fábrica" = Pacotes menores
+QUANDO vendedor fala "Compacta 02 150-1000", busque com:
+  listar_modelos_compacta(producao_min=140, producao_max=160, armazenamento_min=900, armazenamento_max=1100)
+  E FILTRE pelo basename que contém "02" nos resultados.
+  NUNCA substitua Compacta 02 por Compacta 01 — são linhas DIFERENTES com equipamentos diferentes.
+
 Vendedor também pode pedir modelo no formato **XXX-YYY** ou **XXXxYYY** ou só **XXXYYY**:
 - XXX = produção em kg/h (75, 100, 150, 200, 300, 500)
 - YYY = armazenamento em kg (150, 300, 500, 1000, 4000)
@@ -498,6 +508,7 @@ const tools = [
           armazenamento_min: { type: 'integer', description: 'kg mínimo' },
           armazenamento_max: { type: 'integer', description: 'kg máximo' },
           voltagem: { type: 'string', description: 'TRIFASICO ou MONOFASICO' },
+          linha: { type: 'string', description: 'Filtra por linha/nome. Ex: "Compacta 02", "Compacta 03", "Mini Fabrica". Busca no campo basename (ILIKE).' },
           com_balanca: { type: 'boolean' },
           com_ensacadeira: { type: 'boolean' },
           com_chupim: { type: 'boolean' },
@@ -789,6 +800,7 @@ async function tool_listar_modelos_compacta(supa: SupabaseClient, args: Record<s
   if (typeof args.com_ensacadeira === 'boolean') q = q.eq('com_ensacadeira', args.com_ensacadeira)
   if (typeof args.com_chupim === 'boolean') q = q.eq('com_chupim', args.com_chupim)
   if (typeof args.is_master === 'boolean') q = q.eq('is_master', args.is_master)
+  if (args.linha) q = q.ilike('basename', `%${args.linha as string}%`)
 
   const { data, error } = await q
   if (error) return { erro: error.message }
