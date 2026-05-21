@@ -801,6 +801,13 @@ export function OrcamentoMontar() {
   }
 
   function adicionarItem(item: CatalogoItem, funcaoEscolhida?: string) {
+    // Transportadores da busca lateral: redireciona pro picker de cálculo de motor
+    // (mesmo fluxo que clicar no MetaCard "Transportador")
+    if (item.categoria === 'TRANSPORTADOR' && funcaoEscolhida === undefined) {
+      setTransportadorPickerOpen(true)
+      return
+    }
+
     // Se o item tem multiplas funcoes e o vendedor ainda nao escolheu,
     // abre o modal pra escolher. Adicao real acontece no callback do modal.
     if (
