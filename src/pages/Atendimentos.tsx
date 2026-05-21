@@ -742,9 +742,9 @@ export function Atendimentos() {
                           )}
                         </td>
                         {/* PRODUÇÃO/H (kg/h) — V16.24: usado quando finalidade=venda (substitui Momento) */}
-                        <td className="hidden 2xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
+                        <td className="hidden 2xl:table-cell px-1.5 py-2.5 max-w-[100px]">
                           {r.capacidade_producao ? (
-                            <span className="text-[12px] text-ink-muted tabular-nums">{r.capacidade_producao}</span>
+                            <span className="text-[12px] text-ink-muted tabular-nums block truncate" title={r.capacidade_producao}>{r.capacidade_producao}</span>
                           ) : (
                             <EmptyCell />
                           )}
