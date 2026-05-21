@@ -1044,8 +1044,8 @@ export function OrcamentoMontar() {
   }
 
   // Carrega um modelo pronto (orcamento_modelos) no carrinho do Montar Custom
-  function carregarDoModelo(modelo: OrcamentoModelo) {
-    // Sempre adiciona ao carrinho existente (não substitui)
+  function carregarDoModelo(modelo: OrcamentoModelo, append = false) {
+    if (!append && carrinho.length > 0 && !confirm('Substituir os items atuais pelos do modelo?')) return
     const catalogoItems = items ?? []
     const fotoMapTransp = montarMapaFotosTransportador(catalogoItems)
 
@@ -1187,7 +1187,12 @@ export function OrcamentoMontar() {
       })
     }
 
-    setCarrinho(prev => [...prev, ...novos])
+    // append=true: adiciona ao carrinho existente (quando IA já tem itens + carrega pacote)
+    if (append) {
+      setCarrinho(prev => [...prev, ...novos])
+    } else {
+      setCarrinho(novos)
+    }
 
     // 4) Acessórios: preserva o VALOR EXATO do modelo (evita perder centavos
     // no arredondamento do pct). O pct fica como referencia visual ('Acessórios (8%)').
@@ -2563,7 +2568,8 @@ export function OrcamentoMontar() {
         onCarregarPacote={(modelo_id) => {
           const m = (modelos ?? []).find(x => x.id === modelo_id)
           if (!m) return
-          carregarDoModelo(m)  // já pergunta via confirm() se carrinho não tá vazio
+          // Quando vem da IA e já tem itens no carrinho, SOMA (não substitui)
+          carregarDoModelo(m, carrinho.length > 0)
         }}
         onPreencherCliente={(dados) => {
           // Merge nos dados do modal de finalização. Quando o vendedor clicar
