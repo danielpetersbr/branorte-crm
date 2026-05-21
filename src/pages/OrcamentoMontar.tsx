@@ -1253,6 +1253,9 @@ export function OrcamentoMontar() {
       })
     }
 
+    // Debug: log itens carregados do modelo
+    console.log('[carregarDoModelo] Itens processados:', novos.length, novos.map(n => n.nome?.substring(0, 40)))
+
     // append=true: adiciona ao carrinho existente (quando IA já tem itens + carrega pacote)
     if (append) {
       setCarrinho(prev => [...prev, ...novos])
