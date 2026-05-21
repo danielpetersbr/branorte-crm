@@ -20,6 +20,39 @@ export interface CatalogoItemAdmin extends CatalogoItem {
 
 const BUCKET_FOTOS = 'catalogo-fotos'
 
+// Extrai modelo_id de notas_curadoria (ex: "modelo_id=42" → 42)
+function extrairModeloId(notas: string | null | undefined): number | null {
+  if (!notas) return null
+  const match = notas.match(/^modelo_id=(\d+)/)
+  return match ? Number(match[1]) : null
+}
+
+// Propaga foto_url e/ou valor de um catalogo_item para o orcamento_modelo vinculado.
+// Chamada após qualquer mutação que altere foto_url ou valor de um item COMPACTA.
+// Silenciosa: erros de propagação são logados mas NÃO bloqueiam o save principal.
+async function propagarParaModeloVinculado(item: CatalogoItemAdmin): Promise<void> {
+  const modeloId = extrairModeloId(item.notas_curadoria)
+  if (!modeloId) return
+  try {
+    const updatePayload: Record<string, unknown> = {}
+    // Sempre propaga foto (pode ser null = remoção)
+    if ('foto_url' in item) {
+      updatePayload.foto_url = item.foto_url
+    }
+    // Propaga total_equipamentos se valor mudou
+    if (item.valor != null) {
+      updatePayload.total_equipamentos = item.valor
+    }
+    if (Object.keys(updatePayload).length === 0) return
+    await supabase
+      .from('orcamento_modelos')
+      .update(updatePayload)
+      .eq('id', modeloId)
+  } catch (err) {
+    console.warn('[propagarParaModeloVinculado] Falha ao propagar para modelo', modeloId, err)
+  }
+}
+
 // Helper: extrai path interno do bucket a partir de URL pública do Supabase Storage
 export function extrairPathDaUrl(url: string): string | null {
   if (!url) return null
@@ -201,7 +234,9 @@ export function useAtualizarItemCatalogo() {
           .eq('id', newId)
           .single()
         if (error) throw error
-        return data as CatalogoItemAdmin
+        const saved = data as CatalogoItemAdmin
+        await propagarParaModeloVinculado(saved)
+        return saved
       }
       const payload = {
         ...cleanUpdates,
@@ -214,11 +249,15 @@ export function useAtualizarItemCatalogo() {
         .select('*')
         .single()
       if (error) throw error
-      return data as CatalogoItemAdmin
+      const saved = data as CatalogoItemAdmin
+      // Propaga foto/valor para orcamento_modelo vinculado (se houver)
+      await propagarParaModeloVinculado(saved)
+      return saved
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['catalogo-items'] })
       queryClient.invalidateQueries({ queryKey: ['catalogo-items-admin'] })
+      queryClient.invalidateQueries({ queryKey: ['orcamento-modelos-v3'] })
     },
   })
 }
@@ -353,11 +392,31 @@ export function useUploadFotoCatalogo() {
         .eq('id', realId)
       if (updateError) throw updateError
 
+      // Propaga foto para orcamento_modelo vinculado (se houver)
+      const { data: updated } = await supabase
+        .from('catalogo_items')
+        .select('notas_curadoria')
+        .eq('id', realId)
+        .single()
+      if (updated) {
+        const modeloId = extrairModeloId((updated as { notas_curadoria: string | null }).notas_curadoria)
+        if (modeloId) {
+          await supabase
+            .from('orcamento_modelos')
+            .update({ foto_url: url })
+            .eq('id', modeloId)
+            .then(({ error: propErr }) => {
+              if (propErr) console.warn('[useUploadFotoCatalogo] Falha ao propagar foto para modelo', modeloId, propErr)
+            })
+        }
+      }
+
       return { url }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['catalogo-items'] })
       queryClient.invalidateQueries({ queryKey: ['catalogo-items-admin'] })
+      queryClient.invalidateQueries({ queryKey: ['orcamento-modelos-v3'] })
     },
   })
 }
@@ -395,11 +454,31 @@ export function useRemoverFotoCatalogo() {
         .eq('id', id)
       if (updateError) throw updateError
 
+      // Propaga remoção de foto para orcamento_modelo vinculado
+      const { data: cur } = await supabase
+        .from('catalogo_items')
+        .select('notas_curadoria')
+        .eq('id', id)
+        .single()
+      if (cur) {
+        const modeloId = extrairModeloId((cur as { notas_curadoria: string | null }).notas_curadoria)
+        if (modeloId) {
+          await supabase
+            .from('orcamento_modelos')
+            .update({ foto_url: null })
+            .eq('id', modeloId)
+            .then(({ error: propErr }) => {
+              if (propErr) console.warn('[useRemoverFotoCatalogo] Falha ao propagar remoção para modelo', modeloId, propErr)
+            })
+        }
+      }
+
       return { id }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['catalogo-items'] })
       queryClient.invalidateQueries({ queryKey: ['catalogo-items-admin'] })
+      queryClient.invalidateQueries({ queryKey: ['orcamento-modelos-v3'] })
     },
   })
 }
