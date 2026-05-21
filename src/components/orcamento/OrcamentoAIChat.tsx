@@ -71,10 +71,10 @@ interface Props {
 }
 
 const SUGESTOES_INICIAIS = [
-  { icon: '🏭', text: 'Mini fábrica 150 kg/h monofásica' },
-  { icon: '🚛', text: 'Moega + 2 roscas 210x14m + moinho 50cv' },
-  { icon: '📦', text: '3 silos de 42 toneladas' },
-  { icon: '⚙️', text: 'Compacta Master 300 kg/h trifásica' },
+  { icon: '📋', text: 'Compacta 02 modelo 200-1000 trifásica' },
+  { icon: '🏗️', text: 'Moega + rosca 210x14 + silo 40t + moinho 20cv' },
+  { icon: '🔧', text: 'Chupim 160x6m + chupim 160x5m + caçamba 1900L' },
+  { icon: '🏭', text: 'Compacta 03 modelo 300-1000 com ensacadeira' },
 ]
 
 export function OrcamentoAIChat({
