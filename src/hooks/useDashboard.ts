@@ -313,9 +313,10 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
       if (day === todayIso) hoje++
       const momento = normQuando(r.quando_investir)
       if (momento === 'Agora') quentes++
-      // Qualificado = motivo preenchido (quer algo que a Branorte fabrica)
+      // Qualificado = motivo + finalidade (sabe o que quer E pra que)
       const motivo = r.motivo_contato?.trim() || null
-      if (motivo) qualificados++
+      const finKpi = normFinalidade(r.finalidade_fabrica)
+      if (motivo && finKpi) qualificados++
       // Com vendedor atribuído
       if (r.responsavel?.trim()) comVendedor++
     }
@@ -398,9 +399,9 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
   const ritmoDia = diaDoMes > 0 ? vendidoMes / diaDoMes : 0
   const projecao = ritmoDia * diasNoMes
 
-  // Janela 30d pra serie temporal de "leads por dia"
-  const start30 = new Date(now); start30.setDate(start30.getDate() - 29); start30.setHours(0, 0, 0, 0)
-  const start30Iso = start30.toISOString().slice(0, 10)
+  // Janela do gráfico "leads por dia" — segue o filtro selecionado
+  const chartRange = range ?? { from: new Date(now.getTime() - 29 * 86400000), to: now }
+  const chartStartIso = chartRange.from.toISOString().slice(0, 10)
 
   let completos = 0, parciais = 0, vazios = 0
 
@@ -425,12 +426,12 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
 
     const statusLower = (r.status_real || '').toLowerCase()
 
-    // Engajou = respondeu pelo menos 1 pergunta da IA (tem motivo OU finalidade OU animal OU tocou botão)
-    const engajou = !!motivo || !!fin || !!animal || !!r.tocou_botao_em
+    // Engajou = respondeu pelo menos 1 pergunta da IA (tem qualquer campo preenchido)
+    const engajou = !!motivo || !!fin || !!animal || !!qtd || !!r.tocou_botao_em
     if (engajou) funilEngajou++
 
-    // Qualificou = motivo preenchido (quer algo que a Branorte fabrica)
-    const isQualificado = !!motivo
+    // Qualificou = motivo + finalidade preenchidos (sabe o que quer E pra que)
+    const isQualificado = !!motivo && !!fin
     if (isQualificado) {
       funilQualificou++
       qualificadosTotal++
@@ -459,7 +460,7 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
     else parciais++
 
     // Series por dia (ultimos 30)
-    if (day && day >= start30Iso) {
+    if (day && day >= chartStartIso) {
       const cd = byDay.get(day) ?? { total: 0, qualificados: 0 }
       cd.total++
       if (isQualificado) cd.qualificados++
@@ -594,8 +595,9 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
 
   // ============================ Series temporais ============================
   const allDays: { dia: string; total: number; qualificados: number }[] = []
-  const cursor = new Date(start30)
-  for (let i = 0; i < 30; i++) {
+  const cursor = new Date(chartRange.from)
+  const endDate = chartRange.to
+  while (cursor <= endDate) {
     const k = cursor.toISOString().slice(0, 10)
     const d = byDay.get(k) ?? { total: 0, qualificados: 0 }
     allDays.push({ dia: k, total: d.total, qualificados: d.qualificados })
