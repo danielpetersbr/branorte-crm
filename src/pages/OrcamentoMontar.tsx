@@ -1522,7 +1522,7 @@ export function OrcamentoMontar() {
       </div>
 
       {/* Grid 2 colunas: catálogo fixo 340px (suficiente pros cards) + preview pega TODO o resto */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)] gap-2 min-h-0">
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)] lg:grid-cols-[340px_minmax(0,1fr)] gap-2 min-h-0">
         {/* CATÁLOGO — em mobile, esconde se tab=preview */}
         <Card className={`flex flex-col min-h-0 overflow-hidden ${mobileTab === 'preview' ? 'hidden lg:flex' : ''}`}>
           <div className="p-3 border-b border-border space-y-2">
@@ -1666,7 +1666,7 @@ export function OrcamentoMontar() {
         </Card>
 
         {/* PREVIEW DO ORÇAMENTO — sticky no desktop pra não rolar com a lista esquerda */}
-        <Card className={`flex flex-col w-full min-w-0 min-h-0 overflow-hidden lg:sticky lg:top-3 lg:self-start lg:justify-self-stretch lg:max-h-[calc(100vh-1.5rem)] lg:h-[calc(100vh-1.5rem)] ${mobileTab === 'catalogo' ? 'hidden lg:flex' : ''}`}>
+        <Card className={`flex flex-col w-full min-w-0 min-h-0 overflow-hidden max-h-[calc(100vh-180px)] md:max-h-none lg:sticky lg:top-3 lg:self-start lg:justify-self-stretch lg:max-h-[calc(100vh-1.5rem)] lg:h-[calc(100vh-1.5rem)] ${mobileTab === 'catalogo' ? 'hidden lg:flex' : ''}`}>
           {/* Toolbar do preview — botões maiores + CTA principal destacado */}
           <div className="p-3 border-b border-border flex items-center justify-between bg-surface-2/30 flex-wrap gap-2">
             <div className="flex items-center gap-1 bg-surface rounded-md p-0.5 border border-border">
@@ -1839,7 +1839,7 @@ export function OrcamentoMontar() {
                 </div>
                 <h3 className="text-[16px] font-bold text-gray-900">Comece adicionando o primeiro item</h3>
                 <p className="text-[13px] text-gray-500 mt-1.5 mb-5">Escolha pelo atalho abaixo ou navegue no catálogo à esquerda.</p>
-                <div className="grid grid-cols-2 gap-2 text-left">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left">
                   <button
                     onClick={() => { setMobileTab('catalogo'); setTransportadorPickerOpen(true) }}
                     className="group p-3 rounded-lg border border-gray-200 hover:border-accent hover:bg-accent/5 transition-all"
@@ -2416,7 +2416,7 @@ export function OrcamentoMontar() {
         const iconBg = algoFalhou ? 'bg-danger' : 'bg-success'
         const titulo = algoFalhou ? 'FALHA AO SALVAR' : 'Orçamento gerado'
         return (
-        <div className={`fixed bottom-6 right-6 z-50 bg-bg border ${corBorda} rounded-xl shadow-2xl max-w-sm w-[360px] overflow-hidden`}>
+        <div className={`fixed bottom-4 left-3 right-3 sm:left-auto sm:right-6 sm:bottom-6 z-50 bg-bg border ${corBorda} rounded-xl shadow-2xl max-w-sm sm:w-[360px] overflow-hidden`}>
           {/* Header */}
           <div className={`${corBg} border-b px-4 py-3 flex items-start gap-3`}>
             <div className={`w-8 h-8 rounded-full ${iconBg} flex items-center justify-center shrink-0`}>
