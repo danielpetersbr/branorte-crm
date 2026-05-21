@@ -4223,13 +4223,53 @@ function MetaCard({
   qtd: number
   onClick: () => void
 }) {
+  const storageKey = `metacard-thumb-${categoria}`
+  const [thumb, setThumb] = useState<string | null>(() => {
+    try { return localStorage.getItem(storageKey) } catch { return null }
+  })
+
+  function handleContextMenu(e: React.MouseEvent) {
+    e.preventDefault()
+    const inp = document.createElement('input')
+    inp.type = 'file'
+    inp.accept = 'image/*'
+    inp.onchange = () => {
+      const f = inp.files?.[0]
+      if (!f) return
+      const reader = new FileReader()
+      reader.onload = () => {
+        const img = new Image()
+        img.onload = () => {
+          const canvas = document.createElement('canvas')
+          canvas.width = 56; canvas.height = 56
+          const ctx = canvas.getContext('2d')!
+          const scale = Math.max(56 / img.width, 56 / img.height)
+          const w = img.width * scale, h = img.height * scale
+          ctx.drawImage(img, (56 - w) / 2, (56 - h) / 2, w, h)
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.8)
+          localStorage.setItem(storageKey, dataUrl)
+          setThumb(dataUrl)
+        }
+        img.src = reader.result as string
+      }
+      reader.readAsDataURL(f)
+    }
+    inp.click()
+  }
+
   return (
     <button
       onClick={onClick}
+      onContextMenu={handleContextMenu}
       className="text-left p-2 rounded-lg border-2 border-dashed border-accent/40 hover:border-accent hover:bg-accent/5 transition-all group flex items-center gap-2.5 relative"
+      title="Clique pra abrir · Botão direito pra trocar foto"
     >
-      <div className="w-14 h-14 rounded-md border border-accent/30 bg-accent/10 shrink-0 flex items-center justify-center">
-        <Sparkles className="h-6 w-6 text-accent" />
+      <div className="w-14 h-14 rounded-md border border-accent/30 bg-accent/10 shrink-0 flex items-center justify-center overflow-hidden">
+        {thumb ? (
+          <img src={thumb} alt={titulo} className="w-full h-full object-cover" />
+        ) : (
+          <Sparkles className="h-6 w-6 text-accent" />
+        )}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1 mb-0.5">
