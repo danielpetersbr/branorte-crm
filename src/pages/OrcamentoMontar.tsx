@@ -1364,7 +1364,7 @@ export function OrcamentoMontar() {
       {/* ⚡ Modelos Prontos — atalho pros 65 pacotes Compactas + Mini Fabrica.
           Em mobile: collapsible, default fechado se ja tem itens no carrinho. */}
       <details
-        className="group bg-gradient-to-r from-accent/10 via-accent/5 to-transparent border border-accent/30 rounded-lg overflow-hidden hidden"
+        className="group bg-gradient-to-r from-accent/10 via-accent/5 to-transparent border border-accent/30 rounded-lg overflow-hidden"
         open={carrinho.length === 0}
       >
         <summary className="cursor-pointer flex items-center gap-2 px-3 py-2 select-none">
