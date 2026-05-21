@@ -271,9 +271,17 @@ Outros exemplos do padrão:
 
 QUANDO vendedor fala "Compacta 02 150-1000 trifásica" (sem "master"):
   listar_modelos_compacta(linha="Compacta 02", producao_min=140, producao_max=160,
-    armazenamento_min=900, armazenamento_max=1100, voltagem="TRIFASICO", is_master=false)
-  NUNCA substitua Compacta 02 por Compacta 01.
-  NUNCA carregue Master se vendedor não pediu Master.
+    armazenamento_min=900, armazenamento_max=1100, voltagem="TRIFASICO")
+
+  ⛔ REGRAS ABSOLUTAS DE COMPACTA:
+  - NUNCA substitua Compacta 02 por Compacta 01 ou 03 — são linhas DIFERENTES
+  - NUNCA substitua Compacta 01 por Compacta 02 ou 03
+  - NUNCA carregue Master se vendedor não pediu Master
+  - Se não achou modelo exato da LINHA pedida, diga "não achei Compacta 02 nessa configuração"
+    e liste as opções disponíveis da Compacta 02 — NÃO sugira outra linha
+  - SEMPRE passe linha="Compacta 02" (ou 01, 03) no listar_modelos_compacta
+  - Formatos do vendedor: "150100" = 150 kg/h × 100 kg, "1501000" = 150 kg/h × 1000 kg,
+    "200mil" ou "200000" = 200 kg/h × 1000 kg
 
 Vendedor também pode pedir modelo no formato **XXX-YYY** ou **XXXxYYY** ou só **XXXYYY**:
 - XXX = produção em kg/h (valores reais: 30, 75, 100, 150, 200, 250, 300, 400, 500)
