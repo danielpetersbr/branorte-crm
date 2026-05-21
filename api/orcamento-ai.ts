@@ -1068,23 +1068,25 @@ async function tool_compor_orcamento_composto(
       }
     }
 
-    // TRANSPORTADOR: auto-detectar diâmetro × comprimento da descrição do vendedor
-    // "rosca 160 por 14 metros" → busca "chupim 160 x 14"
+    // TRANSPORTADOR: auto-detectar diâmetro × comprimento
+    // Tenta tanto a busca quanto a descricao_vendedor (LLM às vezes passa busca sem comprimento)
     if (item.categoria?.toUpperCase() === 'TRANSPORTADOR' && tentativa === 'precisa') {
-      const textoRef = item.busca || item.descricao_vendedor || ''
-      // Extrai diâmetro (100-300) e comprimento (1-20) do texto
-      const dimMatch = textoRef.match(/(\d{3})\s*(?:x|por|×)\s*(\d{1,2}(?:[.,]\d)?)/i)
-        || textoRef.match(/(\d{3})\s+(\d{1,2}(?:[.,]\d)?)\s*m/i)
-        || textoRef.match(/(\d{3})\s+(\d{1,2})/i)
-      if (dimMatch) {
-        const diam = dimMatch[1]  // 160, 210
-        const comp = dimMatch[2].replace('.', ',')  // 14 → 14 ou 14.0 → 14,0
-        const tipo = (diam === '160' || diam === '210') ? 'chupim' : 'TH'
-        // Busca exata: "chupim 160 x 14" acha "chupim 160 x 14,0 m"
-        const buscaExata = `${tipo} ${diam} x ${comp}`
-        q = q.eq('subcategoria', tipo === 'chupim' ? 'CHUPIM' : 'HELICOIDAL')
-        q = q.ilike('descricao', `%${buscaExata}%`)
-        return q
+      // Combina todos os textos disponíveis pra maximizar chance de extrair dimensões
+      const textos = [item.descricao_vendedor || '', item.busca || '']
+      for (const textoRef of textos) {
+        if (!textoRef) continue
+        const dimMatch = textoRef.match(/(\d{3})\s*(?:x|por|×|X)\s*(\d{1,2}(?:[.,]\d)?)/i)
+          || textoRef.match(/(\d{3})\s+(\d{1,2}(?:[.,]\d)?)\s*m/i)
+          || textoRef.match(/(\d{3})\s+(\d{1,2})/)
+        if (dimMatch) {
+          const diam = dimMatch[1]  // 160, 210
+          const comp = dimMatch[2].replace('.', ',')  // 14 → 14
+          const tipo = (diam === '160' || diam === '210') ? 'chupim' : 'TH'
+          const buscaExata = `${tipo} ${diam} x ${comp}`
+          q = q.eq('subcategoria', tipo === 'chupim' ? 'CHUPIM' : 'HELICOIDAL')
+          q = q.ilike('descricao', `%${buscaExata}%`)
+          return q
+        }
       }
     }
 
