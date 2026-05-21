@@ -5,7 +5,7 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import {
   Sparkles, Search, Plus, Minus, Trash2, Package,
   Zap, X, AlertCircle, Star, FileText, Eye, ListChecks, Check, Loader2, FolderOpen,
-  Save, RotateCcw, ChevronRight, RefreshCw,
+  Save, RotateCcw, ChevronRight, ChevronDown, RefreshCw,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import {
@@ -209,6 +209,7 @@ export function OrcamentoMontar() {
   const [finalizarOpen, setFinalizarOpen] = useState(false)
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false)
   const [saveMode, setSaveMode] = useState<'update' | 'alt' | 'new'>('new')
+  const [saveDropdownOpen, setSaveDropdownOpen] = useState(false)
   // Sprint 3: marca true quando o copiloto IA dispara a finalização (auto-submit 3s)
   const [autoSubmitFromIA, setAutoSubmitFromIA] = useState(false)
   const [sucesso, setSucesso] = useState<{ numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string; erro?: string | null; pdfErro?: string | null } | null>(null)
@@ -1729,33 +1730,58 @@ export function OrcamentoMontar() {
                 </button>
               )}
               {editingId ? (
-                <>
-                  <button
-                    disabled={carrinho.length === 0}
-                    onClick={() => {
-                      setSaveMode('update')
-                      setFinalizarOpen(true)
-                    }}
-                    className="text-[13px] bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2 rounded-md disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm min-h-[40px] transition-all"
-                    title="Salvar alterações no orçamento atual"
-                  >
-                    <FileText className="h-4 w-4" />
-                    <span className="hidden sm:inline">Salvar</span>
-                    <span className="sm:hidden">Salvar</span>
-                  </button>
-                  <button
-                    disabled={carrinho.length === 0}
-                    onClick={() => {
-                      setSaveMode('alt')
-                      setFinalizarOpen(true)
-                    }}
-                    className="text-[13px] bg-transparent hover:bg-accent/10 text-accent font-bold px-3 py-2 rounded-md border border-accent/50 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 min-h-[40px] transition-all"
-                    title="Criar versão alternativa (ALT) deste orçamento"
-                  >
-                    <span className="hidden sm:inline">Salvar como ALT</span>
-                    <span className="sm:hidden">ALT</span>
-                  </button>
-                </>
+                <div className="relative">
+                  <div className="flex items-stretch">
+                    <button
+                      disabled={carrinho.length === 0}
+                      onClick={() => {
+                        setSaveMode('update')
+                        setFinalizarOpen(true)
+                      }}
+                      className="text-[13px] bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2 rounded-l-md disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm min-h-[40px] transition-all"
+                      title="Salvar alterações no orçamento atual (sobrescreve)"
+                    >
+                      <FileText className="h-4 w-4" />
+                      <span className="hidden sm:inline">Salvar</span>
+                    </button>
+                    <button
+                      disabled={carrinho.length === 0}
+                      onClick={() => setSaveDropdownOpen(v => !v)}
+                      className="text-[13px] bg-green-600 hover:bg-green-700 text-white font-bold px-2 py-2 rounded-r-md border-l border-green-500 disabled:opacity-30 disabled:cursor-not-allowed flex items-center min-h-[40px] transition-all"
+                      title="Mais opções de salvamento"
+                    >
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  {saveDropdownOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setSaveDropdownOpen(false)} />
+                      <div className="absolute right-0 top-full mt-1 z-50 bg-bg border border-border rounded-lg shadow-xl min-w-[220px] overflow-hidden">
+                        <button
+                          onClick={() => { setSaveMode('update'); setFinalizarOpen(true); setSaveDropdownOpen(false) }}
+                          className="w-full text-left px-4 py-3 hover:bg-surface-2 transition-colors border-b border-border"
+                        >
+                          <div className="text-[13px] font-bold text-ink">Salvar em cima</div>
+                          <div className="text-[11px] text-ink-muted">Sobrescreve o orçamento {orcamentoEditando?.numero}</div>
+                        </button>
+                        <button
+                          onClick={() => { setSaveMode('alt'); setFinalizarOpen(true); setSaveDropdownOpen(false) }}
+                          className="w-full text-left px-4 py-3 hover:bg-surface-2 transition-colors border-b border-border"
+                        >
+                          <div className="text-[13px] font-bold text-accent">Salvar como ALT</div>
+                          <div className="text-[11px] text-ink-muted">Cria versão alternativa vinculada</div>
+                        </button>
+                        <button
+                          onClick={() => { setSaveMode('new'); setFinalizarOpen(true); setSaveDropdownOpen(false) }}
+                          className="w-full text-left px-4 py-3 hover:bg-surface-2 transition-colors"
+                        >
+                          <div className="text-[13px] font-bold text-ink">Salvar como novo</div>
+                          <div className="text-[11px] text-ink-muted">Cria orçamento novo independente</div>
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               ) : (
                 <button
                   disabled={carrinho.length === 0}
