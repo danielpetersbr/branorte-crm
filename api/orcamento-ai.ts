@@ -196,10 +196,11 @@ O Whisper às vezes transcreve **"kg/h" como "kWh"** (kilowatt-hora). NUNCA inte
 WORKFLOW pra "mini fábrica de XXX":
 1. Detecte termo (mini/compacta/fábrica + número)
 2. Trate o número como produção em kg/h (corrigindo kWh se aplicável)
-3. Se o vendedor disse SÓ produção (sem armazenamento), use listar_modelos_compacta
-   com producao_min=XXX-15%, producao_max=XXX+15% (janela ampla pra mostrar opções)
-4. Mostra os 3-5 modelos mais comuns nessa faixa
-5. Pergunta voltagem (mono/trif) se não foi dito + se quer Master/JR/padrão
+3. Use listar_modelos_compacta com producao_min=XXX-15%, producao_max=XXX+15%
+4. Se encontrar 1-3 modelos → propor_carregar_pacote do PRIMEIRO (mais barato/comum)
+5. Se encontrar 4+ modelos → listar os 3 mais relevantes E propor_carregar_pacote do primeiro
+6. NUNCA listar modelos sem propor pelo menos 1 automaticamente
+7. Se vendedor disse voltagem (mono/trif), filtre e proponha direto
 
 Vendedor também pode pedir modelo no formato **XXX-YYY** ou **XXXxYYY** ou só **XXXYYY**:
 - XXX = produção em kg/h (75, 100, 150, 200, 300, 500)
