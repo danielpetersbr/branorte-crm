@@ -399,9 +399,9 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
   const ritmoDia = diaDoMes > 0 ? vendidoMes / diaDoMes : 0
   const projecao = ritmoDia * diasNoMes
 
-  // Janela do gráfico "leads por dia" — segue o filtro selecionado
-  const chartRange = range ?? { from: new Date(now.getTime() - 29 * 86400000), to: now }
-  const chartStartIso = chartRange.from.toISOString().slice(0, 10)
+  // Janela do gráfico "leads por dia" — SEMPRE últimos 30 dias (independente do filtro)
+  const chart30start = new Date(now); chart30start.setDate(chart30start.getDate() - 29); chart30start.setHours(0, 0, 0, 0)
+  const chartStartIso = chart30start.toISOString().slice(0, 10)
 
   let completos = 0, parciais = 0, vazios = 0
 
@@ -459,13 +459,7 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
     else if (camposPreenchidos >= 5) completos++
     else parciais++
 
-    // Series por dia (ultimos 30)
-    if (day && day >= chartStartIso) {
-      const cd = byDay.get(day) ?? { total: 0, qualificados: 0 }
-      cd.total++
-      if (isQualificado) cd.qualificados++
-      byDay.set(day, cd)
-    }
+    // (byDay populado separadamente abaixo — independente do filtro)
 
     if (r.criativo_codigo) {
       const codigo = r.criativo_codigo
@@ -594,9 +588,21 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
   })
 
   // ============================ Series temporais ============================
+  // Popula byDay com TODOS os rows (independente do filtro) — gráfico sempre mostra 30 dias
+  for (const r of rows) {
+    const day = dayKey(r.data)
+    if (day && day >= chartStartIso) {
+      const cd = byDay.get(day) ?? { total: 0, qualificados: 0 }
+      cd.total++
+      const mot = r.motivo_contato?.trim() || null
+      const finR = normFinalidade(r.finalidade_fabrica)
+      if (mot && finR) cd.qualificados++
+      byDay.set(day, cd)
+    }
+  }
   const allDays: { dia: string; total: number; qualificados: number }[] = []
-  const cursor = new Date(chartRange.from)
-  const endDate = chartRange.to
+  const cursor = new Date(chart30start)
+  const endDate = now
   while (cursor <= endDate) {
     const k = cursor.toISOString().slice(0, 10)
     const d = byDay.get(k) ?? { total: 0, qualificados: 0 }
