@@ -1000,8 +1000,10 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           {/* Motores */}
           {motoresAgrupados.length > 0 && (() => {
             const opcoesTensao: (220 | 380 | 660)[] = voltagem === 'monofasico' ? [220] : [220, 380, 660]
+            // Monofásico só aceita 220V - corrige se tiver tensão inválida salva
+            const tensaoEfetiva = voltagem === 'monofasico' && tensaoMotores && tensaoMotores !== 220 ? 220 : tensaoMotores
             const tensaoInteractive = !renderMode && !!onUpdateTensaoMotores
-            const tensaoLabel = tensaoMotores ? `${tensaoMotores}V` : 'tensão a confirmar'
+            const tensaoLabel = tensaoEfetiva ? `${tensaoEfetiva}V` : 'tensão a confirmar'
             return (
               <div data-no-break className="mt-3 border border-gray-700 rounded-md p-4 bg-white shadow-sm relative" style={{ zIndex: 1 }}>
                 <div className="flex items-center justify-between gap-3 pb-2 border-b-2 border-gray-800 mb-2.5">
@@ -1014,9 +1016,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                         {opcoesTensao.map(v => (
                           <button
                             key={v}
-                            onClick={() => onUpdateTensaoMotores!(tensaoMotores === v ? null : v)}
+                            onClick={() => onUpdateTensaoMotores!(tensaoEfetiva === v ? null : v)}
                             className={`text-[15px] px-2 py-0.5 rounded font-bold transition-all ${
-                              tensaoMotores === v
+                              tensaoEfetiva === v
                                 ? 'bg-blue-600 text-white'
                                 : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                             }`}
@@ -1025,12 +1027,12 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             {v}V
                           </button>
                         ))}
-                        {!tensaoMotores && (
+                        {!tensaoEfetiva && (
                           <span className="text-[15px] text-gray-400 italic ml-1">tensão a confirmar</span>
                         )}
                       </span>
                     ) : (
-                      <span className={`text-[15px] font-semibold ${tensaoMotores ? 'text-blue-700' : 'text-gray-400 italic'}`}>
+                      <span className={`text-[15px] font-semibold ${tensaoEfetiva ? 'text-blue-700' : 'text-gray-400 italic'}`}>
                         {tensaoLabel}
                       </span>
                     )}
