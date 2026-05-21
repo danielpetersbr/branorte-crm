@@ -84,11 +84,14 @@ NUNCA proponha um item que seja COMPLETAMENTE DIFERENTE do pedido. Exemplos proi
 REGRA: alternativa deve ter ao menos 50% da dimensão/capacidade pedida.
 Se não tem nada próximo, diga "NÃO TEMOS no catálogo" em vez de propor algo absurdo.
 
-⛔ BUSCA DE SILOS — ATENÇÃO ESPECIAL
-Silos no catálogo têm descrição como "SILO 30 TONELADAS", "SILO 42 TONELADAS", "SILO 50 TONELADAS" etc.
-- Vendedor pede "silo de 42 toneladas" → busca com busca="42" OU busca="SILO 42"
-- Se não achar exato, busca SEM filtro (apenas categoria='SILO') e mostra os 5 mais próximos da tonelagem pedida
-- NUNCA diga "não encontrei silo" sem antes fazer busca ampla por categoria='SILO' sem filtro de busca
+⛔ BUSCA DE SILOS — USE capacidade_ton (NÃO busca textual)
+Silos no catálogo: "Silo Ração SAB3727" (24t), "SILO MILHO SAB5663" (42t), etc.
+O nome NÃO contém a tonelagem — ela está no campo capacidade_ton.
+- "silo de 42 toneladas" → consultar_precos(categoria='SILO', capacidade_ton_min=40, capacidade_ton_max=45)
+- "silo de 30 toneladas" → capacidade_ton_min=28, capacidade_ton_max=37
+- "3 silos de 42" → busca 1 silo de ~42t, depois propor_adicionar_item com quantidade=3
+- NUNCA use busca textual pra silos (nome é código SAB, não contém tonelagem)
+- Se não achar na faixa, amplie ±30% e mostre alternativas
 
 📖 GLOSSÁRIO DE TERMOS DO VENDEDOR → CATÁLOGO
 
@@ -427,11 +430,19 @@ const tools = [
           motor_cv_max: { type: 'number', description: 'Filtro máximo de CV. Opcional.' },
           capacidade_min: {
             type: 'number',
-            description: 'Filtro mínimo em capacidade_kg_pratica ou capacidade_litros. Opcional.',
+            description: 'Filtro mínimo em capacidade_kg_pratica ou capacidade_litros. Opcional. NÃO use pra silos (silos usam capacidade_ton_min/max).',
           },
           capacidade_max: {
             type: 'number',
             description: 'Filtro máximo. Opcional.',
+          },
+          capacidade_ton_min: {
+            type: 'number',
+            description: 'Filtro mínimo em TONELADAS (campo capacidade_ton). Use APENAS pra SILOS. Ex: silo 42t → capacidade_ton_min=40, capacidade_ton_max=45.',
+          },
+          capacidade_ton_max: {
+            type: 'number',
+            description: 'Filtro máximo em toneladas. Opcional.',
           },
           max_resultados: {
             type: 'integer',
@@ -524,9 +535,11 @@ const tools = [
                 subcategoria: { type: 'string', description: 'HELICOIDAL ou CHUPIM (só pra TRANSPORTADOR). Opcional.' },
                 busca: { type: 'string', description: 'Termo de busca textual na descricao (ex: "210", "30 ton", "horizontal"). Opcional.' },
                 motor_cv: { type: 'number', description: 'CV exato (pra moinho/ensacadeira). Opcional.' },
-                capacidade_min: { type: 'number', description: 'Mínimo. Misturador em LITROS (kg×2). Caixa/silo em KG.' },
+                capacidade_min: { type: 'number', description: 'Mínimo em kg ou litros. NÃO use pra silos.' },
                 capacidade_max: { type: 'number' },
-                quantidade: { type: 'integer', description: 'Qtd desejada. Default 1.', default: 1 },
+                capacidade_ton_min: { type: 'number', description: 'Mínimo em TONELADAS (só pra SILO). Ex: silo 42t → min=40, max=45.' },
+                capacidade_ton_max: { type: 'number' },
+                quantidade: { type: 'integer', description: 'Qtd desejada. "3 silos" = quantidade=3. Default 1.', default: 1 },
               },
               required: ['descricao_vendedor', 'categoria'],
             },
@@ -652,12 +665,14 @@ async function tool_consultar_precos(supa: SupabaseClient, args: Record<string, 
   const motorCvMax = args.motor_cv_max as number | undefined
   const capMin = args.capacidade_min as number | undefined
   const capMax = args.capacidade_max as number | undefined
+  const capTonMin = args.capacidade_ton_min as number | undefined
+  const capTonMax = args.capacidade_ton_max as number | undefined
   const limit = Math.min((args.max_resultados as number) || 15, 30)
 
   let q = supa
     .from('precos_branorte')
     .select(
-      'id, categoria, subcategoria, descricao, capacidade, capacidade_kg_pratica, capacidade_litros, motor_cv, motor_polos, potencia, valor_equipamento, valor_com_motor_trif, valor_com_motor_mono, dimensoes'
+      'id, categoria, subcategoria, descricao, capacidade, capacidade_kg_pratica, capacidade_litros, capacidade_ton, motor_cv, motor_polos, potencia, valor_equipamento, valor_com_motor_trif, valor_com_motor_mono, dimensoes'
     )
     .eq('ativo', true)
     .order('categoria')
@@ -679,6 +694,8 @@ async function tool_consultar_precos(supa: SupabaseClient, args: Record<string, 
   if (motorCvMax != null) q = q.lte('motor_cv', motorCvMax)
   if (capMin != null) q = q.gte('capacidade_kg_pratica', capMin)
   if (capMax != null) q = q.lte('capacidade_kg_pratica', capMax)
+  if (capTonMin != null) q = q.gte('capacidade_ton', capTonMin)
+  if (capTonMax != null) q = q.lte('capacidade_ton', capTonMax)
 
   const { data, error } = await q
   if (error) return { erro: error.message }
@@ -1005,6 +1022,8 @@ type ItemPedido = {
   motor_cv?: number
   capacidade_min?: number
   capacidade_max?: number
+  capacidade_ton_min?: number
+  capacidade_ton_max?: number
   quantidade?: number
 }
 
@@ -1021,7 +1040,7 @@ async function tool_compor_orcamento_composto(
   async function buscarItem(item: ItemPedido, tentativa: 'precisa' | 'ampla') {
     let q = supa
       .from('precos_branorte')
-      .select('id, categoria, subcategoria, descricao, valor_equipamento, motor_cv, motor_polos, capacidade, potencia')
+      .select('id, categoria, subcategoria, descricao, valor_equipamento, motor_cv, motor_polos, capacidade, capacidade_ton, potencia')
       .eq('ativo', true)
       .order('valor_equipamento', { ascending: true })
       .limit(8)
@@ -1029,15 +1048,18 @@ async function tool_compor_orcamento_composto(
     if (item.categoria) q = q.eq('categoria', item.categoria.toUpperCase())
 
     if (tentativa === 'precisa') {
-      // Busca com todos os filtros
       if (item.subcategoria) q = q.eq('subcategoria', item.subcategoria.toUpperCase())
       if (item.busca) q = q.ilike('descricao', `%${item.busca}%`)
       if (item.motor_cv != null) q = q.eq('motor_cv', item.motor_cv)
       if (item.capacidade_min != null) q = q.gte('capacidade_kg_pratica', item.capacidade_min)
       if (item.capacidade_max != null) q = q.lte('capacidade_kg_pratica', item.capacidade_max)
+      // Silos: filtrar por tonelagem
+      const tonMin = (item as Record<string, unknown>).capacidade_ton_min as number | undefined
+      const tonMax = (item as Record<string, unknown>).capacidade_ton_max as number | undefined
+      if (tonMin != null) q = q.gte('capacidade_ton', tonMin)
+      if (tonMax != null) q = q.lte('capacidade_ton', tonMax)
     } else {
       // Busca AMPLA: só categoria, sem filtros restritivos
-      // Traz os 8 mais baratos da categoria pra IA escolher o mais próximo
     }
 
     return q
