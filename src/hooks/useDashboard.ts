@@ -227,6 +227,8 @@ export interface DashboardData {
   // KPIs com tendencia
   kpiTotal: KpiSerie
   kpiHoje: KpiSerie
+  kpiNaoRespondeu: KpiSerie
+  kpiEmAndamento: KpiSerie
   kpiQuentes: KpiSerie
   kpiQualificados: KpiSerie
   kpiBotao: KpiSerie
@@ -306,9 +308,8 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
 
   // ============================ KPIs com tendencia =========================
   const computeKpis = (rs: RawRow[]) => {
-    let hoje = 0, quentes = 0, qualificados = 0, comVendedor = 0
+    let hoje = 0, quentes = 0, qualificados = 0, comVendedor = 0, naoRespondeu = 0, emAndamento = 0
     for (const r of rs) {
-      // "Hoje" = chegou hoje (data de criação), alinhado com /atendimentos
       const day = dayKey(r.data)
       if (day === todayIso) hoje++
       // Quente = volume alto de animais (Bovinos/Suínos: 300+ | Aves: 5.000+)
@@ -319,14 +320,21 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
         ? qtdAnimais >= 5000
         : qtdAnimais >= 300
       if (isQuente) quentes++
-      // Qualificado = motivo + finalidade (sabe o que quer E pra que)
+      // Qualificado = motivo + finalidade
       const motivo = r.motivo_contato?.trim() || null
       const finKpi = normFinalidade(r.finalidade_fabrica)
       if (motivo && finKpi) qualificados++
       // Com vendedor atribuído
       if (r.responsavel?.trim()) comVendedor++
+      // Não respondeu = sem nenhum campo preenchido (não engajou com a IA)
+      const animal = normAnimal(r.qual_animal)
+      const qtd = r.quantos_animais?.trim() || null
+      const engajou = !!motivo || !!finKpi || !!animal || !!qtd || !!r.tocou_botao_em
+      if (!engajou) naoRespondeu++
+      // Em andamento = engajou mas ainda não qualificou (respondeu algo mas faltam dados)
+      if (engajou && !(motivo && finKpi)) emAndamento++
     }
-    return { total: rs.length, hoje, quentes, qualificados, comVendedor }
+    return { total: rs.length, hoje, quentes, qualificados, comVendedor, naoRespondeu, emAndamento }
   }
 
   const cur = computeKpis(filtered)
@@ -343,6 +351,8 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
 
   const kpiTotal = mkKpi(cur.total, prevK.total, 'total')
   const kpiHoje = mkKpi(cur.hoje, prevK.hoje, 'hoje')
+  const kpiNaoRespondeu = mkKpi(cur.naoRespondeu, prevK.naoRespondeu, 'total')
+  const kpiEmAndamento = mkKpi(cur.emAndamento, prevK.emAndamento, 'total')
   const kpiQuentes = mkKpi(cur.quentes, prevK.quentes, 'quentes')
   const kpiQualificados = mkKpi(cur.qualificados, prevK.qualificados, 'qualificados')
   const kpiBotao = mkKpi(cur.comVendedor, prevK.comVendedor, 'botao')
@@ -700,6 +710,8 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
     leadsBotNovo,
     kpiTotal,
     kpiHoje,
+    kpiNaoRespondeu,
+    kpiEmAndamento,
     kpiQuentes,
     kpiQualificados,
     kpiBotao,

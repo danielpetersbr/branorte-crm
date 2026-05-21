@@ -107,10 +107,12 @@ export function Dashboard() {
 
   const heroKpis = [
     { label: preset ? 'Leads no período' : 'Total de leads', kpi: data.kpiTotal, icon: Users, color: COLORS.ink, sub: preset ? periodoLabel.toLowerCase() : 'desde o início' },
-    { label: 'Hoje',           kpi: data.kpiHoje, icon: TrendingUp, color: COLORS.info, sub: 'leads novos' },
-    { label: 'Quentes',        kpi: data.kpiQuentes, icon: Flame, color: COLORS.danger, sub: 'potencial cliente' },
-    { label: 'Qualificados',   kpi: data.kpiQualificados, icon: CheckCircle2, color: COLORS.accent, sub: 'querem produto Branorte' },
-    { label: 'Com vendedor',   kpi: data.kpiBotao, icon: Hand, color: 'hsl(280 65% 60%)', sub: 'vendedor atribuído' },
+    { label: 'Hoje',              kpi: data.kpiHoje, icon: TrendingUp, color: COLORS.info, sub: 'leads novos' },
+    { label: 'Não respondeu',    kpi: data.kpiNaoRespondeu, icon: Users, color: COLORS.warning, sub: 'não engajou com a IA' },
+    { label: 'Em andamento',     kpi: data.kpiEmAndamento, icon: TrendingUp, color: 'hsl(200 70% 55%)', sub: 'conversando com a IA' },
+    { label: 'Quentes',          kpi: data.kpiQuentes, icon: Flame, color: COLORS.danger, sub: 'potencial cliente' },
+    { label: 'Qualificados',     kpi: data.kpiQualificados, icon: CheckCircle2, color: COLORS.accent, sub: 'querem produto Branorte' },
+    { label: 'Com vendedor',     kpi: data.kpiBotao, icon: Hand, color: 'hsl(280 65% 60%)', sub: 'vendedor atribuído' },
   ]
 
   return (
