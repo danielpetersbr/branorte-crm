@@ -801,9 +801,20 @@ export function OrcamentoMontar() {
   }
 
   function adicionarItem(item: CatalogoItem, funcaoEscolhida?: string) {
-    // Transportadores da busca lateral: redireciona pro picker de cálculo de motor
-    // (mesmo fluxo que clicar no MetaCard "Transportador")
+    // Transportadores da busca lateral: abre cálculo de motor direto com esse item
     if (item.categoria === 'TRANSPORTADOR' && funcaoEscolhida === undefined) {
+      // Tenta achar o PrecoBranorte correspondente pra abrir o ConfirmarChupimModal
+      const precoMatch = item.preco_branorte_id
+        ? transportadores.find(t => t.id === item.preco_branorte_id)
+        : transportadores.find(t =>
+            item.nome_curto?.includes(String(t.descricao?.match(/(\d{3})\s*[xX]/)?.[1] || '???'))
+            && item.nome_curto?.includes(String(t.descricao?.match(/(\d+[.,]?\d*)\s*[mM]/)?.[1] || '???'))
+          )
+      if (precoMatch && (precoMatch.subcategoria === 'CHUPIM' || precoMatch.subcategoria === 'HELICOIDAL')) {
+        setConfirmarChupim(precoMatch)
+        return
+      }
+      // Fallback: abre picker completo
       setTransportadorPickerOpen(true)
       return
     }
