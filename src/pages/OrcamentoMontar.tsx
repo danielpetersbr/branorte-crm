@@ -71,11 +71,11 @@ export interface ComponenteExtra {
 }
 
 function formatBRL(v: number): string {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Math.round(v))
 }
 
 function formatBRLBare(v: number): string {
-  return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return Math.round(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 // ─── Fallback de foto pra TRANSPORTADOR (chupim/calha TH) ─────────────────
@@ -552,7 +552,7 @@ export function OrcamentoMontar() {
       .map(p => ({
         id: `pb-${p.id}`,
         nome: p.descricao,
-        valorSugerido: p.valor_equipamento != null ? Number(p.valor_equipamento) : null,
+        valorSugerido: p.valor_equipamento != null ? Math.round(Number(p.valor_equipamento)) : null,
       })),
     [precos],
   )
@@ -788,8 +788,8 @@ export function OrcamentoMontar() {
       nome: nomeBase + sufixoFuncao,
       specs: specsFinal,
       qtd: quantidade ?? 1,
-      valor: Number(p.valor_equipamento ?? 0),
-      valor_original: Number(p.valor_equipamento ?? 0),
+      valor: Math.round(Number(p.valor_equipamento ?? 0)),
+      valor_original: Math.round(Number(p.valor_equipamento ?? 0)),
       motor_cv: motor_cv_n ? Number(motor_cv_n) : null,
       motor_polos: motor_polos,
       motor_qtd: ciLinkado?.motor_padrao_qtd ?? 1,
@@ -855,8 +855,8 @@ export function OrcamentoMontar() {
       nome_custom: nomeCustom,
       specs,
       qtd: 1,
-      valor: Number(item.valor),
-      valor_original: Number(item.valor),
+      valor: Math.round(Number(item.valor)),
+      valor_original: Math.round(Number(item.valor)),
       motor_cv: item.motor_padrao_cv ? Number(item.motor_padrao_cv) : null,
       motor_polos: item.motor_padrao_polos,
       motor_qtd: item.motor_padrao_qtd || 1,

@@ -158,7 +158,7 @@ export interface OrcamentoPreviewProps {
 }
 
 function formatBRLBare(v: number): string {
-  return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return Math.round(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 // Encontra posicao de quebra que NAO corta blocos atomicos.
