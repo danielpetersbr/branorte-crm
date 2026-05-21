@@ -1319,10 +1319,26 @@ export function OrcamentoMontar() {
       ativo: true,
     }
     carregarDoModelo(modeloShape)
-    // Restaura foto principal: busca do modelo original se disponível
+    // Restaura foto principal:
+    // 1) Do modelo original (se orçamento veio de pacote)
+    // 2) Fallback: foto do primeiro item do catálogo que tem foto
+    let fotoRestaurada = false
     if (o.modelo_id && modelos) {
       const modeloOriginal = modelos.find(m => m.id === o.modelo_id)
-      if (modeloOriginal?.foto_url) setFotoPrincipal(modeloOriginal.foto_url)
+      if (modeloOriginal?.foto_url) {
+        setFotoPrincipal(modeloOriginal.foto_url)
+        fotoRestaurada = true
+      }
+    }
+    if (!fotoRestaurada && o.itens?.length && items) {
+      // Procura o primeiro item que tem foto no catálogo
+      for (const oi of o.itens) {
+        const ci = items.find(ci => ci.nome_curto === oi.nome || ci.nome_completo === oi.nome)
+        if (ci?.foto_url) {
+          setFotoPrincipal(ci.foto_url)
+          break
+        }
+      }
     }
     // Hidrata componentes extras + observacoes + termos
     if (o.componentes_extras) setComponentesExtras(o.componentes_extras as any)
