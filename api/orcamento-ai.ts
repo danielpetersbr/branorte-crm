@@ -865,8 +865,11 @@ async function tool_listar_modelos_compacta(supa: SupabaseClient, args: Record<s
   if (typeof args.com_chupim === 'boolean') q = q.eq('com_chupim', args.com_chupim)
   if (typeof args.is_master === 'boolean') {
     q = q.eq('is_master', args.is_master)
-  } else if (args.linha && !(args.linha as string).toLowerCase().includes('master')) {
-    // Se vendedor não disse "master", excluir versões Master automaticamente
+  } else if (args.linha && (args.linha as string).toLowerCase().includes('master')) {
+    // Vendedor pediu Master explicitamente
+    q = q.eq('is_master', true)
+  } else {
+    // Default: SEMPRE excluir Master (versão mais cara) a menos que pedido
     q = q.eq('is_master', false)
   }
   if (args.linha) q = q.ilike('basename', `%${args.linha as string}%`)
