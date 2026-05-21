@@ -152,25 +152,28 @@ function agruparMotores(carrinho: CarrinhoItem[]): MotorAgrupado[] {
     // Padrão: "X CV e Y CV" ou "X CV + Y CV"
     const specMotor = it.specs?.find(s => /acionamento|motorredutor/i.test(s)) ?? ''
     const multiMatch = specMotor.match(/(\d+(?:[.,]\d+)?)\s*CV\s*(?:e|,|\+)\s*(\d+(?:[.,]\d+)?)\s*CV/i)
+    // Motorredutor incluso: valor é SEMPRE 0 (já embutido no equipamento)
+    const eMotorredutor = /motorredutor|moto\s*redutor/i.test(specMotor)
+    const eIncluso = /\(\s*inclus[oa]s?\.?\s*\)/i.test(specMotor)
+    const valorMotor = (eMotorredutor && eIncluso) ? 0 : it.motor_valor_unit
 
     if (multiMatch) {
-      // 2 motores: principal + secundário (ambos com mesmo valor_unit e tipo)
       const cv1 = parseFloat(multiMatch[1].replace(',', '.'))
       const cv2 = parseFloat(multiMatch[2].replace(',', '.'))
       linhas.push({
         cv: cv1, polos: it.motor_polos, qtd: it.qtd,
-        valor_unit: it.motor_valor_unit, valor_total: it.motor_valor_unit * it.qtd,
+        valor_unit: valorMotor, valor_total: valorMotor * it.qtd,
         item_nome: nomeItem, item_uid: it.uid,
       })
       linhas.push({
         cv: cv2, polos: it.motor_polos, qtd: it.qtd,
-        valor_unit: it.motor_valor_unit, valor_total: it.motor_valor_unit * it.qtd,
+        valor_unit: valorMotor, valor_total: valorMotor * it.qtd,
         item_nome: nomeItem, item_uid: it.uid,
       })
     } else {
       linhas.push({
         cv: it.motor_cv, polos: it.motor_polos, qtd: qtdMotor,
-        valor_unit: it.motor_valor_unit, valor_total: it.motor_valor_unit * qtdMotor,
+        valor_unit: valorMotor, valor_total: valorMotor * qtdMotor,
         item_nome: nomeItem, item_uid: it.uid,
       })
     }
