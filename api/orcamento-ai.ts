@@ -1377,26 +1377,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Sem mais tools — resposta final
-    // Deduplicar ações: se o LLM chamou propor_adicionar_item pro mesmo ID que
-    // o auto-propose já gerou, mantém só a do LLM (que tem quantidade correta).
-    // Se ambos tem o mesmo ID, prioriza a que tem maior quantidade.
+    // Deduplicar ações por ID. Quando duplica, prioriza:
+    // 1. A com auto_apply=true (vai direto pro carrinho)
+    // 2. A com maior quantidade
     const acoesDedup: AcaoSugerida[] = []
-    const vistos = new Map<number, number>() // preco_branorte_id → index na lista
+    const vistos = new Map<number, number>()
     for (const acao of acoesSugeridas) {
       if (acao.tipo === 'adicionar_item') {
         const existeIdx = vistos.get(acao.preco_branorte_id)
         if (existeIdx !== undefined) {
-          // Mantém a com maior quantidade
           const existente = acoesDedup[existeIdx] as Extract<AcaoSugerida, { tipo: 'adicionar_item' }>
-          if (acao.quantidade > existente.quantidade) {
-            acoesDedup[existeIdx] = acao
-          }
+          // Prioriza auto_apply=true, depois maior quantidade
+          const acaoMelhor = acao.auto_apply && !existente.auto_apply ? true
+            : acao.quantidade > existente.quantidade ? true : false
+          if (acaoMelhor) acoesDedup[existeIdx] = acao
         } else {
           vistos.set(acao.preco_branorte_id, acoesDedup.length)
           acoesDedup.push(acao)
         }
       } else {
         acoesDedup.push(acao)
+      }
+    }
+    // Forçar auto_apply em TODAS as ações de adicionar_item
+    // (vendedor pediu claramente, não é consulta)
+    for (const acao of acoesDedup) {
+      if (acao.tipo === 'adicionar_item') {
+        acao.auto_apply = true
       }
     }
 
