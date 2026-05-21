@@ -311,16 +311,14 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
       const ativIso = r.last_message_at ?? r.data
       const day = dayKey(ativIso)
       if (day === todayIso) hoje++
-      const momento = normQuando(r.quando_investir)
-      // Quente = quer comprar agora OU volume alto de animais
-      // Bovinos/Suínos: 300+ cabeças | Aves: 5.000+ cabeças
+      // Quente = volume alto de animais (Bovinos/Suínos: 300+ | Aves: 5.000+)
       const qtdStr = (r.quantos_animais || '').replace(/[^\d]/g, '')
       const qtdAnimais = parseInt(qtdStr, 10) || 0
       const animalKpi = normAnimal(r.qual_animal)
-      const isVolumeAlto = animalKpi === 'Aves'
+      const isQuente = animalKpi === 'Aves'
         ? qtdAnimais >= 5000
         : qtdAnimais >= 300
-      if (momento === 'Agora' || isVolumeAlto) quentes++
+      if (isQuente) quentes++
       // Qualificado = motivo + finalidade (sabe o que quer E pra que)
       const motivo = r.motivo_contato?.trim() || null
       const finKpi = normFinalidade(r.finalidade_fabrica)
