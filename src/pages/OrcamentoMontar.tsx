@@ -186,6 +186,7 @@ export function OrcamentoMontar() {
   // catalogo so quando precisa adicionar item.
   const [mobileTab, setMobileTab] = useState<'catalogo' | 'preview'>('preview')
   const [finalizarOpen, setFinalizarOpen] = useState(false)
+  const [aiDrawerOpen, setAiDrawerOpen] = useState(false)
   const [saveMode, setSaveMode] = useState<'update' | 'alt' | 'new'>('new')
   // Sprint 3: marca true quando o copiloto IA dispara a finalização (auto-submit 3s)
   const [autoSubmitFromIA, setAutoSubmitFromIA] = useState(false)
@@ -1271,7 +1272,10 @@ export function OrcamentoMontar() {
   })()
 
   return (
-    <div className="h-full flex flex-col gap-3 p-3">
+    <div
+      className="h-full flex flex-col gap-3 p-3 transition-all duration-200"
+      style={{ marginLeft: aiDrawerOpen ? 460 : 0 }}
+    >
       {/* Banner CRÍTICO: orçamento existente está em rascunho (upload server falhou).
           Quando vendedor reabre via ?id=N e a row tá rascunho, mostra alerta
           permanente até ele reenviar. Sem isso o vendedor acha que tá salvo. */}
@@ -2575,6 +2579,7 @@ export function OrcamentoMontar() {
             prazo_entrega: prev?.prazo_entrega ?? null,
           }))
         }}
+        onDrawerToggle={setAiDrawerOpen}
         onFinalizarOrcamento={(opts) => {
           // Pré-preenche cliente se IA mandou + abre o modal FinalizarMontarModal.
           // Vendedor revisa e clica em "Gerar" — fluxo padrão (PDF, save, WhatsApp).

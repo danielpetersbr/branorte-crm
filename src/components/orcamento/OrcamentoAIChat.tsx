@@ -67,14 +67,14 @@ interface Props {
   onCarregarPacote?: (modelo_id: number) => void | Promise<void>
   onPreencherCliente?: (dados: Record<string, string | undefined>) => void | Promise<void>
   onFinalizarOrcamento?: (opts: { enviar_whatsapp?: boolean; cliente_dados?: Record<string, string | undefined> }) => void | Promise<void>
+  onDrawerToggle?: (open: boolean) => void
 }
 
 const SUGESTOES_INICIAIS = [
-  'Monta mini fábrica monofásica 150 kg/h',
-  'Fábrica 500 kg/h trifásica com ensacadeira',
-  'Lista Compactas Master entre 100 e 300 kg/h',
-  'Preço da caçamba de pesagem 1900 L',
-  'Motor 5 CV trifásico 4 polos',
+  { icon: '🏭', text: 'Mini fábrica 150 kg/h monofásica' },
+  { icon: '🚛', text: 'Moega + 2 roscas 210x14m + moinho 50cv' },
+  { icon: '📦', text: '3 silos de 42 toneladas' },
+  { icon: '⚙️', text: 'Compacta Master 300 kg/h trifásica' },
 ]
 
 export function OrcamentoAIChat({
@@ -83,8 +83,15 @@ export function OrcamentoAIChat({
   onCarregarPacote,
   onPreencherCliente,
   onFinalizarOrcamento,
+  onDrawerToggle,
 }: Props) {
   const [open, setOpen] = useState(false)
+
+  // Notifica o pai quando drawer abre/fecha pra ajustar layout
+  const toggleDrawer = (newState: boolean) => {
+    setOpen(newState)
+    onDrawerToggle?.(newState)
+  }
   const [messages, setMessages] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [enviando, setEnviando] = useState(false)
@@ -454,7 +461,7 @@ export function OrcamentoAIChat({
     <>
       {/* FAB */}
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={() => toggleDrawer(!open)}
         title="Copiloto IA — montar orçamento"
         aria-label="Abrir copiloto IA"
         className={`fixed bottom-6 left-6 lg:bottom-8 lg:left-8 z-40 h-14 w-14 rounded-full shadow-xl flex items-center justify-center transition-all
@@ -495,7 +502,7 @@ export function OrcamentoAIChat({
               </button>
             )}
             <button
-              onClick={() => setOpen(false)}
+              onClick={() => toggleDrawer(false)}
               className="text-ink-faint hover:text-ink p-1.5 -m-1 rounded-md hover:bg-surface-3 transition-colors"
               title="Fechar"
             >
@@ -506,27 +513,32 @@ export function OrcamentoAIChat({
           {/* Histórico */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
             {messages.length === 0 && (
-              <div className="space-y-4 pt-4">
-                <div className="flex flex-col items-center text-center px-4 py-6">
-                  <div className="h-16 w-16 rounded-full bg-gradient-to-br from-accent/30 to-accent/10 flex items-center justify-center mb-3 ring-2 ring-accent/20">
-                    <Bot className="h-8 w-8 text-accent" />
-                  </div>
-                  <div className="text-[15px] font-semibold text-ink mb-1">Como posso ajudar?</div>
-                  <div className="text-[12px] text-ink-muted leading-relaxed max-w-[300px]">
-                    Pergunte preço, capacidade, motor, ou peça pra montar um pacote. Tudo do catálogo oficial — sem invenção.
+              <div className="space-y-5 pt-6">
+                <div className="text-center px-4">
+                  <div className="text-[17px] font-bold text-ink mb-1.5">Monta o orçamento por voz ou texto</div>
+                  <div className="text-[12.5px] text-ink-muted leading-relaxed">
+                    Fale os equipamentos e quantidades — eu busco no catálogo e adiciono direto.
                   </div>
                 </div>
-                <div className="space-y-1.5 px-1">
-                  <div className="text-[10.5px] uppercase tracking-wider text-ink-faint px-2 mb-1.5">Sugestões</div>
+
+                <div className="grid grid-cols-2 gap-2 px-1">
                   {SUGESTOES_INICIAIS.map(s => (
                     <button
-                      key={s}
-                      onClick={() => enviar(s)}
-                      className="block w-full text-left text-[12.5px] px-3 py-2.5 rounded-lg bg-surface-2 hover:bg-surface-3 text-ink-muted hover:text-ink border border-border/40 hover:border-accent/40 transition-all"
+                      key={s.text}
+                      onClick={() => enviar(s.text)}
+                      className="text-left p-3 rounded-xl bg-surface-2 hover:bg-surface-3 border border-border/40 hover:border-accent/40 transition-all group"
                     >
-                      {s}
+                      <div className="text-[18px] mb-1">{s.icon}</div>
+                      <div className="text-[12px] font-medium text-ink-muted group-hover:text-ink leading-snug">{s.text}</div>
                     </button>
                   ))}
+                </div>
+
+                <div className="text-center">
+                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-2/60 border border-border/30">
+                    <Mic className="h-3.5 w-3.5 text-accent" />
+                    <span className="text-[11px] text-ink-faint">Aperte o microfone e fale tudo de uma vez</span>
+                  </div>
                 </div>
               </div>
             )}
