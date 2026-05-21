@@ -906,16 +906,24 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       </div>
                     )}
                   </div>
-                  <div className="mt-2.5 pt-1.5 border-t border-gray-300 flex justify-between text-[15.5px] font-bold tracking-wide">
-                    <span className="text-gray-700">VALOR</span>
-                    {subtotal > 0 ? (
-                      <span className="text-gray-900">R$ {formatBRLBare(subtotal)}</span>
-                    ) : (
-                      <span className="text-amber-600 italic text-[13px] print:text-gray-900 print:not-italic">
-                        <span className="print:hidden">⚠ sem preço — preencha</span>
-                        <span className="hidden print:inline">a consultar</span>
-                      </span>
+                  <div className="mt-2.5 pt-1.5 border-t border-gray-300">
+                    {it.qtd > 1 && it.valor > 0 && (
+                      <div className="flex justify-between text-[12.5px] text-gray-500 mb-0.5">
+                        <span>Valor unitário</span>
+                        <span>R$ {formatBRLBare(it.valor)}</span>
+                      </div>
                     )}
+                    <div className="flex justify-between text-[15.5px] font-bold tracking-wide">
+                      <span className="text-gray-700">VALOR{it.qtd > 1 ? ' TOTAL' : ''}</span>
+                      {subtotal > 0 ? (
+                        <span className="text-gray-900">R$ {formatBRLBare(subtotal)}</span>
+                      ) : (
+                        <span className="text-amber-600 italic text-[13px] print:text-gray-900 print:not-italic">
+                          <span className="print:hidden">⚠ sem preço — preencha</span>
+                          <span className="hidden print:inline">a consultar</span>
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               )

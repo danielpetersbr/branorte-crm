@@ -1318,9 +1318,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Sem mais tools — resposta final
+    // Deduplicar ações: se o LLM chamou propor_adicionar_item pro mesmo ID que
+    // o auto-propose já gerou, mantém só a do LLM (que tem quantidade correta).
+    // Se ambos tem o mesmo ID, prioriza a que tem maior quantidade.
+    const acoesDedup: AcaoSugerida[] = []
+    const vistos = new Map<number, number>() // preco_branorte_id → index na lista
+    for (const acao of acoesSugeridas) {
+      if (acao.tipo === 'adicionar_item') {
+        const existeIdx = vistos.get(acao.preco_branorte_id)
+        if (existeIdx !== undefined) {
+          // Mantém a com maior quantidade
+          const existente = acoesDedup[existeIdx] as Extract<AcaoSugerida, { tipo: 'adicionar_item' }>
+          if (acao.quantidade > existente.quantidade) {
+            acoesDedup[existeIdx] = acao
+          }
+        } else {
+          vistos.set(acao.preco_branorte_id, acoesDedup.length)
+          acoesDedup.push(acao)
+        }
+      } else {
+        acoesDedup.push(acao)
+      }
+    }
+
     return res.status(200).json({
       reply: msg.content || '',
-      acoes: acoesSugeridas,
+      acoes: acoesDedup,
       tool_trace: toolTrace,
       iterations: iteration,
     })
