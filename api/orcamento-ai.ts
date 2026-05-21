@@ -1276,10 +1276,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             if (best.id && best.valor_equipamento) {
               const jaTemEsseId = acoesSugeridas.some(a => a.tipo === 'adicionar_item' && a.preco_branorte_id === best.id)
               if (!jaTemEsseId) {
+                // Pegar quantidade: de compor_orcamento args (itens[].quantidade) ou default 1
+                let qtd = 1
+                if (tc.function.name === 'compor_orcamento_composto' && Array.isArray(parsedArgs.itens)) {
+                  // Pega a quantidade do item cujo resultado bateu com best.id
+                  // Como processamos em paralelo, usa o item com mesma categoria
+                  const matchItem = (parsedArgs.itens as ItemPedido[]).find(it =>
+                    it.categoria?.toUpperCase() === best.categoria?.toUpperCase()
+                  )
+                  if (matchItem?.quantidade && matchItem.quantidade > 1) qtd = matchItem.quantidade
+                }
                 acoesSugeridas.push({
                   tipo: 'adicionar_item',
                   preco_branorte_id: best.id,
-                  quantidade: 1,
+                  quantidade: qtd,
                   auto_apply: true,
                   justificativa: best.descricao,
                   preview: {
