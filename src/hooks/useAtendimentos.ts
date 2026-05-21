@@ -191,10 +191,9 @@ export function useAtendimentos(filters: AtendimentoFilters) {
       if (filters.responsavel) query = query.eq('responsavel', filters.responsavel)
       if (filters.status_real) query = query.eq('status_real', filters.status_real)
       const range = dateRangeFromPreset(filters.data)
-      // Filtra por ULTIMA ATIVIDADE, nao por primeira interacao.
-      // Assim "Hoje" mostra tb leads antigos que mandaram webhook hoje.
-      if (range.from) query = query.gte('last_message_at', range.from)
-      if (range.to)   query = query.lte('last_message_at', range.to)
+      // Filtra por data de CHEGADA do lead (created_at)
+      if (range.from) query = query.gte('created_at', range.from)
+      if (range.to)   query = query.lte('created_at', range.to)
       if (filters.uf) {
         const ddds = Object.entries(DDD_TO_UF)
           .filter(([, uf]) => uf === filters.uf)
@@ -262,8 +261,8 @@ function applyBaseFilters(query: any, filters?: Partial<AtendimentoFilters>, ven
   }
   if (filters?.data) {
     const range = dateRangeFromPreset(filters.data)
-    if (range.from) q = q.gte('last_message_at', range.from)
-    if (range.to)   q = q.lte('last_message_at', range.to)
+    if (range.from) q = q.gte('created_at', range.from)
+    if (range.to)   q = q.lte('created_at', range.to)
   }
   return q
 }
@@ -451,8 +450,8 @@ export function useAtendimentosFunil(filters: Omit<AtendimentoFilters, 'status_r
         }
       }
       const range = dateRangeFromPreset(filters.data)
-      if (range.from) query = query.gte('last_message_at', range.from)
-      if (range.to)   query = query.lte('last_message_at', range.to)
+      if (range.from) query = query.gte('created_at', range.from)
+      if (range.to)   query = query.lte('created_at', range.to)
 
       const { data, error } = await query
       if (error) throw error
