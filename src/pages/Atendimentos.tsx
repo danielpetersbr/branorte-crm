@@ -279,7 +279,7 @@ export function Atendimentos() {
     responsavel: '',
     status_real: '',
     uf: '',
-    data: '',
+    data: 'hoje',
     page: 0,
   })
   const [searchInput, setSearchInput] = useState('')
