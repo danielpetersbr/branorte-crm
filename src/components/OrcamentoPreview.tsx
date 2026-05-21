@@ -1080,8 +1080,12 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   <tbody>
                     {motoresAgrupados.map((m, idx) => {
                       const incluso = m.valor_total === 0
-                      const podeTrocar = !renderMode && !incluso && !!onTrocarMotor && !!m.item_uid && !!motoresDisponiveis?.length
+                      const podeTrocar = !renderMode && !!onTrocarMotor && !!m.item_uid && !!motoresDisponiveis?.length
                       const aberto = trocarMotorIdx === idx
+                      // Detecta "motorredutor" na spec do item → mostra em vez de "X polos"
+                      const itemCarrinho = carrinho.find(it => it.uid === m.item_uid)
+                      const specMotor = itemCarrinho?.specs?.find(s => /motorredutor|moto\s*redutor/i.test(s))
+                      const tipoMotor = specMotor ? 'motorredutor' : `${m.polos} polos`
                       return (
                         <tr key={`${m.cv}-${m.polos}-${idx}`} className="border-t border-gray-200">
                           <td className="py-1.5 text-gray-800 relative">
@@ -1093,10 +1097,10 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                 className="font-semibold underline decoration-dotted underline-offset-2 decoration-gray-400 hover:decoration-blue-500 hover:text-blue-700 cursor-pointer print:no-underline print:text-gray-800"
                                 title="Clique pra trocar o motor"
                               >
-                                {m.cv} CV {m.polos} polos
+                                {m.cv} CV {tipoMotor}
                               </button>
                             ) : (
-                              <span className="font-semibold">{m.cv} CV {m.polos} polos</span>
+                              <span className="font-semibold">{m.cv} CV {tipoMotor}</span>
                             )}
                             {m.item_nome && (
                               <span className="text-gray-500"> · <span className="italic">{m.item_nome}</span></span>

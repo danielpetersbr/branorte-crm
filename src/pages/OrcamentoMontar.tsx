@@ -146,18 +146,35 @@ function agruparMotores(carrinho: CarrinhoItem[]): MotorAgrupado[] {
   for (const it of carrinho) {
     if (!it.motor_cv || !it.motor_polos) continue
     const qtdMotor = it.motor_qtd * it.qtd
-    linhas.push({
-      cv: it.motor_cv,
-      polos: it.motor_polos,
-      qtd: qtdMotor,
-      valor_unit: it.motor_valor_unit,
-      valor_total: it.motor_valor_unit * qtdMotor,
-      item_nome: it.nome_custom || it.nome,
-      item_uid: it.uid,
-    })
+    const nomeItem = it.nome_custom || it.nome
+
+    // Detecta múltiplos motores na spec: "Acionamento 15 CV e 2 CV por motorredutor (Inclusos)"
+    // Padrão: "X CV e Y CV" ou "X CV + Y CV"
+    const specMotor = it.specs?.find(s => /acionamento|motorredutor/i.test(s)) ?? ''
+    const multiMatch = specMotor.match(/(\d+(?:[.,]\d+)?)\s*CV\s*(?:e|,|\+)\s*(\d+(?:[.,]\d+)?)\s*CV/i)
+
+    if (multiMatch) {
+      // 2 motores: principal + secundário (ambos com mesmo valor_unit e tipo)
+      const cv1 = parseFloat(multiMatch[1].replace(',', '.'))
+      const cv2 = parseFloat(multiMatch[2].replace(',', '.'))
+      linhas.push({
+        cv: cv1, polos: it.motor_polos, qtd: it.qtd,
+        valor_unit: it.motor_valor_unit, valor_total: it.motor_valor_unit * it.qtd,
+        item_nome: nomeItem, item_uid: it.uid,
+      })
+      linhas.push({
+        cv: cv2, polos: it.motor_polos, qtd: it.qtd,
+        valor_unit: it.motor_valor_unit, valor_total: it.motor_valor_unit * it.qtd,
+        item_nome: nomeItem, item_uid: it.uid,
+      })
+    } else {
+      linhas.push({
+        cv: it.motor_cv, polos: it.motor_polos, qtd: qtdMotor,
+        valor_unit: it.motor_valor_unit, valor_total: it.motor_valor_unit * qtdMotor,
+        item_nome: nomeItem, item_uid: it.uid,
+      })
+    }
   }
-  // Mantém na ORDEM DOS ITEMS do carrinho — quando reordenar items via ▲▼,
-  // os motores seguem junto naturalmente.
   return linhas
 }
 
