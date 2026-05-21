@@ -912,8 +912,6 @@ async function tool_propor_carregar_pacote(
 ): Promise<{ acao: AcaoSugerida } | { erro: string; sugestoes?: Array<{ id: number; basename: string }> }> {
   const id = args.modelo_id as number
   const justificativa = (args.justificativa as string) || ''
-  const basenameEsperado = (args.basename_esperado as string) || ''
-
   const { data, error } = await supa
     .from('orcamento_modelos')
     .select('id, basename, producao_kgh, armazenamento_kg, total_proposta, itens')
@@ -922,34 +920,6 @@ async function tool_propor_carregar_pacote(
     .single()
 
   if (error || !data) return { erro: `modelo_id ${id} não encontrado` }
-
-  // Validação anti-mismatch: se o vendedor pediu "Compacta 02" mas o modelo_id
-  // aponta pra "Compacta 01", aborta e devolve candidatos certos. Bug observado:
-  // LLM listou Compacta 02 mas chamou propor com ID de Compacta 01.
-  if (basenameEsperado) {
-    const norm = (s: string) =>
-      s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '').trim()
-    const got = norm(data.basename || '')
-    const expected = norm(basenameEsperado)
-    // Extrai tokens significativos do esperado (números, palavras 3+ chars)
-    const tokens = basenameEsperado.match(/(\d+|\p{L}{3,})/gu) ?? []
-    const tokensNorm = tokens.map(norm).filter(t => t.length > 0)
-    const tokensFaltando = tokensNorm.filter(t => !got.includes(t))
-    if (tokensFaltando.length > 0 && !got.includes(expected)) {
-      // Busca candidatos certos pra ajudar o LLM a corrigir
-      const orFilter = tokensNorm.map(t => `basename.ilike.%${t}%`).join(',')
-      const { data: cand } = await supa
-        .from('orcamento_modelos')
-        .select('id, basename, total_proposta')
-        .eq('ativo', true)
-        .or(orFilter)
-        .limit(5)
-      return {
-        erro: `MISMATCH: você passou modelo_id=${id} ("${data.basename}") mas o vendedor pediu "${basenameEsperado}". Tokens faltando: ${tokensFaltando.join(', ')}. Use um dos IDs corretos abaixo.`,
-        sugestoes: (cand ?? []).map(c => ({ id: c.id, basename: c.basename })),
-      }
-    }
-  }
 
   const qtdItens = Array.isArray(data.itens) ? (data.itens as unknown[]).length : 0
 
