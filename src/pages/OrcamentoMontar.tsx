@@ -1790,6 +1790,7 @@ export function OrcamentoMontar() {
                 onFotoChange={setFotoPrincipal}
                 onUpdateNome={alterarNome}
                 onUpdateSpec={alterarSpec}
+                onUpdateValor={alterarValor}
                 onToggleInox={toggleInox}
                 onToggleTungstenio={toggleTungstenio}
                 onUpdateQtd={alterarQtd}

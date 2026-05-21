@@ -131,6 +131,7 @@ export interface OrcamentoPreviewProps {
   onFotoChange?: (dataURL: string | null) => void
   onUpdateNome?: (uid: string, novoNome: string) => void
   onUpdateSpec?: (uid: string, idx: number, valor: string) => void
+  onUpdateValor?: (uid: string, novoValor: number) => void
   onToggleInox?: (uid: string, tipo?: '304' | '316' | false) => void
   onToggleTungstenio?: (uid: string) => void
   onUpdateQtd?: (uid: string, novaQtd: number) => void
@@ -245,7 +246,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     renderMode = false,
     tensaoMotores = null, onUpdateTensaoMotores,
     desconto, onUpdateDesconto,
-    onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onToggleInox, onToggleTungstenio, onUpdateQtd, onUpdateTerm, onMoverItem,
+    onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onUpdateValor, onToggleInox, onToggleTungstenio, onUpdateQtd, onUpdateTerm, onMoverItem,
     componentesExtras = [], onUpdateComponentesExtras, componentesAdicionaisCatalogo = [],
     parcelas, onUpdateParcelas,
     motoresDisponiveis, onTrocarMotor,
@@ -260,6 +261,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   // Edição inline de quantidade (o "01" no header do item)
   const [editingQtdUid, setEditingQtdUid] = useState<string | null>(null)
   const [editingQtdValor, setEditingQtdValor] = useState<string>('')
+  // Edição inline de valor (duplo-click no "VALOR R$ X.XXX")
+  const [editingValorUid, setEditingValorUid] = useState<string | null>(null)
+  const [editingValorStr, setEditingValorStr] = useState<string>('')
   // Menu de escolha Inox (304 vs 316)
   const [inoxMenuOpen, setInoxMenuOpen] = useState<string | null>(null)
   // Picker de componente extra (modal do "+ Adicionar")
@@ -916,8 +920,36 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     )}
                     <div className="flex justify-between text-[15.5px] font-bold tracking-wide">
                       <span className="text-gray-700">VALOR{it.qtd > 1 ? ' TOTAL' : ''}</span>
-                      {subtotal > 0 ? (
-                        <span className="text-gray-900">R$ {formatBRLBare(subtotal)}</span>
+                      {editingValorUid === it.uid ? (
+                        <input
+                          autoFocus
+                          type="number"
+                          value={editingValorStr}
+                          onChange={e => setEditingValorStr(e.target.value)}
+                          onBlur={() => {
+                            const v = parseFloat(editingValorStr)
+                            if (!isNaN(v) && v >= 0 && onUpdateValor && it.uid) {
+                              onUpdateValor(it.uid, v)
+                            }
+                            setEditingValorUid(null)
+                          }}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
+                            if (e.key === 'Escape') setEditingValorUid(null)
+                          }}
+                          className="w-40 text-right bg-yellow-50 border border-blue-400 rounded px-2 py-0.5 outline-none text-[15px] text-gray-900 font-bold"
+                        />
+                      ) : subtotal > 0 ? (
+                        <span
+                          className={`text-gray-900 ${!renderMode && onUpdateValor && it.uid ? 'cursor-text hover:bg-yellow-50 rounded px-1' : ''}`}
+                          title={!renderMode && onUpdateValor ? 'Duplo-clique para editar valor' : undefined}
+                          onDoubleClick={() => {
+                            if (!renderMode && onUpdateValor && it.uid) {
+                              setEditingValorStr(String(it.valor))
+                              setEditingValorUid(it.uid)
+                            }
+                          }}
+                        >R$ {formatBRLBare(subtotal)}</span>
                       ) : (
                         <span className="text-amber-600 italic text-[13px] print:text-gray-900 print:not-italic">
                           <span className="print:hidden">⚠ sem preço — preencha</span>
