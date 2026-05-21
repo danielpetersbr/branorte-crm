@@ -1045,7 +1045,7 @@ export function OrcamentoMontar() {
 
   // Carrega um modelo pronto (orcamento_modelos) no carrinho do Montar Custom
   function carregarDoModelo(modelo: OrcamentoModelo) {
-    if (carrinho.length > 0 && !confirm('Substituir os items atuais pelos do modelo?')) return
+    // Sempre adiciona ao carrinho existente (não substitui)
     const catalogoItems = items ?? []
     const fotoMapTransp = montarMapaFotosTransportador(catalogoItems)
 
@@ -1187,7 +1187,7 @@ export function OrcamentoMontar() {
       })
     }
 
-    setCarrinho(novos)
+    setCarrinho(prev => [...prev, ...novos])
 
     // 4) Acessórios: preserva o VALOR EXATO do modelo (evita perder centavos
     // no arredondamento do pct). O pct fica como referencia visual ('Acessórios (8%)').
