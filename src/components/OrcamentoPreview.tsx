@@ -36,6 +36,7 @@ export interface PreviewMotor {
   valor_total: number
   item_nome?: string  // se vier, mostra "de qual item" o motor é
   item_uid?: string   // uid do CarrinhoItem origem — usado pelo onTrocarMotor
+  motorIndex?: number // 0=principal, 1=secundário (quando item tem 2 motores)
 }
 
 // Motor do catálogo central (catalogo_motores). Passado pra o picker de troca.
@@ -144,7 +145,7 @@ export interface OrcamentoPreviewProps {
 
   // Troca de motor: lista de motores do catálogo central + callback ao escolher
   motoresDisponiveis?: MotorCatalogoOption[]
-  onTrocarMotor?: (itemUid: string, novoMotor: MotorCatalogoOption) => void
+  onTrocarMotor?: (itemUid: string, novoMotor: MotorCatalogoOption, motorIndex?: number) => void
 
   // Vendedores Branorte pra grid de contatos no rodape. Quando passado, renderiza
   // dinamicamente em vez do hardcoded antigo (que so tinha 3 vendedores).
@@ -1173,7 +1174,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                             key={opt.id}
                                             type="button"
                                             onClick={() => {
-                                              onTrocarMotor!(m.item_uid!, opt)
+                                              onTrocarMotor!(m.item_uid!, opt, m.motorIndex)
                                               setTrocarMotorIdx(null)
                                             }}
                                             className={`w-full text-left px-3 py-2 rounded text-[13px] flex items-center justify-between gap-2 hover:bg-blue-50 transition-colors ${

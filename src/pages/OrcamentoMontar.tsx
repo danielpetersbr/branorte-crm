@@ -139,6 +139,7 @@ interface MotorAgrupado {
   valor_total: number
   item_nome?: string       // nome do item que usa esse motor (pra mostrar no listagem)
   item_uid?: string        // uid do CarrinhoItem que origem o motor (pra editar de volta)
+  motorIndex?: number      // 0=principal, 1=secundário (quando item tem 2 motores na spec)
 }
 
 function agruparMotores(carrinho: CarrinhoItem[]): MotorAgrupado[] {
@@ -163,12 +164,12 @@ function agruparMotores(carrinho: CarrinhoItem[]): MotorAgrupado[] {
       linhas.push({
         cv: cv1, polos: it.motor_polos, qtd: it.qtd,
         valor_unit: valorMotor, valor_total: valorMotor * it.qtd,
-        item_nome: nomeItem, item_uid: it.uid,
+        item_nome: nomeItem, item_uid: it.uid, motorIndex: 0,
       })
       linhas.push({
         cv: cv2, polos: it.motor_polos, qtd: it.qtd,
         valor_unit: valorMotor, valor_total: valorMotor * it.qtd,
-        item_nome: nomeItem, item_uid: it.uid,
+        item_nome: nomeItem, item_uid: it.uid, motorIndex: 1,
       })
     } else {
       linhas.push({
@@ -1019,19 +1020,46 @@ export function OrcamentoMontar() {
   }
 
   // Troca o motor de um item especifico do carrinho. Usado pelo picker no preview.
-  function trocarMotorDoItem(itemUid: string, novoMotor: CatalogoMotor) {
+  // motorIndex: quando item tem 2 motores na spec (ex: "15 CV e 2 CV"), indica qual trocar (0 ou 1).
+  function trocarMotorDoItem(itemUid: string, novoMotor: CatalogoMotor, motorIndex?: number) {
     setCarrinho(c => c.map(it => {
       if (it.uid !== itemUid) return it
-      // Se o item tem motor incluso (spec '(incluso)'), nao cobra o motor.
       const incluso = motorJaInclusoNoItem(it.specs)
       const novoCv = Number(novoMotor.cv)
       const novoPolos = novoMotor.polos
+
+      // Item com 2 motores na spec: só troca o CV do índice específico
+      if (motorIndex != null) {
+        const specIdx = it.specs.findIndex(s => /acionamento|motorredutor/i.test(s))
+        if (specIdx >= 0) {
+          const spec = it.specs[specIdx]
+          const multi = spec.match(/(\d+(?:[.,]\d+)?)\s*CV\s*(e|,|\+)\s*(\d+(?:[.,]\d+)?)\s*CV/i)
+          if (multi) {
+            const cvStr = Number.isInteger(novoCv) ? String(novoCv) : String(novoCv).replace('.', ',')
+            let novaSpec: string
+            if (motorIndex === 0) {
+              novaSpec = spec.replace(multi[1], cvStr)
+            } else {
+              // Troca o segundo CV — precisamos trocar só a segunda ocorrência
+              const firstEnd = spec.indexOf(multi[2], spec.indexOf(multi[1]) + multi[1].length)
+              const secondCvStart = spec.indexOf(multi[3], firstEnd)
+              novaSpec = spec.slice(0, secondCvStart) + cvStr + spec.slice(secondCvStart + multi[3].length)
+            }
+            const novasSpecs = [...it.specs]
+            novasSpecs[specIdx] = novaSpec
+            // Atualiza motor_cv pro principal (index 0) — mantém consistência
+            const newMainCv = motorIndex === 0 ? novoCv : it.motor_cv
+            return { ...it, specs: novasSpecs, motor_cv: newMainCv }
+          }
+        }
+      }
+
+      // Motor único: troca tudo como antes
       return {
         ...it,
         motor_cv: novoCv,
         motor_polos: novoPolos,
         motor_valor_unit: incluso ? 0 : Number(novoMotor.valor),
-        // Atualiza specs (acionamento/potencia) e nome (se tinha CV embutido).
         specs: atualizarSpecsComMotor(it.specs, novoCv, novoPolos),
         nome: atualizarNomeComMotor(it.nome, novoCv),
         nome_custom: it.nome_custom ? atualizarNomeComMotor(it.nome_custom, novoCv) : it.nome_custom,
