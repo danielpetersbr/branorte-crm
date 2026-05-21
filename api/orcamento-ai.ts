@@ -597,15 +597,15 @@ const tools = [
     function: {
       name: 'propor_carregar_pacote',
       description:
-        'Sugere SUBSTITUIR o carrinho atual pelo pacote completo de um modelo de Compacta/Mini Fabrica. Use depois de detalhar_modelo. ATENÇÃO: substitui TODOS os itens atuais — só sugira se o vendedor pediu pra montar do zero. SEMPRE passe basename_esperado pra validar que o modelo_id eh o certo (proteção contra ID trocado).',
+        'ADICIONA um pacote completo de Compacta/Mini Fábrica ao carrinho. Quando já tem itens, SOMA (não substitui). basename_esperado é OPCIONAL — se omitir, aceita qualquer modelo.',
       parameters: {
         type: 'object',
         properties: {
           modelo_id: { type: 'integer', description: 'ID do orcamento_modelos. DEVE vir de uma chamada recente de listar_modelos_compacta ou detalhar_modelo.' },
-          basename_esperado: { type: 'string', description: 'Nome do modelo que o vendedor pediu (ex: "Compacta 02 - 2001000" ou "Compacta 02 Master"). Validação: se o pacote retornado tiver basename diferente, a tool retorna erro.' },
+          basename_esperado: { type: 'string', description: 'Opcional. Nome do modelo pra validação extra. Se omitido, aceita qualquer modelo.' },
           justificativa: { type: 'string', description: 'Por que esse modelo atende o pedido.' },
         },
-        required: ['modelo_id', 'basename_esperado'],
+        required: ['modelo_id'],
       },
     },
   },
