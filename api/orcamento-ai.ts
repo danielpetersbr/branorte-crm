@@ -1220,7 +1220,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         messages,
         tools,
         tool_choice: 'auto',
-        parallel_tool_calls: true,
         temperature: 0.2,
       }),
     })
