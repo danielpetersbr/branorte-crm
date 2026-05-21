@@ -1214,10 +1214,10 @@ export function OrcamentoMontar() {
     // aplicarVoltagem atualiza com precos atuais do catalogo central.
     if (modelo.voltagem) setVoltagem(modelo.voltagem)
 
-    // 6) Foto Principal: usa a foto representativa do modelo (ex: render da Compacta 01).
-    //    Aparece logo abaixo do cabeçalho do orçamento. Vendedor pode trocar
-    //    depois clicando em "+ Trocar foto" se quiser.
-    if (modelo.foto_url) {
+    // 6) Foto Principal: só seta quando carrega pacote SOZINHO (não append).
+    //    Se já tem itens individuais no carrinho, a foto do modelo não faz sentido
+    //    porque o orçamento é misto (itens avulsos + pacote).
+    if (modelo.foto_url && !append) {
       setFotoPrincipal(modelo.foto_url)
     }
   }
