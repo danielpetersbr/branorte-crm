@@ -1274,8 +1274,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (res2.resultados && res2.resultados.length >= 1 && res2.resultados.length <= 3 && (parsedArgs.busca || parsedArgs.categoria)) {
             const best = res2.resultados[0]
             if (best.id && best.valor_equipamento) {
+              // Não duplicar: checa por ID e por CATEGORIA (evita 2 silos quando pediu 1)
               const jaTemEsseId = acoesSugeridas.some(a => a.tipo === 'adicionar_item' && a.preco_branorte_id === best.id)
-              if (!jaTemEsseId) {
+              const jaTemCategoria = acoesSugeridas.some(a => a.tipo === 'adicionar_item' && a.preview?.categoria === best.categoria)
+              if (!jaTemEsseId && !jaTemCategoria) {
                 // Pegar quantidade: de compor_orcamento args (itens[].quantidade) ou default 1
                 let qtd = 1
                 if (tc.function.name === 'compor_orcamento_composto' && Array.isArray(parsedArgs.itens)) {

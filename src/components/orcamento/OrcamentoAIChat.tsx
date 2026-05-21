@@ -878,8 +878,11 @@ function AcaoCard({
   if (acao.tipo === 'adicionar_item') {
     icone = <Plus className="h-3.5 w-3.5" />
     titulo = acao.preview?.descricao || `Item #${acao.preco_branorte_id}`
-    const valor = (acao.preview?.valor_equipamento ?? 0) * acao.quantidade
-    subtitulo = `${acao.quantidade}x · ${fmtBRL(valor)}`
+    const unitario = acao.preview?.valor_equipamento ?? 0
+    const total = unitario * acao.quantidade
+    subtitulo = acao.quantidade > 1
+      ? `${acao.quantidade}x · ${fmtBRL(unitario)} unit. · ${fmtBRL(total)} total`
+      : `${acao.quantidade}x · ${fmtBRL(unitario)}`
     detalhe = [
       acao.preview?.capacidade,
       acao.preview?.motor_cv ? `${acao.preview.motor_cv} CV` : null,
