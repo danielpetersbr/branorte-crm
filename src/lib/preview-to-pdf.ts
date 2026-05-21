@@ -155,9 +155,12 @@ export async function gerarPdfDoPreview(
         return true
       }
 
-      // Verifica se Y cai dentro de algum bloco no-break
+      // Verifica se Y cai dentro de algum bloco no-break.
+      // Ignora blocos maiores que uma página (impossível não cortar — são grandes demais).
       function isInsideNoBreak(y: number): { inside: boolean; topY?: number; bottomY?: number } {
         for (const r of noBreakCanvasRanges) {
+          // Bloco maior que uma página → não é atômico, deixa cortar
+          if (r.bottom - r.top > sliceHeightPx * 0.90) continue
           if (y > r.top + 1 && y < r.bottom - 1) {
             return { inside: true, topY: r.top, bottomY: r.bottom }
           }
