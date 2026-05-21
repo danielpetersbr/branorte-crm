@@ -150,12 +150,19 @@ function extrairCidadeEstado(text: string): { cidade: string | null; estado: str
 }
 
 function extrairLabelado(text: string, labels: string[]): string | null {
-  // Procura "Label: valor" ou "Label valor\n"
   for (const label of labels) {
+    // Tenta "Label: valor" na mesma linha
     const re = new RegExp(`(?:^|\\n|\\s)${label}\\s*[:\\-]?\\s*([^\\n]+?)(?:\\n|$)`, 'i')
     const m = text.match(re)
     if (m) {
       const v = m[1].trim()
+      if (v && v.length < 200) return v
+    }
+    // Tenta "Label:\n valor" (valor na linha seguinte)
+    const re2 = new RegExp(`(?:^|\\n)${label}\\s*[:\\-]?\\s*\\n\\s*([^\\n]+?)(?:\\n|$)`, 'i')
+    const m2 = text.match(re2)
+    if (m2) {
+      const v = m2[1].trim()
       if (v && v.length < 200) return v
     }
   }

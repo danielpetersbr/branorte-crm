@@ -408,10 +408,35 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
             <p className="text-[11px] text-ink-muted mb-1.5">Cole os dados do cliente abaixo (nome, CNPJ, endereço, etc. — em qualquer formato):</p>
             <textarea
               autoFocus
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
               value={textoColado}
               onChange={e => setTextoColado(e.target.value)}
+              onPaste={e => {
+                // Auto-processa ao colar: pega o texto colado e preenche direto
+                const pasted = e.clipboardData.getData('text')
+                if (pasted && pasted.trim().length > 5) {
+                  e.preventDefault()
+                  const { cliente_nome, dados } = parseClienteText(pasted)
+                  if (cliente_nome) setNome(titleCasePtBr(cliente_nome))
+                  if (dados.ac) setAc(dados.ac)
+                  if (dados.fone) setFone(dados.fone)
+                  if (dados.cidade) setCidade(dados.cidade)
+                  if (dados.uf) setUf(dados.uf)
+                  if (dados.bairro) setBairro(dados.bairro)
+                  if (dados.endereco) setEndereco(dados.endereco)
+                  if (dados.cep) setCep(dados.cep)
+                  if (dados.cnpj) setCnpj(dados.cnpj)
+                  if (dados.ie) setIe(dados.ie)
+                  if (dados.email) setEmail(dados.email)
+                  setTextoColado('')
+                  setColando(false)
+                  setSucessoBusca('✓ Dados extraídos automaticamente do texto colado')
+                }
+              }}
               onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) handleColar() }}
-              placeholder={"Ex:\nFAZENDA SUSSUARANA\nCNPJ 12.345.678/0001-99\nRua das Flores, 123\nCidade - UF\n(48) 99999-9999"}
+              placeholder={"Cole aqui (Ctrl+V) — preenche automaticamente\n\nEx:\nFAZENDA SUSSUARANA\nCNPJ 12.345.678/0001-99\nRua das Flores, 123\nCidade - UF\n(48) 99999-9999"}
               className="w-full bg-surface-2 border border-border rounded-md px-3 py-2 text-[12px] text-ink resize-none outline-none focus:border-accent"
               rows={5}
             />
