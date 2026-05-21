@@ -1438,10 +1438,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
     // Forçar auto_apply em TODAS as ações de adicionar_item
-    // (vendedor pediu claramente, não é consulta)
     for (const acao of acoesDedup) {
       if (acao.tipo === 'adicionar_item') {
         acao.auto_apply = true
+      }
+    }
+
+    // FALLBACK: se listar_modelos_compacta achou resultado mas nenhuma ação
+    // carregar_pacote existe, gerar a ação automaticamente aqui no response
+    const temPacoteAcao = acoesDedup.some(a => a.tipo === 'carregar_pacote')
+    if (!temPacoteAcao) {
+      const listarCall = toolTrace.find(t => t.name === 'listar_modelos_compacta' && t.ok)
+      if (listarCall) {
+        // Buscar o primeiro resultado do listar_modelos_compacta nos messages
+        for (const m of messages) {
+          if (m.role === 'tool' && m.content) {
+            try {
+              const parsed = JSON.parse(m.content)
+              if (parsed.resultados && Array.isArray(parsed.resultados) && parsed.resultados.length > 0) {
+                const first = parsed.resultados[0]
+                if (first.id && first.basename && !first.categoria) {
+                  // É resultado de listar_modelos (tem basename, não tem categoria)
+                  acoesDedup.push({
+                    tipo: 'carregar_pacote',
+                    modelo_id: first.id,
+                    justificativa: `Pacote ${first.basename}`,
+                    preview: {
+                      basename: first.basename,
+                      producao_kgh: first.producao_kgh,
+                      armazenamento_kg: first.armazenamento_kg,
+                      total_proposta: first.total_proposta ? Number(first.total_proposta) : null,
+                      qtd_itens: Array.isArray(first.itens) ? first.itens.length : 0,
+                    },
+                  })
+                  break
+                }
+              }
+            } catch { /* ignore non-json */ }
+          }
+        }
       }
     }
 
