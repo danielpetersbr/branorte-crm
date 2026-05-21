@@ -1394,6 +1394,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
 
+        // AUTO-PROPOSE PACOTE: quando listar_modelos_compacta retorna resultados,
+        // auto-propõe o primeiro como carregar_pacote (evita LLM esquecer de chamar propor_carregar_pacote)
+        if (tc.function.name === 'listar_modelos_compacta') {
+          const res3 = result as { resultados?: Array<{ id: number; basename: string; producao_kgh: number | null; armazenamento_kg: number | null; total_proposta: number | null; itens?: unknown[] }> }
+          if (res3.resultados && res3.resultados.length > 0) {
+            const best = res3.resultados[0]
+            const jaTemPacote = acoesSugeridas.some(a => a.tipo === 'carregar_pacote')
+            if (!jaTemPacote && best.id) {
+              const qtdItens = Array.isArray(best.itens) ? best.itens.length : 0
+              acoesSugeridas.push({
+                tipo: 'carregar_pacote',
+                modelo_id: best.id,
+                justificativa: `Pacote ${best.basename} — mais próximo do pedido`,
+                preview: {
+                  basename: best.basename,
+                  producao_kgh: best.producao_kgh,
+                  armazenamento_kg: best.armazenamento_kg,
+                  total_proposta: best.total_proposta ? Number(best.total_proposta) : null,
+                  qtd_itens: qtdItens,
+                },
+              })
+            }
+          }
+        }
+
         messages.push({
           role: 'tool',
           tool_call_id: tc.id,
