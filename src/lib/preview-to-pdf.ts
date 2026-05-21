@@ -156,12 +156,27 @@ export async function gerarPdfDoPreview(
       }
 
       // Verifica se Y cai dentro de algum bloco no-break.
-      // Ignora blocos maiores que uma página (impossível não cortar — são grandes demais).
-      function isInsideNoBreak(y: number): { inside: boolean; topY?: number; bottomY?: number } {
+      // Blocos menores que 1 página: NUNCA corta dentro — move pra antes ou depois.
+      // Blocos maiores que 1 página: tenta mover pra próxima página (topo do bloco).
+      //   Se já está no topo (sliceStart ≈ topY), então é impossível evitar — deixa
+      //   cortar mas procura linha branca dentro.
+      function isInsideNoBreak(y: number, sliceStartY?: number): { inside: boolean; topY?: number; bottomY?: number } {
         for (const r of noBreakCanvasRanges) {
-          // Bloco maior que uma página → não é atômico, deixa cortar
-          if (r.bottom - r.top > sliceHeightPx * 0.90) continue
           if (y > r.top + 1 && y < r.bottom - 1) {
+            const blockHeight = r.bottom - r.top
+            if (blockHeight > sliceHeightPx * 0.95) {
+              // Bloco ENORME (> 1 página). Se estamos no TOPO dele (a página
+              // começou com esse bloco), não tem como evitar — deixa cortar.
+              // Se NÃO estamos no topo, move pra antes dele (próxima página
+              // vai começar com ele do topo).
+              const startY = sliceStartY ?? 0
+              if (r.top - startY > sliceHeightPx * 0.05) {
+                // Tem espaço antes — move pra antes do bloco
+                return { inside: true, topY: r.top, bottomY: r.bottom }
+              }
+              // Já estamos no topo — deixa cortar (procura linha branca)
+              continue
+            }
             return { inside: true, topY: r.top, bottomY: r.bottom }
           }
         }
@@ -177,7 +192,7 @@ export async function gerarPdfDoPreview(
         // do bloco serem cortados.
         let y = idealY
         for (let iter = 0; iter < 10; iter++) {
-          const r = isInsideNoBreak(y)
+          const r = isInsideNoBreak(y, sliceStart)
           if (!r.inside) break
           // Tenta antes
           y = r.topY! - 30
@@ -196,7 +211,7 @@ export async function gerarPdfDoPreview(
         let runStart = -1
         for (let y2 = minY; y2 <= maxYClamp; y2++) {
           // Skip Y que cai em no-break (pode ter linha branca dentro de bloco branco)
-          if (isInsideNoBreak(y2).inside) {
+          if (isInsideNoBreak(y2, sliceStart).inside) {
             if (runStart >= 0) {
               const runLen = y2 - runStart
               if (runLen >= 3 && runLen >= bestRunLen) {

@@ -644,8 +644,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
               const letra = String.fromCharCode(65 + idx)
               const subtotal = it.valor * it.qtd
               return (
-                <div key={it.uid || idx} className="group relative border border-gray-700 rounded-md p-3 bg-white shadow-sm" style={{ zIndex: 1 }}>
-                  <div data-no-break className="flex justify-between items-start gap-2 mb-1.5">
+                <div key={it.uid || idx} data-no-break className="group relative border border-gray-700 rounded-md p-3 bg-white shadow-sm" style={{ zIndex: 1 }}>
+                  <div className="flex justify-between items-start gap-2 mb-1.5">
                     <div className="font-bold text-[15.5px] flex-1 min-w-0 text-gray-900">
                       <span className="text-gray-900">{letra} - </span>
                       {!renderMode && onUpdateQtd && editingQtdUid === it.uid ? (
