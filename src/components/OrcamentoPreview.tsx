@@ -1153,7 +1153,10 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                         .sort((a, b) => Number(a.cv) - Number(b.cv) || a.polos - b.polos || a.voltagem.localeCompare(b.voltagem))
                                         .filter(opt => {
                                           if (!q) return true
-                                          return `${Number(opt.cv)} cv ${opt.polos} polos ${opt.voltagem}`.toLowerCase().includes(q)
+                                          const label = opt.polos === 0
+                                            ? `motorredutor ${Number(opt.cv)} cv ${opt.voltagem}`
+                                            : `${Number(opt.cv)} cv ${opt.polos} polos ${opt.voltagem}`
+                                          return label.toLowerCase().includes(q)
                                         })
                                       if (lista.length === 0) {
                                         return <div className="px-3 py-6 text-[12px] text-gray-400 text-center">Nenhum motor encontrado</div>
@@ -1173,10 +1176,16 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                             }`}
                                           >
                                             <span className="text-gray-800">
-                                              {Number(opt.cv)} CV {opt.polos} polos
+                                              {opt.polos === 0
+                                                ? <><span className="text-amber-700">Motorredutor</span> {Number(opt.cv)} CV</>
+                                                : <>{Number(opt.cv)} CV {opt.polos} polos</>}
                                               <span className="text-gray-500 ml-1.5 text-[11px] uppercase">{opt.voltagem}</span>
                                             </span>
-                                            <span className="text-gray-600 tabular-nums text-[12px]">R$ {formatBRLBare(Number(opt.valor))}</span>
+                                            <span className="text-gray-600 tabular-nums text-[12px]">
+                                              {Number(opt.valor) === 0
+                                                ? <span className="text-gray-400 italic">incluso</span>
+                                                : `R$ ${formatBRLBare(Number(opt.valor))}`}
+                                            </span>
                                           </button>
                                         )
                                       })
