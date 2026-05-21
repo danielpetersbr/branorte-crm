@@ -448,7 +448,7 @@ export function OrcamentoMontar() {
       motor_valor_unit: motorMatch ? Number(motorMatch.valor) : 0,
       foto_url: data.foto_url,
     }])
-    autoAdicionarBalancaSeCompacta(data.nome)
+    autoAdicionarBalancaSeCompacta(data.nome, data.categoria)
 
     // Se vendedor marcou pra enviar pro admin avaliar, grava em catalogo_items_pendentes
     if (data.enviarParaAprovacao) {
@@ -578,13 +578,13 @@ export function OrcamentoMontar() {
     return p.descricao.toUpperCase()
   }
 
-  // REGRA DE NEGOCIO: Compacta 02/03 SEMPRE acompanha balanca eletronica 2000kg
-  // como componente adicional (R$ 8.728). Vendedor pode remover depois.
-  // Disparado apos adicionar qualquer item Compacta 02 ou 03.
-  function autoAdicionarBalancaSeCompacta(nomeItem: string) {
+  // REGRA DE NEGOCIO: Compacta 02/03 e Caçamba de Pesagem SEMPRE acompanham
+  // balança eletrônica 2000kg como componente adicional. Vendedor pode remover depois.
+  function autoAdicionarBalancaSeCompacta(nomeItem: string, categoriaItem?: string) {
     const nome = nomeItem.toUpperCase()
     const eCompacta23 = /COMPACTA\s*0?[23]\b/.test(nome)
-    if (!eCompacta23) return
+    const eCacamba = categoriaItem === 'CACAMBA_PESAGEM' || /CA[ÇC]AMBA.*PESAGEM/i.test(nome)
+    if (!eCompacta23 && !eCacamba) return
 
     const NOME_BALANCA = 'Balança Eletrônica'
     // Match relaxado (qualquer 'Balança Eletrônica' nos componentes ja conta)
@@ -776,7 +776,7 @@ export function OrcamentoMontar() {
       foto_url: fotoFinal,
       usa_inversor: !!(ciLinkado?.usa_inversor),
     }])
-    autoAdicionarBalancaSeCompacta(nomeBase)
+    autoAdicionarBalancaSeCompacta(nomeBase, cat)
   }
 
   function adicionarItem(item: CatalogoItem, funcaoEscolhida?: string) {
@@ -828,7 +828,7 @@ export function OrcamentoMontar() {
       funcao_selecionada: funcao,
       ocultar_funcao_no_pdf: !!item.ocultar_funcao_no_pdf,
     }])
-    autoAdicionarBalancaSeCompacta(item.nome_curto)
+    autoAdicionarBalancaSeCompacta(item.nome_curto, item.categoria)
   }
 
   function removerItem(uid: string) {
