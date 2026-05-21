@@ -1064,16 +1064,15 @@ async function tool_compor_orcamento_composto(
       if (numMatch) {
         const ton = parseInt(numMatch[1])
         if (ton > 0 && ton < 10000) {
-          q = q.gte('capacidade_ton', ton * 0.85).lte('capacidade_ton', ton * 1.15)
+          // Margem de ±25% pra pegar silos próximos (ex: 40t pega 30-50t)
+          q = q.gte('capacidade_ton', ton * 0.75).lte('capacidade_ton', ton * 1.25)
           q = q.order('capacidade_ton', { ascending: true })
-          // Pular a busca textual — silos usam capacidade_ton
-          const tonMin = (item as Record<string, unknown>).capacidade_ton_min as number | undefined
-          const tonMax = (item as Record<string, unknown>).capacidade_ton_max as number | undefined
-          if (tonMin != null) q = q.gte('capacidade_ton', tonMin)
-          if (tonMax != null) q = q.lte('capacidade_ton', tonMax)
           return q
         }
       }
+      // Fallback: se não extraiu tonelagem, traz todos silos ordenados
+      q = q.order('capacidade_ton', { ascending: true }).limit(10)
+      return q
     }
 
     // TRANSPORTADOR: auto-detectar diâmetro × comprimento
