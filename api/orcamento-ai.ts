@@ -68,6 +68,22 @@ QUANDO USAR auto_apply=false (vendedor precisa clicar Aplicar):
   - Alternativa/substituição: pediu X mas só tem Y (precisa confirmação)
   - Múltiplas opções e vendedor não especificou qual
 
+⛔ REGRA DE OURO — ROSCA/TRANSPORTADOR: DIÂMETRO DEFINE O TIPO
+Vendedor fala "rosca de 160 por 9 metros" → o DIÂMETRO 160mm define que é CHUPIM (não TH).
+- Diâmetro 160mm ou 210mm → SEMPRE é CHUPIM → busca="chupim 160" ou "chupim 210"
+- Diâmetro 100, 125, 150 ou 200mm → SEMPRE é TH (helicoidal) → busca="TH 200" etc
+- NUNCA substitua chupim por TH ou vice-versa sem AVISAR EXPLICITAMENTE
+- Se não achar o comprimento exato (ex: 9m), mostre os mais próximos DENTRO DO MESMO TIPO
+  (ex: chupim 160 x 8m e chupim 160 x 10m) — NUNCA pule pra TH 150 x 1m
+
+⛔ REGRA ANTI-SUBSTITUIÇÃO ABSURDA
+NUNCA proponha um item que seja COMPLETAMENTE DIFERENTE do pedido. Exemplos proibidos:
+- Pediu rosca 160 x 9m (transportador de 9 metros) → NÃO ofereça TH 150 x 1m (1 metro!)
+- Pediu silo 42 toneladas → NÃO ofereça silo 5 toneladas
+- Pediu moinho 20 CV → NÃO ofereça moinho 3 CV
+REGRA: alternativa deve ter ao menos 50% da dimensão/capacidade pedida.
+Se não tem nada próximo, diga "NÃO TEMOS no catálogo" em vez de propor algo absurdo.
+
 ⛔ BUSCA DE SILOS — ATENÇÃO ESPECIAL
 Silos no catálogo têm descrição como "SILO 30 TONELADAS", "SILO 42 TONELADAS", "SILO 50 TONELADAS" etc.
 - Vendedor pede "silo de 42 toneladas" → busca com busca="42" OU busca="SILO 42"
@@ -80,10 +96,10 @@ Vendedor usa termos coloquiais que precisam mapear pras categorias certas:
 
 | Termo do vendedor                          | Categoria/Subcategoria do catálogo       | Filtro de busca |
 |--------------------------------------------|------------------------------------------|-----------------|
-| "rosca" / "rosca transportadora"           | TRANSPORTADOR (subcategoria HELICOIDAL)  | busca="TH" + diâmetro/comprimento |
-| "transportador" / "transportador helicoidal" | TRANSPORTADOR (HELICOIDAL)             | idem |
-| "TH" / "TH 210" / "calha TH"               | TRANSPORTADOR (HELICOIDAL — mesma coisa)| idem |
-| "chupim"                                   | TRANSPORTADOR (subcategoria CHUPIM)     | busca="chupim" + diâmetro/comprimento |
+| "rosca" / "rosca transportadora" / "rosca 160" | TRANSPORTADOR — ATENÇÃO: busca PRIMEIRO por diâmetro! Se 160mm ou 210mm → é CHUPIM. Se 100/125/150/200mm → é TH (HELICOIDAL). | busca="chupim {diam}" OU busca="TH {diam}" conforme diâmetro |
+| "transportador" / "transportador helicoidal" | TRANSPORTADOR — mesma regra: 160/210 = CHUPIM, outros = TH | idem |
+| "TH" / "TH 200" / "calha TH"               | TRANSPORTADOR (subcategoria HELICOIDAL) | busca="TH" + diâmetro/comprimento. SÓ use TH se diâmetro for 100, 125, 150 ou 200 |
+| "chupim" / "chupim 160" / "chupim 210"    | TRANSPORTADOR (subcategoria CHUPIM)     | busca="chupim" + diâmetro/comprimento |
 | "caçamba" / "caçamba de pesagem"           | CACAMBA (capacidade em litros)           | capacidade_min/max |
 | "caçamba transportador 210×5m"             | NÃO existe — é confusão de termos. Pergunta ao vendedor: "é caçamba de pesagem (litros) OU transportador helicoidal 210 x 5m? São equipamentos diferentes." |
 | "moinho" / "moinho de martelo"             | MOINHO                                   | motor_cv exato |
