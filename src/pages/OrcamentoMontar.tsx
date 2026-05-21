@@ -2632,10 +2632,11 @@ function PacoteModeloPickerModal({
   const { data: modelos, isLoading } = useOrcamentoModelos()
   const [pacote, setPacote] = useState<string | 'todos'>('todos')
   const [voltagem, setVoltagem] = useState<'todos' | 'monofasico' | 'trifasico'>('todos')
+  const [masterFilter, setMasterFilter] = useState<'todos' | 'master' | 'standard'>('todos')
   const [busca, setBusca] = useState('')
 
   useEffect(() => {
-    if (open) { setPacote(initialPacote ?? 'todos'); setVoltagem('todos'); setBusca('') }
+    if (open) { setPacote(initialPacote ?? 'todos'); setVoltagem('todos'); setMasterFilter('todos'); setBusca('') }
   }, [open, initialPacote])
 
   // Só os pacotes COMPACTA + MINI FABRICA (são os com itens estruturados)
@@ -2655,9 +2656,10 @@ function PacoteModeloPickerModal({
       .filter(m => m.itens && m.itens.length > 0)
       .filter(m => pacote === 'todos' || m.pacote === pacote)
       .filter(m => voltagem === 'todos' || m.voltagem === voltagem)
+      .filter(m => masterFilter === 'todos' || (masterFilter === 'master' ? m.is_master : !m.is_master))
       .filter(m => !q || m.basename.toLowerCase().includes(q))
       .sort((a, b) => (a.producao_kgh ?? 0) - (b.producao_kgh ?? 0) || a.basename.localeCompare(b.basename))
-  }, [modelos, pacote, voltagem, busca])
+  }, [modelos, pacote, voltagem, masterFilter, busca])
 
   if (!open) return null
 
@@ -2701,6 +2703,16 @@ function PacoteModeloPickerModal({
               key={v}
               onClick={() => setVoltagem(v)}
               className={`text-[11px] px-2 py-1 rounded font-semibold ${voltagem === v ? 'bg-accent text-white' : 'bg-surface-2 text-ink-muted hover:bg-surface-3'}`}
+            >{l}</button>
+          ))}
+          <div className="w-px h-5 bg-border mx-1" />
+          {([['todos','Todas'], ['standard','Standard'], ['master','Master']] as const).map(([v, l]) => (
+            <button
+              key={v}
+              onClick={() => setMasterFilter(v as typeof masterFilter)}
+              className={`text-[11px] px-2 py-1 rounded font-semibold ${masterFilter === v
+                ? (v === 'master' ? 'bg-amber-500 text-white' : 'bg-accent text-white')
+                : 'bg-surface-2 text-ink-muted hover:bg-surface-3'}`}
             >{l}</button>
           ))}
           <input
