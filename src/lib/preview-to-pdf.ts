@@ -48,6 +48,9 @@ export async function gerarPdfDoPreview(
   const containerWidthPx = opts.containerWidthPx ?? 1024
 
   // 1) Cria container off-screen com largura fixa pra o preview renderizar consistente
+  // CRÍTICO: força light mode no host pra texto não ficar branco-em-branco quando
+  // o app está em dark mode. Sem isso, CSS vars (--ink: 96% branco no dark) fazem
+  // todo texto sumir no PDF (fundo branco + texto branco = invisível).
   const host = document.createElement('div')
   host.style.position = 'fixed'
   host.style.left = '-99999px'
@@ -56,6 +59,10 @@ export async function gerarPdfDoPreview(
   host.style.background = '#ffffff'
   host.style.zIndex = '-1'
   host.setAttribute('data-pdf-host', '1')
+  // Força light mode: remove dark do <html> temporariamente
+  const htmlEl = document.documentElement
+  const wasDark = htmlEl.classList.contains('dark')
+  if (wasDark) htmlEl.classList.remove('dark')
   document.body.appendChild(host)
 
   let root: ReturnType<typeof createRoot> | null = null
@@ -272,6 +279,8 @@ export async function gerarPdfDoPreview(
   } finally {
     try { root?.unmount() } catch {}
     try { document.body.removeChild(host) } catch {}
+    // Restaura dark mode se estava ativo
+    if (wasDark) htmlEl.classList.add('dark')
   }
 }
 
