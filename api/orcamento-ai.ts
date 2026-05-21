@@ -802,7 +802,12 @@ async function tool_listar_modelos_compacta(supa: SupabaseClient, args: Record<s
   if (typeof args.com_balanca === 'boolean') q = q.eq('com_balanca', args.com_balanca)
   if (typeof args.com_ensacadeira === 'boolean') q = q.eq('com_ensacadeira', args.com_ensacadeira)
   if (typeof args.com_chupim === 'boolean') q = q.eq('com_chupim', args.com_chupim)
-  if (typeof args.is_master === 'boolean') q = q.eq('is_master', args.is_master)
+  if (typeof args.is_master === 'boolean') {
+    q = q.eq('is_master', args.is_master)
+  } else if (args.linha && !(args.linha as string).toLowerCase().includes('master')) {
+    // Se vendedor não disse "master", excluir versões Master automaticamente
+    q = q.eq('is_master', false)
+  }
   if (args.linha) q = q.ilike('basename', `%${args.linha as string}%`)
 
   const { data, error } = await q
