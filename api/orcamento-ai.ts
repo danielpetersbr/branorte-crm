@@ -533,7 +533,7 @@ const tools = [
                 descricao_vendedor: { type: 'string', description: 'O que o vendedor falou exatamente (ex: "transportador 210 por 12 metros", "silo 30 toneladas", "misturador horizontal 500 kg", "moinho 15 CV").' },
                 categoria: { type: 'string', description: 'Categoria mapeada do glossário: TRANSPORTADOR | MISTURADOR | SILO | MOINHO | CAIXA | CACAMBA | ENSACADEIRA | BALANCA | ELEVADOR | PENEIRA | MOEGA | PRE_LIMPEZA.' },
                 subcategoria: { type: 'string', description: 'HELICOIDAL ou CHUPIM (só pra TRANSPORTADOR). Opcional.' },
-                busca: { type: 'string', description: 'Termo de busca textual na descricao (ex: "210", "30 ton", "horizontal"). Opcional.' },
+                busca: { type: 'string', description: 'Busca textual na descricao. TRANSPORTADOR: use "chupim {diam} x {comp}" exato. Ex: "chupim 160 x 14" (NÃO "160 14"). MOINHO: NÃO use busca, use motor_cv. SILO: NÃO use busca, server auto-detecta tonelagem.' },
                 motor_cv: { type: 'number', description: 'CV exato (pra moinho/ensacadeira). Opcional.' },
                 capacidade_min: { type: 'number', description: 'Mínimo em kg ou litros. NÃO use pra silos.' },
                 capacidade_max: { type: 'number' },
@@ -1068,10 +1068,29 @@ async function tool_compor_orcamento_composto(
       }
     }
 
+    // TRANSPORTADOR: auto-detectar diâmetro × comprimento da descrição do vendedor
+    // "rosca 160 por 14 metros" → busca "chupim 160 x 14"
+    if (item.categoria?.toUpperCase() === 'TRANSPORTADOR' && tentativa === 'precisa') {
+      const textoRef = item.busca || item.descricao_vendedor || ''
+      // Extrai diâmetro (100-300) e comprimento (1-20) do texto
+      const dimMatch = textoRef.match(/(\d{3})\s*(?:x|por|×)\s*(\d{1,2}(?:[.,]\d)?)/i)
+        || textoRef.match(/(\d{3})\s+(\d{1,2}(?:[.,]\d)?)\s*m/i)
+        || textoRef.match(/(\d{3})\s+(\d{1,2})/i)
+      if (dimMatch) {
+        const diam = dimMatch[1]  // 160, 210
+        const comp = dimMatch[2].replace('.', ',')  // 14 → 14 ou 14.0 → 14,0
+        const tipo = (diam === '160' || diam === '210') ? 'chupim' : 'TH'
+        // Busca exata: "chupim 160 x 14" acha "chupim 160 x 14,0 m"
+        const buscaExata = `${tipo} ${diam} x ${comp}`
+        q = q.eq('subcategoria', tipo === 'chupim' ? 'CHUPIM' : 'HELICOIDAL')
+        q = q.ilike('descricao', `%${buscaExata}%`)
+        return q
+      }
+    }
+
     if (tentativa === 'precisa') {
       if (item.subcategoria) q = q.eq('subcategoria', item.subcategoria.toUpperCase())
       if (item.busca) {
-        // Normaliza vírgula/ponto: LLM pode passar "160 x 14" mas catálogo tem "160 x 14,0"
         const b = item.busca
         const bComVirgula = b.replace(/\./g, ',')
         const bComPonto = b.replace(/,/g, '.')
