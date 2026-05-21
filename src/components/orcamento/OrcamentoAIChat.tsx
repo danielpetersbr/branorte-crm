@@ -476,8 +476,14 @@ export function OrcamentoAIChat({
         </button>
       )}
 
-      {/* Drawer */}
+      {/* Drawer + backdrop */}
       {open && (
+        <>
+        {/* Backdrop — clicável pra fechar */}
+        <div
+          className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[2px] animate-in fade-in duration-200 sm:hidden"
+          onClick={() => toggleDrawer(false)}
+        />
         <div className="fixed top-0 left-0 z-50 h-screen w-full sm:w-[380px] bg-bg border-r border-border shadow-2xl flex flex-col animate-in slide-in-from-left duration-200">
           {/* Header */}
           <div className="px-4 py-3 border-b border-border flex items-center gap-3 bg-gradient-to-r from-surface-2 to-surface-2/40">
@@ -631,6 +637,7 @@ export function OrcamentoAIChat({
             )}
           </div>
         </div>
+        </>
       )}
     </>
   )
