@@ -97,7 +97,7 @@ export function OrcamentoAIChat({
   const [audioReview, setAudioReview] = useState<{ blob: Blob; url: string; duracao: number } | null>(null)
   const [reproduzindo, setReproduzindo] = useState(false)
   const [duracaoAtual, setDuracaoAtual] = useState(0)
-  const [nivelVolume, setNivelVolume] = useState<number[]>(new Array(24).fill(0))
+  const [nivelVolume, setNivelVolume] = useState<number[]>(new Array(30).fill(0))
 
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -257,6 +257,7 @@ export function OrcamentoAIChat({
       const source = audioCtx.createMediaStreamSource(stream)
       const analyser = audioCtx.createAnalyser()
       analyser.fftSize = 256
+      analyser.smoothingTimeConstant = 0.82
       source.connect(analyser)
       audioCtxRef.current = audioCtx
       analyserRef.current = analyser
@@ -279,7 +280,7 @@ export function OrcamentoAIChat({
         analyserRef.current = null
         if (rafRef.current) cancelAnimationFrame(rafRef.current)
         rafRef.current = null
-        setNivelVolume(new Array(24).fill(0))
+        setNivelVolume(new Array(30).fill(0))
         setDuracaoAtual(0)
 
         if (blob.size === 0) return
@@ -294,16 +295,22 @@ export function OrcamentoAIChat({
       setDuracaoAtual(0)
 
       // Loop de visualização
-      const dataArray = new Uint8Array(analyser.frequencyBinCount)
+      const dataArray = new Uint8Array(analyser.frequencyBinCount) // 128 bins
+      const NUM_BARS = 30
       const loop = () => {
         if (!analyserRef.current) return
         analyserRef.current.getByteFrequencyData(dataArray)
-        // Pega 24 amostras espaçadas pra barras
+        // Collapse 128 frequency bins → 30 bars by averaging buckets
         const bars: number[] = []
-        const step = Math.floor(dataArray.length / 24)
-        for (let i = 0; i < 24; i++) {
-          const v = dataArray[i * step] / 255
-          bars.push(v)
+        const binCount = dataArray.length // 128
+        const binPerBar = binCount / NUM_BARS
+        for (let i = 0; i < NUM_BARS; i++) {
+          const start = Math.floor(i * binPerBar)
+          const end = Math.floor((i + 1) * binPerBar)
+          let sum = 0
+          for (let j = start; j < end; j++) sum += dataArray[j]
+          const avg = sum / (end - start)
+          bars.push(avg / 255) // normalize 0-1
         }
         setNivelVolume(bars)
         setDuracaoAtual(Math.floor((performance.now() - startTimeRef.current) / 1000))
@@ -335,7 +342,7 @@ export function OrcamentoAIChat({
         analyserRef.current = null
         if (rafRef.current) cancelAnimationFrame(rafRef.current)
         rafRef.current = null
-        setNivelVolume(new Array(24).fill(0))
+        setNivelVolume(new Array(30).fill(0))
       }
       recorderRef.current.stop()
     } else {
@@ -660,57 +667,98 @@ function BarraGravacao({
   onCancelar: () => void
   onParar: () => void
 }) {
+  // Each bar: half-height above and below center → symmetric waveform
+  // Container height is 48px → each half is 24px max usable
+  const HALF_MAX_PX = 20 // max px per half-bar (silence floor = 3px)
+  const SILENCE_PX = 3   // minimum half-bar size so bars are always visible
+
   return (
     <div className="flex items-center gap-2.5">
+      {/* Cancel / discard */}
       <button
         onClick={onCancelar}
-        className="h-11 w-11 shrink-0 rounded-full bg-surface-3 text-red-400 hover:bg-red-500/10 hover:ring-2 hover:ring-red-500/30 flex items-center justify-center transition-all"
+        className="h-11 w-11 shrink-0 rounded-full bg-surface-3 text-ink-muted hover:text-red-400 hover:bg-red-500/10 hover:ring-2 hover:ring-red-500/20 flex items-center justify-center transition-all"
         title="Cancelar (descartar)"
       >
         <Trash2 className="h-4 w-4" />
       </button>
 
-      <div className="flex-1 h-12 rounded-2xl bg-gradient-to-r from-red-950/60 to-red-900/30 border border-red-500/30 flex items-center gap-3 px-3 overflow-hidden relative">
-        {/* Subtle glow layer behind bars */}
-        <div className="absolute inset-0 bg-red-500/5 rounded-2xl pointer-events-none" />
-
-        {/* Red dot with ring glow */}
-        <span className="relative shrink-0 flex h-3 w-3">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-50" />
-          <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500 shadow-[0_0_6px_2px_rgba(239,68,68,0.5)]" />
+      {/* Waveform container */}
+      <div
+        className="flex-1 h-12 rounded-2xl flex items-center gap-2.5 px-3 overflow-hidden relative"
+        style={{
+          background: 'rgba(15,23,30,0.72)',
+          border: '1px solid rgba(255,255,255,0.07)',
+          backdropFilter: 'blur(8px)',
+        }}
+      >
+        {/* REC indicator */}
+        <span className="relative shrink-0 flex h-2.5 w-2.5">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-60" />
+          <span
+            className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"
+            style={{ boxShadow: '0 0 6px 2px rgba(239,68,68,0.55)' }}
+          />
         </span>
 
-        {/* Waveform bars */}
-        <div className="flex-1 flex items-center gap-[2.5px] h-7">
+        {/* Symmetric waveform bars */}
+        <div className="flex-1 flex items-center justify-center gap-[2px] h-full">
           {niveis.map((n, i) => {
-            const pct = Math.max(10, Math.round(n * 100))
-            // Taper ends for a more organic shape
-            const edge = i === 0 || i === niveis.length - 1 ? 0.4 : i === 1 || i === niveis.length - 2 ? 0.65 : 1
-            const finalPct = Math.max(10, Math.round(pct * edge))
+            // Half height in pixels: min SILENCE_PX, max HALF_MAX_PX
+            const halfPx = Math.max(SILENCE_PX, Math.round(n * HALF_MAX_PX))
+            // Taper the outermost bars slightly for organic look
+            const edgeFactor =
+              i === 0 || i === niveis.length - 1 ? 0.45
+              : i === 1 || i === niveis.length - 2 ? 0.68
+              : i === 2 || i === niveis.length - 3 ? 0.84
+              : 1
+            const finalHalf = Math.max(SILENCE_PX, Math.round(halfPx * edgeFactor))
+            const totalPx = finalHalf * 2
+
+            // Green gradient: brighter at center, fades toward tips
+            const alpha = 0.55 + n * 0.45
+            const glow = n > 0.35 ? `0 0 ${Math.round(n * 8)}px rgba(16,185,129,${n * 0.65})` : 'none'
+
             return (
               <div
                 key={i}
-                className="flex-1 rounded-full"
                 style={{
-                  height: `${finalPct}%`,
-                  minHeight: '3px',
-                  background: `rgba(252,165,165,${0.55 + n * 0.45})`,
-                  boxShadow: n > 0.4 ? `0 0 ${Math.round(n * 6)}px rgba(239,68,68,${n * 0.6})` : 'none',
-                  transition: 'height 80ms cubic-bezier(0.4,0,0.2,1), box-shadow 80ms ease',
+                  width: '3px',
+                  height: `${totalPx}px`,
+                  minHeight: `${SILENCE_PX * 2}px`,
+                  borderRadius: '999px',
+                  background: `linear-gradient(
+                    to bottom,
+                    rgba(110,231,183,${alpha * 0.7}),
+                    rgba(16,185,129,${alpha}),
+                    rgba(5,150,105,${alpha * 0.9}),
+                    rgba(16,185,129,${alpha}),
+                    rgba(110,231,183,${alpha * 0.7})
+                  )`,
+                  boxShadow: glow,
+                  transition: 'height 80ms cubic-bezier(0.25,0.46,0.45,0.94)',
+                  willChange: 'height',
+                  flexShrink: 0,
                 }}
               />
             )
           })}
         </div>
 
-        <span className="text-[12px] font-mono text-red-300/90 tabular-nums shrink-0">
+        {/* Timer */}
+        <span
+          className="tabular-nums shrink-0 text-[12px]"
+          style={{ fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', color: 'rgba(110,231,183,0.85)' }}
+        >
           {formatTempo(duracao)}
         </span>
       </div>
 
+      {/* Stop & send */}
       <button
         onClick={onParar}
-        className="h-11 w-11 shrink-0 rounded-full bg-accent text-white flex items-center justify-center hover:scale-105 transition-all shadow-md shadow-accent/30"
+        className="h-11 w-11 shrink-0 rounded-full bg-accent text-white flex items-center justify-center hover:scale-105 transition-all"
+        style={{ boxShadow: '0 4px 14px rgba(16,185,129,0.35)' }}
         title="Parar e enviar"
       >
         <Check className="h-5 w-5" />
