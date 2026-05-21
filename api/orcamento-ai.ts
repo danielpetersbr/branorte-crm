@@ -103,7 +103,7 @@ Vendedor usa termos coloquiais que precisam mapear pras categorias certas:
 | "transportador" / "transportador helicoidal" | TRANSPORTADOR — mesma regra: 160/210 = CHUPIM, outros = TH | idem |
 | "TH" / "TH 200" / "calha TH"               | TRANSPORTADOR (subcategoria HELICOIDAL) | busca="TH" + diâmetro/comprimento. SÓ use TH se diâmetro for 100, 125, 150 ou 200 |
 | "chupim" / "chupim 160" / "chupim 210"    | TRANSPORTADOR (subcategoria CHUPIM)     | busca="chupim" + diâmetro/comprimento |
-| "caçamba" / "caçamba de pesagem"           | CACAMBA (capacidade em litros)           | capacidade_min/max |
+| "caçamba" / "caçamba de pesagem"           | CACAMBA_PESAGEM (capacidade em litros)   | capacidade_min/max (litros) ou busca="1900" |
 | "caçamba transportador 210×5m"             | NÃO existe — é confusão de termos. Pergunta ao vendedor: "é caçamba de pesagem (litros) OU transportador helicoidal 210 x 5m? São equipamentos diferentes." |
 | "moinho" / "moinho de martelo"             | MOINHO                                   | motor_cv exato |
 | "misturador" / "misturador horizontal"     | MISTURADOR                               | capacidade em LITROS (não kg) |
@@ -679,7 +679,9 @@ async function tool_consultar_precos(supa: SupabaseClient, args: Record<string, 
     .order('ordem')
     .limit(limit)
 
-  if (categoria) q = q.eq('categoria', categoria.toUpperCase())
+  // Normalizar categorias: LLM pode mandar "CACAMBA" mas tabela tem "CACAMBA_PESAGEM"
+  const catNorm = categoria?.toUpperCase() === 'CACAMBA' ? 'CACAMBA_PESAGEM' : categoria?.toUpperCase()
+  if (catNorm) q = q.eq('categoria', catNorm)
   if (busca) {
     const buscaNormalizada = busca.replace(/\./g, ',')
     const buscaAlternativa = busca.replace(/,/g, '.')
@@ -720,7 +722,7 @@ async function tool_consultar_precos(supa: SupabaseClient, args: Record<string, 
       .eq('ativo', true)
       .order('valor_equipamento', { ascending: true })
       .limit(8)
-    if (categoria) q2 = q2.eq('categoria', categoria.toUpperCase())
+    if (catNorm) q2 = q2.eq('categoria', catNorm)
     const { data: data2 } = await q2
     if (data2 && data2.length > 0) {
       return {
@@ -1045,7 +1047,9 @@ async function tool_compor_orcamento_composto(
       .order('valor_equipamento', { ascending: true })
       .limit(8)
 
-    if (item.categoria) q = q.eq('categoria', item.categoria.toUpperCase())
+    // Normalizar categorias
+    const catNorm2 = item.categoria?.toUpperCase() === 'CACAMBA' ? 'CACAMBA_PESAGEM' : item.categoria?.toUpperCase()
+    if (catNorm2) q = q.eq('categoria', catNorm2)
 
     // SILOS: SEMPRE buscar por capacidade_ton, nunca por texto.
     // Se LLM mandou busca textual pra silo (ex: "silo 40"), extrai o número e usa capacidade_ton.
