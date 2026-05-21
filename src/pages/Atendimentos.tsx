@@ -20,6 +20,19 @@ import { useAtendimentos, useAtendimentoKpis, useAtendimentoResponsaveis, useDel
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 
+function normalizarAnimal(v: string): string {
+  const s = v.toLowerCase().replace(/[^\w\sáéíóúâêîôûãõç]/g, '').trim()
+  if (/bovin|gado|boi|vaca|nelore|angus/.test(s)) return 'Bovinos'
+  if (/su[ií]n|porco|leita/.test(s)) return 'Suínos'
+  if (/ave|frango|galinha|poedeira|pinto/.test(s)) return 'Aves'
+  if (/equin|cavalo|[ée]gua/.test(s)) return 'Equinos'
+  if (/capr|cabr|ovino|ovelha|bode/.test(s)) return 'Caprinos/Ovinos'
+  if (/peix|piscicult|til[aá]pia/.test(s)) return 'Peixes'
+  if (/misto|diversos|v[aá]rios|tudo/.test(s)) return 'Diversos'
+  if (s === 'null') return ''
+  return v
+}
+
 const DATA_PRESETS: { value: DataPreset; label: string }[] = [
   { value: 'hoje',  label: 'Hoje' },
   { value: 'ontem', label: 'Ontem' },
@@ -727,15 +740,15 @@ export function Atendimentos() {
                         </td>
                         {/* ANIMAL */}
                         <td className="hidden 2xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
-                          {r.qual_animal ? (
-                            <span className="text-[12px] text-ink-muted">{r.qual_animal}</span>
+                          {r.qual_animal && r.qual_animal !== 'null' ? (
+                            <span className="text-[12px] text-ink-muted">{normalizarAnimal(r.qual_animal)}</span>
                           ) : (
                             <EmptyCell />
                           )}
                         </td>
                         {/* QTD (cabeças) — V16.24: vazio quando finalidade=revenda (vendedor não pergunta qtd nesse caso) */}
                         <td className="hidden 2xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
-                          {r.quantos_animais ? (
+                          {r.quantos_animais && r.quantos_animais !== 'null' ? (
                             <span className="text-[12px] text-ink-muted tabular-nums">{r.quantos_animais}</span>
                           ) : (
                             <EmptyCell />
