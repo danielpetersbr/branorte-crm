@@ -1053,11 +1053,14 @@ async function tool_compor_orcamento_composto(
     if (catNorm2) q = q.eq('categoria', catNorm2)
 
     // SILOS: SEMPRE buscar por capacidade_ton, nunca por texto.
-    // Se LLM mandou busca textual pra silo (ex: "silo 40"), extrai o número e usa capacidade_ton.
     if (item.categoria?.toUpperCase() === 'SILO' && tentativa === 'precisa') {
-      // Extrai tonelagem da busca ou descricao
-      const textoRef = item.busca || item.descricao_vendedor || ''
-      const numMatch = textoRef.match(/(\d+)\s*(ton|t\b)/i) || textoRef.match(/(\d+)/)
+      // Extrai tonelagem de TODOS os textos disponíveis
+      const todosTextos = [item.descricao_vendedor || '', item.busca || ''].join(' ')
+      // Prioriza "XX toneladas" sobre número solto
+      const numMatch = todosTextos.match(/(\d+)\s*(?:ton|tonelada)/i)
+        || todosTextos.match(/silo\s*(?:de\s*)?(\d+)/i)
+        || todosTextos.match(/(\d+)\s*t\b/i)
+        || todosTextos.match(/(\d+)/)
       if (numMatch) {
         const ton = parseInt(numMatch[1])
         if (ton > 0 && ton < 10000) {
