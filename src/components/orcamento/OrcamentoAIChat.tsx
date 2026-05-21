@@ -478,7 +478,7 @@ export function OrcamentoAIChat({
 
       {/* Drawer */}
       {open && (
-        <div className="fixed top-0 left-0 z-50 h-screen w-full sm:w-[460px] bg-bg border-r border-border shadow-2xl flex flex-col animate-in slide-in-from-left duration-200">
+        <div className="fixed top-0 left-0 z-50 h-screen w-full sm:w-[380px] bg-bg border-r border-border shadow-2xl flex flex-col animate-in slide-in-from-left duration-200">
           {/* Header */}
           <div className="px-4 py-3 border-b border-border flex items-center gap-3 bg-gradient-to-r from-surface-2 to-surface-2/40">
             <div className="h-10 w-10 rounded-full bg-gradient-to-br from-accent/20 to-accent/10 flex items-center justify-center text-accent ring-1 ring-accent/20">
