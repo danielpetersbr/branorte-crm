@@ -191,6 +191,14 @@ WORKFLOW correto:
 - "mini fábrica" / "minifábrica" / "mini fab" / "mini" (sozinho com número)
 - "compacta" / "fábrica compacta"
 - "fábrica de ração" + dimensão (ex: "fábrica de ração de 300")
+- "júnior" / "junior" / "JR" = Mini Fábrica Compacta JR (modelo mais básico: 30 kg/h, 150 kg)
+
+MODELOS DE MINI FÁBRICA:
+- "Mini Fábrica JR" / "minifábrica júnior" / "mini júnior" = 30 kg/h, 150 kg (o menor modelo)
+  → listar_modelos_compacta(linha="JR") — NÃO é mesma coisa que "Compacta 01 Master JR 75-150"!
+- "Mini Fábrica 75-300" / "minifábrica de 75" = 75 kg/h, 300 kg (= Compacta 01 75-300)
+  → listar_modelos_compacta(linha="Mini", producao_min=65, producao_max=85)
+- "minifábrica de 300" (sem especificar linha) = 300 kg/h → busca qualquer linha com producao=300
 
 QUANDO QUALQUER um desses termos aparece COM um número (ex: "mini fábrica de 300",
 "compacta 200", "minifábrica 150 kg"), o número É a PRODUÇÃO em kg/h.
