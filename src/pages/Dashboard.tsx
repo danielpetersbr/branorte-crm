@@ -109,8 +109,8 @@ export function Dashboard() {
     { label: preset ? 'Leads no período' : 'Total de leads', kpi: data.kpiTotal, icon: Users, color: COLORS.ink, sub: preset ? periodoLabel.toLowerCase() : 'desde o início' },
     { label: 'Hoje',           kpi: data.kpiHoje, icon: TrendingUp, color: COLORS.info, sub: 'leads novos' },
     { label: 'Quentes',        kpi: data.kpiQuentes, icon: Flame, color: COLORS.danger, sub: 'querem comprar agora' },
-    { label: 'Qualificados',   kpi: data.kpiQualificados, icon: CheckCircle2, color: COLORS.accent, sub: 'preencheram tudo' },
-    { label: 'Tocou no botão', kpi: data.kpiBotao, icon: Hand, color: 'hsl(280 65% 60%)', sub: 'completaram fluxo' },
+    { label: 'Qualificados',   kpi: data.kpiQualificados, icon: CheckCircle2, color: COLORS.accent, sub: 'querem produto Branorte' },
+    { label: 'Com vendedor',   kpi: data.kpiBotao, icon: Hand, color: 'hsl(280 65% 60%)', sub: 'vendedor atribuído' },
   ]
 
   return (

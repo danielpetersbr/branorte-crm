@@ -306,22 +306,20 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
 
   // ============================ KPIs com tendencia =========================
   const computeKpis = (rs: RawRow[]) => {
-    let hoje = 0, quentes = 0, qualificados = 0, tocouBotaoKpi = 0
+    let hoje = 0, quentes = 0, qualificados = 0, comVendedor = 0
     for (const r of rs) {
-      // "Hoje" = teve atividade hoje (last_message_at), nao chegada (data)
       const ativIso = r.last_message_at ?? r.data
       const day = dayKey(ativIso)
       if (day === todayIso) hoje++
-      const fin = normFinalidade(r.finalidade_fabrica)
-      const animal = normAnimal(r.qual_animal)
-      const qtd = r.quantos_animais?.trim() || null
       const momento = normQuando(r.quando_investir)
       if (momento === 'Agora') quentes++
-      if (fin && animal && qtd && momento) qualificados++
-      // Tocou no botao = tocou em qualquer momento (nao exige qualificar antes)
-      if (r.tocou_botao_em) tocouBotaoKpi++
+      // Qualificado = motivo preenchido (quer algo que a Branorte fabrica)
+      const motivo = r.motivo_contato?.trim() || null
+      if (motivo) qualificados++
+      // Com vendedor atribuído
+      if (r.responsavel?.trim()) comVendedor++
     }
-    return { total: rs.length, hoje, quentes, qualificados, tocouBotaoKpi }
+    return { total: rs.length, hoje, quentes, qualificados, comVendedor }
   }
 
   const cur = computeKpis(filtered)
@@ -340,16 +338,16 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
   const kpiHoje = mkKpi(cur.hoje, prevK.hoje, 'hoje')
   const kpiQuentes = mkKpi(cur.quentes, prevK.quentes, 'quentes')
   const kpiQualificados = mkKpi(cur.qualificados, prevK.qualificados, 'qualificados')
-  const kpiBotao = mkKpi(cur.tocouBotaoKpi, prevK.tocouBotaoKpi, 'botao')
+  const kpiBotao = mkKpi(cur.comVendedor, prevK.comVendedor, 'botao')
 
   // ============================ Restante (sobre `filtered`) ================
 
   const total = filtered.length
   // Funil de qualificação IA (esquerdo)
   let funilEntrou = 0        // total leads no período
-  let funilEngajou = 0       // respondeu à IA (tem last_message_at > created_at OU status_real != 'novo')
-  let funilQualificou = 0    // motivo_contato AND finalidade_fabrica preenchidos
-  let funilAtribuido = 0     // tem responsavel (vendedor atribuído)
+  let funilEngajou = 0       // respondeu pelo menos 1 pergunta da IA
+  let funilQualificou = 0    // motivo preenchido (quer algo que a Branorte fabrica)
+  let funilVendedor = 0      // passou pro vendedor (tem responsavel)
   let funilOrcamento = 0     // orcamento_enviado = true OR orcamento_valor > 0
   let funilFechou = 0        // status_real = 'fechou' OR status_vendedor = 'fechou'
 
@@ -425,24 +423,22 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
     // --- Funil de qualificação IA (esquerdo) ---
     funilEntrou++
 
-    // Engajou = respondeu à IA (last_message_at posterior a created_at, ou status_real != 'novo')
     const statusLower = (r.status_real || '').toLowerCase()
-    const engajou = (
-      (r.last_message_at && r.data && r.last_message_at > r.data) ||
-      (statusLower && statusLower !== 'novo')
-    )
+
+    // Engajou = respondeu pelo menos 1 pergunta da IA (tem motivo OU finalidade OU animal OU tocou botão)
+    const engajou = !!motivo || !!fin || !!animal || !!r.tocou_botao_em
     if (engajou) funilEngajou++
 
-    // Qualificou = tem motivo_contato E finalidade_fabrica preenchidos
-    const isQualificado = !!motivo && !!fin
+    // Qualificou = motivo preenchido (quer algo que a Branorte fabrica)
+    const isQualificado = !!motivo
     if (isQualificado) {
       funilQualificou++
       qualificadosTotal++
     }
 
-    // Atribuído = tem responsavel (vendedor)
+    // Passou pro vendedor = tem responsavel
     const vendedor = r.responsavel?.trim() || null
-    if (vendedor) funilAtribuido++
+    if (vendedor) funilVendedor++
 
     // Orçamento enviado = orcamento_enviado = true OU orcamento_valor > 0
     if (r.orcamento_enviado || (r.orcamento_valor && r.orcamento_valor > 0)) funilOrcamento++
@@ -560,7 +556,7 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
     { etapa: 'Entrou',              valor: funilEntrou },
     { etapa: 'Engajou',             valor: funilEngajou },
     { etapa: 'Qualificou',          valor: funilQualificou },
-    { etapa: 'Atribuído',           valor: funilAtribuido },
+    { etapa: 'Passou pro vendedor', valor: funilVendedor },
     { etapa: 'Orçamento enviado',   valor: funilOrcamento },
     { etapa: 'Fechou',              valor: funilFechou },
   ]
