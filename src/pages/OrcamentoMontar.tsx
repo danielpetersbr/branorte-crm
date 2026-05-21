@@ -403,12 +403,11 @@ export function OrcamentoMontar() {
     () => motoresAgrupados.reduce((s, m) => s + m.valor_total, 0),
     [motoresAgrupados],
   )
-  // Valor dos acessórios = % do total de equipamentos (arredondado em centavos)
+  // Valor dos acessórios = % do total de equipamentos (arredondado pra cima, sem centavos)
   const valorAcessorios = useMemo(() => {
     if (!acessorios) return 0
-    // Prioriza valorFixo (vem de modelo carregado direto do banco - sem perder centavos)
-    if (acessorios.valorFixo != null && acessorios.valorFixo > 0) return acessorios.valorFixo
-    return Math.round((totalItems * acessorios.pct) / 100 * 100) / 100
+    if (acessorios.valorFixo != null && acessorios.valorFixo > 0) return Math.ceil(acessorios.valorFixo)
+    return Math.ceil((totalItems * acessorios.pct) / 100)
   }, [acessorios, totalItems])
   const totalEquip = totalItems + valorAcessorios   // entra no "VALOR TOTAL DE EQUIPAMENTOS"
   const totalComponentesExtras = useMemo(
