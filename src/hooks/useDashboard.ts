@@ -299,17 +299,17 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
   const prev = previousRange(range)
   const todayIso = now.toISOString().slice(0, 10)
 
-  // Filtra rows pra periodo atual usando ATIVIDADE (last_message_at).
-  // Isso alinha com /atendimentos. Lead antigo que voltou a falar hoje conta como "Hoje".
-  const filtered = range ? rows.filter(r => inRange(r.last_message_at ?? r.data, range)) : rows
-  const filteredPrev = prev ? rows.filter(r => inRange(r.last_message_at ?? r.data, prev)) : []
+  // Filtra rows por DATA DE CHEGADA (data/created_at), igual /atendimentos.
+  // Garante que Dashboard e Atendimentos mostram os mesmos números.
+  const filtered = range ? rows.filter(r => inRange(r.data, range)) : rows
+  const filteredPrev = prev ? rows.filter(r => inRange(r.data, prev)) : []
 
   // ============================ KPIs com tendencia =========================
   const computeKpis = (rs: RawRow[]) => {
     let hoje = 0, quentes = 0, qualificados = 0, comVendedor = 0
     for (const r of rs) {
-      const ativIso = r.last_message_at ?? r.data
-      const day = dayKey(ativIso)
+      // "Hoje" = chegou hoje (data de criação), alinhado com /atendimentos
+      const day = dayKey(r.data)
       if (day === todayIso) hoje++
       // Quente = volume alto de animais (Bovinos/Suínos: 300+ | Aves: 5.000+)
       const qtdStr = (r.quantos_animais || '').replace(/[^\d]/g, '')
