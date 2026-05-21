@@ -70,12 +70,6 @@ interface Props {
   onDrawerToggle?: (open: boolean) => void
 }
 
-const SUGESTOES_INICIAIS = [
-  { icon: '📋', text: 'Compacta 02 modelo 200-1000 trifásica' },
-  { icon: '🏗️', text: 'Moega + rosca 210x14 + silo 40t + moinho 20cv' },
-  { icon: '🔧', text: 'Chupim 160x6m + chupim 160x5m + caçamba 1900L' },
-  { icon: '🏭', text: 'Compacta 03 modelo 300-1000 com ensacadeira' },
-]
 
 export function OrcamentoAIChat({
   contexto,
@@ -508,34 +502,30 @@ export function OrcamentoAIChat({
           </div>
 
           {/* Histórico */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-3">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 flex flex-col gap-3">
             {messages.length === 0 && (
-              <div className="space-y-4 pt-2">
-                <div className="text-center px-4">
-                  <div className="text-[17px] font-bold text-ink mb-1.5">Monta o orçamento por voz ou texto</div>
-                  <div className="text-[12.5px] text-ink-muted leading-relaxed">
-                    Fale os equipamentos e quantidades — eu busco no catálogo e adiciono direto.
+              <div className="flex flex-col items-center justify-center h-full min-h-[300px] px-6 text-center select-none">
+                {/* Icon glow */}
+                <div className="relative mb-6">
+                  <div className="absolute inset-0 rounded-full bg-accent/20 blur-2xl scale-150 opacity-60" />
+                  <div className="relative h-16 w-16 rounded-2xl bg-gradient-to-br from-accent/20 to-accent/5 border border-accent/20 flex items-center justify-center shadow-lg">
+                    <Sparkles className="h-7 w-7 text-accent" />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 px-1">
-                  {SUGESTOES_INICIAIS.map(s => (
-                    <button
-                      key={s.text}
-                      onClick={() => enviar(s.text)}
-                      className="text-left p-3 rounded-xl bg-surface-2 hover:bg-surface-3 border border-border/40 hover:border-accent/40 transition-all group"
-                    >
-                      <div className="text-[18px] mb-1">{s.icon}</div>
-                      <div className="text-[12px] font-medium text-ink-muted group-hover:text-ink leading-snug">{s.text}</div>
-                    </button>
-                  ))}
-                </div>
+                <h2 className="text-[18px] font-bold text-ink leading-tight mb-2">
+                  Monta o orçamento<br />por voz ou texto
+                </h2>
+                <p className="text-[12.5px] text-ink-muted leading-relaxed max-w-[240px]">
+                  Fale os equipamentos e quantidades — busco no catálogo e adiciono direto.
+                </p>
 
-                <div className="text-center">
-                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-2/60 border border-border/30">
-                    <Mic className="h-3.5 w-3.5 text-accent" />
-                    <span className="text-[11px] text-ink-faint">Aperte o microfone e fale tudo de uma vez</span>
+                {/* Mic hint */}
+                <div className="mt-8 flex flex-col items-center gap-2">
+                  <div className="h-12 w-12 rounded-full bg-accent/10 border border-accent/25 flex items-center justify-center animate-pulse">
+                    <Mic className="h-5 w-5 text-accent" />
                   </div>
+                  <span className="text-[11px] text-ink-faint">Toque no microfone e fale</span>
                 </div>
               </div>
             )}
@@ -679,27 +669,51 @@ function BarraGravacao({
       >
         <Trash2 className="h-4 w-4" />
       </button>
-      <div className="flex-1 h-11 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center gap-3 px-3">
-        <span className="inline-block h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse shrink-0" />
-        <div className="flex-1 flex items-center gap-[2px] h-6">
-          {niveis.map((n, i) => (
-            <div
-              key={i}
-              className="flex-1 bg-red-400 rounded-full transition-all duration-75"
-              style={{ height: `${Math.max(8, n * 100)}%`, minHeight: '3px' }}
-            />
-          ))}
+
+      <div className="flex-1 h-12 rounded-2xl bg-gradient-to-r from-red-950/60 to-red-900/30 border border-red-500/30 flex items-center gap-3 px-3 overflow-hidden relative">
+        {/* Subtle glow layer behind bars */}
+        <div className="absolute inset-0 bg-red-500/5 rounded-2xl pointer-events-none" />
+
+        {/* Red dot with ring glow */}
+        <span className="relative shrink-0 flex h-3 w-3">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-50" />
+          <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500 shadow-[0_0_6px_2px_rgba(239,68,68,0.5)]" />
+        </span>
+
+        {/* Waveform bars */}
+        <div className="flex-1 flex items-center gap-[2.5px] h-7">
+          {niveis.map((n, i) => {
+            const pct = Math.max(10, Math.round(n * 100))
+            // Taper ends for a more organic shape
+            const edge = i === 0 || i === niveis.length - 1 ? 0.4 : i === 1 || i === niveis.length - 2 ? 0.65 : 1
+            const finalPct = Math.max(10, Math.round(pct * edge))
+            return (
+              <div
+                key={i}
+                className="flex-1 rounded-full"
+                style={{
+                  height: `${finalPct}%`,
+                  minHeight: '3px',
+                  background: `rgba(252,165,165,${0.55 + n * 0.45})`,
+                  boxShadow: n > 0.4 ? `0 0 ${Math.round(n * 6)}px rgba(239,68,68,${n * 0.6})` : 'none',
+                  transition: 'height 80ms cubic-bezier(0.4,0,0.2,1), box-shadow 80ms ease',
+                }}
+              />
+            )
+          })}
         </div>
-        <span className="text-[12px] font-mono text-red-300 tabular-nums shrink-0">
+
+        <span className="text-[12px] font-mono text-red-300/90 tabular-nums shrink-0">
           {formatTempo(duracao)}
         </span>
       </div>
+
       <button
         onClick={onParar}
-        className="h-11 w-11 shrink-0 rounded-full bg-accent text-white flex items-center justify-center hover:scale-105 transition-all shadow-md"
-        title="Parar e revisar"
+        className="h-11 w-11 shrink-0 rounded-full bg-accent text-white flex items-center justify-center hover:scale-105 transition-all shadow-md shadow-accent/30"
+        title="Parar e enviar"
       >
-        <Check className="h-4.5 w-4.5" />
+        <Check className="h-5 w-5" />
       </button>
     </div>
   )
