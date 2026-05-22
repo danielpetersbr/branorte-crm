@@ -20,7 +20,7 @@ const RELEVANT_PROPS = [
   'font-family', 'font-size', 'font-weight', 'font-style', 'color',
   'background-color', 'background',
   'text-align', 'text-decoration', 'text-transform', 'letter-spacing',
-  'line-height',
+  'line-height', 'white-space',
   'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
   'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
   'border', 'border-top', 'border-right', 'border-bottom', 'border-left',
@@ -56,7 +56,11 @@ function flexToTables(root: HTMLElement) {
       const ccs = window.getComputedStyle(c)
       return ccs.display !== 'none'
     }) as HTMLElement[]
-    if (children.length < 2) continue  // 1 filho nao precisa de tabela
+    if (children.length < 2) {
+      // Mesmo com 1 filho, converte o display pra block pra html-to-docx não ignorar
+      el.style.display = 'block'
+      continue
+    }
 
     // Cria <table> equivalente
     const table = document.createElement('table')
@@ -224,8 +228,9 @@ export async function gerarDocxViaHtml(previewProps: OrcamentoPreviewProps): Pro
     // 1) Renderiza preview no modo render (sem botoes de edit)
     root = createRoot(host)
     root.render(createElement(OrcamentoPreview, { ...previewProps, renderMode: true }))
-    // Espera paint inicial
+    // Espera paint inicial + layout estabilizar (rAF duplo + setTimeout pra segurança)
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+    await new Promise(r => setTimeout(r, 200))
 
     // 2) Espera todas as imagens carregarem (foto principal + fotos dos itens)
     await waitForImages(host)
