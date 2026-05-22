@@ -573,7 +573,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             parent_numero_base: parentOrcamento.numero_base,
           })
         : saveMode === 'update' && editingId
-        ? await atualizar.mutateAsync({ id: editingId, ...payloadComum, status: 'rascunho' })
+        ? await atualizar.mutateAsync({ id: editingId, ...payloadComum })
         : await criar.mutateAsync({
             ...payloadComum,
             status: 'rascunho',
