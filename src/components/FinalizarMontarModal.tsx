@@ -1276,7 +1276,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
               Removido botao 'Só baixar' que causava confusao — user clicava
               nele por engano e o arquivo nao ia pra pasta. */}
           <button
-            onClick={() => handleGerar({ salvarNaPasta: false, salvarNoServidor: true, pdfQuality: pdfAltaQualidade ? 'high' : 'normal' })}
+            onClick={() => handleGerar({ salvarNaPasta: temPastaLocal, salvarNoServidor: !temPastaLocal, pdfQuality: pdfAltaQualidade ? 'high' : 'normal' })}
             disabled={gerando || !cliNome.trim()}
             className="text-[13px] px-5 py-2.5 rounded bg-accent hover:bg-accent/90 text-white font-bold disabled:opacity-50 flex items-center justify-center gap-1.5 min-h-[44px] shadow-sm flex-1 sm:flex-initial"
             title="Salva pra pasta Z:\1 - Comercial\3 - Orçamento — sincronizado pelo PC do escritório"
