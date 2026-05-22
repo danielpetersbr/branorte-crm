@@ -1924,9 +1924,21 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                               />
                                             )}
                                           </div>
-                                          <div className={`text-[11px] font-bold mt-1 tabular-nums ${dataVendaTxt ? 'text-emerald-700' : 'text-amber-600'}`}>
-                                            📅 {dataVendaTxt ? dataCalculada(p) : 'preencha Data da venda no topo'}
-                                          </div>
+                                          {dataVendaTxt && (
+                                            <div className="flex items-center gap-1 mt-1">
+                                              <input
+                                                type="date"
+                                                value={brToIso(dataCalculada(p))}
+                                                onChange={e => {
+                                                  if (e.target.value) {
+                                                    updateParcela(p.id, { dataTipo: 'data_fixa', dataFixa: isoToBr(e.target.value) })
+                                                  }
+                                                }}
+                                                className="text-[11px] font-bold text-emerald-700 bg-transparent border-none cursor-pointer tabular-nums p-0 focus:outline-none"
+                                                title="Clique pra escolher outra data"
+                                              />
+                                            </div>
+                                          )}
                                         </div>
                                       ) : (
                                         <div>
