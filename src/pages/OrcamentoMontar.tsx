@@ -221,7 +221,7 @@ export function OrcamentoMontar() {
   const [fotoPrincipal, setFotoPrincipal] = useState<string | null>(null)
   // Desconto + termos editáveis inline no preview
   const [descontoCfg, setDescontoCfg] = useState<{ tipo: 'pct' | 'valor'; valor: number } | null>(null)
-  const [dataVendaTxt, setDataVendaTxt] = useState('')
+  const [dataVendaTxt, setDataVendaTxt] = useState(() => new Date().toLocaleDateString('pt-BR'))
   const [prazoEntregaTxt, setPrazoEntregaTxt] = useState('')
   const [formaPagamentoTxt, setFormaPagamentoTxt] = useState('')
   // Parcelas estruturadas (tabela DATA/MÉTODO/VALOR) — alternativa ao texto livre acima

@@ -1917,11 +1917,10 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                             )}
                                             {p.dataTipo === 'data_fixa' && (
                                               <input
-                                                type="text"
-                                                value={p.dataFixa || ''}
-                                                onChange={e => updateParcela(p.id, { dataFixa: e.target.value })}
-                                                placeholder="DD/MM/AAAA"
-                                                className="w-20 text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded"
+                                                type="date"
+                                                value={brToIso(p.dataFixa || '')}
+                                                onChange={e => updateParcela(p.id, { dataFixa: e.target.value ? isoToBr(e.target.value) : '' })}
+                                                className="text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded cursor-pointer"
                                               />
                                             )}
                                           </div>
