@@ -1346,6 +1346,9 @@ export function OrcamentoMontar() {
     }
     // Hidrata componentes extras + observacoes + termos
     if (o.componentes_extras) setComponentesExtras(o.componentes_extras as any)
+    // Restaura termos inline no preview (forma de pagamento, prazo, data)
+    if (o.forma_pagamento) setFormaPagamentoTxt(o.forma_pagamento)
+    if (o.prazo_entrega) setPrazoEntregaTxt(o.prazo_entrega)
     // Guarda dados que vão pro modal FinalizarMontar
     setInitialModal({
       cliente_nome: o.cliente_nome,
@@ -1356,7 +1359,7 @@ export function OrcamentoMontar() {
     })
     // Preenche dados do cliente no preview (cabeçalho do orçamento)
     if (o.cliente_dados) {
-      setClienteDados(o.cliente_dados as PreviewClienteDados)
+      setClienteDados({ nome: o.cliente_nome, ...o.cliente_dados } as PreviewClienteDados)
     } else if (o.cliente_nome) {
       setClienteDados({ nome: o.cliente_nome })
     }

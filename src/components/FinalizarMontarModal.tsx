@@ -523,9 +523,9 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         }
       }
 
-      const stepLabel = saveMode === 'alt' ? 'Criando alteração...' : editingId ? 'Atualizando orçamento no banco...' : 'Salvando orçamento no banco...'
+      const stepLabel = saveMode === 'alt' ? 'Criando alteração...' : saveMode === 'update' && editingId ? 'Atualizando orçamento no banco...' : 'Salvando orçamento no banco...'
       setStep(stepLabel, 10)
-      // Modo edição vs criação: editingId → UPDATE (mantém numero/sequencial), senão INSERT
+      // Modo edição vs criação: 'update'+editingId → UPDATE (mantém numero/sequencial), 'alt' → ALT, senão INSERT
       // Modo alt: cria nova versão (ALT) vinculada ao pai
       const payloadComum = {
         vendedor_nome: profile?.display_name?.toUpperCase() || 'DESCONHECIDO',
@@ -561,7 +561,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             parent_numero: parentOrcamento.numero,
             parent_numero_base: parentOrcamento.numero_base,
           })
-        : editingId
+        : saveMode === 'update' && editingId
         ? await atualizar.mutateAsync({ id: editingId, ...payloadComum, status: 'rascunho' })
         : await criar.mutateAsync({
             ...payloadComum,
@@ -908,7 +908,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         <div className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-bg z-10">
           <h2 className="text-[16px] font-semibold text-ink flex items-center gap-2">
             <FileText className="h-4 w-4 text-accent" />
-            Finalizar orçamento personalizado
+            {saveMode === 'update' ? 'Atualizar orçamento' : saveMode === 'alt' ? 'Criar versão alternativa' : 'Finalizar orçamento personalizado'}
           </h2>
           <button onClick={onClose} disabled={gerando} className="text-ink-faint hover:text-ink p-1 disabled:opacity-30">
             <X className="h-4 w-4" />
@@ -1271,7 +1271,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             title="Salva pra pasta Z:\1 - Comercial\3 - Orçamento — sincronizado pelo PC do escritório"
           >
             {gerando ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderOpen className="h-4 w-4" />}
-            {gerando ? 'Salvando...' : 'Salvar na pasta'}
+            {gerando ? 'Salvando...' : saveMode === 'update' ? 'Atualizar e salvar' : saveMode === 'alt' ? 'Criar ALT e salvar' : 'Salvar na pasta'}
           </button>
         </div>
       </div>
