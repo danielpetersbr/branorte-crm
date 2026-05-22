@@ -197,8 +197,11 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
   const sugestao = useMemo(() => sugerirDescricao(snapshot), [snapshot])
   // Atualiza sugestao automatica quando carrinho muda (se vendedor nao editou ainda)
   useEffect(() => {
-    if (!descricaoTocada && open) setDescricao(sugestao)
-  }, [sugestao, descricaoTocada, open])
+    if (!descricaoTocada && open) {
+      const prefix = saveMode === 'alt' ? '(Alteração) ' : ''
+      setDescricao(prefix + sugestao)
+    }
+  }, [sugestao, descricaoTocada, open, saveMode])
 
   // Enviar PDF pro proprio WhatsApp do vendedor (ele encaminha pro cliente)
   const [enviarMeuZap, setEnviarMeuZap] = useState(true)
@@ -336,7 +339,18 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
     if (saveMode === 'update' && editingId && parentOrcamento) {
       setNumeroAtual(parentOrcamento.numero)
       setNumeroFonte('banco')
-      // Ainda precisa checar se tem pasta local pra salvar arquivos
+      ;(async () => {
+        try {
+          const handle = await getStoredFolderHandle()
+          if (handle) setTemPastaLocal(true)
+        } catch { /* sem pasta */ }
+      })()
+      return
+    }
+    // Modo ALT: mostra número base + ALT (o número real é gerado no save)
+    if (saveMode === 'alt' && parentOrcamento) {
+      setNumeroAtual(`${parentOrcamento.numero_base || parentOrcamento.numero}-ALT`)
+      setNumeroFonte('banco')
       ;(async () => {
         try {
           const handle = await getStoredFolderHandle()
