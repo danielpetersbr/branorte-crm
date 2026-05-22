@@ -1924,21 +1924,29 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                               />
                                             )}
                                           </div>
-                                          {dataVendaTxt && (
-                                            <div className="flex items-center gap-1 mt-1">
-                                              <input
-                                                type="date"
-                                                value={brToIso(dataCalculada(p))}
-                                                onChange={e => {
-                                                  if (e.target.value) {
-                                                    updateParcela(p.id, { dataTipo: 'data_fixa', dataFixa: isoToBr(e.target.value) })
-                                                  }
-                                                }}
-                                                className="text-[11px] font-bold text-emerald-700 bg-transparent border-none cursor-pointer tabular-nums p-0 focus:outline-none"
-                                                title="Clique pra escolher outra data"
-                                              />
-                                            </div>
-                                          )}
+                                          {dataVendaTxt && (() => {
+                                            const dataCalc = dataCalculada(p)
+                                            const inputId = `parcela-date-${p.id}`
+                                            return (
+                                              <div className="relative mt-1">
+                                                <input
+                                                  id={inputId}
+                                                  type="date"
+                                                  value={brToIso(dataCalc)}
+                                                  onChange={e => {
+                                                    if (e.target.value) updateParcela(p.id, { dataTipo: 'data_fixa', dataFixa: isoToBr(e.target.value) })
+                                                  }}
+                                                  className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                                                />
+                                                <span
+                                                  className="text-[11px] font-bold text-emerald-700 tabular-nums cursor-pointer hover:text-emerald-900 hover:underline"
+                                                  onClick={() => (document.getElementById(inputId) as HTMLInputElement)?.showPicker?.()}
+                                                >
+                                                  📅 {dataCalc}
+                                                </span>
+                                              </div>
+                                            )
+                                          })()}
                                         </div>
                                       ) : (
                                         <div>
