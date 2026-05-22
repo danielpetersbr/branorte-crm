@@ -274,10 +274,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
   }, [open])
 
   // Watcher: quando modal abre + autoSubmitOnOpen=true + cliNome preenchido → dispara
-  // IMPORTANTE: autoSubmitOnOpen deve ser ESTRITAMENTE true (===), não truthy.
-  // Isso garante que só dispara quando explicitamente habilitado pelo copiloto IA.
   useEffect(() => {
-    if (!open || autoSubmitOnOpen !== true || autoSubmitFiredRef.current) return
+    if (!open || !autoSubmitOnOpen || autoSubmitFiredRef.current) return
     if (!cliNome.trim()) return  // aguarda initialModal preencher
     // Dispara UMA ÚNICA vez
     autoSubmitFiredRef.current = true
@@ -703,9 +701,18 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       let docxBlob: Blob = null as any
       let docxFonte: 'html-to-docx' | 'custom' = 'custom'
 
-      // Tier 1: custom docx (tabelas nativas, layout confiável)
+      // Tier 1: html-to-docx (~85%, gratis, ilimitado)
       try {
-        docxBlob = await gerarOrcamentoCustomDocx({
+        docxBlob = await gerarDocxViaHtml(previewProps)
+        docxFonte = 'html-to-docx'
+        console.log(`[gerar] docx (html-to-docx) OK (${docxBlob.size} bytes)`)
+      } catch (htmlErr) {
+        console.warn('[gerar] html-to-docx falhou, fallback custom:', htmlErr)
+      }
+      // Tier 3: custom docx (ultima linha de defesa)
+      if (!docxBlob) {
+        try {
+          docxBlob = await gerarOrcamentoCustomDocx({
             numero: orc.numero,
             dataEmissao: dataEmissaoBR,
             cliente: {
@@ -734,16 +741,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             vendedorNome: profile?.display_name || 'Vendedor',
           })
           docxFonte = 'custom'
-          console.log(`[gerar] docx (custom) OK (${docxBlob.size} bytes)`)
-        } catch (customErr) {
-          console.warn('[gerar] custom-docx falhou, fallback html-to-docx:', customErr)
-        }
-      // Tier 2: html-to-docx (fallback se custom falhar)
-      if (!docxBlob) {
-        try {
-          docxBlob = await gerarDocxViaHtml(previewProps)
-          docxFonte = 'html-to-docx'
-          console.log(`[gerar] docx (html-to-docx fallback) OK (${docxBlob.size} bytes)`)
+          console.log(`[gerar] docx (custom fallback) OK (${docxBlob.size} bytes)`)
         } catch (e) {
           console.error('[gerar] ERRO docx (todos os tiers falharam):', e)
           docxBlob = new Blob([(e as Error).message], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
