@@ -336,6 +336,13 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
     if (saveMode === 'update' && editingId && parentOrcamento) {
       setNumeroAtual(parentOrcamento.numero)
       setNumeroFonte('banco')
+      // Ainda precisa checar se tem pasta local pra salvar arquivos
+      ;(async () => {
+        try {
+          const handle = await getStoredFolderHandle()
+          if (handle) setTemPastaLocal(true)
+        } catch { /* sem pasta */ }
+      })()
       return
     }
     ;(async () => {
