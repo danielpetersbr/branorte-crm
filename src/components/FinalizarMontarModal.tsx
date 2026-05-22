@@ -117,6 +117,12 @@ function nomeBase(numero: string, cliente: string, descricao: string, isTest = f
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(11, 19)
     return `TESTE-${ts}-${sanitizeNomeArquivo(cliente || 'cliente')} (${numero})`
   }
+  // Se numero contém -ALT, move o ALT pro final do nome do arquivo
+  const altMatch = numero.match(/(-ALT\d*)$/)
+  if (altMatch) {
+    const numSemAlt = numero.replace(altMatch[0], '')
+    return `${numSemAlt} - ${sanitizeNomeArquivo(cliente || 'Sem cliente')} (${desc})${altMatch[0]}`
+  }
   return `${numero} - ${sanitizeNomeArquivo(cliente || 'Sem cliente')} (${desc})`
 }
 
