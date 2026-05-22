@@ -1811,7 +1811,8 @@ export function OrcamentoMontar() {
                   disabled={carrinho.length === 0}
                   onClick={() => {
                     setSaveMode('new')
-                    // Se cliente já preenchido → gera direto (headless)
+                    // Sempre abre o modal pra vendedor revisar descrição, cliente e forma de pagamento.
+                    // Auto-submit fica reservado APENAS pro copiloto IA (setAutoSubmitFromIA vem do OrcamentoAIChat).
                     if (clienteDados.nome?.trim()) {
                       setInitialModal(prev => ({
                         cliente_nome: clienteDados.nome || prev?.cliente_nome || '',
@@ -1820,12 +1821,9 @@ export function OrcamentoMontar() {
                         forma_pagamento: prev?.forma_pagamento ?? null,
                         prazo_entrega: prev?.prazo_entrega ?? null,
                       }))
-                      setAutoSubmitFromIA(true)
-                      setFinalizarOpen(true)
-                    } else {
-                      // Sem cliente → abre editor de cliente primeiro
-                      setClienteModalOpen(true)
                     }
+                    setAutoSubmitFromIA(false)
+                    setFinalizarOpen(true)
                   }}
                   className="text-[13px] bg-accent hover:bg-accent/90 text-white font-bold px-4 py-2 rounded-md disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm min-h-[40px] transition-all"
                   title={carrinho.length === 0 ? 'Adicione items primeiro' : 'Finalizar e gerar PDF + DOCX'}
