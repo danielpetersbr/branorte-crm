@@ -1926,24 +1926,19 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                           </div>
                                           {dataVendaTxt && (() => {
                                             const dataCalc = dataCalculada(p)
-                                            const inputId = `parcela-date-${p.id}`
                                             return (
-                                              <div className="relative mt-1">
-                                                <input
-                                                  id={inputId}
-                                                  type="date"
-                                                  value={brToIso(dataCalc)}
-                                                  onChange={e => {
-                                                    if (e.target.value) updateParcela(p.id, { dataTipo: 'data_fixa', dataFixa: isoToBr(e.target.value) })
-                                                  }}
-                                                  className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-                                                />
-                                                <span
-                                                  className="text-[11px] font-bold text-emerald-700 tabular-nums cursor-pointer hover:text-emerald-900 hover:underline"
-                                                  onClick={() => (document.getElementById(inputId) as HTMLInputElement)?.showPicker?.()}
-                                                >
-                                                  📅 {dataCalc}
-                                                </span>
+                                              <div className="mt-1">
+                                                <label className="inline-flex items-center gap-1 cursor-pointer hover:underline">
+                                                  <span className="text-[11px] font-bold text-emerald-700 tabular-nums">📅</span>
+                                                  <input
+                                                    type="date"
+                                                    value={brToIso(dataCalc)}
+                                                    onChange={e => {
+                                                      if (e.target.value) updateParcela(p.id, { dataTipo: 'data_fixa', dataFixa: isoToBr(e.target.value) })
+                                                    }}
+                                                    className="text-[11px] font-bold text-emerald-700 tabular-nums bg-transparent border-none cursor-pointer p-0 focus:outline-none"
+                                                  />
+                                                </label>
                                               </div>
                                             )
                                           })()}
