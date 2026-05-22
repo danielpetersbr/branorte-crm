@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
-import { Check, X } from 'lucide-react'
+import { Check, X, KeyRound } from 'lucide-react'
 
 type AssignableRole = 'admin' | 'vendor' | 'marketing'
 type AnyRole = AssignableRole | 'pending' | 'rejected'
@@ -43,6 +43,10 @@ export function AdminUsuarios() {
   const [editing, setEditing] = useState<UserRow | null>(null)
   const [role, setRole] = useState<AssignableRole>('vendor')
   const [vendorId, setVendorId] = useState<string>('')
+  const [showPwdReset, setShowPwdReset] = useState(false)
+  const [newPwd, setNewPwd] = useState('')
+  const [pwdMsg, setPwdMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [resettingPwd, setResettingPwd] = useState(false)
 
   const updateUser = useMutation({
     mutationFn: async (u: { id: string; role: AnyRole; vendor_id?: string | null }) => {
@@ -60,8 +64,42 @@ export function AdminUsuarios() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['user_profiles'] })
       setEditing(null)
+      setShowPwdReset(false)
+      setPwdMsg(null)
+      setNewPwd('')
     },
   })
+
+  const resetPassword = async (userId: string) => {
+    if (newPwd.length < 6) {
+      setPwdMsg({ ok: false, text: 'Mínimo 6 caracteres' })
+      return
+    }
+    setResettingPwd(true)
+    setPwdMsg(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const resp = await fetch('/api/admin-reset-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ user_id: userId, new_password: newPwd }),
+      })
+      const result = await resp.json()
+      if (!resp.ok) {
+        setPwdMsg({ ok: false, text: result.error || 'Erro ao resetar' })
+      } else {
+        setPwdMsg({ ok: true, text: 'Senha alterada!' })
+        setNewPwd('')
+        setTimeout(() => { setPwdMsg(null); setShowPwdReset(false) }, 2000)
+      }
+    } catch {
+      setPwdMsg({ ok: false, text: 'Erro de conexão' })
+    }
+    setResettingPwd(false)
+  }
 
   if (isLoading) return <PageLoading />
 
@@ -144,6 +182,48 @@ export function AdminUsuarios() {
                 <Button variant="secondary" size="md" onClick={() => setEditing(null)}>
                   Cancelar
                 </Button>
+              </div>
+
+              <div className="border-t border-surface-border mt-4 pt-4">
+                {!showPwdReset ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setShowPwdReset(true); setPwdMsg(null); setNewPwd('') }}
+                    className="text-text-muted"
+                  >
+                    <KeyRound className="h-4 w-4 mr-1" /> Resetar senha
+                  </Button>
+                ) : (
+                  <div className="space-y-2">
+                    <label className="block">
+                      <span className="text-xs text-text-muted">Nova senha para {editing.display_name || editing.email}</span>
+                      <input
+                        type="password"
+                        value={newPwd}
+                        onChange={e => setNewPwd(e.target.value)}
+                        placeholder="Mínimo 6 caracteres"
+                        className="mt-1 w-full rounded-md border border-surface-border bg-surface-primary px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                      />
+                    </label>
+                    {pwdMsg && (
+                      <p className={`text-xs ${pwdMsg.ok ? 'text-green-500' : 'text-red-400'}`}>{pwdMsg.text}</p>
+                    )}
+                    <div className="flex gap-2">
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        disabled={resettingPwd || newPwd.length < 6}
+                        onClick={() => resetPassword(editing.id)}
+                      >
+                        {resettingPwd ? 'Salvando...' : 'Confirmar'}
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => { setShowPwdReset(false); setPwdMsg(null) }}>
+                        Cancelar
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </Card>
