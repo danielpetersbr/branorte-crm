@@ -1039,6 +1039,33 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
                 </button>
               )}
             </div>
+            {/* Atalhos rápidos — modelos mais comuns */}
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {[
+                'Mini Fábrica 300',
+                'Mini Fábrica 600',
+                'Compacta 01',
+                'Compacta 01 Master',
+                'Compacta 02',
+                'Compacta 02 Master',
+                'Compacta 03',
+                'Compacta 03 Master',
+                'Equipamento Avulso',
+              ].map(modelo => (
+                <button
+                  key={modelo}
+                  type="button"
+                  onClick={() => { setDescricao(modelo); setDescricaoTocada(true) }}
+                  className={`px-2 py-1 text-[11px] rounded-md border transition-colors ${
+                    descricao === modelo
+                      ? 'bg-accent/20 border-accent text-accent font-semibold'
+                      : 'bg-surface-2/50 border-border text-ink-muted hover:border-ink-faint hover:text-ink'
+                  }`}
+                >
+                  {modelo}
+                </button>
+              ))}
+            </div>
             <Input
               value={descricao}
               onChange={e => { setDescricao(e.target.value); setDescricaoTocada(true) }}
