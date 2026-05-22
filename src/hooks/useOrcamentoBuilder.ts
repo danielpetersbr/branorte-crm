@@ -86,6 +86,7 @@ export interface OrcamentoGerado {
   observacoes: string | null
   forma_pagamento: string | null
   prazo_entrega: string | null
+  parcelas: any[] | null
   status: 'rascunho' | 'enviado' | 'aprovado' | 'perdido'
   pdf_url: string | null
   foto_principal_url: string | null

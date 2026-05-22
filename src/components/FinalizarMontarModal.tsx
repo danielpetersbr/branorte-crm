@@ -555,6 +555,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         observacoes: observacoes.trim() || null,
         forma_pagamento: formaPgOut.forma_pagamento || null,
         prazo_entrega: prazoEntrega.trim() || null,
+        parcelas: snapshot.parcelas?.length ? snapshot.parcelas : null,
         componentes_extras: snapshot.componentesExtras ?? null,
         foto_principal_url: fotoPrincipalUrl,
       }

@@ -1346,9 +1346,10 @@ export function OrcamentoMontar() {
     }
     // Hidrata componentes extras + observacoes + termos
     if (o.componentes_extras) setComponentesExtras(o.componentes_extras as any)
-    // Restaura termos inline no preview (forma de pagamento, prazo, data)
+    // Restaura termos inline no preview (forma de pagamento, prazo, data, parcelas)
     if (o.forma_pagamento) setFormaPagamentoTxt(o.forma_pagamento)
     if (o.prazo_entrega) setPrazoEntregaTxt(o.prazo_entrega)
+    if (o.parcelas?.length) setParcelasPagamento(o.parcelas)
     // Guarda dados que vão pro modal FinalizarMontar
     setInitialModal({
       cliente_nome: o.cliente_nome,
