@@ -703,18 +703,9 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       let docxBlob: Blob = null as any
       let docxFonte: 'html-to-docx' | 'custom' = 'custom'
 
-      // Tier 1: html-to-docx (~85%, gratis, ilimitado)
+      // Tier 1: custom docx (tabelas nativas, layout confiável)
       try {
-        docxBlob = await gerarDocxViaHtml(previewProps)
-        docxFonte = 'html-to-docx'
-        console.log(`[gerar] docx (html-to-docx) OK (${docxBlob.size} bytes)`)
-      } catch (htmlErr) {
-        console.warn('[gerar] html-to-docx falhou, fallback custom:', htmlErr)
-      }
-      // Tier 3: custom docx (ultima linha de defesa)
-      if (!docxBlob) {
-        try {
-          docxBlob = await gerarOrcamentoCustomDocx({
+        docxBlob = await gerarOrcamentoCustomDocx({
             numero: orc.numero,
             dataEmissao: dataEmissaoBR,
             cliente: {
@@ -743,7 +734,16 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             vendedorNome: profile?.display_name || 'Vendedor',
           })
           docxFonte = 'custom'
-          console.log(`[gerar] docx (custom fallback) OK (${docxBlob.size} bytes)`)
+          console.log(`[gerar] docx (custom) OK (${docxBlob.size} bytes)`)
+        } catch (customErr) {
+          console.warn('[gerar] custom-docx falhou, fallback html-to-docx:', customErr)
+        }
+      // Tier 2: html-to-docx (fallback se custom falhar)
+      if (!docxBlob) {
+        try {
+          docxBlob = await gerarDocxViaHtml(previewProps)
+          docxFonte = 'html-to-docx'
+          console.log(`[gerar] docx (html-to-docx fallback) OK (${docxBlob.size} bytes)`)
         } catch (e) {
           console.error('[gerar] ERRO docx (todos os tiers falharam):', e)
           docxBlob = new Blob([(e as Error).message], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })

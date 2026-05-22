@@ -268,6 +268,47 @@ function clienteCampo(label: string, valor: string | null | undefined): Paragrap
   })
 }
 
+// Grid 2-colunas para dados do cliente (espelha layout do PDF)
+function buildClienteGrid(c: CustomDocxCliente): Table {
+  function campoCell(label: string, valor: string | null | undefined): TableCell {
+    return new TableCell({
+      borders: NO_BORDERS,
+      width: { size: 50, type: WidthType.PERCENTAGE },
+      children: [new Paragraph({
+        children: [
+          r(`${label}: `, { bold: true, size: 18 }),
+          r(valor || '—', { size: 18, color: valor ? '000000' : '9CA3AF' }),
+        ],
+        spacing: { after: 40 },
+      })],
+    })
+  }
+  // Agrupa campos em pares (2 por linha)
+  const pares: [string, string | null | undefined, string, string | null | undefined][] = [
+    ['CIDADE', c.cidade, 'BAIRRO', c.bairro],
+    ['ENDEREÇO', c.endereco, 'CEP', c.cep],
+    ['CPF/CNPJ', c.cnpj, 'I.E.', c.ie],
+    ['E-MAIL', c.email, '', null],
+  ]
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: {
+      top: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+      bottom: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+      left: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+      right: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+      insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+      insideVertical: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+    },
+    rows: pares.map(([l1, v1, l2, v2]) => new TableRow({
+      children: [
+        campoCell(l1, v1),
+        l2 ? campoCell(l2, v2) : new TableCell({ borders: NO_BORDERS, children: [new Paragraph({ children: [] })] }),
+      ],
+    })),
+  })
+}
+
 // Bloco de UM item (com foto à direita se houver)
 async function buildItemTable(item: CustomDocxItem, voltagemTxt: string): Promise<Table> {
   const subtotal = item.valor * item.qtd
@@ -853,14 +894,8 @@ export async function gerarOrcamentoCustomDocx(opts: GerarCustomDocxOpts): Promi
   blocos.push(buildClienteHeader(opts.cliente))
   blocos.push(paragrafoVazio(60))
 
-  // Demais campos do cliente (empilhados)
-  blocos.push(clienteCampo('CIDADE', opts.cliente.cidade))
-  blocos.push(clienteCampo('BAIRRO', opts.cliente.bairro))
-  blocos.push(clienteCampo('ENDEREÇO', opts.cliente.endereco))
-  blocos.push(clienteCampo('CEP', opts.cliente.cep))
-  blocos.push(clienteCampo('CPF/CNPJ', opts.cliente.cnpj))
-  blocos.push(clienteCampo('I.E.', opts.cliente.ie))
-  blocos.push(clienteCampo('E-MAIL', opts.cliente.email))
+  // Demais campos do cliente — grid de 2 colunas (igual ao PDF)
+  blocos.push(buildClienteGrid(opts.cliente))
 
   // Items
   blocos.push(sectionHeader('Itens orçados abaixo'))
