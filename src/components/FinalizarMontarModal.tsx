@@ -274,8 +274,10 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
   }, [open])
 
   // Watcher: quando modal abre + autoSubmitOnOpen=true + cliNome preenchido → dispara
+  // IMPORTANTE: autoSubmitOnOpen deve ser ESTRITAMENTE true (===), não truthy.
+  // Isso garante que só dispara quando explicitamente habilitado pelo copiloto IA.
   useEffect(() => {
-    if (!open || !autoSubmitOnOpen || autoSubmitFiredRef.current) return
+    if (!open || autoSubmitOnOpen !== true || autoSubmitFiredRef.current) return
     if (!cliNome.trim()) return  // aguarda initialModal preencher
     // Dispara UMA ÚNICA vez
     autoSubmitFiredRef.current = true
