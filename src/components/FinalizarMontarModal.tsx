@@ -307,9 +307,10 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
   }, [open, autoSubmitOnOpen, cliNome])
 
   // Modo edição: pré-popula campos do modal com dados do orçamento sendo editado.
-  // Roda 1x quando o modal abre OU quando initialModal chega.
+  // Roda toda vez que o modal abre, populando com dados do initialModal.
   useEffect(() => {
-    if (!open || !initialModal) return
+    if (!open) return
+    if (!initialModal) return
     setCliNome(initialModal.cliente_nome ?? '')
     setCliDados(initialModal.cliente_dados ?? {})
     setObservacoes(initialModal.observacoes ?? '')
@@ -321,13 +322,22 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
     }
   }, [open, initialModal])
 
+  // Reseta número quando modal abre (pra não reusar número de abertura anterior)
+  useEffect(() => {
+    if (open) setNumeroAtual('')
+  }, [open])
+
   // Carrega número quando abre o modal.
-  // Estrategia: tenta pasta local PRIMEIRO (mais rapido + autoritativo se Daniel),
-  // se falhar (vendedor sem Z: ou pasta inacessivel) cai pro banco que e atualizado
-  // em tempo real pelo daemon do PC do escritorio via Supabase Realtime.
+  // Em modo UPDATE, usa o número do orçamento existente (não gera novo).
   useEffect(() => {
     if (!open) return
     if (numeroAtual) return
+    // Modo update: manter número original do orçamento
+    if (saveMode === 'update' && editingId && parentOrcamento) {
+      setNumeroAtual(parentOrcamento.numero)
+      setNumeroFonte('banco')
+      return
+    }
     ;(async () => {
       try {
         const handle = await getStoredFolderHandle()
