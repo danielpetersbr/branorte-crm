@@ -276,41 +276,37 @@ export function useOrcamentosGerados(filters?: { vendedor_nome?: string; status?
 export async function obterProximoNumero(): Promise<{ ano: number; sequencial: number; numero: string }> {
   const ano = new Date().getFullYear()
 
-  // PASTA Z:\ é a FONTE DA VERDADE (mantida pelo job desktop branorte-sync).
-  //
-  // Estratégia: dispara um broadcast Realtime "scan-now" pro desktop fazer
-  // scan IMEDIATO da pasta. Aguarda até 3s o index atualizar (polling a cada
-  // 250ms), aí lê o ultimo_sequencial. Se o desktop nao tiver respondido,
-  // usa o valor mais recente disponivel (fallback grácil).
-  const tsRequest = Date.now()
+  // Busca em paralelo: pasta index (leitura imediata, sem polling) + MAX do banco.
+  // Escolhe o maior dos dois + 1. Rápido: 1 round trip em vez de 3s de polling.
+  const [pastaResult, dbResult] = await Promise.all([
+    // Lê o index da pasta (valor mais recente, sem esperar scan)
+    supabase
+      .from('pasta_orcamento_index')
+      .select('ultimo_sequencial')
+      .eq('ano', ano)
+      .maybeSingle(),
+    // Lê o MAX sequencial do banco (fonte autoritativa)
+    supabase
+      .from('orcamentos_gerados')
+      .select('sequencial')
+      .eq('ano', ano)
+      .order('sequencial', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ])
+
+  const seqPasta = Number(pastaResult.data?.ultimo_sequencial ?? 0)
+  const seqDb = Number(dbResult.data?.sequencial ?? 0)
+  const seq = Math.max(seqPasta, seqDb) + 1
+
+  // Dispara scan da pasta Z em background (pra próxima vez) — fire and forget
   try {
     const ch = supabase.channel('force-scan-pasta')
-    await ch.subscribe()
-    await ch.send({ type: 'broadcast', event: 'scan-now', payload: { ts: tsRequest } })
-    // Não espera resposta — só dispara. Polling abaixo aguarda o effect.
-    setTimeout(() => { try { supabase.removeChannel(ch) } catch {} }, 5000)
-  } catch (e) {
-    console.warn('Falha disparar force-scan, usando ultima leitura do index:', e)
-  }
-
-  // Polling: aguarda até 3s o atualizado_em do index ficar > tsRequest
-  let pastaIdx: { ultimo_sequencial: number; atualizado_em: string } | null = null
-  const deadline = Date.now() + 3000
-  while (Date.now() < deadline) {
-    const { data } = await supabase
-      .from('pasta_orcamento_index')
-      .select('ultimo_sequencial, atualizado_em')
-      .eq('ano', ano)
-      .maybeSingle()
-    pastaIdx = data ?? null
-    if (pastaIdx?.atualizado_em && new Date(pastaIdx.atualizado_em).getTime() >= tsRequest - 500) {
-      break // index foi atualizado pelo scan que pedimos
-    }
-    await new Promise(r => setTimeout(r, 250))
-  }
-
-  const seqPasta = Number(pastaIdx?.ultimo_sequencial ?? 0)
-  const seq = seqPasta + 1
+    ch.subscribe().then(() => {
+      ch.send({ type: 'broadcast', event: 'scan-now', payload: { ts: Date.now() } })
+      setTimeout(() => { try { supabase.removeChannel(ch) } catch {} }, 3000)
+    })
+  } catch { /* non-blocking */ }
 
   return {
     ano,
@@ -361,15 +357,17 @@ export function useCriarOrcamento() {
       )
       let numero = `${ano} - ${String(sequencial).padStart(4, '0')}`
 
-      // Resolve conflito: se numero ja existe, incrementa ate achar livre
-      for (let tentativa = 0; tentativa < 50; tentativa++) {
-        const { data: existente } = await supabase
-          .from('orcamentos_gerados')
-          .select('id')
-          .eq('numero', numero)
-          .maybeSingle()
-        if (!existente) break
-        sequencial += 1
+      // Resolve conflito: 1 query pra pegar o MAX real do banco e pular colisões
+      const { data: maxRow } = await supabase
+        .from('orcamentos_gerados')
+        .select('sequencial')
+        .eq('ano', ano)
+        .gte('sequencial', sequencial)
+        .order('sequencial', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (maxRow) {
+        sequencial = maxRow.sequencial + 1
         numero = `${ano} - ${String(sequencial).padStart(4, '0')}`
       }
 
@@ -422,9 +420,9 @@ export function useCriarOrcamento() {
         foto_principal_url: input.foto_principal_url ?? null,
         numero_base: numero,
       }
-      // Tenta inserir; se ainda assim der duplicate (race), incrementa e tenta de novo
+      // Tenta inserir; se ainda assim der duplicate (race rara), incrementa e tenta de novo
       let lastErr: any = null
-      for (let r = 0; r < 30; r++) {
+      for (let r = 0; r < 5; r++) {
         const tryPayload = { ...payload, numero, sequencial }
         const { data, error } = await supabase
           .from('orcamentos_gerados')
