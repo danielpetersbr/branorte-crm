@@ -86,6 +86,11 @@ export default function PrintOrcamento() {
           break-inside: avoid;
           page-break-inside: avoid;
         }
+        /* Foto principal: força quebra de página DEPOIS */
+        .foto-principal-hero {
+          break-after: page !important;
+          page-break-after: always !important;
+        }
       `}</style>
       <OrcamentoPreview {...props} renderMode={true} />
     </div>

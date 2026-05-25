@@ -566,7 +566,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           <SectionHeader>Itens orçados abaixo</SectionHeader>
 
           {fotoPrincipal ? (
-            <div data-no-break className="group relative mb-3 border border-gray-700 rounded-md p-2 bg-white shadow-sm" style={{ zIndex: 1, pageBreakAfter: 'always' }}>
+            <div data-no-break className="foto-principal-hero group relative mb-3 border border-gray-700 rounded-md p-2 bg-white shadow-sm" style={{ zIndex: 1 }}>
               <div
                 className="w-full flex items-center justify-center bg-white"
                 // Hero shot: ocupa boa parte da página no PDF.
