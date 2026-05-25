@@ -160,7 +160,7 @@ function agruparMotores(carrinho: CarrinhoItem[]): MotorAgrupado[] {
   for (const it of carrinho) {
     if (!it.motor_cv || it.motor_polos == null) continue
     const nomeItem = it.nome_custom || it.nome
-    if (peneiraSemMotor(nomeItem)) continue  // jogo de peneira NÃO leva motor
+    if (it.categoria === 'ACESSORIO' || peneiraSemMotor(nomeItem)) continue  // acessório/peça avulsa não leva motor
     const qtdMotor = it.motor_qtd * it.qtd
 
     // Detecta múltiplos motores na spec: "Acionamento 15 CV e 2 CV por motorredutor (Inclusos)"
@@ -1204,10 +1204,12 @@ export function OrcamentoMontar() {
     // 2) Constrói carrinho a partir dos itens do modelo
     const novos: CarrinhoItem[] = []
     modelo.itens.forEach(it => {
-      // Peneira passiva não tem motor — ignora o CV do nome/spec (é a bitola do moinho)
-      const cvDoSpec = peneiraSemMotor(it.nome) ? null : extrairCvDeTexto(...(it.specs ?? []), it.nome)
-      const motor = pegarMotorPorCv(cvDoSpec)
       const ci = acharCatalogoSimilar(it.nome)
+      // Acessório/peça avulsa (jogo de peneira, jogo de martelos, eixos e buchas) e peneira
+      // passiva não têm motor próprio — ignora o CV do nome/spec (é a bitola do moinho).
+      const semMotorProprio = ci?.categoria === 'ACESSORIO' || peneiraSemMotor(it.nome)
+      const cvDoSpec = semMotorProprio ? null : extrairCvDeTexto(...(it.specs ?? []), it.nome)
+      const motor = pegarMotorPorCv(cvDoSpec)
 
       // Categoria: do catálogo se achou, senão tenta inferir do nome
       let categoria = ci?.categoria
