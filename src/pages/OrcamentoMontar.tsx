@@ -59,6 +59,8 @@ interface CarrinhoItem {
   tungstenio?: boolean
   /** Specs originais (antes de trocar pra inox/tungstenio) — pra poder restaurar ao desativar. */
   specs_original?: string[]
+  /** Quando true, item é brinde (valor não entra no total, mostra "BRINDE" no preview). */
+  brinde?: boolean
 }
 
 type TensaoMotor = 220 | 380 | 660 | null
@@ -396,7 +398,7 @@ export function OrcamentoMontar() {
   const motoresAgrupados = useMemo(() => agruparMotores(carrinho), [carrinho])
 
   const totalItems = useMemo(
-    () => carrinho.reduce((s, c) => s + (c.valor * c.qtd), 0),
+    () => carrinho.reduce((s, c) => s + (c.brinde ? 0 : c.valor * c.qtd), 0),
     [carrinho],
   )
   const totalMotores = useMemo(
@@ -1921,6 +1923,7 @@ export function OrcamentoMontar() {
                 onUpdateValor={alterarValor}
                 onToggleInox={toggleInox}
                 onToggleTungstenio={toggleTungstenio}
+                onToggleBrinde={(uid) => setCarrinho(prev => prev.map(c => c.uid === uid ? { ...c, brinde: !c.brinde } : c))}
                 onUpdateQtd={alterarQtd}
                 componentesExtras={componentesExtras}
                 onUpdateComponentesExtras={setComponentesExtras}

@@ -26,6 +26,7 @@ export interface PreviewItem {
   foto_url: string | null
   inox?: '304' | '316' | false
   tungstenio?: boolean
+  brinde?: boolean
 }
 
 export interface PreviewMotor {
@@ -138,6 +139,7 @@ export interface OrcamentoPreviewProps {
   onUpdateQtd?: (uid: string, novaQtd: number) => void
   onUpdateTerm?: (key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento', valor: string) => void
   onMoverItem?: (uid: string, direcao: 'cima' | 'baixo') => void
+  onToggleBrinde?: (uid: string) => void
 
   // Parcelas estruturadas (alternativa ao texto livre de formaPagamento)
   parcelas?: ParcelaPagamento[]
@@ -247,7 +249,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     renderMode = false,
     tensaoMotores = null, onUpdateTensaoMotores,
     desconto, onUpdateDesconto,
-    onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onUpdateValor, onToggleInox, onToggleTungstenio, onUpdateQtd, onUpdateTerm, onMoverItem,
+    onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onUpdateValor, onToggleInox, onToggleTungstenio, onUpdateQtd, onUpdateTerm, onMoverItem, onToggleBrinde,
     componentesExtras = [], onUpdateComponentesExtras, componentesAdicionaisCatalogo = [],
     parcelas, onUpdateParcelas,
     motoresDisponiveis, onTrocarMotor,
@@ -925,7 +927,18 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     )}
                     <div className="flex justify-between text-[15.5px] font-bold tracking-wide">
                       <span className="text-gray-700">VALOR{it.qtd > 1 ? ' TOTAL' : ''}</span>
-                      {editingValorUid === it.uid ? (
+                      {it.brinde ? (
+                        <span className="flex items-center gap-2">
+                          <span className="text-green-600 font-bold text-[15px]">BRINDE</span>
+                          {!renderMode && onToggleBrinde && it.uid && (
+                            <button
+                              onClick={() => onToggleBrinde(it.uid!)}
+                              className="text-[11px] text-gray-400 hover:text-red-500 print:hidden"
+                              title="Remover brinde"
+                            >✕</button>
+                          )}
+                        </span>
+                      ) : editingValorUid === it.uid ? (
                         <input
                           autoFocus
                           type="number"
@@ -945,17 +958,26 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           className="w-40 text-right bg-yellow-50 border border-blue-400 rounded px-2 py-0.5 outline-none text-[15px] text-gray-900 font-bold"
                         />
                       ) : subtotal > 0 ? (
-                        <span
-                          className={`text-gray-900 ${!renderMode && onUpdateValor && it.uid ? 'cursor-text hover:bg-yellow-50 rounded px-1' : ''}`}
-                          title={!renderMode && onUpdateValor ? 'Duplo-clique para editar valor' : undefined}
-                          onDoubleClick={() => {
-                            if (!renderMode && onUpdateValor && it.uid) {
-                              setSenhaModalUid(it.uid)
-                              setSenhaInput('')
-                              setSenhaErro(false)
-                            }
-                          }}
-                        >R$ {formatBRLBare(subtotal)}</span>
+                        <span className="flex items-center gap-2">
+                          <span
+                            className={`text-gray-900 ${!renderMode && onUpdateValor && it.uid ? 'cursor-text hover:bg-yellow-50 rounded px-1' : ''}`}
+                            title={!renderMode && onUpdateValor ? 'Duplo-clique para editar valor' : undefined}
+                            onDoubleClick={() => {
+                              if (!renderMode && onUpdateValor && it.uid) {
+                                setSenhaModalUid(it.uid)
+                                setSenhaInput('')
+                                setSenhaErro(false)
+                              }
+                            }}
+                          >R$ {formatBRLBare(subtotal)}</span>
+                          {!renderMode && onToggleBrinde && it.uid && (
+                            <button
+                              onClick={() => onToggleBrinde(it.uid!)}
+                              className="text-[10px] text-gray-400 hover:text-green-600 border border-gray-300 hover:border-green-500 rounded px-1.5 py-0.5 print:hidden"
+                              title="Marcar como brinde"
+                            >BRINDE</button>
+                          )}
+                        </span>
                       ) : (
                         <span className="text-amber-600 italic text-[13px] print:text-gray-900 print:not-italic">
                           <span className="print:hidden">⚠ sem preço — preencha</span>
