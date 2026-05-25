@@ -77,7 +77,11 @@ function formatBRL(v: number): string {
 }
 
 function formatBRLBare(v: number): string {
-  return Math.round(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const abs = Math.abs(Math.round(v))
+  const fixed = abs.toFixed(2)
+  const [intPart, dec] = fixed.split('.')
+  const withDots = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  return `${v < 0 ? '-' : ''}${withDots},${dec}`
 }
 
 // ─── Fallback de foto pra TRANSPORTADOR (chupim/calha TH) ─────────────────

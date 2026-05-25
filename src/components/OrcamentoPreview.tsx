@@ -160,7 +160,11 @@ export interface OrcamentoPreviewProps {
 }
 
 function formatBRLBare(v: number): string {
-  return Math.round(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const abs = Math.abs(Math.round(v))
+  const fixed = abs.toFixed(2)
+  const [intPart, dec] = fixed.split('.')
+  const withDots = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  return `${v < 0 ? '-' : ''}${withDots},${dec}`
 }
 
 // Encontra posicao de quebra que NAO corta blocos atomicos.

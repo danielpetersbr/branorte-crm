@@ -72,7 +72,11 @@ export interface GerarCustomDocxOpts {
 // ─── helpers ──────────────────────────────────────────────────────────────
 
 function formatBRL(v: number): string {
-  return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const abs = Math.abs(v)
+  const fixed = abs.toFixed(2)
+  const [intPart, dec] = fixed.split('.')
+  const withDots = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  return `${v < 0 ? '-' : ''}${withDots},${dec}`
 }
 
 function r(text: string, opts: { bold?: boolean; size?: number; color?: string; italics?: boolean } = {}): TextRun {
