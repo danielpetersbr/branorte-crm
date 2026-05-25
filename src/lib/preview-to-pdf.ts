@@ -115,11 +115,11 @@ export async function gerarPdfDoPreview(
     console.log(`[pdf] canvas OK ${canvas.width}x${canvas.height}px (scale=${scale})`)
 
     // Converte ranges de CSS px → canvas px (com scale aplicado).
-    // Expande cada range ±24 CSS px (como o findBreakNear do preview faz com
-    // margin-top de SectionHeaders e padding de bordas). Sem essa expansão,
-    // a margem em canvas px fica microscópica (1px ≈ 0.2 CSS px no scale 5)
-    // e o corte cai dentro do bloco quando há drift entre DOM e html2canvas.
-    const expandCanvasPx = Math.ceil(24 * scale)
+    // Expansão mínima (4 CSS px) só pra compensar drift DOM↔html2canvas.
+    // O marginBeforePx (30px) no findCutY já dá o respiro visual.
+    // NOTA: expansão grande (24px) causava sobreposição entre itens adjacentes
+    // (space-y-3 = 12px gap) → findCutY não achava ponto válido de corte.
+    const expandCanvasPx = Math.ceil(4 * scale)
     const noBreakCanvasRanges = noBreakRanges.map(r => ({
       top: Math.floor(r.topPx * scale) - expandCanvasPx,
       bottom: Math.ceil(r.bottomPx * scale) + expandCanvasPx,
