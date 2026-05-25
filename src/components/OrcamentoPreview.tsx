@@ -650,7 +650,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
               const letra = String.fromCharCode(65 + idx)
               const subtotal = it.valor * it.qtd
               return (
-                <div key={it.uid || idx} data-no-break className="group relative border border-gray-700 rounded-md p-3 bg-white shadow-sm" style={{ zIndex: 1, breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+                <div key={it.uid || idx} {...(!it.foto_url ? { 'data-no-break': true } : {})} className="group relative border border-gray-700 rounded-md p-3 bg-white shadow-sm" style={{ zIndex: 1, ...(!it.foto_url ? { breakInside: 'avoid', pageBreakInside: 'avoid' } : {}) }}>
                   <div className="flex justify-between items-start gap-2 mb-1.5">
                     <div className="font-bold text-[15.5px] flex-1 min-w-0 text-gray-900">
                       <span className="text-gray-900">{letra} - </span>
@@ -918,7 +918,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       </div>
                     )}
                   </div>
-                  <div className="mt-2.5 pt-1.5 border-t border-gray-300">
+                  <div className="mt-2.5 pt-1.5 border-t border-gray-300" data-no-break>
                     {it.qtd > 1 && it.valor > 0 && (
                       <div className="flex justify-between text-[12.5px] text-gray-500 mb-0.5">
                         <span>Valor unitário</span>
