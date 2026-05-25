@@ -210,8 +210,6 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
     }
   }, [sugestao, descricaoTocada, open, saveMode])
 
-  // Enviar PDF pro proprio WhatsApp do vendedor (ele encaminha pro cliente)
-  const [enviarMeuZap, setEnviarMeuZap] = useState(true)
   const [pdfAltaQualidade, setPdfAltaQualidade] = useState(false)
 
   // Forma de pagamento
@@ -829,7 +827,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             docxBlob,
             pdfBlob,
             txtBlob,
-            sendWhatsApp: enviarMeuZap && !!pdfBlob,
+            sendWhatsApp: !!pdfBlob,
             whatsAppFilename: `${baseWhatsApp}.pdf`,
             whatsAppCaption: `📄 Orçamento ${orc.numero} — ${cliNome.trim()}\n\nPersonalizado: ${descricao || sugestao}\nGerado em ${dataEmissaoBR}\n\n👇 Encaminhe pro cliente`,
             onProgress: (s) => {
@@ -843,7 +841,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           if (pdfBlob) baixouPdf = true
           salvouNaPasta = true
           // WhatsApp status (vem do server)
-          if (enviarMeuZap && pdfBlob) {
+          if (pdfBlob) {
             if (upRes.whatsapp?.ok) {
               setWaStatus('sent')
               setWaMsg(upRes.whatsapp.msg || 'PDF enviado pro seu WhatsApp.')
@@ -876,10 +874,10 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         }
       }
 
-      // 7) Enviar PDF pro WhatsApp do proprio vendedor (ele encaminha pro cliente)
+      // 7) Enviar PDF pro WhatsApp do proprio vendedor (sempre automático)
       // Se foi salvarNoServidor, o WhatsApp ja foi disparado pelo helper /api/orcamento-confirm.
       // Esse bloco serve so pros casos salvarNaPasta (FileSystem local) ou download direto.
-      if (enviarMeuZap && pdfBlob && !opcoes.salvarNoServidor) {
+      if (pdfBlob && !opcoes.salvarNoServidor) {
         setStep('Enviando pro seu WhatsApp...', 95)
         setWaStatus('sending')
         setWaMsg('Enviando pro seu WhatsApp...')
@@ -1260,23 +1258,17 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             </div>
           )}
 
-          {/* Enviar PDF pro WhatsApp do proprio vendedor (encaminha pro cliente) */}
-          <label className="flex items-start gap-2 p-3 border border-border rounded-md bg-surface-2/30 cursor-pointer hover:bg-surface-2/50 transition-colors">
-            <input
-              type="checkbox"
-              checked={enviarMeuZap}
-              onChange={e => setEnviarMeuZap(e.target.checked)}
-              className="mt-0.5 h-4 w-4 accent-accent"
-            />
+          {/* PDF sempre enviado pro WhatsApp do vendedor automaticamente */}
+          <div className="flex items-start gap-2 p-3 border border-emerald-300 rounded-md bg-emerald-50/40">
             <div className="flex-1">
-              <div className="text-[12px] font-semibold text-ink flex items-center gap-1.5">
-                📲 Enviar PDF pro meu WhatsApp
+              <div className="text-[12px] font-semibold text-emerald-700 flex items-center gap-1.5">
+                📲 PDF será enviado pro seu WhatsApp automaticamente
               </div>
-              <div className="text-[10px] text-ink-faint mt-0.5">
-                O orçamento chega no seu Zap em até 30s. Você só encaminha pro cliente.
+              <div className="text-[10px] text-emerald-600/70 mt-0.5">
+                Chega em até 30s após gerar. Você só encaminha pro cliente.
               </div>
             </div>
-          </label>
+          </div>
 
           {/* PDF vetorial: tenta server-side (Puppeteer/Chrome), fallback scale 8 client. */}
           <label className="flex items-start gap-2 p-3 border border-border rounded-md bg-surface-2/30 cursor-pointer hover:bg-surface-2/50 transition-colors">
