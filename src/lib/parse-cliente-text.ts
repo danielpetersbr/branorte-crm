@@ -124,7 +124,21 @@ function extrairIE(text: string): string | null {
 }
 
 function extrairCidadeEstado(text: string): { cidade: string | null; estado: string | null; bairroSugerido: string | null } {
-  // "Florianópolis - SC" / "Florianópolis/SC" / "Bairro - Cidade/UF" / "Zona Rural - Taguatinga/TO"
+  // Prioridade 1: label explícito "Cidade: Xxx" ou "Município: Xxx"
+  const cidadeLabel = extrairLabelado(text, ['cidade', 'munic[ií]pio'])
+  const ufLabel = extrairLabelado(text, ['uf', 'estado'])
+  if (cidadeLabel && cidadeLabel.length >= 2) {
+    // Se UF vier junto ("Grão Pará - SC"), separa
+    for (const uf of ESTADOS_BR) {
+      const m = cidadeLabel.match(new RegExp(`^(.+?)\\s*[-/]\\s*${uf}$`))
+      if (m) return { cidade: limpar(m[1]), estado: uf, bairroSugerido: null }
+    }
+    // UF por label separado ou heurística
+    const ufFinal = ufLabel && ESTADOS_BR.includes(ufLabel.toUpperCase().trim()) ? ufLabel.toUpperCase().trim() : null
+    return { cidade: limpar(cidadeLabel), estado: ufFinal, bairroSugerido: null }
+  }
+
+  // Prioridade 2: padrão "Cidade - UF" / "Cidade/UF" no texto livre
   for (const uf of ESTADOS_BR) {
     // Captura bairro opcional ANTES da cidade quando tem "Bairro - Cidade/UF"
     const reComBairro = new RegExp(`([A-ZÁ-Üa-zá-ü\\s]{3,40}?)\\s*[-]\\s*([A-ZÁ-Üa-zá-ü\\s]{3,40}?)\\s*[/]\\s*${uf}\\b`)
@@ -132,20 +146,26 @@ function extrairCidadeEstado(text: string): { cidade: string | null; estado: str
     if (m1) {
       const bairro = limpar(m1[1])
       const cidade = limpar(m1[2])
-      if (bairro.length >= 3 && cidade.length >= 3 && !/CNPJ|CPF|RUA|AV\.|R\./i.test(cidade)) {
+      if (bairro.length >= 3 && cidade.length >= 3 && !/CNPJ|CPF|RUA|AV\.|R\.|Bairro/i.test(cidade)) {
         return { cidade, estado: uf, bairroSugerido: bairro }
       }
     }
-    // Fallback: só cidade/UF
-    const re = new RegExp(`([A-ZÁ-Üa-zá-ü\\s]{2,40}?)\\s*[-/]?\\s*${uf}\\b`)
+    // Fallback: só cidade/UF — requer pelo menos 3 chars de cidade
+    const re = new RegExp(`([A-ZÁ-Üa-zá-ü][A-ZÁ-Üa-zá-ü\\s]{2,40}?)\\s*[-/]\\s*${uf}\\b`)
     const m = re.exec(text)
     if (m) {
       const cidade = limpar(m[1])
-      if (cidade.length >= 3 && cidade.length <= 40 && !/CNPJ|CPF|RUA|AV\.|R\./i.test(cidade)) {
+      if (cidade.length >= 3 && cidade.length <= 40 && !/CNPJ|CPF|RUA|AV\.|R\.|Bairro/i.test(cidade)) {
         return { cidade, estado: uf, bairroSugerido: null }
       }
     }
   }
+
+  // Prioridade 3: UF solta no texto (sem cidade)
+  if (ufLabel && ESTADOS_BR.includes(ufLabel.toUpperCase().trim())) {
+    return { cidade: null, estado: ufLabel.toUpperCase().trim(), bairroSugerido: null }
+  }
+
   return { cidade: null, estado: null, bairroSugerido: null }
 }
 
@@ -234,7 +254,10 @@ function extrairEndereco(text: string): string | null {
 }
 
 function extrairBairro(text: string): string | null {
-  return extrairLabelado(text, ['bairro'])
+  const v = extrairLabelado(text, ['bairro', 'setor', 'distrito'])
+  // Não aceitar valores que parecem outro campo (ex: "Cidade", "Rural - Cidade/UF")
+  if (v && v.length >= 2 && v.length <= 60) return v
+  return null
 }
 
 function extrairAC(text: string): string | null {
