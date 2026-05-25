@@ -884,12 +884,12 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       }
                     </div>
                     {it.foto_url && (
-                      <div className="w-full flex flex-col items-center mt-1" data-no-break>
+                      <div className="w-full flex flex-col items-center mt-1">
                         <div
                           style={{
                             width: '100%',
                             maxWidth: 540,
-                            maxHeight: 360,
+                            maxHeight: 280,
                             background: '#fff',
                             border: '1px solid #d1d5db',
                             borderRadius: 4,
@@ -904,7 +904,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             alt={it.nome}
                             style={{
                               maxWidth: '100%',
-                              maxHeight: 344,
+                              maxHeight: 264,
                               width: 'auto',
                               height: 'auto',
                               objectFit: 'contain',
@@ -918,7 +918,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       </div>
                     )}
                   </div>
-                  <div className="mt-2.5 pt-1.5 border-t border-gray-300" data-no-break>
+                  <div data-no-break className="mt-2.5 pt-1.5 border-t border-gray-300">
                     {it.qtd > 1 && it.valor > 0 && (
                       <div className="flex justify-between text-[12.5px] text-gray-500 mb-0.5">
                         <span>Valor unitário</span>
