@@ -98,8 +98,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const pdfBuffer = await page.pdf({
       format: 'A4',
       printBackground: true,
-      preferCSSPageSize: false,
-      margin: { top: '0mm', right: '0mm', bottom: '0mm', left: '0mm' },
+      preferCSSPageSize: true,
+      margin: { top: '8mm', right: '6mm', bottom: '12mm', left: '6mm' },
     })
     console.log(`[gerar-pdf] PDF generated (${pdfBuffer.length} bytes) in ${Date.now() - t0}ms`)
 

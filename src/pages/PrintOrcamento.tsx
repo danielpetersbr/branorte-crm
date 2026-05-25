@@ -68,15 +68,23 @@ export default function PrintOrcamento() {
   return (
     <div style={{ background: '#ffffff', minHeight: '100vh' }}>
       <style>{`
-        @media print {
-          [data-no-break] {
-            break-inside: avoid !important;
-            page-break-inside: avoid !important;
-          }
-          img {
-            break-inside: avoid !important;
-            page-break-inside: avoid !important;
-          }
+        @page {
+          size: A4;
+          margin: 8mm 6mm 12mm 6mm;
+        }
+        /* Sem @media print — aplica SEMPRE (Puppeteer renderiza em modo print) */
+        [data-no-break] {
+          break-inside: avoid !important;
+          page-break-inside: avoid !important;
+        }
+        img {
+          break-inside: avoid !important;
+          page-break-inside: avoid !important;
+        }
+        /* Cada item do orçamento */
+        .group.relative.border {
+          break-inside: avoid;
+          page-break-inside: avoid;
         }
       `}</style>
       <OrcamentoPreview {...props} renderMode={true} />

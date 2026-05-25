@@ -569,17 +569,15 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             <div data-no-break className="group relative mb-3 border border-gray-700 rounded-md p-2 bg-white shadow-sm" style={{ zIndex: 1, pageBreakAfter: 'always' }}>
               <div
                 className="w-full flex items-center justify-center bg-white"
-                // Hero shot: ocupa a página inteira no PDF. Itens começam na página 2.
-                // 1024px container ÷ 210mm A4 = ~4.87px/mm. Página = 297mm = ~1449px.
-                // Header+título ≈ 250px. Então foto precisa de ~1100px pra preencher pág 1.
-                style={{ minHeight: 1050, overflow: 'hidden' }}
+                // Hero shot: ocupa boa parte da página no PDF.
+                style={{ minHeight: 500, overflow: 'hidden' }}
               >
                 <img
                   src={fotoPrincipal}
                   alt="Foto da fábrica"
                   style={{
                     maxWidth: '100%',
-                    maxHeight: 1000,
+                    maxHeight: 600,
                     width: 'auto',
                     height: 'auto',
                     objectFit: 'contain',
