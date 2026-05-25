@@ -566,7 +566,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           <SectionHeader>Itens orçados abaixo</SectionHeader>
 
           {fotoPrincipal ? (
-            <div data-no-break className="foto-principal-hero group relative mb-3 border border-gray-700 rounded-md p-2 bg-white shadow-sm" style={{ zIndex: 1 }}>
+            <div data-no-break className={`${renderMode ? 'foto-principal-hero' : ''} group relative mb-3 border border-gray-700 rounded-md p-2 bg-white shadow-sm`} style={{ zIndex: 1 }}>
               <div
                 className="w-full flex items-center justify-center bg-white"
                 // Hero shot: ocupa boa parte da página no PDF.
@@ -645,7 +645,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             </button>
           )}
 
-          <div className={`space-y-3 ${fotoPrincipal ? 'itens-apos-hero' : ''}`}>
+          <div className={`space-y-3 ${fotoPrincipal && renderMode ? 'itens-apos-hero' : ''}`}>
             {carrinho.map((it, idx) => {
               const letra = String.fromCharCode(65 + idx)
               const subtotal = it.valor * it.qtd
