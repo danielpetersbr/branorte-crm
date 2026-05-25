@@ -371,7 +371,19 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
       setPageHeight(A4_H)
 
       const breaks: number[] = []
-      let y = A4_H
+      const containerTop = innerRef.current.getBoundingClientRect().top + window.scrollY
+
+      // Foto principal força quebra imediatamente após ela
+      const heroEl = innerRef.current.querySelector('[data-hero-photo]') as HTMLElement | null
+      let y: number
+      if (heroEl) {
+        const heroBottom = heroEl.getBoundingClientRect().bottom + window.scrollY - containerTop
+        breaks.push(heroBottom + 8)
+        y = heroBottom + 8 + A4_H
+      } else {
+        y = A4_H
+      }
+
       let safety = 0
       while (y < h && safety++ < 20) {
         const adjusted = findBreakNear(innerRef.current, y, A4_H * 0.10)
@@ -381,7 +393,6 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
       setPageBreaks(breaks)
 
       // Insere SPACERS reais entre folhas
-      const containerTop = innerRef.current.getBoundingClientRect().top + window.scrollY
       const allEls = Array.from(innerRef.current.querySelectorAll('div, table')) as HTMLElement[]
       const spacerHeight = 80  // px — gap visual entre folhas (incluindo respiro topo/baixo)
       // Posicoes Y atuais de cada spacer DEPOIS de inserido (acumulam offset)
@@ -473,7 +484,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
       clearTimeout(pendingTimer)
       cleanGaps()
     }
-  }, [renderMode, isMobile, carrinho, motoresAgrupados, acessorios])
+  }, [renderMode, isMobile, carrinho, motoresAgrupados, acessorios, fotoPrincipal])
 
   return (
     <div ref={containerRef} className={`text-gray-900 leading-relaxed font-sans bg-white ${renderMode ? 'text-[19px]' : 'text-[15px]'}`}>
@@ -566,7 +577,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           <SectionHeader>Itens orçados abaixo</SectionHeader>
 
           {fotoPrincipal ? (
-            <div data-no-break className={`${renderMode ? 'foto-principal-hero' : ''} group relative mb-3 border border-gray-700 rounded-md p-2 bg-white shadow-sm`} style={{ zIndex: 1 }}>
+            <div data-no-break data-hero-photo className={`${renderMode ? 'foto-principal-hero' : ''} group relative mb-3 border border-gray-700 rounded-md p-2 bg-white shadow-sm`} style={{ zIndex: 1 }}>
               <div
                 className="w-full flex items-center justify-center bg-white"
                 // Hero shot: ocupa boa parte da página no PDF.
@@ -650,7 +661,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
               const letra = String.fromCharCode(65 + idx)
               const subtotal = it.valor * it.qtd
               return (
-                <div key={it.uid || idx} {...(!it.foto_url ? { 'data-no-break': true } : {})} className="group relative border border-gray-700 rounded-md p-3 bg-white shadow-sm" style={{ zIndex: 1, ...(!it.foto_url ? { breakInside: 'avoid', pageBreakInside: 'avoid' } : {}) }}>
+                <div key={it.uid || idx} data-no-break className="group relative border border-gray-700 rounded-md p-3 bg-white shadow-sm" style={{ zIndex: 1, breakInside: 'avoid', pageBreakInside: 'avoid' }}>
                   <div className="flex justify-between items-start gap-2 mb-1.5">
                     <div className="font-bold text-[15.5px] flex-1 min-w-0 text-gray-900">
                       <span className="text-gray-900">{letra} - </span>
