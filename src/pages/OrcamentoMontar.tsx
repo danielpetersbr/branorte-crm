@@ -1345,16 +1345,8 @@ export function OrcamentoMontar() {
         fotoRestaurada = true
       }
     }
-    if (!fotoRestaurada && o.itens?.length && items) {
-      // Procura o primeiro item que tem foto no catálogo
-      for (const oi of o.itens) {
-        const ci = items.find(ci => ci.nome_curto === oi.nome || ci.nome_completo === oi.nome)
-        if (ci?.foto_url) {
-          setFotoPrincipal(ci.foto_url)
-          break
-        }
-      }
-    }
+    // Sem foto_principal_url e sem modelo = sem hero photo.
+    // Não inferir do primeiro item — orçamentos antigos não tinham hero.
     // Hidrata componentes extras + observacoes + termos
     if (o.componentes_extras) setComponentesExtras(o.componentes_extras as any)
     // Restaura termos inline no preview (forma de pagamento, prazo, data, parcelas)
