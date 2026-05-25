@@ -979,9 +979,18 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           )}
                         </span>
                       ) : (
-                        <span className="text-amber-600 italic text-[13px] print:text-gray-900 print:not-italic">
-                          <span className="print:hidden">⚠ sem preço — preencha</span>
-                          <span className="hidden print:inline">a consultar</span>
+                        <span className="flex items-center gap-2">
+                          <span className="text-amber-600 italic text-[13px] print:text-gray-900 print:not-italic">
+                            <span className="print:hidden">⚠ sem preço — preencha</span>
+                            <span className="hidden print:inline">a consultar</span>
+                          </span>
+                          {!renderMode && onToggleBrinde && it.uid && (
+                            <button
+                              onClick={() => onToggleBrinde(it.uid!)}
+                              className="text-[10px] text-gray-400 hover:text-green-600 border border-gray-300 hover:border-green-500 rounded px-1.5 py-0.5 print:hidden"
+                              title="Marcar como brinde"
+                            >BRINDE</button>
+                          )}
                         </span>
                       )}
                     </div>
