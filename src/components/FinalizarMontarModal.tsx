@@ -623,6 +623,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           motor_qtd: it.motor_qtd,
           motor_valor_unit: it.motor_valor_unit,
           foto_url: it.foto_url ?? null,
+          brinde: it.brinde,
         })),
         motoresAgrupados: snapshot.motoresAgrupados,
         voltagem: snapshot.voltagem,
