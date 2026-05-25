@@ -883,6 +883,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           )
                       }
                     </div>
+                  </div>
+                  {/* Foto + Valor agrupados — quebra de página cai ANTES da foto, nunca entre foto e valor */}
+                  <div data-no-break>
                     {it.foto_url && (
                       <div className="w-full flex flex-col items-center mt-1">
                         <div
@@ -917,8 +920,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                         <div className="text-[12px] text-gray-400 italic mt-0.5 tracking-wide">Imagem ilustrativa</div>
                       </div>
                     )}
-                  </div>
-                  <div data-no-break className="mt-2.5 pt-1.5 border-t border-gray-300">
+                  <div className="mt-2.5 pt-1.5 border-t border-gray-300">
                     {it.qtd > 1 && it.valor > 0 && (
                       <div className="flex justify-between text-[12.5px] text-gray-500 mb-0.5">
                         <span>Valor unitário</span>
@@ -995,6 +997,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       )}
                     </div>
                   </div>
+                  </div>{/* fecha data-no-break foto+valor */}
                 </div>
               )
             })}
