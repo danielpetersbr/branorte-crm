@@ -148,12 +148,20 @@ interface MotorAgrupado {
   motorIndex?: number      // 0=principal, 1=secundário (quando item tem 2 motores na spec)
 }
 
+// Peneira PASSIVA (jogo de peneira, par de peneiras, peneira de moinho) não tem
+// motor próprio — só a "Peneira Vibratória" é acionada. O CV que aparece no nome
+// (ex: "Jogo Peneira Moinho 15 CV") é a bitola do moinho que ela serve, não um motor.
+function peneiraSemMotor(nome: string): boolean {
+  return /peneira/i.test(nome) && !/vibrat[óo]ria/i.test(nome)
+}
+
 function agruparMotores(carrinho: CarrinhoItem[]): MotorAgrupado[] {
   const linhas: MotorAgrupado[] = []
   for (const it of carrinho) {
     if (!it.motor_cv || it.motor_polos == null) continue
-    const qtdMotor = it.motor_qtd * it.qtd
     const nomeItem = it.nome_custom || it.nome
+    if (peneiraSemMotor(nomeItem)) continue  // jogo de peneira NÃO leva motor
+    const qtdMotor = it.motor_qtd * it.qtd
 
     // Detecta múltiplos motores na spec: "Acionamento 15 CV e 2 CV por motorredutor (Inclusos)"
     // Padrão: "X CV e Y CV" ou "X CV + Y CV"
@@ -1196,7 +1204,8 @@ export function OrcamentoMontar() {
     // 2) Constrói carrinho a partir dos itens do modelo
     const novos: CarrinhoItem[] = []
     modelo.itens.forEach(it => {
-      const cvDoSpec = extrairCvDeTexto(...(it.specs ?? []), it.nome)
+      // Peneira passiva não tem motor — ignora o CV do nome/spec (é a bitola do moinho)
+      const cvDoSpec = peneiraSemMotor(it.nome) ? null : extrairCvDeTexto(...(it.specs ?? []), it.nome)
       const motor = pegarMotorPorCv(cvDoSpec)
       const ci = acharCatalogoSimilar(it.nome)
 
