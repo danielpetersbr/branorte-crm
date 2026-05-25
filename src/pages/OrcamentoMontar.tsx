@@ -2006,7 +2006,7 @@ export function OrcamentoMontar() {
           itens: carrinho.map(c => ({
             nome: c.nome_custom || c.nome,  // usa nome customizado se vendedor editou
             qtd: c.qtd,
-            valor: c.brinde ? 0 : c.valor,
+            valor: c.valor,
             specs: c.specs,
             motor_cv: c.motor_cv,
             motor_polos: c.motor_polos,

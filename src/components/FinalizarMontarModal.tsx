@@ -524,7 +524,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         qtd: it.qtd,
         nome: it.nome,
         specs: it.specs,
-        valor: it.brinde ? 0 : it.valor,
+        valor: it.valor,
         ...(it.brinde ? { brinde: true } : {}),
       }))
       const motoresDb: OrcamentoMotor[] = snapshot.motoresAgrupados.map(m => ({
@@ -719,7 +719,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           itens: snapshot.itens.map((it, idx) => ({
             letra: String.fromCharCode(65 + idx),
             qtd: it.qtd, nome: it.nome, specs: it.specs,
-            valor: it.brinde ? 0 : it.valor, brinde: it.brinde,
+            valor: it.valor, brinde: it.brinde,
             motor_cv: it.motor_cv, motor_polos: it.motor_polos,
             motor_qtd: it.motor_qtd, foto_url: it.foto_url ?? null,
           })),
