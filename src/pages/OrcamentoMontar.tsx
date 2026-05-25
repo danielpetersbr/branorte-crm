@@ -812,10 +812,14 @@ export function OrcamentoMontar() {
       // Tenta achar o PrecoBranorte correspondente pra abrir o ConfirmarChupimModal
       const precoMatch = item.preco_branorte_id
         ? transportadores.find(t => t.id === item.preco_branorte_id)
-        : transportadores.find(t =>
-            item.nome_curto?.includes(String(t.descricao?.match(/(\d{3})\s*[xX]/)?.[1] || '???'))
-            && item.nome_curto?.includes(String(t.descricao?.match(/(\d+[.,]?\d*)\s*[mM]/)?.[1] || '???'))
-          )
+        : transportadores.find(t => {
+            const tDiam = t.descricao?.match(/(\d{3})\s*[xX]/)?.[1]
+            const tComp = t.descricao?.match(/(\d+[.,]?\d*)\s*[mM]/)?.[1]
+            if (!tDiam || !tComp) return false
+            const itemDiam = item.nome_curto?.match(/(\d{3})\s*[xX]/)?.[1]
+            const itemComp = item.nome_curto?.match(/(\d+[.,]?\d*)\s*[mM]/)?.[1]
+            return itemDiam === tDiam && itemComp === tComp
+          })
       if (precoMatch && (precoMatch.subcategoria === 'CHUPIM' || precoMatch.subcategoria === 'HELICOIDAL')) {
         setConfirmarChupim(precoMatch)
         return
