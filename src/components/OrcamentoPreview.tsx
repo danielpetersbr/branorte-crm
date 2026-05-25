@@ -645,7 +645,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             </button>
           )}
 
-          <div className="space-y-3">
+          <div className={`space-y-3 ${fotoPrincipal ? 'itens-apos-hero' : ''}`}>
             {carrinho.map((it, idx) => {
               const letra = String.fromCharCode(65 + idx)
               const subtotal = it.valor * it.qtd

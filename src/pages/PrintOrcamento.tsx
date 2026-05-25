@@ -91,6 +91,11 @@ export default function PrintOrcamento() {
           break-after: page !important;
           page-break-after: always !important;
         }
+        /* Itens começam numa nova página quando tem foto principal */
+        .itens-apos-hero {
+          break-before: page !important;
+          page-break-before: always !important;
+        }
       `}</style>
       <OrcamentoPreview {...props} renderMode={true} />
     </div>
