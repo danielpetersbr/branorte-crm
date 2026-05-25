@@ -374,7 +374,7 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
       <div
         className="bg-bg border border-border rounded-xl max-w-lg w-full shadow-2xl flex flex-col max-h-[90vh]"
         onClick={e => e.stopPropagation()}
