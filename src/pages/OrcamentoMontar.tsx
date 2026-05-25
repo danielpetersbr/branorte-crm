@@ -1233,6 +1233,7 @@ export function OrcamentoMontar() {
         motor_valor_unit: motorIncluso ? 0 : (motor ? Number(motor.valor) : 0),
         foto_url: foto,
         usa_inversor: !!(ci?.usa_inversor),
+        brinde: !!(it as any).brinde,
       })
     })
 
