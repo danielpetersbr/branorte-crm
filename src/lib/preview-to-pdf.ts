@@ -282,7 +282,9 @@ export async function gerarPdfDoPreview(
         const sliceHeightMm = thisSliceHeightPx * mmPerPx
 
         if (pageIdx > 0) pdf.addPage()
-        pdf.addImage(imgData, 'PNG', 0, 0, pageWidthMm, sliceHeightMm, undefined, 'FAST')
+        // Páginas 2+: desloca conteúdo 3mm pra baixo pra não colar na faixa verde (1.5mm)
+        const topOffset = pageIdx > 0 ? 3 : 0
+        pdf.addImage(imgData, 'PNG', 0, topOffset, pageWidthMm, sliceHeightMm, undefined, 'FAST')
 
         yPx += thisSliceHeightPx
         pageIdx += 1
