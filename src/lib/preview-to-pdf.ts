@@ -114,10 +114,15 @@ export async function gerarPdfDoPreview(
     }
     console.log(`[pdf] canvas OK ${canvas.width}x${canvas.height}px (scale=${scale})`)
 
-    // Converte ranges de CSS px → canvas px (com scale aplicado)
+    // Converte ranges de CSS px → canvas px (com scale aplicado).
+    // Expande cada range ±24 CSS px (como o findBreakNear do preview faz com
+    // margin-top de SectionHeaders e padding de bordas). Sem essa expansão,
+    // a margem em canvas px fica microscópica (1px ≈ 0.2 CSS px no scale 5)
+    // e o corte cai dentro do bloco quando há drift entre DOM e html2canvas.
+    const expandCanvasPx = Math.ceil(24 * scale)
     const noBreakCanvasRanges = noBreakRanges.map(r => ({
-      top: Math.floor(r.topPx * scale),
-      bottom: Math.ceil(r.bottomPx * scale),
+      top: Math.floor(r.topPx * scale) - expandCanvasPx,
+      bottom: Math.ceil(r.bottomPx * scale) + expandCanvasPx,
     }))
 
     // 5) Converte canvas pra PDF A4 (multi-pagina se necessario)
@@ -155,26 +160,22 @@ export async function gerarPdfDoPreview(
         return true
       }
 
-      // Verifica se Y cai dentro de algum bloco no-break.
-      // Blocos menores que 1 página: NUNCA corta dentro — move pra antes ou depois.
-      // Blocos maiores que 1 página: tenta mover pra próxima página (topo do bloco).
-      //   Se já está no topo (sliceStart ≈ topY), então é impossível evitar — deixa
-      //   cortar mas procura linha branca dentro.
+      // Margens em canvas px proporcionais ao scale (equivalem a ~30 CSS px).
+      // Antes era hardcoded 30/50/16 canvas px, que no scale 5 virava 6/10/3 CSS px
+      // — insuficiente pra proteger bordas/sombras dos blocos.
+      const marginBeforePx = Math.ceil(30 * scale)
+      const marginAfterPx = Math.ceil(16 * scale)
+      const minPageContentPx = Math.ceil(50 * scale)
+
       function isInsideNoBreak(y: number, sliceStartY?: number): { inside: boolean; topY?: number; bottomY?: number } {
         for (const r of noBreakCanvasRanges) {
-          if (y > r.top + 1 && y < r.bottom - 1) {
+          if (y >= r.top && y <= r.bottom) {
             const blockHeight = r.bottom - r.top
             if (blockHeight > sliceHeightPx * 0.95) {
-              // Bloco ENORME (> 1 página). Se estamos no TOPO dele (a página
-              // começou com esse bloco), não tem como evitar — deixa cortar.
-              // Se NÃO estamos no topo, move pra antes dele (próxima página
-              // vai começar com ele do topo).
               const startY = sliceStartY ?? 0
               if (r.top - startY > sliceHeightPx * 0.05) {
-                // Tem espaço antes — move pra antes do bloco
                 return { inside: true, topY: r.top, bottomY: r.bottom }
               }
-              // Já estamos no topo — deixa cortar (procura linha branca)
               continue
             }
             return { inside: true, topY: r.top, bottomY: r.bottom }
@@ -183,28 +184,20 @@ export async function gerarPdfDoPreview(
         return { inside: false }
       }
 
-      // Helper: encontra a melhor linha de corte perto do ideal
-      // PRIMEIRO: se cai dentro de no-break, move pra ANTES dele
-      // DEPOIS: procura linha em branco pra refinar
       function findCutY(idealY: number, maxY: number, sliceStart: number): number {
-        // 1) Move idealY pra fora de qualquer no-break (iterativamente).
-        // Margem de 30px antes / 16px depois pra evitar borda/sombra/padding
-        // do bloco serem cortados.
         let y = idealY
         for (let iter = 0; iter < 10; iter++) {
           const r = isInsideNoBreak(y, sliceStart)
           if (!r.inside) break
-          // Tenta antes
-          y = r.topY! - 30
-          // Se moveu pra ANTES do sliceStart (pagina vazia), tenta DEPOIS
-          if (y <= sliceStart + 50) {
-            y = r.bottomY! + 16
+          y = r.topY! - marginBeforePx
+          if (y <= sliceStart + minPageContentPx) {
+            y = r.bottomY! + marginAfterPx
           }
         }
         // 2) Refina: procura linha branca proxima
         const lookBack = Math.floor(sliceHeightPx * 0.10)
         const lookAhead = Math.floor(sliceHeightPx * 0.02)
-        const minY = Math.max(y - lookBack, sliceStart + 50)
+        const minY = Math.max(y - lookBack, sliceStart + minPageContentPx)
         const maxYClamp = Math.min(y + lookAhead, maxY - 1)
         let bestY = -1
         let bestRunLen = 0
