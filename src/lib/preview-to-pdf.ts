@@ -186,18 +186,22 @@ export async function gerarPdfDoPreview(
 
       function findCutY(idealY: number, maxY: number, sliceStart: number): number {
         let y = idealY
+        // Mínimo de 40% da página preenchida — se cortar antes de um no-break
+        // deixaria a página com menos de 40% de conteúdo, inclui o bloco na
+        // página atual (evita primeira página quase vazia quando não há hero photo).
+        const minFillPx = Math.floor(sliceHeightPx * 0.40)
         for (let iter = 0; iter < 10; iter++) {
           const r = isInsideNoBreak(y, sliceStart)
           if (!r.inside) break
           y = r.topY! - marginBeforePx
-          if (y <= sliceStart + minPageContentPx) {
+          if (y <= sliceStart + minFillPx) {
             y = r.bottomY! + marginAfterPx
           }
         }
         // 2) Refina: procura linha branca proxima
         const lookBack = Math.floor(sliceHeightPx * 0.10)
         const lookAhead = Math.floor(sliceHeightPx * 0.02)
-        const minY = Math.max(y - lookBack, sliceStart + minPageContentPx)
+        const minY = Math.max(y - lookBack, sliceStart + minFillPx)
         const maxYClamp = Math.min(y + lookAhead, maxY - 1)
         let bestY = -1
         let bestRunLen = 0
