@@ -2005,13 +2005,14 @@ export function OrcamentoMontar() {
           itens: carrinho.map(c => ({
             nome: c.nome_custom || c.nome,  // usa nome customizado se vendedor editou
             qtd: c.qtd,
-            valor: c.valor,
+            valor: c.brinde ? 0 : c.valor,
             specs: c.specs,
             motor_cv: c.motor_cv,
             motor_polos: c.motor_polos,
             motor_qtd: c.motor_qtd,
             motor_valor_unit: c.motor_valor_unit,
             foto_url: c.foto_url,
+            brinde: c.brinde,
           })),
           motoresAgrupados,
           acessorios: acessorios ? { pct: acessorios.pct, items: acessorios.items, valor: valorAcessorios } : null,

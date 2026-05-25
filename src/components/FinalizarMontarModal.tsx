@@ -35,6 +35,7 @@ export interface CarrinhoSnapshot {
     motor_qtd: number
     motor_valor_unit: number
     foto_url?: string | null
+    brinde?: boolean
   }>
   motoresAgrupados: Array<{
     cv: number
@@ -523,7 +524,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         qtd: it.qtd,
         nome: it.nome,
         specs: it.specs,
-        valor: it.valor,
+        valor: it.brinde ? 0 : it.valor,
+        ...(it.brinde ? { brinde: true } : {}),
       }))
       const motoresDb: OrcamentoMotor[] = snapshot.motoresAgrupados.map(m => ({
         cv: m.cv,
@@ -716,7 +718,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           voltagem: snapshot.voltagem,
           itens: snapshot.itens.map((it, idx) => ({
             letra: String.fromCharCode(65 + idx),
-            qtd: it.qtd, nome: it.nome, specs: it.specs, valor: it.valor,
+            qtd: it.qtd, nome: it.nome, specs: it.specs,
+            valor: it.brinde ? 0 : it.valor, brinde: it.brinde,
             motor_cv: it.motor_cv, motor_polos: it.motor_polos,
             motor_qtd: it.motor_qtd, foto_url: it.foto_url ?? null,
           })),

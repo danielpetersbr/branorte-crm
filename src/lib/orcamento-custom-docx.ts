@@ -20,6 +20,7 @@ export interface CustomDocxItem {
   motor_polos?: number | null
   motor_qtd?: number
   foto_url?: string | null      // URL da foto do equipamento (opcional)
+  brinde?: boolean              // quando true, mostra "BRINDE" em vez do valor
 }
 
 export interface CustomDocxMotor {
@@ -377,7 +378,9 @@ async function buildItemTable(item: CustomDocxItem, voltagemTxt: string): Promis
           children: [
             r('VALOR', { bold: true, size: 19, color: '374151' }),
             new TextRun({ text: '\t', size: 19 }),
-            r(`R$ ${formatBRL(subtotal)}`, { bold: true, size: 19, color: '111827' }),
+            item.brinde
+              ? r('BRINDE', { bold: true, size: 19, color: '047857' })
+              : r(`R$ ${formatBRL(subtotal)}`, { bold: true, size: 19, color: '111827' }),
           ],
         })],
       }),
