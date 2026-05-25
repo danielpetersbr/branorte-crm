@@ -67,6 +67,18 @@ export default function PrintOrcamento() {
 
   return (
     <div style={{ background: '#ffffff', minHeight: '100vh' }}>
+      <style>{`
+        @media print {
+          [data-no-break] {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
+          img {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
+        }
+      `}</style>
       <OrcamentoPreview {...props} renderMode={true} />
     </div>
   )
