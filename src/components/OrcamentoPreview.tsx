@@ -947,7 +947,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       {it.brinde ? (
                         <span className="flex items-center gap-2">
                           <span className="text-green-600 font-bold text-[15px]">BRINDE</span>
-                          {!renderMode && onToggleBrinde && it.uid && (
+                          {!renderMode && onToggleBrinde && it.uid && it.categoria === 'DIVERSOS' && (
                             <button
                               onClick={() => onToggleBrinde(it.uid!)}
                               className="text-[11px] text-gray-400 hover:text-red-500 print:hidden"
@@ -987,7 +987,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                               }
                             }}
                           >R$ {formatBRLBare(subtotal)}</span>
-                          {!renderMode && onToggleBrinde && it.uid && (
+                          {!renderMode && onToggleBrinde && it.uid && it.categoria === 'DIVERSOS' && (
                             <button
                               onClick={() => onToggleBrinde(it.uid!)}
                               className="text-[10px] text-gray-400 hover:text-green-600 border border-gray-300 hover:border-green-500 rounded px-1.5 py-0.5 print:hidden"
@@ -1001,7 +1001,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             <span className="print:hidden">⚠ sem preço — preencha</span>
                             <span className="hidden print:inline">a consultar</span>
                           </span>
-                          {!renderMode && onToggleBrinde && it.uid && (
+                          {!renderMode && onToggleBrinde && it.uid && it.categoria === 'DIVERSOS' && (
                             <button
                               onClick={() => onToggleBrinde(it.uid!)}
                               className="text-[10px] text-gray-400 hover:text-green-600 border border-gray-300 hover:border-green-500 rounded px-1.5 py-0.5 print:hidden"
