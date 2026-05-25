@@ -650,7 +650,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
               const letra = String.fromCharCode(65 + idx)
               const subtotal = it.valor * it.qtd
               return (
-                <div key={it.uid || idx} data-no-break className="group relative border border-gray-700 rounded-md p-3 bg-white shadow-sm" style={{ zIndex: 1 }}>
+                <div key={it.uid || idx} data-no-break className="group relative border border-gray-700 rounded-md p-3 bg-white shadow-sm" style={{ zIndex: 1, breakInside: 'avoid', pageBreakInside: 'avoid' }}>
                   <div className="flex justify-between items-start gap-2 mb-1.5">
                     <div className="font-bold text-[15.5px] flex-1 min-w-0 text-gray-900">
                       <span className="text-gray-900">{letra} - </span>
@@ -1058,7 +1058,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
           {/* VALOR TOTAL DE EQUIPAMENTOS */}
           {mostrarTotalEquip && (
-            <div data-no-break className="mt-4 px-6 py-4 border-2 border-gray-700 rounded-lg tracking-wide relative bg-white" style={{ zIndex: 1 }}>
+            <div data-no-break className="mt-4 px-6 py-4 border-2 border-gray-700 rounded-lg tracking-wide relative bg-white" style={{ zIndex: 1, breakInside: 'avoid', pageBreakInside: 'avoid' }}>
               <div className="flex justify-between items-center gap-4 min-h-[24px] text-[17px] font-bold">
                 <span className="text-gray-900 uppercase leading-[1] flex-1">Valor total de equipamentos</span>
                 <span className="text-gray-900 leading-[1] tabular-nums whitespace-nowrap">R$ {formatBRLBare(totalEquip)}</span>
@@ -1074,7 +1074,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             const tensaoInteractive = !renderMode && !!onUpdateTensaoMotores
             const tensaoLabel = tensaoEfetiva ? `${tensaoEfetiva}V` : 'tensão a confirmar'
             return (
-              <div data-no-break className="mt-3 border border-gray-700 rounded-md p-4 bg-white shadow-sm relative" style={{ zIndex: 1 }}>
+              <div data-no-break className="mt-3 border border-gray-700 rounded-md p-4 bg-white shadow-sm relative" style={{ zIndex: 1, breakInside: 'avoid', pageBreakInside: 'avoid' }}>
                 <div className="flex items-center justify-between gap-3 pb-2 border-b-2 border-gray-800 mb-2.5">
                   <div className="flex items-baseline gap-2 flex-wrap">
                     <span className="font-bold text-[16px] tracking-wider uppercase text-gray-700">
@@ -1299,7 +1299,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
               onUpdateComponentesExtras(componentesExtras.filter(c => c.id !== id))
             }
             return (
-              <div data-no-break className="mt-3 border border-gray-700 rounded-md p-4 bg-white shadow-sm relative" style={{ zIndex: 1 }}>
+              <div data-no-break className="mt-3 border border-gray-700 rounded-md p-4 bg-white shadow-sm relative" style={{ zIndex: 1, breakInside: 'avoid', pageBreakInside: 'avoid' }}>
                 <div className="flex items-center justify-between gap-3 pb-2 border-b-2 border-gray-800 mb-2.5">
                   <span className="font-bold text-[16px] tracking-wider uppercase text-gray-700">
                     Componentes adicionais
@@ -1540,7 +1540,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             const temDesconto = !!desconto && descontoValor > 0
             return (
               <>
-                <div data-no-break className={`mt-6 px-6 py-5 border-2 rounded-lg tracking-wide relative bg-white ${temDesconto ? 'border-gray-400 bg-gray-50/40' : 'border-gray-900'}`} style={{ zIndex: 1 }}>
+                <div data-no-break className={`mt-6 px-6 py-5 border-2 rounded-lg tracking-wide relative bg-white ${temDesconto ? 'border-gray-400 bg-gray-50/40' : 'border-gray-900'}`} style={{ zIndex: 1, breakInside: 'avoid', pageBreakInside: 'avoid' }}>
                   <div className={`flex justify-between items-center gap-4 min-h-[32px] ${temDesconto ? 'text-[15px] font-semibold' : 'text-[19px] font-black'}`}>
                     <span className={`uppercase flex-1 leading-tight ${temDesconto ? 'text-gray-500' : 'text-gray-900'}`}>
                       Valor total da proposta{totalMotores > 0 ? ' com motor novo' : ''}{temDesconto ? ' (sem desconto)' : ''}
