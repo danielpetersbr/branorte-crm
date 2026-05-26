@@ -123,6 +123,10 @@ export default function PrintOrcamento() {
         .text-\\[14\\.5px\\] { font-size: 10pt !important; }  /* bullets / specs */
         .text-\\[14px\\] { font-size: 10pt !important; }
         .text-\\[16px\\] { font-size: 11pt !important; }      /* dados cliente */
+        /* Variantes responsivas Tailwind (sm:/md:/lg:) usam classnames
+           ESCAPADOS diferentes — precisam override SEPARADO senão escapam
+           do tamanho. Linha CLIENTE/A/C/FONE usa sm:text-[16px]. */
+        .sm\\:text-\\[16px\\] { font-size: 11pt !important; }
         .text-\\[19px\\] { font-size: 13pt !important; }      /* total destaque */
         .text-\\[20px\\] { font-size: 13pt !important; }
         .text-\\[13px\\] { font-size: 9pt !important; }
