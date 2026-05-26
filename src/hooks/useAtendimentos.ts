@@ -34,6 +34,7 @@ export interface AtendimentoFilters {
   status_real: string
   uf: string
   data: DataPreset
+  origem: string
   page: number
 }
 
@@ -203,6 +204,28 @@ export function useAtendimentos(filters: AtendimentoFilters) {
           query = query.or(orExpr)
         }
       }
+      if (filters.origem) {
+        // Mapeia label normalizado de volta pra padrões SQL no campo origem
+        const origemMap: Record<string, string[]> = {
+          'WhatsApp (48) 8878-1144': ['WhatsApp 1144', '%1144%', '%8878%'],
+          'WhatsApp (48) 3658-4502': ['WhatsApp 4502', '%4502%', '%3658%'],
+          'Meta ADS': ['Meta ADS', 'Meta'],
+          'Facebook': ['Facebook'],
+          'Facebook Form': ['Facebook Formulario', 'Facebook Formulário'],
+          'Instagram': ['Instagram', 'Instagram Formulario', 'Instagram Formulário', 'Bio Instagram'],
+          'Google': ['Google'],
+          'Não identificado': ['Não identificou', 'Nao identificou', 'Não Identificado'],
+        }
+        const patterns = origemMap[filters.origem]
+        if (patterns) {
+          const orExpr = patterns.map(p =>
+            p.includes('%') ? `origem.ilike.${p}` : `origem.eq.${p}`
+          ).join(',')
+          query = query.or(orExpr)
+        } else {
+          query = query.eq('origem', filters.origem)
+        }
+      }
 
       const from = filters.page * ATENDIMENTO_PAGE_SIZE
       query = query.range(from, from + ATENDIMENTO_PAGE_SIZE - 1)
@@ -263,6 +286,27 @@ function applyBaseFilters(query: any, filters?: Partial<AtendimentoFilters>, ven
     const range = dateRangeFromPreset(filters.data)
     if (range.from) q = q.gte('created_at', range.from)
     if (range.to)   q = q.lte('created_at', range.to)
+  }
+  if (filters?.origem) {
+    const origemMap: Record<string, string[]> = {
+      'WhatsApp (48) 8878-1144': ['WhatsApp 1144', '%1144%', '%8878%'],
+      'WhatsApp (48) 3658-4502': ['WhatsApp 4502', '%4502%', '%3658%'],
+      'Meta ADS': ['Meta ADS', 'Meta'],
+      'Facebook': ['Facebook'],
+      'Facebook Form': ['Facebook Formulario', 'Facebook Formulário'],
+      'Instagram': ['Instagram', 'Instagram Formulario', 'Instagram Formulário', 'Bio Instagram'],
+      'Google': ['Google'],
+      'Não identificado': ['Não identificou', 'Nao identificou', 'Não Identificado'],
+    }
+    const patterns = origemMap[filters.origem]
+    if (patterns) {
+      const orExpr = patterns.map(p =>
+        p.includes('%') ? `origem.ilike.${p}` : `origem.eq.${p}`
+      ).join(',')
+      q = q.or(orExpr)
+    } else {
+      q = q.eq('origem', filters.origem)
+    }
   }
   return q
 }
@@ -532,5 +576,81 @@ export function useResolverAtendimento() {
       qc.invalidateQueries({ queryKey: ['atendimentos'] })
       qc.invalidateQueries({ queryKey: ['atendimentos-kpis'] })
     },
+  })
+}
+
+// --- Origens breakdown ---
+
+export interface OrigemEntry {
+  label: string
+  count: number
+  color: string
+}
+
+function normalizeOrigem(raw: string | null | undefined): string {
+  if (!raw) return 'Não identificado'
+  const s = raw.toLowerCase().trim()
+  if (s.includes('1144') || s.includes('8878')) return 'WhatsApp (48) 8878-1144'
+  if (s.includes('4502') || s.includes('3658')) return 'WhatsApp (48) 3658-4502'
+  if (s.includes('whatsapp')) return 'WhatsApp'
+  if (s === 'meta ads' || s === 'meta') return 'Meta ADS'
+  if (s.includes('instagram') && s.includes('formul')) return 'Instagram'
+  if (s.includes('instagram')) return 'Instagram'
+  if (s.includes('facebook') && s.includes('formul')) return 'Facebook Form'
+  if (s === 'facebook') return 'Facebook'
+  if (s.includes('google')) return 'Google'
+  if (s.includes('não identif') || s === 'nao identificou' || s === 'não identificou') return 'Não identificado'
+  return raw
+}
+
+const ORIGEM_COLORS: Record<string, string> = {
+  'WhatsApp (48) 8878-1144': '#25D366',
+  'WhatsApp (48) 3658-4502': '#128C7E',
+  'WhatsApp': '#25D366',
+  'Meta ADS': '#1877F2',
+  'Facebook': '#1877F2',
+  'Facebook Form': '#4267B2',
+  'Instagram': '#E1306C',
+  'Google': '#4285F4',
+  'Não identificado': '#6B7280',
+}
+
+export function useAtendimentoOrigens(filters?: Partial<AtendimentoFilters>) {
+  const filterKey = JSON.stringify({
+    search: filters?.search ?? '',
+    responsavel: filters?.responsavel ?? '',
+    status_real: filters?.status_real ?? '',
+    uf: filters?.uf ?? '',
+    data: filters?.data ?? '',
+  })
+  return useQuery({
+    queryKey: ['atendimentos-origens', filterKey],
+    queryFn: async (): Promise<OrigemEntry[]> => {
+      const vendorFirst = await getCurrentVendorFirstName()
+      let query = supabaseAuditoria
+        .from('atendimentos_por_cliente')
+        .select('origem')
+        .eq('is_internal', false)
+        .limit(5000)
+      query = applyBaseFilters(query, filters, vendorFirst)
+      const { data, error } = await query
+      if (error) throw error
+
+      const counts: Record<string, number> = {}
+      for (const row of (data ?? []) as { origem: string | null }[]) {
+        const label = normalizeOrigem(row.origem)
+        counts[label] = (counts[label] ?? 0) + 1
+      }
+
+      return Object.entries(counts)
+        .map(([label, count]) => ({
+          label,
+          count,
+          color: ORIGEM_COLORS[label] ?? '#6B7280',
+        }))
+        .sort((a, b) => b.count - a.count)
+    },
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   })
 }
