@@ -181,25 +181,30 @@ export async function gerarPdfDoPreview(
       const data = imageData.data
       const W = canvas.width
 
-      // Helper: linha Y é "branca/clara"? (todos pixels >= threshold)
-      // Uso threshold 245 (quase branco) e amostra a cada 4 px pra performance
+      // Threshold adapta com effectiveScale: em scales baixos (< 1.5) o
+      // antialiasing torna pixels de texto MAIS claros (avg ~248-254 quando
+      // deveria ser ~0-100). Threshold mais agressivo (252) em scale baixo
+      // evita falsos positivos de "linha branca" no meio de texto. Em scale
+      // alto (>= 1.5) mantém 245 que tolera anti-alias suave nas bordas.
+      const blankThreshold = effectiveScale < 1.5 ? 252 : 245
+
       function isLineBlank(y: number): boolean {
         const rowOffset = y * W * 4
         for (let x = 0; x < W; x += 4) {
           const i = rowOffset + x * 4
           // RGB médio
           const avg = (data[i] + data[i + 1] + data[i + 2]) / 3
-          if (avg < 245) return false
+          if (avg < blankThreshold) return false
         }
         return true
       }
 
-      // Margens em canvas px proporcionais ao scale (equivalem a ~30 CSS px).
-      // Antes era hardcoded 30/50/16 canvas px, que no scale 5 virava 6/10/3 CSS px
-      // — insuficiente pra proteger bordas/sombras dos blocos.
-      const marginBeforePx = Math.ceil(30 * scale)
-      const marginAfterPx = Math.ceil(16 * scale)
-      const minPageContentPx = Math.ceil(50 * scale)
+      // Margens em canvas px proporcionais ao scale REAL aplicado pelo html2canvas.
+      // CRÍTICO: usar effectiveScale (não scale), pois quando o conteúdo é longo
+      // o cap Skia reduz scale (pode chegar a 0.5). Usar 'scale' aqui causava
+      // margens 5x maiores em CSS px → findCutY cortava no início da página.
+      const marginBeforePx = Math.ceil(30 * effectiveScale)
+      const marginAfterPx = Math.ceil(16 * effectiveScale)
 
       function isInsideNoBreak(y: number, sliceStartY?: number): { inside: boolean; topY?: number; bottomY?: number } {
         for (const r of noBreakCanvasRanges) {
@@ -220,23 +225,35 @@ export async function gerarPdfDoPreview(
 
       function findCutY(idealY: number, maxY: number, sliceStart: number): number {
         let y = idealY
-        // Mínimo de 40% da página preenchida — se cortar antes de um no-break
-        // deixaria a página com menos de 40% de conteúdo, inclui o bloco na
-        // página atual (evita primeira página quase vazia quando não há hero photo).
+        // Mínimo de 40% da página preenchida — evita páginas com pouco conteúdo
         const minFillPx = Math.floor(sliceHeightPx * 0.40)
+        const minAcceptableY = sliceStart + minFillPx
+
+        // Step 1: resolver no-break collisions. NUNCA volta pra antes do mínimo;
+        // se proposta de subida violaria minFillPx, vai pra DEPOIS do bloco.
         for (let iter = 0; iter < 10; iter++) {
           const r = isInsideNoBreak(y, sliceStart)
           if (!r.inside) break
-          y = r.topY! - marginBeforePx
-          if (y <= sliceStart + minFillPx) {
+          const proposedUp = r.topY! - marginBeforePx
+          if (proposedUp >= minAcceptableY) {
+            y = proposedUp
+          } else {
+            // Cortar acima deixaria página com <40%. Vai depois do bloco.
             y = r.bottomY! + marginAfterPx
           }
         }
-        // 2) Refina: procura linha branca proxima
+
+        // Step 2: refina buscando linha branca próxima
         const lookBack = Math.floor(sliceHeightPx * 0.10)
         const lookAhead = Math.floor(sliceHeightPx * 0.02)
-        const minY = Math.max(y - lookBack, sliceStart + minFillPx)
+        const minY = Math.max(y - lookBack, minAcceptableY)
         const maxYClamp = Math.min(y + lookAhead, maxY - 1)
+
+        // Defesa: scan window inteira abaixo do mínimo → descarta refino
+        if (maxYClamp < minAcceptableY) {
+          return Math.max(y, minAcceptableY)
+        }
+
         let bestY = -1
         let bestRunLen = 0
         let runStart = -1
@@ -272,7 +289,10 @@ export async function gerarPdfDoPreview(
             bestY = Math.floor((runStart + maxYClamp) / 2)
           }
         }
-        return bestY > 0 ? bestY : y
+
+        // Garantia final: nunca devolver corte que viole minFillPx
+        const finalY = bestY > 0 ? bestY : y
+        return Math.max(finalY, minAcceptableY)
       }
 
       // Tolerancia: ignorar overflow < 8% da pagina (evita pagina extra so com footer)
@@ -291,6 +311,8 @@ export async function gerarPdfDoPreview(
           // Procura linha branca perto do limite ideal — respeitando data-no-break
           const idealY = yPx + sliceHeightPx
           const cutY = findCutY(idealY, canvas.height, yPx)
+          const fillPct = ((cutY - yPx) / sliceHeightPx * 100).toFixed(0)
+          console.log(`[pdf] page ${pageIdx + 1}: cut ${cutY}/${canvas.height} (slice=${cutY - yPx}px, fill=${fillPct}%)`)
           thisSliceHeightPx = cutY - yPx
         }
 
