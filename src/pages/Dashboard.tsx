@@ -6,7 +6,7 @@ import {
   Area, AreaChart, Cell, Pie, PieChart,
   ResponsiveContainer, Tooltip,
 } from 'recharts'
-import { Flame, TrendingUp, Users, CheckCircle2, ArrowDown, ArrowUp, Hand, FilePlus2 } from 'lucide-react'
+import { Flame, TrendingUp, Users, CheckCircle2, ArrowDown, ArrowUp, Hand, FilePlus2, AlertTriangle, Clock, Ghost } from 'lucide-react'
 
 const PRESET_LABELS: { value: DashboardPreset; label: string }[] = [
   { value: '',     label: 'Tudo' },
@@ -137,14 +137,26 @@ export function Dashboard() {
     ? PRESET_LABELS.find(p => p.value === preset)?.label ?? 'período'
     : 'no total'
 
+  // KPI Quentes: soma lead_quente das etiquetas (real) com a definição antiga (volume animais)
+  // pra cobrir leads que não chegaram no WhatsApp do vendedor ainda
+  const leadQuenteEtq = etq?.por_categoria.lead_quente ?? 0
+  const kpiQuentesMerged = {
+    ...data.kpiQuentes,
+    valor: data.kpiQuentes.valor + leadQuenteEtq,
+  }
+  const orcamentoEtq = etq?.por_categoria.orcamento ?? 0
+  const vendidoEtq = etq?.por_categoria.vendido ?? 0
+
   const heroKpis = [
     { label: preset ? 'Leads no período' : 'Total de leads', kpi: data.kpiTotal, icon: Users, color: COLORS.ink, sub: preset ? periodoLabel.toLowerCase() : 'desde o início' },
     { label: 'Hoje',              kpi: data.kpiHoje, icon: TrendingUp, color: COLORS.info, sub: 'leads novos' },
     { label: 'Não respondeu',    kpi: data.kpiNaoRespondeu, icon: Users, color: COLORS.warning, sub: 'não engajou com a IA' },
     { label: 'Em andamento',     kpi: data.kpiEmAndamento, icon: TrendingUp, color: 'hsl(200 70% 55%)', sub: 'conversando com a IA' },
-    { label: 'Quentes',          kpi: data.kpiQuentes, icon: Flame, color: COLORS.danger, sub: 'potencial cliente' },
-    { label: 'Qualificados',     kpi: data.kpiQualificados, icon: CheckCircle2, color: COLORS.accent, sub: 'querem produto Branorte' },
+    { label: 'Quentes',          kpi: kpiQuentesMerged, icon: Flame, color: COLORS.danger, sub: `${leadQuenteEtq} via etiqueta WA` },
+    { label: 'Qualificados',     kpi: data.kpiQualificados, icon: CheckCircle2, color: COLORS.accent, sub: 'fábrica + animal · ou equip. Branorte' },
     { label: 'Com vendedor',     kpi: data.kpiBotao, icon: Hand, color: 'hsl(280 65% 60%)', sub: 'vendedor atribuído' },
+    { label: 'Orçamentos',       kpi: { valor: orcamentoEtq, deltaPct: 0, sparkline: [] }, icon: FilePlus2, color: 'hsl(280 65% 50%)', sub: 'ORC ENVIADO no WhatsApp' },
+    { label: 'Vendidos',         kpi: { valor: vendidoEtq, deltaPct: 0, sparkline: [] }, icon: CheckCircle2, color: 'hsl(152 60% 35%)', sub: 'etiqueta VENDIDO no WhatsApp' },
   ]
 
   return (
@@ -192,6 +204,11 @@ export function Dashboard() {
         </div>
       </div>
 
+      {/* BANNER DE ALERTAS — só aparece se há algo crítico */}
+      {etq && (etq.alertas.criativos_nao_fabricamos > 0 || etq.alertas.leads_orfaos > 0 || etq.alertas.vendedores_sem_orc > 0) && (
+        <AlertasBanner etq={etq} />
+      )}
+
       {/* HERO KPIs com sparkline + delta */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {heroKpis.map(k => (
@@ -199,23 +216,34 @@ export function Dashboard() {
         ))}
       </div>
 
-      {/* FUNIL DO BOT (hero) + FUNIL POS-BOT */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <Card className="lg:col-span-2">
-          <CardHeader
-            title="Funil de qualificação (IA → Vendedor)"
-            subtitle={`${fmtN(data.totalLeads)} leads · IA qualifica · vendedor confirma via etiqueta WA`}
-          />
-          <FunilHero etapas={funilIaMerged} />
-        </Card>
-        <Card>
-          <CardHeader
-            title="Funil de vendas (pós-qualificação)"
-            subtitle="Qualificou → vendedor → orçamento → fechou"
-          />
-          <FunilCompacto etapas={data.funilReal} />
-        </Card>
-      </div>
+      {/* FUNIL principal IA → Vendedor (full width) */}
+      <Card>
+        <CardHeader
+          title="Funil de qualificação (IA → Vendedor)"
+          subtitle={`${fmtN(data.totalLeads)} leads · IA qualifica · vendedor confirma via etiqueta WA`}
+        />
+        <FunilHero etapas={funilIaMerged} />
+      </Card>
+
+      {/* TEMPOS + LEADS ÓRFÃOS */}
+      {etq && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <Card>
+            <CardHeader
+              title="Ciclo de venda"
+              subtitle="Mediana de dias entre eventos"
+            />
+            <CicloVenda etq={etq} />
+          </Card>
+          <Card>
+            <CardHeader
+              title="Leads órfãos (zumbis no funil)"
+              subtitle={`Etiqueta NOVO ou PROSPECCAO há mais de ${etq.leads_orfaos_dias_limite} dias sem evoluir`}
+            />
+            <LeadsOrfaos etq={etq} />
+          </Card>
+        </div>
+      )}
 
       {/* LEADS POR DIA */}
       <div className="grid grid-cols-1 gap-5">
@@ -254,32 +282,21 @@ export function Dashboard() {
       <Card>
         <CardHeader
           title="Distribuição por vendedor"
-          subtitle="Quantos leads cada vendedor recebeu e quantos qualificaram"
+          subtitle="Leads recebidos, qualificados, com ORÇAMENTO ENVIADO e VENDIDO (via etiqueta WA)"
         />
-        <SlaTable rows={data.slaPorVendedor} />
+        <SlaTable rows={data.slaPorVendedor} etqPorVendedor={etq?.por_vendedor} />
       </Card>
 
-      {/* CRIATIVO + ORIGEM */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      {/* ORIGEM × VENDIDO (etiquetas) — substitui "Conversão por canal" antigo */}
+      {etq && etq.por_origem.length > 0 && (
         <Card>
           <CardHeader
-            title="Performance por criativo"
-            subtitle="Volume × % qualificados — top 10"
-            right={
-              <div className="flex gap-3 text-[10px] text-ink-faint">
-                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-accent" /> Qualif</span>
-                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-info/40" /> Não qualif</span>
-              </div>
-            }
+            title="Origem × Resultado real"
+            subtitle="Qual origem realmente vira venda (via etiqueta WA, não % qualificado da IA)"
           />
-          <CriativosList criativos={data.porCriativo} />
+          <OrigemVendido etq={etq} />
         </Card>
-
-        <Card>
-          <CardHeader title="Conversão por canal" subtitle="Volume e % qualificados" />
-          <OrigemList origens={data.porOrigem} />
-        </Card>
-      </div>
+      )}
 
       {/* MOMENTO + GEOGRAFIA */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -295,6 +312,17 @@ export function Dashboard() {
           <UfList items={data.porUf} />
         </Card>
       </div>
+
+      {/* HEATMAP: quando leads chegam (dia × hora) */}
+      {etq && etq.heatmap.length > 0 && (
+        <Card>
+          <CardHeader
+            title="Quando chegam os leads (BR)"
+            subtitle="Heatmap dia × hora — vendedor precisa estar online nos picos"
+          />
+          <HeatmapDiaHora heatmap={etq.heatmap} />
+        </Card>
+      )}
 
       {/* ETIQUETAS WA (vendedores) */}
       {etq && (
@@ -444,74 +472,48 @@ function FunilHero({ etapas }: { etapas: FunilEtapa[] }) {
 }
 
 // Funil compacto pra "funil real" pos-bot
-function FunilCompacto({ etapas }: { etapas: FunilEtapa[] }) {
-  const topo = Math.max(1, etapas[0]?.valor ?? 1)
-  if (etapas[0].valor === 0) {
-    return (
-      <div className="text-center py-8 text-[12px] text-ink-faint">
-        Nenhum lead qualificado ainda no período.
-      </div>
-    )
-  }
-  return (
-    <div className="space-y-3">
-      {etapas.map((e, i) => {
-        const widthPct = topo > 0 ? (e.valor / topo) * 100 : 0
-        const isOk = i === 0 || e.pctAnterior >= 50
-        const isBad = i > 0 && e.pctAnterior < 20
-        return (
-          <div key={e.etapa}>
-            <div className="flex items-baseline justify-between mb-1">
-              <span className="text-[11px] text-ink">{e.etapa}</span>
-              <span className="text-[11px] font-mono tabular-nums">
-                <span className="text-ink">{fmtN(e.valor)}</span>
-                {i > 0 && (
-                  <span className={`ml-2 ${isBad ? 'text-danger' : isOk ? 'text-accent' : 'text-warning'}`}>
-                    {e.pctAnterior.toFixed(0)}%
-                  </span>
-                )}
-              </span>
-            </div>
-            <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full"
-                style={{
-                  width: `${Math.max(widthPct, 2)}%`,
-                  background: i === 0 ? COLORS.accent : isBad ? COLORS.danger : `hsl(152 60% ${44 + i * 4}%)`,
-                }}
-              />
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-// Tabela vendedores (simplificada — so volume e qualificacao)
-function SlaTable({ rows }: { rows: SlaVendedor[] }) {
+// Tabela vendedores — volume + qualificacao + ORC ENVIADO/VENDIDO via etiqueta WA
+function SlaTable({ rows, etqPorVendedor }: {
+  rows: SlaVendedor[]
+  etqPorVendedor?: NonNullable<ReturnType<typeof useDashboardEtiquetas>['data']>['por_vendedor']
+}) {
   if (!rows.length) return <p className="text-sm text-ink-faint">Sem vendedores.</p>
   const maxLeads = Math.max(...rows.map(r => r.totalLeads))
+  const etqLookup = new Map((etqPorVendedor ?? []).map(v => [v.vendedor.toUpperCase(), v]))
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-[12px]">
         <thead>
           <tr className="text-[10px] uppercase tracking-widest text-ink-faint border-b border-border">
             <th className="text-left font-medium py-2 pr-2">Vendedor</th>
-            <th className="text-left font-medium py-2 px-2 w-[40%]">Distribuição</th>
+            <th className="text-left font-medium py-2 px-2 w-[30%]">Distribuição</th>
             <th className="text-right font-medium py-2 px-2">Leads</th>
             <th className="text-right font-medium py-2 px-2">Qualif</th>
-            <th className="text-right font-medium py-2 pl-2">% Qualif</th>
+            <th className="text-right font-medium py-2 px-2" title="Leads com etiqueta ORCAMENTO ENVIADO no WhatsApp">ORC</th>
+            <th className="text-right font-medium py-2 px-2" title="Leads com etiqueta VENDIDO no WhatsApp">Vend</th>
+            <th className="text-right font-medium py-2 pl-2">% Vend</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
           {rows.map(v => {
             const widthPct = maxLeads > 0 ? (v.totalLeads / maxLeads) * 100 : 0
             const qualifPct = v.totalLeads > 0 ? (v.qualificados / v.totalLeads) * 100 : 0
-            const ctrColor = qualifPct >= 15 ? 'text-accent' : qualifPct >= 5 ? 'text-warning' : 'text-ink-faint'
+            const etqInfo = etqLookup.get((v.vendedor || '').toUpperCase())
+            const orc = etqInfo?.com_orcamento ?? 0
+            const vendido = etqInfo?.vendido ?? 0
+            const vendidoPct = v.totalLeads > 0 ? (vendido / v.totalLeads) * 100 : 0
+            const vendColor = vendidoPct >= 3 ? 'text-success' : vendidoPct >= 1 ? 'text-warning' : 'text-danger'
             return (
               <tr key={v.vendedor} className="hover:bg-surface-2/50 transition-colors">
-                <td className="py-2 pr-2 text-ink">{v.vendedor}</td>
+                <td className="py-2 pr-2">
+                  <Link
+                    to={`/atendimentos?responsavel=${encodeURIComponent(v.vendedor)}`}
+                    className="text-ink hover:text-accent hover:underline"
+                    title="Ver atendimentos deste vendedor"
+                  >
+                    {v.vendedor}
+                  </Link>
+                </td>
                 <td className="py-2 px-2">
                   <div className="h-2 bg-surface-2 rounded-full relative overflow-hidden" style={{ width: `${Math.max(widthPct, 4)}%` }}>
                     <div className="absolute inset-y-0 left-0 bg-info/40" style={{ width: '100%' }} />
@@ -520,8 +522,14 @@ function SlaTable({ rows }: { rows: SlaVendedor[] }) {
                 </td>
                 <td className="py-2 px-2 text-right font-mono tabular-nums text-ink">{v.totalLeads}</td>
                 <td className="py-2 px-2 text-right font-mono tabular-nums text-ink-muted">{v.qualificados}</td>
-                <td className={`py-2 pl-2 text-right font-mono tabular-nums ${ctrColor}`}>
-                  {qualifPct.toFixed(1)}%
+                <td className={`py-2 px-2 text-right font-mono tabular-nums ${orc > 0 ? 'text-accent' : 'text-ink-faint'}`}>
+                  {orc || '—'}
+                </td>
+                <td className={`py-2 px-2 text-right font-mono tabular-nums ${vendido > 0 ? 'text-success' : 'text-ink-faint'}`}>
+                  {vendido || '—'}
+                </td>
+                <td className={`py-2 pl-2 text-right font-mono tabular-nums ${vendido > 0 ? vendColor : 'text-ink-faint'}`}>
+                  {vendido > 0 ? `${vendidoPct.toFixed(1)}%` : '—'}
                 </td>
               </tr>
             )
@@ -581,68 +589,6 @@ function DonutMomento({ data }: { data: { momento: string; valor: number; cor: s
 }
 
 // Lista compacta de criativos
-function CriativosList({ criativos }: { criativos: { codigo: string; nome: string; total: number; qualificados: number; ctr: number }[] }) {
-  if (!criativos.length) return <p className="text-sm text-ink-faint">Nenhum criativo registrado.</p>
-  const maxTotal = Math.max(...criativos.map(c => c.total))
-  const sorted = [...criativos].sort((a, b) => b.ctr - a.ctr || b.total - a.total)
-  return (
-    <div className="space-y-2">
-      {sorted.map(c => {
-        const widthPct = (c.total / maxTotal) * 100
-        const qualifPct = c.total > 0 ? (c.qualificados / c.total) * 100 : 0
-        const ctrColor = c.ctr >= 15 ? 'text-accent' : c.ctr >= 5 ? 'text-warning' : c.total > 5 ? 'text-danger' : 'text-ink-faint'
-        return (
-          <div key={c.codigo} className="grid grid-cols-[90px_1fr_50px_70px] items-center gap-3 text-[11px] py-1 hover:bg-surface-2/40 rounded -mx-1 px-1 transition-colors">
-            <div className="font-mono text-ink-faint truncate">{c.codigo}</div>
-            <div className="min-w-0">
-              <div className="text-ink truncate mb-1">{c.nome}</div>
-              <div className="h-2 bg-surface-2 rounded-sm relative overflow-hidden" style={{ width: `${Math.max(widthPct, 4)}%` }}>
-                <div className="absolute inset-y-0 left-0 bg-accent" style={{ width: `${qualifPct}%` }} />
-                <div className="absolute inset-y-0 right-0 bg-info/40" style={{ width: `${100 - qualifPct}%` }} />
-              </div>
-            </div>
-            <div className="text-right text-ink font-mono tabular-nums">{c.total}</div>
-            <div className={`text-right font-mono tabular-nums ${ctrColor}`}>{c.ctr.toFixed(1)}%</div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-// Lista de origens
-function OrigemList({ origens }: { origens: { origem: string; total: number; qualificados: number; ctr: number }[] }) {
-  // Oculta canais de WhatsApp por número (ruído — vendedores individuais).
-  // Mantém origens de campanha (Meta ADS, Google, Instagram, etc).
-  const filtered = origens.filter(o => !/whatsapp\s*\d{3,}/i.test(o.origem))
-  if (!filtered.length) return <p className="text-sm text-ink-faint">Sem leads com origem registrada.</p>
-  const maxTotal = Math.max(...filtered.map(o => o.total))
-  return (
-    <div className="space-y-3">
-      {filtered.map(o => {
-        const widthPct = (o.total / maxTotal) * 100
-        const qualifWidth = o.total > 0 ? (o.qualificados / o.total) * 100 : 0
-        const ctrColor = o.ctr >= 10 ? 'text-accent' : o.ctr >= 3 ? 'text-warning' : 'text-danger'
-        return (
-          <div key={o.origem}>
-            <div className="flex items-baseline justify-between mb-1.5">
-              <span className="text-[12px] text-ink font-medium">{o.origem}</span>
-              <div className="flex items-center gap-3 text-[11px] font-mono tabular-nums">
-                <span className="text-ink-muted">{o.qualificados}/{o.total}</span>
-                <span className={ctrColor}>{o.ctr.toFixed(1)}%</span>
-              </div>
-            </div>
-            <div className="h-3 bg-surface-2 rounded-md relative overflow-hidden" style={{ width: `${Math.max(widthPct, 4)}%` }}>
-              <div className="absolute inset-y-0 left-0 bg-info/40" style={{ width: '100%' }} />
-              <div className="absolute inset-y-0 left-0 bg-accent" style={{ width: `${qualifWidth}%` }} />
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
 // Lista de UFs em 2 colunas
 function UfList({ items }: { items: { uf: string; nome: string; total: number; pct: number; isBrasil: boolean }[] }) {
   if (!items.length) return <p className="text-sm text-ink-faint">Sem leads geolocalizados.</p>
@@ -719,6 +665,212 @@ const CAT_COLOR: Record<EtiquetaCategoria, string> = {
   perdido:     'hsl(0 0% 45%)',     // cinza escuro
   interno:     'hsl(0 0% 65%)',     // cinza claro
   outros:      'hsl(0 0% 65%)',
+}
+
+function AlertasBanner({ etq }: { etq: NonNullable<ReturnType<typeof useDashboardEtiquetas>['data']> }) {
+  const items = [
+    etq.alertas.criativos_nao_fabricamos > 0 && {
+      icon: AlertTriangle,
+      text: `${etq.alertas.criativos_nao_fabricamos} criativo${etq.alertas.criativos_nao_fabricamos > 1 ? 's' : ''} com ≥15% "NÃO FABRICAMOS"`,
+      tone: 'danger',
+      anchor: 'criativo-etiqueta',
+    },
+    etq.alertas.leads_orfaos > 0 && {
+      icon: Ghost,
+      text: `${etq.alertas.leads_orfaos} leads órfãos no funil dos vendedores (>${etq.leads_orfaos_dias_limite}d sem evoluir)`,
+      tone: 'warning',
+      anchor: 'leads-orfaos',
+    },
+    etq.alertas.vendedores_sem_orc > 0 && {
+      icon: AlertTriangle,
+      text: `${etq.alertas.vendedores_sem_orc} vendedor${etq.alertas.vendedores_sem_orc > 1 ? 'es' : ''} com leads mas zero ORÇAMENTO ENVIADO`,
+      tone: 'warning',
+      anchor: 'sem-orc',
+    },
+  ].filter(Boolean) as { icon: typeof AlertTriangle; text: string; tone: string; anchor: string }[]
+
+  if (items.length === 0) return null
+  return (
+    <div className="rounded-xl border border-danger/30 bg-danger-bg/40 p-3 lg:p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <AlertTriangle className="h-4 w-4 text-danger" />
+        <span className="text-[12px] font-bold text-danger uppercase tracking-wide">Atenção</span>
+      </div>
+      <div className="flex flex-wrap gap-x-6 gap-y-1.5">
+        {items.map((it, i) => (
+          <div key={i} className="flex items-center gap-1.5 text-[12px] text-ink">
+            <it.icon className={`h-3.5 w-3.5 ${it.tone === 'danger' ? 'text-danger' : 'text-warning'}`} />
+            <span>{it.text}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function CicloVenda({ etq }: { etq: NonNullable<ReturnType<typeof useDashboardEtiquetas>['data']> }) {
+  const stages = [
+    {
+      label: 'Lead chega → 1ª etiqueta',
+      value: etq.tempo_chegada_etiqueta_horas,
+      unit: 'h',
+      target: 4,
+      desc: 'SLA: vendedor deveria classificar em <4h',
+    },
+    {
+      label: 'Lead chega → ORÇAMENTO ENVIADO',
+      value: etq.tempo_lead_orcamento_dias,
+      unit: 'd',
+      target: 3,
+      desc: 'Meta: orçamento sai em até 3 dias',
+    },
+    {
+      label: 'ORÇAMENTO → VENDIDO',
+      value: etq.tempo_lead_vendido_dias != null && etq.tempo_lead_orcamento_dias != null
+        ? Math.max(0, etq.tempo_lead_vendido_dias - etq.tempo_lead_orcamento_dias)
+        : null,
+      unit: 'd',
+      target: 7,
+      desc: 'Mediana de ciclo após o orçamento',
+    },
+  ]
+  return (
+    <div className="space-y-3">
+      {stages.map(s => {
+        const v = s.value
+        const overBudget = v != null && v > s.target
+        return (
+          <div key={s.label} className="flex items-start justify-between gap-3 px-2 py-2 rounded-md bg-surface-2/40 border border-border/30">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 text-[12px] text-ink">
+                <Clock className="h-3 w-3 text-ink-faint" />
+                <span className="font-medium">{s.label}</span>
+              </div>
+              <p className="text-[10.5px] text-ink-faint mt-0.5">{s.desc}</p>
+            </div>
+            <div className="text-right shrink-0">
+              <div className={`text-2xl font-bold tabular-nums leading-none ${overBudget ? 'text-danger' : 'text-success'}`}>
+                {v == null ? '—' : v}
+                <span className="text-sm font-medium ml-0.5">{s.unit}</span>
+              </div>
+              <p className="text-[10px] text-ink-faint mt-0.5">meta: &lt;{s.target}{s.unit}</p>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function LeadsOrfaos({ etq }: { etq: NonNullable<ReturnType<typeof useDashboardEtiquetas>['data']> }) {
+  const total = etq.leads_orfaos
+  if (total === 0) {
+    return <div className="py-6 text-center text-[12px] text-ink-faint">Sem leads órfãos no período ✓</div>
+  }
+  const pct = etq.leads_total > 0 ? Math.round((total / etq.leads_total) * 100) : 0
+  return (
+    <div className="flex flex-col items-center justify-center py-3">
+      <Ghost className="h-9 w-9 text-warning mb-2" />
+      <div className="text-4xl font-bold tabular-nums text-warning">{total}</div>
+      <p className="text-[12px] text-ink-muted mt-1">
+        leads parados com etiqueta NOVO/PROSPECCAO
+      </p>
+      <p className="text-[11px] text-ink-faint mt-0.5">{pct}% do total no período</p>
+      <Link
+        to="/atendimentos"
+        className="mt-3 text-[12px] text-accent hover:underline"
+      >
+        Ver na lista de atendimentos →
+      </Link>
+    </div>
+  )
+}
+
+function OrigemVendido({ etq }: { etq: NonNullable<ReturnType<typeof useDashboardEtiquetas>['data']> }) {
+  const top = etq.por_origem
+  const maxT = Math.max(...top.map(o => o.total), 1)
+  return (
+    <div className="space-y-2">
+      {top.map(o => {
+        const pct = o.vendido_pct ?? 0
+        const tone = pct >= 5 ? 'text-success' : pct >= 1 ? 'text-warning' : 'text-danger'
+        return (
+          <div key={o.origem} className="flex items-center gap-2 text-[12px]">
+            <span className="w-44 truncate text-ink" title={o.origem}>{o.origem}</span>
+            <div className="flex-1 h-3 bg-surface-2 rounded overflow-hidden relative">
+              <div className="absolute inset-y-0 left-0 bg-info/30" style={{ width: `${(o.total / maxT) * 100}%` }} />
+              <div className="absolute inset-y-0 left-0 bg-success" style={{ width: `${((o.vendido + o.orcamento) / maxT) * 100}%` }} />
+            </div>
+            <span className="w-14 text-right text-ink-muted font-mono tabular-nums">
+              {o.vendido}/{o.total}
+            </span>
+            <span className={`w-12 text-right font-mono tabular-nums font-semibold ${tone}`}>
+              {pct.toFixed(1)}%
+            </span>
+          </div>
+        )
+      })}
+      <p className="text-[10px] text-ink-faint pt-2">
+        Verde = vendido + orçamento. Azul claro = volume total. % = vendidos / total. Origens "WhatsApp NNNN" excluídas (vendedor individual).
+      </p>
+    </div>
+  )
+}
+
+function HeatmapDiaHora({ heatmap }: { heatmap: { dow: number; hour: number; total: number }[] }) {
+  const DOW = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
+  // Constrói matriz 7 × 24
+  const matrix: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0))
+  let maxVal = 0
+  for (const h of heatmap) {
+    const di = h.dow >= 1 && h.dow <= 7 ? h.dow - 1 : 6
+    if (h.hour >= 0 && h.hour < 24) {
+      matrix[di][h.hour] = h.total
+      if (h.total > maxVal) maxVal = h.total
+    }
+  }
+  const cellColor = (v: number) => {
+    if (v === 0) return 'hsl(240 6% 92% / 0.4)'
+    const intensity = Math.min(1, v / Math.max(maxVal, 1))
+    // verde acentuando
+    return `hsl(152 60% ${50 - intensity * 25}% / ${0.3 + intensity * 0.7})`
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="border-separate" style={{ borderSpacing: 2 }}>
+        <thead>
+          <tr>
+            <th className="w-10" />
+            {Array.from({ length: 24 }, (_, h) => (
+              <th key={h} className="text-[9px] text-ink-faint font-normal text-center w-6">{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {DOW.map((d, di) => (
+            <tr key={d}>
+              <td className="text-[10px] text-ink-muted font-medium pr-2 text-right">{d}</td>
+              {matrix[di].map((v, h) => (
+                <td
+                  key={h}
+                  className="w-6 h-6 rounded-sm text-center"
+                  style={{ backgroundColor: cellColor(v) }}
+                  title={`${d} ${h}h: ${v} leads`}
+                >
+                  <span className={`text-[9px] tabular-nums ${v > maxVal * 0.5 ? 'text-white' : 'text-ink-faint'}`}>
+                    {v > 0 ? v : ''}
+                  </span>
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="text-[10px] text-ink-faint mt-2">
+        Hora no fuso de Brasília. Quanto mais escuro o verde, mais leads. Use pra escalar o time nos picos.
+      </p>
+    </div>
+  )
 }
 
 function MapaEtiquetas({ etq }: { etq: ReturnType<typeof useDashboardEtiquetas>['data'] }) {
@@ -805,7 +957,12 @@ function VendedoresSemOrc({ etq }: { etq: ReturnType<typeof useDashboardEtiqueta
   return (
     <div className="space-y-2">
       {dados.map(d => (
-        <div key={d.vendedor} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md bg-surface-2/40 border border-border/30">
+        <Link
+          key={d.vendedor}
+          to={`/atendimentos?responsavel=${encodeURIComponent(d.vendedor)}`}
+          className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md bg-surface-2/40 border border-border/30 hover:bg-surface-2/80 hover:border-accent/30 transition-colors"
+          title="Abrir lista de atendimentos deste vendedor"
+        >
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-[12px] font-medium text-ink capitalize">{d.vendedor.toLowerCase()}</span>
             {d.vendido > 0 && (
@@ -813,12 +970,12 @@ function VendedoresSemOrc({ etq }: { etq: ReturnType<typeof useDashboardEtiqueta
             )}
           </div>
           <div className="text-[11px] text-ink-muted tabular-nums font-mono">
-            {d.total} leads · 0 ORC
+            {d.total} leads · 0 ORC →
           </div>
-        </div>
+        </Link>
       ))}
       <p className="text-[10px] text-ink-faint pt-1">
-        Vendedores que recebem leads mas nunca etiquetam "ORCAMENTO ENVIADO" no WhatsApp. Cobra eles ou eles vendem sem mandar orçamento — ambos os casos são problema.
+        Clique no vendedor pra abrir a lista de leads dele em /atendimentos. Quem recebe leads mas nunca etiqueta "ORCAMENTO ENVIADO" no WhatsApp tá com problema operacional.
       </p>
     </div>
   )

@@ -43,6 +43,7 @@ interface RawRow {
   capacidade_producao: string | null
   quando_investir: string | null
   tocou_botao_em: string | null
+  o_que_precisa: string | null
   data: string | null
   ultima_msg: string | null
   last_message_at: string | null
@@ -54,6 +55,35 @@ interface RawRow {
   status_real: string | null
   status_vendedor: string | null
   finished_at: string | null
+}
+
+// Lista do catálogo Branorte (espelha src/hooks/useAtendimentos.ts BRANORTE_EQUIP_KEYWORDS)
+const BRANORTE_EQUIP_KEYWORDS = [
+  'aliment', 'balanc', 'balanç', 'brete', 'casquead',
+  'cacamb', 'caçamb', 'caixa', 'compact', 'fabric', 'fábric',
+  'descarga', 'elevador', 'caneca', 'sacaria', 'ensacad',
+  'helico', 'rosca', 'mistur', 'moega', 'moinho', 'martelo',
+  'passarela', 'peneira', 'limpeza', 'silo', 'big bag', 'bigbag',
+  'transporta', 'esteira',
+]
+
+// Qualificado: igual a /atendimentos.
+// - Fábrica:    motivo de fábrica + finalidade + animal preenchidos
+// - Equipamento: motivo de equipamento + o_que_precisa bate em alguma keyword Branorte
+function isQualificadoBranorte(r: RawRow): boolean {
+  const motivo = (r.motivo_contato || '').toLowerCase()
+  if (!motivo) return false
+  const ehFabrica = /fab|fáb/.test(motivo)
+  const ehEquip = /equip/.test(motivo)
+  if (ehFabrica) {
+    return !!(r.finalidade_fabrica && r.qual_animal)
+  }
+  if (ehEquip) {
+    const oqp = (r.o_que_precisa || '').toLowerCase()
+    if (!oqp) return false
+    return BRANORTE_EQUIP_KEYWORDS.some(k => oqp.includes(k))
+  }
+  return false
 }
 
 function stripEmoji(s: string | null | undefined): string {
@@ -275,7 +305,7 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
       const { data, error } = await supabaseAuditoria
         .from('atendimentos_por_cliente')
         .select(
-          'id, nome, telefone, responsavel, criativo_codigo, criativo_facebook, origem, motivo_contato, finalidade_fabrica, qual_animal, quantos_animais, capacidade_producao, quando_investir, tocou_botao_em, data, ultima_msg, last_message_at, is_internal, chegou_no_vendedor, orcamento_enviado, orcamento_valor, status_real, status_vendedor, finished_at'
+          'id, nome, telefone, responsavel, criativo_codigo, criativo_facebook, origem, motivo_contato, finalidade_fabrica, qual_animal, quantos_animais, capacidade_producao, quando_investir, tocou_botao_em, o_que_precisa, data, ultima_msg, last_message_at, is_internal, chegou_no_vendedor, orcamento_enviado, orcamento_valor, status_real, status_vendedor, finished_at'
         )
         .eq('is_internal', false)
         .order('data', { ascending: false, nullsFirst: false })
@@ -320,10 +350,8 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
         ? qtdAnimais >= 5000
         : qtdAnimais >= 300
       if (isQuente) quentes++
-      // Qualificado = motivo + finalidade
-      const motivo = r.motivo_contato?.trim() || null
-      const finKpi = normFinalidade(r.finalidade_fabrica)
-      if (motivo && finKpi) qualificados++
+      // Qualificado = igual ao /atendimentos (fábrica completa OR equipamento Branorte)
+      if (isQualificadoBranorte(r)) qualificados++
       // Com vendedor atribuído
       if (r.responsavel?.trim()) comVendedor++
       // Não respondeu = sem nenhum campo preenchido (não engajou com a IA)
@@ -446,8 +474,8 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
     const engajou = !!motivo || !!fin || !!animal || !!qtd || !!r.tocou_botao_em
     if (engajou) funilEngajou++
 
-    // Qualificou = motivo + finalidade preenchidos (sabe o que quer E pra que)
-    const isQualificado = !!motivo && !!fin
+    // Qualificou = mesma regra de /atendimentos (fábrica + animal OU equip do catálogo)
+    const isQualificado = isQualificadoBranorte(r)
     if (isQualificado) {
       funilQualificou++
       qualificadosTotal++
@@ -610,9 +638,7 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
     if (day && day >= chartStartIso) {
       const cd = byDay.get(day) ?? { total: 0, qualificados: 0 }
       cd.total++
-      const mot = r.motivo_contato?.trim() || null
-      const finR = normFinalidade(r.finalidade_fabrica)
-      if (mot && finR) cd.qualificados++
+      if (isQualificadoBranorte(r)) cd.qualificados++
       byDay.set(day, cd)
     }
   }

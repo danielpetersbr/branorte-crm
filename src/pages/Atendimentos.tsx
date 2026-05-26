@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, Flame, AlarmClock, CheckCircle2, Inbox, Trash2, Calendar, Hand, ListChecks, MessageSquareDot, EyeOff, UserPlus, RefreshCw, AlertCircle } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
@@ -280,6 +281,8 @@ function SyncIndicator({ isFetching, dataUpdatedAt, error, onRefetch }: SyncIndi
 }
 
 export function Atendimentos() {
+  const [searchParams] = useSearchParams()
+  // Aceita ?responsavel=, ?origem= e ?data= como filtros iniciais (drill-down do Dashboard)
   const [filters, setFilters] = useState<{
     search: string
     responsavel: string
@@ -288,15 +291,15 @@ export function Atendimentos() {
     data: DataPreset
     origem: string
     page: number
-  }>({
+  }>(() => ({
     search: '',
-    responsavel: '',
-    status_real: '',
-    uf: '',
-    data: 'hoje',
-    origem: '',
+    responsavel: searchParams.get('responsavel') || '',
+    status_real: searchParams.get('status') || '',
+    uf: searchParams.get('uf') || '',
+    data: (searchParams.get('data') as DataPreset) || 'hoje',
+    origem: searchParams.get('origem') || '',
     page: 0,
-  })
+  }))
   const [searchInput, setSearchInput] = useState('')
 
   const { data, isLoading, isFetching, dataUpdatedAt, error: atendimentosError, refetch } = useAtendimentos(filters)

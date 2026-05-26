@@ -29,6 +29,26 @@ export interface DashboardEtiquetas {
     perdido: number
     nao_fabricamos: number
   }[]
+  // Extras (RPC dashboard_etiquetas_extras)
+  tempo_chegada_etiqueta_horas: number | null
+  tempo_lead_orcamento_dias: number | null
+  tempo_lead_vendido_dias: number | null
+  leads_orfaos: number
+  leads_orfaos_dias_limite: number
+  por_origem: {
+    origem: string
+    total: number
+    vendido: number
+    orcamento: number
+    perdido: number
+    vendido_pct: number | null
+  }[]
+  heatmap: { dow: number; hour: number; total: number }[]
+  alertas: {
+    criativos_nao_fabricamos: number
+    leads_orfaos: number
+    vendedores_sem_orc: number
+  }
 }
 
 function rangeFromPreset(preset: DashboardPreset): { from: Date; to: Date } {
@@ -61,12 +81,21 @@ export function useDashboardEtiquetas(preset: DashboardPreset = '') {
     queryKey: ['dashboard-etiquetas-v1', preset],
     queryFn: async (): Promise<DashboardEtiquetas> => {
       const { from, to } = rangeFromPreset(preset)
-      const { data, error } = await supabase.rpc('dashboard_etiquetas_resumo', {
-        p_from: from.toISOString(),
-        p_to: to.toISOString(),
-      })
-      if (error) throw error
-      const r = (data ?? {}) as Partial<DashboardEtiquetas>
+      const [base, extras] = await Promise.all([
+        supabase.rpc('dashboard_etiquetas_resumo', {
+          p_from: from.toISOString(),
+          p_to: to.toISOString(),
+        }),
+        supabase.rpc('dashboard_etiquetas_extras', {
+          p_from: from.toISOString(),
+          p_to: to.toISOString(),
+          p_orfao_dias: 7,
+        }),
+      ])
+      if (base.error) throw base.error
+      if (extras.error) throw extras.error
+      const r = (base.data ?? {}) as Partial<DashboardEtiquetas>
+      const x = (extras.data ?? {}) as Partial<DashboardEtiquetas>
       return {
         leads_total: r.leads_total ?? 0,
         leads_com_etiqueta: r.leads_com_etiqueta ?? 0,
@@ -75,6 +104,14 @@ export function useDashboardEtiquetas(preset: DashboardPreset = '') {
         por_vendedor: r.por_vendedor ?? [],
         sem_orc_vendedores: r.sem_orc_vendedores ?? [],
         por_criativo: r.por_criativo ?? [],
+        tempo_chegada_etiqueta_horas: x.tempo_chegada_etiqueta_horas ?? null,
+        tempo_lead_orcamento_dias: x.tempo_lead_orcamento_dias ?? null,
+        tempo_lead_vendido_dias: x.tempo_lead_vendido_dias ?? null,
+        leads_orfaos: x.leads_orfaos ?? 0,
+        leads_orfaos_dias_limite: x.leads_orfaos_dias_limite ?? 7,
+        por_origem: x.por_origem ?? [],
+        heatmap: x.heatmap ?? [],
+        alertas: x.alertas ?? { criativos_nao_fabricamos: 0, leads_orfaos: 0, vendedores_sem_orc: 0 },
       }
     },
     staleTime: 60_000,
