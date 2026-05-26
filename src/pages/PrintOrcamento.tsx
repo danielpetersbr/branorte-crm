@@ -100,6 +100,19 @@ export default function PrintOrcamento() {
         .text-\\[12\\.5px\\] { font-size: 9pt !important; }
         .text-\\[12px\\] { font-size: 9pt !important; }
         .text-\\[11px\\] { font-size: 8pt !important; }
+        /* CARDS QUADRADOS no PDF (sem arredondamento) — referência Word do
+           usuário tem bordas retas. Mantém arredondamento só na UI/prévia. */
+        .rounded-md, .rounded-lg, .rounded {
+          border-radius: 0 !important;
+        }
+        /* Borda mais escura nos cards pra ficar similar ao Word de referência */
+        .border-gray-700 {
+          border-color: #1f2937 !important;
+        }
+        /* Sombras suaves dos cards atrapalham impressão — remover */
+        .shadow-sm, .shadow {
+          box-shadow: none !important;
+        }
         @page {
           size: A4;
           margin: 8mm 6mm 12mm 6mm;
