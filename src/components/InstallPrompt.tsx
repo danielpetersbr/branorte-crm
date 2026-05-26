@@ -39,6 +39,11 @@ function recentlyDismissed(): boolean {
 }
 
 export function InstallPrompt() {
+  // Não renderizar na rota /print/orcamento (Puppeteer captura o HTML pra PDF
+  // — o banner aparecia colado embaixo do conteúdo no PDF final).
+  if (typeof window !== 'undefined' && window.location.pathname === '/print/orcamento') {
+    return null
+  }
   const [evt, setEvt] = useState<BIPEvent | null>(null)
   const [showIosDica, setShowIosDica] = useState(false)
   const [hidden, setHidden] = useState(() => isStandalone() || recentlyDismissed())

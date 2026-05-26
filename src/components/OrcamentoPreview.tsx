@@ -583,8 +583,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             <div className="text-right">FONE: {valOrPlaceholder(cli.fone)}</div>
           </div>
 
-          {/* Demais campos do cliente empilhados */}
-          <div className="text-[16px] font-bold text-gray-900 space-y-0.5">
+          {/* Demais campos do cliente em GRID 2 colunas (CIDADE/BAIRRO,
+              ENDEREÇO/CEP, CPF/IE empilhados em pares — E-MAIL ocupa linha
+              cheia se sobrar). Espelha o layout do PDF DOCX que o usuário
+              já conhece e do PDF antigo. */}
+          <div className="text-[16px] font-bold text-gray-900 grid grid-cols-2 gap-x-6 gap-y-0.5">
             {camposEmpilhados.map(([label, val]) => (
               <div key={label}>{label}: {valOrPlaceholder(val)}</div>
             ))}
