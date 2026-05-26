@@ -96,9 +96,22 @@ function paragrafoVazio(altura = 100): Paragraph {
 
 async function fetchImageBuffer(url: string): Promise<{ data: ArrayBuffer; type: 'png' | 'jpg' | 'gif' | 'bmp' } | null> {
   try {
-    const r = await fetch(url, { mode: 'cors' })
-    if (!r.ok) return null
-    const data = await r.arrayBuffer()
+    // Browser path: relative URL → tenta fetch direto
+    // Node path (test-docx.mjs): URL relativa precisa virar caminho local
+    const isNode = typeof process !== 'undefined' && process.versions?.node
+    let data: ArrayBuffer
+    if (isNode && url.startsWith('/')) {
+      // No node, resolve URL relativa pra public/
+      const fs = await import('fs/promises')
+      const path = await import('path')
+      const localPath = path.join(process.cwd(), 'public', url.slice(1))
+      const buf = await fs.readFile(localPath)
+      data = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+    } else {
+      const r = await fetch(url, { mode: 'cors' })
+      if (!r.ok) return null
+      data = await r.arrayBuffer()
+    }
     const lower = url.toLowerCase()
     let type: 'png' | 'jpg' | 'gif' | 'bmp' = 'png'
     if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) type = 'jpg'
@@ -349,13 +362,14 @@ async function buildItemTable(item: CustomDocxItem, voltagemTxt: string): Promis
   // Foto LARGA centralizada EMBAIXO (espelha preview maxWidth 540 maxHeight 280)
   // DOCX em twips: ~540px ≈ 405pt ≈ largura confortável A4 com margem.
   // ImageRun usa pixels — escalando p/ 400×210 (proporção ~1.9:1).
-  const fotoParas: Paragraph[] = []
+  // Preview tem: border: 1px solid #d1d5db + padding: 8px ao redor da img.
+  // No DOCX usamos uma Table 1×1 pra envolver a imagem com border cinza fino + padding.
+  const fotoBlocks: Array<Paragraph | Table> = []
   if (item.foto_url) {
     const img = await fetchImageBuffer(item.foto_url)
     if (img) {
-      fotoParas.push(new Paragraph({
+      const imgPara = new Paragraph({
         alignment: AlignmentType.CENTER,
-        spacing: { before: 160, after: 40 },
         children: [
           new ImageRun({
             type: img.type as any,
@@ -363,10 +377,32 @@ async function buildItemTable(item: CustomDocxItem, voltagemTxt: string): Promis
             transformation: { width: 400, height: 210 },
           }),
         ],
-      }))
-      fotoParas.push(new Paragraph({
+      })
+      // Wrap em Table 1×1 com border cinza fino (espelha border: 1px solid #d1d5db)
+      const fotoTable = new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        borders: {
+          top: { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' },
+          bottom: { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' },
+          left: { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' },
+          right: { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' },
+          insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+          insideVertical: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+        },
+        rows: [
+          new TableRow({
+            children: [new TableCell({
+              margins: { top: 120, bottom: 120, left: 120, right: 120 }, // ~padding: 8px
+              children: [imgPara],
+            })],
+          }),
+        ],
+      })
+      fotoBlocks.push(new Paragraph({ children: [r('')], spacing: { before: 160, after: 40 } }))
+      fotoBlocks.push(fotoTable)
+      fotoBlocks.push(new Paragraph({
         alignment: AlignmentType.CENTER,
-        spacing: { after: 80 },
+        spacing: { before: 40, after: 80 },
         children: [r('Imagem ilustrativa', { italics: true, size: 14, color: '9CA3AF' })],
       }))
     }
@@ -390,7 +426,7 @@ async function buildItemTable(item: CustomDocxItem, voltagemTxt: string): Promis
   })
 
   // Tabela 1 coluna: título + bullets + foto + valor — tudo dentro do card com padding
-  const cellChildren: Paragraph[] = [tituloPara, ...bulletParas, ...fotoParas, valorPara]
+  const cellChildren: Array<Paragraph | Table> = [tituloPara, ...bulletParas, ...fotoBlocks, valorPara]
 
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
