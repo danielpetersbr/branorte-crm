@@ -9,6 +9,9 @@
     "preview": "vite preview",
     "import": "npx tsx scripts/import-contacts.ts"
   },
+  "engines": {
+    "node": "20.x"
+  },
   "dependencies": {
     "@sparticuz/chromium": "^148.0.0",
     "@supabase/supabase-js": "^2.39.0",

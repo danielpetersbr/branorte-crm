@@ -3,8 +3,7 @@
   "functions": {
     "api/gerar-pdf.ts": {
       "memory": 1024,
-      "maxDuration": 60,
-      "runtime": "nodejs20.x"
+      "maxDuration": 60
     }
   },
   "headers": [
