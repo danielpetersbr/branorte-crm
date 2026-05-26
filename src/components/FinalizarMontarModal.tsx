@@ -737,33 +737,43 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       }
       console.log(`[gerar] docx fonte final: ${docxFonte}`)
 
-      // 4b) PDF — converte DOCX → PDF via ConvertAPI (layout nativo Word).
-      // Fallback: se ConvertAPI falhar (rede, quota, etc), usa html2canvas legacy.
-      setStep('Convertendo Word em PDF...', 45)
+      // 4b) PDF — cascata de 3 estratégias:
+      //   Tier 1: Puppeteer server-side (gerar-pdf.ts) — renderiza HTML/CSS
+      //     exato da prévia, Chrome faz paginação NATIVA. Layout idêntico ao
+      //     que o usuário vê na tela. Vetorial, texto selecionável.
+      //   Tier 2: DOCX→ConvertAPI — fallback se Puppeteer cair (cold start
+      //     longo, quota Vercel). Layout Word (tabelas).
+      //   Tier 3: html2canvas legacy — último recurso (offline, etc).
+      setStep('Gerando PDF (renderização HTML)...', 45)
       let pdfBlob: Blob | null = null
       let pdfErro: string | null = null
+      let pdfFonte: 'puppeteer' | 'convertapi' | 'html2canvas' = 'puppeteer'
       try {
         const t0 = Date.now()
-        pdfBlob = await docxParaPdfServer(docxBlob, `orcamento-${orc.numero}.docx`)
-        console.log(`[gerar] pdf via DOCX→ConvertAPI OK em ${Date.now() - t0}ms (${pdfBlob.size} bytes)`)
-      } catch (convertErr) {
-        console.warn('[gerar] DOCX→PDF ConvertAPI falhou, fallback html2canvas:', convertErr)
-        setStep('Servidor indisponível, gerando PDF local...', 45)
+        pdfBlob = await gerarPdfServerSide(previewProps)
+        pdfFonte = 'puppeteer'
+        console.log(`[gerar] pdf via Puppeteer OK em ${Date.now() - t0}ms (${pdfBlob.size} bytes)`)
+      } catch (pupErr) {
+        console.warn('[gerar] Puppeteer falhou, tentando DOCX→ConvertAPI:', pupErr)
+        setStep('Convertendo Word em PDF...', 50)
         try {
-          if (opcoes.pdfQuality === 'high') {
-            try {
-              pdfBlob = await gerarPdfServerSide(previewProps)
-            } catch {
-              pdfBlob = await gerarPdfDoPreview(previewProps, { quality: 'high' })
-            }
-          } else {
+          const t0 = Date.now()
+          pdfBlob = await docxParaPdfServer(docxBlob, `orcamento-${orc.numero}.docx`)
+          pdfFonte = 'convertapi'
+          console.log(`[gerar] pdf via DOCX→ConvertAPI OK em ${Date.now() - t0}ms`)
+        } catch (convertErr) {
+          console.warn('[gerar] DOCX→PDF ConvertAPI falhou, fallback html2canvas:', convertErr)
+          setStep('Gerando PDF local...', 55)
+          try {
             pdfBlob = await gerarPdfDoPreview(previewProps, { quality: opcoes.pdfQuality })
+            pdfFonte = 'html2canvas'
+          } catch (e) {
+            pdfErro = (e as Error).message
+            console.warn('Falha PDF (todos os caminhos):', pdfErro)
           }
-        } catch (e) {
-          pdfErro = (e as Error).message
-          console.warn('Falha PDF (todos os caminhos):', pdfErro)
         }
       }
+      console.log(`[gerar] pdf fonte final: ${pdfFonte}`)
 
       // Detecta modo teste: se rootHandle salvo tem 'teste' no nome
       let isTesteMode = false
