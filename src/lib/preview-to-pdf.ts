@@ -294,7 +294,10 @@ export async function gerarPdfDoPreview(
       const minRemainingPx = Math.floor(sliceHeightPx * 0.08)
       let yPx = 0
       let pageIdx = 0
-      while (yPx < canvas.height) {
+      // Safety: max 100 pgs pra evitar loop infinito se findCutY retornar
+      // valor que não avança yPx. Orçamentos reais raramente passam de 30 pgs.
+      const MAX_PAGES = 100
+      while (yPx < canvas.height && pageIdx < MAX_PAGES) {
         const remainingPx = canvas.height - yPx
         if (pageIdx > 0 && remainingPx < minRemainingPx) break
 
@@ -306,9 +309,15 @@ export async function gerarPdfDoPreview(
           // Procura linha branca perto do limite ideal — respeitando data-no-break
           const idealY = yPx + sliceHeightPx
           const cutY = findCutY(idealY, canvas.height, yPx)
-          const fillPct = ((cutY - yPx) / sliceHeightPx * 100).toFixed(0)
-          console.log(`[pdf] page ${pageIdx + 1}: cut ${cutY}/${canvas.height} (slice=${cutY - yPx}px, fill=${fillPct}%)`)
-          thisSliceHeightPx = cutY - yPx
+          let proposedSlice = cutY - yPx
+          // Safety: nunca avançar 0 ou menos px (loop infinito). Força mínimo 50%.
+          if (proposedSlice < sliceHeightPx * 0.5) {
+            console.warn(`[pdf] page ${pageIdx + 1}: cutY (${cutY}) muito perto de yPx (${yPx}). Forçando 50% da pg.`)
+            proposedSlice = Math.floor(sliceHeightPx * 0.5)
+          }
+          const fillPct = (proposedSlice / sliceHeightPx * 100).toFixed(0)
+          console.log(`[pdf] page ${pageIdx + 1}: cut ${yPx + proposedSlice}/${canvas.height} (slice=${proposedSlice}px, fill=${fillPct}%)`)
+          thisSliceHeightPx = proposedSlice
         }
 
         // Cria canvas temporario pra fatia
