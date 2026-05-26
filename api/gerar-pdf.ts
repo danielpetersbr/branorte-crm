@@ -99,7 +99,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       format: 'A4',
       printBackground: true,
       preferCSSPageSize: false,  // false pra preferCSSPageSize NÃO sobrescrever margins
-      margin: { top: '5mm', right: '5mm', bottom: '10mm', left: '5mm' },
+      margin: { top: '5mm', right: '5mm', bottom: '15mm', left: '5mm' },
       displayHeaderFooter: true,
       // Header vazio (necessario passar string vazia pra suprimir default do Chrome)
       headerTemplate: '<div></div>',

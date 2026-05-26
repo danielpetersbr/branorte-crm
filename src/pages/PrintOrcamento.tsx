@@ -102,9 +102,15 @@ export default function PrintOrcamento() {
           color-scheme: light !important;
           font-family: 'Carlito', 'Calibri', 'Segoe UI', sans-serif !important;
         }
-        /* Removida borda externa do body — Chrome renderizava uma faixa
-           preta grossa horrenda entre as paginas. Cards individuais ja tem
-           bordas visiveis. */
+        /* Borda externa em cada página. O footer "Página X de Y" do Puppeteer
+           é renderizado fora dessa borda (na margin bottom da @page). */
+        body {
+          border: 1.5px solid #000 !important;
+          box-decoration-break: clone !important;
+          -webkit-box-decoration-break: clone !important;
+          padding: 3mm !important;
+          box-sizing: border-box !important;
+        }
         /* Borda mais visível nos cards (1px era muito sutil no PDF). */
         .border {
           border-width: 1.5px !important;
@@ -147,7 +153,7 @@ export default function PrintOrcamento() {
         }
         @page {
           size: A4;
-          margin: 5mm 5mm 10mm 5mm;
+          margin: 5mm 5mm 15mm 5mm;
           background: #ffffff;
         }
         /* Sem @media print — aplica SEMPRE (Puppeteer renderiza em modo print) */
