@@ -499,11 +499,10 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   return (
     <div
       ref={containerRef}
-      className={`text-gray-900 leading-relaxed font-sans bg-white ${renderMode ? 'text-[19px]' : 'text-[15px]'}`}
-      // No NÃO-renderMode (UI), fixar largura = 1024px (mesma do PDF) e
-      // centralizar. Assim a preview mostra layout EXATAMENTE como vai sair
-      // no PDF — quebras de página, fonte, espaçamento, tudo igual.
-      style={!renderMode ? { maxWidth: 1024, marginLeft: 'auto', marginRight: 'auto' } : undefined}
+      className={`text-gray-900 leading-relaxed font-sans bg-white ${renderMode ? 'text-[19px]' : 'text-[15px] mx-auto'}`}
+      // No NÃO-renderMode (UI), fixar largura = 1024px (mesma do PDF).
+      // mx-auto (margin x-auto) na className força centralização mesmo em flexbox.
+      style={!renderMode ? { maxWidth: 1024, width: '100%' } : undefined}
     >
       {/* Em mobile, padding menor pra ganhar espaço lateral. Tabelas internas
           (motores, parcelas, componentes) já têm overflow-x próprio quando precisam. */}
