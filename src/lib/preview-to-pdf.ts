@@ -77,27 +77,17 @@ export async function gerarPdfDoPreview(
 
     // 3.5) Captura posicoes Y (em CSS px do host) dos blocos [data-no-break] ANTES de capturar
     const hostTop = host.getBoundingClientRect().top + window.scrollY
-    const rawRanges: Array<{ topPx: number; bottomPx: number }> = []
+    const noBreakRanges: Array<{ topPx: number; bottomPx: number }> = []
     host.querySelectorAll('[data-no-break]').forEach((el) => {
       const r = (el as HTMLElement).getBoundingClientRect()
       const top = r.top + window.scrollY - hostTop
       const bottom = r.bottom + window.scrollY - hostTop
-      if (bottom > top + 4) rawRanges.push({ topPx: top, bottomPx: bottom })
+      if (bottom > top + 4) noBreakRanges.push({ topPx: top, bottomPx: bottom })
     })
-    // Filtra ranges ANINHADOS: o preview tem <div data-no-break> envolvendo o
-    // item inteiro E <div data-no-break> aninhado pra foto+valor. Tratar os 2
-    // como independentes faz findCutY oscilar entre "antes do item N" e
-    // "depois do item N (= dentro do item N+1)" → corte cai num ponto baixo
-    // que não viola nenhum range mas deixa página com ~50% fill. Mantemos só
-    // o range mais EXTERNO; o aninhado já fica protegido por estar dentro.
-    const noBreakRanges = rawRanges.filter((inner, i) => {
-      return !rawRanges.some((outer, j) =>
-        i !== j &&
-        outer.topPx <= inner.topPx &&
-        outer.bottomPx >= inner.bottomPx &&
-        (outer.bottomPx - outer.topPx) > (inner.bottomPx - inner.topPx)
-      )
-    })
+    // NOTA: mantemos ranges ANINHADOS (item inteiro + foto+valor aninhado).
+    // Quando item > 1 página, o caso especial em isInsideNoBreak permite cortar
+    // dentro do item; o aninhado garante que o corte NÃO cai entre foto e valor.
+    // Oscilação entre items adjacentes é resolvida pelo step 1.5 do findCutY.
 
     // 3.6) Cap scale dinamicamente: Chrome/Skia limita canvas a 16384px por
     // dimensão. Orçamentos longos (20+ items) podem ter host com 15000+ CSS px
@@ -357,7 +347,11 @@ export async function gerarPdfDoPreview(
         } else {
           // Procura linha branca perto do limite ideal — respeitando data-no-break
           const idealY = yPx + sliceHeightPx
-          const cutY = findCutY(idealY, canvas.height, yPx)
+          let cutY = findCutY(idealY, canvas.height, yPx)
+          // CLAMP: nunca cortar DEPOIS de idealY (= ultrapassa altura A4 → fatia
+          // desenha por cima do footer). Se findCutY propôs ir além (caso de
+          // item maior que página), força em idealY mesmo dentro de no-break.
+          if (cutY > idealY) cutY = idealY
           const fillPct = ((cutY - yPx) / sliceHeightPx * 100).toFixed(0)
           console.log(`[pdf] page ${pageIdx + 1}: cut ${cutY}/${canvas.height} (slice=${cutY - yPx}px, fill=${fillPct}%)`)
           thisSliceHeightPx = cutY - yPx
