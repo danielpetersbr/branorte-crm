@@ -85,12 +85,29 @@ export async function gerarPdfDoPreview(
       if (bottom > top + 4) noBreakRanges.push({ topPx: top, bottomPx: bottom })
     })
 
+    // 3.6) Cap scale dinamicamente: Chrome/Skia limita canvas a 16384px por
+    // dimensão. Orçamentos longos (20+ items) com scale=5 estouram o limite e
+    // html2canvas devolve canvas BRANCO silenciosamente. Calcula maxScale com
+    // margem de segurança (16000px efetivo) e reduz se necessário.
+    const hostHeightCssPx = host.offsetHeight
+    const CANVAS_MAX_DIM = 16000
+    let effectiveScale = scale
+    if (hostHeightCssPx > 0) {
+      const maxScaleByHeight = Math.floor((CANVAS_MAX_DIM / hostHeightCssPx) * 10) / 10
+      const maxScaleByWidth = Math.floor((CANVAS_MAX_DIM / containerWidthPx) * 10) / 10
+      const maxScale = Math.max(1, Math.min(maxScaleByHeight, maxScaleByWidth))
+      if (effectiveScale > maxScale) {
+        console.warn(`[pdf] scale ${scale} estouraria canvas (${hostHeightCssPx}px × ${scale} = ${hostHeightCssPx * scale}px > ${CANVAS_MAX_DIM}px). Reduzindo para ${maxScale}.`)
+        effectiveScale = maxScale
+      }
+    }
+
     // 4) Captura como canvas
     // foreignObjectRendering=false forca uso do canvas tradicional (em vez de
     // SVG foreignObject). Necessario porque iOS Safari TEM BUG conhecido que
     // gera canvas BRANCO quando usa foreignObject (especialmente em PWA).
     const captura = async () => html2canvas(host, {
-      scale,
+      scale: effectiveScale,
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#ffffff',
@@ -112,17 +129,29 @@ export async function gerarPdfDoPreview(
         throw new Error('html2canvas devolveu canvas vazio — preview nao renderizou (iOS Safari PWA bug?)')
       }
     }
-    console.log(`[pdf] canvas OK ${canvas.width}x${canvas.height}px (scale=${scale})`)
+
+    // Defesa extra: canvas pode vir com altura OK mas todo branco quando
+    // estoura limite Skia. Amostra ~50 pontos espalhados; se >98% forem
+    // brancos puros, força retry com scale menor.
+    if (isCanvasMostlyBlank(canvas)) {
+      console.warn(`[pdf] canvas ${canvas.width}x${canvas.height} parece em branco — reduzindo scale e tentando de novo`)
+      effectiveScale = Math.max(1, Math.floor(effectiveScale / 2))
+      canvas = await captura()
+      if (isCanvasMostlyBlank(canvas)) {
+        throw new Error(`html2canvas devolveu canvas em branco mesmo com scale reduzido (${effectiveScale}). Conteudo pode estar excedendo limites do browser.`)
+      }
+    }
+    console.log(`[pdf] canvas OK ${canvas.width}x${canvas.height}px (scale=${effectiveScale})`)
 
     // Converte ranges de CSS px → canvas px (com scale aplicado).
     // Expansão mínima (4 CSS px) só pra compensar drift DOM↔html2canvas.
     // O marginBeforePx (30px) no findCutY já dá o respiro visual.
     // NOTA: expansão grande (24px) causava sobreposição entre itens adjacentes
     // (space-y-3 = 12px gap) → findCutY não achava ponto válido de corte.
-    const expandCanvasPx = Math.ceil(4 * scale)
+    const expandCanvasPx = Math.ceil(4 * effectiveScale)
     const noBreakCanvasRanges = noBreakRanges.map(r => ({
-      top: Math.floor(r.topPx * scale) - expandCanvasPx,
-      bottom: Math.ceil(r.bottomPx * scale) + expandCanvasPx,
+      top: Math.floor(r.topPx * effectiveScale) - expandCanvasPx,
+      bottom: Math.ceil(r.bottomPx * effectiveScale) + expandCanvasPx,
     }))
 
     // 5) Converte canvas pra PDF A4 (multi-pagina se necessario)
@@ -357,6 +386,32 @@ async function decorarPaginas(pdf: jsPDF, pageW: number, pageH: number) {
       pageH - 2.5,
       { align: 'center' },
     )
+  }
+}
+
+/**
+ * Amostra ~50 pontos espalhados pelo canvas. Se >98% forem branco puro,
+ * considera o canvas "em branco" (bug do Chrome/Skia quando excede 16384px).
+ */
+function isCanvasMostlyBlank(canvas: HTMLCanvasElement | null): boolean {
+  if (!canvas || canvas.width === 0 || canvas.height === 0) return true
+  try {
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return false
+    const samples = 50
+    let blank = 0
+    for (let i = 0; i < samples; i++) {
+      const x = Math.floor(Math.random() * canvas.width)
+      const y = Math.floor(Math.random() * canvas.height)
+      const px = ctx.getImageData(x, y, 1, 1).data
+      // Pixel branco puro (R=G=B=255) OU transparente
+      if ((px[0] >= 253 && px[1] >= 253 && px[2] >= 253) || px[3] === 0) {
+        blank++
+      }
+    }
+    return blank / samples > 0.98
+  } catch {
+    return false  // se não conseguir ler, assume que ta OK
   }
 }
 
