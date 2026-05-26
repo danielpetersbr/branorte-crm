@@ -182,10 +182,21 @@ export function findBreakNear(container: HTMLElement, idealY: number, tolerance:
   const containerTop = container.getBoundingClientRect().top + window.scrollY
   const noBreakEls = Array.from(container.querySelectorAll('[data-no-break]')) as HTMLElement[]
 
+  // Elementos que não aparecem no PDF (print:hidden) — ignorar do cálculo
+  // de quebra, senão prévia mostra FOLHA N/M num lugar mas PDF corta em outro.
+  // (Botões "+ Adicionar item", "editar", "remover", etc.)
+  const printHiddenEls = new Set(Array.from(container.querySelectorAll('.print\\:hidden, [class*="print:hidden"]')) as HTMLElement[])
+
   const localTop = (el: HTMLElement) => {
     const r = el.getBoundingClientRect()
     return { top: r.top + window.scrollY - containerTop, bottom: r.bottom + window.scrollY - containerTop }
   }
+
+  // Soma altura dos elementos print:hidden ANTES de Y — esses não vão existir
+  // no PDF, então o idealY (que é calculado em CSS px da prévia) precisa ser
+  // ajustado pra refletir o layout REAL do PDF (sem esses elementos).
+  // NOTA: ajuste passivo aqui — só descontamos o que já estaria contado.
+  // (Hoje só usamos pra evitar achar bottom de um botão como "ponto bom".)
 
   // Helper: retorna o bloco no-break que contém o Y (ou null).
   // Expande o limite superior em 24px pra capturar a margin-top do SectionHeader
@@ -239,6 +250,9 @@ export function findBreakNear(container: HTMLElement, idealY: number, tolerance:
     }
   }
   for (const el of allBlocks) {
+    // Ignora elementos que somem no PDF (print:hidden) — colar a quebra no
+    // bottom de um botão que não vai existir no PDF gera quebra errada.
+    if (printHiddenEls.has(el)) continue
     const { bottom } = localTop(el)
     if (bottom >= minRefine && bottom <= y + 4) {
       const d = Math.abs(y - bottom)
