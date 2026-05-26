@@ -406,7 +406,8 @@ async function buildItemTable(item: CustomDocxItem, voltagemTxt: string): Promis
       new TableRow({
         children: [
           new TableCell({
-            borders: NO_BORDERS,
+            // Sem borders aqui — herda da Table outer (gray-700 size 8).
+            // NO_BORDERS sobrescrevia e fazia o card aparecer sem moldura.
             margins: { top: 160, bottom: 160, left: 200, right: 200 },
             children: cellChildren,
           }),
@@ -452,7 +453,7 @@ function buildAcessorios(acc: CustomDocxAcessorios, letra: string): Table {
     rows: [
       new TableRow({
         children: [new TableCell({
-          borders: NO_BORDERS,
+          // Sem borders aqui — herda da Table outer
           margins: { top: 160, bottom: 160, left: 200, right: 200 },
           children: [titulo, ...bulletParas, valorPara],
         })],
@@ -477,7 +478,7 @@ function buildValorTotalEquip(total: number): Table {
     rows: [
       new TableRow({
         children: [new TableCell({
-          borders: NO_BORDERS,
+          // Sem borders — herda da Table outer (gray-700 size 12)
           margins: { top: 240, bottom: 240, left: 320, right: 320 },
           children: [new Paragraph({
             tabStops: [{ type: TabStopType.RIGHT, position: 9200 }],
@@ -604,7 +605,7 @@ function buildValorTotalProposta(total: number, comMotor: boolean): Table {
     rows: [
       new TableRow({
         children: [new TableCell({
-          borders: NO_BORDERS,
+          // Sem borders — herda da Table outer (caixa preta 16-thick)
           margins: { top: 320, bottom: 320, left: 320, right: 320 },
           children: [new Paragraph({
             tabStops: [{ type: TabStopType.RIGHT, position: 9200 }],
