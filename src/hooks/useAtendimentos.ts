@@ -352,7 +352,15 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
         baseQ().not('responsavel', 'is', null).neq('responsavel', '').neq('responsavel', 'a definir'),
         // Nao engajaram: chegou no anuncio mas nem clicou no primeiro botao (motivo_contato)
         baseQ().is('motivo_contato', null).is('tocou_botao_em', null),
-        baseQ().not('finalidade_fabrica', 'is', null).not('qual_animal', 'is', null),
+        // Qualificados: dados completos por TIPO de motivo.
+        // - Fábrica:    motivo de fábrica + finalidade + animal preenchidos
+        // - Equipamento: motivo de equipamento + o_que_precisa preenchido
+        // ilike %fab% e %fáb% pra cobrir 'fabrica_racao', 'Montar uma Fábrica' e variações.
+        baseQ().or(
+          'and(motivo_contato.ilike.%fab%,finalidade_fabrica.not.is.null,qual_animal.not.is.null),' +
+          'and(motivo_contato.ilike.%fáb%,finalidade_fabrica.not.is.null,qual_animal.not.is.null),' +
+          'and(motivo_contato.ilike.%equip%,o_que_precisa.not.is.null)'
+        ),
         // Em andamento: clicou no MOTIVO mas nao clicou no botao final
         baseQ().not('motivo_contato', 'is', null).is('tocou_botao_em', null),
         // Pra pegar: sem responsavel — null, vazio, ou "a definir"
