@@ -139,6 +139,20 @@ export function OrcamentoAIChat({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Sinaliza pro Layout esconder a bottom nav mobile enquanto o drawer ta
+  // aberto (senao a nav fica em cima do input). data-attr em <body> evita
+  // ter que passar prop pelo Layout.
+  useEffect(() => {
+    if (open) {
+      document.body.dataset.aiDrawerOpen = '1'
+    } else {
+      delete document.body.dataset.aiDrawerOpen
+    }
+    return () => {
+      delete document.body.dataset.aiDrawerOpen
+    }
+  }, [open])
+
   async function enviar(textoOverride?: string) {
     const texto = (textoOverride ?? input).trim()
     if (!texto || enviando) return

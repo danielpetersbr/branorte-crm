@@ -128,6 +128,24 @@ function useCollapsed(): [boolean, () => void] {
   return [collapsed, () => setCollapsed(c => !c)]
 }
 
+// Observa o data-ai-drawer-open no <body> (setado pelo OrcamentoAIChat) pra
+// esconder a bottom nav mobile quando o copiloto IA ta aberto — senao a nav
+// fica em cima do input do chat.
+function useAiDrawerOpen(): boolean {
+  const [open, setOpen] = useState(() =>
+    typeof document !== 'undefined' && document.body.dataset.aiDrawerOpen === '1'
+  )
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const obs = new MutationObserver(() => {
+      setOpen(document.body.dataset.aiDrawerOpen === '1')
+    })
+    obs.observe(document.body, { attributes: true, attributeFilter: ['data-ai-drawer-open'] })
+    return () => obs.disconnect()
+  }, [])
+  return open
+}
+
 export function Layout() {
   const { data: kpis } = useAtendimentoKpis()
   const [dark, toggleDark] = useDarkMode()
@@ -135,6 +153,7 @@ export function Layout() {
   const { profile, signOut } = useAuth()
   const can = useCan()
   const loc = useLocation()
+  const aiDrawerOpen = useAiDrawerOpen()
   const visible = (item: NavItem) => !item.permKey || can(item.permKey)
   const primary = PRIMARY.filter(visible)
   const secondary = SECONDARY.filter(visible)
@@ -340,7 +359,10 @@ export function Layout() {
       {/* Overlay global de geração de orçamento (persiste entre navegações) */}
       <GenerationOverlay />
 
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-bg/95 backdrop-blur border-t border-border flex items-center justify-around px-2 py-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] z-50">
+      <nav className={cn(
+        'md:hidden fixed bottom-0 left-0 right-0 bg-bg/95 backdrop-blur border-t border-border flex items-center justify-around px-2 py-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] z-50',
+        aiDrawerOpen && 'hidden',
+      )}>
         {MOBILE_NAV.map(l => (
           <NavLink
             key={l.to}
