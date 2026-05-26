@@ -67,13 +67,24 @@ export async function gerarPdfDoPreview(
 
   let root: ReturnType<typeof createRoot> | null = null
 
-  try {
+  // Timeout total de 90s: se algum await ficar pendente eterno (img cross-origin
+  // sem CORS, RAF não dispara, fetch logo travado, etc), o catch externo pega
+  // e o fluxo segue pra DOCX em vez de travar a UI em "Gerando PDF... 30%".
+  const tStart = Date.now()
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(`gerarPdfDoPreview timeout após 90s`)), 90000)
+  })
+
+  const work = async (): Promise<Blob> => {
+    console.log(`[pdf] starting (${Date.now() - tStart}ms)`)
     // 2) Renderiza preview em renderMode (sem botoes)
     root = createRoot(host)
     root.render(createElement(OrcamentoPreview, { ...previewProps, renderMode: true }))
 
     // 3) Aguarda render + carregamento de imagens (logo + fotos dos equipamentos)
+    console.log(`[pdf] waitForImagesAndPaint (${Date.now() - tStart}ms)`)
     await waitForImagesAndPaint(host)
+    console.log(`[pdf] paint done (${Date.now() - tStart}ms)`)
 
     // 3.5) Captura posicoes Y (em CSS px do host) dos blocos [data-no-break] ANTES de capturar
     const hostTop = host.getBoundingClientRect().top + window.scrollY
@@ -350,9 +361,15 @@ export async function gerarPdfDoPreview(
 
     // 6) Decora todas as páginas: faixa verde Branorte no topo,
     //    mini logo no canto sup direito (apenas pgs 2+) e "Página X de Y" no rodapé
+    console.log(`[pdf] decorando paginas (${Date.now() - tStart}ms)`)
     await decorarPaginas(pdf, pageWidthMm, pageHeightMm)
 
+    console.log(`[pdf] DONE (${Date.now() - tStart}ms total)`)
     return pdf.output('blob')
+  }  // fim work()
+
+  try {
+    return await Promise.race([work(), timeoutPromise])
   } finally {
     try { root?.unmount() } catch {}
     try { document.body.removeChild(host) } catch {}
