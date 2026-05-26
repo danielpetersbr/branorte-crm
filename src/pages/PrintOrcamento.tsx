@@ -123,16 +123,17 @@ export default function PrintOrcamento() {
         .text-\\[14\\.5px\\] { font-size: 10pt !important; }  /* bullets / specs */
         .text-\\[14px\\] { font-size: 10pt !important; }
         .text-\\[16px\\] { font-size: 11pt !important; }      /* dados cliente */
-        /* Variantes responsivas Tailwind (sm:/md:/lg:) usam classnames
-           ESCAPADOS diferentes — precisam override SEPARADO senão escapam
-           do tamanho. Linha CLIENTE/A/C/FONE usa sm:text-[16px]. */
-        .sm\\:text-\\[16px\\] { font-size: 11pt !important; }
         .text-\\[19px\\] { font-size: 13pt !important; }      /* total destaque */
         .text-\\[20px\\] { font-size: 13pt !important; }
         .text-\\[13px\\] { font-size: 9pt !important; }
         .text-\\[12\\.5px\\] { font-size: 9pt !important; }
         .text-\\[12px\\] { font-size: 9pt !important; }
         .text-\\[11px\\] { font-size: 8pt !important; }
+        /* Variantes RESPONSIVAS (sm:/md:/lg:) — POR ÚLTIMO porque na cascade
+           de mesma specificity, a última declarada ganha. Linha CLIENTE/A/C/FONE
+           usa 'text-[13px] sm:text-[16px]' — sm: precisa vir DEPOIS do text-[13px]
+           pra ganhar e aplicar 11pt em vez de 9pt no PDF (viewport 1024px). */
+        .sm\\:text-\\[16px\\] { font-size: 11pt !important; }
         /* Tabela de MOTORES — fonte menor pq é so verificacao tecnica,
            nao precisa destaque visual (usuario pediu pra diminuir). */
         .motores-tabela,
