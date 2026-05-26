@@ -314,150 +314,138 @@ function buildClienteGrid(c: CustomDocxCliente): Table {
   })
 }
 
-// Bloco de UM item (com foto à direita se houver)
+// Bloco de UM item (FOTO LARGA centralizada EMBAIXO dos bullets, espelhando o preview)
 async function buildItemTable(item: CustomDocxItem, voltagemTxt: string): Promise<Table> {
   const subtotal = item.valor * item.qtd
   const tituloLetra = `${item.letra} - ${String(item.qtd).padStart(2, '0')}`
   const tituloNome = item.nome.toUpperCase()
 
-  // Bullets de specs
+  // Bullets de specs (preview: text-[14.5px] = ~14pt; size em half-points = 18 = 9pt → bumpando pra 20 = 10pt)
   const bulletParas: Paragraph[] = []
   if (item.specs.length > 0) {
     for (const spec of item.specs.filter(s => !/c[oó]digo\s*finame/i.test(s)).slice(0, 20)) {
-      bulletParas.push(bullet(spec, 17))
+      bulletParas.push(bullet(spec, 20))
     }
   } else if (item.motor_cv && item.motor_polos) {
     bulletParas.push(bullet(
       `Acionamento: motor ${item.motor_cv} CV ${item.motor_polos} polos${(item.motor_qtd ?? 1) > 1 ? ` (qtd ${item.motor_qtd})` : ''}`,
-      17,
+      20,
     ))
   }
   if (bulletParas.length === 0) {
-    bulletParas.push(new Paragraph({ children: [r('—', { size: 17, color: '9CA3AF' })] }))
+    bulletParas.push(new Paragraph({ children: [r('—', { size: 20, color: '9CA3AF' })] }))
   }
 
-  // Foto (se tiver)
-  let fotoCellChildren: Paragraph[] = []
+  // Linha do título do item (preview: text-[15.5px] font-bold → size 22 = 11pt bold)
+  const tituloPara = new Paragraph({
+    children: [
+      r(tituloLetra, { bold: true, size: 22, color: '111827' }),
+      r('  –  ', { bold: true, size: 22, color: '9CA3AF' }),
+      r(tituloNome, { bold: true, size: 22, color: '111827' }),
+    ],
+    spacing: { after: 120 },
+  })
+
+  // Foto LARGA centralizada EMBAIXO (espelha preview maxWidth 540 maxHeight 280)
+  // DOCX em twips: ~540px ≈ 405pt ≈ largura confortável A4 com margem.
+  // ImageRun usa pixels — escalando p/ 400×210 (proporção ~1.9:1).
+  const fotoParas: Paragraph[] = []
   if (item.foto_url) {
     const img = await fetchImageBuffer(item.foto_url)
     if (img) {
-      fotoCellChildren = [
-        new Paragraph({
-          alignment: AlignmentType.CENTER,
-          children: [
-            new ImageRun({
-              type: img.type as any,
-              data: img.data,
-              transformation: { width: 110, height: 110 },
-            }),
-          ],
-        }),
-        new Paragraph({
-          alignment: AlignmentType.CENTER,
-          children: [r('Imagem ilustrativa', { italics: true, size: 12, color: '9CA3AF' })],
-        }),
-      ]
+      fotoParas.push(new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 160, after: 40 },
+        children: [
+          new ImageRun({
+            type: img.type as any,
+            data: img.data,
+            transformation: { width: 400, height: 210 },
+          }),
+        ],
+      }))
+      fotoParas.push(new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 80 },
+        children: [r('Imagem ilustrativa', { italics: true, size: 14, color: '9CA3AF' })],
+      }))
     }
   }
 
-  // Linha do título do item
-  const tituloPara = new Paragraph({
+  // Linha do valor (com border-top cinza, espelhando preview "border-t border-gray-300")
+  // Preview: text-[15.5px] font-bold → size 22 = 11pt bold
+  const valorPara = new Paragraph({
+    tabStops: [{ type: TabStopType.RIGHT, position: 9600 }],
+    spacing: { before: 120, after: 40 },
+    border: {
+      top: { style: BorderStyle.SINGLE, size: 6, color: 'D1D5DB', space: 4 },
+    },
     children: [
-      r(tituloLetra, { bold: true, size: 20, color: '047857' }),
-      r('  –  ', { bold: true, size: 20, color: '9CA3AF' }),
-      r(tituloNome, { bold: true, size: 20 }),
-    ],
-    spacing: { after: 80 },
-  })
-
-  // Linha do valor (com border-top)
-  const valorRow = new TableRow({
-    children: [
-      new TableCell({
-        borders: BORDER_TOP_GRAY,
-        columnSpan: 2,
-        children: [new Paragraph({
-          tabStops: [{ type: TabStopType.RIGHT, position: 9000 }],
-          spacing: { before: 80, after: 0 },
-          children: [
-            r('VALOR', { bold: true, size: 19, color: '374151' }),
-            new TextRun({ text: '\t', size: 19 }),
-            item.brinde
-              ? r('BRINDE', { bold: true, size: 19, color: '047857' })
-              : r(`R$ ${formatBRL(subtotal)}`, { bold: true, size: 19, color: '111827' }),
-          ],
-        })],
-      }),
+      r(item.qtd > 1 ? 'VALOR TOTAL' : 'VALOR', { bold: true, size: 22, color: '374151' }),
+      new TextRun({ text: '\t', size: 22 }),
+      item.brinde
+        ? r('BRINDE', { bold: true, size: 22, color: '059669' })
+        : r(`R$ ${formatBRL(subtotal)}`, { bold: true, size: 22, color: '111827' }),
     ],
   })
 
-  // Linha conteúdo (bullets à esquerda + foto à direita)
-  const contentRow = new TableRow({
-    children: [
-      new TableCell({
-        borders: NO_BORDERS,
-        width: { size: item.foto_url ? 65 : 100, type: WidthType.PERCENTAGE },
-        children: [tituloPara, ...bulletParas],
-      }),
-      ...(fotoCellChildren.length > 0
-        ? [new TableCell({
-            borders: NO_BORDERS,
-            verticalAlign: VerticalAlign.TOP,
-            width: { size: 35, type: WidthType.PERCENTAGE },
-            children: fotoCellChildren,
-          })]
-        : []),
-    ],
-  })
+  // Tabela 1 coluna: título + bullets + foto + valor — tudo dentro do card com padding
+  const cellChildren: Paragraph[] = [tituloPara, ...bulletParas, ...fotoParas, valorPara]
 
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: {
-      top: { style: BorderStyle.SINGLE, size: 8, color: '9CA3AF' },
-      bottom: { style: BorderStyle.SINGLE, size: 8, color: '9CA3AF' },
-      left: { style: BorderStyle.SINGLE, size: 8, color: '9CA3AF' },
-      right: { style: BorderStyle.SINGLE, size: 8, color: '9CA3AF' },
+      top: { style: BorderStyle.SINGLE, size: 8, color: '374151' },
+      bottom: { style: BorderStyle.SINGLE, size: 8, color: '374151' },
+      left: { style: BorderStyle.SINGLE, size: 8, color: '374151' },
+      right: { style: BorderStyle.SINGLE, size: 8, color: '374151' },
       insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
       insideVertical: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
     },
-    rows: [contentRow, valorRow],
+    rows: [
+      new TableRow({
+        children: [
+          new TableCell({
+            borders: NO_BORDERS,
+            margins: { top: 160, bottom: 160, left: 200, right: 200 },
+            children: cellChildren,
+          }),
+        ],
+      }),
+    ],
   })
 }
 
-function buildAcessorios(acc: CustomDocxAcessorios): Table {
+function buildAcessorios(acc: CustomDocxAcessorios, letra: string): Table {
   const bulletParas: Paragraph[] = acc.items.length > 0
-    ? acc.items.map(i => bullet(i, 17))
-    : [new Paragraph({ children: [r('(nenhum item listado)', { italics: true, size: 17, color: '9CA3AF' })] })]
+    ? acc.items.map(i => bullet(i, 20))
+    : [new Paragraph({ children: [r('(nenhum item listado)', { italics: true, size: 20, color: '9CA3AF' })] })]
 
   const titulo = new Paragraph({
-    children: [r('— ACESSÓRIOS', { bold: true, size: 20, color: '047857' })],
-    spacing: { after: 80 },
+    children: [r(`${letra} — ACESSÓRIOS`, { bold: true, size: 22, color: '111827' })],
+    spacing: { after: 120 },
   })
 
-  const valorRow = new TableRow({
+  const valorPara = new Paragraph({
+    tabStops: [{ type: TabStopType.RIGHT, position: 9600 }],
+    spacing: { before: 120, after: 40 },
+    border: {
+      top: { style: BorderStyle.SINGLE, size: 6, color: 'D1D5DB', space: 4 },
+    },
     children: [
-      new TableCell({
-        borders: BORDER_TOP_GRAY,
-        children: [new Paragraph({
-          tabStops: [{ type: TabStopType.RIGHT, position: 9000 }],
-          spacing: { before: 80 },
-          children: [
-            r('VALOR', { bold: true, size: 19, color: '374151' }),
-            new TextRun({ text: '\t', size: 19 }),
-            r(`R$ ${formatBRL(acc.valor)}`, { bold: true, size: 19, color: '111827' }),
-          ],
-        })],
-      }),
+      r('VALOR', { bold: true, size: 22, color: '374151' }),
+      new TextRun({ text: '\t', size: 22 }),
+      r(`R$ ${formatBRL(acc.valor)}`, { bold: true, size: 22, color: '111827' }),
     ],
   })
 
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: {
-      top: { style: BorderStyle.SINGLE, size: 8, color: '9CA3AF' },
-      bottom: { style: BorderStyle.SINGLE, size: 8, color: '9CA3AF' },
-      left: { style: BorderStyle.SINGLE, size: 8, color: '9CA3AF' },
-      right: { style: BorderStyle.SINGLE, size: 8, color: '9CA3AF' },
+      top: { style: BorderStyle.SINGLE, size: 8, color: '374151' },
+      bottom: { style: BorderStyle.SINGLE, size: 8, color: '374151' },
+      left: { style: BorderStyle.SINGLE, size: 8, color: '374151' },
+      right: { style: BorderStyle.SINGLE, size: 8, color: '374151' },
       insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
       insideVertical: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
     },
@@ -465,27 +453,42 @@ function buildAcessorios(acc: CustomDocxAcessorios): Table {
       new TableRow({
         children: [new TableCell({
           borders: NO_BORDERS,
-          children: [titulo, ...bulletParas],
+          margins: { top: 160, bottom: 160, left: 200, right: 200 },
+          children: [titulo, ...bulletParas, valorPara],
         })],
       }),
-      valorRow,
     ],
   })
 }
 
-function buildValorTotalEquip(total: number): Paragraph {
-  return new Paragraph({
-    tabStops: [{ type: TabStopType.RIGHT, position: 9000 }],
-    spacing: { before: 200, after: 200 },
-    shading: { type: ShadingType.SOLID, color: 'F3F4F6', fill: 'F3F4F6' },
-    border: {
-      top: { style: BorderStyle.SINGLE, size: 6, color: '9CA3AF' },
-      bottom: { style: BorderStyle.SINGLE, size: 6, color: '9CA3AF' },
+// Preview: caixa branca com border-2 border-gray-700 rounded-lg, px-6 py-4, font-bold uppercase
+// Em DOCX usamos Table 1×1 pra ter borda completa em volta do conteúdo + padding.
+function buildValorTotalEquip(total: number): Table {
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: {
+      top: { style: BorderStyle.SINGLE, size: 12, color: '374151' },
+      bottom: { style: BorderStyle.SINGLE, size: 12, color: '374151' },
+      left: { style: BorderStyle.SINGLE, size: 12, color: '374151' },
+      right: { style: BorderStyle.SINGLE, size: 12, color: '374151' },
+      insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+      insideVertical: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
     },
-    children: [
-      r('VALOR TOTAL DE EQUIPAMENTOS', { bold: true, size: 20, color: '1F2937' }),
-      new TextRun({ text: '\t', size: 20 }),
-      r(`R$ ${formatBRL(total)}`, { bold: true, size: 20, color: '111827' }),
+    rows: [
+      new TableRow({
+        children: [new TableCell({
+          borders: NO_BORDERS,
+          margins: { top: 240, bottom: 240, left: 320, right: 320 },
+          children: [new Paragraph({
+            tabStops: [{ type: TabStopType.RIGHT, position: 9200 }],
+            children: [
+              r('VALOR TOTAL DE EQUIPAMENTOS', { bold: true, size: 24, color: '111827' }),
+              new TextRun({ text: '\t', size: 24 }),
+              r(`R$ ${formatBRL(total)}`, { bold: true, size: 24, color: '111827' }),
+            ],
+          })],
+        })],
+      }),
     ],
   })
 }
@@ -496,15 +499,17 @@ function buildMotores(motores: CustomDocxMotor[], voltagem: 'monofasico' | 'trif
     children: [
       new TableCell({
         borders: { ...NO_BORDERS, bottom: { style: BorderStyle.SINGLE, size: 6, color: '111827' } },
+        margins: { top: 60, bottom: 60, left: 80, right: 80 },
         width: { size: 70, type: WidthType.PERCENTAGE },
-        children: [new Paragraph({ children: [r('TIPO', { bold: true, size: 16, color: '6B7280' })] })],
+        children: [new Paragraph({ children: [r('TIPO', { bold: true, size: 18, color: '6B7280' })] })],
       }),
       new TableCell({
         borders: { ...NO_BORDERS, bottom: { style: BorderStyle.SINGLE, size: 6, color: '111827' } },
+        margins: { top: 60, bottom: 60, left: 80, right: 80 },
         width: { size: 30, type: WidthType.PERCENTAGE },
         children: [new Paragraph({
           alignment: AlignmentType.RIGHT,
-          children: [r('NOVO', { bold: true, size: 16, color: '6B7280' })],
+          children: [r('NOVO', { bold: true, size: 18, color: '6B7280' })],
         })],
       }),
     ],
@@ -514,18 +519,20 @@ function buildMotores(motores: CustomDocxMotor[], voltagem: 'monofasico' | 'trif
     children: [
       new TableCell({
         borders: { ...NO_BORDERS, top: { style: BorderStyle.SINGLE, size: 2, color: 'E5E7EB' } },
+        margins: { top: 60, bottom: 60, left: 80, right: 80 },
         children: [new Paragraph({ children: [
-          r('•  ', { color: '9CA3AF', size: 17 }),
-          r(`${m.cv} CV ${m.polos} polos`, { size: 17, bold: true }),
-          ...(m.item_nome ? [r(` · ${m.item_nome}`, { size: 17, color: '6B7280', italics: true })] : []),
-          ...(m.qtd > 1 ? [r(` (×${m.qtd})`, { size: 17, color: '6B7280' })] : []),
+          r('•  ', { color: '9CA3AF', size: 20 }),
+          r(`${m.cv} CV ${m.polos} polos`, { size: 20, bold: true }),
+          ...(m.item_nome ? [r(` · ${m.item_nome}`, { size: 20, color: '6B7280', italics: true })] : []),
+          ...(m.qtd > 1 ? [r(` (×${m.qtd})`, { size: 20, color: '6B7280' })] : []),
         ] })],
       }),
       new TableCell({
         borders: { ...NO_BORDERS, top: { style: BorderStyle.SINGLE, size: 2, color: 'E5E7EB' } },
+        margins: { top: 60, bottom: 60, left: 80, right: 80 },
         children: [new Paragraph({
           alignment: AlignmentType.RIGHT,
-          children: [r(`R$ ${formatBRL(m.valor_total)}`, { size: 17 })],
+          children: [r(`R$ ${formatBRL(m.valor_total)}`, { size: 20 })],
         })],
       }),
     ],
@@ -535,13 +542,15 @@ function buildMotores(motores: CustomDocxMotor[], voltagem: 'monofasico' | 'trif
     children: [
       new TableCell({
         borders: { ...NO_BORDERS, top: { style: BorderStyle.SINGLE, size: 6, color: '4B5563' } },
-        children: [new Paragraph({ children: [r('TOTAL', { bold: true, size: 18 })] })],
+        margins: { top: 80, bottom: 80, left: 80, right: 80 },
+        children: [new Paragraph({ children: [r('TOTAL', { bold: true, size: 22 })] })],
       }),
       new TableCell({
         borders: { ...NO_BORDERS, top: { style: BorderStyle.SINGLE, size: 6, color: '4B5563' } },
+        margins: { top: 80, bottom: 80, left: 80, right: 80 },
         children: [new Paragraph({
           alignment: AlignmentType.RIGHT,
-          children: [r(`R$ ${formatBRL(total)}`, { bold: true, size: 18 })],
+          children: [r(`R$ ${formatBRL(total)}`, { bold: true, size: 22 })],
         })],
       }),
     ],
@@ -550,10 +559,10 @@ function buildMotores(motores: CustomDocxMotor[], voltagem: 'monofasico' | 'trif
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: {
-      top: { style: BorderStyle.SINGLE, size: 8, color: '9CA3AF' },
-      bottom: { style: BorderStyle.SINGLE, size: 8, color: '9CA3AF' },
-      left: { style: BorderStyle.SINGLE, size: 8, color: '9CA3AF' },
-      right: { style: BorderStyle.SINGLE, size: 8, color: '9CA3AF' },
+      top: { style: BorderStyle.SINGLE, size: 8, color: '374151' },
+      bottom: { style: BorderStyle.SINGLE, size: 8, color: '374151' },
+      left: { style: BorderStyle.SINGLE, size: 8, color: '374151' },
+      right: { style: BorderStyle.SINGLE, size: 8, color: '374151' },
       insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
       insideVertical: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
     },
@@ -562,11 +571,12 @@ function buildMotores(motores: CustomDocxMotor[], voltagem: 'monofasico' | 'trif
         children: [new TableCell({
           borders: NO_BORDERS,
           columnSpan: 2,
+          margins: { top: 160, bottom: 80, left: 160, right: 160 },
           children: [
             new Paragraph({
-              children: [r(titulo, { bold: true, size: 18, color: '374151' })],
-              border: { bottom: { style: BorderStyle.SINGLE, size: 12, color: '111827', space: 4 } },
-              spacing: { after: 80 },
+              children: [r(titulo, { bold: true, size: 22, color: '374151' })],
+              border: { bottom: { style: BorderStyle.SINGLE, size: 16, color: '111827', space: 4 } },
+              spacing: { after: 120 },
             }),
           ],
         })],
@@ -578,21 +588,36 @@ function buildMotores(motores: CustomDocxMotor[], voltagem: 'monofasico' | 'trif
   })
 }
 
-function buildValorTotalProposta(total: number, comMotor: boolean): Paragraph {
-  return new Paragraph({
-    tabStops: [{ type: TabStopType.RIGHT, position: 9000 }],
-    spacing: { before: 240, after: 240 },
-    shading: { type: ShadingType.SOLID, color: 'ECFDF5', fill: 'ECFDF5' },
-    border: {
-      left: { style: BorderStyle.SINGLE, size: 24, color: '059669' },
+// Preview: caixa com border-2 border-gray-900, rounded-lg, px-6 py-5, font-black, text-[19px]
+// O destaque na prévia é PRETO grosso (não verde). Usamos Tabela 1×1.
+function buildValorTotalProposta(total: number, comMotor: boolean): Table {
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: {
+      top: { style: BorderStyle.SINGLE, size: 16, color: '111827' },
+      bottom: { style: BorderStyle.SINGLE, size: 16, color: '111827' },
+      left: { style: BorderStyle.SINGLE, size: 16, color: '111827' },
+      right: { style: BorderStyle.SINGLE, size: 16, color: '111827' },
+      insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+      insideVertical: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
     },
-    indent: { left: 200 },
-    children: [
-      r(comMotor ? 'VALOR TOTAL DA PROPOSTA COM MOTOR NOVO' : 'VALOR TOTAL DA PROPOSTA', {
-        bold: true, size: 22, color: '111827',
+    rows: [
+      new TableRow({
+        children: [new TableCell({
+          borders: NO_BORDERS,
+          margins: { top: 320, bottom: 320, left: 320, right: 320 },
+          children: [new Paragraph({
+            tabStops: [{ type: TabStopType.RIGHT, position: 9200 }],
+            children: [
+              r(comMotor ? 'VALOR TOTAL DA PROPOSTA COM MOTOR NOVO' : 'VALOR TOTAL DA PROPOSTA', {
+                bold: true, size: 26, color: '111827',
+              }),
+              new TextRun({ text: '\t', size: 26 }),
+              r(`R$ ${formatBRL(total)}`, { bold: true, size: 28, color: '111827' }),
+            ],
+          })],
+        })],
       }),
-      new TextRun({ text: '\t', size: 22 }),
-      r(`R$ ${formatBRL(total)}`, { bold: true, size: 24, color: '065F46' }),
     ],
   })
 }
@@ -911,9 +936,10 @@ export async function gerarOrcamentoCustomDocx(opts: GerarCustomDocxOpts): Promi
     blocos.push(paragrafoVazio(80))
   }
 
-  // Acessórios
+  // Acessórios — letra auto-incrementada após o último item (espelha preview)
   if (opts.acessorios && opts.acessorios.valor > 0) {
-    blocos.push(buildAcessorios(opts.acessorios))
+    const letraAcc = String.fromCharCode(65 + opts.itens.length)
+    blocos.push(buildAcessorios(opts.acessorios, letraAcc))
     blocos.push(paragrafoVazio(80))
   }
 
@@ -999,13 +1025,9 @@ export async function gerarOrcamentoCustomDocx(opts: GerarCustomDocxOpts): Promi
     sections: [{
       properties: {
         page: {
-          margin: { top: 720, right: 720, bottom: 720, left: 720 },  // 0,5 inch
-          borders: {
-            pageBorderTop: { style: BorderStyle.SINGLE, size: 8, color: '000000', space: 16 },
-            pageBorderBottom: { style: BorderStyle.SINGLE, size: 8, color: '000000', space: 16 },
-            pageBorderLeft: { style: BorderStyle.SINGLE, size: 8, color: '000000', space: 16 },
-            pageBorderRight: { style: BorderStyle.SINGLE, size: 8, color: '000000', space: 16 },
-          },
+          // Preview não tem moldura preta na página — removida pra dar visual mais limpo.
+          // Margens 0,5" (720 twips) pra maximizar largura útil do conteúdo (cards, fotos).
+          margin: { top: 720, right: 720, bottom: 720, left: 720 },
         },
       },
       children: blocos,
