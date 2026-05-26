@@ -102,6 +102,16 @@ export default function PrintOrcamento() {
           color-scheme: light !important;
           font-family: 'Carlito', 'Calibri', 'Segoe UI', sans-serif !important;
         }
+        /* Borda externa que se repete em CADA página A4 do PDF.
+           box-decoration-break: clone faz a borda do body ser renderizada
+           em cada página (não só na primeira). */
+        body {
+          border: 1.5px solid #000 !important;
+          box-decoration-break: clone !important;
+          -webkit-box-decoration-break: clone !important;
+          padding: 3mm !important;
+          box-sizing: border-box !important;
+        }
         /* Borda mais visível nos cards (1px era muito sutil no PDF). */
         .border {
           border-width: 1.5px !important;
