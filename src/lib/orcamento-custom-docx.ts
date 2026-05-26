@@ -440,10 +440,14 @@ async function buildItemTable(item: CustomDocxItem, voltagemTxt: string): Promis
     },
     rows: [
       new TableRow({
+        // cantSplit: row não pode ser dividida entre páginas. Garante que o
+        // card inteiro do item (header + bullets + foto + valor) fica em UMA
+        // página só. Antes o B-01 quebrava no meio (header+bullets pg1,
+        // foto+valor pg2).
+        cantSplit: true,
         children: [
           new TableCell({
             // Sem borders aqui — herda da Table outer (gray-700 size 8).
-            // NO_BORDERS sobrescrevia e fazia o card aparecer sem moldura.
             margins: { top: 160, bottom: 160, left: 200, right: 200 },
             children: cellChildren,
           }),
@@ -488,6 +492,7 @@ function buildAcessorios(acc: CustomDocxAcessorios, letra: string): Table {
     },
     rows: [
       new TableRow({
+        cantSplit: true,  // Acessórios não pode quebrar entre páginas
         children: [new TableCell({
           // Sem borders aqui — herda da Table outer
           margins: { top: 160, bottom: 160, left: 200, right: 200 },
@@ -513,6 +518,7 @@ function buildValorTotalEquip(total: number): Table {
     },
     rows: [
       new TableRow({
+        cantSplit: true,  // VALOR TOTAL DE EQUIPAMENTOS não quebra
         children: [new TableCell({
           // Sem borders — herda da Table outer (gray-700 size 12)
           margins: { top: 240, bottom: 240, left: 320, right: 320 },
@@ -640,6 +646,7 @@ function buildValorTotalProposta(total: number, comMotor: boolean): Table {
     },
     rows: [
       new TableRow({
+        cantSplit: true,  // VALOR TOTAL DA PROPOSTA não quebra
         children: [new TableCell({
           // Sem borders — herda da Table outer (caixa preta 16-thick)
           margins: { top: 320, bottom: 320, left: 320, right: 320 },
