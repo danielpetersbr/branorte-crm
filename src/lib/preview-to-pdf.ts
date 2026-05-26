@@ -86,19 +86,24 @@ export async function gerarPdfDoPreview(
     })
 
     // 3.6) Cap scale dinamicamente: Chrome/Skia limita canvas a 16384px por
-    // dimensão. Orçamentos longos (20+ items) com scale=5 estouram o limite e
-    // html2canvas devolve canvas BRANCO silenciosamente. Calcula maxScale com
-    // margem de segurança (16000px efetivo) e reduz se necessário.
+    // dimensão. Orçamentos longos (20+ items) podem ter host com 15000+ CSS px
+    // de altura, e qualquer scale >= 1.1 estoura o limite. html2canvas devolve
+    // canvas BRANCO silenciosamente. Calcula maxScale (aceita < 1 se preciso)
+    // com margem de segurança (16000px efetivo).
     const hostHeightCssPx = host.offsetHeight
     const CANVAS_MAX_DIM = 16000
+    const MIN_SCALE = 0.5  // abaixo disso, texto fica ilegível
     let effectiveScale = scale
     if (hostHeightCssPx > 0) {
-      const maxScaleByHeight = Math.floor((CANVAS_MAX_DIM / hostHeightCssPx) * 10) / 10
-      const maxScaleByWidth = Math.floor((CANVAS_MAX_DIM / containerWidthPx) * 10) / 10
-      const maxScale = Math.max(1, Math.min(maxScaleByHeight, maxScaleByWidth))
+      const maxScaleByHeight = Math.floor((CANVAS_MAX_DIM / hostHeightCssPx) * 100) / 100
+      const maxScaleByWidth = Math.floor((CANVAS_MAX_DIM / containerWidthPx) * 100) / 100
+      const maxScale = Math.max(MIN_SCALE, Math.min(maxScaleByHeight, maxScaleByWidth))
       if (effectiveScale > maxScale) {
-        console.warn(`[pdf] scale ${scale} estouraria canvas (${hostHeightCssPx}px × ${scale} = ${hostHeightCssPx * scale}px > ${CANVAS_MAX_DIM}px). Reduzindo para ${maxScale}.`)
+        console.warn(`[pdf] scale ${scale} estouraria canvas (${hostHeightCssPx}×${scale} = ${hostHeightCssPx * scale}px > ${CANVAS_MAX_DIM}). Reduzindo para ${maxScale}.`)
         effectiveScale = maxScale
+      }
+      if (maxScale < 1) {
+        console.warn(`[pdf] conteudo muito longo (${hostHeightCssPx}px) — qualidade reduzida pra caber no limite do browser.`)
       }
     }
 
