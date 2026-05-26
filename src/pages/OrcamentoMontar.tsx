@@ -1274,8 +1274,12 @@ export function OrcamentoMontar() {
       })
     })
 
-    // 3) Motores que NÃO casaram com nenhum item → items dummy (igual antes)
+    // 3) Motores que NÃO casaram com nenhum item → items dummy (igual antes).
+    // BUGFIX v1.4.1: pula motores "incluso" (valor=0) — eles vinham de motorredutor
+    // de ensacadeira/pré-limpeza e desde o fix "acessório sem motor" ficavam órfãos,
+    // sendo materializados como "MOTOR 1.5 CV 4 POLOS — sem preço" no orçamento. Não.
     for (const m of motoresRestantes) {
+      if (!Number(m.valor)) continue  // motor incluso (valor 0) — não vira item
       novos.push({
         uid: gerarUid(),
         catalogo_id: -1,

@@ -525,10 +525,14 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         valor: it.valor,
         ...(it.brinde ? { brinde: true } : {}),
       }))
+      // BUGFIX v1.4.1: salva valor UNITÁRIO do motor (não o total já multiplicado).
+      // Antes salvava valor_total (= valor_unit * qtdMotor), e no próximo load
+      // motor.valor virava "unit" e o save multiplicava DE NOVO — corrupção exponencial
+      // (4724 → 18896 → 75584 → 302336…). Contract: motores[].valor = preço de UMA unidade.
       const motoresDb: OrcamentoMotor[] = snapshot.motoresAgrupados.map(m => ({
         cv: m.cv,
         polos: m.polos,
-        valor: m.valor_total,
+        valor: m.valor_unit,
       }))
 
       // Upload da foto principal pro Storage (se for dataURL, converte pra blob e sobe)
