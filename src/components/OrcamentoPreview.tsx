@@ -321,9 +321,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   const cli = cliente || {}
 
   // Helper pra renderizar valor ou placeholder cinza
+  // font-bold (700) pra alinhar com peso dos labels (CLIENTE:, CIDADE:, etc).
+  // font-semibold (600) ficava visualmente DIFERENTE — parecia outra fonte.
   const valOrPlaceholder = (v: string | null | undefined, ph = '—') => {
-    if (v && v.trim()) return <span className="text-gray-700 font-semibold ml-1">{v}</span>
-    return <span className="text-gray-400 font-semibold ml-1">{ph}</span>
+    if (v && v.trim()) return <span className="text-gray-700 font-bold ml-1">{v}</span>
+    return <span className="text-gray-400 font-bold ml-1">{ph}</span>
   }
 
   const camposEmpilhados: Array<[string, string | null | undefined]> = [
