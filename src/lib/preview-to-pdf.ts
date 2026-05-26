@@ -232,25 +232,26 @@ export async function gerarPdfDoPreview(
 
       function findCutY(idealY: number, maxY: number, sliceStart: number): number {
         let y = idealY
-        const minFillPx = Math.floor(sliceHeightPx * 0.40)
 
-        // Lógica ORIGINAL: prefere cortar antes do bloco; se viola minFill, vai
-        // depois do bloco (mesmo passando idealY → fatia maior que A4, mas o
-        // jsPDF clampa visualmente). Trade-off conhecido: items gigantes podem
-        // estraçalhar entre páginas, mas o fill fica ALTO.
+        // SEMPRE prefere cortar ANTES do bloco — não tenta ir depois (que
+        // ultrapassaria idealY e perderia conteúdo). Sem fallback minFill,
+        // sem oscilação. Pode resultar em páginas com fill baixo quando items
+        // são grandes, mas evita perder conteúdo entre páginas.
         for (let iter = 0; iter < 10; iter++) {
           const r = isInsideNoBreak(y, sliceStart)
           if (!r.inside) break
           y = r.topY! - marginBeforePx
-          if (y <= sliceStart + minFillPx) {
-            y = r.bottomY! + marginAfterPx
+          if (y <= sliceStart) {
+            // Bloco começa no topo da pg (item gigante atravessando pgs).
+            // Sai do loop — caller vai usar y como está (mesmo dentro do bloco).
+            break
           }
         }
 
         // Refina: procura linha branca próxima
         const lookBack = Math.floor(sliceHeightPx * 0.10)
         const lookAhead = Math.floor(sliceHeightPx * 0.02)
-        const minY = Math.max(y - lookBack, sliceStart + minFillPx)
+        const minY = Math.max(y - lookBack, sliceStart)
         const maxYClamp = Math.min(y + lookAhead, maxY - 1)
         let bestY = -1
         let bestRunLen = 0
