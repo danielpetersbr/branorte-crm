@@ -592,8 +592,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             <div>
               CLIENTE:{' '}
               {cli.nome
-                ? <span className="text-gray-700 font-semibold ml-1">{cli.nome}</span>
-                : <span className="text-gray-400 italic font-semibold ml-1">[preencher]</span>}
+                ? <span className="text-gray-700 font-bold ml-1">{cli.nome}</span>
+                : <span className="text-gray-400 italic font-bold ml-1">[preencher]</span>}
             </div>
             <div className="text-center">A/C: {valOrPlaceholder(cli.ac)}</div>
             <div className="text-right">FONE: {valOrPlaceholder(cli.fone)}</div>
