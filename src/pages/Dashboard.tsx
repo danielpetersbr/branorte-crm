@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useDashboard, type DashboardPreset, type FunilEtapa, type SlaVendedor } from '@/hooks/useDashboard'
+import { useDashboardEtiquetas, CATEGORIA_LABEL, type EtiquetaCategoria } from '@/hooks/useDashboardEtiquetas'
 import {
   Area, AreaChart, Cell, Pie, PieChart,
   ResponsiveContainer, Tooltip,
@@ -76,6 +77,37 @@ function CardHeader({ title, subtitle, right }: { title: string; subtitle?: stri
 export function Dashboard() {
   const [preset, setPreset] = usePresetFilter()
   const { data, isLoading, error } = useDashboard({ preset })
+  const { data: etq } = useDashboardEtiquetas(preset)
+
+  // Funil IA com os 2 últimos passos vindos das etiquetas WA (real),
+  // não mais dos campos mortos `orcamento_enviado` e `status_real='fechou'`.
+  // Mantém Entrou, Engajou, Qualificou, Passou pro vendedor (dos campos da IA).
+  const funilIaMerged = useMemo<FunilEtapa[]>(() => {
+    if (!data?.funil || !etq) return data?.funil ?? []
+    // Os 4 primeiros passos seguem do hook original
+    const base = data.funil.slice(0, 4)
+    const topo = base[0]?.valor || 1
+    const orcamento = etq.por_categoria.orcamento ?? 0
+    const vendido = etq.por_categoria.vendido ?? 0
+    const prevOrc = base[3]?.valor || 1
+    const novos: FunilEtapa[] = [
+      {
+        etapa: 'Orçamento enviado',
+        valor: orcamento,
+        pctTopo: (orcamento / topo) * 100,
+        pctAnterior: (orcamento / prevOrc) * 100,
+        perdidos: Math.max(0, prevOrc - orcamento),
+      },
+      {
+        etapa: 'Vendido',
+        valor: vendido,
+        pctTopo: (vendido / topo) * 100,
+        pctAnterior: orcamento > 0 ? (vendido / orcamento) * 100 : 0,
+        perdidos: Math.max(0, orcamento - vendido),
+      },
+    ]
+    return [...base, ...novos]
+  }, [data?.funil, etq])
 
   if (isLoading) {
     return (
@@ -171,10 +203,10 @@ export function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <Card className="lg:col-span-2">
           <CardHeader
-            title="Funil de qualificação (IA)"
-            subtitle={`${fmtN(data.totalLeads)} leads no período · qualificação automática`}
+            title="Funil de qualificação (IA → Vendedor)"
+            subtitle={`${fmtN(data.totalLeads)} leads · IA qualifica · vendedor confirma via etiqueta WA`}
           />
-          <FunilHero etapas={data.funil} />
+          <FunilHero etapas={funilIaMerged} />
         </Card>
         <Card>
           <CardHeader
@@ -263,6 +295,37 @@ export function Dashboard() {
           <UfList items={data.porUf} />
         </Card>
       </div>
+
+      {/* ETIQUETAS WA (vendedores) */}
+      {etq && (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            <Card className="lg:col-span-2">
+              <CardHeader
+                title="Mapa de etiquetas WhatsApp"
+                subtitle={`${fmtN(etq.leads_com_etiqueta)} de ${fmtN(etq.leads_total)} leads classificados pelos vendedores`}
+              />
+              <MapaEtiquetas etq={etq} />
+            </Card>
+            <Card>
+              <CardHeader
+                title="Vendedores sem ORC ENVIADO"
+                subtitle="Têm leads no período mas não etiquetaram nenhum orçamento — cobrar"
+              />
+              <VendedoresSemOrc etq={etq} />
+            </Card>
+          </div>
+          <div className="grid grid-cols-1 gap-5">
+            <Card>
+              <CardHeader
+                title="Criativo × Etiqueta final"
+                subtitle="Qual anúncio vira venda vs. 'NÃO FABRICAMOS' — auditoria de qualidade"
+              />
+              <CriativoEtiqueta etq={etq} />
+            </Card>
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -639,6 +702,173 @@ function UfList({ items }: { items: { uf: string; nome: string; total: number; p
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ============================================================================
+// ETIQUETAS WA — componentes
+// ============================================================================
+
+const CAT_COLOR: Record<EtiquetaCategoria, string> = {
+  novo:        'hsl(217 91% 60%)',  // azul
+  quente:      'hsl(38 92% 50%)',   // amarelo
+  lead_quente: 'hsl(0 72% 51%)',    // vermelho
+  orcamento:   'hsl(280 65% 60%)',  // roxo
+  vendido:     'hsl(152 60% 40%)',  // verde
+  perdido:     'hsl(0 0% 45%)',     // cinza escuro
+  interno:     'hsl(0 0% 65%)',     // cinza claro
+  outros:      'hsl(0 0% 65%)',
+}
+
+function MapaEtiquetas({ etq }: { etq: ReturnType<typeof useDashboardEtiquetas>['data'] }) {
+  if (!etq) return null
+  const total = etq.leads_com_etiqueta || 1
+  // Ordem do funil (mais valioso → menos valioso)
+  const ordem: EtiquetaCategoria[] = ['vendido', 'orcamento', 'lead_quente', 'quente', 'novo', 'perdido', 'interno', 'outros']
+  const catEntries = ordem
+    .map(c => ({ cat: c, total: etq.por_categoria[c] ?? 0 }))
+    .filter(e => e.total > 0)
+
+  return (
+    <div className="space-y-4">
+      {/* Stacked bar por categoria */}
+      <div className="flex h-3 rounded-full overflow-hidden bg-surface-2 border border-border/50">
+        {catEntries.map(e => (
+          <div
+            key={e.cat}
+            className="h-full"
+            style={{ width: `${(e.total / total) * 100}%`, backgroundColor: CAT_COLOR[e.cat] }}
+            title={`${CATEGORIA_LABEL[e.cat].label}: ${e.total} (${Math.round((e.total / total) * 100)}%)`}
+          />
+        ))}
+      </div>
+      {/* Legenda por categoria */}
+      <div className="flex flex-wrap gap-x-3 gap-y-1.5">
+        {catEntries.map(e => (
+          <div key={e.cat} className="flex items-center gap-1.5 text-[11px]">
+            <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: CAT_COLOR[e.cat] }} />
+            <span className="text-ink-muted">{CATEGORIA_LABEL[e.cat].emoji} {CATEGORIA_LABEL[e.cat].label}</span>
+            <span className="font-mono tabular-nums text-ink">{e.total}</span>
+            <span className="text-ink-faint tabular-nums">({Math.round((e.total / total) * 100)}%)</span>
+          </div>
+        ))}
+      </div>
+      {/* Top etiquetas (dedup por nome normalizado) */}
+      <div className="pt-3 border-t border-border/40">
+        <p className="text-[10px] uppercase tracking-widest text-ink-faint mb-2">Top etiquetas</p>
+        <div className="space-y-1.5">
+          {(() => {
+            // Dedup variações de grafia (PROSPECCAO vs PROSPECÇÃO)
+            const map = new Map<string, { nome: string; categoria: EtiquetaCategoria; total: number }>()
+            for (const e of etq.por_etiqueta) {
+              const cur = map.get(e.nome)
+              if (cur) cur.total += e.total
+              else map.set(e.nome, { nome: e.nome, categoria: e.categoria, total: e.total })
+            }
+            const top = Array.from(map.values()).sort((a, b) => b.total - a.total).slice(0, 10)
+            const maxT = Math.max(...top.map(e => e.total), 1)
+            return top.map(e => (
+              <div key={e.nome} className="flex items-center gap-2 text-[12px]">
+                <span className="w-44 truncate text-ink" title={e.nome}>{e.nome}</span>
+                <div className="flex-1 h-2 bg-surface-2 rounded overflow-hidden">
+                  <div className="h-full" style={{ width: `${(e.total / maxT) * 100}%`, backgroundColor: CAT_COLOR[e.categoria] }} />
+                </div>
+                <span className="w-10 text-right text-ink-muted font-mono tabular-nums">{e.total}</span>
+              </div>
+            ))
+          })()}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function VendedoresSemOrc({ etq }: { etq: ReturnType<typeof useDashboardEtiquetas>['data'] }) {
+  if (!etq) return null
+  const sem = etq.sem_orc_vendedores
+  // Junta info do por_vendedor (total de leads) pra ranking
+  const dados = sem
+    .map(v => {
+      const info = etq.por_vendedor.find(x => x.vendedor === v)
+      return { vendedor: v, total: info?.total_leads ?? 0, vendido: info?.vendido ?? 0 }
+    })
+    .sort((a, b) => b.total - a.total)
+
+  if (dados.length === 0) {
+    return (
+      <div className="py-6 text-center text-[12px] text-ink-faint">
+        Todos os vendedores etiquetaram pelo menos 1 ORC ENVIADO ✓
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-2">
+      {dados.map(d => (
+        <div key={d.vendedor} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md bg-surface-2/40 border border-border/30">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[12px] font-medium text-ink capitalize">{d.vendedor.toLowerCase()}</span>
+            {d.vendido > 0 && (
+              <span className="text-[10px] px-1.5 py-px rounded bg-success-bg text-success font-mono">{d.vendido} ✓</span>
+            )}
+          </div>
+          <div className="text-[11px] text-ink-muted tabular-nums font-mono">
+            {d.total} leads · 0 ORC
+          </div>
+        </div>
+      ))}
+      <p className="text-[10px] text-ink-faint pt-1">
+        Vendedores que recebem leads mas nunca etiquetam "ORCAMENTO ENVIADO" no WhatsApp. Cobra eles ou eles vendem sem mandar orçamento — ambos os casos são problema.
+      </p>
+    </div>
+  )
+}
+
+function CriativoEtiqueta({ etq }: { etq: ReturnType<typeof useDashboardEtiquetas>['data'] }) {
+  if (!etq || etq.por_criativo.length === 0) {
+    return <div className="py-6 text-center text-[12px] text-ink-faint">Sem dados de criativo cruzado com etiquetas.</div>
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[12px]">
+        <thead>
+          <tr className="text-[10px] uppercase tracking-wider text-ink-faint border-b border-border">
+            <th className="text-left py-2 px-2 font-semibold">Criativo</th>
+            <th className="text-right py-2 px-2 font-semibold w-16">Total</th>
+            <th className="text-right py-2 px-2 font-semibold w-16">Vendido</th>
+            <th className="text-right py-2 px-2 font-semibold w-16">Orçam.</th>
+            <th className="text-right py-2 px-2 font-semibold w-20">Em and.</th>
+            <th className="text-right py-2 px-2 font-semibold w-16">Perdido</th>
+            <th className="text-right py-2 px-2 font-semibold w-24">Não fabric.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {etq.por_criativo.map(c => {
+            const ratioNF = c.total > 0 ? (c.nao_fabricamos / c.total) * 100 : 0
+            return (
+              <tr key={c.codigo} className="border-b border-border/30 hover:bg-surface-2/40">
+                <td className="py-1.5 px-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-2 text-ink-muted">{c.codigo}</span>
+                    <span className="truncate text-ink" title={c.nome ?? ''}>{c.nome || '—'}</span>
+                  </div>
+                </td>
+                <td className="text-right py-1.5 px-2 font-mono tabular-nums">{c.total}</td>
+                <td className="text-right py-1.5 px-2 font-mono tabular-nums text-success">{c.vendido || '—'}</td>
+                <td className="text-right py-1.5 px-2 font-mono tabular-nums text-accent">{c.orcamento || '—'}</td>
+                <td className="text-right py-1.5 px-2 font-mono tabular-nums text-warning">{c.quente || '—'}</td>
+                <td className="text-right py-1.5 px-2 font-mono tabular-nums text-ink-faint">{c.perdido || '—'}</td>
+                <td className={`text-right py-1.5 px-2 font-mono tabular-nums ${ratioNF >= 15 ? 'text-danger font-semibold' : 'text-ink-muted'}`}>
+                  {c.nao_fabricamos > 0 ? `${c.nao_fabricamos} (${ratioNF.toFixed(0)}%)` : '—'}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+      <p className="text-[10px] text-ink-faint mt-2">
+        🚩 Coluna <span className="text-danger font-semibold">"Não fabric."</span> em vermelho (≥15%) = criativo trazendo leads errados. Considere pausar.
+      </p>
     </div>
   )
 }
