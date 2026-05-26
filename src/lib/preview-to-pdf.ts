@@ -95,8 +95,11 @@ export async function gerarPdfDoPreview(
     // canvas BRANCO silenciosamente. Calcula maxScale (aceita < 1 se preciso)
     // com margem de segurança (16000px efetivo).
     const hostHeightCssPx = host.offsetHeight
-    const CANVAS_MAX_DIM = 16000
-    const MIN_SCALE = 0.5  // abaixo disso, texto fica ilegível
+    // 14000 (não 16000) pra ter margem extra: alguns drivers Skia comecam a
+    // gerar artefatos (bordas pretas, regioes parciais) bem antes do limite
+    // teorico de 16384. Sintoma: 'sombra preta' no canto sup esquerdo.
+    const CANVAS_MAX_DIM = 14000
+    const MIN_SCALE = 0.5
     let effectiveScale = scale
     if (hostHeightCssPx > 0) {
       const maxScaleByHeight = Math.floor((CANVAS_MAX_DIM / hostHeightCssPx) * 100) / 100
