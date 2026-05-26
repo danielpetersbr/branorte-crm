@@ -175,7 +175,10 @@ function formatBRLBare(v: number): string {
 //  1) Se idealY cai dentro de algum [data-no-break], move pra ANTES dele (top - margem)
 //  2) Repete ate nenhum no-break ser atingido
 //  3) Refina: pega o bottom de algum elemento entre (Y-15%, Y) pra colar a quebra no fim de bloco
-function findBreakNear(container: HTMLElement, idealY: number, tolerance: number): number {
+//
+// EXPORTADA: usada pelo gerador de PDF (preview-to-pdf.ts) pra calcular as
+// mesmas quebras que a preview mostra, garantindo prévia = PDF.
+export function findBreakNear(container: HTMLElement, idealY: number, tolerance: number): number {
   const containerTop = container.getBoundingClientRect().top + window.scrollY
   const noBreakEls = Array.from(container.querySelectorAll('[data-no-break]')) as HTMLElement[]
 

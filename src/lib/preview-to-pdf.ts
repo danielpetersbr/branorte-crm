@@ -8,6 +8,7 @@ import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import {
   OrcamentoPreview,
+  findBreakNear,
   type OrcamentoPreviewProps,
 } from '@/components/OrcamentoPreview'
 
@@ -95,6 +96,33 @@ export async function gerarPdfDoPreview(
       const bottom = r.bottom + window.scrollY - hostTop
       if (bottom > top + 4) noBreakRanges.push({ topPx: top, bottomPx: bottom })
     })
+
+    // 3.5.5) Calcula PRE-COMPUTED BREAKS em CSS px usando a MESMA função da
+    // preview (findBreakNear). Isso garante que o PDF corta EXATAMENTE onde a
+    // preview mostra "↓ FOLHA N/M ↓". Antes o PDF usava findCutY (canvas px)
+    // que era algoritmo diferente → quebras desalinhadas.
+    const hostCssHeight = host.offsetHeight
+    const A4_CSS_H = containerWidthPx * (297 / 210)  // altura A4 em CSS px (proporção)
+    const cssBreaks: number[] = []
+    {
+      // Hero photo força quebra após ela (mesma regra da preview)
+      const heroEl = host.querySelector('[data-hero-photo]') as HTMLElement | null
+      let nextY: number
+      if (heroEl) {
+        const heroBottom = heroEl.getBoundingClientRect().bottom + window.scrollY - hostTop
+        cssBreaks.push(heroBottom + 8)
+        nextY = heroBottom + 8 + A4_CSS_H
+      } else {
+        nextY = A4_CSS_H
+      }
+      let safety = 0
+      while (nextY < hostCssHeight && safety++ < 50) {
+        const adjusted = findBreakNear(host, nextY, A4_CSS_H * 0.15)
+        cssBreaks.push(adjusted)
+        nextY = adjusted + A4_CSS_H
+      }
+    }
+    console.log(`[pdf] cssBreaks=${cssBreaks.length}: ${cssBreaks.map(b => b.toFixed(0)).join(', ')}`)
     // NOTA: mantemos ranges ANINHADOS (item inteiro + foto+valor aninhado).
     // Quando item > 1 página, o caso especial em isInsideNoBreak permite cortar
     // dentro do item; o aninhado garante que o corte NÃO cai entre foto e valor.
@@ -301,35 +329,28 @@ export async function gerarPdfDoPreview(
         return bestY > 0 ? bestY : y
       }
 
-      // Tolerancia: ignorar overflow < 8% da pagina (evita pagina extra so com footer)
-      const minRemainingPx = Math.floor(sliceHeightPx * 0.08)
+      // Converte cssBreaks (CSS px) → canvas px (com effectiveScale aplicado)
+      const canvasBreaks = cssBreaks.map(b => Math.floor(b * effectiveScale))
+      console.log(`[pdf] canvasBreaks: ${canvasBreaks.join(', ')} (canvas.h=${canvas.height})`)
+
       let yPx = 0
       let pageIdx = 0
-      // Safety: max 100 pgs pra evitar loop infinito se findCutY retornar
-      // valor que não avança yPx. Orçamentos reais raramente passam de 30 pgs.
       const MAX_PAGES = 100
       while (yPx < canvas.height && pageIdx < MAX_PAGES) {
         const remainingPx = canvas.height - yPx
-        if (pageIdx > 0 && remainingPx < minRemainingPx) break
 
+        // Usa o próximo break >= yPx + minSlice. Se não houver, fim do canvas.
+        const minSliceForBreak = Math.floor(sliceHeightPx * 0.20)
+        const nextBreak = canvasBreaks.find(b => b > yPx + minSliceForBreak)
         let thisSliceHeightPx: number
-        if (remainingPx <= sliceHeightPx) {
-          // Última fatia — pega tudo que sobrou
+        if (nextBreak === undefined || remainingPx <= sliceHeightPx) {
+          // Última fatia ou sem mais breaks — pega tudo que sobrou
           thisSliceHeightPx = remainingPx
         } else {
-          // Procura linha branca perto do limite ideal — respeitando data-no-break
-          const idealY = yPx + sliceHeightPx
-          const cutY = findCutY(idealY, canvas.height, yPx)
-          let proposedSlice = cutY - yPx
-          // Safety: nunca avançar 0 ou menos px (loop infinito). Força mínimo 50%.
-          if (proposedSlice < sliceHeightPx * 0.5) {
-            console.warn(`[pdf] page ${pageIdx + 1}: cutY (${cutY}) muito perto de yPx (${yPx}). Forçando 50% da pg.`)
-            proposedSlice = Math.floor(sliceHeightPx * 0.5)
-          }
-          const fillPct = (proposedSlice / sliceHeightPx * 100).toFixed(0)
-          console.log(`[pdf] page ${pageIdx + 1}: cut ${yPx + proposedSlice}/${canvas.height} (slice=${proposedSlice}px, fill=${fillPct}%)`)
-          thisSliceHeightPx = proposedSlice
+          thisSliceHeightPx = nextBreak - yPx
         }
+        const fillPct = (thisSliceHeightPx / sliceHeightPx * 100).toFixed(0)
+        console.log(`[pdf] page ${pageIdx + 1}: slice ${thisSliceHeightPx}px (fill=${fillPct}%)`)
 
         // Cria canvas temporario pra fatia
         const sliceCanvas = document.createElement('canvas')
