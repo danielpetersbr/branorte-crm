@@ -9,6 +9,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 import { gerarPdfDoPreview } from '@/lib/preview-to-pdf'
 import { gerarPdfServerSide } from '@/lib/pdf-server'
+import { docxParaPdfServer } from '@/lib/docx-to-pdf-server'
 import { gerarOrcamentoCustomDocx } from '@/lib/orcamento-custom-docx'
 import { gerarDocxViaHtml } from '@/lib/preview-to-docx-html'
 import {
@@ -676,35 +677,13 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       //   2. custom docx lib (~70%, fallback se HTML falhar)
       //   ConvertAPI removido — text boxes nao agregam fidelidade real
 
-      // 4) PDF — gera ANTES do docx (que agora deriva dele)
-      setStep('Gerando PDF...', 30)
-      let pdfBlob: Blob | null = null
-      let pdfErro: string | null = null
-      try {
-        const t0 = Date.now()
-        if (opcoes.pdfQuality === 'high') {
-          try {
-            setStep('Gerando PDF vetorial (servidor)...', 35)
-            pdfBlob = await gerarPdfServerSide(previewProps)
-            console.log(`[gerar] pdf SERVER OK (${pdfBlob.size} bytes)`)
-          } catch (serverErr) {
-            console.warn('[gerar] PDF server falhou, fallback client:', serverErr)
-            setStep('Servidor indisponível, gerando local em alta qualidade...', 35)
-            pdfBlob = await gerarPdfDoPreview(previewProps, { quality: 'high' })
-          }
-        } else {
-          pdfBlob = await gerarPdfDoPreview(previewProps, { quality: opcoes.pdfQuality })
-        }
-        console.log(`[gerar] pdf OK em ${Date.now() - t0}ms (${pdfBlob.size} bytes)`)
-      } catch (e) {
-        pdfErro = (e as Error).message
-        console.warn('Falha PDF:', pdfErro)
-      }
+      // FLUXO NOVO: DOCX primeiro (layout nativo Word, perfeito) → PDF via
+      // ConvertAPI. Evita o html2canvas frágil que tinha vários bugs (canvas
+      // em branco, fotos sumidas, cortes errados, footer sobreposto).
+      // Mantém html2canvas como fallback se ConvertAPI falhar.
 
-      // 4b) DOCX — apenas editavel pra ajustes rapidos. PDF eh o produto final.
-      // Custom-docx gera tabelas nativas do Word (layout confiável).
-      // html-to-docx fica como fallback se custom falhar.
-      setStep('Gerando Word editável...', 50)
+      // 4a) DOCX primeiro — produto base que serve tanto como editável quanto fonte do PDF
+      setStep('Gerando Word...', 25)
       let docxBlob: Blob = null as any
       let docxFonte: 'html-to-docx' | 'custom' = 'custom'
 
@@ -757,7 +736,34 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         }
       }
       console.log(`[gerar] docx fonte final: ${docxFonte}`)
-      // pdfErro segue a variavel — usada mais adiante
+
+      // 4b) PDF — converte DOCX → PDF via ConvertAPI (layout nativo Word).
+      // Fallback: se ConvertAPI falhar (rede, quota, etc), usa html2canvas legacy.
+      setStep('Convertendo Word em PDF...', 45)
+      let pdfBlob: Blob | null = null
+      let pdfErro: string | null = null
+      try {
+        const t0 = Date.now()
+        pdfBlob = await docxParaPdfServer(docxBlob, `orcamento-${orc.numero}.docx`)
+        console.log(`[gerar] pdf via DOCX→ConvertAPI OK em ${Date.now() - t0}ms (${pdfBlob.size} bytes)`)
+      } catch (convertErr) {
+        console.warn('[gerar] DOCX→PDF ConvertAPI falhou, fallback html2canvas:', convertErr)
+        setStep('Servidor indisponível, gerando PDF local...', 45)
+        try {
+          if (opcoes.pdfQuality === 'high') {
+            try {
+              pdfBlob = await gerarPdfServerSide(previewProps)
+            } catch {
+              pdfBlob = await gerarPdfDoPreview(previewProps, { quality: 'high' })
+            }
+          } else {
+            pdfBlob = await gerarPdfDoPreview(previewProps, { quality: opcoes.pdfQuality })
+          }
+        } catch (e) {
+          pdfErro = (e as Error).message
+          console.warn('Falha PDF (todos os caminhos):', pdfErro)
+        }
+      }
 
       // Detecta modo teste: se rootHandle salvo tem 'teste' no nome
       let isTesteMode = false
