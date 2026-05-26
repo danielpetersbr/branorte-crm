@@ -622,13 +622,13 @@ export function OrcamentoMontar() {
     return p.descricao.toUpperCase()
   }
 
-  // REGRA DE NEGOCIO: Compacta 02/03 e Caçamba de Pesagem SEMPRE acompanham
-  // balança eletrônica 2000kg como componente adicional. Vendedor pode remover depois.
+  // REGRA DE NEGOCIO: SO Caçamba de Pesagem puxa balança eletrônica 2000kg
+  // como componente adicional. Compacta 02/03 sozinho NAO puxa mais (usuario
+  // pediu pra so puxar quando tiver cacamba).
   function autoAdicionarBalancaSeCompacta(nomeItem: string, categoriaItem?: string) {
     const nome = nomeItem.toUpperCase()
-    const eCompacta23 = /COMPACTA\s*0?[23]\b/.test(nome)
     const eCacamba = categoriaItem === 'CACAMBA_PESAGEM' || /CA[ÇC]AMBA.*PESAGEM/i.test(nome)
-    if (!eCompacta23 && !eCacamba) return
+    if (!eCacamba) return
 
     const NOME_BALANCA = 'Balança Eletrônica'
     // Match relaxado (qualquer 'Balança Eletrônica' nos componentes ja conta)
@@ -685,9 +685,13 @@ export function OrcamentoMontar() {
       return // sai pra rodar de novo apos o estado atualizar
     }
 
-    // 2) Auto-add quando tem Compacta 02/03 e nao tem balança nos extras
-    const temCompacta23 = carrinho.some(it => /COMPACTA\s*0?[23]\b/i.test(it.nome))
-    if (!temCompacta23) return
+    // 2) Auto-add SO quando tem CAÇAMBA DE PESAGEM no carrinho.
+    // (Antes puxava em Compacta 02/03 tambem, mas usuario pediu pra restringir
+    // so a casos com cacamba.)
+    const temCacamba = carrinho.some(it =>
+      it.categoria === 'CACAMBA_PESAGEM' || /CA[ÇC]AMBA.*PESAGEM/i.test(it.nome)
+    )
+    if (!temCacamba) return
     const jaTemBalanca = componentesExtras.some(c => BALANCA_RE.test(c.nome.trim()))
     if (jaTemBalanca) return
     const balancaPreco = precos.find(p =>
