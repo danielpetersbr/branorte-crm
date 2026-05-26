@@ -79,14 +79,27 @@ export default function PrintOrcamento() {
   return (
     <div style={{ background: '#ffffff', minHeight: '100vh' }}>
       <style>{`
-        /* CRÍTICO: html/body com fundo BRANCO PURO. Sem isso, o CSS var
-           --bg do .dark vaza pras margens do PDF e aparecem faixas pretas
-           no topo/rodapé onde o conteúdo do orçamento não cobre. */
+        /* Fundo branco — evita faixas pretas das CSS vars do dark mode */
         html, body {
           background: #ffffff !important;
           color: #111827 !important;
           color-scheme: light !important;
+          font-family: 'Calibri', 'Carlito', 'Segoe UI', sans-serif !important;
         }
+        /* Tipografia Calibri 11pt como base (referência do usuário no Word).
+           Sobrescreve os text-[Npx] hardcoded do Tailwind pra valores em pt
+           proporcionais. Tamanhos pensados pra impressão A4 profissional. */
+        .text-\\[15\\.5px\\] { font-size: 11pt !important; }  /* item header (bold) */
+        .text-\\[15px\\] { font-size: 11pt !important; }      /* section header */
+        .text-\\[14\\.5px\\] { font-size: 10pt !important; }  /* bullets / specs */
+        .text-\\[14px\\] { font-size: 10pt !important; }
+        .text-\\[16px\\] { font-size: 11pt !important; }      /* dados cliente */
+        .text-\\[19px\\] { font-size: 13pt !important; }      /* total destaque */
+        .text-\\[20px\\] { font-size: 13pt !important; }
+        .text-\\[13px\\] { font-size: 9pt !important; }
+        .text-\\[12\\.5px\\] { font-size: 9pt !important; }
+        .text-\\[12px\\] { font-size: 9pt !important; }
+        .text-\\[11px\\] { font-size: 8pt !important; }
         @page {
           size: A4;
           margin: 8mm 6mm 12mm 6mm;
