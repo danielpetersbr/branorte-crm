@@ -1278,28 +1278,14 @@ export function OrcamentoMontar() {
       })
     })
 
-    // 3) Motores que NÃO casaram com nenhum item → items dummy (igual antes).
-    // BUGFIX v1.4.1: pula motores "incluso" (valor=0) — eles vinham de motorredutor
-    // de ensacadeira/pré-limpeza e desde o fix "acessório sem motor" ficavam órfãos,
-    // sendo materializados como "MOTOR 1.5 CV 4 POLOS — sem preço" no orçamento. Não.
-    for (const m of motoresRestantes) {
-      if (!Number(m.valor)) continue  // motor incluso (valor 0) — não vira item
-      novos.push({
-        uid: gerarUid(),
-        catalogo_id: -1,
-        categoria: 'MOTOR',
-        nome: `Motor ${m.cv} CV ${m.polos} polos`,
-        specs: [`Tensão a confirmar (220V / 380V / 660V)`],
-        qtd: 1,
-        valor: 0,
-        valor_original: 0,
-        motor_cv: Number(m.cv),
-        motor_polos: m.polos,
-        motor_qtd: 1,
-        motor_valor_unit: Number(m.valor) || 0,
-        foto_url: null,
-      })
-    }
+    // 3) Motores ÓRFÃOS (não pareados com nenhum item): NÃO materializa como
+    // items dummy "D - 01 MOTOR 10 CV 2 POLOS" no orçamento. Esses motores
+    // ficam apenas na tabela MOTORES TRIFÁSICOS lá embaixo, NÃO como item
+    // separado com letra/foto/VALOR. Usuário reclamou de motor aparecer avulso.
+    //
+    // Se um motor estava no modelo mas o item correspondente não foi detectado
+    // pelo extrairCvDeTexto, o motor simplesmente é DESCARTADO do carrinho —
+    // mas vai cair na tabela de motores via motoresAgrupados (que lê do modelo).
 
     // Debug: log itens carregados do modelo
     console.log('[carregarDoModelo] Itens processados:', novos.length, novos.map(n => n.nome?.substring(0, 40)))
