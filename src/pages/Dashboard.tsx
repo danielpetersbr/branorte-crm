@@ -556,11 +556,14 @@ function CriativosList({ criativos }: { criativos: { codigo: string; nome: strin
 
 // Lista de origens
 function OrigemList({ origens }: { origens: { origem: string; total: number; qualificados: number; ctr: number }[] }) {
-  if (!origens.length) return <p className="text-sm text-ink-faint">Sem leads com origem registrada.</p>
-  const maxTotal = Math.max(...origens.map(o => o.total))
+  // Oculta canais de WhatsApp por número (ruído — vendedores individuais).
+  // Mantém origens de campanha (Meta ADS, Google, Instagram, etc).
+  const filtered = origens.filter(o => !/whatsapp\s*\d{3,}/i.test(o.origem))
+  if (!filtered.length) return <p className="text-sm text-ink-faint">Sem leads com origem registrada.</p>
+  const maxTotal = Math.max(...filtered.map(o => o.total))
   return (
     <div className="space-y-3">
-      {origens.map(o => {
+      {filtered.map(o => {
         const widthPct = (o.total / maxTotal) * 100
         const qualifWidth = o.total > 0 ? (o.qualificados / o.total) * 100 : 0
         const ctrColor = o.ctr >= 10 ? 'text-accent' : o.ctr >= 3 ? 'text-warning' : 'text-danger'
