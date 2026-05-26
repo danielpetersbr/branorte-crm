@@ -117,6 +117,10 @@ export function useDashboardEtiquetas(preset: DashboardPreset = '') {
     staleTime: 60_000,
     refetchInterval: 60_000,
     placeholderData: prev => prev,
+    // Etiquetas são opcionais — se falhar, não derruba o dashboard.
+    // Cards baseados em etiqueta simplesmente não aparecem (já têm `if (!etq)`).
+    retry: 2,
+    retryDelay: attempt => Math.min(1000 * 2 ** attempt, 8000),
   })
 }
 

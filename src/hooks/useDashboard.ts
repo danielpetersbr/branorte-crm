@@ -317,6 +317,9 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
     },
     staleTime: 60_000,
     refetchInterval: 60_000,
+    // Resiliente a timeouts pontuais do Supabase (statement_timeout em pico de carga).
+    retry: 3,
+    retryDelay: attempt => Math.min(1500 * 2 ** attempt, 12000),
     placeholderData: prev => prev,
   })
 }

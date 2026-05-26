@@ -123,9 +123,18 @@ export function Dashboard() {
 
   if (error || !data) {
     return (
-      <div className="p-6">
+      <div className="p-6 space-y-3">
         <div className="border border-danger/30 bg-danger-bg rounded-xl p-4 text-sm text-danger">
-          Erro ao carregar dados do dashboard.
+          <div className="font-semibold mb-1">Erro ao carregar dados do dashboard.</div>
+          {error && (
+            <div className="text-[12px] font-mono opacity-80 break-all">{(error as Error).message}</div>
+          )}
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-3 px-3 py-1 rounded bg-danger text-white text-[12px] font-medium hover:bg-danger/90"
+          >
+            Tentar de novo
+          </button>
         </div>
       </div>
     )
