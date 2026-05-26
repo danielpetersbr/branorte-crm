@@ -20,13 +20,24 @@ export default function PrintOrcamento() {
 
   // FORÇA LIGHT MODE: se .dark estiver no <html>, body fica quase preto
   // (CSS var --bg). Faixas pretas aparecem nas margens da pg PDF onde
-  // conteúdo (que é branco) não cobre. useLayoutEffect roda ANTES do paint
-  // pra evitar flash de dark.
+  // conteúdo (que é branco) não cobre. useLayoutEffect roda ANTES do paint.
+  // Também injeta Carlito (Google Fonts, metric-compatible com Calibri) pra
+  // garantir consistência entre prévia local (Calibri Windows) e PDF gerado
+  // no Vercel Linux (sem Calibri).
   useLayoutEffect(() => {
     document.documentElement.classList.remove('dark')
     document.documentElement.style.colorScheme = 'light'
     document.body.style.background = '#ffffff'
     document.documentElement.style.background = '#ffffff'
+
+    // Injeta link Google Fonts no <head> se ainda não tiver
+    if (!document.getElementById('carlito-font-link')) {
+      const link = document.createElement('link')
+      link.id = 'carlito-font-link'
+      link.rel = 'stylesheet'
+      link.href = 'https://fonts.googleapis.com/css2?family=Carlito:ital,wght@0,400;0,700;1,400;1,700&display=block'
+      document.head.appendChild(link)
+    }
   }, [])
 
   useEffect(() => {
@@ -79,12 +90,21 @@ export default function PrintOrcamento() {
   return (
     <div style={{ background: '#ffffff', minHeight: '100vh' }}>
       <style>{`
+        /* Carlito = metric-compatible com Calibri, disponível via Google Fonts.
+           No Vercel Linux server, 'Calibri' não existe e fallback genérico
+           renderiza com peso/spacing diferente — Carlito garante consistência. */
+        @import url('https://fonts.googleapis.com/css2?family=Carlito:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+
         /* Fundo branco — evita faixas pretas das CSS vars do dark mode */
         html, body {
           background: #ffffff !important;
           color: #111827 !important;
           color-scheme: light !important;
-          font-family: 'Calibri', 'Carlito', 'Segoe UI', sans-serif !important;
+          font-family: 'Carlito', 'Calibri', 'Segoe UI', sans-serif !important;
+        }
+        /* Borda mais visível nos cards (1px era muito sutil no PDF). */
+        .border {
+          border-width: 1.5px !important;
         }
         /* Tipografia Calibri 11pt como base (referência do usuário no Word).
            Sobrescreve os text-[Npx] hardcoded do Tailwind pra valores em pt
