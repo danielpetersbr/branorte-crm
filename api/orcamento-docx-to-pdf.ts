@@ -6,6 +6,7 @@
 //
 // Setup: CONVERTAPI_SECRET no Vercel env (formato 'secret_xxx').
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { Readable } from 'stream'
 // @ts-ignore - lib sem tipos completos
 import ConvertAPI from 'convertapi'
 
@@ -40,14 +41,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const t0 = Date.now()
     const convertapi = new ConvertAPI(SECRET)
+
+    // Padrão correto da lib v1.15: converter base64 → Buffer → Readable stream
+    // → convertapi.upload(stream, filename) → result. Antes tentamos
+    // { name, data: base64 } direto que dá erro 'path must be string'.
+    const buffer = Buffer.from(docxBase64, 'base64')
+    const stream = new Readable()
+    stream.push(buffer)
+    stream.push(null)
+
+    const uploadResult = await convertapi.upload(stream, filename)
     // Doc: https://www.convertapi.com/docx-to-pdf
-    const result = await convertapi.convert('pdf',
-      {
-        File: { name: filename, data: docxBase64 },
-        FileName: filename.replace(/\.docx$/i, ''),
-      },
-      'docx',
-    )
+    const result = await convertapi.convert('pdf', { File: uploadResult }, 'docx')
 
     const files = result.files || (result as any).Files
     const file = files?.[0]
