@@ -229,54 +229,26 @@ export async function gerarPdfDoPreview(
 
       function findCutY(idealY: number, maxY: number, sliceStart: number): number {
         let y = idealY
-        // Mínimo de 40% da página preenchida — evita páginas com pouco conteúdo
         const minFillPx = Math.floor(sliceHeightPx * 0.40)
         const minAcceptableY = sliceStart + minFillPx
 
-        // Step 1: resolver no-break collisions. NUNCA volta pra antes do mínimo;
-        // se proposta de subida violaria minFillPx, vai pra DEPOIS do bloco.
+        // Step 1: resolver no-break collisions. REGRA INVIOLÁVEL: nunca propor
+        // y > idealY (ultrapassaria A4 → footer invadido). Sempre tenta cortar
+        // ANTES do bloco; se não couber antes (bloco começa antes da pg atual),
+        // aceita corte dentro do bloco em idealY (caso edge de item gigante).
         for (let iter = 0; iter < 10; iter++) {
           const r = isInsideNoBreak(y, sliceStart)
           if (!r.inside) break
           const proposedUp = r.topY! - marginBeforePx
-          if (proposedUp >= minAcceptableY) {
+          if (proposedUp > sliceStart) {
+            // Cabe ANTES do bloco na pg atual. Aceita mesmo se fill < 40% —
+            // melhor pg curta que item estraçalhado entre páginas.
             y = proposedUp
           } else {
-            // Cortar acima deixaria página com <40%. Vai depois do bloco.
-            y = r.bottomY! + marginAfterPx
-          }
-        }
-
-        // Step 1.5: se após 10 iterações y ainda cai em range (items muito
-        // densos: gap CSS ~12px < margem 27px), busca o GAP entre items mais
-        // próximo de idealY sem aplicar margem. Sai do loop infinito de
-        // oscilação que deixa página com fill baixo.
-        if (isInsideNoBreak(y, sliceStart).inside) {
-          // Ordena ranges por top pra achar gaps
-          const sorted = [...noBreakCanvasRanges]
-            .filter(r => r.bottom >= sliceStart && r.top <= maxY)
-            .sort((a, b) => a.top - b.top)
-          // Gaps são pontos ENTRE ranges (e antes do primeiro / depois do último)
-          const candidates: number[] = []
-          let prevBottom = sliceStart
-          for (const r of sorted) {
-            if (r.top > prevBottom) {
-              const gapCenter = Math.floor((prevBottom + r.top) / 2)
-              if (gapCenter >= minAcceptableY && gapCenter <= maxY) {
-                candidates.push(gapCenter)
-              }
-            }
-            prevBottom = Math.max(prevBottom, r.bottom)
-          }
-          if (prevBottom < maxY) candidates.push(Math.min(maxY, prevBottom + 1))
-          // Escolhe candidato mais próximo de idealY (preferindo abaixo > acima)
-          if (candidates.length > 0) {
-            candidates.sort((a, b) => {
-              const da = Math.abs(a - idealY)
-              const db = Math.abs(b - idealY)
-              return da - db
-            })
-            y = candidates[0]
+            // Bloco começa antes/no sliceStart (item gigante atravessando pgs).
+            // Não tem espaço antes. Mantém y onde estava e sai do loop.
+            // Step 2 e o caller cuidam de clampar.
+            break
           }
         }
 
@@ -327,9 +299,12 @@ export async function gerarPdfDoPreview(
           }
         }
 
-        // Garantia final: nunca devolver corte que viole minFillPx
+        // Garantia final: y SEMPRE <= idealY (nunca ultrapassa A4 → footer)
+        // E mínimo de minAcceptableY pra não cortar ridiculamente cedo, EXCETO
+        // se o item simplesmente não cabe e é melhor cortar cedo pra não
+        // estraçalhar (já tratado no step 1).
         const finalY = bestY > 0 ? bestY : y
-        return Math.max(finalY, minAcceptableY)
+        return Math.min(finalY, idealY)
       }
 
       // Tolerancia: ignorar overflow < 8% da pagina (evita pagina extra so com footer)
@@ -347,11 +322,7 @@ export async function gerarPdfDoPreview(
         } else {
           // Procura linha branca perto do limite ideal — respeitando data-no-break
           const idealY = yPx + sliceHeightPx
-          let cutY = findCutY(idealY, canvas.height, yPx)
-          // CLAMP: nunca cortar DEPOIS de idealY (= ultrapassa altura A4 → fatia
-          // desenha por cima do footer). Se findCutY propôs ir além (caso de
-          // item maior que página), força em idealY mesmo dentro de no-break.
-          if (cutY > idealY) cutY = idealY
+          const cutY = findCutY(idealY, canvas.height, yPx)
           const fillPct = ((cutY - yPx) / sliceHeightPx * 100).toFixed(0)
           console.log(`[pdf] page ${pageIdx + 1}: cut ${cutY}/${canvas.height} (slice=${cutY - yPx}px, fill=${fillPct}%)`)
           thisSliceHeightPx = cutY - yPx
