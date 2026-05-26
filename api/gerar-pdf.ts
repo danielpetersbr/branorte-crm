@@ -103,11 +103,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       displayHeaderFooter: true,
       // Header vazio (necessario passar string vazia pra suprimir default do Chrome)
       headerTemplate: '<div></div>',
-      // Footer com Pagina X de Y dinamico via Puppeteer
+      // Footer apenas com "Página X de Y" alinhado à direita
       footerTemplate: `
-        <div style="font-family: 'Calibri', sans-serif; font-size: 9pt; color: #9ca3af; width: 100%; padding: 0 6mm 4mm; display: flex; justify-content: space-between; align-items: center;">
-          <span>Orçamento · Branorte BBA</span>
-          <span>Página <span class="pageNumber"></span> de <span class="totalPages"></span></span>
+        <div style="font-family: 'Calibri', sans-serif; font-size: 9pt; color: #9ca3af; width: 100%; padding: 0 6mm 4mm; text-align: right;">
+          Página <span class="pageNumber"></span> de <span class="totalPages"></span>
         </div>
       `,
     })
