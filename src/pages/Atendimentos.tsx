@@ -16,7 +16,7 @@ import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTime
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, type StatusReal } from '@/types/atendimento'
-import { useAtendimentos, useAtendimentoKpis, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, type DataPreset } from '@/hooks/useAtendimentos'
+import { useAtendimentos, useAtendimentoKpis, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, type DataPreset } from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 
@@ -286,6 +286,7 @@ export function Atendimentos() {
     status_real: string
     uf: string
     data: DataPreset
+    origem: string
     page: number
   }>({
     search: '',
@@ -293,12 +294,14 @@ export function Atendimentos() {
     status_real: '',
     uf: '',
     data: 'hoje',
+    origem: '',
     page: 0,
   })
   const [searchInput, setSearchInput] = useState('')
 
   const { data, isLoading, isFetching, dataUpdatedAt, error: atendimentosError, refetch } = useAtendimentos(filters)
   const { data: kpis } = useAtendimentoKpis(filters)
+  const { data: origens } = useAtendimentoOrigens(filters)
   const { data: responsaveis } = useAtendimentoResponsaveis()
   // Etiquetas WA por telefone — fetcha em paralelo aos atendimentos
   const phonesAtuais = (data?.rows ?? []).map(r => r.telefone)
@@ -314,7 +317,7 @@ export function Atendimentos() {
   const rows = data?.rows ?? []
   const total = data?.total ?? 0
   const totalPages = Math.ceil(total / ATENDIMENTO_PAGE_SIZE)
-  const hasFilters = filters.search || filters.responsavel || filters.status_real || filters.uf || filters.data
+  const hasFilters = filters.search || filters.responsavel || filters.status_real || filters.uf || filters.data || filters.origem
 
   // Resolve o "vendedor efetivo" do lead. Prioridade:
   // 1. auditoria.responsavel (atribuido manualmente no CRM)
@@ -330,7 +333,7 @@ export function Atendimentos() {
   }
 
   const clearFilters = () => {
-    setFilters({ search: '', responsavel: '', status_real: '', uf: '', data: '', page: 0 })
+    setFilters({ search: '', responsavel: '', status_real: '', uf: '', data: '', origem: '', page: 0 })
     setSearchInput('')
   }
 
@@ -375,6 +378,61 @@ export function Atendimentos() {
         </div>
       )}
 
+      {/* Origens */}
+      {origens && origens.length > 0 && (() => {
+        const total = origens.reduce((s, o) => s + o.count, 0)
+        return (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] uppercase tracking-widest font-semibold text-ink-faint">Origens</p>
+              <p className="text-[11px] text-ink-faint tabular-nums">{total} leads</p>
+            </div>
+            {/* Stacked bar */}
+            <div className="flex h-3 rounded-full overflow-hidden bg-surface-2 border border-border/50">
+              {origens.map(o => (
+                <div
+                  key={o.label}
+                  className="h-full transition-all duration-300"
+                  style={{ width: `${(o.count / total) * 100}%`, backgroundColor: o.color }}
+                  title={`${o.label}: ${o.count} (${Math.round((o.count / total) * 100)}%)`}
+                />
+              ))}
+            </div>
+            {/* Legend — clicável pra filtrar */}
+            <div className="flex flex-wrap gap-x-1.5 gap-y-1">
+              {origens.map(o => {
+                const active = filters.origem === o.label
+                return (
+                  <button
+                    key={o.label}
+                    onClick={() => setFilters(f => ({ ...f, origem: active ? '' : o.label, page: 0 }))}
+                    className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full transition-all text-[11px] ${
+                      active
+                        ? 'ring-2 ring-accent bg-accent/15 text-ink font-bold'
+                        : 'hover:bg-surface-3 text-ink-muted'
+                    }`}
+                    title={active ? 'Clique pra remover filtro' : `Filtrar por ${o.label}`}
+                  >
+                    <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ backgroundColor: o.color }} />
+                    <span>{o.label}</span>
+                    <span className="tabular-nums font-medium text-ink-faint">{o.count}</span>
+                  </button>
+                )
+              })}
+              {filters.origem && (
+                <button
+                  onClick={() => setFilters(f => ({ ...f, origem: '', page: 0 }))}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-danger/15 text-danger text-[11px] hover:bg-danger/25 transition-all"
+                  title="Limpar filtro de origem"
+                >
+                  <X className="h-3 w-3" /> Limpar
+                </button>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Filtros */}
       <div className="flex flex-wrap gap-2 items-center">
         <div className="relative flex-1 max-w-md">
@@ -409,6 +467,13 @@ export function Atendimentos() {
           value={filters.status_real}
           onChange={e => setFilters(f => ({ ...f, status_real: e.target.value, page: 0 }))}
           className="lg:w-40"
+        />
+        <Select
+          options={(origens ?? []).map(o => ({ value: o.label, label: `${o.label} (${o.count})` }))}
+          placeholder="Origem"
+          value={filters.origem}
+          onChange={e => setFilters(f => ({ ...f, origem: e.target.value, page: 0 }))}
+          className="lg:w-52"
         />
         <Select
           options={ESTADOS_BR.map(uf => ({ value: uf, label: uf }))}
