@@ -358,6 +358,9 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
       // Com vendedor atribuído
       if (r.responsavel?.trim()) comVendedor++
       // Não respondeu = sem nenhum campo preenchido (não engajou com a IA)
+      // BUGFIX: motivo e finKpi estavam sem declaração (refator antigo) → ReferenceError no dashboard
+      const motivo = r.motivo_contato?.trim() || null
+      const finKpi = normFinalidade(r.finalidade_fabrica)
       const animal = normAnimal(r.qual_animal)
       const qtd = r.quantos_animais?.trim() || null
       const engajou = !!motivo || !!finKpi || !!animal || !!qtd || !!r.tocou_botao_em
