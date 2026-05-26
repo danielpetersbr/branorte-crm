@@ -233,44 +233,29 @@ export async function gerarPdfDoPreview(
       function findCutY(idealY: number, maxY: number, sliceStart: number): number {
         let y = idealY
         const minFillPx = Math.floor(sliceHeightPx * 0.40)
-        const minAcceptableY = sliceStart + minFillPx
 
-        // Step 1: resolver no-break collisions. REGRA INVIOLÁVEL: nunca propor
-        // y > idealY (ultrapassaria A4 → footer invadido). Sempre tenta cortar
-        // ANTES do bloco; se não couber antes (bloco começa antes da pg atual),
-        // aceita corte dentro do bloco em idealY (caso edge de item gigante).
+        // Lógica ORIGINAL: prefere cortar antes do bloco; se viola minFill, vai
+        // depois do bloco (mesmo passando idealY → fatia maior que A4, mas o
+        // jsPDF clampa visualmente). Trade-off conhecido: items gigantes podem
+        // estraçalhar entre páginas, mas o fill fica ALTO.
         for (let iter = 0; iter < 10; iter++) {
           const r = isInsideNoBreak(y, sliceStart)
           if (!r.inside) break
-          const proposedUp = r.topY! - marginBeforePx
-          if (proposedUp > sliceStart) {
-            // Cabe ANTES do bloco na pg atual. Aceita mesmo se fill < 40% —
-            // melhor pg curta que item estraçalhado entre páginas.
-            y = proposedUp
-          } else {
-            // Bloco começa antes/no sliceStart (item gigante atravessando pgs).
-            // Não tem espaço antes. Mantém y onde estava e sai do loop.
-            // Step 2 e o caller cuidam de clampar.
-            break
+          y = r.topY! - marginBeforePx
+          if (y <= sliceStart + minFillPx) {
+            y = r.bottomY! + marginAfterPx
           }
         }
 
-        // Step 2: refina buscando linha branca próxima
+        // Refina: procura linha branca próxima
         const lookBack = Math.floor(sliceHeightPx * 0.10)
         const lookAhead = Math.floor(sliceHeightPx * 0.02)
-        const minY = Math.max(y - lookBack, minAcceptableY)
+        const minY = Math.max(y - lookBack, sliceStart + minFillPx)
         const maxYClamp = Math.min(y + lookAhead, maxY - 1)
-
-        // Defesa: scan window inteira abaixo do mínimo → descarta refino
-        if (maxYClamp < minAcceptableY) {
-          return Math.max(y, minAcceptableY)
-        }
-
         let bestY = -1
         let bestRunLen = 0
         let runStart = -1
         for (let y2 = minY; y2 <= maxYClamp; y2++) {
-          // Skip Y que cai em no-break (pode ter linha branca dentro de bloco branco)
           if (isInsideNoBreak(y2, sliceStart).inside) {
             if (runStart >= 0) {
               const runLen = y2 - runStart
@@ -301,13 +286,7 @@ export async function gerarPdfDoPreview(
             bestY = Math.floor((runStart + maxYClamp) / 2)
           }
         }
-
-        // Garantia final: y SEMPRE <= idealY (nunca ultrapassa A4 → footer)
-        // E mínimo de minAcceptableY pra não cortar ridiculamente cedo, EXCETO
-        // se o item simplesmente não cabe e é melhor cortar cedo pra não
-        // estraçalhar (já tratado no step 1).
-        const finalY = bestY > 0 ? bestY : y
-        return Math.min(finalY, idealY)
+        return bestY > 0 ? bestY : y
       }
 
       // Tolerancia: ignorar overflow < 8% da pagina (evita pagina extra so com footer)
