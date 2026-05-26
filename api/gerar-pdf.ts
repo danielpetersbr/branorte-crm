@@ -98,8 +98,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const pdfBuffer = await page.pdf({
       format: 'A4',
       printBackground: true,
-      preferCSSPageSize: true,
-      margin: { top: '8mm', right: '6mm', bottom: '16mm', left: '6mm' },
+      preferCSSPageSize: false,  // false pra preferCSSPageSize NÃO sobrescrever margins
+      margin: { top: '5mm', right: '5mm', bottom: '10mm', left: '5mm' },
       displayHeaderFooter: true,
       // Header vazio (necessario passar string vazia pra suprimir default do Chrome)
       headerTemplate: '<div></div>',

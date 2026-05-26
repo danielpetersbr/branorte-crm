@@ -115,7 +115,7 @@ export default function PrintOrcamento() {
         }
         @page {
           size: A4;
-          margin: 8mm 6mm 12mm 6mm;
+          margin: 5mm 5mm 10mm 5mm;
           background: #ffffff;
         }
         /* Sem @media print — aplica SEMPRE (Puppeteer renderiza em modo print) */
