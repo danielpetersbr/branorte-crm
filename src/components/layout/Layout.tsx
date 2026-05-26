@@ -112,30 +112,17 @@ function useDarkMode(): [boolean, () => void] {
 }
 
 function useCollapsed(): [boolean, () => void] {
-  // Em telas <1024 (md/tablet), default colapsado pra dar espaço pro conteudo.
-  // Em >=1024, respeita preferencia salva no localStorage.
+  // Respeita SEMPRE a preferência do user salva no localStorage.
+  // Sem auto-colapse por viewport — só colapsa quando user clica o botão.
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false
-    if (window.matchMedia('(max-width: 1023px)').matches) return true
     return localStorage.getItem('sidebar-collapsed') === '1'
   })
 
-  // Quando viewport entra em <1024, colapsa automaticamente
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 1023px)')
-    const handler = (e: MediaQueryListEvent) => {
-      if (e.matches) setCollapsed(true)
-    }
-    mq.addEventListener('change', handler)
-    return () => mq.removeEventListener('change', handler)
-  }, [])
-
-  // So persiste preferencia do user em telas grandes
+  // Persiste preferência (todas as telas)
   useEffect(() => {
     if (typeof window === 'undefined') return
-    if (window.matchMedia('(min-width: 1024px)').matches) {
-      localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0')
-    }
+    localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0')
   }, [collapsed])
 
   return [collapsed, () => setCollapsed(c => !c)]
@@ -152,13 +139,7 @@ export function Layout() {
   const primary = PRIMARY.filter(visible)
   const secondary = SECONDARY.filter(visible)
 
-  // Auto-colapsa sidebar na página de montar orçamento (precisa de espaço máximo)
-  useEffect(() => {
-    if (loc.pathname === '/orcamentos/montar' && !collapsed) {
-      toggleCollapsed()
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loc.pathname])
+  // Removido auto-colapse: usuário controla manualmente via botão.
 
   const counts: Partial<Record<NonNullable<NavItem['countKey']>, number>> = {
     atendimentos: kpis?.total,
