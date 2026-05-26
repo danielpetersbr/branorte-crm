@@ -38,6 +38,7 @@ export interface PreviewMotor {
   item_nome?: string  // se vier, mostra "de qual item" o motor é
   item_uid?: string   // uid do CarrinhoItem origem — usado pelo onTrocarMotor
   motorIndex?: number // 0=principal, 1=secundário (quando item tem 2 motores)
+  por_conta_cliente?: boolean  // motor comprado pelo cliente — coluna mostra "por conta do cliente"
 }
 
 // Motor do catálogo central (catalogo_motores). Passado pra o picker de troca.
@@ -148,6 +149,8 @@ export interface OrcamentoPreviewProps {
   // Troca de motor: lista de motores do catálogo central + callback ao escolher
   motoresDisponiveis?: MotorCatalogoOption[]
   onTrocarMotor?: (itemUid: string, novoMotor: MotorCatalogoOption, motorIndex?: number) => void
+  // Marca motor como "por conta do cliente" (não cobra, mostra texto). Toggle: passar isPorConta=true ativa.
+  onMotorPorContaCliente?: (itemUid: string, isPorConta: boolean, motorIndex?: number) => void
 
   // Vendedores Branorte pra grid de contatos no rodape. Quando passado, renderiza
   // dinamicamente em vez do hardcoded antigo (que so tinha 3 vendedores).
@@ -257,7 +260,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onUpdateValor, onToggleInox, onToggleTungstenio, onUpdateQtd, onUpdateTerm, onMoverItem, onToggleBrinde,
     componentesExtras = [], onUpdateComponentesExtras, componentesAdicionaisCatalogo = [],
     parcelas, onUpdateParcelas,
-    motoresDisponiveis, onTrocarMotor,
+    motoresDisponiveis, onTrocarMotor, onMotorPorContaCliente,
     vendedoresContato, vendedorResponsavelNome,
     onEditCliente,
   } = props
@@ -1139,7 +1142,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   </thead>
                   <tbody>
                     {motoresAgrupados.map((m, idx) => {
-                      const incluso = m.valor_total === 0
+                      const porContaCliente = !!m.por_conta_cliente
+                      const incluso = !porContaCliente && m.valor_total === 0
                       const podeTrocar = !renderMode && !!onTrocarMotor && !!m.item_uid && !!motoresDisponiveis?.length
                       const aberto = trocarMotorIdx === idx
                       // Detecta "motorredutor" na spec do item → mostra em vez de "X polos"
@@ -1204,6 +1208,23 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                         className="w-full pl-8 pr-2 py-1.5 bg-white border border-gray-300 rounded text-[12px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
                                       />
                                     </div>
+                                    {onMotorPorContaCliente && m.item_uid && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          onMotorPorContaCliente(m.item_uid!, !porContaCliente, m.motorIndex)
+                                          setTrocarMotorIdx(null)
+                                        }}
+                                        className={`mt-2 w-full px-2 py-1.5 rounded text-[11px] border transition-colors ${
+                                          porContaCliente
+                                            ? 'bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100'
+                                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                                        }`}
+                                        title="Motor comprado pelo cliente — sai da cobrança da Branorte"
+                                      >
+                                        {porContaCliente ? '↩ Reverter (Branorte volta a cobrar motor)' : '💵 Marcar como POR CONTA DO CLIENTE'}
+                                      </button>
+                                    )}
                                   </div>
                                   <div className="p-1 overflow-y-auto">
                                     {(() => {
@@ -1257,9 +1278,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             )}
                           </td>
                           <td className="py-1.5 text-right text-gray-800 tabular-nums">
-                            {incluso
-                              ? <span className="text-gray-500 italic">incluso</span>
-                              : <>R$ {formatBRLBare(m.valor_total)}</>}
+                            {porContaCliente
+                              ? <span className="text-gray-500 italic">por conta do cliente</span>
+                              : incluso
+                                ? <span className="text-gray-500 italic">incluso</span>
+                                : <>R$ {formatBRLBare(m.valor_total)}</>}
                           </td>
                         </tr>
                       )

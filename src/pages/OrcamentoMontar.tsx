@@ -61,6 +61,9 @@ interface CarrinhoItem {
   specs_original?: string[]
   /** Quando true, item é brinde (valor não entra no total, mostra "BRINDE" no preview). */
   brinde?: boolean
+  /** Quando true, motor NÃO é cobrado pela Branorte — comprado pelo cliente.
+   *  No preview a coluna de valor vira "por conta do cliente" (não "incluso"). */
+  motor_por_conta_cliente?: boolean
 }
 
 type TensaoMotor = 220 | 380 | 660 | null
@@ -146,6 +149,7 @@ interface MotorAgrupado {
   item_nome?: string       // nome do item que usa esse motor (pra mostrar no listagem)
   item_uid?: string        // uid do CarrinhoItem que origem o motor (pra editar de volta)
   motorIndex?: number      // 0=principal, 1=secundário (quando item tem 2 motores na spec)
+  por_conta_cliente?: boolean  // motor comprado pelo cliente — coluna de valor mostra "por conta do cliente"
 }
 
 // Peneira PASSIVA (jogo de peneira, par de peneiras, peneira de moinho) não tem
@@ -170,7 +174,9 @@ function agruparMotores(carrinho: CarrinhoItem[]): MotorAgrupado[] {
     // Motorredutor incluso: valor é SEMPRE 0 (já embutido no equipamento)
     const eMotorredutor = /motorredutor|moto\s*redutor/i.test(specMotor)
     const eIncluso = /\(\s*inclus[oa]s?\.?\s*\)/i.test(specMotor)
-    const valorMotor = (eMotorredutor && eIncluso) ? 0 : it.motor_valor_unit
+    // Motor por conta do cliente: ignora valor e marca a linha
+    const porContaCliente = !!it.motor_por_conta_cliente
+    const valorMotor = porContaCliente ? 0 : ((eMotorredutor && eIncluso) ? 0 : it.motor_valor_unit)
 
     if (multiMatch) {
       const cv1 = parseFloat(multiMatch[1].replace(',', '.'))
@@ -179,17 +185,20 @@ function agruparMotores(carrinho: CarrinhoItem[]): MotorAgrupado[] {
         cv: cv1, polos: it.motor_polos, qtd: it.qtd,
         valor_unit: valorMotor, valor_total: valorMotor * it.qtd,
         item_nome: nomeItem, item_uid: it.uid, motorIndex: 0,
+        por_conta_cliente: porContaCliente,
       })
       linhas.push({
         cv: cv2, polos: it.motor_polos, qtd: it.qtd,
         valor_unit: valorMotor, valor_total: valorMotor * it.qtd,
         item_nome: nomeItem, item_uid: it.uid, motorIndex: 1,
+        por_conta_cliente: porContaCliente,
       })
     } else {
       linhas.push({
         cv: it.motor_cv, polos: it.motor_polos, qtd: qtdMotor,
         valor_unit: valorMotor, valor_total: valorMotor * qtdMotor,
         item_nome: nomeItem, item_uid: it.uid,
+        por_conta_cliente: porContaCliente,
       })
     }
   }
@@ -1057,6 +1066,14 @@ export function OrcamentoMontar() {
 
   // Troca o motor de um item especifico do carrinho. Usado pelo picker no preview.
   // motorIndex: quando item tem 2 motores na spec (ex: "15 CV e 2 CV"), indica qual trocar (0 ou 1).
+  // Marca/desmarca o motor de um item como "por conta do cliente" — Branorte não cobra, mostra texto.
+  function marcarMotorPorContaCliente(itemUid: string, isPorConta: boolean, _motorIndex?: number) {
+    setCarrinho(c => c.map(it => {
+      if (it.uid !== itemUid) return it
+      return { ...it, motor_por_conta_cliente: isPorConta }
+    }))
+  }
+
   function trocarMotorDoItem(itemUid: string, novoMotor: CatalogoMotor, motorIndex?: number) {
     setCarrinho(c => c.map(it => {
       if (it.uid !== itemUid) return it
@@ -1253,6 +1270,7 @@ export function OrcamentoMontar() {
         foto_url: foto,
         usa_inversor: !!(ci?.usa_inversor),
         brinde: !!(it as any).brinde,
+        motor_por_conta_cliente: !!(it as any).motor_por_conta_cliente,
       })
     })
 
@@ -1951,6 +1969,7 @@ export function OrcamentoMontar() {
                 onUpdateParcelas={setParcelasPagamento}
                 motoresDisponiveis={motores ?? []}
                 onTrocarMotor={trocarMotorDoItem}
+                onMotorPorContaCliente={marcarMotorPorContaCliente}
                 vendedoresContato={vendedoresContato}
                 vendedorResponsavelNome={profile?.display_name || null}
                 cliente={clienteDados}
@@ -2025,6 +2044,7 @@ export function OrcamentoMontar() {
             motor_valor_unit: c.motor_valor_unit,
             foto_url: c.foto_url,
             brinde: c.brinde,
+            motor_por_conta_cliente: c.motor_por_conta_cliente,
           })),
           motoresAgrupados,
           acessorios: acessorios ? { pct: acessorios.pct, items: acessorios.items, valor: valorAcessorios } : null,
