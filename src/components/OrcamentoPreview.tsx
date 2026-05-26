@@ -939,10 +939,6 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             width: '100%',
                             maxWidth: 480,
                             maxHeight: 200,
-                            background: '#fff',
-                            border: '1px solid #d1d5db',
-                            borderRadius: 4,
-                            padding: 6,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             overflow: 'hidden',
                             boxSizing: 'border-box',
@@ -953,19 +949,16 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             alt={it.nome}
                             style={{
                               maxWidth: '100%',
-                              maxHeight: 188,
+                              maxHeight: 200,
                               width: 'auto',
                               height: 'auto',
                               objectFit: 'contain',
                               display: 'block',
                             }}
-                            // No renderMode (host off-screen pra captura PDF),
-                            // lazy NUNCA dispara load → imagem vira container vazio.
                             loading={renderMode ? 'eager' : 'lazy'}
                             crossOrigin="anonymous"
                           />
                         </div>
-                        <div className="text-[12px] text-gray-400 italic mt-0.5 tracking-wide">Imagem ilustrativa</div>
                       </div>
                     )}
                   <div className="mt-2.5 pt-1.5 border-t border-gray-300">
