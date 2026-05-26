@@ -77,12 +77,26 @@ export async function gerarPdfDoPreview(
 
     // 3.5) Captura posicoes Y (em CSS px do host) dos blocos [data-no-break] ANTES de capturar
     const hostTop = host.getBoundingClientRect().top + window.scrollY
-    const noBreakRanges: Array<{ topPx: number; bottomPx: number }> = []
+    const rawRanges: Array<{ topPx: number; bottomPx: number }> = []
     host.querySelectorAll('[data-no-break]').forEach((el) => {
       const r = (el as HTMLElement).getBoundingClientRect()
       const top = r.top + window.scrollY - hostTop
       const bottom = r.bottom + window.scrollY - hostTop
-      if (bottom > top + 4) noBreakRanges.push({ topPx: top, bottomPx: bottom })
+      if (bottom > top + 4) rawRanges.push({ topPx: top, bottomPx: bottom })
+    })
+    // Filtra ranges ANINHADOS: o preview tem <div data-no-break> envolvendo o
+    // item inteiro E <div data-no-break> aninhado pra foto+valor. Tratar os 2
+    // como independentes faz findCutY oscilar entre "antes do item N" e
+    // "depois do item N (= dentro do item N+1)" → corte cai num ponto baixo
+    // que não viola nenhum range mas deixa página com ~50% fill. Mantemos só
+    // o range mais EXTERNO; o aninhado já fica protegido por estar dentro.
+    const noBreakRanges = rawRanges.filter((inner, i) => {
+      return !rawRanges.some((outer, j) =>
+        i !== j &&
+        outer.topPx <= inner.topPx &&
+        outer.bottomPx >= inner.bottomPx &&
+        (outer.bottomPx - outer.topPx) > (inner.bottomPx - inner.topPx)
+      )
     })
 
     // 3.6) Cap scale dinamicamente: Chrome/Skia limita canvas a 16384px por
@@ -240,6 +254,39 @@ export async function gerarPdfDoPreview(
           } else {
             // Cortar acima deixaria página com <40%. Vai depois do bloco.
             y = r.bottomY! + marginAfterPx
+          }
+        }
+
+        // Step 1.5: se após 10 iterações y ainda cai em range (items muito
+        // densos: gap CSS ~12px < margem 27px), busca o GAP entre items mais
+        // próximo de idealY sem aplicar margem. Sai do loop infinito de
+        // oscilação que deixa página com fill baixo.
+        if (isInsideNoBreak(y, sliceStart).inside) {
+          // Ordena ranges por top pra achar gaps
+          const sorted = [...noBreakCanvasRanges]
+            .filter(r => r.bottom >= sliceStart && r.top <= maxY)
+            .sort((a, b) => a.top - b.top)
+          // Gaps são pontos ENTRE ranges (e antes do primeiro / depois do último)
+          const candidates: number[] = []
+          let prevBottom = sliceStart
+          for (const r of sorted) {
+            if (r.top > prevBottom) {
+              const gapCenter = Math.floor((prevBottom + r.top) / 2)
+              if (gapCenter >= minAcceptableY && gapCenter <= maxY) {
+                candidates.push(gapCenter)
+              }
+            }
+            prevBottom = Math.max(prevBottom, r.bottom)
+          }
+          if (prevBottom < maxY) candidates.push(Math.min(maxY, prevBottom + 1))
+          // Escolhe candidato mais próximo de idealY (preferindo abaixo > acima)
+          if (candidates.length > 0) {
+            candidates.sort((a, b) => {
+              const da = Math.abs(a - idealY)
+              const db = Math.abs(b - idealY)
+              return da - db
+            })
+            y = candidates[0]
           }
         }
 
