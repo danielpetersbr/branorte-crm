@@ -171,9 +171,18 @@ function agruparMotores(carrinho: CarrinhoItem[]): MotorAgrupado[] {
     // Padrão: "X CV e Y CV" ou "X CV + Y CV"
     const specMotor = it.specs?.find(s => /acionamento|motorredutor/i.test(s)) ?? ''
     const multiMatch = specMotor.match(/(\d+(?:[.,]\d+)?)\s*CV\s*(?:e|,|\+)\s*(\d+(?:[.,]\d+)?)\s*CV/i)
-    // Motorredutor incluso: valor é SEMPRE 0 (já embutido no equipamento)
     const eMotorredutor = /motorredutor|moto\s*redutor/i.test(specMotor)
-    const eIncluso = /\(\s*inclus[oa]s?\.?\s*\)/i.test(specMotor)
+    const eInclusoSpec = /\(\s*inclus[oa]s?\.?\s*\)/i.test(specMotor)
+    // CV mencionado como incluso no spec (1º CV do match). Se motor REAL (it.motor_cv)
+    // é diferente, NAO trata como incluso — é outro motor avulso.
+    // Ex: spec "Acionamento 10 CV (incluso)" + motor pareado 15 CV → NÃO incluso.
+    const cvSpecMatch = specMotor.match(/(\d+(?:[.,]\d+)?)\s*CV/i)
+    const cvSpecNum = cvSpecMatch ? parseFloat(cvSpecMatch[1].replace(',', '.')) : null
+    const cvMotorReal = it.motor_cv ? Number(it.motor_cv) : null
+    const cvBate = cvSpecNum != null && cvMotorReal != null
+      ? Math.abs(cvSpecNum - cvMotorReal) < 0.01
+      : true  // se um dos lados não tem CV, mantém comportamento antigo
+    const eIncluso = eInclusoSpec && cvBate
     // Motor por conta do cliente: ignora valor e marca a linha
     const porContaCliente = !!it.motor_por_conta_cliente
     const valorMotor = porContaCliente ? 0 : ((eMotorredutor && eIncluso) ? 0 : it.motor_valor_unit)
