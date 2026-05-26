@@ -192,14 +192,15 @@ function findBreakNear(container: HTMLElement, idealY: number, tolerance: number
     return null
   }
 
-  // 1) Se idealY cai dentro de algum no-break, tenta mover pra antes (margem 30px
-  // pra dar respiro suficiente — borda/sombra/padding do box nao sao cortados)
+  // 1) Se idealY cai dentro de algum no-break, tenta mover pra antes (margem 60px
+  // pra dar bastante respiro — evita que o break caia colado no proximo bloco,
+  // o que causa cortes ruins no PDF gerado a partir da preview).
   let y = idealY
   for (let iter = 0; iter < 8; iter++) {
     const hit = findContaining(y)
     if (!hit) break
     const { top } = localTop(hit)
-    y = top - 30
+    y = top - 60
   }
 
   // Se foi movido pra MUITO antes (perdemos > 30% da pagina), eh melhor empurrar pra DEPOIS do no-break original
@@ -390,7 +391,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
       let safety = 0
       while (y < h && safety++ < 20) {
-        const adjusted = findBreakNear(innerRef.current, y, A4_H * 0.10)
+        // Tolerance 15% (era 10%) — janela maior pra encontrar o fim de bloco
+        // certo, evita break colado no proximo item.
+        const adjusted = findBreakNear(innerRef.current, y, A4_H * 0.15)
         breaks.push(adjusted)
         y = adjusted + A4_H
       }
