@@ -4,7 +4,7 @@
 // Os dados do orçamento vêm injetados em window.__BRANORTE_PRINT__ pelo Puppeteer
 // via page.evaluateOnNewDocument() ANTES do navigate. Sem auth, sem chrome do app.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useState } from 'react'
 import { OrcamentoPreview, type OrcamentoPreviewProps } from '@/components/OrcamentoPreview'
 
 declare global {
@@ -17,6 +17,17 @@ declare global {
 export default function PrintOrcamento() {
   const [props, setProps] = useState<OrcamentoPreviewProps | null>(null)
   const [erro, setErro] = useState<string | null>(null)
+
+  // FORÇA LIGHT MODE: se .dark estiver no <html>, body fica quase preto
+  // (CSS var --bg). Faixas pretas aparecem nas margens da pg PDF onde
+  // conteúdo (que é branco) não cobre. useLayoutEffect roda ANTES do paint
+  // pra evitar flash de dark.
+  useLayoutEffect(() => {
+    document.documentElement.classList.remove('dark')
+    document.documentElement.style.colorScheme = 'light'
+    document.body.style.background = '#ffffff'
+    document.documentElement.style.background = '#ffffff'
+  }, [])
 
   useEffect(() => {
     // Tenta ler imediatamente. Se não tiver, faz polling por 5s
@@ -68,9 +79,18 @@ export default function PrintOrcamento() {
   return (
     <div style={{ background: '#ffffff', minHeight: '100vh' }}>
       <style>{`
+        /* CRÍTICO: html/body com fundo BRANCO PURO. Sem isso, o CSS var
+           --bg do .dark vaza pras margens do PDF e aparecem faixas pretas
+           no topo/rodapé onde o conteúdo do orçamento não cobre. */
+        html, body {
+          background: #ffffff !important;
+          color: #111827 !important;
+          color-scheme: light !important;
+        }
         @page {
           size: A4;
           margin: 8mm 6mm 12mm 6mm;
+          background: #ffffff;
         }
         /* Sem @media print — aplica SEMPRE (Puppeteer renderiza em modo print) */
         [data-no-break] {
