@@ -689,7 +689,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             </button>
           )}
 
-          <div className={`space-y-3 ${fotoPrincipal && renderMode ? 'itens-apos-hero' : ''}`}>
+          <div className={`space-y-2 ${fotoPrincipal && renderMode ? 'itens-apos-hero' : ''}`}>
             {carrinho.map((it, idx) => {
               const letra = String.fromCharCode(65 + idx)
               const subtotal = it.valor * it.qtd
@@ -935,12 +935,12 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                         <div
                           style={{
                             width: '100%',
-                            maxWidth: 540,
-                            maxHeight: 280,
+                            maxWidth: 480,
+                            maxHeight: 200,
                             background: '#fff',
                             border: '1px solid #d1d5db',
                             borderRadius: 4,
-                            padding: 8,
+                            padding: 6,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             overflow: 'hidden',
                             boxSizing: 'border-box',
@@ -951,7 +951,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             alt={it.nome}
                             style={{
                               maxWidth: '100%',
-                              maxHeight: 264,
+                              maxHeight: 188,
                               width: 'auto',
                               height: 'auto',
                               objectFit: 'contain',
