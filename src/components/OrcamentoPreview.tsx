@@ -497,7 +497,14 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   }, [renderMode, isMobile, carrinho, motoresAgrupados, acessorios, fotoPrincipal])
 
   return (
-    <div ref={containerRef} className={`text-gray-900 leading-relaxed font-sans bg-white ${renderMode ? 'text-[19px]' : 'text-[15px]'}`}>
+    <div
+      ref={containerRef}
+      className={`text-gray-900 leading-relaxed font-sans bg-white ${renderMode ? 'text-[19px]' : 'text-[15px]'}`}
+      // No NÃO-renderMode (UI), fixar largura = 1024px (mesma do PDF) e
+      // centralizar. Assim a preview mostra layout EXATAMENTE como vai sair
+      // no PDF — quebras de página, fonte, espaçamento, tudo igual.
+      style={!renderMode ? { maxWidth: 1024, marginLeft: 'auto', marginRight: 'auto' } : undefined}
+    >
       {/* Em mobile, padding menor pra ganhar espaço lateral. Tabelas internas
           (motores, parcelas, componentes) já têm overflow-x próprio quando precisam. */}
       {/* Borda UNICA envolvendo o orcamento inteiro (nao mais por folha — molduras
