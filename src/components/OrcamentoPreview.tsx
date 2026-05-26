@@ -928,7 +928,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                               objectFit: 'contain',
                               display: 'block',
                             }}
-                            loading="lazy"
+                            // No renderMode (host off-screen pra captura PDF),
+                            // lazy NUNCA dispara load → imagem vira container vazio.
+                            loading={renderMode ? 'eager' : 'lazy'}
                             crossOrigin="anonymous"
                           />
                         </div>
