@@ -2277,11 +2277,15 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             </div>
           </div>
 
-          {/* Footer */}
-          <div className="mt-6 pt-2 border-t border-gray-200 flex justify-between text-[12.5px] text-gray-400">
-            <span>Orçamento · Branorte BBA</span>
-            <span>Página 1</span>
-          </div>
+          {/* Footer — só aparece na PRÉVIA (renderMode=false). No PDF gerado
+              pelo Puppeteer, o footer com "Página X de Y" é injetado via
+              page.pdf({ footerTemplate }) — dinâmico, conta páginas reais. */}
+          {!renderMode && (
+            <div className="mt-6 pt-2 border-t border-gray-200 flex justify-between text-[12.5px] text-gray-400">
+              <span>Orçamento · Branorte BBA</span>
+              <span>Página 1</span>
+            </div>
+          )}
         </div>
       </div>
     </div>

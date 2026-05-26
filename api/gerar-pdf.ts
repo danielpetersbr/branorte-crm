@@ -99,7 +99,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       format: 'A4',
       printBackground: true,
       preferCSSPageSize: true,
-      margin: { top: '8mm', right: '6mm', bottom: '12mm', left: '6mm' },
+      margin: { top: '8mm', right: '6mm', bottom: '16mm', left: '6mm' },
+      displayHeaderFooter: true,
+      // Header vazio (necessario passar string vazia pra suprimir default do Chrome)
+      headerTemplate: '<div></div>',
+      // Footer com Pagina X de Y dinamico via Puppeteer
+      footerTemplate: `
+        <div style="font-family: 'Calibri', sans-serif; font-size: 9pt; color: #9ca3af; width: 100%; padding: 0 6mm 4mm; display: flex; justify-content: space-between; align-items: center;">
+          <span>Orçamento · Branorte BBA</span>
+          <span>Página <span class="pageNumber"></span> de <span class="totalPages"></span></span>
+        </div>
+      `,
     })
     console.log(`[gerar-pdf] PDF generated (${pdfBuffer.length} bytes) in ${Date.now() - t0}ms`)
 
