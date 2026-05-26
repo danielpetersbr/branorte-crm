@@ -878,8 +878,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       </div>
                     )}
                   </div>
-                  <div className="flex flex-col gap-3">
-                    <div className="pl-3 text-[14.5px] text-gray-700 space-y-0.5">
+                  <div className="flex flex-row gap-4 items-start">
+                    <div className="flex-1 pl-3 text-[14.5px] text-gray-700 space-y-0.5">
                       {it.specs.filter(s => !/c[oó]digo\s*finame/i.test(s)).length > 0
                         ? it.specs.filter(s => !/c[oó]digo\s*finame/i.test(s)).map((s, i) => {
                             const key = `${it.uid ?? idx}|${i}`
@@ -929,38 +929,28 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           )
                       }
                     </div>
-                  </div>
-                  {/* Foto + Valor agrupados — quebra de página cai ANTES da foto, nunca entre foto e valor */}
-                  <div data-no-break>
+                    {/* Foto AO LADO dos bullets (não embaixo) */}
                     {it.foto_url && (
-                      <div className="w-full flex flex-col items-center mt-1">
-                        <div
+                      <div className="flex-shrink-0 flex items-center justify-center" style={{ width: 220, maxHeight: 180 }}>
+                        <img
+                          src={it.foto_url}
+                          alt={it.nome}
                           style={{
-                            width: '100%',
-                            maxWidth: 480,
-                            maxHeight: 200,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            overflow: 'hidden',
-                            boxSizing: 'border-box',
+                            maxWidth: '100%',
+                            maxHeight: 180,
+                            width: 'auto',
+                            height: 'auto',
+                            objectFit: 'contain',
+                            display: 'block',
                           }}
-                        >
-                          <img
-                            src={it.foto_url}
-                            alt={it.nome}
-                            style={{
-                              maxWidth: '100%',
-                              maxHeight: 200,
-                              width: 'auto',
-                              height: 'auto',
-                              objectFit: 'contain',
-                              display: 'block',
-                            }}
-                            loading={renderMode ? 'eager' : 'lazy'}
-                            crossOrigin="anonymous"
-                          />
-                        </div>
+                          loading={renderMode ? 'eager' : 'lazy'}
+                          crossOrigin="anonymous"
+                        />
                       </div>
                     )}
+                  </div>
+                  {/* Valor abaixo do bloco texto+foto */}
+                  <div data-no-break>
                   <div className="mt-2.5 pt-1.5 border-t border-gray-300">
                     {it.qtd > 1 && it.valor > 0 && (
                       <div className="flex justify-between text-[12.5px] text-gray-500 mb-0.5">
