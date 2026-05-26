@@ -130,6 +130,15 @@ export default function PrintOrcamento() {
         .text-\\[12\\.5px\\] { font-size: 9pt !important; }
         .text-\\[12px\\] { font-size: 9pt !important; }
         .text-\\[11px\\] { font-size: 8pt !important; }
+        /* Tabela de MOTORES — fonte menor pq é so verificacao tecnica,
+           nao precisa destaque visual (usuario pediu pra diminuir). */
+        .motores-tabela,
+        .motores-tabela td,
+        .motores-tabela th {
+          font-size: 8.5pt !important;
+          line-height: 1.3 !important;
+        }
+        .motores-tabela th { font-size: 8pt !important; }
         /* CARDS QUADRADOS no PDF (sem arredondamento) — referência Word do
            usuário tem bordas retas. Mantém arredondamento só na UI/prévia. */
         .rounded-md, .rounded-lg, .rounded {

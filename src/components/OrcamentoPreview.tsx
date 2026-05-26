@@ -1141,11 +1141,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     )}
                   </div>
                 </div>
-                <table className="w-full text-[16px] border-collapse">
+                <table className="w-full text-[12px] border-collapse motores-tabela">
                   <thead>
                     <tr>
-                      <th className="text-left font-bold py-2 text-gray-600 uppercase tracking-wider text-[15px]">Tipo</th>
-                      <th className="text-right font-bold py-2 text-gray-600 uppercase tracking-wider text-[15px]">Novo</th>
+                      <th className="text-left font-bold py-1.5 text-gray-600 uppercase tracking-wider text-[11px]">Tipo</th>
+                      <th className="text-right font-bold py-1.5 text-gray-600 uppercase tracking-wider text-[11px]">Novo</th>
                     </tr>
                   </thead>
                   <tbody>
