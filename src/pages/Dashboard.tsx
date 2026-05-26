@@ -5,7 +5,7 @@ import {
   Area, AreaChart, Cell, Pie, PieChart,
   ResponsiveContainer, Tooltip,
 } from 'recharts'
-import { Flame, TrendingUp, Users, CheckCircle2, ArrowDown, ArrowUp, ExternalLink, Hand, FilePlus2 } from 'lucide-react'
+import { Flame, TrendingUp, Users, CheckCircle2, ArrowDown, ArrowUp, Hand, FilePlus2 } from 'lucide-react'
 
 const PRESET_LABELS: { value: DashboardPreset; label: string }[] = [
   { value: '',     label: 'Tudo' },
@@ -137,13 +137,6 @@ export function Dashboard() {
           >
             <FilePlus2 className="h-4 w-4" />
             Novo orçamento
-          </Link>
-          <Link
-            to="/analytics"
-            className="text-[12px] text-ink-muted hover:text-ink inline-flex items-center gap-1"
-          >
-            Análise detalhada
-            <ExternalLink className="h-3 w-3" />
           </Link>
           <div className="flex flex-wrap gap-1.5">
             {PRESET_LABELS.map(p => {
