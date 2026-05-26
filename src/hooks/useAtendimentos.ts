@@ -334,13 +334,28 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
 
       const todayIso = startOfTodayISO()
 
+      // Allowlist do catálogo Branorte (fonte: SELECT DISTINCT categoria FROM precos_branorte).
+      // Quem pede "Extrusora", "Peletizadora", etc. NÃO bate em nenhuma keyword e NÃO qualifica.
+      const BRANORTE_EQUIP_KEYWORDS = [
+        'aliment', 'balanc', 'balanç', 'brete', 'casquead',
+        'cacamb', 'caçamb', 'caixa', 'compact', 'fabric', 'fábric',
+        'descarga', 'elevador', 'caneca', 'sacaria', 'ensacad',
+        'helico', 'rosca', 'mistur', 'moega', 'moinho', 'martelo',
+        'passarela', 'peneira', 'limpeza', 'silo', 'big bag', 'bigbag',
+        'transporta', 'esteira',
+      ]
+      const equipOrFilter = BRANORTE_EQUIP_KEYWORDS
+        .map(kw => `o_que_precisa.ilike.%${kw}%`)
+        .join(',')
+
       const [
         totalRes,
         hojeRes,
         quentesRes,
         contatadosRes,
         naoEngajaramRes,
-        qualificadosRes,
+        qualFabricaRes,
+        qualEquipRes,
         emAndamentoRes,
         paraPegarRes,
         vendidoRes, abandonadoRes, semRespostaRes, aguardandoRes, perdidoRes,
@@ -352,15 +367,15 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
         baseQ().not('responsavel', 'is', null).neq('responsavel', '').neq('responsavel', 'a definir'),
         // Nao engajaram: chegou no anuncio mas nem clicou no primeiro botao (motivo_contato)
         baseQ().is('motivo_contato', null).is('tocou_botao_em', null),
-        // Qualificados: dados completos por TIPO de motivo.
-        // - Fábrica:    motivo de fábrica + finalidade + animal preenchidos
-        // - Equipamento: motivo de equipamento + o_que_precisa preenchido
-        // ilike %fab% e %fáb% pra cobrir 'fabrica_racao', 'Montar uma Fábrica' e variações.
-        baseQ().or(
-          'and(motivo_contato.ilike.%fab%,finalidade_fabrica.not.is.null,qual_animal.not.is.null),' +
-          'and(motivo_contato.ilike.%fáb%,finalidade_fabrica.not.is.null,qual_animal.not.is.null),' +
-          'and(motivo_contato.ilike.%equip%,o_que_precisa.not.is.null)'
-        ),
+        // Qualificados FÁBRICA: motivo fábrica + finalidade + animal preenchidos
+        baseQ()
+          .or('motivo_contato.ilike.%fab%,motivo_contato.ilike.%fáb%')
+          .not('finalidade_fabrica', 'is', null)
+          .not('qual_animal', 'is', null),
+        // Qualificados EQUIPAMENTO: motivo equipamento + o_que_precisa bate no catálogo Branorte
+        baseQ()
+          .ilike('motivo_contato', '%equip%')
+          .or(equipOrFilter),
         // Em andamento: clicou no MOTIVO mas nao clicou no botao final
         baseQ().not('motivo_contato', 'is', null).is('tocou_botao_em', null),
         // Pra pegar: sem responsavel — null, vazio, ou "a definir"
@@ -388,7 +403,7 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
         quentes:         quentesRes.count ?? 0,
         contatados:      contatadosRes.count ?? 0,
         naoEngajaram:    naoEngajaramRes.count ?? 0,
-        qualificados:    qualificadosRes.count ?? 0,
+        qualificados:    (qualFabricaRes.count ?? 0) + (qualEquipRes.count ?? 0),
         emAndamento:     emAndamentoRes.count ?? 0,
         paraPegar:       paraPegarRes.count ?? 0,
         byStatus,

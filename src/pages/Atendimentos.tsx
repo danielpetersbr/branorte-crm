@@ -371,7 +371,7 @@ export function Atendimentos() {
                    icon={Calendar}        hint={kpis.hoje === 0 ? 'Nenhum lead hoje' : 'leads novos'} />
           <KpiCard label="Não engajaram"  value={kpis.naoEngajaram}      tone="neutral"  icon={EyeOff}            hint="nem começou o bot" />
           <KpiCard label="Em andamento"   value={kpis.emAndamento}       tone="warning"  icon={MessageSquareDot}  hint="no meio do fluxo" />
-          <KpiCard label="Qualificados"   value={kpis.qualificados} hero tone="info"     icon={ListChecks}        hint="fábrica c/ animal+finalidade ou equipamento c/ item" />
+          <KpiCard label="Qualificados"   value={kpis.qualificados} hero tone="info"     icon={ListChecks}        hint="fábrica completa ou equipamento do catálogo Branorte" />
           <KpiCard label="Pra pegar"      value={kpis.paraPegar}    hero tone="warning"
                    icon={UserPlus}        hint={kpis.paraPegar === 0 ? 'Fila vazia' : 'Sem vendedor — puxe!'} />
           <KpiCard label="Contatados"     value={kpis.contatados}        tone="success"  icon={Hand}              hint="vendedor já abordou" />
