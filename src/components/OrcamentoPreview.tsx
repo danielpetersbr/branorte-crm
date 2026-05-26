@@ -516,7 +516,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   return (
     <div
       ref={containerRef}
-      className={`text-gray-900 leading-relaxed font-sans bg-white ${renderMode ? 'text-[19px]' : 'text-[15px] mx-auto'}`}
+      className={`text-gray-900 leading-relaxed font-sans bg-white ${renderMode ? 'text-[13px]' : 'text-[15px] mx-auto'}`}
       // No NÃO-renderMode (UI), fixar largura = 1024px (mesma do PDF).
       // mx-auto (margin x-auto) na className força centralização mesmo em flexbox.
       style={!renderMode ? { maxWidth: 1024, width: '100%' } : undefined}
