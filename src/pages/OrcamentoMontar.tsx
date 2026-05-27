@@ -67,6 +67,11 @@ interface CarrinhoItem {
   motor_por_conta_cliente?: boolean
   /** ID em precos_branorte (quando item veio de lá). Usado pra recalcular valor ao trocar voltagem. */
   preco_branorte_id?: number | null
+  /** Quando preenchido, esta linha representa um motor EXTRA pertencente a outro item do carrinho.
+   *  Ao remover o item principal (uid igual), todas as linhas extras dele saem juntas. */
+  motor_extra_de_uid?: string
+  /** Descrição do propósito do motor extra (ex: "Exaustor de aquecimento"). Aparece no PDF. */
+  motor_extra_descricao?: string
 }
 
 type TensaoMotor = 220 | 380 | 660 | null
@@ -944,8 +949,9 @@ export function OrcamentoMontar() {
       ? `${item.nome_curto} (${funcao})`
       : null
 
-    setCarrinho(c => [...c, {
-      uid: gerarUid(),
+    const uidPrincipal = gerarUid()
+    const linhaPrincipal: CarrinhoItem = {
+      uid: uidPrincipal,
       catalogo_id: item.id,
       categoria: item.categoria,
       nome: item.nome_curto,
@@ -963,12 +969,42 @@ export function OrcamentoMontar() {
       funcao_selecionada: funcao,
       ocultar_funcao_no_pdf: !!item.ocultar_funcao_no_pdf,
       preco_branorte_id: item.preco_branorte_id ?? null,
-    }])
+    }
+
+    // Linhas extras pra cada motor adicional (ex: misturador c/ aquecimento = motor 10 CV + 1,5 CV exaustor)
+    const linhasMotoresExtras: CarrinhoItem[] = (item.motores_extras ?? []).map(me => {
+      const motorMatchExtra = motores
+        ? acharMotorCompativel(motores, Number(me.cv), me.polos, voltagemEfetiva)
+        : null
+      const valorUnitExtra = motorMatchExtra ? Number(motorMatchExtra.valor) : 0
+      return {
+        uid: gerarUid(),
+        catalogo_id: item.id,
+        categoria: 'MOTOR',
+        nome: `Motor ${String(me.cv).replace('.', ',')} CV ${me.polos}p — ${me.descricao}`,
+        nome_custom: null,
+        specs: [],
+        qtd: 1,
+        valor: 0,
+        valor_original: 0,
+        motor_cv: Number(me.cv),
+        motor_polos: me.polos,
+        motor_qtd: me.qtd || 1,
+        motor_valor_unit: valorUnitExtra,
+        foto_url: null,
+        usa_inversor: !!item.usa_inversor,
+        motor_extra_de_uid: uidPrincipal,
+        motor_extra_descricao: me.descricao,
+      }
+    })
+
+    setCarrinho(c => [...c, linhaPrincipal, ...linhasMotoresExtras])
     autoAdicionarBalancaSeCompacta(item.nome_curto, item.categoria)
   }
 
   function removerItem(uid: string) {
-    setCarrinho(c => c.filter(it => it.uid !== uid))
+    // Remove a linha + qualquer linha extra (motor adicional) que pertenca a ela
+    setCarrinho(c => c.filter(it => it.uid !== uid && it.motor_extra_de_uid !== uid))
   }
 
   function alterarQtd(uid: string, novaQtd: number) {

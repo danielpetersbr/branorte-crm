@@ -14,7 +14,7 @@ import {
   useCatalogoItemsAdmin,
   type CatalogoItemAdmin,
 } from '@/hooks/useCatalogoAdmin'
-import { useCatalogoAcessorios } from '@/hooks/useCatalogo'
+import { useCatalogoAcessorios, type MotorExtra } from '@/hooks/useCatalogo'
 import { useAuth } from '@/hooks/useAuth'
 import {
   ATRIBUTOS_POR_CATEGORIA,
@@ -56,6 +56,8 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
   const [motorCv, setMotorCv] = useState<string>('')
   const [motorPolos, setMotorPolos] = useState<string>('')
   const [motorQtd, setMotorQtd] = useState<string>('1')
+  // Motores adicionais (ex: misturador c/ aquecimento usa motor principal + exaustor)
+  const [motoresExtras, setMotoresExtras] = useState<MotorExtra[]>([])
   const [capKg, setCapKg] = useState<string>('')
   const [capLitros, setCapLitros] = useState<string>('')
   const [acessoriosIds, setAcessoriosIds] = useState<number[]>([])
@@ -91,6 +93,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
       setMotorCv('')
       setMotorPolos('')
       setMotorQtd('1')
+      setMotoresExtras([])
       setCapKg('')
       setCapLitros('')
       setAcessoriosIds([])
@@ -115,6 +118,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
     setMotorCv(item.motor_padrao_cv != null ? String(item.motor_padrao_cv) : '')
     setMotorPolos(item.motor_padrao_polos != null ? String(item.motor_padrao_polos) : '')
     setMotorQtd(item.motor_padrao_qtd != null ? String(item.motor_padrao_qtd) : '1')
+    setMotoresExtras(Array.isArray(item.motores_extras) ? item.motores_extras : [])
     setCapKg(item.capacidade_kg != null ? String(item.capacidade_kg) : '')
     setCapLitros(item.capacidade_litros != null ? String(item.capacidade_litros) : '')
     setAcessoriosIds(Array.isArray(item.acessorios_relacionados_ids) ? [...item.acessorios_relacionados_ids] : [])
@@ -319,6 +323,9 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
       motor_padrao_cv: motorCv === '' ? null : Number(motorCv) || null,
       motor_padrao_polos: motorPolos === '' ? null : Number(motorPolos) || null,
       motor_padrao_qtd: motorQtd === '' ? 1 : Math.max(1, Math.floor(Number(motorQtd) || 1)),
+      motores_extras: motoresExtras
+        .filter(m => m.cv > 0 && m.polos > 0 && m.descricao.trim())
+        .map(m => ({ cv: Number(m.cv), polos: Number(m.polos), qtd: Math.max(1, Number(m.qtd) || 1), descricao: m.descricao.trim() })),
       capacidade_kg: capKg === '' ? null : Number(capKg) || null,
       capacidade_litros: capLitros === '' ? null : Number(capLitros) || null,
       acessorios_relacionados_ids: [...acessoriosIds],
@@ -777,6 +784,85 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
                   />
                 </div>
               </div>
+            </div>
+
+            {/* Motores adicionais (multi-motor — ex: misturador c/ aquecimento) */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide">
+                  Motores adicionais
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setMotoresExtras(prev => [...prev, { cv: 0, polos: 4, qtd: 1, descricao: '' }])}
+                  className="text-[10px] text-accent hover:underline flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" /> Adicionar motor
+                </button>
+              </div>
+              {motoresExtras.length === 0 ? (
+                <p className="text-[10px] text-ink-faint italic">
+                  Equipamentos com 2+ motores diferentes (ex: misturador c/ exaustor de aquecimento). Cada motor extra vira uma linha no orçamento.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {motoresExtras.map((m, idx) => (
+                    <div key={idx} className="border border-border rounded-md p-2 bg-surface">
+                      <div className="grid grid-cols-[1fr_70px_70px_50px_auto] gap-2 items-end">
+                        <div>
+                          <p className="text-[10px] text-ink-faint mb-1">Descrição (ex: Exaustor de aquecimento)</p>
+                          <Input
+                            value={m.descricao}
+                            onChange={e => setMotoresExtras(prev => prev.map((x, i) => i === idx ? { ...x, descricao: e.target.value } : x))}
+                            placeholder="Ex: Exaustor de aquecimento"
+                          />
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-ink-faint mb-1">CV</p>
+                          <Input
+                            type="number"
+                            step="0.25"
+                            min="0"
+                            value={m.cv || ''}
+                            onChange={e => setMotoresExtras(prev => prev.map((x, i) => i === idx ? { ...x, cv: Number(e.target.value) || 0 } : x))}
+                            placeholder="1,5"
+                          />
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-ink-faint mb-1">Polos</p>
+                          <select
+                            value={m.polos}
+                            onChange={e => setMotoresExtras(prev => prev.map((x, i) => i === idx ? { ...x, polos: Number(e.target.value) || 4 } : x))}
+                            className="w-full h-9 rounded-md border border-border bg-surface px-2 text-[13px] text-ink focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30"
+                          >
+                            {POLOS_OPTIONS.map(p => (
+                              <option key={p} value={p}>{p}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-ink-faint mb-1">Qtd</p>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={m.qtd}
+                            onChange={e => setMotoresExtras(prev => prev.map((x, i) => i === idx ? { ...x, qtd: Number(e.target.value) || 1 } : x))}
+                            placeholder="1"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setMotoresExtras(prev => prev.filter((_, i) => i !== idx))}
+                          className="h-9 px-2 text-ink-faint hover:text-danger transition-colors"
+                          title="Remover este motor"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Capacidade */}

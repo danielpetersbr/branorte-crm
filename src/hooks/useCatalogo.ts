@@ -35,6 +35,15 @@ export interface CatalogoItem {
   motor_id: number | null
   /** FK ao precos_branorte. Quando preenchido, o item segue o preço oficial da planilha Branorte. */
   preco_branorte_id: number | null
+  /** Motores adicionais alem do motor_padrao_*. Equipamentos multi-motor (ex: misturador c/ aquecimento). */
+  motores_extras: MotorExtra[]
+}
+
+export interface MotorExtra {
+  cv: number
+  polos: number
+  qtd: number
+  descricao: string
 }
 
 export interface CatalogoMotor {
