@@ -620,7 +620,7 @@ export function OrcamentoMontar() {
   // ao banco e elas aparecem aqui sem mudar código.
   const componentesAdicionaisCatalogo = useMemo(
     () => (precos ?? [])
-      .filter(p => p.categoria === 'BALANCA')
+      .filter(p => p.categoria === 'BALANCA' || p.categoria === 'PAINEL_ELETRICO')
       .map(p => ({
         id: `pb-${p.id}`,
         nome: p.descricao,
