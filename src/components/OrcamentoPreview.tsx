@@ -524,7 +524,10 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
       // - UI normal: ResponsiveScaler (componente externo) escala pra caber
       //   no container, mantendo layout desktop. Aqui só seta width fixa de
       //   1024px pro layout interno ser sempre consistente.
-      style={!renderMode ? { width: 1024, overflow: 'hidden' } : undefined}
+      // overflow:hidden so em mobile (contem o -mx-2 do hover CLIENTE que vaza).
+      // Em desktop quebra o algoritmo de paginacao (afeta offsetHeight/getBoundingClientRect
+      // dos filhos absolutos posicionados) — entao deixa overflow visible no desktop.
+      style={!renderMode ? { width: 1024, overflow: isMobile ? 'hidden' : 'visible' } : undefined}
     >
       {/* Em mobile, padding menor pra ganhar espaço lateral. Tabelas internas
           (motores, parcelas, componentes) já têm overflow-x próprio quando precisam. */}
