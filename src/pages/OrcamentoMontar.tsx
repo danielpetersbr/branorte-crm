@@ -1975,51 +1975,59 @@ export function OrcamentoMontar() {
               gerar scroll horizontal residual. */}
           <div className="flex-1 overflow-y-auto overflow-x-hidden bg-white">
             {carrinho.length === 0 ? (
-              <div className="px-3 py-6 sm:px-6 sm:py-12 text-center max-w-md mx-auto">
-                <div className="h-16 w-16 mx-auto mb-4 rounded-2xl bg-accent/10 flex items-center justify-center">
-                  <FileText className="h-8 w-8 text-accent" />
+              // Estado vazio: ocupa a tela inteira centralizado (flex vertical).
+              // Antes ficava encolhido no topo, deixando ~860px de branco embaixo.
+              <div className="h-full flex items-center justify-center px-4 py-6">
+                <div className="w-full max-w-2xl text-center">
+                  <div className="h-20 w-20 mx-auto mb-5 rounded-2xl bg-accent/10 flex items-center justify-center">
+                    <FileText className="h-10 w-10 text-accent" />
+                  </div>
+                  <h3 className="text-[20px] font-bold text-gray-900">Comece adicionando o primeiro item</h3>
+                  <p className="text-[14px] text-gray-500 mt-2 mb-6">Escolha pelo atalho abaixo ou toque em <span className="lg:hidden">"+ Adicionar"</span><span className="hidden lg:inline">no catálogo à esquerda</span>.</p>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-left">
+                    <button
+                      onClick={() => { setMobileTab('catalogo'); setTransportadorPickerOpen(true) }}
+                      className="group p-4 rounded-xl border border-gray-200 hover:border-accent hover:bg-accent/5 transition-all"
+                    >
+                      <div className="text-[24px] mb-1">🚛</div>
+                      <div className="text-[14px] font-bold text-gray-900 group-hover:text-accent">Transportador</div>
+                      <div className="text-[11px] text-gray-500 mt-0.5">Chupim, helicoidal, calha</div>
+                    </button>
+                    <button
+                      onClick={() => { setMobileTab('catalogo'); setMoinhoPickerOpen(true) }}
+                      className="group p-4 rounded-xl border border-gray-200 hover:border-accent hover:bg-accent/5 transition-all"
+                    >
+                      <div className="text-[24px] mb-1">⚙️</div>
+                      <div className="text-[14px] font-bold text-gray-900 group-hover:text-accent">Moinho</div>
+                      <div className="text-[11px] text-gray-500 mt-0.5">Martelo, peneira</div>
+                    </button>
+                    <button
+                      onClick={() => { setMobileTab('catalogo'); setMisturadorPickerOpen(true) }}
+                      className="group p-4 rounded-xl border border-gray-200 hover:border-accent hover:bg-accent/5 transition-all"
+                    >
+                      <div className="text-[24px] mb-1">🥄</div>
+                      <div className="text-[14px] font-bold text-gray-900 group-hover:text-accent">Misturador</div>
+                      <div className="text-[11px] text-gray-500 mt-0.5">Vertical, horizontal</div>
+                    </button>
+                    <button
+                      onClick={() => { setMobileTab('catalogo'); setSiloPickerOpen(true) }}
+                      className="group p-4 rounded-xl border border-gray-200 hover:border-accent hover:bg-accent/5 transition-all"
+                    >
+                      <div className="text-[24px] mb-1">🏗️</div>
+                      <div className="text-[14px] font-bold text-gray-900 group-hover:text-accent">Silo</div>
+                      <div className="text-[11px] text-gray-500 mt-0.5">Ração, milho, geométrico</div>
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => { setMobileTab('catalogo'); setCustomOpen(true) }}
+                    className="mt-4 w-full p-3 rounded-xl border border-dashed border-gray-300 text-[13px] text-gray-600 hover:border-accent hover:text-accent transition-colors"
+                  >
+                    + Produto personalizado (não-catálogo)
+                  </button>
+                  <p className="text-[11px] text-gray-400 mt-5">
+                    💡 Dica: você pode também carregar um modelo pronto pelo botão no topo
+                  </p>
                 </div>
-                <h3 className="text-[16px] font-bold text-gray-900">Comece adicionando o primeiro item</h3>
-                <p className="text-[13px] text-gray-500 mt-1.5 mb-5">Escolha pelo atalho abaixo ou toque em <span className="lg:hidden">"+ Adicionar"</span><span className="hidden lg:inline">no catálogo à esquerda</span>.</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left">
-                  <button
-                    onClick={() => { setMobileTab('catalogo'); setTransportadorPickerOpen(true) }}
-                    className="group p-3 rounded-lg border border-gray-200 hover:border-accent hover:bg-accent/5 transition-all"
-                  >
-                    <div className="text-[13px] font-bold text-gray-900 group-hover:text-accent">🚛 Transportador</div>
-                    <div className="text-[11px] text-gray-500 mt-0.5">Chupim, helicoidal, calha</div>
-                  </button>
-                  <button
-                    onClick={() => { setMobileTab('catalogo'); setMoinhoPickerOpen(true) }}
-                    className="group p-3 rounded-lg border border-gray-200 hover:border-accent hover:bg-accent/5 transition-all"
-                  >
-                    <div className="text-[13px] font-bold text-gray-900 group-hover:text-accent">⚙️ Moinho</div>
-                    <div className="text-[11px] text-gray-500 mt-0.5">Martelo, peneira</div>
-                  </button>
-                  <button
-                    onClick={() => { setMobileTab('catalogo'); setMisturadorPickerOpen(true) }}
-                    className="group p-3 rounded-lg border border-gray-200 hover:border-accent hover:bg-accent/5 transition-all"
-                  >
-                    <div className="text-[13px] font-bold text-gray-900 group-hover:text-accent">🥄 Misturador</div>
-                    <div className="text-[11px] text-gray-500 mt-0.5">Vertical, horizontal</div>
-                  </button>
-                  <button
-                    onClick={() => { setMobileTab('catalogo'); setSiloPickerOpen(true) }}
-                    className="group p-3 rounded-lg border border-gray-200 hover:border-accent hover:bg-accent/5 transition-all"
-                  >
-                    <div className="text-[13px] font-bold text-gray-900 group-hover:text-accent">🏗️ Silo</div>
-                    <div className="text-[11px] text-gray-500 mt-0.5">Ração, milho, geométrico</div>
-                  </button>
-                </div>
-                <button
-                  onClick={() => { setMobileTab('catalogo'); setCustomOpen(true) }}
-                  className="mt-3 w-full p-2.5 rounded-lg border border-dashed border-gray-300 text-[12px] text-gray-600 hover:border-accent hover:text-accent transition-colors"
-                >
-                  + Produto personalizado (não-catálogo)
-                </button>
-                <p className="text-[10px] text-gray-400 mt-4">
-                  💡 Dica: você pode também carregar um modelo pronto pelo botão no topo
-                </p>
               </div>
             ) : modoVisao === 'preview' ? (
               <ResponsiveScaler documentWidth={1024}>
