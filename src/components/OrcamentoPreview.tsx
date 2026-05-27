@@ -626,15 +626,19 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             <div data-no-break data-hero-photo className={`${renderMode ? 'foto-principal-hero' : ''} group relative mb-3 border border-gray-700 rounded-md p-2 bg-white shadow-sm`} style={{ zIndex: 1 }}>
               <div
                 className="w-full flex items-center justify-center bg-white"
-                // Hero shot: ocupa boa parte da página no PDF.
-                style={{ minHeight: 500, overflow: 'hidden' }}
+                // Foto da fabrica: ocupa espaco moderado pra deixar headers + itens
+                // tambem caberem na 1a folha. Antes era min-h:500 / max:600 que
+                // somava ~640px com padding/borda — empurrava o conteudo posterior
+                // pra proxima folha mesmo cabendo no calculo. Reduzido pra
+                // min-h:0 / max:480 (mais flexivel; img mantem proporcao).
+                style={{ minHeight: 0, overflow: 'hidden' }}
               >
                 <img
                   src={fotoPrincipal}
                   alt="Foto da fábrica"
                   style={{
                     maxWidth: '100%',
-                    maxHeight: 600,
+                    maxHeight: 480,
                     width: 'auto',
                     height: 'auto',
                     objectFit: 'contain',
