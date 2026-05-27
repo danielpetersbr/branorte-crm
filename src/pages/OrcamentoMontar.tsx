@@ -133,10 +133,17 @@ function gerarUid(): string {
 // Detecta se o motor do item já vem incluso no preço do equipamento.
 // Padrões no docx Branorte: "Acionamento ... (incluso)", "Motorredutor X CV (Incluso)", etc.
 // Quando incluso = true, motor_valor_unit deve ser 0 pra não cobrar duas vezes.
+//
+// CUIDADO: a marca "(motor não incluso)" / "(não incluso)" significa o OPOSTO —
+// o motor é cobrado à parte. A regex precisa excluir negação senão zera o preço
+// de moinhos/trituradores (caso real: spec "Acionamento: 15 CV (motor não incluso)"
+// fazia o 15 CV aparecer como "incluso" no preview, perdendo R$ 7.996).
 function motorJaInclusoNoItem(specs: string[]): boolean {
   if (!specs || specs.length === 0) return false
   const motorKeywords = /acionamento|motorredutor|moto\s*redutor|pot[êe]ncia|\bcv\b/i
-  const inclusoMarker = /\(\s*inclus[oa]s?\.?\s*\)/i
+  // Casa "(incluso)", "(inclusos)", "(Incluso.)", etc — mas NÃO casa
+  // "(motor não incluso)", "(nao inclusos)" ou variações com negação dentro do parêntese.
+  const inclusoMarker = /\((?![^)]*\bn[ãa]o\b)[^)]*\binclus[oa]s?\b[^)]*\)/i
   return specs.some(s => motorKeywords.test(s) && inclusoMarker.test(s))
 }
 
@@ -1712,7 +1719,7 @@ export function OrcamentoMontar() {
         {/* PREVIEW DO ORÇAMENTO — sticky no desktop pra não rolar com a lista esquerda */}
         <Card className={`flex flex-col w-full min-w-0 min-h-0 overflow-hidden max-h-[calc(100vh-180px)] md:max-h-none lg:sticky lg:top-3 lg:self-start lg:justify-self-stretch lg:max-h-[calc(100vh-1.5rem)] lg:h-[calc(100vh-1.5rem)] ${mobileTab === 'catalogo' ? 'hidden lg:flex' : ''}`}>
           {/* Toolbar do preview — botões maiores + CTA principal destacado */}
-          <div className="p-1.5 sm:p-3 border-b border-border flex items-center justify-between bg-surface-2/30 flex-wrap gap-1 sm:gap-2">
+          <div className="p-1.5 sm:p-3 border-b border-border flex items-center justify-between bg-surface-2/30 flex-wrap gap-y-1.5 gap-x-1 sm:gap-2">
             <div className="flex items-center gap-1 bg-surface rounded-md p-0.5 border border-border">
               <button
                 onClick={() => setModoVisao('preview')}
@@ -1765,7 +1772,7 @@ export function OrcamentoMontar() {
                 Trif
               </button>
             </div>
-            <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
+            <div className="flex items-center gap-1 sm:gap-2">
               <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-md bg-surface border border-border">
                 <span className="text-[11px] text-ink-faint">{carrinho.length}</span>
                 <span className="text-[11px] text-ink-muted">{carrinho.length === 1 ? 'item' : 'items'}</span>
@@ -1773,7 +1780,7 @@ export function OrcamentoMontar() {
               <button
                 onClick={desfazer}
                 disabled={historyStack.length === 0}
-                className="text-[11px] text-ink-muted hover:bg-surface-3 px-2 py-1.5 rounded flex items-center gap-1 min-h-[34px] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                className="hidden sm:flex text-[11px] text-ink-muted hover:bg-surface-3 px-2 py-1.5 rounded items-center gap-1 min-h-[34px] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 title={historyStack.length === 0 ? 'Nada para desfazer' : `Desfazer última alteração (Ctrl+Z) — ${historyStack.length} ${historyStack.length === 1 ? 'passo' : 'passos'} disponíveis`}
               >
                 <RotateCcw className="h-3.5 w-3.5" />
@@ -1782,7 +1789,7 @@ export function OrcamentoMontar() {
               {carrinho.length > 0 && (
                 <button
                   onClick={limparCarrinho}
-                  className="text-[11px] text-danger hover:bg-danger/10 px-2 py-1.5 rounded flex items-center gap-1 min-h-[34px] transition-colors"
+                  className="hidden sm:flex text-[11px] text-danger hover:bg-danger/10 px-2 py-1.5 rounded items-center gap-1 min-h-[34px] transition-colors"
                   title="Limpar todos os items"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -2066,7 +2073,7 @@ export function OrcamentoMontar() {
           termsInline: {
             dataVenda: dataVendaTxt || null,
             prazoEntrega: prazoEntregaTxt || null,
-            formaPagamento: formaPagamentoTxt || null,
+            formaPagamento: formaPagamentoTxt || 'a combinar',
           },
           parcelas: parcelasPagamento,
           componentesExtras: componentesExtras,

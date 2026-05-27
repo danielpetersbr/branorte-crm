@@ -2127,7 +2127,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                               </tbody>
                             </table>
                           ) : (
-                            <div>{renderTerm('Forma de pagamento', formaPagamentoTxt, 'a combinar (use templates ou + Parcela)', 'formaPagamento')}</div>
+                            <div>{renderTerm('Forma de pagamento', formaPagamentoTxt, 'a combinar', 'formaPagamento')}</div>
                           )}
                         </div>
                       </div>

@@ -490,13 +490,11 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       const hoje = new Date()
       const dataEmissaoBR = hoje.toLocaleDateString('pt-BR')
 
-      // 1) Re-scan pasta pra pegar número fresquinho se for salvar lá
-      let numeroOverride: { ano: number; sequencial: number; numero: string } | null =
-        (numeroFonte === 'pasta' && scanInfo)
-          ? { ano: scanInfo.ano, sequencial: scanInfo.ultimo + 1, numero: formatarNumero(scanInfo.ano, scanInfo.ultimo + 1) }
-          : null
+      // 1) SEMPRE re-scan pasta pra pegar número fresquinho NA HORA de gerar
+      // (entre abrir o modal e clicar "gerar" outro vendedor pode ter criado um número)
+      let numeroOverride: { ano: number; sequencial: number; numero: string } | null = null
 
-      if (opcoes.salvarNaPasta && isFolderScanSupported()) {
+      if (isFolderScanSupported()) {
         try {
           setStep('Conferindo número na pasta...', 6)
           const handle = await getStoredFolderHandle(true)
@@ -512,6 +510,10 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             setNumeroFonte('pasta')
           }
         } catch {}
+      }
+      // Fallback: se não conseguiu escanear pasta, usa o state atual
+      if (!numeroOverride && numeroFonte === 'pasta' && scanInfo) {
+        numeroOverride = { ano: scanInfo.ano, sequencial: scanInfo.ultimo + 1, numero: formatarNumero(scanInfo.ano, scanInfo.ultimo + 1) }
       }
 
       // 2) (removido) — antes mapeava pro gerador docx-lib, hoje gerarDocxDoPreview
@@ -585,7 +587,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         total_motores: snapshot.totalMotores,
         total_proposta: snapshot.totalGeral,
         observacoes: observacoes.trim() || null,
-        forma_pagamento: formaPgOut.forma_pagamento || null,
+        forma_pagamento: formaPgOut.forma_pagamento || 'a combinar',
         prazo_entrega: prazoEntrega.trim() || null,
         parcelas: snapshot.parcelas?.length ? snapshot.parcelas : null,
         componentes_extras: snapshot.componentesExtras ?? null,
@@ -656,7 +658,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           // Modal vence se preenchido, senão usa o que foi editado inline na preview
           dataVenda: (pgDataVenda ? formaPgOut.data_venda : null) || snapshot.termsInline?.dataVenda || null,
           prazoEntrega: prazoEntrega.trim() || snapshot.termsInline?.prazoEntrega || null,
-          formaPagamento: formaPgOut.forma_pagamento || snapshot.termsInline?.formaPagamento || null,
+          formaPagamento: formaPgOut.forma_pagamento || snapshot.termsInline?.formaPagamento || 'a combinar',
         },
         observacoesExtra: observacoes.trim() || null,
         fotoPrincipal: snapshot.fotoPrincipal ?? null,
@@ -712,7 +714,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           totalEquip: snapshot.totalEquip,
           totalMotores: snapshot.totalMotores,
           totalProposta: snapshot.totalGeral,
-          formaPagamento: formaPgOut.forma_pagamento || snapshot.termsInline?.formaPagamento || null,
+          formaPagamento: formaPgOut.forma_pagamento || snapshot.termsInline?.formaPagamento || 'a combinar',
           dataVenda: (pgDataVenda ? formaPgOut.data_venda : null) || snapshot.termsInline?.dataVenda || null,
           prazoEntrega: prazoEntrega.trim() || snapshot.termsInline?.prazoEntrega || null,
           observacoes: observacoes.trim() || null,
