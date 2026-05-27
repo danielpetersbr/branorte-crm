@@ -572,14 +572,14 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
         </div>
 
         {/* ORÇAMENTO N° | DATA */}
-        <div className="flex justify-between items-baseline text-[16px] font-bold text-gray-900 mb-1.5">
+        <div className="flex justify-between items-baseline text-[13px] sm:text-[16px] font-bold text-gray-900 mb-1.5">
           <div>
             ORÇAMENTO N°{' '}
-            <span className={numeroIsPlaceholder ? 'text-gray-400 font-semibold' : 'text-gray-700 font-semibold'}>
+            <span className={numeroIsPlaceholder ? 'text-gray-400 font-bold' : 'text-gray-700 font-bold'}>
               {numeroExibido}
             </span>
           </div>
-          <div>DATA: <span className="text-gray-700 font-semibold">{hoje}</span></div>
+          <div>DATA: <span className="text-gray-700 font-bold">{hoje}</span></div>
         </div>
 
         {/* CLIENTE | A/C | FONE */}
@@ -595,12 +595,12 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                 ? <span className="text-gray-700 font-bold ml-1">{cli.nome}</span>
                 : <span className="text-gray-400 italic font-bold ml-1">[preencher]</span>}
             </div>
-            <div className="text-center">A/C: {valOrPlaceholder(cli.ac)}</div>
-            <div className="text-right">FONE: {valOrPlaceholder(cli.fone)}</div>
+            <div className="sm:text-center">A/C: {valOrPlaceholder(cli.ac)}</div>
+            <div className="sm:text-right">FONE: {valOrPlaceholder(cli.fone)}</div>
           </div>
 
           {/* Demais campos do cliente empilhados */}
-          <div className="text-[16px] font-bold text-gray-900 space-y-0.5">
+          <div className="text-[12px] sm:text-[16px] font-bold text-gray-900 space-y-0 sm:space-y-0.5">
             {camposEmpilhados.map(([label, val]) => (
               <div key={label}>{label}: {valOrPlaceholder(val)}</div>
             ))}
