@@ -55,6 +55,37 @@ function subcategoriasDoItems(items: CatalogoItemAdmin[], categoria: string | nu
     .sort((a, b) => b.qtd - a.qtd)
 }
 
+// Extrai diâmetro de nome (ex: "TRANSPORTADOR HELICOIDAL 160 X 3,5 M" → "160").
+// Pega o primeiro número de 2-3 dígitos seguido de X/x.
+function extrairDiametro(nome: string | null | undefined): string | null {
+  if (!nome) return null
+  const m = nome.match(/\b(\d{2,3})\s*[xX]/)
+  return m ? m[1] : null
+}
+
+// Diâmetros disponíveis para a (categoria, subcategoria) selecionada.
+// Só faz sentido pra TRANSPORTADOR/CHUPIM e TRANSPORTADOR/HELICOIDAL.
+function diametrosDoItems(
+  items: CatalogoItemAdmin[],
+  categoria: string | null,
+  subcategoria: string | null,
+): Array<{ diametro: string; qtd: number }> {
+  if (!categoria || categoria !== 'TRANSPORTADOR') return []
+  if (!subcategoria || !['CHUPIM', 'HELICOIDAL'].includes(subcategoria)) return []
+  const m = new Map<string, number>()
+  for (const it of items) {
+    if (it.categoria !== categoria) continue
+    if ((it.subcategoria || '(sem subcategoria)') !== subcategoria) continue
+    const d = extrairDiametro(it.nome_curto)
+    if (!d) continue
+    m.set(d, (m.get(d) || 0) + 1)
+  }
+  if (m.size <= 1) return []
+  return [...m.entries()]
+    .map(([diametro, qtd]) => ({ diametro, qtd }))
+    .sort((a, b) => Number(a.diametro) - Number(b.diametro))
+}
+
 export function CatalogoAdmin() {
   const { data: items, isLoading } = useCatalogoItemsAdmin()
   const { data: stats } = useStatsCatalogo()
@@ -64,6 +95,7 @@ export function CatalogoAdmin() {
   const [busca, setBusca] = useState('')
   const [categoriaFiltro, setCategoriaFiltro] = useState<string | null>(null)
   const [subcategoriaFiltro, setSubcategoriaFiltro] = useState<string | null>(null)
+  const [diametroFiltro, setDiametroFiltro] = useState<string | null>(null)
   const [mostrarInativos, setMostrarInativos] = useState(false)
   const [limite, setLimite] = useState(PAGINA_INICIAL)
   const [itemEditando, setItemEditando] = useState<CatalogoItemAdmin | null>(null)
@@ -75,6 +107,11 @@ export function CatalogoAdmin() {
   const subcategorias = useMemo(
     () => (items ? subcategoriasDoItems(items, categoriaFiltro) : []),
     [items, categoriaFiltro],
+  )
+  // Diâmetros (apenas pra chupim/helicoidal de transportador)
+  const diametros = useMemo(
+    () => (items ? diametrosDoItems(items, categoriaFiltro, subcategoriaFiltro) : []),
+    [items, categoriaFiltro, subcategoriaFiltro],
   )
 
   // ─── Aplicar filtros ────────────────────────────────────────────
@@ -110,6 +147,11 @@ export function CatalogoAdmin() {
         const sub = it.subcategoria || '(sem subcategoria)'
         if (sub !== subcategoriaFiltro) return false
       }
+      // Diâmetro (só pra transportador chupim/helicoidal)
+      if (diametroFiltro) {
+        const d = extrairDiametro(it.nome_curto)
+        if (d !== diametroFiltro) return false
+      }
       // Busca
       if (q) {
         const alvo = `${it.nome_curto} ${it.nome_completo} ${it.categoria} ${it.subcategoria || ''}`.toLowerCase()
@@ -117,7 +159,7 @@ export function CatalogoAdmin() {
       }
       return true
     })
-  }, [items, aba, busca, categoriaFiltro, subcategoriaFiltro, mostrarInativos])
+  }, [items, aba, busca, categoriaFiltro, subcategoriaFiltro, diametroFiltro, mostrarInativos])
 
   const itemsVisiveis = itemsFiltrados.slice(0, limite)
   const temMais = itemsFiltrados.length > limite
@@ -257,7 +299,7 @@ export function CatalogoAdmin() {
                 Categoria:
               </div>
               <button
-                onClick={() => { setCategoriaFiltro(null); setSubcategoriaFiltro(null); setLimite(PAGINA_INICIAL) }}
+                onClick={() => { setCategoriaFiltro(null); setSubcategoriaFiltro(null); setDiametroFiltro(null); setLimite(PAGINA_INICIAL) }}
                 className={`text-[11px] px-2 py-1 rounded border transition ${
                   categoriaFiltro === null
                     ? 'bg-accent text-white border-accent'
@@ -269,7 +311,7 @@ export function CatalogoAdmin() {
               {categorias.map(c => (
                 <button
                   key={c.categoria}
-                  onClick={() => { setCategoriaFiltro(c.categoria); setSubcategoriaFiltro(null); setLimite(PAGINA_INICIAL) }}
+                  onClick={() => { setCategoriaFiltro(c.categoria); setSubcategoriaFiltro(null); setDiametroFiltro(null); setLimite(PAGINA_INICIAL) }}
                   className={`text-[11px] px-2 py-1 rounded border transition ${
                     categoriaFiltro === c.categoria
                       ? 'bg-accent text-white border-accent'
@@ -289,7 +331,7 @@ export function CatalogoAdmin() {
                 Tipo:
               </div>
               <button
-                onClick={() => { setSubcategoriaFiltro(null); setLimite(PAGINA_INICIAL) }}
+                onClick={() => { setSubcategoriaFiltro(null); setDiametroFiltro(null); setLimite(PAGINA_INICIAL) }}
                 className={`text-[11px] px-2 py-1 rounded border transition ${
                   subcategoriaFiltro === null
                     ? 'bg-accent text-white border-accent'
@@ -301,7 +343,7 @@ export function CatalogoAdmin() {
               {subcategorias.map(s => (
                 <button
                   key={s.subcategoria}
-                  onClick={() => { setSubcategoriaFiltro(s.subcategoria); setLimite(PAGINA_INICIAL) }}
+                  onClick={() => { setSubcategoriaFiltro(s.subcategoria); setDiametroFiltro(null); setLimite(PAGINA_INICIAL) }}
                   className={`text-[11px] px-2 py-1 rounded border transition ${
                     subcategoriaFiltro === s.subcategoria
                       ? 'bg-accent text-white border-accent'
@@ -309,6 +351,38 @@ export function CatalogoAdmin() {
                   }`}
                 >
                   {s.subcategoria} <span className="opacity-60">({s.qtd})</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Linha 5: diâmetros (só pra chupim/helicoidal) */}
+          {diametros.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 pl-8 border-l-2 border-info/40">
+              <div className="flex items-center gap-1 text-[11px] text-ink-faint mr-1">
+                Ø Diâmetro:
+              </div>
+              <button
+                onClick={() => { setDiametroFiltro(null); setLimite(PAGINA_INICIAL) }}
+                className={`text-[11px] px-2 py-1 rounded border transition ${
+                  diametroFiltro === null
+                    ? 'bg-info text-white border-info'
+                    : 'bg-surface-2 text-ink-muted hover:bg-surface-3 border-border'
+                }`}
+              >
+                Todos
+              </button>
+              {diametros.map(d => (
+                <button
+                  key={d.diametro}
+                  onClick={() => { setDiametroFiltro(d.diametro); setLimite(PAGINA_INICIAL) }}
+                  className={`text-[11px] px-2 py-1 rounded border transition ${
+                    diametroFiltro === d.diametro
+                      ? 'bg-info text-white border-info'
+                      : 'bg-surface-2 text-ink-muted hover:bg-surface-3 border-border'
+                  }`}
+                >
+                  Ø {d.diametro} <span className="opacity-60">({d.qtd})</span>
                 </button>
               ))}
             </div>
