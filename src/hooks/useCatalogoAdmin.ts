@@ -132,8 +132,10 @@ export function useCatalogoItemsAdmin() {
           // Espelha precos_branorte: linkados OU oficiais (ad-hoc aguardando migração)
           .or('preco_branorte_id.not.is.null,is_oficial.eq.true')
           .order('is_oficial', { ascending: false })
-          .order('ocorrencias', { ascending: false })
           .order('categoria', { ascending: true })
+          .order('ordem', { ascending: true, nullsFirst: false })
+          .order('subcategoria', { ascending: true, nullsFirst: false })
+          .order('capacidade_kg', { ascending: true, nullsFirst: false })
           .order('nome_curto', { ascending: true }),
         supabase
           .from('precos_branorte')
