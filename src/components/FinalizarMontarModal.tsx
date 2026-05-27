@@ -1332,6 +1332,18 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             </div>
           )}
 
+          {/* Aviso preventivo: total zerado ou sem itens (bloqueia o botao Salvar). */}
+          {(!snapshot.itens?.length || (snapshot.totalGeral ?? 0) <= 0) && !erro && (
+            <div className="p-3 bg-warning/10 border border-warning/40 rounded-md text-[11px] text-warning flex items-start gap-2">
+              <span className="text-[14px] leading-none mt-0.5">⚠</span>
+              <span>
+                {!snapshot.itens?.length
+                  ? 'Adicione pelo menos um item ao orcamento antes de salvar.'
+                  : 'Valor total do orcamento esta zerado. Confira os precos dos itens (ou marque como brinde se for o caso) antes de salvar.'}
+              </span>
+            </div>
+          )}
+
           {erro && (
             <div className="p-3 bg-danger-bg/15 border border-danger/30 rounded-md text-[11px] text-danger">
               {erro}
@@ -1357,9 +1369,14 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
               nele por engano e o arquivo nao ia pra pasta. */}
           <button
             onClick={() => handleGerar({ salvarNaPasta: temPastaLocal, salvarNoServidor: !temPastaLocal, pdfQuality: pdfAltaQualidade ? 'high' : 'normal' })}
-            disabled={gerando || !cliNome.trim()}
-            className="text-[13px] px-5 py-2.5 rounded bg-accent hover:bg-accent/90 text-white font-bold disabled:opacity-50 flex items-center justify-center gap-1.5 min-h-[44px] shadow-sm flex-1 sm:flex-initial"
-            title="Salva pra pasta Z:\1 - Comercial\3 - Orçamento — sincronizado pelo PC do escritório"
+            disabled={gerando || !cliNome.trim() || !snapshot.itens?.length || (snapshot.totalGeral ?? 0) <= 0}
+            className="text-[13px] px-5 py-2.5 rounded bg-accent hover:bg-accent/90 text-white font-bold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 min-h-[44px] shadow-sm flex-1 sm:flex-initial"
+            title={
+              !cliNome.trim() ? 'Preencha o nome do cliente'
+              : !snapshot.itens?.length ? 'Adicione pelo menos um item ao orcamento'
+              : (snapshot.totalGeral ?? 0) <= 0 ? 'Valor total esta zerado — confira os precos dos itens'
+              : "Salva pra pasta Z:\\1 - Comercial\\3 - Orçamento — sincronizado pelo PC do escritório"
+            }
           >
             {gerando ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderOpen className="h-4 w-4" />}
             {gerando ? 'Salvando...' : saveMode === 'update' ? 'Atualizar e salvar' : saveMode === 'alt' ? 'Criar ALT e salvar' : 'Salvar na pasta'}
