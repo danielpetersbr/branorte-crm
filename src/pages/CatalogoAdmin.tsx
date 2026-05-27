@@ -35,10 +35,14 @@ function formatBRL(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 }
 
-function categoriasDoItems(items: CatalogoItemAdmin[]): Array<{ categoria: string; qtd: number }> {
+// Quando mostrarInativos=false, ignora itens inativos na contagem — assim
+// categorias 100% inativas (ex.: COMPACTA enquanto fica fora da grade) somem
+// dos chips ao invés de aparecerem com "(70)" e abrirem em "0 itens".
+function categoriasDoItems(items: CatalogoItemAdmin[], mostrarInativos: boolean): Array<{ categoria: string; qtd: number }> {
   const m = new Map<string, number>()
   for (const it of items) {
     if (!it.categoria) continue
+    if (!mostrarInativos && it.ativo === false) continue
     m.set(it.categoria, (m.get(it.categoria) || 0) + 1)
   }
   return [...m.entries()]
@@ -47,11 +51,12 @@ function categoriasDoItems(items: CatalogoItemAdmin[]): Array<{ categoria: strin
 }
 
 // Subcategorias dentro da categoria selecionada (lista vazia se categoria=null).
-function subcategoriasDoItems(items: CatalogoItemAdmin[], categoria: string | null): Array<{ subcategoria: string; qtd: number }> {
+function subcategoriasDoItems(items: CatalogoItemAdmin[], categoria: string | null, mostrarInativos: boolean): Array<{ subcategoria: string; qtd: number }> {
   if (!categoria) return []
   const m = new Map<string, number>()
   for (const it of items) {
     if (it.categoria !== categoria) continue
+    if (!mostrarInativos && it.ativo === false) continue
     const sub = it.subcategoria || '(sem subcategoria)'
     m.set(sub, (m.get(sub) || 0) + 1)
   }
@@ -75,6 +80,7 @@ function diametrosDoItems(
   items: CatalogoItemAdmin[],
   categoria: string | null,
   subcategoria: string | null,
+  mostrarInativos: boolean,
 ): Array<{ diametro: string; qtd: number }> {
   if (!categoria || categoria !== 'TRANSPORTADOR') return []
   if (!subcategoria || !['CHUPIM', 'HELICOIDAL'].includes(subcategoria)) return []
@@ -82,6 +88,7 @@ function diametrosDoItems(
   for (const it of items) {
     if (it.categoria !== categoria) continue
     if ((it.subcategoria || '(sem subcategoria)') !== subcategoria) continue
+    if (!mostrarInativos && it.ativo === false) continue
     const d = extrairDiametro(it.nome_curto)
     if (!d) continue
     m.set(d, (m.get(d) || 0) + 1)
@@ -118,16 +125,20 @@ export function CatalogoAdmin() {
   }
 
   // ─── Categorias disponíveis (botões de toggle) ─────────────────
-  const categorias = useMemo(() => (items ? categoriasDoItems(items) : []), [items])
+  // mostrarInativos no deps pra esconder categorias 100% inativas (ex.: COMPACTA)
+  const categorias = useMemo(
+    () => (items ? categoriasDoItems(items, mostrarInativos) : []),
+    [items, mostrarInativos],
+  )
   // ─── Subcategorias da categoria selecionada (só aparecem se categoria != null)
   const subcategorias = useMemo(
-    () => (items ? subcategoriasDoItems(items, categoriaFiltro) : []),
-    [items, categoriaFiltro],
+    () => (items ? subcategoriasDoItems(items, categoriaFiltro, mostrarInativos) : []),
+    [items, categoriaFiltro, mostrarInativos],
   )
   // Diâmetros (apenas pra chupim/helicoidal de transportador)
   const diametros = useMemo(
-    () => (items ? diametrosDoItems(items, categoriaFiltro, subcategoriaFiltro) : []),
-    [items, categoriaFiltro, subcategoriaFiltro],
+    () => (items ? diametrosDoItems(items, categoriaFiltro, subcategoriaFiltro, mostrarInativos) : []),
+    [items, categoriaFiltro, subcategoriaFiltro, mostrarInativos],
   )
 
   // ─── Aplicar filtros ────────────────────────────────────────────
