@@ -177,15 +177,13 @@ export default function PrintOrcamento() {
           break-inside: avoid;
           page-break-inside: avoid;
         }
-        /* Foto principal: força quebra de página DEPOIS */
+        /* Foto principal: NAO quebra (so impede de partir a foto ao meio).
+           Antes forcava page-break-after, jogando a foto sozinha pra proxima
+           folha e deixando a 1a folha quase vazia. Agora deixa o fluxo natural
+           decidir: se cabe junto do header, fica junto; senao move pra proxima. */
         .foto-principal-hero {
-          break-after: page !important;
-          page-break-after: always !important;
-        }
-        /* Itens começam numa nova página quando tem foto principal */
-        .itens-apos-hero {
-          break-before: page !important;
-          page-break-before: always !important;
+          break-inside: avoid;
+          page-break-inside: avoid;
         }
       `}</style>
       <OrcamentoPreview {...props} renderMode={true} />
