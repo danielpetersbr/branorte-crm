@@ -588,15 +588,15 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           onClick={!renderMode && onEditCliente ? onEditCliente : undefined}
           title={!renderMode && onEditCliente ? 'Clique pra preencher dados do cliente' : undefined}
         >
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-4 text-[13px] sm:text-[16px] font-bold text-gray-900 mb-1">
-            <div>
+          <div className="grid grid-cols-3 gap-1 sm:gap-4 text-[9px] sm:text-[16px] font-bold text-gray-900 mb-1 leading-tight">
+            <div className="min-w-0 break-words">
               CLIENTE:{' '}
               {cli.nome
                 ? <span className="text-gray-700 font-bold ml-1">{cli.nome}</span>
                 : <span className="text-gray-400 italic font-bold ml-1">[preencher]</span>}
             </div>
-            <div className="sm:text-center">A/C: {valOrPlaceholder(cli.ac)}</div>
-            <div className="sm:text-right">FONE: {valOrPlaceholder(cli.fone)}</div>
+            <div className="min-w-0 break-words text-center">A/C: {valOrPlaceholder(cli.ac)}</div>
+            <div className="min-w-0 break-words text-right">FONE: {valOrPlaceholder(cli.fone)}</div>
           </div>
 
           {/* Demais campos do cliente empilhados */}
