@@ -529,14 +529,17 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
            Container mantém width:1024 e a tela renderiza com escala reduzida. */
         @media (max-width: 1023px) {
           .preview-zoom-mobile {
-            zoom: 0.4;
-            -moz-transform: scale(0.4);
-            -moz-transform-origin: top left;
+            zoom: 0.6;
           }
         }
         @media (max-width: 600px) {
           .preview-zoom-mobile {
-            zoom: 0.35;
+            zoom: 0.5;
+          }
+        }
+        @media (max-width: 400px) {
+          .preview-zoom-mobile {
+            zoom: 0.42;
           }
         }
       `}</style>
