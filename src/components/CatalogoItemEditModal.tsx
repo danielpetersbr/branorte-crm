@@ -393,6 +393,31 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
           </button>
         </div>
 
+        {/* Banner explicando o fluxo de TRANSPORTADOR.
+            Fonte de verdade comercial: precos_branorte (com formula de motor mono/trif).
+            Catalogo_items: enriquece com foto/specs/curadoria.
+            Item aparece no Orcamento Monta SO se tiver preco_branorte_id setado. */}
+        {categoria === 'TRANSPORTADOR' && (
+          <div className="mx-5 mt-4 p-3 rounded-md border border-blue-400/30 bg-blue-50/40 dark:bg-blue-950/20 text-[12px] leading-snug">
+            <div className="flex items-start gap-2">
+              <span className="text-blue-600 dark:text-blue-400 font-bold text-[14px] leading-none mt-0.5">ⓘ</span>
+              <div className="flex-1 text-ink-muted">
+                <strong className="text-ink">Transportadores são gerenciados em "Tabela de Preços".</strong> Aqui você cadastra <em>foto, specs e curadoria</em> que enriquecem o item no orçamento.
+                {item && !item.preco_branorte_id && (
+                  <div className="mt-1.5 text-amber-700 dark:text-amber-400 font-medium">
+                    ⚠ Este item NÃO está vinculado a um preço — não aparece no Orçamento Monta. Vincule via Tabela de Preços ou peça ao Pedro/Thiago.
+                  </div>
+                )}
+                {item && item.preco_branorte_id && (
+                  <div className="mt-1.5 text-emerald-700 dark:text-emerald-400 font-medium">
+                    ✓ Vinculado ao preço #{item.preco_branorte_id} — aparece no Orçamento Monta.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── Body ────────────────────────────────────────────────── */}
         <div className="p-5 grid grid-cols-1 md:grid-cols-[200px_1fr] gap-5">
           {/* ── Coluna esquerda: foto ───────────────────────────── */}
