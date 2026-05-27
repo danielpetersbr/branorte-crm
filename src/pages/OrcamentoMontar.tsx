@@ -11,7 +11,7 @@ import { supabase } from '@/lib/supabase'
 import {
   useCatalogoItems, useCatalogoMotores, useCatalogoAcessorios,
   agruparPorCategoria, acharMotorCompativel,
-  type CatalogoItem, type CatalogoMotor, type CatalogoAcessorio,
+  type CatalogoItem, type CatalogoMotor, type CatalogoAcessorio, type MotorExtra,
 } from '@/hooks/useCatalogo'
 import { FinalizarMontarModal, type CarrinhoSnapshot } from '@/components/FinalizarMontarModal'
 import { OrcamentoPreview, type ParcelaPagamento, type PreviewClienteDados } from '@/components/OrcamentoPreview'
@@ -67,11 +67,9 @@ interface CarrinhoItem {
   motor_por_conta_cliente?: boolean
   /** ID em precos_branorte (quando item veio de lá). Usado pra recalcular valor ao trocar voltagem. */
   preco_branorte_id?: number | null
-  /** Quando preenchido, esta linha representa um motor EXTRA pertencente a outro item do carrinho.
-   *  Ao remover o item principal (uid igual), todas as linhas extras dele saem juntas. */
-  motor_extra_de_uid?: string
-  /** Descrição do propósito do motor extra (ex: "Exaustor de aquecimento"). Aparece no PDF. */
-  motor_extra_descricao?: string
+  /** Snapshot dos motores extras do item de catálogo (multi-motor, ex: misturador c/ aquecimento).
+   *  NÃO geram linha no carrinho — só entram em MOTORES TRIFÁSICOS / agruparMotores. */
+  motores_extras_snapshot?: MotorExtra[]
 }
 
 type TensaoMotor = 220 | 380 | 660 | null
@@ -194,12 +192,42 @@ function peneiraSemMotor(nome: string): boolean {
   return /peneira/i.test(nome) && !/vibrat[óo]ria/i.test(nome)
 }
 
-function agruparMotores(carrinho: CarrinhoItem[]): MotorAgrupado[] {
+function agruparMotores(
+  carrinho: CarrinhoItem[],
+  motores?: CatalogoMotor[],
+  voltagem: Voltagem = 'trifasico',
+): MotorAgrupado[] {
   const linhas: MotorAgrupado[] = []
   for (const it of carrinho) {
-    if (!it.motor_cv || it.motor_polos == null) continue
     const nomeItem = it.nome_custom || it.nome
-    if (it.categoria === 'ACESSORIO' || peneiraSemMotor(nomeItem)) continue  // acessório/peça avulsa não leva motor
+    const ehAcessorioOuPassiva = it.categoria === 'ACESSORIO' || peneiraSemMotor(nomeItem)
+
+    // ── MOTORES EXTRAS (multi-motor, ex: misturador c/ aquecimento) ──
+    // Aparecem como linha SEPARADA na tabela MOTORES TRIFÁSICOS, com o
+    // nome do item + descricao do motor extra (ex: "Misturador 1900L (Exaustor)").
+    if (!ehAcessorioOuPassiva && Array.isArray(it.motores_extras_snapshot)) {
+      for (const me of it.motores_extras_snapshot) {
+        const voltagemEfetiva: Voltagem = it.usa_inversor ? 'trifasico' : voltagem
+        const motorMatch = motores
+          ? acharMotorCompativel(motores, Number(me.cv), me.polos, voltagemEfetiva)
+          : null
+        const valorUnitExtra = motorMatch ? Number(motorMatch.valor) : 0
+        const qtdExtra = (me.qtd || 1) * it.qtd
+        linhas.push({
+          cv: Number(me.cv),
+          polos: me.polos,
+          qtd: qtdExtra,
+          valor_unit: valorUnitExtra,
+          valor_total: valorUnitExtra * qtdExtra,
+          item_nome: `${nomeItem} (${me.descricao})`,
+          item_uid: it.uid,
+          por_conta_cliente: !!it.motor_por_conta_cliente,
+        })
+      }
+    }
+
+    if (!it.motor_cv || it.motor_polos == null) continue
+    if (ehAcessorioOuPassiva) continue
     const qtdMotor = it.motor_qtd * it.qtd
 
     // Detecta múltiplos motores na spec: "Acionamento 15 CV e 2 CV por motorredutor (Inclusos)"
@@ -470,7 +498,7 @@ export function OrcamentoMontar() {
 
   const totalOficiais = useMemo(() => (items ?? []).filter(i => i.is_oficial).length, [items])
 
-  const motoresAgrupados = useMemo(() => agruparMotores(carrinho), [carrinho])
+  const motoresAgrupados = useMemo(() => agruparMotores(carrinho, motores, voltagem), [carrinho, motores, voltagem])
 
   const totalItems = useMemo(
     () => carrinho.reduce((s, c) => s + (c.brinde ? 0 : c.valor * c.qtd), 0),
@@ -949,9 +977,8 @@ export function OrcamentoMontar() {
       ? `${item.nome_curto} (${funcao})`
       : null
 
-    const uidPrincipal = gerarUid()
-    const linhaPrincipal: CarrinhoItem = {
-      uid: uidPrincipal,
+    setCarrinho(c => [...c, {
+      uid: gerarUid(),
       catalogo_id: item.id,
       categoria: item.categoria,
       nome: item.nome_curto,
@@ -969,42 +996,16 @@ export function OrcamentoMontar() {
       funcao_selecionada: funcao,
       ocultar_funcao_no_pdf: !!item.ocultar_funcao_no_pdf,
       preco_branorte_id: item.preco_branorte_id ?? null,
-    }
-
-    // Linhas extras pra cada motor adicional (ex: misturador c/ aquecimento = motor 10 CV + 1,5 CV exaustor)
-    const linhasMotoresExtras: CarrinhoItem[] = (item.motores_extras ?? []).map(me => {
-      const motorMatchExtra = motores
-        ? acharMotorCompativel(motores, Number(me.cv), me.polos, voltagemEfetiva)
-        : null
-      const valorUnitExtra = motorMatchExtra ? Number(motorMatchExtra.valor) : 0
-      return {
-        uid: gerarUid(),
-        catalogo_id: item.id,
-        categoria: 'MOTOR',
-        nome: `Motor ${String(me.cv).replace('.', ',')} CV ${me.polos}p — ${me.descricao}`,
-        nome_custom: null,
-        specs: [],
-        qtd: 1,
-        valor: 0,
-        valor_original: 0,
-        motor_cv: Number(me.cv),
-        motor_polos: me.polos,
-        motor_qtd: me.qtd || 1,
-        motor_valor_unit: valorUnitExtra,
-        foto_url: null,
-        usa_inversor: !!item.usa_inversor,
-        motor_extra_de_uid: uidPrincipal,
-        motor_extra_descricao: me.descricao,
-      }
-    })
-
-    setCarrinho(c => [...c, linhaPrincipal, ...linhasMotoresExtras])
+      // Snapshot dos motores extras — não viram linha no carrinho, só somam em MOTORES TRIFÁSICOS
+      motores_extras_snapshot: Array.isArray(item.motores_extras) && item.motores_extras.length > 0
+        ? item.motores_extras
+        : undefined,
+    }])
     autoAdicionarBalancaSeCompacta(item.nome_curto, item.categoria)
   }
 
   function removerItem(uid: string) {
-    // Remove a linha + qualquer linha extra (motor adicional) que pertenca a ela
-    setCarrinho(c => c.filter(it => it.uid !== uid && it.motor_extra_de_uid !== uid))
+    setCarrinho(c => c.filter(it => it.uid !== uid))
   }
 
   function alterarQtd(uid: string, novaQtd: number) {
