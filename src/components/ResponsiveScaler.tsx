@@ -107,9 +107,21 @@ export function ResponsiveScaler({
     return <div className={className}>{children}</div>
   }
 
-  // Wrapper externo: full width, overflow hidden (esconde o que escaparia
-  // se o scale ainda não foi calculado), altura compensada pelo scale.
-  // Inner: largura fixa documentWidth, scale aplicado.
+  // Quando nao precisa escalar (scale=1, desktop), renderiza SEM transform.
+  // Transform mesmo com scale(1) cria stacking context e altera coords de
+  // getBoundingClientRect dos filhos — quebra algoritmos que dependem disso
+  // (ex: paginacao do OrcamentoPreview). Sem transform = layout natural.
+  if (scale >= 1) {
+    return (
+      <div ref={outerRef} className={className} style={{ width: '100%' }}>
+        <div ref={innerRef} style={{ width: documentWidth, marginLeft: 'auto', marginRight: 'auto' }}>
+          {children}
+        </div>
+      </div>
+    )
+  }
+
+  // Mobile: scale<1, aplica transform + overflow hidden + altura compensada.
   const wrapperHeight = innerHeight > 0 ? innerHeight * scale : undefined
 
   return (
@@ -128,12 +140,8 @@ export function ResponsiveScaler({
           width: documentWidth,
           transform: `scale(${scale})`,
           transformOrigin: '0 0',
-          // Quando scale=1 (desktop), centraliza no outer maior que 1024.
-          // Quando scale<1 (mobile), margin auto pode causar margens negativas
-          // que browsers clampam diferente — força margin 0 pra alinhar à
-          // esquerda do outer (e o scale faz caber).
-          marginLeft: scale >= 1 ? 'auto' : 0,
-          marginRight: scale >= 1 ? 'auto' : 0,
+          marginLeft: 0,
+          marginRight: 0,
         }}
       >
         {children}
