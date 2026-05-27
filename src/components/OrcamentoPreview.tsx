@@ -878,8 +878,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       </div>
                     )}
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 sm:items-center">
-                    <div className="flex-1 pl-1 sm:pl-3 text-[11px] sm:text-[14.5px] text-gray-700 leading-tight sm:leading-normal space-y-0 sm:space-y-0.5">
+                  <div className="flex flex-row gap-2 sm:gap-4 items-center">
+                    <div className="flex-1 pl-1 sm:pl-3 text-[10px] sm:text-[14.5px] text-gray-700 leading-tight sm:leading-normal space-y-0 sm:space-y-0.5 min-w-0">
                       {it.specs.filter(s => !/c[oó]digo\s*finame/i.test(s)).length > 0
                         ? it.specs.filter(s => !/c[oó]digo\s*finame/i.test(s)).map((s, i) => {
                             const key = `${it.uid ?? idx}|${i}`
@@ -929,16 +929,15 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           )
                       }
                     </div>
-                    {/* Foto: mobile = full width abaixo dos bullets;
-                        desktop/PDF = 220px ao lado dos bullets. */}
+                    {/* Foto sempre AO LADO dos bullets — mobile 100px, desktop/PDF 220px */}
                     {it.foto_url && (
-                      <div className="flex-shrink-0 flex items-center justify-center w-full sm:w-[220px] max-h-[180px]">
+                      <div className="flex-shrink-0 flex items-center justify-center w-[100px] sm:w-[220px] max-h-[100px] sm:max-h-[180px]">
                         <img
                           src={it.foto_url}
                           alt={it.nome}
                           style={{
                             maxWidth: '100%',
-                            maxHeight: 180,
+                            maxHeight: '100%',
                             width: 'auto',
                             height: 'auto',
                             objectFit: 'contain',
