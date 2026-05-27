@@ -587,8 +587,9 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         total_motores: snapshot.totalMotores,
         total_proposta: snapshot.totalGeral,
         observacoes: observacoes.trim() || null,
-        forma_pagamento: formaPgOut.forma_pagamento || 'a combinar',
-        prazo_entrega: prazoEntrega.trim() || null,
+        // WYSIWYG: preview inline tem prioridade no save tambem
+        forma_pagamento: snapshot.termsInline?.formaPagamento || formaPgOut.forma_pagamento || 'a combinar',
+        prazo_entrega: snapshot.termsInline?.prazoEntrega || prazoEntrega.trim() || null,
         parcelas: snapshot.parcelas?.length ? snapshot.parcelas : null,
         componentes_extras: snapshot.componentesExtras ?? null,
         foto_principal_url: fotoPrincipalUrl,
@@ -655,10 +656,12 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           email: cliDados.email,
         },
         terms: {
-          // Modal vence se preenchido, senão usa o que foi editado inline na preview
-          dataVenda: (pgDataVenda ? formaPgOut.data_venda : null) || snapshot.termsInline?.dataVenda || null,
-          prazoEntrega: prazoEntrega.trim() || snapshot.termsInline?.prazoEntrega || null,
-          formaPagamento: formaPgOut.forma_pagamento || snapshot.termsInline?.formaPagamento || 'a combinar',
+          // WYSIWYG: preview inline e a fonte da verdade visual pro vendedor.
+          // O que ele ve na tela e o que vai pro PDF. Modal so vence se o
+          // vendedor preencheu algo NOVO la (formaPgOut nao-vazio).
+          dataVenda: snapshot.termsInline?.dataVenda || (pgDataVenda ? formaPgOut.data_venda : null) || null,
+          prazoEntrega: snapshot.termsInline?.prazoEntrega || prazoEntrega.trim() || null,
+          formaPagamento: snapshot.termsInline?.formaPagamento || formaPgOut.forma_pagamento || 'a combinar',
         },
         observacoesExtra: observacoes.trim() || null,
         fotoPrincipal: snapshot.fotoPrincipal ?? null,
@@ -714,9 +717,12 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           totalEquip: snapshot.totalEquip,
           totalMotores: snapshot.totalMotores,
           totalProposta: snapshot.totalGeral,
-          formaPagamento: formaPgOut.forma_pagamento || snapshot.termsInline?.formaPagamento || 'a combinar',
-          dataVenda: (pgDataVenda ? formaPgOut.data_venda : null) || snapshot.termsInline?.dataVenda || null,
-          prazoEntrega: prazoEntrega.trim() || snapshot.termsInline?.prazoEntrega || null,
+          // WYSIWYG: preview inline e a fonte da verdade visual pro vendedor.
+          // Se ele ve 'a combinar' no preview, isso vai pro PDF. Modal so vence
+          // se o vendedor preencheu algo NOVO la (formaPgOut nao-vazio).
+          formaPagamento: snapshot.termsInline?.formaPagamento || formaPgOut.forma_pagamento || 'a combinar',
+          dataVenda: snapshot.termsInline?.dataVenda || (pgDataVenda ? formaPgOut.data_venda : null) || null,
+          prazoEntrega: snapshot.termsInline?.prazoEntrega || prazoEntrega.trim() || null,
           observacoes: observacoes.trim() || null,
           vendedorNome: profile?.display_name || 'Vendedor',
         })
