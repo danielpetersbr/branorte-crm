@@ -588,7 +588,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           onClick={!renderMode && onEditCliente ? onEditCliente : undefined}
           title={!renderMode && onEditCliente ? 'Clique pra preencher dados do cliente' : undefined}
         >
-          <div className="grid grid-cols-3 gap-1 sm:gap-4 text-[9px] sm:text-[16px] font-bold text-gray-900 mb-1 leading-tight">
+          <div className="grid grid-cols-3 gap-1 sm:gap-4 text-[10px] sm:text-[16px] font-bold text-gray-900 mb-1 leading-tight">
             <div className="min-w-0 break-words">
               CLIENTE:{' '}
               {cli.nome
@@ -600,7 +600,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           </div>
 
           {/* Demais campos do cliente empilhados */}
-          <div className="text-[12px] sm:text-[16px] font-bold text-gray-900 space-y-0 sm:space-y-0.5">
+          <div className="text-[10px] sm:text-[16px] font-bold text-gray-900 space-y-0 sm:space-y-0.5 leading-tight">
             {camposEmpilhados.map(([label, val]) => (
               <div key={label}>{label}: {valOrPlaceholder(val)}</div>
             ))}
