@@ -40,6 +40,21 @@ function categoriasDoItems(items: CatalogoItemAdmin[]): Array<{ categoria: strin
     .sort((a, b) => b.qtd - a.qtd)
 }
 
+// Subcategorias dentro da categoria selecionada (lista vazia se categoria=null).
+function subcategoriasDoItems(items: CatalogoItemAdmin[], categoria: string | null): Array<{ subcategoria: string; qtd: number }> {
+  if (!categoria) return []
+  const m = new Map<string, number>()
+  for (const it of items) {
+    if (it.categoria !== categoria) continue
+    const sub = it.subcategoria || '(sem subcategoria)'
+    m.set(sub, (m.get(sub) || 0) + 1)
+  }
+  if (m.size <= 1) return []  // só mostra UI se há mais de 1 subcat na categoria
+  return [...m.entries()]
+    .map(([subcategoria, qtd]) => ({ subcategoria, qtd }))
+    .sort((a, b) => b.qtd - a.qtd)
+}
+
 export function CatalogoAdmin() {
   const { data: items, isLoading } = useCatalogoItemsAdmin()
   const { data: stats } = useStatsCatalogo()
@@ -48,6 +63,7 @@ export function CatalogoAdmin() {
   const [aba, setAba] = useState<AbaFiltro>('todos')
   const [busca, setBusca] = useState('')
   const [categoriaFiltro, setCategoriaFiltro] = useState<string | null>(null)
+  const [subcategoriaFiltro, setSubcategoriaFiltro] = useState<string | null>(null)
   const [mostrarInativos, setMostrarInativos] = useState(false)
   const [limite, setLimite] = useState(PAGINA_INICIAL)
   const [itemEditando, setItemEditando] = useState<CatalogoItemAdmin | null>(null)
@@ -55,6 +71,11 @@ export function CatalogoAdmin() {
 
   // ─── Categorias disponíveis (botões de toggle) ─────────────────
   const categorias = useMemo(() => (items ? categoriasDoItems(items) : []), [items])
+  // ─── Subcategorias da categoria selecionada (só aparecem se categoria != null)
+  const subcategorias = useMemo(
+    () => (items ? subcategoriasDoItems(items, categoriaFiltro) : []),
+    [items, categoriaFiltro],
+  )
 
   // ─── Aplicar filtros ────────────────────────────────────────────
   const itemsFiltrados = useMemo(() => {
@@ -84,14 +105,19 @@ export function CatalogoAdmin() {
       }
       // Categoria
       if (categoriaFiltro && it.categoria !== categoriaFiltro) return false
+      // Subcategoria (só faz sentido quando categoria está selecionada)
+      if (categoriaFiltro && subcategoriaFiltro) {
+        const sub = it.subcategoria || '(sem subcategoria)'
+        if (sub !== subcategoriaFiltro) return false
+      }
       // Busca
       if (q) {
-        const alvo = `${it.nome_curto} ${it.nome_completo} ${it.categoria}`.toLowerCase()
+        const alvo = `${it.nome_curto} ${it.nome_completo} ${it.categoria} ${it.subcategoria || ''}`.toLowerCase()
         if (!alvo.includes(q)) return false
       }
       return true
     })
-  }, [items, aba, busca, categoriaFiltro, mostrarInativos])
+  }, [items, aba, busca, categoriaFiltro, subcategoriaFiltro, mostrarInativos])
 
   const itemsVisiveis = itemsFiltrados.slice(0, limite)
   const temMais = itemsFiltrados.length > limite
@@ -231,7 +257,7 @@ export function CatalogoAdmin() {
                 Categoria:
               </div>
               <button
-                onClick={() => { setCategoriaFiltro(null); setLimite(PAGINA_INICIAL) }}
+                onClick={() => { setCategoriaFiltro(null); setSubcategoriaFiltro(null); setLimite(PAGINA_INICIAL) }}
                 className={`text-[11px] px-2 py-1 rounded border transition ${
                   categoriaFiltro === null
                     ? 'bg-accent text-white border-accent'
@@ -243,7 +269,7 @@ export function CatalogoAdmin() {
               {categorias.map(c => (
                 <button
                   key={c.categoria}
-                  onClick={() => { setCategoriaFiltro(c.categoria); setLimite(PAGINA_INICIAL) }}
+                  onClick={() => { setCategoriaFiltro(c.categoria); setSubcategoriaFiltro(null); setLimite(PAGINA_INICIAL) }}
                   className={`text-[11px] px-2 py-1 rounded border transition ${
                     categoriaFiltro === c.categoria
                       ? 'bg-accent text-white border-accent'
@@ -251,6 +277,38 @@ export function CatalogoAdmin() {
                   }`}
                 >
                   {c.categoria} <span className="opacity-60">({c.qtd})</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Linha 4: subcategorias (só aparece quando uma categoria com >1 sub está selecionada) */}
+          {subcategorias.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 pl-4 border-l-2 border-accent/40">
+              <div className="flex items-center gap-1 text-[11px] text-ink-faint mr-1">
+                Tipo:
+              </div>
+              <button
+                onClick={() => { setSubcategoriaFiltro(null); setLimite(PAGINA_INICIAL) }}
+                className={`text-[11px] px-2 py-1 rounded border transition ${
+                  subcategoriaFiltro === null
+                    ? 'bg-accent text-white border-accent'
+                    : 'bg-surface-2 text-ink-muted hover:bg-surface-3 border-border'
+                }`}
+              >
+                Todos
+              </button>
+              {subcategorias.map(s => (
+                <button
+                  key={s.subcategoria}
+                  onClick={() => { setSubcategoriaFiltro(s.subcategoria); setLimite(PAGINA_INICIAL) }}
+                  className={`text-[11px] px-2 py-1 rounded border transition ${
+                    subcategoriaFiltro === s.subcategoria
+                      ? 'bg-accent text-white border-accent'
+                      : 'bg-surface-2 text-ink-muted hover:bg-surface-3 border-border'
+                  }`}
+                >
+                  {s.subcategoria} <span className="opacity-60">({s.qtd})</span>
                 </button>
               ))}
             </div>
@@ -338,8 +396,13 @@ function CatalogoCardItem({ item, onClick, onToggleOficial, togglePending }: Car
         {/* Conteúdo */}
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2 mb-0.5">
-            <p className="text-[10px] text-ink-faint uppercase tracking-wide truncate">
-              {item.categoria || 'Sem categoria'}
+            <p className="text-[10px] text-ink-faint uppercase tracking-wide truncate flex items-center gap-1.5">
+              <span>{item.categoria || 'Sem categoria'}</span>
+              {item.subcategoria && (
+                <span className="px-1 py-px rounded bg-accent/15 text-accent border border-accent/30 text-[9px] font-bold tracking-wider">
+                  {item.subcategoria}
+                </span>
+              )}
             </p>
             {!item.is_oficial && (
               <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-warning/20 text-warning border border-warning/30 uppercase tracking-wider">
