@@ -696,9 +696,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
               const letra = String.fromCharCode(65 + idx)
               const subtotal = it.valor * it.qtd
               return (
-                <div key={it.uid || idx} data-no-break className="group relative border border-gray-700 rounded-md p-2 sm:p-3 bg-white shadow-sm" style={{ zIndex: 1, breakInside: 'avoid', pageBreakInside: 'avoid' }}>
-                  <div className="flex justify-between items-start gap-2 mb-1.5">
-                    <div className="font-bold text-[13px] sm:text-[15.5px] flex-1 min-w-0 text-gray-900">
+                <div key={it.uid || idx} data-no-break className="group relative border border-gray-700 rounded-md p-1.5 sm:p-3 bg-white shadow-sm" style={{ zIndex: 1, breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+                  <div className="flex justify-between items-start gap-1 sm:gap-2 mb-1 sm:mb-1.5">
+                    <div className="font-bold text-[12px] sm:text-[15.5px] flex-1 min-w-0 text-gray-900 leading-tight">
                       <span className="text-gray-900">{letra} - </span>
                       {!renderMode && onUpdateQtd && editingQtdUid === it.uid ? (
                         <input
@@ -878,8 +878,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       </div>
                     )}
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-center">
-                    <div className="flex-1 pl-3 text-[13px] sm:text-[14.5px] text-gray-700 space-y-0.5">
+                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 sm:items-center">
+                    <div className="flex-1 pl-1 sm:pl-3 text-[11px] sm:text-[14.5px] text-gray-700 leading-tight sm:leading-normal space-y-0 sm:space-y-0.5">
                       {it.specs.filter(s => !/c[oó]digo\s*finame/i.test(s)).length > 0
                         ? it.specs.filter(s => !/c[oó]digo\s*finame/i.test(s)).map((s, i) => {
                             const key = `${it.uid ?? idx}|${i}`
