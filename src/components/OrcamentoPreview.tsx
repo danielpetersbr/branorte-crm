@@ -893,7 +893,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       </div>
                     )}
                   </div>
-                  <div className="flex flex-row gap-4 items-center">
+                  <div className="flex flex-row gap-4 items-start">
                     <div className="flex-1 pl-3 text-[14.5px] text-gray-700 leading-normal space-y-0.5 min-w-0">
                       {it.specs.filter(s => !/c[oó]digo\s*finame/i.test(s)).length > 0
                         ? it.specs.filter(s => !/c[oó]digo\s*finame/i.test(s)).map((s, i) => {
