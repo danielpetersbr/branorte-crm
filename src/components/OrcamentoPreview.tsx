@@ -893,7 +893,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       </div>
                     )}
                   </div>
-                  <div className="flex flex-row gap-4 items-start">
+                  <div className="flex flex-row gap-4 items-center">
                     <div className="flex-1 pl-3 text-[14.5px] text-gray-700 leading-normal space-y-0.5 min-w-0">
                       {it.specs.filter(s => !/c[oó]digo\s*finame/i.test(s)).length > 0
                         ? it.specs.filter(s => !/c[oó]digo\s*finame/i.test(s)).map((s, i) => {
@@ -945,10 +945,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       }
                     </div>
                     {/* Foto sempre AO LADO dos bullets — mobile 100px, desktop/PDF 220px.
-                        items-start no pai + min-h aqui = foto ancora no topo, bullets
-                        ao lado. Evita foto "boiando" no meio quando bullets sao curtos. */}
+                        Revertido min-h pra evitar foto estourando o card quando img
+                        tem proporcao quadrada/alta — voltou pro layout original que
+                        funcionava (max-h 180px desktop, items-center no flex pai). */}
                     {it.foto_url && (
-                      <div className="flex-shrink-0 flex items-start justify-center w-[100px] sm:w-[220px] min-h-[80px] sm:min-h-[140px] max-h-[120px] sm:max-h-[200px]">
+                      <div className="flex-shrink-0 flex items-center justify-center w-[100px] sm:w-[220px] max-h-[100px] sm:max-h-[180px]">
                         <img
                           src={it.foto_url}
                           alt={it.nome}
