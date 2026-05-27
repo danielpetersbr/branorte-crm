@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import {
   Search, Star, Image as ImageIcon, ImageOff, Filter, Loader2,
   Package, CheckCircle2, AlertCircle, Camera, Settings2, Edit,
+  Rows3, LayoutGrid, Image as ImageView,
 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -23,7 +24,12 @@ const ABAS: Array<{ id: AbaFiltro; label: string }> = [
   { id: 'inativos', label: 'Inativos' },
 ]
 
-const PAGINA_INICIAL = 60
+const PAGINA_INICIAL = 120
+
+type ViewMode = 'lista' | 'grid' | 'galeria'
+
+// localStorage key pra persistir preferencia entre sessoes
+const VIEW_MODE_KEY = 'catalogo_admin_view_mode'
 
 function formatBRL(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
@@ -100,6 +106,16 @@ export function CatalogoAdmin() {
   const [limite, setLimite] = useState(PAGINA_INICIAL)
   const [itemEditando, setItemEditando] = useState<CatalogoItemAdmin | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    try {
+      const saved = localStorage.getItem(VIEW_MODE_KEY)
+      return (saved === 'grid' || saved === 'galeria' || saved === 'lista') ? saved : 'lista'
+    } catch { return 'lista' }
+  })
+  function setViewModePersistente(v: ViewMode) {
+    setViewMode(v)
+    try { localStorage.setItem(VIEW_MODE_KEY, v) } catch {}
+  }
 
   // ─── Categorias disponíveis (botões de toggle) ─────────────────
   const categorias = useMemo(() => (items ? categoriasDoItems(items) : []), [items])
@@ -395,6 +411,31 @@ export function CatalogoAdmin() {
             {itemsFiltrados.length} item(s) encontrados
             {itemsFiltrados.length > limite && ` — exibindo ${limite}`}
           </p>
+
+          {/* Seletor de visualizacao: lista (densa) / grid (cards) / galeria (foto grande) */}
+          <div className="flex items-center gap-1 bg-surface border border-border rounded-md p-0.5">
+            <button
+              onClick={() => setViewModePersistente('lista')}
+              className={`p-1.5 rounded transition ${viewMode === 'lista' ? 'bg-accent/15 text-accent' : 'text-ink-faint hover:text-ink hover:bg-surface-2'}`}
+              title="Lista compacta (mais itens por tela)"
+            >
+              <Rows3 className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setViewModePersistente('grid')}
+              className={`p-1.5 rounded transition ${viewMode === 'grid' ? 'bg-accent/15 text-accent' : 'text-ink-faint hover:text-ink hover:bg-surface-2'}`}
+              title="Grid (cards medios)"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setViewModePersistente('galeria')}
+              className={`p-1.5 rounded transition ${viewMode === 'galeria' ? 'bg-accent/15 text-accent' : 'text-ink-faint hover:text-ink hover:bg-surface-2'}`}
+              title="Galeria (foto grande)"
+            >
+              <ImageView className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* ── Lista de items ─────────────────────────────────────── */}
@@ -403,7 +444,34 @@ export function CatalogoAdmin() {
             <Package className="w-10 h-10 mb-2 opacity-50" />
             <p className="text-[13px]">Nenhum item encontrado com esses filtros</p>
           </div>
+        ) : viewMode === 'lista' ? (
+          // LISTA COMPACTA: 1 linha por item, infos lado a lado, foto 32x32, ~4x mais densa
+          <div className="bg-surface border border-border rounded-lg overflow-hidden divide-y divide-border">
+            {itemsVisiveis.map(item => (
+              <CatalogoLinhaItem
+                key={item.id}
+                item={item}
+                onClick={() => abrirEdicao(item)}
+                onToggleOficial={e => handleToggleOficial(e, item)}
+                togglePending={toggleOficial.isPending && toggleOficial.variables?.id === item.id}
+              />
+            ))}
+          </div>
+        ) : viewMode === 'galeria' ? (
+          // GALERIA: foto grande, ideal pra reconhecimento visual de transportadores/motores
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+            {itemsVisiveis.map(item => (
+              <CatalogoGaleriaItem
+                key={item.id}
+                item={item}
+                onClick={() => abrirEdicao(item)}
+                onToggleOficial={e => handleToggleOficial(e, item)}
+                togglePending={toggleOficial.isPending && toggleOficial.variables?.id === item.id}
+              />
+            ))}
+          </div>
         ) : (
+          // GRID: cards medios (formato original, 3 colunas)
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {itemsVisiveis.map(item => (
               <CatalogoCardItem
@@ -530,6 +598,111 @@ function CatalogoCardItem({ item, onClick, onToggleOficial, togglePending }: Car
           <Star className={`w-3.5 h-3.5 ${item.is_oficial ? 'fill-current' : ''}`} />
         )}
       </button>
+    </div>
+  )
+}
+
+// ─── LISTA COMPACTA: linha unica densa, ~4x mais itens visiveis ───
+function CatalogoLinhaItem({ item, onClick, onToggleOficial, togglePending }: CardProps) {
+  return (
+    <div
+      onClick={onClick}
+      className={`group flex items-center gap-2 px-2 py-1.5 cursor-pointer transition hover:bg-surface-2 ${item.ativo ? '' : 'opacity-60'}`}
+    >
+      {/* Foto miniatura 32x32 */}
+      <div className="shrink-0 w-8 h-8 rounded overflow-hidden bg-surface-2 border border-border flex items-center justify-center">
+        {item.foto_url ? (
+          <img src={item.foto_url} alt={item.nome_curto} className="w-full h-full object-cover" />
+        ) : (
+          <ImageOff className="w-3 h-3 text-ink-faint" />
+        )}
+      </div>
+      {/* Categoria + subcategoria (badges compactas) */}
+      <div className="shrink-0 flex items-center gap-1 w-[140px]">
+        <span className="text-[9px] text-ink-faint uppercase tracking-wide truncate">{item.categoria || '—'}</span>
+        {item.subcategoria && (
+          <span className="px-1 rounded bg-accent/15 text-accent border border-accent/30 text-[8px] font-bold tracking-wider">
+            {item.subcategoria}
+          </span>
+        )}
+      </div>
+      {/* Nome (flex-1, trunca) */}
+      <div className="flex-1 min-w-0">
+        <p className="text-[12px] text-ink truncate font-medium">{item.nome_curto}</p>
+      </div>
+      {/* Motor (se tiver) */}
+      {item.motor_padrao_cv && item.motor_padrao_polos && (
+        <span className="shrink-0 text-[10px] text-ink-muted tabular-nums w-[60px] text-right">
+          {item.motor_padrao_cv} CV {item.motor_padrao_polos}p
+        </span>
+      )}
+      {/* Preco (alinhado direita) */}
+      <span className="shrink-0 text-[12px] font-semibold text-accent tabular-nums w-[90px] text-right">
+        {formatBRL(item.valor || 0)}
+      </span>
+      {/* Badges status (pendente / sem foto / sem link) */}
+      <div className="shrink-0 flex items-center gap-1">
+        {!item.is_oficial && (
+          <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-warning/20 text-warning border border-warning/30 uppercase tracking-wider">P</span>
+        )}
+        {!item.foto_url && (
+          <span title="Sem foto" className="text-[8px] font-bold px-1 py-0.5 rounded bg-danger/15 text-danger border border-danger/30">SF</span>
+        )}
+      </div>
+      {/* Star toggle */}
+      <button
+        onClick={onToggleOficial}
+        disabled={togglePending}
+        className={`shrink-0 p-1 rounded transition ${item.is_oficial ? 'text-warning' : 'text-ink-faint opacity-0 group-hover:opacity-100 hover:text-warning'}`}
+        title={item.is_oficial ? 'Remover de Oficiais' : 'Marcar como Oficial'}
+      >
+        {togglePending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Star className={`w-3.5 h-3.5 ${item.is_oficial ? 'fill-current' : ''}`} />}
+      </button>
+    </div>
+  )
+}
+
+// ─── GALERIA: foto grande, ideal pra reconhecimento visual rapido ───
+function CatalogoGaleriaItem({ item, onClick, onToggleOficial, togglePending }: CardProps) {
+  return (
+    <div
+      onClick={onClick}
+      className={`group relative bg-surface border rounded-lg overflow-hidden cursor-pointer transition hover:border-accent/40 hover:shadow-md ${item.ativo ? 'border-border' : 'border-border opacity-60'}`}
+    >
+      {/* Foto grande (proporcao 4:3) */}
+      <div className="w-full aspect-[4/3] bg-surface-2 border-b border-border flex items-center justify-center overflow-hidden">
+        {item.foto_url ? (
+          <img src={item.foto_url} alt={item.nome_curto} className="w-full h-full object-cover" />
+        ) : (
+          <ImageOff className="w-8 h-8 text-ink-faint opacity-50" />
+        )}
+      </div>
+      {/* Star canto superior direito */}
+      <button
+        onClick={onToggleOficial}
+        disabled={togglePending}
+        className={`absolute top-1.5 right-1.5 p-1.5 rounded-full backdrop-blur bg-bg/70 transition ${item.is_oficial ? 'text-warning' : 'text-white/70 opacity-0 group-hover:opacity-100 hover:text-warning'}`}
+        title={item.is_oficial ? 'Remover de Oficiais' : 'Marcar como Oficial'}
+      >
+        {togglePending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Star className={`w-3.5 h-3.5 ${item.is_oficial ? 'fill-current' : ''}`} />}
+      </button>
+      {/* Badge pendente canto superior esquerdo */}
+      {!item.is_oficial && (
+        <span className="absolute top-1.5 left-1.5 text-[8px] font-bold px-1.5 py-0.5 rounded bg-warning/90 text-white uppercase tracking-wider">
+          Pendente
+        </span>
+      )}
+      {/* Info abaixo da foto */}
+      <div className="p-2">
+        <p className="text-[9px] text-ink-faint uppercase tracking-wide truncate">{item.categoria}{item.subcategoria && ` · ${item.subcategoria}`}</p>
+        <h3 className="text-[11px] font-semibold text-ink truncate" title={item.nome_curto}>{item.nome_curto}</h3>
+        <div className="flex items-center justify-between mt-0.5">
+          <span className="text-[11px] font-semibold text-accent tabular-nums">{formatBRL(item.valor || 0)}</span>
+          {item.motor_padrao_cv && (
+            <span className="text-[9px] text-ink-muted tabular-nums">{item.motor_padrao_cv}CV</span>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
