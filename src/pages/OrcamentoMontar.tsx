@@ -618,6 +618,7 @@ export function OrcamentoMontar() {
   const [helicoidePickerOpen, setHelicoidePickerOpen] = useState(false)
   const [balancaPickerOpen, setBalancaPickerOpen] = useState(false)
   const [compactaPickerOpen, setCompactaPickerOpen] = useState(false)
+  const [plasticoPickerOpen, setPlasticoPickerOpen] = useState(false)
   // Picker de MODELOS de pacote (Compactas + Mini Fabrica) — abre os 65 modelos
   // estruturados de orcamento_modelos. Ao escolher um, carrega TODOS os itens
   // (transportador + moinho + misturador) pra ficar idêntico ao orçamento original.
@@ -1817,7 +1818,7 @@ export function OrcamentoMontar() {
                       <MetaCard categoria="OUTROS" titulo="Diversos / Acessórios" descricao="Martelos, peneiras avulsas, eixos, buchas e outros" qtd={outrosOficiais.length} onClick={() => setOutrosPickerOpen(true)} />
                     )}
                     {(categoria === null || categoria === 'PLASTICO') && plasticosOficiais.length > 0 && (
-                      <MetaCard categoria="PLASTICO" titulo="Para Plástico" descricao="Misturadores específicos pra polímeros (com/sem aquecimento)" qtd={plasticosOficiais.length} onClick={() => setCategoria('PLASTICO')} />
+                      <MetaCard categoria="PLASTICO" titulo="Para Plástico" descricao="Misturadores específicos pra polímeros (com/sem aquecimento)" qtd={plasticosOficiais.length} onClick={() => setPlasticoPickerOpen(true)} />
                     )}
                   </>
                 )}
@@ -1825,12 +1826,12 @@ export function OrcamentoMontar() {
                   // Esconde individuais das categorias que tem meta-card (a menos que busca esteja ativa).
                   // Sem isso, item oficial individual aparece SOLTO no grid duplicando o que o
                   // picker do meta-card ja cobre.
-                  .filter(it => busca || categoria === 'PLASTICO' || ![
+                  .filter(it => busca || ![
                     'TRANSPORTADOR', 'MISTURADOR', 'MOINHO', 'CAIXA',
                     'SILO', 'ELEVADOR', 'CACAMBA_PESAGEM', 'PRE_LIMPEZA', 'PRE_LIMPEZA',
                     'PENEIRA', 'HELICOIDE', 'BALANCA', 'ENSACADEIRA', 'COMPACTA',
                     'ALIMENTADOR', 'DESCARGA', 'MARTELOS', 'MOEGA', 'PASSARELA',
-                    'SUPORTE_BAG', 'SUPORTE BAG', 'OUTROS', 'ACESSORIO',
+                    'SUPORTE_BAG', 'SUPORTE BAG', 'OUTROS', 'ACESSORIO', 'PLASTICO',
                   ].includes(it.categoria))
                   .slice(0, 200)
                   .map(item => (
@@ -2326,6 +2327,18 @@ export function OrcamentoMontar() {
         colKgPratica
         onClose={() => setMisturadorPickerOpen(false)}
         onPick={p => { adicionarItem(p); setMisturadorPickerOpen(false) }}
+      />
+
+      {/* Picker Plástico — Sem Aquecimento e C/ Aquecimento */}
+      <CategoriaPickerModal
+        open={plasticoPickerOpen}
+        titulo="Misturador Para Plástico"
+        items={plasticosOficiais}
+        precosBranorte={precos ?? []}
+        labelSub={{ SIMPLES: 'Sem Aquecimento', AQUECIMENTO: 'C/ Aquecimento' }}
+        ordemSub={['SIMPLES', 'AQUECIMENTO']}
+        onClose={() => setPlasticoPickerOpen(false)}
+        onPick={p => { adicionarItem(p); setPlasticoPickerOpen(false) }}
       />
 
       {/* Picker genérico Moinho */}
