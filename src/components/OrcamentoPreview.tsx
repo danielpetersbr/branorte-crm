@@ -1738,16 +1738,18 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       </span>
                     )
                   }
-                  // formaPagamento → textarea full-width (texto pode ser longo)
+                  // formaPagamento → textarea full-width (texto pode ser longo).
+                  // Quando vazio, mostra placeholder como VALOR REAL (texto preto normal),
+                  // nao como placeholder cinza italic — assim "a combinar" fica gravado
+                  // visualmente igual ao texto digitado.
                   if (key === 'formaPagamento') {
                     return (
                       <textarea
-                        defaultValue={valor || ''}
+                        defaultValue={valor || placeholder}
                         key={valor || 'empty'}
                         onBlur={e => onUpdateTerm(key, e.target.value)}
-                        placeholder={placeholder}
-                        rows={(valor || '').length > 80 ? 2 : 1}
-                        className={`w-full resize-none bg-transparent border-b border-dashed border-gray-300 hover:border-blue-500 focus:border-blue-600 focus:outline-none px-1 ${isPh ? 'italic text-gray-400' : 'text-gray-800'}`}
+                        rows={(valor || placeholder).length > 80 ? 2 : 1}
+                        className="w-full resize-none bg-transparent border-b border-dashed border-gray-300 hover:border-blue-500 focus:border-blue-600 focus:outline-none px-1 text-gray-800"
                       />
                     )
                   }
@@ -1761,8 +1763,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     />
                   )
                 }
+                // Em renderMode (PDF): se vazio, exibe placeholder como TEXTO REAL
+                // (preto normal), pra ficar gravado "a combinar"/"90 dias" etc no PDF.
+                // Só usa cinza italic em campos visualmente decorativos — aqui não.
                 return isPh
-                  ? <span className="text-gray-400 italic">{placeholder}</span>
+                  ? <span>{placeholder}</span>
                   : <span>{valor}</span>
               }
               // Templates de forma de pagamento — calculam datas a partir da Data da Venda
