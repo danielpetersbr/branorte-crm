@@ -944,20 +944,20 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           )
                       }
                     </div>
-                    {/* Foto sempre AO LADO dos bullets — mobile 100px, desktop/PDF 220px.
-                        Revertido min-h pra evitar foto estourando o card quando img
-                        tem proporcao quadrada/alta — voltou pro layout original que
-                        funcionava (max-h 180px desktop, items-center no flex pai). */}
+                    {/* Foto AO LADO dos bullets — caixa RIGIDA com overflow hidden
+                        pra foto NUNCA estourar. Mobile 100x100, desktop/PDF 220x180.
+                        objectFit:contain mantem proporcao DENTRO da caixa. */}
                     {it.foto_url && (
-                      <div className="flex-shrink-0 flex items-center justify-center w-[100px] sm:w-[220px] max-h-[100px] sm:max-h-[180px]">
+                      <div
+                        className="flex-shrink-0 w-[100px] h-[100px] sm:w-[220px] sm:h-[180px] bg-white border border-gray-200 rounded"
+                        style={{ overflow: 'hidden' }}
+                      >
                         <img
                           src={it.foto_url}
                           alt={it.nome}
                           style={{
-                            maxWidth: '100%',
-                            maxHeight: '100%',
-                            width: 'auto',
-                            height: 'auto',
+                            width: '100%',
+                            height: '100%',
                             objectFit: 'contain',
                             display: 'block',
                           }}
