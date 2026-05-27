@@ -15,6 +15,7 @@ import {
 } from '@/hooks/useCatalogo'
 import { FinalizarMontarModal, type CarrinhoSnapshot } from '@/components/FinalizarMontarModal'
 import { OrcamentoPreview, type ParcelaPagamento, type PreviewClienteDados } from '@/components/OrcamentoPreview'
+import { ResponsiveScaler } from '@/components/ResponsiveScaler'
 import { ClienteEditModal } from '@/components/ClienteEditModal'
 import { useOrcamentoModelos, useOrcamentoGerado, type OrcamentoModelo } from '@/hooks/useOrcamentoBuilder'
 import { OrcamentoAIChat } from '@/components/orcamento/OrcamentoAIChat'
@@ -1871,8 +1872,10 @@ export function OrcamentoMontar() {
             </div>
           </div>
 
-          {/* Conteúdo do preview / edição */}
-          <div className="flex-1 overflow-y-auto bg-white">
+          {/* Conteúdo do preview / edição.
+              overflow-x: hidden no mobile pra ResponsiveScaler funcionar sem
+              gerar scroll horizontal residual. */}
+          <div className="flex-1 overflow-y-auto overflow-x-hidden bg-white">
             {carrinho.length === 0 ? (
               <div className="px-3 py-6 sm:px-6 sm:py-12 text-center max-w-md mx-auto">
                 <div className="h-16 w-16 mx-auto mb-4 rounded-2xl bg-accent/10 flex items-center justify-center">
@@ -1921,6 +1924,7 @@ export function OrcamentoMontar() {
                 </p>
               </div>
             ) : modoVisao === 'preview' ? (
+              <ResponsiveScaler documentWidth={1024}>
               <OrcamentoPreview
                 carrinho={carrinho}
                 motoresAgrupados={motoresAgrupados}
@@ -1978,6 +1982,7 @@ export function OrcamentoMontar() {
                 cliente={clienteDados}
                 onEditCliente={() => setClienteModalOpen(true)}
               />
+              </ResponsiveScaler>
             ) : (
               <div className="divide-y divide-border">
                 {carrinho.map(it => (

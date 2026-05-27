@@ -518,31 +518,14 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   return (
     <div
       ref={containerRef}
-      className={`text-gray-900 leading-relaxed font-sans bg-white ${renderMode ? 'text-[13px]' : 'text-[15px] mx-auto preview-zoom-mobile'}`}
-      // No NÃO-renderMode (UI), o preview tem largura fixa do PDF (1024px) e
-      // em mobile aplica zoom CSS pra mostrar exatamente como o desktop, só
-      // reduzido. Layout (3 cols, fotos ao lado, etc) fica idêntico ao PDF.
-      style={!renderMode ? { width: 1024, maxWidth: 1024 } : undefined}
+      className={`text-gray-900 leading-relaxed font-sans bg-white ${renderMode ? 'text-[13px]' : 'text-[15px]'}`}
+      // Largura é controlada externamente:
+      // - renderMode (PDF Puppeteer): viewport 1024px do Chrome, sem wrapper
+      // - UI normal: ResponsiveScaler (componente externo) escala pra caber
+      //   no container, mantendo layout desktop. Aqui só seta width fixa de
+      //   1024px pro layout interno ser sempre consistente.
+      style={!renderMode ? { width: 1024, overflow: 'hidden' } : undefined}
     >
-      <style>{`
-        /* Em mobile, mostra a preview com layout DESKTOP em zoom-out.
-           Container mantém width:1024 e a tela renderiza com escala reduzida. */
-        @media (max-width: 1023px) {
-          .preview-zoom-mobile {
-            zoom: 0.6;
-          }
-        }
-        @media (max-width: 600px) {
-          .preview-zoom-mobile {
-            zoom: 0.5;
-          }
-        }
-        @media (max-width: 400px) {
-          .preview-zoom-mobile {
-            zoom: 0.42;
-          }
-        }
-      `}</style>
       {/* Em mobile, padding menor pra ganhar espaço lateral. Tabelas internas
           (motores, parcelas, componentes) já têm overflow-x próprio quando precisam. */}
       {/* Borda UNICA envolvendo o orcamento inteiro (nao mais por folha — molduras

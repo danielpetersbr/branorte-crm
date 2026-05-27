@@ -58,6 +58,9 @@
     -moz-osx-font-smoothing: grayscale;
     font-size: 14px;
     line-height: 1.5;
+    /* Previne scroll horizontal residual em mobile.
+       ResponsiveScaler centraliza/escala o preview do orçamento. */
+    overflow-x: hidden;
   }
 
   /* Safe area insets pra PWA instalado em iOS/Android — evita conteúdo
