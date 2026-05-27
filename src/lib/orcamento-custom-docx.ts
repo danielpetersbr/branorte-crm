@@ -7,7 +7,7 @@ import {
   Document, Packer, Paragraph, TextRun, AlignmentType,
   BorderStyle, ShadingType, TabStopType, TabStopPosition,
   Table, TableRow, TableCell, WidthType, VerticalAlign,
-  ImageRun, HeightRule,
+  ImageRun, HeightRule, PageBreak,
 } from 'docx'
 
 export interface CustomDocxItem {
@@ -51,6 +51,15 @@ export interface CustomDocxAcessorios {
   valor: number
 }
 
+export interface CustomDocxParcela {
+  dataTipo: 'no_pedido' | 'na_nf' | 'apos_nf' | 'data_fixa'
+  dias?: number
+  dataFixa?: string
+  metodo: string
+  pct?: number
+  valor?: number
+}
+
 export interface GerarCustomDocxOpts {
   numero: string
   dataEmissao: string
@@ -67,6 +76,13 @@ export interface GerarCustomDocxOpts {
   prazoEntrega?: string | null
   observacoes?: string | null
   vendedorNome?: string
+  fotoPrincipal?: string | null
+  componentesExtras?: Array<{ nome: string; valor: number }>
+  desconto?: { tipo: 'pct' | 'valor'; valor: number } | null
+  parcelas?: CustomDocxParcela[]
+  vendedoresContato?: Array<{ nome: string; telefone: string }>
+  vendedorResponsavelNome?: string | null
+  tensaoMotores?: 220 | 380 | 660 | null
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────
@@ -92,6 +108,20 @@ function r(text: string, opts: { bold?: boolean; size?: number; color?: string; 
 
 function paragrafoVazio(altura = 100): Paragraph {
   return new Paragraph({ children: [new TextRun('')], spacing: { after: altura } })
+}
+
+function detectImageType(url: string, mime?: string): 'png' | 'jpg' | 'gif' | 'bmp' {
+  if (mime) {
+    if (mime.includes('jpeg') || mime.includes('jpg')) return 'jpg'
+    if (mime.includes('gif')) return 'gif'
+    if (mime.includes('bmp')) return 'bmp'
+    if (mime.includes('png')) return 'png'
+  }
+  const lower = url.toLowerCase().split('?')[0] // strip query params
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'jpg'
+  if (lower.endsWith('.gif')) return 'gif'
+  if (lower.endsWith('.bmp')) return 'bmp'
+  return 'png'
 }
 
 async function fetchImageBuffer(url: string): Promise<{ data: ArrayBuffer; type: 'png' | 'jpg' | 'gif' | 'bmp' } | null> {
@@ -181,6 +211,32 @@ async function buildLogo(): Promise<Paragraph> {
     alignment: AlignmentType.CENTER,
     spacing: { after: 240 },
   })
+}
+
+async function buildFotoPrincipal(url: string): Promise<(Paragraph | Table)[]> {
+  const img = await fetchImageBuffer(url)
+  if (!img) return []
+  return [
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 120, after: 40 },
+      children: [
+        new ImageRun({
+          type: img.type as any,
+          data: img.data,
+          transformation: { width: 500, height: 650 },
+        }),
+      ],
+    }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 80 },
+      children: [r('Imagem ilustrativa', { italics: true, size: 14, color: '9CA3AF' })],
+    }),
+    new Paragraph({
+      children: [new PageBreak()],
+    }),
+  ]
 }
 
 function buildHeaderOrcamentoData(numero: string, dataEmissao: string): Table {
@@ -516,8 +572,9 @@ function buildValorTotalEquip(total: number): Table {
   })
 }
 
-function buildMotores(motores: CustomDocxMotor[], voltagem: 'monofasico' | 'trifasico', total: number): Table {
-  const titulo = `MOTORES ${voltagem === 'monofasico' ? 'MONOFÁSICOS' : 'TRIFÁSICOS'}`
+function buildMotores(motores: CustomDocxMotor[], voltagem: 'monofasico' | 'trifasico', total: number, tensaoMotores?: 220 | 380 | 660 | null): Table {
+  const tensaoLabel = tensaoMotores ? `${tensaoMotores}V` : '(tensão a confirmar)'
+  const titulo = `MOTORES ${voltagem === 'monofasico' ? 'MONOFÁSICOS' : 'TRIFÁSICOS'} ${tensaoLabel}`
   const headerRow = new TableRow({
     children: [
       new TableCell({
@@ -611,50 +668,147 @@ function buildMotores(motores: CustomDocxMotor[], voltagem: 'monofasico' | 'trif
   })
 }
 
-// Preview: caixa com border-2 border-gray-900, rounded-lg, px-6 py-5, font-black, text-[19px]
-// O destaque na prévia é PRETO grosso (não verde). Usamos Tabela 1×1.
-function buildValorTotalProposta(total: number, comMotor: boolean): Table {
+function buildValorTotalProposta(total: number, comMotor: boolean, desconto?: { tipo: 'pct' | 'valor'; valor: number } | null): Paragraph[] {
+  const label = comMotor ? 'VALOR TOTAL DA PROPOSTA COM MOTOR NOVO' : 'VALOR TOTAL DA PROPOSTA'
+
+  if (!desconto || desconto.valor <= 0) {
+    return [new Paragraph({
+      tabStops: [{ type: TabStopType.RIGHT, position: 9000 }],
+      spacing: { before: 240, after: 240 },
+      shading: { type: ShadingType.SOLID, color: 'ECFDF5', fill: 'ECFDF5' },
+      border: { left: { style: BorderStyle.SINGLE, size: 24, color: '059669' } },
+      indent: { left: 200 },
+      children: [
+        r(label, { bold: true, size: 22, color: '111827' }),
+        new TextRun({ text: '\t', size: 22 }),
+        r(`R$ ${formatBRL(total)}`, { bold: true, size: 24, color: '065F46' }),
+      ],
+    })]
+  }
+
+  // With desconto: muted "sem desconto" box + green "com desconto" box
+  const descontoValor = desconto.tipo === 'pct'
+    ? total * (desconto.valor / 100)
+    : desconto.valor
+  const totalComDesconto = total - descontoValor
+  const descontoLabel = desconto.tipo === 'pct'
+    ? `Desconto de ${desconto.valor}%`
+    : `Desconto de R$ ${formatBRL(desconto.valor)}`
+
+  return [
+    // Muted box: sem desconto
+    new Paragraph({
+      tabStops: [{ type: TabStopType.RIGHT, position: 9000 }],
+      spacing: { before: 240, after: 80 },
+      shading: { type: ShadingType.SOLID, color: 'F3F4F6', fill: 'F3F4F6' },
+      border: { left: { style: BorderStyle.SINGLE, size: 16, color: 'D1D5DB' } },
+      indent: { left: 200 },
+      children: [
+        r(`${label} (sem desconto)`, { bold: true, size: 18, color: '6B7280' }),
+        new TextRun({ text: '\t', size: 18 }),
+        r(`R$ ${formatBRL(total)}`, { bold: true, size: 18, color: '6B7280' }),
+      ],
+    }),
+    // Desconto info
+    new Paragraph({
+      alignment: AlignmentType.RIGHT,
+      spacing: { after: 80 },
+      indent: { left: 200 },
+      children: [r(descontoLabel, { italics: true, size: 16, color: '059669' })],
+    }),
+    // Green box: com desconto
+    new Paragraph({
+      tabStops: [{ type: TabStopType.RIGHT, position: 9000 }],
+      spacing: { before: 0, after: 240 },
+      shading: { type: ShadingType.SOLID, color: 'ECFDF5', fill: 'ECFDF5' },
+      border: { left: { style: BorderStyle.SINGLE, size: 24, color: '059669' } },
+      indent: { left: 200 },
+      children: [
+        r('VALOR TOTAL COM DESCONTO', { bold: true, size: 22, color: '064E3B' }),
+        new TextRun({ text: '\t', size: 22 }),
+        r(`R$ ${formatBRL(totalComDesconto)}`, { bold: true, size: 24, color: '065F46' }),
+      ],
+    }),
+  ]
+}
+
+function formatParcelaData(p: CustomDocxParcela): string {
+  switch (p.dataTipo) {
+    case 'no_pedido': return 'NO PEDIDO'
+    case 'na_nf': return 'NA EMISSÃO DA NOTA'
+    case 'apos_nf': return `${p.dias ?? 0} DIAS APÓS A NOTA`
+    case 'data_fixa': return p.dataFixa ?? '—'
+    default: return '—'
+  }
+}
+
+function buildParcelasTable(parcelas: CustomDocxParcela[], totalProposta: number): Table {
+  const headerRow = new TableRow({
+    children: ['DATA', 'MÉTODO', 'VALOR (R$)'].map((label, i) => new TableCell({
+      borders: { ...NO_BORDERS, bottom: { style: BorderStyle.SINGLE, size: 6, color: '111827' } },
+      width: { size: i === 0 ? 45 : i === 1 ? 25 : 30, type: WidthType.PERCENTAGE },
+      shading: { type: ShadingType.SOLID, color: 'F3F4F6', fill: 'F3F4F6' },
+      children: [new Paragraph({
+        alignment: i === 2 ? AlignmentType.RIGHT : AlignmentType.LEFT,
+        children: [r(label, { bold: true, size: 16, color: '374151' })],
+      })],
+    })),
+  })
+
+  const dataRows = parcelas.map(p => {
+    const valor = p.valor != null ? p.valor : (p.pct != null ? totalProposta * (p.pct / 100) : 0)
+    return new TableRow({
+      children: [
+        new TableCell({
+          borders: { ...NO_BORDERS, top: { style: BorderStyle.SINGLE, size: 2, color: 'E5E7EB' } },
+          children: [new Paragraph({ children: [r(formatParcelaData(p), { size: 17 })] })],
+        }),
+        new TableCell({
+          borders: { ...NO_BORDERS, top: { style: BorderStyle.SINGLE, size: 2, color: 'E5E7EB' } },
+          children: [new Paragraph({ children: [r(p.metodo.toUpperCase(), { size: 17 })] })],
+        }),
+        new TableCell({
+          borders: { ...NO_BORDERS, top: { style: BorderStyle.SINGLE, size: 2, color: 'E5E7EB' } },
+          children: [new Paragraph({
+            alignment: AlignmentType.RIGHT,
+            children: [r(`R$ ${formatBRL(valor)}`, { size: 17, bold: true })],
+          })],
+        }),
+      ],
+    })
+  })
+
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: {
-      top: { style: BorderStyle.SINGLE, size: 16, color: '111827' },
-      bottom: { style: BorderStyle.SINGLE, size: 16, color: '111827' },
-      left: { style: BorderStyle.SINGLE, size: 16, color: '111827' },
-      right: { style: BorderStyle.SINGLE, size: 16, color: '111827' },
+      top: { style: BorderStyle.SINGLE, size: 4, color: 'E5E7EB' },
+      bottom: { style: BorderStyle.SINGLE, size: 4, color: 'E5E7EB' },
+      left: { style: BorderStyle.SINGLE, size: 4, color: 'E5E7EB' },
+      right: { style: BorderStyle.SINGLE, size: 4, color: 'E5E7EB' },
       insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
       insideVertical: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
     },
-    rows: [
-      new TableRow({
-        cantSplit: true,  // VALOR TOTAL DA PROPOSTA não quebra
-        children: [new TableCell({
-          // Sem borders — herda da Table outer (caixa preta 16-thick)
-          margins: { top: 320, bottom: 320, left: 320, right: 320 },
-          children: [new Paragraph({
-            tabStops: [{ type: TabStopType.RIGHT, position: 9200 }],
-            children: [
-              r(comMotor ? 'VALOR TOTAL DA PROPOSTA COM MOTOR NOVO' : 'VALOR TOTAL DA PROPOSTA', {
-                bold: true, size: 26, color: '111827',
-              }),
-              new TextRun({ text: '\t', size: 26 }),
-              r(`R$ ${formatBRL(total)}`, { bold: true, size: 28, color: '111827' }),
-            ],
-          })],
-        })],
-      }),
-    ],
+    rows: [headerRow, ...dataRows],
   })
 }
 
-function buildTermosComerciais(formaPagamento: string | null | undefined, dataVenda: string | null | undefined, prazoEntrega: string | null | undefined): Paragraph[] {
+function buildTermosComerciais(
+  formaPagamento: string | null | undefined,
+  dataVenda: string | null | undefined,
+  prazoEntrega: string | null | undefined,
+  parcelas?: CustomDocxParcela[],
+  totalProposta?: number,
+): (Paragraph | Table)[] {
   const termos: Array<[string, string]> = [
     ['Data da venda', dataVenda || 'a combinar'],
     ['Prazo de entrega', prazoEntrega || '90 dias (úteis)'],
-    ['Forma de pagamento', formaPagamento || 'a combinar'],
+    ...(!parcelas || parcelas.length === 0
+      ? [['Forma de pagamento', formaPagamento || 'a combinar'] as [string, string]]
+      : []),
     ['Frete', 'por conta do cliente'],
     ['Validade da proposta', '10 dias após o envio'],
   ]
-  return [
+  const result: (Paragraph | Table)[] = [
     new Paragraph({
       spacing: { before: 200, after: 200 },
       shading: { type: ShadingType.SOLID, color: 'F9FAFB', fill: 'F9FAFB' },
@@ -675,6 +829,17 @@ function buildTermosComerciais(formaPagamento: string | null | undefined, dataVe
       ],
     })),
   ]
+
+  // If structured parcelas exist, add the table after the bullet list
+  if (parcelas && parcelas.length > 0 && totalProposta != null) {
+    result.push(new Paragraph({
+      spacing: { before: 120, after: 60 },
+      children: [r('Forma de pagamento:', { bold: true, size: 17, color: '374151' })],
+    }))
+    result.push(buildParcelasTable(parcelas, totalProposta))
+  }
+
+  return result
 }
 
 function buildRedesSociais(): Paragraph[] {
@@ -727,13 +892,20 @@ function buildDadosFabricante(): Paragraph[] {
   ]
 }
 
-function buildVendedores(): Table {
-  const vendedores: Array<[string, string]> = [
-    ['Patrick Alves', '(48) 9 9698-4660'],
-    ['Edilson', '(48) 9 9991-2329'],
-    ['Daniel', '(48) 9 8469-2860'],
-    ['Branorte', '(48) 3658-4502'],
+function buildVendedores(
+  vendedoresContato?: Array<{ nome: string; telefone: string }>,
+  vendedorResponsavelNome?: string | null,
+): Table {
+  const defaultVendedores: Array<{ nome: string; telefone: string }> = [
+    { nome: 'Patrick Alves', telefone: '(48) 9 9698-4660' },
+    { nome: 'Edilson', telefone: '(48) 9 9991-2329' },
+    { nome: 'Daniel', telefone: '(48) 9 8469-2860' },
+    { nome: 'Branorte', telefone: '(48) 3658-4502' },
   ]
+  const list = vendedoresContato && vendedoresContato.length > 0 ? vendedoresContato : defaultVendedores
+  const colWidth = Math.floor(100 / list.length)
+  const responsavelLower = (vendedorResponsavelNome || '').toLowerCase().trim()
+
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: {
@@ -746,28 +918,31 @@ function buildVendedores(): Table {
     },
     rows: [
       new TableRow({
-        children: vendedores.map(([nome, fone]) => new TableCell({
-          borders: {
-            top: { style: BorderStyle.SINGLE, size: 4, color: 'E5E7EB' },
-            bottom: { style: BorderStyle.SINGLE, size: 4, color: 'E5E7EB' },
-            left: { style: BorderStyle.SINGLE, size: 4, color: 'E5E7EB' },
-            right: { style: BorderStyle.SINGLE, size: 4, color: 'E5E7EB' },
-          },
-          width: { size: 25, type: WidthType.PERCENTAGE },
-          shading: { type: ShadingType.SOLID, color: 'F9FAFB', fill: 'F9FAFB' },
-          children: [
-            new Paragraph({
-              alignment: AlignmentType.CENTER,
-              spacing: { before: 60, after: 30 },
-              children: [r(nome, { bold: true, size: 17 })],
-            }),
-            new Paragraph({
-              alignment: AlignmentType.CENTER,
-              spacing: { after: 60 },
-              children: [r(fone, { size: 16, color: '4B5563' })],
-            }),
-          ],
-        })),
+        children: list.map(v => {
+          const isResponsavel = responsavelLower && v.nome.toLowerCase().trim() === responsavelLower
+          return new TableCell({
+            borders: {
+              top: { style: BorderStyle.SINGLE, size: 4, color: 'E5E7EB' },
+              bottom: { style: BorderStyle.SINGLE, size: 4, color: 'E5E7EB' },
+              left: { style: BorderStyle.SINGLE, size: 4, color: 'E5E7EB' },
+              right: { style: BorderStyle.SINGLE, size: 4, color: 'E5E7EB' },
+            },
+            width: { size: colWidth, type: WidthType.PERCENTAGE },
+            shading: { type: ShadingType.SOLID, color: isResponsavel ? 'EFF6FF' : 'F9FAFB', fill: isResponsavel ? 'EFF6FF' : 'F9FAFB' },
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                spacing: { before: 60, after: 30 },
+                children: [r(v.nome, { bold: true, size: 17, color: isResponsavel ? '1E40AF' : '000000' })],
+              }),
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                spacing: { after: 60 },
+                children: [r(v.telefone, { size: 16, color: '4B5563' })],
+              }),
+            ],
+          })
+        }),
       }),
     ],
   })
@@ -955,6 +1130,13 @@ export async function gerarOrcamentoCustomDocx(opts: GerarCustomDocxOpts): Promi
 
   // Items
   blocos.push(sectionHeader('Itens orçados abaixo'))
+
+  // Foto principal (hero shot) - before items loop
+  if (opts.fotoPrincipal) {
+    const fotoParts = await buildFotoPrincipal(opts.fotoPrincipal)
+    blocos.push(...fotoParts)
+  }
+
   for (const item of opts.itens) {
     blocos.push(await buildItemTable(item, opts.voltagem === 'monofasico' ? 'monofásico' : 'trifásico'))
     blocos.push(paragrafoVazio(80))
@@ -974,15 +1156,27 @@ export async function gerarOrcamentoCustomDocx(opts: GerarCustomDocxOpts): Promi
 
   // Motores
   if (opts.motores.length > 0) {
-    blocos.push(buildMotores(opts.motores, opts.voltagem, opts.totalMotores))
+    blocos.push(buildMotores(opts.motores, opts.voltagem, opts.totalMotores, opts.tensaoMotores))
     blocos.push(paragrafoVazio(80))
   }
 
-  // Valor total proposta (destaque verde)
-  blocos.push(buildValorTotalProposta(opts.totalProposta, opts.totalMotores > 0))
+  // Componentes extras
+  if (opts.componentesExtras && opts.componentesExtras.length > 0) {
+    blocos.push(buildComponentesExtras(opts.componentesExtras))
+    blocos.push(paragrafoVazio(80))
+  }
 
-  // Termos comerciais
-  blocos.push(...buildTermosComerciais(opts.formaPagamento, opts.dataVenda, opts.prazoEntrega))
+  // Valor total proposta (destaque verde, with desconto support)
+  // Calculate effective total for parcelas (accounts for desconto)
+  const descontoValorCalc = opts.desconto && opts.desconto.valor > 0
+    ? (opts.desconto.tipo === 'pct' ? opts.totalProposta * (opts.desconto.valor / 100) : opts.desconto.valor)
+    : 0
+  const totalEfetivo = opts.totalProposta - descontoValorCalc
+
+  blocos.push(...buildValorTotalProposta(opts.totalProposta, opts.totalMotores > 0, opts.desconto))
+
+  // Termos comerciais (with parcelas support)
+  blocos.push(...buildTermosComerciais(opts.formaPagamento, opts.dataVenda, opts.prazoEntrega, opts.parcelas, totalEfetivo))
 
   // Redes sociais
   blocos.push(sectionHeader('Nossas redes sociais'))
@@ -992,9 +1186,7 @@ export async function gerarOrcamentoCustomDocx(opts: GerarCustomDocxOpts): Promi
   blocos.push(sectionHeader('Dados do fabricante'))
   blocos.push(...buildDadosFabricante())
 
-  // Vendedores
-  blocos.push(paragrafoVazio(80))
-  blocos.push(buildVendedores())
+  // Vendedores grid removido (user pediu — poluia o rodape, igual ao preview)
 
   // Contas
   blocos.push(sectionHeader('Conta para depósito'))

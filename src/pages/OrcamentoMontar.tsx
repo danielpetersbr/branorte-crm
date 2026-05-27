@@ -65,6 +65,8 @@ interface CarrinhoItem {
   /** Quando true, motor NÃO é cobrado pela Branorte — comprado pelo cliente.
    *  No preview a coluna de valor vira "por conta do cliente" (não "incluso"). */
   motor_por_conta_cliente?: boolean
+  /** ID em precos_branorte (quando item veio de lá). Usado pra recalcular valor ao trocar voltagem. */
+  preco_branorte_id?: number | null
 }
 
 type TensaoMotor = 220 | 380 | 660 | null
@@ -78,6 +80,26 @@ export interface ComponenteExtra {
 
 function formatBRL(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Math.round(v))
+}
+
+// Escolhe o valor do equipamento conforme a voltagem.
+// Quando precos_branorte tem valor_com_motor_trif/mono, esse valor JÁ INCLUI o motor —
+// então motor_valor_unit deve virar 0 pra não cobrar 2x. Se a coluna voltagem-specific
+// não existir/for zero, faz fallback pro valor_equipamento (motor cobrado à parte).
+function valorPorVoltagem(
+  p: { valor_equipamento: number | null; valor_com_motor_trif: number | null; valor_com_motor_mono: number | null },
+  voltagemEfetiva: 'monofasico' | 'trifasico',
+): { valor: number; motorIncluso: boolean } {
+  const trifV = p.valor_com_motor_trif != null ? Number(p.valor_com_motor_trif) : null
+  const monoV = p.valor_com_motor_mono != null ? Number(p.valor_com_motor_mono) : null
+  const equipV = p.valor_equipamento != null ? Number(p.valor_equipamento) : 0
+  if (voltagemEfetiva === 'trifasico' && trifV != null && trifV > 0) {
+    return { valor: trifV, motorIncluso: true }
+  }
+  if (voltagemEfetiva === 'monofasico' && monoV != null && monoV > 0) {
+    return { valor: monoV, motorIncluso: true }
+  }
+  return { valor: equipV, motorIncluso: false }
 }
 
 function formatBRLBare(v: number): string {
@@ -825,6 +847,12 @@ export function OrcamentoMontar() {
     const sufixoFuncao = chupimOpts?.funcao
       ? ` (${chupimOpts.funcao.nome_curto || chupimOpts.funcao.nome})`
       : ''
+    // Valor por voltagem: precos_branorte tem valor_com_motor_trif/mono.
+    // Item com inversor cota sempre como trif. Se houver valor com motor incluso,
+    // motor_valor_unit vira 0 pra não cobrar 2x.
+    const voltagemEfetivaPreco: Voltagem = ciLinkado?.usa_inversor ? 'trifasico' : voltagem
+    const { valor: valorPreco, motorIncluso: motorInclusoNoPreco } = valorPorVoltagem(p, voltagemEfetivaPreco)
+    const motorEfetivoVal = motorInclusoNoPreco ? 0 : (motorIncluso ? 0 : motor_valor_unit)
     setCarrinho(c => [...c, {
       uid: gerarUid(),
       catalogo_id: ciLinkado?.id ?? -1,
@@ -832,14 +860,15 @@ export function OrcamentoMontar() {
       nome: nomeBase + sufixoFuncao,
       specs: specsFinal,
       qtd: quantidade ?? 1,
-      valor: Math.round(Number(p.valor_equipamento ?? 0)),
-      valor_original: Math.round(Number(p.valor_equipamento ?? 0)),
+      valor: Math.round(valorPreco),
+      valor_original: Math.round(valorPreco),
       motor_cv: motor_cv_n ? Number(motor_cv_n) : null,
       motor_polos: motor_polos,
       motor_qtd: ciLinkado?.motor_padrao_qtd ?? 1,
-      motor_valor_unit: motorIncluso ? 0 : motor_valor_unit,
+      motor_valor_unit: motorEfetivoVal,
       foto_url: fotoFinal,
       usa_inversor: !!(ciLinkado?.usa_inversor),
+      preco_branorte_id: p.id,
     }])
     autoAdicionarBalancaSeCompacta(nomeBase, cat)
   }
@@ -888,6 +917,16 @@ export function OrcamentoMontar() {
       ? acharMotorCompativel(motores, Number(item.motor_padrao_cv), item.motor_padrao_polos, voltagemEfetiva)
       : null
 
+    // Se item está linkado a precos_branorte, usa valor_com_motor_trif/mono conforme voltagem.
+    // Senão, fallback pra item.valor do catálogo (single value).
+    const precoLinkado = item.preco_branorte_id
+      ? (precos ?? []).find(p => p.id === item.preco_branorte_id)
+      : null
+    const { valor: valorEscolhido, motorIncluso: motorInclusoPorPreco } = precoLinkado
+      ? valorPorVoltagem(precoLinkado, voltagemEfetiva)
+      : { valor: Number(item.valor), motorIncluso: false }
+    const motorVal = (motorInclusoPorPreco || motorIncluso) ? 0 : (motorMatch ? Number(motorMatch.valor) : 0)
+
     // Se a funcao deve aparecer no PDF, sufixa no nome_custom. Caso contrario,
     // preserva o nome generico (funcao fica so em funcao_selecionada, uso interno).
     const funcao = funcaoEscolhida ?? (item.funcao_opcoes?.[0] ?? null)
@@ -903,17 +942,17 @@ export function OrcamentoMontar() {
       nome_custom: nomeCustom,
       specs,
       qtd: 1,
-      valor: Math.round(Number(item.valor)),
-      valor_original: Math.round(Number(item.valor)),
+      valor: Math.round(valorEscolhido),
+      valor_original: Math.round(valorEscolhido),
       motor_cv: item.motor_padrao_cv ? Number(item.motor_padrao_cv) : null,
       motor_polos: item.motor_padrao_polos,
       motor_qtd: item.motor_padrao_qtd || 1,
-      // Se a spec já marca "(incluso)", motor não é cobrado de novo.
-      motor_valor_unit: motorIncluso ? 0 : (motorMatch ? Number(motorMatch.valor) : 0),
+      motor_valor_unit: motorVal,
       foto_url: item.foto_url || null,
       usa_inversor: !!item.usa_inversor,
       funcao_selecionada: funcao,
       ocultar_funcao_no_pdf: !!item.ocultar_funcao_no_pdf,
+      preco_branorte_id: item.preco_branorte_id ?? null,
     }])
     autoAdicionarBalancaSeCompacta(item.nome_curto, item.categoria)
   }
@@ -1156,10 +1195,26 @@ export function OrcamentoMontar() {
       // Motor incluso continua com valor 0 mesmo ao trocar voltagem.
       const incluso = motorJaInclusoNoItem(it.specs)
       const motor = acharMotorCompativel(motores, it.motor_cv, polosFinais, voltagemEfetiva)
+      // Recalcula valor do equipamento por voltagem quando linkado a precos_branorte.
+      // Pula se item tem inox/tungstenio (valor_original é base de cálculo desses fatores).
+      const precoLinkado = it.preco_branorte_id
+        ? (precos ?? []).find(p => p.id === it.preco_branorte_id)
+        : null
+      const podeRecalcularValor = precoLinkado && !it.inox && !it.tungstenio
+      const { valor: novoValor, motorIncluso: motorInclusoPorPreco } = podeRecalcularValor
+        ? valorPorVoltagem(precoLinkado, voltagemEfetiva)
+        : { valor: it.valor, motorIncluso: false }
+      const valorAtualizado = podeRecalcularValor ? Math.round(novoValor) : it.valor
+      const valorOriginalAtualizado = podeRecalcularValor ? Math.round(novoValor) : it.valor_original
+      const motorEfetivoVal = (motorInclusoPorPreco || incluso)
+        ? 0
+        : (motor ? Number(motor.valor) : it.motor_valor_unit)
       return {
         ...it,
         motor_polos: polosFinais,
-        motor_valor_unit: incluso ? 0 : (motor ? Number(motor.valor) : it.motor_valor_unit),
+        motor_valor_unit: motorEfetivoVal,
+        valor: valorAtualizado,
+        valor_original: valorOriginalAtualizado,
         specs: polosMudou ? atualizarSpecsComMotor(it.specs, it.motor_cv, polosFinais) : it.specs,
       }
     }))
