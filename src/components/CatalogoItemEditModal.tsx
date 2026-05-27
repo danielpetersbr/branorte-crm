@@ -606,29 +606,59 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
                 </p>
               </div>
 
-              {/* Preview idêntico ao PDF do orçamento */}
+              {/* Preview EM TAMANHO REAL — igual ao card de item no PDF do orcamento */}
               {nomeCurto.trim() && (
                 <div className="mt-3 rounded-lg overflow-hidden border border-border/60">
-                  <div className="bg-white/[0.03] px-3 py-1.5 border-b border-border/40">
-                    <span className="text-[9px] text-ink-faint uppercase tracking-widest font-semibold">Preview no orçamento (PDF)</span>
+                  <div className="bg-white/[0.03] px-3 py-1.5 border-b border-border/40 flex items-center gap-2">
+                    <span className="text-[9px] text-ink-faint uppercase tracking-widest font-semibold">
+                      Preview no orçamento (PDF)
+                    </span>
+                    <span className="text-[10px] text-accent">— é exatamente assim que o cliente vai ver</span>
                   </div>
-                  <div className="px-4 py-3 bg-[#f8f9fa] rounded-b-lg">
-                    <p className="font-bold text-[#1a1a2e] text-[13px] leading-tight mb-1.5">
-                      B - 01 – {nomeCurto.trim().toUpperCase()}
-                    </p>
-                    {specs.length > 0 && (
-                      <div className="flex flex-col gap-0.5">
-                        {specs.map((s, i) => (
-                          <p key={i} className="text-[11px] text-[#333] flex items-start gap-1.5">
-                            <span className="text-[#999] mt-[2px]">·</span>
-                            <span>{s}</span>
-                          </p>
-                        ))}
+                  {/* Card estilo OrcamentoPreview: foto direita, bullets esquerda, valor rodape */}
+                  <div className="bg-white p-4">
+                    <div className="border-2 border-gray-300 rounded-md p-3 text-gray-900">
+                      <h3 className="text-[15.5px] font-bold text-gray-900 mb-2 leading-tight uppercase">
+                        A - 01 — {nomeCurto.trim().toUpperCase()}
+                      </h3>
+                      <div className="flex flex-row gap-4 items-start mb-2">
+                        <div className="flex-1 pl-3 text-[13.5px] text-gray-700 leading-normal space-y-0.5 min-w-0">
+                          {specs.length > 0 ? (
+                            specs.map((s, i) => (
+                              <div key={i} className="flex gap-1.5">
+                                <span className="text-gray-400 shrink-0">•</span>
+                                <span className="break-words">{s}</span>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-[12px] text-amber-600 italic">⚠ Sem descrição — adicione bullets acima</div>
+                          )}
+                        </div>
+                        <div className="shrink-0 w-[180px] h-[140px] rounded-md overflow-hidden bg-gray-50 border border-gray-200 flex items-center justify-center">
+                          {fotoAtual ? (
+                            <img src={fotoAtual} alt={nomeCurto} className="w-full h-full object-contain" />
+                          ) : (
+                            <div className="flex flex-col items-center text-gray-400">
+                              <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                              <span className="text-[10px]">sem foto</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    )}
-                    {specs.length === 0 && (
-                      <p className="text-[11px] text-[#999] italic">Sem specs — adicione abaixo</p>
-                    )}
+                      <div className="flex items-center justify-between border-t border-gray-200 pt-2 mt-2">
+                        <div className="flex items-center gap-3">
+                          <span className="text-[13px] font-bold text-gray-700 tracking-wider uppercase">Valor</span>
+                          {motorCv && motorPolos && (
+                            <span className="text-[11px] text-gray-500">
+                              · {motorCv} CV {motorPolos}p{Number(motorQtd || '1') > 1 && ` ×${motorQtd}`}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[16px] font-bold text-accent">
+                          {valor && Number(valor) > 0 ? formatBRL(Number(valor)) : <span className="text-amber-600 italic text-[13px]">⚠ sem preço</span>}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
