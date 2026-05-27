@@ -2268,8 +2268,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             </div>
           </div>
 
-          {/* Assinaturas */}
-          <div data-no-break className="mt-10 grid grid-cols-2 gap-8 px-2">
+          {/* Assinaturas — pt-12 + mt-20 deixa espaco generoso pro pessoal
+              assinar com caneta de verdade entre o texto anterior e a linha. */}
+          <div data-no-break className="mt-20 grid grid-cols-2 gap-8 px-2 pt-12">
             <div className="text-center">
               <div className="border-t border-gray-700 pt-1.5 text-[14.5px] font-bold text-gray-800">
                 Metalúrgica BBA LTDA
