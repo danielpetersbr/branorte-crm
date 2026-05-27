@@ -112,6 +112,11 @@ export function atributoParaSpec(def: AtributoDef, valor: string): string {
 }
 
 // Parseia specs existentes e retorna mapa de atributos preenchidos pra essa categoria
+// Remove acentos pra match tolerante (ex: "Diametro" deve casar com def "Diâmetro").
+function semAcentos(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '')
+}
+
 export function parseSpecsParaAtributos(specs: string[], categoria: string): {
   atributos: Record<string, string>
   specsLivres: string[]
@@ -122,12 +127,24 @@ export function parseSpecsParaAtributos(specs: string[], categoria: string): {
 
   for (const spec of specs) {
     let matched = false
+    const specNorm = semAcentos(spec)
     for (const def of defs) {
-      // Match "Label: valor [unidade?]"
-      const re = new RegExp(`^\\s*${escapeRegex(def.label)}\\s*:\\s*(.+?)\\s*${def.unidade ? escapeRegex(def.unidade) : ''}\\s*$`, 'i')
-      const m = spec.match(re)
+      // Match "Label[:|=]? valor [unidade?]"
+      // - `:` ou `=` opcionais (suporta "Altura 4,86 m" e "Altura: 4,86 m")
+      // - unidade opcional ou tolerante (ex: "13,13 m3" casa com unidade "m")
+      // - acentos normalizados em ambos lados
+      const labelNorm = semAcentos(def.label)
+      const re = new RegExp(
+        `^\\s*${escapeRegex(labelNorm)}\\s*[:=]?\\s*([\\d.,\\-]+(?:\\s*[a-zA-Z²³°/]+)?(?:[^\\(\\n]*)?)\\s*(?:\\(.*)?$`,
+        'i',
+      )
+      const m = specNorm.match(re)
       if (m) {
-        atributos[def.key] = m[1].trim()
+        // Extrai apenas o primeiro número (com possível decimal) + ignora parenteses
+        let raw = m[1].trim()
+        // Pega o primeiro grupo numerico (suporta vírgula decimal pt-BR)
+        const numMatch = raw.match(/^([\d]+(?:[,.]\d+)?)/)
+        atributos[def.key] = numMatch ? numMatch[1].replace(',', '.') : raw
         matched = true
         break
       }
