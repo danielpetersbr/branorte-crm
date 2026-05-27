@@ -623,16 +623,22 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
                       </h3>
                       <div className="flex flex-row gap-4 items-start mb-2">
                         <div className="flex-1 pl-3 text-[13.5px] text-gray-700 leading-normal space-y-0.5 min-w-0">
-                          {specs.length > 0 ? (
-                            specs.map((s, i) => (
+                          {(() => {
+                            // Preview = atributos estruturados (Atributos do Silo, etc) + specs livres,
+                            // exatamente igual ao que vai ser salvo via atributosParaSpecs ao clicar Salvar.
+                            // Sem isso o vendedor nao via Altura/Diametro/Capacidade que estao no painel
+                            // de atributos separado mas APARECEM no PDF final do orcamento.
+                            const specsFinais = atributosParaSpecs(atributos, specs.filter(s => s.trim().length > 0), categoria)
+                            if (specsFinais.length === 0) {
+                              return <div className="text-[12px] text-amber-600 italic">⚠ Sem descrição — adicione bullets ou preencha os atributos abaixo</div>
+                            }
+                            return specsFinais.map((s, i) => (
                               <div key={i} className="flex gap-1.5">
                                 <span className="text-gray-400 shrink-0">•</span>
                                 <span className="break-words">{s}</span>
                               </div>
                             ))
-                          ) : (
-                            <div className="text-[12px] text-amber-600 italic">⚠ Sem descrição — adicione bullets acima</div>
-                          )}
+                          })()}
                         </div>
                         <div className="shrink-0 w-[180px] h-[140px] rounded-md overflow-hidden bg-gray-50 border border-gray-200 flex items-center justify-center">
                           {fotoAtual ? (
