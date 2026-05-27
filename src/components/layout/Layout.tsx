@@ -60,7 +60,7 @@ const SECONDARY: NavItem[] = [
       { to: '/orcamentos/motores', label: 'Motores (Preços)', icon: Zap },
       { to: '/orcamentos/precos', label: 'Tabela de Preços', icon: BookOpen },
       { to: '/orcamentos/conversao', label: 'Conversão (KPIs)', icon: TrendingUp },
-      { to: '/admin/transportador-funcoes', label: 'Funções do Transportador', icon: GitBranch },
+      { to: '/admin/transportador-funcoes', label: 'Funções Chupim', icon: GitBranch },
       { to: '/orcamentos', label: 'Painel', icon: BarChart2 },
       { to: '/orcamentos/lista', label: 'Lista', icon: List },
     ],
@@ -181,7 +181,7 @@ export function Layout() {
       {({ isActive }: { isActive: boolean }) => (
         <>
           <c.icon className={cn('h-[13px] w-[13px] shrink-0', isActive ? 'text-accent' : 'text-ink-faint group-hover:text-ink-muted')} />
-          {!collapsed && <span className="flex-1">{c.label}</span>}
+          {!collapsed && <span className="flex-1 truncate">{c.label}</span>}
         </>
       )}
     </NavLink>
