@@ -641,12 +641,12 @@ function CatalogoLinhaItem({ item, onClick, onToggleOficial, togglePending }: Ca
       onClick={onClick}
       className={`group flex items-center gap-2 px-2 py-1.5 cursor-pointer transition hover:bg-surface-2 ${item.ativo ? '' : 'opacity-60'}`}
     >
-      {/* Foto miniatura 32x32 */}
-      <div className="shrink-0 w-8 h-8 rounded overflow-hidden bg-surface-2 border border-border flex items-center justify-center">
+      {/* Foto miniatura 56x56 (era 32 — pequeno demais pra reconhecer item) */}
+      <div className="shrink-0 w-14 h-14 rounded overflow-hidden bg-surface-2 border border-border flex items-center justify-center">
         {item.foto_url ? (
-          <img src={item.foto_url} alt={item.nome_curto} className="w-full h-full object-cover" />
+          <img src={item.foto_url} alt={item.nome_curto} className="w-full h-full object-contain" />
         ) : (
-          <ImageOff className="w-3 h-3 text-ink-faint" />
+          <ImageOff className="w-5 h-5 text-ink-faint" />
         )}
       </div>
       {/* Categoria + subcategoria (badges compactas) */}
