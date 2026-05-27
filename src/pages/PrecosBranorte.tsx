@@ -67,7 +67,7 @@ const SUBCATEGORIA_LABEL: Record<string, string> = {
 const SUBCAT_ORDER: Record<string, string[]> = {
   COMPACTA: ['01', '01 MASTER', '02', '02 MASTER', '03', '03 MASTER'],
   MISTURADOR: ['VERTICAL', 'HORIZONTAL_SPULMAO', 'HORIZONTAL_CPULMAO'],
-  TRANSPORTADOR: ['CHUPIM', 'HELICOIDAL'],
+  TRANSPORTADOR: ['CHUPIM', 'TH'],
   SILO: ['RACAO', 'MILHO'],
   CAIXA: ['RECEPCAO', 'PICADOS'],
   ELEVADOR: ['COMPLETO', 'COMPONENTE'],
@@ -608,7 +608,7 @@ export function PrecosBranorte() {
               {[...subs.entries()].map(([sub, items]) => {
                 const mostrarMotor = items.some(it => it.valor_com_motor_trif != null || it.valor_com_motor_mono != null)
                 // Transportadores: sub-agrupar por diâmetro (160, 210, 150, 200, 250, 300)
-                if (cat === 'TRANSPORTADOR' && (sub === 'CHUPIM' || sub === 'HELICOIDAL')) {
+                if (cat === 'TRANSPORTADOR' && (sub === 'CHUPIM' || sub === 'TH')) {
                   const porDiam = new Map<string, PrecoBranorte[]>()
                   for (const it of items) {
                     const m = it.descricao.match(/(\d{3})\s*[xX]/)

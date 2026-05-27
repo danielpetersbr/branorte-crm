@@ -83,7 +83,7 @@ function diametrosDoItems(
   mostrarInativos: boolean,
 ): Array<{ diametro: string; qtd: number }> {
   if (!categoria || categoria !== 'TRANSPORTADOR') return []
-  if (!subcategoria || !['CHUPIM', 'HELICOIDAL'].includes(subcategoria)) return []
+  if (!subcategoria || !['CHUPIM', 'TH'].includes(subcategoria)) return []
   const m = new Map<string, number>()
   for (const it of items) {
     if (it.categoria !== categoria) continue

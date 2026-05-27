@@ -120,13 +120,13 @@ function formatBRLBare(v: number): string {
 // Estratégia: ao montar a tela, extrai (diametro, sub) do nome de cada catalogo_item
 // que TEM foto e cria um mapa "DIAM:SUB -> primeira_foto". Quando o vendedor olha
 // um chupim sem linkagem específica, pega a foto da família.
-type TransportadorSub = 'CHUPIM' | 'HELICOIDAL'
+type TransportadorSub = 'CHUPIM' | 'TH'
 function detectarTransportador(nome: string): { diametro: string | null; sub: TransportadorSub | null } {
   const m = nome.match(/(\d{2,3})\s*[xX]/)
   const diametro = m ? m[1] : null
   // CALHA TH: nome contém "CALHA" ou "TH" antes do diâmetro
   const isCalha = /\bCALHA\b|\bTH\s+\d/i.test(nome)
-  const sub: TransportadorSub | null = diametro ? (isCalha ? 'HELICOIDAL' : 'CHUPIM') : null
+  const sub: TransportadorSub | null = diametro ? (isCalha ? 'TH' : 'CHUPIM') : null
   return { diametro, sub }
 }
 function montarMapaFotosTransportador(catalogoItems: CatalogoItem[]): Map<string, string> {
@@ -696,7 +696,7 @@ export function OrcamentoMontar() {
       if (m) return `TRANSPORTADOR HELICOIDAL ${m[1]} X ${m[2]} M`
     }
     // Transportador Calha (TH): "TH 250 X 5,0 m" → "TRANSPORTADOR HELICOIDAL CALHA TH 250 X 5,0 M"
-    if (cat === 'TRANSPORTADOR' && sub === 'HELICOIDAL') {
+    if (cat === 'TRANSPORTADOR' && sub === 'TH') {
       const m = p.descricao.match(/TH\s+(\d+)\s*[xX]\s*([\d,.]+)\s*m/i)
       if (m) return `TRANSPORTADOR HELICOIDAL CALHA TH ${m[1]} X ${m[2]} M`
     }
@@ -841,7 +841,7 @@ export function OrcamentoMontar() {
     // arredondando pro próximo motor maior. Substitui o motor padrão da planilha.
     // Usa override do modal se vendedor confirmou material/inclinação POR ITEM,
     // senão usa defaults da sessão. Mesma física pros dois tipos de helicoidal.
-    if (cat === 'TRANSPORTADOR' && (p.subcategoria === 'CHUPIM' || p.subcategoria === 'HELICOIDAL')) {
+    if (cat === 'TRANSPORTADOR' && (p.subcategoria === 'CHUPIM' || p.subcategoria === 'TH')) {
       const mat = chupimOpts?.material ?? chupimMaterial
       const inc = chupimOpts?.inclinacao ?? chupimInclinacao
       const rec = recomendarMotorChupim(p.descricao, p.capacidade, mat, inc)
@@ -930,7 +930,7 @@ export function OrcamentoMontar() {
             const itemComp = item.nome_curto?.match(/(\d+[.,]?\d*)\s*[mM]/)?.[1]
             return itemDiam === tDiam && itemComp === tComp
           })
-      if (precoMatch && (precoMatch.subcategoria === 'CHUPIM' || precoMatch.subcategoria === 'HELICOIDAL')) {
+      if (precoMatch && (precoMatch.subcategoria === 'CHUPIM' || precoMatch.subcategoria === 'TH')) {
         setConfirmarChupim(precoMatch)
         return
       }
@@ -1351,10 +1351,10 @@ export function OrcamentoMontar() {
     }
 
     // Detecta subcategoria pra TRANSPORTADOR a partir do nome
-    function detectarSubTransportador(nome: string): 'CHUPIM' | 'HELICOIDAL' | null {
+    function detectarSubTransportador(nome: string): 'CHUPIM' | 'TH' | null {
       const n = normalizar(nome)
       if (!n.includes('TRANSPORTADOR') && !n.includes('CHUPIM') && !n.includes('CALHA')) return null
-      return /CALHA|\bTH\b/.test(n) ? 'HELICOIDAL' : 'CHUPIM'
+      return /CALHA|\bTH\b/.test(n) ? 'TH' : 'CHUPIM'
     }
 
     // -----------------------------------------------------------------------
@@ -2283,10 +2283,10 @@ export function OrcamentoMontar() {
         onInclinacao={setChupimInclinacao}
         onClose={() => setTransportadorPickerOpen(false)}
         onPick={p => {
-          // Chupim + Calha TH (HELICOIDAL): mesma fórmula de motor, ambos abrem o modal
+          // Chupim + Calha TH: mesma fórmula de motor, ambos abrem o modal
           // pra vendedor confirmar material/inclinação/função POR ITEM. Quem não é
           // helicoidal cai aqui? Não chega — picker só lista TRANSPORTADOR.
-          if (p.subcategoria === 'CHUPIM' || p.subcategoria === 'HELICOIDAL') {
+          if (p.subcategoria === 'CHUPIM' || p.subcategoria === 'TH') {
             setConfirmarChupim(p)
           } else {
             adicionarItemDePreco(p)
@@ -4291,7 +4291,7 @@ function TransportadorPickerModal({
   onClose: () => void
   onPick: (p: PrecoBranorte) => void
 }) {
-  const [tipo, setTipo] = useState<'todos' | 'CHUPIM' | 'HELICOIDAL'>('todos')
+  const [tipo, setTipo] = useState<'todos' | 'CHUPIM' | 'TH'>('todos')
   const [diametro, setDiametro] = useState<string | null>(null)
   const fotoPorPrecoId = useMemo(() => {
     const m = new Map<number, string>()
@@ -4387,7 +4387,7 @@ function TransportadorPickerModal({
           {[
             { v: 'todos', l: 'Todos' },
             { v: 'CHUPIM', l: 'Chupim' },
-            { v: 'HELICOIDAL', l: 'Calha (TH)' },
+            { v: 'TH', l: 'Calha (TH)' },
           ].map(o => (
             <button
               key={o.v}
@@ -4513,8 +4513,8 @@ function TransportadorPickerModal({
                     <td className="px-3 py-1.5 text-ink-muted text-[11px]">{p.potencia || '—'}</td>
                     <td className="px-3 py-1.5 text-[11px] bg-info/5">
                       {(() => {
-                        // Fórmula vale pros dois tipos de helicoidal (CHUPIM e HELICOIDAL/Calha TH)
-                        if (p.subcategoria !== 'CHUPIM' && p.subcategoria !== 'HELICOIDAL') return <span className="text-ink-faint italic">—</span>
+                        // Fórmula vale pros dois tipos de helicoidal (CHUPIM e TH/Calha TH)
+                        if (p.subcategoria !== 'CHUPIM' && p.subcategoria !== 'TH') return <span className="text-ink-faint italic">—</span>
                         const rec = recomendarMotorChupim(p.descricao, p.capacidade, material, inclinacao)
                         if (!rec) return <span className="text-ink-faint italic">—</span>
                         return (
