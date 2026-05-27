@@ -348,7 +348,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   // Helper: cabeçalho de seção
   const SectionHeader = ({ children }: { children: React.ReactNode }) => (
     <div className="mt-5 mb-2">
-      <div className="text-[15px] font-bold tracking-wider uppercase text-gray-700 pb-1.5 border-b-2 border-gray-800">
+      <div className="text-[15px] font-bold tracking-wider uppercase text-gray-700 pb-1.5 border-b border-gray-300">
         {children}
       </div>
     </div>
@@ -889,7 +889,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       </div>
                     )}
                   </div>
-                  <div className="flex flex-row gap-4 items-center">
+                  <div className="flex flex-row gap-4 items-start">
                     <div className="flex-1 pl-3 text-[14.5px] text-gray-700 leading-normal space-y-0.5 min-w-0">
                       {it.specs.filter(s => !/c[oó]digo\s*finame/i.test(s)).length > 0
                         ? it.specs.filter(s => !/c[oó]digo\s*finame/i.test(s)).map((s, i) => {
@@ -940,9 +940,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           )
                       }
                     </div>
-                    {/* Foto sempre AO LADO dos bullets — mobile 100px, desktop/PDF 220px */}
+                    {/* Foto sempre AO LADO dos bullets — mobile 100px, desktop/PDF 220px.
+                        items-start no pai + min-h aqui = foto ancora no topo, bullets
+                        ao lado. Evita foto "boiando" no meio quando bullets sao curtos. */}
                     {it.foto_url && (
-                      <div className="flex-shrink-0 flex items-center justify-center w-[100px] sm:w-[220px] max-h-[100px] sm:max-h-[180px]">
+                      <div className="flex-shrink-0 flex items-start justify-center w-[100px] sm:w-[220px] min-h-[80px] sm:min-h-[140px] max-h-[120px] sm:max-h-[200px]">
                         <img
                           src={it.foto_url}
                           alt={it.nome}
