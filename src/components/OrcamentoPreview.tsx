@@ -376,7 +376,12 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   }, [])
 
   useLayoutEffect(() => {
-    // Skip em mobile — marcadores poluem visual sem agregar valor
+    // Skip em mobile — marcadores poluem visual sem agregar valor.
+    // Skip sempre (DESABILITADO): bug pre-existente no algoritmo insere spacers
+    // vazios no topo do container, criando "5 folhas A4" fantasmas. Investigar
+    // depois — por hora, sem marcadores visuais (PDF gerado pelo Puppeteer nao
+    // depende disso).
+    return
     if (renderMode || isMobile || !containerRef.current || !innerRef.current) return
 
     let isInternalMutation = false
