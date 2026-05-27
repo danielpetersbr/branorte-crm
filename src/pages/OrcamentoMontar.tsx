@@ -1083,8 +1083,34 @@ export function OrcamentoMontar() {
   }
 
   function limparCarrinho() {
-    if (carrinho.length === 0) return
-    if (confirm('Limpar carrinho?')) setCarrinho([])
+    // Detecta se ha qualquer coisa pra limpar (carrinho OU dados auxiliares)
+    const temAlgoPraLimpar = carrinho.length > 0
+      || !!fotoPrincipal
+      || !!acessorios
+      || !!descontoCfg
+      || !!prazoEntregaTxt
+      || !!formaPagamentoTxt
+      || parcelasPagamento.length > 0
+      || componentesExtras.length > 0
+      || !!clienteDados.nome
+      || !!tensaoMotores
+    if (!temAlgoPraLimpar) return
+    if (!confirm('Limpar TUDO do orçamento? (itens, cliente, foto, forma de pagamento, observações)')) return
+    // Reseta orcamento inteiro pro estado inicial
+    setCarrinho([])
+    setFotoPrincipal(null)
+    setAcessorios(null)
+    setDescontoCfg(null)
+    setPrazoEntregaTxt('')
+    setFormaPagamentoTxt('')
+    setParcelasPagamento([])
+    setComponentesExtras([])
+    setClienteDados({})
+    setTensaoMotores(null)
+    setDataVendaTxt(new Date().toLocaleDateString('pt-BR'))
+    setVoltagem('trifasico')
+    // initialModal e usado pra hidratar o modal Finalizar — limpa tambem
+    setInitialModal(null)
   }
 
   function moverItem(uid: string, direcao: 'cima' | 'baixo') {
