@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import {
   Search, Star, Image as ImageIcon, ImageOff, Filter, Loader2,
   Package, CheckCircle2, AlertCircle, Camera, Settings2, Edit,
-  Rows3, LayoutGrid, Image as ImageView,
+  Rows3, LayoutGrid, Image as ImageView, FileText,
 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -26,7 +26,7 @@ const ABAS: Array<{ id: AbaFiltro; label: string }> = [
 
 const PAGINA_INICIAL = 120
 
-type ViewMode = 'lista' | 'grid' | 'galeria'
+type ViewMode = 'lista' | 'grid' | 'galeria' | 'orcamento'
 
 // localStorage key pra persistir preferencia entre sessoes
 const VIEW_MODE_KEY = 'catalogo_admin_view_mode'
@@ -109,7 +109,7 @@ export function CatalogoAdmin() {
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     try {
       const saved = localStorage.getItem(VIEW_MODE_KEY)
-      return (saved === 'grid' || saved === 'galeria' || saved === 'lista') ? saved : 'lista'
+      return (saved === 'grid' || saved === 'galeria' || saved === 'lista' || saved === 'orcamento') ? saved : 'lista'
     } catch { return 'lista' }
   })
   function setViewModePersistente(v: ViewMode) {
@@ -435,6 +435,13 @@ export function CatalogoAdmin() {
             >
               <ImageView className="w-4 h-4" />
             </button>
+            <button
+              onClick={() => setViewModePersistente('orcamento')}
+              className={`p-1.5 rounded transition ${viewMode === 'orcamento' ? 'bg-accent/15 text-accent' : 'text-ink-faint hover:text-ink hover:bg-surface-2'}`}
+              title="Orçamento (mesma visualização que aparece no PDF do orçamento)"
+            >
+              <FileText className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
@@ -462,6 +469,20 @@ export function CatalogoAdmin() {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
             {itemsVisiveis.map(item => (
               <CatalogoGaleriaItem
+                key={item.id}
+                item={item}
+                onClick={() => abrirEdicao(item)}
+                onToggleOficial={e => handleToggleOficial(e, item)}
+                togglePending={toggleOficial.isPending && toggleOficial.variables?.id === item.id}
+              />
+            ))}
+          </div>
+        ) : viewMode === 'orcamento' ? (
+          // ORCAMENTO: mesmo layout do card no preview do orcamento (foto direita 180x140,
+          // bullets esquerda, titulo grande, valor no rodape). Pra editar vendo como o cliente ve.
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+            {itemsVisiveis.map(item => (
+              <CatalogoOrcamentoItem
                 key={item.id}
                 item={item}
                 onClick={() => abrirEdicao(item)}
@@ -701,6 +722,125 @@ function CatalogoGaleriaItem({ item, onClick, onToggleOficial, togglePending }: 
           {item.motor_padrao_cv && (
             <span className="text-[9px] text-ink-muted tabular-nums">{item.motor_padrao_cv}CV</span>
           )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Card no MESMO layout do card de item no OrcamentoPreview ─────────────
+// Foto 180x140 a direita, bullets de specs a esquerda, titulo grande no topo,
+// linha VALOR no rodape. Pra editar vendo exatamente como o cliente ve.
+function CatalogoOrcamentoItem({ item, onClick, onToggleOficial, togglePending }: CardProps) {
+  const specs = Array.isArray(item.specs) ? item.specs : []
+  return (
+    <div
+      onClick={onClick}
+      className={`group relative bg-white border-2 rounded-md p-3 cursor-pointer transition hover:border-accent/60 hover:shadow-md text-gray-900 ${
+        item.ativo ? 'border-gray-300' : 'border-gray-200 opacity-60'
+      }`}
+    >
+      {/* Header: badges + estrela */}
+      <div className="flex items-start justify-between gap-2 mb-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+          <span className="text-[10px] text-gray-500 uppercase tracking-wide font-semibold">
+            {item.categoria || 'Sem categoria'}
+          </span>
+          {item.subcategoria && (
+            <span className="px-1.5 py-px rounded bg-accent/15 text-accent border border-accent/30 text-[9px] font-bold tracking-wider">
+              {item.subcategoria}
+            </span>
+          )}
+          {!item.is_oficial && (
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-warning/20 text-warning border border-warning/30 uppercase tracking-wider">
+              Pendente
+            </span>
+          )}
+          {item.is_virtual && (
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-info/15 text-info border border-info/30 uppercase tracking-wider">
+              Só preço
+            </span>
+          )}
+          {!item.ativo && (
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gray-200 text-gray-500 border border-gray-300 uppercase tracking-wider">
+              Inativo
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={e => { e.stopPropagation(); onToggleOficial(e) }}
+          disabled={togglePending}
+          title={item.is_oficial ? 'Oficial — clique pra remover do builder' : 'Marcar como oficial'}
+          className={`shrink-0 p-1.5 rounded-md transition ${
+            item.is_oficial
+              ? 'bg-success-bg/60 text-success hover:bg-success-bg'
+              : 'bg-gray-100 text-gray-400 hover:bg-warning/20 hover:text-warning'
+          }`}
+          aria-label="Alternar oficial"
+        >
+          {togglePending ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Star className={`w-3.5 h-3.5 ${item.is_oficial ? 'fill-current' : ''}`} />
+          )}
+        </button>
+      </div>
+
+      {/* Titulo grande estilo orcamento */}
+      <h3 className="text-[15.5px] font-bold text-gray-900 mb-2 leading-tight uppercase">
+        {item.nome_curto || '(sem nome)'}
+      </h3>
+
+      {/* Bullets + foto (mesmo layout do OrcamentoPreview) */}
+      <div className="flex flex-row gap-4 items-start mb-2">
+        <div className="flex-1 pl-3 text-[13.5px] text-gray-700 leading-normal space-y-0.5 min-w-0">
+          {specs.length > 0 ? (
+            specs.map((s, i) => (
+              <div key={i} className="flex gap-1.5">
+                <span className="text-gray-400 shrink-0">•</span>
+                <span className="break-words">{s}</span>
+              </div>
+            ))
+          ) : (
+            <div className="text-[12px] text-amber-600 italic">⚠ Sem descrição — clique pra adicionar specs</div>
+          )}
+        </div>
+        <div className="shrink-0 w-[180px] h-[140px] rounded-md overflow-hidden bg-gray-50 border border-gray-200 flex items-center justify-center relative">
+          {item.foto_url ? (
+            <img src={item.foto_url} alt={item.nome_curto} className="w-full h-full object-contain" />
+          ) : (
+            <div className="flex flex-col items-center text-gray-400">
+              <ImageOff className="w-6 h-6 mb-1" />
+              <span className="text-[10px]">sem foto</span>
+            </div>
+          )}
+          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition flex items-center justify-center opacity-0 group-hover:opacity-100">
+            <span className="text-white text-[11px] font-semibold flex items-center gap-1">
+              <Camera className="w-3.5 h-3.5" /> Trocar / Editar
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Linha VALOR no rodape (igual orcamento) */}
+      <div className="flex items-center justify-between border-t border-gray-200 pt-2 mt-2">
+        <div className="flex items-center gap-3">
+          <span className="text-[13px] font-bold text-gray-700 tracking-wider uppercase">Valor</span>
+          {item.motor_padrao_cv && item.motor_padrao_polos && (
+            <span className="text-[11px] text-gray-500">
+              · {item.motor_padrao_cv} CV {item.motor_padrao_polos}p
+              {item.motor_padrao_qtd > 1 && ` ×${item.motor_padrao_qtd}`}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] text-gray-400">
+            {item.is_virtual ? '(virtual)' : `#${item.id} · usado ${item.ocorrencias}×`}
+          </span>
+          <span className="text-[16px] font-bold text-accent">
+            {formatBRL(item.valor || 0)}
+          </span>
         </div>
       </div>
     </div>
