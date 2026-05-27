@@ -1518,7 +1518,11 @@ export function OrcamentoMontar() {
 
   return (
     <div
-      className="h-full flex flex-col gap-2 p-2 lg:pl-1 lg:pr-2 transition-all duration-200"
+      // h-screen forca altura = viewport (era h-full que dependia do parent,
+      // mas parent nao tem altura limitada -> orcMontar crescia infinito conforme
+      // o conteudo da sidebar do catalogo, gerando area branca enorme no card preview).
+      // Em desktop usa 100vh - padding pro respiro; mobile usa min-h-screen + overflow.
+      className="h-screen lg:h-[calc(100vh-1rem)] flex flex-col gap-2 p-2 lg:pl-1 lg:pr-2 transition-all duration-200 overflow-hidden"
     >
       {/* Banner CRÍTICO: orçamento existente está em rascunho (upload server falhou).
           Quando vendedor reabre via ?id=N e a row tá rascunho, mostra alerta
