@@ -431,9 +431,19 @@ export function OrcamentoMontar() {
   const [clienteModalOpen, setClienteModalOpen] = useState(false)
 
   function atualizarTermo(key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento', v: string) {
-    if (key === 'dataVenda') setDataVendaTxt(v)
-    else if (key === 'prazoEntrega') setPrazoEntregaTxt(v)
-    else if (key === 'formaPagamento') setFormaPagamentoTxt(v)
+    if (key === 'dataVenda') {
+      setDataVendaTxt(v)
+    } else if (key === 'prazoEntrega') {
+      setPrazoEntregaTxt(v)
+      // Sincroniza com initialModal pra modal Finalizar nao sobrescrever com valor antigo
+      setInitialModal(prev => prev ? { ...prev, prazo_entrega: v || null } : prev)
+    } else if (key === 'formaPagamento') {
+      setFormaPagamentoTxt(v)
+      // Sincroniza com initialModal pra que o modal Finalizar nao sobrescreva o valor
+      // editado inline com o antigo do banco. (Bug: vendedor editava 'a combinar'
+      // no preview, mas PDF saia com 'À vista PIX 5%' herdado do banco.)
+      setInitialModal(prev => prev ? { ...prev, forma_pagamento: v || null } : prev)
+    }
   }
 
   const categorias = useMemo(() => agruparPorCategoria(items ?? []), [items])
