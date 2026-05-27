@@ -371,7 +371,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-bg border border-border rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-bg border border-border rounded-lg max-w-5xl w-full max-h-[90vh] overflow-y-auto">
         {/* ── Header ──────────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-bg z-10">
           <div className="min-w-0">
