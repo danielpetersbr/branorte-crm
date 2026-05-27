@@ -539,7 +539,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
       {/* Borda UNICA envolvendo o orcamento inteiro (nao mais por folha — molduras
           por folha estavam riscando os cards no meio). Linhas pontilhadas indicam
           quebra de pagina A4 sem ficar visualmente intrusivo. */}
-      <div ref={innerRef} className={`m-4 px-6 pt-5 pb-6 relative ${renderMode ? '' : 'border border-gray-900'}`}>
+      <div ref={innerRef} className={`m-2 px-3 pt-5 pb-6 relative ${renderMode ? '' : 'border border-gray-900'}`}>
         {/* Marcadores de quebra de pagina (so linha pontilhada horizontal) */}
         {!renderMode && !isMobile && folhas.length > 1 && (
           <div className="absolute inset-0 pointer-events-none" aria-hidden="true" style={{ zIndex: 0 }}>

@@ -158,7 +158,9 @@ export default function PrintOrcamento() {
         }
         @page {
           size: A4;
-          margin: 5mm 5mm 15mm 5mm;
+          /* Margens estreitas pra dar mais espaco horizontal aos cards.
+             topo 5mm, laterais 3mm, rodape 15mm (espaco do "Pagina X de Y"). */
+          margin: 5mm 3mm 15mm 3mm;
           background: #ffffff;
         }
         /* Sem @media print — aplica SEMPRE (Puppeteer renderiza em modo print) */
