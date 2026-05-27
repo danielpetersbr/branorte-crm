@@ -679,6 +679,7 @@ export function OrcamentoMontar() {
   const passarelasOficiais = useMemo(() => filtrarCat('PASSARELA'), [oficiais])
   const suporteBagOficiais = useMemo(() => filtrarCat('SUPORTE_BAG'), [oficiais])
   const outrosOficiais = useMemo(() => oficiais.filter(ci => (ci.categoria === 'OUTROS' || ci.categoria === 'ACESSORIO') && ci.is_oficial), [oficiais])
+  const plasticosOficiais = useMemo(() => filtrarCat('PLASTICO'), [oficiais])
 
   // Formata CV pra usar em specs: "1.5" -> "1,5", "2" -> "2,0"
   function formatCvSpec(cv: number): string {
@@ -1815,13 +1816,16 @@ export function OrcamentoMontar() {
                     {(categoria === null || categoria === 'OUTROS' || categoria === 'ACESSORIO') && outrosOficiais.length > 0 && (
                       <MetaCard categoria="OUTROS" titulo="Diversos / Acessórios" descricao="Martelos, peneiras avulsas, eixos, buchas e outros" qtd={outrosOficiais.length} onClick={() => setOutrosPickerOpen(true)} />
                     )}
+                    {(categoria === null || categoria === 'PLASTICO') && plasticosOficiais.length > 0 && (
+                      <MetaCard categoria="PLASTICO" titulo="Para Plástico" descricao="Misturadores específicos pra polímeros (com/sem aquecimento)" qtd={plasticosOficiais.length} onClick={() => setCategoria('PLASTICO')} />
+                    )}
                   </>
                 )}
                 {itemsFiltrados
                   // Esconde individuais das categorias que tem meta-card (a menos que busca esteja ativa).
                   // Sem isso, item oficial individual aparece SOLTO no grid duplicando o que o
                   // picker do meta-card ja cobre.
-                  .filter(it => busca || ![
+                  .filter(it => busca || categoria === 'PLASTICO' || ![
                     'TRANSPORTADOR', 'MISTURADOR', 'MOINHO', 'CAIXA',
                     'SILO', 'ELEVADOR', 'CACAMBA_PESAGEM', 'PRE_LIMPEZA', 'PRE_LIMPEZA',
                     'PENEIRA', 'HELICOIDE', 'BALANCA', 'ENSACADEIRA', 'COMPACTA',
