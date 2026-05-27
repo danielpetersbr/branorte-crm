@@ -518,11 +518,28 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   return (
     <div
       ref={containerRef}
-      className={`text-gray-900 leading-relaxed font-sans bg-white ${renderMode ? 'text-[13px]' : 'text-[15px] mx-auto'}`}
-      // No NÃO-renderMode (UI), fixar largura = 1024px (mesma do PDF).
-      // mx-auto (margin x-auto) na className força centralização mesmo em flexbox.
-      style={!renderMode ? { maxWidth: 1024, width: '100%' } : undefined}
+      className={`text-gray-900 leading-relaxed font-sans bg-white ${renderMode ? 'text-[13px]' : 'text-[15px] mx-auto preview-zoom-mobile'}`}
+      // No NÃO-renderMode (UI), o preview tem largura fixa do PDF (1024px) e
+      // em mobile aplica zoom CSS pra mostrar exatamente como o desktop, só
+      // reduzido. Layout (3 cols, fotos ao lado, etc) fica idêntico ao PDF.
+      style={!renderMode ? { width: 1024, maxWidth: 1024 } : undefined}
     >
+      <style>{`
+        /* Em mobile, mostra a preview com layout DESKTOP em zoom-out.
+           Container mantém width:1024 e a tela renderiza com escala reduzida. */
+        @media (max-width: 1023px) {
+          .preview-zoom-mobile {
+            zoom: 0.4;
+            -moz-transform: scale(0.4);
+            -moz-transform-origin: top left;
+          }
+        }
+        @media (max-width: 600px) {
+          .preview-zoom-mobile {
+            zoom: 0.35;
+          }
+        }
+      `}</style>
       {/* Em mobile, padding menor pra ganhar espaço lateral. Tabelas internas
           (motores, parcelas, componentes) já têm overflow-x próprio quando precisam. */}
       {/* Borda UNICA envolvendo o orcamento inteiro (nao mais por folha — molduras
@@ -588,19 +605,19 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           onClick={!renderMode && onEditCliente ? onEditCliente : undefined}
           title={!renderMode && onEditCliente ? 'Clique pra preencher dados do cliente' : undefined}
         >
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-0 sm:gap-4 text-[11px] sm:text-[16px] font-bold text-gray-900 mb-1 leading-tight">
+          <div className="grid grid-cols-3 gap-4 text-[16px] font-bold text-gray-900 mb-1">
             <div>
               CLIENTE:{' '}
               {cli.nome
                 ? <span className="text-gray-700 font-bold ml-1">{cli.nome}</span>
                 : <span className="text-gray-400 italic font-bold ml-1">[preencher]</span>}
             </div>
-            <div className="sm:text-center">A/C: {valOrPlaceholder(cli.ac)}</div>
-            <div className="sm:text-right">FONE: {valOrPlaceholder(cli.fone)}</div>
+            <div className="text-center">A/C: {valOrPlaceholder(cli.ac)}</div>
+            <div className="text-right">FONE: {valOrPlaceholder(cli.fone)}</div>
           </div>
 
           {/* Demais campos do cliente empilhados */}
-          <div className="text-[11px] sm:text-[16px] font-bold text-gray-900 space-y-0 sm:space-y-0.5 leading-tight">
+          <div className="text-[16px] font-bold text-gray-900 space-y-0.5">
             {camposEmpilhados.map(([label, val]) => (
               <div key={label}>{label}: {valOrPlaceholder(val)}</div>
             ))}
