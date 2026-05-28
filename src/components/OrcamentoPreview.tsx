@@ -160,6 +160,10 @@ export interface OrcamentoPreviewProps {
 
   // Callback pra abrir editor de dados do cliente direto no preview
   onEditCliente?: () => void
+
+  // Double-click na foto do item troca a foto SÓ nesse orçamento (não no catálogo).
+  // Recebe data URL (base64). Passa null pra remover.
+  onUpdateFotoItem?: (uid: string, novaFotoDataURL: string | null) => void
 }
 
 function formatBRLBare(v: number): string {
@@ -280,9 +284,31 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     motoresDisponiveis, onTrocarMotor, onMotorPorContaCliente,
     vendedoresContato, vendedorResponsavelNome,
     onEditCliente,
+    onUpdateFotoItem,
   } = props
   const [editingNomeUid, setEditingNomeUid] = useState<string | null>(null)
   const [editingNomeValor, setEditingNomeValor] = useState<string>('')
+
+  // Duplo-click na foto do item → abre input file → lê como dataURL e salva no carrinho.
+  // Substitui só a foto desse orçamento, NÃO altera catalogo_items.
+  const trocarFotoItem = (uid: string | undefined) => {
+    if (!uid || !onUpdateFotoItem || renderMode) return
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (!file) return
+      const reader = new FileReader()
+      reader.onload = () => {
+        const result = reader.result
+        if (typeof result === 'string') onUpdateFotoItem(uid, result)
+      }
+      reader.onerror = () => alert('Erro ao ler a imagem.')
+      reader.readAsDataURL(file)
+    }
+    input.click()
+  }
   // Edição inline de spec (bullet) — duplo-click ativa
   const [editingSpecKey, setEditingSpecKey] = useState<string | null>(null) // formato "uid|idx"
   const [editingSpecValor, setEditingSpecValor] = useState<string>('')
@@ -947,10 +973,14 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     {/* Foto AO LADO dos bullets — caixa RIGIDA com overflow hidden
                         pra foto NUNCA estourar. Mobile 100x100, desktop/PDF 220x180.
                         objectFit:contain mantem proporcao DENTRO da caixa. */}
-                    {it.foto_url && (
+                    {it.foto_url ? (
                       <div
-                        className="flex-shrink-0 w-[100px] h-[100px] sm:w-[220px] sm:h-[180px] bg-white border border-gray-200 rounded"
+                        className={`flex-shrink-0 w-[100px] h-[100px] sm:w-[220px] sm:h-[180px] bg-white border border-gray-200 rounded relative group ${
+                          !renderMode && onUpdateFotoItem ? 'cursor-pointer hover:border-blue-400' : ''
+                        }`}
                         style={{ overflow: 'hidden' }}
+                        onDoubleClick={() => trocarFotoItem(it.uid)}
+                        title={!renderMode && onUpdateFotoItem ? 'Duplo-clique pra trocar a foto neste orçamento' : undefined}
                       >
                         <img
                           src={it.foto_url}
@@ -964,8 +994,25 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           loading={renderMode ? 'eager' : 'lazy'}
                           crossOrigin="anonymous"
                         />
+                        {!renderMode && onUpdateFotoItem && (
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center pointer-events-none">
+                            <span className="opacity-0 group-hover:opacity-100 text-white text-[11px] font-semibold bg-black/60 px-2 py-1 rounded">
+                              Duplo-clique pra trocar
+                            </span>
+                          </div>
+                        )}
                       </div>
-                    )}
+                    ) : !renderMode && onUpdateFotoItem ? (
+                      <div
+                        className="flex-shrink-0 w-[100px] h-[100px] sm:w-[220px] sm:h-[180px] bg-gray-50 border border-dashed border-gray-300 rounded cursor-pointer hover:border-blue-400 hover:bg-blue-50/40 flex items-center justify-center text-center px-2"
+                        onDoubleClick={() => trocarFotoItem(it.uid)}
+                        title="Duplo-clique pra adicionar foto"
+                      >
+                        <span className="text-[10px] text-gray-400 leading-tight">
+                          Duplo-clique<br/>pra adicionar foto
+                        </span>
+                      </div>
+                    ) : null}
                   </div>
                   {/* Valor abaixo do bloco texto+foto */}
                   <div data-no-break>

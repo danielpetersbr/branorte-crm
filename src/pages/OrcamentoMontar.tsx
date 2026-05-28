@@ -2131,6 +2131,9 @@ export function OrcamentoMontar() {
                 onRemove={removerItem}
                 onFotoChange={setFotoPrincipal}
                 onUpdateNome={alterarNome}
+                onUpdateFotoItem={(uid, novaFoto) =>
+                  setCarrinho(c => c.map(it => it.uid === uid ? { ...it, foto_url: novaFoto } : it))
+                }
                 onUpdateSpec={alterarSpec}
                 onUpdateValor={alterarValor}
                 onToggleInox={toggleInox}
