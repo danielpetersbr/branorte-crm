@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useDashboard, type DashboardPreset, type FunilEtapa, type SlaVendedor } from '@/hooks/useDashboard'
-import { useDashboardEtiquetas, CATEGORIA_LABEL, type EtiquetaCategoria } from '@/hooks/useDashboardEtiquetas'
+import { useDashboardEtiquetas, useHeatmapSemanal, CATEGORIA_LABEL, type EtiquetaCategoria } from '@/hooks/useDashboardEtiquetas'
 import {
   Area, AreaChart, Cell, Pie, PieChart,
   ResponsiveContainer, Tooltip,
@@ -78,6 +78,8 @@ export function Dashboard() {
   const [preset, setPreset] = usePresetFilter()
   const { data, isLoading, error } = useDashboard({ preset })
   const { data: etq } = useDashboardEtiquetas(preset)
+  // Heatmap usa janela fixa (30d) — ignora filtro do dashboard de propósito
+  const { data: heatmap30d } = useHeatmapSemanal()
 
   // Funil IA com os 2 últimos passos vindos das etiquetas WA (real),
   // não mais dos campos mortos `orcamento_enviado` e `status_real='fechou'`.
@@ -333,14 +335,14 @@ export function Dashboard() {
         <UfList items={data.porUf} />
       </Card>
 
-      {/* HEATMAP: quando leads chegam (dia × hora) */}
-      {etq && etq.heatmap.length > 0 && (
+      {/* HEATMAP: padrão semanal SEMPRE 30 dias (ignora filtro do dashboard) */}
+      {heatmap30d && heatmap30d.length > 0 && (
         <Card>
           <CardHeader
             title="Quando chegam os leads (BR)"
-            subtitle="Heatmap dia × hora — vendedor precisa estar online nos picos"
+            subtitle="Padrão dos últimos 30 dias — independente do filtro acima"
           />
-          <HeatmapDiaHora heatmap={etq.heatmap} />
+          <HeatmapDiaHora heatmap={heatmap30d} />
         </Card>
       )}
 

@@ -124,6 +124,31 @@ export function useDashboardEtiquetas(preset: DashboardPreset = '') {
   })
 }
 
+// Heatmap semanal SEMPRE com janela fixa (últimos 30 dias) — independente do
+// filtro de data do dashboard. Faz sentido porque "quando chegam os leads" é
+// padrão semanal, não métrica do dia.
+export function useHeatmapSemanal() {
+  return useQuery({
+    queryKey: ['dashboard-heatmap-30d'],
+    queryFn: async (): Promise<{ dow: number; hour: number; total: number }[]> => {
+      const to = new Date()
+      const from = new Date(); from.setDate(from.getDate() - 30)
+      const { data, error } = await supabase.rpc('dashboard_etiquetas_extras', {
+        p_from: from.toISOString(),
+        p_to: to.toISOString(),
+        p_orfao_dias: 7,
+      })
+      if (error) throw error
+      const x = (data ?? {}) as { heatmap?: { dow: number; hour: number; total: number }[] }
+      return x.heatmap ?? []
+    },
+    staleTime: 5 * 60_000,   // 5 min — padrão semanal muda devagar
+    refetchInterval: 5 * 60_000,
+    retry: 2,
+    placeholderData: prev => prev,
+  })
+}
+
 // Labels visuais por categoria
 export const CATEGORIA_LABEL: Record<EtiquetaCategoria, { label: string; emoji: string; tone: string }> = {
   novo:        { label: 'Novo lead',        emoji: '🆕', tone: 'info' },
