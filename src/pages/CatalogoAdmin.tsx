@@ -35,6 +35,11 @@ function formatBRL(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 }
 
+// Categorias que SEMPRE ficam por último, depois das principais ordenadas por qtd.
+// Vendedor pediu pra empurrar essas pro fim porque são peças/acessórios — não são
+// equipamentos primários. Mantém ordem entre elas tambem por qtd.
+const CATEGORIAS_FIM_DA_LISTA = ['ACESSORIO', 'HELICOIDE']
+
 // Quando mostrarInativos=false, ignora itens inativos na contagem — assim
 // categorias 100% inativas (ex.: COMPACTA enquanto fica fora da grade) somem
 // dos chips ao invés de aparecerem com "(70)" e abrirem em "0 itens".
@@ -47,7 +52,13 @@ function categoriasDoItems(items: CatalogoItemAdmin[], mostrarInativos: boolean)
   }
   return [...m.entries()]
     .map(([categoria, qtd]) => ({ categoria, qtd }))
-    .sort((a, b) => b.qtd - a.qtd)
+    .sort((a, b) => {
+      const aFim = CATEGORIAS_FIM_DA_LISTA.includes(a.categoria)
+      const bFim = CATEGORIAS_FIM_DA_LISTA.includes(b.categoria)
+      if (aFim && !bFim) return 1
+      if (!aFim && bFim) return -1
+      return b.qtd - a.qtd
+    })
 }
 
 // Subcategorias dentro da categoria selecionada (lista vazia se categoria=null).
