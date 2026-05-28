@@ -301,57 +301,81 @@ export default function FreteCotacao() {
   }
 
   return (
-    <div className="container mx-auto py-6 px-4 max-w-5xl">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-gradient-to-br from-primary via-primary to-primary/70 rounded-2xl flex items-center justify-center shadow-lg shadow-primary/40">
-            <Truck className="h-6 w-6 text-primary-foreground" strokeWidth={2.5} />
-          </div>
-          <div>
-            <h1 className="text-2xl font-black tracking-tight">Cotação de Frete</h1>
-            <div className="text-xs text-muted-foreground">Estimativa pra negociação · Branorte/SC</div>
-          </div>
-        </div>
-        <div className="flex gap-1">
-          <Link
-            to="/frete/historico"
-            className="px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-primary hover:bg-primary/5 rounded-lg transition-colors flex items-center gap-1.5"
-          >
-            <History className="h-3.5 w-3.5" />
-            Histórico
-          </Link>
-          <Link
-            to="/frete/transportadoras"
-            className="px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-primary hover:bg-primary/5 rounded-lg transition-colors flex items-center gap-1.5"
-          >
-            <Building2 className="h-3.5 w-3.5" />
-            Transportadoras
-          </Link>
-        </div>
+    <div className="relative min-h-screen overflow-hidden">
+      {/* Decorative background blobs */}
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="absolute -top-40 -right-40 w-[600px] h-[600px] bg-gradient-to-br from-primary/20 via-emerald-500/10 to-transparent rounded-full blur-3xl opacity-60 animate-pulse" style={{ animationDuration: '8s' }} />
+        <div className="absolute top-1/3 -left-40 w-[500px] h-[500px] bg-gradient-to-tr from-sky-500/15 via-primary/5 to-transparent rounded-full blur-3xl opacity-50 animate-pulse" style={{ animationDuration: '10s' }} />
+        <div className="absolute bottom-0 right-1/4 w-[400px] h-[400px] bg-gradient-to-tl from-amber-500/10 via-green-500/5 to-transparent rounded-full blur-3xl opacity-40 animate-pulse" style={{ animationDuration: '12s' }} />
       </div>
 
-      {/* Cliente + CEP */}
-      <div className="bg-card border rounded-xl p-4 mb-4 space-y-3">
+      <div className="container mx-auto py-8 px-4 max-w-6xl relative">
+        {/* Header — hero treatment */}
+        <div className="mb-8 flex items-end justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <div className="absolute inset-0 bg-gradient-to-br from-primary to-emerald-500 rounded-2xl blur-lg opacity-50" />
+              <div className="relative w-16 h-16 bg-gradient-to-br from-primary via-primary to-emerald-600 rounded-2xl flex items-center justify-center shadow-2xl shadow-primary/40 ring-1 ring-white/20">
+                <Truck className="h-8 w-8 text-primary-foreground drop-shadow-lg" strokeWidth={2.5} />
+              </div>
+            </div>
+            <div>
+              <div className="inline-block px-2.5 py-0.5 bg-primary/10 text-primary text-[10px] font-black uppercase tracking-[0.2em] rounded-full mb-1.5 ring-1 ring-primary/20">
+                Branorte · SC
+              </div>
+              <h1 className="text-3xl sm:text-4xl font-black tracking-tighter leading-none bg-gradient-to-r from-foreground via-foreground to-foreground/70 bg-clip-text text-transparent">
+                Cotação de Frete
+              </h1>
+              <div className="text-sm text-muted-foreground mt-1">
+                Estimativa rápida pra negociação em segundos
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Link
+              to="/frete/historico"
+              className="group px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-muted-foreground hover:text-primary bg-card border border-border hover:border-primary/40 hover:shadow-md hover:shadow-primary/10 rounded-xl transition-all flex items-center gap-2"
+            >
+              <History className="h-4 w-4 group-hover:scale-110 transition-transform" />
+              Histórico
+            </Link>
+            <Link
+              to="/frete/transportadoras"
+              className="group px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-muted-foreground hover:text-primary bg-card border border-border hover:border-primary/40 hover:shadow-md hover:shadow-primary/10 rounded-xl transition-all flex items-center gap-2"
+            >
+              <Building2 className="h-4 w-4 group-hover:scale-110 transition-transform" />
+              Transportadoras
+            </Link>
+          </div>
+        </div>
+
+      {/* Cliente + CEP — glassmorphism */}
+      <div className="relative bg-card/80 backdrop-blur-xl border border-border/60 rounded-2xl p-6 mb-5 space-y-4 shadow-xl shadow-black/5">
+        <div className="absolute top-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
+
         <div>
-          <label className="text-sm font-semibold block mb-1.5">Cliente (opcional)</label>
+          <label className="text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground block mb-2">
+            Cliente <span className="font-normal normal-case text-muted-foreground/60">(opcional)</span>
+          </label>
           <input
             type="text"
             value={clienteNome}
             onChange={e => setClienteNome(e.target.value)}
             placeholder="Nome do cliente / fazenda"
-            className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all"
+            className="w-full border-2 border-border/60 rounded-xl px-4 py-3 text-sm bg-background/60 focus:outline-none focus:ring-4 focus:ring-primary/15 focus:border-primary transition-all placeholder:text-muted-foreground/50"
           />
         </div>
-        <div className="flex items-end gap-2">
+        <div className="flex items-end gap-3">
           <div className="flex-1">
-            <label className="text-sm font-semibold block mb-1.5">CEP destino</label>
+            <label className="text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground block mb-2">
+              CEP destino
+            </label>
             <input
               type="text"
               value={cep}
               onChange={e => setCep(e.target.value)}
               placeholder="00000-000"
-              className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all"
+              className="w-full border-2 border-border/60 rounded-xl px-4 py-3 text-base font-bold tabular-nums tracking-wider bg-background/60 focus:outline-none focus:ring-4 focus:ring-primary/15 focus:border-primary transition-all placeholder:text-muted-foreground/40 placeholder:font-normal placeholder:tracking-normal"
               maxLength={9}
             />
           </div>
@@ -359,65 +383,83 @@ export default function FreteCotacao() {
             type="button"
             onClick={buscarDistancia}
             disabled={loadingDist}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-bold hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2 shadow-sm hover:shadow transition-all"
+            className="group relative px-6 py-3 bg-gradient-to-br from-primary to-emerald-600 text-primary-foreground rounded-xl text-sm font-black uppercase tracking-wider hover:shadow-2xl hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:hover:translate-y-0 flex items-center gap-2 shadow-lg shadow-primary/30 transition-all"
           >
-            {loadingDist ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
+            {loadingDist ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <MapPin className="h-5 w-5 group-hover:scale-110 transition-transform" />
+            )}
             Buscar
           </button>
         </div>
         {errDist && (
-          <div className="text-xs text-amber-600 flex items-center gap-1">
-            <AlertTriangle className="h-3 w-3" /> {errDist}
+          <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-700 dark:text-amber-400">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0" /> {errDist}
           </div>
         )}
         {distancia && (
-          <div className="flex items-center gap-2 p-3 bg-primary/5 border border-primary/20 rounded-lg text-sm">
-            <ChevronRight className="h-4 w-4 text-primary" />
-            <div className="flex-1">
-              <b className="text-foreground">{distancia.destino.cidade}/{distancia.destino.uf}</b>
-              {' · '}<span className="tabular-nums">{distancia.distancia_km.toLocaleString('pt-BR')} km</span>
-              {' · '}<span className="text-muted-foreground">~{distancia.tempo_horas}h de viagem</span>
-            </div>
-            {isDestinoNorte(distancia.destino.uf) && (
-              <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 rounded text-xs font-semibold">
-                ↓50% retorno
+          <div className="relative overflow-hidden rounded-xl border border-primary/30 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent">
+            <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-primary to-emerald-500" />
+            <div className="flex items-center gap-3 p-3 pl-4">
+              <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center">
+                <MapPin className="h-5 w-5 text-primary" />
               </div>
-            )}
+              <div className="flex-1 min-w-0">
+                <div className="text-base font-black text-foreground">
+                  {distancia.destino.cidade}/{distancia.destino.uf}
+                </div>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
+                  <span className="tabular-nums font-bold text-primary">
+                    {distancia.distancia_km.toLocaleString('pt-BR')} km
+                  </span>
+                  <span>·</span>
+                  <span>~{distancia.tempo_horas}h viagem</span>
+                </div>
+              </div>
+              {isDestinoNorte(distancia.destino.uf) && (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-green-500 text-white border border-emerald-400 rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg shadow-emerald-500/30 animate-pulse" style={{ animationDuration: '3s' }}>
+                  ↓50% Retorno
+                </div>
+              )}
+            </div>
           </div>
         )}
-        <div>
-          <label className="text-xs text-muted-foreground block mb-1">Ajuste manual de km (se necessário)</label>
+        <div className="flex items-center gap-2 pt-1">
+          <label className="text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground/60">
+            Ajuste manual km
+          </label>
           <input
             type="number"
             value={kmManual}
             onChange={e => setKmManual(e.target.value)}
-            placeholder="Km"
-            className="w-32 border rounded px-3 py-1 text-sm bg-background tabular-nums"
+            placeholder="—"
+            className="w-28 border border-border/60 rounded-lg px-3 py-1.5 text-sm font-bold tabular-nums bg-background/60 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50"
           />
         </div>
       </div>
 
-      {/* Abas */}
-      <div className="bg-card border rounded-xl p-4 mb-4">
-        <div className="flex gap-1 border-b mb-4 -mx-4 px-4 overflow-x-auto">
+      {/* Abas — pill style */}
+      <div className="bg-card/80 backdrop-blur-xl border border-border/60 rounded-2xl p-5 mb-5 shadow-xl shadow-black/5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-5 p-1.5 bg-muted/40 rounded-2xl">
           {([
             ['equipamento', 'Por fábrica', Factory],
-            ['dimensoes', 'Por dimensões', Package],
-            ['pallets', 'Por pallets', Layers],
+            ['dimensoes', 'Dimensões', Package],
+            ['pallets', 'Pallets', Layers],
             ['fechada', 'Carga fechada', Truck],
           ] as Array<[Aba, string, typeof Factory]>).map(([a, label, Icon]) => (
             <button
               key={a}
               type="button"
               onClick={() => setAba(a)}
-              className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-all flex items-center gap-2 whitespace-nowrap ${
+              className={`relative px-3 py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 whitespace-nowrap ${
                 aba === a
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/30'
+                  ? 'bg-gradient-to-br from-primary to-emerald-600 text-primary-foreground shadow-lg shadow-primary/30 scale-[1.02]'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-card'
               }`}
             >
-              <Icon className="h-4 w-4" />
-              {label}
+              <Icon className={`h-4 w-4 ${aba === a ? 'drop-shadow-md' : ''}`} />
+              <span className="hidden sm:inline">{label}</span>
             </button>
           ))}
         </div>
@@ -625,267 +667,333 @@ export default function FreteCotacao() {
         )}
       </div>
 
-      {/* Resultado */}
+      {/* Resultado — hero card maximalista */}
       {carga && distanciaKm && (
-        <div className="bg-gradient-to-br from-card to-card/50 border-2 border-primary/20 rounded-xl p-5 mb-4 shadow-xl shadow-primary/5">
-          <div className="flex items-center gap-2 mb-4">
-            <Sparkles className="h-5 w-5 text-primary" />
-            <h2 className="text-base font-bold uppercase tracking-wider">Resultado</h2>
+        <div className="relative overflow-hidden bg-gradient-to-br from-card via-card to-card/40 border-2 border-primary/30 rounded-3xl p-6 mb-5 shadow-2xl shadow-primary/10">
+          {/* Decorative corner */}
+          <div className="absolute -top-20 -right-20 w-60 h-60 bg-gradient-to-br from-primary/30 to-emerald-500/20 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-gradient-to-tr from-sky-500/15 to-primary/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="relative flex items-center gap-3 mb-5">
+            <div className="relative">
+              <div className="absolute inset-0 bg-primary rounded-lg blur opacity-50 animate-pulse" style={{ animationDuration: '2s' }} />
+              <div className="relative w-9 h-9 bg-gradient-to-br from-primary to-emerald-600 rounded-lg flex items-center justify-center shadow-lg shadow-primary/40">
+                <Sparkles className="h-5 w-5 text-primary-foreground drop-shadow" />
+              </div>
+            </div>
+            <div className="flex-1">
+              <h2 className="text-xs font-black uppercase tracking-[0.25em] text-muted-foreground">Resultado</h2>
+              <div className="text-lg font-black tracking-tight">
+                {formatBRL(valorModeloBranorte?.ajustado)} <span className="text-xs font-normal text-muted-foreground">· estimativa Branorte</span>
+              </div>
+            </div>
             {aplicouRetornoSulNorte && (
-              <span className="ml-auto text-xs text-emerald-700 dark:text-emerald-400 font-semibold">
-                Frete retorno aplicado (÷2)
-              </span>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-green-500 text-white rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg shadow-emerald-500/30">
+                <Sparkles className="h-3 w-3" />
+                ↓50% retorno
+              </div>
             )}
           </div>
 
           {/* Caminhão recomendado/escolhido — HERO */}
           {caminhaoEfetivo ? (
-            <div className="mb-5 p-4 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent border-2 border-primary/30 rounded-xl">
-              <div className="flex items-start gap-4">
-                <div className="flex-shrink-0 w-14 h-14 bg-primary/20 rounded-xl flex items-center justify-center shadow-inner">
-                  <Truck className="h-8 w-8 text-primary" strokeWidth={2.5} />
+            <div className="relative mb-6 p-5 bg-gradient-to-br from-primary/20 via-primary/10 to-transparent border-2 border-primary/40 rounded-2xl overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-primary/30 to-transparent rounded-full blur-2xl" />
+              <div className="relative flex items-start gap-4">
+                <div className="relative flex-shrink-0">
+                  <div className="absolute inset-0 bg-primary rounded-2xl blur-lg opacity-60" />
+                  <div className="relative w-20 h-20 bg-gradient-to-br from-primary via-primary to-emerald-600 rounded-2xl flex items-center justify-center shadow-2xl shadow-primary/40 ring-1 ring-white/20">
+                    <Truck className="h-12 w-12 text-primary-foreground drop-shadow-lg" strokeWidth={2.5} />
+                  </div>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold mb-0.5">
-                    {aba === 'fechada' ? 'Caminhão escolhido' : 'Caminhão recomendado'}
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-black mb-1">
+                    {aba === 'fechada' ? '✓ Caminhão escolhido' : '✓ Caminhão recomendado'}
                   </div>
-                  <div className="text-2xl font-black text-primary tracking-tight">
+                  <div className="text-3xl sm:text-4xl font-black tracking-tighter leading-none bg-gradient-to-r from-primary via-primary to-emerald-600 bg-clip-text text-transparent">
                     {caminhaoEfetivo.nome.toUpperCase()}
                   </div>
-                  <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-xs">
-                    <span className="text-muted-foreground">
-                      Capacidade: <b className="text-foreground tabular-nums">{caminhaoEfetivo.peso_max_kg.toLocaleString('pt-BR')} kg</b>
-                    </span>
-                    <span className="text-muted-foreground">
-                      Útil: <b className="text-foreground tabular-nums">{caminhaoEfetivo.comprimento_util_m} × {caminhaoEfetivo.largura_util_m} × {caminhaoEfetivo.altura_util_m} m</b>
-                    </span>
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-background/70 backdrop-blur border border-primary/20 rounded-full text-xs font-bold tabular-nums">
+                      <Scale className="h-3.5 w-3.5 text-primary" />
+                      {caminhaoEfetivo.peso_max_kg.toLocaleString('pt-BR')} kg
+                    </div>
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-background/70 backdrop-blur border border-primary/20 rounded-full text-xs font-bold tabular-nums">
+                      <Package className="h-3.5 w-3.5 text-primary" />
+                      {caminhaoEfetivo.comprimento_util_m} × {caminhaoEfetivo.largura_util_m} × {caminhaoEfetivo.altura_util_m} m
+                    </div>
                   </div>
                   {caminhaoEfetivo.precisa_aet && (
-                    <div className="mt-2 inline-flex items-center gap-1 px-2 py-1 bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 rounded text-xs font-semibold">
-                      <AlertTriangle className="h-3 w-3" />
-                      Precisa AET (autorização especial)
+                    <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-500/20 to-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/40 rounded-full text-xs font-black uppercase tracking-wider shadow-md shadow-amber-500/10">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      Precisa AET
                     </div>
                   )}
                 </div>
               </div>
             </div>
           ) : (
-            <div className="mb-5 flex items-start gap-3 p-4 bg-amber-500/10 border-2 border-amber-500/40 rounded-xl">
-              <AlertTriangle className="h-6 w-6 text-amber-600 mt-0.5 flex-shrink-0" />
-              <div>
-                <div className="font-bold text-amber-700 dark:text-amber-400">Carga especial</div>
-                <div className="text-sm text-amber-800 dark:text-amber-300 mt-0.5">
-                  Nenhum caminhão padrão comporta essa carga. Solicite cotação humana com parceira especializada.
+            <div className="mb-6 relative overflow-hidden p-5 bg-gradient-to-br from-amber-500/15 via-amber-500/10 to-transparent border-2 border-amber-500/50 rounded-2xl">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/30 rounded-full blur-3xl" />
+              <div className="relative flex items-start gap-3">
+                <div className="flex-shrink-0 w-12 h-12 bg-amber-500/30 rounded-xl flex items-center justify-center">
+                  <AlertTriangle className="h-7 w-7 text-amber-600" />
+                </div>
+                <div>
+                  <div className="font-black uppercase tracking-wider text-amber-700 dark:text-amber-400">Carga especial</div>
+                  <div className="text-sm text-amber-800 dark:text-amber-300 mt-1">
+                    Nenhum caminhão padrão comporta essa carga. Solicite cotação humana com parceira especializada.
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* 4 estimativas comparativas */}
+          {/* 4 estimativas comparativas — cards premium */}
           {caminhaoEfetivo && (
             <>
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold mb-3">
-                4 estimativas pra comparar
+              <div className="flex items-center gap-2 mb-4">
+                <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
+                <div className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground font-black">
+                  4 estimativas
+                </div>
+                <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-                {/* 1) MODELO BRANORTE — destaque verde-Branorte */}
-                <div className="relative p-4 bg-gradient-to-br from-green-500/15 to-green-500/5 border-2 border-green-500/40 rounded-xl hover:border-green-500/60 transition-all shadow-md shadow-green-500/10">
-                  <div className="absolute -top-2 -right-2 px-2 py-0.5 bg-green-500 text-white text-[9px] font-black uppercase tracking-wider rounded-full shadow">
-                    Branorte
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+                {/* 1) MODELO BRANORTE — card destaque com glow */}
+                <div className="group relative overflow-hidden p-5 bg-gradient-to-br from-green-500/20 via-green-500/8 to-transparent border-2 border-green-500/50 rounded-2xl hover:border-green-500/80 hover:-translate-y-1 hover:shadow-2xl hover:shadow-green-500/30 transition-all shadow-lg shadow-green-500/15">
+                  <div className="absolute -top-12 -right-12 w-32 h-32 bg-green-500/30 rounded-full blur-3xl group-hover:bg-green-500/50 transition-all" />
+                  <div className="absolute top-2 right-2 px-2.5 py-0.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white text-[9px] font-black uppercase tracking-[0.15em] rounded-full shadow-lg ring-1 ring-white/30">
+                    ★ Branorte
                   </div>
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <Factory className="h-4 w-4 text-green-600" />
-                    <span className="text-xs font-bold uppercase tracking-wider text-green-700 dark:text-green-400">
-                      Planilha
-                    </span>
-                  </div>
-                  <div className="text-2xl font-black tabular-nums text-green-700 dark:text-green-400 leading-tight">
-                    {formatBRL(valorModeloBranorte?.ajustado)}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground mt-1 leading-tight">
-                    {valorModeloBranorte && (
-                      <>
-                        {valorModeloBranorte.row.tipo_caminhao} ·{' '}
-                        {MODOS_CARGA_LABELS[valorModeloBranorte.row.modo_carga]}<br />
-                        R$ {valorModeloBranorte.row.rs_por_km.toFixed(2)}/km
-                        {valorModeloBranorte.aplicou_retorno && (
-                          <> · <span className="text-emerald-600 font-bold">↓50%</span></>
-                        )}
-                      </>
-                    )}
-                  </div>
-                  {valorModeloBranorte && (
-                    <button
-                      type="button"
-                      onClick={() => setValorFinal(String(Math.round(valorModeloBranorte.ajustado)))}
-                      className="mt-2 w-full text-[10px] py-1 bg-green-500/20 hover:bg-green-500/30 text-green-700 dark:text-green-400 rounded font-bold transition-colors"
-                    >
-                      Usar este valor
-                    </button>
-                  )}
-                </div>
-
-                {/* 2) ANTT — âmbar */}
-                <div className="relative p-4 bg-gradient-to-br from-amber-500/10 to-amber-500/5 border-2 border-amber-500/30 rounded-xl hover:border-amber-500/50 transition-all">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <Building2 className="h-4 w-4 text-amber-600" />
-                    <span className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
-                      ANTT (legal)
-                    </span>
-                  </div>
-                  <div className="text-2xl font-black tabular-nums text-amber-700 dark:text-amber-400 leading-tight">
-                    {formatBRL(valorAntt?.com_margem)}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground mt-1 leading-tight">
-                    Res. 6.076/2026<br />piso {formatBRL(valorAntt?.piso)}
-                  </div>
-                  <div className="mt-2 flex items-center gap-1 text-[10px]">
-                    <span className="text-muted-foreground">× margem</span>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={margem}
-                      onChange={e => setMargem(e.target.value)}
-                      className="w-12 border border-amber-500/30 rounded px-1 py-0.5 text-xs bg-background tabular-nums"
-                    />
-                  </div>
-                </div>
-
-                {/* 3) Parceiras — verde-esmeralda */}
-                {estimativasParceiras.length > 0 ? (
-                  <div className="relative p-4 bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border-2 border-emerald-500/30 rounded-xl">
-                    <div className="flex items-center gap-1.5 mb-2">
-                      <Truck className="h-4 w-4 text-emerald-600" />
-                      <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
-                        Parceiras ({estimativasParceiras.length})
+                  <div className="relative">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-7 h-7 bg-green-500/20 rounded-lg flex items-center justify-center">
+                        <Factory className="h-4 w-4 text-green-600" />
+                      </div>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-green-700 dark:text-green-400">
+                        Planilha
                       </span>
                     </div>
-                    <div className="space-y-1.5 max-h-[120px] overflow-y-auto">
-                      {estimativasParceiras.map(({ parceira, valor }) => (
-                        <label
-                          key={parceira.id}
-                          className={`flex items-center gap-1.5 p-1.5 rounded cursor-pointer transition-all border ${
-                            parceiraEscolhidaId === parceira.id
-                              ? 'bg-emerald-500/15 border-emerald-500/50'
-                              : 'border-transparent hover:bg-emerald-500/5'
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name="parceira"
-                            checked={parceiraEscolhidaId === parceira.id}
-                            onChange={() => {
-                              setParceiraEscolhidaId(parceira.id)
-                              setValorFinal(String(Math.round(valor!)))
-                            }}
-                            className="accent-emerald-600"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-[10px] font-semibold truncate">{parceira.nome}</div>
-                            <div className="text-sm font-black tabular-nums text-emerald-700 dark:text-emerald-400">
-                              {formatBRL(valor)}
+                    <div className="text-3xl font-black tabular-nums text-green-700 dark:text-green-400 leading-none tracking-tight">
+                      {formatBRL(valorModeloBranorte?.ajustado)}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-2 leading-tight">
+                      {valorModeloBranorte && (
+                        <>
+                          <b>{valorModeloBranorte.row.tipo_caminhao}</b> · {MODOS_CARGA_LABELS[valorModeloBranorte.row.modo_carga]}<br />
+                          <span className="tabular-nums">R$ {valorModeloBranorte.row.rs_por_km.toFixed(2)}/km</span>
+                          {valorModeloBranorte.aplicou_retorno && (
+                            <> · <span className="text-emerald-600 font-black">↓50%</span></>
+                          )}
+                        </>
+                      )}
+                    </div>
+                    {valorModeloBranorte && (
+                      <button
+                        type="button"
+                        onClick={() => setValorFinal(String(Math.round(valorModeloBranorte.ajustado)))}
+                        className="mt-3 w-full text-[10px] py-1.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg font-black uppercase tracking-wider shadow-md shadow-green-500/30 hover:shadow-lg hover:shadow-green-500/40 active:scale-95 transition-all"
+                      >
+                        Usar este valor
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* 2) ANTT — âmbar com glow */}
+                <div className="group relative overflow-hidden p-5 bg-gradient-to-br from-amber-500/15 to-amber-500/3 border-2 border-amber-500/40 rounded-2xl hover:border-amber-500/60 hover:-translate-y-1 hover:shadow-xl hover:shadow-amber-500/20 transition-all">
+                  <div className="absolute -top-12 -right-12 w-28 h-28 bg-amber-500/20 rounded-full blur-3xl group-hover:bg-amber-500/30 transition-all" />
+                  <div className="relative">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-7 h-7 bg-amber-500/20 rounded-lg flex items-center justify-center">
+                        <Building2 className="h-4 w-4 text-amber-600" />
+                      </div>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                        ANTT (legal)
+                      </span>
+                    </div>
+                    <div className="text-3xl font-black tabular-nums text-amber-700 dark:text-amber-400 leading-none tracking-tight">
+                      {formatBRL(valorAntt?.com_margem)}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-2 leading-tight">
+                      <b>Res. 6.076/2026</b><br />
+                      <span className="tabular-nums">piso {formatBRL(valorAntt?.piso)}</span>
+                    </div>
+                    <div className="mt-3 flex items-center gap-1.5 text-[10px]">
+                      <span className="text-muted-foreground font-bold">× margem</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={margem}
+                        onChange={e => setMargem(e.target.value)}
+                        className="w-14 border border-amber-500/40 rounded-lg px-1.5 py-1 text-xs bg-background tabular-nums font-bold focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3) Parceiras — esmeralda */}
+                {estimativasParceiras.length > 0 ? (
+                  <div className="group relative overflow-hidden p-5 bg-gradient-to-br from-emerald-500/15 to-emerald-500/3 border-2 border-emerald-500/40 rounded-2xl hover:border-emerald-500/60 hover:-translate-y-1 hover:shadow-xl hover:shadow-emerald-500/20 transition-all">
+                    <div className="absolute -top-12 -right-12 w-28 h-28 bg-emerald-500/20 rounded-full blur-3xl group-hover:bg-emerald-500/30 transition-all" />
+                    <div className="relative">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-7 h-7 bg-emerald-500/20 rounded-lg flex items-center justify-center">
+                          <Truck className="h-4 w-4 text-emerald-600" />
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                          Parceiras ({estimativasParceiras.length})
+                        </span>
+                      </div>
+                      <div className="space-y-1.5 max-h-[130px] overflow-y-auto pr-1">
+                        {estimativasParceiras.map(({ parceira, valor }) => (
+                          <label
+                            key={parceira.id}
+                            className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all border ${
+                              parceiraEscolhidaId === parceira.id
+                                ? 'bg-emerald-500/20 border-emerald-500/60 shadow-md shadow-emerald-500/20'
+                                : 'border-transparent hover:bg-emerald-500/10'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="parceira"
+                              checked={parceiraEscolhidaId === parceira.id}
+                              onChange={() => {
+                                setParceiraEscolhidaId(parceira.id)
+                                setValorFinal(String(Math.round(valor!)))
+                              }}
+                              className="accent-emerald-600"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[10px] font-bold truncate text-foreground">{parceira.nome}</div>
+                              <div className="text-base font-black tabular-nums text-emerald-700 dark:text-emerald-400 leading-tight">
+                                {formatBRL(valor)}
+                              </div>
                             </div>
-                          </div>
-                        </label>
-                      ))}
+                          </label>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 ) : (
                   <Link
                     to="/frete/transportadoras"
-                    className="relative p-4 bg-muted/30 border-2 border-dashed border-muted-foreground/30 rounded-xl hover:border-primary/50 hover:bg-primary/5 transition-all flex flex-col items-center justify-center text-center group"
+                    className="group relative overflow-hidden p-5 bg-gradient-to-br from-muted/40 to-muted/10 border-2 border-dashed border-muted-foreground/30 rounded-2xl hover:border-emerald-500/60 hover:bg-emerald-500/5 hover:-translate-y-1 transition-all flex flex-col items-center justify-center text-center min-h-[180px]"
                   >
-                    <Truck className="h-6 w-6 text-muted-foreground/50 group-hover:text-primary/70 mb-1.5" />
-                    <div className="text-xs font-semibold text-muted-foreground group-hover:text-primary">
+                    <div className="w-12 h-12 bg-muted/60 group-hover:bg-emerald-500/20 rounded-2xl flex items-center justify-center mb-2 transition-all">
+                      <Truck className="h-6 w-6 text-muted-foreground/60 group-hover:text-emerald-600 transition-all" />
+                    </div>
+                    <div className="text-xs font-black uppercase tracking-wider text-muted-foreground group-hover:text-emerald-700 dark:group-hover:text-emerald-400">
                       Nenhuma parceira
                     </div>
-                    <div className="text-[10px] text-muted-foreground/70 mt-0.5">
+                    <div className="text-[10px] text-muted-foreground/70 mt-1 font-semibold">
                       Cadastrar agora →
                     </div>
                   </Link>
                 )}
 
                 {/* 4) Histórico — azul */}
-                <div className="relative p-4 bg-gradient-to-br from-sky-500/10 to-sky-500/5 border-2 border-sky-500/30 rounded-xl hover:border-sky-500/50 transition-all">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <History className="h-4 w-4 text-sky-600" />
-                    <span className="text-xs font-bold uppercase tracking-wider text-sky-700 dark:text-sky-400">
-                      Histórico
-                    </span>
-                  </div>
-                  <div className="text-2xl font-black tabular-nums text-sky-700 dark:text-sky-400 leading-tight">
-                    {mediaHist.isLoading ? (
-                      <Loader2 className="h-6 w-6 animate-spin" />
-                    ) : mediaHist.data ? (
-                      formatBRL(mediaHist.data)
-                    ) : (
-                      <span className="text-muted-foreground text-base font-normal">—</span>
-                    )}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground mt-1 leading-tight">
-                    {mediaHist.data
-                      ? 'Mediana similares (±20% km)'
-                      : 'Mín. 3 cotações pra ativar'}
+                <div className="group relative overflow-hidden p-5 bg-gradient-to-br from-sky-500/15 to-sky-500/3 border-2 border-sky-500/40 rounded-2xl hover:border-sky-500/60 hover:-translate-y-1 hover:shadow-xl hover:shadow-sky-500/20 transition-all">
+                  <div className="absolute -top-12 -right-12 w-28 h-28 bg-sky-500/20 rounded-full blur-3xl group-hover:bg-sky-500/30 transition-all" />
+                  <div className="relative">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-7 h-7 bg-sky-500/20 rounded-lg flex items-center justify-center">
+                        <History className="h-4 w-4 text-sky-600" />
+                      </div>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-sky-700 dark:text-sky-400">
+                        Histórico
+                      </span>
+                    </div>
+                    <div className="text-3xl font-black tabular-nums text-sky-700 dark:text-sky-400 leading-none tracking-tight">
+                      {mediaHist.isLoading ? (
+                        <Loader2 className="h-7 w-7 animate-spin" />
+                      ) : mediaHist.data ? (
+                        formatBRL(mediaHist.data)
+                      ) : (
+                        <span className="text-muted-foreground/50 text-2xl font-normal">—</span>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-2 leading-tight">
+                      {mediaHist.data
+                        ? <>Mediana similares<br />(mesma UF, ±20% km)</>
+                        : <>Aguardando dados.<br />Mín. 3 cotações similares.</>}
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Decisão final */}
-              <div className="border-t-2 border-dashed border-primary/20 pt-4 mt-2">
-                <label className="flex items-center gap-1.5 text-xs uppercase tracking-wider font-bold text-muted-foreground mb-2">
-                  <Save className="h-3.5 w-3.5" />
-                  Valor final pra negociar com o cliente
-                </label>
+              {/* Decisão final — zona premium */}
+              <div className="relative overflow-hidden bg-gradient-to-br from-primary/8 via-primary/3 to-transparent border-2 border-primary/30 rounded-2xl p-5">
+                <div className="absolute -top-16 -right-16 w-40 h-40 bg-primary/20 rounded-full blur-3xl" />
+                <div className="absolute -bottom-16 -left-16 w-40 h-40 bg-emerald-500/15 rounded-full blur-3xl" />
+
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg font-bold text-muted-foreground tabular-nums">
-                    R$
-                  </span>
-                  <input
-                    type="number"
-                    value={valorFinal}
-                    onChange={e => setValorFinal(e.target.value)}
-                    placeholder="0,00"
-                    className="w-full border-2 border-primary/30 focus:border-primary rounded-xl pl-12 pr-4 py-3 text-2xl font-black tabular-nums bg-background focus:outline-none focus:ring-4 focus:ring-primary/10 transition-all"
-                  />
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-7 h-7 bg-gradient-to-br from-primary to-emerald-600 rounded-lg flex items-center justify-center shadow-md shadow-primary/30">
+                      <Save className="h-4 w-4 text-primary-foreground" />
+                    </div>
+                    <label className="text-[10px] uppercase tracking-[0.25em] font-black text-foreground">
+                      Valor final pra negociar com o cliente
+                    </label>
+                  </div>
+
+                  <div className="relative">
+                    <span className="absolute left-5 top-1/2 -translate-y-1/2 text-2xl font-black text-primary/60 tabular-nums pointer-events-none">
+                      R$
+                    </span>
+                    <input
+                      type="number"
+                      value={valorFinal}
+                      onChange={e => setValorFinal(e.target.value)}
+                      placeholder="0,00"
+                      className="w-full border-2 border-primary/40 focus:border-primary rounded-2xl pl-14 pr-5 py-4 text-3xl font-black tabular-nums tracking-tight bg-background/80 backdrop-blur focus:outline-none focus:ring-4 focus:ring-primary/15 shadow-lg shadow-primary/10 transition-all placeholder:text-muted-foreground/30 placeholder:font-normal"
+                    />
+                  </div>
+
+                  <div className="relative mt-3">
+                    <FileText className="absolute left-3.5 top-3.5 h-4 w-4 text-muted-foreground/60" />
+                    <textarea
+                      value={observacoes}
+                      onChange={e => setObservacoes(e.target.value)}
+                      placeholder="Observações (ex: cliente já tem transportadora, frete CIF, escolta especial...)"
+                      className="w-full border-2 border-border/60 rounded-xl pl-10 pr-3 py-3 text-sm bg-background/80 backdrop-blur focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all placeholder:text-muted-foreground/50"
+                      rows={2}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleSalvar}
+                    disabled={salvar.isPending}
+                    className="group relative mt-4 w-full overflow-hidden px-6 py-4 bg-gradient-to-r from-primary via-emerald-600 to-primary text-primary-foreground rounded-2xl font-black text-base uppercase tracking-[0.25em] shadow-2xl shadow-primary/40 hover:shadow-primary/60 hover:-translate-y-1 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 transition-all flex items-center justify-center gap-3 bg-[length:200%_100%] hover:bg-[position:100%]"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                    {salvar.isPending ? (
+                      <>
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        Salvando…
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-5 w-5 group-hover:rotate-12 transition-transform" />
+                        Salvar cotação
+                      </>
+                    )}
+                  </button>
                 </div>
-                <div className="relative mt-3">
-                  <FileText className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <textarea
-                    value={observacoes}
-                    onChange={e => setObservacoes(e.target.value)}
-                    placeholder="Observações (ex: cliente já tem transportadora, frete CIF...)"
-                    className="w-full border rounded-xl pl-10 pr-3 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all"
-                    rows={2}
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={handleSalvar}
-                  disabled={salvar.isPending}
-                  className="mt-3 w-full px-6 py-3.5 bg-gradient-to-r from-primary to-primary/90 hover:from-primary/95 hover:to-primary text-primary-foreground rounded-xl font-bold text-base uppercase tracking-wider shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/40 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 transition-all flex items-center justify-center gap-2"
-                >
-                  {salvar.isPending ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Salvando…
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-5 w-5" />
-                      Salvar cotação
-                    </>
-                  )}
-                </button>
               </div>
             </>
           )}
         </div>
       )}
 
-      <div className="text-xs text-muted-foreground mt-4 text-center">
-        <AlertTriangle className="h-3 w-3 inline mr-1" />
-        Valores são ESTIMATIVAS pra negociação. Confirme com a transportadora antes de fechar com o cliente.
+        <div className="flex items-center justify-center gap-2 mt-6 text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground/70">
+          <AlertTriangle className="h-3 w-3" />
+          Valores são estimativas · confirme com a transportadora
+        </div>
       </div>
     </div>
   )
