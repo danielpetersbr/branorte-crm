@@ -257,17 +257,27 @@ function agruparMotores(
     if (multiMatch) {
       const cv1 = parseFloat(multiMatch[1].replace(',', '.'))
       const cv2 = parseFloat(multiMatch[2].replace(',', '.'))
-      // Multi-motor: 1 linha por motor da spec × qtd do item (sem agregar — cada item vira N linhas)
+      // Multi-motor: cada CV pode ter preço diferente (ex: 12,5 CV principal + 2 CV exaustor).
+      // Antes: ambas linhas usavam `valorMotor` (= motor_valor_unit do principal) — exaustor
+      // ficava com valor errado e não atualizava ao trocar CV. Corrigido buscando o preço
+      // de cada CV no catálogo de motores via acharMotorCompativel.
+      const voltagemEfetiva: Voltagem = it.usa_inversor ? 'trifasico' : voltagem
+      const motor1Cat = motores ? acharMotorCompativel(motores, cv1, it.motor_polos, voltagemEfetiva) : null
+      const motor2Cat = motores ? acharMotorCompativel(motores, cv2, it.motor_polos, voltagemEfetiva) : null
+      const tratarComoIncluso = eMotorredutor && eIncluso
+      const valorCv1 = porContaCliente ? 0 : (tratarComoIncluso ? 0 : (motor1Cat ? Number(motor1Cat.valor) : valorMotor))
+      const valorCv2 = porContaCliente ? 0 : (tratarComoIncluso ? 0 : (motor2Cat ? Number(motor2Cat.valor) : 0))
+      // 1 linha por motor da spec × qtd do item (sem agregar — cada item vira N linhas)
       for (let i = 0; i < it.qtd; i++) {
         linhas.push({
           cv: cv1, polos: it.motor_polos, qtd: 1,
-          valor_unit: valorMotor, valor_total: valorMotor,
+          valor_unit: valorCv1, valor_total: valorCv1,
           item_nome: nomeItem, item_uid: it.uid, motorIndex: 0,
           por_conta_cliente: porContaCliente,
         })
         linhas.push({
           cv: cv2, polos: it.motor_polos, qtd: 1,
-          valor_unit: valorMotor, valor_total: valorMotor,
+          valor_unit: valorCv2, valor_total: valorCv2,
           item_nome: nomeItem, item_uid: it.uid, motorIndex: 1,
           por_conta_cliente: porContaCliente,
         })
