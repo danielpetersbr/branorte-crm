@@ -231,9 +231,10 @@ function agruparMotores(
     const qtdMotor = it.motor_qtd * it.qtd
 
     // Detecta múltiplos motores na spec: "Acionamento 15 CV e 2 CV por motorredutor (Inclusos)"
-    // Padrão: "X CV e Y CV" ou "X CV + Y CV"
+    // Padrão: "X CV [texto] Y CV" — aceita "10 CV e motor auxiliar agitador de 2 CV"
+    // (até 80 chars entre os CVs pra evitar match em coisas distantes).
     const specMotor = it.specs?.find(s => /acionamento|motorredutor/i.test(s)) ?? ''
-    const multiMatch = specMotor.match(/(\d+(?:[.,]\d+)?)\s*CV\s*(?:e|,|\+)\s*(\d+(?:[.,]\d+)?)\s*CV/i)
+    const multiMatch = specMotor.match(/(\d+(?:[.,]\d+)?)\s*CV[^.]{0,80}?(\d+(?:[.,]\d+)?)\s*CV/i)
     const eMotorredutor = /motorredutor|moto\s*redutor/i.test(specMotor)
     const eInclusoSpec = /\(\s*inclus[oa]s?\.?\s*\)/i.test(specMotor)
     // CV mencionado como incluso no spec (1º CV do match). Se motor REAL (it.motor_cv)
