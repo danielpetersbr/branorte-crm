@@ -27,7 +27,7 @@ export const ATRIBUTOS_POR_CATEGORIA: Record<string, AtributoDef[]> = {
   TRANSPORTADOR: [
     { key: 'tipo_transp', label: 'Tipo', tipo: 'select', opcoes: ['Helicoidal (Chupim)', 'Calha TH', 'Elevador', 'Correia', 'Redler'] },
     { key: 'comprimento_m', label: 'Comprimento', unidade: 'm', tipo: 'number', placeholder: '6' },
-    { key: 'diametro_pol', label: 'Diâmetro', unidade: 'pol', tipo: 'number', placeholder: '6' },
+    { key: 'diametro_mm', label: 'Diâmetro', unidade: 'mm', tipo: 'number', placeholder: '160' },
     { key: 'inclinacao_grau', label: 'Inclinação', unidade: '°', tipo: 'select', opcoes: ['0', '15', '30', '45', '60', '90'] },
     { key: 'capacidade_th', label: 'Capacidade', unidade: 't/h', tipo: 'number', placeholder: '5' },
     { key: 'funcao', label: 'Função', tipo: 'select', opcoes: ['Alimentação', 'Descarga', 'Pulmão', 'Recepção', 'Geral'] },
