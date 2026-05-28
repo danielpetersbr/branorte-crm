@@ -1800,6 +1800,9 @@ export function OrcamentoMontar() {
                     {(categoria === null || categoria === 'ELEVADOR') && elevadoresOficiais.length > 0 && (
                       <MetaCard categoria="ELEVADOR" titulo="Elevador de Caneca" descricao="EC-2310/4010/5013 — vários comprimentos" qtd={elevadoresOficiais.length} onClick={() => setElevadorPickerOpen(true)} />
                     )}
+                    {(categoria === null || categoria === 'ESTEIRA') && esteirasOficiais.length > 0 && (
+                      <MetaCard categoria="ESTEIRA" titulo="Esteira Transportadora" descricao="Transporte de sacaria e grãos" qtd={esteirasOficiais.length} onClick={() => setEsteiraPickerOpen(true)} />
+                    )}
                     {(categoria === null || categoria === 'CACAMBA_PESAGEM') && cacambasOficiais.length > 0 && (
                       <MetaCard categoria="CACAMBA_PESAGEM" titulo="Caçamba de Pesagem" descricao="600L / 1000L / 1900L / 3000L" qtd={cacambasOficiais.length} onClick={() => setCacambaPickerOpen(true)} />
                     )}
@@ -1838,9 +1841,6 @@ export function OrcamentoMontar() {
                     )}
                     {(categoria === null || categoria === 'PLASTICO') && plasticosOficiais.length > 0 && (
                       <MetaCard categoria="PLASTICO" titulo="Para Plástico" descricao="Misturadores específicos pra polímeros (com/sem aquecimento)" qtd={plasticosOficiais.length} onClick={() => setPlasticoPickerOpen(true)} />
-                    )}
-                    {(categoria === null || categoria === 'ESTEIRA') && esteirasOficiais.length > 0 && (
-                      <MetaCard categoria="ESTEIRA" titulo="Esteira Transportadora" descricao="Transporte de sacaria e grãos" qtd={esteirasOficiais.length} onClick={() => setEsteiraPickerOpen(true)} />
                     )}
                   </>
                 )}
