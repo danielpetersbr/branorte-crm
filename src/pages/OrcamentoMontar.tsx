@@ -1235,26 +1235,25 @@ export function OrcamentoMontar() {
       const novoCv = Number(novoMotor.cv)
       const novoPolos = novoMotor.polos
 
-      // Item com 2 motores na spec: só troca o CV do índice específico
+      // Item com múltiplos motores na spec (ex: misturador c/ aquecimento, pré-limpeza):
+      // só troca o CV da N-ésima ocorrência (motorIndex 0 = primeiro, 1 = segundo, etc).
+      // Usa matchAll pra achar TODAS as ocorrências de "X CV" e mexe só na do índice.
+      // Antes: regex restritivo a "CV e CV" / "CV, CV" / "CV + CV" — não pegava casos
+      // como "10 CV e motor do exaustor de 10 CV" (texto livre entre os CVs).
       if (motorIndex != null) {
-        const specIdx = it.specs.findIndex(s => /acionamento|motorredutor/i.test(s))
+        const specIdx = it.specs.findIndex(s => /acionamento|motorredutor|pot[êe]ncia/i.test(s))
         if (specIdx >= 0) {
           const spec = it.specs[specIdx]
-          const multi = spec.match(/(\d+(?:[.,]\d+)?)\s*CV\s*(e|,|\+)\s*(\d+(?:[.,]\d+)?)\s*CV/i)
-          if (multi) {
+          const todasOcorrencias = [...spec.matchAll(/(\d+(?:[.,]\d+)?)\s*CV/gi)]
+          if (todasOcorrencias.length >= 2 && motorIndex < todasOcorrencias.length) {
+            const alvo = todasOcorrencias[motorIndex]
+            const startIdx = alvo.index ?? 0
+            const lenAntiga = alvo[0].length
             const cvStr = Number.isInteger(novoCv) ? String(novoCv) : String(novoCv).replace('.', ',')
-            let novaSpec: string
-            if (motorIndex === 0) {
-              novaSpec = spec.replace(multi[1], cvStr)
-            } else {
-              // Troca o segundo CV — precisamos trocar só a segunda ocorrência
-              const firstEnd = spec.indexOf(multi[2], spec.indexOf(multi[1]) + multi[1].length)
-              const secondCvStart = spec.indexOf(multi[3], firstEnd)
-              novaSpec = spec.slice(0, secondCvStart) + cvStr + spec.slice(secondCvStart + multi[3].length)
-            }
+            const novaSpec = spec.slice(0, startIdx) + `${cvStr} CV` + spec.slice(startIdx + lenAntiga)
             const novasSpecs = [...it.specs]
             novasSpecs[specIdx] = novaSpec
-            // Atualiza motor_cv pro principal (index 0) — mantém consistência
+            // Atualiza motor_cv só pro principal (index 0); secundários ficam só no spec.
             const newMainCv = motorIndex === 0 ? novoCv : it.motor_cv
             return { ...it, specs: novasSpecs, motor_cv: newMainCv }
           }
