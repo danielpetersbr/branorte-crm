@@ -831,7 +831,12 @@ export function OrcamentoMontar() {
         specsGeradas.push(`Dimensões: ${p.dimensoes} mm`)
       }
       if (p.potencia) {
-        const sufixo = cat === 'TRANSPORTADOR' ? ' (motor não incluso)' : ''
+        // CHUPIM = motor avulso (não incluso). TH = motorredutor incluso. Resto: sem sufixo.
+        const sufixo = cat === 'TRANSPORTADOR' && p.subcategoria === 'CHUPIM'
+          ? ' (motor não incluso)'
+          : cat === 'TRANSPORTADOR' && p.subcategoria === 'TH'
+            ? ' (motorredutor incluso)'
+            : ''
         specsGeradas.push(`Acionamento: potência ${p.potencia}${sufixo}`)
       }
       specsFinal = specsGeradas
@@ -842,11 +847,12 @@ export function OrcamentoMontar() {
     let motor_polos = p.motor_polos ?? (ciLinkado?.motor_padrao_polos ?? 4)
     let motor_cv_n: number | null = p.motor_cv ?? (ciLinkado?.motor_padrao_cv ? Number(ciLinkado.motor_padrao_cv) : null)
 
-    // CHUPIM + CALHA TH: aplica fórmula oficial Branorte (POT=(C+(Q*L*K)/200)*b*1,36)
+    // CHUPIM: aplica fórmula oficial Branorte (POT=(C+(Q*L*K)/200)*b*1,36)
     // arredondando pro próximo motor maior. Substitui o motor padrão da planilha.
     // Usa override do modal se vendedor confirmou material/inclinação POR ITEM,
-    // senão usa defaults da sessão. Mesma física pros dois tipos de helicoidal.
-    if (cat === 'TRANSPORTADOR' && (p.subcategoria === 'CHUPIM' || p.subcategoria === 'TH')) {
+    // senão usa defaults da sessão.
+    // CALHA TH NÃO entra: motorredutor já vem incluso no preço da TH.
+    if (cat === 'TRANSPORTADOR' && p.subcategoria === 'CHUPIM') {
       const mat = chupimOpts?.material ?? chupimMaterial
       const inc = chupimOpts?.inclinacao ?? chupimInclinacao
       const rec = recomendarMotorChupim(p.descricao, p.capacidade, mat, inc)
