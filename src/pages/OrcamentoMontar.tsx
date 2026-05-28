@@ -198,24 +198,6 @@ function agruparMotores(
   voltagem: Voltagem = 'trifasico',
 ): MotorAgrupado[] {
   const linhas: MotorAgrupado[] = []
-  // Agrupa items duplicados (mesmo nome + cv + polos) somando qtds.
-  // Caso típico: vendedor clicou 2x pra adicionar o mesmo item — vira 1 linha (×2).
-  // Multi-motor (motorIndex) NÃO é agregado pra preservar exaustor/agitador.
-  const mergeKey = (l: MotorAgrupado) =>
-    l.motorIndex !== undefined ? null
-    : `${l.cv}|${l.polos}|${l.item_nome ?? ''}|${l.por_conta_cliente ? 1 : 0}`
-  const mergeOrPush = (linha: MotorAgrupado) => {
-    const k = mergeKey(linha)
-    if (k !== null) {
-      const existente = linhas.find(l => mergeKey(l) === k)
-      if (existente) {
-        existente.qtd += linha.qtd
-        existente.valor_total += linha.valor_total
-        return
-      }
-    }
-    linhas.push(linha)
-  }
   for (const it of carrinho) {
     const nomeItem = it.nome_custom || it.nome
     const ehAcessorioOuPassiva = it.categoria === 'ACESSORIO' || peneiraSemMotor(nomeItem)
@@ -231,16 +213,19 @@ function agruparMotores(
           : null
         const valorUnitExtra = motorMatch ? Number(motorMatch.valor) : 0
         const qtdExtra = (me.qtd || 1) * it.qtd
-        mergeOrPush({
-          cv: Number(me.cv),
-          polos: me.polos,
-          qtd: qtdExtra,
-          valor_unit: valorUnitExtra,
-          valor_total: valorUnitExtra * qtdExtra,
-          item_nome: `${nomeItem} (${me.descricao})`,
-          item_uid: it.uid,
-          por_conta_cliente: !!it.motor_por_conta_cliente,
-        })
+        // Expande em N linhas (1 por motor) em vez de 1 linha com (×N)
+        for (let i = 0; i < qtdExtra; i++) {
+          linhas.push({
+            cv: Number(me.cv),
+            polos: me.polos,
+            qtd: 1,
+            valor_unit: valorUnitExtra,
+            valor_total: valorUnitExtra,
+            item_nome: `${nomeItem} (${me.descricao})`,
+            item_uid: it.uid,
+            por_conta_cliente: !!it.motor_por_conta_cliente,
+          })
+        }
       }
     }
 
@@ -272,25 +257,32 @@ function agruparMotores(
     if (multiMatch) {
       const cv1 = parseFloat(multiMatch[1].replace(',', '.'))
       const cv2 = parseFloat(multiMatch[2].replace(',', '.'))
-      mergeOrPush({
-        cv: cv1, polos: it.motor_polos, qtd: it.qtd,
-        valor_unit: valorMotor, valor_total: valorMotor * it.qtd,
-        item_nome: nomeItem, item_uid: it.uid, motorIndex: 0,
-        por_conta_cliente: porContaCliente,
-      })
-      mergeOrPush({
-        cv: cv2, polos: it.motor_polos, qtd: it.qtd,
-        valor_unit: valorMotor, valor_total: valorMotor * it.qtd,
-        item_nome: nomeItem, item_uid: it.uid, motorIndex: 1,
-        por_conta_cliente: porContaCliente,
-      })
+      // Multi-motor: 1 linha por motor da spec × qtd do item (sem agregar — cada item vira N linhas)
+      for (let i = 0; i < it.qtd; i++) {
+        linhas.push({
+          cv: cv1, polos: it.motor_polos, qtd: 1,
+          valor_unit: valorMotor, valor_total: valorMotor,
+          item_nome: nomeItem, item_uid: it.uid, motorIndex: 0,
+          por_conta_cliente: porContaCliente,
+        })
+        linhas.push({
+          cv: cv2, polos: it.motor_polos, qtd: 1,
+          valor_unit: valorMotor, valor_total: valorMotor,
+          item_nome: nomeItem, item_uid: it.uid, motorIndex: 1,
+          por_conta_cliente: porContaCliente,
+        })
+      }
     } else {
-      mergeOrPush({
-        cv: it.motor_cv, polos: it.motor_polos, qtd: qtdMotor,
-        valor_unit: valorMotor, valor_total: valorMotor * qtdMotor,
-        item_nome: nomeItem, item_uid: it.uid,
-        por_conta_cliente: porContaCliente,
-      })
+      // 1 linha por motor — se item tem motor_qtd=2 ou qtd=2, gera N linhas iguais
+      // (vendedor pediu pra ver "7,5 CV motorredutor" listado N vezes em vez de "(×2)")
+      for (let i = 0; i < qtdMotor; i++) {
+        linhas.push({
+          cv: it.motor_cv, polos: it.motor_polos, qtd: 1,
+          valor_unit: valorMotor, valor_total: valorMotor,
+          item_nome: nomeItem, item_uid: it.uid,
+          por_conta_cliente: porContaCliente,
+        })
+      }
     }
   }
   return linhas
