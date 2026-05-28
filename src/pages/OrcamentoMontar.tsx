@@ -302,7 +302,7 @@ export function OrcamentoMontar() {
   // valorFixo: opcional. Quando setado (vem de modelo carregado), tem prioridade
   // sobre o calculo pct*itens — evita perder centavos no arredondamento.
   // Limpo pra null quando vendedor edita o pct manualmente.
-  const [acessorios, setAcessorios] = useState<{ pct: number; items: string[]; valorFixo?: number | null } | null>(null)
+  const [acessorios, setAcessorios] = useState<{ pct: number; items: string[]; valorFixo?: number | null; excludedItemUids?: string[] } | null>(null)
   const [acessoriosOpen, setAcessoriosOpen] = useState(false)
   const [showOnlyPopular, setShowOnlyPopular] = useState(false)
   const [showOnlyOficiais, setShowOnlyOficiais] = useState(true)  // default: só items curados
@@ -520,11 +520,18 @@ export function OrcamentoMontar() {
     [motoresAgrupados],
   )
   // Valor dos acessórios = % do total de equipamentos (arredondado pra cima, sem centavos)
+  // Pode excluir itens específicos do carrinho da base de cálculo (excludedItemUids).
+  // Item novo no carrinho entra automaticamente — só fica fora o que vendedor desmarcou.
   const valorAcessorios = useMemo(() => {
     if (!acessorios) return 0
     if (acessorios.valorFixo != null && acessorios.valorFixo > 0) return Math.ceil(acessorios.valorFixo)
-    return Math.ceil((totalItems * acessorios.pct) / 100)
-  }, [acessorios, totalItems])
+    const excluded = new Set(acessorios.excludedItemUids ?? [])
+    const base = carrinho.reduce(
+      (s, c) => s + (c.brinde || excluded.has(c.uid) ? 0 : c.valor * c.qtd),
+      0,
+    )
+    return Math.ceil((base * acessorios.pct) / 100)
+  }, [acessorios, carrinho])
   const totalEquip = totalItems + valorAcessorios   // entra no "VALOR TOTAL DE EQUIPAMENTOS"
   const totalComponentesExtras = useMemo(
     () => componentesExtras.reduce((s, c) => s + (Number(c.valor) || 0), 0),
@@ -2263,11 +2270,17 @@ export function OrcamentoMontar() {
       <AcessoriosModal
         open={acessoriosOpen}
         initial={acessorios}
+        carrinho={carrinho}
         onClose={() => setAcessoriosOpen(false)}
         onSave={cfg => {
           // cfg.valorFixo definido = vendedor escolheu valor fixo (R$);
           // null = modo %, recalcula via pct sobre os equipamentos.
-          setAcessorios({ pct: cfg.pct, items: cfg.items, valorFixo: cfg.valorFixo })
+          setAcessorios({
+            pct: cfg.pct,
+            items: cfg.items,
+            valorFixo: cfg.valorFixo,
+            excludedItemUids: cfg.excludedItemUids,
+          })
           setAcessoriosOpen(false)
         }}
         onRemove={() => { setAcessorios(null); setAcessoriosOpen(false) }}
@@ -3472,12 +3485,13 @@ function CarrinhoLinhaEdicao({
 // ──────────────────────────────────────────────────────────────────────────
 
 function AcessoriosModal({
-  open, initial, onClose, onSave, onRemove,
+  open, initial, carrinho, onClose, onSave, onRemove,
 }: {
   open: boolean
-  initial: { pct: number; items: string[]; valorFixo?: number | null } | null
+  initial: { pct: number; items: string[]; valorFixo?: number | null; excludedItemUids?: string[] } | null
+  carrinho: CarrinhoItem[]
   onClose: () => void
-  onSave: (cfg: { pct: number; items: string[]; valorFixo: number | null }) => void
+  onSave: (cfg: { pct: number; items: string[]; valorFixo: number | null; excludedItemUids: string[] }) => void
   onRemove: () => void
 }) {
   const { data: catalogoAcc } = useCatalogoAcessorios()
@@ -3489,6 +3503,8 @@ function AcessoriosModal({
   const [selecionados, setSelecionados] = useState<string[]>(initial?.items ?? [])
   const [busca, setBusca] = useState('')
   const [livre, setLivre] = useState('')
+  // UIDs do carrinho EXCLUÍDOS da base de cálculo do %. Default vazio = todos entram.
+  const [excludedUids, setExcludedUids] = useState<string[]>(initial?.excludedItemUids ?? [])
 
   useEffect(() => {
     if (open) {
@@ -3496,10 +3512,31 @@ function AcessoriosModal({
       setPct(initial?.pct ?? 5)
       setValorFixo(initial?.valorFixo ?? 0)
       setSelecionados(initial?.items ?? [])
+      setExcludedUids(initial?.excludedItemUids ?? [])
       setBusca('')
       setLivre('')
     }
   }, [open, initial])
+
+  // Base de cálculo (preview ao vivo dentro do modal).
+  const itensCarrinho = useMemo(
+    () => carrinho.filter(c => !c.brinde),
+    [carrinho],
+  )
+  const baseCalculo = useMemo(() => {
+    const excl = new Set(excludedUids)
+    return itensCarrinho.reduce(
+      (s, c) => s + (excl.has(c.uid) ? 0 : c.valor * c.qtd),
+      0,
+    )
+  }, [itensCarrinho, excludedUids])
+  const valorPreview = Math.ceil((baseCalculo * (Number(pct) || 0)) / 100)
+
+  function toggleExclusao(uid: string) {
+    setExcludedUids(prev =>
+      prev.includes(uid) ? prev.filter(x => x !== uid) : [...prev, uid],
+    )
+  }
 
   // Top sugeridos (top 12 por ocorrencias)
   const sugeridos = useMemo(() => {
@@ -3540,9 +3577,9 @@ function AcessoriosModal({
     const pctClamp = Math.max(0, Math.min(100, pct))
     if (modo === 'valor') {
       const vf = Math.max(0, Number(valorFixo) || 0)
-      onSave({ pct: pctClamp, items: selecionados, valorFixo: vf > 0 ? vf : null })
+      onSave({ pct: pctClamp, items: selecionados, valorFixo: vf > 0 ? vf : null, excludedItemUids: excludedUids })
     } else {
-      onSave({ pct: pctClamp, items: selecionados, valorFixo: null })
+      onSave({ pct: pctClamp, items: selecionados, valorFixo: null, excludedItemUids: excludedUids })
     }
   }
 
@@ -3617,6 +3654,67 @@ function AcessoriosModal({
             </>
           )}
         </div>
+
+        {/* Base de cálculo do % — checkbox por item do carrinho */}
+        {modo === 'pct' && itensCarrinho.length > 0 && (
+          <div className="px-5 py-3 border-b border-border bg-surface-2/20">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-[11px] font-semibold text-ink-muted">
+                Base de cálculo ({itensCarrinho.length - excludedUids.length} de {itensCarrinho.length} itens)
+              </label>
+              <div className="flex items-center gap-2">
+                {excludedUids.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setExcludedUids([])}
+                    className="text-[10px] text-accent hover:underline"
+                  >Marcar todos</button>
+                )}
+                {excludedUids.length < itensCarrinho.length && (
+                  <button
+                    type="button"
+                    onClick={() => setExcludedUids(itensCarrinho.map(c => c.uid))}
+                    className="text-[10px] text-ink-faint hover:text-ink"
+                  >Desmarcar todos</button>
+                )}
+              </div>
+            </div>
+            <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+              {itensCarrinho.map(c => {
+                const excl = excludedUids.includes(c.uid)
+                const subtotal = c.valor * c.qtd
+                const nomeExibir = c.nome_custom || c.nome
+                return (
+                  <label
+                    key={c.uid}
+                    className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer text-[11px] hover:bg-surface-2/60 ${
+                      excl ? 'opacity-50' : ''
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!excl}
+                      onChange={() => toggleExclusao(c.uid)}
+                      className="h-3.5 w-3.5 accent-accent"
+                    />
+                    <span className="flex-1 truncate text-ink">{nomeExibir}</span>
+                    <span className="text-ink-muted font-mono whitespace-nowrap">
+                      R$ {subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+            <div className="mt-2 pt-2 border-t border-border/60 flex items-center justify-between text-[11px]">
+              <span className="text-ink-muted">
+                Base: <span className="text-ink font-semibold">R$ {baseCalculo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> × {pct || 0}%
+              </span>
+              <span className="text-success font-semibold">
+                = R$ {valorPreview.toLocaleString('pt-BR')}
+              </span>
+            </div>
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-5 space-y-3">
           {/* Selecionados */}
