@@ -74,6 +74,14 @@ function extrairDiametro(nome: string | null | undefined): string | null {
   return m ? m[1] : null
 }
 
+// Extrai comprimento em metros (ex: "TRANSPORTADOR HELICOIDAL 160 X 3,5 M" → 3.5).
+// Pega o número (com vírgula decimal) depois de X/x e antes de M.
+function extrairComprimentoMetros(nome: string | null | undefined): number | null {
+  if (!nome) return null
+  const m = nome.match(/[xX]\s*(\d+(?:[,.]\d+)?)\s*m\b/i)
+  return m ? parseFloat(m[1].replace(',', '.')) : null
+}
+
 // Diâmetros disponíveis para a (categoria, subcategoria) selecionada.
 // Só faz sentido pra TRANSPORTADOR/CHUPIM e TRANSPORTADOR/HELICOIDAL.
 function diametrosDoItems(
@@ -145,7 +153,7 @@ export function CatalogoAdmin() {
   const itemsFiltrados = useMemo(() => {
     if (!items) return []
     const q = busca.trim().toLowerCase()
-    return items.filter(it => {
+    const filtrados = items.filter(it => {
       // Aba
       switch (aba) {
         case 'pendentes':
@@ -186,6 +194,20 @@ export function CatalogoAdmin() {
       }
       return true
     })
+    // Ordenacao especial pra TRANSPORTADOR: ordena por (diametro asc, comprimento asc)
+    // pra ficar "160 X 2,0 M", "160 X 2,5 M", "160 X 3,0 M", ..., "210 X 4,0 M", "210 X 4,5 M"...
+    if (categoriaFiltro === 'TRANSPORTADOR') {
+      return filtrados.slice().sort((a, b) => {
+        const da = Number(extrairDiametro(a.nome_curto)) || 999
+        const db = Number(extrairDiametro(b.nome_curto)) || 999
+        if (da !== db) return da - db
+        const ca = extrairComprimentoMetros(a.nome_curto) ?? 9999
+        const cb = extrairComprimentoMetros(b.nome_curto) ?? 9999
+        if (ca !== cb) return ca - cb
+        return (a.nome_curto || '').localeCompare(b.nome_curto || '')
+      })
+    }
+    return filtrados
   }, [items, aba, busca, categoriaFiltro, subcategoriaFiltro, diametroFiltro, mostrarInativos])
 
   const itemsVisiveis = itemsFiltrados.slice(0, limite)
