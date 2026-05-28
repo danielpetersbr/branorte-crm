@@ -3548,8 +3548,8 @@ function AcessoriosModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-bg border border-border rounded-lg max-w-2xl w-full shadow-2xl flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+      <div className="bg-bg border border-border rounded-lg max-w-2xl w-full shadow-2xl flex flex-col max-h-[85vh]">
         <div className="px-5 py-3 border-b border-border flex items-center justify-between">
           <h2 className="text-[15px] font-bold text-ink">Acessórios do orçamento</h2>
           <button onClick={onClose} className="text-ink-faint hover:text-ink">
