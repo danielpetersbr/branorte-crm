@@ -324,20 +324,14 @@ export function Dashboard() {
         </Card>
       )}
 
-      {/* MOMENTO + GEOGRAFIA */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <Card>
-          <CardHeader title="Momento de compra" subtitle="Urgência do pipeline" />
-          <DonutMomento data={data.porMomento} />
-        </Card>
-        <Card className="lg:col-span-2">
-          <CardHeader
-            title="Distribuição geográfica"
-            subtitle={`${fmtN(data.porUf.reduce((s, u) => s + u.total, 0))} leads · ${data.porUf.filter(u => u.isBrasil).length} estados BR · ${data.porUf.filter(u => !u.isBrasil).length} países`}
-          />
-          <UfList items={data.porUf} />
-        </Card>
-      </div>
+      {/* GEOGRAFIA — Momento de compra removido (campo descontinuado) */}
+      <Card>
+        <CardHeader
+          title="Distribuição geográfica"
+          subtitle={`${fmtN(data.porUf.reduce((s, u) => s + u.total, 0))} leads · ${data.porUf.filter(u => u.isBrasil).length} estados BR · ${data.porUf.filter(u => !u.isBrasil).length} países`}
+        />
+        <UfList items={data.porUf} />
+      </Card>
 
       {/* HEATMAP: quando leads chegam (dia × hora) */}
       {etq && etq.heatmap.length > 0 && (
@@ -562,54 +556,6 @@ function SlaTable({ rows, etqPorVendedor }: {
           })}
         </tbody>
       </table>
-    </div>
-  )
-}
-
-// Donut momento com numero central
-function DonutMomento({ data }: { data: { momento: string; valor: number; cor: string }[] }) {
-  const total = data.reduce((s, x) => s + x.valor, 0)
-  return (
-    <div className="h-[280px] flex items-center">
-      <div className="flex-1 h-full relative">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              data={data}
-              cx="50%"
-              cy="50%"
-              innerRadius={70}
-              outerRadius={92}
-              paddingAngle={2}
-              dataKey="valor"
-              nameKey="momento"
-            >
-              {data.map((m, i) => <Cell key={i} fill={m.cor} />)}
-            </Pie>
-            <Tooltip
-              contentStyle={{ background: 'hsl(var(--surface))', border: `1px solid ${COLORS.border}`, borderRadius: 6, fontSize: 12 }}
-              formatter={((v: number) => [fmtN(v), '']) as never}
-            />
-          </PieChart>
-        </ResponsiveContainer>
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span className="text-3xl font-semibold text-ink tabular-nums leading-none">{fmtN(total)}</span>
-          <span className="text-[10px] text-ink-faint mt-1 uppercase tracking-widest">leads no período</span>
-        </div>
-      </div>
-      <div className="space-y-2.5 pr-2 min-w-[150px]">
-        {data.map(m => {
-          const pct = total > 0 ? (m.valor / total) * 100 : 0
-          return (
-            <div key={m.momento} className="flex items-center gap-2 text-[11px]">
-              <span className="h-2 w-2 rounded-full shrink-0" style={{ background: m.cor }} />
-              <span className="text-ink flex-1 truncate">{m.momento}</span>
-              <span className="font-mono text-ink-faint tabular-nums">{pct.toFixed(0)}%</span>
-            </div>
-          )
-        })}
-        {data.length === 0 && <p className="text-[11px] text-ink-faint">Sem dados</p>}
-      </div>
     </div>
   )
 }
@@ -955,56 +901,119 @@ function OrigemVendido({ etq }: { etq: NonNullable<ReturnType<typeof useDashboar
 
 function HeatmapDiaHora({ heatmap }: { heatmap: { dow: number; hour: number; total: number }[] }) {
   const DOW = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
-  // Constrói matriz 7 × 24
+  // Constrói matriz 7 × 24 + agregados
   const matrix: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0))
   let maxVal = 0
+  let pico = { dia: 0, hora: 0, val: 0 }
   for (const h of heatmap) {
     const di = h.dow >= 1 && h.dow <= 7 ? h.dow - 1 : 6
     if (h.hour >= 0 && h.hour < 24) {
       matrix[di][h.hour] = h.total
       if (h.total > maxVal) maxVal = h.total
+      if (h.total > pico.val) pico = { dia: di, hora: h.hour, val: h.total }
     }
   }
+  const totalPorDia = matrix.map(row => row.reduce((s, v) => s + v, 0))
+  const totalPorHora = Array.from({ length: 24 }, (_, h) => matrix.reduce((s, row) => s + row[h], 0))
+  const totalGeral = totalPorDia.reduce((s, v) => s + v, 0)
+  const maxHora = Math.max(...totalPorHora, 1)
+  const diaForte = totalPorDia.indexOf(Math.max(...totalPorDia))
+  // Janela comercial padrão de 8h às 18h
+  const dentroComercial = matrix.reduce((s, row, di) =>
+    s + row.slice(8, 19).reduce((a, b) => a + b, 0) * (di < 5 ? 1 : 0), 0)
+  const pctComercial = totalGeral > 0 ? Math.round((dentroComercial / totalGeral) * 100) : 0
+
+  // 4 níveis discretos: vazio / baixo / médio / pico — facilita ler
   const cellColor = (v: number) => {
-    if (v === 0) return 'hsl(240 6% 92% / 0.4)'
-    const intensity = Math.min(1, v / Math.max(maxVal, 1))
-    // verde acentuando
-    return `hsl(152 60% ${50 - intensity * 25}% / ${0.3 + intensity * 0.7})`
+    if (v === 0) return 'hsl(240 6% 18%)'
+    const r = v / maxVal
+    if (r >= 0.66) return 'hsl(152 70% 42%)'   // pico — verde forte
+    if (r >= 0.33) return 'hsl(152 50% 32%)'   // médio
+    return 'hsl(152 30% 22%)'                  // baixo
   }
+  const cellText = (v: number) => {
+    if (v === 0) return ''
+    const r = v / maxVal
+    if (r >= 0.33) return v.toString()
+    return ''  // baixo não mostra número — reduz clutter
+  }
+
   return (
-    <div className="overflow-x-auto">
-      <table className="border-separate" style={{ borderSpacing: 2 }}>
-        <thead>
-          <tr>
-            <th className="w-10" />
-            {Array.from({ length: 24 }, (_, h) => (
-              <th key={h} className="text-[9px] text-ink-faint font-normal text-center w-6">{h}</th>
+    <div className="space-y-3">
+      {/* Insight box: pico + janela comercial */}
+      <div className="grid grid-cols-3 gap-3 text-[11px]">
+        <div className="border-l-2 border-success pl-2">
+          <div className="text-[10px] text-ink-faint uppercase tracking-wide">Pico</div>
+          <div className="text-ink font-medium">{DOW[pico.dia]} {pico.hora}h</div>
+          <div className="text-ink-faint">{pico.val} leads</div>
+        </div>
+        <div className="border-l-2 border-info pl-2">
+          <div className="text-[10px] text-ink-faint uppercase tracking-wide">Dia mais movimentado</div>
+          <div className="text-ink font-medium">{DOW[diaForte]}</div>
+          <div className="text-ink-faint">{totalPorDia[diaForte]} leads</div>
+        </div>
+        <div className={`border-l-2 pl-2 ${pctComercial >= 70 ? 'border-success' : pctComercial >= 50 ? 'border-warning' : 'border-danger'}`}>
+          <div className="text-[10px] text-ink-faint uppercase tracking-wide">No horário comercial</div>
+          <div className="text-ink font-medium">{pctComercial}%</div>
+          <div className="text-ink-faint">seg-sex · 8h-18h</div>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="border-separate" style={{ borderSpacing: 2 }}>
+          <thead>
+            <tr>
+              <th className="w-10" />
+              {Array.from({ length: 24 }, (_, h) => (
+                <th key={h} className="text-[9px] text-ink-faint font-normal text-center w-6">{h}</th>
+              ))}
+              <th className="text-[9px] text-ink-faint font-normal text-center w-8 pl-1">Σ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {DOW.map((d, di) => (
+              <tr key={d}>
+                <td className="text-[10px] text-ink-muted font-medium pr-2 text-right">{d}</td>
+                {matrix[di].map((v, h) => (
+                  <td
+                    key={h}
+                    className="w-6 h-6 rounded-sm text-center"
+                    style={{ backgroundColor: cellColor(v) }}
+                    title={`${d} ${h}h: ${v} leads`}
+                  >
+                    <span className="text-[10px] font-semibold text-white tabular-nums">
+                      {cellText(v)}
+                    </span>
+                  </td>
+                ))}
+                <td className="text-[10px] text-ink-muted font-mono tabular-nums text-right pl-1">{totalPorDia[di]}</td>
+              </tr>
             ))}
-          </tr>
-        </thead>
-        <tbody>
-          {DOW.map((d, di) => (
-            <tr key={d}>
-              <td className="text-[10px] text-ink-muted font-medium pr-2 text-right">{d}</td>
-              {matrix[di].map((v, h) => (
-                <td
-                  key={h}
-                  className="w-6 h-6 rounded-sm text-center"
-                  style={{ backgroundColor: cellColor(v) }}
-                  title={`${d} ${h}h: ${v} leads`}
-                >
-                  <span className={`text-[9px] tabular-nums ${v > maxVal * 0.5 ? 'text-white' : 'text-ink-faint'}`}>
-                    {v > 0 ? v : ''}
-                  </span>
+            {/* Total por hora — facilita ver picos */}
+            <tr>
+              <td className="text-[9px] text-ink-faint font-normal pr-2 text-right">Σ</td>
+              {totalPorHora.map((t, h) => (
+                <td key={h} className="text-center">
+                  <div className="h-3 bg-surface-2 rounded-sm relative overflow-hidden mx-px">
+                    <div className="absolute inset-y-0 left-0 bg-info/50" style={{ width: `${(t / maxHora) * 100}%` }} />
+                  </div>
+                  <div className="text-[8px] text-ink-faint tabular-nums leading-none mt-0.5">{t > 0 ? t : ''}</div>
                 </td>
               ))}
+              <td />
             </tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="text-[10px] text-ink-faint mt-2">
-        Hora no fuso de Brasília. Quanto mais escuro o verde, mais leads. Use pra escalar o time nos picos.
-      </p>
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex items-center gap-3 text-[10px] text-ink-faint">
+        <span>Intensidade:</span>
+        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: 'hsl(240 6% 18%)' }} /> Vazio</span>
+        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: 'hsl(152 30% 22%)' }} /> Baixo</span>
+        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: 'hsl(152 50% 32%)' }} /> Médio</span>
+        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: 'hsl(152 70% 42%)' }} /> Pico</span>
+        <span className="ml-auto">Fuso BR</span>
+      </div>
     </div>
   )
 }
@@ -1012,62 +1021,114 @@ function HeatmapDiaHora({ heatmap }: { heatmap: { dow: number; hour: number; tot
 function MapaEtiquetas({ etq }: { etq: ReturnType<typeof useDashboardEtiquetas>['data'] }) {
   if (!etq) return null
   const total = etq.leads_com_etiqueta || 1
-  // Ordem do funil (mais valioso → menos valioso)
-  const ordem: EtiquetaCategoria[] = ['vendido', 'orcamento', 'lead_quente', 'quente', 'novo', 'perdido', 'interno', 'outros']
-  const catEntries = ordem
-    .map(c => ({ cat: c, total: etq.por_categoria[c] ?? 0 }))
-    .filter(e => e.total > 0)
+
+  // 3 grupos macro (em vez de 7 categorias): o que importa pro gestor
+  const grupoConv = (etq.por_categoria.vendido ?? 0) + (etq.por_categoria.orcamento ?? 0)
+  const grupoAtivo = (etq.por_categoria.novo ?? 0) + (etq.por_categoria.quente ?? 0) + (etq.por_categoria.lead_quente ?? 0)
+  const grupoPerdido = (etq.por_categoria.perdido ?? 0) + (etq.por_categoria.interno ?? 0) + (etq.por_categoria.outros ?? 0)
+
+  const pctConv = Math.round((grupoConv / total) * 100)
+  const pctAtivo = Math.round((grupoAtivo / total) * 100)
+  const pctPerdido = Math.round((grupoPerdido / total) * 100)
+
+  // Top etiquetas dedup por nome
+  const mapEtq = new Map<string, { nome: string; categoria: EtiquetaCategoria; total: number }>()
+  for (const e of etq.por_etiqueta) {
+    const cur = mapEtq.get(e.nome)
+    if (cur) cur.total += e.total
+    else mapEtq.set(e.nome, { nome: e.nome, categoria: e.categoria, total: e.total })
+  }
+  const todasEtq = Array.from(mapEtq.values())
+
+  // Separar pipeline ativo (novo/quente/orçamento) de motivos de trava (perdido/outros)
+  const pipelineCats: EtiquetaCategoria[] = ['novo', 'quente', 'lead_quente', 'orcamento', 'vendido']
+  const travaCats: EtiquetaCategoria[] = ['perdido', 'outros', 'interno']
+  const topPipeline = todasEtq.filter(e => pipelineCats.includes(e.categoria)).sort((a, b) => b.total - a.total).slice(0, 5)
+  const topTrava = todasEtq.filter(e => travaCats.includes(e.categoria)).sort((a, b) => b.total - a.total).slice(0, 5)
+
+  const maxPipe = Math.max(...topPipeline.map(e => e.total), 1)
+  const maxTrava = Math.max(...topTrava.map(e => e.total), 1)
 
   return (
-    <div className="space-y-4">
-      {/* Stacked bar por categoria */}
-      <div className="flex h-3 rounded-full overflow-hidden bg-surface-2 border border-border/50">
-        {catEntries.map(e => (
-          <div
-            key={e.cat}
-            className="h-full"
-            style={{ width: `${(e.total / total) * 100}%`, backgroundColor: CAT_COLOR[e.cat] }}
-            title={`${CATEGORIA_LABEL[e.cat].label}: ${e.total} (${Math.round((e.total / total) * 100)}%)`}
-          />
-        ))}
-      </div>
-      {/* Legenda por categoria */}
-      <div className="flex flex-wrap gap-x-3 gap-y-1.5">
-        {catEntries.map(e => (
-          <div key={e.cat} className="flex items-center gap-1.5 text-[11px]">
-            <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: CAT_COLOR[e.cat] }} />
-            <span className="text-ink-muted">{CATEGORIA_LABEL[e.cat].emoji} {CATEGORIA_LABEL[e.cat].label}</span>
-            <span className="font-mono tabular-nums text-ink">{e.total}</span>
-            <span className="text-ink-faint tabular-nums">({Math.round((e.total / total) * 100)}%)</span>
+    <div className="space-y-5">
+      {/* Barra empilhada com 3 grupos só */}
+      <div>
+        <div className="flex h-4 rounded-full overflow-hidden bg-surface-2 border border-border/50">
+          <div className="h-full bg-success" style={{ width: `${(grupoConv / total) * 100}%` }} title={`Convertido: ${grupoConv}`} />
+          <div className="h-full bg-info" style={{ width: `${(grupoAtivo / total) * 100}%` }} title={`Em andamento: ${grupoAtivo}`} />
+          <div className="h-full bg-danger/70" style={{ width: `${(grupoPerdido / total) * 100}%` }} title={`Perdido/Outros: ${grupoPerdido}`} />
+        </div>
+        <div className="grid grid-cols-3 gap-3 mt-3">
+          <div className="border-l-2 border-success pl-2">
+            <div className="text-[10px] text-ink-faint uppercase tracking-wide">Convertido</div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-[18px] font-bold text-ink tabular-nums">{grupoConv}</span>
+              <span className="text-[11px] text-success tabular-nums">{pctConv}%</span>
+            </div>
+            <div className="text-[10px] text-ink-faint">
+              {etq.por_categoria.vendido ? `${etq.por_categoria.vendido} vendido` : ''}
+              {etq.por_categoria.vendido && etq.por_categoria.orcamento ? ' · ' : ''}
+              {etq.por_categoria.orcamento ? `${etq.por_categoria.orcamento} orçamento` : ''}
+            </div>
           </div>
-        ))}
-      </div>
-      {/* Top etiquetas (dedup por nome normalizado) */}
-      <div className="pt-3 border-t border-border/40">
-        <p className="text-[10px] uppercase tracking-widest text-ink-faint mb-2">Top etiquetas</p>
-        <div className="space-y-1.5">
-          {(() => {
-            // Dedup variações de grafia (PROSPECCAO vs PROSPECÇÃO)
-            const map = new Map<string, { nome: string; categoria: EtiquetaCategoria; total: number }>()
-            for (const e of etq.por_etiqueta) {
-              const cur = map.get(e.nome)
-              if (cur) cur.total += e.total
-              else map.set(e.nome, { nome: e.nome, categoria: e.categoria, total: e.total })
-            }
-            const top = Array.from(map.values()).sort((a, b) => b.total - a.total).slice(0, 10)
-            const maxT = Math.max(...top.map(e => e.total), 1)
-            return top.map(e => (
-              <div key={e.nome} className="flex items-center gap-2 text-[12px]">
-                <span className="w-44 truncate text-ink" title={e.nome}>{e.nome}</span>
-                <div className="flex-1 h-2 bg-surface-2 rounded overflow-hidden">
-                  <div className="h-full" style={{ width: `${(e.total / maxT) * 100}%`, backgroundColor: CAT_COLOR[e.categoria] }} />
-                </div>
-                <span className="w-10 text-right text-ink-muted font-mono tabular-nums">{e.total}</span>
-              </div>
-            ))
-          })()}
+          <div className="border-l-2 border-info pl-2">
+            <div className="text-[10px] text-ink-faint uppercase tracking-wide">Em andamento</div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-[18px] font-bold text-ink tabular-nums">{grupoAtivo}</span>
+              <span className="text-[11px] text-info tabular-nums">{pctAtivo}%</span>
+            </div>
+            <div className="text-[10px] text-ink-faint">
+              novos + quentes + em conversa
+            </div>
+          </div>
+          <div className="border-l-2 border-danger/70 pl-2">
+            <div className="text-[10px] text-ink-faint uppercase tracking-wide">Perdido / Trava</div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-[18px] font-bold text-ink tabular-nums">{grupoPerdido}</span>
+              <span className="text-[11px] text-danger tabular-nums">{pctPerdido}%</span>
+            </div>
+            <div className="text-[10px] text-ink-faint">
+              perdido + outros + interno
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Top pipeline (azul/verde — saúde) */}
+      {topPipeline.length > 0 && (
+        <div>
+          <p className="text-[10px] uppercase tracking-widest text-ink-faint mb-2">🟢 Pipeline saudável</p>
+          <div className="space-y-1.5">
+            {topPipeline.map(e => (
+              <div key={e.nome} className="grid grid-cols-[140px_1fr_40px] items-center gap-2 text-[12px]">
+                <span className="truncate text-ink" title={e.nome}>{e.nome}</span>
+                <div className="h-1.5 bg-surface-2 rounded overflow-hidden">
+                  <div className="h-full" style={{ width: `${(e.total / maxPipe) * 100}%`, backgroundColor: CAT_COLOR[e.categoria] }} />
+                </div>
+                <span className="text-right text-ink-muted font-mono tabular-nums">{e.total}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Top motivos de trava/perda (vermelho — ação necessária) */}
+      {topTrava.length > 0 && (
+        <div>
+          <p className="text-[10px] uppercase tracking-widest text-ink-faint mb-2">🔴 Motivos de trava / perda</p>
+          <div className="space-y-1.5">
+            {topTrava.map(e => (
+              <div key={e.nome} className="grid grid-cols-[140px_1fr_40px] items-center gap-2 text-[12px]">
+                <span className="truncate text-ink" title={e.nome}>{e.nome}</span>
+                <div className="h-1.5 bg-surface-2 rounded overflow-hidden">
+                  <div className="h-full bg-danger/60" style={{ width: `${(e.total / maxTrava) * 100}%` }} />
+                </div>
+                <span className="text-right text-ink-muted font-mono tabular-nums">{e.total}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
