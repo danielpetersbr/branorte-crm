@@ -849,31 +849,105 @@ function LeadsOrfaos({ etq }: { etq: NonNullable<ReturnType<typeof useDashboardE
 }
 
 function OrigemVendido({ etq }: { etq: NonNullable<ReturnType<typeof useDashboardEtiquetas>['data']> }) {
-  const top = etq.por_origem
-  const maxT = Math.max(...top.map(o => o.total), 1)
-  return (
-    <div className="space-y-2">
-      {top.map(o => {
-        const pct = o.vendido_pct ?? 0
-        const tone = pct >= 5 ? 'text-success' : pct >= 1 ? 'text-warning' : 'text-danger'
-        return (
-          <div key={o.origem} className="flex items-center gap-2 text-[12px]">
-            <span className="w-44 truncate text-ink" title={o.origem}>{o.origem}</span>
-            <div className="flex-1 h-3 bg-surface-2 rounded overflow-hidden relative">
-              <div className="absolute inset-y-0 left-0 bg-info/30" style={{ width: `${(o.total / maxT) * 100}%` }} />
-              <div className="absolute inset-y-0 left-0 bg-success" style={{ width: `${((o.vendido + o.orcamento) / maxT) * 100}%` }} />
-            </div>
-            <span className="w-14 text-right text-ink-muted font-mono tabular-nums">
-              {o.vendido}/{o.total}
-            </span>
-            <span className={`w-12 text-right font-mono tabular-nums font-semibold ${tone}`}>
-              {pct.toFixed(1)}%
-            </span>
+  // Separa origens em 2 grupos:
+  // 1. COM conversão (alguma venda) — ordena por % desc → mostra "barra de qualidade"
+  // 2. SEM conversão (0 vendidos) — agrupa, ordena por volume → só ranking de volume
+  const comConv = etq.por_origem
+    .filter(o => (o.vendido_pct ?? 0) > 0)
+    .sort((a, b) => (b.vendido_pct ?? 0) - (a.vendido_pct ?? 0))
+  const semConv = etq.por_origem
+    .filter(o => (o.vendido_pct ?? 0) === 0)
+    .sort((a, b) => b.total - a.total)
+  const maxVolGeral = Math.max(...etq.por_origem.map(o => o.total), 1)
+
+  // Linha "rica" para origens com conversão: nome + barra dupla + mini-stats
+  const RowConv = ({ o }: { o: typeof etq.por_origem[number] }) => {
+    const pct = o.vendido_pct ?? 0
+    const tone = pct >= 5 ? 'text-success' : pct >= 1 ? 'text-warning' : 'text-ink-muted'
+    const vendaOrc = o.vendido + o.orcamento
+    const volPct = (o.total / maxVolGeral) * 100
+    const convPctNaBarra = o.total > 0 ? (vendaOrc / o.total) * 100 : 0
+    return (
+      <div className="grid grid-cols-[140px_1fr_70px_60px] items-center gap-3 text-[12px]">
+        <div className="min-w-0">
+          <div className="truncate text-ink font-medium" title={o.origem}>{o.origem}</div>
+          <div className="text-[10px] text-ink-faint truncate">
+            {o.vendido > 0 && `${o.vendido} venda${o.vendido > 1 ? 's' : ''}`}
+            {o.vendido > 0 && o.orcamento > 0 && ' · '}
+            {o.orcamento > 0 && `${o.orcamento} orçamento${o.orcamento > 1 ? 's' : ''}`}
           </div>
-        )
-      })}
-      <p className="text-[10px] text-ink-faint pt-2">
-        Verde = vendido + orçamento. Azul claro = volume total. % = vendidos / total. Origens "WhatsApp NNNN" excluídas (vendedor individual).
+        </div>
+        {/* Barra: largura = volume relativo; fill verde = % convertido */}
+        <div
+          className="h-3 bg-surface-2 rounded overflow-hidden relative"
+          style={{ width: `${Math.max(volPct, 6)}%` }}
+          title={`${o.total} leads · ${vendaOrc} converteram (${convPctNaBarra.toFixed(1)}%)`}
+        >
+          <div className="absolute inset-y-0 left-0 bg-info/30" style={{ width: '100%' }} />
+          <div className="absolute inset-y-0 left-0 bg-success" style={{ width: `${convPctNaBarra}%` }} />
+        </div>
+        <span className="text-right text-ink-muted font-mono tabular-nums text-[11px]">
+          {vendaOrc}/{o.total}
+        </span>
+        <span className={`text-right font-mono tabular-nums font-bold ${tone}`}>
+          {pct.toFixed(1)}%
+        </span>
+      </div>
+    )
+  }
+
+  // Linha "compacta" para origens sem conversão: nome + barra azul + volume
+  const RowSemConv = ({ o }: { o: typeof etq.por_origem[number] }) => {
+    const volPct = (o.total / maxVolGeral) * 100
+    return (
+      <div className="grid grid-cols-[140px_1fr_70px_60px] items-center gap-3 text-[12px] opacity-70">
+        <div className="truncate text-ink-muted" title={o.origem}>{o.origem}</div>
+        <div
+          className="h-2 bg-surface-2 rounded overflow-hidden relative"
+          style={{ width: `${Math.max(volPct, 6)}%` }}
+        >
+          <div className="absolute inset-y-0 left-0 bg-info/30" style={{ width: '100%' }} />
+        </div>
+        <span className="text-right text-ink-faint font-mono tabular-nums text-[11px]">
+          0/{o.total}
+        </span>
+        <span className="text-right font-mono tabular-nums text-ink-faint">—</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Header explicativo (curto, no topo, claro) */}
+      <div className="flex items-center justify-between text-[10px] text-ink-faint border-b border-border pb-2">
+        <span>Ordenado por <strong className="text-ink-muted">% de conversão</strong> (vendido + orçamento ÷ total)</span>
+        <div className="flex gap-3">
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-success" /> Converteu</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-info/30" /> Volume</span>
+        </div>
+      </div>
+
+      {/* Bloco 1: origens com conversão (destaque) */}
+      {comConv.length > 0 ? (
+        <div className="space-y-2">
+          {comConv.map(o => <RowConv key={o.origem} o={o} />)}
+        </div>
+      ) : (
+        <p className="text-[11px] text-ink-faint italic">Nenhuma origem com vendas ou orçamentos no período.</p>
+      )}
+
+      {/* Bloco 2: origens sem conversão (agrupadas, esmaecidas) */}
+      {semConv.length > 0 && (
+        <div className="space-y-1.5 pt-2 border-t border-border/50">
+          <div className="text-[10px] text-ink-faint uppercase tracking-wide">
+            Sem conversão ainda · {semConv.length} {semConv.length === 1 ? 'origem' : 'origens'} · {semConv.reduce((s, o) => s + o.total, 0)} leads
+          </div>
+          {semConv.map(o => <RowSemConv key={o.origem} o={o} />)}
+        </div>
+      )}
+
+      <p className="text-[10px] text-ink-faint pt-1 leading-relaxed">
+        Origens <code className="text-[9px] bg-surface-2 px-1 rounded">WhatsApp NNNN</code> (vendedores individuais) excluídas. Conversão considera leads com etiqueta <strong>VENDIDO</strong> ou <strong>ORÇAMENTO ENVIADO</strong>.
       </p>
     </div>
   )
