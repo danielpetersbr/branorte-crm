@@ -203,13 +203,15 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
   const [descricao, setDescricao] = useState('')
   const [descricaoTocada, setDescricaoTocada] = useState(false)
   const sugestao = useMemo(() => sugerirDescricao(snapshot), [snapshot])
-  // Atualiza sugestao automatica quando carrinho muda (se vendedor nao editou ainda)
+  // Em modo 'alt' (criar alteracao), pre-preenche com prefix "(Alteração)" pra avisar.
+  // Em outros casos, deixa VAZIO de proposito: forca vendedor a confirmar/digitar
+  // antes de salvar (vide validacao em handleGerar). Sugestao fica no placeholder.
   useEffect(() => {
-    if (!descricaoTocada && open) {
-      const prefix = saveMode === 'alt' ? '(Alteração) ' : ''
-      setDescricao(prefix + sugestao)
+    if (!open) return
+    if (saveMode === 'alt' && !descricaoTocada) {
+      setDescricao('(Alteração) ' + sugestao)
     }
-  }, [sugestao, descricaoTocada, open, saveMode])
+  }, [open, saveMode, sugestao, descricaoTocada])
 
   const [pdfAltaQualidade, setPdfAltaQualidade] = useState(false)
 
@@ -481,6 +483,20 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
     if (itemSemValor) {
       const ok = confirm(`O item "${itemSemValor.nome}" está com R$ 0,00. Gerar mesmo assim?`)
       if (!ok) return
+    }
+    // Confirma descrição: se vazia, pergunta se quer usar a sugestão automatica
+    // (vai pro nome do arquivo) ou voltar e digitar manualmente.
+    // Auto-submit pulando — vem do copiloto IA, sugestao serve.
+    if (!headlessMode && !descricao.trim()) {
+      const ok = confirm(
+        `Você não preencheu a descrição do orçamento.\n\n` +
+        `Sugestão automática: "${sugestao}"\n\n` +
+        `OK = usar a sugestão.\n` +
+        `Cancelar = voltar e digitar manualmente.`
+      )
+      if (!ok) return
+      // Aceitou sugestao: preenche no state pra refletir na UI e ser usada
+      setDescricao(sugestao)
     }
     setGerando(true)
     setErro(null)
@@ -1101,11 +1117,22 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             <Input
               value={descricao}
               onChange={e => { setDescricao(e.target.value); setDescricaoTocada(true) }}
-              placeholder={sugestao}
+              placeholder={`Sugestão: ${sugestao} (clique pra usar)`}
               maxLength={100}
+              onClick={() => {
+                // Click no input vazio: se nao digitou nada ainda, oferece preencher
+                // com a sugestao sem precisar digitar.
+                if (!descricao.trim()) {
+                  setDescricao(sugestao)
+                  setDescricaoTocada(true)
+                }
+              }}
             />
             <div className="text-[10px] text-ink-faint mt-1">
-              Vai pro nome do arquivo: <span className="font-mono text-ink-muted">{numeroAtual || '...'} - {cliNome || 'Cliente'} ({descricao || sugestao})</span>
+              Vai pro nome do arquivo: <span className="font-mono text-ink-muted">{numeroAtual || '...'} - {cliNome || 'Cliente'} ({descricao.trim() || sugestao})</span>
+              {!descricao.trim() && (
+                <span className="block text-warn mt-0.5">⚠ Vazio — vai perguntar na hora de salvar</span>
+              )}
             </div>
           </div>
 
