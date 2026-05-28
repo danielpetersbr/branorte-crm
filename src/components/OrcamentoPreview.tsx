@@ -1172,10 +1172,13 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       const incluso = !porContaCliente && m.valor_total === 0
                       const podeTrocar = !renderMode && !!onTrocarMotor && !!m.item_uid && !!motoresDisponiveis?.length
                       const aberto = trocarMotorIdx === idx
-                      // Detecta "motorredutor" na spec do item → mostra em vez de "X polos"
+                      // Detecta motorredutor: 1) polos=0 (catalogo_motores marca motorredutor assim)
+                      // 2) spec do item menciona "motorredutor" (texto curado).
+                      // Caso 1 cobre quando vendedor troca o motor via modal pra motorredutor.
                       const itemCarrinho = carrinho.find(it => it.uid === m.item_uid)
                       const specMotor = itemCarrinho?.specs?.find(s => /motorredutor|moto\s*redutor/i.test(s))
-                      const tipoMotor = specMotor ? 'motorredutor' : `${m.polos} polos`
+                      const ehMotorredutor = m.polos === 0 || !!specMotor
+                      const tipoMotor = ehMotorredutor ? 'motorredutor' : `${m.polos} polos`
                       return (
                         <tr key={`${m.cv}-${m.polos}-${idx}`} className="border-t border-gray-200">
                           <td className="py-1.5 text-gray-800 relative">
