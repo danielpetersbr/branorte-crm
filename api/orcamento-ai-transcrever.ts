@@ -15,7 +15,10 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
-import { buildCorrecaoPrompt } from './_lib/branorte-vocab'
+// NOTA: import com extensao .js mesmo o arquivo sendo .ts — o Vercel Node
+// builder usa ESM e o resolver precisa do path final (apos compilacao). Sem
+// o .js da ERR_MODULE_NOT_FOUND em runtime.
+import { buildCorrecaoPrompt } from './_lib/branorte-vocab.js'
 
 const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!
 const SVC_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
