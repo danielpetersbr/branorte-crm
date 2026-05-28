@@ -5,7 +5,7 @@
 
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Truck, MapPin, Loader2, AlertTriangle, Plus, Trash2 } from 'lucide-react'
+import { Truck, MapPin, Loader2, AlertTriangle, Plus, Trash2, Package, Scale, Sparkles, History, Building2, Save, FileText } from 'lucide-react'
 import {
   recomendarCaminhao,
   calcularPisoANTT,
@@ -231,14 +231,27 @@ export default function FreteCotacao() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <Truck className="h-7 w-7 text-primary" />
-          <h1 className="text-2xl font-bold">Cotação de Frete</h1>
+          <div className="w-11 h-11 bg-gradient-to-br from-primary to-primary/70 rounded-xl flex items-center justify-center shadow-lg shadow-primary/30">
+            <Truck className="h-6 w-6 text-primary-foreground" strokeWidth={2.5} />
+          </div>
+          <div>
+            <h1 className="text-2xl font-black tracking-tight">Cotação de Frete</h1>
+            <div className="text-xs text-muted-foreground">Estimativa pra negociação · Branorte/SC</div>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Link to="/frete/historico" className="text-sm text-muted-foreground hover:text-primary underline">
+        <div className="flex gap-1">
+          <Link
+            to="/frete/historico"
+            className="px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-primary hover:bg-primary/5 rounded-lg transition-colors flex items-center gap-1.5"
+          >
+            <History className="h-3.5 w-3.5" />
             Histórico
           </Link>
-          <Link to="/frete/transportadoras" className="text-sm text-muted-foreground hover:text-primary underline">
+          <Link
+            to="/frete/transportadoras"
+            className="px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-primary hover:bg-primary/5 rounded-lg transition-colors flex items-center gap-1.5"
+          >
+            <Building2 className="h-3.5 w-3.5" />
             Transportadoras
           </Link>
         </div>
@@ -424,146 +437,241 @@ export default function FreteCotacao() {
           </div>
         )}
 
-        {/* Resumo da carga */}
+        {/* Resumo da carga - badges destacados */}
         {carga && (
-          <div className="mt-4 pt-3 border-t text-sm text-muted-foreground">
-            Carga: <b className="text-foreground">{carga.peso_kg.toLocaleString('pt-BR')} kg</b>
-            {carga.comprimento_m > 0 && <> · {carga.comprimento_m.toFixed(1)}m × {carga.largura_m.toFixed(1)}m × {carga.altura_m.toFixed(1)}m</>}
-            {carga.indivisivel && <> · <span className="text-amber-600">indivisível</span></>}
+          <div className="mt-4 pt-3 border-t flex flex-wrap gap-2">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 text-primary border border-primary/20 rounded-full text-xs font-semibold">
+              <Scale className="h-3.5 w-3.5" />
+              {carga.peso_kg.toLocaleString('pt-BR')} kg
+            </div>
+            {carga.comprimento_m > 0 && (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted text-foreground rounded-full text-xs font-medium">
+                <Package className="h-3.5 w-3.5" />
+                {carga.comprimento_m.toFixed(1)} × {carga.largura_m.toFixed(1)} × {carga.altura_m.toFixed(1)} m
+              </div>
+            )}
+            {carga.indivisivel && (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30 rounded-full text-xs font-semibold">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Indivisível
+              </div>
+            )}
           </div>
         )}
       </div>
 
       {/* Resultado */}
       {carga && distanciaKm && (
-        <div className="bg-card border rounded-lg p-4 mb-4">
-          <h2 className="font-semibold mb-3">Resultado</h2>
+        <div className="bg-gradient-to-br from-card to-card/50 border-2 border-primary/20 rounded-xl p-5 mb-4 shadow-lg shadow-primary/5">
+          <div className="flex items-center gap-2 mb-4">
+            <Sparkles className="h-5 w-5 text-primary" />
+            <h2 className="text-base font-bold uppercase tracking-wider">Resultado</h2>
+          </div>
 
-          {/* Caminhão recomendado */}
+          {/* Caminhão recomendado — HERO CARD */}
           {caminhao ? (
-            <div className="mb-4">
-              <div className="text-sm text-muted-foreground">Caminhão recomendado:</div>
-              <div className="text-lg font-bold flex items-center gap-2">
-                <Truck className="h-5 w-5 text-primary" /> {caminhao.nome.toUpperCase()}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                Capacidade: {caminhao.peso_max_kg.toLocaleString('pt-BR')} kg · {caminhao.comprimento_util_m}m × {caminhao.largura_util_m}m × {caminhao.altura_util_m}m
-                {caminhao.precisa_aet && <> · <span className="text-amber-600">precisa AET (autorização especial)</span></>}
+            <div className="mb-5 p-4 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border-2 border-primary/30 rounded-lg">
+              <div className="flex items-start gap-4">
+                <div className="flex-shrink-0 w-14 h-14 bg-primary/20 rounded-lg flex items-center justify-center">
+                  <Truck className="h-8 w-8 text-primary" strokeWidth={2.5} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-0.5">
+                    Caminhão recomendado
+                  </div>
+                  <div className="text-2xl font-black text-primary tracking-tight">
+                    {caminhao.nome.toUpperCase()}
+                  </div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-xs">
+                    <span className="text-muted-foreground">
+                      Capacidade: <b className="text-foreground tabular-nums">{caminhao.peso_max_kg.toLocaleString('pt-BR')} kg</b>
+                    </span>
+                    <span className="text-muted-foreground">
+                      Útil: <b className="text-foreground tabular-nums">{caminhao.comprimento_util_m} × {caminhao.largura_util_m} × {caminhao.altura_util_m} m</b>
+                    </span>
+                  </div>
+                  {caminhao.precisa_aet && (
+                    <div className="mt-2 inline-flex items-center gap-1 px-2 py-1 bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 rounded text-xs font-semibold">
+                      <AlertTriangle className="h-3 w-3" />
+                      Precisa AET (autorização especial)
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           ) : (
-            <div className="mb-4 flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded">
-              <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
-              <div className="text-sm">
-                <b>Carga especial</b> — nenhum caminhão padrão comporta essa carga. Solicite cotação humana com parceira especializada (silos grandes, estruturas, etc.).
+            <div className="mb-5 flex items-start gap-3 p-4 bg-amber-500/10 border-2 border-amber-500/40 rounded-lg">
+              <AlertTriangle className="h-6 w-6 text-amber-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <div className="font-bold text-amber-700 dark:text-amber-400">Carga especial</div>
+                <div className="text-sm text-amber-800 dark:text-amber-300 mt-0.5">
+                  Nenhum caminhão padrão comporta essa carga. Solicite cotação humana com parceira especializada (silos grandes, estruturas customizadas).
+                </div>
               </div>
             </div>
           )}
 
-          {/* 3 estimativas */}
+          {/* 3 estimativas — CARDS COMPARATIVOS */}
           {caminhao && (
-            <div className="space-y-3">
-              <div className="text-sm font-medium">3 estimativas pra comparar:</div>
-
-              {/* ANTT */}
-              <div className="flex items-center justify-between p-3 border rounded">
-                <div>
-                  <div className="font-medium text-sm">ANTT mínimo (legal)</div>
-                  <div className="text-xs text-muted-foreground">
-                    Resolução 6.076/2026 · piso {formatBRL(valorAntt?.piso)} ·
-                    <label className="ml-1">
-                      margem ×
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={margem}
-                        onChange={e => setMargem(e.target.value)}
-                        className="w-14 ml-1 border rounded px-1 text-xs bg-background"
-                      />
-                    </label>
-                  </div>
-                </div>
-                <div className="text-lg font-bold">{formatBRL(valorAntt?.com_margem)}</div>
+            <>
+              <div className="text-xs uppercase tracking-wider text-muted-foreground font-bold mb-3">
+                3 estimativas pra comparar
               </div>
 
-              {/* Parceiras */}
-              {estimativasParceiras.length > 0 ? (
-                estimativasParceiras.map(({ parceira, valor }) => (
-                  <label
-                    key={parceira.id}
-                    className={`flex items-center justify-between p-3 border rounded cursor-pointer transition-colors ${
-                      parceiraEscolhidaId === parceira.id ? 'border-primary bg-primary/5' : ''
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        name="parceira"
-                        checked={parceiraEscolhidaId === parceira.id}
-                        onChange={() => {
-                          setParceiraEscolhidaId(parceira.id)
-                          setValorFinal(String(Math.round(valor!)))
-                        }}
-                      />
-                      <div>
-                        <div className="font-medium text-sm">{parceira.nome}</div>
-                        {parceira.telefone && (
-                          <div className="text-xs text-muted-foreground">{parceira.telefone}</div>
-                        )}
-                      </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+                {/* CARD 1: ANTT (âmbar/legal) */}
+                <div className="relative p-4 bg-gradient-to-br from-amber-500/10 to-amber-500/5 border-2 border-amber-500/30 rounded-lg hover:border-amber-500/50 transition-all">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Building2 className="h-4 w-4 text-amber-600" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                      ANTT (legal)
+                    </span>
+                  </div>
+                  <div className="text-3xl font-black tabular-nums text-amber-700 dark:text-amber-400 leading-tight">
+                    {formatBRL(valorAntt?.com_margem)}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground mt-1 leading-tight">
+                    Res. 6.076/2026 · piso {formatBRL(valorAntt?.piso)}
+                  </div>
+                  <div className="mt-2 flex items-center gap-1.5 text-[11px]">
+                    <span className="text-muted-foreground">margem ×</span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={margem}
+                      onChange={e => setMargem(e.target.value)}
+                      className="w-12 border border-amber-500/30 rounded px-1.5 py-0.5 text-xs bg-background tabular-nums"
+                    />
+                  </div>
+                </div>
+
+                {/* CARD 2: Parceiras (primary/verde) */}
+                {estimativasParceiras.length > 0 ? (
+                  <div className="relative p-4 bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border-2 border-emerald-500/30 rounded-lg">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Truck className="h-4 w-4 text-emerald-600" />
+                      <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                        Parceiras ({estimativasParceiras.length})
+                      </span>
                     </div>
-                    <div className="text-lg font-bold">{formatBRL(valor)}</div>
-                  </label>
-                ))
-              ) : (
-                <div className="p-3 border border-dashed rounded text-sm text-muted-foreground">
-                  Nenhuma transportadora parceira cadastrada para esse caminhão / UF.
-                  <Link to="/frete/transportadoras" className="ml-1 text-primary hover:underline">
-                    Cadastrar agora
-                  </Link>
-                </div>
-              )}
-
-              {/* Média histórica */}
-              <div className="flex items-center justify-between p-3 border rounded">
-                <div>
-                  <div className="font-medium text-sm">Histórico médio</div>
-                  <div className="text-xs text-muted-foreground">
-                    Cotações anteriores similares (mesma UF, mesmo caminhão, dist. ±20%)
+                    <div className="space-y-2 max-h-[120px] overflow-y-auto">
+                      {estimativasParceiras.map(({ parceira, valor }) => (
+                        <label
+                          key={parceira.id}
+                          className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-all border ${
+                            parceiraEscolhidaId === parceira.id
+                              ? 'bg-emerald-500/15 border-emerald-500/50 shadow-sm'
+                              : 'border-transparent hover:bg-emerald-500/5 hover:border-emerald-500/20'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="parceira"
+                            checked={parceiraEscolhidaId === parceira.id}
+                            onChange={() => {
+                              setParceiraEscolhidaId(parceira.id)
+                              setValorFinal(String(Math.round(valor!)))
+                            }}
+                            className="accent-emerald-600"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-semibold truncate">{parceira.nome}</div>
+                            <div className="text-sm font-black tabular-nums text-emerald-700 dark:text-emerald-400">
+                              {formatBRL(valor)}
+                            </div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
                   </div>
-                </div>
-                <div className="text-lg font-bold">
-                  {mediaHist.isLoading ? '...' : formatBRL(mediaHist.data)}
+                ) : (
+                  <Link
+                    to="/frete/transportadoras"
+                    className="relative p-4 bg-muted/30 border-2 border-dashed border-muted-foreground/30 rounded-lg hover:border-primary/50 hover:bg-primary/5 transition-all flex flex-col items-center justify-center text-center group"
+                  >
+                    <Truck className="h-6 w-6 text-muted-foreground/50 group-hover:text-primary/70 mb-1.5" />
+                    <div className="text-xs font-semibold text-muted-foreground group-hover:text-primary">
+                      Nenhuma parceira
+                    </div>
+                    <div className="text-[10px] text-muted-foreground/70 mt-0.5">
+                      Cadastrar agora →
+                    </div>
+                  </Link>
+                )}
+
+                {/* CARD 3: Histórico (azul/data) */}
+                <div className="relative p-4 bg-gradient-to-br from-sky-500/10 to-sky-500/5 border-2 border-sky-500/30 rounded-lg hover:border-sky-500/50 transition-all">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <History className="h-4 w-4 text-sky-600" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-sky-700 dark:text-sky-400">
+                      Histórico
+                    </span>
+                  </div>
+                  <div className="text-3xl font-black tabular-nums text-sky-700 dark:text-sky-400 leading-tight">
+                    {mediaHist.isLoading ? (
+                      <Loader2 className="h-7 w-7 animate-spin" />
+                    ) : mediaHist.data ? (
+                      formatBRL(mediaHist.data)
+                    ) : (
+                      <span className="text-muted-foreground text-base font-normal">—</span>
+                    )}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground mt-1 leading-tight">
+                    {mediaHist.data
+                      ? 'Mediana de cotações similares (±20% km)'
+                      : 'Mín. 3 cotações pra ativar'}
+                  </div>
                 </div>
               </div>
 
-              {/* Decisão */}
-              <div className="mt-4 pt-3 border-t space-y-2">
-                <label className="text-sm font-medium block">Valor final pra negociar com o cliente</label>
-                <input
-                  type="number"
-                  value={valorFinal}
-                  onChange={e => setValorFinal(e.target.value)}
-                  placeholder="R$"
-                  className="w-full border rounded px-3 py-2 text-sm bg-background"
-                />
-                <textarea
-                  value={observacoes}
-                  onChange={e => setObservacoes(e.target.value)}
-                  placeholder="Observações (ex: cliente já tem transportadora, frete CIF, etc.)"
-                  className="w-full border rounded px-3 py-2 text-sm bg-background"
-                  rows={2}
-                />
+              {/* DECISÃO — destaque final */}
+              <div className="border-t-2 border-dashed border-primary/20 pt-4 mt-2">
+                <label className="flex items-center gap-1.5 text-xs uppercase tracking-wider font-bold text-muted-foreground mb-2">
+                  <Save className="h-3.5 w-3.5" />
+                  Valor final pra negociar com o cliente
+                </label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg font-bold text-muted-foreground tabular-nums">
+                    R$
+                  </span>
+                  <input
+                    type="number"
+                    value={valorFinal}
+                    onChange={e => setValorFinal(e.target.value)}
+                    placeholder="0,00"
+                    className="w-full border-2 border-primary/30 focus:border-primary rounded-lg pl-12 pr-4 py-3 text-2xl font-black tabular-nums bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                  />
+                </div>
+                <div className="relative mt-3">
+                  <FileText className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <textarea
+                    value={observacoes}
+                    onChange={e => setObservacoes(e.target.value)}
+                    placeholder="Observações (ex: cliente já tem transportadora, frete CIF, escolta especial...)"
+                    className="w-full border rounded-lg pl-10 pr-3 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all"
+                    rows={2}
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={handleSalvar}
                   disabled={salvar.isPending}
-                  className="w-full px-4 py-2 bg-primary text-primary-foreground rounded font-medium hover:bg-primary/90 disabled:opacity-50"
+                  className="mt-3 w-full px-6 py-3.5 bg-gradient-to-r from-primary to-primary/90 hover:from-primary/95 hover:to-primary text-primary-foreground rounded-lg font-bold text-base uppercase tracking-wider shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/40 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 transition-all flex items-center justify-center gap-2"
                 >
-                  {salvar.isPending ? 'Salvando…' : 'Salvar cotação'}
+                  {salvar.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Salvando…
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-5 w-5" />
+                      Salvar cotação
+                    </>
+                  )}
                 </button>
               </div>
-            </div>
+            </>
           )}
         </div>
       )}
