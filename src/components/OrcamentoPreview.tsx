@@ -1192,6 +1192,18 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             ) : (
                               <span className="font-semibold">{m.cv} CV {tipoMotor}</span>
                             )}
+                            {/* Quando item tem 2 motores, identifica o secundario pelo papel
+                                descrito na spec (ex: exaustor, agitador, motorredutor auxiliar).
+                                motorIndex=1 = 2o motor capturado pela regex multi-motor. */}
+                            {m.motorIndex === 1 && (() => {
+                              const sm = specMotor || itemCarrinho?.specs?.find(s => /acionamento/i.test(s)) || ''
+                              // Acha qual papel: pega palavra-chave entre o 1o e 2o "CV"
+                              const tipo = /exaustor/i.test(sm) ? 'exaustor'
+                                : /agitador/i.test(sm) ? 'agitador'
+                                : /motorredutor/i.test(sm) ? 'motorredutor'
+                                : null
+                              return tipo ? <span className="text-gray-500"> <span className="italic">({tipo})</span></span> : null
+                            })()}
                             {m.item_nome && (
                               <span className="text-gray-500"> · <span className="italic">{m.item_nome}</span></span>
                             )}
