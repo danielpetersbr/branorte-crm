@@ -307,6 +307,23 @@ export function Dashboard() {
         </Card>
       )}
 
+      {/* PERFORMANCE POR CRIATIVO — top 10 com barras Qualif × Não qualif */}
+      {data.porCriativo.length > 0 && (
+        <Card>
+          <CardHeader
+            title="Performance por criativo"
+            subtitle="Volume × % qualificados — top 10"
+            right={
+              <div className="flex gap-3 text-[10px] text-ink-faint">
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-accent" /> Qualif</span>
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-info" /> Não qualif</span>
+              </div>
+            }
+          />
+          <CriativosList criativos={data.porCriativo} />
+        </Card>
+      )}
+
       {/* MOMENTO + GEOGRAFIA */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <Card>
@@ -597,7 +614,43 @@ function DonutMomento({ data }: { data: { momento: string; valor: number; cor: s
   )
 }
 
-// Lista compacta de criativos
+// Lista compacta de criativos — top 10 ordenado por volume com barra Qualif × Não qualif
+function CriativosList({ criativos }: { criativos: { codigo: string; nome: string; total: number; qualificados: number; ctr: number }[] }) {
+  if (!criativos.length) {
+    return <p className="text-sm text-ink-faint">Nenhum criativo registrado.</p>
+  }
+  // Ordena por volume (top 10 de fato) — match com a imagem que mostra os mais movimentados primeiro
+  const sorted = [...criativos]
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 10)
+  const maxTotal = Math.max(...sorted.map(c => c.total))
+  return (
+    <div className="space-y-2">
+      {sorted.map(c => {
+        const widthPct = (c.total / maxTotal) * 100
+        const qualifPct = c.total > 0 ? (c.qualificados / c.total) * 100 : 0
+        const ctrColor = c.ctr >= 15 ? 'text-accent' : c.ctr >= 5 ? 'text-warning' : c.total > 5 ? 'text-danger' : 'text-ink-faint'
+        return (
+          <div key={c.codigo} className="grid grid-cols-[60px_1fr_50px_60px] items-center gap-3 text-[11px]">
+            <div className="font-mono text-ink-faint truncate">{c.codigo}</div>
+            <div className="min-w-0">
+              <div className="text-ink truncate mb-1">{c.nome}</div>
+              <div className="h-2 bg-surface-2 rounded-sm relative overflow-hidden" style={{ width: `${Math.max(widthPct, 4)}%` }}>
+                <div className="absolute inset-y-0 left-0 bg-accent" style={{ width: `${qualifPct}%` }} />
+                <div className="absolute inset-y-0 right-0 bg-info/70" style={{ width: `${100 - qualifPct}%` }} />
+              </div>
+            </div>
+            <div className="text-right text-ink font-mono tabular-nums">{c.total}</div>
+            <div className={`text-right font-mono tabular-nums ${ctrColor}`}>
+              {c.ctr.toFixed(1)}%
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // Lista de UFs em 2 colunas
 function UfList({ items }: { items: { uf: string; nome: string; total: number; pct: number; isBrasil: boolean }[] }) {
   if (!items.length) return <p className="text-sm text-ink-faint">Sem leads geolocalizados.</p>
