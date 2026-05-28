@@ -198,6 +198,24 @@ function agruparMotores(
   voltagem: Voltagem = 'trifasico',
 ): MotorAgrupado[] {
   const linhas: MotorAgrupado[] = []
+  // Agrupa items duplicados (mesmo nome + cv + polos) somando qtds.
+  // Caso típico: vendedor clicou 2x pra adicionar o mesmo item — vira 1 linha (×2).
+  // Multi-motor (motorIndex) NÃO é agregado pra preservar exaustor/agitador.
+  const mergeKey = (l: MotorAgrupado) =>
+    l.motorIndex !== undefined ? null
+    : `${l.cv}|${l.polos}|${l.item_nome ?? ''}|${l.por_conta_cliente ? 1 : 0}`
+  const mergeOrPush = (linha: MotorAgrupado) => {
+    const k = mergeKey(linha)
+    if (k !== null) {
+      const existente = linhas.find(l => mergeKey(l) === k)
+      if (existente) {
+        existente.qtd += linha.qtd
+        existente.valor_total += linha.valor_total
+        return
+      }
+    }
+    linhas.push(linha)
+  }
   for (const it of carrinho) {
     const nomeItem = it.nome_custom || it.nome
     const ehAcessorioOuPassiva = it.categoria === 'ACESSORIO' || peneiraSemMotor(nomeItem)
@@ -213,7 +231,7 @@ function agruparMotores(
           : null
         const valorUnitExtra = motorMatch ? Number(motorMatch.valor) : 0
         const qtdExtra = (me.qtd || 1) * it.qtd
-        linhas.push({
+        mergeOrPush({
           cv: Number(me.cv),
           polos: me.polos,
           qtd: qtdExtra,
@@ -254,20 +272,20 @@ function agruparMotores(
     if (multiMatch) {
       const cv1 = parseFloat(multiMatch[1].replace(',', '.'))
       const cv2 = parseFloat(multiMatch[2].replace(',', '.'))
-      linhas.push({
+      mergeOrPush({
         cv: cv1, polos: it.motor_polos, qtd: it.qtd,
         valor_unit: valorMotor, valor_total: valorMotor * it.qtd,
         item_nome: nomeItem, item_uid: it.uid, motorIndex: 0,
         por_conta_cliente: porContaCliente,
       })
-      linhas.push({
+      mergeOrPush({
         cv: cv2, polos: it.motor_polos, qtd: it.qtd,
         valor_unit: valorMotor, valor_total: valorMotor * it.qtd,
         item_nome: nomeItem, item_uid: it.uid, motorIndex: 1,
         por_conta_cliente: porContaCliente,
       })
     } else {
-      linhas.push({
+      mergeOrPush({
         cv: it.motor_cv, polos: it.motor_polos, qtd: qtdMotor,
         valor_unit: valorMotor, valor_total: valorMotor * qtdMotor,
         item_nome: nomeItem, item_uid: it.uid,
