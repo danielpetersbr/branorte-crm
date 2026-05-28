@@ -3,7 +3,7 @@
 // 3 metodos de entrada: por equipamento, por dimensoes, por pallets.
 // Mostra 3 estimativas comparativas: ANTT, Parceiras, Historico.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Truck, MapPin, Loader2, AlertTriangle, Plus, Trash2 } from 'lucide-react'
 import {
