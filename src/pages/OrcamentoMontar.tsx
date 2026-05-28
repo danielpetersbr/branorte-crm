@@ -631,6 +631,7 @@ export function OrcamentoMontar() {
   const [passarelaPickerOpen, setPassarelaPickerOpen] = useState(false)
   const [suporteBagPickerOpen, setSuporteBagPickerOpen] = useState(false)
   const [outrosPickerOpen, setOutrosPickerOpen] = useState(false)
+  const [esteiraPickerOpen, setEsteiraPickerOpen] = useState(false)
 
   const { data: precos } = usePrecosBranorte()
   // Lista de modelos de pacote — usado pelo copiloto IA pra resolver onCarregarPacote.
@@ -682,6 +683,7 @@ export function OrcamentoMontar() {
   const suporteBagOficiais = useMemo(() => filtrarCat('SUPORTE_BAG'), [oficiais])
   const outrosOficiais = useMemo(() => oficiais.filter(ci => (ci.categoria === 'OUTROS' || ci.categoria === 'ACESSORIO') && ci.is_oficial), [oficiais])
   const plasticosOficiais = useMemo(() => filtrarCat('PLASTICO'), [oficiais])
+  const esteirasOficiais = useMemo(() => filtrarCat('ESTEIRA'), [oficiais])
 
   // Formata CV pra usar em specs: "1.5" -> "1,5", "2" -> "2,0"
   function formatCvSpec(cv: number): string {
@@ -1821,6 +1823,9 @@ export function OrcamentoMontar() {
                     {(categoria === null || categoria === 'PLASTICO') && plasticosOficiais.length > 0 && (
                       <MetaCard categoria="PLASTICO" titulo="Para Plástico" descricao="Misturadores específicos pra polímeros (com/sem aquecimento)" qtd={plasticosOficiais.length} onClick={() => setPlasticoPickerOpen(true)} />
                     )}
+                    {(categoria === null || categoria === 'ESTEIRA') && esteirasOficiais.length > 0 && (
+                      <MetaCard categoria="ESTEIRA" titulo="Esteira Transportadora" descricao="Transporte de sacaria e grãos" qtd={esteirasOficiais.length} onClick={() => setEsteiraPickerOpen(true)} />
+                    )}
                   </>
                 )}
                 {itemsFiltrados
@@ -1833,6 +1838,7 @@ export function OrcamentoMontar() {
                     'PENEIRA', 'HELICOIDE', 'BALANCA', 'ENSACADEIRA', 'COMPACTA',
                     'ALIMENTADOR', 'DESCARGA', 'MARTELOS', 'MOEGA', 'PASSARELA',
                     'SUPORTE_BAG', 'SUPORTE BAG', 'OUTROS', 'ACESSORIO', 'PLASTICO',
+                    'ESTEIRA',
                   ].includes(it.categoria))
                   .slice(0, 200)
                   .map(item => (
@@ -2555,6 +2561,17 @@ export function OrcamentoMontar() {
         ordemSub={[]}
         onClose={() => setOutrosPickerOpen(false)}
         onPick={p => { adicionarItem(p); setOutrosPickerOpen(false) }}
+      />
+
+      <CategoriaPickerModal
+        open={esteiraPickerOpen}
+        titulo="Esteira Transportadora"
+        items={esteirasOficiais}
+        precosBranorte={precos ?? []}
+        labelSub={{}}
+        ordemSub={[]}
+        onClose={() => setEsteiraPickerOpen(false)}
+        onPick={p => { adicionarItem(p); setEsteiraPickerOpen(false) }}
       />
 
       {/* Modal de escolha de função — aberto quando o item tem várias funções
