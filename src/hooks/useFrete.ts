@@ -31,6 +31,35 @@ export function useTiposCaminhao() {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Modelo Branorte (planilha real Z:/1 - Comercial/4 - Logistica)
+// ─────────────────────────────────────────────────────────────
+
+export type ModeloBranorte = {
+  id: number;
+  tipo_caminhao: 'TRUCK' | 'CARRETA';
+  modo_carga: 'fracionada_2p' | 'fracionada_4p' | 'completa';
+  rs_por_km: number;
+  comprimento_util_m: number;
+  observacao: string | null;
+};
+
+export function useModeloBranorte() {
+  return useQuery({
+    queryKey: ['frete-modelo-branorte'],
+    queryFn: async (): Promise<ModeloBranorte[]> => {
+      const { data, error } = await (supabase as any)
+        .from('frete_modelo_branorte')
+        .select('*')
+        .order('tipo_caminhao')
+        .order('rs_por_km');
+      if (error) throw error;
+      return (data ?? []) as ModeloBranorte[];
+    },
+    staleTime: 60_000 * 10,
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
 // Tabela ANTT vigente
 // ─────────────────────────────────────────────────────────────
 
@@ -233,6 +262,36 @@ export type ItemCatalogoComPeso = {
   indivisivel: boolean;
 };
 
+/**
+ * Catalogo restrito a FABRICAS (Compactas 01/02/03 + Master + Mini Fabrica).
+ * Filtra `categoria = 'COMPACTA'` porque na cotacao de frete o vendedor cota
+ * a FABRICA INTEIRA (mais comum). Pra avulsos (chupim, elevador, silo solto)
+ * o vendedor usa as abas Dimensoes/Pallets/Carga Fechada.
+ */
+/**
+ * Catalogo restrito a FABRICAS (categoria COMPACTA + subcategoria "Mini Fabrica").
+ * Independente do flag `is_oficial` (no catalogo Branorte tem 2 sistemas de
+ * nomes paralelos e nem todos sao oficiais). Pra cotacao de frete o que
+ * importa e ter peso/dim cadastrados.
+ */
+export function useCatalogoFabricas() {
+  return useQuery({
+    queryKey: ['frete-catalogo-fabricas'],
+    queryFn: async (): Promise<ItemCatalogoComPeso[]> => {
+      const { data, error } = await (supabase as any)
+        .from('catalogo_items')
+        .select('id, nome_curto, categoria, peso_kg, dim_comprimento_m, dim_largura_m, dim_altura_m, indivisivel')
+        .in('categoria', ['COMPACTA'])
+        .not('peso_kg', 'is', null)
+        .order('nome_curto', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as ItemCatalogoComPeso[];
+    },
+    staleTime: 60_000 * 10,
+  });
+}
+
+/** Catalogo amplo (compat - mantido caso outras telas usem). */
 export function useCatalogoComPeso() {
   return useQuery({
     queryKey: ['frete-catalogo-com-peso'],

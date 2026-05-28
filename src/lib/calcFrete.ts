@@ -87,6 +87,72 @@ export function calcularPisoANTT(distancia_km: number, antt: AnttTabela): number
   return distancia_km * antt.ccd + antt.cc;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Modelo Branorte (planilha real)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ModeloBranorteRow = {
+  tipo_caminhao: 'TRUCK' | 'CARRETA';
+  modo_carga: 'fracionada_2p' | 'fracionada_4p' | 'completa';
+  rs_por_km: number;
+  comprimento_util_m: number;
+};
+
+/**
+ * UFs do Norte/Nordeste — frete de Branorte (SC) pra cá tem retorno barato,
+ * então valor divide por 2 (regra real da planilha Branorte).
+ */
+const UFS_NORTE_NORDESTE = new Set([
+  'AC','AL','AM','AP','BA','CE','MA','PA','PB','PE','PI','RN','RO','RR','SE','TO',
+]);
+
+export function isDestinoNorte(uf: string): boolean {
+  return UFS_NORTE_NORDESTE.has(uf);
+}
+
+/**
+ * Calcula frete pelo modelo Branorte (planilha):
+ *   - distancia × rs_por_km
+ *   - se destino é N/NE: divide por 2 (frete de retorno)
+ *
+ * Devolve breakdown pra UI mostrar como foi calculado.
+ */
+export function calcularModeloBranorte(
+  distancia_km: number,
+  uf_destino: string,
+  modelo: ModeloBranorteRow,
+): { bruto: number; ajustado: number; aplicou_retorno: boolean } {
+  const bruto = distancia_km * modelo.rs_por_km;
+  const aplicou_retorno = isDestinoNorte(uf_destino);
+  const ajustado = aplicou_retorno ? bruto / 2 : bruto;
+  return { bruto, ajustado, aplicou_retorno };
+}
+
+/**
+ * Sugere automaticamente o modo_carga do modelo Branorte baseado no perfil
+ * da carga. Regras:
+ *  - 1-2 paletes → fracionada_2p (só Carreta tem)
+ *  - 3-4 paletes → fracionada_4p
+ *  - 5+ paletes ou peso > capacidade do Truck → completa
+ *
+ * Esta função é usada quando o vendedor digita carga via "Por equipamento"
+ * ou "Por dimensões". Quando usa aba "Carga fechada" ele mesmo escolhe o modo.
+ */
+export function sugerirModoCargaBranorte(
+  peso_kg: number,
+  qtd_paletes?: number,
+): 'fracionada_2p' | 'fracionada_4p' | 'completa' {
+  if (qtd_paletes != null) {
+    if (qtd_paletes <= 2) return 'fracionada_2p';
+    if (qtd_paletes <= 4) return 'fracionada_4p';
+    return 'completa';
+  }
+  // Sem qtd paletes explícita: cargas pequenas vão fracionadas
+  if (peso_kg <= 1500) return 'fracionada_2p';
+  if (peso_kg <= 3500) return 'fracionada_4p';
+  return 'completa';
+}
+
 /**
  * Valor estimado de uma transportadora parceira para o caminhão recomendado.
  * Retorna `null` se a parceira não tem tabela pra esse tipo de caminhão,
