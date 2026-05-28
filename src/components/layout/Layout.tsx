@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Sparkles, Package, Zap, BookOpen, Settings, TrendingUp, MessageSquarePlus, FilePlus2 } from 'lucide-react'
+import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Sparkles, Package, Zap, BookOpen, Settings, TrendingUp, MessageSquarePlus, FilePlus2, Truck, History } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { cn } from '@/lib/utils'
@@ -63,6 +63,16 @@ const SECONDARY: NavItem[] = [
       { to: '/admin/transportador-funcoes', label: 'Funções Chupim', icon: GitBranch },
       { to: '/orcamentos', label: 'Painel', icon: BarChart2 },
       { to: '/orcamentos/lista', label: 'Lista', icon: List },
+    ],
+  },
+  {
+    to: '/frete',
+    label: 'Frete',
+    icon: Truck,
+    children: [
+      { to: '/frete', label: 'Calculadora', icon: Truck },
+      { to: '/frete/transportadoras', label: 'Transportadoras', icon: Package },
+      { to: '/frete/historico', label: 'Histórico', icon: History },
     ],
   },
   { to: '/vendidos', label: 'Vendidos', icon: CheckCircle, permKey: 'menu.vendidos' },

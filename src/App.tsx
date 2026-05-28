@@ -39,6 +39,9 @@ const PrecosBranorte = lazy(() => import('@/pages/PrecosBranorte').then(m => ({ 
 const OrcamentosConversao = lazy(() => import('@/pages/OrcamentosConversao').then(m => ({ default: m.OrcamentosConversao })))
 const OrcamentosSalvos = lazy(() => import('@/pages/OrcamentosSalvos').then(m => ({ default: m.OrcamentosSalvos })))
 const Roadmap = lazy(() => import('@/pages/Roadmap').then(m => ({ default: m.Roadmap })))
+const FreteCotacao = lazy(() => import('@/pages/FreteCotacao'))
+const FreteTransportadoras = lazy(() => import('@/pages/FreteTransportadoras'))
+const FreteHistorico = lazy(() => import('@/pages/FreteHistorico'))
 
 // /print/orcamento é importado direto (sem lazy) pra evitar precisar de Suspense
 // no fallback antes do auth. Rota usada APENAS pelo Puppeteer server-side.
@@ -128,6 +131,9 @@ function AppRoutes() {
         <Route path="/orcamentos/motores" element={<MotoresAdmin />} />
         <Route path="/orcamentos/precos" element={<PrecosBranorte />} />
         <Route path="/orcamentos/conversao" element={<OrcamentosConversao />} />
+        <Route path="/frete" element={<FreteCotacao />} />
+        <Route path="/frete/transportadoras" element={<FreteTransportadoras />} />
+        <Route path="/frete/historico" element={<FreteHistorico />} />
         <Route path="/vendidos" element={<Vendidos />} />
         <Route path="/atendimentos" element={<Atendimentos />} />
         <Route path="/funil" element={<Funil />} />
