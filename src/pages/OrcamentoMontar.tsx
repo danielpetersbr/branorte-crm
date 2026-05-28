@@ -1405,6 +1405,7 @@ export function OrcamentoMontar() {
     }
 
     // 2) Constrói carrinho a partir dos itens do modelo
+    const voltagemModelo: Voltagem = (modelo.voltagem === 'monofasico' ? 'monofasico' : 'trifasico')
     const novos: CarrinhoItem[] = []
     modelo.itens.forEach(it => {
       const ci = acharCatalogoSimilar(it.nome)
@@ -1440,6 +1441,19 @@ export function OrcamentoMontar() {
       // Motor incluso? (spec diz "incluso/motorredutor")
       const motorIncluso = motorJaInclusoNoItem(it.specs ?? [])
 
+      // BUG FIX (modelo pronto vs item individual):
+      // Quando o modelo pronto tem item com "motor incluso" mas o JSONB foi importado
+      // com valor_equipamento (sem motor), recalcula usando valor_com_motor_trif/mono
+      // do precos_branorte vinculado, respeitando a voltagem do modelo.
+      const precoLinkado = ci?.preco_branorte_id
+        ? (precos ?? []).find(p => p.id === ci.preco_branorte_id)
+        : null
+      let valorFinal = Number(it.valor) || 0
+      if (precoLinkado && motorIncluso) {
+        const { valor: vCalc } = valorPorVoltagem(precoLinkado, voltagemModelo)
+        if (vCalc > 0 && vCalc > valorFinal) valorFinal = vCalc
+      }
+
       novos.push({
         uid: gerarUid(),
         catalogo_id: ci?.id ?? -1,
@@ -1447,8 +1461,8 @@ export function OrcamentoMontar() {
         nome: it.nome,
         specs: it.specs || [],
         qtd: it.qtd || 1,
-        valor: Number(it.valor) || 0,
-        valor_original: Number(it.valor) || 0,
+        valor: valorFinal,
+        valor_original: valorFinal,
         motor_cv: motor ? Number(motor.cv) : (cvDoSpec ?? null),
         motor_polos: motor ? motor.polos : (ci?.motor_padrao_polos ?? 4),
         motor_qtd: motor ? 1 : (motorIncluso ? 0 : (cvDoSpec ? 1 : 0)),
