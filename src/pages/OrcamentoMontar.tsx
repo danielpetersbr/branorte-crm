@@ -1433,7 +1433,13 @@ export function OrcamentoMontar() {
     // 2) Constrói carrinho a partir dos itens do modelo
     const voltagemModelo: Voltagem = (modelo.voltagem === 'monofasico' ? 'monofasico' : 'trifasico')
     const novos: CarrinhoItem[] = []
+    // BUG FIX #14 (2026-05-29): orcamentos legados salvavam motor avulso como item
+    // (ex: 'Motor 3 cv 2 polos' reaparecia como 'G - 01 ...' ao editar id=201). Hoje
+    // motores moram em o.motores e renderizam via motoresAgrupados. Pula items cujo
+    // nome eh APENAS descricao de motor (sem equipamento associado).
+    const SO_MOTOR_RE = /^\s*motor\s+\d+(?:[.,]\d+)?\s*cv\s+\d+\s*polos?\s*$/i
     modelo.itens.forEach(it => {
+      if (SO_MOTOR_RE.test(it.nome || '')) return  // motor legado: pula, ja vai cair em MOTORES TRIFASICOS
       const ci = acharCatalogoSimilar(it.nome)
       // Acessório/peça avulsa (jogo de peneira, jogo de martelos, eixos e buchas) e peneira
       // passiva não têm motor próprio — ignora o CV do nome/spec (é a bitola do moinho).

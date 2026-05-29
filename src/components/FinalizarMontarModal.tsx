@@ -1250,6 +1250,10 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
                     <label className="text-[9px] uppercase tracking-wider text-ink-muted">Intervalo (dias)</label>
                     <Input type="number" value={pgIntervalo} onChange={e => setPgIntervalo(Number(e.target.value) || 30)} className="text-[11px]" />
                   </div>
+                  <div className="col-span-2">
+                    <label className="text-[9px] uppercase tracking-wider text-ink-muted">Data do 1º pagamento</label>
+                    <Input type="date" value={pgPrimeiraEm} onChange={e => setPgPrimeiraEm(e.target.value)} className="text-[11px]" />
+                  </div>
                 </>
               )}
               {pgTipo === 'entrada' && (
@@ -1261,6 +1265,10 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
                   <div>
                     <label className="text-[9px] uppercase tracking-wider text-ink-muted">Parcelas depois</label>
                     <Input type="number" value={pgParcelasApos} onChange={e => setPgParcelasApos(Number(e.target.value) || 1)} className="text-[11px]" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-[9px] uppercase tracking-wider text-ink-muted">Data do 1º pagamento</label>
+                    <Input type="date" value={pgPrimeiraEm} onChange={e => setPgPrimeiraEm(e.target.value)} className="text-[11px]" />
                   </div>
                 </>
               )}
