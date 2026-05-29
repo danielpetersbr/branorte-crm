@@ -457,11 +457,148 @@ function ResultadoBox({ consulta, cacheHit }: { consulta: DDConsulta; cacheHit: 
   )
 }
 
+// ============================================================================
+// Analise consolidada — calcula veredito, sinais, limite sugerido
+// ============================================================================
+interface Analise {
+  veredito: 'verde' | 'amarelo' | 'vermelho'
+  resumoVeredito: string
+  tempoEmpresaAnos: number | null
+  limiteCreditoSugerido: number | null
+  condicaoPagamentoSugerida: string
+  sinaisPositivos: string[]
+  sinaisAlerta: string[]
+}
+
+function analisar(r: Resumo): Analise {
+  const c = r.consumidor
+  const score = r.score.valor
+  const qtdInad = r.inadimplencias.qtd
+  const valorInad = r.inadimplencias.valor_total
+  const qtdProtesto = r.protestos.qtd
+  const valorProtesto = r.protestos.valor_total
+  const situacao = (c.situacao ?? '').toUpperCase()
+
+  // Tempo de empresa em anos
+  let tempoEmpresaAnos: number | null = null
+  const dataFund = c.tipo === 'J' ? c.data_fundacao : c.data_nascimento
+  if (dataFund) {
+    const m = dataFund.match(/(\d{2})\/(\d{2})\/(\d{4})/)
+    if (m) {
+      const ano = Number(m[3])
+      const hoje = new Date().getFullYear()
+      tempoEmpresaAnos = hoje - ano
+    }
+  }
+
+  // Pontuação de risco (0-100, quanto MAIOR pior)
+  let risco = 0
+  if (score != null) {
+    if (score < 300) risco += 50
+    else if (score < 500) risco += 30
+    else if (score < 700) risco += 15
+  } else {
+    risco += 10
+  }
+  if (qtdInad > 0) risco += Math.min(40, 10 + qtdInad * 5)
+  if (qtdProtesto > 0) risco += Math.min(40, 15 + qtdProtesto * 5)
+  if (situacao && !/ATIV|REGUL/i.test(situacao)) risco += 30
+  if (tempoEmpresaAnos != null) {
+    if (tempoEmpresaAnos < 1) risco += 15
+    else if (tempoEmpresaAnos < 3) risco += 5
+  }
+
+  // Veredito a partir do risco
+  let veredito: Analise['veredito']
+  let resumoVeredito: string
+  if (risco >= 50) {
+    veredito = 'vermelho'
+    resumoVeredito = 'Operação de alto risco. Recomenda-se cautela ou recusa.'
+  } else if (risco >= 20) {
+    veredito = 'amarelo'
+    resumoVeredito = 'Crédito com ressalvas. Pedir garantia ou reduzir prazo.'
+  } else {
+    veredito = 'verde'
+    resumoVeredito = 'Cliente apto a crédito nas condições padrão.'
+  }
+
+  // Limite de crédito sugerido (heurística simples)
+  let limiteCreditoSugerido: number | null = null
+  if (veredito === 'verde') {
+    limiteCreditoSugerido = c.tipo === 'J' ? 200_000 : 50_000
+  } else if (veredito === 'amarelo') {
+    limiteCreditoSugerido = c.tipo === 'J' ? 50_000 : 15_000
+  } else {
+    limiteCreditoSugerido = 0
+  }
+
+  // Condição de pagamento sugerida
+  let condicaoPagamentoSugerida: string
+  if (veredito === 'verde') {
+    condicaoPagamentoSugerida = 'Boleto faturado 28/56/84 dias ou parcelamento de até 90 dias'
+  } else if (veredito === 'amarelo') {
+    condicaoPagamentoSugerida = 'Entrada + saldo em 30 dias, com aval ou boleto registrado'
+  } else {
+    condicaoPagamentoSugerida = 'Pagamento à vista, antes da expedição'
+  }
+
+  // Sinais positivos e de alerta
+  const sinaisPositivos: string[] = []
+  const sinaisAlerta: string[] = []
+
+  if (score != null) {
+    if (score >= 700) sinaisPositivos.push(`Score alto (${score}/1000)`)
+    else if (score < 400) sinaisAlerta.push(`Score baixo (${score}/1000) — indica risco`)
+  }
+  if (qtdInad === 0 && qtdProtesto === 0) {
+    sinaisPositivos.push('Sem inadimplências e sem protestos')
+  }
+  if (qtdInad > 0) {
+    sinaisAlerta.push(`${qtdInad} inadimplência(s) somando ${fmtBRL(valorInad)}`)
+  }
+  if (qtdProtesto > 0) {
+    sinaisAlerta.push(`${qtdProtesto} protesto(s) somando ${fmtBRL(valorProtesto)}`)
+  }
+  if (tempoEmpresaAnos != null) {
+    if (tempoEmpresaAnos >= 10) sinaisPositivos.push(`Empresa consolidada — ${tempoEmpresaAnos} anos de mercado`)
+    else if (tempoEmpresaAnos >= 3) sinaisPositivos.push(`Empresa estabelecida — ${tempoEmpresaAnos} anos`)
+    else if (tempoEmpresaAnos < 1) sinaisAlerta.push('Empresa muito nova (menos de 1 ano)')
+  }
+  if (situacao && /ATIV|REGUL/i.test(situacao)) {
+    sinaisPositivos.push(`Situação cadastral ${situacao}`)
+  } else if (situacao) {
+    sinaisAlerta.push(`Situação cadastral irregular (${situacao})`)
+  }
+  if (r.participacoes_em_empresas && r.participacoes_em_empresas.length > 1) {
+    sinaisPositivos.push(`Sócio em ${r.participacoes_em_empresas.length} empresas — perfil empresarial diversificado`)
+  }
+  if (r.socios && r.socios.length >= 2) {
+    sinaisPositivos.push(`Quadro societário com ${r.socios.length} sócios`)
+  }
+
+  return {
+    veredito,
+    resumoVeredito,
+    tempoEmpresaAnos,
+    limiteCreditoSugerido,
+    condicaoPagamentoSugerida,
+    sinaisPositivos,
+    sinaisAlerta,
+  }
+}
+
 function ResumoCard({ env }: { env: ResumoEnvelope }) {
   const r = env.resumo
   const c = r.consumidor
   const temInad = r.inadimplencias.qtd > 0
   const temProtesto = r.protestos.qtd > 0
+  const analise = analisar(r)
+
+  const veredictoStyle = {
+    verde:    { bg: 'bg-success/15',  border: 'border-success/40',  text: 'text-success',  label: 'PODE VENDER',     icon: '✓' },
+    amarelo:  { bg: 'bg-warning/15',  border: 'border-warning/40',  text: 'text-warning',  label: 'ATENÇÃO',          icon: '!' },
+    vermelho: { bg: 'bg-danger/15',   border: 'border-danger/40',   text: 'text-danger',   label: 'NÃO RECOMENDADO',  icon: '✕' },
+  }[analise.veredito]
 
   return (
     <div className="border border-border rounded-md bg-surface-2/30 overflow-hidden">
@@ -492,22 +629,74 @@ function ResumoCard({ env }: { env: ResumoEnvelope }) {
         </p>
       </div>
 
-      {/* Score + Inadimplências */}
-      <div className="grid grid-cols-3 gap-2 p-3 border-b border-border/60">
-        <Stat
-          label="Score"
-          value={r.score.valor != null ? `${r.score.valor}/1000` : '—'}
-          sub={r.score.classificacao ?? null}
-          tone={
-            r.score.valor == null
-              ? 'neutral'
-              : r.score.valor >= 700
-              ? 'good'
-              : r.score.valor >= 400
-              ? 'warn'
-              : 'bad'
-          }
-        />
+      {/* ANALISE — veredito + limite + pagamento sugerido */}
+      <div className={`p-3 border-b border-border/60 ${veredictoStyle.bg} ${veredictoStyle.border} border-b-2`}>
+        <div className="flex items-start gap-3">
+          <div className={`h-9 w-9 rounded-full flex items-center justify-center text-[18px] font-bold ${veredictoStyle.text} bg-bg/40 shrink-0`}>
+            {veredictoStyle.icon}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className={`text-[10px] uppercase tracking-wider font-bold ${veredictoStyle.text}`}>
+              {veredictoStyle.label}
+            </p>
+            <p className="text-[12px] text-ink font-semibold leading-tight">
+              {analise.resumoVeredito}
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-border/40">
+          <div>
+            <p className="text-[9px] uppercase tracking-wider text-ink-faint">Limite sugerido</p>
+            <p className={`text-[15px] font-bold font-mono ${veredictoStyle.text}`}>
+              {analise.limiteCreditoSugerido != null
+                ? analise.limiteCreditoSugerido > 0
+                  ? fmtBRL(analise.limiteCreditoSugerido)
+                  : 'Não conceder'
+                : '—'}
+            </p>
+          </div>
+          <div>
+            <p className="text-[9px] uppercase tracking-wider text-ink-faint">Condição de pagamento</p>
+            <p className="text-[11px] text-ink font-semibold leading-tight">
+              {analise.condicaoPagamentoSugerida}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Sinais positivos / Alerta */}
+      {(analise.sinaisPositivos.length > 0 || analise.sinaisAlerta.length > 0) && (
+        <div className="grid md:grid-cols-2 gap-2 p-3 border-b border-border/60">
+          {analise.sinaisPositivos.length > 0 && (
+            <div className="bg-success/5 border border-success/30 rounded p-2">
+              <p className="text-[9px] uppercase tracking-wider font-bold text-success mb-1">
+                ✓ Sinais positivos
+              </p>
+              <ul className="space-y-0.5">
+                {analise.sinaisPositivos.map((s, i) => (
+                  <li key={i} className="text-[11px] text-ink leading-tight">• {s}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {analise.sinaisAlerta.length > 0 && (
+            <div className="bg-danger/5 border border-danger/30 rounded p-2">
+              <p className="text-[9px] uppercase tracking-wider font-bold text-danger mb-1">
+                ⚠ Sinais de alerta
+              </p>
+              <ul className="space-y-0.5">
+                {analise.sinaisAlerta.map((s, i) => (
+                  <li key={i} className="text-[11px] text-ink leading-tight">• {s}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Score visual + Inadimplências + Protestos + Tempo */}
+      <div className="grid grid-cols-4 gap-2 p-3 border-b border-border/60">
+        <ScoreGauge valor={r.score.valor} classificacao={r.score.classificacao} />
         <Stat
           label="Inadimplências"
           value={r.inadimplencias.qtd > 0 ? `${r.inadimplencias.qtd}` : 'Nenhuma'}
@@ -519,6 +708,20 @@ function ResumoCard({ env }: { env: ResumoEnvelope }) {
           value={r.protestos.qtd > 0 ? `${r.protestos.qtd}` : 'Nenhum'}
           sub={r.protestos.qtd > 0 ? fmtBRL(r.protestos.valor_total) : null}
           tone={temProtesto ? 'bad' : 'good'}
+        />
+        <Stat
+          label={c.tipo === 'J' ? 'Tempo no mercado' : 'Idade'}
+          value={analise.tempoEmpresaAnos != null ? `${analise.tempoEmpresaAnos}` : '—'}
+          sub={analise.tempoEmpresaAnos != null ? 'anos' : null}
+          tone={
+            analise.tempoEmpresaAnos == null
+              ? 'neutral'
+              : analise.tempoEmpresaAnos >= 5
+              ? 'good'
+              : analise.tempoEmpresaAnos >= 2
+              ? 'warn'
+              : 'bad'
+          }
         />
       </div>
 
@@ -593,6 +796,47 @@ function ResumoCard({ env }: { env: ResumoEnvelope }) {
           </ul>
         </div>
       )}
+    </div>
+  )
+}
+
+function ScoreGauge({ valor, classificacao }: { valor: number | null; classificacao: string | null }) {
+  const pct = valor != null ? Math.max(0, Math.min(100, (valor / 1000) * 100)) : 0
+  const tone =
+    valor == null
+      ? 'neutral'
+      : valor >= 700
+      ? 'good'
+      : valor >= 400
+      ? 'warn'
+      : 'bad'
+  const barClass = {
+    good: 'bg-success',
+    warn: 'bg-warning',
+    bad: 'bg-danger',
+    neutral: 'bg-ink-muted',
+  }[tone]
+  const textClass = {
+    good: 'text-success',
+    warn: 'text-warning',
+    bad: 'text-danger',
+    neutral: 'text-ink-muted',
+  }[tone]
+
+  return (
+    <div className="text-center">
+      <p className="text-[9px] uppercase tracking-wider text-ink-faint mb-0.5">Score</p>
+      <p className={`text-[14px] font-bold font-mono ${textClass}`}>
+        {valor != null ? `${valor}` : '—'}
+        <span className="text-[9px] text-ink-faint">/1000</span>
+      </p>
+      <div className="h-1 bg-surface-2 rounded-full overflow-hidden mt-1">
+        <div
+          className={`h-full ${barClass} transition-all`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      {classificacao && <p className="text-[9px] text-ink-muted mt-0.5">{classificacao}</p>}
     </div>
   )
 }
