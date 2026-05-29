@@ -57,8 +57,22 @@ export type Carga = {
 };
 
 /**
+ * Fator de cubagem rodoviário brasileiro: 1 m³ "pesa" 300 kg para fins de
+ * frete. Carga leve e volumosa (estrutura metálica Branorte) estoura por
+ * ESPAÇO, não por peso — então cobra-se pelo maior entre peso real e cubado.
+ */
+export const FATOR_CUBAGEM = 300; // kg/m³
+
+/** Peso efetivo (cobrável) = max(peso real, peso cubado = m³ × 300). */
+export function pesoEfetivoKg(carga: Carga): number {
+  const m3 = carga.comprimento_m * carga.largura_m * carga.altura_m;
+  const cubado = m3 * FATOR_CUBAGEM;
+  return Math.max(carga.peso_kg, cubado);
+}
+
+/**
  * Recomenda o MENOR caminhão capaz de transportar a carga.
- * - Filtra por capacidade de peso e dimensões úteis
+ * - Filtra por PESO EFETIVO (peso real ou cubado, o maior) e dimensões úteis
  * - Ordena por peso_max_kg ascendente (menor = mais barato)
  * - Retorna `null` se nenhum cabe (carga especial — precisa cotação humana)
  */
@@ -66,9 +80,10 @@ export function recomendarCaminhao(
   carga: Carga,
   tipos: TipoCaminhao[],
 ): TipoCaminhao | null {
+  const pesoEf = pesoEfetivoKg(carga);
   const candidatos = tipos
     .filter((t) => t.ativo)
-    .filter((t) => t.peso_max_kg >= carga.peso_kg)
+    .filter((t) => t.peso_max_kg >= pesoEf)
     .filter((t) => t.comprimento_util_m >= carga.comprimento_m)
     .filter((t) => t.largura_util_m >= carga.largura_m)
     .filter((t) => t.altura_util_m >= carga.altura_m)
@@ -111,11 +126,8 @@ export function isDestinoNorte(uf: string): boolean {
 }
 
 /**
- * Calcula frete pelo modelo Branorte (planilha):
- *   - distancia × rs_por_km
- *   - se destino é N/NE: divide por 2 (frete de retorno)
- *
- * Devolve breakdown pra UI mostrar como foi calculado.
+ * @deprecated Dividia por 2 automaticamente por geografia (regra falaciosa) e
+ * não respeitava o piso ANTT. Use `cotarBranorte`. Mantida só pra compat.
  */
 export function calcularModeloBranorte(
   distancia_km: number,
@@ -126,6 +138,72 @@ export function calcularModeloBranorte(
   const aplicou_retorno = isDestinoNorte(uf_destino);
   const ajustado = aplicou_retorno ? bruto / 2 : bruto;
   return { bruto, ajustado, aplicou_retorno };
+}
+
+/** Desconto máximo de frete-retorno (não 50%). Retorno reduz margem, não fura piso. */
+export const DESCONTO_RETORNO_MAX_PCT = 30;
+
+export type CotacaoBranorte = {
+  /** distancia × R$/km do modo (sem desconto, sem trava) */
+  valor_tabela: number;
+  /** piso mínimo legal ANTT pra esse caminhão/distância */
+  piso_antt: number;
+  /** true quando a tabela ficou ABAIXO do piso e foi travada no piso */
+  aplicou_piso: boolean;
+  /** % de desconto de retorno efetivamente aplicado (0 se toggle off) */
+  desconto_retorno_pct: number;
+  /** true quando o desconto de retorno foi cortado pela trava do piso */
+  limitou_retorno: boolean;
+  /** valor base final (>= piso), ANTES da margem comercial */
+  valor_final: number;
+};
+
+/**
+ * Cotação Branorte CORRETA — substitui a lógica antiga (que dividia por 2 e
+ * furava o piso). Garante: nenhum caminho retorna valor < piso ANTT.
+ *
+ *  1. valor_tabela = distancia × R$/km do modo
+ *  2. base = MAX(valor_tabela, piso_antt)            ← trava 1 (piso é lei)
+ *  3. se retorno ligado: aplica desconto (máx 30%), MAS base nunca < piso  ← trava 2
+ *  4. valor_final = base travada (margem é aplicada DEPOIS, pela UI)
+ *
+ * @param pisoAntt piso legal ANTT já calculado pra esse caminhão/distância.
+ * @param opts.descontoRetornoPct desconto manual de retorno (0-30). Default 0.
+ *        SÓ deve ser > 0 quando o vendedor confirma veículo de retorno concreto.
+ */
+export function cotarBranorte(
+  distancia_km: number,
+  modelo: ModeloBranorteRow,
+  pisoAntt: number,
+  opts?: { descontoRetornoPct?: number },
+): CotacaoBranorte {
+  const valor_tabela = distancia_km * modelo.rs_por_km;
+  const aplicou_piso = valor_tabela < pisoAntt;
+  let base = Math.max(valor_tabela, pisoAntt);
+
+  const pct = Math.min(
+    Math.max(opts?.descontoRetornoPct ?? 0, 0),
+    DESCONTO_RETORNO_MAX_PCT,
+  );
+  let limitou_retorno = false;
+  if (pct > 0) {
+    const comDesconto = base * (1 - pct / 100);
+    if (comDesconto < pisoAntt) {
+      limitou_retorno = true;
+      base = pisoAntt; // trava 2: retorno nunca fura o piso
+    } else {
+      base = comDesconto;
+    }
+  }
+
+  return {
+    valor_tabela,
+    piso_antt: pisoAntt,
+    aplicou_piso,
+    desconto_retorno_pct: pct,
+    limitou_retorno,
+    valor_final: base,
+  };
 }
 
 /**
@@ -150,6 +228,54 @@ export function sugerirModoCargaBranorte(
   // Sem qtd paletes explícita: cargas pequenas vão fracionadas
   if (peso_kg <= 1500) return 'fracionada_2p';
   if (peso_kg <= 3500) return 'fracionada_4p';
+  return 'completa';
+}
+
+// Limites úteis aproximados por tipo Branorte — usados só pra decidir o MODO
+// (ocupação do baú). Capacidade real de peso/dimensão vem de frete_tipos_caminhao.
+const LIM_MODO = {
+  TRUCK: { kg: 14000, comp_m: 8.0 },
+  CARRETA: { kg: 27000, comp_m: 12.0 },
+} as const;
+
+/**
+ * Decide o modo de carga (fracionada vs completa) com a regra CORRETA, que
+ * substitui `sugerirModoCargaBranorte` (que olhava só o peso).
+ *
+ * Ordem das regras (a primeira que bate vence):
+ *  0. INDIVISÍVEL  -> sempre `completa` (uma fábrica não vira "4 paletes")
+ *  1. ocupa >50% do baú (comprimento OU peso efetivo) -> `completa`
+ *  2. altura > 2,2 m (não empilha, ocupa a coluna toda) -> `completa`
+ *  3. senão, divisível e pequena -> fracionada por paletes-equivalentes
+ *
+ * Usa PESO EFETIVO (max peso real vs cubado), porque carga metálica leve e
+ * volumosa estoura por espaço, não por peso.
+ */
+export function definirModoCargaBranorte(
+  carga: Carga,
+  tipo: 'TRUCK' | 'CARRETA',
+  qtd_paletes?: number,
+): 'fracionada_2p' | 'fracionada_4p' | 'completa' {
+  // REGRA 0 — indivisibilidade força completa, ignora todo o resto
+  if (carga.indivisivel) return 'completa';
+
+  const m3 = carga.comprimento_m * carga.largura_m * carga.altura_m;
+  const pesoEf = pesoEfetivoKg(carga);
+  const lim = LIM_MODO[tipo];
+  const ocupComp = lim.comp_m > 0 ? carga.comprimento_m / lim.comp_m : 0;
+  const ocupPeso = lim.kg > 0 ? pesoEf / lim.kg : 0;
+  const ocupacao = Math.max(ocupComp, ocupPeso);
+
+  // REGRA 1 — alta ocupação => completa
+  if (ocupacao > 0.5) return 'completa';
+  // REGRA 2 — carga alta não empilha => completa
+  if (carga.altura_m > 2.2) return 'completa';
+
+  // REGRA 3 — fracionada por paletes-equivalentes
+  const paletesEquiv =
+    qtd_paletes ?? Math.ceil(Math.max(m3 / 2.0, pesoEf / 1200));
+  if (paletesEquiv <= 2) return 'fracionada_2p';
+  if (paletesEquiv <= 4) return 'fracionada_4p';
   return 'completa';
 }
 

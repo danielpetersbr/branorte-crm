@@ -14,9 +14,10 @@ import {
   recomendarCaminhao,
   calcularPisoANTT,
   calcularParceira,
-  calcularModeloBranorte,
-  isDestinoNorte,
-  sugerirModoCargaBranorte,
+  cotarBranorte,
+  definirModoCargaBranorte,
+  pesoEfetivoKg,
+  DESCONTO_RETORNO_MAX_PCT,
   volumeM3,
   resolverDestino,
   type DestinoResolvido,
@@ -97,6 +98,11 @@ export default function FreteCotacao() {
   const [parceiraEscolhidaId, setParceiraEscolhidaId] = useState<number | null>(null)
   const [margem, setMargem] = useState<string>('1.3')
   const [observacoes, setObservacoes] = useState('')
+
+  // ── Frete de retorno (manual, NÃO automático por geografia) ──
+  // Default OFF. Só ligar quando vendedor confirma caminhão voltando vazio.
+  const [retornoLigado, setRetornoLigado] = useState(false)
+  const [retornoPct, setRetornoPct] = useState<string>('20')
 
   async function buscarDistancia() {
     const cepLimpo = cep.replace(/\D/g, '')
@@ -198,16 +204,7 @@ export default function FreteCotacao() {
     return destino?.distancia_km ?? null
   }, [kmManual, destino])
 
-  // ── Estimativa 1: Modelo Branorte ──
-  const modoCargaBranorte = useMemo<'fracionada_2p' | 'fracionada_4p' | 'completa'>(() => {
-    if (aba === 'fechada') return fechadaModo
-    if (aba === 'pallets') {
-      const q = Number(palQtd) || 0
-      return sugerirModoCargaBranorte(carga?.peso_kg ?? 0, q)
-    }
-    return sugerirModoCargaBranorte(carga?.peso_kg ?? 0)
-  }, [aba, fechadaModo, palQtd, carga])
-
+  // ── Tipo de caminhão Branorte (TRUCK/CARRETA) ──
   const tipoCaminhaoBranorte = useMemo<'TRUCK' | 'CARRETA'>(() => {
     if (aba === 'fechada') return fechadaTipo
     if (!caminhaoEfetivo) return 'CARRETA'
@@ -215,8 +212,25 @@ export default function FreteCotacao() {
     return caminhaoEfetivo.peso_max_kg <= 14000 ? 'TRUCK' : 'CARRETA'
   }, [aba, fechadaTipo, caminhaoEfetivo])
 
+  // ── Modo de carga (nova lógica: indivisível->completa + cubagem) ──
+  const modoCargaBranorte = useMemo<'fracionada_2p' | 'fracionada_4p' | 'completa'>(() => {
+    if (aba === 'fechada') return fechadaModo
+    if (!carga) return 'completa'
+    const q = aba === 'pallets' ? (Number(palQtd) || undefined) : undefined
+    return definirModoCargaBranorte(carga, tipoCaminhaoBranorte, q)
+  }, [aba, fechadaModo, palQtd, carga, tipoCaminhaoBranorte])
+
+  // ── Piso ANTT (chão legal) — base pro card ANTT E pra trava do modelo Branorte ──
+  const pisoAntt = useMemo<number | null>(() => {
+    if (!caminhaoEfetivo || !distanciaKm || !antts.data) return null
+    const antt = antts.data.find(a => a.tipo_caminhao_id === caminhaoEfetivo.id)
+    if (!antt) return null
+    return calcularPisoANTT(distanciaKm, antt)
+  }, [caminhaoEfetivo, distanciaKm, antts.data])
+
+  // ── Estimativa 1: Modelo Branorte (COM trava de piso + retorno manual) ──
   const valorModeloBranorte = useMemo(() => {
-    if (!distanciaKm || !modeloBN.data || !destino) return null
+    if (!distanciaKm || !modeloBN.data || pisoAntt == null) return null
     // Tenta achar row exata. Se TRUCK não tem fracionada_2p, cai pra 4p.
     let row = modeloBN.data.find(
       m => m.tipo_caminhao === tipoCaminhaoBranorte && m.modo_carga === modoCargaBranorte,
@@ -225,19 +239,17 @@ export default function FreteCotacao() {
       row = modeloBN.data.find(m => m.tipo_caminhao === 'TRUCK' && m.modo_carga === 'fracionada_4p')
     }
     if (!row) return null
-    const calc = calcularModeloBranorte(distanciaKm, destino.uf, row)
+    const pct = retornoLigado ? (Number(retornoPct) || 0) : 0
+    const calc = cotarBranorte(distanciaKm, row, pisoAntt, { descontoRetornoPct: pct })
     return { row, ...calc }
-  }, [distanciaKm, modeloBN.data, destino, tipoCaminhaoBranorte, modoCargaBranorte])
+  }, [distanciaKm, modeloBN.data, pisoAntt, tipoCaminhaoBranorte, modoCargaBranorte, retornoLigado, retornoPct])
 
-  // ── Estimativa 2: ANTT ──
+  // ── Estimativa 2: ANTT (piso × margem) ──
   const valorAntt = useMemo(() => {
-    if (!caminhaoEfetivo || !distanciaKm || !antts.data) return null
-    const antt = antts.data.find(a => a.tipo_caminhao_id === caminhaoEfetivo.id)
-    if (!antt) return null
-    const piso = calcularPisoANTT(distanciaKm, antt)
+    if (pisoAntt == null) return null
     const m = Number(margem) || 1
-    return { piso, com_margem: piso * m }
-  }, [caminhaoEfetivo, distanciaKm, antts.data, margem])
+    return { piso: pisoAntt, com_margem: pisoAntt * m }
+  }, [pisoAntt, margem])
 
   // ── Estimativa 3: Parceiras ──
   const estimativasParceiras = useMemo(() => {
@@ -254,7 +266,9 @@ export default function FreteCotacao() {
   // ── Estimativa 4: Histórico ──
   const mediaHist = useMediaHistorica(caminhaoEfetivo?.id ?? null, destino?.uf ?? null, distanciaKm)
 
-  const aplicouRetornoSulNorte = destino ? isDestinoNorte(destino.uf) : false
+  // Peso efetivo (real vs cubado) — mostrado pro vendedor entender a cubagem
+  const pesoEfetivo = useMemo(() => (carga ? pesoEfetivoKg(carga) : null), [carga])
+  const cargaIndivisivel = carga?.indivisivel ?? false
 
   async function handleSalvar() {
     if (!carga || !caminhaoEfetivo || !destino || !distanciaKm) {
@@ -435,11 +449,6 @@ export default function FreteCotacao() {
                   )}
                 </div>
               </div>
-              {isDestinoNorte(destino.uf) && (
-                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-green-500 text-white border border-emerald-400 rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg shadow-emerald-500/30 animate-pulse" style={{ animationDuration: '3s' }}>
-                  ↓50% Retorno
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -585,7 +594,7 @@ export default function FreteCotacao() {
             <div className="col-span-3 text-xs text-muted-foreground bg-muted/50 rounded p-2">
               💡 Pallet PBR padrão (1,0 × 1,2 m). Empilhamento linear.
               {Number(palQtd) > 0 && (
-                <> Modo de cobrança automático: <b>{MODOS_CARGA_LABELS[sugerirModoCargaBranorte(Number(palPeso) * Number(palQtd), Number(palQtd))]}</b></>
+                <> Modo de cobrança automático: <b>{MODOS_CARGA_LABELS[modoCargaBranorte]}</b></>
               )}
             </div>
           </div>
@@ -702,13 +711,19 @@ export default function FreteCotacao() {
             <div className="flex-1">
               <h2 className="text-xs font-black uppercase tracking-[0.25em] text-muted-foreground">Resultado</h2>
               <div className="text-lg font-black tracking-tight">
-                {formatBRL(valorModeloBranorte?.ajustado)} <span className="text-xs font-normal text-muted-foreground">· estimativa Branorte</span>
+                {formatBRL(valorModeloBranorte?.valor_final)} <span className="text-xs font-normal text-muted-foreground">· estimativa Branorte</span>
               </div>
             </div>
-            {aplicouRetornoSulNorte && (
+            {valorModeloBranorte?.aplicou_piso && (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg shadow-amber-500/30" title="A tabela Branorte ficou abaixo do piso legal ANTT. Valor ajustado para o mínimo permitido.">
+                <AlertTriangle className="h-3 w-3" />
+                Ajustado ao piso ANTT
+              </div>
+            )}
+            {!valorModeloBranorte?.aplicou_piso && (valorModeloBranorte?.desconto_retorno_pct ?? 0) > 0 && (
               <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-green-500 text-white rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg shadow-emerald-500/30">
                 <Sparkles className="h-3 w-3" />
-                ↓50% retorno
+                ↓{valorModeloBranorte?.desconto_retorno_pct}% retorno
               </div>
             )}
           </div>
@@ -795,15 +810,18 @@ export default function FreteCotacao() {
                       </span>
                     </div>
                     <div className="text-3xl font-black tabular-nums text-green-700 dark:text-green-400 leading-none tracking-tight">
-                      {formatBRL(valorModeloBranorte?.ajustado)}
+                      {formatBRL(valorModeloBranorte?.valor_final)}
                     </div>
                     <div className="text-[10px] text-muted-foreground mt-2 leading-tight">
                       {valorModeloBranorte && (
                         <>
                           <b>{valorModeloBranorte.row.tipo_caminhao}</b> · {MODOS_CARGA_LABELS[valorModeloBranorte.row.modo_carga]}<br />
                           <span className="tabular-nums">R$ {valorModeloBranorte.row.rs_por_km.toFixed(2)}/km</span>
-                          {valorModeloBranorte.aplicou_retorno && (
-                            <> · <span className="text-emerald-600 font-black">↓50%</span></>
+                          {valorModeloBranorte.aplicou_piso && (
+                            <><br /><span className="text-amber-600 font-bold">tabela {formatBRL(valorModeloBranorte.valor_tabela)} ↑ piso ANTT</span></>
+                          )}
+                          {!valorModeloBranorte.aplicou_piso && valorModeloBranorte.desconto_retorno_pct > 0 && (
+                            <> · <span className="text-emerald-600 font-black">↓{valorModeloBranorte.desconto_retorno_pct}% retorno</span></>
                           )}
                         </>
                       )}
@@ -811,7 +829,7 @@ export default function FreteCotacao() {
                     {valorModeloBranorte && (
                       <button
                         type="button"
-                        onClick={() => setValorFinal(String(Math.round(valorModeloBranorte.ajustado)))}
+                        onClick={() => setValorFinal(String(Math.round(valorModeloBranorte.valor_final)))}
                         className="mt-3 w-full text-[10px] py-1.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg font-black uppercase tracking-wider shadow-md shadow-green-500/30 hover:shadow-lg hover:shadow-green-500/40 active:scale-95 transition-all"
                       >
                         Usar este valor
@@ -939,6 +957,75 @@ export default function FreteCotacao() {
                         ? <>Mediana similares<br />(mesma UF, ±20% km)</>
                         : <>Aguardando dados.<br />Mín. 3 cotações similares.</>}
                     </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Frete de retorno (manual) + cubagem */}
+              <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-3">
+                {/* Toggle retorno */}
+                <div className={`relative overflow-hidden rounded-2xl border-2 p-4 transition-all ${retornoLigado ? 'border-emerald-500/50 bg-gradient-to-br from-emerald-500/12 to-transparent' : 'border-border bg-muted/20'}`}>
+                  <div className="flex items-start gap-3">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={retornoLigado}
+                      onClick={() => setRetornoLigado(v => !v)}
+                      className={`mt-0.5 flex-shrink-0 w-11 h-6 rounded-full transition-all relative ${retornoLigado ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`}
+                    >
+                      <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${retornoLigado ? 'left-[22px]' : 'left-0.5'}`} />
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-black uppercase tracking-wider text-foreground">
+                        Frete de retorno
+                      </div>
+                      <div className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+                        Só ligue se o motorista <b>confirmou</b> caminhão voltando vazio nessa rota. Não é automático por região.
+                      </div>
+                      {retornoLigado && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className="text-[10px] font-bold text-muted-foreground">Desconto</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={DESCONTO_RETORNO_MAX_PCT}
+                            value={retornoPct}
+                            onChange={e => setRetornoPct(e.target.value)}
+                            className="w-16 border border-emerald-500/40 rounded-lg px-2 py-1 text-xs bg-background tabular-nums font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                          />
+                          <span className="text-[10px] font-bold text-muted-foreground">% (máx {DESCONTO_RETORNO_MAX_PCT}%)</span>
+                          {valorModeloBranorte?.limitou_retorno && (
+                            <span className="text-[10px] font-bold text-amber-600">· limitado pelo piso ANTT</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Cubagem / indivisibilidade */}
+                <div className="relative overflow-hidden rounded-2xl border-2 border-border bg-muted/20 p-4">
+                  <div className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-2">
+                    Como esta carga é cobrada
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {cargaIndivisivel && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-700 dark:text-amber-400 text-[10px] font-black uppercase tracking-wider">
+                        <AlertTriangle className="h-3 w-3" /> Indivisível → carga completa
+                      </span>
+                    )}
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-background border border-border text-[10px] font-bold tabular-nums">
+                      <Scale className="h-3 w-3 text-primary" />
+                      {carga ? `peso real ${carga.peso_kg.toLocaleString('pt-BR')} kg` : 'sem carga'}
+                    </span>
+                    {pesoEfetivo != null && carga && pesoEfetivo > carga.peso_kg && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-sky-500/15 border border-sky-500/40 text-sky-700 dark:text-sky-400 text-[10px] font-bold tabular-nums" title="Carga leve e volumosa: cobra-se pelo peso cubado (m³ × 300), maior que o peso real.">
+                        <Package className="h-3 w-3" /> peso cubado {Math.round(pesoEfetivo).toLocaleString('pt-BR')} kg
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground mt-2 leading-snug">
+                    Modo: <b>{MODOS_CARGA_LABELS[modoCargaBranorte]}</b>. {pisoAntt != null && <>Piso legal mínimo: <b className="tabular-nums">{formatBRL(pisoAntt)}</b>.</>}
                   </div>
                 </div>
               </div>
