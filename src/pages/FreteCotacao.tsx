@@ -360,14 +360,12 @@ export default function FreteCotacao() {
 
   return (
     <div className="relative min-h-screen overflow-hidden">
-      {/* Decorative background — gradient mesh vivo + textura */}
+      {/* Decorative background — brilho verde da marca + textura sutil */}
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-[680px] h-[680px] bg-gradient-to-br from-primary/40 via-emerald-500/20 to-transparent rounded-full blur-3xl opacity-80 animate-pulse" style={{ animationDuration: '8s' }} />
-        <div className="absolute top-1/4 -left-52 w-[560px] h-[560px] bg-gradient-to-tr from-sky-500/30 via-cyan-500/10 to-transparent rounded-full blur-3xl opacity-70 animate-pulse" style={{ animationDuration: '11s' }} />
-        <div className="absolute bottom-[-10%] right-1/4 w-[520px] h-[520px] bg-gradient-to-tl from-emerald-500/25 via-green-500/10 to-transparent rounded-full blur-3xl opacity-60 animate-pulse" style={{ animationDuration: '13s' }} />
-        <div className="absolute top-1/2 left-1/3 w-[420px] h-[420px] bg-gradient-to-br from-violet-500/20 via-fuchsia-500/8 to-transparent rounded-full blur-3xl opacity-50 animate-pulse" style={{ animationDuration: '15s' }} />
-        {/* textura de pontos sutil */}
-        <div className="absolute inset-0 opacity-[0.18]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.35) 1px, transparent 0)', backgroundSize: '34px 34px' }} />
+        <div className="absolute -top-48 -right-40 w-[640px] h-[640px] bg-gradient-to-br from-accent/25 via-accent/8 to-transparent rounded-full blur-3xl opacity-70 animate-pulse" style={{ animationDuration: '9s' }} />
+        <div className="absolute bottom-[-15%] -left-40 w-[560px] h-[560px] bg-gradient-to-tr from-accent/20 via-accent/5 to-transparent rounded-full blur-3xl opacity-60 animate-pulse" style={{ animationDuration: '13s' }} />
+        {/* textura de pontos (neutra — funciona em claro e escuro) */}
+        <div className="absolute inset-0 opacity-[0.05]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)', backgroundSize: '30px 30px' }} />
       </div>
 
       <div className="container mx-auto py-8 px-4 max-w-[1400px] relative">
@@ -375,19 +373,19 @@ export default function FreteCotacao() {
         <div className="mb-8 flex items-end justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-4">
             <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-br from-primary to-emerald-500 rounded-2xl blur-lg opacity-50" />
-              <div className="relative w-16 h-16 bg-gradient-to-br from-primary via-primary to-emerald-600 rounded-2xl flex items-center justify-center shadow-2xl shadow-primary/40 ring-1 ring-white/20">
-                <Truck className="h-8 w-8 text-primary-foreground drop-shadow-lg" strokeWidth={2.5} />
+              <div className="absolute inset-0 bg-gradient-to-br from-accent to-emerald-500 rounded-2xl blur-lg opacity-50" />
+              <div className="relative w-16 h-16 bg-gradient-to-br from-accent via-accent to-emerald-600 rounded-2xl flex items-center justify-center shadow-2xl shadow-accent/40 ring-1 ring-white/20">
+                <Truck className="h-8 w-8 text-white drop-shadow-lg" strokeWidth={2.5} />
               </div>
             </div>
             <div>
-              <div className="inline-block px-2.5 py-0.5 bg-primary/10 text-primary text-[10px] font-black uppercase tracking-[0.2em] rounded-full mb-1.5 ring-1 ring-primary/20">
+              <div className="inline-block px-2.5 py-0.5 bg-accent/10 text-accent text-[10px] font-black uppercase tracking-[0.2em] rounded-full mb-1.5 ring-1 ring-accent/20">
                 Branorte · SC
               </div>
-              <h1 className="text-3xl sm:text-4xl font-black tracking-tighter leading-none bg-gradient-to-r from-foreground via-primary to-emerald-400 bg-clip-text text-transparent">
+              <h1 className="text-3xl sm:text-4xl font-black tracking-tighter leading-none bg-gradient-to-r from-ink via-accent to-emerald-400 bg-clip-text text-transparent">
                 Cotação de Frete
               </h1>
-              <div className="text-sm text-muted-foreground mt-1.5 flex items-center gap-2">
+              <div className="text-sm text-ink-muted mt-1.5 flex items-center gap-2">
                 <span className="relative flex h-2 w-2">
                   <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
@@ -399,14 +397,14 @@ export default function FreteCotacao() {
           <div className="flex gap-2">
             <Link
               to="/frete/historico"
-              className="group px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-muted-foreground hover:text-primary bg-card border border-border hover:border-primary/40 hover:shadow-md hover:shadow-primary/10 rounded-xl transition-all flex items-center gap-2"
+              className="group px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-ink-muted hover:text-accent bg-surface border border-border hover:border-accent/40 hover:shadow-md hover:shadow-accent/10 rounded-xl transition-all flex items-center gap-2"
             >
               <History className="h-4 w-4 group-hover:scale-110 transition-transform" />
               Histórico
             </Link>
             <Link
               to="/frete/transportadoras"
-              className="group px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-muted-foreground hover:text-primary bg-card border border-border hover:border-primary/40 hover:shadow-md hover:shadow-primary/10 rounded-xl transition-all flex items-center gap-2"
+              className="group px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-ink-muted hover:text-accent bg-surface border border-border hover:border-accent/40 hover:shadow-md hover:shadow-accent/10 rounded-xl transition-all flex items-center gap-2"
             >
               <Building2 className="h-4 w-4 group-hover:scale-110 transition-transform" />
               Transportadoras
@@ -420,34 +418,34 @@ export default function FreteCotacao() {
           <div className="lg:sticky lg:top-6">
 
       {/* Cliente + CEP — glassmorphism */}
-      <div className="relative bg-card/80 backdrop-blur-xl border border-border/60 rounded-2xl p-6 mb-5 space-y-4 shadow-xl shadow-black/5">
-        <div className="absolute top-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
+      <div className="relative bg-surface/80 backdrop-blur-xl border border-border/60 rounded-2xl p-6 mb-5 space-y-4 shadow-xl shadow-black/5">
+        <div className="absolute top-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-accent/40 to-transparent" />
 
         <div>
-          <label className="text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground block mb-2">
-            Cliente <span className="font-normal normal-case text-muted-foreground/60">(opcional)</span>
+          <label className="text-[10px] font-black uppercase tracking-[0.15em] text-ink-muted block mb-2">
+            Cliente <span className="font-normal normal-case text-ink-muted/60">(opcional)</span>
           </label>
           <input
             type="text"
             value={clienteNome}
             onChange={e => setClienteNome(e.target.value)}
             placeholder="Nome do cliente / fazenda"
-            className="w-full border-2 border-border/60 rounded-xl px-4 py-3 text-sm bg-background/60 focus:outline-none focus:ring-4 focus:ring-primary/15 focus:border-primary transition-all placeholder:text-muted-foreground/50"
+            className="w-full border-2 border-border/60 rounded-xl px-4 py-3 text-sm bg-bg/60 focus:outline-none focus:ring-4 focus:ring-accent/15 focus:border-accent transition-all placeholder:text-ink-muted/50"
           />
         </div>
         {/* Toggle: buscar por CEP ou por cidade */}
-        <div className="inline-flex p-1 bg-muted/40 rounded-xl gap-1">
+        <div className="inline-flex p-1 bg-surface-2/40 rounded-xl gap-1">
           <button
             type="button"
             onClick={() => { setModoBusca('cep'); setErrDist(null) }}
-            className={`px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all ${modoBusca === 'cep' ? 'bg-background text-foreground shadow' : 'text-muted-foreground hover:text-foreground'}`}
+            className={`px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all ${modoBusca === 'cep' ? 'bg-bg text-ink shadow' : 'text-ink-muted hover:text-ink'}`}
           >
             Por CEP
           </button>
           <button
             type="button"
             onClick={() => { setModoBusca('cidade'); setErrDist(null) }}
-            className={`px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all ${modoBusca === 'cidade' ? 'bg-background text-foreground shadow' : 'text-muted-foreground hover:text-foreground'}`}
+            className={`px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all ${modoBusca === 'cidade' ? 'bg-bg text-ink shadow' : 'text-ink-muted hover:text-ink'}`}
           >
             Por cidade
           </button>
@@ -456,7 +454,7 @@ export default function FreteCotacao() {
         {modoBusca === 'cep' ? (
           <div className="flex items-end gap-3">
             <div className="flex-1">
-              <label className="text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground block mb-2">
+              <label className="text-[10px] font-black uppercase tracking-[0.15em] text-ink-muted block mb-2">
                 CEP destino
               </label>
               <input
@@ -465,7 +463,7 @@ export default function FreteCotacao() {
                 onChange={e => setCep(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') buscarDistancia() }}
                 placeholder="00000-000"
-                className="w-full border-2 border-border/60 rounded-xl px-4 py-3 text-base font-bold tabular-nums tracking-wider bg-background/60 focus:outline-none focus:ring-4 focus:ring-primary/15 focus:border-primary transition-all placeholder:text-muted-foreground/40 placeholder:font-normal placeholder:tracking-normal"
+                className="w-full border-2 border-border/60 rounded-xl px-4 py-3 text-base font-bold tabular-nums tracking-wider bg-bg/60 focus:outline-none focus:ring-4 focus:ring-accent/15 focus:border-accent transition-all placeholder:text-ink-muted/40 placeholder:font-normal placeholder:tracking-normal"
                 maxLength={9}
               />
             </div>
@@ -473,7 +471,7 @@ export default function FreteCotacao() {
               type="button"
               onClick={buscarDistancia}
               disabled={loadingDist}
-              className="group relative px-6 py-3 bg-gradient-to-br from-primary to-emerald-600 text-primary-foreground rounded-xl text-sm font-black uppercase tracking-wider hover:shadow-2xl hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:hover:translate-y-0 flex items-center gap-2 shadow-lg shadow-primary/30 transition-all"
+              className="group relative px-6 py-3 bg-gradient-to-br from-accent to-emerald-600 text-white rounded-xl text-sm font-black uppercase tracking-wider hover:shadow-2xl hover:shadow-accent/40 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:hover:translate-y-0 flex items-center gap-2 shadow-lg shadow-accent/30 transition-all"
             >
               {loadingDist ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
@@ -486,21 +484,21 @@ export default function FreteCotacao() {
         ) : (
           <div className="flex items-end gap-3">
             <div className="w-24">
-              <label className="text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground block mb-2">
+              <label className="text-[10px] font-black uppercase tracking-[0.15em] text-ink-muted block mb-2">
                 UF
               </label>
               <select
                 value={ufInput}
                 onChange={e => { setUfInput(e.target.value); setCidadeInput('') }}
-                className="w-full border-2 border-border/60 rounded-xl px-3 py-3 text-base font-bold bg-background/60 focus:outline-none focus:ring-4 focus:ring-primary/15 focus:border-primary transition-all"
+                className="w-full border-2 border-border/60 rounded-xl px-3 py-3 text-base font-bold bg-bg/60 focus:outline-none focus:ring-4 focus:ring-accent/15 focus:border-accent transition-all"
               >
                 <option value="">—</option>
                 {UFS_BR.map(uf => <option key={uf} value={uf}>{uf}</option>)}
               </select>
             </div>
             <div className="flex-1">
-              <label className="text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground block mb-2">
-                Cidade {municipios.isLoading && <span className="font-normal normal-case text-muted-foreground/50">(carregando…)</span>}
+              <label className="text-[10px] font-black uppercase tracking-[0.15em] text-ink-muted block mb-2">
+                Cidade {municipios.isLoading && <span className="font-normal normal-case text-ink-muted/50">(carregando…)</span>}
               </label>
               <input
                 type="text"
@@ -510,7 +508,7 @@ export default function FreteCotacao() {
                 onKeyDown={e => { if (e.key === 'Enter') buscarPorCidade() }}
                 disabled={!ufInput}
                 placeholder={ufInput ? 'Comece a digitar a cidade…' : 'Escolha a UF primeiro'}
-                className="w-full border-2 border-border/60 rounded-xl px-4 py-3 text-base font-bold bg-background/60 focus:outline-none focus:ring-4 focus:ring-primary/15 focus:border-primary transition-all disabled:opacity-50 placeholder:text-muted-foreground/40 placeholder:font-normal"
+                className="w-full border-2 border-border/60 rounded-xl px-4 py-3 text-base font-bold bg-bg/60 focus:outline-none focus:ring-4 focus:ring-accent/15 focus:border-accent transition-all disabled:opacity-50 placeholder:text-ink-muted/40 placeholder:font-normal"
               />
               <datalist id="lista-municipios">
                 {(municipios.data ?? []).map(nome => <option key={nome} value={nome} />)}
@@ -520,7 +518,7 @@ export default function FreteCotacao() {
               type="button"
               onClick={buscarPorCidade}
               disabled={loadingDist}
-              className="group relative px-6 py-3 bg-gradient-to-br from-primary to-emerald-600 text-primary-foreground rounded-xl text-sm font-black uppercase tracking-wider hover:shadow-2xl hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:hover:translate-y-0 flex items-center gap-2 shadow-lg shadow-primary/30 transition-all"
+              className="group relative px-6 py-3 bg-gradient-to-br from-accent to-emerald-600 text-white rounded-xl text-sm font-black uppercase tracking-wider hover:shadow-2xl hover:shadow-accent/40 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:hover:translate-y-0 flex items-center gap-2 shadow-lg shadow-accent/30 transition-all"
             >
               {loadingDist ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
@@ -537,20 +535,20 @@ export default function FreteCotacao() {
           </div>
         )}
         {destino && (
-          <div className="relative overflow-hidden rounded-xl border border-primary/30 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent">
-            <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-primary to-emerald-500" />
+          <div className="relative overflow-hidden rounded-xl border border-accent/30 bg-gradient-to-r from-accent/10 via-accent/5 to-transparent">
+            <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-accent to-emerald-500" />
             <div className="flex items-center gap-3 p-3 pl-4">
-              <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center">
-                <MapPin className="h-5 w-5 text-primary" />
+              <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-accent/15 flex items-center justify-center">
+                <MapPin className="h-5 w-5 text-accent" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-base font-black text-foreground">
+                <div className="text-base font-black text-ink">
                   {destino.cidade}/{destino.uf}
                 </div>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
+                <div className="flex items-center gap-3 text-xs text-ink-muted mt-0.5">
                   {destino.distancia_km != null ? (
                     <>
-                      <span className="tabular-nums font-bold text-primary">
+                      <span className="tabular-nums font-bold text-accent">
                         {destino.distancia_km.toLocaleString('pt-BR')} km
                       </span>
                       {destino.tempo_horas != null && (
@@ -571,7 +569,7 @@ export default function FreteCotacao() {
           </div>
         )}
         <div className="flex items-center gap-2 pt-1">
-          <label className="text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground/60">
+          <label className="text-[10px] font-black uppercase tracking-[0.15em] text-ink-muted/60">
             Ajuste manual km
           </label>
           <input
@@ -579,14 +577,14 @@ export default function FreteCotacao() {
             value={kmManual}
             onChange={e => setKmManual(e.target.value)}
             placeholder="—"
-            className="w-28 border border-border/60 rounded-lg px-3 py-1.5 text-sm font-bold tabular-nums bg-background/60 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50"
+            className="w-28 border border-border/60 rounded-lg px-3 py-1.5 text-sm font-bold tabular-nums bg-bg/60 focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50"
           />
         </div>
       </div>
 
       {/* Abas — pill style */}
-      <div className="bg-card/80 backdrop-blur-xl border border-border/60 rounded-2xl p-5 mb-5 shadow-xl shadow-black/5">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-5 p-1.5 bg-muted/40 rounded-2xl">
+      <div className="bg-surface/80 backdrop-blur-xl border border-border/60 rounded-2xl p-5 mb-5 shadow-xl shadow-black/5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-5 p-1.5 bg-surface-2/40 rounded-2xl">
           {([
             ['equipamento', 'Por fábrica', Factory],
             ['dimensoes', 'Dimensões', Package],
@@ -599,8 +597,8 @@ export default function FreteCotacao() {
               onClick={() => setAba(a)}
               className={`relative px-3 py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 whitespace-nowrap ${
                 aba === a
-                  ? 'bg-gradient-to-br from-primary to-emerald-600 text-primary-foreground shadow-lg shadow-primary/30 scale-[1.02]'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-card'
+                  ? 'bg-gradient-to-br from-accent to-emerald-600 text-white shadow-lg shadow-accent/30 scale-[1.02]'
+                  : 'text-ink-muted hover:text-ink hover:bg-surface'
               }`}
             >
               <Icon className={`h-4 w-4 ${aba === a ? 'drop-shadow-md' : ''}`} />
@@ -612,7 +610,7 @@ export default function FreteCotacao() {
         {/* Aba: por equipamento (Compactas) */}
         {aba === 'equipamento' && (
           <div className="space-y-2">
-            <div className="text-xs text-muted-foreground mb-2">
+            <div className="text-xs text-ink-muted mb-2">
               Filtra apenas <b>Fábricas Compactas</b> ({catalogo.data?.length ?? 0} modelos).
               Pra outros equipamentos use "Por dimensões" ou "Carga fechada".
             </div>
@@ -625,7 +623,7 @@ export default function FreteCotacao() {
                     const item = catalogo.data?.find(c => c.id === id) ?? null
                     setLinhasEquip(prev => prev.map((x, idx) => idx === i ? { ...x, item } : x))
                   }}
-                  className="flex-1 border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50"
+                  className="flex-1 border rounded-lg px-3 py-2 text-sm bg-bg focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50"
                 >
                   <option value="">— selecione fábrica —</option>
                   {catalogo.data?.map(c => (
@@ -642,12 +640,12 @@ export default function FreteCotacao() {
                     const q = Number(e.target.value) || 1
                     setLinhasEquip(prev => prev.map((x, idx) => idx === i ? { ...x, qtd: q } : x))
                   }}
-                  className="w-16 border rounded-lg px-2 py-2 text-sm bg-background tabular-nums text-center"
+                  className="w-16 border rounded-lg px-2 py-2 text-sm bg-bg tabular-nums text-center"
                 />
                 <button
                   type="button"
                   onClick={() => setLinhasEquip(prev => prev.length === 1 ? prev : prev.filter((_, idx) => idx !== i))}
-                  className="p-2 text-muted-foreground hover:text-destructive transition-colors"
+                  className="p-2 text-ink-muted hover:text-destructive transition-colors"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -656,7 +654,7 @@ export default function FreteCotacao() {
             <button
               type="button"
               onClick={() => setLinhasEquip(prev => [...prev, { uid: crypto.randomUUID(), item: null, qtd: 1 }])}
-              className="text-sm text-primary hover:underline flex items-center gap-1 mt-1"
+              className="text-sm text-accent hover:underline flex items-center gap-1 mt-1"
             >
               <Plus className="h-3 w-3" /> Adicionar fábrica
             </button>
@@ -673,19 +671,19 @@ export default function FreteCotacao() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-sm font-semibold block mb-1">Peso total (kg)</label>
-              <input type="number" value={dimPeso} onChange={e => setDimPeso(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm bg-background tabular-nums" />
+              <input type="number" value={dimPeso} onChange={e => setDimPeso(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm bg-bg tabular-nums" />
             </div>
             <div>
               <label className="text-sm font-semibold block mb-1">Comprimento (m)</label>
-              <input type="number" step="0.1" value={dimComp} onChange={e => setDimComp(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm bg-background tabular-nums" />
+              <input type="number" step="0.1" value={dimComp} onChange={e => setDimComp(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm bg-bg tabular-nums" />
             </div>
             <div>
               <label className="text-sm font-semibold block mb-1">Largura (m)</label>
-              <input type="number" step="0.1" value={dimLarg} onChange={e => setDimLarg(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm bg-background tabular-nums" />
+              <input type="number" step="0.1" value={dimLarg} onChange={e => setDimLarg(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm bg-bg tabular-nums" />
             </div>
             <div>
               <label className="text-sm font-semibold block mb-1">Altura (m)</label>
-              <input type="number" step="0.1" value={dimAlt} onChange={e => setDimAlt(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm bg-background tabular-nums" />
+              <input type="number" step="0.1" value={dimAlt} onChange={e => setDimAlt(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm bg-bg tabular-nums" />
             </div>
             <label className="flex items-center gap-2 text-sm col-span-2 cursor-pointer">
               <input type="checkbox" checked={dimIndivisivel} onChange={e => setDimIndivisivel(e.target.checked)} />
@@ -699,17 +697,17 @@ export default function FreteCotacao() {
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="text-sm font-semibold block mb-1">Quantidade</label>
-              <input type="number" min={1} value={palQtd} onChange={e => setPalQtd(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm bg-background tabular-nums" />
+              <input type="number" min={1} value={palQtd} onChange={e => setPalQtd(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm bg-bg tabular-nums" />
             </div>
             <div>
               <label className="text-sm font-semibold block mb-1">Peso por pallet (kg)</label>
-              <input type="number" value={palPeso} onChange={e => setPalPeso(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm bg-background tabular-nums" />
+              <input type="number" value={palPeso} onChange={e => setPalPeso(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm bg-bg tabular-nums" />
             </div>
             <div>
               <label className="text-sm font-semibold block mb-1">Altura média (m)</label>
-              <input type="number" step="0.1" value={palAltura} onChange={e => setPalAltura(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm bg-background tabular-nums" />
+              <input type="number" step="0.1" value={palAltura} onChange={e => setPalAltura(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm bg-bg tabular-nums" />
             </div>
-            <div className="col-span-3 text-xs text-muted-foreground bg-muted/50 rounded p-2">
+            <div className="col-span-3 text-xs text-ink-muted bg-surface-2/50 rounded p-2">
               💡 Pallet PBR padrão (1,0 × 1,2 m). Empilhamento linear.
               {Number(palQtd) > 0 && (
                 <> Modo de cobrança automático: <b>{MODOS_CARGA_LABELS[modoCargaBranorte]}</b></>
@@ -721,7 +719,7 @@ export default function FreteCotacao() {
         {/* Aba: carga fechada (novo) */}
         {aba === 'fechada' && (
           <div className="space-y-4">
-            <div className="text-xs text-muted-foreground bg-muted/50 rounded p-2">
+            <div className="text-xs text-ink-muted bg-surface-2/50 rounded p-2">
               💡 Escolha o caminhão que quer cotar como se já estivesse cheio. Útil pra cliente que aluga frota dedicada ou pra estimativa rápida de carga grande.
             </div>
 
@@ -738,15 +736,15 @@ export default function FreteCotacao() {
                       onClick={() => setFechadaTipo(t)}
                       className={`p-3 border-2 rounded-lg text-left transition-all ${
                         fechadaTipo === t
-                          ? 'border-primary bg-primary/10'
-                          : 'border-border hover:border-muted-foreground/50'
+                          ? 'border-accent bg-accent/10'
+                          : 'border-border hover:border-ink-faint/50'
                       }`}
                     >
                       <div className="flex items-center gap-2 mb-1">
-                        <Truck className={`h-5 w-5 ${fechadaTipo === t ? 'text-primary' : 'text-muted-foreground'}`} />
+                        <Truck className={`h-5 w-5 ${fechadaTipo === t ? 'text-accent' : 'text-ink-muted'}`} />
                         <span className="font-bold">{t === 'TRUCK' ? 'TRUCK' : 'CARRETA'}</span>
                       </div>
-                      <div className="text-xs text-muted-foreground tabular-nums">
+                      <div className="text-xs text-ink-muted tabular-nums">
                         {t === 'TRUCK' ? '8 m' : '12 m'} · {tipoMatch?.peso_max_kg.toLocaleString('pt-BR') ?? '—'} kg
                       </div>
                     </button>
@@ -775,12 +773,12 @@ export default function FreteCotacao() {
                         disabled
                           ? 'opacity-40 cursor-not-allowed'
                           : fechadaModo === m
-                            ? 'border-primary bg-primary/10'
-                            : 'border-border hover:border-muted-foreground/50'
+                            ? 'border-accent bg-accent/10'
+                            : 'border-border hover:border-ink-faint/50'
                       }`}
                     >
                       <div className="font-bold text-sm">{label}</div>
-                      <div className="text-xs text-muted-foreground tabular-nums">{hint}</div>
+                      <div className="text-xs text-ink-muted tabular-nums">{hint}</div>
                     </button>
                   )
                 })}
@@ -792,12 +790,12 @@ export default function FreteCotacao() {
         {/* Resumo da carga */}
         {carga && aba !== 'fechada' && (
           <div className="mt-4 pt-3 border-t flex flex-wrap gap-2">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 text-primary border border-primary/20 rounded-full text-xs font-semibold">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 text-accent border border-accent/20 rounded-full text-xs font-semibold">
               <Scale className="h-3.5 w-3.5" />
               {carga.peso_kg.toLocaleString('pt-BR')} kg
             </div>
             {carga.comprimento_m > 0 && (
-              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted text-foreground rounded-full text-xs font-medium tabular-nums">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface-2 text-ink rounded-full text-xs font-medium tabular-nums">
                 <Package className="h-3.5 w-3.5" />
                 {carga.comprimento_m.toFixed(1)} × {carga.largura_m.toFixed(1)} × {carga.altura_m.toFixed(1)} m
               </div>
@@ -818,22 +816,22 @@ export default function FreteCotacao() {
 
       {/* Resultado — hero card maximalista */}
       {carga && distanciaKm && (
-        <div className="relative overflow-hidden bg-gradient-to-br from-card via-card to-card/40 border-2 border-primary/30 rounded-3xl p-6 mb-5 shadow-2xl shadow-primary/10">
+        <div className="relative overflow-hidden bg-gradient-to-br from-surface via-surface to-surface/40 border-2 border-accent/30 rounded-3xl p-6 mb-5 shadow-2xl shadow-accent/10">
           {/* Decorative corner */}
-          <div className="absolute -top-20 -right-20 w-60 h-60 bg-gradient-to-br from-primary/30 to-emerald-500/20 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-gradient-to-tr from-sky-500/15 to-primary/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -top-20 -right-20 w-60 h-60 bg-gradient-to-br from-accent/30 to-emerald-500/20 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-gradient-to-tr from-sky-500/15 to-accent/10 rounded-full blur-3xl pointer-events-none" />
 
           <div className="relative flex items-center gap-3 mb-5">
             <div className="relative">
-              <div className="absolute inset-0 bg-primary rounded-lg blur opacity-50 animate-pulse" style={{ animationDuration: '2s' }} />
-              <div className="relative w-9 h-9 bg-gradient-to-br from-primary to-emerald-600 rounded-lg flex items-center justify-center shadow-lg shadow-primary/40">
-                <Sparkles className="h-5 w-5 text-primary-foreground drop-shadow" />
+              <div className="absolute inset-0 bg-accent rounded-lg blur opacity-50 animate-pulse" style={{ animationDuration: '2s' }} />
+              <div className="relative w-9 h-9 bg-gradient-to-br from-accent to-emerald-600 rounded-lg flex items-center justify-center shadow-lg shadow-accent/40">
+                <Sparkles className="h-5 w-5 text-white drop-shadow" />
               </div>
             </div>
             <div className="flex-1">
-              <h2 className="text-xs font-black uppercase tracking-[0.25em] text-muted-foreground">Resultado</h2>
+              <h2 className="text-xs font-black uppercase tracking-[0.25em] text-ink-muted">Resultado</h2>
               <div className="text-lg font-black tracking-tight">
-                {formatBRL(valorModeloBranorte?.valor_final)} <span className="text-xs font-normal text-muted-foreground">· estimativa Branorte</span>
+                {formatBRL(valorModeloBranorte?.valor_final)} <span className="text-xs font-normal text-ink-muted">· estimativa Branorte</span>
               </div>
             </div>
             {valorModeloBranorte?.aplicou_piso && (
@@ -852,29 +850,29 @@ export default function FreteCotacao() {
 
           {/* Caminhão recomendado/escolhido — HERO */}
           {caminhaoEfetivo ? (
-            <div className="relative mb-6 p-5 bg-gradient-to-br from-primary/20 via-primary/10 to-transparent border-2 border-primary/40 rounded-2xl overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-primary/30 to-transparent rounded-full blur-2xl" />
+            <div className="relative mb-6 p-5 bg-gradient-to-br from-accent/20 via-accent/10 to-transparent border-2 border-accent/40 rounded-2xl overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-accent/30 to-transparent rounded-full blur-2xl" />
               <div className="relative flex items-start gap-4">
                 <div className="relative flex-shrink-0">
-                  <div className="absolute inset-0 bg-primary rounded-2xl blur-lg opacity-60" />
-                  <div className="relative w-20 h-20 bg-gradient-to-br from-primary via-primary to-emerald-600 rounded-2xl flex items-center justify-center shadow-2xl shadow-primary/40 ring-1 ring-white/20">
-                    <Truck className="h-12 w-12 text-primary-foreground drop-shadow-lg" strokeWidth={2.5} />
+                  <div className="absolute inset-0 bg-accent rounded-2xl blur-lg opacity-60" />
+                  <div className="relative w-20 h-20 bg-gradient-to-br from-accent via-accent to-emerald-600 rounded-2xl flex items-center justify-center shadow-2xl shadow-accent/40 ring-1 ring-white/20">
+                    <Truck className="h-12 w-12 text-white drop-shadow-lg" strokeWidth={2.5} />
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-black mb-1">
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-ink-muted font-black mb-1">
                     {aba === 'fechada' ? '✓ Caminhão escolhido' : '✓ Caminhão recomendado'}
                   </div>
-                  <div className="text-3xl sm:text-4xl font-black tracking-tighter leading-none bg-gradient-to-r from-primary via-primary to-emerald-600 bg-clip-text text-transparent">
+                  <div className="text-3xl sm:text-4xl font-black tracking-tighter leading-none bg-gradient-to-r from-accent via-accent to-emerald-600 bg-clip-text text-transparent">
                     {caminhaoEfetivo.nome.toUpperCase()}
                   </div>
                   <div className="flex flex-wrap gap-2 mt-3">
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-background/70 backdrop-blur border border-primary/20 rounded-full text-xs font-bold tabular-nums">
-                      <Scale className="h-3.5 w-3.5 text-primary" />
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-bg/70 backdrop-blur border border-accent/20 rounded-full text-xs font-bold tabular-nums">
+                      <Scale className="h-3.5 w-3.5 text-accent" />
                       {caminhaoEfetivo.peso_max_kg.toLocaleString('pt-BR')} kg
                     </div>
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-background/70 backdrop-blur border border-primary/20 rounded-full text-xs font-bold tabular-nums">
-                      <Package className="h-3.5 w-3.5 text-primary" />
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-bg/70 backdrop-blur border border-accent/20 rounded-full text-xs font-bold tabular-nums">
+                      <Package className="h-3.5 w-3.5 text-accent" />
                       {caminhaoEfetivo.comprimento_util_m} × {caminhaoEfetivo.largura_util_m} × {caminhaoEfetivo.altura_util_m} m
                     </div>
                   </div>
@@ -909,7 +907,7 @@ export default function FreteCotacao() {
             <>
               <div className="flex items-center gap-2 mb-4">
                 <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
-                <div className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground font-black">
+                <div className="text-[10px] uppercase tracking-[0.25em] text-ink-muted font-black">
                   4 estimativas
                 </div>
                 <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
@@ -934,7 +932,7 @@ export default function FreteCotacao() {
                     <div className="text-3xl font-black tabular-nums text-green-700 dark:text-green-400 leading-none tracking-tight">
                       {formatBRL(valorModeloBranorte?.valor_final)}
                     </div>
-                    <div className="text-[10px] text-muted-foreground mt-2 leading-tight">
+                    <div className="text-[10px] text-ink-muted mt-2 leading-tight">
                       {valorModeloBranorte && (
                         <>
                           <b>{valorModeloBranorte.row.tipo_caminhao}</b> · {MODOS_CARGA_LABELS[valorModeloBranorte.row.modo_carga]}<br />
@@ -975,18 +973,18 @@ export default function FreteCotacao() {
                     <div className="text-3xl font-black tabular-nums text-amber-700 dark:text-amber-400 leading-none tracking-tight">
                       {formatBRL(valorAntt?.com_margem)}
                     </div>
-                    <div className="text-[10px] text-muted-foreground mt-2 leading-tight">
+                    <div className="text-[10px] text-ink-muted mt-2 leading-tight">
                       <b>Res. 6.076/2026</b><br />
                       <span className="tabular-nums">piso {formatBRL(valorAntt?.piso)}</span>
                     </div>
                     <div className="mt-3 flex items-center gap-1.5 text-[10px]">
-                      <span className="text-muted-foreground font-bold">× margem</span>
+                      <span className="text-ink-muted font-bold">× margem</span>
                       <input
                         type="number"
                         step="0.1"
                         value={margem}
                         onChange={e => setMargem(e.target.value)}
-                        className="w-14 border border-amber-500/40 rounded-lg px-1.5 py-1 text-xs bg-background tabular-nums font-bold focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+                        className="w-14 border border-amber-500/40 rounded-lg px-1.5 py-1 text-xs bg-bg tabular-nums font-bold focus:outline-none focus:ring-2 focus:ring-amber-500/30"
                       />
                     </div>
                   </div>
@@ -1026,7 +1024,7 @@ export default function FreteCotacao() {
                               className="accent-emerald-600"
                             />
                             <div className="flex-1 min-w-0">
-                              <div className="text-[10px] font-bold truncate text-foreground">{parceira.nome}</div>
+                              <div className="text-[10px] font-bold truncate text-ink">{parceira.nome}</div>
                               <div className="text-base font-black tabular-nums text-emerald-700 dark:text-emerald-400 leading-tight">
                                 {formatBRL(valor)}
                               </div>
@@ -1039,15 +1037,15 @@ export default function FreteCotacao() {
                 ) : (
                   <Link
                     to="/frete/transportadoras"
-                    className="group relative overflow-hidden p-5 bg-gradient-to-br from-muted/40 to-muted/10 border-2 border-dashed border-muted-foreground/30 rounded-2xl hover:border-emerald-500/60 hover:bg-emerald-500/5 hover:-translate-y-1 transition-all flex flex-col items-center justify-center text-center min-h-[180px]"
+                    className="group relative overflow-hidden p-5 bg-gradient-to-br from-muted/40 to-muted/10 border-2 border-dashed border-ink-faint/30 rounded-2xl hover:border-emerald-500/60 hover:bg-emerald-500/5 hover:-translate-y-1 transition-all flex flex-col items-center justify-center text-center min-h-[180px]"
                   >
-                    <div className="w-12 h-12 bg-muted/60 group-hover:bg-emerald-500/20 rounded-2xl flex items-center justify-center mb-2 transition-all">
-                      <Truck className="h-6 w-6 text-muted-foreground/60 group-hover:text-emerald-600 transition-all" />
+                    <div className="w-12 h-12 bg-surface-2/60 group-hover:bg-emerald-500/20 rounded-2xl flex items-center justify-center mb-2 transition-all">
+                      <Truck className="h-6 w-6 text-ink-muted/60 group-hover:text-emerald-600 transition-all" />
                     </div>
-                    <div className="text-xs font-black uppercase tracking-wider text-muted-foreground group-hover:text-emerald-700 dark:group-hover:text-emerald-400">
+                    <div className="text-xs font-black uppercase tracking-wider text-ink-muted group-hover:text-emerald-700 dark:group-hover:text-emerald-400">
                       Nenhuma parceira
                     </div>
-                    <div className="text-[10px] text-muted-foreground/70 mt-1 font-semibold">
+                    <div className="text-[10px] text-ink-muted/70 mt-1 font-semibold">
                       Cadastrar agora →
                     </div>
                   </Link>
@@ -1071,10 +1069,10 @@ export default function FreteCotacao() {
                       ) : mediaHist.data ? (
                         formatBRL(mediaHist.data)
                       ) : (
-                        <span className="text-muted-foreground/50 text-2xl font-normal">—</span>
+                        <span className="text-ink-muted/50 text-2xl font-normal">—</span>
                       )}
                     </div>
-                    <div className="text-[10px] text-muted-foreground mt-2 leading-tight">
+                    <div className="text-[10px] text-ink-muted mt-2 leading-tight">
                       {mediaHist.data
                         ? <>Mediana similares<br />(mesma UF, ±20% km)</>
                         : <>Aguardando dados.<br />Mín. 3 cotações similares.</>}
@@ -1086,36 +1084,36 @@ export default function FreteCotacao() {
               {/* Frete de retorno (manual) + cubagem */}
               <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-3">
                 {/* Toggle retorno */}
-                <div className={`relative overflow-hidden rounded-2xl border-2 p-4 transition-all ${retornoLigado ? 'border-emerald-500/50 bg-gradient-to-br from-emerald-500/12 to-transparent' : 'border-border bg-muted/20'}`}>
+                <div className={`relative overflow-hidden rounded-2xl border-2 p-4 transition-all ${retornoLigado ? 'border-emerald-500/50 bg-gradient-to-br from-emerald-500/12 to-transparent' : 'border-border bg-surface-2/20'}`}>
                   <div className="flex items-start gap-3">
                     <button
                       type="button"
                       role="switch"
                       aria-checked={retornoLigado}
                       onClick={() => setRetornoLigado(v => !v)}
-                      className={`mt-0.5 flex-shrink-0 w-11 h-6 rounded-full transition-all relative ${retornoLigado ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`}
+                      className={`mt-0.5 flex-shrink-0 w-11 h-6 rounded-full transition-all relative ${retornoLigado ? 'bg-emerald-500' : 'bg-ink-faint/30'}`}
                     >
                       <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${retornoLigado ? 'left-[22px]' : 'left-0.5'}`} />
                     </button>
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs font-black uppercase tracking-wider text-foreground">
+                      <div className="text-xs font-black uppercase tracking-wider text-ink">
                         Frete de retorno
                       </div>
-                      <div className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+                      <div className="text-[11px] text-ink-muted mt-0.5 leading-snug">
                         Só ligue se o motorista <b>confirmou</b> caminhão voltando vazio nessa rota. Não é automático por região.
                       </div>
                       {retornoLigado && (
                         <div className="mt-2 flex items-center gap-2">
-                          <span className="text-[10px] font-bold text-muted-foreground">Desconto</span>
+                          <span className="text-[10px] font-bold text-ink-muted">Desconto</span>
                           <input
                             type="number"
                             min={0}
                             max={DESCONTO_RETORNO_MAX_PCT}
                             value={retornoPct}
                             onChange={e => setRetornoPct(e.target.value)}
-                            className="w-16 border border-emerald-500/40 rounded-lg px-2 py-1 text-xs bg-background tabular-nums font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                            className="w-16 border border-emerald-500/40 rounded-lg px-2 py-1 text-xs bg-bg tabular-nums font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                           />
-                          <span className="text-[10px] font-bold text-muted-foreground">% (máx {DESCONTO_RETORNO_MAX_PCT}%)</span>
+                          <span className="text-[10px] font-bold text-ink-muted">% (máx {DESCONTO_RETORNO_MAX_PCT}%)</span>
                           {valorModeloBranorte?.limitou_retorno && (
                             <span className="text-[10px] font-bold text-amber-600">· limitado pelo piso ANTT</span>
                           )}
@@ -1126,8 +1124,8 @@ export default function FreteCotacao() {
                 </div>
 
                 {/* Cubagem / indivisibilidade */}
-                <div className="relative overflow-hidden rounded-2xl border-2 border-border bg-muted/20 p-4">
-                  <div className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-2">
+                <div className="relative overflow-hidden rounded-2xl border-2 border-border bg-surface-2/20 p-4">
+                  <div className="text-[10px] font-black uppercase tracking-wider text-ink-muted mb-2">
                     Como esta carga é cobrada
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -1136,8 +1134,8 @@ export default function FreteCotacao() {
                         <AlertTriangle className="h-3 w-3" /> Indivisível → carga completa
                       </span>
                     )}
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-background border border-border text-[10px] font-bold tabular-nums">
-                      <Scale className="h-3 w-3 text-primary" />
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-bg border border-border text-[10px] font-bold tabular-nums">
+                      <Scale className="h-3 w-3 text-accent" />
                       {carga ? `peso real ${carga.peso_kg.toLocaleString('pt-BR')} kg` : 'sem carga'}
                     </span>
                     {pesoEfetivo != null && carga && pesoEfetivo > carga.peso_kg && (
@@ -1146,29 +1144,29 @@ export default function FreteCotacao() {
                       </span>
                     )}
                   </div>
-                  <div className="text-[11px] text-muted-foreground mt-2 leading-snug">
+                  <div className="text-[11px] text-ink-muted mt-2 leading-snug">
                     Modo: <b>{MODOS_CARGA_LABELS[modoCargaBranorte]}</b>. {pisoAntt != null && <>Piso legal mínimo: <b className="tabular-nums">{formatBRL(pisoAntt)}</b>.</>}
                   </div>
                 </div>
               </div>
 
               {/* Decisão final — zona premium */}
-              <div className="relative overflow-hidden bg-gradient-to-br from-primary/8 via-primary/3 to-transparent border-2 border-primary/30 rounded-2xl p-5">
-                <div className="absolute -top-16 -right-16 w-40 h-40 bg-primary/20 rounded-full blur-3xl" />
+              <div className="relative overflow-hidden bg-gradient-to-br from-accent/8 via-accent/3 to-transparent border-2 border-accent/30 rounded-2xl p-5">
+                <div className="absolute -top-16 -right-16 w-40 h-40 bg-accent/20 rounded-full blur-3xl" />
                 <div className="absolute -bottom-16 -left-16 w-40 h-40 bg-emerald-500/15 rounded-full blur-3xl" />
 
                 <div className="relative">
                   <div className="flex items-center gap-2 mb-3">
-                    <div className="w-7 h-7 bg-gradient-to-br from-primary to-emerald-600 rounded-lg flex items-center justify-center shadow-md shadow-primary/30">
-                      <Save className="h-4 w-4 text-primary-foreground" />
+                    <div className="w-7 h-7 bg-gradient-to-br from-accent to-emerald-600 rounded-lg flex items-center justify-center shadow-md shadow-accent/30">
+                      <Save className="h-4 w-4 text-white" />
                     </div>
-                    <label className="text-[10px] uppercase tracking-[0.25em] font-black text-foreground">
+                    <label className="text-[10px] uppercase tracking-[0.25em] font-black text-ink">
                       Valor final pra negociar com o cliente
                     </label>
                   </div>
 
                   <div className="relative">
-                    <span className="absolute left-5 top-1/2 -translate-y-1/2 text-2xl font-black text-primary/60 tabular-nums pointer-events-none">
+                    <span className="absolute left-5 top-1/2 -translate-y-1/2 text-2xl font-black text-accent/60 tabular-nums pointer-events-none">
                       R$
                     </span>
                     <input
@@ -1176,17 +1174,17 @@ export default function FreteCotacao() {
                       value={valorFinal}
                       onChange={e => setValorFinal(e.target.value)}
                       placeholder="0,00"
-                      className="w-full border-2 border-primary/40 focus:border-primary rounded-2xl pl-14 pr-5 py-4 text-3xl font-black tabular-nums tracking-tight bg-background/80 backdrop-blur focus:outline-none focus:ring-4 focus:ring-primary/15 shadow-lg shadow-primary/10 transition-all placeholder:text-muted-foreground/30 placeholder:font-normal"
+                      className="w-full border-2 border-accent/40 focus:border-accent rounded-2xl pl-14 pr-5 py-4 text-3xl font-black tabular-nums tracking-tight bg-bg/80 backdrop-blur focus:outline-none focus:ring-4 focus:ring-accent/15 shadow-lg shadow-accent/10 transition-all placeholder:text-ink-muted/30 placeholder:font-normal"
                     />
                   </div>
 
                   <div className="relative mt-3">
-                    <FileText className="absolute left-3.5 top-3.5 h-4 w-4 text-muted-foreground/60" />
+                    <FileText className="absolute left-3.5 top-3.5 h-4 w-4 text-ink-muted/60" />
                     <textarea
                       value={observacoes}
                       onChange={e => setObservacoes(e.target.value)}
                       placeholder="Observações (ex: cliente já tem transportadora, frete CIF, escolta especial...)"
-                      className="w-full border-2 border-border/60 rounded-xl pl-10 pr-3 py-3 text-sm bg-background/80 backdrop-blur focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all placeholder:text-muted-foreground/50"
+                      className="w-full border-2 border-border/60 rounded-xl pl-10 pr-3 py-3 text-sm bg-bg/80 backdrop-blur focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50 transition-all placeholder:text-ink-muted/50"
                       rows={2}
                     />
                   </div>
@@ -1195,7 +1193,7 @@ export default function FreteCotacao() {
                     type="button"
                     onClick={handleSalvar}
                     disabled={salvar.isPending}
-                    className="group relative mt-4 w-full overflow-hidden px-6 py-4 bg-gradient-to-r from-primary via-emerald-600 to-primary text-primary-foreground rounded-2xl font-black text-base uppercase tracking-[0.25em] shadow-2xl shadow-primary/40 hover:shadow-primary/60 hover:-translate-y-1 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 transition-all flex items-center justify-center gap-3 bg-[length:200%_100%] hover:bg-[position:100%]"
+                    className="group relative mt-4 w-full overflow-hidden px-6 py-4 bg-gradient-to-r from-accent via-emerald-600 to-accent text-white rounded-2xl font-black text-base uppercase tracking-[0.25em] shadow-2xl shadow-accent/40 hover:shadow-accent/60 hover:-translate-y-1 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 transition-all flex items-center justify-center gap-3 bg-[length:200%_100%] hover:bg-[position:100%]"
                   >
                     <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
                     {salvar.isPending ? (
@@ -1219,51 +1217,53 @@ export default function FreteCotacao() {
 
         {/* Estado vazio — onboarding guiado em 3 passos (preenche o vão até ter resultado) */}
         {!(carga && distanciaKm) && (
-          <div className="relative overflow-hidden bg-gradient-to-br from-card/80 via-card/40 to-card/10 backdrop-blur-xl border border-border/50 rounded-3xl p-8 sm:p-12 mb-5 shadow-xl shadow-black/5">
+          <div className="relative overflow-hidden bg-gradient-to-br from-surface/80 via-surface/40 to-surface/10 backdrop-blur-xl border border-border/50 rounded-3xl p-8 sm:p-12 mb-5 shadow-xl shadow-black/5">
             {/* glow ambiente */}
-            <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[520px] h-[320px] bg-gradient-to-b from-primary/25 via-sky-500/10 to-transparent rounded-full blur-3xl pointer-events-none animate-pulse" style={{ animationDuration: '6s' }} />
+            <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[520px] h-[320px] bg-gradient-to-b from-accent/20 via-accent/5 to-transparent rounded-full blur-3xl pointer-events-none animate-pulse" style={{ animationDuration: '6s' }} />
             <div className="relative flex flex-col items-center text-center">
               {/* ilustração */}
               <div className="relative mb-6">
-                <div className="absolute inset-0 bg-gradient-to-br from-primary via-emerald-500 to-sky-500 rounded-[1.75rem] blur-2xl opacity-40 animate-pulse" style={{ animationDuration: '3.5s' }} />
-                <div className="relative w-24 h-24 bg-gradient-to-br from-primary/25 via-emerald-500/15 to-sky-500/10 border border-primary/40 rounded-[1.75rem] flex items-center justify-center ring-1 ring-white/15 shadow-xl shadow-primary/20">
-                  <Truck className="h-11 w-11 text-primary drop-shadow-lg" strokeWidth={1.75} />
+                <div className="absolute inset-0 bg-accent rounded-[1.75rem] blur-2xl opacity-30 animate-pulse" style={{ animationDuration: '3.5s' }} />
+                <div className="relative w-24 h-24 bg-accent/10 border border-accent/30 rounded-[1.75rem] flex items-center justify-center ring-1 ring-accent/10 shadow-xl shadow-accent/15">
+                  <Truck className="h-11 w-11 text-accent drop-shadow-lg" strokeWidth={1.75} />
                 </div>
               </div>
-              <h2 className="text-2xl sm:text-3xl font-black tracking-tighter bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
+              <h2 className="text-2xl sm:text-3xl font-black tracking-tighter text-ink">
                 Pronto pra cotar
               </h2>
-              <p className="text-sm text-muted-foreground max-w-md mt-2 mb-8">
-                Informe o <b className="text-foreground/80">destino</b> e a <b className="text-foreground/80">carga</b> — as 4 estimativas aparecem na hora, já travadas no piso legal.
+              <p className="text-sm text-ink-muted max-w-md mt-2 mb-8">
+                Informe o <b className="text-ink">destino</b> e a <b className="text-ink">carga</b> — as 4 estimativas aparecem na hora, já travadas no piso legal.
               </p>
 
               {/* 3 passos com status ao vivo */}
               <div className="relative grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-3xl">
-                {/* linha conectora (desktop) — colorida estilo rota */}
-                <div className="hidden sm:block absolute top-7 left-[16.6%] right-[16.6%] h-0.5 bg-gradient-to-r from-primary/50 via-sky-500/50 to-violet-500/50 -z-0" />
+                {/* linha conectora (desktop) */}
+                <div className="hidden sm:block absolute top-7 left-[16.6%] right-[16.6%] h-0.5 bg-gradient-to-r from-accent/40 via-accent/25 to-accent/10 -z-0" />
                 {[
-                  { icon: MapPin, title: 'Destino', desc: 'CEP ou cidade', done: !!destino, idleCls: 'bg-primary/15 text-primary ring-1 ring-primary/20', ringCls: 'ring-primary/50', borderCls: 'border-primary/60 shadow-primary/15' },
-                  { icon: Package, title: 'Carga', desc: 'fábrica, dimensões ou pallets', done: !!carga, idleCls: 'bg-sky-500/15 text-sky-400 ring-1 ring-sky-500/20', ringCls: 'ring-sky-500/50', borderCls: 'border-sky-500/60 shadow-sky-500/15' },
-                  { icon: Sparkles, title: 'Estimativas', desc: '4 valores comparados', done: !!(carga && distanciaKm), idleCls: 'bg-violet-500/15 text-violet-400 ring-1 ring-violet-500/20', ringCls: 'ring-violet-500/50', borderCls: 'border-violet-500/60 shadow-violet-500/15' },
+                  { icon: MapPin, title: 'Destino', desc: 'CEP ou cidade', done: !!destino },
+                  { icon: Package, title: 'Carga', desc: 'fábrica, dimensões ou pallets', done: !!carga },
+                  { icon: Sparkles, title: 'Estimativas', desc: '4 valores comparados', done: !!(carga && distanciaKm) },
                 ].map((step, i, arr) => {
                   const isCurrent = !step.done && arr.slice(0, i).every(s => s.done)
                   const Icon = step.icon
                   return (
                     <div
                       key={step.title}
-                      className={`relative z-10 flex flex-col items-center gap-2 p-4 rounded-2xl border-2 bg-card/60 backdrop-blur transition-all hover:-translate-y-0.5 ${
+                      className={`relative z-10 flex flex-col items-center gap-2 p-4 rounded-2xl border-2 bg-surface/60 backdrop-blur transition-all hover:-translate-y-0.5 ${
                         step.done
-                          ? 'border-emerald-500/50 shadow-lg shadow-emerald-500/10'
+                          ? 'border-accent/50 shadow-lg shadow-accent/10'
                           : isCurrent
-                            ? `shadow-lg ${step.borderCls}`
+                            ? 'border-accent/60 shadow-lg shadow-accent/15'
                             : 'border-border/50'
                       }`}
                     >
                       <div
                         className={`relative w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${
                           step.done
-                            ? 'bg-gradient-to-br from-emerald-500 to-green-600 text-white shadow-md shadow-emerald-500/30'
-                            : step.idleCls
+                            ? 'bg-accent text-white shadow-md shadow-accent/30'
+                            : isCurrent
+                              ? 'bg-accent/15 text-accent ring-1 ring-accent/30'
+                              : 'bg-surface-2 text-ink-faint'
                         }`}
                       >
                         {step.done ? (
@@ -1272,16 +1272,16 @@ export default function FreteCotacao() {
                           <Icon className="h-6 w-6" strokeWidth={2} />
                         )}
                         {isCurrent && (
-                          <span className={`absolute inset-0 rounded-2xl ring-2 ${step.ringCls} animate-ping`} style={{ animationDuration: '2s' }} />
+                          <span className="absolute inset-0 rounded-2xl ring-2 ring-accent/40 animate-ping" style={{ animationDuration: '2s' }} />
                         )}
                       </div>
-                      <div className="text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground/60">
+                      <div className="text-[10px] font-black uppercase tracking-[0.15em] text-ink-muted/60">
                         Passo {i + 1}
                       </div>
-                      <div className={`text-sm font-black ${step.done ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground'}`}>
+                      <div className={`text-sm font-black ${step.done ? 'text-accent' : 'text-ink'}`}>
                         {step.title}
                       </div>
-                      <div className="text-[11px] text-muted-foreground/70 leading-tight">
+                      <div className="text-[11px] text-ink-muted/70 leading-tight">
                         {step.desc}
                       </div>
                     </div>
@@ -1294,7 +1294,7 @@ export default function FreteCotacao() {
           </div>{/* /coluna direita */}
         </div>{/* /grid 2 colunas */}
 
-        <div className="flex items-center justify-center gap-2 mt-6 text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground/70">
+        <div className="flex items-center justify-center gap-2 mt-6 text-[10px] uppercase tracking-[0.2em] font-bold text-ink-muted/70">
           <AlertTriangle className="h-3 w-3" />
           Valores são estimativas · confirme com a transportadora
         </div>
