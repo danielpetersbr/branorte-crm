@@ -1,7 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-const SHARED_SECRET = Deno.env.get('WA_SYNC_SHARED_SECRET') ?? 'branorte-wa-sync-2026'
-const OPENAI_KEY = Deno.env.get('OPENAI_API_KEY') ?? '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'
+// Secrets vem SO via env. Sem fallback hardcoded (vazava key no repo).
+const SHARED_SECRET = Deno.env.get('WA_SYNC_SHARED_SECRET') ?? ''
+const OPENAI_KEY = Deno.env.get('OPENAI_API_KEY') ?? ''
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
