@@ -1,0 +1,112 @@
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Surface */
+    --bg: 240 10% 99%;
+    --surface: 240 6% 97%;
+    --surface-2: 240 8% 95%;
+    --border: 240 6% 90%;
+    --border-strong: 240 6% 82%;
+
+    /* Ink */
+    --ink: 240 10% 12%;
+    --ink-muted: 240 5% 45%;
+    --ink-faint: 240 4% 65%;
+
+    /* Semantic */
+    --success: 152 60% 40%;
+    --success-bg: 152 70% 96%;
+    --warning: 38 92% 50%;
+    --warning-bg: 38 100% 96%;
+    --danger: 0 72% 51%;
+    --danger-bg: 0 80% 97%;
+    --info: 217 91% 60%;
+    --info-bg: 217 95% 96%;
+    --accent: 152 60% 40%;
+    --accent-bg: 152 70% 96%;
+  }
+
+  .dark {
+    --bg: 240 10% 7%;
+    --surface: 240 8% 11%;
+    --surface-2: 240 7% 14%;
+    --border: 240 6% 18%;
+    --border-strong: 240 5% 26%;
+
+    --ink: 240 5% 96%;
+    --ink-muted: 240 4% 70%;
+    --ink-faint: 240 3% 50%;
+
+    --success-bg: 152 50% 12%;
+    --warning-bg: 38 60% 12%;
+    --danger-bg: 0 60% 14%;
+    --info-bg: 217 60% 14%;
+    --accent-bg: 152 50% 12%;
+  }
+
+  html, body {
+    background: hsl(var(--bg));
+    color: hsl(var(--ink));
+    font-family: 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-feature-settings: 'cv11', 'ss01', 'ss03';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-size: 14px;
+    line-height: 1.5;
+    /* Previne scroll horizontal residual em mobile.
+       ResponsiveScaler centraliza/escala o preview do orçamento. */
+    overflow-x: hidden;
+  }
+
+  /* Safe area insets pra PWA instalado em iOS/Android — evita conteúdo
+     ficar atrás do notch/dynamic island/status bar. Em browser normal
+     env() retorna 0px, então é no-op. */
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  .font-mono {
+    font-family: 'Geist Mono', ui-monospace, 'JetBrains Mono', monospace;
+  }
+}
+
+@layer components {
+  /* Pulsing dot for live/new lead indicators */
+  .pulse-dot::before {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 9999px;
+    background: hsl(var(--success));
+    opacity: 0.4;
+    animation: pulse-ring 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  @keyframes pulse-ring {
+    0%, 100% { transform: scale(0.85); opacity: 0.6; }
+    50%      { transform: scale(1.5); opacity: 0; }
+  }
+}
+
+/* Blocos com data-no-break sao tratados pelo algoritmo de slicing do
+   preview-to-pdf.ts (html2canvas). Estas regras CSS sao GARANTIA EXTRA
+   para impressao nativa (Ctrl+P) e qualquer fallback que use o motor
+   de paginacao do browser. */
+[data-no-break] {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+@media print {
+  [data-no-break] {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+}

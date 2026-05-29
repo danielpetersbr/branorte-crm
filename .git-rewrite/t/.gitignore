@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+*.local
+/import-orcamentos.ts
+.vercel
+scripts/.env
+
+.env*.local
+.env.production

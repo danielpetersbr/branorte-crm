@@ -1197,6 +1197,20 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             </div>
           </details>
 
+          {/* Data da venda — sempre visivel (issue #16: vendedor precisa poder editar
+              data da venda sem abrir o accordion de forma de pagamento) */}
+          <div className="rounded-md border border-border bg-surface-2/20 px-3 py-2 flex items-center gap-3">
+            <label className="text-[11px] uppercase tracking-wider text-ink-muted font-semibold whitespace-nowrap">
+              Data da venda
+            </label>
+            <Input
+              type="date"
+              value={pgDataVenda}
+              onChange={e => setPgDataVenda(e.target.value)}
+              className="text-[11px] flex-1 max-w-[180px]"
+            />
+          </div>
+
           {/* Forma de pagamento — accordion (abre default em rascunho novo,
               fica fechado se ja tem prazo/forma preenchidos pra economizar scroll) */}
           <details
@@ -1235,10 +1249,16 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
                 <Input type="date" value={pgDataVenda} onChange={e => setPgDataVenda(e.target.value)} className="text-[11px]" />
               </div>
               {pgTipo === 'avista' && (
-                <div>
-                  <label className="text-[9px] uppercase tracking-wider text-ink-muted">Desconto % (à vista)</label>
-                  <Input type="number" value={pgAvistaDesconto} onChange={e => setPgAvistaDesconto(Number(e.target.value) || 0)} className="text-[11px]" />
-                </div>
+                <>
+                  <div>
+                    <label className="text-[9px] uppercase tracking-wider text-ink-muted">Desconto % (à vista)</label>
+                    <Input type="number" value={pgAvistaDesconto} onChange={e => setPgAvistaDesconto(Number(e.target.value) || 0)} className="text-[11px]" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-[9px] uppercase tracking-wider text-ink-muted">Data do pagamento</label>
+                    <Input type="date" value={pgPrimeiraEm} onChange={e => setPgPrimeiraEm(e.target.value)} className="text-[11px]" />
+                  </div>
+                </>
               )}
               {pgTipo === 'parcelado' && (
                 <>

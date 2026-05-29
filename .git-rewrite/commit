@@ -1,0 +1,70 @@
+tree da518429d0aebd8507480f31e3e6f55f200d57ac
+parent a5d216e0173dc77e4949f86636b8642e04387163
+author Daniel Peters <daniel.peters.br@gmail.com> 1780000348 -0300
+committer Daniel Peters <daniel.peters.br@gmail.com> 1780000348 -0300
+
+style(frete): redesign maximalista premium
+
+Visual upgrade total na tela /frete por feedback do usuario "DEIXA MAIS BONITO":
+
+1) Background animado:
+   - 3 blobs gradient (primary/emerald, sky/primary, amber/green)
+   - blur-3xl + animate-pulse com durations 8-12s diferentes
+   - cobre toda tela sem interferir interacao (pointer-events-none, -z-10)
+
+2) Header hero:
+   - Logo box 64px com glow effect + gradient via primary→emerald
+   - Badge "Branorte · SC" uppercase tracking ultra wide
+   - Titulo h1 com gradient text via bg-clip-text
+   - Atalhos com border + hover lift + icone scale
+
+3) Cards Cliente+CEP:
+   - Glassmorphism: bg-card/80 backdrop-blur-xl
+   - Hairline gradient no topo via pseudo
+   - Labels uppercase letter-spacing extremo
+   - Inputs border-2 com focus ring-4
+   - Botao Buscar gradient primary→emerald + shadow + hover lift
+   - Card de destino com bar gradient lateral + glow badge "↓50% Retorno"
+     (pulse animado quando aplica)
+
+4) Tabs estilo pill segmented control:
+   - bg-muted/40 container com rounded-2xl
+   - Tab ativa: gradient primary→emerald + shadow + scale 1.02
+   - Layout 4 colunas com labels escondidos em mobile (so icones)
+
+5) Resultado hero card:
+   - 2 corner blobs (primary/emerald + sky/primary)
+   - Header com summary "R$ X · estimativa Branorte"
+   - Caminhao recomendado HERO:
+     * Icone 80px com glow + gradient + ring-1 white/20
+     * Nome em font-black 4xl com gradient text
+     * Pills tabular-nums pra peso/dimensoes com backdrop-blur
+     * Badge AET premium se aplicavel
+
+6) 4 cards de estimativas premium:
+   - Cada card com corner blob colorido animado no hover
+   - Card Branorte com badge "★ Branorte" no canto + sombra maior
+   - Hover: -translate-y-1 + shadow expandido
+   - Botao "Usar este valor" virou pill gradient com active:scale-95
+   - Histograma de parceiras com selecao destacada (shadow inset)
+   - Card vazio com hover state emerald
+
+7) Zona Decisao final premium:
+   - 2 corner blobs (primary + emerald)
+   - Mini icone gradient ao lado do label
+   - Input valor final: text-3xl black, prefix R$ destacado,
+     border-2 primary, focus ring-4, shadow primary/10
+   - Botao Salvar com:
+     * Gradient primary→emerald→primary
+     * Shimmer effect via gradient white/20 que desliza no hover
+     * Icone rotate-12 no hover
+     * tracking-[0.25em] uppercase
+     * shadow-2xl primary/40 hover/60
+
+8) Tipografia:
+   - tracking-tighter no h1 (compactacao Apple)
+   - uppercase + tracking-[0.25em] nos labels
+   - tabular-nums em todos valores monetarios e dimensoes
+   - font-black liberal nos valores principais
+
+9) Footer disclaimer minimal uppercase

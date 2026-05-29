@@ -39,6 +39,15 @@ export interface PreviewMotor {
   item_uid?: string   // uid do CarrinhoItem origem — usado pelo onTrocarMotor
   motorIndex?: number // 0=principal, 1=secundário (quando item tem 2 motores)
   por_conta_cliente?: boolean  // motor comprado pelo cliente — coluna mostra "por conta do cliente"
+  // Bug #25: TRUE = motor GENUINAMENTE incluso no preço do equipamento
+  // (motorredutor + spec "(incluso)" OU item linkado com valor_com_motor preenchido).
+  // FALSE/undefined = motor avulso. Antes a UI inferia "incluso" só por valor_total===0,
+  // o que mascarava bugs onde o catálogo de motores não tinha match e o valor saía 0
+  // silenciosamente cobrado como "incluso" (vendedor reclamou: "não colocou o valor do motor").
+  incluso_real?: boolean
+  // Issue #23: motor REMOVIDO. Cliente não quer o motor — UI mostra "✕ REMOVIDO"
+  // com botão "Restaurar". Em renderMode (PDF), a linha é OCULTA (não aparece no PDF).
+  removido?: boolean
 }
 
 // Motor do catálogo central (catalogo_motores). Passado pra o picker de troca.
@@ -67,6 +76,11 @@ export interface PreviewTerms {
   dataVenda?: string | null
   prazoEntrega?: string | null
   formaPagamento?: string | null
+  // Frete editavel: tipo (CIF=por conta da Branorte / FOB=por conta do cliente / null=sem rotulo)
+  // + texto livre que aparece como rotulo no PDF (ex: "Frete – por conta do cliente").
+  // Default quando nada foi setado: 'FOB' + 'por conta do cliente' (comportamento legado).
+  freteTipo?: 'CIF' | 'FOB' | null
+  freteTxt?: string | null
 }
 
 // Parcela estruturada de pagamento
@@ -138,7 +152,7 @@ export interface OrcamentoPreviewProps {
   onToggleInox?: (uid: string, tipo?: '304' | '316' | false) => void
   onToggleTungstenio?: (uid: string) => void
   onUpdateQtd?: (uid: string, novaQtd: number) => void
-  onUpdateTerm?: (key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento', valor: string) => void
+  onUpdateTerm?: (key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento' | 'freteTxt' | 'freteTipo', valor: string) => void
   onMoverItem?: (uid: string, direcao: 'cima' | 'baixo') => void
   onToggleBrinde?: (uid: string) => void
 
@@ -151,6 +165,10 @@ export interface OrcamentoPreviewProps {
   onTrocarMotor?: (itemUid: string, novoMotor: MotorCatalogoOption, motorIndex?: number) => void
   // Marca motor como "por conta do cliente" (não cobra, mostra texto). Toggle: passar isPorConta=true ativa.
   onMotorPorContaCliente?: (itemUid: string, isPorConta: boolean, motorIndex?: number) => void
+  // Issue #23: remove motor do item (cliente não quer). Subtrai valor_motor do total;
+  // se incluso no preço, recalcula valor_equipamento. Restore: onRestaurarMotor.
+  onRemoverMotor?: (itemUid: string, motorIndex?: number) => void
+  onRestaurarMotor?: (itemUid: string, motorIndex?: number) => void
 
   // Vendedores Branorte pra grid de contatos no rodape. Quando passado, renderiza
   // dinamicamente em vez do hardcoded antigo (que so tinha 3 vendedores).
@@ -282,6 +300,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     componentesExtras = [], onUpdateComponentesExtras, componentesAdicionaisCatalogo = [],
     parcelas, onUpdateParcelas,
     motoresDisponiveis, onTrocarMotor, onMotorPorContaCliente,
+    onRemoverMotor, onRestaurarMotor,
     vendedoresContato, vendedorResponsavelNome,
     onEditCliente,
     onUpdateFotoItem,
@@ -370,6 +389,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   const prazoEntregaTxt = terms?.prazoEntrega || '90 dias (úteis)'
   const formaPagamentoTxt = terms?.formaPagamento || ''
   const formaPgIsPlaceholder = !formaPagamentoTxt
+  // Frete: tipo (CIF/FOB) + texto livre. Defaults legado: FOB + "por conta do cliente".
+  // Quando vendedor edita inline, sobrescreve. Persistido via onUpdateTerm pra parent state.
+  const freteTipoSel: 'CIF' | 'FOB' = terms?.freteTipo === 'CIF' ? 'CIF' : 'FOB'
+  const freteTxtRaw = (terms?.freteTxt ?? '').trim()
+  const freteTxtFinal = freteTxtRaw || (freteTipoSel === 'CIF' ? 'por conta da Branorte' : 'por conta do cliente')
 
   // Helper: cabeçalho de seção
   const SectionHeader = ({ children }: { children: React.ReactNode }) => (
@@ -1166,7 +1190,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           )}
 
           {/* Motores */}
-          {motoresAgrupados.length > 0 && (() => {
+          {/* Issue #23: em renderMode (PDF), motores removidos NÃO contam pra mostrar a tabela.
+              Se TODOS estão removidos, a seção MOTORES TRIFÁSICOS é omitida do PDF. */}
+          {(renderMode ? motoresAgrupados.filter(m => !m.removido) : motoresAgrupados).length > 0 && (() => {
             const opcoesTensao: (220 | 380 | 660)[] = voltagem === 'monofasico' ? [220] : [220, 380, 660]
             // Monofásico só aceita 220V - corrige se tiver tensão inválida salva
             const tensaoEfetiva = voltagem === 'monofasico' && tensaoMotores && tensaoMotores !== 220 ? 220 : tensaoMotores
@@ -1216,7 +1242,16 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   <tbody>
                     {motoresAgrupados.map((m, idx) => {
                       const porContaCliente = !!m.por_conta_cliente
-                      const incluso = !porContaCliente && m.valor_total === 0
+                      const removido = !!m.removido
+                      // Issue #23: motor removido NÃO aparece no PDF (renderMode oculta a linha).
+                      if (renderMode && removido) return null
+                      // Bug #25: SÓ trata como "incluso" quando explicitamente sinalizado
+                      // pelo agruparMotores (motorredutor + spec "(incluso)" ou valor_com_motor
+                      // do precos_branorte). Motor avulso com valor=0 por outro motivo
+                      // (sem match no catálogo de motores, etc) NÃO é incluso — mostra warning
+                      // pra vendedor preencher em vez de silenciosamente cobrar como "incluso".
+                      const incluso = !porContaCliente && !removido && m.incluso_real === true
+                      const semValor = !porContaCliente && !removido && !incluso && m.valor_total === 0
                       const podeTrocar = !renderMode && !!onTrocarMotor && !!m.item_uid && !!motoresDisponiveis?.length
                       const aberto = trocarMotorIdx === idx
                       // Detecta motorredutor: 1) polos=0 (catalogo_motores marca motorredutor assim)
@@ -1313,6 +1348,20 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                         {porContaCliente ? '↩ Reverter (Branorte volta a cobrar motor)' : '💵 Marcar como POR CONTA DO CLIENTE'}
                                       </button>
                                     )}
+                                    {/* Issue #23: REMOVER motor (cliente não quer motor algum) */}
+                                    {onRemoverMotor && m.item_uid && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          onRemoverMotor(m.item_uid!, m.motorIndex)
+                                          setTrocarMotorIdx(null)
+                                        }}
+                                        className="mt-2 w-full px-2 py-1.5 rounded text-[11px] border bg-white border-red-300 text-red-700 hover:bg-red-50 transition-colors"
+                                        title="Cliente não quer motor. Subtrai valor do motor do total (se incluso, recalcula valor do equipamento)."
+                                      >
+                                        ✕ REMOVER motor (cliente compra fora ou não quer)
+                                      </button>
+                                    )}
                                   </div>
                                   <div className="p-1 overflow-y-auto">
                                     {(() => {
@@ -1366,11 +1415,37 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             )}
                           </td>
                           <td className="py-1.5 text-right text-gray-800 tabular-nums">
-                            {porContaCliente
-                              ? <span className="text-gray-500 italic">por conta do cliente</span>
-                              : incluso
-                                ? <span className="text-gray-500 italic">incluso</span>
-                                : <>R$ {formatBRLBare(m.valor_total)}</>}
+                            {removido
+                              // Issue #23: motor removido pelo vendedor. Mostra texto + link de restaurar.
+                              // No PDF a linha inteira já foi pulada (early return acima).
+                              ? (
+                                <span className="inline-flex items-center gap-2 justify-end">
+                                  <span className="text-red-600 font-semibold italic">✕ removido</span>
+                                  {onRestaurarMotor && m.item_uid && (
+                                    <button
+                                      type="button"
+                                      onClick={() => onRestaurarMotor(m.item_uid!, m.motorIndex)}
+                                      className="text-[11px] text-blue-600 hover:text-blue-800 underline decoration-dotted print:hidden"
+                                      title="Restaurar motor neste item"
+                                    >
+                                      restaurar
+                                    </button>
+                                  )}
+                                </span>
+                              )
+                              : porContaCliente
+                                ? <span className="text-gray-500 italic">por conta do cliente</span>
+                                : incluso
+                                  ? <span className="text-gray-500 italic">incluso</span>
+                                  : semValor
+                                    // Bug #25: motor avulso sem valor cadastrado → warning
+                                    // explícito no preview pro vendedor PERCEBER e ajustar
+                                    // (antes saía como "incluso" e ele perdia a margem do motor).
+                                    // Em renderMode (PDF) cai pra "a confirmar" pra não vazar UI.
+                                    ? renderMode
+                                      ? <span className="text-gray-500 italic">a confirmar</span>
+                                      : <span className="text-amber-700 font-semibold print:text-gray-500 print:font-normal print:italic" title="Motor sem valor cadastrado no catálogo. Clique pra trocar e escolher um motor com preço.">⚠ definir valor</span>
+                                    : <>R$ {formatBRLBare(m.valor_total)}</>}
                           </td>
                         </tr>
                       )
@@ -1380,7 +1455,12 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       <td className="py-2 text-right text-gray-900 tabular-nums">
                         {totalMotores > 0
                           ? `R$ ${formatBRLBare(totalMotores)}`
-                          : <span className="text-gray-400 italic text-[13px]">tudo incluso</span>}
+                          // Bug #25: só mostra "tudo incluso" se TODOS os motores forem
+                          // realmente inclusos (ou por conta do cliente / removidos).
+                          // Se algum estiver sem valor (semValor), mostra "—" pra não enganar.
+                          : motoresAgrupados.every(mm => !!mm.incluso_real || !!mm.por_conta_cliente || !!mm.removido)
+                            ? <span className="text-gray-400 italic text-[13px]">tudo incluso</span>
+                            : <span className="text-gray-400 italic text-[13px]">—</span>}
                       </td>
                     </tr>
                   </tbody>
@@ -1396,7 +1476,10 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             if (componentesExtras.length === 0 && !interactive) return null
             const totalExtras = componentesExtras.reduce((s, c) => s + (Number(c.valor) || 0), 0)
             // Presets sem preço — pra coisas que não estão no cadastro ainda (vendedor digita o R$)
+            // Inclui Frete e Difal (itens fiscais/logisticos que entram no total da proposta).
             const PRESETS = [
+              'Frete',
+              'Difal (ICMS)',
               'Painel elétrico',
               'Inversor de frequência',
               'CLP / Automação',
@@ -2215,7 +2298,34 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       </div>
                     )
                   })()}
-                  <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Frete – por conta do cliente</span></div>
+                  <div className="flex gap-1.5 items-center">
+                    <span className="text-gray-400">•</span>
+                    {!renderMode && onUpdateTerm ? (
+                      <span className="inline-flex items-center gap-1.5 flex-wrap">
+                        <span>Frete</span>
+                        <select
+                          value={freteTipoSel}
+                          onChange={e => onUpdateTerm('freteTipo', e.target.value)}
+                          className="bg-transparent border border-gray-300 hover:border-blue-500 focus:border-blue-600 focus:outline-none rounded px-1.5 py-0 text-gray-800 cursor-pointer"
+                          title="Tipo de frete (CIF=incluso / FOB=por conta do cliente)"
+                        >
+                          <option value="FOB">FOB</option>
+                          <option value="CIF">CIF</option>
+                        </select>
+                        <span>–</span>
+                        <input
+                          type="text"
+                          defaultValue={freteTxtFinal}
+                          key={freteTxtFinal}
+                          onBlur={e => onUpdateTerm('freteTxt', e.target.value)}
+                          placeholder={freteTipoSel === 'CIF' ? 'por conta da Branorte' : 'por conta do cliente'}
+                          className="bg-transparent border-b border-dashed border-gray-300 hover:border-blue-500 focus:border-blue-600 focus:outline-none px-1 min-w-[240px] text-gray-800"
+                        />
+                      </span>
+                    ) : (
+                      <span>Frete ({freteTipoSel}) – {freteTxtFinal}</span>
+                    )}
+                  </div>
                   <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Validade da proposta – 10 dias após o envio</span></div>
                 </>
               )

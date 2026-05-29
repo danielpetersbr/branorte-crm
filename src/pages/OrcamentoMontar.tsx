@@ -17,7 +17,7 @@ import { FinalizarMontarModal, type CarrinhoSnapshot } from '@/components/Finali
 import { OrcamentoPreview, type ParcelaPagamento, type PreviewClienteDados } from '@/components/OrcamentoPreview'
 import { ResponsiveScaler } from '@/components/ResponsiveScaler'
 import { ClienteEditModal } from '@/components/ClienteEditModal'
-import { useOrcamentoModelos, useOrcamentoGerado, type OrcamentoModelo } from '@/hooks/useOrcamentoBuilder'
+import { useOrcamentoModelos, useOrcamentoGerado, type OrcamentoModelo, detectarBalancaDuplicada } from '@/hooks/useOrcamentoBuilder'
 import { OrcamentoAIChat } from '@/components/orcamento/OrcamentoAIChat'
 import { useSearchParams } from 'react-router-dom'
 import { useOrcamentoDraft } from '@/hooks/useOrcamentoDraft'
@@ -65,6 +65,15 @@ interface CarrinhoItem {
   /** Quando true, motor NÃO é cobrado pela Branorte — comprado pelo cliente.
    *  No preview a coluna de valor vira "por conta do cliente" (não "incluso"). */
   motor_por_conta_cliente?: boolean
+  /** Issue #23: motor removido. Cliente não quer motor — Branorte vende só o equipamento.
+   *  Quando true:
+   *   - Motor não aparece na tabela MOTORES TRIFÁSICOS (agruparMotores pula).
+   *   - Se motor estava incluso no valor (precos_branorte com valor_com_motor_*),
+   *     o valor do item é recalculado pra valor_equipamento (sem motor).
+   *   - Se motor era avulso, motor_valor_unit já é descartado pelo skip.
+   *  valor_pre_remocao guarda o valor original do item antes da remoção (pra restaurar). */
+  motor_removido?: boolean
+  valor_pre_remocao?: number | null
   /** ID em precos_branorte (quando item veio de lá). Usado pra recalcular valor ao trocar voltagem. */
   preco_branorte_id?: number | null
   /** Snapshot dos motores extras do item de catálogo (multi-motor, ex: misturador c/ aquecimento).
@@ -183,6 +192,14 @@ interface MotorAgrupado {
   item_uid?: string        // uid do CarrinhoItem que origem o motor (pra editar de volta)
   motorIndex?: number      // 0=principal, 1=secundário (quando item tem 2 motores na spec)
   por_conta_cliente?: boolean  // motor comprado pelo cliente — coluna de valor mostra "por conta do cliente"
+  // Bug #25: TRUE quando motor é GENUINAMENTE incluso (motorredutor/spec com "(incluso)"
+  // ou item linkado a precos_branorte com valor_com_motor preenchido). Antes a UI inferia
+  // "incluso" a partir de valor_total===0 — o que mostrava "incluso" pra motor avulso
+  // sem match no catálogo (vendedor reclamou: "não colocou o valor do motor, colocou como incluso").
+  incluso_real?: boolean
+  // Issue #23: motor REMOVIDO pelo vendedor (cliente não quer). Não conta no total,
+  // mostra como "removido" no preview com botão de restaurar. Esconde no renderMode (PDF).
+  removido?: boolean
 }
 
 // Peneira PASSIVA (jogo de peneira, par de peneiras, peneira de moinho) não tem
@@ -201,6 +218,7 @@ function agruparMotores(
   for (const it of carrinho) {
     const nomeItem = it.nome_custom || it.nome
     const ehAcessorioOuPassiva = it.categoria === 'ACESSORIO' || peneiraSemMotor(nomeItem)
+    const motorRemovido = !!it.motor_removido
 
     // ── MOTORES EXTRAS (multi-motor, ex: misturador c/ aquecimento) ──
     // Aparecem como linha SEPARADA na tabela MOTORES TRIFÁSICOS, com o
@@ -211,7 +229,13 @@ function agruparMotores(
         const motorMatch = motores
           ? acharMotorCompativel(motores, Number(me.cv), me.polos, voltagemEfetiva)
           : null
-        const valorUnitExtra = motorMatch ? Number(motorMatch.valor) : 0
+        const valorUnitExtraBruto = motorMatch ? Number(motorMatch.valor) : 0
+        // Issue #23: se motor foi removido, zera o valor mas mantém linha (com flag removido)
+        // pra vendedor poder restaurar via botão na própria linha.
+        const valorUnitExtra = motorRemovido ? 0 : valorUnitExtraBruto
+        // Motor extra do snapshot é avulso (cobrado à parte) — NÃO é "incluso"
+        // mesmo quando valorUnitExtra=0 (caso o catálogo não tenha match).
+        // Antes: UI inferia "incluso" e ocultava a falta de preço.
         const qtdExtra = (me.qtd || 1) * it.qtd
         // Expande em N linhas (1 por motor) em vez de 1 linha com (×N)
         for (let i = 0; i < qtdExtra; i++) {
@@ -224,6 +248,8 @@ function agruparMotores(
             item_nome: `${nomeItem} (${me.descricao})`,
             item_uid: it.uid,
             por_conta_cliente: !!it.motor_por_conta_cliente,
+            incluso_real: false,
+            removido: motorRemovido,
           })
         }
       }
@@ -252,7 +278,10 @@ function agruparMotores(
     const eIncluso = eInclusoSpec && cvBate
     // Motor por conta do cliente: ignora valor e marca a linha
     const porContaCliente = !!it.motor_por_conta_cliente
-    const valorMotor = porContaCliente ? 0 : ((eMotorredutor && eIncluso) ? 0 : it.motor_valor_unit)
+    // Issue #23: motor removido também zera o valor (item segue, motor sai do total)
+    const valorMotor = (porContaCliente || motorRemovido)
+      ? 0
+      : ((eMotorredutor && eIncluso) ? 0 : it.motor_valor_unit)
 
     if (multiMatch) {
       const cv1 = parseFloat(multiMatch[1].replace(',', '.'))
@@ -265,8 +294,11 @@ function agruparMotores(
       const motor1Cat = motores ? acharMotorCompativel(motores, cv1, it.motor_polos, voltagemEfetiva) : null
       const motor2Cat = motores ? acharMotorCompativel(motores, cv2, it.motor_polos, voltagemEfetiva) : null
       const tratarComoIncluso = eMotorredutor && eIncluso
-      const valorCv1 = porContaCliente ? 0 : (tratarComoIncluso ? 0 : (motor1Cat ? Number(motor1Cat.valor) : valorMotor))
-      const valorCv2 = porContaCliente ? 0 : (tratarComoIncluso ? 0 : (motor2Cat ? Number(motor2Cat.valor) : 0))
+      const valorCv1Bruto = porContaCliente ? 0 : (tratarComoIncluso ? 0 : (motor1Cat ? Number(motor1Cat.valor) : valorMotor))
+      const valorCv2Bruto = porContaCliente ? 0 : (tratarComoIncluso ? 0 : (motor2Cat ? Number(motor2Cat.valor) : 0))
+      // Issue #23: motor removido zera os 2 motores também
+      const valorCv1 = motorRemovido ? 0 : valorCv1Bruto
+      const valorCv2 = motorRemovido ? 0 : valorCv2Bruto
       // 1 linha por motor da spec × qtd do item (sem agregar — cada item vira N linhas)
       for (let i = 0; i < it.qtd; i++) {
         linhas.push({
@@ -274,23 +306,32 @@ function agruparMotores(
           valor_unit: valorCv1, valor_total: valorCv1,
           item_nome: nomeItem, item_uid: it.uid, motorIndex: 0,
           por_conta_cliente: porContaCliente,
+          incluso_real: tratarComoIncluso,
+          removido: motorRemovido,
         })
         linhas.push({
           cv: cv2, polos: it.motor_polos, qtd: 1,
           valor_unit: valorCv2, valor_total: valorCv2,
           item_nome: nomeItem, item_uid: it.uid, motorIndex: 1,
           por_conta_cliente: porContaCliente,
+          incluso_real: tratarComoIncluso,
+          removido: motorRemovido,
         })
       }
     } else {
       // 1 linha por motor — se item tem motor_qtd=2 ou qtd=2, gera N linhas iguais
       // (vendedor pediu pra ver "7,5 CV motorredutor" listado N vezes em vez de "(×2)")
+      // Bug #25: marca incluso_real só quando spec literal diz "(incluso)" + é motorredutor.
+      // Motor com valor=0 por OUTRO motivo (sem match no catálogo) NÃO é incluso → UI mostra warning.
+      const inclusoReal = eMotorredutor && eIncluso
       for (let i = 0; i < qtdMotor; i++) {
         linhas.push({
           cv: it.motor_cv, polos: it.motor_polos, qtd: 1,
           valor_unit: valorMotor, valor_total: valorMotor,
           item_nome: nomeItem, item_uid: it.uid,
           por_conta_cliente: porContaCliente,
+          incluso_real: inclusoReal,
+          removido: motorRemovido,
         })
       }
     }
@@ -340,6 +381,10 @@ export function OrcamentoMontar() {
   const [dataVendaTxt, setDataVendaTxt] = useState(() => new Date().toLocaleDateString('pt-BR'))
   const [prazoEntregaTxt, setPrazoEntregaTxt] = useState('')
   const [formaPagamentoTxt, setFormaPagamentoTxt] = useState('')
+  // Frete editavel inline no preview: tipo (CIF/FOB) + texto livre.
+  // Default = FOB + 'por conta do cliente' (comportamento legado). Vendedor pode mudar.
+  const [freteTipo, setFreteTipo] = useState<'CIF' | 'FOB'>('FOB')
+  const [freteTxt, setFreteTxt] = useState<string>('')
   // Parcelas estruturadas (tabela DATA/MÉTODO/VALOR) — alternativa ao texto livre acima
   const [parcelasPagamento, setParcelasPagamento] = useState<ParcelaPagamento[]>([])
   // Componentes adicionais (NÃO fabricados pela Branorte) — painel elétrico, balança, célula de carga, etc.
@@ -357,12 +402,15 @@ export function OrcamentoMontar() {
     dataVendaTxt,
     prazoEntregaTxt,
     formaPagamentoTxt,
+    freteTipo,
+    freteTxt,
     parcelasPagamento,
     fotoPrincipal,
     componentesExtras,
   }), [
     carrinho, acessorios, voltagem, tensaoMotores, descontoCfg,
-    dataVendaTxt, prazoEntregaTxt, formaPagamentoTxt, parcelasPagamento, fotoPrincipal,
+    dataVendaTxt, prazoEntregaTxt, formaPagamentoTxt, freteTipo, freteTxt,
+    parcelasPagamento, fotoPrincipal,
     componentesExtras,
   ])
 
@@ -420,6 +468,8 @@ export function OrcamentoMontar() {
     setDataVendaTxt(prev.dataVendaTxt ?? '')
     setPrazoEntregaTxt(prev.prazoEntregaTxt ?? '')
     setFormaPagamentoTxt(prev.formaPagamentoTxt ?? '')
+    setFreteTipo((prev as any).freteTipo ?? 'FOB')
+    setFreteTxt((prev as any).freteTxt ?? '')
     setParcelasPagamento(prev.parcelasPagamento ?? [])
     setFotoPrincipal(prev.fotoPrincipal ?? null)
     setComponentesExtras(prev.componentesExtras ?? [])
@@ -453,6 +503,8 @@ export function OrcamentoMontar() {
     setDataVendaTxt(d.dataVendaTxt ?? '')
     setPrazoEntregaTxt(d.prazoEntregaTxt ?? '')
     setFormaPagamentoTxt(d.formaPagamentoTxt ?? '')
+    setFreteTipo((d as any).freteTipo ?? 'FOB')
+    setFreteTxt((d as any).freteTxt ?? '')
     setParcelasPagamento(d.parcelasPagamento ?? [])
     setFotoPrincipal(d.fotoPrincipal ?? null)
     setComponentesExtras(d.componentesExtras ?? [])
@@ -484,7 +536,7 @@ export function OrcamentoMontar() {
   const [clienteDados, setClienteDados] = useState<PreviewClienteDados>({})
   const [clienteModalOpen, setClienteModalOpen] = useState(false)
 
-  function atualizarTermo(key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento', v: string) {
+  function atualizarTermo(key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento' | 'freteTxt' | 'freteTipo', v: string) {
     if (key === 'dataVenda') {
       setDataVendaTxt(v)
     } else if (key === 'prazoEntrega') {
@@ -497,6 +549,13 @@ export function OrcamentoMontar() {
       // editado inline com o antigo do banco. (Bug: vendedor editava 'a combinar'
       // no preview, mas PDF saia com 'À vista PIX 5%' herdado do banco.)
       setInitialModal(prev => prev ? { ...prev, forma_pagamento: v || null } : prev)
+    } else if (key === 'freteTipo') {
+      // Troca CIF/FOB. Se vendedor nao customizou o texto ainda, atualiza o default
+      // pra refletir a nova semantica (FOB→"por conta do cliente", CIF→"por conta da Branorte").
+      const novoTipo: 'CIF' | 'FOB' = v === 'CIF' ? 'CIF' : 'FOB'
+      setFreteTipo(novoTipo)
+    } else if (key === 'freteTxt') {
+      setFreteTxt(v)
     }
   }
 
@@ -830,6 +889,22 @@ export function OrcamentoMontar() {
     quantidade?: number,
   ) {
     const cat = categoriaForcada ?? p.categoria
+
+    // Bug #27: detecta duplicata de Balança Eletrônica também via PrecoBranorte.
+    // (Caçamba auto-adiciona Balança; vendedor não deve poder adicionar outra avulsa
+    // sem alerta — evita somar 2x no total geral do orçamento.)
+    const dupP = detectarBalancaDuplicada(
+      { categoria: cat, nome: p.descricao },
+      carrinho,
+      componentesExtras,
+    )
+    if (dupP.duplicada) {
+      const prosseguir = window.confirm(
+        `Atenção: balança duplicada.\n\n${dupP.motivo}\n\nAdicionar mesmo assim? (vai contabilizar 2x no total)`
+      )
+      if (!prosseguir) return
+    }
+
     // Tenta achar o catalogo_item linkado via preco_branorte_id
     const ciLinkado = (items ?? []).find(ci => ci.preco_branorte_id === p.id && ci.ativo)
 
@@ -955,6 +1030,20 @@ export function OrcamentoMontar() {
   }
 
   function adicionarItem(item: CatalogoItem, funcaoEscolhida?: string) {
+    // Bug #27: detecta duplicata de Balança Eletrônica (Caçamba já auto-adiciona uma).
+    // Bloqueia adicao com confirmação explícita pra evitar somar 2x no total.
+    const dup = detectarBalancaDuplicada(
+      { categoria: item.categoria, nome: item.nome_curto },
+      carrinho,
+      componentesExtras,
+    )
+    if (dup.duplicada) {
+      const prosseguir = window.confirm(
+        `Atenção: balança duplicada.\n\n${dup.motivo}\n\nAdicionar mesmo assim? (vai contabilizar 2x no total)`
+      )
+      if (!prosseguir) return
+    }
+
     // Transportadores da busca lateral: abre cálculo de motor direto com esse item
     if (item.categoria === 'TRANSPORTADOR' && funcaoEscolhida === undefined) {
       // Tenta achar o PrecoBranorte correspondente pra abrir o ConfirmarChupimModal
@@ -1184,6 +1273,9 @@ export function OrcamentoMontar() {
     setTensaoMotores(null)
     setDataVendaTxt(new Date().toLocaleDateString('pt-BR'))
     setVoltagem('trifasico')
+    // Reseta frete pro default legado (FOB + texto vazio = "por conta do cliente")
+    setFreteTipo('FOB')
+    setFreteTxt('')
     // initialModal e usado pra hidratar o modal Finalizar — limpa tambem
     setInitialModal(null)
   }
@@ -1242,6 +1334,61 @@ export function OrcamentoMontar() {
     setCarrinho(c => c.map(it => {
       if (it.uid !== itemUid) return it
       return { ...it, motor_por_conta_cliente: isPorConta }
+    }))
+  }
+
+  // Issue #23: REMOVE o motor de um item. Cliente não quer motor — Branorte vende só o
+  // equipamento. Quando o motor estava INCLUSO no preço (precos_branorte com
+  // valor_com_motor_trif/mono), recalcula o valor pro valor_equipamento (sem motor).
+  // Quando o motor era avulso (motor_valor_unit > 0), o agruparMotores skipará a linha,
+  // o que zera o totalMotores — não precisa mexer no valor do item.
+  // Para reverter, restaurarMotorDoItem volta valor_pre_remocao.
+  function removerMotorDoItem(itemUid: string, _motorIndex?: number) {
+    setCarrinho(c => c.map(it => {
+      if (it.uid !== itemUid) return it
+      if (it.motor_removido) return it  // já removido, no-op
+      // Tenta achar precos_branorte linkado pra ver se motor está incluso no valor
+      const precoLinkado = it.preco_branorte_id
+        ? (precos ?? []).find(p => p.id === it.preco_branorte_id)
+        : null
+      let valorRecalculado = it.valor
+      if (precoLinkado) {
+        // Voltagem efetiva: item com inversor sempre trif (mais barato)
+        const voltagemEfetiva: Voltagem = it.usa_inversor ? 'trifasico' : voltagem
+        const { motorIncluso } = valorPorVoltagem(precoLinkado, voltagemEfetiva)
+        if (motorIncluso) {
+          // Motor estava embutido no preço — usa valor_equipamento (sem motor)
+          const equipV = precoLinkado.valor_equipamento != null
+            ? Number(precoLinkado.valor_equipamento)
+            : it.valor
+          // Aplica mesmos fatores inox/tungstenio que o valor atual tinha
+          // (preserva % de markup) — se não tiver fator especial, é só equipV.
+          // Caminho seguro: sem inox/tungstenio, usa equipV direto;
+          // com fatores aplicados, mantém valor (pois recalcular ficaria complexo).
+          if (!it.inox && !it.tungstenio) {
+            valorRecalculado = Math.round(equipV)
+          }
+        }
+      }
+      return {
+        ...it,
+        motor_removido: true,
+        valor_pre_remocao: it.valor,
+        valor: valorRecalculado,
+      }
+    }))
+  }
+
+  function restaurarMotorDoItem(itemUid: string) {
+    setCarrinho(c => c.map(it => {
+      if (it.uid !== itemUid) return it
+      if (!it.motor_removido) return it
+      return {
+        ...it,
+        motor_removido: false,
+        valor: it.valor_pre_remocao != null ? it.valor_pre_remocao : it.valor,
+        valor_pre_remocao: null,
+      }
     }))
   }
 
@@ -1607,6 +1754,14 @@ export function OrcamentoMontar() {
     // Restaura termos inline no preview (forma de pagamento, prazo, data, parcelas)
     if (o.forma_pagamento) setFormaPagamentoTxt(o.forma_pagamento)
     if (o.prazo_entrega) setPrazoEntregaTxt(o.prazo_entrega)
+    // Frete: restaura do orcamento salvo se a coluna existir (futuro-proof).
+    // Hoje as colunas frete_tipo/frete_txt sao opcionais — sem DB migration ainda.
+    if ((o as any).frete_tipo === 'CIF' || (o as any).frete_tipo === 'FOB') {
+      setFreteTipo((o as any).frete_tipo)
+    }
+    if (typeof (o as any).frete_txt === 'string') {
+      setFreteTxt((o as any).frete_txt)
+    }
     if (o.parcelas?.length) setParcelasPagamento(o.parcelas)
     // Guarda dados que vão pro modal FinalizarMontar
     setInitialModal({
@@ -2213,7 +2368,7 @@ export function OrcamentoMontar() {
                 onUpdateTensaoMotores={setTensaoMotores}
                 desconto={descontoCfg}
                 onUpdateDesconto={setDescontoCfg}
-                terms={{ dataVenda: dataVendaTxt, prazoEntrega: prazoEntregaTxt, formaPagamento: formaPagamentoTxt }}
+                terms={{ dataVenda: dataVendaTxt, prazoEntrega: prazoEntregaTxt, formaPagamento: formaPagamentoTxt, freteTipo, freteTxt }}
                 onUpdateTerm={atualizarTermo}
                 onMoverItem={moverItem}
                 parcelas={parcelasPagamento}
@@ -2221,6 +2376,8 @@ export function OrcamentoMontar() {
                 motoresDisponiveis={motores ?? []}
                 onTrocarMotor={trocarMotorDoItem}
                 onMotorPorContaCliente={marcarMotorPorContaCliente}
+                onRemoverMotor={removerMotorDoItem}
+                onRestaurarMotor={restaurarMotorDoItem}
                 vendedoresContato={vendedoresContato}
                 vendedorResponsavelNome={profile?.display_name || null}
                 cliente={clienteDados}

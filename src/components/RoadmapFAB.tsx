@@ -147,10 +147,13 @@ export function RoadmapFAB() {
 
   return (
     <>
-      {/* FAB */}
+      {/* FAB
+          z-index: usa [9997] (acima da maioria dos modais z-50, mas abaixo do
+          modal de feedback do proprio FAB z-[9999]) pra ficar sempre clicavel
+          mesmo com outros modais abertos (FinalizarMontarModal, etc). */}
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-4 right-4 z-40 group flex items-center gap-2 bg-accent hover:bg-accent-700 text-white rounded-full shadow-lg p-3 transition-all hover:scale-105"
+        className="fixed bottom-4 right-4 z-[9997] group flex items-center gap-2 bg-accent hover:bg-accent-700 text-white rounded-full shadow-lg p-3 transition-all hover:scale-105"
         title="Reportar bug, sugestão ou melhoria"
         aria-label="Abrir feedback"
       >
@@ -158,10 +161,11 @@ export function RoadmapFAB() {
         <span className="hidden md:inline group-hover:inline text-[12px] font-semibold pr-1">Feedback</span>
       </button>
 
-      {/* Modal */}
+      {/* Modal — z-[9998] pra ficar acima de outros modais do app (FinalizarMontarModal etc).
+          Sem isso, feedback do FAB abria embaixo do modal de orcamento. */}
       {open && (
         <div
-          className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-2 sm:p-4"
+          className="fixed inset-0 z-[9998] bg-black/60 flex items-end sm:items-center justify-center p-2 sm:p-4"
           onClick={() => setOpen(false)}
         >
           <div

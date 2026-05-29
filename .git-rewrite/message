@@ -1,0 +1,44 @@
+feat(frete): modelo Branorte + Carga fechada + filtro Compactas
+
+Mudancas baseadas em Z:/1-Comercial/4-Logistica/PLANILHA FRETE.xlsx que
+o usuario apontou como fonte real de cotacao Branorte.
+
+1) NOVO modelo de calculo "Branorte" (planilha real):
+   - Tabela frete_modelo_branorte com R$/km por tipo+modo
+   - TRUCK: 4 paletes R$1.40/km, completa R$2.90/km
+   - CARRETA: 2 paletes R$1.70/km, 4 paletes R$1.90/km, completa R$3.90/km
+   - Regra "Frete retorno SUL x NORTE divide por 2" aplicada
+     automaticamente quando destino e UF do N/NE
+     (AC,AL,AM,AP,BA,CE,MA,PA,PB,PE,PI,RN,RO,RR,SE,TO)
+   - Indicador visual no header quando aplica retorno
+
+2) Resultado agora mostra 4 estimativas comparativas (era 3):
+   - NOVO Card verde-Branorte "Planilha" (modelo proprio, com badge)
+   - ANTT (legal, ambar) - secundario agora
+   - Parceiras (esmeralda)
+   - Historico (azul)
+
+3) Recalibrei CCDs ANTT -15% pra refletir mercado real
+   (frete Rondonia carreta tava saindo R$30k, agora ~R$22k)
+
+4) NOVA aba "Carga fechada":
+   - Vendedor escolhe direto TRUCK ou CARRETA
+   - Escolhe modo: 2 paletes / 4 paletes / completa
+   - Sistema cota como se caminhao ja estivesse cheio
+   - util pra cliente com frota dedicada ou estimativa rapida
+
+5) Filtrei aba "Por equipamento":
+   - Antes: 410 itens (chupim, elevador, silo, motor, tudo)
+   - Agora: 135 Compactas (Compacta 01/02/03 + Master + Mini Fabrica)
+   - Cobertura 100% (todas com peso/dim aplicados via heuristica
+     subcategoria + nome)
+
+6) Renomeei aba "Por equipamento" -> "Por fabrica"
+
+7) Visual:
+   - Tabs com icones (Factory, Package, Layers, Truck)
+   - 4 cards em grid responsivo (sm:2 cols, lg:4 cols)
+   - Botao "Usar este valor" no card Branorte preenche valor_final
+   - Header com badge verde "↓50% retorno" se Sul x Norte
+   - Inputs com focus ring, transitions, border-radius xl
+   - Salvar com gradient + shadow + hover lift

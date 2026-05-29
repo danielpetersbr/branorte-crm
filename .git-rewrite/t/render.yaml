@@ -1,0 +1,32 @@
+# Blueprint Render.com — deploy de Gotenberg pra conversão DOCX → PDF
+# (LibreOffice headless, mesmo motor do Word/Office quando salva como PDF).
+#
+# Como usar:
+# 1. Logue em render.com (free, sem cartão necessário pro free tier)
+# 2. New → Blueprint → conecte o repo branorte-crm
+# 3. Render detecta este render.yaml e cria o serviço gotenberg
+# 4. Aguarde ~3-5 min do primeiro deploy
+# 5. Copie a URL gerada (algo tipo https://branorte-gotenberg.onrender.com)
+# 6. No Vercel adicione env: VITE_GOTENBERG_URL=<a URL acima>
+# 7. Redeploy do CRM
+# 8. PDF passa a ser gerado automaticamente igual o Word
+
+services:
+  - type: web
+    name: branorte-gotenberg
+    runtime: image
+    image:
+      url: docker.io/gotenberg/gotenberg:8
+    plan: free   # 512MB RAM, dorme após 15min idle (cold start ~30s)
+    region: oregon
+    healthCheckPath: /health
+    dockerCommand: >-
+      gotenberg
+      --api-port=10000
+      --api-timeout=60s
+      --libreoffice-restart-after=10
+      --libreoffice-disable-routes=false
+      --webhook-disable=true
+    envVars:
+      - key: PORT
+        value: "10000"

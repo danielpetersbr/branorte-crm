@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <!-- PWA mobile: bloqueia pinch-zoom do app (comportamento de app nativo).
+         Zoom interno (ex: prévia do orçamento) é controlado por componentes
+         próprios (ResponsiveScaler, etc) — não pelo zoom do browser. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Branorte CRM</title>
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+
+    <!-- PWA: instalável no celular (Android/iOS) e desktop -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#0d0d11" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#fafafb" media="(prefers-color-scheme: light)" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="application-name" content="Branorte CRM" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Branorte" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+
+    <script>
+      // FLASH-FREE THEME: aplica .dark ANTES do React render pra evitar
+      // flash branco em PWA dark mode. Roda inline antes do bundle JS.
+      // Usa key 'theme-v2' (migracao do 'theme' antigo) pra dark default funcionar
+      // mesmo pra usuarios que ja tinham 'light' salvo no localStorage.
+      (function() {
+        try {
+          var saved = localStorage.getItem('theme-v2')
+          // Default dark a nao ser que user EXPLICITAMENTE escolheu light na v2
+          if (saved !== 'light') document.documentElement.classList.add('dark')
+        } catch (_) {
+          document.documentElement.classList.add('dark')
+        }
+      })()
+
+      // Bloqueia pinch-zoom no iOS (Safari ignora user-scalable=no na meta
+      // viewport desde 2018). Cancela gesturestart pra travar zoom global do
+      // app — comportamento de app nativo. Zoom interno (prévia do orçamento)
+      // continua funcionando porque é controlado por componente próprio.
+      document.addEventListener('gesturestart', function(e) { e.preventDefault() }, { passive: false })
+      document.addEventListener('gesturechange', function(e) { e.preventDefault() }, { passive: false })
+      // Bloqueia double-tap zoom (iOS Safari)
+      var lastTouchEnd = 0
+      document.addEventListener('touchend', function(e) {
+        var now = Date.now()
+        if (now - lastTouchEnd <= 300) e.preventDefault()
+        lastTouchEnd = now
+      }, { passive: false })
+
+      // Registra service worker novo (sw.js). Antes só limpava SWs antigos.
+      // SW novo cuida do cache pra PWA install funcionar + offline básico.
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(() => {})
+        })
+      }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

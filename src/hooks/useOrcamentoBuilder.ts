@@ -18,6 +18,17 @@ export interface OrcamentoMotor {
   cv: number
   polos: number
   valor: number
+  // Bug #25: distinguir "motor genuinamente incluso no preço do equipamento"
+  // (motorredutor, TH, spec com "(incluso)") de "motor avulso sem valor preenchido"
+  // (catálogo não encontrou match). Quando valor=0 + incluso=false + por_conta_cliente=false
+  // => MOTOR SEM VALOR (warning). Antes: qualquer valor=0 virava "incluso" silenciosamente.
+  incluso?: boolean
+  por_conta_cliente?: boolean
+  // Issue #23: vendedor pode REMOVER o motor de um item (cliente não quer).
+  // Quando true, o motor é descontado do total (se vier incluso no valor_com_motor_*,
+  // recalcula valor do equipamento via valor_equipamento; se for avulso, só zera o motor).
+  // O motor não aparece mais na tabela MOTORES TRIFÁSICOS.
+  removido?: boolean
 }
 
 export interface OrcamentoModelo {
@@ -86,6 +97,11 @@ export interface OrcamentoGerado {
   observacoes: string | null
   forma_pagamento: string | null
   prazo_entrega: string | null
+  // Frete editavel inline no preview. Opcionais — quando ausentes/null usa default
+  // legado (FOB + "por conta do cliente"). Persistencia em DB depende de migration
+  // adicionar as colunas; ate la, fica so no rascunho local (draftSnapshot).
+  frete_tipo?: 'CIF' | 'FOB' | null
+  frete_txt?: string | null
   parcelas: any[] | null
   status: 'rascunho' | 'enviado' | 'aprovado' | 'perdido'
   pdf_url: string | null
@@ -229,8 +245,13 @@ export function useAtualizarOrcamento() {
     mutationFn: async (input: { id: number } & Partial<CriarOrcamentoInput>): Promise<OrcamentoGerado> => {
       const { id, numero_override: _no, ...rest } = input as any
       void _no
+      // Fix #21: sufixa voltagem nos nomes dos itens (quando há motores e voltagem definida).
+      const itensComVoltagemUpd = (rest.itens && rest.voltagem)
+        ? suffixVoltagemNosItens(rest.itens as OrcamentoItem[], rest.voltagem, rest.motores ?? null)
+        : rest.itens
       const payload: any = {
         ...rest,
+        ...(itensComVoltagemUpd ? { itens: itensComVoltagemUpd } : {}),
         updated_at: new Date().toISOString(),
       }
       // Remove campos undefined (mantém comportamento idempotente)
@@ -315,6 +336,85 @@ export async function obterProximoNumero(): Promise<{ ano: number; sequencial: n
   }
 }
 
+// Regex compartilhado pra detectar Balança Eletrônica em nomes de itens/componentes.
+// Usado tanto no auto-add (cacamba puxa balança) quanto na detecção de duplicata
+// (vendedor tenta adicionar balança avulsa quando cacamba já adicionou uma).
+export const BALANCA_NOME_RE = /balan.a.*el.tr.nica/i
+
+// Detecta categoria de Caçamba de Pesagem (que auto-adiciona balança como extra).
+export function isCacambaPesagemItem(
+  categoria: string | null | undefined,
+  nome: string | null | undefined,
+): boolean {
+  const cat = (categoria || '').toUpperCase()
+  const n = (nome || '').toUpperCase()
+  return cat === 'CACAMBA_PESAGEM' || /CA[ÇC]AMBA.*PESAGEM/i.test(n)
+}
+
+// Bug #27: vendedor adiciona Caçamba (que auto-adiciona Balança Eletrônica como
+// componente extra) e DEPOIS também adiciona uma Balança avulsa pelo picker —
+// resultado: balança contabilizada 2x no total. Esta função detecta o conflito
+// pra avisar o vendedor antes da adição duplicada.
+//
+// Retorna true se:
+//   - O item sendo adicionado é uma Balança (categoria BALANCA ou nome match)
+//   - E já existe uma Caçamba de Pesagem no carrinho (que auto-adiciona balança)
+//   - OU já existe Balança Eletrônica nos componentes extras
+export function detectarBalancaDuplicada(
+  itemSendoAdicionado: { categoria?: string | null; nome?: string | null },
+  carrinhoAtual: Array<{ categoria?: string | null; nome?: string | null }>,
+  componentesExtras: Array<{ nome: string }>,
+): { duplicada: boolean; motivo: string } {
+  const cat = (itemSendoAdicionado.categoria || '').toUpperCase()
+  const nome = itemSendoAdicionado.nome || ''
+  const eBalanca = cat === 'BALANCA' || BALANCA_NOME_RE.test(nome)
+  if (!eBalanca) return { duplicada: false, motivo: '' }
+
+  // 1) Caçamba no carrinho → auto-adicionou balança nos extras
+  const cacambaNoCarrinho = carrinhoAtual.some(it =>
+    isCacambaPesagemItem(it.categoria, it.nome)
+  )
+  if (cacambaNoCarrinho) {
+    return {
+      duplicada: true,
+      motivo: 'A Caçamba de Pesagem já adicionou uma Balança Eletrônica como componente extra.',
+    }
+  }
+
+  // 2) Balança já existe nos componentes extras
+  const balancaNosExtras = componentesExtras.some(c =>
+    BALANCA_NOME_RE.test(c.nome.trim())
+  )
+  if (balancaNosExtras) {
+    return {
+      duplicada: true,
+      motivo: 'Já existe uma Balança Eletrônica nos componentes adicionais do orçamento.',
+    }
+  }
+
+  return { duplicada: false, motivo: '' }
+}
+
+// Suffix voltagem (Monofásico/Trifásico) ao nome do item se ainda não tiver.
+// Resolve bug #21: vendedores estavam concatenando à mão pra identificar a tensão.
+// Aplica somente se o orçamento tem motor(es) — caso contrário voltagem é irrelevante.
+function suffixVoltagemNosItens(
+  itens: OrcamentoItem[],
+  voltagem: 'monofasico' | 'trifasico',
+  motores: OrcamentoMotor[] | null | undefined
+): OrcamentoItem[] {
+  const temMotores = Array.isArray(motores) && motores.length > 0
+  if (!temMotores) return itens
+  const label = voltagem === 'monofasico' ? 'Monofásico' : 'Trifásico'
+  const jaTemVoltagem = /\b(mono(f[aá]sico)?|trif[aá]sico)\b/i
+  return itens.map(it => {
+    const nome = it.nome || ''
+    if (!nome) return it
+    if (jaTemVoltagem.test(nome)) return it
+    return { ...it, nome: `${nome} - ${label}` }
+  })
+}
+
 export interface CriarOrcamentoInput {
   vendedor_nome: string
   vendedor_id?: string | null
@@ -393,6 +493,9 @@ export function useCriarOrcamento() {
         cliente_id = cli?.id ?? null
       }
 
+      // Fix #21: sufixa voltagem nos nomes dos itens (quando há motores).
+      const itensComVoltagem = suffixVoltagemNosItens(input.itens, input.voltagem, input.motores)
+
       const payload = {
         numero,
         ano,
@@ -406,7 +509,7 @@ export function useCriarOrcamento() {
         modelo_id: input.modelo_id,
         modelo_basename: input.modelo_basename,
         voltagem: input.voltagem,
-        itens: input.itens,
+        itens: itensComVoltagem,
         acessorios: input.acessorios,
         motores: input.motores,
         total_equipamentos: input.total_equipamentos,
@@ -465,6 +568,16 @@ export function useCriarAlteracao() {
       const maxAlt = existentes?.[0]?.versao_alt ?? 0
       const nextAlt = maxAlt + 1
 
+      // Issue #13: data_emissao da ALT herda do pedido original (data do pedido),
+      // não usa a data de hoje (data da venda). ALT é alteração do MESMO pedido,
+      // então a data do pedido se mantém — só muda quando vendemos um pedido novo.
+      const { data: parentRow } = await supabase
+        .from('orcamentos_gerados')
+        .select('data_emissao')
+        .eq('id', parent_id)
+        .single()
+      const dataEmissaoPedido = parentRow?.data_emissao ?? new Date().toISOString().split('T')[0]
+
       // Numero base (sem -ALTx) é sempre o do pai original
       const numeroBase = parent_numero_base || parent_numero
       const numero = `${numeroBase}-ALT${nextAlt}`
@@ -496,11 +609,14 @@ export function useCriarAlteracao() {
       const anoMatch = numeroBase.match(/^(\d{4})/)
       const ano = anoMatch ? Number(anoMatch[1]) : new Date().getFullYear()
 
+      // Fix #21: sufixa voltagem nos nomes dos itens (quando há motores).
+      const itensComVoltagemAlt = suffixVoltagemNosItens(rest.itens, rest.voltagem, rest.motores)
+
       const payload = {
         numero,
         ano,
         sequencial: 0, // ALTs não usam sequencial real
-        data_emissao: new Date().toISOString().split('T')[0],
+        data_emissao: dataEmissaoPedido,
         vendedor_nome: rest.vendedor_nome,
         vendedor_id: rest.vendedor_id ?? null,
         cliente_id,
@@ -509,7 +625,7 @@ export function useCriarAlteracao() {
         modelo_id: rest.modelo_id ?? null,
         modelo_basename: rest.modelo_basename ?? null,
         voltagem: rest.voltagem,
-        itens: rest.itens,
+        itens: itensComVoltagemAlt,
         acessorios: rest.acessorios ?? null,
         motores: rest.motores,
         total_equipamentos: rest.total_equipamentos,
