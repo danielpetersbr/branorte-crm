@@ -1201,6 +1201,83 @@ export default function FreteCotacao() {
         </div>
       )}
 
+        {/* Estado vazio — onboarding guiado em 3 passos (preenche o vão até ter resultado) */}
+        {!(carga && distanciaKm) && (
+          <div className="relative overflow-hidden bg-gradient-to-br from-card/80 via-card/40 to-card/10 backdrop-blur-xl border border-border/50 rounded-3xl p-8 sm:p-12 mb-5 shadow-xl shadow-black/5">
+            {/* glow ambiente */}
+            <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[460px] h-[300px] bg-gradient-to-b from-primary/15 via-emerald-500/8 to-transparent rounded-full blur-3xl pointer-events-none" />
+            <div className="relative flex flex-col items-center text-center">
+              {/* ilustração */}
+              <div className="relative mb-6">
+                <div className="absolute inset-0 bg-primary/30 rounded-[1.75rem] blur-2xl animate-pulse" style={{ animationDuration: '3.5s' }} />
+                <div className="relative w-24 h-24 bg-gradient-to-br from-primary/20 via-primary/10 to-emerald-500/5 border border-primary/30 rounded-[1.75rem] flex items-center justify-center ring-1 ring-white/10">
+                  <Truck className="h-11 w-11 text-primary drop-shadow" strokeWidth={1.75} />
+                </div>
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-black tracking-tighter bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
+                Pronto pra cotar
+              </h2>
+              <p className="text-sm text-muted-foreground max-w-md mt-2 mb-8">
+                Informe o <b className="text-foreground/80">destino</b> e a <b className="text-foreground/80">carga</b> — as 4 estimativas aparecem na hora, já travadas no piso legal.
+              </p>
+
+              {/* 3 passos com status ao vivo */}
+              <div className="relative grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-3xl">
+                {/* linha conectora (desktop) */}
+                <div className="hidden sm:block absolute top-7 left-[16.6%] right-[16.6%] h-px bg-gradient-to-r from-border via-border to-border -z-0" />
+                {[
+                  { icon: MapPin, title: 'Destino', desc: 'CEP ou cidade', done: !!destino },
+                  { icon: Package, title: 'Carga', desc: 'fábrica, dimensões ou pallets', done: !!carga },
+                  { icon: Sparkles, title: 'Estimativas', desc: '4 valores comparados', done: !!(carga && distanciaKm) },
+                ].map((step, i, arr) => {
+                  const isCurrent = !step.done && arr.slice(0, i).every(s => s.done)
+                  const Icon = step.icon
+                  return (
+                    <div
+                      key={step.title}
+                      className={`relative z-10 flex flex-col items-center gap-2 p-4 rounded-2xl border-2 bg-card/60 backdrop-blur transition-all ${
+                        step.done
+                          ? 'border-emerald-500/50 shadow-lg shadow-emerald-500/10'
+                          : isCurrent
+                            ? 'border-primary/60 shadow-lg shadow-primary/15'
+                            : 'border-border/50'
+                      }`}
+                    >
+                      <div
+                        className={`relative w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${
+                          step.done
+                            ? 'bg-gradient-to-br from-emerald-500 to-green-600 text-white shadow-md shadow-emerald-500/30'
+                            : isCurrent
+                              ? 'bg-gradient-to-br from-primary/20 to-emerald-500/10 text-primary ring-2 ring-primary/40'
+                              : 'bg-muted/50 text-muted-foreground/50'
+                        }`}
+                      >
+                        {step.done ? (
+                          <span className="text-2xl font-black leading-none">✓</span>
+                        ) : (
+                          <Icon className="h-6 w-6" strokeWidth={2} />
+                        )}
+                        {isCurrent && (
+                          <span className="absolute inset-0 rounded-2xl ring-2 ring-primary/40 animate-ping" style={{ animationDuration: '2s' }} />
+                        )}
+                      </div>
+                      <div className="text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground/60">
+                        Passo {i + 1}
+                      </div>
+                      <div className={`text-sm font-black ${step.done ? 'text-emerald-600 dark:text-emerald-400' : isCurrent ? 'text-foreground' : 'text-muted-foreground'}`}>
+                        {step.title}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground/70 leading-tight">
+                        {step.desc}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center justify-center gap-2 mt-6 text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground/70">
           <AlertTriangle className="h-3 w-3" />
           Valores são estimativas · confirme com a transportadora
