@@ -256,7 +256,7 @@ export function Layout() {
     <div className="min-h-screen flex flex-col md:flex-row bg-bg">
       <aside className={cn(
         'hidden md:flex flex-col border-r border-border bg-bg transition-all duration-200',
-        'sticky top-0 h-screen overflow-y-auto shrink-0',
+        'sticky top-0 h-screen shrink-0 overflow-hidden',
         collapsed ? 'w-14' : 'w-64',
       )}>
         {/* Brand + avatar + collapse */}
@@ -309,7 +309,7 @@ export function Layout() {
           </NavLink>
         )}
 
-        <nav className={cn('flex-1 flex flex-col gap-0.5', collapsed ? 'p-2 items-center' : 'p-3')}>
+        <nav className={cn('flex-1 min-h-0 overflow-y-auto flex flex-col gap-0.5', collapsed ? 'p-2 items-center' : 'p-3')}>
           {!collapsed && <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-1">Operação</div>}
           {primary.map(renderItem)}
           {secondary.length > 0 && !collapsed && <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-4">Orçamentos</div>}
