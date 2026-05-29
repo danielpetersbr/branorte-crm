@@ -360,11 +360,14 @@ export default function FreteCotacao() {
 
   return (
     <div className="relative min-h-screen overflow-hidden">
-      {/* Decorative background blobs */}
+      {/* Decorative background — gradient mesh vivo + textura */}
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-[600px] h-[600px] bg-gradient-to-br from-primary/20 via-emerald-500/10 to-transparent rounded-full blur-3xl opacity-60 animate-pulse" style={{ animationDuration: '8s' }} />
-        <div className="absolute top-1/3 -left-40 w-[500px] h-[500px] bg-gradient-to-tr from-sky-500/15 via-primary/5 to-transparent rounded-full blur-3xl opacity-50 animate-pulse" style={{ animationDuration: '10s' }} />
-        <div className="absolute bottom-0 right-1/4 w-[400px] h-[400px] bg-gradient-to-tl from-amber-500/10 via-green-500/5 to-transparent rounded-full blur-3xl opacity-40 animate-pulse" style={{ animationDuration: '12s' }} />
+        <div className="absolute -top-40 -right-40 w-[680px] h-[680px] bg-gradient-to-br from-primary/40 via-emerald-500/20 to-transparent rounded-full blur-3xl opacity-80 animate-pulse" style={{ animationDuration: '8s' }} />
+        <div className="absolute top-1/4 -left-52 w-[560px] h-[560px] bg-gradient-to-tr from-sky-500/30 via-cyan-500/10 to-transparent rounded-full blur-3xl opacity-70 animate-pulse" style={{ animationDuration: '11s' }} />
+        <div className="absolute bottom-[-10%] right-1/4 w-[520px] h-[520px] bg-gradient-to-tl from-emerald-500/25 via-green-500/10 to-transparent rounded-full blur-3xl opacity-60 animate-pulse" style={{ animationDuration: '13s' }} />
+        <div className="absolute top-1/2 left-1/3 w-[420px] h-[420px] bg-gradient-to-br from-violet-500/20 via-fuchsia-500/8 to-transparent rounded-full blur-3xl opacity-50 animate-pulse" style={{ animationDuration: '15s' }} />
+        {/* textura de pontos sutil */}
+        <div className="absolute inset-0 opacity-[0.18]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.35) 1px, transparent 0)', backgroundSize: '34px 34px' }} />
       </div>
 
       <div className="container mx-auto py-8 px-4 max-w-[1400px] relative">
@@ -381,10 +384,14 @@ export default function FreteCotacao() {
               <div className="inline-block px-2.5 py-0.5 bg-primary/10 text-primary text-[10px] font-black uppercase tracking-[0.2em] rounded-full mb-1.5 ring-1 ring-primary/20">
                 Branorte · SC
               </div>
-              <h1 className="text-3xl sm:text-4xl font-black tracking-tighter leading-none bg-gradient-to-r from-foreground via-foreground to-foreground/70 bg-clip-text text-transparent">
+              <h1 className="text-3xl sm:text-4xl font-black tracking-tighter leading-none bg-gradient-to-r from-foreground via-primary to-emerald-400 bg-clip-text text-transparent">
                 Cotação de Frete
               </h1>
-              <div className="text-sm text-muted-foreground mt-1">
+              <div className="text-sm text-muted-foreground mt-1.5 flex items-center gap-2">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                </span>
                 Estimativa rápida pra negociação em segundos
               </div>
             </div>
@@ -1214,13 +1221,13 @@ export default function FreteCotacao() {
         {!(carga && distanciaKm) && (
           <div className="relative overflow-hidden bg-gradient-to-br from-card/80 via-card/40 to-card/10 backdrop-blur-xl border border-border/50 rounded-3xl p-8 sm:p-12 mb-5 shadow-xl shadow-black/5">
             {/* glow ambiente */}
-            <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[460px] h-[300px] bg-gradient-to-b from-primary/15 via-emerald-500/8 to-transparent rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[520px] h-[320px] bg-gradient-to-b from-primary/25 via-sky-500/10 to-transparent rounded-full blur-3xl pointer-events-none animate-pulse" style={{ animationDuration: '6s' }} />
             <div className="relative flex flex-col items-center text-center">
               {/* ilustração */}
               <div className="relative mb-6">
-                <div className="absolute inset-0 bg-primary/30 rounded-[1.75rem] blur-2xl animate-pulse" style={{ animationDuration: '3.5s' }} />
-                <div className="relative w-24 h-24 bg-gradient-to-br from-primary/20 via-primary/10 to-emerald-500/5 border border-primary/30 rounded-[1.75rem] flex items-center justify-center ring-1 ring-white/10">
-                  <Truck className="h-11 w-11 text-primary drop-shadow" strokeWidth={1.75} />
+                <div className="absolute inset-0 bg-gradient-to-br from-primary via-emerald-500 to-sky-500 rounded-[1.75rem] blur-2xl opacity-40 animate-pulse" style={{ animationDuration: '3.5s' }} />
+                <div className="relative w-24 h-24 bg-gradient-to-br from-primary/25 via-emerald-500/15 to-sky-500/10 border border-primary/40 rounded-[1.75rem] flex items-center justify-center ring-1 ring-white/15 shadow-xl shadow-primary/20">
+                  <Truck className="h-11 w-11 text-primary drop-shadow-lg" strokeWidth={1.75} />
                 </div>
               </div>
               <h2 className="text-2xl sm:text-3xl font-black tracking-tighter bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
@@ -1232,23 +1239,23 @@ export default function FreteCotacao() {
 
               {/* 3 passos com status ao vivo */}
               <div className="relative grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-3xl">
-                {/* linha conectora (desktop) */}
-                <div className="hidden sm:block absolute top-7 left-[16.6%] right-[16.6%] h-px bg-gradient-to-r from-border via-border to-border -z-0" />
+                {/* linha conectora (desktop) — colorida estilo rota */}
+                <div className="hidden sm:block absolute top-7 left-[16.6%] right-[16.6%] h-0.5 bg-gradient-to-r from-primary/50 via-sky-500/50 to-violet-500/50 -z-0" />
                 {[
-                  { icon: MapPin, title: 'Destino', desc: 'CEP ou cidade', done: !!destino },
-                  { icon: Package, title: 'Carga', desc: 'fábrica, dimensões ou pallets', done: !!carga },
-                  { icon: Sparkles, title: 'Estimativas', desc: '4 valores comparados', done: !!(carga && distanciaKm) },
+                  { icon: MapPin, title: 'Destino', desc: 'CEP ou cidade', done: !!destino, idleCls: 'bg-primary/15 text-primary ring-1 ring-primary/20', ringCls: 'ring-primary/50', borderCls: 'border-primary/60 shadow-primary/15' },
+                  { icon: Package, title: 'Carga', desc: 'fábrica, dimensões ou pallets', done: !!carga, idleCls: 'bg-sky-500/15 text-sky-400 ring-1 ring-sky-500/20', ringCls: 'ring-sky-500/50', borderCls: 'border-sky-500/60 shadow-sky-500/15' },
+                  { icon: Sparkles, title: 'Estimativas', desc: '4 valores comparados', done: !!(carga && distanciaKm), idleCls: 'bg-violet-500/15 text-violet-400 ring-1 ring-violet-500/20', ringCls: 'ring-violet-500/50', borderCls: 'border-violet-500/60 shadow-violet-500/15' },
                 ].map((step, i, arr) => {
                   const isCurrent = !step.done && arr.slice(0, i).every(s => s.done)
                   const Icon = step.icon
                   return (
                     <div
                       key={step.title}
-                      className={`relative z-10 flex flex-col items-center gap-2 p-4 rounded-2xl border-2 bg-card/60 backdrop-blur transition-all ${
+                      className={`relative z-10 flex flex-col items-center gap-2 p-4 rounded-2xl border-2 bg-card/60 backdrop-blur transition-all hover:-translate-y-0.5 ${
                         step.done
                           ? 'border-emerald-500/50 shadow-lg shadow-emerald-500/10'
                           : isCurrent
-                            ? 'border-primary/60 shadow-lg shadow-primary/15'
+                            ? `shadow-lg ${step.borderCls}`
                             : 'border-border/50'
                       }`}
                     >
@@ -1256,9 +1263,7 @@ export default function FreteCotacao() {
                         className={`relative w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${
                           step.done
                             ? 'bg-gradient-to-br from-emerald-500 to-green-600 text-white shadow-md shadow-emerald-500/30'
-                            : isCurrent
-                              ? 'bg-gradient-to-br from-primary/20 to-emerald-500/10 text-primary ring-2 ring-primary/40'
-                              : 'bg-muted/50 text-muted-foreground/50'
+                            : step.idleCls
                         }`}
                       >
                         {step.done ? (
@@ -1267,13 +1272,13 @@ export default function FreteCotacao() {
                           <Icon className="h-6 w-6" strokeWidth={2} />
                         )}
                         {isCurrent && (
-                          <span className="absolute inset-0 rounded-2xl ring-2 ring-primary/40 animate-ping" style={{ animationDuration: '2s' }} />
+                          <span className={`absolute inset-0 rounded-2xl ring-2 ${step.ringCls} animate-ping`} style={{ animationDuration: '2s' }} />
                         )}
                       </div>
                       <div className="text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground/60">
                         Passo {i + 1}
                       </div>
-                      <div className={`text-sm font-black ${step.done ? 'text-emerald-600 dark:text-emerald-400' : isCurrent ? 'text-foreground' : 'text-muted-foreground'}`}>
+                      <div className={`text-sm font-black ${step.done ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground'}`}>
                         {step.title}
                       </div>
                       <div className="text-[11px] text-muted-foreground/70 leading-tight">
