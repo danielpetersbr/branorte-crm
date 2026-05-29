@@ -98,7 +98,7 @@ export function DueDiligenceForm({ contactId, contactName, initialCnpj }: FormPr
   const custoEstimado =
     (precisaCnpj ? info.custoPj : 0) + (precisaCpf ? info.custoPf : 0)
 
-  function handleSubmit() {
+  function handleSubmit(forceRefresh = false) {
     if (!podeEnviar) return
     consultar.mutate({
       contact_id: contactId ?? null,
@@ -106,6 +106,7 @@ export function DueDiligenceForm({ contactId, contactName, initialCnpj }: FormPr
       cnpj: precisaCnpj ? cnpjLimpo : null,
       cpf_socio: precisaCpf ? cpfLimpo : null,
       pacote,
+      force_refresh: forceRefresh,
     })
   }
 
@@ -239,7 +240,7 @@ export function DueDiligenceForm({ contactId, contactName, initialCnpj }: FormPr
         </div>
         <Button
           variant="primary"
-          onClick={handleSubmit}
+          onClick={() => handleSubmit(false)}
           disabled={!podeEnviar}
           className="w-full"
         >
@@ -259,6 +260,8 @@ export function DueDiligenceForm({ contactId, contactName, initialCnpj }: FormPr
         <ResultadoBox
           consulta={consultar.data.consulta}
           cacheHit={consultar.data._cache_hit}
+          onReconsultar={() => handleSubmit(true)}
+          podeReconsultar={podeEnviar}
         />
       )}
       {consultar.error && (
@@ -401,10 +404,18 @@ interface ResumoEnvelope {
   resumo: Resumo
 }
 
-function ResultadoBox({ consulta, cacheHit }: { consulta: DDConsulta; cacheHit: boolean }) {
+function ResultadoBox({
+  consulta, cacheHit, onReconsultar, podeReconsultar,
+}: {
+  consulta: DDConsulta
+  cacheHit: boolean
+  onReconsultar: () => void
+  podeReconsultar: boolean
+}) {
   const isSuccess = consulta.status === 'success'
   const isMock = !!(consulta.resultado_spc as { _mock?: boolean } | null)?._mock
   const resumos = ((consulta.resultado_spc as { resumos?: ResumoEnvelope[] } | null)?.resumos ?? [])
+  const semDadosEstruturados = isSuccess && resumos.length === 0
 
   return (
     <div className={`rounded-md border ${
@@ -427,7 +438,27 @@ function ResultadoBox({ consulta, cacheHit }: { consulta: DDConsulta; cacheHit: 
         <span className="ml-auto text-[10px] font-mono text-ink-muted">
           R$ {consulta.custo_brl.toFixed(2)}
         </span>
+        {(cacheHit || semDadosEstruturados) && (
+          <button
+            onClick={onReconsultar}
+            disabled={!podeReconsultar}
+            className="text-[10px] font-semibold text-accent hover:underline disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+            title="Faz uma nova consulta ignorando o cache (cobra de novo)"
+          >
+            <Loader2 className="h-3 w-3" /> Reconsultar
+          </button>
+        )}
       </div>
+      {semDadosEstruturados && (
+        <div className="px-3 py-2 bg-warning/10 border-b border-warning/30 text-[11px] text-ink-muted flex items-start gap-2">
+          <AlertCircle className="h-3.5 w-3.5 text-warning shrink-0 mt-0.5" />
+          <span>
+            Esta consulta foi feita antes da última atualização do sistema e está no
+            formato antigo. Clique em <strong>Reconsultar</strong> pra obter o resultado
+            renderizado.
+          </span>
+        </div>
+      )}
       {consulta.erro && (
         <p className="text-[11px] text-warning px-3 py-2">{consulta.erro}</p>
       )}
