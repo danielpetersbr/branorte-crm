@@ -1349,10 +1349,21 @@ export function OrcamentoMontar() {
     }
 
     // Normaliza nome (remove "(...)" sufixos, uppercase, sem acentos)
+    // BUG FIX 2026-05-29 (v2): antes de remover "(...)", preserva capacidade em kg.
+    // Item modelo: "MISTURADOR HORIZONTAL 900 LITROS (500 KG)"
+    // Catalogo:    "Misturador Horizontal de 500 kg"
+    // Sem o fix, "900 LITROS" não bate com "500 KG" e score fica 0.4. Com o fix,
+    // extrai "500 KG" dos parens e substitui "N LITROS" → "M KG" antes de tokenizar.
     function normalizar(s: string): string {
-      return s
+      // Detecta padrão "<N> LITROS (<M> KG)" e troca por "<M> KG"
+      const m = s.match(/(\d+(?:[.,]\d+)?)\s*LITROS?\s*\(\s*(\d+(?:[.,]\d+)?)\s*KG\s*\)/i)
+      let pre = s
+      if (m) {
+        pre = s.replace(m[0], `${m[2]} KG`)
+      }
+      return pre
         .normalize('NFKD').replace(/[̀-ͯ]/g, '')
-        .replace(/\(.+?\)/g, '')  // remove "(150 kg)", "(motor não incluso)"...
+        .replace(/\(.+?\)/g, '')  // remove "(motor não incluso)", "(Incluso)", etc
         .replace(/[^A-Za-z0-9 ]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim().toUpperCase()
