@@ -10,6 +10,7 @@ import type { CrmMeta } from '@/lib/crm-fields'
 import { X, MessageCircle, Phone, User, MapPin, Building, Thermometer, Send, DollarSign, Calendar, Hash } from 'lucide-react'
 import { TEMPERATURA_OPTIONS, FUNIL_OPTIONS, MOTIVO_PERDA_OPTIONS } from '@/types'
 import type { Contact } from '@/types'
+import { DueDiligenceButton } from '@/components/contacts/DueDiligenceButton'
 
 interface Props {
   contact: Contact
@@ -149,6 +150,9 @@ export function ContactDetail({ contact, onClose }: Props) {
               </a>
             </div>
           )}
+
+          {/* Due Diligence — botão (modal abre on-click) */}
+          <DueDiligenceButton contactId={contact.id} contactName={contact.name} />
 
           {/* Registrar tentativa */}
           <div>
