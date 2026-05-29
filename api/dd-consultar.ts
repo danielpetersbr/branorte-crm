@@ -26,6 +26,7 @@ import {
   calcularCustoPacote,
   type AmbienteSpc,
 } from './_lib/spc-client.js'
+import { gerarMockResumo, normalizarPayloadSpc } from './_lib/spc-normalizer.js'
 
 export const config = {
   api: {
@@ -234,15 +235,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let erroMsg: string | null = null
 
   if (SPC_MOCK) {
-    // Modo dev: payload fake
+    // Modo dev: payload fake estruturado (mesmo shape do real, mas com dados ficticios)
+    const resumos = planos.map(p => ({
+      produto: p.produto,
+      documento: p.tipoConsumidor === 'J' ? cnpj : cpfSocio,
+      ok: true,
+      resumo: gerarMockResumo(p.tipoConsumidor, p.tipoConsumidor === 'J' ? cnpj : cpfSocio),
+    }))
     resultadoSpc = {
       _mock: true,
       _nota: 'Resultado simulado — SPC_MOCK=1 no ambiente',
-      consultas: planos.map(p => ({
-        produto: p.produto,
-        documento: p.tipoConsumidor === 'J' ? cnpj : cpfSocio,
-        resultado: { restricao: false, score: 750, observacao: 'mock' },
-      })),
+      resumos,
     }
   } else if (!SPC_USER || !SPC_PASSWORD) {
     statusFinal = 'failed'
@@ -250,30 +253,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } else {
     // Chama SPC pra cada plano em sequencia (consultas independentes)
     const consultas: Array<Record<string, unknown>> = []
+    const resumos: Array<Record<string, unknown>> = []
     let algumaFalhou = false
     let todasFalharam = true
     for (const plano of planos) {
+      const doc = plano.tipoConsumidor === 'J' ? cnpj : cpfSocio
       const r = await consultarSpc(
         {
           codigoProduto: plano.produto,
           tipoConsumidor: plano.tipoConsumidor,
-          documentoConsumidor: plano.tipoConsumidor === 'J' ? cnpj : cpfSocio || '',
+          documentoConsumidor: doc || '',
           codigoInsumoOpcional: plano.insumos,
         },
         { usuario: SPC_USER, senha: SPC_PASSWORD, ambiente: SPC_AMBIENTE },
       )
       consultas.push({
         produto: plano.produto,
-        documento: plano.tipoConsumidor === 'J' ? cnpj : cpfSocio,
+        documento: doc,
         ok: r.ok,
         status: r.status,
         data: r.data,
         erro: r.erro,
       })
-      if (r.ok) todasFalharam = false
-      else algumaFalhou = true
+      // Normaliza o payload pra estrutura "resumo" que o frontend renderiza
+      if (r.ok) {
+        const resumo = normalizarPayloadSpc(r.data ?? null, doc || '')
+        if (resumo) {
+          resumos.push({ produto: plano.produto, documento: doc, ok: true, resumo })
+        }
+        todasFalharam = false
+      } else {
+        algumaFalhou = true
+      }
     }
-    resultadoSpc = { consultas }
+    resultadoSpc = { resumos, consultas }
     if (todasFalharam) {
       statusFinal = 'failed'
       erroMsg = 'Todas as consultas SPC falharam'

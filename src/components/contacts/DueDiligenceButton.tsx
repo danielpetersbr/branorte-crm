@@ -363,13 +363,54 @@ export function DueDiligenceButton({ contactId, contactName }: ButtonProps) {
   )
 }
 
+// ============================================================================
+// Render do resultado da consulta — visual humano, nao JSON
+// ============================================================================
+interface Resumo {
+  consumidor: {
+    tipo: 'F' | 'J'
+    documento: string
+    nome: string | null
+    razao_social?: string | null
+    nome_fantasia?: string | null
+    situacao?: string | null
+    data_fundacao?: string | null
+    data_nascimento?: string | null
+    natureza_juridica?: string | null
+    endereco?: string | null
+    telefones?: string[]
+    email?: string | null
+  }
+  score: { valor: number | null; classificacao: string | null }
+  inadimplencias: {
+    qtd: number
+    valor_total: number
+    detalhes: Array<{ origem: string; valor: number; data: string | null }>
+  }
+  protestos: { qtd: number; valor_total: number }
+  socios?: Array<{ nome: string; participacao?: string | null; documento?: string | null }>
+  administradores?: Array<{ nome: string; cargo?: string | null }>
+  participacoes_em_empresas?: Array<{ nome: string; cnpj?: string | null; tipo?: string | null }>
+  alertas?: string[]
+}
+
+interface ResumoEnvelope {
+  produto?: string
+  documento?: string | null
+  ok?: boolean
+  resumo: Resumo
+}
+
 function ResultadoBox({ consulta, cacheHit }: { consulta: DDConsulta; cacheHit: boolean }) {
   const isSuccess = consulta.status === 'success'
+  const isMock = !!(consulta.resultado_spc as { _mock?: boolean } | null)?._mock
+  const resumos = ((consulta.resultado_spc as { resumos?: ResumoEnvelope[] } | null)?.resumos ?? [])
+
   return (
-    <div className={`rounded-md border px-3 py-2 ${
-      isSuccess ? 'bg-success/10 border-success/30' : 'bg-warning/10 border-warning/30'
+    <div className={`rounded-md border ${
+      isSuccess ? 'bg-success/5 border-success/30' : 'bg-warning/10 border-warning/30'
     }`}>
-      <div className="flex items-center gap-2 mb-1">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border/60">
         {isSuccess ? (
           <CheckCircle className="h-4 w-4 text-success" />
         ) : (
@@ -378,21 +419,215 @@ function ResultadoBox({ consulta, cacheHit }: { consulta: DDConsulta; cacheHit: 
         <span className="text-[12px] font-semibold text-ink">
           {cacheHit ? 'Resultado do cache (30d)' : 'Consulta concluída'}
         </span>
+        {isMock && (
+          <span className="text-[9px] font-mono uppercase text-warning bg-warning/15 px-1.5 py-0.5 rounded">
+            mock
+          </span>
+        )}
         <span className="ml-auto text-[10px] font-mono text-ink-muted">
           R$ {consulta.custo_brl.toFixed(2)}
         </span>
       </div>
       {consulta.erro && (
-        <p className="text-[11px] text-warning">{consulta.erro}</p>
+        <p className="text-[11px] text-warning px-3 py-2">{consulta.erro}</p>
       )}
-      <details className="mt-1">
-        <summary className="text-[10px] text-ink-faint cursor-pointer hover:text-ink">
-          Ver JSON bruto do SPC
+
+      {/* Render dos resumos */}
+      {resumos.length > 0 ? (
+        <div className="p-3 space-y-3">
+          {resumos.map((r, i) => (
+            <ResumoCard key={i} env={r} />
+          ))}
+        </div>
+      ) : (
+        <p className="text-[11px] text-ink-muted px-3 py-2">
+          Sem dados estruturados — veja o JSON bruto abaixo.
+        </p>
+      )}
+
+      <details className="border-t border-border/60">
+        <summary className="text-[10px] text-ink-faint cursor-pointer hover:text-ink px-3 py-1.5">
+          Ver JSON bruto (debug)
         </summary>
-        <pre className="text-[9px] font-mono bg-surface-2/60 p-2 rounded mt-1 overflow-x-auto max-h-60">
+        <pre className="text-[9px] font-mono bg-surface-2/60 mx-3 mb-2 p-2 rounded overflow-x-auto max-h-60">
           {JSON.stringify(consulta.resultado_spc, null, 2)}
         </pre>
       </details>
     </div>
   )
+}
+
+function ResumoCard({ env }: { env: ResumoEnvelope }) {
+  const r = env.resumo
+  const c = r.consumidor
+  const temInad = r.inadimplencias.qtd > 0
+  const temProtesto = r.protestos.qtd > 0
+
+  return (
+    <div className="border border-border rounded-md bg-surface-2/30 overflow-hidden">
+      {/* Header: nome + documento */}
+      <div className="px-3 py-2 border-b border-border/60 bg-surface-2/50">
+        <div className="flex items-center justify-between mb-0.5">
+          <span className="text-[10px] uppercase tracking-wider text-ink-faint font-semibold">
+            {c.tipo === 'J' ? 'Empresa' : 'Pessoa Física'}
+          </span>
+          {env.produto && (
+            <span className="text-[9px] font-mono text-ink-faint">SPC #{env.produto}</span>
+          )}
+        </div>
+        <h3 className="text-[13px] font-bold text-ink leading-tight">
+          {c.nome ?? '(sem nome no SPC)'}
+        </h3>
+        <p className="text-[10px] font-mono text-ink-muted">
+          {c.tipo === 'J' ? 'CNPJ' : 'CPF'}: {c.documento}
+          {c.situacao && (
+            <span className={`ml-2 px-1.5 py-0.5 rounded text-[9px] uppercase font-bold ${
+              /ATIV|REGUL/i.test(c.situacao)
+                ? 'bg-success/20 text-success'
+                : 'bg-warning/20 text-warning'
+            }`}>
+              {c.situacao}
+            </span>
+          )}
+        </p>
+      </div>
+
+      {/* Score + Inadimplências */}
+      <div className="grid grid-cols-3 gap-2 p-3 border-b border-border/60">
+        <Stat
+          label="Score"
+          value={r.score.valor != null ? `${r.score.valor}/1000` : '—'}
+          sub={r.score.classificacao ?? null}
+          tone={
+            r.score.valor == null
+              ? 'neutral'
+              : r.score.valor >= 700
+              ? 'good'
+              : r.score.valor >= 400
+              ? 'warn'
+              : 'bad'
+          }
+        />
+        <Stat
+          label="Inadimplências"
+          value={r.inadimplencias.qtd > 0 ? `${r.inadimplencias.qtd}` : 'Nenhuma'}
+          sub={r.inadimplencias.qtd > 0 ? fmtBRL(r.inadimplencias.valor_total) : null}
+          tone={temInad ? 'bad' : 'good'}
+        />
+        <Stat
+          label="Protestos"
+          value={r.protestos.qtd > 0 ? `${r.protestos.qtd}` : 'Nenhum'}
+          sub={r.protestos.qtd > 0 ? fmtBRL(r.protestos.valor_total) : null}
+          tone={temProtesto ? 'bad' : 'good'}
+        />
+      </div>
+
+      {/* Dados cadastrais */}
+      <div className="px-3 py-2 text-[11px] space-y-1 border-b border-border/60">
+        {c.razao_social && c.razao_social !== c.nome && (
+          <Linha label="Razão Social" valor={c.razao_social} />
+        )}
+        {c.natureza_juridica && <Linha label="Natureza" valor={c.natureza_juridica} />}
+        {c.data_fundacao && <Linha label="Fundação" valor={c.data_fundacao} />}
+        {c.data_nascimento && <Linha label="Nascimento" valor={c.data_nascimento} />}
+        {c.endereco && <Linha label="Endereço" valor={c.endereco} />}
+        {c.telefones && c.telefones.length > 0 && (
+          <Linha label="Telefones" valor={c.telefones.join(' · ')} />
+        )}
+        {c.email && <Linha label="Email" valor={c.email} />}
+      </div>
+
+      {/* Sócios */}
+      {r.socios && r.socios.length > 0 && (
+        <div className="px-3 py-2 text-[11px] border-b border-border/60">
+          <p className="text-[10px] uppercase tracking-wider text-ink-faint font-semibold mb-1">
+            Sócios ({r.socios.length})
+          </p>
+          <ul className="space-y-0.5">
+            {r.socios.map((s, i) => (
+              <li key={i} className="flex items-center justify-between">
+                <span className="text-ink">{s.nome}</span>
+                <span className="text-ink-muted font-mono text-[10px]">
+                  {s.participacao ?? ''} {s.documento ? `· ${s.documento}` : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Participações em outras empresas */}
+      {r.participacoes_em_empresas && r.participacoes_em_empresas.length > 0 && (
+        <div className="px-3 py-2 text-[11px] border-b border-border/60">
+          <p className="text-[10px] uppercase tracking-wider text-ink-faint font-semibold mb-1">
+            Participação em outras empresas ({r.participacoes_em_empresas.length})
+          </p>
+          <ul className="space-y-0.5">
+            {r.participacoes_em_empresas.map((p, i) => (
+              <li key={i} className="flex items-center justify-between">
+                <span className="text-ink truncate">{p.nome}</span>
+                <span className="text-ink-muted font-mono text-[10px] shrink-0 ml-2">
+                  {p.tipo ?? ''} {p.cnpj ?? ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Detalhe de inadimplências (top 5) */}
+      {r.inadimplencias.detalhes.length > 0 && (
+        <div className="px-3 py-2 text-[11px]">
+          <p className="text-[10px] uppercase tracking-wider text-danger font-semibold mb-1">
+            Inadimplências detectadas
+          </p>
+          <ul className="space-y-0.5">
+            {r.inadimplencias.detalhes.map((d, i) => (
+              <li key={i} className="flex items-center justify-between">
+                <span className="text-ink truncate">{d.origem}</span>
+                <span className="text-danger font-mono text-[10px] shrink-0 ml-2">
+                  {fmtBRL(d.valor)} {d.data ? `· ${d.data}` : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Stat({
+  label, value, sub, tone,
+}: { label: string; value: string; sub?: string | null; tone: 'good' | 'warn' | 'bad' | 'neutral' }) {
+  const toneClass = {
+    good: 'text-success',
+    warn: 'text-warning',
+    bad: 'text-danger',
+    neutral: 'text-ink-muted',
+  }[tone]
+  return (
+    <div className="text-center">
+      <p className="text-[9px] uppercase tracking-wider text-ink-faint mb-0.5">{label}</p>
+      <p className={`text-[14px] font-bold font-mono ${toneClass}`}>{value}</p>
+      {sub && <p className="text-[9px] text-ink-muted">{sub}</p>}
+    </div>
+  )
+}
+
+function Linha({ label, valor }: { label: string; valor: string }) {
+  return (
+    <div className="flex">
+      <span className="text-ink-faint w-24 shrink-0">{label}:</span>
+      <span className="text-ink flex-1">{valor}</span>
+    </div>
+  )
+}
+
+function fmtBRL(v: number): string {
+  return v.toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    minimumFractionDigits: 2,
+  })
 }
