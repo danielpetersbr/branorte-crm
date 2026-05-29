@@ -11,6 +11,42 @@ import type {
 } from '@/lib/calcFrete';
 
 // ─────────────────────────────────────────────────────────────
+// Municipios IBGE por UF (autocomplete da busca por cidade)
+// ─────────────────────────────────────────────────────────────
+
+/** 27 UFs do Brasil pro select da busca por cidade. */
+export const UFS_BR = [
+  'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB',
+  'PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO',
+] as const;
+
+/**
+ * Lista de municipios de uma UF via API publica do IBGE.
+ * Payload pequeno (centenas de nomes por estado) e cacheado pra sempre.
+ * Alimenta o <datalist> do autocomplete da busca por cidade.
+ */
+export function useMunicipiosUF(uf: string | null) {
+  return useQuery({
+    queryKey: ['ibge-municipios', uf],
+    queryFn: async (): Promise<string[]> => {
+      if (!uf) return [];
+      const res = await fetch(
+        `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios`,
+      );
+      if (!res.ok) return [];
+      const arr = await res.json();
+      if (!Array.isArray(arr)) return [];
+      return arr
+        .map((m: any) => m?.nome as string)
+        .filter(Boolean)
+        .sort((a: string, b: string) => a.localeCompare(b, 'pt-BR'));
+    },
+    enabled: !!uf,
+    staleTime: Infinity, // municipios não mudam
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
 // Tipos de caminhao
 // ─────────────────────────────────────────────────────────────
 

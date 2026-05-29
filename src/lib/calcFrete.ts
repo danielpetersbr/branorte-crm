@@ -501,6 +501,44 @@ export type DestinoResolvido = {
   tempo_horas: number | null;
 };
 
+/**
+ * Resolve destino direto por CIDADE + UF (sem CEP). Útil quando o vendedor
+ * sabe a cidade mas não o CEP (comum no agro). Cidade/UF vêm validados (do
+ * autocomplete IBGE); aqui só calculamos a distância (best-effort).
+ *
+ * Retorna `null` só se a cidade não geocodificar — mas mesmo assim a UI pode
+ * mostrar cidade/UF e pedir km manual (ver tratamento no componente).
+ */
+export async function resolverDestinoPorCidade(
+  cidade: string,
+  uf: string,
+): Promise<DestinoResolvido> {
+  let distancia_km: number | null = null;
+  let tempo_horas: number | null = null;
+
+  const coords = await geocodificarCidade(cidade, uf);
+  if (coords) {
+    const dist = await calcularDistanciaOSRM(
+      { lat: BRANORTE_ORIGEM.lat, lng: BRANORTE_ORIGEM.lng },
+      coords,
+    );
+    if (dist) {
+      distancia_km = Math.round(dist.distancia_km);
+      tempo_horas = Math.round(dist.tempo_horas * 10) / 10;
+    }
+  }
+
+  return {
+    cep: '',
+    cidade,
+    uf,
+    bairro: '',
+    logradouro: '',
+    distancia_km,
+    tempo_horas,
+  };
+}
+
 export async function resolverDestino(
   cepDestino: string,
 ): Promise<DestinoResolvido | null> {

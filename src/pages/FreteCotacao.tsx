@@ -20,6 +20,7 @@ import {
   DESCONTO_RETORNO_MAX_PCT,
   volumeM3,
   resolverDestino,
+  resolverDestinoPorCidade,
   type DestinoResolvido,
   type TipoCaminhao,
   type Carga,
@@ -32,6 +33,8 @@ import {
   useCatalogoFabricas,
   useModeloBranorte,
   useSalvarCotacao,
+  useMunicipiosUF,
+  UFS_BR,
   type ItemCatalogoComPeso,
 } from '@/hooks/useFrete'
 
@@ -71,6 +74,12 @@ export default function FreteCotacao() {
   const [loadingDist, setLoadingDist] = useState(false)
   const [errDist, setErrDist] = useState<string | null>(null)
   const [kmManual, setKmManual] = useState<string>('')
+
+  // ── Modo de busca de destino: por CEP ou por cidade ──
+  const [modoBusca, setModoBusca] = useState<'cep' | 'cidade'>('cep')
+  const [cidadeInput, setCidadeInput] = useState('')
+  const [ufInput, setUfInput] = useState<string>('')
+  const municipios = useMunicipiosUF(modoBusca === 'cidade' ? ufInput : null)
 
   // ── Aba: por equipamento ──
   const [linhasEquip, setLinhasEquip] = useState<LinhaEquipamento[]>([
@@ -129,6 +138,35 @@ export default function FreteCotacao() {
       }
     } catch {
       setErrDist('Erro ao consultar o CEP. Tente novamente.')
+    } finally {
+      setLoadingDist(false)
+    }
+  }
+
+  async function buscarPorCidade() {
+    const cidade = cidadeInput.trim()
+    if (!ufInput) {
+      setErrDist('Escolha a UF (estado) primeiro.')
+      return
+    }
+    if (cidade.length < 2) {
+      setErrDist('Digite o nome da cidade.')
+      return
+    }
+    setLoadingDist(true)
+    setErrDist(null)
+    setDestino(null)
+    try {
+      const res = await resolverDestinoPorCidade(cidade, ufInput)
+      setDestino(res)
+      if (res.distancia_km != null) {
+        setKmManual(String(res.distancia_km))
+      } else {
+        setKmManual('')
+        setErrDist(`${res.cidade}/${res.uf} selecionado, mas não consegui calcular o km automaticamente. Digite manualmente abaixo.`)
+      }
+    } catch {
+      setErrDist('Erro ao calcular a distância. Digite o km manual abaixo.')
     } finally {
       setLoadingDist(false)
     }
@@ -385,34 +423,102 @@ export default function FreteCotacao() {
             className="w-full border-2 border-border/60 rounded-xl px-4 py-3 text-sm bg-background/60 focus:outline-none focus:ring-4 focus:ring-primary/15 focus:border-primary transition-all placeholder:text-muted-foreground/50"
           />
         </div>
-        <div className="flex items-end gap-3">
-          <div className="flex-1">
-            <label className="text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground block mb-2">
-              CEP destino
-            </label>
-            <input
-              type="text"
-              value={cep}
-              onChange={e => setCep(e.target.value)}
-              placeholder="00000-000"
-              className="w-full border-2 border-border/60 rounded-xl px-4 py-3 text-base font-bold tabular-nums tracking-wider bg-background/60 focus:outline-none focus:ring-4 focus:ring-primary/15 focus:border-primary transition-all placeholder:text-muted-foreground/40 placeholder:font-normal placeholder:tracking-normal"
-              maxLength={9}
-            />
-          </div>
+        {/* Toggle: buscar por CEP ou por cidade */}
+        <div className="inline-flex p-1 bg-muted/40 rounded-xl gap-1">
           <button
             type="button"
-            onClick={buscarDistancia}
-            disabled={loadingDist}
-            className="group relative px-6 py-3 bg-gradient-to-br from-primary to-emerald-600 text-primary-foreground rounded-xl text-sm font-black uppercase tracking-wider hover:shadow-2xl hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:hover:translate-y-0 flex items-center gap-2 shadow-lg shadow-primary/30 transition-all"
+            onClick={() => { setModoBusca('cep'); setErrDist(null) }}
+            className={`px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all ${modoBusca === 'cep' ? 'bg-background text-foreground shadow' : 'text-muted-foreground hover:text-foreground'}`}
           >
-            {loadingDist ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <MapPin className="h-5 w-5 group-hover:scale-110 transition-transform" />
-            )}
-            Buscar
+            Por CEP
+          </button>
+          <button
+            type="button"
+            onClick={() => { setModoBusca('cidade'); setErrDist(null) }}
+            className={`px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all ${modoBusca === 'cidade' ? 'bg-background text-foreground shadow' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            Por cidade
           </button>
         </div>
+
+        {modoBusca === 'cep' ? (
+          <div className="flex items-end gap-3">
+            <div className="flex-1">
+              <label className="text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground block mb-2">
+                CEP destino
+              </label>
+              <input
+                type="text"
+                value={cep}
+                onChange={e => setCep(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') buscarDistancia() }}
+                placeholder="00000-000"
+                className="w-full border-2 border-border/60 rounded-xl px-4 py-3 text-base font-bold tabular-nums tracking-wider bg-background/60 focus:outline-none focus:ring-4 focus:ring-primary/15 focus:border-primary transition-all placeholder:text-muted-foreground/40 placeholder:font-normal placeholder:tracking-normal"
+                maxLength={9}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={buscarDistancia}
+              disabled={loadingDist}
+              className="group relative px-6 py-3 bg-gradient-to-br from-primary to-emerald-600 text-primary-foreground rounded-xl text-sm font-black uppercase tracking-wider hover:shadow-2xl hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:hover:translate-y-0 flex items-center gap-2 shadow-lg shadow-primary/30 transition-all"
+            >
+              {loadingDist ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <MapPin className="h-5 w-5 group-hover:scale-110 transition-transform" />
+              )}
+              Buscar
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-end gap-3">
+            <div className="w-24">
+              <label className="text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground block mb-2">
+                UF
+              </label>
+              <select
+                value={ufInput}
+                onChange={e => { setUfInput(e.target.value); setCidadeInput('') }}
+                className="w-full border-2 border-border/60 rounded-xl px-3 py-3 text-base font-bold bg-background/60 focus:outline-none focus:ring-4 focus:ring-primary/15 focus:border-primary transition-all"
+              >
+                <option value="">—</option>
+                {UFS_BR.map(uf => <option key={uf} value={uf}>{uf}</option>)}
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground block mb-2">
+                Cidade {municipios.isLoading && <span className="font-normal normal-case text-muted-foreground/50">(carregando…)</span>}
+              </label>
+              <input
+                type="text"
+                list="lista-municipios"
+                value={cidadeInput}
+                onChange={e => setCidadeInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') buscarPorCidade() }}
+                disabled={!ufInput}
+                placeholder={ufInput ? 'Comece a digitar a cidade…' : 'Escolha a UF primeiro'}
+                className="w-full border-2 border-border/60 rounded-xl px-4 py-3 text-base font-bold bg-background/60 focus:outline-none focus:ring-4 focus:ring-primary/15 focus:border-primary transition-all disabled:opacity-50 placeholder:text-muted-foreground/40 placeholder:font-normal"
+              />
+              <datalist id="lista-municipios">
+                {(municipios.data ?? []).map(nome => <option key={nome} value={nome} />)}
+              </datalist>
+            </div>
+            <button
+              type="button"
+              onClick={buscarPorCidade}
+              disabled={loadingDist}
+              className="group relative px-6 py-3 bg-gradient-to-br from-primary to-emerald-600 text-primary-foreground rounded-xl text-sm font-black uppercase tracking-wider hover:shadow-2xl hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:hover:translate-y-0 flex items-center gap-2 shadow-lg shadow-primary/30 transition-all"
+            >
+              {loadingDist ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <MapPin className="h-5 w-5 group-hover:scale-110 transition-transform" />
+              )}
+              Buscar
+            </button>
+          </div>
+        )}
         {errDist && (
           <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-700 dark:text-amber-400">
             <AlertTriangle className="h-4 w-4 flex-shrink-0" /> {errDist}
