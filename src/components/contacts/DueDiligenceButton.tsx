@@ -70,28 +70,41 @@ interface FormProps {
 }
 
 /** Formulario "miolo" — usado pela pagina /consulta. */
+type TipoConsulta = 'pj' | 'pf' | 'ambos'
+
 export function DueDiligenceForm({ contactId, contactName, initialCnpj }: FormProps) {
+  const [tipoConsulta, setTipoConsulta] = useState<TipoConsulta>('pj')
   const [cnpj, setCnpj] = useState(initialCnpj ?? '')
-  const [cpfSocio, setCpfSocio] = useState('')
+  const [cpf, setCpf] = useState('')
   const [pacote, setPacote] = useState<Pacote>('economico')
   const consultar = useConsultarDueDiligence()
   const { data: historico = [] } = useDDHistorico(contactId ?? null)
 
   const cnpjLimpo = cnpj.replace(/\D/g, '')
   const cnpjValido = cnpjLimpo.length === 14
-  const cpfLimpo = cpfSocio.replace(/\D/g, '')
-  const cpfValido = cpfLimpo.length === 0 || cpfLimpo.length === 11
-  const podeEnviar = cnpjValido && cpfValido && !consultar.isPending
+  const cpfLimpo = cpf.replace(/\D/g, '')
+  const cpfValido = cpfLimpo.length === 11
 
+  const precisaCnpj = tipoConsulta === 'pj' || tipoConsulta === 'ambos'
+  const precisaCpf = tipoConsulta === 'pf' || tipoConsulta === 'ambos'
+
+  const podeEnviar =
+    (!precisaCnpj || cnpjValido) &&
+    (!precisaCpf || cpfValido) &&
+    !consultar.isPending
+
+  // Custo: soma só do que vai ser consultado
+  const info = PACOTE_INFO[pacote]
   const custoEstimado =
-    PACOTE_INFO[pacote].custoPj + (cpfLimpo.length === 11 ? PACOTE_INFO[pacote].custoPf : 0)
+    (precisaCnpj ? info.custoPj : 0) + (precisaCpf ? info.custoPf : 0)
 
   function handleSubmit() {
     if (!podeEnviar) return
     consultar.mutate({
       contact_id: contactId ?? null,
-      cnpj: cnpjLimpo,
-      cpf_socio: cpfLimpo.length === 11 ? cpfLimpo : null,
+      tipo_consulta: tipoConsulta,
+      cnpj: precisaCnpj ? cnpjLimpo : null,
+      cpf_socio: precisaCpf ? cpfLimpo : null,
       pacote,
     })
   }
@@ -104,36 +117,70 @@ export function DueDiligenceForm({ contactId, contactName, initialCnpj }: FormPr
         </p>
       )}
 
+      {/* Toggle tipo de consulta */}
+      <div>
+        <label className="text-[11px] font-semibold text-ink-muted block mb-1.5">
+          Tipo de consulta
+        </label>
+        <div className="grid grid-cols-3 gap-1.5">
+          {([
+            { v: 'pj', label: 'Empresa (CNPJ)' },
+            { v: 'pf', label: 'Pessoa Física (CPF)' },
+            { v: 'ambos', label: 'Empresa + Sócio' },
+          ] as Array<{ v: TipoConsulta; label: string }>).map(opt => {
+            const ativo = tipoConsulta === opt.v
+            return (
+              <button
+                key={opt.v}
+                type="button"
+                onClick={() => setTipoConsulta(opt.v)}
+                className={`text-[11px] px-2 py-1.5 rounded-md border font-semibold transition-all ${
+                  ativo
+                    ? 'bg-accent text-white border-accent'
+                    : 'bg-surface-2 border-border text-ink-muted hover:border-accent'
+                }`}
+              >
+                {opt.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
       {/* Inputs */}
       <div className="space-y-3">
-        <div>
-          <label className="text-[11px] font-semibold text-ink-muted block mb-1">
-            CNPJ da empresa *
-          </label>
-          <Input
-            value={cnpj}
-            onChange={e => setCnpj(formatDoc(e.target.value, 'cnpj'))}
-            placeholder="00.000.000/0000-00"
-            className="font-mono"
-          />
-          {cnpj && !cnpjValido && (
-            <p className="text-[10px] text-danger mt-1">CNPJ deve ter 14 dígitos</p>
-          )}
-        </div>
-        <div>
-          <label className="text-[11px] font-semibold text-ink-muted block mb-1">
-            CPF do sócio decisor <span className="text-ink-faint">(opcional)</span>
-          </label>
-          <Input
-            value={cpfSocio}
-            onChange={e => setCpfSocio(formatDoc(e.target.value, 'cpf'))}
-            placeholder="000.000.000-00"
-            className="font-mono"
-          />
-          {cpfSocio && !cpfValido && (
-            <p className="text-[10px] text-danger mt-1">CPF deve ter 11 dígitos</p>
-          )}
-        </div>
+        {precisaCnpj && (
+          <div>
+            <label className="text-[11px] font-semibold text-ink-muted block mb-1">
+              CNPJ da empresa *
+            </label>
+            <Input
+              value={cnpj}
+              onChange={e => setCnpj(formatDoc(e.target.value, 'cnpj'))}
+              placeholder="00.000.000/0000-00"
+              className="font-mono"
+            />
+            {cnpj && !cnpjValido && (
+              <p className="text-[10px] text-danger mt-1">CNPJ deve ter 14 dígitos</p>
+            )}
+          </div>
+        )}
+        {precisaCpf && (
+          <div>
+            <label className="text-[11px] font-semibold text-ink-muted block mb-1">
+              CPF {tipoConsulta === 'ambos' ? 'do sócio decisor' : 'da pessoa'} *
+            </label>
+            <Input
+              value={cpf}
+              onChange={e => setCpf(formatDoc(e.target.value, 'cpf'))}
+              placeholder="000.000.000-00"
+              className="font-mono"
+            />
+            {cpf && !cpfValido && (
+              <p className="text-[10px] text-danger mt-1">CPF deve ter 11 dígitos</p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Escolha de pacote */}
@@ -170,9 +217,10 @@ export function DueDiligenceForm({ contactId, contactName, initialCnpj }: FormPr
                     )}
                   </span>
                   <span className="text-[11px] font-mono text-ink-muted">
-                    PJ R$ {info.custoPj.toFixed(2)}
-                    {' · '}
-                    PF R$ {info.custoPf.toFixed(2)}
+                    R$ {(
+                      (precisaCnpj ? info.custoPj : 0) +
+                      (precisaCpf ? info.custoPf : 0)
+                    ).toFixed(2)}
                   </span>
                 </div>
                 <p className="text-[10px] text-ink-muted">{info.descricao}</p>

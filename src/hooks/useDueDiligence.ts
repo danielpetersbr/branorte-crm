@@ -7,7 +7,11 @@ export type Pacote = 'economico' | 'completo' | 'paranoico' | 'custom'
 
 export interface DDConsultaInput {
   contact_id?: string | null
-  cnpj: string
+  /** 'pj' = só empresa; 'pf' = só pessoa; 'ambos' = empresa + sócio */
+  tipo_consulta?: 'pj' | 'pf' | 'ambos'
+  /** CNPJ obrigatório se tipo_consulta = pj | ambos */
+  cnpj?: string | null
+  /** CPF obrigatório se tipo_consulta = pf | ambos */
   cpf_socio?: string | null
   pacote: Pacote
   force_refresh?: boolean

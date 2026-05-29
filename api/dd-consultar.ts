@@ -45,9 +45,11 @@ const SPC_MOCK = process.env.SPC_MOCK === '1'
 interface ConsultarBody {
   /** UUID do contato (FK contacts.id) — opcional, pra registrar vinculo */
   contact_id?: string | null
-  /** CNPJ da empresa (so digitos ou formatado) */
-  cnpj: string
-  /** CPF do socio decisor (opcional) */
+  /** Tipo: 'pj' = so empresa, 'pf' = so pessoa, 'ambos' = empresa + socio. Default = 'pj' (legado). */
+  tipo_consulta?: 'pj' | 'pf' | 'ambos'
+  /** CNPJ — obrigatorio se tipo_consulta = pj|ambos */
+  cnpj?: string | null
+  /** CPF — obrigatorio se tipo_consulta = pf|ambos */
   cpf_socio?: string | null
   /** Pacote: economico | completo | paranoico | custom */
   pacote: 'economico' | 'completo' | 'paranoico' | 'custom'
@@ -65,22 +67,29 @@ interface ConsultarBody {
 // Completo  PJ (+insumos): + Faturamento + Quadro Social + Grupo Econ + Protesto
 // Completo  PF (+insumos): + Renda Presumida + PEP
 // Paranoico: Completo + Datajud + Google + IA (esses sao Fases 3-4)
-function montarPacotes(pacote: ConsultarBody['pacote'], temCpfSocio: boolean) {
+function montarPacotes(
+  pacote: ConsultarBody['pacote'],
+  opts: { incluiPj: boolean; incluiPf: boolean },
+) {
   type Plano = {
     produto: string
     insumos: number[]
     tipoConsumidor: 'F' | 'J'
   }
   const planos: Plano[] = []
+  if (pacote !== 'economico' && pacote !== 'completo' && pacote !== 'paranoico') {
+    return planos
+  }
+  const isCompleto = pacote === 'completo' || pacote === 'paranoico'
 
-  if (pacote === 'economico' || pacote === 'completo' || pacote === 'paranoico') {
+  if (opts.incluiPj) {
     // PJ: Novo SPC Maxi + Score 12m + Participacao + Controle Societario
     const insumosPj: number[] = [
       INSUMOS_OPCIONAIS.SCORE_12_MESES.codigo,
       INSUMOS_OPCIONAIS.PARTICIPACAO_EMPRESAS.codigo,
       INSUMOS_OPCIONAIS.CONTROLE_SOCIETARIO.codigo,
     ]
-    if (pacote === 'completo' || pacote === 'paranoico') {
+    if (isCompleto) {
       insumosPj.push(
         INSUMOS_OPCIONAIS.FATURAMENTO_PRESUMIDO_PJ.codigo,
         INSUMOS_OPCIONAIS.QUADRO_SOCIAL.codigo,
@@ -93,27 +102,27 @@ function montarPacotes(pacote: ConsultarBody['pacote'], temCpfSocio: boolean) {
       insumos: insumosPj,
       tipoConsumidor: 'J',
     })
-
-    // PF socio (opcional): Novo SPC Maxi + Score 12m + Participacao Empresas
-    // (sem Controle Societario — esse so faz sentido pra PJ)
-    if (temCpfSocio) {
-      const insumosPf: number[] = [
-        INSUMOS_OPCIONAIS.SCORE_12_MESES.codigo,
-        INSUMOS_OPCIONAIS.PARTICIPACAO_EMPRESAS.codigo,
-      ]
-      if (pacote === 'completo' || pacote === 'paranoico') {
-        insumosPf.push(
-          INSUMOS_OPCIONAIS.RENDA_PRESUMIDA.codigo,
-          INSUMOS_OPCIONAIS.PEP.codigo,
-        )
-      }
-      planos.push({
-        produto: PRODUTOS_SPC.NOVO_SPC_MAXI.codigo,
-        insumos: insumosPf,
-        tipoConsumidor: 'F',
-      })
-    }
   }
+
+  if (opts.incluiPf) {
+    // PF: Novo SPC Maxi + Score 12m + Participacao Empresas (sem Controle Societario)
+    const insumosPf: number[] = [
+      INSUMOS_OPCIONAIS.SCORE_12_MESES.codigo,
+      INSUMOS_OPCIONAIS.PARTICIPACAO_EMPRESAS.codigo,
+    ]
+    if (isCompleto) {
+      insumosPf.push(
+        INSUMOS_OPCIONAIS.RENDA_PRESUMIDA.codigo,
+        INSUMOS_OPCIONAIS.PEP.codigo,
+      )
+    }
+    planos.push({
+      produto: PRODUTOS_SPC.NOVO_SPC_MAXI.codigo,
+      insumos: insumosPf,
+      tipoConsumidor: 'F',
+    })
+  }
+
   return planos
 }
 
@@ -143,14 +152,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // 2) Body
   const body = req.body as ConsultarBody
-  const cnpj = normalizarDoc(body?.cnpj)
-  const cpfSocio = body?.cpf_socio ? normalizarDoc(body.cpf_socio) : null
+  const tipoConsulta = body?.tipo_consulta || 'pj'
+  const cnpj = body?.cnpj ? normalizarDoc(body.cnpj) : ''
+  const cpfSocio = body?.cpf_socio ? normalizarDoc(body.cpf_socio) : ''
   const pacote = body?.pacote || 'economico'
 
-  if (!cnpj || cnpj.length !== 14) {
+  if (!['pj', 'pf', 'ambos'].includes(tipoConsulta)) {
+    return res.status(400).json({ error: 'tipo_consulta_invalido' })
+  }
+  const precisaCnpj = tipoConsulta === 'pj' || tipoConsulta === 'ambos'
+  const precisaCpf = tipoConsulta === 'pf' || tipoConsulta === 'ambos'
+
+  if (precisaCnpj && cnpj.length !== 14) {
     return res.status(400).json({ error: 'cnpj_invalido', detail: 'CNPJ deve ter 14 digitos' })
   }
-  if (cpfSocio && cpfSocio.length !== 11) {
+  if (precisaCpf && cpfSocio.length !== 11) {
     return res.status(400).json({ error: 'cpf_invalido', detail: 'CPF deve ter 11 digitos' })
   }
   if (!['economico', 'completo', 'paranoico', 'custom'].includes(pacote)) {
@@ -169,7 +185,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // 4) Cache 30d (a menos que force_refresh)
-  if (!body.force_refresh) {
+  // Cache so funciona pra PJ por enquanto (v_dd_cache_30d indexa por cnpj_normalizado)
+  if (!body.force_refresh && precisaCnpj && cnpj.length === 14) {
     const { data: cache } = await supa
       .from('v_dd_cache_30d')
       .select('*')
@@ -185,7 +202,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // 5) Cria registro pending pra rastreabilidade mesmo se falhar
-  const planos = montarPacotes(pacote, !!cpfSocio)
+  const planos = montarPacotes(pacote, { incluiPj: precisaCnpj, incluiPf: precisaCpf })
   const todosOsCodigos = planos.flatMap(p => [p.produto, ...p.insumos.map(String)])
   const custoEstimado = planos.reduce(
     (acc, p) => acc + calcularCustoPacote({ produto: p.produto, insumos: p.insumos }),
@@ -196,8 +213,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .from('due_diligence_consultas')
     .insert({
       contact_id: body.contact_id || null,
-      cnpj,
-      cpf_socio: cpfSocio,
+      cnpj: precisaCnpj ? cnpj : null,
+      cpf_socio: precisaCpf ? cpfSocio : null,
       pacote,
       produtos_spc: todosOsCodigos,
       status: 'pending',
