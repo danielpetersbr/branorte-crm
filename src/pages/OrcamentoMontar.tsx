@@ -1359,14 +1359,25 @@ export function OrcamentoMontar() {
     }
 
     // Acha o catalogo_item mais similar pelo nome.
+    // BUG FIX 2026-05-29: modelos Master pediam "MISTURADOR HORIZONTAL ..."
+    // mas o fuzzy match achava "Silo Misturador VERTICAL ..." pelo score
+    // de tokens. Agora penaliza brutalmente quando orientação não bate.
     function acharCatalogoSimilar(nomeItem: string): CatalogoItem | null {
       const norm = normalizar(nomeItem)
       if (!norm) return null
+      const itemHorizontal = norm.includes('HORIZONTAL')
+      const itemVertical = norm.includes('VERTICAL')
       let melhor: { ci: CatalogoItem; score: number } | null = null
       for (const ci of catalogoItems) {
         if (!ci.ativo) continue
         const ciNorm = normalizar(ci.nome_curto)
         if (!ciNorm) continue
+        const ciSub = (ci.subcategoria || '').toUpperCase()
+        const ciHorizontal = ciNorm.includes('HORIZONTAL') || ciSub.includes('HORIZONTAL')
+        const ciVertical = ciNorm.includes('VERTICAL') || ciSub === 'VERTICAL'
+        // Guard de orientação: se modelo é HORIZONTAL e catalogo é VERTICAL (ou vice-versa) → descarta
+        if (itemHorizontal && ciVertical && !ciHorizontal) continue
+        if (itemVertical && ciHorizontal && !ciVertical) continue
         // Score: 1.0 se match exato; senão calcula fração de tokens em comum
         let score = 0
         if (ciNorm === norm) score = 1.0
@@ -1379,6 +1390,10 @@ export function OrcamentoMontar() {
             tokensA.forEach(t => { if (tokensB.has(t)) inter++ })
             score = inter / Math.max(tokensA.size, tokensB.size)
           }
+        }
+        // Boost se orientação bate (ajuda a desempatar score 0.6)
+        if ((itemHorizontal && ciHorizontal) || (itemVertical && ciVertical)) {
+          score += 0.15
         }
         if (score >= 0.6 && (!melhor || score > melhor.score)) {
           melhor = { ci, score }
