@@ -572,7 +572,7 @@ export default function FreteCotacao() {
 
       {/* Abas — pill style */}
       <div className="bg-surface/80 backdrop-blur-xl border border-border/60 rounded-2xl p-5 mb-5 shadow-xl shadow-black/5">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-5 p-1.5 bg-surface-2/40 rounded-2xl">
+        <div className="grid grid-cols-2 gap-2 mb-5 p-1.5 bg-surface-2/40 rounded-2xl">
           {([
             ['equipamento', 'Por fábrica', Factory],
             ['dimensoes', 'Dimensões', Package],
@@ -583,14 +583,14 @@ export default function FreteCotacao() {
               key={a}
               type="button"
               onClick={() => setAba(a)}
-              className={`relative px-3 py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 whitespace-nowrap ${
+              className={`relative px-3 py-2.5 text-[11px] font-black uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 whitespace-nowrap ${
                 aba === a
-                  ? 'bg-gradient-to-br from-accent to-emerald-600 text-white shadow-lg shadow-accent/30 scale-[1.02]'
+                  ? 'bg-gradient-to-br from-accent to-emerald-600 text-white shadow-lg shadow-accent/30'
                   : 'text-ink-muted hover:text-ink hover:bg-surface'
               }`}
             >
-              <Icon className={`h-4 w-4 ${aba === a ? 'drop-shadow-md' : ''}`} />
-              <span className="hidden sm:inline">{label}</span>
+              <Icon className={`h-4 w-4 flex-shrink-0 ${aba === a ? 'drop-shadow-md' : ''}`} />
+              <span className="truncate">{label}</span>
             </button>
           ))}
         </div>
@@ -611,7 +611,7 @@ export default function FreteCotacao() {
                     const item = catalogo.data?.find(c => c.id === id) ?? null
                     setLinhasEquip(prev => prev.map((x, idx) => idx === i ? { ...x, item } : x))
                   }}
-                  className="flex-1 border rounded-lg px-3 py-2 text-sm bg-bg focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50"
+                  className="flex-1 min-w-0 border border-border rounded-lg px-3 py-2 text-sm bg-bg focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50"
                 >
                   <option value="">— selecione fábrica —</option>
                   {catalogo.data?.map(c => (
@@ -628,12 +628,12 @@ export default function FreteCotacao() {
                     const q = Number(e.target.value) || 1
                     setLinhasEquip(prev => prev.map((x, idx) => idx === i ? { ...x, qtd: q } : x))
                   }}
-                  className="w-16 border rounded-lg px-2 py-2 text-sm bg-bg tabular-nums text-center"
+                  className="w-14 flex-shrink-0 border border-border rounded-lg px-2 py-2 text-sm bg-bg tabular-nums text-center focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50"
                 />
                 <button
                   type="button"
                   onClick={() => setLinhasEquip(prev => prev.length === 1 ? prev : prev.filter((_, idx) => idx !== i))}
-                  className="p-2 text-ink-muted hover:text-destructive transition-colors"
+                  className="flex-shrink-0 p-2 text-ink-muted hover:text-danger transition-colors"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
