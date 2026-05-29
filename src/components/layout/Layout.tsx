@@ -327,8 +327,8 @@ export function Layout() {
           )}
         </nav>
 
-        {/* Toolbar inferior — sempre visível (sidebar é sticky h-screen) */}
-        <div className={cn('border-t border-border', collapsed ? 'p-2 flex flex-col items-center gap-1' : 'p-2 flex items-center justify-end gap-1')}>
+        {/* Toolbar inferior — colada no fim da sidebar (mt-auto força bottom) */}
+        <div className={cn('border-t border-border mt-auto shrink-0', collapsed ? 'p-2 flex flex-col items-center gap-1' : 'p-2 flex items-center justify-end gap-1')}>
           {collapsed && (
             <button
               onClick={toggleCollapsed}
