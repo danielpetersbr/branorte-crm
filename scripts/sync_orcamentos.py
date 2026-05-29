@@ -14,23 +14,40 @@ from pathlib import Path
 
 # --- Config ---
 SUPABASE_URL = 'https://flwbeevtvjiouxdjmziv.supabase.co'
-ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsd2JlZXZ0dmppb3V4ZGpteml2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTEwNDA2NzYsImV4cCI6MjA2NjYxNjY3Nn0.HLYYomR0p-4MQ39rlvOekjOIqpH96tWc_qZ4M1t1irA'
+
+# Service role bypassa RLS (necessario pro INSERT em contacts). Le do .env
+# do branorte-auditoria, evita hardcoding no repo.
+def _load_service_key():
+    env_path = Path(r'd:\MEGA BRAIN\branorte-auditoria\.config\.env.supabase')
+    if env_path.exists():
+        for line in env_path.read_text(encoding='utf-8').splitlines():
+            if line.startswith('SUPABASE_SERVICE_ROLE_KEY='):
+                return line.split('=', 1)[1].strip()
+    # Fallback: env var
+    return os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
+
+SERVICE_KEY = _load_service_key()
+if not SERVICE_KEY:
+    print('ERRO: SUPABASE_SERVICE_ROLE_KEY nao encontrada. Sem ela RLS bloqueia INSERT.')
+    sys.exit(1)
+ANON_KEY = SERVICE_KEY  # mantem nome ANON_KEY pra compatibilidade com o resto do codigo
 
 LOG_DIR = Path(os.environ.get('TEMP', 'C:/Users/Daniel/AppData/Local/Temp')) / 'branorte-sync-logs'
 LOG_DIR.mkdir(exist_ok=True)
 
+# UUIDs reais da tabela vendors (atualizados 2026-05-29 — antigos estavam dessincronizados).
+# Marilene e Matheus removidos do banco. LUCAS adicionado.
 VENDORS = {
-    'alvaro':   'ea6180cd-3e80-428f-b80e-bf79aba81273',
-    'daniel':   '01e32cdc-94b2-47fd-a4a3-c6a39a8ecef1',
-    'eder':     '1eef7c6c-92cd-4319-9f73-fb69688abbb5',
-    'edilson':  '4edf6bcf-eb54-4a50-8ee9-112971cd6210',
-    'gustavo':  'ffe781ba-4949-42fc-9fba-8aeadc31beda',
-    'jardel':   '878db1c1-5cc2-4b89-ad50-96f766faaa7a',
-    'marilene': '81de6151-b967-461c-9784-759c3f95b0e5',
-    'matheus':  '5766f77c-0e03-40ba-a4c6-a22784b21f27',
-    'patrick':  'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
-    'pedro':    '37d80699-2595-44b9-9895-4d4bdfb6cfe7',
-    'ramon':    '17579558-09e4-492c-a352-95c4589f239e',
+    'alvaro':   'a9a222dc-ee26-4fc0-ae8d-7a17f9396fd3',
+    'daniel':   'a730f452-2ba9-4fb9-91a4-67b4af9d351d',
+    'eder':     '32e02344-120a-4d4f-982a-a20be0850c04',
+    'edilson':  'f998e257-ff89-46ed-a8f1-4c9e78232768',
+    'gustavo':  '1af686b1-d2bc-48e1-8b6f-c986b0d66768',
+    'jardel':   '5b0be5f9-296f-4a00-bd0b-6d52ac9d6397',
+    'lucas':    'ab7b7aab-22e6-4569-8679-0e7960105864',
+    'patrick':  '27bd70bd-df70-4910-821c-95ed53b48b00',
+    'pedro':    '050b870b-ebc6-4a52-88c7-fdbbaf90a63a',
+    'ramon':    'd6031266-7858-4008-a277-0a641e9e01df',
 }
 
 BASE = Path(r'Z:\1 - Comercial\3 - Orçamento')
@@ -87,11 +104,15 @@ def fetch_existing():
 
 def insert_one(record):
     body = json.dumps(record, ensure_ascii=False).encode('utf-8')
+    # on_conflict + ignore-duplicates: se telefone ja existe (veio do WA bot),
+    # ignora silenciosamente em vez de erro 23505. Telefones novos sao inseridos.
     req = urllib.request.Request(
-        f'{SUPABASE_URL}/rest/v1/contacts', data=body, method='POST',
+        f'{SUPABASE_URL}/rest/v1/contacts?on_conflict=telefone_normalizado',
+        data=body, method='POST',
         headers={
             'apikey': ANON_KEY, 'Authorization': f'Bearer {ANON_KEY}',
-            'Content-Type': 'application/json; charset=utf-8', 'Prefer': 'return=minimal'
+            'Content-Type': 'application/json; charset=utf-8',
+            'Prefer': 'return=minimal,resolution=ignore-duplicates',
         }
     )
     try:
