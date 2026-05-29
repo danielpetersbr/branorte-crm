@@ -367,7 +367,7 @@ export default function FreteCotacao() {
         <div className="absolute bottom-0 right-1/4 w-[400px] h-[400px] bg-gradient-to-tl from-amber-500/10 via-green-500/5 to-transparent rounded-full blur-3xl opacity-40 animate-pulse" style={{ animationDuration: '12s' }} />
       </div>
 
-      <div className="container mx-auto py-8 px-4 max-w-6xl relative">
+      <div className="container mx-auto py-8 px-4 max-w-[1400px] relative">
         {/* Header — hero treatment */}
         <div className="mb-8 flex items-end justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-4">
@@ -406,6 +406,11 @@ export default function FreteCotacao() {
             </Link>
           </div>
         </div>
+
+        {/* Layout 2 colunas no desktop: inputs (esquerda, sticky) · resultado (direita) */}
+        <div className="lg:grid lg:grid-cols-[minmax(0,400px)_1fr] lg:gap-6 lg:items-start">
+          {/* ── Coluna esquerda: entradas ── */}
+          <div className="lg:sticky lg:top-6">
 
       {/* Cliente + CEP — glassmorphism */}
       <div className="relative bg-card/80 backdrop-blur-xl border border-border/60 rounded-2xl p-6 mb-5 space-y-4 shadow-xl shadow-black/5">
@@ -799,6 +804,10 @@ export default function FreteCotacao() {
           </div>
         )}
       </div>
+          </div>{/* /coluna esquerda */}
+
+          {/* ── Coluna direita: resultado / onboarding ── */}
+          <div className="mt-5 lg:mt-0 min-w-0">
 
       {/* Resultado — hero card maximalista */}
       {carga && distanciaKm && (
@@ -899,7 +908,7 @@ export default function FreteCotacao() {
                 <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-3 mb-6">
                 {/* 1) MODELO BRANORTE — card destaque com glow */}
                 <div className="group relative overflow-hidden p-5 bg-gradient-to-br from-green-500/20 via-green-500/8 to-transparent border-2 border-green-500/50 rounded-2xl hover:border-green-500/80 hover:-translate-y-1 hover:shadow-2xl hover:shadow-green-500/30 transition-all shadow-lg shadow-green-500/15">
                   <div className="absolute -top-12 -right-12 w-32 h-32 bg-green-500/30 rounded-full blur-3xl group-hover:bg-green-500/50 transition-all" />
@@ -1277,6 +1286,8 @@ export default function FreteCotacao() {
             </div>
           </div>
         )}
+          </div>{/* /coluna direita */}
+        </div>{/* /grid 2 colunas */}
 
         <div className="flex items-center justify-center gap-2 mt-6 text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground/70">
           <AlertTriangle className="h-3 w-3" />
