@@ -421,18 +421,6 @@ export default function FreteCotacao() {
       <div className="relative bg-surface/80 backdrop-blur-xl border border-border/60 rounded-2xl p-6 mb-5 space-y-4 shadow-xl shadow-black/5">
         <div className="absolute top-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-accent/40 to-transparent" />
 
-        <div>
-          <label className="text-[10px] font-black uppercase tracking-[0.15em] text-ink-muted block mb-2">
-            Cliente <span className="font-normal normal-case text-ink-muted/60">(opcional)</span>
-          </label>
-          <input
-            type="text"
-            value={clienteNome}
-            onChange={e => setClienteNome(e.target.value)}
-            placeholder="Nome do cliente / fazenda"
-            className="w-full border-2 border-border/60 rounded-xl px-4 py-3 text-sm bg-bg/60 focus:outline-none focus:ring-4 focus:ring-accent/15 focus:border-accent transition-all placeholder:text-ink-muted/50"
-          />
-        </div>
         {/* Toggle: buscar por CEP ou por cidade */}
         <div className="inline-flex p-1 bg-surface-2/40 rounded-xl gap-1">
           <button
