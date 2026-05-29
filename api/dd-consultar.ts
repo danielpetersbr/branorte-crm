@@ -58,9 +58,13 @@ interface ConsultarBody {
 // ============================================================================
 // Pacotes — definicoes
 // ============================================================================
-// Economico: CNPJ SPC + Score (R$ 10,83) + opcionalmente CPF socio (+R$ 10,83)
-// Completo:  CNPJ + Score + Faturamento + Quadro Social + Grupo Economico (R$ 47,32)
-// Paranoico: igual completo, mas com Datajud + Google + IA (esses sao da Fase 3-4)
+// PRODUTO BASE em todos os pacotes: 325 (Novo SPC Maxi) — completo + barato.
+//
+// Economico PJ (R$ 12,19): 325 + Score 12m + Participacao + Controle Societario
+// Economico PF (R$  9,47): 325 + Score 12m + Participacao Empresas
+// Completo  PJ (+insumos): + Faturamento + Quadro Social + Grupo Econ + Protesto
+// Completo  PF (+insumos): + Renda Presumida + PEP
+// Paranoico: Completo + Datajud + Google + IA (esses sao Fases 3-4)
 function montarPacotes(pacote: ConsultarBody['pacote'], temCpfSocio: boolean) {
   type Plano = {
     produto: string
@@ -70,8 +74,12 @@ function montarPacotes(pacote: ConsultarBody['pacote'], temCpfSocio: boolean) {
   const planos: Plano[] = []
 
   if (pacote === 'economico' || pacote === 'completo' || pacote === 'paranoico') {
-    // PJ: consulta CNPJ + score (economico) ou + insumos (completo/paranoico)
-    const insumosPj: number[] = [INSUMOS_OPCIONAIS.SCORE_PJ_PLUS.codigo]
+    // PJ: Novo SPC Maxi + Score 12m + Participacao + Controle Societario
+    const insumosPj: number[] = [
+      INSUMOS_OPCIONAIS.SCORE_12_MESES.codigo,
+      INSUMOS_OPCIONAIS.PARTICIPACAO_EMPRESAS.codigo,
+      INSUMOS_OPCIONAIS.CONTROLE_SOCIETARIO.codigo,
+    ]
     if (pacote === 'completo' || pacote === 'paranoico') {
       insumosPj.push(
         INSUMOS_OPCIONAIS.FATURAMENTO_PRESUMIDO_PJ.codigo,
@@ -81,19 +89,26 @@ function montarPacotes(pacote: ConsultarBody['pacote'], temCpfSocio: boolean) {
       )
     }
     planos.push({
-      produto: PRODUTOS_SPC.CNPJ_SPC.codigo,
+      produto: PRODUTOS_SPC.NOVO_SPC_MAXI.codigo,
       insumos: insumosPj,
       tipoConsumidor: 'J',
     })
 
-    // PF socio (opcional)
+    // PF socio (opcional): Novo SPC Maxi + Score 12m + Participacao Empresas
+    // (sem Controle Societario — esse so faz sentido pra PJ)
     if (temCpfSocio) {
-      const insumosPf: number[] = [INSUMOS_OPCIONAIS.PEP.codigo]
+      const insumosPf: number[] = [
+        INSUMOS_OPCIONAIS.SCORE_12_MESES.codigo,
+        INSUMOS_OPCIONAIS.PARTICIPACAO_EMPRESAS.codigo,
+      ]
       if (pacote === 'completo' || pacote === 'paranoico') {
-        insumosPf.push(INSUMOS_OPCIONAIS.RENDA_PRESUMIDA.codigo)
+        insumosPf.push(
+          INSUMOS_OPCIONAIS.RENDA_PRESUMIDA.codigo,
+          INSUMOS_OPCIONAIS.PEP.codigo,
+        )
       }
       planos.push({
-        produto: PRODUTOS_SPC.CPF_SPC.codigo,
+        produto: PRODUTOS_SPC.NOVO_SPC_MAXI.codigo,
         insumos: insumosPf,
         tipoConsumidor: 'F',
       })

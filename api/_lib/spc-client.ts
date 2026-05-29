@@ -114,16 +114,26 @@ export async function consultarSpc(
 // Codigos da tabela FCDL/SC (jan/2026) — produtos mais usados pelo CRM
 // ============================================================================
 export const PRODUTOS_SPC = {
+  // PRODUTO PADRAO do pacote economico (PF e PJ): "Novo SPC Maxi" — completo e barato
+  NOVO_SPC_MAXI: { codigo: '325', label: 'Novo SPC Maxi', valor: 5.62 },
+  // Alternativas mais simples
   CNPJ_SPC: { codigo: '480', label: 'Consulta CNPJ SPC', valor: 7.85 },
   CPF_SPC: { codigo: '479', label: 'Consulta CPF SPC', valor: 7.85 },
   SPC_SCORE: { codigo: '141', label: 'SPC Score', valor: 2.98 },
+  // Alternativas mais completas/caras
   SPC_TOP_PJ: { codigo: '8', label: 'SPC Top Juridico', valor: 34.68 },
   SPC_TOP_PF: { codigo: '7', label: 'SPC Top Fisica', valor: 6.83 },
   RELATORIO_COMPLETO_PJ: { codigo: '337', label: 'SPC Relatorio Completo PJ', valor: 19.53 },
 } as const
 
-// Insumos opcionais que costumam acompanhar o pacote economico
+// Insumos opcionais (links que acompanham o produto principal)
 export const INSUMOS_OPCIONAIS = {
+  // Pacote economico (PF + PJ)
+  SCORE_12_MESES: { codigo: 144, label: 'Score 12 Meses', valor: 1.13 },
+  PARTICIPACAO_EMPRESAS: { codigo: 318, label: 'Participacao em Empresas', valor: 2.72 },
+  // So PJ
+  CONTROLE_SOCIETARIO: { codigo: 268, label: 'Controle Societario', valor: 2.72 },
+  // Insumos do pacote completo
   FATURAMENTO_PRESUMIDO_PJ: { codigo: 400, label: 'Faturamento Presumido PJ', valor: 17.09 },
   QUADRO_SOCIAL: { codigo: 458, label: 'Quadro Social', valor: 16.21 },
   GRUPO_ECONOMICO: { codigo: 692, label: 'Grupo Economico', valor: 6.49 },

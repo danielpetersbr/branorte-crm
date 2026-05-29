@@ -15,23 +15,34 @@ import {
 } from '@/hooks/useDueDiligence'
 import { useCan } from '@/hooks/usePermissions'
 
-const PACOTE_INFO: Record<Pacote, { titulo: string; descricao: string; custoBase: number }> = {
+// Custos calculados a partir da tabela FCDL/SC jan/2026:
+//   PJ: Novo SPC Maxi (5,62) + Score 12m (1,13) + Part Empresas (2,72) + Controle Societario (2,72) = 12,19
+//   PF: Novo SPC Maxi (5,62) + Score 12m (1,13) + Part Empresas (2,72)                              =  9,47
+const CUSTO_PJ_ECONOMICO = 12.19
+const CUSTO_PF_ECONOMICO = 9.47
+const CUSTO_PJ_COMPLETO = CUSTO_PJ_ECONOMICO + 17.09 + 16.21 + 6.49 + 4.10 // +Faturamento+QuadroSocial+GrupoEcon+Protesto
+const CUSTO_PF_COMPLETO = CUSTO_PF_ECONOMICO + 1.46 + 1.02 // +Renda Presumida+PEP
+
+const PACOTE_INFO: Record<Pacote, { titulo: string; descricao: string; custoPj: number; custoPf: number }> = {
   economico: {
     titulo: 'Econômico',
-    descricao: 'CNPJ + Score PJ+ (e CPF + PEP do sócio, se informado)',
-    custoBase: 10.83,
+    descricao: 'Novo SPC Maxi + Score 12m + Participação em Empresas (+ Controle Societário pra PJ)',
+    custoPj: CUSTO_PJ_ECONOMICO,
+    custoPf: CUSTO_PF_ECONOMICO,
   },
   completo: {
     titulo: 'Completo',
-    descricao: 'Econômico + Faturamento + Quadro Social + Grupo Econômico + Protesto',
-    custoBase: 47.32,
+    descricao: 'Econômico + Faturamento Presumido + Quadro Social + Grupo Econômico + Protesto + Renda + PEP',
+    custoPj: CUSTO_PJ_COMPLETO,
+    custoPf: CUSTO_PF_COMPLETO,
   },
   paranoico: {
     titulo: 'Paranoico',
     descricao: 'Completo + Datajud + Google + Instagram + Parecer IA (fases 3-4)',
-    custoBase: 90.0,
+    custoPj: CUSTO_PJ_COMPLETO + 0.04, // Datajud grátis; placeholder pra Serper+Claude (~R$ 0,04)
+    custoPf: CUSTO_PF_COMPLETO + 0.04,
   },
-  custom: { titulo: 'Custom', descricao: 'Não disponível ainda', custoBase: 0 },
+  custom: { titulo: 'Custom', descricao: 'Não disponível ainda', custoPj: 0, custoPf: 0 },
 }
 
 export function formatDoc(value: string, type: 'cnpj' | 'cpf'): string {
@@ -73,7 +84,7 @@ export function DueDiligenceForm({ contactId, contactName, initialCnpj }: FormPr
   const podeEnviar = cnpjValido && cpfValido && !consultar.isPending
 
   const custoEstimado =
-    PACOTE_INFO[pacote].custoBase + (cpfLimpo.length === 11 ? 10.83 : 0)
+    PACOTE_INFO[pacote].custoPj + (cpfLimpo.length === 11 ? PACOTE_INFO[pacote].custoPf : 0)
 
   function handleSubmit() {
     if (!podeEnviar) return
@@ -159,7 +170,9 @@ export function DueDiligenceForm({ contactId, contactName, initialCnpj }: FormPr
                     )}
                   </span>
                   <span className="text-[11px] font-mono text-ink-muted">
-                    ~R$ {info.custoBase.toFixed(2)}
+                    PJ R$ {info.custoPj.toFixed(2)}
+                    {' · '}
+                    PF R$ {info.custoPf.toFixed(2)}
                   </span>
                 </div>
                 <p className="text-[10px] text-ink-muted">{info.descricao}</p>
