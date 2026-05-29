@@ -306,7 +306,6 @@ export type ItemCatalogoComPeso = {
  */
 export const CATEGORIAS_FRETE = [
   'COMPACTA',
-  'SILO',
   'MISTURADOR',
   'MOINHO',
   'PRE_LIMPEZA',

@@ -60,7 +60,6 @@ const MODOS_CARGA_LABELS: Record<string, string> = {
 // Rótulos amigáveis das categorias do seletor de equipamento (frete).
 const CAT_LABELS: Record<string, string> = {
   COMPACTA: 'Fábricas Compactas',
-  SILO: 'Silos',
   MISTURADOR: 'Misturadores',
   MOINHO: 'Moinhos',
   PRE_LIMPEZA: 'Pré-limpeza',
@@ -71,7 +70,7 @@ const CAT_LABELS: Record<string, string> = {
   MOEGA: 'Moegas',
 }
 // Ordem de exibição dos grupos (fábricas primeiro).
-const CAT_ORDEM = ['COMPACTA','SILO','MISTURADOR','MOINHO','PRE_LIMPEZA','CACAMBA_PESAGEM','ENSACADEIRA','SUPORTE_BAG','ESTEIRA','MOEGA']
+const CAT_ORDEM = ['COMPACTA','MISTURADOR','MOINHO','PRE_LIMPEZA','CACAMBA_PESAGEM','ENSACADEIRA','SUPORTE_BAG','ESTEIRA','MOEGA']
 
 export default function FreteCotacao() {
   // ── Dados base ──
