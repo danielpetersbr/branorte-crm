@@ -122,11 +122,10 @@ export function DueDiligenceForm({ contactId, contactName, initialCnpj }: FormPr
         <label className="text-[11px] font-semibold text-ink-muted block mb-1.5">
           Tipo de consulta
         </label>
-        <div className="grid grid-cols-3 gap-1.5">
+        <div className="grid grid-cols-2 gap-1.5">
           {([
             { v: 'pj', label: 'Empresa (CNPJ)' },
             { v: 'pf', label: 'Pessoa Física (CPF)' },
-            { v: 'ambos', label: 'Empresa + Sócio' },
           ] as Array<{ v: TipoConsulta; label: string }>).map(opt => {
             const ativo = tipoConsulta === opt.v
             return (
