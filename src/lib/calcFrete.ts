@@ -353,3 +353,57 @@ export async function calcularDistanciaBranortePara(
     },
   };
 }
+
+/**
+ * Destino resolvido com cidade/UF SEMPRE presentes (do ViaCEP, ~99% confiável)
+ * e distância OPCIONAL (Nominatim+OSRM são flaky / rate-limited).
+ *
+ * Diferença pro calcularDistanciaBranortePara: aqui a cidade/estado aparece
+ * mesmo quando o cálculo de distância falha — o vendedor vê "Goiânia/GO"
+ * imediatamente e digita o km manual se o OSRM não respondeu.
+ *
+ * Retorna `null` SÓ quando o CEP é inválido (ViaCEP não achou).
+ */
+export type DestinoResolvido = {
+  cep: string;
+  cidade: string;
+  uf: string;
+  bairro: string;
+  logradouro: string;
+  /** null quando geocode/OSRM falhou — vendedor digita km manual */
+  distancia_km: number | null;
+  tempo_horas: number | null;
+};
+
+export async function resolverDestino(
+  cepDestino: string,
+): Promise<DestinoResolvido | null> {
+  const endereco = await consultarCEP(cepDestino);
+  if (!endereco) return null; // CEP inválido — único caso de null
+
+  // Cidade/UF já garantidos. Distância é best-effort.
+  let distancia_km: number | null = null;
+  let tempo_horas: number | null = null;
+
+  const coords = await geocodificarCidade(endereco.cidade, endereco.uf);
+  if (coords) {
+    const dist = await calcularDistanciaOSRM(
+      { lat: BRANORTE_ORIGEM.lat, lng: BRANORTE_ORIGEM.lng },
+      coords,
+    );
+    if (dist) {
+      distancia_km = Math.round(dist.distancia_km);
+      tempo_horas = Math.round(dist.tempo_horas * 10) / 10;
+    }
+  }
+
+  return {
+    cep: cepDestino,
+    cidade: endereco.cidade,
+    uf: endereco.uf,
+    bairro: endereco.bairro,
+    logradouro: endereco.logradouro,
+    distancia_km,
+    tempo_horas,
+  };
+}

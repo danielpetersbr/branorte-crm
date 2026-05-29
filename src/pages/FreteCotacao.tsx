@@ -18,8 +18,8 @@ import {
   isDestinoNorte,
   sugerirModoCargaBranorte,
   volumeM3,
-  calcularDistanciaBranortePara,
-  type DistanciaResultado,
+  resolverDestino,
+  type DestinoResolvido,
   type TipoCaminhao,
   type Carga,
 } from '@/lib/calcFrete'
@@ -66,7 +66,7 @@ export default function FreteCotacao() {
   const [clienteNome, setClienteNome] = useState('')
   const [cep, setCep] = useState('')
   const [aba, setAba] = useState<Aba>('equipamento')
-  const [distancia, setDistancia] = useState<DistanciaResultado | null>(null)
+  const [destino, setDestino] = useState<DestinoResolvido | null>(null)
   const [loadingDist, setLoadingDist] = useState(false)
   const [errDist, setErrDist] = useState<string | null>(null)
   const [kmManual, setKmManual] = useState<string>('')
@@ -106,17 +106,23 @@ export default function FreteCotacao() {
     }
     setLoadingDist(true)
     setErrDist(null)
-    setDistancia(null)
+    setDestino(null)
     try {
-      const res = await calcularDistanciaBranortePara(cep)
+      const res = await resolverDestino(cep)
       if (!res) {
-        setErrDist('Não consegui calcular a distância. Digite km manualmente abaixo.')
+        setErrDist('CEP não encontrado. Confira os 8 dígitos.')
       } else {
-        setDistancia(res)
-        setKmManual(String(res.distancia_km))
+        // Cidade/UF SEMPRE aparecem (vem do ViaCEP). Distância é best-effort.
+        setDestino(res)
+        if (res.distancia_km != null) {
+          setKmManual(String(res.distancia_km))
+        } else {
+          setKmManual('')
+          setErrDist(`${res.cidade}/${res.uf} encontrado, mas não consegui calcular o km automaticamente. Digite manualmente abaixo.`)
+        }
       }
     } catch {
-      setErrDist('Erro ao consultar APIs de mapas. Tente novamente ou digite km manual.')
+      setErrDist('Erro ao consultar o CEP. Tente novamente.')
     } finally {
       setLoadingDist(false)
     }
@@ -189,8 +195,8 @@ export default function FreteCotacao() {
   const distanciaKm = useMemo(() => {
     const m = Number(kmManual)
     if (Number.isFinite(m) && m > 0) return m
-    return distancia?.distancia_km ?? null
-  }, [kmManual, distancia])
+    return destino?.distancia_km ?? null
+  }, [kmManual, destino])
 
   // ── Estimativa 1: Modelo Branorte ──
   const modoCargaBranorte = useMemo<'fracionada_2p' | 'fracionada_4p' | 'completa'>(() => {
@@ -210,7 +216,7 @@ export default function FreteCotacao() {
   }, [aba, fechadaTipo, caminhaoEfetivo])
 
   const valorModeloBranorte = useMemo(() => {
-    if (!distanciaKm || !modeloBN.data || !distancia) return null
+    if (!distanciaKm || !modeloBN.data || !destino) return null
     // Tenta achar row exata. Se TRUCK não tem fracionada_2p, cai pra 4p.
     let row = modeloBN.data.find(
       m => m.tipo_caminhao === tipoCaminhaoBranorte && m.modo_carga === modoCargaBranorte,
@@ -219,9 +225,9 @@ export default function FreteCotacao() {
       row = modeloBN.data.find(m => m.tipo_caminhao === 'TRUCK' && m.modo_carga === 'fracionada_4p')
     }
     if (!row) return null
-    const calc = calcularModeloBranorte(distanciaKm, distancia.destino.uf, row)
+    const calc = calcularModeloBranorte(distanciaKm, destino.uf, row)
     return { row, ...calc }
-  }, [distanciaKm, modeloBN.data, distancia, tipoCaminhaoBranorte, modoCargaBranorte])
+  }, [distanciaKm, modeloBN.data, destino, tipoCaminhaoBranorte, modoCargaBranorte])
 
   // ── Estimativa 2: ANTT ──
   const valorAntt = useMemo(() => {
@@ -235,23 +241,23 @@ export default function FreteCotacao() {
 
   // ── Estimativa 3: Parceiras ──
   const estimativasParceiras = useMemo(() => {
-    if (!caminhaoEfetivo || !distanciaKm || !parceiras.data || !distancia) return []
+    if (!caminhaoEfetivo || !distanciaKm || !parceiras.data || !destino) return []
     return parceiras.data
       .filter(p => p.ativo)
       .map(p => ({
         parceira: p,
-        valor: calcularParceira(distanciaKm, distancia.destino.uf, caminhaoEfetivo, p),
+        valor: calcularParceira(distanciaKm, destino.uf, caminhaoEfetivo, p),
       }))
       .filter(x => x.valor != null)
-  }, [caminhaoEfetivo, distanciaKm, parceiras.data, distancia])
+  }, [caminhaoEfetivo, distanciaKm, parceiras.data, destino])
 
   // ── Estimativa 4: Histórico ──
-  const mediaHist = useMediaHistorica(caminhaoEfetivo?.id ?? null, distancia?.destino.uf ?? null, distanciaKm)
+  const mediaHist = useMediaHistorica(caminhaoEfetivo?.id ?? null, destino?.uf ?? null, distanciaKm)
 
-  const aplicouRetornoSulNorte = distancia ? isDestinoNorte(distancia.destino.uf) : false
+  const aplicouRetornoSulNorte = destino ? isDestinoNorte(destino.uf) : false
 
   async function handleSalvar() {
-    if (!carga || !caminhaoEfetivo || !distancia || !distanciaKm) {
+    if (!carga || !caminhaoEfetivo || !destino || !distanciaKm) {
       alert('Faltam dados pra salvar: cliente, CEP, carga e caminhão recomendado.')
       return
     }
@@ -264,10 +270,10 @@ export default function FreteCotacao() {
       await salvar.mutateAsync({
         cliente_nome: clienteNome || null,
         cep_destino: cep,
-        cidade_destino: distancia.destino.cidade,
-        uf_destino: distancia.destino.uf,
+        cidade_destino: destino.cidade,
+        uf_destino: destino.uf,
         distancia_km: distanciaKm,
-        tempo_viagem_horas: distancia.tempo_horas,
+        tempo_viagem_horas: destino.tempo_horas,
         metodo_entrada: aba === 'fechada' ? 'dimensoes' : aba,
         peso_total_kg: carga.peso_kg,
         comprimento_m: carga.comprimento_m,
@@ -398,7 +404,7 @@ export default function FreteCotacao() {
             <AlertTriangle className="h-4 w-4 flex-shrink-0" /> {errDist}
           </div>
         )}
-        {distancia && (
+        {destino && (
           <div className="relative overflow-hidden rounded-xl border border-primary/30 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent">
             <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-primary to-emerald-500" />
             <div className="flex items-center gap-3 p-3 pl-4">
@@ -407,17 +413,29 @@ export default function FreteCotacao() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-base font-black text-foreground">
-                  {distancia.destino.cidade}/{distancia.destino.uf}
+                  {destino.cidade}/{destino.uf}
                 </div>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
-                  <span className="tabular-nums font-bold text-primary">
-                    {distancia.distancia_km.toLocaleString('pt-BR')} km
-                  </span>
-                  <span>·</span>
-                  <span>~{distancia.tempo_horas}h viagem</span>
+                  {destino.distancia_km != null ? (
+                    <>
+                      <span className="tabular-nums font-bold text-primary">
+                        {destino.distancia_km.toLocaleString('pt-BR')} km
+                      </span>
+                      {destino.tempo_horas != null && (
+                        <>
+                          <span>·</span>
+                          <span>~{destino.tempo_horas}h viagem</span>
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-amber-600 font-semibold">
+                      Digite o km manual abaixo ↓
+                    </span>
+                  )}
                 </div>
               </div>
-              {isDestinoNorte(distancia.destino.uf) && (
+              {isDestinoNorte(destino.uf) && (
                 <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-green-500 text-white border border-emerald-400 rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg shadow-emerald-500/30 animate-pulse" style={{ animationDuration: '3s' }}>
                   ↓50% Retorno
                 </div>
