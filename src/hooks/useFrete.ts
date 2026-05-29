@@ -299,16 +299,28 @@ export type ItemCatalogoComPeso = {
 };
 
 /**
- * Catalogo restrito a FABRICAS (Compactas 01/02/03 + Master + Mini Fabrica).
- * Filtra `categoria = 'COMPACTA'` porque na cotacao de frete o vendedor cota
- * a FABRICA INTEIRA (mais comum). Pra avulsos (chupim, elevador, silo solto)
- * o vendedor usa as abas Dimensoes/Pallets/Carga Fechada.
+ * Categorias que aparecem no seletor de equipamento da cotacao de frete.
+ * FABRICAS (Compactas) + equipamentos avulsos QUE TEM MEDIDA cadastrada.
+ * Exclui de proposito: ELEVADOR (de caneca) e TRANSPORTADOR (helicoidal),
+ * que tem peso mas NAO tem dimensoes no catalogo — pra esses usar "Por dimensoes".
  */
+export const CATEGORIAS_FRETE = [
+  'COMPACTA',
+  'SILO',
+  'MISTURADOR',
+  'MOINHO',
+  'PRE_LIMPEZA',
+  'CACAMBA_PESAGEM',
+  'ENSACADEIRA',
+  'SUPORTE_BAG',
+  'ESTEIRA',
+  'MOEGA',
+] as const;
+
 /**
- * Catalogo restrito a FABRICAS (categoria COMPACTA + subcategoria "Mini Fabrica").
- * Independente do flag `is_oficial` (no catalogo Branorte tem 2 sistemas de
- * nomes paralelos e nem todos sao oficiais). Pra cotacao de frete o que
- * importa e ter peso/dim cadastrados.
+ * Catalogo do seletor de frete: fabricas Compactas + avulsos com medida.
+ * Exige `dim_comprimento_m` nao-nulo — so entra o que tem C x L x A real,
+ * porque o frete depende da dimensao (nao adianta ter so o peso).
  */
 export function useCatalogoFabricas() {
   return useQuery({
@@ -317,8 +329,8 @@ export function useCatalogoFabricas() {
       const { data, error } = await (supabase as any)
         .from('catalogo_items')
         .select('id, nome_curto, categoria, peso_kg, dim_comprimento_m, dim_largura_m, dim_altura_m, indivisivel')
-        .in('categoria', ['COMPACTA'])
-        .not('peso_kg', 'is', null)
+        .in('categoria', CATEGORIAS_FRETE as unknown as string[])
+        .not('dim_comprimento_m', 'is', null)
         .order('nome_curto', { ascending: true });
       if (error) throw error;
       return (data ?? []) as ItemCatalogoComPeso[];

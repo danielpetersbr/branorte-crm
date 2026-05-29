@@ -57,6 +57,22 @@ const MODOS_CARGA_LABELS: Record<string, string> = {
   completa: 'Carga completa',
 }
 
+// Rótulos amigáveis das categorias do seletor de equipamento (frete).
+const CAT_LABELS: Record<string, string> = {
+  COMPACTA: 'Fábricas Compactas',
+  SILO: 'Silos',
+  MISTURADOR: 'Misturadores',
+  MOINHO: 'Moinhos',
+  PRE_LIMPEZA: 'Pré-limpeza',
+  CACAMBA_PESAGEM: 'Caçambas de pesagem',
+  ENSACADEIRA: 'Ensacadeiras',
+  SUPORTE_BAG: 'Suporte para bag',
+  ESTEIRA: 'Esteiras',
+  MOEGA: 'Moegas',
+}
+// Ordem de exibição dos grupos (fábricas primeiro).
+const CAT_ORDEM = ['COMPACTA','SILO','MISTURADOR','MOINHO','PRE_LIMPEZA','CACAMBA_PESAGEM','ENSACADEIRA','SUPORTE_BAG','ESTEIRA','MOEGA']
+
 export default function FreteCotacao() {
   // ── Dados base ──
   const tipos = useTiposCaminhao()
@@ -220,6 +236,20 @@ export default function FreteCotacao() {
       indivisivel: false,
     }
   }, [aba, linhasEquip, dimPeso, dimComp, dimLarg, dimAlt, dimIndivisivel, palQtd, palPeso, palAltura, fechadaTipo, tipos.data])
+
+  // ── Catálogo agrupado por categoria (pro <select> com optgroups) ──
+  const gruposEquip = useMemo(() => {
+    const data = catalogo.data ?? []
+    const porCat = new Map<string, ItemCatalogoComPeso[]>()
+    for (const item of data) {
+      const arr = porCat.get(item.categoria) ?? []
+      arr.push(item)
+      porCat.set(item.categoria, arr)
+    }
+    return CAT_ORDEM
+      .filter(cat => porCat.has(cat))
+      .map(cat => ({ cat, label: CAT_LABELS[cat] ?? cat, itens: porCat.get(cat)! }))
+  }, [catalogo.data])
 
   // ── Recomendar caminhao ──
   const caminhao = useMemo(() => {
@@ -574,7 +604,7 @@ export default function FreteCotacao() {
       <div className="bg-surface/80 backdrop-blur-xl border border-border/60 rounded-2xl p-5 mb-5 shadow-xl shadow-black/5">
         <div className="grid grid-cols-2 gap-2 mb-5 p-1.5 bg-surface-2/40 rounded-2xl">
           {([
-            ['equipamento', 'Por fábrica', Factory],
+            ['equipamento', 'Equipamento', Factory],
             ['dimensoes', 'Dimensões', Package],
             ['pallets', 'Pallets', Layers],
             ['fechada', 'Carga fechada', Truck],
@@ -595,12 +625,12 @@ export default function FreteCotacao() {
           ))}
         </div>
 
-        {/* Aba: por equipamento (Compactas) */}
+        {/* Aba: por equipamento (Compactas + avulsos com medida) */}
         {aba === 'equipamento' && (
           <div className="space-y-2">
             <div className="text-xs text-ink-muted mb-2">
-              Filtra apenas <b>Fábricas Compactas</b> ({catalogo.data?.length ?? 0} modelos).
-              Pra outros equipamentos use "Por dimensões" ou "Carga fechada".
+              Fábricas Compactas + equipamentos avulsos com medida cadastrada ({catalogo.data?.length ?? 0} no total).
+              Pra transportador, elevador ou item sem cadastro, use "Por dimensões".
             </div>
             {linhasEquip.map((l, i) => (
               <div key={l.uid} className="flex items-center gap-2">
@@ -613,11 +643,15 @@ export default function FreteCotacao() {
                   }}
                   className="flex-1 min-w-0 border border-border rounded-lg px-3 py-2 text-sm bg-bg focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50"
                 >
-                  <option value="">— selecione fábrica —</option>
-                  {catalogo.data?.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.nome_curto} ({c.peso_kg} kg)
-                    </option>
+                  <option value="">— selecione equipamento —</option>
+                  {gruposEquip.map(g => (
+                    <optgroup key={g.cat} label={g.label}>
+                      {g.itens.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.nome_curto} ({c.peso_kg} kg)
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
                 <input
@@ -644,11 +678,11 @@ export default function FreteCotacao() {
               onClick={() => setLinhasEquip(prev => [...prev, { uid: crypto.randomUUID(), item: null, qtd: 1 }])}
               className="text-sm text-accent hover:underline flex items-center gap-1 mt-1"
             >
-              <Plus className="h-3 w-3" /> Adicionar fábrica
+              <Plus className="h-3 w-3" /> Adicionar equipamento
             </button>
             {catalogo.data && catalogo.data.length === 0 && (
               <div className="text-xs text-amber-600 mt-2">
-                Nenhuma fábrica com peso cadastrado ainda.
+                Nenhum equipamento com medida cadastrada ainda.
               </div>
             )}
           </div>
