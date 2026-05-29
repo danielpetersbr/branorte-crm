@@ -179,20 +179,24 @@ def extract_date(path):
 
 def extract_description(fname):
     base = re.sub(r'\.(docx?|pdf|txt)$', '', fname, flags=re.IGNORECASE)
-    base = re.sub(r'^\d{4}\s*[-]\s*\d{1,4}\s*[-]\s*', '', base)
+    base = re.sub(r'^\d{4}\s*[-–—]\s*\d{1,4}\s*[-–—]\s*', '', base)
     base = re.sub(r'\s*\(\d+\)\s*$', '', base)
     return base.strip() or None
 
 
 def extract_name(fname):
     base = re.sub(r'\.(docx?|pdf|txt)$', '', fname, flags=re.IGNORECASE)
-    base = re.sub(r'^\d{4}\s*[-]\s*\d{1,4}\s*[-]\s*', '', base)
+    base = re.sub(r'^\d{4}\s*[-–—]\s*\d{1,4}\s*[-–—]\s*', '', base)
     base = re.sub(r'\s*\(.*', '', base)
     base = re.sub(r'\s+(trifásico|monofásico|trifasico|monofasico|Código Finame|codigo finame).*', '', base, flags=re.IGNORECASE)
     return base.strip() or None
 
 
 def vendor_from_txt(txt):
+    """Procura nome do vendedor no conteudo do .txt (1a linha geralmente eh
+    'Ramon fernandes envio para o cliente dia 22/05/2026')."""
+    if not txt:
+        return None
     t = txt.lower()
     for kw in ['para daniel', 'para o daniel', 'ao daniel', 'p/ daniel']:
         if kw in t: return VENDORS['daniel']
@@ -200,8 +204,25 @@ def vendor_from_txt(txt):
         if kw in t: return VENDORS['patrick']
     for kw in ['para gustavo', 'ao gustavo']:
         if kw in t: return VENDORS['gustavo']
+    # Busca generica: qualquer nome do dict que apareca como palavra
     for name, vid in VENDORS.items():
-        if name in t:
+        if re.search(rf'\b{name}\b', t):
+            return vid
+    return None
+
+
+def vendor_from_filename(fname):
+    """Detecta vendedor a partir do nome do arquivo. Casos comuns:
+    - '2026 - 1011 - Cliente ... trifasico - Gustavo.txt'
+    - '2026 - 0756 - Cliente ... Jardel.txt'
+    - '2026 - 0007 - Cliente ... monofasico - EDER.txt'
+    Pega o token apos o ultimo separador antes da extensao.
+    """
+    base = re.sub(r'\.(docx?|pdf|txt|xlsx?)$', '', fname, flags=re.IGNORECASE)
+    base_l = base.lower()
+    # Tenta achar nome de vendedor como palavra
+    for name, vid in VENDORS.items():
+        if re.search(rf'\b{name}\b', base_l):
             return vid
     return None
 
@@ -246,8 +267,11 @@ def main():
             docx_map = {}
             txt_map = {}
 
+            # docx_fnames_map: guarda TODOS os nomes de docx/txt do oid pra detectar
+            # vendedor no nome do arquivo (ex: "Jardel.txt", "- Gustavo.docx")
+            docx_fnames_map = {}
             for fname in files:
-                m = re.match(r'^(\d{4})\s*[-]\s*(\d{1,4})', fname)
+                m = re.match(r'^(\d{4})\s*[-–—]\s*(\d{1,4})', fname)
                 if not m:
                     continue
                 oid = f"{m.group(1)}-{m.group(2).zfill(4)}"
@@ -261,6 +285,8 @@ def main():
                             txt_map[oid] = f.read().strip()
                     except:
                         pass
+                # Junta nome de TODOS arquivos do oid (txt, docx, pdf, xlsx)
+                docx_fnames_map.setdefault(oid, []).append(fname)
 
             for oid, (fname, fpath) in docx_map.items():
                 origin = f"Orcamento {oid}"
@@ -272,7 +298,13 @@ def main():
                     # NEW — insert
                     name = extract_name(fname)
                     txt = txt_map.get(oid, '')
-                    vendor_id = vendor_from_txt(txt) if txt else None
+                    # Fallback em cascata: 1) conteudo do .txt → 2) nome de algum arquivo do oid
+                    vendor_id = vendor_from_txt(txt)
+                    if not vendor_id:
+                        for fn in docx_fnames_map.get(oid, []):
+                            vendor_id = vendor_from_filename(fn)
+                            if vendor_id:
+                                break
                     phone = extract_phone(fpath)
                     date = extract_date(fpath)
                     desc = extract_description(fname)
