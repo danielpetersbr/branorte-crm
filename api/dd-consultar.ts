@@ -63,11 +63,13 @@ interface ConsultarBody {
 // ============================================================================
 // PRODUTO BASE em todos os pacotes: 325 (Novo SPC Maxi) — completo + barato.
 //
-// Economico PJ (R$ 12,19): 325 + Score 12m + Participacao + Controle Societario
+// NOTA SPC: o insumo #144 (Score 12m) NAO eh suportado pelo produto 325 (PJ).
+// Confirmado por erro CN_WEB001.E12.39 em produção. Removido do pacote PJ.
+//
+// Economico PJ (R$ 11,06): 325 + Participacao + Controle Societario
 // Economico PF (R$  9,47): 325 + Score 12m + Participacao Empresas
 // Completo  PJ (+insumos): + Faturamento + Quadro Social + Grupo Econ + Protesto
 // Completo  PF (+insumos): + Renda Presumida + PEP
-// Paranoico: Completo + Datajud + Google + IA (esses sao Fases 3-4)
 function montarPacotes(
   pacote: ConsultarBody['pacote'],
   opts: { incluiPj: boolean; incluiPf: boolean },
@@ -84,9 +86,8 @@ function montarPacotes(
   const isCompleto = pacote === 'completo' || pacote === 'paranoico'
 
   if (opts.incluiPj) {
-    // PJ: Novo SPC Maxi + Score 12m + Participacao + Controle Societario
+    // PJ: Novo SPC Maxi + Participacao + Controle Societario (sem Score 12m, nao suportado)
     const insumosPj: number[] = [
-      INSUMOS_OPCIONAIS.SCORE_12_MESES.codigo,
       INSUMOS_OPCIONAIS.PARTICIPACAO_EMPRESAS.codigo,
       INSUMOS_OPCIONAIS.CONTROLE_SOCIETARIO.codigo,
     ]
@@ -106,7 +107,7 @@ function montarPacotes(
   }
 
   if (opts.incluiPf) {
-    // PF: Novo SPC Maxi + Score 12m + Participacao Empresas (sem Controle Societario)
+    // PF: Novo SPC Maxi + Score 12m + Participacao Empresas (Score 12m suportado em PF)
     const insumosPf: number[] = [
       INSUMOS_OPCIONAIS.SCORE_12_MESES.codigo,
       INSUMOS_OPCIONAIS.PARTICIPACAO_EMPRESAS.codigo,

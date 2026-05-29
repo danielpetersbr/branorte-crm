@@ -16,9 +16,10 @@ import {
 import { useCan } from '@/hooks/usePermissions'
 
 // Custos calculados a partir da tabela FCDL/SC jan/2026:
-//   PJ: Novo SPC Maxi (5,62) + Score 12m (1,13) + Part Empresas (2,72) + Controle Societario (2,72) = 12,19
+//   PJ: Novo SPC Maxi (5,62) + Part Empresas (2,72) + Controle Societario (2,72)                    = 11,06
 //   PF: Novo SPC Maxi (5,62) + Score 12m (1,13) + Part Empresas (2,72)                              =  9,47
-const CUSTO_PJ_ECONOMICO = 12.19
+// Score 12m (#144) nao eh suportado pelo produto 325 quando consumidor=PJ — removido do pacote PJ.
+const CUSTO_PJ_ECONOMICO = 11.06
 const CUSTO_PF_ECONOMICO = 9.47
 const CUSTO_PJ_COMPLETO = CUSTO_PJ_ECONOMICO + 17.09 + 16.21 + 6.49 + 4.10 // +Faturamento+QuadroSocial+GrupoEcon+Protesto
 const CUSTO_PF_COMPLETO = CUSTO_PF_ECONOMICO + 1.46 + 1.02 // +Renda Presumida+PEP
@@ -26,7 +27,7 @@ const CUSTO_PF_COMPLETO = CUSTO_PF_ECONOMICO + 1.46 + 1.02 // +Renda Presumida+P
 const PACOTE_INFO: Record<Pacote, { titulo: string; descricao: string; custoPj: number; custoPf: number }> = {
   economico: {
     titulo: 'Econômico',
-    descricao: 'Novo SPC Maxi + Score 12m + Participação em Empresas (+ Controle Societário pra PJ)',
+    descricao: 'Novo SPC Maxi + Participação em Empresas + Controle Societário (PJ); + Score 12m (PF)',
     custoPj: CUSTO_PJ_ECONOMICO,
     custoPf: CUSTO_PF_ECONOMICO,
   },
