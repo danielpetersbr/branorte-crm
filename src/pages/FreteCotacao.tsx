@@ -821,32 +821,6 @@ export default function FreteCotacao() {
           <div className="absolute -top-20 -right-20 w-60 h-60 bg-gradient-to-br from-accent/30 to-emerald-500/20 rounded-full blur-3xl pointer-events-none" />
           <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-gradient-to-tr from-sky-500/15 to-accent/10 rounded-full blur-3xl pointer-events-none" />
 
-          <div className="relative flex items-center gap-3 mb-5">
-            <div className="relative">
-              <div className="absolute inset-0 bg-accent rounded-lg blur opacity-50 animate-pulse" style={{ animationDuration: '2s' }} />
-              <div className="relative w-9 h-9 bg-gradient-to-br from-accent to-emerald-600 rounded-lg flex items-center justify-center shadow-lg shadow-accent/40">
-                <Sparkles className="h-5 w-5 text-white drop-shadow" />
-              </div>
-            </div>
-            <div className="flex-1">
-              <h2 className="text-xs font-black uppercase tracking-[0.25em] text-ink-muted">Resultado</h2>
-              <div className="text-lg font-black tracking-tight">
-                {formatBRL(valorModeloBranorte?.valor_final)} <span className="text-xs font-normal text-ink-muted">· estimativa Branorte</span>
-              </div>
-            </div>
-            {valorModeloBranorte?.aplicou_piso && (
-              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg shadow-amber-500/30" title="A tabela Branorte ficou abaixo do piso legal ANTT. Valor ajustado para o mínimo permitido.">
-                <AlertTriangle className="h-3 w-3" />
-                Ajustado ao piso ANTT
-              </div>
-            )}
-            {!valorModeloBranorte?.aplicou_piso && (valorModeloBranorte?.desconto_retorno_pct ?? 0) > 0 && (
-              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-green-500 text-white rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg shadow-emerald-500/30">
-                <Sparkles className="h-3 w-3" />
-                ↓{valorModeloBranorte?.desconto_retorno_pct}% retorno
-              </div>
-            )}
-          </div>
 
           {/* Caminhão recomendado/escolhido — HERO */}
           {caminhaoEfetivo ? (
@@ -902,315 +876,40 @@ export default function FreteCotacao() {
             </div>
           )}
 
-          {/* 4 estimativas comparativas — cards premium */}
+          {/* Frete legal (ANTT) — unico valor */}
           {caminhaoEfetivo && (
-            <>
-              <div className="flex items-center gap-2 mb-4">
-                <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
-                <div className="text-[10px] uppercase tracking-[0.25em] text-ink-muted font-black">
-                  4 estimativas
+            <div className="relative overflow-hidden p-6 bg-gradient-to-br from-amber-500/15 to-amber-500/5 border-2 border-amber-500/40 rounded-2xl">
+              <div className="absolute -top-16 -right-16 w-40 h-40 bg-amber-500/20 rounded-full blur-3xl pointer-events-none" />
+              <div className="relative">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 bg-amber-500/20 rounded-lg flex items-center justify-center">
+                    <Building2 className="h-5 w-5 text-amber-600" />
+                  </div>
+                  <span className="text-xs font-black uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                    Frete legal — ANTT
+                  </span>
                 </div>
-                <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-3 mb-6">
-                {/* 1) MODELO BRANORTE — card destaque com glow */}
-                <div className="group relative overflow-hidden p-5 bg-gradient-to-br from-green-500/20 via-green-500/8 to-transparent border-2 border-green-500/50 rounded-2xl hover:border-green-500/80 hover:-translate-y-1 hover:shadow-2xl hover:shadow-green-500/30 transition-all shadow-lg shadow-green-500/15">
-                  <div className="absolute -top-12 -right-12 w-32 h-32 bg-green-500/30 rounded-full blur-3xl group-hover:bg-green-500/50 transition-all" />
-                  <div className="absolute top-2 right-2 px-2.5 py-0.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white text-[9px] font-black uppercase tracking-[0.15em] rounded-full shadow-lg ring-1 ring-white/30">
-                    ★ Branorte
-                  </div>
-                  <div className="relative">
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="w-7 h-7 bg-green-500/20 rounded-lg flex items-center justify-center">
-                        <Factory className="h-4 w-4 text-green-600" />
-                      </div>
-                      <span className="text-[10px] font-black uppercase tracking-wider text-green-700 dark:text-green-400">
-                        Planilha
-                      </span>
-                    </div>
-                    <div className="text-3xl font-black tabular-nums text-green-700 dark:text-green-400 leading-none tracking-tight">
-                      {formatBRL(valorModeloBranorte?.valor_final)}
-                    </div>
-                    <div className="text-[10px] text-ink-muted mt-2 leading-tight">
-                      {valorModeloBranorte && (
-                        <>
-                          <b>{valorModeloBranorte.row.tipo_caminhao}</b> · {MODOS_CARGA_LABELS[valorModeloBranorte.row.modo_carga]}<br />
-                          <span className="tabular-nums">R$ {valorModeloBranorte.row.rs_por_km.toFixed(2)}/km</span>
-                          {valorModeloBranorte.aplicou_piso && (
-                            <><br /><span className="text-amber-600 font-bold">tabela {formatBRL(valorModeloBranorte.valor_tabela)} ↑ piso ANTT</span></>
-                          )}
-                          {!valorModeloBranorte.aplicou_piso && valorModeloBranorte.desconto_retorno_pct > 0 && (
-                            <> · <span className="text-emerald-600 font-black">↓{valorModeloBranorte.desconto_retorno_pct}% retorno</span></>
-                          )}
-                        </>
-                      )}
-                    </div>
-                    {valorModeloBranorte && (
-                      <button
-                        type="button"
-                        onClick={() => setValorFinal(String(Math.round(valorModeloBranorte.valor_final)))}
-                        className="mt-3 w-full text-[10px] py-1.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg font-black uppercase tracking-wider shadow-md shadow-green-500/30 hover:shadow-lg hover:shadow-green-500/40 active:scale-95 transition-all"
-                      >
-                        Usar este valor
-                      </button>
-                    )}
-                  </div>
+                <div className="text-5xl font-black tabular-nums text-amber-700 dark:text-amber-400 leading-none tracking-tighter">
+                  {formatBRL(valorAntt?.com_margem)}
                 </div>
-
-                {/* 2) ANTT — âmbar com glow */}
-                <div className="group relative overflow-hidden p-5 bg-gradient-to-br from-amber-500/15 to-amber-500/3 border-2 border-amber-500/40 rounded-2xl hover:border-amber-500/60 hover:-translate-y-1 hover:shadow-xl hover:shadow-amber-500/20 transition-all">
-                  <div className="absolute -top-12 -right-12 w-28 h-28 bg-amber-500/20 rounded-full blur-3xl group-hover:bg-amber-500/30 transition-all" />
-                  <div className="relative">
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="w-7 h-7 bg-amber-500/20 rounded-lg flex items-center justify-center">
-                        <Building2 className="h-4 w-4 text-amber-600" />
-                      </div>
-                      <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-400">
-                        ANTT (legal)
-                      </span>
-                    </div>
-                    <div className="text-3xl font-black tabular-nums text-amber-700 dark:text-amber-400 leading-none tracking-tight">
-                      {formatBRL(valorAntt?.com_margem)}
-                    </div>
-                    <div className="text-[10px] text-ink-muted mt-2 leading-tight">
-                      <b>Res. 6.076/2026</b><br />
-                      <span className="tabular-nums">piso {formatBRL(valorAntt?.piso)}</span>
-                    </div>
-                    <div className="mt-3 flex items-center gap-1.5 text-[10px]">
-                      <span className="text-ink-muted font-bold">× margem</span>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={margem}
-                        onChange={e => setMargem(e.target.value)}
-                        className="w-14 border border-amber-500/40 rounded-lg px-1.5 py-1 text-xs bg-bg tabular-nums font-bold focus:outline-none focus:ring-2 focus:ring-amber-500/30"
-                      />
-                    </div>
-                  </div>
+                <div className="text-xs text-ink-muted mt-3 leading-relaxed">
+                  Piso legal minimo (Res. 6.076/2026): <b className="tabular-nums text-ink">{formatBRL(valorAntt?.piso)}</b>
+                  {distanciaKm != null && <> · <b className="tabular-nums">{distanciaKm.toLocaleString('pt-BR')} km</b></>}
+                  <br />Modo: <b>{MODOS_CARGA_LABELS[modoCargaBranorte]}</b>
                 </div>
-
-                {/* 3) Parceiras — esmeralda */}
-                {estimativasParceiras.length > 0 ? (
-                  <div className="group relative overflow-hidden p-5 bg-gradient-to-br from-emerald-500/15 to-emerald-500/3 border-2 border-emerald-500/40 rounded-2xl hover:border-emerald-500/60 hover:-translate-y-1 hover:shadow-xl hover:shadow-emerald-500/20 transition-all">
-                    <div className="absolute -top-12 -right-12 w-28 h-28 bg-emerald-500/20 rounded-full blur-3xl group-hover:bg-emerald-500/30 transition-all" />
-                    <div className="relative">
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className="w-7 h-7 bg-emerald-500/20 rounded-lg flex items-center justify-center">
-                          <Truck className="h-4 w-4 text-emerald-600" />
-                        </div>
-                        <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
-                          Parceiras ({estimativasParceiras.length})
-                        </span>
-                      </div>
-                      <div className="space-y-1.5 max-h-[130px] overflow-y-auto pr-1">
-                        {estimativasParceiras.map(({ parceira, valor }) => (
-                          <label
-                            key={parceira.id}
-                            className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all border ${
-                              parceiraEscolhidaId === parceira.id
-                                ? 'bg-emerald-500/20 border-emerald-500/60 shadow-md shadow-emerald-500/20'
-                                : 'border-transparent hover:bg-emerald-500/10'
-                            }`}
-                          >
-                            <input
-                              type="radio"
-                              name="parceira"
-                              checked={parceiraEscolhidaId === parceira.id}
-                              onChange={() => {
-                                setParceiraEscolhidaId(parceira.id)
-                                setValorFinal(String(Math.round(valor!)))
-                              }}
-                              className="accent-emerald-600"
-                            />
-                            <div className="flex-1 min-w-0">
-                              <div className="text-[10px] font-bold truncate text-ink">{parceira.nome}</div>
-                              <div className="text-base font-black tabular-nums text-emerald-700 dark:text-emerald-400 leading-tight">
-                                {formatBRL(valor)}
-                              </div>
-                            </div>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <Link
-                    to="/frete/transportadoras"
-                    className="group relative overflow-hidden p-5 bg-gradient-to-br from-muted/40 to-muted/10 border-2 border-dashed border-ink-faint/30 rounded-2xl hover:border-emerald-500/60 hover:bg-emerald-500/5 hover:-translate-y-1 transition-all flex flex-col items-center justify-center text-center min-h-[180px]"
-                  >
-                    <div className="w-12 h-12 bg-surface-2/60 group-hover:bg-emerald-500/20 rounded-2xl flex items-center justify-center mb-2 transition-all">
-                      <Truck className="h-6 w-6 text-ink-muted/60 group-hover:text-emerald-600 transition-all" />
-                    </div>
-                    <div className="text-xs font-black uppercase tracking-wider text-ink-muted group-hover:text-emerald-700 dark:group-hover:text-emerald-400">
-                      Nenhuma parceira
-                    </div>
-                    <div className="text-[10px] text-ink-muted/70 mt-1 font-semibold">
-                      Cadastrar agora →
-                    </div>
-                  </Link>
-                )}
-
-                {/* 4) Histórico — azul */}
-                <div className="group relative overflow-hidden p-5 bg-gradient-to-br from-sky-500/15 to-sky-500/3 border-2 border-sky-500/40 rounded-2xl hover:border-sky-500/60 hover:-translate-y-1 hover:shadow-xl hover:shadow-sky-500/20 transition-all">
-                  <div className="absolute -top-12 -right-12 w-28 h-28 bg-sky-500/20 rounded-full blur-3xl group-hover:bg-sky-500/30 transition-all" />
-                  <div className="relative">
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="w-7 h-7 bg-sky-500/20 rounded-lg flex items-center justify-center">
-                        <History className="h-4 w-4 text-sky-600" />
-                      </div>
-                      <span className="text-[10px] font-black uppercase tracking-wider text-sky-700 dark:text-sky-400">
-                        Histórico
-                      </span>
-                    </div>
-                    <div className="text-3xl font-black tabular-nums text-sky-700 dark:text-sky-400 leading-none tracking-tight">
-                      {mediaHist.isLoading ? (
-                        <Loader2 className="h-7 w-7 animate-spin" />
-                      ) : mediaHist.data ? (
-                        formatBRL(mediaHist.data)
-                      ) : (
-                        <span className="text-ink-muted/50 text-2xl font-normal">—</span>
-                      )}
-                    </div>
-                    <div className="text-[10px] text-ink-muted mt-2 leading-tight">
-                      {mediaHist.data
-                        ? <>Mediana similares<br />(mesma UF, ±20% km)</>
-                        : <>Aguardando dados.<br />Mín. 3 cotações similares.</>}
-                    </div>
-                  </div>
+                <div className="mt-4 flex items-center gap-2">
+                  <span className="text-xs text-ink-muted font-bold">× margem</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={margem}
+                    onChange={e => setMargem(e.target.value)}
+                    className="w-16 border border-amber-500/40 rounded-lg px-2 py-1.5 text-sm bg-bg tabular-nums font-bold focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+                  />
+                  <span className="text-[11px] text-ink-muted">sobre o piso legal</span>
                 </div>
               </div>
-
-              {/* Frete de retorno (manual) + cubagem */}
-              <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-3">
-                {/* Toggle retorno */}
-                <div className={`relative overflow-hidden rounded-2xl border-2 p-4 transition-all ${retornoLigado ? 'border-emerald-500/50 bg-gradient-to-br from-emerald-500/12 to-transparent' : 'border-border bg-surface-2/20'}`}>
-                  <div className="flex items-start gap-3">
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={retornoLigado}
-                      onClick={() => setRetornoLigado(v => !v)}
-                      className={`mt-0.5 flex-shrink-0 w-11 h-6 rounded-full transition-all relative ${retornoLigado ? 'bg-emerald-500' : 'bg-ink-faint/30'}`}
-                    >
-                      <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${retornoLigado ? 'left-[22px]' : 'left-0.5'}`} />
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-black uppercase tracking-wider text-ink">
-                        Frete de retorno
-                      </div>
-                      <div className="text-[11px] text-ink-muted mt-0.5 leading-snug">
-                        Só ligue se o motorista <b>confirmou</b> caminhão voltando vazio nessa rota. Não é automático por região.
-                      </div>
-                      {retornoLigado && (
-                        <div className="mt-2 flex items-center gap-2">
-                          <span className="text-[10px] font-bold text-ink-muted">Desconto</span>
-                          <input
-                            type="number"
-                            min={0}
-                            max={DESCONTO_RETORNO_MAX_PCT}
-                            value={retornoPct}
-                            onChange={e => setRetornoPct(e.target.value)}
-                            className="w-16 border border-emerald-500/40 rounded-lg px-2 py-1 text-xs bg-bg tabular-nums font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-                          />
-                          <span className="text-[10px] font-bold text-ink-muted">% (máx {DESCONTO_RETORNO_MAX_PCT}%)</span>
-                          {valorModeloBranorte?.limitou_retorno && (
-                            <span className="text-[10px] font-bold text-amber-600">· limitado pelo piso ANTT</span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Cubagem / indivisibilidade */}
-                <div className="relative overflow-hidden rounded-2xl border-2 border-border bg-surface-2/20 p-4">
-                  <div className="text-[10px] font-black uppercase tracking-wider text-ink-muted mb-2">
-                    Como esta carga é cobrada
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {cargaIndivisivel && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-700 dark:text-amber-400 text-[10px] font-black uppercase tracking-wider">
-                        <AlertTriangle className="h-3 w-3" /> Indivisível → carga completa
-                      </span>
-                    )}
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-bg border border-border text-[10px] font-bold tabular-nums">
-                      <Scale className="h-3 w-3 text-accent" />
-                      {carga ? `peso real ${carga.peso_kg.toLocaleString('pt-BR')} kg` : 'sem carga'}
-                    </span>
-                    {pesoEfetivo != null && carga && pesoEfetivo > carga.peso_kg && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-sky-500/15 border border-sky-500/40 text-sky-700 dark:text-sky-400 text-[10px] font-bold tabular-nums" title="Carga leve e volumosa: cobra-se pelo peso cubado (m³ × 300), maior que o peso real.">
-                        <Package className="h-3 w-3" /> peso cubado {Math.round(pesoEfetivo).toLocaleString('pt-BR')} kg
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-[11px] text-ink-muted mt-2 leading-snug">
-                    Modo: <b>{MODOS_CARGA_LABELS[modoCargaBranorte]}</b>. {pisoAntt != null && <>Piso legal mínimo: <b className="tabular-nums">{formatBRL(pisoAntt)}</b>.</>}
-                  </div>
-                </div>
-              </div>
-
-              {/* Decisão final — zona premium */}
-              <div className="relative overflow-hidden bg-gradient-to-br from-accent/8 via-accent/3 to-transparent border-2 border-accent/30 rounded-2xl p-5">
-                <div className="absolute -top-16 -right-16 w-40 h-40 bg-accent/20 rounded-full blur-3xl" />
-                <div className="absolute -bottom-16 -left-16 w-40 h-40 bg-emerald-500/15 rounded-full blur-3xl" />
-
-                <div className="relative">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-7 h-7 bg-gradient-to-br from-accent to-emerald-600 rounded-lg flex items-center justify-center shadow-md shadow-accent/30">
-                      <Save className="h-4 w-4 text-white" />
-                    </div>
-                    <label className="text-[10px] uppercase tracking-[0.25em] font-black text-ink">
-                      Valor final pra negociar com o cliente
-                    </label>
-                  </div>
-
-                  <div className="relative">
-                    <span className="absolute left-5 top-1/2 -translate-y-1/2 text-2xl font-black text-accent/60 tabular-nums pointer-events-none">
-                      R$
-                    </span>
-                    <input
-                      type="number"
-                      value={valorFinal}
-                      onChange={e => setValorFinal(e.target.value)}
-                      placeholder="0,00"
-                      className="w-full border-2 border-accent/40 focus:border-accent rounded-2xl pl-14 pr-5 py-4 text-3xl font-black tabular-nums tracking-tight bg-bg/80 backdrop-blur focus:outline-none focus:ring-4 focus:ring-accent/15 shadow-lg shadow-accent/10 transition-all placeholder:text-ink-muted/30 placeholder:font-normal"
-                    />
-                  </div>
-
-                  <div className="relative mt-3">
-                    <FileText className="absolute left-3.5 top-3.5 h-4 w-4 text-ink-muted/60" />
-                    <textarea
-                      value={observacoes}
-                      onChange={e => setObservacoes(e.target.value)}
-                      placeholder="Observações (ex: cliente já tem transportadora, frete CIF, escolta especial...)"
-                      className="w-full border-2 border-border/60 rounded-xl pl-10 pr-3 py-3 text-sm bg-bg/80 backdrop-blur focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50 transition-all placeholder:text-ink-muted/50"
-                      rows={2}
-                    />
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleSalvar}
-                    disabled={salvar.isPending}
-                    className="group relative mt-4 w-full overflow-hidden px-6 py-4 bg-gradient-to-r from-accent via-emerald-600 to-accent text-white rounded-2xl font-black text-base uppercase tracking-[0.25em] shadow-2xl shadow-accent/40 hover:shadow-accent/60 hover:-translate-y-1 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 transition-all flex items-center justify-center gap-3 bg-[length:200%_100%] hover:bg-[position:100%]"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-                    {salvar.isPending ? (
-                      <>
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                        Salvando…
-                      </>
-                    ) : (
-                      <>
-                        <Save className="h-5 w-5 group-hover:rotate-12 transition-transform" />
-                        Salvar cotação
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </>
+            </div>
           )}
         </div>
       )}
