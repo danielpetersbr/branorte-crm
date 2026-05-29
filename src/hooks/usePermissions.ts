@@ -33,10 +33,13 @@ export const FEATURE_CATALOG: Array<{
   { key: 'menu.admin_permissoes', label: 'Admin: Permissões', group: 'Menu' },
   { key: 'menu.admin_transportador_funcoes', label: 'Admin: Funções Transportador', group: 'Menu' },
   { key: 'menu.roadmap', label: 'Roadmap & Feedback', group: 'Menu' },
+  { key: 'menu.due_diligence', label: 'Consulta (Due Diligence)', group: 'Menu' },
   { key: 'contacts.view_all', label: 'Ver TODOS os contatos (não só do próprio vendedor)', group: 'Ações' },
   { key: 'atendimentos.reatribuir', label: 'Reatribuir atendimento pra outro vendedor', group: 'Ações' },
   { key: 'orcamentos.criar', label: 'Criar/editar orçamento', group: 'Ações' },
   { key: 'disparos.send', label: 'Enviar disparo (roteamento)', group: 'Ações' },
+  { key: 'due_diligence.consultar', label: 'Consultar Due Diligence (SPC + Datajud + IA)', group: 'Ações' },
+  { key: 'admin.due_diligence', label: 'Admin: ver consultas de todos vendedores', group: 'Ações' },
 ]
 
 export const ASSIGNABLE_ROLES: AssignableRole[] = ['admin', 'vendor', 'marketing']
@@ -61,7 +64,9 @@ const FALLBACK: Record<AssignableRole, Record<string, boolean>> = {
     'menu.orcamentos': true,
     'menu.vendidos': true,
     'menu.projeto': true,
+    'menu.due_diligence': true,
     'orcamentos.criar': true,
+    'due_diligence.consultar': true,
   },
   marketing: {},
 }
