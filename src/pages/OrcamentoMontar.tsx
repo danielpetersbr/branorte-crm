@@ -1491,7 +1491,11 @@ export function OrcamentoMontar() {
         valor_original: valorFinal,
         motor_cv: motor ? Number(motor.cv) : (cvDoSpec ?? null),
         motor_polos: motor ? motor.polos : (ci?.motor_padrao_polos ?? 4),
-        motor_qtd: motor ? 1 : (motorIncluso ? 0 : (cvDoSpec ? 1 : 0)),
+        // 2026-05-29: motor incluso AGORA aparece na tabela (motor_qtd=1) com
+        // valor 0 → preview renderiza "Incluso" em vez de omitir a linha.
+        // Vendedor reclamou que Compacta 01 Master 150500 nao mostrava o
+        // motorredutor 7,5 CV do misturador horizontal.
+        motor_qtd: motor ? 1 : (cvDoSpec ? 1 : 0),
         motor_valor_unit: motorIncluso ? 0 : (motor ? Number(motor.valor) : 0),
         foto_url: foto,
         usa_inversor: !!(ci?.usa_inversor),
