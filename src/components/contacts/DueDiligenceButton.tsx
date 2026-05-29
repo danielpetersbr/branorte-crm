@@ -188,7 +188,7 @@ export function DueDiligenceForm({ contactId, contactName, initialCnpj }: FormPr
           Pacote de consulta
         </label>
         <div className="space-y-1.5">
-          {(['economico', 'paranoico'] as Pacote[]).map(p => {
+          {(['economico'] as Pacote[]).map(p => {
             const info = PACOTE_INFO[p]
             const ativo = pacote === p
             const disabled = p === 'paranoico'  // Fase 3-4 ainda nao implementada
