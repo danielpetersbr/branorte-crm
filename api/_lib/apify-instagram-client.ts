@@ -889,12 +889,15 @@ export async function buscarInstagramEmpresa(opts: {
   // ===== ETAPA 1: Apify direto, priorizando handles confirmados via HEAD =====
   if (apifyConfigured && token) {
     // Se algum HEAD confirmou, usa SÓ esses (máximo 3) — economia direta.
-    // Se NENHUM confirmou (provavelmente IG rate-limit), cai pro comportamento antigo:
-    // chuta os primeiros 3 slugs e deixa o Apify decidir.
+    // Se NENHUM confirmou (provavelmente IG rate-limit), prioriza candidatos COM
+    // sufixo setorial (_metalurgica, _oficial) — empiricamente são os corretos.
+    // Handles "puros" (branorte) tendem a ser squatted ou perfis pessoais.
+    const candidatosComSufixo = candidatosOrdenados.filter((c) => /[._]/.test(c))
+    const candidatosPuros = candidatosOrdenados.filter((c) => !/[._]/.test(c))
     const paraApify =
       candidatosConfirmados.length > 0
         ? candidatosConfirmados.slice(0, 3)
-        : candidatosOrdenados.slice(0, 3)
+        : [...candidatosComSufixo.slice(0, 4), ...candidatosPuros.slice(0, 1)].slice(0, 5)
 
     try {
       custoTotalUsd += CUSTO_POR_RUN_USD * Math.min(paraApify.length, 3)
