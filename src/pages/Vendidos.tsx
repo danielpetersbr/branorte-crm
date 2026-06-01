@@ -61,7 +61,10 @@ function useSoldContacts(filters: { search: string; vendor_id: string; estado: s
         .select('*', { count: 'exact' })
         .eq('status', 'FECHADO')
         .or('origin.ilike.Orcamento%,origin.ilike.Orçamento%')
-        .order('origin', { ascending: false })
+        // Mais recentes primeiro (data_orcamento = data da venda mais nova, vinda do
+        // sync). Antes ordenava por 'origin' (número do orçamento) → vendas novas não
+        // ficavam no topo. nullsFirst:false joga os sem-data pro fim.
+        .order('data_orcamento', { ascending: false, nullsFirst: false })
 
       if (filters.search) {
         query = query.or(`name.ilike.%${filters.search}%,phone.ilike.%${filters.search}%,descricao_orcamento.ilike.%${filters.search}%,city.ilike.%${filters.search}%`)
