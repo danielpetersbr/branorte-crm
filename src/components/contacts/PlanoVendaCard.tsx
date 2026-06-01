@@ -198,13 +198,13 @@ function CenarioCardView({
         <p className="text-[9px] uppercase tracking-wider text-ink-faint mb-1.5">
           Requisitos antes de fechar
         </p>
-        {cenario.requisitos.length === 0 ? (
+        {(cenario.requisitos ?? []).length === 0 ? (
           <p className="text-[11px] text-success italic">
             Nenhum — pode fechar direto.
           </p>
         ) : (
           <ul className="space-y-1">
-            {cenario.requisitos.map((req, i) => {
+            {(cenario.requisitos ?? []).map((req, i) => {
               const item = normalizarRequisito(req)
               const isDoc = item.tipo === "documento"
               return (

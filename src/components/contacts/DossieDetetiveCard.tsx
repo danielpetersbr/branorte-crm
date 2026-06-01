@@ -526,13 +526,13 @@ export function DossieDetetiveCard({ dossie, onReinvestigar }: Props) {
               Por que desconfiar
             </h3>
             <span className="ml-auto text-[10px] font-mono tabular-nums text-danger">
-              {dossie.red_flags.length}{' '}
-              {dossie.red_flags.length === 1 ? 'alerta' : 'alertas'}
+              {(dossie.red_flags ?? []).length}{' '}
+              {(dossie.red_flags ?? []).length === 1 ? 'alerta' : 'alertas'}
             </span>
           </div>
-          {dossie.red_flags.length > 0 ? (
+          {(dossie.red_flags ?? []).length > 0 ? (
             <ul className="space-y-1.5">
-              {dossie.red_flags.map((flag) => (
+              {(dossie.red_flags ?? []).map((flag) => (
                 <li
                   key={flag.id}
                   className="flex items-start gap-2 p-1.5 rounded bg-danger/10 border border-danger/20"
@@ -685,13 +685,13 @@ export function DossieDetetiveCard({ dossie, onReinvestigar }: Props) {
       )}
 
       {/* ====== CHECKLIST DO QUE PEDIR (ex Ações Sugeridas) ====== */}
-      {dossie.acoes_sugeridas.length > 0 && (
+      {(dossie.acoes_sugeridas ?? []).length > 0 && (
         <div className="px-4 py-3 border-b border-border/40 bg-accent/5">
           <h3 className="text-[11px] uppercase tracking-wider font-bold text-accent mb-2">
             Checklist do que pedir
           </h3>
           <ol className="space-y-1.5">
-            {dossie.acoes_sugeridas.map((acao, idx) => (
+            {(dossie.acoes_sugeridas ?? []).map((acao, idx) => (
               <li key={idx} className="flex items-start gap-2">
                 <span className="text-[11px] font-bold text-accent bg-accent/15 rounded-full h-5 w-5 flex items-center justify-center shrink-0 tabular-nums">
                   {idx + 1}
@@ -704,13 +704,13 @@ export function DossieDetetiveCard({ dossie, onReinvestigar }: Props) {
       )}
 
       {/* ====== FONTES CONSULTADAS ====== */}
-      {dossie.fontes_consultadas.length > 0 && (
+      {(dossie.fontes_consultadas ?? []).length > 0 && (
         <div className="px-4 py-3 border-b border-border/40">
           <p className="text-[9px] uppercase tracking-wider text-ink-faint mb-1.5">
             Fontes Consultadas
           </p>
           <div className="flex flex-wrap gap-1">
-            {dossie.fontes_consultadas.map((fonte) => (
+            {(dossie.fontes_consultadas ?? []).map((fonte) => (
               <span
                 key={fonte}
                 className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-2/60 border border-border/40 text-ink-muted"
