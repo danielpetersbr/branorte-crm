@@ -79,6 +79,16 @@ interface ConsultarBody {
   pacote: 'economico' | 'completo' | 'paranoico' | 'custom'
   /** Forca reconsulta mesmo se tem cache <30d */
   force_refresh?: boolean
+  /**
+   * Ticket do pedido em R$ (do orçamento atual). Alimenta o detetive-scoring
+   * (flags 1, 10, 11, 12, 15), o semáforo dinâmico por ticket, o limite
+   * sugerido e o nível de análise da IA (rápido/padrão/profundo).
+   *
+   * Opcional — se ausente, scoring usa 0 (limite sem ancoragem por cotação)
+   * e IA cai pro nível rápido. Quando consulta vem do contexto de um
+   * orçamento, o frontend deve passar `valor_total` aqui.
+   */
+  ticket_pedido_brl?: number
 }
 
 // ============================================================================
@@ -506,7 +516,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
       const detetiveInput: DetetiveInput = {
         cnpj,
-        // ticket_pedido: não temos no body atual; fica undefined.
+        // ticket_pedido vem do body (campo opcional novo `ticket_pedido_brl`).
+        // Se ausente, fica 0 — scoring trata 0 como "ticket desconhecido"
+        // (não dispara flags que dependem de cotação, limite calcula sem âncora).
+        ticket_pedido: body.ticket_pedido_brl ?? 0,
         opencnpj: opencnpjResultado
           ? {
               razao_social: opencnpjResultado.razao_social,
@@ -581,6 +594,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (dossieDetetive) {
     ;(resultadoSpc as Record<string, unknown>).dossie_detetive = {
       ...dossieDetetive,
+      // Aliases explícitos pro contrato com o frontend (DossieDetetiveCard).
+      // O spread acima já inclui sub_scores/limite_sugerido_brl/cenarios via
+      // DossieResultado, mas duplico aqui pra:
+      //  1. tornar o contrato visível na response (não depende do shape interno);
+      //  2. expor `condicao_recomendada` como alias de `condicao_default` (nome
+      //     usado na spec do PlanoVendaCard);
+      //  3. garantir que mesmo se o tipo interno mudar (renomear campos), o
+      //     contrato pro front-end fica estável aqui.
+      sub_scores: dossieDetetive.sub_scores,
+      limite_sugerido_brl: dossieDetetive.limite_sugerido_brl,
+      condicao_recomendada: dossieDetetive.condicao_default,
+      cenarios: dossieDetetive.cenarios,
       // Campos que o card frontend espera mas que o motor não calcula:
       alvo: {
         razao_social: opencnpjResultado?.razao_social ?? null,
@@ -686,7 +711,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let erroParecer: string | null = null
   const dossieParaIA = dossieDetetive
     ? {
-        score: dossieDetetive.score,
+        score: dossieDetetive.score_normalizado ?? dossieDetetive.score,
         semaforo: dossieDetetive.semaforo,
         recomendacao: dossieDetetive.recomendacao,
         red_flags: dossieDetetive.red_flags.map(f => ({
@@ -696,6 +721,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           descricao: f.descricao,
         })),
         acoes_sugeridas: dossieDetetive.acoes_sugeridas,
+        // Campos novos pro prompt operar com contexto completo (não no escuro):
+        // sub_scores → IA explica o porquê de cada dimensão; cenarios → IA não
+        // precisa reinventar A/B/C (já vêm prontos do scoring); limite_calculado
+        // → IA usa como teto pra dimensionar a recomendação.
+        sub_scores: {
+          financeiro: dossieDetetive.sub_scores.financeiro,
+          compliance: dossieDetetive.sub_scores.compliance,
+          reputacao: dossieDetetive.sub_scores.reputacao,
+          juridico: dossieDetetive.sub_scores.juridico,
+          // SubScores tem `estrutural` também, mas o tipo da IA só aceita 5
+          // dimensões — `estrutural` é absorvido em `financeiro`/`digital` na
+          // prática, então não exponho aqui pra não quebrar tipagem.
+          digital: dossieDetetive.sub_scores.digital,
+        },
+        limite_calculado: dossieDetetive.limite_sugerido_brl,
+        cenarios: dossieDetetive.cenarios.map(c => ({
+          condicao: c.condicao,
+          limite_max: c.limite_max_brl,
+          exigencias: c.exigencias,
+        })),
+        hard_fail: dossieDetetive.hard_fail,
+        hard_fail_motivo: dossieDetetive.hard_fail_motivo,
+        modificador_setorial: dossieDetetive.modificador_setorial,
+        modificador_historico_branorte: dossieDetetive.modificador_historico_branorte,
       }
     : null
   if (
@@ -708,6 +757,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         spcResumos: resumosParaIA as Parameters<typeof gerarParecerIA>[0]['spcResumos'],
         datajud: datajudResultado,
         dossieDetetive: dossieParaIA,
+        // Atalho de ticket pro escalonador de nível (rápido/padrão/profundo).
+        // gerarParecerIA prefere contextoOrcamento.valor_total quando presente;
+        // como ainda não passamos o contexto completo aqui, mandar só o ticket
+        // já garante o escalonamento certo (ex: Compacta 03 R$ 250k → profundo).
+        ticketPedidoBrl: body.ticket_pedido_brl,
         timeoutMs: 22_000,
       })
       parecerIa = ia.parecer
