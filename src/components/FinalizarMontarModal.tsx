@@ -235,6 +235,10 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
   // True quando vendedor TEM pasta Z: configurada e acessivel localmente.
   // Se false, o botao 'Salvar' vai pro servidor (PC do escritorio sincroniza).
   const [temPastaLocal, setTemPastaLocal] = useState<boolean>(false)
+  // Nome da pasta atualmente apontada (ex: "5 - Maio", "3 - Orçamento"). Mostrado no
+  // box do número pra o vendedor VER pra onde vai salvar e poder trocar. Bug comum:
+  // handle preso num mês antigo (navegador não alcança a pasta irmã do mês atual).
+  const [pastaNome, setPastaNome] = useState<string>('')
 
   const [gerando, setGerando] = useState(false)
   const [gerandoStep, setGerandoStep] = useState<string>('')
@@ -394,6 +398,16 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
     })()
   }, [open, numeroAtual])
 
+  // Mostra pra qual pasta o save vai (e permite trocar). Deixa visível o bug do
+  // handle preso num mês antigo (ex: "5 - Maio").
+  useEffect(() => {
+    if (!open) { setPastaNome(''); return }
+    ;(async () => {
+      try { const h = await getStoredFolderHandle(); setPastaNome((h as any)?.name || '') }
+      catch { setPastaNome('') }
+    })()
+  }, [open])
+
   const formaPagamentoCfg: FormaPagamentoConfig = {
     tipo: pgTipo,
     data_venda: pgDataVenda || undefined,
@@ -459,6 +473,35 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
     } catch (e) {
       const msg = (e as Error).message
       if (!/abort|cancel/i.test(msg)) alert('Erro: ' + msg)
+    } finally {
+      setScanLoading(false)
+    }
+  }
+
+  // Troca a pasta de destino (re-pick). Útil quando o handle ficou preso num mês antigo
+  // (ex: "5 - Maio") — o navegador não navega pra pasta irmã, então o save falha. Aponte
+  // pra pasta BASE ("3 - Orçamento") ou do ano ("2026") UMA vez e o sistema acha o mês
+  // certo sozinho todo mês (resolverPastaDoMes Cenário A0).
+  async function handleTrocarPasta() {
+    setScanLoading(true)
+    try {
+      const handle = await pickOrcamentoFolder(true)
+      if (!handle) return
+      await ensureWritePermission(handle)
+      setTemPastaLocal(true)
+      setPastaNome((handle as any).name || '')
+      // Em modo NEW, atualiza o número pela pasta. Em UPDATE/ALT mantém o número original.
+      if (saveMode !== 'update' && saveMode !== 'alt') {
+        try {
+          const scan = await scanFolderForLastNumber(handle)
+          setScanInfo({ ultimo: scan.ultimoNumero, total: scan.total, ano: scan.ano })
+          setNumeroAtual(formatarNumero(scan.ano, scan.proximoNumero))
+          setNumeroFonte('pasta')
+        } catch { /* mantém número atual */ }
+      }
+    } catch (e) {
+      const msg = (e as Error).message
+      if (!/abort|cancel/i.test(msg)) alert('Erro ao trocar pasta: ' + msg)
     } finally {
       setScanLoading(false)
     }
@@ -1065,8 +1108,22 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
               </span>
             </div>
             <div className="text-[18px] font-bold text-accent">{numeroAtual || '—'}</div>
-            <div className="text-[10px] text-ink-faint mt-1.5 leading-relaxed">
-              📁 Salvo automaticamente em <span className="font-mono">Z:\1 - Comercial\3 - Orçamento</span> pelo PC do escritório.
+            <div className="text-[10px] text-ink-faint mt-1.5 leading-relaxed flex items-center justify-between gap-2">
+              <span>
+                📁 Pasta:{' '}
+                <span className="font-mono">{pastaNome || 'Z:\\1 - Comercial\\3 - Orçamento'}</span>
+              </span>
+              {isFolderScanSupported() && (
+                <button
+                  type="button"
+                  onClick={handleTrocarPasta}
+                  disabled={scanLoading}
+                  title="Aponte pra pasta BASE (3 - Orçamento) ou a do ano (2026) UMA vez — o sistema acha o mês certo sozinho todo mês"
+                  className="text-[10px] px-2 py-0.5 rounded border border-border text-accent hover:bg-accent/10 disabled:opacity-50 shrink-0 whitespace-nowrap"
+                >
+                  {scanLoading ? '...' : '🔁 Trocar pasta'}
+                </button>
+              )}
             </div>
           </div>
 
