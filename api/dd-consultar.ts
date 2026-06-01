@@ -659,8 +659,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let dossieDetetive: DossieResultado | null = null
   if (precisaCnpj && cnpj.length === 14) {
     try {
+      // Extrai resumo SPC (primeiro resumo PJ) pra alimentar o F17 hard-fail
+      const resumoSpcParaDetetive = (() => {
+        const resumos = (resultadoSpc as { resumos?: Array<{ resumo?: Record<string, unknown> }> } | null)?.resumos
+        const primeiro = resumos?.find(r => r?.resumo)?.resumo
+        if (!primeiro) return null
+        const score = primeiro.score as { valor?: number | null; classificacao?: string | null } | undefined
+        const inad = primeiro.inadimplencias as {
+          qtd?: number | null
+          valor_total?: number | null
+          detalhes?: Array<{ credor?: string | null; valor?: number | null; data?: string | null }> | null
+        } | undefined
+        return {
+          score: score ? { valor: score.valor ?? null, classificacao: score.classificacao ?? null } : null,
+          inadimplencias: inad
+            ? {
+                qtd: inad.qtd ?? 0,
+                valor_total_brl: inad.valor_total ?? 0,
+                detalhes: (inad.detalhes ?? []).map(d => ({
+                  credor: d?.credor ?? null,
+                  valor_brl: d?.valor ?? null,
+                  data_inclusao: d?.data ?? null,
+                })),
+              }
+            : null,
+        }
+      })()
+
       const detetiveInput: DetetiveInput = {
         cnpj,
+        spc: resumoSpcParaDetetive,
         // ticket_pedido vem do body (campo opcional novo `ticket_pedido_brl`).
         // Se ausente, fica 0 — scoring trata 0 como "ticket desconhecido"
         // (não dispara flags que dependem de cotação, limite calcula sem âncora).
