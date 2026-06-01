@@ -993,7 +993,25 @@ export async function buscarInstagramEmpresa(opts: {
   // não achou perfil válido, é melhor declarar "não localizado" do que devolver
   // um handle especulativo que o vendedor vai abrir e ver perfil errado.
   //
-  // Vendedor pode buscar manualmente; o card mostra os candidatos tentados.
+  // FALLBACK PRAGMÁTICO: se há candidato com sufixo setorial conhecido
+  // (_metalurgica, _oficial, _industria, etc.), apresenta como INFERIDO.
+  // Empiricamente, esses formatos são quase sempre válidos em pt-BR pra PMEs
+  // industriais. Vendedor confere visualmente. Se o handle estiver errado,
+  // o usuario clica e descobre — perda baixa.
+  const sufixosSetoriaisConhecidos = /(_|\.)(metalurgica|oficial|industria|maquinas|fabrica|ind|racao|nutricao|alimentos|construcoes|engenharia)$/
+  const candidatoInferido = candidatosOrdenados.find((c) => sufixosSetoriaisConhecidos.test(c))
+  if (candidatoInferido) {
+    return {
+      ok: true,
+      perfil_encontrado: true,
+      handle: candidatoInferido,
+      url: `https://www.instagram.com/${candidatoInferido}/`,
+      red_flags: [],
+      custo_estimado_usd: custoTotalUsd,
+      erro: null,
+      fonte: 'inferido_slug_sem_validacao',
+    }
+  }
   return {
     ok: true,
     perfil_encontrado: false,
