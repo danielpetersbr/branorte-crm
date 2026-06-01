@@ -3,8 +3,8 @@
 // DueDiligenceForm   forma "miolo" sem chrome (usado pela pagina /consulta)
 // DueDiligenceModal  wrapper modal (usado quando aparece em outro lugar)
 // DueDiligenceButton botao que abre o modal (legado, mantido pra reuso)
-import { useState } from 'react'
-import { Search, X, AlertCircle, CheckCircle, Loader2 } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { Search, X, AlertCircle, CheckCircle, Loader2, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import {
@@ -467,6 +467,11 @@ function ResultadoBox({
         <p className="text-[11px] text-warning px-3 py-2">{consulta.erro}</p>
       )}
 
+      {/* Parecer IA — destaque no topo */}
+      {consulta.parecer_ia && (
+        <ParecerIaBox parecer={consulta.parecer_ia} />
+      )}
+
       {/* Render dos resumos */}
       {resumos.length > 0 ? (
         <div className="p-3 space-y-3">
@@ -495,6 +500,89 @@ function ResultadoBox({
       </details>
     </div>
   )
+}
+
+// ============================================================================
+// Parecer IA — markdown render simples (sem dependências externas)
+// ============================================================================
+function ParecerIaBox({ parecer }: { parecer: string }) {
+  // Detectar veredito no texto pra colorir o card
+  const verdeMatch = /PODE VENDER/i.test(parecer)
+  const vermelhoMatch = /N[ÃA]O RECOMENDADO/i.test(parecer)
+  const tone = vermelhoMatch ? 'danger' : verdeMatch ? 'success' : 'warning'
+  const toneClass = {
+    success: 'bg-success/8 border-success/40',
+    warning: 'bg-warning/8 border-warning/40',
+    danger:  'bg-danger/8 border-danger/40',
+  }[tone]
+
+  return (
+    <div className={`m-3 mb-0 rounded-md border-2 ${toneClass}`}>
+      <div className="px-3 py-2 border-b border-border/40 flex items-center gap-2">
+        <Sparkles className="h-4 w-4 text-accent" />
+        <span className="text-[12px] font-bold text-ink uppercase tracking-wider">
+          Parecer da IA
+        </span>
+        <span className="ml-auto text-[9px] font-mono text-ink-faint">
+          Análise consolidada SPC + Datajud
+        </span>
+      </div>
+      <div className="px-3 py-3 text-[12px] text-ink leading-relaxed prose-sm">
+        <MarkdownSimples texto={parecer} />
+      </div>
+    </div>
+  )
+}
+
+function MarkdownSimples({ texto }: { texto: string }) {
+  // Render markdown bem simples: ## headers, **bold**, listas com -
+  const blocos: ReactNode[] = []
+  const linhas = texto.split('\n')
+  let listaAtual: string[] | null = null
+
+  const flushLista = (idx: number) => {
+    if (listaAtual && listaAtual.length) {
+      blocos.push(
+        <ul key={`ul-${idx}`} className="list-disc pl-5 my-1.5 space-y-0.5">
+          {listaAtual.map((item, i) => (
+            <li key={i} dangerouslySetInnerHTML={{ __html: aplicarBoldEEmojis(item) }} />
+          ))}
+        </ul>,
+      )
+      listaAtual = null
+    }
+  }
+
+  for (let i = 0; i < linhas.length; i++) {
+    const linha = linhas[i]
+    if (linha.startsWith('## ')) {
+      flushLista(i)
+      blocos.push(
+        <h3 key={`h-${i}`} className="text-[12px] font-bold text-ink mt-2 mb-1 uppercase tracking-wider">
+          {linha.slice(3).trim()}
+        </h3>,
+      )
+    } else if (linha.startsWith('- ') || linha.startsWith('* ')) {
+      if (!listaAtual) listaAtual = []
+      listaAtual.push(linha.slice(2).trim())
+    } else if (linha.trim() === '') {
+      flushLista(i)
+    } else {
+      flushLista(i)
+      blocos.push(
+        <p key={`p-${i}`} className="my-1" dangerouslySetInnerHTML={{ __html: aplicarBoldEEmojis(linha) }} />,
+      )
+    }
+  }
+  flushLista(linhas.length)
+
+  return <>{blocos}</>
+}
+
+function aplicarBoldEEmojis(s: string): string {
+  return s
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`(.+?)`/g, '<code class="text-[10px] font-mono bg-surface-2/60 px-1 rounded">$1</code>')
 }
 
 // ============================================================================

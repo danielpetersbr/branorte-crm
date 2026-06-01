@@ -28,6 +28,7 @@ import {
 } from './_lib/spc-client.js'
 import { gerarMockResumo, normalizarPayloadSpc } from './_lib/spc-normalizer.js'
 import { buscarProcessos, type DatajudResultado } from './_lib/datajud-client.js'
+import { gerarParecerIA } from './_lib/dd-parecer-ia.js'
 
 export const config = {
   api: {
@@ -307,8 +308,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // 7) Aguarda Datajud (já estava rodando em paralelo)
   const datajudResultado = await datajudPromise
 
+  // 7.1) Parecer IA — consolida SPC + Datajud em markdown
+  const resumosParaIA =
+    (resultadoSpc as { resumos?: Array<{ resumo?: unknown }> } | null)?.resumos
+      ?.map(r => r.resumo)
+      .filter((r): r is Record<string, unknown> => !!r) ?? []
+  let parecerIa: string | null = null
+  let erroParecer: string | null = null
+  if (statusFinal !== 'failed' || (datajudResultado?.processos?.length ?? 0) > 0) {
+    try {
+      const ia = await gerarParecerIA({
+        spcResumos: resumosParaIA as Parameters<typeof gerarParecerIA>[0]['spcResumos'],
+        datajud: datajudResultado,
+        timeoutMs: 22_000,
+      })
+      parecerIa = ia.parecer
+      erroParecer = ia.erro
+    } catch (e) {
+      erroParecer = e instanceof Error ? e.message : String(e)
+    }
+  }
+
   // 8) Update do registro com resultado
-  // Custo: SPC cobra de verdade. Datajud é grátis.
+  // Custo: SPC cobra de verdade. Datajud + IA são grátis (IA tem custo mínimo).
   const custoFinal = statusFinal === 'failed' ? 0 : custoEstimado
   // Se SPC falhou MAS Datajud trouxe dados, considera 'partial' em vez de 'failed'
   if (statusFinal === 'failed' && datajudResultado && datajudResultado.processos.length > 0) {
@@ -321,9 +343,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .update({
       resultado_spc: resultadoSpc,
       resultado_datajud: datajudResultado as unknown as Record<string, unknown> | null,
+      parecer_ia: parecerIa,
       status: statusFinal,
       custo_brl: custoFinal,
-      erro: erroMsg,
+      erro: [erroMsg, erroParecer ? `IA: ${erroParecer}` : null].filter(Boolean).join(' | ') || null,
     })
     .eq('id', consultaId)
     .select('*')
