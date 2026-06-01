@@ -77,6 +77,16 @@ const SECONDARY: NavItem[] = [
       { to: '/frete/historico', label: 'Histórico', icon: History },
     ],
   },
+  {
+    to: '/controle',
+    label: 'Controle (Vendas)',
+    icon: BarChart2,
+    matchPrefix: true,
+    children: [
+      { to: '/controle', label: 'Painel de Vendas', icon: LayoutDashboard },
+      { to: '/controle/pedidos', label: 'Pedidos de Venda', icon: FileText },
+    ],
+  },
   { to: '/vendidos', label: 'Vendidos', icon: CheckCircle, permKey: 'menu.vendidos' },
   { to: '/projeto', label: 'Projeto', icon: Factory, permKey: 'menu.projeto' },
   { to: '/disparos', label: 'Roteamento', icon: GitBranch, permKey: 'menu.disparos' },
