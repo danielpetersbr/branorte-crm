@@ -24,7 +24,7 @@ export interface ResumoConsumidor {
 
 export interface ResumoSpc {
   consumidor: ResumoConsumidor
-  score: { valor: number | null; classificacao: string | null }
+  score: { valor: number | null; classificacao: string | null; mensagem?: string | null }
   inadimplencias: {
     qtd: number
     valor_total: number
@@ -34,6 +34,10 @@ export interface ResumoSpc {
   socios?: Array<{ nome: string; participacao?: string | null; documento?: string | null }>
   administradores?: Array<{ nome: string; cargo?: string | null }>
   participacoes_em_empresas?: Array<{ nome: string; cnpj?: string | null; tipo?: string | null }>
+  /** PEP — Pessoa Exposta Politicamente (insumo 5255). */
+  pep?: { tem: boolean; qtd: number; detalhes: Array<{ nome?: string | null; cargo?: string | null }> }
+  /** Faturamento presumido em R$ (insumo 5178). */
+  faturamento_presumido?: { valor: number; periodicidade?: 'mensal' | 'anual' | null } | null
   alertas?: string[]
 }
 
@@ -235,17 +239,31 @@ export function normalizarPayloadSpc(
     })),
   }
 
-  const protesto = get<AnyObj>(raiz, 'protestoNacional')
+  // Protesto: o SPC retorna `protesto` (não `protestoNacional`)
+  const protesto = get<AnyObj>(raiz, 'protesto') ?? get<AnyObj>(raiz, 'protestoNacional')
   const protestos = {
     qtd: Number(get(protesto, 'resumo', 'quantidadeTotal') ?? 0),
     valor_total: Number(get(protesto, 'resumo', 'valorTotal') ?? 0),
   }
 
-  const scoreObj = get<AnyObj>(raiz, 'score')
-  const score = {
-    valor: scoreObj ? Number(get(scoreObj, 'pontuacao') ?? get(scoreObj, 'valor') ?? 0) : null,
-    classificacao: get<string>(scoreObj, 'classificacao') ?? null,
+  // Score: insumo 78 retorna em spcScore12Meses.detalheSpcScore12Meses[0]
+  // Estrutura: { score: number, classe: 'A'|'B'|'C'|'D'|'E'|'F', horizonte: 12, mesagemInterpretativaScore: string }
+  // classe='F' = inadimplente. score=0 com classe=F NÃO é ausência de score, é alto risco.
+  const score12 = get<AnyObj[]>(raiz, 'spcScore12Meses', 'detalheSpcScore12Meses')?.[0]
+  const score3 = get<AnyObj[]>(raiz, 'spcScore3Meses', 'detalheSpcScore3Meses')?.[0]
+  const scoreLegacy = get<AnyObj>(raiz, 'score') // fallback legado
+  const scoreFonte = score12 ?? score3 ?? scoreLegacy
+  let scoreValor: number | null = null
+  let scoreClassificacao: string | null = null
+  let scoreMensagem: string | null = null
+  if (scoreFonte) {
+    const v = get<number>(scoreFonte, 'score') ?? get<number>(scoreFonte, 'pontuacao') ?? get<number>(scoreFonte, 'valor')
+    scoreValor = typeof v === 'number' ? v : null
+    const classe = get<string>(scoreFonte, 'classe') ?? get<string>(scoreFonte, 'classificacao')
+    scoreClassificacao = classe ? mapearClasseScore(classe) : null
+    scoreMensagem = get<string>(scoreFonte, 'mesagemInterpretativaScore') ?? get<string>(scoreFonte, 'mensagemInterpretativaScore') ?? null
   }
+  const score = { valor: scoreValor, classificacao: scoreClassificacao, mensagem: scoreMensagem }
 
   const socios = (get<AnyObj[]>(raiz, 'socio', 'detalheSocio') ?? []).map(s => ({
     nome: String(get(s, 'nome') ?? '—'),
@@ -266,6 +284,24 @@ export function normalizarPayloadSpc(
     tipo: get<string>(p, 'tipo') ?? null,
   }))
 
+  // PEP: insumo 5255 retorna em resultadoInsumoPep
+  const pepObj = get<AnyObj>(raiz, 'resultadoInsumoPep') ?? get<AnyObj>(raiz, 'pep')
+  const pepDetalhes = (get<AnyObj[]>(pepObj, 'detalhePep') ?? []).map(p => ({
+    nome: get<string>(p, 'nome') ?? null,
+    cargo: get<string>(p, 'cargoFuncao') ?? get<string>(p, 'cargo') ?? null,
+  }))
+  const pepQtd = Number(get(pepObj, 'resumo', 'quantidadeTotal') ?? pepDetalhes.length ?? 0)
+  const pep = pepObj ? { tem: pepQtd > 0, qtd: pepQtd, detalhes: pepDetalhes } : undefined
+
+  // Faturamento presumido: insumo 5178
+  const fatObj = get<AnyObj>(raiz, 'faturamentoPresumido')
+  const fatValor = Number(
+    get(fatObj, 'detalheFaturamentoPresumido', '0', 'valorFaturamento') ??
+    (get<AnyObj[]>(fatObj, 'detalheFaturamentoPresumido')?.[0] as AnyObj | undefined)?.valorFaturamento ??
+    get(fatObj, 'resumo', 'valorTotal') ?? 0,
+  )
+  const faturamento_presumido = fatObj && fatValor > 0 ? { valor: fatValor, periodicidade: 'anual' as const } : null
+
   return {
     consumidor: consumidorNorm,
     score,
@@ -274,6 +310,17 @@ export function normalizarPayloadSpc(
     socios: socios.length ? socios : undefined,
     administradores: administradores.length ? administradores : undefined,
     participacoes_em_empresas: participacoes.length ? participacoes : undefined,
+    pep,
+    faturamento_presumido,
     alertas: [],
   }
+}
+
+// Mapeia classe A-F do SPC pra descrição humana
+function mapearClasseScore(classe: string): string {
+  const m: Record<string, string> = {
+    A: 'EXCELENTE', B: 'BOM', C: 'MÉDIO',
+    D: 'BAIXO', E: 'MUITO BAIXO', F: 'INADIMPLENTE',
+  }
+  return m[classe.toUpperCase()] ?? classe
 }

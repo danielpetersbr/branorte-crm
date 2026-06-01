@@ -353,7 +353,7 @@ interface Resumo {
     telefones?: string[]
     email?: string | null
   }
-  score: { valor: number | null; classificacao: string | null }
+  score: { valor: number | null; classificacao: string | null; mensagem?: string | null }
   inadimplencias: {
     qtd: number
     valor_total: number
@@ -363,6 +363,8 @@ interface Resumo {
   socios?: Array<{ nome: string; participacao?: string | null; documento?: string | null }>
   administradores?: Array<{ nome: string; cargo?: string | null }>
   participacoes_em_empresas?: Array<{ nome: string; cnpj?: string | null; tipo?: string | null }>
+  pep?: { tem: boolean; qtd: number; detalhes: Array<{ nome?: string | null; cargo?: string | null }> }
+  faturamento_presumido?: { valor: number; periodicidade?: 'mensal' | 'anual' | null } | null
   alertas?: string[]
 }
 
@@ -698,6 +700,57 @@ function ColunaRisco({ resumo, analise }: { resumo: Resumo; analise: Analise }) 
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {/* Mensagem interpretativa do score (vinda do SPC) */}
+      {r.score.mensagem && (
+        <div className="border-t border-border/30 pt-2 mt-2">
+          <p className="text-[10px] uppercase tracking-wider text-ink-faint font-semibold mb-0.5">
+            Interpretação do Score (SPC)
+          </p>
+          <p className="text-[11px] text-ink-muted italic leading-tight">"{r.score.mensagem}"</p>
+        </div>
+      )}
+
+      {/* PEP — Pessoa Exposta Politicamente */}
+      {r.pep && (
+        <div className="border-t border-border/30 pt-2 mt-2">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-[10px] uppercase tracking-wider font-bold text-ink-faint">
+              PEP — Pessoa Exposta Politicamente
+            </p>
+            <span className={`text-[10px] font-bold ${r.pep.tem ? 'text-danger' : 'text-success'}`}>
+              {r.pep.tem ? `${r.pep.qtd} detectado(s)` : 'Não'}
+            </span>
+          </div>
+          {r.pep.tem && r.pep.detalhes.length > 0 && (
+            <ul className="space-y-0.5">
+              {r.pep.detalhes.map((p, i) => (
+                <li key={i} className="text-[11px] text-ink leading-tight">
+                  • {p.nome ?? '—'}{p.cargo ? ` · ${p.cargo}` : ''}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* Faturamento presumido */}
+      {r.faturamento_presumido && r.faturamento_presumido.valor > 0 && (
+        <div className="border-t border-border/30 pt-2 mt-2">
+          <p className="text-[10px] uppercase tracking-wider text-ink-faint font-semibold mb-0.5">
+            Faturamento Presumido (SPC)
+          </p>
+          <p className="text-[14px] font-mono font-bold text-accent tabular-nums">
+            {fmtBRL(r.faturamento_presumido.valor)}
+            <span className="text-[10px] text-ink-faint font-normal ml-1">
+              / {r.faturamento_presumido.periodicidade ?? 'período'}
+            </span>
+          </p>
+          <p className="text-[9px] text-ink-faint leading-tight">
+            Estimativa estatística baseada em CNAE, capital, tempo de mercado.
+          </p>
         </div>
       )}
 

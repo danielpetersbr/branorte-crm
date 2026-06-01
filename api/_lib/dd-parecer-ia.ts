@@ -61,7 +61,9 @@ interface ResumoSpcInput {
     natureza_juridica?: string | null
     endereco?: string | null
   }
-  score?: { valor: number | null; classificacao: string | null }
+  score?: { valor: number | null; classificacao: string | null; mensagem?: string | null }
+  pep?: { tem: boolean; qtd: number; detalhes: Array<{ nome?: string | null; cargo?: string | null }> }
+  faturamento_presumido?: { valor: number; periodicidade?: string | null } | null
   inadimplencias?: {
     qtd: number
     valor_total: number
@@ -151,9 +153,12 @@ function montarInputJson(spcResumos: ResumoSpcInput[], datajud: DatajudInput | n
     if (c.endereco) partes.push(`- Endereço: ${c.endereco}`)
 
     if (r.score) {
-      partes.push(
-        `- Score: ${r.score.valor ?? 'não disponível'}${r.score.classificacao ? ` (${r.score.classificacao})` : ''}`,
-      )
+      const valorStr = r.score.valor != null ? `${r.score.valor}/1000` : 'não disponível'
+      const classStr = r.score.classificacao ? ` (classe: ${r.score.classificacao})` : ''
+      partes.push(`- Score SPC: ${valorStr}${classStr}`)
+      if (r.score.mensagem) {
+        partes.push(`  → Interpretação SPC: "${r.score.mensagem}"`)
+      }
     }
     if (r.inadimplencias) {
       partes.push(
@@ -166,6 +171,19 @@ function montarInputJson(spcResumos: ResumoSpcInput[], datajud: DatajudInput | n
     if (r.protestos) {
       partes.push(
         `- Protestos: ${r.protestos.qtd} ocorrência(s), total R$ ${r.protestos.valor_total.toFixed(2)}`,
+      )
+    }
+    if (r.pep) {
+      partes.push(
+        `- PEP (Pessoa Exposta Politicamente): ${r.pep.tem ? `SIM — ${r.pep.qtd} registro(s)` : 'Não detectado'}`,
+      )
+      for (const p of r.pep.detalhes ?? []) {
+        partes.push(`  - ${p.nome ?? '—'}${p.cargo ? ` · ${p.cargo}` : ''}`)
+      }
+    }
+    if (r.faturamento_presumido && r.faturamento_presumido.valor > 0) {
+      partes.push(
+        `- Faturamento Presumido SPC: R$ ${r.faturamento_presumido.valor.toLocaleString('pt-BR')}/${r.faturamento_presumido.periodicidade ?? 'período'} (estimativa estatística, considere ±35% margem)`,
       )
     }
     if (r.socios && r.socios.length) {
