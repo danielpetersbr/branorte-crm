@@ -27,6 +27,7 @@ import {
   type AmbienteSpc,
 } from './_lib/spc-client.js'
 import { gerarMockResumo, normalizarPayloadSpc } from './_lib/spc-normalizer.js'
+import { buscarProcessos, type DatajudResultado } from './_lib/datajud-client.js'
 
 export const config = {
   api: {
@@ -220,6 +221,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let statusFinal: 'success' | 'partial' | 'failed' = 'success'
   let erroMsg: string | null = null
 
+  // ─── Datajud (CNJ) — processos judiciais, em paralelo com SPC ───
+  // Grátis, sem auth privada. Busca o doc principal (CNPJ se PJ, CPF se PF).
+  const docDatajud = precisaCnpj && cnpj.length === 14
+    ? cnpj
+    : precisaCpf && cpfSocio.length === 11
+    ? cpfSocio
+    : ''
+  const tipoDatajud: 'F' | 'J' = precisaCnpj ? 'J' : 'F'
+  const datajudPromise: Promise<DatajudResultado | null> = docDatajud
+    ? buscarProcessos({ documento: docDatajud, tipo: tipoDatajud, porTribunal: 5, timeoutMs: 12_000 })
+        .catch(e => ({
+          ok: false,
+          documento: docDatajud,
+          tipoDocumento: tipoDatajud,
+          totalEncontrado: 0,
+          processos: [],
+          resumoTribunais: [],
+          erros: [e instanceof Error ? e.message : String(e)],
+        }))
+    : Promise.resolve(null)
+
   if (SPC_MOCK) {
     // Modo dev: payload fake estruturado (mesmo shape do real, mas com dados ficticios)
     const resumos = planos.map(p => ({
@@ -282,13 +304,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // 7) Update do registro com resultado
+  // 7) Aguarda Datajud (já estava rodando em paralelo)
+  const datajudResultado = await datajudPromise
+
+  // 8) Update do registro com resultado
+  // Custo: SPC cobra de verdade. Datajud é grátis.
   const custoFinal = statusFinal === 'failed' ? 0 : custoEstimado
+  // Se SPC falhou MAS Datajud trouxe dados, considera 'partial' em vez de 'failed'
+  if (statusFinal === 'failed' && datajudResultado && datajudResultado.processos.length > 0) {
+    statusFinal = 'partial'
+    erroMsg = `${erroMsg ?? ''} | Datajud retornou ${datajudResultado.processos.length} processo(s).`.trim()
+  }
 
   const { data: updated, error: updErr } = await supa
     .from('due_diligence_consultas')
     .update({
       resultado_spc: resultadoSpc,
+      resultado_datajud: datajudResultado as unknown as Record<string, unknown> | null,
       status: statusFinal,
       custo_brl: custoFinal,
       erro: erroMsg,

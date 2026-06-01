@@ -480,13 +480,116 @@ function ResultadoBox({
         </p>
       )}
 
+      {/* Datajud — processos judiciais (grátis, CNJ) */}
+      {consulta.resultado_datajud && (
+        <DatajudBox datajud={consulta.resultado_datajud as DatajudPayload} />
+      )}
+
       <details className="border-t border-border/60">
         <summary className="text-[10px] text-ink-faint cursor-pointer hover:text-ink px-3 py-1.5">
           Ver JSON bruto (debug)
         </summary>
         <pre className="text-[9px] font-mono bg-surface-2/60 mx-3 mb-2 p-2 rounded overflow-x-auto max-h-60">
-          {JSON.stringify(consulta.resultado_spc, null, 2)}
+          {JSON.stringify({ spc: consulta.resultado_spc, datajud: consulta.resultado_datajud }, null, 2)}
         </pre>
+      </details>
+    </div>
+  )
+}
+
+// ============================================================================
+// Datajud — processos judiciais (CNJ)
+// ============================================================================
+interface DatajudPayload {
+  ok: boolean
+  documento: string
+  tipoDocumento: 'F' | 'J'
+  totalEncontrado: number
+  processos: Array<{
+    numeroProcesso: string
+    tribunal: string
+    grau: string
+    classe: string
+    assunto: string
+    dataAjuizamento: string | null
+    dataUltimaAtualizacao: string | null
+    orgaoJulgador: string
+  }>
+  resumoTribunais: Array<{ tribunal: string; total: number; retornados: number; erro?: string }>
+  erros: string[]
+}
+
+function DatajudBox({ datajud }: { datajud: DatajudPayload }) {
+  const tem = datajud.processos.length > 0
+  const total = datajud.totalEncontrado
+  return (
+    <div className={`border-t border-border/60 ${tem ? 'bg-warning/5' : 'bg-success/5'}`}>
+      <div className="px-3 py-2 flex items-center gap-2 border-b border-border/40">
+        {tem ? (
+          <AlertCircle className="h-4 w-4 text-warning" />
+        ) : (
+          <CheckCircle className="h-4 w-4 text-success" />
+        )}
+        <span className="text-[12px] font-semibold text-ink">
+          {tem
+            ? `${total} processo${total === 1 ? '' : 's'} judicial${total === 1 ? '' : 'is'} encontrado${total === 1 ? '' : 's'}`
+            : 'Nenhum processo judicial encontrado'}
+        </span>
+        <span className="ml-auto text-[9px] font-mono text-ink-faint uppercase">
+          Datajud · CNJ
+        </span>
+      </div>
+
+      {tem && (
+        <div className="px-3 py-2 space-y-1.5">
+          {datajud.processos.slice(0, 8).map((p, i) => (
+            <div
+              key={i}
+              className="border border-border/50 rounded px-2 py-1.5 bg-surface-2/30"
+            >
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-[11px] font-mono text-ink">{p.numeroProcesso}</span>
+                <span className="text-[9px] font-mono text-ink-faint">
+                  {p.tribunal} · {p.grau}
+                </span>
+              </div>
+              <p className="text-[11px] text-ink-muted leading-tight">
+                <span className="font-semibold">{p.classe}</span>
+                {p.assunto && p.assunto !== '—' && ` · ${p.assunto}`}
+              </p>
+              <div className="flex items-center justify-between mt-0.5 text-[9px] text-ink-faint">
+                <span>{p.orgaoJulgador}</span>
+                <span>
+                  {p.dataAjuizamento && `Ajuiz. ${p.dataAjuizamento}`}
+                  {p.dataUltimaAtualizacao && ` · Atual. ${p.dataUltimaAtualizacao}`}
+                </span>
+              </div>
+            </div>
+          ))}
+          {datajud.processos.length > 8 && (
+            <p className="text-[10px] text-ink-faint text-center pt-1">
+              + {datajud.processos.length - 8} processo(s) — total {total}
+            </p>
+          )}
+        </div>
+      )}
+
+      <details className="px-3 pb-2 text-[10px]">
+        <summary className="cursor-pointer text-ink-faint hover:text-ink">
+          Por tribunal ({datajud.resumoTribunais.length} consultados)
+        </summary>
+        <ul className="mt-1 space-y-0.5">
+          {datajud.resumoTribunais.map((t, i) => (
+            <li key={i} className="flex items-center justify-between">
+              <span className="text-ink-muted">{t.tribunal}</span>
+              <span className={`font-mono ${
+                t.erro ? 'text-danger' : t.total > 0 ? 'text-warning' : 'text-ink-faint'
+              }`}>
+                {t.erro ? `erro: ${t.erro.slice(0, 30)}` : `${t.total} processo(s)`}
+              </span>
+            </li>
+          ))}
+        </ul>
       </details>
     </div>
   )
