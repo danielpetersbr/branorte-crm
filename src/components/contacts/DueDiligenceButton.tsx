@@ -538,7 +538,18 @@ function ResultadoBox({
       {(() => {
         const dossie =
           (consulta.resultado_spc as { dossie_detetive?: DossieDetetive } | null)?.dossie_detetive
-        if (!dossie) return null
+        // Guard mínimo: precisa de objeto com semáforo + alvo (mesmo que campos sejam null)
+        // Sem isso, DossieDetetiveCard quebra ao acessar dossie.alvo.situacao
+        if (!dossie || typeof dossie !== 'object') return null
+        if (!dossie.semaforo || !dossie.alvo) {
+          return (
+            <div className="p-3 border-b border-border/40">
+              <p className="text-[11px] text-ink-faint italic">
+                Dossiê do Detetive Branorte não disponível para esta consulta.
+              </p>
+            </div>
+          )
+        }
         return (
           <div className="p-3 border-b border-border/40">
             <DossieDetetiveCard dossie={dossie} />

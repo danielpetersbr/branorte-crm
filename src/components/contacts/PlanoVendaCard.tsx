@@ -82,6 +82,32 @@ const CENARIOS_META: CenarioMeta[] = [
 // ─── Componente principal ────────────────────────────────────────────────────
 
 export function PlanoVendaCard({ cenarios, recomendado }: PlanoVendaCardProps) {
+  // GUARD: Se cenarios não tem o shape mínimo esperado, não renderiza nada.
+  // Backend (api/dd-consultar.ts) ainda manda Cenario[] (array) em alguns casos,
+  // mas frontend espera {a_vista, prazo_padrao, prazo_estendido}. Sem esse guard,
+  // o acesso a cenarios.prazo_estendido.viavel quebra com "Cannot read properties
+  // of undefined (reading 'viavel')".
+  if (
+    !cenarios ||
+    typeof cenarios !== "object" ||
+    !cenarios.a_vista ||
+    !cenarios.prazo_padrao ||
+    !cenarios.prazo_estendido
+  ) {
+    return (
+      <section className="px-4 py-4 bg-surface-2/30">
+        <header className="flex items-center gap-2 mb-3">
+          <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink">
+            Plano de Venda — 3 Cenários
+          </h3>
+        </header>
+        <p className="text-[11px] text-ink-faint italic">
+          Plano de Venda não disponível para esta consulta.
+        </p>
+      </section>
+    )
+  }
+
   return (
     <section className="px-4 py-4 bg-surface-2/30">
       <header className="flex items-center gap-2 mb-3">
@@ -96,10 +122,12 @@ export function PlanoVendaCard({ cenarios, recomendado }: PlanoVendaCardProps) {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {CENARIOS_META.map((meta) => {
           const cenario = cenarios[meta.key]
+          // Skip silencioso se o cenário individual não existe (defensive)
+          if (!cenario) return null
           const isRecomendado = recomendado === meta.key
           const isInviavel =
             meta.key === "prazo_estendido" &&
-            (cenarios.prazo_estendido.viavel === false)
+            (cenarios?.prazo_estendido?.viavel === false)
 
           return (
             <CenarioCardView
@@ -184,7 +212,7 @@ function CenarioCardView({
           Limite aprovado
         </p>
         <p className="text-3xl font-mono font-bold tabular-nums text-ink leading-none">
-          {formatBRL(cenario.limite_brl)}
+          {formatBRL(cenario?.limite_brl)}
         </p>
         {condicaoExtra && (
           <p className="text-sm text-ink-muted mt-1.5 leading-tight">
@@ -198,13 +226,13 @@ function CenarioCardView({
         <p className="text-[9px] uppercase tracking-wider text-ink-faint mb-1.5">
           Requisitos antes de fechar
         </p>
-        {(cenario.requisitos ?? []).length === 0 ? (
+        {(cenario?.requisitos ?? []).length === 0 ? (
           <p className="text-[11px] text-success italic">
             Nenhum — pode fechar direto.
           </p>
         ) : (
           <ul className="space-y-1">
-            {(cenario.requisitos ?? []).map((req, i) => {
+            {(cenario?.requisitos ?? []).map((req, i) => {
               const item = normalizarRequisito(req)
               const isDoc = item.tipo === "documento"
               return (
@@ -230,8 +258,8 @@ function CenarioCardView({
         <p className="text-[10px] text-ink-muted">
           Aprovação interna:{" "}
           <span className="font-bold tabular-nums text-ink">
-            {cenario.prazo_aprovacao_dias}{" "}
-            {cenario.prazo_aprovacao_dias === 1 ? "dia" : "dias"}
+            {cenario?.prazo_aprovacao_dias ?? "—"}{" "}
+            {cenario?.prazo_aprovacao_dias === 1 ? "dia" : "dias"}
           </span>
         </p>
       </footer>
@@ -273,9 +301,10 @@ function obterCondicaoExtra(
   key: CenarioKey,
   cenario: CenarioAVista | CenarioPrazoPadrao | CenarioPrazoEstendido,
 ): string | null {
+  if (!cenario) return null
   if (key === "a_vista") {
     const c = cenario as CenarioAVista
-    if (c.desconto_pct > 0) {
+    if ((c.desconto_pct ?? 0) > 0) {
       return `Desconto de ${c.desconto_pct}% sobre o valor de tabela`
     }
     return null

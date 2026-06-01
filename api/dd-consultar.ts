@@ -47,9 +47,74 @@ import {
 } from './_lib/apify-instagram-client.js'
 import {
   calcularDossie,
+  type Cenario,
   type DetetiveInput,
   type DossieResultado,
 } from './_lib/detetive-scoring.js'
+
+// ============================================================================
+// Adapter: Cenario[] (scoring) → {a_vista, prazo_padrao, prazo_estendido}
+// (shape esperado pelo PlanoVendaCard no frontend)
+// ============================================================================
+
+/**
+ * Transforma o array de cenários do scoring no objeto que o PlanoVendaCard
+ * espera. Backend gera 4 tipos (`a_vista`, `prazo_curto`, `prazo_longo`, `finame`)
+ * mas frontend espera 3 chaves fixas. Mapeamento:
+ *   - a_vista       ← cenário tipo `a_vista`
+ *   - prazo_padrao  ← cenário tipo `prazo_curto`
+ *   - prazo_estendido ← cenário tipo `finame` (ou `prazo_longo` como fallback)
+ *
+ * Inviabilidade do `prazo_estendido` é derivada de:
+ *   semaforo === 'vermelho' && limite_max_brl === 0
+ * (definição segundo `Cenario` em detetive-scoring.ts).
+ *
+ * Retorna `null` se não houver cenários suficientes para montar o trio mínimo
+ * — neste caso o frontend não renderiza o PlanoVendaCard (graças aos guards).
+ */
+function adaptarCenariosParaFrontend(cenarios: Cenario[] | undefined | null) {
+  if (!Array.isArray(cenarios) || cenarios.length === 0) return null
+
+  const byTipo = (tipo: Cenario['tipo']) => cenarios.find(c => c?.tipo === tipo)
+
+  const aVistaRaw = byTipo('a_vista')
+  const prazoCurtoRaw = byTipo('prazo_curto')
+  // Preferir FINAME pra prazo_estendido; fallback pra prazo_longo
+  const prazoEstendidoRaw = byTipo('finame') ?? byTipo('prazo_longo')
+
+  // Se algum dos 3 essenciais não existe, falha o trio → não renderiza
+  if (!aVistaRaw || !prazoCurtoRaw || !prazoEstendidoRaw) return null
+
+  // Desconto à vista: cenario não tem campo direto, mas alguns sistemas
+  // codificam na entrada_minima_pct. Como o motor não emite, fica 0.
+  const a_vista = {
+    limite_brl: aVistaRaw.limite_max_brl ?? 0,
+    desconto_pct: 0,
+    requisitos: aVistaRaw.exigencias ?? [],
+    prazo_aprovacao_dias: aVistaRaw.prazo_aprovacao_interna_dias ?? 0,
+  }
+
+  const prazo_padrao = {
+    limite_brl: prazoCurtoRaw.limite_max_brl ?? 0,
+    condicao: prazoCurtoRaw.condicao ?? '',
+    requisitos: prazoCurtoRaw.exigencias ?? [],
+    prazo_aprovacao_dias: prazoCurtoRaw.prazo_aprovacao_interna_dias ?? 0,
+  }
+
+  const inviavel =
+    prazoEstendidoRaw.semaforo === 'vermelho' &&
+    (prazoEstendidoRaw.limite_max_brl ?? 0) === 0
+
+  const prazo_estendido = {
+    limite_brl: prazoEstendidoRaw.limite_max_brl ?? 0,
+    condicao: prazoEstendidoRaw.condicao ?? '',
+    requisitos: prazoEstendidoRaw.exigencias ?? [],
+    prazo_aprovacao_dias: prazoEstendidoRaw.prazo_aprovacao_interna_dias ?? 0,
+    viavel: !inviavel,
+  }
+
+  return { a_vista, prazo_padrao, prazo_estendido }
+}
 
 export const config = {
   api: {
@@ -624,7 +689,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       sub_scores: dossieDetetive.sub_scores,
       limite_sugerido_brl: dossieDetetive.limite_sugerido_brl,
       condicao_recomendada: dossieDetetive.condicao_default,
-      cenarios: dossieDetetive.cenarios,
+      // Transforma Cenario[] (4 tipos) em {a_vista, prazo_padrao, prazo_estendido}
+      // (3 chaves fixas) que o PlanoVendaCard.tsx espera. Se a transformação
+      // não conseguir montar o trio mínimo, retorna null e o frontend renderiza
+      // placeholder "Plano de Venda não disponível".
+      cenarios: adaptarCenariosParaFrontend(dossieDetetive.cenarios),
       // Campos que o card frontend espera mas que o motor não calcula:
       alvo: {
         razao_social: opencnpjResultado?.razao_social ?? null,

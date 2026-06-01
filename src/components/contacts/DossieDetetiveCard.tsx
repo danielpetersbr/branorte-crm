@@ -337,17 +337,31 @@ const SITUACAO_BADGE: Record<string, string> = {
 // ============================================================================
 
 export function DossieDetetiveCard({ dossie, onReinvestigar }: Props) {
-  const semaforoCfg = SEMAFORO_CONFIG[dossie.semaforo]
+  // Defensive: se dossie.semaforo for valor inesperado, cai pro amarelo (atenção).
+  // O guard no DueDiligenceButton já protege contra dossie vazio, mas o tipo
+  // 'verde'|'amarelo'|'vermelho' pode vir como qualquer string em runtime.
+  const semaforoCfg = SEMAFORO_CONFIG[dossie?.semaforo] ?? SEMAFORO_CONFIG.amarelo
   const SemaforoIcon = semaforoCfg.icon
 
-  const situacao = dossie.alvo.situacao?.toUpperCase() ?? ''
+  const situacao = dossie?.alvo?.situacao?.toUpperCase() ?? ''
   const situacaoClass = SITUACAO_BADGE[situacao] ?? 'bg-surface-2 text-ink-muted border-border'
 
   const nomeExibicao =
-    dossie.alvo.nome_fantasia?.trim() || dossie.alvo.razao_social?.trim() || 'Empresa sem nome'
+    dossie?.alvo?.nome_fantasia?.trim() || dossie?.alvo?.razao_social?.trim() || 'Empresa sem nome'
 
   const sinaisPositivos = derivarSinaisPositivos(dossie)
-  const temCenarios = !!dossie.cenarios
+  // GUARD profundo: só considera "temCenarios" se o shape completo está presente.
+  // Backend (dd-consultar.ts) às vezes manda Cenario[] (array do scoring) em vez
+  // do objeto {a_vista, prazo_padrao, prazo_estendido} esperado pelo PlanoVendaCard.
+  // Sem esse guard, o card renderiza e quebra em `cenarios.prazo_estendido.viavel`.
+  const cenariosObj = dossie.cenarios as PlanoVendaCardProps['cenarios'] | undefined | unknown[]
+  const temCenarios =
+    !!cenariosObj &&
+    typeof cenariosObj === 'object' &&
+    !Array.isArray(cenariosObj) &&
+    !!(cenariosObj as PlanoVendaCardProps['cenarios']).a_vista &&
+    !!(cenariosObj as PlanoVendaCardProps['cenarios']).prazo_padrao &&
+    !!(cenariosObj as PlanoVendaCardProps['cenarios']).prazo_estendido
   const temLimite = typeof dossie.limite_sugerido_brl === 'number' && dossie.limite_sugerido_brl > 0
   const temSubScores = !!dossie.sub_scores
 
@@ -556,10 +570,11 @@ export function DossieDetetiveCard({ dossie, onReinvestigar }: Props) {
       </div>
 
       {/* ====== PLANO DE VENDA (3 CENÁRIOS) ====== */}
+      {/* Só renderiza se cenários tem o shape completo (verificado em temCenarios) */}
       {temCenarios && dossie.cenarios && (
         <div className="border-b border-border/40">
           <PlanoVendaCard
-            cenarios={dossie.cenarios}
+            cenarios={dossie.cenarios as PlanoVendaCardProps['cenarios']}
             recomendado={mapCondicaoToCenarioKey(dossie.condicao_recomendada)}
           />
         </div>
