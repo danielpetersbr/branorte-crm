@@ -42,6 +42,10 @@ import {
   type EnderecoCompartilhadoInfo,
 } from './_lib/brasil-api-client.js'
 import {
+  buscarInstagramEmpresa,
+  type InstagramPerfilResultado,
+} from './_lib/apify-instagram-client.js'
+import {
   calcularDossie,
   type DetetiveInput,
   type DossieResultado,
@@ -435,11 +439,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ? detectarEnderecoCompartilhado(cepDoEndereco, numeroDoEndereco).catch(() => null)
     : Promise.resolve(null)
 
-  const [noticiasResultado, cepResultado, enderecoCompartilhado] = await Promise.all([
-    noticiasPromise,
-    cepPromise,
-    enderecoCompartilhadoPromise,
-  ])
+  // ─── Apify Instagram — só roda pra PJ, usa razão social pra inferir handle ───
+  // Best-effort: se Apify falhar/token ausente/timeout, segue sem o IG (graceful).
+  // razaoParaNoticias serve aqui também (já é razão do OpenCNPJ ou fallback SPC).
+  const razaoParaInstagram = razaoParaNoticias
+  const fantasiaParaInstagram = opencnpjResultado?.nome_fantasia ?? null
+  const capitalSocialBrl = opencnpjResultado?.capital_social ?? null
+  const instagramPromise: Promise<InstagramPerfilResultado | null> =
+    (tipoConsulta === 'pj' || tipoConsulta === 'ambos') && razaoParaInstagram
+      ? buscarInstagramEmpresa({
+          razaoSocial: razaoParaInstagram,
+          nomeFantasia: fantasiaParaInstagram,
+          cnpj: precisaCnpj ? cnpj : undefined,
+          // Capital social é proxy fraco de faturamento; só passa se >0 pra evitar ruído.
+          faturamentoDeclaradoBrl:
+            capitalSocialBrl != null && capitalSocialBrl > 0 ? capitalSocialBrl : null,
+          timeoutMs: 25_000,
+        }).catch((e) => ({
+          ok: false,
+          perfil_encontrado: false,
+          red_flags: [],
+          custo_estimado_usd: 0,
+          erro: e instanceof Error ? e.message : String(e),
+          fonte: null,
+        }) as InstagramPerfilResultado)
+      : Promise.resolve(null)
+
+  const [noticiasResultado, cepResultado, enderecoCompartilhado, instagramResultado] =
+    await Promise.all([
+      noticiasPromise,
+      cepPromise,
+      enderecoCompartilhadoPromise,
+      instagramPromise,
+    ])
 
   // 7.0.2) Persistência do Portal Transparência + Detetive:
   // ESCOLHA DE PERSISTÊNCIA — IMPORTANTE LER ANTES DE MEXER:
@@ -463,6 +495,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     cep: cepResultado,
     endereco_compartilhado: enderecoCompartilhado,
   }
+  ;(resultadoSpc as Record<string, unknown>).instagram = instagramResultado
 
   // 7.0.3) Cálculo do Dossiê do Detetive — consolida tudo em score 0-100 + semáforo
   let dossieDetetive: DossieResultado | null = null
@@ -523,6 +556,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               }
             : null,
         socios_reverso: [], // reverso de sócios não está disponível em fontes públicas
+        instagram: instagramResultado
+          ? {
+              perfil_encontrado: instagramResultado.perfil_encontrado,
+              privado: instagramResultado.privado,
+              seguidores: instagramResultado.seguidores,
+              total_posts: instagramResultado.total_posts,
+              data_ultimo_post: instagramResultado.data_ultimo_post ?? null,
+              red_flags: instagramResultado.red_flags,
+            }
+          : null,
       }
       dossieDetetive = calcularDossie(detetiveInput)
     } catch (e) {
@@ -554,6 +597,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
       pegada_digital: {
         google_maps_url: cepResultado?.google_maps_url ?? undefined,
+        instagram:
+          instagramResultado && instagramResultado.ok
+            ? {
+                perfil_encontrado: instagramResultado.perfil_encontrado,
+                handle: instagramResultado.handle ?? null,
+                url: instagramResultado.url ?? null,
+                bio: instagramResultado.bio ?? null,
+                categoria: instagramResultado.categoria ?? null,
+                seguidores: instagramResultado.seguidores,
+                total_posts: instagramResultado.total_posts,
+                data_ultimo_post: instagramResultado.data_ultimo_post ?? null,
+                privado: instagramResultado.privado,
+                verificado: instagramResultado.verificado,
+              }
+            : undefined,
       },
       sancoes: portalResultado
         ? {
@@ -582,6 +640,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         datajudResultado?.ok ? 'DataJud (CNJ)' : null,
         noticiasResultado?.ok ? 'GDELT + Google News' : null,
         cepResultado?.ok ? 'BrasilAPI (CEP)' : null,
+        instagramResultado?.ok
+          ? `Instagram (Apify${instagramResultado.fonte ? ` · ${instagramResultado.fonte}` : ''})`
+          : null,
         'SPC Brasil',
       ].filter((s): s is string => !!s),
       investigado_em: new Date().toISOString(),

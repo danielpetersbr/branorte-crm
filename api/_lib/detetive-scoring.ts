@@ -49,6 +49,14 @@ export interface DetetiveInput {
     qtd_empresas: number
     cnaes_distintos: number
   }>
+  instagram?: {
+    perfil_encontrado: boolean
+    privado?: boolean
+    seguidores?: number
+    total_posts?: number
+    data_ultimo_post?: string | null // ISO date
+    red_flags?: Array<{ id: string; descricao: string; severidade: 'baixa' | 'media' | 'alta' }>
+  } | null
 }
 
 // ============================================================================
@@ -144,6 +152,29 @@ const ENDERECO_COMPARTILHADO_LIMITE = 5
  */
 const SOCIO_EMPRESAS_LIMITE = 5
 const SOCIO_CNAES_DISTINTOS_LIMITE = 3
+
+/**
+ * Flag 11 (IG ausente em empresa de ticket alto):
+ * - Ticket > R$ 50k
+ * - Empresa com mais de 2 anos (730 dias)
+ * - Sem perfil IG encontrado
+ */
+const TICKET_ALTO_IG_AUSENTE_BRL = 50_000
+const EMPRESA_MADURA_DIAS = 730 // 2 anos
+
+/**
+ * Flag 12 (IG mismatch porte):
+ * - Seguidores < 50
+ * - E (faturamento/presumido alto OU empresa antiga >5 anos)
+ */
+const IG_SEGUIDORES_BAIXO = 50
+const EMPRESA_ANTIGA_DIAS = 1825 // 5 anos
+
+/**
+ * Flag 13 (IG abandonado):
+ * - Ultimo post ha mais de 12 meses (365 dias)
+ */
+const IG_ULTIMO_POST_DIAS_LIMITE = 365
 
 // ============================================================================
 // HELPERS
@@ -386,11 +417,88 @@ function avaliarFlag10_EmpresaJovemTicketAlto(input: DetetiveInput): RedFlag | n
   }
 }
 
+function avaliarFlag11_IGAusenteTicketAlto(input: DetetiveInput): RedFlag | null {
+  const ticket = input.ticket_pedido
+  const dias = diasDesde(input.opencnpj?.data_abertura ?? null)
+  const ig = input.instagram
+  if (ticket == null || ticket <= TICKET_ALTO_IG_AUSENTE_BRL) return null
+  if (dias == null || dias <= EMPRESA_MADURA_DIAS) return null
+  // Se IG vier null/undefined, considera "nao buscado" -> nao flagueia
+  // So flagueia se ig foi consultado E perfil_encontrado=false
+  if (!ig) return null
+  if (ig.perfil_encontrado) return null
+  return {
+    id: 11,
+    peso: 2,
+    nome: 'Empresa madura de ticket alto sem presenca digital (Instagram)',
+    descricao: `Empresa aberta ha ${dias} dias com pedido de R$ ${ticket.toLocaleString('pt-BR')} (> R$ ${TICKET_ALTO_IG_AUSENTE_BRL.toLocaleString('pt-BR')}) nao possui perfil no Instagram. Sinal de baixa presenca digital.`,
+    evidencia: {
+      ticket_pedido: ticket,
+      dias_desde_abertura: dias,
+      perfil_encontrado: false,
+      limite_ticket: TICKET_ALTO_IG_AUSENTE_BRL,
+      limite_dias_empresa_madura: EMPRESA_MADURA_DIAS,
+    },
+  }
+}
+
+function avaliarFlag12_IGMismatchPorte(input: DetetiveInput): RedFlag | null {
+  const ig = input.instagram
+  if (!ig || !ig.perfil_encontrado) return null
+  const seguidores = ig.seguidores
+  if (seguidores == null || seguidores >= IG_SEGUIDORES_BAIXO) return null
+  const dias = diasDesde(input.opencnpj?.data_abertura ?? null)
+  const empresaAntiga = dias != null && dias > EMPRESA_ANTIGA_DIAS
+  // Heuristica de "faturamento alto" sem dados diretos: usa ticket alto como proxy
+  const ticket = input.ticket_pedido
+  const faturamentoPresumidoAlto = ticket != null && ticket >= TICKET_ALTO_BRL
+  if (!empresaAntiga && !faturamentoPresumidoAlto) return null
+  const motivos: string[] = []
+  if (empresaAntiga) motivos.push(`empresa antiga (${dias} dias)`)
+  if (faturamentoPresumidoAlto)
+    motivos.push(`ticket elevado (R$ ${ticket!.toLocaleString('pt-BR')})`)
+  return {
+    id: 12,
+    peso: 3,
+    nome: 'Instagram com seguidores incompativeis com porte da empresa',
+    descricao: `Perfil com apenas ${seguidores} seguidores (< ${IG_SEGUIDORES_BAIXO}) destoa do perfil esperado: ${motivos.join(' e ')}.`,
+    evidencia: {
+      seguidores,
+      limite_seguidores_baixo: IG_SEGUIDORES_BAIXO,
+      dias_desde_abertura: dias ?? null,
+      empresa_antiga: empresaAntiga,
+      ticket_pedido: ticket ?? null,
+      faturamento_presumido_alto: faturamentoPresumidoAlto,
+    },
+  }
+}
+
+function avaliarFlag13_IGAbandonado(input: DetetiveInput): RedFlag | null {
+  const ig = input.instagram
+  if (!ig || !ig.perfil_encontrado) return null
+  const ultimoPost = ig.data_ultimo_post
+  if (!ultimoPost) return null
+  const diasSemPostar = diasDesde(ultimoPost)
+  if (diasSemPostar == null) return null
+  if (diasSemPostar <= IG_ULTIMO_POST_DIAS_LIMITE) return null
+  return {
+    id: 13,
+    peso: 3,
+    nome: 'Instagram abandonado (sem posts ha mais de 12 meses)',
+    descricao: `Ultimo post no Instagram ha ${diasSemPostar} dias (> ${IG_ULTIMO_POST_DIAS_LIMITE}). Empresa pode estar inativa ou paralisada.`,
+    evidencia: {
+      data_ultimo_post: ultimoPost,
+      dias_sem_postar: diasSemPostar,
+      limite_dias: IG_ULTIMO_POST_DIAS_LIMITE,
+    },
+  }
+}
+
 // ============================================================================
 // MOTOR PRINCIPAL
 // ============================================================================
 
-const MAX_SCORE = 43 // soma dos pesos: 5+4+5+4+3+5+5+4+5+3
+const MAX_SCORE = 51 // soma dos pesos: 5+4+5+4+3+5+5+4+5+3+2+3+3
 
 function gerarRecomendacao(
   semaforo: 'verde' | 'amarelo' | 'vermelho',
@@ -449,13 +557,22 @@ function gerarAcoesSugeridas(
     if (flag.id === 8) {
       acoes.push('Detalhar com o juridico os processos em aberto (consultar DataJud diretamente).')
     }
+    if (flag.id === 11) {
+      acoes.push('Pedir referencias comerciais ja que a empresa nao tem presenca digital relevante.')
+    }
+    if (flag.id === 12) {
+      acoes.push('Verificar se o faturamento declarado e coerente com presenca online.')
+    }
+    if (flag.id === 13) {
+      acoes.push('Empresa pode estar parada - confirmar atividade comercial recente.')
+    }
   }
 
   return acoes
 }
 
 export function calcularDossie(input: DetetiveInput): DossieResultado {
-  // Avalia todas as 10 flags
+  // Avalia todas as 13 flags
   const avaliacoes: Array<RedFlag | null> = [
     avaliarFlag1_CapitalDesproporcional(input),
     avaliarFlag2_EnderecoCompartilhado(input),
@@ -467,6 +584,9 @@ export function calcularDossie(input: DetetiveInput): DossieResultado {
     avaliarFlag8_ProcessosCrescentes(input),
     avaliarFlag9_NoticiasNegativas(input),
     avaliarFlag10_EmpresaJovemTicketAlto(input),
+    avaliarFlag11_IGAusenteTicketAlto(input),
+    avaliarFlag12_IGMismatchPorte(input),
+    avaliarFlag13_IGAbandonado(input),
   ]
 
   const redFlags = avaliacoes.filter((f): f is RedFlag => f !== null)

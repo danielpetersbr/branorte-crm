@@ -1,0 +1,594 @@
+// Cliente do Apify Instagram Profile Scraper.
+//
+// ⚠️ LGPD — ATENÇÃO:
+//   Perfis pessoais de sócios/diretores carregam dado pessoal (nome, foto,
+//   localização, hábitos) e exigem base legal documentada (legítimo interesse
+//   com LIA + transparência ao titular). MVP foca SÓ no perfil EMPRESARIAL
+//   inferido pela razão social / nome fantasia, que é considerado dado de
+//   pessoa jurídica (fora do escopo LGPD na maior parte das interpretações).
+//   Perfil de sócio = Fase C (back-office, com aprovação jurídica antes).
+//
+// ENDPOINTS APIFY:
+//   POST https://api.apify.com/v2/acts/{actorId}/run-sync-get-dataset-items
+//        ?token={APIFY_TOKEN}
+//   actorId recomendado: apify~instagram-profile-scraper
+//     (URL encoded: o "/" do "apify/instagram-profile-scraper" vira "~")
+//   Body: { "usernames": ["nomedoperfil"] }  ou  { "directUrls": [...] }
+//   Custo: ~$0.003 por perfil (free tier $5/mês ≈ 1600 consultas)
+//
+// ESTRATÉGIA:
+//   1) Tenta inferir handle pela razão social / nome fantasia (slugify).
+//   2) Roda Apify com o(s) candidato(s) — se vier dado, ótimo.
+//   3) Se não veio nada, faz busca Google "site:instagram.com {razao}" e
+//      pega o 1º handle do resultado, depois chama Apify de novo.
+//   4) Se ainda nada → { ok: true, perfil_encontrado: false }.
+//
+//   Custo é incrementado a cada CHAMADA ao actor (não por candidato dentro
+//   do mesmo run), pra refletir o billing real do Apify.
+//
+// CONFIG:
+//   env APIFY_TOKEN (lido de process.env). Ausente → graceful error.
+//   timeout default 25s (Apify sync pode demorar 5–15s).
+
+export interface InstagramRedFlag {
+  id: string
+  descricao: string
+  severidade: 'baixa' | 'media' | 'alta'
+}
+
+export interface InstagramPerfilResultado {
+  ok: boolean
+  perfil_encontrado: boolean
+  handle?: string | null // "@nomeperfil" sem @
+  url?: string | null // https://instagram.com/perfil
+  nome_exibicao?: string | null // nome do perfil
+  bio?: string | null
+  categoria?: string | null // ex: "Empresa local", "Marca"
+  seguidores?: number
+  seguindo?: number
+  total_posts?: number
+  data_ultimo_post?: string | null // ISO date
+  privado?: boolean
+  verificado?: boolean
+  email_bio?: string | null // se na bio
+  telefone_bio?: string | null
+  site_bio?: string | null
+  fotos_perfil_url?: string | null
+  red_flags?: InstagramRedFlag[]
+  custo_estimado_usd?: number // pra accounting
+  erro?: string | null
+  fonte?: 'apify-direct' | 'apify-via-google' | null
+}
+
+const APIFY_ACTOR_ID = 'apify~instagram-profile-scraper'
+const APIFY_BASE = 'https://api.apify.com/v2'
+const TIMEOUT_DEFAULT_MS = 25_000
+const CUSTO_POR_RUN_USD = 0.003
+
+// Faturamento declarado que dispara red flag de mismatch (R$ 1M/ano).
+const FATURAMENTO_MISMATCH_THRESHOLD_BRL = 1_000_000
+
+// ---------- helpers básicos ----------
+
+function so(v: unknown): string | null {
+  const s = (v == null ? '' : String(v)).trim()
+  return s || null
+}
+
+function stripDiacritics(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '')
+}
+
+function slugifyHandle(s: string): string {
+  // IG handle: lowercase, [a-z0-9._], sem espaço, max 30.
+  return stripDiacritics(s.toLowerCase())
+    .replace(/&/g, ' e ')
+    .replace(/[^a-z0-9._]+/g, '')
+    .replace(/^\.+|\.+$/g, '')
+    .slice(0, 30)
+}
+
+function normalizeHandle(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  let h = String(raw).trim()
+  // Aceita @nome, https://instagram.com/nome, https://www.instagram.com/nome/
+  h = h.replace(/^https?:\/\/(www\.)?instagram\.com\//i, '')
+  h = h.replace(/^@/, '')
+  h = h.replace(/\/.*$/, '') // remove path depois do handle
+  h = h.replace(/\?.*$/, '') // remove query
+  h = h.toLowerCase().trim()
+  if (!/^[a-z0-9._]{1,30}$/.test(h)) return null
+  // Filtra paths que não são handle.
+  const blacklist = new Set([
+    'p',
+    'reel',
+    'reels',
+    'tv',
+    'explore',
+    'accounts',
+    'directory',
+    'stories',
+    'about',
+    'developer',
+    'developers',
+    'legal',
+    'privacy',
+    'terms',
+    'help',
+  ])
+  if (blacklist.has(h)) return null
+  return h
+}
+
+async function fetchComTimeout(
+  url: string,
+  init?: RequestInit,
+  ms = TIMEOUT_DEFAULT_MS,
+): Promise<Response> {
+  const ctrl = new AbortController()
+  const t = setTimeout(() => ctrl.abort(), ms)
+  try {
+    return await fetch(url, { ...(init || {}), signal: ctrl.signal })
+  } finally {
+    clearTimeout(t)
+  }
+}
+
+// ---------- extração de bio (email / fone / site) ----------
+
+function extrairEmailDaBio(bio: string | null | undefined): string | null {
+  if (!bio) return null
+  const m = bio.match(/[\w.+\-]+@[\w\-]+\.[\w\-.]+/)
+  return m ? m[0].toLowerCase() : null
+}
+
+function extrairTelefoneDaBio(bio: string | null | undefined): string | null {
+  if (!bio) return null
+  // Captura formatos BR: (XX) XXXXX-XXXX, XX XXXXXXXXX, +55..., etc.
+  const cleaned = bio.replace(/[^\d+()\-\s]/g, ' ')
+  const m = cleaned.match(/(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)?\d{4,5}[-\s]?\d{4}/)
+  if (!m) return null
+  const onlyDigits = m[0].replace(/\D/g, '')
+  if (onlyDigits.length < 10 || onlyDigits.length > 13) return null
+  return m[0].trim()
+}
+
+function extrairSiteDaBio(
+  bio: string | null | undefined,
+  externalUrl: string | null | undefined,
+): string | null {
+  const direct = so(externalUrl)
+  if (direct) return direct
+  if (!bio) return null
+  const m = bio.match(/https?:\/\/[^\s]+/i)
+  return m ? m[0] : null
+}
+
+// ---------- red flags ----------
+
+function calcularRedFlags(opts: {
+  perfilEncontrado: boolean
+  privado: boolean
+  totalPosts: number | null
+  seguidores: number | null
+  dataUltimoPost: string | null
+  faturamentoDeclaradoBrl?: number | null
+}): InstagramRedFlag[] {
+  const flags: InstagramRedFlag[] = []
+  if (!opts.perfilEncontrado) return flags // sem perfil ≠ red flag
+
+  // 0 posts ou perfil completamente vazio → alta
+  if (opts.totalPosts !== null && opts.totalPosts === 0) {
+    flags.push({
+      id: 'ig_zero_posts',
+      descricao: 'Perfil sem nenhum post publicado',
+      severidade: 'alta',
+    })
+  }
+
+  // Conta nova/baixa atividade: total_posts < 5 + sem post recente → media
+  // (proxy pra "perfil criado há pouco" — Apify não retorna data de criação)
+  if (
+    opts.totalPosts !== null &&
+    opts.totalPosts > 0 &&
+    opts.totalPosts < 5 &&
+    opts.dataUltimoPost
+  ) {
+    const dias = diasDesde(opts.dataUltimoPost)
+    if (dias !== null && dias > 90) {
+      flags.push({
+        id: 'ig_perfil_quase_vazio',
+        descricao:
+          'Perfil com menos de 5 posts e sem atividade recente (proxy de conta nova)',
+        severidade: 'media',
+      })
+    }
+  }
+
+  // Sem post há 6+ meses → media
+  if (opts.dataUltimoPost) {
+    const dias = diasDesde(opts.dataUltimoPost)
+    if (dias !== null && dias >= 180) {
+      flags.push({
+        id: 'ig_sem_post_recente',
+        descricao: `Sem novo post há ${dias} dias (>= 6 meses)`,
+        severidade: 'media',
+      })
+    }
+  }
+
+  // Faturamento declarado >R$ 1M mas < 50 seguidores → media
+  if (
+    opts.faturamentoDeclaradoBrl != null &&
+    opts.faturamentoDeclaradoBrl >= FATURAMENTO_MISMATCH_THRESHOLD_BRL &&
+    opts.seguidores !== null &&
+    opts.seguidores < 50
+  ) {
+    flags.push({
+      id: 'ig_seguidores_vs_faturamento',
+      descricao:
+        'Empresa declara faturar > R$ 1 mi mas tem menos de 50 seguidores no Instagram',
+      severidade: 'media',
+    })
+  }
+
+  // Perfil privado → baixa (marca pra revisão manual)
+  if (opts.privado) {
+    flags.push({
+      id: 'ig_perfil_privado',
+      descricao: 'Perfil privado — revisar manualmente',
+      severidade: 'baixa',
+    })
+  }
+
+  return flags
+}
+
+function diasDesde(iso: string | null | undefined): number | null {
+  if (!iso) return null
+  const t = Date.parse(iso)
+  if (Number.isNaN(t)) return null
+  return Math.floor((Date.now() - t) / (1000 * 60 * 60 * 24))
+}
+
+// ---------- candidatos de handle (inferência) ----------
+
+function gerarCandidatosHandle(
+  razaoSocial: string,
+  nomeFantasia: string | null | undefined,
+): string[] {
+  const candidatos = new Set<string>()
+  const fontes: string[] = []
+
+  if (nomeFantasia) fontes.push(nomeFantasia)
+  fontes.push(razaoSocial)
+
+  for (const fonte of fontes) {
+    const limpo = stripDiacritics(fonte.toLowerCase())
+      // Remove sufixos societários comuns.
+      .replace(
+        /\b(ltda|me|epp|eireli|s\/?a|sa|s\.a\.|comercio|com\.|industria|ind\.|servicos|do brasil)\b\.?/g,
+        ' ',
+      )
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    // Variação 1: tudo junto (espaços removidos).
+    const v1 = slugifyHandle(limpo)
+    if (v1.length >= 3) candidatos.add(v1)
+
+    // Variação 2: primeira palavra significativa.
+    const primeira = limpo.split(/\s+/)[0]
+    if (primeira) {
+      const v2 = slugifyHandle(primeira)
+      if (v2.length >= 3) candidatos.add(v2)
+    }
+
+    // Variação 3: palavras separadas por "_" ou ".".
+    const palavras = limpo
+      .split(/\s+/)
+      .filter((p) => p.length > 1)
+      .map(slugifyHandle)
+      .filter((p) => p.length > 0)
+    if (palavras.length >= 2) {
+      candidatos.add(palavras.join('_').slice(0, 30))
+      candidatos.add(palavras.join('.').slice(0, 30))
+    }
+  }
+
+  // Tira candidatos genéricos demais.
+  const blacklist = new Set(['', 'a', 'o', 'de', 'da', 'do', 'e'])
+  return Array.from(candidatos).filter((c) => c.length >= 3 && !blacklist.has(c))
+}
+
+// ---------- busca via Google (fallback) ----------
+
+async function buscarHandleViaGoogle(razaoSocial: string): Promise<string | null> {
+  // Usa Google News? Não — usa busca via DuckDuckGo HTML, que costuma deixar
+  // raspar resultados sem auth. Se falhar, retorna null e segue a vida.
+  const query = `site:instagram.com ${razaoSocial}`
+  const url = `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`
+  try {
+    const res = await fetchComTimeout(
+      url,
+      {
+        headers: {
+          Accept: 'text/html,application/xhtml+xml',
+          'User-Agent':
+            'Mozilla/5.0 (compatible; BranorteCRM-DueDiligence/1.0; +https://branorte-crm.vercel.app)',
+        },
+      },
+      10_000,
+    )
+    if (!res.ok) return null
+    const html = await res.text().catch(() => '')
+    if (!html) return null
+
+    // DuckDuckGo HTML usa /l/?uddg=ENCODED_URL nos links. Vamos extrair tudo
+    // que aponta pra instagram.com e pegar o primeiro handle válido.
+    const candidatos: string[] = []
+    const re = /https?:\/\/(?:www\.)?instagram\.com\/([A-Za-z0-9._]{1,30})/gi
+    let m: RegExpExecArray | null
+    while ((m = re.exec(html)) !== null) {
+      const h = normalizeHandle(m[1])
+      if (h) candidatos.push(h)
+    }
+    // Pega o mais frequente.
+    if (candidatos.length === 0) return null
+    const freq = new Map<string, number>()
+    for (const c of candidatos) freq.set(c, (freq.get(c) ?? 0) + 1)
+    let best: string | null = null
+    let bestN = 0
+    for (const [h, n] of freq) {
+      if (n > bestN) {
+        best = h
+        bestN = n
+      }
+    }
+    return best
+  } catch {
+    return null
+  }
+}
+
+// ---------- chamada ao actor Apify ----------
+
+interface ApifyProfileRaw {
+  username?: string | null
+  fullName?: string | null
+  biography?: string | null
+  businessCategoryName?: string | null
+  categoryName?: string | null
+  followersCount?: number | null
+  followsCount?: number | null
+  postsCount?: number | null
+  private?: boolean | null
+  verified?: boolean | null
+  profilePicUrl?: string | null
+  profilePicUrlHD?: string | null
+  externalUrl?: string | null
+  publicEmail?: string | null
+  publicPhoneNumber?: string | null
+  businessEmail?: string | null
+  businessPhoneNumber?: string | null
+  latestPosts?: Array<{ timestamp?: string | null; takenAtTimestamp?: number | null }> | null
+  latestIgtvVideos?: unknown
+  url?: string | null
+  inputUrl?: string | null
+}
+
+async function rodarApifyActor(
+  usernames: string[],
+  token: string,
+  timeoutMs: number,
+): Promise<ApifyProfileRaw[]> {
+  if (usernames.length === 0) return []
+  const url = `${APIFY_BASE}/acts/${APIFY_ACTOR_ID}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`
+  const body = JSON.stringify({ usernames })
+  const res = await fetchComTimeout(
+    url,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body,
+    },
+    timeoutMs,
+  )
+  if (!res.ok) {
+    // Apify retorna 400 quando username não existe; trata como vazio.
+    if (res.status === 400 || res.status === 404) return []
+    throw new Error(`apify_http_${res.status}`)
+  }
+  const data = await res.json().catch(() => null)
+  if (!Array.isArray(data)) return []
+  return data as ApifyProfileRaw[]
+}
+
+function escolherMelhorPerfil(perfis: ApifyProfileRaw[]): ApifyProfileRaw | null {
+  if (perfis.length === 0) return null
+  // Apify às vezes retorna placeholders quando username não existe — filtra.
+  const validos = perfis.filter(
+    (p) => p && so(p.username) && (p.followersCount != null || p.postsCount != null),
+  )
+  if (validos.length === 0) return null
+  // Pega o com mais seguidores (proxy de "perfil real / certo").
+  validos.sort((a, b) => (b.followersCount ?? 0) - (a.followersCount ?? 0))
+  return validos[0]
+}
+
+function mapearPerfil(
+  raw: ApifyProfileRaw,
+  fonte: 'apify-direct' | 'apify-via-google',
+  custoUsd: number,
+  faturamentoDeclaradoBrl: number | null | undefined,
+): InstagramPerfilResultado {
+  const handle = normalizeHandle(raw.username)
+  const bio = so(raw.biography)
+  const totalPosts = typeof raw.postsCount === 'number' ? raw.postsCount : null
+  const seguidores = typeof raw.followersCount === 'number' ? raw.followersCount : null
+  const dataUltimoPost = extrairDataUltimoPost(raw)
+  const privado = raw.private === true
+  const verificado = raw.verified === true
+
+  const red_flags = calcularRedFlags({
+    perfilEncontrado: true,
+    privado,
+    totalPosts,
+    seguidores,
+    dataUltimoPost,
+    faturamentoDeclaradoBrl: faturamentoDeclaradoBrl ?? null,
+  })
+
+  return {
+    ok: true,
+    perfil_encontrado: true,
+    handle: handle ?? null,
+    url: handle ? `https://instagram.com/${handle}` : (so(raw.url) ?? null),
+    nome_exibicao: so(raw.fullName),
+    bio,
+    categoria: so(raw.businessCategoryName) ?? so(raw.categoryName),
+    seguidores: seguidores ?? undefined,
+    seguindo: typeof raw.followsCount === 'number' ? raw.followsCount : undefined,
+    total_posts: totalPosts ?? undefined,
+    data_ultimo_post: dataUltimoPost,
+    privado,
+    verificado,
+    email_bio:
+      so(raw.publicEmail) ?? so(raw.businessEmail) ?? extrairEmailDaBio(bio),
+    telefone_bio:
+      so(raw.publicPhoneNumber) ??
+      so(raw.businessPhoneNumber) ??
+      extrairTelefoneDaBio(bio),
+    site_bio: extrairSiteDaBio(bio, raw.externalUrl),
+    fotos_perfil_url: so(raw.profilePicUrlHD) ?? so(raw.profilePicUrl),
+    red_flags,
+    custo_estimado_usd: custoUsd,
+    erro: null,
+    fonte,
+  }
+}
+
+function extrairDataUltimoPost(raw: ApifyProfileRaw): string | null {
+  const posts = raw.latestPosts
+  if (!Array.isArray(posts) || posts.length === 0) return null
+  let melhor: number | null = null
+  for (const p of posts) {
+    if (!p) continue
+    if (typeof p.timestamp === 'string') {
+      const t = Date.parse(p.timestamp)
+      if (!Number.isNaN(t) && (melhor === null || t > melhor)) melhor = t
+    }
+    if (typeof p.takenAtTimestamp === 'number') {
+      // takenAtTimestamp vem em segundos (Unix).
+      const t = p.takenAtTimestamp * 1000
+      if (melhor === null || t > melhor) melhor = t
+    }
+  }
+  return melhor === null ? null : new Date(melhor).toISOString()
+}
+
+// ---------- API pública ----------
+
+export async function buscarInstagramEmpresa(opts: {
+  razaoSocial: string
+  nomeFantasia?: string | null
+  cnpj?: string // só pra log
+  timeoutMs?: number
+  /** Faturamento declarado pra detectar mismatch de seguidores (em BRL). */
+  faturamentoDeclaradoBrl?: number | null
+}): Promise<InstagramPerfilResultado> {
+  const razao = so(opts.razaoSocial)
+  if (!razao) {
+    return {
+      ok: false,
+      perfil_encontrado: false,
+      red_flags: [],
+      custo_estimado_usd: 0,
+      erro: 'razaoSocial obrigatória',
+      fonte: null,
+    }
+  }
+
+  const token = so(process.env.APIFY_TOKEN)
+  if (!token) {
+    return {
+      ok: false,
+      perfil_encontrado: false,
+      red_flags: [],
+      custo_estimado_usd: 0,
+      erro: 'token_nao_configurado',
+      fonte: null,
+    }
+  }
+
+  const timeoutMs = opts.timeoutMs ?? TIMEOUT_DEFAULT_MS
+  const fantasia = so(opts.nomeFantasia)
+  let custoTotalUsd = 0
+
+  // ===== Tentativa 1: inferência direta =====
+  const candidatos = gerarCandidatosHandle(razao, fantasia)
+  if (candidatos.length > 0) {
+    try {
+      // Apify cobra por DATASET ITEM gerado, mas pra simplificar contabilidade
+      // tratamos cada RUN como 1 custo (mesmo enviando N usernames juntos).
+      // Na prática Apify cobra por perfil retornado — se quiser ser preciso,
+      // multiplicar por perfis.length depois.
+      custoTotalUsd += CUSTO_POR_RUN_USD * Math.min(candidatos.length, 3)
+      const perfis = await rodarApifyActor(candidatos.slice(0, 3), token, timeoutMs)
+      const melhor = escolherMelhorPerfil(perfis)
+      if (melhor) {
+        return mapearPerfil(
+          melhor,
+          'apify-direct',
+          custoTotalUsd,
+          opts.faturamentoDeclaradoBrl,
+        )
+      }
+    } catch (e) {
+      // Erro no Apify direto não é fatal — tentamos via Google.
+      const _err = e instanceof Error ? e.message : String(e)
+      // segue
+    }
+  }
+
+  // ===== Tentativa 2: handle via Google/DuckDuckGo =====
+  const handleViaGoogle = await buscarHandleViaGoogle(razao)
+  if (handleViaGoogle) {
+    try {
+      custoTotalUsd += CUSTO_POR_RUN_USD
+      const perfis = await rodarApifyActor([handleViaGoogle], token, timeoutMs)
+      const melhor = escolherMelhorPerfil(perfis)
+      if (melhor) {
+        return mapearPerfil(
+          melhor,
+          'apify-via-google',
+          custoTotalUsd,
+          opts.faturamentoDeclaradoBrl,
+        )
+      }
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e)
+      return {
+        ok: false,
+        perfil_encontrado: false,
+        red_flags: [],
+        custo_estimado_usd: custoTotalUsd,
+        erro: `apify_falhou: ${err}`,
+        fonte: null,
+      }
+    }
+  }
+
+  // ===== Nada encontrado =====
+  return {
+    ok: true,
+    perfil_encontrado: false,
+    red_flags: [], // sem perfil ≠ red flag
+    custo_estimado_usd: custoTotalUsd,
+    erro: null,
+    fonte: null,
+  }
+}

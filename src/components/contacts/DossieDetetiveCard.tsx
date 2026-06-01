@@ -12,7 +12,9 @@ import {
   CheckCircle,
   ExternalLink,
   Globe,
+  Instagram,
   Linkedin,
+  Lock,
   MapPin,
   Newspaper,
   RefreshCw,
@@ -44,6 +46,18 @@ export interface DossieDetetive {
     linkedin?: { existe: boolean; url?: string }
     reclame_aqui?: { rating?: number; total?: number; resolucao_pct?: number }
     google_maps_url?: string
+    instagram?: {
+      perfil_encontrado: boolean
+      handle?: string | null
+      url?: string | null
+      bio?: string | null
+      categoria?: string | null
+      seguidores?: number
+      total_posts?: number
+      data_ultimo_post?: string | null
+      privado?: boolean
+      verificado?: boolean
+    }
   }
   sancoes?: {
     ceis: number
@@ -120,6 +134,32 @@ function formatDate(iso: string): string {
     })
   } catch {
     return iso
+  }
+}
+
+function formatNumberCompact(value: number): string {
+  try {
+    return new Intl.NumberFormat('pt-BR', {
+      notation: 'compact',
+      maximumFractionDigits: 1,
+    }).format(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function monthsSince(iso: string | null | undefined): number | null {
+  if (!iso) return null
+  try {
+    const then = new Date(iso).getTime()
+    if (Number.isNaN(then)) return null
+    const now = Date.now()
+    const diffMs = now - then
+    if (diffMs < 0) return 0
+    const monthMs = 1000 * 60 * 60 * 24 * 30
+    return Math.floor(diffMs / monthMs)
+  } catch {
+    return null
   }
 }
 
@@ -300,6 +340,8 @@ export function DossieDetetiveCard({ dossie, onReinvestigar }: Props) {
               existe={dossie.pegada_digital.linkedin?.existe}
               url={dossie.pegada_digital.linkedin?.url}
             />
+            {/* Instagram */}
+            <InstagramItem instagram={dossie.pegada_digital.instagram} />
             {/* Reclame Aqui */}
             {dossie.pegada_digital.reclame_aqui && (
               <div className="flex items-start gap-2 p-2 rounded bg-surface-2/40 border border-border/40">
@@ -491,6 +533,117 @@ function PegadaItem({ icon: Icon, label, existe, url }: PegadaItemProps) {
         <p className="text-[10px] text-ink-muted truncate">
           {existe ? (url ? 'Ver online' : 'Encontrado') : 'Não encontrado'}
         </p>
+      </div>
+      {url && <ExternalLink className="h-3 w-3 text-ink-faint shrink-0 mt-0.5" />}
+    </Wrapper>
+  )
+}
+
+interface InstagramItemProps {
+  instagram?: DossieDetetive['pegada_digital'] extends infer P
+    ? P extends { instagram?: infer I }
+      ? I
+      : never
+    : never
+}
+
+function InstagramItem({ instagram }: InstagramItemProps) {
+  // Não localizado
+  if (!instagram || !instagram.perfil_encontrado) {
+    return (
+      <div className="flex items-start gap-2 p-2 rounded bg-surface-2/40 border border-border/40">
+        <Instagram className="h-3.5 w-3.5 shrink-0 mt-0.5 text-ink-faint" />
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold text-ink">Instagram</p>
+          <p className="text-[10px] text-ink-faint truncate">não localizado</p>
+        </div>
+      </div>
+    )
+  }
+
+  const {
+    handle,
+    url,
+    bio,
+    categoria,
+    seguidores,
+    total_posts,
+    data_ultimo_post,
+    privado,
+    verificado,
+  } = instagram
+
+  const mesesInativo = monthsSince(data_ultimo_post)
+  const inativo = mesesInativo != null && mesesInativo > 6
+
+  const hasMetrics = typeof seguidores === 'number' || typeof total_posts === 'number'
+
+  const Wrapper = url ? 'a' : 'div'
+  const wrapperProps = url
+    ? {
+        href: url,
+        target: '_blank' as const,
+        rel: 'noopener noreferrer',
+        className:
+          'dd-no-print flex items-start gap-2 p-2 rounded bg-surface-2/40 border border-border/40 hover:border-accent transition-colors group',
+      }
+    : {
+        className:
+          'flex items-start gap-2 p-2 rounded bg-surface-2/40 border border-border/40',
+      }
+
+  return (
+    <Wrapper {...wrapperProps}>
+      <Instagram className="h-3.5 w-3.5 shrink-0 mt-0.5 text-success" />
+      <div className="min-w-0 flex-1">
+        <p
+          className={`text-[11px] font-semibold flex items-center gap-1 flex-wrap ${
+            url ? 'text-ink group-hover:text-accent' : 'text-ink'
+          }`}
+        >
+          <span className="truncate">
+            Instagram{handle ? `: @${handle}` : ''}
+          </span>
+          {verificado && (
+            <span className="text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-success/20 text-success border border-success/30">
+              ✓ verificado
+            </span>
+          )}
+          {privado && (
+            <span className="text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-warning/20 text-warning border border-warning/30 inline-flex items-center gap-0.5">
+              <Lock className="h-2.5 w-2.5" /> privado
+            </span>
+          )}
+          {inativo && (
+            <span className="text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-warning/20 text-warning border border-warning/30">
+              ⚠️ inativo há {mesesInativo} {mesesInativo === 1 ? 'mês' : 'meses'}
+            </span>
+          )}
+        </p>
+        {hasMetrics && (
+          <p className="text-[10px] text-ink-muted tabular-nums truncate">
+            {typeof seguidores === 'number' && (
+              <>{formatNumberCompact(seguidores)} seguidores</>
+            )}
+            {typeof seguidores === 'number' && typeof total_posts === 'number' && (
+              <> · </>
+            )}
+            {typeof total_posts === 'number' && (
+              <>{formatNumberCompact(total_posts)} posts</>
+            )}
+          </p>
+        )}
+        {categoria && (
+          <p className="text-[10px] text-ink-muted truncate">{categoria}</p>
+        )}
+        {bio && (
+          <p className="text-[10px] text-ink-faint italic truncate">{bio}</p>
+        )}
+        {privado && (
+          <p className="text-[10px] text-ink-faint italic">
+            não foi possível analisar conteúdo
+          </p>
+        )}
       </div>
       {url && <ExternalLink className="h-3 w-3 text-ink-faint shrink-0 mt-0.5" />}
     </Wrapper>
