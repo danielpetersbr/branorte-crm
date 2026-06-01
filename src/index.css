@@ -125,8 +125,12 @@
     margin: 12mm 14mm;
   }
 
-  /* Esconde TUDO da página, exceto o bloco de resultado */
-  body * {
+  /* Esconde TUDO da página, exceto o bloco de resultado.
+     :has(#dd-print-area) LIMITA isso à página da Due Diligence. Sem o :has(),
+     esta regra global vazava pro PDF do orçamento (/print/orcamento gerado via
+     Puppeteer em mídia print, que NÃO tem #dd-print-area) e escondia o orçamento
+     inteiro → PDF em branco. (Regressão diagnosticada 2026-06-01.) */
+  body:has(#dd-print-area) * {
     visibility: hidden;
   }
   #dd-print-area, #dd-print-area * {
