@@ -3,6 +3,8 @@ import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from '@ta
 import { lazy } from 'react'
 import { Layout } from '@/components/layout/Layout'
 import { Dashboard } from '@/pages/Dashboard'
+import { MobileHome } from '@/pages/MobileHome'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { Atendimentos } from '@/pages/Atendimentos'
 import { Login } from '@/pages/Login'
 import { Signup } from '@/pages/Signup'
@@ -85,6 +87,12 @@ if (typeof window !== 'undefined' && window.localStorage?.getItem('debug-rq') ==
   })
 }
 
+/** "/" → launcher mobile no celular, Dashboard no desktop. */
+function HomeRouter() {
+  const isMobile = useIsMobile()
+  return isMobile ? <MobileHome /> : <Dashboard />
+}
+
 function AppRoutes() {
   const { session, profile, loading } = useAuth()
   const can = useCan()
@@ -119,7 +127,10 @@ function AppRoutes() {
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route path="/" element={<Dashboard />} />
+        {/* No celular "/" mostra o launcher mobile; no desktop, o Dashboard.
+            Admin alcança o Dashboard completo no mobile via card → /dashboard. */}
+        <Route path="/" element={<HomeRouter />} />
+        <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/contatos" element={<Contacts />} />
         {can('due_diligence.consultar') && (
