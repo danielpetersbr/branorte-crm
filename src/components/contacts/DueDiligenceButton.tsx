@@ -115,16 +115,19 @@ export function DueDiligenceForm({ contactId, contactName, initialCnpj }: FormPr
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {contactName && (
-        <p className="text-[12px] text-ink-muted">
+        <p className="text-[11px] text-ink-muted">
           Vinculado ao contato: <span className="text-ink font-semibold">{contactName}</span>
         </p>
       )}
 
+      {/* Form compacto: toggle + inputs + pacote + botão em card único */}
+      <div className="border border-border rounded-lg bg-surface-2/30 p-3 space-y-3 max-w-3xl">
+
       {/* Toggle tipo de consulta */}
       <div>
-        <label className="text-[11px] font-semibold text-ink-muted block mb-1.5">
+        <label className="text-[10px] font-semibold text-ink-faint uppercase tracking-wider block mb-1">
           Tipo de consulta
         </label>
         <div className="grid grid-cols-2 gap-1.5">
@@ -235,9 +238,9 @@ export function DueDiligenceForm({ contactId, contactName, initialCnpj }: FormPr
       </div>
 
       {/* Resumo de custo + acao */}
-      <div className="bg-surface-2/40 border border-border rounded-md p-3 space-y-2">
+      <div className="space-y-2 pt-1 border-t border-border/60">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] text-ink-muted">Custo estimado da consulta</span>
+          <span className="text-[11px] text-ink-muted">Custo estimado</span>
           <span className="text-[14px] font-mono font-bold text-accent">
             R$ {custoEstimado.toFixed(2)}
           </span>
@@ -254,12 +257,15 @@ export function DueDiligenceForm({ contactId, contactName, initialCnpj }: FormPr
             <><Search className="h-3.5 w-3.5" /> Consultar agora</>
           )}
         </Button>
-        <p className="text-[10px] text-ink-faint text-center">
-          Consultas no mesmo CNPJ nos últimos 30d retornam do cache sem custo.
+        <p className="text-[9px] text-ink-faint text-center">
+          Mesmo CNPJ em ≤30d retorna do cache sem custo
         </p>
       </div>
 
-      {/* Resultado da consulta atual (se houver) */}
+      </div>
+      {/* Fim do card compacto do form */}
+
+      {/* Resultado da consulta atual (se houver) — FULL WIDTH */}
       {consultar.data && (
         <ResultadoBox
           consulta={consultar.data.consulta}
@@ -422,24 +428,26 @@ function ResultadoBox({
   const semDadosEstruturados = isSuccess && resumos.length === 0
 
   return (
-    <div className={`rounded-md border ${
-      isSuccess ? 'bg-success/5 border-success/30' : 'bg-warning/10 border-warning/30'
+    <div className={`rounded-lg ${
+      isSuccess ? 'bg-success/5' : 'bg-warning/10'
     }`}>
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-border/60">
+      <div className={`flex items-center gap-2 px-4 py-2 border-b ${
+        isSuccess ? 'border-success/20' : 'border-warning/30'
+      }`}>
         {isSuccess ? (
           <CheckCircle className="h-4 w-4 text-success" />
         ) : (
           <AlertCircle className="h-4 w-4 text-warning" />
         )}
-        <span className="text-[12px] font-semibold text-ink">
-          {cacheHit ? 'Resultado do cache (30d)' : 'Consulta concluída'}
+        <span className="text-[13px] font-bold text-ink">
+          {cacheHit ? 'Cache (30d)' : 'Consulta concluída'}
         </span>
         {isMock && (
           <span className="text-[9px] font-mono uppercase text-warning bg-warning/15 px-1.5 py-0.5 rounded">
             mock
           </span>
         )}
-        <span className="ml-auto text-[10px] font-mono text-ink-muted">
+        <span className="ml-auto text-[11px] font-mono font-semibold text-ink">
           R$ {consulta.custo_brl.toFixed(2)}
         </span>
         {(cacheHit || semDadosEstruturados) && (
@@ -467,30 +475,26 @@ function ResultadoBox({
         <p className="text-[11px] text-warning px-3 py-2">{consulta.erro}</p>
       )}
 
-      {/* Parecer IA — destaque no topo */}
+      {/* Parecer IA — destaque no topo, full width */}
       {consulta.parecer_ia && (
         <ParecerIaBox parecer={consulta.parecer_ia} />
       )}
 
-      {/* Render dos resumos */}
-      {resumos.length > 0 ? (
-        <div className="p-3 space-y-3">
-          {resumos.map((r, i) => (
-            <ResumoCard key={i} env={r} />
-          ))}
-        </div>
-      ) : (
-        <p className="text-[11px] text-ink-muted px-3 py-2">
-          Sem dados estruturados — veja o JSON bruto abaixo.
-        </p>
-      )}
+      {/* Grid: ResumoCard (empresa) + Datajud (processos) lado a lado em wide */}
+      <div className="grid xl:grid-cols-2 gap-3 p-3">
+        {resumos.length > 0 ? (
+          resumos.map((r, i) => <ResumoCard key={i} env={r} />)
+        ) : (
+          <p className="text-[11px] text-ink-muted col-span-full">
+            Sem dados estruturados — veja o JSON bruto abaixo.
+          </p>
+        )}
+        {consulta.resultado_datajud && (
+          <DatajudBox datajud={consulta.resultado_datajud as DatajudPayload} />
+        )}
+      </div>
 
-      {/* Datajud — processos judiciais (grátis, CNJ) */}
-      {consulta.resultado_datajud && (
-        <DatajudBox datajud={consulta.resultado_datajud as DatajudPayload} />
-      )}
-
-      <details className="border-t border-border/60">
+      <details className="border-t border-border/30">
         <summary className="text-[10px] text-ink-faint cursor-pointer hover:text-ink px-3 py-1.5">
           Ver JSON bruto (debug)
         </summary>
@@ -611,7 +615,7 @@ function DatajudBox({ datajud }: { datajud: DatajudPayload }) {
   const tem = datajud.processos.length > 0
   const total = datajud.totalEncontrado
   return (
-    <div className={`border-t border-border/60 ${tem ? 'bg-warning/5' : 'bg-success/5'}`}>
+    <div className={`rounded-md border border-border/40 ${tem ? 'bg-warning/5' : 'bg-success/5'}`}>
       <div className="px-3 py-2 flex items-center gap-2 border-b border-border/40">
         {tem ? (
           <AlertCircle className="h-4 w-4 text-warning" />
