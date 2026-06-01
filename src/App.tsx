@@ -17,6 +17,7 @@ import { InstallPrompt } from '@/components/InstallPrompt'
 const Analytics = lazy(() => import('@/pages/Analytics').then(m => ({ default: m.Analytics })))
 const Contacts = lazy(() => import('@/pages/Contacts').then(m => ({ default: m.Contacts })))
 const Consulta = lazy(() => import('@/pages/Consulta').then(m => ({ default: m.Consulta })))
+const ConsultaHistorico = lazy(() => import('@/pages/ConsultaHistorico').then(m => ({ default: m.ConsultaHistorico })))
 const Assign = lazy(() => import('@/pages/Assign').then(m => ({ default: m.Assign })))
 const Orcamentos = lazy(() => import('@/pages/Orcamentos').then(m => ({ default: m.Orcamentos })))
 const Vendidos = lazy(() => import('@/pages/Vendidos').then(m => ({ default: m.Vendidos })))
@@ -122,7 +123,10 @@ function AppRoutes() {
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/contatos" element={<Contacts />} />
         {can('due_diligence.consultar') && (
-          <Route path="/consulta" element={<Consulta />} />
+          <>
+            <Route path="/consulta" element={<Consulta />} />
+            <Route path="/consulta/historico" element={<ConsultaHistorico />} />
+          </>
         )}
         <Route path="/atribuir" element={<Assign />} />
         <Route path="/orcamentos" element={<Orcamentos />} />
