@@ -122,6 +122,26 @@ export interface DetetiveInput {
    * Porte declarado/inferido — usado no multiplicador do limite sugerido.
    */
   porte_empresa?: 'micro' | 'pequena' | 'media' | 'grande' | null
+  /**
+   * Resultado da consulta SPC/Serasa (apontamentos externos).
+   * Quando classificacao === 'INADIMPLENTE' OU score.valor === 0 OU há
+   * inadimplencia ativa, dispara Flag 17 (hard_fail) — bloqueio total da venda.
+   */
+  spc?: {
+    score?: {
+      valor?: number | null
+      classificacao?: string | null // ex: 'INADIMPLENTE', 'BAIXO', 'MEDIO', 'ALTO'
+    } | null
+    inadimplencias?: {
+      qtd?: number | null
+      valor_total_brl?: number | null
+      detalhes?: Array<{
+        credor?: string | null
+        valor_brl?: number | null
+        data_inclusao?: string | null
+      }> | null
+    } | null
+  } | null
 }
 
 // ============================================================================
@@ -166,6 +186,7 @@ export interface RedFlag {
    *   F14_HIST_INADIMPLENCIA_INTERNO → financeiro (hard_fail)
    *   F15_FORMA_PAGAMENTO_SUSPEITA   → financeiro
    *   F16_SOCIO_IDADE_EXTREMA        → estrutural
+   *   F17_SCORE_INADIMPLENTE_SPC     → financeiro (hard_fail)
    */
   dimensao?: DimensaoFlag
 }
@@ -416,6 +437,7 @@ const DIMENSAO_POR_FLAG: Record<number, DimensaoFlag> = {
   14: 'financeiro', // histórico interno inadimplência (hard_fail)
   15: 'financeiro', // forma de pagamento suspeita
   16: 'estrutural', // sócio idade extrema
+  17: 'financeiro', // SPC INADIMPLENTE (hard_fail)
 }
 
 /**
@@ -871,13 +893,79 @@ function avaliarFlag16_SocioIdadeExtrema(input: DetetiveInput): RedFlag | null {
   }
 }
 
+/**
+ * F17 — SPC INADIMPLENTE / Score zerado / Classe F / Inadimplência ativa.
+ * Hard fail: apontamento ativo no SPC requer regularização antes de qualquer venda.
+ *
+ * Triggers (qualquer um basta):
+ *   - input.spc.score.classificacao === 'INADIMPLENTE'
+ *   - input.spc.score.classificacao === 'F' (classe F)
+ *   - input.spc.score.valor === 0
+ *   - input.spc.inadimplencias.qtd > 0
+ */
+function avaliarFlag17_ScoreInadimplenteSPC(input: DetetiveInput): RedFlag | null {
+  const spc = input.spc
+  if (!spc) return null
+
+  const classificacao = (spc.score?.classificacao ?? '').toString().trim().toUpperCase()
+  const valor = spc.score?.valor
+  const qtdInadimplencias = spc.inadimplencias?.qtd ?? 0
+  const valorTotalInadimplencias = spc.inadimplencias?.valor_total_brl ?? 0
+
+  const triggerClassificacao = classificacao === 'INADIMPLENTE'
+  const triggerClasseF =
+    classificacao === 'F' ||
+    classificacao === 'CLASSE F' ||
+    classificacao === 'CLASSE_F'
+  const triggerScoreZero = typeof valor === 'number' && valor === 0
+  const triggerInadimplencia = typeof qtdInadimplencias === 'number' && qtdInadimplencias > 0
+
+  if (
+    !triggerClassificacao &&
+    !triggerClasseF &&
+    !triggerScoreZero &&
+    !triggerInadimplencia
+  ) {
+    return null
+  }
+
+  const motivos: string[] = []
+  if (triggerClassificacao) motivos.push(`classificação SPC: ${classificacao}`)
+  if (triggerClasseF && !triggerClassificacao) motivos.push(`classe SPC: ${classificacao}`)
+  if (triggerScoreZero) motivos.push('score SPC = 0')
+  if (triggerInadimplencia) {
+    motivos.push(
+      `${qtdInadimplencias} inadimplência(s) ativa(s)` +
+        (valorTotalInadimplencias > 0
+          ? ` (R$ ${valorTotalInadimplencias.toLocaleString('pt-BR')})`
+          : ''),
+    )
+  }
+
+  return {
+    id: 17,
+    peso: 5,
+    nome: 'SPC com classificação INADIMPLENTE / score zerado / inadimplência ativa',
+    descricao: `SPC retornou classificação INADIMPLENTE/score 0 ou há inadimplência ativa: ${motivos.join('; ')}. Bloqueio total até regularização.`,
+    evidencia: {
+      classificacao: spc.score?.classificacao ?? null,
+      score_valor: valor ?? null,
+      qtd_inadimplencias: qtdInadimplencias,
+      valor_total_inadimplencias_brl: valorTotalInadimplencias,
+      detalhes: spc.inadimplencias?.detalhes ?? null,
+    },
+    hard_fail: true,
+  }
+}
+
 // ============================================================================
 // MOTOR PRINCIPAL
 // ============================================================================
 
 /**
  * MAX_SCORE histórico (legado): 51 = soma fixa dos pesos das 13 flags originais.
- * Mantido pra compatibilidade com `score` (campo legado).
+ * Mantido pra compatibilidade com `score` (campo legado) — não inclui F14-F17
+ * para preservar a escala antiga consumida por integrações legadas.
  * O novo cálculo usa max_score_aplicavel dinâmico — soma só dos pesos que foram
  * considerados (i.e. tinham dado suficiente).
  */
@@ -971,11 +1059,11 @@ function anexarDimensao(flag: RedFlag): RedFlag {
  * mapeadas em DIMENSAO_POR_FLAG. Pesos canônicos (espelham os retornados pelos
  * avaliadores):
  *   F01:5 F02:4 F03:5 F04:4 F05:3 F06:5 F07:5 F08:4 F09:5 F10:3
- *   F11:2 F12:3 F13:3 F14:5 F15:3 F16:3
+ *   F11:2 F12:3 F13:3 F14:5 F15:3 F16:3 F17:5
  */
 const PESOS_CANONICOS: Record<number, number> = {
   1: 5, 2: 4, 3: 5, 4: 4, 5: 3, 6: 5, 7: 5, 8: 4, 9: 5, 10: 3,
-  11: 2, 12: 3, 13: 3, 14: 5, 15: 3, 16: 3,
+  11: 2, 12: 3, 13: 3, 14: 5, 15: 3, 16: 3, 17: 5,
 }
 
 function pesosMaxPorDimensao(): Record<DimensaoFlag, number> {
@@ -1310,9 +1398,11 @@ function gerarCondicaoDefault(
 
 /**
  * Função principal. Ordem de execução:
- *   1. detectar TODAS flags ativas (13 originais + 3 novas)
+ *   1. detectar TODAS flags ativas (13 originais + 4 novas: F14-F17)
  *   2. anexar dimensão canônica
  *   3. checar hard_fails — se algum, montar resultado vermelho imediato
+ *      (SPC INADIMPLENTE/Classe F/F17 OU histórico interno F14 zeram TODOS os
+ *       cenários — nem à vista é permitido)
  *   4. calcular sub_scores brutos
  *   5. aplicar modificador setorial (reduz peso digital em CNAE agro)
  *   6. aplicar modificador histórico Branorte (pode sobrepor)
@@ -1326,7 +1416,7 @@ function gerarCondicaoDefault(
  * `red_flags`, `acoes_sugeridas` permanecem com a mesma semântica.
  */
 export function calcularDossie(input: DetetiveInput): DossieResultado {
-  // 1. Avalia TODAS flags (13 originais + 3 novas)
+  // 1. Avalia TODAS flags (13 originais + 4 novas)
   const avaliacoes: Array<RedFlag | null> = [
     avaliarFlag1_CapitalDesproporcional(input),
     avaliarFlag2_EnderecoCompartilhado(input),
@@ -1344,6 +1434,7 @@ export function calcularDossie(input: DetetiveInput): DossieResultado {
     avaliarFlag14_HistInadimplenciaInterno(input),
     avaliarFlag15_FormaPagamentoSuspeita(input),
     avaliarFlag16_SocioIdadeExtrema(input),
+    avaliarFlag17_ScoreInadimplenteSPC(input),
   ]
 
   // 2. Anexa dimensão canônica
@@ -1399,18 +1490,66 @@ export function calcularDossie(input: DetetiveInput): DossieResultado {
   if (hardFail) {
     const ticketHF = input.contexto_orcamento?.valor_total ?? input.ticket_pedido ?? 0
     const semaforoHF: 'verde' | 'amarelo' | 'vermelho' = 'vermelho'
-    const cenariosHF = calcularCenarios(input, 0, semaforoHF).map((c) =>
-      c.tipo === 'a_vista'
-        ? { ...c, semaforo: 'amarelo' as const, limite_max_brl: Math.max(0, Math.round(ticketHF * 0.5)) }
-        : { ...c, semaforo: 'vermelho' as const, limite_max_brl: 0 },
-    )
+
+    // Detecta hard-fail de inadimplência ATIVA SPC (F17 ou classe F).
+    // Quando há apontamento ativo no SPC, TODOS os cenários ficam com limite=0 e
+    // semáforo=vermelho — não há venda possível, nem à vista.
+    // Inadimplência interna (F14) também zera tudo (cliente já deve pra casa).
+    const spcClassificacao = (input.spc?.score?.classificacao ?? '')
+      .toString()
+      .trim()
+      .toUpperCase()
+    const spcClasseF =
+      spcClassificacao === 'F' ||
+      spcClassificacao === 'CLASSE F' ||
+      spcClassificacao === 'CLASSE_F'
+    const inadimplenciaSpcAtiva =
+      idsAtivos.has(17) ||
+      spcClasseF ||
+      (typeof input.spc?.inadimplencias?.qtd === 'number' &&
+        (input.spc?.inadimplencias?.qtd ?? 0) > 0)
+    const inadimplenciaInternaAtiva =
+      idsAtivos.has(14) ||
+      (typeof input.historico_branorte?.inadimplencia_brl === 'number' &&
+        (input.historico_branorte?.inadimplencia_brl ?? 0) > 0)
+    const inadimplenciaAtiva = inadimplenciaSpcAtiva || inadimplenciaInternaAtiva
+
+    const cenariosHF = calcularCenarios(input, 0, semaforoHF).map((c) => {
+      if (inadimplenciaAtiva) {
+        // Apontamento ativo (SPC ou interno): NENHUM cenário viável,
+        // todos limite=0/vermelho.
+        return { ...c, semaforo: 'vermelho' as const, limite_max_brl: 0 }
+      }
+      // Hard fail "tradicional" (situação cadastral, CGU): à-vista ainda
+      // possível com 50% do ticket, demais bloqueados.
+      return c.tipo === 'a_vista'
+        ? {
+            ...c,
+            semaforo: 'amarelo' as const,
+            limite_max_brl: Math.max(0, Math.round(ticketHF * 0.5)),
+          }
+        : { ...c, semaforo: 'vermelho' as const, limite_max_brl: 0 }
+    })
+
+    // Recomendação especializada conforme tipo de inadimplência ativa.
+    let recomendacaoHF: string
+    if (inadimplenciaSpcAtiva) {
+      recomendacaoHF =
+        'NAO VENDER. Apontamento ativo no SPC requer regularizacao antes de qualquer venda.'
+    } else if (inadimplenciaInternaAtiva) {
+      recomendacaoHF =
+        'NAO VENDER. Cliente possui inadimplencia interna ativa na Branorte — bloqueio ate regularizacao do debito existente.'
+    } else {
+      recomendacaoHF = gerarRecomendacao(semaforoHF, true, comboFraude)
+    }
+
     return {
       cnpj: input.cnpj,
       score,
       score_normalizado,
       max_score,
       semaforo: semaforoHF,
-      recomendacao: gerarRecomendacao(semaforoHF, true, comboFraude),
+      recomendacao: recomendacaoHF,
       red_flags: redFlags,
       acoes_sugeridas: gerarAcoesSugeridas(semaforoHF, redFlags, true),
       sub_scores,

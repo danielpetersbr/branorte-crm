@@ -62,6 +62,7 @@ export interface InstagramPerfilResultado {
     | 'apify-via-google'
     | 'inferido_http'
     | 'inferido_slug_sem_validacao'
+    | 'nao_localizado'
     | null
 }
 
@@ -258,15 +259,77 @@ function diasDesde(iso: string | null | undefined): number | null {
 
 // ---------- candidatos de handle (inferência) ----------
 
+// Palavras-chave de setor → sufixos que costumam aparecer em handles BR
+// (descoberta empírica: @branorte_metalurgica, @padaria_oficial, etc).
+const SETORES_SUFIXOS: Array<{ regex: RegExp; sufixos: string[] }> = [
+  {
+    regex: /metalurg|metal[óo]rgic|usinag|caldeir|solda|sider/i,
+    sufixos: ['metalurgica', 'metal', 'industria', 'ind', 'fabrica'],
+  },
+  {
+    regex: /ra[çc][ãa]o|nutri[çc][ãa]o animal|alimenta[çc][ãa]o animal|pet food|av[ií]col|su[ií]nocult|bovinocult/i,
+    sufixos: ['racao', 'nutricao', 'fabrica', 'industria', 'ind'],
+  },
+  {
+    regex: /pl[áa]stic|polim|injecao plastica|inje[çc][ãa]o pl[áa]stic/i,
+    sufixos: ['plasticos', 'polimeros', 'industria', 'ind', 'fabrica'],
+  },
+  {
+    regex: /m[áa]quin|equipament|industrial|fabrica/i,
+    sufixos: ['maquinas', 'industria', 'ind', 'fabrica', 'oficial'],
+  },
+  {
+    regex: /aliment|padari|confeitari|panifica/i,
+    sufixos: ['alimentos', 'oficial', 'fabrica'],
+  },
+  {
+    regex: /constru[çc][ãa]o|engenhari|construtor/i,
+    sufixos: ['construcoes', 'engenharia', 'oficial'],
+  },
+  {
+    regex: /com[ée]rcio|varej|atacad/i,
+    sufixos: ['oficial', 'loja', 'store'],
+  },
+]
+
+// Sufixos genéricos sempre testados (não dependem de setor).
+const SUFIXOS_GENERICOS = [
+  'metalurgica',
+  'oficial',
+  'industria',
+  'maquinas',
+  'fabrica',
+  'ind',
+]
+
+function detectarSufixosSetoriais(setorHint: string | null | undefined): string[] {
+  const s = so(setorHint)
+  if (!s) return []
+  const norm = stripDiacritics(s.toLowerCase())
+  const out = new Set<string>()
+  for (const { regex, sufixos } of SETORES_SUFIXOS) {
+    if (regex.test(norm)) {
+      for (const sf of sufixos) out.add(sf)
+    }
+  }
+  return Array.from(out)
+}
+
 function gerarCandidatosHandle(
   razaoSocial: string,
   nomeFantasia: string | null | undefined,
+  setorHint?: string | null,
 ): string[] {
   const candidatos = new Set<string>()
   const fontes: string[] = []
 
   if (nomeFantasia) fontes.push(nomeFantasia)
   fontes.push(razaoSocial)
+
+  // Sufixos a combinar com a primeira palavra: setor (se reconhecido)
+  // + genéricos (sempre testados, baixo custo já que HEAD filtra).
+  const sufixosSetor = detectarSufixosSetoriais(setorHint)
+  const sufixosCombinados = Array.from(new Set([...sufixosSetor, ...SUFIXOS_GENERICOS]))
 
   for (const fonte of fontes) {
     const limpo = stripDiacritics(fonte.toLowerCase())
@@ -284,9 +347,23 @@ function gerarCandidatosHandle(
 
     // Variação 2: primeira palavra significativa.
     const primeira = limpo.split(/\s+/)[0]
-    if (primeira) {
-      const v2 = slugifyHandle(primeira)
-      if (v2.length >= 3) candidatos.add(v2)
+    const primeiraSlug = primeira ? slugifyHandle(primeira) : ''
+    if (primeiraSlug.length >= 3) {
+      candidatos.add(primeiraSlug)
+
+      // Variação 2b (NOVA): primeira_palavra + sufixo setorial/genérico.
+      // Descoberto empiricamente: @branorte_metalurgica, @<nome>_oficial, etc.
+      // Tanto com "_" quanto com "." (ambos são separadores válidos no IG).
+      for (const sf of sufixosCombinados) {
+        const comUnderscore = `${primeiraSlug}_${sf}`.slice(0, 30)
+        const comPonto = `${primeiraSlug}.${sf}`.slice(0, 30)
+        if (comUnderscore.length >= 3 && /^[a-z0-9._]+$/.test(comUnderscore)) {
+          candidatos.add(comUnderscore)
+        }
+        if (comPonto.length >= 3 && /^[a-z0-9._]+$/.test(comPonto)) {
+          candidatos.add(comPonto)
+        }
+      }
     }
 
     // Variação 3: palavras separadas por "_" ou ".".
@@ -304,6 +381,74 @@ function gerarCandidatosHandle(
   // Tira candidatos genéricos demais.
   const blacklist = new Set(['', 'a', 'o', 'de', 'da', 'do', 'e'])
   return Array.from(candidatos).filter((c) => c.length >= 3 && !blacklist.has(c))
+}
+
+// ---------- candidato adicional via domínio do site (descoberta na pegada) ----------
+
+/**
+ * Gera candidatos de handle baseado no domínio do site oficial da empresa.
+ *
+ * Exemplos:
+ *   "branorte.com" / "https://branorte.com.br" -> ["branorte",
+ *      "branorte_metalurgica", "branorte_oficial", ...
+ *      "branorte.metalurgica", "branorte.oficial", ...]
+ *
+ * Provedores genéricos (gmail.com etc) NÃO se aplicam aqui — é domínio de SITE,
+ * não de email. Mas faz sentido filtrar TLDs/subdomínios populares como "www".
+ */
+function gerarCandidatosDeDominio(
+  dominioSite: string | null | undefined,
+  setorHint?: string | null,
+): string[] {
+  const raw = so(dominioSite)
+  if (!raw) return []
+
+  // Normaliza: tira protocolo, www, path, query.
+  let host = raw
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
+    .replace(/\/.*$/, '')
+    .replace(/\?.*$/, '')
+    .toLowerCase()
+    .trim()
+  if (!host) return []
+
+  const partes = host.split('.').filter(Boolean)
+  if (partes.length === 0) return []
+
+  // Tira sufixos comuns (.com, .br, .net etc) pra pegar o "core" do domínio.
+  const sufixos = new Set(['com', 'br', 'net', 'org', 'co', 'io', 'app', 'biz'])
+  let core: string | null = null
+  for (const p of partes) {
+    if (p === 'www') continue
+    if (sufixos.has(p)) continue
+    core = p
+    break
+  }
+  if (!core) return []
+
+  const coreSlug = slugifyHandle(core)
+  if (coreSlug.length < 3) return []
+
+  const candidatos = new Set<string>()
+  candidatos.add(coreSlug)
+
+  // Sufixos: setor (se reconhecido) + genéricos
+  const sufixosSetor = detectarSufixosSetoriais(setorHint)
+  const sufixosCombinados = Array.from(new Set([...sufixosSetor, ...SUFIXOS_GENERICOS]))
+
+  for (const sf of sufixosCombinados) {
+    const comUnderscore = `${coreSlug}_${sf}`.slice(0, 30)
+    const comPonto = `${coreSlug}.${sf}`.slice(0, 30)
+    if (comUnderscore.length >= 3 && /^[a-z0-9._]+$/.test(comUnderscore)) {
+      candidatos.add(comUnderscore)
+    }
+    if (comPonto.length >= 3 && /^[a-z0-9._]+$/.test(comPonto)) {
+      candidatos.add(comPonto)
+    }
+  }
+
+  return Array.from(candidatos)
 }
 
 // ---------- candidato adicional via email cadastral ----------
@@ -636,6 +781,21 @@ export async function buscarInstagramEmpresa(opts: {
    * Provedores genéricos (gmail/hotmail/etc) são ignorados.
    */
   emailCadastral?: string | null
+  /**
+   * Domínio do site oficial da empresa (descoberto na pegada digital). Gera
+   * candidatos adicionais: o "core" do domínio + variantes com sufixo setorial
+   * ("metalurgica", "oficial", "fabrica" etc) tanto com "_" quanto com ".".
+   * Descoberta empírica: @branorte_metalurgica é o handle real, mas só
+   * "branorte" puro não encontra. Ex: "branorte.com.br" -> ["branorte",
+   * "branorte_metalurgica", "branorte_oficial", "branorte.metalurgica", ...].
+   */
+  dominioSite?: string | null
+  /**
+   * Hint setorial pra refinar sufixos (CNAE descrição, atividade principal etc).
+   * Ex: "Fabricação de máquinas e equipamentos" → sufixos "maquinas",
+   * "industria", "fabrica" priorizados. Se ausente, usa sufixos genéricos.
+   */
+  setorHint?: string | null
 }): Promise<InstagramPerfilResultado> {
   const razao = so(opts.razaoSocial)
   if (!razao) {
@@ -655,13 +815,21 @@ export async function buscarInstagramEmpresa(opts: {
   const fantasia = so(opts.nomeFantasia)
   let custoTotalUsd = 0
 
-  // ===== Gera candidatos (slug + email cadastral) =====
-  const candidatosSlug = gerarCandidatosHandle(razao, fantasia)
+  // ===== Gera candidatos (slug + email cadastral + domínio do site) =====
+  const candidatosSlug = gerarCandidatosHandle(razao, fantasia, opts.setorHint)
   const candidatoDeEmail = gerarCandidatoDeEmail(opts.emailCadastral)
+  const candidatosDominio = gerarCandidatosDeDominio(opts.dominioSite, opts.setorHint)
 
-  // Ordem: candidato do email primeiro (sinal forte da empresa), depois slugs.
+  // Ordem de prioridade:
+  //   1) Email cadastral (sinal forte da empresa)
+  //   2) Core do domínio do site (sinal MUITO forte — site oficial é a marca)
+  //   3) Variantes do domínio com sufixo setorial (branorte_metalurgica etc)
+  //   4) Slugs da razão/fantasia
   const candidatosOrdenados: string[] = []
   if (candidatoDeEmail) candidatosOrdenados.push(candidatoDeEmail)
+  for (const c of candidatosDominio) {
+    if (!candidatosOrdenados.includes(c)) candidatosOrdenados.push(c)
+  }
   for (const c of candidatosSlug) {
     if (!candidatosOrdenados.includes(c)) candidatosOrdenados.push(c)
   }
@@ -684,16 +852,19 @@ export async function buscarInstagramEmpresa(opts: {
       red_flags: [],
       custo_estimado_usd: 0,
       erro: null,
-      fonte: null,
+      fonte: 'nao_localizado',
     }
   }
 
   // ===== ETAPA 0 (NOVA): HTTP HEAD pra cada candidato ANTES de queimar Apify =====
   // Custa zero. Filtra candidatos que claramente não existem (404) e identifica
   // ao menos um que responde 200/302 (existe — login wall conta como existe).
+  //
+  // Limite expandido de 6 → 10 porque com sufixos setoriais (metalurgica,
+  // oficial, fabrica etc) a lista de candidatos cresceu, e os candidatos REAIS
+  // ficam no meio (ex: branorte_metalurgica é o 3º/4º na ordem).
   const candidatosConfirmados: string[] = []
-  for (const c of candidatosOrdenados.slice(0, 6)) {
-    // limita 6 HEADs pra não estourar latência
+  for (const c of candidatosOrdenados.slice(0, 10)) {
     const head = await tentarHttpHead(c)
     if (head.ok) {
       candidatosConfirmados.push(c)
@@ -797,40 +968,22 @@ export async function buscarInstagramEmpresa(opts: {
   }
 
   // ===== FALLBACK FINAL: Apify rodou mas não achou perfil =====
-  // Se temos pelo menos um candidato plausível (do email cadastral ou slug),
-  // retornamos como "inferido sem validação" — vendedor confirma visualmente
-  // se o handle bate com o IG real da empresa.
-  // Prioridade: candidato do email > primeiro slug.
-  const handleInferido = candidatoDeEmail ?? candidatosOrdenados[0]
-  if (handleInferido) {
-    return {
-      ok: true,
-      perfil_encontrado: true,
-      handle: handleInferido,
-      url: `https://instagram.com/${handleInferido}`,
-      nome_exibicao: null,
-      bio: null,
-      categoria: null,
-      privado: false,
-      verificado: false,
-      email_bio: null,
-      telefone_bio: null,
-      site_bio: null,
-      fotos_perfil_url: null,
-      red_flags: [],
-      custo_estimado_usd: custoTotalUsd,
-      erro: null,
-      fonte: 'inferido_slug_sem_validacao',
-    }
-  }
-
-  // ===== Sem candidato algum (improvável aqui, mas safety) =====
+  //
+  // MUDANÇA (Fix #3): NÃO inventa mais handle com base em chute (`primeira_palavra`,
+  // `primeira.palavra`, etc). Descoberta empírica: muitas PMEs BR usam handles
+  // com sufixo setorial (ex: @branorte_metalurgica), então o slug puro
+  // ("branorte") leva a perfil errado/inexistente. Se Apify rodou com todos os
+  // candidatos plausíveis (incluindo variantes com underscore/ponto + setor) e
+  // não achou perfil válido, é melhor declarar "não localizado" do que devolver
+  // um handle especulativo que o vendedor vai abrir e ver perfil errado.
+  //
+  // Vendedor pode buscar manualmente; o card mostra os candidatos tentados.
   return {
     ok: true,
     perfil_encontrado: false,
     red_flags: [],
     custo_estimado_usd: custoTotalUsd,
     erro: null,
-    fonte: null,
+    fonte: 'nao_localizado',
   }
 }

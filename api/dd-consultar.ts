@@ -540,38 +540,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ? detectarEnderecoCompartilhado(cepDoEndereco, numeroDoEndereco).catch(() => null)
     : Promise.resolve(null)
 
-  // ─── Apify Instagram — só roda pra PJ, usa razão social pra inferir handle ───
-  // Best-effort: se Apify falhar/token ausente/timeout, segue sem o IG (graceful).
-  // razaoParaNoticias serve aqui também (já é razão do OpenCNPJ ou fallback SPC).
-  const razaoParaInstagram = razaoParaNoticias
-  const fantasiaParaInstagram = opencnpjResultado?.nome_fantasia ?? null
-  const capitalSocialBrl = opencnpjResultado?.capital_social ?? null
-  const instagramPromise: Promise<InstagramPerfilResultado | null> =
-    (tipoConsulta === 'pj' || tipoConsulta === 'ambos') && razaoParaInstagram
-      ? buscarInstagramEmpresa({
-          razaoSocial: razaoParaInstagram,
-          nomeFantasia: fantasiaParaInstagram,
-          cnpj: precisaCnpj ? cnpj : undefined,
-          // Capital social é proxy fraco de faturamento; só passa se >0 pra evitar ruído.
-          faturamentoDeclaradoBrl:
-            capitalSocialBrl != null && capitalSocialBrl > 0 ? capitalSocialBrl : null,
-          // Email cadastral do OpenCNPJ vira candidato de handle adicional
-          // (ex: contato@mbranorte.com.br -> testa "mbranorte"). Reforça inferência.
-          emailCadastral: opencnpjResultado?.email ?? null,
-          timeoutMs: 25_000,
-        }).catch((e) => ({
-          ok: false,
-          perfil_encontrado: false,
-          red_flags: [],
-          custo_estimado_usd: 0,
-          erro: e instanceof Error ? e.message : String(e),
-          fonte: null,
-        }) as InstagramPerfilResultado)
-      : Promise.resolve(null)
-
   // ─── Pegada Digital (DuckDuckGo + heurística) — só roda pra PJ ───
   // Best-effort: site, LinkedIn, ReclameAqui, Facebook. Falha gracefully.
   // Depende do OpenCNPJ (razão social/fantasia/cidade/UF) pra montar query.
+  //
+  // IMPORTANTE: a Pegada agora é iniciada ANTES do Apify Instagram porque o
+  // domínio do site oficial (pegada.site.url) é um sinal MUITO forte pra inferir
+  // handle do IG (descoberta empírica: site branorte.com → handle real
+  // @branorte_metalurgica). O Instagram é encadeado depois da Pegada via .then().
   const pegadaDigitalPromise: Promise<PegadaDigital | null> =
     precisaCnpj && opencnpjResultado?.razao_social
       ? buscarPegadaDigital({
@@ -591,6 +567,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           custo_estimado_brl: 0,
           erros: [e instanceof Error ? e.message : String(e)],
         } as PegadaDigital))
+      : Promise.resolve(null)
+
+  // ─── Apify Instagram — só roda pra PJ, usa razão social pra inferir handle ───
+  // Best-effort: se Apify falhar/token ausente/timeout, segue sem o IG (graceful).
+  // razaoParaNoticias serve aqui também (já é razão do OpenCNPJ ou fallback SPC).
+  //
+  // Encadeado APÓS a Pegada pra poder passar `pegada.site.url` como `dominioSite`
+  // — sinal muito mais forte que email cadastral pra achar o handle real.
+  // Trade-off: latência total = pegada + instagram (em vez de max(pegada, instagram)),
+  // mas a qualidade do hit no Apify melhora significativamente (descoberta:
+  // @branorte_metalurgica só é achado se passarmos o domínio + sufixo setorial).
+  const razaoParaInstagram = razaoParaNoticias
+  const fantasiaParaInstagram = opencnpjResultado?.nome_fantasia ?? null
+  const capitalSocialBrl = opencnpjResultado?.capital_social ?? null
+  // CNAE descrição vira hint setorial pra escolher os sufixos certos
+  // (ex: "Fabricação de máquinas" → testa "_maquinas", "_industria" etc).
+  const setorHintParaInstagram =
+    opencnpjResultado?.cnae_principal?.descricao ?? null
+  const instagramPromise: Promise<InstagramPerfilResultado | null> =
+    (tipoConsulta === 'pj' || tipoConsulta === 'ambos') && razaoParaInstagram
+      ? pegadaDigitalPromise.then((pegada) =>
+          buscarInstagramEmpresa({
+            razaoSocial: razaoParaInstagram,
+            nomeFantasia: fantasiaParaInstagram,
+            cnpj: precisaCnpj ? cnpj : undefined,
+            // Capital social é proxy fraco de faturamento; só passa se >0 pra evitar ruído.
+            faturamentoDeclaradoBrl:
+              capitalSocialBrl != null && capitalSocialBrl > 0 ? capitalSocialBrl : null,
+            // Email cadastral do OpenCNPJ vira candidato de handle adicional
+            // (ex: contato@mbranorte.com.br -> testa "mbranorte"). Reforça inferência.
+            emailCadastral: opencnpjResultado?.email ?? null,
+            // Domínio do site oficial (descoberto na Pegada) — sinal forte.
+            // Ex: pegada.site.url = "https://branorte.com" → gera candidatos
+            // "branorte", "branorte_metalurgica", "branorte_oficial" etc.
+            dominioSite: pegada?.site?.existe ? (pegada.site.url ?? null) : null,
+            // CNAE/atividade principal do OpenCNPJ vira hint setorial.
+            setorHint: setorHintParaInstagram,
+            timeoutMs: 25_000,
+          }).catch((e) => ({
+            ok: false,
+            perfil_encontrado: false,
+            red_flags: [],
+            custo_estimado_usd: 0,
+            erro: e instanceof Error ? e.message : String(e),
+            fonte: null,
+          }) as InstagramPerfilResultado),
+        )
       : Promise.resolve(null)
 
   const [
