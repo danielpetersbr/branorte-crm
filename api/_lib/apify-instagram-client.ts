@@ -345,15 +345,28 @@ function gerarCandidatosHandle(
     const v1 = slugifyHandle(limpo)
     if (v1.length >= 3) candidatos.add(v1)
 
+    // Variação 1b (NOVA): tudo junto + sufixo setorial/genérico.
+    // Crucial pra nome fantasia composto: "BRA NORTE" → "branorte" → "branorte_metalurgica".
+    if (v1.length >= 3) {
+      for (const sf of sufixosCombinados) {
+        const comUnderscore = `${v1}_${sf}`.slice(0, 30)
+        const comPonto = `${v1}.${sf}`.slice(0, 30)
+        if (comUnderscore.length >= 3 && /^[a-z0-9._]+$/.test(comUnderscore)) {
+          candidatos.add(comUnderscore)
+        }
+        if (comPonto.length >= 3 && /^[a-z0-9._]+$/.test(comPonto)) {
+          candidatos.add(comPonto)
+        }
+      }
+    }
+
     // Variação 2: primeira palavra significativa.
     const primeira = limpo.split(/\s+/)[0]
     const primeiraSlug = primeira ? slugifyHandle(primeira) : ''
-    if (primeiraSlug.length >= 3) {
+    if (primeiraSlug.length >= 3 && primeiraSlug !== v1) {
       candidatos.add(primeiraSlug)
 
-      // Variação 2b (NOVA): primeira_palavra + sufixo setorial/genérico.
-      // Descoberto empiricamente: @branorte_metalurgica, @<nome>_oficial, etc.
-      // Tanto com "_" quanto com "." (ambos são separadores válidos no IG).
+      // Variação 2b: primeira_palavra + sufixo setorial/genérico.
       for (const sf of sufixosCombinados) {
         const comUnderscore = `${primeiraSlug}_${sf}`.slice(0, 30)
         const comPonto = `${primeiraSlug}.${sf}`.slice(0, 30)
