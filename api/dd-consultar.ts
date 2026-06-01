@@ -63,13 +63,21 @@ interface ConsultarBody {
 // ============================================================================
 // PRODUTO BASE em todos os pacotes: 325 (Novo SPC Maxi) — completo + barato.
 //
-// NOTA SPC: o insumo #144 (Score 12m) NAO eh suportado pelo produto 325 (PJ).
-// Confirmado por erro CN_WEB001.E12.39 em produção. Removido do pacote PJ.
+// NOTA SPC: nenhum dos insumos opcionais que tentamos (144, 318, 268) eh
+// suportado pelo produto 325. Testado em produção via API, todos retornam
+// erro CN_WEB001.E12.39. O produto 325 sozinho ja retorna dados RIQUÍSSIMOS:
+//   - Dados cadastrais completos (razao social, fundacao, atividades, etc.)
+//   - Endereço, telefone, email
+//   - Capital social
+//   - SPC (restrições com valor)
+//   - Pendência financeira
+//   - Histórico de consultas (últimos 90 dias)
+//   - Dados adicionais de contato (celulares, emails extras)
 //
-// Economico PJ (R$ 11,06): 325 + Participacao + Controle Societario
-// Economico PF (R$  9,47): 325 + Score 12m + Participacao Empresas
-// Completo  PJ (+insumos): + Faturamento + Quadro Social + Grupo Econ + Protesto
-// Completo  PF (+insumos): + Renda Presumida + PEP
+// Por isso pacote Econômico = apenas produto 325 (R$ 5,62).
+//
+// Completo: pode adicionar Faturamento Presumido (#400) e Quadro Social
+// (#458), mas precisa testar compatibilidade primeiro. Por enquanto = 325.
 function montarPacotes(
   pacote: ConsultarBody['pacote'],
   opts: { incluiPj: boolean; incluiPf: boolean },
@@ -83,44 +91,21 @@ function montarPacotes(
   if (pacote !== 'economico' && pacote !== 'completo' && pacote !== 'paranoico') {
     return planos
   }
-  const isCompleto = pacote === 'completo' || pacote === 'paranoico'
 
   if (opts.incluiPj) {
-    // PJ: Novo SPC Maxi + Participacao + Controle Societario (sem Score 12m, nao suportado)
-    const insumosPj: number[] = [
-      INSUMOS_OPCIONAIS.PARTICIPACAO_EMPRESAS.codigo,
-      INSUMOS_OPCIONAIS.CONTROLE_SOCIETARIO.codigo,
-    ]
-    if (isCompleto) {
-      insumosPj.push(
-        INSUMOS_OPCIONAIS.FATURAMENTO_PRESUMIDO_PJ.codigo,
-        INSUMOS_OPCIONAIS.QUADRO_SOCIAL.codigo,
-        INSUMOS_OPCIONAIS.GRUPO_ECONOMICO.codigo,
-        INSUMOS_OPCIONAIS.PROTESTO_NACIONAL.codigo,
-      )
-    }
+    // PJ: so o produto 325 (Novo SPC Maxi)
     planos.push({
       produto: PRODUTOS_SPC.NOVO_SPC_MAXI.codigo,
-      insumos: insumosPj,
+      insumos: [],
       tipoConsumidor: 'J',
     })
   }
 
   if (opts.incluiPf) {
-    // PF: Novo SPC Maxi + Score 12m + Participacao Empresas (Score 12m suportado em PF)
-    const insumosPf: number[] = [
-      INSUMOS_OPCIONAIS.SCORE_12_MESES.codigo,
-      INSUMOS_OPCIONAIS.PARTICIPACAO_EMPRESAS.codigo,
-    ]
-    if (isCompleto) {
-      insumosPf.push(
-        INSUMOS_OPCIONAIS.RENDA_PRESUMIDA.codigo,
-        INSUMOS_OPCIONAIS.PEP.codigo,
-      )
-    }
+    // PF: so o produto 325 (Novo SPC Maxi)
     planos.push({
       produto: PRODUTOS_SPC.NOVO_SPC_MAXI.codigo,
-      insumos: insumosPf,
+      insumos: [],
       tipoConsumidor: 'F',
     })
   }
