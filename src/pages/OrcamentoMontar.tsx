@@ -2323,6 +2323,7 @@ export function OrcamentoMontar() {
               <ResponsiveScaler documentWidth={1024}>
               <OrcamentoPreview
                 carrinho={carrinho}
+                numero={editingId && orcamentoEditando ? orcamentoEditando.numero : undefined}
                 motoresAgrupados={motoresAgrupados}
                 voltagem={voltagem}
                 totalItems={totalItems}
