@@ -2089,27 +2089,41 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                         { id: id4, dataTipo: 'apos_nf', dias: 60, metodo: 'BOLETO', pct: 25 },
                       ])
                     }
-                    // Divide o valor que FALTA igualmente entre as parcelas vazias (R$ 0).
-                    // Mantém as já preenchidas; a última vazia absorve o arredondamento (fecha exato).
+                    // Divide os valores das parcelas pra FECHAR o total. Dois modos automáticos:
+                    //  (1) Se há parcelas vazias E ainda sobra dinheiro (preenchidas < total):
+                    //      preenche SÓ as vazias com a sobra, mantendo as já preenchidas (ex: entrada).
+                    //  (2) Se as preenchidas já somam o total (sobra ≈ 0) OU não há vazias:
+                    //      RECALCULA tudo, dividindo o total igualmente entre TODAS as parcelas.
+                    //  A última parcela do grupo absorve o arredondamento (soma fecha exata).
                     function dividirRestoIgual() {
-                      if (!onUpdateParcelas) return
+                      if (!onUpdateParcelas || arr.length === 0) return
                       const base = totalComDesconto
                       if (base <= 0) return
                       const vazias = arr.filter(p => calcValor(p) < 0.01)
-                      if (vazias.length === 0) return
                       const preenchido = arr.reduce((s, p) => s + calcValor(p), 0)
                       const resto = Math.round((base - preenchido) * 100) / 100
-                      if (resto <= 0) return
-                      const vazSet = new Set(vazias.map(p => p.id))
-                      const porParcela = Math.floor((resto / vazias.length) * 100) / 100
-                      let acumulado = 0
-                      let idx = 0
-                      onUpdateParcelas(arr.map(p => {
-                        if (!vazSet.has(p.id)) return p
-                        idx++
-                        let v = porParcela
-                        if (idx === vazias.length) v = Math.round((resto - acumulado) * 100) / 100
-                        acumulado = Math.round((acumulado + v) * 100) / 100
+
+                      // Modo 1: sobra dinheiro e há vazias → preenche só as vazias (mantém as preenchidas)
+                      if (vazias.length > 0 && resto > 0.01) {
+                        const vazSet = new Set(vazias.map(p => p.id))
+                        const porParcela = Math.floor((resto / vazias.length) * 100) / 100
+                        let acumulado = 0, idx = 0
+                        onUpdateParcelas(arr.map(p => {
+                          if (!vazSet.has(p.id)) return p
+                          idx++
+                          const v = idx === vazias.length ? Math.round((resto - acumulado) * 100) / 100 : porParcela
+                          acumulado = Math.round((acumulado + v) * 100) / 100
+                          return { ...p, valor: v, pct: undefined }
+                        }))
+                        return
+                      }
+
+                      // Modo 2: já fechou (ou sem vazias) → divide o total igualmente entre TODAS
+                      const porTodas = Math.floor((base / arr.length) * 100) / 100
+                      let acc = 0
+                      onUpdateParcelas(arr.map((p, i) => {
+                        const v = i === arr.length - 1 ? Math.round((base - acc) * 100) / 100 : porTodas
+                        acc = Math.round((acc + v) * 100) / 100
                         return { ...p, valor: v, pct: undefined }
                       }))
                     }
@@ -2149,8 +2163,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                     type="button"
                                     onClick={dividirRestoIgual}
                                     className="text-[12px] px-1.5 py-0.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-300 rounded text-indigo-700 font-bold"
-                                    title="Divide o valor que falta igualmente entre as parcelas vazias (R$ 0,00)"
-                                  >÷ Dividir resto</button>
+                                    title="Fecha o total: preenche as parcelas vazias com o que falta. Se as preenchidas já somam o total, divide o total igualmente entre TODAS."
+                                  >÷ Dividir</button>
                                 )}
                                 {temParcelas && (
                                   <button
