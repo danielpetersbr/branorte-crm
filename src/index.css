@@ -110,3 +110,83 @@
     page-break-inside: avoid !important;
   }
 }
+
+/* =========================================================================
+   DUE DILIGENCE — Imprimir consulta em folha A4 (botão "Imprimir" no
+   ResultadoBox dispara window.print()). Estas regras escondem todo o
+   chrome do app (header, sidebar, drawer, form) e renderizam só o
+   bloco #dd-print-area em layout A4 retrato, branco, alto contraste.
+   ========================================================================= */
+.dd-print-only { display: none; }
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 14mm;
+  }
+
+  /* Esconde TUDO da página, exceto o bloco de resultado */
+  body * {
+    visibility: hidden;
+  }
+  #dd-print-area, #dd-print-area * {
+    visibility: visible;
+  }
+  /* Bloco vai pra origem (canto superior esquerdo) e ocupa toda a folha */
+  #dd-print-area {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    border: none !important;
+    background: white !important;
+    color: black !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Itens que NÃO devem aparecer no PDF (botão imprimir, debug, etc) */
+  .dd-no-print { display: none !important; }
+
+  /* Itens que SÓ aparecem ao imprimir (rodapé corporativo) */
+  .dd-print-only { display: block !important; visibility: visible !important; }
+
+  /* Ajustes pro visual ficar legível em PDF (sem dark mode) */
+  #dd-print-area * {
+    background: white !important;
+    color: black !important;
+    border-color: #999 !important;
+  }
+  #dd-print-area h1, #dd-print-area h2, #dd-print-area h3, #dd-print-area strong {
+    color: black !important;
+    font-weight: bold;
+  }
+  /* Cores semânticas viram tons de cinza com peso */
+  #dd-print-area .text-success, #dd-print-area .text-danger, #dd-print-area .text-warning,
+  #dd-print-area .text-accent {
+    color: black !important;
+    font-weight: bold;
+  }
+  /* Boxes coloridos viram bg branco com borda forte (alto contraste) */
+  #dd-print-area [class*="bg-success"], #dd-print-area [class*="bg-warning"],
+  #dd-print-area [class*="bg-danger"], #dd-print-area [class*="bg-accent"] {
+    background: white !important;
+    border: 1px solid #333 !important;
+  }
+  /* Evita quebra no meio de cards e seções principais */
+  #dd-print-area details, #dd-print-area [class*="grid-cols"] > * {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  /* Force expand de <details> (Ver mais ▼) ao imprimir */
+  #dd-print-area details {
+    display: block;
+  }
+  #dd-print-area details summary {
+    display: none;
+  }
+  #dd-print-area details > *:not(summary) {
+    display: block !important;
+  }
+}

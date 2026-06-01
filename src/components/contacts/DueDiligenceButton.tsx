@@ -4,7 +4,7 @@
 // DueDiligenceModal  wrapper modal (usado quando aparece em outro lugar)
 // DueDiligenceButton botao que abre o modal (legado, mantido pra reuso)
 import { useState, type ReactNode } from 'react'
-import { Search, X, AlertCircle, CheckCircle, Loader2, Sparkles, ChevronDown, ChevronUp } from 'lucide-react'
+import { Search, X, AlertCircle, CheckCircle, Loader2, Sparkles, ChevronDown, ChevronUp, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import {
@@ -391,7 +391,9 @@ function ResultadoBox({
 
   return (
     // ÚNICA borda externa do bloco de resultado
-    <div className="border border-border rounded-lg bg-surface-2/20 overflow-hidden">
+    // id="dd-print-area" + classe "dd-printable" usados pelo CSS @media print
+    // pra esconder todo o resto da página e imprimir só este bloco em A4.
+    <div id="dd-print-area" className="dd-printable border border-border rounded-lg bg-surface-2/20 overflow-hidden">
       {/* Status bar topo (sem borda dupla — só uma divisória interna) */}
       <div className={`flex items-center gap-2 px-4 py-2 border-b border-border/40 ${
         isSuccess ? 'bg-success/15' : 'bg-warning/15'
@@ -412,11 +414,19 @@ function ResultadoBox({
         <span className="ml-auto text-[11px] font-mono font-semibold text-ink tabular-nums">
           R$ {consulta.custo_brl.toFixed(2)}
         </span>
+        {/* Botão IMPRIMIR — disparra window.print(). CSS @media print isola o bloco. */}
+        <button
+          onClick={() => window.print()}
+          className="dd-no-print text-[10px] font-semibold text-ink-muted hover:text-accent flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface-2 hover:border-accent"
+          title="Imprimir consulta em folha A4"
+        >
+          <Printer className="h-3 w-3" /> Imprimir
+        </button>
         {(cacheHit || semDadosEstruturados) && (
           <button
             onClick={onReconsultar}
             disabled={!podeReconsultar}
-            className="text-[10px] font-semibold text-accent hover:underline disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+            className="dd-no-print text-[10px] font-semibold text-accent hover:underline disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
             title="Faz uma nova consulta ignorando o cache (cobra de novo)"
           >
             <Loader2 className="h-3 w-3" /> Reconsultar
@@ -474,7 +484,7 @@ function ResultadoBox({
         </p>
       )}
 
-      <details className="border-t border-border/30">
+      <details className="dd-no-print border-t border-border/30">
         <summary className="text-[10px] text-ink-faint cursor-pointer hover:text-ink px-3 py-1.5">
           Ver JSON bruto (debug)
         </summary>
@@ -482,6 +492,21 @@ function ResultadoBox({
           {JSON.stringify({ spc: consulta.resultado_spc, datajud: consulta.resultado_datajud }, null, 2)}
         </pre>
       </details>
+
+      {/* Rodapé de impressão A4 — só visível ao imprimir */}
+      <div className="dd-print-only" aria-hidden="true">
+        <hr />
+        <div style={{ marginTop: 8, fontSize: 9, color: '#666' }}>
+          <strong>METALÚRGICA BRANORTE</strong> · Consulta de Due Diligence ·
+          Gerado em {new Date(consulta.created_at).toLocaleString('pt-BR')} ·
+          Custo: R$ {consulta.custo_brl.toFixed(2)} ·
+          Status: {consulta.status.toUpperCase()}
+          <br />
+          Fontes: SPC Brasil {isMock ? '(MOCK)' : '(produção)'} ·
+          Datajud (CNJ) · Parecer consolidado por IA ·
+          Uso restrito conforme LGPD (interesse legítimo — análise de crédito)
+        </div>
+      </div>
     </div>
   )
 }
