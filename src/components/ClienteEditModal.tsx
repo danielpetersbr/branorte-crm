@@ -3,6 +3,7 @@ import { X, Search, Loader2, Check, Building2, User, Tractor, ClipboardPaste } f
 import { Input } from '@/components/ui/Input'
 import type { PreviewClienteDados } from './OrcamentoPreview'
 import { parseClienteText, titleCasePtBr } from '@/lib/parse-cliente-text'
+import { supabase } from '@/lib/supabase'
 
 interface Props {
   open: boolean
@@ -166,6 +167,52 @@ async function buscarCep(cep: string): Promise<ViaCep | null> {
   }
 }
 
+// Resultado normalizado da consulta de IE/Sintegra (espelha api/_lib/sintegra-client.ts)
+interface SintegraApiResult {
+  razao_social: string | null
+  ie: string | null
+  ie_uf: string | null
+  situacao: string | null
+  situacao_data: string | null
+  endereco: string | null
+  bairro: string | null
+  municipio: string | null
+  uf: string | null
+  cep: string | null
+}
+
+interface SintegraApiResponse {
+  ok: boolean
+  resultado?: SintegraApiResult
+  error?: string
+  configurado?: boolean
+}
+
+// Consulta IE/Sintegra via função serverless /api/buscar-sintegra (esconde os tokens).
+// Retorna null em falha de rede; nunca lança (o chamador trata o resultado).
+async function buscarSintegra(params: {
+  documento: string
+  tipo: 'cnpj' | 'cpf' | 'ie'
+  uf?: string
+}): Promise<SintegraApiResponse | null> {
+  try {
+    const { data: sess } = await supabase.auth.getSession()
+    const token = sess.session?.access_token
+    const res = await fetch('/api/buscar-sintegra', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(params),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as SintegraApiResponse
+  } catch {
+    return null
+  }
+}
+
 export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
   const [nome, setNome] = useState('')
   const [ac, setAc] = useState('')
@@ -219,6 +266,31 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
     // >14: tenta os primeiros 14 se parecem CNPJ (tem /0001 na posição 8-12)
     if (d.length > 14 && d.slice(8, 12) === '0001') return d.slice(0, 14)
     return null
+  }
+
+  // Busca por Inscrição Estadual (produtor rural / contribuinte) no Sintegra via Infosimples.
+  // Precisa da UF preenchida ao lado. Preenche nome/endereço/situação se encontrar.
+  async function tentarSintegraPorIe(ieVal: string) {
+    const ufAtual = uf.trim().toUpperCase()
+    setBuscando(true)
+    const sint = await buscarSintegra({ documento: ieVal, tipo: 'ie', uf: ufAtual || undefined })
+    setBuscando(false)
+    if (sint?.ok && sint.resultado) {
+      const r = sint.resultado
+      if (r.razao_social) setNome(titleCase(r.razao_social))
+      if (r.endereco) setEndereco(titleCase(r.endereco))
+      if (r.bairro) setBairro(titleCase(r.bairro))
+      if (r.municipio) setCidade(titleCase(r.municipio))
+      if (r.uf) setUf(r.uf)
+      if (r.cep) setCep(fmtCep(r.cep))
+      setSucessoBusca(`✓ Dados de "${titleCase(r.razao_social || ieVal)}" carregados do Sintegra${r.situacao ? ` (${r.situacao})` : ''}`)
+    } else if (sint?.error === 'uf_obrigatoria') {
+      // Tokens configurados, mas falta a UF pra consultar a SEFAZ certa
+      setSucessoBusca('✓ Inscrição salva. Informe a UF ao lado e clique em Buscar de novo pra puxar do Sintegra.')
+    } else {
+      // Sem tokens / não encontrado / falha de rede → comportamento neutro de sempre
+      setSucessoBusca('✓ Inscrição salva no campo I.E. Preencha os demais dados manualmente.')
+    }
   }
 
   async function handleBuscarDocumento() {
@@ -289,7 +361,21 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
       }
       if (dados.email) setEmail(dados.email.toLowerCase())
       if (dados.ddd_telefone_1) setFone(fmtFone(dados.ddd_telefone_1))
-      setSucessoBusca(`✓ Dados de "${titleCase(dados.nome_fantasia || dados.razao_social)}" carregados da Receita Federal`)
+      // Enriquece com IE + situação de contribuinte (Sintegra), sem bloquear o fluxo
+      let ieMsg = ''
+      try {
+        setBuscando(true)
+        const sint = await buscarSintegra({ documento: cnpj14, tipo: 'cnpj', uf: dados.uf })
+        if (sint?.ok && sint.resultado?.ie) {
+          setIe(sint.resultado.ie)
+          ieMsg = ` · IE ${sint.resultado.ie}${sint.resultado.situacao ? ` (${sint.resultado.situacao})` : ''}`
+        }
+      } catch {
+        /* enriquecimento é opcional — ignora falha */
+      } finally {
+        setBuscando(false)
+      }
+      setSucessoBusca(`✓ Dados de "${titleCase(dados.nome_fantasia || dados.razao_social)}" carregados da Receita Federal${ieMsg}`)
       return
     }
 
@@ -298,21 +384,13 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
       return
     }
 
-    if (d.length > 14) {
-      // > 14 dígitos e não parece CNPJ → IE / Inscrição de Produtor Rural
-      setIe(cnpj.trim())
-      setCnpj('')
-      setErroBusca(null)
-      setSucessoBusca('✓ Inscrição salva no campo I.E. Preencha os demais dados manualmente.')
-      return
-    }
-
     if (d.length >= 8) {
-      // 8-10 dígitos: pode ser IE curta
-      setIe(cnpj.trim())
-      setCnpj('')
+      // IE / Inscrição de Produtor Rural (8-10 dígitos ou >14 não-CNPJ).
+      // Mantém o valor no campo pra permitir re-buscar depois de preencher a UF.
+      const ieVal = cnpj.trim()
+      setIe(ieVal)
       setErroBusca(null)
-      setSucessoBusca('✓ Inscrição salva no campo I.E. Preencha os demais dados manualmente.')
+      await tentarSintegraPorIe(ieVal)
       return
     }
 
