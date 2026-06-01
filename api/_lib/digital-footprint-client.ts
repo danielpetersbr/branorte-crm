@@ -1,36 +1,51 @@
-// Cliente de Pegada Digital — abordagem HÍBRIDA (gratuito por padrão).
+// Cliente de Pegada Digital — abordagem DETERMINÍSTICA (gratuito, sem dependência de scraper).
 //
-// Estratégia:
-//   1. Tier 1 (sempre ON): DuckDuckGo HTML scraping + HTTP HEAD validation + email cadastral fallback
-//   2. Tier 2 (opt-in flag): Bing Search API free tier (1k/mês) — não implementado neste arquivo
-//   3. Tier 3 (opt-in flag): SerpAPI (R$0,015/consulta) — não implementado neste arquivo
+// Estratégia (em ordem de confiança):
+//   1. Email cadastral OpenCNPJ -> domínio direto (MAIS CONFIÁVEL)
+//   2. Slug razão social -> candidatos .com.br/.com
+//   3. Slug nome fantasia -> candidatos .com.br/.com
+//   4. Slugs determinísticos pra LinkedIn / Reclame Aqui / Facebook
 //
-// Performance: 4 buscas em paralelo (site, LinkedIn, ReclameAqui, Facebook),
-// timeout 8s/fonte, 25s total via Promise.race.
+// Validação: HTTP HEAD (com fallback GET Range) e User-Agent realista.
+// Se HEAD falhar, ainda APRESENTA URL como "inferido" pro vendedor validar (a UI diferencia).
 //
-// Custo: zero (apenas Tier 1 ativo neste arquivo).
+// Performance: tudo em paralelo via Promise.allSettled, timeout 25s global, 6s/HEAD.
+// Custo: zero.
 //
 // Cache: implementado em camada superior (pegada_digital_cache Supabase, TTL 30d).
+//
+// Debug: campo `debug.tentativas[]` registra todas as URLs candidatas testadas,
+// útil pra inspecionar em prod via payload `due_diligence_consultas.resultado_spc.pegada_digital`.
 
 // ============================================================================
 // TIPOS (EXPORTS)
 // ============================================================================
+
+export type PegadaFonte =
+  | 'email_cadastral'
+  | 'email_cadastral_inferido'
+  | 'slug_razao_validado'
+  | 'slug_fantasia_validado'
+  | 'slug_inferido'
+  | 'inferido'
+  | 'validado'
 
 export interface PegadaDigital {
   site: {
     existe: boolean
     url?: string
     titulo_pagina?: string
-    fonte?: 'inferido' | 'duckduckgo' | 'email_cadastral' | 'validado'
+    fonte?: PegadaFonte | string
   }
   linkedin: {
     existe: boolean
     url?: string
-    fonte?: 'inferido' | 'duckduckgo'
+    fonte?: PegadaFonte | string
   }
   reclame_aqui: {
     existe: boolean
     url?: string
+    fonte?: PegadaFonte | string
     rating?: number
     total_reclamacoes?: number
     resolucao_pct?: number
@@ -38,22 +53,54 @@ export interface PegadaDigital {
   facebook: {
     existe: boolean
     url?: string
+    fonte?: PegadaFonte | string
   }
   fontes_consultadas: string[]
   custo_estimado_brl: number
   erros: string[]
+  /** Tentativas registradas para debug em prod. */
+  debug?: {
+    tentativas: Array<{
+      alvo: 'site' | 'linkedin' | 'reclame_aqui' | 'facebook'
+      fonte: string
+      url: string
+      ok?: boolean
+      status?: number
+    }>
+  }
 }
 
 // ============================================================================
 // CONSTANTES
 // ============================================================================
 
-const DEFAULT_TIMEOUT_MS = 8000
+const DEFAULT_TIMEOUT_MS = 6000
 const TOTAL_TIMEOUT_MS = 25000
 const REALISTIC_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 
-const SUFIXOS_EMPRESA = [
+const EMAIL_GENERICOS = new Set<string>([
+  'gmail.com',
+  'hotmail.com',
+  'outlook.com',
+  'outlook.com.br',
+  'yahoo.com',
+  'yahoo.com.br',
+  'live.com',
+  'icloud.com',
+  'uol.com.br',
+  'bol.com.br',
+  'terra.com.br',
+  'ig.com.br',
+  'r7.com',
+  'msn.com',
+  'me.com',
+  'protonmail.com',
+  'aol.com',
+])
+
+// Tokens que NÃO entram no slug (sufixos societários / palavras genéricas).
+const SLUG_STOPWORDS = new Set<string>([
   'ltda',
   'me',
   'epp',
@@ -63,60 +110,42 @@ const SUFIXOS_EMPRESA = [
   'eireli',
   'mei',
   'cia',
-  'comercio',
-  'comercial',
-  'industria',
-  'industrial',
-]
-
-const REDES_SOCIAIS_BLOCKLIST = [
-  'instagram.com',
-  'linkedin.com',
-  'facebook.com',
-  'twitter.com',
-  'x.com',
-  'youtube.com',
-  'tiktok.com',
-  'reclameaqui.com.br',
-  'wikipedia.org',
-  'pinterest.com',
-  'glassdoor.com',
-  'indeed.com',
-  'mercadolivre.com.br',
-  'olx.com.br',
-]
+  'grupo',
+  'do',
+  'da',
+  'de',
+  'dos',
+  'das',
+  'e',
+])
 
 // ============================================================================
 // HELPERS
 // ============================================================================
 
 /**
- * Normaliza string p/ slug: lowercase, remove acentos, remove sufixos empresariais,
- * replace não-alphanumeric com "-", trim, max 50 chars.
+ * Normaliza string -> slug curto e compacto (sem hífens) usado em domínios
+ * candidatos e URLs de redes sociais.
+ *
+ * Exemplos:
+ *   "M Branorte Industria LTDA" -> "mbranorte"
+ *   "Acme Comércio S.A." -> "acmecomercio"
  */
-function slugify(s: string): string {
-  if (!s) return ''
-
-  let out = s
-    .toLowerCase()
+function slugify(input: string | null | undefined): string {
+  if (!input) return ''
+  const norm = input
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '') // remove acentos
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-
-  // Remove sufixos empresariais
-  const tokens = out.split(' ').filter(t => !SUFIXOS_EMPRESA.includes(t))
-  out = tokens.join('-')
-
-  // Replace múltiplos hífens por um só
-  out = out.replace(/-+/g, '-').replace(/^-|-$/g, '')
-
-  return out.slice(0, 50)
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+  // Remove tudo que não é letra/dígito/espaço
+  const clean = norm.replace(/[^a-z0-9\s]+/g, ' ').replace(/\s+/g, ' ').trim()
+  const tokens = clean.split(' ').filter(t => t && !SLUG_STOPWORDS.has(t))
+  return tokens.join('').slice(0, 30)
 }
 
 /**
- * Promise wrapper com timeout via AbortController.
+ * Promise wrapper com timeout via setTimeout (não cancela a promise interna,
+ * apenas vence o race com erro).
  */
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
@@ -127,34 +156,67 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   ])
 }
 
+interface HttpValidationResult {
+  ok: boolean
+  status: number
+  titulo?: string
+}
+
 /**
- * HTTP HEAD com timeout. Retorna { ok, status }.
- * Aceita 200, 301, 302 como "existe".
+ * HTTP HEAD com timeout. Aceita 2xx/3xx como "existe".
+ * Se HEAD falhar (alguns servers não aceitam), tenta GET com Range para
+ * pegar uma fatia mínima.
+ *
+ * Nota: status 999 (LinkedIn antibot) NÃO é considerado ok aqui — quem chama
+ * decide o que fazer com esse status.
  */
-async function httpHeadValidate(
+async function validarHTTP(
   url: string,
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
-): Promise<{ ok: boolean; status: number }> {
+): Promise<HttpValidationResult> {
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
     const resp = await fetch(url, {
       method: 'HEAD',
       signal: ctrl.signal,
-      headers: { 'User-Agent': REALISTIC_UA },
+      headers: {
+        'User-Agent': REALISTIC_UA,
+        'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+      },
       redirect: 'follow',
     })
-    return { ok: resp.status >= 200 && resp.status < 400, status: resp.status }
+    const ok = resp.status >= 200 && resp.status < 400
+    return { ok, status: resp.status }
   } catch {
-    // Alguns servers não aceitam HEAD — tenta GET com Range
+    // Fallback: GET com Range bytes 0-2047 (tenta extrair <title>)
     try {
-      const resp = await fetch(url, {
-        method: 'GET',
-        signal: ctrl.signal,
-        headers: { 'User-Agent': REALISTIC_UA, Range: 'bytes=0-512' },
-        redirect: 'follow',
-      })
-      return { ok: resp.status >= 200 && resp.status < 400, status: resp.status }
+      const ctrl2 = new AbortController()
+      const t2 = setTimeout(() => ctrl2.abort(), timeoutMs)
+      try {
+        const resp = await fetch(url, {
+          method: 'GET',
+          signal: ctrl2.signal,
+          headers: {
+            'User-Agent': REALISTIC_UA,
+            'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+            Range: 'bytes=0-2047',
+          },
+          redirect: 'follow',
+        })
+        const ok = resp.status >= 200 && resp.status < 400
+        let titulo: string | undefined
+        try {
+          const body = await resp.text()
+          const m = body.match(/<title[^>]*>([^<]{1,160})<\/title>/i)
+          if (m) titulo = m[1].trim()
+        } catch {
+          /* ignore body parse */
+        }
+        return { ok, status: resp.status, titulo }
+      } finally {
+        clearTimeout(t2)
+      }
     } catch {
       return { ok: false, status: 0 }
     }
@@ -164,120 +226,24 @@ async function httpHeadValidate(
 }
 
 /**
- * DuckDuckGo HTML search.
- * Faz fetch em html.duckduckgo.com/html/, parseia <a class="result__a"> e retorna URLs.
- *
- * DuckDuckGo usa redirects via /l/?uddg=URL_ENCODED — decodificamos pra URL real.
- */
-async function duckduckgoSearch(
-  query: string,
-  opts: { timeoutMs?: number; maxResults?: number } = {},
-): Promise<string[]> {
-  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS
-  const maxResults = opts.maxResults ?? 10
-
-  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`
-
-  const ctrl = new AbortController()
-  const t = setTimeout(() => ctrl.abort(), timeoutMs)
-
-  try {
-    const resp = await fetch(url, {
-      method: 'GET',
-      signal: ctrl.signal,
-      headers: {
-        'User-Agent': REALISTIC_UA,
-        Accept: 'text/html,application/xhtml+xml',
-        'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
-      },
-    })
-    if (!resp.ok) return []
-    const html = await resp.text()
-
-    // Parse <a class="result__a" href="...">
-    const results: string[] = []
-    const regex = /<a[^>]+class="result__a"[^>]+href="([^"]+)"/gi
-    let m: RegExpExecArray | null
-    while ((m = regex.exec(html)) !== null && results.length < maxResults) {
-      let href = m[1]
-
-      // Decode DDG redirect: /l/?uddg=URL_ENCODED&...
-      if (href.includes('/l/?uddg=') || href.includes('uddg=')) {
-        const uddgMatch = href.match(/[?&]uddg=([^&]+)/)
-        if (uddgMatch) {
-          try {
-            href = decodeURIComponent(uddgMatch[1])
-          } catch {
-            // ignora se decode falhar
-          }
-        }
-      }
-
-      // Garante protocolo
-      if (href.startsWith('//')) href = 'https:' + href
-      if (!href.startsWith('http')) continue
-
-      results.push(href)
-    }
-
-    return results
-  } catch {
-    return []
-  } finally {
-    clearTimeout(t)
-  }
-}
-
-/**
- * Extrai domínio (sem www/protocolo) de uma URL.
- */
-function extractDomain(url: string): string {
-  try {
-    const u = new URL(url)
-    return u.hostname.replace(/^www\./, '')
-  } catch {
-    return ''
-  }
-}
-
-/**
- * Verifica se URL aponta pra rede social conhecida.
- */
-function isSocialMediaUrl(url: string): boolean {
-  const dom = extractDomain(url)
-  return REDES_SOCIAIS_BLOCKLIST.some(blocked => dom.includes(blocked))
-}
-
-/**
- * Extrai domínio de email (parte depois do @).
- * Retorna null se for email genérico (gmail, hotmail, etc).
+ * Extrai domínio (sem www) do email cadastral OpenCNPJ.
+ * Retorna null pra emails genéricos (gmail, hotmail, etc).
  */
 function extractDomainFromEmail(email: string | null | undefined): string | null {
   if (!email) return null
-  const m = email.toLowerCase().match(/@([a-z0-9.-]+\.[a-z]{2,})/)
-  if (!m) return null
-  const dom = m[1]
-  const genericos = [
-    'gmail.com',
-    'hotmail.com',
-    'outlook.com',
-    'yahoo.com',
-    'yahoo.com.br',
-    'live.com',
-    'icloud.com',
-    'uol.com.br',
-    'bol.com.br',
-    'terra.com.br',
-    'ig.com.br',
-    'r7.com',
-    'msn.com',
-  ]
-  if (genericos.includes(dom)) return null
-  return dom
+  const at = email.indexOf('@')
+  if (at < 0) return null
+  const raw = email.slice(at + 1).trim().toLowerCase()
+  if (!raw) return null
+  // Remove sufixo de path/query se vier sujo
+  const dominio = raw.split(/[/?#\s]/)[0].replace(/^www\./, '')
+  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(dominio)) return null
+  if (EMAIL_GENERICOS.has(dominio)) return null
+  return dominio
 }
 
 // ============================================================================
-// TAREFAS PARALELAS (Tier 1 — DuckDuckGo + HTTP HEAD)
+// TIPOS INTERNOS
 // ============================================================================
 
 interface BuscaCtx {
@@ -289,232 +255,268 @@ interface BuscaCtx {
   timeoutMs: number
 }
 
-/**
- * Tarefa A — Busca site oficial.
- * Estratégia:
- *   1. DuckDuckGo: "RAZAO site oficial -instagram -linkedin -facebook"
- *   2. Pega 1o resultado NÃO-rede-social
- *   3. HTTP HEAD pra validar
- *   4. Fallback: extrai domínio do email cadastral e tenta HEAD direto
- */
+type Tentativa = NonNullable<PegadaDigital['debug']>['tentativas'][number]
+
+// ============================================================================
+// BUSCA SITE OFICIAL
+// ============================================================================
+
 async function buscarSiteOficial(
   ctx: BuscaCtx,
-): Promise<{
-  resultado: PegadaDigital['site']
-  fonte: string
-  erro?: string
-}> {
-  const nome = ctx.nomeFantasia || ctx.razaoSocial
-  const query = `"${nome}" site oficial -instagram -linkedin -facebook -reclameaqui`
-
+  registrar: (t: Tentativa) => void,
+): Promise<{ resultado: PegadaDigital['site']; fonte: string; erro?: string }> {
   try {
-    // 1. DuckDuckGo
-    const results = await duckduckgoSearch(query, { timeoutMs: ctx.timeoutMs, maxResults: 10 })
-
-    for (const url of results) {
-      if (isSocialMediaUrl(url)) continue
-      const head = await httpHeadValidate(url, ctx.timeoutMs)
-      if (head.ok) {
-        return {
-          resultado: {
-            existe: true,
-            url,
-            fonte: 'duckduckgo',
-          },
-          fonte: 'duckduckgo',
-        }
-      }
-    }
-
-    // 2. Fallback: email cadastral
+    // PRIORIDADE 1 — domínio do email cadastral OpenCNPJ
     const dominioEmail = extractDomainFromEmail(ctx.emailCadastral)
     if (dominioEmail) {
-      const urlHttps = `https://${dominioEmail}`
-      const head = await httpHeadValidate(urlHttps, ctx.timeoutMs)
-      if (head.ok) {
+      const candidato = `https://${dominioEmail}`
+      const v = await validarHTTP(candidato, ctx.timeoutMs)
+      registrar({
+        alvo: 'site',
+        fonte: 'email_cadastral',
+        url: candidato,
+        ok: v.ok,
+        status: v.status,
+      })
+      if (v.ok) {
         return {
           resultado: {
             existe: true,
-            url: urlHttps,
+            url: candidato,
             fonte: 'email_cadastral',
+            titulo_pagina: v.titulo,
           },
           fonte: 'email_cadastral',
         }
       }
+      // Mesmo se HEAD/GET falhar, mantemos como "inferido" — vendedor valida.
+      // OpenCNPJ raramente entrega email errado, então a confiança ainda é alta.
+      // PORÉM: só mantém como inferido se for um domínio plausível.
+      return {
+        resultado: {
+          existe: true,
+          url: candidato,
+          fonte: 'email_cadastral_inferido',
+        },
+        fonte: 'email_cadastral_inferido',
+      }
     }
 
-    return {
-      resultado: { existe: false },
-      fonte: 'duckduckgo',
+    // PRIORIDADE 2 — slug razão social
+    const slugRazao = slugify(ctx.razaoSocial)
+    if (slugRazao.length >= 3) {
+      const candidatos = [
+        `https://www.${slugRazao}.com.br`,
+        `https://${slugRazao}.com.br`,
+        `https://www.${slugRazao}.com`,
+        `https://${slugRazao}.com`,
+      ]
+      for (const url of candidatos) {
+        const v = await validarHTTP(url, ctx.timeoutMs)
+        registrar({
+          alvo: 'site',
+          fonte: 'slug_razao',
+          url,
+          ok: v.ok,
+          status: v.status,
+        })
+        if (v.ok) {
+          return {
+            resultado: {
+              existe: true,
+              url,
+              fonte: 'slug_razao_validado',
+              titulo_pagina: v.titulo,
+            },
+            fonte: 'slug_razao_validado',
+          }
+        }
+      }
     }
+
+    // PRIORIDADE 3 — slug nome fantasia (se diferente do razão)
+    const slugFantasia = ctx.nomeFantasia ? slugify(ctx.nomeFantasia) : ''
+    if (slugFantasia.length >= 3 && slugFantasia !== slugRazao) {
+      const candidatos = [
+        `https://www.${slugFantasia}.com.br`,
+        `https://${slugFantasia}.com.br`,
+        `https://www.${slugFantasia}.com`,
+        `https://${slugFantasia}.com`,
+      ]
+      for (const url of candidatos) {
+        const v = await validarHTTP(url, ctx.timeoutMs)
+        registrar({
+          alvo: 'site',
+          fonte: 'slug_fantasia',
+          url,
+          ok: v.ok,
+          status: v.status,
+        })
+        if (v.ok) {
+          return {
+            resultado: {
+              existe: true,
+              url,
+              fonte: 'slug_fantasia_validado',
+              titulo_pagina: v.titulo,
+            },
+            fonte: 'slug_fantasia_validado',
+          }
+        }
+      }
+    }
+
+    // Nada encontrado.
+    return { resultado: { existe: false }, fonte: 'site_nao_encontrado' }
   } catch (e) {
     return {
       resultado: { existe: false },
-      fonte: 'duckduckgo',
+      fonte: 'site_erro',
       erro: `site: ${(e as Error).message}`,
     }
   }
 }
 
-/**
- * Tarefa B — Busca LinkedIn da empresa.
- * Estratégia:
- *   1. DuckDuckGo: "site:linkedin.com/company RAZAO"
- *   2. Fallback: tenta https://linkedin.com/company/SLUG-RAZAO via HEAD
- */
+// ============================================================================
+// BUSCA LINKEDIN (slug determinístico)
+// ============================================================================
+
 async function buscarLinkedIn(
   ctx: BuscaCtx,
-): Promise<{
-  resultado: PegadaDigital['linkedin']
-  fonte: string
-  erro?: string
-}> {
-  const nome = ctx.nomeFantasia || ctx.razaoSocial
-  const query = `site:linkedin.com/company "${nome}"`
-
+  registrar: (t: Tentativa) => void,
+): Promise<{ resultado: PegadaDigital['linkedin']; fonte: string; erro?: string }> {
   try {
-    // 1. DDG
-    const results = await duckduckgoSearch(query, { timeoutMs: ctx.timeoutMs, maxResults: 5 })
+    const slugRazao = slugify(ctx.razaoSocial)
+    const slugFantasia = ctx.nomeFantasia ? slugify(ctx.nomeFantasia) : ''
 
-    for (const url of results) {
-      const dom = extractDomain(url)
-      if (dom.includes('linkedin.com') && url.includes('/company/')) {
+    const candidatos: string[] = []
+    if (slugRazao.length >= 3) {
+      candidatos.push(`https://www.linkedin.com/company/${slugRazao}`)
+    }
+    if (slugFantasia.length >= 3 && slugFantasia !== slugRazao) {
+      candidatos.push(`https://www.linkedin.com/company/${slugFantasia}`)
+    }
+
+    for (const url of candidatos) {
+      const v = await validarHTTP(url, ctx.timeoutMs)
+      registrar({
+        alvo: 'linkedin',
+        fonte: 'linkedin_slug',
+        url,
+        ok: v.ok,
+        status: v.status,
+      })
+      // LinkedIn retorna 999 quando bloqueia bot — isso indica que a URL
+      // existe (LinkedIn responde, só não deixa scrapear). Tratamos como ok.
+      if (v.ok || v.status === 999) {
         return {
           resultado: {
             existe: true,
             url,
-            fonte: 'duckduckgo',
+            fonte: v.ok ? 'slug_razao_validado' : 'slug_inferido',
           },
-          fonte: 'duckduckgo',
+          fonte: v.ok ? 'slug_razao_validado' : 'slug_inferido',
         }
       }
     }
 
-    // 2. Fallback: tenta slug direto
-    const slug = slugify(nome)
-    if (slug) {
-      const urlSlug = `https://www.linkedin.com/company/${slug}`
-      const head = await httpHeadValidate(urlSlug, ctx.timeoutMs)
-      if (head.ok) {
-        return {
-          resultado: {
-            existe: true,
-            url: urlSlug,
-            fonte: 'inferido',
-          },
-          fonte: 'linkedin_inferido',
-        }
+    // Fallback final: mesmo sem validar, exibe slug como "inferido" pra vendedor checar.
+    if (slugRazao.length >= 3) {
+      const url = `https://www.linkedin.com/company/${slugRazao}`
+      return {
+        resultado: {
+          existe: true,
+          url,
+          fonte: 'slug_inferido',
+        },
+        fonte: 'slug_inferido',
       }
     }
 
-    return {
-      resultado: { existe: false },
-      fonte: 'duckduckgo',
-    }
+    return { resultado: { existe: false }, fonte: 'linkedin_nao_encontrado' }
   } catch (e) {
     return {
       resultado: { existe: false },
-      fonte: 'duckduckgo',
+      fonte: 'linkedin_erro',
       erro: `linkedin: ${(e as Error).message}`,
     }
   }
 }
 
-/**
- * Tarefa C — Verifica Reclame Aqui.
- * Estratégia:
- *   1. Tenta https://www.reclameaqui.com.br/empresa/SLUG-RAZAO/ via HEAD
- *   2. Se 200, marca existe=true (rating fica null sem scraping pesado)
- */
+// ============================================================================
+// BUSCA RECLAME AQUI (slug determinístico)
+// ============================================================================
+
 async function buscarReclameAqui(
   ctx: BuscaCtx,
-): Promise<{
-  resultado: PegadaDigital['reclame_aqui']
-  fonte: string
-  erro?: string
-}> {
-  const nome = ctx.nomeFantasia || ctx.razaoSocial
-  const slug = slugify(nome)
-
-  if (!slug) {
-    return {
-      resultado: { existe: false },
-      fonte: 'reclame_aqui',
-    }
-  }
-
+  registrar: (t: Tentativa) => void,
+): Promise<{ resultado: PegadaDigital['reclame_aqui']; fonte: string; erro?: string }> {
   try {
-    const url = `https://www.reclameaqui.com.br/empresa/${slug}/`
-    const head = await httpHeadValidate(url, ctx.timeoutMs)
+    const nome = ctx.nomeFantasia || ctx.razaoSocial
+    const slug = slugify(nome)
+    if (slug.length < 3) {
+      return { resultado: { existe: false }, fonte: 'reclame_aqui_sem_slug' }
+    }
 
-    if (head.ok) {
+    const url = `https://www.reclameaqui.com.br/empresa/${slug}/`
+    const v = await validarHTTP(url, ctx.timeoutMs)
+    registrar({
+      alvo: 'reclame_aqui',
+      fonte: 'reclame_aqui_slug',
+      url,
+      ok: v.ok,
+      status: v.status,
+    })
+
+    if (v.ok) {
       return {
-        resultado: {
-          existe: true,
-          url,
-        },
-        fonte: 'reclame_aqui_inferido',
+        resultado: { existe: true, url, fonte: 'slug_razao_validado' },
+        fonte: 'slug_razao_validado',
       }
     }
 
+    // Apresenta como inferido — usuário valida visualmente.
     return {
-      resultado: { existe: false },
-      fonte: 'reclame_aqui',
+      resultado: { existe: true, url, fonte: 'slug_inferido' },
+      fonte: 'slug_inferido',
     }
   } catch (e) {
     return {
       resultado: { existe: false },
-      fonte: 'reclame_aqui',
+      fonte: 'reclame_aqui_erro',
       erro: `reclame_aqui: ${(e as Error).message}`,
     }
   }
 }
 
-/**
- * Tarefa D — Busca Facebook da empresa.
- * Estratégia:
- *   1. DuckDuckGo: "site:facebook.com RAZAO"
- *   2. Pega 1o match em facebook.com
- */
+// ============================================================================
+// BUSCA FACEBOOK (slug determinístico)
+// ============================================================================
+
 async function buscarFacebook(
   ctx: BuscaCtx,
-): Promise<{
-  resultado: PegadaDigital['facebook']
-  fonte: string
-  erro?: string
-}> {
-  const nome = ctx.nomeFantasia || ctx.razaoSocial
-  const query = `site:facebook.com "${nome}"`
-
+  registrar: (t: Tentativa) => void,
+): Promise<{ resultado: PegadaDigital['facebook']; fonte: string; erro?: string }> {
   try {
-    const results = await duckduckgoSearch(query, { timeoutMs: ctx.timeoutMs, maxResults: 5 })
-
-    for (const url of results) {
-      const dom = extractDomain(url)
-      if (
-        dom.includes('facebook.com') &&
-        !url.includes('/posts/') &&
-        !url.includes('/photos/') &&
-        !url.includes('/videos/')
-      ) {
-        return {
-          resultado: {
-            existe: true,
-            url,
-          },
-          fonte: 'duckduckgo',
-        }
-      }
+    const nome = ctx.nomeFantasia || ctx.razaoSocial
+    const slug = slugify(nome)
+    if (slug.length < 3) {
+      return { resultado: { existe: false }, fonte: 'facebook_sem_slug' }
     }
 
+    const url = `https://www.facebook.com/${slug}`
+    // Facebook bloqueia HEAD agressivamente. Apresentamos sempre como inferido
+    // pro vendedor validar visualmente.
+    registrar({ alvo: 'facebook', fonte: 'facebook_slug', url, ok: false, status: 0 })
+
     return {
-      resultado: { existe: false },
-      fonte: 'duckduckgo',
+      resultado: { existe: true, url, fonte: 'slug_inferido' },
+      fonte: 'slug_inferido',
     }
   } catch (e) {
     return {
       resultado: { existe: false },
-      fonte: 'duckduckgo',
+      fonte: 'facebook_erro',
       erro: `facebook: ${(e as Error).message}`,
     }
   }
@@ -525,19 +527,19 @@ async function buscarFacebook(
 // ============================================================================
 
 /**
- * Busca pegada digital de uma empresa em 4 fontes em paralelo.
+ * Busca pegada digital usando heurísticas DETERMINÍSTICAS (sem DuckDuckGo,
+ * sem scraping de SERP). Sempre retorna algo apresentável — quando não dá
+ * pra validar via HEAD, apresenta como "slug_inferido" e a UI mostra a
+ * etiqueta de fonte pro vendedor revisar.
  *
- * Estratégia HÍBRIDA Tier 1 (gratuito):
- *   - Site oficial: DuckDuckGo + HEAD validation + fallback email cadastral
- *   - LinkedIn: DuckDuckGo (site:linkedin.com/company) + fallback slug
- *   - Reclame Aqui: HEAD em slug direto
- *   - Facebook: DuckDuckGo (site:facebook.com)
+ * Estratégia:
+ *   - Site: email cadastral OpenCNPJ -> slug razão -> slug fantasia
+ *   - LinkedIn: slug razão / fantasia em /company/SLUG (aceita 999 = bloqueio antibot)
+ *   - Reclame Aqui: slug -> /empresa/SLUG/ (HEAD; se falhar, inferido)
+ *   - Facebook: slug -> /SLUG (sempre inferido, FB bloqueia HEAD)
  *
- * Timeout: 8s/fonte, 25s total. Cada fonte tem try/catch isolado.
- * Custo: 0 (apenas Tier 1).
- *
- * Para Tier 2 (Bing) e Tier 3 (SerpAPI), usar clientes separados em
- * `bing-search-client.ts` e `serpapi-client.ts` (não implementados aqui).
+ * Timeout: 6s/HEAD, 25s total. Tudo paralelo via Promise.allSettled.
+ * Custo: 0.
  */
 export async function buscarPegadaDigital(opts: {
   razaoSocial: string
@@ -557,6 +559,11 @@ export async function buscarPegadaDigital(opts: {
     timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
   }
 
+  const tentativas: Tentativa[] = []
+  const registrar = (t: Tentativa) => {
+    tentativas.push(t)
+  }
+
   const resultado: PegadaDigital = {
     site: { existe: false },
     linkedin: { existe: false },
@@ -565,28 +572,27 @@ export async function buscarPegadaDigital(opts: {
     fontes_consultadas: [],
     custo_estimado_brl: 0,
     erros: [],
+    debug: { tentativas },
   }
 
-  // Sem razão social = nada a buscar
   if (!ctx.razaoSocial || ctx.razaoSocial.trim().length < 3) {
     resultado.erros.push('razao_social ausente ou muito curta')
     return resultado
   }
 
-  // 4 buscas em paralelo, com timeout global de 25s.
   try {
     const settled = await withTimeout(
       Promise.allSettled([
-        buscarSiteOficial(ctx),
-        buscarLinkedIn(ctx),
-        buscarReclameAqui(ctx),
-        buscarFacebook(ctx),
+        buscarSiteOficial(ctx, registrar),
+        buscarLinkedIn(ctx, registrar),
+        buscarReclameAqui(ctx, registrar),
+        buscarFacebook(ctx, registrar),
       ]),
       TOTAL_TIMEOUT_MS,
       'pegada_digital_global',
     )
 
-    // Tarefa A — Site
+    // Site
     const tA = settled[0]
     if (tA.status === 'fulfilled') {
       resultado.site = tA.value.resultado
@@ -598,7 +604,7 @@ export async function buscarPegadaDigital(opts: {
       resultado.erros.push(`site: ${tA.reason?.message || 'rejected'}`)
     }
 
-    // Tarefa B — LinkedIn
+    // LinkedIn
     const tB = settled[1]
     if (tB.status === 'fulfilled') {
       resultado.linkedin = tB.value.resultado
@@ -610,7 +616,7 @@ export async function buscarPegadaDigital(opts: {
       resultado.erros.push(`linkedin: ${tB.reason?.message || 'rejected'}`)
     }
 
-    // Tarefa C — Reclame Aqui
+    // Reclame Aqui
     const tC = settled[2]
     if (tC.status === 'fulfilled') {
       resultado.reclame_aqui = tC.value.resultado
@@ -622,7 +628,7 @@ export async function buscarPegadaDigital(opts: {
       resultado.erros.push(`reclame_aqui: ${tC.reason?.message || 'rejected'}`)
     }
 
-    // Tarefa D — Facebook
+    // Facebook
     const tD = settled[3]
     if (tD.status === 'fulfilled') {
       resultado.facebook = tD.value.resultado
@@ -634,7 +640,6 @@ export async function buscarPegadaDigital(opts: {
       resultado.erros.push(`facebook: ${tD.reason?.message || 'rejected'}`)
     }
   } catch (e) {
-    // Timeout global ou erro inesperado — devolve o que tiver montado
     resultado.erros.push(`global: ${(e as Error).message}`)
   }
 

@@ -56,16 +56,17 @@ export interface DossieDetetive {
   red_flags: Array<{ id: number; peso: number; nome: string; descricao: string }>
   pegada_digital?: {
     site?: { existe: boolean; url?: string; titulo_pagina?: string; fonte?: string }
-    linkedin?: { existe: boolean; url?: string }
+    linkedin?: { existe: boolean; url?: string; fonte?: string }
     reclame_aqui?: {
       existe?: boolean
       url?: string
+      fonte?: string
       rating?: number
       total?: number
       total_reclamacoes?: number
       resolucao_pct?: number
     }
-    facebook?: { existe: boolean; url?: string }
+    facebook?: { existe: boolean; url?: string; fonte?: string }
     google_maps_url?: string
     instagram?: {
       perfil_encontrado: boolean
@@ -612,6 +613,7 @@ export function DossieDetetiveCard({ dossie, onReinvestigar }: Props) {
               label="LinkedIn"
               existe={dossie.pegada_digital?.linkedin?.existe}
               url={dossie.pegada_digital?.linkedin?.url}
+              fonte={dossie.pegada_digital?.linkedin?.fonte}
             />
             {/* Instagram */}
             <InstagramItem instagram={dossie.pegada_digital?.instagram} />
@@ -623,6 +625,7 @@ export function DossieDetetiveCard({ dossie, onReinvestigar }: Props) {
               label="Facebook"
               existe={dossie.pegada_digital?.facebook?.existe}
               url={dossie.pegada_digital?.facebook?.url}
+              fonte={dossie.pegada_digital?.facebook?.fonte}
             />
             {/* Google Maps / Street View */}
             {dossie.pegada_digital?.google_maps_url ? (
@@ -812,8 +815,66 @@ interface PegadaItemProps {
   url?: string
   /** Texto extra exibido abaixo do label (ex: título da página do site) */
   titulo?: string
-  /** Fonte/origem da informação (ex: "google", "cnpja"). Renderizado pequeno e discreto. */
+  /** Fonte/origem da informação (ex: "email_cadastral", "slug_inferido"). */
   fonte?: string
+}
+
+/**
+ * Classifica a fonte da pegada digital pra UI:
+ * - validado: cor verde, indica HEAD/HTTP retornou 2xx/3xx ou veio do email cadastral OpenCNPJ
+ * - inferido: cor amarela, indica slug-determinístico (vendedor precisa validar visualmente)
+ * - null: sem info / não encontrado
+ */
+function classificarFonte(fonte: string | undefined): {
+  label: string
+  variant: 'validado' | 'inferido'
+} | null {
+  if (!fonte) return null
+  const f = fonte.toLowerCase()
+  if (
+    f === 'email_cadastral' ||
+    f.endsWith('_validado') ||
+    f === 'validado' ||
+    f === 'duckduckgo'
+  ) {
+    if (f === 'email_cadastral') return { label: 'email cadastral', variant: 'validado' }
+    if (f === 'slug_razao_validado') return { label: 'site validado', variant: 'validado' }
+    if (f === 'slug_fantasia_validado') return { label: 'site validado', variant: 'validado' }
+    return { label: 'validado', variant: 'validado' }
+  }
+  if (
+    f === 'email_cadastral_inferido' ||
+    f === 'slug_inferido' ||
+    f === 'inferido' ||
+    f.endsWith('_inferido')
+  ) {
+    if (f === 'email_cadastral_inferido') {
+      return { label: 'email cadastral (a validar)', variant: 'inferido' }
+    }
+    return { label: 'inferido (a validar)', variant: 'inferido' }
+  }
+  return null
+}
+
+/**
+ * Badge de fonte (verde validado / amarelo inferido).
+ * Pequeno, mostra confiança da informação pro vendedor.
+ */
+function FonteBadge({ fonte }: { fonte?: string }) {
+  const classif = classificarFonte(fonte)
+  if (!classif) return null
+  const cls =
+    classif.variant === 'validado'
+      ? 'bg-success/15 text-success border-success/30'
+      : 'bg-warning/15 text-warning border-warning/30'
+  return (
+    <span
+      className={`inline-flex items-center text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${cls}`}
+      title={`Origem da informação: ${fonte}`}
+    >
+      {classif.label}
+    </span>
+  )
 }
 
 function PegadaItem({ icon: Icon, label, existe, url, titulo, fonte }: PegadaItemProps) {
@@ -836,19 +897,27 @@ function PegadaItem({ icon: Icon, label, existe, url, titulo, fonte }: PegadaIte
     ? titulo || url || 'Encontrado'
     : 'não encontrado'
 
+  const classif = classificarFonte(fonte)
+  // Ícone fica em "tom de aviso" quando fonte é inferida — pra reforçar que precisa validar.
+  const corIcone = !existe
+    ? 'text-ink-faint'
+    : classif?.variant === 'inferido'
+      ? 'text-warning'
+      : 'text-success'
+
   return (
     <Wrapper {...wrapperProps}>
-      <Icon className={`h-3.5 w-3.5 shrink-0 mt-0.5 ${existe ? 'text-success' : 'text-ink-faint'}`} />
+      <Icon className={`h-3.5 w-3.5 shrink-0 mt-0.5 ${corIcone}`} />
       <div className="min-w-0 flex-1">
-        <p className={`text-[11px] font-semibold ${url ? 'text-ink group-hover:text-accent' : existe ? 'text-ink' : 'text-ink'}`}>
-          {label}
-        </p>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <p className={`text-[11px] font-semibold ${url ? 'text-ink group-hover:text-accent' : 'text-ink'}`}>
+            {label}
+          </p>
+          {existe && <FonteBadge fonte={fonte} />}
+        </div>
         <p className={`text-[10px] truncate ${existe ? 'text-ink-muted' : 'text-ink-faint'}`}>
           {linhaSecundaria}
         </p>
-        {existe && fonte && (
-          <p className="text-[9px] text-ink-faint italic mt-0.5">fonte: {fonte}</p>
-        )}
       </div>
       {url && <ExternalLink className="h-3 w-3 text-ink-faint shrink-0 mt-0.5" />}
     </Wrapper>
@@ -910,9 +979,12 @@ function ReclameAquiItem({ reclame }: ReclameAquiItemProps) {
     <Wrapper {...wrapperProps}>
       <Star className={`h-3.5 w-3.5 shrink-0 mt-0.5 ${starColor}`} />
       <div className="min-w-0 flex-1">
-        <p className={`text-[11px] font-semibold ${url ? 'text-ink group-hover:text-accent' : 'text-ink'}`}>
-          Reclame Aqui
-        </p>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <p className={`text-[11px] font-semibold ${url ? 'text-ink group-hover:text-accent' : 'text-ink'}`}>
+            Reclame Aqui
+          </p>
+          <FonteBadge fonte={reclame?.fonte} />
+        </div>
         <p className="text-[10px] text-ink-muted tabular-nums">
           {rating != null ? `Rating ${rating.toFixed(1)}/10` : 'Sem rating'}
           {total != null && <> · {total} reclamações</>}
