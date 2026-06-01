@@ -2083,6 +2083,30 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                         { id: id4, dataTipo: 'apos_nf', dias: 60, metodo: 'BOLETO', pct: 25 },
                       ])
                     }
+                    // Divide o valor que FALTA igualmente entre as parcelas vazias (R$ 0).
+                    // Mantém as já preenchidas; a última vazia absorve o arredondamento (fecha exato).
+                    function dividirRestoIgual() {
+                      if (!onUpdateParcelas) return
+                      const base = totalComDesconto
+                      if (base <= 0) return
+                      const vazias = arr.filter(p => calcValor(p) < 0.01)
+                      if (vazias.length === 0) return
+                      const preenchido = arr.reduce((s, p) => s + calcValor(p), 0)
+                      const resto = Math.round((base - preenchido) * 100) / 100
+                      if (resto <= 0) return
+                      const vazSet = new Set(vazias.map(p => p.id))
+                      const porParcela = Math.floor((resto / vazias.length) * 100) / 100
+                      let acumulado = 0
+                      let idx = 0
+                      onUpdateParcelas(arr.map(p => {
+                        if (!vazSet.has(p.id)) return p
+                        idx++
+                        let v = porParcela
+                        if (idx === vazias.length) v = Math.round((resto - acumulado) * 100) / 100
+                        acumulado = Math.round((acumulado + v) * 100) / 100
+                        return { ...p, valor: v, pct: undefined }
+                      }))
+                    }
                     const totalPct = arr.reduce((s, p) => s + (typeof p.pct === 'number' ? p.pct : 0), 0)
                     const totalParcelas = arr.reduce((s, p) => s + calcValor(p), 0)
                     // Soma das parcelas em R$ vs total COM DESCONTO (valida cobertura)
@@ -2114,6 +2138,14 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                   className="text-[12px] px-1.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded text-emerald-700 font-bold"
                                   title="Adicionar parcela"
                                 >+ Parcela</button>
+                                {temParcelas && (
+                                  <button
+                                    type="button"
+                                    onClick={dividirRestoIgual}
+                                    className="text-[12px] px-1.5 py-0.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-300 rounded text-indigo-700 font-bold"
+                                    title="Divide o valor que falta igualmente entre as parcelas vazias (R$ 0,00)"
+                                  >÷ Dividir resto</button>
+                                )}
                                 {temParcelas && (
                                   <button
                                     type="button"
