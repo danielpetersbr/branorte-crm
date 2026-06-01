@@ -481,7 +481,10 @@ export function OrcamentoAIChat({
           onClick={() => toggleDrawer(true)}
           title="IA Branorte — montar orçamento"
           aria-label="Abrir IA Branorte"
-          className="fixed bottom-6 left-6 lg:bottom-8 lg:left-8 z-40 h-14 w-14 rounded-full shadow-xl flex items-center justify-center transition-all bg-gradient-to-br from-accent to-accent/80 text-white hover:scale-105 hover:shadow-2xl ring-2 ring-accent/30 max-md:bottom-20"
+          // Mobile-first: no celular fica ACIMA da bottom nav (calc = nav + safe-area),
+          // independente da variante max-md emitir. No desktop (md+, sem bottom nav) usa
+          // o canto inferior padrão. z-50 pra ficar na frente da nav, nunca atrás.
+          className="fixed left-4 bottom-[calc(5rem+env(safe-area-inset-bottom))] md:left-8 md:bottom-8 z-50 h-14 w-14 rounded-full shadow-xl flex items-center justify-center transition-all bg-gradient-to-br from-accent to-accent/80 text-white hover:scale-105 hover:shadow-2xl ring-2 ring-accent/30"
         >
           <div className="relative">
             <Bot className="h-6 w-6" />
@@ -498,7 +501,10 @@ export function OrcamentoAIChat({
           className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[2px] animate-in fade-in duration-200 sm:hidden"
           onClick={() => toggleDrawer(false)}
         />
-        <div className="fixed top-0 left-0 z-50 h-screen w-full sm:w-[380px] bg-bg border-r border-border shadow-2xl flex flex-col animate-in slide-in-from-left duration-200">
+        {/* h-[100dvh] (altura dinâmica) em vez de h-screen/100vh: no celular o
+            100vh estoura a barra do navegador e o input do rodapé fica fora da
+            tela ("bugado"). dvh acompanha a área realmente visível. */}
+        <div className="fixed top-0 left-0 z-50 h-[100dvh] w-full sm:w-[380px] bg-bg border-r border-border shadow-2xl flex flex-col animate-in slide-in-from-left duration-200">
           {/* Header */}
           <div className="px-4 py-3 border-b border-border flex items-center gap-3 bg-gradient-to-r from-surface-2 to-surface-2/40">
             <div className="h-10 w-10 rounded-full bg-gradient-to-br from-accent/20 to-accent/10 flex items-center justify-center text-accent ring-1 ring-accent/20">
@@ -596,7 +602,7 @@ export function OrcamentoAIChat({
           </div>
 
           {/* Footer: gravação / preview / input */}
-          <div className="border-t border-border bg-surface-2/40 p-3">
+          <div className="border-t border-border bg-surface-2/40 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             {gravando ? (
               <BarraGravacao
                 niveis={nivelVolume}
