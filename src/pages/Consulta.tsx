@@ -7,10 +7,10 @@
 // - Recentes vira drawer lateral (botão no header) — sem sidebar fixa
 // - LGPD vira ícone <Info /> com popover/tooltip no header
 // - Resultado sem bordas duplicadas; ParecerIA sticky no topo + score gigante
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
-import { Search, AlertCircle, History, Info, X } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { Search, AlertCircle, History, Info, X, Eye, ArrowLeft } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { DueDiligenceForm } from '@/components/contacts/DueDiligenceButton'
 import type { DDConsulta } from '@/hooks/useDueDiligence'
@@ -19,6 +19,12 @@ export function Consulta() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [lgpdOpen, setLgpdOpen] = useState(false)
   const lgpdRef = useRef<HTMLDivElement | null>(null)
+  // Estado da consulta atualmente sendo VISUALIZADA do historico (lifting state
+  // pra a pagina). Quando setado, o DueDiligenceForm renderiza este resultado
+  // no lugar de `consultar.data`. F5 perde — vive na URL via ?id=XXX pra deep-link.
+  const [consultaSelecionada, setConsultaSelecionada] = useState<DDConsulta | null>(null)
+  const resultadoRef = useRef<HTMLDivElement | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
 
   // Fechar popover LGPD ao clicar fora
   useEffect(() => {
@@ -31,6 +37,71 @@ export function Consulta() {
     window.addEventListener('mousedown', onClick)
     return () => window.removeEventListener('mousedown', onClick)
   }, [lgpdOpen])
+
+  // Deep-link: se vier ?id=XXX na URL, carrega a consulta uma vez no mount.
+  // Defensive: valida campos esperados antes de renderizar.
+  const idFromUrl = searchParams.get('id')
+  useEffect(() => {
+    if (!idFromUrl || consultaSelecionada?.id === idFromUrl) return
+    let cancelado = false
+    ;(async () => {
+      const { data, error } = await supabase
+        .from('due_diligence_consultas')
+        .select('*')
+        .eq('id', idFromUrl)
+        .maybeSingle()
+      if (cancelado) return
+      if (error || !data || !data.id) {
+        // ID invalido — limpa da URL pra evitar tentar de novo em loop
+        setSearchParams(prev => {
+          const next = new URLSearchParams(prev)
+          next.delete('id')
+          return next
+        }, { replace: true })
+        return
+      }
+      setConsultaSelecionada(data as DDConsulta)
+      setTimeout(() => resultadoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+    })()
+    return () => { cancelado = true }
+  }, [idFromUrl, consultaSelecionada?.id, setSearchParams])
+
+  // ESC: limpa view + fecha drawer. UX teclado.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return
+      if (drawerOpen) {
+        setDrawerOpen(false)
+      } else if (consultaSelecionada) {
+        handleClearView()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawerOpen, consultaSelecionada])
+
+  // Centraliza a logica de "carregar consulta no resultado inline".
+  const handleSelectConsulta = useCallback((c: DDConsulta) => {
+    setConsultaSelecionada(c)
+    setDrawerOpen(false)
+    // Sync URL pra deep-link sem trigger do efeito de fetch (id ja bate).
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.set('id', c.id)
+      return next
+    }, { replace: true })
+    setTimeout(() => resultadoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }, [setSearchParams])
+
+  const handleClearView = useCallback(() => {
+    setConsultaSelecionada(null)
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.delete('id')
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
 
   return (
     <div className="min-h-screen bg-bg tabular-nums slashed-zero">
@@ -93,7 +164,42 @@ export function Consulta() {
 
       {/* Conteúdo full-width */}
       <main className="max-w-[1600px] mx-auto px-4 md:px-6 py-4 min-w-0">
-        <DueDiligenceForm />
+        {/* Indicador de "modo visualizar historico" — clareza sobre como sair */}
+        {consultaSelecionada && (
+          <div className="dd-no-print mb-3 flex items-center justify-between gap-3 px-3 py-2 rounded-md border border-accent/40 bg-accent-bg/30">
+            <div className="flex items-center gap-2 min-w-0">
+              <Eye className="h-3.5 w-3.5 text-accent shrink-0" />
+              <p className="text-[11px] text-ink leading-tight min-w-0 truncate">
+                Visualizando consulta do histórico —{' '}
+                <span className="font-mono text-ink-muted">
+                  {consultaSelecionada.cnpj || consultaSelecionada.cpf_socio || '—'}
+                </span>{' '}
+                de{' '}
+                <span className="tabular-nums">
+                  {new Date(consultaSelecionada.created_at).toLocaleString('pt-BR', {
+                    day: '2-digit', month: '2-digit', year: '2-digit',
+                    hour: '2-digit', minute: '2-digit',
+                  })}
+                </span>
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleClearView}
+              title="Voltar pro form vazio (ESC)"
+              className="text-[10px] font-semibold px-2 py-1 rounded-md border border-border bg-surface-2 text-ink-muted hover:text-ink hover:border-accent flex items-center gap-1.5 shrink-0"
+            >
+              <ArrowLeft className="h-3 w-3" /> Nova consulta
+            </button>
+          </div>
+        )}
+
+        <div ref={resultadoRef}>
+          <DueDiligenceForm
+            viewConsulta={consultaSelecionada}
+            onNewConsulta={handleClearView}
+          />
+        </div>
       </main>
 
       {/* Drawer de Recentes (overlay + painel lateral) */}
@@ -110,20 +216,29 @@ export function Consulta() {
           >
             <div className="px-4 py-3 border-b border-border flex items-center gap-2">
               <History className="h-4 w-4 text-accent" />
-              <h2 className="text-[12px] font-bold text-ink uppercase tracking-wider flex-1">
-                Consultas Recentes
-              </h2>
+              <div className="flex-1 min-w-0">
+                <h2 className="text-[12px] font-bold text-ink uppercase tracking-wider leading-tight">
+                  Consultas Recentes
+                </h2>
+                <p className="text-[9px] text-ink-faint leading-tight">
+                  Clique para carregar o resultado
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => setDrawerOpen(false)}
                 className="text-ink-faint hover:text-ink"
                 aria-label="Fechar"
+                title="Fechar (ESC)"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
             <div className="flex-1 overflow-y-auto px-4 py-3 tabular-nums slashed-zero">
-              <HistoricoRecente />
+              <HistoricoRecente
+                selectedId={consultaSelecionada?.id ?? null}
+                onSelect={handleSelectConsulta}
+              />
             </div>
             <div className="px-4 py-2 border-t border-border">
               <Link
@@ -141,7 +256,13 @@ export function Consulta() {
   )
 }
 
-function HistoricoRecente() {
+function HistoricoRecente({
+  selectedId,
+  onSelect,
+}: {
+  selectedId: string | null
+  onSelect: (c: DDConsulta) => void
+}) {
   const { data, isLoading, error } = useQuery({
     queryKey: ['dd', 'recentes'],
     queryFn: async (): Promise<DDConsulta[]> => {
@@ -155,6 +276,27 @@ function HistoricoRecente() {
     },
     staleTime: 15_000,
   })
+
+  // Navegação por setas ←/→ entre os itens (no INLINE não precisa fechar nada,
+  // só troca o consultaSelecionada — UX super fluida).
+  useEffect(() => {
+    if (!data || data.length === 0) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+      // Só captura se não estiver em input/textarea/select
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      e.preventDefault()
+      const items = data!
+      const idx = selectedId ? items.findIndex(c => c.id === selectedId) : -1
+      let next: number
+      if (e.key === 'ArrowDown') next = idx < 0 ? 0 : Math.min(items.length - 1, idx + 1)
+      else next = idx <= 0 ? 0 : idx - 1
+      onSelect(items[next])
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [data, selectedId, onSelect])
 
   if (isLoading) return <p className="text-[10px] text-ink-faint">Carregando...</p>
   if (error) return (
@@ -172,31 +314,54 @@ function HistoricoRecente() {
   }
 
   return (
-    <ul className="space-y-1">
-      {data.map(c => (
-        <li
-          key={c.id}
-          className="text-[10px] px-2 py-1.5 rounded bg-surface-2/40 hover:bg-surface-2/70 transition-colors cursor-pointer"
-        >
-          <div className="flex items-center justify-between mb-0.5">
-            <span className="font-mono text-ink">{c.cnpj || c.cpf_socio || '—'}</span>
-            <span className={`text-[9px] font-bold ${
-              c.status === 'success' ? 'text-success' :
-              c.status === 'partial' ? 'text-warning' :
-              c.status === 'failed' ? 'text-danger' : 'text-ink-faint'
-            }`}>
-              R$ {Number(c.custo_brl).toFixed(2)}
-            </span>
-          </div>
-          <div className="text-[9px] text-ink-faint flex items-center justify-between">
-            <span>{new Date(c.created_at).toLocaleString('pt-BR', {
-              day: '2-digit', month: '2-digit',
-              hour: '2-digit', minute: '2-digit',
-            })}</span>
-            <span className="uppercase">{c.pacote}</span>
-          </div>
-        </li>
-      ))}
+    <ul className="space-y-1" role="listbox" aria-label="Consultas recentes">
+      {data.map(c => {
+        const ativo = selectedId === c.id
+        return (
+          <li
+            key={c.id}
+            role="option"
+            tabIndex={0}
+            aria-selected={ativo}
+            title="Clique para ver o resultado completo"
+            onClick={() => onSelect(c)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onSelect(c)
+              }
+            }}
+            className={`text-[10px] px-2 py-1.5 rounded transition-colors cursor-pointer outline-none focus:ring-1 focus:ring-accent ${
+              ativo
+                ? 'bg-accent-bg/40 border-l-2 border-accent pl-1.5'
+                : 'bg-surface-2/40 hover:bg-surface-2/70 border-l-2 border-transparent pl-1.5'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-0.5 gap-1.5">
+              <span className="font-mono text-ink truncate min-w-0">
+                {c.cnpj || c.cpf_socio || '—'}
+              </span>
+              <div className="flex items-center gap-1 shrink-0">
+                <Eye className={`h-2.5 w-2.5 ${ativo ? 'text-accent' : 'text-ink-faint'}`} />
+                <span className={`text-[9px] font-bold ${
+                  c.status === 'success' ? 'text-success' :
+                  c.status === 'partial' ? 'text-warning' :
+                  c.status === 'failed' ? 'text-danger' : 'text-ink-faint'
+                }`}>
+                  R$ {Number(c.custo_brl).toFixed(2)}
+                </span>
+              </div>
+            </div>
+            <div className="text-[9px] text-ink-faint flex items-center justify-between">
+              <span>{new Date(c.created_at).toLocaleString('pt-BR', {
+                day: '2-digit', month: '2-digit',
+                hour: '2-digit', minute: '2-digit',
+              })}</span>
+              <span className="uppercase">{c.pacote}</span>
+            </div>
+          </li>
+        )
+      })}
     </ul>
   )
 }

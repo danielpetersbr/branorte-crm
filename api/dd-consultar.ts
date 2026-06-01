@@ -75,8 +75,8 @@ interface ConsultarBody {
   cnpj?: string | null
   /** CPF — obrigatorio se tipo_consulta = pf|ambos */
   cpf_socio?: string | null
-  /** Pacote: economico | completo | paranoico | custom */
-  pacote: 'economico' | 'completo' | 'paranoico' | 'custom'
+  /** Pacote: economico | economico_judicial | completo | paranoico | custom */
+  pacote: 'economico' | 'economico_judicial' | 'completo' | 'paranoico' | 'custom'
   /** Forca reconsulta mesmo se tem cache <30d */
   force_refresh?: boolean
   /**
@@ -102,8 +102,10 @@ interface ConsultarBody {
 // producao em 29/05/2026. Todos os 17 insumos testados retornaram 200 OK
 // pra produto 325 com tipoConsumidor='J'.
 //
-// Economico PJ: 325 + Score 12m + Participacao + Acoes Judiciais = ~R$ 13,06
-// Economico PF: 325 + Score 12m + Renda Presumida + Acoes Judiciais = ~R$ 11,67
+// Economico PJ:           325 + Score 12m + Participacao + Receita Federal = ~R$ 9,80 (sem Acoes Judiciais)
+// Economico PF:           325 + Score 12m + Participacao + Renda Presumida = ~R$ 10,93 (sem Acoes Judiciais)
+// Economico Judicial PJ:  Economico PJ + Acoes Judiciais = ~R$ 14,39
+// Economico Judicial PF:  Economico PF + Acoes Judiciais = ~R$ 15,52
 // Completo:   + Faturamento + Quadro Social + Grupo Econ + Risco Credito + Limite
 function montarPacotes(
   pacote: ConsultarBody['pacote'],
@@ -115,19 +117,32 @@ function montarPacotes(
     tipoConsumidor: 'F' | 'J'
   }
   const planos: Plano[] = []
-  if (pacote !== 'economico' && pacote !== 'completo' && pacote !== 'paranoico') {
+  if (
+    pacote !== 'economico' &&
+    pacote !== 'economico_judicial' &&
+    pacote !== 'completo' &&
+    pacote !== 'paranoico'
+  ) {
     return planos
   }
   const isCompleto = pacote === 'completo' || pacote === 'paranoico'
+  // economico_judicial = economico + Acoes Judiciais (codigo 18) em PJ e PF.
+  // O insumo 18 entra TAMBEM em completo/paranoico (que sao supersets do economico).
+  const incluiAcoesJudiciais =
+    pacote === 'economico_judicial' || pacote === 'completo' || pacote === 'paranoico'
 
   if (opts.incluiPj) {
-    // PJ: Novo SPC Maxi + Score 12m + Participação Empresas + Ações Judiciais
+    // PJ economico: Novo SPC Maxi + Score 12m + Participacao Empresas + Receita Federal
+    //               (sem Acoes Judiciais)
+    // PJ economico_judicial: economico + Acoes Judiciais (18)
     const insumosPj: number[] = [
       INSUMOS_OPCIONAIS.SCORE_12_MESES.codigo,         // 78
       INSUMOS_OPCIONAIS.PARTICIPACAO_EMPRESAS.codigo,  // 24
-      INSUMOS_OPCIONAIS.ACAO_JUDICIAL.codigo,          // 18 (Ações e Débitos Judiciais)
       INSUMOS_OPCIONAIS.STATUS_RECEITA_FEDERAL.codigo, // 5183 (Receita ativa?)
     ]
+    if (incluiAcoesJudiciais) {
+      insumosPj.push(INSUMOS_OPCIONAIS.ACAO_JUDICIAL.codigo) // 18 (Acoes e Debitos Judiciais)
+    }
     if (isCompleto) {
       insumosPj.push(
         INSUMOS_OPCIONAIS.FATURAMENTO_PRESUMIDO_PJ.codigo,  // 5178
@@ -146,13 +161,17 @@ function montarPacotes(
   }
 
   if (opts.incluiPf) {
-    // PF: Novo SPC Maxi + Score 12m + Participação Empresas + Ações Judiciais + Renda Presumida
+    // PF economico: Novo SPC Maxi + Score 12m + Participacao Empresas + Renda Presumida
+    //               (sem Acoes Judiciais)
+    // PF economico_judicial: economico + Acoes Judiciais (18)
     const insumosPf: number[] = [
       INSUMOS_OPCIONAIS.SCORE_12_MESES.codigo,         // 78
       INSUMOS_OPCIONAIS.PARTICIPACAO_EMPRESAS.codigo,  // 24
-      INSUMOS_OPCIONAIS.ACAO_JUDICIAL.codigo,          // 18 (Ações e Débitos Judiciais)
       INSUMOS_OPCIONAIS.RENDA_PRESUMIDA_PF.codigo,     // 5097
     ]
+    if (incluiAcoesJudiciais) {
+      insumosPf.push(INSUMOS_OPCIONAIS.ACAO_JUDICIAL.codigo) // 18 (Acoes e Debitos Judiciais)
+    }
     if (isCompleto) {
       insumosPf.push(
         INSUMOS_OPCIONAIS.COMPROMETIMENTO_RENDA.codigo, // 5194
@@ -213,7 +232,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (precisaCpf && cpfSocio.length !== 11) {
     return res.status(400).json({ error: 'cpf_invalido', detail: 'CPF deve ter 11 digitos' })
   }
-  if (!['economico', 'completo', 'paranoico', 'custom'].includes(pacote)) {
+  if (!['economico', 'economico_judicial', 'completo', 'paranoico', 'custom'].includes(pacote)) {
     return res.status(400).json({ error: 'pacote_invalido' })
   }
 

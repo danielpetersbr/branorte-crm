@@ -3,7 +3,7 @@
 // DueDiligenceForm   forma "miolo" sem chrome (usado pela pagina /consulta)
 // DueDiligenceModal  wrapper modal (usado quando aparece em outro lugar)
 // DueDiligenceButton botao que abre o modal (legado, mantido pra reuso)
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Search, X, AlertCircle, CheckCircle, Loader2, Sparkles, ChevronDown, ChevronUp, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -20,25 +20,36 @@ import { DossieDetetiveCard, type DossieDetetive } from './DossieDetetiveCard'
 // CORRIGIDOS (descobertos em 29/05/2026 — codigos REST sao diferentes
 // dos codigos da tabela de precos). Refletem EXATAMENTE o pacote enviado
 // em api/dd-consultar.ts → montarPacotes():
-//   PJ Economico: 325 (5,62) + Score12m#78 (1,13) + Part#24 (2,72)
-//                + AcaoJudicial#18 (4,59) + Receita#5183 (0,33) = R$ 14,39
-//   PF Economico: 325 (5,62) + Score12m#78 (1,13) + Part#24 (2,72)
-//                + AcaoJudicial#18 (4,59) + Renda#5097 (1,46) = R$ 15,52
-const CUSTO_PJ_ECONOMICO = 5.62 + 1.13 + 2.72 + 4.59 + 0.33     // 14.39
-const CUSTO_PF_ECONOMICO = 5.62 + 1.13 + 2.72 + 4.59 + 1.46     // 15.52
-const CUSTO_PJ_COMPLETO = CUSTO_PJ_ECONOMICO + 17.09 + 16.21 + 6.49 + 16.21 + 1.96 + 4.91
-const CUSTO_PF_COMPLETO = CUSTO_PF_ECONOMICO + 13.56 + 1.72 + 0.78
+//   PJ Economico (SEM judicial): 325 (5,62) + Score12m#78 (1,13)
+//                                + Part#24 (2,72) + Receita#5183 (0,33) = R$ 9,80
+//   PJ Economico + Judicial: Economico + AcaoJudicial#18 (4,59) = R$ 14,39
+//   PF Economico (SEM judicial): 325 (5,62) + Score12m#78 (1,13)
+//                                + Part#24 (2,72) + Renda#5097 (1,46) = R$ 10,93
+//   PF Economico + Judicial: Economico + AcaoJudicial#18 (4,59) = R$ 15,52
+const CUSTO_ACAO_JUDICIAL = 4.59                                  // SPC #18
+const CUSTO_PJ_ECONOMICO = 5.62 + 1.13 + 2.72 + 0.33              // 9.80
+const CUSTO_PF_ECONOMICO = 5.62 + 1.13 + 2.72 + 1.46              // 10.93
+const CUSTO_PJ_ECONOMICO_JUDICIAL = CUSTO_PJ_ECONOMICO + CUSTO_ACAO_JUDICIAL  // 14.39
+const CUSTO_PF_ECONOMICO_JUDICIAL = CUSTO_PF_ECONOMICO + CUSTO_ACAO_JUDICIAL  // 15.52
+const CUSTO_PJ_COMPLETO = CUSTO_PJ_ECONOMICO_JUDICIAL + 17.09 + 16.21 + 6.49 + 16.21 + 1.96 + 4.91
+const CUSTO_PF_COMPLETO = CUSTO_PF_ECONOMICO_JUDICIAL + 13.56 + 1.72 + 0.78
 
 const PACOTE_INFO: Record<Pacote, { titulo: string; descricao: string; custoPj: number; custoPf: number }> = {
   economico: {
     titulo: 'Econômico',
-    descricao: 'SPC Maxi + Score 12m + Participações em Empresas + Ações Judiciais + Receita Federal',
+    descricao: 'SPC Maxi + Score 12m + Participações em Empresas + Receita Federal',
     custoPj: CUSTO_PJ_ECONOMICO,
     custoPf: CUSTO_PF_ECONOMICO,
   },
+  economico_judicial: {
+    titulo: 'Econômico + Judicial',
+    descricao: 'SPC Maxi + Score 12m + Participações + Receita Federal + Ações Judiciais (R$ 4,59 a mais)',
+    custoPj: CUSTO_PJ_ECONOMICO_JUDICIAL,
+    custoPf: CUSTO_PF_ECONOMICO_JUDICIAL,
+  },
   completo: {
     titulo: 'Completo',
-    descricao: 'Econômico + Faturamento Presumido + Quadro Social + Grupo Econômico + Risco Crédito + Limite + Score PJ',
+    descricao: 'Econômico + Judicial + Faturamento Presumido + Quadro Social + Grupo Econômico + Risco Crédito + Limite + Score PJ',
     custoPj: CUSTO_PJ_COMPLETO,
     custoPf: CUSTO_PF_COMPLETO,
   },
@@ -73,18 +84,52 @@ interface FormProps {
   contactName?: string | null
   /** CNPJ inicial pre-preenchido (vem da ficha do contato) */
   initialCnpj?: string
+  /**
+   * Quando setado, o form renderiza esta consulta ja persistida (vinda do
+   * historico/drawer) no lugar do `consultar.data`. Hidrata os campos
+   * cnpj/cpf/pacote pra que o botao "Reconsultar" do ResultadoBox funcione.
+   * NOTA: `consultar.data` (nova consulta feita pelo usuario) tem PRIORIDADE
+   * sobre `viewConsulta` no render.
+   */
+  viewConsulta?: DDConsulta | null
+  /**
+   * Callback disparado ANTES de qualquer nova consulta (handleSubmit).
+   * Usado pela pagina pra limpar o `consultaSelecionada` quando o usuario
+   * dispara uma consulta de verdade — evita estado ambiguo.
+   */
+  onNewConsulta?: () => void
 }
 
 /** Formulario "miolo" — usado pela pagina /consulta. */
 type TipoConsulta = 'pj' | 'pf' | 'ambos'
 
-export function DueDiligenceForm({ contactId, contactName, initialCnpj }: FormProps) {
+export function DueDiligenceForm({
+  contactId, contactName, initialCnpj, viewConsulta, onNewConsulta,
+}: FormProps) {
   const [tipoConsulta, setTipoConsulta] = useState<TipoConsulta>('pj')
   const [cnpj, setCnpj] = useState(initialCnpj ?? '')
   const [cpf, setCpf] = useState('')
   const [pacote, setPacote] = useState<Pacote>('economico')
   const consultar = useConsultarDueDiligence()
   const { data: historico = [] } = useDDHistorico(contactId ?? null)
+
+  // Hidrata form quando uma consulta do historico e selecionada (via drawer).
+  // Isso permite que o botao "Reconsultar" do ResultadoBox funcione — ele chama
+  // handleSubmit(true) que usa cnpj/cpf/pacote do state. Sobrescreve rascunho
+  // do usuario (caso raro: alguem digitando E clicando no historico ao mesmo tempo).
+  useEffect(() => {
+    if (!viewConsulta) return
+    if (viewConsulta.cnpj) {
+      setTipoConsulta('pj')
+      setCnpj(formatDoc(viewConsulta.cnpj, 'cnpj'))
+      setCpf('')
+    } else if (viewConsulta.cpf_socio) {
+      setTipoConsulta('pf')
+      setCpf(formatDoc(viewConsulta.cpf_socio, 'cpf'))
+      setCnpj('')
+    }
+    setPacote(viewConsulta.pacote)
+  }, [viewConsulta])
 
   const cnpjLimpo = cnpj.replace(/\D/g, '')
   const cnpjValido = cnpjLimpo.length === 14
@@ -106,6 +151,10 @@ export function DueDiligenceForm({ contactId, contactName, initialCnpj }: FormPr
 
   function handleSubmit(forceRefresh = false) {
     if (!podeEnviar) return
+    // Limpa o "modo visualizar historico" — se havia uma viewConsulta carregada,
+    // o resultado da nova mutation vai aparecer no lugar (consultar.data tem
+    // prioridade no render abaixo).
+    onNewConsulta?.()
     consultar.mutate({
       contact_id: contactId ?? null,
       tipo_consulta: tipoConsulta,
@@ -195,7 +244,12 @@ export function DueDiligenceForm({ contactId, contactName, initialCnpj }: FormPr
               className="text-[12px] px-3 py-2 rounded-md border border-border bg-surface-2 text-ink font-semibold focus:outline-none focus:border-accent"
               title={PACOTE_INFO[pacote].descricao}
             >
-              <option value="economico">Econômico · R$ {custoEstimado.toFixed(2)}</option>
+              <option value="economico">
+                Econômico · R$ {((precisaCnpj ? PACOTE_INFO.economico.custoPj : 0) + (precisaCpf ? PACOTE_INFO.economico.custoPf : 0)).toFixed(2)}
+              </option>
+              <option value="economico_judicial">
+                Econômico + Judicial · R$ {((precisaCnpj ? PACOTE_INFO.economico_judicial.custoPj : 0) + (precisaCpf ? PACOTE_INFO.economico_judicial.custoPf : 0)).toFixed(2)}
+              </option>
             </select>
           </div>
 
@@ -226,15 +280,24 @@ export function DueDiligenceForm({ contactId, contactName, initialCnpj }: FormPr
       </div>
       {/* Fim do form */}
 
-      {/* Resultado da consulta atual (se houver) — FULL WIDTH */}
-      {consultar.data && (
-        <ResultadoBox
-          consulta={consultar.data.consulta}
-          cacheHit={consultar.data._cache_hit}
-          onReconsultar={() => handleSubmit(true)}
-          podeReconsultar={podeEnviar}
-        />
-      )}
+      {/* Resultado da consulta atual (se houver) — FULL WIDTH.
+          Regra de prioridade: `consultar.data` (nova consulta) > `viewConsulta`
+          (consulta carregada do historico/drawer). Quando user clica no item
+          do drawer, viewConsulta carrega sem custo. Quando user clica Consultar,
+          onNewConsulta limpa viewConsulta e consultar.data toma o lugar. */}
+      {(consultar.data || viewConsulta) && (() => {
+        const consultaParaRenderizar = consultar.data?.consulta ?? viewConsulta!
+        // cacheHit=true pra historico (e leitura, custo zero) e flag do servidor pra nova consulta.
+        const cacheHit = consultar.data ? consultar.data._cache_hit : true
+        return (
+          <ResultadoBox
+            consulta={consultaParaRenderizar}
+            cacheHit={cacheHit}
+            onReconsultar={() => handleSubmit(true)}
+            podeReconsultar={podeEnviar}
+          />
+        )
+      })()}
       {consultar.error && (
         <div className="bg-danger/15 border border-danger/40 rounded-md px-3 py-2 flex items-start gap-2">
           <AlertCircle className="h-4 w-4 text-danger shrink-0 mt-0.5" />

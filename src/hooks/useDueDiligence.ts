@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 
-export type Pacote = 'economico' | 'completo' | 'paranoico' | 'custom'
+export type Pacote = 'economico' | 'economico_judicial' | 'completo' | 'paranoico' | 'custom'
 
 export interface DDConsultaInput {
   contact_id?: string | null
