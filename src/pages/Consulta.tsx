@@ -268,7 +268,10 @@ function HistoricoRecente({
     queryFn: async (): Promise<DDConsulta[]> => {
       const { data, error } = await supabase
         .from('due_diligence_consultas')
-        .select('*')
+        // embed do vendedor via FK created_by → user_profiles(id). RLS:
+        // admin lê todos os perfis (vê o nome de qualquer vendedor); vendedor
+        // comum só vê as próprias consultas, e o próprio perfil é legível.
+        .select('*, autor:created_by(display_name)')
         .order('created_at', { ascending: false })
         .limit(20)
       if (error) throw error
@@ -352,12 +355,19 @@ function HistoricoRecente({
                 </span>
               </div>
             </div>
-            <div className="text-[9px] text-ink-faint flex items-center justify-between">
-              <span>{new Date(c.created_at).toLocaleString('pt-BR', {
-                day: '2-digit', month: '2-digit',
-                hour: '2-digit', minute: '2-digit',
-              })}</span>
-              <span className="uppercase">{c.pacote}</span>
+            <div className="text-[9px] text-ink-faint flex items-center justify-between gap-1.5">
+              <span className="flex items-center gap-1 min-w-0 truncate">
+                {new Date(c.created_at).toLocaleString('pt-BR', {
+                  day: '2-digit', month: '2-digit',
+                  hour: '2-digit', minute: '2-digit',
+                })}
+                {c.autor?.display_name && (
+                  <span className="text-ink-muted truncate" title={`Consulta feita por ${c.autor.display_name}`}>
+                    · {c.autor.display_name}
+                  </span>
+                )}
+              </span>
+              <span className="uppercase shrink-0">{c.pacote}</span>
             </div>
           </li>
         )

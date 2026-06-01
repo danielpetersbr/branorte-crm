@@ -37,6 +37,9 @@ export interface DDConsulta {
   created_at: string
   created_by: string | null
   cnpj_normalizado: string
+  /** Vendedor que fez a consulta. Vem do embed via FK created_by → user_profiles(id).
+   *  Só aparece nas queries que pedem o embed (ex: lista de recentes). */
+  autor?: { display_name: string | null } | null
 }
 
 export interface DDConsultaResponse {
