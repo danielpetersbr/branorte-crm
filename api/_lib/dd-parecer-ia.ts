@@ -1,52 +1,124 @@
-// Parecer IA pra Due Diligence — consolida dados SPC + Datajud em
-// uma análise executiva que vai pro vendedor decidir crédito/prazo.
+// Parecer IA pra Due Diligence — consolida dados SPC + Datajud + Detetive +
+// contexto do orçamento + histórico Branorte em uma análise executiva que vai
+// pro vendedor decidir crédito/prazo.
 //
 // Usa OpenAI gpt-4o-mini (mesma chave que orcamento-ai). Custo ~R$ 0,02 por
 // parecer. Saída: markdown estruturado pronto pra renderizar no frontend.
+//
+// Hierarquia de decisão:
+//   1. Detetive Branorte (determinístico) decide o SEMÁFORO — é a VERDADE FINAL.
+//   2. IA aqui usa o semáforo como input, NUNCA sobrescreve.
+//   3. IA dimensiona limite/condição/cenários com base no semáforo + contexto.
 
 const OPENAI_KEY = process.env.OPENAI_API_KEY
 
-const SYSTEM_PROMPT = `Você é um analista de crédito experiente da Branorte (fabricante metalúrgico B2B em SC). Sua tarefa é gerar um parecer EXECUTIVO de due diligence em markdown, baseado nos dados que vou enviar (SPC + processos Datajud).
+// ─── PROMPTS POR NÍVEL DE ANÁLISE ─────────────────────────────────────────
+// Três níveis escalonados por ticket. Quanto maior o ticket, mais profunda
+// a análise (mais tokens, mais rigor). Veja escolherNivelAnalise() abaixo.
+
+const SYSTEM_PROMPT_BASE = `Você é analista de crédito da Branorte (metalúrgica B2B em SC, fabricante de máquinas industriais para agroindústria).
+
+**Contexto Branorte (obrigatório considerar):**
+- Ticket típico: R$ 30k – R$ 500k em equipamentos (Compacta 01/02/03, Master, Mini Fábrica, Moinho, Misturador, Chupim, Caçamba, Ensacadeira).
+- ICP: produtor rural, granja, cooperativa, integrado avícola/suíno (BRF/JBS/Aurora), região interior SC/PR/RS/MS/MT/GO.
+- Prazo padrão Branorte: **28/56/84 dias com sinal de 30%**, OU vista (com -3% desconto), OU FINAME/Pronaf/Pronamp.
+- Vista é EXCEÇÃO — o normal é parcelado com sinal.
+- Aval e nota fiscal de garantia são mecanismos comuns pra prazo longo (90/120 dias).
+
+**Regras setoriais OBRIGATÓRIAS (NÃO ignore):**
+(a) Integrado de frigorífico (BRF, JBS, Aurora, Seara) = **BAIXO risco** — contrato de integração garante receita previsível.
+(b) Capital social baixo em produtor rural / pequena granja é **NORMAL** — NÃO alertar nem pesar contra.
+(c) IG/site/LinkedIn fraco em produtor rural é **NORMAL** — usar pegada digital com peso REDUZIDO quando CNAE é agro/pecuária/fab. alimentos animais.
+(d) Cooperativa agropecuária = **baixo risco por padrão** (governança coletiva, contratos com cooperados).
+(e) Execução fiscal EXTINTA ou empresa no polo ATIVO (autor da ação) = ignore/positivo.
+(f) Empresa no polo PASSIVO de execução ATIVA com causa > R$ 50k = pesa forte.
+(g) Ação trabalhista isolada NÃO é deal-breaker pra empresa industrial — mencione mas não pese.
+
+**Hierarquia de veredito (CRÍTICO):**
+- O **semáforo do Detetive Branorte** (que vai vir no input como \`detetive_semaforo\`) é a **VERDADE FINAL**.
+- Suas regras de score servem APENAS para JUSTIFICAR e DIMENSIONAR limite/condição, NUNCA para sobrescrever o semáforo.
+- Se detetive disse VERMELHO mas score SPC é bom, **mantenha VERMELHO** e explique a divergência em 1 frase.
+- Se detetive disse VERDE com histórico interno positivo, **mantenha VERDE** mesmo que SPC seja médio.
 
 **Estilo:**
-- Direto, técnico, sem floreio.
-- Português do Brasil.
-- Markdown simples (apenas ## headers, listas com -, e **negrito**).
-- Máximo 350 palavras no total.
+- Direto, técnico, sem floreio. Português do Brasil.
+- Markdown simples (apenas ## headers, ### sub-headers, listas com -, [ ] checkboxes, **negrito**).
+- Use linguagem do vendedor — "fecha", "pede entrada", "manda à vista", não "operação inviável".
 
-**Estrutura obrigatória:**
+**Estrutura obrigatória (NESTA ORDEM EXATA):**
 
 ## Veredito
-Uma única linha começando com:
-- ✅ **PODE VENDER** (sem restrições, score bom, sem processos relevantes)
-- ⚠️ **ATENÇÃO** (alguma pendência, score médio, processo recente)
-- ❌ **NÃO RECOMENDADO** (restrições ativas, score baixo, múltiplos processos com valor alto)
+Uma única linha imperativa começando com UM destes:
+- **FECHA À VISTA** (semáforo verde + ticket baixo OU histórico interno excelente)
+- **PEDE ENTRADA 30%** (verde com cautela OU amarelo controlado — usar 28/56/84 padrão)
+- **NÃO FECHA SEM AVAL** (amarelo grave OU vermelho com mitigação possível — exigir aval + carta-fiança)
+- **NÃO RECOMENDADO** (vermelho + hard-fail OU score muito baixo + ticket alto)
 
-Em seguida, 1-2 frases explicando o porquê.
+Em seguida, 1 frase curta explicando o porquê (max 25 palavras).
 
-## Sinais positivos
-- Lista de até 4 sinais positivos concretos (com dados/números).
+## Limite Sugerido
+- **R$ X** (valor em destaque)
+- Justificativa em 1 linha usando a fórmula: \`min(faturamento × 0.10 × 12, capital × 1.5, valor_cotacao)\` — explique qual termo "binda" e por quê.
 
-## Sinais de alerta
-- Lista de até 4 sinais de risco concretos (com dados/números).
-- Se não houver alertas, escreva "- Nenhum sinal de alerta identificado."
+## Plano de Venda
+Três cenários nomeados, cada um em **negrito**:
 
-## Recomendação operacional
-- **Limite sugerido:** R$ X (baseado em score e situação)
-- **Condição de pagamento:** [texto curto, ex: "Boleto 28/56/84 dias" ou "À vista antes da expedição"]
-- **Observação:** [1 frase com contexto/ressalva relevante]
+**A — À VISTA (com -3% desconto):** limite até R$ X, sem exigência adicional, libera expedição imediata.
 
-**Regras:**
-- Para empresa com score >700 e zero restrições/processos = sempre verde, limite R$ 200k.
-- Para score 400-700 ou restrições baixas (<R$ 5k) = amarelo, limite R$ 50k com aval.
-- Para score <400 OU restrições >R$ 10k OU 3+ processos com execução = vermelho, à vista.
-- Processos como "Execução de Título Extrajudicial" ou "Execução Fiscal" são SINAL FORTE de risco.
-- "Cumprimento de Sentença" também é sinal forte.
-- "Ação Trabalhista" isolada NÃO é deal-breaker pra empresa industrial — mencionar mas não pesar muito.
-- Capital social baixo (<R$ 100k) em empresa pequena é normal, não alertar.
-- Empresa com 10+ anos de mercado = sinal positivo forte.
+**B — 28/56/84 com sinal 30% (padrão Branorte):** limite até R$ Y, exigir [ATA atualizada, comprovante endereço <90d, 2 ref comerciais].
 
-Não invente dados que não estão na entrada. Se faltar info, escreva "informação não disponível".`
+**C — FINAME / Consórcio / 90+120 com aval:** limite até R$ Z, exigir [carta-fiança bancária OU aval cobrindo Z×0.8 + nota fiscal de garantia].
+
+## Pedir do Cliente
+
+### Bloqueantes (antes da NF)
+Checklist com no máximo 5 itens, formato \`- [ ] item\`. Apenas o que IMPEDE a emissão da nota fiscal se faltar.
+
+### Monitoramento (pós-venda)
+Checklist com no máximo 3 itens, formato \`- [ ] item\`. Itens que o vendedor deve acompanhar depois da venda fechada.
+
+## Pontos a explorar na conversa
+3 bullets curtos com argumentos comerciais positivos:
+- Histórico (anos de mercado, compras prévias Branorte se houver)
+- Capacidade (faturamento, capital, integração com frigorífico)
+- Sinais de tradição (sócios estáveis, sem rotatividade, endereço fixo)
+
+## Pontos a evitar
+2-3 bullets com temas sensíveis:
+- Perguntas que constrangem (ex: "por que tem essa restrição?")
+- Gatilhos de desconfiança (cobrar documento antes de criar rapport)
+
+**REGRAS FINAIS:**
+- Não invente dados que não estão na entrada. Se faltar info crítica, NÃO chute — adicione a seção opcional abaixo.
+- NÃO sobrescreva o semáforo do detetive. Use-o como guia.
+- Se houver \`historico_branorte\` com compras pagas e zero inadimplência, **pese isso MUITO** — cliente interno trumps externo.
+`
+
+const SYSTEM_PROMPT_PROFUNDO_EXTRA = `
+
+**ANÁLISE PROFUNDA (ticket ≥ R$ 150k):**
+Compacta 03, Master, Mini Fábrica e tickets ≥ R$ 150k exigem rigor extra:
+- Detalhar cada cenário (A/B/C) com justificativa numérica explícita (mostre a conta).
+- Listar 2 PERGUNTAS-CHAVE que o vendedor deve fazer antes de fechar (ex: "Qual a integração atual? Tem contrato de fornecimento ativo?").
+- Mencionar mitigações de risco específicas (seguro de crédito, FINAME, consórcio fechado).
+- Validar capacidade de pagamento contra faturamento presumido (não estourar 10% do faturamento anual em uma única compra).
+`
+
+const SECAO_DADOS_FALTANTES = `
+
+## Dados que aumentariam a confiança
+Inclua esta seção SE houver consultas faltantes que mudariam a análise:
+- Sintegra/IE (quando PJ e dado ausente)
+- SPC dos sócios PF (quando empresa PJ mas sócios não consultados)
+- Certidão Receita Federal (quando status cadastral pendente/suspenso)
+- Referências bancárias (quando ticket > R$ 100k e dado ausente)
+- Histórico Branorte (quando cliente potencialmente recorrente mas sem registro)
+
+Use formato: \`- [Tipo de consulta]: por que importaria nesse caso\`
+NÃO inclua a seção se todos os dados críticos já estão presentes.
+`
+
+// ─── INTERFACES ───────────────────────────────────────────────────────────
 
 interface ResumoSpcInput {
   consumidor?: {
@@ -60,9 +132,9 @@ interface ResumoSpcInput {
     data_nascimento?: string | null
     natureza_juridica?: string | null
     endereco?: string | null
+    cnae_principal?: string | null
   }
   score?: { valor: number | null; classificacao: string | null; mensagem?: string | null }
-  pep?: { tem: boolean; qtd: number; detalhes: Array<{ nome?: string | null; cargo?: string | null }> }
   faturamento_presumido?: { valor: number; periodicidade?: string | null } | null
   inadimplencias?: {
     qtd: number
@@ -82,39 +154,215 @@ interface DatajudInput {
     classe: string
     assunto: string
     dataAjuizamento: string | null
+    valorCausa?: number | null
+    status?: 'ativo' | 'extinto' | 'arquivado' | 'suspenso' | null
+    cnpjConsultado?: string | null
   }>
 }
 
 /**
- * Dossiê do Detetive Branorte — red flags + score + recomendação.
- * Entra no parecer pra IA contextualizar com base nas regras do detetive.
+ * Dossiê do Detetive Branorte — versão expandida com sub_scores e cenários.
+ * É a VERDADE FINAL sobre o semáforo. A IA NÃO sobrescreve.
  */
 interface DossieDetetiveInput {
-  score: number
   semaforo: 'verde' | 'amarelo' | 'vermelho'
-  recomendacao: string
-  red_flags: Array<{ id: number; peso: number; nome: string; descricao: string }>
-  acoes_sugeridas: string[]
+  score: number
+  // sub_scores 0-100 por dimensão (vem do scoring novo)
+  sub_scores?: {
+    financeiro: number
+    compliance: number
+    reputacao: number
+    juridico: number
+    digital: number
+  }
+  // Backwards-compat com versão antiga
+  recomendacao?: string
+  red_flags?: Array<{ id: number | string; peso: number; nome: string; descricao: string }>
+  // Novo formato (substitui red_flags quando presente)
+  flags_criticas?: Array<{
+    nome: string
+    dimensao: string
+    peso: number
+    hard_fail: boolean
+  }>
+  modificador_setorial?: {
+    aplicado: boolean
+    motivo?: string
+    pontos: number
+  }
+  modificador_historico_branorte?: {
+    aplicado: boolean
+    motivo?: string
+    pontos: number
+  }
+  limite_calculado?: number
+  cenarios?: Array<{
+    condicao: string
+    limite_max: number
+    exigencias: string[]
+  }>
+  hard_fail?: boolean
+  hard_fail_motivo?: string
+  acoes_sugeridas?: string[]
 }
 
 /**
- * Gera o parecer markdown. Retorna null se falhar (frontend mostra só os dados raw).
+ * Contexto do orçamento em curso. Sem isso a IA opera no escuro.
+ */
+interface ContextoOrcamentoInput {
+  equipamento_cotado?: string
+  valor_total?: number
+  prazo_proposto?: string
+  regiao_cidade_uf?: string
+  tipo_cliente?: 'PF' | 'PJ'
+  integracao_frigorifico?: string
+  forma_pagamento?: 'a_vista' | 'parcelado_sinal' | 'parcelado_sem_sinal' | 'finame' | 'consorcio'
+}
+
+/**
+ * Histórico interno Branorte — trumps externo quando positivo.
+ */
+interface HistoricoBranorteInput {
+  compras_pagas: number
+  total_brl: number
+  inadimplencia_brl: number
+  ultima_compra_data?: string
+}
+
+/**
+ * Metadata retornado junto com o parecer — habilita observabilidade e A/B test.
+ */
+interface ParecerIaMeta {
+  prompt_version: number
+  nivel_analise: 'rapido' | 'padrao' | 'profundo'
+  tokens_in: number
+  tokens_out: number
+  modelo: string
+}
+
+interface ParecerIaResult {
+  parecer: string | null
+  erro: string | null
+  meta: ParecerIaMeta
+}
+
+// ─── HELPER: NÍVEL DE ANÁLISE POR TICKET ──────────────────────────────────
+
+function escolherNivelAnalise(valorTotal?: number): {
+  nivel: 'rapido' | 'padrao' | 'profundo'
+  max_tokens: number
+} {
+  const v = valorTotal ?? 0
+  if (v < 50_000) return { nivel: 'rapido', max_tokens: 1000 }
+  if (v < 150_000) return { nivel: 'padrao', max_tokens: 1400 }
+  return { nivel: 'profundo', max_tokens: 1800 }
+}
+
+// ─── HELPER: PROMPT EXTERNO (FASE 2, LOW PRIORITY) ────────────────────────
+//
+// Stub pra externalizar prompts no Supabase futuramente. Por enquanto retorna
+// o prompt hardcoded — tabela `ia_prompts` ainda não existe.
+
+interface PromptAtivo {
+  prompt_text: string
+  version: number
+}
+
+export async function getActivePrompt(
+  nome: 'dd-parecer-rapido' | 'dd-parecer-padrao' | 'dd-parecer-profundo',
+): Promise<PromptAtivo> {
+  // TODO fase 2: consultar tabela `ia_prompts` no Supabase com (nome, active=true)
+  // e retornar { prompt_text, version }. Por ora fallback hardcoded.
+  //
+  // Versões hardcoded:
+  //   v1 = prompt enxuto antigo (350 palavras, sem cenários)
+  //   v2 = prompt atual (com cenários A/B/C, hierarquia detetive, regras setoriais)
+  //
+  // Quando a tabela existir, este bloco vira:
+  //   const { data } = await supa.from('ia_prompts').select('prompt_text, version')
+  //     .eq('nome', nome).eq('active', true).order('version', { ascending: false }).limit(1).maybeSingle()
+  //   if (data?.prompt_text) return { prompt_text: data.prompt_text, version: data.version }
+
+  if (nome === 'dd-parecer-profundo') {
+    return { prompt_text: SYSTEM_PROMPT_BASE + SYSTEM_PROMPT_PROFUNDO_EXTRA + SECAO_DADOS_FALTANTES, version: 2 }
+  }
+  return { prompt_text: SYSTEM_PROMPT_BASE + SECAO_DADOS_FALTANTES, version: 2 }
+}
+
+// ─── FUNÇÃO PRINCIPAL ─────────────────────────────────────────────────────
+
+/**
+ * Gera o parecer markdown. Retorna { parecer, erro, meta }.
+ *
+ * @param opts.spcResumos        Resumos SPC consolidados (PJ + sócios PF)
+ * @param opts.datajud           Processos judiciais (TJSC/TRF4/...). Opcional.
+ * @param opts.dossieDetetive    Veredito determinístico do detetive (VERDADE FINAL). Recomendado.
+ * @param opts.detetive          Alias novo para dossieDetetive (mesma coisa, nome novo na spec).
+ * @param opts.contextoOrcamento Equipamento + valor + região + integração. Sem isso a IA opera no escuro.
+ * @param opts.historicoBranorte Histórico interno do CNPJ na Branorte. Trumps externo quando positivo.
+ * @param opts.ticketPedidoBrl   Atalho pra valor total quando contextoOrcamento não disponível.
+ * @param opts.timeoutMs         Timeout da chamada OpenAI. Default 25s.
  */
 export async function gerarParecerIA(opts: {
   spcResumos: ResumoSpcInput[]
   datajud: DatajudInput | null
   dossieDetetive?: DossieDetetiveInput | null
+  // Aceita tanto `detetive` (nome novo da spec) quanto `dossieDetetive` (antigo) — retrocompat
+  detetive?: DossieDetetiveInput | null
+  contextoOrcamento?: ContextoOrcamentoInput | null
+  historicoBranorte?: HistoricoBranorteInput | null
+  portalTransparencia?: unknown
+  ticketPedidoBrl?: number
   timeoutMs?: number
-}): Promise<{ parecer: string | null; erro: string | null }> {
-  if (!OPENAI_KEY) return { parecer: null, erro: 'OPENAI_API_KEY não configurada' }
-  const semSPC = opts.spcResumos.length === 0
-  const semDatajud = !opts.datajud || opts.datajud.totalEncontrado === 0
-  const semDossie = !opts.dossieDetetive
-  if (semSPC && semDatajud && semDossie) {
-    return { parecer: null, erro: 'sem_dados_suficientes' }
+}): Promise<ParecerIaResult> {
+  // Aceita ambos os nomes do parâmetro (detetive | dossieDetetive)
+  const detetive = opts.detetive ?? opts.dossieDetetive ?? null
+
+  // Decide nível por ticket (do contexto ou do atalho)
+  const valorTotal =
+    opts.contextoOrcamento?.valor_total ?? opts.ticketPedidoBrl ?? undefined
+  const { nivel, max_tokens } = escolherNivelAnalise(valorTotal)
+
+  const metaVazia: ParecerIaMeta = {
+    prompt_version: 2,
+    nivel_analise: nivel,
+    tokens_in: 0,
+    tokens_out: 0,
+    modelo: 'gpt-4o-mini',
   }
 
-  const userInput = montarInputJson(opts.spcResumos, opts.datajud, opts.dossieDetetive)
+  if (!OPENAI_KEY) {
+    return {
+      parecer: null,
+      erro: 'OPENAI_API_KEY não configurada',
+      meta: metaVazia,
+    }
+  }
+
+  const semSPC = opts.spcResumos.length === 0
+  const semDatajud = !opts.datajud || opts.datajud.totalEncontrado === 0
+  const semDossie = !detetive
+  const semContexto = !opts.contextoOrcamento
+  if (semSPC && semDatajud && semDossie && semContexto) {
+    return {
+      parecer: null,
+      erro: 'sem_dados_suficientes',
+      meta: metaVazia,
+    }
+  }
+
+  // Carrega prompt do nível certo (futuramente do Supabase, hoje hardcoded)
+  const promptNome =
+    nivel === 'profundo' ? 'dd-parecer-profundo' : nivel === 'padrao' ? 'dd-parecer-padrao' : 'dd-parecer-rapido'
+  const promptAtivo = await getActivePrompt(promptNome)
+
+  const userInput = montarInputJson(
+    opts.spcResumos,
+    opts.datajud,
+    detetive,
+    opts.contextoOrcamento,
+    opts.historicoBranorte,
+  )
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 25_000)
@@ -129,9 +377,9 @@ export async function gerarParecerIA(opts: {
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         temperature: 0.2,
-        max_tokens: 800,
+        max_tokens,
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'system', content: promptAtivo.prompt_text },
           { role: 'user', content: `Dados pra analisar:\n\n${userInput}` },
         ],
       }),
@@ -139,27 +387,181 @@ export async function gerarParecerIA(opts: {
     })
 
     if (!resp.ok) {
-      return { parecer: null, erro: `OpenAI HTTP ${resp.status}` }
+      return {
+        parecer: null,
+        erro: `OpenAI HTTP ${resp.status}`,
+        meta: { ...metaVazia, prompt_version: promptAtivo.version },
+      }
     }
     const data = await resp.json()
     const parecer = data?.choices?.[0]?.message?.content ?? null
-    if (!parecer) return { parecer: null, erro: 'resposta_vazia' }
-    return { parecer: parecer.trim(), erro: null }
+    const tokens_in = data?.usage?.prompt_tokens ?? 0
+    const tokens_out = data?.usage?.completion_tokens ?? 0
+
+    const meta: ParecerIaMeta = {
+      prompt_version: promptAtivo.version,
+      nivel_analise: nivel,
+      tokens_in,
+      tokens_out,
+      modelo: 'gpt-4o-mini',
+    }
+
+    if (!parecer) {
+      return { parecer: null, erro: 'resposta_vazia', meta }
+    }
+    return { parecer: parecer.trim(), erro: null, meta }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
-    return { parecer: null, erro: msg }
+    return {
+      parecer: null,
+      erro: msg,
+      meta: { ...metaVazia, prompt_version: promptAtivo.version },
+    }
   } finally {
     clearTimeout(timer)
   }
 }
 
+// ─── MONTAGEM DO INPUT JSON/MD PRO MODELO ─────────────────────────────────
+
 function montarInputJson(
   spcResumos: ResumoSpcInput[],
   datajud: DatajudInput | null,
   dossie?: DossieDetetiveInput | null,
+  contexto?: ContextoOrcamentoInput | null,
+  historico?: HistoricoBranorteInput | null,
 ): string {
   const partes: string[] = []
 
+  // ─── BLOCO 1: CONTEXTO DA COTAÇÃO (CRÍTICO — vai no topo) ──────────────
+  if (contexto) {
+    partes.push(`### Contexto da Cotação`)
+    if (contexto.equipamento_cotado) partes.push(`- Equipamento: ${contexto.equipamento_cotado}`)
+    if (contexto.valor_total != null) {
+      partes.push(`- Valor total: R$ ${contexto.valor_total.toLocaleString('pt-BR')}`)
+      // Categoria de ticket pra IA calibrar rigor
+      const cat =
+        contexto.valor_total < 50_000
+          ? 'baixo (<R$50k)'
+          : contexto.valor_total < 150_000
+            ? 'médio (R$50k-R$150k)'
+            : contexto.valor_total < 500_000
+              ? 'alto (R$150k-R$500k)'
+              : 'premium (>R$500k)'
+      partes.push(`- Categoria de ticket: ${cat}`)
+    }
+    if (contexto.prazo_proposto) partes.push(`- Prazo proposto pelo vendedor: ${contexto.prazo_proposto}`)
+    if (contexto.forma_pagamento) partes.push(`- Forma de pagamento proposta: ${contexto.forma_pagamento}`)
+    if (contexto.regiao_cidade_uf) partes.push(`- Região: ${contexto.regiao_cidade_uf}`)
+    if (contexto.tipo_cliente) partes.push(`- Tipo de cliente: ${contexto.tipo_cliente}`)
+    if (contexto.integracao_frigorifico) {
+      partes.push(`- Integração com frigorífico: ${contexto.integracao_frigorifico} (BAIXO RISCO setorial)`)
+    }
+    partes.push('')
+  }
+
+  // ─── BLOCO 2: HISTÓRICO BRANORTE INTERNO (trumps externo) ──────────────
+  if (historico) {
+    partes.push(`### Histórico Branorte (cliente interno — pesa MUITO)`)
+    partes.push(`- Compras pagas: ${historico.compras_pagas}`)
+    partes.push(`- Total transacionado: R$ ${historico.total_brl.toLocaleString('pt-BR')}`)
+    partes.push(`- Inadimplência ativa: R$ ${historico.inadimplencia_brl.toLocaleString('pt-BR')}`)
+    if (historico.ultima_compra_data) partes.push(`- Última compra: ${historico.ultima_compra_data}`)
+    if (historico.compras_pagas >= 3 && historico.inadimplencia_brl === 0) {
+      partes.push(
+        `- INTERPRETAÇÃO: cliente RECORRENTE com zero inadimplência — esse sinal sobrepõe restrições externas leves/médias.`,
+      )
+    } else if (historico.inadimplencia_brl > 0) {
+      partes.push(
+        `- INTERPRETAÇÃO: HARD FAIL — cliente com inadimplência ATIVA na Branorte. NÃO RECOMENDAR sob qualquer condição.`,
+      )
+    }
+    partes.push('')
+  }
+
+  // ─── BLOCO 3: DETETIVE BRANORTE (VERDADE FINAL DO SEMÁFORO) ────────────
+  if (dossie) {
+    partes.push(`### Detetive Branorte (veredito determinístico — VERDADE FINAL)`)
+    partes.push(`- **Semáforo: ${dossie.semaforo.toUpperCase()}** ← USE ISTO COMO BASE DO SEU VEREDITO`)
+    partes.push(`- Score consolidado: ${dossie.score}/100`)
+
+    if (dossie.sub_scores) {
+      partes.push(`- Sub-scores por dimensão (0-100):`)
+      partes.push(`  - Financeiro: ${dossie.sub_scores.financeiro}`)
+      partes.push(`  - Compliance: ${dossie.sub_scores.compliance}`)
+      partes.push(`  - Reputação: ${dossie.sub_scores.reputacao}`)
+      partes.push(`  - Jurídico: ${dossie.sub_scores.juridico}`)
+      partes.push(`  - Digital: ${dossie.sub_scores.digital}`)
+    }
+
+    if (dossie.hard_fail) {
+      partes.push(`- **HARD FAIL ATIVO**: ${dossie.hard_fail_motivo ?? 'bloqueio automático'}`)
+      partes.push(`  → NÃO recomende venda parcelada. Apenas vista com aval, ou recusar.`)
+    }
+
+    if (dossie.modificador_setorial?.aplicado) {
+      partes.push(
+        `- Modificador setorial aplicado: ${dossie.modificador_setorial.motivo ?? 'CNAE agro/pecuária'} (${dossie.modificador_setorial.pontos >= 0 ? '+' : ''}${dossie.modificador_setorial.pontos} pts)`,
+      )
+    }
+    if (dossie.modificador_historico_branorte?.aplicado) {
+      partes.push(
+        `- Modificador histórico Branorte: ${dossie.modificador_historico_branorte.motivo ?? 'cliente interno'} (${dossie.modificador_historico_branorte.pontos >= 0 ? '+' : ''}${dossie.modificador_historico_branorte.pontos} pts)`,
+      )
+    }
+
+    // Flags críticas (novo formato) OU red_flags (formato antigo, retrocompat)
+    const flagsList: Array<{ nome: string; peso: number; dimensao?: string; descricao?: string; hard_fail?: boolean }> = []
+    if (dossie.flags_criticas && dossie.flags_criticas.length > 0) {
+      for (const f of dossie.flags_criticas) {
+        flagsList.push({ nome: f.nome, peso: f.peso, dimensao: f.dimensao, hard_fail: f.hard_fail })
+      }
+    } else if (dossie.red_flags && dossie.red_flags.length > 0) {
+      for (const f of dossie.red_flags) {
+        flagsList.push({ nome: f.nome, peso: f.peso, descricao: f.descricao })
+      }
+    }
+    if (flagsList.length > 0) {
+      partes.push(`- Red flags detectadas (${flagsList.length}):`)
+      for (const f of flagsList) {
+        const dim = f.dimensao ? ` · ${f.dimensao}` : ''
+        const hf = f.hard_fail ? ' · **HARD FAIL**' : ''
+        const desc = f.descricao ? `: ${f.descricao}` : ''
+        partes.push(`  - [peso ${f.peso}${dim}${hf}] ${f.nome}${desc}`)
+      }
+    } else {
+      partes.push(`- Nenhuma red flag identificada pelas regras do detetive.`)
+    }
+
+    if (dossie.limite_calculado != null) {
+      partes.push(`- Limite sugerido pelo detetive: R$ ${dossie.limite_calculado.toLocaleString('pt-BR')}`)
+    }
+
+    if (dossie.cenarios && dossie.cenarios.length > 0) {
+      partes.push(`- Cenários pré-calculados pelo detetive:`)
+      for (const c of dossie.cenarios) {
+        partes.push(
+          `  - ${c.condicao} → até R$ ${c.limite_max.toLocaleString('pt-BR')} | exigências: ${c.exigencias.join('; ') || 'nenhuma'}`,
+        )
+      }
+    }
+
+    if (dossie.recomendacao) {
+      partes.push(`- Recomendação textual do detetive: ${dossie.recomendacao}`)
+    }
+    if (dossie.acoes_sugeridas && dossie.acoes_sugeridas.length > 0) {
+      partes.push(`- Ações sugeridas pelo detetive:`)
+      for (const a of dossie.acoes_sugeridas) {
+        partes.push(`  - ${a}`)
+      }
+    }
+    partes.push(
+      `- LEMBRE: o semáforo do detetive é a VERDADE FINAL. Você dimensiona limite/condição/cenários, NÃO sobrescreve o semáforo.`,
+    )
+    partes.push('')
+  }
+
+  // ─── BLOCO 4: SPC POR CONSUMIDOR (PJ + sócios PF) ──────────────────────
   for (const r of spcResumos) {
     const c = r.consumidor ?? {}
     partes.push(`### Dados SPC (${c.tipo === 'J' ? 'Empresa' : 'Pessoa Física'})`)
@@ -170,6 +572,7 @@ function montarInputJson(
     if (c.data_fundacao) partes.push(`- Fundação: ${c.data_fundacao}`)
     if (c.data_nascimento) partes.push(`- Nascimento: ${c.data_nascimento}`)
     if (c.natureza_juridica) partes.push(`- Natureza jurídica: ${c.natureza_juridica}`)
+    if (c.cnae_principal) partes.push(`- CNAE principal: ${c.cnae_principal}`)
     if (c.endereco) partes.push(`- Endereço: ${c.endereco}`)
 
     if (r.score) {
@@ -193,14 +596,6 @@ function montarInputJson(
         `- Protestos: ${r.protestos.qtd} ocorrência(s), total R$ ${r.protestos.valor_total.toFixed(2)}`,
       )
     }
-    if (r.pep) {
-      partes.push(
-        `- PEP (Pessoa Exposta Politicamente): ${r.pep.tem ? `SIM — ${r.pep.qtd} registro(s)` : 'Não detectado'}`,
-      )
-      for (const p of r.pep.detalhes ?? []) {
-        partes.push(`  - ${p.nome ?? '—'}${p.cargo ? ` · ${p.cargo}` : ''}`)
-      }
-    }
     if (r.faturamento_presumido && r.faturamento_presumido.valor > 0) {
       partes.push(
         `- Faturamento Presumido SPC: R$ ${r.faturamento_presumido.valor.toLocaleString('pt-BR')}/${r.faturamento_presumido.periodicidade ?? 'período'} (estimativa estatística, considere ±35% margem)`,
@@ -215,43 +610,62 @@ function montarInputJson(
     partes.push('')
   }
 
+  // ─── BLOCO 5: DATAJUD ENRIQUECIDO ──────────────────────────────────────
   if (datajud) {
     partes.push(`### Datajud (CNJ — processos judiciais)`)
     partes.push(`- Total encontrado: ${datajud.totalEncontrado ?? 0}`)
     if (datajud.processos && datajud.processos.length > 0) {
-      partes.push(`- Processos (até 10 mais recentes):`)
+      partes.push(`- Processos (até 10 mais recentes, com polo presumido e status):`)
       for (const p of datajud.processos.slice(0, 10)) {
-        partes.push(`  - ${p.numeroProcesso} · ${p.tribunal} · ${p.classe}${p.assunto && p.assunto !== '—' ? ` · ${p.assunto}` : ''}${p.dataAjuizamento ? ` · ajuiz. ${p.dataAjuizamento}` : ''}`)
+        // Heurística de polo: classes "Execução*" / "Cumprimento*" → empresa geralmente é POLO PASSIVO
+        // Classes "Ação de Cobrança" + autor conhecido → depende. Sem dados precisos, marcamos "presumido".
+        const classeLower = (p.classe || '').toLowerCase()
+        let poloPresumido = 'indeterminado'
+        if (classeLower.startsWith('execução') || classeLower.startsWith('execucao') || classeLower.startsWith('cumprimento')) {
+          poloPresumido = 'passivo (provável réu/devedor)'
+        } else if (classeLower.startsWith('ação de cobrança') || classeLower.startsWith('acao de cobranca')) {
+          poloPresumido = 'indefinido (cobrança)'
+        }
+
+        // Tempo desde ajuizamento em meses
+        let tempoMeses: number | null = null
+        if (p.dataAjuizamento) {
+          const dt = new Date(p.dataAjuizamento)
+          if (!isNaN(dt.getTime())) {
+            const diffMs = Date.now() - dt.getTime()
+            tempoMeses = Math.round(diffMs / (1000 * 60 * 60 * 24 * 30))
+          }
+        }
+
+        const valorStr = p.valorCausa != null ? ` · valor R$ ${p.valorCausa.toLocaleString('pt-BR')}` : ''
+        const statusStr = p.status ? ` · status ${p.status}` : ''
+        const tempoStr = tempoMeses != null ? ` · há ${tempoMeses} meses` : ''
+        const poloStr = ` · polo: ${poloPresumido}`
+
+        partes.push(
+          `  - ${p.numeroProcesso} · ${p.tribunal} · ${p.classe}${p.assunto && p.assunto !== '—' ? ` · ${p.assunto}` : ''}${p.dataAjuizamento ? ` · ajuiz. ${p.dataAjuizamento}` : ''}${tempoStr}${valorStr}${statusStr}${poloStr}`,
+        )
       }
+      partes.push(
+        `- REGRA: Execução fiscal EXTINTA ou empresa no polo ATIVO (autor) = ignore/positivo. Empresa em polo PASSIVO com causa ATIVA > R$ 50k = pesa forte. Trabalhista isolada NÃO é deal-breaker pra industrial.`,
+      )
     } else {
       partes.push(`- Nenhum processo encontrado em TJSC/TRF4/TJSP/TJPR/TJRS/TST/STJ`)
     }
-  }
-
-  if (dossie) {
     partes.push('')
-    partes.push(`### Dossiê do Detetive Branorte (regras de risco)`)
-    partes.push(`- Score consolidado: ${dossie.score}/100`)
-    partes.push(`- Semáforo: ${dossie.semaforo.toUpperCase()}`)
-    partes.push(`- Recomendação interna: ${dossie.recomendacao}`)
-    if (dossie.red_flags.length > 0) {
-      partes.push(`- Red flags detectadas (${dossie.red_flags.length}):`)
-      for (const f of dossie.red_flags) {
-        partes.push(`  - [peso ${f.peso}] ${f.nome}: ${f.descricao}`)
-      }
-    } else {
-      partes.push(`- Nenhuma red flag identificada pelas regras do detetive.`)
-    }
-    if (dossie.acoes_sugeridas.length > 0) {
-      partes.push(`- Ações sugeridas pelo detetive:`)
-      for (const a of dossie.acoes_sugeridas) {
-        partes.push(`  - ${a}`)
-      }
-    }
-    partes.push(
-      '- IMPORTANTE: incorpore esses red flags ao parecer. Se o semáforo for vermelho, alinhe seu veredito (não recomende vender sem garantias). Se for verde, use como reforço positivo.',
-    )
   }
 
   return partes.join('\n')
+}
+
+// ─── EXPORTS (tipos públicos pra outros módulos) ──────────────────────────
+
+export type {
+  ResumoSpcInput,
+  DatajudInput,
+  DossieDetetiveInput,
+  ContextoOrcamentoInput,
+  HistoricoBranorteInput,
+  ParecerIaMeta,
+  ParecerIaResult,
 }

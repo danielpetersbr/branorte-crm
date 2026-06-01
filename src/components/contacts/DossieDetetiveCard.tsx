@@ -5,11 +5,19 @@
 // renderiza em layout consistente com os outros cards do DD.
 //
 // Suporta impressão A4 via className "dd-printable" no container raiz.
+//
+// LAYOUT REORGANIZADO (2026-06):
+// - TOPO destaque: Semáforo + Score | Card "Limite Sugerido"
+// - SUB-SCORES por dimensão (financeiro, compliance, digital, jurídico)
+// - SINAIS POSITIVOS x ALERTAS lado a lado (balança visual)
+// - PLANO DE VENDA (3 cenários A/B/C via PlanoVendaCard)
+// - Demais seções (pegada digital, sanções, notícias, ações, fontes) na ZONA DETALHE
 import {
   AlertCircle,
   AlertTriangle,
   Building2,
   CheckCircle,
+  CheckCircle2,
   ExternalLink,
   Globe,
   Instagram,
@@ -21,8 +29,12 @@ import {
   ShieldAlert,
   ShieldCheck,
   Star,
+  ThumbsUp,
+  Wallet,
   XCircle,
 } from 'lucide-react'
+
+import { PlanoVendaCard, type PlanoVendaCardProps } from './PlanoVendaCard'
 
 // ============================================================================
 // Tipos
@@ -73,6 +85,21 @@ export interface DossieDetetive {
   fontes_consultadas: string[]
   investigado_em: string
   cache_valido_ate: string
+  // ── Campos novos (opcionais — fallback gracioso quando ausentes) ────────────
+  sub_scores?: {
+    financeiro: number
+    compliance: number
+    comportamento_digital: number
+    juridico: number
+  }
+  limite_sugerido_brl?: number
+  condicao_recomendada?:
+    | 'vista'
+    | 'prazo_curto'
+    | 'prazo_padrao'
+    | 'prazo_longo_com_aval'
+    | 'nao_vender'
+  cenarios?: PlanoVendaCardProps['cenarios']
 }
 
 interface Props {
@@ -90,7 +117,7 @@ function formatCnpj(cnpj: string): string {
   return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
 }
 
-function formatBRL(value: number | null): string {
+function formatBRL(value: number | null | undefined): string {
   if (value == null) return '—'
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
@@ -163,6 +190,112 @@ function monthsSince(iso: string | null | undefined): number | null {
   }
 }
 
+// Mapeia condicao_recomendada (scoring) → CenarioKey (PlanoVendaCard)
+function mapCondicaoToCenarioKey(
+  c: DossieDetetive['condicao_recomendada'],
+): PlanoVendaCardProps['recomendado'] {
+  switch (c) {
+    case 'vista':
+      return 'a_vista'
+    case 'prazo_curto':
+    case 'prazo_padrao':
+      return 'prazo_padrao'
+    case 'prazo_longo_com_aval':
+      return 'prazo_estendido'
+    case 'nao_vender':
+    default:
+      return 'a_vista'
+  }
+}
+
+// Tradução humana da condição recomendada (texto curto pro card de Limite)
+function descCondicaoRecomendada(c: DossieDetetive['condicao_recomendada']): string {
+  switch (c) {
+    case 'vista':
+      return 'À vista (antes da expedição)'
+    case 'prazo_curto':
+      return '28 / 56 / 84 com sinal 30%'
+    case 'prazo_padrao':
+      return '28 / 56 / 84 (prazo padrão Branorte)'
+    case 'prazo_longo_com_aval':
+      return 'Prazo estendido COM aval/carta-fiança'
+    case 'nao_vender':
+      return 'NÃO RECOMENDADO'
+    default:
+      return '—'
+  }
+}
+
+// Deriva sinais positivos a partir do dossiê (lado verde da balança)
+// Olha pra empresa antiga, capital alto, situação ATIVA, zero processos,
+// IG ativo, sanções limpas, RA bom — tudo que NÃO é red flag.
+export function derivarSinaisPositivos(dossie: DossieDetetive): string[] {
+  const sinais: string[] = []
+
+  // Idade da empresa
+  if (dossie.alvo.idade_meses != null) {
+    const anos = Math.floor(dossie.alvo.idade_meses / 12)
+    if (anos >= 10) {
+      sinais.push(`Empresa com ${anos} anos de mercado`)
+    } else if (anos >= 5) {
+      sinais.push(`${anos} anos de mercado (consolidada)`)
+    } else if (anos >= 2) {
+      sinais.push(`${anos} anos de mercado`)
+    }
+  }
+
+  // Capital social
+  if (dossie.alvo.capital_social != null) {
+    if (dossie.alvo.capital_social >= 1_000_000) {
+      sinais.push(`Capital social ${formatBRL(dossie.alvo.capital_social)}`)
+    } else if (dossie.alvo.capital_social >= 100_000) {
+      sinais.push(`Capital social ${formatBRL(dossie.alvo.capital_social)}`)
+    }
+  }
+
+  // Situação cadastral
+  const situacao = dossie.alvo.situacao?.toUpperCase() ?? ''
+  if (situacao === 'ATIVA') {
+    sinais.push('Situação cadastral ATIVA')
+  }
+
+  // Sanções limpas
+  if (dossie.sancoes) {
+    const total =
+      dossie.sancoes.ceis +
+      dossie.sancoes.cnep +
+      dossie.sancoes.acordos_leniencia +
+      dossie.sancoes.cepim
+    if (total === 0) sinais.push('Sem sanções CGU (CEIS · CNEP · Leniência · CEPIM)')
+  }
+
+  // Notícias sem alerta
+  if (dossie.noticias && dossie.noticias.alertas.length === 0) {
+    sinais.push('Sem notícias negativas')
+  }
+
+  // Pegada digital
+  const pd = dossie.pegada_digital
+  if (pd?.site?.existe) sinais.push('Site institucional ativo')
+  if (pd?.linkedin?.existe) sinais.push('Presença no LinkedIn')
+  if (pd?.instagram?.perfil_encontrado) {
+    const meses = monthsSince(pd.instagram.data_ultimo_post)
+    if (meses != null && meses <= 6) sinais.push('Instagram ativo (posts recentes)')
+    else if (pd.instagram.perfil_encontrado) sinais.push('Instagram localizado')
+  }
+  if (pd?.reclame_aqui?.rating != null && pd.reclame_aqui.rating >= 7) {
+    sinais.push(`Reclame Aqui ${pd.reclame_aqui.rating.toFixed(1)}/10`)
+  }
+  if (pd?.reclame_aqui?.resolucao_pct != null && pd.reclame_aqui.resolucao_pct >= 80) {
+    sinais.push(`${pd.reclame_aqui.resolucao_pct}% de resolução no RA`)
+  }
+
+  // Score alto
+  if (dossie.score >= 80) sinais.push(`Score Detetive ${dossie.score}/100`)
+
+  return sinais
+}
+
 // ============================================================================
 // Configuração do semáforo
 // ============================================================================
@@ -212,6 +345,11 @@ export function DossieDetetiveCard({ dossie, onReinvestigar }: Props) {
 
   const nomeExibicao =
     dossie.alvo.nome_fantasia?.trim() || dossie.alvo.razao_social?.trim() || 'Empresa sem nome'
+
+  const sinaisPositivos = derivarSinaisPositivos(dossie)
+  const temCenarios = !!dossie.cenarios
+  const temLimite = typeof dossie.limite_sugerido_brl === 'number' && dossie.limite_sugerido_brl > 0
+  const temSubScores = !!dossie.sub_scores
 
   return (
     <div className="dd-printable border border-border rounded-lg bg-surface-2/20 overflow-hidden">
@@ -267,55 +405,163 @@ export function DossieDetetiveCard({ dossie, onReinvestigar }: Props) {
         </div>
       </div>
 
-      {/* ====== SEMÁFORO + SCORE ====== */}
-      <div className={`px-4 py-4 border-b border-border/40 ${semaforoCfg.bg}`}>
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className={`flex items-center justify-center h-16 w-16 rounded-full border-2 ${semaforoCfg.border} shrink-0`}>
-            <SemaforoIcon className={`h-8 w-8 ${semaforoCfg.text}`} />
+      {/* ====== TOPO DESTAQUE: SEMÁFORO + SCORE | LIMITE SUGERIDO ====== */}
+      <div className={`border-b border-border/40 ${semaforoCfg.bg}`}>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-0">
+          {/* Coluna A (larga): Semáforo + Score + Recomendação */}
+          <div className="lg:col-span-2 px-4 py-4 border-b lg:border-b-0 lg:border-r border-border/40">
+            <div className="flex items-center gap-4 flex-wrap">
+              <div
+                className={`flex items-center justify-center h-16 w-16 rounded-full border-2 ${semaforoCfg.border} shrink-0 bg-bg/40`}
+              >
+                <SemaforoIcon className={`h-8 w-8 ${semaforoCfg.text}`} />
+              </div>
+
+              <div className="flex-1 min-w-[180px]">
+                <p
+                  className={`text-[10px] uppercase tracking-wider font-bold ${semaforoCfg.text} mb-1`}
+                >
+                  {semaforoCfg.label}
+                </p>
+                <p className="text-[13px] text-ink leading-snug">{dossie.recomendacao}</p>
+              </div>
+
+              <div className="text-right">
+                <p className="text-[9px] uppercase tracking-wider text-ink-faint mb-0.5">Score</p>
+                <p className={`text-5xl font-bold tabular-nums leading-none ${semaforoCfg.text}`}>
+                  {dossie.score}
+                </p>
+                <p className="text-[10px] text-ink-faint mt-0.5">/ 100</p>
+              </div>
+            </div>
           </div>
 
-          <div className="flex-1 min-w-[180px]">
-            <p className={`text-[10px] uppercase tracking-wider font-bold ${semaforoCfg.text} mb-1`}>
-              {semaforoCfg.label}
+          {/* Coluna B (estreita): Limite Sugerido em destaque */}
+          <div className="px-4 py-4 bg-bg/30 flex flex-col justify-center">
+            <p className="text-[9px] uppercase tracking-wider text-ink-faint mb-1 flex items-center gap-1.5">
+              <Wallet className="h-3 w-3" />
+              Limite Sugerido
             </p>
-            <p className="text-[13px] text-ink leading-snug">{dossie.recomendacao}</p>
-          </div>
-
-          <div className="text-right">
-            <p className="text-[9px] uppercase tracking-wider text-ink-faint mb-0.5">Score</p>
-            <p className={`text-5xl font-bold tabular-nums leading-none ${semaforoCfg.text}`}>
-              {dossie.score}
-            </p>
-            <p className="text-[10px] text-ink-faint mt-0.5">/ 100</p>
+            {temLimite ? (
+              <>
+                <p className="text-4xl lg:text-5xl font-mono font-bold tabular-nums text-accent leading-none">
+                  {formatBRL(dossie.limite_sugerido_brl)}
+                </p>
+                <p
+                  className="text-[10px] text-ink-muted mt-2 leading-snug"
+                  title="min(faturamento × 0.10 × 12, capital × 1.5, cotação)"
+                >
+                  Condição:{' '}
+                  <span className="font-semibold text-ink">
+                    {descCondicaoRecomendada(dossie.condicao_recomendada)}
+                  </span>
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-2xl font-bold tabular-nums text-ink-faint leading-none">—</p>
+                <p className="text-[10px] text-ink-faint mt-2 italic">
+                  Limite não calculado nessa consulta
+                </p>
+              </>
+            )}
           </div>
         </div>
       </div>
 
-      {/* ====== RED FLAGS ====== */}
-      {dossie.red_flags.length > 0 && (
+      {/* ====== SUB-SCORES POR DIMENSÃO ====== */}
+      {temSubScores && dossie.sub_scores && (
         <div className="px-4 py-3 border-b border-border/40">
-          <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle className="h-4 w-4 text-danger" />
-            <h3 className="text-[11px] uppercase tracking-wider font-bold text-danger">
-              Red Flags Detectados ({dossie.red_flags.length})
-            </h3>
+          <h3 className="text-[11px] uppercase tracking-wider font-bold text-ink-muted mb-3">
+            Sub-Scores por Dimensão
+          </h3>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <SubScoreItem label="Financeiro" valor={dossie.sub_scores.financeiro} />
+            <SubScoreItem label="Compliance" valor={dossie.sub_scores.compliance} />
+            <SubScoreItem
+              label="Comp. Digital"
+              valor={dossie.sub_scores.comportamento_digital}
+            />
+            <SubScoreItem label="Jurídico" valor={dossie.sub_scores.juridico} />
           </div>
-          <ul className="space-y-1.5">
-            {dossie.red_flags.map((flag) => (
-              <li
-                key={flag.id}
-                className="flex items-start gap-2 p-2 rounded bg-danger/10 border border-danger/20"
-              >
-                <span className="text-[10px] font-mono font-bold text-danger bg-danger/20 px-1.5 py-0.5 rounded shrink-0 tabular-nums">
-                  -{flag.peso}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[12px] font-semibold text-ink">{flag.nome}</p>
-                  <p className="text-[11px] text-ink-muted italic mt-0.5">{flag.descricao}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
+        </div>
+      )}
+
+      {/* ====== POR QUE CONFIAR x POR QUE DESCONFIAR (balança) ====== */}
+      <div className="px-4 py-3 border-b border-border/40 grid grid-cols-1 md:grid-cols-2 gap-3">
+        {/* Esquerda: Sinais positivos */}
+        <div className="bg-success/10 border-l-2 border-success rounded-r px-3 py-2.5">
+          <div className="flex items-center gap-2 mb-2">
+            <ThumbsUp className="h-3.5 w-3.5 text-success" />
+            <h3 className="text-[10px] uppercase tracking-wider font-bold text-success">
+              Por que confiar
+            </h3>
+            <span className="ml-auto text-[10px] font-mono tabular-nums text-success">
+              {sinaisPositivos.length}{' '}
+              {sinaisPositivos.length === 1 ? 'sinal' : 'sinais'}
+            </span>
+          </div>
+          {sinaisPositivos.length > 0 ? (
+            <ul className="space-y-1">
+              {sinaisPositivos.map((sinal, idx) => (
+                <li
+                  key={idx}
+                  className="flex items-start gap-1.5 text-[11px] text-ink leading-snug"
+                >
+                  <CheckCircle2 className="h-3 w-3 text-success shrink-0 mt-0.5" />
+                  <span>{sinal}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-[11px] text-ink-faint italic">Nenhum sinal positivo identificado</p>
+          )}
+        </div>
+
+        {/* Direita: Red flags */}
+        <div className="bg-danger/10 border-r-2 border-danger rounded-l px-3 py-2.5">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle className="h-3.5 w-3.5 text-danger" />
+            <h3 className="text-[10px] uppercase tracking-wider font-bold text-danger">
+              Por que desconfiar
+            </h3>
+            <span className="ml-auto text-[10px] font-mono tabular-nums text-danger">
+              {dossie.red_flags.length}{' '}
+              {dossie.red_flags.length === 1 ? 'alerta' : 'alertas'}
+            </span>
+          </div>
+          {dossie.red_flags.length > 0 ? (
+            <ul className="space-y-1.5">
+              {dossie.red_flags.map((flag) => (
+                <li
+                  key={flag.id}
+                  className="flex items-start gap-2 p-1.5 rounded bg-danger/10 border border-danger/20"
+                >
+                  <span className="text-[9px] font-mono font-bold text-danger bg-danger/20 px-1.5 py-0.5 rounded shrink-0 tabular-nums">
+                    -{flag.peso}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-semibold text-ink leading-tight">{flag.nome}</p>
+                    <p className="text-[10px] text-ink-muted mt-0.5 leading-snug">
+                      {flag.descricao}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-[11px] text-ink-faint italic">Nenhum red flag detectado</p>
+          )}
+        </div>
+      </div>
+
+      {/* ====== PLANO DE VENDA (3 CENÁRIOS) ====== */}
+      {temCenarios && dossie.cenarios && (
+        <div className="border-b border-border/40">
+          <PlanoVendaCard
+            cenarios={dossie.cenarios}
+            recomendado={mapCondicaoToCenarioKey(dossie.condicao_recomendada)}
+          />
         </div>
       )}
 
@@ -438,11 +684,11 @@ export function DossieDetetiveCard({ dossie, onReinvestigar }: Props) {
         </div>
       )}
 
-      {/* ====== AÇÕES SUGERIDAS ====== */}
+      {/* ====== CHECKLIST DO QUE PEDIR (ex Ações Sugeridas) ====== */}
       {dossie.acoes_sugeridas.length > 0 && (
         <div className="px-4 py-3 border-b border-border/40 bg-accent/5">
           <h3 className="text-[11px] uppercase tracking-wider font-bold text-accent mb-2">
-            Ações Sugeridas
+            Checklist do que pedir
           </h3>
           <ol className="space-y-1.5">
             {dossie.acoes_sugeridas.map((acao, idx) => (
@@ -500,6 +746,40 @@ export function DossieDetetiveCard({ dossie, onReinvestigar }: Props) {
 // ============================================================================
 // Subcomponentes
 // ============================================================================
+
+interface SubScoreItemProps {
+  label: string
+  valor: number
+}
+
+function SubScoreItem({ label, valor }: SubScoreItemProps) {
+  // 0-30 vermelho, 31-60 amarelo, 61-100 verde
+  const v = Math.max(0, Math.min(100, Math.round(valor)))
+  const cor =
+    v <= 30
+      ? { bg: 'bg-danger', text: 'text-danger', track: 'bg-danger/20' }
+      : v <= 60
+        ? { bg: 'bg-warning', text: 'text-warning', track: 'bg-warning/20' }
+        : { bg: 'bg-success', text: 'text-success', track: 'bg-success/20' }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[10px] uppercase tracking-wider font-semibold text-ink-muted">
+          {label}
+        </span>
+        <span className={`text-[13px] font-bold tabular-nums ${cor.text}`}>{v}</span>
+      </div>
+      <div className={`h-1.5 w-full rounded-full overflow-hidden ${cor.track}`}>
+        <div
+          className={`h-full ${cor.bg} transition-all`}
+          style={{ width: `${v}%` }}
+          aria-hidden
+        />
+      </div>
+    </div>
+  )
+}
 
 interface PegadaItemProps {
   icon: typeof Globe

@@ -34,10 +34,22 @@ export interface ResumoSpc {
   socios?: Array<{ nome: string; participacao?: string | null; documento?: string | null }>
   administradores?: Array<{ nome: string; cargo?: string | null }>
   participacoes_em_empresas?: Array<{ nome: string; cnpj?: string | null; tipo?: string | null }>
-  /** PEP — Pessoa Exposta Politicamente (insumo 5255). */
-  pep?: { tem: boolean; qtd: number; detalhes: Array<{ nome?: string | null; cargo?: string | null }> }
   /** Faturamento presumido em R$ (insumo 5178). */
   faturamento_presumido?: { valor: number; periodicidade?: 'mensal' | 'anual' | null } | null
+  /** Ações judiciais e débitos (insumo 18). */
+  acoes_judiciais?: {
+    qtd: number
+    valor_total: number
+    detalhes?: Array<{
+      tipo?: string | null
+      vara?: string | null
+      numero_processo?: string | null
+      valor?: number | null
+      data?: string | null
+      comarca?: string | null
+      uf?: string | null
+    }>
+  }
   alertas?: string[]
 }
 
@@ -165,6 +177,101 @@ function fmtFone(t: AnyObj | undefined): string | null {
   return `(${ddd}) ${num}`
 }
 
+// Extrai ações judiciais e débitos (insumo 18 — "Acao" no SPC).
+// Defensivo: o nome exato do campo raiz e a estrutura de detalhe ainda não
+// foram confirmados em payload bruto de produção (testado 200 OK em 29/05/2026
+// mas JSON não documentado). Tenta múltiplos paths conhecidos.
+function extrairAcoesJudiciais(
+  raiz: AnyObj | undefined | null,
+): NonNullable<ResumoSpc['acoes_judiciais']> {
+  if (!raiz) return { qtd: 0, valor_total: 0, detalhes: [] }
+
+  // Tenta caminhos comuns do payload SPC
+  const acaoObj =
+    get<AnyObj>(raiz, 'acao') ??
+    get<AnyObj>(raiz, 'acoesEDebitos') ??
+    get<AnyObj>(raiz, 'acoesJudiciais') ??
+    get<AnyObj>(raiz, 'acoes') ??
+    get<AnyObj>(raiz, 'spcAcao')
+
+  // Lista de detalhes — tenta os nomes mais prováveis
+  let detalhes =
+    (get<AnyObj[]>(acaoObj, 'detalheAcoesEDebitos') as AnyObj[] | undefined) ??
+    (get<AnyObj[]>(acaoObj, 'detalheAcoesJudiciais') as AnyObj[] | undefined) ??
+    (get<AnyObj[]>(acaoObj, 'detalheAcao') as AnyObj[] | undefined) ??
+    (get<AnyObj[]>(acaoObj, 'detalhe') as AnyObj[] | undefined)
+
+  // Fallback: filtrar spcRegistros.detalheSpcRegistros por tipo "ACAO JUDICIAL"
+  if (!detalhes || detalhes.length === 0) {
+    const registros = get<AnyObj[]>(raiz, 'spcRegistros', 'detalheSpcRegistros') ?? []
+    const filtrados = registros.filter(r => {
+      const tipo = String(get<string>(r, 'tipo') ?? get<string>(r, 'tipoRegistro') ?? '').toUpperCase()
+      return tipo.includes('ACAO') || tipo.includes('AÇÃO') || tipo.includes('JUDICIAL')
+    })
+    if (filtrados.length > 0) detalhes = filtrados
+  }
+
+  const lista = (detalhes ?? []) as AnyObj[]
+
+  const qtd = Number(
+    get(acaoObj, 'resumo', 'quantidadeTotal') ??
+      get(acaoObj, 'quantidadeTotal') ??
+      lista.length ??
+      0,
+  )
+  const valor_total = Number(
+    get(acaoObj, 'resumo', 'valorTotal') ?? get(acaoObj, 'valorTotal') ?? 0,
+  )
+
+  const parseValor = (v: unknown): number => {
+    if (typeof v === 'number') return v
+    if (typeof v === 'string') {
+      // remove R$, espaços, troca vírgula decimal
+      const clean = v.replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.')
+      const n = parseFloat(clean)
+      return isNaN(n) ? 0 : n
+    }
+    return 0
+  }
+
+  const parseData = (d: AnyObj): string | null => {
+    // data pode vir como epoch ms (number) ou string já formatada
+    const v =
+      get<unknown>(d, 'dataDistribuicao') ??
+      get<unknown>(d, 'dataInclusao') ??
+      get<unknown>(d, 'data')
+    if (!v) return null
+    if (typeof v === 'number') return new Date(v).toLocaleDateString('pt-BR')
+    if (typeof v === 'string') return v // mantém formato original (provavelmente dd/mm/yyyy)
+    return null
+  }
+
+  return {
+    qtd,
+    valor_total,
+    detalhes: lista.slice(0, 5).map(d => ({
+      tipo:
+        get<string>(d, 'tipoAcao') ??
+        get<string>(d, 'naturezaAcao') ??
+        get<string>(d, 'tipo') ??
+        null,
+      vara: get<string>(d, 'vara') ?? null,
+      numero_processo:
+        get<string>(d, 'numeroProcesso') ?? get<string>(d, 'processo') ?? null,
+      valor: parseValor(get<unknown>(d, 'valor') ?? get<unknown>(d, 'valorAcao')),
+      data: parseData(d),
+      comarca:
+        get<string>(d, 'comarca') ??
+        get<string>(d, 'cidade', 'nome') ??
+        null,
+      uf:
+        get<string>(d, 'uf') ??
+        get<string>(d, 'cidade', 'estado', 'siglaUf') ??
+        null,
+    })),
+  }
+}
+
 export function normalizarPayloadSpc(
   payload: AnyObj | null | undefined,
   fallbackDoc = '',
@@ -284,15 +391,6 @@ export function normalizarPayloadSpc(
     tipo: get<string>(p, 'tipo') ?? null,
   }))
 
-  // PEP: insumo 5255 retorna em resultadoInsumoPep
-  const pepObj = get<AnyObj>(raiz, 'resultadoInsumoPep') ?? get<AnyObj>(raiz, 'pep')
-  const pepDetalhes = (get<AnyObj[]>(pepObj, 'detalhePep') ?? []).map(p => ({
-    nome: get<string>(p, 'nome') ?? null,
-    cargo: get<string>(p, 'cargoFuncao') ?? get<string>(p, 'cargo') ?? null,
-  }))
-  const pepQtd = Number(get(pepObj, 'resumo', 'quantidadeTotal') ?? pepDetalhes.length ?? 0)
-  const pep = pepObj ? { tem: pepQtd > 0, qtd: pepQtd, detalhes: pepDetalhes } : undefined
-
   // Faturamento presumido: insumo 5178
   const fatObj = get<AnyObj>(raiz, 'faturamentoPresumido')
   const fatValor = Number(
@@ -302,6 +400,10 @@ export function normalizarPayloadSpc(
   )
   const faturamento_presumido = fatObj && fatValor > 0 ? { valor: fatValor, periodicidade: 'anual' as const } : null
 
+  // Ações judiciais (insumo 18) — sempre populado (qtd=0 se nada veio),
+  // pra UI saber que o insumo foi consultado mas não há ocorrências.
+  const acoes_judiciais = extrairAcoesJudiciais(raiz)
+
   return {
     consumidor: consumidorNorm,
     score,
@@ -310,8 +412,8 @@ export function normalizarPayloadSpc(
     socios: socios.length ? socios : undefined,
     administradores: administradores.length ? administradores : undefined,
     participacoes_em_empresas: participacoes.length ? participacoes : undefined,
-    pep,
     faturamento_presumido,
+    acoes_judiciais,
     alertas: [],
   }
 }

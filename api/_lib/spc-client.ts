@@ -137,7 +137,10 @@ export const INSUMOS_OPCIONAIS = {
   SCORE_12_MESES: { codigo: 78, label: 'Score 12 Meses', valor: 1.13 },
   SCORE_3_MESES: { codigo: 77, label: 'Score 3 Meses', valor: 1.13 },
   PARTICIPACAO_EMPRESAS: { codigo: 24, label: 'Participacao em Empresas', valor: 2.72 },
-  PEP: { codigo: 5255, label: 'Pessoa Exposta Politicamente', valor: 1.02 },
+  // PEP#5255 REMOVIDO do pacote em 2026-06-01 — sinal vem agora do Portal
+  // Transparencia (CGU, gratuito) e fica restrito ao detetive-scoring interno.
+  // Mantido na lista apenas como referencia historica de codigos REST.
+  PEP: { codigo: 5255, label: 'Pessoa Exposta Politicamente (DEPRECATED)', valor: 1.02 },
   // Cadastrais
   SOCIO: { codigo: 23, label: 'Socio', valor: 0 },
   ADMINISTRADOR: { codigo: 49, label: 'Administrador', valor: 0 },
@@ -156,7 +159,10 @@ export const INSUMOS_OPCIONAIS = {
   ANALISE_DOCUMENTOS: { codigo: 5266, label: 'Analise Documentos SPC', valor: 5.69 },
   VALIDA_CELULAR: { codigo: 5268, label: 'Valida Celular', valor: 1.07 },
   // Outros
-  ACAO: { codigo: 18, label: 'Acao', valor: 4.59 },
+  // Insumo #18 — Ações e Débitos Judiciais (mesmo codigo SPC, alias unico
+  // pra preservar consistencia de shape no `as const`). Usado tanto em
+  // contextos PJ (Acoes Judiciais e Debitos) quanto PF.
+  ACAO_JUDICIAL: { codigo: 18, label: 'Ações e Débitos Judiciais', valor: 4.59 },
   RENDA_PRESUMIDA_PF: { codigo: 5097, label: 'Renda Presumida PF', valor: 1.46 },
   COMPROMETIMENTO_RENDA: { codigo: 5194, label: 'Comprometimento Renda Mensal PF', valor: 13.56 },
   SPC_OBITO: { codigo: 3082, label: 'SPC Obito', valor: 0.57 },

@@ -18,26 +18,27 @@ import { DossieDetetiveCard, type DossieDetetive } from './DossieDetetiveCard'
 
 // Custos calculados a partir da tabela FCDL/SC jan/2026 com codigos API
 // CORRIGIDOS (descobertos em 29/05/2026 — codigos REST sao diferentes
-// dos codigos da tabela de precos):
+// dos codigos da tabela de precos). Refletem EXATAMENTE o pacote enviado
+// em api/dd-consultar.ts → montarPacotes():
 //   PJ Economico: 325 (5,62) + Score12m#78 (1,13) + Part#24 (2,72)
-//                + PEP#5255 (1,02) + Receita#5183 (0,33) = R$ 10,82
+//                + AcaoJudicial#18 (4,59) + Receita#5183 (0,33) = R$ 14,39
 //   PF Economico: 325 (5,62) + Score12m#78 (1,13) + Part#24 (2,72)
-//                + PEP#5255 (1,02) + Renda#5097 (1,46) = R$ 11,95
-const CUSTO_PJ_ECONOMICO = 5.62 + 1.13 + 2.72 + 1.02 + 0.33     // 10.82
-const CUSTO_PF_ECONOMICO = 5.62 + 1.13 + 2.72 + 1.02 + 1.46     // 11.95
+//                + AcaoJudicial#18 (4,59) + Renda#5097 (1,46) = R$ 15,52
+const CUSTO_PJ_ECONOMICO = 5.62 + 1.13 + 2.72 + 4.59 + 0.33     // 14.39
+const CUSTO_PF_ECONOMICO = 5.62 + 1.13 + 2.72 + 4.59 + 1.46     // 15.52
 const CUSTO_PJ_COMPLETO = CUSTO_PJ_ECONOMICO + 17.09 + 16.21 + 6.49 + 16.21 + 1.96 + 4.91
 const CUSTO_PF_COMPLETO = CUSTO_PF_ECONOMICO + 13.56 + 1.72 + 0.78
 
 const PACOTE_INFO: Record<Pacote, { titulo: string; descricao: string; custoPj: number; custoPf: number }> = {
   economico: {
     titulo: 'Econômico',
-    descricao: 'SPC Maxi + Score 12m + Participações em Empresas + PEP + Receita Federal',
+    descricao: 'SPC Maxi + Score 12m + Participações em Empresas + Ações Judiciais + Receita Federal',
     custoPj: CUSTO_PJ_ECONOMICO,
     custoPf: CUSTO_PF_ECONOMICO,
   },
   completo: {
     titulo: 'Completo',
-    descricao: 'Econômico + Faturamento Presumido + Quadro Social + Grupo Econômico + Protesto + Renda + PEP',
+    descricao: 'Econômico + Faturamento Presumido + Quadro Social + Grupo Econômico + Risco Crédito + Limite + Score PJ',
     custoPj: CUSTO_PJ_COMPLETO,
     custoPf: CUSTO_PF_COMPLETO,
   },
@@ -364,7 +365,17 @@ interface Resumo {
   socios?: Array<{ nome: string; participacao?: string | null; documento?: string | null }>
   administradores?: Array<{ nome: string; cargo?: string | null }>
   participacoes_em_empresas?: Array<{ nome: string; cnpj?: string | null; tipo?: string | null }>
-  pep?: { tem: boolean; qtd: number; detalhes: Array<{ nome?: string | null; cargo?: string | null }> }
+  acoes_judiciais?: {
+    qtd: number
+    valor_total: number
+    detalhes?: Array<{
+      tipo?: string | null
+      valor?: number | null
+      data?: string | null
+      comarca?: string | null
+      uf?: string | null
+    }>
+  }
   faturamento_presumido?: { valor: number; periodicidade?: 'mensal' | 'anual' | null } | null
   alertas?: string[]
 }
@@ -726,25 +737,28 @@ function ColunaRisco({ resumo, analise }: { resumo: Resumo; analise: Analise }) 
         </div>
       )}
 
-      {/* PEP — Pessoa Exposta Politicamente */}
-      {r.pep && (
+      {/* Ações Judiciais (SPC) */}
+      {r.acoes_judiciais && (
         <div className="border-t border-border/30 pt-2 mt-2">
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] uppercase tracking-wider font-bold text-ink-faint">
-              PEP — Pessoa Exposta Politicamente
-            </p>
-            <span className={`text-[10px] font-bold ${r.pep.tem ? 'text-danger' : 'text-success'}`}>
-              {r.pep.tem ? `${r.pep.qtd} detectado(s)` : 'Não'}
-            </span>
+          <div className="text-[10px] uppercase tracking-wider text-ink-faint font-bold mb-1">
+            AÇÕES JUDICIAIS (SPC)
           </div>
-          {r.pep.tem && r.pep.detalhes.length > 0 && (
-            <ul className="space-y-0.5">
-              {r.pep.detalhes.map((p, i) => (
-                <li key={i} className="text-[11px] text-ink leading-tight">
-                  • {p.nome ?? '—'}{p.cargo ? ` · ${p.cargo}` : ''}
-                </li>
+          {r.acoes_judiciais.qtd === 0 ? (
+            <div className="text-success text-[11px]">Nenhuma ação registrada</div>
+          ) : (
+            <>
+              <div className="text-danger font-semibold text-[12px] tabular-nums">
+                {r.acoes_judiciais.qtd} ação(ões) · {fmtBRL(r.acoes_judiciais.valor_total)}
+              </div>
+              {r.acoes_judiciais.detalhes?.slice(0, 5).map((d, i) => (
+                <div key={i} className="text-[10px] text-ink-muted mt-1 leading-tight">
+                  • {d.tipo || 'Ação Judicial'}
+                  {d.valor != null ? ` · ${fmtBRL(d.valor)}` : ''}
+                  {d.data ? ` · ${d.data}` : ''}
+                  {d.comarca ? ` · ${d.comarca}${d.uf ? '/' + d.uf : ''}` : ''}
+                </div>
               ))}
-            </ul>
+            </>
           )}
         </div>
       )}
@@ -1177,6 +1191,15 @@ function analisar(r: Resumo): Analise {
   }
   if (qtdProtesto > 0) {
     sinaisAlerta.push(`${qtdProtesto} protesto(s) somando ${fmtBRL(valorProtesto)}`)
+  }
+  if (r.acoes_judiciais) {
+    if (r.acoes_judiciais.qtd === 0) {
+      sinaisPositivos.push('Sem ações judiciais registradas no SPC')
+    } else {
+      sinaisAlerta.push(
+        `${r.acoes_judiciais.qtd} ação(ões) judicial(is) totalizando ${fmtBRL(r.acoes_judiciais.valor_total)}`,
+      )
+    }
   }
   if (tempoEmpresaAnos != null) {
     if (tempoEmpresaAnos >= 10) sinaisPositivos.push(`Empresa consolidada — ${tempoEmpresaAnos} anos de mercado`)

@@ -92,8 +92,8 @@ interface ConsultarBody {
 // producao em 29/05/2026. Todos os 17 insumos testados retornaram 200 OK
 // pra produto 325 com tipoConsumidor='J'.
 //
-// Economico PJ: 325 + Score 12m + Participacao + PEP = ~R$ 10,49
-// Economico PF: 325 + Score 12m + Renda Presumida + PEP = ~R$ 8,10
+// Economico PJ: 325 + Score 12m + Participacao + Acoes Judiciais = ~R$ 13,06
+// Economico PF: 325 + Score 12m + Renda Presumida + Acoes Judiciais = ~R$ 11,67
 // Completo:   + Faturamento + Quadro Social + Grupo Econ + Risco Credito + Limite
 function montarPacotes(
   pacote: ConsultarBody['pacote'],
@@ -111,11 +111,11 @@ function montarPacotes(
   const isCompleto = pacote === 'completo' || pacote === 'paranoico'
 
   if (opts.incluiPj) {
-    // PJ: Novo SPC Maxi + Score 12m + Participação Empresas + PEP
+    // PJ: Novo SPC Maxi + Score 12m + Participação Empresas + Ações Judiciais
     const insumosPj: number[] = [
       INSUMOS_OPCIONAIS.SCORE_12_MESES.codigo,         // 78
       INSUMOS_OPCIONAIS.PARTICIPACAO_EMPRESAS.codigo,  // 24
-      INSUMOS_OPCIONAIS.PEP.codigo,                    // 5255
+      INSUMOS_OPCIONAIS.ACAO_JUDICIAL.codigo,          // 18 (Ações e Débitos Judiciais)
       INSUMOS_OPCIONAIS.STATUS_RECEITA_FEDERAL.codigo, // 5183 (Receita ativa?)
     ]
     if (isCompleto) {
@@ -136,11 +136,11 @@ function montarPacotes(
   }
 
   if (opts.incluiPf) {
-    // PF: Novo SPC Maxi + Score 12m + Participação Empresas + PEP + Renda Presumida
+    // PF: Novo SPC Maxi + Score 12m + Participação Empresas + Ações Judiciais + Renda Presumida
     const insumosPf: number[] = [
       INSUMOS_OPCIONAIS.SCORE_12_MESES.codigo,         // 78
       INSUMOS_OPCIONAIS.PARTICIPACAO_EMPRESAS.codigo,  // 24
-      INSUMOS_OPCIONAIS.PEP.codigo,                    // 5255
+      INSUMOS_OPCIONAIS.ACAO_JUDICIAL.codigo,          // 18 (Ações e Débitos Judiciais)
       INSUMOS_OPCIONAIS.RENDA_PRESUMIDA_PF.codigo,     // 5097
     ]
     if (isCompleto) {
@@ -291,6 +291,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // ─── Portal da Transparência (CGU) — PEP + CEIS + CNEP + CEPIM, em paralelo ───
   // Grátis (token gov.br), 8s por endpoint, fan-out de 4. Modo gracioso: se
   // PORTAL_TRANSPARENCIA_KEY ausente, retorna ok=false sem quebrar nada.
+  // Nota: o insumo SPC #5255 (PEP pago) foi REMOVIDO do pacote. Aqui mantemos
+  // apenas o PEP gratuito do CGU como sinal interno pro detetive-scoring; ele
+  // NÃO é exibido na UI nem entra no parecer IA — só alimenta flags de risco.
   const portalPromise: Promise<PortalTransparenciaResultado> = consultarPortalTransparencia({
     cnpj: precisaCnpj && cnpj.length === 14 ? cnpj : null,
     cpf: precisaCpf && cpfSocio.length === 11 ? cpfSocio : null,
