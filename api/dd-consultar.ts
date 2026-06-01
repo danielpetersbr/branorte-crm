@@ -656,16 +656,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   ;(resultadoSpc as Record<string, unknown>).pegada_digital = pegadaDigitalResultado
 
   // 7.0.3) Cálculo do Dossiê do Detetive — consolida tudo em score 0-100 + semáforo
+  // ATENÇÃO: gate expandido pra rodar TAMBÉM em PF (cpf_socio com 11 dígitos).
+  // Antes, só PJ entrava aqui; agora vendedor pode pegar CPF e receber o mesmo
+  // pacote (score 0-100, semáforo, Plano A/B/C). PF cai num modo "degradado
+  // gracioso" do scoring: flags que dependem de campos PJ (CNAE, capital social,
+  // sócios, IG) retornam null e o denominador é ajustado em detetive-scoring.ts.
   let dossieDetetive: DossieResultado | null = null
-  if (precisaCnpj && cnpj.length === 14) {
+  // Identifica modo da consulta pra escolher fonte do SPC (PJ → tipoConsumidor='J',
+  // PF → tipoConsumidor='F'). Em 'ambos' priorizamos PJ (vendedor está vendendo
+  // pra empresa, sócio é só sinal complementar — comportamento legado).
+  const modoDetetive: 'pj' | 'pf' | null =
+    precisaCnpj && cnpj.length === 14
+      ? 'pj'
+      : precisaCpf && cpfSocio.length === 11
+      ? 'pf'
+      : null
+  if (modoDetetive) {
     try {
-      // Extrai resumo SPC (primeiro resumo PJ) pra alimentar o F17 hard-fail
+      // Extrai resumo SPC (primeiro resumo PJ ou PF — depende do modo) pra
+      // alimentar o F17 hard-fail (score zero / classificacao INADIMPLENTE).
+      // No SPC, PF e PJ vêm como objetos diferentes em `resumos`; filtramos
+      // pelo `documento` ou pelo tipoConsumidor da consulta correspondente.
       const resumoSpcParaDetetive = (() => {
-        const resumos = (resultadoSpc as { resumos?: Array<{ resumo?: Record<string, unknown> }> } | null)?.resumos
-        const primeiro = resumos?.find(r => r?.resumo)?.resumo
-        if (!primeiro) return null
-        const score = primeiro.score as { valor?: number | null; classificacao?: string | null } | undefined
-        const inad = primeiro.inadimplencias as {
+        const resumos = (resultadoSpc as {
+          resumos?: Array<{ documento?: string; resumo?: Record<string, unknown> }>
+        } | null)?.resumos
+        if (!resumos?.length) return null
+        // Procura o resumo do documento correto pro modo.
+        const docAlvo = modoDetetive === 'pj' ? cnpj : cpfSocio
+        const escolhido = resumos.find(r => r?.documento === docAlvo)?.resumo
+          ?? resumos.find(r => r?.resumo)?.resumo // fallback: primeiro que tiver resumo
+        if (!escolhido) return null
+        const score = escolhido.score as { valor?: number | null; classificacao?: string | null } | undefined
+        const inad = escolhido.inadimplencias as {
           qtd?: number | null
           valor_total?: number | null
           detalhes?: Array<{ credor?: string | null; valor?: number | null; data?: string | null }> | null
@@ -687,7 +710,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })()
 
       const detetiveInput: DetetiveInput = {
-        cnpj,
+        // No modo PF, `cnpj` fica vazio — scoring detecta modo PF via
+        // tipoConsumidor='F' OU cnpj vazio (ver detetive-scoring.ts L34).
+        cnpj: modoDetetive === 'pj' ? cnpj : '',
+        tipoConsumidor: modoDetetive === 'pj' ? 'J' : 'F',
         spc: resumoSpcParaDetetive,
         // ticket_pedido vem do body (campo opcional novo `ticket_pedido_brl`).
         // Se ausente, fica 0 — scoring trata 0 como "ticket desconhecido"
@@ -783,23 +809,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // não conseguir montar o trio mínimo, retorna null e o frontend renderiza
       // placeholder "Plano de Venda não disponível".
       cenarios: adaptarCenariosParaFrontend(dossieDetetive.cenarios),
-      // Campos que o card frontend espera mas que o motor não calcula:
-      alvo: {
-        razao_social: opencnpjResultado?.razao_social ?? null,
-        nome_fantasia: opencnpjResultado?.nome_fantasia ?? null,
-        idade_meses: opencnpjResultado?.data_abertura
+      // Campos que o card frontend espera mas que o motor não calcula.
+      // Em modo PF, OpenCNPJ é null — caímos pra `consumidor.nome` do SPC como
+      // razão_social (na UI vira "Nome do consultado") e zeramos campos PJ-only.
+      alvo: (() => {
+        const nomePf = modoDetetive === 'pf'
           ? (() => {
-              const d = new Date(opencnpjResultado.data_abertura)
-              if (isNaN(d.getTime())) return null
-              const meses =
-                (new Date().getFullYear() - d.getFullYear()) * 12 +
-                (new Date().getMonth() - d.getMonth())
-              return meses >= 0 ? meses : null
+              const resumos = (resultadoSpc as {
+                resumos?: Array<{ documento?: string; resumo?: { consumidor?: { nome?: string | null } } }>
+              } | null)?.resumos
+              return (
+                resumos?.find(r => r?.documento === cpfSocio)?.resumo?.consumidor?.nome
+                ?? null
+              )
             })()
-          : null,
-        capital_social: opencnpjResultado?.capital_social ?? null,
-        situacao: opencnpjResultado?.situacao ?? null,
-      },
+          : null
+        return {
+          razao_social: opencnpjResultado?.razao_social ?? nomePf ?? null,
+          nome_fantasia: opencnpjResultado?.nome_fantasia ?? null,
+          idade_meses: opencnpjResultado?.data_abertura
+            ? (() => {
+                const d = new Date(opencnpjResultado.data_abertura)
+                if (isNaN(d.getTime())) return null
+                const meses =
+                  (new Date().getFullYear() - d.getFullYear()) * 12 +
+                  (new Date().getMonth() - d.getMonth())
+                return meses >= 0 ? meses : null
+              })()
+            : null,
+          capital_social: opencnpjResultado?.capital_social ?? null,
+          situacao: opencnpjResultado?.situacao ?? null,
+          // Marca explícita pro frontend adaptar labels (PF não tem "razão social",
+          // tem "nome"; não tem "idade da empresa", tem "data de nascimento" etc).
+          tipo_pessoa: modoDetetive === 'pf' ? ('F' as const) : ('J' as const),
+          documento: modoDetetive === 'pf' ? cpfSocio : cnpj,
+        }
+      })(),
       pegada_digital: {
         // Merge: dados do digital-footprint-client (site, linkedin, reclame_aqui,
         // facebook, fontes_consultadas, custo_estimado_brl, erros) entram via spread.

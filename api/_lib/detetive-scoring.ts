@@ -26,6 +26,12 @@
 
 export interface DetetiveInput {
   cnpj: string
+  /**
+   * Tipo de consumidor — usado pra ativar modo PF (Pessoa Física).
+   * 'F' = Pessoa Física | 'J' = Pessoa Jurídica (default).
+   * Modo PF também é ativado automaticamente quando `cnpj` é vazio/null.
+   */
+  tipoConsumidor?: 'F' | 'J'
   ticket_pedido?: number // R$ do orcamento (se conhecido)
   opencnpj: {
     razao_social: string | null
@@ -228,6 +234,13 @@ export interface ModificadorAplicado {
 
 export interface DossieResultado {
   cnpj: string
+  /**
+   * Tipo de pessoa que originou o dossiê.
+   * 'F' = PF (apenas Financeiro/Jurídico/Reputação/Compliance — Digital oculto).
+   * 'J' = PJ (todos os sub-scores, todas as flags PJ-specific aplicáveis).
+   * Quando ausente, assumir 'J' (retrocompat).
+   */
+  tipo_pessoa?: 'F' | 'J'
   /**
    * Score legado 0-100 onde MAIOR=PIOR (mantido pra retrocompat).
    * Use `score_normalizado` pra nova lógica.
@@ -457,6 +470,51 @@ const PENALIDADE_LIMITE_POR_DIMENSAO: Record<DimensaoFlag, number> = {
   reputacao: 0.04,
   estrutural: 0.03,
   digital: 0.02,
+}
+
+/**
+ * PF (Pessoa Física): limite máximo conservador para crédito de consumo.
+ * PF tem menos histórico verificável que PJ — fórmula limita teto.
+ */
+const LIMITE_MAX_PF_BRL = 20_000
+
+/**
+ * Flags que NÃO se aplicam a PF (são PJ-specific).
+ * Quando tipo_pessoa === 'F', estas avaliações são puladas.
+ *   F01: capital social (PF não tem)
+ *   F02: endereço compartilhado (PF mora, não compartilha CNPJ)
+ *   F03: sócio em múltiplas empresas (PF não tem quadro societário)
+ *   F04: turnover societário (idem)
+ *   F05: CNAE incompatível (PF não tem CNAE)
+ *   F06: situação cadastral RFB (PF não tem cadastro PJ)
+ *   F07: CGU sanções (geralmente PJ — empresas e órgãos)
+ *   F10: empresa jovem ticket alto (PF não tem data de abertura)
+ *   F11: IG ausente em PJ madura (PF avaliado por outras vias)
+ *   F12: IG mismatch porte de empresa
+ *   F13: IG abandonado de empresa
+ *   F15: forma de pagamento suspeita (mantida — vale pra PF)
+ *   F16: sócio idade extrema (PF não tem sócios)
+ *
+ * Sub-scores ATIVOS pra PF:
+ *   - Financeiro (F17 SPC continua hard_fail)
+ *   - Jurídico (F08 DataJud)
+ *   - Reputação (F09 notícias)
+ *   - Compliance (parcial — F07 CGU pode bater em PEP, mantém aberto)
+ * Sub-score OCULTO pra PF:
+ *   - Digital (F11/F12/F13 não fazem sentido)
+ *   - Estrutural (F02/F03/F04/F05/F10/F16 não se aplicam)
+ */
+const FLAGS_PJ_SPECIFIC = new Set<number>([1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 16])
+
+/**
+ * Detecta se o input é de Pessoa Física.
+ * Trigger: `tipoConsumidor === 'F'` OU `cnpj` vazio/null.
+ */
+function isPF(input: DetetiveInput): boolean {
+  if (input.tipoConsumidor === 'F') return true
+  const cnpjLimpo = (input.cnpj ?? '').replace(/\D/g, '')
+  if (!cnpjLimpo) return true
+  return false
 }
 
 // ============================================================================
@@ -1314,6 +1372,130 @@ export function calcularLimiteSugerido(input: {
 }
 
 /**
+ * Limite sugerido para PESSOA FÍSICA — fórmula MAIS CONSERVADORA.
+ *
+ * Diferenças vs PJ:
+ *   - SEM faturamento_presumido (PF não fatura)
+ *   - SEM capital_social (PF não tem)
+ *   - SEM multiplicador de porte
+ *   - Teto absoluto: LIMITE_MAX_PF_BRL (R$ 20k)
+ *   - Base = MIN(valor_cotacao, LIMITE_MAX_PF_BRL)
+ *   - Score modifier mais rígido:
+ *       ≥80 → 1.0 | 60-79 → 0.6 | 40-59 → 0.3 | <40 → 0
+ *   - Penalidades de flags ativas aplicadas igual (clamp 0-95%)
+ */
+export function calcularLimiteSugeridoPF(input: {
+  valor_cotacao: number
+  score_normalizado: number
+  hard_fail: boolean
+  flags?: RedFlag[]
+}): number {
+  if (input.hard_fail) return 0
+  const cot = Math.max(0, input.valor_cotacao || 0)
+  if (cot <= 0) return 0
+
+  const base = Math.min(cot, LIMITE_MAX_PF_BRL)
+
+  let scoreModifier: number
+  if (input.score_normalizado >= 80) scoreModifier = 1.0
+  else if (input.score_normalizado >= 60) scoreModifier = 0.6
+  else if (input.score_normalizado >= 40) scoreModifier = 0.3
+  else scoreModifier = 0.0
+
+  let penalidade = 0
+  for (const f of input.flags ?? []) {
+    const dim = f.dimensao ?? DIMENSAO_POR_FLAG[f.id]
+    if (!dim) continue
+    penalidade += PENALIDADE_LIMITE_POR_DIMENSAO[dim] ?? 0
+  }
+  penalidade = Math.min(0.95, penalidade)
+
+  const limite = base * scoreModifier * (1 - penalidade)
+  return Math.max(0, Math.round(limite))
+}
+
+/**
+ * Cenários A/B/C para PESSOA FÍSICA.
+ *
+ * Diferenças vs PJ:
+ *   - À vista: full limite (igual)
+ *   - Prazo padrão (substitui "prazo_curto"): 70% do limite full
+ *     (PF tem menos histórico — mais conservador)
+ *   - Prazo estendido (substitui "finame"): viavel=false default
+ *     (PF normalmente não acessa FINAME para consumo)
+ */
+export function calcularCenariosPF(
+  input: DetetiveInput,
+  limite_global: number,
+  semaforo_global: 'verde' | 'amarelo' | 'vermelho',
+): Cenario[] {
+  // (A) À VISTA — semáforo melhora 1 nível, limite full
+  const semaforoAvista = subirSemaforo(semaforo_global)
+  const cenarioAvista: Cenario = {
+    tipo: 'a_vista',
+    condicao: 'À vista (antes da expedição) — pagamento integral',
+    semaforo: semaforoAvista,
+    limite_max_brl: limite_global,
+    entrada_minima_pct: 100,
+    parcelas_maximas: 1,
+    exigencias: ['CPF e RG', 'Comprovante de endereço < 90 dias', 'Pagamento confirmado antes da expedição'],
+    prazo_aprovacao_interna_dias: 0,
+  }
+
+  // (B) PRAZO PADRÃO — 70% do limite full
+  // PF tem menos histórico — exigências mais rígidas em amarelo/vermelho
+  const exigenciasB: string[] = (() => {
+    if (semaforo_global === 'verde') {
+      return ['CPF e RG', 'Comprovante de endereço < 90 dias', 'Comprovante de renda (3x o valor da parcela)']
+    }
+    if (semaforo_global === 'amarelo') {
+      return [
+        'CPF e RG',
+        'Comprovante de endereço < 90 dias',
+        'Comprovante de renda (3x o valor da parcela)',
+        '2 referências (1 comercial + 1 pessoal)',
+      ]
+    }
+    return [
+      'CPF e RG',
+      'Comprovante de endereço < 90 dias',
+      'Comprovante de renda (5x o valor da parcela)',
+      'Avalista com renda comprovada OU garantia real',
+      'Cheque caução do valor integral',
+    ]
+  })()
+  const cenarioPrazoPadrao: Cenario = {
+    tipo: 'prazo_curto',
+    condicao: 'Prazo padrão PF — 30% entrada + saldo em até 3x',
+    semaforo: semaforo_global,
+    limite_max_brl: Math.round(limite_global * 0.7),
+    entrada_minima_pct: 30,
+    parcelas_maximas: 3,
+    exigencias: exigenciasB,
+    prazo_aprovacao_interna_dias: 2,
+  }
+
+  // (C) PRAZO ESTENDIDO — viavel=false default pra PF
+  // PF normalmente não acessa FINAME para consumo; deixar bloqueado
+  // por padrão pra forçar avaliação manual.
+  const cenarioPrazoEstendido: Cenario = {
+    tipo: 'finame',
+    condicao: 'Prazo estendido (PF não acessa FINAME para consumo — inviável por padrão)',
+    semaforo: 'vermelho',
+    limite_max_brl: 0,
+    entrada_minima_pct: 0,
+    parcelas_maximas: 0,
+    exigencias: [
+      'Inviável para PF como consumidor final',
+      'Reavaliar caso cliente apresente CNPJ vinculado (cônjuge sócio, MEI, etc.)',
+    ],
+    prazo_aprovacao_interna_dias: 30,
+  }
+
+  return [cenarioAvista, cenarioPrazoPadrao, cenarioPrazoEstendido]
+}
+
+/**
  * Calcula os 3 cenários A/B/C sempre. Cenário pode ficar com limite_max=0 e
  * semaforo=vermelho se for inviável — a UI decide se mostra ou esconde.
  */
@@ -1416,24 +1598,36 @@ function gerarCondicaoDefault(
  * `red_flags`, `acoes_sugeridas` permanecem com a mesma semântica.
  */
 export function calcularDossie(input: DetetiveInput): DossieResultado {
-  // 1. Avalia TODAS flags (13 originais + 4 novas)
+  // 0. Detecta modo PF (Pessoa Física)
+  const ehPF = isPF(input)
+  const tipo_pessoa: 'F' | 'J' = ehPF ? 'F' : 'J'
+
+  // 1. Avalia flags. Em modo PF, pula PJ-specific (capital, endereço PJ, sócios,
+  //    CNAE, situação RFB, CGU, empresa jovem, IG, idade sócio).
+  //    Flags PF-aplicáveis: F08 (Jurídico), F09 (Reputação), F14 (hist interno),
+  //    F15 (pagamento suspeito), F17 (SPC INADIMPLENTE — hard_fail).
+  const avaliarSeNaoPF = (id: number, fn: () => RedFlag | null): RedFlag | null => {
+    if (ehPF && FLAGS_PJ_SPECIFIC.has(id)) return null
+    return fn()
+  }
+
   const avaliacoes: Array<RedFlag | null> = [
-    avaliarFlag1_CapitalDesproporcional(input),
-    avaliarFlag2_EnderecoCompartilhado(input),
-    avaliarFlag3_SocioHeterogeneo(input),
-    avaliarFlag4_TurnoverSocietario(input),
-    avaliarFlag5_CNAEIncompativel(input),
-    avaliarFlag6_SituacaoCadastral(input),
-    avaliarFlag7_SancoesCGU(input),
+    avaliarSeNaoPF(1, () => avaliarFlag1_CapitalDesproporcional(input)),
+    avaliarSeNaoPF(2, () => avaliarFlag2_EnderecoCompartilhado(input)),
+    avaliarSeNaoPF(3, () => avaliarFlag3_SocioHeterogeneo(input)),
+    avaliarSeNaoPF(4, () => avaliarFlag4_TurnoverSocietario(input)),
+    avaliarSeNaoPF(5, () => avaliarFlag5_CNAEIncompativel(input)),
+    avaliarSeNaoPF(6, () => avaliarFlag6_SituacaoCadastral(input)),
+    avaliarSeNaoPF(7, () => avaliarFlag7_SancoesCGU(input)),
     avaliarFlag8_ProcessosCrescentes(input),
     avaliarFlag9_NoticiasNegativas(input),
-    avaliarFlag10_EmpresaJovemTicketAlto(input),
-    avaliarFlag11_IGAusenteTicketAlto(input),
-    avaliarFlag12_IGMismatchPorte(input),
-    avaliarFlag13_IGAbandonado(input),
+    avaliarSeNaoPF(10, () => avaliarFlag10_EmpresaJovemTicketAlto(input)),
+    avaliarSeNaoPF(11, () => avaliarFlag11_IGAusenteTicketAlto(input)),
+    avaliarSeNaoPF(12, () => avaliarFlag12_IGMismatchPorte(input)),
+    avaliarSeNaoPF(13, () => avaliarFlag13_IGAbandonado(input)),
     avaliarFlag14_HistInadimplenciaInterno(input),
     avaliarFlag15_FormaPagamentoSuspeita(input),
-    avaliarFlag16_SocioIdadeExtrema(input),
+    avaliarSeNaoPF(16, () => avaliarFlag16_SocioIdadeExtrema(input)),
     avaliarFlag17_ScoreInadimplenteSPC(input),
   ]
 
@@ -1473,10 +1667,11 @@ export function calcularDossie(input: DetetiveInput): DossieResultado {
 
   // Score normalizado (MAIOR=MELHOR) — usa max APLICÁVEL dinâmico (soma dos
   // pesos canônicos de todas as flags que poderiam ter sido avaliadas nesta
-  // execução). Hoje todas estão sempre no catálogo, mas mantemos esse mapeamento
-  // pra suportar inclusão futura de flags opt-in.
+  // execução). Em modo PF, EXCLUI flags PJ-specific do denominador para não
+  // penalizar PF por "ausência" de capital social, CNAE, etc.
   const somaPesosAplicaveis = avaliacoes.reduce<number>((acc, _f, i) => {
     const id = i + 1
+    if (ehPF && FLAGS_PJ_SPECIFIC.has(id)) return acc
     return acc + (PESOS_CANONICOS[id] ?? 0)
   }, 0)
   const max_score = somaPesosAplicaveis || MAX_SCORE
@@ -1514,21 +1709,29 @@ export function calcularDossie(input: DetetiveInput): DossieResultado {
         (input.historico_branorte?.inadimplencia_brl ?? 0) > 0)
     const inadimplenciaAtiva = inadimplenciaSpcAtiva || inadimplenciaInternaAtiva
 
-    const cenariosHF = calcularCenarios(input, 0, semaforoHF).map((c) => {
+    const cenariosBase = ehPF
+      ? calcularCenariosPF(input, 0, semaforoHF)
+      : calcularCenarios(input, 0, semaforoHF)
+    const cenariosHF = cenariosBase.map((c) => {
       if (inadimplenciaAtiva) {
         // Apontamento ativo (SPC ou interno): NENHUM cenário viável,
         // todos limite=0/vermelho.
         return { ...c, semaforo: 'vermelho' as const, limite_max_brl: 0 }
       }
       // Hard fail "tradicional" (situação cadastral, CGU): à-vista ainda
-      // possível com 50% do ticket, demais bloqueados.
-      return c.tipo === 'a_vista'
-        ? {
-            ...c,
-            semaforo: 'amarelo' as const,
-            limite_max_brl: Math.max(0, Math.round(ticketHF * 0.5)),
-          }
-        : { ...c, semaforo: 'vermelho' as const, limite_max_brl: 0 }
+      // possível com 50% do ticket (PJ) ou MIN(50%, LIMITE_MAX_PF_BRL) pra PF,
+      // demais bloqueados.
+      if (c.tipo === 'a_vista') {
+        const tetoAvista = ehPF
+          ? Math.min(Math.round(ticketHF * 0.5), LIMITE_MAX_PF_BRL)
+          : Math.round(ticketHF * 0.5)
+        return {
+          ...c,
+          semaforo: 'amarelo' as const,
+          limite_max_brl: Math.max(0, tetoAvista),
+        }
+      }
+      return { ...c, semaforo: 'vermelho' as const, limite_max_brl: 0 }
     })
 
     // Recomendação especializada conforme tipo de inadimplência ativa.
@@ -1545,6 +1748,7 @@ export function calcularDossie(input: DetetiveInput): DossieResultado {
 
     return {
       cnpj: input.cnpj,
+      tipo_pessoa,
       score,
       score_normalizado,
       max_score,
@@ -1582,22 +1786,31 @@ export function calcularDossie(input: DetetiveInput): DossieResultado {
     semaforo = subirSemaforo(semaforo)
   }
 
-  // 9. Limite sugerido
+  // 9. Limite sugerido — PF usa fórmula conservadora com teto LIMITE_MAX_PF_BRL.
   const porte = inferePorte(input.porte_empresa, input.opencnpj?.capital_social)
   const idadeDias = diasDesde(input.opencnpj?.data_abertura ?? null)
-  const limite_sugerido_brl = calcularLimiteSugerido({
-    capital_social: input.opencnpj?.capital_social ?? 0,
-    faturamento_presumido: input.faturamento_presumido_anual ?? null,
-    idade_empresa_anos: idadeDias != null ? Math.floor(idadeDias / 365) : 0,
-    valor_cotacao: ticket,
-    score_normalizado,
-    hard_fail: false,
-    cnae_porte: porte,
-    flags: redFlags,
-  })
+  const limite_sugerido_brl = ehPF
+    ? calcularLimiteSugeridoPF({
+        valor_cotacao: ticket,
+        score_normalizado,
+        hard_fail: false,
+        flags: redFlags,
+      })
+    : calcularLimiteSugerido({
+        capital_social: input.opencnpj?.capital_social ?? 0,
+        faturamento_presumido: input.faturamento_presumido_anual ?? null,
+        idade_empresa_anos: idadeDias != null ? Math.floor(idadeDias / 365) : 0,
+        valor_cotacao: ticket,
+        score_normalizado,
+        hard_fail: false,
+        cnae_porte: porte,
+        flags: redFlags,
+      })
 
-  // 10. Cenários A/B/C
-  const cenarios = calcularCenarios(input, limite_sugerido_brl, semaforo)
+  // 10. Cenários A/B/C — PF usa layout próprio (prazo padrão 70%, prazo estendido inviável)
+  const cenarios = ehPF
+    ? calcularCenariosPF(input, limite_sugerido_brl, semaforo)
+    : calcularCenarios(input, limite_sugerido_brl, semaforo)
 
   // 11. Resultado final
   const recomendacao = gerarRecomendacao(semaforo, false, comboFraude)
@@ -1606,6 +1819,7 @@ export function calcularDossie(input: DetetiveInput): DossieResultado {
 
   return {
     cnpj: input.cnpj,
+    tipo_pessoa,
     score,
     score_normalizado,
     max_score,

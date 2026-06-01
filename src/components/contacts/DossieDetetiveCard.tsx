@@ -42,13 +42,32 @@ import { PlanoVendaCard, type PlanoVendaCardProps } from './PlanoVendaCard'
 // ============================================================================
 
 export interface DossieDetetive {
+  /** Tipo do alvo: 'F' = pessoa física, 'J' = pessoa jurídica. Default = 'J' (legado). */
+  tipo_pessoa?: 'F' | 'J'
+  /** CNPJ (PJ) — sempre presente em PJ. Em PF, pode vir vazio. */
   cnpj: string
+  /** CPF (PF) — só presente quando tipo_pessoa === 'F'. */
+  cpf?: string
   alvo: {
+    /** Para PF: nome completo da pessoa. Para PJ: razão social. */
     razao_social: string | null
+    /** Para PJ: nome fantasia. Não usado em PF. */
     nome_fantasia?: string | null
+    /** Para PJ: meses desde fundação. Para PF: idade em meses (idade_anos × 12). */
     idade_meses: number | null
+    /** Só PJ. */
     capital_social: number | null
+    /** Para PJ: situação cadastral RF. Para PF: situação CPF (REGULAR, etc.). */
     situacao: string | null
+    /** Só PF: idade em anos (atalho — derivado da data de nascimento). */
+    idade_anos?: number | null
+    /** Só PF: lista de empresas onde a pessoa figura como sócio/administrador. */
+    participacoes?: Array<{
+      cnpj?: string | null
+      razao_social?: string | null
+      participacao?: string | null
+      qualificacao?: string | null
+    }>
   }
   score: number
   semaforo: 'verde' | 'amarelo' | 'vermelho'
@@ -136,6 +155,12 @@ function formatCnpj(cnpj: string): string {
   const d = cnpj.replace(/\D/g, '')
   if (d.length !== 14) return cnpj
   return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
+}
+
+function formatCpf(cpf: string): string {
+  const d = cpf.replace(/\D/g, '')
+  if (d.length !== 11) return cpf
+  return d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4')
 }
 
 function formatBRL(value: number | null | undefined): string {
@@ -248,13 +273,29 @@ function descCondicaoRecomendada(c: DossieDetetive['condicao_recomendada']): str
 }
 
 // Deriva sinais positivos a partir do dossiê (lado verde da balança)
-// Olha pra empresa antiga, capital alto, situação ATIVA, zero processos,
-// IG ativo, sanções limpas, RA bom — tudo que NÃO é red flag.
+// Para PJ: empresa antiga, capital alto, situação ATIVA, sem processos,
+// IG ativo, sanções limpas, RA bom.
+// Para PF: idade adulta produtiva, situação CPF regular, sócio em empresas
+// (perfil empresarial), sem sanções, sem notícias negativas.
 export function derivarSinaisPositivos(dossie: DossieDetetive): string[] {
   const sinais: string[] = []
+  const isPF = dossie.tipo_pessoa === 'F'
 
-  // Idade da empresa
-  if (dossie.alvo.idade_meses != null) {
+  // Idade — semântica diferente PF/PJ
+  if (isPF) {
+    // PF: idade da pessoa (preferir idade_anos explícito; fallback idade_meses/12)
+    const idadeAnos =
+      dossie.alvo.idade_anos ??
+      (dossie.alvo.idade_meses != null ? Math.floor(dossie.alvo.idade_meses / 12) : null)
+    if (idadeAnos != null) {
+      if (idadeAnos >= 25 && idadeAnos <= 65) {
+        sinais.push(`${idadeAnos} anos (idade produtiva)`)
+      } else if (idadeAnos > 65) {
+        sinais.push(`${idadeAnos} anos`)
+      }
+    }
+  } else if (dossie.alvo.idade_meses != null) {
+    // PJ: tempo de mercado da empresa
     const anos = Math.floor(dossie.alvo.idade_meses / 12)
     if (anos >= 10) {
       sinais.push(`Empresa com ${anos} anos de mercado`)
@@ -265,8 +306,8 @@ export function derivarSinaisPositivos(dossie: DossieDetetive): string[] {
     }
   }
 
-  // Capital social
-  if (dossie.alvo.capital_social != null) {
+  // Capital social — só PJ
+  if (!isPF && dossie.alvo.capital_social != null) {
     if (dossie.alvo.capital_social >= 1_000_000) {
       sinais.push(`Capital social ${formatBRL(dossie.alvo.capital_social)}`)
     } else if (dossie.alvo.capital_social >= 100_000) {
@@ -274,13 +315,27 @@ export function derivarSinaisPositivos(dossie: DossieDetetive): string[] {
     }
   }
 
-  // Situação cadastral
+  // Participações em empresas — só PF (sinal de perfil empresarial)
+  if (isPF && dossie.alvo.participacoes && dossie.alvo.participacoes.length > 0) {
+    const n = dossie.alvo.participacoes.length
+    sinais.push(
+      n === 1
+        ? 'Sócio em 1 empresa (perfil empresarial)'
+        : `Sócio em ${n} empresas (perfil empresarial diversificado)`,
+    )
+  }
+
+  // Situação cadastral — PJ: ATIVA / PF: REGULAR
   const situacao = dossie.alvo.situacao?.toUpperCase() ?? ''
-  if (situacao === 'ATIVA') {
+  if (isPF) {
+    if (situacao === 'REGULAR') {
+      sinais.push('Situação cadastral CPF REGULAR')
+    }
+  } else if (situacao === 'ATIVA') {
     sinais.push('Situação cadastral ATIVA')
   }
 
-  // Sanções limpas
+  // Sanções limpas — aplicável para ambos
   if (dossie.sancoes) {
     const total =
       dossie.sancoes.ceis +
@@ -290,29 +345,31 @@ export function derivarSinaisPositivos(dossie: DossieDetetive): string[] {
     if (total === 0) sinais.push('Sem sanções CGU (CEIS · CNEP · Leniência · CEPIM)')
   }
 
-  // Notícias sem alerta
+  // Notícias sem alerta — aplicável para ambos
   if (dossie.noticias && dossie.noticias.alertas.length === 0) {
     sinais.push('Sem notícias negativas')
   }
 
-  // Pegada digital
-  const pd = dossie.pegada_digital
-  if (pd?.site?.existe) sinais.push('Site institucional ativo')
-  if (pd?.linkedin?.existe) sinais.push('Presença no LinkedIn')
-  if (pd?.facebook?.existe) sinais.push('Presença no Facebook')
-  if (pd?.instagram?.perfil_encontrado) {
-    const meses = monthsSince(pd.instagram.data_ultimo_post)
-    if (meses != null && meses <= 6) sinais.push('Instagram ativo (posts recentes)')
-    else if (pd.instagram.perfil_encontrado) sinais.push('Instagram localizado')
-  }
-  if (pd?.reclame_aqui?.rating != null && pd.reclame_aqui.rating >= 7) {
-    sinais.push(`Reclame Aqui ${pd.reclame_aqui.rating.toFixed(1)}/10`)
-  }
-  if (pd?.reclame_aqui?.resolucao_pct != null && pd.reclame_aqui.resolucao_pct >= 80) {
-    sinais.push(`${pd.reclame_aqui.resolucao_pct}% de resolução no RA`)
+  // Pegada digital — só PJ (não faz sentido perseguir IG de PF aleatório)
+  if (!isPF) {
+    const pd = dossie.pegada_digital
+    if (pd?.site?.existe) sinais.push('Site institucional ativo')
+    if (pd?.linkedin?.existe) sinais.push('Presença no LinkedIn')
+    if (pd?.facebook?.existe) sinais.push('Presença no Facebook')
+    if (pd?.instagram?.perfil_encontrado) {
+      const meses = monthsSince(pd.instagram.data_ultimo_post)
+      if (meses != null && meses <= 6) sinais.push('Instagram ativo (posts recentes)')
+      else if (pd.instagram.perfil_encontrado) sinais.push('Instagram localizado')
+    }
+    if (pd?.reclame_aqui?.rating != null && pd.reclame_aqui.rating >= 7) {
+      sinais.push(`Reclame Aqui ${pd.reclame_aqui.rating.toFixed(1)}/10`)
+    }
+    if (pd?.reclame_aqui?.resolucao_pct != null && pd.reclame_aqui.resolucao_pct >= 80) {
+      sinais.push(`${pd.reclame_aqui.resolucao_pct}% de resolução no RA`)
+    }
   }
 
-  // Score alto
+  // Score alto — aplicável para ambos
   if (dossie.score >= 80) sinais.push(`Score Detetive ${dossie.score}/100`)
 
   return sinais
@@ -347,11 +404,17 @@ const SEMAFORO_CONFIG = {
 } as const
 
 const SITUACAO_BADGE: Record<string, string> = {
+  // PJ — Receita Federal
   ATIVA: 'bg-success/20 text-success border-success/30',
   INAPTA: 'bg-warning/20 text-warning border-warning/30',
   SUSPENSA: 'bg-warning/20 text-warning border-warning/30',
   BAIXADA: 'bg-danger/20 text-danger border-danger/30',
   NULA: 'bg-danger/20 text-danger border-danger/30',
+  // PF — CPF na RF
+  REGULAR: 'bg-success/20 text-success border-success/30',
+  PENDENTE: 'bg-warning/20 text-warning border-warning/30',
+  CANCELADA: 'bg-danger/20 text-danger border-danger/30',
+  TITULAR_FALECIDO: 'bg-danger/20 text-danger border-danger/30',
 }
 
 // ============================================================================
@@ -365,11 +428,28 @@ export function DossieDetetiveCard({ dossie, onReinvestigar }: Props) {
   const semaforoCfg = SEMAFORO_CONFIG[dossie?.semaforo] ?? SEMAFORO_CONFIG.amarelo
   const SemaforoIcon = semaforoCfg.icon
 
+  const isPF = dossie?.tipo_pessoa === 'F'
+
   const situacao = dossie?.alvo?.situacao?.toUpperCase() ?? ''
   const situacaoClass = SITUACAO_BADGE[situacao] ?? 'bg-surface-2 text-ink-muted border-border'
 
-  const nomeExibicao =
-    dossie?.alvo?.nome_fantasia?.trim() || dossie?.alvo?.razao_social?.trim() || 'Empresa sem nome'
+  const nomeExibicao = isPF
+    ? dossie?.alvo?.razao_social?.trim() || 'Pessoa sem nome'
+    : dossie?.alvo?.nome_fantasia?.trim() ||
+      dossie?.alvo?.razao_social?.trim() ||
+      'Empresa sem nome'
+
+  // Documento formatado (CPF para PF, CNPJ para PJ)
+  const documentoExibicao = isPF
+    ? formatCpf(dossie?.cpf ?? dossie?.cnpj ?? '')
+    : formatCnpj(dossie?.cnpj ?? '')
+
+  // Idade pra exibir no header (anos pra PF, idade_meses formatado pra PJ)
+  const idadeExibicao = isPF
+    ? dossie?.alvo?.idade_anos != null
+      ? `${dossie.alvo.idade_anos} ${dossie.alvo.idade_anos === 1 ? 'ano' : 'anos'}`
+      : formatIdade(dossie?.alvo?.idade_meses ?? null)
+    : formatIdade(dossie?.alvo?.idade_meses ?? null)
 
   const sinaisPositivos = derivarSinaisPositivos(dossie)
   // GUARD profundo: só considera "temCenarios" se o shape completo está presente.
@@ -397,13 +477,26 @@ export function DossieDetetiveCard({ dossie, onReinvestigar }: Props) {
               <Building2 className="h-4 w-4 text-accent shrink-0" />
               <h2 className="text-[15px] font-bold text-ink truncate">{nomeExibicao}</h2>
             </div>
-            {dossie.alvo.nome_fantasia && dossie.alvo.razao_social && (
+            {!isPF && dossie.alvo.nome_fantasia && dossie.alvo.razao_social && (
               <p className="text-[11px] text-ink-faint truncate">{dossie.alvo.razao_social}</p>
             )}
-            <p className="text-[11px] font-mono text-ink-muted mt-1">{formatCnpj(dossie.cnpj)}</p>
+            <p className="text-[11px] font-mono text-ink-muted mt-1">
+              {isPF ? 'CPF: ' : ''}
+              {documentoExibicao}
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* Badge tipo: PF/PJ — claro pra quem está olhando */}
+            <span
+              className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${
+                isPF
+                  ? 'bg-accent/15 text-accent border-accent/30'
+                  : 'bg-surface-2 text-ink-muted border-border'
+              }`}
+            >
+              {isPF ? 'Pessoa Física' : 'Pessoa Jurídica'}
+            </span>
             {situacao && (
               <span
                 className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${situacaoClass}`}
@@ -414,22 +507,26 @@ export function DossieDetetiveCard({ dossie, onReinvestigar }: Props) {
           </div>
         </div>
 
-        {/* Métricas rápidas */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3 pt-3 border-t border-border/30">
+        {/* Métricas rápidas — PJ: Idade/Capital/Investigado em. PF: Idade/Investigado em (sem capital). */}
+        <div
+          className={`grid gap-3 mt-3 pt-3 border-t border-border/30 ${
+            isPF ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'
+          }`}
+        >
           <div>
             <p className="text-[9px] uppercase tracking-wider text-ink-faint mb-0.5">Idade</p>
-            <p className="text-[12px] font-semibold text-ink tabular-nums">
-              {formatIdade(dossie.alvo.idade_meses)}
-            </p>
+            <p className="text-[12px] font-semibold text-ink tabular-nums">{idadeExibicao}</p>
           </div>
-          <div>
-            <p className="text-[9px] uppercase tracking-wider text-ink-faint mb-0.5">
-              Capital Social
-            </p>
-            <p className="text-[12px] font-semibold text-ink tabular-nums">
-              {formatBRL(dossie.alvo.capital_social)}
-            </p>
-          </div>
+          {!isPF && (
+            <div>
+              <p className="text-[9px] uppercase tracking-wider text-ink-faint mb-0.5">
+                Capital Social
+              </p>
+              <p className="text-[12px] font-semibold text-ink tabular-nums">
+                {formatBRL(dossie.alvo.capital_social)}
+              </p>
+            </div>
+          )}
           <div>
             <p className="text-[9px] uppercase tracking-wider text-ink-faint mb-0.5">
               Investigado em
@@ -505,19 +602,27 @@ export function DossieDetetiveCard({ dossie, onReinvestigar }: Props) {
         </div>
       </div>
 
-      {/* ====== SUB-SCORES POR DIMENSÃO ====== */}
+      {/* ====== SUB-SCORES POR DIMENSÃO ======
+          PJ: 4 sub-scores (Financeiro, Compliance, Comp. Digital, Jurídico).
+          PF: 3 sub-scores (oculta Comp. Digital — não se aplica a pessoa física). */}
       {temSubScores && dossie.sub_scores && (
         <div className="px-4 py-3 border-b border-border/40">
           <h3 className="text-[11px] uppercase tracking-wider font-bold text-ink-muted mb-3">
             Sub-Scores por Dimensão
           </h3>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div
+            className={`grid gap-3 ${
+              isPF ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2 lg:grid-cols-4'
+            }`}
+          >
             <SubScoreItem label="Financeiro" valor={dossie.sub_scores.financeiro} />
             <SubScoreItem label="Compliance" valor={dossie.sub_scores.compliance} />
-            <SubScoreItem
-              label="Comp. Digital"
-              valor={dossie.sub_scores.comportamento_digital}
-            />
+            {!isPF && (
+              <SubScoreItem
+                label="Comp. Digital"
+                valor={dossie.sub_scores.comportamento_digital}
+              />
+            )}
             <SubScoreItem label="Jurídico" valor={dossie.sub_scores.juridico} />
           </div>
         </div>
@@ -592,18 +697,23 @@ export function DossieDetetiveCard({ dossie, onReinvestigar }: Props) {
       </div>
 
       {/* ====== PLANO DE VENDA (3 CENÁRIOS) ====== */}
-      {/* Só renderiza se cenários tem o shape completo (verificado em temCenarios) */}
+      {/* Só renderiza se cenários tem o shape completo (verificado em temCenarios).
+          Para PF: oculta o cenário "Prazo Estendido" quando viavel=false (FINAME
+          + prazo estendido geralmente não se aplicam a pessoa física). */}
       {temCenarios && dossie.cenarios && (
         <div className="border-b border-border/40">
           <PlanoVendaCard
             cenarios={dossie.cenarios as PlanoVendaCardProps['cenarios']}
             recomendado={mapCondicaoToCenarioKey(dossie.condicao_recomendada)}
+            ocultarEstendidoSeInviavel={isPF}
           />
         </div>
       )}
 
-      {/* ====== PEGADA DIGITAL ====== */}
-      {dossie.pegada_digital && (
+      {/* ====== PEGADA DIGITAL ======
+          Só para PJ. Para PF não faz sentido (perseguir IG de pessoa física
+          aleatória é invasão de privacidade e não agrega ao crédito). */}
+      {!isPF && dossie.pegada_digital && (
         <div className="px-4 py-3 border-b border-border/40">
           <h3 className="text-[11px] uppercase tracking-wider font-bold text-ink-muted mb-2">
             Pegada Digital
