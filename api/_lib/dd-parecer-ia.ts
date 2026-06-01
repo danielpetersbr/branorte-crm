@@ -86,19 +86,35 @@ interface DatajudInput {
 }
 
 /**
+ * Dossiê do Detetive Branorte — red flags + score + recomendação.
+ * Entra no parecer pra IA contextualizar com base nas regras do detetive.
+ */
+interface DossieDetetiveInput {
+  score: number
+  semaforo: 'verde' | 'amarelo' | 'vermelho'
+  recomendacao: string
+  red_flags: Array<{ id: number; peso: number; nome: string; descricao: string }>
+  acoes_sugeridas: string[]
+}
+
+/**
  * Gera o parecer markdown. Retorna null se falhar (frontend mostra só os dados raw).
  */
 export async function gerarParecerIA(opts: {
   spcResumos: ResumoSpcInput[]
   datajud: DatajudInput | null
+  dossieDetetive?: DossieDetetiveInput | null
   timeoutMs?: number
 }): Promise<{ parecer: string | null; erro: string | null }> {
   if (!OPENAI_KEY) return { parecer: null, erro: 'OPENAI_API_KEY não configurada' }
-  if (opts.spcResumos.length === 0 && (!opts.datajud || opts.datajud.totalEncontrado === 0)) {
+  const semSPC = opts.spcResumos.length === 0
+  const semDatajud = !opts.datajud || opts.datajud.totalEncontrado === 0
+  const semDossie = !opts.dossieDetetive
+  if (semSPC && semDatajud && semDossie) {
     return { parecer: null, erro: 'sem_dados_suficientes' }
   }
 
-  const userInput = montarInputJson(opts.spcResumos, opts.datajud)
+  const userInput = montarInputJson(opts.spcResumos, opts.datajud, opts.dossieDetetive)
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 25_000)
@@ -137,7 +153,11 @@ export async function gerarParecerIA(opts: {
   }
 }
 
-function montarInputJson(spcResumos: ResumoSpcInput[], datajud: DatajudInput | null): string {
+function montarInputJson(
+  spcResumos: ResumoSpcInput[],
+  datajud: DatajudInput | null,
+  dossie?: DossieDetetiveInput | null,
+): string {
   const partes: string[] = []
 
   for (const r of spcResumos) {
@@ -206,6 +226,31 @@ function montarInputJson(spcResumos: ResumoSpcInput[], datajud: DatajudInput | n
     } else {
       partes.push(`- Nenhum processo encontrado em TJSC/TRF4/TJSP/TJPR/TJRS/TST/STJ`)
     }
+  }
+
+  if (dossie) {
+    partes.push('')
+    partes.push(`### Dossiê do Detetive Branorte (regras de risco)`)
+    partes.push(`- Score consolidado: ${dossie.score}/100`)
+    partes.push(`- Semáforo: ${dossie.semaforo.toUpperCase()}`)
+    partes.push(`- Recomendação interna: ${dossie.recomendacao}`)
+    if (dossie.red_flags.length > 0) {
+      partes.push(`- Red flags detectadas (${dossie.red_flags.length}):`)
+      for (const f of dossie.red_flags) {
+        partes.push(`  - [peso ${f.peso}] ${f.nome}: ${f.descricao}`)
+      }
+    } else {
+      partes.push(`- Nenhuma red flag identificada pelas regras do detetive.`)
+    }
+    if (dossie.acoes_sugeridas.length > 0) {
+      partes.push(`- Ações sugeridas pelo detetive:`)
+      for (const a of dossie.acoes_sugeridas) {
+        partes.push(`  - ${a}`)
+      }
+    }
+    partes.push(
+      '- IMPORTANTE: incorpore esses red flags ao parecer. Se o semáforo for vermelho, alinhe seu veredito (não recomende vender sem garantias). Se for verde, use como reforço positivo.',
+    )
   }
 
   return partes.join('\n')

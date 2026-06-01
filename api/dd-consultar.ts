@@ -33,6 +33,19 @@ import {
   type PortalTransparenciaResultado,
 } from './_lib/portal-transparencia-client.js'
 import { gerarParecerIA } from './_lib/dd-parecer-ia.js'
+import { consultarOpenCnpj, type OpenCnpjResultado } from './_lib/opencnpj-client.js'
+import { buscarNoticias, type NoticiasResultado } from './_lib/news-client.js'
+import {
+  enriquecerCEP,
+  detectarEnderecoCompartilhado,
+  type CepInfo,
+  type EnderecoCompartilhadoInfo,
+} from './_lib/brasil-api-client.js'
+import {
+  calcularDossie,
+  type DetetiveInput,
+  type DossieResultado,
+} from './_lib/detetive-scoring.js'
 
 export const config = {
   api: {
@@ -292,6 +305,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     motivo_nao_rodou: 'excecao_no_fanout',
   }))
 
+  // ─── OpenCNPJ (BrasilAPI/publica.cnpj.ws) — cadastro público, em paralelo ───
+  // Grátis, sem auth. Usado pra enriquecer dossiê: razão social, sócios, CNAE,
+  // capital social, endereço. Só roda se for PJ.
+  const opencnpjPromise: Promise<OpenCnpjResultado | null> =
+    precisaCnpj && cnpj.length === 14
+      ? consultarOpenCnpj(cnpj).catch(e => ({
+          ok: false,
+          cnpj,
+          razao_social: null,
+          nome_fantasia: null,
+          situacao: null,
+          data_abertura: null,
+          capital_social: null,
+          natureza_juridica: null,
+          porte: null,
+          mei: false,
+          simples_nacional: null,
+          cnae_principal: null,
+          cnae_secundarios: [],
+          endereco: null,
+          telefone: null,
+          email: null,
+          socios: [],
+          erro: e instanceof Error ? e.message : String(e),
+          fonte: null,
+        }) as OpenCnpjResultado)
+      : Promise.resolve(null)
+
   if (SPC_MOCK) {
     // Modo dev: payload fake estruturado (mesmo shape do real, mas com dados ficticios)
     const resumos = planos.map(p => ({
@@ -354,39 +395,255 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // 7) Aguarda Datajud + Portal Transparência (já rodando em paralelo)
-  const [datajudResultado, portalResultado] = await Promise.all([datajudPromise, portalPromise])
+  // 7) Aguarda Datajud + Portal Transparência + OpenCNPJ (já rodando em paralelo)
+  const [datajudResultado, portalResultado, opencnpjResultado] = await Promise.all([
+    datajudPromise,
+    portalPromise,
+    opencnpjPromise,
+  ])
 
-  // 7.0) Persistência do Portal Transparência:
+  // 7.0.1) Fanout secundário — depende do OpenCNPJ (razão social pra notícias,
+  // CEP pra enriquecimento). News pode rodar com razão do SPC se OpenCNPJ falhar.
+  const razaoParaNoticias =
+    opencnpjResultado?.razao_social ||
+    (resultadoSpc as { resumos?: Array<{ resumo?: { consumidor?: { nome?: string | null } } }> } | null)
+      ?.resumos?.[0]?.resumo?.consumidor?.nome ||
+    null
+  const nomesSociosParaNoticias = opencnpjResultado?.socios?.map(s => s.nome).filter(Boolean) ?? []
+
+  const noticiasPromise: Promise<NoticiasResultado | null> = razaoParaNoticias
+    ? buscarNoticias({
+        razaoSocial: razaoParaNoticias,
+        cnpj: precisaCnpj ? cnpj : undefined,
+        nomesSocios: nomesSociosParaNoticias,
+      }).catch(e => ({
+        ok: false,
+        total: 0,
+        tem_alerta: false,
+        noticias: [],
+        keywords_que_bateram: [],
+        erros: [e instanceof Error ? e.message : String(e)],
+      }) as NoticiasResultado)
+    : Promise.resolve(null)
+
+  const cepDoEndereco = opencnpjResultado?.endereco?.cep ?? null
+  const numeroDoEndereco = opencnpjResultado?.endereco?.numero ?? undefined
+  const cepPromise: Promise<CepInfo | null> = cepDoEndereco
+    ? enriquecerCEP(cepDoEndereco).catch(() => null)
+    : Promise.resolve(null)
+  const enderecoCompartilhadoPromise: Promise<EnderecoCompartilhadoInfo | null> = cepDoEndereco
+    ? detectarEnderecoCompartilhado(cepDoEndereco, numeroDoEndereco).catch(() => null)
+    : Promise.resolve(null)
+
+  const [noticiasResultado, cepResultado, enderecoCompartilhado] = await Promise.all([
+    noticiasPromise,
+    cepPromise,
+    enderecoCompartilhadoPromise,
+  ])
+
+  // 7.0.2) Persistência do Portal Transparência + Detetive:
   // ESCOLHA DE PERSISTÊNCIA — IMPORTANTE LER ANTES DE MEXER:
   //   A tabela `due_diligence_consultas` tem colunas:
   //     resultado_spc | resultado_datajud | resultado_google | resultado_instagram
-  //   NÃO existe coluna pra Portal Transparência e a tarefa proíbe migration agora.
-  //   Caminho mais simples sem migration: aninhar como subchave em `resultado_spc`,
-  //   já que `resultado_spc` é jsonb livre. Quando criarmos a coluna dedicada
-  //   `resultado_portal_transparencia jsonb` (futura migration), basta mover o
-  //   bloco pra coluna nova — o shape do JSON fica idêntico.
-  //   Frontend ainda não consome esse campo (parte 3 da tarefa explicitamente
-  //   diz "não mexer no frontend agora"), então não há risco de breakage.
-  if (resultadoSpc && typeof resultadoSpc === 'object') {
-    ;(resultadoSpc as Record<string, unknown>).portal_transparencia = portalResultado
-  } else {
-    // SPC pode ter sido null (ex: SPC_MOCK off + envs ausentes). Cria container.
-    resultadoSpc = { portal_transparencia: portalResultado }
+  //   NÃO existe coluna pra Portal Transparência, OpenCNPJ, Notícias, BrasilAPI ou
+  //   Detetive, e a tarefa proíbe migration agora. Caminho sem migration: aninhar
+  //   tudo como subchaves em `resultado_spc` (jsonb livre). Subchaves criadas:
+  //     resultado_spc.portal_transparencia
+  //     resultado_spc.opencnpj
+  //     resultado_spc.noticias
+  //     resultado_spc.brasilapi    (cep + endereço compartilhado)
+  //     resultado_spc.dossie_detetive  ← consumido pelo DossieDetetiveCard
+  if (!resultadoSpc || typeof resultadoSpc !== 'object') {
+    resultadoSpc = {}
+  }
+  ;(resultadoSpc as Record<string, unknown>).portal_transparencia = portalResultado
+  ;(resultadoSpc as Record<string, unknown>).opencnpj = opencnpjResultado
+  ;(resultadoSpc as Record<string, unknown>).noticias = noticiasResultado
+  ;(resultadoSpc as Record<string, unknown>).brasilapi = {
+    cep: cepResultado,
+    endereco_compartilhado: enderecoCompartilhado,
   }
 
-  // 7.1) Parecer IA — consolida SPC + Datajud em markdown
+  // 7.0.3) Cálculo do Dossiê do Detetive — consolida tudo em score 0-100 + semáforo
+  let dossieDetetive: DossieResultado | null = null
+  if (precisaCnpj && cnpj.length === 14) {
+    try {
+      const detetiveInput: DetetiveInput = {
+        cnpj,
+        // ticket_pedido: não temos no body atual; fica undefined.
+        opencnpj: opencnpjResultado
+          ? {
+              razao_social: opencnpjResultado.razao_social,
+              situacao: opencnpjResultado.situacao,
+              data_abertura: opencnpjResultado.data_abertura,
+              capital_social: opencnpjResultado.capital_social,
+              cnae_principal: opencnpjResultado.cnae_principal,
+              socios: opencnpjResultado.socios.map(s => ({
+                nome: s.nome,
+                cpf_cnpj_mascara: s.cpf_cnpj_mascara,
+              })),
+              endereco: opencnpjResultado.endereco
+                ? {
+                    cep: opencnpjResultado.endereco.cep,
+                    municipio: opencnpjResultado.endereco.municipio,
+                    uf: opencnpjResultado.endereco.uf,
+                  }
+                : null,
+            }
+          : null,
+        cgu_sancoes: portalResultado
+          ? {
+              ceis: portalResultado.ceis?.quantidade ?? 0,
+              cnep: portalResultado.cnep?.quantidade ?? 0,
+              acordos_leniencia: 0, // não temos endpoint específico de leniência aqui
+              cepim: portalResultado.cepim?.quantidade ?? 0,
+            }
+          : null,
+        datajud: datajudResultado
+          ? {
+              total_processos: datajudResultado.totalEncontrado ?? datajudResultado.processos.length,
+              // processos_por_ano não está pré-computado; deixa undefined (scoring lida)
+            }
+          : null,
+        noticias: noticiasResultado
+          ? {
+              tem_alerta: noticiasResultado.tem_alerta,
+              keywords_que_bateram: noticiasResultado.keywords_que_bateram,
+              total: noticiasResultado.total,
+            }
+          : null,
+        brasilapi:
+          cepResultado || enderecoCompartilhado
+            ? {
+                endereco_compartilhado_count:
+                  enderecoCompartilhado?.disponivel && enderecoCompartilhado.count != null
+                    ? enderecoCompartilhado.count
+                    : undefined,
+                zona_inferida: cepResultado?.zona_inferida,
+              }
+            : null,
+        socios_reverso: [], // reverso de sócios não está disponível em fontes públicas
+      }
+      dossieDetetive = calcularDossie(detetiveInput)
+    } catch (e) {
+      // Falha silenciosa — dossiê é best-effort; SPC + outros já estão persistidos
+      ;(resultadoSpc as Record<string, unknown>).dossie_detetive_erro =
+        e instanceof Error ? e.message : String(e)
+    }
+  }
+
+  if (dossieDetetive) {
+    ;(resultadoSpc as Record<string, unknown>).dossie_detetive = {
+      ...dossieDetetive,
+      // Campos que o card frontend espera mas que o motor não calcula:
+      alvo: {
+        razao_social: opencnpjResultado?.razao_social ?? null,
+        nome_fantasia: opencnpjResultado?.nome_fantasia ?? null,
+        idade_meses: opencnpjResultado?.data_abertura
+          ? (() => {
+              const d = new Date(opencnpjResultado.data_abertura)
+              if (isNaN(d.getTime())) return null
+              const meses =
+                (new Date().getFullYear() - d.getFullYear()) * 12 +
+                (new Date().getMonth() - d.getMonth())
+              return meses >= 0 ? meses : null
+            })()
+          : null,
+        capital_social: opencnpjResultado?.capital_social ?? null,
+        situacao: opencnpjResultado?.situacao ?? null,
+      },
+      pegada_digital: {
+        google_maps_url: cepResultado?.google_maps_url ?? undefined,
+      },
+      sancoes: portalResultado
+        ? {
+            ceis: portalResultado.ceis?.quantidade ?? 0,
+            cnep: portalResultado.cnep?.quantidade ?? 0,
+            acordos_leniencia: 0,
+            cepim: portalResultado.cepim?.quantidade ?? 0,
+          }
+        : undefined,
+      noticias: noticiasResultado
+        ? {
+            total: noticiasResultado.total,
+            alertas: noticiasResultado.noticias
+              .filter(n => n.keyword_match)
+              .map(n => ({
+                titulo: n.titulo,
+                link: n.link,
+                data: n.data ?? undefined,
+                fonte: n.origem ?? n.fonte,
+              })),
+          }
+        : undefined,
+      fontes_consultadas: [
+        opencnpjResultado?.ok ? `OpenCNPJ (${opencnpjResultado.fonte})` : null,
+        portalResultado?.ok ? 'Portal Transparência (CGU)' : null,
+        datajudResultado?.ok ? 'DataJud (CNJ)' : null,
+        noticiasResultado?.ok ? 'GDELT + Google News' : null,
+        cepResultado?.ok ? 'BrasilAPI (CEP)' : null,
+        'SPC Brasil',
+      ].filter((s): s is string => !!s),
+      investigado_em: new Date().toISOString(),
+      // Cache 30 dias (alinhado com v_dd_cache_30d). Front mostra "válido até".
+      cache_valido_ate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    }
+  }
+
+  // 7.0.4) Cache CNPJ por 30 dias (best-effort, não bloqueia resposta).
+  // Tabela `cnpj_cache` (PK cnpj, dossie_json JSONB, score, semaforo, expires_at).
+  // Schema é asumido como pré-existente; se a tabela não existir, ignora erro.
+  if (dossieDetetive && precisaCnpj && cnpj.length === 14) {
+    try {
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+      await supa
+        .from('cnpj_cache')
+        .upsert(
+          {
+            cnpj,
+            dossie_json: (resultadoSpc as Record<string, unknown>).dossie_detetive,
+            score: dossieDetetive.score,
+            semaforo: dossieDetetive.semaforo,
+            expires_at: expiresAt,
+          },
+          { onConflict: 'cnpj' },
+        )
+    } catch {
+      // Falha silenciosa — cache é otimização, não pré-requisito
+    }
+  }
+
+  // 7.1) Parecer IA — consolida SPC + Datajud + Dossiê Detetive em markdown
   const resumosParaIA =
     (resultadoSpc as { resumos?: Array<{ resumo?: unknown }> } | null)?.resumos
       ?.map(r => r.resumo)
       .filter((r): r is Record<string, unknown> => !!r) ?? []
   let parecerIa: string | null = null
   let erroParecer: string | null = null
-  if (statusFinal !== 'failed' || (datajudResultado?.processos?.length ?? 0) > 0) {
+  const dossieParaIA = dossieDetetive
+    ? {
+        score: dossieDetetive.score,
+        semaforo: dossieDetetive.semaforo,
+        recomendacao: dossieDetetive.recomendacao,
+        red_flags: dossieDetetive.red_flags.map(f => ({
+          id: f.id,
+          peso: f.peso,
+          nome: f.nome,
+          descricao: f.descricao,
+        })),
+        acoes_sugeridas: dossieDetetive.acoes_sugeridas,
+      }
+    : null
+  if (
+    statusFinal !== 'failed' ||
+    (datajudResultado?.processos?.length ?? 0) > 0 ||
+    dossieDetetive
+  ) {
     try {
       const ia = await gerarParecerIA({
         spcResumos: resumosParaIA as Parameters<typeof gerarParecerIA>[0]['spcResumos'],
         datajud: datajudResultado,
+        dossieDetetive: dossieParaIA,
         timeoutMs: 22_000,
       })
       parecerIa = ia.parecer

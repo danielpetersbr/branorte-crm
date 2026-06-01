@@ -14,6 +14,7 @@ import {
   type Pacote,
 } from '@/hooks/useDueDiligence'
 import { useCan } from '@/hooks/usePermissions'
+import { DossieDetetiveCard, type DossieDetetive } from './DossieDetetiveCard'
 
 // Custos calculados a partir da tabela FCDL/SC jan/2026 com codigos API
 // CORRIGIDOS (descobertos em 29/05/2026 — codigos REST sao diferentes
@@ -458,6 +459,18 @@ function ResultadoBox({
           veredito={analise?.veredito ?? null}
         />
       )}
+
+      {/* Dossiê do Detetive Branorte — score 0-100, semáforo, red flags */}
+      {(() => {
+        const dossie =
+          (consulta.resultado_spc as { dossie_detetive?: DossieDetetive } | null)?.dossie_detetive
+        if (!dossie) return null
+        return (
+          <div className="p-3 border-b border-border/40">
+            <DossieDetetiveCard dossie={dossie} />
+          </div>
+        )
+      })()}
 
       {/* Grid 4 colunas: Empresa | Sócios | Inadimplências/Score | Datajud */}
       {primeiroResumo ? (
