@@ -37,13 +37,13 @@ const CUSTO_PF_COMPLETO = CUSTO_PF_ECONOMICO_JUDICIAL + 13.56 + 1.72 + 0.78
 const PACOTE_INFO: Record<Pacote, { titulo: string; descricao: string; custoPj: number; custoPf: number }> = {
   economico: {
     titulo: 'Econômico',
-    descricao: 'SPC Maxi + Score 12m + Participações em Empresas + Receita Federal',
+    descricao: 'SPC Maxi + Score 12m + Participações + Receita Federal (sem ações judiciais)',
     custoPj: CUSTO_PJ_ECONOMICO,
     custoPf: CUSTO_PF_ECONOMICO,
   },
   economico_judicial: {
     titulo: 'Econômico + Judicial',
-    descricao: 'SPC Maxi + Score 12m + Participações + Receita Federal + Ações Judiciais (R$ 4,59 a mais)',
+    descricao: 'SPC Maxi + Score 12m + Participações + Receita Federal + Ações Judiciais (R$ 4,59)',
     custoPj: CUSTO_PJ_ECONOMICO_JUDICIAL,
     custoPf: CUSTO_PF_ECONOMICO_JUDICIAL,
   },
@@ -589,7 +589,7 @@ function ResultadoBox({
           <strong>METALÚRGICA BRANORTE</strong> · Consulta de Due Diligence ·
           Gerado em {new Date(consulta.created_at).toLocaleString('pt-BR')} ·
           Custo: R$ {consulta.custo_brl.toFixed(2)} ·
-          Status: {consulta.status.toUpperCase()}
+          Status: {(consulta.status ?? '').toUpperCase()}
           <br />
           Fontes: SPC Brasil {isMock ? '(MOCK)' : '(produção)'} ·
           Datajud (CNJ) · Parecer consolidado por IA ·
