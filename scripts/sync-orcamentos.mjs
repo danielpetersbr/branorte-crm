@@ -36,6 +36,7 @@ const SUPA_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const DEST_BASE = process.env.DEST_BASE_PATH || 'Z:\\1 - Comercial\\3 - Orçamento'
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 30_000)
 const BUCKET = 'orcamentos-pendentes'
+const SERVICE_NAME = 'orcamentos-z-sync'
 const LOG_FILE = path.join(os.homedir(), 'branorte-sync.log')
 
 if (!SUPA_URL || !SUPA_KEY) {
@@ -86,10 +87,11 @@ function nomePastaMes(mes /* 1..12 */) {
 
 async function processFile(remotePath) {
   // remotePath formato: "2026/05/2026-0803-cliente.pdf"
+  // Retorna true se o arquivo esta garantido no Z: (OK ou ja existia), false em erro.
   const segs = remotePath.split('/')
   if (segs.length < 3) {
     log(`SKIP path inesperado: ${remotePath}`)
-    return
+    return false
   }
   const ano = segs[0]
   const mes = parseInt(segs[1], 10)  // "05" -> 5
@@ -103,14 +105,14 @@ async function processFile(remotePath) {
   if (existsSync(destPath)) {
     log(`SKIP ja existe local: ${destPath}`)
     await markAsProcessed(remotePath)
-    return
+    return true
   }
 
   // Baixa do Storage
   const { data: blob, error: dlErr } = await supa.storage.from(BUCKET).download(remotePath)
   if (dlErr || !blob) {
     log(`ERR download ${remotePath}: ${dlErr?.message ?? 'sem dados'}`)
-    return
+    return false
   }
 
   ensureDir(destDir)
@@ -119,6 +121,7 @@ async function processFile(remotePath) {
   log(`OK ${remotePath} → ${destPath} (${buf.length} bytes)`)
 
   await markAsProcessed(remotePath)
+  return true
 }
 
 async function markAsProcessed(remotePath) {
@@ -128,13 +131,35 @@ async function markAsProcessed(remotePath) {
   if (error) log(`WARN nao consegui mover ${remotePath} pra _processados: ${error.message}`)
 }
 
+// Heartbeat: o daemon "bate o coracao" a cada tick. last_tick velho = daemon
+// caido (alerta via cron sync-health-alert); z_ok=false = pasta Z indisponivel.
+// service_role bypassa RLS. O row e semeado com alert_vendor_nome (quem recebe
+// o WA) — nao incluimos esse campo no upsert pra nao sobrescrever.
+async function writeHeartbeat(z_ok, pendentes, entregues, detail) {
+  const { error } = await supa.from('sync_heartbeat').upsert({
+    service: SERVICE_NAME,
+    last_tick: new Date().toISOString(),
+    z_ok,
+    pendentes,
+    entregues_ciclo: entregues,
+    detail,
+    host: os.hostname(),
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'service' })
+  if (error) log(`WARN heartbeat: ${error.message}`)
+}
+
 async function tick() {
+  let pendentesCount = 0
+  let entregues = 0
   try {
     const pendentes = await listAllPendentes()
+    pendentesCount = pendentes.length
     if (pendentes.length > 0) {
       log(`${pendentes.length} arquivo(s) pendente(s)`)
       for (const f of pendentes) {
-        await processFile(f.path)
+        const ok = await processFile(f.path)
+        if (ok) entregues++
       }
     }
   } catch (e) {
@@ -150,6 +175,14 @@ async function tick() {
   } catch (e) {
     log(`ERR scan pasta: ${e?.message ?? e}`)
   }
+
+  // Heartbeat SEMPRE no fim — enquanto o processo vive, last_tick fica fresco.
+  const zOk = existsSync(DEST_BASE)
+  try {
+    await writeHeartbeat(zOk, pendentesCount, entregues, zOk ? 'ok' : 'Z: indisponivel')
+  } catch (e) {
+    log(`ERR heartbeat: ${e?.message ?? e}`)
+  }
 }
 
 async function scanPastaUpdateIndex() {
@@ -162,6 +195,7 @@ async function scanPastaUpdateIndex() {
   const re = new RegExp(`^${ano}\\s*-?\\s*(\\d{3,5})\\b`)
   let maxSeq = 0
   let maxArq = ''
+  const seqsNoZ = []
 
   const subpastas = await fs.readdir(baseDir).catch(() => [])
   for (const sub of subpastas) {
@@ -175,8 +209,27 @@ async function scanPastaUpdateIndex() {
       const m = f.match(re)
       if (m) {
         const n = parseInt(m[1], 10)
+        seqsNoZ.push(n)
         if (n > maxSeq) { maxSeq = n; maxArq = `${sub}/${f}` }
       }
+    }
+  }
+
+  // Marca entregue_z_at pra orcamentos cujo arquivo JA esta no Z: — cobre
+  // Caminho A (gravacao direta no desktop do admin) E Caminho B (bucket->daemon).
+  // Query-first: busca so os AINDA NAO marcados (poucos em regime) e marca os
+  // que tem arquivo presente no Z:. Evita mandar centenas de seqs todo tick.
+  if (seqsNoZ.length) {
+    const noZ = new Set(seqsNoZ)
+    const { data: naoMarcados } = await supa.from('orcamentos_gerados')
+      .select('sequencial').eq('ano', ano).is('entregue_z_at', null).limit(5000)
+    const aMarcar = (naoMarcados || []).map((r) => r.sequencial).filter((s) => noZ.has(s))
+    if (aMarcar.length) {
+      const { error: eEnt } = await supa.from('orcamentos_gerados')
+        .update({ entregue_z_at: new Date().toISOString() })
+        .eq('ano', ano).in('sequencial', aMarcar)
+      if (eEnt) log(`WARN marcar entregue_z: ${eEnt.message}`)
+      else log(`entregue_z marcado: ${aMarcar.length} orcamento(s)`)
     }
   }
 
