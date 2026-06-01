@@ -19,6 +19,7 @@ import {
   CheckCircle,
   CheckCircle2,
   ExternalLink,
+  Facebook,
   Globe,
   Instagram,
   Linkedin,
@@ -54,9 +55,17 @@ export interface DossieDetetive {
   recomendacao: string
   red_flags: Array<{ id: number; peso: number; nome: string; descricao: string }>
   pegada_digital?: {
-    site?: { existe: boolean; url?: string }
+    site?: { existe: boolean; url?: string; titulo_pagina?: string; fonte?: string }
     linkedin?: { existe: boolean; url?: string }
-    reclame_aqui?: { rating?: number; total?: number; resolucao_pct?: number }
+    reclame_aqui?: {
+      existe?: boolean
+      url?: string
+      rating?: number
+      total?: number
+      total_reclamacoes?: number
+      resolucao_pct?: number
+    }
+    facebook?: { existe: boolean; url?: string }
     google_maps_url?: string
     instagram?: {
       perfil_encontrado: boolean
@@ -278,6 +287,7 @@ export function derivarSinaisPositivos(dossie: DossieDetetive): string[] {
   const pd = dossie.pegada_digital
   if (pd?.site?.existe) sinais.push('Site institucional ativo')
   if (pd?.linkedin?.existe) sinais.push('Presença no LinkedIn')
+  if (pd?.facebook?.existe) sinais.push('Presença no Facebook')
   if (pd?.instagram?.perfil_encontrado) {
     const meses = monthsSince(pd.instagram.data_ultimo_post)
     if (meses != null && meses <= 6) sinais.push('Instagram ativo (posts recentes)')
@@ -586,45 +596,36 @@ export function DossieDetetiveCard({ dossie, onReinvestigar }: Props) {
           <h3 className="text-[11px] uppercase tracking-wider font-bold text-ink-muted mb-2">
             Pegada Digital
           </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {/* Site */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {/* Site institucional */}
             <PegadaItem
               icon={Globe}
               label="Site"
-              existe={dossie.pegada_digital.site?.existe}
-              url={dossie.pegada_digital.site?.url}
+              existe={dossie.pegada_digital?.site?.existe}
+              url={dossie.pegada_digital?.site?.url}
+              titulo={dossie.pegada_digital?.site?.titulo_pagina}
+              fonte={dossie.pegada_digital?.site?.fonte}
             />
             {/* LinkedIn */}
             <PegadaItem
               icon={Linkedin}
               label="LinkedIn"
-              existe={dossie.pegada_digital.linkedin?.existe}
-              url={dossie.pegada_digital.linkedin?.url}
+              existe={dossie.pegada_digital?.linkedin?.existe}
+              url={dossie.pegada_digital?.linkedin?.url}
             />
             {/* Instagram */}
-            <InstagramItem instagram={dossie.pegada_digital.instagram} />
+            <InstagramItem instagram={dossie.pegada_digital?.instagram} />
             {/* Reclame Aqui */}
-            {dossie.pegada_digital.reclame_aqui && (
-              <div className="flex items-start gap-2 p-2 rounded bg-surface-2/40 border border-border/40">
-                <Star className="h-3.5 w-3.5 text-warning shrink-0 mt-0.5" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-semibold text-ink">Reclame Aqui</p>
-                  <p className="text-[10px] text-ink-muted tabular-nums">
-                    {dossie.pegada_digital.reclame_aqui.rating != null
-                      ? `Rating ${dossie.pegada_digital.reclame_aqui.rating.toFixed(1)}/10`
-                      : 'Sem rating'}
-                    {dossie.pegada_digital.reclame_aqui.total != null && (
-                      <> · {dossie.pegada_digital.reclame_aqui.total} reclamações</>
-                    )}
-                    {dossie.pegada_digital.reclame_aqui.resolucao_pct != null && (
-                      <> · {dossie.pegada_digital.reclame_aqui.resolucao_pct}% resolvido</>
-                    )}
-                  </p>
-                </div>
-              </div>
-            )}
+            <ReclameAquiItem reclame={dossie.pegada_digital?.reclame_aqui} />
+            {/* Facebook */}
+            <PegadaItem
+              icon={Facebook}
+              label="Facebook"
+              existe={dossie.pegada_digital?.facebook?.existe}
+              url={dossie.pegada_digital?.facebook?.url}
+            />
             {/* Google Maps / Street View */}
-            {dossie.pegada_digital.google_maps_url && (
+            {dossie.pegada_digital?.google_maps_url ? (
               <a
                 href={dossie.pegada_digital.google_maps_url}
                 target="_blank"
@@ -640,6 +641,14 @@ export function DossieDetetiveCard({ dossie, onReinvestigar }: Props) {
                 </div>
                 <ExternalLink className="h-3 w-3 text-ink-faint shrink-0 mt-0.5" />
               </a>
+            ) : (
+              <div className="flex items-start gap-2 p-2 rounded bg-surface-2/40 border border-border/40">
+                <MapPin className="h-3.5 w-3.5 shrink-0 mt-0.5 text-ink-faint" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-semibold text-ink">Street View</p>
+                  <p className="text-[10px] text-ink-faint">não encontrado</p>
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -801,9 +810,88 @@ interface PegadaItemProps {
   label: string
   existe?: boolean
   url?: string
+  /** Texto extra exibido abaixo do label (ex: título da página do site) */
+  titulo?: string
+  /** Fonte/origem da informação (ex: "google", "cnpja"). Renderizado pequeno e discreto. */
+  fonte?: string
 }
 
-function PegadaItem({ icon: Icon, label, existe, url }: PegadaItemProps) {
+function PegadaItem({ icon: Icon, label, existe, url, titulo, fonte }: PegadaItemProps) {
+  const Wrapper = url ? 'a' : 'div'
+  const wrapperProps = url
+    ? {
+        href: url,
+        target: '_blank' as const,
+        rel: 'noopener noreferrer',
+        className:
+          'dd-no-print flex items-start gap-2 p-2 rounded bg-surface-2/40 border border-border/40 hover:border-accent transition-colors group',
+      }
+    : {
+        className:
+          'flex items-start gap-2 p-2 rounded bg-surface-2/40 border border-border/40',
+      }
+
+  // Linha secundária: prioridade titulo > url > status
+  const linhaSecundaria = existe
+    ? titulo || url || 'Encontrado'
+    : 'não encontrado'
+
+  return (
+    <Wrapper {...wrapperProps}>
+      <Icon className={`h-3.5 w-3.5 shrink-0 mt-0.5 ${existe ? 'text-success' : 'text-ink-faint'}`} />
+      <div className="min-w-0 flex-1">
+        <p className={`text-[11px] font-semibold ${url ? 'text-ink group-hover:text-accent' : existe ? 'text-ink' : 'text-ink'}`}>
+          {label}
+        </p>
+        <p className={`text-[10px] truncate ${existe ? 'text-ink-muted' : 'text-ink-faint'}`}>
+          {linhaSecundaria}
+        </p>
+        {existe && fonte && (
+          <p className="text-[9px] text-ink-faint italic mt-0.5">fonte: {fonte}</p>
+        )}
+      </div>
+      {url && <ExternalLink className="h-3 w-3 text-ink-faint shrink-0 mt-0.5" />}
+    </Wrapper>
+  )
+}
+
+interface ReclameAquiItemProps {
+  reclame?: DossieDetetive['pegada_digital'] extends infer P
+    ? P extends { reclame_aqui?: infer R }
+      ? R
+      : never
+    : never
+}
+
+function ReclameAquiItem({ reclame }: ReclameAquiItemProps) {
+  // Não encontrado / ausente
+  if (!reclame || (reclame.existe === false && !reclame.rating && !reclame.url)) {
+    return (
+      <div className="flex items-start gap-2 p-2 rounded bg-surface-2/40 border border-border/40">
+        <Star className="h-3.5 w-3.5 shrink-0 mt-0.5 text-ink-faint" />
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold text-ink">Reclame Aqui</p>
+          <p className="text-[10px] text-ink-faint">não encontrado</p>
+        </div>
+      </div>
+    )
+  }
+
+  const url = reclame?.url
+  const rating = reclame?.rating
+  const total = reclame?.total_reclamacoes ?? reclame?.total
+  const resolucao = reclame?.resolucao_pct
+
+  // Cor do ícone Star baseada no rating
+  const starColor =
+    rating != null
+      ? rating >= 7
+        ? 'text-success'
+        : rating >= 5
+          ? 'text-warning'
+          : 'text-danger'
+      : 'text-warning'
+
   const Wrapper = url ? 'a' : 'div'
   const wrapperProps = url
     ? {
@@ -820,13 +908,15 @@ function PegadaItem({ icon: Icon, label, existe, url }: PegadaItemProps) {
 
   return (
     <Wrapper {...wrapperProps}>
-      <Icon className={`h-3.5 w-3.5 shrink-0 mt-0.5 ${existe ? 'text-success' : 'text-ink-faint'}`} />
+      <Star className={`h-3.5 w-3.5 shrink-0 mt-0.5 ${starColor}`} />
       <div className="min-w-0 flex-1">
         <p className={`text-[11px] font-semibold ${url ? 'text-ink group-hover:text-accent' : 'text-ink'}`}>
-          {label}
+          Reclame Aqui
         </p>
-        <p className="text-[10px] text-ink-muted truncate">
-          {existe ? (url ? 'Ver online' : 'Encontrado') : 'Não encontrado'}
+        <p className="text-[10px] text-ink-muted tabular-nums">
+          {rating != null ? `Rating ${rating.toFixed(1)}/10` : 'Sem rating'}
+          {total != null && <> · {total} reclamações</>}
+          {resolucao != null && <> · {resolucao}% resolvido</>}
         </p>
       </div>
       {url && <ExternalLink className="h-3 w-3 text-ink-faint shrink-0 mt-0.5" />}

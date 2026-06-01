@@ -46,6 +46,10 @@ import {
   type InstagramPerfilResultado,
 } from './_lib/apify-instagram-client.js'
 import {
+  buscarPegadaDigital,
+  type PegadaDigital,
+} from './_lib/digital-footprint-client.js'
+import {
   calcularDossie,
   type Cenario,
   type DetetiveInput,
@@ -562,13 +566,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }) as InstagramPerfilResultado)
       : Promise.resolve(null)
 
-  const [noticiasResultado, cepResultado, enderecoCompartilhado, instagramResultado] =
-    await Promise.all([
-      noticiasPromise,
-      cepPromise,
-      enderecoCompartilhadoPromise,
-      instagramPromise,
-    ])
+  // ─── Pegada Digital (DuckDuckGo + heurística) — só roda pra PJ ───
+  // Best-effort: site, LinkedIn, ReclameAqui, Facebook. Falha gracefully.
+  // Depende do OpenCNPJ (razão social/fantasia/cidade/UF) pra montar query.
+  const pegadaDigitalPromise: Promise<PegadaDigital | null> =
+    precisaCnpj && opencnpjResultado?.razao_social
+      ? buscarPegadaDigital({
+          razaoSocial: opencnpjResultado.razao_social,
+          nomeFantasia: opencnpjResultado.nome_fantasia,
+          cnpj: cnpj,
+          cidade: opencnpjResultado.endereco?.municipio,
+          uf: opencnpjResultado.endereco?.uf,
+          emailCadastral: opencnpjResultado.email,
+          timeoutMs: 25_000,
+        }).catch(e => ({
+          site: { existe: false },
+          linkedin: { existe: false },
+          reclame_aqui: { existe: false },
+          facebook: { existe: false },
+          fontes_consultadas: [],
+          custo_estimado_brl: 0,
+          erros: [e instanceof Error ? e.message : String(e)],
+        } as PegadaDigital))
+      : Promise.resolve(null)
+
+  const [
+    noticiasResultado,
+    cepResultado,
+    enderecoCompartilhado,
+    instagramResultado,
+    pegadaDigitalResultado,
+  ] = await Promise.all([
+    noticiasPromise,
+    cepPromise,
+    enderecoCompartilhadoPromise,
+    instagramPromise,
+    pegadaDigitalPromise,
+  ])
 
   // 7.0.2) Persistência do Portal Transparência + Detetive:
   // ESCOLHA DE PERSISTÊNCIA — IMPORTANTE LER ANTES DE MEXER:
@@ -593,6 +627,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     endereco_compartilhado: enderecoCompartilhado,
   }
   ;(resultadoSpc as Record<string, unknown>).instagram = instagramResultado
+  ;(resultadoSpc as Record<string, unknown>).pegada_digital = pegadaDigitalResultado
 
   // 7.0.3) Cálculo do Dossiê do Detetive — consolida tudo em score 0-100 + semáforo
   let dossieDetetive: DossieResultado | null = null
@@ -712,6 +747,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         situacao: opencnpjResultado?.situacao ?? null,
       },
       pegada_digital: {
+        // Merge: dados do digital-footprint-client (site, linkedin, reclame_aqui,
+        // facebook, fontes_consultadas, custo_estimado_brl, erros) entram via spread.
+        // Em seguida sobrescreve Instagram (Apify, mais rico) e google_maps_url (CEP).
+        ...(pegadaDigitalResultado ?? {}),
         google_maps_url: cepResultado?.google_maps_url ?? undefined,
         instagram:
           instagramResultado && instagramResultado.ok
@@ -758,6 +797,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         cepResultado?.ok ? 'BrasilAPI (CEP)' : null,
         instagramResultado?.ok
           ? `Instagram (Apify${instagramResultado.fonte ? ` · ${instagramResultado.fonte}` : ''})`
+          : null,
+        pegadaDigitalResultado && pegadaDigitalResultado.fontes_consultadas.length > 0
+          ? 'Pegada Digital (DuckDuckGo + heurística)'
           : null,
         'SPC Brasil',
       ].filter((s): s is string => !!s),
