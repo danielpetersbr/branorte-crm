@@ -15,22 +15,22 @@ import {
 } from '@/hooks/useDueDiligence'
 import { useCan } from '@/hooks/usePermissions'
 
-// Custos calculados a partir da tabela FCDL/SC jan/2026:
-//   PJ e PF: apenas Novo SPC Maxi (#325) = R$ 5,62
-//
-// Testamos os insumos 144/318/268 e nenhum eh aceito pelo produto 325 — todos
-// retornam erro CN_WEB001.E12.39. Como o produto 325 sozinho ja retorna dados
-// muito completos (cadastrais + SPC + pendências + sócios + contatos), nao
-// vale a pena tentar combinar.
-const CUSTO_PJ_ECONOMICO = 5.62
-const CUSTO_PF_ECONOMICO = 5.62
-const CUSTO_PJ_COMPLETO = CUSTO_PJ_ECONOMICO + 17.09 + 16.21 + 6.49 + 4.10 // +Faturamento+QuadroSocial+GrupoEcon+Protesto
-const CUSTO_PF_COMPLETO = CUSTO_PF_ECONOMICO + 1.46 + 1.02 // +Renda Presumida+PEP
+// Custos calculados a partir da tabela FCDL/SC jan/2026 com codigos API
+// CORRIGIDOS (descobertos em 29/05/2026 — codigos REST sao diferentes
+// dos codigos da tabela de precos):
+//   PJ Economico: 325 (5,62) + Score12m#78 (1,13) + Part#24 (2,72)
+//                + PEP#5255 (1,02) + Receita#5183 (0,33) = R$ 10,82
+//   PF Economico: 325 (5,62) + Score12m#78 (1,13) + Part#24 (2,72)
+//                + PEP#5255 (1,02) + Renda#5097 (1,46) = R$ 11,95
+const CUSTO_PJ_ECONOMICO = 5.62 + 1.13 + 2.72 + 1.02 + 0.33     // 10.82
+const CUSTO_PF_ECONOMICO = 5.62 + 1.13 + 2.72 + 1.02 + 1.46     // 11.95
+const CUSTO_PJ_COMPLETO = CUSTO_PJ_ECONOMICO + 17.09 + 16.21 + 6.49 + 16.21 + 1.96 + 4.91
+const CUSTO_PF_COMPLETO = CUSTO_PF_ECONOMICO + 13.56 + 1.72 + 0.78
 
 const PACOTE_INFO: Record<Pacote, { titulo: string; descricao: string; custoPj: number; custoPf: number }> = {
   economico: {
     titulo: 'Econômico',
-    descricao: 'Novo SPC Maxi (#325) — cadastrais, SPC, pendências, sócios, contatos',
+    descricao: 'SPC Maxi + Score 12m + Participações em Empresas + PEP + Receita Federal',
     custoPj: CUSTO_PJ_ECONOMICO,
     custoPf: CUSTO_PF_ECONOMICO,
   },

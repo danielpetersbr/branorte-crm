@@ -126,21 +126,40 @@ export const PRODUTOS_SPC = {
   RELATORIO_COMPLETO_PJ: { codigo: '337', label: 'SPC Relatorio Completo PJ', valor: 19.53 },
 } as const
 
-// Insumos opcionais (links que acompanham o produto principal)
+// Insumos opcionais (links que acompanham o produto principal).
+// IMPORTANTE: codigo = código INTERNO da API REST (ver "Todos produtos
+// detalhado - Produção.txt" do manual). NÃO é o código da tabela de preços
+// FCDL/SC — a API usa códigos internos diferentes. Testado em produção
+// (29/05/2026) pra produto 325 (Novo SPC Maxi), todos retornaram 200 OK.
+// O campo "valor" usa preço estimado da tabela FCDL/SC quando há match.
 export const INSUMOS_OPCIONAIS = {
-  // Pacote economico (PF + PJ)
-  SCORE_12_MESES: { codigo: 144, label: 'Score 12 Meses', valor: 1.13 },
-  PARTICIPACAO_EMPRESAS: { codigo: 318, label: 'Participacao em Empresas', valor: 2.72 },
-  // So PJ
-  CONTROLE_SOCIETARIO: { codigo: 268, label: 'Controle Societario', valor: 2.72 },
-  // Insumos do pacote completo
-  FATURAMENTO_PRESUMIDO_PJ: { codigo: 400, label: 'Faturamento Presumido PJ', valor: 17.09 },
-  QUADRO_SOCIAL: { codigo: 458, label: 'Quadro Social', valor: 16.21 },
-  GRUPO_ECONOMICO: { codigo: 692, label: 'Grupo Economico', valor: 6.49 },
-  SCORE_PJ_PLUS: { codigo: 582, label: 'Score PJ+', valor: 4.91 },
-  PROTESTO_NACIONAL: { codigo: 313, label: 'Protesto Nacional', valor: 4.10 },
-  RENDA_PRESUMIDA: { codigo: 316, label: 'Renda Presumida', valor: 1.46 },
-  PEP: { codigo: 825, label: 'Pessoa Exposta Politicamente', valor: 1.02 },
+  // Pacote economico
+  SCORE_12_MESES: { codigo: 78, label: 'Score 12 Meses', valor: 1.13 },
+  SCORE_3_MESES: { codigo: 77, label: 'Score 3 Meses', valor: 1.13 },
+  PARTICIPACAO_EMPRESAS: { codigo: 24, label: 'Participacao em Empresas', valor: 2.72 },
+  PEP: { codigo: 5255, label: 'Pessoa Exposta Politicamente', valor: 1.02 },
+  // Cadastrais
+  SOCIO: { codigo: 23, label: 'Socio', valor: 0 },
+  ADMINISTRADOR: { codigo: 49, label: 'Administrador', valor: 0 },
+  STATUS_RECEITA_FEDERAL: { codigo: 5183, label: 'Status Receita Federal Online', valor: 0.33 },
+  INSCRICAO_ESTADUAL: { codigo: 5263, label: 'Inscricao Estadual', valor: 1.20 },
+  // Completo
+  FATURAMENTO_PRESUMIDO_PJ: { codigo: 5178, label: 'Faturamento Presumido PJ', valor: 17.09 },
+  QUADRO_SOCIAL_COMPLETO: { codigo: 5186, label: 'Quadro Social Mais Completo PJ', valor: 16.21 },
+  GRUPO_ECONOMICO: { codigo: 5241, label: 'Grupo Economico', valor: 6.49 },
+  RISCO_CREDITO_PJ: { codigo: 5184, label: 'Risco de Credito PJ', valor: 16.21 },
+  LIMITE_CREDITO_SUGERIDO: { codigo: 5142, label: 'Limite de Credito Sugerido', valor: 1.96 },
+  SCORE_PJ: { codigo: 5229, label: 'Score PJ', valor: 4.91 },
+  // Antifraude
+  ALERTA_CPF_SUSPEITO: { codigo: 5264, label: 'Alerta CPF Suspeito', valor: 1.72 },
+  ALERTA_IDENTIDADE_FRAUDE: { codigo: 5262, label: 'Alerta Identidade Fraude', valor: 0.78 },
+  ANALISE_DOCUMENTOS: { codigo: 5266, label: 'Analise Documentos SPC', valor: 5.69 },
+  VALIDA_CELULAR: { codigo: 5268, label: 'Valida Celular', valor: 1.07 },
+  // Outros
+  ACAO: { codigo: 18, label: 'Acao', valor: 4.59 },
+  RENDA_PRESUMIDA_PF: { codigo: 5097, label: 'Renda Presumida PF', valor: 1.46 },
+  COMPROMETIMENTO_RENDA: { codigo: 5194, label: 'Comprometimento Renda Mensal PF', valor: 13.56 },
+  SPC_OBITO: { codigo: 3082, label: 'SPC Obito', valor: 0.57 },
 } as const
 
 export function calcularCustoPacote(opts: {

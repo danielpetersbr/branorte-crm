@@ -67,23 +67,17 @@ interface ConsultarBody {
 // ============================================================================
 // Pacotes — definicoes
 // ============================================================================
-// PRODUTO BASE em todos os pacotes: 325 (Novo SPC Maxi) — completo + barato.
+// PRODUTO BASE em todos os pacotes: 325 (Novo SPC Maxi).
 //
-// NOTA SPC: nenhum dos insumos opcionais que tentamos (144, 318, 268) eh
-// suportado pelo produto 325. Testado em produção via API, todos retornam
-// erro CN_WEB001.E12.39. O produto 325 sozinho ja retorna dados RIQUÍSSIMOS:
-//   - Dados cadastrais completos (razao social, fundacao, atividades, etc.)
-//   - Endereço, telefone, email
-//   - Capital social
-//   - SPC (restrições com valor)
-//   - Pendência financeira
-//   - Histórico de consultas (últimos 90 dias)
-//   - Dados adicionais de contato (celulares, emails extras)
+// IMPORTANTE: os codigos de insumo da API REST sao DIFERENTES dos codigos
+// da tabela de precos FCDL/SC. Os codigos corretos foram extraidos do XML
+// "Todos produtos detalhado - Produção.txt" do manual oficial e testados em
+// producao em 29/05/2026. Todos os 17 insumos testados retornaram 200 OK
+// pra produto 325 com tipoConsumidor='J'.
 //
-// Por isso pacote Econômico = apenas produto 325 (R$ 5,62).
-//
-// Completo: pode adicionar Faturamento Presumido (#400) e Quadro Social
-// (#458), mas precisa testar compatibilidade primeiro. Por enquanto = 325.
+// Economico PJ: 325 + Score 12m + Participacao + PEP = ~R$ 10,49
+// Economico PF: 325 + Score 12m + Renda Presumida + PEP = ~R$ 8,10
+// Completo:   + Faturamento + Quadro Social + Grupo Econ + Risco Credito + Limite
 function montarPacotes(
   pacote: ConsultarBody['pacote'],
   opts: { incluiPj: boolean; incluiPf: boolean },
@@ -97,21 +91,51 @@ function montarPacotes(
   if (pacote !== 'economico' && pacote !== 'completo' && pacote !== 'paranoico') {
     return planos
   }
+  const isCompleto = pacote === 'completo' || pacote === 'paranoico'
 
   if (opts.incluiPj) {
-    // PJ: so o produto 325 (Novo SPC Maxi)
+    // PJ: Novo SPC Maxi + Score 12m + Participação Empresas + PEP
+    const insumosPj: number[] = [
+      INSUMOS_OPCIONAIS.SCORE_12_MESES.codigo,         // 78
+      INSUMOS_OPCIONAIS.PARTICIPACAO_EMPRESAS.codigo,  // 24
+      INSUMOS_OPCIONAIS.PEP.codigo,                    // 5255
+      INSUMOS_OPCIONAIS.STATUS_RECEITA_FEDERAL.codigo, // 5183 (Receita ativa?)
+    ]
+    if (isCompleto) {
+      insumosPj.push(
+        INSUMOS_OPCIONAIS.FATURAMENTO_PRESUMIDO_PJ.codigo,  // 5178
+        INSUMOS_OPCIONAIS.QUADRO_SOCIAL_COMPLETO.codigo,    // 5186
+        INSUMOS_OPCIONAIS.GRUPO_ECONOMICO.codigo,           // 5241
+        INSUMOS_OPCIONAIS.RISCO_CREDITO_PJ.codigo,          // 5184
+        INSUMOS_OPCIONAIS.LIMITE_CREDITO_SUGERIDO.codigo,   // 5142
+        INSUMOS_OPCIONAIS.SCORE_PJ.codigo,                  // 5229
+      )
+    }
     planos.push({
       produto: PRODUTOS_SPC.NOVO_SPC_MAXI.codigo,
-      insumos: [],
+      insumos: insumosPj,
       tipoConsumidor: 'J',
     })
   }
 
   if (opts.incluiPf) {
-    // PF: so o produto 325 (Novo SPC Maxi)
+    // PF: Novo SPC Maxi + Score 12m + Participação Empresas + PEP + Renda Presumida
+    const insumosPf: number[] = [
+      INSUMOS_OPCIONAIS.SCORE_12_MESES.codigo,         // 78
+      INSUMOS_OPCIONAIS.PARTICIPACAO_EMPRESAS.codigo,  // 24
+      INSUMOS_OPCIONAIS.PEP.codigo,                    // 5255
+      INSUMOS_OPCIONAIS.RENDA_PRESUMIDA_PF.codigo,     // 5097
+    ]
+    if (isCompleto) {
+      insumosPf.push(
+        INSUMOS_OPCIONAIS.COMPROMETIMENTO_RENDA.codigo, // 5194
+        INSUMOS_OPCIONAIS.ALERTA_CPF_SUSPEITO.codigo,   // 5264
+        INSUMOS_OPCIONAIS.ALERTA_IDENTIDADE_FRAUDE.codigo, // 5262
+      )
+    }
     planos.push({
       produto: PRODUTOS_SPC.NOVO_SPC_MAXI.codigo,
-      insumos: [],
+      insumos: insumosPf,
       tipoConsumidor: 'F',
     })
   }
