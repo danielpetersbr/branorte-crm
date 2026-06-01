@@ -132,7 +132,7 @@ export interface ResolveResult {
   sugestaoCriar?: () => Promise<any>  // funcao que cria a estrutura faltante e retorna handle
 }
 
-export async function resolverPastaDoMes(rootHandle: any, dt: Date = new Date()): Promise<ResolveResult> {
+export async function resolverPastaDoMes(rootHandle: any, dt: Date = new Date(), _depth = 0): Promise<ResolveResult> {
   const ano = dt.getFullYear()
   const mes = dt.getMonth() + 1
   const mesNome = MESES_NOMES[mes]
@@ -147,6 +147,24 @@ export async function resolverPastaDoMes(rootHandle: any, dt: Date = new Date())
   const rootName = (rootHandle as any).name || ''
   if (normalizeName(rootName).includes(normalizeName(mesNome))) {
     return { ok: true, pastaMes: rootHandle, caminho: `(pasta selecionada é "${rootName}")` }
+  }
+
+  // Cenário C-stale: a pasta salva é de OUTRO mês (ex: "5 - Maio" mas hoje é Junho).
+  // File System Access NÃO permite navegar pra pasta irmã, então não há como chegar
+  // no mês atual a partir daqui. Erro claro pedindo pra re-selecionar a pasta BASE.
+  // (Só no nível raiz — _depth 0 — pra não confundir com descida interna.)
+  if (_depth === 0) {
+    const mesDaPasta = MESES_NOMES.slice(1).find((m) => normalizeName(rootName).includes(normalizeName(m)))
+    if (mesDaPasta && mesDaPasta !== mesNome) {
+      return {
+        ok: false,
+        motivo:
+          `A pasta salva é "${rootName}" (mês de ${mesDaPasta}), mas hoje é ${mesNome}. ` +
+          `O navegador não consegue pular pra pasta do mês ao lado. ` +
+          `Clique em "Sincronizar com pasta" e selecione a pasta BASE de orçamentos UMA vez ` +
+          `(ex: a pasta "3 - Orçamento") — daí o sistema acha o mês certo sozinho todo mês.`,
+      }
+    }
   }
 
   // Cenário T (teste/debug): pasta com "teste" no nome → salva direto sem subpasta
@@ -196,10 +214,30 @@ export async function resolverPastaDoMes(rootHandle: any, dt: Date = new Date())
     }
   }
 
+  // Cenário A0: rootHandle é a pasta BASE (ex: "3 - Orçamento") que contém a pasta do
+  // ANO ("2026"), e DENTRO dela está "Orçamentos {ano}\{N - Mes}". Desce 1 nível pro
+  // ano e re-resolve. Permite o vendedor escolher a pasta-raiz de orçamentos UMA vez e
+  // o sistema achar o mês certo automaticamente (todo mês, e ano que vira também).
+  // Guard _depth evita recursão infinita.
+  if (_depth < 2) {
+    for await (const [name, entry] of rootHandle.entries()) {
+      if (entry.kind !== 'directory') continue
+      const norm = normalizeName(name)
+      if (norm.includes('orcamento')) continue // "Orçamentos {ano}" já tratado no Cenário A
+      if (!norm.includes(String(ano))) continue // só desce na pasta do ano atual
+      const sub = await resolverPastaDoMes(entry, dt, _depth + 1)
+      if (sub.ok) return { ...sub, caminho: `${rootName}/${name}/${sub.caminho ?? ''}` }
+      if (sub.sugestaoCriar) return { ...sub, motivo: `Em "${rootName}/${name}": ${sub.motivo}` }
+    }
+  }
+
   // Nada encontrado — pasta selecionada parece errada
   return {
     ok: false,
-    motivo: `Pasta selecionada nao parece ser de orcamentos. Pastas dentro dela: ${entriesNomes.slice(0, 5).join(', ')}${entriesNomes.length > 5 ? '...' : ''}`,
+    motivo:
+      `A pasta salva ("${rootName}") não parece a de orçamentos. ` +
+      `Clique em "Sincronizar com pasta" e escolha a pasta BASE "3 - Orçamento". ` +
+      `(Vi dentro dela: ${entriesNomes.slice(0, 5).join(', ')}${entriesNomes.length > 5 ? '...' : ''})`,
   }
 }
 
