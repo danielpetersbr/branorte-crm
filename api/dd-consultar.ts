@@ -28,6 +28,10 @@ import {
 } from './_lib/spc-client.js'
 import { gerarMockResumo, normalizarPayloadSpc } from './_lib/spc-normalizer.js'
 import { buscarProcessos, type DatajudResultado } from './_lib/datajud-client.js'
+import {
+  consultarPortalTransparencia,
+  type PortalTransparenciaResultado,
+} from './_lib/portal-transparencia-client.js'
 import { gerarParecerIA } from './_lib/dd-parecer-ia.js'
 
 export const config = {
@@ -243,6 +247,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }))
     : Promise.resolve(null)
 
+  // ─── Portal da Transparência (CGU) — PEP + CEIS + CNEP + CEPIM, em paralelo ───
+  // Grátis (token gov.br), 8s por endpoint, fan-out de 4. Modo gracioso: se
+  // PORTAL_TRANSPARENCIA_KEY ausente, retorna ok=false sem quebrar nada.
+  const portalPromise: Promise<PortalTransparenciaResultado> = consultarPortalTransparencia({
+    cnpj: precisaCnpj && cnpj.length === 14 ? cnpj : null,
+    cpf: precisaCpf && cpfSocio.length === 11 ? cpfSocio : null,
+    timeoutMs: 8_000,
+  }).catch(e => ({
+    ok: false,
+    cnpj: precisaCnpj ? cnpj : null,
+    cpf: precisaCpf ? cpfSocio : null,
+    pep: { endpoint: 'peps', tem: false, quantidade: 0, detalhes: [], erro: null },
+    ceis: { endpoint: 'ceis', tem: false, quantidade: 0, detalhes: [], erro: null },
+    cnep: { endpoint: 'cnep', tem: false, quantidade: 0, detalhes: [], erro: null },
+    cepim: { endpoint: 'cepim', tem: false, quantidade: 0, detalhes: [], erro: null },
+    total_sancoes: 0,
+    is_pep: false,
+    erros: [e instanceof Error ? e.message : String(e)],
+    motivo_nao_rodou: 'excecao_no_fanout',
+  }))
+
   if (SPC_MOCK) {
     // Modo dev: payload fake estruturado (mesmo shape do real, mas com dados ficticios)
     const resumos = planos.map(p => ({
@@ -305,8 +330,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // 7) Aguarda Datajud (já estava rodando em paralelo)
-  const datajudResultado = await datajudPromise
+  // 7) Aguarda Datajud + Portal Transparência (já rodando em paralelo)
+  const [datajudResultado, portalResultado] = await Promise.all([datajudPromise, portalPromise])
+
+  // 7.0) Persistência do Portal Transparência:
+  // ESCOLHA DE PERSISTÊNCIA — IMPORTANTE LER ANTES DE MEXER:
+  //   A tabela `due_diligence_consultas` tem colunas:
+  //     resultado_spc | resultado_datajud | resultado_google | resultado_instagram
+  //   NÃO existe coluna pra Portal Transparência e a tarefa proíbe migration agora.
+  //   Caminho mais simples sem migration: aninhar como subchave em `resultado_spc`,
+  //   já que `resultado_spc` é jsonb livre. Quando criarmos a coluna dedicada
+  //   `resultado_portal_transparencia jsonb` (futura migration), basta mover o
+  //   bloco pra coluna nova — o shape do JSON fica idêntico.
+  //   Frontend ainda não consome esse campo (parte 3 da tarefa explicitamente
+  //   diz "não mexer no frontend agora"), então não há risco de breakage.
+  if (resultadoSpc && typeof resultadoSpc === 'object') {
+    ;(resultadoSpc as Record<string, unknown>).portal_transparencia = portalResultado
+  } else {
+    // SPC pode ter sido null (ex: SPC_MOCK off + envs ausentes). Cria container.
+    resultadoSpc = { portal_transparencia: portalResultado }
+  }
 
   // 7.1) Parecer IA — consolida SPC + Datajud em markdown
   const resumosParaIA =

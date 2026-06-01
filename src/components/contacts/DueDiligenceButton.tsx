@@ -4,7 +4,7 @@
 // DueDiligenceModal  wrapper modal (usado quando aparece em outro lugar)
 // DueDiligenceButton botao que abre o modal (legado, mantido pra reuso)
 import { useState, type ReactNode } from 'react'
-import { Search, X, AlertCircle, CheckCircle, Loader2, Sparkles } from 'lucide-react'
+import { Search, X, AlertCircle, CheckCircle, Loader2, Sparkles, ChevronDown, ChevronUp } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import {
@@ -122,148 +122,107 @@ export function DueDiligenceForm({ contactId, contactName, initialCnpj }: FormPr
         </p>
       )}
 
-      {/* Form compacto: toggle + inputs + pacote + botão em card único */}
-      <div className="border border-border rounded-lg bg-surface-2/30 p-3 space-y-3 max-w-3xl">
-
-      {/* Toggle tipo de consulta */}
-      <div>
-        <label className="text-[10px] font-semibold text-ink-faint uppercase tracking-wider block mb-1">
-          Tipo de consulta
-        </label>
-        <div className="grid grid-cols-2 gap-1.5">
-          {([
-            { v: 'pj', label: 'Empresa (CNPJ)' },
-            { v: 'pf', label: 'Pessoa Física (CPF)' },
-          ] as Array<{ v: TipoConsulta; label: string }>).map(opt => {
-            const ativo = tipoConsulta === opt.v
-            return (
-              <button
-                key={opt.v}
-                type="button"
-                onClick={() => setTipoConsulta(opt.v)}
-                className={`text-[11px] px-2 py-1.5 rounded-md border font-semibold transition-all ${
-                  ativo
-                    ? 'bg-accent text-white border-accent'
-                    : 'bg-surface-2 border-border text-ink-muted hover:border-accent'
-                }`}
-              >
-                {opt.label}
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Inputs */}
-      <div className="space-y-3">
-        {precisaCnpj && (
-          <div>
-            <label className="text-[11px] font-semibold text-ink-muted block mb-1">
-              CNPJ da empresa *
+      {/* Form INLINE compacto — uma linha em desktop, empilha em mobile */}
+      <div className="border border-border rounded-lg bg-surface-2/30 p-3">
+        <div className="grid grid-cols-1 md:grid-cols-[auto_1fr_auto_auto] gap-3 items-end">
+          {/* Toggle tipo de consulta (PJ/PF) */}
+          <div className="min-w-0">
+            <label className="text-[10px] font-semibold text-ink-faint uppercase tracking-wider block mb-1">
+              Tipo
             </label>
-            <Input
-              value={cnpj}
-              onChange={e => setCnpj(formatDoc(e.target.value, 'cnpj'))}
-              placeholder="00.000.000/0000-00"
-              className="font-mono"
-            />
-            {cnpj && !cnpjValido && (
+            <div className="inline-flex rounded-md border border-border overflow-hidden">
+              {([
+                { v: 'pj', label: 'CNPJ' },
+                { v: 'pf', label: 'CPF' },
+              ] as Array<{ v: TipoConsulta; label: string }>).map(opt => {
+                const ativo = tipoConsulta === opt.v
+                return (
+                  <button
+                    key={opt.v}
+                    type="button"
+                    onClick={() => setTipoConsulta(opt.v)}
+                    className={`text-[11px] px-3 py-2 font-semibold transition-all ${
+                      ativo
+                        ? 'bg-accent text-white'
+                        : 'bg-surface-2 text-ink-muted hover:text-ink'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Documento input */}
+          <div className="min-w-0">
+            <label className="text-[10px] font-semibold text-ink-faint uppercase tracking-wider block mb-1">
+              {precisaCnpj ? 'CNPJ da empresa' : 'CPF da pessoa'}
+            </label>
+            {precisaCnpj ? (
+              <Input
+                value={cnpj}
+                onChange={e => setCnpj(formatDoc(e.target.value, 'cnpj'))}
+                placeholder="00.000.000/0000-00"
+                className="font-mono tabular-nums"
+              />
+            ) : (
+              <Input
+                value={cpf}
+                onChange={e => setCpf(formatDoc(e.target.value, 'cpf'))}
+                placeholder="000.000.000-00"
+                className="font-mono tabular-nums"
+              />
+            )}
+            {precisaCnpj && cnpj && !cnpjValido && (
               <p className="text-[10px] text-danger mt-1">CNPJ deve ter 14 dígitos</p>
             )}
-          </div>
-        )}
-        {precisaCpf && (
-          <div>
-            <label className="text-[11px] font-semibold text-ink-muted block mb-1">
-              CPF {tipoConsulta === 'ambos' ? 'do sócio decisor' : 'da pessoa'} *
-            </label>
-            <Input
-              value={cpf}
-              onChange={e => setCpf(formatDoc(e.target.value, 'cpf'))}
-              placeholder="000.000.000-00"
-              className="font-mono"
-            />
-            {cpf && !cpfValido && (
+            {precisaCpf && cpf && !cpfValido && (
               <p className="text-[10px] text-danger mt-1">CPF deve ter 11 dígitos</p>
             )}
           </div>
-        )}
-      </div>
 
-      {/* Escolha de pacote */}
-      <div>
-        <label className="text-[11px] font-semibold text-ink-muted block mb-2">
-          Pacote de consulta
-        </label>
-        <div className="space-y-1.5">
-          {(['economico'] as Pacote[]).map(p => {
-            const info = PACOTE_INFO[p]
-            const ativo = pacote === p
-            const disabled = p === 'paranoico'  // Fase 3-4 ainda nao implementada
-            return (
-              <button
-                key={p}
-                type="button"
-                disabled={disabled}
-                onClick={() => setPacote(p)}
-                className={`w-full text-left px-3 py-2 rounded-md border transition-all ${
-                  ativo
-                    ? 'bg-accent-bg border-accent'
-                    : disabled
-                    ? 'bg-surface-2/30 border-border opacity-50 cursor-not-allowed'
-                    : 'bg-surface-2 border-border hover:border-accent'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-0.5">
-                  <span className="text-[12px] font-semibold text-ink">
-                    {info.titulo}
-                    {disabled && (
-                      <span className="text-[9px] text-ink-faint font-normal ml-2">
-                        (em breve · fases 3-4)
-                      </span>
-                    )}
-                  </span>
-                  <span className="text-[11px] font-mono text-ink-muted">
-                    R$ {(
-                      (precisaCnpj ? info.custoPj : 0) +
-                      (precisaCpf ? info.custoPf : 0)
-                    ).toFixed(2)}
-                  </span>
-                </div>
-                <p className="text-[10px] text-ink-muted">{info.descricao}</p>
-              </button>
-            )
-          })}
-        </div>
-      </div>
+          {/* Pacote select */}
+          <div className="min-w-0">
+            <label className="text-[10px] font-semibold text-ink-faint uppercase tracking-wider block mb-1">
+              Pacote
+            </label>
+            <select
+              value={pacote}
+              onChange={e => setPacote(e.target.value as Pacote)}
+              className="text-[12px] px-3 py-2 rounded-md border border-border bg-surface-2 text-ink font-semibold focus:outline-none focus:border-accent"
+              title={PACOTE_INFO[pacote].descricao}
+            >
+              <option value="economico">Econômico · R$ {custoEstimado.toFixed(2)}</option>
+            </select>
+          </div>
 
-      {/* Resumo de custo + acao */}
-      <div className="space-y-2 pt-1 border-t border-border/60">
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] text-ink-muted">Custo estimado</span>
-          <span className="text-[14px] font-mono font-bold text-accent">
-            R$ {custoEstimado.toFixed(2)}
-          </span>
+          {/* Botão consultar */}
+          <div className="min-w-0">
+            <label className="text-[10px] font-semibold text-ink-faint uppercase tracking-wider block mb-1 md:invisible">
+              Ação
+            </label>
+            <Button
+              variant="primary"
+              onClick={() => handleSubmit(false)}
+              disabled={!podeEnviar}
+              className="whitespace-nowrap"
+            >
+              {consultar.isPending ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Consultando...</>
+              ) : (
+                <><Search className="h-3.5 w-3.5" /> Consultar — R$ {custoEstimado.toFixed(2)}</>
+              )}
+            </Button>
+          </div>
         </div>
-        <Button
-          variant="primary"
-          onClick={() => handleSubmit(false)}
-          disabled={!podeEnviar}
-          className="w-full"
-        >
-          {consultar.isPending ? (
-            <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Consultando...</>
-          ) : (
-            <><Search className="h-3.5 w-3.5" /> Consultar agora</>
-          )}
-        </Button>
-        <p className="text-[9px] text-ink-faint text-center">
-          Mesmo CNPJ em ≤30d retorna do cache sem custo
+
+        {/* Hint LGPD/cache inline */}
+        <p className="text-[10px] text-ink-faint mt-2">
+          {PACOTE_INFO[pacote].descricao} · Mesmo documento em ≤30d retorna do cache sem custo.
         </p>
       </div>
-
-      </div>
-      {/* Fim do card compacto do form */}
+      {/* Fim do form */}
 
       {/* Resultado da consulta atual (se houver) — FULL WIDTH */}
       {consultar.data && (
@@ -275,7 +234,7 @@ export function DueDiligenceForm({ contactId, contactName, initialCnpj }: FormPr
         />
       )}
       {consultar.error && (
-        <div className="bg-danger/10 border border-danger/30 rounded-md px-3 py-2 flex items-start gap-2">
+        <div className="bg-danger/15 border border-danger/40 rounded-md px-3 py-2 flex items-start gap-2">
           <AlertCircle className="h-4 w-4 text-danger shrink-0 mt-0.5" />
           <div>
             <p className="text-[12px] font-semibold text-danger">Falha na consulta</p>
@@ -296,10 +255,10 @@ export function DueDiligenceForm({ contactId, contactName, initialCnpj }: FormPr
                 key={h.id}
                 className="flex items-center justify-between px-2 py-1 rounded bg-surface-2/40 border border-border/50"
               >
-                <span className="font-mono text-ink-muted">
+                <span className="font-mono text-ink-muted tabular-nums">
                   {new Date(h.created_at).toLocaleDateString('pt-BR')} · {h.cnpj}
                 </span>
-                <span className={`text-[10px] font-semibold ${
+                <span className={`text-[10px] font-semibold tabular-nums ${
                   h.status === 'success' ? 'text-success' :
                   h.status === 'partial' ? 'text-warning' :
                   h.status === 'failed' ? 'text-danger' : 'text-ink-faint'
@@ -426,13 +385,16 @@ function ResultadoBox({
   const isMock = !!(consulta.resultado_spc as { _mock?: boolean } | null)?._mock
   const resumos = ((consulta.resultado_spc as { resumos?: ResumoEnvelope[] } | null)?.resumos ?? [])
   const semDadosEstruturados = isSuccess && resumos.length === 0
+  const primeiroResumo = resumos[0]?.resumo
+  const datajud = consulta.resultado_datajud as DatajudPayload | null
+  const analise = primeiroResumo ? analisar(primeiroResumo) : null
 
   return (
-    <div className={`rounded-lg ${
-      isSuccess ? 'bg-success/5' : 'bg-warning/10'
-    }`}>
-      <div className={`flex items-center gap-2 px-4 py-2 border-b ${
-        isSuccess ? 'border-success/20' : 'border-warning/30'
+    // ÚNICA borda externa do bloco de resultado
+    <div className="border border-border rounded-lg bg-surface-2/20 overflow-hidden">
+      {/* Status bar topo (sem borda dupla — só uma divisória interna) */}
+      <div className={`flex items-center gap-2 px-4 py-2 border-b border-border/40 ${
+        isSuccess ? 'bg-success/15' : 'bg-warning/15'
       }`}>
         {isSuccess ? (
           <CheckCircle className="h-4 w-4 text-success" />
@@ -443,11 +405,11 @@ function ResultadoBox({
           {cacheHit ? 'Cache (30d)' : 'Consulta concluída'}
         </span>
         {isMock && (
-          <span className="text-[9px] font-mono uppercase text-warning bg-warning/15 px-1.5 py-0.5 rounded">
+          <span className="text-[9px] font-mono uppercase text-warning bg-warning/20 px-1.5 py-0.5 rounded">
             mock
           </span>
         )}
-        <span className="ml-auto text-[11px] font-mono font-semibold text-ink">
+        <span className="ml-auto text-[11px] font-mono font-semibold text-ink tabular-nums">
           R$ {consulta.custo_brl.toFixed(2)}
         </span>
         {(cacheHit || semDadosEstruturados) && (
@@ -461,8 +423,9 @@ function ResultadoBox({
           </button>
         )}
       </div>
+
       {semDadosEstruturados && (
-        <div className="px-3 py-2 bg-warning/10 border-b border-warning/30 text-[11px] text-ink-muted flex items-start gap-2">
+        <div className="px-3 py-2 bg-warning/15 border-b border-border/40 text-[11px] text-ink-muted flex items-start gap-2">
           <AlertCircle className="h-3.5 w-3.5 text-warning shrink-0 mt-0.5" />
           <span>
             Esta consulta foi feita antes da última atualização do sistema e está no
@@ -475,24 +438,41 @@ function ResultadoBox({
         <p className="text-[11px] text-warning px-3 py-2">{consulta.erro}</p>
       )}
 
-      {/* Parecer IA — destaque no topo, full width */}
-      {consulta.parecer_ia && (
-        <ParecerIaBox parecer={consulta.parecer_ia} />
+      {/* Parecer IA — STICKY no topo, FULL WIDTH, com score gigante */}
+      {(consulta.parecer_ia || analise) && (
+        <ParecerIaBox
+          parecer={consulta.parecer_ia ?? ''}
+          score={primeiroResumo?.score ?? null}
+          veredito={analise?.veredito ?? null}
+        />
       )}
 
-      {/* Grid: ResumoCard (empresa) + Datajud (processos) lado a lado em wide */}
-      <div className="grid xl:grid-cols-2 gap-3 p-3">
-        {resumos.length > 0 ? (
-          resumos.map((r, i) => <ResumoCard key={i} env={r} />)
-        ) : (
-          <p className="text-[11px] text-ink-muted col-span-full">
-            Sem dados estruturados — veja o JSON bruto abaixo.
-          </p>
-        )}
-        {consulta.resultado_datajud && (
-          <DatajudBox datajud={consulta.resultado_datajud as DatajudPayload} />
-        )}
-      </div>
+      {/* Grid 4 colunas: Empresa | Sócios | Inadimplências/Score | Datajud */}
+      {primeiroResumo ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 p-3">
+          {/* Coluna 1: Dados cadastrais da empresa */}
+          <ColunaEmpresa resumo={primeiroResumo} produto={resumos[0]?.produto} analise={analise!} />
+
+          {/* Coluna 2: Sócios + Participações */}
+          <ColunaSocios resumo={primeiroResumo} />
+
+          {/* Coluna 3: Score + Inadimplências + Protestos */}
+          <ColunaRisco resumo={primeiroResumo} analise={analise!} />
+
+          {/* Coluna 4: Datajud */}
+          {datajud ? (
+            <ColunaDatajud datajud={datajud} />
+          ) : (
+            <SubCard titulo="Processos judiciais">
+              <p className="text-[11px] text-ink-faint">Datajud não consultado.</p>
+            </SubCard>
+          )}
+        </div>
+      ) : (
+        <p className="text-[11px] text-ink-muted p-3">
+          Sem dados estruturados — veja o JSON bruto abaixo.
+        </p>
+      )}
 
       <details className="border-t border-border/30">
         <summary className="text-[10px] text-ink-faint cursor-pointer hover:text-ink px-3 py-1.5">
@@ -507,32 +487,426 @@ function ResultadoBox({
 }
 
 // ============================================================================
-// Parecer IA — markdown render simples (sem dependências externas)
+// Sub-cards do grid 4 colunas — sem border externa, só hairline divisória
 // ============================================================================
-function ParecerIaBox({ parecer }: { parecer: string }) {
-  // Detectar veredito no texto pra colorir o card
-  const verdeMatch = /PODE VENDER/i.test(parecer)
-  const vermelhoMatch = /N[ÃA]O RECOMENDADO/i.test(parecer)
-  const tone = vermelhoMatch ? 'danger' : verdeMatch ? 'success' : 'warning'
-  const toneClass = {
-    success: 'bg-success/8 border-success/40',
-    warning: 'bg-warning/8 border-warning/40',
-    danger:  'bg-danger/8 border-danger/40',
-  }[tone]
-
+function SubCard({ titulo, badge, children }: { titulo: string; badge?: ReactNode; children: ReactNode }) {
   return (
-    <div className={`m-3 mb-0 rounded-md border-2 ${toneClass}`}>
-      <div className="px-3 py-2 border-b border-border/40 flex items-center gap-2">
-        <Sparkles className="h-4 w-4 text-accent" />
-        <span className="text-[12px] font-bold text-ink uppercase tracking-wider">
-          Parecer da IA
-        </span>
-        <span className="ml-auto text-[9px] font-mono text-ink-faint">
-          Análise consolidada SPC + Datajud
+    <section className="bg-surface-2/40 rounded-md overflow-hidden flex flex-col">
+      <div className="px-3 py-2 border-b border-border/30 bg-surface-2/30 flex items-center gap-2">
+        <h3 className="text-[10px] uppercase tracking-wider text-ink-faint font-bold flex-1 min-w-0 truncate">
+          {titulo}
+        </h3>
+        {badge}
+      </div>
+      <div className="px-3 py-2.5 flex-1 min-w-0">
+        {children}
+      </div>
+    </section>
+  )
+}
+
+function ColunaEmpresa({ resumo, produto, analise }: { resumo: Resumo; produto?: string; analise: Analise }) {
+  const c = resumo.consumidor
+  return (
+    <SubCard
+      titulo={c.tipo === 'J' ? 'Empresa' : 'Pessoa Física'}
+      badge={produto ? <span className="text-[9px] font-mono text-ink-faint">SPC #{produto}</span> : null}
+    >
+      <h3 className="text-[13px] font-bold text-ink leading-tight mb-1">
+        {c.nome ?? '(sem nome no SPC)'}
+      </h3>
+      <p className="text-[10px] font-mono text-ink-muted tabular-nums mb-2">
+        {c.tipo === 'J' ? 'CNPJ' : 'CPF'}: {c.documento}
+      </p>
+      {c.situacao && (
+        <p className="mb-2">
+          <span className={`px-1.5 py-0.5 rounded text-[9px] uppercase font-bold ${
+            /ATIV|REGUL/i.test(c.situacao)
+              ? 'bg-success/20 text-success'
+              : 'bg-warning/20 text-warning'
+          }`}>
+            {c.situacao}
+          </span>
+        </p>
+      )}
+
+      <div className="space-y-1 text-[11px] border-t border-border/30 pt-2 mt-2">
+        {c.razao_social && c.razao_social !== c.nome && (
+          <Linha label="Razão" valor={c.razao_social} />
+        )}
+        {c.natureza_juridica && <Linha label="Natureza" valor={c.natureza_juridica} />}
+        {c.data_fundacao && <Linha label="Fundação" valor={c.data_fundacao} />}
+        {c.data_nascimento && <Linha label="Nasc." valor={c.data_nascimento} />}
+        {c.endereco && <Linha label="Endereço" valor={c.endereco} />}
+        {c.telefones && c.telefones.length > 0 && (
+          <Linha label="Telefones" valor={c.telefones.join(' · ')} />
+        )}
+        {c.email && <Linha label="Email" valor={c.email} />}
+      </div>
+
+      {/* Limite + condição (recomendação operacional) */}
+      <div className="border-t border-border/30 pt-2 mt-2 space-y-1.5">
+        <div>
+          <p className="text-[9px] uppercase tracking-wider text-ink-faint">Limite sugerido</p>
+          <p className="text-[14px] font-bold font-mono tabular-nums text-ink">
+            {analise.limiteCreditoSugerido != null
+              ? analise.limiteCreditoSugerido > 0
+                ? fmtBRL(analise.limiteCreditoSugerido)
+                : 'Não conceder'
+              : '—'}
+          </p>
+        </div>
+        <div>
+          <p className="text-[9px] uppercase tracking-wider text-ink-faint">Condição de pagamento</p>
+          <p className="text-[11px] text-ink leading-tight">
+            {analise.condicaoPagamentoSugerida}
+          </p>
+        </div>
+      </div>
+    </SubCard>
+  )
+}
+
+function ColunaSocios({ resumo }: { resumo: Resumo }) {
+  const socios = resumo.socios ?? []
+  const participacoes = resumo.participacoes_em_empresas ?? []
+  const totalBadge = (socios.length + participacoes.length) > 0
+    ? <span className="text-[9px] font-mono text-ink-faint tabular-nums">{socios.length + participacoes.length}</span>
+    : null
+  return (
+    <SubCard titulo="Sócios & participações" badge={totalBadge}>
+      {socios.length === 0 && participacoes.length === 0 && (
+        <p className="text-[11px] text-ink-faint">Sem informações de quadro societário.</p>
+      )}
+
+      {socios.length > 0 && (
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-ink-faint font-semibold mb-1">
+            Sócios ({socios.length})
+          </p>
+          <ul className="space-y-0.5">
+            {socios.map((s, i) => (
+              <li key={i} className="flex items-start justify-between gap-2 text-[11px]">
+                <span className="text-ink truncate flex-1 min-w-0">{s.nome}</span>
+                <span className="text-ink-muted font-mono text-[10px] shrink-0 tabular-nums">
+                  {s.participacao ?? ''} {s.documento ? `· ${s.documento}` : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {participacoes.length > 0 && (
+        <div className={socios.length > 0 ? 'border-t border-border/30 pt-2 mt-2' : ''}>
+          <p className="text-[10px] uppercase tracking-wider text-ink-faint font-semibold mb-1">
+            Participações ({participacoes.length})
+          </p>
+          <ul className="space-y-0.5">
+            {participacoes.map((p, i) => (
+              <li key={i} className="flex items-start justify-between gap-2 text-[11px]">
+                <span className="text-ink truncate flex-1 min-w-0">{p.nome}</span>
+                <span className="text-ink-muted font-mono text-[10px] shrink-0 tabular-nums">
+                  {p.tipo ?? ''} {p.cnpj ?? ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </SubCard>
+  )
+}
+
+function ColunaRisco({ resumo, analise }: { resumo: Resumo; analise: Analise }) {
+  const r = resumo
+  const temInad = r.inadimplencias.qtd > 0
+  const temProtesto = r.protestos.qtd > 0
+  return (
+    <SubCard titulo="Score & risco">
+      <div className="grid grid-cols-2 gap-2 mb-2">
+        <ScoreGauge valor={r.score.valor} classificacao={r.score.classificacao} />
+        <Stat
+          label={r.consumidor.tipo === 'J' ? 'Tempo' : 'Idade'}
+          value={analise.tempoEmpresaAnos != null ? `${analise.tempoEmpresaAnos}` : '—'}
+          sub={analise.tempoEmpresaAnos != null ? 'anos' : null}
+          tone={
+            analise.tempoEmpresaAnos == null
+              ? 'neutral'
+              : analise.tempoEmpresaAnos >= 5
+              ? 'good'
+              : analise.tempoEmpresaAnos >= 2
+              ? 'warn'
+              : 'bad'
+          }
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 border-t border-border/30 pt-2 mb-2">
+        <Stat
+          label="Inadimplências"
+          value={r.inadimplencias.qtd > 0 ? `${r.inadimplencias.qtd}` : 'Nenhuma'}
+          sub={r.inadimplencias.qtd > 0 ? fmtBRL(r.inadimplencias.valor_total) : null}
+          tone={temInad ? 'bad' : 'good'}
+        />
+        <Stat
+          label="Protestos"
+          value={r.protestos.qtd > 0 ? `${r.protestos.qtd}` : 'Nenhum'}
+          sub={r.protestos.qtd > 0 ? fmtBRL(r.protestos.valor_total) : null}
+          tone={temProtesto ? 'bad' : 'good'}
+        />
+      </div>
+
+      {/* Detalhe de inadimplências */}
+      {r.inadimplencias.detalhes.length > 0 && (
+        <div className="border-t border-border/30 pt-2">
+          <p className="text-[10px] uppercase tracking-wider text-danger font-semibold mb-1">
+            Inadimplências detectadas
+          </p>
+          <ul className="space-y-0.5">
+            {r.inadimplencias.detalhes.map((d, i) => (
+              <li key={i} className="flex items-start justify-between gap-2 text-[11px]">
+                <span className="text-ink truncate flex-1 min-w-0">{d.origem}</span>
+                <span className="text-danger font-mono text-[10px] shrink-0 tabular-nums">
+                  {fmtBRL(d.valor)} {d.data ? `· ${d.data}` : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Sinais positivos/alerta condensados */}
+      {(analise.sinaisPositivos.length > 0 || analise.sinaisAlerta.length > 0) && (
+        <div className="border-t border-border/30 pt-2 mt-2 space-y-1.5">
+          {analise.sinaisPositivos.length > 0 && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-success font-bold mb-0.5">
+                ✓ Positivos
+              </p>
+              <ul className="space-y-0.5">
+                {analise.sinaisPositivos.map((s, i) => (
+                  <li key={i} className="text-[11px] text-ink leading-tight">• {s}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {analise.sinaisAlerta.length > 0 && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-danger font-bold mb-0.5">
+                ⚠ Alertas
+              </p>
+              <ul className="space-y-0.5">
+                {analise.sinaisAlerta.map((s, i) => (
+                  <li key={i} className="text-[11px] text-ink leading-tight">• {s}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </SubCard>
+  )
+}
+
+function ColunaDatajud({ datajud }: { datajud: DatajudPayload }) {
+  const tem = datajud.processos.length > 0
+  const total = datajud.totalEncontrado
+  const badge = (
+    <span className={`text-[9px] font-mono uppercase ${tem ? 'text-warning' : 'text-success'} tabular-nums`}>
+      Datajud · CNJ
+    </span>
+  )
+  return (
+    <SubCard titulo="Processos judiciais" badge={badge}>
+      <div className="flex items-center gap-2 mb-2">
+        {tem ? (
+          <AlertCircle className="h-4 w-4 text-warning shrink-0" />
+        ) : (
+          <CheckCircle className="h-4 w-4 text-success shrink-0" />
+        )}
+        <span className="text-[12px] font-semibold text-ink tabular-nums">
+          {tem
+            ? `${total} processo${total === 1 ? '' : 's'}`
+            : 'Nenhum processo encontrado'}
         </span>
       </div>
-      <div className="px-3 py-3 text-[12px] text-ink leading-relaxed prose-sm">
-        <MarkdownSimples texto={parecer} />
+
+      {tem && (
+        <div className="space-y-1.5">
+          {datajud.processos.slice(0, 8).map((p, i) => (
+            <div
+              key={i}
+              className="border-b border-border/30 pb-1.5 last:border-b-0 last:pb-0"
+            >
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-[11px] font-mono text-ink tabular-nums">{p.numeroProcesso}</span>
+                <span className="text-[9px] font-mono text-ink-faint">
+                  {p.tribunal} · {p.grau}
+                </span>
+              </div>
+              <p className="text-[11px] text-ink-muted leading-tight">
+                <span className="font-semibold">{p.classe}</span>
+                {p.assunto && p.assunto !== '—' && ` · ${p.assunto}`}
+              </p>
+              <div className="flex items-center justify-between mt-0.5 text-[9px] text-ink-faint">
+                <span className="truncate">{p.orgaoJulgador}</span>
+                <span className="shrink-0 ml-1 tabular-nums">
+                  {p.dataAjuizamento && `Ajuiz. ${p.dataAjuizamento}`}
+                </span>
+              </div>
+            </div>
+          ))}
+          {datajud.processos.length > 8 && (
+            <p className="text-[10px] text-ink-faint text-center pt-1 tabular-nums">
+              + {datajud.processos.length - 8} processo(s) — total {total}
+            </p>
+          )}
+        </div>
+      )}
+
+      <details className="mt-2 text-[10px]">
+        <summary className="cursor-pointer text-ink-faint hover:text-ink">
+          Por tribunal ({datajud.resumoTribunais.length})
+        </summary>
+        <ul className="mt-1 space-y-0.5">
+          {datajud.resumoTribunais.map((t, i) => (
+            <li key={i} className="flex items-center justify-between">
+              <span className="text-ink-muted">{t.tribunal}</span>
+              <span className={`font-mono tabular-nums ${
+                t.erro ? 'text-danger' : t.total > 0 ? 'text-warning' : 'text-ink-faint'
+              }`}>
+                {t.erro ? `erro: ${t.erro.slice(0, 30)}` : `${t.total} processo(s)`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </details>
+    </SubCard>
+  )
+}
+
+// ============================================================================
+// Parecer IA — sticky no topo, hero com score gigante
+// ============================================================================
+function ParecerIaBox({
+  parecer,
+  score,
+  veredito: vereditoExterno,
+}: {
+  parecer: string
+  score: { valor: number | null; classificacao: string | null } | null
+  veredito: 'verde' | 'amarelo' | 'vermelho' | null
+}) {
+  const [expandido, setExpandido] = useState(false)
+
+  // Detectar veredito no texto pra colorir o card (fallback do veredito analítico)
+  const verdeMatch = /PODE VENDER/i.test(parecer)
+  const vermelhoMatch = /N[ÃA]O RECOMENDADO/i.test(parecer)
+  const vereditoTexto = vermelhoMatch ? 'vermelho' : verdeMatch ? 'verde' : 'amarelo'
+  const verdict = vereditoExterno ?? vereditoTexto
+
+  const verdictConfig = {
+    verde: {
+      bg: 'bg-success/15',
+      text: 'text-success',
+      label: 'PODE VENDER',
+      sticky: 'bg-success/15',
+    },
+    amarelo: {
+      bg: 'bg-warning/15',
+      text: 'text-warning',
+      label: 'ATENÇÃO',
+      sticky: 'bg-warning/15',
+    },
+    vermelho: {
+      bg: 'bg-danger/15',
+      text: 'text-danger',
+      label: 'NÃO RECOMENDADO',
+      sticky: 'bg-danger/15',
+    },
+  }[verdict]
+
+  // Preview de ~2 linhas (primeiros 200 chars do markdown sem ##)
+  const previewTexto = parecer
+    .replace(/##\s+/g, '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .split('\n')
+    .filter(l => l.trim())
+    .slice(0, 2)
+    .join(' ')
+    .slice(0, 220)
+
+  const temScore = score?.valor != null
+  const valorScoreGigante = temScore ? `${score!.valor}` : verdictConfig.label
+
+  return (
+    <div
+      className={`sticky top-[57px] z-10 backdrop-blur ${verdictConfig.sticky} border-b border-border/40`}
+    >
+      <div className="px-4 py-3">
+        {/* Hero: score gigante à esquerda, parecer à direita */}
+        <div className="flex flex-col md:flex-row items-start gap-4">
+          {/* Score gigante / Veredito */}
+          <div className="shrink-0 flex flex-col items-center md:items-start">
+            <div className={`text-5xl md:text-7xl font-bold tabular-nums leading-none ${verdictConfig.text}`}>
+              {valorScoreGigante}
+            </div>
+            {temScore && (
+              <div className="text-[10px] uppercase tracking-wider text-ink-faint mt-1">
+                Score / 1000
+                {score?.classificacao && <span className="ml-1">· {score.classificacao}</span>}
+              </div>
+            )}
+            <div className={`mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${verdictConfig.bg} ${verdictConfig.text}`}>
+              <Sparkles className="h-3 w-3" />
+              {verdictConfig.label}
+            </div>
+          </div>
+
+          {/* Parecer texto + collapse */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <Sparkles className="h-3.5 w-3.5 text-accent" />
+              <span className="text-[11px] font-bold text-ink uppercase tracking-wider">
+                Parecer da IA
+              </span>
+              <span className="text-[9px] font-mono text-ink-faint ml-auto">
+                Análise SPC + Datajud
+              </span>
+            </div>
+            {parecer ? (
+              expandido ? (
+                <div className="text-[12px] text-ink leading-relaxed prose-sm">
+                  <MarkdownSimples texto={parecer} />
+                </div>
+              ) : (
+                <p className="text-[12px] text-ink leading-relaxed line-clamp-2">
+                  {previewTexto}
+                  {parecer.length > previewTexto.length && '...'}
+                </p>
+              )
+            ) : (
+              <p className="text-[11px] text-ink-muted italic">
+                Parecer IA não disponível nesta consulta.
+              </p>
+            )}
+
+            {parecer && parecer.length > previewTexto.length && (
+              <button
+                type="button"
+                onClick={() => setExpandido(e => !e)}
+                className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-accent hover:underline"
+              >
+                {expandido ? (
+                  <>Ocultar parecer <ChevronUp className="h-3 w-3" /></>
+                ) : (
+                  <>Ver completo <ChevronDown className="h-3 w-3" /></>
+                )}
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -590,7 +964,7 @@ function aplicarBoldEEmojis(s: string): string {
 }
 
 // ============================================================================
-// Datajud — processos judiciais (CNJ)
+// Datajud — processos judiciais (CNJ) — tipos (componente movido pra ColunaDatajud)
 // ============================================================================
 interface DatajudPayload {
   ok: boolean
@@ -609,82 +983,6 @@ interface DatajudPayload {
   }>
   resumoTribunais: Array<{ tribunal: string; total: number; retornados: number; erro?: string }>
   erros: string[]
-}
-
-function DatajudBox({ datajud }: { datajud: DatajudPayload }) {
-  const tem = datajud.processos.length > 0
-  const total = datajud.totalEncontrado
-  return (
-    <div className={`rounded-md border border-border/40 ${tem ? 'bg-warning/5' : 'bg-success/5'}`}>
-      <div className="px-3 py-2 flex items-center gap-2 border-b border-border/40">
-        {tem ? (
-          <AlertCircle className="h-4 w-4 text-warning" />
-        ) : (
-          <CheckCircle className="h-4 w-4 text-success" />
-        )}
-        <span className="text-[12px] font-semibold text-ink">
-          {tem
-            ? `${total} processo${total === 1 ? '' : 's'} judicial${total === 1 ? '' : 'is'} encontrado${total === 1 ? '' : 's'}`
-            : 'Nenhum processo judicial encontrado'}
-        </span>
-        <span className="ml-auto text-[9px] font-mono text-ink-faint uppercase">
-          Datajud · CNJ
-        </span>
-      </div>
-
-      {tem && (
-        <div className="px-3 py-2 space-y-1.5">
-          {datajud.processos.slice(0, 8).map((p, i) => (
-            <div
-              key={i}
-              className="border border-border/50 rounded px-2 py-1.5 bg-surface-2/30"
-            >
-              <div className="flex items-center justify-between mb-0.5">
-                <span className="text-[11px] font-mono text-ink">{p.numeroProcesso}</span>
-                <span className="text-[9px] font-mono text-ink-faint">
-                  {p.tribunal} · {p.grau}
-                </span>
-              </div>
-              <p className="text-[11px] text-ink-muted leading-tight">
-                <span className="font-semibold">{p.classe}</span>
-                {p.assunto && p.assunto !== '—' && ` · ${p.assunto}`}
-              </p>
-              <div className="flex items-center justify-between mt-0.5 text-[9px] text-ink-faint">
-                <span>{p.orgaoJulgador}</span>
-                <span>
-                  {p.dataAjuizamento && `Ajuiz. ${p.dataAjuizamento}`}
-                  {p.dataUltimaAtualizacao && ` · Atual. ${p.dataUltimaAtualizacao}`}
-                </span>
-              </div>
-            </div>
-          ))}
-          {datajud.processos.length > 8 && (
-            <p className="text-[10px] text-ink-faint text-center pt-1">
-              + {datajud.processos.length - 8} processo(s) — total {total}
-            </p>
-          )}
-        </div>
-      )}
-
-      <details className="px-3 pb-2 text-[10px]">
-        <summary className="cursor-pointer text-ink-faint hover:text-ink">
-          Por tribunal ({datajud.resumoTribunais.length} consultados)
-        </summary>
-        <ul className="mt-1 space-y-0.5">
-          {datajud.resumoTribunais.map((t, i) => (
-            <li key={i} className="flex items-center justify-between">
-              <span className="text-ink-muted">{t.tribunal}</span>
-              <span className={`font-mono ${
-                t.erro ? 'text-danger' : t.total > 0 ? 'text-warning' : 'text-ink-faint'
-              }`}>
-                {t.erro ? `erro: ${t.erro.slice(0, 30)}` : `${t.total} processo(s)`}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </details>
-    </div>
-  )
 }
 
 // ============================================================================
@@ -817,219 +1115,6 @@ function analisar(r: Resumo): Analise {
   }
 }
 
-function ResumoCard({ env }: { env: ResumoEnvelope }) {
-  const r = env.resumo
-  const c = r.consumidor
-  const temInad = r.inadimplencias.qtd > 0
-  const temProtesto = r.protestos.qtd > 0
-  const analise = analisar(r)
-
-  const veredictoStyle = {
-    verde:    { bg: 'bg-success/15',  border: 'border-success/40',  text: 'text-success',  label: 'PODE VENDER',     icon: '✓' },
-    amarelo:  { bg: 'bg-warning/15',  border: 'border-warning/40',  text: 'text-warning',  label: 'ATENÇÃO',          icon: '!' },
-    vermelho: { bg: 'bg-danger/15',   border: 'border-danger/40',   text: 'text-danger',   label: 'NÃO RECOMENDADO',  icon: '✕' },
-  }[analise.veredito]
-
-  return (
-    <div className="border border-border rounded-md bg-surface-2/30 overflow-hidden">
-      {/* Header: nome + documento */}
-      <div className="px-3 py-2 border-b border-border/60 bg-surface-2/50">
-        <div className="flex items-center justify-between mb-0.5">
-          <span className="text-[10px] uppercase tracking-wider text-ink-faint font-semibold">
-            {c.tipo === 'J' ? 'Empresa' : 'Pessoa Física'}
-          </span>
-          {env.produto && (
-            <span className="text-[9px] font-mono text-ink-faint">SPC #{env.produto}</span>
-          )}
-        </div>
-        <h3 className="text-[13px] font-bold text-ink leading-tight">
-          {c.nome ?? '(sem nome no SPC)'}
-        </h3>
-        <p className="text-[10px] font-mono text-ink-muted">
-          {c.tipo === 'J' ? 'CNPJ' : 'CPF'}: {c.documento}
-          {c.situacao && (
-            <span className={`ml-2 px-1.5 py-0.5 rounded text-[9px] uppercase font-bold ${
-              /ATIV|REGUL/i.test(c.situacao)
-                ? 'bg-success/20 text-success'
-                : 'bg-warning/20 text-warning'
-            }`}>
-              {c.situacao}
-            </span>
-          )}
-        </p>
-      </div>
-
-      {/* ANALISE — veredito + limite + pagamento sugerido */}
-      <div className={`p-3 border-b border-border/60 ${veredictoStyle.bg} ${veredictoStyle.border} border-b-2`}>
-        <div className="flex items-start gap-3">
-          <div className={`h-9 w-9 rounded-full flex items-center justify-center text-[18px] font-bold ${veredictoStyle.text} bg-bg/40 shrink-0`}>
-            {veredictoStyle.icon}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className={`text-[10px] uppercase tracking-wider font-bold ${veredictoStyle.text}`}>
-              {veredictoStyle.label}
-            </p>
-            <p className="text-[12px] text-ink font-semibold leading-tight">
-              {analise.resumoVeredito}
-            </p>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-border/40">
-          <div>
-            <p className="text-[9px] uppercase tracking-wider text-ink-faint">Limite sugerido</p>
-            <p className={`text-[15px] font-bold font-mono ${veredictoStyle.text}`}>
-              {analise.limiteCreditoSugerido != null
-                ? analise.limiteCreditoSugerido > 0
-                  ? fmtBRL(analise.limiteCreditoSugerido)
-                  : 'Não conceder'
-                : '—'}
-            </p>
-          </div>
-          <div>
-            <p className="text-[9px] uppercase tracking-wider text-ink-faint">Condição de pagamento</p>
-            <p className="text-[11px] text-ink font-semibold leading-tight">
-              {analise.condicaoPagamentoSugerida}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Sinais positivos / Alerta */}
-      {(analise.sinaisPositivos.length > 0 || analise.sinaisAlerta.length > 0) && (
-        <div className="grid md:grid-cols-2 gap-2 p-3 border-b border-border/60">
-          {analise.sinaisPositivos.length > 0 && (
-            <div className="bg-success/5 border border-success/30 rounded p-2">
-              <p className="text-[9px] uppercase tracking-wider font-bold text-success mb-1">
-                ✓ Sinais positivos
-              </p>
-              <ul className="space-y-0.5">
-                {analise.sinaisPositivos.map((s, i) => (
-                  <li key={i} className="text-[11px] text-ink leading-tight">• {s}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {analise.sinaisAlerta.length > 0 && (
-            <div className="bg-danger/5 border border-danger/30 rounded p-2">
-              <p className="text-[9px] uppercase tracking-wider font-bold text-danger mb-1">
-                ⚠ Sinais de alerta
-              </p>
-              <ul className="space-y-0.5">
-                {analise.sinaisAlerta.map((s, i) => (
-                  <li key={i} className="text-[11px] text-ink leading-tight">• {s}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Score visual + Inadimplências + Protestos + Tempo */}
-      <div className="grid grid-cols-4 gap-2 p-3 border-b border-border/60">
-        <ScoreGauge valor={r.score.valor} classificacao={r.score.classificacao} />
-        <Stat
-          label="Inadimplências"
-          value={r.inadimplencias.qtd > 0 ? `${r.inadimplencias.qtd}` : 'Nenhuma'}
-          sub={r.inadimplencias.qtd > 0 ? fmtBRL(r.inadimplencias.valor_total) : null}
-          tone={temInad ? 'bad' : 'good'}
-        />
-        <Stat
-          label="Protestos"
-          value={r.protestos.qtd > 0 ? `${r.protestos.qtd}` : 'Nenhum'}
-          sub={r.protestos.qtd > 0 ? fmtBRL(r.protestos.valor_total) : null}
-          tone={temProtesto ? 'bad' : 'good'}
-        />
-        <Stat
-          label={c.tipo === 'J' ? 'Tempo no mercado' : 'Idade'}
-          value={analise.tempoEmpresaAnos != null ? `${analise.tempoEmpresaAnos}` : '—'}
-          sub={analise.tempoEmpresaAnos != null ? 'anos' : null}
-          tone={
-            analise.tempoEmpresaAnos == null
-              ? 'neutral'
-              : analise.tempoEmpresaAnos >= 5
-              ? 'good'
-              : analise.tempoEmpresaAnos >= 2
-              ? 'warn'
-              : 'bad'
-          }
-        />
-      </div>
-
-      {/* Dados cadastrais */}
-      <div className="px-3 py-2 text-[11px] space-y-1 border-b border-border/60">
-        {c.razao_social && c.razao_social !== c.nome && (
-          <Linha label="Razão Social" valor={c.razao_social} />
-        )}
-        {c.natureza_juridica && <Linha label="Natureza" valor={c.natureza_juridica} />}
-        {c.data_fundacao && <Linha label="Fundação" valor={c.data_fundacao} />}
-        {c.data_nascimento && <Linha label="Nascimento" valor={c.data_nascimento} />}
-        {c.endereco && <Linha label="Endereço" valor={c.endereco} />}
-        {c.telefones && c.telefones.length > 0 && (
-          <Linha label="Telefones" valor={c.telefones.join(' · ')} />
-        )}
-        {c.email && <Linha label="Email" valor={c.email} />}
-      </div>
-
-      {/* Sócios */}
-      {r.socios && r.socios.length > 0 && (
-        <div className="px-3 py-2 text-[11px] border-b border-border/60">
-          <p className="text-[10px] uppercase tracking-wider text-ink-faint font-semibold mb-1">
-            Sócios ({r.socios.length})
-          </p>
-          <ul className="space-y-0.5">
-            {r.socios.map((s, i) => (
-              <li key={i} className="flex items-center justify-between">
-                <span className="text-ink">{s.nome}</span>
-                <span className="text-ink-muted font-mono text-[10px]">
-                  {s.participacao ?? ''} {s.documento ? `· ${s.documento}` : ''}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Participações em outras empresas */}
-      {r.participacoes_em_empresas && r.participacoes_em_empresas.length > 0 && (
-        <div className="px-3 py-2 text-[11px] border-b border-border/60">
-          <p className="text-[10px] uppercase tracking-wider text-ink-faint font-semibold mb-1">
-            Participação em outras empresas ({r.participacoes_em_empresas.length})
-          </p>
-          <ul className="space-y-0.5">
-            {r.participacoes_em_empresas.map((p, i) => (
-              <li key={i} className="flex items-center justify-between">
-                <span className="text-ink truncate">{p.nome}</span>
-                <span className="text-ink-muted font-mono text-[10px] shrink-0 ml-2">
-                  {p.tipo ?? ''} {p.cnpj ?? ''}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Detalhe de inadimplências (top 5) */}
-      {r.inadimplencias.detalhes.length > 0 && (
-        <div className="px-3 py-2 text-[11px]">
-          <p className="text-[10px] uppercase tracking-wider text-danger font-semibold mb-1">
-            Inadimplências detectadas
-          </p>
-          <ul className="space-y-0.5">
-            {r.inadimplencias.detalhes.map((d, i) => (
-              <li key={i} className="flex items-center justify-between">
-                <span className="text-ink truncate">{d.origem}</span>
-                <span className="text-danger font-mono text-[10px] shrink-0 ml-2">
-                  {fmtBRL(d.valor)} {d.data ? `· ${d.data}` : ''}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
-  )
-}
-
 function ScoreGauge({ valor, classificacao }: { valor: number | null; classificacao: string | null }) {
   const pct = valor != null ? Math.max(0, Math.min(100, (valor / 1000) * 100)) : 0
   const tone =
@@ -1056,7 +1141,7 @@ function ScoreGauge({ valor, classificacao }: { valor: number | null; classifica
   return (
     <div className="text-center">
       <p className="text-[9px] uppercase tracking-wider text-ink-faint mb-0.5">Score</p>
-      <p className={`text-[14px] font-bold font-mono ${textClass}`}>
+      <p className={`text-[14px] font-bold font-mono tabular-nums ${textClass}`}>
         {valor != null ? `${valor}` : '—'}
         <span className="text-[9px] text-ink-faint">/1000</span>
       </p>
@@ -1083,8 +1168,8 @@ function Stat({
   return (
     <div className="text-center">
       <p className="text-[9px] uppercase tracking-wider text-ink-faint mb-0.5">{label}</p>
-      <p className={`text-[14px] font-bold font-mono ${toneClass}`}>{value}</p>
-      {sub && <p className="text-[9px] text-ink-muted">{sub}</p>}
+      <p className={`text-[14px] font-bold font-mono tabular-nums ${toneClass}`}>{value}</p>
+      {sub && <p className="text-[9px] text-ink-muted tabular-nums">{sub}</p>}
     </div>
   )
 }
@@ -1092,8 +1177,8 @@ function Stat({
 function Linha({ label, valor }: { label: string; valor: string }) {
   return (
     <div className="flex">
-      <span className="text-ink-faint w-24 shrink-0">{label}:</span>
-      <span className="text-ink flex-1">{valor}</span>
+      <span className="text-ink-faint w-20 shrink-0">{label}:</span>
+      <span className="text-ink flex-1 break-words">{valor}</span>
     </div>
   )
 }
