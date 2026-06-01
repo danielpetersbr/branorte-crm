@@ -555,6 +555,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // Capital social é proxy fraco de faturamento; só passa se >0 pra evitar ruído.
           faturamentoDeclaradoBrl:
             capitalSocialBrl != null && capitalSocialBrl > 0 ? capitalSocialBrl : null,
+          // Email cadastral do OpenCNPJ vira candidato de handle adicional
+          // (ex: contato@mbranorte.com.br -> testa "mbranorte"). Reforça inferência.
+          emailCadastral: opencnpjResultado?.email ?? null,
           timeoutMs: 25_000,
         }).catch((e) => ({
           ok: false,
@@ -765,6 +768,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 data_ultimo_post: instagramResultado.data_ultimo_post ?? null,
                 privado: instagramResultado.privado,
                 verificado: instagramResultado.verificado,
+                fonte: instagramResultado.fonte ?? null,
               }
             : undefined,
       },

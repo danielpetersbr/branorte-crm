@@ -57,7 +57,12 @@ export interface InstagramPerfilResultado {
   red_flags?: InstagramRedFlag[]
   custo_estimado_usd?: number // pra accounting
   erro?: string | null
-  fonte?: 'apify-direct' | 'apify-via-google' | null
+  fonte?:
+    | 'apify-direct'
+    | 'apify-via-google'
+    | 'inferido_http'
+    | 'inferido_slug_sem_validacao'
+    | null
 }
 
 const APIFY_ACTOR_ID = 'apify~instagram-profile-scraper'
@@ -301,6 +306,110 @@ function gerarCandidatosHandle(
   return Array.from(candidatos).filter((c) => c.length >= 3 && !blacklist.has(c))
 }
 
+// ---------- candidato adicional via email cadastral ----------
+
+/**
+ * Tenta extrair um handle plausível a partir do email cadastral.
+ *
+ * Exemplos:
+ *   "contato@mbranorte.com.br" -> "mbranorte"
+ *   "vendas@padariaJoao.com"   -> "padariajoao"
+ *   "joao@gmail.com"           -> null  (provedor genérico, ignora)
+ *   "atendimento@sub.foo.com"  -> "foo" (pega só o segundo nível)
+ */
+function gerarCandidatoDeEmail(email: string | null | undefined): string | null {
+  const e = so(email)
+  if (!e) return null
+  const m = e.match(/@([\w\-.]+)\.[\w\-.]+$/i)
+  if (!m) return null
+  const dominioCompleto = e.split('@')[1]?.toLowerCase() ?? ''
+  if (!dominioCompleto) return null
+
+  // Provedores genéricos: descarta (não é o handle da empresa).
+  const provedoresGenericos = new Set([
+    'gmail.com',
+    'hotmail.com',
+    'hotmail.com.br',
+    'outlook.com',
+    'outlook.com.br',
+    'yahoo.com',
+    'yahoo.com.br',
+    'live.com',
+    'live.com.br',
+    'uol.com.br',
+    'bol.com.br',
+    'ig.com.br',
+    'terra.com.br',
+    'globo.com',
+    'icloud.com',
+    'me.com',
+    'msn.com',
+    'aol.com',
+    'protonmail.com',
+    'proton.me',
+    'zoho.com',
+  ])
+  if (provedoresGenericos.has(dominioCompleto)) return null
+
+  // Pega o "core" do domínio: tira sufixos comuns ".com.br", ".com", ".net.br" etc.
+  // Estratégia simples: split por "." e pega o segmento mais relevante (1º se SLD único, ou penúltimo se SLD composto).
+  const partes = dominioCompleto.split('.').filter(Boolean)
+  if (partes.length === 0) return null
+  // Heurística: se for tipo ["mbranorte","com","br"] pega "mbranorte".
+  // Se for tipo ["sub","mbranorte","com","br"] pega "mbranorte" (penúltimo antes do TLD/SLD).
+  // Pega o primeiro segmento que NÃO seja "www" ou sufixo conhecido.
+  const sufixos = new Set(['com', 'br', 'net', 'org', 'co', 'io', 'app', 'biz'])
+  let core: string | null = null
+  for (const p of partes) {
+    if (p === 'www') continue
+    if (sufixos.has(p)) continue
+    core = p
+    break
+  }
+  if (!core) return null
+  const h = slugifyHandle(core)
+  return h.length >= 3 ? h : null
+}
+
+// ---------- HTTP HEAD heurístico (pré-Apify, grátis) ----------
+
+/**
+ * Faz HEAD em https://www.instagram.com/<handle>/ pra verificar existência.
+ *
+ * Comportamento esperado do IG:
+ *   - 200 OK            → handle existe (login wall, mas página existe)
+ *   - 302 redirect      → existe (provavelmente redirect pra login)
+ *   - 404 Not Found     → não existe
+ *   - 429 / 403         → rate-limit ou bloqueio (inconclusivo, retorna ok=false)
+ *
+ * Importante: User-Agent realista é necessário ou IG retorna 4xx genérico.
+ * Timeout curto (6s) — se IG demorar, não vale a pena bloquear o run.
+ */
+async function tentarHttpHead(
+  handle: string,
+  timeoutMs = 6000,
+): Promise<{ ok: boolean; status?: number }> {
+  try {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    const resp = await fetch(`https://www.instagram.com/${handle}/`, {
+      method: 'HEAD',
+      signal: controller.signal,
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+        'Accept-Language': 'pt-BR,pt;q=0.9',
+      },
+      redirect: 'follow',
+    })
+    clearTimeout(timer)
+    // Considera "existe" se 200 ou 302 (redirect pra login wall).
+    return { ok: resp.status === 200 || resp.status === 302, status: resp.status }
+  } catch {
+    return { ok: false }
+  }
+}
+
 // ---------- busca via Google (fallback) ----------
 
 async function buscarHandleViaGoogle(razaoSocial: string): Promise<string | null> {
@@ -421,7 +530,7 @@ function escolherMelhorPerfil(perfis: ApifyProfileRaw[]): ApifyProfileRaw | null
 
 function mapearPerfil(
   raw: ApifyProfileRaw,
-  fonte: 'apify-direct' | 'apify-via-google',
+  fonte: 'apify-direct' | 'apify-via-google' | 'inferido_http',
   custoUsd: number,
   faturamentoDeclaradoBrl: number | null | undefined,
 ): InstagramPerfilResultado {
@@ -499,6 +608,12 @@ export async function buscarInstagramEmpresa(opts: {
   timeoutMs?: number
   /** Faturamento declarado pra detectar mismatch de seguidores (em BRL). */
   faturamentoDeclaradoBrl?: number | null
+  /**
+   * Email cadastral da empresa (ex: do OpenCNPJ). Usado pra inferir handle
+   * adicional via domínio (ex: contato@mbranorte.com.br -> "mbranorte").
+   * Provedores genéricos (gmail/hotmail/etc) são ignorados.
+   */
+  emailCadastral?: string | null
 }): Promise<InstagramPerfilResultado> {
   const razao = so(opts.razaoSocial)
   if (!razao) {
@@ -513,31 +628,71 @@ export async function buscarInstagramEmpresa(opts: {
   }
 
   const token = so(process.env.APIFY_TOKEN)
-  if (!token) {
-    return {
-      ok: false,
-      perfil_encontrado: false,
-      red_flags: [],
-      custo_estimado_usd: 0,
-      erro: 'token_nao_configurado',
-      fonte: null,
-    }
-  }
-
+  const apifyConfigured = !!token
   const timeoutMs = opts.timeoutMs ?? TIMEOUT_DEFAULT_MS
   const fantasia = so(opts.nomeFantasia)
   let custoTotalUsd = 0
 
-  // ===== Tentativa 1: inferência direta =====
-  const candidatos = gerarCandidatosHandle(razao, fantasia)
-  if (candidatos.length > 0) {
+  // ===== Gera candidatos (slug + email cadastral) =====
+  const candidatosSlug = gerarCandidatosHandle(razao, fantasia)
+  const candidatoDeEmail = gerarCandidatoDeEmail(opts.emailCadastral)
+
+  // Ordem: candidato do email primeiro (sinal forte da empresa), depois slugs.
+  const candidatosOrdenados: string[] = []
+  if (candidatoDeEmail) candidatosOrdenados.push(candidatoDeEmail)
+  for (const c of candidatosSlug) {
+    if (!candidatosOrdenados.includes(c)) candidatosOrdenados.push(c)
+  }
+
+  if (candidatosOrdenados.length === 0) {
+    // Sem nenhum candidato — sem como tentar. Retorna gracefully.
+    if (!apifyConfigured) {
+      return {
+        ok: false,
+        perfil_encontrado: false,
+        red_flags: [],
+        custo_estimado_usd: 0,
+        erro: 'token_nao_configurado',
+        fonte: null,
+      }
+    }
+    return {
+      ok: true,
+      perfil_encontrado: false,
+      red_flags: [],
+      custo_estimado_usd: 0,
+      erro: null,
+      fonte: null,
+    }
+  }
+
+  // ===== ETAPA 0 (NOVA): HTTP HEAD pra cada candidato ANTES de queimar Apify =====
+  // Custa zero. Filtra candidatos que claramente não existem (404) e identifica
+  // ao menos um que responde 200/302 (existe — login wall conta como existe).
+  const candidatosConfirmados: string[] = []
+  for (const c of candidatosOrdenados.slice(0, 6)) {
+    // limita 6 HEADs pra não estourar latência
+    const head = await tentarHttpHead(c)
+    if (head.ok) {
+      candidatosConfirmados.push(c)
+    }
+    // Se NÃO ok, pode ser 404 (inválido) ou rate-limit (inconclusivo).
+    // De qualquer jeito, não adiciona — economiza Apify.
+  }
+
+  // ===== ETAPA 1: Apify direto, priorizando handles confirmados via HEAD =====
+  if (apifyConfigured && token) {
+    // Se algum HEAD confirmou, usa SÓ esses (máximo 3) — economia direta.
+    // Se NENHUM confirmou (provavelmente IG rate-limit), cai pro comportamento antigo:
+    // chuta os primeiros 3 slugs e deixa o Apify decidir.
+    const paraApify =
+      candidatosConfirmados.length > 0
+        ? candidatosConfirmados.slice(0, 3)
+        : candidatosOrdenados.slice(0, 3)
+
     try {
-      // Apify cobra por DATASET ITEM gerado, mas pra simplificar contabilidade
-      // tratamos cada RUN como 1 custo (mesmo enviando N usernames juntos).
-      // Na prática Apify cobra por perfil retornado — se quiser ser preciso,
-      // multiplicar por perfis.length depois.
-      custoTotalUsd += CUSTO_POR_RUN_USD * Math.min(candidatos.length, 3)
-      const perfis = await rodarApifyActor(candidatos.slice(0, 3), token, timeoutMs)
+      custoTotalUsd += CUSTO_POR_RUN_USD * Math.min(paraApify.length, 3)
+      const perfis = await rodarApifyActor(paraApify, token, timeoutMs)
       const melhor = escolherMelhorPerfil(perfis)
       if (melhor) {
         return mapearPerfil(
@@ -548,37 +703,74 @@ export async function buscarInstagramEmpresa(opts: {
         )
       }
     } catch (e) {
-      // Erro no Apify direto não é fatal — tentamos via Google.
+      // Erro no Apify direto não é fatal — tentamos fallbacks.
       const _err = e instanceof Error ? e.message : String(e)
       // segue
     }
+  } else if (candidatosConfirmados.length > 0) {
+    // ===== Sem Apify configurado, mas HEAD confirmou: retorna inferido_http =====
+    const handle = candidatosConfirmados[0]
+    return {
+      ok: true,
+      perfil_encontrado: true,
+      handle,
+      url: `https://instagram.com/${handle}`,
+      // Sem dados ricos — só temos a URL confirmada via HEAD.
+      nome_exibicao: null,
+      bio: null,
+      categoria: null,
+      privado: false,
+      verificado: false,
+      email_bio: null,
+      telefone_bio: null,
+      site_bio: null,
+      fotos_perfil_url: null,
+      red_flags: [], // sem dados pra calcular flags
+      custo_estimado_usd: 0,
+      erro: null,
+      fonte: 'inferido_http',
+    }
   }
 
-  // ===== Tentativa 2: handle via Google/DuckDuckGo =====
-  const handleViaGoogle = await buscarHandleViaGoogle(razao)
-  if (handleViaGoogle) {
-    try {
-      custoTotalUsd += CUSTO_POR_RUN_USD
-      const perfis = await rodarApifyActor([handleViaGoogle], token, timeoutMs)
-      const melhor = escolherMelhorPerfil(perfis)
-      if (melhor) {
-        return mapearPerfil(
-          melhor,
-          'apify-via-google',
-          custoTotalUsd,
-          opts.faturamentoDeclaradoBrl,
-        )
+  // ===== ETAPA 2: handle via Google/DuckDuckGo (só se Apify estiver disponível) =====
+  if (apifyConfigured && token) {
+    const handleViaGoogle = await buscarHandleViaGoogle(razao)
+    if (handleViaGoogle) {
+      try {
+        custoTotalUsd += CUSTO_POR_RUN_USD
+        const perfis = await rodarApifyActor([handleViaGoogle], token, timeoutMs)
+        const melhor = escolherMelhorPerfil(perfis)
+        if (melhor) {
+          return mapearPerfil(
+            melhor,
+            'apify-via-google',
+            custoTotalUsd,
+            opts.faturamentoDeclaradoBrl,
+          )
+        }
+      } catch (e) {
+        const err = e instanceof Error ? e.message : String(e)
+        return {
+          ok: false,
+          perfil_encontrado: false,
+          red_flags: [],
+          custo_estimado_usd: custoTotalUsd,
+          erro: `apify_falhou: ${err}`,
+          fonte: null,
+        }
       }
-    } catch (e) {
-      const err = e instanceof Error ? e.message : String(e)
-      return {
-        ok: false,
-        perfil_encontrado: false,
-        red_flags: [],
-        custo_estimado_usd: custoTotalUsd,
-        erro: `apify_falhou: ${err}`,
-        fonte: null,
-      }
+    }
+  }
+
+  // ===== Sem Apify e sem HEAD confirmado: retorna ok=true sem perfil =====
+  if (!apifyConfigured) {
+    return {
+      ok: false,
+      perfil_encontrado: false,
+      red_flags: [],
+      custo_estimado_usd: 0,
+      erro: 'token_nao_configurado',
+      fonte: null,
     }
   }
 
