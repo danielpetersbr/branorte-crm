@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
 import { RoadmapFAB } from '@/components/RoadmapFAB'
 import { GenerationOverlay } from '@/components/GenerationOverlay'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 // Abrevia numero pra caber no badge: 1234 -> 1.2k
 function fmtCount(n: number): string {
@@ -359,9 +360,14 @@ export function Layout() {
       </aside>
 
       <main className="flex-1 min-w-0 min-h-screen pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
-        <Suspense fallback={<PageLoading />}>
-          <Outlet />
-        </Suspense>
+        {/* ErrorBoundary impede TELA PRETA: captura crash de render e falha de
+            import() de chunk lazy (que o React.lazy cacheia). resetKey troca na
+            rota pra limpar o erro ao navegar pra outra página. */}
+        <ErrorBoundary resetKey={loc.pathname}>
+          <Suspense fallback={<PageLoading />}>
+            <Outlet />
+          </Suspense>
+        </ErrorBoundary>
       </main>
 
       {/* FAB global de feedback (visivel em todas as paginas autenticadas) */}
