@@ -52,7 +52,7 @@ export interface CustomDocxAcessorios {
 }
 
 export interface CustomDocxParcela {
-  dataTipo: 'no_pedido' | 'na_nf' | 'apos_nf' | 'data_fixa'
+  dataTipo: 'no_pedido' | 'na_nf' | 'apos_nf' | 'apos_pedido' | 'data_fixa'
   dias?: number
   dataFixa?: string
   metodo: string
@@ -735,6 +735,7 @@ function buildValorTotalProposta(total: number, comMotor: boolean, desconto?: { 
 function formatParcelaData(p: CustomDocxParcela): string {
   switch (p.dataTipo) {
     case 'no_pedido': return 'NO PEDIDO'
+    case 'apos_pedido': return `${p.dias ?? 0} DIAS APÓS O PEDIDO`
     case 'na_nf': return 'NA EMISSÃO DA NOTA'
     case 'apos_nf': return `${p.dias ?? 0} DIAS APÓS A NOTA`
     case 'data_fixa': return p.dataFixa ?? '—'

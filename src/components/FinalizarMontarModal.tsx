@@ -62,7 +62,7 @@ export interface CarrinhoSnapshot {
   // Parcelas estruturadas (tabela DATA/MÉTODO/VALOR)
   parcelas?: Array<{
     id: string
-    dataTipo: 'no_pedido' | 'na_nf' | 'apos_nf' | 'data_fixa'
+    dataTipo: 'no_pedido' | 'na_nf' | 'apos_nf' | 'apos_pedido' | 'data_fixa'
     dias?: number
     dataFixa?: string
     metodo: 'PIX' | 'BOLETO' | 'DINHEIRO' | 'TRANSFERENCIA' | 'CARTAO' | ''

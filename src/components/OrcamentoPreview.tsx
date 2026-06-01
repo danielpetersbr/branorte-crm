@@ -86,8 +86,8 @@ export interface PreviewTerms {
 // Parcela estruturada de pagamento
 export interface ParcelaPagamento {
   id: string
-  dataTipo: 'no_pedido' | 'na_nf' | 'apos_nf' | 'data_fixa'
-  dias?: number          // usado quando dataTipo='apos_nf'
+  dataTipo: 'no_pedido' | 'na_nf' | 'apos_nf' | 'apos_pedido' | 'data_fixa'
+  dias?: number          // usado quando dataTipo='apos_nf' ou 'apos_pedido'
   dataFixa?: string      // usado quando dataTipo='data_fixa' (formato BR DD/MM/AAAA)
   metodo: 'PIX' | 'BOLETO' | 'DINHEIRO' | 'TRANSFERENCIA' | 'CARTAO' | ''
   // Apenas UM dos dois: pct ou valor manual
@@ -1988,6 +1988,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     }
                     function dataLabel(p: ParcelaPagamento): string {
                       if (p.dataTipo === 'no_pedido') return 'NO PEDIDO'
+                      if (p.dataTipo === 'apos_pedido') return `${p.dias || 30} DIAS APÓS O PEDIDO`
                       if (p.dataTipo === 'na_nf') return 'NA EMISSÃO DA NOTA'
                       if (p.dataTipo === 'apos_nf') return `${p.dias || 30} DIAS APÓS A NOTA`
                       if (p.dataTipo === 'data_fixa') return p.dataFixa || 'DATA FIXA'
@@ -2038,6 +2039,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     function dataCalculada(p: ParcelaPagamento): string {
                       const base = dataVendaTxt
                       if (p.dataTipo === 'no_pedido') return base || '—'
+                      if (p.dataTipo === 'apos_pedido') {
+                        // X dias corridos APÓS o pedido = data da venda + X dias
+                        if (!base) return `+${p.dias || 30}d após pedido`
+                        return addDaysCorridos(base, p.dias || 30)
+                      }
                       if (p.dataTipo === 'na_nf') {
                         // Na emissão da NF = data da venda + prazo de entrega
                         if (!base) return '—'
@@ -2188,11 +2194,12 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                               className="text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded"
                                             >
                                               <option value="no_pedido">No pedido</option>
+                                              <option value="apos_pedido">Após pedido (dias)</option>
                                               <option value="na_nf">Na NF</option>
                                               <option value="apos_nf">Após NF (dias)</option>
                                               <option value="data_fixa">Data fixa</option>
                                             </select>
-                                            {p.dataTipo === 'apos_nf' && (
+                                            {(p.dataTipo === 'apos_nf' || p.dataTipo === 'apos_pedido') && (
                                               <input
                                                 type="number" min={1} max={365}
                                                 value={p.dias ?? 30}
