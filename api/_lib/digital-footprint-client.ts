@@ -160,15 +160,30 @@ interface HttpValidationResult {
   ok: boolean
   status: number
   titulo?: string
+  /** Servidor respondeu mas com status que indica existência mesmo sem 2xx/3xx (ex: 401/403/405/503). */
+  servidor_existe?: boolean
 }
 
 /**
- * HTTP HEAD com timeout. Aceita 2xx/3xx como "existe".
+ * Status codes que indicam que o SERVIDOR existe mesmo não retornando 2xx/3xx:
+ *   401 = Unauthorized (página existe, requer auth)
+ *   403 = Forbidden (servidor recusou HEAD/GET, mas existe)
+ *   405 = Method Not Allowed (não aceita HEAD, mas servidor responde — branorte.com retornou isso)
+ *   429 = Too Many Requests (rate-limit, servidor existe)
+ *   503 = Service Unavailable (servidor existe, temporariamente indisponível)
+ */
+function statusIndicaServidorExistente(status: number): boolean {
+  return status === 401 || status === 403 || status === 405 || status === 429 || status === 503
+}
+
+/**
+ * HTTP HEAD com timeout. Aceita 2xx/3xx como "existe" (ok=true).
  * Se HEAD falhar (alguns servers não aceitam), tenta GET com Range para
  * pegar uma fatia mínima.
  *
- * Nota: status 999 (LinkedIn antibot) NÃO é considerado ok aqui — quem chama
- * decide o que fazer com esse status.
+ * Nota: status 999 (LinkedIn antibot) e 401/403/405/429/503 (servidor existe mas
+ * não aceita HEAD/anon) NÃO marcam ok=true, mas marcam servidor_existe=true para
+ * que o caller possa tratar como "inferido" em vez de descartar.
  */
 async function validarHTTP(
   url: string,
@@ -187,7 +202,50 @@ async function validarHTTP(
       redirect: 'follow',
     })
     const ok = resp.status >= 200 && resp.status < 400
-    return { ok, status: resp.status }
+    const servidor_existe = ok || statusIndicaServidorExistente(resp.status)
+    // Se HEAD retornou status que indica servidor existente mas não ok (ex: 405),
+    // tenta GET com Range pra confirmar e extrair título.
+    if (!ok && statusIndicaServidorExistente(resp.status)) {
+      try {
+        const ctrl2 = new AbortController()
+        const t2 = setTimeout(() => ctrl2.abort(), timeoutMs)
+        try {
+          const resp2 = await fetch(url, {
+            method: 'GET',
+            signal: ctrl2.signal,
+            headers: {
+              'User-Agent': REALISTIC_UA,
+              'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+              Range: 'bytes=0-2047',
+            },
+            redirect: 'follow',
+          })
+          const ok2 = resp2.status >= 200 && resp2.status < 400
+          let titulo: string | undefined
+          if (ok2) {
+            try {
+              const body = await resp2.text()
+              const m = body.match(/<title[^>]*>([^<]{1,160})<\/title>/i)
+              if (m) titulo = m[1].trim()
+            } catch {
+              /* ignore body parse */
+            }
+          }
+          return {
+            ok: ok2,
+            status: ok2 ? resp2.status : resp.status,
+            titulo,
+            servidor_existe: ok2 || statusIndicaServidorExistente(resp2.status) || servidor_existe,
+          }
+        } finally {
+          clearTimeout(t2)
+        }
+      } catch {
+        // GET também falhou — mantém o resultado original do HEAD
+        return { ok, status: resp.status, servidor_existe }
+      }
+    }
+    return { ok, status: resp.status, servidor_existe }
   } catch {
     // Fallback: GET com Range bytes 0-2047 (tenta extrair <title>)
     try {
@@ -205,6 +263,7 @@ async function validarHTTP(
           redirect: 'follow',
         })
         const ok = resp.status >= 200 && resp.status < 400
+        const servidor_existe = ok || statusIndicaServidorExistente(resp.status)
         let titulo: string | undefined
         try {
           const body = await resp.text()
@@ -213,12 +272,12 @@ async function validarHTTP(
         } catch {
           /* ignore body parse */
         }
-        return { ok, status: resp.status, titulo }
+        return { ok, status: resp.status, titulo, servidor_existe }
       } finally {
         clearTimeout(t2)
       }
     } catch {
-      return { ok: false, status: 0 }
+      return { ok: false, status: 0, servidor_existe: false }
     }
   } finally {
     clearTimeout(t)
@@ -304,6 +363,9 @@ async function buscarSiteOficial(
 
     // PRIORIDADE 2 — slug razão social
     const slugRazao = slugify(ctx.razaoSocial)
+    // Guarda primeiro hit "servidor existe mas não 2xx" pra usar como fallback inferido
+    let inferidoFallback: { url: string; status: number } | null = null
+
     if (slugRazao.length >= 3) {
       const candidatos = [
         `https://www.${slugRazao}.com.br`,
@@ -330,6 +392,11 @@ async function buscarSiteOficial(
             },
             fonte: 'slug_razao_validado',
           }
+        }
+        // Servidor respondeu mas não com 2xx (ex: 405 do branorte.com) —
+        // guarda como candidato a "inferido" se nada melhor aparecer.
+        if (v.servidor_existe && !inferidoFallback) {
+          inferidoFallback = { url, status: v.status }
         }
       }
     }
@@ -363,6 +430,23 @@ async function buscarSiteOficial(
             fonte: 'slug_fantasia_validado',
           }
         }
+        if (v.servidor_existe && !inferidoFallback) {
+          inferidoFallback = { url, status: v.status }
+        }
+      }
+    }
+
+    // FALLBACK INFERIDO — algum slug retornou status que indica servidor existente
+    // (ex: branorte.com retorna 405 = "não aceito HEAD nessa rota"). Servidor existe,
+    // apresenta pro vendedor validar visualmente.
+    if (inferidoFallback) {
+      return {
+        resultado: {
+          existe: true,
+          url: inferidoFallback.url,
+          fonte: 'slug_inferido',
+        },
+        fonte: 'slug_inferido',
       }
     }
 

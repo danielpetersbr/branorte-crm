@@ -380,15 +380,21 @@ function gerarCandidatoDeEmail(email: string | null | undefined): string | null 
  *   - 200 OK            → handle existe (login wall, mas página existe)
  *   - 302 redirect      → existe (provavelmente redirect pra login)
  *   - 404 Not Found     → não existe
- *   - 429 / 403         → rate-limit ou bloqueio (inconclusivo, retorna ok=false)
+ *   - 429 / 403 / 401   → rate-limit ou bloqueio (servidor existe, INCONCLUSIVO)
  *
  * Importante: User-Agent realista é necessário ou IG retorna 4xx genérico.
+ * IPs de cloud (Vercel/AWS) são fortemente bloqueados pelo IG → 429/403 frequente.
  * Timeout curto (6s) — se IG demorar, não vale a pena bloquear o run.
+ *
+ * Retorna:
+ *   - ok: true se 200/302 (handle confirmado)
+ *   - inconclusivo: true se 401/403/429 (IG bloqueou nossa requisição mas
+ *     handle PODE existir — caller deve tentar Apify mesmo assim)
  */
 async function tentarHttpHead(
   handle: string,
   timeoutMs = 6000,
-): Promise<{ ok: boolean; status?: number }> {
+): Promise<{ ok: boolean; status?: number; inconclusivo?: boolean }> {
   try {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -403,10 +409,15 @@ async function tentarHttpHead(
       redirect: 'follow',
     })
     clearTimeout(timer)
+    const status = resp.status
     // Considera "existe" se 200 ou 302 (redirect pra login wall).
-    return { ok: resp.status === 200 || resp.status === 302, status: resp.status }
+    const ok = status === 200 || status === 302
+    // Status que indicam bloqueio do IG (não conclusivo sobre existência do handle)
+    const inconclusivo = status === 401 || status === 403 || status === 429 || status === 503
+    return { ok, status, inconclusivo }
   } catch {
-    return { ok: false }
+    // Erro de rede: inconclusivo (não sabemos se existe ou não)
+    return { ok: false, inconclusivo: true }
   }
 }
 
@@ -519,8 +530,19 @@ async function rodarApifyActor(
 function escolherMelhorPerfil(perfis: ApifyProfileRaw[]): ApifyProfileRaw | null {
   if (perfis.length === 0) return null
   // Apify às vezes retorna placeholders quando username não existe — filtra.
+  // Aceita perfil com APENAS username + (followersCount OU postsCount OU fullName OU biography).
+  // Antes exigia (followersCount OU postsCount), o que descartava perfis recém-criados
+  // ou perfis privados com dados parciais.
   const validos = perfis.filter(
-    (p) => p && so(p.username) && (p.followersCount != null || p.postsCount != null),
+    (p) =>
+      p &&
+      so(p.username) &&
+      (p.followersCount != null ||
+        p.postsCount != null ||
+        so(p.fullName) ||
+        so(p.biography) ||
+        p.private === true ||
+        p.verified === true),
   )
   if (validos.length === 0) return null
   // Pega o com mais seguidores (proxy de "perfil real / certo").
@@ -762,7 +784,7 @@ export async function buscarInstagramEmpresa(opts: {
     }
   }
 
-  // ===== Sem Apify e sem HEAD confirmado: retorna ok=true sem perfil =====
+  // ===== Sem Apify configurado: retorna token_nao_configurado =====
   if (!apifyConfigured) {
     return {
       ok: false,
@@ -774,11 +796,39 @@ export async function buscarInstagramEmpresa(opts: {
     }
   }
 
-  // ===== Nada encontrado =====
+  // ===== FALLBACK FINAL: Apify rodou mas não achou perfil =====
+  // Se temos pelo menos um candidato plausível (do email cadastral ou slug),
+  // retornamos como "inferido sem validação" — vendedor confirma visualmente
+  // se o handle bate com o IG real da empresa.
+  // Prioridade: candidato do email > primeiro slug.
+  const handleInferido = candidatoDeEmail ?? candidatosOrdenados[0]
+  if (handleInferido) {
+    return {
+      ok: true,
+      perfil_encontrado: true,
+      handle: handleInferido,
+      url: `https://instagram.com/${handleInferido}`,
+      nome_exibicao: null,
+      bio: null,
+      categoria: null,
+      privado: false,
+      verificado: false,
+      email_bio: null,
+      telefone_bio: null,
+      site_bio: null,
+      fotos_perfil_url: null,
+      red_flags: [],
+      custo_estimado_usd: custoTotalUsd,
+      erro: null,
+      fonte: 'inferido_slug_sem_validacao',
+    }
+  }
+
+  // ===== Sem candidato algum (improvável aqui, mas safety) =====
   return {
     ok: true,
     perfil_encontrado: false,
-    red_flags: [], // sem perfil ≠ red flag
+    red_flags: [],
     custo_estimado_usd: custoTotalUsd,
     erro: null,
     fonte: null,
