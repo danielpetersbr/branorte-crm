@@ -79,6 +79,17 @@ export interface DossieDetetive {
       data_ultimo_post?: string | null
       privado?: boolean
       verificado?: boolean
+      /**
+       * Origem do perfil: apify-direct / apify-via-google = dado rico do Apify;
+       * inferido_http = só URL confirmada via HEAD (sem dados ricos);
+       * inferido_slug_sem_validacao = chute por slug sem validação.
+       */
+      fonte?:
+        | 'apify-direct'
+        | 'apify-via-google'
+        | 'inferido_http'
+        | 'inferido_slug_sem_validacao'
+        | null
     }
   }
   sancoes?: {
@@ -1028,6 +1039,7 @@ function InstagramItem({ instagram }: InstagramItemProps) {
     data_ultimo_post,
     privado,
     verificado,
+    fonte,
   } = instagram
 
   const mesesInativo = monthsSince(data_ultimo_post)
@@ -1074,6 +1086,26 @@ function InstagramItem({ instagram }: InstagramItemProps) {
           {inativo && (
             <span className="text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-warning/20 text-warning border border-warning/30">
               ⚠️ inativo há {mesesInativo} {mesesInativo === 1 ? 'mês' : 'meses'}
+            </span>
+          )}
+          {fonte === 'inferido_http' && (
+            <span
+              className="text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-ink-faint/15 text-ink-muted border border-border/60"
+              title="Existência confirmada via HTTP HEAD, sem dados ricos do Apify"
+            >
+              verificado por HTTP
+            </span>
+          )}
+          {(fonte === 'apify-direct' || fonte === 'apify-via-google') && (
+            <span
+              className="text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-accent/15 text-accent border border-accent/40"
+              title={
+                fonte === 'apify-via-google'
+                  ? 'Handle encontrado via busca DuckDuckGo e validado pelo Apify'
+                  : 'Dados ricos extraídos diretamente pelo Apify'
+              }
+            >
+              Apify validado
             </span>
           )}
         </p>
