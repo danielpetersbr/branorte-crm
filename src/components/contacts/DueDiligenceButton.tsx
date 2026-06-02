@@ -104,14 +104,6 @@ const INSUMOS_INFO = [
     default: false,
   },
   {
-    codigo: 5178,
-    nome: 'Faturamento Presumido PJ',
-    valor: 17.09,
-    aplica: ['PJ'] as const,
-    desc: 'Estimativa estatistica de faturamento mensal/anual da empresa. Margem ±35%. Util pra dimensionar limite.',
-    default: false,
-  },
-  {
     codigo: 5186,
     nome: 'Quadro Social Completo',
     valor: 16.21,
@@ -125,14 +117,6 @@ const INSUMOS_INFO = [
     valor: 6.49,
     aplica: ['PJ'] as const,
     desc: 'Identifica empresas do mesmo grupo controlador. Util pra avaliar risco consolidado.',
-    default: false,
-  },
-  {
-    codigo: 5184,
-    nome: 'Risco de Credito PJ',
-    valor: 16.21,
-    aplica: ['PJ'] as const,
-    desc: 'Analise consolidada de risco de credito PJ com fatores: situacao, processos, inadimplencia, idade.',
     default: false,
   },
   {
