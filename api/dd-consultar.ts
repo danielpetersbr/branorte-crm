@@ -158,6 +158,17 @@ interface ConsultarBody {
    * orçamento, o frontend deve passar `valor_total` aqui.
    */
   ticket_pedido_brl?: number
+  /**
+   * Array de codigos de insumo a usar quando pacote='custom'. Permite ao
+   * frontend montar pacote sob medida (ex: economico + SCR Bacen, ou apenas
+   * Operacoes SCR isolado). Separado em pj/pf porque a API SPC exige um plano
+   * por tipoConsumidor. Se ambos ausentes/vazios e pacote='custom', o backend
+   * nao monta nenhum plano (planos = []) — fallback gracioso, sem erro.
+   *
+   * Validacao: cada codigo deve existir em INSUMOS_OPCIONAIS (spc-client.ts).
+   * Codigos invalidos retornam 400 `insumo_invalido`.
+   */
+  insumos_custom?: { pj?: number[]; pf?: number[] }
 }
 
 // ============================================================================
@@ -179,6 +190,7 @@ interface ConsultarBody {
 function montarPacotes(
   pacote: ConsultarBody['pacote'],
   opts: { incluiPj: boolean; incluiPf: boolean },
+  insumosCustom?: ConsultarBody['insumos_custom'],
 ) {
   type Plano = {
     produto: string
@@ -186,6 +198,26 @@ function montarPacotes(
     tipoConsumidor: 'F' | 'J'
   }
   const planos: Plano[] = []
+  // Pacote 'custom': monta plano com NOVO_SPC_MAXI + insumos passados pelo
+  // frontend (pj e/ou pf). Se o array correspondente estiver vazio/ausente,
+  // pula aquele tipoConsumidor — fallback gracioso (planos pode ficar []).
+  if (pacote === 'custom') {
+    if (opts.incluiPj && insumosCustom?.pj && insumosCustom.pj.length > 0) {
+      planos.push({
+        produto: PRODUTOS_SPC.NOVO_SPC_MAXI.codigo,
+        insumos: insumosCustom.pj,
+        tipoConsumidor: 'J',
+      })
+    }
+    if (opts.incluiPf && insumosCustom?.pf && insumosCustom.pf.length > 0) {
+      planos.push({
+        produto: PRODUTOS_SPC.NOVO_SPC_MAXI.codigo,
+        insumos: insumosCustom.pf,
+        tipoConsumidor: 'F',
+      })
+    }
+    return planos
+  }
   if (
     pacote !== 'economico' &&
     pacote !== 'economico_judicial' &&
@@ -305,6 +337,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'pacote_invalido' })
   }
 
+  // Valida insumos_custom: todo codigo precisa existir em INSUMOS_OPCIONAIS.
+  // Evita o cliente mandar codigo random e a API SPC retornar 4xx la na frente.
+  // So roda quando pacote=custom (em outros pacotes o array eh ignorado).
+  if (pacote === 'custom' && body.insumos_custom) {
+    const codigosValidos = new Set(
+      Object.values(INSUMOS_OPCIONAIS).map(i => i.codigo),
+    )
+    const todosCustomCodigos = [
+      ...(body.insumos_custom.pj ?? []),
+      ...(body.insumos_custom.pf ?? []),
+    ]
+    const invalido = todosCustomCodigos.find(c => !codigosValidos.has(c))
+    if (invalido !== undefined) {
+      return res.status(400).json({
+        error: 'insumo_invalido',
+        detail: `Codigo de insumo ${invalido} nao existe em INSUMOS_OPCIONAIS`,
+      })
+    }
+  }
+
   // 3) Permissao do user (precisa de 'due_diligence.consultar')
   const { data: perms } = await supa
     .from('role_permissions')
@@ -334,7 +386,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // 5) Cria registro pending pra rastreabilidade mesmo se falhar
-  const planos = montarPacotes(pacote, { incluiPj: precisaCnpj, incluiPf: precisaCpf })
+  const planos = montarPacotes(
+    pacote,
+    { incluiPj: precisaCnpj, incluiPf: precisaCpf },
+    body.insumos_custom,
+  )
   const todosOsCodigos = planos.flatMap(p => [p.produto, ...p.insumos.map(String)])
   const custoEstimado = planos.reduce(
     (acc, p) => acc + calcularCustoPacote({ produto: p.produto, insumos: p.insumos }),

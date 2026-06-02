@@ -166,6 +166,10 @@ export const INSUMOS_OPCIONAIS = {
   RENDA_PRESUMIDA_PF: { codigo: 5097, label: 'Renda Presumida PF', valor: 1.46 },
   COMPROMETIMENTO_RENDA: { codigo: 5194, label: 'Comprometimento Renda Mensal PF', valor: 13.56 },
   SPC_OBITO: { codigo: 3082, label: 'SPC Obito', valor: 0.57 },
+  // Bacen / Operacoes de credito
+  // Codigo 5267 segue o padrao dos insumos REST novos (faixa 5260+). Valor R$ 4,61
+  // estimado da tabela FCDL/SC — confirmar em homologacao antes de prod.
+  OPERACOES_SCR: { codigo: 5267, label: 'Operacoes SCR Bacen', valor: 4.61 },
 } as const
 
 export function calcularCustoPacote(opts: {
