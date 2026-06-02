@@ -534,7 +534,11 @@ function ResultadoBox({
         />
       )}
 
-      {/* Dossiê do Detetive Branorte — score 0-100, semáforo, red flags */}
+      {/* Dossiê do Detetive Branorte — score 0-100, semáforo, red flags.
+          Funciona pra PJ E PF: o DossieDetetiveCard lê dossie.tipo_pessoa
+          ('F' | 'J') e adapta o render (oculta Pegada Digital pra PF, vira
+          3 sub-scores, troca CNPJ→CPF no header, etc.). O guard abaixo é
+          neutro a tipo — só exige semaforo + alvo presentes. */}
       {(() => {
         const dossie =
           (consulta.resultado_spc as { dossie_detetive?: DossieDetetive } | null)?.dossie_detetive
