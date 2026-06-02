@@ -7,7 +7,13 @@
 // Env vars (Vercel):
 //   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY    -> valida o JWT do usuário do CRM
 //   CONTROLE_SUPABASE_URL (opcional)            -> default kfucuvwrnwrkshxpsmyq
-//   CONTROLE_SERVICE_KEY                         -> service_role do controle (OBRIGATÓRIO)
+//   CONTROLE_SERVICE_KEY (opcional)             -> service_role do controle, se algum dia a RLS apertar
+//   CONTROLE_ANON_KEY    (opcional)             -> override da anon key (default = a pública do bundle)
+//
+// Hoje a RLS do controle permite anon INSERT/SELECT em pedidos_venda + RPC gerar_pedido_numero
+// (verificado 2026-06-02). Então NÃO exige service_role: usa a anon key PÚBLICA (mesma do
+// frontend controle.branorte.com — já exposta no bundle, não é segredo). O acesso ao endpoint
+// continua travado por JWT do CRM (usuário logado + aprovado), que é a defesa real.
 //
 // Fluxo (tipo "simples", o insert mínimo válido da spec):
 //   1) RPC gerar_pedido_numero(p_data) -> PV-YYYY-NNNN
@@ -22,7 +28,10 @@ export const config = { api: { bodyParser: { sizeLimit: '256kb' } }, maxDuration
 const CRM_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || ''
 const CRM_SVC = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 const CONTROLE_URL = process.env.CONTROLE_SUPABASE_URL || 'https://kfucuvwrnwrkshxpsmyq.supabase.co'
-const CONTROLE_SVC = process.env.CONTROLE_SERVICE_KEY || ''
+// anon key PÚBLICA do controle (role=anon, ref=kfucuvwrnwrkshxpsmyq, exp 2075) — extraída do
+// próprio bundle de controle.branorte.com. Não é segredo. Pode ser sobrescrita por env.
+const CONTROLE_PUBLIC_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtmdWN1dndybndya3NoeHBzbXlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAwMzAwODgsImV4cCI6MjA3NTYwNjA4OH0.Oe0otpf1l_Ssbi8FQJlbcDRNtW_j_IRY5EMnr8dNYNE'
+const CONTROLE_SVC = process.env.CONTROLE_SERVICE_KEY || process.env.CONTROLE_ANON_KEY || CONTROLE_PUBLIC_ANON
 
 interface Body {
   cliente?: string
@@ -82,9 +91,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(403).json({ error: 'not_approved' })
   }
 
-  if (!CONTROLE_SVC) {
-    return res.status(500).json({ error: 'controle_key_missing', detail: 'Defina CONTROLE_SERVICE_KEY nas env vars do Vercel (service_role do controle.branorte.com).' })
-  }
+  // CONTROLE_SVC sempre definido (anon pública por default) — sem 500 de "key missing".
 
   const body = (req.body || {}) as Body
   const vendedor = (body.vendedor || '').trim()
