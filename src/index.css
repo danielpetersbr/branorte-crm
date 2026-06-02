@@ -120,77 +120,49 @@
 .dd-print-only { display: none; }
 
 @media print {
-  @page {
-    size: A4 portrait;
-    margin: 12mm 14mm;
-  }
-
-  /* Esconde TUDO da página, exceto o bloco de resultado.
-     :has(#dd-print-area) LIMITA isso à página da Due Diligence. Sem o :has(),
-     esta regra global vazava pro PDF do orçamento (/print/orcamento gerado via
-     Puppeteer em mídia print, que NÃO tem #dd-print-area) e escondia o orçamento
-     inteiro → PDF em branco. (Regressão diagnosticada 2026-06-01.) */
-  body:has(#dd-print-area) * {
+  /* Reset: esconde tudo */
+  body * {
     visibility: hidden;
   }
-  #dd-print-area, #dd-print-area * {
+
+  /* Mostra so o print-area + descendentes */
+  #dd-print-area,
+  #dd-print-area * {
     visibility: visible;
   }
-  /* Bloco vai pra origem (canto superior esquerdo) e ocupa toda a folha */
+
+  /* Detacha pra cima da pagina */
   #dd-print-area {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
-    width: 100% !important;
-    border: none !important;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 16px;
     background: white !important;
+    color: black !important;
+  }
+
+  /* Forca cores de print-friendly */
+  #dd-print-area * {
+    background: transparent !important;
     color: black !important;
     box-shadow: none !important;
-    border-radius: 0 !important;
-    overflow: visible !important;
   }
 
-  /* Itens que NÃO devem aparecer no PDF (botão imprimir, debug, etc) */
-  .dd-no-print { display: none !important; }
+  /* Esconde elementos noisy especificos */
+  .no-print, [data-no-print="true"] {
+    display: none !important;
+  }
 
-  /* Itens que SÓ aparecem ao imprimir (rodapé corporativo) */
-  .dd-print-only { display: block !important; visibility: visible !important; }
+  /* Page setup */
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
 
-  /* Ajustes pro visual ficar legível em PDF (sem dark mode) */
-  #dd-print-area * {
-    background: white !important;
-    color: black !important;
-    border-color: #999 !important;
-  }
-  #dd-print-area h1, #dd-print-area h2, #dd-print-area h3, #dd-print-area strong {
-    color: black !important;
-    font-weight: bold;
-  }
-  /* Cores semânticas viram tons de cinza com peso */
-  #dd-print-area .text-success, #dd-print-area .text-danger, #dd-print-area .text-warning,
-  #dd-print-area .text-accent {
-    color: black !important;
-    font-weight: bold;
-  }
-  /* Boxes coloridos viram bg branco com borda forte (alto contraste) */
-  #dd-print-area [class*="bg-success"], #dd-print-area [class*="bg-warning"],
-  #dd-print-area [class*="bg-danger"], #dd-print-area [class*="bg-accent"] {
-    background: white !important;
-    border: 1px solid #333 !important;
-  }
-  /* Evita quebra no meio de cards e seções principais */
-  #dd-print-area details, #dd-print-area [class*="grid-cols"] > * {
-    break-inside: avoid;
+  /* Evita quebra dentro de cards importantes */
+  .dd-printable {
     page-break-inside: avoid;
-  }
-  /* Force expand de <details> (Ver mais ▼) ao imprimir */
-  #dd-print-area details {
-    display: block;
-  }
-  #dd-print-area details summary {
-    display: none;
-  }
-  #dd-print-area details > *:not(summary) {
-    display: block !important;
   }
 }
