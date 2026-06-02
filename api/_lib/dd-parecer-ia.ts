@@ -330,6 +330,16 @@ export async function gerarParecerIA(opts: {
     }
   }
 
+  // BUG FIX (defensivo): SPC vazio E sem Datajud real = recusa.
+  // Dossie/contexto sozinhos nao bastam - sem SPC, score eh chute.
+  if (semSPC && semDatajud) {
+    return {
+      parecer: '## SEM DADOS\n\nO SPC nao retornou informacoes para este documento. Reconsulta necessaria antes de qualquer decisao de credito.',
+      erro: 'sem_base_spc',
+      meta: metaVazia,
+    }
+  }
+
   // Carrega prompt do nível certo (futuramente do Supabase, hoje hardcoded)
   const promptNome =
     nivel === 'profundo' ? 'dd-parecer-profundo' : nivel === 'padrao' ? 'dd-parecer-padrao' : 'dd-parecer-rapido'

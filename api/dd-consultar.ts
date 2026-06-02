@@ -977,9 +977,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         modificador_historico_branorte: dossieDetetive.modificador_historico_branorte,
       }
     : null
-  if (
+  // BUG FIX: nao gera parecer IA quando SPC failed sem fallback real.
+  // Dossie sintetico nao basta - score sem SPC eh chute, vendedor libera credito errado.
+  const spcSemDados = statusFinal === 'failed' && resumosParaIA.length === 0
+  const temDatajudReal = (datajudResultado?.processos?.length ?? 0) > 0
+
+  if (spcSemDados && !temDatajudReal) {
+    parecerIa = '## SEM DADOS\n\nO SPC nao retornou informacoes para este documento. Reconsulta necessaria antes de qualquer decisao de credito. Score, limite e condicao nao podem ser estimados sem base SPC valida.'
+    erroParecer = 'spc_failed_sem_fallback'
+  } else if (
     statusFinal !== 'failed' ||
-    (datajudResultado?.processos?.length ?? 0) > 0 ||
+    temDatajudReal ||
     dossieDetetive
   ) {
     try {
@@ -1018,6 +1026,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       parecer_ia: parecerIa,
       status: statusFinal,
       custo_brl: custoFinal,
+      nome_empresa: opencnpjResultado?.razao_social
+        ?? opencnpjResultado?.nome_fantasia
+        ?? ((resultadoSpc as any)?.resumos?.[0]?.resumo?.consumidor?.razao_social as string | null)
+        ?? ((resultadoSpc as any)?.resumos?.[0]?.resumo?.consumidor?.nome_fantasia as string | null)
+        ?? ((resultadoSpc as any)?.resumos?.[0]?.resumo?.consumidor?.nome as string | null)
+        ?? null,
       erro: [erroMsg, erroParecer ? `IA: ${erroParecer}` : null].filter(Boolean).join(' | ') || null,
     })
     .eq('id', consultaId)
