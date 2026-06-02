@@ -49,6 +49,7 @@ const FreteHistorico = lazy(() => import('@/pages/FreteHistorico'))
 const ControleDashboard = lazy(() => import('@/pages/ControleDashboard').then(m => ({ default: m.ControleDashboard })))
 const ControlePedidos = lazy(() => import('@/pages/ControlePedidos').then(m => ({ default: m.ControlePedidos })))
 const ControleFinanceiro = lazy(() => import('@/pages/ControleFinanceiro').then(m => ({ default: m.ControleFinanceiro })))
+const ControleNovoPedido = lazy(() => import('@/pages/ControleNovoPedido').then(m => ({ default: m.ControleNovoPedido })))
 
 // /print/orcamento é importado direto (sem lazy) pra evitar precisar de Suspense
 // no fallback antes do auth. Rota usada APENAS pelo Puppeteer server-side.
@@ -160,6 +161,7 @@ function AppRoutes() {
         <Route path="/controle" element={<ControleDashboard />} />
         <Route path="/controle/pedidos" element={<ControlePedidos />} />
         <Route path="/controle/financeiro" element={<ControleFinanceiro />} />
+        <Route path="/controle/novo-pedido" element={<ControleNovoPedido />} />
         <Route path="/atendimentos" element={<Atendimentos />} />
         <Route path="/funil" element={<Funil />} />
         <Route path="/funil/relatorio" element={<FunilRelatorio />} />

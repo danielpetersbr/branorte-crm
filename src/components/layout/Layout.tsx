@@ -86,6 +86,7 @@ const SECONDARY: NavItem[] = [
       { to: '/controle', label: 'Painel de Vendas', icon: LayoutDashboard },
       { to: '/controle/pedidos', label: 'Pedidos de Venda', icon: FileText },
       { to: '/controle/financeiro', label: 'Financeiro', icon: Wallet },
+      { to: '/controle/novo-pedido', label: 'Novo Pedido', icon: FilePlus2 },
     ],
   },
   { to: '/vendidos', label: 'Vendidos', icon: CheckCircle, permKey: 'menu.vendidos' },
