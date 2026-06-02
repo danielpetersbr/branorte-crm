@@ -35,6 +35,9 @@ export interface AtendimentoFilters {
   uf: string
   data: DataPreset
   origem: string
+  // #17: filtro por código de criativo (ex: M0023, F1234). Match exato em
+  // contacts.criativo_codigo. Vazio = sem filtro.
+  criativo: string
   page: number
 }
 
@@ -226,6 +229,10 @@ export function useAtendimentos(filters: AtendimentoFilters) {
           query = query.eq('origem', filters.origem)
         }
       }
+      // #17: filtro por criativo. Match exato em criativo_codigo (M0023, F1234).
+      if (filters.criativo) {
+        query = query.eq('criativo_codigo', filters.criativo.trim().toUpperCase())
+      }
 
       const from = filters.page * ATENDIMENTO_PAGE_SIZE
       query = query.range(from, from + ATENDIMENTO_PAGE_SIZE - 1)
@@ -307,6 +314,10 @@ function applyBaseFilters(query: any, filters?: Partial<AtendimentoFilters>, ven
     } else {
       q = q.eq('origem', filters.origem)
     }
+  }
+  // #17: filtro por criativo aplicado também no KPI/total
+  if (filters?.criativo) {
+    q = q.eq('criativo_codigo', filters.criativo.trim().toUpperCase())
   }
   return q
 }

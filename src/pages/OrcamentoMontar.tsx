@@ -348,6 +348,8 @@ export function OrcamentoMontar() {
   const [voltagem, setVoltagem] = useState<Voltagem>('trifasico')
   // Tensão dos motores (global pra todos). null = "tensão a confirmar".
   const [tensaoMotores, setTensaoMotores] = useState<TensaoMotor>(null)
+  // #32: Marca dos motores (global). Texto livre. null = "marca a confirmar".
+  const [marcaMotores, setMarcaMotores] = useState<string | null>(null)
   const [carrinho, setCarrinho] = useState<CarrinhoItem[]>([])
   // Acessórios: bloco opcional com valor calculado como % do total de equipamentos
   // valorFixo: opcional. Quando setado (vem de modelo carregado), tem prioridade
@@ -377,7 +379,14 @@ export function OrcamentoMontar() {
   const [waPromptResolve, setWaPromptResolve] = useState<((v: string | null) => void) | null>(null)
   const [fotoPrincipal, setFotoPrincipal] = useState<string | null>(null)
   // Desconto + termos editáveis inline no preview
-  const [descontoCfg, setDescontoCfg] = useState<{ tipo: 'pct' | 'valor'; valor: number } | null>(null)
+  // tipo/valor sempre; motivo/base/manterValorParcelas opcionais (default: base='total').
+  const [descontoCfg, setDescontoCfg] = useState<{
+    tipo: 'pct' | 'valor'
+    valor: number
+    motivo?: string
+    base?: 'total' | 'equipamento'
+    manterValorParcelas?: boolean
+  } | null>(null)
   const [dataVendaTxt, setDataVendaTxt] = useState(() => new Date().toLocaleDateString('pt-BR'))
   const [prazoEntregaTxt, setPrazoEntregaTxt] = useState('')
   const [formaPagamentoTxt, setFormaPagamentoTxt] = useState('')
@@ -398,6 +407,7 @@ export function OrcamentoMontar() {
     acessorios,
     voltagem,
     tensaoMotores,
+    marcaMotores,
     descontoCfg,
     dataVendaTxt,
     prazoEntregaTxt,
@@ -408,7 +418,7 @@ export function OrcamentoMontar() {
     fotoPrincipal,
     componentesExtras,
   }), [
-    carrinho, acessorios, voltagem, tensaoMotores, descontoCfg,
+    carrinho, acessorios, voltagem, tensaoMotores, marcaMotores, descontoCfg,
     dataVendaTxt, prazoEntregaTxt, formaPagamentoTxt, freteTipo, freteTxt,
     parcelasPagamento, fotoPrincipal,
     componentesExtras,
@@ -464,6 +474,7 @@ export function OrcamentoMontar() {
     setAcessorios(prev.acessorios ?? null)
     setVoltagem(prev.voltagem ?? 'trifasico')
     setTensaoMotores(prev.tensaoMotores ?? null)
+    setMarcaMotores((prev as any).marcaMotores ?? null)
     setDescontoCfg(prev.descontoCfg ?? null)
     setDataVendaTxt(prev.dataVendaTxt ?? '')
     setPrazoEntregaTxt(prev.prazoEntregaTxt ?? '')
@@ -499,6 +510,7 @@ export function OrcamentoMontar() {
     setAcessorios(d.acessorios ?? null)
     setVoltagem(d.voltagem ?? 'trifasico')
     setTensaoMotores(d.tensaoMotores ?? null)
+    setMarcaMotores((d as any).marcaMotores ?? null)
     setDescontoCfg(d.descontoCfg ?? null)
     setDataVendaTxt(d.dataVendaTxt ?? '')
     setPrazoEntregaTxt(d.prazoEntregaTxt ?? '')
@@ -2367,6 +2379,8 @@ export function OrcamentoMontar() {
                 componentesAdicionaisCatalogo={componentesAdicionaisCatalogo}
                 tensaoMotores={tensaoMotores}
                 onUpdateTensaoMotores={setTensaoMotores}
+                marcaMotores={marcaMotores}
+                onUpdateMarcaMotores={setMarcaMotores}
                 desconto={descontoCfg}
                 onUpdateDesconto={setDescontoCfg}
                 terms={{ dataVenda: dataVendaTxt, prazoEntrega: prazoEntregaTxt, formaPagamento: formaPagamentoTxt, freteTipo, freteTxt }}
@@ -2464,6 +2478,7 @@ export function OrcamentoMontar() {
           totalGeral,
           fotoPrincipal,
           tensaoMotores,
+          marcaMotores,
           desconto: descontoCfg,
           termsInline: {
             dataVenda: dataVendaTxt || null,

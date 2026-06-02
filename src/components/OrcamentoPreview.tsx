@@ -133,9 +133,31 @@ export interface OrcamentoPreviewProps {
   tensaoMotores?: 220 | 380 | 660 | null
   onUpdateTensaoMotores?: (tensao: 220 | 380 | 660 | null) => void
 
+  // #32: Marca dos motores (global pra todos os motores deste orçamento).
+  // Texto livre — vendedor escolhe: WEG, Voges, Eberle, etc.
+  marcaMotores?: string | null
+  onUpdateMarcaMotores?: (marca: string | null) => void
+
   // Desconto opcional (mostra valor com desconto abaixo do total)
-  desconto?: { tipo: 'pct' | 'valor'; valor: number } | null
-  onUpdateDesconto?: (d: { tipo: 'pct' | 'valor'; valor: number } | null) => void
+  // motivo: texto livre ("Pagto à vista", "Cliente fidelidade", etc) - aparece no PDF.
+  // base: sobre o que o desconto incide. 'total' (default - retrocompat) ou 'equipamento'
+  //   (sem motores; vendedor #29 reportou que precisava ser só no equipamento).
+  // manterValorParcelas: quando true, parcelas usam totalGeral (sem desconto). Útil
+  //   pra "à vista com desconto OU parcelado pelo valor cheio" (#19).
+  desconto?: {
+    tipo: 'pct' | 'valor'
+    valor: number
+    motivo?: string
+    base?: 'total' | 'equipamento'
+    manterValorParcelas?: boolean
+  } | null
+  onUpdateDesconto?: (d: {
+    tipo: 'pct' | 'valor'
+    valor: number
+    motivo?: string
+    base?: 'total' | 'equipamento'
+    manterValorParcelas?: boolean
+  } | null) => void
 
   // Callbacks (apenas no modo edit)
   onAddAcessorios?: () => void
@@ -295,6 +317,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     numero, dataEmissao, cliente, terms, observacoesExtra, fotoPrincipal,
     renderMode = false,
     tensaoMotores = null, onUpdateTensaoMotores,
+    marcaMotores = null, onUpdateMarcaMotores,
     desconto, onUpdateDesconto,
     onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onUpdateValor, onToggleInox, onToggleTungstenio, onUpdateQtd, onUpdateTerm, onMoverItem, onToggleBrinde,
     componentesExtras = [], onUpdateComponentesExtras, componentesAdicionaisCatalogo = [],
@@ -352,10 +375,14 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   void totalItems  // mostrado no footer do builder, não no preview
 
   // Total com desconto (se houver). Usado nas parcelas de pagamento.
+  // #29: desconto pode incidir só no equipamento (sem motores) ou no total.
+  // #19: quando manterValorParcelas=true, parcelas voltam a usar totalGeral.
+  const _baseDesconto = desconto?.base === 'equipamento' ? (totalEquip ?? totalGeral) : totalGeral
   const _descontoVal = desconto
-    ? (desconto.tipo === 'pct' ? totalGeral * (desconto.valor / 100) : desconto.valor)
+    ? (desconto.tipo === 'pct' ? _baseDesconto * (desconto.valor / 100) : desconto.valor)
     : 0
   const totalComDesconto = Math.max(0, totalGeral - _descontoVal)
+  const totalParcelasBase = desconto?.manterValorParcelas ? totalGeral : totalComDesconto
 
   const motoresTitle = voltagem === 'monofasico' ? 'Motores Monofásicos:' : 'Motores Trifásicos:'
   const mostrarTotalEquip = carrinho.length > 1 || acessorios !== null
@@ -1230,6 +1257,32 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                         {tensaoLabel}
                       </span>
                     )}
+                    {/* #32: Marca dos motores (global) — texto livre. Aparece no PDF se preenchido. */}
+                    {!renderMode && onUpdateMarcaMotores ? (
+                      <span className="inline-flex items-center gap-1 print:hidden ml-2">
+                        <span className="text-[12.5px] text-gray-500 uppercase tracking-wider">Marca:</span>
+                        <input
+                          type="text"
+                          value={marcaMotores || ''}
+                          onChange={e => onUpdateMarcaMotores!(e.target.value || null)}
+                          placeholder="WEG, Voges…"
+                          maxLength={40}
+                          className="text-[13.5px] px-1.5 py-0.5 border border-gray-300 rounded bg-white w-32"
+                          list="motor-marcas-sugestao"
+                        />
+                        <datalist id="motor-marcas-sugestao">
+                          <option value="WEG" />
+                          <option value="Voges" />
+                          <option value="Eberle" />
+                          <option value="Kohlbach" />
+                          <option value="NOVA Motors" />
+                        </datalist>
+                      </span>
+                    ) : (
+                      marcaMotores ? (
+                        <span className="text-[13.5px] font-semibold text-gray-700 ml-1">· Marca: {marcaMotores}</span>
+                      ) : null
+                    )}
                   </div>
                 </div>
                 <table className="w-full text-[12px] border-collapse motores-tabela">
@@ -1770,35 +1823,80 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
                 {/* Caixa editável de desconto + total final (modo edit) */}
                 {!renderMode && onUpdateDesconto && (
-                  <div className="mt-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2 text-[15px] print:hidden">
-                    <span className="text-blue-900 font-semibold">Desconto:</span>
-                    <select
-                      value={desconto?.tipo || ''}
-                      onChange={e => {
-                        const v = e.target.value
-                        if (!v) onUpdateDesconto(null)
-                        else onUpdateDesconto({ tipo: v as 'pct' | 'valor', valor: desconto?.valor || 0 })
-                      }}
-                      className="text-[15px] px-2 py-1 border border-blue-300 rounded bg-white"
-                    >
-                      <option value="">Nenhum</option>
-                      <option value="pct">% percentual</option>
-                      <option value="valor">R$ manual</option>
-                    </select>
+                  <div className="mt-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg space-y-2 text-[15px] print:hidden">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-blue-900 font-semibold">Desconto:</span>
+                      <select
+                        value={desconto?.tipo || ''}
+                        onChange={e => {
+                          const v = e.target.value
+                          if (!v) onUpdateDesconto(null)
+                          else onUpdateDesconto({
+                            ...(desconto ?? { valor: 0 }),
+                            tipo: v as 'pct' | 'valor',
+                            valor: desconto?.valor || 0,
+                          })
+                        }}
+                        className="text-[15px] px-2 py-1 border border-blue-300 rounded bg-white"
+                      >
+                        <option value="">Nenhum</option>
+                        <option value="pct">% percentual</option>
+                        <option value="valor">R$ manual</option>
+                      </select>
+                      {desconto && (
+                        <input
+                          type="number"
+                          step="0.01" min={0}
+                          value={desconto.valor || ''}
+                          onChange={e => onUpdateDesconto({ ...desconto, valor: parseFloat(e.target.value) || 0 })}
+                          className="w-24 text-[15px] px-2 py-1 border border-blue-300 rounded bg-white"
+                          placeholder={desconto.tipo === 'pct' ? '5' : '500.00'}
+                        />
+                      )}
+                      {desconto && (
+                        <span className="text-blue-700 text-[15px]">
+                          = R$ {formatBRLBare(descontoValor)} de abatimento
+                        </span>
+                      )}
+                    </div>
                     {desconto && (
-                      <input
-                        type="number"
-                        step="0.01" min={0}
-                        value={desconto.valor || ''}
-                        onChange={e => onUpdateDesconto({ tipo: desconto.tipo, valor: parseFloat(e.target.value) || 0 })}
-                        className="w-24 text-[15px] px-2 py-1 border border-blue-300 rounded bg-white"
-                        placeholder={desconto.tipo === 'pct' ? '5' : '500.00'}
-                      />
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-blue-900 text-[13.5px]">Aplicado sobre:</span>
+                        <select
+                          value={desconto.base || 'total'}
+                          onChange={e => onUpdateDesconto({ ...desconto, base: e.target.value as 'total' | 'equipamento' })}
+                          className="text-[13.5px] px-2 py-1 border border-blue-300 rounded bg-white"
+                        >
+                          <option value="total">Valor total (equipamento + motores)</option>
+                          <option value="equipamento">Apenas equipamento (sem motores)</option>
+                        </select>
+                      </div>
                     )}
                     {desconto && (
-                      <span className="text-blue-700 text-[15px]">
-                        = R$ {formatBRLBare(descontoValor)} de abatimento
-                      </span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <label className="flex items-center gap-1.5 text-[13.5px] text-blue-900 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={!!desconto.manterValorParcelas}
+                            onChange={e => onUpdateDesconto({ ...desconto, manterValorParcelas: e.target.checked })}
+                            className="accent-blue-700"
+                          />
+                          Parcelas pelo valor original (sem aplicar desconto)
+                        </label>
+                      </div>
+                    )}
+                    {desconto && (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-blue-900 text-[13.5px] whitespace-nowrap">Motivo:</span>
+                        <input
+                          type="text"
+                          value={desconto.motivo || ''}
+                          onChange={e => onUpdateDesconto({ ...desconto, motivo: e.target.value })}
+                          placeholder="Ex: pagamento à vista, cliente fidelidade"
+                          className="flex-1 min-w-[200px] text-[13.5px] px-2 py-1 border border-blue-300 rounded bg-white"
+                          maxLength={120}
+                        />
+                      </div>
                     )}
                   </div>
                 )}
@@ -1814,6 +1912,13 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                         R$ {formatBRLBare(totalFinal)}
                       </span>
                     </div>
+                    {(desconto?.motivo || desconto?.base === 'equipamento') && (
+                      <div className="mt-1 text-[12.5px] text-emerald-800 font-normal normal-case">
+                        {desconto?.motivo ? <>Motivo: {desconto.motivo}</> : null}
+                        {desconto?.motivo && desconto?.base === 'equipamento' ? ' · ' : ''}
+                        {desconto?.base === 'equipamento' ? 'Desconto aplicado apenas sobre o equipamento' : ''}
+                      </div>
+                    )}
                   </div>
                 )}
               </>
@@ -1982,7 +2087,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     function calcValor(p: ParcelaPagamento): number {
                       if (typeof p.valor === 'number') return p.valor
                       // Usa totalComDesconto (não totalGeral) pra parcelas refletirem o valor real
-                      const base = totalComDesconto
+                      const base = totalParcelasBase
                       if (typeof p.pct === 'number') return Math.round((base * p.pct / 100) * 100) / 100
                       return 0
                     }
@@ -2097,7 +2202,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     //  A última parcela do grupo absorve o arredondamento (soma fecha exata).
                     function dividirRestoIgual() {
                       if (!onUpdateParcelas || arr.length === 0) return
-                      const base = totalComDesconto
+                      const base = totalParcelasBase
                       if (base <= 0) return
                       const vazias = arr.filter(p => calcValor(p) < 0.01)
                       const preenchido = arr.reduce((s, p) => s + calcValor(p), 0)
@@ -2129,8 +2234,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     }
                     const totalPct = arr.reduce((s, p) => s + (typeof p.pct === 'number' ? p.pct : 0), 0)
                     const totalParcelas = arr.reduce((s, p) => s + calcValor(p), 0)
-                    // Soma das parcelas em R$ vs total COM DESCONTO (valida cobertura)
-                    const baseComparacao = totalComDesconto
+                    // Soma das parcelas em R$ vs base de parcelas (valida cobertura)
+                    const baseComparacao = totalParcelasBase
                     const diffParcelas = baseComparacao > 0 ? totalParcelas - baseComparacao : 0
                     const fechouValor = baseComparacao > 0 && Math.abs(diffParcelas) < 0.01
                     return (
@@ -2281,7 +2386,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                           //  - Editar % → salva pct, R$ recalcula como pct*total
                                           //  - Editar R$ → salva valor, % recalcula como valor/total*100
                                           // O "modo armazenado" (pct vs valor) muda conforme ultimo input editado.
-                                          const base = totalComDesconto
+                                          const base = totalParcelasBase
                                           const pctMostrado = typeof p.pct === 'number'
                                             ? p.pct
                                             : (base > 0 && typeof p.valor === 'number'

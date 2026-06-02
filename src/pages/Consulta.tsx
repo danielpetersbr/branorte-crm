@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Search, AlertCircle, History, Info, X, Eye, ArrowLeft } from 'lucide-react'
+import { Search, AlertCircle, History, Info, X, Eye, ArrowLeft, Printer } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { DueDiligenceForm } from '@/components/contacts/DueDiligenceButton'
 import type { DDConsulta } from '@/hooks/useDueDiligence'
@@ -105,8 +105,8 @@ export function Consulta() {
 
   return (
     <div className="min-h-screen bg-bg tabular-nums slashed-zero">
-      {/* Header denso, full width */}
-      <header className="border-b border-border bg-surface-2/30 sticky top-0 z-20 backdrop-blur-sm">
+      {/* Header denso, full width — escondido na impressão (#30) */}
+      <header className="dd-no-print border-b border-border bg-surface-2/30 sticky top-0 z-20 backdrop-blur-sm">
         <div className="max-w-[1600px] mx-auto px-4 md:px-6 py-3 flex items-center gap-3">
           <div className="h-8 w-8 rounded-md bg-accent-bg flex items-center justify-center shrink-0">
             <Search className="h-4 w-4 text-accent" />
@@ -143,6 +143,18 @@ export function Consulta() {
               </div>
             )}
           </div>
+
+          {/* #30: Imprimir consulta (só aparece quando há resultado carregado) */}
+          {consultaSelecionada && (
+            <button
+              type="button"
+              onClick={() => window.print()}
+              title="Imprimir consulta (Ctrl+P)"
+              className="text-[11px] font-semibold px-2.5 py-1.5 rounded-md bg-accent-bg border border-accent/40 text-accent hover:bg-accent hover:text-white flex items-center gap-1.5"
+            >
+              <Printer className="h-3.5 w-3.5" /> Imprimir
+            </button>
+          )}
 
           {/* Botão Recentes (abre drawer) */}
           <button

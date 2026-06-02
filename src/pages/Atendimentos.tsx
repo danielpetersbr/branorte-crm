@@ -290,6 +290,7 @@ export function Atendimentos() {
     uf: string
     data: DataPreset
     origem: string
+    criativo: string
     page: number
   }>(() => ({
     search: '',
@@ -298,6 +299,7 @@ export function Atendimentos() {
     uf: searchParams.get('uf') || '',
     data: (searchParams.get('data') as DataPreset) || 'hoje',
     origem: searchParams.get('origem') || '',
+    criativo: searchParams.get('criativo') || '',
     page: 0,
   }))
   const [searchInput, setSearchInput] = useState('')
@@ -320,7 +322,7 @@ export function Atendimentos() {
   const rows = data?.rows ?? []
   const total = data?.total ?? 0
   const totalPages = Math.ceil(total / ATENDIMENTO_PAGE_SIZE)
-  const hasFilters = filters.search || filters.responsavel || filters.status_real || filters.uf || filters.data || filters.origem
+  const hasFilters = filters.search || filters.responsavel || filters.status_real || filters.uf || filters.data || filters.origem || filters.criativo
 
   // Resolve o "vendedor efetivo" do lead. Prioridade:
   // 1. auditoria.responsavel (atribuido manualmente no CRM)
@@ -336,7 +338,7 @@ export function Atendimentos() {
   }
 
   const clearFilters = () => {
-    setFilters({ search: '', responsavel: '', status_real: '', uf: '', data: '', origem: '', page: 0 })
+    setFilters({ search: '', responsavel: '', status_real: '', uf: '', data: '', origem: '', criativo: '', page: 0 })
     setSearchInput('')
   }
 
@@ -477,6 +479,15 @@ export function Atendimentos() {
           value={filters.origem}
           onChange={e => setFilters(f => ({ ...f, origem: e.target.value, page: 0 }))}
           className="lg:w-52"
+        />
+        {/* #17: filtro por código de criativo (M0023, F1234, etc) */}
+        <input
+          type="text"
+          placeholder="Criativo (M0023)"
+          value={filters.criativo}
+          onChange={e => setFilters(f => ({ ...f, criativo: e.target.value, page: 0 }))}
+          className="px-2.5 py-1.5 rounded-md border border-border bg-surface-2 text-[12px] text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none lg:w-32"
+          maxLength={20}
         />
         <Select
           options={ESTADOS_BR.map(uf => ({ value: uf, label: uf }))}

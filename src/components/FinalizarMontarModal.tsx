@@ -53,7 +53,15 @@ export interface CarrinhoSnapshot {
   fotoPrincipal?: string | null
   // Edições inline da preview — usadas pelo PDF/DOCX pra sair igual à preview.
   tensaoMotores?: 220 | 380 | 660 | null
-  desconto?: { tipo: 'pct' | 'valor'; valor: number } | null
+  // #32: Marca dos motores (global). Texto livre.
+  marcaMotores?: string | null
+  desconto?: {
+    tipo: 'pct' | 'valor'
+    valor: number
+    motivo?: string
+    base?: 'total' | 'equipamento'
+    manterValorParcelas?: boolean
+  } | null
   termsInline?: {
     dataVenda?: string | null
     prazoEntrega?: string | null
@@ -726,6 +734,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         fotoPrincipal: snapshot.fotoPrincipal ?? null,
         // Edições inline da preview — mantém PDF/DOCX idênticos à preview
         tensaoMotores: snapshot.tensaoMotores ?? null,
+        marcaMotores: snapshot.marcaMotores ?? null,
         desconto: snapshot.desconto ?? null,
         parcelas: snapshot.parcelas ?? [],
         componentesExtras: snapshot.componentesExtras ?? [],

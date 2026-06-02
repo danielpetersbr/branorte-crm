@@ -45,7 +45,7 @@ function colunaDoLead(a: Atendimento): ColMeta['key'] {
 }
 
 export function Funil() {
-  const [filters, setFilters] = useState({ search: '', responsavel: '', uf: '', data: '' as DataPreset })
+  const [filters, setFilters] = useState({ search: '', responsavel: '', uf: '', data: '' as DataPreset, origem: '', criativo: '' })
   const [searchInput, setSearchInput] = useState('')
   const [draggingId, setDraggingId] = useState<string | null>(null)
 
@@ -153,7 +153,7 @@ export function Funil() {
 
         {hasFilters && (
           <button
-            onClick={() => { setFilters({ search: '', responsavel: '', uf: '', data: '' }); setSearchInput('') }}
+            onClick={() => { setFilters({ search: '', responsavel: '', uf: '', data: '', origem: '', criativo: '' }); setSearchInput('') }}
             className="h-9 px-3 inline-flex items-center gap-1 text-[12px] text-ink-muted hover:text-danger"
           >
             <X className="h-3 w-3" /> Limpar
