@@ -491,9 +491,21 @@ function ResultadoBox({
         <span className="ml-auto text-[11px] font-mono font-semibold text-ink tabular-nums">
           R$ {consulta.custo_brl.toFixed(2)}
         </span>
-        {/* Botão IMPRIMIR — disparra window.print(). CSS @media print isola o bloco. */}
+        {/* Botão IMPRIMIR — seta html.dd-printing pra ativar o CSS @media print
+            do DD (gated por essa classe pra nao vazar pro PDF do orcamento
+            via Puppeteer, que NAO seta a classe). */}
         <button
-          onClick={() => window.print()}
+          onClick={() => {
+            document.documentElement.classList.add('dd-printing')
+            // setTimeout para garantir que CSS aplica antes do dialog
+            setTimeout(() => {
+              window.print()
+              // Cleanup apos dialog fechar
+              setTimeout(() => {
+                document.documentElement.classList.remove('dd-printing')
+              }, 1000)
+            }, 50)
+          }}
           className="dd-no-print text-[10px] font-semibold text-ink-muted hover:text-accent flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface-2 hover:border-accent"
           title="Imprimir consulta em folha A4"
         >

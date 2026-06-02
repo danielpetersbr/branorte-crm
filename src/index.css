@@ -119,50 +119,44 @@
    ========================================================================= */
 .dd-print-only { display: none; }
 
+/* DD Print: ATIVA SO quando html.dd-printing esta setado pelo botao Imprimir.
+   Evita regressao no /print/orcamento via Puppeteer que NAO seta a classe.
+   @page fica DENTRO de @media print — afeta qualquer print, mas o Puppeteer
+   do orcamento normalmente seta seu proprio @page via PDF options, entao
+   nao deve quebrar. */
 @media print {
-  /* Reset: esconde tudo */
-  body * {
-    visibility: hidden;
-  }
-
-  /* Mostra so o print-area + descendentes */
-  #dd-print-area,
-  #dd-print-area * {
-    visibility: visible;
-  }
-
-  /* Detacha pra cima da pagina */
-  #dd-print-area {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    margin: 0;
-    padding: 16px;
-    background: white !important;
-    color: black !important;
-  }
-
-  /* Forca cores de print-friendly */
-  #dd-print-area * {
-    background: transparent !important;
-    color: black !important;
-    box-shadow: none !important;
-  }
-
-  /* Esconde elementos noisy especificos */
-  .no-print, [data-no-print="true"] {
-    display: none !important;
-  }
-
-  /* Page setup */
   @page {
     size: A4;
     margin: 14mm;
   }
 
-  /* Evita quebra dentro de cards importantes */
-  .dd-printable {
+  html.dd-printing body * {
+    visibility: hidden;
+  }
+  html.dd-printing #dd-print-area,
+  html.dd-printing #dd-print-area * {
+    visibility: visible;
+  }
+  html.dd-printing #dd-print-area {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 16px !important;
+    background: white !important;
+    color: black !important;
+  }
+  html.dd-printing #dd-print-area * {
+    background: transparent !important;
+    color: black !important;
+    box-shadow: none !important;
+  }
+  html.dd-printing .no-print,
+  html.dd-printing [data-no-print="true"] {
+    display: none !important;
+  }
+  html.dd-printing .dd-printable {
     page-break-inside: avoid;
   }
 }
