@@ -1334,6 +1334,12 @@ export function calcularLimiteSugerido(input: {
   hard_fail: boolean
   cnae_porte: 'micro' | 'pequena' | 'media' | 'grande'
   flags?: RedFlag[]
+  spc?: {
+    score?: {
+      valor?: number | null
+      classificacao?: string | null
+    } | null
+  } | null
 }): number {
   if (input.hard_fail) return 0
   const cap = Math.max(0, input.capital_social || 0)
@@ -1358,6 +1364,19 @@ export function calcularLimiteSugerido(input: {
   else if (input.score_normalizado >= 40) scoreModifier = 0.4
   else scoreModifier = 0.0
 
+  // BUG FIX: clamp ADICIONAL por score SPC raw (0-1000) — fonte de verdade do credito.
+  // Sincroniza com regras HARD do parecer-ia.ts pra evitar divergencia de limite.
+  const spcScoreRaw = input.spc?.score?.valor ?? null
+  let tetoSpcRaw = Number.POSITIVE_INFINITY
+  if (spcScoreRaw !== null && spcScoreRaw !== undefined) {
+    if (spcScoreRaw < 200 || input.spc?.score?.classificacao === 'INADIMPLENTE') tetoSpcRaw = 0
+    else if (spcScoreRaw < 300) tetoSpcRaw = 5_000
+    else if (spcScoreRaw < 500) tetoSpcRaw = 20_000
+    else if (spcScoreRaw < 700) tetoSpcRaw = 80_000
+    else if (spcScoreRaw < 800) tetoSpcRaw = 200_000
+    else tetoSpcRaw = 350_000
+  }
+
   // Penalidade por flags ativas
   let penalidade = 0
   for (const f of input.flags ?? []) {
@@ -1368,7 +1387,9 @@ export function calcularLimiteSugerido(input: {
   penalidade = Math.min(0.95, penalidade)
 
   const limite = base * scoreModifier * (1 - penalidade)
-  return Math.max(0, Math.round(limite))
+  // Aplica teto SPC raw (NAO permite ultrapassar)
+  const limiteFinal = Math.min(limite, tetoSpcRaw)
+  return Math.max(0, Math.round(limiteFinal))
 }
 
 /**
@@ -1805,6 +1826,7 @@ export function calcularDossie(input: DetetiveInput): DossieResultado {
         hard_fail: false,
         cnae_porte: porte,
         flags: redFlags,
+        spc: input.spc ?? null,
       })
 
   // 10. Cenários A/B/C — PF usa layout próprio (prazo padrão 70%, prazo estendido inviável)

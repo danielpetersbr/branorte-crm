@@ -34,6 +34,128 @@ const CUSTO_PF_ECONOMICO_JUDICIAL = CUSTO_PF_ECONOMICO + CUSTO_ACAO_JUDICIAL  //
 const CUSTO_PJ_COMPLETO = CUSTO_PJ_ECONOMICO_JUDICIAL + 17.09 + 16.21 + 6.49 + 16.21 + 1.96 + 4.91
 const CUSTO_PF_COMPLETO = CUSTO_PF_ECONOMICO_JUDICIAL + 13.56 + 1.72 + 0.78
 
+// Custo base — Novo SPC Maxi (#325) — vai em TODA consulta SPC, eh o "produto base"
+// que carrega os insumos. Sem ele, a API SPC nao aceita o request.
+const CUSTO_BASE_SPC_MAXI = 5.62
+
+// Catalogo completo de insumos para o modo "Personalizar".
+// `default: true` = vem marcado por padrao quando usuario abre o painel custom
+// (replica o pacote Economico). `aplica` filtra checkbox por PJ/PF conforme
+// tipoConsulta selecionado.
+const INSUMOS_INFO = [
+  // Score & cadastrais base (default ON — pacote economico)
+  {
+    codigo: 78,
+    nome: 'Score 12 Meses',
+    valor: 1.13,
+    aplica: ['PJ', 'PF'] as const,
+    desc: 'Score de credito 0-1000 + classe A-F. Probabilidade estatistica de inadimplencia em 12 meses.',
+    default: true,
+  },
+  {
+    codigo: 24,
+    nome: 'Participacao em Empresas',
+    valor: 2.72,
+    aplica: ['PJ', 'PF'] as const,
+    desc: 'Lista outras empresas onde figura como socio/administrador. Sinal de patrimonio + ligacoes economicas.',
+    default: true,
+  },
+  {
+    codigo: 5183,
+    nome: 'Status Receita Federal',
+    valor: 0.33,
+    aplica: ['PJ'] as const,
+    desc: 'Situacao cadastral atual: ATIVA / BAIXADA / INAPTA / SUSPENSA / NULA. Confirma se CNPJ esta operacional.',
+    default: true,
+  },
+  {
+    codigo: 5097,
+    nome: 'Renda Presumida PF',
+    valor: 1.46,
+    aplica: ['PF'] as const,
+    desc: 'Estimativa estatistica de renda mensal/anual. Util pra dimensionar limite de credito.',
+    default: true,
+  },
+  // Judicial (default OFF)
+  {
+    codigo: 18,
+    nome: 'Acoes e Debitos Judiciais',
+    valor: 4.59,
+    aplica: ['PJ', 'PF'] as const,
+    desc: 'Execucoes fiscais, acoes de cobranca, restricoes judiciais. Vara, comarca, processo, valor.',
+    default: false,
+  },
+  // Bacen / SCR (novidade)
+  {
+    codigo: 5267,
+    nome: 'Operacoes SCR Bacen',
+    valor: 4.61,
+    aplica: ['PJ', 'PF'] as const,
+    desc: 'Sistema de Informacoes de Credito do Banco Central: lista operacoes de credito ativas, total contratado, atraso, qtd instituicoes credoras.',
+    default: false,
+  },
+  // Limites e analise PJ
+  {
+    codigo: 5142,
+    nome: 'Limite de Credito Sugerido',
+    valor: 1.96,
+    aplica: ['PJ'] as const,
+    desc: 'Limite recomendado pelo SPC baseado em historico, faturamento e comportamento. Util pra dimensionar venda.',
+    default: false,
+  },
+  {
+    codigo: 5186,
+    nome: 'Quadro Social Completo',
+    valor: 16.21,
+    aplica: ['PJ'] as const,
+    desc: 'Lista detalhada de todos os socios + administradores com participacao, datas, CPF mascarado.',
+    default: false,
+  },
+  {
+    codigo: 5241,
+    nome: 'Grupo Economico',
+    valor: 6.49,
+    aplica: ['PJ'] as const,
+    desc: 'Identifica empresas do mesmo grupo controlador. Util pra avaliar risco consolidado.',
+    default: false,
+  },
+  {
+    codigo: 5229,
+    nome: 'Score PJ',
+    valor: 4.91,
+    aplica: ['PJ'] as const,
+    desc: 'Score especifico pra PJ (diferente do Score 12m generico).',
+    default: false,
+  },
+  // PF avancado
+  {
+    codigo: 5194,
+    nome: 'Comprometimento Renda PF',
+    valor: 13.56,
+    aplica: ['PF'] as const,
+    desc: 'Percentual da renda comprometida com financiamentos ativos. Quanto maior, menos margem pra novo credito.',
+    default: false,
+  },
+  {
+    codigo: 5264,
+    nome: 'Alerta CPF Suspeito',
+    valor: 1.72,
+    aplica: ['PF'] as const,
+    desc: 'Detecta CPF com indicios de fraude, lavagem, comportamento suspeito.',
+    default: false,
+  },
+  {
+    codigo: 5262,
+    nome: 'Alerta Identidade Fraude',
+    valor: 0.78,
+    aplica: ['PF'] as const,
+    desc: 'Verifica se documento foi usado em tentativa de fraude conhecida.',
+    default: false,
+  },
+] as const
+
+type AplicaTipo = 'PJ' | 'PF'
+
 const PACOTE_INFO: Record<Pacote, { titulo: string; descricao: string; custoPj: number; custoPf: number }> = {
   economico: {
     titulo: 'Econômico',
@@ -110,6 +232,12 @@ export function DueDiligenceForm({
   const [cnpj, setCnpj] = useState(initialCnpj ?? '')
   const [cpf, setCpf] = useState('')
   const [pacote, setPacote] = useState<Pacote>('economico')
+  // Modo "Personalizar" — quando true, ignora pacotes prontos e usa
+  // insumosSelecionados. Envia pacote='custom' + insumos_custom pro backend.
+  const [modoCustom, setModoCustom] = useState(false)
+  const [insumosSelecionados, setInsumosSelecionados] = useState<number[]>(
+    INSUMOS_INFO.filter(i => i.default).map(i => i.codigo),
+  )
   const consultar = useConsultarDueDiligence()
   const { data: historico = [] } = useDDHistorico(contactId ?? null)
 
@@ -144,10 +272,32 @@ export function DueDiligenceForm({
     (!precisaCpf || cpfValido) &&
     !consultar.isPending
 
+  // Filtra insumos aplicaveis ao tipo de consulta atual (PJ ou PF)
+  // — "ambos" nao existe mais no toggle, mas mantido por seguranca
+  const tipoLabel: AplicaTipo = precisaCnpj ? 'PJ' : 'PF'
+  const insumosDisponiveis = INSUMOS_INFO.filter(i =>
+    (i.aplica as readonly AplicaTipo[]).includes(tipoLabel),
+  )
+  // Insumos selecionados que sao validos pra esse tipo de consulta
+  // (evita enviar codigo de insumo PJ quando consulta eh PF)
+  const insumosSelecionadosValidos = insumosSelecionados.filter(cod =>
+    insumosDisponiveis.some(i => i.codigo === cod),
+  )
+
   // Custo: soma só do que vai ser consultado
-  const info = PACOTE_INFO[pacote]
-  const custoEstimado =
-    (precisaCnpj ? info.custoPj : 0) + (precisaCpf ? info.custoPf : 0)
+  let custoEstimado: number
+  if (modoCustom) {
+    // Modo custom: SPC Maxi + insumos selecionados validos para esse tipo
+    const custoInsumos = insumosSelecionadosValidos.reduce((acc, cod) => {
+      const info = INSUMOS_INFO.find(i => i.codigo === cod)
+      return acc + (info?.valor ?? 0)
+    }, 0)
+    const fatorTipo = (precisaCnpj ? 1 : 0) + (precisaCpf ? 1 : 0)
+    custoEstimado = fatorTipo > 0 ? (CUSTO_BASE_SPC_MAXI + custoInsumos) * fatorTipo : 0
+  } else {
+    const info = PACOTE_INFO[pacote]
+    custoEstimado = (precisaCnpj ? info.custoPj : 0) + (precisaCpf ? info.custoPf : 0)
+  }
 
   function handleSubmit(forceRefresh = false) {
     if (!podeEnviar) return
@@ -155,14 +305,33 @@ export function DueDiligenceForm({
     // o resultado da nova mutation vai aparecer no lugar (consultar.data tem
     // prioridade no render abaixo).
     onNewConsulta?.()
-    consultar.mutate({
+    // Backend aceita pacote='custom' + insumos_custom = { pj?: number[], pf?: number[] }
+    // (ver api/dd-consultar.ts). Quando custom, monta plano so com os codigos passados.
+    const payload: Parameters<typeof consultar.mutate>[0] = {
       contact_id: contactId ?? null,
       tipo_consulta: tipoConsulta,
       cnpj: precisaCnpj ? cnpjLimpo : null,
       cpf_socio: precisaCpf ? cpfLimpo : null,
-      pacote,
+      pacote: modoCustom ? 'custom' : pacote,
       force_refresh: forceRefresh,
-    })
+    }
+    if (modoCustom) {
+      // Codigos validos pra esse tipo de consulta — replica pra pj e/ou pf
+      // conforme tipoConsulta. A API ignora chaves vazias.
+      const codigos = insumosSelecionadosValidos
+      ;(payload as Record<string, unknown>).insumos_custom = {
+        ...(precisaCnpj ? { pj: codigos } : {}),
+        ...(precisaCpf ? { pf: codigos } : {}),
+      }
+    }
+    consultar.mutate(payload)
+  }
+
+  // Toggle de insumo individual no modo custom
+  function toggleInsumo(codigo: number) {
+    setInsumosSelecionados(prev =>
+      prev.includes(codigo) ? prev.filter(c => c !== codigo) : [...prev, codigo],
+    )
   }
 
   return (
@@ -173,9 +342,11 @@ export function DueDiligenceForm({
         </p>
       )}
 
-      {/* Form INLINE compacto — uma linha em desktop, empilha em mobile */}
+      {/* Form INLINE compacto — uma linha em desktop, empilha em mobile.
+          NOTA: o select de Pacote virou cardapio (botoes rapidos + toggle
+          Personalizar) abaixo, fora do grid principal. */}
       <div className="border border-border rounded-lg bg-surface-2/30 p-3">
-        <div className="grid grid-cols-1 md:grid-cols-[auto_1fr_auto_auto] gap-3 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-[auto_1fr_auto] gap-3 items-end">
           {/* Toggle tipo de consulta (PJ/PF) */}
           <div className="min-w-0">
             <label className="text-[10px] font-semibold text-ink-faint uppercase tracking-wider block mb-1">
@@ -233,26 +404,6 @@ export function DueDiligenceForm({
             )}
           </div>
 
-          {/* Pacote select */}
-          <div className="min-w-0">
-            <label className="text-[10px] font-semibold text-ink-faint uppercase tracking-wider block mb-1">
-              Pacote
-            </label>
-            <select
-              value={pacote}
-              onChange={e => setPacote(e.target.value as Pacote)}
-              className="text-[12px] px-3 py-2 rounded-md border border-border bg-surface-2 text-ink font-semibold focus:outline-none focus:border-accent"
-              title={PACOTE_INFO[pacote].descricao}
-            >
-              <option value="economico">
-                Econômico · R$ {((precisaCnpj ? PACOTE_INFO.economico.custoPj : 0) + (precisaCpf ? PACOTE_INFO.economico.custoPf : 0)).toFixed(2)}
-              </option>
-              <option value="economico_judicial">
-                Econômico + Judicial · R$ {((precisaCnpj ? PACOTE_INFO.economico_judicial.custoPj : 0) + (precisaCpf ? PACOTE_INFO.economico_judicial.custoPf : 0)).toFixed(2)}
-              </option>
-            </select>
-          </div>
-
           {/* Botão consultar */}
           <div className="min-w-0">
             <label className="text-[10px] font-semibold text-ink-faint uppercase tracking-wider block mb-1 md:invisible">
@@ -273,9 +424,139 @@ export function DueDiligenceForm({
           </div>
         </div>
 
+        {/* ====================================================================
+            CARDAPIO DE PACOTES — substitui o antigo <select>
+            ==================================================================== */}
+        <div className="mt-3 border-t border-border/40 pt-3">
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
+            <label className="text-[10px] font-semibold text-ink-faint uppercase tracking-wider">
+              Pacote
+            </label>
+
+            {/* Botoes rapidos: Economico / Econ+Judicial */}
+            <button
+              type="button"
+              onClick={() => { setModoCustom(false); setPacote('economico') }}
+              className={`text-[11px] px-3 py-1.5 rounded-md font-semibold transition-all border ${
+                !modoCustom && pacote === 'economico'
+                  ? 'bg-accent text-white border-accent'
+                  : 'bg-surface-2 text-ink-muted border-border hover:text-ink hover:border-accent/40'
+              }`}
+              title={PACOTE_INFO.economico.descricao}
+            >
+              Econômico · R$ {((precisaCnpj ? PACOTE_INFO.economico.custoPj : 0) + (precisaCpf ? PACOTE_INFO.economico.custoPf : 0)).toFixed(2)}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setModoCustom(false); setPacote('economico_judicial') }}
+              className={`text-[11px] px-3 py-1.5 rounded-md font-semibold transition-all border ${
+                !modoCustom && pacote === 'economico_judicial'
+                  ? 'bg-accent text-white border-accent'
+                  : 'bg-surface-2 text-ink-muted border-border hover:text-ink hover:border-accent/40'
+              }`}
+              title={PACOTE_INFO.economico_judicial.descricao}
+            >
+              Econ + Judicial · R$ {((precisaCnpj ? PACOTE_INFO.economico_judicial.custoPj : 0) + (precisaCpf ? PACOTE_INFO.economico_judicial.custoPf : 0)).toFixed(2)}
+            </button>
+
+            {/* Toggle Personalizar — expande/colapsa painel de checkboxes */}
+            <button
+              type="button"
+              onClick={() => setModoCustom(v => !v)}
+              className={`text-[11px] px-3 py-1.5 rounded-md font-semibold transition-all border inline-flex items-center gap-1 ${
+                modoCustom
+                  ? 'bg-accent text-white border-accent'
+                  : 'bg-surface-2 text-ink-muted border-border hover:text-ink hover:border-accent/40'
+              }`}
+              title="Monte sua propria combinacao de insumos SPC"
+            >
+              Personalizar
+              {modoCustom ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            </button>
+
+            {/* Total sempre visivel ao lado do cardapio */}
+            <span className="ml-auto text-[11px] font-mono font-bold text-ink tabular-nums">
+              Total: R$ {custoEstimado.toFixed(2)}
+            </span>
+          </div>
+
+          {/* Painel de personalizacao — lista de checkboxes com tooltip de descricao */}
+          {modoCustom && (
+            <div className="border border-border/40 rounded-md bg-surface-2/20 p-2 space-y-1">
+              <div className="flex items-center justify-between mb-1 px-1">
+                <p className="text-[10px] text-ink-faint">
+                  Marque os insumos que quer consultar (aplicáveis a {tipoLabel}).
+                  Base: SPC Maxi (R$ {CUSTO_BASE_SPC_MAXI.toFixed(2)}) {precisaCnpj && precisaCpf ? '× 2 (PJ + PF)' : ''}.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setInsumosSelecionados(insumosDisponiveis.map(i => i.codigo))}
+                    className="text-[10px] text-accent hover:underline"
+                  >
+                    Selecionar tudo
+                  </button>
+                  <span className="text-ink-faint">·</span>
+                  <button
+                    type="button"
+                    onClick={() => setInsumosSelecionados([])}
+                    className="text-[10px] text-accent hover:underline"
+                  >
+                    Limpar
+                  </button>
+                </div>
+              </div>
+
+              {insumosDisponiveis.map(info => {
+                const marcado = insumosSelecionados.includes(info.codigo)
+                return (
+                  <label
+                    key={info.codigo}
+                    className={`flex items-start gap-3 p-2 hover:bg-surface-2/40 rounded cursor-pointer border transition-colors ${
+                      marcado ? 'border-accent/40 bg-accent/5' : 'border-border/30'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={marcado}
+                      onChange={() => toggleInsumo(info.codigo)}
+                      className="mt-0.5 accent-accent"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[12px] font-semibold text-ink">
+                          {info.nome}
+                          <span className="ml-1.5 text-[9px] font-mono text-ink-faint">
+                            #{info.codigo}
+                          </span>
+                        </span>
+                        <span className="text-[11px] text-ink-muted font-mono tabular-nums shrink-0">
+                          R$ {info.valor.toFixed(2)}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-ink-faint mt-0.5 leading-tight">
+                        {info.desc}
+                      </p>
+                    </div>
+                  </label>
+                )
+              })}
+
+              {insumosDisponiveis.length === 0 && (
+                <p className="text-[11px] text-ink-faint italic text-center py-3">
+                  Nenhum insumo disponível para o tipo selecionado.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Hint LGPD/cache inline */}
         <p className="text-[10px] text-ink-faint mt-2">
-          {PACOTE_INFO[pacote].descricao} · Mesmo documento em ≤30d retorna do cache sem custo.
+          {modoCustom
+            ? `Pacote personalizado · ${insumosSelecionadosValidos.length} insumo(s) selecionado(s).`
+            : PACOTE_INFO[pacote].descricao}
+          {' '}· Mesmo documento em ≤30d retorna do cache sem custo.
         </p>
       </div>
       {/* Fim do form */}
@@ -491,9 +772,21 @@ function ResultadoBox({
         <span className="ml-auto text-[11px] font-mono font-semibold text-ink tabular-nums">
           R$ {consulta.custo_brl.toFixed(2)}
         </span>
-        {/* Botão IMPRIMIR — disparra window.print(). CSS @media print isola o bloco. */}
+        {/* Botão IMPRIMIR — seta html.dd-printing pra ativar o CSS @media print
+            do DD (gated por essa classe pra nao vazar pro PDF do orcamento
+            via Puppeteer, que NAO seta a classe). */}
         <button
-          onClick={() => window.print()}
+          onClick={() => {
+            document.documentElement.classList.add('dd-printing')
+            // setTimeout para garantir que CSS aplica antes do dialog
+            setTimeout(() => {
+              window.print()
+              // Cleanup apos dialog fechar
+              setTimeout(() => {
+                document.documentElement.classList.remove('dd-printing')
+              }, 1000)
+            }, 50)
+          }}
           className="dd-no-print text-[10px] font-semibold text-ink-muted hover:text-accent flex items-center gap-1 px-2 py-1 rounded border border-border bg-surface-2 hover:border-accent"
           title="Imprimir consulta em folha A4"
         >

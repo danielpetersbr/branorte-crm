@@ -925,7 +925,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             txtBlob,
             sendWhatsApp: !!pdfBlob,
             whatsAppFilename: `${baseWhatsApp}.pdf`,
-            whatsAppCaption: `📄 Orçamento ${orc.numero} — ${cliNome.trim()}\n\nPersonalizado: ${descricao || sugestao}\nGerado em ${dataEmissaoBR}\n\n👇 Encaminhe pro cliente`,
+            whatsAppCaption: `📄 Orçamento ${orc.numero} — ${cliNome.trim()}`,
             onProgress: (s) => {
               // Heurística: cada update do upload empurra +3% (cap em 92%).
               // Mensagem do server vence o label local.
@@ -999,7 +999,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
               pdf_url: signed.signedUrl,
               filename: `${baseWhatsApp}.pdf`,
               cliente_nome: cliNome.trim(),
-              caption: `📄 Orçamento ${orc.numero} — ${cliNome.trim()}\n\nPersonalizado: ${descricao || sugestao}\nGerado em ${dataEmissaoBR}\n\n👇 Encaminhe pro cliente`,
+              caption: `📄 Orçamento ${orc.numero} — ${cliNome.trim()}`,
             },
           })
           if (fnErr) throw new Error(fnErr.message)

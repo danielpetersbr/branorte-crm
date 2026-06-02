@@ -47,6 +47,13 @@ export interface PlanoVendaCardProps {
     prazo_estendido: CenarioPrazoEstendido
   }
   recomendado: CenarioKey
+  /**
+   * Quando true, oculta o cenário "Prazo Estendido" caso viavel=false (em vez
+   * de mostrá-lo opaco/inviável). Útil para PF, onde prazo estendido com FINAME
+   * geralmente não faz sentido — melhor não confundir o vendedor com card morto.
+   * Default: false (comportamento PJ legado mantido).
+   */
+  ocultarEstendidoSeInviavel?: boolean
 }
 
 // ─── Configuração visual por cenário ─────────────────────────────────────────
@@ -81,7 +88,11 @@ const CENARIOS_META: CenarioMeta[] = [
 
 // ─── Componente principal ────────────────────────────────────────────────────
 
-export function PlanoVendaCard({ cenarios, recomendado }: PlanoVendaCardProps) {
+export function PlanoVendaCard({
+  cenarios,
+  recomendado,
+  ocultarEstendidoSeInviavel = false,
+}: PlanoVendaCardProps) {
   // GUARD: Se cenarios não tem o shape mínimo esperado, não renderiza nada.
   // Backend (api/dd-consultar.ts) ainda manda Cenario[] (array) em alguns casos,
   // mas frontend espera {a_vista, prazo_padrao, prazo_estendido}. Sem esse guard,
@@ -119,15 +130,26 @@ export function PlanoVendaCard({ cenarios, recomendado }: PlanoVendaCardProps) {
         </span>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div
+        className={`grid gap-4 grid-cols-1 ${
+          // Quando ocultamos o estendido inviável, viramos grid de 2 colunas em md+
+          ocultarEstendidoSeInviavel && cenarios?.prazo_estendido?.viavel === false
+            ? "md:grid-cols-2"
+            : "md:grid-cols-3"
+        }`}
+      >
         {CENARIOS_META.map((meta) => {
           const cenario = cenarios[meta.key]
           // Skip silencioso se o cenário individual não existe (defensive)
           if (!cenario) return null
-          const isRecomendado = recomendado === meta.key
           const isInviavel =
             meta.key === "prazo_estendido" &&
             (cenarios?.prazo_estendido?.viavel === false)
+
+          // Ocultação total: pula o cenário se for estendido + inviavel + flag ligada
+          if (isInviavel && ocultarEstendidoSeInviavel) return null
+
+          const isRecomendado = recomendado === meta.key
 
           return (
             <CenarioCardView
