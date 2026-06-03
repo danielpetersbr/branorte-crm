@@ -9,7 +9,7 @@ import { Select } from '@/components/ui/Select'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { Check, X, KeyRound } from 'lucide-react'
 
-type AssignableRole = 'admin' | 'vendor' | 'marketing'
+type AssignableRole = 'admin' | 'vendor' | 'marketing' | 'visualizador'
 type AnyRole = AssignableRole | 'pending' | 'rejected'
 
 interface UserRow {
@@ -105,7 +105,7 @@ export function AdminUsuarios() {
 
   const users = data ?? []
   const pending = users.filter(u => u.role === 'pending')
-  const approved = users.filter(u => u.role === 'admin' || u.role === 'vendor' || u.role === 'marketing')
+  const approved = users.filter(u => u.role === 'admin' || u.role === 'vendor' || u.role === 'marketing' || u.role === 'visualizador')
   const rejected = users.filter(u => u.role === 'rejected')
 
   return (
@@ -127,7 +127,7 @@ export function AdminUsuarios() {
 
       <Section title="Usuários ativos" rows={approved} onEdit={u => {
         setEditing(u)
-        setRole((u.role === 'admin' || u.role === 'marketing') ? u.role : 'vendor')
+        setRole((u.role === 'admin' || u.role === 'marketing' || u.role === 'visualizador') ? u.role : 'vendor')
         setVendorId(u.vendor_id ?? '')
       }} />
 
@@ -150,6 +150,7 @@ export function AdminUsuarios() {
                     { value: 'admin', label: 'Admin (vê tudo)' },
                     { value: 'vendor', label: 'Vendedor (só seus leads)' },
                     { value: 'marketing', label: 'Marketing (configurável em Permissões)' },
+                    { value: 'visualizador', label: 'Visualizador (só Dashboard + Atendimentos)' },
                   ]}
                   className="w-full mt-1"
                 />
@@ -304,6 +305,7 @@ function RoleBadge({ role }: { role: UserRow['role'] }) {
     admin:     { label: 'Admin',     cls: 'bg-purple-50 text-purple-700 border border-purple-200' },
     vendor:    { label: 'Vendedor',  cls: 'bg-blue-50 text-blue-700 border border-blue-200' },
     marketing: { label: 'Marketing', cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200' },
+    visualizador: { label: 'Visualizador', cls: 'bg-slate-50 text-slate-700 border border-slate-200' },
     pending:   { label: 'Pendente',  cls: 'bg-amber-50 text-amber-700 border border-amber-200' },
     rejected:  { label: 'Rejeitado', cls: 'bg-red-50 text-red-700 border border-red-200' },
   }

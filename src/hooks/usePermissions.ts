@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 
-export type AssignableRole = 'admin' | 'vendor' | 'marketing'
+export type AssignableRole = 'admin' | 'vendor' | 'marketing' | 'visualizador'
 
 export interface RolePermissionsRow {
   role: AssignableRole
@@ -27,6 +27,8 @@ export const FEATURE_CATALOG: Array<{
   { key: 'menu.atividade_diaria', label: 'Atividade Diária', group: 'Menu' },
   { key: 'menu.orcamentos', label: 'Orçamentos', group: 'Menu' },
   { key: 'menu.vendidos', label: 'Vendidos', group: 'Menu' },
+  { key: 'menu.frete', label: 'Frete', group: 'Menu' },
+  { key: 'menu.controle', label: 'Controle (Vendas)', group: 'Menu' },
   { key: 'menu.projeto', label: 'Projeto', group: 'Menu' },
   { key: 'menu.disparos', label: 'Roteamento (Disparos)', group: 'Menu' },
   { key: 'menu.admin_usuarios', label: 'Admin: Usuários', group: 'Menu' },
@@ -42,12 +44,13 @@ export const FEATURE_CATALOG: Array<{
   { key: 'admin.due_diligence', label: 'Admin: ver consultas de todos vendedores', group: 'Ações' },
 ]
 
-export const ASSIGNABLE_ROLES: AssignableRole[] = ['admin', 'vendor', 'marketing']
+export const ASSIGNABLE_ROLES: AssignableRole[] = ['admin', 'vendor', 'marketing', 'visualizador']
 
 export const ROLE_LABELS: Record<AssignableRole, string> = {
   admin: 'Admin',
   vendor: 'Vendedor',
   marketing: 'Marketing',
+  visualizador: 'Visualizador',
 }
 
 // Fallback usado enquanto a query carrega ou se a row não existir.
@@ -63,12 +66,18 @@ const FALLBACK: Record<AssignableRole, Record<string, boolean>> = {
     'menu.atividade_diaria': true,
     'menu.orcamentos': true,
     'menu.vendidos': true,
+    'menu.frete': true,
+    'menu.controle': true,
     'menu.projeto': true,
     'menu.due_diligence': true,
     'orcamentos.criar': true,
     'due_diligence.consultar': true,
   },
   marketing: {},
+  // Visualizador: só Dashboard (sempre visível) + Atendimentos.
+  visualizador: {
+    'menu.atendimentos': true,
+  },
 }
 
 export function useRolePermissions() {

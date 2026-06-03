@@ -126,6 +126,13 @@ function AppRoutes() {
     return <Pendente />
   }
 
+  // Visualizador: acesso restrito a Dashboard + Atendimentos. Bloqueia URL direta
+  // pra qualquer outra rota (o menu já esconde; isto trava o acesso por link).
+  const VIEWER_PATHS = new Set(['/', '/dashboard', '/atendimentos', '/perfil'])
+  if (profile.role === 'visualizador' && !VIEWER_PATHS.has(loc.pathname)) {
+    return <Navigate to="/" replace />
+  }
+
   // Aprovado → app
   // Layout envolve <Outlet> em <Suspense> pra carregar chunks lazy de cada página.
   return (

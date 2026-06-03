@@ -71,6 +71,7 @@ const SECONDARY: NavItem[] = [
     to: '/frete',
     label: 'Frete',
     icon: Truck,
+    permKey: 'menu.frete',
     children: [
       { to: '/frete', label: 'Calculadora', icon: Truck },
       { to: '/frete/transportadoras', label: 'Transportadoras', icon: Package },
@@ -82,6 +83,7 @@ const SECONDARY: NavItem[] = [
     label: 'Controle (Vendas)',
     icon: BarChart2,
     matchPrefix: true,
+    permKey: 'menu.controle',
     children: [
       { to: '/controle', label: 'Painel de Vendas', icon: LayoutDashboard },
       { to: '/controle/pedidos', label: 'Pedidos de Venda', icon: FileText },
@@ -181,6 +183,10 @@ export function Layout() {
   const visible = (item: NavItem) => !item.permKey || can(item.permKey)
   const primary = PRIMARY.filter(visible)
   const secondary = SECONDARY.filter(visible)
+  // Visualizador: barra mobile só com Início + Atender (resto é bloqueado por rota).
+  const mobileNav = profile?.role === 'visualizador'
+    ? MOBILE_NAV.filter(l => l.to === '/' || l.to === '/atendimentos')
+    : MOBILE_NAV
 
   // Removido auto-colapse: usuário controla manualmente via botão.
 
@@ -392,7 +398,7 @@ export function Layout() {
         'md:hidden fixed bottom-0 left-0 right-0 bg-bg/95 backdrop-blur border-t border-border flex items-center justify-around px-2 py-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] z-50',
         aiDrawerOpen && 'hidden',
       )}>
-        {MOBILE_NAV.map(l => (
+        {mobileNav.map(l => (
           <NavLink
             key={l.to}
             to={l.to}
