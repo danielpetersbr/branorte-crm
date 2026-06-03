@@ -1160,6 +1160,23 @@ export function OrcamentoMontar() {
     setCarrinho(c => c.map(it => it.uid === uid ? { ...it, nome_custom: novoNome } : it))
   }
 
+  // Parte do valor base que corresponde ao MOTOR embutido no preço (precos_branorte
+  // com valor_com_motor_trif/mono). O fator de inox/markup do equipamento NÃO deve
+  // multiplicar o motor. Retorna 0 quando o motor é avulso (linha separada), não há
+  // preço linkado, ou não há motor incluso — nesses casos o valor base já é só equipamento.
+  function motorContributionDoItem(it: CarrinhoItem): number {
+    const precoLinkado = it.preco_branorte_id
+      ? (precos ?? []).find(p => p.id === it.preco_branorte_id)
+      : null
+    if (!precoLinkado) return 0
+    const voltagemEfetiva: Voltagem = it.usa_inversor ? 'trifasico' : voltagem
+    const { valor: valorComMotor, motorIncluso } = valorPorVoltagem(precoLinkado, voltagemEfetiva)
+    if (!motorIncluso) return 0
+    const equipV = precoLinkado.valor_equipamento != null ? Number(precoLinkado.valor_equipamento) : 0
+    const portion = valorComMotor - equipV
+    return portion > 0 ? portion : 0
+  }
+
   function toggleInox(uid: string, tipo?: '304' | '316' | false) {
     setCarrinho(c => c.map(it => {
       if (it.uid !== uid) return it
@@ -1171,7 +1188,13 @@ export function OrcamentoMontar() {
       }
 
       const fator = proximo === '304' ? 2.5 : 3.5
-      const novoValor = Math.round(it.valor_original * fator * 100) / 100
+      // Inox multiplica SÓ o equipamento, não o motor incluso. Separa a parte do motor
+      // do valor base, aplica o fator só no equipamento e soma o motor de volta intacto
+      // (a não ser que o motor tenha sido removido do item).
+      const motorContribution = motorContributionDoItem(it)
+      const equipBase = it.valor_original - motorContribution
+      const motorBack = it.motor_removido ? 0 : motorContribution
+      const novoValor = Math.round((equipBase * fator + motorBack) * 100) / 100
       const specsOriginal = it.specs_original || it.specs.slice()
       const label = `Inox ${proximo}`
       const novasSpecs = specsOriginal.map(s => {
@@ -1648,6 +1671,7 @@ export function OrcamentoMontar() {
       novos.push({
         uid: gerarUid(),
         catalogo_id: ci?.id ?? -1,
+        preco_branorte_id: ci?.preco_branorte_id ?? null,
         categoria,
         nome: it.nome,
         specs: it.specs || [],
