@@ -157,6 +157,13 @@ export function OrcamentosSalvos() {
   const { data, isLoading } = useOrcamentosGerados()
   const [busca, setBusca] = useState('')
   const [filtroStatus, setFiltroStatus] = useState<string>('')
+  const [filtroVendedor, setFiltroVendedor] = useState<string>('')
+
+  // Lista de vendedores únicos (pra popular o filtro), ordenada alfabeticamente.
+  const vendedores = useMemo(
+    () => Array.from(new Set((data ?? []).map(o => (o.vendedor_nome || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [data],
+  )
 
   // Group by numero_base: parent rows + ALT sub-rows
   const grouped = useMemo((): OrcamentoGroup[] => {
@@ -166,6 +173,7 @@ export function OrcamentosSalvos() {
     // Filter first
     const filtered = data.filter(o => {
       if (filtroStatus && o.status !== filtroStatus) return false
+      if (filtroVendedor && (o.vendedor_nome || '').trim() !== filtroVendedor) return false
       if (buscaLower) {
         const hay = `${o.numero} ${o.cliente_nome} ${o.vendedor_nome} ${o.modelo_basename ?? ''}`.toLowerCase()
         if (!hay.includes(buscaLower)) return false
@@ -209,7 +217,7 @@ export function OrcamentosSalvos() {
     }
 
     return order.map(k => map.get(k)!)
-  }, [data, busca, filtroStatus])
+  }, [data, busca, filtroStatus, filtroVendedor])
 
   const totalCount = data?.length ?? 0
 
@@ -245,6 +253,17 @@ export function OrcamentosSalvos() {
             className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-md bg-surface-2 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none"
           />
         </div>
+        <select
+          value={filtroVendedor}
+          onChange={e => setFiltroVendedor(e.target.value)}
+          className="px-3 py-2 text-sm border border-border rounded-md bg-surface-2 focus:border-accent outline-none"
+          title="Filtrar por vendedor"
+        >
+          <option value="">Todos vendedores</option>
+          {vendedores.map(v => (
+            <option key={v} value={v}>{v}</option>
+          ))}
+        </select>
         <select
           value={filtroStatus}
           onChange={e => setFiltroStatus(e.target.value)}
