@@ -79,11 +79,26 @@ export interface GerarCustomDocxOpts {
   vendedorNome?: string
   fotoPrincipal?: string | null
   componentesExtras?: Array<{ nome: string; valor: number }>
-  desconto?: { tipo: 'pct' | 'valor'; valor: number } | null
+  desconto?: { tipo: 'pct' | 'valor'; valor: number; base?: 'total' | 'equipamento'; manterValorParcelas?: boolean } | null
   parcelas?: CustomDocxParcela[]
   vendedoresContato?: Array<{ nome: string; telefone: string }>
   vendedorResponsavelNome?: string | null
   tensaoMotores?: 220 | 380 | 660 | null
+  freteTipo?: 'CIF' | 'FOB' | null
+  freteTxt?: string | null
+}
+
+// Valor do desconto respeitando a base ('equipamento' = sem motores). Espelha a
+// lógica do preview/PDF (OrcamentoPreview) pra DOCX e PDF baterem.
+function calcDescontoVal(
+  desconto: { tipo: 'pct' | 'valor'; valor: number; base?: 'total' | 'equipamento' } | null | undefined,
+  totalProposta: number,
+  totalEquip?: number,
+): number {
+  if (!desconto || desconto.valor <= 0) return 0
+  if (desconto.tipo !== 'pct') return desconto.valor
+  const base = desconto.base === 'equipamento' ? (totalEquip ?? totalProposta) : totalProposta
+  return base * (desconto.valor / 100)
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────
@@ -735,7 +750,7 @@ function buildMotores(motores: CustomDocxMotor[], voltagem: 'monofasico' | 'trif
   })
 }
 
-function buildValorTotalProposta(total: number, comMotor: boolean, desconto?: { tipo: 'pct' | 'valor'; valor: number } | null): Paragraph[] {
+function buildValorTotalProposta(total: number, comMotor: boolean, desconto?: { tipo: 'pct' | 'valor'; valor: number; base?: 'total' | 'equipamento' } | null, totalEquip?: number): Paragraph[] {
   const label = comMotor ? 'VALOR TOTAL DA PROPOSTA COM MOTOR NOVO' : 'VALOR TOTAL DA PROPOSTA'
 
   if (!desconto || desconto.valor <= 0) {
@@ -753,10 +768,9 @@ function buildValorTotalProposta(total: number, comMotor: boolean, desconto?: { 
     })]
   }
 
-  // With desconto: muted "sem desconto" box + green "com desconto" box
-  const descontoValor = desconto.tipo === 'pct'
-    ? total * (desconto.valor / 100)
-    : desconto.valor
+  // With desconto: muted "sem desconto" box + green "com desconto" box.
+  // Respeita desconto.base ('equipamento' = sem motores) — igual ao preview/PDF.
+  const descontoValor = calcDescontoVal(desconto, total, totalEquip)
   const totalComDesconto = total - descontoValor
   const descontoLabel = desconto.tipo === 'pct'
     ? `Desconto de ${desconto.valor}%`
@@ -866,14 +880,20 @@ function buildTermosComerciais(
   prazoEntrega: string | null | undefined,
   parcelas?: CustomDocxParcela[],
   totalProposta?: number,
+  freteTipo?: 'CIF' | 'FOB' | null,
+  freteTxt?: string | null,
 ): (Paragraph | Table)[] {
+  // Frete: usa o texto escolhido pelo vendedor; senão deriva do tipo (CIF = Branorte
+  // paga, FOB = cliente paga). Antes era hardcoded "por conta do cliente" — errado em CIF.
+  const freteFinal = (freteTxt && freteTxt.trim())
+    || (freteTipo === 'CIF' ? 'por conta da Branorte' : 'por conta do cliente')
   const termos: Array<[string, string]> = [
     ['Data da venda', dataVenda || 'a combinar'],
     ['Prazo de entrega', prazoEntrega || '90 dias (úteis)'],
     ...(!parcelas || parcelas.length === 0
       ? [['Forma de pagamento', formaPagamento || 'a combinar'] as [string, string]]
       : []),
-    ['Frete', 'por conta do cliente'],
+    ['Frete', freteFinal],
     ['Validade da proposta', '10 dias após o envio'],
   ]
   const result: (Paragraph | Table)[] = [
@@ -1235,16 +1255,16 @@ export async function gerarOrcamentoCustomDocx(opts: GerarCustomDocxOpts): Promi
   }
 
   // Valor total proposta (destaque verde, with desconto support)
-  // Calculate effective total for parcelas (accounts for desconto)
-  const descontoValorCalc = opts.desconto && opts.desconto.valor > 0
-    ? (opts.desconto.tipo === 'pct' ? opts.totalProposta * (opts.desconto.valor / 100) : opts.desconto.valor)
-    : 0
-  const totalEfetivo = opts.totalProposta - descontoValorCalc
+  // Base das parcelas (respeita desconto.base e manterValorParcelas — igual ao preview/PDF)
+  const descontoValorCalc = calcDescontoVal(opts.desconto, opts.totalProposta, opts.totalEquip)
+  const totalEfetivo = opts.desconto?.manterValorParcelas
+    ? opts.totalProposta
+    : (opts.totalProposta - descontoValorCalc)
 
-  blocos.push(...buildValorTotalProposta(opts.totalProposta, opts.totalMotores > 0, opts.desconto))
+  blocos.push(...buildValorTotalProposta(opts.totalProposta, opts.totalMotores > 0, opts.desconto, opts.totalEquip))
 
-  // Termos comerciais (with parcelas support)
-  blocos.push(...buildTermosComerciais(opts.formaPagamento, opts.dataVenda, opts.prazoEntrega, opts.parcelas, totalEfetivo))
+  // Termos comerciais (with parcelas support) — frete escolhido pelo vendedor
+  blocos.push(...buildTermosComerciais(opts.formaPagamento, opts.dataVenda, opts.prazoEntrega, opts.parcelas, totalEfetivo, opts.freteTipo, opts.freteTxt))
 
   // Redes sociais
   blocos.push(sectionHeader('Nossas redes sociais'))

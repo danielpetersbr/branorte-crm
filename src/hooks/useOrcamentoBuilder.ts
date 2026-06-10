@@ -125,11 +125,14 @@ export interface OrcamentoGerado {
   observacoes: string | null
   forma_pagamento: string | null
   prazo_entrega: string | null
-  // Frete editavel inline no preview. Opcionais — quando ausentes/null usa default
-  // legado (FOB + "por conta do cliente"). Persistencia em DB depende de migration
-  // adicionar as colunas; ate la, fica so no rascunho local (draftSnapshot).
+  // Frete editavel inline no preview. Colunas criadas via migration 2026-06-10
+  // (frete_tipo/frete_txt/desconto/tensao_motores/marca_motores). Default legado
+  // quando null: FOB + "por conta do cliente".
   frete_tipo?: 'CIF' | 'FOB' | null
   frete_txt?: string | null
+  desconto?: { tipo: 'pct' | 'valor'; valor: number; motivo?: string; base?: 'total' | 'equipamento'; manterValorParcelas?: boolean } | null
+  tensao_motores?: 220 | 380 | 660 | null
+  marca_motores?: string | null
   parcelas: any[] | null
   status: 'rascunho' | 'enviado' | 'aprovado' | 'perdido'
   pdf_url: string | null

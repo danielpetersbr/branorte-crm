@@ -1848,14 +1848,18 @@ export function OrcamentoMontar() {
     // Restaura termos inline no preview (forma de pagamento, prazo, data, parcelas)
     if (o.forma_pagamento) setFormaPagamentoTxt(o.forma_pagamento)
     if (o.prazo_entrega) setPrazoEntregaTxt(o.prazo_entrega)
-    // Frete: restaura do orcamento salvo se a coluna existir (futuro-proof).
-    // Hoje as colunas frete_tipo/frete_txt sao opcionais — sem DB migration ainda.
+    // Frete: restaura do orcamento salvo (colunas criadas na migration 2026-06-10).
     if ((o as any).frete_tipo === 'CIF' || (o as any).frete_tipo === 'FOB') {
       setFreteTipo((o as any).frete_tipo)
     }
     if (typeof (o as any).frete_txt === 'string') {
       setFreteTxt((o as any).frete_txt)
     }
+    // Desconto, tensão e marca dos motores (migration 2026-06-10): antes sumiam ao
+    // reabrir (só viviam no rascunho local). Agora restaura do banco.
+    if ((o as any).desconto) setDescontoCfg((o as any).desconto)
+    if ((o as any).tensao_motores != null) setTensaoMotores((o as any).tensao_motores)
+    if ((o as any).marca_motores != null) setMarcaMotores((o as any).marca_motores)
     if (o.parcelas?.length) setParcelasPagamento(o.parcelas)
     // Guarda dados que vão pro modal FinalizarMontar
     setInitialModal({
@@ -2583,6 +2587,8 @@ export function OrcamentoMontar() {
             dataVenda: dataVendaTxt || null,
             prazoEntrega: prazoEntregaTxt || null,
             formaPagamento: formaPagamentoTxt || 'a combinar',
+            freteTipo,
+            freteTxt: freteTxt || null,
           },
           parcelas: parcelasPagamento,
           componentesExtras: componentesExtras,

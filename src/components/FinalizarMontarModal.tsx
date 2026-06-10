@@ -84,6 +84,8 @@ export interface CarrinhoSnapshot {
     dataVenda?: string | null
     prazoEntrega?: string | null
     formaPagamento?: string | null
+    freteTipo?: 'CIF' | 'FOB' | null
+    freteTxt?: string | null
   }
   // Parcelas estruturadas (tabela DATA/MÉTODO/VALOR)
   parcelas?: Array<{
@@ -745,6 +747,13 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         parcelas: snapshot.parcelas?.length ? snapshot.parcelas : null,
         componentes_extras: snapshot.componentesExtras ?? null,
         foto_principal_url: fotoPrincipalUrl,
+        // Persistência (migration 2026-06-10): frete, desconto, tensão e marca dos
+        // motores agora sobrevivem ao reabrir/editar (antes só viviam no rascunho local).
+        frete_tipo: snapshot.termsInline?.freteTipo ?? null,
+        frete_txt: snapshot.termsInline?.freteTxt ?? null,
+        desconto: snapshot.desconto ?? null,
+        tensao_motores: snapshot.tensaoMotores ?? null,
+        marca_motores: snapshot.marcaMotores ?? null,
       }
       // Status: SEMPRE cria como 'rascunho'. O /api/orcamento-confirm muda
       // pra 'enviado' SE o upload realmente chegou no Storage. Isso evita
@@ -815,6 +824,10 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           dataVenda: snapshot.termsInline?.dataVenda || (pgDataVenda ? formaPgOut.data_venda : null) || null,
           prazoEntrega: snapshot.termsInline?.prazoEntrega || prazoEntrega.trim() || null,
           formaPagamento: snapshot.termsInline?.formaPagamento || formaPgOut.forma_pagamento || 'a combinar',
+          // Frete escolhido pelo vendedor (CIF/FOB + texto) — sem isso o PDF cai no
+          // default FOB "por conta do cliente" mesmo num orçamento CIF.
+          freteTipo: snapshot.termsInline?.freteTipo ?? null,
+          freteTxt: snapshot.termsInline?.freteTxt ?? null,
         },
         observacoesExtra: observacoes.trim() || null,
         fotoPrincipal: snapshot.fotoPrincipal ?? null,
@@ -882,6 +895,11 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           // Componentes adicionais (painel, frete, Difal): entram no totalProposta,
           // então PRECISAM aparecer no DOCX, senão o total não fecha com os itens.
           componentesExtras: snapshot.componentesExtras ?? [],
+          // Paridade DOCX↔PDF: desconto (com base), frete e tensão também no DOCX.
+          desconto: snapshot.desconto ?? null,
+          tensaoMotores: snapshot.tensaoMotores ?? null,
+          freteTipo: snapshot.termsInline?.freteTipo ?? null,
+          freteTxt: snapshot.termsInline?.freteTxt ?? null,
         })
         docxFonte = 'custom'
         console.log(`[gerar] docx (custom) OK (${docxBlob.size} bytes)`)
