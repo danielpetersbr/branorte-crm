@@ -126,18 +126,28 @@ export function agruparPorCategoria(items: CatalogoItem[]): Array<{ categoria: s
     .sort((a, b) => b.qtd - a.qtd)
 }
 
-// Helper: acha o motor compatível mais próximo do CV/polos de um item
+// Helper: acha o motor compatível mais próximo do CV/polos de um item.
+// strictVoltagem: quando true, NUNCA cruza voltagem — se não houver motor na
+// voltagem pedida, retorna null em vez de pegar o de outra voltagem. Usado pra
+// cotação monofásica: motor que só existe em trifásico (ex: 6 CV) NÃO pode ser
+// cobrado com o preço trifásico (mais barato) silenciosamente — o vendedor
+// precisa ver "sem motor cadastrado / a confirmar" em vez de subcobrar.
 export function acharMotorCompativel(
   motores: CatalogoMotor[],
   cv: number,
   polos: number,
   voltagem: 'monofasico' | 'trifasico',
+  strictVoltagem = false,
 ): CatalogoMotor | null {
   // 1) match exato
   const exato = motores.find(m =>
     Number(m.cv) === cv && m.polos === polos && m.voltagem === voltagem,
   )
   if (exato) return exato
+  if (strictVoltagem) {
+    // Não cruza voltagem: só aceita mesmo cv na MESMA voltagem (polos pode variar).
+    return motores.find(m => Number(m.cv) === cv && m.voltagem === voltagem) ?? null
+  }
   // 2) match cv+polos (qualquer voltagem)
   const cvPolos = motores.find(m => Number(m.cv) === cv && m.polos === polos)
   if (cvPolos) return cvPolos

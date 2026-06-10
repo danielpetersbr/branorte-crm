@@ -231,7 +231,7 @@ function agruparMotores(
       for (const me of it.motores_extras_snapshot) {
         const voltagemEfetiva: Voltagem = it.usa_inversor ? 'trifasico' : voltagem
         const motorMatch = motores
-          ? acharMotorCompativel(motores, Number(me.cv), me.polos, voltagemEfetiva)
+          ? acharMotorCompativel(motores, Number(me.cv), me.polos, voltagemEfetiva, voltagemEfetiva === 'monofasico')
           : null
         const valorUnitExtraBruto = motorMatch ? Number(motorMatch.valor) : 0
         // Issue #23: se motor foi removido, zera o valor mas mantém linha (com flag removido)
@@ -295,8 +295,8 @@ function agruparMotores(
       // ficava com valor errado e não atualizava ao trocar CV. Corrigido buscando o preço
       // de cada CV no catálogo de motores via acharMotorCompativel.
       const voltagemEfetiva: Voltagem = it.usa_inversor ? 'trifasico' : voltagem
-      const motor1Cat = motores ? acharMotorCompativel(motores, cv1, it.motor_polos, voltagemEfetiva) : null
-      const motor2Cat = motores ? acharMotorCompativel(motores, cv2, it.motor_polos, voltagemEfetiva) : null
+      const motor1Cat = motores ? acharMotorCompativel(motores, cv1, it.motor_polos, voltagemEfetiva, voltagemEfetiva === 'monofasico') : null
+      const motor2Cat = motores ? acharMotorCompativel(motores, cv2, it.motor_polos, voltagemEfetiva, voltagemEfetiva === 'monofasico') : null
       const tratarComoIncluso = eMotorredutor && eIncluso
       const valorCv1Bruto = porContaCliente ? 0 : (tratarComoIncluso ? 0 : (motor1Cat ? Number(motor1Cat.valor) : valorMotor))
       const valorCv2Bruto = porContaCliente ? 0 : (tratarComoIncluso ? 0 : (motor2Cat ? Number(motor2Cat.valor) : 0))
@@ -667,7 +667,7 @@ export function OrcamentoMontar() {
     porContaCliente?: boolean
   }) {
     const motorMatch = data.motor_cv && data.motor_polos && motores
-      ? acharMotorCompativel(motores, data.motor_cv, data.motor_polos, voltagem)
+      ? acharMotorCompativel(motores, data.motor_cv, data.motor_polos, voltagem, voltagem === 'monofasico')
       : null
     // Item "por conta do cliente" não tem valor: zera pra não entrar no total.
     const valorItem = data.porContaCliente ? 0 : data.valor
@@ -1005,7 +1005,7 @@ export function OrcamentoMontar() {
     }
 
     if (motor_cv_n && motores) {
-      const m = acharMotorCompativel(motores, Number(motor_cv_n), motor_polos, voltagem)
+      const m = acharMotorCompativel(motores, Number(motor_cv_n), motor_polos, voltagem, voltagem === 'monofasico')
       if (m) motor_valor_unit = Number(m.valor)
     }
 
@@ -1110,7 +1110,7 @@ export function OrcamentoMontar() {
     const voltagemEfetiva: Voltagem = item.usa_inversor ? 'trifasico' : voltagem
 
     const motorMatch = item.motor_padrao_cv && item.motor_padrao_polos && motores
-      ? acharMotorCompativel(motores, Number(item.motor_padrao_cv), item.motor_padrao_polos, voltagemEfetiva)
+      ? acharMotorCompativel(motores, Number(item.motor_padrao_cv), item.motor_padrao_polos, voltagemEfetiva, voltagemEfetiva === 'monofasico')
       : null
 
     // Se item está linkado a precos_branorte, usa valor_com_motor_trif/mono conforme voltagem.
@@ -1492,7 +1492,7 @@ export function OrcamentoMontar() {
       const polosMudou = polosFinais !== it.motor_polos
       // Motor incluso continua com valor 0 mesmo ao trocar voltagem.
       const incluso = motorJaInclusoNoItem(it.specs)
-      const motor = acharMotorCompativel(motores, it.motor_cv, polosFinais, voltagemEfetiva)
+      const motor = acharMotorCompativel(motores, it.motor_cv, polosFinais, voltagemEfetiva, voltagemEfetiva === 'monofasico')
       // Recalcula valor do equipamento por voltagem quando linkado a precos_branorte.
       // Pula se item tem inox/tungstenio (valor_original é base de cálculo desses fatores).
       const precoLinkado = it.preco_branorte_id
@@ -1514,7 +1514,9 @@ export function OrcamentoMontar() {
       const preRemocaoAtualizado = motorRemovidoIncluso ? Math.round(novoValor) : it.valor_pre_remocao
       const motorEfetivoVal = (motorInclusoPorPreco || incluso)
         ? 0
-        : (motor ? Number(motor.valor) : it.motor_valor_unit)
+        // Mono sem motor cadastrado nessa voltagem: zera (mostra "sem motor cadastrado /
+        // a confirmar") em vez de manter um preço trifásico antigo e subcobrar.
+        : (motor ? Number(motor.valor) : (voltagemEfetiva === 'monofasico' ? 0 : it.motor_valor_unit))
       return {
         ...it,
         motor_polos: polosFinais,
@@ -3597,7 +3599,7 @@ function CardItem({
   onAdd: () => void
 }) {
   const motorMatch = item.motor_padrao_cv && item.motor_padrao_polos
-    ? acharMotorCompativel(motores, Number(item.motor_padrao_cv), item.motor_padrao_polos, voltagem)
+    ? acharMotorCompativel(motores, Number(item.motor_padrao_cv), item.motor_padrao_polos, voltagem, voltagem === 'monofasico')
     : null
   const motorValor = motorMatch ? Number(motorMatch.valor) * (item.motor_padrao_qtd || 1) : 0
   const totalComMotor = Number(item.valor) + motorValor
