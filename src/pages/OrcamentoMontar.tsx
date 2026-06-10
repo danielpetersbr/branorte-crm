@@ -62,6 +62,10 @@ interface CarrinhoItem {
   specs_original?: string[]
   /** Quando true, item é brinde (valor não entra no total, mostra "BRINDE" no preview). */
   brinde?: boolean
+  /** Quando true, item é fornecido/comprado pelo CLIENTE (ex: caixa, estrutura própria).
+   *  A Branorte não cobra: valor não entra no total e o preview mostra
+   *  "por conta do cliente" em vez de um valor. */
+  por_conta_cliente?: boolean
   /** Quando true, motor NÃO é cobrado pela Branorte — comprado pelo cliente.
    *  No preview a coluna de valor vira "por conta do cliente" (não "incluso"). */
   motor_por_conta_cliente?: boolean
@@ -593,7 +597,7 @@ export function OrcamentoMontar() {
   const motoresAgrupados = useMemo(() => agruparMotores(carrinho, motores, voltagem), [carrinho, motores, voltagem])
 
   const totalItems = useMemo(
-    () => carrinho.reduce((s, c) => s + (c.brinde ? 0 : c.valor * c.qtd), 0),
+    () => carrinho.reduce((s, c) => s + (c.brinde || c.por_conta_cliente ? 0 : c.valor * c.qtd), 0),
     [carrinho],
   )
   const totalMotores = useMemo(
@@ -608,7 +612,7 @@ export function OrcamentoMontar() {
     if (acessorios.valorFixo != null && acessorios.valorFixo > 0) return Math.ceil(acessorios.valorFixo)
     const excluded = new Set(acessorios.excludedItemUids ?? [])
     const base = carrinho.reduce(
-      (s, c) => s + (c.brinde || excluded.has(c.uid) ? 0 : c.valor * c.qtd),
+      (s, c) => s + (c.brinde || c.por_conta_cliente || excluded.has(c.uid) ? 0 : c.valor * c.qtd),
       0,
     )
     return Math.ceil((base * acessorios.pct) / 100)
@@ -654,10 +658,13 @@ export function OrcamentoMontar() {
     descricao: string | null
     foto_url: string | null
     enviarParaAprovacao: boolean
+    porContaCliente?: boolean
   }) {
     const motorMatch = data.motor_cv && data.motor_polos && motores
       ? acharMotorCompativel(motores, data.motor_cv, data.motor_polos, voltagem)
       : null
+    // Item "por conta do cliente" não tem valor: zera pra não entrar no total.
+    const valorItem = data.porContaCliente ? 0 : data.valor
     setCarrinho(c => [...c, {
       uid: gerarUid(),
       catalogo_id: -1,  // marker: item nao oficial / customizado
@@ -665,13 +672,14 @@ export function OrcamentoMontar() {
       nome: data.nome,
       specs: data.descricao ? [data.descricao] : [],
       qtd: 1,
-      valor: data.valor,
-      valor_original: data.valor,
+      valor: valorItem,
+      valor_original: valorItem,
       motor_cv: data.motor_cv,
       motor_polos: data.motor_polos,
       motor_qtd: data.motor_cv ? 1 : 0,
       motor_valor_unit: motorMatch ? Number(motorMatch.valor) : 0,
       foto_url: data.foto_url,
+      por_conta_cliente: !!data.porContaCliente,
     }])
     autoAdicionarBalancaSeCompacta(data.nome, data.categoria)
 
@@ -681,7 +689,7 @@ export function OrcamentoMontar() {
         await supabase.from('catalogo_items_pendentes').insert({
           nome_curto: data.nome,
           categoria: data.categoria || 'CUSTOM',
-          valor: data.valor,
+          valor: valorItem,
           motor_padrao_cv: data.motor_cv,
           motor_padrao_polos: data.motor_polos,
           descricao: data.descricao,
@@ -1690,6 +1698,7 @@ export function OrcamentoMontar() {
         usa_inversor: !!(ci?.usa_inversor),
         brinde: !!(it as any).brinde,
         motor_por_conta_cliente: !!(it as any).motor_por_conta_cliente,
+        por_conta_cliente: !!(it as any).por_conta_cliente,
       })
     })
 
@@ -2397,6 +2406,7 @@ export function OrcamentoMontar() {
                 onToggleInox={toggleInox}
                 onToggleTungstenio={toggleTungstenio}
                 onToggleBrinde={(uid) => setCarrinho(prev => prev.map(c => c.uid === uid ? { ...c, brinde: !c.brinde } : c))}
+                onTogglePorConta={(uid) => setCarrinho(prev => prev.map(c => c.uid === uid ? { ...c, por_conta_cliente: !c.por_conta_cliente, ...(!c.por_conta_cliente ? { valor: 0, valor_original: 0 } : {}) } : c))}
                 onUpdateQtd={alterarQtd}
                 componentesExtras={componentesExtras}
                 onUpdateComponentesExtras={setComponentesExtras}
@@ -2493,6 +2503,7 @@ export function OrcamentoMontar() {
             foto_url: c.foto_url,
             brinde: c.brinde,
             motor_por_conta_cliente: c.motor_por_conta_cliente,
+            por_conta_cliente: c.por_conta_cliente,
           })),
           motoresAgrupados,
           acessorios: acessorios ? { pct: acessorios.pct, items: acessorios.items, valor: valorAcessorios } : null,
@@ -3777,7 +3788,7 @@ function AcessoriosModal({
 
   // Base de cálculo (preview ao vivo dentro do modal).
   const itensCarrinho = useMemo(
-    () => carrinho.filter(c => !c.brinde),
+    () => carrinho.filter(c => !c.brinde && !c.por_conta_cliente),
     [carrinho],
   )
   const baseCalculo = useMemo(() => {
@@ -4130,6 +4141,7 @@ function CustomItemModal({
     descricao: string | null
     foto_url: string | null
     enviarParaAprovacao: boolean
+    porContaCliente: boolean
   }) => Promise<void>
 }) {
   const [nome, setNome] = useState('')
@@ -4139,6 +4151,7 @@ function CustomItemModal({
   const [motorPolos, setMotorPolos] = useState<number | ''>('')
   const [descricao, setDescricao] = useState('')
   const [enviarParaAprovacao, setEnviarParaAprovacao] = useState(false)
+  const [porContaCliente, setPorContaCliente] = useState(false)
   const [salvando, setSalvando] = useState(false)
   const [fotoUrl, setFotoUrl] = useState<string | null>(null)
   const [uploadingFoto, setUploadingFoto] = useState(false)
@@ -4148,14 +4161,15 @@ function CustomItemModal({
     if (open) {
       setNome(''); setCategoria('CUSTOM'); setValor('')
       setMotorCv(''); setMotorPolos(''); setDescricao('')
-      setEnviarParaAprovacao(false); setSalvando(false)
+      setEnviarParaAprovacao(false); setPorContaCliente(false); setSalvando(false)
       setFotoUrl(null); setUploadingFoto(false); setErroUpload(null)
     }
   }, [open])
 
   if (!open) return null
 
-  const valido = nome.trim().length >= 3 && typeof valor === 'number' && valor > 0
+  // Item "por conta do cliente": não precisa de valor (cliente fornece/compra).
+  const valido = nome.trim().length >= 3 && (porContaCliente || (typeof valor === 'number' && valor > 0))
 
   async function handleUploadFoto(file: File) {
     if (!file) return
@@ -4194,12 +4208,13 @@ function CustomItemModal({
       await onAdd({
         nome: nome.trim(),
         categoria: categoria || 'CUSTOM',
-        valor: Number(valor),
+        valor: porContaCliente ? 0 : Number(valor),
         motor_cv: typeof motorCv === 'number' && motorCv > 0 ? motorCv : null,
         motor_polos: typeof motorPolos === 'number' && motorPolos > 0 ? motorPolos : null,
         descricao: descricao.trim() || null,
         foto_url: fotoUrl,
-        enviarParaAprovacao,
+        enviarParaAprovacao: porContaCliente ? false : enviarParaAprovacao,
+        porContaCliente,
       })
     } finally {
       setSalvando(false)
@@ -4249,14 +4264,18 @@ function CustomItemModal({
               </select>
             </div>
             <div>
-              <label className="text-[10px] uppercase font-bold text-ink-muted block mb-1">Valor unitário (R$) *</label>
+              <label className="text-[10px] uppercase font-bold text-ink-muted block mb-1">
+                Valor unitário (R$){porContaCliente ? '' : ' *'}
+              </label>
               <Input
                 type="number"
-                value={valor}
+                value={porContaCliente ? '' : valor}
                 onChange={e => setValor(e.target.value ? Number(e.target.value) : '')}
-                placeholder="0,00"
+                placeholder={porContaCliente ? 'Por conta do cliente' : '0,00'}
                 min="0"
                 step="0.01"
+                disabled={porContaCliente}
+                className={porContaCliente ? 'opacity-50 cursor-not-allowed' : undefined}
               />
             </div>
           </div>
@@ -4357,18 +4376,38 @@ function CustomItemModal({
             )}
           </div>
 
-          <label className="flex items-start gap-2 text-[11px] text-ink-muted cursor-pointer p-2 rounded hover:bg-surface-2 transition-all">
+          <label className={`flex items-start gap-2 text-[11px] cursor-pointer p-2 rounded border transition-all ${
+            porContaCliente
+              ? 'border-accent/50 bg-accent/10 text-ink'
+              : 'border-transparent text-ink-muted hover:bg-surface-2'
+          }`}>
             <input
               type="checkbox"
-              checked={enviarParaAprovacao}
-              onChange={e => setEnviarParaAprovacao(e.target.checked)}
+              checked={porContaCliente}
+              onChange={e => setPorContaCliente(e.target.checked)}
               className="mt-0.5"
             />
             <span>
-              <strong className="text-ink">Sugerir cadastro oficial</strong> · Envia esse item pro admin
-              avaliar e (se aprovado) adicionar ao catálogo permanente.
+              <strong className="text-ink">Por conta do cliente</strong> · Item fornecido/comprado pelo
+              próprio cliente (ex: caixa, estrutura). A Branorte não cobra — sai como
+              <em> "por conta do cliente"</em> na proposta, sem entrar no total.
             </span>
           </label>
+
+          {!porContaCliente && (
+            <label className="flex items-start gap-2 text-[11px] text-ink-muted cursor-pointer p-2 rounded hover:bg-surface-2 transition-all">
+              <input
+                type="checkbox"
+                checked={enviarParaAprovacao}
+                onChange={e => setEnviarParaAprovacao(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                <strong className="text-ink">Sugerir cadastro oficial</strong> · Envia esse item pro admin
+                avaliar e (se aprovado) adicionar ao catálogo permanente.
+              </span>
+            </label>
+          )}
         </div>
 
         <div className="px-4 py-3 border-t border-border flex items-center justify-between gap-2">

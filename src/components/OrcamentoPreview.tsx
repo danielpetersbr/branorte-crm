@@ -27,6 +27,8 @@ export interface PreviewItem {
   inox?: '304' | '316' | false
   tungstenio?: boolean
   brinde?: boolean
+  /** Item fornecido/comprado pelo cliente — coluna de valor mostra "por conta do cliente". */
+  por_conta_cliente?: boolean
 }
 
 export interface PreviewMotor {
@@ -177,6 +179,7 @@ export interface OrcamentoPreviewProps {
   onUpdateTerm?: (key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento' | 'freteTxt' | 'freteTipo', valor: string) => void
   onMoverItem?: (uid: string, direcao: 'cima' | 'baixo') => void
   onToggleBrinde?: (uid: string) => void
+  onTogglePorConta?: (uid: string) => void
 
   // Parcelas estruturadas (alternativa ao texto livre de formaPagamento)
   parcelas?: ParcelaPagamento[]
@@ -319,7 +322,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     tensaoMotores = null, onUpdateTensaoMotores,
     marcaMotores = null, onUpdateMarcaMotores,
     desconto, onUpdateDesconto,
-    onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onUpdateValor, onToggleInox, onToggleTungstenio, onUpdateQtd, onUpdateTerm, onMoverItem, onToggleBrinde,
+    onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onUpdateValor, onToggleInox, onToggleTungstenio, onUpdateQtd, onUpdateTerm, onMoverItem, onToggleBrinde, onTogglePorConta,
     componentesExtras = [], onUpdateComponentesExtras, componentesAdicionaisCatalogo = [],
     parcelas, onUpdateParcelas,
     motoresDisponiveis, onTrocarMotor, onMotorPorContaCliente,
@@ -1076,7 +1079,18 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     )}
                     <div className="flex justify-between text-[15.5px] font-bold tracking-wide">
                       <span className="text-gray-700">VALOR{it.qtd > 1 ? ' TOTAL' : ''}</span>
-                      {it.brinde ? (
+                      {it.por_conta_cliente ? (
+                        <span className="flex items-center gap-2">
+                          <span className="text-gray-600 italic text-[14px]">por conta do cliente</span>
+                          {!renderMode && onTogglePorConta && it.uid && (
+                            <button
+                              onClick={() => onTogglePorConta(it.uid!)}
+                              className="text-[11px] text-gray-400 hover:text-red-500 print:hidden"
+                              title="Remover 'por conta do cliente'"
+                            >✕</button>
+                          )}
+                        </span>
+                      ) : it.brinde ? (
                         <span className="flex items-center gap-2">
                           <span className="text-green-600 font-bold text-[15px]">BRINDE</span>
                           {!renderMode && onToggleBrinde && it.uid && (

@@ -37,6 +37,7 @@ export interface CarrinhoSnapshot {
     motor_valor_unit: number
     foto_url?: string | null
     brinde?: boolean
+    por_conta_cliente?: boolean
   }>
   motoresAgrupados: Array<{
     cv: number
@@ -594,6 +595,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         specs: it.specs,
         valor: it.valor,
         ...(it.brinde ? { brinde: true } : {}),
+        ...(it.por_conta_cliente ? { por_conta_cliente: true } : {}),
       }))
       // BUGFIX v1.4.1: salva valor UNITÁRIO do motor (não o total já multiplicado).
       // Antes salvava valor_total (= valor_unit * qtdMotor), e no próximo load
@@ -697,6 +699,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           motor_valor_unit: it.motor_valor_unit,
           foto_url: it.foto_url ?? null,
           brinde: it.brinde,
+          por_conta_cliente: it.por_conta_cliente,
         })),
         motoresAgrupados: snapshot.motoresAgrupados,
         voltagem: snapshot.voltagem,
@@ -774,7 +777,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           itens: snapshot.itens.map((it, idx) => ({
             letra: String.fromCharCode(65 + idx),
             qtd: it.qtd, nome: it.nome, specs: it.specs,
-            valor: it.valor, brinde: it.brinde,
+            valor: it.valor, brinde: it.brinde, por_conta_cliente: it.por_conta_cliente,
             motor_cv: it.motor_cv, motor_polos: it.motor_polos,
             motor_qtd: it.motor_qtd, foto_url: it.foto_url ?? null,
           })),

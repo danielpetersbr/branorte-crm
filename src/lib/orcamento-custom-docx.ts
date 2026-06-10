@@ -21,6 +21,7 @@ export interface CustomDocxItem {
   motor_qtd?: number
   foto_url?: string | null      // URL da foto do equipamento (opcional)
   brinde?: boolean              // quando true, mostra "BRINDE" em vez do valor
+  por_conta_cliente?: boolean   // quando true, mostra "por conta do cliente" em vez do valor
 }
 
 export interface CustomDocxMotor {
@@ -455,9 +456,11 @@ async function buildItemTable(item: CustomDocxItem, voltagemTxt: string): Promis
     children: [
       r(item.qtd > 1 ? 'VALOR TOTAL' : 'VALOR', { bold: true, size: 22, color: '374151' }),
       new TextRun({ text: '\t', size: 22 }),
-      item.brinde
-        ? r('BRINDE', { bold: true, size: 22, color: '059669' })
-        : r(`R$ ${formatBRL(subtotal)}`, { bold: true, size: 22, color: '111827' }),
+      item.por_conta_cliente
+        ? r('por conta do cliente', { italics: true, size: 20, color: '4B5563' })
+        : item.brinde
+          ? r('BRINDE', { bold: true, size: 22, color: '059669' })
+          : r(`R$ ${formatBRL(subtotal)}`, { bold: true, size: 22, color: '111827' }),
     ],
   })
 

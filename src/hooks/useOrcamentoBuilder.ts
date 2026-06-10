@@ -7,6 +7,8 @@ export interface OrcamentoItem {
   nome: string
   specs: string[]
   valor: number
+  brinde?: boolean      // item brinde (valor não entra no total)
+  por_conta_cliente?: boolean  // item fornecido pelo cliente — mostra "por conta do cliente"
 }
 
 export interface OrcamentoAcessorios {
