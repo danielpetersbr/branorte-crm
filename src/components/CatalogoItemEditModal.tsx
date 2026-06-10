@@ -85,7 +85,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
       setCategoria('')
       setNomeCurto('')
       setNomeCompleto('')
-      setDescricao('')
+      // descricao saiu do estado (auto-gerada das specs no save) — sem setDescricao aqui
       setSpecs([])
       setNovaSpec('')
       setAtributos({})
