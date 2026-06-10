@@ -55,6 +55,10 @@ const ControleNovoPedido = lazy(() => import('@/pages/ControleNovoPedido').then(
 // no fallback antes do auth. Rota usada APENAS pelo Puppeteer server-side.
 import PrintOrcamento from '@/pages/PrintOrcamento'
 
+// /sso é o pouso do login automático vindo do controle.branorte.com.
+// Importado direto (sem lazy) porque roda antes do gate de auth.
+import { SsoLanding } from '@/pages/SsoLanding'
+
 // Loga TODO erro de query/mutation no console. Evita falha silenciosa.
 // Erros visuais aparecem no SyncIndicator da Atendimentos (e outras páginas podem opt-in).
 const queryClient = new QueryClient({
@@ -106,6 +110,12 @@ function AppRoutes() {
   // sem chrome do app. Dados injetados via window.__BRANORTE_PRINT__ pelo Puppeteer.
   if (loc.pathname === '/print/orcamento') {
     return <PrintOrcamento />
+  }
+
+  // Rota pública /sso — pouso do login automático do sistema principal.
+  // Precisa rodar deslogado (é ela que estabelece a sessão).
+  if (loc.pathname === '/sso') {
+    return <SsoLanding />
   }
 
   if (loading) return <PageLoading />
