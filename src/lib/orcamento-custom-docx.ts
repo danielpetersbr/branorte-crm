@@ -554,6 +554,58 @@ function buildAcessorios(acc: CustomDocxAcessorios, letra: string): Table {
   })
 }
 
+// Componentes adicionais (painel elétrico, frete, Difal, etc) — não fabricados pela
+// Branorte mas que entram no total. ANTES esta função era CHAMADA (linha ~1181) mas
+// NUNCA existia: o campo nunca era passado, então o if ficava falso e a tabela sumia
+// do DOCX — mas o valor seguia somado no total → total não fechava. Agora existe e o
+// campo é passado (ver gerarOrcamentoCustomDocx no FinalizarMontarModal).
+function buildComponentesExtras(componentes: Array<{ nome: string; valor: number }>): Table {
+  const total = componentes.reduce((s, c) => s + (Number(c.valor) || 0), 0)
+  const titulo = new Paragraph({
+    children: [r('COMPONENTES ADICIONAIS', { bold: true, size: 22, color: '111827' })],
+    spacing: { after: 120 },
+  })
+  const linhas: Paragraph[] = componentes.map(c => new Paragraph({
+    tabStops: [{ type: TabStopType.RIGHT, position: 9600 }],
+    spacing: { after: 40 },
+    children: [
+      r(c.nome || 'Componente', { size: 20, color: '374151' }),
+      new TextRun({ text: '\t', size: 20 }),
+      r(`R$ ${formatBRL(Number(c.valor) || 0)}`, { size: 20, color: '111827' }),
+    ],
+  }))
+  const totalPara = new Paragraph({
+    tabStops: [{ type: TabStopType.RIGHT, position: 9600 }],
+    spacing: { before: 120, after: 40 },
+    border: { top: { style: BorderStyle.SINGLE, size: 6, color: 'D1D5DB', space: 4 } },
+    children: [
+      r('TOTAL', { bold: true, size: 22, color: '374151' }),
+      new TextRun({ text: '\t', size: 22 }),
+      r(`R$ ${formatBRL(total)}`, { bold: true, size: 22, color: '111827' }),
+    ],
+  })
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: {
+      top: { style: BorderStyle.SINGLE, size: 8, color: '374151' },
+      bottom: { style: BorderStyle.SINGLE, size: 8, color: '374151' },
+      left: { style: BorderStyle.SINGLE, size: 8, color: '374151' },
+      right: { style: BorderStyle.SINGLE, size: 8, color: '374151' },
+      insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+      insideVertical: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+    },
+    rows: [
+      new TableRow({
+        cantSplit: true,
+        children: [new TableCell({
+          margins: { top: 160, bottom: 160, left: 200, right: 200 },
+          children: [titulo, ...linhas, totalPara],
+        })],
+      }),
+    ],
+  })
+}
+
 // Preview: caixa branca com border-2 border-gray-700 rounded-lg, px-6 py-4, font-bold uppercase
 // Em DOCX usamos Table 1×1 pra ter borda completa em volta do conteúdo + padding.
 function buildValorTotalEquip(total: number): Table {

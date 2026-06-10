@@ -879,6 +879,9 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           prazoEntrega: snapshot.termsInline?.prazoEntrega || prazoEntrega.trim() || null,
           observacoes: observacoes.trim() || null,
           vendedorNome: profile?.display_name || 'Vendedor',
+          // Componentes adicionais (painel, frete, Difal): entram no totalProposta,
+          // então PRECISAM aparecer no DOCX, senão o total não fecha com os itens.
+          componentesExtras: snapshot.componentesExtras ?? [],
         })
         docxFonte = 'custom'
         console.log(`[gerar] docx (custom) OK (${docxBlob.size} bytes)`)
