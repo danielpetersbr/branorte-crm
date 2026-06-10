@@ -35,6 +35,8 @@ export interface OrcamentoItem {
   motor_removido?: boolean
   valor_pre_remocao?: number | null
   motores_extras_snapshot?: any[]
+  motores_por_conta_idx?: number[]
+  motores_removidos_idx?: number[]
 }
 
 export interface OrcamentoAcessorios {

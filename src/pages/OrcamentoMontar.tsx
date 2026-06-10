@@ -78,6 +78,12 @@ interface CarrinhoItem {
    *  valor_pre_remocao guarda o valor original do item antes da remoção (pra restaurar). */
   motor_removido?: boolean
   valor_pre_remocao?: number | null
+  /** Multi-motor: "por conta do cliente" / "removido" POR motorIndex (em vez do item
+   *  inteiro). motorIndex: 0/1 = motores do spec "X CV e Y CV"; 100+N = N-ésimo motor
+   *  de motores_extras_snapshot. Os booleanos motor_por_conta_cliente/motor_removido
+   *  seguem valendo pra item de motor ÚNICO (motorIndex undefined). */
+  motores_por_conta_idx?: number[]
+  motores_removidos_idx?: number[]
   /** ID em precos_branorte (quando item veio de lá). Usado pra recalcular valor ao trocar voltagem. */
   preco_branorte_id?: number | null
   /** Snapshot dos motores extras do item de catálogo (multi-motor, ex: misturador c/ aquecimento).
@@ -223,23 +229,31 @@ function agruparMotores(
     const nomeItem = it.nome_custom || it.nome
     const ehAcessorioOuPassiva = it.categoria === 'ACESSORIO' || peneiraSemMotor(nomeItem)
     const motorRemovido = !!it.motor_removido
+    // Multi-motor: flags POR motorIndex. Fallback nos booleanos do item inteiro
+    // (motor único / legados). motorIndex undefined = item de motor único.
+    const removidosIdx = it.motores_removidos_idx ?? []
+    const porContaIdx = it.motores_por_conta_idx ?? []
+    const isRemovido = (idx?: number) => motorRemovido || (idx != null && removidosIdx.includes(idx))
+    const isPorConta = (idx?: number) => !!it.motor_por_conta_cliente || (idx != null && porContaIdx.includes(idx))
 
     // ── MOTORES EXTRAS (multi-motor, ex: misturador c/ aquecimento) ──
     // Aparecem como linha SEPARADA na tabela MOTORES TRIFÁSICOS, com o
     // nome do item + descricao do motor extra (ex: "Misturador 1900L (Exaustor)").
     if (!ehAcessorioOuPassiva && Array.isArray(it.motores_extras_snapshot)) {
-      for (const me of it.motores_extras_snapshot) {
+      it.motores_extras_snapshot.forEach((me, extraArrIdx) => {
+        // motorIndex estável do motor extra (100+ pra não colidir com 0/1 do spec) —
+        // permite "por conta"/"remover"/"trocar" agirem SÓ neste motor secundário.
+        const meIdx = 100 + extraArrIdx
+        const meRemovido = isRemovido(meIdx)
+        const mePorConta = isPorConta(meIdx)
         const voltagemEfetiva: Voltagem = it.usa_inversor ? 'trifasico' : voltagem
         const motorMatch = motores
           ? acharMotorCompativel(motores, Number(me.cv), me.polos, voltagemEfetiva, voltagemEfetiva === 'monofasico')
           : null
         const valorUnitExtraBruto = motorMatch ? Number(motorMatch.valor) : 0
-        // Issue #23: se motor foi removido, zera o valor mas mantém linha (com flag removido)
-        // pra vendedor poder restaurar via botão na própria linha.
-        const valorUnitExtra = motorRemovido ? 0 : valorUnitExtraBruto
-        // Motor extra do snapshot é avulso (cobrado à parte) — NÃO é "incluso"
-        // mesmo quando valorUnitExtra=0 (caso o catálogo não tenha match).
-        // Antes: UI inferia "incluso" e ocultava a falta de preço.
+        // Removido ou por conta do cliente zera o valor mas mantém a linha (flag),
+        // pra vendedor restaurar via botão na própria linha.
+        const valorUnitExtra = (meRemovido || mePorConta) ? 0 : valorUnitExtraBruto
         const qtdExtra = (me.qtd || 1) * it.qtd
         // Expande em N linhas (1 por motor) em vez de 1 linha com (×N)
         for (let i = 0; i < qtdExtra; i++) {
@@ -251,12 +265,13 @@ function agruparMotores(
             valor_total: valorUnitExtra,
             item_nome: `${nomeItem} (${me.descricao})`,
             item_uid: it.uid,
-            por_conta_cliente: !!it.motor_por_conta_cliente,
+            motorIndex: meIdx,
+            por_conta_cliente: mePorConta,
             incluso_real: false,
-            removido: motorRemovido,
+            removido: meRemovido,
           })
         }
-      }
+      })
     }
 
     if (!it.motor_cv || it.motor_polos == null) continue
@@ -298,11 +313,12 @@ function agruparMotores(
       const motor1Cat = motores ? acharMotorCompativel(motores, cv1, it.motor_polos, voltagemEfetiva, voltagemEfetiva === 'monofasico') : null
       const motor2Cat = motores ? acharMotorCompativel(motores, cv2, it.motor_polos, voltagemEfetiva, voltagemEfetiva === 'monofasico') : null
       const tratarComoIncluso = eMotorredutor && eIncluso
-      const valorCv1Bruto = porContaCliente ? 0 : (tratarComoIncluso ? 0 : (motor1Cat ? Number(motor1Cat.valor) : valorMotor))
-      const valorCv2Bruto = porContaCliente ? 0 : (tratarComoIncluso ? 0 : (motor2Cat ? Number(motor2Cat.valor) : 0))
-      // Issue #23: motor removido zera os 2 motores também
-      const valorCv1 = motorRemovido ? 0 : valorCv1Bruto
-      const valorCv2 = motorRemovido ? 0 : valorCv2Bruto
+      // Preço base de cada CV; zera POR motorIndex (0/1) conforme por-conta/removido,
+      // pra marcar/remover UM motor não zerar o outro.
+      const baseCv1 = tratarComoIncluso ? 0 : (motor1Cat ? Number(motor1Cat.valor) : it.motor_valor_unit)
+      const baseCv2 = tratarComoIncluso ? 0 : (motor2Cat ? Number(motor2Cat.valor) : 0)
+      const valorCv1 = (isPorConta(0) || isRemovido(0)) ? 0 : baseCv1
+      const valorCv2 = (isPorConta(1) || isRemovido(1)) ? 0 : baseCv2
       // Bug: se o item TEM motores_extras_snapshot, o 2º motor já entra pelo bloco de
       // motores extras acima. Emitir o cv2 do spec aqui ALÉM disso conta o secundário
       // 2x na tabela e no total. Quando há extras, emite só o principal (cv1).
@@ -313,18 +329,18 @@ function agruparMotores(
           cv: cv1, polos: it.motor_polos, qtd: 1,
           valor_unit: valorCv1, valor_total: valorCv1,
           item_nome: nomeItem, item_uid: it.uid, motorIndex: 0,
-          por_conta_cliente: porContaCliente,
+          por_conta_cliente: isPorConta(0),
           incluso_real: tratarComoIncluso,
-          removido: motorRemovido,
+          removido: isRemovido(0),
         })
         if (!temMotoresExtras) {
           linhas.push({
             cv: cv2, polos: it.motor_polos, qtd: 1,
             valor_unit: valorCv2, valor_total: valorCv2,
             item_nome: nomeItem, item_uid: it.uid, motorIndex: 1,
-            por_conta_cliente: porContaCliente,
+            por_conta_cliente: isPorConta(1),
             incluso_real: tratarComoIncluso,
-            removido: motorRemovido,
+            removido: isRemovido(1),
           })
         }
       }
@@ -1379,10 +1395,17 @@ export function OrcamentoMontar() {
   // Troca o motor de um item especifico do carrinho. Usado pelo picker no preview.
   // motorIndex: quando item tem 2 motores na spec (ex: "15 CV e 2 CV"), indica qual trocar (0 ou 1).
   // Marca/desmarca o motor de um item como "por conta do cliente" — Branorte não cobra, mostra texto.
-  function marcarMotorPorContaCliente(itemUid: string, isPorConta: boolean, _motorIndex?: number) {
+  function marcarMotorPorContaCliente(itemUid: string, isPorConta: boolean, motorIndex?: number) {
     setCarrinho(c => c.map(it => {
       if (it.uid !== itemUid) return it
-      return { ...it, motor_por_conta_cliente: isPorConta }
+      // Motor único (sem índice): flag do item inteiro (comportamento legado).
+      if (motorIndex == null) return { ...it, motor_por_conta_cliente: isPorConta }
+      // Multi-motor: marca SÓ o motorIndex clicado.
+      const cur = it.motores_por_conta_idx ?? []
+      const next = isPorConta
+        ? Array.from(new Set([...cur, motorIndex]))
+        : cur.filter(i => i !== motorIndex)
+      return { ...it, motores_por_conta_idx: next }
     }))
   }
 
@@ -1392,14 +1415,22 @@ export function OrcamentoMontar() {
   // Quando o motor era avulso (motor_valor_unit > 0), o agruparMotores skipará a linha,
   // o que zera o totalMotores — não precisa mexer no valor do item.
   // Para reverter, restaurarMotorDoItem volta valor_pre_remocao.
-  function removerMotorDoItem(itemUid: string, _motorIndex?: number) {
+  function removerMotorDoItem(itemUid: string, motorIndex?: number) {
     setCarrinho(c => c.map(it => {
       if (it.uid !== itemUid) return it
+      // Multi-motor: remove SÓ o motorIndex clicado. Esses motores são linhas
+      // separadas (avulsas) na tabela — não entram no valor do item, então não
+      // recalcula it.valor; só marca o índice como removido (zerado em agruparMotores).
+      if (motorIndex != null) {
+        const cur = it.motores_removidos_idx ?? []
+        if (cur.includes(motorIndex)) return it
+        return { ...it, motores_removidos_idx: [...cur, motorIndex] }
+      }
       if (it.motor_removido) return it  // já removido, no-op
-      // motorContributionDoItem retorna a PORÇÃO do motor embutida no valor (sem o fator
-      // de inox/tungstênio — esse fator só multiplica o equipamento). Subtrair essa porção
-      // do valor ATUAL funciona com OU sem inox/tungstênio. Antes só subtraía quando NÃO
-      // havia inox/tungstênio → remover motor com Inox ligado deixava o motor sendo cobrado.
+      // Motor único: motorContributionDoItem retorna a PORÇÃO do motor embutida no valor
+      // (sem o fator de inox/tungstênio). Subtrair essa porção do valor ATUAL funciona com
+      // OU sem inox/tungstênio. Antes só subtraía quando NÃO havia inox/tungstênio →
+      // remover motor com Inox ligado deixava o motor sendo cobrado.
       const motorContribution = motorContributionDoItem(it)
       const valorRecalculado = motorContribution > 0
         ? Math.round(it.valor - motorContribution)
@@ -1413,13 +1444,18 @@ export function OrcamentoMontar() {
     }))
   }
 
-  function restaurarMotorDoItem(itemUid: string) {
+  function restaurarMotorDoItem(itemUid: string, motorIndex?: number) {
     setCarrinho(c => c.map(it => {
       if (it.uid !== itemUid) return it
+      // Multi-motor: restaura SÓ o motorIndex clicado.
+      if (motorIndex != null) {
+        const cur = it.motores_removidos_idx ?? []
+        return { ...it, motores_removidos_idx: cur.filter(i => i !== motorIndex) }
+      }
       if (!it.motor_removido) return it
-      // Soma a porção do motor de volta ao valor ATUAL (que já reflete inox/tungstênio
-      // aplicados após a remoção). Antes reusava valor_pre_remocao cru — snapshot
-      // PRÉ-material — e perdia a valorização do inox aplicado depois da remoção.
+      // Motor único: soma a porção do motor de volta ao valor ATUAL (que já reflete
+      // inox/tungstênio aplicados após a remoção). Antes reusava valor_pre_remocao cru
+      // — snapshot PRÉ-material — e perdia a valorização do inox.
       const motorContribution = motorContributionDoItem(it)
       const valorRestaurado = motorContribution > 0
         ? Math.round(it.valor + motorContribution)
@@ -1439,6 +1475,18 @@ export function OrcamentoMontar() {
       const incluso = motorJaInclusoNoItem(it.specs)
       const novoCv = Number(novoMotor.cv)
       const novoPolos = novoMotor.polos
+
+      // Motor EXTRA (motorIndex 100+N): troca só o N-ésimo de motores_extras_snapshot,
+      // sem tocar no motor principal / spec / nome. Antes caía no ramo "motor único"
+      // e sobrescrevia o motor principal do item.
+      if (motorIndex != null && motorIndex >= 100) {
+        const extraArrIdx = motorIndex - 100
+        const arr = [...(it.motores_extras_snapshot ?? [])]
+        if (arr[extraArrIdx]) {
+          arr[extraArrIdx] = { ...arr[extraArrIdx], cv: novoCv, polos: novoPolos }
+        }
+        return { ...it, motores_extras_snapshot: arr }
+      }
 
       // Item com múltiplos motores na spec (ex: misturador c/ aquecimento, pré-limpeza):
       // só troca o CV da N-ésima ocorrência (motorIndex 0 = primeiro, 1 = segundo, etc).
@@ -1675,6 +1723,8 @@ export function OrcamentoMontar() {
           motor_removido: !!itAny.motor_removido,
           valor_pre_remocao: itAny.valor_pre_remocao ?? null,
           motores_extras_snapshot: itAny.motores_extras_snapshot ?? undefined,
+          motores_por_conta_idx: itAny.motores_por_conta_idx ?? undefined,
+          motores_removidos_idx: itAny.motores_removidos_idx ?? undefined,
         })
         return
       }
@@ -2572,6 +2622,8 @@ export function OrcamentoMontar() {
             motor_removido: c.motor_removido,
             valor_pre_remocao: c.valor_pre_remocao ?? null,
             motores_extras_snapshot: c.motores_extras_snapshot,
+            motores_por_conta_idx: c.motores_por_conta_idx,
+            motores_removidos_idx: c.motores_removidos_idx,
           })),
           motoresAgrupados,
           acessorios: acessorios ? { pct: acessorios.pct, items: acessorios.items, valor: valorAcessorios } : null,

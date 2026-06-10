@@ -55,6 +55,8 @@ export interface CarrinhoSnapshot {
     motor_removido?: boolean
     valor_pre_remocao?: number | null
     motores_extras_snapshot?: any[]
+    motores_por_conta_idx?: number[]
+    motores_removidos_idx?: number[]
   }>
   motoresAgrupados: Array<{
     cv: number
@@ -679,6 +681,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         motor_removido: it.motor_removido,
         valor_pre_remocao: it.valor_pre_remocao ?? null,
         motores_extras_snapshot: it.motores_extras_snapshot,
+        motores_por_conta_idx: it.motores_por_conta_idx,
+        motores_removidos_idx: it.motores_removidos_idx,
         ...(it.brinde ? { brinde: true } : {}),
         ...(it.por_conta_cliente ? { por_conta_cliente: true } : {}),
       }))
