@@ -303,6 +303,10 @@ function agruparMotores(
       // Issue #23: motor removido zera os 2 motores também
       const valorCv1 = motorRemovido ? 0 : valorCv1Bruto
       const valorCv2 = motorRemovido ? 0 : valorCv2Bruto
+      // Bug: se o item TEM motores_extras_snapshot, o 2º motor já entra pelo bloco de
+      // motores extras acima. Emitir o cv2 do spec aqui ALÉM disso conta o secundário
+      // 2x na tabela e no total. Quando há extras, emite só o principal (cv1).
+      const temMotoresExtras = Array.isArray(it.motores_extras_snapshot) && it.motores_extras_snapshot.length > 0
       // 1 linha por motor da spec × qtd do item (sem agregar — cada item vira N linhas)
       for (let i = 0; i < it.qtd; i++) {
         linhas.push({
@@ -313,14 +317,16 @@ function agruparMotores(
           incluso_real: tratarComoIncluso,
           removido: motorRemovido,
         })
-        linhas.push({
-          cv: cv2, polos: it.motor_polos, qtd: 1,
-          valor_unit: valorCv2, valor_total: valorCv2,
-          item_nome: nomeItem, item_uid: it.uid, motorIndex: 1,
-          por_conta_cliente: porContaCliente,
-          incluso_real: tratarComoIncluso,
-          removido: motorRemovido,
-        })
+        if (!temMotoresExtras) {
+          linhas.push({
+            cv: cv2, polos: it.motor_polos, qtd: 1,
+            valor_unit: valorCv2, valor_total: valorCv2,
+            item_nome: nomeItem, item_uid: it.uid, motorIndex: 1,
+            por_conta_cliente: porContaCliente,
+            incluso_real: tratarComoIncluso,
+            removido: motorRemovido,
+          })
+        }
       }
     } else {
       // 1 linha por motor — se item tem motor_qtd=2 ou qtd=2, gera N linhas iguais
@@ -1390,29 +1396,14 @@ export function OrcamentoMontar() {
     setCarrinho(c => c.map(it => {
       if (it.uid !== itemUid) return it
       if (it.motor_removido) return it  // já removido, no-op
-      // Tenta achar precos_branorte linkado pra ver se motor está incluso no valor
-      const precoLinkado = it.preco_branorte_id
-        ? (precos ?? []).find(p => p.id === it.preco_branorte_id)
-        : null
-      let valorRecalculado = it.valor
-      if (precoLinkado) {
-        // Voltagem efetiva: item com inversor sempre trif (mais barato)
-        const voltagemEfetiva: Voltagem = it.usa_inversor ? 'trifasico' : voltagem
-        const { motorIncluso } = valorPorVoltagem(precoLinkado, voltagemEfetiva)
-        if (motorIncluso) {
-          // Motor estava embutido no preço — usa valor_equipamento (sem motor)
-          const equipV = precoLinkado.valor_equipamento != null
-            ? Number(precoLinkado.valor_equipamento)
-            : it.valor
-          // Aplica mesmos fatores inox/tungstenio que o valor atual tinha
-          // (preserva % de markup) — se não tiver fator especial, é só equipV.
-          // Caminho seguro: sem inox/tungstenio, usa equipV direto;
-          // com fatores aplicados, mantém valor (pois recalcular ficaria complexo).
-          if (!it.inox && !it.tungstenio) {
-            valorRecalculado = Math.round(equipV)
-          }
-        }
-      }
+      // motorContributionDoItem retorna a PORÇÃO do motor embutida no valor (sem o fator
+      // de inox/tungstênio — esse fator só multiplica o equipamento). Subtrair essa porção
+      // do valor ATUAL funciona com OU sem inox/tungstênio. Antes só subtraía quando NÃO
+      // havia inox/tungstênio → remover motor com Inox ligado deixava o motor sendo cobrado.
+      const motorContribution = motorContributionDoItem(it)
+      const valorRecalculado = motorContribution > 0
+        ? Math.round(it.valor - motorContribution)
+        : it.valor
       return {
         ...it,
         motor_removido: true,
@@ -1426,10 +1417,17 @@ export function OrcamentoMontar() {
     setCarrinho(c => c.map(it => {
       if (it.uid !== itemUid) return it
       if (!it.motor_removido) return it
+      // Soma a porção do motor de volta ao valor ATUAL (que já reflete inox/tungstênio
+      // aplicados após a remoção). Antes reusava valor_pre_remocao cru — snapshot
+      // PRÉ-material — e perdia a valorização do inox aplicado depois da remoção.
+      const motorContribution = motorContributionDoItem(it)
+      const valorRestaurado = motorContribution > 0
+        ? Math.round(it.valor + motorContribution)
+        : (it.valor_pre_remocao != null ? it.valor_pre_remocao : it.valor)
       return {
         ...it,
         motor_removido: false,
-        valor: it.valor_pre_remocao != null ? it.valor_pre_remocao : it.valor,
+        valor: valorRestaurado,
         valor_pre_remocao: null,
       }
     }))
@@ -1504,8 +1502,16 @@ export function OrcamentoMontar() {
       const { valor: novoValor, motorIncluso: motorInclusoPorPreco } = podeRecalcularValor
         ? valorPorVoltagem(precoLinkado, voltagemEfetiva)
         : { valor: it.valor, motorIncluso: false }
-      const valorAtualizado = podeRecalcularValor ? Math.round(novoValor) : it.valor
-      const valorOriginalAtualizado = podeRecalcularValor ? Math.round(novoValor) : it.valor_original
+      // Issue #23: se o vendedor REMOVEU o motor e o preço inclui o motor, trocar a
+      // voltagem NÃO pode reinserir o custo do motor. Mantém valor_equipamento (sem motor)
+      // e guarda o valor-com-motor da nova voltagem em valor_pre_remocao (pra restaurar certo).
+      const motorRemovidoIncluso = !!(podeRecalcularValor && it.motor_removido && motorInclusoPorPreco)
+      const equipVolt = (motorRemovidoIncluso && precoLinkado!.valor_equipamento != null)
+        ? Number(precoLinkado!.valor_equipamento)
+        : novoValor
+      const valorAtualizado = podeRecalcularValor ? Math.round(equipVolt) : it.valor
+      const valorOriginalAtualizado = podeRecalcularValor ? Math.round(equipVolt) : it.valor_original
+      const preRemocaoAtualizado = motorRemovidoIncluso ? Math.round(novoValor) : it.valor_pre_remocao
       const motorEfetivoVal = (motorInclusoPorPreco || incluso)
         ? 0
         : (motor ? Number(motor.valor) : it.motor_valor_unit)
@@ -1515,6 +1521,7 @@ export function OrcamentoMontar() {
         motor_valor_unit: motorEfetivoVal,
         valor: valorAtualizado,
         valor_original: valorOriginalAtualizado,
+        valor_pre_remocao: preRemocaoAtualizado,
         specs: polosMudou ? atualizarSpecsComMotor(it.specs, it.motor_cv, polosFinais) : it.specs,
       }
     }))

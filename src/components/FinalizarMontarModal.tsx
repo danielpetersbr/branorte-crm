@@ -7,6 +7,7 @@ import {
 } from '@/hooks/useOrcamentoBuilder'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
+import { letraItem } from '@/lib/utils'
 import { gerarPdfDoPreview } from '@/lib/preview-to-pdf'
 import { gerarPdfServerSide } from '@/lib/pdf-server'
 import { docxParaPdfServer } from '@/lib/docx-to-pdf-server'
@@ -603,14 +604,40 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       // 2) (removido) — antes mapeava pro gerador docx-lib, hoje gerarDocxDoPreview
       //   reusa previewProps direto, nao precisa de transformacao intermediaria.
 
+      // 2.5) Normaliza fotos de item: quando o vendedor troca a foto inline na prévia,
+      // ela chega como data URL base64 (vários MB). NÃO pode ser persistida crua no JSONB
+      // de itens nem reenviada ao endpoint do PDF (incha a linha, deixa save/load lento e
+      // pode estourar o limite de payload da função serverless). Sobe pro Storage (igual à
+      // foto principal) e troca pela URL pública. Itens sem data URL passam intactos.
+      setStep('Subindo fotos dos itens...', 7)
+      const itensNorm = await Promise.all(snapshot.itens.map(async (it) => {
+        const f = it.foto_url
+        if (!f || !f.startsWith('data:')) return it
+        try {
+          const res = await fetch(f)
+          const blob = await res.blob()
+          const ext = blob.type.includes('png') ? 'png' : 'jpg'
+          const path = `orcamentos/foto-item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`
+          const { error: upErr } = await supabase.storage
+            .from('catalogo-fotos')
+            .upload(path, blob, { contentType: blob.type, upsert: true })
+          if (upErr) { console.warn('Falha upload foto item:', upErr.message); return it }
+          const { data: pub } = supabase.storage.from('catalogo-fotos').getPublicUrl(path)
+          return { ...it, foto_url: pub?.publicUrl ?? it.foto_url }
+        } catch (e) {
+          console.warn('Falha upload foto item:', (e as Error).message)
+          return it
+        }
+      }))
+
       // 3) Cria registro no DB
       // Round-trip COMPLETO (2026-06-10): persiste TODOS os campos do item pra
       // edição recarregar 1:1 (antes só salvava letra/qtd/nome/specs/valor →
       // foto, motor, inox, função e item custom sumiam ao reabrir). __full=true
       // sinaliza pro carregarDoModelo usar os campos direto, sem reconstruir do
       // catálogo. Coluna itens é JSONB, aceita os campos extras sem migration.
-      const itensDb: OrcamentoItem[] = snapshot.itens.map((it, idx) => ({
-        letra: String.fromCharCode(65 + idx),
+      const itensDb: OrcamentoItem[] = itensNorm.map((it, idx) => ({
+        letra: letraItem(idx),
         qtd: it.qtd,
         nome: it.nome,
         specs: it.specs,
@@ -727,7 +754,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
 
       // 4) Gera .docx (mesma estrategia do PDF — captura preview HTML como imagem)
       const previewProps = {
-        carrinho: snapshot.itens.map((it, idx) => ({
+        carrinho: itensNorm.map((it, idx) => ({
           uid: `pdf-${idx}`,
           categoria: '',
           nome: it.nome,
@@ -815,8 +842,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             cep: cliDados.cep, cnpj: cliDados.cnpj, ie: cliDados.ie, email: cliDados.email,
           },
           voltagem: snapshot.voltagem,
-          itens: snapshot.itens.map((it, idx) => ({
-            letra: String.fromCharCode(65 + idx),
+          itens: itensNorm.map((it, idx) => ({
+            letra: letraItem(idx),
             qtd: it.qtd, nome: it.nome, specs: it.specs,
             valor: it.valor, brinde: it.brinde, por_conta_cliente: it.por_conta_cliente,
             motor_cv: it.motor_cv, motor_polos: it.motor_polos,

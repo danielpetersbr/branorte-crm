@@ -11,6 +11,21 @@ export function formatNumber(n: number): string {
   return new Intl.NumberFormat('pt-BR').format(n)
 }
 
+// Letra de identificação do item no orçamento (A, B, ... Z, AA, AB...).
+// Antes era String.fromCharCode(65 + idx), que a partir do 27º item (idx>=26)
+// estourava o alfabeto e virava '[', '\\', ']'... no preview/PDF/DOCX e no DB.
+// Agora faz base-26 estilo planilha. idx é 0-based.
+export function letraItem(idx: number): string {
+  let s = ''
+  let i = idx + 1
+  while (i > 0) {
+    const r = (i - 1) % 26
+    s = String.fromCharCode(65 + r) + s
+    i = Math.floor((i - 1) / 26)
+  }
+  return s || 'A'
+}
+
 export function formatPhone(phone: string): string {
   const d = phone.replace(/\D/g, '')
   // BR celular completo: +55 (DD) 9XXXX-XXXX

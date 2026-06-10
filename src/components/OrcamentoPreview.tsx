@@ -8,6 +8,7 @@ import { Search, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BRLInput } from '@/components/ui/BRLInput'
+import { letraItem } from '@/lib/utils'
 
 export interface PreviewItem {
   uid?: string
@@ -788,7 +789,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
           <div className={`space-y-2 ${fotoPrincipal && renderMode ? 'itens-apos-hero' : ''}`}>
             {carrinho.map((it, idx) => {
-              const letra = String.fromCharCode(65 + idx)
+              const letra = letraItem(idx)
               const subtotal = it.valor * it.qtd
               return (
                 <div key={it.uid || idx} data-no-break className="group relative border border-gray-700 rounded-md p-3 bg-white shadow-sm" style={{ zIndex: 1, breakInside: 'avoid', pageBreakInside: 'avoid' }}>
@@ -1182,7 +1183,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             <div data-no-break className="group mt-3 border border-gray-700 rounded-md p-3 bg-white shadow-sm relative" style={{ zIndex: 1 }}>
               <div className="flex items-baseline justify-between gap-2 mb-1.5">
                 <div className="font-bold text-[15.5px] text-gray-900">
-                  <span className="text-gray-900">{String.fromCharCode(65 + carrinho.length)} — ACESSÓRIOS</span>
+                  <span className="text-gray-900">{letraItem(carrinho.length)} — ACESSÓRIOS</span>
                 </div>
                 {!renderMode && (onEditAcessorios || onRemoveAcessorios) && (
                   <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1817,10 +1818,12 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
           {/* VALOR TOTAL DA PROPOSTA */}
           {(() => {
-            const descontoValor = desconto
-              ? (desconto.tipo === 'pct' ? totalGeral * (desconto.valor / 100) : desconto.valor)
-              : 0
-            const totalFinal = Math.max(0, totalGeral - descontoValor)
+            // Reusa _descontoVal/totalComDesconto (linhas ~383-388) que JÁ respeitam
+            // desconto.base ('equipamento' abate só o equipamento, sem motores).
+            // Antes recalculava aqui sobre totalGeral, ignorando a base → abatimento
+            // maior que o devido na caixa de total E no PDF, e divergente das parcelas.
+            const descontoValor = _descontoVal
+            const totalFinal = totalComDesconto
             const temDesconto = !!desconto && descontoValor > 0
             return (
               <>

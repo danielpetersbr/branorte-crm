@@ -88,6 +88,18 @@ export interface GerarCustomDocxOpts {
 
 // ─── helpers ──────────────────────────────────────────────────────────────
 
+// Letra base-26 (A..Z, AA, AB...) — evita estourar o alfabeto com 27+ itens.
+function letraItem(idx: number): string {
+  let s = ''
+  let i = idx + 1
+  while (i > 0) {
+    const r = (i - 1) % 26
+    s = String.fromCharCode(65 + r) + s
+    i = Math.floor((i - 1) / 26)
+  }
+  return s || 'A'
+}
+
 function formatBRL(v: number): string {
   const abs = Math.abs(v)
   const fixed = abs.toFixed(2)
@@ -1148,7 +1160,7 @@ export async function gerarOrcamentoCustomDocx(opts: GerarCustomDocxOpts): Promi
 
   // Acessórios — letra auto-incrementada após o último item (espelha preview)
   if (opts.acessorios && opts.acessorios.valor > 0) {
-    const letraAcc = String.fromCharCode(65 + opts.itens.length)
+    const letraAcc = letraItem(opts.itens.length)
     blocos.push(buildAcessorios(opts.acessorios, letraAcc))
     blocos.push(paragrafoVazio(80))
   }
