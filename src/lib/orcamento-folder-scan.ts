@@ -289,13 +289,24 @@ export interface ScanResult {
   proximoNumero: number
   total: number
   arquivosRecentes: string[]
+  /** true quando o scan foi cortado pelo orçamento de tempo (pasta lenta, ex:
+   *  Z:\ no Google Drive File Stream). O número achado pode estar incompleto. */
+  incompleto?: boolean
 }
 
-export async function scanFolderForLastNumber(handle: any): Promise<ScanResult> {
+export async function scanFolderForLastNumber(
+  handle: any,
+  timeBudgetMs = 8000,
+): Promise<ScanResult> {
   const ano = new Date().getFullYear()
   let ultimoNumero = 0
   let total = 0
   const recentes: string[] = []
+  // Orçamento de tempo: em Z:\ (Drive File Stream) listar diretórios faz round-trip
+  // de rede por entrada — um scan recursivo pode travar. Cortamos no tempo pra o
+  // save nunca congelar. O caller deve tratar `incompleto` (cai pro nº do banco).
+  const deadline = Date.now() + timeBudgetMs
+  let incompleto = false
 
   // Padrões de nome:
   //   "2026 - 0691 - Cliente.docx"
@@ -305,10 +316,12 @@ export async function scanFolderForLastNumber(handle: any): Promise<ScanResult> 
 
   // Recursive scan
   async function scanDir(dirHandle: any, depth = 0) {
-    if (depth > 4) return  // limita profundidade
+    if (depth > 4 || incompleto) return  // limita profundidade
     for await (const [name, entry] of dirHandle.entries()) {
+      if (Date.now() > deadline) { incompleto = true; return }  // estourou o tempo
       if (entry.kind === 'directory') {
         await scanDir(entry, depth + 1)
+        if (incompleto) return
       } else if (entry.kind === 'file') {
         const m = name.match(FILE_RE)
         if (m) {
@@ -335,6 +348,7 @@ export async function scanFolderForLastNumber(handle: any): Promise<ScanResult> 
     proximoNumero: ultimoNumero + 1,
     total,
     arquivosRecentes: recentes,
+    incompleto,
   }
 }
 

@@ -582,9 +582,20 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       if (isFolderScanSupported()) {
         try {
           setStep('Conferindo número na pasta...', 6)
-          const handle = await getStoredFolderHandle(true)
-          if (handle) {
-            const fresh = await scanFolderForLastNumber(handle)
+          // Time-box (fix "trava em 6%"): getStoredFolderHandle + scan podem
+          // congelar em Z:\ (Google Drive File Stream) — listar a pasta faz
+          // round-trip de rede por arquivo. Se passar de ~9s, desiste e usa o
+          // número do banco/estado. O save NUNCA mais fica preso aqui.
+          const SCAN_TIMEOUT = 9000
+          const fresh = await Promise.race([
+            (async () => {
+              const handle = await getStoredFolderHandle(true)
+              if (!handle) return null
+              return await scanFolderForLastNumber(handle, 8000)
+            })(),
+            new Promise<null>((res) => setTimeout(() => res(null), SCAN_TIMEOUT)),
+          ])
+          if (fresh && !fresh.incompleto) {
             numeroOverride = {
               ano: fresh.ano,
               sequencial: fresh.proximoNumero,
@@ -593,8 +604,12 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             setScanInfo({ ultimo: fresh.ultimoNumero, total: fresh.total, ano: fresh.ano })
             setNumeroAtual(numeroOverride.numero)
             setNumeroFonte('pasta')
+          } else {
+            console.warn('[finalizar] conferência da pasta excedeu o tempo — usando número do banco/estado')
           }
-        } catch {}
+        } catch (e) {
+          console.warn('[finalizar] conferência da pasta falhou:', (e as Error)?.message)
+        }
       }
       // Fallback: se não conseguiu escanear pasta, usa o state atual
       if (!numeroOverride && numeroFonte === 'pasta' && scanInfo) {
