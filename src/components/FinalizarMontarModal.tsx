@@ -38,6 +38,22 @@ export interface CarrinhoSnapshot {
     foto_url?: string | null
     brinde?: boolean
     por_conta_cliente?: boolean
+    // Round-trip completo (2026-06-10): campos extras pra recarregar a edição
+    // exatamente como estava (foto manual, custom, inox, função, etc).
+    catalogo_id?: number
+    preco_branorte_id?: number | null
+    categoria?: string
+    valor_original?: number
+    usa_inversor?: boolean
+    funcao_selecionada?: string | null
+    ocultar_funcao_no_pdf?: boolean
+    inox?: '304' | '316' | false
+    tungstenio?: boolean
+    specs_original?: string[]
+    motor_por_conta_cliente?: boolean
+    motor_removido?: boolean
+    valor_pre_remocao?: number | null
+    motores_extras_snapshot?: any[]
   }>
   motoresAgrupados: Array<{
     cv: number
@@ -588,12 +604,37 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       //   reusa previewProps direto, nao precisa de transformacao intermediaria.
 
       // 3) Cria registro no DB
+      // Round-trip COMPLETO (2026-06-10): persiste TODOS os campos do item pra
+      // edição recarregar 1:1 (antes só salvava letra/qtd/nome/specs/valor →
+      // foto, motor, inox, função e item custom sumiam ao reabrir). __full=true
+      // sinaliza pro carregarDoModelo usar os campos direto, sem reconstruir do
+      // catálogo. Coluna itens é JSONB, aceita os campos extras sem migration.
       const itensDb: OrcamentoItem[] = snapshot.itens.map((it, idx) => ({
         letra: String.fromCharCode(65 + idx),
         qtd: it.qtd,
         nome: it.nome,
         specs: it.specs,
         valor: it.valor,
+        __full: true,
+        catalogo_id: it.catalogo_id,
+        preco_branorte_id: it.preco_branorte_id ?? null,
+        categoria: it.categoria,
+        valor_original: it.valor_original,
+        foto_url: it.foto_url ?? null,
+        motor_cv: it.motor_cv,
+        motor_polos: it.motor_polos,
+        motor_qtd: it.motor_qtd,
+        motor_valor_unit: it.motor_valor_unit,
+        usa_inversor: it.usa_inversor,
+        funcao_selecionada: it.funcao_selecionada ?? null,
+        ocultar_funcao_no_pdf: it.ocultar_funcao_no_pdf,
+        inox: it.inox,
+        tungstenio: it.tungstenio,
+        specs_original: it.specs_original,
+        motor_por_conta_cliente: it.motor_por_conta_cliente,
+        motor_removido: it.motor_removido,
+        valor_pre_remocao: it.valor_pre_remocao ?? null,
+        motores_extras_snapshot: it.motores_extras_snapshot,
         ...(it.brinde ? { brinde: true } : {}),
         ...(it.por_conta_cliente ? { por_conta_cliente: true } : {}),
       }))

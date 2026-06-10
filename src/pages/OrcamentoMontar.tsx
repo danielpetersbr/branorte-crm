@@ -1630,6 +1630,46 @@ export function OrcamentoMontar() {
     const SO_MOTOR_RE = /^\s*motor\s+\d+(?:[.,]\d+)?\s*cv\s+\d+\s*polos?\s*$/i
     modelo.itens.forEach(it => {
       if (SO_MOTOR_RE.test(it.nome || '')) return  // motor legado: pula, ja vai cair em MOTORES TRIFASICOS
+
+      // ── Round-trip COMPLETO (2026-06-10) ──────────────────────────────────
+      // Item salvo com __full=true (orçamento editado pós-fix): recarrega 1:1
+      // usando os campos persistidos, SEM reconstruir do catálogo. Isso preserva
+      // a foto manual, item custom (catalogo_id=-1), inox, tungstênio, motor,
+      // função, motor por conta do cliente / removido, etc — que antes sumiam.
+      const itAny = it as any
+      if (itAny.__full === true) {
+        const valorFull = Number(it.valor) || 0
+        novos.push({
+          uid: gerarUid(),
+          catalogo_id: typeof itAny.catalogo_id === 'number' ? itAny.catalogo_id : -1,
+          preco_branorte_id: itAny.preco_branorte_id ?? null,
+          categoria: itAny.categoria || 'MODELO',
+          nome: it.nome,
+          specs: it.specs || [],
+          specs_original: itAny.specs_original ?? undefined,
+          qtd: it.qtd || 1,
+          valor: valorFull,
+          valor_original: typeof itAny.valor_original === 'number' ? itAny.valor_original : valorFull,
+          motor_cv: itAny.motor_cv ?? null,
+          motor_polos: itAny.motor_polos ?? null,
+          motor_qtd: itAny.motor_qtd ?? 0,
+          motor_valor_unit: itAny.motor_valor_unit ?? 0,
+          foto_url: itAny.foto_url ?? null,
+          usa_inversor: !!itAny.usa_inversor,
+          funcao_selecionada: itAny.funcao_selecionada ?? null,
+          ocultar_funcao_no_pdf: !!itAny.ocultar_funcao_no_pdf,
+          inox: itAny.inox ?? false,
+          tungstenio: !!itAny.tungstenio,
+          brinde: !!itAny.brinde,
+          por_conta_cliente: !!itAny.por_conta_cliente,
+          motor_por_conta_cliente: !!itAny.motor_por_conta_cliente,
+          motor_removido: !!itAny.motor_removido,
+          valor_pre_remocao: itAny.valor_pre_remocao ?? null,
+          motores_extras_snapshot: itAny.motores_extras_snapshot ?? undefined,
+        })
+        return
+      }
+
       const ci = acharCatalogoSimilar(it.nome)
       // Acessório/peça avulsa (jogo de peneira, jogo de martelos, eixos e buchas) e peneira
       // passiva não têm motor próprio — ignora o CV do nome/spec (é a bitola do moinho).
@@ -2504,6 +2544,21 @@ export function OrcamentoMontar() {
             brinde: c.brinde,
             motor_por_conta_cliente: c.motor_por_conta_cliente,
             por_conta_cliente: c.por_conta_cliente,
+            // Round-trip completo: campos extras pra recarregar a edição 1:1
+            // (foto manual/custom, inox, função, motor, etc) sem reconstruir.
+            catalogo_id: c.catalogo_id,
+            preco_branorte_id: c.preco_branorte_id ?? null,
+            categoria: c.categoria,
+            valor_original: c.valor_original,
+            usa_inversor: c.usa_inversor,
+            funcao_selecionada: c.funcao_selecionada ?? null,
+            ocultar_funcao_no_pdf: c.ocultar_funcao_no_pdf,
+            inox: c.inox,
+            tungstenio: c.tungstenio,
+            specs_original: c.specs_original,
+            motor_removido: c.motor_removido,
+            valor_pre_remocao: c.valor_pre_remocao ?? null,
+            motores_extras_snapshot: c.motores_extras_snapshot,
           })),
           motoresAgrupados,
           acessorios: acessorios ? { pct: acessorios.pct, items: acessorios.items, valor: valorAcessorios } : null,

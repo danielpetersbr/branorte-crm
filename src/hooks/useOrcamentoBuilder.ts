@@ -9,6 +9,32 @@ export interface OrcamentoItem {
   valor: number
   brinde?: boolean      // item brinde (valor não entra no total)
   por_conta_cliente?: boolean  // item fornecido pelo cliente — mostra "por conta do cliente"
+  // ── Round-trip completo (2026-06-10) ──────────────────────────────────────
+  // Quando __full=true, o item foi salvo com TODOS os campos do carrinho e a
+  // edição recarrega exatamente como estava (sem reconstruir do catálogo —
+  // preserva foto manual, item custom, inox, motor, função, etc). Itens de
+  // modelos prontos (orcamento_modelos) e orçamentos legados NÃO têm __full →
+  // continuam reconstruindo via fuzzy match no carregarDoModelo.
+  __full?: boolean
+  catalogo_id?: number
+  preco_branorte_id?: number | null
+  categoria?: string
+  valor_original?: number
+  foto_url?: string | null
+  motor_cv?: number | null
+  motor_polos?: number | null
+  motor_qtd?: number
+  motor_valor_unit?: number
+  usa_inversor?: boolean
+  funcao_selecionada?: string | null
+  ocultar_funcao_no_pdf?: boolean
+  inox?: '304' | '316' | false
+  tungstenio?: boolean
+  specs_original?: string[]
+  motor_por_conta_cliente?: boolean
+  motor_removido?: boolean
+  valor_pre_remocao?: number | null
+  motores_extras_snapshot?: any[]
 }
 
 export interface OrcamentoAcessorios {
