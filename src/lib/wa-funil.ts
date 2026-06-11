@@ -77,6 +77,53 @@ export const ordemDe = (nomeCanonico: string): number => {
 export const corDaEtiqueta = (nomeCanonico: string): string =>
   ETIQUETA_COR[nomeCanonico] ?? '#9ca3af'
 
+// Temperatura do chat pela última mensagem (igual ao painel do WhatsApp/Wascript)
+export type Temperatura = 'fresco' | 'recente' | 'morno' | 'parado' | 'sem-dado'
+
+export function temperaturaDe(iso: string | null): Temperatura {
+  if (!iso) return 'sem-dado'
+  const t = new Date(iso).getTime()
+  if (Number.isNaN(t)) return 'sem-dado'
+  const dias = (Date.now() - t) / 86_400_000
+  if (dias < 1) return 'fresco'
+  if (dias < 3) return 'recente'
+  if (dias < 7) return 'morno'
+  return 'parado'
+}
+
+export const TEMP_META: Record<Temperatura, { cor: string; label: string }> = {
+  fresco: { cor: '#22c55e', label: 'Hoje' },
+  recente: { cor: '#3b82f6', label: 'Recente (1-3 dias)' },
+  morno: { cor: '#eab308', label: 'Morno (3-7 dias)' },
+  parado: { cor: '#ef4444', label: 'Parado (+7 dias)' },
+  'sem-dado': { cor: '#6b7280', label: 'Sem data' },
+}
+
+export interface ResumoColuna {
+  fresco: number
+  recente: number
+  morno: number
+  parado: number
+  semDado: number
+  aguardando: number // cliente mandou por último (esperando resposta)
+}
+
+export function resumoColuna(
+  chats: { last_message_at: string | null; last_message_from_me: boolean | null }[]
+): ResumoColuna {
+  const r: ResumoColuna = { fresco: 0, recente: 0, morno: 0, parado: 0, semDado: 0, aguardando: 0 }
+  for (const c of chats) {
+    const temp = temperaturaDe(c.last_message_at)
+    if (temp === 'fresco') r.fresco++
+    else if (temp === 'recente') r.recente++
+    else if (temp === 'morno') r.morno++
+    else if (temp === 'parado') r.parado++
+    else r.semDado++
+    if (c.last_message_from_me === false) r.aguardando++
+  }
+  return r
+}
+
 /** "há 5 min", "há 3 h", "ontem", "10/06" */
 export function tempoRelativo(iso: string | null): string {
   if (!iso) return ''
