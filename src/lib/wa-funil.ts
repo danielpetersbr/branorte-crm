@@ -124,6 +124,61 @@ export function resumoColuna(
   return r
 }
 
+/** +5566998144699 → +55 (66) 99814-4699 (degrada com elegância) */
+export function formatarTelefone(phone: string): string {
+  const d = (phone || '').replace(/\D/g, '')
+  if (d.startsWith('55') && (d.length === 13 || d.length === 12)) {
+    const ddd = d.slice(2, 4)
+    const num = d.slice(4)
+    const meio = num.length === 9 ? `${num.slice(0, 5)}-${num.slice(5)}` : `${num.slice(0, 4)}-${num.slice(4)}`
+    return `+55 (${ddd}) ${meio}`
+  }
+  return phone
+}
+
+const SEM_NOME = /^(\(sem nome\)|desconhecido|sem nome|null|undefined)$/i
+
+/** Nome do contato tratado; se vazio/placeholder, devolve o telefone formatado */
+export function nomeContato(contactName: string | null, phone: string): string {
+  const n = (contactName || '').trim()
+  if (!n || SEM_NOME.test(n)) return formatarTelefone(phone)
+  return n
+}
+
+export type Ordenacao = 'aguardando' | 'recente' | 'parado'
+
+export const ORDENACAO_LABEL: Record<Ordenacao, string> = {
+  aguardando: 'Aguardando primeiro',
+  recente: 'Mais recente',
+  parado: 'Mais parado',
+}
+
+interface OrdenavelChat {
+  last_message_at: string | null
+  last_message_from_me: boolean | null
+}
+
+/** Ordena chats conforme o modo escolhido (não muta o array original) */
+export function ordenarChats<T extends OrdenavelChat>(chats: T[], modo: Ordenacao): T[] {
+  const ts = (c: OrdenavelChat) => (c.last_message_at ? new Date(c.last_message_at).getTime() : 0)
+  const arr = [...chats]
+  if (modo === 'recente') {
+    arr.sort((a, b) => ts(b) - ts(a))
+  } else if (modo === 'parado') {
+    arr.sort((a, b) => (ts(a) || Infinity) - (ts(b) || Infinity)) // mais antigo primeiro
+  } else {
+    // aguardando: cliente esperando primeiro (mais antigo no topo), depois o resto por recência
+    arr.sort((a, b) => {
+      const aw = a.last_message_from_me === false ? 0 : 1
+      const bw = b.last_message_from_me === false ? 0 : 1
+      if (aw !== bw) return aw - bw
+      if (aw === 0) return ts(a) - ts(b) // ambos aguardando → mais antigo primeiro (mais urgente)
+      return ts(b) - ts(a) // resto → mais recente primeiro
+    })
+  }
+  return arr
+}
+
 /** "há 5 min", "há 3 h", "ontem", "10/06" */
 export function tempoRelativo(iso: string | null): string {
   if (!iso) return ''

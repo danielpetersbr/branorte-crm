@@ -1,16 +1,21 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { MessageCircle } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 import { useWaKanban, useWaVendedores, useWaMovimentos, TODOS, type WaChat } from '@/hooks/useWaKanban'
-import { tempoRelativo, temperaturaDe, TEMP_META, resumoColuna } from '@/lib/wa-funil'
+import {
+  tempoRelativo, temperaturaDe, TEMP_META, resumoColuna,
+  formatarTelefone, nomeContato, ordenarChats, ORDENACAO_LABEL,
+  type Ordenacao, type Temperatura,
+} from '@/lib/wa-funil'
 import { Avatar } from '@/components/ui/Avatar'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 
 // Kanban WhatsApp — espelho fiel do quadro de etiquetas que cada vendedor
 // vê no Wascript, sincronizado pela extensão Branorte WA Sync (30s).
 // Colunas = etiquetas na ordem oficial do funil; cards = clientes com a
-// última mensagem trocada; clique abre o painel com detalhes + histórico.
+// última mensagem; painel lateral com detalhes + histórico.
 
 const LIMITE_INICIAL = 30
 
@@ -20,16 +25,38 @@ const FUNIL_ATIVO = new Set([
   'LEAD QUENTE', 'ORCAMENTO ENVIADO', 'INTERESSE FUTURO',
 ])
 
-function ChatCard({ chat, onClick, mostrarVendedor }: { chat: WaChat; onClick: () => void; mostrarVendedor?: boolean }) {
+function BotaoWhats({ phone }: { phone: string }) {
+  return (
+    <a
+      href={`https://wa.me/${phone.replace(/\D/g, '')}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={e => e.stopPropagation()}
+      title="Abrir conversa no WhatsApp"
+      className="shrink-0 h-7 w-7 rounded-full bg-accent-bg text-accent border border-accent/30 inline-flex items-center justify-center hover:brightness-110"
+    >
+      <MessageCircle className="h-3.5 w-3.5" />
+    </a>
+  )
+}
+
+function ChatCard({
+  chat, onClick, mostrarVendedor, compacto,
+}: { chat: WaChat; onClick: () => void; mostrarVendedor?: boolean; compacto?: boolean }) {
   const temp = temperaturaDe(chat.last_message_at)
   const meta = TEMP_META[temp]
   const fresco = temp === 'fresco'
   const aguardando = chat.last_message_from_me === false
-  const nome = chat.contact_name || chat.phone
+  const nome = nomeContato(chat.contact_name, chat.phone)
+  const tel = formatarTelefone(chat.phone)
+
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className="w-full text-left rounded-lg border bg-surface p-2.5 hover:bg-surface-2 transition-colors"
+      onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && onClick()}
+      className="w-full cursor-pointer text-left rounded-lg border bg-surface p-2.5 hover:bg-surface-2 transition-colors"
       style={{ borderColor: aguardando ? `${meta.cor}66` : undefined, borderLeftWidth: 3, borderLeftColor: meta.cor }}
     >
       <div className="flex items-start gap-2">
@@ -42,24 +69,21 @@ function ChatCard({ chat, onClick, mostrarVendedor }: { chat: WaChat; onClick: (
             </span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] font-mono text-ink-faint">{chat.phone}</span>
+            <span className="text-[11px] font-mono text-ink-faint truncate">{tel}</span>
             {mostrarVendedor && chat.vendedor && (
-              <span className="text-[10px] font-semibold text-accent bg-accent-bg rounded px-1">{chat.vendedor}</span>
+              <span className="text-[10px] font-semibold text-accent bg-accent-bg rounded px-1 shrink-0">{chat.vendedor}</span>
             )}
           </div>
-          {chat.last_message_preview && (
+
+          {!compacto && chat.last_message_preview && (
             <p className="mt-1 text-[12px] text-ink-muted leading-snug line-clamp-2">
-              {chat.last_message_from_me ? (
-                <span className="text-accent">Você: </span>
-              ) : null}
+              {chat.last_message_from_me ? <span className="text-accent">Você: </span> : null}
               {chat.last_message_preview}
             </p>
           )}
+
           <div className="mt-1.5 flex items-center gap-1.5">
-            <span
-              className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
-              style={{ backgroundColor: `${meta.cor}22`, color: meta.cor }}
-            >
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: `${meta.cor}22`, color: meta.cor }}>
               {meta.label}
             </span>
             {aguardando ? (
@@ -67,52 +91,53 @@ function ChatCard({ chat, onClick, mostrarVendedor }: { chat: WaChat; onClick: (
             ) : chat.last_message_from_me ? (
               <span className="text-[10px] text-ink-faint">↗ você</span>
             ) : null}
+            <span className="ml-auto"><BotaoWhats phone={chat.phone} /></span>
           </div>
         </div>
       </div>
-    </button>
+    </div>
   )
 }
 
-function ResumoTemperatura({ chats }: { chats: WaChat[] }) {
+function ResumoTemperatura({
+  chats, filtroTemp, onToggleTemp,
+}: { chats: WaChat[]; filtroTemp: Temperatura | null; onToggleTemp: (t: Temperatura) => void }) {
   const r = resumoColuna(chats)
-  const itens: { cor: string; n: number; t: string }[] = [
-    { cor: TEMP_META.fresco.cor, n: r.fresco, t: 'Hoje' },
-    { cor: TEMP_META.recente.cor, n: r.recente, t: 'Recente' },
-    { cor: TEMP_META.morno.cor, n: r.morno, t: 'Morno' },
-    { cor: TEMP_META.parado.cor, n: r.parado, t: 'Parado' },
-  ].filter(i => i.n > 0)
+  const itens = ([
+    { cor: TEMP_META.fresco.cor, n: r.fresco, t: 'fresco', label: 'Hoje' },
+    { cor: TEMP_META.recente.cor, n: r.recente, t: 'recente', label: 'Recente' },
+    { cor: TEMP_META.morno.cor, n: r.morno, t: 'morno', label: 'Morno' },
+    { cor: TEMP_META.parado.cor, n: r.parado, t: 'parado', label: 'Parado' },
+  ] as { cor: string; n: number; t: Temperatura; label: string }[]).filter(i => i.n > 0)
   if (r.aguardando === 0 && itens.length === 0) return null
   return (
     <div className="flex items-center gap-2 px-3 pb-2 text-[11px] tabular-nums flex-wrap">
       {r.aguardando > 0 && (
-        <span className="text-warning font-semibold" title="Cliente aguardando resposta">
-          ↙ {r.aguardando}
-        </span>
+        <span className="text-warning font-semibold" title="Cliente aguardando resposta">↙ {r.aguardando}</span>
       )}
       {itens.map(i => (
-        <span key={i.t} className="inline-flex items-center gap-0.5 text-ink-muted" title={i.t}>
+        <button
+          key={i.t}
+          onClick={() => onToggleTemp(i.t)}
+          title={`${i.label} — clique pra filtrar`}
+          className={
+            'inline-flex items-center gap-0.5 rounded px-1 transition-colors ' +
+            (filtroTemp === i.t ? 'bg-surface-2 text-ink' : 'text-ink-muted hover:text-ink')
+          }
+        >
           <span className="h-2 w-2 rounded-full" style={{ backgroundColor: i.cor }} />
           {i.n}
-        </span>
+        </button>
       ))}
     </div>
   )
 }
 
 function ChatDrawer({
-  chat,
-  etiquetas,
-  vendedor,
-  onClose,
-}: {
-  chat: WaChat
-  etiquetas: { nome: string; cor: string }[]
-  vendedor: string
-  onClose: () => void
-}) {
+  chat, etiquetas, vendedor, onClose,
+}: { chat: WaChat; etiquetas: { nome: string; cor: string }[]; vendedor: string; onClose: () => void }) {
   const { data: movimentos = [] } = useWaMovimentos(vendedor, chat.phone)
-  const nome = chat.contact_name || chat.phone
+  const nome = nomeContato(chat.contact_name, chat.phone)
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
@@ -122,7 +147,8 @@ function ChatDrawer({
             <Avatar name={nome} size="md" />
             <div className="min-w-0">
               <h2 className="text-[16px] font-semibold text-ink truncate">{nome}</h2>
-              <div className="text-[12px] font-mono text-ink-muted">{chat.phone}</div>
+              <div className="text-[12px] font-mono text-ink-muted">{formatarTelefone(chat.phone)}</div>
+              {chat.vendedor && <div className="text-[11px] text-accent font-semibold">{chat.vendedor}</div>}
             </div>
           </div>
           <button onClick={onClose} className="text-ink-muted hover:text-ink text-xl leading-none px-1">×</button>
@@ -130,11 +156,8 @@ function ChatDrawer({
 
         <div className="flex flex-wrap gap-1.5">
           {etiquetas.map(e => (
-            <span
-              key={e.nome}
-              className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-              style={{ backgroundColor: `${e.cor}22`, color: e.cor, border: `1px solid ${e.cor}55` }}
-            >
+            <span key={e.nome} className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+              style={{ backgroundColor: `${e.cor}22`, color: e.cor, border: `1px solid ${e.cor}55` }}>
               {e.nome}
             </span>
           ))}
@@ -162,28 +185,20 @@ function ChatDrawer({
           )}
         </div>
 
-        <a
-          href={`https://wa.me/${chat.phone}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block w-full rounded-md bg-accent-bg border border-accent/30 text-accent text-center text-[13px] font-semibold py-2 hover:brightness-110 transition"
-        >
-          Abrir conversa no WhatsApp ↗
+        <a href={`https://wa.me/${chat.phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer"
+          className="flex w-full items-center justify-center gap-2 rounded-md bg-accent-bg border border-accent/30 text-accent text-[13px] font-semibold py-2 hover:brightness-110 transition">
+          <MessageCircle className="h-4 w-4" /> Abrir conversa no WhatsApp
         </a>
 
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">
-            Histórico de etiquetas
-          </div>
+          <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">Histórico de etiquetas</div>
           {movimentos.length === 0 ? (
             <p className="text-[12px] text-ink-faint">Nenhuma movimentação registrada.</p>
           ) : (
             <ul className="space-y-2">
               {movimentos.map((m, i) => (
                 <li key={i} className="flex items-baseline gap-2 text-[12px]">
-                  <span className="text-ink-faint tabular-nums shrink-0">
-                    {tempoRelativo(m.detectado_em)}
-                  </span>
+                  <span className="text-ink-faint tabular-nums shrink-0">{tempoRelativo(m.detectado_em)}</span>
                   <span className="text-ink-muted">
                     {m.etiqueta_de ? <>{m.etiqueta_de} → </> : <>+ </>}
                     <span className="text-ink font-medium">{m.etiqueta_para ?? '(removida)'}</span>
@@ -207,22 +222,21 @@ export function FunilWhatsApp() {
   const [chatAberto, setChatAberto] = useState<WaChat | null>(null)
   const [limites, setLimites] = useState<Record<string, number>>({})
   const [seletorAberto, setSeletorAberto] = useState(false)
-  // colunas escondidas (persistido); vazio = todas visíveis
+  const [ordenacao, setOrdenacao] = useState<Ordenacao>('recente')
+  const [soAguardando, setSoAguardando] = useState(false)
+  const [filtroTemp, setFiltroTemp] = useState<Temperatura | null>(null)
+  const [compacto, setCompacto] = useState(false)
+  const [mostrarRanking, setMostrarRanking] = useState(false)
+
   const [escondidas, setEscondidas] = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem('wa-funil-cols-hidden')
       return raw ? new Set<string>(JSON.parse(raw)) : new Set<string>()
-    } catch {
-      return new Set<string>()
-    }
+    } catch { return new Set<string>() }
   })
   const salvarEscondidas = (s: Set<string>) => {
     setEscondidas(s)
-    try {
-      localStorage.setItem('wa-funil-cols-hidden', JSON.stringify([...s]))
-    } catch {
-      /* ignore */
-    }
+    try { localStorage.setItem('wa-funil-cols-hidden', JSON.stringify([...s])) } catch { /* ignore */ }
   }
   const toggleColuna = (nome: string) => {
     const s = new Set(escondidas)
@@ -230,17 +244,14 @@ export function FunilWhatsApp() {
     salvarEscondidas(s)
   }
 
-  // Vendedor logado vê só o próprio quadro (match por nome em uppercase)
   const vendedorTravado = useMemo(() => {
     if (profile?.role !== 'vendor' || !profile?.vendor_id) return null
     const v = (vendorsData ?? []).find(v => v.id === profile.vendor_id)
     if (!v) return null
     const upper = v.name.toUpperCase().trim()
-    return (
-      vendedores.find(w => w === upper) ??
-      vendedores.find(w => w.split(/\s+/)[0] === upper.split(/\s+/)[0]) ??
-      null
-    )
+    return vendedores.find(w => w === upper)
+      ?? vendedores.find(w => w.split(/\s+/)[0] === upper.split(/\s+/)[0])
+      ?? null
   }, [profile, vendorsData, vendedores])
 
   const vendedor = vendedorTravado ?? vendedorSel ?? (vendedores.length ? TODOS : null)
@@ -248,16 +259,8 @@ export function FunilWhatsApp() {
   const { data, isLoading, error } = useWaKanban(vendedor)
 
   const filtro = busca.trim().toLowerCase()
-  const aplicaFiltro = (chats: WaChat[]) =>
-    !filtro
-      ? chats
-      : chats.filter(
-          c =>
-            (c.contact_name ?? '').toLowerCase().includes(filtro) ||
-            c.phone.includes(filtro.replace(/\D/g, '') || ' ')
-        )
+  const filtroDigitos = filtro.replace(/\D/g, '')
 
-  // Todas as colunas disponíveis (SEM ETIQUETA + etiquetas não-internas)
   const colunasTodas = useMemo(() => {
     if (!data) return []
     const visiveis = data.colunas.filter(c => !c.oculta)
@@ -265,17 +268,63 @@ export function FunilWhatsApp() {
     return [semEtiqueta, ...visiveis]
   }, [data])
 
-  // Colunas escolhidas pelo usuário (persistido). Vazio = mostrar todas.
   const colunas = useMemo(
     () => (escondidas.size === 0 ? colunasTodas : colunasTodas.filter(c => !escondidas.has(c.nome))),
     [colunasTodas, escondidas]
   )
 
+  // Pipeline de exibição: busca → só-aguardando → filtro-temperatura → ordenação
+  const processar = (chats: WaChat[]): WaChat[] => {
+    let cs = chats
+    if (filtro) {
+      cs = cs.filter(c =>
+        (c.contact_name ?? '').toLowerCase().includes(filtro) ||
+        (filtroDigitos && c.phone.includes(filtroDigitos))
+      )
+    }
+    if (soAguardando) cs = cs.filter(c => c.last_message_from_me === false)
+    if (filtroTemp) cs = cs.filter(c => temperaturaDe(c.last_message_at) === filtroTemp)
+    return ordenarChats(cs, ordenacao)
+  }
+
+  // KPIs sobre as colunas visíveis (panorama, ignora busca/filtros temporários)
+  const kpis = useMemo(() => {
+    let total = 0, aguardando = 0, parado7 = 0
+    for (const col of colunas) {
+      for (const c of col.chats) {
+        total++
+        if (c.last_message_from_me === false) aguardando++
+        if (temperaturaDe(c.last_message_at) === 'parado') parado7++
+      }
+    }
+    return { total, aguardando, parado7 }
+  }, [colunas])
+
+  // Ranking por vendedor (modo Todos): quem tem mais cliente aguardando
+  const ranking = useMemo(() => {
+    if (!modoTodos) return []
+    const m = new Map<string, { aguardando: number; total: number }>()
+    for (const col of colunas) {
+      for (const c of col.chats) {
+        const v = c.vendedor ?? '—'
+        const e = m.get(v) ?? { aguardando: 0, total: 0 }
+        e.total++
+        if (c.last_message_from_me === false) e.aguardando++
+        m.set(v, e)
+      }
+    }
+    return [...m.entries()].map(([v, e]) => ({ vendedor: v, ...e })).sort((a, b) => b.aguardando - a.aguardando)
+  }, [colunas, modoTodos])
+
+  const filaAtiva = soAguardando && ordenacao === 'aguardando'
+  const ativarFila = () => {
+    if (filaAtiva) { setSoAguardando(false); setOrdenacao('recente') }
+    else { setSoAguardando(true); setOrdenacao('aguardando') }
+  }
+
   const etiquetasDoChat = useMemo(() => {
     if (!chatAberto || !data) return []
-    return data.colunas
-      .filter(c => c.chats.includes(chatAberto))
-      .map(c => ({ nome: c.nome, cor: c.cor }))
+    return data.colunas.filter(c => c.chats.includes(chatAberto)).map(c => ({ nome: c.nome, cor: c.cor }))
   }, [chatAberto, data])
 
   return (
@@ -297,6 +346,60 @@ export function FunilWhatsApp() {
         </div>
       </div>
 
+      {/* Painel de números */}
+      {data && (
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            onClick={ativarFila}
+            className={
+              'h-9 px-3 rounded-md text-[13px] font-semibold inline-flex items-center gap-2 border transition-colors ' +
+              (filaAtiva
+                ? 'bg-warning-bg text-warning border-warning/40'
+                : 'bg-surface text-ink border-border hover:border-border-strong')
+            }
+            title="Mostra só quem está aguardando resposta, mais antigo no topo"
+          >
+            ⚡ Fila de resposta
+            <span className="tabular-nums rounded-full bg-warning/20 text-warning px-1.5">{kpis.aguardando}</span>
+          </button>
+          <div className="h-9 px-3 rounded-md bg-surface border border-border inline-flex items-center gap-1.5 text-[12px] text-ink-muted">
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: TEMP_META.parado.cor }} />
+            Parados +7d <span className="tabular-nums text-ink font-semibold">{kpis.parado7}</span>
+          </div>
+          <div className="h-9 px-3 rounded-md bg-surface border border-border inline-flex items-center gap-1.5 text-[12px] text-ink-muted">
+            Total <span className="tabular-nums text-ink font-semibold">{kpis.total.toLocaleString('pt-BR')}</span>
+          </div>
+          {modoTodos && (
+            <button
+              onClick={() => setMostrarRanking(v => !v)}
+              className="h-9 px-3 rounded-md bg-surface border border-border text-[12px] text-ink-muted hover:text-ink hover:border-border-strong"
+            >
+              {mostrarRanking ? 'Ocultar ranking' : 'Ranking por vendedor'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Ranking por vendedor (modo Todos) */}
+      {modoTodos && mostrarRanking && ranking.length > 0 && (
+        <div className="shrink-0 flex flex-wrap gap-2">
+          {ranking.map((r, i) => (
+            <button
+              key={r.vendedor}
+              onClick={() => setVendedorSel(r.vendedor)}
+              className="rounded-lg border border-border bg-surface px-3 py-1.5 text-left hover:border-border-strong"
+            >
+              <div className="text-[12px] font-semibold text-ink flex items-center gap-1.5">
+                {i === 0 && <span>🏆</span>}{r.vendedor}
+              </div>
+              <div className="text-[11px] text-ink-muted tabular-nums">
+                <span className="text-warning font-semibold">{r.aguardando}</span> aguardando · {r.total} total
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-2 shrink-0">
         {vendedorTravado ? (
@@ -305,44 +408,64 @@ export function FunilWhatsApp() {
           </span>
         ) : (
           <div className="flex flex-wrap gap-1">
-            <button
-              onClick={() => setVendedorSel(TODOS)}
-              className={
-                modoTodos
-                  ? 'h-9 px-3 rounded-md bg-accent-bg text-accent border border-accent/30 text-[13px] font-semibold'
-                  : 'h-9 px-3 rounded-md bg-surface text-ink-muted border border-border text-[13px] hover:text-ink hover:border-border-strong'
-              }
-            >
+            <button onClick={() => setVendedorSel(TODOS)}
+              className={modoTodos
+                ? 'h-9 px-3 rounded-md bg-accent-bg text-accent border border-accent/30 text-[13px] font-semibold'
+                : 'h-9 px-3 rounded-md bg-surface text-ink-muted border border-border text-[13px] hover:text-ink hover:border-border-strong'}>
               Todos
             </button>
             {vendedores.map(v => (
-              <button
-                key={v}
-                onClick={() => setVendedorSel(v)}
-                className={
-                  v === vendedor
-                    ? 'h-9 px-3 rounded-md bg-accent-bg text-accent border border-accent/30 text-[13px] font-semibold'
-                    : 'h-9 px-3 rounded-md bg-surface text-ink-muted border border-border text-[13px] hover:text-ink hover:border-border-strong'
-                }
-              >
+              <button key={v} onClick={() => setVendedorSel(v)}
+                className={v === vendedor
+                  ? 'h-9 px-3 rounded-md bg-accent-bg text-accent border border-accent/30 text-[13px] font-semibold'
+                  : 'h-9 px-3 rounded-md bg-surface text-ink-muted border border-border text-[13px] hover:text-ink hover:border-border-strong'}>
                 {v}
               </button>
             ))}
           </div>
         )}
-        <input
-          value={busca}
-          onChange={e => setBusca(e.target.value)}
-          placeholder="Buscar cliente ou telefone…"
-          className="h-9 px-3 rounded-md bg-surface border border-border text-[13px] text-ink focus:border-accent outline-none w-64"
-        />
+
+        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar cliente ou telefone…"
+          className="h-9 px-3 rounded-md bg-surface border border-border text-[13px] text-ink focus:border-accent outline-none w-56" />
+
+        {/* Ordenação */}
+        <select value={ordenacao} onChange={e => setOrdenacao(e.target.value as Ordenacao)}
+          className="h-9 px-3 rounded-md bg-surface border border-border text-[13px] text-ink">
+          {(Object.keys(ORDENACAO_LABEL) as Ordenacao[]).map(o => (
+            <option key={o} value={o}>{ORDENACAO_LABEL[o]}</option>
+          ))}
+        </select>
+
+        {/* Toggle só aguardando */}
+        <button onClick={() => setSoAguardando(v => !v)}
+          className={'h-9 px-3 rounded-md text-[13px] border ' + (soAguardando
+            ? 'bg-warning-bg text-warning border-warning/40 font-semibold'
+            : 'bg-surface text-ink-muted border-border hover:text-ink hover:border-border-strong')}>
+          ↙ Só aguardando
+        </button>
+
+        {/* Filtro de temperatura ativo → chip pra limpar */}
+        {filtroTemp && (
+          <button onClick={() => setFiltroTemp(null)}
+            className="h-9 px-3 rounded-md text-[13px] border inline-flex items-center gap-1.5"
+            style={{ borderColor: `${TEMP_META[filtroTemp].cor}66`, color: TEMP_META[filtroTemp].cor }}>
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: TEMP_META[filtroTemp].cor }} />
+            {TEMP_META[filtroTemp].label} ✕
+          </button>
+        )}
+
+        {/* Compacto */}
+        <button onClick={() => setCompacto(v => !v)}
+          className={'h-9 px-3 rounded-md text-[13px] border ' + (compacto
+            ? 'bg-accent-bg text-accent border-accent/30 font-semibold'
+            : 'bg-surface text-ink-muted border-border hover:text-ink hover:border-border-strong')}>
+          Compacto
+        </button>
 
         {/* Seletor de colunas */}
         <div className="relative">
-          <button
-            onClick={() => setSeletorAberto(o => !o)}
-            className="h-9 px-3 rounded-md bg-surface border border-border text-[13px] text-ink-muted hover:text-ink hover:border-border-strong inline-flex items-center gap-1.5"
-          >
+          <button onClick={() => setSeletorAberto(o => !o)}
+            className="h-9 px-3 rounded-md bg-surface border border-border text-[13px] text-ink-muted hover:text-ink hover:border-border-strong inline-flex items-center gap-1.5">
             Colunas
             {escondidas.size > 0 && (
               <span className="text-[11px] tabular-nums text-accent bg-accent-bg rounded-full px-1.5">
@@ -355,46 +478,20 @@ export function FunilWhatsApp() {
               <div className="fixed inset-0 z-30" onClick={() => setSeletorAberto(false)} />
               <div className="absolute right-0 z-40 mt-1 w-64 max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-surface shadow-xl p-2">
                 <div className="flex items-center gap-1 px-1 pb-2 border-b border-border mb-1">
-                  <button
-                    onClick={() => salvarEscondidas(new Set())}
-                    className="text-[11px] text-accent hover:underline"
-                  >
-                    Todas
-                  </button>
+                  <button onClick={() => salvarEscondidas(new Set())} className="text-[11px] text-accent hover:underline">Todas</button>
                   <span className="text-ink-faint">·</span>
-                  <button
-                    onClick={() => salvarEscondidas(new Set(colunasTodas.map(c => c.nome)))}
-                    className="text-[11px] text-ink-muted hover:text-ink hover:underline"
-                  >
-                    Nenhuma
-                  </button>
+                  <button onClick={() => salvarEscondidas(new Set(colunasTodas.map(c => c.nome)))} className="text-[11px] text-ink-muted hover:text-ink hover:underline">Nenhuma</button>
                   <span className="text-ink-faint">·</span>
-                  <button
-                    onClick={() =>
-                      salvarEscondidas(new Set(colunasTodas.filter(c => !FUNIL_ATIVO.has(c.nome)).map(c => c.nome)))
-                    }
-                    className="text-[11px] text-ink-muted hover:text-ink hover:underline"
-                    title="Só Prospecção → Orçamento Enviado"
-                  >
-                    Funil ativo
-                  </button>
+                  <button onClick={() => salvarEscondidas(new Set(colunasTodas.filter(c => !FUNIL_ATIVO.has(c.nome)).map(c => c.nome)))}
+                    className="text-[11px] text-ink-muted hover:text-ink hover:underline" title="Só Prospecção → Orçamento Enviado">Funil ativo</button>
                 </div>
                 {colunasTodas.map(c => {
                   const visivel = !escondidas.has(c.nome)
                   return (
-                    <button
-                      key={c.nome}
-                      onClick={() => toggleColuna(c.nome)}
-                      className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md hover:bg-surface-2 text-left"
-                    >
-                      <span
-                        className={
-                          'h-4 w-4 shrink-0 rounded border flex items-center justify-center text-[10px] ' +
-                          (visivel ? 'bg-accent border-accent text-white' : 'border-border text-transparent')
-                        }
-                      >
-                        ✓
-                      </span>
+                    <button key={c.nome} onClick={() => toggleColuna(c.nome)}
+                      className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md hover:bg-surface-2 text-left">
+                      <span className={'h-4 w-4 shrink-0 rounded border flex items-center justify-center text-[10px] ' +
+                        (visivel ? 'bg-accent border-accent text-white' : 'border-border text-transparent')}>✓</span>
                       <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: c.cor }} />
                       <span className="text-[12px] text-ink truncate flex-1">{c.nome}</span>
                       <span className="text-[11px] tabular-nums text-ink-faint">{c.chats.length}</span>
@@ -418,7 +515,7 @@ export function FunilWhatsApp() {
         <div className="flex-1 overflow-x-auto overflow-y-hidden">
           <div className="flex h-full gap-3 pb-2">
             {colunas.map(col => {
-              const chats = aplicaFiltro(col.chats)
+              const chats = processar(col.chats)
               const limite = limites[col.nome] ?? LIMITE_INICIAL
               const visiveis = chats.slice(0, limite)
               return (
@@ -431,23 +528,23 @@ export function FunilWhatsApp() {
                         {chats.length}
                       </span>
                     </div>
-                    <ResumoTemperatura chats={chats} />
+                    <ResumoTemperatura
+                      chats={col.chats}
+                      filtroTemp={filtroTemp}
+                      onToggleTemp={t => setFiltroTemp(prev => (prev === t ? null : t))}
+                    />
                   </div>
                   <div className="flex-1 overflow-y-auto p-2 space-y-2">
                     {visiveis.map(c => (
-                      <ChatCard key={`${c.vendedor ?? ''}:${c.phone}`} chat={c} mostrarVendedor={modoTodos} onClick={() => setChatAberto(c)} />
+                      <ChatCard key={`${c.vendedor ?? ''}:${c.phone}`} chat={c} mostrarVendedor={modoTodos} compacto={compacto} onClick={() => setChatAberto(c)} />
                     ))}
                     {chats.length > limite && (
-                      <button
-                        onClick={() => setLimites(l => ({ ...l, [col.nome]: limite + 50 }))}
-                        className="w-full rounded-md border border-border bg-surface py-1.5 text-[12px] text-ink-muted hover:text-ink hover:border-border-strong"
-                      >
+                      <button onClick={() => setLimites(l => ({ ...l, [col.nome]: limite + 50 }))}
+                        className="w-full rounded-md border border-border bg-surface py-1.5 text-[12px] text-ink-muted hover:text-ink hover:border-border-strong">
                         Mostrar mais ({chats.length - limite} restantes)
                       </button>
                     )}
-                    {chats.length === 0 && (
-                      <p className="text-center text-[12px] text-ink-faint py-4">Vazio</p>
-                    )}
+                    {chats.length === 0 && <p className="text-center text-[12px] text-ink-faint py-4">Vazio</p>}
                   </div>
                 </div>
               )
