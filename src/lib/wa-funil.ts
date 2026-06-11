@@ -99,18 +99,57 @@ export const TEMP_META: Record<Temperatura, { cor: string; label: string }> = {
   'sem-dado': { cor: '#6b7280', label: 'Sem data' },
 }
 
+// Detecta se a última mensagem do cliente é um ENCERRAMENTO/cordialidade
+// (ok, obrigado, tchau, "vou analisar"...) — nesses casos a bola está com
+// o cliente e não há resposta pendente, então sai da fila de resposta.
+const ENCERRAMENTO_EXATO = new Set([
+  'ok', 'okay', 'okk', 'okkk', 'blz', 'beleza', 'certo', 'perfeito', 'otimo', 'otima',
+  'show', 'joia', 'bacana', 'isso', 'isso mesmo', 'sim', 'combinado', 'fechado', 'entendi',
+  'ata', 'ah ta', 'ahta', 'uhum', 'aham', 'massa', 'top', 'show de bola', 'bom demais',
+  'obrigado', 'obrigada', 'obg', 'obgd', 'vlw', 'valeu', 'valew', 'grato', 'grata', 'gratidao',
+  'tchau', 'falou', 'flw', 'abraco', 'abracos', 'forte abraco', 'abs',
+  'ate mais', 'ate logo', 'ate breve', 'ate', 'de boa', 'tranquilo', 'suave',
+])
+
+export function ehEncerramento(preview: string | null): boolean {
+  if (!preview) return false
+  const t = preview
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '') // remove acentos
+    .replace(/[^a-z0-9\s]/g, ' ') // remove emoji/pontuação
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!t) return true // era só emoji/pontuação (👍🙏) → encerramento
+  if (ENCERRAMENTO_EXATO.has(t)) return true
+  // despedida/agradecimento em qualquer posição (prefixo — pega obrigado/obrigada/abraço…)
+  if (/\b(tchau|obrigad|agradec|valeu|vlw|abrac|falou|flw|ate mais|ate logo|ate breve|grat[oa])/.test(t)) return true
+  // bola com o cliente — não precisa cobrar resposta
+  if (/\b(vou (analisar|pensar|ver|verificar|avaliar|conversar|retornar)|estou analisando|qualquer coisa (eu |te )?(chamo|falo|aviso|retorno)|depois (eu )?(falo|vejo|retorno|aviso)|nao (precisa|seria necessario)|sem necessidade)\b/.test(t)) return true
+  return false
+}
+
+export interface ChatLite {
+  last_message_at: string | null
+  last_message_from_me: boolean | null
+  last_message_preview?: string | null
+}
+
+/** Cliente mandou por último E não foi um encerramento → precisa de resposta */
+export function precisaResposta(chat: ChatLite): boolean {
+  return chat.last_message_from_me === false && !ehEncerramento(chat.last_message_preview ?? null)
+}
+
 export interface ResumoColuna {
   fresco: number
   recente: number
   morno: number
   parado: number
   semDado: number
-  aguardando: number // cliente mandou por último (esperando resposta)
+  aguardando: number // precisa de resposta (exclui encerramentos)
 }
 
-export function resumoColuna(
-  chats: { last_message_at: string | null; last_message_from_me: boolean | null }[]
-): ResumoColuna {
+export function resumoColuna(chats: ChatLite[]): ResumoColuna {
   const r: ResumoColuna = { fresco: 0, recente: 0, morno: 0, parado: 0, semDado: 0, aguardando: 0 }
   for (const c of chats) {
     const temp = temperaturaDe(c.last_message_at)
@@ -119,7 +158,7 @@ export function resumoColuna(
     else if (temp === 'morno') r.morno++
     else if (temp === 'parado') r.parado++
     else r.semDado++
-    if (c.last_message_from_me === false) r.aguardando++
+    if (precisaResposta(c)) r.aguardando++
   }
   return r
 }
@@ -153,26 +192,21 @@ export const ORDENACAO_LABEL: Record<Ordenacao, string> = {
   parado: 'Mais parado',
 }
 
-interface OrdenavelChat {
-  last_message_at: string | null
-  last_message_from_me: boolean | null
-}
-
 /** Ordena chats conforme o modo escolhido (não muta o array original) */
-export function ordenarChats<T extends OrdenavelChat>(chats: T[], modo: Ordenacao): T[] {
-  const ts = (c: OrdenavelChat) => (c.last_message_at ? new Date(c.last_message_at).getTime() : 0)
+export function ordenarChats<T extends ChatLite>(chats: T[], modo: Ordenacao): T[] {
+  const ts = (c: ChatLite) => (c.last_message_at ? new Date(c.last_message_at).getTime() : 0)
   const arr = [...chats]
   if (modo === 'recente') {
     arr.sort((a, b) => ts(b) - ts(a))
   } else if (modo === 'parado') {
     arr.sort((a, b) => (ts(a) || Infinity) - (ts(b) || Infinity)) // mais antigo primeiro
   } else {
-    // aguardando: cliente esperando primeiro (mais antigo no topo), depois o resto por recência
+    // aguardando: quem precisa de resposta primeiro (mais antigo no topo)
     arr.sort((a, b) => {
-      const aw = a.last_message_from_me === false ? 0 : 1
-      const bw = b.last_message_from_me === false ? 0 : 1
+      const aw = precisaResposta(a) ? 0 : 1
+      const bw = precisaResposta(b) ? 0 : 1
       if (aw !== bw) return aw - bw
-      if (aw === 0) return ts(a) - ts(b) // ambos aguardando → mais antigo primeiro (mais urgente)
+      if (aw === 0) return ts(a) - ts(b) // ambos pendentes → mais antigo primeiro (mais urgente)
       return ts(b) - ts(a) // resto → mais recente primeiro
     })
   }

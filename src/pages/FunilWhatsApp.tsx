@@ -7,6 +7,7 @@ import { useWaKanban, useWaVendedores, useWaMovimentos, TODOS, type WaChat } fro
 import {
   tempoRelativo, temperaturaDe, TEMP_META, resumoColuna,
   formatarTelefone, nomeContato, ordenarChats, ORDENACAO_LABEL,
+  precisaResposta,
   type Ordenacao, type Temperatura,
 } from '@/lib/wa-funil'
 import { Avatar } from '@/components/ui/Avatar'
@@ -46,7 +47,8 @@ function ChatCard({
   const temp = temperaturaDe(chat.last_message_at)
   const meta = TEMP_META[temp]
   const fresco = temp === 'fresco'
-  const aguardando = chat.last_message_from_me === false
+  const pendente = precisaResposta(chat)
+  const encerrou = chat.last_message_from_me === false && !pendente
   const nome = nomeContato(chat.contact_name, chat.phone)
   const tel = formatarTelefone(chat.phone)
 
@@ -57,7 +59,7 @@ function ChatCard({
       onClick={onClick}
       onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && onClick()}
       className="w-full cursor-pointer text-left rounded-lg border bg-surface p-2.5 hover:bg-surface-2 transition-colors"
-      style={{ borderColor: aguardando ? `${meta.cor}66` : undefined, borderLeftWidth: 3, borderLeftColor: meta.cor }}
+      style={{ borderColor: pendente ? `${meta.cor}66` : undefined, borderLeftWidth: 3, borderLeftColor: meta.cor }}
     >
       <div className="flex items-start gap-2">
         <Avatar name={nome} size="sm" pulse={fresco} />
@@ -86,8 +88,10 @@ function ChatCard({
             <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: `${meta.cor}22`, color: meta.cor }}>
               {meta.label}
             </span>
-            {aguardando ? (
+            {pendente ? (
               <span className="text-[10px] font-semibold text-warning">↙ aguardando</span>
+            ) : encerrou ? (
+              <span className="text-[10px] text-ink-faint">✓ encerrou</span>
             ) : chat.last_message_from_me ? (
               <span className="text-[10px] text-ink-faint">↗ você</span>
             ) : null}
@@ -282,7 +286,7 @@ export function FunilWhatsApp() {
         (filtroDigitos && c.phone.includes(filtroDigitos))
       )
     }
-    if (soAguardando) cs = cs.filter(c => c.last_message_from_me === false)
+    if (soAguardando) cs = cs.filter(precisaResposta)
     if (filtroTemp) cs = cs.filter(c => temperaturaDe(c.last_message_at) === filtroTemp)
     return ordenarChats(cs, ordenacao)
   }
@@ -293,7 +297,7 @@ export function FunilWhatsApp() {
     for (const col of colunas) {
       for (const c of col.chats) {
         total++
-        if (c.last_message_from_me === false) aguardando++
+        if (precisaResposta(c)) aguardando++
         if (temperaturaDe(c.last_message_at) === 'parado') parado7++
       }
     }
@@ -309,7 +313,7 @@ export function FunilWhatsApp() {
         const v = c.vendedor ?? '—'
         const e = m.get(v) ?? { aguardando: 0, total: 0 }
         e.total++
-        if (c.last_message_from_me === false) e.aguardando++
+        if (precisaResposta(c)) e.aguardando++
         m.set(v, e)
       }
     }
