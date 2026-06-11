@@ -15,7 +15,10 @@ export interface WaChat {
   last_message_at: string | null
   last_message_from_me: boolean | null
   last_message_preview: string | null
+  vendedor?: string // preenchido no modo "Todos"
 }
+
+export const TODOS = '__TODOS__'
 
 export interface WaColuna {
   /** nome canônico (pós-alias) — chave da coluna */
@@ -50,33 +53,41 @@ export function useWaVendedores() {
 }
 
 export function useWaKanban(vendedor: string | null) {
+  const todos = vendedor === TODOS
   return useQuery<WaKanban>({
     queryKey: ['wa-kanban', vendedor],
     enabled: !!vendedor,
     refetchInterval: 30_000, // mesma cadência da extensão
     queryFn: async () => {
-      const [etiquetasRes, chatsRes] = await Promise.all([
-        supabase
-          .from('wascript_etiquetas')
-          .select('etiqueta_id_wascript, etiqueta_nome, etiqueta_nome_normalizado, synced_at')
-          .eq('vendedor_nome', vendedor!),
-        supabase
-          .from('wa_chat_labels')
-          .select('phone, chat_id, contact_name, label_ids, last_message_at, last_message_from_me, last_message_preview, updated_at')
-          .eq('vendedor_nome', vendedor!)
-          .order('last_message_at', { ascending: false, nullsFirst: false })
-          .limit(4000),
-      ])
+      let etiqQuery = supabase
+        .from('wascript_etiquetas')
+        .select('vendedor_nome, etiqueta_id_wascript, etiqueta_nome, etiqueta_nome_normalizado, synced_at')
+      let chatsQuery = supabase
+        .from('wa_chat_labels')
+        .select('vendedor_nome, phone, chat_id, contact_name, label_ids, last_message_at, last_message_from_me, last_message_preview, updated_at')
+        .order('last_message_at', { ascending: false, nullsFirst: false })
+        .limit(todos ? 12000 : 4000)
+      if (todos) {
+        // consolidado da equipe — exclui o dono
+        etiqQuery = etiqQuery.neq('vendedor_nome', 'DANIEL')
+        chatsQuery = chatsQuery.neq('vendedor_nome', 'DANIEL')
+      } else {
+        etiqQuery = etiqQuery.eq('vendedor_nome', vendedor!)
+        chatsQuery = chatsQuery.eq('vendedor_nome', vendedor!)
+      }
+      const [etiquetasRes, chatsRes] = await Promise.all([etiqQuery, chatsQuery])
       if (etiquetasRes.error) throw etiquetasRes.error
       if (chatsRes.error) throw chatsRes.error
 
       const etiquetas = etiquetasRes.data ?? []
-      const chats = (chatsRes.data ?? []) as (WaChat & { updated_at?: string })[]
+      const chats = (chatsRes.data ?? []) as (WaChat & { updated_at?: string; vendedor_nome?: string })[]
+      // expõe o vendedor de cada chat (badge no modo Todos)
+      for (const c of chats) c.vendedor = c.vendedor_nome
 
-      // id Wascript (por vendedor) → nome canônico
+      // id Wascript é POR vendedor → chave composta vendedor::id
       const idParaNome = new Map<string, string>()
       for (const e of etiquetas) {
-        idParaNome.set(String(e.etiqueta_id_wascript), canonico(e.etiqueta_nome_normalizado))
+        idParaNome.set(`${e.vendedor_nome}::${e.etiqueta_id_wascript}`, canonico(e.etiqueta_nome_normalizado))
       }
 
       // colunas na ordem oficial do funil (typos colapsam na mesma coluna)
@@ -97,7 +108,7 @@ export function useWaKanban(vendedor: string | null) {
         }
         const nomesDoChat = new Set<string>()
         for (const id of ids) {
-          const nome = idParaNome.get(String(id))
+          const nome = idParaNome.get(`${c.vendedor_nome}::${id}`)
           if (nome) nomesDoChat.add(nome)
         }
         if (nomesDoChat.size === 0) {

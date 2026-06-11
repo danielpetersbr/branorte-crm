@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
-import { useWaKanban, useWaVendedores, useWaMovimentos, type WaChat } from '@/hooks/useWaKanban'
+import { useWaKanban, useWaVendedores, useWaMovimentos, TODOS, type WaChat } from '@/hooks/useWaKanban'
 import { tempoRelativo, temperaturaDe, TEMP_META, resumoColuna } from '@/lib/wa-funil'
 import { Avatar } from '@/components/ui/Avatar'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -14,7 +14,7 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 
 const LIMITE_INICIAL = 30
 
-function ChatCard({ chat, onClick }: { chat: WaChat; onClick: () => void }) {
+function ChatCard({ chat, onClick, mostrarVendedor }: { chat: WaChat; onClick: () => void; mostrarVendedor?: boolean }) {
   const temp = temperaturaDe(chat.last_message_at)
   const meta = TEMP_META[temp]
   const fresco = temp === 'fresco'
@@ -35,7 +35,12 @@ function ChatCard({ chat, onClick }: { chat: WaChat; onClick: () => void }) {
               {tempoRelativo(chat.last_message_at)}
             </span>
           </div>
-          <div className="text-[11px] font-mono text-ink-faint">{chat.phone}</div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-mono text-ink-faint">{chat.phone}</span>
+            {mostrarVendedor && chat.vendedor && (
+              <span className="text-[10px] font-semibold text-accent bg-accent-bg rounded px-1">{chat.vendedor}</span>
+            )}
+          </div>
           {chat.last_message_preview && (
             <p className="mt-1 text-[12px] text-ink-muted leading-snug line-clamp-2">
               {chat.last_message_from_me ? (
@@ -209,7 +214,8 @@ export function FunilWhatsApp() {
     )
   }, [profile, vendorsData, vendedores])
 
-  const vendedor = vendedorTravado ?? vendedorSel ?? vendedores[0] ?? null
+  const vendedor = vendedorTravado ?? vendedorSel ?? (vendedores.length ? TODOS : null)
+  const modoTodos = vendedor === TODOS
   const { data, isLoading, error } = useWaKanban(vendedor)
 
   const filtro = busca.trim().toLowerCase()
@@ -263,6 +269,16 @@ export function FunilWhatsApp() {
           </span>
         ) : (
           <div className="flex flex-wrap gap-1">
+            <button
+              onClick={() => setVendedorSel(TODOS)}
+              className={
+                modoTodos
+                  ? 'h-9 px-3 rounded-md bg-accent-bg text-accent border border-accent/30 text-[13px] font-semibold'
+                  : 'h-9 px-3 rounded-md bg-surface text-ink-muted border border-border text-[13px] hover:text-ink hover:border-border-strong'
+              }
+            >
+              Todos
+            </button>
             {vendedores.map(v => (
               <button
                 key={v}
@@ -314,7 +330,7 @@ export function FunilWhatsApp() {
                   </div>
                   <div className="flex-1 overflow-y-auto p-2 space-y-2">
                     {visiveis.map(c => (
-                      <ChatCard key={c.phone} chat={c} onClick={() => setChatAberto(c)} />
+                      <ChatCard key={`${c.vendedor ?? ''}:${c.phone}`} chat={c} mostrarVendedor={modoTodos} onClick={() => setChatAberto(c)} />
                     ))}
                     {chats.length > limite && (
                       <button
@@ -339,7 +355,7 @@ export function FunilWhatsApp() {
         <ChatDrawer
           chat={chatAberto}
           etiquetas={etiquetasDoChat}
-          vendedor={vendedor}
+          vendedor={chatAberto.vendedor ?? vendedor}
           onClose={() => setChatAberto(null)}
         />
       )}
