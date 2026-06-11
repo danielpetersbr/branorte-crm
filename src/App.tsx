@@ -24,6 +24,7 @@ const Assign = lazy(() => import('@/pages/Assign').then(m => ({ default: m.Assig
 const Orcamentos = lazy(() => import('@/pages/Orcamentos').then(m => ({ default: m.Orcamentos })))
 const Vendidos = lazy(() => import('@/pages/Vendidos').then(m => ({ default: m.Vendidos })))
 const Funil = lazy(() => import('@/pages/Funil').then(m => ({ default: m.Funil })))
+const FunilWhatsApp = lazy(() => import('@/pages/FunilWhatsApp').then(m => ({ default: m.FunilWhatsApp })))
 const FunilRelatorio = lazy(() => import('@/pages/FunilRelatorio').then(m => ({ default: m.FunilRelatorio })))
 const EtiquetasZap = lazy(() => import('@/pages/EtiquetasZap').then(m => ({ default: m.EtiquetasZap })))
 const EtiquetasZapGraficos = lazy(() => import('@/pages/EtiquetasZapGraficos').then(m => ({ default: m.EtiquetasZapGraficos })))
@@ -180,7 +181,10 @@ function AppRoutes() {
         <Route path="/controle/financeiro" element={<ControleFinanceiro />} />
         <Route path="/controle/novo-pedido" element={<ControleNovoPedido />} />
         <Route path="/atendimentos" element={<Atendimentos />} />
-        <Route path="/funil" element={<Funil />} />
+        {/* /funil = Kanban WhatsApp (espelho das etiquetas Wascript); o kanban
+            manual antigo (status_vendedor) continua em /funil/manual */}
+        <Route path="/funil" element={<FunilWhatsApp />} />
+        <Route path="/funil/manual" element={<Funil />} />
         <Route path="/funil/relatorio" element={<FunilRelatorio />} />
         <Route path="/etiquetas-zap" element={<EtiquetasZap />} />
         <Route path="/etiquetas-zap/graficos" element={<EtiquetasZapGraficos />} />
