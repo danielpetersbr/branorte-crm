@@ -106,7 +106,9 @@ const ENCERRAMENTO_EXATO = new Set([
   'ok', 'okay', 'okk', 'okkk', 'blz', 'beleza', 'certo', 'perfeito', 'otimo', 'otima',
   'show', 'joia', 'bacana', 'isso', 'isso mesmo', 'sim', 'combinado', 'fechado', 'entendi',
   'ata', 'ah ta', 'ahta', 'uhum', 'aham', 'massa', 'top', 'show de bola', 'bom demais',
-  'obrigado', 'obrigada', 'obg', 'obgd', 'vlw', 'valeu', 'valew', 'grato', 'grata', 'gratidao',
+  'obrigado', 'obrigada', 'obg', 'obgd', 'ob', 'vlw', 'valeu', 'valew', 'grato', 'grata', 'gratidao',
+  'de nada', 'denada', 'gracias', 'no gracias', 'muchas gracias',
+  'entendi ok', 'ok entendi', 'entendi obrigado', 'entendido', 'show obrigado',
   'tchau', 'falou', 'flw', 'abraco', 'abracos', 'forte abraco', 'abs',
   'ate mais', 'ate logo', 'ate breve', 'ate', 'de boa', 'tranquilo', 'suave',
 ])
@@ -124,6 +126,7 @@ export function ehEncerramento(preview: string | null): boolean {
   if (ENCERRAMENTO_EXATO.has(t)) return true
   // despedida/agradecimento em qualquer posição (prefixo — pega obrigado/obrigada/abraço…)
   if (/\b(tchau|obrigad|agradec|valeu|vlw|abrac|falou|flw|ate mais|ate logo|ate breve|grat[oa])/.test(t)) return true
+  if (/\bob(g|rigad)?\s+(pela|pelo)\s+aten/.test(t)) return true // "ob/obg pela atencao"
   // bola com o cliente — não precisa cobrar resposta
   if (/\b(vou (analisar|pensar|ver|verificar|avaliar|conversar|retornar)|estou analisando|qualquer coisa (eu |te )?(chamo|falo|aviso|retorno)|depois (eu )?(falo|vejo|retorno|aviso)|nao (precisa|seria necessario)|sem necessidade)\b/.test(t)) return true
   return false
