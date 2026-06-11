@@ -41,7 +41,10 @@ export function useWaVendedores() {
         .from('wascript_etiquetas')
         .select('vendedor_nome')
       if (error) throw error
-      return [...new Set((data ?? []).map(r => r.vendedor_nome as string))].sort()
+      // DANIEL é o dono — o WhatsApp dele não é quadro de vendas
+      return [...new Set((data ?? []).map(r => r.vendedor_nome as string))]
+        .filter(v => v !== 'DANIEL')
+        .sort()
     },
   })
 }
