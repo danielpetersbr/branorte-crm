@@ -14,6 +14,12 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 
 const LIMITE_INICIAL = 30
 
+// Preset "Funil ativo": etapas de venda em andamento (esconde fechamento/sem etiqueta)
+const FUNIL_ATIVO = new Set([
+  'PROSPECCAO', '2A TENTATIVA', 'NOVO LEAD', 'FOLLOW UP',
+  'LEAD QUENTE', 'ORCAMENTO ENVIADO', 'INTERESSE FUTURO',
+])
+
 function ChatCard({ chat, onClick, mostrarVendedor }: { chat: WaChat; onClick: () => void; mostrarVendedor?: boolean }) {
   const temp = temperaturaDe(chat.last_message_at)
   const meta = TEMP_META[temp]
@@ -200,6 +206,29 @@ export function FunilWhatsApp() {
   const [busca, setBusca] = useState('')
   const [chatAberto, setChatAberto] = useState<WaChat | null>(null)
   const [limites, setLimites] = useState<Record<string, number>>({})
+  const [seletorAberto, setSeletorAberto] = useState(false)
+  // colunas escondidas (persistido); vazio = todas visíveis
+  const [escondidas, setEscondidas] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('wa-funil-cols-hidden')
+      return raw ? new Set<string>(JSON.parse(raw)) : new Set<string>()
+    } catch {
+      return new Set<string>()
+    }
+  })
+  const salvarEscondidas = (s: Set<string>) => {
+    setEscondidas(s)
+    try {
+      localStorage.setItem('wa-funil-cols-hidden', JSON.stringify([...s]))
+    } catch {
+      /* ignore */
+    }
+  }
+  const toggleColuna = (nome: string) => {
+    const s = new Set(escondidas)
+    s.has(nome) ? s.delete(nome) : s.add(nome)
+    salvarEscondidas(s)
+  }
 
   // Vendedor logado vê só o próprio quadro (match por nome em uppercase)
   const vendedorTravado = useMemo(() => {
@@ -228,12 +257,19 @@ export function FunilWhatsApp() {
             c.phone.includes(filtro.replace(/\D/g, '') || ' ')
         )
 
-  const colunas = useMemo(() => {
+  // Todas as colunas disponíveis (SEM ETIQUETA + etiquetas não-internas)
+  const colunasTodas = useMemo(() => {
     if (!data) return []
     const visiveis = data.colunas.filter(c => !c.oculta)
     const semEtiqueta = { nome: 'SEM ETIQUETA', cor: '#f59e0b', oculta: false, chats: data.semEtiqueta }
     return [semEtiqueta, ...visiveis]
   }, [data])
+
+  // Colunas escolhidas pelo usuário (persistido). Vazio = mostrar todas.
+  const colunas = useMemo(
+    () => (escondidas.size === 0 ? colunasTodas : colunasTodas.filter(c => !escondidas.has(c.nome))),
+    [colunasTodas, escondidas]
+  )
 
   const etiquetasDoChat = useMemo(() => {
     if (!chatAberto || !data) return []
@@ -300,6 +336,75 @@ export function FunilWhatsApp() {
           placeholder="Buscar cliente ou telefone…"
           className="h-9 px-3 rounded-md bg-surface border border-border text-[13px] text-ink focus:border-accent outline-none w-64"
         />
+
+        {/* Seletor de colunas */}
+        <div className="relative">
+          <button
+            onClick={() => setSeletorAberto(o => !o)}
+            className="h-9 px-3 rounded-md bg-surface border border-border text-[13px] text-ink-muted hover:text-ink hover:border-border-strong inline-flex items-center gap-1.5"
+          >
+            Colunas
+            {escondidas.size > 0 && (
+              <span className="text-[11px] tabular-nums text-accent bg-accent-bg rounded-full px-1.5">
+                {colunasTodas.length - escondidas.size}/{colunasTodas.length}
+              </span>
+            )}
+          </button>
+          {seletorAberto && (
+            <>
+              <div className="fixed inset-0 z-30" onClick={() => setSeletorAberto(false)} />
+              <div className="absolute right-0 z-40 mt-1 w-64 max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-surface shadow-xl p-2">
+                <div className="flex items-center gap-1 px-1 pb-2 border-b border-border mb-1">
+                  <button
+                    onClick={() => salvarEscondidas(new Set())}
+                    className="text-[11px] text-accent hover:underline"
+                  >
+                    Todas
+                  </button>
+                  <span className="text-ink-faint">·</span>
+                  <button
+                    onClick={() => salvarEscondidas(new Set(colunasTodas.map(c => c.nome)))}
+                    className="text-[11px] text-ink-muted hover:text-ink hover:underline"
+                  >
+                    Nenhuma
+                  </button>
+                  <span className="text-ink-faint">·</span>
+                  <button
+                    onClick={() =>
+                      salvarEscondidas(new Set(colunasTodas.filter(c => !FUNIL_ATIVO.has(c.nome)).map(c => c.nome)))
+                    }
+                    className="text-[11px] text-ink-muted hover:text-ink hover:underline"
+                    title="Só Prospecção → Orçamento Enviado"
+                  >
+                    Funil ativo
+                  </button>
+                </div>
+                {colunasTodas.map(c => {
+                  const visivel = !escondidas.has(c.nome)
+                  return (
+                    <button
+                      key={c.nome}
+                      onClick={() => toggleColuna(c.nome)}
+                      className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md hover:bg-surface-2 text-left"
+                    >
+                      <span
+                        className={
+                          'h-4 w-4 shrink-0 rounded border flex items-center justify-center text-[10px] ' +
+                          (visivel ? 'bg-accent border-accent text-white' : 'border-border text-transparent')
+                        }
+                      >
+                        ✓
+                      </span>
+                      <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: c.cor }} />
+                      <span className="text-[12px] text-ink truncate flex-1">{c.nome}</span>
+                      <span className="text-[11px] tabular-nums text-ink-faint">{c.chats.length}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Board */}
