@@ -383,6 +383,8 @@ export function OrcamentoMontar() {
   // Limpo pra null quando vendedor edita o pct manualmente.
   const [acessorios, setAcessorios] = useState<{ pct: number; items: string[]; valorFixo?: number | null; excludedItemUids?: string[] } | null>(null)
   const [acessoriosOpen, setAcessoriosOpen] = useState(false)
+  // Popup de confirmação quando finaliza sem acessórios (obrigatório decidir)
+  const [confirmSemAcessorios, setConfirmSemAcessorios] = useState(false)
   const [showOnlyPopular, setShowOnlyPopular] = useState(false)
   const [showOnlyOficiais, setShowOnlyOficiais] = useState(true)  // default: só items curados
   const [modoVisao, setModoVisao] = useState<ModoVisao>('preview')
@@ -639,6 +641,32 @@ export function OrcamentoMontar() {
     )
     return Math.ceil((base * acessorios.pct) / 100)
   }, [acessorios, carrinho])
+
+  const temAcessorios = !!acessorios && (acessorios.items?.length ?? 0) > 0
+
+  // Abre o modal de finalização (gera PDF/DOCX). Antes revisa cliente.
+  const abrirFinalizar = () => {
+    setSaveMode('new')
+    if (clienteDados.nome?.trim()) {
+      setInitialModal(prev => ({
+        cliente_nome: clienteDados.nome || prev?.cliente_nome || '',
+        cliente_dados: { ...clienteDados },
+        observacoes: prev?.observacoes ?? null,
+        forma_pagamento: prev?.forma_pagamento ?? null,
+        prazo_entrega: prev?.prazo_entrega ?? null,
+      }))
+    }
+    setAutoSubmitFromIA(false)
+    setFinalizarOpen(true)
+  }
+
+  // Clique no "Finalizar e gerar": se não há acessórios, exige decidir
+  // (adicionar ou confirmar que não tem) antes de prosseguir.
+  const handleFinalizarClick = () => {
+    if (!temAcessorios) { setConfirmSemAcessorios(true); return }
+    abrirFinalizar()
+  }
+
   const totalEquip = totalItems + valorAcessorios   // entra no "VALOR TOTAL DE EQUIPAMENTOS"
   const totalComponentesExtras = useMemo(
     () => componentesExtras.reduce((s, c) => s + (Number(c.valor) || 0), 0),
@@ -2381,22 +2409,7 @@ export function OrcamentoMontar() {
               ) : (
                 <button
                   disabled={carrinho.length === 0}
-                  onClick={() => {
-                    setSaveMode('new')
-                    // Sempre abre o modal pra vendedor revisar descrição, cliente e forma de pagamento.
-                    // Auto-submit fica reservado APENAS pro copiloto IA (setAutoSubmitFromIA vem do OrcamentoAIChat).
-                    if (clienteDados.nome?.trim()) {
-                      setInitialModal(prev => ({
-                        cliente_nome: clienteDados.nome || prev?.cliente_nome || '',
-                        cliente_dados: { ...clienteDados },
-                        observacoes: prev?.observacoes ?? null,
-                        forma_pagamento: prev?.forma_pagamento ?? null,
-                        prazo_entrega: prev?.prazo_entrega ?? null,
-                      }))
-                    }
-                    setAutoSubmitFromIA(false)
-                    setFinalizarOpen(true)
-                  }}
+                  onClick={handleFinalizarClick}
                   className="text-[13px] bg-accent hover:bg-accent/90 text-white font-bold px-4 py-2 rounded-md disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm min-h-[40px] transition-all"
                   title={carrinho.length === 0 ? 'Adicione items primeiro' : 'Finalizar e gerar PDF + DOCX'}
                 >
@@ -2581,6 +2594,50 @@ export function OrcamentoMontar() {
       </div>
 
       {/* Modal de finalização */}
+      {/* Popup obrigatório: orçamento sem acessórios */}
+      {confirmSemAcessorios && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4"
+          onClick={() => setConfirmSemAcessorios(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-border bg-surface p-5 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="h-9 w-9 shrink-0 rounded-full bg-amber-500/15 text-amber-500 flex items-center justify-center text-lg">⚠️</div>
+              <div className="min-w-0">
+                <h3 className="text-[15px] font-bold text-ink">Sem acessórios</h3>
+                <p className="text-[13px] text-ink-muted mt-1 leading-snug">
+                  Você não adicionou nenhum acessório a este orçamento. Quer adicionar
+                  agora ou confirma que <b>não tem acessório</b> e segue para gerar?
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex flex-col gap-2">
+              <button
+                onClick={() => { setConfirmSemAcessorios(false); setAcessoriosOpen(true) }}
+                className="w-full rounded-md bg-accent hover:bg-accent/90 text-white text-[13px] font-bold py-2.5 transition-colors"
+              >
+                ➕ Adicionar acessórios
+              </button>
+              <button
+                onClick={() => { setConfirmSemAcessorios(false); abrirFinalizar() }}
+                className="w-full rounded-md border border-border bg-surface-2 hover:border-border-strong text-ink text-[13px] font-semibold py-2.5 transition-colors"
+              >
+                Não tem acessório, continuar
+              </button>
+              <button
+                onClick={() => setConfirmSemAcessorios(false)}
+                className="w-full text-[12px] text-ink-muted hover:text-ink py-1"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <FinalizarMontarModal
         open={finalizarOpen}
         editingId={editingId}
