@@ -107,6 +107,21 @@ export function MapaVisitas() {
     [comCoord, vendedorSel]
   )
 
+  // Estatística pra legenda BATER com o mapa: só follow-up é colorido por vendedor;
+  // o resto é cinza. Conta follow-up por vendedor + total "sem follow-up" (cinza).
+  const corStats = useMemo(() => {
+    const porVend = new Map<string, number>()
+    let semFollowup = 0
+    for (const v of comCoord) {
+      if (resolverEtiquetas(v).isFollowUp) {
+        const k = v.vendedor_nome || '—'
+        porVend.set(k, (porVend.get(k) || 0) + 1)
+      } else semFollowup++
+    }
+    return { porVend, semFollowup }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [comCoord, byVendId, globId])
+
   // init do mapa (uma vez, quando o container existir)
   useEffect(() => {
     if (mapRef.current || !divRef.current) return
@@ -209,17 +224,22 @@ export function MapaVisitas() {
         {/* Legenda de vendedores */}
         {!isLoading && vendedores.length > 1 && (
           <div className="w-44 shrink-0 rounded-xl border border-border bg-surface p-3 overflow-y-auto">
-            <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">Vendedores</div>
+            <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">Em follow-up</div>
             <ul className="space-y-1.5">
-              {vendedores.map(v => (
+              {vendedores.filter(v => (corStats.porVend.get(v) || 0) > 0).map(v => (
                 <li key={v} className="flex items-center gap-2 text-[12px] text-ink">
                   <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: corDoVendedor(v, vendedores) }} />
                   <span className="truncate">{v}</span>
-                  <span className="ml-auto tabular-nums text-ink-faint">
-                    {comCoord.filter(x => (x.vendedor_nome || '—') === v).length}
-                  </span>
+                  <span className="ml-auto tabular-nums text-ink-faint">{corStats.porVend.get(v)}</span>
                 </li>
               ))}
+              {corStats.semFollowup > 0 && (
+                <li className="flex items-center gap-2 text-[12px] pt-1.5 mt-1 border-t border-border">
+                  <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: CINZA }} />
+                  <span className="truncate text-ink-muted">Sem follow-up</span>
+                  <span className="ml-auto tabular-nums text-ink-faint">{corStats.semFollowup}</span>
+                </li>
+              )}
             </ul>
           </div>
         )}
