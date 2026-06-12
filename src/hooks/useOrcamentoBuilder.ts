@@ -315,7 +315,10 @@ export function useOrcamentosGerados(filters?: { vendedor_nome?: string; status?
         .select('*')
         .order('data_emissao', { ascending: false })
         .order('sequencial', { ascending: false })
-        .limit(100)
+        // antes era 100 -> escondia orcamentos antigos (ex: 2026-1050, o 112o mais
+        // recente). Filtro de vendedor/status e a busca rodam client-side, entao tudo
+        // precisa estar carregado. Tabela inteira ~376 linhas / 659KB, cabe folgado.
+        .limit(1000)
       if (filters?.vendedor_nome) q = q.eq('vendedor_nome', filters.vendedor_nome)
       if (filters?.status) q = q.eq('status', filters.status)
       const { data, error } = await q
