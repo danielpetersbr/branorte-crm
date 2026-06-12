@@ -345,7 +345,7 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
         setErroBusca('CNPJ não encontrado na Receita Federal ou API indisponível.')
         return
       }
-      setNome(titleCase(dados.nome_fantasia || dados.razao_social))
+      setNome(titleCase(dados.razao_social || dados.nome_fantasia))
       const endNum = dados.numero ? `${dados.logradouro}, ${dados.numero}` : dados.logradouro
       const endFull = dados.complemento ? `${endNum} - ${dados.complemento}` : endNum
       setEndereco(titleCase(endFull))
@@ -375,7 +375,7 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
       } finally {
         setBuscando(false)
       }
-      setSucessoBusca(`✓ Dados de "${titleCase(dados.nome_fantasia || dados.razao_social)}" carregados da Receita Federal${ieMsg}`)
+      setSucessoBusca(`✓ Dados de "${titleCase(dados.razao_social || dados.nome_fantasia)}" carregados da Receita Federal${ieMsg}`)
       return
     }
 
