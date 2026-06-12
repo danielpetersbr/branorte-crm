@@ -326,6 +326,17 @@ export function Dashboard() {
         </Card>
       )}
 
+      {/* ONDE INVESTIR — síntese: criativo × perfil de cliente × conversão por etiqueta */}
+      {data.porCriativo.length > 0 && (
+        <Card>
+          <CardHeader
+            title="🎯 Onde investir — veredito por criativo"
+            subtitle="Funde volume + qualificação (IA) + conversão real (etiqueta WA) + perfil de cliente. Pra decidir verba."
+          />
+          <VereditoInvestimento criativos={data.porCriativo} etq={etq} />
+        </Card>
+      )}
+
       {/* GEOGRAFIA — Momento de compra removido (campo descontinuado) */}
       <Card>
         <CardHeader
@@ -595,6 +606,158 @@ function CriativosList({ criativos }: { criativos: { codigo: string; nome: strin
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// ============================================================================
+// VEREDITO DE INVESTIMENTO POR CRIATIVO
+// Funde 3 sinais por criativo pra dar uma recomendação de verba acionável:
+//  - Volume + % qualificado (IA, vem de atendimentos_por_cliente)
+//  - Conversão real = (vendido + orçamento) / total (etiqueta WA do vendedor)
+//  - % "NÃO FABRICAMOS" = lead errado (criativo atraindo público fora do catálogo)
+// Regras (thresholds heurísticos, fáceis de ajustar):
+//  total < AMOSTRA_MIN → ⚪ amostra baixa (sem veredito)
+//  nfPct ≥ 20%                                   → 🔴 PAUSAR  (traz lead errado)
+//  convPct ≥ 3% OU (qualifPct ≥ 35% e nfPct<10%) → 🟢 ESCALAR (rende)
+//  qualifPct < 22%                               → 🟠 OTIMIZAR (volume sem qualidade)
+//  resto                                         → 🟡 MANTER
+// ============================================================================
+const AMOSTRA_MIN = 15
+
+type VerdictKey = 'escalar' | 'manter' | 'otimizar' | 'pausar' | 'amostra'
+const VERDICT_META: Record<VerdictKey, { label: string; emoji: string; cls: string; rank: number }> = {
+  escalar:  { label: 'Escalar',     emoji: '🟢', cls: 'text-success border-success/40 bg-success/10', rank: 0 },
+  otimizar: { label: 'Otimizar',    emoji: '🟠', cls: 'text-warning border-warning/40 bg-warning/10', rank: 1 },
+  pausar:   { label: 'Pausar',      emoji: '🔴', cls: 'text-danger border-danger/40 bg-danger/10',   rank: 2 },
+  manter:   { label: 'Manter',      emoji: '🟡', cls: 'text-ink-muted border-border bg-surface-2/40', rank: 3 },
+  amostra:  { label: 'Amostra baixa', emoji: '⚪', cls: 'text-ink-faint border-border bg-surface-2/20', rank: 4 },
+}
+
+function classifyCriativo(qualifPct: number, convPct: number, nfPct: number, total: number): VerdictKey {
+  if (total < AMOSTRA_MIN) return 'amostra'
+  if (nfPct >= 20) return 'pausar'
+  if (convPct >= 3 || (qualifPct >= 35 && nfPct < 10)) return 'escalar'
+  if (qualifPct < 22) return 'otimizar'
+  return 'manter'
+}
+
+function perfilCliente(c: { bovinos: number; suinos: number; aves: number }): { label: string; emoji: string; pct: number } | null {
+  const classificados = c.bovinos + c.suinos + c.aves
+  if (classificados === 0) return null
+  const ranked: [string, string, number][] = [
+    ['Bovinos', '🐂', c.bovinos],
+    ['Suínos', '🐖', c.suinos],
+    ['Aves', '🐔', c.aves],
+  ]
+  ranked.sort((a, b) => b[2] - a[2])
+  const [label, emoji, n] = ranked[0]
+  return { label, emoji, pct: Math.round((n / classificados) * 100) }
+}
+
+function VereditoInvestimento({
+  criativos,
+  etq,
+}: {
+  criativos: { codigo: string; nome: string; total: number; qualificados: number; ctr: number; bovinos: number; suinos: number; aves: number }[]
+  etq: ReturnType<typeof useDashboardEtiquetas>['data']
+}) {
+  if (!criativos.length) {
+    return <p className="text-sm text-ink-faint">Nenhum criativo registrado.</p>
+  }
+  const convByCodigo = new Map<string, { vendido: number; orcamento: number; nao_fabricamos: number; total: number }>()
+  for (const c of etq?.por_criativo ?? []) {
+    convByCodigo.set(c.codigo, { vendido: c.vendido, orcamento: c.orcamento, nao_fabricamos: c.nao_fabricamos, total: c.total })
+  }
+
+  const linhas = criativos
+    .map(c => {
+      const conv = convByCodigo.get(c.codigo)
+      const convTotal = conv?.total || c.total
+      const fechou = (conv?.vendido ?? 0) + (conv?.orcamento ?? 0)
+      const convPct = convTotal > 0 ? (fechou / convTotal) * 100 : 0
+      const nfPct = convTotal > 0 ? ((conv?.nao_fabricamos ?? 0) / convTotal) * 100 : 0
+      const verdict = classifyCriativo(c.ctr, convPct, nfPct, c.total)
+      return {
+        ...c,
+        vendido: conv?.vendido ?? 0,
+        orcamento: conv?.orcamento ?? 0,
+        convPct,
+        nfPct,
+        verdict,
+        perfil: perfilCliente(c),
+      }
+    })
+    .sort((a, b) => {
+      // Escalar/Otimizar/Pausar primeiro (acionáveis), depois por volume
+      const ra = VERDICT_META[a.verdict].rank
+      const rb = VERDICT_META[b.verdict].rank
+      if (ra !== rb) return ra - rb
+      return b.total - a.total
+    })
+
+  const semEtq = !etq || etq.por_criativo.length === 0
+
+  return (
+    <div className="space-y-2">
+      {semEtq && (
+        <p className="text-[11px] text-warning bg-warning/10 border border-warning/30 rounded-md px-2.5 py-1.5">
+          ⚠️ Sem dados de etiqueta no período — veredito usa só qualificação da IA (conversão real fica de fora).
+        </p>
+      )}
+      <div className="overflow-x-auto">
+        <table className="w-full text-[12px]">
+          <thead>
+            <tr className="text-[10px] uppercase tracking-wider text-ink-faint border-b border-border">
+              <th className="text-left py-2 px-2 font-semibold">Criativo</th>
+              <th className="text-left py-2 px-2 font-semibold w-32">Perfil de cliente</th>
+              <th className="text-right py-2 px-2 font-semibold w-16">Leads</th>
+              <th className="text-right py-2 px-2 font-semibold w-16">Qualif.</th>
+              <th className="text-right py-2 px-2 font-semibold w-20">Converte</th>
+              <th className="text-right py-2 px-2 font-semibold w-20">Errado</th>
+              <th className="text-right py-2 px-2 font-semibold w-28">Veredito</th>
+            </tr>
+          </thead>
+          <tbody>
+            {linhas.map(c => {
+              const vm = VERDICT_META[c.verdict]
+              return (
+                <tr key={c.codigo} className="border-b border-border/30 hover:bg-surface-2/40">
+                  <td className="py-1.5 px-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-2 text-ink-muted shrink-0">{c.codigo}</span>
+                      <span className="truncate text-ink" title={c.nome ?? ''}>{c.nome || '—'}</span>
+                    </div>
+                  </td>
+                  <td className="py-1.5 px-2">
+                    {c.perfil
+                      ? <span className="text-ink-muted">{c.perfil.emoji} {c.perfil.label} <span className="text-ink-faint tabular-nums">{c.perfil.pct}%</span></span>
+                      : <span className="text-ink-faint">n/d</span>}
+                  </td>
+                  <td className="text-right py-1.5 px-2 font-mono tabular-nums text-ink">{c.total}</td>
+                  <td className={`text-right py-1.5 px-2 font-mono tabular-nums ${c.ctr >= 35 ? 'text-success' : c.ctr >= 22 ? 'text-warning' : 'text-danger'}`}>{c.ctr.toFixed(0)}%</td>
+                  <td className="text-right py-1.5 px-2 font-mono tabular-nums text-accent">
+                    {c.convPct > 0 ? `${c.convPct.toFixed(1)}%` : '—'}
+                    {(c.vendido > 0 || c.orcamento > 0) && (
+                      <span className="text-ink-faint"> ({c.vendido}v/{c.orcamento}o)</span>
+                    )}
+                  </td>
+                  <td className={`text-right py-1.5 px-2 font-mono tabular-nums ${c.nfPct >= 20 ? 'text-danger font-semibold' : c.nfPct >= 10 ? 'text-warning' : 'text-ink-faint'}`}>
+                    {c.nfPct > 0 ? `${c.nfPct.toFixed(0)}%` : '—'}
+                  </td>
+                  <td className="text-right py-1.5 px-2">
+                    <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full border ${vm.cls}`}>{vm.emoji} {vm.label}</span>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="text-[10px] text-ink-faint pt-1 space-y-0.5">
+        <p><strong className="text-ink-muted">Qualif.</strong> = % que a IA qualificou · <strong className="text-ink-muted">Converte</strong> = (vendido+orçamento)÷leads via etiqueta WA · <strong className="text-ink-muted">Errado</strong> = % "NÃO FABRICAMOS"</p>
+        <p>🟢 escalar verba · 🟠 testar novo ângulo/criativo · 🔴 pausar (lead errado) · 🟡 manter · ⚪ amostra &lt;{AMOSTRA_MIN} leads</p>
+      </div>
     </div>
   )
 }

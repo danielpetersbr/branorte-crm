@@ -269,7 +269,7 @@ export interface DashboardData {
   // Series temporais
   leadsPorDia: { dia: string; total: number; qualificados: number }[]
   // Distribuicoes
-  porCriativo: { codigo: string; nome: string; total: number; qualificados: number; ctr: number }[]
+  porCriativo: { codigo: string; nome: string; total: number; qualificados: number; ctr: number; bovinos: number; suinos: number; aves: number }[]
   porOrigem: { origem: string; total: number; qualificados: number; ctr: number }[]
   porMomento: { momento: string; valor: number; cor: string }[]
   porUf: { uf: string; nome: string; total: number; pct: number; isBrasil: boolean }[]
@@ -412,7 +412,7 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
   let vendidoTotal = 0
 
   const byDay = new Map<string, { total: number; qualificados: number }>()
-  const byCriativo = new Map<string, { codigo: string; nome: string; total: number; qualificados: number }>()
+  const byCriativo = new Map<string, { codigo: string; nome: string; total: number; qualificados: number; bovinos: number; suinos: number; aves: number }>()
   const byOrigem = new Map<string, { total: number; qualificados: number }>()
   const byVendor = new Map<string, {
     vendedor: string; total: number; qualificados: number;
@@ -514,9 +514,13 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
     if (r.criativo_codigo) {
       const codigo = r.criativo_codigo
       const nome = r.criativo_facebook?.nome_oficial ?? r.criativo_facebook?.headline ?? '—'
-      const cc = byCriativo.get(codigo) ?? { codigo, nome, total: 0, qualificados: 0 }
+      const cc = byCriativo.get(codigo) ?? { codigo, nome, total: 0, qualificados: 0, bovinos: 0, suinos: 0, aves: 0 }
       cc.total++
       if (isQualificado) cc.qualificados++
+      // Perfil de cliente atraído por este criativo (animal declarado pelo lead)
+      if (animal === 'Bovinos') cc.bovinos++
+      else if (animal === 'Suínos') cc.suinos++
+      else if (animal === 'Aves') cc.aves++
       if (!cc.nome || cc.nome === '—') cc.nome = nome
       byCriativo.set(codigo, cc)
     }
