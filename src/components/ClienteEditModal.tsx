@@ -72,6 +72,7 @@ function titleCase(s: string): string {
 interface BrasilApiCnpj {
   razao_social: string
   nome_fantasia: string
+  descricao_tipo_de_logradouro?: string
   logradouro: string
   numero: string
   complemento: string
@@ -346,9 +347,14 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
         return
       }
       setNome(titleCase(dados.razao_social || dados.nome_fantasia))
-      const endNum = dados.numero ? `${dados.logradouro}, ${dados.numero}` : dados.logradouro
+      // Rua: tipo + logradouro da Receita; se vier vazia, completa via ViaCEP pelo CEP
+      let rua = [dados.descricao_tipo_de_logradouro, dados.logradouro].filter(Boolean).join(' ').trim()
+      if (!rua && dados.cep) {
+        try { const c = await buscarCep(dados.cep); if (c?.logradouro) rua = c.logradouro } catch { /* enriquecimento opcional */ }
+      }
+      const endNum = dados.numero ? `${rua}, ${dados.numero}` : rua
       const endFull = dados.complemento ? `${endNum} - ${dados.complemento}` : endNum
-      setEndereco(titleCase(endFull))
+      setEndereco(titleCase(endFull.trim()))
       setBairro(titleCase(dados.bairro))
       setCidade(titleCase(dados.municipio))
       setUf(dados.uf)
