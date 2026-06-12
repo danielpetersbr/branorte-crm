@@ -29,8 +29,11 @@ const COLORS = {
 
 function usePresetFilter(): [DashboardPreset, (p: DashboardPreset) => void] {
   const [preset, setPreset] = useState<DashboardPreset>(() => {
-    if (typeof window === 'undefined') return ''
-    return (localStorage.getItem('dashboard-preset') as DashboardPreset) || ''
+    if (typeof window === 'undefined') return '30d'
+    // Default 30d na 1ª visita ('Tudo' dilui o sinal recente e distorce a conversão);
+    // respeita escolha deliberada salva (inclusive 'Tudo' = '').
+    const stored = localStorage.getItem('dashboard-preset')
+    return stored !== null ? (stored as DashboardPreset) : '30d'
   })
   useEffect(() => {
     localStorage.setItem('dashboard-preset', preset)
@@ -62,6 +65,17 @@ function Card({ children, className = '' }: { children: React.ReactNode; classNa
   )
 }
 
+// Cabeçalho de GRUPO — separa a página em blocos por pergunta de negócio.
+function SectionTitle({ n, titulo, pergunta }: { n: string; titulo: string; pergunta: string }) {
+  return (
+    <div className="flex items-baseline gap-2 pt-3 lg:pt-4 border-t border-border/60 first:border-t-0">
+      <span className="text-[11px] font-bold text-accent tabular-nums">{n}</span>
+      <h2 className="text-[14px] font-bold text-ink tracking-tight">{titulo}</h2>
+      <span className="text-[11px] text-ink-faint truncate">— {pergunta}</span>
+    </div>
+  )
+}
+
 function CardHeader({ title, subtitle, right }: { title: string; subtitle?: string; right?: React.ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-3 mb-4">
@@ -81,34 +95,30 @@ export function Dashboard() {
   // Heatmap usa janela fixa (30d) — ignora filtro do dashboard de propósito
   const { data: heatmap30d } = useHeatmapSemanal()
 
-  // Funil IA com os 2 últimos passos vindos das etiquetas WA (real),
-  // não mais dos campos mortos `orcamento_enviado` e `status_real='fechou'`.
-  // Mantém Entrou, Engajou, Qualificou, Passou pro vendedor (dos campos da IA).
-  const funilIaMerged = useMemo<FunilEtapa[]>(() => {
-    if (!data?.funil || !etq) return data?.funil ?? []
-    // Os 4 primeiros passos seguem do hook original
-    const base = data.funil.slice(0, 4)
-    const topo = base[0]?.valor || 1
-    const orcamento = etq.por_categoria.orcamento ?? 0
-    const vendido = etq.por_categoria.vendido ?? 0
-    const prevOrc = base[3]?.valor || 1
-    const novos: FunilEtapa[] = [
-      {
-        etapa: 'Orçamento enviado',
-        valor: orcamento,
-        pctTopo: (orcamento / topo) * 100,
-        pctAnterior: (orcamento / prevOrc) * 100,
-        perdidos: Math.max(0, prevOrc - orcamento),
-      },
-      {
-        etapa: 'Vendido',
-        valor: vendido,
-        pctTopo: (vendido / topo) * 100,
-        pctAnterior: orcamento > 0 ? (vendido / orcamento) * 100 : 0,
-        perdidos: Math.max(0, orcamento - vendido),
-      },
+  // Funil de qualificação MONOTÔNICO: Entrou → Engajou → Qualificou (IA) →
+  // Orçamento → Vendido (etiqueta WA). "Passou pro vendedor" saiu do funil —
+  // atribuição não é etapa de qualificação e era o que deixava o funil maior no
+  // meio (2.788 > 904), gerando o "sem sentido". pctAnterior travado em 100.
+  const funilCanonico = useMemo<FunilEtapa[]>(() => {
+    if (!data?.funil) return []
+    const raw = [
+      { etapa: 'Entrou',           valor: data.funil[0]?.valor ?? 0 },
+      { etapa: 'Engajou com a IA', valor: data.funil[1]?.valor ?? 0 },
+      { etapa: 'Qualificou',       valor: data.funil[2]?.valor ?? 0 },
+      { etapa: 'Orçamento enviado', valor: etq?.por_categoria.orcamento ?? 0 },
+      { etapa: 'Vendido',          valor: etq?.por_categoria.vendido ?? 0 },
     ]
-    return [...base, ...novos]
+    const topo = raw[0].valor || 1
+    return raw.map((e, i) => {
+      const prev = i > 0 ? raw[i - 1].valor : e.valor
+      return {
+        etapa: e.etapa,
+        valor: e.valor,
+        pctTopo: Math.min(100, (e.valor / topo) * 100),
+        pctAnterior: prev > 0 ? Math.min(100, (e.valor / prev) * 100) : 0,
+        perdidos: i > 0 ? Math.max(0, prev - e.valor) : 0,
+      }
+    })
   }, [data?.funil, etq])
 
   if (isLoading) {
@@ -148,26 +158,19 @@ export function Dashboard() {
     ? PRESET_LABELS.find(p => p.value === preset)?.label ?? 'período'
     : 'no total'
 
-  // KPI Quentes: soma lead_quente das etiquetas (real) com a definição antiga (volume animais)
-  // pra cobrir leads que não chegaram no WhatsApp do vendedor ainda
-  const leadQuenteEtq = etq?.por_categoria.lead_quente ?? 0
-  const kpiQuentesMerged = {
-    ...data.kpiQuentes,
-    valor: data.kpiQuentes.valor + leadQuenteEtq,
-  }
+  // 5 KPIs essenciais (cortado de 9): o funil de entrada (leads), a qualidade
+  // (qualificados), e o resultado (orçamento, vendido, taxa). "Hoje/Não respondeu/
+  // Em andamento/Com vendedor" saíram — são estágios do funil, não KPI de topo.
   const orcamentoEtq = etq?.por_categoria.orcamento ?? 0
   const vendidoEtq = etq?.por_categoria.vendido ?? 0
+  const taxaConv = data.totalLeads > 0 ? Math.round((vendidoEtq / data.totalLeads) * 1000) / 10 : 0
 
   const heroKpis = [
     { label: preset ? 'Leads no período' : 'Total de leads', kpi: data.kpiTotal, icon: Users, color: COLORS.ink, sub: preset ? periodoLabel.toLowerCase() : 'desde o início' },
-    { label: 'Hoje',              kpi: data.kpiHoje, icon: TrendingUp, color: COLORS.info, sub: 'leads novos' },
-    { label: 'Não respondeu',    kpi: data.kpiNaoRespondeu, icon: Users, color: COLORS.warning, sub: 'não engajou com a IA' },
-    { label: 'Em andamento',     kpi: data.kpiEmAndamento, icon: TrendingUp, color: 'hsl(200 70% 55%)', sub: 'conversando com a IA' },
-    { label: 'Quentes',          kpi: kpiQuentesMerged, icon: Flame, color: COLORS.danger, sub: `${leadQuenteEtq} via etiqueta WA` },
-    { label: 'Qualificados',     kpi: data.kpiQualificados, icon: CheckCircle2, color: COLORS.accent, sub: 'fábrica + animal · ou equip. Branorte' },
-    { label: 'Com vendedor',     kpi: data.kpiBotao, icon: Hand, color: 'hsl(280 65% 60%)', sub: 'vendedor atribuído' },
-    { label: 'Orçamentos',       kpi: { valor: orcamentoEtq, deltaPct: 0, sparkline: [] }, icon: FilePlus2, color: 'hsl(280 65% 50%)', sub: 'ORC ENVIADO no WhatsApp' },
-    { label: 'Vendidos',         kpi: { valor: vendidoEtq, deltaPct: 0, sparkline: [] }, icon: CheckCircle2, color: 'hsl(152 60% 35%)', sub: 'etiqueta VENDIDO no WhatsApp' },
+    { label: 'Qualificados',  kpi: data.kpiQualificados, icon: CheckCircle2, color: COLORS.accent, sub: 'quer algo que a Branorte faz' },
+    { label: 'Orçamentos',    kpi: { valor: orcamentoEtq, deltaPct: 0, sparkline: [] }, icon: FilePlus2, color: 'hsl(280 65% 50%)', sub: 'ORÇAMENTO no WhatsApp' },
+    { label: 'Vendidos',      kpi: { valor: vendidoEtq, deltaPct: 0, sparkline: [] }, icon: CheckCircle2, color: 'hsl(152 60% 35%)', sub: 'etiqueta VENDIDO' },
+    { label: 'Conversão',     kpi: { valor: taxaConv, deltaPct: 0, sparkline: [] }, icon: TrendingUp, color: COLORS.info, sub: 'lead → vendido', suffix: '%' },
   ]
 
   return (
@@ -220,6 +223,8 @@ export function Dashboard() {
         <AlertasBanner etq={etq} />
       )}
 
+      <SectionTitle n="1" titulo="Visão geral" pergunta="Estou crescendo e o que preciso agir agora?" />
+
       {/* HERO KPIs com sparkline + delta */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {heroKpis.map(k => (
@@ -227,128 +232,110 @@ export function Dashboard() {
         ))}
       </div>
 
-      {/* FUNIL principal IA → Vendedor (full width) */}
+      {/* LEADS POR DIA — fecha o grupo Visão geral (tendência) */}
       <Card>
         <CardHeader
-          title="Funil de qualificação (IA → Vendedor)"
-          subtitle={`${fmtN(data.totalLeads)} leads · IA qualifica · vendedor confirma via etiqueta WA`}
+          title="Leads por dia"
+          subtitle={data.leadsPorDia.length > 0 ? `${data.leadsPorDia.length} dias com atividade` : 'Sem dados'}
         />
-        <FunilHero etapas={funilIaMerged} />
+        <div className="h-[220px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={data.leadsPorDia} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
+              <defs>
+                <linearGradient id="gT" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={COLORS.info} stopOpacity={0.4} />
+                  <stop offset="100%" stopColor={COLORS.info} stopOpacity={0.02} />
+                </linearGradient>
+                <linearGradient id="gQ" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={COLORS.accent} stopOpacity={0.5} />
+                  <stop offset="100%" stopColor={COLORS.accent} stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <Tooltip
+                contentStyle={{ background: 'hsl(var(--surface))', border: `1px solid ${COLORS.border}`, borderRadius: 6, fontSize: 12 }}
+                formatter={((v: number, n: string) => [fmtN(v), n === 'total' ? 'Total' : 'Qualificados']) as never}
+                labelFormatter={((l: string) => new Date(l + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', weekday: 'short' })) as never}
+              />
+              <Area type="monotone" dataKey="total" stroke={COLORS.info} strokeWidth={2} fill="url(#gT)" />
+              <Area type="monotone" dataKey="qualificados" stroke={COLORS.accent} strokeWidth={2} fill="url(#gQ)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
       </Card>
 
-      {/* TEMPOS + LEADS ÓRFÃOS */}
+      {/* ════════ GRUPO 2 · FUNIL ════════ */}
+      <SectionTitle n="2" titulo="Funil" pergunta="Onde o lead morre?" />
+      <Card>
+        <CardHeader
+          title="Funil de qualificação"
+          subtitle={`${fmtN(data.totalLeads)} leads · IA qualifica · vendedor fecha via etiqueta WA`}
+        />
+        <FunilHero etapas={funilCanonico} />
+      </Card>
       {etq && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <Card>
-            <CardHeader
-              title="Ciclo de venda"
-              subtitle="Mediana de dias entre eventos"
-            />
+            <CardHeader title="Ciclo de venda" subtitle="Mediana de tempo entre etapas" />
             <CicloVenda etq={etq} />
           </Card>
           <Card>
-            <CardHeader
-              title="Leads órfãos (zumbis no funil)"
-              subtitle={`Etiqueta NOVO ou PROSPECCAO há mais de ${etq.leads_orfaos_dias_limite} dias sem evoluir`}
-            />
-            <LeadsOrfaos etq={etq} />
+            <CardHeader title="Motivos de trava / perda" subtitle="Por que o lead não avança (etiquetas do vendedor)" />
+            <MapaEtiquetas etq={etq} variant="trava" />
           </Card>
         </div>
       )}
 
-      {/* LEADS POR DIA */}
-      <div className="grid grid-cols-1 gap-5">
-        <Card>
-          <CardHeader
-            title="Leads por dia"
-            subtitle={data.leadsPorDia.length > 0 ? `${data.leadsPorDia.length} dias com atividade` : 'Sem dados'}
-          />
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data.leadsPorDia} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="gT" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={COLORS.info} stopOpacity={0.4} />
-                    <stop offset="100%" stopColor={COLORS.info} stopOpacity={0.02} />
-                  </linearGradient>
-                  <linearGradient id="gQ" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={COLORS.accent} stopOpacity={0.5} />
-                    <stop offset="100%" stopColor={COLORS.accent} stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <Tooltip
-                  contentStyle={{ background: 'hsl(var(--surface))', border: `1px solid ${COLORS.border}`, borderRadius: 6, fontSize: 12 }}
-                  formatter={((v: number, n: string) => [fmtN(v), n === 'total' ? 'Total' : 'Qualificados']) as never}
-                  labelFormatter={((l: string) => new Date(l + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', weekday: 'short' })) as never}
-                />
-                <Area type="monotone" dataKey="total" stroke={COLORS.info} strokeWidth={2} fill="url(#gT)" />
-                <Area type="monotone" dataKey="qualificados" stroke={COLORS.accent} strokeWidth={2} fill="url(#gQ)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
-      </div>
-
-      {/* PERFORMANCE COMERCIAL — Distribuicao por vendedor */}
-      <Card>
-        <CardHeader
-          title="Distribuição por vendedor"
-          subtitle="Leads recebidos, qualificados, com ORÇAMENTO ENVIADO e VENDIDO (via etiqueta WA)"
-        />
-        <SlaTable rows={data.slaPorVendedor} etqPorVendedor={etq?.por_vendedor} />
-      </Card>
-
-      {/* ORIGEM × VENDIDO (etiquetas) — substitui "Conversão por canal" antigo */}
-      {etq && etq.por_origem.length > 0 && (
-        <Card>
-          <CardHeader
-            title="Origem × Resultado real"
-            subtitle="Qual origem realmente vira venda (via etiqueta WA, não % qualificado da IA)"
-          />
-          <OrigemVendido etq={etq} />
-        </Card>
-      )}
-
-      {/* PERFORMANCE POR CRIATIVO — top 10 com barras Qualif × Não qualif */}
+      {/* ════════ GRUPO 3 · ONDE INVESTIR (canônico de mídia) ════════ */}
+      <SectionTitle n="3" titulo="Onde investir" pergunta="Pra onde vai (ou corta) a verba?" />
       {data.porCriativo.length > 0 && (
-        <Card>
+        <Card id="criativo-veredito">
           <CardHeader
-            title="Performance por criativo"
-            subtitle="Volume × % qualificados — top 10"
-            right={
-              <div className="flex gap-3 text-[10px] text-ink-faint">
-                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-accent" /> Qualif</span>
-                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-info" /> Não qualif</span>
-              </div>
-            }
-          />
-          <CriativosList criativos={data.porCriativo} />
-        </Card>
-      )}
-
-      {/* ONDE INVESTIR — síntese: criativo × perfil de cliente × conversão por etiqueta */}
-      {data.porCriativo.length > 0 && (
-        <Card>
-          <CardHeader
-            title="🎯 Onde investir — veredito por criativo"
-            subtitle="Funde volume + qualificação (IA) + conversão real (etiqueta WA) + perfil de cliente. Pra decidir verba."
+            title="🎯 Onde investir — por criativo"
+            subtitle="Escalar / pausar cada criativo. Decisão por qualidade do lead (conversão ~0 em tudo)."
           />
           <VereditoInvestimento criativos={data.porCriativo} etq={etq} />
         </Card>
       )}
-
-      {/* ONDE INVESTIR — síntese por ORIGEM (canal): respondeu IA + é p/ Branorte + etiqueta do vendedor */}
       {data.porOrigem.length > 0 && (
         <Card>
           <CardHeader
-            title="🎯 Onde investir — veredito por origem"
-            subtitle="Por canal: respondeu à IA + é coisa que a Branorte faz + converteu pela etiqueta do vendedor."
+            title="🎯 Onde investir — por origem (canal)"
+            subtitle="Meta / Google / Instagram… origens WhatsApp de vendedor individual excluídas."
           />
           <VereditoOrigem origens={data.porOrigem} etq={etq} />
         </Card>
       )}
 
-      {/* GEOGRAFIA — Momento de compra removido (campo descontinuado) */}
+      {/* ════════ GRUPO 4 · OPERAÇÃO DO TIME ════════ */}
+      <SectionTitle n="4" titulo="Operação do time" pergunta="Quem eu cobro hoje e qual lead resgato?" />
+      {etq && (
+        <Card id="leads-orfaos">
+          <CardHeader
+            title="Leads órfãos (zumbis no funil)"
+            subtitle={`Etiqueta NOVO ou PROSPECCAO há mais de ${etq.leads_orfaos_dias_limite} dias sem evoluir`}
+          />
+          <LeadsOrfaos etq={etq} />
+        </Card>
+      )}
+      <Card id="vendedores">
+        <CardHeader
+          title="Distribuição por vendedor"
+          subtitle="Leads, qualificados, orçamento e vendido por vendedor (etiqueta WA). Quem tem leads e 0 orçamento precisa ser cobrado."
+        />
+        <SlaTable rows={data.slaPorVendedor} etqPorVendedor={etq?.por_vendedor} />
+      </Card>
+
+      {/* ════════ GRUPO 5 · CONTEXTO (colapsável no caminho diário) ════════ */}
+      <SectionTitle n="5" titulo="Contexto" pergunta="De onde e quando vêm os leads?" />
+      {heatmap30d && heatmap30d.length > 0 && (
+        <Card>
+          <CardHeader
+            title="Quando chegam os leads (BR)"
+            subtitle="Últimos 30 dias — janela fixa, ignora o filtro de período acima"
+          />
+          <HeatmapDiaHora heatmap={heatmap30d} />
+        </Card>
+      )}
       <Card>
         <CardHeader
           title="Distribuição geográfica"
@@ -356,48 +343,6 @@ export function Dashboard() {
         />
         <UfList items={data.porUf} />
       </Card>
-
-      {/* HEATMAP: padrão semanal SEMPRE 30 dias (ignora filtro do dashboard) */}
-      {heatmap30d && heatmap30d.length > 0 && (
-        <Card>
-          <CardHeader
-            title="Quando chegam os leads (BR)"
-            subtitle="Padrão dos últimos 30 dias — independente do filtro acima"
-          />
-          <HeatmapDiaHora heatmap={heatmap30d} />
-        </Card>
-      )}
-
-      {/* ETIQUETAS WA (vendedores) */}
-      {etq && (
-        <>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-            <Card className="lg:col-span-2">
-              <CardHeader
-                title="Mapa de etiquetas WhatsApp"
-                subtitle={`${fmtN(etq.leads_com_etiqueta)} de ${fmtN(etq.leads_total)} leads classificados pelos vendedores`}
-              />
-              <MapaEtiquetas etq={etq} />
-            </Card>
-            <Card>
-              <CardHeader
-                title="Vendedores sem ORC ENVIADO"
-                subtitle="Têm leads no período mas não etiquetaram nenhum orçamento — cobrar"
-              />
-              <VendedoresSemOrc etq={etq} />
-            </Card>
-          </div>
-          <div className="grid grid-cols-1 gap-5">
-            <Card>
-              <CardHeader
-                title="Criativo × Etiqueta final"
-                subtitle="Qual anúncio vira venda vs. 'NÃO FABRICAMOS' — auditoria de qualidade"
-              />
-              <CriativoEtiqueta etq={etq} />
-            </Card>
-          </div>
-        </>
-      )}
     </div>
   )
 }
@@ -406,12 +351,13 @@ export function Dashboard() {
 // COMPONENTES
 // ============================================================================
 
-function KpiHero({ label, kpi, icon: Icon, color, sub, showDelta: showDeltaProp = true }: {
+function KpiHero({ label, kpi, icon: Icon, color, sub, suffix, showDelta: showDeltaProp = true }: {
   label: string;
   kpi: { valor: number; deltaPct: number; sparkline: number[] };
   icon: typeof Users;
   color: string;
   sub: string;
+  suffix?: string;
   showDelta?: boolean;
 }) {
   const showDelta = showDeltaProp && Math.abs(kpi.deltaPct) > 0.5
@@ -425,7 +371,8 @@ function KpiHero({ label, kpi, icon: Icon, color, sub, showDelta: showDeltaProp 
         <Icon className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" style={{ color }} />
       </div>
       <p className="text-[26px] sm:text-[40px] leading-[1.05] font-semibold tracking-tight tabular-nums" style={{ color }}>
-        {fmtN(kpi.valor)}
+        {suffix ? kpi.valor.toString().replace('.', ',') : fmtN(kpi.valor)}
+        {suffix && <span className="text-base sm:text-xl font-medium ml-0.5">{suffix}</span>}
       </p>
       <div className="flex items-center justify-between mt-0.5 sm:mt-1.5">
         <p className="text-[10px] sm:text-[11px] text-ink-faint leading-tight">{sub}</p>
@@ -438,7 +385,8 @@ function KpiHero({ label, kpi, icon: Icon, color, sub, showDelta: showDeltaProp 
           </span>
         )}
       </div>
-      {/* Sparkline */}
+      {/* Sparkline — só quando há série (cards de etiqueta passam [] e não renderizam) */}
+      {sparkData.length > 0 && (
       <div className="absolute bottom-0 left-0 right-0 h-7 sm:h-10 opacity-60 pointer-events-none">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={sparkData}>
@@ -452,6 +400,7 @@ function KpiHero({ label, kpi, icon: Icon, color, sub, showDelta: showDeltaProp 
           </AreaChart>
         </ResponsiveContainer>
       </div>
+      )}
     </div>
   )
 }
@@ -1060,7 +1009,7 @@ function CicloVenda({ etq }: { etq: NonNullable<ReturnType<typeof useDashboardEt
     {
       label: 'ORÇAMENTO → VENDIDO',
       value: etq.tempo_lead_vendido_dias != null && etq.tempo_lead_orcamento_dias != null
-        ? Math.max(0, etq.tempo_lead_vendido_dias - etq.tempo_lead_orcamento_dias)
+        ? Math.max(0, Math.round((etq.tempo_lead_vendido_dias - etq.tempo_lead_orcamento_dias) * 10) / 10)
         : null,
       unit: 'd',
       target: 7,
@@ -1083,7 +1032,7 @@ function CicloVenda({ etq }: { etq: NonNullable<ReturnType<typeof useDashboardEt
             </div>
             <div className="text-right shrink-0">
               <div className={`text-2xl font-bold tabular-nums leading-none ${overBudget ? 'text-danger' : 'text-success'}`}>
-                {v == null ? '—' : v}
+                {v == null ? '—' : (Math.round(v * 10) / 10).toString().replace('.', ',')}
                 <span className="text-sm font-medium ml-0.5">{s.unit}</span>
               </div>
               <p className="text-[10px] text-ink-faint mt-0.5">meta: &lt;{s.target}{s.unit}</p>
@@ -1343,7 +1292,7 @@ function HeatmapDiaHora({ heatmap }: { heatmap: { dow: number; hour: number; tot
   )
 }
 
-function MapaEtiquetas({ etq }: { etq: ReturnType<typeof useDashboardEtiquetas>['data'] }) {
+function MapaEtiquetas({ etq, variant = 'full' }: { etq: ReturnType<typeof useDashboardEtiquetas>['data']; variant?: 'full' | 'trava' }) {
   if (!etq) return null
   const total = etq.leads_com_etiqueta || 1
 
@@ -1373,6 +1322,26 @@ function MapaEtiquetas({ etq }: { etq: ReturnType<typeof useDashboardEtiquetas>[
 
   const maxPipe = Math.max(...topPipeline.map(e => e.total), 1)
   const maxTrava = Math.max(...topTrava.map(e => e.total), 1)
+
+  // Variante 'trava': só os motivos de perda (o resto virou o Funil canônico).
+  if (variant === 'trava') {
+    if (topTrava.length === 0) {
+      return <div className="py-6 text-center text-[12px] text-ink-faint">Sem motivos de trava no período ✓</div>
+    }
+    return (
+      <div className="space-y-1.5">
+        {topTrava.map(e => (
+          <div key={e.nome} className="grid grid-cols-[140px_1fr_40px] items-center gap-2 text-[12px]">
+            <span className="truncate text-ink" title={e.nome}>{e.nome}</span>
+            <div className="h-1.5 bg-surface-2 rounded overflow-hidden">
+              <div className="h-full bg-danger/60" style={{ width: `${(e.total / maxTrava) * 100}%` }} />
+            </div>
+            <span className="text-right text-ink-muted font-mono tabular-nums">{e.total}</span>
+          </div>
+        ))}
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-5">
