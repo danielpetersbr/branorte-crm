@@ -49,6 +49,7 @@ export function MapaVisitas() {
   const mapRef = useRef<L.Map | null>(null)
   const layerRef = useRef<L.LayerGroup | null>(null)
   const divRef = useRef<HTMLDivElement | null>(null)
+  const autoGeoRef = useRef(false)
 
   const vendedores = useMemo(
     () => [...new Set(visitas.map(v => v.vendedor_nome || '—'))].sort(),
@@ -107,6 +108,14 @@ export function MapaVisitas() {
     }
     if (bounds.length) map.fitBounds(bounds, { padding: [50, 50], maxZoom: 10 })
   }, [filtradas, vendedores])
+
+  // auto-geocoda os pendentes ao abrir o mapa (uma vez por montagem). Sem isso,
+  // clientes novos ficam "sem localização" até alguém clicar no botão manual.
+  useEffect(() => {
+    if (autoGeoRef.current || isLoading || semCoord === 0 || geocodar.isPending) return
+    autoGeoRef.current = true
+    geocodar.mutate()
+  }, [isLoading, semCoord, geocodar])
 
   return (
     <div className="flex h-[calc(100vh-0px)] flex-col p-4 gap-3 overflow-hidden">
