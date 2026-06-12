@@ -23,6 +23,7 @@ const ConsultaHistorico = lazy(() => import('@/pages/ConsultaHistorico').then(m 
 const Assign = lazy(() => import('@/pages/Assign').then(m => ({ default: m.Assign })))
 const Orcamentos = lazy(() => import('@/pages/Orcamentos').then(m => ({ default: m.Orcamentos })))
 const Vendidos = lazy(() => import('@/pages/Vendidos').then(m => ({ default: m.Vendidos })))
+const MapaVisitas = lazy(() => import('@/pages/MapaVisitas').then(m => ({ default: m.MapaVisitas })))
 const Funil = lazy(() => import('@/pages/Funil').then(m => ({ default: m.Funil })))
 const FunilWhatsApp = lazy(() => import('@/pages/FunilWhatsApp').then(m => ({ default: m.FunilWhatsApp })))
 const FunilRelatorio = lazy(() => import('@/pages/FunilRelatorio').then(m => ({ default: m.FunilRelatorio })))
@@ -176,6 +177,7 @@ function AppRoutes() {
         <Route path="/frete/transportadoras" element={<FreteTransportadoras />} />
         <Route path="/frete/historico" element={<FreteHistorico />} />
         <Route path="/vendidos" element={<Vendidos />} />
+        <Route path="/mapa-visitas" element={<MapaVisitas />} />
         <Route path="/controle" element={<ControleDashboard />} />
         <Route path="/controle/pedidos" element={<ControlePedidos />} />
         <Route path="/controle/financeiro" element={<ControleFinanceiro />} />

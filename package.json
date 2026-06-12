@@ -28,6 +28,7 @@
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
     "konva": "^9.3.16",
+    "leaflet": "^1.9.4",
     "lucide-react": "^0.321.0",
     "pg": "^8.20.0",
     "pizzip": "^3.2.0",
@@ -41,6 +42,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@types/leaflet": "^1.9.21",
     "@types/react": "^18.2.55",
     "@types/react-dom": "^18.2.19",
     "@vercel/node": "^5.8.2",
