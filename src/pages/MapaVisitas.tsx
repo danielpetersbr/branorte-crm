@@ -65,11 +65,27 @@ export function MapaVisitas() {
   // init do mapa (uma vez, quando o container existir)
   useEffect(() => {
     if (mapRef.current || !divRef.current) return
-    const map = L.map(divRef.current, { center: CENTRO_BR, zoom: 4, scrollWheelZoom: true })
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap',
-      maxZoom: 19,
-    }).addTo(map)
+    const map = L.map(divRef.current, { center: CENTRO_BR, zoom: 4, scrollWheelZoom: true, zoomControl: true })
+
+    // Camada "Mapa" — CartoDB Voyager: ruas/cidades, visual limpo estilo Google
+    const mapa = L.tileLayer(
+      'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+      { attribution: '&copy; OpenStreetMap &copy; CARTO', subdomains: 'abcd', maxZoom: 20 }
+    )
+    // Camada "Satélite" — Esri World Imagery + nomes por cima (igual Google satélite)
+    const satelite = L.layerGroup([
+      L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        { attribution: 'Tiles &copy; Esri', maxZoom: 20 }
+      ),
+      L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+        { maxZoom: 20 }
+      ),
+    ])
+    mapa.addTo(map)
+    L.control.layers({ 'Mapa': mapa, 'Satélite': satelite }, {}, { collapsed: false, position: 'topright' }).addTo(map)
+
     layerRef.current = L.layerGroup().addTo(map)
     mapRef.current = map
     // o container do mapa entra num flex que assenta depois — força recálculo
