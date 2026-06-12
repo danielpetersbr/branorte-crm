@@ -15,6 +15,9 @@ export interface AuthState {
   session: Session | null
   profile: UserProfile | null
   loading: boolean
+  // true quando a query do profile falhou (timeout/erro) após retries.
+  // Distingue "não consegui carregar" de "carregou e não está aprovado".
+  profileError: boolean
 }
 
 type AuthContextValue = AuthState & { signOut: () => Promise<void> }
@@ -27,6 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [profileError, setProfileError] = useState(false)
 
   useEffect(() => {
     let mounted = true
@@ -59,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!userId) {
       setProfile(null)
+      setProfileError(false)
       return
     }
     let cancel = false
@@ -67,37 +72,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!prev || prev.id !== userId) setLoading(true)
       return prev
     })
-    // Timeout de 8s: libera a UI se a query travar (rede ruim, RLS lenta).
-    const timeoutId = window.setTimeout(() => {
-      if (cancel) return
-      setLoading(false)
-    }, 8000)
-    supabase
-      .from('user_profiles')
-      .select('id,email,display_name,role,vendor_id,approved_at')
-      .eq('id', userId)
-      .maybeSingle()
-      .then(({ data, error }) => {
-        if (cancel) return
-        window.clearTimeout(timeoutId)
-        if (error) {
-          // eslint-disable-next-line no-console
-          console.error('[useAuth] profile fetch error:', error)
-        } else {
+    setProfileError(false)
+
+    // Cada tentativa é limitada por tempo: o supabase-js pode TRAVAR (não rejeitar)
+    // quando o Supabase está sob carga. Sem isso, o usuário fica preso no spinner.
+    const withTimeout = <T,>(p: PromiseLike<T>, ms: number): Promise<T> =>
+      Promise.race([
+        Promise.resolve(p),
+        new Promise<never>((_, rej) => window.setTimeout(() => rej(new Error('profile-timeout')), ms)),
+      ])
+
+    const fetchProfile = async () => {
+      for (let attempt = 0; attempt < 3 && !cancel; attempt++) {
+        try {
+          const { data, error } = await withTimeout(
+            supabase
+              .from('user_profiles')
+              .select('id,email,display_name,role,vendor_id,approved_at')
+              .eq('id', userId)
+              .maybeSingle(),
+            6000,
+          )
+          if (cancel) return
+          if (error) throw error
+          // Resposta definitiva (data pode ser null = sem perfil de verdade → /pendente)
           setProfile(data as UserProfile | null)
+          setProfileError(false)
+          setLoading(false)
+          return
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.error(`[useAuth] profile fetch attempt ${attempt + 1} falhou:`, err)
+          if (attempt < 2 && !cancel) {
+            await new Promise(r => window.setTimeout(r, 800 * (attempt + 1)))
+          }
         }
-        setLoading(false)
-      })
-      .catch(err => {
-        if (cancel) return
-        window.clearTimeout(timeoutId)
-        // eslint-disable-next-line no-console
-        console.error('[useAuth] profile fetch threw:', err)
-        setLoading(false)
-      })
+      }
+      if (cancel) return
+      // Falhou após retries: NÃO assumir "não aprovado". Sinaliza erro pra UI
+      // mostrar tela de reconexão (não a tela de "Aguardando aprovação").
+      setProfileError(true)
+      setLoading(false)
+    }
+    fetchProfile()
+
     return () => {
       cancel = true
-      window.clearTimeout(timeoutId)
     }
   }, [userId])
 
@@ -108,7 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ session, profile, loading, signOut }}>
+    <AuthContext.Provider value={{ session, profile, loading, profileError, signOut }}>
       {children}
     </AuthContext.Provider>
   )

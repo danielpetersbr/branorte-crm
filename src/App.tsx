@@ -103,8 +103,41 @@ function HomeRouter() {
   return isMobile ? <MobileHome /> : <Dashboard />
 }
 
+// Tela mostrada quando a sessão existe mas o perfil não carregou (timeout/erro do
+// Supabase). Diferente de "Aguardando aprovação": aqui não sabemos o status, então
+// oferecemos retry em vez de bloquear como não-aprovado.
+function ProfileLoadError() {
+  const { signOut } = useAuth()
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4 bg-bg">
+      <div className="w-full max-w-md bg-surface-1 border border-border rounded-2xl p-8 text-center">
+        <div className="h-12 w-12 rounded-full bg-amber-50 mx-auto flex items-center justify-center mb-4">
+          <span className="text-amber-600 text-xl">📡</span>
+        </div>
+        <h1 className="font-bold text-ink mb-2">Não consegui carregar seu acesso</h1>
+        <p className="text-sm text-ink-muted mb-6">
+          O servidor demorou pra responder (instabilidade momentânea). Seu login está
+          ok — é só tentar de novo.
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          className="w-full mb-3 px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:opacity-90"
+        >
+          Tentar de novo
+        </button>
+        <button
+          onClick={signOut}
+          className="text-sm text-ink-faint hover:text-ink underline"
+        >
+          Sair
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function AppRoutes() {
-  const { session, profile, loading } = useAuth()
+  const { session, profile, loading, profileError } = useAuth()
   const can = useCan()
   const loc = useLocation()
 
@@ -131,6 +164,12 @@ function AppRoutes() {
       return <Login />
     }
     return <Navigate to="/login" replace state={{ from: loc.pathname }} />
+  }
+
+  // Logado, mas a query do profile FALHOU (timeout/erro do Supabase sob carga).
+  // NÃO é "não aprovado" — não temos como saber. Mostra reconexão, não /pendente.
+  if (session && !profile && profileError) {
+    return <ProfileLoadError />
   }
 
   // Logado mas sem profile aprovado → /pendente
