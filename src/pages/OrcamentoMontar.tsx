@@ -790,6 +790,75 @@ export function OrcamentoMontar() {
   const [outrosPickerOpen, setOutrosPickerOpen] = useState(false)
   const [esteiraPickerOpen, setEsteiraPickerOpen] = useState(false)
 
+  // ===== Trocar item (roadmap #35): substitui um item por outro da mesma categoria =====
+  // Abre o picker da categoria do item e, ao escolher, substitui na MESMA posição —
+  // sem o vendedor ter que excluir e adicionar de novo (ex: trocar tamanho do chupim).
+  const [substituirUid, setSubstituirUid] = useState<string | null>(null)
+  const lenAoTrocarRef = useRef(0)
+
+  const abrirPickerDaCategoria = (categoria: string) => {
+    const cat = (categoria || '').toUpperCase()
+    const mapa: Record<string, () => void> = {
+      COMPACTA: () => setPacotePicker({ open: true }),
+      TRANSPORTADOR: () => setTransportadorPickerOpen(true),
+      MOINHO: () => setMoinhoPickerOpen(true),
+      MISTURADOR: () => setMisturadorPickerOpen(true),
+      CAIXA: () => setCaixaPickerOpen(true),
+      SILO: () => setSiloPickerOpen(true),
+      ELEVADOR: () => setElevadorPickerOpen(true),
+      ESTEIRA: () => setEsteiraPickerOpen(true),
+      CACAMBA_PESAGEM: () => setCacambaPickerOpen(true),
+      PRE_LIMPEZA: () => setPreLimpezaPickerOpen(true),
+      ENSACADEIRA: () => setEnsacadeiraPickerOpen(true),
+      PENEIRA: () => setPeneiraPickerOpen(true),
+      HELICOIDE: () => setHelicoidePickerOpen(true),
+      BALANCA: () => setBalancaPickerOpen(true),
+      PLASTICO: () => setPlasticoPickerOpen(true),
+      ALIMENTADOR: () => setAlimentadorPickerOpen(true),
+      DESCARGA: () => setDescargaPickerOpen(true),
+      MOEGA: () => setMoegaPickerOpen(true),
+      PASSARELA: () => setPassarelaPickerOpen(true),
+      SUPORTE_BAG: () => setSuporteBagPickerOpen(true),
+    }
+    ;(mapa[cat] || (() => setOutrosPickerOpen(true)))()  // fallback: picker Outros
+  }
+
+  const handleTrocarItem = (uid: string) => {
+    const item = carrinho.find(c => c.uid === uid)
+    if (!item) return
+    setSubstituirUid(uid)
+    lenAoTrocarRef.current = carrinho.length
+    abrirPickerDaCategoria(item.categoria)
+  }
+
+  const algumPickerAberto =
+    transportadorPickerOpen || misturadorPickerOpen || moinhoPickerOpen || caixaPickerOpen ||
+    siloPickerOpen || elevadorPickerOpen || cacambaPickerOpen || preLimpezaPickerOpen ||
+    peneiraPickerOpen || helicoidePickerOpen || balancaPickerOpen || compactaPickerOpen ||
+    plasticoPickerOpen || ensacadeiraPickerOpen || alimentadorPickerOpen || descargaPickerOpen ||
+    moegaPickerOpen || passarelaPickerOpen || suporteBagPickerOpen || outrosPickerOpen ||
+    esteiraPickerOpen || pacotePicker.open
+
+  // Quando um novo item entra após "Trocar", move pra posição do antigo e remove o antigo.
+  // Se o picker fecha sem escolher, cancela a troca (não bagunça a próxima adição).
+  useEffect(() => {
+    if (!substituirUid) return
+    if (carrinho.length > lenAoTrocarRef.current) {
+      setCarrinho(c => {
+        const novo = c[c.length - 1]
+        const semNovo = c.slice(0, -1)
+        const idx = semNovo.findIndex(x => x.uid === substituirUid)
+        if (idx === -1) return c
+        const out = semNovo.slice()
+        out.splice(idx, 1, novo)
+        return out
+      })
+      setSubstituirUid(null)
+    } else if (!algumPickerAberto) {
+      setSubstituirUid(null)
+    }
+  }, [carrinho.length, algumPickerAberto, substituirUid])
+
   const { data: precos } = usePrecosBranorte()
   // Lista de modelos de pacote — usado pelo copiloto IA pra resolver onCarregarPacote.
   // (Outros componentes mais abaixo no arquivo carregam de novo; ok porque o hook
@@ -2537,6 +2606,7 @@ export function OrcamentoMontar() {
                 terms={{ dataVenda: dataVendaTxt, prazoEntrega: prazoEntregaTxt, formaPagamento: formaPagamentoTxt, freteTipo, freteTxt }}
                 onUpdateTerm={atualizarTermo}
                 onMoverItem={moverItem}
+                onTrocarItem={handleTrocarItem}
                 parcelas={parcelasPagamento}
                 onUpdateParcelas={setParcelasPagamento}
                 motoresDisponiveis={motores ?? []}

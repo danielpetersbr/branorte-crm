@@ -179,6 +179,7 @@ export interface OrcamentoPreviewProps {
   onUpdateQtd?: (uid: string, novaQtd: number) => void
   onUpdateTerm?: (key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento' | 'freteTxt' | 'freteTipo', valor: string) => void
   onMoverItem?: (uid: string, direcao: 'cima' | 'baixo') => void
+  onTrocarItem?: (uid: string) => void   // abre o picker da categoria pra substituir o item
   onToggleBrinde?: (uid: string) => void
   onTogglePorConta?: (uid: string) => void
 
@@ -323,7 +324,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     tensaoMotores = null, onUpdateTensaoMotores,
     marcaMotores = null, onUpdateMarcaMotores,
     desconto, onUpdateDesconto,
-    onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onUpdateValor, onToggleInox, onToggleTungstenio, onUpdateQtd, onUpdateTerm, onMoverItem, onToggleBrinde, onTogglePorConta,
+    onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onUpdateValor, onToggleInox, onToggleTungstenio, onUpdateQtd, onUpdateTerm, onMoverItem, onTrocarItem, onToggleBrinde, onTogglePorConta,
     componentesExtras = [], onUpdateComponentesExtras, componentesAdicionaisCatalogo = [],
     parcelas, onUpdateParcelas,
     motoresDisponiveis, onTrocarMotor, onMotorPorContaCliente,
@@ -960,6 +961,14 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             title="Descer item"
                             type="button"
                           >▼</button>
+                        )}
+                        {onTrocarItem && (
+                          <button
+                            onClick={() => onTrocarItem(it.uid!)}
+                            className="text-gray-500 hover:text-white hover:bg-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 text-[12px] leading-none font-bold transition-all"
+                            title="Trocar este item por outro da mesma categoria (ex: outro tamanho)"
+                            type="button"
+                          >⇄</button>
                         )}
                         {onRemove && (
                           <button
