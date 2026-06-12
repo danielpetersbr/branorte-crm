@@ -62,7 +62,7 @@ export function MapaVisitas() {
     [comCoord, vendedorSel]
   )
 
-  // init do mapa (uma vez)
+  // init do mapa (uma vez, quando o container existir)
   useEffect(() => {
     if (mapRef.current || !divRef.current) return
     const map = L.map(divRef.current, { center: CENTRO_BR, zoom: 4, scrollWheelZoom: true })
@@ -72,6 +72,10 @@ export function MapaVisitas() {
     }).addTo(map)
     layerRef.current = L.layerGroup().addTo(map)
     mapRef.current = map
+    // o container do mapa entra num flex que assenta depois — força recálculo
+    // do tamanho senão os tiles ficam cinza/preto até um resize manual
+    setTimeout(() => map.invalidateSize(), 0)
+    setTimeout(() => map.invalidateSize(), 250)
     return () => {
       map.remove()
       mapRef.current = null
@@ -84,6 +88,7 @@ export function MapaVisitas() {
     const map = mapRef.current
     const layer = layerRef.current
     if (!map || !layer) return
+    map.invalidateSize() // legenda aparecendo/sumindo muda a largura do mapa
     layer.clearLayers()
     const bounds: [number, number][] = []
     for (const v of filtradas) {
@@ -134,30 +139,30 @@ export function MapaVisitas() {
         </div>
       )}
 
-      {isLoading ? (
-        <PageLoading />
-      ) : (
-        <div className="flex-1 flex gap-3 min-h-0">
-          <div ref={divRef} className="flex-1 rounded-xl border border-border overflow-hidden" style={{ minHeight: 300 }} />
-          {/* Legenda de vendedores */}
-          {vendedores.length > 1 && (
-            <div className="w-44 shrink-0 rounded-xl border border-border bg-surface p-3 overflow-y-auto">
-              <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">Vendedores</div>
-              <ul className="space-y-1.5">
-                {vendedores.map(v => (
-                  <li key={v} className="flex items-center gap-2 text-[12px] text-ink">
-                    <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: corDoVendedor(v, vendedores) }} />
-                    <span className="truncate">{v}</span>
-                    <span className="ml-auto tabular-nums text-ink-faint">
-                      {comCoord.filter(x => (x.vendedor_nome || '—') === v).length}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
+      <div className="flex-1 flex gap-3 min-h-0 relative">
+        {/* container do mapa SEMPRE montado (Leaflet precisa do div no init) */}
+        <div ref={divRef} className="flex-1 rounded-xl border border-border overflow-hidden z-0" style={{ minHeight: 300 }} />
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center"><PageLoading /></div>
+        )}
+        {/* Legenda de vendedores */}
+        {!isLoading && vendedores.length > 1 && (
+          <div className="w-44 shrink-0 rounded-xl border border-border bg-surface p-3 overflow-y-auto">
+            <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">Vendedores</div>
+            <ul className="space-y-1.5">
+              {vendedores.map(v => (
+                <li key={v} className="flex items-center gap-2 text-[12px] text-ink">
+                  <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: corDoVendedor(v, vendedores) }} />
+                  <span className="truncate">{v}</span>
+                  <span className="ml-auto tabular-nums text-ink-faint">
+                    {comCoord.filter(x => (x.vendedor_nome || '—') === v).length}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
