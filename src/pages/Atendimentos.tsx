@@ -343,7 +343,7 @@ export function Atendimentos() {
   }
 
   return (
-    <div className="px-6 py-6 space-y-6 max-w-[1800px] mx-auto">
+    <div className="flex flex-col h-[calc(100dvh)] overflow-hidden px-6 py-4 gap-3 max-w-[1800px] mx-auto">
       {/* Header */}
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
@@ -507,8 +507,8 @@ export function Atendimentos() {
       {isLoading ? (
         <PageLoading />
       ) : (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
+        <div className="flex-1 min-h-0 flex flex-col gap-3">
+          <div className="flex items-center justify-between shrink-0">
             <p className="text-[12px] text-ink-faint tabular-nums">
               {formatNumber(total)} resultado{total !== 1 ? 's' : ''}
             </p>
@@ -530,7 +530,7 @@ export function Atendimentos() {
           </div>
 
           {/* ─── MOBILE: cards verticais ─── */}
-          <div className="md:hidden space-y-2">
+          <div className="md:hidden space-y-2 flex-1 min-h-0 overflow-y-auto">
             {rows.map(r => {
               const tel = (r.telefone || '').replace(/\D/g, '')
               const uf = ufFromTelefone(r.telefone)
@@ -632,8 +632,8 @@ export function Atendimentos() {
           </div>
 
           {/* ─── DESKTOP: tabela completa (sem scroll horizontal — cabe na tela) ─── */}
-          <Card className="hidden md:block overflow-hidden p-0">
-            <div className="max-h-[calc(100vh-280px)] overflow-y-auto overflow-x-hidden">
+          <Card className="hidden md:flex md:flex-col flex-1 min-h-0 overflow-hidden p-0">
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
               <table className="w-full table-fixed">
                 <thead className="sticky top-0 z-10 bg-surface backdrop-blur-sm">
                   <tr className="border-b border-border bg-surface-2/40 [&>th]:text-left [&>th]:text-[10px] [&>th]:uppercase [&>th]:tracking-wider [&>th]:font-bold [&>th]:text-ink-muted [&>th]:px-1.5 [&>th]:py-3 [&>th]:whitespace-nowrap">
