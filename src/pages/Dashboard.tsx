@@ -622,36 +622,90 @@ function CriativosList({ criativos }: { criativos: { codigo: string; nome: strin
 }
 
 // ============================================================================
-// VEREDITO DE INVESTIMENTO (criativo + origem) — funil de qualificação completo
-// Estágios (na ordem real do funil Branorte):
-//   Respondeu IA (engajou) → É p/ Branorte (qualificou) → Follow Up → Lead Quente
-//   → Converteu (orçamento/vendido)  ·  + % "NÃO FABRICAMOS" (lead errado)
-// Sinais de IA (respondeu/é p/ Branorte/perfil)  vêm de atendimentos_por_cliente.
-// Sinais de etiqueta (follow up/lead quente/converteu/errado) vêm do vendedor (WA).
-// Veredito (heurístico, fácil de ajustar):
-//   total < AMOSTRA_MIN                                       → ⚪ amostra baixa
-//   nfPct ≥ 20%                                               → 🔴 PAUSAR
-//   convPct ≥ 3% OU leadQuente>0 OU (qualifPct≥35% e nf<10%)  → 🟢 ESCALAR
-//   qualifPct < 22% OU engajouPct < 30%                       → 🟠 OTIMIZAR
-//   resto                                                     → 🟡 MANTER
+// VEREDITO DE INVESTIMENTO (criativo + origem) — modelo de QUALIDADE
+// Como conversão e profundidade de funil (follow/quente/venda) são ~zero em TODO
+// mundo (vendedor quase não etiqueta), a decisão de verba é por QUALIDADE de lead:
+//   Resp. IA (engajou) + p/ Branorte (qualif) + Errado (NÃO FABRICAMOS) decidem.
+// Conversão/funil entram só como BÔNUS no score, nunca como gatilho (senão escalava
+// criativo bom por 1 orçamento de amostra pequena).
+//
+// Ordem (1º match vence):
+//   excluir   → origem sem atribuição (Não identificou) — corrigir rastreio, não investir
+//   amostra   → < 15 leads (sinal fraco)
+//   pausar    → respIA < 25% (IA não conversa) OU errado ≥ 35% (público errado)
+//   otimizar  → qualif < 20% (engaja mas não é público Branorte) OU errado 20-35% (vazamento)
+//   score     → ≥68 escalar · ≥48 manter · resto otimizar
+//   manter*   → volume alto sem fechar = gargalo é o FECHAMENTO, não a mídia
+// Modelo desenhado por painel multi-agente + juiz adversarial contra dados reais.
 // ============================================================================
 const AMOSTRA_MIN = 15
+const vClamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
-type VerdictKey = 'escalar' | 'manter' | 'otimizar' | 'pausar' | 'amostra'
+type VerdictKey = 'escalar' | 'manter' | 'otimizar' | 'pausar' | 'amostra' | 'excluir'
 const VERDICT_META: Record<VerdictKey, { label: string; emoji: string; cls: string; rank: number }> = {
-  escalar:  { label: 'Escalar',     emoji: '🟢', cls: 'text-success border-success/40 bg-success/10', rank: 0 },
-  otimizar: { label: 'Otimizar',    emoji: '🟠', cls: 'text-warning border-warning/40 bg-warning/10', rank: 1 },
-  pausar:   { label: 'Pausar',      emoji: '🔴', cls: 'text-danger border-danger/40 bg-danger/10',   rank: 2 },
-  manter:   { label: 'Manter',      emoji: '🟡', cls: 'text-ink-muted border-border bg-surface-2/40', rank: 3 },
-  amostra:  { label: 'Amostra baixa', emoji: '⚪', cls: 'text-ink-faint border-border bg-surface-2/20', rank: 4 },
+  escalar:  { label: 'Escalar',  emoji: '🟢', cls: 'text-success border-success/40 bg-success/10', rank: 0 },
+  pausar:   { label: 'Pausar',   emoji: '🔴', cls: 'text-danger border-danger/40 bg-danger/10',    rank: 1 },
+  otimizar: { label: 'Otimizar', emoji: '🟠', cls: 'text-warning border-warning/40 bg-warning/10',  rank: 2 },
+  manter:   { label: 'Manter',   emoji: '🟡', cls: 'text-ink-muted border-border bg-surface-2/40',  rank: 3 },
+  amostra:  { label: 'Amostra',  emoji: '⚪', cls: 'text-ink-faint border-border bg-surface-2/20',  rank: 4 },
+  excluir:  { label: 'Excluir',  emoji: '⚫', cls: 'text-ink-faint border-border bg-surface-2/10',  rank: 5 },
 }
 
-function classifyFunil(o: { total: number; engajouPct: number; qualifPct: number; convPct: number; nfPct: number; leadQuente: number }): VerdictKey {
-  if (o.total < AMOSTRA_MIN) return 'amostra'
-  if (o.nfPct >= 20) return 'pausar'
-  if (o.convPct >= 3 || o.leadQuente > 0 || (o.qualifPct >= 35 && o.nfPct < 10)) return 'escalar'
-  if (o.qualifPct < 22 || o.engajouPct < 30) return 'otimizar'
-  return 'manter'
+// Origens sem canal pagável real — não dá pra investir nem cortar, só corrigir rastreio.
+const ORIGEM_NAO_RASTREAVEL = new Set([
+  'não identificou', 'nao identificou', 'sem origem', 'desconhecido', 'outros', 'direto', '',
+])
+
+interface VerdictInput {
+  label: string
+  total: number
+  engajouPct: number   // Resp. IA
+  qualifPct: number    // p/ Branorte
+  nfPct: number        // errado (NÃO FABRICAMOS)
+  followUp: number
+  leadQuente: number
+  vendido: number
+  orcamento: number
+}
+
+function scoreBruto(m: VerdictInput): number {
+  const erradoPen = Math.max(0, 100 - 2 * m.nfPct)
+  const bonus = Math.min(10, (m.followUp + m.leadQuente) * 3 + (m.vendido + m.orcamento) * 5)
+  return vClamp(0.50 * m.qualifPct + 0.35 * m.engajouPct + 0.15 * erradoPen + bonus, 0, 100)
+}
+
+function classifyVerdict(m: VerdictInput, isOrigem: boolean): { verdict: VerdictKey; score: number; reasonKey: string } {
+  const mk = (verdict: VerdictKey, score: number, reasonKey: string) => ({ verdict, score: Math.round(score), reasonKey })
+  if (isOrigem && ORIGEM_NAO_RASTREAVEL.has(m.label.trim().toLowerCase())) return mk('excluir', 0, 'excluir')
+  if (m.total < AMOSTRA_MIN) return mk('amostra', vClamp(scoreBruto(m) * 0.5, 0, 60), 'amostra')
+  if (m.engajouPct < 25) return mk('pausar', vClamp(m.engajouPct * 0.6, 5, 25), 'pausar_respia')
+  if (m.nfPct >= 35) return mk('pausar', vClamp(20 - (m.nfPct - 35) / 2, 5, 25), 'pausar_errado')
+  if (m.qualifPct < 20) return mk('otimizar', vClamp(scoreBruto(m), 30, 55), 'otimizar_qualif')
+  if (m.nfPct >= 20) return mk('otimizar', vClamp(scoreBruto(m), 40, 65), 'otimizar_vazamento')
+  const s = scoreBruto(m)
+  if (s >= 68) return mk('escalar', s, 'escalar')
+  const conv = m.vendido + m.orcamento
+  const convRate = m.total > 0 ? conv / m.total : 0
+  if (m.total >= 40 && m.vendido === 0 && convRate < 0.01) return mk('manter', vClamp(s, 45, 72), 'manter_volume')
+  if (s >= 48) return mk('manter', s, 'manter')
+  return mk('otimizar', s, 'otimizar_fraco')
+}
+
+function reasonFor(key: string, m: VerdictInput): string {
+  const q = Math.round(m.qualifPct), r = Math.round(m.engajouPct), e = Math.round(m.nfPct)
+  switch (key) {
+    case 'excluir': return 'Sem atribuição de canal — não dá pra investir nem cortar. Ação: corrigir rastreamento (UTM/pixel).'
+    case 'amostra': return `Só ${m.total} leads (<${AMOSTRA_MIN}): amostra fraca. Acumular antes de decidir — nunca escalar no escuro.`
+    case 'pausar_respia': return `Só ${r}% respondem à IA: atrai público errado, verba queimada. Revisar criativo/segmentação.`
+    case 'pausar_errado': return `${e}% pedem o que a Branorte NÃO fabrica: tráfego desalinhado. Pausar e refazer segmentação.`
+    case 'otimizar_qualif': return `${r}% respondem mas só ${q}% querem algo que fabricamos: público desalinhado, ajustar oferta/segmentação.`
+    case 'otimizar_vazamento': return `Perfil bom (${q}% qualif) mas ${e}% chegam errados: ajustar copy/público antes de subir verba.`
+    case 'otimizar_fraco': return `Morno (${q}% qualif, ${r}% engajam): testar novo ângulo antes de cortar ou subir verba.`
+    case 'escalar': return `Melhor aposta: ${q}% qualificam, ${r}% engajam, ${e}% errado. Subir verba 20-30%.`
+    case 'manter_volume': return `${m.total} leads, ${q}% qualif, mas ~0 fecha: a mídia entrega, o gargalo é o FECHAMENTO (vendedor). Manter verba e cobrar venda.`
+    case 'manter': return `Saudável (${q}% qualif, ${r}% engajam) sem se destacar: manter verba e dar tempo ao ciclo maturar.`
+    default: return ''
+  }
 }
 
 function perfilCliente(c: { bovinos: number; suinos: number; aves: number }): { label: string; emoji: string; pct: number } | null {
@@ -685,11 +739,36 @@ interface FunilRow {
   nf: number
   nfPct: number
   verdict: VerdictKey
+  score: number
+  reason: string
+}
+
+// Headline em linguagem clara: o que fazer com a verba, a partir das linhas.
+function montarHeadline(rows: FunilRow[]): { acoes: string; alerta: string | null } {
+  const esc = rows.filter(r => r.verdict === 'escalar').sort((a, b) => b.score - a.score)
+  const pau = rows.filter(r => r.verdict === 'pausar').sort((a, b) => a.score - b.score)
+  const exc = rows.filter(r => r.verdict === 'excluir')
+  const partes: string[] = []
+  if (esc.length) partes.push(`📈 Escale ${esc.slice(0, 2).map(r => r.label).join(' e ')}`)
+  if (pau.length) partes.push(`⏸️ Pause ${pau.slice(0, 3).map(r => r.label).join(', ')}`)
+  if (exc.length) partes.push(`⚫ ${exc.length} sem atribuição (corrigir rastreio)`)
+  if (!partes.length) partes.push('Nada claro pra escalar ainda — decidindo por qualidade de lead')
+  const semVenda = rows.length > 0 && rows.every(r => r.vendido === 0)
+  return {
+    acoes: partes.join('  ·  '),
+    alerta: semVenda ? '⚠️ Nenhuma venda fechada por etiqueta no período — o gargalo é o FECHAMENTO (vendedor), não a mídia.' : null,
+  }
 }
 
 function FunilTable({ rows, primeiraColuna, semEtq }: { rows: FunilRow[]; primeiraColuna: string; semEtq: boolean }) {
+  const { acoes, alerta } = montarHeadline(rows)
   return (
     <div className="space-y-2">
+      {/* Headline: o que fazer com a verba, em linguagem clara */}
+      <div className="rounded-lg border border-accent/30 bg-accent/5 px-3 py-2">
+        <p className="text-[12px] text-ink font-medium leading-snug">{acoes}</p>
+        {alerta && <p className="text-[11px] text-warning mt-1 leading-snug">{alerta}</p>}
+      </div>
       {semEtq && (
         <p className="text-[11px] text-warning bg-warning/10 border border-warning/30 rounded-md px-2.5 py-1.5">
           ⚠️ Sem etiquetas no período — Follow Up / Lead Quente / Converteu ficam zerados (só os sinais da IA contam).
@@ -738,8 +817,14 @@ function FunilTable({ rows, primeiraColuna, semEtq }: { rows: FunilRow[]; primei
                   <td className={`text-right py-1.5 px-2 font-mono tabular-nums ${r.nfPct >= 20 ? 'text-danger font-semibold' : r.nfPct >= 10 ? 'text-warning' : 'text-ink-faint'}`}>
                     {r.nf > 0 ? `${r.nfPct.toFixed(0)}%` : '—'}
                   </td>
-                  <td className="text-right py-1.5 px-2">
-                    <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full border ${vm.cls}`}>{vm.emoji} {vm.label}</span>
+                  <td className="py-1.5 px-2 text-right">
+                    <span
+                      className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border cursor-help ${vm.cls}`}
+                      title={r.reason}
+                    >
+                      {vm.emoji} {vm.label}
+                    </span>
+                    <div className="text-[9px] text-ink-faint tabular-nums mt-0.5">score {r.score}</div>
                   </td>
                 </tr>
               )
@@ -749,7 +834,7 @@ function FunilTable({ rows, primeiraColuna, semEtq }: { rows: FunilRow[]; primei
       </div>
       <div className="text-[10px] text-ink-faint pt-1 space-y-0.5 whitespace-normal">
         <p>Funil: <strong className="text-ink-muted">Resp. IA</strong> (respondeu) → <strong className="text-ink-muted">p/ Branorte</strong> (quer algo que fabricamos) → <strong className="text-ink-muted">Follow</strong> (negociação) → <strong className="text-ink-muted">Quente</strong> (perto de fechar) → <strong className="text-ink-muted">Conv.</strong> (orçamento/venda). <strong className="text-ink-muted">Errado</strong> = "NÃO FABRICAMOS".</p>
-        <p>🟢 escalar verba · 🟠 testar novo ângulo · 🔴 pausar (lead errado) · 🟡 manter · ⚪ amostra &lt;{AMOSTRA_MIN} leads. Follow/Quente/Conv = etiqueta do vendedor.</p>
+        <p>Passe o mouse no veredito pra ver o porquê. 🟢 escalar verba · 🔴 pausar · 🟠 ajustar ângulo/segmentação · 🟡 manter · ⚪ amostra &lt;{AMOSTRA_MIN} leads · ⚫ sem atribuição. Decisão por QUALIDADE (conversão ~0 em tudo).</p>
       </div>
     </div>
   )
@@ -782,13 +867,16 @@ function VereditoInvestimento({
     const nf = e?.nao_fabricamos ?? 0
     const nfPct = c.total > 0 ? (nf / c.total) * 100 : 0
     const leadQuente = e?.lead_quente ?? 0
-    const verdict = classifyFunil({ total: c.total, engajouPct, qualifPct: c.ctr, convPct, nfPct, leadQuente })
+    const followUp = e?.follow_up ?? 0
+    const vi: VerdictInput = { label: c.nome || c.codigo, total: c.total, engajouPct, qualifPct: c.ctr, nfPct, followUp, leadQuente, vendido, orcamento }
+    const { verdict, score, reasonKey } = classifyVerdict(vi, false)
     return {
       key: c.codigo, codigo: c.codigo, label: c.nome || '—',
       perfil: perfilCliente(c), total: c.total,
       engajouPct, qualifPct: c.ctr,
-      followUp: e?.follow_up ?? 0, leadQuente,
-      conv, vendido, orcamento, convPct, nf, nfPct, verdict,
+      followUp, leadQuente,
+      conv, vendido, orcamento, convPct, nf, nfPct,
+      verdict, score, reason: reasonFor(reasonKey, vi),
     }
   }).sort(sortFunil)
 
@@ -818,13 +906,16 @@ function VereditoOrigem({
       const nf = e?.nao_fabricamos ?? 0
       const nfPct = o.total > 0 ? (nf / o.total) * 100 : 0
       const leadQuente = e?.lead_quente ?? 0
-      const verdict = classifyFunil({ total: o.total, engajouPct, qualifPct: o.ctr, convPct, nfPct, leadQuente })
+      const followUp = e?.follow_up ?? 0
+      const vi: VerdictInput = { label: o.origem, total: o.total, engajouPct, qualifPct: o.ctr, nfPct, followUp, leadQuente, vendido, orcamento }
+      const { verdict, score, reasonKey } = classifyVerdict(vi, true)
       return {
         key: o.origem, label: o.origem,
         perfil: perfilCliente(o), total: o.total,
         engajouPct, qualifPct: o.ctr,
-        followUp: e?.follow_up ?? 0, leadQuente,
-        conv, vendido, orcamento, convPct, nf, nfPct, verdict,
+        followUp, leadQuente,
+        conv, vendido, orcamento, convPct, nf, nfPct,
+        verdict, score, reason: reasonFor(reasonKey, vi),
       }
     }).sort(sortFunil)
 
