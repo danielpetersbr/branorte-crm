@@ -269,8 +269,8 @@ export interface DashboardData {
   // Series temporais
   leadsPorDia: { dia: string; total: number; qualificados: number }[]
   // Distribuicoes
-  porCriativo: { codigo: string; nome: string; total: number; qualificados: number; ctr: number; bovinos: number; suinos: number; aves: number }[]
-  porOrigem: { origem: string; total: number; qualificados: number; ctr: number }[]
+  porCriativo: { codigo: string; nome: string; total: number; qualificados: number; ctr: number; engajou: number; bovinos: number; suinos: number; aves: number }[]
+  porOrigem: { origem: string; total: number; qualificados: number; ctr: number; engajou: number; bovinos: number; suinos: number; aves: number; orcamentos: number; vendidos: number }[]
   porMomento: { momento: string; valor: number; cor: string }[]
   porUf: { uf: string; nome: string; total: number; pct: number; isBrasil: boolean }[]
   // Operacionais
@@ -412,8 +412,8 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
   let vendidoTotal = 0
 
   const byDay = new Map<string, { total: number; qualificados: number }>()
-  const byCriativo = new Map<string, { codigo: string; nome: string; total: number; qualificados: number; bovinos: number; suinos: number; aves: number }>()
-  const byOrigem = new Map<string, { total: number; qualificados: number }>()
+  const byCriativo = new Map<string, { codigo: string; nome: string; total: number; qualificados: number; engajou: number; bovinos: number; suinos: number; aves: number }>()
+  const byOrigem = new Map<string, { total: number; qualificados: number; engajou: number; bovinos: number; suinos: number; aves: number; orcamentos: number; vendidos: number }>()
   const byVendor = new Map<string, {
     vendedor: string; total: number; qualificados: number;
     chegouVendedor: number; orcamentos: number; vendidos: number;
@@ -514,9 +514,10 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
     if (r.criativo_codigo) {
       const codigo = r.criativo_codigo
       const nome = r.criativo_facebook?.nome_oficial ?? r.criativo_facebook?.headline ?? '—'
-      const cc = byCriativo.get(codigo) ?? { codigo, nome, total: 0, qualificados: 0, bovinos: 0, suinos: 0, aves: 0 }
+      const cc = byCriativo.get(codigo) ?? { codigo, nome, total: 0, qualificados: 0, engajou: 0, bovinos: 0, suinos: 0, aves: 0 }
       cc.total++
       if (isQualificado) cc.qualificados++
+      if (engajou) cc.engajou++
       // Perfil de cliente atraído por este criativo (animal declarado pelo lead)
       if (animal === 'Bovinos') cc.bovinos++
       else if (animal === 'Suínos') cc.suinos++
@@ -525,11 +526,21 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
       byCriativo.set(codigo, cc)
     }
 
-    const origem = normOrigem(r.origem)
-    const oc = byOrigem.get(origem) ?? { total: 0, qualificados: 0 }
-    oc.total++
-    if (isQualificado) oc.qualificados++
-    byOrigem.set(origem, oc)
+    // Chave = origem CRUA (canal real: Meta ADS, Google, Instagram Formulario, Bio Instagram...).
+    // Casa 1:1 com a RPC por_origem (ambas leem apc.origem). Ignora ruído de nº de vendedor.
+    const origemRaw = (r.origem || '').trim()
+    if (origemRaw && !/^whatsapp\s/i.test(origemRaw)) {
+      const oc = byOrigem.get(origemRaw) ?? { total: 0, qualificados: 0, engajou: 0, bovinos: 0, suinos: 0, aves: 0, orcamentos: 0, vendidos: 0 }
+      oc.total++
+      if (isQualificado) oc.qualificados++           // "é coisa que a Branorte faz"
+      if (engajou) oc.engajou++                       // "respondeu à IA"
+      if (animal === 'Bovinos') oc.bovinos++
+      else if (animal === 'Suínos') oc.suinos++
+      else if (animal === 'Aves') oc.aves++
+      if (r.orcamento_enviado || (r.orcamento_valor && r.orcamento_valor > 0)) oc.orcamentos++
+      if (statusLower === 'fechou' || statusLower.includes('vendid') || (r.status_vendedor || '').toLowerCase() === 'fechou') oc.vendidos++
+      byOrigem.set(origemRaw, oc)
+    }
 
     // Vendedor (apenas com responsavel preenchido)
     if (vendedor) {
@@ -671,7 +682,7 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
 
   const porOrigem = Array.from(byOrigem.entries())
     .filter(([origem]) => origem !== 'Sem origem')
-    .map(([origem, v]) => ({ origem, total: v.total, qualificados: v.qualificados, ctr: v.total > 0 ? (v.qualificados / v.total) * 100 : 0 }))
+    .map(([origem, v]) => ({ origem, total: v.total, qualificados: v.qualificados, ctr: v.total > 0 ? (v.qualificados / v.total) * 100 : 0, engajou: v.engajou, bovinos: v.bovinos, suinos: v.suinos, aves: v.aves, orcamentos: v.orcamentos, vendidos: v.vendidos }))
     .sort((a, b) => b.total - a.total)
 
   const COR_MOMENTO: Record<string, string> = {

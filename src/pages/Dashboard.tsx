@@ -337,6 +337,17 @@ export function Dashboard() {
         </Card>
       )}
 
+      {/* ONDE INVESTIR — síntese por ORIGEM (canal): respondeu IA + é p/ Branorte + etiqueta do vendedor */}
+      {data.porOrigem.length > 0 && (
+        <Card>
+          <CardHeader
+            title="🎯 Onde investir — veredito por origem"
+            subtitle="Por canal: respondeu à IA + é coisa que a Branorte faz + converteu pela etiqueta do vendedor."
+          />
+          <VereditoOrigem origens={data.porOrigem} etq={etq} />
+        </Card>
+      )}
+
       {/* GEOGRAFIA — Momento de compra removido (campo descontinuado) */}
       <Card>
         <CardHeader
@@ -611,17 +622,18 @@ function CriativosList({ criativos }: { criativos: { codigo: string; nome: strin
 }
 
 // ============================================================================
-// VEREDITO DE INVESTIMENTO POR CRIATIVO
-// Funde 3 sinais por criativo pra dar uma recomendação de verba acionável:
-//  - Volume + % qualificado (IA, vem de atendimentos_por_cliente)
-//  - Conversão real = (vendido + orçamento) / total (etiqueta WA do vendedor)
-//  - % "NÃO FABRICAMOS" = lead errado (criativo atraindo público fora do catálogo)
-// Regras (thresholds heurísticos, fáceis de ajustar):
-//  total < AMOSTRA_MIN → ⚪ amostra baixa (sem veredito)
-//  nfPct ≥ 20%                                   → 🔴 PAUSAR  (traz lead errado)
-//  convPct ≥ 3% OU (qualifPct ≥ 35% e nfPct<10%) → 🟢 ESCALAR (rende)
-//  qualifPct < 22%                               → 🟠 OTIMIZAR (volume sem qualidade)
-//  resto                                         → 🟡 MANTER
+// VEREDITO DE INVESTIMENTO (criativo + origem) — funil de qualificação completo
+// Estágios (na ordem real do funil Branorte):
+//   Respondeu IA (engajou) → É p/ Branorte (qualificou) → Follow Up → Lead Quente
+//   → Converteu (orçamento/vendido)  ·  + % "NÃO FABRICAMOS" (lead errado)
+// Sinais de IA (respondeu/é p/ Branorte/perfil)  vêm de atendimentos_por_cliente.
+// Sinais de etiqueta (follow up/lead quente/converteu/errado) vêm do vendedor (WA).
+// Veredito (heurístico, fácil de ajustar):
+//   total < AMOSTRA_MIN                                       → ⚪ amostra baixa
+//   nfPct ≥ 20%                                               → 🔴 PAUSAR
+//   convPct ≥ 3% OU leadQuente>0 OU (qualifPct≥35% e nf<10%)  → 🟢 ESCALAR
+//   qualifPct < 22% OU engajouPct < 30%                       → 🟠 OTIMIZAR
+//   resto                                                     → 🟡 MANTER
 // ============================================================================
 const AMOSTRA_MIN = 15
 
@@ -634,11 +646,11 @@ const VERDICT_META: Record<VerdictKey, { label: string; emoji: string; cls: stri
   amostra:  { label: 'Amostra baixa', emoji: '⚪', cls: 'text-ink-faint border-border bg-surface-2/20', rank: 4 },
 }
 
-function classifyCriativo(qualifPct: number, convPct: number, nfPct: number, total: number): VerdictKey {
-  if (total < AMOSTRA_MIN) return 'amostra'
-  if (nfPct >= 20) return 'pausar'
-  if (convPct >= 3 || (qualifPct >= 35 && nfPct < 10)) return 'escalar'
-  if (qualifPct < 22) return 'otimizar'
+function classifyFunil(o: { total: number; engajouPct: number; qualifPct: number; convPct: number; nfPct: number; leadQuente: number }): VerdictKey {
+  if (o.total < AMOSTRA_MIN) return 'amostra'
+  if (o.nfPct >= 20) return 'pausar'
+  if (o.convPct >= 3 || o.leadQuente > 0 || (o.qualifPct >= 35 && o.nfPct < 10)) return 'escalar'
+  if (o.qualifPct < 22 || o.engajouPct < 30) return 'otimizar'
   return 'manter'
 }
 
@@ -655,95 +667,76 @@ function perfilCliente(c: { bovinos: number; suinos: number; aves: number }): { 
   return { label, emoji, pct: Math.round((n / classificados) * 100) }
 }
 
-function VereditoInvestimento({
-  criativos,
-  etq,
-}: {
-  criativos: { codigo: string; nome: string; total: number; qualificados: number; ctr: number; bovinos: number; suinos: number; aves: number }[]
-  etq: ReturnType<typeof useDashboardEtiquetas>['data']
-}) {
-  if (!criativos.length) {
-    return <p className="text-sm text-ink-faint">Nenhum criativo registrado.</p>
-  }
-  const convByCodigo = new Map<string, { vendido: number; orcamento: number; nao_fabricamos: number; total: number }>()
-  for (const c of etq?.por_criativo ?? []) {
-    convByCodigo.set(c.codigo, { vendido: c.vendido, orcamento: c.orcamento, nao_fabricamos: c.nao_fabricamos, total: c.total })
-  }
+// Linha normalizada que alimenta a tabela de veredito (criativo OU origem)
+interface FunilRow {
+  key: string
+  codigo?: string
+  label: string
+  perfil: { label: string; emoji: string; pct: number } | null
+  total: number
+  engajouPct: number
+  qualifPct: number
+  followUp: number
+  leadQuente: number
+  conv: number          // vendido + orçamento (etiqueta)
+  vendido: number
+  orcamento: number
+  convPct: number
+  nf: number
+  nfPct: number
+  verdict: VerdictKey
+}
 
-  const linhas = criativos
-    .map(c => {
-      const conv = convByCodigo.get(c.codigo)
-      const convTotal = conv?.total || c.total
-      const fechou = (conv?.vendido ?? 0) + (conv?.orcamento ?? 0)
-      const convPct = convTotal > 0 ? (fechou / convTotal) * 100 : 0
-      const nfPct = convTotal > 0 ? ((conv?.nao_fabricamos ?? 0) / convTotal) * 100 : 0
-      const verdict = classifyCriativo(c.ctr, convPct, nfPct, c.total)
-      return {
-        ...c,
-        vendido: conv?.vendido ?? 0,
-        orcamento: conv?.orcamento ?? 0,
-        convPct,
-        nfPct,
-        verdict,
-        perfil: perfilCliente(c),
-      }
-    })
-    .sort((a, b) => {
-      // Escalar/Otimizar/Pausar primeiro (acionáveis), depois por volume
-      const ra = VERDICT_META[a.verdict].rank
-      const rb = VERDICT_META[b.verdict].rank
-      if (ra !== rb) return ra - rb
-      return b.total - a.total
-    })
-
-  const semEtq = !etq || etq.por_criativo.length === 0
-
+function FunilTable({ rows, primeiraColuna, semEtq }: { rows: FunilRow[]; primeiraColuna: string; semEtq: boolean }) {
   return (
     <div className="space-y-2">
       {semEtq && (
         <p className="text-[11px] text-warning bg-warning/10 border border-warning/30 rounded-md px-2.5 py-1.5">
-          ⚠️ Sem dados de etiqueta no período — veredito usa só qualificação da IA (conversão real fica de fora).
+          ⚠️ Sem etiquetas no período — Follow Up / Lead Quente / Converteu ficam zerados (só os sinais da IA contam).
         </p>
       )}
       <div className="overflow-x-auto">
-        <table className="w-full text-[12px]">
+        <table className="w-full text-[12px] whitespace-nowrap">
           <thead>
             <tr className="text-[10px] uppercase tracking-wider text-ink-faint border-b border-border">
-              <th className="text-left py-2 px-2 font-semibold">Criativo</th>
-              <th className="text-left py-2 px-2 font-semibold w-32">Perfil de cliente</th>
-              <th className="text-right py-2 px-2 font-semibold w-16">Leads</th>
-              <th className="text-right py-2 px-2 font-semibold w-16">Qualif.</th>
-              <th className="text-right py-2 px-2 font-semibold w-20">Converte</th>
-              <th className="text-right py-2 px-2 font-semibold w-20">Errado</th>
-              <th className="text-right py-2 px-2 font-semibold w-28">Veredito</th>
+              <th className="text-left py-2 px-2 font-semibold">{primeiraColuna}</th>
+              <th className="text-left py-2 px-2 font-semibold">Perfil</th>
+              <th className="text-right py-2 px-2 font-semibold">Leads</th>
+              <th className="text-right py-2 px-2 font-semibold" title="Respondeu à IA">Resp. IA</th>
+              <th className="text-right py-2 px-2 font-semibold" title="É coisa que a Branorte faz">p/ Branorte</th>
+              <th className="text-right py-2 px-2 font-semibold" title="Chegou a Follow Up (negociação)">Follow</th>
+              <th className="text-right py-2 px-2 font-semibold" title="Chegou a Lead Quente (perto de fechar)">Quente</th>
+              <th className="text-right py-2 px-2 font-semibold" title="Orçamento enviado + vendido (etiqueta)">Conv.</th>
+              <th className="text-right py-2 px-2 font-semibold" title="NÃO FABRICAMOS">Errado</th>
+              <th className="text-right py-2 px-2 font-semibold">Veredito</th>
             </tr>
           </thead>
           <tbody>
-            {linhas.map(c => {
-              const vm = VERDICT_META[c.verdict]
+            {rows.map(r => {
+              const vm = VERDICT_META[r.verdict]
               return (
-                <tr key={c.codigo} className="border-b border-border/30 hover:bg-surface-2/40">
+                <tr key={r.key} className="border-b border-border/30 hover:bg-surface-2/40">
                   <td className="py-1.5 px-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-2 text-ink-muted shrink-0">{c.codigo}</span>
-                      <span className="truncate text-ink" title={c.nome ?? ''}>{c.nome || '—'}</span>
+                      {r.codigo && <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-2 text-ink-muted shrink-0">{r.codigo}</span>}
+                      <span className="truncate text-ink max-w-[220px]" title={r.label}>{r.label}</span>
                     </div>
                   </td>
                   <td className="py-1.5 px-2">
-                    {c.perfil
-                      ? <span className="text-ink-muted">{c.perfil.emoji} {c.perfil.label} <span className="text-ink-faint tabular-nums">{c.perfil.pct}%</span></span>
+                    {r.perfil
+                      ? <span className="text-ink-muted">{r.perfil.emoji} {r.perfil.label} <span className="text-ink-faint tabular-nums">{r.perfil.pct}%</span></span>
                       : <span className="text-ink-faint">n/d</span>}
                   </td>
-                  <td className="text-right py-1.5 px-2 font-mono tabular-nums text-ink">{c.total}</td>
-                  <td className={`text-right py-1.5 px-2 font-mono tabular-nums ${c.ctr >= 35 ? 'text-success' : c.ctr >= 22 ? 'text-warning' : 'text-danger'}`}>{c.ctr.toFixed(0)}%</td>
+                  <td className="text-right py-1.5 px-2 font-mono tabular-nums text-ink">{r.total}</td>
+                  <td className={`text-right py-1.5 px-2 font-mono tabular-nums ${r.engajouPct >= 45 ? 'text-success' : r.engajouPct >= 30 ? 'text-warning' : 'text-danger'}`}>{r.engajouPct.toFixed(0)}%</td>
+                  <td className={`text-right py-1.5 px-2 font-mono tabular-nums ${r.qualifPct >= 35 ? 'text-success' : r.qualifPct >= 22 ? 'text-warning' : 'text-danger'}`}>{r.qualifPct.toFixed(0)}%</td>
+                  <td className="text-right py-1.5 px-2 font-mono tabular-nums text-ink-muted">{r.followUp || '—'}</td>
+                  <td className={`text-right py-1.5 px-2 font-mono tabular-nums ${r.leadQuente > 0 ? 'text-success font-semibold' : 'text-ink-faint'}`}>{r.leadQuente || '—'}</td>
                   <td className="text-right py-1.5 px-2 font-mono tabular-nums text-accent">
-                    {c.convPct > 0 ? `${c.convPct.toFixed(1)}%` : '—'}
-                    {(c.vendido > 0 || c.orcamento > 0) && (
-                      <span className="text-ink-faint"> ({c.vendido}v/{c.orcamento}o)</span>
-                    )}
+                    {r.conv > 0 ? `${r.vendido}v/${r.orcamento}o` : '—'}
                   </td>
-                  <td className={`text-right py-1.5 px-2 font-mono tabular-nums ${c.nfPct >= 20 ? 'text-danger font-semibold' : c.nfPct >= 10 ? 'text-warning' : 'text-ink-faint'}`}>
-                    {c.nfPct > 0 ? `${c.nfPct.toFixed(0)}%` : '—'}
+                  <td className={`text-right py-1.5 px-2 font-mono tabular-nums ${r.nfPct >= 20 ? 'text-danger font-semibold' : r.nfPct >= 10 ? 'text-warning' : 'text-ink-faint'}`}>
+                    {r.nf > 0 ? `${r.nfPct.toFixed(0)}%` : '—'}
                   </td>
                   <td className="text-right py-1.5 px-2">
                     <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full border ${vm.cls}`}>{vm.emoji} {vm.label}</span>
@@ -754,12 +747,88 @@ function VereditoInvestimento({
           </tbody>
         </table>
       </div>
-      <div className="text-[10px] text-ink-faint pt-1 space-y-0.5">
-        <p><strong className="text-ink-muted">Qualif.</strong> = % que a IA qualificou · <strong className="text-ink-muted">Converte</strong> = (vendido+orçamento)÷leads via etiqueta WA · <strong className="text-ink-muted">Errado</strong> = % "NÃO FABRICAMOS"</p>
-        <p>🟢 escalar verba · 🟠 testar novo ângulo/criativo · 🔴 pausar (lead errado) · 🟡 manter · ⚪ amostra &lt;{AMOSTRA_MIN} leads</p>
+      <div className="text-[10px] text-ink-faint pt-1 space-y-0.5 whitespace-normal">
+        <p>Funil: <strong className="text-ink-muted">Resp. IA</strong> (respondeu) → <strong className="text-ink-muted">p/ Branorte</strong> (quer algo que fabricamos) → <strong className="text-ink-muted">Follow</strong> (negociação) → <strong className="text-ink-muted">Quente</strong> (perto de fechar) → <strong className="text-ink-muted">Conv.</strong> (orçamento/venda). <strong className="text-ink-muted">Errado</strong> = "NÃO FABRICAMOS".</p>
+        <p>🟢 escalar verba · 🟠 testar novo ângulo · 🔴 pausar (lead errado) · 🟡 manter · ⚪ amostra &lt;{AMOSTRA_MIN} leads. Follow/Quente/Conv = etiqueta do vendedor.</p>
       </div>
     </div>
   )
+}
+
+function sortFunil(a: FunilRow, b: FunilRow): number {
+  const ra = VERDICT_META[a.verdict].rank
+  const rb = VERDICT_META[b.verdict].rank
+  if (ra !== rb) return ra - rb
+  return b.total - a.total
+}
+
+function VereditoInvestimento({
+  criativos,
+  etq,
+}: {
+  criativos: { codigo: string; nome: string; total: number; qualificados: number; ctr: number; engajou: number; bovinos: number; suinos: number; aves: number }[]
+  etq: ReturnType<typeof useDashboardEtiquetas>['data']
+}) {
+  if (!criativos.length) return <p className="text-sm text-ink-faint">Nenhum criativo registrado.</p>
+  const etqByCodigo = new Map((etq?.por_criativo ?? []).map(c => [c.codigo, c]))
+
+  const rows: FunilRow[] = criativos.map(c => {
+    const e = etqByCodigo.get(c.codigo)
+    const vendido = e?.vendido ?? 0
+    const orcamento = e?.orcamento ?? 0
+    const conv = vendido + orcamento
+    const engajouPct = c.total > 0 ? (c.engajou / c.total) * 100 : 0
+    const convPct = c.total > 0 ? (conv / c.total) * 100 : 0
+    const nf = e?.nao_fabricamos ?? 0
+    const nfPct = c.total > 0 ? (nf / c.total) * 100 : 0
+    const leadQuente = e?.lead_quente ?? 0
+    const verdict = classifyFunil({ total: c.total, engajouPct, qualifPct: c.ctr, convPct, nfPct, leadQuente })
+    return {
+      key: c.codigo, codigo: c.codigo, label: c.nome || '—',
+      perfil: perfilCliente(c), total: c.total,
+      engajouPct, qualifPct: c.ctr,
+      followUp: e?.follow_up ?? 0, leadQuente,
+      conv, vendido, orcamento, convPct, nf, nfPct, verdict,
+    }
+  }).sort(sortFunil)
+
+  return <FunilTable rows={rows} primeiraColuna="Criativo" semEtq={!etq || etq.por_criativo.length === 0} />
+}
+
+function VereditoOrigem({
+  origens,
+  etq,
+}: {
+  origens: { origem: string; total: number; qualificados: number; ctr: number; engajou: number; bovinos: number; suinos: number; aves: number; orcamentos: number; vendidos: number }[]
+  etq: ReturnType<typeof useDashboardEtiquetas>['data']
+}) {
+  if (!origens.length) return <p className="text-sm text-ink-faint">Nenhuma origem registrada.</p>
+  // Junta por origem CRUA (mesma string em ambas as fontes — leem apc.origem)
+  const etqByOrigem = new Map((etq?.por_origem ?? []).map(o => [o.origem, o]))
+
+  const rows: FunilRow[] = origens
+    .filter(o => o.total >= 3) // tira ruído de origens com 1-2 leads
+    .map(o => {
+      const e = etqByOrigem.get(o.origem)
+      const vendido = e?.vendido ?? 0
+      const orcamento = e?.orcamento ?? 0
+      const conv = vendido + orcamento
+      const engajouPct = o.total > 0 ? (o.engajou / o.total) * 100 : 0
+      const convPct = o.total > 0 ? (conv / o.total) * 100 : 0
+      const nf = e?.nao_fabricamos ?? 0
+      const nfPct = o.total > 0 ? (nf / o.total) * 100 : 0
+      const leadQuente = e?.lead_quente ?? 0
+      const verdict = classifyFunil({ total: o.total, engajouPct, qualifPct: o.ctr, convPct, nfPct, leadQuente })
+      return {
+        key: o.origem, label: o.origem,
+        perfil: perfilCliente(o), total: o.total,
+        engajouPct, qualifPct: o.ctr,
+        followUp: e?.follow_up ?? 0, leadQuente,
+        conv, vendido, orcamento, convPct, nf, nfPct, verdict,
+      }
+    }).sort(sortFunil)
+
+  return <FunilTable rows={rows} primeiraColuna="Origem (canal)" semEtq={!etq || etq.por_origem.length === 0} />
 }
 
 // Lista de UFs em 2 colunas

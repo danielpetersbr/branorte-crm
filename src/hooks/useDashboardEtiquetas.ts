@@ -28,6 +28,8 @@ export interface DashboardEtiquetas {
     quente: number
     perdido: number
     nao_fabricamos: number
+    follow_up: number
+    lead_quente: number
   }[]
   // Extras (RPC dashboard_etiquetas_extras)
   tempo_chegada_etiqueta_horas: number | null
@@ -42,6 +44,9 @@ export interface DashboardEtiquetas {
     orcamento: number
     perdido: number
     vendido_pct: number | null
+    follow_up: number
+    lead_quente: number
+    nao_fabricamos: number
   }[]
   heatmap: { dow: number; hour: number; total: number }[]
   alertas: {
