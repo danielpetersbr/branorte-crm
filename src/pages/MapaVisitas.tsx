@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useVisitas, useGeocodarVisitas, type Visita } from '@/hooks/useVisitas'
+import { useEtiquetas } from '@/hooks/useEtiquetas'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 
 // Mapa de visitas — pinos dos clientes com "Dados pra visita" salvos pela
@@ -10,6 +11,8 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 const CENTRO_BR: [number, number] = [-15.78, -47.93]
 
 const CORES = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#06b6d4']
+const CINZA = '#9ca3af' // cliente que saiu do follow-up
+const FOLLOWUP_NOMES = new Set(['FOLLOW UP', 'FALLOW UP'])
 function corDoVendedor(vendedor: string | null, ordem: string[]): string {
   const i = Math.max(0, ordem.indexOf(vendedor || '—'))
   return CORES[i % CORES.length]
@@ -28,13 +31,19 @@ function pinIcon(cor: string): L.DivIcon {
 const brl = (v: number | null) =>
   v == null ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 
-function popupHtml(v: Visita): string {
+function popupHtml(v: Visita, isFollowUp: boolean, labels: string[]): string {
   const tel = (v.telefone || '').replace(/\D/g, '')
   const esc = (s: string | null) => (s || '').replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] as string))
+  const badge = labels.length
+    ? (isFollowUp
+        ? `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:#dcfce7;color:#166534;font-weight:600">🟢 Follow up</span>`
+        : `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:#e5e7eb;color:#374151;font-weight:600">⚪ ${labels.map(esc).join(', ')}</span>`)
+    : ''
   return `
     <div style="min-width:180px;font-family:inherit">
       <div style="font-weight:600;font-size:13px">${esc(v.nome) || 'Sem nome'}</div>
       <div style="font-size:12px;color:#64748b">${esc(v.cidade)}${v.estado ? ' - ' + esc(v.estado) : ''}</div>
+      ${badge ? `<div style="margin-top:4px">${badge}</div>` : ''}
       ${v.interesse ? `<div style="font-size:12px;margin-top:4px">🎯 ${esc(v.interesse)}</div>` : ''}
       ${v.valor_negociando != null ? `<div style="font-size:13px;font-weight:600;color:#10b981;margin-top:2px">${brl(v.valor_negociando)}</div>` : ''}
       <div style="font-size:11px;color:#64748b;margin-top:4px">Vendedor: ${esc(v.vendedor_nome) || '—'}</div>
@@ -44,8 +53,43 @@ function popupHtml(v: Visita): string {
 
 export function MapaVisitas() {
   const { data: visitas = [], isLoading } = useVisitas()
+  const { data: etiquetasWa = [] } = useEtiquetas()
   const geocodar = useGeocodarVisitas()
   const [vendedorSel, setVendedorSel] = useState<string>('')
+
+  // resolve etiqueta_id (por vendedor) -> nome. IDs do Wascript NÃO são globais:
+  // o mesmo id tem nomes diferentes por vendedor. Fallback: nome mais comum do id.
+  const { byVendId, globId } = useMemo(() => {
+    const byVendId = new Map<string, string>()
+    const cont = new Map<string, Map<string, number>>()
+    for (const e of etiquetasWa) {
+      const nome = e.etiqueta_nome || ''
+      if (!nome) continue
+      const id = String(e.etiqueta_id_wascript)
+      const vend = (e.vendedor_nome || '').toUpperCase()
+      if (vend) byVendId.set(`${vend}|${id}`, nome)
+      if (!cont.has(id)) cont.set(id, new Map())
+      const m = cont.get(id)!
+      m.set(nome, (m.get(nome) || 0) + 1)
+    }
+    const globId = new Map<string, string>()
+    for (const [id, m] of cont) {
+      let best = '', bestN = -1
+      for (const [nome, n] of m) if (n > bestN) { best = nome; bestN = n }
+      globId.set(id, best)
+    }
+    return { byVendId, globId }
+  }, [etiquetasWa])
+
+  function resolverEtiquetas(v: Visita): { nomes: string[]; isFollowUp: boolean } {
+    const vnorm = (v.vendedor_nome || '').toUpperCase()
+    const nomes: string[] = []
+    for (const id of v.etiquetas || []) {
+      const nome = byVendId.get(`${vnorm}|${String(id)}`) || globId.get(String(id))
+      if (nome && !nomes.includes(nome)) nomes.push(nome)
+    }
+    return { nomes, isFollowUp: nomes.some(n => FOLLOWUP_NOMES.has(n.toUpperCase())) }
+  }
   const mapRef = useRef<L.Map | null>(null)
   const layerRef = useRef<L.LayerGroup | null>(null)
   const divRef = useRef<HTMLDivElement | null>(null)
@@ -100,14 +144,15 @@ export function MapaVisitas() {
     layer.clearLayers()
     const bounds: [number, number][] = []
     for (const v of filtradas) {
-      const cor = corDoVendedor(v.vendedor_nome, vendedores)
-      const m = L.marker([v.lat as number, v.lng as number], { icon: pinIcon(cor) })
-      m.bindPopup(popupHtml(v))
+      const { nomes, isFollowUp } = resolverEtiquetas(v)
+      const cor = isFollowUp ? corDoVendedor(v.vendedor_nome, vendedores) : CINZA
+      const m = L.marker([v.lat as number, v.lng as number], { icon: pinIcon(cor), opacity: isFollowUp ? 1 : 0.85 })
+      m.bindPopup(popupHtml(v, isFollowUp, nomes))
       m.addTo(layer)
       bounds.push([v.lat as number, v.lng as number])
     }
     if (bounds.length) map.fitBounds(bounds, { padding: [50, 50], maxZoom: 10 })
-  }, [filtradas, vendedores])
+  }, [filtradas, vendedores, byVendId, globId])
 
   // auto-geocoda os pendentes ao abrir o mapa (uma vez por montagem). Sem isso,
   // clientes novos ficam "sem localização" até alguém clicar no botão manual.
