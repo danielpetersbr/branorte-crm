@@ -415,7 +415,8 @@ export function OrcamentoMontar() {
     base?: 'total' | 'equipamento'
     manterValorParcelas?: boolean
   } | null>(null)
-  const [dataVendaTxt, setDataVendaTxt] = useState(() => new Date().toLocaleDateString('pt-BR'))
+  // Data da venda começa VAZIA ("a combinar") — vendedor só preenche se vender (roadmap #36)
+  const [dataVendaTxt, setDataVendaTxt] = useState('')
   const [prazoEntregaTxt, setPrazoEntregaTxt] = useState('')
   const [formaPagamentoTxt, setFormaPagamentoTxt] = useState('')
   // Frete editavel inline no preview: tipo (CIF/FOB) + texto livre.
@@ -1364,7 +1365,7 @@ export function OrcamentoMontar() {
     setComponentesExtras([])
     setClienteDados({})
     setTensaoMotores(null)
-    setDataVendaTxt(new Date().toLocaleDateString('pt-BR'))
+    setDataVendaTxt('') // "a combinar" por padrão (roadmap #36)
     setVoltagem('trifasico')
     // Reseta frete pro default legado (FOB + texto vazio = "por conta do cliente")
     setFreteTipo('FOB')
