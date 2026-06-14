@@ -501,13 +501,18 @@ function PropostasResumoView({ orc, periodoLabel }: { orc: OrcamentosResumo; per
           <p className="text-[10px] uppercase tracking-widest text-ink-faint mb-2">Quem mais montou proposta (R$)</p>
           <div className="space-y-1.5">
             {top.map(v => (
-              <div key={v.vendedor} className="grid grid-cols-[120px_1fr_64px] items-center gap-2 text-[12px]">
-                <span className="truncate text-ink capitalize" title={v.vendedor}>{v.vendedor.toLowerCase()}</span>
+              <Link
+                key={v.vendedor}
+                to={`/orcamentos/salvos?vendedor=${encodeURIComponent(v.vendedor)}`}
+                className="grid grid-cols-[120px_1fr_64px] items-center gap-2 text-[12px] group"
+                title={`Ver os orçamentos de ${v.vendedor.toLowerCase()}`}
+              >
+                <span className="truncate text-ink capitalize group-hover:text-accent group-hover:underline" title={v.vendedor}>{v.vendedor.toLowerCase()}</span>
                 <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
                   <div className="h-full bg-success/70 rounded-full" style={{ width: `${(v.brl / maxBrl) * 100}%` }} />
                 </div>
                 <span className="text-right font-mono tabular-nums text-ink-muted">{fmtBRL(v.brl)}</span>
-              </div>
+              </Link>
             ))}
           </div>
           <p className="text-[10px] text-ink-faint pt-2">Valor das propostas montadas no builder de orçamento, não venda fechada. Daniel (testes) fora.</p>
@@ -800,14 +805,19 @@ function VendedorCard({ c }: { c: CardVend }) {
         ))}
       </div>
 
-      {/* Orçamentos montados no builder */}
-      <div className="flex items-center gap-1.5 text-[11px] mb-3 px-2 py-1.5 rounded-md bg-success/5 border border-success/20">
+      {/* Orçamentos montados no builder (clica e vê os orçamentos dele) */}
+      <Link
+        to={`/orcamentos/salvos?vendedor=${encodeURIComponent(primeiroNome(nome))}`}
+        className="flex items-center gap-1.5 text-[11px] mb-3 px-2 py-1.5 rounded-md bg-success/5 border border-success/20 hover:border-success/40 hover:bg-success/10 transition-colors group"
+        title="Ver os orçamentos deste vendedor"
+      >
         <FilePlus2 className="h-3.5 w-3.5 text-success shrink-0" />
         <span className="text-ink-muted">Orçamentos montados:</span>
         <span className="font-semibold text-ink tabular-nums">{orcN}</span>
         {orcBRL > 0 && <span className="font-semibold text-success tabular-nums">· {fmtBRL(orcBRL)}</span>}
         {orcN === 0 && <span className="text-ink-faint">— nenhum no sistema</span>}
-      </div>
+        {orcN > 0 && <span className="ml-auto text-[10px] text-ink-faint group-hover:text-success">ver →</span>}
+      </Link>
 
       {/* Motivos de perda */}
       {motivos.length > 0 && (
