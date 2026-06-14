@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useMemo, useEffect } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Edit3, Search, FileText, Calendar, User, DollarSign, ChevronRight } from 'lucide-react'
 import { useOrcamentosGerados, type OrcamentoGerado } from '@/hooks/useOrcamentoBuilder'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -164,6 +164,17 @@ export function OrcamentosSalvos() {
     () => Array.from(new Set((data ?? []).map(o => (o.vendedor_nome || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR')),
     [data],
   )
+
+  // Pré-filtra por vendedor vindo da URL (?vendedor=PEDRO, do dashboard), casando por
+  // PRIMEIRO nome — os nomes variam aqui ("GUSTAVO", "PEDRO DELA GIUSTINA ").
+  const [searchParams] = useSearchParams()
+  const vendParam = searchParams.get('vendedor')
+  useEffect(() => {
+    if (!vendParam || vendedores.length === 0) return
+    const alvo = vendParam.trim().split(/\s+/)[0]?.toUpperCase()
+    const match = vendedores.find(v => v.split(/\s+/)[0]?.toUpperCase() === alvo)
+    if (match) setFiltroVendedor(match)
+  }, [vendParam, vendedores])
 
   // Group by numero_base: parent rows + ALT sub-rows
   const grouped = useMemo((): OrcamentoGroup[] => {
