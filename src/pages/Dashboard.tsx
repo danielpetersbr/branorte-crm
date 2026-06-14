@@ -152,6 +152,28 @@ export function Dashboard() {
     [vendPainel, data?.slaPorVendedor, orc, cobertura],
   )
 
+  // Destaques POSITIVOS — o espelho do "resumo do gerente": o que reforçar, quem
+  // parabenizar, onde dobrar a aposta. Tudo computado das fontes que já temos.
+  const positivo = useMemo(() => {
+    const topOrc = (orc?.porVendedor ?? []).filter(v => v.vendedor !== '—' && v.brl > 0)[0] ?? null
+    const cobertura = vendCards.filter(c => c.totalPassado >= 50)
+      .map(c => ({ nome: c.nome, pct: c.totalPassado > 0 ? Math.round((c.comEtiqueta / c.totalPassado) * 100) : 0, com: c.comEtiqueta, total: c.totalPassado }))
+      .sort((a, b) => b.pct - a.pct)[0] ?? null
+    const fecharam = vendCards.filter(c => c.v.vendido > 0).sort((a, b) => b.v.vendido - a.v.vendido)
+    const totalVendido = vendCards.reduce((s, c) => s + c.v.vendido, 0)
+    const escalar = [...(data?.porOrigem ?? [])].filter(o => o.total >= 30).sort((a, b) => b.ctr - a.ctr)[0] ?? null
+    const criativo = [...(data?.porCriativo ?? [])].filter(c => c.total >= 20)
+      .map(c => ({ codigo: c.codigo, nome: c.nome, pct: c.total > 0 ? (c.qualificados / c.total) * 100 : 0 }))
+      .sort((a, b) => b.pct - a.pct)[0] ?? null
+    return {
+      topOrc, cobertura, fecharam, totalVendido, escalar, criativo,
+      rMontado: orc?.valorTotalBRL ?? 0,
+      rNegoc: propStatus?.aberto.brl ?? 0,
+      qualificou: funilCanonico.find(e => e.etapa === 'Qualificou')?.valor ?? 0,
+      propostas: orc?.geradas ?? 0,
+    }
+  }, [vendCards, orc, data?.porOrigem, data?.porCriativo, propStatus, funilCanonico])
+
   // 2º mapa: leads em negociação por estado. Reaproveita o nome do estado vindo do
   // porUf (mesma tabela de UF→nome) e calcula % sobre o total em negociação.
   const negItems = useMemo(() => {
@@ -268,6 +290,11 @@ export function Dashboard() {
       {/* RESUMO DO GERENTE — as 2 decisões (marketing + cobrar vendedor) no topo */}
       {(data.porOrigem.length > 0 || vendCards.length > 0) && (
         <ResumoGerente porOrigem={data.porOrigem} cards={vendCards} />
+      )}
+
+      {/* DESTAQUES POSITIVOS — o que tá indo bem, pra reforçar e dobrar a aposta */}
+      {vendCards.length > 0 && (positivo.topOrc || positivo.escalar || positivo.totalVendido > 0) && (
+        <ResumoPositivo p={positivo} />
       )}
 
       <SectionTitle n="1" titulo="Visão geral" pergunta="Estou crescendo e o que preciso agir agora?" />
@@ -442,7 +469,7 @@ export function Dashboard() {
         <Card>
           <CardHeader
             title="Onde está a negociação"
-            subtitle={`${fmtN(negItems.reduce((s, n) => s + n.total, 0))} leads em follow-up / quente / orçamento · ${negItems.length} estados — onde o pipeline está esquentando agora`}
+            subtitle={`${fmtN(negItems.reduce((s, n) => s + n.total, 0))} leads em negociação ativa (follow-up + quente) · ${negItems.length} estados — onde o pipeline está esquentando agora`}
           />
           <NegociacaoGeo items={negItems} />
         </Card>
@@ -518,56 +545,60 @@ function fmtTicket(v: number): string {
 }
 
 function PropostasResumoView({ orc, periodoLabel }: { orc: OrcamentosResumo; periodoLabel: string }) {
-  const top = orc.porVendedor.filter(v => v.brl > 0 && v.vendedor !== '—').slice(0, 4)
-  const maxBrl = Math.max(...top.map(v => v.brl), 1)
-  const nVendedores = orc.porVendedor.filter(v => v.vendedor !== '—').length
+  // TODOS os vendedores com proposta (não só top 4) — pra Jardel/Edilson/Lucas aparecerem.
+  const todos = orc.porVendedor.filter(v => v.brl > 0 && v.vendedor !== '—')
+  const maxBrl = Math.max(...todos.map(v => v.brl), 1)
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,360px)_1fr] gap-5">
+    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,340px)_1fr] gap-5">
       {/* Bloco de números */}
       <div>
         <div className="flex items-end gap-2">
           <Banknote className="h-6 w-6 text-success mb-1.5 shrink-0" />
           <div>
             <div className="text-[34px] leading-none font-semibold tabular-nums text-success">{fmtBRL(orc.valorTotalBRL)}</div>
-            <p className="text-[11px] text-ink-faint mt-1">em propostas montadas · {periodoLabel.toLowerCase()}</p>
+            <p className="text-[11px] text-ink-faint mt-1">em propostas · {periodoLabel.toLowerCase()} · 1 por cliente (última)</p>
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-2 mt-4">
+        <div className="grid grid-cols-2 gap-2 mt-4">
           <div className="rounded-md bg-surface-2/40 border border-border/30 px-2.5 py-2">
             <div className="text-[17px] font-bold tabular-nums text-ink">{fmtN(orc.geradas)}</div>
-            <div className="text-[10px] text-ink-faint leading-tight">propostas</div>
+            <div className="text-[10px] text-ink-faint leading-tight">clientes com proposta</div>
           </div>
           <div className="rounded-md bg-surface-2/40 border border-border/30 px-2.5 py-2">
             <div className="text-[17px] font-bold tabular-nums text-ink">{fmtTicket(orc.ticketMedioBRL)}</div>
             <div className="text-[10px] text-ink-faint leading-tight">ticket médio</div>
           </div>
           <div className="rounded-md bg-surface-2/40 border border-border/30 px-2.5 py-2">
-            <div className="text-[17px] font-bold tabular-nums text-ink">{fmtN(nVendedores)}</div>
-            <div className="text-[10px] text-ink-faint leading-tight">vendedores</div>
+            <div className="text-[17px] font-bold tabular-nums text-ink">{fmtN(orc.propostasBrutas)}</div>
+            <div className="text-[10px] text-ink-faint leading-tight">propostas montadas (c/ re-cotação)</div>
+          </div>
+          <div className="rounded-md bg-surface-2/40 border border-border/30 px-2.5 py-2">
+            <div className="text-[17px] font-bold tabular-nums text-ink">{fmtN(todos.length)}</div>
+            <div className="text-[10px] text-ink-faint leading-tight">vendedores ativos</div>
           </div>
         </div>
       </div>
-      {/* Top vendedores por valor em proposta */}
-      {top.length > 0 && (
+      {/* TODOS os vendedores por valor em proposta (1 por cliente) */}
+      {todos.length > 0 && (
         <div>
-          <p className="text-[10px] uppercase tracking-widest text-ink-faint mb-2">Quem mais montou proposta (R$)</p>
+          <p className="text-[10px] uppercase tracking-widest text-ink-faint mb-2">Quem montou proposta — R$ por cliente (clica e vê)</p>
           <div className="space-y-1.5">
-            {top.map(v => (
+            {todos.map(v => (
               <Link
                 key={v.vendedor}
                 to={`/orcamentos/salvos?vendedor=${encodeURIComponent(v.vendedor)}`}
-                className="grid grid-cols-[120px_1fr_64px] items-center gap-2 text-[12px] group"
-                title={`Ver os orçamentos de ${v.vendedor.toLowerCase()}`}
+                className="grid grid-cols-[110px_1fr_auto] items-center gap-2 text-[12px] group"
+                title={`${v.n} cliente(s), ${v.propostasN} proposta(s) — ver os orçamentos de ${v.vendedor.toLowerCase()}`}
               >
                 <span className="truncate text-ink capitalize group-hover:text-accent group-hover:underline" title={v.vendedor}>{v.vendedor.toLowerCase()}</span>
                 <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
                   <div className="h-full bg-success/70 rounded-full" style={{ width: `${(v.brl / maxBrl) * 100}%` }} />
                 </div>
-                <span className="text-right font-mono tabular-nums text-ink-muted">{fmtBRL(v.brl)}</span>
+                <span className="text-right font-mono tabular-nums text-ink-muted whitespace-nowrap">{fmtBRL(v.brl)} <span className="text-[10px] text-ink-faint">· {v.n} cli{v.propostasN > v.n ? `/${v.propostasN}p` : ''}</span></span>
               </Link>
             ))}
           </div>
-          <p className="text-[10px] text-ink-faint pt-2">Valor das propostas montadas no builder de orçamento, não venda fechada. Daniel (testes) fora.</p>
+          <p className="text-[10px] text-ink-faint pt-2">Valor = última proposta de cada cliente (re-cotação do mesmo cliente conta 1×), não venda fechada. "{todos.length} cli/Np" = clientes/propostas. Daniel (testes) fora.</p>
         </div>
       )}
     </div>
@@ -1000,6 +1031,77 @@ function ResumoGerente({ porOrigem, cards }: {
   )
 }
 
+// ════════ DESTAQUES POSITIVOS — o espelho do resumo do gerente (o que reforçar) ════════
+interface PositivoData {
+  topOrc: { vendedor: string; n: number; brl: number } | null
+  cobertura: { nome: string; pct: number; com: number; total: number } | null
+  fecharam: CardVend[]
+  totalVendido: number
+  escalar: { origem: string; ctr: number } | null
+  criativo: { codigo: string | null; nome: string | null; pct: number } | null
+  rMontado: number; rNegoc: number; qualificou: number; propostas: number
+}
+function ResumoPositivo({ p }: { p: PositivoData }) {
+  const numeros = [
+    { v: fmtBRL(p.rMontado), l: 'em propostas montadas' },
+    { v: fmtN(p.qualificou), l: 'leads qualificados' },
+    { v: fmtN(p.propostas), l: 'propostas no período' },
+    { v: fmtN(p.totalVendido), l: 'vendas etiquetadas' },
+  ]
+  return (
+    <div className="rounded-xl border border-success/30 bg-success/[0.05] p-3 lg:p-4">
+      <div className="flex items-center gap-2 mb-2.5">
+        <span className="text-[13px] font-bold text-ink">✨ O que tá indo bem</span>
+        <span className="text-[10px] text-ink-faint">— pra reforçar e dobrar a aposta</span>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {/* TIME */}
+        <div className="rounded-lg bg-surface-2/40 border border-border/40 p-3">
+          <p className="text-[10px] uppercase tracking-widest text-ink-faint mb-1.5">💪 Time — quem reforçar</p>
+          <ul className="space-y-1 text-[12px] text-ink">
+            {p.topOrc && (
+              <li><span className="text-success font-semibold">🏆 {capitalizar(primeiroNome(p.topOrc.vendedor))}</span> <span className="text-ink-faint">lidera em proposta — {fmtBRL(p.topOrc.brl)} montados ({p.topOrc.n})</span></li>
+            )}
+            {p.cobertura && p.cobertura.pct >= 55 && (
+              <li><span className="text-success font-semibold">🎯 {p.cobertura.nome.split(' ')[0]}</span> <span className="text-ink-faint">organiza bem — etiqueta {p.cobertura.pct}% dos clientes ({fmtN(p.cobertura.com)}/{fmtN(p.cobertura.total)})</span></li>
+            )}
+            {p.totalVendido > 0 && (
+              <li><span className="text-success font-semibold">✅ {p.totalVendido} venda{p.totalVendido > 1 ? 's' : ''} etiquetada{p.totalVendido > 1 ? 's' : ''}</span> <span className="text-ink-faint">— {p.fecharam.slice(0, 3).map(c => `${c.nome.split(' ')[0]} (${c.v.vendido})`).join(', ')}</span></li>
+            )}
+            {!p.topOrc && !p.totalVendido && <li className="text-ink-faint">Sem destaque de time no período.</li>}
+          </ul>
+        </div>
+        {/* MARKETING */}
+        <div className="rounded-lg bg-surface-2/40 border border-border/40 p-3">
+          <p className="text-[10px] uppercase tracking-widest text-ink-faint mb-1.5">📈 Marketing — onde dobrar</p>
+          <ul className="space-y-1 text-[12px] text-ink">
+            {p.escalar && (
+              <li><span className="text-success font-semibold">▲ {p.escalar.origem}</span> <span className="text-ink-faint">é o melhor canal — {p.escalar.ctr.toFixed(0)}% qualificam</span></li>
+            )}
+            {p.criativo && p.criativo.pct >= 20 && (
+              <li><span className="text-success font-semibold">🎨 {p.criativo.nome || p.criativo.codigo}</span> <span className="text-ink-faint">criativo campeão — {p.criativo.pct.toFixed(0)}% qualificam</span></li>
+            )}
+            {p.rNegoc > 0 && (
+              <li><span className="text-success font-semibold">💰 {fmtBRL(p.rNegoc)} em negociação ativa</span> <span className="text-ink-faint">— pipeline vivo pra fechar</span></li>
+            )}
+            {!p.escalar && !p.rNegoc && <li className="text-ink-faint">Sem destaque de marketing no período.</li>}
+          </ul>
+        </div>
+      </div>
+      {/* Números bons do período */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+        {numeros.map(x => (
+          <div key={x.l} className="rounded-md bg-surface-2/30 border border-border/30 px-2.5 py-2">
+            <div className="text-[16px] font-bold tabular-nums text-success">{x.v}</div>
+            <div className="text-[10px] text-ink-faint leading-tight">{x.l}</div>
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] text-ink-faint mt-2">👏 Reforce quem aparece aqui e dobre a verba no canal/criativo campeão. "Negociação ativa" = propostas abertas, dinheiro perto de fechar.</p>
+    </div>
+  )
+}
+
 function PainelVendedores({ cards }: { cards: CardVend[] }) {
   if (!cards.length) return <p className="text-sm text-ink-faint">Sem vendedores no período.</p>
   return (
@@ -1017,13 +1119,15 @@ function VendedorCard({ c }: { c: CardVend }) {
   // Reconciliação dos clientes passados: em etiqueta + sem etiqueta = total (fonte: cobertura).
   // Perdidos é um sub-grupo do "em etiqueta" (mostrado como nota, não fatia separada).
   const reconTotal = Math.max(comEtiqueta + semEtiqueta, 1)
-  // Onde os leads desse vendedor estão (etiqueta atual no WhatsApp)
+  // Funil na ORDEM real da Branorte: Prospecção (sondagem) → Novo lead (confirmou
+  // interesse) → Follow-up (negociação começa aqui) → Quente → Orçamento → Vendido.
   const etapas = [
-    { label: 'Prospecção', n: v.novo, cor: CAT_COLOR.novo },
-    { label: 'Quente', n: v.quente, cor: CAT_COLOR.lead_quente },
-    { label: 'Follow-up', n: v.follow_up, cor: 'hsl(38 85% 50%)' },
-    { label: 'Orçamento', n: v.orcamento, cor: CAT_COLOR.orcamento },
-    { label: 'Vendido', n: v.vendido, cor: CAT_COLOR.vendido },
+    { label: 'Prospecção', n: v.prospeccao, cor: 'hsl(217 60% 62%)', neg: false },
+    { label: 'Novo lead', n: v.novo, cor: CAT_COLOR.novo, neg: false },
+    { label: 'Follow-up', n: v.follow_up, cor: 'hsl(38 85% 50%)', neg: true },
+    { label: 'Quente', n: v.quente, cor: CAT_COLOR.lead_quente, neg: true },
+    { label: 'Orçamento', n: v.orcamento, cor: CAT_COLOR.orcamento, neg: true },
+    { label: 'Vendido', n: v.vendido, cor: CAT_COLOR.vendido, neg: true },
   ]
   const maxEtapa = Math.max(...etapas.map(e => e.n), 1)
   const motivos = [
@@ -1093,16 +1197,23 @@ function VendedorCard({ c }: { c: CardVend }) {
         </div>
       )}
 
-      {/* Funil de etiquetas do WhatsApp */}
-      <p className="text-[9px] uppercase tracking-widest text-ink-faint mb-1.5">Etiquetas no WhatsApp</p>
+      {/* Funil de etiquetas do WhatsApp — ordem Branorte; negociação começa no Follow-up */}
+      <p className="text-[9px] uppercase tracking-widest text-ink-faint mb-1.5">Etiquetas no WhatsApp <span className="normal-case tracking-normal text-ink-faint/70">(sondagem → negociação)</span></p>
       <div className="space-y-1 mb-3">
-        {etapas.map(e => (
-          <div key={e.label} className="grid grid-cols-[80px_1fr_30px] items-center gap-2 text-[11px]">
-            <span className="text-ink-muted truncate">{e.label}</span>
-            <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
-              <div className="h-full rounded-full transition-all" style={{ width: `${Math.max((e.n / maxEtapa) * 100, e.n > 0 ? 6 : 0)}%`, background: e.cor }} />
+        {etapas.map((e, i) => (
+          <div key={e.label}>
+            {i > 0 && etapas[i - 1].neg === false && e.neg === true && (
+              <div className="flex items-center gap-1.5 my-1 text-[8.5px] uppercase tracking-widest text-warning/80">
+                <span className="h-px flex-1 bg-warning/20" />negociação<span className="h-px flex-1 bg-warning/20" />
+              </div>
+            )}
+            <div className="grid grid-cols-[80px_1fr_30px] items-center gap-2 text-[11px]">
+              <span className="text-ink-muted truncate">{e.label}</span>
+              <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
+                <div className="h-full rounded-full transition-all" style={{ width: `${Math.max((e.n / maxEtapa) * 100, e.n > 0 ? 6 : 0)}%`, background: e.cor }} />
+              </div>
+              <span className="text-right font-mono tabular-nums text-ink">{e.n || '—'}</span>
             </div>
-            <span className="text-right font-mono tabular-nums text-ink">{e.n || '—'}</span>
           </div>
         ))}
       </div>
