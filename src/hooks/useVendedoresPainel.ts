@@ -15,13 +15,16 @@ export interface VendedorPainel {
   orcamento: number     // etiqueta ORÇAMENTO ENVIADO
   vendido: number
   perdido: number
-  // motivos de perda
-  m_nao_respondeu: number
+  // motivos de perda — completos (somam o total 'perdido')
+  m_nunca_respondeu: number      // nunca engajou
+  m_nao_respondeu_mais: number   // sumiu no meio da conversa
   m_sem_interesse: number
-  m_concorrente: number
   m_so_preco: number
   m_fora_orcamento: number
-  m_nao_fabricamos: number
+  m_nao_fabricamos: number       // lead errado: pediu o que a Branorte não faz
+  m_concorrente: number
+  m_transportadora: number       // lead errado: transportadora, não cliente
+  m_suporte: number              // lead errado: suporte técnico, não venda
   m_outros: number
 }
 
