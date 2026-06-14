@@ -1,8 +1,23 @@
 import { useState, useMemo, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { Edit3, Search, FileText, Calendar, User, DollarSign, ChevronRight } from 'lucide-react'
 import { useOrcamentosGerados, type OrcamentoGerado } from '@/hooks/useOrcamentoBuilder'
+import { supabase } from '@/lib/supabase'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
+
+// Filtro por estágio ATUAL do funil (etiqueta WhatsApp do cliente) — casado pelo telefone
+// na RPC propostas_ids_por_categoria. 'aberto' = proposta viva (não vendida/perdida).
+const ETIQUETA_PROP_OPCOES: { value: string; label: string }[] = [
+  { value: 'aberto',       label: '🟡 Em aberto (não vendido)' },
+  { value: 'orcamento',    label: '📄 Orçamento enviado' },
+  { value: 'quente',       label: '🔥 Quente / follow-up' },
+  { value: 'lead_quente',  label: '🌡️ Lead quente' },
+  { value: 'novo',         label: '🆕 Novo (sem mexer)' },
+  { value: 'sem_etiqueta', label: '⚪ Sem etiqueta' },
+  { value: 'vendido',      label: '✅ Vendido' },
+  { value: 'perdido',      label: '❌ Perdido' },
+]
 
 function formatBRL(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
@@ -158,6 +173,19 @@ export function OrcamentosSalvos() {
   const [busca, setBusca] = useState('')
   const [filtroStatus, setFiltroStatus] = useState<string>('')
   const [filtroVendedor, setFiltroVendedor] = useState<string>('')
+  const [filtroEtiqueta, setFiltroEtiqueta] = useState<string>('')
+
+  // IDs das propostas no estágio de funil selecionado (vem da RPC, casado por telefone).
+  const { data: idsEtiqueta } = useQuery({
+    queryKey: ['propostas-ids-categoria', filtroEtiqueta],
+    queryFn: async (): Promise<Set<number>> => {
+      const { data: ids, error } = await supabase.rpc('propostas_ids_por_categoria', { p_categoria: filtroEtiqueta })
+      if (error) throw error
+      return new Set(((ids ?? []) as number[]).map(Number))
+    },
+    enabled: !!filtroEtiqueta,
+    staleTime: 60_000,
+  })
 
   // Lista de vendedores únicos (pra popular o filtro), ordenada alfabeticamente.
   const vendedores = useMemo(
@@ -176,6 +204,12 @@ export function OrcamentosSalvos() {
     if (match) setFiltroVendedor(match)
   }, [vendParam, vendedores])
 
+  // Pré-filtra por etiqueta de funil vinda da URL (?etiqueta=aberto, do dashboard).
+  const etqParam = searchParams.get('etiqueta')
+  useEffect(() => {
+    if (etqParam && ETIQUETA_PROP_OPCOES.some(o => o.value === etqParam)) setFiltroEtiqueta(etqParam)
+  }, [etqParam])
+
   // Group by numero_base: parent rows + ALT sub-rows
   const grouped = useMemo((): OrcamentoGroup[] => {
     if (!data) return []
@@ -185,6 +219,7 @@ export function OrcamentosSalvos() {
     const filtered = data.filter(o => {
       if (filtroStatus && o.status !== filtroStatus) return false
       if (filtroVendedor && (o.vendedor_nome || '').trim() !== filtroVendedor) return false
+      if (filtroEtiqueta && idsEtiqueta && !idsEtiqueta.has(Number(o.id))) return false
       if (buscaLower) {
         const hay = `${o.numero} ${o.cliente_nome} ${o.vendedor_nome} ${o.modelo_basename ?? ''}`.toLowerCase()
         if (!hay.includes(buscaLower)) return false
@@ -228,7 +263,7 @@ export function OrcamentosSalvos() {
     }
 
     return order.map(k => map.get(k)!)
-  }, [data, busca, filtroStatus, filtroVendedor])
+  }, [data, busca, filtroStatus, filtroVendedor, filtroEtiqueta, idsEtiqueta])
 
   const totalCount = data?.length ?? 0
 
@@ -273,6 +308,17 @@ export function OrcamentosSalvos() {
           <option value="">Todos vendedores</option>
           {vendedores.map(v => (
             <option key={v} value={v}>{v}</option>
+          ))}
+        </select>
+        <select
+          value={filtroEtiqueta}
+          onChange={e => setFiltroEtiqueta(e.target.value)}
+          className="px-3 py-2 text-sm border border-border rounded-md bg-surface-2 focus:border-accent outline-none"
+          title="Filtrar pelo estágio atual do funil (etiqueta WhatsApp do cliente)"
+        >
+          <option value="">Todas etapas do funil</option>
+          {ETIQUETA_PROP_OPCOES.map(o => (
+            <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
         <select
