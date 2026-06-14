@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useDashboard, type DashboardPreset, type FunilEtapa, type SlaVendedor, type LeadEmRisco } from '@/hooks/useDashboard'
 import { useDashboardEtiquetas, useHeatmapSemanal, CATEGORIA_LABEL, type EtiquetaCategoria } from '@/hooks/useDashboardEtiquetas'
 import { useOrcamentosResumo, type OrcamentosResumo } from '@/hooks/useOrcamentosResumo'
+import { useVendedoresPainel, type VendedorPainel } from '@/hooks/useVendedoresPainel'
 import {
   Area, AreaChart, Cell, Pie, PieChart,
   ResponsiveContainer, Tooltip,
@@ -95,6 +96,8 @@ export function Dashboard() {
   const { data: etq } = useDashboardEtiquetas(preset)
   // Valor das propostas montadas no builder (orcamentos_gerados) — única fonte real de R$
   const { data: orc } = useOrcamentosResumo(preset)
+  // Painel por vendedor: funil de etiquetas WhatsApp + motivos de perda
+  const { data: vendPainel } = useVendedoresPainel(preset)
   // Heatmap usa janela fixa (30d) — ignora filtro do dashboard de propósito
   const { data: heatmap30d } = useHeatmapSemanal()
 
@@ -340,10 +343,12 @@ export function Dashboard() {
       )}
       <Card id="vendedores">
         <CardHeader
-          title="Distribuição por vendedor"
-          subtitle="Leads, qualificados, orçamento e vendido por vendedor (etiqueta WA). Quem tem leads e 0 orçamento precisa ser cobrado."
+          title="Painel por vendedor"
+          subtitle="Contatos passados → qualificação da IA → etiquetas do funil no WhatsApp → motivos de perda. (Daniel/testes fora.)"
         />
-        <SlaTable rows={data.slaPorVendedor} etqPorVendedor={etq?.por_vendedor} />
+        {vendPainel && vendPainel.length > 0
+          ? <PainelVendedores painel={vendPainel} sla={data.slaPorVendedor} orc={orc} />
+          : <SlaTable rows={data.slaPorVendedor} etqPorVendedor={etq?.por_vendedor} />}
       </Card>
 
       {/* ════════ GRUPO 5 · CONTEXTO (colapsável no caminho diário) ════════ */}
@@ -435,7 +440,8 @@ function fmtTicket(v: number): string {
 }
 
 function PropostasResumoView({ orc, periodoLabel }: { orc: OrcamentosResumo; periodoLabel: string }) {
-  const top = orc.porVendedor.filter(v => v.brl > 0 && v.vendedor !== '—').slice(0, 4)
+  // Daniel = dono fazendo testes no builder; fora do ranking de vendedores.
+  const top = orc.porVendedor.filter(v => v.brl > 0 && v.vendedor !== '—' && !/daniel/i.test(v.vendedor)).slice(0, 4)
   const maxBrl = Math.max(...top.map(v => v.brl), 1)
   // Headline = valor enviado (proposta na rua). Sem nenhuma enviada, mostra o gerado.
   const headline = orc.enviadas > 0 ? orc.valorEnviadoBRL : orc.valorTotalBRL
@@ -579,6 +585,141 @@ function FunilHero({ etapas }: { etapas: FunilEtapa[] }) {
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// ============================================================================
+// PAINEL POR VENDEDOR — funil de etiquetas WA + qualif IA + R$ + motivos de perda
+// ============================================================================
+
+// Primeiro nome em MAIÚSCULA = chave de merge entre as 3 fontes (etiqueta usa "PEDRO",
+// atendimentos "Pedro Della Giustina", orçamentos "PEDRO DELA GIUSTINA ").
+function primeiroNome(s: string): string {
+  return (s || '').trim().split(/\s+/)[0]?.toUpperCase() ?? ''
+}
+const ehDaniel = (s: string) => /daniel/i.test(s || '')
+function capitalizar(s: string): string {
+  return (s || '').toLowerCase().replace(/\b\w/g, m => m.toUpperCase())
+}
+
+function PainelVendedores({ painel, sla, orc }: {
+  painel: VendedorPainel[]
+  sla: SlaVendedor[]
+  orc: OrcamentosResumo | undefined
+}) {
+  const slaByNome = new Map(sla.map(s => [primeiroNome(s.vendedor), s]))
+  const orcByNome = new Map((orc?.porVendedor ?? []).map(o => [primeiroNome(o.vendedor), o]))
+
+  const cards = painel
+    .filter(v => !ehDaniel(v.vendedor))
+    .map(v => {
+      const k = primeiroNome(v.vendedor)
+      const s = slaByNome.get(k)
+      const o = orcByNome.get(k)
+      return {
+        v,
+        nome: s?.vendedor || capitalizar(v.vendedor),
+        contatos: s?.totalLeads ?? v.contatos,
+        qualifIa: s?.qualificados ?? null,
+        orcN: o?.n ?? 0,
+        orcBRL: o?.brl ?? 0,
+      }
+    })
+    .sort((a, b) => b.contatos - a.contatos)
+
+  if (!cards.length) return <p className="text-sm text-ink-faint">Sem vendedores no período.</p>
+
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+      {cards.map(c => <VendedorCard key={c.nome} {...c} />)}
+    </div>
+  )
+}
+
+function VendedorCard({ v, nome, contatos, qualifIa, orcN, orcBRL }: {
+  v: VendedorPainel; nome: string; contatos: number; qualifIa: number | null; orcN: number; orcBRL: number
+}) {
+  const qualPct = contatos > 0 && qualifIa != null ? Math.round((qualifIa / contatos) * 100) : null
+  // Onde os leads desse vendedor estão (etiqueta atual no WhatsApp)
+  const etapas = [
+    { label: 'Prospecção', n: v.novo, cor: CAT_COLOR.novo },
+    { label: 'Quente', n: v.quente, cor: CAT_COLOR.lead_quente },
+    { label: 'Follow-up', n: v.follow_up, cor: 'hsl(38 85% 50%)' },
+    { label: 'Orçamento', n: v.orcamento, cor: CAT_COLOR.orcamento },
+    { label: 'Vendido', n: v.vendido, cor: CAT_COLOR.vendido },
+  ]
+  const maxEtapa = Math.max(...etapas.map(e => e.n), 1)
+  const motivos = [
+    { label: 'Nunca respondeu', n: v.m_nao_respondeu },
+    { label: 'Só base de preço', n: v.m_so_preco },
+    { label: 'Fora do orçamento', n: v.m_fora_orcamento },
+    { label: 'Não fabricamos', n: v.m_nao_fabricamos },
+    { label: 'Sem interesse', n: v.m_sem_interesse },
+    { label: 'Comprou concorrente', n: v.m_concorrente },
+    { label: 'Outros', n: v.m_outros },
+  ].filter(m => m.n > 0).sort((a, b) => b.n - a.n)
+
+  return (
+    <div className="rounded-lg border border-border bg-surface-2/30 p-3.5">
+      {/* Cabeçalho: nome + contatos + qualif IA */}
+      <div className="flex items-start justify-between gap-2 mb-3 pb-2.5 border-b border-border/60">
+        <div className="min-w-0">
+          <Link
+            to={`/atendimentos?responsavel=${encodeURIComponent(nome)}`}
+            className="text-[13px] font-semibold text-ink hover:text-accent hover:underline block truncate"
+            title="Ver atendimentos deste vendedor"
+          >
+            {nome}
+          </Link>
+          <div className="text-[10.5px] mt-0.5">
+            <span className="text-ink-faint">IA qualificou </span>
+            <span className="font-semibold text-accent tabular-nums">{qualifIa != null ? fmtN(qualifIa) : '—'}</span>
+            {qualPct != null && <span className="text-ink-faint tabular-nums"> ({qualPct}%)</span>}
+          </div>
+        </div>
+        <div className="text-right shrink-0">
+          <div className="text-[18px] font-bold tabular-nums text-ink leading-none">{fmtN(contatos)}</div>
+          <div className="text-[9px] text-ink-faint mt-0.5">contatos passados</div>
+        </div>
+      </div>
+
+      {/* Funil de etiquetas do WhatsApp */}
+      <p className="text-[9px] uppercase tracking-widest text-ink-faint mb-1.5">Etiquetas no WhatsApp</p>
+      <div className="space-y-1 mb-3">
+        {etapas.map(e => (
+          <div key={e.label} className="grid grid-cols-[80px_1fr_30px] items-center gap-2 text-[11px]">
+            <span className="text-ink-muted truncate">{e.label}</span>
+            <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
+              <div className="h-full rounded-full transition-all" style={{ width: `${Math.max((e.n / maxEtapa) * 100, e.n > 0 ? 6 : 0)}%`, background: e.cor }} />
+            </div>
+            <span className="text-right font-mono tabular-nums text-ink">{e.n || '—'}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Propostas geradas (R$) */}
+      <div className="flex items-center gap-1.5 text-[11px] mb-3 px-2 py-1.5 rounded-md bg-success/5 border border-success/20">
+        <FilePlus2 className="h-3.5 w-3.5 text-success shrink-0" />
+        <span className="text-ink-muted">Propostas:</span>
+        <span className="font-semibold text-ink tabular-nums">{orcN}</span>
+        {orcBRL > 0 && <span className="font-semibold text-success tabular-nums">· {fmtBRL(orcBRL)}</span>}
+        {orcN === 0 && <span className="text-ink-faint">— nenhuma enviada</span>}
+      </div>
+
+      {/* Motivos de perda */}
+      {motivos.length > 0 && (
+        <div>
+          <p className="text-[10px] text-ink-faint mb-1.5">Perdeu {fmtN(v.perdido)} — por quê:</p>
+          <div className="flex flex-wrap gap-1">
+            {motivos.slice(0, 6).map(m => (
+              <span key={m.label} className="text-[10px] px-1.5 py-0.5 rounded bg-danger/10 text-danger tabular-nums">
+                {m.label} <span className="font-semibold">{m.n}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
