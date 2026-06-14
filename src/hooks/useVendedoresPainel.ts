@@ -9,9 +9,11 @@ import type { DashboardPreset } from './useDashboard'
 export interface VendedorPainel {
   vendedor: string
   contatos: number
-  novo: number          // prospecção / lead novo
-  follow_up: number
-  quente: number        // quente + lead_quente
+  // funil na ordem da Branorte: prospecção → novo → follow-up (negociação) → quente
+  prospeccao: number    // PROSPECCAO / tentativa — vendedor sondando se quer algo Branorte
+  novo: number          // NOVO LEAD — confirmou interesse
+  follow_up: number     // já é negociação
+  quente: number        // LEAD QUENTE / aguardando (exclui prospecção e follow-up)
   orcamento: number     // etiqueta ORÇAMENTO ENVIADO
   vendido: number
   perdido: number
