@@ -42,6 +42,26 @@ const DATA_PRESETS: { value: DataPreset; label: string }[] = [
   { value: 'mes',   label: 'Este mês' },
 ]
 
+// Opções do filtro por etiqueta do WhatsApp (value = nome normalizado, casado
+// server-side pela RPC atendimentos_telefones_por_etiqueta).
+const ETIQUETA_OPCOES: { value: string; label: string }[] = [
+  { value: 'NOVO LEAD',             label: '🆕 Novo lead' },
+  { value: 'PROSPECCAO',            label: '🔍 Prospecção' },
+  { value: '2A TENTATIVA',          label: '↩️ 2ª tentativa' },
+  { value: 'INTERESSE FUTURO',      label: '⏳ Interesse futuro' },
+  { value: 'FOLLOW UP',             label: '🔄 Follow-up' },
+  { value: 'LEAD QUENTE',           label: '🔥 Lead quente' },
+  { value: 'ORCAMENTO ENVIADO',     label: '📄 Orçamento enviado' },
+  { value: 'VENDIDO',               label: '✅ Vendido' },
+  { value: 'NUNCA RESPONDEU',       label: '💀 Nunca respondeu' },
+  { value: 'NAO RESPONDEU MAIS',    label: '💀 Não respondeu mais' },
+  { value: 'NAO TEM INTERESSE',     label: '🚫 Sem interesse' },
+  { value: 'SO BASE DE PRECO',      label: '💲 Só base de preço' },
+  { value: 'FORA DO ORCAMENTO',     label: '💸 Fora do orçamento' },
+  { value: 'NAO FABRICAMOS',        label: '⚙️ Não fabricamos' },
+  { value: 'COMPROU DO CONCORRENTE', label: '🏳️ Comprou concorrente' },
+]
+
 type Tone = 'success' | 'warning' | 'danger' | 'info' | 'accent' | 'neutral'
 
 const STATUS_TONE: Record<StatusReal, { tone: Tone; label: string }> = {
@@ -291,15 +311,18 @@ export function Atendimentos() {
     data: DataPreset
     origem: string
     criativo: string
+    etiqueta: string
     page: number
   }>(() => ({
     search: '',
     responsavel: searchParams.get('responsavel') || '',
     status_real: searchParams.get('status') || '',
     uf: searchParams.get('uf') || '',
-    data: (searchParams.get('data') as DataPreset) || 'hoje',
+    // Filtro de etiqueta ignora o filtro de data padrão (etiqueta é estado atual, não do dia)
+    data: (searchParams.get('data') as DataPreset) ?? (searchParams.get('etiqueta') ? '' : 'hoje'),
     origem: searchParams.get('origem') || '',
     criativo: searchParams.get('criativo') || '',
+    etiqueta: searchParams.get('etiqueta') || '',
     page: 0,
   }))
   const [searchInput, setSearchInput] = useState('')
@@ -322,7 +345,7 @@ export function Atendimentos() {
   const rows = data?.rows ?? []
   const total = data?.total ?? 0
   const totalPages = Math.ceil(total / ATENDIMENTO_PAGE_SIZE)
-  const hasFilters = filters.search || filters.responsavel || filters.status_real || filters.uf || filters.data || filters.origem || filters.criativo
+  const hasFilters = filters.search || filters.responsavel || filters.status_real || filters.uf || filters.data || filters.origem || filters.criativo || filters.etiqueta
 
   // Resolve o "vendedor efetivo" do lead. Prioridade:
   // 1. auditoria.responsavel (atribuido manualmente no CRM)
@@ -338,7 +361,7 @@ export function Atendimentos() {
   }
 
   const clearFilters = () => {
-    setFilters({ search: '', responsavel: '', status_real: '', uf: '', data: '', origem: '', criativo: '', page: 0 })
+    setFilters({ search: '', responsavel: '', status_real: '', uf: '', data: '', origem: '', criativo: '', etiqueta: '', page: 0 })
     setSearchInput('')
   }
 
@@ -472,6 +495,13 @@ export function Atendimentos() {
           value={filters.status_real}
           onChange={e => setFilters(f => ({ ...f, status_real: e.target.value, page: 0 }))}
           className="lg:w-40"
+        />
+        <Select
+          options={ETIQUETA_OPCOES}
+          placeholder="Etiqueta WhatsApp"
+          value={filters.etiqueta}
+          onChange={e => setFilters(f => ({ ...f, etiqueta: e.target.value, page: 0 }))}
+          className="lg:w-48"
         />
         <Select
           options={(origens ?? []).map(o => ({ value: o.label, label: `${o.label} (${o.count})` }))}
