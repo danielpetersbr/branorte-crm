@@ -676,9 +676,12 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
   const leadsPorDia = firstActive >= 0 ? allDays.slice(firstActive) : allDays
 
   const porCriativo = Array.from(byCriativo.values())
+    // Filtra códigos-lixo de parsing de URL (ex.: "&8Boa", "&mibextid" — 1 lead cada);
+    // mostra TODOS os criativos reais, não só o top 10.
+    .filter(c => c.total >= 5)
     .map(c => ({ ...c, ctr: c.total > 0 ? (c.qualificados / c.total) * 100 : 0 }))
     .sort((a, b) => b.total - a.total)
-    .slice(0, 10)
+    .slice(0, 40)
 
   const porOrigem = Array.from(byOrigem.entries())
     .filter(([origem]) => origem !== 'Sem origem')
