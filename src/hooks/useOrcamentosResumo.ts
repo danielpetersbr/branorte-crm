@@ -2,20 +2,22 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import type { DashboardPreset } from './useDashboard'
 
-// Resumo financeiro das PROPOSTAS montadas no sistema (tabela orcamentos_gerados,
-// o builder de orçamento). É a única fonte real de R$ no fluxo de lead: a view
-// atendimentos_por_cliente tem orcamento_valor/status zerados (venda fechada vive
-// em /controle). Aqui medimos o VALOR em propostas geradas no período — a ponte
-// entre o lead qualificado e a venda. Casado com o filtro de período do dashboard.
+// Resumo das PROPOSTAS montadas no builder de orçamento (tabela orcamentos_gerados).
+// É a única fonte real de R$ no fluxo de lead. O status 'enviado'/'rascunho' do
+// builder NÃO é confiável (o vendedor manda a proposta pro cliente de qualquer jeito,
+// independente de marcar no sistema), então contamos a PROPOSTA MONTADA, sem distinguir
+// enviada de rascunho. Daniel (dono fazendo testes) fica de fora.
 
 export interface OrcamentosResumo {
-  geradas: number          // propostas criadas no período
-  enviadas: number         // status = 'enviado'
-  rascunhos: number        // status = 'rascunho'
-  valorEnviadoBRL: number  // soma total_proposta das enviadas (valor real "na rua")
-  valorTotalBRL: number    // soma total_proposta de todas as geradas
-  ticketMedioBRL: number   // valorEnviadoBRL / enviadas (ou geradas se nenhuma enviada)
-  porVendedor: { vendedor: string; n: number; brl: number }[]  // n = enviadas, brl = valor enviado
+  geradas: number          // propostas montadas no período
+  valorTotalBRL: number    // soma total_proposta de todas as montadas
+  ticketMedioBRL: number   // valorTotalBRL / geradas
+  porVendedor: {
+    vendedor: string
+    n: number              // propostas montadas
+    brl: number            // valor total montado
+    ultimaDias: number | null  // dias desde a última proposta (null = nenhuma)
+  }[]
 }
 
 interface OrcRow {
@@ -39,7 +41,7 @@ function desdeFromPreset(preset: DashboardPreset): string | null {
 
 export function useOrcamentosResumo(preset: DashboardPreset = '') {
   return useQuery({
-    queryKey: ['orcamentos-resumo-v1', preset],
+    queryKey: ['orcamentos-resumo-v2', preset],
     queryFn: async (): Promise<OrcamentosResumo> => {
       const desde = desdeFromPreset(preset)
       let q = supabase
@@ -50,34 +52,35 @@ export function useOrcamentosResumo(preset: DashboardPreset = '') {
       if (desde) q = q.gte('created_at', desde)
       const { data, error } = await q
       if (error) throw error
-      const rows = (data ?? []) as OrcRow[]
+      // Daniel = dono fazendo testes; fora de todos os totais.
+      const rows = ((data ?? []) as OrcRow[]).filter(r => !/daniel/i.test(r.vendedor_nome || ''))
 
-      let enviadas = 0, rascunhos = 0, valorEnviadoBRL = 0, valorTotalBRL = 0
-      const porVendedorMap = new Map<string, { vendedor: string; n: number; brl: number }>()
+      let valorTotalBRL = 0
+      type Acc = { vendedor: string; n: number; brl: number; maxMs: number }
+      const map = new Map<string, Acc>()
       for (const r of rows) {
         const v = Number(r.total_proposta) || 0
         valorTotalBRL += v
-        const enviada = r.status === 'enviado'
-        if (enviada) { enviadas++; valorEnviadoBRL += v }
-        else if (r.status === 'rascunho') rascunhos++
-        // Ranking por vendedor reflete o VALOR ENVIADO (proposta na rua), consistente
-        // com o headline — não infla com rascunhos/testes.
         const nome = (r.vendedor_nome || '—').trim() || '—'
-        const acc = porVendedorMap.get(nome) ?? { vendedor: nome, n: 0, brl: 0 }
-        if (enviada) { acc.n += 1; acc.brl += v }
-        porVendedorMap.set(nome, acc)
+        const acc = map.get(nome) ?? { vendedor: nome, n: 0, brl: 0, maxMs: 0 }
+        acc.n += 1
+        acc.brl += v
+        const ms = new Date(r.created_at).getTime()
+        if (Number.isFinite(ms) && ms > acc.maxMs) acc.maxMs = ms
+        map.set(nome, acc)
       }
       const geradas = rows.length
-      const ticketBase = enviadas > 0 ? enviadas : geradas
-      const ticketValor = enviadas > 0 ? valorEnviadoBRL : valorTotalBRL
+      const agora = Date.now()
       return {
         geradas,
-        enviadas,
-        rascunhos,
-        valorEnviadoBRL,
         valorTotalBRL,
-        ticketMedioBRL: ticketBase > 0 ? ticketValor / ticketBase : 0,
-        porVendedor: [...porVendedorMap.values()].sort((a, b) => b.brl - a.brl),
+        ticketMedioBRL: geradas > 0 ? valorTotalBRL / geradas : 0,
+        porVendedor: [...map.values()]
+          .map(a => ({
+            vendedor: a.vendedor, n: a.n, brl: a.brl,
+            ultimaDias: a.maxMs > 0 ? Math.floor((agora - a.maxMs) / 86_400_000) : null,
+          }))
+          .sort((a, b) => b.brl - a.brl),
       }
     },
     staleTime: 60_000,
