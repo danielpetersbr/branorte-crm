@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useDashboard, type DashboardPreset, type FunilEtapa, type SlaVendedor } from '@/hooks/useDashboard'
+import { useDashboard, type DashboardPreset, type FunilEtapa, type SlaVendedor, type LeadEmRisco } from '@/hooks/useDashboard'
 import { useDashboardEtiquetas, useHeatmapSemanal, CATEGORIA_LABEL, type EtiquetaCategoria } from '@/hooks/useDashboardEtiquetas'
+import { useOrcamentosResumo, type OrcamentosResumo } from '@/hooks/useOrcamentosResumo'
 import {
   Area, AreaChart, Cell, Pie, PieChart,
   ResponsiveContainer, Tooltip,
 } from 'recharts'
-import { Flame, TrendingUp, Users, CheckCircle2, ArrowDown, ArrowUp, Hand, FilePlus2, AlertTriangle, Clock, Ghost } from 'lucide-react'
+import { Flame, TrendingUp, Users, CheckCircle2, ArrowDown, ArrowUp, Hand, FilePlus2, AlertTriangle, Clock, Ghost, Banknote } from 'lucide-react'
 
 const PRESET_LABELS: { value: DashboardPreset; label: string }[] = [
   { value: '',     label: 'Tudo' },
@@ -57,9 +58,9 @@ function fmtHoras(h: number): string {
   return Math.floor(h / 24) + 'd' + Math.round(h % 24) + 'h'
 }
 
-function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+function Card({ children, className = '', id }: { children: React.ReactNode; className?: string; id?: string }) {
   return (
-    <div className={`bg-surface border border-border rounded-xl p-5 transition-colors hover:border-border-strong ${className}`}>
+    <div id={id} className={`bg-surface border border-border rounded-xl p-5 transition-colors hover:border-border-strong scroll-mt-20 ${className}`}>
       {children}
     </div>
   )
@@ -92,6 +93,8 @@ export function Dashboard() {
   const [preset, setPreset] = usePresetFilter()
   const { data, isLoading, error } = useDashboard({ preset })
   const { data: etq } = useDashboardEtiquetas(preset)
+  // Valor das propostas montadas no builder (orcamentos_gerados) — única fonte real de R$
+  const { data: orc } = useOrcamentosResumo(preset)
   // Heatmap usa janela fixa (30d) — ignora filtro do dashboard de propósito
   const { data: heatmap30d } = useHeatmapSemanal()
 
@@ -168,7 +171,7 @@ export function Dashboard() {
   const heroKpis = [
     { label: preset ? 'Leads no período' : 'Total de leads', kpi: data.kpiTotal, icon: Users, color: COLORS.ink, sub: preset ? periodoLabel.toLowerCase() : 'desde o início' },
     { label: 'Qualificados',  kpi: data.kpiQualificados, icon: CheckCircle2, color: COLORS.accent, sub: 'quer algo que a Branorte faz' },
-    { label: 'Orçamentos',    kpi: { valor: orcamentoEtq, deltaPct: 0, sparkline: [] }, icon: FilePlus2, color: 'hsl(280 65% 50%)', sub: 'ORÇAMENTO no WhatsApp' },
+    { label: 'Orçamentos',    kpi: { valor: orcamentoEtq, deltaPct: 0, sparkline: [] }, icon: FilePlus2, color: 'hsl(280 65% 50%)', sub: 'etiqueta no WhatsApp' },
     { label: 'Vendidos',      kpi: { valor: vendidoEtq, deltaPct: 0, sparkline: [] }, icon: CheckCircle2, color: 'hsl(152 60% 35%)', sub: 'etiqueta VENDIDO' },
     { label: 'Conversão',     kpi: { valor: taxaConv, deltaPct: 0, sparkline: [] }, icon: TrendingUp, color: COLORS.info, sub: 'lead → vendido', suffix: '%' },
   ]
@@ -232,6 +235,17 @@ export function Dashboard() {
         ))}
       </div>
 
+      {/* DINHEIRO — valor das propostas montadas no período (único R$ real no fluxo de lead) */}
+      {orc && orc.geradas > 0 && (
+        <Card>
+          <CardHeader
+            title="Propostas no builder (R$)"
+            subtitle="Valor montado pelos vendedores no sistema de orçamento — NÃO confundir com a etiqueta ORÇAMENTO do WhatsApp (KPI acima), nem com venda fechada (vive em Controle)."
+          />
+          <PropostasResumoView orc={orc} periodoLabel={periodoLabel} />
+        </Card>
+      )}
+
       {/* LEADS POR DIA — fecha o grupo Visão geral (tendência) */}
       <Card>
         <CardHeader
@@ -287,15 +301,13 @@ export function Dashboard() {
 
       {/* ════════ GRUPO 3 · ONDE INVESTIR (canônico de mídia) ════════ */}
       <SectionTitle n="3" titulo="Onde investir" pergunta="Pra onde vai (ou corta) a verba?" />
-      {data.porCriativo.length > 0 && (
-        <Card id="criativo-veredito">
-          <CardHeader
-            title="🎯 Onde investir — por criativo"
-            subtitle="Escalar / pausar cada criativo. Decisão por qualidade do lead (conversão ~0 em tudo)."
-          />
-          <VereditoInvestimento criativos={data.porCriativo} etq={etq} />
-        </Card>
-      )}
+      <Card id="criativo-veredito">
+        <CardHeader
+          title="🎯 Onde investir — por criativo"
+          subtitle="Escalar / pausar cada criativo. Decisão por qualidade do lead (conversão ~0 em tudo)."
+        />
+        <VereditoInvestimento criativos={data.porCriativo} etq={etq} />
+      </Card>
       {data.porOrigem.length > 0 && (
         <Card>
           <CardHeader
@@ -308,6 +320,15 @@ export function Dashboard() {
 
       {/* ════════ GRUPO 4 · OPERAÇÃO DO TIME ════════ */}
       <SectionTitle n="4" titulo="Operação do time" pergunta="Quem eu cobro hoje e qual lead resgato?" />
+      {data.leadsEmRisco.length > 0 && (
+        <Card id="leads-resgatar">
+          <CardHeader
+            title="🔥 Leads pra resgatar agora"
+            subtitle="Disseram que querem investir agora e pararam de responder (+24h sem atividade) — quentes que sumiram, vale uma ligação"
+          />
+          <LeadsResgatar leads={data.leadsEmRisco} />
+        </Card>
+      )}
       {etq && (
         <Card id="leads-orfaos">
           <CardHeader
@@ -401,6 +422,104 @@ function KpiHero({ label, kpi, icon: Icon, color, sub, suffix, showDelta: showDe
         </ResponsiveContainer>
       </div>
       )}
+    </div>
+  )
+}
+
+// Resumo de R$ das propostas geradas — o único dinheiro real no fluxo de lead.
+// Ticket alto (fábrica de ração) merece 1 casa em milhar — "R$ 80k" perde precisão de decisão
+function fmtTicket(v: number): string {
+  if (v >= 1_000_000) return 'R$ ' + (v / 1_000_000).toFixed(2).replace('.', ',') + 'M'
+  if (v >= 1_000) return 'R$ ' + (v / 1_000).toFixed(1).replace('.', ',') + 'k'
+  return 'R$ ' + Math.round(v)
+}
+
+function PropostasResumoView({ orc, periodoLabel }: { orc: OrcamentosResumo; periodoLabel: string }) {
+  const top = orc.porVendedor.filter(v => v.brl > 0 && v.vendedor !== '—').slice(0, 4)
+  const maxBrl = Math.max(...top.map(v => v.brl), 1)
+  // Headline = valor enviado (proposta na rua). Sem nenhuma enviada, mostra o gerado.
+  const headline = orc.enviadas > 0 ? orc.valorEnviadoBRL : orc.valorTotalBRL
+  const headlineSub = orc.enviadas > 0 ? 'em propostas enviadas' : 'em propostas geradas'
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,360px)_1fr] gap-5">
+      {/* Bloco de números */}
+      <div>
+        <div className="flex items-end gap-2">
+          <Banknote className="h-6 w-6 text-success mb-1.5 shrink-0" />
+          <div>
+            <div className="text-[34px] leading-none font-semibold tabular-nums text-success">{fmtBRL(headline)}</div>
+            <p className="text-[11px] text-ink-faint mt-1">{headlineSub} · {periodoLabel.toLowerCase()}</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-2 mt-4">
+          <div className="rounded-md bg-surface-2/40 border border-border/30 px-2.5 py-2">
+            <div className="text-[17px] font-bold tabular-nums text-ink">{fmtN(orc.enviadas)}</div>
+            <div className="text-[10px] text-ink-faint leading-tight">enviadas{orc.rascunhos > 0 ? ` · ${fmtN(orc.rascunhos)} rascunho` : ''}</div>
+          </div>
+          <div className="rounded-md bg-surface-2/40 border border-border/30 px-2.5 py-2">
+            <div className="text-[17px] font-bold tabular-nums text-ink">{fmtTicket(orc.ticketMedioBRL)}</div>
+            <div className="text-[10px] text-ink-faint leading-tight">ticket médio</div>
+          </div>
+          <div className="rounded-md bg-surface-2/40 border border-border/30 px-2.5 py-2">
+            <div className="text-[17px] font-bold tabular-nums text-ink">{fmtN(orc.geradas)}</div>
+            <div className="text-[10px] text-ink-faint leading-tight">propostas geradas</div>
+          </div>
+        </div>
+      </div>
+      {/* Top vendedores por valor em proposta */}
+      {top.length > 0 && (
+        <div>
+          <p className="text-[10px] uppercase tracking-widest text-ink-faint mb-2">Quem mais enviou proposta (R$)</p>
+          <div className="space-y-1.5">
+            {top.map(v => (
+              <div key={v.vendedor} className="grid grid-cols-[120px_1fr_64px] items-center gap-2 text-[12px]">
+                <span className="truncate text-ink capitalize" title={v.vendedor}>{v.vendedor.toLowerCase()}</span>
+                <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
+                  <div className="h-full bg-success/70 rounded-full" style={{ width: `${(v.brl / maxBrl) * 100}%` }} />
+                </div>
+                <span className="text-right font-mono tabular-nums text-ink-muted">{fmtBRL(v.brl)}</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-ink-faint pt-2">Valor das propostas enviadas ao cliente, não venda fechada. Ranking e ticket consideram só as enviadas.</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Leads quentes parados — responde "qual lead resgato?" (dado já computado no hook)
+function LeadsResgatar({ leads }: { leads: LeadEmRisco[] }) {
+  return (
+    <div className="space-y-1.5">
+      {leads.map(l => {
+        const dias = Math.floor(l.horasSemResposta / 24)
+        const tempo = dias >= 1 ? `${dias}d parado` : `${Math.round(l.horasSemResposta)}h parado`
+        const urg = l.horasSemResposta >= 168 // >7d = crítico
+        return (
+          <Link
+            key={l.id}
+            to={l.vendedor ? `/atendimentos?responsavel=${encodeURIComponent(l.vendedor)}` : '/atendimentos'}
+            className="flex items-center justify-between gap-2 px-2.5 py-2 rounded-md bg-surface-2/40 border border-border/30 hover:border-accent/30 hover:bg-surface-2/70 transition-colors"
+            title="Abrir atendimentos deste vendedor"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Flame className={`h-3.5 w-3.5 shrink-0 ${urg ? 'text-danger' : 'text-warning'}`} />
+              <div className="min-w-0">
+                <div className="text-[12px] text-ink truncate">{l.nome || l.telefone || 'Lead sem nome'}</div>
+                <div className="text-[10px] text-ink-faint truncate">
+                  {l.momento === 'Agora' ? 'quer investir agora' : (l.momento || 'lead quente')}
+                  {l.vendedor ? ` · ${l.vendedor}` : ' · sem vendedor'}
+                </div>
+              </div>
+            </div>
+            <span className={`text-[11px] font-medium tabular-nums shrink-0 ${urg ? 'text-danger' : 'text-warning'}`}>{tempo}</span>
+          </Link>
+        )
+      })}
+      <p className="text-[10px] text-ink-faint pt-1">
+        Quentes que sumiram no meio do atendimento. Ordenados pelo tempo parado — comece por cima.
+      </p>
     </div>
   )
 }
@@ -955,7 +1074,7 @@ function AlertasBanner({ etq }: { etq: NonNullable<ReturnType<typeof useDashboar
       icon: AlertTriangle,
       text: `${etq.alertas.criativos_nao_fabricamos} criativo${etq.alertas.criativos_nao_fabricamos > 1 ? 's' : ''} com ≥15% "NÃO FABRICAMOS"`,
       tone: 'danger',
-      anchor: 'criativo-etiqueta',
+      anchor: 'criativo-veredito',
     },
     etq.alertas.leads_orfaos > 0 && {
       icon: Ghost,
@@ -967,7 +1086,7 @@ function AlertasBanner({ etq }: { etq: NonNullable<ReturnType<typeof useDashboar
       icon: AlertTriangle,
       text: `${etq.alertas.vendedores_sem_orc} vendedor${etq.alertas.vendedores_sem_orc > 1 ? 'es' : ''} com leads mas zero ORÇAMENTO ENVIADO`,
       tone: 'warning',
-      anchor: 'sem-orc',
+      anchor: 'vendedores',
     },
   ].filter(Boolean) as { icon: typeof AlertTriangle; text: string; tone: string; anchor: string }[]
 
@@ -977,13 +1096,14 @@ function AlertasBanner({ etq }: { etq: NonNullable<ReturnType<typeof useDashboar
       <div className="flex items-center gap-2 mb-2">
         <AlertTriangle className="h-4 w-4 text-danger" />
         <span className="text-[12px] font-bold text-danger uppercase tracking-wide">Atenção</span>
+        <span className="text-[10px] text-ink-faint normal-case font-normal">— clique pra ir direto ao ponto</span>
       </div>
       <div className="flex flex-wrap gap-x-6 gap-y-1.5">
-        {items.map((it, i) => (
-          <div key={i} className="flex items-center gap-1.5 text-[12px] text-ink">
+        {items.map(it => (
+          <a key={it.anchor} href={`#${it.anchor}`} className="flex items-center gap-1.5 text-[12px] text-ink hover:text-accent transition-colors cursor-pointer">
             <it.icon className={`h-3.5 w-3.5 ${it.tone === 'danger' ? 'text-danger' : 'text-warning'}`} />
-            <span>{it.text}</span>
-          </div>
+            <span className="underline-offset-2 hover:underline">{it.text}</span>
+          </a>
         ))}
       </div>
     </div>
@@ -1021,6 +1141,14 @@ function CicloVenda({ etq }: { etq: NonNullable<ReturnType<typeof useDashboardEt
       {stages.map(s => {
         const v = s.value
         const overBudget = v != null && v > s.target
+        // Horas grandes ficam ilegíveis (357,9h) → mostra em dias quando ≥48h
+        const disp = v == null
+          ? { num: '—', unit: '' }
+          : (s.unit === 'h' && v >= 48)
+            ? { num: String(Math.round(v / 24)), unit: 'd' }
+            : { num: (Math.round(v * 10) / 10).toString().replace('.', ','), unit: s.unit }
+        // Quando o valor vira dias mas a meta é em horas, o "Nx acima" deixa claro o estouro
+        const fatorAcima = v != null && s.target > 0 ? Math.round(v / s.target) : 0
         return (
           <div key={s.label} className="flex items-start justify-between gap-3 px-2 py-2 rounded-md bg-surface-2/40 border border-border/30">
             <div className="min-w-0">
@@ -1032,10 +1160,12 @@ function CicloVenda({ etq }: { etq: NonNullable<ReturnType<typeof useDashboardEt
             </div>
             <div className="text-right shrink-0">
               <div className={`text-2xl font-bold tabular-nums leading-none ${overBudget ? 'text-danger' : 'text-success'}`}>
-                {v == null ? '—' : (Math.round(v * 10) / 10).toString().replace('.', ',')}
-                <span className="text-sm font-medium ml-0.5">{s.unit}</span>
+                {disp.num}
+                {disp.unit && <span className="text-sm font-medium ml-0.5">{disp.unit}</span>}
               </div>
-              <p className="text-[10px] text-ink-faint mt-0.5">meta: &lt;{s.target}{s.unit}</p>
+              <p className={`text-[10px] mt-0.5 ${overBudget ? 'text-danger/80' : 'text-ink-faint'}`}>
+                meta: &lt;{s.target}{s.unit}{overBudget && fatorAcima >= 2 ? ` · ${fatorAcima}× acima` : ''}
+              </p>
             </div>
           </div>
         )
