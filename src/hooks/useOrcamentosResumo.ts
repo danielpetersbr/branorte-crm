@@ -60,6 +60,8 @@ export function useOrcamentosResumo(preset: DashboardPreset = '') {
         const enviada = r.status === 'enviado'
         if (enviada) { enviadas++; valorEnviadoBRL += v }
         else if (r.status === 'rascunho') rascunhos++
+        // Ranking por vendedor reflete o VALOR ENVIADO (proposta na rua), consistente
+        // com o headline — não infla com rascunhos/testes.
         const nome = (r.vendedor_nome || '—').trim() || '—'
         const acc = porVendedorMap.get(nome) ?? { vendedor: nome, n: 0, brl: 0 }
         if (enviada) { acc.n += 1; acc.brl += v }
