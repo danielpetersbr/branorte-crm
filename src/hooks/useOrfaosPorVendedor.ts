@@ -1,12 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 
-// Leads "órfãos" / zumbis no funil: etiqueta NOVO LEAD parada há mais de N dias,
-// por vendedor (quem recebeu lead novo e não trabalhou). Janela é por IDADE da
-// etiqueta, não pelo filtro de período do dashboard. Daniel (testes) fora na RPC.
+// Leads "órfãos" / zumbis no funil: parados há mais de N dias num estado de
+// intake/prospecção/sem-etiqueta (não foram trabalhados), por vendedor. 3 baldes:
+// NOVO LEAD, PROSPECÇÃO/tentativa e SEM ETIQUETA nenhuma. Janela por IDADE da
+// etiqueta, não pelo filtro do dashboard. Daniel (testes) fora na RPC.
 export interface OrfaosPorVendedor {
   total: number
-  por_vendedor: { vendedor: string; n: number }[]
+  por_vendedor: { vendedor: string; n: number; novo: number; prospeccao: number; sem_etiqueta: number }[]
 }
 
 export function useOrfaosPorVendedor(dias = 7) {
