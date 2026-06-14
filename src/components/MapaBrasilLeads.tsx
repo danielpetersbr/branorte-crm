@@ -6,7 +6,7 @@ interface UfItem { uf: string; nome: string; total: number; pct: number; isBrasi
 
 // Mapa choropleth real do Brasil (Leaflet, sem tiles) colorido por volume de leads
 // por estado. GeoJSON simplificado servido same-origin em /brasil-estados.geojson.
-export default function MapaBrasilLeads({ items }: { items: UfItem[] }) {
+export default function MapaBrasilLeads({ items, hue = 152 }: { items: UfItem[]; hue?: number }) {
   const ref = useRef<HTMLDivElement>(null)
   const [erro, setErro] = useState(false)
 
@@ -19,7 +19,7 @@ export default function MapaBrasilLeads({ items }: { items: UfItem[] }) {
     const cor = (total: number) => {
       if (!total) return 'hsl(240 6% 22%)'
       const t = Math.sqrt(total / max) // sqrt suaviza a escala (SP não esmaga o resto)
-      return `hsl(152 62% ${Math.round(58 - t * 30)}%)`
+      return `hsl(${hue} 62% ${Math.round(58 - t * 30)}%)`
     }
 
     const map = L.map(el, {
