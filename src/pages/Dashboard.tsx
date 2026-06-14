@@ -4,6 +4,7 @@ import { useDashboard, type DashboardPreset, type FunilEtapa, type SlaVendedor, 
 import { useDashboardEtiquetas, useHeatmapSemanal, CATEGORIA_LABEL, type EtiquetaCategoria } from '@/hooks/useDashboardEtiquetas'
 import { useOrcamentosResumo, type OrcamentosResumo } from '@/hooks/useOrcamentosResumo'
 import { useVendedoresPainel, type VendedorPainel } from '@/hooks/useVendedoresPainel'
+import { useOrfaosPorVendedor, type OrfaosPorVendedor } from '@/hooks/useOrfaosPorVendedor'
 import {
   Area, AreaChart, Cell, Pie, PieChart,
   ResponsiveContainer, Tooltip,
@@ -101,6 +102,8 @@ export function Dashboard() {
   const { data: orc } = useOrcamentosResumo(preset)
   // Painel por vendedor: funil de etiquetas WhatsApp + motivos de perda
   const { data: vendPainel } = useVendedoresPainel(preset)
+  // Leads órfãos (NOVO LEAD parado >7d) por vendedor — janela por idade, não pelo filtro
+  const { data: orfaos } = useOrfaosPorVendedor(7)
   // Heatmap usa janela fixa (30d) — ignora filtro do dashboard de propósito
   const { data: heatmap30d } = useHeatmapSemanal()
 
@@ -347,7 +350,15 @@ export function Dashboard() {
           <LeadsResgatar leads={data.leadsEmRisco} />
         </Card>
       )}
-      {etq && (
+      {orfaos && orfaos.total > 0 ? (
+        <Card id="leads-orfaos">
+          <CardHeader
+            title="Leads órfãos (zumbis no funil)"
+            subtitle="Etiqueta NOVO LEAD parada há mais de 7 dias — quem recebeu lead novo e não deu o 1º atendimento"
+          />
+          <LeadsOrfaosVendedor orfaos={orfaos} />
+        </Card>
+      ) : etq && (
         <Card id="leads-orfaos">
           <CardHeader
             title="Leads órfãos (zumbis no funil)"
@@ -1234,14 +1245,12 @@ function VereditoOrigem({
 
 // Distribuição geográfica — mapa choropleth do Brasil + legenda + top estados + internacional
 function DistribuicaoGeo({ items }: { items: { uf: string; nome: string; total: number; pct: number; isBrasil: boolean }[] }) {
-  const brasil = items.filter(i => i.isBrasil).sort((a, b) => b.total - a.total)
-  const intl = items.filter(i => !i.isBrasil)
   return (
     <div className="space-y-3">
       <Suspense fallback={<div className="h-[330px] grid place-items-center text-[12px] text-ink-faint">Carregando mapa…</div>}>
         <MapaBrasilLeads items={items} />
       </Suspense>
-      <div className="flex items-center gap-2 text-[10px] text-ink-faint">
+      <div className="flex items-center gap-2 text-[10px] text-ink-faint border-b border-border/50 pb-3">
         <span>Menos</span>
         <span className="h-2.5 w-6 rounded-sm" style={{ background: 'hsl(152 62% 56%)' }} />
         <span className="h-2.5 w-6 rounded-sm" style={{ background: 'hsl(152 62% 44%)' }} />
@@ -1249,18 +1258,8 @@ function DistribuicaoGeo({ items }: { items: { uf: string; nome: string; total: 
         <span>Mais leads</span>
         <span className="ml-auto">Passe o mouse num estado</span>
       </div>
-      {brasil.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {brasil.slice(0, 10).map(u => (
-            <span key={u.uf} className="text-[11px] px-1.5 py-0.5 rounded bg-surface-2/60 text-ink-muted tabular-nums">
-              <span className="font-mono text-ink-faint">{u.uf}</span> {fmtN(u.total)} <span className="text-ink-faint">{u.pct.toFixed(0)}%</span>
-            </span>
-          ))}
-        </div>
-      )}
-      {intl.length > 0 && (
-        <p className="text-[10px] text-ink-faint">🌎 Internacional: {intl.map(i => `${i.nome} ${fmtN(i.total)}`).join(' · ')}</p>
-      )}
+      {/* Lista detalhada por estado (barras) abaixo do mapa */}
+      <UfList items={items} />
     </div>
   )
 }
@@ -1445,6 +1444,39 @@ function CicloVenda({ etq }: { etq: NonNullable<ReturnType<typeof useDashboardEt
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// Órfãos (NOVO LEAD parado >7d) por vendedor — quem senta no lead novo
+function LeadsOrfaosVendedor({ orfaos }: { orfaos: OrfaosPorVendedor }) {
+  const max = Math.max(...orfaos.por_vendedor.map(v => v.n), 1)
+  return (
+    <div>
+      <div className="flex items-baseline gap-2 mb-3">
+        <Ghost className="h-6 w-6 text-warning self-center" />
+        <span className="text-[32px] leading-none font-bold text-warning tabular-nums">{fmtN(orfaos.total)}</span>
+        <span className="text-[12px] text-ink-muted">leads novos parados há +7 dias</span>
+      </div>
+      <div className="space-y-1.5">
+        {orfaos.por_vendedor.map(v => (
+          <Link
+            key={v.vendedor}
+            to={`/atendimentos?responsavel=${encodeURIComponent(capitalizar(v.vendedor))}`}
+            className="grid grid-cols-[110px_1fr_36px] items-center gap-2 text-[12px] group"
+            title="Abrir atendimentos deste vendedor"
+          >
+            <span className="truncate text-ink capitalize group-hover:text-accent">{v.vendedor.toLowerCase()}</span>
+            <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
+              <div className="h-full bg-warning/70 rounded-full" style={{ width: `${(v.n / max) * 100}%` }} />
+            </div>
+            <span className="text-right font-mono tabular-nums text-ink">{v.n}</span>
+          </Link>
+        ))}
+      </div>
+      <p className="text-[10px] text-ink-faint pt-2.5">
+        São leads que entraram, ganharam etiqueta "NOVO LEAD" e travaram aí. Cobrar o 1º atendimento — quem está no topo é quem mais deixa lead esfriar.
+      </p>
     </div>
   )
 }
