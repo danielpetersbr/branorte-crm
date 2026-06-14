@@ -38,6 +38,9 @@ export interface AtendimentoFilters {
   // #17: filtro por código de criativo (ex: M0023, F1234). Match exato em
   // contacts.criativo_codigo. Vazio = sem filtro.
   criativo: string
+  // Filtro por etiqueta do WhatsApp (nome normalizado, ex: 'FOLLOW UP', 'VENDIDO').
+  // Resolvido server-side via RPC atendimentos_telefones_por_etiqueta. Vazio = sem filtro.
+  etiqueta: string
   page: number
 }
 
@@ -194,6 +197,15 @@ export function useAtendimentos(filters: AtendimentoFilters) {
       }
       if (filters.responsavel) query = query.eq('responsavel', filters.responsavel)
       if (filters.status_real) query = query.eq('status_real', filters.status_real)
+      // Filtro por etiqueta do WhatsApp: a RPC devolve os telefones com a etiqueta
+      // (em toda a base), e filtramos os atendimentos por eles.
+      if (filters.etiqueta) {
+        const { data: tels, error: telErr } = await supabase.rpc('atendimentos_telefones_por_etiqueta', { p_etiqueta: filters.etiqueta })
+        if (telErr) throw telErr
+        const list = (tels ?? []) as string[]
+        if (list.length === 0) return { rows: [], total: 0 }
+        query = query.in('telefone_norm', list)
+      }
       const range = dateRangeFromPreset(filters.data)
       // Filtra por data de CHEGADA do lead (created_at)
       if (range.from) query = query.gte('created_at', range.from)
