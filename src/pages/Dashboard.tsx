@@ -424,7 +424,7 @@ export function Dashboard() {
         <Card id="leads-orfaos">
           <CardHeader
             title="Leads órfãos (zumbis no funil)"
-            subtitle="Parados +7 dias em NOVO LEAD, PROSPECÇÃO ou SEM ETIQUETA nenhuma — quem recebeu e não deu o 1º atendimento (nem etiquetou)"
+            subtitle="Parados +7 dias antes da negociação: em PROSPECÇÃO, NOVO LEAD (etiquetados mas travados) ou SEM ETIQUETA nenhuma (nem registrado) — quem recebeu e não levou pra frente"
           />
           <LeadsOrfaosVendedor orfaos={orfaos} />
         </Card>
@@ -1925,10 +1925,10 @@ function LeadsOrfaosVendedor({ orfaos }: { orfaos: OrfaosPorVendedor }) {
         <span className="text-[32px] leading-none font-bold text-warning tabular-nums">{fmtN(orfaos.total)}</span>
         <span className="text-[12px] text-ink-muted">leads parados há +7 dias sem evoluir</span>
       </div>
-      {/* Legenda dos baldes */}
+      {/* Legenda dos baldes — ordem do funil: Prospecção → Novo lead → Sem etiqueta */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mb-3 text-[10px] text-ink-muted">
-        <span><span className="inline-block h-2 w-2 rounded-sm mr-1 align-middle" style={{ background: CORES.novo }} />Novo lead</span>
         <span><span className="inline-block h-2 w-2 rounded-sm mr-1 align-middle" style={{ background: CORES.prospeccao }} />Prospecção/tentativa</span>
+        <span><span className="inline-block h-2 w-2 rounded-sm mr-1 align-middle" style={{ background: CORES.novo }} />Novo lead</span>
         <span><span className="inline-block h-2 w-2 rounded-sm mr-1 align-middle" style={{ background: CORES.sem }} />Sem etiqueta nenhuma <b className="text-danger tabular-nums">{fmtN(totSem)}</b></span>
       </div>
       <div className="space-y-1.5">
@@ -1941,18 +1941,18 @@ function LeadsOrfaosVendedor({ orfaos }: { orfaos: OrfaosPorVendedor }) {
           >
             <span className="truncate text-ink capitalize group-hover:text-accent">{v.vendedor.toLowerCase()}</span>
             <div className="flex h-2.5 bg-surface-2 rounded-full overflow-hidden" style={{ width: `${Math.max((v.n / max) * 100, 4)}%` }}>
-              {v.novo > 0 && <div style={{ width: `${(v.novo / v.n) * 100}%`, background: CORES.novo }} title={`Novo: ${v.novo}`} />}
               {v.prospeccao > 0 && <div style={{ width: `${(v.prospeccao / v.n) * 100}%`, background: CORES.prospeccao }} title={`Prospecção: ${v.prospeccao}`} />}
+              {v.novo > 0 && <div style={{ width: `${(v.novo / v.n) * 100}%`, background: CORES.novo }} title={`Novo: ${v.novo}`} />}
               {v.sem_etiqueta > 0 && <div style={{ width: `${(v.sem_etiqueta / v.n) * 100}%`, background: CORES.sem }} title={`Sem etiqueta: ${v.sem_etiqueta}`} />}
             </div>
             <span className="text-right font-mono tabular-nums text-ink whitespace-nowrap">
-              {v.n} <span className="text-[10px] text-ink-faint">({v.novo}/{v.prospeccao}/{v.sem_etiqueta})</span>
+              {v.n} <span className="text-[10px] text-ink-faint">({v.prospeccao}/{v.novo}/{v.sem_etiqueta})</span>
             </span>
           </Link>
         ))}
       </div>
       <p className="text-[10px] text-ink-faint pt-2.5">
-        Leads que travaram em <b>novo</b>, <b>prospecção</b> ou <b>sem etiqueta nenhuma</b> há +7 dias (número = novo/prospecção/sem etiqueta). "Sem etiqueta" é o pior: nem foi registrado. Cobrar o 1º atendimento de quem está no topo.
+        Travados há +7 dias antes da negociação (número = <b>prospecção / novo / sem etiqueta</b>). Prospecção e novo lead = o vendedor até etiquetou mas parou aí; <b>sem etiqueta</b> é o pior — nem foi registrado. Cobrar o próximo passo de quem está no topo.
       </p>
     </div>
   )
