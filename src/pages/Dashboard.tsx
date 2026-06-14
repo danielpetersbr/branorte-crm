@@ -3,8 +3,12 @@ import { Link } from 'react-router-dom'
 import { useDashboard, type DashboardPreset, type FunilEtapa, type SlaVendedor, type LeadEmRisco } from '@/hooks/useDashboard'
 import { useDashboardEtiquetas, useHeatmapSemanal, CATEGORIA_LABEL, type EtiquetaCategoria } from '@/hooks/useDashboardEtiquetas'
 import { useOrcamentosResumo, type OrcamentosResumo } from '@/hooks/useOrcamentosResumo'
+import { usePropostasStatus, CATS_ABERTO, type PropostasStatus, type PropCategoria } from '@/hooks/usePropostasStatus'
 import { useVendedoresPainel, type VendedorPainel } from '@/hooks/useVendedoresPainel'
 import { useOrfaosPorVendedor, type OrfaosPorVendedor } from '@/hooks/useOrfaosPorVendedor'
+import { useVendedorCobertura, type VendedorCobertura } from '@/hooks/useVendedorCobertura'
+import { useMotivosPorFonte, MOTIVO_LABELS, type MotivoFonte, type MotivoKey } from '@/hooks/useMotivosPorFonte'
+import { useNegociacaoPorUf } from '@/hooks/useNegociacaoPorUf'
 import {
   Area, AreaChart, Cell, Pie, PieChart,
   ResponsiveContainer, Tooltip,
@@ -100,10 +104,18 @@ export function Dashboard() {
   const { data: etq } = useDashboardEtiquetas(preset)
   // Valor das propostas montadas no builder (orcamentos_gerados) — única fonte real de R$
   const { data: orc } = useOrcamentosResumo(preset)
+  // Propostas × estágio atual do funil (dinheiro em aberto vs vendido, por vendedor)
+  const { data: propStatus } = usePropostasStatus(preset)
   // Painel por vendedor: funil de etiquetas WhatsApp + motivos de perda
   const { data: vendPainel } = useVendedoresPainel(preset)
   // Leads órfãos (NOVO LEAD parado >7d) por vendedor — janela por idade, não pelo filtro
   const { data: orfaos } = useOrfaosPorVendedor(7)
+  // Cobertura: total passado vs com/sem etiqueta por vendedor (buraco de acompanhamento)
+  const { data: cobertura } = useVendedorCobertura(preset)
+  // Motivos de perda por criativo/origem (qual anúncio traz mais "não respondeu" etc.)
+  const { data: motivosFonte } = useMotivosPorFonte(preset)
+  // Leads em negociação (follow-up / quente / orçamento) por estado — estado atual da etiqueta
+  const { data: negUf } = useNegociacaoPorUf()
   // Heatmap usa janela fixa (30d) — ignora filtro do dashboard de propósito
   const { data: heatmap30d } = useHeatmapSemanal()
 
@@ -136,9 +148,20 @@ export function Dashboard() {
   // Cards de vendedor (3 fontes mescladas + veredito), computados uma vez e
   // usados pelo Resumo do gerente e pelo Painel por vendedor.
   const vendCards = useMemo(
-    () => montarCardsVendedor(vendPainel ?? [], data?.slaPorVendedor ?? [], orc),
-    [vendPainel, data?.slaPorVendedor, orc],
+    () => montarCardsVendedor(vendPainel ?? [], data?.slaPorVendedor ?? [], orc, cobertura ?? []),
+    [vendPainel, data?.slaPorVendedor, orc, cobertura],
   )
+
+  // 2º mapa: leads em negociação por estado. Reaproveita o nome do estado vindo do
+  // porUf (mesma tabela de UF→nome) e calcula % sobre o total em negociação.
+  const negItems = useMemo(() => {
+    const nomeByUf = new Map((data?.porUf ?? []).map(u => [u.uf, u.nome]))
+    const lista = (negUf ?? []).filter(n => n.uf && n.total > 0)
+    const tot = lista.reduce((s, n) => s + n.total, 0) || 1
+    return lista
+      .map(n => ({ uf: n.uf, nome: nomeByUf.get(n.uf) ?? n.uf, total: n.total, pct: (n.total / tot) * 100, isBrasil: true }))
+      .sort((a, b) => b.total - a.total)
+  }, [negUf, data?.porUf])
 
   if (isLoading) {
     return (
@@ -267,6 +290,17 @@ export function Dashboard() {
         </Card>
       )}
 
+      {/* PROPOSTAS × ESTÁGIO DO FUNIL — dinheiro em aberto (não vendido) + filtro por etapa */}
+      {propStatus && propStatus.porCategoria.length > 0 && (
+        <Card id="propostas-estagio">
+          <CardHeader
+            title="Propostas por estágio do funil — dinheiro na mesa"
+            subtitle="Cruza cada proposta montada com a etiqueta ATUAL do cliente no WhatsApp. Clique numa etapa pra ver quem montou mais ali e abrir a lista. Estado de agora — ignora o período."
+          />
+          <PropostasPorEstagio status={propStatus} />
+        </Card>
+      )}
+
       {/* LEADS POR DIA — fecha o grupo Visão geral (tendência) */}
       <Card>
         <CardHeader
@@ -338,6 +372,15 @@ export function Dashboard() {
           <VereditoOrigem origens={data.porOrigem} etq={etq} />
         </Card>
       )}
+      {motivosFonte && (motivosFonte.por_criativo.length > 0 || motivosFonte.por_origem.length > 0) && (
+        <Card id="motivos-fonte">
+          <CardHeader
+            title="🔎 Motivos de fechamento — por criativo / origem"
+            subtitle="Qual anúncio/canal traz mais lead que NÃO RESPONDEU, NÃO TEM INTERESSE, NÃO FABRICAMOS etc. Escolha o motivo e ordene do pior pro melhor pra cortar a fonte certa."
+          />
+          <MotivosPorFonteView data={motivosFonte} />
+        </Card>
+      )}
 
       {/* ════════ GRUPO 4 · OPERAÇÃO DO TIME ════════ */}
       <SectionTitle n="4" titulo="Operação do time" pergunta="Quem eu cobro hoje e qual lead resgato?" />
@@ -354,7 +397,7 @@ export function Dashboard() {
         <Card id="leads-orfaos">
           <CardHeader
             title="Leads órfãos (zumbis no funil)"
-            subtitle="Etiqueta NOVO LEAD parada há mais de 7 dias — quem recebeu lead novo e não deu o 1º atendimento"
+            subtitle="Parados +7 dias em NOVO LEAD, PROSPECÇÃO ou SEM ETIQUETA nenhuma — quem recebeu e não deu o 1º atendimento (nem etiquetou)"
           />
           <LeadsOrfaosVendedor orfaos={orfaos} />
         </Card>
@@ -395,6 +438,15 @@ export function Dashboard() {
         />
         <DistribuicaoGeo items={data.porUf} />
       </Card>
+      {negItems.length > 0 && (
+        <Card>
+          <CardHeader
+            title="Onde está a negociação"
+            subtitle={`${fmtN(negItems.reduce((s, n) => s + n.total, 0))} leads em follow-up / quente / orçamento · ${negItems.length} estados — onde o pipeline está esquentando agora`}
+          />
+          <NegociacaoGeo items={negItems} />
+        </Card>
+      )}
     </div>
   )
 }
@@ -522,6 +574,131 @@ function PropostasResumoView({ orc, periodoLabel }: { orc: OrcamentosResumo; per
   )
 }
 
+// Metadados por categoria do funil (rótulo + cor) pra o card de propostas por estágio.
+const PROP_CAT_META: Record<PropCategoria, { label: string; cor: string }> = {
+  orcamento:    { label: 'Orçamento enviado', cor: 'hsl(38 92% 50%)' },
+  quente:       { label: 'Quente / follow-up', cor: 'hsl(0 72% 51%)' },
+  lead_quente:  { label: 'Lead quente',        cor: 'hsl(14 80% 52%)' },
+  novo:         { label: 'Novo (sem mexer)',   cor: 'hsl(217 91% 60%)' },
+  sem_etiqueta: { label: 'Sem etiqueta',       cor: 'hsl(240 5% 55%)' },
+  vendido:      { label: 'Vendido',            cor: 'hsl(152 60% 40%)' },
+  perdido:      { label: 'Perdido',            cor: 'hsl(240 4% 50%)' },
+  outros:       { label: 'Outros / interno',   cor: 'hsl(270 30% 55%)' },
+}
+
+// Propostas × estágio atual do funil. Headline = R$ em ABERTO (não vendido = dinheiro
+// na mesa). Chips por etapa filtram o ranking de vendedores abaixo, que linka pra lista
+// de orçamentos já filtrada por vendedor + etapa. Resolve "quais orçamentos foram
+// enviados e estão com atendimento aberto" + "quem montou mais proposta em cada etapa".
+function PropostasPorEstagio({ status }: { status: PropostasStatus }) {
+  const [sel, setSel] = useState<PropCategoria | 'aberto'>('aberto')
+
+  // Ordem de exibição dos chips (abertos primeiro, fechados por último).
+  const ordem: PropCategoria[] = ['orcamento', 'quente', 'lead_quente', 'novo', 'sem_etiqueta', 'vendido', 'perdido', 'outros']
+  const chips = ordem
+    .map(c => status.porCategoria.find(p => p.categoria === c))
+    .filter((p): p is PropostasStatus['porCategoria'][number] => !!p && p.n > 0)
+
+  const totalGeral = status.porCategoria.reduce((s, c) => s + c.brl, 0) || 1
+
+  // Vendedores do estágio selecionado (pra 'aberto', soma as categorias em aberto).
+  const cats = sel === 'aberto' ? CATS_ABERTO : [sel]
+  const vendMap = new Map<string, { n: number; brl: number }>()
+  for (const r of status.porCatVendedor) {
+    if (!cats.includes(r.categoria)) continue
+    const acc = vendMap.get(r.vendedor) ?? { n: 0, brl: 0 }
+    acc.n += r.n; acc.brl += r.brl
+    vendMap.set(r.vendedor, acc)
+  }
+  const vendRank = [...vendMap.entries()].map(([vendedor, v]) => ({ vendedor, ...v })).sort((a, b) => b.brl - a.brl)
+  const maxV = Math.max(...vendRank.map(v => v.brl), 1)
+
+  const selTotal = sel === 'aberto' ? status.aberto : (status.porCategoria.find(c => c.categoria === sel) ?? { n: 0, brl: 0 })
+  const selLabel = sel === 'aberto' ? 'em aberto (não vendido)' : PROP_CAT_META[sel].label.toLowerCase()
+  const selCor = sel === 'aberto' ? 'hsl(38 92% 50%)' : PROP_CAT_META[sel].cor
+
+  return (
+    <div className="space-y-4">
+      {/* Headline: dinheiro na mesa (aberto) vs vendido */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <button
+          onClick={() => setSel('aberto')}
+          className={`text-left rounded-lg px-3 py-2.5 border transition-colors ${sel === 'aberto' ? 'border-warning/60 bg-warning/10' : 'border-border/40 bg-surface-2/30 hover:bg-surface-2/60'}`}
+        >
+          <div className="text-[10px] uppercase tracking-wide text-ink-faint">Dinheiro na mesa</div>
+          <div className="text-[22px] leading-tight font-bold tabular-nums text-warning">{fmtBRL(status.aberto.brl)}</div>
+          <div className="text-[10px] text-ink-faint">{fmtN(status.aberto.n)} propostas abertas</div>
+        </button>
+        <div className="rounded-lg px-3 py-2.5 border border-border/40 bg-surface-2/30">
+          <div className="text-[10px] uppercase tracking-wide text-ink-faint">Vendido (etiqueta)</div>
+          <div className="text-[22px] leading-tight font-bold tabular-nums text-success">{fmtBRL(status.vendido.brl)}</div>
+          <div className="text-[10px] text-ink-faint">{fmtN(status.vendido.n)} propostas · sub-registro*</div>
+        </div>
+        <div className="rounded-lg px-3 py-2.5 border border-border/40 bg-surface-2/30 col-span-2 sm:col-span-1">
+          <div className="text-[10px] uppercase tracking-wide text-ink-faint">Conversão aparente</div>
+          <div className="text-[22px] leading-tight font-bold tabular-nums text-ink">
+            {status.aberto.brl + status.vendido.brl > 0 ? ((status.vendido.brl / (status.aberto.brl + status.vendido.brl)) * 100).toFixed(0) : '0'}%
+          </div>
+          <div className="text-[10px] text-ink-faint">vendido ÷ (aberto + vendido)</div>
+        </div>
+      </div>
+
+      {/* Chips por estágio — clicáveis */}
+      <div className="flex flex-wrap gap-1.5">
+        {chips.map(c => {
+          const ativo = sel === c.categoria
+          return (
+            <button
+              key={c.categoria}
+              onClick={() => setSel(c.categoria)}
+              className={`flex items-center gap-1.5 rounded-full pl-2 pr-2.5 py-1 text-[11px] border transition-colors ${ativo ? 'border-accent bg-accent/10 text-ink' : 'border-border/50 bg-surface-2/30 text-ink-muted hover:bg-surface-2/60'}`}
+              title={`${PROP_CAT_META[c.categoria].label} — ${fmtBRL(c.brl)} · ${((c.brl / totalGeral) * 100).toFixed(0)}% do valor`}
+            >
+              <span className="h-2 w-2 rounded-full" style={{ background: PROP_CAT_META[c.categoria].cor }} />
+              <span className="font-medium">{PROP_CAT_META[c.categoria].label}</span>
+              <span className="font-mono tabular-nums text-ink-faint">{c.n}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Ranking de vendedores no estágio selecionado */}
+      <div>
+        <div className="flex items-baseline justify-between gap-2 mb-2">
+          <p className="text-[11px] text-ink-muted">
+            <span className="font-semibold tabular-nums" style={{ color: selCor }}>{fmtBRL(selTotal.brl)}</span> em {fmtN(selTotal.n)} propostas <span className="text-ink-faint">{selLabel}</span>
+          </p>
+          <Link to={`/orcamentos/salvos?etiqueta=${sel}`} className="text-[11px] text-accent hover:underline shrink-0">Ver lista →</Link>
+        </div>
+        {vendRank.length > 0 ? (
+          <div className="space-y-1.5">
+            {vendRank.map(v => (
+              <Link
+                key={v.vendedor}
+                to={`/orcamentos/salvos?vendedor=${encodeURIComponent(v.vendedor)}&etiqueta=${sel}`}
+                className="grid grid-cols-[130px_1fr_auto] items-center gap-2 text-[12px] group"
+                title={`Ver os orçamentos de ${v.vendedor.toLowerCase()} nesse estágio`}
+              >
+                <span className="truncate text-ink capitalize group-hover:text-accent group-hover:underline" title={v.vendedor}>{v.vendedor.toLowerCase()}</span>
+                <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full" style={{ width: `${(v.brl / maxV) * 100}%`, background: selCor }} />
+                </div>
+                <span className="text-right font-mono tabular-nums text-ink-muted whitespace-nowrap">{fmtBRL(v.brl)} <span className="text-ink-faint">· {v.n}</span></span>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[12px] text-ink-faint">Nenhuma proposta nesse estágio.</p>
+        )}
+      </div>
+
+      <p className="text-[10px] text-ink-faint border-t border-border/40 pt-2">
+        *Vendido aqui = proposta cujo cliente tem etiqueta VENDIDO no WhatsApp. Muita venda fecha sem a etiqueta ser marcada, então o nº real é maior — use como piso, não teto. "Sem etiqueta" = proposta montada mas o cliente não tem etiqueta de funil agora (gap de acompanhamento).
+      </p>
+    </div>
+  )
+}
+
 // Leads quentes parados — responde "qual lead resgato?" (dado já computado no hook)
 function LeadsResgatar({ leads }: { leads: LeadEmRisco[] }) {
   return (
@@ -617,6 +794,72 @@ function FunilHero({ etapas }: { etapas: FunilEtapa[] }) {
   )
 }
 
+// Motivos de fechamento por criativo/origem — escolhe a fonte (criativo/origem) e o
+// motivo, ordena do pior pro melhor. Responde "qual anúncio traz mais não-respondeu".
+function MotivosPorFonteView({ data }: { data: { por_criativo: MotivoFonte[]; por_origem: MotivoFonte[] } }) {
+  const [fonte, setFonte] = useState<'criativo' | 'origem'>('criativo')
+  const [motivo, setMotivo] = useState<MotivoKey>('perdido')
+  const [pior, setPior] = useState(true) // true = pior primeiro (mais motivo)
+
+  const itens = fonte === 'criativo' ? data.por_criativo : data.por_origem
+  const motivoLabel = MOTIVO_LABELS.find(m => m.key === motivo)?.label ?? ''
+  const ranked = [...itens]
+    .map(it => ({ it, n: (it[motivo] as number) || 0, pct: it.total > 0 ? (((it[motivo] as number) || 0) / it.total) * 100 : 0 }))
+    .filter(r => r.n > 0)
+    .sort((a, b) => pior ? b.n - a.n : a.n - b.n)
+    .slice(0, 20)
+  const maxN = Math.max(...ranked.map(r => r.n), 1)
+  const nomeDe = (it: MotivoFonte) => fonte === 'criativo' ? (it.nome || it.codigo || '—') : (it.origem || '—')
+
+  return (
+    <div className="space-y-3">
+      {/* Controles: fonte + motivo + ordem */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="inline-flex rounded-md border border-border overflow-hidden text-[12px]">
+          {(['criativo', 'origem'] as const).map(f => (
+            <button key={f} onClick={() => setFonte(f)}
+              className={`px-3 py-1.5 capitalize transition-colors ${fonte === f ? 'bg-accent text-white' : 'bg-surface-2 text-ink-muted hover:bg-surface-2/70'}`}>
+              {f === 'criativo' ? 'Por criativo' : 'Por origem'}
+            </button>
+          ))}
+        </div>
+        <select value={motivo} onChange={e => setMotivo(e.target.value as MotivoKey)}
+          className="px-3 py-1.5 text-[12px] border border-border rounded-md bg-surface-2 focus:border-accent outline-none"
+          title="Motivo de fechamento">
+          {MOTIVO_LABELS.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+        </select>
+        <button onClick={() => setPior(p => !p)}
+          className="px-3 py-1.5 text-[12px] border border-border rounded-md bg-surface-2 text-ink-muted hover:bg-surface-2/70 inline-flex items-center gap-1"
+          title="Inverter ordem">
+          {pior ? <ArrowDown className="h-3.5 w-3.5" /> : <ArrowUp className="h-3.5 w-3.5" />}
+          {pior ? 'Pior primeiro' : 'Melhor primeiro'}
+        </button>
+      </div>
+
+      {ranked.length === 0 ? (
+        <p className="text-[12px] text-ink-faint">Nenhuma {fonte === 'criativo' ? 'criativo' : 'origem'} com "{motivoLabel}" no período.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {ranked.map(r => (
+            <div key={nomeDe(r.it)} className="grid grid-cols-[1fr_120px_84px] items-center gap-2 text-[12px]">
+              <span className="truncate text-ink" title={nomeDe(r.it)}>{nomeDe(r.it)}</span>
+              <div className="h-2.5 bg-surface-2 rounded-full overflow-hidden">
+                <div className="h-full rounded-full bg-danger/70" style={{ width: `${(r.n / maxN) * 100}%` }} />
+              </div>
+              <span className="text-right font-mono tabular-nums text-ink whitespace-nowrap">
+                {r.n} <span className="text-[10px] text-ink-faint">({r.pct.toFixed(0)}% de {fmtN(r.it.total)})</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="text-[10px] text-ink-faint pt-1">
+        Mostrando <b>{motivoLabel}</b> por {fonte}. % = parte dos leads daquela fonte que fecharam nesse motivo. "Todos perdidos" soma todos os motivos de fechamento.
+      </p>
+    </div>
+  )
+}
+
 // ============================================================================
 // PAINEL POR VENDEDOR — funil de etiquetas WA + qualif IA + R$ + motivos de perda
 // ============================================================================
@@ -640,6 +883,9 @@ interface CardVend {
   orcN: number            // orçamentos montados no builder
   orcBRL: number          // valor total montado
   ultimaDias: number | null
+  totalPassado: number    // clientes atribuídos a ele (responsável) — base da cobrança
+  comEtiqueta: number     // quantos ele etiquetou (entraram no funil)
+  semEtiqueta: number     // quantos ele NEM etiquetou — buraco de acompanhamento
   veredito: { nivel: 'cobrar' | 'atencao' | 'ok'; tag: string; cor: string; motivo: string }
 }
 
@@ -647,12 +893,18 @@ interface CardVend {
 // e não monta orçamento, não fecha), não placar de venda (venda é sub-registro: depende
 // do vendedor etiquetar à mão).
 function vereditoVendedor(c: Omit<CardVend, 'veredito'>): CardVend['veredito'] {
+  const semPct = c.totalPassado > 0 ? c.semEtiqueta / c.totalPassado : 0
   if (c.ultimaDias != null && c.ultimaDias > 4 && (c.v.quente + c.v.novo) > 20)
     return { nivel: 'cobrar', tag: 'COBRAR', cor: 'danger', motivo: `parou de orçar há ${c.ultimaDias} dias, com fila quente na mão` }
   if (c.contatos >= 200 && c.orcN <= 10 && c.v.vendido <= 1)
     return { nivel: 'cobrar', tag: 'COBRAR', cor: 'danger', motivo: `${fmtN(c.contatos)} contatos e só ${c.orcN} orçamentos montados` }
+  // Não etiqueta: recebeu volume e deixou metade+ dos clientes sem nenhuma etiqueta
+  if (c.totalPassado >= 80 && semPct >= 0.5)
+    return { nivel: 'cobrar', tag: 'NÃO ETIQUETA', cor: 'danger', motivo: `${fmtN(c.semEtiqueta)} dos ${fmtN(c.totalPassado)} clientes (${Math.round(semPct * 100)}%) sem nenhuma etiqueta — sem rastreio do que fez` }
   if (c.orcN >= 25 && c.v.vendido === 0)
     return { nivel: 'atencao', tag: 'DESTRAVAR', cor: 'warning', motivo: `${c.orcN} orçamentos (${fmtBRL(c.orcBRL)}) e 0 venda — fechamento ou falta etiquetar` }
+  if (c.totalPassado >= 80 && semPct >= 0.3)
+    return { nivel: 'atencao', tag: 'ETIQUETAR', cor: 'warning', motivo: `${Math.round(semPct * 100)}% dos clientes sem etiqueta — pedir pra etiquetar pra dar pra acompanhar` }
   return { nivel: 'ok', tag: 'OK', cor: 'success', motivo: c.v.vendido > 0 ? `${c.v.vendido} vendas etiquetadas` : 'em dia' }
 }
 
@@ -660,14 +912,17 @@ const ORDEM_VEREDITO: Record<CardVend['veredito']['nivel'], number> = { cobrar: 
 
 // Mescla painel (etiqueta) + atendimentos (qualif IA) + orçamentos (R$) por primeiro
 // nome, calcula o veredito e ordena por gravidade (cobrar primeiro). Daniel fora.
-function montarCardsVendedor(painel: VendedorPainel[], sla: SlaVendedor[], orc: OrcamentosResumo | undefined): CardVend[] {
+function montarCardsVendedor(painel: VendedorPainel[], sla: SlaVendedor[], orc: OrcamentosResumo | undefined, cobertura: VendedorCobertura[]): CardVend[] {
   const slaByNome = new Map(sla.map(s => [primeiroNome(s.vendedor), s]))
   const orcByNome = new Map((orc?.porVendedor ?? []).map(o => [primeiroNome(o.vendedor), o]))
+  const cobByNome = new Map(cobertura.map(c => [primeiroNome(c.vendedor), c]))
   return painel
     .filter(v => !ehDaniel(v.vendedor))
     .map(v => {
       const k = primeiroNome(v.vendedor)
-      const s = slaByNome.get(k); const o = orcByNome.get(k)
+      const s = slaByNome.get(k); const o = orcByNome.get(k); const cob = cobByNome.get(k)
+      // total passado = base de cobrança (responsável no atendimento). Cai pro SLA/painel se faltar cobertura.
+      const totalPassado = cob?.total_passado ?? s?.totalLeads ?? v.contatos
       const base = {
         v,
         nome: s?.vendedor || capitalizar(v.vendedor),
@@ -675,6 +930,9 @@ function montarCardsVendedor(painel: VendedorPainel[], sla: SlaVendedor[], orc: 
         qualifIa: s?.qualificados ?? null,
         orcN: o?.n ?? 0, orcBRL: o?.brl ?? 0,
         ultimaDias: o?.ultimaDias ?? null,
+        totalPassado,
+        comEtiqueta: cob?.com_etiqueta ?? 0,
+        semEtiqueta: cob?.sem_etiqueta ?? 0,
       }
       return { ...base, veredito: vereditoVendedor(base) }
     })
@@ -739,9 +997,13 @@ function PainelVendedores({ cards }: { cards: CardVend[] }) {
 }
 
 function VendedorCard({ c }: { c: CardVend }) {
-  const { v, nome, contatos, qualifIa, orcN, orcBRL } = c
+  const { v, nome, contatos, qualifIa, orcN, orcBRL, totalPassado, comEtiqueta, semEtiqueta } = c
   const SEM = { danger: 'text-danger border-danger/40 bg-danger/10', warning: 'text-warning border-warning/40 bg-warning/10', success: 'text-success border-success/40 bg-success/10' }[c.veredito.cor] ?? ''
   const qualPct = contatos > 0 && qualifIa != null ? Math.round((qualifIa / contatos) * 100) : null
+  const semPct = totalPassado > 0 ? Math.round((semEtiqueta / totalPassado) * 100) : 0
+  // Reconciliação dos clientes passados: em etiqueta + sem etiqueta = total (fonte: cobertura).
+  // Perdidos é um sub-grupo do "em etiqueta" (mostrado como nota, não fatia separada).
+  const reconTotal = Math.max(comEtiqueta + semEtiqueta, 1)
   // Onde os leads desse vendedor estão (etiqueta atual no WhatsApp)
   const etapas = [
     { label: 'Prospecção', n: v.novo, cor: CAT_COLOR.novo },
@@ -752,14 +1014,19 @@ function VendedorCard({ c }: { c: CardVend }) {
   ]
   const maxEtapa = Math.max(...etapas.map(e => e.n), 1)
   const motivos = [
-    { label: 'Nunca respondeu', n: v.m_nao_respondeu },
+    { label: 'Nunca respondeu', n: v.m_nunca_respondeu },
+    { label: 'Sumiu na conversa', n: v.m_nao_respondeu_mais },
     { label: 'Só base de preço', n: v.m_so_preco },
     { label: 'Fora do orçamento', n: v.m_fora_orcamento },
     { label: 'Não fabricamos', n: v.m_nao_fabricamos },
     { label: 'Sem interesse', n: v.m_sem_interesse },
     { label: 'Comprou concorrente', n: v.m_concorrente },
+    { label: 'Transportadora', n: v.m_transportadora },
+    { label: 'Suporte técnico', n: v.m_suporte },
     { label: 'Outros', n: v.m_outros },
   ].filter(m => m.n > 0).sort((a, b) => b.n - a.n)
+  const motivosSoma = motivos.reduce((s, m) => s + m.n, 0)
+  const perdidoSemMotivo = Math.max(0, v.perdido - motivosSoma)
 
   return (
     <div className="rounded-lg border border-border bg-surface-2/30 p-3.5">
@@ -779,6 +1046,7 @@ function VendedorCard({ c }: { c: CardVend }) {
           <div className="text-[10.5px] mt-0.5">
             <span className="text-ink-faint">IA qualificou </span>
             <span className="font-semibold text-accent tabular-nums">{qualifIa != null ? fmtN(qualifIa) : '—'}</span>
+            {qualifIa != null && <span className="text-ink-faint tabular-nums"> de {fmtN(contatos)}</span>}
             {qualPct != null && <span className="text-ink-faint tabular-nums"> ({qualPct}%)</span>}
             {c.ultimaDias != null && (
               <span className={c.ultimaDias > 4 ? 'text-danger' : 'text-ink-faint'}> · última proposta há {c.ultimaDias}d</span>
@@ -786,10 +1054,31 @@ function VendedorCard({ c }: { c: CardVend }) {
           </div>
         </div>
         <div className="text-right shrink-0">
-          <div className="text-[18px] font-bold tabular-nums text-ink leading-none">{fmtN(contatos)}</div>
-          <div className="text-[9px] text-ink-faint mt-0.5">contatos passados</div>
+          <div className="text-[18px] font-bold tabular-nums text-ink leading-none">{fmtN(totalPassado)}</div>
+          <div className="text-[9px] text-ink-faint mt-0.5">clientes passados</div>
         </div>
       </div>
+
+      {/* Reconciliação: dos clientes passados, quantos ele etiquetou vs deixou SEM etiqueta */}
+      {(comEtiqueta + semEtiqueta) > 0 && (
+        <div className="mb-3">
+          <div className="flex h-2.5 rounded-full overflow-hidden bg-surface-2">
+            <div style={{ width: `${(comEtiqueta / reconTotal) * 100}%`, background: 'hsl(152 60% 45%)' }} title={`Em etiqueta: ${fmtN(comEtiqueta)}`} />
+            <div style={{ width: `${(semEtiqueta / reconTotal) * 100}%`, background: 'hsl(38 92% 50%)' }} title={`Sem etiqueta: ${fmtN(semEtiqueta)}`} />
+          </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1.5 text-[10px]">
+            <span className="text-ink-muted">
+              <span className="inline-block h-2 w-2 rounded-sm mr-1 align-middle" style={{ background: 'hsl(152 60% 45%)' }} />
+              Em etiqueta <b className="tabular-nums text-ink">{fmtN(comEtiqueta)}</b>
+              {v.perdido > 0 && <span className="text-ink-faint"> (perdeu {fmtN(v.perdido)})</span>}
+            </span>
+            <span className={`font-semibold ${semPct >= 40 ? 'text-danger' : semPct >= 25 ? 'text-warning' : 'text-ink-muted'}`}>
+              <span className="inline-block h-2 w-2 rounded-sm mr-1 align-middle" style={{ background: 'hsl(38 92% 50%)' }} />
+              Sem etiqueta nenhuma <b className="tabular-nums">{fmtN(semEtiqueta)}</b> ({semPct}%)
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Funil de etiquetas do WhatsApp */}
       <p className="text-[9px] uppercase tracking-widest text-ink-faint mb-1.5">Etiquetas no WhatsApp</p>
@@ -819,16 +1108,21 @@ function VendedorCard({ c }: { c: CardVend }) {
         {orcN > 0 && <span className="ml-auto text-[10px] text-ink-faint group-hover:text-success">ver →</span>}
       </Link>
 
-      {/* Motivos de perda */}
-      {motivos.length > 0 && (
+      {/* Motivos de perda — completos (somam o total perdido) */}
+      {v.perdido > 0 && (
         <div>
           <p className="text-[10px] text-ink-faint mb-1.5">Perdeu {fmtN(v.perdido)} — por quê:</p>
           <div className="flex flex-wrap gap-1">
-            {motivos.slice(0, 6).map(m => (
+            {motivos.map(m => (
               <span key={m.label} className="text-[10px] px-1.5 py-0.5 rounded bg-danger/10 text-danger tabular-nums">
                 {m.label} <span className="font-semibold">{m.n}</span>
               </span>
             ))}
+            {perdidoSemMotivo > 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-2 text-ink-faint tabular-nums" title="Perdidos sem motivo específico marcado">
+                Sem motivo marcado <span className="font-semibold">{perdidoSemMotivo}</span>
+              </span>
+            )}
           </div>
         </div>
       )}
@@ -1107,7 +1401,7 @@ function FunilTable({ rows, primeiraColuna, semEtq }: { rows: FunilRow[]; primei
               <th className="text-right py-2 px-2 font-semibold" title="Chegou a Follow Up (negociação)">Follow-up</th>
               <th className="text-right py-2 px-2 font-semibold" title="Chegou a Lead Quente (perto de fechar)">Quente</th>
               <th className="text-right py-2 px-2 font-semibold" title="Orçamentos enviados e vendas (etiqueta WhatsApp)">Orç / Venda</th>
-              <th className="text-right py-2 px-2 font-semibold" title="Pediu algo que a Branorte NÃO fabrica">Errado</th>
+              <th className="text-right py-2 px-2 font-semibold" title="Etiqueta NÃO FABRICAMOS: o lead pediu algo que a Branorte não faz">Não fabricamos</th>
               <th className="text-right py-2 px-2 font-semibold">Veredito</th>
             </tr>
           </thead>
@@ -1157,7 +1451,7 @@ function FunilTable({ rows, primeiraColuna, semEtq }: { rows: FunilRow[]; primei
       </div>
       <div className="text-[10px] text-ink-faint pt-1 space-y-0.5 whitespace-normal">
         <p>Funil: <strong className="text-ink-muted">Respondeu</strong> (à IA) → <strong className="text-ink-muted">Qualificou</strong> (a IA viu que quer algo que a Branorte faz, OU o vendedor já moveu pra follow-up/quente/orçamento) → <strong className="text-ink-muted">Follow-up</strong> (negociação) → <strong className="text-ink-muted">Quente</strong> (perto de fechar) → <strong className="text-ink-muted">Orç / Venda</strong> (etiqueta no WhatsApp).</p>
-        <p><strong className="text-danger">Errado</strong> = o lead pediu uma máquina/produto que a Branorte <strong>NÃO fabrica</strong> — o anúncio atraiu o público errado (sinal de segmentação ruim, não de criativo fraco).</p>
+        <p><strong className="text-danger">Não fabricamos</strong> = leads com a etiqueta NÃO FABRICAMOS: pediram uma máquina/produto que a Branorte <strong>não faz</strong> — o anúncio atraiu o público errado (segmentação ruim, não criativo fraco). Os outros motivos de fechamento (não respondeu, sem interesse…) estão no card "Motivos de fechamento" abaixo.</p>
         <p>Passe o mouse no veredito pra ver o porquê. 🟢 escalar verba · 🔴 pausar · 🟠 ajustar ângulo/segmentação · 🟡 manter · ⚪ amostra &lt;{AMOSTRA_MIN} leads · ⚫ sem atribuição. Decisão por QUALIDADE (conversão ~0 em tudo).</p>
       </div>
     </div>
@@ -1270,6 +1564,43 @@ function DistribuicaoGeo({ items }: { items: { uf: string; nome: string; total: 
       </div>
       {/* Lista detalhada por estado (barras) abaixo do mapa */}
       <UfList items={items} />
+    </div>
+  )
+}
+
+// 2º mapa: leads em negociação (follow-up/quente/orçamento) por estado — laranja
+// pra distinguir de "volume de leads" (verde). Mostra mapa + top estados compacto.
+function NegociacaoGeo({ items }: { items: { uf: string; nome: string; total: number; pct: number; isBrasil: boolean }[] }) {
+  const max = Math.max(...items.map(i => i.total), 1)
+  const top = items.slice(0, 12)
+  return (
+    <div className="space-y-3">
+      <Suspense fallback={<div className="h-[330px] grid place-items-center text-[12px] text-ink-faint">Carregando mapa…</div>}>
+        <MapaBrasilLeads items={items} hue={32} />
+      </Suspense>
+      <div className="flex items-center gap-2 text-[10px] text-ink-faint border-b border-border/50 pb-3">
+        <span>Menos</span>
+        <span className="h-2.5 w-6 rounded-sm" style={{ background: 'hsl(32 62% 56%)' }} />
+        <span className="h-2.5 w-6 rounded-sm" style={{ background: 'hsl(32 62% 44%)' }} />
+        <span className="h-2.5 w-6 rounded-sm" style={{ background: 'hsl(32 62% 30%)' }} />
+        <span>Mais em negociação</span>
+        <span className="ml-auto">Estado atual da etiqueta (ignora o período)</span>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-0.5">
+        {top.map(item => (
+          <div key={item.uf} className="grid grid-cols-[36px_1fr_44px_44px] items-center gap-2 text-[11px] py-1">
+            <span className="font-mono text-ink-faint">{item.uf}</span>
+            <div className="min-w-0">
+              <div className="text-ink truncate mb-1">{item.nome}</div>
+              <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${Math.max((item.total / max) * 100, 3)}%`, background: 'hsl(32 80% 50%)' }} />
+              </div>
+            </div>
+            <span className="text-right font-mono tabular-nums text-ink">{item.total}</span>
+            <span className="text-right font-mono tabular-nums text-ink-faint">{item.pct.toFixed(1)}%</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -1458,34 +1789,46 @@ function CicloVenda({ etq }: { etq: NonNullable<ReturnType<typeof useDashboardEt
   )
 }
 
-// Órfãos (NOVO LEAD parado >7d) por vendedor — quem senta no lead novo
+// Órfãos parados >7d por vendedor — 3 baldes: novo, prospecção e sem etiqueta nenhuma
 function LeadsOrfaosVendedor({ orfaos }: { orfaos: OrfaosPorVendedor }) {
   const max = Math.max(...orfaos.por_vendedor.map(v => v.n), 1)
+  const CORES = { novo: 'hsl(217 91% 60%)', prospeccao: 'hsl(38 92% 50%)', sem: 'hsl(0 60% 55%)' }
+  const totSem = orfaos.por_vendedor.reduce((s, v) => s + (v.sem_etiqueta || 0), 0)
   return (
     <div>
-      <div className="flex items-baseline gap-2 mb-3">
+      <div className="flex items-baseline gap-2 mb-1">
         <Ghost className="h-6 w-6 text-warning self-center" />
         <span className="text-[32px] leading-none font-bold text-warning tabular-nums">{fmtN(orfaos.total)}</span>
-        <span className="text-[12px] text-ink-muted">leads novos parados há +7 dias</span>
+        <span className="text-[12px] text-ink-muted">leads parados há +7 dias sem evoluir</span>
+      </div>
+      {/* Legenda dos baldes */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mb-3 text-[10px] text-ink-muted">
+        <span><span className="inline-block h-2 w-2 rounded-sm mr-1 align-middle" style={{ background: CORES.novo }} />Novo lead</span>
+        <span><span className="inline-block h-2 w-2 rounded-sm mr-1 align-middle" style={{ background: CORES.prospeccao }} />Prospecção/tentativa</span>
+        <span><span className="inline-block h-2 w-2 rounded-sm mr-1 align-middle" style={{ background: CORES.sem }} />Sem etiqueta nenhuma <b className="text-danger tabular-nums">{fmtN(totSem)}</b></span>
       </div>
       <div className="space-y-1.5">
         {orfaos.por_vendedor.map(v => (
           <Link
             key={v.vendedor}
             to={`/atendimentos?responsavel=${encodeURIComponent(capitalizar(v.vendedor))}`}
-            className="grid grid-cols-[110px_1fr_36px] items-center gap-2 text-[12px] group"
+            className="grid grid-cols-[110px_1fr_92px] items-center gap-2 text-[12px] group"
             title="Abrir atendimentos deste vendedor"
           >
             <span className="truncate text-ink capitalize group-hover:text-accent">{v.vendedor.toLowerCase()}</span>
-            <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
-              <div className="h-full bg-warning/70 rounded-full" style={{ width: `${(v.n / max) * 100}%` }} />
+            <div className="flex h-2.5 bg-surface-2 rounded-full overflow-hidden" style={{ width: `${Math.max((v.n / max) * 100, 4)}%` }}>
+              {v.novo > 0 && <div style={{ width: `${(v.novo / v.n) * 100}%`, background: CORES.novo }} title={`Novo: ${v.novo}`} />}
+              {v.prospeccao > 0 && <div style={{ width: `${(v.prospeccao / v.n) * 100}%`, background: CORES.prospeccao }} title={`Prospecção: ${v.prospeccao}`} />}
+              {v.sem_etiqueta > 0 && <div style={{ width: `${(v.sem_etiqueta / v.n) * 100}%`, background: CORES.sem }} title={`Sem etiqueta: ${v.sem_etiqueta}`} />}
             </div>
-            <span className="text-right font-mono tabular-nums text-ink">{v.n}</span>
+            <span className="text-right font-mono tabular-nums text-ink whitespace-nowrap">
+              {v.n} <span className="text-[10px] text-ink-faint">({v.novo}/{v.prospeccao}/{v.sem_etiqueta})</span>
+            </span>
           </Link>
         ))}
       </div>
       <p className="text-[10px] text-ink-faint pt-2.5">
-        São leads que entraram, ganharam etiqueta "NOVO LEAD" e travaram aí. Cobrar o 1º atendimento — quem está no topo é quem mais deixa lead esfriar.
+        Leads que travaram em <b>novo</b>, <b>prospecção</b> ou <b>sem etiqueta nenhuma</b> há +7 dias (número = novo/prospecção/sem etiqueta). "Sem etiqueta" é o pior: nem foi registrado. Cobrar o 1º atendimento de quem está no topo.
       </p>
     </div>
   )
