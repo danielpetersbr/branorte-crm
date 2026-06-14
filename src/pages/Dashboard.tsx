@@ -130,6 +130,13 @@ export function Dashboard() {
     })
   }, [data?.funil, etq])
 
+  // Cards de vendedor (3 fontes mescladas + veredito), computados uma vez e
+  // usados pelo Resumo do gerente e pelo Painel por vendedor.
+  const vendCards = useMemo(
+    () => montarCardsVendedor(vendPainel ?? [], data?.slaPorVendedor ?? [], orc),
+    [vendPainel, data?.slaPorVendedor, orc],
+  )
+
   if (isLoading) {
     return (
       <div className="p-6 space-y-4">
@@ -230,6 +237,11 @@ export function Dashboard() {
       {/* BANNER DE ALERTAS — só aparece se há algo crítico */}
       {etq && (etq.alertas.criativos_nao_fabricamos > 0 || etq.alertas.leads_orfaos > 0 || etq.alertas.vendedores_sem_orc > 0) && (
         <AlertasBanner etq={etq} />
+      )}
+
+      {/* RESUMO DO GERENTE — as 2 decisões (marketing + cobrar vendedor) no topo */}
+      {(data.porOrigem.length > 0 || vendCards.length > 0) && (
+        <ResumoGerente porOrigem={data.porOrigem} cards={vendCards} />
       )}
 
       <SectionTitle n="1" titulo="Visão geral" pergunta="Estou crescendo e o que preciso agir agora?" />
@@ -349,8 +361,8 @@ export function Dashboard() {
           title="Painel por vendedor"
           subtitle="Contatos passados → qualificação da IA → etiquetas do funil no WhatsApp → motivos de perda. (Daniel/testes fora.)"
         />
-        {vendPainel && vendPainel.length > 0
-          ? <PainelVendedores painel={vendPainel} sla={data.slaPorVendedor} orc={orc} />
+        {vendCards.length > 0
+          ? <PainelVendedores cards={vendCards} />
           : <SlaTable rows={data.slaPorVendedor} etqPorVendedor={etq?.por_vendedor} />}
       </Card>
 
@@ -443,12 +455,9 @@ function fmtTicket(v: number): string {
 }
 
 function PropostasResumoView({ orc, periodoLabel }: { orc: OrcamentosResumo; periodoLabel: string }) {
-  // Daniel = dono fazendo testes no builder; fora do ranking de vendedores.
-  const top = orc.porVendedor.filter(v => v.brl > 0 && v.vendedor !== '—' && !/daniel/i.test(v.vendedor)).slice(0, 4)
+  const top = orc.porVendedor.filter(v => v.brl > 0 && v.vendedor !== '—').slice(0, 4)
   const maxBrl = Math.max(...top.map(v => v.brl), 1)
-  // Headline = valor enviado (proposta na rua). Sem nenhuma enviada, mostra o gerado.
-  const headline = orc.enviadas > 0 ? orc.valorEnviadoBRL : orc.valorTotalBRL
-  const headlineSub = orc.enviadas > 0 ? 'em propostas enviadas' : 'em propostas geradas'
+  const nVendedores = orc.porVendedor.filter(v => v.vendedor !== '—').length
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,360px)_1fr] gap-5">
       {/* Bloco de números */}
@@ -456,29 +465,29 @@ function PropostasResumoView({ orc, periodoLabel }: { orc: OrcamentosResumo; per
         <div className="flex items-end gap-2">
           <Banknote className="h-6 w-6 text-success mb-1.5 shrink-0" />
           <div>
-            <div className="text-[34px] leading-none font-semibold tabular-nums text-success">{fmtBRL(headline)}</div>
-            <p className="text-[11px] text-ink-faint mt-1">{headlineSub} · {periodoLabel.toLowerCase()}</p>
+            <div className="text-[34px] leading-none font-semibold tabular-nums text-success">{fmtBRL(orc.valorTotalBRL)}</div>
+            <p className="text-[11px] text-ink-faint mt-1">em propostas montadas · {periodoLabel.toLowerCase()}</p>
           </div>
         </div>
         <div className="grid grid-cols-3 gap-2 mt-4">
           <div className="rounded-md bg-surface-2/40 border border-border/30 px-2.5 py-2">
-            <div className="text-[17px] font-bold tabular-nums text-ink">{fmtN(orc.enviadas)}</div>
-            <div className="text-[10px] text-ink-faint leading-tight">enviadas{orc.rascunhos > 0 ? ` · ${fmtN(orc.rascunhos)} rascunho` : ''}</div>
+            <div className="text-[17px] font-bold tabular-nums text-ink">{fmtN(orc.geradas)}</div>
+            <div className="text-[10px] text-ink-faint leading-tight">propostas</div>
           </div>
           <div className="rounded-md bg-surface-2/40 border border-border/30 px-2.5 py-2">
             <div className="text-[17px] font-bold tabular-nums text-ink">{fmtTicket(orc.ticketMedioBRL)}</div>
             <div className="text-[10px] text-ink-faint leading-tight">ticket médio</div>
           </div>
           <div className="rounded-md bg-surface-2/40 border border-border/30 px-2.5 py-2">
-            <div className="text-[17px] font-bold tabular-nums text-ink">{fmtN(orc.geradas)}</div>
-            <div className="text-[10px] text-ink-faint leading-tight">propostas geradas</div>
+            <div className="text-[17px] font-bold tabular-nums text-ink">{fmtN(nVendedores)}</div>
+            <div className="text-[10px] text-ink-faint leading-tight">vendedores</div>
           </div>
         </div>
       </div>
       {/* Top vendedores por valor em proposta */}
       {top.length > 0 && (
         <div>
-          <p className="text-[10px] uppercase tracking-widest text-ink-faint mb-2">Quem mais enviou proposta (R$)</p>
+          <p className="text-[10px] uppercase tracking-widest text-ink-faint mb-2">Quem mais montou proposta (R$)</p>
           <div className="space-y-1.5">
             {top.map(v => (
               <div key={v.vendedor} className="grid grid-cols-[120px_1fr_64px] items-center gap-2 text-[12px]">
@@ -490,7 +499,7 @@ function PropostasResumoView({ orc, periodoLabel }: { orc: OrcamentosResumo; per
               </div>
             ))}
           </div>
-          <p className="text-[10px] text-ink-faint pt-2">Valor das propostas enviadas ao cliente, não venda fechada. Ranking e ticket consideram só as enviadas.</p>
+          <p className="text-[10px] text-ink-faint pt-2">Valor das propostas montadas no builder de orçamento, não venda fechada. Daniel (testes) fora.</p>
         </div>
       )}
     </div>
@@ -606,43 +615,116 @@ function capitalizar(s: string): string {
   return (s || '').toLowerCase().replace(/\b\w/g, m => m.toUpperCase())
 }
 
-function PainelVendedores({ painel, sla, orc }: {
-  painel: VendedorPainel[]
-  sla: SlaVendedor[]
-  orc: OrcamentosResumo | undefined
-}) {
+// Card de vendedor já com as 3 fontes mescladas + veredito de cobrança.
+interface CardVend {
+  v: VendedorPainel
+  nome: string
+  contatos: number
+  qualifIa: number | null
+  orcN: number            // orçamentos montados no builder
+  orcBRL: number          // valor total montado
+  ultimaDias: number | null
+  veredito: { nivel: 'cobrar' | 'atencao' | 'ok'; tag: string; cor: string; motivo: string }
+}
+
+// Semáforo de cobrança — cobra PROCESSO verificável (parou de orçar, recebe muito lead
+// e não monta orçamento, não fecha), não placar de venda (venda é sub-registro: depende
+// do vendedor etiquetar à mão).
+function vereditoVendedor(c: Omit<CardVend, 'veredito'>): CardVend['veredito'] {
+  if (c.ultimaDias != null && c.ultimaDias > 4 && (c.v.quente + c.v.novo) > 20)
+    return { nivel: 'cobrar', tag: 'COBRAR', cor: 'danger', motivo: `parou de orçar há ${c.ultimaDias} dias, com fila quente na mão` }
+  if (c.contatos >= 200 && c.orcN <= 10 && c.v.vendido <= 1)
+    return { nivel: 'cobrar', tag: 'COBRAR', cor: 'danger', motivo: `${fmtN(c.contatos)} contatos e só ${c.orcN} orçamentos montados` }
+  if (c.orcN >= 25 && c.v.vendido === 0)
+    return { nivel: 'atencao', tag: 'DESTRAVAR', cor: 'warning', motivo: `${c.orcN} orçamentos (${fmtBRL(c.orcBRL)}) e 0 venda — fechamento ou falta etiquetar` }
+  return { nivel: 'ok', tag: 'OK', cor: 'success', motivo: c.v.vendido > 0 ? `${c.v.vendido} vendas etiquetadas` : 'em dia' }
+}
+
+const ORDEM_VEREDITO: Record<CardVend['veredito']['nivel'], number> = { cobrar: 0, atencao: 1, ok: 2 }
+
+// Mescla painel (etiqueta) + atendimentos (qualif IA) + orçamentos (R$) por primeiro
+// nome, calcula o veredito e ordena por gravidade (cobrar primeiro). Daniel fora.
+function montarCardsVendedor(painel: VendedorPainel[], sla: SlaVendedor[], orc: OrcamentosResumo | undefined): CardVend[] {
   const slaByNome = new Map(sla.map(s => [primeiroNome(s.vendedor), s]))
   const orcByNome = new Map((orc?.porVendedor ?? []).map(o => [primeiroNome(o.vendedor), o]))
-
-  const cards = painel
+  return painel
     .filter(v => !ehDaniel(v.vendedor))
     .map(v => {
       const k = primeiroNome(v.vendedor)
-      const s = slaByNome.get(k)
-      const o = orcByNome.get(k)
-      return {
+      const s = slaByNome.get(k); const o = orcByNome.get(k)
+      const base = {
         v,
         nome: s?.vendedor || capitalizar(v.vendedor),
         contatos: s?.totalLeads ?? v.contatos,
         qualifIa: s?.qualificados ?? null,
-        orcN: o?.n ?? 0,
-        orcBRL: o?.brl ?? 0,
+        orcN: o?.n ?? 0, orcBRL: o?.brl ?? 0,
+        ultimaDias: o?.ultimaDias ?? null,
       }
+      return { ...base, veredito: vereditoVendedor(base) }
     })
-    .sort((a, b) => b.contatos - a.contatos)
+    .sort((a, b) => ORDEM_VEREDITO[a.veredito.nivel] - ORDEM_VEREDITO[b.veredito.nivel] || b.contatos - a.contatos)
+}
 
-  if (!cards.length) return <p className="text-sm text-ink-faint">Sem vendedores no período.</p>
+// ════════ RESUMO DO GERENTE — as 2 decisões em 10 segundos, no topo ════════
+function ResumoGerente({ porOrigem, cards }: {
+  porOrigem: { origem: string; total: number; ctr: number; engajou: number }[]
+  cards: CardVend[]
+}) {
+  // MARKETING: melhor canal por qualidade, canal que queima verba, dívida de rastreio
+  const escalar = [...porOrigem].filter(o => o.total >= 30).sort((a, b) => b.ctr - a.ctr)[0]
+  const queima = porOrigem.filter(o => o.total >= 50 && o.total > 0 && o.engajou / o.total < 0.12).sort((a, b) => b.total - a.total)[0]
+  const semRastreio = porOrigem.filter(o => /n[aã]o identif|sem origem|desconhec|^outros$|direto/i.test(o.origem)).reduce((s, o) => s + o.total, 0)
+  // VENDEDORES: pega os de "cobrar" e "destravar"
+  const cobrar = cards.filter(c => c.veredito.nivel === 'cobrar').slice(0, 3)
+  const destravar = cards.filter(c => c.veredito.nivel === 'atencao').slice(0, 2)
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-      {cards.map(c => <VendedorCard key={c.nome} {...c} />)}
+    <div className="rounded-xl border border-accent/30 bg-accent/[0.04] p-3 lg:p-4">
+      <div className="flex items-center gap-2 mb-2.5">
+        <span className="text-[13px] font-bold text-ink">👔 Resumo do gerente</span>
+        <span className="text-[10px] text-ink-faint">— o que decidir agora</span>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {/* MARKETING */}
+        <a href="#criativo-veredito" className="block rounded-lg bg-surface-2/40 border border-border/40 p-3 hover:border-accent/30 transition-colors">
+          <p className="text-[10px] uppercase tracking-widest text-ink-faint mb-1.5">📈 Marketing — onde botar dinheiro</p>
+          <ul className="space-y-1 text-[12px] text-ink">
+            {escalar && <li><span className="text-success font-semibold">▲ Escalar {escalar.origem}</span> <span className="text-ink-faint">— melhor lead ({escalar.ctr.toFixed(0)}% qualificam)</span></li>}
+            {queima && <li><span className="text-danger font-semibold">▼ Revisar {queima.origem}</span> <span className="text-ink-faint">— {fmtN(queima.total)} leads e quase ninguém engaja ({Math.round(queima.engajou / queima.total * 100)}%)</span></li>}
+            {semRastreio > 0 && <li><span className="text-warning font-semibold">🔧 Rastreio: {fmtN(semRastreio)} leads sem origem</span> <span className="text-ink-faint">— e é onde caem vendas; corrigir antes de cortar verba</span></li>}
+          </ul>
+        </a>
+        {/* VENDEDORES */}
+        <a href="#vendedores" className="block rounded-lg bg-surface-2/40 border border-border/40 p-3 hover:border-accent/30 transition-colors">
+          <p className="text-[10px] uppercase tracking-widest text-ink-faint mb-1.5">👥 Vendedores — quem cobrar</p>
+          <ul className="space-y-1 text-[12px] text-ink">
+            {cobrar.map(c => (
+              <li key={c.nome}><span className="text-danger font-semibold">🔴 {c.nome.split(' ')[0]}</span> <span className="text-ink-faint">— {c.veredito.motivo}</span></li>
+            ))}
+            {destravar.map(c => (
+              <li key={c.nome}><span className="text-warning font-semibold">🟠 {c.nome.split(' ')[0]}</span> <span className="text-ink-faint">— {c.veredito.motivo}</span></li>
+            ))}
+            {cobrar.length === 0 && destravar.length === 0 && <li className="text-ink-faint">Time em dia — ninguém no vermelho.</li>}
+          </ul>
+        </a>
+      </div>
+      <p className="text-[10px] text-ink-faint mt-2">⚠️ "Venda" é sub-registro (depende do vendedor etiquetar à mão) — cobre PROCESSO (orçamento montado, follow-up), não o placar de vendas.</p>
     </div>
   )
 }
 
-function VendedorCard({ v, nome, contatos, qualifIa, orcN, orcBRL }: {
-  v: VendedorPainel; nome: string; contatos: number; qualifIa: number | null; orcN: number; orcBRL: number
-}) {
+function PainelVendedores({ cards }: { cards: CardVend[] }) {
+  if (!cards.length) return <p className="text-sm text-ink-faint">Sem vendedores no período.</p>
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+      {cards.map(c => <VendedorCard key={c.nome} c={c} />)}
+    </div>
+  )
+}
+
+function VendedorCard({ c }: { c: CardVend }) {
+  const { v, nome, contatos, qualifIa, orcN, orcBRL } = c
+  const SEM = { danger: 'text-danger border-danger/40 bg-danger/10', warning: 'text-warning border-warning/40 bg-warning/10', success: 'text-success border-success/40 bg-success/10' }[c.veredito.cor] ?? ''
   const qualPct = contatos > 0 && qualifIa != null ? Math.round((qualifIa / contatos) * 100) : null
   // Onde os leads desse vendedor estão (etiqueta atual no WhatsApp)
   const etapas = [
@@ -668,17 +750,23 @@ function VendedorCard({ v, nome, contatos, qualifIa, orcN, orcBRL }: {
       {/* Cabeçalho: nome + contatos + qualif IA */}
       <div className="flex items-start justify-between gap-2 mb-3 pb-2.5 border-b border-border/60">
         <div className="min-w-0">
-          <Link
-            to={`/atendimentos?responsavel=${encodeURIComponent(nome)}`}
-            className="text-[13px] font-semibold text-ink hover:text-accent hover:underline block truncate"
-            title="Ver atendimentos deste vendedor"
-          >
-            {nome}
-          </Link>
+          <div className="flex items-center gap-1.5">
+            <Link
+              to={`/atendimentos?responsavel=${encodeURIComponent(nome)}`}
+              className="text-[13px] font-semibold text-ink hover:text-accent hover:underline truncate"
+              title="Ver atendimentos deste vendedor"
+            >
+              {nome}
+            </Link>
+            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 ${SEM}`} title={c.veredito.motivo}>{c.veredito.tag}</span>
+          </div>
           <div className="text-[10.5px] mt-0.5">
             <span className="text-ink-faint">IA qualificou </span>
             <span className="font-semibold text-accent tabular-nums">{qualifIa != null ? fmtN(qualifIa) : '—'}</span>
             {qualPct != null && <span className="text-ink-faint tabular-nums"> ({qualPct}%)</span>}
+            {c.ultimaDias != null && (
+              <span className={c.ultimaDias > 4 ? 'text-danger' : 'text-ink-faint'}> · última proposta há {c.ultimaDias}d</span>
+            )}
           </div>
         </div>
         <div className="text-right shrink-0">
@@ -701,13 +789,13 @@ function VendedorCard({ v, nome, contatos, qualifIa, orcN, orcBRL }: {
         ))}
       </div>
 
-      {/* Propostas geradas (R$) */}
+      {/* Orçamentos montados no builder */}
       <div className="flex items-center gap-1.5 text-[11px] mb-3 px-2 py-1.5 rounded-md bg-success/5 border border-success/20">
         <FilePlus2 className="h-3.5 w-3.5 text-success shrink-0" />
-        <span className="text-ink-muted">Propostas:</span>
+        <span className="text-ink-muted">Orçamentos montados:</span>
         <span className="font-semibold text-ink tabular-nums">{orcN}</span>
         {orcBRL > 0 && <span className="font-semibold text-success tabular-nums">· {fmtBRL(orcBRL)}</span>}
-        {orcN === 0 && <span className="text-ink-faint">— nenhuma enviada</span>}
+        {orcN === 0 && <span className="text-ink-faint">— nenhum no sistema</span>}
       </div>
 
       {/* Motivos de perda */}
