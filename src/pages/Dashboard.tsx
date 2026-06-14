@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, lazy, Suspense } from 'react'
 import { Link } from 'react-router-dom'
 import { useDashboard, type DashboardPreset, type FunilEtapa, type SlaVendedor, type LeadEmRisco } from '@/hooks/useDashboard'
 import { useDashboardEtiquetas, useHeatmapSemanal, CATEGORIA_LABEL, type EtiquetaCategoria } from '@/hooks/useDashboardEtiquetas'
@@ -28,6 +28,9 @@ const COLORS = {
   inkFaint: 'hsl(240 4% 65%)',
   border: 'hsl(240 6% 90%)',
 }
+
+// Mapa choropleth do Brasil — lazy (puxa o Leaflet só quando o dashboard renderiza)
+const MapaBrasilLeads = lazy(() => import('@/components/MapaBrasilLeads'))
 
 function usePresetFilter(): [DashboardPreset, (p: DashboardPreset) => void] {
   const [preset, setPreset] = useState<DashboardPreset>(() => {
@@ -367,7 +370,7 @@ export function Dashboard() {
           title="Distribuição geográfica"
           subtitle={`${fmtN(data.porUf.reduce((s, u) => s + u.total, 0))} leads · ${data.porUf.filter(u => u.isBrasil).length} estados BR · ${data.porUf.filter(u => !u.isBrasil).length} países`}
         />
-        <UfList items={data.porUf} />
+        <DistribuicaoGeo items={data.porUf} />
       </Card>
     </div>
   )
@@ -990,12 +993,12 @@ function FunilTable({ rows, primeiraColuna, semEtq }: { rows: FunilRow[]; primei
               <th className="text-left py-2 px-2 font-semibold">{primeiraColuna}</th>
               <th className="text-left py-2 px-2 font-semibold">Perfil</th>
               <th className="text-right py-2 px-2 font-semibold">Leads</th>
-              <th className="text-right py-2 px-2 font-semibold" title="Respondeu à IA">Resp. IA</th>
-              <th className="text-right py-2 px-2 font-semibold" title="É coisa que a Branorte faz">p/ Branorte</th>
-              <th className="text-right py-2 px-2 font-semibold" title="Chegou a Follow Up (negociação)">Follow</th>
+              <th className="text-right py-2 px-2 font-semibold" title="% dos leads que responderam à IA">Respondeu</th>
+              <th className="text-right py-2 px-2 font-semibold" title="% que quer algo que a Branorte fabrica">Qualificou</th>
+              <th className="text-right py-2 px-2 font-semibold" title="Chegou a Follow Up (negociação)">Follow-up</th>
               <th className="text-right py-2 px-2 font-semibold" title="Chegou a Lead Quente (perto de fechar)">Quente</th>
-              <th className="text-right py-2 px-2 font-semibold" title="Orçamento enviado + vendido (etiqueta)">Conv.</th>
-              <th className="text-right py-2 px-2 font-semibold" title="NÃO FABRICAMOS">Errado</th>
+              <th className="text-right py-2 px-2 font-semibold" title="Orçamentos enviados e vendas (etiqueta WhatsApp)">Orç / Venda</th>
+              <th className="text-right py-2 px-2 font-semibold" title="Pediu algo que a Branorte NÃO fabrica">Errado</th>
               <th className="text-right py-2 px-2 font-semibold">Veredito</th>
             </tr>
           </thead>
@@ -1020,8 +1023,10 @@ function FunilTable({ rows, primeiraColuna, semEtq }: { rows: FunilRow[]; primei
                   <td className={`text-right py-1.5 px-2 font-mono tabular-nums ${r.qualifPct >= 35 ? 'text-success' : r.qualifPct >= 22 ? 'text-warning' : 'text-danger'}`}>{r.qualifPct.toFixed(0)}%</td>
                   <td className="text-right py-1.5 px-2 font-mono tabular-nums text-ink-muted">{r.followUp || '—'}</td>
                   <td className={`text-right py-1.5 px-2 font-mono tabular-nums ${r.leadQuente > 0 ? 'text-success font-semibold' : 'text-ink-faint'}`}>{r.leadQuente || '—'}</td>
-                  <td className="text-right py-1.5 px-2 font-mono tabular-nums text-accent">
-                    {r.conv > 0 ? `${r.vendido}v/${r.orcamento}o` : '—'}
+                  <td className="text-right py-1.5 px-2 font-mono tabular-nums text-accent whitespace-nowrap">
+                    {r.orcamento > 0 || r.vendido > 0
+                      ? [r.orcamento > 0 ? `${r.orcamento} orç` : null, r.vendido > 0 ? `${r.vendido} vd` : null].filter(Boolean).join(' · ')
+                      : '—'}
                   </td>
                   <td className={`text-right py-1.5 px-2 font-mono tabular-nums ${r.nfPct >= 20 ? 'text-danger font-semibold' : r.nfPct >= 10 ? 'text-warning' : 'text-ink-faint'}`}>
                     {r.nf > 0 ? `${r.nfPct.toFixed(0)}%` : '—'}
@@ -1042,7 +1047,7 @@ function FunilTable({ rows, primeiraColuna, semEtq }: { rows: FunilRow[]; primei
         </table>
       </div>
       <div className="text-[10px] text-ink-faint pt-1 space-y-0.5 whitespace-normal">
-        <p>Funil: <strong className="text-ink-muted">Resp. IA</strong> (respondeu) → <strong className="text-ink-muted">p/ Branorte</strong> (quer algo que fabricamos) → <strong className="text-ink-muted">Follow</strong> (negociação) → <strong className="text-ink-muted">Quente</strong> (perto de fechar) → <strong className="text-ink-muted">Conv.</strong> (orçamento/venda). <strong className="text-ink-muted">Errado</strong> = "NÃO FABRICAMOS".</p>
+        <p>Funil: <strong className="text-ink-muted">Respondeu</strong> (à IA) → <strong className="text-ink-muted">Qualificou</strong> (quer algo que fabricamos) → <strong className="text-ink-muted">Follow-up</strong> (negociação) → <strong className="text-ink-muted">Quente</strong> (perto de fechar) → <strong className="text-ink-muted">Orç / Venda</strong> (etiqueta no WhatsApp). <strong className="text-ink-muted">Errado</strong> = "NÃO FABRICAMOS".</p>
         <p>Passe o mouse no veredito pra ver o porquê. 🟢 escalar verba · 🔴 pausar · 🟠 ajustar ângulo/segmentação · 🟡 manter · ⚪ amostra &lt;{AMOSTRA_MIN} leads · ⚫ sem atribuição. Decisão por QUALIDADE (conversão ~0 em tudo).</p>
       </div>
     </div>
@@ -1129,6 +1134,39 @@ function VereditoOrigem({
     }).sort(sortFunil)
 
   return <FunilTable rows={rows} primeiraColuna="Origem (canal)" semEtq={!etq || etq.por_origem.length === 0} />
+}
+
+// Distribuição geográfica — mapa choropleth do Brasil + legenda + top estados + internacional
+function DistribuicaoGeo({ items }: { items: { uf: string; nome: string; total: number; pct: number; isBrasil: boolean }[] }) {
+  const brasil = items.filter(i => i.isBrasil).sort((a, b) => b.total - a.total)
+  const intl = items.filter(i => !i.isBrasil)
+  return (
+    <div className="space-y-3">
+      <Suspense fallback={<div className="h-[330px] grid place-items-center text-[12px] text-ink-faint">Carregando mapa…</div>}>
+        <MapaBrasilLeads items={items} />
+      </Suspense>
+      <div className="flex items-center gap-2 text-[10px] text-ink-faint">
+        <span>Menos</span>
+        <span className="h-2.5 w-6 rounded-sm" style={{ background: 'hsl(152 62% 56%)' }} />
+        <span className="h-2.5 w-6 rounded-sm" style={{ background: 'hsl(152 62% 44%)' }} />
+        <span className="h-2.5 w-6 rounded-sm" style={{ background: 'hsl(152 62% 30%)' }} />
+        <span>Mais leads</span>
+        <span className="ml-auto">Passe o mouse num estado</span>
+      </div>
+      {brasil.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {brasil.slice(0, 10).map(u => (
+            <span key={u.uf} className="text-[11px] px-1.5 py-0.5 rounded bg-surface-2/60 text-ink-muted tabular-nums">
+              <span className="font-mono text-ink-faint">{u.uf}</span> {fmtN(u.total)} <span className="text-ink-faint">{u.pct.toFixed(0)}%</span>
+            </span>
+          ))}
+        </div>
+      )}
+      {intl.length > 0 && (
+        <p className="text-[10px] text-ink-faint">🌎 Internacional: {intl.map(i => `${i.nome} ${fmtN(i.total)}`).join(' · ')}</p>
+      )}
+    </div>
+  )
 }
 
 // Lista de UFs em 2 colunas
