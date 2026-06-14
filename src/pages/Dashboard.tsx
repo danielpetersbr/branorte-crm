@@ -1135,7 +1135,8 @@ function FunilTable({ rows, primeiraColuna, semEtq }: { rows: FunilRow[]; primei
         </table>
       </div>
       <div className="text-[10px] text-ink-faint pt-1 space-y-0.5 whitespace-normal">
-        <p>Funil: <strong className="text-ink-muted">Respondeu</strong> (à IA) → <strong className="text-ink-muted">Qualificou</strong> (quer algo que fabricamos) → <strong className="text-ink-muted">Follow-up</strong> (negociação) → <strong className="text-ink-muted">Quente</strong> (perto de fechar) → <strong className="text-ink-muted">Orç / Venda</strong> (etiqueta no WhatsApp). <strong className="text-ink-muted">Errado</strong> = "NÃO FABRICAMOS".</p>
+        <p>Funil: <strong className="text-ink-muted">Respondeu</strong> (à IA) → <strong className="text-ink-muted">Qualificou</strong> (a IA viu que quer algo que a Branorte faz, OU o vendedor já moveu pra follow-up/quente/orçamento) → <strong className="text-ink-muted">Follow-up</strong> (negociação) → <strong className="text-ink-muted">Quente</strong> (perto de fechar) → <strong className="text-ink-muted">Orç / Venda</strong> (etiqueta no WhatsApp).</p>
+        <p><strong className="text-danger">Errado</strong> = o lead pediu uma máquina/produto que a Branorte <strong>NÃO fabrica</strong> — o anúncio atraiu o público errado (sinal de segmentação ruim, não de criativo fraco).</p>
         <p>Passe o mouse no veredito pra ver o porquê. 🟢 escalar verba · 🔴 pausar · 🟠 ajustar ângulo/segmentação · 🟡 manter · ⚪ amostra &lt;{AMOSTRA_MIN} leads · ⚫ sem atribuição. Decisão por QUALIDADE (conversão ~0 em tudo).</p>
       </div>
     </div>
@@ -1170,12 +1171,16 @@ function VereditoInvestimento({
     const nfPct = c.total > 0 ? (nf / c.total) * 100 : 0
     const leadQuente = e?.lead_quente ?? 0
     const followUp = e?.follow_up ?? 0
-    const vi: VerdictInput = { label: c.nome || c.codigo, total: c.total, engajouPct, qualifPct: c.ctr, nfPct, followUp, leadQuente, vendido, orcamento }
+    // Qualificou = IA qualificou OU o vendedor moveu o lead pro funil (follow-up/
+    // quente/orçamento/vendido). Pega o maior dos dois (não soma, pra não duplicar).
+    const qualifEf = Math.max(c.qualificados, followUp + leadQuente + orcamento + vendido)
+    const qualifPct = c.total > 0 ? (qualifEf / c.total) * 100 : 0
+    const vi: VerdictInput = { label: c.nome || c.codigo, total: c.total, engajouPct, qualifPct, nfPct, followUp, leadQuente, vendido, orcamento }
     const { verdict, score, reasonKey } = classifyVerdict(vi, false)
     return {
       key: c.codigo, codigo: c.codigo, label: c.nome || '—',
       perfil: perfilCliente(c), total: c.total,
-      engajouPct, qualifPct: c.ctr,
+      engajouPct, qualifPct,
       followUp, leadQuente,
       conv, vendido, orcamento, convPct, nf, nfPct,
       verdict, score, reason: reasonFor(reasonKey, vi),
@@ -1209,12 +1214,15 @@ function VereditoOrigem({
       const nfPct = o.total > 0 ? (nf / o.total) * 100 : 0
       const leadQuente = e?.lead_quente ?? 0
       const followUp = e?.follow_up ?? 0
-      const vi: VerdictInput = { label: o.origem, total: o.total, engajouPct, qualifPct: o.ctr, nfPct, followUp, leadQuente, vendido, orcamento }
+      // Qualificou = IA OU vendedor moveu pro funil (follow-up/quente/orçamento/vendido).
+      const qualifEf = Math.max(o.qualificados, followUp + leadQuente + orcamento + vendido)
+      const qualifPct = o.total > 0 ? (qualifEf / o.total) * 100 : 0
+      const vi: VerdictInput = { label: o.origem, total: o.total, engajouPct, qualifPct, nfPct, followUp, leadQuente, vendido, orcamento }
       const { verdict, score, reasonKey } = classifyVerdict(vi, true)
       return {
         key: o.origem, label: o.origem,
         perfil: perfilCliente(o), total: o.total,
-        engajouPct, qualifPct: o.ctr,
+        engajouPct, qualifPct,
         followUp, leadQuente,
         conv, vendido, orcamento, convPct, nf, nfPct,
         verdict, score, reason: reasonFor(reasonKey, vi),
