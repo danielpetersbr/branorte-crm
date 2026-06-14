@@ -809,7 +809,10 @@ function MotivosPorFonteView({ data }: { data: { por_criativo: MotivoFonte[]; po
     .sort((a, b) => pior ? b.n - a.n : a.n - b.n)
     .slice(0, 20)
   const maxN = Math.max(...ranked.map(r => r.n), 1)
-  const nomeDe = (it: MotivoFonte) => fonte === 'criativo' ? (it.nome || it.codigo || '—') : (it.origem || '—')
+  // ID ÚNICO p/ key do React: criativo usa o CÓDIGO (vários criativos repetem o mesmo
+  // nome_oficial — &8/&63/&9 são todos "COMPACTA 02"; sem isso o React duplica linha).
+  const idDe = (it: MotivoFonte) => fonte === 'criativo' ? (it.codigo || it.nome || '?') : (it.origem || '?')
+  const labelDe = (it: MotivoFonte) => fonte === 'criativo' ? (it.nome || it.codigo || '—') : (it.origem || '—')
 
   return (
     <div className="space-y-3">
@@ -837,24 +840,34 @@ function MotivosPorFonteView({ data }: { data: { por_criativo: MotivoFonte[]; po
       </div>
 
       {ranked.length === 0 ? (
-        <p className="text-[12px] text-ink-faint">Nenhuma {fonte === 'criativo' ? 'criativo' : 'origem'} com "{motivoLabel}" no período.</p>
+        <p className="text-[12px] text-ink-faint">Nenhum{fonte === 'criativo' ? ' criativo' : 'a origem'} com "{motivoLabel}" no período.</p>
       ) : (
         <div className="space-y-1.5">
-          {ranked.map(r => (
-            <div key={nomeDe(r.it)} className="grid grid-cols-[1fr_120px_84px] items-center gap-2 text-[12px]">
-              <span className="truncate text-ink" title={nomeDe(r.it)}>{nomeDe(r.it)}</span>
-              <div className="h-2.5 bg-surface-2 rounded-full overflow-hidden">
-                <div className="h-full rounded-full bg-danger/70" style={{ width: `${(r.n / maxN) * 100}%` }} />
+          {ranked.map((r, i) => {
+            const cod = r.it.codigo
+            const temNomeProprio = fonte === 'criativo' && !!cod && !!r.it.nome
+            return (
+              <div key={idDe(r.it)} className="grid grid-cols-[20px_1fr_110px_92px] items-center gap-2 text-[12px]">
+                <span className="text-[10px] text-ink-faint tabular-nums text-right">{i + 1}</span>
+                <span className="truncate text-ink min-w-0" title={`${cod ? cod + ' · ' : ''}${labelDe(r.it)}`}>
+                  {temNomeProprio && (
+                    <span className="font-mono text-[10px] text-accent bg-accent/10 rounded px-1 py-0.5 mr-1.5 align-middle">{cod}</span>
+                  )}
+                  {labelDe(r.it)}
+                </span>
+                <div className="h-2.5 bg-surface-2 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full bg-danger/70" style={{ width: `${(r.n / maxN) * 100}%` }} />
+                </div>
+                <span className="text-right font-mono tabular-nums text-ink whitespace-nowrap">
+                  {r.n} <span className="text-[10px] text-ink-faint">({r.pct.toFixed(0)}% de {fmtN(r.it.total)})</span>
+                </span>
               </div>
-              <span className="text-right font-mono tabular-nums text-ink whitespace-nowrap">
-                {r.n} <span className="text-[10px] text-ink-faint">({r.pct.toFixed(0)}% de {fmtN(r.it.total)})</span>
-              </span>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
       <p className="text-[10px] text-ink-faint pt-1">
-        Mostrando <b>{motivoLabel}</b> por {fonte}. % = parte dos leads daquela fonte que fecharam nesse motivo. "Todos perdidos" soma todos os motivos de fechamento.
+        Mostrando <b>{motivoLabel}</b> por {fonte}{fonte === 'criativo' ? ' (código em destaque — vários criativos têm o mesmo nome)' : ''}. % = parte dos leads daquela fonte que fecharam nesse motivo. "Todos perdidos" soma todos os motivos de fechamento.
       </p>
     </div>
   )
