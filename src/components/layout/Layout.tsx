@@ -28,7 +28,7 @@ interface NavItem {
 }
 
 const PRIMARY: NavItem[] = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/', label: 'Dashboard', icon: LayoutDashboard, permKey: 'menu.dashboard' },
   { to: '/atendimentos', label: 'Atendimentos', icon: MessageSquare, countKey: 'atendimentos', permKey: 'menu.atendimentos' },
   { to: '/contatos', label: 'Contatos', icon: Users, permKey: 'menu.contatos' },
   { to: '/consulta', label: 'Consulta', icon: Search, permKey: 'due_diligence.consultar' },
@@ -58,13 +58,13 @@ const SECONDARY: NavItem[] = [
     children: [
       { to: '/orcamentos/montar', label: 'Montar Orçamento', icon: Package },
       { to: '/orcamentos/salvos', label: 'Salvos (Editar)', icon: List },
-      { to: '/orcamentos/catalogo-admin', label: 'Catálogo (Admin)', icon: Shield },
-      { to: '/orcamentos/motores', label: 'Motores (Preços)', icon: Zap },
-      { to: '/orcamentos/precos', label: 'Tabela de Preços', icon: BookOpen },
-      { to: '/orcamentos/conversao', label: 'Conversão (KPIs)', icon: TrendingUp },
-      { to: '/admin/transportador-funcoes', label: 'Funções Chupim', icon: GitBranch },
-      { to: '/orcamentos', label: 'Painel', icon: BarChart2 },
-      { to: '/orcamentos/lista', label: 'Lista', icon: List },
+      { to: '/orcamentos/catalogo-admin', label: 'Catálogo (Admin)', icon: Shield, permKey: 'menu.orcamentos_avancado' },
+      { to: '/orcamentos/motores', label: 'Motores (Preços)', icon: Zap, permKey: 'menu.orcamentos_avancado' },
+      { to: '/orcamentos/precos', label: 'Tabela de Preços', icon: BookOpen, permKey: 'menu.orcamentos_avancado' },
+      { to: '/orcamentos/conversao', label: 'Conversão (KPIs)', icon: TrendingUp, permKey: 'menu.orcamentos_avancado' },
+      { to: '/admin/transportador-funcoes', label: 'Funções Chupim', icon: GitBranch, permKey: 'menu.orcamentos_avancado' },
+      { to: '/orcamentos', label: 'Painel', icon: BarChart2, permKey: 'menu.orcamentos_avancado' },
+      { to: '/orcamentos/lista', label: 'Lista', icon: List, permKey: 'menu.orcamentos_avancado' },
     ],
   },
   {
@@ -187,6 +187,8 @@ export function Layout() {
   // Visualizador: barra mobile só com Início + Atender (resto é bloqueado por rota).
   const mobileNav = profile?.role === 'visualizador'
     ? MOBILE_NAV.filter(l => l.to === '/' || l.to === '/atendimentos')
+    : profile?.role === 'vendor'
+    ? MOBILE_NAV.filter(l => l.to === '/atendimentos' || l.to === '/orcamentos/montar')
     : MOBILE_NAV
 
   // Removido auto-colapse: usuário controla manualmente via botão.
@@ -266,7 +268,7 @@ export function Layout() {
         </NavLink>
         {showChildren && (
           <div className="mt-0.5 flex flex-col gap-0.5">
-            {l.children!.map(renderChild)}
+            {l.children!.filter(visible).map(renderChild)}
           </div>
         )}
       </div>

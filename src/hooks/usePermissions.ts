@@ -19,6 +19,7 @@ export const FEATURE_CATALOG: Array<{
   group: 'Menu' | 'Ações'
   description?: string
 }> = [
+  { key: 'menu.dashboard', label: 'Dashboard', group: 'Menu' },
   { key: 'menu.atendimentos', label: 'Atendimentos', group: 'Menu' },
   { key: 'menu.contatos', label: 'Contatos', group: 'Menu' },
   { key: 'menu.atribuir', label: 'Atribuir', group: 'Menu' },
@@ -26,6 +27,7 @@ export const FEATURE_CATALOG: Array<{
   { key: 'menu.etiquetas_zap', label: 'Etiquetas Zap', group: 'Menu' },
   { key: 'menu.atividade_diaria', label: 'Atividade Diária', group: 'Menu' },
   { key: 'menu.orcamentos', label: 'Orçamentos', group: 'Menu' },
+  { key: 'menu.orcamentos_avancado', label: 'Orçamentos avançado (Catálogo/Motores/Preços/Conversão/Painel/Lista)', group: 'Menu' },
   { key: 'menu.vendidos', label: 'Vendidos', group: 'Menu' },
   { key: 'menu.frete', label: 'Frete', group: 'Menu' },
   { key: 'menu.controle', label: 'Controle (Vendas)', group: 'Menu' },
@@ -58,24 +60,17 @@ export const ROLE_LABELS: Record<AssignableRole, string> = {
 const FALLBACK: Record<AssignableRole, Record<string, boolean>> = {
   admin: Object.fromEntries(FEATURE_CATALOG.map(f => [f.key, true])),
   vendor: {
+    // Vendedor restrito: só Atendimentos, Consulta, Montar/Editar Orçamento e Mapa
+    // de Visitas (este sem permKey, sempre visível). Demais menus ficam ocultos.
     'menu.atendimentos': true,
-    'menu.contatos': true,
-    'menu.atribuir': true,
-    'menu.funil': true,
-    'menu.etiquetas_zap': true,
-    'menu.atividade_diaria': true,
     'menu.orcamentos': true,
-    'menu.vendidos': true,
-    'menu.frete': true,
-    'menu.controle': true,
-    'menu.projeto': true,
-    'menu.due_diligence': true,
     'orcamentos.criar': true,
     'due_diligence.consultar': true,
   },
   marketing: {},
-  // Visualizador: só Dashboard (sempre visível) + Atendimentos.
+  // Visualizador: só Dashboard + Atendimentos.
   visualizador: {
+    'menu.dashboard': true,
     'menu.atendimentos': true,
   },
 }

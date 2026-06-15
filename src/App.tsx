@@ -184,6 +184,16 @@ function AppRoutes() {
     return <Navigate to="/" replace />
   }
 
+  // Vendedor: acesso restrito a Atendimentos, Consulta, Montar/Editar Orçamento e
+  // Mapa de Visitas (+ Perfil). Dashboard escondido → "/" e demais rotas caem em
+  // Atendimentos. O menu já esconde; isto trava o acesso por URL direta.
+  const VENDOR_PREFIXES = ['/atendimentos', '/consulta', '/orcamentos/montar', '/orcamentos/salvos', '/orcamentos/novo', '/mapa-visitas', '/perfil']
+  if (profile.role === 'vendor') {
+    const p = loc.pathname
+    const allowed = VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
+    if (!allowed) return <Navigate to="/atendimentos" replace />
+  }
+
   // Aprovado → app
   // Layout envolve <Outlet> em <Suspense> pra carregar chunks lazy de cada página.
   return (
