@@ -431,16 +431,6 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
     refetchInterval: 20000,
   })
 
-  // Feed ao vivo: o que os vendedores estão fazendo (movimentos de etiqueta no funil)
-  const { data: atividade } = useQuery<Array<{ vendedor: string; para: string | null; qtd: number; em: string }>>({
-    queryKey: ['escritorio-atividade'],
-    queryFn: async () => {
-      const { data } = await supabase.rpc('escritorio_atividade', { p_limite: 30 })
-      return ((data ?? []) as Array<Record<string, any>>).map(r => ({ vendedor: r.vendedor_nome, para: r.etiqueta_para, qtd: r.qtd, em: r.detectado_em }))
-    },
-    refetchInterval: 15000,
-  })
-
   const ocupantes = useMemo<Ocupante[]>(() => {
     const vend: Ocupante[] = vendedores.map(v => ({ nome: v.vendedor_nome, tipo: 'vendedor', online: v.online, setor: null }))
     const extra: Ocupante[] = (pessoas ?? []).map(p => ({ nome: p.nome, tipo: 'outro', online: false, setor: p.setor }))
@@ -1083,32 +1073,6 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
           })()}
         </div>
 
-        {/* FEED ao vivo — o que os vendedores estão fazendo agora */}
-        <div className="mt-3 pt-3 border-t border-border">
-          <h3 className="text-sm font-bold text-ink mb-2 flex items-center gap-1.5">
-            📋 Atividade ao vivo
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          </h3>
-          <div className="space-y-0.5 lg:max-h-[320px] overflow-y-auto pr-0.5">
-            {(atividade ?? []).length === 0 && <div className="text-[11px] text-ink-faint text-center py-3">Sem movimentos recentes.</div>}
-            {(atividade ?? []).map((a, i) => {
-              const info = etiquetaInfo(a.para)
-              const destaque = /VENDIDO|OR.AMENTO|QUENTE/i.test(a.para || '')
-              return (
-                <div key={i} className={`flex items-center gap-2 text-[11px] leading-snug px-1.5 py-1 rounded ${destaque ? 'bg-emerald-500/10 ring-1 ring-emerald-400/20' : 'hover:bg-white/[0.03]'}`}>
-                  <span className="shrink-0 text-[13px]">{info.icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <span className="font-bold text-ink">{a.vendedor}</span>
-                    {a.qtd > 1 && <span className="text-accent font-bold"> {a.qtd}×</span>}
-                    <span className="text-ink-muted"> → </span>
-                    <span className={`font-semibold ${info.cor}`}>{a.para}</span>
-                  </div>
-                  <span className="shrink-0 text-ink-faint text-[9px] tabular-nums">{haRel(a.em)}</span>
-                </div>
-              )
-            })}
-          </div>
-        </div>
       </aside>
 
       {/* Coluna de RANKING do mês — ao lado do ranking do dia */}
