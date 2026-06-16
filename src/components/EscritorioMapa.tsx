@@ -676,26 +676,26 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
 
               {nome ? (
                 <>
-                  <span className="absolute left-1/2 -translate-x-1/2 -bottom-1 max-w-[130%] px-1.5 py-px rounded-md bg-black/55 ring-1 ring-white/10 text-[8px] font-bold text-white truncate leading-tight">
+                  <span className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 max-w-[140%] px-2 py-0.5 rounded-md bg-black/60 ring-1 ring-white/10 text-[11px] font-bold text-white truncate leading-tight">
                     {nome.split(' ')[0]}
                   </span>
                   {isOutro ? (
-                    <span className="absolute -top-1 right-0 text-[7px] font-bold px-1 py-0.5 rounded bg-purple-500/45 ring-1 ring-purple-300/30 text-purple-50 leading-none">
+                    <span className="absolute -top-1.5 right-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/50 ring-1 ring-purple-300/40 text-purple-50 leading-none">
                       {abreviaSetor(info?.setor ?? null)}
                     </span>
                   ) : (
                     <>
                       <span
-                        className={`absolute top-0.5 right-0.5 h-2 w-2 rounded-full ring-1 ring-black/50 ${cfg?.dot ?? 'bg-slate-500'} ${cfg?.glow ? 'shadow-[0_0_6px_1px_rgba(16,185,129,0.75)] animate-pulse' : ''}`}
+                        className={`absolute top-1 right-1 h-3 w-3 rounded-full ring-2 ring-black/50 ${cfg?.dot ?? 'bg-slate-500'} ${cfg?.glow ? 'shadow-[0_0_8px_2px_rgba(16,185,129,0.8)] animate-pulse' : ''}`}
                         title={cfg?.label ?? 'sem sinal'}
                       />
                       {!editLayout && ls && ls.enviadosHoje > 0 && (
-                        <span className="absolute -bottom-1 right-0 text-[7px] font-bold px-1 py-0.5 rounded-full bg-emerald-500/35 text-emerald-50 ring-1 ring-emerald-400/40 leading-none" title={`${ls.enviadosHoje} leads recebidos hoje`}>
+                        <span className="absolute -bottom-1.5 right-0 inline-flex items-center gap-0.5 text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/40 text-emerald-50 ring-1 ring-emerald-400/50 leading-none" title={`${ls.enviadosHoje} leads recebidos hoje`}>
                           {ls.enviadosHoje}
                         </span>
                       )}
                       {!editLayout && orcDe(nome) > 0 && (
-                        <span className="absolute -bottom-1 left-0 text-[7px] font-bold px-1 py-0.5 rounded-full bg-sky-500/35 text-sky-50 ring-1 ring-sky-400/40 leading-none" title={`${orcDe(nome)} orçamentos feitos hoje`}>
+                        <span className="absolute -bottom-1.5 left-0 inline-flex items-center gap-0.5 text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-sky-500/40 text-sky-50 ring-1 ring-sky-400/50 leading-none" title={`${orcDe(nome)} orçamentos feitos hoje`}>
                           {'\u{1F4C4}'}{orcDe(nome)}
                         </span>
                       )}
@@ -712,7 +712,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
                   )}
                 </>
               ) : (
-                <span className="absolute inset-0 flex items-center justify-center text-[11px] font-bold text-ink/30">{idx + 1}</span>
+                <span className="absolute inset-0 flex items-center justify-center text-[15px] font-bold text-ink/30">{idx + 1}</span>
               )}
             </div>
           )
