@@ -69,29 +69,67 @@ function hueFromName(name: string): number {
   return Math.abs(h) % 360
 }
 
+// Gradientes/filtros compartilhados (referenciados por url(#id) em todas as estações).
+function WorkDefs() {
+  return (
+    <svg width="0" height="0" className="absolute" aria-hidden="true">
+      <defs>
+        <linearGradient id="ws-desk" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#bb9069" />
+          <stop offset="1" stopColor="#80561f" />
+        </linearGradient>
+        <linearGradient id="ws-screen" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#5eead4" />
+          <stop offset="1" stopColor="#3b82f6" />
+        </linearGradient>
+        <filter id="ws-soft" x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur stdDeviation="1.4" />
+        </filter>
+      </defs>
+    </svg>
+  )
+}
+
 function Workstation({ tipo, empty, name }: { tipo: 'vendedor' | 'outro'; empty: boolean; name: string }) {
   const hue = hueFromName(name || 'x')
-  const shirt = empty ? '#3a4456' : tipo === 'outro' ? 'hsl(270 48% 56%)' : `hsl(${hue} 58% 54%)`
+  const shirt = empty ? '#3a4456' : tipo === 'outro' ? 'hsl(270 50% 58%)' : `hsl(${hue} 60% 56%)`
   const hair = empty ? '#2c3441' : tipo === 'outro' ? 'hsl(270 35% 30%)' : `hsl(${hue} 45% 26%)`
   return (
-    <svg viewBox="0 0 100 92" className="w-full h-full" preserveAspectRatio="xMidYMid meet">
-      <ellipse cx="50" cy="86" rx="42" ry="6" fill="#000" opacity="0.18" />
-      <rect x="35" y="3" width="30" height="19" rx="9" fill="#39434f" />
-      <rect x="38" y="6" width="24" height="13" rx="6.5" fill="#4d5a6b" />
+    <svg viewBox="0 0 100 96" className="w-full h-full" preserveAspectRatio="xMidYMid meet">
+      {/* sombra suave no chão */}
+      <ellipse cx="50" cy="90" rx="40" ry="5.5" fill="#000" opacity="0.22" filter="url(#ws-soft)" />
+      {/* cadeira moderna */}
+      <rect x="35" y="2" width="30" height="17" rx="8.5" fill="#2b333f" />
+      <rect x="38.5" y="4.5" width="23" height="11" rx="6" fill="#3c4757" />
       {!empty && (
         <>
-          <ellipse cx="50" cy="41" rx="19" ry="11.5" fill={shirt} />
-          <circle cx="50" cy="30" r="10.5" fill="#f0c9a8" />
-          <path d="M39.5 30 a10.5 10.5 0 0 1 21 0 q-10.5 -7 -21 0 z" fill={hair} />
+          {/* corpo + luz de cima */}
+          <ellipse cx="50" cy="40" rx="18.5" ry="11.5" fill={shirt} />
+          <ellipse cx="50" cy="36.5" rx="14" ry="6" fill="#ffffff" opacity="0.13" />
+          {/* cabeça + cabelo + brilho */}
+          <circle cx="50" cy="29" r="10.5" fill="#f1c7a3" />
+          <path d="M39.5 29 a10.5 10.5 0 0 1 21 0 q-10.5 -7.5 -21 0 z" fill={hair} />
+          <ellipse cx="46" cy="23.5" rx="4.5" ry="2.1" fill="#ffffff" opacity="0.16" />
         </>
       )}
-      <rect x="11" y="50" width="78" height="36" rx="6" fill="#9c6b48" />
-      <rect x="11" y="50" width="78" height="8" rx="6" fill="#b07d57" />
-      <rect x="39" y="51" width="22" height="13" rx="2" fill="#10151f" />
-      <rect x="41.5" y="53" width="17" height="9" rx="1" fill={empty ? '#243042' : 'hsl(190 70% 55%)'} opacity={empty ? 0.7 : 0.9} />
-      <rect x="40" y="70" width="20" height="5.5" rx="1.5" fill="#c3ccd9" />
-      <circle cx="66" cy="73" r="2.2" fill="#c3ccd9" />
-      <circle cx="22" cy="73" r="3" fill={empty ? '#3a4456' : 'hsl(150 55% 45%)'} />
+      {/* mesa com gradiente + borda de luz */}
+      <rect x="11" y="49" width="78" height="37" rx="7" fill="url(#ws-desk)" />
+      <rect x="11" y="49" width="78" height="7" rx="7" fill="#cb9d72" opacity="0.85" />
+      {/* monitor com tela brilhando */}
+      <rect x="47.5" y="61.5" width="5" height="5" rx="1" fill="#0c1118" />
+      <rect x="38" y="50" width="24" height="14" rx="2" fill="#0b1220" />
+      <rect x="40" y="52" width="20" height="10" rx="1" fill="url(#ws-screen)" opacity={empty ? 0.25 : 0.95} />
+      <rect x="41" y="53" width="7" height="8" rx="1" fill="#ffffff" opacity="0.10" />
+      {/* teclado + mouse */}
+      <rect x="40" y="71" width="20" height="5.5" rx="1.5" fill="#d3dae5" />
+      <circle cx="66" cy="73.5" r="2.2" fill="#d3dae5" />
+      {/* caneca */}
+      <circle cx="21" cy="73" r="3" fill={empty ? '#3a4456' : 'hsl(150 55% 46%)'} />
+      <path d="M24 71.6 q2.8 1.4 0 2.8" stroke={empty ? '#3a4456' : 'hsl(150 55% 46%)'} strokeWidth="1.1" fill="none" />
+      {/* plantinha */}
+      <rect x="77.5" y="70.5" width="6" height="6" rx="1" fill="#7c5a3a" />
+      <circle cx="80.5" cy="69.5" r="4" fill="hsl(140 45% 40%)" />
+      <circle cx="78.5" cy="70.5" r="2.4" fill="hsl(140 48% 50%)" />
     </svg>
   )
 }
@@ -502,15 +540,27 @@ export function EscritorioMapa({ vendedores }: { vendedores: VendedorLite[] }) {
           touchAction: modo === 'paredes' ? 'none' : undefined,
         }}
       >
-        <svg viewBox={`0 0 ${VB.w} ${VB.h}`} className="absolute inset-0 w-full h-full pointer-events-none text-ink/25" preserveAspectRatio="none">
+        <WorkDefs />
+        <svg viewBox={`0 0 ${VB.w} ${VB.h}`} className="absolute inset-0 w-full h-full pointer-events-none text-ink/35" preserveAspectRatio="none">
+          <defs>
+            <pattern id="floor-grid" width="30" height="30" patternUnits="userSpaceOnUse">
+              <path d="M30 0 H0 V30" fill="none" stroke="currentColor" strokeWidth="0.6" />
+            </pattern>
+            <radialGradient id="floor-vig" cx="50%" cy="34%" r="80%">
+              <stop offset="52%" stopColor="#000" stopOpacity="0" />
+              <stop offset="100%" stopColor="#000" stopOpacity="0.4" />
+            </radialGradient>
+          </defs>
+          <rect x="0" y="0" width={VB.w} height={VB.h} fill="url(#floor-grid)" opacity="0.32" />
+          <rect x="0" y="0" width={VB.w} height={VB.h} fill="url(#floor-vig)" />
           {temCustom ? (
-            <g fill="none" stroke="currentColor" strokeWidth={2.5}>
-              {(paredes ?? []).map(p => <rect key={p.id} x={p.x} y={p.y} width={p.w} height={p.h} rx={3} />)}
+            <g fill="none" stroke="currentColor" strokeWidth={3} strokeLinejoin="round">
+              {(paredes ?? []).map(p => <rect key={p.id} x={p.x} y={p.y} width={p.w} height={p.h} rx={4} />)}
             </g>
           ) : (
             <>
-              <rect x={16} y={18} width={612} height={606} rx={10} fill="none" stroke="currentColor" strokeWidth={3} />
-              <g fill="none" stroke="currentColor" strokeWidth={2.5}>
+              <rect x={16} y={18} width={612} height={606} rx={12} fill="none" stroke="currentColor" strokeWidth={3} />
+              <g fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                 {LINES.map((l, i) => <line key={i} x1={l[0]} y1={l[1]} x2={l[2]} y2={l[3]} />)}
               </g>
             </>
@@ -572,15 +622,18 @@ export function EscritorioMapa({ vendedores }: { vendedores: VendedorLite[] }) {
 
               {nome ? (
                 <>
-                  <span className="absolute left-1/2 -translate-x-1/2 bottom-0.5 max-w-full px-1 text-[8px] font-bold text-ink truncate leading-none">
+                  <span className="absolute left-1/2 -translate-x-1/2 -bottom-1 max-w-[130%] px-1.5 py-px rounded-md bg-black/55 ring-1 ring-white/10 text-[8px] font-bold text-white truncate leading-tight">
                     {nome.split(' ')[0]}
                   </span>
                   {isOutro ? (
-                    <span className="absolute top-0 right-0 text-[7px] font-bold px-1 py-0.5 rounded bg-purple-500/30 text-purple-200 leading-none">
+                    <span className="absolute -top-1 right-0 text-[7px] font-bold px-1 py-0.5 rounded bg-purple-500/45 ring-1 ring-purple-300/30 text-purple-50 leading-none">
                       {abreviaSetor(info?.setor ?? null)}
                     </span>
                   ) : (
-                    <span className={`absolute top-0.5 right-0.5 h-2 w-2 rounded-full ring-1 ring-black/40 ${online ? 'bg-emerald-400' : 'bg-slate-500'}`} title={online ? 'ligado' : 'desligado'} />
+                    <span
+                      className={`absolute top-0.5 right-0.5 h-2 w-2 rounded-full ring-1 ring-black/50 ${online ? 'bg-emerald-400 shadow-[0_0_6px_1px_rgba(16,185,129,0.7)] animate-pulse' : 'bg-slate-500'}`}
+                      title={online ? 'ligado' : 'desligado'}
+                    />
                   )}
                   {!editLayout && (
                     <button
