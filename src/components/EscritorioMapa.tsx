@@ -125,6 +125,29 @@ const RANK_METRICAS = [
   { key: 'conversao',    label: 'Conv.',  icon: '🎯', cor: 'text-amber-300',  bar: 'bg-amber-400' },
 ] as const
 
+// Ícone/cor por etiqueta de destino (feed de atividade ao vivo)
+function etiquetaInfo(nome: string | null): { icon: string; cor: string } {
+  const s = (nome || '').toUpperCase()
+  if (/VENDIDO/.test(s)) return { icon: '✅', cor: 'text-green-300' }
+  if (/OR.AMENTO/.test(s)) return { icon: '📄', cor: 'text-sky-300' }
+  if (/QUENTE/.test(s)) return { icon: '🔥', cor: 'text-orange-300' }
+  if (/NOVO LEAD/.test(s)) return { icon: '🆕', cor: 'text-cyan-300' }
+  if (/FOLLOW/.test(s)) return { icon: '🔄', cor: 'text-indigo-300' }
+  if (/TENTATIVA/.test(s)) return { icon: '↩️', cor: 'text-blue-300' }
+  if (/PROSPEC/.test(s)) return { icon: '🔍', cor: 'text-slate-300' }
+  if (/RESOLVIDO/.test(s)) return { icon: '☑️', cor: 'text-teal-300' }
+  if (/INTERESSE FUTURO/.test(s)) return { icon: '⏳', cor: 'text-amber-300' }
+  if (/NUNCA RESPONDEU|N[AÃ]O RESPONDEU/.test(s)) return { icon: '💤', cor: 'text-ink-faint' }
+  if (/INTERESSE|FORA DO|FABRICAMOS|CONCORRENTE|BASE DE PRE/.test(s)) return { icon: '🚫', cor: 'text-red-300' }
+  return { icon: '🔖', cor: 'text-ink-muted' }
+}
+function haRel(iso: string): string {
+  const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
+  if (m < 1) return 'agora'
+  if (m < 60) return `${m}min`
+  return `${Math.round(m / 60)}h`
+}
+
 // Gradientes/filtros compartilhados (referenciados por url(#id) em todas as estações).
 function WorkDefs() {
   return (
@@ -406,6 +429,16 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
       return m
     },
     refetchInterval: 20000,
+  })
+
+  // Feed ao vivo: o que os vendedores estão fazendo (movimentos de etiqueta no funil)
+  const { data: atividade } = useQuery<Array<{ vendedor: string; de: string | null; para: string | null; em: string }>>({
+    queryKey: ['escritorio-atividade'],
+    queryFn: async () => {
+      const { data } = await supabase.rpc('escritorio_atividade', { p_limite: 30 })
+      return ((data ?? []) as Array<Record<string, any>>).map(r => ({ vendedor: r.vendedor_nome, de: r.etiqueta_de, para: r.etiqueta_para, em: r.detectado_em }))
+    },
+    refetchInterval: 15000,
   })
 
   const ocupantes = useMemo<Ocupante[]>(() => {
@@ -1031,6 +1064,31 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
               )
             })
           })()}
+        </div>
+
+        {/* FEED ao vivo — o que os vendedores estão fazendo agora */}
+        <div className="mt-3 pt-3 border-t border-border">
+          <h3 className="text-sm font-bold text-ink mb-2 flex items-center gap-1.5">
+            📋 Atividade ao vivo
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          </h3>
+          <div className="space-y-0.5 lg:max-h-[320px] overflow-y-auto pr-0.5">
+            {(atividade ?? []).length === 0 && <div className="text-[11px] text-ink-faint text-center py-3">Sem movimentos recentes.</div>}
+            {(atividade ?? []).map((a, i) => {
+              const info = etiquetaInfo(a.para)
+              return (
+                <div key={i} className="flex items-start gap-1.5 text-[10.5px] leading-snug px-1.5 py-1 rounded hover:bg-white/[0.03]" title={a.de ? `de ${a.de}` : 'nova etiqueta'}>
+                  <span className="shrink-0">{info.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <span className="font-bold text-ink">{a.vendedor}</span>
+                    <span className="text-ink-muted"> moveu → </span>
+                    <span className={`font-semibold ${info.cor}`}>{a.para}</span>
+                  </div>
+                  <span className="shrink-0 text-ink-faint text-[9px] tabular-nums mt-0.5">{haRel(a.em)}</span>
+                </div>
+              )
+            })}
+          </div>
         </div>
       </aside>
       </div>{/* /flex (mapa + ranking) */}
