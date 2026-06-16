@@ -24,6 +24,18 @@
     <meta name="apple-mobile-web-app-title" content="Branorte" />
     <link rel="apple-touch-icon" href="/icon.svg" />
 
+    <!-- Open Graph: faz o link compartilhado (principalmente /avaliacao) virar um
+         CARTÃO clicável no WhatsApp/celular do cliente (logo + título + descrição).
+         O único link do app enviado a clientes é /avaliacao; rotas internas ficam
+         atrás de login. og:title usa a chamada da avaliação de propósito. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Branorte" />
+    <meta property="og:title" content="Avalie seu atendimento ⭐" />
+    <meta property="og:description" content="Leva menos de 10 segundos — toque para dar sua nota." />
+    <meta property="og:image" content="https://branorte-crm.vercel.app/branorte-logo.png" />
+    <meta property="og:url" content="https://branorte-crm.vercel.app/avaliacao" />
+    <meta name="twitter:card" content="summary" />
+
     <script>
       // FLASH-FREE THEME: aplica .dark ANTES do React render pra evitar
       // flash branco em PWA dark mode. Roda inline antes do bundle JS.
