@@ -511,6 +511,23 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendedores, funil, orcHoje, leadsHoje, rankMetric])
 
+  // Ranking do MÊS — atend/leads/orçamentos agregados no mês corrente (RPC escritorio_ranking_mes).
+  const { data: rankingMesRaw } = useQuery<Array<{ vend: string; atendimentos: number; leads: number; orcamentos: number }>>({
+    queryKey: ['escritorio-ranking-mes'],
+    queryFn: async () => {
+      const { data } = await supabase.rpc('escritorio_ranking_mes')
+      return (data ?? []) as Array<{ vend: string; atendimentos: number; leads: number; orcamentos: number }>
+    },
+    refetchInterval: 120_000,
+  })
+  const [rankMetricMes, setRankMetricMes] = useState<'atendimentos' | 'leads' | 'orcamentos'>('atendimentos')
+  const rankingMes = useMemo(() => {
+    const online = new Set(vendedores.filter(v => v.online).map(v => (v.vendedor_nome.split(/\s+/)[0] || '').toUpperCase()))
+    return [...(rankingMesRaw ?? [])]
+      .map(r => ({ ...r, online: online.has((r.vend || '').toUpperCase()) }))
+      .sort((a, b) => (b[rankMetricMes] as number) - (a[rankMetricMes] as number) || b.atendimentos - a.atendimentos)
+  }, [rankingMesRaw, vendedores, rankMetricMes])
+
   // Último heartbeat (sync) de cada vendedor — pra contar há quanto tempo está inativo (vermelho).
   const { data: ultimoSync } = useQuery<Record<string, number>>({
     queryKey: ['escritorio-ultimo-sync'],
@@ -1091,6 +1108,55 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
               )
             })}
           </div>
+        </div>
+      </aside>
+
+      {/* Coluna de RANKING do mês — ao lado do ranking do dia */}
+      <aside className="w-full lg:w-64 shrink-0 rounded-xl border border-border bg-surface-2/30 p-3">
+        <h3 className="text-sm font-bold text-ink mb-2">📅 Ranking do mês</h3>
+        <div className="flex flex-wrap gap-1 mb-2">
+          {RANK_METRICAS.filter(m => m.key === 'atendimentos' || m.key === 'leads' || m.key === 'orcamentos').map(m => (
+            <button key={m.key} onClick={() => setRankMetricMes(m.key as 'atendimentos' | 'leads' | 'orcamentos')}
+              className={`text-[10px] px-1.5 py-1 rounded-md border font-semibold transition-colors ${rankMetricMes === m.key ? 'border-accent bg-accent/15 text-accent' : 'border-border text-ink-muted hover:text-ink'}`}
+              title={`Ordenar por ${m.label}`}>
+              {m.icon} {m.label}
+            </button>
+          ))}
+        </div>
+        <div className="space-y-1 lg:max-h-[520px] overflow-y-auto pr-0.5">
+          {rankingMes.length === 0 && <div className="text-[11px] text-ink-faint text-center py-4">Sem dados do mês.</div>}
+          {(() => {
+            const cfg = RANK_METRICAS.find(m => m.key === rankMetricMes)!
+            const maxVal = Math.max(1, ...rankingMes.map(r => r[rankMetricMes] as number))
+            return rankingMes.map((r, i) => {
+              const val = r[rankMetricMes] as number
+              const pctBar = (val / maxVal) * 100
+              return (
+                <div key={r.vend} className="rounded-lg px-2 py-1.5 bg-white/[0.03] border border-white/5">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-5 shrink-0 text-center text-sm font-bold ${i === 0 ? 'text-amber-300' : i === 1 ? 'text-slate-300' : i === 2 ? 'text-orange-300' : 'text-ink-faint'}`}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-[12px] font-semibold text-ink truncate flex items-center gap-1">
+                          {r.vend}
+                          {r.online && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" title="online" />}
+                        </span>
+                        <span className={`text-[12px] font-bold tabular-nums shrink-0 ${cfg.cor}`}>{val}</span>
+                      </div>
+                      <div className="h-1.5 rounded bg-white/5 overflow-hidden mt-1">
+                        <div className={`h-full ${cfg.bar} rounded transition-all`} style={{ width: `${pctBar}%` }} />
+                      </div>
+                      <div className="flex items-center gap-2 text-[9.5px] mt-1 text-ink-muted">
+                        <span title="atendimentos no mês">💬{r.atendimentos}</span>
+                        <span title="leads no mês">📥{r.leads}</span>
+                        <span title="orçamentos no mês">📄{r.orcamentos}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })
+          })()}
         </div>
       </aside>
       </div>{/* /flex (mapa + ranking) */}
