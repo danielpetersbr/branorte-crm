@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { GitBranch, Users, AlertCircle, Activity, Send, Copy, Check } from 'lucide-react'
+import { EscritorioMapa } from '@/components/EscritorioMapa'
 
 type Vendedor = {
   vendedor_nome: string
@@ -227,6 +228,9 @@ export function Disparos() {
 
       {/* OUTBOUND DISPATCH — webhook do ReplyAgent + log */}
       <OutboundDispatchCard />
+
+      {/* ESCRITÓRIO — mapa de mesas (arrasta vendedor pra mesa) */}
+      <EscritorioMapa vendedores={(vendedores ?? []).map(v => ({ vendedor_nome: v.vendedor_nome, online: v.online }))} />
     </div>
   )
 }

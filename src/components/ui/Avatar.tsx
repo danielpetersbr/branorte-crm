@@ -2,12 +2,13 @@ import { cn } from '@/lib/utils'
 
 interface AvatarProps {
   name: string | null | undefined
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'xs' | 'sm' | 'md' | 'lg'
   pulse?: boolean
   className?: string
 }
 
 const SIZE: Record<NonNullable<AvatarProps['size']>, string> = {
+  xs: 'h-5 w-5 text-[9px]',
   sm: 'h-6 w-6 text-[10px]',
   md: 'h-7 w-7 text-[11px]',
   lg: 'h-9 w-9 text-sm',
