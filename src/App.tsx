@@ -45,6 +45,7 @@ const PrecosBranorte = lazy(() => import('@/pages/PrecosBranorte').then(m => ({ 
 const OrcamentosConversao = lazy(() => import('@/pages/OrcamentosConversao').then(m => ({ default: m.OrcamentosConversao })))
 const OrcamentosSalvos = lazy(() => import('@/pages/OrcamentosSalvos').then(m => ({ default: m.OrcamentosSalvos })))
 const Roadmap = lazy(() => import('@/pages/Roadmap').then(m => ({ default: m.Roadmap })))
+const Avaliacoes = lazy(() => import('@/pages/Avaliacoes').then(m => ({ default: m.Avaliacoes })))
 const FreteCotacao = lazy(() => import('@/pages/FreteCotacao'))
 const FreteTransportadoras = lazy(() => import('@/pages/FreteTransportadoras'))
 const FreteHistorico = lazy(() => import('@/pages/FreteHistorico'))
@@ -60,6 +61,10 @@ import PrintOrcamento from '@/pages/PrintOrcamento'
 // /sso é o pouso do login automático vindo do controle.branorte.com.
 // Importado direto (sem lazy) porque roda antes do gate de auth.
 import { SsoLanding } from '@/pages/SsoLanding'
+
+// /avaliacao é a página PÚBLICA de avaliação de atendimento, aberta pelo link
+// que a extensão WA Sync envia ao cliente. Import direto: roda deslogada.
+import { Avaliacao } from '@/pages/Avaliacao'
 
 // Loga TODO erro de query/mutation no console. Evita falha silenciosa.
 // Erros visuais aparecem no SyncIndicator da Atendimentos (e outras páginas podem opt-in).
@@ -153,6 +158,12 @@ function AppRoutes() {
     return <SsoLanding />
   }
 
+  // Rota pública /avaliacao — cliente avalia o atendimento pelo link da extensão.
+  // Roda deslogada (cliente não tem conta).
+  if (loc.pathname === '/avaliacao') {
+    return <Avaliacao />
+  }
+
   if (loading) return <PageLoading />
 
   // Não logado → /login (exceto /signup)
@@ -232,6 +243,9 @@ function AppRoutes() {
         <Route path="/controle/financeiro" element={<ControleFinanceiro />} />
         <Route path="/controle/novo-pedido" element={<ControleNovoPedido />} />
         <Route path="/atendimentos" element={<Atendimentos />} />
+        {/* Painel admin das avaliações de atendimento (página pública /avaliacao).
+            Vendedor/visualizador são redirecionados pelos guards acima. */}
+        <Route path="/avaliacoes" element={<Avaliacoes />} />
         {/* /funil = Kanban WhatsApp (espelho das etiquetas Wascript); o kanban
             manual antigo (status_vendedor) continua em /funil/manual */}
         <Route path="/funil" element={<FunilWhatsApp />} />
