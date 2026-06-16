@@ -581,7 +581,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
         onPointerDown={modo === 'paredes' ? iniciarDesenho : undefined}
         className={`relative w-full mx-auto select-none rounded-xl ${modo !== 'normal' ? 'ring-1 ring-accent/40' : ''} ${modo === 'paredes' ? 'cursor-crosshair' : ''}`}
         style={{
-          maxWidth: 560,
+          maxWidth: 920,
           aspectRatio: `${VB.w} / ${VB.h}`,
           background: 'radial-gradient(120% 120% at 50% 0%, hsl(220 22% 16%) 0%, hsl(222 26% 11%) 70%)',
           touchAction: modo === 'paredes' ? 'none' : undefined,
