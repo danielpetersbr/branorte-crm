@@ -740,36 +740,31 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
                   {!editLayout && leader === nome && (
                     <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[15px] leading-none z-20" title="Líder do dia (mais orçamentos, depois leads)">👑</span>
                   )}
-                  {!editLayout && quente > 0 && (
-                    <span className="absolute -top-1.5 left-0 inline-flex items-center text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-orange-500/45 text-orange-50 ring-1 ring-orange-400/50 leading-none z-10" title={`${quente} leads QUENTES no funil — cobre antes de esfriar`}>
-                      🔥{quente}
-                    </span>
-                  )}
-                  <span className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 max-w-[140%] px-2 py-0.5 rounded-md bg-black/60 ring-1 ring-white/10 text-[11px] font-bold text-white truncate leading-tight">
-                    {nome.split(' ')[0]}
-                  </span>
+                  {/* status (vendedor) ou setor (outro) no topo-direito */}
                   {isOutro ? (
                     <span className="absolute -top-1.5 right-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/50 ring-1 ring-purple-300/40 text-purple-50 leading-none">
                       {abreviaSetor(info?.setor ?? null)}
                     </span>
                   ) : (
-                    <>
-                      <span
-                        className={`absolute top-1 right-1 h-3 w-3 rounded-full ring-2 ring-black/50 ${cfg?.dot ?? 'bg-slate-500'} ${cfg?.glow ? 'shadow-[0_0_8px_2px_rgba(16,185,129,0.8)] animate-pulse' : ''}`}
-                        title={cfg?.label ?? 'sem sinal'}
-                      />
-                      {!editLayout && ls && ls.enviadosHoje > 0 && (
-                        <span className="absolute -bottom-1.5 right-0 inline-flex items-center gap-0.5 text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/40 text-emerald-50 ring-1 ring-emerald-400/50 leading-none" title={`${ls.enviadosHoje} leads recebidos hoje`}>
-                          {ls.enviadosHoje}
-                        </span>
-                      )}
-                      {!editLayout && orcDe(nome) > 0 && (
-                        <span className="absolute -bottom-1.5 left-0 inline-flex items-center gap-0.5 text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-sky-500/40 text-sky-50 ring-1 ring-sky-400/50 leading-none" title={`${orcDe(nome)} orçamentos feitos hoje`}>
-                          {'\u{1F4C4}'}{orcDe(nome)}
-                        </span>
-                      )}
-                    </>
+                    <span
+                      className={`absolute top-1 right-1 h-3 w-3 rounded-full ring-2 ring-black/50 ${cfg?.dot ?? 'bg-slate-500'} ${cfg?.glow ? 'shadow-[0_0_8px_2px_rgba(16,185,129,0.8)] animate-pulse' : ''}`}
+                      title={cfg?.label ?? 'sem sinal'}
+                    />
                   )}
+                  {/* nome + números do dia (sempre visíveis) */}
+                  <div className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 flex flex-col items-center gap-0.5 max-w-[170%]">
+                    <span className="px-2 py-0.5 rounded-md bg-black/60 ring-1 ring-white/10 text-[11px] font-bold text-white truncate leading-tight max-w-full">
+                      {nome.split(' ')[0]}
+                    </span>
+                    {!isOutro && !editLayout && (
+                      <span className="flex items-center gap-1.5 text-[10px] font-bold leading-none whitespace-nowrap px-1.5 py-0.5 rounded-md bg-black/50 ring-1 ring-white/10">
+                        <span className="text-cyan-300" title="clientes (conversas no WhatsApp)">👥{funil?.[nome]?.totalChats ?? 0}</span>
+                        <span className="text-emerald-300" title="leads recebidos hoje">📥{ls?.enviadosHoje ?? 0}</span>
+                        <span className="text-sky-300" title="orçamentos feitos hoje">📄{orcDe(nome)}</span>
+                        {quente > 0 && <span className="text-orange-300" title="leads quentes no funil">🔥{quente}</span>}
+                      </span>
+                    )}
+                  </div>
                   {!editLayout && (
                     <button
                       onClick={e => { e.stopPropagation(); limpar.mutate(m.id) }}
@@ -809,7 +804,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-400" /> lento</span>
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-400" /> desconectado</span>
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-slate-500" /> desligado</span>
-          <span className="flex items-center gap-1"><span className="text-emerald-300 font-bold">N</span> leads · <span className="text-sky-300 font-bold">{'\u{1F4C4}'}N</span> orçamentos (hoje)</span>
+          <span className="flex items-center gap-1.5 text-ink-faint">por boneco: <span className="text-cyan-300 font-bold">👥clientes</span> · <span className="text-emerald-300 font-bold">📥leads</span> · <span className="text-sky-300 font-bold">📄orçam.</span> · <span className="text-orange-300 font-bold">🔥quentes</span> (hoje)</span>
         </div>
       )}
     </Card>
