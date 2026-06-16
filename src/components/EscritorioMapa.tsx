@@ -38,14 +38,8 @@ const MESAS: Mesa[] = [
 const DESK_W = 86
 const DESK_H = 70
 
-// Salas (paredes). Rodapé vazio removido.
-const ROOMS: Array<[number, number, number, number]> = [
-  [86, 28, 56, 78], [284, 32, 102, 60], [544, 36, 58, 68],
-  [16, 154, 96, 84], [150, 160, 98, 94], [16, 300, 96, 100], [150, 300, 98, 102],
-  [378, 150, 94, 108], [514, 154, 102, 98], [380, 270, 98, 122],
-  [514, 282, 102, 98], [514, 426, 102, 86], [494, 510, 122, 84],
-  [110, 520, 64, 82],
-]
+// Paredes da planta. (Removidos os boxes individuais em volta de cada mesa —
+// ficam só o contorno do prédio e as divisórias principais.)
 const LINES: Array<[number, number, number, number]> = [
   [16, 128, 628, 128],
   [250, 128, 250, 624],
@@ -57,7 +51,6 @@ const LINES: Array<[number, number, number, number]> = [
 type Rect = { x: number; y: number; w: number; h: number }
 const DEFAULT_PAREDES: Rect[] = [
   { x: 16, y: 18, w: 612, h: 606 }, // contorno
-  ...ROOMS.map(([x, y, w, h]) => ({ x, y, w, h })),
   ...LINES.map(([x1, y1, x2, y2]) => x1 === x2
     ? { x: x1 - 1, y: Math.min(y1, y2), w: 2, h: Math.abs(y2 - y1) }   // vertical
     : { x: Math.min(x1, x2), y: y1 - 1, w: Math.abs(x2 - x1), h: 2 }), // horizontal
@@ -518,7 +511,6 @@ export function EscritorioMapa({ vendedores }: { vendedores: VendedorLite[] }) {
             <>
               <rect x={16} y={18} width={612} height={606} rx={10} fill="none" stroke="currentColor" strokeWidth={3} />
               <g fill="none" stroke="currentColor" strokeWidth={2.5}>
-                {ROOMS.map((r, i) => <rect key={i} x={r[0]} y={r[1]} width={r[2]} height={r[3]} rx={3} />)}
                 {LINES.map((l, i) => <line key={i} x1={l[0]} y1={l[1]} x2={l[2]} y2={l[3]} />)}
               </g>
             </>
