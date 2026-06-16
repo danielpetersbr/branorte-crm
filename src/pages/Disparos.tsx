@@ -240,11 +240,11 @@ export function Disparos() {
       {/* OUTBOUND DISPATCH — webhook do ReplyAgent + log */}
       <OutboundDispatchCard />
 
+      {/* ATIVIDADE DIÁRIA — gráfico 7d + ranking (acima do mapa pra achar fácil) */}
+      <AtividadeDiaria />
+
       {/* ESCRITÓRIO — mapa de mesas (arrasta vendedor pra mesa) */}
       <EscritorioMapa vendedores={(vendedores ?? []).map(v => ({ vendedor_nome: v.vendedor_nome, online: v.online }))} live={liveMesas} />
-
-      {/* ATIVIDADE DIÁRIA — gráfico 7d + ranking (mesma da página /atividade-diaria) */}
-      <AtividadeDiaria />
     </div>
   )
 }
