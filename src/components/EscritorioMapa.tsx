@@ -416,6 +416,18 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendedores, orcHoje, leadsHoje])
 
+  // Ranking do dia: vendedores ordenados por nº de atendimentos (desempate: orçamentos, depois aberto).
+  const ranking = useMemo(() => {
+    return vendedores
+      .map(v => {
+        const n = v.vendedor_nome
+        const f = funil?.[n]
+        return { nome: n, online: v.online, atendimentos: f?.atendimentos ?? 0, orcamentos: orcDe(n), aberto: f?.aberto ?? 0 }
+      })
+      .sort((a, b) => b.atendimentos - a.atendimentos || b.orcamentos - a.orcamentos || b.aberto - a.aberto)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vendedores, funil, orcHoje])
+
   function posDe(id: string): Pos {
     if (localPos[id]) return localPos[id]
     if (posMap[id]) return posMap[id]
@@ -729,6 +741,9 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
         </div>
       )}
 
+      {/* Planta + ranking do dia, lado a lado */}
+      <div className="flex flex-col lg:flex-row gap-3 items-start">
+      <div className="flex-1 min-w-0 w-full">
       {/* Planta (vista de cima) */}
       <div
         ref={plantaRef}
@@ -893,6 +908,35 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
           >×</button>
         ))}
       </div>
+      </div>{/* /flex-1 (mapa) */}
+
+      {/* Coluna de RANKING do dia — ao lado do mapa */}
+      <aside className="w-full lg:w-72 shrink-0 rounded-xl border border-border bg-surface-2/30 p-3">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-bold text-ink">🏆 Ranking do dia</h3>
+          <span className="text-[10px] text-ink-faint">por atendimentos</span>
+        </div>
+        <div className="space-y-1 lg:max-h-[560px] overflow-y-auto pr-0.5">
+          {ranking.length === 0 && <div className="text-[11px] text-ink-faint text-center py-4">Sem vendedores.</div>}
+          {ranking.map((r, i) => (
+            <div key={r.nome} className="flex items-center gap-2 rounded-lg px-2 py-1.5 bg-white/[0.03] border border-white/5">
+              <span className={`w-6 shrink-0 text-center text-sm font-bold ${i === 0 ? 'text-amber-300' : i === 1 ? 'text-slate-300' : i === 2 ? 'text-orange-300' : 'text-ink-faint'}`}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-[12px] font-semibold text-ink truncate flex items-center gap-1">
+                  {r.nome}
+                  {r.online && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" title="online" />}
+                </div>
+                <div className="flex items-center gap-2.5 text-[10px] mt-0.5">
+                  <span className="text-violet-300 font-semibold" title="atendimentos hoje">💬 {r.atendimentos}</span>
+                  <span className="text-sky-300 font-semibold" title="orçamentos hoje">📄 {r.orcamentos}</span>
+                  <span className="text-cyan-300 font-semibold" title="clientes em atendimento aberto">👥 {r.aberto}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </aside>
+      </div>{/* /flex (mapa + ranking) */}
 
       {/* Legenda do estado ao vivo */}
       {modo === 'normal' && (
