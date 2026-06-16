@@ -291,14 +291,14 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
   const orcDe = (nome: string) => orcHoje?.[(nome.split(/\s+/)[0] || '').toUpperCase()] ?? 0
 
   // Funil ao vivo por vendedor (etiquetas do heartbeat via RPC) — QUENTE/NOVO LEAD/etc.
-  type Funil = { quente: number; novoLead: number; followup: number; orcamento: number; vendido: number; totalChats: number; atendimentos: number; msgs: number }
+  type Funil = { aberto: number; quente: number; novoLead: number; followup: number; orcamento: number; vendido: number; totalChats: number; atendimentos: number; msgs: number }
   const { data: funil } = useQuery<Record<string, Funil>>({
     queryKey: ['escritorio-funil'],
     queryFn: async () => {
       const { data } = await supabase.rpc('escritorio_funil_vivo')
       const m: Record<string, Funil> = {}
       for (const r of (data ?? []) as Array<Record<string, any>>) {
-        m[r.vendedor_nome] = { quente: r.quente, novoLead: r.novo_lead, followup: r.followup, orcamento: r.orcamento, vendido: r.vendido, totalChats: r.total_chats, atendimentos: r.atendimentos, msgs: r.msgs }
+        m[r.vendedor_nome] = { aberto: r.aberto, quente: r.quente, novoLead: r.novo_lead, followup: r.followup, orcamento: r.orcamento, vendido: r.vendido, totalChats: r.total_chats, atendimentos: r.atendimentos, msgs: r.msgs }
       }
       return m
     },
@@ -732,7 +732,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
               title={nome
                 ? (isOutro
                     ? `${nome}${info?.setor ? ' · ' + info.setor : ''} — mesa ${idx + 1}`
-                    : `${nome} — ${cfg?.label ?? 'sem sinal'}${ls?.pingSec != null ? ' · há ' + Math.round(ls.pingSec) + 's' : ''}${ls?.versao ? ' · v' + ls.versao : ''}${funil?.[nome] ? ` · 👥${funil[nome].totalChats} clientes · 💬${funil[nome].atendimentos} atend. hoje (${funil[nome].msgs} msgs)` : ''}${ls ? ` · 📥${ls.enviadosHoje} leads · 📄${orcDe(nome)} orç. hoje` : ''}${funil?.[nome] ? ` · funil: 🔥${funil[nome].quente} quentes, ${funil[nome].novoLead} novos, ${funil[nome].vendido} vendidos` : ''}`)
+                    : `${nome} — ${cfg?.label ?? 'sem sinal'}${ls?.pingSec != null ? ' · há ' + Math.round(ls.pingSec) + 's' : ''}${ls?.versao ? ' · v' + ls.versao : ''}${funil?.[nome] ? ` · 👥${funil[nome].aberto} em atendimento aberto (carteira ${funil[nome].totalChats}) · 💬${funil[nome].atendimentos} atend. hoje (${funil[nome].msgs} msgs)` : ''}${ls ? ` · 📥${ls.enviadosHoje} leads · 📄${orcDe(nome)} orç. hoje` : ''}${funil?.[nome] ? ` · funil: 🔥${funil[nome].quente} quentes, ${funil[nome].novoLead} novos, ${funil[nome].vendido} vendidos` : ''}`)
                 : `Mesa ${idx + 1} (vazia)`}
               className={`group absolute rounded-lg transition-shadow ${
                 editLayout ? `cursor-move ring-1 ${movendo === m.id ? 'ring-accent z-20 shadow-lg shadow-black/40' : 'ring-accent/40'} bg-accent/5` :
@@ -786,7 +786,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
                     </span>
                     {!isOutro && !editLayout && (
                       <span className="flex flex-wrap items-center justify-center gap-x-1.5 gap-y-0 text-[10px] font-bold leading-tight px-1.5 py-0.5 rounded-md bg-black/55 ring-1 ring-white/10 max-w-[160px]">
-                        <span className="text-cyan-300" title="clientes na carteira (total de conversas no WhatsApp)">👥{funil?.[nome]?.totalChats ?? 0}</span>
+                        <span className="text-cyan-300" title="clientes com atendimento aberto (em negociação ativa no funil)">👥{funil?.[nome]?.aberto ?? 0}</span>
                         <span className="text-violet-300" title="atendimentos hoje (chats que ele trabalhou no dia)">💬{funil?.[nome]?.atendimentos ?? 0}</span>
                         <span className="text-emerald-300" title="leads recebidos hoje pela central">📥{ls?.enviadosHoje ?? 0}</span>
                         <span className="text-sky-300" title="orçamentos feitos hoje">📄{orcDe(nome)}</span>
@@ -833,7 +833,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-400" /> lento</span>
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-400" /> desconectado</span>
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-slate-500" /> desligado</span>
-          <span className="flex items-center gap-1.5 text-ink-faint flex-wrap">por boneco: <span className="text-cyan-300 font-bold">👥clientes</span> · <span className="text-violet-300 font-bold">💬atend.</span> · <span className="text-emerald-300 font-bold">📥leads</span> · <span className="text-sky-300 font-bold">📄orçam.</span> · <span className="text-orange-300 font-bold">🔥quentes</span> (hoje)</span>
+          <span className="flex items-center gap-1.5 text-ink-faint flex-wrap">por boneco: <span className="text-cyan-300 font-bold">👥atend. aberto</span> · <span className="text-violet-300 font-bold">💬atend. hoje</span> · <span className="text-emerald-300 font-bold">📥leads</span> · <span className="text-sky-300 font-bold">📄orçam.</span> · <span className="text-orange-300 font-bold">🔥quentes</span> (hoje)</span>
         </div>
       )}
     </Card>
