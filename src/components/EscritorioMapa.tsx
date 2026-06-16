@@ -432,11 +432,11 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
   })
 
   // Feed ao vivo: o que os vendedores estão fazendo (movimentos de etiqueta no funil)
-  const { data: atividade } = useQuery<Array<{ vendedor: string; de: string | null; para: string | null; em: string }>>({
+  const { data: atividade } = useQuery<Array<{ vendedor: string; para: string | null; qtd: number; em: string }>>({
     queryKey: ['escritorio-atividade'],
     queryFn: async () => {
       const { data } = await supabase.rpc('escritorio_atividade', { p_limite: 30 })
-      return ((data ?? []) as Array<Record<string, any>>).map(r => ({ vendedor: r.vendedor_nome, de: r.etiqueta_de, para: r.etiqueta_para, em: r.detectado_em }))
+      return ((data ?? []) as Array<Record<string, any>>).map(r => ({ vendedor: r.vendedor_nome, para: r.etiqueta_para, qtd: r.qtd, em: r.detectado_em }))
     },
     refetchInterval: 15000,
   })
@@ -1076,15 +1076,17 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
             {(atividade ?? []).length === 0 && <div className="text-[11px] text-ink-faint text-center py-3">Sem movimentos recentes.</div>}
             {(atividade ?? []).map((a, i) => {
               const info = etiquetaInfo(a.para)
+              const destaque = /VENDIDO|OR.AMENTO|QUENTE/i.test(a.para || '')
               return (
-                <div key={i} className="flex items-start gap-1.5 text-[10.5px] leading-snug px-1.5 py-1 rounded hover:bg-white/[0.03]" title={a.de ? `de ${a.de}` : 'nova etiqueta'}>
-                  <span className="shrink-0">{info.icon}</span>
+                <div key={i} className={`flex items-center gap-2 text-[11px] leading-snug px-1.5 py-1 rounded ${destaque ? 'bg-emerald-500/10 ring-1 ring-emerald-400/20' : 'hover:bg-white/[0.03]'}`}>
+                  <span className="shrink-0 text-[13px]">{info.icon}</span>
                   <div className="flex-1 min-w-0">
                     <span className="font-bold text-ink">{a.vendedor}</span>
-                    <span className="text-ink-muted"> moveu → </span>
+                    {a.qtd > 1 && <span className="text-accent font-bold"> {a.qtd}×</span>}
+                    <span className="text-ink-muted"> → </span>
                     <span className={`font-semibold ${info.cor}`}>{a.para}</span>
                   </div>
-                  <span className="shrink-0 text-ink-faint text-[9px] tabular-nums mt-0.5">{haRel(a.em)}</span>
+                  <span className="shrink-0 text-ink-faint text-[9px] tabular-nums">{haRel(a.em)}</span>
                 </div>
               )
             })}
