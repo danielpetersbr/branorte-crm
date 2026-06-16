@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
 import { supabase } from '@/lib/supabase'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Building2, X, MousePointerClick, UserPlus, Move, Check, RotateCw } from 'lucide-react'
+import { Building2, X, MousePointerClick, UserPlus, Move, Check, RotateCw, Pencil } from 'lucide-react'
 
 // ============================================================================
 // Mapa do escritório (vista de cima) — arraste cada pessoa pra sua estação.
@@ -52,6 +52,15 @@ const LINES: Array<[number, number, number, number]> = [
   [375, 128, 375, 624],
   [16, 490, 250, 490],
   [375, 490, 628, 490],
+]
+// Paredes-padrão como retângulos (outer + salas + divisórias) — usado em "partir do padrão".
+type Rect = { x: number; y: number; w: number; h: number }
+const DEFAULT_PAREDES: Rect[] = [
+  { x: 16, y: 18, w: 612, h: 606 }, // contorno
+  ...ROOMS.map(([x, y, w, h]) => ({ x, y, w, h })),
+  ...LINES.map(([x1, y1, x2, y2]) => x1 === x2
+    ? { x: x1 - 1, y: Math.min(y1, y2), w: 2, h: Math.abs(y2 - y1) }   // vertical
+    : { x: Math.min(x1, x2), y: y1 - 1, w: Math.abs(x2 - x1), h: 2 }), // horizontal
 ]
 
 function pct(v: number, total: number) { return `${(v / total) * 100}%` }
@@ -103,11 +112,13 @@ export function EscritorioMapa({ vendedores }: { vendedores: VendedorLite[] }) {
   const [addOpen, setAddOpen] = useState(false)
   const [novoNome, setNovoNome] = useState('')
   const [novoSetor, setNovoSetor] = useState('')
-  const [editLayout, setEditLayout] = useState(false)
+  const [modo, setModo] = useState<'normal' | 'mesas' | 'paredes'>('normal')
+  const editLayout = modo === 'mesas'
   const [movendo, setMovendo] = useState<string | null>(null)
   const [girando, setGirando] = useState<string | null>(null)
   const [localPos, setLocalPos] = useState<Record<string, Pos>>({})
   const [localRot, setLocalRot] = useState<Record<string, number>>({})
+  const [draft, setDraft] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
 
   const { data: dados } = useQuery<{ assign: Record<string, string>; pos: Record<string, Pos>; rot: Record<string, number> }>({
     queryKey: ['escritorio-mesas'],
@@ -128,6 +139,46 @@ export function EscritorioMapa({ vendedores }: { vendedores: VendedorLite[] }) {
   const assignMap = dados?.assign ?? {}
   const posMap = dados?.pos ?? {}
   const rotMap = dados?.rot ?? {}
+
+  const { data: paredes } = useQuery<Array<Rect & { id: number }>>({
+    queryKey: ['escritorio-paredes'],
+    queryFn: async () => {
+      const { data } = await supabase.from('escritorio_paredes').select('id, x, y, w, h').order('id')
+      return (data ?? []) as Array<Rect & { id: number }>
+    },
+  })
+  const temCustom = (paredes?.length ?? 0) > 0
+
+  const addParede = useMutation({
+    mutationFn: async (r: Rect) => {
+      const { error } = await supabase.from('escritorio_paredes').insert(r)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['escritorio-paredes'] }),
+    onError: (err: any) => alert('Não foi possível salvar a parede: ' + (err?.message || err)),
+  })
+  const delParede = useMutation({
+    mutationFn: async (id: number) => {
+      const { error } = await supabase.from('escritorio_paredes').delete().eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['escritorio-paredes'] }),
+  })
+  const limparParedes = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from('escritorio_paredes').delete().gte('id', 0)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['escritorio-paredes'] }),
+  })
+  const seedPadrao = useMutation({
+    mutationFn: async () => {
+      await supabase.from('escritorio_paredes').delete().gte('id', 0)
+      const { error } = await supabase.from('escritorio_paredes').insert(DEFAULT_PAREDES)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['escritorio-paredes'] }),
+  })
 
   const { data: pessoas } = useQuery<Pessoa[]>({
     queryKey: ['escritorio-pessoas'],
@@ -303,6 +354,31 @@ export function EscritorioMapa({ vendedores }: { vendedores: VendedorLite[] }) {
     window.addEventListener('pointerup', onUp)
   }
 
+  // Desenhar parede: arrasta no fundo pra criar um retângulo (sala/parede).
+  function iniciarDesenho(e: React.PointerEvent) {
+    if (modo !== 'paredes') return
+    const rect = plantaRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const sx = ((e.clientX - rect.left) / rect.width) * VB.w
+    const sy = ((e.clientY - rect.top) / rect.height) * VB.h
+    setDraft({ x: sx, y: sy, w: 0, h: 0 })
+    const onMove = (ev: PointerEvent) => {
+      const x2 = ((ev.clientX - rect.left) / rect.width) * VB.w
+      const y2 = ((ev.clientY - rect.top) / rect.height) * VB.h
+      setDraft({ x: Math.min(sx, x2), y: Math.min(sy, y2), w: Math.abs(x2 - sx), h: Math.abs(y2 - sy) })
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      setDraft(d => {
+        if (d && d.w > 8 && d.h > 8) addParede.mutate({ x: Math.round(d.x), y: Math.round(d.y), w: Math.round(d.w), h: Math.round(d.h) })
+        return null
+      })
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
   const naoSentados = ocupantes.filter(o => !sentadoEm[o.nome])
 
   return (
@@ -315,21 +391,38 @@ export function EscritorioMapa({ vendedores }: { vendedores: VendedorLite[] }) {
           </h2>
           <p className="text-[10px] text-ink-muted mt-0.5 flex items-center gap-1">
             <MousePointerClick className="h-3 w-3" />
-            {editLayout
-              ? 'Modo posicionar: arraste cada mesa pro lugar certo — salva sozinho ao soltar.'
+            {modo === 'paredes'
+              ? 'Editar paredes: arraste no espaço pra desenhar uma sala/parede. Clique no × pra apagar. "partir do padrão" copia o desenho atual pra editar.'
+              : editLayout
+              ? 'Modo posicionar: arraste cada mesa pro lugar certo, gire pelo ⟳. Salva sozinho ao soltar.'
               : 'Arraste a pessoa pra mesa — ou toque na pessoa e depois na mesa. As mesas vazias ficam pontilhadas.'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+          {modo === 'paredes' && (
+            <>
+              <button onClick={() => { if (confirm('Copiar o desenho padrão atual pra você editar (substitui o que tiver)?')) seedPadrao.mutate() }}
+                className="text-[10px] px-2 py-1 rounded-full border border-border text-ink-muted hover:border-accent hover:text-accent">partir do padrão</button>
+              <button onClick={() => { if (confirm('Apagar TODAS as paredes desenhadas?')) limparParedes.mutate() }}
+                className="text-[10px] px-2 py-1 rounded-full border border-border text-ink-muted hover:border-red-400 hover:text-red-400">limpar tudo</button>
+            </>
+          )}
           <button
-            onClick={() => { setEditLayout(v => !v); setSelected(null) }}
+            onClick={() => { setModo(m => m === 'paredes' ? 'normal' : 'paredes'); setSelected(null) }}
+            className={`flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border font-semibold transition-colors ${
+              modo === 'paredes' ? 'border-accent bg-accent/15 text-accent' : 'border-border text-ink-muted hover:border-accent hover:text-accent'
+            }`}
+          >
+            {modo === 'paredes' ? <><Check className="h-3 w-3" /> Concluir</> : <><Pencil className="h-3 w-3" /> Paredes</>}
+          </button>
+          <button
+            onClick={() => { setModo(m => m === 'mesas' ? 'normal' : 'mesas'); setSelected(null) }}
             className={`flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border font-semibold transition-colors ${
               editLayout ? 'border-accent bg-accent/15 text-accent' : 'border-border text-ink-muted hover:border-accent hover:text-accent'
             }`}
           >
             {editLayout ? <><Check className="h-3 w-3" /> Concluir</> : <><Move className="h-3 w-3" /> Mover mesas</>}
           </button>
-          <span className="text-[11px] text-ink-faint">{Object.keys(assignMap).length}/{MESAS.length} ocupadas</span>
         </div>
       </div>
 
@@ -407,19 +500,33 @@ export function EscritorioMapa({ vendedores }: { vendedores: VendedorLite[] }) {
       {/* Planta (vista de cima) */}
       <div
         ref={plantaRef}
-        className={`relative w-full mx-auto select-none rounded-xl ${editLayout ? 'ring-1 ring-accent/40' : ''}`}
+        onPointerDown={modo === 'paredes' ? iniciarDesenho : undefined}
+        className={`relative w-full mx-auto select-none rounded-xl ${modo !== 'normal' ? 'ring-1 ring-accent/40' : ''} ${modo === 'paredes' ? 'cursor-crosshair' : ''}`}
         style={{
           maxWidth: 560,
           aspectRatio: `${VB.w} / ${VB.h}`,
           background: 'radial-gradient(120% 120% at 50% 0%, hsl(220 22% 16%) 0%, hsl(222 26% 11%) 70%)',
+          touchAction: modo === 'paredes' ? 'none' : undefined,
         }}
       >
         <svg viewBox={`0 0 ${VB.w} ${VB.h}`} className="absolute inset-0 w-full h-full pointer-events-none text-ink/25" preserveAspectRatio="none">
-          <rect x={16} y={18} width={612} height={606} rx={10} fill="none" stroke="currentColor" strokeWidth={3} />
-          <g fill="none" stroke="currentColor" strokeWidth={2.5}>
-            {ROOMS.map((r, i) => <rect key={i} x={r[0]} y={r[1]} width={r[2]} height={r[3]} rx={3} />)}
-            {LINES.map((l, i) => <line key={i} x1={l[0]} y1={l[1]} x2={l[2]} y2={l[3]} />)}
-          </g>
+          {temCustom ? (
+            <g fill="none" stroke="currentColor" strokeWidth={2.5}>
+              {(paredes ?? []).map(p => <rect key={p.id} x={p.x} y={p.y} width={p.w} height={p.h} rx={3} />)}
+            </g>
+          ) : (
+            <>
+              <rect x={16} y={18} width={612} height={606} rx={10} fill="none" stroke="currentColor" strokeWidth={3} />
+              <g fill="none" stroke="currentColor" strokeWidth={2.5}>
+                {ROOMS.map((r, i) => <rect key={i} x={r[0]} y={r[1]} width={r[2]} height={r[3]} rx={3} />)}
+                {LINES.map((l, i) => <line key={i} x1={l[0]} y1={l[1]} x2={l[2]} y2={l[3]} />)}
+              </g>
+            </>
+          )}
+          {draft && draft.w > 0 && draft.h > 0 && (
+            <rect x={draft.x} y={draft.y} width={draft.w} height={draft.h} rx={2}
+              fill="rgba(20,184,138,0.12)" stroke="hsl(160 70% 50%)" strokeWidth={2} strokeDasharray="6 4" />
+          )}
         </svg>
 
         {MESAS.map((m, idx) => {
@@ -448,7 +555,7 @@ export function EscritorioMapa({ vendedores }: { vendedores: VendedorLite[] }) {
                 nome ? 'hover:bg-white/5' :
                 'border border-dashed border-ink/20 hover:border-accent/60 hover:bg-accent/5 cursor-pointer'
               }`}
-              style={{ left, top, width, height, touchAction: editLayout ? 'none' : undefined }}
+              style={{ left, top, width, height, touchAction: editLayout ? 'none' : undefined, pointerEvents: modo === 'paredes' ? 'none' : undefined }}
             >
               <div
                 draggable={!!nome && !editLayout}
@@ -499,6 +606,18 @@ export function EscritorioMapa({ vendedores }: { vendedores: VendedorLite[] }) {
             </div>
           )
         })}
+
+        {/* Botões de apagar parede (modo paredes, só nas customizadas) */}
+        {modo === 'paredes' && temCustom && (paredes ?? []).map(p => (
+          <button
+            key={`del-${p.id}`}
+            onPointerDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); delParede.mutate(p.id) }}
+            title="Apagar esta parede"
+            className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 text-white flex items-center justify-center text-[10px] leading-none shadow ring-1 ring-black/40 z-30 hover:bg-red-600"
+            style={{ left: pct(p.x, VB.w), top: pct(p.y, VB.h) }}
+          >×</button>
+        ))}
       </div>
     </Card>
   )
