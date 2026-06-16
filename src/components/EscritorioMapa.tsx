@@ -290,6 +290,19 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
   })
   const orcDe = (nome: string) => orcHoje?.[(nome.split(/\s+/)[0] || '').toUpperCase()] ?? 0
 
+  // Leads recebidos hoje — MESMA fonte da página Atendimentos (auditoria.atendimentos_por_cliente, created_at hoje)
+  const { data: leadsHoje } = useQuery<Record<string, number>>({
+    queryKey: ['escritorio-leads-hoje'],
+    queryFn: async () => {
+      const { data } = await supabase.rpc('escritorio_leads_hoje')
+      const m: Record<string, number> = {}
+      for (const r of (data ?? []) as Array<{ vend: string; leads: number }>) m[r.vend] = r.leads
+      return m
+    },
+    refetchInterval: 30000,
+  })
+  const leadsDe = (nome: string) => leadsHoje?.[(nome.split(/\s+/)[0] || '').toUpperCase()] ?? 0
+
   // Funil ao vivo por vendedor (etiquetas do heartbeat via RPC) — QUENTE/NOVO LEAD/etc.
   type Funil = { aberto: number; quente: number; novoLead: number; followup: number; orcamento: number; vendido: number; totalChats: number; atendimentos: number; msgs: number }
   const { data: funil } = useQuery<Record<string, Funil>>({
@@ -331,7 +344,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
     let leads = 0, orc = 0, quentes = 0, ativos = 0, parados = 0, atend = 0
     for (const v of vendedores) {
       const n = v.vendedor_nome
-      leads += live?.[n]?.enviadosHoje ?? 0
+      leads += leadsDe(n)
       orc += orcDe(n)
       quentes += funil?.[n]?.quente ?? 0
       atend += funil?.[n]?.atendimentos ?? 0
@@ -341,16 +354,16 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
     }
     return { leads, orc, quentes, ativos, total: vendedores.length, parados, atend }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vendedores, live, funil, orcHoje, expediente])
+  }, [vendedores, live, funil, orcHoje, leadsHoje, expediente])
   const leader = useMemo(() => {
     let best: string | null = null, bo = -1, bl = -1
     for (const v of vendedores) {
-      const o = orcDe(v.vendedor_nome), l = live?.[v.vendedor_nome]?.enviadosHoje ?? 0
+      const o = orcDe(v.vendedor_nome), l = leadsDe(v.vendedor_nome)
       if (o > bo || (o === bo && l > bl)) { best = v.vendedor_nome; bo = o; bl = l }
     }
     return (bo > 0 || bl > 0) ? best : null
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vendedores, live, orcHoje])
+  }, [vendedores, orcHoje, leadsHoje])
 
   function posDe(id: string): Pos {
     if (localPos[id]) return localPos[id]
@@ -668,7 +681,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
         onPointerDown={modo === 'paredes' ? iniciarDesenho : undefined}
         className={`relative w-full mx-auto select-none rounded-xl ${modo !== 'normal' ? 'ring-1 ring-accent/40' : ''} ${modo === 'paredes' ? 'cursor-crosshair' : ''}`}
         style={{
-          maxWidth: 920,
+          maxWidth: 1000,
           aspectRatio: `${VB.w} / ${VB.h}`,
           background: 'radial-gradient(120% 120% at 50% 0%, hsl(220 22% 16%) 0%, hsl(222 26% 11%) 70%)',
           touchAction: modo === 'paredes' ? 'none' : undefined,
@@ -732,7 +745,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
               title={nome
                 ? (isOutro
                     ? `${nome}${info?.setor ? ' · ' + info.setor : ''} — mesa ${idx + 1}`
-                    : `${nome} — ${cfg?.label ?? 'sem sinal'}${ls?.pingSec != null ? ' · há ' + Math.round(ls.pingSec) + 's' : ''}${ls?.versao ? ' · v' + ls.versao : ''}${funil?.[nome] ? ` · 👥${funil[nome].aberto} em atendimento aberto (carteira ${funil[nome].totalChats}) · 💬${funil[nome].atendimentos} atend. hoje (${funil[nome].msgs} msgs)` : ''}${ls ? ` · 📥${ls.enviadosHoje} leads · 📄${orcDe(nome)} orç. hoje` : ''}${funil?.[nome] ? ` · funil: 🔥${funil[nome].quente} quentes, ${funil[nome].novoLead} novos, ${funil[nome].vendido} vendidos` : ''}`)
+                    : `${nome} — ${cfg?.label ?? 'sem sinal'}${ls?.pingSec != null ? ' · há ' + Math.round(ls.pingSec) + 's' : ''}${ls?.versao ? ' · v' + ls.versao : ''}${funil?.[nome] ? ` · 👥${funil[nome].aberto} em atendimento aberto (carteira ${funil[nome].totalChats}) · 💬${funil[nome].atendimentos} atend. hoje (${funil[nome].msgs} msgs)` : ''} · 📥${leadsDe(nome)} leads hoje · 📄${orcDe(nome)} orç. hoje${funil?.[nome] ? ` · funil: 🔥${funil[nome].quente} quentes, ${funil[nome].novoLead} novos, ${funil[nome].vendido} vendidos` : ''}`)
                 : `Mesa ${idx + 1} (vazia)`}
               className={`group absolute rounded-lg transition-shadow ${
                 editLayout ? `cursor-move ring-1 ${movendo === m.id ? 'ring-accent z-20 shadow-lg shadow-black/40' : 'ring-accent/40'} bg-accent/5` :
@@ -785,12 +798,12 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
                       {nome.split(' ')[0]}
                     </span>
                     {!isOutro && !editLayout && (
-                      <span className="flex flex-wrap items-center justify-center gap-x-1.5 gap-y-0 text-[10px] font-bold leading-tight px-1.5 py-0.5 rounded-md bg-black/55 ring-1 ring-white/10 max-w-[160px]">
-                        <span className="text-cyan-300" title="clientes com atendimento aberto (em negociação ativa no funil)">👥{funil?.[nome]?.aberto ?? 0}</span>
-                        <span className="text-violet-300" title="atendimentos hoje (chats que ele trabalhou no dia)">💬{funil?.[nome]?.atendimentos ?? 0}</span>
-                        <span className="text-emerald-300" title="leads recebidos hoje pela central">📥{ls?.enviadosHoje ?? 0}</span>
-                        <span className="text-sky-300" title="orçamentos feitos hoje">📄{orcDe(nome)}</span>
-                        {quente > 0 && <span className="text-orange-300" title="leads quentes no funil">🔥{quente}</span>}
+                      <span className="flex items-stretch rounded-md bg-black/75 ring-1 ring-white/10 overflow-hidden text-[10.5px] font-extrabold leading-none divide-x divide-white/10 shadow-md shadow-black/40">
+                        <span className="px-1.5 py-1 text-cyan-300 flex items-center gap-0.5" title="clientes em atendimento aberto (negociação ativa)">👥{funil?.[nome]?.aberto ?? 0}</span>
+                        <span className="px-1.5 py-1 text-violet-300 flex items-center gap-0.5" title="atendimentos hoje (chats trabalhados no dia)">💬{funil?.[nome]?.atendimentos ?? 0}</span>
+                        <span className="px-1.5 py-1 text-emerald-300 flex items-center gap-0.5" title="leads que chegaram hoje (fonte: página Atendimentos)">📥{leadsDe(nome)}</span>
+                        <span className="px-1.5 py-1 text-sky-300 flex items-center gap-0.5" title="orçamentos feitos hoje">📄{orcDe(nome)}</span>
+                        {quente > 0 && <span className="px-1.5 py-1 text-orange-300 flex items-center gap-0.5" title="leads quentes no funil">🔥{quente}</span>}
                       </span>
                     )}
                   </div>
