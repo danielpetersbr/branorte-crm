@@ -264,6 +264,21 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
   })
   const orcDe = (nome: string) => orcHoje?.[(nome.split(/\s+/)[0] || '').toUpperCase()] ?? 0
 
+  // Funil ao vivo por vendedor (etiquetas do heartbeat via RPC) — QUENTE/NOVO LEAD/etc.
+  type Funil = { quente: number; novoLead: number; followup: number; orcamento: number; vendido: number; totalChats: number }
+  const { data: funil } = useQuery<Record<string, Funil>>({
+    queryKey: ['escritorio-funil'],
+    queryFn: async () => {
+      const { data } = await supabase.rpc('escritorio_funil_vivo')
+      const m: Record<string, Funil> = {}
+      for (const r of (data ?? []) as Array<Record<string, any>>) {
+        m[r.vendedor_nome] = { quente: r.quente, novoLead: r.novo_lead, followup: r.followup, orcamento: r.orcamento, vendido: r.vendido, totalChats: r.total_chats }
+      }
+      return m
+    },
+    refetchInterval: 20000,
+  })
+
   const ocupantes = useMemo<Ocupante[]>(() => {
     const vend: Ocupante[] = vendedores.map(v => ({ nome: v.vendedor_nome, tipo: 'vendedor', online: v.online, setor: null }))
     const extra: Ocupante[] = (pessoas ?? []).map(p => ({ nome: p.nome, tipo: 'outro', online: false, setor: p.setor }))
@@ -281,6 +296,34 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
     for (const [mesaId, nome] of Object.entries(assignMap)) inv[nome] = mesaId
     return inv
   }, [assignMap])
+
+  // ----- Painel do gestor: KPIs do dia, líder e alerta de parados -----
+  const hora = new Date().getHours()
+  const expediente = hora >= 7 && hora < 19
+  const ALERTA_STATUS = ['wa_fechado', 'verificar_wa', 'desconectado']
+  const kpis = useMemo(() => {
+    let leads = 0, orc = 0, quentes = 0, ativos = 0, parados = 0
+    for (const v of vendedores) {
+      const n = v.vendedor_nome
+      leads += live?.[n]?.enviadosHoje ?? 0
+      orc += orcDe(n)
+      quentes += funil?.[n]?.quente ?? 0
+      const st = live?.[n]?.status
+      if (st === 'ativo') ativos++
+      if (expediente && st && ALERTA_STATUS.includes(st)) parados++
+    }
+    return { leads, orc, quentes, ativos, total: vendedores.length, parados }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vendedores, live, funil, orcHoje, expediente])
+  const leader = useMemo(() => {
+    let best: string | null = null, bo = -1, bl = -1
+    for (const v of vendedores) {
+      const o = orcDe(v.vendedor_nome), l = live?.[v.vendedor_nome]?.enviadosHoje ?? 0
+      if (o > bo || (o === bo && l > bl)) { best = v.vendedor_nome; bo = o; bl = l }
+    }
+    return (bo > 0 || bl > 0) ? best : null
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vendedores, live, orcHoje])
 
   function posDe(id: string): Pos {
     if (localPos[id]) return localPos[id]
@@ -504,6 +547,22 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
         </div>
       </div>
 
+      {/* Painel do gestor — KPIs do dia */}
+      {modo === 'normal' && (
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-emerald-500/12 ring-1 ring-emerald-400/30 text-emerald-200" title="Leads recebidos hoje pelo time">📥 {kpis.leads}<span className="text-ink-faint font-normal text-[10px] ml-0.5">leads</span></span>
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-sky-500/12 ring-1 ring-sky-400/30 text-sky-200" title="Orçamentos feitos hoje pelo time">📄 {kpis.orc}<span className="text-ink-faint font-normal text-[10px] ml-0.5">orçam.</span></span>
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-orange-500/12 ring-1 ring-orange-400/30 text-orange-200" title="Leads QUENTES no funil do time (cobre quem deixou esfriar)">🔥 {kpis.quentes}<span className="text-ink-faint font-normal text-[10px] ml-0.5">quentes</span></span>
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-emerald-500/12 ring-1 ring-emerald-400/30 text-emerald-200" title="Vendedores ativos agora / total">🟢 {kpis.ativos}/{kpis.total}<span className="text-ink-faint font-normal text-[10px] ml-0.5">ativos</span></span>
+          {kpis.parados > 0 && (
+            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-red-500/15 ring-1 ring-red-400/40 text-red-200 animate-pulse" title="Em horário comercial com WhatsApp fechado/desconectado — liga pra eles">🚨 {kpis.parados}<span className="text-red-200/80 font-normal text-[10px] ml-0.5">parados</span></span>
+          )}
+          {leader && (
+            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-amber-500/15 ring-1 ring-amber-400/40 text-amber-200 ml-auto" title="Líder do dia — mais orçamentos (depois leads)">👑 {leader.split(' ')[0]}</span>
+          )}
+        </div>
+      )}
+
       {/* Paleta de pessoas (arrastáveis) — escondida no modo posicionar */}
       {!editLayout && (
         <div className="flex flex-wrap gap-1.5 mb-3 p-2 rounded-lg border border-border bg-surface-2/30">
@@ -626,6 +685,8 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
           const ls = nome && !isOutro ? live?.[nome] : undefined
           const cfg = ls ? STATUS_CFG[ls.status] : undefined
           const fade = !!cfg?.fade && modo === 'normal'
+          const alerta = !isOutro && modo === 'normal' && expediente && !!ls && ALERTA_STATUS.includes(ls.status)
+          const quente = !isOutro && nome ? (funil?.[nome]?.quente ?? 0) : 0
           const isOver = overMesa === m.id
           const p = posDe(m.id)
           const left = pct(p.x - DESK_W / 2, VB.w)
@@ -643,14 +704,14 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
               title={nome
                 ? (isOutro
                     ? `${nome}${info?.setor ? ' · ' + info.setor : ''} — mesa ${idx + 1}`
-                    : `${nome} — ${cfg?.label ?? 'sem sinal'}${ls?.pingSec != null ? ' · há ' + Math.round(ls.pingSec) + 's' : ''}${ls?.versao ? ' · v' + ls.versao : ''}${ls ? ' · ' + ls.enviadosHoje + ' leads hoje' : ''}`)
+                    : `${nome} — ${cfg?.label ?? 'sem sinal'}${ls?.pingSec != null ? ' · há ' + Math.round(ls.pingSec) + 's' : ''}${ls?.versao ? ' · v' + ls.versao : ''}${ls ? ' · ' + ls.enviadosHoje + ' leads · ' + orcDe(nome) + ' orç. hoje' : ''}${funil?.[nome] ? ` · funil: 🔥${funil[nome].quente} quentes, ${funil[nome].novoLead} novos, ${funil[nome].vendido} vendidos` : ''}`)
                 : `Mesa ${idx + 1} (vazia)`}
               className={`group absolute rounded-lg transition-shadow ${
                 editLayout ? `cursor-move ring-1 ${movendo === m.id ? 'ring-accent z-20 shadow-lg shadow-black/40' : 'ring-accent/40'} bg-accent/5` :
                 isOver ? 'ring-2 ring-accent bg-accent/15 scale-105 z-10' :
                 nome ? 'hover:bg-white/5' :
                 'border border-dashed border-ink/20 hover:border-accent/60 hover:bg-accent/5 cursor-pointer'
-              }`}
+              } ${alerta ? 'ring-2 ring-red-500/70 animate-pulse' : ''}`}
               style={{ left, top, width, height, touchAction: editLayout ? 'none' : undefined, pointerEvents: modo === 'paredes' ? 'none' : undefined }}
             >
               <div
@@ -676,6 +737,14 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
 
               {nome ? (
                 <>
+                  {!editLayout && leader === nome && (
+                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[15px] leading-none z-20" title="Líder do dia (mais orçamentos, depois leads)">👑</span>
+                  )}
+                  {!editLayout && quente > 0 && (
+                    <span className="absolute -top-1.5 left-0 inline-flex items-center text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-orange-500/45 text-orange-50 ring-1 ring-orange-400/50 leading-none z-10" title={`${quente} leads QUENTES no funil — cobre antes de esfriar`}>
+                      🔥{quente}
+                    </span>
+                  )}
                   <span className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 max-w-[140%] px-2 py-0.5 rounded-md bg-black/60 ring-1 ring-white/10 text-[11px] font-bold text-white truncate leading-tight">
                     {nome.split(' ')[0]}
                   </span>
