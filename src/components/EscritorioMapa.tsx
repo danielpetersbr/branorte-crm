@@ -179,6 +179,15 @@ export function EscritorioMapa({ vendedores }: { vendedores: VendedorLite[] }) {
     },
   })
   const temCustom = (paredes?.length ?? 0) > 0
+  // Lista de paredes pra desenhar (custom do banco, ou o padrão: contorno + divisórias)
+  const wallRects: Rect[] = temCustom
+    ? (paredes ?? [])
+    : [
+        { x: 16, y: 18, w: 612, h: 606 },
+        ...LINES.map(([x1, y1, x2, y2]) => x1 === x2
+          ? { x: x1 - 1, y: Math.min(y1, y2), w: 2, h: Math.abs(y2 - y1) }
+          : { x: Math.min(x1, x2), y: y1 - 1, w: Math.abs(x2 - x1), h: 2 }),
+      ]
 
   const addParede = useMutation({
     mutationFn: async (r: Rect) => {
@@ -541,7 +550,7 @@ export function EscritorioMapa({ vendedores }: { vendedores: VendedorLite[] }) {
         }}
       >
         <WorkDefs />
-        <svg viewBox={`0 0 ${VB.w} ${VB.h}`} className="absolute inset-0 w-full h-full pointer-events-none text-ink/35" preserveAspectRatio="none">
+        <svg viewBox={`0 0 ${VB.w} ${VB.h}`} className="absolute inset-0 w-full h-full pointer-events-none text-ink/30" preserveAspectRatio="none">
           <defs>
             <pattern id="floor-grid" width="30" height="30" patternUnits="userSpaceOnUse">
               <path d="M30 0 H0 V30" fill="none" stroke="currentColor" strokeWidth="0.6" />
@@ -550,21 +559,22 @@ export function EscritorioMapa({ vendedores }: { vendedores: VendedorLite[] }) {
               <stop offset="52%" stopColor="#000" stopOpacity="0" />
               <stop offset="100%" stopColor="#000" stopOpacity="0.4" />
             </radialGradient>
+            <filter id="wall-sh" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="1.6" />
+            </filter>
           </defs>
-          <rect x="0" y="0" width={VB.w} height={VB.h} fill="url(#floor-grid)" opacity="0.32" />
+          <rect x="0" y="0" width={VB.w} height={VB.h} fill="url(#floor-grid)" opacity="0.30" />
           <rect x="0" y="0" width={VB.w} height={VB.h} fill="url(#floor-vig)" />
-          {temCustom ? (
-            <g fill="none" stroke="currentColor" strokeWidth={3} strokeLinejoin="round">
-              {(paredes ?? []).map(p => <rect key={p.id} x={p.x} y={p.y} width={p.w} height={p.h} rx={4} />)}
-            </g>
-          ) : (
-            <>
-              <rect x={16} y={18} width={612} height={606} rx={12} fill="none" stroke="currentColor" strokeWidth={3} />
-              <g fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-                {LINES.map((l, i) => <line key={i} x1={l[0]} y1={l[1]} x2={l[2]} y2={l[3]} />)}
-              </g>
-            </>
-          )}
+          {/* PAREDES 3D: sombra + corpo grosso + brilho no topo */}
+          <g transform="translate(0,2.4)" stroke="#070a0e" strokeWidth={9} fill="none" strokeLinejoin="round" strokeLinecap="round" opacity="0.45" filter="url(#wall-sh)">
+            {wallRects.map((r, i) => <rect key={i} x={r.x} y={r.y} width={r.w} height={r.h} rx={5} />)}
+          </g>
+          <g stroke="#a9b1be" strokeWidth={7.5} fill="none" strokeLinejoin="round" strokeLinecap="round">
+            {wallRects.map((r, i) => <rect key={i} x={r.x} y={r.y} width={r.w} height={r.h} rx={5} />)}
+          </g>
+          <g transform="translate(0,-1.5)" stroke="#eaedf3" strokeWidth={2.6} fill="none" strokeLinejoin="round" strokeLinecap="round" opacity="0.55">
+            {wallRects.map((r, i) => <rect key={i} x={r.x} y={r.y} width={r.w} height={r.h} rx={5} />)}
+          </g>
           {draft && draft.w > 0 && draft.h > 0 && (
             <rect x={draft.x} y={draft.y} width={draft.w} height={draft.h} rx={2}
               fill="rgba(20,184,138,0.12)" stroke="hsl(160 70% 50%)" strokeWidth={2} strokeDasharray="6 4" />
