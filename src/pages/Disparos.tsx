@@ -127,6 +127,16 @@ export function Disparos() {
     },
   })
 
+  // Estado ao vivo por vendedor pro mapa do escritório (heartbeat + leads hoje)
+  const liveMesas = useMemo(() => {
+    const m: Record<string, { status: ReturnType<typeof statusVendedor>['status']; pingSec: number | null; versao: string | null; enviadosHoje: number; ultimoEnvio: string | null }> = {}
+    for (const v of vendedores ?? []) {
+      const st = statusVendedor(v)
+      m[v.vendedor_nome] = { status: st.status, pingSec: st.pingSec, versao: st.versao, enviadosHoje: Number(v.enviados_hoje) || 0, ultimoEnvio: v.ultimo_envio_em }
+    }
+    return m
+  }, [vendedores, vendorRuntime])
+
   if (!profile) return <PageLoading />
   if (!can('menu.disparos')) {
     return (
@@ -230,7 +240,7 @@ export function Disparos() {
       <OutboundDispatchCard />
 
       {/* ESCRITÓRIO — mapa de mesas (arrasta vendedor pra mesa) */}
-      <EscritorioMapa vendedores={(vendedores ?? []).map(v => ({ vendedor_nome: v.vendedor_nome, online: v.online }))} />
+      <EscritorioMapa vendedores={(vendedores ?? []).map(v => ({ vendedor_nome: v.vendedor_nome, online: v.online }))} live={liveMesas} />
     </div>
   )
 }

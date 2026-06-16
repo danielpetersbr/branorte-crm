@@ -15,6 +15,24 @@ type VendedorLite = { vendedor_nome: string; online: boolean }
 type Pessoa = { nome: string; setor: string | null }
 type Ocupante = { nome: string; tipo: 'vendedor' | 'outro'; online: boolean; setor: string | null }
 type Pos = { x: number; y: number }
+// Estado ao vivo do vendedor (vem do heartbeat da extensão, calculado no Disparos.tsx)
+type LiveStatus = {
+  status: 'ativo' | 'aguardando' | 'wa_fechado' | 'verificar_wa' | 'lento' | 'versao_antiga' | 'desconectado' | 'desligado'
+  pingSec: number | null
+  versao: string | null
+  enviadosHoje: number
+  ultimoEnvio: string | null
+}
+const STATUS_CFG: Record<LiveStatus['status'], { dot: string; label: string; glow?: boolean; fade?: boolean }> = {
+  ativo:         { dot: 'bg-emerald-400', label: 'ativo',          glow: true },
+  aguardando:    { dot: 'bg-cyan-400',    label: 'aguardando WA' },
+  wa_fechado:    { dot: 'bg-orange-400',  label: 'WA fechado' },
+  verificar_wa:  { dot: 'bg-orange-400',  label: 'verificar WA' },
+  lento:         { dot: 'bg-amber-400',   label: 'lento' },
+  versao_antiga: { dot: 'bg-amber-400',   label: 'recarregar' },
+  desconectado:  { dot: 'bg-red-400',     label: 'desconectado', fade: true },
+  desligado:     { dot: 'bg-slate-500',   label: 'desligado',    fade: true },
+}
 
 const VB = { w: 644, h: 642 }
 
@@ -134,7 +152,7 @@ function Workstation({ tipo, empty, name }: { tipo: 'vendedor' | 'outro'; empty:
   )
 }
 
-export function EscritorioMapa({ vendedores }: { vendedores: VendedorLite[] }) {
+export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[]; live?: Record<string, LiveStatus> }) {
   const qc = useQueryClient()
   const plantaRef = useRef<HTMLDivElement>(null)
   const [selected, setSelected] = useState<string | null>(null)
@@ -228,6 +246,23 @@ export function EscritorioMapa({ vendedores }: { vendedores: VendedorLite[] }) {
       return (data ?? []) as Pessoa[]
     },
   })
+
+  // Orçamentos feitos hoje por vendedor (orcamentos_gerados guarda nome completo → casa por 1º nome)
+  const { data: orcHoje } = useQuery<Record<string, number>>({
+    queryKey: ['escritorio-orcamentos-hoje'],
+    queryFn: async () => {
+      const inicio = new Date(); inicio.setHours(0, 0, 0, 0)
+      const { data } = await supabase.from('orcamentos_gerados').select('vendedor_nome').gte('created_at', inicio.toISOString())
+      const m: Record<string, number> = {}
+      for (const r of (data ?? []) as Array<{ vendedor_nome: string | null }>) {
+        const k = (r.vendedor_nome ?? '').trim().split(/\s+/)[0]?.toUpperCase()
+        if (k) m[k] = (m[k] ?? 0) + 1
+      }
+      return m
+    },
+    refetchInterval: 30000,
+  })
+  const orcDe = (nome: string) => orcHoje?.[(nome.split(/\s+/)[0] || '').toUpperCase()] ?? 0
 
   const ocupantes = useMemo<Ocupante[]>(() => {
     const vend: Ocupante[] = vendedores.map(v => ({ nome: v.vendedor_nome, tipo: 'vendedor', online: v.online, setor: null }))
@@ -425,9 +460,12 @@ export function EscritorioMapa({ vendedores }: { vendedores: VendedorLite[] }) {
     <Card className="p-4">
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div>
-          <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-ink flex items-center gap-2 flex-wrap">
             <Building2 className="h-4 w-4 text-accent" />
             Escritório — quem senta em cada mesa
+            <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-300 px-1.5 py-0.5 rounded-full bg-emerald-500/15 ring-1 ring-emerald-400/30">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" /> AO VIVO
+            </span>
           </h2>
           <p className="text-[10px] text-ink-muted mt-0.5 flex items-center gap-1">
             <MousePointerClick className="h-3 w-3" />
@@ -585,7 +623,9 @@ export function EscritorioMapa({ vendedores }: { vendedores: VendedorLite[] }) {
           const nome = assignMap[m.id]
           const info = nome ? infoDe[nome] : undefined
           const isOutro = info?.tipo === 'outro'
-          const online = info?.online ?? false
+          const ls = nome && !isOutro ? live?.[nome] : undefined
+          const cfg = ls ? STATUS_CFG[ls.status] : undefined
+          const fade = !!cfg?.fade && modo === 'normal'
           const isOver = overMesa === m.id
           const p = posDe(m.id)
           const left = pct(p.x - DESK_W / 2, VB.w)
@@ -600,7 +640,11 @@ export function EscritorioMapa({ vendedores }: { vendedores: VendedorLite[] }) {
               onDrop={editLayout ? undefined : e => { e.preventDefault(); soltarNaMesa(m.id, e.dataTransfer.getData('text/plain') || dragging) }}
               onClick={editLayout ? undefined : () => clicarMesa(m.id)}
               onPointerDown={editLayout ? e => iniciarMover(e, m.id) : undefined}
-              title={nome ? `${nome}${info?.setor ? ' · ' + info.setor : ''} — mesa ${idx + 1}` : `Mesa ${idx + 1} (vazia)`}
+              title={nome
+                ? (isOutro
+                    ? `${nome}${info?.setor ? ' · ' + info.setor : ''} — mesa ${idx + 1}`
+                    : `${nome} — ${cfg?.label ?? 'sem sinal'}${ls?.pingSec != null ? ' · há ' + Math.round(ls.pingSec) + 's' : ''}${ls?.versao ? ' · v' + ls.versao : ''}${ls ? ' · ' + ls.enviadosHoje + ' leads hoje' : ''}`)
+                : `Mesa ${idx + 1} (vazia)`}
               className={`group absolute rounded-lg transition-shadow ${
                 editLayout ? `cursor-move ring-1 ${movendo === m.id ? 'ring-accent z-20 shadow-lg shadow-black/40' : 'ring-accent/40'} bg-accent/5` :
                 isOver ? 'ring-2 ring-accent bg-accent/15 scale-105 z-10' :
@@ -613,7 +657,7 @@ export function EscritorioMapa({ vendedores }: { vendedores: VendedorLite[] }) {
                 draggable={!!nome && !editLayout}
                 onDragStart={e => { if (nome && !editLayout) { e.dataTransfer.setData('text/plain', nome); setDragging(nome) } }}
                 onDragEnd={() => setDragging(null)}
-                className={`w-full h-full ${nome && !editLayout ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                className={`w-full h-full transition-opacity ${nome && !editLayout ? 'cursor-grab active:cursor-grabbing' : ''} ${fade ? 'opacity-40 grayscale' : ''}`}
                 style={{ transform: `rotate(${rotDe(m.id)}deg)`, transition: girando === m.id ? 'none' : 'transform .12s' }}
               >
                 <Workstation tipo={isOutro ? 'outro' : 'vendedor'} empty={!nome} name={nome ?? m.id} />
@@ -640,10 +684,22 @@ export function EscritorioMapa({ vendedores }: { vendedores: VendedorLite[] }) {
                       {abreviaSetor(info?.setor ?? null)}
                     </span>
                   ) : (
-                    <span
-                      className={`absolute top-0.5 right-0.5 h-2 w-2 rounded-full ring-1 ring-black/50 ${online ? 'bg-emerald-400 shadow-[0_0_6px_1px_rgba(16,185,129,0.7)] animate-pulse' : 'bg-slate-500'}`}
-                      title={online ? 'ligado' : 'desligado'}
-                    />
+                    <>
+                      <span
+                        className={`absolute top-0.5 right-0.5 h-2 w-2 rounded-full ring-1 ring-black/50 ${cfg?.dot ?? 'bg-slate-500'} ${cfg?.glow ? 'shadow-[0_0_6px_1px_rgba(16,185,129,0.75)] animate-pulse' : ''}`}
+                        title={cfg?.label ?? 'sem sinal'}
+                      />
+                      {!editLayout && ls && ls.enviadosHoje > 0 && (
+                        <span className="absolute -bottom-1 right-0 text-[7px] font-bold px-1 py-0.5 rounded-full bg-emerald-500/35 text-emerald-50 ring-1 ring-emerald-400/40 leading-none" title={`${ls.enviadosHoje} leads recebidos hoje`}>
+                          {ls.enviadosHoje}
+                        </span>
+                      )}
+                      {!editLayout && orcDe(nome) > 0 && (
+                        <span className="absolute -bottom-1 left-0 text-[7px] font-bold px-1 py-0.5 rounded-full bg-sky-500/35 text-sky-50 ring-1 ring-sky-400/40 leading-none" title={`${orcDe(nome)} orçamentos feitos hoje`}>
+                          {'\u{1F4C4}'}{orcDe(nome)}
+                        </span>
+                      )}
+                    </>
                   )}
                   {!editLayout && (
                     <button
@@ -674,6 +730,19 @@ export function EscritorioMapa({ vendedores }: { vendedores: VendedorLite[] }) {
           >×</button>
         ))}
       </div>
+
+      {/* Legenda do estado ao vivo */}
+      {modo === 'normal' && (
+        <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[10px] text-ink-muted justify-center">
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_5px_1px_rgba(16,185,129,.7)]" /> ativo</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-cyan-400" /> aguardando WA</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-orange-400" /> WA fechado</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-400" /> lento</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-400" /> desconectado</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-slate-500" /> desligado</span>
+          <span className="flex items-center gap-1"><span className="text-emerald-300 font-bold">N</span> leads · <span className="text-sky-300 font-bold">{'\u{1F4C4}'}N</span> orçamentos (hoje)</span>
+        </div>
+      )}
     </Card>
   )
 }
