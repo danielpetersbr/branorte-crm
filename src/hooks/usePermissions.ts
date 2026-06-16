@@ -26,6 +26,7 @@ export const FEATURE_CATALOG: Array<{
   { key: 'menu.funil', label: 'Funil', group: 'Menu' },
   { key: 'menu.etiquetas_zap', label: 'Etiquetas Zap', group: 'Menu' },
   { key: 'menu.atividade_diaria', label: 'Atividade Diária', group: 'Menu' },
+  { key: 'menu.avaliacoes', label: 'Avaliações', group: 'Menu' },
   { key: 'menu.orcamentos', label: 'Orçamentos', group: 'Menu' },
   { key: 'menu.orcamentos_avancado', label: 'Orçamentos avançado (Catálogo/Motores/Preços/Conversão/Painel/Lista)', group: 'Menu' },
   { key: 'menu.vendidos', label: 'Vendidos', group: 'Menu' },
