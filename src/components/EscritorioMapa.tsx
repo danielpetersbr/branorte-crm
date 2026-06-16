@@ -178,6 +178,48 @@ function Workstation({ tipo, empty, name, ativo }: { tipo: 'vendedor' | 'outro';
   )
 }
 
+// Card de funil detalhado mostrado ao passar o mouse no vendedor.
+type FunilCardData = {
+  prospec: number; novoLead: number; tentativa: number; followup: number; quente: number; orcamento: number; vendido: number
+  aberto: number; atendimentos: number; totalChats: number
+}
+function FunilCard({ f, nome, below }: { f: FunilCardData; nome: string; below: boolean }) {
+  const stages: Array<[string, number, string]> = [
+    ['Prospecção', f.prospec, 'bg-slate-400'],
+    ['Novo lead', f.novoLead, 'bg-cyan-400'],
+    ['2ª tentativa', f.tentativa, 'bg-blue-400'],
+    ['Follow up', f.followup, 'bg-indigo-400'],
+    ['Lead quente', f.quente, 'bg-orange-400'],
+    ['Orçamento', f.orcamento, 'bg-sky-400'],
+    ['Vendido', f.vendido, 'bg-emerald-400'],
+  ]
+  const max = Math.max(1, ...stages.map(s => s[1]))
+  return (
+    <div className={`absolute left-1/2 -translate-x-1/2 ${below ? 'top-full mt-2' : 'bottom-full mb-2'} z-50 w-48 rounded-lg bg-[#0b1220] ring-1 ring-white/15 shadow-xl shadow-black/70 p-2.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none`}>
+      <div className="text-[12px] font-bold text-ink mb-1.5 flex items-center justify-between">
+        <span className="truncate">{nome}</span>
+        <span className="text-[9px] text-ink-faint font-normal">funil</span>
+      </div>
+      <div className="space-y-1">
+        {stages.map(([label, n, color]) => (
+          <div key={label} className="flex items-center gap-1.5 text-[10px]">
+            <span className="w-[58px] text-ink-muted shrink-0">{label}</span>
+            <div className="flex-1 h-2.5 rounded bg-white/5 overflow-hidden">
+              <div className={`h-full ${color} rounded`} style={{ width: `${(n / max) * 100}%` }} />
+            </div>
+            <span className="w-7 text-right font-bold text-ink tabular-nums">{n}</span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 pt-1.5 border-t border-white/10 flex flex-wrap gap-x-2.5 gap-y-0.5 text-[9.5px] text-ink-muted">
+        <span className="text-cyan-300 font-semibold">👥 {f.aberto} aberto</span>
+        <span className="text-violet-300 font-semibold">💬 {f.atendimentos} hoje</span>
+        <span>👤 {f.totalChats} carteira</span>
+      </div>
+    </div>
+  )
+}
+
 export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[]; live?: Record<string, LiveStatus> }) {
   const qc = useQueryClient()
   const plantaRef = useRef<HTMLDivElement>(null)
@@ -304,14 +346,14 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
   const leadsDe = (nome: string) => leadsHoje?.[(nome.split(/\s+/)[0] || '').toUpperCase()] ?? 0
 
   // Funil ao vivo por vendedor (etiquetas do heartbeat via RPC) — QUENTE/NOVO LEAD/etc.
-  type Funil = { aberto: number; quente: number; novoLead: number; followup: number; orcamento: number; vendido: number; totalChats: number; atendimentos: number; msgs: number }
+  type Funil = { aberto: number; prospec: number; novoLead: number; tentativa: number; followup: number; quente: number; orcamento: number; vendido: number; totalChats: number; atendimentos: number; msgs: number }
   const { data: funil } = useQuery<Record<string, Funil>>({
     queryKey: ['escritorio-funil'],
     queryFn: async () => {
       const { data } = await supabase.rpc('escritorio_funil_vivo')
       const m: Record<string, Funil> = {}
       for (const r of (data ?? []) as Array<Record<string, any>>) {
-        m[r.vendedor_nome] = { aberto: r.aberto, quente: r.quente, novoLead: r.novo_lead, followup: r.followup, orcamento: r.orcamento, vendido: r.vendido, totalChats: r.total_chats, atendimentos: r.atendimentos, msgs: r.msgs }
+        m[r.vendedor_nome] = { aberto: r.aberto, prospec: r.prospec, novoLead: r.novo_lead, tentativa: r.tentativa, followup: r.followup, quente: r.quente, orcamento: r.orcamento, vendido: r.vendido, totalChats: r.total_chats, atendimentos: r.atendimentos, msgs: r.msgs }
       }
       return m
     },
@@ -745,7 +787,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
               title={nome
                 ? (isOutro
                     ? `${nome}${info?.setor ? ' · ' + info.setor : ''} — mesa ${idx + 1}`
-                    : `${nome} — ${cfg?.label ?? 'sem sinal'}${ls?.pingSec != null ? ' · há ' + Math.round(ls.pingSec) + 's' : ''}${ls?.versao ? ' · v' + ls.versao : ''}${funil?.[nome] ? ` · 👥${funil[nome].aberto} em atendimento aberto (carteira ${funil[nome].totalChats}) · 💬${funil[nome].atendimentos} atend. hoje (${funil[nome].msgs} msgs)` : ''} · 📥${leadsDe(nome)} leads hoje · 📄${orcDe(nome)} orç. hoje${funil?.[nome] ? ` · funil: 🔥${funil[nome].quente} quentes, ${funil[nome].novoLead} novos, ${funil[nome].vendido} vendidos` : ''}`)
+    : `${nome} — ${cfg?.label ?? 'sem sinal'}${ls?.pingSec != null ? ' · há ' + Math.round(ls.pingSec) + 's' : ''}${ls?.versao ? ' · v' + ls.versao : ''}`)
                 : `Mesa ${idx + 1} (vazia)`}
               className={`group absolute rounded-lg transition-shadow ${
                 editLayout ? `cursor-move ring-1 ${movendo === m.id ? 'ring-accent z-20 shadow-lg shadow-black/40' : 'ring-accent/40'} bg-accent/5` :
@@ -815,6 +857,9 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
                     >
                       <X className="h-3 w-3" />
                     </button>
+                  )}
+                  {!isOutro && !editLayout && funil?.[nome] && (
+                    <FunilCard f={funil[nome]} nome={nome} below={p.y < 165} />
                   )}
                 </>
               ) : (
