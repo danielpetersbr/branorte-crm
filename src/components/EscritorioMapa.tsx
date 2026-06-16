@@ -87,6 +87,15 @@ function hueFromName(name: string): number {
   return Math.abs(h) % 360
 }
 
+// Critérios do Ranking do dia (ordenação + cor da barra/valor)
+const RANK_METRICAS = [
+  { key: 'atendimentos', label: 'Atend.', icon: '💬', cor: 'text-violet-300', bar: 'bg-violet-400' },
+  { key: 'leads',        label: 'Leads',  icon: '📥', cor: 'text-emerald-300', bar: 'bg-emerald-400' },
+  { key: 'orcamentos',   label: 'Orç.',   icon: '📄', cor: 'text-sky-300',    bar: 'bg-sky-400' },
+  { key: 'vendido',      label: 'Vend.',  icon: '✅', cor: 'text-green-300',  bar: 'bg-green-500' },
+  { key: 'conversao',    label: 'Conv.',  icon: '🎯', cor: 'text-amber-300',  bar: 'bg-amber-400' },
+] as const
+
 // Gradientes/filtros compartilhados (referenciados por url(#id) em todas as estações).
 function WorkDefs() {
   return (
@@ -245,6 +254,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
   const [localRot, setLocalRot] = useState<Record<string, number>>({})
   const [draft, setDraft] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const [cardAberto, setCardAberto] = useState<string | null>(null) // funil fixado por clique (mobile)
+  const [rankMetric, setRankMetric] = useState<'atendimentos' | 'leads' | 'orcamentos' | 'vendido' | 'conversao'>('atendimentos')
 
   const { data: dados } = useQuery<{ assign: Record<string, string>; pos: Record<string, Pos>; rot: Record<string, number> }>({
     queryKey: ['escritorio-mesas'],
@@ -416,17 +426,28 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendedores, orcHoje, leadsHoje])
 
-  // Ranking do dia: vendedores ordenados por nº de atendimentos (desempate: orçamentos, depois aberto).
+  // Ranking do dia: vendedores com todas as métricas; ordena pelo critério escolhido (rankMetric).
   const ranking = useMemo(() => {
     return vendedores
       .map(v => {
         const n = v.vendedor_nome
         const f = funil?.[n]
-        return { nome: n, online: v.online, atendimentos: f?.atendimentos ?? 0, orcamentos: orcDe(n), aberto: f?.aberto ?? 0 }
+        const vendido = f?.vendido ?? 0, perdidos = f?.perdidos ?? 0
+        return {
+          nome: n, online: v.online,
+          atendimentos: f?.atendimentos ?? 0,
+          leads: leadsDe(n),
+          orcamentos: orcDe(n),
+          aberto: f?.aberto ?? 0,
+          quente: f?.quente ?? 0,
+          vendido, perdidos,
+          conversao: vendido + perdidos > 0 ? vendido / (vendido + perdidos) : 0,
+          msgs: f?.msgs ?? 0,
+        }
       })
-      .sort((a, b) => b.atendimentos - a.atendimentos || b.orcamentos - a.orcamentos || b.aberto - a.aberto)
+      .sort((a, b) => (b[rankMetric] as number) - (a[rankMetric] as number) || b.atendimentos - a.atendimentos)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vendedores, funil, orcHoje])
+  }, [vendedores, funil, orcHoje, leadsHoje, rankMetric])
 
   function posDe(id: string): Pos {
     if (localPos[id]) return localPos[id]
@@ -912,28 +933,54 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
 
       {/* Coluna de RANKING do dia — ao lado do mapa */}
       <aside className="w-full lg:w-72 shrink-0 rounded-xl border border-border bg-surface-2/30 p-3">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-bold text-ink">🏆 Ranking do dia</h3>
-          <span className="text-[10px] text-ink-faint">por atendimentos</span>
-        </div>
-        <div className="space-y-1 lg:max-h-[560px] overflow-y-auto pr-0.5">
-          {ranking.length === 0 && <div className="text-[11px] text-ink-faint text-center py-4">Sem vendedores.</div>}
-          {ranking.map((r, i) => (
-            <div key={r.nome} className="flex items-center gap-2 rounded-lg px-2 py-1.5 bg-white/[0.03] border border-white/5">
-              <span className={`w-6 shrink-0 text-center text-sm font-bold ${i === 0 ? 'text-amber-300' : i === 1 ? 'text-slate-300' : i === 2 ? 'text-orange-300' : 'text-ink-faint'}`}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</span>
-              <div className="flex-1 min-w-0">
-                <div className="text-[12px] font-semibold text-ink truncate flex items-center gap-1">
-                  {r.nome}
-                  {r.online && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" title="online" />}
-                </div>
-                <div className="flex items-center gap-2.5 text-[10px] mt-0.5">
-                  <span className="text-violet-300 font-semibold" title="atendimentos hoje">💬 {r.atendimentos}</span>
-                  <span className="text-sky-300 font-semibold" title="orçamentos hoje">📄 {r.orcamentos}</span>
-                  <span className="text-cyan-300 font-semibold" title="clientes em atendimento aberto">👥 {r.aberto}</span>
-                </div>
-              </div>
-            </div>
+        <h3 className="text-sm font-bold text-ink mb-2">🏆 Ranking do dia</h3>
+        {/* critério de ordenação */}
+        <div className="flex flex-wrap gap-1 mb-2">
+          {RANK_METRICAS.map(m => (
+            <button key={m.key} onClick={() => setRankMetric(m.key)}
+              className={`text-[10px] px-1.5 py-1 rounded-md border font-semibold transition-colors ${rankMetric === m.key ? 'border-accent bg-accent/15 text-accent' : 'border-border text-ink-muted hover:text-ink'}`}
+              title={`Ordenar por ${m.label}`}>
+              {m.icon} {m.label}
+            </button>
           ))}
+        </div>
+        <div className="space-y-1 lg:max-h-[520px] overflow-y-auto pr-0.5">
+          {ranking.length === 0 && <div className="text-[11px] text-ink-faint text-center py-4">Sem vendedores.</div>}
+          {(() => {
+            const cfg = RANK_METRICAS.find(m => m.key === rankMetric)!
+            const maxVal = Math.max(1, ...ranking.map(r => r[rankMetric] as number))
+            return ranking.map((r, i) => {
+              const val = r[rankMetric] as number
+              const display = rankMetric === 'conversao' ? `${Math.round(val * 100)}%` : val
+              const pctBar = (val / maxVal) * 100
+              return (
+                <div key={r.nome} className="rounded-lg px-2 py-1.5 bg-white/[0.03] border border-white/5">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-5 shrink-0 text-center text-sm font-bold ${i === 0 ? 'text-amber-300' : i === 1 ? 'text-slate-300' : i === 2 ? 'text-orange-300' : 'text-ink-faint'}`}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-[12px] font-semibold text-ink truncate flex items-center gap-1">
+                          {r.nome}
+                          {r.online && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" title="online" />}
+                        </span>
+                        <span className={`text-[12px] font-bold tabular-nums shrink-0 ${cfg.cor}`}>{display}</span>
+                      </div>
+                      <div className="h-1.5 rounded bg-white/5 overflow-hidden mt-1">
+                        <div className={`h-full ${cfg.bar} rounded transition-all`} style={{ width: `${pctBar}%` }} />
+                      </div>
+                      <div className="flex items-center gap-2 text-[9.5px] mt-1 text-ink-muted">
+                        <span title="atendimentos hoje">💬{r.atendimentos}</span>
+                        <span title="leads hoje">📥{r.leads}</span>
+                        <span title="orçamentos hoje">📄{r.orcamentos}</span>
+                        <span title="vendidos">✅{r.vendido}</span>
+                        {r.quente > 0 && <span className="text-orange-300" title="leads quentes">🔥{r.quente}</span>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })
+          })()}
         </div>
       </aside>
       </div>{/* /flex (mapa + ranking) */}
