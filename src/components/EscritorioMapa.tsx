@@ -108,46 +108,72 @@ function WorkDefs() {
   )
 }
 
-function Workstation({ tipo, empty, name }: { tipo: 'vendedor' | 'outro'; empty: boolean; name: string }) {
+function Workstation({ tipo, empty, name, ativo }: { tipo: 'vendedor' | 'outro'; empty: boolean; name: string; ativo?: boolean }) {
   const hue = hueFromName(name || 'x')
   const shirt = empty ? '#3a4456' : tipo === 'outro' ? 'hsl(270 50% 58%)' : `hsl(${hue} 60% 56%)`
   const hair = empty ? '#2c3441' : tipo === 'outro' ? 'hsl(270 35% 30%)' : `hsl(${hue} 45% 26%)`
+  const skin = '#f1c7a3'
   return (
     <svg viewBox="0 0 100 96" className="w-full h-full" preserveAspectRatio="xMidYMid meet">
       {/* sombra suave no chão */}
-      <ellipse cx="50" cy="90" rx="40" ry="5.5" fill="#000" opacity="0.22" filter="url(#ws-soft)" />
-      {/* cadeira moderna */}
-      <rect x="35" y="2" width="30" height="17" rx="8.5" fill="#2b333f" />
-      <rect x="38.5" y="4.5" width="23" height="11" rx="6" fill="#3c4757" />
+      <ellipse cx="50" cy="91" rx="40" ry="5" fill="#000" opacity="0.25" filter="url(#ws-soft)" />
+      {/* cadeira: base giratória + haste + assento + encosto */}
+      <ellipse cx="50" cy="21" rx="9" ry="2.6" fill="#222a33" opacity="0.7" />
+      <rect x="48.6" y="11" width="2.8" height="9" rx="1.4" fill="#2b333f" />
+      <rect x="34" y="1" width="32" height="18" rx="9" fill="#2b333f" />
+      <rect x="37.5" y="3.5" width="25" height="12" rx="6.5" fill="#3c4757" />
       {!empty && (
         <>
+          {/* braços + mãos sobre a mesa */}
+          <rect x="30.5" y="43" width="7" height="21" rx="3.5" fill={shirt} />
+          <rect x="62.5" y="43" width="7" height="21" rx="3.5" fill={shirt} />
+          <circle cx="34" cy="63" r="3" fill={skin} />
+          <circle cx="66" cy="63" r="3" fill={skin} />
           {/* corpo + luz de cima */}
-          <ellipse cx="50" cy="40" rx="18.5" ry="11.5" fill={shirt} />
-          <ellipse cx="50" cy="36.5" rx="14" ry="6" fill="#ffffff" opacity="0.13" />
+          <ellipse cx="50" cy="42" rx="18" ry="11.5" fill={shirt} />
+          <ellipse cx="50" cy="38" rx="13" ry="5.5" fill="#ffffff" opacity="0.13" />
           {/* cabeça + cabelo + brilho */}
-          <circle cx="50" cy="29" r="10.5" fill="#f1c7a3" />
-          <path d="M39.5 29 a10.5 10.5 0 0 1 21 0 q-10.5 -7.5 -21 0 z" fill={hair} />
-          <ellipse cx="46" cy="23.5" rx="4.5" ry="2.1" fill="#ffffff" opacity="0.16" />
+          <circle cx="50" cy="30" r="10.5" fill={skin} />
+          <path d="M39.5 30 a10.5 10.5 0 0 1 21 0 q-10.5 -7.5 -21 0 z" fill={hair} />
+          <ellipse cx="46" cy="24" rx="4.5" ry="2" fill="#ffffff" opacity="0.16" />
         </>
       )}
-      {/* mesa com gradiente + borda de luz */}
-      <rect x="11" y="49" width="78" height="37" rx="7" fill="url(#ws-desk)" />
-      <rect x="11" y="49" width="78" height="7" rx="7" fill="#cb9d72" opacity="0.85" />
-      {/* monitor com tela brilhando */}
+      {/* mesa */}
+      <rect x="9" y="50" width="82" height="38" rx="7" fill="url(#ws-desk)" />
+      <rect x="9" y="50" width="82" height="7" rx="7" fill="#cb9d72" opacity="0.85" />
+      {/* monitor + tela com gráfico */}
       <rect x="47.5" y="61.5" width="5" height="5" rx="1" fill="#0c1118" />
-      <rect x="38" y="50" width="24" height="14" rx="2" fill="#0b1220" />
-      <rect x="40" y="52" width="20" height="10" rx="1" fill="url(#ws-screen)" opacity={empty ? 0.25 : 0.95} />
-      <rect x="41" y="53" width="7" height="8" rx="1" fill="#ffffff" opacity="0.10" />
+      <rect x="36" y="49" width="28" height="16" rx="2" fill="#0b1220" />
+      <rect x="38" y="51" width="24" height="12" rx="1" fill="url(#ws-screen)" opacity={empty ? 0.25 : 0.95} />
+      {!empty && <path d="M40 60 L45 55 L49 58 L54 52 L60 54.5" fill="none" stroke="#ffffff" strokeWidth="1" opacity="0.55" strokeLinecap="round" strokeLinejoin="round" />}
+      <rect x="39" y="51.5" width="6" height="9" rx="1" fill="#ffffff" opacity="0.08" />
       {/* teclado + mouse */}
-      <rect x="40" y="71" width="20" height="5.5" rx="1.5" fill="#d3dae5" />
-      <circle cx="66" cy="73.5" r="2.2" fill="#d3dae5" />
-      {/* caneca */}
-      <circle cx="21" cy="73" r="3" fill={empty ? '#3a4456' : 'hsl(150 55% 46%)'} />
-      <path d="M24 71.6 q2.8 1.4 0 2.8" stroke={empty ? '#3a4456' : 'hsl(150 55% 46%)'} strokeWidth="1.1" fill="none" />
+      <rect x="41" y="72" width="19" height="5" rx="1.5" fill="#d3dae5" />
+      <circle cx="65" cy="74" r="2" fill="#d3dae5" />
+      {/* telefone */}
+      <rect x="13" y="69" width="7" height="11" rx="1.5" fill="#1f2733" />
+      <rect x="14" y="70.5" width="5" height="6.5" rx="0.6" fill={empty ? '#33414f' : 'hsl(150 50% 45%)'} opacity="0.85" />
+      {/* caneca + vapor */}
+      <circle cx="79" cy="73" r="3" fill={empty ? '#3a4456' : 'hsl(150 55% 46%)'} />
+      <path d="M82 71.6 q2.6 1.4 0 2.8" stroke={empty ? '#3a4456' : 'hsl(150 55% 46%)'} strokeWidth="1" fill="none" />
+      {!empty && <path d="M79 67.5 q1.6 -2 0 -4" stroke="#cbd5e1" strokeWidth="0.7" fill="none" opacity="0.4" />}
+      {/* papéis */}
+      <rect x="22" y="80" width="9" height="6" rx="1" fill="#e7e2d5" opacity="0.85" transform="rotate(-9 26 83)" />
       {/* plantinha */}
-      <rect x="77.5" y="70.5" width="6" height="6" rx="1" fill="#7c5a3a" />
-      <circle cx="80.5" cy="69.5" r="4" fill="hsl(140 45% 40%)" />
-      <circle cx="78.5" cy="70.5" r="2.4" fill="hsl(140 48% 50%)" />
+      <rect x="84" y="80" width="6" height="6" rx="1" fill="#7c5a3a" />
+      <circle cx="87" cy="79" r="4" fill="hsl(140 45% 40%)" />
+      <circle cx="85" cy="80" r="2.4" fill="hsl(140 48% 50%)" />
+      {/* balão de "digitando" quando ativo */}
+      {!empty && ativo && (
+        <g transform="translate(67 13)">
+          <rect x="-9" y="-6" width="18" height="11" rx="5" fill="#0b1220" opacity="0.9" />
+          {[0, 1, 2].map(i => (
+            <circle key={i} cx={-4 + i * 4} cy="-0.5" r="1.4" fill="#5eead4">
+              <animate attributeName="opacity" values="0.25;1;0.25" dur="1s" begin={`${i * 0.2}s`} repeatCount="indefinite" />
+            </circle>
+          ))}
+        </g>
+      )}
     </svg>
   )
 }
@@ -265,14 +291,14 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
   const orcDe = (nome: string) => orcHoje?.[(nome.split(/\s+/)[0] || '').toUpperCase()] ?? 0
 
   // Funil ao vivo por vendedor (etiquetas do heartbeat via RPC) — QUENTE/NOVO LEAD/etc.
-  type Funil = { quente: number; novoLead: number; followup: number; orcamento: number; vendido: number; totalChats: number }
+  type Funil = { quente: number; novoLead: number; followup: number; orcamento: number; vendido: number; totalChats: number; atendimentos: number; msgs: number }
   const { data: funil } = useQuery<Record<string, Funil>>({
     queryKey: ['escritorio-funil'],
     queryFn: async () => {
       const { data } = await supabase.rpc('escritorio_funil_vivo')
       const m: Record<string, Funil> = {}
       for (const r of (data ?? []) as Array<Record<string, any>>) {
-        m[r.vendedor_nome] = { quente: r.quente, novoLead: r.novo_lead, followup: r.followup, orcamento: r.orcamento, vendido: r.vendido, totalChats: r.total_chats }
+        m[r.vendedor_nome] = { quente: r.quente, novoLead: r.novo_lead, followup: r.followup, orcamento: r.orcamento, vendido: r.vendido, totalChats: r.total_chats, atendimentos: r.atendimentos, msgs: r.msgs }
       }
       return m
     },
@@ -302,17 +328,18 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
   const expediente = hora >= 7 && hora < 19
   const ALERTA_STATUS = ['wa_fechado', 'verificar_wa', 'desconectado']
   const kpis = useMemo(() => {
-    let leads = 0, orc = 0, quentes = 0, ativos = 0, parados = 0
+    let leads = 0, orc = 0, quentes = 0, ativos = 0, parados = 0, atend = 0
     for (const v of vendedores) {
       const n = v.vendedor_nome
       leads += live?.[n]?.enviadosHoje ?? 0
       orc += orcDe(n)
       quentes += funil?.[n]?.quente ?? 0
+      atend += funil?.[n]?.atendimentos ?? 0
       const st = live?.[n]?.status
       if (st === 'ativo') ativos++
       if (expediente && st && ALERTA_STATUS.includes(st)) parados++
     }
-    return { leads, orc, quentes, ativos, total: vendedores.length, parados }
+    return { leads, orc, quentes, ativos, total: vendedores.length, parados, atend }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendedores, live, funil, orcHoje, expediente])
   const leader = useMemo(() => {
@@ -552,6 +579,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-emerald-500/12 ring-1 ring-emerald-400/30 text-emerald-200" title="Leads recebidos hoje pelo time">📥 {kpis.leads}<span className="text-ink-faint font-normal text-[10px] ml-0.5">leads</span></span>
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-sky-500/12 ring-1 ring-sky-400/30 text-sky-200" title="Orçamentos feitos hoje pelo time">📄 {kpis.orc}<span className="text-ink-faint font-normal text-[10px] ml-0.5">orçam.</span></span>
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-violet-500/12 ring-1 ring-violet-400/30 text-violet-200" title="Atendimentos hoje — chats trabalhados pelo time">💬 {kpis.atend}<span className="text-ink-faint font-normal text-[10px] ml-0.5">atend.</span></span>
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-orange-500/12 ring-1 ring-orange-400/30 text-orange-200" title="Leads QUENTES no funil do time (cobre quem deixou esfriar)">🔥 {kpis.quentes}<span className="text-ink-faint font-normal text-[10px] ml-0.5">quentes</span></span>
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-emerald-500/12 ring-1 ring-emerald-400/30 text-emerald-200" title="Vendedores ativos agora / total">🟢 {kpis.ativos}/{kpis.total}<span className="text-ink-faint font-normal text-[10px] ml-0.5">ativos</span></span>
           {kpis.parados > 0 && (
@@ -704,7 +732,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
               title={nome
                 ? (isOutro
                     ? `${nome}${info?.setor ? ' · ' + info.setor : ''} — mesa ${idx + 1}`
-                    : `${nome} — ${cfg?.label ?? 'sem sinal'}${ls?.pingSec != null ? ' · há ' + Math.round(ls.pingSec) + 's' : ''}${ls?.versao ? ' · v' + ls.versao : ''}${ls ? ' · ' + ls.enviadosHoje + ' leads · ' + orcDe(nome) + ' orç. hoje' : ''}${funil?.[nome] ? ` · funil: 🔥${funil[nome].quente} quentes, ${funil[nome].novoLead} novos, ${funil[nome].vendido} vendidos` : ''}`)
+                    : `${nome} — ${cfg?.label ?? 'sem sinal'}${ls?.pingSec != null ? ' · há ' + Math.round(ls.pingSec) + 's' : ''}${ls?.versao ? ' · v' + ls.versao : ''}${funil?.[nome] ? ` · 👥${funil[nome].totalChats} clientes · 💬${funil[nome].atendimentos} atend. hoje (${funil[nome].msgs} msgs)` : ''}${ls ? ` · 📥${ls.enviadosHoje} leads · 📄${orcDe(nome)} orç. hoje` : ''}${funil?.[nome] ? ` · funil: 🔥${funil[nome].quente} quentes, ${funil[nome].novoLead} novos, ${funil[nome].vendido} vendidos` : ''}`)
                 : `Mesa ${idx + 1} (vazia)`}
               className={`group absolute rounded-lg transition-shadow ${
                 editLayout ? `cursor-move ring-1 ${movendo === m.id ? 'ring-accent z-20 shadow-lg shadow-black/40' : 'ring-accent/40'} bg-accent/5` :
@@ -721,7 +749,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
                 className={`w-full h-full transition-opacity ${nome && !editLayout ? 'cursor-grab active:cursor-grabbing' : ''} ${fade ? 'opacity-40 grayscale' : ''}`}
                 style={{ transform: `rotate(${rotDe(m.id)}deg)`, transition: girando === m.id ? 'none' : 'transform .12s' }}
               >
-                <Workstation tipo={isOutro ? 'outro' : 'vendedor'} empty={!nome} name={nome ?? m.id} />
+                <Workstation tipo={isOutro ? 'outro' : 'vendedor'} empty={!nome} name={nome ?? m.id} ativo={ls?.status === 'ativo'} />
               </div>
 
               {/* Handle de girar (só no modo posicionar) */}
@@ -757,9 +785,10 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
                       {nome.split(' ')[0]}
                     </span>
                     {!isOutro && !editLayout && (
-                      <span className="flex items-center gap-1.5 text-[10px] font-bold leading-none whitespace-nowrap px-1.5 py-0.5 rounded-md bg-black/50 ring-1 ring-white/10">
-                        <span className="text-cyan-300" title="clientes (conversas no WhatsApp)">👥{funil?.[nome]?.totalChats ?? 0}</span>
-                        <span className="text-emerald-300" title="leads recebidos hoje">📥{ls?.enviadosHoje ?? 0}</span>
+                      <span className="flex flex-wrap items-center justify-center gap-x-1.5 gap-y-0 text-[10px] font-bold leading-tight px-1.5 py-0.5 rounded-md bg-black/55 ring-1 ring-white/10 max-w-[160px]">
+                        <span className="text-cyan-300" title="clientes na carteira (total de conversas no WhatsApp)">👥{funil?.[nome]?.totalChats ?? 0}</span>
+                        <span className="text-violet-300" title="atendimentos hoje (chats que ele trabalhou no dia)">💬{funil?.[nome]?.atendimentos ?? 0}</span>
+                        <span className="text-emerald-300" title="leads recebidos hoje pela central">📥{ls?.enviadosHoje ?? 0}</span>
                         <span className="text-sky-300" title="orçamentos feitos hoje">📄{orcDe(nome)}</span>
                         {quente > 0 && <span className="text-orange-300" title="leads quentes no funil">🔥{quente}</span>}
                       </span>
@@ -804,7 +833,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-400" /> lento</span>
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-400" /> desconectado</span>
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-slate-500" /> desligado</span>
-          <span className="flex items-center gap-1.5 text-ink-faint">por boneco: <span className="text-cyan-300 font-bold">👥clientes</span> · <span className="text-emerald-300 font-bold">📥leads</span> · <span className="text-sky-300 font-bold">📄orçam.</span> · <span className="text-orange-300 font-bold">🔥quentes</span> (hoje)</span>
+          <span className="flex items-center gap-1.5 text-ink-faint flex-wrap">por boneco: <span className="text-cyan-300 font-bold">👥clientes</span> · <span className="text-violet-300 font-bold">💬atend.</span> · <span className="text-emerald-300 font-bold">📥leads</span> · <span className="text-sky-300 font-bold">📄orçam.</span> · <span className="text-orange-300 font-bold">🔥quentes</span> (hoje)</span>
         </div>
       )}
     </Card>
