@@ -87,6 +87,35 @@ function hueFromName(name: string): number {
   return Math.abs(h) % 360
 }
 
+// Janela de trabalho: seg–sex, 07:15–17:30. O contador de inatividade só conta DENTRO dela
+// (pula noite e fim de semana) — daí "inteligente".
+const WORK_DOW = new Set([1, 2, 3, 4, 5])
+const WORK_INI_MIN = 7 * 60 + 15   // 07:15
+const WORK_FIM_MIN = 17 * 60 + 30  // 17:30
+const OFFLINE_STATUSES = new Set<LiveStatus['status']>(['desconectado', 'wa_fechado', 'verificar_wa', 'versao_antiga', 'desligado'])
+// Minutos ÚTEIS entre dois instantes (intersecção com a janela seg–sex 07:15–17:30).
+function minutosUteisInativo(fromMs: number, toMs: number): number {
+  if (!fromMs || toMs <= fromMs) return 0
+  const ini = Math.max(fromMs, toMs - 21 * 86400_000) // teto de 21 dias
+  let total = 0
+  const dia = new Date(ini); dia.setHours(0, 0, 0, 0)
+  const fimDia = new Date(toMs); fimDia.setHours(0, 0, 0, 0)
+  for (let d = new Date(dia); d.getTime() <= fimDia.getTime(); d.setDate(d.getDate() + 1)) {
+    if (!WORK_DOW.has(d.getDay())) continue
+    const wi = new Date(d); wi.setHours(0, WORK_INI_MIN, 0, 0)
+    const wf = new Date(d); wf.setHours(0, WORK_FIM_MIN, 0, 0)
+    const a = Math.max(ini, wi.getTime())
+    const b = Math.min(toMs, wf.getTime())
+    if (b > a) total += (b - a) / 60000
+  }
+  return Math.round(total)
+}
+function fmtDurInativo(min: number): string {
+  if (min < 1) return 'agora'
+  const h = Math.floor(min / 60), m = Math.round(min % 60)
+  return h > 0 ? `${h}h${String(m).padStart(2, '0')}` : `${m}min`
+}
+
 // Critérios do Ranking do dia (ordenação + cor da barra/valor)
 const RANK_METRICAS = [
   { key: 'atendimentos', label: 'Atend.', icon: '💬', cor: 'text-violet-300', bar: 'bg-violet-400' },
@@ -448,6 +477,20 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
       .sort((a, b) => (b[rankMetric] as number) - (a[rankMetric] as number) || b.atendimentos - a.atendimentos)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendedores, funil, orcHoje, leadsHoje, rankMetric])
+
+  // Último heartbeat (sync) de cada vendedor — pra contar há quanto tempo está inativo (vermelho).
+  const { data: ultimoSync } = useQuery<Record<string, number>>({
+    queryKey: ['escritorio-ultimo-sync'],
+    queryFn: async () => {
+      const { data } = await supabase.rpc('escritorio_ultimo_sync')
+      const m: Record<string, number> = {}
+      for (const r of (data ?? []) as Array<{ vendedor_nome: string; ultimo_sync: string }>) {
+        if (r.vendedor_nome && r.ultimo_sync) m[r.vendedor_nome] = new Date(r.ultimo_sync).getTime()
+      }
+      return m
+    },
+    refetchInterval: 60_000,
+  })
 
   function posDe(id: string): Pos {
     if (localPos[id]) return localPos[id]
@@ -818,6 +861,8 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
           const fade = !!cfg?.fade && modo === 'normal'
           const alerta = !isOutro && modo === 'normal' && expediente && !!ls && ALERTA_STATUS.includes(ls.status)
           const quente = !isOutro && nome ? (funil?.[nome]?.quente ?? 0) : 0
+          const inativoMin = (!isOutro && nome && ls?.status && OFFLINE_STATUSES.has(ls.status) && ultimoSync?.[nome])
+            ? minutosUteisInativo(ultimoSync[nome], Date.now()) : null
           const isOver = overMesa === m.id
           const p = posDe(m.id)
           const left = pct(p.x - DESK_W / 2, VB.w)
@@ -894,6 +939,11 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
                         <span className="px-1.5 py-1 text-emerald-300 flex items-center gap-0.5" title="leads que chegaram hoje (fonte: página Atendimentos)">📥{leadsDe(nome)}</span>
                         <span className="px-1.5 py-1 text-sky-300 flex items-center gap-0.5" title="orçamentos feitos hoje">📄{orcDe(nome)}</span>
                         {quente > 0 && <span className="px-1.5 py-1 text-orange-300 flex items-center gap-0.5" title="leads quentes no funil">🔥{quente}</span>}
+                      </span>
+                    )}
+                    {!isOutro && !editLayout && inativoMin != null && (
+                      <span className="px-2 py-0.5 rounded-md bg-red-500/90 ring-1 ring-red-200/50 text-[9px] font-extrabold text-white leading-none whitespace-nowrap shadow-md shadow-black/50" title="tempo inativo — conta só horário útil (07:15–17:30, seg–sex)">
+                        ⏱ inativo {fmtDurInativo(inativoMin)}
                       </span>
                     )}
                   </div>
