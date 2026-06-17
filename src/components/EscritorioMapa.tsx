@@ -454,18 +454,19 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
   const expediente = hora >= 7 && hora < 19
   const ALERTA_STATUS = ['wa_fechado', 'verificar_wa', 'desconectado']
   const kpis = useMemo(() => {
-    let leads = 0, orc = 0, quentes = 0, ativos = 0, parados = 0, atend = 0
+    let leads = 0, orc = 0, quentes = 0, ativos = 0, parados = 0, atend = 0, followup = 0
     for (const v of vendedores) {
       const n = v.vendedor_nome
       leads += leadsDe(n)
       orc += orcDe(n)
       quentes += funil?.[n]?.quente ?? 0
+      followup += funil?.[n]?.followup ?? 0
       atend += funil?.[n]?.atendimentos ?? 0
       const st = live?.[n]?.status
       if (st === 'ativo') ativos++
       if (expediente && st && ALERTA_STATUS.includes(st)) parados++
     }
-    return { leads, orc, quentes, ativos, total: vendedores.length, parados, atend }
+    return { leads, orc, quentes, ativos, total: vendedores.length, parados, atend, followup }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendedores, live, funil, orcHoje, leadsHoje, expediente])
   const leader = useMemo(() => {
@@ -763,6 +764,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-emerald-500/12 ring-1 ring-emerald-400/30 text-emerald-200" title="Leads recebidos hoje pelo time">📥 {kpis.leads}<span className="text-ink-faint font-normal text-[10px] ml-0.5">leads</span></span>
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-sky-500/12 ring-1 ring-sky-400/30 text-sky-200" title="Orçamentos feitos hoje pelo time">📄 {kpis.orc}<span className="text-ink-faint font-normal text-[10px] ml-0.5">orçam.</span></span>
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-violet-500/12 ring-1 ring-violet-400/30 text-violet-200" title="Atendimentos hoje — chats trabalhados pelo time">💬 {kpis.atend}<span className="text-ink-faint font-normal text-[10px] ml-0.5">atend.</span></span>
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-indigo-500/12 ring-1 ring-indigo-400/30 text-indigo-200" title="Contatos na etiqueta FOLLOW UP do time">🔁 {kpis.followup}<span className="text-ink-faint font-normal text-[10px] ml-0.5">follow up</span></span>
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-orange-500/12 ring-1 ring-orange-400/30 text-orange-200" title="Leads QUENTES no funil do time (cobre quem deixou esfriar)">🔥 {kpis.quentes}<span className="text-ink-faint font-normal text-[10px] ml-0.5">quentes</span></span>
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-emerald-500/12 ring-1 ring-emerald-400/30 text-emerald-200" title="Vendedores ativos agora / total">🟢 {kpis.ativos}/{kpis.total}<span className="text-ink-faint font-normal text-[10px] ml-0.5">ativos</span></span>
           {kpis.parados > 0 && (
