@@ -980,6 +980,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
                         <span className="px-1.5 py-1 text-violet-300 flex items-center gap-0.5" title="atendimentos hoje (chats trabalhados no dia)">💬{funil?.[nome]?.atendimentos ?? 0}</span>
                         <span className="px-1.5 py-1 text-emerald-300 flex items-center gap-0.5" title="leads que chegaram hoje (fonte: página Atendimentos)">📥{leadsDe(nome)}</span>
                         <span className="px-1.5 py-1 text-sky-300 flex items-center gap-0.5" title="orçamentos feitos hoje">📄{orcDe(nome)}</span>
+                        <span className="px-1.5 py-1 text-indigo-300 flex items-center gap-0.5" title="contatos na etiqueta FOLLOW UP">🔁{funil?.[nome]?.followup ?? 0}</span>
                         {quente > 0 && <span className="px-1.5 py-1 text-orange-300 flex items-center gap-0.5" title="leads quentes no funil">🔥{quente}</span>}
                       </span>
                     )}
@@ -1136,7 +1137,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-400" /> lento</span>
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-400" /> desconectado</span>
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-slate-500" /> desligado</span>
-          <span className="flex items-center gap-1.5 text-ink-faint flex-wrap">por boneco: <span className="text-cyan-300 font-bold">👥atend. aberto</span> · <span className="text-violet-300 font-bold">💬atend. hoje</span> · <span className="text-emerald-300 font-bold">📥leads</span> · <span className="text-sky-300 font-bold">📄orçam.</span> · <span className="text-orange-300 font-bold">🔥quentes</span> (hoje)</span>
+          <span className="flex items-center gap-1.5 text-ink-faint flex-wrap">por boneco: <span className="text-cyan-300 font-bold">👥atend. aberto</span> · <span className="text-violet-300 font-bold">💬atend. hoje</span> · <span className="text-emerald-300 font-bold">📥leads</span> · <span className="text-sky-300 font-bold">📄orçam.</span> · <span className="text-indigo-300 font-bold">🔁follow up</span> · <span className="text-orange-300 font-bold">🔥quentes</span> (hoje)</span>
         </div>
       )}
     </Card>
