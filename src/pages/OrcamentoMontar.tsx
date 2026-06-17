@@ -706,29 +706,36 @@ export function OrcamentoMontar() {
     valor: number
     motor_cv: number | null
     motor_polos: number | null
+    motorIncluso?: boolean
     descricao: string | null
     foto_url: string | null
     enviarParaAprovacao: boolean
     porContaCliente?: boolean
   }) {
-    const motorMatch = data.motor_cv && data.motor_polos && motores
+    // "Motorredutor incluso": motor não é cobrado à parte (motor_valor_unit = 0) e não busca match.
+    const motorMatch = !data.motorIncluso && data.motor_cv && data.motor_polos && motores
       ? acharMotorCompativel(motores, data.motor_cv, data.motor_polos, voltagem, voltagem === 'monofasico')
       : null
     // Item "por conta do cliente" não tem valor: zera pra não entrar no total.
     const valorItem = data.porContaCliente ? 0 : data.valor
+    const descSpecs = data.descricao ? data.descricao.split('\n').map(l => l.trim()).filter(Boolean) : []
+    // Se motorredutor incluso, registra a linha de acionamento incluso no descritivo.
+    const specsItem = data.motorIncluso && data.motor_cv
+      ? [`Acionamento: motor ${data.motor_cv} CV (motorredutor incluso)`, ...descSpecs]
+      : descSpecs
     setCarrinho(c => [...c, {
       uid: gerarUid(),
       catalogo_id: -1,  // marker: item nao oficial / customizado
       categoria: data.categoria || 'CUSTOM',
       nome: data.nome,
-      specs: data.descricao ? [data.descricao] : [],
+      specs: specsItem,
       qtd: 1,
       valor: valorItem,
       valor_original: valorItem,
       motor_cv: data.motor_cv,
       motor_polos: data.motor_polos,
       motor_qtd: data.motor_cv ? 1 : 0,
-      motor_valor_unit: motorMatch ? Number(motorMatch.valor) : 0,
+      motor_valor_unit: data.motorIncluso ? 0 : (motorMatch ? Number(motorMatch.valor) : 0),
       foto_url: data.foto_url,
       por_conta_cliente: !!data.porContaCliente,
     }])
@@ -4388,6 +4395,7 @@ function CustomItemModal({
     valor: number
     motor_cv: number | null
     motor_polos: number | null
+    motorIncluso: boolean
     descricao: string | null
     foto_url: string | null
     enviarParaAprovacao: boolean
@@ -4398,7 +4406,7 @@ function CustomItemModal({
   const [categoria, setCategoria] = useState('CUSTOM')
   const [valor, setValor] = useState<number | ''>('')
   const [motorCv, setMotorCv] = useState<number | ''>('')
-  const [motorPolos, setMotorPolos] = useState<number | ''>('')
+  const [motorPolos, setMotorPolos] = useState<number | '' | 'incluso'>('')
   const [descricao, setDescricao] = useState('')
   const [enviarParaAprovacao, setEnviarParaAprovacao] = useState(false)
   const [porContaCliente, setPorContaCliente] = useState(false)
@@ -4455,12 +4463,14 @@ function CustomItemModal({
     if (!valido || salvando) return
     setSalvando(true)
     try {
+      const motorIncluso = motorPolos === 'incluso'
       await onAdd({
         nome: nome.trim(),
         categoria: categoria || 'CUSTOM',
         valor: porContaCliente ? 0 : Number(valor),
         motor_cv: typeof motorCv === 'number' && motorCv > 0 ? motorCv : null,
-        motor_polos: typeof motorPolos === 'number' && motorPolos > 0 ? motorPolos : null,
+        motor_polos: motorIncluso ? 0 : (typeof motorPolos === 'number' && motorPolos > 0 ? motorPolos : null),
+        motorIncluso,
         descricao: descricao.trim() || null,
         foto_url: fotoUrl,
         enviarParaAprovacao: porContaCliente ? false : enviarParaAprovacao,
@@ -4544,15 +4554,21 @@ function CustomItemModal({
             </div>
             <div>
               <label className="text-[10px] uppercase font-bold text-ink-muted block mb-1">Polos (opcional)</label>
-              <Input
-                type="number"
-                value={motorPolos}
-                onChange={e => setMotorPolos(e.target.value ? Number(e.target.value) : '')}
-                placeholder="Ex: 4"
-                min="2"
-                max="8"
-                step="2"
-              />
+              <select
+                value={motorPolos === '' ? '' : String(motorPolos)}
+                onChange={e => {
+                  const v = e.target.value
+                  setMotorPolos(v === '' ? '' : v === 'incluso' ? 'incluso' : Number(v))
+                }}
+                className="w-full bg-surface-2 border border-border rounded px-2 py-1.5 text-[12px] text-ink"
+              >
+                <option value="">—</option>
+                <option value="2">2 polos</option>
+                <option value="4">4 polos</option>
+                <option value="6">6 polos</option>
+                <option value="8">8 polos</option>
+                <option value="incluso">Motorredutor incluso</option>
+              </select>
             </div>
           </div>
 

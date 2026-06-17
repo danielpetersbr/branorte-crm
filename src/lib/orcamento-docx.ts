@@ -430,10 +430,10 @@ export function nomeBaseArquivo(input: { numero: string; cliente_nome: string; m
 }
 
 export function montarNotaTxt(vendedor: string, data: Date): string {
-  // Padrão observado: "Gustavo envio para o cliente dia 04/05/2026"
+  // Padrão observado: "Gustavo enviou para o cliente dia 04/05/2026"
   const dia = String(data.getDate()).padStart(2, '0')
   const mes = String(data.getMonth() + 1).padStart(2, '0')
   const ano = data.getFullYear()
   const nomeBonito = vendedor.charAt(0).toUpperCase() + vendedor.slice(1).toLowerCase()
-  return `${nomeBonito} envio para o cliente dia ${dia}/${mes}/${ano}`
+  return `${nomeBonito} enviou para o cliente dia ${dia}/${mes}/${ano}`
 }
