@@ -1,21 +1,50 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { useVisitas, useGeocodarVisitas, type Visita } from '@/hooks/useVisitas'
+import {
+  useVisitas, useGeocodarVisitas, useOrcamentosMapa,
+  type Visita, type OrcamentoPonto,
+} from '@/hooks/useVisitas'
 import { useEtiquetas } from '@/hooks/useEtiquetas'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 
-// Mapa de visitas — pinos dos clientes com "Dados pra visita" salvos pela
-// extensão WA. Geocoding por cidade/UF (Nominatim). Cor do pino por vendedor.
+// Mapa de visitas — DUAS camadas (liga/desliga):
+//  • Orçamentos: 1 pino por cliente (telefone), cor pela IDADE do orçamento mais recente
+//    (≤1 mês verde · 1–3 meses amarelo · >3 meses vermelho). Total = soma dos orçamentos.
+//  • Visitas WhatsApp: pinos dos "Dados pra visita" salvos pela extensão, cor por follow-up.
+// Geocoding por cidade/UF (Nominatim) com cache compartilhado.
 
 const CENTRO_BR: [number, number] = [-15.78, -47.93]
 
 const CORES = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#06b6d4']
-const CINZA = '#9ca3af' // cliente que saiu do follow-up
+const CINZA = '#9ca3af'
 const FOLLOWUP_NOMES = new Set(['FOLLOW UP', 'FALLOW UP'])
 function corDoVendedor(vendedor: string | null, ordem: string[]): string {
   const i = Math.max(0, ordem.indexOf(vendedor || '—'))
   return CORES[i % CORES.length]
+}
+
+// Cor do pino de ORÇAMENTO pela idade (data do orçamento mais recente do cliente)
+const VERDE = '#22c55e', AMARELO = '#f59e0b', VERMELHO = '#ef4444'
+function diasDesde(dataISO: string | null): number | null {
+  if (!dataISO) return null
+  const t = new Date(dataISO.length <= 10 ? dataISO + 'T00:00:00' : dataISO).getTime()
+  if (Number.isNaN(t)) return null
+  return Math.floor((Date.now() - t) / 86400000)
+}
+function corOrcamento(dataRecente: string | null): string {
+  const d = diasDesde(dataRecente)
+  if (d == null) return CINZA
+  if (d <= 30) return VERDE
+  if (d <= 90) return AMARELO
+  return VERMELHO
+}
+function idadeLabel(dataRecente: string | null): string {
+  const d = diasDesde(dataRecente)
+  if (d == null) return '—'
+  if (d <= 30) return `há ${d} dia${d === 1 ? '' : 's'}`
+  const m = Math.floor(d / 30)
+  return `há ${m} ${m === 1 ? 'mês' : 'meses'}`
 }
 
 function pinIcon(cor: string): L.DivIcon {
@@ -30,10 +59,10 @@ function pinIcon(cor: string): L.DivIcon {
 
 const brl = (v: number | null) =>
   v == null ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+const esc = (s: string | null) => (s || '').replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] as string))
 
-function popupHtml(v: Visita, isFollowUp: boolean, labels: string[]): string {
+function popupVisita(v: Visita, isFollowUp: boolean, labels: string[]): string {
   const tel = (v.telefone || '').replace(/\D/g, '')
-  const esc = (s: string | null) => (s || '').replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] as string))
   const loc = [esc(v.cidade), esc(v.estado)].filter(Boolean).join(' - ')
   const badge = labels.length
     ? (isFollowUp
@@ -52,14 +81,31 @@ function popupHtml(v: Visita, isFollowUp: boolean, labels: string[]): string {
     </div>`
 }
 
+function popupOrcamento(p: OrcamentoPonto): string {
+  const tel = (p.telefone || '').replace(/\D/g, '')
+  const loc = [esc(p.cidade), esc(p.uf)].filter(Boolean).join(' - ')
+  const dataFmt = p.data_recente ? new Date(p.data_recente + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
+  return `
+    <div style="min-width:190px;font-family:inherit">
+      <div style="font-weight:600;font-size:13px">${esc(p.cliente) || 'Sem nome'}</div>
+      ${loc ? `<div style="font-size:12px;color:#64748b">${loc}</div>` : ''}
+      <div style="font-size:14px;font-weight:700;color:#10b981;margin-top:3px">${brl(p.total)}</div>
+      <div style="font-size:11px;color:#64748b;margin-top:2px">${p.n_orcamentos} orçamento${p.n_orcamentos === 1 ? '' : 's'} · último ${dataFmt} <b>(${idadeLabel(p.data_recente)})</b></div>
+      <div style="font-size:11px;color:#64748b;margin-top:3px">Vendedor: ${esc(p.vendedor) || '—'}</div>
+      ${tel ? `<a href="https://wa.me/${tel}" target="_blank" rel="noopener" style="display:inline-block;margin-top:6px;font-size:12px;color:#10b981;font-weight:600">Abrir WhatsApp ↗</a>` : ''}
+    </div>`
+}
+
 export function MapaVisitas() {
   const { data: visitas = [], isLoading } = useVisitas()
+  const { data: orcPontos = [], isLoading: loadingOrc, refetch: refetchOrc } = useOrcamentosMapa()
   const { data: etiquetasWa = [] } = useEtiquetas()
   const geocodar = useGeocodarVisitas()
   const [vendedorSel, setVendedorSel] = useState<string>('')
+  const [showOrc, setShowOrc] = useState(true)
+  const [showVis, setShowVis] = useState(false)
 
-  // resolve etiqueta_id (por vendedor) -> nome. IDs do Wascript NÃO são globais:
-  // o mesmo id tem nomes diferentes por vendedor. Fallback: nome mais comum do id.
+  // resolve etiqueta_id (por vendedor) -> nome (IDs do Wascript não são globais).
   const { byVendId, globId } = useMemo(() => {
     const byVendId = new Map<string, string>()
     const cont = new Map<string, Map<string, number>>()
@@ -95,25 +141,32 @@ export function MapaVisitas() {
   const layerRef = useRef<L.LayerGroup | null>(null)
   const divRef = useRef<HTMLDivElement | null>(null)
   const autoGeoRef = useRef(false)
+  const autoCidRef = useRef(false)
 
-  const vendedores = useMemo(
-    () => [...new Set(visitas.map(v => v.vendedor_nome || '—'))].sort(),
-    [visitas]
-  )
+  // vendedores (dropdown) — combina visitas + orçamentos
+  const vendedores = useMemo(() => {
+    const s = new Set<string>()
+    for (const v of visitas) s.add(v.vendedor_nome || '—')
+    for (const p of orcPontos) s.add(p.vendedor || '—')
+    return [...s].sort()
+  }, [visitas, orcPontos])
 
   const comCoord = useMemo(() => visitas.filter(v => v.lat != null && v.lng != null), [visitas])
   const semCoord = visitas.length - comCoord.length
-  const filtradas = useMemo(
+  const visFiltradas = useMemo(
     () => (vendedorSel ? comCoord.filter(v => (v.vendedor_nome || '—') === vendedorSel) : comCoord),
     [comCoord, vendedorSel]
   )
+  const orcFiltrados = useMemo(
+    () => (vendedorSel ? orcPontos.filter(p => (p.vendedor || '—') === vendedorSel) : orcPontos),
+    [orcPontos, vendedorSel]
+  )
 
-  // Estatística pra legenda BATER com o mapa: só follow-up é colorido por vendedor;
-  // o resto é cinza. Conta follow-up por vendedor + total "sem follow-up" (cinza).
+  // legenda visitas (follow-up por vendedor + cinza)
   const corStats = useMemo(() => {
     const porVend = new Map<string, number>()
     let semFollowup = 0
-    for (const v of comCoord) {
+    for (const v of visFiltradas) {
       if (resolverEtiquetas(v).isFollowUp) {
         const k = v.vendedor_nome || '—'
         porVend.set(k, (porVend.get(k) || 0) + 1)
@@ -121,14 +174,22 @@ export function MapaVisitas() {
     }
     return { porVend, semFollowup }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [comCoord, byVendId, globId])
+  }, [visFiltradas, byVendId, globId])
 
-  // init do mapa (uma vez, quando o container existir)
+  // legenda orçamentos (por idade)
+  const orcStats = useMemo(() => {
+    let verde = 0, amarelo = 0, vermelho = 0
+    for (const p of orcFiltrados) {
+      const c = corOrcamento(p.data_recente)
+      if (c === VERDE) verde++; else if (c === AMARELO) amarelo++; else vermelho++
+    }
+    return { verde, amarelo, vermelho }
+  }, [orcFiltrados])
+
+  // init do mapa (uma vez)
   useEffect(() => {
     if (mapRef.current || !divRef.current) return
     const map = L.map(divRef.current, { center: CENTRO_BR, zoom: 4, scrollWheelZoom: true, zoomControl: true })
-
-    // Tiles do Google Maps (mesma abordagem do /mapa-vendas do controle.branorte.com)
     const mapa = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
       attribution: '&copy; Google Maps', subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], maxZoom: 20,
     })
@@ -137,11 +198,8 @@ export function MapaVisitas() {
     })
     mapa.addTo(map)
     L.control.layers({ 'Mapa': mapa, 'Satélite': satelite }, {}, { collapsed: false, position: 'topright' }).addTo(map)
-
     layerRef.current = L.layerGroup().addTo(map)
     mapRef.current = map
-    // o container do mapa entra num flex que assenta depois — força recálculo
-    // do tamanho senão os tiles ficam cinza/preto até um resize manual
     setTimeout(() => map.invalidateSize(), 0)
     setTimeout(() => map.invalidateSize(), 250)
     return () => {
@@ -151,32 +209,62 @@ export function MapaVisitas() {
     }
   }, [])
 
-  // redesenha marcadores quando dados/filtro mudam
+  // redesenha marcadores (visitas e/ou orçamentos) quando dados/filtro/camada mudam
   useEffect(() => {
     const map = mapRef.current
     const layer = layerRef.current
     if (!map || !layer) return
-    map.invalidateSize() // legenda aparecendo/sumindo muda a largura do mapa
+    map.invalidateSize()
     layer.clearLayers()
     const bounds: [number, number][] = []
-    for (const v of filtradas) {
-      const { nomes, isFollowUp } = resolverEtiquetas(v)
-      const cor = isFollowUp ? corDoVendedor(v.vendedor_nome, vendedores) : CINZA
-      const m = L.marker([v.lat as number, v.lng as number], { icon: pinIcon(cor), opacity: isFollowUp ? 1 : 0.85 })
-      m.bindPopup(popupHtml(v, isFollowUp, nomes))
-      m.addTo(layer)
-      bounds.push([v.lat as number, v.lng as number])
+    if (showVis) {
+      for (const v of visFiltradas) {
+        const { nomes, isFollowUp } = resolverEtiquetas(v)
+        const cor = isFollowUp ? corDoVendedor(v.vendedor_nome, vendedores) : CINZA
+        const m = L.marker([v.lat as number, v.lng as number], { icon: pinIcon(cor), opacity: isFollowUp ? 1 : 0.85 })
+        m.bindPopup(popupVisita(v, isFollowUp, nomes))
+        m.addTo(layer)
+        bounds.push([v.lat as number, v.lng as number])
+      }
+    }
+    if (showOrc) {
+      for (const p of orcFiltrados) {
+        const m = L.marker([p.lat, p.lng], { icon: pinIcon(corOrcamento(p.data_recente)) })
+        m.bindPopup(popupOrcamento(p))
+        m.addTo(layer)
+        bounds.push([p.lat, p.lng])
+      }
     }
     if (bounds.length) map.fitBounds(bounds, { padding: [50, 50], maxZoom: 10 })
-  }, [filtradas, vendedores, byVendId, globId])
+  }, [showVis, showOrc, visFiltradas, orcFiltrados, vendedores, byVendId, globId])
 
-  // auto-geocoda os pendentes ao abrir o mapa (uma vez por montagem). Sem isso,
-  // clientes novos ficam "sem localização" até alguém clicar no botão manual.
+  // auto-geocoda visitas pendentes ao abrir (uma vez por montagem)
   useEffect(() => {
     if (autoGeoRef.current || isLoading || semCoord === 0 || geocodar.isPending) return
     autoGeoRef.current = true
     geocodar.mutate()
   }, [isLoading, semCoord, geocodar])
+
+  // auto-geocoda as cidades dos orçamentos faltantes (em lotes, até preencher o cache)
+  useEffect(() => {
+    if (autoCidRef.current) return
+    autoCidRef.current = true
+    let cancelado = false
+    ;(async () => {
+      for (let i = 0; i < 6; i++) {
+        const r = await fetch('/api/geocode-cidades', { method: 'POST' })
+          .then(x => (x.ok ? x.json() : null))
+          .catch(() => null)
+        if (cancelado || !r) break
+        if (r.atualizados > 0) await refetchOrc()
+        if (!r.pendentes || r.pendentes <= 0 || r.atualizados === 0) break
+      }
+    })()
+    return () => { cancelado = true }
+  }, [refetchOrc])
+
+  const togglePill = (ativo: boolean) =>
+    `h-9 px-3 rounded-md border text-[13px] font-semibold transition-colors ${ativo ? 'bg-accent-bg border-accent/40 text-accent' : 'bg-surface border-border text-ink-muted hover:text-ink'}`
 
   return (
     <div className="flex h-[calc(100vh-0px)] flex-col p-4 gap-3 overflow-hidden">
@@ -184,11 +272,15 @@ export function MapaVisitas() {
         <div>
           <h1 className="text-[22px] font-semibold text-ink tracking-tight">Mapa de Visitas</h1>
           <p className="text-[13px] text-ink-muted">
-            Clientes com dados de visita salvos · {comCoord.length} no mapa
-            {semCoord > 0 && <> · <span className="text-warning">{semCoord} sem localização</span></>}
+            {showOrc && <>{orcFiltrados.length} clientes com orçamento</>}
+            {showOrc && showVis && ' · '}
+            {showVis && <>{visFiltradas.length} visitas{semCoord > 0 && <> · <span className="text-warning">{semCoord} sem localização</span></>}</>}
+            {!showOrc && !showVis && 'Ligue uma camada pra ver os pontos'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button className={togglePill(showOrc)} onClick={() => setShowOrc(v => !v)} title="Pontos a partir dos orçamentos (cor por idade)">💰 Orçamentos</button>
+          <button className={togglePill(showVis)} onClick={() => setShowVis(v => !v)} title="Visitas anotadas no WhatsApp (cor por follow-up)">📍 Visitas WhatsApp</button>
           <select
             value={vendedorSel}
             onChange={e => setVendedorSel(e.target.value)}
@@ -197,7 +289,7 @@ export function MapaVisitas() {
             <option value="">Todos os vendedores</option>
             {vendedores.map(v => <option key={v} value={v}>{v}</option>)}
           </select>
-          {semCoord > 0 && (
+          {showVis && semCoord > 0 && (
             <button
               onClick={() => geocodar.mutate()}
               disabled={geocodar.isPending}
@@ -209,7 +301,7 @@ export function MapaVisitas() {
         </div>
       </div>
 
-      {geocodar.data && (
+      {geocodar.data && showVis && (
         <div className="shrink-0 rounded-md border border-border bg-surface-2 text-[12px] text-ink-muted px-3 py-2">
           {geocodar.data.atualizados} localizado(s).
           {geocodar.data.falhas?.length ? ` Não achei: ${geocodar.data.falhas.join(', ')}.` : ''}
@@ -217,33 +309,55 @@ export function MapaVisitas() {
       )}
 
       <div className="flex-1 flex gap-3 min-h-0 relative">
-        {/* container do mapa SEMPRE montado (Leaflet precisa do div no init) */}
         <div ref={divRef} className="flex-1 rounded-xl border border-border overflow-hidden z-0" style={{ minHeight: 300 }} />
-        {isLoading && (
+        {(isLoading || loadingOrc) && (
           <div className="absolute inset-0 flex items-center justify-center"><PageLoading /></div>
         )}
-        {/* Legenda de vendedores */}
-        {!isLoading && vendedores.length > 1 && (
-          <div className="w-44 shrink-0 rounded-xl border border-border bg-surface p-3 overflow-y-auto">
-            <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">Em follow-up</div>
-            <ul className="space-y-1.5">
-              {vendedores.filter(v => (corStats.porVend.get(v) || 0) > 0).map(v => (
-                <li key={v} className="flex items-center gap-2 text-[12px] text-ink">
-                  <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: corDoVendedor(v, vendedores) }} />
-                  <span className="truncate">{v}</span>
-                  <span className="ml-auto tabular-nums text-ink-faint">{corStats.porVend.get(v)}</span>
+        <div className="w-48 shrink-0 rounded-xl border border-border bg-surface p-3 overflow-y-auto">
+          {showOrc && (
+            <div className="mb-3">
+              <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">Orçamentos · idade</div>
+              <ul className="space-y-1.5">
+                <li className="flex items-center gap-2 text-[12px] text-ink">
+                  <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: VERDE }} />
+                  <span className="truncate">Até 1 mês</span>
+                  <span className="ml-auto tabular-nums text-ink-faint">{orcStats.verde}</span>
                 </li>
-              ))}
-              {corStats.semFollowup > 0 && (
-                <li className="flex items-center gap-2 text-[12px] pt-1.5 mt-1 border-t border-border">
-                  <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: CINZA }} />
-                  <span className="truncate text-ink-muted">Sem follow-up</span>
-                  <span className="ml-auto tabular-nums text-ink-faint">{corStats.semFollowup}</span>
+                <li className="flex items-center gap-2 text-[12px] text-ink">
+                  <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: AMARELO }} />
+                  <span className="truncate">1 a 3 meses</span>
+                  <span className="ml-auto tabular-nums text-ink-faint">{orcStats.amarelo}</span>
                 </li>
-              )}
-            </ul>
-          </div>
-        )}
+                <li className="flex items-center gap-2 text-[12px] text-ink">
+                  <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: VERMELHO }} />
+                  <span className="truncate">+ de 3 meses</span>
+                  <span className="ml-auto tabular-nums text-ink-faint">{orcStats.vermelho}</span>
+                </li>
+              </ul>
+            </div>
+          )}
+          {showVis && vendedores.length > 1 && (
+            <div className={showOrc ? 'pt-3 border-t border-border' : ''}>
+              <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">Visitas · em follow-up</div>
+              <ul className="space-y-1.5">
+                {vendedores.filter(v => (corStats.porVend.get(v) || 0) > 0).map(v => (
+                  <li key={v} className="flex items-center gap-2 text-[12px] text-ink">
+                    <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: corDoVendedor(v, vendedores) }} />
+                    <span className="truncate">{v}</span>
+                    <span className="ml-auto tabular-nums text-ink-faint">{corStats.porVend.get(v)}</span>
+                  </li>
+                ))}
+                {corStats.semFollowup > 0 && (
+                  <li className="flex items-center gap-2 text-[12px] pt-1.5 mt-1 border-t border-border">
+                    <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: CINZA }} />
+                    <span className="truncate text-ink-muted">Sem follow-up</span>
+                    <span className="ml-auto tabular-nums text-ink-faint">{corStats.semFollowup}</span>
+                  </li>
+                )}
+              </ul>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

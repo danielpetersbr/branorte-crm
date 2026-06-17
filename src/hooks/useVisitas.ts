@@ -42,3 +42,43 @@ export function useGeocodarVisitas() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['visitas'] }),
   })
 }
+
+// ── Camada de ORÇAMENTOS no mapa ──────────────────────────────────────────
+// 1 ponto por cliente (telefone): orçamento mais recente define a idade/cor,
+// total = soma dos orçamentos do cliente. lat/lng vem do cache de cidade.
+export interface OrcamentoPonto {
+  cliente: string | null
+  telefone: string | null
+  cidade: string | null
+  uf: string | null
+  total: number | null
+  n_orcamentos: number
+  data_recente: string | null
+  vendedor: string | null
+  lat: number
+  lng: number
+}
+
+export function useOrcamentosMapa() {
+  return useQuery<OrcamentoPonto[]>({
+    queryKey: ['orcamentos-mapa'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('mapa_orcamentos')
+      if (error) throw error
+      return (data ?? []) as OrcamentoPonto[]
+    },
+  })
+}
+
+// Geocoda as cidades de orçamento que ainda não estão no cache (Nominatim, server-side)
+export function useGeocodarCidades() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const r = await fetch('/api/geocode-cidades', { method: 'POST' })
+      if (!r.ok) throw new Error('Falha no geocoding de cidades')
+      return r.json() as Promise<{ atualizados: number; pendentes: number; falhas?: string[] }>
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['orcamentos-mapa'] }),
+  })
+}
