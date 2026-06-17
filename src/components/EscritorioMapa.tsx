@@ -125,6 +125,55 @@ const RANK_METRICAS = [
   { key: 'conversao',    label: 'Conv.',  icon: '🎯', cor: 'text-amber-300',  bar: 'bg-amber-400' },
 ] as const
 
+// Linha do ranking (dia e mês) — pódio pro top 3, destaque pro líder, consistente entre os dois painéis
+function RankRow({ pos, nome, online, display, val, maxVal, cor, bar, stats }: {
+  pos: number
+  nome: string
+  online?: boolean
+  display: string | number
+  val: number
+  maxVal: number
+  cor: string
+  bar: string
+  stats: Array<{ icon: string; val: number | string; cor?: string; title?: string }>
+}) {
+  const top = pos < 3
+  const tier =
+    pos === 0 ? { row: 'bg-gradient-to-r from-amber-400/[0.14] to-transparent ring-1 ring-amber-400/30 border-l-2 border-l-amber-400', medal: '🥇' } :
+    pos === 1 ? { row: 'bg-gradient-to-r from-slate-300/[0.10] to-transparent ring-1 ring-slate-300/20 border-l-2 border-l-slate-300', medal: '🥈' } :
+    pos === 2 ? { row: 'bg-gradient-to-r from-orange-400/[0.10] to-transparent ring-1 ring-orange-400/20 border-l-2 border-l-orange-400', medal: '🥉' } :
+                { row: 'bg-white/[0.03] border border-white/5', medal: '' }
+  const pctBar = val > 0 ? Math.max((val / maxVal) * 100, 5) : 0
+  return (
+    <div className={`rounded-lg px-2 py-1.5 ${tier.row}`}>
+      <div className="flex items-center gap-2">
+        <span className="w-6 shrink-0 flex items-center justify-center">
+          {top
+            ? <span className="text-base leading-none">{tier.medal}</span>
+            : <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-white/5 text-ink-faint text-[10.5px] font-bold tabular-nums">{pos + 1}</span>}
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-1">
+            <span className={`font-semibold text-ink truncate flex items-center gap-1 ${pos === 0 ? 'text-[12.5px]' : 'text-[12px]'}`}>
+              {nome}
+              {online && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_4px_1px_rgba(16,185,129,.6)]" title="online" />}
+            </span>
+            <span className={`font-extrabold tabular-nums shrink-0 ${cor} ${pos === 0 ? 'text-[15px]' : 'text-[12px]'}`}>{display}</span>
+          </div>
+          <div className="h-1.5 rounded-full bg-white/5 overflow-hidden mt-1">
+            <div className={`h-full ${bar} rounded-full transition-all`} style={{ width: `${pctBar}%` }} />
+          </div>
+          <div className="flex items-center gap-2 text-[9.5px] mt-1 text-ink-muted">
+            {stats.map((s, k) => (
+              <span key={k} className={s.cor} title={s.title}>{s.icon}{s.val}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Ícone/cor por etiqueta de destino (feed de atividade ao vivo)
 function etiquetaInfo(nome: string | null): { icon: string; cor: string } {
   const s = (nome || '').toUpperCase()
@@ -1026,7 +1075,10 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
 
       {/* Coluna de RANKING do dia — ao lado do mapa */}
       <aside className="w-full lg:w-72 shrink-0 rounded-xl border border-border bg-surface-2/30 p-3">
-        <h3 className="text-sm font-bold text-ink mb-2">🏆 Ranking do dia</h3>
+        <div className="flex items-baseline justify-between gap-2 mb-2">
+          <h3 className="text-sm font-bold text-ink">🏆 Ranking do dia</h3>
+          {ranking[0] && <span className="text-[10px] text-ink-faint truncate">líder <span className="text-amber-300 font-semibold">{ranking[0].nome}</span></span>}
+        </div>
         {/* critério de ordenação */}
         <div className="flex flex-wrap gap-1 mb-2">
           {RANK_METRICAS.map(m => (
@@ -1045,32 +1097,16 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
             return ranking.map((r, i) => {
               const val = r[rankMetric] as number
               const display = rankMetric === 'conversao' ? `${Math.round(val * 100)}%` : val
-              const pctBar = (val / maxVal) * 100
               return (
-                <div key={r.nome} className="rounded-lg px-2 py-1.5 bg-white/[0.03] border border-white/5">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-5 shrink-0 text-center text-sm font-bold ${i === 0 ? 'text-amber-300' : i === 1 ? 'text-slate-300' : i === 2 ? 'text-orange-300' : 'text-ink-faint'}`}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-[12px] font-semibold text-ink truncate flex items-center gap-1">
-                          {r.nome}
-                          {r.online && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" title="online" />}
-                        </span>
-                        <span className={`text-[12px] font-bold tabular-nums shrink-0 ${cfg.cor}`}>{display}</span>
-                      </div>
-                      <div className="h-1.5 rounded bg-white/5 overflow-hidden mt-1">
-                        <div className={`h-full ${cfg.bar} rounded transition-all`} style={{ width: `${pctBar}%` }} />
-                      </div>
-                      <div className="flex items-center gap-2 text-[9.5px] mt-1 text-ink-muted">
-                        <span title="atendimentos hoje">💬{r.atendimentos}</span>
-                        <span title="leads hoje">📥{r.leads}</span>
-                        <span title="orçamentos hoje">📄{r.orcamentos}</span>
-                        <span title="vendidos">✅{r.vendido}</span>
-                        {r.quente > 0 && <span className="text-orange-300" title="leads quentes">🔥{r.quente}</span>}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <RankRow key={r.nome} pos={i} nome={r.nome} online={r.online} display={display} val={val} maxVal={maxVal} cor={cfg.cor} bar={cfg.bar}
+                  stats={[
+                    { icon: '💬', val: r.atendimentos, title: 'atendimentos hoje' },
+                    { icon: '📥', val: r.leads, title: 'leads hoje' },
+                    { icon: '📄', val: r.orcamentos, title: 'orçamentos hoje' },
+                    { icon: '✅', val: r.vendido, title: 'vendidos' },
+                    ...(r.quente > 0 ? [{ icon: '🔥', val: r.quente, cor: 'text-orange-300', title: 'leads quentes' }] : []),
+                  ]}
+                />
               )
             })
           })()}
@@ -1079,8 +1115,11 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
       </aside>
 
       {/* Coluna de RANKING do mês — ao lado do ranking do dia */}
-      <aside className="w-full lg:w-64 shrink-0 rounded-xl border border-border bg-surface-2/30 p-3">
-        <h3 className="text-sm font-bold text-ink mb-2">📅 Ranking do mês</h3>
+      <aside className="w-full lg:w-72 shrink-0 rounded-xl border border-border bg-surface-2/30 p-3">
+        <div className="flex items-baseline justify-between gap-2 mb-2">
+          <h3 className="text-sm font-bold text-ink">📅 Ranking do mês</h3>
+          {rankingMes[0] && <span className="text-[10px] text-ink-faint truncate">líder <span className="text-amber-300 font-semibold">{rankingMes[0].vend}</span></span>}
+        </div>
         <div className="flex flex-wrap gap-1 mb-2">
           {RANK_METRICAS.filter(m => m.key === 'atendimentos' || m.key === 'leads' || m.key === 'orcamentos').map(m => (
             <button key={m.key} onClick={() => setRankMetricMes(m.key as 'atendimentos' | 'leads' | 'orcamentos')}
@@ -1097,30 +1136,14 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
             const maxVal = Math.max(1, ...rankingMes.map(r => r[rankMetricMes] as number))
             return rankingMes.map((r, i) => {
               const val = r[rankMetricMes] as number
-              const pctBar = (val / maxVal) * 100
               return (
-                <div key={r.vend} className="rounded-lg px-2 py-1.5 bg-white/[0.03] border border-white/5">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-5 shrink-0 text-center text-sm font-bold ${i === 0 ? 'text-amber-300' : i === 1 ? 'text-slate-300' : i === 2 ? 'text-orange-300' : 'text-ink-faint'}`}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-[12px] font-semibold text-ink truncate flex items-center gap-1">
-                          {r.vend}
-                          {r.online && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" title="online" />}
-                        </span>
-                        <span className={`text-[12px] font-bold tabular-nums shrink-0 ${cfg.cor}`}>{val}</span>
-                      </div>
-                      <div className="h-1.5 rounded bg-white/5 overflow-hidden mt-1">
-                        <div className={`h-full ${cfg.bar} rounded transition-all`} style={{ width: `${pctBar}%` }} />
-                      </div>
-                      <div className="flex items-center gap-2 text-[9.5px] mt-1 text-ink-muted">
-                        <span title="atendimentos no mês">💬{r.atendimentos}</span>
-                        <span title="leads no mês">📥{r.leads}</span>
-                        <span title="orçamentos no mês">📄{r.orcamentos}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <RankRow key={r.vend} pos={i} nome={r.vend} online={r.online} display={val} val={val} maxVal={maxVal} cor={cfg.cor} bar={cfg.bar}
+                  stats={[
+                    { icon: '💬', val: r.atendimentos, title: 'atendimentos no mês' },
+                    { icon: '📥', val: r.leads, title: 'leads no mês' },
+                    { icon: '📄', val: r.orcamentos, title: 'orçamentos no mês' },
+                  ]}
+                />
               )
             })
           })()}
