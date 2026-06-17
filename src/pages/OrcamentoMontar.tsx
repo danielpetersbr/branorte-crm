@@ -274,8 +274,13 @@ function agruparMotores(
       })
     }
 
-    if (!it.motor_cv || it.motor_polos == null) continue
+    if (!it.motor_cv) continue
     if (ehAcessorioOuPassiva) continue
+    // Motorredutor incluso (ex: esteira de sacaria id 517) às vezes vem com motor_polos NULL
+    // no cadastro → antes a linha era PULADA e o motor sumia do orçamento (seção "Motores (0)").
+    // Trata null como 0 (= motorredutor, display "X CV motorredutor"). O incluso/R$0 segue
+    // dependendo do spec ("Motorredutor X CV (incluso)"), então motor avulso não é afetado.
+    const motorPolos = it.motor_polos == null ? 0 : it.motor_polos
     const qtdMotor = it.motor_qtd * it.qtd
 
     // Detecta múltiplos motores na spec: "Acionamento 15 CV e 2 CV por motorredutor (Inclusos)"
@@ -310,8 +315,8 @@ function agruparMotores(
       // ficava com valor errado e não atualizava ao trocar CV. Corrigido buscando o preço
       // de cada CV no catálogo de motores via acharMotorCompativel.
       const voltagemEfetiva: Voltagem = it.usa_inversor ? 'trifasico' : voltagem
-      const motor1Cat = motores ? acharMotorCompativel(motores, cv1, it.motor_polos, voltagemEfetiva, voltagemEfetiva === 'monofasico') : null
-      const motor2Cat = motores ? acharMotorCompativel(motores, cv2, it.motor_polos, voltagemEfetiva, voltagemEfetiva === 'monofasico') : null
+      const motor1Cat = motores ? acharMotorCompativel(motores, cv1, motorPolos, voltagemEfetiva, voltagemEfetiva === 'monofasico') : null
+      const motor2Cat = motores ? acharMotorCompativel(motores, cv2, motorPolos, voltagemEfetiva, voltagemEfetiva === 'monofasico') : null
       const tratarComoIncluso = eMotorredutor && eIncluso
       // Preço base de cada CV; zera POR motorIndex (0/1) conforme por-conta/removido,
       // pra marcar/remover UM motor não zerar o outro.
@@ -326,7 +331,7 @@ function agruparMotores(
       // 1 linha por motor da spec × qtd do item (sem agregar — cada item vira N linhas)
       for (let i = 0; i < it.qtd; i++) {
         linhas.push({
-          cv: cv1, polos: it.motor_polos, qtd: 1,
+          cv: cv1, polos: motorPolos, qtd: 1,
           valor_unit: valorCv1, valor_total: valorCv1,
           item_nome: nomeItem, item_uid: it.uid, motorIndex: 0,
           por_conta_cliente: isPorConta(0),
@@ -335,7 +340,7 @@ function agruparMotores(
         })
         if (!temMotoresExtras) {
           linhas.push({
-            cv: cv2, polos: it.motor_polos, qtd: 1,
+            cv: cv2, polos: motorPolos, qtd: 1,
             valor_unit: valorCv2, valor_total: valorCv2,
             item_nome: nomeItem, item_uid: it.uid, motorIndex: 1,
             por_conta_cliente: isPorConta(1),
@@ -352,7 +357,7 @@ function agruparMotores(
       const inclusoReal = eMotorredutor && eIncluso
       for (let i = 0; i < qtdMotor; i++) {
         linhas.push({
-          cv: it.motor_cv, polos: it.motor_polos, qtd: 1,
+          cv: it.motor_cv, polos: motorPolos, qtd: 1,
           valor_unit: valorMotor, valor_total: valorMotor,
           item_nome: nomeItem, item_uid: it.uid,
           por_conta_cliente: porContaCliente,
