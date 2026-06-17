@@ -980,9 +980,11 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
                         <span className="px-1.5 py-1 text-violet-300 flex items-center gap-0.5" title="atendimentos hoje (chats trabalhados no dia)">💬{funil?.[nome]?.atendimentos ?? 0}</span>
                         <span className="px-1.5 py-1 text-emerald-300 flex items-center gap-0.5" title="leads que chegaram hoje (fonte: página Atendimentos)">📥{leadsDe(nome)}</span>
                         <span className="px-1.5 py-1 text-sky-300 flex items-center gap-0.5" title="orçamentos feitos hoje">📄{orcDe(nome)}</span>
-                        <span className="px-1.5 py-1 text-indigo-300 flex items-center gap-0.5" title="contatos na etiqueta FOLLOW UP">🔁{funil?.[nome]?.followup ?? 0}</span>
                         {quente > 0 && <span className="px-1.5 py-1 text-orange-300 flex items-center gap-0.5" title="leads quentes no funil">🔥{quente}</span>}
                       </span>
+                    )}
+                    {!isOutro && !editLayout && (
+                      <span className="flex items-center rounded-md bg-black/75 ring-1 ring-white/10 px-2 py-0.5 text-[10.5px] font-extrabold leading-none text-indigo-300 shadow-md shadow-black/40" title="contatos na etiqueta FOLLOW UP">🔁 {funil?.[nome]?.followup ?? 0}</span>
                     )}
                     {!isOutro && !editLayout && inativoMin != null && (
                       <span className="px-2 py-0.5 rounded-md bg-red-500/90 ring-1 ring-red-200/50 text-[9px] font-extrabold text-white leading-none whitespace-nowrap shadow-md shadow-black/50" title="tempo inativo — conta só horário útil (07:15–17:30, seg–sex)">
