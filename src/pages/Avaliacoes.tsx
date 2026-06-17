@@ -107,16 +107,19 @@ export function Avaliacoes() {
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-ink">⭐ Avaliações de Atendimento</h1>
-          <p className="text-sm text-ink-muted">O que os clientes acharam do atendimento.</p>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="h-11 w-11 rounded-xl bg-amber-400/15 flex items-center justify-center text-2xl shrink-0">⭐</div>
+          <div>
+            <h1 className="text-xl font-bold text-ink">Avaliações de Atendimento</h1>
+            <p className="text-sm text-ink-muted">O que os clientes acharam do atendimento.</p>
+          </div>
         </div>
         <button
           onClick={carregar}
-          className="px-3 py-2 rounded-lg border border-border text-sm text-ink-muted hover:border-accent hover:text-ink"
+          className="px-3 py-2 rounded-lg border border-border text-sm text-ink-muted hover:border-accent hover:text-ink shrink-0"
         >
-          Atualizar
+          ↻ Atualizar
         </button>
       </div>
 
@@ -130,96 +133,129 @@ export function Avaliacoes() {
         </div>
       ) : (
         <>
-          {/* Topo: média geral grande + gráfico de distribuição */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* KPIs */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-surface-1 border border-border rounded-2xl p-5 flex flex-col items-center justify-center text-center">
+              <p className="text-[10.5px] uppercase tracking-wider text-ink-faint mb-1">Média geral</p>
               <p className="text-5xl font-extrabold text-ink leading-none">{mediaGeral.toFixed(1)}</p>
-              <p className="text-2xl leading-none mt-1.5" style={{ color: corNota(mediaGeral) }}>{estrelas(mediaGeral)}</p>
-              <div className="flex items-center gap-3 mt-3 text-xs">
-                <span className="text-ink-muted"><b className="text-ink">{total}</b> avaliações</span>
-                <span className="text-emerald-400"><b>{pctPositivas}%</b> positivas</span>
-                {negativas > 0 && <span className="text-red-400"><b>{negativas}</b> negativa{negativas > 1 ? 's' : ''}</span>}
+              <p className="text-xl leading-none mt-1.5" style={{ color: corNota(mediaGeral) }}>{estrelas(mediaGeral)}</p>
+              <p className="text-xs text-ink-muted mt-2"><b className="text-ink">{total}</b> avaliações</p>
+            </div>
+            <div className="bg-surface-1 border border-border rounded-2xl p-5 flex flex-col items-center justify-center text-center">
+              <p className="text-[10.5px] uppercase tracking-wider text-ink-faint mb-1">Satisfação</p>
+              <p className="text-5xl font-extrabold leading-none" style={{ color: pctPositivas >= 80 ? '#10b981' : pctPositivas >= 50 ? '#f59e0b' : '#ef4444' }}>{pctPositivas}%</p>
+              <p className="text-xs text-ink-muted mt-2">positivas (4★ ou 5★)</p>
+              {negativas > 0 && <p className="text-xs text-red-400 mt-0.5">{negativas} negativa{negativas > 1 ? 's' : ''}</p>}
+            </div>
+            <div className="bg-surface-1 border border-border rounded-2xl p-5 flex flex-col justify-center sm:col-span-2">
+              <div className="flex items-baseline justify-between">
+                <p className="text-[10.5px] uppercase tracking-wider text-ink-faint">Taxa de resposta</p>
+                <p className="text-3xl font-extrabold text-cyan-300 leading-none">{taxaGeral}%</p>
               </div>
-              <div className="flex items-center gap-3 mt-2 pt-2 border-t border-border text-[11px] text-ink-muted w-full justify-center">
+              <div className="h-2.5 rounded-full bg-white/5 overflow-hidden mt-3">
+                <div className="h-full rounded-full bg-cyan-400 transition-all" style={{ width: `${taxaGeral}%` }} />
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2.5 text-xs text-ink-muted">
                 <span>📤 <b className="text-ink">{totalEnviadas}</b> enviadas</span>
                 <span>✅ <b className="text-ink">{total}</b> respondidas</span>
-                <span className="text-cyan-300"><b>{taxaGeral}%</b> de resposta</span>
+                {totalEnviadas - total > 0 && <span className="ml-auto text-ink-faint">faltam {totalEnviadas - total} responder</span>}
               </div>
             </div>
-            <div className="bg-surface-1 border border-border rounded-2xl p-4 lg:col-span-2">
-              <h2 className="font-semibold text-ink text-sm mb-2">Distribuição das notas</h2>
-              <ResponsiveContainer width="100%" height={175}>
-                <BarChart data={distribuicao} layout="vertical" margin={{ left: 4, right: 20, top: 2, bottom: 2 }}>
-                  <XAxis type="number" allowDecimals={false} stroke="#71717a" fontSize={11} />
-                  <YAxis type="category" dataKey="label" stroke="#a1a1aa" fontSize={13} width={30} tickLine={false} axisLine={false} />
-                  <Tooltip
-                    contentStyle={{ background: '#18181b', border: '1px solid #3f3f46', borderRadius: 8, fontSize: 12 }}
-                    cursor={{ fill: 'rgba(255,255,255,0.04)' }}
-                    formatter={(v: number) => [`${v} avaliações`, '']}
-                  />
-                  <Bar dataKey="qtd" radius={[0, 5, 5, 0]} label={{ position: 'right', fill: '#e4e4e7', fontSize: 11 }}>
-                    {distribuicao.map((d, i) => <Cell key={i} fill={d.fill} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+          </div>
+
+          {/* Distribuição das notas */}
+          <div className="bg-surface-1 border border-border rounded-2xl p-4">
+            <h2 className="font-semibold text-ink text-sm mb-2">Distribuição das notas</h2>
+            <ResponsiveContainer width="100%" height={170}>
+              <BarChart data={distribuicao} layout="vertical" margin={{ left: 4, right: 28, top: 2, bottom: 2 }}>
+                <XAxis type="number" allowDecimals={false} stroke="#71717a" fontSize={11} />
+                <YAxis type="category" dataKey="label" stroke="#a1a1aa" fontSize={13} width={32} tickLine={false} axisLine={false} />
+                <Tooltip
+                  contentStyle={{ background: '#18181b', border: '1px solid #3f3f46', borderRadius: 8, fontSize: 12 }}
+                  cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+                  formatter={(v: number) => [`${v} avaliações`, '']}
+                />
+                <Bar dataKey="qtd" radius={[0, 5, 5, 0]} label={{ position: 'right', fill: '#e4e4e7', fontSize: 11 }}>
+                  {distribuicao.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
 
           {/* Média por vendedor + Últimas avaliações lado a lado em telas largas */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
           {/* Média por vendedor — com barra */}
           <div className="bg-surface-1 border border-border rounded-2xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-border">
+            <div className="px-4 py-3 border-b border-border flex items-center justify-between">
               <h2 className="font-semibold text-ink">🏅 Média por vendedor</h2>
+              <span className="text-[11px] text-ink-faint">{porVendedor.length} vendedores</span>
             </div>
-            <div className="divide-y divide-border">
-              {porVendedor.map((v, i) => (
-                <div key={v.nome} className="px-4 py-3">
-                  <div className="flex items-center justify-between mb-1.5 gap-2">
-                    <span className="font-medium text-ink flex items-center gap-2 min-w-0">
-                      <span className="text-ink-faint text-xs w-4">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</span>
-                      <span className="truncate">{v.nome}</span>
-                    </span>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-base leading-none" style={{ color: corNota(v.media) }}>{estrelas(v.media)}</span>
-                      <span className="text-sm font-bold text-ink w-8 text-right">{v.media.toFixed(1)}</span>
-                      <span className="text-xs text-ink-faint w-16 text-right">{v.n} aval.</span>
+            <div className="p-2 space-y-1.5">
+              {porVendedor.map((v, i) => {
+                const podio = i < 3 && v.n > 0
+                const tier = i === 0
+                  ? 'bg-gradient-to-r from-amber-400/[0.12] to-transparent ring-1 ring-amber-400/25 border-l-2 border-l-amber-400'
+                  : i === 1
+                  ? 'bg-gradient-to-r from-slate-300/[0.10] to-transparent ring-1 ring-slate-300/20 border-l-2 border-l-slate-300'
+                  : 'bg-gradient-to-r from-orange-400/[0.10] to-transparent ring-1 ring-orange-400/20 border-l-2 border-l-orange-400'
+                const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'
+                return (
+                  <div key={v.nome} className={`rounded-xl px-3 py-2.5 ${podio ? tier : 'bg-white/[0.02] border border-white/5'}`}>
+                    <div className="flex items-center justify-between mb-1.5 gap-2">
+                      <span className="font-semibold text-ink flex items-center gap-2 min-w-0">
+                        {podio
+                          ? <span className="text-base leading-none">{medal}</span>
+                          : <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-white/5 text-ink-faint text-[10.5px] font-bold shrink-0">{i + 1}</span>}
+                        <span className="truncate">{v.nome}</span>
+                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[15px] leading-none" style={{ color: corNota(v.media) }}>{estrelas(v.media)}</span>
+                        <span className="text-sm font-bold text-ink w-8 text-right">{v.media.toFixed(1)}</span>
+                      </div>
+                    </div>
+                    <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${(v.media / 5) * 100}%`, background: corNota(v.media) }} />
+                    </div>
+                    <div className="flex items-center gap-2 mt-1.5 text-[10.5px] text-ink-faint">
+                      <span>{v.n} avaliações · {v.enviadas} enviadas</span>
+                      {v.taxa != null && (
+                        <span className={`ml-auto px-1.5 py-0.5 rounded-full font-semibold ${v.taxa >= 50 ? 'bg-emerald-500/15 text-emerald-300' : v.taxa >= 25 ? 'bg-amber-500/15 text-amber-300' : 'bg-red-500/15 text-red-300'}`}>{v.taxa}% resposta</span>
+                      )}
                     </div>
                   </div>
-                  <div className="h-2 rounded-full bg-white/5 overflow-hidden">
-                    <div className="h-full rounded-full transition-all" style={{ width: `${(v.media / 5) * 100}%`, background: corNota(v.media) }} />
-                  </div>
-                  <div className="flex items-center gap-2.5 mt-1.5 text-[10.5px] text-ink-faint">
-                    <span>📤 {v.enviadas} enviadas</span>
-                    <span>✅ {v.n} resp.</span>
-                    {v.taxa != null && <span className={v.taxa >= 50 ? 'text-emerald-300 font-semibold' : v.taxa >= 25 ? 'text-amber-300 font-semibold' : 'text-red-300 font-semibold'}>{v.taxa}% de resposta</span>}
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
 
           {/* Lista de avaliações */}
           <div className="bg-surface-1 border border-border rounded-2xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-border">
+            <div className="px-4 py-3 border-b border-border flex items-center justify-between">
               <h2 className="font-semibold text-ink">Últimas avaliações</h2>
+              <span className="text-[11px] text-ink-faint">{total}</span>
             </div>
-            <div className="divide-y divide-border">
-              {rows.map(r => (
-                <div key={r.id} className="px-4 py-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-base leading-none" style={{ color: corNota(r.nota) }}>{estrelas(r.nota)}</span>
-                    <span className="text-xs text-ink-faint shrink-0">{fmtData(r.created_at)}</span>
+            <div className="divide-y divide-border max-h-[520px] overflow-y-auto">
+              {rows.map(r => {
+                const tel = (r.telefone || '').replace(/\D/g, '')
+                const wa = tel ? (tel.startsWith('55') ? tel : '55' + tel) : ''
+                return (
+                  <div key={r.id} className="px-4 py-3 border-l-2" style={{ borderLeftColor: corNota(r.nota) }}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-base leading-none" style={{ color: corNota(r.nota) }}>{estrelas(r.nota)}</span>
+                      <span className="text-xs text-ink-faint shrink-0">{fmtData(r.created_at)}</span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
+                      <span className="font-medium text-ink">{r.cliente_nome || 'Cliente'}</span>
+                      {r.vendedor_nome && <span className="text-ink-muted">· {r.vendedor_nome.toUpperCase()}</span>}
+                      {r.telefone && (wa
+                        ? <a href={`https://wa.me/${wa}`} target="_blank" rel="noopener" className="text-emerald-400 hover:underline">· {fmtTelefone(r.telefone)}</a>
+                        : <span className="text-ink-faint">· {fmtTelefone(r.telefone)}</span>)}
+                      {r.motivo && <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 text-xs">{r.motivo}</span>}
+                    </div>
+                    {r.comentario && <p className="mt-1 text-sm text-ink-muted">“{r.comentario}”</p>}
                   </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
-                    <span className="font-medium text-ink">{r.cliente_nome || 'Cliente'}</span>
-                    {r.vendedor_nome && <span className="text-ink-muted">· {r.vendedor_nome.toUpperCase()}</span>}
-                    {r.telefone && <span className="text-ink-faint">· {fmtTelefone(r.telefone)}</span>}
-                    {r.motivo && <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 text-xs">{r.motivo}</span>}
-                  </div>
-                  {r.comentario && <p className="mt-1 text-sm text-ink-muted">“{r.comentario}”</p>}
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
           </div>{/* /grid vendedor + últimas */}
