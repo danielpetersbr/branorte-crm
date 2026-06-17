@@ -17,14 +17,15 @@ type Ocupante = { nome: string; tipo: 'vendedor' | 'outro'; online: boolean; set
 type Pos = { x: number; y: number }
 // Estado ao vivo do vendedor (vem do heartbeat da extensão, calculado no Disparos.tsx)
 type LiveStatus = {
-  status: 'ativo' | 'aguardando' | 'wa_fechado' | 'verificar_wa' | 'lento' | 'versao_antiga' | 'desconectado' | 'desligado'
+  status: 'ativo' | 'ocioso' | 'aguardando' | 'wa_fechado' | 'verificar_wa' | 'lento' | 'versao_antiga' | 'desconectado' | 'desligado'
   pingSec: number | null
   versao: string | null
   enviadosHoje: number
   ultimoEnvio: string | null
 }
 const STATUS_CFG: Record<LiveStatus['status'], { dot: string; label: string; glow?: boolean; fade?: boolean }> = {
-  ativo:         { dot: 'bg-emerald-400', label: 'ativo',          glow: true },
+  ativo:         { dot: 'bg-emerald-400', label: 'trabalhando',    glow: true },
+  ocioso:        { dot: 'bg-yellow-300',  label: 'aberto, parado' },
   aguardando:    { dot: 'bg-cyan-400',    label: 'aguardando WA' },
   wa_fechado:    { dot: 'bg-orange-400',  label: 'WA fechado' },
   verificar_wa:  { dot: 'bg-orange-400',  label: 'verificar WA' },
@@ -1164,7 +1165,8 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
       {/* Legenda do estado ao vivo */}
       {modo === 'normal' && (
         <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[10px] text-ink-muted justify-center">
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_5px_1px_rgba(16,185,129,.7)]" /> ativo</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_5px_1px_rgba(16,185,129,.7)]" /> trabalhando</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-yellow-300" /> aberto, parado</span>
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-cyan-400" /> aguardando WA</span>
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-orange-400" /> WA fechado</span>
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-400" /> lento</span>

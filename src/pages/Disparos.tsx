@@ -38,7 +38,7 @@ export function Disparos() {
 
   // Heartbeat da extensão por vendedor (só pra saber se está online/com WA aberto).
   // Não dispara nada — é só sinal de disponibilidade pra roteamento.
-  type Runtime = { ts: string; versao: string; semWa: boolean; heartbeatOnly: boolean; wppReady: boolean; semChatsHaTempo: boolean }
+  type Runtime = { ts: string; versao: string; semWa: boolean; heartbeatOnly: boolean; wppReady: boolean; semChatsHaTempo: boolean; interacaoSec: number | null; envioSec: number | null }
   const { data: vendorRuntime } = useQuery<Record<string, Runtime>>({
     queryKey: ['vendor-runtime'],
     queryFn: async () => {
@@ -72,6 +72,8 @@ export function Disparos() {
             heartbeatOnly,
             wppReady,
             semChatsHaTempo,
+            interacaoSec: row.diag?.interacao_sec ?? null,
+            envioSec: row.diag?.envio_sec ?? null,
           }
         }
       }
@@ -81,7 +83,7 @@ export function Disparos() {
   })
 
   // Status consolidado por vendedor (apenas disponibilidade pra receber lead — não envia nada).
-  type StatusVendedor = 'desligado' | 'ativo' | 'aguardando' | 'wa_fechado' | 'verificar_wa' | 'lento' | 'desconectado' | 'versao_antiga'
+  type StatusVendedor = 'desligado' | 'ativo' | 'ocioso' | 'aguardando' | 'wa_fechado' | 'verificar_wa' | 'lento' | 'desconectado' | 'versao_antiga'
   function statusVendedor(v: Vendedor): { status: StatusVendedor; pingSec: number | null; versao: string | null } {
     const runtime = vendorRuntime?.[v.vendedor_nome]
     if (!v.online) return { status: 'desligado', pingSec: null, versao: runtime?.versao ?? null }
@@ -94,9 +96,15 @@ export function Disparos() {
     if (sec >= 180) return { status: 'lento', pingSec: sec, versao: runtime.versao }
     if (runtime.semWa) return { status: 'wa_fechado', pingSec: sec, versao: runtime.versao }
     if (runtime.semChatsHaTempo) return { status: 'verificar_wa', pingSec: sec, versao: runtime.versao }
-    if (runtime.wppReady) return { status: 'ativo', pingSec: sec, versao: runtime.versao }
+    // "Trabalhando" vs "aberto, mas parado": mexeu na aba OU enviou msg nos últimos 10 min.
+    // Sem dados de atividade (extensão antiga) → mantém o comportamento antigo (ativo).
+    const OCIOSO_SEC = 600
+    const semAtivData = runtime.interacaoSec == null && runtime.envioSec == null
+    const trabalhando = (runtime.interacaoSec != null && runtime.interacaoSec < OCIOSO_SEC) || (runtime.envioSec != null && runtime.envioSec < OCIOSO_SEC)
+    const estado: StatusVendedor = (!semAtivData && !trabalhando) ? 'ocioso' : 'ativo'
+    if (runtime.wppReady) return { status: estado, pingSec: sec, versao: runtime.versao }
     if (runtime.heartbeatOnly) return { status: 'aguardando', pingSec: sec, versao: runtime.versao }
-    return { status: 'ativo', pingSec: sec, versao: runtime.versao }
+    return { status: estado, pingSec: sec, versao: runtime.versao }
   }
 
   function tempoRelativo(sec: number | null): string {
@@ -167,11 +175,12 @@ export function Disparos() {
             <Users className="h-4 w-4 text-accent" />
             Vendedores
             <span className="text-ink-faint font-normal text-[11px]">
-              · {(vendedores ?? []).filter(v => statusVendedor(v).status === 'ativo').length} ativo{(vendedores ?? []).filter(v => statusVendedor(v).status === 'ativo').length === 1 ? '' : 's'} de {(vendedores ?? []).length}
+              · {(vendedores ?? []).filter(v => statusVendedor(v).status === 'ativo').length} trabalhando de {(vendedores ?? []).length}
             </span>
           </h2>
           <div className="flex gap-2.5 text-[10px] text-ink-muted flex-wrap">
-            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> ativo</span>
+            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> trabalhando</span>
+            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-yellow-300" /> aberto, parado</span>
             <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-cyan-400" /> aguardando WA</span>
             <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-orange-400" /> WA fechado / verificar</span>
             <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> lento</span>
@@ -184,7 +193,8 @@ export function Disparos() {
             {(vendedores ?? []).map(v => {
               const st = statusVendedor(v)
               const stCfg = {
-                ativo:         { cor: 'border-emerald-500/40 bg-emerald-500/5',  dot: 'bg-emerald-400', txt: 'text-emerald-300', label: 'ATIVO',         hint: 'Disponível para receber leads' },
+                ativo:         { cor: 'border-emerald-500/40 bg-emerald-500/5',  dot: 'bg-emerald-400', txt: 'text-emerald-300', label: 'TRABALHANDO',   hint: 'WhatsApp aberto E mexendo (interação na aba ou mensagem) nos últimos 10 min' },
+                ocioso:        { cor: 'border-yellow-500/30 bg-yellow-500/5',    dot: 'bg-yellow-300',  txt: 'text-yellow-200',  label: 'ABERTO, PARADO', hint: 'WhatsApp aberto e conectado, mas sem mexer na aba nem enviar mensagem há 10 min+. Ainda recebe leads.' },
                 aguardando:    { cor: 'border-cyan-500/40 bg-cyan-500/5',        dot: 'bg-cyan-400',    txt: 'text-cyan-300',    label: 'AGUARDANDO WA', hint: 'Chrome ok, mas WA Web ainda carregando — peça pra abrir e logar' },
                 wa_fechado:    { cor: 'border-orange-500/40 bg-orange-500/5',    dot: 'bg-orange-400',  txt: 'text-orange-300',  label: 'WA FECHADO',    hint: 'Extensão viva mas WhatsApp Web foi fechado — peça pra abrir web.whatsapp.com' },
                 verificar_wa:  { cor: 'border-orange-500/40 bg-orange-500/5',    dot: 'bg-orange-400',  txt: 'text-orange-300',  label: 'VERIFICAR WA',  hint: 'Extensão viva, mas WhatsApp Web retorna 0 chats há vários minutos. Provavelmente deslogado — peça pra ele abrir web.whatsapp.com e escanear o QR code.' },
