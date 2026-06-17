@@ -822,7 +822,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-emerald-500/12 ring-1 ring-emerald-400/30 text-emerald-200" title="Leads recebidos hoje pelo time">📥 {kpis.leads}<span className="text-ink-faint font-normal text-[10px] ml-0.5">leads</span></span>
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-sky-500/12 ring-1 ring-sky-400/30 text-sky-200" title="Orçamentos feitos hoje pelo time">📄 {kpis.orc}<span className="text-ink-faint font-normal text-[10px] ml-0.5">orçam.</span></span>
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-violet-500/12 ring-1 ring-violet-400/30 text-violet-200" title="Atendimentos hoje — chats trabalhados pelo time">💬 {kpis.atend}<span className="text-ink-faint font-normal text-[10px] ml-0.5">atend.</span></span>
-          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-indigo-500/12 ring-1 ring-indigo-400/30 text-indigo-200" title="Contatos na etiqueta FOLLOW UP do time">🔁 {kpis.followup}<span className="text-ink-faint font-normal text-[10px] ml-0.5">follow up</span></span>
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-indigo-500/12 ring-1 ring-indigo-400/30 text-indigo-200" title="Contatos na etiqueta FOLLOW UP do time">🔔 {kpis.followup}<span className="text-ink-faint font-normal text-[10px] ml-0.5">follow up</span></span>
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-orange-500/12 ring-1 ring-orange-400/30 text-orange-200" title="Leads QUENTES no funil do time (cobre quem deixou esfriar)">🔥 {kpis.quentes}<span className="text-ink-faint font-normal text-[10px] ml-0.5">quentes</span></span>
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-emerald-500/12 ring-1 ring-emerald-400/30 text-emerald-200" title="Vendedores ativos agora / total">🟢 {kpis.ativos}/{kpis.total}<span className="text-ink-faint font-normal text-[10px] ml-0.5">ativos</span></span>
           {kpis.parados > 0 && (
@@ -1039,7 +1039,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
                         <span className="px-1.5 py-1 text-emerald-300 flex items-center gap-0.5" title="leads que chegaram hoje (fonte: página Atendimentos)">📥{leadsDe(nome)}</span>
                         <span className="px-1.5 py-1 text-sky-300 flex items-center gap-0.5" title="orçamentos feitos hoje">📄{orcDe(nome)}</span>
                         <span className="px-1.5 py-1 text-violet-300 flex items-center gap-0.5" title="atendimentos hoje (chats trabalhados no dia)">💬{funil?.[nome]?.atendimentos ?? 0}</span>
-                        <span className="px-1.5 py-1 text-indigo-300 flex items-center gap-0.5" title="contatos na etiqueta FOLLOW UP">🔁{funil?.[nome]?.followup ?? 0}</span>
+                        <span className="px-1.5 py-1 text-indigo-300 flex items-center gap-0.5" title="contatos na etiqueta FOLLOW UP">🔔{funil?.[nome]?.followup ?? 0}</span>
                         {quente > 0 && <span className="px-1.5 py-1 text-orange-300 flex items-center gap-0.5" title="leads quentes no funil">🔥{quente}</span>}
                       </span>
                     )}
@@ -1170,7 +1170,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-400" /> lento</span>
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-400" /> desconectado</span>
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-slate-500" /> desligado</span>
-          <span className="flex items-center gap-1.5 text-ink-faint flex-wrap">por boneco (hoje): <span className="text-emerald-300 font-bold">📥leads</span> · <span className="text-sky-300 font-bold">📄orçam.</span> · <span className="text-violet-300 font-bold">💬atend.</span> · <span className="text-indigo-300 font-bold">🔁follow up</span> · <span className="text-orange-300 font-bold">🔥quentes</span> · <span className="text-cyan-300">👥carteira (passe o mouse)</span></span>
+          <span className="flex items-center gap-1.5 text-ink-faint flex-wrap">por boneco (hoje): <span className="text-emerald-300 font-bold">📥leads</span> · <span className="text-sky-300 font-bold">📄orçam.</span> · <span className="text-violet-300 font-bold">💬atend.</span> · <span className="text-indigo-300 font-bold">🔔follow up</span> · <span className="text-orange-300 font-bold">🔥quentes</span> · <span className="text-cyan-300">👥carteira (passe o mouse)</span></span>
         </div>
       )}
     </Card>
