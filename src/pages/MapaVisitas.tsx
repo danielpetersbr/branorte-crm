@@ -107,6 +107,7 @@ export function MapaVisitas() {
   const [vendedorSel, setVendedorSel] = useState<string>('')
   const [showOrc, setShowOrc] = useState(true)
   const [showVis, setShowVis] = useState(false)
+  const [busca, setBusca] = useState('')
 
   // resolve etiqueta_id (por vendedor) -> nome (IDs do Wascript não são globais).
   const { byVendId, globId } = useMemo(() => {
@@ -156,13 +157,22 @@ export function MapaVisitas() {
 
   const comCoord = useMemo(() => visitas.filter(v => v.lat != null && v.lng != null), [visitas])
   const semCoord = visitas.length - comCoord.length
+  const termo = busca.trim().toLowerCase()
   const visFiltradas = useMemo(
-    () => (vendedorSel ? comCoord.filter(v => (v.vendedor_nome || '—') === vendedorSel) : comCoord),
-    [comCoord, vendedorSel]
+    () => comCoord.filter(v =>
+      (!vendedorSel || (v.vendedor_nome || '—') === vendedorSel) &&
+      (!termo || [v.nome, v.cidade, v.estado, v.telefone, v.vendedor_nome, v.interesse]
+        .some(x => (x || '').toLowerCase().includes(termo)))
+    ),
+    [comCoord, vendedorSel, termo]
   )
   const orcFiltrados = useMemo(
-    () => (vendedorSel ? orcPontos.filter(p => (p.vendedor || '—') === vendedorSel) : orcPontos),
-    [orcPontos, vendedorSel]
+    () => orcPontos.filter(p =>
+      (!vendedorSel || (p.vendedor || '—') === vendedorSel) &&
+      (!termo || [p.cliente, p.cidade, p.uf, p.telefone, p.fone, p.numeros, p.vendedor]
+        .some(x => (x || '').toLowerCase().includes(termo)))
+    ),
+    [orcPontos, vendedorSel, termo]
   )
 
   // legenda visitas (follow-up por vendedor + cinza)
@@ -282,6 +292,22 @@ export function MapaVisitas() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[13px] text-ink-faint pointer-events-none">🔍</span>
+            <input
+              value={busca}
+              onChange={e => setBusca(e.target.value)}
+              placeholder="Buscar cliente, cidade, telefone, Nº…"
+              className="h-9 w-60 pl-8 pr-7 rounded-md bg-surface border border-border text-[13px] text-ink placeholder:text-ink-faint outline-none focus:border-accent"
+            />
+            {busca && (
+              <button
+                onClick={() => setBusca('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink text-[13px]"
+                title="Limpar busca"
+              >✕</button>
+            )}
+          </div>
           <button className={togglePill(showOrc)} onClick={() => setShowOrc(v => !v)} title="Pontos a partir dos orçamentos (cor por idade)">💰 Orçamentos</button>
           <button className={togglePill(showVis)} onClick={() => setShowVis(v => !v)} title="Visitas anotadas no WhatsApp (cor por follow-up)">📍 Visitas WhatsApp</button>
           <select
