@@ -34,6 +34,7 @@ const brl = (v: number | null) =>
 function popupHtml(v: Visita, isFollowUp: boolean, labels: string[]): string {
   const tel = (v.telefone || '').replace(/\D/g, '')
   const esc = (s: string | null) => (s || '').replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] as string))
+  const loc = [esc(v.cidade), esc(v.estado)].filter(Boolean).join(' - ')
   const badge = labels.length
     ? (isFollowUp
         ? `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:#dcfce7;color:#166534;font-weight:600">🟢 Follow up</span>`
@@ -42,7 +43,7 @@ function popupHtml(v: Visita, isFollowUp: boolean, labels: string[]): string {
   return `
     <div style="min-width:180px;font-family:inherit">
       <div style="font-weight:600;font-size:13px">${esc(v.nome) || 'Sem nome'}</div>
-      <div style="font-size:12px;color:#64748b">${esc(v.cidade)}${v.estado ? ' - ' + esc(v.estado) : ''}</div>
+      ${loc ? `<div style="font-size:12px;color:#64748b">${loc}</div>` : ''}
       ${badge ? `<div style="margin-top:4px">${badge}</div>` : ''}
       ${v.interesse ? `<div style="font-size:12px;margin-top:4px">🎯 ${esc(v.interesse)}</div>` : ''}
       ${v.valor_negociando != null ? `<div style="font-size:13px;font-weight:600;color:#10b981;margin-top:2px">${brl(v.valor_negociando)}</div>` : ''}
