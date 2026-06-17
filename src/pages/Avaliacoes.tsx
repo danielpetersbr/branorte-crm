@@ -43,22 +43,33 @@ function fmtTelefone(t: string | null) {
 
 export function Avaliacoes() {
   const [rows, setRows] = useState<AvaliacaoRow[]>([])
+  const [envios, setEnvios] = useState<{ vendedor_nome: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
 
   async function carregar() {
     setLoading(true)
     setErro('')
-    const { data, error } = await supabase
-      .from('atendimento_avaliacoes')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(1000)
-    if (error) setErro(error.message)
-    else setRows((data as AvaliacaoRow[]) || [])
+    const [rA, rE] = await Promise.all([
+      supabase.from('atendimento_avaliacoes').select('*').order('created_at', { ascending: false }).limit(1000),
+      supabase.from('avaliacao_envios').select('vendedor_nome').limit(20000),
+    ])
+    if (rA.error) setErro(rA.error.message)
+    else setRows((rA.data as AvaliacaoRow[]) || [])
+    if (!rE.error) setEnvios((rE.data as { vendedor_nome: string | null }[]) || [])
     setLoading(false)
   }
   useEffect(() => { carregar() }, [])
+
+  // Envios por vendedor (pra calcular taxa de resposta) — vem da tabela avaliacao_envios.
+  const enviosPorVendedor = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const e of envios) {
+      const nome = (e.vendedor_nome || '—').toUpperCase()
+      m.set(nome, (m.get(nome) || 0) + 1)
+    }
+    return m
+  }, [envios])
 
   const porVendedor = useMemo(() => {
     const map = new Map<string, { soma: number; n: number }>()
@@ -69,10 +80,15 @@ export function Avaliacoes() {
       cur.n += 1
       map.set(nome, cur)
     }
-    return [...map.entries()]
-      .map(([nome, v]) => ({ nome, media: v.soma / v.n, n: v.n }))
-      .sort((a, b) => b.media - a.media || b.n - a.n)
-  }, [rows])
+    // Inclui vendedores que só têm ENVIOS (ainda sem resposta), pra a taxa aparecer.
+    const nomes = new Set<string>([...map.keys(), ...enviosPorVendedor.keys()])
+    return [...nomes].map(nome => {
+      const v = map.get(nome) || { soma: 0, n: 0 }
+      const enviadas = enviosPorVendedor.get(nome) || 0
+      const taxa = enviadas > 0 ? Math.min(100, Math.round((v.n / enviadas) * 100)) : null
+      return { nome, media: v.n ? v.soma / v.n : 0, n: v.n, enviadas, taxa }
+    }).sort((a, b) => b.media - a.media || b.n - a.n || b.enviadas - a.enviadas)
+  }, [rows, enviosPorVendedor])
 
   // Distribuição das notas (5★ no topo) — base do gráfico
   const distribuicao = useMemo(() => {
@@ -86,6 +102,8 @@ export function Avaliacoes() {
   const positivas = rows.filter(r => r.nota >= 4).length
   const pctPositivas = total ? Math.round((positivas / total) * 100) : 0
   const negativas = rows.filter(r => r.nota <= 2).length
+  const totalEnviadas = envios.length
+  const taxaGeral = totalEnviadas > 0 ? Math.min(100, Math.round((total / totalEnviadas) * 100)) : 0
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
@@ -106,9 +124,9 @@ export function Avaliacoes() {
         <p className="text-sm text-ink-muted">Carregando…</p>
       ) : erro ? (
         <p className="text-sm text-red-500">Erro: {erro}</p>
-      ) : total === 0 ? (
+      ) : total === 0 && totalEnviadas === 0 ? (
         <div className="bg-surface-1 border border-border rounded-2xl p-8 text-center text-ink-muted">
-          Ainda não há avaliações. Elas aparecem aqui assim que os clientes responderem o link.
+          Ainda não há avaliações nem envios. Aparecem aqui assim que a extensão mandar a pergunta e os clientes responderem.
         </div>
       ) : (
         <>
@@ -121,6 +139,11 @@ export function Avaliacoes() {
                 <span className="text-ink-muted"><b className="text-ink">{total}</b> avaliações</span>
                 <span className="text-emerald-400"><b>{pctPositivas}%</b> positivas</span>
                 {negativas > 0 && <span className="text-red-400"><b>{negativas}</b> negativa{negativas > 1 ? 's' : ''}</span>}
+              </div>
+              <div className="flex items-center gap-3 mt-2 pt-2 border-t border-border text-[11px] text-ink-muted w-full justify-center">
+                <span>📤 <b className="text-ink">{totalEnviadas}</b> enviadas</span>
+                <span>✅ <b className="text-ink">{total}</b> respondidas</span>
+                <span className="text-cyan-300"><b>{taxaGeral}%</b> de resposta</span>
               </div>
             </div>
             <div className="bg-surface-1 border border-border rounded-2xl p-4 lg:col-span-2">
@@ -165,6 +188,11 @@ export function Avaliacoes() {
                   </div>
                   <div className="h-2 rounded-full bg-white/5 overflow-hidden">
                     <div className="h-full rounded-full transition-all" style={{ width: `${(v.media / 5) * 100}%`, background: corNota(v.media) }} />
+                  </div>
+                  <div className="flex items-center gap-2.5 mt-1.5 text-[10.5px] text-ink-faint">
+                    <span>📤 {v.enviadas} enviadas</span>
+                    <span>✅ {v.n} resp.</span>
+                    {v.taxa != null && <span className={v.taxa >= 50 ? 'text-emerald-300 font-semibold' : v.taxa >= 25 ? 'text-amber-300 font-semibold' : 'text-red-300 font-semibold'}>{v.taxa}% de resposta</span>}
                   </div>
                 </div>
               ))}
