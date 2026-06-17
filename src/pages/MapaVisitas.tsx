@@ -83,16 +83,19 @@ function popupVisita(v: Visita, isFollowUp: boolean, labels: string[]): string {
 
 function popupOrcamento(p: OrcamentoPonto): string {
   const tel = (p.telefone || '').replace(/\D/g, '')
+  const foneFmt = p.fone || p.telefone || ''
   const loc = [esc(p.cidade), esc(p.uf)].filter(Boolean).join(' - ')
   const dataFmt = p.data_recente ? new Date(p.data_recente + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
   return `
     <div style="min-width:190px;font-family:inherit">
       <div style="font-weight:600;font-size:13px">${esc(p.cliente) || 'Sem nome'}</div>
       ${loc ? `<div style="font-size:12px;color:#64748b">${loc}</div>` : ''}
+      ${p.numeros ? `<div style="font-size:11px;color:#475569;margin-top:3px">🧾 Nº ${esc(p.numeros)}</div>` : ''}
       <div style="font-size:14px;font-weight:700;color:#10b981;margin-top:3px">${brl(p.total)}</div>
       <div style="font-size:11px;color:#64748b;margin-top:2px">${p.n_orcamentos} orçamento${p.n_orcamentos === 1 ? '' : 's'} · último ${dataFmt} <b>(${idadeLabel(p.data_recente)})</b></div>
       <div style="font-size:11px;color:#64748b;margin-top:3px">Vendedor: ${esc(p.vendedor) || '—'}</div>
-      ${tel ? `<a href="https://wa.me/${tel}" target="_blank" rel="noopener" style="display:inline-block;margin-top:6px;font-size:12px;color:#10b981;font-weight:600">Abrir WhatsApp ↗</a>` : ''}
+      ${foneFmt ? `<div style="font-size:12px;color:#0f172a;margin-top:4px">📱 ${esc(foneFmt)}</div>` : ''}
+      ${tel ? `<a href="https://wa.me/${tel}" target="_blank" rel="noopener" style="display:inline-block;margin-top:4px;font-size:12px;color:#10b981;font-weight:600">Abrir WhatsApp ↗</a>` : ''}
     </div>`
 }
 

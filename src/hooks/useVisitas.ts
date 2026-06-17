@@ -49,6 +49,8 @@ export function useGeocodarVisitas() {
 export interface OrcamentoPonto {
   cliente: string | null
   telefone: string | null
+  fone: string | null
+  numeros: string | null
   cidade: string | null
   uf: string | null
   total: number | null
