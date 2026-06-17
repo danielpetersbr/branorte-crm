@@ -88,7 +88,7 @@ export function Avaliacoes() {
   const negativas = rows.filter(r => r.nota <= 2).length
 
   return (
-    <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-ink">⭐ Avaliações de Atendimento</h1>
@@ -142,6 +142,8 @@ export function Avaliacoes() {
             </div>
           </div>
 
+          {/* Média por vendedor + Últimas avaliações lado a lado em telas largas */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
           {/* Média por vendedor — com barra */}
           <div className="bg-surface-1 border border-border rounded-2xl overflow-hidden">
             <div className="px-4 py-3 border-b border-border">
@@ -192,6 +194,7 @@ export function Avaliacoes() {
               ))}
             </div>
           </div>
+          </div>{/* /grid vendedor + últimas */}
         </>
       )}
     </div>
