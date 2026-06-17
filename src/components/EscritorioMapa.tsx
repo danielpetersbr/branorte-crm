@@ -86,6 +86,15 @@ function hueFromName(name: string): number {
   for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h)
   return Math.abs(h) % 360
 }
+// Nome curto pro label da mesa: 1º nome + sufixo de geração (JR/FILHO/NETO/…).
+// Sem isso, "EDILSON JR" virava só "EDILSON" e parecia duplicado do EDILSON (CEO).
+const SUFIXOS_NOME = new Set(['JR', 'JR.', 'JUNIOR', 'JÚNIOR', 'FILHO', 'NETO', 'SOBRINHO', 'II', 'III'])
+function nomeCurto(nome: string): string {
+  const parts = (nome || '').trim().split(/\s+/)
+  if (parts.length <= 1) return nome
+  const ult = parts[parts.length - 1]
+  return SUFIXOS_NOME.has(ult.toUpperCase()) ? `${parts[0]} ${ult}` : parts[0]
+}
 
 // Janela de trabalho: seg–sex, 07:15–17:30. O contador de inatividade só conta DENTRO dela
 // (pula noite e fim de semana) — daí "inteligente".
@@ -820,7 +829,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
             <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-red-500/15 ring-1 ring-red-400/40 text-red-200 animate-pulse" title="Em horário comercial com WhatsApp fechado/desconectado — liga pra eles">🚨 {kpis.parados}<span className="text-red-200/80 font-normal text-[10px] ml-0.5">parados</span></span>
           )}
           {leader && (
-            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-amber-500/15 ring-1 ring-amber-400/40 text-amber-200 ml-auto" title="Líder do dia — mais orçamentos (depois leads)">👑 {leader.split(' ')[0]}</span>
+            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-amber-500/15 ring-1 ring-amber-400/40 text-amber-200 ml-auto" title="Líder do dia — mais orçamentos (depois leads)">👑 {nomeCurto(leader)}</span>
           )}
         </div>
       )}
@@ -1021,14 +1030,15 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
                   {/* nome + números do dia (sempre visíveis) */}
                   <div className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 flex flex-col items-center gap-0.5 max-w-[170%]">
                     <span className="px-2 py-0.5 rounded-md bg-black/60 ring-1 ring-white/10 text-[11px] font-bold text-white truncate leading-tight max-w-full">
-                      {nome.split(' ')[0]}
+                      {nomeCurto(nome)}
                     </span>
                     {!isOutro && !editLayout && (
-                      <span className="flex items-stretch rounded-md bg-black/75 ring-1 ring-white/10 overflow-hidden text-[10.5px] font-extrabold leading-none divide-x divide-white/10 shadow-md shadow-black/40">
-                        <span className="px-1.5 py-1 text-cyan-300 flex items-center gap-0.5" title="clientes em atendimento aberto (negociação ativa)">👥{funil?.[nome]?.aberto ?? 0}</span>
-                        <span className="px-1.5 py-1 text-violet-300 flex items-center gap-0.5" title="atendimentos hoje (chats trabalhados no dia)">💬{funil?.[nome]?.atendimentos ?? 0}</span>
+                      // Badge fixo = só números do DIA (leads/orç/atend/follow/quente).
+                      // A carteira (👥 aberto) saiu daqui pra não dominar/estourar — fica no hover (FunilCard).
+                      <span className="flex items-stretch rounded-md bg-black/75 ring-1 ring-white/10 overflow-hidden text-[10.5px] font-extrabold leading-none divide-x divide-white/10 shadow-md shadow-black/40 max-w-full">
                         <span className="px-1.5 py-1 text-emerald-300 flex items-center gap-0.5" title="leads que chegaram hoje (fonte: página Atendimentos)">📥{leadsDe(nome)}</span>
                         <span className="px-1.5 py-1 text-sky-300 flex items-center gap-0.5" title="orçamentos feitos hoje">📄{orcDe(nome)}</span>
+                        <span className="px-1.5 py-1 text-violet-300 flex items-center gap-0.5" title="atendimentos hoje (chats trabalhados no dia)">💬{funil?.[nome]?.atendimentos ?? 0}</span>
                         <span className="px-1.5 py-1 text-indigo-300 flex items-center gap-0.5" title="contatos na etiqueta FOLLOW UP">🔁{funil?.[nome]?.followup ?? 0}</span>
                         {quente > 0 && <span className="px-1.5 py-1 text-orange-300 flex items-center gap-0.5" title="leads quentes no funil">🔥{quente}</span>}
                       </span>
@@ -1160,7 +1170,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-400" /> lento</span>
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-400" /> desconectado</span>
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-slate-500" /> desligado</span>
-          <span className="flex items-center gap-1.5 text-ink-faint flex-wrap">por boneco: <span className="text-cyan-300 font-bold">👥atend. aberto</span> · <span className="text-violet-300 font-bold">💬atend. hoje</span> · <span className="text-emerald-300 font-bold">📥leads</span> · <span className="text-sky-300 font-bold">📄orçam.</span> · <span className="text-indigo-300 font-bold">🔁follow up</span> · <span className="text-orange-300 font-bold">🔥quentes</span> (hoje)</span>
+          <span className="flex items-center gap-1.5 text-ink-faint flex-wrap">por boneco (hoje): <span className="text-emerald-300 font-bold">📥leads</span> · <span className="text-sky-300 font-bold">📄orçam.</span> · <span className="text-violet-300 font-bold">💬atend.</span> · <span className="text-indigo-300 font-bold">🔁follow up</span> · <span className="text-orange-300 font-bold">🔥quentes</span> · <span className="text-cyan-300">👥carteira (passe o mouse)</span></span>
         </div>
       )}
     </Card>
