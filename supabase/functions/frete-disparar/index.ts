@@ -1,10 +1,8 @@
 // frete-disparar — dispara o link de cotação pras transportadoras escolhidas.
 // Chamado pelo Jardel/admin na fila /frete/aprovar (verify_jwt=true).
-// Para cada transportadora: garante 1 lance (com token), monta o link público
-// e enfileira a mensagem no wa_scheduled_messages com o vendedor_nome do disparo
-// (default JARDEL) -> a extensão dele envia pelo WhatsApp dele.
-// Se frete_config.disparo_ativo != 'true', cria os links mas NÃO envia (o front
-// mostra os links pra copiar/colar manual — trava anti-spam).
+// AUTORIZAÇÃO: exige permissão frete.aprovar (não basta estar logado).
+// ANTI-SPAM: não reenfileira uma transportadora cujo lance já tem mensagem
+// pending/sent (re-clicar "Disparar" não duplica WhatsApp).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
@@ -27,7 +25,7 @@ function decodeJwt(token: string): any {
 }
 
 function normalizeFone(raw: unknown): string {
-  let d = String(raw || '').replace(/\D/g, '')
+  let d = String(raw || '').replace(/\D/g, '').replace(/^0+/, '') // tira zeros à esquerda (DDD com 0)
   if (!d) return ''
   if (d.length <= 11) d = '55' + d // DDD+numero -> +55
   return d
@@ -64,18 +62,27 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS })
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
 
-  // só usuário logado (não anon)
   const authHeader = req.headers.get('authorization') ?? ''
   const jwt = decodeJwt(authHeader.replace(/^Bearer\s+/i, ''))
   if (!jwt || jwt.role !== 'authenticated' || !jwt.sub) return json({ error: 'unauthorized' }, 401)
+
+  const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+
+  // AUTORIZAÇÃO: precisa de frete.aprovar (mesma fonte do useCan: user_profiles.role + role_permissions)
+  const { data: prof } = await sb.from('user_profiles').select('role, display_name').eq('id', jwt.sub).maybeSingle()
+  const role = prof?.role
+  let temPerm = false
+  if (role) {
+    const { data: rp } = await sb.from('role_permissions').select('permissions').eq('role', role).maybeSingle()
+    temPerm = rp?.permissions?.['frete.aprovar'] === true
+  }
+  if (!temPerm) return json({ error: 'forbidden', detail: 'requer permissão frete.aprovar' }, 403)
 
   const body = await req.json().catch(() => ({})) as Record<string, unknown>
   const solicitacao_id = String(body.solicitacao_id || '')
   const transportadora_ids = Array.isArray(body.transportadora_ids) ? body.transportadora_ids : []
   if (!solicitacao_id) return json({ error: 'solicitacao_id_required' }, 400)
   if (!transportadora_ids.length) return json({ error: 'sem_transportadoras' }, 400)
-
-  const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
   const { data: cfgRows } = await sb.from('frete_config').select('chave,valor')
   const cfg: Record<string, string> = Object.fromEntries((cfgRows || []).map((r: any) => [r.chave, r.valor]))
@@ -86,11 +93,7 @@ Deno.serve(async (req: Request) => {
   const { data: solic } = await sb.from('frete_solicitacoes').select('*').eq('id', solicitacao_id).maybeSingle()
   if (!solic) return json({ error: 'solicitacao_nao_encontrada' }, 404)
 
-  // nome de quem aprovou
-  let aprovadorNome: string | null = null
-  const { data: prof } = await sb.from('user_profiles').select('display_name').eq('id', jwt.sub).maybeSingle()
-  aprovadorNome = prof?.display_name ?? jwt.email ?? null
-
+  const aprovadorNome = prof?.display_name ?? jwt.email ?? null
   const equip = resumoEquip(solic.equipamentos_itens, solic.descricao_carga)
   const destino = `${solic.cidade_destino || '?'}/${solic.uf_destino || '?'}`
   const results: any[] = []
@@ -117,9 +120,16 @@ Deno.serve(async (req: Request) => {
 
     const link = `${linkBase}/cotar-frete/${lance.token}`
     const fone = normalizeFone(transp.telefone)
+
+    // ANTI-SPAM: já tem mensagem pendente/enviada pra essa transportadora → não reenvia
+    const jaEnviado = !!lance.wa_message_id && (lance.wa_status === 'pending' || lance.wa_status === 'sent')
+    if (jaEnviado) {
+      results.push({ transportadora_id: tid, nome: transp.nome, telefone: fone, link, enqueued: false, ja_enviado: true })
+      continue
+    }
+
     let enqueued = false
     let wa_message_id: string | null = null
-
     if (disparoAtivo && fone && fone.length >= 12) {
       const { data: sched, error: schErr } = await sb.from('wa_scheduled_messages').insert({
         vendedor_nome: vendedorNome,

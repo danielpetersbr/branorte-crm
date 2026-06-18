@@ -35,6 +35,25 @@ function fmtMoeda(v: number): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 }
 
+/** Parser de moeda BR robusto: entende "16.500", "1.234,56", "1500.50", "1500,50". */
+function parseMoeda(s: string): number {
+  let t = String(s).trim().replace(/[^\d.,]/g, '')
+  if (!t) return NaN
+  const hasComma = t.includes(','), hasDot = t.includes('.')
+  if (hasComma && hasDot) {
+    // o ÚLTIMO separador é o decimal
+    if (t.lastIndexOf(',') > t.lastIndexOf('.')) t = t.replace(/\./g, '').replace(',', '.') // 1.234,56
+    else t = t.replace(/,/g, '') // 1,234.56
+  } else if (hasComma) {
+    t = t.replace(',', '.') // 1234,56
+  } else if (hasDot) {
+    // só ponto: 3 dígitos após = milhar (16.500 -> 16500); senão decimal (1500.50)
+    const after = t.slice(t.lastIndexOf('.') + 1)
+    if (after.length === 3) t = t.replace(/\./g, '')
+  }
+  return Number(t)
+}
+
 function resumoEquip(r: Resumo): string {
   const arr = Array.isArray(r.equipamentos_itens) ? r.equipamentos_itens : []
   if (arr.length) return arr.map(i => `${i.qtd && i.qtd > 1 ? i.qtd + 'x ' : ''}${i.nome ?? 'Equipamento'}`).join(' + ')
@@ -79,7 +98,7 @@ export function CotarFrete() {
   }, [token])
 
   async function enviar() {
-    const v = Number(String(valor).replace(/\./g, '').replace(',', '.'))
+    const v = parseMoeda(valor)
     if (!Number.isFinite(v) || v <= 0) { setErro('Informe o valor do frete (R$).'); return }
     setEnviando(true); setErro('')
     const { data, error } = await supabase.functions.invoke('frete-lance', {
@@ -143,7 +162,7 @@ export function CotarFrete() {
           </div>
           <h1 className="text-xl font-bold text-ink mb-2">Cotação enviada!</h1>
           <p className="text-sm text-ink-muted">
-            A Branorte recebeu seu valor de <b className="text-ink">{fmtMoeda(Number(String(valor).replace(/\./g, '').replace(',', '.')))}</b>. Em breve retornamos. Obrigado! 🚚
+            A Branorte recebeu seu valor de <b className="text-ink">{fmtMoeda(parseMoeda(valor))}</b>. Em breve retornamos. Obrigado! 🚚
           </p>
           <p className="mt-6 text-xs font-semibold tracking-widest text-ink-faint">BRANORTE</p>
         </div>

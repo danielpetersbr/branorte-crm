@@ -280,7 +280,7 @@ export default function FreteAprovar() {
                         {l.status === 'vencedor' ? (
                           <span className="text-green-600 inline-flex items-center gap-1 text-xs font-medium"><Trophy className="h-3.5 w-3.5" /> Vencedor</span>
                         ) : l.valor != null && solic.status !== 'fechada' ? (
-                          <button onClick={() => escolherVencedor(l.id)} className="text-xs px-2 py-1 rounded-md border border-border text-ink-muted hover:text-accent hover:border-accent">Escolher</button>
+                          <button onClick={() => escolherVencedor(l.id)} disabled={vencedor.isPending} className="text-xs px-2 py-1 rounded-md border border-border text-ink-muted hover:text-accent hover:border-accent disabled:opacity-40">Escolher</button>
                         ) : l.status === 'recusado' ? (
                           <span className="text-xs text-ink-faint inline-flex items-center gap-1"><X className="h-3 w-3" /> recusou</span>
                         ) : null}

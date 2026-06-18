@@ -69,7 +69,8 @@ Deno.serve(async (req: Request) => {
   }
 
   if (action === 'get') {
-    if (lance.status === 'enviado') {
+    // só marca "aberto" se ainda está em aberto (não em cotação cancelada/fechada)
+    if (lance.status === 'enviado' && !encerrada) {
       await sb.from('frete_lances').update({ status: 'aberto', aberto_em: new Date().toISOString() }).eq('id', lance.id)
       resumo.lance_status = 'aberto'
     }

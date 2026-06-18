@@ -216,7 +216,9 @@ function AppRoutes() {
   const VENDOR_PREFIXES = ['/atendimentos', '/consulta', '/orcamentos/montar', '/orcamentos/salvos', '/orcamentos/novo', '/mapa-visitas', '/frete/solicitar', '/perfil']
   if (profile.role === 'vendor') {
     const p = loc.pathname
-    const allowed = freteLiberado || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
+    // gestor de frete pode ter papel 'vendor' + permissão frete.aprovar → libera a fila pra ele
+    const aprovarOk = p.startsWith('/frete/aprovar') && can('frete.aprovar')
+    const allowed = freteLiberado || aprovarOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
     if (!allowed) return <Navigate to="/atendimentos" replace />
   }
 

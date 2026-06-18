@@ -544,34 +544,33 @@ export function useDispararFrete() {
       if (data?.error) throw new Error(String(data.error));
       return data as {
         ok: boolean; disparo_ativo: boolean; vendedor_nome: string;
-        results: Array<{ transportadora_id: number; nome: string; telefone: string; link: string; enqueued: boolean; sem_telefone?: boolean; erro?: string }>;
+        results: Array<{ transportadora_id: number; nome: string; telefone: string; link: string; enqueued: boolean; sem_telefone?: boolean; ja_enviado?: boolean; erro?: string }>;
       };
     },
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: [SOLIC_KEY] });
       qc.invalidateQueries({ queryKey: ['frete-lances', vars.solicitacao_id] });
+      qc.invalidateQueries({ queryKey: ['frete-mapa'] });
     },
   });
 }
 
-/** Escolhe o lance vencedor e fecha a solicitação. */
+/** Escolhe o lance vencedor e fecha a solicitação — via RPC atômica e idempotente
+ *  (frete_escolher_vencedor): trava a solicitação, promove o vencedor, rebaixa os
+ *  demais e fecha, tudo numa transação. Não corrompe se 2 admins clicarem juntos. */
 export function useEscolherVencedor() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ solicitacao_id, lance_id }: { solicitacao_id: string; lance_id: string }) => {
-      await (supabase as any).from('frete_lances')
-        .update({ status: 'respondido' }).eq('solicitacao_id', solicitacao_id).eq('status', 'vencedor');
-      const { error: e2 } = await (supabase as any).from('frete_lances')
-        .update({ status: 'vencedor' }).eq('id', lance_id);
-      if (e2) throw e2;
-      const { error: e3 } = await (supabase as any).from('frete_solicitacoes')
-        .update({ status: 'fechada', lance_vencedor_id: lance_id, fechado_em: new Date().toISOString() })
-        .eq('id', solicitacao_id);
-      if (e3) throw e3;
+      const { error } = await (supabase as any).rpc('frete_escolher_vencedor', {
+        p_solicitacao_id: solicitacao_id, p_lance_id: lance_id,
+      });
+      if (error) throw error;
     },
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: [SOLIC_KEY] });
       qc.invalidateQueries({ queryKey: ['frete-lances', vars.solicitacao_id] });
+      qc.invalidateQueries({ queryKey: ['frete-mapa'] });
     },
   });
 }
