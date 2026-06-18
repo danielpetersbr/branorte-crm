@@ -49,6 +49,9 @@ const Avaliacoes = lazy(() => import('@/pages/Avaliacoes').then(m => ({ default:
 const FreteCotacao = lazy(() => import('@/pages/FreteCotacao'))
 const FreteTransportadoras = lazy(() => import('@/pages/FreteTransportadoras'))
 const FreteHistorico = lazy(() => import('@/pages/FreteHistorico'))
+const FreteSolicitar = lazy(() => import('@/pages/FreteSolicitar'))
+const FreteAprovar = lazy(() => import('@/pages/FreteAprovar'))
+const FreteMapa = lazy(() => import('@/pages/FreteMapa'))
 const ControleDashboard = lazy(() => import('@/pages/ControleDashboard').then(m => ({ default: m.ControleDashboard })))
 const ControlePedidos = lazy(() => import('@/pages/ControlePedidos').then(m => ({ default: m.ControlePedidos })))
 const ControleFinanceiro = lazy(() => import('@/pages/ControleFinanceiro').then(m => ({ default: m.ControleFinanceiro })))
@@ -65,6 +68,10 @@ import { SsoLanding } from '@/pages/SsoLanding'
 // /avaliacao é a página PÚBLICA de avaliação de atendimento, aberta pelo link
 // que a extensão WA Sync envia ao cliente. Import direto: roda deslogada.
 import { Avaliacao } from '@/pages/Avaliacao'
+
+// /cotar-frete/<token> é a página PÚBLICA da cotação reversa de frete, aberta pela
+// transportadora pelo link que o Jardel envia no WhatsApp. Roda deslogada.
+import { CotarFrete } from '@/pages/CotarFrete'
 
 // Loga TODO erro de query/mutation no console. Evita falha silenciosa.
 // Erros visuais aparecem no SyncIndicator da Atendimentos (e outras páginas podem opt-in).
@@ -164,6 +171,12 @@ function AppRoutes() {
     return <Avaliacao />
   }
 
+  // Rota pública /cotar-frete/<token> — a transportadora preenche o valor do frete.
+  // Roda deslogada (transportadora não tem conta).
+  if (loc.pathname.startsWith('/cotar-frete/')) {
+    return <CotarFrete />
+  }
+
   if (loading) return <PageLoading />
 
   // Não logado → /login (exceto /signup)
@@ -198,7 +211,7 @@ function AppRoutes() {
   // Vendedor: acesso restrito a Atendimentos, Consulta, Montar/Editar Orçamento e
   // Mapa de Visitas (+ Perfil). Dashboard escondido → "/" e demais rotas caem em
   // Atendimentos. O menu já esconde; isto trava o acesso por URL direta.
-  const VENDOR_PREFIXES = ['/atendimentos', '/consulta', '/orcamentos/montar', '/orcamentos/salvos', '/orcamentos/novo', '/mapa-visitas', '/perfil']
+  const VENDOR_PREFIXES = ['/atendimentos', '/consulta', '/orcamentos/montar', '/orcamentos/salvos', '/orcamentos/novo', '/mapa-visitas', '/frete/solicitar', '/perfil']
   if (profile.role === 'vendor') {
     const p = loc.pathname
     const allowed = VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
@@ -236,6 +249,11 @@ function AppRoutes() {
         <Route path="/frete" element={<FreteCotacao />} />
         <Route path="/frete/transportadoras" element={<FreteTransportadoras />} />
         <Route path="/frete/historico" element={<FreteHistorico />} />
+        <Route path="/frete/solicitar" element={<FreteSolicitar />} />
+        <Route path="/frete/mapa" element={<FreteMapa />} />
+        {can('frete.aprovar') && (
+          <Route path="/frete/aprovar" element={<FreteAprovar />} />
+        )}
         <Route path="/vendidos" element={<Vendidos />} />
         <Route path="/mapa-visitas" element={<MapaVisitas />} />
         <Route path="/controle" element={<ControleDashboard />} />

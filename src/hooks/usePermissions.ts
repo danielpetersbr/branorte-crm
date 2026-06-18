@@ -43,6 +43,8 @@ export const FEATURE_CATALOG: Array<{
   { key: 'atendimentos.reatribuir', label: 'Reatribuir atendimento pra outro vendedor', group: 'Ações' },
   { key: 'orcamentos.criar', label: 'Criar/editar orçamento', group: 'Ações' },
   { key: 'disparos.send', label: 'Enviar disparo (roteamento)', group: 'Ações' },
+  { key: 'frete.solicitar', label: 'Frete: abrir pedido de frete', group: 'Ações' },
+  { key: 'frete.aprovar', label: 'Frete: aprovar e disparar pras transportadoras', group: 'Ações' },
   { key: 'due_diligence.consultar', label: 'Consultar Due Diligence (SPC + Datajud + IA)', group: 'Ações' },
   { key: 'admin.due_diligence', label: 'Admin: ver consultas de todos vendedores', group: 'Ações' },
 ]
@@ -67,6 +69,7 @@ const FALLBACK: Record<AssignableRole, Record<string, boolean>> = {
     'menu.orcamentos': true,
     'orcamentos.criar': true,
     'due_diligence.consultar': true,
+    'frete.solicitar': true,
   },
   marketing: {},
   // Visualizador: só Dashboard + Atendimentos.

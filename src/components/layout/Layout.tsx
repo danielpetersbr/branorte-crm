@@ -48,6 +48,7 @@ const PRIMARY: NavItem[] = [
   },
   { to: '/atividade-diaria', label: 'Atividade Diária', icon: Activity, permKey: 'menu.atividade_diaria' },
   { to: '/avaliacoes', label: 'Avaliações', icon: Star, permKey: 'menu.avaliacoes' },
+  { to: '/frete/solicitar', label: 'Pedir Frete', icon: Truck, permKey: 'frete.solicitar' },
 ]
 const SECONDARY: NavItem[] = [
   {
@@ -72,8 +73,11 @@ const SECONDARY: NavItem[] = [
     to: '/frete',
     label: 'Frete',
     icon: Truck,
+    matchPrefix: true,
     permKey: 'menu.frete',
     children: [
+      { to: '/frete/aprovar', label: 'Fila / Aprovar', icon: CheckCircle, permKey: 'frete.aprovar' },
+      { to: '/frete/mapa', label: 'Mapa de Fretes', icon: MapPin },
       { to: '/frete', label: 'Calculadora', icon: Truck },
       { to: '/frete/transportadoras', label: 'Transportadoras', icon: Package },
       { to: '/frete/historico', label: 'Histórico', icon: History },
