@@ -155,7 +155,7 @@ function RankRow({ pos, nome, online, display, val, maxVal, cor, bar, stats }: {
                 { row: 'bg-white/[0.03] border border-white/5', medal: '' }
   const pctBar = val > 0 ? Math.max((val / maxVal) * 100, 5) : 0
   return (
-    <div className={`rounded-lg px-2 py-1.5 ${tier.row}`}>
+    <div className={`rounded-lg px-2 py-1 ${tier.row}`}>
       <div className="flex items-center gap-2">
         <span className="w-6 shrink-0 flex items-center justify-center">
           {top
@@ -170,10 +170,10 @@ function RankRow({ pos, nome, online, display, val, maxVal, cor, bar, stats }: {
             </span>
             <span className={`font-extrabold tabular-nums shrink-0 ${cor} ${pos === 0 ? 'text-[15px]' : 'text-[12px]'}`}>{display}</span>
           </div>
-          <div className="h-1.5 rounded-full bg-white/5 overflow-hidden mt-1">
+          <div className="h-1.5 rounded-full bg-white/5 overflow-hidden mt-0.5">
             <div className={`h-full ${bar} rounded-full transition-all`} style={{ width: `${pctBar}%` }} />
           </div>
-          <div className="flex items-center gap-2 text-[9.5px] mt-1 text-ink-muted">
+          <div className="flex items-center gap-2 text-[9.5px] mt-0.5 text-ink-muted">
             {stats.map((s, k) => (
               <span key={k} className={s.cor} title={s.title}>{s.icon}{s.val}</span>
             ))}
@@ -1100,7 +1100,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
             </button>
           ))}
         </div>
-        <div className="space-y-1 lg:max-h-[520px] overflow-y-auto pr-0.5">
+        <div className="space-y-1">
           {ranking.length === 0 && <div className="text-[11px] text-ink-faint text-center py-4">Sem vendedores.</div>}
           {(() => {
             const cfg = RANK_METRICAS.find(m => m.key === rankMetric)!
@@ -1140,7 +1140,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
             </button>
           ))}
         </div>
-        <div className="space-y-1 lg:max-h-[520px] overflow-y-auto pr-0.5">
+        <div className="space-y-1">
           {rankingMes.length === 0 && <div className="text-[11px] text-ink-faint text-center py-4">Sem dados do mês.</div>}
           {(() => {
             const cfg = RANK_METRICAS.find(m => m.key === rankMetricMes)!
