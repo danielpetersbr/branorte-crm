@@ -204,7 +204,9 @@ function AppRoutes() {
   // Visualizador: acesso restrito a Dashboard + Atendimentos. Bloqueia URL direta
   // pra qualquer outra rota (o menu já esconde; isto trava o acesso por link).
   const VIEWER_PATHS = new Set(['/', '/dashboard', '/atendimentos', '/perfil'])
-  if (profile.role === 'visualizador' && !VIEWER_PATHS.has(loc.pathname)) {
+  // Frete liberado pra TODOS os roles (exceto a fila de aprovação /frete/aprovar, gateada).
+  const freteLiberado = loc.pathname.startsWith('/frete') && !loc.pathname.startsWith('/frete/aprovar')
+  if (profile.role === 'visualizador' && !VIEWER_PATHS.has(loc.pathname) && !freteLiberado) {
     return <Navigate to="/" replace />
   }
 
@@ -214,7 +216,7 @@ function AppRoutes() {
   const VENDOR_PREFIXES = ['/atendimentos', '/consulta', '/orcamentos/montar', '/orcamentos/salvos', '/orcamentos/novo', '/mapa-visitas', '/frete/solicitar', '/perfil']
   if (profile.role === 'vendor') {
     const p = loc.pathname
-    const allowed = VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
+    const allowed = freteLiberado || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
     if (!allowed) return <Navigate to="/atendimentos" replace />
   }
 

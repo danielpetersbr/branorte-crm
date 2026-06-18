@@ -74,7 +74,8 @@ const SECONDARY: NavItem[] = [
     label: 'Frete',
     icon: Truck,
     matchPrefix: true,
-    permKey: 'menu.frete',
+    // v2026-06-18: liberado pra TODOS (sem permKey). Só o "Fila/Aprovar" segue gateado
+    // (frete.aprovar) — disparar frete pra transportadora é ação sensível.
     children: [
       { to: '/frete/aprovar', label: 'Fila / Aprovar', icon: CheckCircle, permKey: 'frete.aprovar' },
       { to: '/frete/mapa', label: 'Mapa de Fretes', icon: MapPin },
