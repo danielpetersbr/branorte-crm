@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useDashboard, type DashboardPreset, type FunilEtapa, type SlaVendedor, type LeadEmRisco } from '@/hooks/useDashboard'
 import { useDashboardEtiquetas, useHeatmapSemanal, CATEGORIA_LABEL, type EtiquetaCategoria } from '@/hooks/useDashboardEtiquetas'
 import { useDashboardVendedorFunil, type VendedorFunilRow } from '@/hooks/useDashboardVendedorFunil'
+import { useDashboardExtra, type DashboardExtra } from '@/hooks/useDashboardExtra'
 import { useOrcamentosResumo, type OrcamentosResumo } from '@/hooks/useOrcamentosResumo'
 import { usePropostasStatus, CATS_ABERTO, type PropostasStatus, type PropCategoria } from '@/hooks/usePropostasStatus'
 import { useVendedoresPainel, type VendedorPainel } from '@/hooks/useVendedoresPainel'
@@ -149,6 +150,7 @@ export function Dashboard() {
   const { data, isLoading, error } = useDashboard({ preset })
   const { data: etq } = useDashboardEtiquetas(preset)
   const { data: vendFunil } = useDashboardVendedorFunil(preset)
+  const { data: extra } = useDashboardExtra()
   // Valor das propostas montadas no builder (orcamentos_gerados) — única fonte real de R$
   const { data: orc } = useOrcamentosResumo(preset)
   // Propostas × estágio atual do funil (dinheiro em aberto vs vendido, por vendedor)
@@ -514,6 +516,24 @@ export function Dashboard() {
           </div>
         )}
       </Card>
+
+      {/* ════════ GRÁFICOS DO DIA — sempre visível, logo abaixo do essencial ════════ */}
+      {extra && (
+        <Card>
+          <div className="flex items-baseline justify-between mb-3 gap-2 flex-wrap">
+            <h2 className="text-[14px] font-bold text-ink tracking-tight">📊 Gráficos do dia</h2>
+            <span className="text-[11px] text-ink-faint">orçamentos, avaliação, quem atrai · hoje, aberto e negociação</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <OrcamentosPorDiaChart data={extra.orcamentos_por_dia} />
+            <AvaliacaoCliente data={extra.avaliacao} />
+            <Top3em1 origem={positivo.escalar} criativo={positivo.criativo} vendFunil={vendFunil ?? []} />
+            <AtendimentosHojeCard data={extra.atendimentos} />
+            <AbertoCard data={extra.aberto} onIr={() => irParaSecao('g4', 'vendedores-funil')} />
+            <NegociacaoCard data={extra.negociacao} />
+          </div>
+        </Card>
+      )}
 
       {/* ════════ GRUPO 1 · VISÃO GERAL ════════ */}
       <CollapsibleSection n="1" titulo="Visão geral" pergunta="Propostas e tendência no detalhe" open={openSec.g1} onToggle={() => toggleSec('g1')}>
@@ -1651,6 +1671,201 @@ function FunilVendedorTable({ rows }: { rows: VendedorFunilRow[] }) {
         conta nas duas), por isso não somam o total. <strong>Sem etiq.</strong> = está no WhatsApp do vendedor mas sem
         nenhuma etiqueta de funil.
       </p>
+    </div>
+  )
+}
+
+// ════════ GRÁFICOS DO DIA (pedido do gerente) ════════
+
+// Orçamentos montados por dia (área roxa). data = [{dia:'YYYY-MM-DD', total}].
+function OrcamentosPorDiaChart({ data }: { data: { dia: string; total: number }[] }) {
+  const ROXO = 'hsl(280 65% 55%)'
+  const total30d = data.reduce((s, d) => s + d.total, 0)
+  const mediaDia = data.length ? Math.round(total30d / data.length) : 0
+  const fmtDia = (dia: string) => { const [, m, d] = dia.split('-'); return `${d}/${m}` }
+  return (
+    <div className="rounded-lg border border-border/60 bg-surface p-3">
+      <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-2">Orçamentos por dia (30d)</div>
+      <div className="flex items-end justify-between mb-1">
+        <div>
+          <div className="text-2xl font-mono tabular-nums text-ink leading-none">{total30d}</div>
+          <div className="text-[11px] text-ink-faint mt-0.5">montados em 30 dias</div>
+        </div>
+        <div className="text-right">
+          <div className="text-sm font-mono tabular-nums text-ink-muted leading-none">{mediaDia}</div>
+          <div className="text-[11px] text-ink-faint mt-0.5">média/dia ativo</div>
+        </div>
+      </div>
+      <div style={{ height: 120 }}>
+        {data.length > 0 ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={data} margin={{ top: 6, right: 4, bottom: 0, left: 4 }}>
+              <defs>
+                <linearGradient id="gradOrcDia" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={ROXO} stopOpacity={0.35} />
+                  <stop offset="100%" stopColor={ROXO} stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <Tooltip
+                cursor={{ stroke: ROXO, strokeOpacity: 0.3 }}
+                contentStyle={{ background: 'hsl(var(--surface))', border: '1px solid ' + COLORS.border, borderRadius: 6, fontSize: 11 }}
+                labelFormatter={((v: string) => fmtDia(v)) as never}
+                formatter={((value: number) => [`${value} orçamento(s)`, '']) as never}
+              />
+              <Area type="monotone" dataKey="total" stroke={ROXO} strokeWidth={2} fill="url(#gradOrcDia)" dot={false} activeDot={{ r: 3, fill: ROXO }} isAnimationActive={false} />
+            </AreaChart>
+          </ResponsiveContainer>
+        ) : <div className="h-full grid place-items-center text-[11px] text-ink-faint">Sem dados</div>}
+      </div>
+    </div>
+  )
+}
+
+type AvaliacaoClienteData = { media: number; total: number; por_nota: { nota: number; qtd: number }[] }
+// Distribuição das notas (1..5) — barras CSS.
+function AvaliacaoCliente({ data }: { data: AvaliacaoClienteData }) {
+  const { media, total, por_nota } = data
+  const buckets = [5, 4, 3, 2, 1].map(n => ({ nota: n, qtd: por_nota.find(p => p.nota === n)?.qtd ?? 0 }))
+  const maxQtd = Math.max(1, ...buckets.map(b => b.qtd))
+  const corNota = (n: number) => (n >= 4 ? COLORS.accent : n === 3 ? COLORS.warn : COLORS.danger)
+  return (
+    <div className="rounded-lg border border-border/60 bg-surface p-3">
+      <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-2">Avaliação do cliente</div>
+      {total === 0 ? (
+        <div className="flex h-[120px] items-center justify-center text-xs text-ink-faint">Sem avaliações ainda</div>
+      ) : (
+        <>
+          <div className="flex items-end justify-between mb-3">
+            <div className="flex items-baseline gap-1.5">
+              <span className="font-mono tabular-nums text-2xl font-bold text-ink">{media.toFixed(2).replace('.', ',')}</span>
+              <span className="text-sm" style={{ color: COLORS.warn }}>★</span>
+            </div>
+            <div className="text-right">
+              <div className="font-mono tabular-nums text-lg font-bold text-ink">{total}</div>
+              <div className="text-[10px] uppercase tracking-wider text-ink-faint">avaliações</div>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            {buckets.map(b => {
+              const pct = total > 0 ? (b.qtd / total) * 100 : 0
+              const barPct = (b.qtd / maxQtd) * 100
+              return (
+                <div key={b.nota} className="flex items-center gap-2">
+                  <div className="flex w-7 shrink-0 items-center gap-0.5">
+                    <span className="font-mono tabular-nums text-xs text-ink-muted">{b.nota}</span>
+                    <span className="text-[10px]" style={{ color: COLORS.warn }}>★</span>
+                  </div>
+                  <div className="relative h-3 flex-1 overflow-hidden rounded bg-surface-2">
+                    <div className="h-full rounded transition-all" style={{ width: `${barPct}%`, backgroundColor: corNota(b.nota), opacity: b.qtd === 0 ? 0 : 1 }} />
+                  </div>
+                  <div className="w-12 shrink-0 text-right font-mono tabular-nums text-[11px] text-ink-muted">{b.qtd}<span className="text-ink-faint"> ({pct.toFixed(0)}%)</span></div>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// Mini 3-em-1: melhor origem, melhor criativo, e quem qualifica (IA vs vendedor).
+function Top3em1({ origem, criativo, vendFunil }: {
+  origem: { origem: string; ctr: number; total: number } | null
+  criativo: { codigo: string; nome: string; pct: number } | null
+  vendFunil: VendedorFunilRow[]
+}) {
+  const ia = vendFunil.reduce((s, v) => s + v.qualif_ia, 0)
+  const vend = vendFunil.reduce((s, v) => s + v.qualif_vendedor, 0)
+  const tot = ia + vend || 1
+  return (
+    <div className="rounded-lg border border-border/60 bg-surface p-3">
+      <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-2">Quem atrai lead bom</div>
+      <div className="space-y-2.5 text-[12px]">
+        <div>
+          <div className="text-ink-faint text-[10px] uppercase tracking-wider">Melhor origem</div>
+          {origem ? <div className="text-ink font-medium truncate">{origem.origem} <span className="text-accent font-mono">{Math.round(origem.ctr)}%</span> <span className="text-ink-faint">qualif</span></div> : <div className="text-ink-faint">—</div>}
+        </div>
+        <div>
+          <div className="text-ink-faint text-[10px] uppercase tracking-wider">Melhor criativo</div>
+          {criativo ? <div className="text-ink font-medium truncate">{criativo.codigo}{criativo.nome && criativo.nome !== '—' ? ` ${criativo.nome}` : ''} <span className="text-accent font-mono">{Math.round(criativo.pct)}%</span></div> : <div className="text-ink-faint">—</div>}
+        </div>
+        <div>
+          <div className="text-ink-faint text-[10px] uppercase tracking-wider mb-1">Qualificou — IA vs vendedor</div>
+          <div className="flex h-2.5 rounded-full overflow-hidden bg-surface-2">
+            <div style={{ width: `${(ia / tot) * 100}%`, background: COLORS.info }} />
+            <div style={{ width: `${(vend / tot) * 100}%`, background: COLORS.accent }} />
+          </div>
+          <div className="flex justify-between mt-1 text-[11px] font-mono tabular-nums">
+            <span className="text-info">IA {ia}</span>
+            <span className="text-accent">Vendedor {vend}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Atendimentos que chegaram hoje (KPI) + comparação com ontem.
+function AtendimentosHojeCard({ data }: { data: { hoje: number; ontem: number } }) {
+  const { hoje, ontem } = data
+  const delta = hoje - ontem
+  const pct = ontem > 0 ? Math.round((delta / ontem) * 100) : null
+  const up = delta > 0, flat = delta === 0
+  const deltaColor = flat ? 'text-ink-faint' : up ? 'text-accent' : 'text-danger'
+  const arrow = flat ? '→' : up ? '↑' : '↓'
+  return (
+    <div className="rounded-lg border border-border/60 bg-surface p-3">
+      <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-2">Atendimentos hoje</div>
+      <div className="flex items-baseline gap-2">
+        <span className="font-mono tabular-nums text-4xl font-bold leading-none text-ink">{hoje}</span>
+        <span className="text-[11px] text-ink-faint">leads novos</span>
+      </div>
+      <div className="mt-2 flex items-center gap-1.5 text-[11px]">
+        <span className={`font-mono tabular-nums font-semibold ${deltaColor}`}>{arrow} {flat ? '0' : `${up ? '+' : ''}${delta}`}{pct !== null && !flat ? ` (${up ? '+' : ''}${pct}%)` : ''}</span>
+        <span className="text-ink-faint">vs ontem (<span className="font-mono tabular-nums text-ink-muted">{ontem}</span>) · dia parcial</span>
+      </div>
+    </div>
+  )
+}
+
+// Atendimentos abertos (Prospecção + Novo Lead + Follow Up) — clica e abre a seção do funil por vendedor.
+function AbertoCard({ data, onIr }: { data: DashboardExtra['aberto']; onIr: () => void }) {
+  const subs: [string, number][] = [['Prospecção', data.prospeccao], ['Novo lead', data.novo_lead], ['Follow up', data.follow_up]]
+  return (
+    <button type="button" onClick={onIr} className="text-left rounded-lg border border-border/60 bg-surface p-3 hover:border-accent/40 transition-colors">
+      <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-2">Atendimentos abertos</div>
+      <div className="flex items-baseline gap-2">
+        <span className="font-mono tabular-nums text-4xl font-bold leading-none text-ink">{fmtN(data.total)}</span>
+        <span className="text-[11px] text-ink-faint">no funil, sem fechar</span>
+      </div>
+      <div className="mt-2.5 grid grid-cols-3 gap-1.5 text-center">
+        {subs.map(([l, n]) => (
+          <div key={l} className="rounded bg-surface-2 py-1">
+            <div className="font-mono tabular-nums text-ink text-sm">{fmtN(n)}</div>
+            <div className="text-[9px] uppercase tracking-wide text-ink-faint">{l}</div>
+          </div>
+        ))}
+      </div>
+    </button>
+  )
+}
+
+// Em negociação = leads em FOLLOW UP + soma dos orçamentos deles (previsão de faturar).
+function NegociacaoCard({ data }: { data: DashboardExtra['negociacao'] }) {
+  return (
+    <div className="rounded-lg border border-border/60 bg-surface p-3">
+      <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-2">Em negociação · previsão</div>
+      <div className="flex items-baseline gap-2">
+        <span className="font-mono tabular-nums text-2xl font-bold leading-none" style={{ color: COLORS.warn }}>{fmtBRL(data.valor_follow)}</span>
+        <span className="text-[11px] text-ink-faint">previsto</span>
+      </div>
+      <div className="text-[11px] text-ink-faint mt-0.5">soma dos orçamentos de quem está em follow up</div>
+      <div className="mt-2.5 flex items-center gap-3 text-[12px]">
+        <span className="text-ink"><span className="font-mono tabular-nums font-semibold">{fmtN(data.follow_up)}</span> <span className="text-ink-faint">em follow up</span></span>
+        <span className="text-ink-faint">·</span>
+        <span className="text-ink"><span className="font-mono tabular-nums font-semibold">{fmtN(data.com_orcamento)}</span> <span className="text-ink-faint">com orçamento</span></span>
+      </div>
     </div>
   )
 }
