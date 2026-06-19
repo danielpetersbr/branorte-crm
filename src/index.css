@@ -6,17 +6,18 @@
 
 @layer base {
   :root {
-    /* Surface */
-    --bg: 240 10% 99%;
-    --surface: 240 6% 97%;
-    --surface-2: 240 8% 95%;
-    --border: 240 6% 90%;
-    --border-strong: 240 6% 82%;
+    /* Surface — claro SUAVE: página cinza, cards off-white com borda visível.
+       (Antes era 99%/97% = tudo branco ofuscante e sem separação.) */
+    --bg: 240 16% 89%;          /* página: cinza calmo, não papel branco */
+    --surface: 240 24% 96%;     /* cards: off-white macio */
+    --surface-2: 240 14% 91%;   /* preenchimentos / barras */
+    --border: 240 11% 82%;      /* borda nítida pra cards se destacarem */
+    --border-strong: 240 10% 72%;
 
     /* Ink */
-    --ink: 240 10% 12%;
-    --ink-muted: 240 5% 45%;
-    --ink-faint: 240 4% 65%;
+    --ink: 240 12% 15%;
+    --ink-muted: 240 6% 40%;
+    --ink-faint: 240 5% 54%;
 
     /* Semantic */
     --success: 152 60% 40%;
