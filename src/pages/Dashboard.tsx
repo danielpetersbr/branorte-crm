@@ -14,7 +14,7 @@ import {
   Area, AreaChart, Cell, Pie, PieChart,
   ResponsiveContainer, Tooltip,
 } from 'recharts'
-import { Flame, TrendingUp, Users, CheckCircle2, ArrowDown, ArrowUp, Hand, FilePlus2, AlertTriangle, Clock, Ghost, Banknote } from 'lucide-react'
+import { Flame, TrendingUp, Users, CheckCircle2, ArrowDown, ArrowUp, Hand, FilePlus2, AlertTriangle, Clock, Ghost, Banknote, ChevronRight } from 'lucide-react'
 
 const PRESET_LABELS: { value: DashboardPreset; label: string }[] = [
   { value: '',     label: 'Tudo' },
@@ -87,6 +87,48 @@ function SectionTitle({ n, titulo, pergunta }: { n: string; titulo: string; perg
   )
 }
 
+// Estado de abertura das seções (persistido no navegador).
+// Default: só "Visão geral" aberta — o resto começa fechado pra não afogar.
+function useOpenSections() {
+  const [open, setOpen] = useState<Record<string, boolean>>(() => {
+    const fallback = { g1: true, g2: false, g3: false, g4: false, g5: false }
+    if (typeof window === 'undefined') return fallback
+    try {
+      const stored = localStorage.getItem('dashboard-sections')
+      if (stored) return { ...fallback, ...JSON.parse(stored) }
+    } catch { /* ignora json inválido */ }
+    return fallback
+  })
+  useEffect(() => {
+    try { localStorage.setItem('dashboard-sections', JSON.stringify(open)) } catch { /* quota */ }
+  }, [open])
+  const toggle = (k: string) => setOpen(o => ({ ...o, [k]: !o[k] }))
+  return [open, toggle] as const
+}
+
+// Grupo colapsável — clica no título pra abrir/fechar. Detalhes ficam fora do caminho.
+function CollapsibleSection({ n, titulo, pergunta, open, onToggle, children }: {
+  n: string; titulo: string; pergunta: string
+  open: boolean; onToggle: () => void; children: React.ReactNode
+}) {
+  return (
+    <div className="pt-3 lg:pt-4 border-t border-border/60 first:border-t-0">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="w-full flex items-baseline gap-2 text-left group"
+      >
+        <ChevronRight className={`h-4 w-4 self-center text-ink-faint transition-transform shrink-0 ${open ? 'rotate-90 text-accent' : ''}`} />
+        <span className="text-[11px] font-bold text-accent tabular-nums">{n}</span>
+        <h2 className="text-[14px] font-bold text-ink tracking-tight group-hover:text-accent transition-colors">{titulo}</h2>
+        <span className="text-[11px] text-ink-faint truncate">— {pergunta}</span>
+      </button>
+      {open && <div className="space-y-3 lg:space-y-5 mt-3 lg:mt-5">{children}</div>}
+    </div>
+  )
+}
+
 function CardHeader({ title, subtitle, right }: { title: string; subtitle?: string; right?: React.ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-3 mb-4">
@@ -101,6 +143,7 @@ function CardHeader({ title, subtitle, right }: { title: string; subtitle?: stri
 
 export function Dashboard() {
   const [preset, setPreset] = usePresetFilter()
+  const [openSec, toggleSec] = useOpenSections()
   const { data, isLoading, error } = useDashboard({ preset })
   const { data: etq } = useDashboardEtiquetas(preset)
   const { data: vendFunil } = useDashboardVendedorFunil(preset)
@@ -299,14 +342,23 @@ export function Dashboard() {
         <ResumoPositivo p={positivo} />
       )}
 
-      <SectionTitle n="1" titulo="Visão geral" pergunta="Estou crescendo e o que preciso agir agora?" />
+      {/* ════════ O ESSENCIAL — glance de 5 segundos, sempre visível ════════ */}
+      <Card className="border-accent/25 bg-accent-bg/30">
+        <div className="flex items-baseline justify-between mb-3 gap-2 flex-wrap">
+          <h2 className="text-[15px] font-bold text-ink tracking-tight">
+            O essencial{preset && <span className="text-accent"> · {periodoLabel}</span>}
+          </h2>
+          <span className="text-[11px] text-ink-faint">o que importa agora — abra as seções abaixo pro detalhe</span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {heroKpis.map(k => (
+            <KpiHero key={k.label} {...k} showDelta={showDelta} />
+          ))}
+        </div>
+      </Card>
 
-      {/* HERO KPIs com sparkline + delta */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        {heroKpis.map(k => (
-          <KpiHero key={k.label} {...k} showDelta={showDelta} />
-        ))}
-      </div>
+      {/* ════════ GRUPO 1 · VISÃO GERAL ════════ */}
+      <CollapsibleSection n="1" titulo="Visão geral" pergunta="Propostas e tendência no detalhe" open={openSec.g1} onToggle={() => toggleSec('g1')}>
 
       {/* DINHEIRO — valor das propostas montadas no período (único R$ real no fluxo de lead) */}
       {orc && orc.geradas > 0 && (
@@ -361,8 +413,10 @@ export function Dashboard() {
         </div>
       </Card>
 
+      </CollapsibleSection>
+
       {/* ════════ GRUPO 2 · FUNIL ════════ */}
-      <SectionTitle n="2" titulo="Funil" pergunta="Onde o lead morre?" />
+      <CollapsibleSection n="2" titulo="Funil" pergunta="Onde o lead morre?" open={openSec.g2} onToggle={() => toggleSec('g2')}>
       <Card>
         <CardHeader
           title="Funil de qualificação"
@@ -383,8 +437,10 @@ export function Dashboard() {
         </div>
       )}
 
+      </CollapsibleSection>
+
       {/* ════════ GRUPO 3 · ONDE INVESTIR (canônico de mídia) ════════ */}
-      <SectionTitle n="3" titulo="Onde investir" pergunta="Pra onde vai (ou corta) a verba?" />
+      <CollapsibleSection n="3" titulo="Onde investir" pergunta="Pra onde vai (ou corta) a verba?" open={openSec.g3} onToggle={() => toggleSec('g3')}>
       <Card id="criativo-veredito">
         <CardHeader
           title="🎯 Onde investir — por criativo"
@@ -411,8 +467,10 @@ export function Dashboard() {
         </Card>
       )}
 
+      </CollapsibleSection>
+
       {/* ════════ GRUPO 4 · OPERAÇÃO DO TIME ════════ */}
-      <SectionTitle n="4" titulo="Operação do time" pergunta="Quem eu cobro hoje e qual lead resgato?" />
+      <CollapsibleSection n="4" titulo="Operação do time" pergunta="Quem eu cobro hoje e qual lead resgato?" open={openSec.g4} onToggle={() => toggleSec('g4')}>
       {data.leadsEmRisco.length > 0 && (
         <Card id="leads-resgatar">
           <CardHeader
@@ -459,8 +517,10 @@ export function Dashboard() {
         </Card>
       )}
 
+      </CollapsibleSection>
+
       {/* ════════ GRUPO 5 · CONTEXTO (colapsável no caminho diário) ════════ */}
-      <SectionTitle n="5" titulo="Contexto" pergunta="De onde e quando vêm os leads?" />
+      <CollapsibleSection n="5" titulo="Contexto" pergunta="De onde e quando vêm os leads?" open={openSec.g5} onToggle={() => toggleSec('g5')}>
       {heatmap30d && heatmap30d.length > 0 && (
         <Card>
           <CardHeader
@@ -486,6 +546,7 @@ export function Dashboard() {
           <NegociacaoGeo items={negItems} />
         </Card>
       )}
+      </CollapsibleSection>
     </div>
   )
 }
