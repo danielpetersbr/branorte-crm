@@ -1,7 +1,8 @@
 // /frete - Calculadora de Cotacao de Frete Branorte
 // Sistema autonomo (sem integracao com /orcamentos/montar).
 // 4 metodos de entrada: por equipamento (Compactas) / dimensoes / pallets / carga fechada.
-// 4 estimativas comparativas: Modelo Branorte (planilha real) / ANTT (legal) / Parceiras / Historico.
+// Frete estimado = piso ANTT + regra ida/volta (carga completa) x margem; comparado com
+// Transportadoras parceiras e Historico (mediana de cotacoes salvas).
 
 import { useMemo, useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
@@ -337,17 +338,19 @@ export default function FreteCotacao() {
     return cotarFreteComercial(distanciaKm, antt, modoCargaBranorte, Number(margem) || 1, temRetorno)
   }, [caminhaoEfetivo, distanciaKm, antts.data, modoCargaBranorte, margem, temRetorno])
 
-  // ── Estimativa 3: Parceiras ──
+  // ── Estimativa: Parceiras (aplica ida+volta igual ao card principal) ──
   const estimativasParceiras = useMemo(() => {
     if (!caminhaoEfetivo || !distanciaKm || !parceiras.data || !destino) return []
+    const km = freteComercial?.kmCobravel ?? distanciaKm // carga completa = ida+volta
     return parceiras.data
       .filter(p => p.ativo)
       .map(p => ({
         parceira: p,
-        valor: calcularParceira(distanciaKm, destino.uf, caminhaoEfetivo, p),
+        valor: calcularParceira(km, destino.uf, caminhaoEfetivo, p),
       }))
       .filter(x => x.valor != null)
-  }, [caminhaoEfetivo, distanciaKm, parceiras.data, destino])
+      .sort((a, b) => (a.valor ?? 0) - (b.valor ?? 0))
+  }, [caminhaoEfetivo, distanciaKm, parceiras.data, destino, freteComercial])
 
   // ── Estimativa 4: Histórico ──
   const mediaHist = useMediaHistorica(caminhaoEfetivo?.id ?? null, destino?.uf ?? null, distanciaKm)
@@ -1001,6 +1004,53 @@ export default function FreteCotacao() {
         </div>
       )}
 
+        {/* Comparativos — Parceiras + Histórico (mesma regra ida+volta do card principal) */}
+        {carga && distanciaKm && caminhaoEfetivo && (
+          <div className="grid sm:grid-cols-2 gap-4 mb-5">
+            {/* Parceiras */}
+            <div className="relative overflow-hidden bg-surface/80 backdrop-blur-xl border border-border/60 rounded-2xl p-5 shadow-lg shadow-black/5">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-7 h-7 bg-sky-500/15 rounded-lg flex items-center justify-center">
+                  <Building2 className="h-4 w-4 text-sky-500" />
+                </div>
+                <span className="text-xs font-black uppercase tracking-wider text-ink-muted">Transportadoras parceiras</span>
+              </div>
+              {estimativasParceiras.length > 0 ? (
+                <div className="space-y-1.5">
+                  {estimativasParceiras.map(({ parceira, valor }) => (
+                    <div key={parceira.id} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="text-ink truncate">{parceira.nome}</span>
+                      <span className="font-bold tabular-nums text-ink">{formatBRL(valor)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-xs text-ink-muted">
+                  {destino ? 'Nenhuma parceira ativa atende essa UF / esse caminhão.' : 'Informe o destino (CEP/cidade) pra ver as parceiras.'}
+                </div>
+              )}
+            </div>
+
+            {/* Histórico */}
+            <div className="relative overflow-hidden bg-surface/80 backdrop-blur-xl border border-border/60 rounded-2xl p-5 shadow-lg shadow-black/5">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-7 h-7 bg-violet-500/15 rounded-lg flex items-center justify-center">
+                  <History className="h-4 w-4 text-violet-500" />
+                </div>
+                <span className="text-xs font-black uppercase tracking-wider text-ink-muted">Histórico (mediana)</span>
+              </div>
+              {mediaHist.data != null ? (
+                <>
+                  <div className="text-2xl font-black tabular-nums text-ink">{formatBRL(mediaHist.data)}</div>
+                  <div className="text-[11px] text-ink-muted mt-1">Mediana de cotações salvas pra {caminhaoEfetivo.nome}{destino ? ` → ${destino.uf}` : ''} em distância parecida.</div>
+                </>
+              ) : (
+                <div className="text-xs text-ink-muted">Sem histórico salvo ainda pra esse caminhão/rota.</div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Estado vazio — onboarding guiado em 3 passos (preenche o vão até ter resultado) */}
         {!(carga && distanciaKm) && (
           <div className="relative overflow-hidden bg-gradient-to-br from-surface/80 via-surface/40 to-surface/10 backdrop-blur-xl border border-border/50 rounded-3xl p-8 sm:p-12 mb-5 shadow-xl shadow-black/5">
@@ -1018,7 +1068,7 @@ export default function FreteCotacao() {
                 Pronto pra cotar
               </h2>
               <p className="text-sm text-ink-muted max-w-md mt-2 mb-8">
-                Informe o <b className="text-ink">destino</b> e a <b className="text-ink">carga</b> — as 4 estimativas aparecem na hora, já travadas no piso legal.
+                Informe o <b className="text-ink">destino</b> e a <b className="text-ink">carga</b> — o frete estimado aparece na hora (ida+volta na carga completa), comparado com parceiras e histórico e travado no piso legal.
               </p>
 
               {/* 3 passos com status ao vivo */}
@@ -1028,7 +1078,7 @@ export default function FreteCotacao() {
                 {[
                   { icon: MapPin, title: 'Destino', desc: 'CEP ou cidade', done: !!destino },
                   { icon: Package, title: 'Carga', desc: 'fábrica, dimensões ou pallets', done: !!carga },
-                  { icon: Sparkles, title: 'Estimativas', desc: '4 valores comparados', done: !!(carga && distanciaKm) },
+                  { icon: Sparkles, title: 'Estimativa', desc: 'frete + parceiras + histórico', done: !!(carga && distanciaKm) },
                 ].map((step, i, arr) => {
                   const isCurrent = !step.done && arr.slice(0, i).every(s => s.done)
                   const Icon = step.icon
