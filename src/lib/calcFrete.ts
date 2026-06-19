@@ -206,6 +206,49 @@ export function cotarBranorte(
   };
 }
 
+export type FreteComercial = {
+  /** piso legal ANTT só da IDA (a lei mede km carregado) — referência mínima */
+  pisoLegalIda: number;
+  /** true quando cobrou ida+volta (carga completa/dedicada volta vazia) */
+  idaEVolta: boolean;
+  /** km efetivamente cobrado (2× a distância quando ida+volta) */
+  kmCobravel: number;
+  /** valor base ANTES da margem (>= piso legal de ida) */
+  base: number;
+  /** valor comercial final (base × margem) — o número que o vendedor passa */
+  comMargem: number;
+};
+
+/**
+ * Cotação comercial Branorte (o número que aparece pro vendedor).
+ *
+ * Regra (definida pelo dono em 2026-06-19): carga COMPLETA é dedicada/indivisível
+ * e o caminhão sai de SC e VOLTA VAZIO — então cobra ida+volta (dobra o
+ * deslocamento). Carga fracionada divide o caminhão → cobra só a ida.
+ * Se o vendedor confirmar carga de retorno (`temRetorno`), cobra só ida mesmo
+ * em completa.
+ *
+ * O custo fixo de carga/descarga (CC) conta UMA vez (carrega/descarrega 1×).
+ * Nunca retorna abaixo do piso legal da ida (Lei 13.703/2018).
+ *
+ * Ex. Pres. Prudente: 1010 km, carreta (CCD 4,85 / CC 420), margem 1,1 →
+ * base = 2020×4,85 + 420 = 10.217 ; ×1,1 = R$ 11.239 (mercado ~R$ 11.500).
+ */
+export function cotarFreteComercial(
+  distancia_km: number,
+  antt: AnttTabela,
+  modo: 'fracionada_2p' | 'fracionada_4p' | 'completa',
+  margem: number,
+  temRetorno = false,
+): FreteComercial {
+  const pisoLegalIda = distancia_km * antt.ccd + antt.cc;
+  const idaEVolta = modo === 'completa' && !temRetorno;
+  const kmCobravel = idaEVolta ? distancia_km * 2 : distancia_km;
+  const desloc = kmCobravel * antt.ccd + antt.cc; // CC (carga/descarga) conta 1×
+  const base = Math.max(desloc, pisoLegalIda);
+  return { pisoLegalIda, idaEVolta, kmCobravel, base, comMargem: base * (margem || 1) };
+}
+
 /**
  * Sugere automaticamente o modo_carga do modelo Branorte baseado no perfil
  * da carga. Regras:

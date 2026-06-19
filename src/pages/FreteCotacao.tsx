@@ -3,7 +3,7 @@
 // 4 metodos de entrada: por equipamento (Compactas) / dimensoes / pallets / carga fechada.
 // 4 estimativas comparativas: Modelo Branorte (planilha real) / ANTT (legal) / Parceiras / Historico.
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Truck, MapPin, Loader2, AlertTriangle, Plus, Trash2,
@@ -15,6 +15,7 @@ import {
   calcularPisoANTT,
   calcularParceira,
   cotarBranorte,
+  cotarFreteComercial,
   definirModoCargaBranorte,
   pesoEfetivoKg,
   DESCONTO_RETORNO_MAX_PCT,
@@ -44,6 +45,12 @@ type LinhaEquipamento = {
   uid: string
   item: ItemCatalogoComPeso | null
   qtd: number
+  // Dimensões/peso EDITÁVEIS por equipamento (pré-preenchidos do catálogo,
+  // mas o vendedor pode ajustar em cada cotação). Vazio = usa o do catálogo.
+  peso: string
+  comp: string
+  larg: string
+  alt: string
 }
 
 function formatBRL(v: number | null | undefined): string {
@@ -98,7 +105,7 @@ export default function FreteCotacao() {
 
   // ── Aba: por equipamento ──
   const [linhasEquip, setLinhasEquip] = useState<LinhaEquipamento[]>([
-    { uid: crypto.randomUUID(), item: null, qtd: 1 },
+    { uid: crypto.randomUUID(), item: null, qtd: 1, peso: '', comp: '', larg: '', alt: '' },
   ])
 
   // ── Aba: por dimensoes ──
@@ -113,15 +120,18 @@ export default function FreteCotacao() {
   const [palPeso, setPalPeso] = useState<string>('800')
   const [palAltura, setPalAltura] = useState<string>('1.4')
 
-  // ── Aba: carga fechada (novo) ──
-  const [fechadaTipo, setFechadaTipo] = useState<'TRUCK' | 'CARRETA'>('CARRETA')
+  // ── Aba: carga fechada (escolhe o caminhão direto da tabela) ──
+  const [fechadaCaminhaoId, setFechadaCaminhaoId] = useState<number | null>(null)
   const [fechadaModo, setFechadaModo] = useState<'fracionada_2p' | 'fracionada_4p' | 'completa'>('completa')
 
   // ── Resultado / decisao ──
   const [valorFinal, setValorFinal] = useState<string>('')
   const [parceiraEscolhidaId, setParceiraEscolhidaId] = useState<number | null>(null)
-  const [margem, setMargem] = useState<string>('1.3')
+  const [margem, setMargem] = useState<string>('1.1')
   const [observacoes, setObservacoes] = useState('')
+  // Carga completa cobra ida+volta por padrão (caminhão volta vazio). Liga isto
+  // quando há carga de retorno confirmada → cobra só a ida.
+  const [temRetorno, setTemRetorno] = useState(false)
 
   // ── Frete de retorno (manual, NÃO automático por geografia) ──
   // Default OFF. Só ligar quando vendedor confirma caminhão voltando vazio.
@@ -187,6 +197,14 @@ export default function FreteCotacao() {
     }
   }
 
+  // Default do caminhão na aba "carga fechada": primeira Carreta da tabela.
+  useEffect(() => {
+    if (fechadaCaminhaoId == null && tipos.data && tipos.data.length > 0) {
+      const carreta = tipos.data.find(t => t.nome === 'Carreta 2 eixos') ?? tipos.data[0]
+      setFechadaCaminhaoId(carreta.id)
+    }
+  }, [tipos.data, fechadaCaminhaoId])
+
   // ── Calcula a carga total conforme aba ativa ──
   const carga = useMemo<Carga | null>(() => {
     if (aba === 'equipamento') {
@@ -195,10 +213,15 @@ export default function FreteCotacao() {
       let peso = 0, comp = 0, larg = 0, alt = 0, indiv = false
       for (const l of itens) {
         const it = l.item!
-        peso += (it.peso_kg ?? 0) * l.qtd
-        comp = Math.max(comp, it.dim_comprimento_m ?? 0)
-        larg = Math.max(larg, it.dim_largura_m ?? 0)
-        alt = Math.max(alt, it.dim_altura_m ?? 0)
+        // Valores editados na linha têm prioridade; senão cai no catálogo.
+        const p = Number(l.peso) || it.peso_kg || 0
+        const c = Number(l.comp) || it.dim_comprimento_m || 0
+        const w = Number(l.larg) || it.dim_largura_m || 0
+        const h = Number(l.alt) || it.dim_altura_m || 0
+        peso += p * l.qtd
+        comp += c * l.qtd          // soma o comprimento (carga enfileirada no baú)
+        larg = Math.max(larg, w)   // largura/altura = a maior peça manda
+        alt = Math.max(alt, h)
         if (it.indivisivel) indiv = true
       }
       if (peso === 0) return null
@@ -221,11 +244,7 @@ export default function FreteCotacao() {
       }
     }
     // aba === 'fechada': carga = capacidade maxima do caminhao escolhido
-    const tipoMatch = tipos.data?.find(t => {
-      if (fechadaTipo === 'TRUCK') return t.nome === 'Truck'
-      // CARRETA: pega a Carreta 2 eixos (padrao)
-      return t.nome === 'Carreta 2 eixos'
-    })
+    const tipoMatch = tipos.data?.find(t => t.id === fechadaCaminhaoId)
     if (!tipoMatch) return null
     return {
       peso_kg: tipoMatch.peso_max_kg,
@@ -234,7 +253,7 @@ export default function FreteCotacao() {
       altura_m: tipoMatch.altura_util_m,
       indivisivel: false,
     }
-  }, [aba, linhasEquip, dimPeso, dimComp, dimLarg, dimAlt, dimIndivisivel, palQtd, palPeso, palAltura, fechadaTipo, tipos.data])
+  }, [aba, linhasEquip, dimPeso, dimComp, dimLarg, dimAlt, dimIndivisivel, palQtd, palPeso, palAltura, fechadaCaminhaoId, tipos.data])
 
   // ── Catálogo agrupado por categoria (pro <select> com optgroups) ──
   const gruposEquip = useMemo(() => {
@@ -256,14 +275,14 @@ export default function FreteCotacao() {
     return recomendarCaminhao(carga, tipos.data)
   }, [carga, tipos.data])
 
-  // Sempre que muda a aba "fechada", força o caminhão correspondente
+  // Na aba "fechada" o caminhão é o que o vendedor escolheu (por id).
   const caminhaoEfetivo = useMemo(() => {
     if (aba === 'fechada' && tipos.data) {
-      const t = tipos.data.find(t => t.nome === (fechadaTipo === 'TRUCK' ? 'Truck' : 'Carreta 2 eixos'))
+      const t = tipos.data.find(t => t.id === fechadaCaminhaoId)
       return t ?? caminhao
     }
     return caminhao
-  }, [aba, fechadaTipo, tipos.data, caminhao])
+  }, [aba, fechadaCaminhaoId, tipos.data, caminhao])
 
   const distanciaKm = useMemo(() => {
     const m = Number(kmManual)
@@ -271,13 +290,12 @@ export default function FreteCotacao() {
     return destino?.distancia_km ?? null
   }, [kmManual, destino])
 
-  // ── Tipo de caminhão Branorte (TRUCK/CARRETA) ──
+  // ── Tipo de caminhão Branorte (TRUCK/CARRETA) — derivado do peso máx ──
   const tipoCaminhaoBranorte = useMemo<'TRUCK' | 'CARRETA'>(() => {
-    if (aba === 'fechada') return fechadaTipo
     if (!caminhaoEfetivo) return 'CARRETA'
-    // Truck ate 14 ton; acima disso vai Carreta
+    // Truck ate 14 ton; acima disso (bitruque, carretas) vai Carreta
     return caminhaoEfetivo.peso_max_kg <= 14000 ? 'TRUCK' : 'CARRETA'
-  }, [aba, fechadaTipo, caminhaoEfetivo])
+  }, [caminhaoEfetivo])
 
   // ── Modo de carga (nova lógica: indivisível->completa + cubagem) ──
   const modoCargaBranorte = useMemo<'fracionada_2p' | 'fracionada_4p' | 'completa'>(() => {
@@ -311,12 +329,13 @@ export default function FreteCotacao() {
     return { row, ...calc }
   }, [distanciaKm, modeloBN.data, pisoAntt, tipoCaminhaoBranorte, modoCargaBranorte, retornoLigado, retornoPct])
 
-  // ── Estimativa 2: ANTT (piso × margem) ──
-  const valorAntt = useMemo(() => {
-    if (pisoAntt == null) return null
-    const m = Number(margem) || 1
-    return { piso: pisoAntt, com_margem: pisoAntt * m }
-  }, [pisoAntt, margem])
+  // ── Valor comercial (piso ANTT + regra ida/volta) × margem ──
+  const freteComercial = useMemo(() => {
+    if (!caminhaoEfetivo || !distanciaKm || !antts.data) return null
+    const antt = antts.data.find(a => a.tipo_caminhao_id === caminhaoEfetivo.id)
+    if (!antt) return null
+    return cotarFreteComercial(distanciaKm, antt, modoCargaBranorte, Number(margem) || 1, temRetorno)
+  }, [caminhaoEfetivo, distanciaKm, antts.data, modoCargaBranorte, margem, temRetorno])
 
   // ── Estimativa 3: Parceiras ──
   const estimativasParceiras = useMemo(() => {
@@ -363,12 +382,18 @@ export default function FreteCotacao() {
         volume_m3: volumeM3(carga.comprimento_m, carga.largura_m, carga.altura_m),
         carga_indivisivel: carga.indivisivel,
         equipamentos_itens: aba === 'equipamento'
-          ? linhasEquip.filter(l => l.item).map(l => ({ id: l.item!.id, nome: l.item!.nome_curto, qtd: l.qtd, peso: l.item!.peso_kg }))
+          ? linhasEquip.filter(l => l.item).map(l => ({
+              id: l.item!.id, nome: l.item!.nome_curto, qtd: l.qtd,
+              peso: Number(l.peso) || l.item!.peso_kg,
+              comp: Number(l.comp) || l.item!.dim_comprimento_m,
+              larg: Number(l.larg) || l.item!.dim_largura_m,
+              alt: Number(l.alt) || l.item!.dim_altura_m,
+            }))
           : aba === 'fechada'
-            ? { modo: 'carga_fechada', tipo: fechadaTipo, modo_carga: fechadaModo }
+            ? { modo: 'carga_fechada', caminhao: caminhaoEfetivo.nome, modo_carga: fechadaModo }
             : null,
         caminhao_recomendado_id: caminhaoEfetivo.id,
-        valor_antt_minimo: valorAntt?.piso ?? null,
+        valor_antt_minimo: freteComercial?.pisoLegalIda ?? null,
         valor_parceira_escolhida_id: parceiraEscolhidaId,
         valor_parceira_escolhida: parceiraEscolhidaId
           ? estimativasParceiras.find(x => x.parceira.id === parceiraEscolhidaId)?.valor ?? null
@@ -632,49 +657,84 @@ export default function FreteCotacao() {
               Pra transportador, elevador ou item sem cadastro, use "Por dimensões".
             </div>
             {linhasEquip.map((l, i) => (
-              <div key={l.uid} className="flex items-center gap-2">
-                <select
-                  value={l.item?.id ?? ''}
-                  onChange={e => {
-                    const id = Number(e.target.value)
-                    const item = catalogo.data?.find(c => c.id === id) ?? null
-                    setLinhasEquip(prev => prev.map((x, idx) => idx === i ? { ...x, item } : x))
-                  }}
-                  className="flex-1 min-w-0 border border-border rounded-lg px-3 py-2 text-sm bg-bg focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50"
-                >
-                  <option value="">— selecione equipamento —</option>
-                  {gruposEquip.map(g => (
-                    <optgroup key={g.cat} label={g.label}>
-                      {g.itens.map(c => (
-                        <option key={c.id} value={c.id}>
-                          {c.nome_curto} ({c.peso_kg} kg)
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-                <input
-                  type="number"
-                  min={1}
-                  value={l.qtd}
-                  onChange={e => {
-                    const q = Number(e.target.value) || 1
-                    setLinhasEquip(prev => prev.map((x, idx) => idx === i ? { ...x, qtd: q } : x))
-                  }}
-                  className="w-14 flex-shrink-0 border border-border rounded-lg px-2 py-2 text-sm bg-bg tabular-nums text-center focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50"
-                />
-                <button
-                  type="button"
-                  onClick={() => setLinhasEquip(prev => prev.length === 1 ? prev : prev.filter((_, idx) => idx !== i))}
-                  className="flex-shrink-0 p-2 text-ink-muted hover:text-danger transition-colors"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+              <div key={l.uid} className="border border-border/70 rounded-xl p-2.5 space-y-2 bg-surface/40">
+                <div className="flex items-center gap-2">
+                  <select
+                    value={l.item?.id ?? ''}
+                    onChange={e => {
+                      const id = Number(e.target.value)
+                      const item = catalogo.data?.find(c => c.id === id) ?? null
+                      setLinhasEquip(prev => prev.map((x, idx) => idx === i ? {
+                        ...x, item,
+                        // pré-preenche os campos com a medida do catálogo (editável)
+                        peso: item ? String(item.peso_kg ?? '') : '',
+                        comp: item ? String(item.dim_comprimento_m ?? '') : '',
+                        larg: item ? String(item.dim_largura_m ?? '') : '',
+                        alt: item ? String(item.dim_altura_m ?? '') : '',
+                      } : x))
+                    }}
+                    className="flex-1 min-w-0 border border-border rounded-lg px-3 py-2 text-sm bg-bg focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50"
+                  >
+                    <option value="">— selecione equipamento —</option>
+                    {gruposEquip.map(g => (
+                      <optgroup key={g.cat} label={g.label}>
+                        {g.itens.map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.nome_curto} ({c.peso_kg} kg)
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min={1}
+                    value={l.qtd}
+                    title="Quantidade"
+                    onChange={e => {
+                      const q = Number(e.target.value) || 1
+                      setLinhasEquip(prev => prev.map((x, idx) => idx === i ? { ...x, qtd: q } : x))
+                    }}
+                    className="w-14 flex-shrink-0 border border-border rounded-lg px-2 py-2 text-sm bg-bg tabular-nums text-center focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setLinhasEquip(prev => prev.length === 1 ? prev : prev.filter((_, idx) => idx !== i))}
+                    className="flex-shrink-0 p-2 text-ink-muted hover:text-danger transition-colors"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+                {/* Medidas/peso editáveis por equipamento (preenche do catálogo, ajuste à vontade) */}
+                {l.item && (
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {([
+                      ['peso', 'Peso kg', l.peso],
+                      ['comp', 'Compr. m', l.comp],
+                      ['larg', 'Larg. m', l.larg],
+                      ['alt', 'Alt. m', l.alt],
+                    ] as const).map(([campo, label, val]) => (
+                      <div key={campo}>
+                        <label className="block text-[9px] font-bold uppercase tracking-wider text-ink-muted/70 mb-0.5">{label}</label>
+                        <input
+                          type="number"
+                          step={campo === 'peso' ? 1 : 0.1}
+                          value={val}
+                          onChange={e => {
+                            const v = e.target.value
+                            setLinhasEquip(prev => prev.map((x, idx) => idx === i ? { ...x, [campo]: v } : x))
+                          }}
+                          className="w-full border border-border/60 rounded-md px-1.5 py-1 text-xs bg-bg tabular-nums text-center focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
             <button
               type="button"
-              onClick={() => setLinhasEquip(prev => [...prev, { uid: crypto.randomUUID(), item: null, qtd: 1 }])}
+              onClick={() => setLinhasEquip(prev => [...prev, { uid: crypto.randomUUID(), item: null, qtd: 1, peso: '', comp: '', larg: '', alt: '' }])}
               className="text-sm text-accent hover:underline flex items-center gap-1 mt-1"
             >
               <Plus className="h-3 w-3" /> Adicionar equipamento
@@ -744,29 +804,28 @@ export default function FreteCotacao() {
               💡 Escolha o caminhão que quer cotar como se já estivesse cheio. Útil pra cliente que aluga frota dedicada ou pra estimativa rápida de carga grande.
             </div>
 
-            {/* Tipo de caminhão */}
+            {/* Tipo de caminhão — lista completa da tabela (truque, bitruque, carretas…) */}
             <div>
               <label className="text-sm font-semibold block mb-2">Tipo de caminhão</label>
               <div className="grid grid-cols-2 gap-2">
-                {(['TRUCK', 'CARRETA'] as const).map(t => {
-                  const tipoMatch = tipos.data?.find(x => x.nome === (t === 'TRUCK' ? 'Truck' : 'Carreta 2 eixos'))
+                {(tipos.data ?? []).filter(t => t.ativo).map(t => {
+                  const sel = fechadaCaminhaoId === t.id
                   return (
                     <button
-                      key={t}
+                      key={t.id}
                       type="button"
-                      onClick={() => setFechadaTipo(t)}
+                      onClick={() => setFechadaCaminhaoId(t.id)}
                       className={`p-3 border-2 rounded-lg text-left transition-all ${
-                        fechadaTipo === t
-                          ? 'border-accent bg-accent/10'
-                          : 'border-border hover:border-ink-faint/50'
+                        sel ? 'border-accent bg-accent/10' : 'border-border hover:border-ink-faint/50'
                       }`}
                     >
                       <div className="flex items-center gap-2 mb-1">
-                        <Truck className={`h-5 w-5 ${fechadaTipo === t ? 'text-accent' : 'text-ink-muted'}`} />
-                        <span className="font-bold">{t === 'TRUCK' ? 'TRUCK' : 'CARRETA'}</span>
+                        <Truck className={`h-5 w-5 flex-shrink-0 ${sel ? 'text-accent' : 'text-ink-muted'}`} />
+                        <span className="font-bold text-sm leading-tight">{t.nome}</span>
                       </div>
                       <div className="text-xs text-ink-muted tabular-nums">
-                        {t === 'TRUCK' ? '8 m' : '12 m'} · {tipoMatch?.peso_max_kg.toLocaleString('pt-BR') ?? '—'} kg
+                        {t.comprimento_util_m}m · {t.peso_max_kg.toLocaleString('pt-BR')} kg
+                        {t.precisa_aet && <span className="text-amber-600 font-bold"> · AET</span>}
                       </div>
                     </button>
                   )
@@ -774,35 +833,29 @@ export default function FreteCotacao() {
               </div>
             </div>
 
-            {/* Modo de cobrança */}
+            {/* Modo de cobrança — completa = ida+volta (dedicada); fracionada = só ida */}
             <div>
               <label className="text-sm font-semibold block mb-2">Modo de cobrança</label>
               <div className="grid grid-cols-3 gap-2">
                 {([
-                  ['fracionada_2p', '2 paletes', '~R$ 1,70/km'],
-                  ['fracionada_4p', '4 paletes', '~R$ 1,90/km'],
-                  ['completa', 'Completa', '~R$ 3,90/km'],
-                ] as const).map(([m, label, hint]) => {
-                  const disabled = fechadaTipo === 'TRUCK' && m === 'fracionada_2p'
-                  return (
-                    <button
-                      key={m}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => setFechadaModo(m)}
-                      className={`p-3 border-2 rounded-lg text-left transition-all ${
-                        disabled
-                          ? 'opacity-40 cursor-not-allowed'
-                          : fechadaModo === m
-                            ? 'border-accent bg-accent/10'
-                            : 'border-border hover:border-ink-faint/50'
-                      }`}
-                    >
-                      <div className="font-bold text-sm">{label}</div>
-                      <div className="text-xs text-ink-muted tabular-nums">{hint}</div>
-                    </button>
-                  )
-                })}
+                  ['completa', 'Completa', 'ida + volta'],
+                  ['fracionada_4p', 'Fracionada', 'rateado · só ida'],
+                  ['fracionada_2p', 'Fracionada leve', 'rateado · só ida'],
+                ] as const).map(([m, label, hint]) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setFechadaModo(m)}
+                    className={`p-3 border-2 rounded-lg text-left transition-all ${
+                      fechadaModo === m
+                        ? 'border-accent bg-accent/10'
+                        : 'border-border hover:border-ink-faint/50'
+                    }`}
+                  >
+                    <div className="font-bold text-sm">{label}</div>
+                    <div className="text-xs text-ink-muted">{hint}</div>
+                  </button>
+                ))}
               </div>
             </div>
           </div>
@@ -907,16 +960,19 @@ export default function FreteCotacao() {
                     <Building2 className="h-5 w-5 text-amber-600" />
                   </div>
                   <span className="text-xs font-black uppercase tracking-wider text-amber-700 dark:text-amber-400">
-                    Frete legal — ANTT
+                    Frete estimado
                   </span>
                 </div>
                 <div className="text-5xl font-black tabular-nums text-amber-700 dark:text-amber-400 leading-none tracking-tighter">
-                  {formatBRL(valorAntt?.com_margem)}
+                  {formatBRL(freteComercial?.comMargem)}
                 </div>
                 <div className="text-xs text-ink-muted mt-3 leading-relaxed">
-                  Piso legal minimo (Res. 6.076/2026): <b className="tabular-nums text-ink">{formatBRL(valorAntt?.piso)}</b>
+                  Piso legal mínimo da ida (Res. 6.076/2026): <b className="tabular-nums text-ink">{formatBRL(freteComercial?.pisoLegalIda)}</b>
                   {distanciaKm != null && <> · <b className="tabular-nums">{distanciaKm.toLocaleString('pt-BR')} km</b></>}
                   <br />Modo: <b>{MODOS_CARGA_LABELS[modoCargaBranorte]}</b>
+                  {freteComercial?.idaEVolta && (
+                    <> · <b className="text-amber-700 dark:text-amber-400">cobra ida + volta ({freteComercial.kmCobravel.toLocaleString('pt-BR')} km)</b></>
+                  )}
                 </div>
                 <div className="mt-4 flex items-center gap-2">
                   <span className="text-xs text-ink-muted font-bold">× margem</span>
@@ -927,8 +983,18 @@ export default function FreteCotacao() {
                     onChange={e => setMargem(e.target.value)}
                     className="w-16 border border-amber-500/40 rounded-lg px-2 py-1.5 text-sm bg-bg tabular-nums font-bold focus:outline-none focus:ring-2 focus:ring-amber-500/30"
                   />
-                  <span className="text-[11px] text-ink-muted">sobre o piso legal</span>
+                  <span className="text-[11px] text-ink-muted">sobre a base</span>
                 </div>
+                {modoCargaBranorte === 'completa' && (
+                  <label className="mt-3 flex items-center gap-2 text-xs text-ink-muted cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={temRetorno}
+                      onChange={e => setTemRetorno(e.target.checked)}
+                    />
+                    Tem carga de retorno? <span className="text-ink-muted/70">(cobra só a ida, sem dobrar)</span>
+                  </label>
+                )}
               </div>
             </div>
           )}
