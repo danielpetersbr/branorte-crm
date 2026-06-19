@@ -386,43 +386,7 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* ════════ GRÁFICOS DO DIA — no início da página (pedido do gerente) ════════ */}
-      {extra && (
-        <Card>
-          <div className="flex items-baseline justify-between mb-3 gap-2 flex-wrap">
-            <h2 className="text-[14px] font-bold text-ink tracking-tight">📊 Gráficos do dia</h2>
-            <span className="text-[11px] text-ink-faint">funil · orçamentos, avaliação, quem atrai · hoje, aberto e negociação</span>
-          </div>
-          <div className="mb-3">
-            <FunilDeVenda etapas={funilCanonico} />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            <OrcamentosPorDiaChart data={extra.orcamentos_por_dia} />
-            <AvaliacaoCliente data={extra.avaliacao} />
-            <Top3em1 origem={positivo.escalar} criativo={positivo.criativo} vendFunil={vendFunil ?? []} />
-            <AtendimentosHojeCard data={extra.atendimentos} />
-            <AbertoCard data={extra.aberto} onIr={() => irParaSecao('g4', 'vendedores-funil')} />
-            <NegociacaoCard data={extra.negociacao} />
-          </div>
-        </Card>
-      )}
-
-      {/* BANNER DE ALERTAS — só aparece se há algo crítico */}
-      {etq && (etq.alertas.criativos_nao_fabricamos > 0 || etq.alertas.leads_orfaos > 0 || etq.alertas.vendedores_sem_orc > 0) && (
-        <AlertasBanner etq={etq} />
-      )}
-
-      {/* RESUMO DO GERENTE — as 2 decisões (marketing + cobrar vendedor) no topo */}
-      {(data.porOrigem.length > 0 || vendCards.length > 0) && (
-        <ResumoGerente porOrigem={data.porOrigem} cards={vendCards} />
-      )}
-
-      {/* DESTAQUES POSITIVOS — o que tá indo bem, pra reforçar e dobrar a aposta */}
-      {vendCards.length > 0 && (positivo.topOrc || positivo.escalar || positivo.totalVendido > 0) && (
-        <ResumoPositivo p={positivo} />
-      )}
-
-      {/* ════════ O ESSENCIAL — glance de 5 segundos, sempre visível ════════ */}
+      {/* ════════ O ESSENCIAL — glance de 5 segundos, no topo da página ════════ */}
       <Card className="border-accent/25 bg-accent-bg/30">
         <div className="flex items-baseline justify-between mb-3 gap-2 flex-wrap">
           <h2 className="text-[15px] font-bold text-ink tracking-tight">
@@ -541,6 +505,42 @@ export function Dashboard() {
           </div>
         )}
       </Card>
+
+      {/* ════════ GRÁFICOS DO DIA — no início da página (pedido do gerente) ════════ */}
+      {extra && (
+        <Card>
+          <div className="flex items-baseline justify-between mb-3 gap-2 flex-wrap">
+            <h2 className="text-[14px] font-bold text-ink tracking-tight">📊 Gráficos do dia</h2>
+            <span className="text-[11px] text-ink-faint">funil · orçamentos, avaliação, quem atrai · hoje, aberto e negociação</span>
+          </div>
+          <div className="mb-3">
+            <FunilDeVenda etapas={funilCanonico} />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <OrcamentosPorDiaChart data={extra.orcamentos_por_dia} />
+            <AvaliacaoCliente data={extra.avaliacao} />
+            <Top3em1 origem={positivo.escalar} criativo={positivo.criativo} vendFunil={vendFunil ?? []} />
+            <AtendimentosHojeCard data={extra.atendimentos} />
+            <AbertoCard data={extra.aberto} onIr={() => irParaSecao('g4', 'vendedores-funil')} />
+            <NegociacaoCard data={extra.negociacao} />
+          </div>
+        </Card>
+      )}
+
+      {/* BANNER DE ALERTAS — só aparece se há algo crítico */}
+      {etq && (etq.alertas.criativos_nao_fabricamos > 0 || etq.alertas.leads_orfaos > 0 || etq.alertas.vendedores_sem_orc > 0) && (
+        <AlertasBanner etq={etq} />
+      )}
+
+      {/* RESUMO DO GERENTE — as 2 decisões (marketing + cobrar vendedor) no topo */}
+      {(data.porOrigem.length > 0 || vendCards.length > 0) && (
+        <ResumoGerente porOrigem={data.porOrigem} cards={vendCards} />
+      )}
+
+      {/* DESTAQUES POSITIVOS — o que tá indo bem, pra reforçar e dobrar a aposta */}
+      {vendCards.length > 0 && (positivo.topOrc || positivo.escalar || positivo.totalVendido > 0) && (
+        <ResumoPositivo p={positivo} />
+      )}
 
       {/* ════════ GRUPO 1 · VISÃO GERAL ════════ */}
       <CollapsibleSection n="1" titulo="Visão geral" pergunta="Propostas e tendência no detalhe" open={openSec.g1} onToggle={() => toggleSec('g1')}>
