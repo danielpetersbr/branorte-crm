@@ -4,6 +4,7 @@ import { useDashboard, type DashboardPreset, type FunilEtapa, type SlaVendedor, 
 import { useDashboardEtiquetas, useHeatmapSemanal, CATEGORIA_LABEL, type EtiquetaCategoria } from '@/hooks/useDashboardEtiquetas'
 import { useDashboardVendedorFunil, type VendedorFunilRow } from '@/hooks/useDashboardVendedorFunil'
 import { useDashboardExtra, type DashboardExtra } from '@/hooks/useDashboardExtra'
+import { useFunilUnion } from '@/hooks/useFunilUnion'
 import { useOrcamentosResumo, type OrcamentosResumo } from '@/hooks/useOrcamentosResumo'
 import { usePropostasStatus, CATS_ABERTO, type PropostasStatus, type PropCategoria } from '@/hooks/usePropostasStatus'
 import { useVendedoresPainel, type VendedorPainel } from '@/hooks/useVendedoresPainel'
@@ -151,6 +152,7 @@ export function Dashboard() {
   const { data: etq } = useDashboardEtiquetas(preset)
   const { data: vendFunil } = useDashboardVendedorFunil(preset)
   const { data: extra } = useDashboardExtra()
+  const { data: funilUnion } = useFunilUnion(preset)
   // Valor das propostas montadas no builder (orcamentos_gerados) — única fonte real de R$
   const { data: orc } = useOrcamentosResumo(preset)
   // Propostas × estágio atual do funil (dinheiro em aberto vs vendido, por vendedor)
@@ -174,12 +176,13 @@ export function Dashboard() {
   // meio (2.788 > 904), gerando o "sem sentido". pctAnterior travado em 100.
   const funilCanonico = useMemo<FunilEtapa[]>(() => {
     if (!data?.funil) return []
+    // Qualificou/Engajou = IA OU etiqueta do vendedor (funilUnion). Fallback p/ funil só-IA.
     const raw = [
-      { etapa: 'Entrou',           valor: data.funil[0]?.valor ?? 0 },
-      { etapa: 'Engajou com a IA', valor: data.funil[1]?.valor ?? 0 },
-      { etapa: 'Qualificou',       valor: data.funil[2]?.valor ?? 0 },
+      { etapa: 'Entrou',            valor: funilUnion?.entrou ?? data.funil[0]?.valor ?? 0 },
+      { etapa: 'Engajou',           valor: funilUnion?.engajou ?? data.funil[1]?.valor ?? 0 },
+      { etapa: 'Qualificou',        valor: funilUnion?.qualificou ?? data.funil[2]?.valor ?? 0 },
       { etapa: 'Orçamento enviado', valor: etq?.por_categoria.orcamento ?? 0 },
-      { etapa: 'Vendido',          valor: etq?.por_categoria.vendido ?? 0 },
+      { etapa: 'Vendido',           valor: etq?.por_categoria.vendido ?? 0 },
     ]
     const topo = raw[0].valor || 1
     return raw.map((e, i) => {
@@ -192,7 +195,7 @@ export function Dashboard() {
         perdidos: i > 0 ? Math.max(0, prev - e.valor) : 0,
       }
     })
-  }, [data?.funil, etq])
+  }, [data?.funil, etq, funilUnion])
 
   // Cards de vendedor (3 fontes mescladas + veredito), computados uma vez e
   // usados pelo Resumo do gerente e pelo Painel por vendedor.
@@ -1690,11 +1693,11 @@ function OrcamentosPorDiaChart({ data }: { data: { dia: string; total: number }[
   const fmtDia = (dia: string) => { const [, m, d] = dia.split('-'); return `${d}/${m}` }
   return (
     <div className="rounded-lg border border-border/60 bg-surface p-3">
-      <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-2">Orçamentos por dia (30d)</div>
+      <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-2">Clientes orçados por dia (30d)</div>
       <div className="flex items-end justify-between mb-1">
         <div>
           <div className="text-2xl font-mono tabular-nums text-ink leading-none">{total30d}</div>
-          <div className="text-[11px] text-ink-faint mt-0.5">montados em 30 dias</div>
+          <div className="text-[11px] text-ink-faint mt-0.5">clientes únicos · sem repetir</div>
         </div>
         <div className="text-right">
           <div className="text-sm font-mono tabular-nums text-ink-muted leading-none">{mediaDia}</div>
@@ -1936,6 +1939,9 @@ function FunilDeVenda({ etapas }: { etapas: FunilEtapa[] }) {
           )}
         </div>
       </div>
+      <p className="text-[10px] text-ink-faint mt-3 leading-relaxed">
+        <strong>Qualificou</strong> = quer algo que a Branorte faz (IA) <strong>ou</strong> o vendedor já etiquetou como avanço (Novo Lead / Follow Up / Lead Quente / Orçamento / Vendido). <strong>Engajou</strong> = respondeu à IA ou já recebeu etiqueta.
+      </p>
     </div>
   )
 }
