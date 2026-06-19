@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, lazy, Suspense } from 'react'
 import { Link } from 'react-router-dom'
 import { useDashboard, type DashboardPreset, type FunilEtapa, type SlaVendedor, type LeadEmRisco } from '@/hooks/useDashboard'
 import { useDashboardEtiquetas, useHeatmapSemanal, CATEGORIA_LABEL, type EtiquetaCategoria } from '@/hooks/useDashboardEtiquetas'
+import { useDashboardVendedorFunil, type VendedorFunilRow } from '@/hooks/useDashboardVendedorFunil'
 import { useOrcamentosResumo, type OrcamentosResumo } from '@/hooks/useOrcamentosResumo'
 import { usePropostasStatus, CATS_ABERTO, type PropostasStatus, type PropCategoria } from '@/hooks/usePropostasStatus'
 import { useVendedoresPainel, type VendedorPainel } from '@/hooks/useVendedoresPainel'
@@ -102,6 +103,7 @@ export function Dashboard() {
   const [preset, setPreset] = usePresetFilter()
   const { data, isLoading, error } = useDashboard({ preset })
   const { data: etq } = useDashboardEtiquetas(preset)
+  const { data: vendFunil } = useDashboardVendedorFunil(preset)
   // Valor das propostas montadas no builder (orcamentos_gerados) — única fonte real de R$
   const { data: orc } = useOrcamentosResumo(preset)
   // Propostas × estágio atual do funil (dinheiro em aberto vs vendido, por vendedor)
@@ -446,6 +448,16 @@ export function Dashboard() {
           ? <PainelVendedores cards={vendCards} />
           : <SlaTable rows={data.slaPorVendedor} etqPorVendedor={etq?.por_vendedor} />}
       </Card>
+
+      {vendFunil && vendFunil.length > 0 && (
+        <Card id="vendedores-funil">
+          <CardHeader
+            title="Leads por vendedor — funil + qualificação"
+            subtitle="Quantos leads entraram em cada vendedor e em que etapa estão. QUALIFICADO = qualificado pela IA do bot OU recebeu etiqueta de avanço (Novo Lead / Follow Up / Lead Quente / Interesse Futuro / Vendido). Atribuição = dono do WhatsApp."
+          />
+          <FunilVendedorTable rows={vendFunil} />
+        </Card>
+      )}
 
       {/* ════════ GRUPO 5 · CONTEXTO (colapsável no caminho diário) ════════ */}
       <SectionTitle n="5" titulo="Contexto" pergunta="De onde e quando vêm os leads?" />
@@ -1319,6 +1331,107 @@ function SlaTable({ rows, etqPorVendedor }: {
           })}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+// Tabela "Leads por vendedor": quantos leads, qualificado (IA vs vendedor) e etapas do funil.
+function FunilVendedorTable({ rows }: { rows: VendedorFunilRow[] }) {
+  if (!rows.length) return <p className="text-sm text-ink-faint">Sem vendedores no período.</p>
+  const tot = rows.reduce((a, r) => ({
+    leads: a.leads + r.leads,
+    qualif_ia: a.qualif_ia + r.qualif_ia,
+    qualif_vendedor: a.qualif_vendedor + r.qualif_vendedor,
+    qualificado: a.qualificado + r.qualificado,
+    sem_etiqueta: a.sem_etiqueta + r.sem_etiqueta,
+    prospeccao: a.prospeccao + r.prospeccao,
+    novo_lead: a.novo_lead + r.novo_lead,
+    follow_up: a.follow_up + r.follow_up,
+    lead_quente: a.lead_quente + r.lead_quente,
+    orcamento: a.orcamento + r.orcamento,
+    vendido: a.vendido + r.vendido,
+    perdido: a.perdido + r.perdido,
+  }), {
+    leads: 0, qualif_ia: 0, qualif_vendedor: 0, qualificado: 0, sem_etiqueta: 0,
+    prospeccao: 0, novo_lead: 0, follow_up: 0, lead_quente: 0, orcamento: 0, vendido: 0, perdido: 0,
+  })
+  const cell = (n: number, tone = 'text-ink-muted') =>
+    <td className={`py-2 px-2 text-right font-mono tabular-nums ${n > 0 ? tone : 'text-ink-faint'}`}>{n || '—'}</td>
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[12px] whitespace-nowrap">
+        <thead>
+          <tr className="text-[10px] uppercase tracking-widest text-ink-faint border-b border-border">
+            <th className="text-left font-medium py-2 pr-2 sticky left-0 bg-surface">Vendedor</th>
+            <th className="text-right font-medium py-2 px-2">Leads</th>
+            <th className="text-right font-medium py-2 px-2" title="Qualificado pela IA do bot OU por etiqueta de avanço do vendedor (dedup por lead)">Qualif.</th>
+            <th className="text-right font-medium py-2 px-2" title="Qualificado pela IA do bot">· IA</th>
+            <th className="text-right font-medium py-2 px-2" title="Recebeu etiqueta de avanço (Novo Lead/Follow Up/Lead Quente/Interesse Futuro/Vendido)">· Vend.</th>
+            <th className="text-right font-medium py-2 px-2" title="No WhatsApp do vendedor sem nenhuma etiqueta">Sem etiq.</th>
+            <th className="text-right font-medium py-2 px-2">Prosp.</th>
+            <th className="text-right font-medium py-2 px-2">Novo</th>
+            <th className="text-right font-medium py-2 px-2">Follow</th>
+            <th className="text-right font-medium py-2 px-2">Quente</th>
+            <th className="text-right font-medium py-2 px-2">Orç.</th>
+            <th className="text-right font-medium py-2 px-2">Vend.</th>
+            <th className="text-right font-medium py-2 pl-2">Perd.</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {rows.map(v => {
+            const qualifPct = v.leads > 0 ? Math.round((v.qualificado / v.leads) * 100) : 0
+            return (
+              <tr key={v.vendedor} className="hover:bg-surface-2/50 transition-colors">
+                <td className="py-2 pr-2 sticky left-0 bg-surface">
+                  <Link
+                    to={`/atendimentos?responsavel=${encodeURIComponent(v.vendedor)}`}
+                    className="text-ink hover:text-accent hover:underline"
+                    title="Ver atendimentos deste vendedor"
+                  >
+                    {v.vendedor}
+                  </Link>
+                </td>
+                <td className="py-2 px-2 text-right font-mono tabular-nums text-ink">{v.leads}</td>
+                <td className="py-2 px-2 text-right font-mono tabular-nums text-accent">
+                  {v.qualificado}<span className="text-ink-faint text-[10px]"> · {qualifPct}%</span>
+                </td>
+                {cell(v.qualif_ia, 'text-info')}
+                {cell(v.qualif_vendedor, 'text-ink')}
+                {cell(v.sem_etiqueta, 'text-danger')}
+                {cell(v.prospeccao)}
+                {cell(v.novo_lead)}
+                {cell(v.follow_up, 'text-warning')}
+                {cell(v.lead_quente, 'text-warning')}
+                {cell(v.orcamento, 'text-accent')}
+                {cell(v.vendido, 'text-success')}
+                {cell(v.perdido, 'text-ink-faint')}
+              </tr>
+            )
+          })}
+        </tbody>
+        <tfoot>
+          <tr className="border-t-2 border-border font-medium text-ink">
+            <td className="py-2 pr-2 sticky left-0 bg-surface uppercase text-[10px] tracking-widest text-ink-faint">Total</td>
+            <td className="py-2 px-2 text-right font-mono tabular-nums">{tot.leads}</td>
+            <td className="py-2 px-2 text-right font-mono tabular-nums text-accent">{tot.qualificado}</td>
+            <td className="py-2 px-2 text-right font-mono tabular-nums text-info">{tot.qualif_ia}</td>
+            <td className="py-2 px-2 text-right font-mono tabular-nums">{tot.qualif_vendedor}</td>
+            <td className="py-2 px-2 text-right font-mono tabular-nums text-danger">{tot.sem_etiqueta}</td>
+            <td className="py-2 px-2 text-right font-mono tabular-nums">{tot.prospeccao}</td>
+            <td className="py-2 px-2 text-right font-mono tabular-nums">{tot.novo_lead}</td>
+            <td className="py-2 px-2 text-right font-mono tabular-nums">{tot.follow_up}</td>
+            <td className="py-2 px-2 text-right font-mono tabular-nums">{tot.lead_quente}</td>
+            <td className="py-2 px-2 text-right font-mono tabular-nums">{tot.orcamento}</td>
+            <td className="py-2 px-2 text-right font-mono tabular-nums text-success">{tot.vendido}</td>
+            <td className="py-2 pl-2 text-right font-mono tabular-nums">{tot.perdido}</td>
+          </tr>
+        </tfoot>
+      </table>
+      <p className="mt-3 text-[11px] text-ink-faint leading-relaxed">
+        As colunas de etapa contam o lead em <strong>toda etiqueta que ele tem</strong> (um lead em Follow Up e Lead Quente
+        conta nas duas), por isso não somam o total. <strong>Sem etiq.</strong> = está no WhatsApp do vendedor mas sem
+        nenhuma etiqueta de funil.
+      </p>
     </div>
   )
 }
