@@ -1846,10 +1846,10 @@ function FunilTable({ rows, primeiraColuna, semEtq }: { rows: FunilRow[]; primei
         </p>
       )}
       <div className="overflow-x-auto">
-        <table className="w-full text-[12px] whitespace-nowrap">
+        <table className="w-full text-[13px] whitespace-nowrap [&_td]:py-2.5">
           <thead>
-            <tr className="text-[10px] uppercase tracking-wider text-ink-faint border-b border-border">
-              <th className="text-left py-2 px-2 font-semibold">{primeiraColuna}</th>
+            <tr className="text-[11px] uppercase tracking-wide text-ink-faint border-b border-border">
+              <th className="text-left py-2.5 px-2 font-semibold">{primeiraColuna}</th>
               <th className="text-left py-2 px-2 font-semibold">Perfil</th>
               <th className="text-right py-2 px-2 font-semibold">Leads</th>
               <th className="text-right py-2 px-2 font-semibold" title="% dos leads que responderam à IA">Respondeu</th>
@@ -1868,8 +1868,8 @@ function FunilTable({ rows, primeiraColuna, semEtq }: { rows: FunilRow[]; primei
                 <tr key={r.key} className="border-b border-border/30 hover:bg-surface-2/40">
                   <td className="py-1.5 px-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      {r.codigo && <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-2 text-ink-muted shrink-0">{r.codigo}</span>}
-                      <span className="truncate text-ink max-w-[220px]" title={r.label}>{r.label}</span>
+                      {r.codigo && <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-surface-2 text-ink-muted shrink-0">{r.codigo}</span>}
+                      <span className="truncate text-ink font-medium max-w-[240px]" title={r.label}>{r.label}</span>
                     </div>
                   </td>
                   <td className="py-1.5 px-2">
@@ -1892,12 +1892,12 @@ function FunilTable({ rows, primeiraColuna, semEtq }: { rows: FunilRow[]; primei
                   </td>
                   <td className="py-1.5 px-2 text-right">
                     <span
-                      className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border cursor-help ${vm.cls}`}
+                      className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full border cursor-help ${vm.cls}`}
                       title={r.reason}
                     >
                       {vm.emoji} {vm.label}
                     </span>
-                    <div className="text-[9px] text-ink-faint tabular-nums mt-0.5">score {r.score}</div>
+                    <div className="text-[10px] text-ink-faint tabular-nums mt-0.5">score {r.score}</div>
                   </td>
                 </tr>
               )
@@ -1905,7 +1905,7 @@ function FunilTable({ rows, primeiraColuna, semEtq }: { rows: FunilRow[]; primei
           </tbody>
         </table>
       </div>
-      <div className="text-[10px] text-ink-faint pt-1 space-y-0.5 whitespace-normal">
+      <div className="text-[11px] text-ink-faint pt-1 space-y-1 whitespace-normal leading-relaxed">
         <p>Funil: <strong className="text-ink-muted">Respondeu</strong> (à IA) → <strong className="text-ink-muted">Qualificou</strong> (a IA viu que quer algo que a Branorte faz, OU o vendedor já moveu pra follow-up/quente/orçamento) → <strong className="text-ink-muted">Follow-up</strong> (negociação) → <strong className="text-ink-muted">Quente</strong> (perto de fechar) → <strong className="text-ink-muted">Orç / Venda</strong> (etiqueta no WhatsApp).</p>
         <p><strong className="text-danger">Não fabricamos</strong> = leads com a etiqueta NÃO FABRICAMOS: pediram uma máquina/produto que a Branorte <strong>não faz</strong> — o anúncio atraiu o público errado (segmentação ruim, não criativo fraco). Os outros motivos de fechamento (não respondeu, sem interesse…) estão no card "Motivos de fechamento" abaixo.</p>
         <p>Passe o mouse no veredito pra ver o porquê. 🟢 escalar verba · 🔴 pausar · 🟠 ajustar ângulo/segmentação · 🟡 manter · ⚪ amostra &lt;{AMOSTRA_MIN} leads · ⚫ sem atribuição. Decisão por QUALIDADE (conversão ~0 em tudo).</p>
@@ -1915,9 +1915,9 @@ function FunilTable({ rows, primeiraColuna, semEtq }: { rows: FunilRow[]; primei
 }
 
 function sortFunil(a: FunilRow, b: FunilRow): number {
-  const ra = VERDICT_META[a.verdict].rank
-  const rb = VERDICT_META[b.verdict].rank
-  if (ra !== rb) return ra - rb
+  // Do MELHOR pro PIOR: maior score primeiro (escalar no topo → pausar embaixo).
+  // O score já correlaciona com o veredito. Empate vai pelo volume de leads.
+  if (b.score !== a.score) return b.score - a.score
   return b.total - a.total
 }
 
