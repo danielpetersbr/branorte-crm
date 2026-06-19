@@ -14,7 +14,8 @@ import {
   Area, AreaChart, Cell, Pie, PieChart,
   ResponsiveContainer, Tooltip,
 } from 'recharts'
-import { Flame, TrendingUp, Users, CheckCircle2, ArrowDown, ArrowUp, Hand, FilePlus2, AlertTriangle, Clock, Ghost, Banknote, ChevronRight } from 'lucide-react'
+import { Flame, TrendingUp, Users, CheckCircle2, ArrowDown, ArrowUp, Hand, FilePlus2, AlertTriangle, Clock, Ghost, Banknote, ChevronRight, Sun, Moon } from 'lucide-react'
+import { useDarkMode } from '@/hooks/useDarkMode'
 
 const PRESET_LABELS: { value: DashboardPreset; label: string }[] = [
   { value: '',     label: 'Tudo' },
@@ -144,6 +145,7 @@ function CardHeader({ title, subtitle, right }: { title: string; subtitle?: stri
 export function Dashboard() {
   const [preset, setPreset] = usePresetFilter()
   const [openSec, toggleSec] = useOpenSections()
+  const [dark, toggleDark] = useDarkMode()
   const { data, isLoading, error } = useDashboard({ preset })
   const { data: etq } = useDashboardEtiquetas(preset)
   const { data: vendFunil } = useDashboardVendedorFunil(preset)
@@ -340,6 +342,15 @@ export function Dashboard() {
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          <button
+            type="button"
+            onClick={toggleDark}
+            title={dark ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md text-[12px] font-medium border bg-surface text-ink-muted border-border hover:text-ink hover:border-border-strong transition-colors"
+          >
+            {dark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+            {dark ? 'Tema claro' : 'Tema escuro'}
+          </button>
           <Link
             to="/orcamentos/montar"
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md bg-accent text-white text-[13px] font-bold hover:bg-accent/90 shadow-sm transition-all"

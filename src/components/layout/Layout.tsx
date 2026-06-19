@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { useAtendimentoKpis } from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
+import { useDarkMode } from '@/hooks/useDarkMode'
 import { RoadmapFAB } from '@/components/RoadmapFAB'
 import { GenerationOverlay } from '@/components/GenerationOverlay'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -115,34 +116,9 @@ const MOBILE_NAV: NavItem[] = [
   { to: '/contatos', label: 'Contatos', icon: Users },
 ]
 
-// MIGRACAO 2026-05-16: app virou dark-default. Usa key 'theme-v2' pra
-// IGNORAR 'theme: light' salvo antes (usuario nao escolheu light de fato,
-// era o default antigo). Quem clicar no toggle aqui pra frente vira 'v2'.
-function useDarkMode(): [boolean, () => void] {
-  const [dark, setDark] = useState(() => {
-    if (typeof window === 'undefined') return true
-    const saved = localStorage.getItem('theme-v2')
-    if (saved === 'dark') return true
-    if (saved === 'light') return false
-    // Sem preferencia v2: ignora 'theme' antigo, default dark
-    return true
-  })
-  useEffect(() => {
-    const root = document.documentElement
-    if (dark) {
-      root.classList.add('dark')
-      localStorage.setItem('theme-v2', 'dark')
-      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#0d0d11')
-    } else {
-      root.classList.remove('dark')
-      localStorage.setItem('theme-v2', 'light')
-      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#fafafb')
-    }
-    // Limpa key legada pra evitar confusao
-    try { localStorage.removeItem('theme') } catch {}
-  }, [dark])
-  return [dark, () => setDark(d => !d)]
-}
+// Tema dark/light: hook compartilhado em @/hooks/useDarkMode (também usado
+// pelo toggle do topo do Dashboard). App é dark-default; index.html aplica
+// a classe antes do React montar.
 
 function useCollapsed(): [boolean, () => void] {
   // Respeita SEMPRE a preferência do user salva no localStorage.
