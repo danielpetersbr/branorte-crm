@@ -310,6 +310,15 @@ export function Dashboard() {
   const sevRank: Record<string, number> = { critica: 0, alta: 1, media: 2 }
   const acoesTop = acoesDia.sort((a, b) => sevRank[a.sev] - sevRank[b.sev]).slice(0, 3)
 
+  // Distribuição atual por etapa (rosca) — a partir das etiquetas do WhatsApp.
+  const pieData = etq ? [
+    { nome: 'Novo', valor: etq.por_categoria.novo ?? 0, cor: COLORS.info },
+    { nome: 'Em negociação', valor: (etq.por_categoria.quente ?? 0) + (etq.por_categoria.lead_quente ?? 0), cor: COLORS.warn },
+    { nome: 'Orçamento', valor: etq.por_categoria.orcamento ?? 0, cor: 'hsl(280 65% 55%)' },
+    { nome: 'Vendido', valor: etq.por_categoria.vendido ?? 0, cor: COLORS.accent },
+    { nome: 'Perdido', valor: etq.por_categoria.perdido ?? 0, cor: COLORS.danger },
+  ].filter(d => d.valor > 0) : []
+
   // Abre a seção (se fechada) e rola até o card relevante.
   const irParaSecao = (key: string, anchor: string) => {
     if (!openSec[key]) toggleSec(key)
@@ -388,6 +397,86 @@ export function Dashboard() {
           {heroKpis.map(k => (
             <KpiHero key={k.label} {...k} showDelta={showDelta} />
           ))}
+        </div>
+
+        {/* MINI-GRÁFICOS — funil (onde vaza) · tendência · onde estão os leads */}
+        <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3">
+          {/* Funil */}
+          <div className="rounded-lg border border-border/60 bg-surface p-3">
+            <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-2.5">Funil — onde vaza</div>
+            <div className="space-y-2">
+              {funilCanonico.map((e, i) => (
+                <div key={e.etapa}>
+                  <div className="flex items-baseline justify-between text-[11px] mb-0.5">
+                    <span className="text-ink-muted truncate pr-2">{e.etapa}</span>
+                    <span className="font-mono tabular-nums text-ink shrink-0">
+                      {fmtN(e.valor)}{i > 0 && <span className="text-ink-faint"> · {Math.round(e.pctTopo)}%</span>}
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full bg-surface-2 overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{ width: `${Math.max(e.pctTopo, 2)}%`, background: i === 4 ? COLORS.accent : i === 3 ? 'hsl(280 65% 55%)' : COLORS.info }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Tendência */}
+          <div className="rounded-lg border border-border/60 bg-surface p-3">
+            <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-1.5">Leads por dia (30d)</div>
+            <div className="h-[132px]">
+              {data.leadsPorDia.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={data.leadsPorDia} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="gEss1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={COLORS.info} stopOpacity={0.4} /><stop offset="100%" stopColor={COLORS.info} stopOpacity={0.02} /></linearGradient>
+                      <linearGradient id="gEss2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={COLORS.accent} stopOpacity={0.5} /><stop offset="100%" stopColor={COLORS.accent} stopOpacity={0.02} /></linearGradient>
+                    </defs>
+                    <Tooltip
+                      contentStyle={{ background: 'hsl(var(--surface))', border: `1px solid ${COLORS.border}`, borderRadius: 6, fontSize: 11 }}
+                      formatter={((v: number, n: string) => [fmtN(v), n === 'total' ? 'Total' : 'Qualif.']) as never}
+                      labelFormatter={((l: string) => new Date(l + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })) as never}
+                    />
+                    <Area type="monotone" dataKey="total" stroke={COLORS.info} strokeWidth={2} fill="url(#gEss1)" />
+                    <Area type="monotone" dataKey="qualificados" stroke={COLORS.accent} strokeWidth={2} fill="url(#gEss2)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : <div className="h-full grid place-items-center text-[11px] text-ink-faint">Sem dados</div>}
+            </div>
+          </div>
+
+          {/* Onde estão (rosca) */}
+          <div className="rounded-lg border border-border/60 bg-surface p-3">
+            <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-1.5">Onde estão (etiqueta)</div>
+            {pieData.length > 0 ? (
+              <div className="flex items-center gap-3">
+                <div className="h-[120px] w-[120px] shrink-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={pieData} dataKey="valor" nameKey="nome" innerRadius={32} outerRadius={56} paddingAngle={2} stroke="none">
+                        {pieData.map((d, i) => <Cell key={i} fill={d.cor} />)}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{ background: 'hsl(var(--surface))', border: `1px solid ${COLORS.border}`, borderRadius: 6, fontSize: 11 }}
+                        formatter={((v: number, n: string) => [fmtN(v), n]) as never}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <ul className="flex-1 space-y-1 text-[11px]">
+                  {pieData.map(d => (
+                    <li key={d.nome} className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-1.5 text-ink-muted"><span className="h-2 w-2 rounded-full shrink-0" style={{ background: d.cor }} />{d.nome}</span>
+                      <span className="font-mono tabular-nums text-ink">{fmtN(d.valor)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : <div className="h-[120px] grid place-items-center text-[11px] text-ink-faint">Sem etiquetas no período</div>}
+          </div>
         </div>
 
         {acoesTop.length > 0 && (
