@@ -282,6 +282,40 @@ export function Dashboard() {
     { label: 'Conversão',     kpi: { valor: taxaConv, deltaPct: 0, sparkline: [] }, icon: TrendingUp, color: COLORS.info, sub: 'lead → vendido', suffix: '%' },
   ]
 
+  // ⚡ AÇÃO DO DIA — pega tudo que já temos, prioriza por urgência e vira 1-3 frases clicáveis.
+  const semEtqTotal = (vendFunil ?? []).reduce((s, v) => s + v.sem_etiqueta, 0)
+  const pioresRastreio = [...(vendFunil ?? [])]
+    .filter(v => v.sem_etiqueta >= 8)
+    .sort((a, b) => b.sem_etiqueta - a.sem_etiqueta)
+    .slice(0, 2)
+    .map(v => v.vendedor)
+  const acoesDia: { sev: 'critica' | 'alta' | 'media'; texto: string; key: string; anchor: string }[] = []
+  if (data.leadsEmRisco.length > 0) {
+    const n = data.leadsEmRisco.length
+    acoesDia.push({ sev: 'critica', texto: `${n} lead${n > 1 ? 's' : ''} quente${n > 1 ? 's' : ''} sumiram (+24h sem resposta) — ligar antes de esfriar`, key: 'g4', anchor: 'leads-resgatar' })
+  }
+  if (semEtqTotal >= 20) {
+    acoesDia.push({ sev: 'alta', texto: `${fmtN(semEtqTotal)} leads sem etiqueta = invisíveis no funil${pioresRastreio.length ? ` — cobrar rastreio de ${pioresRastreio.join(' e ')}` : ''}`, key: 'g4', anchor: 'vendedores-funil' })
+  }
+  if (etq && etq.sem_orc_vendedores.length > 0) {
+    const vs = etq.sem_orc_vendedores.slice(0, 3)
+    acoesDia.push({ sev: 'alta', texto: `${vs.join(', ')} ${etq.sem_orc_vendedores.length > 1 ? 'têm' : 'tem'} leads e zero orçamento enviado`, key: 'g4', anchor: 'vendedores' })
+  }
+  if (etq && etq.alertas.leads_orfaos > 0) {
+    acoesDia.push({ sev: 'media', texto: `${etq.alertas.leads_orfaos} leads órfãos parados +7 dias no começo do funil`, key: 'g4', anchor: 'leads-orfaos' })
+  }
+  if (etq && etq.alertas.criativos_nao_fabricamos > 0) {
+    acoesDia.push({ sev: 'media', texto: `${etq.alertas.criativos_nao_fabricamos} criativo(s) trazendo lead que a Branorte não fabrica — revisar verba`, key: 'g3', anchor: 'criativo-veredito' })
+  }
+  const sevRank: Record<string, number> = { critica: 0, alta: 1, media: 2 }
+  const acoesTop = acoesDia.sort((a, b) => sevRank[a.sev] - sevRank[b.sev]).slice(0, 3)
+
+  // Abre a seção (se fechada) e rola até o card relevante.
+  const irParaSecao = (key: string, anchor: string) => {
+    if (!openSec[key]) toggleSec(key)
+    setTimeout(() => document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80)
+  }
+
   return (
     <div className="p-3 lg:p-6 space-y-3 lg:space-y-5 max-w-[1700px]">
       {/* Header + filtros */}
@@ -355,6 +389,30 @@ export function Dashboard() {
             <KpiHero key={k.label} {...k} showDelta={showDelta} />
           ))}
         </div>
+
+        {acoesTop.length > 0 && (
+          <div className="mt-4 pt-3 border-t border-border/60">
+            <span className="text-[11px] font-bold uppercase tracking-widest text-ink-faint">⚡ Ação do dia</span>
+            <ul className="mt-2 space-y-1.5">
+              {acoesTop.map((a, i) => {
+                const dot = a.sev === 'critica' ? 'bg-danger' : a.sev === 'alta' ? 'bg-warning' : 'bg-info'
+                return (
+                  <li key={i}>
+                    <button
+                      type="button"
+                      onClick={() => irParaSecao(a.key, a.anchor)}
+                      className={`w-full flex items-start gap-2 text-left text-[13px] group transition-colors ${i === 0 ? 'font-semibold text-ink' : 'text-ink-muted'} hover:text-accent`}
+                    >
+                      <span className={`mt-[7px] h-1.5 w-1.5 rounded-full shrink-0 ${dot}`} />
+                      <span className="flex-1">{a.texto}</span>
+                      <ChevronRight className="h-3.5 w-3.5 mt-0.5 text-ink-faint group-hover:text-accent group-hover:translate-x-0.5 transition-all shrink-0" />
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )}
       </Card>
 
       {/* ════════ GRUPO 1 · VISÃO GERAL ════════ */}
