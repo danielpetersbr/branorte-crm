@@ -84,6 +84,12 @@ interface CarrinhoItem {
    *  seguem valendo pra item de motor ÚNICO (motorIndex undefined). */
   motores_por_conta_idx?: number[]
   motores_removidos_idx?: number[]
+  /** Override MANUAL de "motor incluso" (vendedor marcou no modal Trocar Motor).
+   *  Zera o valor do motor e mostra "incluso", mesmo quando a auto-detecção por spec
+   *  não pegou. motor_incluso_manual = item de motor único; motores_incluso_idx = por
+   *  motorIndex (multi-motor). */
+  motor_incluso_manual?: boolean
+  motores_incluso_idx?: number[]
   /** ID em precos_branorte (quando item veio de lá). Usado pra recalcular valor ao trocar voltagem. */
   preco_branorte_id?: number | null
   /** Snapshot dos motores extras do item de catálogo (multi-motor, ex: misturador c/ aquecimento).
@@ -233,8 +239,11 @@ function agruparMotores(
     // (motor único / legados). motorIndex undefined = item de motor único.
     const removidosIdx = it.motores_removidos_idx ?? []
     const porContaIdx = it.motores_por_conta_idx ?? []
+    const inclusoManualIdx = it.motores_incluso_idx ?? []
     const isRemovido = (idx?: number) => motorRemovido || (idx != null && removidosIdx.includes(idx))
     const isPorConta = (idx?: number) => !!it.motor_por_conta_cliente || (idx != null && porContaIdx.includes(idx))
+    // Override manual de "incluso" feito pelo vendedor no modal Trocar Motor.
+    const isInclusoManual = (idx?: number) => !!it.motor_incluso_manual || (idx != null && inclusoManualIdx.includes(idx))
 
     // ── MOTORES EXTRAS (multi-motor, ex: misturador c/ aquecimento) ──
     // Aparecem como linha SEPARADA na tabela MOTORES TRIFÁSICOS, com o
@@ -251,9 +260,10 @@ function agruparMotores(
           ? acharMotorCompativel(motores, Number(me.cv), me.polos, voltagemEfetiva, voltagemEfetiva === 'monofasico')
           : null
         const valorUnitExtraBruto = motorMatch ? Number(motorMatch.valor) : 0
-        // Removido ou por conta do cliente zera o valor mas mantém a linha (flag),
-        // pra vendedor restaurar via botão na própria linha.
-        const valorUnitExtra = (meRemovido || mePorConta) ? 0 : valorUnitExtraBruto
+        const meInclusoManual = isInclusoManual(meIdx)
+        // Removido / por conta do cliente / marcado incluso zera o valor mas mantém a
+        // linha (flag), pra vendedor restaurar via botão na própria linha.
+        const valorUnitExtra = (meRemovido || mePorConta || meInclusoManual) ? 0 : valorUnitExtraBruto
         const qtdExtra = (me.qtd || 1) * it.qtd
         // Expande em N linhas (1 por motor) em vez de 1 linha com (×N)
         for (let i = 0; i < qtdExtra; i++) {
@@ -267,7 +277,7 @@ function agruparMotores(
             item_uid: it.uid,
             motorIndex: meIdx,
             por_conta_cliente: mePorConta,
-            incluso_real: false,
+            incluso_real: meInclusoManual,
             removido: meRemovido,
           })
         }
@@ -289,6 +299,11 @@ function agruparMotores(
     const specMotor = it.specs?.find(s => /acionamento|motorredutor/i.test(s)) ?? ''
     const multiMatch = specMotor.match(/(\d+(?:[.,]\d+)?)\s*CV[^.]{0,80}?(\d+(?:[.,]\d+)?)\s*CV/i)
     const eMotorredutor = /motorredutor|moto\s*redutor/i.test(specMotor)
+    // PRE_LIMPEZA tem motor DIRETO incluso (spec "X CV e Y CV (incluso)", sem a palavra
+    // "motorredutor"). Sem isto o "(incluso)" era ignorado e os 2 motores eram cobrados.
+    // Restrito a essa categoria pra NÃO zerar moinho/triturador (avulso) que tem "(incluso)"
+    // perdido na spec.
+    const inclusoDireto = it.categoria === 'PRE_LIMPEZA'
     const eInclusoSpec = /\(\s*inclus[oa]s?\.?\s*\)/i.test(specMotor)
     // CV mencionado como incluso no spec (1º CV do match). Se motor REAL (it.motor_cv)
     // é diferente, NAO trata como incluso — é outro motor avulso.
@@ -305,7 +320,7 @@ function agruparMotores(
     // Issue #23: motor removido também zera o valor (item segue, motor sai do total)
     const valorMotor = (porContaCliente || motorRemovido)
       ? 0
-      : ((eMotorredutor && eIncluso) ? 0 : it.motor_valor_unit)
+      : (((eIncluso && (eMotorredutor || inclusoDireto)) || isInclusoManual()) ? 0 : it.motor_valor_unit)
 
     if (multiMatch) {
       const cv1 = parseFloat(multiMatch[1].replace(',', '.'))
@@ -317,13 +332,13 @@ function agruparMotores(
       const voltagemEfetiva: Voltagem = it.usa_inversor ? 'trifasico' : voltagem
       const motor1Cat = motores ? acharMotorCompativel(motores, cv1, motorPolos, voltagemEfetiva, voltagemEfetiva === 'monofasico') : null
       const motor2Cat = motores ? acharMotorCompativel(motores, cv2, motorPolos, voltagemEfetiva, voltagemEfetiva === 'monofasico') : null
-      const tratarComoIncluso = eMotorredutor && eIncluso
+      const tratarComoIncluso = eIncluso && (eMotorredutor || inclusoDireto)
       // Preço base de cada CV; zera POR motorIndex (0/1) conforme por-conta/removido,
       // pra marcar/remover UM motor não zerar o outro.
       const baseCv1 = tratarComoIncluso ? 0 : (motor1Cat ? Number(motor1Cat.valor) : it.motor_valor_unit)
       const baseCv2 = tratarComoIncluso ? 0 : (motor2Cat ? Number(motor2Cat.valor) : 0)
-      const valorCv1 = (isPorConta(0) || isRemovido(0)) ? 0 : baseCv1
-      const valorCv2 = (isPorConta(1) || isRemovido(1)) ? 0 : baseCv2
+      const valorCv1 = (isPorConta(0) || isRemovido(0) || isInclusoManual(0)) ? 0 : baseCv1
+      const valorCv2 = (isPorConta(1) || isRemovido(1) || isInclusoManual(1)) ? 0 : baseCv2
       // Bug: se o item TEM motores_extras_snapshot, o 2º motor já entra pelo bloco de
       // motores extras acima. Emitir o cv2 do spec aqui ALÉM disso conta o secundário
       // 2x na tabela e no total. Quando há extras, emite só o principal (cv1).
@@ -335,7 +350,7 @@ function agruparMotores(
           valor_unit: valorCv1, valor_total: valorCv1,
           item_nome: nomeItem, item_uid: it.uid, motorIndex: 0,
           por_conta_cliente: isPorConta(0),
-          incluso_real: tratarComoIncluso,
+          incluso_real: tratarComoIncluso || isInclusoManual(0),
           removido: isRemovido(0),
         })
         if (!temMotoresExtras) {
@@ -344,7 +359,7 @@ function agruparMotores(
             valor_unit: valorCv2, valor_total: valorCv2,
             item_nome: nomeItem, item_uid: it.uid, motorIndex: 1,
             por_conta_cliente: isPorConta(1),
-            incluso_real: tratarComoIncluso,
+            incluso_real: tratarComoIncluso || isInclusoManual(1),
             removido: isRemovido(1),
           })
         }
@@ -354,7 +369,7 @@ function agruparMotores(
       // (vendedor pediu pra ver "7,5 CV motorredutor" listado N vezes em vez de "(×2)")
       // Bug #25: marca incluso_real só quando spec literal diz "(incluso)" + é motorredutor.
       // Motor com valor=0 por OUTRO motivo (sem match no catálogo) NÃO é incluso → UI mostra warning.
-      const inclusoReal = eMotorredutor && eIncluso
+      const inclusoReal = (eIncluso && (eMotorredutor || inclusoDireto)) || isInclusoManual()
       for (let i = 0; i < qtdMotor; i++) {
         linhas.push({
           cv: it.motor_cv, polos: motorPolos, qtd: 1,
@@ -1519,6 +1534,20 @@ export function OrcamentoMontar() {
     }))
   }
 
+  // Marca/desmarca o motor de um item como INCLUSO no preço do equipamento — não cobra à
+  // parte, mostra "incluso". Override manual pra quando a auto-detecção por spec não pegou.
+  function marcarMotorIncluso(itemUid: string, isIncluso: boolean, motorIndex?: number) {
+    setCarrinho(c => c.map(it => {
+      if (it.uid !== itemUid) return it
+      if (motorIndex == null) return { ...it, motor_incluso_manual: isIncluso }
+      const cur = it.motores_incluso_idx ?? []
+      const next = isIncluso
+        ? Array.from(new Set([...cur, motorIndex]))
+        : cur.filter(i => i !== motorIndex)
+      return { ...it, motores_incluso_idx: next }
+    }))
+  }
+
   // Issue #23: REMOVE o motor de um item. Cliente não quer motor — Branorte vende só o
   // equipamento. Quando o motor estava INCLUSO no preço (precos_branorte com
   // valor_com_motor_trif/mono), recalcula o valor pro valor_equipamento (sem motor).
@@ -1835,6 +1864,8 @@ export function OrcamentoMontar() {
           motores_extras_snapshot: itAny.motores_extras_snapshot ?? undefined,
           motores_por_conta_idx: itAny.motores_por_conta_idx ?? undefined,
           motores_removidos_idx: itAny.motores_removidos_idx ?? undefined,
+          motor_incluso_manual: !!itAny.motor_incluso_manual,
+          motores_incluso_idx: itAny.motores_incluso_idx ?? undefined,
         })
         return
       }
@@ -2624,6 +2655,7 @@ export function OrcamentoMontar() {
                 motoresDisponiveis={motores ?? []}
                 onTrocarMotor={trocarMotorDoItem}
                 onMotorPorContaCliente={marcarMotorPorContaCliente}
+                onMotorIncluso={marcarMotorIncluso}
                 onRemoverMotor={removerMotorDoItem}
                 onRestaurarMotor={restaurarMotorDoItem}
                 vendedoresContato={vendedoresContato}
@@ -2764,6 +2796,8 @@ export function OrcamentoMontar() {
             motores_extras_snapshot: c.motores_extras_snapshot,
             motores_por_conta_idx: c.motores_por_conta_idx,
             motores_removidos_idx: c.motores_removidos_idx,
+            motor_incluso_manual: c.motor_incluso_manual,
+            motores_incluso_idx: c.motores_incluso_idx,
           })),
           motoresAgrupados,
           acessorios: acessorios ? { pct: acessorios.pct, items: acessorios.items, valor: valorAcessorios } : null,

@@ -192,6 +192,9 @@ export interface OrcamentoPreviewProps {
   onTrocarMotor?: (itemUid: string, novoMotor: MotorCatalogoOption, motorIndex?: number) => void
   // Marca motor como "por conta do cliente" (não cobra, mostra texto). Toggle: passar isPorConta=true ativa.
   onMotorPorContaCliente?: (itemUid: string, isPorConta: boolean, motorIndex?: number) => void
+  // Marca motor como INCLUSO no preço do equipamento (não cobra à parte, mostra "incluso").
+  // Override manual pra quando a auto-detecção por spec não pegou. Toggle: isIncluso=true ativa.
+  onMotorIncluso?: (itemUid: string, isIncluso: boolean, motorIndex?: number) => void
   // Issue #23: remove motor do item (cliente não quer). Subtrai valor_motor do total;
   // se incluso no preço, recalcula valor_equipamento. Restore: onRestaurarMotor.
   onRemoverMotor?: (itemUid: string, motorIndex?: number) => void
@@ -327,7 +330,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onUpdateValor, onToggleInox, onToggleTungstenio, onUpdateQtd, onUpdateTerm, onMoverItem, onTrocarItem, onToggleBrinde, onTogglePorConta,
     componentesExtras = [], onUpdateComponentesExtras, componentesAdicionaisCatalogo = [],
     parcelas, onUpdateParcelas,
-    motoresDisponiveis, onTrocarMotor, onMotorPorContaCliente,
+    motoresDisponiveis, onTrocarMotor, onMotorPorContaCliente, onMotorIncluso,
     onRemoverMotor, onRestaurarMotor,
     vendedoresContato, vendedorResponsavelNome,
     onEditCliente,
@@ -1423,6 +1426,24 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                         title="Motor comprado pelo cliente — sai da cobrança da Branorte"
                                       >
                                         {porContaCliente ? '↩ Reverter (Branorte volta a cobrar motor)' : '💵 Marcar como POR CONTA DO CLIENTE'}
+                                      </button>
+                                    )}
+                                    {/* Marcar como INCLUSO (motor já vai no preço do equipamento) */}
+                                    {onMotorIncluso && m.item_uid && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          onMotorIncluso(m.item_uid!, !incluso, m.motorIndex)
+                                          setTrocarMotorIdx(null)
+                                        }}
+                                        className={`mt-2 w-full px-2 py-1.5 rounded text-[11px] border transition-colors ${
+                                          incluso
+                                            ? 'bg-gray-50 border-gray-300 text-gray-700 hover:bg-gray-100'
+                                            : 'bg-white border-emerald-300 text-emerald-700 hover:bg-emerald-50'
+                                        }`}
+                                        title="Motor já vai no preço do equipamento — não cobra à parte, mostra 'incluso'."
+                                      >
+                                        {incluso ? '↩ Reverter (cobrar motor à parte)' : '✅ Marcar como INCLUSO (não cobrar)'}
                                       </button>
                                     )}
                                     {/* Issue #23: REMOVER motor (cliente não quer motor algum) */}
