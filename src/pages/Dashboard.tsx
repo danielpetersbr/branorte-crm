@@ -12,7 +12,7 @@ import { useVendedorCobertura, type VendedorCobertura } from '@/hooks/useVendedo
 import { useMotivosPorFonte, MOTIVO_LABELS, type MotivoFonte, type MotivoKey } from '@/hooks/useMotivosPorFonte'
 import { useNegociacaoPorUf } from '@/hooks/useNegociacaoPorUf'
 import {
-  Area, AreaChart, Cell, Pie, PieChart,
+  Area, AreaChart, Cell, Pie, PieChart, XAxis,
   ResponsiveContainer, Tooltip,
 } from 'recharts'
 import { Flame, TrendingUp, Users, CheckCircle2, ArrowDown, ArrowUp, Hand, FilePlus2, AlertTriangle, Clock, Ghost, Banknote, ChevronRight, Sun, Moon } from 'lucide-react'
@@ -383,6 +383,27 @@ export function Dashboard() {
         </div>
       </div>
 
+      {/* ════════ GRÁFICOS DO DIA — no início da página (pedido do gerente) ════════ */}
+      {extra && (
+        <Card>
+          <div className="flex items-baseline justify-between mb-3 gap-2 flex-wrap">
+            <h2 className="text-[14px] font-bold text-ink tracking-tight">📊 Gráficos do dia</h2>
+            <span className="text-[11px] text-ink-faint">funil · orçamentos, avaliação, quem atrai · hoje, aberto e negociação</span>
+          </div>
+          <div className="mb-3">
+            <FunilDeVenda etapas={funilCanonico} />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <OrcamentosPorDiaChart data={extra.orcamentos_por_dia} />
+            <AvaliacaoCliente data={extra.avaliacao} />
+            <Top3em1 origem={positivo.escalar} criativo={positivo.criativo} vendFunil={vendFunil ?? []} />
+            <AtendimentosHojeCard data={extra.atendimentos} />
+            <AbertoCard data={extra.aberto} onIr={() => irParaSecao('g4', 'vendedores-funil')} />
+            <NegociacaoCard data={extra.negociacao} />
+          </div>
+        </Card>
+      )}
+
       {/* BANNER DE ALERTAS — só aparece se há algo crítico */}
       {etq && (etq.alertas.criativos_nao_fabricamos > 0 || etq.alertas.leads_orfaos > 0 || etq.alertas.vendedores_sem_orc > 0) && (
         <AlertasBanner etq={etq} />
@@ -448,6 +469,7 @@ export function Dashboard() {
                       <linearGradient id="gEss1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={COLORS.info} stopOpacity={0.4} /><stop offset="100%" stopColor={COLORS.info} stopOpacity={0.02} /></linearGradient>
                       <linearGradient id="gEss2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={COLORS.accent} stopOpacity={0.5} /><stop offset="100%" stopColor={COLORS.accent} stopOpacity={0.02} /></linearGradient>
                     </defs>
+                    <XAxis dataKey="dia" hide />
                     <Tooltip
                       contentStyle={{ background: 'hsl(var(--surface))', border: `1px solid ${COLORS.border}`, borderRadius: 6, fontSize: 11 }}
                       formatter={((v: number, n: string) => [fmtN(v), n === 'total' ? 'Total' : 'Qualif.']) as never}
@@ -517,24 +539,6 @@ export function Dashboard() {
         )}
       </Card>
 
-      {/* ════════ GRÁFICOS DO DIA — sempre visível, logo abaixo do essencial ════════ */}
-      {extra && (
-        <Card>
-          <div className="flex items-baseline justify-between mb-3 gap-2 flex-wrap">
-            <h2 className="text-[14px] font-bold text-ink tracking-tight">📊 Gráficos do dia</h2>
-            <span className="text-[11px] text-ink-faint">orçamentos, avaliação, quem atrai · hoje, aberto e negociação</span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            <OrcamentosPorDiaChart data={extra.orcamentos_por_dia} />
-            <AvaliacaoCliente data={extra.avaliacao} />
-            <Top3em1 origem={positivo.escalar} criativo={positivo.criativo} vendFunil={vendFunil ?? []} />
-            <AtendimentosHojeCard data={extra.atendimentos} />
-            <AbertoCard data={extra.aberto} onIr={() => irParaSecao('g4', 'vendedores-funil')} />
-            <NegociacaoCard data={extra.negociacao} />
-          </div>
-        </Card>
-      )}
-
       {/* ════════ GRUPO 1 · VISÃO GERAL ════════ */}
       <CollapsibleSection n="1" titulo="Visão geral" pergunta="Propostas e tendência no detalhe" open={openSec.g1} onToggle={() => toggleSec('g1')}>
 
@@ -579,6 +583,7 @@ export function Dashboard() {
                   <stop offset="100%" stopColor={COLORS.accent} stopOpacity={0.02} />
                 </linearGradient>
               </defs>
+              <XAxis dataKey="dia" hide />
               <Tooltip
                 contentStyle={{ background: 'hsl(var(--surface))', border: `1px solid ${COLORS.border}`, borderRadius: 6, fontSize: 12 }}
                 formatter={((v: number, n: string) => [fmtN(v), n === 'total' ? 'Total' : 'Qualificados']) as never}
@@ -1706,6 +1711,7 @@ function OrcamentosPorDiaChart({ data }: { data: { dia: string; total: number }[
                   <stop offset="100%" stopColor={ROXO} stopOpacity={0.02} />
                 </linearGradient>
               </defs>
+              <XAxis dataKey="dia" hide />
               <Tooltip
                 cursor={{ stroke: ROXO, strokeOpacity: 0.3 }}
                 contentStyle={{ background: 'hsl(var(--surface))', border: '1px solid ' + COLORS.border, borderRadius: 6, fontSize: 11 }}
@@ -1831,7 +1837,12 @@ function AtendimentosHojeCard({ data }: { data: { hoje: number; ontem: number } 
 
 // Atendimentos abertos (Prospecção + Novo Lead + Follow Up) — clica e abre a seção do funil por vendedor.
 function AbertoCard({ data, onIr }: { data: DashboardExtra['aberto']; onIr: () => void }) {
-  const subs: [string, number][] = [['Prospecção', data.prospeccao], ['Novo lead', data.novo_lead], ['Follow up', data.follow_up]]
+  const subs: [string, number, string][] = [
+    ['Prospecção', data.prospeccao, 'text-ink'],
+    ['Novo lead', data.novo_lead, 'text-info'],
+    ['Follow up', data.follow_up, 'text-warning'],
+    ['Lead quente', data.lead_quente, 'text-danger'],
+  ]
   return (
     <button type="button" onClick={onIr} className="text-left rounded-lg border border-border/60 bg-surface p-3 hover:border-accent/40 transition-colors">
       <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-2">Atendimentos abertos</div>
@@ -1839,10 +1850,10 @@ function AbertoCard({ data, onIr }: { data: DashboardExtra['aberto']; onIr: () =
         <span className="font-mono tabular-nums text-4xl font-bold leading-none text-ink">{fmtN(data.total)}</span>
         <span className="text-[11px] text-ink-faint">no funil, sem fechar</span>
       </div>
-      <div className="mt-2.5 grid grid-cols-3 gap-1.5 text-center">
-        {subs.map(([l, n]) => (
+      <div className="mt-2.5 grid grid-cols-2 gap-1.5 text-center">
+        {subs.map(([l, n, cor]) => (
           <div key={l} className="rounded bg-surface-2 py-1">
-            <div className="font-mono tabular-nums text-ink text-sm">{fmtN(n)}</div>
+            <div className={`font-mono tabular-nums text-sm ${cor}`}>{fmtN(n as number)}</div>
             <div className="text-[9px] uppercase tracking-wide text-ink-faint">{l}</div>
           </div>
         ))}
@@ -1857,14 +1868,73 @@ function NegociacaoCard({ data }: { data: DashboardExtra['negociacao'] }) {
     <div className="rounded-lg border border-border/60 bg-surface p-3">
       <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-2">Em negociação · previsão</div>
       <div className="flex items-baseline gap-2">
-        <span className="font-mono tabular-nums text-2xl font-bold leading-none" style={{ color: COLORS.warn }}>{fmtBRL(data.valor_follow)}</span>
+        <span className="font-mono tabular-nums text-2xl font-bold leading-none" style={{ color: COLORS.warn }}>{fmtBRL(data.valor)}</span>
         <span className="text-[11px] text-ink-faint">previsto</span>
       </div>
-      <div className="text-[11px] text-ink-faint mt-0.5">soma dos orçamentos de quem está em follow up</div>
-      <div className="mt-2.5 flex items-center gap-3 text-[12px]">
-        <span className="text-ink"><span className="font-mono tabular-nums font-semibold">{fmtN(data.follow_up)}</span> <span className="text-ink-faint">em follow up</span></span>
+      <div className="text-[11px] text-ink-faint mt-0.5">soma dos orçamentos de quem está em follow up + lead quente</div>
+      <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
+        <span className="text-ink"><span className="font-mono tabular-nums font-semibold">{fmtN(data.em_negociacao)}</span> <span className="text-ink-faint">em negociação</span></span>
+        <span className="text-ink-faint">·</span>
+        <span className="text-warning"><span className="font-mono tabular-nums font-semibold">{fmtN(data.follow_up)}</span> <span className="text-ink-faint">follow up</span></span>
+        <span className="text-danger"><span className="font-mono tabular-nums font-semibold">{fmtN(data.lead_quente)}</span> <span className="text-ink-faint">quente</span></span>
         <span className="text-ink-faint">·</span>
         <span className="text-ink"><span className="font-mono tabular-nums font-semibold">{fmtN(data.com_orcamento)}</span> <span className="text-ink-faint">com orçamento</span></span>
+      </div>
+    </div>
+  )
+}
+
+// Funil de venda DE VERDADE (trapézio que estreita) + os vazamentos ao lado.
+function FunilDeVenda({ etapas }: { etapas: FunilEtapa[] }) {
+  if (!etapas.length) return null
+  const CORES = ['hsl(217 91% 60%)', 'hsl(217 78% 52%)', 'hsl(152 60% 42%)', 'hsl(280 65% 55%)', 'hsl(152 55% 32%)']
+  const transicoes = etapas.slice(1).map((e, i) => ({
+    de: etapas[i].etapa, para: e.etapa,
+    perdidos: e.perdidos,
+    pctPerda: etapas[i].valor > 0 ? Math.round((e.perdidos / etapas[i].valor) * 100) : 0,
+  }))
+  const piorIdx = transicoes.reduce((mi, t, i, a) => (t.perdidos > a[mi].perdidos ? i : mi), 0)
+  const pior = transicoes[piorIdx]
+  return (
+    <div className="rounded-lg border border-border/60 bg-surface p-3">
+      <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-3">Funil de venda · onde vaza</div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Funil visual (estreitando) */}
+        <div className="flex flex-col items-center gap-1">
+          {etapas.map((e, i) => {
+            const w = Math.max(e.pctTopo, 9)
+            return (
+              <div key={e.etapa} className="w-full flex flex-col items-center">
+                <div className="rounded-md text-white text-center py-2 px-2 shadow-sm transition-all" style={{ width: `${w}%`, background: CORES[i] ?? CORES[CORES.length - 1] }}>
+                  <div className="text-[11px] font-semibold leading-tight opacity-95 truncate">{e.etapa}</div>
+                  <div className="text-[13px] font-mono font-bold tabular-nums leading-tight">{fmtN(e.valor)}<span className="opacity-80 text-[10px] font-normal"> · {Math.round(e.pctTopo)}%</span></div>
+                </div>
+                {i < etapas.length - 1 && <div className="text-[10px] leading-none text-ink-faint py-0.5">▼</div>}
+              </div>
+            )
+          })}
+        </div>
+        {/* Vazamentos ao lado */}
+        <div>
+          <div className="text-[11px] text-ink-faint mb-2">Quanto some entre cada etapa — o vazamento:</div>
+          <div className="space-y-1.5">
+            {transicoes.map((t, i) => {
+              const ehPior = i === piorIdx && t.perdidos > 0
+              return (
+                <div key={i} className={`flex items-center justify-between rounded-md px-2.5 py-1.5 ${ehPior ? 'bg-danger/10 border border-danger/30' : 'bg-surface-2'}`}>
+                  <div className="text-[12px] text-ink-muted truncate pr-2">{t.de} <span className="text-ink-faint">→</span> {t.para}</div>
+                  <div className="text-right shrink-0">
+                    <span className={`font-mono tabular-nums font-semibold ${ehPior ? 'text-danger' : 'text-warning'}`}>−{fmtN(t.perdidos)}</span>
+                    <span className="text-ink-faint text-[11px]"> ({t.pctPerda}%)</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {pior && pior.perdidos > 0 && (
+            <p className="text-[11px] text-danger mt-2 leading-snug">🩸 Maior vazamento: <strong>{pior.de} → {pior.para}</strong> — {pior.pctPerda}% somem aqui.</p>
+          )}
+        </div>
       </div>
     </div>
   )
