@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { GitBranch, Users, AlertCircle, Activity, Send, Copy, Check, Star } from 'lucide-react'
+import { GitBranch, Users, AlertCircle, Activity, Send, Copy, Check, Star, Tag } from 'lucide-react'
 import { EscritorioMapa } from '@/components/EscritorioMapa'
 import { AtividadeDiaria } from '@/pages/AtividadeDiaria'
 
@@ -167,6 +167,25 @@ export function Disparos() {
     onError: (err: any) => alert('Não foi possível alterar a avaliação do vendedor: ' + (err?.message || err)),
   })
 
+  // Toggle GLOBAL: auto-aplicar etiqueta PROSPECÇÃO quando cliente novo chega sem etiqueta.
+  const { data: prospecAtiva } = useQuery<boolean>({
+    queryKey: ['prospec-config'],
+    queryFn: async () => {
+      const { data } = await supabase.from('wa_avaliacao_config').select('auto_prospec_ativa').eq('id', 1).maybeSingle()
+      return data?.auto_prospec_ativa !== false
+    },
+    refetchInterval: 15000,
+  })
+  const toggleProspec = useMutation({
+    mutationFn: async (ativa: boolean) => {
+      const { error } = await supabase.from('wa_avaliacao_config')
+        .update({ auto_prospec_ativa: ativa, updated_at: new Date().toISOString() }).eq('id', 1)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['prospec-config'] }),
+    onError: (err: any) => alert('Não foi possível alterar o auto-prospecção: ' + (err?.message || err)),
+  })
+
   // Estado ao vivo por vendedor pro mapa do escritório (heartbeat + leads hoje)
   const liveMesas = useMemo(() => {
     const m: Record<string, { status: ReturnType<typeof statusVendedor>['status']; pingSec: number | null; versao: string | null; enviadosHoje: number; ultimoEnvio: string | null }> = {}
@@ -238,6 +257,27 @@ export function Disparos() {
               )
             })}
           </div>
+        </div>
+      </Card>
+
+      {/* TOGGLE: auto-etiqueta Prospecção */}
+      <Card className="p-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
+              <Tag className="h-4 w-4 text-accent" /> Etiqueta automática · Prospecção
+            </h2>
+            <p className="text-ink-muted text-xs mt-1 max-w-2xl">
+              Quando <b>ligado</b>, todo cliente que manda mensagem e está <b>sem nenhuma etiqueta</b> recebe a etiqueta <b>PROSPECÇÃO</b> sozinho (só conversas individuais, não grupos; cria a etiqueta se não existir). Pega clientes novos que chegam; os vendedores aplicam em ~30s.
+            </p>
+          </div>
+          <button
+            onClick={() => toggleProspec.mutate(!prospecAtiva)}
+            disabled={toggleProspec.isPending || prospecAtiva === undefined}
+            className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold border transition disabled:opacity-50 ${prospecAtiva === false ? 'bg-red-500/15 text-red-300 border-red-500/40' : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'}`}
+          >
+            {prospecAtiva === undefined ? '…' : prospecAtiva ? '🏷️ LIGADO' : '⛔ DESLIGADO'}
+          </button>
         </div>
       </Card>
 
