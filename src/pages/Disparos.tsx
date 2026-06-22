@@ -19,6 +19,7 @@ type Vendedor = {
   enviados_hoje: number
   enviados_ultima_hora: number
   ultimo_envio_em: string | null
+  avaliacao_ativa: boolean
 }
 
 export function Disparos() {
@@ -156,6 +157,16 @@ export function Disparos() {
     onError: (err: any) => alert('Não foi possível alterar o envio de avaliação: ' + (err?.message || err)),
   })
 
+  // Override POR VENDEDOR do envio de avaliação (efetivo = geral E este).
+  const toggleAvaliacaoVendedor = useMutation({
+    mutationFn: async ({ nome, ativa }: { nome: string; ativa: boolean }) => {
+      const { error } = await supabase.from('vendor_dispatch_status').update({ avaliacao_ativa: ativa }).eq('vendedor_nome', nome)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['vendor-dispatch-status'] }),
+    onError: (err: any) => alert('Não foi possível alterar a avaliação do vendedor: ' + (err?.message || err)),
+  })
+
   // Estado ao vivo por vendedor pro mapa do escritório (heartbeat + leads hoje)
   const liveMesas = useMemo(() => {
     const m: Record<string, { status: ReturnType<typeof statusVendedor>['status']; pingSec: number | null; versao: string | null; enviadosHoje: number; ultimoEnvio: string | null }> = {}
@@ -188,7 +199,7 @@ export function Disparos() {
         </p>
       </header>
 
-      {/* TOGGLE: envio de avaliação de atendimento (global, lido pela extensão) */}
+      {/* AVALIAÇÃO: geral (master) + por vendedor */}
       <Card className="p-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="min-w-0">
@@ -196,7 +207,7 @@ export function Disparos() {
               <Star className="h-4 w-4 text-accent" /> Avaliação de atendimento
             </h2>
             <p className="text-ink-muted text-xs mt-1 max-w-2xl">
-              Quando <b>ligado</b>, a extensão envia a pergunta de avaliação (nota 1 a 5) ao cliente no fim do atendimento — automático ao fechar e nos botões manuais. Vale pra equipe toda; os vendedores pegam a mudança em até ~30s.
+              A extensão pede a nota (1 a 5) ao cliente no fim do atendimento. <b>Geral</b> é a chave-mestra; abaixo você escolhe <b>vendedor por vendedor</b>. Efetivo = Geral <b>e</b> o vendedor ligado. Muda em ~30s.
             </p>
           </div>
           <button
@@ -204,8 +215,29 @@ export function Disparos() {
             disabled={toggleAvaliacao.isPending || avaliacaoAtiva === undefined}
             className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold border transition disabled:opacity-50 ${avaliacaoAtiva === false ? 'bg-red-500/15 text-red-300 border-red-500/40' : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'}`}
           >
-            {avaliacaoAtiva === undefined ? '…' : avaliacaoAtiva ? '⭐ Envio LIGADO' : '⛔ Envio DESLIGADO'}
+            {avaliacaoAtiva === undefined ? '…' : avaliacaoAtiva ? '⭐ Geral LIGADO' : '⛔ Geral DESLIGADO'}
           </button>
+        </div>
+        <div className={`mt-3 border-t border-border pt-3 ${avaliacaoAtiva === false ? 'opacity-60' : ''}`}>
+          <p className="text-ink-muted text-[11px] mb-2">
+            Por vendedor{avaliacaoAtiva === false && <span className="text-red-300"> — Geral desligado, ninguém envia; ligue o Geral acima pra valer</span>}:
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {(vendedores ?? []).map((v) => {
+              const on = v.avaliacao_ativa !== false
+              return (
+                <button
+                  key={v.vendedor_nome}
+                  onClick={() => toggleAvaliacaoVendedor.mutate({ nome: v.vendedor_nome, ativa: !on })}
+                  disabled={toggleAvaliacaoVendedor.isPending}
+                  title={on ? 'Envia avaliação — clique pra desligar' : 'Não envia — clique pra ligar'}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium border transition disabled:opacity-60 ${on ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' : 'bg-surface-2/40 text-ink-muted border-border'}`}
+                >
+                  {on ? '⭐' : '☆'} {v.vendedor_nome}
+                </button>
+              )
+            })}
+          </div>
         </div>
       </Card>
 
