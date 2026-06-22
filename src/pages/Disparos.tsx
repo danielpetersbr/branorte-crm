@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { GitBranch, Users, AlertCircle, Activity, Send, Copy, Check } from 'lucide-react'
+import { GitBranch, Users, AlertCircle, Activity, Send, Copy, Check, Star } from 'lucide-react'
 import { EscritorioMapa } from '@/components/EscritorioMapa'
 import { AtividadeDiaria } from '@/pages/AtividadeDiaria'
 
@@ -136,6 +136,26 @@ export function Disparos() {
     },
   })
 
+  // Toggle GLOBAL: envio de avaliação de atendimento pro cliente.
+  // A extensão lê essa flag via ext-version a cada ~30s e respeita nos 3 envios (auto + manuais).
+  const { data: avaliacaoAtiva } = useQuery<boolean>({
+    queryKey: ['avaliacao-config'],
+    queryFn: async () => {
+      const { data } = await supabase.from('wa_avaliacao_config').select('ativa').eq('id', 1).maybeSingle()
+      return data?.ativa !== false
+    },
+    refetchInterval: 15000,
+  })
+  const toggleAvaliacao = useMutation({
+    mutationFn: async (ativa: boolean) => {
+      const { error } = await supabase.from('wa_avaliacao_config')
+        .update({ ativa, updated_at: new Date().toISOString() }).eq('id', 1)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['avaliacao-config'] }),
+    onError: (err: any) => alert('Não foi possível alterar o envio de avaliação: ' + (err?.message || err)),
+  })
+
   // Estado ao vivo por vendedor pro mapa do escritório (heartbeat + leads hoje)
   const liveMesas = useMemo(() => {
     const m: Record<string, { status: ReturnType<typeof statusVendedor>['status']; pingSec: number | null; versao: string | null; enviadosHoje: number; ultimoEnvio: string | null }> = {}
@@ -167,6 +187,27 @@ export function Disparos() {
           Define qual vendedor atende cada lead que cai na central. Se o webhook do ReplyAgent mandar o campo <code className="text-accent">mensagem</code>, o WhatsApp do vendedor inicia o contato com o cliente automaticamente (via extensão Branorte).
         </p>
       </header>
+
+      {/* TOGGLE: envio de avaliação de atendimento (global, lido pela extensão) */}
+      <Card className="p-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
+              <Star className="h-4 w-4 text-accent" /> Avaliação de atendimento
+            </h2>
+            <p className="text-ink-muted text-xs mt-1 max-w-2xl">
+              Quando <b>ligado</b>, a extensão envia a pergunta de avaliação (nota 1 a 5) ao cliente no fim do atendimento — automático ao fechar e nos botões manuais. Vale pra equipe toda; os vendedores pegam a mudança em até ~30s.
+            </p>
+          </div>
+          <button
+            onClick={() => toggleAvaliacao.mutate(!avaliacaoAtiva)}
+            disabled={toggleAvaliacao.isPending || avaliacaoAtiva === undefined}
+            className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold border transition disabled:opacity-50 ${avaliacaoAtiva === false ? 'bg-red-500/15 text-red-300 border-red-500/40' : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'}`}
+          >
+            {avaliacaoAtiva === undefined ? '…' : avaliacaoAtiva ? '⭐ Envio LIGADO' : '⛔ Envio DESLIGADO'}
+          </button>
+        </div>
+      </Card>
 
       {/* PAINEL VENDEDORES */}
       <Card className="p-4">
