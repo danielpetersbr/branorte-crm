@@ -9,6 +9,7 @@ import {
   Table, TableRow, TableCell, WidthType, VerticalAlign,
   ImageRun, HeightRule, PageBreak,
 } from 'docx'
+import { OBS_POR_CONTA_DEFAULT } from '@/lib/orcamento-defaults'
 
 export interface CustomDocxItem {
   letra: string                 // A, B, C...
@@ -76,6 +77,8 @@ export interface GerarCustomDocxOpts {
   dataVenda?: string | null
   prazoEntrega?: string | null
   observacoes?: string | null
+  // Seção "Observação — por conta do cliente". null/ausente = default histórico.
+  obsPorConta?: string[] | null
   vendedorNome?: string
   fotoPrincipal?: string | null
   componentesExtras?: Array<{ nome: string; valor: number }>
@@ -1107,14 +1110,11 @@ function buildCaixaPostal(): Paragraph[] {
   ]
 }
 
-function buildObservacoesPorContaCliente(): Paragraph[] {
-  const items = [
-    'Painel elétrico',
-    'Montagem dos equipamentos orçados acima (se necessário)',
-    'Muck (se necessário)',
-    'Despesa com obras civil (se necessário)',
-    'Instalação elétrica dos equipamentos (se necessário)',
-  ]
+function buildObservacoesPorContaCliente(obsPorConta?: string[] | null): Paragraph[] {
+  // Array salvo (editado pelo vendedor) tem prioridade; senão usa o default.
+  const items = Array.isArray(obsPorConta) && obsPorConta.length > 0
+    ? obsPorConta
+    : OBS_POR_CONTA_DEFAULT
   return items.map(t => bullet(t, 17))
 }
 
@@ -1286,7 +1286,7 @@ export async function gerarOrcamentoCustomDocx(opts: GerarCustomDocxOpts): Promi
 
   // Observação por conta do cliente
   blocos.push(sectionHeader('Observação — por conta do cliente'))
-  blocos.push(...buildObservacoesPorContaCliente())
+  blocos.push(...buildObservacoesPorContaCliente(opts.obsPorConta))
 
   // Tributos
   blocos.push(sectionHeader('Tributos'))

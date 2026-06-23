@@ -476,6 +476,8 @@ export interface CriarOrcamentoInput {
   componentes_extras?: Array<{ id: string; nome: string; valor: number }> | null
   // Foto principal do orçamento (URL pública no Storage após upload)
   foto_principal_url?: string | null
+  // Seção "Observação — por conta do cliente" editável (null = default histórico)
+  obs_por_conta?: string[] | null
 }
 
 export function useCriarOrcamento() {
@@ -556,6 +558,7 @@ export function useCriarOrcamento() {
         prazo_entrega: input.prazo_entrega ?? null,
         status: input.status ?? 'rascunho',
         componentes_extras: input.componentes_extras ?? null,
+        obs_por_conta: input.obs_por_conta ?? null,
         foto_principal_url: input.foto_principal_url ?? null,
         numero_base: numero,
       }
@@ -672,6 +675,7 @@ export function useCriarAlteracao() {
         prazo_entrega: rest.prazo_entrega ?? null,
         status: rest.status ?? 'rascunho',
         componentes_extras: rest.componentes_extras ?? null,
+        obs_por_conta: rest.obs_por_conta ?? null,
         foto_principal_url: rest.foto_principal_url ?? null,
         parent_id,
         versao_alt: nextAlt,

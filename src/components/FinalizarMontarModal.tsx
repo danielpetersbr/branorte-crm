@@ -101,6 +101,8 @@ export interface CarrinhoSnapshot {
   }>
   // Componentes adicionais (não fabricados pela Branorte) — painel, balança, célula de carga…
   componentesExtras?: Array<{ id: string; nome: string; valor: number }>
+  // Seção "Observação — por conta do cliente" editável. null = default histórico.
+  obsPorConta?: string[] | null
 }
 
 interface Props {
@@ -750,6 +752,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         prazo_entrega: snapshot.termsInline?.prazoEntrega || prazoEntrega.trim() || null,
         parcelas: snapshot.parcelas?.length ? snapshot.parcelas : null,
         componentes_extras: snapshot.componentesExtras ?? null,
+        // null = cai no default histórico (5 linhas) na hora de renderizar
+        obs_por_conta: snapshot.obsPorConta ?? null,
         foto_principal_url: fotoPrincipalUrl,
         // Persistência (migration 2026-06-10): frete, desconto, tensão e marca dos
         // motores agora sobrevivem ao reabrir/editar (antes só viviam no rascunho local).
@@ -834,6 +838,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           freteTxt: snapshot.termsInline?.freteTxt ?? null,
         },
         observacoesExtra: observacoes.trim() || null,
+        obsPorConta: snapshot.obsPorConta ?? null,
         fotoPrincipal: snapshot.fotoPrincipal ?? null,
         // Edições inline da preview — mantém PDF/DOCX idênticos à preview
         tensaoMotores: snapshot.tensaoMotores ?? null,
@@ -895,6 +900,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           dataVenda: snapshot.termsInline?.dataVenda || (pgDataVenda ? formaPgOut.data_venda : null) || null,
           prazoEntrega: snapshot.termsInline?.prazoEntrega || prazoEntrega.trim() || null,
           observacoes: observacoes.trim() || null,
+          obsPorConta: snapshot.obsPorConta ?? null,
           vendedorNome: profile?.display_name || 'Vendedor',
           // Componentes adicionais (painel, frete, Difal): entram no totalProposta,
           // então PRECISAM aparecer no DOCX, senão o total não fecha com os itens.

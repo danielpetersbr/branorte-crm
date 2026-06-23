@@ -448,6 +448,9 @@ export function OrcamentoMontar() {
   // Componentes adicionais (NÃO fabricados pela Branorte) — painel elétrico, balança, célula de carga, etc.
   // Cada item: nome livre + valor R$. Vai pro totalGeral mas NÃO é "equipamento" nem "motor".
   const [componentesExtras, setComponentesExtras] = useState<ComponenteExtra[]>([])
+  // Seção "Observação — por conta do cliente" editável por orçamento.
+  // null = usa OBS_POR_CONTA_DEFAULT (5 linhas históricas) na preview/PDF/DOCX.
+  const [obsPorConta, setObsPorConta] = useState<string[] | null>(null)
 
   // Snapshot do estado p/ autosave. Inclui tudo que o vendedor pode ter mudado
   // (carrinho, acessorios, voltagem, termos, etc). Excluido: filtros de busca, modais.
@@ -466,11 +469,12 @@ export function OrcamentoMontar() {
     parcelasPagamento,
     fotoPrincipal,
     componentesExtras,
+    obsPorConta,
   }), [
     carrinho, acessorios, voltagem, tensaoMotores, marcaMotores, descontoCfg,
     dataVendaTxt, prazoEntregaTxt, formaPagamentoTxt, freteTipo, freteTxt,
     parcelasPagamento, fotoPrincipal,
-    componentesExtras,
+    componentesExtras, obsPorConta,
   ])
 
   // Autosave so liga depois que catalogo carregar (evita salvar snapshot vazio
@@ -533,6 +537,7 @@ export function OrcamentoMontar() {
     setParcelasPagamento(prev.parcelasPagamento ?? [])
     setFotoPrincipal(prev.fotoPrincipal ?? null)
     setComponentesExtras(prev.componentesExtras ?? [])
+    setObsPorConta((prev as any).obsPorConta ?? null)
     setHistoryStack(stack => stack.slice(0, -1))
   }
 
@@ -569,6 +574,7 @@ export function OrcamentoMontar() {
     setParcelasPagamento(d.parcelasPagamento ?? [])
     setFotoPrincipal(d.fotoPrincipal ?? null)
     setComponentesExtras(d.componentesExtras ?? [])
+    setObsPorConta((d as any).obsPorConta ?? null)
     draft.dismissRecovered()
   }
 
@@ -1436,6 +1442,29 @@ export function OrcamentoMontar() {
     }))
   }
 
+  // Insere uma linha de descrição vazia logo após `idx` (idx = posição real na
+  // array it.specs; quando vem do botão "+ adicionar linha" é it.specs.length = fim).
+  function adicionarSpec(uid: string, idx: number) {
+    setCarrinho(c => c.map(it => {
+      if (it.uid !== uid) return it
+      const novas = it.specs.slice()
+      const pos = Math.min(Math.max(idx, 0), novas.length)
+      novas.splice(pos, 0, 'Nova linha')
+      return { ...it, specs: novas }
+    }))
+  }
+
+  // Remove a linha de descrição no índice real `idx`.
+  function removerSpec(uid: string, idx: number) {
+    setCarrinho(c => c.map(it => {
+      if (it.uid !== uid) return it
+      if (idx < 0 || idx >= it.specs.length) return it
+      const novas = it.specs.slice()
+      novas.splice(idx, 1)
+      return { ...it, specs: novas }
+    }))
+  }
+
   function limparCarrinho() {
     // Detecta se ha qualquer coisa pra limpar (carrinho OU dados auxiliares)
     const temAlgoPraLimpar = carrinho.length > 0
@@ -1459,6 +1488,7 @@ export function OrcamentoMontar() {
     setFormaPagamentoTxt('')
     setParcelasPagamento([])
     setComponentesExtras([])
+    setObsPorConta(null)
     setClienteDados({})
     setTensaoMotores(null)
     setDataVendaTxt('') // "a combinar" por padrão (roadmap #36)
@@ -2036,6 +2066,10 @@ export function OrcamentoMontar() {
     // Não inferir do primeiro item — orçamentos antigos não tinham hero.
     // Hidrata componentes extras + observacoes + termos
     if (o.componentes_extras) setComponentesExtras(o.componentes_extras as any)
+    // Observação "por conta do cliente" editável (migration 2026-06-23).
+    // Array salvo = usa ele; null/ausente = cai no default histórico.
+    if (Array.isArray((o as any).obs_por_conta)) setObsPorConta((o as any).obs_por_conta)
+    else setObsPorConta(null)
     // Restaura termos inline no preview (forma de pagamento, prazo, data, parcelas)
     if (o.forma_pagamento) setFormaPagamentoTxt(o.forma_pagamento)
     if (o.prazo_entrega) setPrazoEntregaTxt(o.prazo_entrega)
@@ -2631,6 +2665,10 @@ export function OrcamentoMontar() {
                   setCarrinho(c => c.map(it => it.uid === uid ? { ...it, foto_url: novaFoto } : it))
                 }
                 onUpdateSpec={alterarSpec}
+                onAddSpec={adicionarSpec}
+                onRemoveSpec={removerSpec}
+                obsPorConta={obsPorConta}
+                onUpdateObsPorConta={setObsPorConta}
                 onUpdateValor={alterarValor}
                 onToggleInox={toggleInox}
                 onToggleTungstenio={toggleTungstenio}
@@ -2818,6 +2856,7 @@ export function OrcamentoMontar() {
           },
           parcelas: parcelasPagamento,
           componentesExtras: componentesExtras,
+          obsPorConta: obsPorConta,
         } as CarrinhoSnapshot}
         onClose={() => { setFinalizarOpen(false); setAutoSubmitFromIA(false); }}
         onSuccess={info => {

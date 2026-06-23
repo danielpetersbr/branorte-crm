@@ -9,6 +9,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BRLInput } from '@/components/ui/BRLInput'
 import { letraItem } from '@/lib/utils'
+import { OBS_POR_CONTA_DEFAULT } from '@/lib/orcamento-defaults'
 
 export interface PreviewItem {
   uid?: string
@@ -127,6 +128,10 @@ export interface OrcamentoPreviewProps {
   cliente?: PreviewClienteDados
   terms?: PreviewTerms
   observacoesExtra?: string | null
+  // Seção "Observação — por conta do cliente". null = usa OBS_POR_CONTA_DEFAULT.
+  // Editável por orçamento (persiste em orcamentos_gerados.obs_por_conta).
+  obsPorConta?: string[] | null
+  onUpdateObsPorConta?: (linhas: string[]) => void
   fotoPrincipal?: string | null  // dataURL ou URL — renderiza foto grande antes dos items
 
   // Modo render: esconde botões interativos (pra capturar pra PDF limpo)
@@ -173,6 +178,10 @@ export interface OrcamentoPreviewProps {
   onFotoChange?: (dataURL: string | null) => void
   onUpdateNome?: (uid: string, novoNome: string) => void
   onUpdateSpec?: (uid: string, idx: number, valor: string) => void
+  // Adicionar/excluir linha de descrição (spec) de um item. Sem isso, só edição
+  // inline por duplo-clique fica disponível.
+  onAddSpec?: (uid: string, idx: number) => void
+  onRemoveSpec?: (uid: string, idx: number) => void
   onUpdateValor?: (uid: string, novoValor: number) => void
   onToggleInox?: (uid: string, tipo?: '304' | '316' | false) => void
   onToggleTungstenio?: (uid: string) => void
@@ -323,11 +332,12 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     totalItems, totalMotores, totalEquip, totalGeral,
     acessorios, valorAcessorios,
     numero, dataEmissao, cliente, terms, observacoesExtra, fotoPrincipal,
+    obsPorConta = null, onUpdateObsPorConta,
     renderMode = false,
     tensaoMotores = null, onUpdateTensaoMotores,
     marcaMotores = null, onUpdateMarcaMotores,
     desconto, onUpdateDesconto,
-    onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onUpdateValor, onToggleInox, onToggleTungstenio, onUpdateQtd, onUpdateTerm, onMoverItem, onTrocarItem, onToggleBrinde, onTogglePorConta,
+    onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onAddSpec, onRemoveSpec, onUpdateValor, onToggleInox, onToggleTungstenio, onUpdateQtd, onUpdateTerm, onMoverItem, onTrocarItem, onToggleBrinde, onTogglePorConta,
     componentesExtras = [], onUpdateComponentesExtras, componentesAdicionaisCatalogo = [],
     parcelas, onUpdateParcelas,
     motoresDisponiveis, onTrocarMotor, onMotorPorContaCliente, onMotorIncluso,
@@ -362,6 +372,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   // Edição inline de spec (bullet) — duplo-click ativa
   const [editingSpecKey, setEditingSpecKey] = useState<string | null>(null) // formato "uid|idx"
   const [editingSpecValor, setEditingSpecValor] = useState<string>('')
+  // Edição inline da seção "Observação — por conta do cliente"
+  const [editingObsIdx, setEditingObsIdx] = useState<number | null>(null)
+  const [editingObsValor, setEditingObsValor] = useState<string>('')
   // Edição inline de quantidade (o "01" no header do item)
   const [editingQtdUid, setEditingQtdUid] = useState<string | null>(null)
   const [editingQtdValor, setEditingQtdValor] = useState<string>('')
@@ -988,54 +1001,92 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   </div>
                   <div className="flex flex-row gap-4 items-start">
                     <div className="flex-1 pl-3 text-[14.5px] text-gray-700 leading-normal space-y-0.5 min-w-0">
-                      {it.specs.filter(s => !/c[oó]digo\s*finame/i.test(s)).length > 0
-                        ? it.specs.filter(s => !/c[oó]digo\s*finame/i.test(s)).map((s, i) => {
-                            const key = `${it.uid ?? idx}|${i}`
-                            const editavel = !renderMode && !!onUpdateSpec && !!it.uid
-                            const editando = editingSpecKey === key
-                            return (
-                              <div key={i} className="flex gap-1.5">
-                                <span className="text-gray-400">•</span>
-                                {editando ? (
-                                  <input
-                                    autoFocus
-                                    value={editingSpecValor}
-                                    onChange={(e) => setEditingSpecValor(e.target.value)}
-                                    onBlur={() => {
-                                      const v = editingSpecValor.trim()
-                                      if (v && v !== s && onUpdateSpec && it.uid) {
-                                        onUpdateSpec(it.uid, i, v)
-                                      }
-                                      setEditingSpecKey(null)
-                                    }}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
-                                      if (e.key === 'Escape') setEditingSpecKey(null)
-                                    }}
-                                    className="flex-1 bg-yellow-50 border border-blue-400 rounded px-1 py-0 outline-none text-[14.5px] text-gray-700"
-                                  />
-                                ) : (
-                                  <span
-                                    className={editavel ? 'cursor-text hover:bg-yellow-50 rounded px-0.5' : ''}
-                                    title={editavel ? 'Duplo-click para editar' : undefined}
-                                    onDoubleClick={() => {
-                                      if (!editavel) return
-                                      setEditingSpecValor(s)
-                                      setEditingSpecKey(key)
-                                    }}
-                                  >{/\*\*/.test(s) ? s.split(/(\*\*[^*]+\*\*)/).map((part, pi) =>
-                                    part.startsWith('**') && part.endsWith('**')
-                                      ? <strong key={pi} className="font-bold">{part.slice(2, -2)}</strong>
-                                      : <span key={pi}>{part}</span>
-                                  ) : s}</span>
-                                )}
-                              </div>
-                            )
-                          })
-                        : it.motor_cv && (
-                            <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Acionamento: motor {it.motor_cv} CV {it.motor_polos} polos{it.motor_qtd > 1 && ` (qtd ${it.motor_qtd})`}</span></div>
-                          )
-                      }
+                      {(() => {
+                        // ri = índice REAL na array it.specs (mantém alinhamento mesmo
+                        // com linhas FINAME filtradas) — usado em editar/excluir.
+                        const specsVis = it.specs
+                          .map((s, ri) => ({ s, ri }))
+                          .filter(({ s }) => !/c[oó]digo\s*finame/i.test(s))
+                        const podeAddLinha = !renderMode && !!onAddSpec && !!it.uid
+                        return (
+                          <>
+                            {specsVis.map(({ s, ri }) => {
+                              const key = `${it.uid ?? idx}|${ri}`
+                              const editavel = !renderMode && !!onUpdateSpec && !!it.uid
+                              const editando = editingSpecKey === key
+                              return (
+                                <div key={ri} className="flex gap-1.5 group/spec">
+                                  <span className="text-gray-400">•</span>
+                                  {editando ? (
+                                    <input
+                                      autoFocus
+                                      value={editingSpecValor}
+                                      onChange={(e) => setEditingSpecValor(e.target.value)}
+                                      onBlur={() => {
+                                        const v = editingSpecValor.trim()
+                                        if (v && v !== s && onUpdateSpec && it.uid) {
+                                          onUpdateSpec(it.uid, ri, v)
+                                        }
+                                        setEditingSpecKey(null)
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
+                                        if (e.key === 'Escape') setEditingSpecKey(null)
+                                      }}
+                                      className="flex-1 bg-yellow-50 border border-blue-400 rounded px-1 py-0 outline-none text-[14.5px] text-gray-700"
+                                    />
+                                  ) : (
+                                    <>
+                                      <span
+                                        className={editavel ? 'cursor-text hover:bg-yellow-50 rounded px-0.5' : ''}
+                                        title={editavel ? 'Duplo-click para editar' : undefined}
+                                        onDoubleClick={() => {
+                                          if (!editavel) return
+                                          setEditingSpecValor(s)
+                                          setEditingSpecKey(key)
+                                        }}
+                                      >{/\*\*/.test(s) ? s.split(/(\*\*[^*]+\*\*)/).map((part, pi) =>
+                                        part.startsWith('**') && part.endsWith('**')
+                                          ? <strong key={pi} className="font-bold">{part.slice(2, -2)}</strong>
+                                          : <span key={pi}>{part}</span>
+                                      ) : s}</span>
+                                      {!renderMode && onRemoveSpec && it.uid && (
+                                        <button
+                                          type="button"
+                                          onClick={() => onRemoveSpec(it.uid!, ri)}
+                                          className="opacity-0 group-hover/spec:opacity-100 text-red-400 hover:text-red-600 print:hidden shrink-0"
+                                          title="Excluir esta linha"
+                                        >
+                                          <X className="h-3 w-3" />
+                                        </button>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              )
+                            })}
+                            {specsVis.length === 0 && it.motor_cv && (
+                              <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Acionamento: motor {it.motor_cv} CV {it.motor_polos} polos{it.motor_qtd > 1 && ` (qtd ${it.motor_qtd})`}</span></div>
+                            )}
+                            {podeAddLinha && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const novoIdx = it.specs.length // anexa no fim
+                                  onAddSpec!(it.uid!, novoIdx)
+                                  // Abre o editor já na linha nova (texto pré-selecionado)
+                                  setEditingSpecValor('Nova linha')
+                                  setEditingSpecKey(`${it.uid ?? idx}|${novoIdx}`)
+                                }}
+                                className="text-[12px] text-blue-600 hover:text-blue-800 hover:underline print:hidden mt-0.5"
+                                title="Adicionar uma linha de descrição neste item"
+                              >
+                                + adicionar linha
+                              </button>
+                            )}
+                          </>
+                        )
+                      })()}
                     </div>
                     {/* Foto AO LADO dos bullets — caixa RIGIDA com overflow hidden
                         pra foto NUNCA estourar. Mobile 100x100, desktop/PDF 220x180.
@@ -2598,11 +2649,83 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           <div data-no-break>
             <SectionHeader>Observação <span className="text-gray-400 font-normal normal-case tracking-normal text-[14px]">— por conta do cliente</span></SectionHeader>
             <div className="text-[14.5px] text-gray-800 space-y-0.5 pl-2">
-              <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Painel elétrico</span></div>
-              <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Montagem dos equipamentos orçados acima (se necessário)</span></div>
-              <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Muck (se necessário)</span></div>
-              <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Despesa com obras civil (se necessário)</span></div>
-              <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Instalação elétrica dos equipamentos (se necessário)</span></div>
+              {(() => {
+                const linhas = obsPorConta ?? OBS_POR_CONTA_DEFAULT
+                const podeEditar = !renderMode && !!onUpdateObsPorConta
+                const commit = (novas: string[]) => onUpdateObsPorConta && onUpdateObsPorConta(novas)
+                return (
+                  <>
+                    {linhas.map((s, i) => {
+                      const editando = editingObsIdx === i
+                      return (
+                        <div key={i} className="flex gap-1.5 group/obs">
+                          <span className="text-gray-400">•</span>
+                          {editando ? (
+                            <input
+                              autoFocus
+                              value={editingObsValor}
+                              onChange={(e) => setEditingObsValor(e.target.value)}
+                              onBlur={() => {
+                                const v = editingObsValor.trim()
+                                const base = obsPorConta ?? OBS_POR_CONTA_DEFAULT
+                                if (v && v !== s) {
+                                  const novas = base.slice()
+                                  novas[i] = v
+                                  commit(novas)
+                                }
+                                setEditingObsIdx(null)
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
+                                if (e.key === 'Escape') setEditingObsIdx(null)
+                              }}
+                              className="flex-1 bg-yellow-50 border border-blue-400 rounded px-1 py-0 outline-none text-[14.5px] text-gray-800"
+                            />
+                          ) : (
+                            <>
+                              <span
+                                className={podeEditar ? 'cursor-text hover:bg-yellow-50 rounded px-0.5' : ''}
+                                title={podeEditar ? 'Duplo-click para editar' : undefined}
+                                onDoubleClick={() => {
+                                  if (!podeEditar) return
+                                  setEditingObsValor(s)
+                                  setEditingObsIdx(i)
+                                }}
+                              >{s}</span>
+                              {podeEditar && (
+                                <button
+                                  type="button"
+                                  onClick={() => commit((obsPorConta ?? OBS_POR_CONTA_DEFAULT).filter((_, j) => j !== i))}
+                                  className="opacity-0 group-hover/obs:opacity-100 text-red-400 hover:text-red-600 print:hidden shrink-0"
+                                  title="Excluir esta linha"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )
+                    })}
+                    {podeEditar && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const base = obsPorConta ?? OBS_POR_CONTA_DEFAULT
+                          const novas = [...base, 'Nova observação']
+                          commit(novas)
+                          setEditingObsValor('Nova observação')
+                          setEditingObsIdx(novas.length - 1)
+                        }}
+                        className="text-[12px] text-blue-600 hover:text-blue-800 hover:underline print:hidden mt-0.5"
+                        title="Adicionar uma linha nesta seção"
+                      >
+                        + adicionar linha
+                      </button>
+                    )}
+                  </>
+                )
+              })()}
             </div>
           </div>
 
