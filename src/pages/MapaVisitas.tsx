@@ -2,16 +2,17 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import {
-  useVisitas, useGeocodarVisitas, useOrcamentosMapa,
-  type Visita, type OrcamentoPonto,
+  useVisitas, useGeocodarVisitas, useOrcamentosMapa, useListaOrcamentos,
+  type Visita, type OrcamentoPonto, type OrcamentoLinha,
 } from '@/hooks/useVisitas'
 import { useEtiquetas } from '@/hooks/useEtiquetas'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 
-// Mapa de visitas — DUAS camadas (liga/desliga):
-//  • Orçamentos: 1 pino por cliente (telefone), cor pela IDADE do orçamento mais recente
-//    (≤1 mês verde · 1–3 meses amarelo · >3 meses vermelho). Total = soma dos orçamentos.
-//  • Visitas WhatsApp: pinos dos "Dados pra visita" salvos pela extensão, cor por follow-up.
+// Mapa de visitas — camadas (liga/desliga):
+//  • Orçamentos: 1 pino por cliente. Cor pela IDADE do orçamento mais recente
+//    (≤1 mês verde · 1–3 meses vermelho · >3 meses cinza). VENDIDO = azul (já comprou).
+//  • Visitas WhatsApp: pinos dos "Dados pra visita" salvos pela extensão.
+// Filtro vendido/orçado, lista completa (tabela) e filtro por RAIO a partir de um ponto.
 // Geocoding por cidade/UF (Nominatim) com cache compartilhado.
 
 const CENTRO_BR: [number, number] = [-15.78, -47.93]
@@ -24,20 +25,23 @@ function corDoVendedor(vendedor: string | null, ordem: string[]): string {
   return CORES[i % CORES.length]
 }
 
-// Cor do pino de ORÇAMENTO pela idade (data do orçamento mais recente do cliente)
-const VERDE = '#22c55e', AMARELO = '#f59e0b', VERMELHO = '#ef4444'
+// Cor do pino de ORÇAMENTO: vendido=azul; senão pela idade (verde ≤1m, vermelho 1–3m, cinza >3m)
+const VERDE = '#22c55e', VERMELHO = '#ef4444', CINZA_VELHO = '#9ca3af', AZUL_VENDIDO = '#2563eb'
 function diasDesde(dataISO: string | null): number | null {
   if (!dataISO) return null
   const t = new Date(dataISO.length <= 10 ? dataISO + 'T00:00:00' : dataISO).getTime()
   if (Number.isNaN(t)) return null
   return Math.floor((Date.now() - t) / 86400000)
 }
-function corOrcamento(dataRecente: string | null): string {
+function corIdade(dataRecente: string | null): string {
   const d = diasDesde(dataRecente)
   if (d == null) return CINZA
   if (d <= 30) return VERDE
-  if (d <= 90) return AMARELO
-  return VERMELHO
+  if (d <= 90) return VERMELHO
+  return CINZA_VELHO
+}
+function corOrcamento(p: { data_recente: string | null; vendido: boolean }): string {
+  return p.vendido ? AZUL_VENDIDO : corIdade(p.data_recente)
 }
 function idadeLabel(dataRecente: string | null): string {
   const d = diasDesde(dataRecente)
@@ -45,6 +49,14 @@ function idadeLabel(dataRecente: string | null): string {
   if (d <= 30) return `há ${d} dia${d === 1 ? '' : 's'}`
   const m = Math.floor(d / 30)
   return `há ${m} ${m === 1 ? 'mês' : 'meses'}`
+}
+
+// distância em km (haversine)
+function distKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371, toRad = (x: number) => (x * Math.PI) / 180
+  const dLat = toRad(bLat - aLat), dLng = toRad(bLng - aLng)
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(s))
 }
 
 function pinIcon(cor: string): L.DivIcon {
@@ -56,10 +68,18 @@ function pinIcon(cor: string): L.DivIcon {
     popupAnchor: [0, -22],
   })
 }
+function pinCentro(): L.DivIcon {
+  return L.divIcon({
+    className: 'raio-centro',
+    html: `<div style="width:16px;height:16px;border-radius:50%;background:#0ea5e9;border:3px solid #fff;box-shadow:0 0 0 3px rgba(14,165,233,.4)"></div>`,
+    iconSize: [16, 16], iconAnchor: [8, 8],
+  })
+}
 
 const brl = (v: number | null) =>
   v == null ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 const esc = (s: string | null) => (s || '').replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] as string))
+const dataBR = (iso: string | null) => (iso ? new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR') : '—')
 
 function popupVisita(v: Visita, isFollowUp: boolean, labels: string[]): string {
   const tel = (v.telefone || '').replace(/\D/g, '')
@@ -81,33 +101,47 @@ function popupVisita(v: Visita, isFollowUp: boolean, labels: string[]): string {
     </div>`
 }
 
-function popupOrcamento(p: OrcamentoPonto): string {
+function popupOrcamento(p: OrcamentoPonto, dist?: number): string {
   const tel = (p.telefone || '').replace(/\D/g, '')
   const foneFmt = p.fone || p.telefone || ''
   const loc = [esc(p.cidade), esc(p.uf)].filter(Boolean).join(' - ')
-  const dataFmt = p.data_recente ? new Date(p.data_recente + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
+  const vendBadge = p.vendido
+    ? `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:#dbeafe;color:#1e40af;font-weight:700">✓ VENDIDO</span>`
+    : `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:#fef9c3;color:#854d0e;font-weight:600">Orçado</span>`
   return `
     <div style="min-width:190px;font-family:inherit">
       <div style="font-weight:600;font-size:13px">${esc(p.cliente) || 'Sem nome'}</div>
-      ${loc ? `<div style="font-size:12px;color:#64748b">${loc}</div>` : ''}
+      ${loc ? `<div style="font-size:12px;color:#64748b">${loc}${dist != null ? ` · <b>${dist.toFixed(0)} km</b>` : ''}</div>` : ''}
+      <div style="margin-top:4px">${vendBadge}</div>
       ${p.numeros ? `<div style="font-size:11px;color:#475569;margin-top:3px">🧾 Nº ${esc(p.numeros)}</div>` : ''}
       <div style="font-size:14px;font-weight:700;color:#10b981;margin-top:3px">${brl(p.total)}</div>
-      <div style="font-size:11px;color:#64748b;margin-top:2px">${p.n_orcamentos} orçamento${p.n_orcamentos === 1 ? '' : 's'} · último ${dataFmt} <b>(${idadeLabel(p.data_recente)})</b></div>
+      <div style="font-size:11px;color:#64748b;margin-top:2px">${p.n_orcamentos} orçamento${p.n_orcamentos === 1 ? '' : 's'} · último ${dataBR(p.data_recente)} <b>(${idadeLabel(p.data_recente)})</b></div>
       <div style="font-size:11px;color:#64748b;margin-top:3px">Vendedor: ${esc(p.vendedor) || '—'}</div>
       ${foneFmt ? `<div style="font-size:12px;color:#0f172a;margin-top:4px">📱 ${esc(foneFmt)}</div>` : ''}
       ${tel ? `<a href="https://wa.me/${tel}" target="_blank" rel="noopener" style="display:inline-block;margin-top:4px;font-size:12px;color:#10b981;font-weight:600">Abrir WhatsApp ↗</a>` : ''}
     </div>`
 }
 
+type VendFiltro = 'todos' | 'orcados' | 'vendidos'
+
 export function MapaVisitas() {
   const { data: visitas = [], isLoading } = useVisitas()
   const { data: orcPontos = [], isLoading: loadingOrc, refetch: refetchOrc } = useOrcamentosMapa()
+  const { data: lista = [] } = useListaOrcamentos()
   const { data: etiquetasWa = [] } = useEtiquetas()
   const geocodar = useGeocodarVisitas()
   const [vendedorSel, setVendedorSel] = useState<string>('')
   const [showOrc, setShowOrc] = useState(true)
   const [showVis, setShowVis] = useState(false)
   const [busca, setBusca] = useState('')
+  const [vendFiltro, setVendFiltro] = useState<VendFiltro>('todos')
+  const [showLista, setShowLista] = useState(false)
+  // raio
+  const [modoRaio, setModoRaio] = useState(false)
+  const [centro, setCentro] = useState<{ lat: number; lng: number } | null>(null)
+  const [raioKm, setRaioKm] = useState(100)
+  const modoRaioRef = useRef(false)
+  useEffect(() => { modoRaioRef.current = modoRaio }, [modoRaio])
 
   // resolve etiqueta_id (por vendedor) -> nome (IDs do Wascript não são globais).
   const { byVendId, globId } = useMemo(() => {
@@ -143,6 +177,7 @@ export function MapaVisitas() {
   }
   const mapRef = useRef<L.Map | null>(null)
   const layerRef = useRef<L.LayerGroup | null>(null)
+  const raioLayerRef = useRef<L.LayerGroup | null>(null)
   const divRef = useRef<HTMLDivElement | null>(null)
   const autoGeoRef = useRef(false)
   const autoCidRef = useRef(false)
@@ -158,6 +193,9 @@ export function MapaVisitas() {
   const comCoord = useMemo(() => visitas.filter(v => v.lat != null && v.lng != null), [visitas])
   const semCoord = visitas.length - comCoord.length
   const termo = busca.trim().toLowerCase()
+  const passaVend = (vendido: boolean) =>
+    vendFiltro === 'todos' || (vendFiltro === 'vendidos' ? vendido : !vendido)
+
   const visFiltradas = useMemo(
     () => comCoord.filter(v =>
       (!vendedorSel || (v.vendedor_nome || '—') === vendedorSel) &&
@@ -169,35 +207,42 @@ export function MapaVisitas() {
   const orcFiltrados = useMemo(
     () => orcPontos.filter(p =>
       (!vendedorSel || (p.vendedor || '—') === vendedorSel) &&
+      passaVend(p.vendido) &&
       (!termo || [p.cliente, p.cidade, p.uf, p.telefone, p.fone, p.numeros, p.vendedor]
         .some(x => (x || '').toLowerCase().includes(termo)))
     ),
-    [orcPontos, vendedorSel, termo]
+    [orcPontos, vendedorSel, termo, vendFiltro]
   )
 
-  // legenda visitas (follow-up por vendedor + cinza)
-  const corStats = useMemo(() => {
-    const porVend = new Map<string, number>()
-    let semFollowup = 0
-    for (const v of visFiltradas) {
-      if (resolverEtiquetas(v).isFollowUp) {
-        const k = v.vendedor_nome || '—'
-        porVend.set(k, (porVend.get(k) || 0) + 1)
-      } else semFollowup++
-    }
-    return { porVend, semFollowup }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visFiltradas, byVendId, globId])
+  // pontos dentro do raio (a partir do centro), ordenados por distância
+  const noRaio = useMemo(() => {
+    if (!centro) return [] as Array<OrcamentoPonto & { dist: number }>
+    return orcFiltrados
+      .map(p => ({ ...p, dist: distKm(centro.lat, centro.lng, p.lat, p.lng) }))
+      .filter(p => p.dist <= raioKm)
+      .sort((a, b) => a.dist - b.dist)
+  }, [centro, raioKm, orcFiltrados])
 
-  // legenda orçamentos (por idade)
+  // legenda orçamentos (por idade + vendido)
   const orcStats = useMemo(() => {
-    let verde = 0, amarelo = 0, vermelho = 0
+    let verde = 0, vermelho = 0, cinza = 0, vendido = 0
     for (const p of orcFiltrados) {
-      const c = corOrcamento(p.data_recente)
-      if (c === VERDE) verde++; else if (c === AMARELO) amarelo++; else vermelho++
+      if (p.vendido) { vendido++; continue }
+      const c = corIdade(p.data_recente)
+      if (c === VERDE) verde++; else if (c === VERMELHO) vermelho++; else cinza++
     }
-    return { verde, amarelo, vermelho }
+    return { verde, vermelho, cinza, vendido }
   }, [orcFiltrados])
+
+  // lista (tabela) filtrada
+  const listaFiltrada = useMemo(() => {
+    return lista.filter(r =>
+      passaVend(r.vendido) &&
+      (!termo || [r.numero, r.cliente, r.equipamento, r.cidade, r.uf]
+        .some(x => (x || '').toLowerCase().includes(termo)))
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lista, termo, vendFiltro])
 
   // init do mapa (uma vez)
   useEffect(() => {
@@ -212,6 +257,10 @@ export function MapaVisitas() {
     mapa.addTo(map)
     L.control.layers({ 'Mapa': mapa, 'Satélite': satelite }, {}, { collapsed: false, position: 'topright' }).addTo(map)
     layerRef.current = L.layerGroup().addTo(map)
+    raioLayerRef.current = L.layerGroup().addTo(map)
+    map.on('click', (e: L.LeafletMouseEvent) => {
+      if (modoRaioRef.current) setCentro({ lat: e.latlng.lat, lng: e.latlng.lng })
+    })
     mapRef.current = map
     setTimeout(() => map.invalidateSize(), 0)
     setTimeout(() => map.invalidateSize(), 250)
@@ -219,10 +268,11 @@ export function MapaVisitas() {
       map.remove()
       mapRef.current = null
       layerRef.current = null
+      raioLayerRef.current = null
     }
   }, [])
 
-  // redesenha marcadores (visitas e/ou orçamentos) quando dados/filtro/camada mudam
+  // redesenha marcadores quando dados/filtro/camada mudam
   useEffect(() => {
     const map = mapRef.current
     const layer = layerRef.current
@@ -242,14 +292,29 @@ export function MapaVisitas() {
     }
     if (showOrc) {
       for (const p of orcFiltrados) {
-        const m = L.marker([p.lat, p.lng], { icon: pinIcon(corOrcamento(p.data_recente)) })
+        const m = L.marker([p.lat, p.lng], { icon: pinIcon(corOrcamento(p)) })
         m.bindPopup(popupOrcamento(p))
         m.addTo(layer)
         bounds.push([p.lat, p.lng])
       }
     }
-    if (bounds.length) map.fitBounds(bounds, { padding: [50, 50], maxZoom: 10 })
+    if (bounds.length && !centro) map.fitBounds(bounds, { padding: [50, 50], maxZoom: 10 })
   }, [showVis, showOrc, visFiltradas, orcFiltrados, vendedores, byVendId, globId])
+
+  // desenha círculo do raio
+  useEffect(() => {
+    const map = mapRef.current
+    const rl = raioLayerRef.current
+    if (!map || !rl) return
+    rl.clearLayers()
+    if (centro) {
+      L.circle([centro.lat, centro.lng], {
+        radius: raioKm * 1000, color: '#0ea5e9', weight: 2, fillColor: '#0ea5e9', fillOpacity: 0.08,
+      }).addTo(rl)
+      L.marker([centro.lat, centro.lng], { icon: pinCentro() }).addTo(rl)
+      map.setView([centro.lat, centro.lng], map.getZoom() < 6 ? 6 : map.getZoom())
+    }
+  }, [centro, raioKm])
 
   // auto-geocoda visitas pendentes ao abrir (uma vez por montagem)
   useEffect(() => {
@@ -264,7 +329,7 @@ export function MapaVisitas() {
     autoCidRef.current = true
     let cancelado = false
     ;(async () => {
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 10; i++) {
         const r = await fetch('/api/geocode-cidades', { method: 'POST' })
           .then(x => (x.ok ? x.json() : null))
           .catch(() => null)
@@ -276,6 +341,28 @@ export function MapaVisitas() {
     return () => { cancelado = true }
   }, [refetchOrc])
 
+  function focarPonto(p: OrcamentoPonto) {
+    const map = mapRef.current
+    if (!map) return
+    map.setView([p.lat, p.lng], 11)
+    L.popup().setLatLng([p.lat, p.lng]).setContent(popupOrcamento(p)).openOn(map)
+  }
+
+  function baixarCSV() {
+    const head = ['Numero', 'Data', 'Cliente', 'Equipamento', 'Cidade', 'UF', 'Total', 'Status']
+    const linhas = listaFiltrada.map(r => [
+      r.numero || '', r.data_emissao || '', r.cliente || '', (r.equipamento || '').replace(/[\r\n]+/g, ' '),
+      r.cidade || '', r.uf || '', r.total ?? '', r.vendido ? 'VENDIDO' : 'Orçado',
+    ].map(c => `"${String(c).replace(/"/g, '""')}"`).join(';'))
+    const csv = '﻿' + [head.join(';'), ...linhas].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `orcamentos-mapa-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
   const togglePill = (ativo: boolean) =>
     `h-9 px-3 rounded-md border text-[13px] font-semibold transition-colors ${ativo ? 'bg-accent-bg border-accent/40 text-accent' : 'bg-surface border-border text-ink-muted hover:text-ink'}`
 
@@ -285,7 +372,7 @@ export function MapaVisitas() {
         <div>
           <h1 className="text-[22px] font-semibold text-ink tracking-tight">Mapa de Visitas</h1>
           <p className="text-[13px] text-ink-muted">
-            {showOrc && <>{orcFiltrados.length} clientes com orçamento</>}
+            {showOrc && <>{orcFiltrados.length} clientes com orçamento{orcStats.vendido > 0 && <> · <span className="text-blue-600 font-semibold">{orcStats.vendido} vendidos</span></>}</>}
             {showOrc && showVis && ' · '}
             {showVis && <>{visFiltradas.length} visitas{semCoord > 0 && <> · <span className="text-warning">{semCoord} sem localização</span></>}</>}
             {!showOrc && !showVis && 'Ligue uma camada pra ver os pontos'}
@@ -298,37 +385,46 @@ export function MapaVisitas() {
               value={busca}
               onChange={e => setBusca(e.target.value)}
               placeholder="Buscar cliente, cidade, telefone, Nº…"
-              className="h-9 w-60 pl-8 pr-7 rounded-md bg-surface border border-border text-[13px] text-ink placeholder:text-ink-faint outline-none focus:border-accent"
+              className="h-9 w-56 pl-8 pr-7 rounded-md bg-surface border border-border text-[13px] text-ink placeholder:text-ink-faint outline-none focus:border-accent"
             />
             {busca && (
-              <button
-                onClick={() => setBusca('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink text-[13px]"
-                title="Limpar busca"
-              >✕</button>
+              <button onClick={() => setBusca('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink text-[13px]" title="Limpar busca">✕</button>
             )}
           </div>
-          <button className={togglePill(showOrc)} onClick={() => setShowOrc(v => !v)} title="Pontos a partir dos orçamentos (cor por idade)">💰 Orçamentos</button>
-          <button className={togglePill(showVis)} onClick={() => setShowVis(v => !v)} title="Visitas anotadas no WhatsApp (cor por follow-up)">📍 Visitas WhatsApp</button>
-          <select
-            value={vendedorSel}
-            onChange={e => setVendedorSel(e.target.value)}
-            className="h-9 px-3 rounded-md bg-surface border border-border text-[13px] text-ink"
-          >
+          {/* filtro vendido / orçado */}
+          <div className="flex h-9 rounded-md border border-border overflow-hidden text-[12px] font-semibold">
+            {([['todos', 'Todos'], ['orcados', 'Só orçados'], ['vendidos', 'Vendidos']] as [VendFiltro, string][]).map(([v, label]) => (
+              <button key={v} onClick={() => setVendFiltro(v)}
+                className={`px-2.5 transition-colors ${vendFiltro === v ? 'bg-accent-bg text-accent' : 'bg-surface text-ink-muted hover:text-ink'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <button className={togglePill(showOrc)} onClick={() => setShowOrc(v => !v)} title="Pinos a partir dos orçamentos">💰 Orçamentos</button>
+          <button className={togglePill(showVis)} onClick={() => setShowVis(v => !v)} title="Visitas anotadas no WhatsApp">📍 Visitas</button>
+          <button className={togglePill(modoRaio)} onClick={() => { setModoRaio(v => !v); if (modoRaio) setCentro(null) }} title="Filtrar clientes a partir de um ponto no mapa">🎯 Raio</button>
+          <button className={togglePill(showLista)} onClick={() => setShowLista(true)} title="Lista de todos os orçamentos cadastrados">📋 Lista</button>
+          <select value={vendedorSel} onChange={e => setVendedorSel(e.target.value)} className="h-9 px-3 rounded-md bg-surface border border-border text-[13px] text-ink">
             <option value="">Todos os vendedores</option>
             {vendedores.map(v => <option key={v} value={v}>{v}</option>)}
           </select>
-          {showVis && semCoord > 0 && (
-            <button
-              onClick={() => geocodar.mutate()}
-              disabled={geocodar.isPending}
-              className="h-9 px-3 rounded-md bg-accent-bg border border-accent/30 text-accent text-[13px] font-semibold hover:brightness-110 disabled:opacity-60"
-            >
-              {geocodar.isPending ? 'Localizando…' : `Localizar ${semCoord} no mapa`}
-            </button>
-          )}
         </div>
       </div>
+
+      {/* barra do modo raio */}
+      {modoRaio && (
+        <div className="shrink-0 rounded-md border border-sky-300 bg-sky-50 text-[12px] text-sky-900 px-3 py-2 flex flex-wrap items-center gap-3">
+          <span className="font-semibold">🎯 Modo raio:</span>
+          {!centro ? <span>clique no mapa pra definir o ponto central (ex: Goiânia).</span>
+            : <span>Centro definido · <b>{noRaio.length}</b> clientes em até {raioKm} km.</span>}
+          <label className="flex items-center gap-1.5 ml-auto">
+            Raio
+            <input type="range" min={10} max={1000} step={10} value={raioKm} onChange={e => setRaioKm(Number(e.target.value))} className="w-32" />
+            <input type="number" min={1} value={raioKm} onChange={e => setRaioKm(Math.max(1, Number(e.target.value) || 1))} className="h-7 w-16 px-1 rounded border border-border bg-surface text-ink" /> km
+          </label>
+          {centro && <button onClick={() => setCentro(null)} className="text-sky-700 underline">limpar ponto</button>}
+        </div>
+      )}
 
       {geocodar.data && showVis && (
         <div className="shrink-0 rounded-md border border-border bg-surface-2 text-[12px] text-ink-muted px-3 py-2">
@@ -342,52 +438,114 @@ export function MapaVisitas() {
         {(isLoading || loadingOrc) && (
           <div className="absolute inset-0 flex items-center justify-center"><PageLoading /></div>
         )}
-        <div className="w-48 shrink-0 rounded-xl border border-border bg-surface p-3 overflow-y-auto">
-          {showOrc && (
-            <div className="mb-3">
-              <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">Orçamentos · idade</div>
-              <ul className="space-y-1.5">
-                <li className="flex items-center gap-2 text-[12px] text-ink">
-                  <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: VERDE }} />
-                  <span className="truncate">Até 1 mês</span>
-                  <span className="ml-auto tabular-nums text-ink-faint">{orcStats.verde}</span>
-                </li>
-                <li className="flex items-center gap-2 text-[12px] text-ink">
-                  <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: AMARELO }} />
-                  <span className="truncate">1 a 3 meses</span>
-                  <span className="ml-auto tabular-nums text-ink-faint">{orcStats.amarelo}</span>
-                </li>
-                <li className="flex items-center gap-2 text-[12px] text-ink">
-                  <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: VERMELHO }} />
-                  <span className="truncate">+ de 3 meses</span>
-                  <span className="ml-auto tabular-nums text-ink-faint">{orcStats.vermelho}</span>
-                </li>
-              </ul>
-            </div>
-          )}
-          {showVis && vendedores.length > 1 && (
-            <div className={showOrc ? 'pt-3 border-t border-border' : ''}>
-              <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">Visitas · em follow-up</div>
-              <ul className="space-y-1.5">
-                {vendedores.filter(v => (corStats.porVend.get(v) || 0) > 0).map(v => (
-                  <li key={v} className="flex items-center gap-2 text-[12px] text-ink">
-                    <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: corDoVendedor(v, vendedores) }} />
-                    <span className="truncate">{v}</span>
-                    <span className="ml-auto tabular-nums text-ink-faint">{corStats.porVend.get(v)}</span>
+        {/* sidebar: lista do raio OU legenda */}
+        <div className="w-56 shrink-0 rounded-xl border border-border bg-surface p-3 overflow-y-auto">
+          {modoRaio && centro ? (
+            <div>
+              <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">{noRaio.length} clientes em {raioKm} km</div>
+              <ul className="space-y-1">
+                {noRaio.map((p, i) => (
+                  <li key={i}>
+                    <button onClick={() => focarPonto(p)} className="w-full text-left rounded-md px-2 py-1.5 hover:bg-surface-2 transition-colors">
+                      <div className="flex items-center gap-1.5">
+                        <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: corOrcamento(p) }} />
+                        <span className="text-[12px] text-ink truncate flex-1">{p.cliente || '—'}</span>
+                        <span className="text-[11px] tabular-nums text-ink-faint">{p.dist.toFixed(0)}km</span>
+                      </div>
+                      <div className="text-[11px] text-ink-muted pl-4 truncate">{[p.cidade, p.uf].filter(Boolean).join(' - ')}{p.vendido && ' · ✓ vendido'}</div>
+                    </button>
                   </li>
                 ))}
-                {corStats.semFollowup > 0 && (
-                  <li className="flex items-center gap-2 text-[12px] pt-1.5 mt-1 border-t border-border">
-                    <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: CINZA }} />
-                    <span className="truncate text-ink-muted">Sem follow-up</span>
-                    <span className="ml-auto tabular-nums text-ink-faint">{corStats.semFollowup}</span>
-                  </li>
-                )}
+                {noRaio.length === 0 && <li className="text-[12px] text-ink-muted">Nenhum cliente nesse raio.</li>}
               </ul>
             </div>
+          ) : (
+            <>
+              {showOrc && (
+                <div className="mb-3">
+                  <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">Orçamentos · idade</div>
+                  <ul className="space-y-1.5">
+                    <li className="flex items-center gap-2 text-[12px] text-ink"><span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: VERDE }} /><span className="truncate">Até 1 mês</span><span className="ml-auto tabular-nums text-ink-faint">{orcStats.verde}</span></li>
+                    <li className="flex items-center gap-2 text-[12px] text-ink"><span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: VERMELHO }} /><span className="truncate">1 a 3 meses</span><span className="ml-auto tabular-nums text-ink-faint">{orcStats.vermelho}</span></li>
+                    <li className="flex items-center gap-2 text-[12px] text-ink"><span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: CINZA_VELHO }} /><span className="truncate">+ de 3 meses</span><span className="ml-auto tabular-nums text-ink-faint">{orcStats.cinza}</span></li>
+                    <li className="flex items-center gap-2 text-[12px] text-ink pt-1.5 mt-1 border-t border-border"><span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: AZUL_VENDIDO }} /><span className="truncate font-semibold">✓ Vendido</span><span className="ml-auto tabular-nums text-ink-faint">{orcStats.vendido}</span></li>
+                  </ul>
+                </div>
+              )}
+              {showVis && vendedores.length > 1 && (
+                <div className={showOrc ? 'pt-3 border-t border-border' : ''}>
+                  <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">Visitas · em follow-up</div>
+                  <ul className="space-y-1.5">
+                    {vendedores.filter(v => visFiltradas.some(x => resolverEtiquetas(x).isFollowUp && (x.vendedor_nome || '—') === v)).map(v => (
+                      <li key={v} className="flex items-center gap-2 text-[12px] text-ink">
+                        <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: corDoVendedor(v, vendedores) }} />
+                        <span className="truncate">{v}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
+
+      {/* Overlay: lista (tabela) */}
+      {showLista && (
+        <div className="fixed inset-0 z-[1000] bg-black/40 flex items-center justify-center p-4" onClick={() => setShowLista(false)}>
+          <div className="bg-surface rounded-xl border border-border w-full max-w-6xl max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 p-3 border-b border-border shrink-0">
+              <h2 className="text-[16px] font-semibold text-ink">Orçamentos cadastrados</h2>
+              <span className="text-[12px] text-ink-muted">{listaFiltrada.length} de {lista.length}</span>
+              <div className="relative ml-2">
+                <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar…" className="h-8 w-52 px-2 rounded-md bg-surface-2 border border-border text-[13px] text-ink outline-none focus:border-accent" />
+              </div>
+              <div className="flex h-8 rounded-md border border-border overflow-hidden text-[12px] font-semibold">
+                {([['todos', 'Todos'], ['orcados', 'Só orçados'], ['vendidos', 'Vendidos']] as [VendFiltro, string][]).map(([v, label]) => (
+                  <button key={v} onClick={() => setVendFiltro(v)} className={`px-2.5 ${vendFiltro === v ? 'bg-accent-bg text-accent' : 'bg-surface text-ink-muted hover:text-ink'}`}>{label}</button>
+                ))}
+              </div>
+              <button onClick={baixarCSV} className="h-8 px-3 rounded-md bg-accent-bg border border-accent/30 text-accent text-[12px] font-semibold ml-auto">⬇ CSV</button>
+              <button onClick={() => setShowLista(false)} className="h-8 w-8 rounded-md hover:bg-surface-2 text-ink-muted">✕</button>
+            </div>
+            <div className="overflow-auto">
+              <table className="w-full text-[12px]">
+                <thead className="sticky top-0 bg-surface-2 text-ink-muted">
+                  <tr className="text-left">
+                    <th className="px-3 py-2 font-semibold">Nº</th>
+                    <th className="px-3 py-2 font-semibold">Data</th>
+                    <th className="px-3 py-2 font-semibold">Cliente</th>
+                    <th className="px-3 py-2 font-semibold">Equipamento</th>
+                    <th className="px-3 py-2 font-semibold">Cidade</th>
+                    <th className="px-3 py-2 font-semibold text-right">Total</th>
+                    <th className="px-3 py-2 font-semibold">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {listaFiltrada.map((r, i) => (
+                    <tr key={i} className="border-t border-border hover:bg-surface-2">
+                      <td className="px-3 py-1.5 whitespace-nowrap text-ink-muted">{r.numero}</td>
+                      <td className="px-3 py-1.5 whitespace-nowrap text-ink-muted">{dataBR(r.data_emissao)}</td>
+                      <td className="px-3 py-1.5 text-ink font-medium">{r.cliente || '—'}</td>
+                      <td className="px-3 py-1.5 text-ink-muted max-w-[320px] truncate" title={r.equipamento || ''}>{r.equipamento || '—'}</td>
+                      <td className="px-3 py-1.5 whitespace-nowrap text-ink-muted">{[r.cidade, r.uf].filter(Boolean).join(' - ') || '—'}</td>
+                      <td className="px-3 py-1.5 whitespace-nowrap text-right tabular-nums text-ink">{brl(r.total)}</td>
+                      <td className="px-3 py-1.5 whitespace-nowrap">
+                        {r.vendido
+                          ? <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-semibold">✓ Vendido</span>
+                          : <span className="px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800">Orçado</span>}
+                      </td>
+                    </tr>
+                  ))}
+                  {listaFiltrada.length === 0 && (
+                    <tr><td colSpan={7} className="px-3 py-6 text-center text-ink-muted">Nada encontrado.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
