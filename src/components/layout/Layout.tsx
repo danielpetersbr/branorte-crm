@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Sparkles, Package, Zap, BookOpen, Settings, TrendingUp, MessageSquarePlus, FilePlus2, Truck, History, Search, Wallet, MapPin, Star } from 'lucide-react'
+import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, ChevronDown, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Package, Zap, BookOpen, Settings, TrendingUp, MessageSquarePlus, FilePlus2, Truck, History, Search, Wallet, MapPin, Star } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { cn } from '@/lib/utils'
@@ -23,91 +23,98 @@ interface NavItem {
   label: string
   icon: typeof LayoutDashboard
   countKey?: 'atendimentos'
-  children?: NavItem[]
-  matchPrefix?: boolean  // se true, parent fica ativo quando path começa com `to`
-  permKey?: string  // se setado, só mostra quando can(permKey) === true
+  end?: boolean      // ativa SO na rota exata (pra paths que sao prefixo de irmaos)
+  permKey?: string   // so mostra quando can(permKey) === true
+}
+interface NavGroup {
+  id: string
+  label: string
+  icon: typeof LayoutDashboard
+  items: NavItem[]
 }
 
-const PRIMARY: NavItem[] = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, permKey: 'menu.dashboard' },
-  { to: '/atendimentos', label: 'Atendimentos', icon: MessageSquare, countKey: 'atendimentos', permKey: 'menu.atendimentos' },
-  { to: '/contatos', label: 'Contatos', icon: Users, permKey: 'menu.contatos' },
-  { to: '/consulta', label: 'Consulta', icon: Search, permKey: 'due_diligence.consultar' },
-  { to: '/atribuir', label: 'Atribuir', icon: UserPlus, permKey: 'menu.atribuir' },
-  { to: '/funil', label: 'Funil', icon: GitBranch, permKey: 'menu.funil' },
+// ============================================================================
+// Navegacao agrupada por CATEGORIAS colapsaveis (accordion). Clica no cabecalho
+// do grupo -> abre/fecha as opcoes. Permissoes preservadas item a item (permKey);
+// um grupo so aparece se tiver >= 1 item visivel pro usuario.
+// ============================================================================
+const NAV_GROUPS: NavGroup[] = [
   {
-    to: '/etiquetas-zap',
-    label: 'Etiquetas Zap',
-    icon: Tag,
-    matchPrefix: true,
-    permKey: 'menu.etiquetas_zap',
-    children: [
-      { to: '/etiquetas-zap', label: 'Cards', icon: List },
-      { to: '/etiquetas-zap/graficos', label: 'Gráficos', icon: BarChart2 },
-      { to: '/etiquetas-zap/painel', label: 'Painel Status', icon: AlertCircle },
+    id: 'operacao', label: 'Operação', icon: LayoutDashboard,
+    items: [
+      { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true, permKey: 'menu.dashboard' },
+      { to: '/atendimentos', label: 'Atendimentos', icon: MessageSquare, countKey: 'atendimentos', permKey: 'menu.atendimentos' },
+      { to: '/contatos', label: 'Contatos', icon: Users, permKey: 'menu.contatos' },
+      { to: '/consulta', label: 'Consulta', icon: Search, permKey: 'due_diligence.consultar' },
+      { to: '/atribuir', label: 'Atribuir', icon: UserPlus, permKey: 'menu.atribuir' },
+      { to: '/funil', label: 'Funil', icon: GitBranch, permKey: 'menu.funil' },
+      { to: '/atividade-diaria', label: 'Atividade Diária', icon: Activity, permKey: 'menu.atividade_diaria' },
+      { to: '/avaliacoes', label: 'Avaliações', icon: Star, permKey: 'menu.avaliacoes' },
     ],
   },
-  { to: '/atividade-diaria', label: 'Atividade Diária', icon: Activity, permKey: 'menu.atividade_diaria' },
-  { to: '/avaliacoes', label: 'Avaliações', icon: Star, permKey: 'menu.avaliacoes' },
-  { to: '/frete/solicitar', label: 'Pedir Frete', icon: Truck, permKey: 'frete.solicitar' },
-]
-const SECONDARY: NavItem[] = [
   {
-    to: '/orcamentos',
-    label: 'Orçamentos',
-    icon: FileText,
-    matchPrefix: true,
-    permKey: 'menu.orcamentos',
-    children: [
-      { to: '/orcamentos/montar', label: 'Montar Orçamento', icon: Package },
-      { to: '/orcamentos/salvos', label: 'Salvos (Editar)', icon: List },
+    id: 'etiquetas', label: 'Etiquetas Zap', icon: Tag,
+    items: [
+      { to: '/etiquetas-zap', label: 'Cards', icon: List, end: true, permKey: 'menu.etiquetas_zap' },
+      { to: '/etiquetas-zap/graficos', label: 'Gráficos', icon: BarChart2, permKey: 'menu.etiquetas_zap' },
+      { to: '/etiquetas-zap/painel', label: 'Painel Status', icon: AlertCircle, permKey: 'menu.etiquetas_zap' },
+    ],
+  },
+  {
+    id: 'orcamentos', label: 'Orçamentos', icon: FileText,
+    items: [
+      { to: '/orcamentos/montar', label: 'Montar Orçamento', icon: Package, permKey: 'menu.orcamentos' },
+      { to: '/orcamentos/salvos', label: 'Salvos (Editar)', icon: List, permKey: 'menu.orcamentos' },
       { to: '/orcamentos/catalogo-admin', label: 'Catálogo (Admin)', icon: Shield, permKey: 'menu.orcamentos_avancado' },
       { to: '/orcamentos/motores', label: 'Motores (Preços)', icon: Zap, permKey: 'menu.orcamentos_avancado' },
       { to: '/orcamentos/precos', label: 'Tabela de Preços', icon: BookOpen, permKey: 'menu.orcamentos_avancado' },
       { to: '/orcamentos/conversao', label: 'Conversão (KPIs)', icon: TrendingUp, permKey: 'menu.orcamentos_avancado' },
       { to: '/admin/transportador-funcoes', label: 'Funções Chupim', icon: GitBranch, permKey: 'menu.orcamentos_avancado' },
-      { to: '/orcamentos', label: 'Painel', icon: BarChart2, permKey: 'menu.orcamentos_avancado' },
+      { to: '/orcamentos', label: 'Painel', icon: BarChart2, end: true, permKey: 'menu.orcamentos_avancado' },
       { to: '/orcamentos/lista', label: 'Lista', icon: List, permKey: 'menu.orcamentos_avancado' },
     ],
   },
   {
-    to: '/frete',
-    label: 'Frete',
-    icon: Truck,
-    matchPrefix: true,
-    // v2026-06-18: liberado pra TODOS (sem permKey). Só o "Fila/Aprovar" segue gateado
-    // (frete.aprovar) — disparar frete pra transportadora é ação sensível.
-    children: [
+    id: 'frete', label: 'Frete', icon: Truck,
+    items: [
+      { to: '/frete/solicitar', label: 'Pedir Frete', icon: Truck, permKey: 'frete.solicitar' },
       { to: '/frete/aprovar', label: 'Fila / Aprovar', icon: CheckCircle, permKey: 'frete.aprovar' },
       { to: '/frete/mapa', label: 'Mapa de Fretes', icon: MapPin },
-      { to: '/frete', label: 'Calculadora', icon: Truck },
+      { to: '/frete', label: 'Calculadora', icon: Truck, end: true },
       { to: '/frete/transportadoras', label: 'Transportadoras', icon: Package },
       { to: '/frete/historico', label: 'Histórico', icon: History },
     ],
   },
   {
-    to: '/controle',
-    label: 'Controle (Vendas)',
-    icon: BarChart2,
-    matchPrefix: true,
-    permKey: 'menu.controle',
-    children: [
-      { to: '/controle', label: 'Painel de Vendas', icon: LayoutDashboard },
-      { to: '/controle/pedidos', label: 'Pedidos de Venda', icon: FileText },
-      { to: '/controle/financeiro', label: 'Financeiro', icon: Wallet },
-      { to: '/controle/novo-pedido', label: 'Novo Pedido', icon: FilePlus2 },
+    id: 'vendas', label: 'Vendas', icon: BarChart2,
+    items: [
+      { to: '/controle', label: 'Painel de Vendas', icon: LayoutDashboard, end: true, permKey: 'menu.controle' },
+      { to: '/controle/pedidos', label: 'Pedidos de Venda', icon: FileText, permKey: 'menu.controle' },
+      { to: '/controle/financeiro', label: 'Financeiro', icon: Wallet, permKey: 'menu.controle' },
+      { to: '/controle/novo-pedido', label: 'Novo Pedido', icon: FilePlus2, permKey: 'menu.controle' },
+      { to: '/vendidos', label: 'Vendidos', icon: CheckCircle, permKey: 'menu.vendidos' },
+      { to: '/mapa-visitas', label: 'Mapa de Visitas', icon: MapPin },
     ],
   },
-  { to: '/vendidos', label: 'Vendidos', icon: CheckCircle, permKey: 'menu.vendidos' },
-  { to: '/mapa-visitas', label: 'Mapa de Visitas', icon: MapPin },
-  { to: '/projeto', label: 'Projeto', icon: Factory, permKey: 'menu.projeto' },
-  { to: '/disparos', label: 'Roteamento', icon: GitBranch, permKey: 'menu.disparos' },
+  {
+    id: 'producao', label: 'Produção', icon: Factory,
+    items: [
+      { to: '/projeto', label: 'Projeto', icon: Factory, permKey: 'menu.projeto' },
+    ],
+  },
+  {
+    id: 'sistema', label: 'Sistema', icon: Settings,
+    items: [
+      { to: '/disparos', label: 'Roteamento', icon: GitBranch, permKey: 'menu.disparos' },
+      { to: '/admin/usuarios', label: 'Usuários', icon: Shield, permKey: 'menu.admin_usuarios' },
+      { to: '/admin/permissoes', label: 'Permissões', icon: Settings, permKey: 'menu.admin_permissoes' },
+      { to: '/admin/transportador-funcoes', label: 'Funções Chupim', icon: Settings, permKey: 'menu.admin_transportador_funcoes' },
+      { to: '/roadmap', label: 'Roadmap & Feedback', icon: MessageSquarePlus, permKey: 'menu.roadmap' },
+    ],
+  },
 ]
 
 // Bottom nav mobile — 5 destinos mais usados pelo vendedor no dia-a-dia.
-// Tirei "Atribuir" (ficou redundante com fallback wa_chat_labels) e "Funil"
-// (acessivel pelo dashboard). Substitui por "Novo orcamento" e "Vendidos"
-// que sao acoes de venda diretas.
 const MOBILE_NAV: NavItem[] = [
   { to: '/', label: 'Início', icon: LayoutDashboard },
   { to: '/atendimentos', label: 'Atender', icon: MessageSquare, countKey: 'atendimentos' },
@@ -116,30 +123,34 @@ const MOBILE_NAV: NavItem[] = [
   { to: '/contatos', label: 'Contatos', icon: Users },
 ]
 
-// Tema dark/light: hook compartilhado em @/hooks/useDarkMode (também usado
-// pelo toggle do topo do Dashboard). App é dark-default; index.html aplica
-// a classe antes do React montar.
-
 function useCollapsed(): [boolean, () => void] {
-  // Respeita SEMPRE a preferência do user salva no localStorage.
-  // Sem auto-colapse por viewport — só colapsa quando user clica o botão.
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false
     return localStorage.getItem('sidebar-collapsed') === '1'
   })
-
-  // Persiste preferência (todas as telas)
   useEffect(() => {
     if (typeof window === 'undefined') return
     localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0')
   }, [collapsed])
-
   return [collapsed, () => setCollapsed(c => !c)]
 }
 
-// Observa o data-ai-drawer-open no <body> (setado pelo OrcamentoAIChat) pra
-// esconder a bottom nav mobile quando o copiloto IA ta aberto — senao a nav
-// fica em cima do input do chat.
+// Estado dos grupos abertos (accordion). Persiste no localStorage.
+function useOpenGroups(): [Record<string, boolean>, (id: string) => void, (id: string) => void] {
+  const [open, setOpen] = useState<Record<string, boolean>>(() => {
+    if (typeof window === 'undefined') return {}
+    try { return JSON.parse(localStorage.getItem('sidebar-open-groups') || '{}') } catch { return {} }
+  })
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try { localStorage.setItem('sidebar-open-groups', JSON.stringify(open)) } catch {}
+  }, [open])
+  const toggle = (id: string) => setOpen(s => ({ ...s, [id]: !(s[id] ?? false) }))
+  const ensureOpen = (id: string) => setOpen(s => (s[id] ? s : { ...s, [id]: true }))
+  return [open, toggle, ensureOpen]
+}
+
+// Observa o data-ai-drawer-open no <body> pra esconder a bottom nav mobile.
 function useAiDrawerOpen(): boolean {
   const [open, setOpen] = useState(() =>
     typeof document !== 'undefined' && document.body.dataset.aiDrawerOpen === '1'
@@ -163,97 +174,112 @@ export function Layout() {
   const can = useCan()
   const loc = useLocation()
   const aiDrawerOpen = useAiDrawerOpen()
+  const [openGroups, toggleGroup, ensureGroupOpen] = useOpenGroups()
+
   const visible = (item: NavItem) => !item.permKey || can(item.permKey)
-  const primary = PRIMARY.filter(visible)
-  const secondary = SECONDARY.filter(visible)
-  // Visualizador: barra mobile só com Início + Atender (resto é bloqueado por rota).
+  // Grupos com itens visiveis (descarta grupos vazios pro usuario)
+  const groups = NAV_GROUPS
+    .map(g => ({ ...g, items: g.items.filter(visible) }))
+    .filter(g => g.items.length > 0)
+
+  const counts: Partial<Record<NonNullable<NavItem['countKey']>, number>> = {
+    atendimentos: kpis?.total,
+  }
+
+  const isItemActive = (it: NavItem) =>
+    it.end ? loc.pathname === it.to : (loc.pathname === it.to || loc.pathname.startsWith(it.to + '/'))
+
+  // Auto-abre o grupo que contem a rota atual (sem fechar os outros).
+  useEffect(() => {
+    const active = groups.find(g => g.items.some(isItemActive))
+    if (active) ensureGroupOpen(active.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loc.pathname])
+
   const mobileNav = profile?.role === 'visualizador'
     ? MOBILE_NAV.filter(l => l.to === '/' || l.to === '/atendimentos')
     : profile?.role === 'vendor'
     ? MOBILE_NAV.filter(l => l.to === '/atendimentos' || l.to === '/orcamentos/montar')
     : MOBILE_NAV
 
-  // Removido auto-colapse: usuário controla manualmente via botão.
-
-  const counts: Partial<Record<NonNullable<NavItem['countKey']>, number>> = {
-    atendimentos: kpis?.total,
-  }
-
-  const renderChild = (c: NavItem) => (
+  // Item dentro de um grupo aberto (modo expandido)
+  const renderItem = (it: NavItem) => (
     <NavLink
-      key={c.to}
-      to={c.to}
-      end
-      title={collapsed ? c.label : undefined}
+      key={it.to}
+      to={it.to}
+      end={it.end}
       className={({ isActive }) => cn(
-        'group relative flex items-center rounded-md text-[12px] font-medium transition-all duration-150',
-        collapsed ? 'justify-center h-8 w-8' : 'gap-2 pl-7 pr-3 py-1.5',
-        isActive
-          ? 'text-accent'
-          : 'text-ink-muted hover:text-ink hover:bg-surface-2',
+        'group relative flex items-center gap-2 rounded-md pl-9 pr-3 py-1.5 text-[12.5px] font-medium transition-all duration-150',
+        isActive ? 'text-accent bg-accent-bg' : 'text-ink-muted hover:text-ink hover:bg-surface-2',
       )}
     >
       {({ isActive }: { isActive: boolean }) => (
         <>
-          <c.icon className={cn('h-[13px] w-[13px] shrink-0', isActive ? 'text-accent' : 'text-ink-faint group-hover:text-ink-muted')} />
-          {!collapsed && <span className="flex-1 truncate">{c.label}</span>}
+          {isActive && <span className="absolute left-0 top-1 bottom-1 w-[2px] rounded-r bg-accent" />}
+          <it.icon className={cn('h-[14px] w-[14px] shrink-0', isActive ? 'text-accent' : 'text-ink-faint group-hover:text-ink-muted')} />
+          <span className="flex-1 truncate">{it.label}</span>
+          {it.countKey && counts[it.countKey] !== undefined && (
+            <span className={cn(
+              'text-[10px] tabular-nums px-1.5 py-0.5 rounded-md font-mono shrink-0',
+              isActive ? 'bg-accent/10 text-accent' : 'bg-surface-2 text-ink-faint',
+            )}>
+              {fmtCount(counts[it.countKey] as number)}
+            </span>
+          )}
         </>
       )}
     </NavLink>
   )
 
-  const renderItem = (l: NavItem) => {
-    const parentActive = l.matchPrefix
-      ? loc.pathname === l.to || loc.pathname.startsWith(l.to + '/')
-      : false
-    const showChildren = !collapsed && !!l.children
-
+  // Grupo colapsavel (modo expandido)
+  const renderGroup = (g: NavGroup) => {
+    const groupActive = g.items.some(isItemActive)
+    const open = openGroups[g.id] ?? false
+    const headerCount = g.items.reduce(
+      (acc, it) => acc + (it.countKey && counts[it.countKey] ? (counts[it.countKey] as number) : 0), 0,
+    )
     return (
-      <div key={l.to}>
-        <NavLink
-          to={l.to}
-          end={l.to === '/' && !l.matchPrefix}
-          title={collapsed ? l.label : undefined}
-          className={({ isActive }) => {
-            const active = l.matchPrefix ? parentActive : isActive
-            return cn(
-              'group relative flex items-center rounded-md text-[13px] font-medium transition-all duration-150',
-              collapsed ? 'justify-center h-9 w-9' : 'gap-2.5 px-3 py-2',
-              active
-                ? 'bg-accent-bg text-accent'
-                : 'text-ink-muted hover:text-ink hover:bg-surface-2',
-            )
-          }}
+      <div key={g.id} className="mb-0.5">
+        <button
+          onClick={() => toggleGroup(g.id)}
+          className={cn(
+            'w-full group flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] font-semibold transition-all duration-150',
+            groupActive ? 'text-accent' : 'text-ink hover:bg-surface-2',
+          )}
         >
-          {({ isActive }: { isActive: boolean }) => {
-            const active = l.matchPrefix ? parentActive : isActive
-            return (
-              <>
-                {active && !collapsed && <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-r bg-accent" />}
-                <l.icon className={cn('h-[15px] w-[15px] shrink-0', active ? 'text-accent' : 'text-ink-faint group-hover:text-ink-muted')} />
-                {!collapsed && (
-                  <>
-                    <span className="flex-1 truncate">{l.label}</span>
-                    {l.countKey && counts[l.countKey] !== undefined && (
-                      <span className={cn(
-                        'text-[10px] tabular-nums px-1.5 py-0.5 rounded-md font-mono shrink-0',
-                        active ? 'bg-accent/10 text-accent' : 'bg-surface-2 text-ink-faint',
-                      )}>
-                        {fmtCount(counts[l.countKey] as number)}
-                      </span>
-                    )}
-                  </>
-                )}
-              </>
-            )
-          }}
-        </NavLink>
-        {showChildren && (
-          <div className="mt-0.5 flex flex-col gap-0.5">
-            {l.children!.filter(visible).map(renderChild)}
+          <g.icon className={cn('h-[15px] w-[15px] shrink-0', groupActive ? 'text-accent' : 'text-ink-faint group-hover:text-ink-muted')} />
+          <span className="flex-1 text-left truncate">{g.label}</span>
+          {!open && headerCount > 0 && (
+            <span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded-md font-mono bg-surface-2 text-ink-faint">
+              {fmtCount(headerCount)}
+            </span>
+          )}
+          <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-ink-faint transition-transform duration-200', open ? 'rotate-0' : '-rotate-90')} />
+        </button>
+        {open && (
+          <div className="mt-0.5 mb-1 flex flex-col gap-0.5">
+            {g.items.map(renderItem)}
           </div>
         )}
       </div>
+    )
+  }
+
+  // Modo colapsado (w-14): icone de cada grupo. Clicar expande a sidebar e abre o grupo.
+  const renderGroupCollapsed = (g: NavGroup) => {
+    const groupActive = g.items.some(isItemActive)
+    return (
+      <button
+        key={g.id}
+        title={g.label}
+        onClick={() => { toggleCollapsed(); ensureGroupOpen(g.id) }}
+        className={cn(
+          'h-9 w-9 flex items-center justify-center rounded-md transition-colors',
+          groupActive ? 'bg-accent-bg text-accent' : 'text-ink-faint hover:text-ink hover:bg-surface-2',
+        )}
+      >
+        <g.icon className="h-[16px] w-[16px]" />
+      </button>
     )
   }
 
@@ -315,21 +341,7 @@ export function Layout() {
         )}
 
         <nav className={cn('flex-1 min-h-0 overflow-y-auto flex flex-col gap-0.5', collapsed ? 'p-2 items-center' : 'p-3')}>
-          {!collapsed && <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-1">Operação</div>}
-          {primary.map(renderItem)}
-          {secondary.length > 0 && !collapsed && <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-4">Orçamentos</div>}
-          {secondary.length > 0 && collapsed && <div className="my-2 w-8 h-px bg-border" />}
-          {secondary.map(renderItem)}
-          {(can('menu.admin_usuarios') || can('menu.admin_permissoes') || can('menu.admin_transportador_funcoes') || can('menu.roadmap')) && (
-            <>
-              {!collapsed && <div className="text-[10px] uppercase tracking-widest text-ink-faint px-3 mb-1.5 mt-4">Admin</div>}
-              {collapsed && <div className="my-2 w-8 h-px bg-border" />}
-              {can('menu.admin_usuarios') && renderItem({ to: '/admin/usuarios', label: 'Usuários', icon: Shield })}
-              {can('menu.admin_permissoes') && renderItem({ to: '/admin/permissoes', label: 'Permissões', icon: Settings })}
-              {can('menu.admin_transportador_funcoes') && renderItem({ to: '/admin/transportador-funcoes', label: 'Funções Chupim', icon: Settings })}
-              {can('menu.roadmap') && renderItem({ to: '/roadmap', label: 'Roadmap & Feedback', icon: MessageSquarePlus })}
-            </>
-          )}
+          {collapsed ? groups.map(renderGroupCollapsed) : groups.map(renderGroup)}
         </nav>
 
         {/* Toolbar inferior — logo após items (sem gap) */}
@@ -364,8 +376,7 @@ export function Layout() {
 
       <main className="flex-1 min-w-0 min-h-screen pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
         {/* ErrorBoundary impede TELA PRETA: captura crash de render e falha de
-            import() de chunk lazy (que o React.lazy cacheia). resetKey troca na
-            rota pra limpar o erro ao navegar pra outra página. */}
+            import() de chunk lazy. resetKey troca na rota pra limpar o erro. */}
         <ErrorBoundary resetKey={loc.pathname}>
           <Suspense fallback={<PageLoading />}>
             <Outlet />
@@ -373,10 +384,10 @@ export function Layout() {
         </ErrorBoundary>
       </main>
 
-      {/* FAB global de feedback (visivel em todas as paginas autenticadas) */}
+      {/* FAB global de feedback */}
       <RoadmapFAB />
 
-      {/* Overlay global de geração de orçamento (persiste entre navegações) */}
+      {/* Overlay global de geração de orçamento */}
       <GenerationOverlay />
 
       <nav className={cn(
