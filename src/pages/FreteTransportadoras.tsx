@@ -163,16 +163,12 @@ export default function FreteTransportadoras() {
                 )}
               </div>
             </div>
-            <div className="mt-2 grid grid-cols-4 gap-2 text-xs">
-              {t.rs_km_vuc != null && <div>VUC: <b>R$ {t.rs_km_vuc}/km</b></div>}
-              {t.rs_km_toco != null && <div>Toco: <b>R$ {t.rs_km_toco}/km</b></div>}
-              {t.rs_km_truck != null && <div>Truck: <b>R$ {t.rs_km_truck}/km</b></div>}
-              {t.rs_km_carreta2 != null && <div>Carreta 2e: <b>R$ {t.rs_km_carreta2}/km</b></div>}
-              {t.rs_km_carreta3 != null && <div>Carreta 3e: <b>R$ {t.rs_km_carreta3}/km</b></div>}
-              {t.rs_km_bitrem != null && <div>Bitrem: <b>R$ {t.rs_km_bitrem}/km</b></div>}
-              {t.rs_km_rodotrem != null && <div>Rodotrem: <b>R$ {t.rs_km_rodotrem}/km</b></div>}
-              {t.taxa_minima > 0 && <div>Mín: <b>R$ {t.taxa_minima}</b></div>}
-            </div>
+            {(t.contato_nome || t.prioridade != null) && (
+              <div className="mt-1.5 text-xs text-ink-muted">
+                {t.contato_nome && <>Responsável: {t.contato_nome}</>}
+                {t.autorizado && <> · auto-cotação (ordem {t.prioridade ?? 100})</>}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -188,7 +184,7 @@ export default function FreteTransportadoras() {
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-sm font-medium block mb-1">Nome *</label>
+                  <label className="text-sm font-medium block mb-1">Nome da transportadora *</label>
                   <input
                     type="text"
                     value={editando.nome ?? ''}
@@ -197,7 +193,7 @@ export default function FreteTransportadoras() {
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium block mb-1">Contato (nome)</label>
+                  <label className="text-sm font-medium block mb-1">Nome do responsável</label>
                   <input
                     type="text"
                     value={editando.contato_nome ?? ''}
@@ -205,59 +201,15 @@ export default function FreteTransportadoras() {
                     className="w-full border rounded px-3 py-2 text-sm bg-bg"
                   />
                 </div>
-                <div>
-                  <label className="text-sm font-medium block mb-1">WhatsApp <span className="text-xs text-ink-muted font-normal">(p/ cotação)</span></label>
+                <div className="col-span-2">
+                  <label className="text-sm font-medium block mb-1">WhatsApp <span className="text-xs text-ink-muted font-normal">(pra receber as cotações)</span></label>
                   <input
                     type="text"
                     value={editando.telefone ?? ''}
                     onChange={e => setEditando({ ...editando, telefone: e.target.value })}
+                    placeholder="(00) 00000-0000"
                     className="w-full border rounded px-3 py-2 text-sm bg-bg"
                   />
-                </div>
-                <div>
-                  <label className="text-sm font-medium block mb-1">E-mail</label>
-                  <input
-                    type="email"
-                    value={editando.email ?? ''}
-                    onChange={e => setEditando({ ...editando, email: e.target.value })}
-                    className="w-full border rounded px-3 py-2 text-sm bg-bg"
-                  />
-                </div>
-              </div>
-
-              <div className="border-t pt-3">
-                <label className="text-sm font-medium block mb-2">R$/km por tipo de caminhão (deixe vazio se não atende)</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {([
-                    ['rs_km_vuc', 'VUC'],
-                    ['rs_km_toco', 'Toco'],
-                    ['rs_km_truck', 'Truck'],
-                    ['rs_km_carreta2', 'Carreta 2e'],
-                    ['rs_km_carreta3', 'Carreta 3e'],
-                    ['rs_km_bitrem', 'Bitrem'],
-                    ['rs_km_rodotrem', 'Rodotrem'],
-                  ] as Array<[keyof TransportadoraParceira, string]>).map(([k, label]) => (
-                    <div key={k as string}>
-                      <label className="text-xs text-ink-muted block">{label}</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={(editando[k] as number) ?? ''}
-                        onChange={e => setEditando({ ...editando, [k]: e.target.value ? Number(e.target.value) : null })}
-                        className="w-full border rounded px-2 py-1 text-sm bg-bg"
-                        placeholder="—"
-                      />
-                    </div>
-                  ))}
-                  <div>
-                    <label className="text-xs text-ink-muted block">Taxa mínima (R$)</label>
-                    <input
-                      type="number"
-                      value={editando.taxa_minima ?? 0}
-                      onChange={e => setEditando({ ...editando, taxa_minima: Number(e.target.value) || 0 })}
-                      className="w-full border rounded px-2 py-1 text-sm bg-bg"
-                    />
-                  </div>
                 </div>
               </div>
 
@@ -281,29 +233,36 @@ export default function FreteTransportadoras() {
                 </div>
               </div>
 
-              <div className="border-t pt-3 flex items-end justify-between gap-4">
-                <div className="flex-1">
-                  <label className="text-sm font-medium flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={!!editando.autorizado}
-                      onChange={e => setEditando({ ...editando, autorizado: e.target.checked })}
-                      className="h-4 w-4 accent-accent"
-                    />
-                    Autorizada p/ cotação automática no WhatsApp
-                  </label>
-                  <p className="text-xs text-ink-muted mt-1">Só transportadoras autorizadas recebem o disparo automático de cotação por UF.</p>
-                </div>
-                <div className="w-28 shrink-0">
-                  <label className="text-xs text-ink-muted block">Prioridade</label>
+              <div className="border-t pt-3">
+                <label className="text-sm font-medium flex items-center gap-2 cursor-pointer">
                   <input
-                    type="number"
-                    value={editando.prioridade ?? 100}
-                    onChange={e => setEditando({ ...editando, prioridade: Number(e.target.value) || 100 })}
-                    className="w-full border rounded px-2 py-1 text-sm bg-bg"
+                    type="checkbox"
+                    checked={!!editando.autorizado}
+                    onChange={e => setEditando({ ...editando, autorizado: e.target.checked })}
+                    className="h-4 w-4 accent-accent"
                   />
-                  <p className="text-[10px] text-ink-muted mt-0.5">menor = dispara antes</p>
-                </div>
+                  Enviar cotação automática no WhatsApp
+                </label>
+                <p className="text-xs text-ink-muted mt-1 leading-relaxed">
+                  <b>Ligado:</b> quando um vendedor abrir um frete pra uma UF que essa transportadora atende, o sistema manda a cotação direto no WhatsApp dela — sem ninguém precisar avisar.<br />
+                  <b>Desligado:</b> ela não recebe nada automático (só aparece se você mandar o link manual ou ela entrar no portal).
+                </p>
+                {editando.autorizado && (
+                  <div className="mt-3 bg-surface-2/50 border border-border rounded-lg p-3 flex items-start gap-3">
+                    <div className="w-24 shrink-0">
+                      <label className="text-xs font-medium block mb-1">Ordem de envio</label>
+                      <input
+                        type="number"
+                        value={editando.prioridade ?? 100}
+                        onChange={e => setEditando({ ...editando, prioridade: Number(e.target.value) || 100 })}
+                        className="w-full border rounded px-2 py-1 text-sm bg-bg"
+                      />
+                    </div>
+                    <p className="text-xs text-ink-muted leading-relaxed flex-1">
+                      Quando <b>várias</b> transportadoras atendem a mesma UF, o número <b>menor</b> recebe a cotação primeiro. Padrão <b>100</b> — ex.: quem está em 10 recebe antes de quem está em 100. Deixe 100 se tanto faz.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div>
