@@ -406,6 +406,7 @@ export type FreteSolicitacao = {
   caminhao_recomendado_id: number | null;
   valor_antt_minimo: number | null;
   valor_referencia: number | null;
+  valor_nota: number | null;
   prazo_desejado: string | null;
   observacoes: string | null;
   // 'cotacao' = só previsão de valor (base); 'carregar' = vai mandar de verdade.
@@ -741,7 +742,7 @@ export type TranspCotacao = {
   cidade_destino: string | null; uf_destino: string | null; distancia_km: number | null;
   peso_total_kg: number | null; comprimento_m: number | null; largura_m: number | null; altura_m: number | null;
   volume_m3: number | null; carga_indivisivel: boolean | null; caminhao_recomendado_id: number | null;
-  descricao_carga: string | null; observacoes: string | null;
+  descricao_carga: string | null; observacoes: string | null; valor_nota: number | null;
   equipamentos_itens: FreteEquipItem[]; status: string;
   meu_valor: number | null; meu_prazo_dias: number | null; meu_status: string | null; meu_anexo_url: string | null;
 };
@@ -885,5 +886,83 @@ export function useCriarFreteFeito() {
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['frete-feitos'] }),
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Painel de cotações do vendedor (pipeline Pendente -> Analisando -> Concluída)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type CotacaoPainelLance = {
+  lance_id: string;
+  transportadora_nome: string | null;
+  valor: number | null;
+  prazo_dias: number | null;
+  status: string;
+  respondido_em: string | null;
+  visualizada_em: string | null;
+  observacoes: string | null;
+  anexo_url: string | null;
+};
+
+export type CotacaoPainel = {
+  id: string;
+  codigo: string;
+  criado_em: string;
+  status: string;
+  derived_status: 'pendente' | 'analisando' | 'concluida' | 'fechado';
+  tipo_cotacao: string;
+  urgente: boolean;
+  cliente_nome: string | null;
+  cidade_destino: string | null;
+  uf_destino: string | null;
+  distancia_km: number | null;
+  equipamentos_itens: FreteEquipItem[];
+  solicitante_id: string | null;
+  solicitante_nome: string | null;
+  vendedor_nome: string | null;
+  n_lances: number;
+  n_respostas: number;
+  menor_valor: number | null;
+  valor_final_combinado: number | null;
+  lances: CotacaoPainelLance[];
+};
+
+/** Painel: cotações do próprio vendedor (todas=false) ou de todo mundo (todas=true). */
+export function useCotacoesPainel(todas: boolean) {
+  return useQuery({
+    queryKey: ['frete-cotacoes-painel', todas],
+    queryFn: async (): Promise<CotacaoPainel[]> => {
+      const { data, error } = await (supabase as any).rpc('frete_cotacoes_painel', { p_todas: todas });
+      if (error) throw error;
+      return (data ?? []) as CotacaoPainel[];
+    },
+    refetchInterval: 15000,
+  });
+}
+
+/** Move uma cotação pra "Fretes fechados" (com valor final combinado) ou volta (valor null). */
+export function useFinalizarFrete() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ solicitacao_id, valor_final }: { solicitacao_id: string; valor_final: number | null }) => {
+      const { error } = await (supabase as any).rpc('frete_set_valor_final', {
+        p_solic: solicitacao_id, p_valor: valor_final,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['frete-cotacoes-painel'] });
+    },
+  });
+}
+
+/** Portal: marca que a transportadora abriu/está analisando uma cotação. */
+export function useTranspMarcarAnalisando() {
+  return useMutation({
+    mutationFn: async (solicitacaoId: string) => {
+      const { error } = await (supabase as any).rpc('transp_marcar_analisando', { p_solic: solicitacaoId });
+      if (error) throw error;
+    },
   });
 }

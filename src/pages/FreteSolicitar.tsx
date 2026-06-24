@@ -1,10 +1,11 @@
 // /frete/solicitar — vendedor abre um pedido de frete (RFQ). Cadastra os itens a
 // transportar (manual OU puxando do catálogo, que auto-preenche as medidas) + destino;
 // o sistema auto-preenche peso/cubagem, recomenda o caminhão e calcula o piso ANTT de
-// referência. Ao enviar, a solicitação cai na fila do Jardel (status 'pendente').
+// referência. Ao enviar, a solicitação já entra "em cotação" (sem fila de aprovação)
+// e fica visível direto pras transportadoras dos estados de destino no portal.
 // Aceita prefill por querystring (vindo da extensão/orçamento):
 //   ?cliente=&telefone=&uf=&cidade=&vendedor=&origem=extensao
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, lazy, Suspense } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Truck, Plus, X, MapPin, Loader2, ArrowLeft, CheckCircle2, Package, Copy, Check, AlertTriangle } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
@@ -17,11 +18,21 @@ import {
   volumeM3, type Carga,
 } from '@/lib/calcFrete'
 
+// Visualizador 3D da carga (Three.js) — lazy: só baixa quando o vendedor abre o painel.
+const CargaCaminhao3D = lazy(() => import('@/pages/CargaCaminhao3D'))
+
 const GRAO_PARA = { lat: -28.1828, lng: -49.2280 } // origem fixa Branorte
 
 function fmtMoeda(v: number | null): string {
   if (v == null) return '—'
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+}
+
+// Aceita "25.000", "25000", "25.000,50" → number. Vazio/zero/inválido → null.
+function parseBRL(s: string): number | null {
+  if (!s || !s.trim()) return null
+  const n = Number(s.replace(/[^\d,.-]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'))
+  return Number.isFinite(n) && n > 0 ? n : null
 }
 
 function novoUid(): string {
@@ -113,11 +124,13 @@ export function FreteSolicitar() {
   const [clienteNome, setClienteNome] = useState(params.get('cliente') || '')
   const [descricao, setDescricao] = useState('')
   const [obs, setObs] = useState('')
+  const [valorNota, setValorNota] = useState('')
   // tipo do pedido: 'cotacao' = só previsão de valor (base); 'carregar' = vai mandar.
   const [tipoCotacao, setTipoCotacao] = useState<'cotacao' | 'carregar'>('cotacao')
   const [urgente, setUrgente] = useState(false)
 
   const [erro, setErro] = useState('')
+  const [show3d, setShow3d] = useState(false)
   const [okCodigo, setOkCodigo] = useState<string | null>(null)
   const [okSolicId, setOkSolicId] = useState<string | null>(null)
 
@@ -225,6 +238,7 @@ export function FreteSolicitar() {
   async function enviar() {
     setErro('')
     if (!uf || !cidade.trim()) { setErro('Informe o destino (UF + cidade).'); return }
+    if (!clienteNome.trim()) { setErro('Informe o nome do cliente.'); return }
     if (!itens.length) { setErro('Adicione ao menos um item a transportar.'); return }
     const equipamentos_itens: FreteEquipItem[] = itens.map(it => ({
       catalogo_item_id: it.catalogo_item_id,
@@ -260,11 +274,17 @@ export function FreteSolicitar() {
         caminhao_recomendado_id: caminhao?.id ?? null,
         valor_antt_minimo: pisoAntt,
         valor_referencia: pisoAntt ? Math.round(pisoAntt * 1.3) : null,
+        valor_nota: parseBRL(valorNota),
         prazo_desejado: null,
         observacoes: obs.trim() || null,
         tipo_cotacao: tipoCotacao,
         urgente,
-        status: 'pendente',
+        // Sem fila de aprovação: o pedido já entra "em cotação" e fica disponível
+        // direto pras transportadoras dos estados de destino (portal). Ninguém
+        // precisa autorizar — o vendedor pediu, já vai.
+        status: 'em_cotacao',
+        aprovado_em: new Date().toISOString(),
+        aprovado_por_nome: 'Automático',
       })
       setOkCodigo(res.codigo ?? '✓')
       setOkSolicId(res.id ?? null)
@@ -276,7 +296,7 @@ export function FreteSolicitar() {
   function novaSolicitacao() {
     setItens([]); setForm(FORM_VAZIO)
     setUf(''); setCidade(''); setLatLng(null); setDistancia(null); setCalcMsg('')
-    setClienteNome(''); setDescricao(''); setObs(''); setTipoCotacao('cotacao'); setUrgente(false)
+    setClienteNome(''); setDescricao(''); setObs(''); setValorNota(''); setTipoCotacao('cotacao'); setUrgente(false)
     setOkCodigo(null); setOkSolicId(null); setErro('')
   }
 
@@ -287,11 +307,11 @@ export function FreteSolicitar() {
           <CheckCircle2 className="h-8 w-8 text-accent" />
         </div>
         <h1 className="text-xl font-bold text-ink mb-1">Pedido de frete enviado!</h1>
-        <p className="text-sm text-ink-muted mb-1">Código <b className="text-ink">{okCodigo}</b> — foi pra fila do Jardel pra aprovação e disparo às transportadoras.</p>
+        <p className="text-sm text-ink-muted mb-1">Código <b className="text-ink">{okCodigo}</b> — já está disponível pras transportadoras dos estados de destino. Elas veem e respondem direto no portal.</p>
         {okSolicId && <LinkRapido solicId={okSolicId} />}
         <div className="flex items-center justify-center gap-2 mt-6">
           <button onClick={novaSolicitacao} className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:opacity-90">Novo pedido</button>
-          <Link to="/frete/aprovar" className="px-4 py-2 rounded-lg border border-border text-sm text-ink-muted hover:text-ink">Ver fila</Link>
+          <Link to="/frete/aprovar" className="px-4 py-2 rounded-lg border border-border text-sm text-ink-muted hover:text-ink">Ver cotações</Link>
         </div>
       </div>
     )
@@ -321,7 +341,7 @@ export function FreteSolicitar() {
           </button>
           <button type="button" onClick={() => setTipoCotacao('carregar')}
             className={`px-3.5 py-1.5 font-medium transition-colors ${tipoCotacao === 'carregar' ? 'bg-red-500 text-white' : 'bg-white dark:bg-surface text-ink-muted hover:text-ink'}`}>
-            Pra carregar
+            Embarque imediato
           </button>
         </div>
         <button type="button" onClick={() => setUrgente(u => !u)}
@@ -329,7 +349,7 @@ export function FreteSolicitar() {
           {urgente ? '⚠ Urgente' : 'Marcar urgente'}
         </button>
         <span className="text-xs text-ink-faint">
-          {tipoCotacao === 'cotacao' ? 'Só previsão de valor (base) — não vai carregar ainda.' : 'Pra carregar — já é pra mandar de verdade.'}
+          {tipoCotacao === 'cotacao' ? 'Só previsão de valor (base) — não vai carregar ainda.' : 'Embarque imediato — já é pra mandar de verdade.'}
         </span>
       </div>
 
@@ -404,13 +424,16 @@ export function FreteSolicitar() {
 
         {/* Cliente */}
         <section className="order-3 xl:order-2 xl:col-span-4 bg-white dark:bg-surface border border-border rounded-xl p-4">
-          <h2 className={secLabel}>Cliente</h2>
+          <h2 className={secLabel}>Cliente <span className="text-red-500 ml-0.5">*</span></h2>
           <div className="space-y-3">
-            <div><label className="text-xs text-ink-faint block mb-1">Nome do cliente (opcional)</label>
-              <input value={clienteNome} onChange={e => setClienteNome(e.target.value)} placeholder="Quem é o cliente do frete" className={inputCls} /></div>
+            <div><label className="text-xs text-ink-faint block mb-1">Nome do cliente <span className="text-red-500">*</span></label>
+              <input value={clienteNome} onChange={e => setClienteNome(e.target.value)} placeholder="Quem é o cliente do frete" className={`w-full px-3 py-2 rounded-lg bg-bg border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent ${reqRing(!clienteNome.trim())}`} /></div>
             <div><label className="text-xs text-ink-faint block mb-1">Observação / motivo (opcional)</label>
               <textarea value={obs} onChange={e => setObs(e.target.value)} rows={3} placeholder="Ex.: cliente quer só uma base de preço pra fechar a venda…"
                 className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent resize-none" /></div>
+            <div><label className="text-xs text-ink-faint block mb-1">Valor da nota fiscal (R$) <span className="text-ink-faint">(opcional)</span></label>
+              <input value={valorNota} onChange={e => setValorNota(e.target.value)} inputMode="decimal" placeholder="Ex.: 25.000 — valor declarado da carga (seguro/CT-e)"
+                className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent" /></div>
           </div>
         </section>
 
@@ -499,6 +522,29 @@ export function FreteSolicitar() {
             </div>
         </section>
       </div>
+
+      {/* Visualizador 3D da carga dentro do caminhão sugerido */}
+      {caminhao && itens.length > 0 && (
+        <div className="mt-4 bg-white dark:bg-surface border border-border rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h2 className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted flex items-center gap-1.5">
+              <Truck className="h-4 w-4 text-accent" /> Carga no caminhão (3D)
+            </h2>
+            <button type="button" onClick={() => setShow3d(s => !s)}
+              className="text-xs px-3 py-1.5 rounded-lg border border-border text-ink-muted hover:text-ink">
+              {show3d ? 'Ocultar' : `Ver no ${caminhao.nome}`}
+            </button>
+          </div>
+          {show3d && (
+            <Suspense fallback={<div className="h-[440px] rounded-xl border border-border flex items-center justify-center text-sm text-ink-faint"><Loader2 className="h-5 w-5 animate-spin mr-2" /> Carregando 3D…</div>}>
+              <CargaCaminhao3D
+                truck={{ nome: caminhao.nome, comp: caminhao.comprimento_util_m, larg: caminhao.largura_util_m, alt: caminhao.altura_util_m, peso_max_kg: caminhao.peso_max_kg }}
+                itens={itens.map(it => ({ uid: it.uid, nome: it.nome, comprimento_m: it.comprimento_m, largura_m: it.largura_m, altura_m: it.altura_m, qtd: it.qtd }))}
+              />
+            </Suspense>
+          )}
+        </div>
+      )}
 
       {/* Barra de ação fixa */}
       <div className="sticky bottom-0 -mx-5 lg:-mx-8 mt-4 px-5 lg:px-8 py-3 bg-white/85 dark:bg-bg/85 backdrop-blur border-t border-border flex items-center gap-4 z-10">

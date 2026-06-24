@@ -32,19 +32,31 @@ import {
   useAnttVigente,
   useTransportadoras,
   useMediaHistorica,
-  useCatalogoFabricas,
+  useFreteCatalogoItens,
   useModeloBranorte,
   useSalvarCotacao,
   useMunicipiosUF,
   UFS_BR,
-  type ItemCatalogoComPeso,
 } from '@/hooks/useFrete'
 
 type Aba = 'equipamento' | 'dimensoes' | 'pallets' | 'fechada'
 
+// Item do seletor de equipamento = vem do cadastro "Itens de frete"
+// (frete_catalogo_itens). id é uuid (string), não o catálogo inteiro de Compactas.
+type EquipFonte = {
+  id: string
+  nome_curto: string
+  categoria: string
+  peso_kg: number | null
+  dim_comprimento_m: number | null
+  dim_largura_m: number | null
+  dim_altura_m: number | null
+  indivisivel: boolean
+}
+
 type LinhaEquipamento = {
   uid: string
-  item: ItemCatalogoComPeso | null
+  item: EquipFonte | null
   qtd: number
   // Dimensões/peso EDITÁVEIS por equipamento (pré-preenchidos do catálogo,
   // mas o vendedor pode ajustar em cada cotação). Vazio = usa o do catálogo.
@@ -67,6 +79,7 @@ const MODOS_CARGA_LABELS: Record<string, string> = {
 
 // Rótulos amigáveis das categorias do seletor de equipamento (frete).
 const CAT_LABELS: Record<string, string> = {
+  FRETE: 'Itens de frete',
   COMPACTA: 'Fábricas Compactas',
   MISTURADOR: 'Misturadores',
   MOINHO: 'Moinhos',
@@ -78,7 +91,7 @@ const CAT_LABELS: Record<string, string> = {
   MOEGA: 'Moegas',
 }
 // Ordem de exibição dos grupos (fábricas primeiro).
-const CAT_ORDEM = ['COMPACTA','MISTURADOR','MOINHO','PRE_LIMPEZA','CACAMBA_PESAGEM','ENSACADEIRA','SUPORTE_BAG','ESTEIRA','MOEGA']
+const CAT_ORDEM = ['FRETE','COMPACTA','MISTURADOR','MOINHO','PRE_LIMPEZA','CACAMBA_PESAGEM','ENSACADEIRA','SUPORTE_BAG','ESTEIRA','MOEGA']
 
 export default function FreteCotacao() {
   // ── Dados base ──
@@ -86,7 +99,17 @@ export default function FreteCotacao() {
   const antts = useAnttVigente()
   const modeloBN = useModeloBranorte()
   const parceiras = useTransportadoras()
-  const catalogo = useCatalogoFabricas()
+  const catFrete = useFreteCatalogoItens()
+  // Seletor de equipamento usa SÓ os "Itens de frete" cadastrados (frete_catalogo_itens),
+  // não o catálogo inteiro de Compactas. Mapeia pro shape do seletor.
+  const catalogo = useMemo(() => ({
+    data: (catFrete.data ?? []).map((it): EquipFonte => ({
+      id: it.id, nome_curto: it.nome, categoria: 'FRETE', peso_kg: it.peso_kg,
+      dim_comprimento_m: it.comprimento_m, dim_largura_m: it.largura_m,
+      dim_altura_m: it.altura_m, indivisivel: it.indivisivel,
+    })),
+    isLoading: catFrete.isLoading,
+  }), [catFrete.data, catFrete.isLoading])
   const salvar = useSalvarCotacao()
 
   // ── Inputs gerais ──
@@ -259,7 +282,7 @@ export default function FreteCotacao() {
   // ── Catálogo agrupado por categoria (pro <select> com optgroups) ──
   const gruposEquip = useMemo(() => {
     const data = catalogo.data ?? []
-    const porCat = new Map<string, ItemCatalogoComPeso[]>()
+    const porCat = new Map<string, EquipFonte[]>()
     for (const item of data) {
       const arr = porCat.get(item.categoria) ?? []
       arr.push(item)
@@ -656,8 +679,8 @@ export default function FreteCotacao() {
         {aba === 'equipamento' && (
           <div className="space-y-2">
             <div className="text-xs text-ink-muted mb-2">
-              Fábricas Compactas + equipamentos avulsos com medida cadastrada ({catalogo.data?.length ?? 0} no total).
-              Pra transportador, elevador ou item sem cadastro, use "Por dimensões".
+              Itens de frete cadastrados ({catalogo.data?.length ?? 0}). Cadastre/edite em "Itens de frete".
+              Pra algo fora do cadastro, use "Por dimensões".
             </div>
             {linhasEquip.map((l, i) => (
               <div key={l.uid} className="border border-border/70 rounded-xl p-2.5 space-y-2 bg-surface/40">
@@ -665,7 +688,7 @@ export default function FreteCotacao() {
                   <select
                     value={l.item?.id ?? ''}
                     onChange={e => {
-                      const id = Number(e.target.value)
+                      const id = e.target.value
                       const item = catalogo.data?.find(c => c.id === id) ?? null
                       setLinhasEquip(prev => prev.map((x, idx) => idx === i ? {
                         ...x, item,
@@ -683,7 +706,7 @@ export default function FreteCotacao() {
                       <optgroup key={g.cat} label={g.label}>
                         {g.itens.map(c => (
                           <option key={c.id} value={c.id}>
-                            {c.nome_curto} ({c.peso_kg} kg)
+                            {c.nome_curto}{c.peso_kg ? ` (${c.peso_kg} kg)` : ''}
                           </option>
                         ))}
                       </optgroup>
@@ -744,7 +767,7 @@ export default function FreteCotacao() {
             </button>
             {catalogo.data && catalogo.data.length === 0 && (
               <div className="text-xs text-amber-600 mt-2">
-                Nenhum equipamento com medida cadastrada ainda.
+                Nenhum item de frete cadastrado ainda. Cadastre em "Itens de frete".
               </div>
             )}
           </div>

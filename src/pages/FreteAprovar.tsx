@@ -128,7 +128,7 @@ export default function FreteAprovar() {
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-3">
           <Truck className="h-6 w-6 text-accent" />
-          <h1 className="text-2xl font-bold text-ink">Fila de Frete</h1>
+          <h1 className="text-2xl font-bold text-ink">Cotações de Frete</h1>
         </div>
         <div className="flex items-center gap-2">
           <Link to="/frete/solicitar" className="px-3 py-1.5 rounded-lg bg-accent text-white text-sm font-medium hover:opacity-90">+ Pedido</Link>
@@ -169,7 +169,7 @@ export default function FreteAprovar() {
                 <span className="text-xs font-mono text-ink-faint">{s.codigo}</span>
                 <div className="flex items-center gap-1 flex-wrap justify-end">
                   {s.urgente && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-red-500/15 text-red-500">⚠</span>}
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${s.tipo_cotacao === 'carregar' ? 'bg-red-500/15 text-red-500' : 'bg-accent/15 text-accent'}`}>{s.tipo_cotacao === 'carregar' ? 'Carregar' : 'Cotação'}</span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${s.tipo_cotacao === 'carregar' ? 'bg-red-500/15 text-red-500' : 'bg-accent/15 text-accent'}`}>{s.tipo_cotacao === 'carregar' ? 'Embarque imediato' : 'Cotação'}</span>
                   <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[s.status] ?? ''}`}>{s.status}</span>
                 </div>
               </div>
@@ -182,7 +182,7 @@ export default function FreteAprovar() {
         {/* Detalhe */}
         <div>
           {!solic ? (
-            <div className="border border-dashed border-border rounded-xl p-10 text-center text-sm text-ink-faint">Selecione um pedido pra revisar e disparar.</div>
+            <div className="border border-dashed border-border rounded-xl p-10 text-center text-sm text-ink-faint">Selecione uma cotação pra ver os lances e escolher o vencedor.</div>
           ) : (
             <div className="space-y-4">
               {/* Header detalhe */}
@@ -191,7 +191,7 @@ export default function FreteAprovar() {
                   <div>
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span className="text-xs font-mono text-ink-faint">{solic.codigo}</span>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${solic.tipo_cotacao === 'carregar' ? 'bg-red-500/15 text-red-500' : 'bg-accent/15 text-accent'}`}>{solic.tipo_cotacao === 'carregar' ? 'Pra carregar' : 'Cotação'}</span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${solic.tipo_cotacao === 'carregar' ? 'bg-red-500/15 text-red-500' : 'bg-accent/15 text-accent'}`}>{solic.tipo_cotacao === 'carregar' ? 'Embarque imediato' : 'Cotação'}</span>
                       {solic.urgente && <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-red-500/15 text-red-500">⚠ Urgente</span>}
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[solic.status] ?? ''}`}>{solic.status}</span>
                     </div>
@@ -209,7 +209,7 @@ export default function FreteAprovar() {
                   <div><dt className="text-xs text-ink-faint">Piso ANTT</dt><dd className="text-ink">{fmtMoeda(solic.valor_antt_minimo)}</dd></div>
                   <div><dt className="text-xs text-ink-faint">Ref. (×1,3)</dt><dd className="text-ink">{fmtMoeda(solic.valor_referencia)}</dd></div>
                   <div><dt className="text-xs text-ink-faint">Cliente</dt><dd className="text-ink truncate">{solic.cliente_nome ?? '—'}</dd></div>
-                  <div><dt className="text-xs text-ink-faint">Tipo</dt><dd className={solic.tipo_cotacao === 'carregar' ? 'text-red-500 font-medium' : 'text-ink'}>{solic.tipo_cotacao === 'carregar' ? 'Pra carregar' : 'Cotação'}</dd></div>
+                  <div><dt className="text-xs text-ink-faint">Tipo</dt><dd className={solic.tipo_cotacao === 'carregar' ? 'text-red-500 font-medium' : 'text-ink'}>{solic.tipo_cotacao === 'carregar' ? 'Embarque imediato' : 'Cotação'}</dd></div>
                 </dl>
                 {solic.observacoes && <p className="text-sm text-ink-muted mt-2 pt-2 border-t border-border">{solic.observacoes}</p>}
               </div>
