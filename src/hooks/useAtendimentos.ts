@@ -390,11 +390,10 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
         baseQ().not('responsavel', 'is', null).neq('responsavel', '').neq('responsavel', 'a definir'),
         // Nao engajaram: chegou no anuncio mas nem clicou no primeiro botao (motivo_contato)
         baseQ().is('motivo_contato', null).is('tocou_botao_em', null),
-        // Qualificados FÁBRICA: motivo fábrica + finalidade + animal preenchidos
+        // Qualificados FÁBRICA: motivo é "montar fábrica" (a intenção por si só já qualifica;
+        // não exige finalidade/animal preenchidos — alinhado com a regra de equipamento).
         baseQ()
-          .or('motivo_contato.ilike.%fab%,motivo_contato.ilike.%fáb%')
-          .not('finalidade_fabrica', 'is', null)
-          .not('qual_animal', 'is', null),
+          .or('motivo_contato.ilike.%fab%,motivo_contato.ilike.%fáb%'),
         // Qualificados EQUIPAMENTO: motivo equipamento + o_que_precisa bate no catálogo Branorte
         baseQ()
           .ilike('motivo_contato', '%equip%')
