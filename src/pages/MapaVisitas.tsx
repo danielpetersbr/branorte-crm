@@ -136,6 +136,8 @@ export function MapaVisitas() {
   const [busca, setBusca] = useState('')
   const [vendFiltro, setVendFiltro] = useState<VendFiltro>('todos')
   const [showLista, setShowLista] = useState(false)
+  const [sortKey, setSortKey] = useState<'numero' | 'data' | 'cliente' | 'cidade' | 'total' | 'vendido'>('data')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   // raio
   const [modoRaio, setModoRaio] = useState(false)
   const [centro, setCentro] = useState<{ lat: number; lng: number } | null>(null)
@@ -244,6 +246,31 @@ export function MapaVisitas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lista, termo, vendFiltro])
 
+  // lista ordenada (clique no header)
+  const sortedLista = useMemo(() => {
+    const arr = [...listaFiltrada]
+    const dir = sortDir === 'asc' ? 1 : -1
+    const txt = (s: string | null) => (s || '').toLowerCase()
+    arr.sort((a, b) => {
+      switch (sortKey) {
+        case 'total': return ((a.total ?? -1) - (b.total ?? -1)) * dir
+        case 'data': return txt(a.data_emissao) < txt(b.data_emissao) ? -dir : txt(a.data_emissao) > txt(b.data_emissao) ? dir : 0
+        case 'numero': return txt(a.numero).localeCompare(txt(b.numero)) * dir
+        case 'cidade': return (txt(a.cidade) + a.uf).localeCompare(txt(b.cidade) + b.uf) * dir
+        case 'vendido': return ((a.vendido ? 1 : 0) - (b.vendido ? 1 : 0)) * dir
+        default: return txt(a.cliente).localeCompare(txt(b.cliente)) * dir
+      }
+    })
+    return arr
+  }, [listaFiltrada, sortKey, sortDir])
+
+  const somaTotal = useMemo(() => sortedLista.reduce((s, r) => s + (r.total || 0), 0), [sortedLista])
+
+  function ordenarPor(k: typeof sortKey) {
+    if (sortKey === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
+    else { setSortKey(k); setSortDir(k === 'data' || k === 'total' ? 'desc' : 'asc') }
+  }
+
   // init do mapa (uma vez)
   useEffect(() => {
     if (mapRef.current || !divRef.current) return
@@ -348,9 +375,25 @@ export function MapaVisitas() {
     L.popup().setLatLng([p.lat, p.lng]).setContent(popupOrcamento(p)).openOn(map)
   }
 
+  function focarLinha(r: OrcamentoLinha) {
+    if (r.lat == null || r.lng == null) return
+    setShowLista(false)
+    const map = mapRef.current
+    if (!map) return
+    map.setView([r.lat, r.lng], 11)
+    const vb = r.vendido ? '✓ VENDIDO' : 'Orçado'
+    L.popup().setLatLng([r.lat, r.lng]).setContent(
+      `<div style="min-width:180px;font-family:inherit"><div style="font-weight:600;font-size:13px">${esc(r.cliente) || 'Sem nome'}</div>`
+      + `<div style="font-size:12px;color:#64748b">${[esc(r.cidade), esc(r.uf)].filter(Boolean).join(' - ')}</div>`
+      + `<div style="font-size:11px;color:#475569;margin-top:3px">🧾 ${esc(r.numero)} · ${dataBR(r.data_emissao)} · ${vb}</div>`
+      + `<div style="font-size:12px;margin-top:3px">${esc(r.equipamento)}</div>`
+      + `<div style="font-size:14px;font-weight:700;color:#10b981;margin-top:3px">${brl(r.total)}</div></div>`
+    ).openOn(map)
+  }
+
   function baixarCSV() {
     const head = ['Numero', 'Data', 'Cliente', 'Equipamento', 'Cidade', 'UF', 'Total', 'Status']
-    const linhas = listaFiltrada.map(r => [
+    const linhas = sortedLista.map(r => [
       r.numero || '', r.data_emissao || '', r.cliente || '', (r.equipamento || '').replace(/[\r\n]+/g, ' '),
       r.cidade || '', r.uf || '', r.total ?? '', r.vendido ? 'VENDIDO' : 'Orçado',
     ].map(c => `"${String(c).replace(/"/g, '""')}"`).join(';'))
@@ -493,10 +536,10 @@ export function MapaVisitas() {
       {/* Overlay: lista (tabela) */}
       {showLista && (
         <div className="fixed inset-0 z-[1000] bg-black/40 flex items-center justify-center p-4" onClick={() => setShowLista(false)}>
-          <div className="bg-surface rounded-xl border border-border w-full max-w-6xl max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
+          <div className="bg-surface rounded-xl border border-border w-full max-w-[1200px] max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-3 p-3 border-b border-border shrink-0">
               <h2 className="text-[16px] font-semibold text-ink">Orçamentos cadastrados</h2>
-              <span className="text-[12px] text-ink-muted">{listaFiltrada.length} de {lista.length}</span>
+              <span className="text-[12px] text-ink-muted">{sortedLista.length} de {lista.length}</span>
               <div className="relative ml-2">
                 <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar…" className="h-8 w-52 px-2 rounded-md bg-surface-2 border border-border text-[13px] text-ink outline-none focus:border-accent" />
               </div>
@@ -508,27 +551,31 @@ export function MapaVisitas() {
               <button onClick={baixarCSV} className="h-8 px-3 rounded-md bg-accent-bg border border-accent/30 text-accent text-[12px] font-semibold ml-auto">⬇ CSV</button>
               <button onClick={() => setShowLista(false)} className="h-8 w-8 rounded-md hover:bg-surface-2 text-ink-muted">✕</button>
             </div>
-            <div className="overflow-auto">
-              <table className="w-full text-[12px]">
-                <thead className="sticky top-0 bg-surface-2 text-ink-muted">
+            <div className="overflow-auto flex-1">
+              <table className="w-full text-[12px] table-fixed">
+                <colgroup>
+                  <col style={{ width: '92px' }} /><col style={{ width: '88px' }} /><col style={{ width: '190px' }} />
+                  <col /><col style={{ width: '150px' }} /><col style={{ width: '108px' }} /><col style={{ width: '92px' }} />
+                </colgroup>
+                <thead className="sticky top-0 z-10 bg-surface-2 text-ink-muted">
                   <tr className="text-left">
-                    <th className="px-3 py-2 font-semibold">Nº</th>
-                    <th className="px-3 py-2 font-semibold">Data</th>
-                    <th className="px-3 py-2 font-semibold">Cliente</th>
-                    <th className="px-3 py-2 font-semibold">Equipamento</th>
-                    <th className="px-3 py-2 font-semibold">Cidade</th>
-                    <th className="px-3 py-2 font-semibold text-right">Total</th>
-                    <th className="px-3 py-2 font-semibold">Status</th>
+                    {([['numero', 'Nº', ''], ['data', 'Data', ''], ['cliente', 'Cliente', ''], [null, 'Equipamento', ''], ['cidade', 'Cidade', ''], ['total', 'Total', 'text-right'], ['vendido', 'Status', '']] as [typeof sortKey | null, string, string][]).map(([k, label, cls]) => (
+                      <th key={label} className={`px-3 py-2 font-semibold ${cls} ${k ? 'cursor-pointer select-none hover:text-ink' : ''}`} onClick={() => k && ordenarPor(k)}>
+                        {label}{k && sortKey === k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {listaFiltrada.map((r, i) => (
-                    <tr key={i} className="border-t border-border hover:bg-surface-2">
+                  {sortedLista.map((r, i) => (
+                    <tr key={i} onClick={() => focarLinha(r)}
+                        className={`border-t border-border hover:bg-accent-bg/40 ${r.lat != null ? 'cursor-pointer' : ''}`}
+                        title={r.lat != null ? 'Ver no mapa' : 'Sem localização'}>
                       <td className="px-3 py-1.5 whitespace-nowrap text-ink-muted">{r.numero}</td>
                       <td className="px-3 py-1.5 whitespace-nowrap text-ink-muted">{dataBR(r.data_emissao)}</td>
-                      <td className="px-3 py-1.5 text-ink font-medium">{r.cliente || '—'}</td>
-                      <td className="px-3 py-1.5 text-ink-muted max-w-[320px] truncate" title={r.equipamento || ''}>{r.equipamento || '—'}</td>
-                      <td className="px-3 py-1.5 whitespace-nowrap text-ink-muted">{[r.cidade, r.uf].filter(Boolean).join(' - ') || '—'}</td>
+                      <td className="px-3 py-1.5 text-ink font-medium truncate" title={r.cliente || ''}>{r.cliente || '—'}</td>
+                      <td className={`px-3 py-1.5 truncate ${r.equipamento === '(venda sem orçamento)' ? 'text-ink-faint italic' : 'text-ink-muted'}`} title={r.equipamento || ''}>{r.equipamento || '—'}</td>
+                      <td className="px-3 py-1.5 truncate text-ink-muted" title={[r.cidade, r.uf].filter(Boolean).join(' - ')}>{[r.cidade, r.uf].filter(Boolean).join(' - ') || '—'}</td>
                       <td className="px-3 py-1.5 whitespace-nowrap text-right tabular-nums text-ink">{brl(r.total)}</td>
                       <td className="px-3 py-1.5 whitespace-nowrap">
                         {r.vendido
@@ -537,11 +584,16 @@ export function MapaVisitas() {
                       </td>
                     </tr>
                   ))}
-                  {listaFiltrada.length === 0 && (
+                  {sortedLista.length === 0 && (
                     <tr><td colSpan={7} className="px-3 py-6 text-center text-ink-muted">Nada encontrado.</td></tr>
                   )}
                 </tbody>
               </table>
+            </div>
+            <div className="flex items-center gap-4 px-3 py-2 border-t border-border shrink-0 text-[12px] text-ink-muted bg-surface-2 rounded-b-xl">
+              <span><b className="text-ink">{sortedLista.length}</b> orçamentos</span>
+              <span>Soma: <b className="text-ink tabular-nums">{brl(somaTotal)}</b></span>
+              <span className="ml-auto text-ink-faint">Clique numa linha pra ver no mapa · clique no cabeçalho pra ordenar</span>
             </div>
           </div>
         </div>
