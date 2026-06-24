@@ -263,13 +263,11 @@ export function useAtendimentos(filters: AtendimentoFilters) {
 export interface AtendimentoKpis {
   total: number
   hoje: number
-  quentes: number
   contatados: number  // leads com vendedor responsável atribuído (não null, vazio ou "a definir")
   naoEngajaram: number
   qualificados: number
   emAndamento: number
   paraPegar: number  // leads sem responsavel (null, vazio, "a definir") — disponíveis pra puxar
-  byStatus: Record<StatusReal, number>
 }
 
 function startOfTodayISO(): string {
@@ -374,18 +372,15 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
       const [
         totalRes,
         hojeRes,
-        quentesRes,
         contatadosRes,
         naoEngajaramRes,
         qualFabricaRes,
         qualEquipRes,
         emAndamentoRes,
         paraPegarRes,
-        vendidoRes, abandonadoRes, semRespostaRes, aguardandoRes, perdidoRes,
       ] = await Promise.all([
         baseQ(),
         baseQ().gte('last_message_at', todayIso),
-        baseQ().eq('quando_investir', 'Agora'),
         // IMPORTANTE: os KPIs do funil filtram por last_message_at>=hoje (como o card "Hoje").
         // Isso (1) deixa os números do dia consistentes e (2) EVITA o 500/timeout do count exact
         // varrendo a view inteira (que é grande) — sem o filtro, fábrica/equip estouravam e o card
@@ -405,33 +400,21 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
         baseQ().gte('last_message_at', todayIso).not('motivo_contato', 'is', null).is('tocou_botao_em', null),
         // Pra pegar: sem responsavel — null, vazio, ou "a definir"
         baseQ().gte('last_message_at', todayIso).or('responsavel.is.null,responsavel.eq.,responsavel.eq.a definir'),
-        baseQ().eq('status_real', 'Vendido'),
-        baseQ().eq('status_real', 'Abandonado'),
-        baseQ().eq('status_real', 'Sem-Resposta'),
-        baseQ().eq('status_real', 'Aguardando-Vendedor'),
-        baseQ().eq('status_real', 'Perdido'),
       ])
-      if (totalRes.error) throw totalRes.error
-
-      const byStatus = {
-        'Vendido':              vendidoRes.count ?? 0,
-        'Em-andamento':         emAndamentoRes.count ?? 0,
-        'Aguardando-Vendedor':  aguardandoRes.count ?? 0,
-        'Abandonado':           abandonadoRes.count ?? 0,
-        'Sem-Resposta':         semRespostaRes.count ?? 0,
-        'Perdido':              perdidoRes.count ?? 0,
-      } as Record<StatusReal, number>
+      // Throw só no 'hoje' (query leve, indexada por last_message_at). O 'total' conta a view
+      // INTEIRA (pesado, pode dar timeout/500) — se falhar, degrada pra 0 SEM derrubar os cards.
+      // Removidas as queries de 'quentes' (quando_investir) e 'byStatus' (5 status_real): eram
+      // count exact caros que NINGUÉM exibia nesta tela e só aumentavam o risco de timeout.
+      if (hojeRes.error) throw hojeRes.error
 
       return {
         total:           totalRes.count ?? 0,
         hoje:            hojeRes.count ?? 0,
-        quentes:         quentesRes.count ?? 0,
         contatados:      contatadosRes.count ?? 0,
         naoEngajaram:    naoEngajaramRes.count ?? 0,
         qualificados:    (qualFabricaRes.count ?? 0) + (qualEquipRes.count ?? 0),
         emAndamento:     emAndamentoRes.count ?? 0,
         paraPegar:       paraPegarRes.count ?? 0,
-        byStatus,
       }
     },
     refetchInterval: 30_000,

@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from '@tanstack/react-query'
-import { lazy } from 'react'
+import { lazy, useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
 import { Layout } from '@/components/layout/Layout'
 import { Dashboard } from '@/pages/Dashboard'
 import { MobileHome } from '@/pages/MobileHome'
@@ -151,6 +152,34 @@ function ProfileLoadError() {
   )
 }
 
+// Logado sem profile de staff aprovado. Pode ser uma TRANSPORTADORA (tem conta no
+// portal /transportadora) que caiu numa rota do staff — nesse caso manda pro portal
+// dela em vez de mostrar o "aguardando aprovação" do staff (que é um fluxo separado).
+function PendenteOuTransportadora() {
+  const [estado, setEstado] = useState<'check' | 'transp' | 'staff'>('check')
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) { if (vivo) setEstado('staff'); return }
+        const { data } = await supabase
+          .from('frete_transportadora_contas')
+          .select('user_id')
+          .eq('user_id', user.id)
+          .maybeSingle()
+        if (vivo) setEstado(data ? 'transp' : 'staff')
+      } catch {
+        if (vivo) setEstado('staff')
+      }
+    })()
+    return () => { vivo = false }
+  }, [])
+  if (estado === 'check') return <PageLoading />
+  if (estado === 'transp') return <Navigate to="/transportadora" replace />
+  return <Pendente />
+}
+
 function AppRoutes() {
   const { session, profile, loading, profileError } = useAuth()
   const can = useCan()
@@ -205,9 +234,9 @@ function AppRoutes() {
     return <ProfileLoadError />
   }
 
-  // Logado mas sem profile aprovado → /pendente
+  // Logado mas sem profile aprovado → /pendente (ou portal, se for transportadora)
   if (!profile || !profile.approved_at || profile.role === 'pending' || profile.role === 'rejected') {
-    return <Pendente />
+    return <PendenteOuTransportadora />
   }
 
   // Visualizador: acesso restrito a Dashboard + Atendimentos. Bloqueia URL direta

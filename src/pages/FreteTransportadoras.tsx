@@ -85,16 +85,16 @@ export default function FreteTransportadoras() {
     <div className="container mx-auto py-6 px-4 max-w-5xl">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <Link to="/frete" className="text-muted-foreground hover:text-foreground">
+          <Link to="/frete" className="text-ink-muted hover:text-ink">
             <ArrowLeft className="h-5 w-5" />
           </Link>
-          <Truck className="h-6 w-6 text-primary" />
+          <Truck className="h-6 w-6 text-accent" />
           <h1 className="text-2xl font-bold">Transportadoras Parceiras</h1>
         </div>
         <button
           type="button"
           onClick={abrirNovo}
-          className="px-4 py-2 bg-primary text-primary-foreground rounded text-sm font-medium hover:bg-primary/90 flex items-center gap-2"
+          className="px-4 py-2 bg-accent text-white rounded text-sm font-medium hover:opacity-90 flex items-center gap-2"
         >
           <Plus className="h-4 w-4" /> Nova
         </button>
@@ -103,12 +103,12 @@ export default function FreteTransportadoras() {
       {/* Contas do portal de transportadoras — aprovar acesso às cotações */}
       <div className="border rounded-lg p-4 mb-6">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold">Contas do portal <span className="text-xs text-muted-foreground font-normal">(/transportadora)</span></h2>
-          <span className="text-xs text-muted-foreground">{(contas.data ?? []).filter(c => !c.aprovado).length} aguardando aprovação</span>
+          <h2 className="font-semibold">Contas do portal <span className="text-xs text-ink-muted font-normal">(/transportadora)</span></h2>
+          <span className="text-xs text-ink-muted">{(contas.data ?? []).filter(c => !c.aprovado).length} aguardando aprovação</span>
         </div>
-        {contas.isLoading && <div className="text-sm text-muted-foreground">Carregando…</div>}
+        {contas.isLoading && <div className="text-sm text-ink-muted">Carregando…</div>}
         {!contas.isLoading && (contas.data?.length ?? 0) === 0 && (
-          <div className="text-sm text-muted-foreground">Nenhuma transportadora cadastrada no portal ainda.</div>
+          <div className="text-sm text-ink-muted">Nenhuma transportadora cadastrada no portal ainda.</div>
         )}
         <div className="space-y-2">
           {(contas.data ?? []).map(c => (
@@ -119,20 +119,20 @@ export default function FreteTransportadoras() {
                     ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-600">aprovada</span>
                     : <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600">aguardando</span>}
                 </div>
-                <div className="text-xs text-muted-foreground truncate">{c.email}{c.cnpj ? ` · ${c.cnpj}` : ''} · atende: {c.estados.join(', ') || '—'}</div>
+                <div className="text-xs text-ink-muted truncate">{c.email}{c.cnpj ? ` · ${c.cnpj}` : ''} · atende: {c.estados.join(', ') || '—'}</div>
               </div>
               {c.aprovado
-                ? <button type="button" onClick={() => aprovar.mutate({ user_id: c.user_id, aprovar: false })} disabled={aprovar.isPending} className="px-3 py-1.5 text-xs border rounded hover:bg-accent shrink-0">Revogar</button>
-                : <button type="button" onClick={() => aprovar.mutate({ user_id: c.user_id, aprovar: true })} disabled={aprovar.isPending} className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded font-medium hover:bg-primary/90 shrink-0">Aprovar</button>}
+                ? <button type="button" onClick={() => aprovar.mutate({ user_id: c.user_id, aprovar: false })} disabled={aprovar.isPending} className="px-3 py-1.5 text-xs border rounded hover:bg-surface-2 shrink-0">Revogar</button>
+                : <button type="button" onClick={() => aprovar.mutate({ user_id: c.user_id, aprovar: true })} disabled={aprovar.isPending} className="px-3 py-1.5 text-xs bg-accent text-white rounded font-medium hover:opacity-90 shrink-0">Aprovar</button>}
             </div>
           ))}
         </div>
       </div>
 
-      {isLoading && <div className="text-sm text-muted-foreground">Carregando…</div>}
+      {isLoading && <div className="text-sm text-ink-muted">Carregando…</div>}
 
       {!isLoading && (lista?.length ?? 0) === 0 && (
-        <div className="border border-dashed rounded p-8 text-center text-muted-foreground">
+        <div className="border border-dashed rounded p-8 text-center text-ink-muted">
           Nenhuma transportadora cadastrada ainda. Clique em "Nova" pra começar.
         </div>
       )}
@@ -143,17 +143,17 @@ export default function FreteTransportadoras() {
             <div className="flex items-center justify-between">
               <div>
                 <div className="font-medium">{t.nome}</div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-xs text-ink-muted">
                   {t.telefone} {t.email && `· ${t.email}`}
                   {t.ufs_atende.length > 0 && <> · atende: {t.ufs_atende.join(', ')}</>}
                 </div>
               </div>
               <div className="flex gap-1">
-                <button type="button" onClick={() => abrirEdit(t)} className="p-1 text-muted-foreground hover:text-primary">
+                <button type="button" onClick={() => abrirEdit(t)} className="p-1 text-ink-muted hover:text-accent">
                   <Edit className="h-4 w-4" />
                 </button>
                 {t.ativo && (
-                  <button type="button" onClick={() => excluir(t.id)} className="p-1 text-muted-foreground hover:text-destructive">
+                  <button type="button" onClick={() => excluir(t.id)} className="p-1 text-ink-muted hover:text-red-500">
                     <Trash2 className="h-4 w-4" />
                   </button>
                 )}
@@ -176,7 +176,7 @@ export default function FreteTransportadoras() {
       {/* Modal de edicao */}
       {editando && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-background border rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-surface-1 border border-border rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <h2 className="text-lg font-bold mb-4">
               {editando.id ? 'Editar' : 'Nova'} transportadora
             </h2>
@@ -189,7 +189,7 @@ export default function FreteTransportadoras() {
                     type="text"
                     value={editando.nome ?? ''}
                     onChange={e => setEditando({ ...editando, nome: e.target.value })}
-                    className="w-full border rounded px-3 py-2 text-sm bg-background"
+                    className="w-full border rounded px-3 py-2 text-sm bg-bg"
                   />
                 </div>
                 <div>
@@ -198,7 +198,7 @@ export default function FreteTransportadoras() {
                     type="text"
                     value={editando.contato_nome ?? ''}
                     onChange={e => setEditando({ ...editando, contato_nome: e.target.value })}
-                    className="w-full border rounded px-3 py-2 text-sm bg-background"
+                    className="w-full border rounded px-3 py-2 text-sm bg-bg"
                   />
                 </div>
                 <div>
@@ -207,7 +207,7 @@ export default function FreteTransportadoras() {
                     type="text"
                     value={editando.telefone ?? ''}
                     onChange={e => setEditando({ ...editando, telefone: e.target.value })}
-                    className="w-full border rounded px-3 py-2 text-sm bg-background"
+                    className="w-full border rounded px-3 py-2 text-sm bg-bg"
                   />
                 </div>
                 <div>
@@ -216,7 +216,7 @@ export default function FreteTransportadoras() {
                     type="email"
                     value={editando.email ?? ''}
                     onChange={e => setEditando({ ...editando, email: e.target.value })}
-                    className="w-full border rounded px-3 py-2 text-sm bg-background"
+                    className="w-full border rounded px-3 py-2 text-sm bg-bg"
                   />
                 </div>
               </div>
@@ -234,24 +234,24 @@ export default function FreteTransportadoras() {
                     ['rs_km_rodotrem', 'Rodotrem'],
                   ] as Array<[keyof TransportadoraParceira, string]>).map(([k, label]) => (
                     <div key={k as string}>
-                      <label className="text-xs text-muted-foreground block">{label}</label>
+                      <label className="text-xs text-ink-muted block">{label}</label>
                       <input
                         type="number"
                         step="0.01"
                         value={(editando[k] as number) ?? ''}
                         onChange={e => setEditando({ ...editando, [k]: e.target.value ? Number(e.target.value) : null })}
-                        className="w-full border rounded px-2 py-1 text-sm bg-background"
+                        className="w-full border rounded px-2 py-1 text-sm bg-bg"
                         placeholder="—"
                       />
                     </div>
                   ))}
                   <div>
-                    <label className="text-xs text-muted-foreground block">Taxa mínima (R$)</label>
+                    <label className="text-xs text-ink-muted block">Taxa mínima (R$)</label>
                     <input
                       type="number"
                       value={editando.taxa_minima ?? 0}
                       onChange={e => setEditando({ ...editando, taxa_minima: Number(e.target.value) || 0 })}
-                      className="w-full border rounded px-2 py-1 text-sm bg-background"
+                      className="w-full border rounded px-2 py-1 text-sm bg-bg"
                     />
                   </div>
                 </div>
@@ -267,8 +267,8 @@ export default function FreteTransportadoras() {
                       onClick={() => toggleUF(uf)}
                       className={`px-2 py-1 text-xs border rounded ${
                         editando.ufs_atende?.includes(uf)
-                          ? 'bg-primary text-primary-foreground border-primary'
-                          : 'bg-background hover:bg-accent'
+                          ? 'bg-accent text-white border-accent'
+                          : 'bg-bg hover:bg-surface-2'
                       }`}
                     >
                       {uf}
@@ -282,21 +282,21 @@ export default function FreteTransportadoras() {
                 <textarea
                   value={editando.observacoes ?? ''}
                   onChange={e => setEditando({ ...editando, observacoes: e.target.value })}
-                  className="w-full border rounded px-3 py-2 text-sm bg-background"
+                  className="w-full border rounded px-3 py-2 text-sm bg-bg"
                   rows={2}
                 />
               </div>
             </div>
 
             <div className="flex justify-end gap-2 mt-6">
-              <button type="button" onClick={() => setEditando(null)} className="px-4 py-2 text-sm border rounded hover:bg-accent">
+              <button type="button" onClick={() => setEditando(null)} className="px-4 py-2 text-sm border rounded hover:bg-surface-2">
                 Cancelar
               </button>
               <button
                 type="button"
                 onClick={salvar}
                 disabled={upsert.isPending}
-                className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded font-medium hover:bg-primary/90 disabled:opacity-50"
+                className="px-4 py-2 text-sm bg-accent text-white rounded font-medium hover:opacity-90 disabled:opacity-50"
               >
                 {upsert.isPending ? 'Salvando…' : 'Salvar'}
               </button>
