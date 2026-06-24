@@ -1,11 +1,12 @@
-// /frete/solicitar — vendedor abre um pedido de frete (RFQ). Escolhe equipamento(s)
-// + destino; o sistema auto-preenche peso/cubagem, recomenda o caminhão e calcula o
-// piso ANTL de referência. Ao enviar, a solicitação cai na fila do Jardel (status
-// 'pendente'). Aceita prefill por querystring (vindo da extensão/orçamento):
+// /frete/solicitar — vendedor abre um pedido de frete (RFQ). Cadastra os itens a
+// transportar (manual OU puxando do catálogo, que auto-preenche as medidas) + destino;
+// o sistema auto-preenche peso/cubagem, recomenda o caminhão e calcula o piso ANTT de
+// referência. Ao enviar, a solicitação cai na fila do Jardel (status 'pendente').
+// Aceita prefill por querystring (vindo da extensão/orçamento):
 //   ?cliente=&telefone=&uf=&cidade=&vendedor=&origem=extensao
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Truck, Plus, X, MapPin, Loader2, ArrowLeft, CheckCircle2 } from 'lucide-react'
+import { Truck, Plus, X, MapPin, Loader2, ArrowLeft, CheckCircle2, Package } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import {
   useCatalogoFabricas, useTiposCaminhao, useAnttVigente, useMunicipiosUF,
@@ -23,7 +24,25 @@ function fmtMoeda(v: number | null): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 }
 
-type ItemSelecionado = { item: ItemCatalogoComPeso; qtd: number }
+function novoUid(): string {
+  return `it_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`
+}
+
+// Item da carga (unificado): pode vir do catálogo (catalogo_item_id != null, medidas
+// pré-preenchidas) ou ser 100% manual (catalogo_item_id = null).
+type FreteItemLocal = {
+  uid: string
+  nome: string
+  qtd: number
+  peso_kg: number
+  comprimento_m: number
+  largura_m: number
+  altura_m: number
+  indivisivel: boolean
+  catalogo_item_id: number | null
+}
+
+const FORM_VAZIO = { nome: '', c: '', l: '', a: '', peso: '', qtd: '1', indiv: false, catId: null as number | null }
 
 export function FreteSolicitar() {
   const [params] = useSearchParams()
@@ -35,18 +54,9 @@ export function FreteSolicitar() {
 
   const origem = (params.get('origem') as 'pagina' | 'extensao' | 'orcamento') || 'pagina'
 
-  // equipamentos selecionados
-  const [itens, setItens] = useState<ItemSelecionado[]>([])
-  const [selId, setSelId] = useState('')
-  const [selQtd, setSelQtd] = useState(1)
-
-  // medidas manuais (alternativa ao catálogo)
-  const [manual, setManual] = useState(false)
-  const [mPeso, setMPeso] = useState('')
-  const [mC, setMC] = useState('')
-  const [mL, setML] = useState('')
-  const [mA, setMA] = useState('')
-  const [mIndiv, setMIndiv] = useState(true)
+  // itens a transportar (unificado: manual + catálogo)
+  const [itens, setItens] = useState<FreteItemLocal[]>([])
+  const [form, setForm] = useState(FORM_VAZIO)
 
   // destino
   const [uf, setUf] = useState(params.get('uf') || '')
@@ -67,7 +77,7 @@ export function FreteSolicitar() {
   const [erro, setErro] = useState('')
   const [okCodigo, setOkCodigo] = useState<string | null>(null)
 
-  // catálogo agrupado por categoria pro <select>
+  // catálogo agrupado por categoria pro <select> de atalho
   const grupos = useMemo(() => {
     const m = new Map<string, ItemCatalogoComPeso[]>()
     for (const it of catalogo.data ?? []) {
@@ -77,38 +87,72 @@ export function FreteSolicitar() {
     return [...m.entries()]
   }, [catalogo.data])
 
-  function addItem() {
-    const it = (catalogo.data ?? []).find(x => String(x.id) === selId)
+  // Atalho: escolher um equipamento do catálogo preenche o formulário (o usuário ainda
+  // pode ajustar antes de adicionar). Não adiciona sozinho — só preenche.
+  function puxarDoCatalogo(id: string) {
+    const it = (catalogo.data ?? []).find(x => String(x.id) === id)
     if (!it) return
-    setItens(prev => {
-      const ex = prev.find(p => p.item.id === it.id)
-      if (ex) return prev.map(p => p.item.id === it.id ? { ...p, qtd: p.qtd + selQtd } : p)
-      return [...prev, { item: it, qtd: selQtd }]
+    setForm({
+      nome: it.nome_curto,
+      c: it.dim_comprimento_m != null ? String(it.dim_comprimento_m) : '',
+      l: it.dim_largura_m != null ? String(it.dim_largura_m) : '',
+      a: it.dim_altura_m != null ? String(it.dim_altura_m) : '',
+      peso: it.peso_kg != null ? String(it.peso_kg) : '',
+      qtd: form.qtd || '1',
+      indiv: !!it.indivisivel,
+      catId: it.id,
     })
-    setSelId(''); setSelQtd(1)
   }
 
-  // carga agregada (catálogo OU manual)
+  function addItem() {
+    const nome = form.nome.trim()
+    const c = Number(form.c) || 0, l = Number(form.l) || 0, a = Number(form.a) || 0
+    const peso = Number(form.peso) || 0
+    const qtd = Math.max(1, Number(form.qtd) || 1)
+    if (!nome && c <= 0 && peso <= 0) {
+      setErro('Preencha pelo menos o nome ou as medidas do item.'); return
+    }
+    setErro('')
+    setItens(prev => [...prev, {
+      uid: novoUid(),
+      nome: nome || 'Item',
+      qtd,
+      peso_kg: peso,
+      comprimento_m: c,
+      largura_m: l,
+      altura_m: a,
+      indivisivel: form.indiv,
+      catalogo_item_id: form.catId,
+    }])
+    setForm(FORM_VAZIO)
+  }
+
+  function removerItem(uid: string) {
+    setItens(prev => prev.filter(p => p.uid !== uid))
+  }
+
+  // Carga agregada pra recomendar caminhão e calcular ANTT:
+  // peso = soma (qtd × peso); dimensões = MAIOR de cada eixo (precisa caber a maior peça);
+  // indivisível = se qualquer item for indivisível.
   const carga = useMemo<Carga>(() => {
-    if (itens.length) {
-      let peso = 0, c = 0, l = 0, a = 0, indiv = false
-      for (const { item, qtd } of itens) {
-        peso += (Number(item.peso_kg) || 0) * qtd
-        c = Math.max(c, Number(item.dim_comprimento_m) || 0)
-        l = Math.max(l, Number(item.dim_largura_m) || 0)
-        a = Math.max(a, Number(item.dim_altura_m) || 0)
-        if (item.indivisivel) indiv = true
-      }
-      return { peso_kg: peso, comprimento_m: c, largura_m: l, altura_m: a, indivisivel: indiv }
+    if (!itens.length) return { peso_kg: 0, comprimento_m: 0, largura_m: 0, altura_m: 0, indivisivel: false }
+    let peso = 0, c = 0, l = 0, a = 0, indiv = false
+    for (const it of itens) {
+      peso += it.peso_kg * it.qtd
+      c = Math.max(c, it.comprimento_m)
+      l = Math.max(l, it.largura_m)
+      a = Math.max(a, it.altura_m)
+      if (it.indivisivel) indiv = true
     }
-    return {
-      peso_kg: Number(mPeso) || 0,
-      comprimento_m: Number(mC) || 0,
-      largura_m: Number(mL) || 0,
-      altura_m: Number(mA) || 0,
-      indivisivel: mIndiv,
-    }
-  }, [itens, mPeso, mC, mL, mA, mIndiv])
+    return { peso_kg: peso, comprimento_m: c, largura_m: l, altura_m: a, indivisivel: indiv }
+  }, [itens])
+
+  // Volume total da carga = soma do volume de cada item × qtd.
+  const volumeTotal = useMemo(
+    () => itens.reduce((s, it) => s + volumeM3(it.comprimento_m, it.largura_m, it.altura_m) * it.qtd, 0),
+    [itens],
+  )
+  const volume = volumeTotal > 0 ? volumeTotal : null
 
   const caminhao = useMemo(() => {
     if (!tipos.data || carga.comprimento_m <= 0) return null
@@ -121,9 +165,6 @@ export function FreteSolicitar() {
     if (!a) return null
     return calcularPisoANTT(distancia, a)
   }, [caminhao, distancia, antt.data])
-
-  const volume = carga.comprimento_m && carga.largura_m && carga.altura_m
-    ? volumeM3(carga.comprimento_m, carga.largura_m, carga.altura_m) : null
 
   async function calcularDestino() {
     if (!cidade.trim() || !uf) { setCalcMsg('Informe UF e cidade.'); return }
@@ -143,18 +184,16 @@ export function FreteSolicitar() {
   async function enviar() {
     setErro('')
     if (!uf || !cidade.trim()) { setErro('Informe o destino (UF + cidade).'); return }
-    if (!itens.length && carga.comprimento_m <= 0 && carga.peso_kg <= 0) {
-      setErro('Adicione ao menos um equipamento ou preencha as medidas manuais.'); return
-    }
-    const equipamentos_itens: FreteEquipItem[] = itens.map(({ item, qtd }) => ({
-      catalogo_item_id: item.id,
-      nome: item.nome_curto,
-      qtd,
-      peso_kg: item.peso_kg,
-      comprimento_m: item.dim_comprimento_m,
-      largura_m: item.dim_largura_m,
-      altura_m: item.dim_altura_m,
-      indivisivel: item.indivisivel,
+    if (!itens.length) { setErro('Adicione ao menos um item a transportar.'); return }
+    const equipamentos_itens: FreteEquipItem[] = itens.map(it => ({
+      catalogo_item_id: it.catalogo_item_id,
+      nome: it.nome,
+      qtd: it.qtd,
+      peso_kg: it.peso_kg || null,
+      comprimento_m: it.comprimento_m || null,
+      largura_m: it.largura_m || null,
+      altura_m: it.altura_m || null,
+      indivisivel: it.indivisivel,
     }))
     try {
       const res = await criar.mutateAsync({
@@ -190,7 +229,7 @@ export function FreteSolicitar() {
   }
 
   function novaSolicitacao() {
-    setItens([]); setMPeso(''); setMC(''); setML(''); setMA(''); setManual(false)
+    setItens([]); setForm(FORM_VAZIO)
     setUf(''); setCidade(''); setLatLng(null); setDistancia(null); setCalcMsg('')
     setClienteNome(''); setClienteTel(''); setPrazo(''); setDescricao(''); setObs('')
     setOkCodigo(null); setErro('')
@@ -212,138 +251,174 @@ export function FreteSolicitar() {
     )
   }
 
+  const inputCls = 'w-full px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent'
+  const miniInputCls = 'w-full px-2 py-1.5 rounded-lg bg-bg border border-border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent'
+
   return (
-    <div className="container mx-auto py-6 px-4 max-w-3xl">
+    <div className="container mx-auto py-6 px-4 max-w-6xl">
       <div className="flex items-center gap-3 mb-6">
         <Link to="/frete" className="text-ink-faint hover:text-ink"><ArrowLeft className="h-5 w-5" /></Link>
         <Truck className="h-6 w-6 text-accent" />
         <h1 className="text-2xl font-bold text-ink">Pedir Frete</h1>
       </div>
 
-      {/* Equipamentos */}
-      <section className="bg-surface-1 border border-border rounded-xl p-4 mb-4">
-        <h2 className="text-sm font-semibold text-ink mb-3">1. O que transportar</h2>
-        {!manual && (
-          <div className="flex flex-col sm:flex-row gap-2 mb-3">
-            <select value={selId} onChange={e => setSelId(e.target.value)}
-              className="flex-1 px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm outline-none focus:border-accent">
-              <option value="">{catalogo.isLoading ? 'Carregando catálogo…' : 'Escolha um equipamento…'}</option>
-              {grupos.map(([cat, lista]) => (
-                <optgroup key={cat} label={cat}>
-                  {lista.map(it => <option key={it.id} value={it.id}>{it.nome_curto}</option>)}
-                </optgroup>
-              ))}
-            </select>
-            <input type="number" min={1} value={selQtd} onChange={e => setSelQtd(Math.max(1, Number(e.target.value) || 1))}
-              className="w-20 px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm outline-none focus:border-accent" />
-            <button onClick={addItem} disabled={!selId}
-              className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:opacity-90 disabled:opacity-40 flex items-center justify-center gap-1">
-              <Plus className="h-4 w-4" /> Add
-            </button>
-          </div>
-        )}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+        {/* ===== COLUNA PRINCIPAL: destino + resumo + cliente + enviar ===== */}
+        <div className="order-2 lg:order-1 lg:col-span-2 space-y-4">
+          {/* Destino */}
+          <section className="bg-surface-1 border border-border rounded-xl p-4">
+            <h2 className="text-sm font-semibold text-ink mb-3 flex items-center gap-1.5"><MapPin className="h-4 w-4 text-accent" /> Destino</h2>
+            <div className="flex flex-col sm:flex-row gap-2 mb-2">
+              <select value={uf} onChange={e => { setUf(e.target.value); setLatLng(null); setDistancia(null) }}
+                className="w-full sm:w-28 px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm outline-none focus:border-accent">
+                <option value="">UF</option>
+                {UFS_BR.map(u => <option key={u} value={u}>{u}</option>)}
+              </select>
+              <input list="municipios-frete" value={cidade} onChange={e => { setCidade(e.target.value); setLatLng(null); setDistancia(null) }}
+                placeholder="Cidade de destino" disabled={!uf}
+                className="flex-1 px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent disabled:opacity-50" />
+              <datalist id="municipios-frete">{(municipios.data ?? []).map(m => <option key={m} value={m} />)}</datalist>
+              <button onClick={calcularDestino} disabled={calcLoading || !cidade || !uf}
+                className="px-4 py-2 rounded-lg border border-border text-sm text-ink-muted hover:text-ink hover:border-accent disabled:opacity-40 flex items-center justify-center gap-1.5">
+                {calcLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />} Calcular
+              </button>
+            </div>
+            {calcMsg && <p className="text-xs text-amber-600 mb-2">{calcMsg}</p>}
+            <div className="flex items-center gap-3 text-sm">
+              <label className="text-xs text-ink-faint">Distância (km)</label>
+              <input type="number" value={distancia ?? ''} onChange={e => setDistancia(e.target.value ? Number(e.target.value) : null)}
+                placeholder="auto" className="w-28 px-2 py-1.5 rounded-lg bg-bg border border-border text-ink text-sm outline-none focus:border-accent" />
+              {latLng && <span className="text-xs text-accent">📍 cidade localizada</span>}
+            </div>
+          </section>
 
-        {itens.length > 0 && (
-          <div className="space-y-1.5 mb-3">
-            {itens.map(({ item, qtd }) => (
-              <div key={item.id} className="flex items-center justify-between bg-bg border border-border rounded-lg px-3 py-2 text-sm">
-                <span className="text-ink">{qtd > 1 && <b>{qtd}× </b>}{item.nome_curto}
-                  <span className="text-ink-faint text-xs ml-2">
-                    {item.peso_kg ? `${item.peso_kg}kg` : ''} {item.dim_comprimento_m ? `· ${item.dim_comprimento_m}×${item.dim_largura_m}×${item.dim_altura_m}m` : ''}{item.indivisivel ? ' · indivisível' : ''}
-                  </span>
-                </span>
-                <button onClick={() => setItens(prev => prev.filter(p => p.item.id !== item.id))} className="text-ink-faint hover:text-red-500"><X className="h-4 w-4" /></button>
-              </div>
-            ))}
-          </div>
-        )}
+          {/* Resumo auto-calculado */}
+          <section className="bg-surface-1 border border-border rounded-xl p-4">
+            <h2 className="text-sm font-semibold text-ink mb-3">Resumo automático</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+              <div><div className="text-xs text-ink-faint">Peso total</div><div className="text-ink font-medium">{carga.peso_kg ? `${Math.round(carga.peso_kg).toLocaleString('pt-BR')} kg` : '—'}</div></div>
+              <div><div className="text-xs text-ink-faint">Volume</div><div className="text-ink font-medium">{volume ? `${volume.toFixed(1)} m³` : '—'}</div></div>
+              <div><div className="text-xs text-ink-faint">Caminhão sugerido</div><div className="text-ink font-medium">{caminhao?.nome ?? '—'}</div></div>
+              <div><div className="text-xs text-ink-faint">Piso ANTT (ref.)</div><div className="text-ink font-medium">{fmtMoeda(pisoAntt)}</div></div>
+            </div>
+            {carga.indivisivel && <p className="text-xs text-accent mt-2">Carga indivisível — será cotada como carga completa.</p>}
+            <p className="text-[11px] text-ink-faint mt-2">O piso ANTT é só referência interna pro Jardel. As transportadoras é que vão preencher o valor real.</p>
+          </section>
 
-        <button onClick={() => setManual(m => !m)} className="text-xs text-accent hover:underline">
-          {manual ? '↑ Usar catálogo' : '+ Sem catálogo / medidas manuais'}
-        </button>
+          {/* Cliente + extras */}
+          <section className="bg-surface-1 border border-border rounded-xl p-4">
+            <h2 className="text-sm font-semibold text-ink mb-3">Cliente &amp; prazo</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div><label className="text-xs text-ink-faint block mb-1">Cliente (opcional)</label>
+                <input value={clienteNome} onChange={e => setClienteNome(e.target.value)} className={inputCls} /></div>
+              <div><label className="text-xs text-ink-faint block mb-1">WhatsApp do cliente (opcional)</label>
+                <input value={clienteTel} onChange={e => setClienteTel(e.target.value)} className={inputCls} /></div>
+              <div><label className="text-xs text-ink-faint block mb-1">Prazo desejado (opcional)</label>
+                <input value={prazo} onChange={e => setPrazo(e.target.value)} placeholder="Ex: até 15 dias" className={inputCls} /></div>
+              <div><label className="text-xs text-ink-faint block mb-1">Observações (opcional)</label>
+                <input value={obs} onChange={e => setObs(e.target.value)} className={inputCls} /></div>
+            </div>
+          </section>
 
-        {manual && (
-          <div className="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-2">
-            <div className="col-span-2 sm:col-span-1"><label className="text-xs text-ink-faint block mb-1">Peso (kg)</label>
-              <input type="number" value={mPeso} onChange={e => setMPeso(e.target.value)} className="w-full px-2 py-1.5 rounded-lg bg-bg border border-border text-ink text-sm outline-none focus:border-accent" /></div>
-            <div><label className="text-xs text-ink-faint block mb-1">Compr. (m)</label>
-              <input type="number" step="0.1" value={mC} onChange={e => setMC(e.target.value)} className="w-full px-2 py-1.5 rounded-lg bg-bg border border-border text-ink text-sm outline-none focus:border-accent" /></div>
-            <div><label className="text-xs text-ink-faint block mb-1">Larg. (m)</label>
-              <input type="number" step="0.1" value={mL} onChange={e => setML(e.target.value)} className="w-full px-2 py-1.5 rounded-lg bg-bg border border-border text-ink text-sm outline-none focus:border-accent" /></div>
-            <div><label className="text-xs text-ink-faint block mb-1">Alt. (m)</label>
-              <input type="number" step="0.1" value={mA} onChange={e => setMA(e.target.value)} className="w-full px-2 py-1.5 rounded-lg bg-bg border border-border text-ink text-sm outline-none focus:border-accent" /></div>
-            <label className="col-span-2 sm:col-span-1 flex items-center gap-2 text-xs text-ink-muted mt-5">
-              <input type="checkbox" checked={mIndiv} onChange={e => setMIndiv(e.target.checked)} /> Indivisível
-            </label>
-          </div>
-        )}
+          {erro && <p className="text-sm text-red-500">{erro}</p>}
 
-        <textarea value={descricao} onChange={e => setDescricao(e.target.value)} rows={2}
-          placeholder="Detalhe livre da carga (opcional)…"
-          className="mt-3 w-full px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent resize-none" />
-      </section>
-
-      {/* Destino */}
-      <section className="bg-surface-1 border border-border rounded-xl p-4 mb-4">
-        <h2 className="text-sm font-semibold text-ink mb-3">2. Destino</h2>
-        <div className="flex flex-col sm:flex-row gap-2 mb-2">
-          <select value={uf} onChange={e => { setUf(e.target.value); setLatLng(null); setDistancia(null) }}
-            className="w-full sm:w-28 px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm outline-none focus:border-accent">
-            <option value="">UF</option>
-            {UFS_BR.map(u => <option key={u} value={u}>{u}</option>)}
-          </select>
-          <input list="municipios-frete" value={cidade} onChange={e => { setCidade(e.target.value); setLatLng(null); setDistancia(null) }}
-            placeholder="Cidade de destino" disabled={!uf}
-            className="flex-1 px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent disabled:opacity-50" />
-          <datalist id="municipios-frete">{(municipios.data ?? []).map(m => <option key={m} value={m} />)}</datalist>
-          <button onClick={calcularDestino} disabled={calcLoading || !cidade || !uf}
-            className="px-4 py-2 rounded-lg border border-border text-sm text-ink-muted hover:text-ink hover:border-accent disabled:opacity-40 flex items-center justify-center gap-1.5">
-            {calcLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />} Calcular
+          <button onClick={enviar} disabled={criar.isPending}
+            className="w-full py-3 rounded-lg bg-accent text-white font-semibold hover:opacity-90 disabled:opacity-60">
+            {criar.isPending ? 'Enviando…' : 'Enviar pedido de frete'}
           </button>
         </div>
-        {calcMsg && <p className="text-xs text-amber-600 mb-2">{calcMsg}</p>}
-        <div className="flex items-center gap-3 text-sm">
-          <label className="text-xs text-ink-faint">Distância (km)</label>
-          <input type="number" value={distancia ?? ''} onChange={e => setDistancia(e.target.value ? Number(e.target.value) : null)}
-            placeholder="auto" className="w-28 px-2 py-1.5 rounded-lg bg-bg border border-border text-ink text-sm outline-none focus:border-accent" />
-          {latLng && <span className="text-xs text-accent">📍 cidade localizada</span>}
-        </div>
-      </section>
 
-      {/* Resumo auto-calculado */}
-      <section className="bg-surface-1 border border-border rounded-xl p-4 mb-4">
-        <h2 className="text-sm font-semibold text-ink mb-3">3. Resumo automático</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-          <div><div className="text-xs text-ink-faint">Peso total</div><div className="text-ink font-medium">{carga.peso_kg ? `${Math.round(carga.peso_kg).toLocaleString('pt-BR')} kg` : '—'}</div></div>
-          <div><div className="text-xs text-ink-faint">Volume</div><div className="text-ink font-medium">{volume ? `${volume.toFixed(1)} m³` : '—'}</div></div>
-          <div><div className="text-xs text-ink-faint">Caminhão sugerido</div><div className="text-ink font-medium">{caminhao?.nome ?? '—'}</div></div>
-          <div><div className="text-xs text-ink-faint">Piso ANTT (ref.)</div><div className="text-ink font-medium">{fmtMoeda(pisoAntt)}</div></div>
-        </div>
-        {carga.indivisivel && <p className="text-xs text-accent mt-2">Carga indivisível — será cotada como carga completa.</p>}
-        <p className="text-[11px] text-ink-faint mt-2">O piso ANTT é só referência interna pro Jardel. As transportadoras é que vão preencher o valor real.</p>
-      </section>
+        {/* ===== COLUNA LATERAL: o que transportar (cadastro de itens) ===== */}
+        <aside className="order-1 lg:order-2 lg:col-span-1 lg:sticky lg:top-6 space-y-4">
+          <section className="bg-surface-1 border border-border rounded-xl p-4">
+            <h2 className="text-sm font-semibold text-ink mb-3 flex items-center gap-1.5"><Package className="h-4 w-4 text-accent" /> O que transportar</h2>
 
-      {/* Cliente + extras */}
-      <section className="bg-surface-1 border border-border rounded-xl p-4 mb-4">
-        <h2 className="text-sm font-semibold text-ink mb-3">4. Cliente & prazo</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div><label className="text-xs text-ink-faint block mb-1">Cliente (opcional)</label>
-            <input value={clienteNome} onChange={e => setClienteNome(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm outline-none focus:border-accent" /></div>
-          <div><label className="text-xs text-ink-faint block mb-1">WhatsApp do cliente (opcional)</label>
-            <input value={clienteTel} onChange={e => setClienteTel(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm outline-none focus:border-accent" /></div>
-          <div><label className="text-xs text-ink-faint block mb-1">Prazo desejado (opcional)</label>
-            <input value={prazo} onChange={e => setPrazo(e.target.value)} placeholder="Ex: até 15 dias" className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm outline-none focus:border-accent" /></div>
-          <div><label className="text-xs text-ink-faint block mb-1">Observações (opcional)</label>
-            <input value={obs} onChange={e => setObs(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm outline-none focus:border-accent" /></div>
-        </div>
-      </section>
+            {/* Formulário de cadastro de item */}
+            <div className="space-y-2">
+              <select value="" onChange={e => puxarDoCatalogo(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-bg border border-dashed border-border text-ink-muted text-sm outline-none focus:border-accent">
+                <option value="">{catalogo.isLoading ? 'Carregando catálogo…' : '+ Puxar do catálogo (preenche medidas)…'}</option>
+                {grupos.map(([cat, lista]) => (
+                  <optgroup key={cat} label={cat}>
+                    {lista.map(it => <option key={it.id} value={it.id}>{it.nome_curto}</option>)}
+                  </optgroup>
+                ))}
+              </select>
 
-      {erro && <p className="text-sm text-red-500 mb-3">{erro}</p>}
+              <input value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value, catId: f.catId }))}
+                placeholder="Nome do item (ex: Misturador 300)" className={inputCls} />
 
-      <button onClick={enviar} disabled={criar.isPending}
-        className="w-full py-3 rounded-lg bg-accent text-white font-semibold hover:opacity-90 disabled:opacity-60">
-        {criar.isPending ? 'Enviando…' : 'Enviar pedido de frete'}
-      </button>
+              <div className="grid grid-cols-3 gap-2">
+                <div><label className="text-[10px] text-ink-faint block mb-0.5">Compr. (m)</label>
+                  <input type="number" step="0.1" min={0} value={form.c} onChange={e => setForm(f => ({ ...f, c: e.target.value }))} className={miniInputCls} placeholder="0" /></div>
+                <div><label className="text-[10px] text-ink-faint block mb-0.5">Larg. (m)</label>
+                  <input type="number" step="0.1" min={0} value={form.l} onChange={e => setForm(f => ({ ...f, l: e.target.value }))} className={miniInputCls} placeholder="0" /></div>
+                <div><label className="text-[10px] text-ink-faint block mb-0.5">Alt. (m)</label>
+                  <input type="number" step="0.1" min={0} value={form.a} onChange={e => setForm(f => ({ ...f, a: e.target.value }))} className={miniInputCls} placeholder="0" /></div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div><label className="text-[10px] text-ink-faint block mb-0.5">Peso (kg)</label>
+                  <input type="number" min={0} value={form.peso} onChange={e => setForm(f => ({ ...f, peso: e.target.value }))} className={miniInputCls} placeholder="0" /></div>
+                <div><label className="text-[10px] text-ink-faint block mb-0.5">Qtd</label>
+                  <input type="number" min={1} value={form.qtd} onChange={e => setForm(f => ({ ...f, qtd: e.target.value }))} className={miniInputCls} /></div>
+              </div>
+
+              <label className="flex items-center gap-2 text-xs text-ink-muted">
+                <input type="checkbox" checked={form.indiv} onChange={e => setForm(f => ({ ...f, indiv: e.target.checked }))} /> Indivisível (não pode desmontar)
+              </label>
+
+              <button onClick={addItem}
+                className="w-full px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:opacity-90 flex items-center justify-center gap-1">
+                <Plus className="h-4 w-4" /> Adicionar item
+              </button>
+            </div>
+
+            {/* Lista de itens cadastrados */}
+            <div className="mt-4 space-y-1.5">
+              {itens.length === 0 && (
+                <div className="text-xs text-ink-faint text-center border border-dashed border-border rounded-lg py-5">
+                  Nenhum item ainda.<br />Adicione acima — manual ou puxando do catálogo.
+                </div>
+              )}
+              {itens.map(it => {
+                const vol = volumeM3(it.comprimento_m, it.largura_m, it.altura_m) * it.qtd
+                const temDim = it.comprimento_m > 0 || it.largura_m > 0 || it.altura_m > 0
+                return (
+                  <div key={it.uid} className="flex items-start justify-between gap-2 bg-bg border border-border rounded-lg px-3 py-2 text-sm">
+                    <div className="min-w-0">
+                      <div className="text-ink truncate">{it.qtd > 1 && <b>{it.qtd}× </b>}{it.nome}</div>
+                      <div className="text-ink-faint text-xs">
+                        {temDim ? `${it.comprimento_m}×${it.largura_m}×${it.altura_m}m` : 'sem medidas'}
+                        {it.peso_kg ? ` · ${it.peso_kg}kg` : ''}
+                        {vol > 0 ? ` · ${vol.toFixed(2)}m³` : ''}
+                        {it.indivisivel ? ' · indivisível' : ''}
+                      </div>
+                    </div>
+                    <button onClick={() => removerItem(it.uid)} className="text-ink-faint hover:text-red-500 shrink-0"><X className="h-4 w-4" /></button>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Totais */}
+            {itens.length > 0 && (
+              <div className="mt-3 pt-2 border-t border-border flex items-center justify-between text-xs">
+                <span className="text-ink-muted">Totais ({itens.length} {itens.length === 1 ? 'item' : 'itens'})</span>
+                <span className="text-ink font-medium">{Math.round(carga.peso_kg).toLocaleString('pt-BR')} kg · {volumeTotal.toFixed(2)} m³</span>
+              </div>
+            )}
+
+            {/* Detalhe livre */}
+            <div className="mt-3">
+              <label className="text-xs text-ink-faint block mb-1">Detalhe livre da carga (opcional)</label>
+              <textarea value={descricao} onChange={e => setDescricao(e.target.value)} rows={2}
+                placeholder="Ex.: cuidado com a pintura, leva 2 escadas juntas…"
+                className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent resize-none" />
+            </div>
+          </section>
+        </aside>
+      </div>
     </div>
   )
 }
