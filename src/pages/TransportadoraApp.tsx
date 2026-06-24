@@ -242,7 +242,7 @@ function CotacaoCard({ c }: { c: TranspCotacao }) {
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-1.5 flex-wrap min-w-0">
           <span className="text-[11px] font-mono text-ink-faint">{c.codigo}</span>
-          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${carregar ? 'bg-red-500/15 text-red-500' : 'bg-accent/15 text-accent'}`}>{carregar ? 'PRA CARREGAR' : 'Cotação'}</span>
+          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${carregar ? 'bg-red-500/15 text-red-500' : 'bg-accent/15 text-accent'}`}>{carregar ? 'EMBARQUE IMEDIATO' : 'Cotação'}</span>
           {c.urgente && <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-red-500/15 text-red-500">⚠ URGENTE</span>}
         </div>
         {c.meu_valor != null && (
