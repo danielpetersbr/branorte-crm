@@ -9,8 +9,8 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { Truck, Plus, X, MapPin, Loader2, ArrowLeft, CheckCircle2, Package } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import {
-  useCatalogoFabricas, useTiposCaminhao, useAnttVigente, useMunicipiosUF,
-  useCriarSolicitacao, UFS_BR, type ItemCatalogoComPeso, type FreteEquipItem,
+  useFreteCatalogoItens, useTiposCaminhao, useAnttVigente, useMunicipiosUF,
+  useCriarSolicitacao, UFS_BR, type FreteCatalogoItem, type FreteEquipItem,
 } from '@/hooks/useFrete'
 import {
   recomendarCaminhao, calcularPisoANTT, geocodificarCidade, calcularDistanciaOSRM,
@@ -47,7 +47,7 @@ const FORM_VAZIO = { nome: '', c: '', l: '', a: '', peso: '', qtd: '1', indiv: f
 export function FreteSolicitar() {
   const [params] = useSearchParams()
   const { profile } = useAuth()
-  const catalogo = useCatalogoFabricas()
+  const catalogo = useFreteCatalogoItens()
   const tipos = useTiposCaminhao()
   const antt = useAnttVigente()
   const criar = useCriarSolicitacao()
@@ -77,30 +77,22 @@ export function FreteSolicitar() {
   const [erro, setErro] = useState('')
   const [okCodigo, setOkCodigo] = useState<string | null>(null)
 
-  // catálogo agrupado por categoria pro <select> de atalho
-  const grupos = useMemo(() => {
-    const m = new Map<string, ItemCatalogoComPeso[]>()
-    for (const it of catalogo.data ?? []) {
-      if (!m.has(it.categoria)) m.set(it.categoria, [])
-      m.get(it.categoria)!.push(it)
-    }
-    return [...m.entries()]
-  }, [catalogo.data])
+  const catItens: FreteCatalogoItem[] = catalogo.data ?? []
 
-  // Atalho: escolher um equipamento do catálogo preenche o formulário (o usuário ainda
+  // Atalho: escolher um item do catálogo de frete preenche o formulário (o usuário ainda
   // pode ajustar antes de adicionar). Não adiciona sozinho — só preenche.
   function puxarDoCatalogo(id: string) {
-    const it = (catalogo.data ?? []).find(x => String(x.id) === id)
+    const it = catItens.find(x => String(x.id) === id)
     if (!it) return
     setForm({
-      nome: it.nome_curto,
-      c: it.dim_comprimento_m != null ? String(it.dim_comprimento_m) : '',
-      l: it.dim_largura_m != null ? String(it.dim_largura_m) : '',
-      a: it.dim_altura_m != null ? String(it.dim_altura_m) : '',
+      nome: it.nome,
+      c: it.comprimento_m != null ? String(it.comprimento_m) : '',
+      l: it.largura_m != null ? String(it.largura_m) : '',
+      a: it.altura_m != null ? String(it.altura_m) : '',
       peso: it.peso_kg != null ? String(it.peso_kg) : '',
       qtd: form.qtd || '1',
       indiv: !!it.indivisivel,
-      catId: it.id,
+      catId: null,
     })
   }
 
@@ -255,11 +247,12 @@ export function FreteSolicitar() {
   const miniInputCls = 'w-full px-2 py-1.5 rounded-lg bg-bg border border-border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent'
 
   return (
-    <div className="container mx-auto py-6 px-4 max-w-6xl">
+    <div className="container mx-auto py-6 px-4 max-w-[1500px]">
       <div className="flex items-center gap-3 mb-6">
         <Link to="/frete" className="text-ink-faint hover:text-ink"><ArrowLeft className="h-5 w-5" /></Link>
         <Truck className="h-6 w-6 text-accent" />
         <h1 className="text-2xl font-bold text-ink">Pedir Frete</h1>
+        <Link to="/frete/itens" className="ml-auto text-xs text-accent hover:underline">Itens de frete →</Link>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
@@ -337,12 +330,8 @@ export function FreteSolicitar() {
             <div className="space-y-2">
               <select value="" onChange={e => puxarDoCatalogo(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg bg-bg border border-dashed border-border text-ink-muted text-sm outline-none focus:border-accent">
-                <option value="">{catalogo.isLoading ? 'Carregando catálogo…' : '+ Puxar do catálogo (preenche medidas)…'}</option>
-                {grupos.map(([cat, lista]) => (
-                  <optgroup key={cat} label={cat}>
-                    {lista.map(it => <option key={it.id} value={it.id}>{it.nome_curto}</option>)}
-                  </optgroup>
-                ))}
+                <option value="">{catalogo.isLoading ? 'Carregando…' : (catItens.length ? '+ Puxar do catálogo (preenche medidas)…' : 'Catálogo de frete vazio — cadastre em “Itens de frete”')}</option>
+                {catItens.map(it => <option key={it.id} value={it.id}>{it.nome}</option>)}
               </select>
 
               <input value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value, catId: f.catId }))}

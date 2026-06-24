@@ -633,3 +633,89 @@ export function useSetFreteConfig() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['frete-config'] }),
   });
 }
+
+// ─────────────────────────────────────────────────────────────
+// Catalogo de itens de FRETE (proprio, separado do catalogo de orcamentos).
+// O vendedor cadastra itens com medidas/volume em /frete/itens; eles aparecem
+// no "Puxar do catalogo" da pagina Pedir Frete. Soft-delete via `ativo`.
+// ─────────────────────────────────────────────────────────────
+export type FreteCatalogoItem = {
+  id: string;
+  nome: string;
+  comprimento_m: number | null;
+  largura_m: number | null;
+  altura_m: number | null;
+  peso_kg: number | null;
+  indivisivel: boolean;
+  ativo: boolean;
+  created_at: string;
+};
+
+export type FreteCatalogoInput = {
+  nome: string;
+  comprimento_m: number | null;
+  largura_m: number | null;
+  altura_m: number | null;
+  peso_kg: number | null;
+  indivisivel: boolean;
+};
+
+export function useFreteCatalogoItens() {
+  return useQuery({
+    queryKey: ['frete-catalogo-itens'],
+    queryFn: async (): Promise<FreteCatalogoItem[]> => {
+      const { data, error } = await (supabase as any)
+        .from('frete_catalogo_itens')
+        .select('id, nome, comprimento_m, largura_m, altura_m, peso_kg, indivisivel, ativo, created_at')
+        .eq('ativo', true)
+        .order('nome', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as FreteCatalogoItem[];
+    },
+  });
+}
+
+export function useCriarItemFrete() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: FreteCatalogoInput) => {
+      const { data: userData } = await supabase.auth.getUser();
+      const { data, error } = await (supabase as any)
+        .from('frete_catalogo_itens')
+        .insert({ ...input, created_by: userData?.user?.id ?? null })
+        .select()
+        .single();
+      if (error) throw error;
+      return data as FreteCatalogoItem;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['frete-catalogo-itens'] }),
+  });
+}
+
+export function useAtualizarItemFrete() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...patch }: Partial<FreteCatalogoInput> & { id: string }) => {
+      const { error } = await (supabase as any)
+        .from('frete_catalogo_itens')
+        .update({ ...patch, updated_at: new Date().toISOString() })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['frete-catalogo-itens'] }),
+  });
+}
+
+export function useExcluirItemFrete() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (supabase as any)
+        .from('frete_catalogo_itens')
+        .update({ ativo: false, updated_at: new Date().toISOString() })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['frete-catalogo-itens'] }),
+  });
+}

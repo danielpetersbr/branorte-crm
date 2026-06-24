@@ -52,6 +52,7 @@ const FreteHistorico = lazy(() => import('@/pages/FreteHistorico'))
 const FreteSolicitar = lazy(() => import('@/pages/FreteSolicitar'))
 const FreteAprovar = lazy(() => import('@/pages/FreteAprovar'))
 const FreteMapa = lazy(() => import('@/pages/FreteMapa'))
+const CadastrarItemFrete = lazy(() => import('@/pages/CadastrarItemFrete'))
 const ControleDashboard = lazy(() => import('@/pages/ControleDashboard').then(m => ({ default: m.ControleDashboard })))
 const ControlePedidos = lazy(() => import('@/pages/ControlePedidos').then(m => ({ default: m.ControlePedidos })))
 const ControleFinanceiro = lazy(() => import('@/pages/ControleFinanceiro').then(m => ({ default: m.ControleFinanceiro })))
@@ -254,6 +255,7 @@ function AppRoutes() {
         <Route path="/frete/transportadoras" element={<FreteTransportadoras />} />
         <Route path="/frete/historico" element={<FreteHistorico />} />
         <Route path="/frete/solicitar" element={<FreteSolicitar />} />
+        <Route path="/frete/itens" element={<CadastrarItemFrete />} />
         <Route path="/frete/mapa" element={<FreteMapa />} />
         {can('frete.aprovar') && (
           <Route path="/frete/aprovar" element={<FreteAprovar />} />

@@ -78,6 +78,7 @@ const NAV_GROUPS: NavGroup[] = [
     id: 'frete', label: 'Frete', icon: Truck,
     items: [
       { to: '/frete/solicitar', label: 'Pedir Frete', icon: Truck, permKey: 'frete.solicitar' },
+      { to: '/frete/itens', label: 'Itens de frete', icon: Package, permKey: 'frete.solicitar' },
       { to: '/frete/aprovar', label: 'Fila / Aprovar', icon: CheckCircle, permKey: 'frete.aprovar' },
       { to: '/frete/mapa', label: 'Mapa de Fretes', icon: MapPin },
       { to: '/frete', label: 'Calculadora', icon: Truck, end: true },
