@@ -55,11 +55,17 @@
       // viewport desde 2018). Cancela gesturestart pra travar zoom global do
       // app — comportamento de app nativo. Zoom interno (prévia do orçamento)
       // continua funcionando porque é controlado por componente próprio.
-      document.addEventListener('gesturestart', function(e) { e.preventDefault() }, { passive: false })
-      document.addEventListener('gesturechange', function(e) { e.preventDefault() }, { passive: false })
-      // Bloqueia double-tap zoom (iOS Safari)
+      // EXCEÇÃO: dentro de um mapa Leaflet (.leaflet-container) deixa o gesto passar —
+      // senão o pinch-zoom e o duplo-toque do mapa não funcionam no iOS (mapa "travado").
+      function _dentroDoMapa(e) {
+        return e.target && e.target.closest && e.target.closest('.leaflet-container')
+      }
+      document.addEventListener('gesturestart', function(e) { if (_dentroDoMapa(e)) return; e.preventDefault() }, { passive: false })
+      document.addEventListener('gesturechange', function(e) { if (_dentroDoMapa(e)) return; e.preventDefault() }, { passive: false })
+      // Bloqueia double-tap zoom (iOS Safari) — exceto no mapa
       var lastTouchEnd = 0
       document.addEventListener('touchend', function(e) {
+        if (_dentroDoMapa(e)) return
         var now = Date.now()
         if (now - lastTouchEnd <= 300) e.preventDefault()
         lastTouchEnd = now

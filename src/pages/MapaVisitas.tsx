@@ -319,7 +319,7 @@ export function MapaVisitas() {
       attribution: '&copy; Google Maps', subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], maxZoom: 20,
     })
     mapa.addTo(map)
-    L.control.layers({ 'Mapa': mapa, 'Satélite': satelite }, {}, { collapsed: false, position: 'topright' }).addTo(map)
+    L.control.layers({ 'Mapa': mapa, 'Satélite': satelite }, {}, { collapsed: false, position: 'bottomleft' }).addTo(map)
     // Clusteriza os pinos: agrupa os próximos numa bolinha numerada (some o "blobzão"
     // de pinos sobrepostos e renderiza só o visível → muito mais rápido no celular).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -482,7 +482,7 @@ export function MapaVisitas() {
     `h-9 px-3 rounded-md border text-[13px] font-semibold transition-colors ${ativo ? 'bg-accent-bg border-accent/40 text-accent' : 'bg-surface border-border text-ink-muted hover:text-ink'}`
 
   return (
-    <div className="flex h-[calc(100vh-0px)] flex-col p-4 gap-3 overflow-hidden">
+    <div className="flex flex-col p-3 md:p-4 gap-2 md:gap-3 overflow-hidden h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))]">
       <div className="flex flex-wrap items-center justify-between gap-2 md:gap-3 shrink-0 pr-11 md:pr-0">
         <div>
           <h1 className="text-[18px] md:text-[22px] font-semibold text-ink tracking-tight">Mapa de Visitas</h1>
@@ -529,6 +529,9 @@ export function MapaVisitas() {
               </ul>
             )}
           </div>
+          {/* No celular os controles ficam numa faixa que ROLA na horizontal (não empilham
+              comendo a tela). md:contents remove o wrapper no desktop → volta ao flex-wrap original. */}
+          <div className="flex items-center gap-2 w-full overflow-x-auto flex-nowrap md:contents pb-1 [&>*]:shrink-0">
           {/* filtro vendido / orçado */}
           <div className="flex h-9 rounded-md border border-border overflow-hidden text-[12px] font-semibold">
             {([['todos', 'Todos'], ['orcados', 'Só orçados'], ['vendidos', 'Vendidos']] as [VendFiltro, string][]).map(([v, label]) => (

@@ -293,8 +293,7 @@ export function Layout() {
         <button
           onClick={signOut}
           title="Sair"
-          className="fixed top-2 right-2 z-[1100] h-9 w-9 inline-flex items-center justify-center rounded-full bg-surface/90 backdrop-blur border border-border text-ink-muted hover:text-red-600 shadow-sm"
-          style={{ marginTop: 'env(safe-area-inset-top)' }}
+          className="fixed right-2 top-[max(0.5rem,env(safe-area-inset-top))] z-[1100] h-10 w-10 inline-flex items-center justify-center rounded-full bg-surface/90 backdrop-blur border border-border text-ink-muted hover:text-red-600 shadow-sm"
         >
           <LogOut className="h-4 w-4" />
         </button>
