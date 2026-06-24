@@ -5,13 +5,12 @@
 import { useMemo, useState } from 'react'
 import type { DragEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { Truck, MapPin, Trophy, Clock, Eye, CheckCircle2, Paperclip, PackageCheck, X, Undo2, Loader2 } from 'lucide-react'
+import { Truck, MapPin, Trophy, Clock, CheckCircle2, Paperclip, PackageCheck, X, Undo2, Loader2 } from 'lucide-react'
 import { useCotacoesPainel, useEscolherVencedor, useFinalizarFrete, type CotacaoPainel } from '@/hooks/useFrete'
 import { useCan } from '@/hooks/usePermissions'
 
 const COLS = [
   { key: 'pendente',  label: 'Pendente',        dot: 'bg-amber-500',   head: 'text-amber-600',   icon: Clock },
-  { key: 'analisando',label: 'Analisando',      dot: 'bg-blue-500',    head: 'text-blue-500',    icon: Eye },
   { key: 'concluida', label: 'Concluída',       dot: 'bg-green-500',   head: 'text-green-600',   icon: CheckCircle2 },
   { key: 'fechado',   label: 'Fretes fechados', dot: 'bg-emerald-600', head: 'text-emerald-700', icon: PackageCheck },
 ] as const
@@ -222,7 +221,7 @@ export default function FreteCotacoesPainel() {
       {painel.isLoading && <div className="text-sm text-ink-faint">Carregando…</div>}
 
       {!painel.isLoading && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
           {COLS.map(col => {
             const Icon = col.icon
             const cards = lista.filter(c => c.derived_status === col.key)
