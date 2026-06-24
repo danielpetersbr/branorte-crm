@@ -52,13 +52,16 @@ export function FreteSolicitar() {
   const antt = useAnttVigente()
   const criar = useCriarSolicitacao()
 
-  // Esta tela fica com fundo branco (não o cinza padrão da página). Só no tema claro;
-  // restaura o fundo original ao sair da tela.
+  // Esta tela fica com fundo branco (não o cinza padrão da página). O CSS pinta
+  // `html, body` com --bg (cinza), então precisa whitenar OS DOIS — senão o <html>
+  // cinza vaza na área vazia abaixo dos cards. Só no tema claro; restaura ao sair.
   useEffect(() => {
     if (document.documentElement.classList.contains('dark')) return
-    const prev = document.body.style.backgroundColor
-    document.body.style.backgroundColor = '#fff'
-    return () => { document.body.style.backgroundColor = prev }
+    const html = document.documentElement, body = document.body
+    const prevHtml = html.style.backgroundColor, prevBody = body.style.backgroundColor
+    html.style.backgroundColor = '#fff'
+    body.style.backgroundColor = '#fff'
+    return () => { html.style.backgroundColor = prevHtml; body.style.backgroundColor = prevBody }
   }, [])
 
   const origem = (params.get('origem') as 'pagina' | 'extensao' | 'orcamento') || 'pagina'

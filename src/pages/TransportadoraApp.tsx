@@ -17,13 +17,13 @@ const inputCls = 'w-full px-3 py-2.5 rounded-lg bg-bg border border-border text-
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-bg text-ink">
-      <div className="border-b border-border bg-surface-1">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-2">
-          <Truck className="h-5 w-5 text-accent" />
+      <header className="sticky top-0 z-20 border-b border-border bg-surface-1/90 backdrop-blur">
+        <div className="px-4 sm:px-6 lg:px-8 py-3 flex items-center gap-2">
+          <div className="h-7 w-7 rounded-lg bg-accent/10 flex items-center justify-center"><Truck className="h-4 w-4 text-accent" /></div>
           <span className="font-semibold">Branorte</span>
           <span className="text-ink-faint text-sm">· Portal de Fretes</span>
         </div>
-      </div>
+      </header>
       {children}
     </div>
   )
@@ -182,22 +182,25 @@ function Portal({ conta, onLogout }: { conta: TranspConta; onLogout: () => void 
   const lista = cot.data ?? []
   return (
     <Shell>
-      <div className="max-w-5xl mx-auto px-4 py-6">
-        <div className="flex items-center justify-between mb-4">
+      <div className="px-4 sm:px-6 lg:px-8 py-6 max-w-[1700px] mx-auto">
+        <div className="flex items-end justify-between gap-3 mb-5 flex-wrap">
           <div>
-            <h1 className="text-xl font-semibold text-ink">Cotações abertas</h1>
-            <p className="text-xs text-ink-muted">{conta.nome} · atende {conta.estados.join(', ') || '—'}</p>
+            <h1 className="text-2xl font-bold text-ink">Cotações abertas</h1>
+            <p className="text-sm text-ink-muted mt-0.5">{conta.nome} · atende <span className="text-ink font-medium">{conta.estados.join(', ') || '—'}</span></p>
           </div>
-          <button onClick={onLogout} className="text-sm text-ink-muted hover:text-ink inline-flex items-center gap-1"><LogOut className="h-4 w-4" /> Sair</button>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-ink-muted tabular-nums">{lista.length} aberta{lista.length === 1 ? '' : 's'}</span>
+            <button onClick={onLogout} className="text-sm text-ink-muted hover:text-ink inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border hover:border-border-strong"><LogOut className="h-4 w-4" /> Sair</button>
+          </div>
         </div>
 
-        {cot.isLoading && <div className="py-16 text-center text-ink-faint"><Loader2 className="h-6 w-6 animate-spin inline" /></div>}
+        {cot.isLoading && <div className="py-20 text-center text-ink-faint"><Loader2 className="h-6 w-6 animate-spin inline" /></div>}
         {!cot.isLoading && lista.length === 0 && (
-          <div className="border border-dashed border-border rounded-xl p-12 text-center text-sm text-ink-faint">
+          <div className="border border-dashed border-border rounded-2xl p-16 text-center text-sm text-ink-faint">
             Nenhuma cotação aberta nos seus estados agora.<br />Assim que a Branorte abrir um frete pra {conta.estados.join('/') || 'seus estados'}, aparece aqui.
           </div>
         )}
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-4 items-start">
           {lista.map(c => <CotacaoCard key={c.id} c={c} />)}
         </div>
       </div>
@@ -229,41 +232,49 @@ function CotacaoCard({ c }: { c: TranspCotacao }) {
   }
 
   return (
-    <div className={`bg-surface-1 border rounded-xl p-4 ${carregar || c.urgente ? 'border-red-500/40' : 'border-border'}`}>
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className="text-xs font-mono text-ink-faint">{c.codigo}</span>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${carregar ? 'bg-red-500/15 text-red-500' : 'bg-accent/15 text-accent'}`}>{carregar ? 'PRA CARREGAR' : 'Cotação'}</span>
-            {c.urgente && <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-red-500/15 text-red-500">⚠ URGENTE</span>}
+    <div className={`flex flex-col bg-surface-1 border rounded-2xl p-4 sm:p-5 transition-shadow hover:shadow-sm ${carregar || c.urgente ? 'border-red-500/40' : 'border-border'}`}>
+      {/* topo: código + selos + valor respondido */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+          <span className="text-[11px] font-mono text-ink-faint">{c.codigo}</span>
+          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${carregar ? 'bg-red-500/15 text-red-500' : 'bg-accent/15 text-accent'}`}>{carregar ? 'PRA CARREGAR' : 'Cotação'}</span>
+          {c.urgente && <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-red-500/15 text-red-500">⚠ URGENTE</span>}
+        </div>
+        {c.meu_valor != null && (
+          <div className="text-right shrink-0">
+            <div className="text-[9px] text-ink-faint uppercase tracking-wider">você respondeu</div>
+            <div className="font-bold text-accent leading-tight">{fmtMoeda(c.meu_valor)}</div>
           </div>
-          <div className="text-sm font-semibold text-ink">{itensTxt || c.descricao_carga || 'Carga'}</div>
-          <div className="text-xs text-ink-muted flex items-center gap-1 mt-0.5"><MapPin className="h-3 w-3" /> Grão Pará/SC → {c.cidade_destino}/{c.uf_destino}{c.distancia_km ? ` · ${Math.round(c.distancia_km)} km` : ''}</div>
-        </div>
-        <div className="text-right shrink-0">
-          {c.meu_valor != null
-            ? <div className="text-sm"><span className="text-ink-faint text-xs">você respondeu</span><div className="font-bold text-accent">{fmtMoeda(c.meu_valor)}</div></div>
-            : null}
-        </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm mt-3 pt-3 border-t border-border">
-        <div><div className="text-[11px] text-ink-faint">Peso</div><div className="text-ink">{c.peso_total_kg ? `${Math.round(c.peso_total_kg)} kg` : '—'}</div></div>
-        <div><div className="text-[11px] text-ink-faint">Volume</div><div className="text-ink">{c.volume_m3 ? `${c.volume_m3.toFixed(1)} m³` : '—'}</div></div>
-        <div><div className="text-[11px] text-ink-faint">Medidas (C×L×A)</div><div className="text-ink">{c.comprimento_m ? `${c.comprimento_m}×${c.largura_m}×${c.altura_m} m` : '—'}</div></div>
-        <div><div className="text-[11px] text-ink-faint">Indivisível</div><div className="text-ink">{c.carga_indivisivel ? 'Sim' : 'Não'}</div></div>
+      <h3 className="text-base font-semibold text-ink mt-2 leading-snug">{itensTxt || c.descricao_carga || 'Carga'}</h3>
+      <div className="text-xs text-ink-muted flex items-center gap-1 mt-1"><MapPin className="h-3.5 w-3.5 shrink-0 text-accent" /> Grão Pará/SC → {c.cidade_destino}/{c.uf_destino}{c.distancia_km ? ` · ${Math.round(c.distancia_km)} km` : ''}</div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+        {([
+          ['Peso', c.peso_total_kg ? `${Math.round(c.peso_total_kg)} kg` : '—'],
+          ['Volume', c.volume_m3 ? `${c.volume_m3.toFixed(1)} m³` : '—'],
+          ['Medidas', c.comprimento_m ? `${c.comprimento_m}×${c.largura_m}×${c.altura_m} m` : '—'],
+          ['Indivisível', c.carga_indivisivel ? 'Sim' : 'Não'],
+        ] as [string, string][]).map(([k, v]) => (
+          <div key={k} className="rounded-lg bg-bg border border-border/60 px-2.5 py-2 min-w-0">
+            <div className="text-[10px] uppercase tracking-wider text-ink-faint">{k}</div>
+            <div className="text-[13px] text-ink font-medium mt-0.5 truncate" title={v}>{v}</div>
+          </div>
+        ))}
       </div>
-      {c.observacoes && <p className="text-xs text-ink-muted mt-2">{c.observacoes}</p>}
+      {c.observacoes && <p className="text-xs text-ink-muted mt-3 bg-bg rounded-lg px-3 py-2 border border-border/60">{c.observacoes}</p>}
 
       {ok && <p className="text-sm text-accent mt-3 flex items-center gap-1"><CheckCircle2 className="h-4 w-4" /> Cotação enviada! Obrigado.</p>}
 
       {!aberto ? (
         <button onClick={() => { setAberto(true); setOk(false) }}
-          className="mt-3 px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:opacity-90 inline-flex items-center gap-1.5">
+          className="mt-4 w-full px-4 py-2.5 rounded-xl bg-accent text-white text-sm font-semibold hover:opacity-90 inline-flex items-center justify-center gap-1.5">
           <Send className="h-4 w-4" /> {c.meu_valor != null ? 'Atualizar minha cotação' : 'Responder cotação'}
         </button>
       ) : (
-        <div className="mt-3 pt-3 border-t border-border space-y-2">
+        <div className="mt-4 pt-4 border-t border-border space-y-2.5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div><label className="text-xs text-ink-faint block mb-1">Valor do frete (R$) <span className="text-red-500">*</span></label>
               <input value={valor} onChange={e => setValor(e.target.value)} inputMode="decimal" placeholder="0,00" className={`${inputCls} ${!valor ? 'border-red-400 ring-1 ring-red-400/30' : ''}`} /></div>
@@ -273,17 +284,17 @@ function CotacaoCard({ c }: { c: TranspCotacao }) {
           <div><label className="text-xs text-ink-faint block mb-1">Observação</label>
             <input value={obs} onChange={e => setObs(e.target.value)} placeholder="Tipo de caminhão, condições, etc. (opcional)" className={inputCls} /></div>
           <label className="flex items-center gap-2 text-sm text-ink-muted cursor-pointer">
-            <Paperclip className="h-4 w-4" />
-            <span className="px-3 py-1.5 rounded-lg border border-border hover:border-accent text-xs">{file ? file.name : 'Anexar PDF/imagem (opcional)'}</span>
+            <Paperclip className="h-4 w-4 shrink-0" />
+            <span className="px-3 py-1.5 rounded-lg border border-border hover:border-accent text-xs truncate">{file ? file.name : 'Anexar PDF/imagem (opcional)'}</span>
             <input type="file" accept="application/pdf,image/*" className="hidden" onChange={e => setFile(e.target.files?.[0] ?? null)} />
           </label>
           {erro && <p className="text-sm text-red-500">{erro}</p>}
-          <div className="flex gap-2">
+          <div className="flex gap-2 pt-1">
             <button onClick={enviar} disabled={responder.isPending}
-              className="px-5 py-2 rounded-lg bg-accent text-white text-sm font-semibold hover:opacity-90 disabled:opacity-60 inline-flex items-center gap-1.5">
+              className="flex-1 px-5 py-2.5 rounded-xl bg-accent text-white text-sm font-semibold hover:opacity-90 disabled:opacity-60 inline-flex items-center justify-center gap-1.5">
               {responder.isPending && <Loader2 className="h-4 w-4 animate-spin" />} Enviar cotação
             </button>
-            <button onClick={() => setAberto(false)} className="px-4 py-2 rounded-lg border border-border text-sm text-ink-muted hover:text-ink">Cancelar</button>
+            <button onClick={() => setAberto(false)} className="px-4 py-2.5 rounded-xl border border-border text-sm text-ink-muted hover:text-ink">Cancelar</button>
           </div>
         </div>
       )}
