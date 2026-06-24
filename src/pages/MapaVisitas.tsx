@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import 'leaflet.markercluster'
+import 'leaflet.markercluster/dist/MarkerCluster.css'
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import {
   useVisitas, useGeocodarVisitas, useOrcamentosMapa, useListaOrcamentos, useVendasMapaCount,
   type Visita, type OrcamentoPonto, type OrcamentoLinha,
@@ -184,7 +187,8 @@ export function MapaVisitas() {
     return { nomes, isFollowUp: nomes.some(n => FOLLOWUP_NOMES.has(n.toUpperCase())) }
   }
   const mapRef = useRef<L.Map | null>(null)
-  const layerRef = useRef<L.LayerGroup | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const layerRef = useRef<any>(null) // L.MarkerClusterGroup
   const raioLayerRef = useRef<L.LayerGroup | null>(null)
   const divRef = useRef<HTMLDivElement | null>(null)
   const autoGeoRef = useRef(false)
@@ -316,7 +320,28 @@ export function MapaVisitas() {
     })
     mapa.addTo(map)
     L.control.layers({ 'Mapa': mapa, 'Satélite': satelite }, {}, { collapsed: false, position: 'topright' }).addTo(map)
-    layerRef.current = L.layerGroup().addTo(map)
+    // Clusteriza os pinos: agrupa os próximos numa bolinha numerada (some o "blobzão"
+    // de pinos sobrepostos e renderiza só o visível → muito mais rápido no celular).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    layerRef.current = (L as any).markerClusterGroup({
+      chunkedLoading: true,            // adiciona em lotes sem travar a UI
+      showCoverageOnHover: false,      // sem polígono no hover (limpo no mobile)
+      spiderfyOnMaxZoom: true,         // no zoom máx, espalha os sobrepostos
+      removeOutsideVisibleBounds: true,// só gerencia o que está na tela
+      maxClusterRadius: 55,
+      disableClusteringAtZoom: 14,     // zoom de cidade/bairro → pinos individuais
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      iconCreateFunction: (cluster: any) => {
+        const n = cluster.getChildCount()
+        const size = n < 10 ? 34 : n < 100 ? 40 : 48
+        const bg = n < 10 ? '#10b981' : n < 100 ? '#3b82f6' : '#1e40af'
+        return L.divIcon({
+          html: `<div style="width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:${bg};color:#fff;font-weight:700;font-size:${n < 100 ? 13 : 12}px;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.4)">${n}</div>`,
+          className: 'bsb-cluster',
+          iconSize: [size, size],
+        })
+      },
+    }).addTo(map)
     raioLayerRef.current = L.layerGroup().addTo(map)
     map.on('click', (e: L.LeafletMouseEvent) => {
       if (modoRaioRef.current) setCentro({ lat: e.latlng.lat, lng: e.latlng.lng })
@@ -351,24 +376,27 @@ export function MapaVisitas() {
     map.invalidateSize()
     layer.clearLayers()
     const bounds: [number, number][] = []
+    const marcadores: L.Marker[] = []
     if (showVis) {
       for (const v of visFiltradas) {
         const { nomes, isFollowUp } = resolverEtiquetas(v)
         const cor = isFollowUp ? corDoVendedor(v.vendedor_nome, vendedores) : CINZA
         const m = L.marker([v.lat as number, v.lng as number], { icon: pinIcon(cor), opacity: isFollowUp ? 1 : 0.85 })
-        m.bindPopup(popupVisita(v, isFollowUp, nomes))
-        m.addTo(layer)
+        // popup lazy: só monta o HTML quando abre (evita construir milhares por redraw)
+        m.bindPopup(() => popupVisita(v, isFollowUp, nomes))
+        marcadores.push(m)
         bounds.push([v.lat as number, v.lng as number])
       }
     }
     if (showOrc) {
       for (const p of orcFiltrados) {
         const m = L.marker([p.lat, p.lng], { icon: pinIcon(corOrcamento(p)) })
-        m.bindPopup(popupOrcamento(p))
-        m.addTo(layer)
+        m.bindPopup(() => popupOrcamento(p))
+        marcadores.push(m)
         bounds.push([p.lat, p.lng])
       }
     }
+    layer.addLayers(marcadores) // add em LOTE (markercluster, chunked) — não trava
     if (bounds.length && !centro) map.fitBounds(bounds, { padding: [50, 50], maxZoom: 10 })
   }, [showVis, showOrc, visFiltradas, orcFiltrados, vendedores, byVendId, globId])
 
