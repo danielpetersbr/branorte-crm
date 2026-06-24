@@ -8,6 +8,8 @@ import {
   useTransportadoras,
   useUpsertTransportadora,
   useDeleteTransportadora,
+  useTranspContasAdmin,
+  useAprovarTransp,
 } from '@/hooks/useFrete'
 import type { TransportadoraParceira } from '@/lib/calcFrete'
 
@@ -37,6 +39,8 @@ export default function FreteTransportadoras() {
   const { data: lista, isLoading } = useTransportadoras()
   const upsert = useUpsertTransportadora()
   const del = useDeleteTransportadora()
+  const contas = useTranspContasAdmin()
+  const aprovar = useAprovarTransp()
   const [editando, setEditando] = useState<Partial<TransportadoraParceira> | null>(null)
 
   function abrirNovo() {
@@ -94,6 +98,35 @@ export default function FreteTransportadoras() {
         >
           <Plus className="h-4 w-4" /> Nova
         </button>
+      </div>
+
+      {/* Contas do portal de transportadoras — aprovar acesso às cotações */}
+      <div className="border rounded-lg p-4 mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold">Contas do portal <span className="text-xs text-muted-foreground font-normal">(/transportadora)</span></h2>
+          <span className="text-xs text-muted-foreground">{(contas.data ?? []).filter(c => !c.aprovado).length} aguardando aprovação</span>
+        </div>
+        {contas.isLoading && <div className="text-sm text-muted-foreground">Carregando…</div>}
+        {!contas.isLoading && (contas.data?.length ?? 0) === 0 && (
+          <div className="text-sm text-muted-foreground">Nenhuma transportadora cadastrada no portal ainda.</div>
+        )}
+        <div className="space-y-2">
+          {(contas.data ?? []).map(c => (
+            <div key={c.user_id} className="flex items-center justify-between gap-3 border rounded p-2.5">
+              <div className="min-w-0">
+                <div className="font-medium text-sm flex items-center gap-2">{c.nome}
+                  {c.aprovado
+                    ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-600">aprovada</span>
+                    : <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600">aguardando</span>}
+                </div>
+                <div className="text-xs text-muted-foreground truncate">{c.email}{c.cnpj ? ` · ${c.cnpj}` : ''} · atende: {c.estados.join(', ') || '—'}</div>
+              </div>
+              {c.aprovado
+                ? <button type="button" onClick={() => aprovar.mutate({ user_id: c.user_id, aprovar: false })} disabled={aprovar.isPending} className="px-3 py-1.5 text-xs border rounded hover:bg-accent shrink-0">Revogar</button>
+                : <button type="button" onClick={() => aprovar.mutate({ user_id: c.user_id, aprovar: true })} disabled={aprovar.isPending} className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded font-medium hover:bg-primary/90 shrink-0">Aprovar</button>}
+            </div>
+          ))}
+        </div>
       </div>
 
       {isLoading && <div className="text-sm text-muted-foreground">Carregando…</div>}
