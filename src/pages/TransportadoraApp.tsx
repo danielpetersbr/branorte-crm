@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Truck, Loader2, LogOut, Paperclip, MapPin, Package, CheckCircle2, AlertTriangle, Send } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { UFS_BR, useTranspMinhaConta, useTranspCotacoes, useTranspResponder, type TranspCotacao, type TranspConta } from '@/hooks/useFrete'
+import { UFS_BR, useTranspMinhaConta, useTranspCotacoes, useTranspResponder, useTranspMarcarAnalisando, type TranspCotacao, type TranspConta } from '@/hooks/useFrete'
 
 function fmtMoeda(v: number | null): string {
   if (v == null) return '—'
@@ -210,12 +210,14 @@ function Portal({ conta, onLogout }: { conta: TranspConta; onLogout: () => void 
 
 function CotacaoCard({ c }: { c: TranspCotacao }) {
   const responder = useTranspResponder()
+  const marcar = useTranspMarcarAnalisando()
   const [aberto, setAberto] = useState(false)
   const [valor, setValor] = useState(c.meu_valor != null ? String(c.meu_valor) : '')
   const [prazo, setPrazo] = useState(c.meu_prazo_dias != null ? String(c.meu_prazo_dias) : '')
   const [obs, setObs] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [erro, setErro] = useState(''); const [ok, setOk] = useState(false)
+  const [zoom, setZoom] = useState(false)
   const itensTxt = (c.equipamentos_itens ?? []).map(i => `${i.qtd && i.qtd > 1 ? i.qtd + '× ' : ''}${i.nome}`).join(', ')
   const carregar = c.tipo_cotacao === 'carregar'
   const foto = (c.equipamentos_itens ?? []).find(i => i.foto_url)?.foto_url ?? null
@@ -224,8 +226,10 @@ function CotacaoCard({ c }: { c: TranspCotacao }) {
     setErro('')
     const v = Number(String(valor).replace(',', '.'))
     if (!v || v <= 0) { setErro('O valor do frete é obrigatório.'); return }
+    const p = Number(prazo)
+    if (!prazo || !Number.isFinite(p) || p <= 0) { setErro('O prazo de entrega (dias) é obrigatório.'); return }
     try {
-      await responder.mutateAsync({ solicitacao_id: c.id, valor: v, prazo_dias: prazo ? Number(prazo) : null, observacoes: obs.trim() || null, file })
+      await responder.mutateAsync({ solicitacao_id: c.id, valor: v, prazo_dias: p, observacoes: obs.trim() || null, file })
       setOk(true); setAberto(false)
     } catch (e: any) {
       setErro('Não consegui enviar: ' + (e?.message ?? e))
@@ -250,7 +254,15 @@ function CotacaoCard({ c }: { c: TranspCotacao }) {
       </div>
 
       <div className="flex gap-3 mt-2">
-        {foto && <a href={foto} target="_blank" rel="noreferrer" className="shrink-0"><img src={foto} alt="" className="h-16 w-16 rounded-lg object-cover border border-border" /></a>}
+        {foto && (
+          <button type="button" onClick={() => setZoom(true)} title="Clique para ampliar a foto"
+            className="shrink-0 relative group cursor-zoom-in">
+            <img src={foto} alt="" className="h-16 w-16 rounded-lg object-cover border border-border" />
+            <span className="absolute inset-0 rounded-lg bg-black/0 group-hover:bg-black/35 flex items-center justify-center transition-colors">
+              <span className="text-white text-[15px] opacity-0 group-hover:opacity-100">🔍</span>
+            </span>
+          </button>
+        )}
         <div className="min-w-0">
           <h3 className="text-base font-semibold text-ink leading-snug">{itensTxt || c.descricao_carga || 'Carga'}</h3>
           <div className="text-xs text-ink-muted flex items-center gap-1 mt-1"><MapPin className="h-3.5 w-3.5 shrink-0 text-accent" /> Grão Pará/SC → {c.cidade_destino}/{c.uf_destino}{c.distancia_km ? ` · ${Math.round(c.distancia_km)} km` : ''}</div>
@@ -275,7 +287,7 @@ function CotacaoCard({ c }: { c: TranspCotacao }) {
       {ok && <p className="text-sm text-accent mt-3 flex items-center gap-1"><CheckCircle2 className="h-4 w-4" /> Cotação enviada! Obrigado.</p>}
 
       {!aberto ? (
-        <button onClick={() => { setAberto(true); setOk(false) }}
+        <button onClick={() => { setAberto(true); setOk(false); if (c.meu_valor == null) marcar.mutate(c.id) }}
           className="mt-4 w-full px-4 py-2.5 rounded-xl bg-accent text-white text-sm font-semibold hover:opacity-90 inline-flex items-center justify-center gap-1.5">
           <Send className="h-4 w-4" /> {c.meu_valor != null ? 'Atualizar minha cotação' : 'Responder cotação'}
         </button>
@@ -284,8 +296,8 @@ function CotacaoCard({ c }: { c: TranspCotacao }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div><label className="text-xs text-ink-faint block mb-1">Valor do frete (R$) <span className="text-red-500">*</span></label>
               <input value={valor} onChange={e => setValor(e.target.value)} inputMode="decimal" placeholder="0,00" className={`${inputCls} ${!valor ? 'border-red-400 ring-1 ring-red-400/30' : ''}`} /></div>
-            <div><label className="text-xs text-ink-faint block mb-1">Prazo de entrega (dias)</label>
-              <input value={prazo} onChange={e => setPrazo(e.target.value)} inputMode="numeric" placeholder="opcional" className={inputCls} /></div>
+            <div><label className="text-xs text-ink-faint block mb-1">Prazo de entrega (dias) <span className="text-red-500">*</span></label>
+              <input value={prazo} onChange={e => setPrazo(e.target.value)} inputMode="numeric" placeholder="ex: 15" className={`${inputCls} ${!prazo ? 'border-red-400 ring-1 ring-red-400/30' : ''}`} /></div>
           </div>
           <div><label className="text-xs text-ink-faint block mb-1">Observação</label>
             <input value={obs} onChange={e => setObs(e.target.value)} placeholder="Tipo de caminhão, condições, etc. (opcional)" className={inputCls} /></div>
@@ -302,6 +314,14 @@ function CotacaoCard({ c }: { c: TranspCotacao }) {
             </button>
             <button onClick={() => setAberto(false)} className="px-4 py-2.5 rounded-xl border border-border text-sm text-ink-muted hover:text-ink">Cancelar</button>
           </div>
+        </div>
+      )}
+
+      {zoom && foto && (
+        <div className="fixed inset-0 z-[1000] bg-black/80 flex items-center justify-center p-4" onClick={() => setZoom(false)}>
+          <img src={foto} alt="" className="max-h-[90vh] max-w-[92vw] rounded-lg object-contain shadow-2xl" onClick={e => e.stopPropagation()} />
+          <button onClick={() => setZoom(false)} title="Fechar"
+            className="absolute top-4 right-4 h-9 w-9 rounded-full bg-white/15 hover:bg-white/30 text-white text-xl leading-none">✕</button>
         </div>
       )}
     </div>

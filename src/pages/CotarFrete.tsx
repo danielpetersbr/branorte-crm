@@ -70,6 +70,7 @@ export function CotarFrete() {
   const [resumo, setResumo] = useState<Resumo | null>(null)
   const [valor, setValor] = useState('')
   const [prazo, setPrazo] = useState('')
+  const [zoom, setZoom] = useState(false)
   const [obs, setObs] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [enviado, setEnviado] = useState(false)
@@ -100,9 +101,11 @@ export function CotarFrete() {
   async function enviar() {
     const v = parseMoeda(valor)
     if (!Number.isFinite(v) || v <= 0) { setErro('Informe o valor do frete (R$).'); return }
+    const p = Number(prazo)
+    if (!prazo || !Number.isFinite(p) || p <= 0) { setErro('Informe o prazo de entrega (dias).'); return }
     setEnviando(true); setErro('')
     const { data, error } = await supabase.functions.invoke('frete-lance', {
-      body: { action: 'submit', token, valor: v, prazo_dias: prazo ? Number(prazo) : null, observacoes: obs.trim() || null },
+      body: { action: 'submit', token, valor: v, prazo_dias: p, observacoes: obs.trim() || null },
     })
     setEnviando(false)
     if (error || data?.error) {
@@ -193,7 +196,17 @@ export function CotarFrete() {
         {/* Resumo do frete */}
         <div className="bg-surface-1 border border-border rounded-2xl p-5 mb-4">
           <div className="text-[11px] uppercase tracking-widest text-ink-faint mb-3">O que transportar</div>
-          {(() => { const f = (Array.isArray(r.equipamentos_itens) ? r.equipamentos_itens : []).find(i => i?.foto_url)?.foto_url; return f ? <a href={f} target="_blank" rel="noreferrer" className="block mb-3"><img src={f} alt="" className="w-full max-h-56 object-contain rounded-lg border border-border bg-bg" /></a> : null })()}
+          {(() => { const f = (Array.isArray(r.equipamentos_itens) ? r.equipamentos_itens : []).find(i => i?.foto_url)?.foto_url; return f ? (<>
+            <button type="button" onClick={() => setZoom(true)} title="Clique para ampliar a foto" className="block w-full mb-3 cursor-zoom-in">
+              <img src={f} alt="" className="w-full max-h-56 object-contain rounded-lg border border-border bg-bg" />
+            </button>
+            {zoom && (
+              <div className="fixed inset-0 z-[1000] bg-black/80 flex items-center justify-center p-4" onClick={() => setZoom(false)}>
+                <img src={f} alt="" className="max-h-[90vh] max-w-[92vw] object-contain rounded-lg shadow-2xl" onClick={e => e.stopPropagation()} />
+                <button onClick={() => setZoom(false)} title="Fechar" className="absolute top-4 right-4 h-9 w-9 rounded-full bg-white/15 hover:bg-white/30 text-white text-xl leading-none">✕</button>
+              </div>
+            )}
+          </>) : null })()}
           <div className="text-ink font-semibold mb-1">{resumoEquip(r)}</div>
           {r.carga_indivisivel && (
             <div className="inline-block text-[11px] px-2 py-0.5 rounded-full bg-accent/10 text-accent font-medium mb-3">
@@ -238,13 +251,13 @@ export function CotarFrete() {
 
             <div className="grid grid-cols-1 gap-4 mb-4">
               <div>
-                <label className="block text-sm font-medium text-ink mb-1.5">Prazo de entrega <span className="text-ink-faint font-normal">(dias, opcional)</span></label>
+                <label className="block text-sm font-medium text-ink mb-1.5">Prazo de entrega (dias) <span className="text-red-500">*</span></label>
                 <input
                   inputMode="numeric"
                   value={prazo}
                   onChange={e => setPrazo(e.target.value.replace(/\D/g, ''))}
                   placeholder="Ex: 7"
-                  className="w-full px-3 py-2.5 rounded-lg bg-bg border border-border text-ink placeholder:text-ink-faint outline-none focus:border-accent"
+                  className={`w-full px-3 py-2.5 rounded-lg bg-bg border text-ink placeholder:text-ink-faint outline-none focus:border-accent ${!prazo ? 'border-red-400 ring-1 ring-red-400/30' : 'border-border'}`}
                 />
               </div>
               <div>
