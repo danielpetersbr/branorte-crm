@@ -722,3 +722,98 @@ export function useExcluirItemFrete() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['frete-catalogo-itens'] }),
   });
 }
+
+// ─────────────────────────────────────────────────────────────
+// PORTAL DAS TRANSPORTADORAS
+// Conta própria (auth) com estados que atende. Aprovada pela Branorte, vê as
+// cotações dos estados dela (via RPC SECURITY DEFINER) e responde com valor.
+// ─────────────────────────────────────────────────────────────
+export type TranspConta = {
+  user_id: string; nome: string; cnpj: string | null; telefone: string | null;
+  email: string | null; estados: string[]; aprovado: boolean; created_at: string;
+};
+export type TranspCotacao = {
+  id: string; codigo: string | null; criado_em: string;
+  tipo_cotacao: 'cotacao' | 'carregar'; urgente: boolean;
+  cidade_destino: string | null; uf_destino: string | null; distancia_km: number | null;
+  peso_total_kg: number | null; comprimento_m: number | null; largura_m: number | null; altura_m: number | null;
+  volume_m3: number | null; carga_indivisivel: boolean | null; caminhao_recomendado_id: number | null;
+  descricao_carga: string | null; observacoes: string | null;
+  equipamentos_itens: FreteEquipItem[]; status: string;
+  meu_valor: number | null; meu_prazo_dias: number | null; meu_status: string | null; meu_anexo_url: string | null;
+};
+
+export function useTranspMinhaConta() {
+  return useQuery({
+    queryKey: ['transp-conta'],
+    queryFn: async (): Promise<TranspConta | null> => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      const { data, error } = await (supabase as any).from('frete_transportadora_contas')
+        .select('*').eq('user_id', user.id).maybeSingle();
+      if (error) throw error;
+      return (data ?? null) as TranspConta | null;
+    },
+  });
+}
+
+export function useTranspCotacoes(enabled: boolean) {
+  return useQuery({
+    queryKey: ['transp-cotacoes'],
+    enabled,
+    refetchInterval: enabled ? 15000 : false,
+    queryFn: async (): Promise<TranspCotacao[]> => {
+      const { data, error } = await (supabase as any).rpc('transp_minhas_cotacoes');
+      if (error) throw error;
+      return (data ?? []) as TranspCotacao[];
+    },
+  });
+}
+
+export function useTranspResponder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { solicitacao_id: string; valor: number; prazo_dias: number | null; observacoes: string | null; file: File | null }) => {
+      let anexo_url: string | null = null;
+      if (input.file) {
+        const ext = (input.file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const path = `${input.solicitacao_id}/${crypto.randomUUID()}.${ext}`;
+        const { error: upErr } = await supabase.storage.from('frete-anexos').upload(path, input.file, { upsert: false });
+        if (upErr) throw upErr;
+        anexo_url = supabase.storage.from('frete-anexos').getPublicUrl(path).data.publicUrl;
+      }
+      const { error } = await (supabase as any).rpc('transp_responder', {
+        p_solic: input.solicitacao_id, p_valor: input.valor,
+        p_prazo: input.prazo_dias, p_obs: input.observacoes, p_anexo: anexo_url,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transp-cotacoes'] }),
+  });
+}
+
+// Admin (Branorte): listar contas + aprovar/revogar
+export function useTranspContasAdmin() {
+  return useQuery({
+    queryKey: ['transp-contas-admin'],
+    queryFn: async (): Promise<TranspConta[]> => {
+      const { data, error } = await (supabase as any).from('frete_transportadora_contas')
+        .select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as TranspConta[];
+    },
+  });
+}
+export function useAprovarTransp() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ user_id, aprovar }: { user_id: string; aprovar: boolean }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await (supabase as any).from('frete_transportadora_contas')
+        .update({ aprovado: aprovar, aprovado_em: aprovar ? new Date().toISOString() : null, aprovado_por: aprovar ? user?.id ?? null : null })
+        .eq('user_id', user_id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transp-contas-admin'] }),
+  });
+}

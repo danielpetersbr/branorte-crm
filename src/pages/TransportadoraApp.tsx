@@ -1,0 +1,340 @@
+// /transportadora — Portal das transportadoras (fora do app do staff).
+// Fluxo: cadastro próprio (email/senha + estados que atende) → aguarda aprovação
+// da Branorte → vê as cotações dos estados dela e responde com valor (+ anexo).
+// Roda com auth própria (Supabase), interceptada antes do gating do app interno.
+import { useEffect, useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { Truck, Loader2, LogOut, Paperclip, MapPin, Package, CheckCircle2, AlertTriangle, Send } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { UFS_BR, useTranspMinhaConta, useTranspCotacoes, useTranspResponder, type TranspCotacao, type TranspConta } from '@/hooks/useFrete'
+
+function fmtMoeda(v: number | null): string {
+  if (v == null) return '—'
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+}
+const inputCls = 'w-full px-3 py-2.5 rounded-lg bg-bg border border-border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent'
+
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen bg-bg text-ink">
+      <div className="border-b border-border bg-surface-1">
+        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-2">
+          <Truck className="h-5 w-5 text-accent" />
+          <span className="font-semibold">Branorte</span>
+          <span className="text-ink-faint text-sm">· Portal de Fretes</span>
+        </div>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function Splash() {
+  return <Shell><div className="flex items-center justify-center py-32 text-ink-faint"><Loader2 className="h-6 w-6 animate-spin" /></div></Shell>
+}
+
+function EstadosPicker({ estados, setEstados }: { estados: string[]; setEstados: (e: string[]) => void }) {
+  const toggle = (uf: string) => setEstados(estados.includes(uf) ? estados.filter(x => x !== uf) : [...estados, uf])
+  return (
+    <div>
+      <label className="text-xs text-ink-faint block mb-1">Estados que você atende <span className="text-red-500">*</span></label>
+      <div className="grid grid-cols-6 sm:grid-cols-9 gap-1.5">
+        {UFS_BR.map(uf => (
+          <button type="button" key={uf} onClick={() => toggle(uf)}
+            className={`py-1.5 rounded-md text-xs font-medium border transition-colors ${estados.includes(uf) ? 'bg-accent text-white border-accent' : 'bg-bg text-ink-muted border-border hover:border-accent'}`}>
+            {uf}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ---------- Auth (entrar / criar conta) ----------
+function AuthView() {
+  const [modo, setModo] = useState<'entrar' | 'cadastro'>('entrar')
+  const [email, setEmail] = useState(''); const [senha, setSenha] = useState('')
+  const [nome, setNome] = useState(''); const [cnpj, setCnpj] = useState(''); const [tel, setTel] = useState('')
+  const [estados, setEstados] = useState<string[]>([])
+  const [erro, setErro] = useState(''); const [msg, setMsg] = useState(''); const [busy, setBusy] = useState(false)
+
+  async function entrar() {
+    setErro(''); setBusy(true)
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: senha })
+    setBusy(false)
+    if (error) setErro(error.message === 'Invalid login credentials' ? 'Email ou senha incorretos.' : error.message)
+  }
+  async function cadastrar() {
+    setErro(''); setMsg('')
+    if (!nome.trim()) { setErro('Informe o nome da transportadora.'); return }
+    if (!email.trim() || senha.length < 6) { setErro('Email válido e senha de 6+ caracteres.'); return }
+    if (estados.length === 0) { setErro('Selecione ao menos um estado que você atende.'); return }
+    setBusy(true)
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim(), password: senha,
+      options: { data: { transp_nome: nome.trim(), transp_cnpj: cnpj.trim() || null, transp_telefone: tel.trim() || null, transp_estados: estados } },
+    })
+    setBusy(false)
+    if (error) { setErro(error.message); return }
+    if (!data.session) setMsg('Cadastro criado! Confirme seu email e depois entre aqui pra continuar.')
+    // se já veio sessão, o TransportadoraApp cria a conta automaticamente.
+  }
+
+  return (
+    <Shell>
+      <div className="max-w-md mx-auto px-4 py-10">
+        <div className="bg-surface-1 border border-border rounded-2xl p-6">
+          <h1 className="text-lg font-bold text-ink mb-1">{modo === 'entrar' ? 'Entrar' : 'Criar conta da transportadora'}</h1>
+          <p className="text-sm text-ink-muted mb-4">{modo === 'entrar' ? 'Acesse pra ver e responder as cotações dos seus estados.' : 'Cadastre-se pra receber as cotações de frete da Branorte nos estados que você atende.'}</p>
+
+          <div className="space-y-3">
+            {modo === 'cadastro' && (
+              <>
+                <div><label className="text-xs text-ink-faint block mb-1">Nome da transportadora <span className="text-red-500">*</span></label>
+                  <input value={nome} onChange={e => setNome(e.target.value)} className={inputCls} placeholder="Ex: Transportes Silva" /></div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className="text-xs text-ink-faint block mb-1">CNPJ</label>
+                    <input value={cnpj} onChange={e => setCnpj(e.target.value)} className={inputCls} placeholder="opcional" /></div>
+                  <div><label className="text-xs text-ink-faint block mb-1">WhatsApp / telefone</label>
+                    <input value={tel} onChange={e => setTel(e.target.value)} className={inputCls} placeholder="opcional" /></div>
+                </div>
+                <EstadosPicker estados={estados} setEstados={setEstados} />
+              </>
+            )}
+            <div><label className="text-xs text-ink-faint block mb-1">Email <span className="text-red-500">*</span></label>
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputCls} /></div>
+            <div><label className="text-xs text-ink-faint block mb-1">Senha <span className="text-red-500">*</span></label>
+              <input type="password" value={senha} onChange={e => setSenha(e.target.value)} className={inputCls} placeholder={modo === 'cadastro' ? 'mínimo 6 caracteres' : ''} /></div>
+
+            {erro && <p className="text-sm text-red-500">{erro}</p>}
+            {msg && <p className="text-sm text-accent">{msg}</p>}
+
+            <button onClick={modo === 'entrar' ? entrar : cadastrar} disabled={busy}
+              className="w-full py-2.5 rounded-lg bg-accent text-white font-semibold hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2">
+              {busy && <Loader2 className="h-4 w-4 animate-spin" />}{modo === 'entrar' ? 'Entrar' : 'Criar conta'}
+            </button>
+          </div>
+
+          <button onClick={() => { setModo(modo === 'entrar' ? 'cadastro' : 'entrar'); setErro(''); setMsg('') }}
+            className="mt-4 text-sm text-accent hover:underline w-full text-center">
+            {modo === 'entrar' ? 'Não tem conta? Cadastre sua transportadora' : 'Já tenho conta — entrar'}
+          </button>
+        </div>
+      </div>
+    </Shell>
+  )
+}
+
+// ---------- Completar cadastro (logado mas sem conta) ----------
+function CompletarCadastro({ onDone }: { onDone: () => void }) {
+  const [nome, setNome] = useState(''); const [cnpj, setCnpj] = useState(''); const [tel, setTel] = useState('')
+  const [estados, setEstados] = useState<string[]>([]); const [erro, setErro] = useState(''); const [busy, setBusy] = useState(false)
+  async function salvar() {
+    setErro('')
+    if (!nome.trim()) { setErro('Informe o nome.'); return }
+    if (estados.length === 0) { setErro('Selecione ao menos um estado.'); return }
+    setBusy(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    const { error } = await (supabase as any).from('frete_transportadora_contas').insert({
+      user_id: user?.id, nome: nome.trim(), cnpj: cnpj.trim() || null, telefone: tel.trim() || null, email: user?.email ?? null, estados,
+    })
+    setBusy(false)
+    if (error) { setErro(error.message); return }
+    onDone()
+  }
+  return (
+    <Shell>
+      <div className="max-w-md mx-auto px-4 py-10">
+        <div className="bg-surface-1 border border-border rounded-2xl p-6 space-y-3">
+          <h1 className="text-lg font-bold text-ink">Complete seu cadastro</h1>
+          <div><label className="text-xs text-ink-faint block mb-1">Nome da transportadora <span className="text-red-500">*</span></label>
+            <input value={nome} onChange={e => setNome(e.target.value)} className={inputCls} /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="text-xs text-ink-faint block mb-1">CNPJ</label><input value={cnpj} onChange={e => setCnpj(e.target.value)} className={inputCls} /></div>
+            <div><label className="text-xs text-ink-faint block mb-1">Telefone</label><input value={tel} onChange={e => setTel(e.target.value)} className={inputCls} /></div>
+          </div>
+          <EstadosPicker estados={estados} setEstados={setEstados} />
+          {erro && <p className="text-sm text-red-500">{erro}</p>}
+          <button onClick={salvar} disabled={busy} className="w-full py-2.5 rounded-lg bg-accent text-white font-semibold hover:opacity-90 disabled:opacity-60">{busy ? 'Salvando…' : 'Salvar'}</button>
+        </div>
+      </div>
+    </Shell>
+  )
+}
+
+// ---------- Aguardando aprovação ----------
+function Aguardando({ conta, onLogout }: { conta: TranspConta; onLogout: () => void }) {
+  return (
+    <Shell>
+      <div className="max-w-md mx-auto px-4 py-16 text-center">
+        <div className="h-14 w-14 rounded-full bg-amber-500/15 mx-auto flex items-center justify-center mb-4"><Loader2 className="h-7 w-7 text-amber-500 animate-spin" /></div>
+        <h1 className="text-lg font-bold text-ink mb-1">Cadastro em análise</h1>
+        <p className="text-sm text-ink-muted">Olá, <b className="text-ink">{conta.nome}</b>. Seu cadastro foi recebido e está aguardando a aprovação da Branorte. Assim que liberarem, você verá as cotações dos estados: <b className="text-ink">{conta.estados.join(', ') || '—'}</b>.</p>
+        <button onClick={onLogout} className="mt-6 text-sm text-ink-muted hover:text-ink inline-flex items-center gap-1"><LogOut className="h-4 w-4" /> Sair</button>
+      </div>
+    </Shell>
+  )
+}
+
+// ---------- Portal (cotações + responder) ----------
+function Portal({ conta, onLogout }: { conta: TranspConta; onLogout: () => void }) {
+  const cot = useTranspCotacoes(true)
+  const lista = cot.data ?? []
+  return (
+    <Shell>
+      <div className="max-w-5xl mx-auto px-4 py-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-xl font-semibold text-ink">Cotações abertas</h1>
+            <p className="text-xs text-ink-muted">{conta.nome} · atende {conta.estados.join(', ') || '—'}</p>
+          </div>
+          <button onClick={onLogout} className="text-sm text-ink-muted hover:text-ink inline-flex items-center gap-1"><LogOut className="h-4 w-4" /> Sair</button>
+        </div>
+
+        {cot.isLoading && <div className="py-16 text-center text-ink-faint"><Loader2 className="h-6 w-6 animate-spin inline" /></div>}
+        {!cot.isLoading && lista.length === 0 && (
+          <div className="border border-dashed border-border rounded-xl p-12 text-center text-sm text-ink-faint">
+            Nenhuma cotação aberta nos seus estados agora.<br />Assim que a Branorte abrir um frete pra {conta.estados.join('/') || 'seus estados'}, aparece aqui.
+          </div>
+        )}
+        <div className="space-y-3">
+          {lista.map(c => <CotacaoCard key={c.id} c={c} />)}
+        </div>
+      </div>
+    </Shell>
+  )
+}
+
+function CotacaoCard({ c }: { c: TranspCotacao }) {
+  const responder = useTranspResponder()
+  const [aberto, setAberto] = useState(false)
+  const [valor, setValor] = useState(c.meu_valor != null ? String(c.meu_valor) : '')
+  const [prazo, setPrazo] = useState(c.meu_prazo_dias != null ? String(c.meu_prazo_dias) : '')
+  const [obs, setObs] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const [erro, setErro] = useState(''); const [ok, setOk] = useState(false)
+  const itensTxt = (c.equipamentos_itens ?? []).map(i => `${i.qtd && i.qtd > 1 ? i.qtd + '× ' : ''}${i.nome}`).join(', ')
+  const carregar = c.tipo_cotacao === 'carregar'
+
+  async function enviar() {
+    setErro('')
+    const v = Number(String(valor).replace(',', '.'))
+    if (!v || v <= 0) { setErro('O valor do frete é obrigatório.'); return }
+    try {
+      await responder.mutateAsync({ solicitacao_id: c.id, valor: v, prazo_dias: prazo ? Number(prazo) : null, observacoes: obs.trim() || null, file })
+      setOk(true); setAberto(false)
+    } catch (e: any) {
+      setErro('Não consegui enviar: ' + (e?.message ?? e))
+    }
+  }
+
+  return (
+    <div className={`bg-surface-1 border rounded-xl p-4 ${carregar || c.urgente ? 'border-red-500/40' : 'border-border'}`}>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <span className="text-xs font-mono text-ink-faint">{c.codigo}</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${carregar ? 'bg-red-500/15 text-red-500' : 'bg-accent/15 text-accent'}`}>{carregar ? 'PRA CARREGAR' : 'Cotação'}</span>
+            {c.urgente && <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-red-500/15 text-red-500">⚠ URGENTE</span>}
+          </div>
+          <div className="text-sm font-semibold text-ink">{itensTxt || c.descricao_carga || 'Carga'}</div>
+          <div className="text-xs text-ink-muted flex items-center gap-1 mt-0.5"><MapPin className="h-3 w-3" /> Grão Pará/SC → {c.cidade_destino}/{c.uf_destino}{c.distancia_km ? ` · ${Math.round(c.distancia_km)} km` : ''}</div>
+        </div>
+        <div className="text-right shrink-0">
+          {c.meu_valor != null
+            ? <div className="text-sm"><span className="text-ink-faint text-xs">você respondeu</span><div className="font-bold text-accent">{fmtMoeda(c.meu_valor)}</div></div>
+            : null}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm mt-3 pt-3 border-t border-border">
+        <div><div className="text-[11px] text-ink-faint">Peso</div><div className="text-ink">{c.peso_total_kg ? `${Math.round(c.peso_total_kg)} kg` : '—'}</div></div>
+        <div><div className="text-[11px] text-ink-faint">Volume</div><div className="text-ink">{c.volume_m3 ? `${c.volume_m3.toFixed(1)} m³` : '—'}</div></div>
+        <div><div className="text-[11px] text-ink-faint">Medidas (C×L×A)</div><div className="text-ink">{c.comprimento_m ? `${c.comprimento_m}×${c.largura_m}×${c.altura_m} m` : '—'}</div></div>
+        <div><div className="text-[11px] text-ink-faint">Indivisível</div><div className="text-ink">{c.carga_indivisivel ? 'Sim' : 'Não'}</div></div>
+      </div>
+      {c.observacoes && <p className="text-xs text-ink-muted mt-2">{c.observacoes}</p>}
+
+      {ok && <p className="text-sm text-accent mt-3 flex items-center gap-1"><CheckCircle2 className="h-4 w-4" /> Cotação enviada! Obrigado.</p>}
+
+      {!aberto ? (
+        <button onClick={() => { setAberto(true); setOk(false) }}
+          className="mt-3 px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:opacity-90 inline-flex items-center gap-1.5">
+          <Send className="h-4 w-4" /> {c.meu_valor != null ? 'Atualizar minha cotação' : 'Responder cotação'}
+        </button>
+      ) : (
+        <div className="mt-3 pt-3 border-t border-border space-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div><label className="text-xs text-ink-faint block mb-1">Valor do frete (R$) <span className="text-red-500">*</span></label>
+              <input value={valor} onChange={e => setValor(e.target.value)} inputMode="decimal" placeholder="0,00" className={`${inputCls} ${!valor ? 'border-red-400 ring-1 ring-red-400/30' : ''}`} /></div>
+            <div><label className="text-xs text-ink-faint block mb-1">Prazo de entrega (dias)</label>
+              <input value={prazo} onChange={e => setPrazo(e.target.value)} inputMode="numeric" placeholder="opcional" className={inputCls} /></div>
+          </div>
+          <div><label className="text-xs text-ink-faint block mb-1">Observação</label>
+            <input value={obs} onChange={e => setObs(e.target.value)} placeholder="Tipo de caminhão, condições, etc. (opcional)" className={inputCls} /></div>
+          <label className="flex items-center gap-2 text-sm text-ink-muted cursor-pointer">
+            <Paperclip className="h-4 w-4" />
+            <span className="px-3 py-1.5 rounded-lg border border-border hover:border-accent text-xs">{file ? file.name : 'Anexar PDF/imagem (opcional)'}</span>
+            <input type="file" accept="application/pdf,image/*" className="hidden" onChange={e => setFile(e.target.files?.[0] ?? null)} />
+          </label>
+          {erro && <p className="text-sm text-red-500">{erro}</p>}
+          <div className="flex gap-2">
+            <button onClick={enviar} disabled={responder.isPending}
+              className="px-5 py-2 rounded-lg bg-accent text-white text-sm font-semibold hover:opacity-90 disabled:opacity-60 inline-flex items-center gap-1.5">
+              {responder.isPending && <Loader2 className="h-4 w-4 animate-spin" />} Enviar cotação
+            </button>
+            <button onClick={() => setAberto(false)} className="px-4 py-2 rounded-lg border border-border text-sm text-ink-muted hover:text-ink">Cancelar</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function TransportadoraApp() {
+  const qc = useQueryClient()
+  const [session, setSession] = useState<any>(undefined) // undefined = carregando
+  const [ensuring, setEnsuring] = useState(false)
+  const [semMeta, setSemMeta] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => { setSession(s); qc.invalidateQueries({ queryKey: ['transp-conta'] }) })
+    return () => sub.subscription.unsubscribe()
+  }, [qc])
+
+  const conta = useTranspMinhaConta()
+
+  // 1º acesso: cria a conta a partir do metadata do cadastro (cobre confirmação de email)
+  useEffect(() => {
+    let cancel = false
+    ;(async () => {
+      if (!session || conta.isLoading || conta.data || ensuring || semMeta) return
+      const { data: { user } } = await supabase.auth.getUser()
+      const m = (user?.user_metadata ?? {}) as any
+      if (!m?.transp_nome) { if (!cancel) setSemMeta(true); return }
+      setEnsuring(true)
+      await (supabase as any).from('frete_transportadora_contas').insert({
+        user_id: user!.id, nome: m.transp_nome, cnpj: m.transp_cnpj ?? null,
+        telefone: m.transp_telefone ?? null, email: user!.email ?? null, estados: m.transp_estados ?? [],
+      })
+      await qc.invalidateQueries({ queryKey: ['transp-conta'] })
+      if (!cancel) setEnsuring(false)
+    })()
+    return () => { cancel = true }
+  }, [session, conta.isLoading, conta.data, ensuring, semMeta, qc])
+
+  const logout = async () => { await supabase.auth.signOut(); setSemMeta(false) }
+
+  if (session === undefined) return <Splash />
+  if (!session) return <AuthView />
+  if (conta.isLoading || ensuring) return <Splash />
+  if (!conta.data) {
+    if (semMeta) return <CompletarCadastro onDone={() => { setSemMeta(false); qc.invalidateQueries({ queryKey: ['transp-conta'] }) }} />
+    return <Splash />
+  }
+  if (!conta.data.aprovado) return <Aguardando conta={conta.data} onLogout={logout} />
+  return <Portal conta={conta.data} onLogout={logout} />
+}
+
+export default TransportadoraApp

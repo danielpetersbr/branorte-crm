@@ -73,6 +73,8 @@ import { Avaliacao } from '@/pages/Avaliacao'
 // /cotar-frete/<token> é a página PÚBLICA da cotação reversa de frete, aberta pela
 // transportadora pelo link que o Jardel envia no WhatsApp. Roda deslogada.
 import { CotarFrete } from '@/pages/CotarFrete'
+// /transportadora — portal das transportadoras (auth própria, fora do app do staff).
+import { TransportadoraApp } from '@/pages/TransportadoraApp'
 
 // Loga TODO erro de query/mutation no console. Evita falha silenciosa.
 // Erros visuais aparecem no SyncIndicator da Atendimentos (e outras páginas podem opt-in).
@@ -176,6 +178,12 @@ function AppRoutes() {
   // Roda deslogada (transportadora não tem conta).
   if (loc.pathname.startsWith('/cotar-frete/')) {
     return <CotarFrete />
+  }
+
+  // Portal das transportadoras — auth própria, ANTES do gating do staff (a
+  // transportadora não tem profile de staff, então não passa pelo fluxo interno).
+  if (loc.pathname === '/transportadora' || loc.pathname.startsWith('/transportadora/')) {
+    return <TransportadoraApp />
   }
 
   if (loading) return <PageLoading />

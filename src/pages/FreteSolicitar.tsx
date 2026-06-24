@@ -4,7 +4,7 @@
 // referência. Ao enviar, a solicitação cai na fila do Jardel (status 'pendente').
 // Aceita prefill por querystring (vindo da extensão/orçamento):
 //   ?cliente=&telefone=&uf=&cidade=&vendedor=&origem=extensao
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Truck, Plus, X, MapPin, Loader2, ArrowLeft, CheckCircle2, Package } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
@@ -51,6 +51,15 @@ export function FreteSolicitar() {
   const tipos = useTiposCaminhao()
   const antt = useAnttVigente()
   const criar = useCriarSolicitacao()
+
+  // Esta tela fica com fundo branco (não o cinza padrão da página). Só no tema claro;
+  // restaura o fundo original ao sair da tela.
+  useEffect(() => {
+    if (document.documentElement.classList.contains('dark')) return
+    const prev = document.body.style.backgroundColor
+    document.body.style.backgroundColor = '#fff'
+    return () => { document.body.style.backgroundColor = prev }
+  }, [])
 
   const origem = (params.get('origem') as 'pagina' | 'extensao' | 'orcamento') || 'pagina'
 
@@ -265,16 +274,16 @@ export function FreteSolicitar() {
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <div className="inline-flex rounded-lg border border-border overflow-hidden text-sm">
           <button type="button" onClick={() => setTipoCotacao('cotacao')}
-            className={`px-3.5 py-1.5 font-medium transition-colors ${tipoCotacao === 'cotacao' ? 'bg-accent text-white' : 'bg-surface-1 text-ink-muted hover:text-ink'}`}>
+            className={`px-3.5 py-1.5 font-medium transition-colors ${tipoCotacao === 'cotacao' ? 'bg-accent text-white' : 'bg-white dark:bg-surface text-ink-muted hover:text-ink'}`}>
             Cotação
           </button>
           <button type="button" onClick={() => setTipoCotacao('carregar')}
-            className={`px-3.5 py-1.5 font-medium transition-colors ${tipoCotacao === 'carregar' ? 'bg-red-500 text-white' : 'bg-surface-1 text-ink-muted hover:text-ink'}`}>
+            className={`px-3.5 py-1.5 font-medium transition-colors ${tipoCotacao === 'carregar' ? 'bg-red-500 text-white' : 'bg-white dark:bg-surface text-ink-muted hover:text-ink'}`}>
             Pra carregar
           </button>
         </div>
         <button type="button" onClick={() => setUrgente(u => !u)}
-          className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${urgente ? 'bg-red-500/15 border-red-500/40 text-red-500' : 'bg-surface-1 border-border text-ink-muted hover:text-ink'}`}>
+          className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${urgente ? 'bg-red-500/15 border-red-500/40 text-red-500' : 'bg-white dark:bg-surface border-border text-ink-muted hover:text-ink'}`}>
           {urgente ? '⚠ Urgente' : 'Marcar urgente'}
         </button>
         <span className="text-xs text-ink-faint">
@@ -284,19 +293,19 @@ export function FreteSolicitar() {
 
       {/* Resumo — barra de indicadores (hairline cells) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-border rounded-xl overflow-hidden border border-border">
-        <div className="bg-surface-1 px-4 py-2.5">
+        <div className="bg-white dark:bg-surface px-4 py-2.5">
           <div className="text-[10px] uppercase tracking-wider text-ink-faint">Peso total</div>
           <div className="text-[15px] font-semibold text-ink mt-0.5">{carga.peso_kg ? `${Math.round(carga.peso_kg).toLocaleString('pt-BR')} kg` : '—'}</div>
         </div>
-        <div className="bg-surface-1 px-4 py-2.5">
+        <div className="bg-white dark:bg-surface px-4 py-2.5">
           <div className="text-[10px] uppercase tracking-wider text-ink-faint">Volume</div>
           <div className="text-[15px] font-semibold text-ink mt-0.5">{volume ? `${volume.toFixed(1)} m³` : '—'}</div>
         </div>
-        <div className="bg-surface-1 px-4 py-2.5">
+        <div className="bg-white dark:bg-surface px-4 py-2.5">
           <div className="text-[10px] uppercase tracking-wider text-ink-faint">Caminhão sugerido</div>
           <div className="text-[15px] font-semibold text-ink mt-0.5">{caminhao?.nome ?? '—'}</div>
         </div>
-        <div className="bg-surface-1 px-4 py-2.5">
+        <div className="bg-white dark:bg-surface px-4 py-2.5">
           <div className="text-[10px] uppercase tracking-wider text-ink-faint">Piso ANTT (ref.)</div>
           <div className="text-[15px] font-semibold text-ink mt-0.5">{fmtMoeda(pisoAntt)}</div>
         </div>
@@ -309,7 +318,7 @@ export function FreteSolicitar() {
       {/* Conteúdo: 3 colunas preenchendo a largura */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
         {/* Destino */}
-        <section className="order-2 xl:order-1 xl:col-span-3 bg-surface-1 border border-border rounded-xl p-4">
+        <section className="order-2 xl:order-1 xl:col-span-3 bg-white dark:bg-surface border border-border rounded-xl p-4">
           <h2 className={secLabel}><MapPin className="h-4 w-4 text-accent" /> Destino <span className="text-red-500 ml-0.5">*</span></h2>
           <div className="space-y-2">
             <div className="flex gap-2">
@@ -338,7 +347,7 @@ export function FreteSolicitar() {
         </section>
 
         {/* Cliente */}
-        <section className="order-3 xl:order-2 xl:col-span-4 bg-surface-1 border border-border rounded-xl p-4">
+        <section className="order-3 xl:order-2 xl:col-span-4 bg-white dark:bg-surface border border-border rounded-xl p-4">
           <h2 className={secLabel}>Cliente</h2>
           <div className="space-y-3">
             <div><label className="text-xs text-ink-faint block mb-1">Nome do cliente (opcional)</label>
@@ -350,7 +359,7 @@ export function FreteSolicitar() {
         </section>
 
         {/* O que transportar (cadastro de itens) */}
-        <section className="order-1 xl:order-3 xl:col-span-5 bg-surface-1 border border-border rounded-xl p-4">
+        <section className="order-1 xl:order-3 xl:col-span-5 bg-white dark:bg-surface border border-border rounded-xl p-4">
           <h2 className={secLabel}><Package className="h-4 w-4 text-accent" /> O que transportar <span className="text-red-500 ml-0.5">*</span></h2>
 
             {/* Formulário de cadastro de item */}
@@ -436,7 +445,7 @@ export function FreteSolicitar() {
       </div>
 
       {/* Barra de ação fixa */}
-      <div className="sticky bottom-0 -mx-5 lg:-mx-8 mt-4 px-5 lg:px-8 py-3 bg-bg/85 backdrop-blur border-t border-border flex items-center gap-4 z-10">
+      <div className="sticky bottom-0 -mx-5 lg:-mx-8 mt-4 px-5 lg:px-8 py-3 bg-white/85 dark:bg-bg/85 backdrop-blur border-t border-border flex items-center gap-4 z-10">
         <div className="text-xs text-ink-muted">
           {itens.length
             ? `${itens.length} ${itens.length === 1 ? 'item' : 'itens'} · ${Math.round(carga.peso_kg).toLocaleString('pt-BR')} kg · ${volumeTotal.toFixed(2)} m³`
