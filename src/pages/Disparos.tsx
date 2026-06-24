@@ -21,6 +21,7 @@ type Vendedor = {
   ultimo_envio_em: string | null
   avaliacao_ativa: boolean
   funil_ativa: boolean
+  prospec_ativa: boolean
 }
 
 export function Disparos() {
@@ -187,6 +188,17 @@ export function Disparos() {
     onError: (err: any) => alert('Não foi possível alterar o auto-prospecção: ' + (err?.message || err)),
   })
 
+  // Override POR VENDEDOR da prospecção (opt-out; efetivo = Geral E este). Tira quem está
+  // no WhatsApp pessoal sem desligar a frota.
+  const toggleProspecVendedor = useMutation({
+    mutationFn: async ({ nome, ativa }: { nome: string; ativa: boolean }) => {
+      const { error } = await supabase.from('vendor_dispatch_status').update({ prospec_ativa: ativa }).eq('vendedor_nome', nome)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['vendor-dispatch-status'] }),
+    onError: (err: any) => alert('Não foi possível alterar a prospecção do vendedor: ' + (err?.message || err)),
+  })
+
   // Toggle GLOBAL: automação do funil (move etiqueta sozinho no ritmo certo). OPT-IN (nasce desligada).
   const { data: funilAtiva } = useQuery<boolean>({
     queryKey: ['funil-config'],
@@ -325,8 +337,30 @@ export function Disparos() {
             disabled={toggleProspec.isPending || prospecAtiva === undefined}
             className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold border transition disabled:opacity-50 ${prospecAtiva === false ? 'bg-red-500/15 text-red-300 border-red-500/40' : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'}`}
           >
-            {prospecAtiva === undefined ? '…' : prospecAtiva ? '🏷️ LIGADO' : '⛔ DESLIGADO'}
+            {prospecAtiva === undefined ? '…' : prospecAtiva ? '🏷️ Geral LIGADO' : '⛔ Geral DESLIGADO'}
           </button>
+        </div>
+        <div className={`mt-3 border-t border-border pt-3 ${prospecAtiva === false ? 'opacity-60' : ''}`}>
+          <p className="text-ink-muted text-[11px] mb-2">
+            Por vendedor{prospecAtiva === false && <span className="text-red-300"> — Geral desligado, ninguém marca; ligue o Geral acima pra valer</span>}.
+            <span className="text-ink-faint"> Desligue quem está no WhatsApp pessoal pra não etiquetar os contatos dele.</span>
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {(vendedores ?? []).map((v) => {
+              const on = v.prospec_ativa !== false
+              return (
+                <button
+                  key={v.vendedor_nome}
+                  onClick={() => toggleProspecVendedor.mutate({ nome: v.vendedor_nome, ativa: !on })}
+                  disabled={toggleProspecVendedor.isPending}
+                  title={on ? 'Marca prospecção — clique pra desligar' : 'Não marca — clique pra ligar'}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium border transition disabled:opacity-60 ${on ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' : 'bg-surface-2/40 text-ink-muted border-border'}`}
+                >
+                  {on ? '🏷️' : '○'} {v.vendedor_nome}
+                </button>
+              )
+            })}
+          </div>
         </div>
       </Card>
 
