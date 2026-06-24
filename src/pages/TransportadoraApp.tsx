@@ -308,11 +308,32 @@ function CotacaoCard({ c }: { c: TranspCotacao }) {
   )
 }
 
+// Logado, mas a conta atual NÃO é transportadora (ex: alguém da Branorte que abriu
+// o portal já logado no CRM). Não cria conta sozinho — pede pra sair e entrar com a
+// conta da transportadora. Evita "virar transportadora" sem querer no login de staff.
+function LogadoSemConta({ email, onLogout, onCompletar }: { email: string | null; onLogout: () => void; onCompletar: () => void }) {
+  return (
+    <Shell>
+      <div className="max-w-md mx-auto px-4 py-16 text-center">
+        <div className="h-14 w-14 rounded-full bg-amber-500/15 mx-auto flex items-center justify-center mb-4"><AlertTriangle className="h-7 w-7 text-amber-500" /></div>
+        <h1 className="text-lg font-bold text-ink mb-1">Esse acesso não é de transportadora</h1>
+        <p className="text-sm text-ink-muted mb-2">Você está logado como <b className="text-ink">{email || '—'}</b>, mas essa conta não está cadastrada como transportadora.</p>
+        <p className="text-sm text-ink-muted mb-6">Se você é da Branorte, use o CRM normal. Se você é transportadora, <b>saia</b> e entre/cadastre com o email da transportadora.</p>
+        <div className="flex items-center justify-center gap-2">
+          <button onClick={onLogout} className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:opacity-90 inline-flex items-center gap-1.5"><LogOut className="h-4 w-4" /> Sair / trocar de conta</button>
+          <button onClick={onCompletar} className="px-4 py-2 rounded-lg border border-border text-sm text-ink-muted hover:text-ink">Sou transportadora</button>
+        </div>
+      </div>
+    </Shell>
+  )
+}
+
 export function TransportadoraApp() {
   const qc = useQueryClient()
   const [session, setSession] = useState<any>(undefined) // undefined = carregando
   const [ensuring, setEnsuring] = useState(false)
   const [semMeta, setSemMeta] = useState(false)
+  const [completarManual, setCompletarManual] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
@@ -341,13 +362,14 @@ export function TransportadoraApp() {
     return () => { cancel = true }
   }, [session, conta.isLoading, conta.data, ensuring, semMeta, qc])
 
-  const logout = async () => { await supabase.auth.signOut(); setSemMeta(false) }
+  const logout = async () => { await supabase.auth.signOut(); setSemMeta(false); setCompletarManual(false) }
 
   if (session === undefined) return <Splash />
   if (!session) return <AuthView />
   if (conta.isLoading || ensuring) return <Splash />
   if (!conta.data) {
-    if (semMeta) return <CompletarCadastro onDone={() => { setSemMeta(false); qc.invalidateQueries({ queryKey: ['transp-conta'] }) }} />
+    if (completarManual) return <CompletarCadastro onDone={() => { setCompletarManual(false); setSemMeta(false); qc.invalidateQueries({ queryKey: ['transp-conta'] }) }} />
+    if (semMeta) return <LogadoSemConta email={session?.user?.email ?? null} onLogout={logout} onCompletar={() => setCompletarManual(true)} />
     return <Splash />
   }
   if (!conta.data.aprovado) return <Aguardando conta={conta.data} onLogout={logout} />
