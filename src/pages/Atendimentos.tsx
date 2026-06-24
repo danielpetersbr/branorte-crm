@@ -924,7 +924,7 @@ export function Atendimentos() {
                                     }}
                                     title={`${l.name}${l.vendedor ? ` (${l.vendedor})` : ''}`}
                                   >
-                                    {l.name}
+                                    {l.name.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase()}
                                   </Badge>
                                 ))}
                                 {labels.length > 3 && (
