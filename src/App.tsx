@@ -77,6 +77,15 @@ import { CotarFrete } from '@/pages/CotarFrete'
 // /transportadora — portal das transportadoras (auth própria, fora do app do staff).
 import { TransportadoraApp } from '@/pages/TransportadoraApp'
 
+// Hosts dedicados ao Portal de Transportadoras. Quando o app é acessado por um
+// destes domínios, a raiz já serve o portal (sem precisar do path /transportadora,
+// sem expor a URL do CRM interno). transportadoras.branorte.com = link profissional;
+// o .vercel.app é o link instantâneo (sem depender de DNS).
+const PORTAL_HOSTS = new Set([
+  'transportadoras.branorte.com',
+  'transportadoras-branorte.vercel.app',
+])
+
 // Loga TODO erro de query/mutation no console. Evita falha silenciosa.
 // Erros visuais aparecem no SyncIndicator da Atendimentos (e outras páginas podem opt-in).
 const queryClient = new QueryClient({
@@ -211,7 +220,13 @@ function AppRoutes() {
 
   // Portal das transportadoras — auth própria, ANTES do gating do staff (a
   // transportadora não tem profile de staff, então não passa pelo fluxo interno).
-  if (loc.pathname === '/transportadora' || loc.pathname.startsWith('/transportadora/')) {
+  // Acessível de 2 jeitos:
+  //   1) path /transportadora no domínio do CRM (branorte-crm.vercel.app/transportadora)
+  //   2) host dedicado (transportadoras.branorte.com) — serve o portal direto na raiz,
+  //      sem expor a URL do CRM interno. Os links públicos acima (/cotar-frete etc.)
+  //      continuam funcionando em qualquer host porque são checados antes daqui.
+  const ehHostPortal = typeof window !== 'undefined' && PORTAL_HOSTS.has(window.location.hostname)
+  if (ehHostPortal || loc.pathname === '/transportadora' || loc.pathname.startsWith('/transportadora/')) {
     return <TransportadoraApp />
   }
 

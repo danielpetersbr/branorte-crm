@@ -335,6 +335,20 @@ export function TransportadoraApp() {
   const [semMeta, setSemMeta] = useState(false)
   const [completarManual, setCompletarManual] = useState(false)
 
+  // Portal é sempre tema CLARO (público, identidade da marca). Em domínio dedicado
+  // (transportadoras.branorte.com) não há preferência salva e cairia no escuro do
+  // sistema. Ao desmontar, restaura o dark se o usuário (staff) o tinha — assim o
+  // /transportadora no domínio do CRM não bagunça o tema do app interno.
+  useEffect(() => {
+    const root = document.documentElement
+    const eraDark = root.classList.contains('dark')
+    root.classList.remove('dark')
+    root.style.colorScheme = 'light'
+    return () => {
+      if (eraDark) { root.classList.add('dark'); root.style.colorScheme = '' }
+    }
+  }, [])
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => { setSession(s); qc.invalidateQueries({ queryKey: ['transp-conta'] }) })

@@ -6,10 +6,12 @@
 
 @layer base {
   :root {
-    /* Surface — claro SUAVE: página cinza, cards off-white com borda visível.
-       (Antes era 99%/97% = tudo branco ofuscante e sem separação.) */
-    --bg: 240 16% 89%;          /* página: cinza calmo, não papel branco */
-    --surface: 240 24% 96%;     /* cards: off-white macio */
+    /* Surface — claro: página BRANCA (pedido do Daniel, 2026-06-24). A separação
+       vem da BORDA visível (--border 82%) + cards levemente off-white, não mais do
+       fundo cinza. (O all-white antigo 99% ficava "sem separação" porque a borda era
+       fraca; agora a borda é 82%, então branco funciona.) */
+    --bg: 0 0% 100%;            /* página: branco */
+    --surface: 240 24% 96%;     /* cards: off-white macio (separa do branco via borda) */
     --surface-2: 240 14% 91%;   /* preenchimentos / barras */
     --border: 240 11% 82%;      /* borda nítida pra cards se destacarem */
     --border-strong: 240 10% 72%;
