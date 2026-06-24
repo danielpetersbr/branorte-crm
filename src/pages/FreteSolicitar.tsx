@@ -239,6 +239,7 @@ export function FreteSolicitar() {
     setErro('')
     if (!uf || !cidade.trim()) { setErro('Informe o destino (UF + cidade).'); return }
     if (!clienteNome.trim()) { setErro('Informe o nome do cliente.'); return }
+    if (!valorNota.trim() || !(parseBRL(valorNota)! > 0)) { setErro('Informe o valor da nota fiscal.'); return }
     if (!itens.length) { setErro('Adicione ao menos um item a transportar.'); return }
     const equipamentos_itens: FreteEquipItem[] = itens.map(it => ({
       catalogo_item_id: it.catalogo_item_id,
@@ -431,9 +432,9 @@ export function FreteSolicitar() {
             <div><label className="text-xs text-ink-faint block mb-1">Observação / motivo (opcional)</label>
               <textarea value={obs} onChange={e => setObs(e.target.value)} rows={3} placeholder="Ex.: cliente quer só uma base de preço pra fechar a venda…"
                 className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent resize-none" /></div>
-            <div><label className="text-xs text-ink-faint block mb-1">Valor da nota fiscal (R$) <span className="text-ink-faint">(opcional)</span></label>
+            <div><label className="text-xs text-ink-faint block mb-1">Valor da nota fiscal (R$) <span className="text-red-500">*</span></label>
               <input value={valorNota} onChange={e => setValorNota(e.target.value)} inputMode="decimal" placeholder="Ex.: 25.000 — valor declarado da carga (seguro/CT-e)"
-                className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent" /></div>
+                className={`w-full px-3 py-2 rounded-lg bg-bg border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent ${reqRing(!valorNota.trim())}`} /></div>
           </div>
         </section>
 
