@@ -957,6 +957,38 @@ export function useFinalizarFrete() {
   });
 }
 
+export type FreteHistoricoRow = {
+  id: string;
+  codigo: string;
+  criado_em: string;
+  status: string;
+  derived_status: 'pendente' | 'analisando' | 'concluida' | 'fechado';
+  cliente_nome: string | null;
+  cidade_destino: string | null;
+  uf_destino: string | null;
+  distancia_km: number | null;
+  caminhao_recomendado_id: number | null;
+  peso_total_kg: number | null;
+  tipo_cotacao: string;
+  urgente: boolean;
+  valor_final: number | null;
+  transportadora: string | null;
+  n_respostas: number;
+};
+
+/** Histórico de cotações = todas as solicitações de frete (RFQ), não a tabela legada. */
+export function useFreteHistorico() {
+  return useQuery({
+    queryKey: ['frete-historico'],
+    queryFn: async (): Promise<FreteHistoricoRow[]> => {
+      const { data, error } = await (supabase as any).rpc('frete_historico');
+      if (error) throw error;
+      return (data ?? []) as FreteHistoricoRow[];
+    },
+    refetchInterval: 30000,
+  });
+}
+
 /** Portal: marca que a transportadora abriu/está analisando uma cotação. */
 export function useTranspMarcarAnalisando() {
   return useMutation({
