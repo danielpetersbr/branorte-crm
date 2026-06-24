@@ -327,6 +327,17 @@ export function Atendimentos() {
   }))
   const [searchInput, setSearchInput] = useState('')
 
+  // Fundo branco nesta tela (o padrão da página é cinza --bg). O CSS pinta `html, body`,
+  // então whitena os DOIS; só no tema claro; restaura ao sair.
+  useEffect(() => {
+    if (document.documentElement.classList.contains('dark')) return
+    const html = document.documentElement, body = document.body
+    const prevHtml = html.style.backgroundColor, prevBody = body.style.backgroundColor
+    html.style.backgroundColor = '#fff'
+    body.style.backgroundColor = '#fff'
+    return () => { html.style.backgroundColor = prevHtml; body.style.backgroundColor = prevBody }
+  }, [])
+
   const { data, isLoading, isFetching, dataUpdatedAt, error: atendimentosError, refetch } = useAtendimentos(filters)
   const { data: kpis } = useAtendimentoKpis(filters)
   const { data: origens } = useAtendimentoOrigens(filters)
