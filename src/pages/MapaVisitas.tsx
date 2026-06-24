@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import 'leaflet.markercluster'
-import 'leaflet.markercluster/dist/MarkerCluster.css'
-import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import {
   useVisitas, useGeocodarVisitas, useOrcamentosMapa, useListaOrcamentos, useVendasMapaCount,
   type Visita, type OrcamentoPonto, type OrcamentoLinha,
@@ -187,8 +184,8 @@ export function MapaVisitas() {
     return { nomes, isFollowUp: nomes.some(n => FOLLOWUP_NOMES.has(n.toUpperCase())) }
   }
   const mapRef = useRef<L.Map | null>(null)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const layerRef = useRef<any>(null) // L.MarkerClusterGroup
+  const layerRef = useRef<L.LayerGroup | null>(null)
+  const canvasRef = useRef<L.Canvas | null>(null) // renderer canvas (pontos rápidos)
   const raioLayerRef = useRef<L.LayerGroup | null>(null)
   const divRef = useRef<HTMLDivElement | null>(null)
   const autoGeoRef = useRef(false)
@@ -320,28 +317,11 @@ export function MapaVisitas() {
     })
     mapa.addTo(map)
     L.control.layers({ 'Mapa': mapa, 'Satélite': satelite }, {}, { collapsed: false, position: 'bottomleft' }).addTo(map)
-    // Clusteriza os pinos: agrupa os próximos numa bolinha numerada (some o "blobzão"
-    // de pinos sobrepostos e renderiza só o visível → muito mais rápido no celular).
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    layerRef.current = (L as any).markerClusterGroup({
-      chunkedLoading: true,            // adiciona em lotes sem travar a UI
-      showCoverageOnHover: false,      // sem polígono no hover (limpo no mobile)
-      spiderfyOnMaxZoom: true,         // no zoom máx, espalha os sobrepostos
-      removeOutsideVisibleBounds: true,// só gerencia o que está na tela
-      maxClusterRadius: 55,
-      disableClusteringAtZoom: 14,     // zoom de cidade/bairro → pinos individuais
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      iconCreateFunction: (cluster: any) => {
-        const n = cluster.getChildCount()
-        const size = n < 10 ? 34 : n < 100 ? 40 : 48
-        const bg = n < 10 ? '#10b981' : n < 100 ? '#3b82f6' : '#1e40af'
-        return L.divIcon({
-          html: `<div style="width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:${bg};color:#fff;font-weight:700;font-size:${n < 100 ? 13 : 12}px;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.4)">${n}</div>`,
-          className: 'bsb-cluster',
-          iconSize: [size, size],
-        })
-      },
-    }).addTo(map)
+    // Pontos individuais em CANVAS: pinta milhares de círculos coloridos num único
+    // canvas (rápido no celular, sem milhares de elementos no DOM). 1 ponto = 1 cliente,
+    // cor pela idade/vendido. Sem cluster (o usuário quer ver os pontos, não as bolas).
+    canvasRef.current = L.canvas({ padding: 0.5 })
+    layerRef.current = L.layerGroup().addTo(map)
     raioLayerRef.current = L.layerGroup().addTo(map)
     map.on('click', (e: L.LeafletMouseEvent) => {
       if (modoRaioRef.current) setCentro({ lat: e.latlng.lat, lng: e.latlng.lng })
@@ -375,28 +355,31 @@ export function MapaVisitas() {
     if (!map || !layer) return
     map.invalidateSize()
     layer.clearLayers()
+    const renderer = canvasRef.current ?? undefined
     const bounds: [number, number][] = []
-    const marcadores: L.Marker[] = []
     if (showVis) {
       for (const v of visFiltradas) {
         const { nomes, isFollowUp } = resolverEtiquetas(v)
         const cor = isFollowUp ? corDoVendedor(v.vendedor_nome, vendedores) : CINZA
-        const m = L.marker([v.lat as number, v.lng as number], { icon: pinIcon(cor), opacity: isFollowUp ? 1 : 0.85 })
-        // popup lazy: só monta o HTML quando abre (evita construir milhares por redraw)
+        const m = L.circleMarker([v.lat as number, v.lng as number], {
+          renderer, radius: isFollowUp ? 6 : 5, fillColor: cor, color: '#fff', weight: 1, fillOpacity: isFollowUp ? 0.95 : 0.7,
+        })
+        // popup lazy: só monta o HTML quando abre
         m.bindPopup(() => popupVisita(v, isFollowUp, nomes))
-        marcadores.push(m)
+        m.addTo(layer)
         bounds.push([v.lat as number, v.lng as number])
       }
     }
     if (showOrc) {
       for (const p of orcFiltrados) {
-        const m = L.marker([p.lat, p.lng], { icon: pinIcon(corOrcamento(p)) })
+        const m = L.circleMarker([p.lat, p.lng], {
+          renderer, radius: 5, fillColor: corOrcamento(p), color: '#fff', weight: 1, fillOpacity: 0.92,
+        })
         m.bindPopup(() => popupOrcamento(p))
-        marcadores.push(m)
+        m.addTo(layer)
         bounds.push([p.lat, p.lng])
       }
     }
-    layer.addLayers(marcadores) // add em LOTE (markercluster, chunked) — não trava
     if (bounds.length && !centro) map.fitBounds(bounds, { padding: [50, 50], maxZoom: 10 })
   }, [showVis, showOrc, visFiltradas, orcFiltrados, vendedores, byVendId, globId])
 
@@ -482,8 +465,9 @@ export function MapaVisitas() {
     `h-9 px-3 rounded-md border text-[13px] font-semibold transition-colors ${ativo ? 'bg-accent-bg border-accent/40 text-accent' : 'bg-surface border-border text-ink-muted hover:text-ink'}`
 
   return (
-    <div className="flex flex-col p-3 md:p-4 gap-2 md:gap-3 overflow-hidden h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))]">
-      <div className="flex flex-wrap items-center justify-between gap-2 md:gap-3 shrink-0 pr-11 md:pr-0">
+    <div className="relative flex flex-col overflow-hidden md:p-4 md:gap-3 h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))]">
+      {/* HEADER + TOOLBAR — só no desktop. No celular o mapa é tela cheia com filtros flutuantes. */}
+      <div className="hidden md:flex flex-wrap items-center justify-between gap-2 md:gap-3 shrink-0">
         <div>
           <h1 className="text-[18px] md:text-[22px] font-semibold text-ink tracking-tight">Mapa de Visitas</h1>
           <p className="text-[13px] text-ink-muted">
@@ -549,12 +533,13 @@ export function MapaVisitas() {
             <option value="">Todos os vendedores</option>
             {vendedores.map(v => <option key={v} value={v}>{v}</option>)}
           </select>
+          </div>
         </div>
       </div>
 
       {/* barra do modo raio */}
       {modoRaio && (
-        <div className="shrink-0 rounded-md border border-sky-300 bg-sky-50 text-[12px] text-sky-900 px-3 py-2 flex flex-wrap items-center gap-3">
+        <div className="shrink-0 rounded-md border border-sky-300 bg-sky-50 text-[12px] text-sky-900 px-3 py-2 hidden md:flex flex-wrap items-center gap-3">
           <span className="font-semibold">🎯 Modo raio:</span>
           {!centro ? <span>clique no mapa pra definir o ponto central (ex: Goiânia).</span>
             : <span>Centro definido · <b>{noRaio.length}</b> clientes em até {raioKm} km.</span>}
@@ -568,19 +553,80 @@ export function MapaVisitas() {
       )}
 
       {geocodar.data && showVis && (
-        <div className="shrink-0 rounded-md border border-border bg-surface-2 text-[12px] text-ink-muted px-3 py-2">
+        <div className="hidden md:block shrink-0 rounded-md border border-border bg-surface-2 text-[12px] text-ink-muted px-3 py-2">
           {geocodar.data.atualizados} localizado(s).
           {geocodar.data.falhas?.length ? ` Não achei: ${geocodar.data.falhas.join(', ')}.` : ''}
         </div>
       )}
 
-      <div className="flex-1 flex flex-col md:flex-row gap-2 md:gap-3 min-h-0 relative">
-        <div ref={divRef} className="flex-1 rounded-xl border border-border overflow-hidden z-0" style={{ minHeight: 300 }} />
+      <div className="relative flex-1 min-h-0 md:flex md:gap-3">
+        <div ref={divRef} className="absolute inset-0 md:static md:flex-1 md:rounded-xl md:border md:border-border overflow-hidden z-0" />
         {(isLoading || loadingOrc) && (
-          <div className="absolute inset-0 flex items-center justify-center"><PageLoading /></div>
+          <div className="absolute inset-0 flex items-center justify-center z-[400]"><PageLoading /></div>
         )}
-        {/* sidebar: lista do raio OU legenda. No celular vira um painel abaixo do mapa (altura limitada). */}
-        <div className="w-full md:w-56 shrink-0 rounded-xl border border-border bg-surface p-3 overflow-y-auto max-h-[34vh] md:max-h-none">
+
+        {/* ===== MOBILE: filtros flutuando SOBRE o mapa (tela cheia) ===== */}
+        <div className="md:hidden absolute top-2 left-2 right-2 z-[1000] flex flex-col gap-2 pointer-events-none">
+          <div className="relative pointer-events-auto">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[14px] text-ink-faint pointer-events-none">🔍</span>
+            <input
+              value={busca}
+              onChange={e => { setBusca(e.target.value); setSugAberta(true) }}
+              onFocus={() => setSugAberta(true)}
+              onBlur={() => window.setTimeout(() => setSugAberta(false), 150)}
+              onKeyDown={e => { if (e.key === 'Escape') setSugAberta(false) }}
+              placeholder="Buscar cidade, cliente…"
+              autoComplete="off"
+              className="h-11 w-full pl-9 pr-9 rounded-xl bg-surface/95 backdrop-blur border border-border text-[15px] text-ink placeholder:text-ink-faint outline-none focus:border-accent shadow"
+            />
+            {busca && (
+              <button onClick={() => { setBusca(''); setSugAberta(false) }} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-faint text-[16px]" title="Limpar">✕</button>
+            )}
+            {sugAberta && sugestoesCidade.length > 0 && (
+              <ul className="absolute left-0 right-0 top-full mt-1 z-[1200] max-h-[50vh] overflow-y-auto rounded-xl border border-border bg-surface shadow-lg py-1">
+                <li className="px-3 py-1 text-[10px] uppercase tracking-wide text-ink-faint select-none">Cidades</li>
+                {sugestoesCidade.map((c, i) => (
+                  <li key={i}>
+                    <button onMouseDown={e => e.preventDefault()} onClick={() => { setBusca(c.cidade); setSugAberta(false) }} className="w-full text-left px-3 py-3 active:bg-surface-2 flex items-center gap-2">
+                      <span className="text-[14px] shrink-0">📍</span>
+                      <span className="flex-1 truncate text-[14px] text-ink">{c.cidade}{c.uf ? ` - ${c.uf}` : ''}</span>
+                      <span className="text-[12px] tabular-nums text-ink-faint shrink-0">{c.n}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="pointer-events-auto flex items-center gap-1.5 overflow-x-auto flex-nowrap [&>*]:shrink-0">
+            <div className="flex h-9 rounded-lg overflow-hidden border border-border bg-surface/95 backdrop-blur text-[12px] font-semibold shadow">
+              {([['todos', 'Todos'], ['orcados', 'Só orçados'], ['vendidos', 'Vendidos']] as [VendFiltro, string][]).map(([v, label]) => (
+                <button key={v} onClick={() => setVendFiltro(v)} className={`px-3 ${vendFiltro === v ? 'bg-accent text-white' : 'text-ink-muted'}`}>{label}</button>
+              ))}
+            </div>
+            <button onClick={() => { setModoRaio(v => !v); if (modoRaio) setCentro(null) }} className={`h-9 px-3 rounded-lg border text-[12px] font-semibold shadow ${modoRaio ? 'bg-accent text-white border-accent' : 'bg-surface/95 backdrop-blur border-border text-ink-muted'}`}>🎯 Raio</button>
+            <button onClick={() => setShowVis(v => !v)} className={`h-9 px-3 rounded-lg border text-[12px] font-semibold shadow ${showVis ? 'bg-accent text-white border-accent' : 'bg-surface/95 backdrop-blur border-border text-ink-muted'}`}>📍 Visitas</button>
+          </div>
+          {modoRaio && (
+            <div className="pointer-events-auto flex items-center gap-2 rounded-lg bg-surface/95 backdrop-blur border border-border px-3 py-2 text-[12px] text-ink shadow">
+              {!centro ? <span className="text-ink-muted">Toque no mapa pra centrar</span> : <span className="shrink-0"><b>{noRaio.length}</b> em {raioKm}km</span>}
+              <input type="range" min={10} max={1000} step={10} value={raioKm} onChange={e => setRaioKm(Number(e.target.value))} className="flex-1 min-w-0" />
+              {centro && <button onClick={() => setCentro(null)} className="text-accent shrink-0">limpar</button>}
+            </div>
+          )}
+        </div>
+
+        {/* ===== MOBILE: legenda flutuante (canto inferior esquerdo) ===== */}
+        <div className="md:hidden absolute left-2 bottom-2 z-[1000] bg-surface/90 backdrop-blur rounded-lg border border-border px-2.5 py-2 text-[11px] shadow pointer-events-none">
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: VERDE }} /><span className="text-ink-muted">Até 1 mês</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.verde}</span></div>
+            <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: VERMELHO }} /><span className="text-ink-muted">1–3 meses</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.vermelho}</span></div>
+            <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: CINZA_VELHO }} /><span className="text-ink-muted">+3 meses</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.cinza}</span></div>
+            <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: AZUL_VENDIDO }} /><span className="text-ink-muted font-semibold">Vendido</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.vendido}</span></div>
+          </div>
+        </div>
+
+        {/* sidebar (legenda / lista do raio) — só no desktop */}
+        <div className="hidden md:block w-56 shrink-0 rounded-xl border border-border bg-surface p-3 overflow-y-auto">
           {modoRaio && centro ? (
             <div>
               <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">{noRaio.length} clientes em {raioKm} km</div>
