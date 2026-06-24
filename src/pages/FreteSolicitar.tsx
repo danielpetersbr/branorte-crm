@@ -245,86 +245,91 @@ export function FreteSolicitar() {
 
   const inputCls = 'w-full px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent'
   const miniInputCls = 'w-full px-2 py-1.5 rounded-lg bg-bg border border-border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent'
+  const secLabel = 'text-[11px] font-semibold uppercase tracking-wider text-ink-muted mb-3 flex items-center gap-1.5'
 
   return (
-    <div className="container mx-auto py-6 px-4 max-w-[1500px]">
-      <div className="flex items-center gap-3 mb-6">
+    <div className="max-w-[1760px] mx-auto px-5 lg:px-8 py-5 pb-24">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-4">
         <Link to="/frete" className="text-ink-faint hover:text-ink"><ArrowLeft className="h-5 w-5" /></Link>
-        <Truck className="h-6 w-6 text-accent" />
-        <h1 className="text-2xl font-bold text-ink">Pedir Frete</h1>
-        <Link to="/frete/itens" className="ml-auto text-xs text-accent hover:underline">Itens de frete →</Link>
+        <Truck className="h-5 w-5 text-accent" />
+        <h1 className="text-xl font-semibold text-ink">Pedir Frete</h1>
+        <Link to="/frete/itens" className="ml-auto text-xs text-ink-muted hover:text-accent flex items-center gap-1"><Package className="h-3.5 w-3.5" /> Itens de frete</Link>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
-        {/* ===== COLUNA PRINCIPAL: destino + resumo + cliente + enviar ===== */}
-        <div className="order-2 lg:order-1 lg:col-span-2 space-y-4">
-          {/* Destino */}
-          <section className="bg-surface-1 border border-border rounded-xl p-4">
-            <h2 className="text-sm font-semibold text-ink mb-3 flex items-center gap-1.5"><MapPin className="h-4 w-4 text-accent" /> Destino</h2>
-            <div className="flex flex-col sm:flex-row gap-2 mb-2">
+      {/* Resumo — barra de indicadores (hairline cells) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-border rounded-xl overflow-hidden border border-border">
+        <div className="bg-surface-1 px-4 py-2.5">
+          <div className="text-[10px] uppercase tracking-wider text-ink-faint">Peso total</div>
+          <div className="text-[15px] font-semibold text-ink mt-0.5">{carga.peso_kg ? `${Math.round(carga.peso_kg).toLocaleString('pt-BR')} kg` : '—'}</div>
+        </div>
+        <div className="bg-surface-1 px-4 py-2.5">
+          <div className="text-[10px] uppercase tracking-wider text-ink-faint">Volume</div>
+          <div className="text-[15px] font-semibold text-ink mt-0.5">{volume ? `${volume.toFixed(1)} m³` : '—'}</div>
+        </div>
+        <div className="bg-surface-1 px-4 py-2.5">
+          <div className="text-[10px] uppercase tracking-wider text-ink-faint">Caminhão sugerido</div>
+          <div className="text-[15px] font-semibold text-ink mt-0.5">{caminhao?.nome ?? '—'}</div>
+        </div>
+        <div className="bg-surface-1 px-4 py-2.5">
+          <div className="text-[10px] uppercase tracking-wider text-ink-faint">Piso ANTT (ref.)</div>
+          <div className="text-[15px] font-semibold text-ink mt-0.5">{fmtMoeda(pisoAntt)}</div>
+        </div>
+      </div>
+      <p className="text-[11px] text-ink-faint mt-2 mb-4">
+        {carga.indivisivel ? <span className="text-accent">Carga indivisível — cotada como carga completa. </span> : null}
+        O piso ANTT é referência interna pro Jardel; as transportadoras preenchem o valor real.
+      </p>
+
+      {/* Conteúdo: 3 colunas preenchendo a largura */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
+        {/* Destino */}
+        <section className="order-2 xl:order-1 xl:col-span-3 bg-surface-1 border border-border rounded-xl p-4">
+          <h2 className={secLabel}><MapPin className="h-4 w-4 text-accent" /> Destino</h2>
+          <div className="space-y-2">
+            <div className="flex gap-2">
               <select value={uf} onChange={e => { setUf(e.target.value); setLatLng(null); setDistancia(null) }}
-                className="w-full sm:w-28 px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm outline-none focus:border-accent">
+                className="w-24 px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm outline-none focus:border-accent">
                 <option value="">UF</option>
                 {UFS_BR.map(u => <option key={u} value={u}>{u}</option>)}
               </select>
               <input list="municipios-frete" value={cidade} onChange={e => { setCidade(e.target.value); setLatLng(null); setDistancia(null) }}
                 placeholder="Cidade de destino" disabled={!uf}
-                className="flex-1 px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent disabled:opacity-50" />
+                className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent disabled:opacity-50" />
               <datalist id="municipios-frete">{(municipios.data ?? []).map(m => <option key={m} value={m} />)}</datalist>
-              <button onClick={calcularDestino} disabled={calcLoading || !cidade || !uf}
-                className="px-4 py-2 rounded-lg border border-border text-sm text-ink-muted hover:text-ink hover:border-accent disabled:opacity-40 flex items-center justify-center gap-1.5">
-                {calcLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />} Calcular
-              </button>
             </div>
-            {calcMsg && <p className="text-xs text-amber-600 mb-2">{calcMsg}</p>}
-            <div className="flex items-center gap-3 text-sm">
-              <label className="text-xs text-ink-faint">Distância (km)</label>
+            <button onClick={calcularDestino} disabled={calcLoading || !cidade || !uf}
+              className="w-full px-4 py-2 rounded-lg border border-border text-sm text-ink-muted hover:text-ink hover:border-accent disabled:opacity-40 flex items-center justify-center gap-1.5">
+              {calcLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />} Calcular distância
+            </button>
+            {calcMsg && <p className="text-xs text-amber-600">{calcMsg}</p>}
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-ink-faint whitespace-nowrap">Distância (km)</label>
               <input type="number" value={distancia ?? ''} onChange={e => setDistancia(e.target.value ? Number(e.target.value) : null)}
-                placeholder="auto" className="w-28 px-2 py-1.5 rounded-lg bg-bg border border-border text-ink text-sm outline-none focus:border-accent" />
-              {latLng && <span className="text-xs text-accent">📍 cidade localizada</span>}
+                placeholder="auto" className="w-24 px-2 py-1.5 rounded-lg bg-bg border border-border text-ink text-sm outline-none focus:border-accent" />
+              {latLng && <span className="text-xs text-accent">📍 localizada</span>}
             </div>
-          </section>
+          </div>
+        </section>
 
-          {/* Resumo auto-calculado */}
-          <section className="bg-surface-1 border border-border rounded-xl p-4">
-            <h2 className="text-sm font-semibold text-ink mb-3">Resumo automático</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-              <div><div className="text-xs text-ink-faint">Peso total</div><div className="text-ink font-medium">{carga.peso_kg ? `${Math.round(carga.peso_kg).toLocaleString('pt-BR')} kg` : '—'}</div></div>
-              <div><div className="text-xs text-ink-faint">Volume</div><div className="text-ink font-medium">{volume ? `${volume.toFixed(1)} m³` : '—'}</div></div>
-              <div><div className="text-xs text-ink-faint">Caminhão sugerido</div><div className="text-ink font-medium">{caminhao?.nome ?? '—'}</div></div>
-              <div><div className="text-xs text-ink-faint">Piso ANTT (ref.)</div><div className="text-ink font-medium">{fmtMoeda(pisoAntt)}</div></div>
-            </div>
-            {carga.indivisivel && <p className="text-xs text-accent mt-2">Carga indivisível — será cotada como carga completa.</p>}
-            <p className="text-[11px] text-ink-faint mt-2">O piso ANTT é só referência interna pro Jardel. As transportadoras é que vão preencher o valor real.</p>
-          </section>
+        {/* Cliente & prazo */}
+        <section className="order-3 xl:order-2 xl:col-span-4 bg-surface-1 border border-border rounded-xl p-4">
+          <h2 className={secLabel}>Cliente &amp; prazo</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div><label className="text-xs text-ink-faint block mb-1">Cliente (opcional)</label>
+              <input value={clienteNome} onChange={e => setClienteNome(e.target.value)} className={inputCls} /></div>
+            <div><label className="text-xs text-ink-faint block mb-1">WhatsApp do cliente (opcional)</label>
+              <input value={clienteTel} onChange={e => setClienteTel(e.target.value)} className={inputCls} /></div>
+            <div><label className="text-xs text-ink-faint block mb-1">Prazo desejado (opcional)</label>
+              <input value={prazo} onChange={e => setPrazo(e.target.value)} placeholder="Ex: até 15 dias" className={inputCls} /></div>
+            <div><label className="text-xs text-ink-faint block mb-1">Observações (opcional)</label>
+              <input value={obs} onChange={e => setObs(e.target.value)} className={inputCls} /></div>
+          </div>
+        </section>
 
-          {/* Cliente + extras */}
-          <section className="bg-surface-1 border border-border rounded-xl p-4">
-            <h2 className="text-sm font-semibold text-ink mb-3">Cliente &amp; prazo</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div><label className="text-xs text-ink-faint block mb-1">Cliente (opcional)</label>
-                <input value={clienteNome} onChange={e => setClienteNome(e.target.value)} className={inputCls} /></div>
-              <div><label className="text-xs text-ink-faint block mb-1">WhatsApp do cliente (opcional)</label>
-                <input value={clienteTel} onChange={e => setClienteTel(e.target.value)} className={inputCls} /></div>
-              <div><label className="text-xs text-ink-faint block mb-1">Prazo desejado (opcional)</label>
-                <input value={prazo} onChange={e => setPrazo(e.target.value)} placeholder="Ex: até 15 dias" className={inputCls} /></div>
-              <div><label className="text-xs text-ink-faint block mb-1">Observações (opcional)</label>
-                <input value={obs} onChange={e => setObs(e.target.value)} className={inputCls} /></div>
-            </div>
-          </section>
-
-          {erro && <p className="text-sm text-red-500">{erro}</p>}
-
-          <button onClick={enviar} disabled={criar.isPending}
-            className="w-full py-3 rounded-lg bg-accent text-white font-semibold hover:opacity-90 disabled:opacity-60">
-            {criar.isPending ? 'Enviando…' : 'Enviar pedido de frete'}
-          </button>
-        </div>
-
-        {/* ===== COLUNA LATERAL: o que transportar (cadastro de itens) ===== */}
-        <aside className="order-1 lg:order-2 lg:col-span-1 lg:sticky lg:top-6 space-y-4">
-          <section className="bg-surface-1 border border-border rounded-xl p-4">
-            <h2 className="text-sm font-semibold text-ink mb-3 flex items-center gap-1.5"><Package className="h-4 w-4 text-accent" /> O que transportar</h2>
+        {/* O que transportar (cadastro de itens) */}
+        <section className="order-1 xl:order-3 xl:col-span-5 bg-surface-1 border border-border rounded-xl p-4">
+          <h2 className={secLabel}><Package className="h-4 w-4 text-accent" /> O que transportar</h2>
 
             {/* Formulário de cadastro de item */}
             <div className="space-y-2">
@@ -405,8 +410,21 @@ export function FreteSolicitar() {
                 placeholder="Ex.: cuidado com a pintura, leva 2 escadas juntas…"
                 className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent resize-none" />
             </div>
-          </section>
-        </aside>
+        </section>
+      </div>
+
+      {/* Barra de ação fixa */}
+      <div className="sticky bottom-0 -mx-5 lg:-mx-8 mt-4 px-5 lg:px-8 py-3 bg-bg/85 backdrop-blur border-t border-border flex items-center gap-4 z-10">
+        <div className="text-xs text-ink-muted">
+          {itens.length
+            ? `${itens.length} ${itens.length === 1 ? 'item' : 'itens'} · ${Math.round(carga.peso_kg).toLocaleString('pt-BR')} kg · ${volumeTotal.toFixed(2)} m³`
+            : 'Nenhum item adicionado ainda'}
+        </div>
+        {erro && <span className="text-xs text-red-500">{erro}</span>}
+        <button onClick={enviar} disabled={criar.isPending}
+          className="ml-auto px-6 py-2.5 rounded-lg bg-accent text-white text-sm font-semibold hover:opacity-90 disabled:opacity-60">
+          {criar.isPending ? 'Enviando…' : 'Enviar pedido de frete'}
+        </button>
       </div>
     </div>
   )
