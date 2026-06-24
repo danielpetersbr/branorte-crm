@@ -560,6 +560,31 @@ export function useDispararFrete() {
   });
 }
 
+/** Enfileira a cotação pras transportadoras escolhidas (edge frete-enfileirar).
+ *  Cria os frete_lances + a fila (frete_disparo_fila). O PUMP server-side é quem
+ *  monta a mensagem e enfileira no WhatsApp do vendedor, respeitando frete_poll_ativo. */
+export function useEnfileirarCotacao() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: { solicitacao_id: string; transportadora_ids: number[] }) => {
+      const { data, error } = await supabase.functions.invoke('frete-enfileirar', { body: vars });
+      if (error) throw error;
+      if (data?.error) throw new Error(String(data.error));
+      return data as {
+        ok: boolean;
+        poll_ativo?: boolean;
+        enfileiradas?: number;
+        results?: Array<{ transportadora_id: number; nome?: string; enfileirado: boolean; erro?: string }>;
+      };
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: [SOLIC_KEY] });
+      qc.invalidateQueries({ queryKey: ['frete-lances', vars.solicitacao_id] });
+      qc.invalidateQueries({ queryKey: ['frete-mapa'] });
+    },
+  });
+}
+
 /** Escolhe o lance vencedor e fecha a solicitação — via RPC atômica e idempotente
  *  (frete_escolher_vencedor): trava a solicitação, promove o vencedor, rebaixa os
  *  demais e fecha, tudo numa transação. Não corrompe se 2 admins clicarem juntos. */

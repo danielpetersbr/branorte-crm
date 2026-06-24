@@ -4,13 +4,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  Truck, Send, MapPin, Loader2, Settings, Trophy, Copy, Check, X, Ban, ExternalLink,
+  Truck, Send, MapPin, Loader2, Settings, Trophy, Copy, Check, X, Ban, ExternalLink, MessageCircle,
 } from 'lucide-react'
 import {
   useSolicitacoes, useLances, useDispararFrete, useEscolherVencedor, useAtualizarSolicitacao,
-  useTransportadoras, useTiposCaminhao, useFreteConfig, useSetFreteConfig,
+  useTransportadoras, useTiposCaminhao, useFreteConfig, useSetFreteConfig, useEnfileirarCotacao,
   type FreteSolicitacao, type FreteSolicitacaoStatus,
 } from '@/hooks/useFrete'
+import type { TransportadoraParceira } from '@/lib/calcFrete'
 
 const FILTROS: { key: FreteSolicitacaoStatus | 'ativas'; label: string }[] = [
   { key: 'ativas', label: 'Ativas' },
@@ -51,6 +52,7 @@ export default function FreteAprovar() {
   const transportadoras = useTransportadoras()
   const tipos = useTiposCaminhao()
   const disparar = useDispararFrete()
+  const enfileirar = useEnfileirarCotacao()
   const vencedor = useEscolherVencedor()
   const atualizar = useAtualizarSolicitacao()
   const cfg = useFreteConfig()
@@ -61,6 +63,7 @@ export default function FreteAprovar() {
   const [dispatchResult, setDispatchResult] = useState<any[] | null>(null)
   const [copiado, setCopiado] = useState<string | null>(null)
   const [showConfig, setShowConfig] = useState(false)
+  const [showCotacaoModal, setShowCotacaoModal] = useState(false)
 
   const solic = useMemo(() => solics.data?.find(s => s.id === selId) ?? null, [solics.data, selId])
   const lances = useLances(selId, { refetchInterval: 8000 })
@@ -68,6 +71,14 @@ export default function FreteAprovar() {
   const aptas = useMemo(() => {
     const uf = solic?.uf_destino ?? ''
     return (transportadoras.data ?? []).filter(t => t.ativo && (!t.ufs_atende?.length || t.ufs_atende.includes(uf)))
+  }, [transportadoras.data, solic?.uf_destino])
+
+  // Elegíveis pro pedido de cotação por WhatsApp: ativa + autorizada + atende a UF.
+  const aptasCotacao = useMemo(() => {
+    const uf = solic?.uf_destino ?? ''
+    return (transportadoras.data ?? []).filter(
+      t => t.ativo && t.autorizado && (!t.ufs_atende?.length || t.ufs_atende.includes(uf)),
+    )
   }, [transportadoras.data, solic?.uf_destino])
 
   // ao trocar de solicitação: pré-seleciona todas as transportadoras aptas
@@ -100,6 +111,17 @@ export default function FreteAprovar() {
       setDispatchResult(res.results)
     } catch (e: any) {
       alert(`Erro ao disparar: ${e?.message ?? e}`)
+    }
+  }
+
+  async function enfileirarCotacao(ids: number[]) {
+    if (!solic) return
+    if (!ids.length) { alert('Selecione ao menos uma transportadora.'); return }
+    try {
+      await enfileirar.mutateAsync({ solicitacao_id: solic.id, transportadora_ids: ids })
+      setShowCotacaoModal(false)
+    } catch (e: any) {
+      alert(`Erro ao pedir cotação: ${e?.message ?? e}`)
     }
   }
 
@@ -148,7 +170,7 @@ export default function FreteAprovar() {
       <div className="flex gap-1.5 mb-4">
         {FILTROS.map(f => (
           <button key={f.key} onClick={() => { setFiltro(f.key); setSelId(null) }}
-            className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${filtro === f.key ? 'bg-accent text-white border-accent' : 'bg-surface-1 text-ink-muted border-border hover:border-accent'}`}>
+            className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${filtro === f.key ? 'bg-accent text-white border-accent' : 'bg-surface text-ink-muted border-border hover:border-accent'}`}>
             {f.label}
           </button>
         ))}
@@ -164,7 +186,7 @@ export default function FreteAprovar() {
           )}
           {solics.data?.map(s => (
             <button key={s.id} onClick={() => setSelId(s.id)}
-              className={`w-full text-left bg-surface-1 border rounded-xl p-3 transition-colors ${selId === s.id ? 'border-accent' : 'border-border hover:border-accent/50'}`}>
+              className={`w-full text-left bg-surface border rounded-xl p-3 transition-colors ${selId === s.id ? 'border-accent' : 'border-border hover:border-accent/50'}`}>
               <div className="flex items-center justify-between gap-1 mb-1">
                 <span className="text-xs font-mono text-ink-faint">{s.codigo}</span>
                 <div className="flex items-center gap-1 flex-wrap justify-end">
@@ -186,7 +208,7 @@ export default function FreteAprovar() {
           ) : (
             <div className="space-y-4">
               {/* Header detalhe */}
-              <div className="bg-surface-1 border border-border rounded-xl p-4">
+              <div className="bg-surface border border-border rounded-xl p-4">
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -216,14 +238,20 @@ export default function FreteAprovar() {
 
               {/* Seleção + disparo */}
               {solic.status !== 'fechada' && solic.status !== 'cancelada' && (
-                <div className="bg-surface-1 border border-border rounded-xl p-4">
+                <div className="bg-surface border border-border rounded-xl p-4">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-sm font-semibold text-ink">Transportadoras que atendem {solic.uf_destino} <span className="text-ink-faint font-normal">({aptas.length})</span></h3>
-                    <button onClick={fazerDisparo} disabled={disparar.isPending || !selectedTransp.size}
-                      className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:opacity-90 disabled:opacity-40 flex items-center gap-1.5">
-                      {disparar.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                      {disparoAtivo ? 'Disparar' : 'Gerar links'} ({selectedTransp.size})
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setShowCotacaoModal(true)}
+                        className="px-4 py-2 rounded-lg border border-accent text-accent text-sm font-medium hover:bg-accent/10 flex items-center gap-1.5">
+                        <MessageCircle className="h-4 w-4" /> Pedir cotação (WhatsApp)
+                      </button>
+                      <button onClick={fazerDisparo} disabled={disparar.isPending || !selectedTransp.size}
+                        className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:opacity-90 disabled:opacity-40 flex items-center gap-1.5">
+                        {disparar.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                        {disparoAtivo ? 'Disparar' : 'Gerar links'} ({selectedTransp.size})
+                      </button>
+                    </div>
                   </div>
                   {aptas.length === 0 ? (
                     <p className="text-sm text-ink-faint">Nenhuma transportadora cadastrada atende {solic.uf_destino}. <Link to="/frete/transportadoras" className="text-accent hover:underline">Cadastrar</Link>.</p>
@@ -268,7 +296,7 @@ export default function FreteAprovar() {
               )}
 
               {/* Lances */}
-              <div className="bg-surface-1 border border-border rounded-xl p-4">
+              <div className="bg-surface border border-border rounded-xl p-4">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-ink">Lances {lances.data?.length ? `(${lances.data.length})` : ''}</h3>
                   {solic.status === 'em_cotacao' && <span className="text-[10px] text-accent flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" /> ao vivo</span>}
@@ -306,6 +334,97 @@ export default function FreteAprovar() {
           )}
         </div>
       </div>
+
+      {showCotacaoModal && solic && (
+        <CotacaoModal
+          uf={solic.uf_destino}
+          transportadoras={aptasCotacao}
+          enviando={enfileirar.isPending}
+          onClose={() => setShowCotacaoModal(false)}
+          onConfirm={enfileirarCotacao}
+        />
+      )}
+    </div>
+  )
+}
+
+function CotacaoModal({ uf, transportadoras, enviando, onClose, onConfirm }: {
+  uf: string | null
+  transportadoras: TransportadoraParceira[]
+  enviando: boolean
+  onClose: () => void
+  onConfirm: (ids: number[]) => void
+}) {
+  // Todas pré-marcadas; usuário pode desmarcar.
+  const [marcadas, setMarcadas] = useState<Set<number>>(() => new Set(transportadoras.map(t => t.id)))
+
+  function toggle(id: number) {
+    setMarcadas(prev => {
+      const n = new Set(prev)
+      n.has(id) ? n.delete(id) : n.add(id)
+      return n
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-surface border border-border rounded-xl w-full max-w-md max-h-[85vh] flex flex-col shadow-xl"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <h3 className="text-sm font-semibold text-ink flex items-center gap-2">
+            <MessageCircle className="h-4 w-4 text-accent" /> Pedir cotação por WhatsApp
+          </h3>
+          <button onClick={onClose} className="text-ink-faint hover:text-ink"><X className="h-4 w-4" /></button>
+        </div>
+
+        <div className="px-4 pt-3">
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-[11px] text-amber-600">
+            Disparo em <b>modo de teste (desligado)</b> — as cotações entram na fila, mas nada sai no WhatsApp até ser ligado.
+          </div>
+        </div>
+
+        <div className="p-4 overflow-y-auto">
+          {transportadoras.length === 0 ? (
+            <p className="text-sm text-ink-faint">
+              Nenhuma transportadora autorizada atende {uf ?? '—'}.{' '}
+              <Link to="/frete/transportadoras" className="text-accent hover:underline">Cadastrar</Link>.
+            </p>
+          ) : (
+            <>
+              <p className="text-xs text-ink-faint mb-2">
+                {marcadas.size} de {transportadoras.length} selecionada(s) — desmarque quem não quiser cotar.
+              </p>
+              <div className="space-y-1.5">
+                {transportadoras.map(t => {
+                  const on = marcadas.has(t.id)
+                  const semTel = !t.telefone || t.telefone.replace(/\D/g, '').length < 10
+                  return (
+                    <button key={t.id} onClick={() => toggle(t.id)}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-sm border flex items-center gap-2 transition-colors ${on ? 'bg-accent/10 border-accent text-accent' : 'bg-bg border-border text-ink-muted hover:border-accent/50'}`}>
+                      <span className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${on ? 'bg-accent border-accent' : 'border-border'}`}>
+                        {on && <Check className="h-3 w-3 text-white" />}
+                      </span>
+                      <span className="flex-1 truncate">{t.nome}</span>
+                      {semTel && <span title="sem telefone" className="text-amber-500 text-[10px]">⚠ sem fone</span>}
+                    </button>
+                  )
+                })}
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 p-4 border-t border-border">
+          <button onClick={onClose} className="px-3 py-2 rounded-lg border border-border text-ink-muted text-sm hover:text-ink">Cancelar</button>
+          <button onClick={() => onConfirm([...marcadas])} disabled={enviando || marcadas.size === 0}
+            className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:opacity-90 disabled:opacity-40 flex items-center gap-1.5">
+            {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            Confirmar e disparar ({marcadas.size})
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -319,7 +438,7 @@ function ConfigDisparo({ cfg, onSave, saving, onClose }: {
   const [nome, setNome] = useState(cfg?.vendedor_nome_disparo ?? 'JARDEL')
   const ativo = (cfg?.disparo_ativo ?? 'true') === 'true'
   return (
-    <div className="mb-4 bg-surface-1 border border-border rounded-xl p-4">
+    <div className="mb-4 bg-surface border border-border rounded-xl p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-ink">Config do disparo</h3>
         <button onClick={onClose} className="text-ink-faint hover:text-ink"><X className="h-4 w-4" /></button>
