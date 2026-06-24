@@ -32,6 +32,8 @@ function formNova(): Partial<TransportadoraParceira> {
     ufs_atende: [],
     observacoes: '',
     ativo: true,
+    autorizado: false,
+    prioridade: 100,
   }
 }
 
@@ -142,7 +144,9 @@ export default function FreteTransportadoras() {
           <div key={t.id} className={`border rounded p-3 ${!t.ativo ? 'opacity-50' : ''}`}>
             <div className="flex items-center justify-between">
               <div>
-                <div className="font-medium">{t.nome}</div>
+                <div className="font-medium flex items-center gap-2">{t.nome}
+                  {t.autorizado && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-600">autorizada</span>}
+                </div>
                 <div className="text-xs text-ink-muted">
                   {t.telefone} {t.email && `· ${t.email}`}
                   {t.ufs_atende.length > 0 && <> · atende: {t.ufs_atende.join(', ')}</>}
@@ -176,7 +180,7 @@ export default function FreteTransportadoras() {
       {/* Modal de edicao */}
       {editando && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-surface-1 border border-border rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white dark:bg-surface border border-border rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <h2 className="text-lg font-bold mb-4">
               {editando.id ? 'Editar' : 'Nova'} transportadora
             </h2>
@@ -202,7 +206,7 @@ export default function FreteTransportadoras() {
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium block mb-1">Telefone</label>
+                  <label className="text-sm font-medium block mb-1">WhatsApp <span className="text-xs text-ink-muted font-normal">(p/ cotação)</span></label>
                   <input
                     type="text"
                     value={editando.telefone ?? ''}
@@ -274,6 +278,31 @@ export default function FreteTransportadoras() {
                       {uf}
                     </button>
                   ))}
+                </div>
+              </div>
+
+              <div className="border-t pt-3 flex items-end justify-between gap-4">
+                <div className="flex-1">
+                  <label className="text-sm font-medium flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!editando.autorizado}
+                      onChange={e => setEditando({ ...editando, autorizado: e.target.checked })}
+                      className="h-4 w-4 accent-accent"
+                    />
+                    Autorizada p/ cotação automática no WhatsApp
+                  </label>
+                  <p className="text-xs text-ink-muted mt-1">Só transportadoras autorizadas recebem o disparo automático de cotação por UF.</p>
+                </div>
+                <div className="w-28 shrink-0">
+                  <label className="text-xs text-ink-muted block">Prioridade</label>
+                  <input
+                    type="number"
+                    value={editando.prioridade ?? 100}
+                    onChange={e => setEditando({ ...editando, prioridade: Number(e.target.value) || 100 })}
+                    className="w-full border rounded px-2 py-1 text-sm bg-bg"
+                  />
+                  <p className="text-[10px] text-ink-muted mt-0.5">menor = dispara antes</p>
                 </div>
               </div>
 

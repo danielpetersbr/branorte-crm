@@ -46,6 +46,8 @@ export type TransportadoraParceira = {
   ufs_atende: string[];
   observacoes: string | null;
   ativo: boolean;
+  autorizado: boolean;
+  prioridade: number;
 };
 
 export type Carga = {
