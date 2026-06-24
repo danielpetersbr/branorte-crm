@@ -386,22 +386,25 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
         baseQ(),
         baseQ().gte('last_message_at', todayIso),
         baseQ().eq('quando_investir', 'Agora'),
+        // IMPORTANTE: os KPIs do funil filtram por last_message_at>=hoje (como o card "Hoje").
+        // Isso (1) deixa os números do dia consistentes e (2) EVITA o 500/timeout do count exact
+        // varrendo a view inteira (que é grande) — sem o filtro, fábrica/equip estouravam e o card
+        // mostrava 0. Ver investigação 2026-06-24.
         // Contatados: lead tem vendedor responsável atribuído (não "a definir")
-        baseQ().not('responsavel', 'is', null).neq('responsavel', '').neq('responsavel', 'a definir'),
+        baseQ().gte('last_message_at', todayIso).not('responsavel', 'is', null).neq('responsavel', '').neq('responsavel', 'a definir'),
         // Nao engajaram: chegou no anuncio mas nem clicou no primeiro botao (motivo_contato)
-        baseQ().is('motivo_contato', null).is('tocou_botao_em', null),
-        // Qualificados FÁBRICA: motivo é "montar fábrica" (a intenção por si só já qualifica;
-        // não exige finalidade/animal preenchidos — alinhado com a regra de equipamento).
-        baseQ()
+        baseQ().gte('last_message_at', todayIso).is('motivo_contato', null).is('tocou_botao_em', null),
+        // Qualificados FÁBRICA: motivo é "montar fábrica" (a intenção por si só já qualifica).
+        baseQ().gte('last_message_at', todayIso)
           .or('motivo_contato.ilike.%fab%,motivo_contato.ilike.%fáb%'),
-        // Qualificados EQUIPAMENTO: motivo equipamento + o_que_precisa bate no catálogo Branorte
-        baseQ()
+        // Qualificados EQUIPAMENTO: motivo equipamento + o_que_precisa bate no catálogo Branorte.
+        baseQ().gte('last_message_at', todayIso)
           .ilike('motivo_contato', '%equip%')
           .or(equipOrFilter),
         // Em andamento: clicou no MOTIVO mas nao clicou no botao final
-        baseQ().not('motivo_contato', 'is', null).is('tocou_botao_em', null),
+        baseQ().gte('last_message_at', todayIso).not('motivo_contato', 'is', null).is('tocou_botao_em', null),
         // Pra pegar: sem responsavel — null, vazio, ou "a definir"
-        baseQ().or('responsavel.is.null,responsavel.eq.,responsavel.eq.a definir'),
+        baseQ().gte('last_message_at', todayIso).or('responsavel.is.null,responsavel.eq.,responsavel.eq.a definir'),
         baseQ().eq('status_real', 'Vendido'),
         baseQ().eq('status_real', 'Abandonado'),
         baseQ().eq('status_real', 'Sem-Resposta'),
