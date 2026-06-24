@@ -69,10 +69,11 @@ export function FreteSolicitar() {
 
   // cliente / extras
   const [clienteNome, setClienteNome] = useState(params.get('cliente') || '')
-  const [clienteTel, setClienteTel] = useState(params.get('telefone') || '')
-  const [prazo, setPrazo] = useState('')
   const [descricao, setDescricao] = useState('')
   const [obs, setObs] = useState('')
+  // tipo do pedido: 'cotacao' = só previsão de valor (base); 'carregar' = vai mandar.
+  const [tipoCotacao, setTipoCotacao] = useState<'cotacao' | 'carregar'>('cotacao')
+  const [urgente, setUrgente] = useState(false)
 
   const [erro, setErro] = useState('')
   const [okCodigo, setOkCodigo] = useState<string | null>(null)
@@ -193,7 +194,7 @@ export function FreteSolicitar() {
         solicitante_nome: profile?.display_name ?? null,
         vendedor_nome: params.get('vendedor') || profile?.display_name || null,
         cliente_nome: clienteNome.trim() || null,
-        cliente_telefone: clienteTel.replace(/\D/g, '') || null,
+        cliente_telefone: null,
         cidade_destino: cidade.trim(),
         uf_destino: uf,
         destino_lat: latLng?.lat ?? null,
@@ -210,8 +211,10 @@ export function FreteSolicitar() {
         caminhao_recomendado_id: caminhao?.id ?? null,
         valor_antt_minimo: pisoAntt,
         valor_referencia: pisoAntt ? Math.round(pisoAntt * 1.3) : null,
-        prazo_desejado: prazo.trim() || null,
+        prazo_desejado: null,
         observacoes: obs.trim() || null,
+        tipo_cotacao: tipoCotacao,
+        urgente,
         status: 'pendente',
       })
       setOkCodigo(res.codigo ?? '✓')
@@ -223,7 +226,7 @@ export function FreteSolicitar() {
   function novaSolicitacao() {
     setItens([]); setForm(FORM_VAZIO)
     setUf(''); setCidade(''); setLatLng(null); setDistancia(null); setCalcMsg('')
-    setClienteNome(''); setClienteTel(''); setPrazo(''); setDescricao(''); setObs('')
+    setClienteNome(''); setDescricao(''); setObs(''); setTipoCotacao('cotacao'); setUrgente(false)
     setOkCodigo(null); setErro('')
   }
 
@@ -246,6 +249,7 @@ export function FreteSolicitar() {
   const inputCls = 'w-full px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent'
   const miniInputCls = 'w-full px-2 py-1.5 rounded-lg bg-bg border border-border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent'
   const secLabel = 'text-[11px] font-semibold uppercase tracking-wider text-ink-muted mb-3 flex items-center gap-1.5'
+  const reqRing = (empty: boolean) => empty ? 'border-red-400 ring-1 ring-red-400/30' : 'border-border'
 
   return (
     <div className="max-w-[1760px] mx-auto px-5 lg:px-8 py-5 pb-24">
@@ -255,6 +259,27 @@ export function FreteSolicitar() {
         <Truck className="h-5 w-5 text-accent" />
         <h1 className="text-xl font-semibold text-ink">Pedir Frete</h1>
         <Link to="/frete/itens" className="ml-auto text-xs text-ink-muted hover:text-accent flex items-center gap-1"><Package className="h-3.5 w-3.5" /> Itens de frete</Link>
+      </div>
+
+      {/* Tipo do pedido + urgente — fica visível pra quem cota (Jardel/transportadora) */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div className="inline-flex rounded-lg border border-border overflow-hidden text-sm">
+          <button type="button" onClick={() => setTipoCotacao('cotacao')}
+            className={`px-3.5 py-1.5 font-medium transition-colors ${tipoCotacao === 'cotacao' ? 'bg-accent text-white' : 'bg-surface-1 text-ink-muted hover:text-ink'}`}>
+            Cotação
+          </button>
+          <button type="button" onClick={() => setTipoCotacao('carregar')}
+            className={`px-3.5 py-1.5 font-medium transition-colors ${tipoCotacao === 'carregar' ? 'bg-red-500 text-white' : 'bg-surface-1 text-ink-muted hover:text-ink'}`}>
+            Pra carregar
+          </button>
+        </div>
+        <button type="button" onClick={() => setUrgente(u => !u)}
+          className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${urgente ? 'bg-red-500/15 border-red-500/40 text-red-500' : 'bg-surface-1 border-border text-ink-muted hover:text-ink'}`}>
+          {urgente ? '⚠ Urgente' : 'Marcar urgente'}
+        </button>
+        <span className="text-xs text-ink-faint">
+          {tipoCotacao === 'cotacao' ? 'Só previsão de valor (base) — não vai carregar ainda.' : 'Pra carregar — já é pra mandar de verdade.'}
+        </span>
       </div>
 
       {/* Resumo — barra de indicadores (hairline cells) */}
@@ -285,17 +310,17 @@ export function FreteSolicitar() {
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
         {/* Destino */}
         <section className="order-2 xl:order-1 xl:col-span-3 bg-surface-1 border border-border rounded-xl p-4">
-          <h2 className={secLabel}><MapPin className="h-4 w-4 text-accent" /> Destino</h2>
+          <h2 className={secLabel}><MapPin className="h-4 w-4 text-accent" /> Destino <span className="text-red-500 ml-0.5">*</span></h2>
           <div className="space-y-2">
             <div className="flex gap-2">
               <select value={uf} onChange={e => { setUf(e.target.value); setLatLng(null); setDistancia(null) }}
-                className="w-24 px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm outline-none focus:border-accent">
+                className={`w-24 px-3 py-2 rounded-lg bg-bg border text-ink text-sm outline-none focus:border-accent ${reqRing(!uf)}`}>
                 <option value="">UF</option>
                 {UFS_BR.map(u => <option key={u} value={u}>{u}</option>)}
               </select>
               <input list="municipios-frete" value={cidade} onChange={e => { setCidade(e.target.value); setLatLng(null); setDistancia(null) }}
                 placeholder="Cidade de destino" disabled={!uf}
-                className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent disabled:opacity-50" />
+                className={`flex-1 min-w-0 px-3 py-2 rounded-lg bg-bg border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent disabled:opacity-50 ${reqRing(!cidade.trim())}`} />
               <datalist id="municipios-frete">{(municipios.data ?? []).map(m => <option key={m} value={m} />)}</datalist>
             </div>
             <button onClick={calcularDestino} disabled={calcLoading || !cidade || !uf}
@@ -312,24 +337,21 @@ export function FreteSolicitar() {
           </div>
         </section>
 
-        {/* Cliente & prazo */}
+        {/* Cliente */}
         <section className="order-3 xl:order-2 xl:col-span-4 bg-surface-1 border border-border rounded-xl p-4">
-          <h2 className={secLabel}>Cliente &amp; prazo</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div><label className="text-xs text-ink-faint block mb-1">Cliente (opcional)</label>
-              <input value={clienteNome} onChange={e => setClienteNome(e.target.value)} className={inputCls} /></div>
-            <div><label className="text-xs text-ink-faint block mb-1">WhatsApp do cliente (opcional)</label>
-              <input value={clienteTel} onChange={e => setClienteTel(e.target.value)} className={inputCls} /></div>
-            <div><label className="text-xs text-ink-faint block mb-1">Prazo desejado (opcional)</label>
-              <input value={prazo} onChange={e => setPrazo(e.target.value)} placeholder="Ex: até 15 dias" className={inputCls} /></div>
-            <div><label className="text-xs text-ink-faint block mb-1">Observações (opcional)</label>
-              <input value={obs} onChange={e => setObs(e.target.value)} className={inputCls} /></div>
+          <h2 className={secLabel}>Cliente</h2>
+          <div className="space-y-3">
+            <div><label className="text-xs text-ink-faint block mb-1">Nome do cliente (opcional)</label>
+              <input value={clienteNome} onChange={e => setClienteNome(e.target.value)} placeholder="Quem é o cliente do frete" className={inputCls} /></div>
+            <div><label className="text-xs text-ink-faint block mb-1">Observação / motivo (opcional)</label>
+              <textarea value={obs} onChange={e => setObs(e.target.value)} rows={3} placeholder="Ex.: cliente quer só uma base de preço pra fechar a venda…"
+                className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent resize-none" /></div>
           </div>
         </section>
 
         {/* O que transportar (cadastro de itens) */}
         <section className="order-1 xl:order-3 xl:col-span-5 bg-surface-1 border border-border rounded-xl p-4">
-          <h2 className={secLabel}><Package className="h-4 w-4 text-accent" /> O que transportar</h2>
+          <h2 className={secLabel}><Package className="h-4 w-4 text-accent" /> O que transportar <span className="text-red-500 ml-0.5">*</span></h2>
 
             {/* Formulário de cadastro de item */}
             <div className="space-y-2">
@@ -371,8 +393,8 @@ export function FreteSolicitar() {
             {/* Lista de itens cadastrados */}
             <div className="mt-4 space-y-1.5">
               {itens.length === 0 && (
-                <div className="text-xs text-ink-faint text-center border border-dashed border-border rounded-lg py-5">
-                  Nenhum item ainda.<br />Adicione acima — manual ou puxando do catálogo.
+                <div className="text-xs text-red-500 text-center border border-dashed border-red-400/50 rounded-lg py-5">
+                  Adicione ao menos 1 item.<br />Manual ou puxando do catálogo.
                 </div>
               )}
               {itens.map(it => {

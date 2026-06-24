@@ -165,9 +165,13 @@ export default function FreteAprovar() {
           {solics.data?.map(s => (
             <button key={s.id} onClick={() => setSelId(s.id)}
               className={`w-full text-left bg-surface-1 border rounded-xl p-3 transition-colors ${selId === s.id ? 'border-accent' : 'border-border hover:border-accent/50'}`}>
-              <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center justify-between gap-1 mb-1">
                 <span className="text-xs font-mono text-ink-faint">{s.codigo}</span>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[s.status] ?? ''}`}>{s.status}</span>
+                <div className="flex items-center gap-1 flex-wrap justify-end">
+                  {s.urgente && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-red-500/15 text-red-500">⚠</span>}
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${s.tipo_cotacao === 'carregar' ? 'bg-red-500/15 text-red-500' : 'bg-accent/15 text-accent'}`}>{s.tipo_cotacao === 'carregar' ? 'Carregar' : 'Cotação'}</span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[s.status] ?? ''}`}>{s.status}</span>
+                </div>
               </div>
               <div className="text-sm font-medium text-ink truncate">{resumoEquip(s)}</div>
               <div className="text-xs text-ink-muted flex items-center gap-1 mt-0.5"><MapPin className="h-3 w-3" />{s.cidade_destino ?? '—'}/{s.uf_destino ?? '—'}{s.distancia_km ? ` · ${Math.round(s.distancia_km)} km` : ''}</div>
@@ -185,8 +189,10 @@ export default function FreteAprovar() {
               <div className="bg-surface-1 border border-border rounded-xl p-4">
                 <div className="flex items-start justify-between">
                   <div>
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span className="text-xs font-mono text-ink-faint">{solic.codigo}</span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${solic.tipo_cotacao === 'carregar' ? 'bg-red-500/15 text-red-500' : 'bg-accent/15 text-accent'}`}>{solic.tipo_cotacao === 'carregar' ? 'Pra carregar' : 'Cotação'}</span>
+                      {solic.urgente && <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-red-500/15 text-red-500">⚠ Urgente</span>}
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[solic.status] ?? ''}`}>{solic.status}</span>
                     </div>
                     <div className="text-base font-semibold text-ink">{resumoEquip(solic)}</div>
@@ -203,7 +209,7 @@ export default function FreteAprovar() {
                   <div><dt className="text-xs text-ink-faint">Piso ANTT</dt><dd className="text-ink">{fmtMoeda(solic.valor_antt_minimo)}</dd></div>
                   <div><dt className="text-xs text-ink-faint">Ref. (×1,3)</dt><dd className="text-ink">{fmtMoeda(solic.valor_referencia)}</dd></div>
                   <div><dt className="text-xs text-ink-faint">Cliente</dt><dd className="text-ink truncate">{solic.cliente_nome ?? '—'}</dd></div>
-                  <div><dt className="text-xs text-ink-faint">Prazo</dt><dd className="text-ink">{solic.prazo_desejado ?? '—'}</dd></div>
+                  <div><dt className="text-xs text-ink-faint">Tipo</dt><dd className={solic.tipo_cotacao === 'carregar' ? 'text-red-500 font-medium' : 'text-ink'}>{solic.tipo_cotacao === 'carregar' ? 'Pra carregar' : 'Cotação'}</dd></div>
                 </dl>
                 {solic.observacoes && <p className="text-sm text-ink-muted mt-2 pt-2 border-t border-border">{solic.observacoes}</p>}
               </div>

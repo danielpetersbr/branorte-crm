@@ -407,6 +407,9 @@ export type FreteSolicitacao = {
   valor_referencia: number | null;
   prazo_desejado: string | null;
   observacoes: string | null;
+  // 'cotacao' = só previsão de valor (base); 'carregar' = vai mandar de verdade.
+  tipo_cotacao: 'cotacao' | 'carregar';
+  urgente: boolean;
   status: FreteSolicitacaoStatus;
   aprovado_por: string | null;
   aprovado_por_nome: string | null;
