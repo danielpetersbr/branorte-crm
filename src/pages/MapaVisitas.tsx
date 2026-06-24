@@ -80,6 +80,9 @@ const brl = (v: number | null) =>
   v == null ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 const esc = (s: string | null) => (s || '').replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] as string))
 const dataBR = (iso: string | null) => (iso ? new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR') : '—')
+// Normaliza texto pra busca: sem acento, minúsculo (ex "Ji-Paraná" casa "ji parana")
+const normTxt = (s: string | null) =>
+  (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
 
 function popupVisita(v: Visita, isFollowUp: boolean, labels: string[]): string {
   const tel = (v.telefone || '').replace(/\D/g, '')
@@ -136,6 +139,7 @@ export function MapaVisitas() {
   const [showOrc, setShowOrc] = useState(true)
   const [showVis, setShowVis] = useState(false)
   const [busca, setBusca] = useState('')
+  const [sugAberta, setSugAberta] = useState(false)
   const [vendFiltro, setVendFiltro] = useState<VendFiltro>('todos')
   const [showLista, setShowLista] = useState(false)
   const [sortKey, setSortKey] = useState<'numero' | 'data' | 'cliente' | 'cidade' | 'total' | 'vendido'>('data')
@@ -217,6 +221,33 @@ export function MapaVisitas() {
     ),
     [orcPontos, vendedorSel, termo, vendFiltro]
   )
+
+  // Autocomplete de CIDADES: índice de cidades distintas (dos orçamentos) + contagem.
+  const cidadesIndex = useMemo(() => {
+    const m = new Map<string, { cidade: string; uf: string; n: number }>()
+    for (const p of orcPontos) {
+      if (!p.cidade) continue
+      const key = (p.cidade + '|' + (p.uf || '')).toLowerCase()
+      const e = m.get(key)
+      if (e) e.n++
+      else m.set(key, { cidade: p.cidade, uf: p.uf || '', n: 1 })
+    }
+    return [...m.values()]
+  }, [orcPontos])
+
+  // Sugestões conforme digita: "começa com" primeiro, depois mais clientes. Top 8.
+  const sugestoesCidade = useMemo(() => {
+    const q = normTxt(busca)
+    if (q.length < 2) return []
+    return cidadesIndex
+      .filter(c => normTxt(c.cidade + ' ' + c.uf).includes(q))
+      .sort((a, b) => {
+        const sa = normTxt(a.cidade).startsWith(q) ? 0 : 1
+        const sb = normTxt(b.cidade).startsWith(q) ? 0 : 1
+        return sa - sb || b.n - a.n
+      })
+      .slice(0, 8)
+  }, [busca, cidadesIndex])
 
   // pontos dentro do raio (a partir do centro), ordenados por distância
   const noRaio = useMemo(() => {
@@ -439,12 +470,35 @@ export function MapaVisitas() {
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[13px] text-ink-faint pointer-events-none">🔍</span>
             <input
               value={busca}
-              onChange={e => setBusca(e.target.value)}
-              placeholder="Buscar cliente, cidade, telefone, Nº…"
+              onChange={e => { setBusca(e.target.value); setSugAberta(true) }}
+              onFocus={() => setSugAberta(true)}
+              onBlur={() => window.setTimeout(() => setSugAberta(false), 150)}
+              onKeyDown={e => { if (e.key === 'Escape') setSugAberta(false) }}
+              placeholder="Buscar cidade, cliente, telefone, Nº…"
+              autoComplete="off"
               className="h-9 w-full sm:w-56 pl-8 pr-7 rounded-md bg-surface border border-border text-[13px] text-ink placeholder:text-ink-faint outline-none focus:border-accent"
             />
             {busca && (
-              <button onClick={() => setBusca('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink text-[13px]" title="Limpar busca">✕</button>
+              <button onClick={() => { setBusca(''); setSugAberta(false) }} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink text-[13px]" title="Limpar busca">✕</button>
+            )}
+            {/* Autocomplete de cidades — aparece ao digitar; toca pra filtrar+zoom naquela cidade */}
+            {sugAberta && sugestoesCidade.length > 0 && (
+              <ul className="absolute left-0 right-0 top-full mt-1 z-[1200] max-h-72 overflow-y-auto rounded-lg border border-border bg-surface shadow-lg py-1">
+                <li className="px-3 py-1 text-[10px] uppercase tracking-wide text-ink-faint select-none">Cidades</li>
+                {sugestoesCidade.map((c, i) => (
+                  <li key={i}>
+                    <button
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={() => { setBusca(c.cidade); setSugAberta(false) }}
+                      className="w-full text-left px-3 py-2.5 hover:bg-surface-2 active:bg-surface-2 flex items-center gap-2"
+                    >
+                      <span className="text-[13px] shrink-0">📍</span>
+                      <span className="flex-1 truncate text-[13px] text-ink">{c.cidade}{c.uf ? ` - ${c.uf}` : ''}</span>
+                      <span className="text-[11px] tabular-nums text-ink-faint shrink-0">{c.n}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
           {/* filtro vendido / orçado */}
