@@ -301,6 +301,17 @@ export function MapaVisitas() {
     }
   }, [])
 
+  // Celular: revalida o tamanho do mapa em resize/rotação (senão fica cinza/cortado).
+  useEffect(() => {
+    const onResize = () => mapRef.current?.invalidateSize()
+    window.addEventListener('resize', onResize)
+    window.addEventListener('orientationchange', onResize)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('orientationchange', onResize)
+    }
+  }, [])
+
   // redesenha marcadores quando dados/filtro/camada mudam
   useEffect(() => {
     const map = mapRef.current
@@ -413,9 +424,9 @@ export function MapaVisitas() {
 
   return (
     <div className="flex h-[calc(100vh-0px)] flex-col p-4 gap-3 overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-3 shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-2 md:gap-3 shrink-0 pr-11 md:pr-0">
         <div>
-          <h1 className="text-[22px] font-semibold text-ink tracking-tight">Mapa de Visitas</h1>
+          <h1 className="text-[18px] md:text-[22px] font-semibold text-ink tracking-tight">Mapa de Visitas</h1>
           <p className="text-[13px] text-ink-muted">
             {showOrc && <>{orcFiltrados.length} clientes com orçamento{orcStats.vendido > 0 && <> · <span className="text-blue-600 font-semibold">{orcStats.vendido} vendidos</span></>}</>}
             {showOrc && showVis && ' · '}
@@ -423,14 +434,14 @@ export function MapaVisitas() {
             {!showOrc && !showVis && 'Ligue uma camada pra ver os pontos'}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative">
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+          <div className="relative w-full sm:w-auto">
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[13px] text-ink-faint pointer-events-none">🔍</span>
             <input
               value={busca}
               onChange={e => setBusca(e.target.value)}
               placeholder="Buscar cliente, cidade, telefone, Nº…"
-              className="h-9 w-56 pl-8 pr-7 rounded-md bg-surface border border-border text-[13px] text-ink placeholder:text-ink-faint outline-none focus:border-accent"
+              className="h-9 w-full sm:w-56 pl-8 pr-7 rounded-md bg-surface border border-border text-[13px] text-ink placeholder:text-ink-faint outline-none focus:border-accent"
             />
             {busca && (
               <button onClick={() => setBusca('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink text-[13px]" title="Limpar busca">✕</button>
@@ -478,13 +489,13 @@ export function MapaVisitas() {
         </div>
       )}
 
-      <div className="flex-1 flex gap-3 min-h-0 relative">
+      <div className="flex-1 flex flex-col md:flex-row gap-2 md:gap-3 min-h-0 relative">
         <div ref={divRef} className="flex-1 rounded-xl border border-border overflow-hidden z-0" style={{ minHeight: 300 }} />
         {(isLoading || loadingOrc) && (
           <div className="absolute inset-0 flex items-center justify-center"><PageLoading /></div>
         )}
-        {/* sidebar: lista do raio OU legenda */}
-        <div className="w-56 shrink-0 rounded-xl border border-border bg-surface p-3 overflow-y-auto">
+        {/* sidebar: lista do raio OU legenda. No celular vira um painel abaixo do mapa (altura limitada). */}
+        <div className="w-full md:w-56 shrink-0 rounded-xl border border-border bg-surface p-3 overflow-y-auto max-h-[34vh] md:max-h-none">
           {modoRaio && centro ? (
             <div>
               <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">{noRaio.length} clientes em {raioKm} km</div>
@@ -545,7 +556,7 @@ export function MapaVisitas() {
       {showLista && (
         <div className="fixed inset-0 z-[1000] bg-black/40 flex items-center justify-center p-4" onClick={() => setShowLista(false)}>
           <div className="bg-surface rounded-xl border border-border w-full max-w-[1200px] max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-3 p-3 border-b border-border shrink-0">
+            <div className="flex flex-wrap items-center gap-2 md:gap-3 p-3 border-b border-border shrink-0">
               <h2 className="text-[16px] font-semibold text-ink">Orçamentos cadastrados</h2>
               <span className="text-[12px] text-ink-muted">{sortedLista.length} de {lista.length}</span>
               <div className="relative ml-2">

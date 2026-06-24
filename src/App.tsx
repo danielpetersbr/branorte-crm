@@ -276,6 +276,14 @@ function AppRoutes() {
     if (!allowed) return <Navigate to="/atendimentos" replace />
   }
 
+  // Mapa: conta externa que só consulta o Mapa de Visitas. Acesso EXCLUSIVO a
+  // /mapa-visitas (+ /perfil). Qualquer outra URL (inclusive "/") cai no mapa —
+  // então ao logar já abre o mapa. O Layout esconde todo o chrome pra esse papel.
+  if (profile.role === 'mapa') {
+    const p = loc.pathname
+    if (p !== '/mapa-visitas' && p !== '/perfil') return <Navigate to="/mapa-visitas" replace />
+  }
+
   // Aprovado → app
   // Layout envolve <Outlet> em <Suspense> pra carregar chunks lazy de cada página.
   return (

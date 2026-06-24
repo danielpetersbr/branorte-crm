@@ -285,6 +285,28 @@ export function Layout() {
     )
   }
 
+  // Conta "mapa" (Patrick e afins): SÓ o Mapa de Visitas, em tela cheia. Sem sidebar,
+  // sem bottom-nav — pensado pra uso no celular. Botão de sair discreto e flutuante.
+  if (profile?.role === 'mapa') {
+    return (
+      <div className="min-h-screen bg-bg">
+        <button
+          onClick={signOut}
+          title="Sair"
+          className="fixed top-2 right-2 z-[1100] h-9 w-9 inline-flex items-center justify-center rounded-full bg-surface/90 backdrop-blur border border-border text-ink-muted hover:text-red-600 shadow-sm"
+          style={{ marginTop: 'env(safe-area-inset-top)' }}
+        >
+          <LogOut className="h-4 w-4" />
+        </button>
+        <ErrorBoundary resetKey={loc.pathname}>
+          <Suspense fallback={<PageLoading />}>
+            <Outlet />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-bg">
       <aside className={cn(
