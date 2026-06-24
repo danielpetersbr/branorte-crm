@@ -177,6 +177,7 @@ export function Layout() {
   const loc = useLocation()
   const aiDrawerOpen = useAiDrawerOpen()
   const [openGroups, toggleGroup, ensureGroupOpen] = useOpenGroups()
+  const [confirmSair, setConfirmSair] = useState(false)
 
   const visible = (item: NavItem) => !item.permKey || can(item.permKey)
   // Grupos com itens visiveis (descarta grupos vazios pro usuario)
@@ -290,13 +291,27 @@ export function Layout() {
   if (profile?.role === 'mapa') {
     return (
       <div className="min-h-screen bg-bg">
+        {/* Botão sair — canto INFERIOR direito, com confirmação antes de sair */}
         <button
-          onClick={signOut}
+          onClick={() => setConfirmSair(true)}
           title="Sair"
-          className="fixed right-2 top-[max(0.5rem,env(safe-area-inset-top))] z-[1100] h-10 w-10 inline-flex items-center justify-center rounded-full bg-surface/90 backdrop-blur border border-border text-ink-muted hover:text-red-600 shadow-sm"
+          className="fixed right-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-[1100] h-11 px-4 inline-flex items-center gap-1.5 rounded-full bg-surface/95 backdrop-blur border border-border text-ink-muted hover:text-red-600 shadow-md text-[13px] font-semibold"
         >
-          <LogOut className="h-4 w-4" />
+          <LogOut className="h-4 w-4" /> Sair
         </button>
+        {confirmSair && (
+          <div className="fixed inset-0 z-[1200] bg-black/50 flex items-center justify-center p-6" onClick={() => setConfirmSair(false)}>
+            <div className="bg-surface rounded-2xl border border-border p-5 w-full max-w-xs text-center shadow-xl" onClick={e => e.stopPropagation()}>
+              <div className="h-11 w-11 rounded-full bg-red-500/10 mx-auto flex items-center justify-center mb-3"><LogOut className="h-5 w-5 text-red-600" /></div>
+              <h2 className="font-semibold text-ink mb-1">Sair da conta?</h2>
+              <p className="text-[13px] text-ink-muted mb-4">Você vai precisar entrar de novo pra ver o mapa.</p>
+              <div className="flex gap-2">
+                <button onClick={() => setConfirmSair(false)} className="flex-1 h-11 rounded-lg border border-border text-ink-muted font-medium">Cancelar</button>
+                <button onClick={signOut} className="flex-1 h-11 rounded-lg bg-red-600 text-white font-semibold">Sair</button>
+              </div>
+            </div>
+          </div>
+        )}
         <ErrorBoundary resetKey={loc.pathname}>
           <Suspense fallback={<PageLoading />}>
             <Outlet />
