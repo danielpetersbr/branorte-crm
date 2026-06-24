@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import {
-  useVisitas, useGeocodarVisitas, useOrcamentosMapa, useListaOrcamentos,
+  useVisitas, useGeocodarVisitas, useOrcamentosMapa, useListaOrcamentos, useVendasMapaCount,
   type Visita, type OrcamentoPonto, type OrcamentoLinha,
 } from '@/hooks/useVisitas'
 import { useEtiquetas } from '@/hooks/useEtiquetas'
@@ -105,8 +105,9 @@ function popupOrcamento(p: OrcamentoPonto, dist?: number): string {
   const tel = (p.telefone || '').replace(/\D/g, '')
   const foneFmt = p.fone || p.telefone || ''
   const loc = [esc(p.cidade), esc(p.uf)].filter(Boolean).join(' - ')
+  const compras = p.vendido && p.n_vendas > 0 ? ` · ${p.n_vendas} compra${p.n_vendas > 1 ? 's' : ''}` : ''
   const vendBadge = p.vendido
-    ? `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:#dbeafe;color:#1e40af;font-weight:700">✓ VENDIDO</span>`
+    ? `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:#dbeafe;color:#1e40af;font-weight:700">✓ VENDIDO${compras}</span>`
     : `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:#fef9c3;color:#854d0e;font-weight:600">Orçado</span>`
   return `
     <div style="min-width:190px;font-family:inherit">
@@ -128,6 +129,7 @@ export function MapaVisitas() {
   const { data: visitas = [], isLoading } = useVisitas()
   const { data: orcPontos = [], isLoading: loadingOrc, refetch: refetchOrc } = useOrcamentosMapa()
   const { data: lista = [] } = useListaOrcamentos()
+  const { data: vendasCount = 0 } = useVendasMapaCount()
   const { data: etiquetasWa = [] } = useEtiquetas()
   const geocodar = useGeocodarVisitas()
   const [vendedorSel, setVendedorSel] = useState<string>('')
@@ -513,6 +515,12 @@ export function MapaVisitas() {
                     <li className="flex items-center gap-2 text-[12px] text-ink"><span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: CINZA_VELHO }} /><span className="truncate">+ de 3 meses</span><span className="ml-auto tabular-nums text-ink-faint">{orcStats.cinza}</span></li>
                     <li className="flex items-center gap-2 text-[12px] text-ink pt-1.5 mt-1 border-t border-border"><span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: AZUL_VENDIDO }} /><span className="truncate font-semibold">✓ Vendido</span><span className="ml-auto tabular-nums text-ink-faint">{orcStats.vendido}</span></li>
                   </ul>
+                  {vendasCount > 0 && (
+                    <div className="text-[10px] text-ink-faint mt-1.5 leading-snug">
+                      {orcStats.vendido} clientes vendidos · {vendasCount.toLocaleString('pt-BR')} vendas no total
+                      <br />(1 pino por cliente — quem comprou +1x conta como 1)
+                    </div>
+                  )}
                 </div>
               )}
               {showVis && vendedores.length > 1 && (

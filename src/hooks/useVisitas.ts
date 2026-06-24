@@ -58,8 +58,22 @@ export interface OrcamentoPonto {
   data_recente: string | null
   vendedor: string | null
   vendido: boolean
+  n_vendas: number
   lat: number
   lng: number
+}
+
+// contagem real de vendas (pontos) com coordenada — pra reconciliar com o mapa-vendas do controle
+export function useVendasMapaCount() {
+  return useQuery<number>({
+    queryKey: ['vendas-mapa-count'],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('vendas_mapa').select('id', { count: 'exact', head: true }).not('lat', 'is', null)
+      if (error) throw error
+      return count ?? 0
+    },
+  })
 }
 
 export function useOrcamentosMapa() {
