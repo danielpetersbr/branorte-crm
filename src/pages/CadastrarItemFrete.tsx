@@ -4,14 +4,14 @@
 // Soft-delete: excluir so marca ativo=false, nada se perde.
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Plus, Pencil, Trash2, Package, X } from 'lucide-react'
+import { ArrowLeft, Plus, Pencil, Trash2, Package, X, ImagePlus, Loader2 } from 'lucide-react'
 import {
-  useFreteCatalogoItens, useCriarItemFrete, useAtualizarItemFrete, useExcluirItemFrete,
+  useFreteCatalogoItens, useCriarItemFrete, useAtualizarItemFrete, useExcluirItemFrete, uploadFotoFrete,
   type FreteCatalogoItem,
 } from '@/hooks/useFrete'
 import { volumeM3 } from '@/lib/calcFrete'
 
-const FORM_VAZIO = { nome: '', c: '', l: '', a: '', peso: '', indiv: false }
+const FORM_VAZIO = { nome: '', c: '', l: '', a: '', peso: '', indiv: false, foto: null as string | null }
 
 export function CadastrarItemFrete() {
   const itens = useFreteCatalogoItens()
@@ -22,6 +22,15 @@ export function CadastrarItemFrete() {
   const [form, setForm] = useState(FORM_VAZIO)
   const [editId, setEditId] = useState<string | null>(null)
   const [erro, setErro] = useState('')
+  const [fotoBusy, setFotoBusy] = useState(false)
+
+  async function onFoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]; if (!f) return
+    setFotoBusy(true); setErro('')
+    try { const url = await uploadFotoFrete(f); setForm(s => ({ ...s, foto: url })) }
+    catch { setErro('Falha no upload da foto.') }
+    finally { setFotoBusy(false) }
+  }
 
   const lista = itens.data ?? []
   const salvando = criar.isPending || atualizar.isPending
@@ -37,6 +46,7 @@ export function CadastrarItemFrete() {
       altura_m: form.a ? Number(form.a) : null,
       peso_kg: form.peso ? Number(form.peso) : null,
       indivisivel: form.indiv,
+      foto_url: form.foto,
     }
     if (editId) {
       atualizar.mutate({ id: editId, ...payload }, {
@@ -61,6 +71,7 @@ export function CadastrarItemFrete() {
       a: it.altura_m != null ? String(it.altura_m) : '',
       peso: it.peso_kg != null ? String(it.peso_kg) : '',
       indiv: it.indivisivel,
+      foto: it.foto_url ?? null,
     })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -115,6 +126,21 @@ export function CadastrarItemFrete() {
               <input type="checkbox" checked={form.indiv} onChange={e => setForm(f => ({ ...f, indiv: e.target.checked }))} /> Indivisível (não pode desmontar)
             </label>
 
+            <div>
+              <label className="text-[11px] text-ink-faint block mb-1">Foto do equipamento <span className="text-ink-faint">(a transportadora vê ao cotar)</span></label>
+              {form.foto ? (
+                <div className="relative inline-block">
+                  <img src={form.foto} alt="" className="h-24 w-24 object-cover rounded-lg border border-border" />
+                  <button type="button" onClick={() => setForm(s => ({ ...s, foto: null }))} className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-red-500 text-white flex items-center justify-center"><X className="h-3.5 w-3.5" /></button>
+                </div>
+              ) : (
+                <label className="flex w-fit items-center gap-2 cursor-pointer px-3 py-2 rounded-lg border border-dashed border-border hover:border-accent text-sm text-ink-muted">
+                  {fotoBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />} {fotoBusy ? 'Enviando…' : 'Adicionar foto'}
+                  <input type="file" accept="image/*" className="hidden" onChange={onFoto} disabled={fotoBusy} />
+                </label>
+              )}
+            </div>
+
             {erro && <p className="text-xs text-red-500">{erro}</p>}
 
             <div className="flex gap-2 pt-1">
@@ -164,7 +190,14 @@ export function CadastrarItemFrete() {
                     const vol = volumeM3(it.comprimento_m ?? 0, it.largura_m ?? 0, it.altura_m ?? 0)
                     return (
                       <tr key={it.id} className={`border-b border-border/60 ${editId === it.id ? 'bg-accent/5' : ''}`}>
-                        <td className="py-2 pr-2 text-ink">{it.nome}</td>
+                        <td className="py-2 pr-2 text-ink">
+                          <div className="flex items-center gap-2">
+                            {it.foto_url
+                              ? <img src={it.foto_url} alt="" className="h-9 w-9 object-cover rounded border border-border shrink-0" />
+                              : <div className="h-9 w-9 rounded border border-border bg-bg shrink-0 flex items-center justify-center text-ink-faint"><Package className="h-4 w-4" /></div>}
+                            <span>{it.nome}</span>
+                          </div>
+                        </td>
                         <td className="py-2 px-2 text-ink-muted">{temDim ? `${it.comprimento_m ?? 0}×${it.largura_m ?? 0}×${it.altura_m ?? 0}m` : '—'}</td>
                         <td className="py-2 px-2 text-ink-muted text-right">{it.peso_kg ? `${it.peso_kg} kg` : '—'}</td>
                         <td className="py-2 px-2 text-ink-muted text-right">{vol > 0 ? `${vol.toFixed(2)} m³` : '—'}</td>

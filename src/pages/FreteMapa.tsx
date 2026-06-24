@@ -4,11 +4,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { useFreteMapa, useTiposCaminhao, UFS_BR, type FreteMapaPonto } from '@/hooks/useFrete'
+import { useFreteMapa, useTiposCaminhao, useFretesFeitos, useCriarFreteFeito, UFS_BR, type FreteMapaPonto, type FreteFeito } from '@/hooks/useFrete'
+import { geocodificarCidade } from '@/lib/calcFrete'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 
 const CENTRO_BR: [number, number] = [-15.78, -47.93]
-const VERDE = '#22c55e', AZUL = '#3b82f6'
+const VERDE = '#22c55e', AZUL = '#3b82f6', AMBAR = '#f59e0b'
 
 function pinIcon(cor: string): L.DivIcon {
   return L.divIcon({
@@ -41,8 +42,81 @@ function popup(p: FreteMapaPonto, caminhao: string): string {
     </div>`
 }
 
+function popupFeito(f: FreteFeito): string {
+  const data = f.data_frete ? new Date(f.data_frete + 'T00:00:00').toLocaleDateString('pt-BR') : (f.created_at ? new Date(f.created_at).toLocaleDateString('pt-BR') : '—')
+  return `
+    <div style="min-width:190px;font-family:inherit">
+      <div style="font-weight:600;font-size:13px">${esc(f.item_nome)}</div>
+      <div style="font-size:12px;color:#64748b">${esc(f.cidade_destino)}/${esc(f.uf_destino)}</div>
+      <div style="font-size:16px;font-weight:700;color:#f59e0b;margin-top:4px">${brl(f.valor)}</div>
+      <div style="font-size:11px;color:#64748b;margin-top:2px">${esc(f.transportadora_nome)}</div>
+      <div style="font-size:11px;color:#94a3b8;margin-top:3px">Frete feito · ${data}</div>
+    </div>`
+}
+
+const inp = 'w-full px-3 py-2 rounded-lg bg-bg border border-border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent'
+
+function RegistrarFeitoModal({ onClose }: { onClose: () => void }) {
+  const criar = useCriarFreteFeito()
+  const [item, setItem] = useState(''); const [cidade, setCidade] = useState(''); const [uf, setUf] = useState('')
+  const [valor, setValor] = useState(''); const [transp, setTransp] = useState(''); const [data, setData] = useState(''); const [obs, setObs] = useState('')
+  const [busy, setBusy] = useState(false); const [erro, setErro] = useState('')
+  async function salvar() {
+    setErro('')
+    if (!item.trim()) { setErro('Informe o equipamento/item.'); return }
+    if (!cidade.trim() || !uf) { setErro('Informe cidade e UF do destino.'); return }
+    setBusy(true)
+    let lat: number | null = null, lng: number | null = null
+    try { const c = await geocodificarCidade(cidade.trim(), uf); if (c) { lat = c.lat; lng = c.lng } } catch { /* segue sem geo */ }
+    try {
+      await criar.mutateAsync({
+        item_nome: item.trim(), cidade_destino: cidade.trim(), uf_destino: uf,
+        destino_lat: lat, destino_lng: lng,
+        valor: valor ? Number(String(valor).replace(',', '.')) : null,
+        transportadora_nome: transp.trim() || null, data_frete: data || null, observacoes: obs.trim() || null,
+      })
+      onClose()
+    } catch (e: any) { setErro('Não consegui salvar: ' + (e?.message ?? e)) }
+    finally { setBusy(false) }
+  }
+  return (
+    <div className="fixed inset-0 z-[1000] bg-black/50 flex items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="bg-surface-1 border border-border rounded-2xl p-5 w-full max-w-md">
+        <h2 className="text-lg font-bold text-ink mb-3">Registrar frete feito</h2>
+        <div className="space-y-2.5">
+          <div><label className="text-xs text-ink-faint block mb-1">Equipamento / item *</label>
+            <input value={item} onChange={e => setItem(e.target.value)} className={inp} placeholder="Ex: Compacta 02" /></div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="col-span-2"><label className="text-xs text-ink-faint block mb-1">Cidade destino *</label>
+              <input value={cidade} onChange={e => setCidade(e.target.value)} className={inp} /></div>
+            <div><label className="text-xs text-ink-faint block mb-1">UF *</label>
+              <select value={uf} onChange={e => setUf(e.target.value)} className={inp}><option value="">—</option>{UFS_BR.map(u => <option key={u} value={u}>{u}</option>)}</select></div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div><label className="text-xs text-ink-faint block mb-1">Valor (R$)</label>
+              <input value={valor} onChange={e => setValor(e.target.value)} inputMode="decimal" className={inp} placeholder="0,00" /></div>
+            <div><label className="text-xs text-ink-faint block mb-1">Data</label>
+              <input type="date" value={data} onChange={e => setData(e.target.value)} className={inp} /></div>
+          </div>
+          <div><label className="text-xs text-ink-faint block mb-1">Transportadora</label>
+            <input value={transp} onChange={e => setTransp(e.target.value)} className={inp} /></div>
+          <div><label className="text-xs text-ink-faint block mb-1">Observação</label>
+            <input value={obs} onChange={e => setObs(e.target.value)} className={inp} /></div>
+          {erro && <p className="text-sm text-red-500">{erro}</p>}
+          <div className="flex gap-2 pt-1">
+            <button onClick={salvar} disabled={busy} className="flex-1 px-4 py-2 rounded-lg bg-accent text-white text-sm font-semibold hover:opacity-90 disabled:opacity-60">{busy ? 'Salvando…' : 'Salvar no mapa'}</button>
+            <button onClick={onClose} className="px-4 py-2 rounded-lg border border-border text-sm text-ink-muted hover:text-ink">Cancelar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function FreteMapa() {
   const { data: pontos = [], isLoading } = useFreteMapa()
+  const feitos = useFretesFeitos()
+  const [modalFeito, setModalFeito] = useState(false)
   const tipos = useTiposCaminhao()
   const [uf, setUf] = useState('')
   const [busca, setBusca] = useState('')
@@ -61,6 +135,12 @@ export function FreteMapa() {
     (!soVencedores || p.vencedor) &&
     (!termo || [p.cidade_destino, p.transportadora_nome, equipLabel(p), p.codigo].some(x => (x || '').toLowerCase().includes(termo)))
   ), [pontos, uf, soVencedores, termo])
+
+  const feitosFiltrados = useMemo(() => (feitos.data ?? []).filter(f =>
+    f.destino_lat != null && f.destino_lng != null &&
+    (!uf || f.uf_destino === uf) &&
+    (!termo || [f.cidade_destino, f.transportadora_nome, f.item_nome].some(x => (x || '').toLowerCase().includes(termo)))
+  ), [feitos.data, uf, termo])
 
   // init mapa (uma vez)
   useEffect(() => {
@@ -94,9 +174,15 @@ export function FreteMapa() {
       m.addTo(layer)
       bounds.push([p.destino_lat, p.destino_lng])
     }
+    for (const f of feitosFiltrados) {
+      const m = L.marker([f.destino_lat as number, f.destino_lng as number], { icon: pinIcon(AMBAR) })
+      m.bindPopup(popupFeito(f))
+      m.addTo(layer)
+      bounds.push([f.destino_lat as number, f.destino_lng as number])
+    }
     if (bounds.length) map.fitBounds(bounds, { padding: [50, 50], maxZoom: 10 })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtrados, tipos.data])
+  }, [filtrados, feitosFiltrados, tipos.data])
 
   return (
     <div className="flex h-[calc(100vh-0px)] flex-col p-4 gap-3 overflow-hidden">
@@ -119,6 +205,8 @@ export function FreteMapa() {
             className={`h-9 px-3 rounded-md border text-[13px] font-semibold transition-colors ${soVencedores ? 'bg-accent-bg border-accent/40 text-accent' : 'bg-surface border-border text-ink-muted hover:text-ink'}`}>
             🏆 Só fechados
           </button>
+          <button onClick={() => setModalFeito(true)}
+            className="h-9 px-3 rounded-md border border-accent/40 bg-accent text-white text-[13px] font-semibold hover:opacity-90">+ Frete feito</button>
         </div>
       </div>
 
@@ -133,8 +221,10 @@ export function FreteMapa() {
         <div className="absolute bottom-3 left-3 z-[400] bg-surface/95 border border-border rounded-lg px-3 py-2 text-[12px] text-ink-muted flex items-center gap-3">
           <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-full" style={{ background: VERDE }} /> Fechado</span>
           <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-full" style={{ background: AZUL }} /> Cotado</span>
+          <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-full" style={{ background: AMBAR }} /> Frete feito</span>
         </div>
       </div>
+      {modalFeito && <RegistrarFeitoModal onClose={() => setModalFeito(false)} />}
     </div>
   )
 }

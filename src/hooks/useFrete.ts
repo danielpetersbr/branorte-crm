@@ -371,6 +371,7 @@ export type FreteEquipItem = {
   largura_m?: number | null;
   altura_m?: number | null;
   indivisivel?: boolean | null;
+  foto_url?: string | null;
 };
 
 export type FreteSolicitacaoStatus =
@@ -650,6 +651,7 @@ export type FreteCatalogoItem = {
   altura_m: number | null;
   peso_kg: number | null;
   indivisivel: boolean;
+  foto_url: string | null;
   ativo: boolean;
   created_at: string;
 };
@@ -661,6 +663,7 @@ export type FreteCatalogoInput = {
   altura_m: number | null;
   peso_kg: number | null;
   indivisivel: boolean;
+  foto_url?: string | null;
 };
 
 export function useFreteCatalogoItens() {
@@ -669,7 +672,7 @@ export function useFreteCatalogoItens() {
     queryFn: async (): Promise<FreteCatalogoItem[]> => {
       const { data, error } = await (supabase as any)
         .from('frete_catalogo_itens')
-        .select('id, nome, comprimento_m, largura_m, altura_m, peso_kg, indivisivel, ativo, created_at')
+        .select('id, nome, comprimento_m, largura_m, altura_m, peso_kg, indivisivel, foto_url, ativo, created_at')
         .eq('ativo', true)
         .order('nome', { ascending: true });
       if (error) throw error;
@@ -815,5 +818,72 @@ export function useAprovarTransp() {
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['transp-contas-admin'] }),
+  });
+}
+
+// ===== Feature 2: link genérico copiável (lance "aberto") pra mandar no WhatsApp =====
+export async function gerarLinkFrete(solicitacaoId: string): Promise<string> {
+  const { data, error } = await (supabase as any).rpc('gerar_link_frete', { p_solic: solicitacaoId });
+  if (error) throw error;
+  return `${window.location.origin}/cotar-frete/${data}`;
+}
+
+// ===== Feature 3: upload de foto do equipamento (bucket frete-anexos, público) =====
+export async function uploadFotoFrete(file: File): Promise<string> {
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const path = `itens/${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from('frete-anexos').upload(path, file, { upsert: false });
+  if (error) throw error;
+  return supabase.storage.from('frete-anexos').getPublicUrl(path).data.publicUrl;
+}
+
+// ===== Feature 4: cotações próximas do mesmo item (haversine sobre frete_mapa) =====
+export type CotacaoProxima = {
+  codigo: string; cidade_destino: string; uf_destino: string; valor: number | null;
+  transportadora_nome: string | null; respondido_em: string; dist_km: number;
+};
+export function useCotacoesProximas(lat: number | null, lng: number | null, itens: string[], raioKm = 100) {
+  const itensKey = itens.join('|');
+  return useQuery({
+    queryKey: ['frete-proximas', lat, lng, itensKey, raioKm],
+    enabled: lat != null && lng != null && itens.length > 0,
+    queryFn: async (): Promise<CotacaoProxima[]> => {
+      const out: CotacaoProxima[] = [];
+      const seen = new Set<string>();
+      for (const item of itens) {
+        const { data, error } = await (supabase as any).rpc('frete_cotacoes_proximas', { p_lat: lat, p_lng: lng, p_item: item, p_raio_km: raioKm });
+        if (error) throw error;
+        for (const r of (data ?? []) as CotacaoProxima[]) { if (!seen.has(r.codigo)) { seen.add(r.codigo); out.push(r); } }
+      }
+      return out.sort((a, b) => a.dist_km - b.dist_km);
+    },
+  });
+}
+
+// ===== Feature 5: fretes já feitos (registro manual da logística) =====
+export type FreteFeito = {
+  id: string; item_nome: string; origem: string | null; cidade_destino: string | null; uf_destino: string | null;
+  destino_lat: number | null; destino_lng: number | null; distancia_km: number | null; valor: number | null;
+  transportadora_nome: string | null; data_frete: string | null; observacoes: string | null; created_at: string;
+};
+export function useFretesFeitos() {
+  return useQuery({
+    queryKey: ['frete-feitos'],
+    queryFn: async (): Promise<FreteFeito[]> => {
+      const { data, error } = await (supabase as any).from('frete_feitos').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as FreteFeito[];
+    },
+  });
+}
+export function useCriarFreteFeito() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: Partial<FreteFeito>) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await (supabase as any).from('frete_feitos').insert({ ...input, created_by: user?.id ?? null });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['frete-feitos'] }),
   });
 }

@@ -218,6 +218,7 @@ function CotacaoCard({ c }: { c: TranspCotacao }) {
   const [erro, setErro] = useState(''); const [ok, setOk] = useState(false)
   const itensTxt = (c.equipamentos_itens ?? []).map(i => `${i.qtd && i.qtd > 1 ? i.qtd + '× ' : ''}${i.nome}`).join(', ')
   const carregar = c.tipo_cotacao === 'carregar'
+  const foto = (c.equipamentos_itens ?? []).find(i => i.foto_url)?.foto_url ?? null
 
   async function enviar() {
     setErro('')
@@ -248,8 +249,13 @@ function CotacaoCard({ c }: { c: TranspCotacao }) {
         )}
       </div>
 
-      <h3 className="text-base font-semibold text-ink mt-2 leading-snug">{itensTxt || c.descricao_carga || 'Carga'}</h3>
-      <div className="text-xs text-ink-muted flex items-center gap-1 mt-1"><MapPin className="h-3.5 w-3.5 shrink-0 text-accent" /> Grão Pará/SC → {c.cidade_destino}/{c.uf_destino}{c.distancia_km ? ` · ${Math.round(c.distancia_km)} km` : ''}</div>
+      <div className="flex gap-3 mt-2">
+        {foto && <a href={foto} target="_blank" rel="noreferrer" className="shrink-0"><img src={foto} alt="" className="h-16 w-16 rounded-lg object-cover border border-border" /></a>}
+        <div className="min-w-0">
+          <h3 className="text-base font-semibold text-ink leading-snug">{itensTxt || c.descricao_carga || 'Carga'}</h3>
+          <div className="text-xs text-ink-muted flex items-center gap-1 mt-1"><MapPin className="h-3.5 w-3.5 shrink-0 text-accent" /> Grão Pará/SC → {c.cidade_destino}/{c.uf_destino}{c.distancia_km ? ` · ${Math.round(c.distancia_km)} km` : ''}</div>
+        </div>
+      </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
         {([

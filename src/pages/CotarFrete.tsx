@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 
-type EquipItem = { nome?: string; qtd?: number }
+type EquipItem = { nome?: string; qtd?: number; foto_url?: string | null }
 type Resumo = {
   codigo: string | null
   transportadora_nome: string | null
@@ -193,6 +193,7 @@ export function CotarFrete() {
         {/* Resumo do frete */}
         <div className="bg-surface-1 border border-border rounded-2xl p-5 mb-4">
           <div className="text-[11px] uppercase tracking-widest text-ink-faint mb-3">O que transportar</div>
+          {(() => { const f = (Array.isArray(r.equipamentos_itens) ? r.equipamentos_itens : []).find(i => i?.foto_url)?.foto_url; return f ? <a href={f} target="_blank" rel="noreferrer" className="block mb-3"><img src={f} alt="" className="w-full max-h-56 object-contain rounded-lg border border-border bg-bg" /></a> : null })()}
           <div className="text-ink font-semibold mb-1">{resumoEquip(r)}</div>
           {r.carga_indivisivel && (
             <div className="inline-block text-[11px] px-2 py-0.5 rounded-full bg-accent/10 text-accent font-medium mb-3">

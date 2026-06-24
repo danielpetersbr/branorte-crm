@@ -6,11 +6,11 @@
 //   ?cliente=&telefone=&uf=&cidade=&vendedor=&origem=extensao
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Truck, Plus, X, MapPin, Loader2, ArrowLeft, CheckCircle2, Package } from 'lucide-react'
+import { Truck, Plus, X, MapPin, Loader2, ArrowLeft, CheckCircle2, Package, Copy, Check, AlertTriangle } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import {
   useFreteCatalogoItens, useTiposCaminhao, useAnttVigente, useMunicipiosUF,
-  useCriarSolicitacao, UFS_BR, type FreteCatalogoItem, type FreteEquipItem,
+  useCriarSolicitacao, useCotacoesProximas, gerarLinkFrete, UFS_BR, type FreteCatalogoItem, type FreteEquipItem,
 } from '@/hooks/useFrete'
 import {
   recomendarCaminhao, calcularPisoANTT, geocodificarCidade, calcularDistanciaOSRM,
@@ -40,9 +40,39 @@ type FreteItemLocal = {
   altura_m: number
   indivisivel: boolean
   catalogo_item_id: number | null
+  foto_url: string | null
 }
 
-const FORM_VAZIO = { nome: '', c: '', l: '', a: '', peso: '', qtd: '1', indiv: false, catId: null as number | null }
+const FORM_VAZIO = { nome: '', c: '', l: '', a: '', peso: '', qtd: '1', indiv: false, catId: null as number | null, foto: null as string | null }
+
+// Feature 2: gera um link público (/cotar-frete/<token>) pra mandar no WhatsApp.
+function LinkRapido({ solicId }: { solicId: string }) {
+  const [link, setLink] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [copiado, setCopiado] = useState(false)
+  async function gerar() {
+    setBusy(true)
+    try { setLink(await gerarLinkFrete(solicId)) } catch { /* ignore */ } finally { setBusy(false) }
+  }
+  function copiar() { if (link) { navigator.clipboard?.writeText(link); setCopiado(true); setTimeout(() => setCopiado(false), 2000) } }
+  return (
+    <div className="mt-6 text-left bg-surface-1 border border-border rounded-xl p-4">
+      <div className="text-sm font-medium text-ink mb-1">Link pra transportadora (WhatsApp)</div>
+      <p className="text-xs text-ink-muted mb-2">Gere um link e mande pra transportadora preencher o valor desse frete.</p>
+      {!link ? (
+        <button onClick={gerar} disabled={busy} className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:opacity-90 disabled:opacity-60 inline-flex items-center gap-1.5">
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />} Gerar link
+        </button>
+      ) : (
+        <div className="flex items-center gap-2 flex-wrap">
+          <input readOnly value={link} onFocus={e => e.currentTarget.select()} className="flex-1 min-w-[180px] px-3 py-2 rounded-lg bg-bg border border-border text-ink text-xs font-mono outline-none" />
+          <button onClick={copiar} className="px-3 py-2 rounded-lg bg-accent text-white text-sm inline-flex items-center gap-1.5">{copiado ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copiado ? 'Copiado' : 'Copiar'}</button>
+          <a href={`https://wa.me/?text=${encodeURIComponent('Segue um frete pra cotação: ' + link)}`} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-lg border border-border text-sm text-ink-muted hover:text-ink">WhatsApp</a>
+        </div>
+      )}
+    </div>
+  )
+}
 
 export function FreteSolicitar() {
   const [params] = useSearchParams()
@@ -89,8 +119,12 @@ export function FreteSolicitar() {
 
   const [erro, setErro] = useState('')
   const [okCodigo, setOkCodigo] = useState<string | null>(null)
+  const [okSolicId, setOkSolicId] = useState<string | null>(null)
 
   const catItens: FreteCatalogoItem[] = catalogo.data ?? []
+
+  // Feature 4: cotações já recebidas do MESMO item perto do destino (raio 100km).
+  const proximas = useCotacoesProximas(latLng?.lat ?? null, latLng?.lng ?? null, itens.map(i => i.nome), 100)
 
   // Atalho: escolher um item do catálogo de frete preenche o formulário (o usuário ainda
   // pode ajustar antes de adicionar). Não adiciona sozinho — só preenche.
@@ -106,6 +140,7 @@ export function FreteSolicitar() {
       qtd: form.qtd || '1',
       indiv: !!it.indivisivel,
       catId: null,
+      foto: it.foto_url ?? null,
     })
   }
 
@@ -128,6 +163,7 @@ export function FreteSolicitar() {
       altura_m: a,
       indivisivel: form.indiv,
       catalogo_item_id: form.catId,
+      foto_url: form.foto,
     }])
     setForm(FORM_VAZIO)
   }
@@ -199,6 +235,7 @@ export function FreteSolicitar() {
       largura_m: it.largura_m || null,
       altura_m: it.altura_m || null,
       indivisivel: it.indivisivel,
+      foto_url: it.foto_url,
     }))
     try {
       const res = await criar.mutateAsync({
@@ -230,6 +267,7 @@ export function FreteSolicitar() {
         status: 'pendente',
       })
       setOkCodigo(res.codigo ?? '✓')
+      setOkSolicId(res.id ?? null)
     } catch (e: any) {
       setErro(`Não consegui salvar: ${e?.message ?? e}`)
     }
@@ -239,7 +277,7 @@ export function FreteSolicitar() {
     setItens([]); setForm(FORM_VAZIO)
     setUf(''); setCidade(''); setLatLng(null); setDistancia(null); setCalcMsg('')
     setClienteNome(''); setDescricao(''); setObs(''); setTipoCotacao('cotacao'); setUrgente(false)
-    setOkCodigo(null); setErro('')
+    setOkCodigo(null); setOkSolicId(null); setErro('')
   }
 
   if (okCodigo) {
@@ -250,6 +288,7 @@ export function FreteSolicitar() {
         </div>
         <h1 className="text-xl font-bold text-ink mb-1">Pedido de frete enviado!</h1>
         <p className="text-sm text-ink-muted mb-1">Código <b className="text-ink">{okCodigo}</b> — foi pra fila do Jardel pra aprovação e disparo às transportadoras.</p>
+        {okSolicId && <LinkRapido solicId={okSolicId} />}
         <div className="flex items-center justify-center gap-2 mt-6">
           <button onClick={novaSolicitacao} className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:opacity-90">Novo pedido</button>
           <Link to="/frete/aprovar" className="px-4 py-2 rounded-lg border border-border text-sm text-ink-muted hover:text-ink">Ver fila</Link>
@@ -317,6 +356,20 @@ export function FreteSolicitar() {
         {carga.indivisivel ? <span className="text-accent">Carga indivisível — cotada como carga completa. </span> : null}
         O piso ANTT é referência interna pro Jardel; as transportadoras preenchem o valor real.
       </p>
+
+      {/* Feature 4: já houve cotação do mesmo item perto do destino */}
+      {(proximas.data?.length ?? 0) > 0 && (
+        <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-amber-600 mb-1">
+            <AlertTriangle className="h-4 w-4" /> Já há cotação desse equipamento por perto (raio 100 km) — talvez nem precise pedir de novo:
+          </div>
+          <ul className="text-xs text-ink-muted space-y-0.5 pl-6 list-disc">
+            {(proximas.data ?? []).slice(0, 5).map(p => (
+              <li key={p.codigo}><b className="text-ink">{p.codigo}</b> · {p.cidade_destino}/{p.uf_destino} · {Math.round(p.dist_km)} km daqui{p.valor != null ? ` · ${fmtMoeda(p.valor)}` : ''}{p.transportadora_nome ? ` · ${p.transportadora_nome}` : ''}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Conteúdo: 3 colunas preenchendo a largura */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
