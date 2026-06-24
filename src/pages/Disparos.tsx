@@ -20,6 +20,7 @@ type Vendedor = {
   enviados_ultima_hora: number
   ultimo_envio_em: string | null
   avaliacao_ativa: boolean
+  funil_ativa: boolean
 }
 
 export function Disparos() {
@@ -186,6 +187,54 @@ export function Disparos() {
     onError: (err: any) => alert('Não foi possível alterar o auto-prospecção: ' + (err?.message || err)),
   })
 
+  // Toggle GLOBAL: automação do funil (move etiqueta sozinho no ritmo certo). OPT-IN (nasce desligada).
+  const { data: funilAtiva } = useQuery<boolean>({
+    queryKey: ['funil-config'],
+    queryFn: async () => {
+      const { data } = await supabase.from('wa_avaliacao_config').select('funil_auto_ativa').eq('id', 1).maybeSingle()
+      return data?.funil_auto_ativa === true
+    },
+    refetchInterval: 15000,
+  })
+  const toggleFunil = useMutation({
+    mutationFn: async (ativa: boolean) => {
+      const { error } = await supabase.from('wa_avaliacao_config')
+        .update({ funil_auto_ativa: ativa, updated_at: new Date().toISOString() }).eq('id', 1)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['funil-config'] }),
+    onError: (err: any) => alert('Não foi possível alterar a automação do funil: ' + (err?.message || err)),
+  })
+
+  // Modo teste (dry-run): quando ligado, a automação só computa/avisa, NÃO aplica etiqueta.
+  const { data: funilDryRun } = useQuery<boolean>({
+    queryKey: ['funil-dryrun'],
+    queryFn: async () => {
+      const { data } = await supabase.from('wa_avaliacao_config').select('funil_dry_run').eq('id', 1).maybeSingle()
+      return data?.funil_dry_run !== false
+    },
+    refetchInterval: 15000,
+  })
+  const toggleFunilDryRun = useMutation({
+    mutationFn: async (dry: boolean) => {
+      const { error } = await supabase.from('wa_avaliacao_config')
+        .update({ funil_dry_run: dry, updated_at: new Date().toISOString() }).eq('id', 1)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['funil-dryrun'] }),
+    onError: (err: any) => alert('Não foi possível alterar o modo teste do funil: ' + (err?.message || err)),
+  })
+
+  // Override POR VENDEDOR da automação do funil (opt-in; efetivo = Geral E este).
+  const toggleFunilVendedor = useMutation({
+    mutationFn: async ({ nome, ativa }: { nome: string; ativa: boolean }) => {
+      const { error } = await supabase.from('vendor_dispatch_status').update({ funil_ativa: ativa }).eq('vendedor_nome', nome)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['vendor-dispatch-status'] }),
+    onError: (err: any) => alert('Não foi possível alterar o funil do vendedor: ' + (err?.message || err)),
+  })
+
   // Estado ao vivo por vendedor pro mapa do escritório (heartbeat + leads hoje)
   const liveMesas = useMemo(() => {
     const m: Record<string, { status: ReturnType<typeof statusVendedor>['status']; pingSec: number | null; versao: string | null; enviadosHoje: number; ultimoEnvio: string | null }> = {}
@@ -278,6 +327,67 @@ export function Disparos() {
           >
             {prospecAtiva === undefined ? '…' : prospecAtiva ? '🏷️ LIGADO' : '⛔ DESLIGADO'}
           </button>
+        </div>
+      </Card>
+
+      {/* AUTOMAÇÃO DO FUNIL: geral (master) + modo teste + por vendedor */}
+      <Card className="p-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
+              <GitBranch className="h-4 w-4 text-accent" /> Automação do Funil
+              {funilAtiva && funilDryRun !== false && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/40 font-bold tracking-wide">MODO TESTE</span>
+              )}
+            </h2>
+            <p className="text-ink-muted text-xs mt-1 max-w-2xl">
+              Move a etiqueta do lead sozinho no ritmo certo (começa por <b>PROSPECÇÃO → NOVO LEAD</b> após o cliente responder + 2 dias úteis). <b>Opt-in</b>: nasce desligada; ligue o <b>Geral</b> e depois <b>só os vendedores de teste</b>. Vale só pra conversas <b>novas</b> a partir de ligar — não mexe no histórico. Muda em ~30s.
+            </p>
+          </div>
+          <button
+            onClick={() => toggleFunil.mutate(!funilAtiva)}
+            disabled={toggleFunil.isPending || funilAtiva === undefined}
+            className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold border transition disabled:opacity-50 ${funilAtiva ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' : 'bg-red-500/15 text-red-300 border-red-500/40'}`}
+          >
+            {funilAtiva === undefined ? '…' : funilAtiva ? '⚙️ Geral LIGADO' : '⛔ Geral DESLIGADO'}
+          </button>
+        </div>
+
+        {/* Modo teste (dry-run) */}
+        <div className={`mt-3 border-t border-border pt-3 flex items-center justify-between flex-wrap gap-2 ${!funilAtiva ? 'opacity-60' : ''}`}>
+          <p className="text-ink-muted text-[11px] max-w-xl">
+            <b>Modo teste (dry-run)</b>: a automação só <b>avisa</b> o que faria, sem mexer na etiqueta de verdade. Deixe ligado no 1º dia; depois desligue pra valer.
+          </p>
+          <button
+            onClick={() => toggleFunilDryRun.mutate(!(funilDryRun !== false))}
+            disabled={toggleFunilDryRun.isPending || funilDryRun === undefined}
+            className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border transition disabled:opacity-50 ${funilDryRun !== false ? 'bg-amber-500/15 text-amber-300 border-amber-500/40' : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'}`}
+          >
+            {funilDryRun === undefined ? '…' : funilDryRun !== false ? '🧪 Teste (não aplica)' : '✅ Valendo (aplica)'}
+          </button>
+        </div>
+
+        {/* Por vendedor */}
+        <div className={`mt-3 border-t border-border pt-3 ${!funilAtiva ? 'opacity-60' : ''}`}>
+          <p className="text-ink-muted text-[11px] mb-2">
+            Por vendedor{!funilAtiva && <span className="text-red-300"> — Geral desligado; ligue o Geral acima pra valer</span>}:
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {(vendedores ?? []).map((v) => {
+              const on = v.funil_ativa === true
+              return (
+                <button
+                  key={v.vendedor_nome}
+                  onClick={() => toggleFunilVendedor.mutate({ nome: v.vendedor_nome, ativa: !on })}
+                  disabled={toggleFunilVendedor.isPending}
+                  title={on ? 'Funil ligado — clique pra desligar' : 'Funil desligado — clique pra ligar'}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium border transition disabled:opacity-60 ${on ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' : 'bg-surface-2/40 text-ink-muted border-border'}`}
+                >
+                  {on ? '⚙️' : '○'} {v.vendedor_nome}
+                </button>
+              )
+            })}
+          </div>
         </div>
       </Card>
 
