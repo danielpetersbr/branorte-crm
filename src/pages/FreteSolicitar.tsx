@@ -333,7 +333,7 @@ export function FreteSolicitar() {
         {okEnviado === 0 && okSolicId && <LinkRapido solicId={okSolicId} />}
         <div className="flex items-center justify-center gap-2 mt-6">
           <button onClick={novaSolicitacao} className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:opacity-90">Novo pedido</button>
-          <Link to="/frete/aprovar" className="px-4 py-2 rounded-lg border border-border text-sm text-ink-muted hover:text-ink">Ver cotações</Link>
+          <Link to="/frete/cotacoes" className="px-4 py-2 rounded-lg border border-border text-sm text-ink-muted hover:text-ink">Ver cotações</Link>
         </div>
       </div>
     )

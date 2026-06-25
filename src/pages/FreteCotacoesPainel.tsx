@@ -5,8 +5,8 @@
 import { useMemo, useState } from 'react'
 import type { DragEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { Truck, MapPin, Trophy, Clock, CheckCircle2, Paperclip, PackageCheck, X, Undo2, Loader2, Send, RotateCw } from 'lucide-react'
-import { useCotacoesPainel, useEscolherVencedor, useFinalizarFrete, useReenviarCotacao, type CotacaoPainel } from '@/hooks/useFrete'
+import { Truck, MapPin, Trophy, Clock, CheckCircle2, Paperclip, PackageCheck, X, Undo2, Loader2, Send, RotateCw, Settings } from 'lucide-react'
+import { useCotacoesPainel, useEscolherVencedor, useFinalizarFrete, useReenviarCotacao, useFreteConfig, useSetFreteConfig, type CotacaoPainel } from '@/hooks/useFrete'
 import { useCan } from '@/hooks/usePermissions'
 
 const COLS = [
@@ -153,6 +153,40 @@ function KanbanCard({ c, todas, podeEscolher, onEscolher, escolhendo, onFechar, 
   )
 }
 
+// Config do disparo automatico (WhatsApp) — migrado da antiga /frete/aprovar.
+// Mexe no flag NOVO frete_poll_ativo (master do pump), nao no disparo_ativo legado.
+// So o gestor (frete.aprovar) ve.
+function ConfigDisparo({ cfg, onSave, saving, onClose }: {
+  cfg: Record<string, string> | undefined
+  onSave: (k: string, v: string) => void
+  saving: boolean
+  onClose: () => void
+}) {
+  const ativo = (cfg?.frete_poll_ativo ?? 'true') === 'true'
+  const soComercial = (cfg?.disparo_so_horario_comercial ?? 'true') === 'true'
+  const cap = cfg?.frete_cap_diario_vendedor ?? '20'
+  return (
+    <div className="mb-4 bg-surface border border-border rounded-xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-ink">Disparo automático (WhatsApp)</h3>
+        <button onClick={onClose} className="text-ink-faint hover:text-ink"><X className="h-4 w-4" /></button>
+      </div>
+      <div className="flex flex-wrap gap-2.5 items-center">
+        <button onClick={() => onSave('frete_poll_ativo', ativo ? 'false' : 'true')} disabled={saving}
+          className={`px-3.5 py-2 rounded-lg text-sm font-semibold border ${ativo ? 'border-green-500/50 text-green-600 bg-green-500/5' : 'border-amber-500/50 text-amber-600 bg-amber-500/5'}`}>
+          Disparo: {ativo ? 'LIGADO' : 'desligado'}
+        </button>
+        <button onClick={() => onSave('disparo_so_horario_comercial', soComercial ? 'false' : 'true')} disabled={saving}
+          className={`px-3.5 py-2 rounded-lg text-sm font-medium border ${soComercial ? 'border-accent/50 text-accent' : 'border-border text-ink-muted'}`}>
+          Só horário comercial (8–18h): {soComercial ? 'sim' : 'não'}
+        </button>
+        <span className="text-xs text-ink-faint">Limite/vendedor/dia: <b className="text-ink">{cap}</b></span>
+      </div>
+      <p className="text-[11px] text-ink-faint mt-2.5">LIGADO = as cotações de "Pedir Frete" saem sozinhas pras transportadoras autorizadas da UF, pelo WhatsApp do próprio vendedor. Desligue pra parar tudo na hora (kill switch).</p>
+    </div>
+  )
+}
+
 export default function FreteCotacoesPainel() {
   const [todas, setTodas] = useState(false)
   const painel = useCotacoesPainel(todas)
@@ -161,6 +195,10 @@ export default function FreteCotacoesPainel() {
   const reenviar = useReenviarCotacao()
   const can = useCan()
   const podeEscolher = can('frete.aprovar')
+  const cfg = useFreteConfig()
+  const setCfg = useSetFreteConfig()
+  const [showConfig, setShowConfig] = useState(false)
+  const disparoAtivo = (cfg.data?.frete_poll_ativo ?? 'true') === 'true'
   const lista = painel.data ?? []
   const [dropAlvo, setDropAlvo] = useState<string | null>(null)
 
@@ -237,10 +275,25 @@ export default function FreteCotacoesPainel() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {podeEscolher && (
+            <button onClick={() => setShowConfig(s => !s)} title="Config do disparo automático"
+              className={`p-2 rounded-lg border inline-flex items-center ${disparoAtivo ? 'border-border text-ink-faint hover:text-ink' : 'border-amber-500/50 text-amber-600'}`}>
+              <Settings className="h-4 w-4" />
+            </button>
+          )}
           <Link to="/frete/mapa" className="px-3 py-1.5 rounded-lg border border-border text-sm text-ink-muted hover:text-ink inline-flex items-center gap-1.5"><MapPin className="h-4 w-4" /> Mapa</Link>
           <Link to="/frete/solicitar" className="px-3 py-1.5 rounded-lg bg-accent text-white text-sm font-medium hover:opacity-90">+ Pedir frete</Link>
         </div>
       </div>
+
+      {podeEscolher && !disparoAtivo && (
+        <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-600">
+          <b>Disparo automático desligado.</b> As cotações entram na fila, mas <b>nada sai no WhatsApp</b> até religar no ⚙️.
+        </div>
+      )}
+      {podeEscolher && showConfig && (
+        <ConfigDisparo cfg={cfg.data} onSave={(k, v) => setCfg.mutate({ chave: k, valor: v })} saving={setCfg.isPending} onClose={() => setShowConfig(false)} />
+      )}
 
       {painel.isLoading && <div className="text-sm text-ink-faint">Carregando…</div>}
 

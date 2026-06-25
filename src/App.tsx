@@ -52,7 +52,8 @@ const FreteCotacao = lazy(() => import('@/pages/FreteCotacao'))
 const FreteTransportadoras = lazy(() => import('@/pages/FreteTransportadoras'))
 const FreteHistorico = lazy(() => import('@/pages/FreteHistorico'))
 const FreteSolicitar = lazy(() => import('@/pages/FreteSolicitar'))
-const FreteAprovar = lazy(() => import('@/pages/FreteAprovar'))
+// FreteAprovar aposentado 2026-06-25 → consolidado no kanban /frete/cotacoes. Rollback: descomentar + restaurar a rota abaixo.
+// const FreteAprovar = lazy(() => import('@/pages/FreteAprovar'))
 const FreteMapa = lazy(() => import('@/pages/FreteMapa'))
 const CadastrarItemFrete = lazy(() => import('@/pages/CadastrarItemFrete'))
 const FreteCotacoesPainel = lazy(() => import('@/pages/FreteCotacoesPainel'))
@@ -320,9 +321,8 @@ function AppRoutes() {
         <Route path="/frete/cotacoes" element={<FreteCotacoesPainel />} />
         <Route path="/frete/itens" element={<CadastrarItemFrete />} />
         <Route path="/frete/mapa" element={<FreteMapa />} />
-        {can('frete.aprovar') && (
-          <Route path="/frete/aprovar" element={<FreteAprovar />} />
-        )}
+        {/* /frete/aprovar aposentado → redireciona pro kanban (config do disparo migrada pra lá) */}
+        <Route path="/frete/aprovar" element={<Navigate to="/frete/cotacoes" replace />} />
         <Route path="/vendidos" element={<Vendidos />} />
         <Route path="/mapa-visitas" element={<MapaVisitas />} />
         <Route path="/controle" element={<ControleDashboard />} />
