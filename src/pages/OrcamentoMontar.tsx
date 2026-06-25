@@ -718,10 +718,6 @@ export function OrcamentoMontar() {
     () => fExp === 1 ? motoresAgrupados : motoresAgrupados.map(m => ({ ...m, valor_total: Math.round(m.valor_total * fExp) })),
     [motoresAgrupados, fExp],
   )
-  const componentesExtrasExib = useMemo(
-    () => fExp === 1 ? componentesExtras : componentesExtras.map(c => ({ ...c, valor: Math.round((Number(c.valor) || 0) * fExp) })),
-    [componentesExtras, fExp],
-  )
   const totalItemsExib = useMemo(
     () => carrinhoExib.reduce((s, c) => s + (c.brinde || c.por_conta_cliente ? 0 : c.valor * c.qtd), 0),
     [carrinhoExib],
@@ -729,8 +725,9 @@ export function OrcamentoMontar() {
   const totalMotoresExib = useMemo(() => motoresAgrupadosExib.reduce((s, m) => s + m.valor_total, 0), [motoresAgrupadosExib])
   const valorAcessoriosExib = fExp === 1 ? valorAcessorios : Math.round(valorAcessorios * fExp)
   const totalEquipExib = totalItemsExib + valorAcessoriosExib
-  const totalComponentesExtrasExib = fExp === 1 ? totalComponentesExtras : Math.round(totalComponentesExtras * fExp)
-  const totalGeralExib = totalEquipExib + totalMotoresExib + totalComponentesExtrasExib
+  // Componentes adicionais NÃO levam o +10% de exportação (são valores que o
+  // vendedor já digita no preço final). Só equipamentos/motores/acessórios levam.
+  const totalGeralExib = totalEquipExib + totalMotoresExib + totalComponentesExtras
 
   // Item pendente de escolha de função (modal). Null = nenhum modal aberto.
   const [escolherFuncaoFor, setEscolherFuncaoFor] = useState<CatalogoItem | null>(null)
@@ -2898,7 +2895,7 @@ export function OrcamentoMontar() {
             freteTxt: freteTxt || null,
           },
           parcelas: parcelasPagamento,
-          componentesExtras: componentesExtrasExib,
+          componentesExtras: componentesExtras,
           obsPorConta: obsPorConta,
         } as CarrinhoSnapshot}
         onClose={() => { setFinalizarOpen(false); setAutoSubmitFromIA(false); }}
