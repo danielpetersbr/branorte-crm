@@ -1035,6 +1035,63 @@ export function useFreteHistorico() {
   });
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Inteligência de preço por estado / por item — a partir das cotações REAIS
+// (lances do leilão + cotações rápidas c/ parceira + fretes feitos). Começa
+// vazio e popula conforme as cotações reais entram.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type MelhorPorUf = {
+  uf: string;
+  transportadora_id: number | null;
+  transportadora_nome: string;
+  rs_km: number;
+  n_cotacoes: number;
+};
+
+/** Melhor preço (menor R$/km real) por UF. Map uf -> melhor. Vazio até ter cotações. */
+export function useFreteMelhorPorUf() {
+  return useQuery({
+    queryKey: ['frete-melhor-por-uf'],
+    queryFn: async (): Promise<Record<string, MelhorPorUf>> => {
+      const { data, error } = await (supabase as any).rpc('frete_melhor_por_uf');
+      if (error) throw error;
+      const out: Record<string, MelhorPorUf> = {};
+      for (const r of (data ?? []) as any[]) {
+        out[String(r.uf)] = {
+          uf: String(r.uf),
+          transportadora_id: r.transportadora_id ?? null,
+          transportadora_nome: r.transportadora_nome ?? '(sem nome)',
+          rs_km: Number(r.rs_km) || 0,
+          n_cotacoes: Number(r.n_cotacoes) || 0,
+        };
+      }
+      return out;
+    },
+    staleTime: 60_000,
+  });
+}
+
+/** Base de cotações REAIS daquele(s) item(ns): R$/km mediano + nº de cotações.
+ *  Multiplique rs_km_mediano pelo km da rota pra ter o valor comparável. */
+export function useFreteBaseItem(nomes: string[]) {
+  const key = nomes.map(n => n.toLowerCase().trim()).filter(Boolean).sort().join('|');
+  return useQuery({
+    queryKey: ['frete-base-item', key],
+    enabled: key.length > 0,
+    queryFn: async (): Promise<{ rs_km_mediano: number | null; n_cotacoes: number }> => {
+      const { data, error } = await (supabase as any).rpc('frete_base_item', { p_nomes: nomes });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      return {
+        rs_km_mediano: row?.rs_km_mediano != null ? Number(row.rs_km_mediano) : null,
+        n_cotacoes: Number(row?.n_cotacoes) || 0,
+      };
+    },
+    staleTime: 60_000,
+  });
+}
+
 /** Portal: marca que a transportadora abriu/está analisando uma cotação. */
 export function useTranspMarcarAnalisando() {
   return useMutation({

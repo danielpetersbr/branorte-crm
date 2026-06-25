@@ -1,13 +1,17 @@
 // /frete/transportadoras - CRUD de transportadoras parceiras.
 // Lista + form modal de edicao. R$/km por tipo de caminhao + UFs atendidas.
 
-import { useState } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import { Truck, Plus, Edit, Trash2, ArrowLeft, Phone, User, Zap, MapPin } from 'lucide-react'
 import {
   useTransportadoras,
   useUpsertTransportadora,
   useDeleteTransportadora,
+  useFreteMelhorPorUf,
+  type MelhorPorUf,
 } from '@/hooks/useFrete'
 import type { TransportadoraParceira } from '@/lib/calcFrete'
 
@@ -49,8 +53,109 @@ function fmtTel(t: string): string {
   return t
 }
 
+const UF_CENTRO: Record<string, [number, number]> = {
+  AC:[-8.77,-70.55],AL:[-9.62,-36.82],AM:[-3.47,-65.10],AP:[1.41,-51.77],BA:[-12.96,-41.70],
+  CE:[-5.20,-39.53],DF:[-15.78,-47.93],ES:[-19.19,-40.34],GO:[-15.98,-49.86],MA:[-5.42,-45.44],
+  MG:[-18.10,-44.38],MS:[-20.51,-54.54],MT:[-12.64,-55.42],PA:[-3.79,-52.48],PB:[-7.28,-36.72],
+  PE:[-8.38,-37.86],PI:[-6.60,-42.28],PR:[-24.89,-51.55],RJ:[-22.25,-42.66],RN:[-5.81,-36.59],
+  RO:[-10.83,-63.34],RR:[1.99,-61.33],RS:[-30.17,-53.50],SC:[-27.45,-50.95],SE:[-10.57,-37.45],
+  SP:[-22.19,-48.79],TO:[-10.17,-48.30],
+}
+const escMap = (s: string) => (s || '').replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] as string))
+
+const fmtKm = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+type MelhorPreco = { nome: string; rs_km: number; fonte: 'real' | 'tabela'; n: number }
+
+// Mapa de cobertura: 1 marcador por UF com o nº de transportadoras que atendem
+// (inclui as que atendem "todas as UFs") + o MELHOR PREÇO (menor R$/km).
+// Prioriza cotação REAL; sem cotação ainda, cai no menor R$/km de truck da tabela.
+function CoberturaMapa({ transportadoras, melhorPorUf }: {
+  transportadoras: TransportadoraParceira[]
+  melhorPorUf: Record<string, MelhorPorUf>
+}) {
+  const divRef = useRef<HTMLDivElement | null>(null)
+  const mapRef = useRef<L.Map | null>(null)
+  const layerRef = useRef<L.LayerGroup | null>(null)
+
+  const porUf = useMemo(() => {
+    const ativos = transportadoras.filter(t => t.ativo)
+    const todas = ativos.filter(t => !t.ufs_atende?.length)
+    const out: Record<string, {
+      especificas: TransportadoraParceira[]
+      todas: TransportadoraParceira[]
+      best: MelhorPreco | null
+    }> = {}
+    for (const uf of Object.keys(UF_CENTRO)) {
+      const esp = ativos.filter(t => t.ufs_atende?.includes(uf))
+      const atendem = [...esp, ...todas]
+      if (!atendem.length) continue
+      // Melhor preço: 1º cotação REAL (menor R$/km histórico); senão menor R$/km de truck da tabela.
+      let best: MelhorPreco | null = null
+      const real = melhorPorUf[uf]
+      if (real && real.rs_km > 0) {
+        best = { nome: real.transportadora_nome, rs_km: real.rs_km, fonte: 'real', n: real.n_cotacoes }
+      } else {
+        const comTruck = atendem.filter(t => (t.rs_km_truck ?? 0) > 0)
+        if (comTruck.length) {
+          const min = comTruck.reduce((a, b) => ((b.rs_km_truck ?? Infinity) < (a.rs_km_truck ?? Infinity) ? b : a))
+          best = { nome: min.nome, rs_km: min.rs_km_truck as number, fonte: 'tabela', n: 0 }
+        }
+      }
+      out[uf] = { especificas: esp, todas, best }
+    }
+    return out
+  }, [transportadoras, melhorPorUf])
+
+  useEffect(() => {
+    if (mapRef.current || !divRef.current) return
+    const map = L.map(divRef.current, { center: [-15.0, -50.5], zoom: 4, scrollWheelZoom: false, zoomControl: true })
+    L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], maxZoom: 20 }).addTo(map)
+    layerRef.current = L.layerGroup().addTo(map)
+    mapRef.current = map
+    setTimeout(() => map.invalidateSize(), 120)
+    return () => { map.remove(); mapRef.current = null; layerRef.current = null }
+  }, [])
+
+  useEffect(() => {
+    const layer = layerRef.current
+    if (!layer) return
+    layer.clearLayers()
+    for (const [uf, info] of Object.entries(porUf)) {
+      const total = info.especificas.length + info.todas.length
+      if (!total) continue
+      const [lat, lng] = UF_CENTRO[uf]
+      const cor = total >= 5 ? '#15803d' : total >= 2 ? '#22c55e' : '#86efac'
+      const icon = L.divIcon({
+        className: 'cob-uf',
+        html: `<div style="background:${cor};color:#06281a;font-weight:800;border:2px solid #fff;border-radius:999px;min-width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:12px;box-shadow:0 1px 5px rgba(0,0,0,.45)">${total}</div>`,
+        iconSize: [28, 28], iconAnchor: [14, 14],
+      })
+      const esp = info.especificas.map(t => `• ${escMap(t.nome)}`).join('<br>')
+      const tds = info.todas.map(t => `• ${escMap(t.nome)} <i style="opacity:.55">(atende todas)</i>`).join('<br>')
+      const b = info.best
+      const bestLine = b
+        ? `<div style="font-size:12px;margin-top:7px;padding-top:6px;border-top:1px solid #e2e8f0">`
+          + `💰 <b>Melhor preço:</b> ${escMap(b.nome)} · <b>R$ ${fmtKm(b.rs_km)}/km</b> `
+          + `<span style="font-size:10px;color:${b.fonte === 'real' ? '#15803d' : '#94a3b8'}">`
+          + (b.fonte === 'real' ? `(real · ${b.n} cot.)` : '(estimado · tabela)')
+          + `</span></div>`
+        : ''
+      const popup = `<div style="font-family:inherit;min-width:185px"><div style="font-weight:700;font-size:13px">${uf} — ${total} transportadora${total === 1 ? '' : 's'}</div>`
+        + (esp ? `<div style="font-size:12px;margin-top:5px">${esp}</div>` : '')
+        + (tds ? `<div style="font-size:11px;color:#64748b;margin-top:5px">${tds}</div>` : '')
+        + bestLine
+        + `</div>`
+      L.marker([lat, lng], { icon }).bindPopup(popup).addTo(layer)
+    }
+  }, [porUf])
+
+  return <div ref={divRef} className="h-[420px] w-full rounded-2xl border border-border overflow-hidden z-0" style={{ minHeight: 420 }} />
+}
+
 export default function FreteTransportadoras() {
   const { data: lista, isLoading } = useTransportadoras()
+  const { data: melhorPorUf } = useFreteMelhorPorUf()
   const upsert = useUpsertTransportadora()
   const del = useDeleteTransportadora()
   const [editando, setEditando] = useState<Partial<TransportadoraParceira> | null>(null)
@@ -94,7 +199,7 @@ export default function FreteTransportadoras() {
   }
 
   return (
-    <div className="container mx-auto py-6 px-4 max-w-5xl">
+    <div className="container mx-auto py-6 px-4 max-w-7xl">
       <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <Link to="/frete" className="text-ink-muted hover:text-ink shrink-0">
@@ -117,8 +222,16 @@ export default function FreteTransportadoras() {
         </button>
       </div>
 
+      {!isLoading && (lista?.length ?? 0) > 0 && (
+        <div className="mb-5">
+          <div className="flex items-center gap-2 mb-2 text-sm font-semibold text-ink"><MapPin className="h-4 w-4 text-accent" /> Cobertura por estado</div>
+          <CoberturaMapa transportadoras={lista ?? []} melhorPorUf={melhorPorUf ?? {}} />
+          <p className="text-xs text-ink-muted mt-2">Número no estado = transportadoras que atendem ele (já contando as "todas as UFs"). Clique pra ver quais e o <b className="text-ink-muted">melhor preço</b> (menor R$/km das cotações recebidas).</p>
+        </div>
+      )}
+
       {isLoading && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {[0, 1, 2, 3].map(i => <div key={i} className="h-28 rounded-2xl border border-border bg-surface animate-pulse" />)}
         </div>
       )}
@@ -130,7 +243,7 @@ export default function FreteTransportadoras() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
         {lista?.map(t => (
           <div key={t.id} className={`group rounded-2xl border p-4 transition-all ${t.ativo ? 'border-border bg-surface hover:border-accent/40 hover:shadow-sm' : 'border-border/60 bg-surface/40 opacity-60'}`}>
             <div className="flex items-start gap-3">

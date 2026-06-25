@@ -36,6 +36,7 @@ import {
   useModeloBranorte,
   useSalvarCotacao,
   useMunicipiosUF,
+  useFreteBaseItem,
   UFS_BR,
 } from '@/hooks/useFrete'
 
@@ -377,6 +378,18 @@ export default function FreteCotacao() {
 
   // ── Estimativa 4: Histórico ──
   const mediaHist = useMediaHistorica(caminhaoEfetivo?.id ?? null, destino?.uf ?? null, distanciaKm)
+
+  // ── Base nas cotações REAIS daquele item (só faz sentido na aba equipamento) ──
+  const itemNomes = useMemo(
+    () => (aba === 'equipamento' ? linhasEquip.filter(l => l.item).map(l => l.item!.nome_curto) : []),
+    [aba, linhasEquip],
+  )
+  const baseItem = useFreteBaseItem(itemNomes)
+  // R$/km mediano das cotações reais × km da rota = valor comparável pra negociar.
+  const baseItemValor = useMemo(() => {
+    if (baseItem.data?.rs_km_mediano == null || !distanciaKm) return null
+    return baseItem.data.rs_km_mediano * distanciaKm
+  }, [baseItem.data, distanciaKm])
 
   // Peso efetivo (real vs cubado) — mostrado pro vendedor entender a cubagem
   const pesoEfetivo = useMemo(() => (carga ? pesoEfetivoKg(carga) : null), [carga])
@@ -976,7 +989,7 @@ export default function FreteCotacao() {
             </div>
           )}
 
-          {/* Frete legal (ANTT) — unico valor */}
+          {/* DESTAQUE = mínimo de ida (tabela ANTT). Comercial (ida+volta × margem) fica secundário. */}
           {caminhaoEfetivo && (
             <div className="relative overflow-hidden p-6 bg-gradient-to-br from-amber-500/15 to-amber-500/5 border-2 border-amber-500/40 rounded-2xl">
               <div className="absolute -top-16 -right-16 w-40 h-40 bg-amber-500/20 rounded-full blur-3xl pointer-events-none" />
@@ -986,46 +999,95 @@ export default function FreteCotacao() {
                     <Building2 className="h-5 w-5 text-amber-600" />
                   </div>
                   <span className="text-xs font-black uppercase tracking-wider text-amber-700 dark:text-amber-400">
-                    Frete estimado
+                    Mínimo de ida · tabela ANTT
                   </span>
                 </div>
                 <div className="text-5xl font-black tabular-nums text-amber-700 dark:text-amber-400 leading-none tracking-tighter">
-                  {formatBRL(freteComercial?.comMargem)}
+                  {formatBRL(freteComercial?.pisoLegalIda)}
                 </div>
                 <div className="text-xs text-ink-muted mt-3 leading-relaxed">
-                  Piso legal mínimo da ida (Res. 6.076/2026): <b className="tabular-nums text-ink">{formatBRL(freteComercial?.pisoLegalIda)}</b>
+                  Piso legal mínimo, <b className="text-ink">só ida</b> (Res. 6.076/2026)
                   {distanciaKm != null && <> · <b className="tabular-nums">{distanciaKm.toLocaleString('pt-BR')} km</b></>}
-                  <br />Modo: <b>{MODOS_CARGA_LABELS[modoCargaBranorte]}</b>
-                  {freteComercial?.idaEVolta && (
-                    <> · <b className="text-amber-700 dark:text-amber-400">cobra ida + volta ({freteComercial.kmCobravel.toLocaleString('pt-BR')} km)</b></>
+                  <br />Caminhão: <b>{caminhaoEfetivo.nome}</b> · Modo: <b>{MODOS_CARGA_LABELS[modoCargaBranorte]}</b>
+                </div>
+
+                {/* Preço sugerido comercial (base ida/volta × margem) — secundário */}
+                <div className="mt-4 pt-4 border-t border-amber-500/20">
+                  <div className="flex items-end justify-between gap-3 flex-wrap">
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-wider text-ink-muted/70">
+                        Preço sugerido (negociar)
+                      </div>
+                      <div className="text-2xl font-black tabular-nums text-ink leading-tight">
+                        {formatBRL(freteComercial?.comMargem)}
+                      </div>
+                      <div className="text-[11px] text-ink-muted mt-0.5">
+                        base {formatBRL(freteComercial?.base)} × margem
+                        {freteComercial?.idaEVolta && (
+                          <> · <b className="text-amber-700 dark:text-amber-400">ida + volta ({freteComercial.kmCobravel.toLocaleString('pt-BR')} km)</b></>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-ink-muted font-bold">× margem</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={margem}
+                        onChange={e => setMargem(e.target.value)}
+                        className="w-16 border border-amber-500/40 rounded-lg px-2 py-1.5 text-sm bg-bg tabular-nums font-bold focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+                      />
+                    </div>
+                  </div>
+                  {modoCargaBranorte === 'completa' && (
+                    <label className="mt-3 flex items-center gap-2 text-xs text-ink-muted cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={temRetorno}
+                        onChange={e => setTemRetorno(e.target.checked)}
+                      />
+                      Tem carga de retorno? <span className="text-ink-muted/70">(cobra só a ida, sem dobrar)</span>
+                    </label>
                   )}
                 </div>
-                <div className="mt-4 flex items-center gap-2">
-                  <span className="text-xs text-ink-muted font-bold">× margem</span>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={margem}
-                    onChange={e => setMargem(e.target.value)}
-                    className="w-16 border border-amber-500/40 rounded-lg px-2 py-1.5 text-sm bg-bg tabular-nums font-bold focus:outline-none focus:ring-2 focus:ring-amber-500/30"
-                  />
-                  <span className="text-[11px] text-ink-muted">sobre a base</span>
-                </div>
-                {modoCargaBranorte === 'completa' && (
-                  <label className="mt-3 flex items-center gap-2 text-xs text-ink-muted cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={temRetorno}
-                      onChange={e => setTemRetorno(e.target.checked)}
-                    />
-                    Tem carga de retorno? <span className="text-ink-muted/70">(cobra só a ida, sem dobrar)</span>
-                  </label>
-                )}
               </div>
             </div>
           )}
         </div>
       )}
+
+        {/* Valor 2 — base nas cotações REAIS daquele item (popula conforme cota) */}
+        {carga && distanciaKm && caminhaoEfetivo && itemNomes.length > 0 && (
+          <div className="relative overflow-hidden p-5 mb-5 bg-gradient-to-br from-violet-500/12 to-violet-500/4 border-2 border-violet-500/30 rounded-2xl">
+            <div className="absolute -top-16 -right-16 w-40 h-40 bg-violet-500/15 rounded-full blur-3xl pointer-events-none" />
+            <div className="relative">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-7 h-7 bg-violet-500/20 rounded-lg flex items-center justify-center">
+                  <Sparkles className="h-4 w-4 text-violet-500" />
+                </div>
+                <span className="text-xs font-black uppercase tracking-wider text-violet-600 dark:text-violet-400">
+                  Cotações reais deste item
+                </span>
+              </div>
+              {baseItemValor != null ? (
+                <>
+                  <div className="text-4xl font-black tabular-nums text-violet-700 dark:text-violet-300 leading-none tracking-tighter">
+                    {formatBRL(baseItemValor)}
+                  </div>
+                  <div className="text-[11px] text-ink-muted mt-2">
+                    Mediana real de <b>{baseItem.data?.n_cotacoes}</b> cotação{(baseItem.data?.n_cotacoes ?? 0) === 1 ? '' : 'ões'} deste item
+                    {' '}· R$ {(baseItem.data?.rs_km_mediano ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/km × {distanciaKm.toLocaleString('pt-BR')} km
+                  </div>
+                </>
+              ) : (
+                <div className="text-xs text-ink-muted leading-relaxed">
+                  Ainda <b>sem cotações reais</b> desse item. Conforme você fecha fretes com as transportadoras,
+                  esse valor aparece aqui sozinho — virando sua referência de mercado.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Comparativos — Parceiras + Histórico (mesma regra ida+volta do card principal) */}
         {carga && distanciaKm && caminhaoEfetivo && (
