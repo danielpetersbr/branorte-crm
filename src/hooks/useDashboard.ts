@@ -2,7 +2,13 @@ import { useQuery } from '@tanstack/react-query'
 import { supabaseAuditoria } from '@/lib/supabase'
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 
-const DASHBOARD_LIMIT = 5000
+// Teto de linhas puxadas da view. Precisa ser MAIOR que o total de contatos, senão
+// o Dashboard corta os mais antigos (ordenado por data desc) e tanto a contagem total
+// quanto o filtro de período ficam errados sobre o conjunto truncado. Os cálculos de
+// forecast/gráficos usam o conjunto TOTAL, por isso o filtro de período é client-side
+// (não dá pra filtrar no servidor sem quebrá-los). TODO: migrar pra agregação no banco
+// (RPC) quando a view passar de ~30k linhas.
+const DASHBOARD_LIMIT = 50000
 const META_MENSAL_REAIS = 2_000_000
 
 export type DashboardPreset = '' | 'hoje' | 'ontem' | '7d' | '30d' | 'mes'

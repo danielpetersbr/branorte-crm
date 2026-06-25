@@ -76,9 +76,8 @@ function rangeFromPreset(preset: DashboardPreset): { from: Date; to: Date } {
   if (preset === 'mes') {
     return { from: startOfDay(new Date(now.getFullYear(), now.getMonth(), 1)), to: endOfDay(now) }
   }
-  // '' = últimos 90 dias (RPC precisa de range válido)
-  const f = new Date(now); f.setDate(f.getDate() - 89)
-  return { from: startOfDay(f), to: endOfDay(now) }
+  // '' = TUDO (desde sempre). Range bem largo pro RPC, sem cortar histórico antigo.
+  return { from: new Date('2024-01-01T00:00:00'), to: endOfDay(now) }
 }
 
 export function useDashboardEtiquetas(preset: DashboardPreset = '') {
