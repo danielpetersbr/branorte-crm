@@ -18,6 +18,7 @@ import {
 } from 'recharts'
 import { Flame, TrendingUp, Users, CheckCircle2, ArrowDown, ArrowUp, Hand, FilePlus2, AlertTriangle, Clock, Ghost, Banknote, ChevronRight, Sun, Moon } from 'lucide-react'
 import { useDarkMode } from '@/hooks/useDarkMode'
+import { RangeCalendar } from '@/components/RangeCalendar'
 
 const PRESET_LABELS: { value: DashboardPreset; label: string }[] = [
   { value: '',     label: 'Tudo' },
@@ -427,25 +428,19 @@ export function Dashboard() {
               {customOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setCustomOpen(false)} />
-                  <div className="absolute right-0 top-full mt-1.5 z-50 bg-surface border border-border rounded-lg shadow-xl p-3 w-[250px]">
+                  <div className="absolute right-0 top-full mt-1.5 z-50 bg-surface border border-border rounded-lg shadow-xl p-3 w-[264px]">
                     <p className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide mb-2">Período personalizado</p>
-                    <label className="block text-[11px] text-ink-muted mb-0.5">De</label>
-                    <input
-                      type="date"
-                      value={customDe}
-                      max={customAte || hojeISO}
-                      onChange={e => setCustomDe(e.target.value)}
-                      className="w-full mb-2 h-8 px-2 rounded-md border border-border bg-bg text-[12px] text-ink"
-                    />
-                    <label className="block text-[11px] text-ink-muted mb-0.5">Até</label>
-                    <input
-                      type="date"
-                      value={customAte}
-                      min={customDe || undefined}
+                    <RangeCalendar
+                      from={customDe}
+                      to={customAte}
                       max={hojeISO}
-                      onChange={e => setCustomAte(e.target.value)}
-                      className="w-full mb-3 h-8 px-2 rounded-md border border-border bg-bg text-[12px] text-ink"
+                      onChange={(f, t) => { setCustomDe(f); setCustomAte(t) }}
                     />
+                    <div className="mt-2 mb-3 text-[11px] text-ink-muted leading-snug">
+                      {customDe
+                        ? <>De <b className="text-ink">{customDe.split('-').reverse().join('/')}</b>{customAte && <> · Até <b className="text-ink">{customAte.split('-').reverse().join('/')}</b></>}</>
+                        : <span className="text-ink-faint">Toque na data inicial e depois na final</span>}
+                    </div>
                     <div className="flex justify-end gap-2">
                       <button
                         onClick={() => setCustomOpen(false)}
