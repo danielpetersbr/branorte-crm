@@ -14,6 +14,7 @@ import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { InstallPrompt } from '@/components/InstallPrompt'
+import { NovaVersaoBanner } from '@/components/NovaVersaoBanner'
 
 // Páginas grandes ou pouco-acessadas vão lazy pra reduzir bundle inicial
 // (era 2.9MB tudo junto). Cada uma carrega só quando vendedor navega pra ela.
@@ -373,6 +374,7 @@ export default function App() {
         <BrowserRouter>
           <AppRoutes />
           <InstallPrompt />
+          <NovaVersaoBanner />
         </BrowserRouter>
       </AuthProvider>
     </QueryClientProvider>

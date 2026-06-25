@@ -392,6 +392,8 @@ export function OrcamentoMontar() {
   const [busca, setBusca] = useState('')
   const [categoria, setCategoria] = useState<string | null>(null)
   const [voltagem, setVoltagem] = useState<Voltagem>('trifasico')
+  // Modo exportação: quando ligado, +10% em TODOS os valores (preview + orçamento gerado).
+  const [exportacao, setExportacao] = useState(false)
   // Tensão dos motores (global pra todos). null = "tensão a confirmar".
   const [tensaoMotores, setTensaoMotores] = useState<TensaoMotor>(null)
   // #32: Marca dos motores (global). Texto livre. null = "marca a confirmar".
@@ -700,6 +702,35 @@ export function OrcamentoMontar() {
     [componentesExtras],
   )
   const totalGeral = totalEquip + totalMotores + totalComponentesExtras
+
+  // ── Modo EXPORTAÇÃO: +10% em todos os valores. fExp=1 quando desligado (zero efeito). ──
+  // Aplica nas versões "*Exib" que alimentam o preview, o resumo e o orçamento gerado.
+  const fExp = exportacao ? 1.1 : 1
+  const carrinhoExib = useMemo(
+    () => fExp === 1 ? carrinho : carrinho.map(c => ({
+      ...c,
+      valor: Math.round(c.valor * fExp),
+      motor_valor_unit: c.motor_valor_unit != null ? Math.round(c.motor_valor_unit * fExp) : c.motor_valor_unit,
+    })),
+    [carrinho, fExp],
+  )
+  const motoresAgrupadosExib = useMemo(
+    () => fExp === 1 ? motoresAgrupados : motoresAgrupados.map(m => ({ ...m, valor_total: Math.round(m.valor_total * fExp) })),
+    [motoresAgrupados, fExp],
+  )
+  const componentesExtrasExib = useMemo(
+    () => fExp === 1 ? componentesExtras : componentesExtras.map(c => ({ ...c, valor: Math.round((Number(c.valor) || 0) * fExp) })),
+    [componentesExtras, fExp],
+  )
+  const totalItemsExib = useMemo(
+    () => carrinhoExib.reduce((s, c) => s + (c.brinde || c.por_conta_cliente ? 0 : c.valor * c.qtd), 0),
+    [carrinhoExib],
+  )
+  const totalMotoresExib = useMemo(() => motoresAgrupadosExib.reduce((s, m) => s + m.valor_total, 0), [motoresAgrupadosExib])
+  const valorAcessoriosExib = fExp === 1 ? valorAcessorios : Math.round(valorAcessorios * fExp)
+  const totalEquipExib = totalItemsExib + valorAcessoriosExib
+  const totalComponentesExtrasExib = fExp === 1 ? totalComponentesExtras : Math.round(totalComponentesExtras * fExp)
+  const totalGeralExib = totalEquipExib + totalMotoresExib + totalComponentesExtrasExib
 
   // Item pendente de escolha de função (modal). Null = nenhum modal aberto.
   const [escolherFuncaoFor, setEscolherFuncaoFor] = useState<CatalogoItem | null>(null)
@@ -2476,6 +2507,18 @@ export function OrcamentoMontar() {
                 Trif
               </button>
             </div>
+            {/* Modo exportação: +10% em todos os valores (só quando ligado) */}
+            <button
+              onClick={() => setExportacao(v => !v)}
+              className={`text-[12px] px-3 py-1.5 rounded-md font-semibold transition-all min-h-[34px] border ${
+                exportacao
+                  ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                  : 'bg-surface text-ink-muted border-border hover:bg-surface-3'
+              }`}
+              title="Exportação: o orçamento GERADO (PDF/Word) sai com +10% em todos os valores. No builder você edita os valores normais."
+            >
+              {exportacao ? '🌎 Exportação +10% ✓' : '🌎 Ativar exportação'}
+            </button>
             <div className="flex items-center gap-1 sm:gap-2">
               <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-md bg-surface border border-border">
                 <span className="text-[11px] text-ink-faint">{carrinho.length}</span>
@@ -2804,7 +2847,7 @@ export function OrcamentoMontar() {
         autoSubmitOnOpen={autoSubmitFromIA}
         snapshot={{
           voltagem,
-          itens: carrinho.map(c => ({
+          itens: carrinhoExib.map(c => ({
             nome: c.nome_custom || c.nome,  // usa nome customizado se vendedor editou
             qtd: c.qtd,
             valor: c.valor,
@@ -2837,12 +2880,12 @@ export function OrcamentoMontar() {
             motor_incluso_manual: c.motor_incluso_manual,
             motores_incluso_idx: c.motores_incluso_idx,
           })),
-          motoresAgrupados,
-          acessorios: acessorios ? { pct: acessorios.pct, items: acessorios.items, valor: valorAcessorios } : null,
-          totalItems,
-          totalMotores,
-          totalEquip,
-          totalGeral,
+          motoresAgrupados: motoresAgrupadosExib,
+          acessorios: acessorios ? { pct: acessorios.pct, items: acessorios.items, valor: valorAcessoriosExib } : null,
+          totalItems: totalItemsExib,
+          totalMotores: totalMotoresExib,
+          totalEquip: totalEquipExib,
+          totalGeral: totalGeralExib,
           fotoPrincipal,
           tensaoMotores,
           marcaMotores,
@@ -2855,7 +2898,7 @@ export function OrcamentoMontar() {
             freteTxt: freteTxt || null,
           },
           parcelas: parcelasPagamento,
-          componentesExtras: componentesExtras,
+          componentesExtras: componentesExtrasExib,
           obsPorConta: obsPorConta,
         } as CarrinhoSnapshot}
         onClose={() => { setFinalizarOpen(false); setAutoSubmitFromIA(false); }}
