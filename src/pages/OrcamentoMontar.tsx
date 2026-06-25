@@ -761,6 +761,7 @@ export function OrcamentoMontar() {
         qtd: it.qtd,
         subtotal: it.valor * it.qtd,
         motorValor: motorPorUid.get(it.uid) || 0,
+        specs: it.specs, // mantém a descrição original do item no FINAME
       }))
     return montarItensFiname(inputs, valorAcessoriosExib + totalComponentesExtras)
   }, [finameMode, carrinhoExib, motoresAgrupadosExib, valorAcessoriosExib, totalComponentesExtras])

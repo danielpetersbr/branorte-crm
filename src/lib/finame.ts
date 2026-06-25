@@ -179,6 +179,8 @@ export interface FinameInputItem {
   subtotal: number
   /** Total de motor desse item (somado de motoresAgrupados por item_uid). */
   motorValor: number
+  /** Specs/descrição ORIGINAL do item — mantida no FINAME (só remove foto, não a descrição). */
+  specs?: string[]
 }
 
 export interface FinameResultItem {
@@ -277,8 +279,16 @@ export function montarItensFiname(itens: FinameInputItem[], poolExtra: number): 
     const unit = Math.round(lineTotal / qtd)
     totalGeral += unit * qtd
     const temEmbutido = (p.in.motorValor || 0) > 0 || shares[i] > 0
+    // Mantém a DESCRIÇÃO ORIGINAL do item (FINAME só tira a foto, não a descrição).
+    // Remove linhas já-FINAME pra ser idempotente ao reabrir (sem duplicar código/inclusos).
+    const baseSpecs = (p.in.specs ?? []).filter(s =>
+      typeof s === 'string'
+      && !/c[oó]digo\s*finame/i.test(s)
+      && !/inclus[oa]s?\s+no\s+conjunto/i.test(s),
+    )
+    const descricao = baseSpecs.length ? baseSpecs : [p.fin.descricaoPadrao]
     const specs = [
-      p.fin.descricaoPadrao,
+      ...descricao,
       ...(temEmbutido ? [FINAME_INCLUSOS_TXT] : []),
       `Código FINAME: ${p.fin.codigoFiname}.`,
     ]
