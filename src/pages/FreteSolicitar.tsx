@@ -255,6 +255,12 @@ export function FreteSolicitar() {
       indivisivel: it.indivisivel,
       foto_url: it.foto_url,
     }))
+    // Geocodifica o destino mesmo se o vendedor não clicou em "Calcular distância" —
+    // senão o frete entra sem coordenada e some do Mapa de Fretes.
+    let coords = latLng
+    if (!coords) {
+      try { coords = await geocodificarCidade(cidade.trim(), uf) } catch { /* segue sem coord */ }
+    }
     try {
       const res = await criar.mutateAsync({
         origem,
@@ -264,8 +270,8 @@ export function FreteSolicitar() {
         cliente_telefone: null,
         cidade_destino: cidade.trim(),
         uf_destino: uf,
-        destino_lat: latLng?.lat ?? null,
-        destino_lng: latLng?.lng ?? null,
+        destino_lat: coords?.lat ?? null,
+        destino_lng: coords?.lng ?? null,
         distancia_km: distancia,
         equipamentos_itens,
         descricao_carga: descricao.trim() || null,
