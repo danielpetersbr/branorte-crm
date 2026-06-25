@@ -54,7 +54,8 @@ export const FINAME_MAP: FinameTipo[] = [
   },
   {
     key: 'MOINHO_MARTELO',
-    aliases: ['moinho martelo', 'moinho de martelo', 'moinho'],
+    // Triturador/trituradora de grãos é moinho de martelo → mesmo código FINAME.
+    aliases: ['moinho martelo', 'moinho de martelo', 'moinho', 'triturador', 'desintegrador', 'moedor'],
     nomeFiname: 'Moinho Martelo',
     codigoFiname: '03625516',
     descricaoPadrao: 'Equipamento destinado à moagem de materiais.',
