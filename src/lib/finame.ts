@@ -279,18 +279,26 @@ export function montarItensFiname(itens: FinameInputItem[], poolExtra: number): 
     const qtd = Math.max(1, p.in.qtd)
     const unit = Math.round(lineTotal / qtd)
     totalGeral += unit * qtd
-    const temEmbutido = (p.in.motorValor || 0) > 0 || shares[i] > 0
     // Mantém a DESCRIÇÃO ORIGINAL do item (FINAME só tira a foto, não a descrição).
-    // Remove linhas já-FINAME pra ser idempotente ao reabrir (sem duplicar código/inclusos).
-    const baseSpecs = (p.in.specs ?? []).filter(s =>
-      typeof s === 'string'
-      && !/c[oó]digo\s*finame/i.test(s)
-      && !/inclus[oa]s?\s+no\s+conjunto/i.test(s),
-    )
+    //  - remove linhas já-FINAME (idempotente ao reabrir): "Código FINAME" e a antiga
+    //    "Motor e acessórios... inclusos no conjunto";
+    //  - no FINAME o motor é SEMPRE incluso (o valor já soma o motor), então troca
+    //    "(motor não incluso)" por "(motor incluso)" nas linhas de acionamento.
+    const motorFolded = (p.in.motorValor || 0) > 0
+    const baseSpecs = (p.in.specs ?? [])
+      .filter(s =>
+        typeof s === 'string'
+        && !/c[oó]digo\s*finame/i.test(s)
+        && !/inclus[oa]s?\s+no\s+conjunto/i.test(s),
+      )
+      .map(s =>
+        motorFolded && /acionamento|motorredutor|moto\s*redutor|\bmotor\b|pot[êe]ncia|\bcv\b/i.test(s)
+          ? s.replace(/n[ãa]o\s+(inclus)/gi, '$1')
+          : s,
+      )
     const descricao = baseSpecs.length ? baseSpecs : [p.fin.descricaoPadrao]
     const specs = [
       ...descricao,
-      ...(temEmbutido ? [FINAME_INCLUSOS_TXT] : []),
       `Código FINAME: ${p.fin.codigoFiname}.`,
     ]
     return {
