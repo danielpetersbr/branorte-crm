@@ -3,7 +3,7 @@
 
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Truck, Plus, Edit, Trash2, ArrowLeft } from 'lucide-react'
+import { Truck, Plus, Edit, Trash2, ArrowLeft, Phone, User, Zap, ShieldCheck, MapPin } from 'lucide-react'
 import {
   useTransportadoras,
   useUpsertTransportadora,
@@ -35,6 +35,20 @@ function formNova(): Partial<TransportadoraParceira> {
     autorizado: false,
     prioridade: 100,
   }
+}
+
+function iniciais(nome: string): string {
+  const parts = (nome || '').trim().split(/\s+/).filter(Boolean)
+  if (!parts.length) return '?'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+function fmtTel(t: string): string {
+  const d = (t || '').replace(/\D/g, '')
+  const n = d.startsWith('55') ? d.slice(2) : d
+  if (n.length === 11) return `(${n.slice(0, 2)}) ${n.slice(2, 7)}-${n.slice(7)}`
+  if (n.length === 10) return `(${n.slice(0, 2)}) ${n.slice(2, 6)}-${n.slice(6)}`
+  return t
 }
 
 export default function FreteTransportadoras() {
@@ -85,90 +99,112 @@ export default function FreteTransportadoras() {
 
   return (
     <div className="container mx-auto py-6 px-4 max-w-5xl">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
         <div className="flex items-center gap-3">
-          <Link to="/frete" className="text-ink-muted hover:text-ink">
+          <Link to="/frete" className="text-ink-muted hover:text-ink shrink-0">
             <ArrowLeft className="h-5 w-5" />
           </Link>
-          <Truck className="h-6 w-6 text-accent" />
-          <h1 className="text-2xl font-bold">Transportadoras Parceiras</h1>
+          <div className="h-10 w-10 rounded-xl bg-accent/15 text-accent flex items-center justify-center shrink-0">
+            <Truck className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-ink leading-tight">Transportadoras Parceiras</h1>
+            <p className="text-xs text-ink-muted">{lista?.length ?? 0} cadastrada{(lista?.length ?? 0) === 1 ? '' : 's'} · {(lista ?? []).filter(t => t.autorizado && t.ativo).length} na auto-cotação</p>
+          </div>
         </div>
         <button
           type="button"
           onClick={abrirNovo}
-          className="px-4 py-2 bg-accent text-white rounded text-sm font-medium hover:opacity-90 flex items-center gap-2"
+          className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:opacity-90 flex items-center gap-2 shadow-sm"
         >
           <Plus className="h-4 w-4" /> Nova
         </button>
       </div>
 
       {/* Contas do portal de transportadoras — aprovar acesso às cotações */}
-      <div className="border rounded-lg p-4 mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold">Contas do portal <span className="text-xs text-ink-muted font-normal">(/transportadora)</span></h2>
-          <span className="text-xs text-ink-muted">{(contas.data ?? []).filter(c => !c.aprovado).length} aguardando aprovação</span>
+      <div className="rounded-2xl border border-border bg-surface p-4 mb-6">
+        <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+          <h2 className="font-semibold text-ink flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-accent" /> Contas do portal <span className="text-xs text-ink-faint font-normal">(/transportadora)</span></h2>
+          {(contas.data ?? []).filter(c => !c.aprovado).length > 0
+            ? <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 font-medium">{(contas.data ?? []).filter(c => !c.aprovado).length} aguardando</span>
+            : <span className="text-xs text-ink-faint">tudo aprovado</span>}
         </div>
         {contas.isLoading && <div className="text-sm text-ink-muted">Carregando…</div>}
         {!contas.isLoading && (contas.data?.length ?? 0) === 0 && (
-          <div className="text-sm text-ink-muted">Nenhuma transportadora cadastrada no portal ainda.</div>
+          <div className="text-sm text-ink-faint">Nenhuma transportadora entrou pelo portal ainda.</div>
         )}
         <div className="space-y-2">
           {(contas.data ?? []).map(c => (
-            <div key={c.user_id} className="flex items-center justify-between gap-3 border rounded p-2.5">
-              <div className="min-w-0">
-                <div className="font-medium text-sm flex items-center gap-2">{c.nome}
-                  {c.aprovado
-                    ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-600">aprovada</span>
-                    : <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600">aguardando</span>}
+            <div key={c.user_id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-bg p-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="h-9 w-9 shrink-0 rounded-lg bg-surface-2 text-ink-muted flex items-center justify-center text-xs font-bold">{iniciais(c.nome)}</div>
+                <div className="min-w-0">
+                  <div className="font-medium text-sm text-ink flex items-center gap-2">{c.nome}
+                    {c.aprovado
+                      ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-600 font-medium">aprovada</span>
+                      : <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 font-medium">aguardando</span>}
+                  </div>
+                  <div className="text-xs text-ink-muted truncate">{c.email}{c.cnpj ? ` · ${c.cnpj}` : ''} · atende {c.estados.join(', ') || '—'}</div>
                 </div>
-                <div className="text-xs text-ink-muted truncate">{c.email}{c.cnpj ? ` · ${c.cnpj}` : ''} · atende: {c.estados.join(', ') || '—'}</div>
               </div>
               {c.aprovado
-                ? <button type="button" onClick={() => aprovar.mutate({ user_id: c.user_id, aprovar: false })} disabled={aprovar.isPending} className="px-3 py-1.5 text-xs border rounded hover:bg-surface-2 shrink-0">Revogar</button>
-                : <button type="button" onClick={() => aprovar.mutate({ user_id: c.user_id, aprovar: true })} disabled={aprovar.isPending} className="px-3 py-1.5 text-xs bg-accent text-white rounded font-medium hover:opacity-90 shrink-0">Aprovar</button>}
+                ? <button type="button" onClick={() => aprovar.mutate({ user_id: c.user_id, aprovar: false })} disabled={aprovar.isPending} className="px-3 py-1.5 text-xs border border-border rounded-lg text-ink-muted hover:text-ink hover:bg-surface-2 shrink-0">Revogar</button>
+                : <button type="button" onClick={() => aprovar.mutate({ user_id: c.user_id, aprovar: true })} disabled={aprovar.isPending} className="px-3 py-1.5 text-xs bg-accent text-white rounded-lg font-medium hover:opacity-90 shrink-0">Aprovar</button>}
             </div>
           ))}
         </div>
       </div>
 
-      {isLoading && <div className="text-sm text-ink-muted">Carregando…</div>}
-
-      {!isLoading && (lista?.length ?? 0) === 0 && (
-        <div className="border border-dashed rounded p-8 text-center text-ink-muted">
-          Nenhuma transportadora cadastrada ainda. Clique em "Nova" pra começar.
+      {isLoading && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {[0, 1, 2, 3].map(i => <div key={i} className="h-28 rounded-2xl border border-border bg-surface animate-pulse" />)}
         </div>
       )}
 
-      <div className="space-y-2">
+      {!isLoading && (lista?.length ?? 0) === 0 && (
+        <div className="rounded-2xl border border-dashed border-border p-10 text-center text-ink-faint">
+          <Truck className="h-8 w-8 mx-auto mb-2 opacity-40" />
+          Nenhuma transportadora cadastrada ainda. Clique em <b className="text-ink-muted">"Nova"</b> pra começar.
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {lista?.map(t => (
-          <div key={t.id} className={`border rounded p-3 ${!t.ativo ? 'opacity-50' : ''}`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-medium flex items-center gap-2">{t.nome}
-                  {t.autorizado && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-600">autorizada</span>}
+          <div key={t.id} className={`group rounded-2xl border p-4 transition-all ${t.ativo ? 'border-border bg-surface hover:border-accent/40 hover:shadow-sm' : 'border-border/60 bg-surface/40 opacity-60'}`}>
+            <div className="flex items-start gap-3">
+              <div className={`h-10 w-10 shrink-0 rounded-xl flex items-center justify-center text-sm font-bold ${t.autorizado && t.ativo ? 'bg-accent/15 text-accent' : 'bg-surface-2 text-ink-muted'}`}>
+                {iniciais(t.nome)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="font-semibold text-ink truncate">{t.nome}</h3>
+                  {t.autorizado
+                    ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-600 font-medium inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-green-500" /> auto-cotação</span>
+                    : <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-2 text-ink-faint font-medium">só manual</span>}
+                  {!t.ativo && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-500 font-medium">inativa</span>}
                 </div>
-                <div className="text-xs text-ink-muted">
-                  {t.telefone} {t.email && `· ${t.email}`}
-                  {t.ufs_atende.length > 0 && <> · atende: {t.ufs_atende.join(', ')}</>}
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-ink-muted">
+                  {t.telefone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3 shrink-0" />{fmtTel(t.telefone)}</span>}
+                  {t.contato_nome && <span className="inline-flex items-center gap-1"><User className="h-3 w-3 shrink-0" />{t.contato_nome}</span>}
+                  {t.autorizado && <span className="inline-flex items-center gap-1" title="ordem de envio na auto-cotação"><Zap className="h-3 w-3 shrink-0" />ordem {t.prioridade ?? 100}</span>}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {t.ufs_atende.length === 0
+                    ? <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-accent/10 text-accent font-medium inline-flex items-center gap-1"><MapPin className="h-2.5 w-2.5" /> atende todas as UFs</span>
+                    : t.ufs_atende.map(uf => <span key={uf} className="text-[10px] px-1.5 py-0.5 rounded-md bg-surface-2 text-ink-muted font-medium">{uf}</span>)}
                 </div>
               </div>
-              <div className="flex gap-1">
-                <button type="button" onClick={() => abrirEdit(t)} className="p-1 text-ink-muted hover:text-accent">
+              <div className="flex gap-0.5 shrink-0">
+                <button type="button" onClick={() => abrirEdit(t)} title="Editar" className="p-1.5 rounded-lg text-ink-faint hover:text-accent hover:bg-surface-2">
                   <Edit className="h-4 w-4" />
                 </button>
                 {t.ativo && (
-                  <button type="button" onClick={() => excluir(t.id)} className="p-1 text-ink-muted hover:text-red-500">
+                  <button type="button" onClick={() => excluir(t.id)} title="Inativar" className="p-1.5 rounded-lg text-ink-faint hover:text-red-500 hover:bg-red-500/10">
                     <Trash2 className="h-4 w-4" />
                   </button>
                 )}
               </div>
             </div>
-            {(t.contato_nome || t.prioridade != null) && (
-              <div className="mt-1.5 text-xs text-ink-muted">
-                {t.contato_nome && <>Responsável: {t.contato_nome}</>}
-                {t.autorizado && <> · auto-cotação (ordem {t.prioridade ?? 100})</>}
-              </div>
-            )}
           </div>
         ))}
       </div>
