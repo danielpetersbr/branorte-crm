@@ -5,8 +5,8 @@
 import { useMemo, useState } from 'react'
 import type { DragEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { Truck, MapPin, Trophy, Clock, CheckCircle2, Paperclip, PackageCheck, X, Undo2, Loader2, Send } from 'lucide-react'
-import { useCotacoesPainel, useEscolherVencedor, useFinalizarFrete, type CotacaoPainel } from '@/hooks/useFrete'
+import { Truck, MapPin, Trophy, Clock, CheckCircle2, Paperclip, PackageCheck, X, Undo2, Loader2, Send, RotateCw } from 'lucide-react'
+import { useCotacoesPainel, useEscolherVencedor, useFinalizarFrete, useReenviarCotacao, type CotacaoPainel } from '@/hooks/useFrete'
 import { useCan } from '@/hooks/usePermissions'
 
 const COLS = [
@@ -33,7 +33,7 @@ function vencedorDe(c: CotacaoPainel) {
   return c.lances.find(l => l.status === 'vencedor') ?? null
 }
 
-function KanbanCard({ c, todas, podeEscolher, onEscolher, escolhendo, onFechar, onReabrir, onDragStart }: {
+function KanbanCard({ c, todas, podeEscolher, onEscolher, escolhendo, onFechar, onReabrir, onDragStart, onReenviar }: {
   c: CotacaoPainel
   todas: boolean
   podeEscolher: boolean
@@ -42,6 +42,7 @@ function KanbanCard({ c, todas, podeEscolher, onEscolher, escolhendo, onFechar, 
   onFechar: (c: CotacaoPainel) => void
   onReabrir: (c: CotacaoPainel) => void
   onDragStart: (e: DragEvent, c: CotacaoPainel) => void
+  onReenviar: (lanceId: string) => void
 }) {
   const fechada = c.status === 'fechada'
   const fechado = c.derived_status === 'fechado'
@@ -117,8 +118,23 @@ function KanbanCard({ c, todas, podeEscolher, onEscolher, escolhendo, onFechar, 
             </div>
           )}
           {comValor.length === 0 && analisando.length > 0 && (
-            <div className="mt-2 pt-2 border-t border-border text-xs text-blue-500/90">
-              {analisando.map(l => l.transportadora_nome).filter(Boolean).join(', ') || `${analisando.length} transportadora(s)`} — aguardando resposta…
+            <div className="mt-2 pt-2 border-t border-border space-y-1.5">
+              {analisando.map(l => {
+                const expirou = l.status === 'expirado'
+                return (
+                  <div key={l.lance_id} className="flex items-center gap-2 text-xs">
+                    <span className={`flex-1 min-w-0 truncate ${expirou ? 'text-amber-600' : 'text-blue-500/90'}`}>
+                      {l.transportadora_nome ?? 'Transportadora'} — {expirou ? '⏱️ sem resposta' : 'aguardando…'}
+                    </span>
+                    {podeEscolher && (
+                      <button onClick={() => onReenviar(l.lance_id)} title="Reenviar cotação"
+                        className="shrink-0 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border border-border text-ink-muted hover:text-accent hover:border-accent">
+                        <RotateCw className="h-3 w-3" /> Reenviar
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
           {c.lances.length === 0 && (
@@ -142,6 +158,7 @@ export default function FreteCotacoesPainel() {
   const painel = useCotacoesPainel(todas)
   const vencedor = useEscolherVencedor()
   const finalizar = useFinalizarFrete()
+  const reenviar = useReenviarCotacao()
   const can = useCan()
   const podeEscolher = can('frete.aprovar')
   const lista = painel.data ?? []
@@ -184,6 +201,12 @@ export default function FreteCotacoesPainel() {
     if (!confirm('Reabrir esse frete e voltar pra Concluída?')) return
     try { await finalizar.mutateAsync({ solicitacao_id: c.id, valor_final: null }) }
     catch (err: any) { alert(`Erro: ${err?.message ?? err}`) }
+  }
+
+  async function onReenviar(lanceId: string) {
+    if (!confirm('Reenviar essa cotação pra transportadora agora?')) return
+    try { await reenviar.mutateAsync({ lance_id: lanceId }) }
+    catch (err: any) { alert(`Erro ao reenviar: ${err?.message ?? err}`) }
   }
 
   function onDragStart(e: DragEvent, c: CotacaoPainel) {
@@ -247,7 +270,7 @@ export default function FreteCotacoesPainel() {
                   )}
                   {cards.map(c => (
                     <KanbanCard key={c.id} c={c} todas={todas} podeEscolher={podeEscolher} onEscolher={escolher}
-                      escolhendo={vencedor.isPending} onFechar={abrirFechar} onReabrir={reabrir} onDragStart={onDragStart} />
+                      escolhendo={vencedor.isPending} onFechar={abrirFechar} onReabrir={reabrir} onDragStart={onDragStart} onReenviar={onReenviar} />
                   ))}
                 </div>
                 {col.key === 'fechado' && cards.length > 0 && (
