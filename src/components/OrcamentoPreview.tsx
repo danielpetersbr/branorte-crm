@@ -142,6 +142,10 @@ export interface OrcamentoPreviewProps {
   // dos itens (nomes FINAME, motor/acessórios embutidos no valor) é feita ANTES, em
   // OrcamentoMontar — aqui só ajustamos a RENDERIZAÇÃO.
   finameMode?: boolean
+  // FINAME: soma atual das linhas (com overrides do vendedor). Se != totalGeral (total
+  // travado), mostra aviso abaixo do total + botão pra aceitar a soma como novo total.
+  finameSomaItens?: number
+  onFinameAceitarTotal?: () => void
 
   // Tensão dos motores (global pra todos). null = "a confirmar".
   tensaoMotores?: 220 | 380 | 660 | null
@@ -341,6 +345,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     obsPorConta = null, onUpdateObsPorConta,
     renderMode = false,
     finameMode = false,
+    finameSomaItens, onFinameAceitarTotal,
     tensaoMotores = null, onUpdateTensaoMotores,
     marcaMotores = null, onUpdateMarcaMotores,
     desconto, onUpdateDesconto,
@@ -1930,6 +1935,28 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     </span>
                   </div>
                 </div>
+
+                {/* FINAME: aviso quando a soma das linhas não bate com o total travado.
+                    Só aparece na edição (print:hidden) — bloqueia a geração até fechar. */}
+                {finameMode && !renderMode && finameSomaItens != null && finameSomaItens !== totalGeral && (
+                  <div className="mt-2 px-4 py-3 bg-amber-50 border border-amber-300 rounded-lg text-[14px] text-amber-900 print:hidden">
+                    <div className="font-bold">⚠ A soma dos itens não bate com o total da proposta</div>
+                    <div className="mt-1">
+                      Itens somam <b>R$ {formatBRLBare(finameSomaItens)}</b> · total travado <b>R$ {formatBRLBare(totalGeral)}</b>.
+                    </div>
+                    <div className="mt-1 text-[13px] text-amber-800">
+                      Ajuste os valores pra fechar em R$ {formatBRLBare(totalGeral)} — ou use a soma atual como novo total:
+                    </div>
+                    {onFinameAceitarTotal && (
+                      <button
+                        onClick={onFinameAceitarTotal}
+                        className="mt-2 px-4 py-2 rounded-md bg-amber-500 hover:bg-amber-600 text-white font-bold text-[13px]"
+                      >
+                        Usar R$ {formatBRLBare(finameSomaItens)} como novo total
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {/* Caixa editável de desconto + total final (modo edit) */}
                 {!renderMode && onUpdateDesconto && (

@@ -401,6 +401,12 @@ export function OrcamentoMontar() {
   // nome+código FINAME, motor/acessórios embutidos no valor). NÃO-destrutivo: o
   // carrinho real não muda; desligar volta 100% ao orçamento normal.
   const [finameMode, setFinameMode] = useState(false)
+  // FINAME: override manual do valor de cada linha (por uid). Edita o valor FINAL
+  // (já embutido), sem re-distribuir motor/acessórios por cima.
+  const [finameValorOverride, setFinameValorOverride] = useState<Record<string, number>>({})
+  // FINAME: total da proposta "travado" (referência). A soma das linhas precisa bater
+  // com ele pra gerar; senão o vendedor ajusta os valores ou aceita o novo total.
+  const [finameTotalTravado, setFinameTotalTravado] = useState<number | null>(null)
   // Tensão dos motores (global pra todos). null = "tensão a confirmar".
   const [tensaoMotores, setTensaoMotores] = useState<TensaoMotor>(null)
   // #32: Marca dos motores (global). Texto livre. null = "marca a confirmar".
@@ -769,7 +775,6 @@ export function OrcamentoMontar() {
   }, [finameMode, carrinhoExib, motoresAgrupadosExib, valorAcessoriosExib, totalComponentesExtras])
 
   const finameBloqueios: FinameBloqueio[] = finameTransform?.bloqueios ?? []
-  const finameBloqueado = finameMode && finameBloqueios.length > 0
 
   // Itens finais que alimentam preview + snapshot. Em modo normal passa direto.
   const origByUid = useMemo(() => new Map(carrinhoExib.map(c => [c.uid, c])), [carrinhoExib])
@@ -782,7 +787,8 @@ export function OrcamentoMontar() {
         nome_custom: fi.nomeFiname,
         specs: fi.specs,
         specs_original: o?.specs_original ?? o?.specs,
-        valor: fi.valor,
+        // Valor editável: usa o override do vendedor se houver; senão o valor embutido.
+        valor: finameValorOverride[fi.uid] ?? fi.valor,
         qtd: fi.qtd,
         // Zera o motor: no FINAME não existe tabela/linha de motor (vira "incluso").
         motor_cv: null,
@@ -796,15 +802,45 @@ export function OrcamentoMontar() {
         brinde: false,
       }
     })
-  }, [finameMode, finameTransform, carrinhoExib, origByUid])
+  }, [finameMode, finameTransform, carrinhoExib, origByUid, finameValorOverride])
+
+  // Soma das linhas FINAME (com overrides). Precisa bater com o total travado pra gerar.
+  const finameSomaItens = useMemo(
+    () => (finameMode ? carrinhoFinal.reduce((s, c) => s + c.valor * c.qtd, 0) : 0),
+    [finameMode, carrinhoFinal],
+  )
+
+  // (Re)trava o total no valor computado quando o CONJUNTO de itens muda (add/remove) ou
+  // ao entrar/sair do FINAME. Editar valor (override) NÃO re-trava — aí o vendedor decide
+  // manter o total ou aceitar o novo. (uids ordenados = NÃO re-trava ao só reordenar.)
+  const finameUidsKey = finameMode && finameTransform
+    ? finameTransform.itens.map(i => i.uid).slice().sort().join(',')
+    : ''
+  useEffect(() => {
+    if (!finameMode || !finameTransform) {
+      setFinameTotalTravado(null)
+      setFinameValorOverride({})
+      return
+    }
+    setFinameTotalTravado(finameTransform.totalGeral)
+    setFinameValorOverride({})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finameUidsKey])
+
+  const finameTotalMismatch = finameMode && finameTotalTravado !== null && finameSomaItens !== finameTotalTravado
+  const finameBloqueado = finameMode && (finameBloqueios.length > 0 || finameTotalMismatch)
+  const aceitarNovoTotalFiname = () => setFinameTotalTravado(finameSomaItens)
 
   const motoresAgrupadosFinal = finameMode ? [] : motoresAgrupadosExib
   const acessoriosFinal = finameMode ? null : acessorios
   const valorAcessoriosFinal = finameMode ? 0 : valorAcessoriosExib
   const componentesExtrasFinal = finameMode ? [] : componentesExtras
-  const totalGeralFinal = finameMode && finameTransform ? finameTransform.totalGeral : totalGeralExib
-  const totalItemsFinal = finameMode && finameTransform ? finameTransform.totalGeral : totalItemsExib
-  const totalEquipFinal = finameMode && finameTransform ? finameTransform.totalGeral : totalEquipExib
+  // No FINAME o total exibido é o TRAVADO (referência). A soma das linhas precisa fechar
+  // nele pra gerar — garante total == soma das linhas no documento final.
+  const finameTotalExib = finameTotalTravado ?? finameSomaItens
+  const totalGeralFinal = finameMode ? finameTotalExib : totalGeralExib
+  const totalItemsFinal = finameMode ? finameTotalExib : totalItemsExib
+  const totalEquipFinal = finameMode ? finameTotalExib : totalEquipExib
   const totalMotoresFinal = finameMode ? 0 : totalMotoresExib
 
   // Item pendente de escolha de função (modal). Null = nenhum modal aberto.
@@ -2828,7 +2864,9 @@ export function OrcamentoMontar() {
                 onRemoveSpec={finameMode ? undefined : removerSpec}
                 obsPorConta={obsPorConta}
                 onUpdateObsPorConta={setObsPorConta}
-                onUpdateValor={finameMode ? undefined : (uid, v) => alterarValor(uid, fExp === 1 ? v : Math.round(v / fExp))}
+                onUpdateValor={finameMode
+                  ? (uid, v) => setFinameValorOverride(o => ({ ...o, [uid]: Math.max(0, Math.round(v)) }))
+                  : (uid, v) => alterarValor(uid, fExp === 1 ? v : Math.round(v / fExp))}
                 onToggleInox={finameMode ? undefined : toggleInox}
                 onToggleTungstenio={finameMode ? undefined : toggleTungstenio}
                 onToggleBrinde={finameMode ? undefined : (uid) => setCarrinho(prev => prev.map(c => c.uid === uid ? { ...c, brinde: !c.brinde } : c))}
@@ -2845,8 +2883,10 @@ export function OrcamentoMontar() {
                 onUpdateDesconto={setDescontoCfg}
                 terms={{ dataVenda: dataVendaTxt, prazoEntrega: prazoEntregaTxt, formaPagamento: formaPagamentoTxt, freteTipo, freteTxt }}
                 onUpdateTerm={atualizarTermo}
-                onMoverItem={finameMode ? undefined : moverItem}
+                onMoverItem={moverItem}
                 onTrocarItem={finameMode ? undefined : handleTrocarItem}
+                finameSomaItens={finameMode ? finameSomaItens : undefined}
+                onFinameAceitarTotal={finameMode ? aceitarNovoTotalFiname : undefined}
                 parcelas={parcelasPagamento}
                 onUpdateParcelas={setParcelasPagamento}
                 motoresDisponiveis={motores ?? []}
