@@ -5,14 +5,15 @@
 import { useMemo, useState } from 'react'
 import type { DragEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { Truck, MapPin, Trophy, Clock, CheckCircle2, Paperclip, PackageCheck, X, Undo2, Loader2 } from 'lucide-react'
+import { Truck, MapPin, Trophy, Clock, CheckCircle2, Paperclip, PackageCheck, X, Undo2, Loader2, Send } from 'lucide-react'
 import { useCotacoesPainel, useEscolherVencedor, useFinalizarFrete, type CotacaoPainel } from '@/hooks/useFrete'
 import { useCan } from '@/hooks/usePermissions'
 
 const COLS = [
-  { key: 'pendente',  label: 'Pendente',        dot: 'bg-amber-500',   head: 'text-amber-600',   icon: Clock },
-  { key: 'concluida', label: 'Concluída',       dot: 'bg-green-500',   head: 'text-green-600',   icon: CheckCircle2 },
-  { key: 'fechado',   label: 'Fretes fechados', dot: 'bg-emerald-600', head: 'text-emerald-700', icon: PackageCheck },
+  { key: 'pendente',   label: 'Pendente',             dot: 'bg-amber-500',   head: 'text-amber-600',   icon: Clock },
+  { key: 'analisando', label: 'Enviado · aguardando', dot: 'bg-blue-500',    head: 'text-blue-600',    icon: Send },
+  { key: 'concluida',  label: 'Concluída',            dot: 'bg-green-500',   head: 'text-green-600',   icon: CheckCircle2 },
+  { key: 'fechado',    label: 'Fretes fechados',      dot: 'bg-emerald-600', head: 'text-emerald-700', icon: PackageCheck },
 ] as const
 
 function fmtMoeda(v: number | null | undefined) {
@@ -117,7 +118,7 @@ function KanbanCard({ c, todas, podeEscolher, onEscolher, escolhendo, onFechar, 
           )}
           {comValor.length === 0 && analisando.length > 0 && (
             <div className="mt-2 pt-2 border-t border-border text-xs text-blue-500/90">
-              {analisando.map(l => l.transportadora_nome).filter(Boolean).join(', ') || `${analisando.length} transportadora(s)`} analisando…
+              {analisando.map(l => l.transportadora_nome).filter(Boolean).join(', ') || `${analisando.length} transportadora(s)`} — aguardando resposta…
             </div>
           )}
           {c.lances.length === 0 && (
@@ -221,7 +222,7 @@ export default function FreteCotacoesPainel() {
       {painel.isLoading && <div className="text-sm text-ink-faint">Carregando…</div>}
 
       {!painel.isLoading && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-start">
           {COLS.map(col => {
             const Icon = col.icon
             const cards = lista.filter(c => c.derived_status === col.key)
