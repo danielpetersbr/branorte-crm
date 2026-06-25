@@ -4,11 +4,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  Truck, Send, MapPin, Loader2, Settings, Trophy, Copy, Check, X, Ban, ExternalLink, MessageCircle,
+  Truck, Send, MapPin, Loader2, Settings, Trophy, Copy, Check, X, Ban, ExternalLink, MessageCircle, RotateCw, AlertTriangle,
 } from 'lucide-react'
 import {
   useSolicitacoes, useLances, useDispararFrete, useEscolherVencedor, useAtualizarSolicitacao,
-  useTransportadoras, useTiposCaminhao, useFreteConfig, useSetFreteConfig, useEnfileirarCotacao,
+  useTransportadoras, useTiposCaminhao, useFreteConfig, useSetFreteConfig, useEnfileirarCotacao, useReenviarCotacao,
   type FreteSolicitacao, type FreteSolicitacaoStatus,
 } from '@/hooks/useFrete'
 import type { TransportadoraParceira } from '@/lib/calcFrete'
@@ -53,6 +53,7 @@ export default function FreteAprovar() {
   const tipos = useTiposCaminhao()
   const disparar = useDispararFrete()
   const enfileirar = useEnfileirarCotacao()
+  const reenviar = useReenviarCotacao()
   const vencedor = useEscolherVencedor()
   const atualizar = useAtualizarSolicitacao()
   const cfg = useFreteConfig()
@@ -310,7 +311,9 @@ export default function FreteAprovar() {
                         <span className="flex-1 text-sm text-ink truncate">{l.transportadora_nome ?? '—'}</span>
                         <span className="text-xs text-ink-faint">{l.respondido_em ? fmtDataHora(l.respondido_em) : l.status}</span>
                         {l.prazo_dias != null && <span className="text-xs text-ink-muted">{l.prazo_dias}d</span>}
-                        <span className={`text-sm font-semibold ${l.valor != null ? 'text-ink' : 'text-ink-faint'}`}>{l.valor != null ? fmtMoeda(l.valor) : '—'}</span>
+                        {l.precisa_revisao
+                          ? <span className="text-amber-600 inline-flex items-center gap-1 text-xs font-medium" title={l.raw_resposta || 'resposta não numérica — confira no WhatsApp'}><AlertTriangle className="h-3.5 w-3.5" /> revisar</span>
+                          : <span className={`text-sm font-semibold ${l.valor != null ? 'text-ink' : 'text-ink-faint'}`}>{l.valor != null ? fmtMoeda(l.valor) : '—'}</span>}
                         {l.status === 'vencedor' ? (
                           <span className="text-green-600 inline-flex items-center gap-1 text-xs font-medium"><Trophy className="h-3.5 w-3.5" /> Vencedor</span>
                         ) : l.valor != null && solic.status !== 'fechada' ? (
@@ -318,6 +321,11 @@ export default function FreteAprovar() {
                         ) : l.status === 'recusado' ? (
                           <span className="text-xs text-ink-faint inline-flex items-center gap-1"><X className="h-3 w-3" /> recusou</span>
                         ) : null}
+                        {solic.status !== 'fechada' && solic.status !== 'cancelada' && (
+                          <button onClick={() => { if (confirm(`Reenviar a cotação pra ${l.transportadora_nome ?? 'transportadora'}?`)) reenviar.mutate({ lance_id: l.id }) }}
+                            disabled={reenviar.isPending} title="Reenviar cotação por WhatsApp"
+                            className="text-ink-faint hover:text-accent disabled:opacity-40"><RotateCw className="h-3.5 w-3.5" /></button>
+                        )}
                       </div>
                     ))}
                   </div>

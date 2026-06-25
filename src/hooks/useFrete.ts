@@ -439,6 +439,9 @@ export type FreteLance = {
   respondido_em: string | null;
   wa_message_id: string | null;
   wa_status: string | null;
+  precisa_revisao: boolean | null;
+  raw_resposta: string | null;
+  origem_resposta: string | null;
   criado_em: string;
 };
 
@@ -509,6 +512,24 @@ export function useLances(solicitacaoId: string | null, opts?: { refetchInterval
       return (data ?? []) as FreteLance[];
     },
     refetchInterval: opts?.refetchInterval,
+  });
+}
+
+/** Reenvia 1 cotação pra uma transportadora específica (edge frete-reenviar).
+ *  Cancela a fila antiga e cria uma nova pendente — o pump dispara de novo. */
+export function useReenviarCotacao() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: { lance_id?: string; fila_id?: string }) => {
+      const { data, error } = await supabase.functions.invoke('frete-reenviar', { body: vars });
+      if (error) throw error;
+      if (data?.error) throw new Error(String(data.error));
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['frete-lances'] });
+      qc.invalidateQueries({ queryKey: [SOLIC_KEY] });
+    },
   });
 }
 
