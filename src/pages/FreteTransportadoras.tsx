@@ -67,8 +67,8 @@ const fmtKm = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 
 
 type MelhorPreco = { nome: string; rs_km: number; fonte: 'real' | 'tabela'; n: number }
 
-// Mapa de cobertura: 1 marcador por UF com o nº de transportadoras que atendem
-// (inclui as que atendem "todas as UFs") + o MELHOR PREÇO (menor R$/km).
+// Mapa de cobertura: marcador por UF (tamanho/cor pelo nº de transportadoras) +
+// melhor preço por estado. Painel lateral lista as UFs (clica → voa pro estado).
 // Prioriza cotação REAL; sem cotação ainda, cai no menor R$/km de truck da tabela.
 function CoberturaMapa({ transportadoras, melhorPorUf }: {
   transportadoras: TransportadoraParceira[]
@@ -77,6 +77,7 @@ function CoberturaMapa({ transportadoras, melhorPorUf }: {
   const divRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
   const layerRef = useRef<L.LayerGroup | null>(null)
+  const markersRef = useRef<Record<string, L.Marker>>({})
 
   const porUf = useMemo(() => {
     const ativos = transportadoras.filter(t => t.ativo)
@@ -107,29 +108,49 @@ function CoberturaMapa({ transportadoras, melhorPorUf }: {
     return out
   }, [transportadoras, melhorPorUf])
 
+  // Ranking pro painel lateral (mais transportadoras primeiro).
+  const ranked = useMemo(() =>
+    Object.entries(porUf)
+      .map(([uf, info]) => ({ uf, total: info.especificas.length + info.todas.length, best: info.best }))
+      .sort((a, b) => b.total - a.total || a.uf.localeCompare(b.uf)),
+    [porUf])
+
+  const resumo = useMemo(() => ({
+    ativos: transportadoras.filter(t => t.ativo).length,
+    ufsCobertas: ranked.length,
+    comReal: ranked.filter(r => r.best?.fonte === 'real').length,
+  }), [transportadoras, ranked])
+
+  // Init do mapa (1×) + responsivo via ResizeObserver.
   useEffect(() => {
     if (mapRef.current || !divRef.current) return
-    const map = L.map(divRef.current, { center: [-15.0, -50.5], zoom: 4, scrollWheelZoom: false, zoomControl: true })
+    const map = L.map(divRef.current, { scrollWheelZoom: false, zoomControl: true })
     L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], maxZoom: 20 }).addTo(map)
     layerRef.current = L.layerGroup().addTo(map)
     mapRef.current = map
-    setTimeout(() => map.invalidateSize(), 120)
-    return () => { map.remove(); mapRef.current = null; layerRef.current = null }
+    map.fitBounds([[5.3, -74.0], [-33.8, -34.8]], { padding: [16, 16] })
+    const ro = new ResizeObserver(() => map.invalidateSize())
+    ro.observe(divRef.current)
+    const t = setTimeout(() => map.invalidateSize(), 150)
+    return () => { clearTimeout(t); ro.disconnect(); map.remove(); mapRef.current = null; layerRef.current = null; markersRef.current = {} }
   }, [])
 
+  // Marcadores (sempre que a cobertura muda).
   useEffect(() => {
     const layer = layerRef.current
     if (!layer) return
     layer.clearLayers()
+    markersRef.current = {}
     for (const [uf, info] of Object.entries(porUf)) {
       const total = info.especificas.length + info.todas.length
       if (!total) continue
       const [lat, lng] = UF_CENTRO[uf]
-      const cor = total >= 5 ? '#15803d' : total >= 2 ? '#22c55e' : '#86efac'
+      const cor = total >= 5 ? '#15803d' : total >= 3 ? '#16a34a' : total >= 2 ? '#22c55e' : '#86efac'
+      const sz = Math.min(46, 26 + total * 2)
       const icon = L.divIcon({
         className: 'cob-uf',
-        html: `<div style="background:${cor};color:#06281a;font-weight:800;border:2px solid #fff;border-radius:999px;min-width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:12px;box-shadow:0 1px 5px rgba(0,0,0,.45)">${total}</div>`,
-        iconSize: [28, 28], iconAnchor: [14, 14],
+        html: `<div style="background:${cor};color:#06281a;font-weight:800;border:2px solid #fff;border-radius:999px;width:${sz}px;height:${sz}px;display:flex;align-items:center;justify-content:center;font-size:${Math.round(sz / 2.4)}px;box-shadow:0 1px 6px rgba(0,0,0,.5)">${total}</div>`,
+        iconSize: [sz, sz], iconAnchor: [sz / 2, sz / 2],
       })
       const esp = info.especificas.map(t => `• ${escMap(t.nome)}`).join('<br>')
       const tds = info.todas.map(t => `• ${escMap(t.nome)} <i style="opacity:.55">(atende todas)</i>`).join('<br>')
@@ -146,11 +167,73 @@ function CoberturaMapa({ transportadoras, melhorPorUf }: {
         + (tds ? `<div style="font-size:11px;color:#64748b;margin-top:5px">${tds}</div>` : '')
         + bestLine
         + `</div>`
-      L.marker([lat, lng], { icon }).bindPopup(popup).addTo(layer)
+      markersRef.current[uf] = L.marker([lat, lng], { icon }).bindPopup(popup).addTo(layer)
     }
   }, [porUf])
 
-  return <div ref={divRef} className="h-[420px] w-full rounded-2xl border border-border overflow-hidden z-0" style={{ minHeight: 420 }} />
+  function focar(uf: string) {
+    const map = mapRef.current
+    if (!map) return
+    map.flyTo(UF_CENTRO[uf], 6, { duration: 0.6 })
+    const mk = markersRef.current[uf]
+    if (mk) setTimeout(() => mk.openPopup(), 650)
+  }
+
+  return (
+    <div className="grid gap-3 lg:grid-cols-[1fr_340px]">
+      {/* Mapa */}
+      <div className="relative order-1">
+        <div ref={divRef} className="h-[58vh] min-h-[400px] lg:h-[70vh] w-full rounded-2xl border border-border overflow-hidden z-0" />
+        {/* Legenda */}
+        <div className="absolute bottom-3 left-3 z-[450] pointer-events-none rounded-xl bg-bg/85 backdrop-blur border border-border px-3 py-2 shadow-lg">
+          <div className="font-bold mb-1 text-ink-muted uppercase tracking-wide text-[9px]">Transportadoras / UF</div>
+          <div className="flex items-center gap-3 text-[11px] text-ink">
+            {([['#86efac', '1'], ['#22c55e', '2'], ['#16a34a', '3-4'], ['#15803d', '5+']] as Array<[string, string]>).map(([c, l]) => (
+              <span key={l} className="flex items-center gap-1">
+                <span className="inline-block w-3 h-3 rounded-full border border-white" style={{ background: c }} />{l}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Painel lateral: resumo + ranking clicável */}
+      <div className="order-2 rounded-2xl border border-border bg-surface flex flex-col overflow-hidden lg:h-[70vh]">
+        <div className="p-3 border-b border-border grid grid-cols-3 gap-2 text-center">
+          {([['Parceiras', resumo.ativos], ['UFs cobertas', resumo.ufsCobertas], ['c/ cotação real', resumo.comReal]] as Array<[string, number]>).map(([l, v]) => (
+            <div key={l}>
+              <div className="text-xl font-black text-ink tabular-nums leading-none">{v}</div>
+              <div className="text-[10px] text-ink-muted mt-1 leading-tight">{l}</div>
+            </div>
+          ))}
+        </div>
+        <div className="flex-1 overflow-y-auto p-2 space-y-1 max-h-[42vh] lg:max-h-none">
+          {ranked.length === 0 && (
+            <div className="p-4 text-center text-xs text-ink-muted">Nenhuma transportadora ativa com UF definida.</div>
+          )}
+          {ranked.map(r => (
+            <button
+              key={r.uf}
+              type="button"
+              onClick={() => focar(r.uf)}
+              className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-surface-2/60 transition-colors text-left"
+            >
+              <span className="shrink-0 w-9 h-9 rounded-lg bg-accent/10 text-accent font-black text-xs flex items-center justify-center">{r.uf}</span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-bold text-ink leading-tight">{r.total} transportadora{r.total === 1 ? '' : 's'}</span>
+                {r.best && (
+                  <span className="block text-[11px] text-ink-muted truncate">
+                    💰 {r.best.nome} · R$ {fmtKm(r.best.rs_km)}/km
+                    <span className={r.best.fonte === 'real' ? 'text-accent' : 'text-ink-faint'}> ({r.best.fonte === 'real' ? 'real' : 'tabela'})</span>
+                  </span>
+                )}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default function FreteTransportadoras() {
@@ -199,7 +282,7 @@ export default function FreteTransportadoras() {
   }
 
   return (
-    <div className="container mx-auto py-6 px-4 max-w-7xl">
+    <div className="w-full py-6 px-4 sm:px-6 lg:px-8">
       <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <Link to="/frete" className="text-ink-muted hover:text-ink shrink-0">
@@ -226,12 +309,12 @@ export default function FreteTransportadoras() {
         <div className="mb-5">
           <div className="flex items-center gap-2 mb-2 text-sm font-semibold text-ink"><MapPin className="h-4 w-4 text-accent" /> Cobertura por estado</div>
           <CoberturaMapa transportadoras={lista ?? []} melhorPorUf={melhorPorUf ?? {}} />
-          <p className="text-xs text-ink-muted mt-2">Número no estado = transportadoras que atendem ele (já contando as "todas as UFs"). Clique pra ver quais e o <b className="text-ink-muted">melhor preço</b> (menor R$/km das cotações recebidas).</p>
+          <p className="text-xs text-ink-muted mt-2">Número no estado = transportadoras que atendem ele (já contando as "todas as UFs"). Clique no mapa ou na lista ao lado pra ver quais e o <b className="text-ink-muted">melhor preço</b> (menor R$/km — real das cotações, ou estimado pela tabela enquanto não houver cotação).</p>
         </div>
       )}
 
       {isLoading && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3">
           {[0, 1, 2, 3].map(i => <div key={i} className="h-28 rounded-2xl border border-border bg-surface animate-pulse" />)}
         </div>
       )}
@@ -243,7 +326,7 @@ export default function FreteTransportadoras() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3">
         {lista?.map(t => (
           <div key={t.id} className={`group rounded-2xl border p-4 transition-all ${t.ativo ? 'border-border bg-surface hover:border-accent/40 hover:shadow-sm' : 'border-border/60 bg-surface/40 opacity-60'}`}>
             <div className="flex items-start gap-3">
