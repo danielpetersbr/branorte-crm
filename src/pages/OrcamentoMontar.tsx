@@ -2515,7 +2515,7 @@ export function OrcamentoMontar() {
                   ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
                   : 'bg-surface text-ink-muted border-border hover:bg-surface-3'
               }`}
-              title="Exportação: o orçamento GERADO (PDF/Word) sai com +10% em todos os valores. No builder você edita os valores normais."
+              title="Exportação: +10% em todos os valores (preview e orçamento gerado). Editar um valor com isto ligado mantém a base correta (não compõe)."
             >
               {exportacao ? '🌎 Exportação +10% ✓' : '🌎 Ativar exportação'}
             </button>
@@ -2673,16 +2673,16 @@ export function OrcamentoMontar() {
             ) : modoVisao === 'preview' ? (
               <ResponsiveScaler documentWidth={1024}>
               <OrcamentoPreview
-                carrinho={carrinho}
+                carrinho={carrinhoExib}
                 numero={editingId && orcamentoEditando ? orcamentoEditando.numero : undefined}
-                motoresAgrupados={motoresAgrupados}
+                motoresAgrupados={motoresAgrupadosExib}
                 voltagem={voltagem}
-                totalItems={totalItems}
-                totalMotores={totalMotores}
-                totalEquip={totalEquip}
-                totalGeral={totalGeral}
+                totalItems={totalItemsExib}
+                totalMotores={totalMotoresExib}
+                totalEquip={totalEquipExib}
+                totalGeral={totalGeralExib}
                 acessorios={acessorios}
-                valorAcessorios={valorAcessorios}
+                valorAcessorios={valorAcessoriosExib}
                 fotoPrincipal={fotoPrincipal}
                 onAddAcessorios={() => setAcessoriosOpen(true)}
                 onAddItem={() => {
@@ -2712,7 +2712,7 @@ export function OrcamentoMontar() {
                 onRemoveSpec={removerSpec}
                 obsPorConta={obsPorConta}
                 onUpdateObsPorConta={setObsPorConta}
-                onUpdateValor={alterarValor}
+                onUpdateValor={(uid, v) => alterarValor(uid, fExp === 1 ? v : Math.round(v / fExp))}
                 onToggleInox={toggleInox}
                 onToggleTungstenio={toggleTungstenio}
                 onToggleBrinde={(uid) => setCarrinho(prev => prev.map(c => c.uid === uid ? { ...c, brinde: !c.brinde } : c))}
@@ -2766,23 +2766,23 @@ export function OrcamentoMontar() {
             <div className="border-t border-border p-3 space-y-1.5 bg-surface-2/50">
               <div className="flex justify-between text-[11px] text-ink-muted">
                 <span>Equipamentos</span>
-                <span className="font-semibold">{formatBRL(totalItems)}</span>
+                <span className="font-semibold">{formatBRL(totalItemsExib)}</span>
               </div>
               {acessorios && (
                 <div className="flex justify-between text-[11px] text-ink-muted">
                   <span>Acessórios ({acessorios.valorFixo != null && acessorios.valorFixo > 0 ? 'R$ fixo' : `${acessorios.pct}%`})</span>
-                  <span className="font-semibold">{formatBRL(valorAcessorios)}</span>
+                  <span className="font-semibold">{formatBRL(valorAcessoriosExib)}</span>
                 </div>
               )}
               {totalMotores > 0 && (
                 <div className="flex justify-between text-[11px] text-ink-muted">
                   <span>Motores ({motoresAgrupados.length})</span>
-                  <span className="font-semibold">{formatBRL(totalMotores)}</span>
+                  <span className="font-semibold">{formatBRL(totalMotoresExib)}</span>
                 </div>
               )}
               <div className="flex justify-between text-[14px] font-bold text-ink pt-1 border-t border-border">
                 <span>TOTAL DA PROPOSTA</span>
-                <span className="text-accent">{formatBRL(totalGeral)}</span>
+                <span className="text-accent">{formatBRL(totalGeralExib)}</span>
               </div>
             </div>
           )}
