@@ -103,6 +103,30 @@ const FINAME_ACESSORIO_KEYWORDS = [
   'item complementar', 'itens complementares', 'flange', 'mangote', 'duto',
 ]
 
+// A CATEGORIA do catálogo é o sinal mais confiável do TIPO do equipamento.
+// Usar isto ANTES do nome evita que um transportador chamado "...moinho..."
+// (ex: chupim/rosca que alimenta o moinho) vire "Moinho Martelo". (categoria normalizada → key do FINAME_MAP)
+const FINAME_POR_CATEGORIA: Record<string, string> = {
+  transportador: 'TRANSPORTADOR_HELICOIDAL',
+  ensacadeira: 'TRANSPORTADOR_HELICOIDAL',
+  esteira: 'TRANSPORTADOR_HELICOIDAL',
+  moinho: 'MOINHO_MARTELO',
+  misturador: 'MISTURADOR',
+  silo: 'CAIXA_ARMAZENAGEM',
+  caixa: 'CAIXA_ARMAZENAGEM',
+  elevador: 'ELEVADOR_CANECAS',
+  peneira: 'PENEIRA_VIBRATORIA',
+  cacamba_pesagem: 'CACAMBA_PESAGEM',
+  'cacamba de pesagem': 'CACAMBA_PESAGEM',
+}
+
+// Categorias que são componente/peça sem código FINAME próprio → embutem no equipamento.
+const FINAME_CAT_ACESSORIO = new Set(['acessorio', 'balanca', 'painel_eletrico'])
+
+function finamePorKey(key: string): FinameTipo | undefined {
+  return FINAME_MAP.find(t => t.key === key)
+}
+
 export const FINAME_NAO_RESOLVIDO_MSG =
   'Este item não possui código FINAME cadastrado e não pode ser incluído no orçamento FINAME.'
 
@@ -132,38 +156,45 @@ function ehPeneiraPassiva(n: string): boolean {
 
 /**
  * Classifica um item do carrinho para o Modo FINAME.
- * Precedência: categoria ACESSORIO → peças passivas → marcadores fortes de acessório →
- * motor puro → alias de equipamento principal → keyword fraca de acessório → não resolvido.
+ * Precedência: categoria-acessório → peça passiva → marcador forte de acessório →
+ * CATEGORIA do equipamento (sinal confiável) → motor puro → alias por nome (fallback) →
+ * keyword fraca de acessório → não resolvido.
  */
 export function classificarItemFiname(nome: string, categoria?: string | null): FinameClasse {
   const n = norm(nome)
   const cat = norm(categoria)
 
-  // 1) Categoria ACESSORIO explícita do catálogo → embute.
-  if (cat === 'acessorio') return { tipo: 'acessorio' }
+  // 1) Categoria de acessório/componente (ACESSORIO, BALANCA, PAINEL_ELETRICO) → embute.
+  if (FINAME_CAT_ACESSORIO.has(cat)) return { tipo: 'acessorio' }
 
-  // 2) Peneira passiva (jogo/par/moinho) → embute.
+  // 2) Peneira passiva (jogo/par/moinho, sem "vibratória") → embute.
   if (ehPeneiraPassiva(n)) return { tipo: 'acessorio' }
 
   // 3) Marcador FORTE de acessório/peça (jogo, kit, par de) → embute.
   if (FINAME_ACESSORIO_FORTE.some(k => n.includes(k))) return { tipo: 'acessorio' }
 
-  const casaPrincipal = FINAME_MAP.some(t => t.aliases.some(a => n.includes(a)))
+  // 4) CATEGORIA do catálogo define o TIPO (mais confiável que o nome).
+  const catKey = FINAME_POR_CATEGORIA[cat]
+  if (catKey) {
+    const fin = finamePorKey(catKey)
+    if (fin) return { tipo: 'principal', fin }
+  }
 
-  // 4) Item que é SÓ motor (sem casar nenhum equipamento principal) → embute.
+  // 5) Item que é SÓ motor (sem casar nenhum equipamento) → embute.
+  const casaPrincipal = FINAME_MAP.some(t => t.aliases.some(a => n.includes(a)))
   if (!casaPrincipal && FINAME_MOTOR_KEYWORDS.some(k => n.includes(k))) {
     return { tipo: 'motor' }
   }
 
-  // 5) Equipamento principal (com código FINAME próprio).
+  // 6) Fallback por NOME (itens sem categoria mapeada, ex: produto custom).
   for (const t of FINAME_MAP) {
     if (t.aliases.some(a => n.includes(a))) return { tipo: 'principal', fin: t }
   }
 
-  // 6) Keyword fraca de acessório → embute.
+  // 7) Keyword fraca de acessório → embute.
   if (FINAME_ACESSORIO_KEYWORDS.some(k => n.includes(k))) return { tipo: 'acessorio' }
 
-  // 7) Sem código e não é acessório → bloqueia + sugere.
+  // 8) Sem código e não é acessório → bloqueia + sugere.
   return { tipo: 'naoResolvido', sugestao: FINAME_SUGESTAO_GENERICA }
 }
 

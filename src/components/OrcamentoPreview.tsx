@@ -413,7 +413,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   const totalParcelasBase = desconto?.manterValorParcelas ? totalGeral : totalComDesconto
 
   const motoresTitle = voltagem === 'monofasico' ? 'Motores Monofásicos:' : 'Motores Trifásicos:'
-  const mostrarTotalEquip = carrinho.length > 1 || acessorios !== null
+  // No FINAME, mostra só "VALOR TOTAL DA PROPOSTA" (sem o "DE EQUIPAMENTOS" redundante).
+  const mostrarTotalEquip = !finameMode && (carrinho.length > 1 || acessorios !== null)
   const hoje = dataEmissao || new Date().toLocaleDateString('pt-BR')
   const numeroExibido = numero || '[a definir]'
   const numeroIsPlaceholder = !numero
