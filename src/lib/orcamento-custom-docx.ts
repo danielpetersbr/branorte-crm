@@ -89,6 +89,10 @@ export interface GerarCustomDocxOpts {
   tensaoMotores?: 220 | 380 | 660 | null
   freteTipo?: 'CIF' | 'FOB' | null
   freteTxt?: string | null
+  // Modo FINAME: mostra a linha "Código FINAME" nas specs (em modo normal fica oculta).
+  // As fotos já vêm removidas (foto_url null) e motores/acessórios já vêm embutidos
+  // pelos itens transformados em OrcamentoMontar.
+  finameMode?: boolean
 }
 
 // Valor do desconto respeitando a base ('equipamento' = sem motores). Espelha a
@@ -395,15 +399,16 @@ function buildClienteGrid(c: CustomDocxCliente): Paragraph[] {
 }
 
 // Bloco de UM item (FOTO LARGA centralizada EMBAIXO dos bullets, espelhando o preview)
-async function buildItemTable(item: CustomDocxItem, voltagemTxt: string): Promise<Table> {
+async function buildItemTable(item: CustomDocxItem, voltagemTxt: string, finameMode = false): Promise<Table> {
   const subtotal = item.valor * item.qtd
   const tituloLetra = `${item.letra} - ${String(item.qtd).padStart(2, '0')}`
   const tituloNome = item.nome.toUpperCase()
 
   // Bullets de specs (preview: text-[14.5px] = ~14pt; size em half-points = 18 = 9pt → bumpando pra 20 = 10pt)
+  // Em modo normal oculta a linha "Código FINAME"; em modo FINAME ela DEVE aparecer.
   const bulletParas: Paragraph[] = []
   if (item.specs.length > 0) {
-    for (const spec of item.specs.filter(s => !/c[oó]digo\s*finame/i.test(s)).slice(0, 20)) {
+    for (const spec of item.specs.filter(s => finameMode || !/c[oó]digo\s*finame/i.test(s)).slice(0, 20)) {
       bulletParas.push(bullet(spec, 20))
     }
   } else if (item.motor_cv && item.motor_polos) {
@@ -1226,7 +1231,7 @@ export async function gerarOrcamentoCustomDocx(opts: GerarCustomDocxOpts): Promi
   }
 
   for (const item of opts.itens) {
-    blocos.push(await buildItemTable(item, opts.voltagem === 'monofasico' ? 'monofásico' : 'trifásico'))
+    blocos.push(await buildItemTable(item, opts.voltagem === 'monofasico' ? 'monofásico' : 'trifásico', opts.finameMode))
     blocos.push(paragrafoVazio(80))
   }
 

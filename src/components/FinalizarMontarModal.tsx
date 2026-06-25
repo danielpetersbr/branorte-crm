@@ -103,6 +103,10 @@ export interface CarrinhoSnapshot {
   componentesExtras?: Array<{ id: string; nome: string; valor: number }>
   // Seção "Observação — por conta do cliente" editável. null = default histórico.
   obsPorConta?: string[] | null
+  // Modo FINAME ligado: os itens já vêm transformados (nomes FINAME, motor/acessórios
+  // embutidos, sem foto), motoresAgrupados/acessorios/componentesExtras vazios. A flag
+  // faz o PDF/DOCX MOSTRAR a linha "Código FINAME" (oculta em modo normal).
+  finameMode?: boolean
 }
 
 interface Props {
@@ -848,6 +852,9 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         componentesExtras: snapshot.componentesExtras ?? [],
         vendedoresContato,
         vendedorResponsavelNome: profile?.display_name || null,
+        // Modo FINAME: mostra o código FINAME e suprime imagens nos renderizadores
+        // que passam por OrcamentoPreview (Puppeteer/PDF cliente/DOCX-html).
+        finameMode: snapshot.finameMode ?? false,
       }
       // ESTRATEGIA: PDF eh o produto principal (perfeito via Puppeteer).
       // DOCX eh fallback editavel — html-to-docx atinge ~85% e nao gasta
@@ -910,6 +917,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           tensaoMotores: snapshot.tensaoMotores ?? null,
           freteTipo: snapshot.termsInline?.freteTipo ?? null,
           freteTxt: snapshot.termsInline?.freteTxt ?? null,
+          // Modo FINAME: mostra a linha "Código FINAME" no DOCX (oculta em modo normal).
+          finameMode: snapshot.finameMode ?? false,
         })
         docxFonte = 'custom'
         console.log(`[gerar] docx (custom) OK (${docxBlob.size} bytes)`)

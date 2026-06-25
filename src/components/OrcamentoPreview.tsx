@@ -137,6 +137,12 @@ export interface OrcamentoPreviewProps {
   // Modo render: esconde botões interativos (pra capturar pra PDF limpo)
   renderMode?: boolean
 
+  // Modo FINAME: MOSTRA o código FINAME nas specs (que em modo normal fica oculto)
+  // e SUPRIME todas as imagens (foto principal + fotos dos itens). A transformação
+  // dos itens (nomes FINAME, motor/acessórios embutidos no valor) é feita ANTES, em
+  // OrcamentoMontar — aqui só ajustamos a RENDERIZAÇÃO.
+  finameMode?: boolean
+
   // Tensão dos motores (global pra todos). null = "a confirmar".
   tensaoMotores?: 220 | 380 | 660 | null
   onUpdateTensaoMotores?: (tensao: 220 | 380 | 660 | null) => void
@@ -334,6 +340,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     numero, dataEmissao, cliente, terms, observacoesExtra, fotoPrincipal,
     obsPorConta = null, onUpdateObsPorConta,
     renderMode = false,
+    finameMode = false,
     tensaoMotores = null, onUpdateTensaoMotores,
     marcaMotores = null, onUpdateMarcaMotores,
     desconto, onUpdateDesconto,
@@ -720,7 +727,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
         <div className="mt-5">
           <SectionHeader>Itens orçados abaixo</SectionHeader>
 
-          {fotoPrincipal ? (
+          {/* Modo FINAME: sem foto principal (orçamento FINAME não leva imagens). */}
+          {!finameMode && (fotoPrincipal ? (
             <div data-no-break data-hero-photo className={`${renderMode ? 'foto-principal-hero' : ''} group relative mb-3 border border-gray-700 rounded-md p-2 bg-white shadow-sm`} style={{ zIndex: 1 }}>
               <div
                 className="w-full flex items-center justify-center bg-white"
@@ -802,7 +810,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             >
               📷 + Adicionar Foto Principal (opcional)
             </button>
-          )}
+          ))}
 
           <div className={`space-y-2 ${fotoPrincipal && renderMode ? 'itens-apos-hero' : ''}`}>
             {carrinho.map((it, idx) => {
@@ -1006,7 +1014,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                         // com linhas FINAME filtradas) — usado em editar/excluir.
                         const specsVis = it.specs
                           .map((s, ri) => ({ s, ri }))
-                          .filter(({ s }) => !/c[oó]digo\s*finame/i.test(s))
+                          // Em modo normal, oculta a linha "Código FINAME" (uso interno).
+                          // Em modo FINAME, ela DEVE aparecer (requisito do orçamento FINAME).
+                          .filter(({ s }) => finameMode || !/c[oó]digo\s*finame/i.test(s))
                         const podeAddLinha = !renderMode && !!onAddSpec && !!it.uid
                         return (
                           <>
@@ -1090,8 +1100,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     </div>
                     {/* Foto AO LADO dos bullets — caixa RIGIDA com overflow hidden
                         pra foto NUNCA estourar. Mobile 100x100, desktop/PDF 220x180.
-                        objectFit:contain mantem proporcao DENTRO da caixa. */}
-                    {it.foto_url ? (
+                        objectFit:contain mantem proporcao DENTRO da caixa.
+                        Modo FINAME: sem foto de equipamento. */}
+                    {!finameMode && (it.foto_url ? (
                       <div
                         className={`flex-shrink-0 w-[100px] h-[100px] sm:w-[220px] sm:h-[180px] bg-white border border-gray-200 rounded relative group ${
                           !renderMode && onUpdateFotoItem ? 'cursor-pointer hover:border-blue-400' : ''
@@ -1130,7 +1141,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           Duplo-clique<br/>pra adicionar foto
                         </span>
                       </div>
-                    ) : null}
+                    ) : null)}
                   </div>
                   {/* Valor abaixo do bloco texto+foto */}
                   <div data-no-break>

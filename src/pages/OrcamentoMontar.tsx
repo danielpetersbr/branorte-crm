@@ -15,6 +15,7 @@ import {
 } from '@/hooks/useCatalogo'
 import { FinalizarMontarModal, type CarrinhoSnapshot } from '@/components/FinalizarMontarModal'
 import { OrcamentoPreview, type ParcelaPagamento, type PreviewClienteDados } from '@/components/OrcamentoPreview'
+import { montarItensFiname, type FinameBloqueio } from '@/lib/finame'
 import { ResponsiveScaler } from '@/components/ResponsiveScaler'
 import { ClienteEditModal } from '@/components/ClienteEditModal'
 import { useOrcamentoModelos, useOrcamentoGerado, type OrcamentoModelo, detectarBalancaDuplicada } from '@/hooks/useOrcamentoBuilder'
@@ -394,6 +395,10 @@ export function OrcamentoMontar() {
   const [voltagem, setVoltagem] = useState<Voltagem>('trifasico')
   // Modo exportação: quando ligado, +10% em TODOS os valores (preview + orçamento gerado).
   const [exportacao, setExportacao] = useState(false)
+  // Modo FINAME: gera o orçamento no padrão FINAME (sem imagens, equipamentos com
+  // nome+código FINAME, motor/acessórios embutidos no valor). NÃO-destrutivo: o
+  // carrinho real não muda; desligar volta 100% ao orçamento normal.
+  const [finameMode, setFinameMode] = useState(false)
   // Tensão dos motores (global pra todos). null = "tensão a confirmar".
   const [tensaoMotores, setTensaoMotores] = useState<TensaoMotor>(null)
   // #32: Marca dos motores (global). Texto livre. null = "marca a confirmar".
@@ -692,6 +697,9 @@ export function OrcamentoMontar() {
   // Clique no "Finalizar e gerar": se não há acessórios, exige decidir
   // (adicionar ou confirmar que não tem) antes de prosseguir.
   const handleFinalizarClick = () => {
+    // Modo FINAME: acessórios já estão embutidos — pula o aviso de "sem acessórios".
+    // (Itens sem código FINAME já desabilitam o botão antes de chegar aqui.)
+    if (finameMode) { abrirFinalizar(); return }
     if (!temAcessorios) { setConfirmSemAcessorios(true); return }
     abrirFinalizar()
   }
@@ -728,6 +736,73 @@ export function OrcamentoMontar() {
   // Componentes adicionais NÃO levam o +10% de exportação (são valores que o
   // vendedor já digita no preço final). Só equipamentos/motores/acessórios levam.
   const totalGeralExib = totalEquipExib + totalMotoresExib + totalComponentesExtras
+
+  // ─── MODO FINAME ──────────────────────────────────────────────────────────
+  // Transformação NÃO-destrutiva derivada do estado atual (pós-exportação):
+  //  - cada equipamento codificado vira uma linha (nome + código FINAME);
+  //  - motor (por item) + acessórios (bloco %) + componentes extras são EMBUTIDOS
+  //    no valor dos equipamentos (distribuição proporcional);
+  //  - motores/acessórios NÃO aparecem como linha separada; sem imagens;
+  //  - item sem código FINAME (e não-acessório) → bloqueia + sugere substituição.
+  const finameTransform = useMemo(() => {
+    if (!finameMode) return null
+    // Total de motor por item (respeita removido/por-conta/incluso já calculados).
+    const motorPorUid = new Map<string, number>()
+    for (const m of motoresAgrupadosExib) {
+      if (!m.item_uid || m.removido) continue
+      motorPorUid.set(m.item_uid, (motorPorUid.get(m.item_uid) || 0) + (m.valor_total || 0))
+    }
+    const inputs = carrinhoExib
+      .filter(it => !it.por_conta_cliente && !it.brinde) // cliente/brinde ficam fora do FINAME
+      .map(it => ({
+        uid: it.uid,
+        nome: it.nome_custom || it.nome,
+        categoria: it.categoria,
+        qtd: it.qtd,
+        subtotal: it.valor * it.qtd,
+        motorValor: motorPorUid.get(it.uid) || 0,
+      }))
+    return montarItensFiname(inputs, valorAcessoriosExib + totalComponentesExtras)
+  }, [finameMode, carrinhoExib, motoresAgrupadosExib, valorAcessoriosExib, totalComponentesExtras])
+
+  const finameBloqueios: FinameBloqueio[] = finameTransform?.bloqueios ?? []
+  const finameBloqueado = finameMode && finameBloqueios.length > 0
+
+  // Itens finais que alimentam preview + snapshot. Em modo normal passa direto.
+  const origByUid = useMemo(() => new Map(carrinhoExib.map(c => [c.uid, c])), [carrinhoExib])
+  const carrinhoFinal = useMemo<CarrinhoItem[]>(() => {
+    if (!finameMode || !finameTransform) return carrinhoExib
+    return finameTransform.itens.map(fi => {
+      const o = origByUid.get(fi.uid) as CarrinhoItem | undefined
+      return {
+        ...(o as CarrinhoItem),
+        nome_custom: fi.nomeFiname,
+        specs: fi.specs,
+        specs_original: o?.specs_original ?? o?.specs,
+        valor: fi.valor,
+        qtd: fi.qtd,
+        // Zera o motor: no FINAME não existe tabela/linha de motor (vira "incluso").
+        motor_cv: null,
+        motor_polos: null,
+        motor_qtd: 0,
+        motor_valor_unit: 0,
+        motor_removido: true,
+        motores_extras_snapshot: [],
+        // Sem imagens no FINAME.
+        foto_url: null,
+        brinde: false,
+      }
+    })
+  }, [finameMode, finameTransform, carrinhoExib, origByUid])
+
+  const motoresAgrupadosFinal = finameMode ? [] : motoresAgrupadosExib
+  const acessoriosFinal = finameMode ? null : acessorios
+  const valorAcessoriosFinal = finameMode ? 0 : valorAcessoriosExib
+  const componentesExtrasFinal = finameMode ? [] : componentesExtras
+  const totalGeralFinal = finameMode && finameTransform ? finameTransform.totalGeral : totalGeralExib
+  const totalItemsFinal = finameMode && finameTransform ? finameTransform.totalGeral : totalItemsExib
+  const totalEquipFinal = finameMode && finameTransform ? finameTransform.totalGeral : totalEquipExib
+  const totalMotoresFinal = finameMode ? 0 : totalMotoresExib
 
   // Item pendente de escolha de função (modal). Null = nenhum modal aberto.
   const [escolherFuncaoFor, setEscolherFuncaoFor] = useState<CatalogoItem | null>(null)
@@ -2128,6 +2203,14 @@ export function OrcamentoMontar() {
     } else if (o.cliente_nome) {
       setClienteDados({ nome: o.cliente_nome })
     }
+    // Reabrir orçamento FINAME: os itens FINAME carregam "Código FINAME:" nas specs
+    // (persistido no banco). Religa o Modo FINAME automaticamente pra o código voltar a
+    // aparecer e o padrão FINAME ser mantido na regeneração. Sem flag no banco — heurística
+    // pelas specs já salvas; a transformação é idempotente sobre itens já-FINAME.
+    const ehFinameSalvo = Array.isArray(o.itens) && o.itens.some(
+      (it: any) => Array.isArray(it?.specs) && it.specs.some((s: any) => typeof s === 'string' && /c[oó]digo\s*finame/i.test(s)),
+    )
+    if (ehFinameSalvo) setFinameMode(true)
     setOrcamentoHidratado(true)
   }, [editingId, orcamentoEditando, loadingItems, loadingMotores, orcamentoHidratado, modelos])
 
@@ -2172,7 +2255,7 @@ export function OrcamentoMontar() {
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => setFinalizarOpen(true)}
-              disabled={carrinho.length === 0}
+              disabled={carrinho.length === 0 || finameBloqueado}
               className="text-[11px] px-2.5 py-1.5 rounded bg-danger hover:bg-danger/90 text-white font-bold flex items-center gap-1 shadow-sm disabled:opacity-50"
             >
               <RefreshCw className="h-3 w-3" />
@@ -2516,6 +2599,19 @@ export function OrcamentoMontar() {
             >
               {exportacao ? '🌎 Exportação +10% ✓' : '🌎 Ativar exportação'}
             </button>
+            {/* Modo FINAME: padrão FINAME (sem imagens, sem linha de motor/acessório,
+                nomes + códigos FINAME, motor/acessórios embutidos no valor). Não-destrutivo. */}
+            <button
+              onClick={() => setFinameMode(v => !v)}
+              className={`text-[12px] px-3 py-1.5 rounded-md font-semibold transition-all min-h-[34px] border ${
+                finameMode
+                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                  : 'bg-surface text-ink-muted border-border hover:bg-surface-3'
+              }`}
+              title="Modo FINAME: gera o orçamento no padrão FINAME — sem imagens, equipamentos com nome e código FINAME, motores e acessórios embutidos no valor (sem linha separada). Não altera o orçamento normal."
+            >
+              {finameMode ? '🏷️ Modo FINAME ✓' : '🏷️ Modo FINAME'}
+            </button>
             <div className="flex items-center gap-1 sm:gap-2">
               <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-md bg-surface border border-border">
                 <span className="text-[11px] text-ink-faint">{carrinho.length}</span>
@@ -2544,7 +2640,7 @@ export function OrcamentoMontar() {
                 <div className="relative">
                   <div className="flex items-stretch">
                     <button
-                      disabled={carrinho.length === 0}
+                      disabled={carrinho.length === 0 || finameBloqueado}
                       onClick={() => {
                         setSaveMode('update')
                         setFinalizarOpen(true)
@@ -2556,7 +2652,7 @@ export function OrcamentoMontar() {
                       <span className="hidden sm:inline">Salvar</span>
                     </button>
                     <button
-                      disabled={carrinho.length === 0}
+                      disabled={carrinho.length === 0 || finameBloqueado}
                       onClick={() => setSaveDropdownOpen(v => !v)}
                       className="text-[13px] bg-green-600 hover:bg-green-700 text-white font-bold px-2 py-2 rounded-r-md border-l border-green-500 disabled:opacity-30 disabled:cursor-not-allowed flex items-center min-h-[40px] transition-all"
                       title="Mais opções de salvamento"
@@ -2595,7 +2691,7 @@ export function OrcamentoMontar() {
                 </div>
               ) : (
                 <button
-                  disabled={carrinho.length === 0}
+                  disabled={carrinho.length === 0 || finameBloqueado}
                   onClick={handleFinalizarClick}
                   className="text-[13px] bg-accent hover:bg-accent/90 text-white font-bold px-4 py-2 rounded-md disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm min-h-[40px] transition-all"
                   title={carrinho.length === 0 ? 'Adicione items primeiro' : 'Finalizar e gerar PDF + DOCX'}
@@ -2612,6 +2708,24 @@ export function OrcamentoMontar() {
               overflow-x: hidden no mobile pra ResponsiveScaler funcionar sem
               gerar scroll horizontal residual. */}
           <div className="flex-1 overflow-y-auto overflow-x-hidden bg-white">
+            {/* Modo FINAME: aviso de bloqueio quando há itens sem código FINAME. */}
+            {finameMode && finameBloqueios.length > 0 && (
+              <div className="m-3 rounded-lg border border-red-300 bg-red-50 p-3 text-[13px] text-red-800">
+                <div className="font-bold mb-1">⚠️ Orçamento FINAME bloqueado</div>
+                <p className="mb-2">
+                  Os itens abaixo precisam ser ajustados (substituir por um item com código FINAME
+                  ou remover) antes de gerar o orçamento FINAME:
+                </p>
+                <ul className="list-disc pl-5 space-y-1.5">
+                  {finameBloqueios.map((b, i) => (
+                    <li key={i}>
+                      <b>{b.nome}</b>
+                      <div className="text-red-700/90 text-[12px] mt-0.5">{b.sugestao}</div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {carrinho.length === 0 ? (
               // Estado vazio: ocupa a tela inteira centralizado (flex vertical).
               // Antes ficava encolhido no topo, deixando ~860px de branco embaixo.
@@ -2670,19 +2784,20 @@ export function OrcamentoMontar() {
             ) : modoVisao === 'preview' ? (
               <ResponsiveScaler documentWidth={1024}>
               <OrcamentoPreview
-                carrinho={carrinhoExib}
+                carrinho={carrinhoFinal}
+                finameMode={finameMode}
                 numero={editingId && orcamentoEditando ? orcamentoEditando.numero : undefined}
-                motoresAgrupados={motoresAgrupadosExib}
+                motoresAgrupados={motoresAgrupadosFinal}
                 voltagem={voltagem}
-                totalItems={totalItemsExib}
-                totalMotores={totalMotoresExib}
-                totalEquip={totalEquipExib}
-                totalGeral={totalGeralExib}
-                acessorios={acessorios}
-                valorAcessorios={valorAcessoriosExib}
-                fotoPrincipal={fotoPrincipal}
-                onAddAcessorios={() => setAcessoriosOpen(true)}
-                onAddItem={() => {
+                totalItems={totalItemsFinal}
+                totalMotores={totalMotoresFinal}
+                totalEquip={totalEquipFinal}
+                totalGeral={totalGeralFinal}
+                acessorios={acessoriosFinal}
+                valorAcessorios={valorAcessoriosFinal}
+                fotoPrincipal={finameMode ? null : fotoPrincipal}
+                onAddAcessorios={finameMode ? undefined : () => setAcessoriosOpen(true)}
+                onAddItem={finameMode ? undefined : () => {
                   // Mobile: alterna pro tab Catálogo (que tava escondido)
                   setMobileTab('catalogo')
                   // Desktop + mobile: rola pro topo do catálogo + foca o input de busca
@@ -2698,25 +2813,25 @@ export function OrcamentoMontar() {
                 }}
                 onEditAcessorios={() => setAcessoriosOpen(true)}
                 onRemoveAcessorios={() => setAcessorios(null)}
-                onRemove={removerItem}
-                onFotoChange={setFotoPrincipal}
-                onUpdateNome={alterarNome}
-                onUpdateFotoItem={(uid, novaFoto) =>
+                onRemove={finameMode ? undefined : removerItem}
+                onFotoChange={finameMode ? undefined : setFotoPrincipal}
+                onUpdateNome={finameMode ? undefined : alterarNome}
+                onUpdateFotoItem={finameMode ? undefined : (uid, novaFoto) =>
                   setCarrinho(c => c.map(it => it.uid === uid ? { ...it, foto_url: novaFoto } : it))
                 }
-                onUpdateSpec={alterarSpec}
-                onAddSpec={adicionarSpec}
-                onRemoveSpec={removerSpec}
+                onUpdateSpec={finameMode ? undefined : alterarSpec}
+                onAddSpec={finameMode ? undefined : adicionarSpec}
+                onRemoveSpec={finameMode ? undefined : removerSpec}
                 obsPorConta={obsPorConta}
                 onUpdateObsPorConta={setObsPorConta}
-                onUpdateValor={(uid, v) => alterarValor(uid, fExp === 1 ? v : Math.round(v / fExp))}
-                onToggleInox={toggleInox}
-                onToggleTungstenio={toggleTungstenio}
-                onToggleBrinde={(uid) => setCarrinho(prev => prev.map(c => c.uid === uid ? { ...c, brinde: !c.brinde } : c))}
-                onTogglePorConta={(uid) => setCarrinho(prev => prev.map(c => c.uid === uid ? { ...c, por_conta_cliente: !c.por_conta_cliente, ...(!c.por_conta_cliente ? { valor: 0, valor_original: 0 } : {}) } : c))}
-                onUpdateQtd={alterarQtd}
-                componentesExtras={componentesExtras}
-                onUpdateComponentesExtras={setComponentesExtras}
+                onUpdateValor={finameMode ? undefined : (uid, v) => alterarValor(uid, fExp === 1 ? v : Math.round(v / fExp))}
+                onToggleInox={finameMode ? undefined : toggleInox}
+                onToggleTungstenio={finameMode ? undefined : toggleTungstenio}
+                onToggleBrinde={finameMode ? undefined : (uid) => setCarrinho(prev => prev.map(c => c.uid === uid ? { ...c, brinde: !c.brinde } : c))}
+                onTogglePorConta={finameMode ? undefined : (uid) => setCarrinho(prev => prev.map(c => c.uid === uid ? { ...c, por_conta_cliente: !c.por_conta_cliente, ...(!c.por_conta_cliente ? { valor: 0, valor_original: 0 } : {}) } : c))}
+                onUpdateQtd={finameMode ? undefined : alterarQtd}
+                componentesExtras={componentesExtrasFinal}
+                onUpdateComponentesExtras={finameMode ? undefined : setComponentesExtras}
                 componentesAdicionaisCatalogo={componentesAdicionaisCatalogo}
                 tensaoMotores={tensaoMotores}
                 onUpdateTensaoMotores={setTensaoMotores}
@@ -2726,8 +2841,8 @@ export function OrcamentoMontar() {
                 onUpdateDesconto={setDescontoCfg}
                 terms={{ dataVenda: dataVendaTxt, prazoEntrega: prazoEntregaTxt, formaPagamento: formaPagamentoTxt, freteTipo, freteTxt }}
                 onUpdateTerm={atualizarTermo}
-                onMoverItem={moverItem}
-                onTrocarItem={handleTrocarItem}
+                onMoverItem={finameMode ? undefined : moverItem}
+                onTrocarItem={finameMode ? undefined : handleTrocarItem}
                 parcelas={parcelasPagamento}
                 onUpdateParcelas={setParcelasPagamento}
                 motoresDisponiveis={motores ?? []}
@@ -2762,16 +2877,17 @@ export function OrcamentoMontar() {
           {carrinho.length > 0 && (
             <div className="border-t border-border p-3 space-y-1.5 bg-surface-2/50">
               <div className="flex justify-between text-[11px] text-ink-muted">
-                <span>Equipamentos</span>
-                <span className="font-semibold">{formatBRL(totalItemsExib)}</span>
+                <span>Equipamentos{finameMode ? ' (FINAME)' : ''}</span>
+                <span className="font-semibold">{formatBRL(totalItemsFinal)}</span>
               </div>
-              {acessorios && (
+              {/* No FINAME, acessórios/motores estão embutidos — sem linha separada. */}
+              {!finameMode && acessorios && (
                 <div className="flex justify-between text-[11px] text-ink-muted">
                   <span>Acessórios ({acessorios.valorFixo != null && acessorios.valorFixo > 0 ? 'R$ fixo' : `${acessorios.pct}%`})</span>
                   <span className="font-semibold">{formatBRL(valorAcessoriosExib)}</span>
                 </div>
               )}
-              {totalMotores > 0 && (
+              {!finameMode && totalMotores > 0 && (
                 <div className="flex justify-between text-[11px] text-ink-muted">
                   <span>Motores ({motoresAgrupados.length})</span>
                   <span className="font-semibold">{formatBRL(totalMotoresExib)}</span>
@@ -2779,7 +2895,7 @@ export function OrcamentoMontar() {
               )}
               <div className="flex justify-between text-[14px] font-bold text-ink pt-1 border-t border-border">
                 <span>TOTAL DA PROPOSTA</span>
-                <span className="text-accent">{formatBRL(totalGeralExib)}</span>
+                <span className="text-accent">{formatBRL(totalGeralFinal)}</span>
               </div>
             </div>
           )}
@@ -2844,7 +2960,7 @@ export function OrcamentoMontar() {
         autoSubmitOnOpen={autoSubmitFromIA}
         snapshot={{
           voltagem,
-          itens: carrinhoExib.map(c => ({
+          itens: carrinhoFinal.map(c => ({
             nome: c.nome_custom || c.nome,  // usa nome customizado se vendedor editou
             qtd: c.qtd,
             valor: c.valor,
@@ -2877,13 +2993,14 @@ export function OrcamentoMontar() {
             motor_incluso_manual: c.motor_incluso_manual,
             motores_incluso_idx: c.motores_incluso_idx,
           })),
-          motoresAgrupados: motoresAgrupadosExib,
-          acessorios: acessorios ? { pct: acessorios.pct, items: acessorios.items, valor: valorAcessoriosExib } : null,
-          totalItems: totalItemsExib,
-          totalMotores: totalMotoresExib,
-          totalEquip: totalEquipExib,
-          totalGeral: totalGeralExib,
-          fotoPrincipal,
+          motoresAgrupados: motoresAgrupadosFinal,
+          acessorios: acessoriosFinal ? { pct: acessoriosFinal.pct, items: acessoriosFinal.items, valor: valorAcessoriosFinal } : null,
+          totalItems: totalItemsFinal,
+          totalMotores: totalMotoresFinal,
+          totalEquip: totalEquipFinal,
+          totalGeral: totalGeralFinal,
+          fotoPrincipal: finameMode ? null : fotoPrincipal,
+          finameMode,
           tensaoMotores,
           marcaMotores,
           desconto: descontoCfg,
@@ -2895,7 +3012,7 @@ export function OrcamentoMontar() {
             freteTxt: freteTxt || null,
           },
           parcelas: parcelasPagamento,
-          componentesExtras: componentesExtras,
+          componentesExtras: componentesExtrasFinal,
           obsPorConta: obsPorConta,
         } as CarrinhoSnapshot}
         onClose={() => { setFinalizarOpen(false); setAutoSubmitFromIA(false); }}
