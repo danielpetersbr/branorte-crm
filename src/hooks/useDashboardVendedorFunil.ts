@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import type { DashboardPreset } from './useDashboard'
+import { parseCustomRange, type DashboardPreset } from './useDashboard'
 
 // Funil por vendedor (RPC public.dashboard_vendedor_funil).
 // Atribuição = dono do WhatsApp (wa_chat_labels.vendedor_nome).
@@ -27,6 +27,8 @@ interface VendedorFunilResp {
 }
 
 function rangeFromPreset(preset: DashboardPreset): { from: Date; to: Date } {
+  const _custom = parseCustomRange(preset)
+  if (_custom) return _custom
   const now = new Date()
   const startOfDay = (d: Date) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x }
   const endOfDay = (d: Date) => { const x = new Date(d); x.setHours(23, 59, 59, 999); return x }

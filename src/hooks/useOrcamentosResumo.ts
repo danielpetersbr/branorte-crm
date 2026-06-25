@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import type { DashboardPreset } from './useDashboard'
+import { parseCustomRange, type DashboardPreset } from './useDashboard'
 
 // Resumo das PROPOSTAS montadas no builder de orçamento (tabela orcamentos_gerados).
 // É a única fonte real de R$ no fluxo de lead. O status 'enviado'/'rascunho' do builder
@@ -32,6 +32,8 @@ interface OrcRow {
 }
 
 function desdeFromPreset(preset: DashboardPreset): string | null {
+  const _custom = parseCustomRange(preset)
+  if (_custom) return _custom.from.toISOString()
   const now = new Date()
   const d = (back: number) => { const x = new Date(now); x.setDate(x.getDate() - back); x.setHours(0, 0, 0, 0); return x.toISOString() }
   if (preset === 'hoje') { const x = new Date(now); x.setHours(0, 0, 0, 0); return x.toISOString() }

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import type { DashboardPreset } from './useDashboard'
+import { parseCustomRange, type DashboardPreset } from './useDashboard'
 
 // Propostas montadas no builder cruzadas com o ESTÁGIO ATUAL da etiqueta WhatsApp do
 // cliente (estado de agora). Responde "quais orçamentos foram enviados e estão com
@@ -23,6 +23,8 @@ export interface PropostasStatus {
 export const CATS_ABERTO: PropCategoria[] = ['orcamento', 'lead_quente', 'quente', 'novo', 'sem_etiqueta']
 
 function desdeFromPreset(preset: DashboardPreset): string | null {
+  const _custom = parseCustomRange(preset)
+  if (_custom) return _custom.from.toISOString()
   const now = new Date()
   const d = (back: number) => { const x = new Date(now); x.setDate(x.getDate() - back); x.setHours(0, 0, 0, 0); return x.toISOString() }
   if (preset === 'hoje') { const x = new Date(now); x.setHours(0, 0, 0, 0); return x.toISOString() }

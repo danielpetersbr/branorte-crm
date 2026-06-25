@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import type { DashboardPreset } from './useDashboard'
+import { parseCustomRange, type DashboardPreset } from './useDashboard'
 
 // Funil com "Qualificou" = qualificado pela IA OU etiqueta de avanço do vendedor
 // (e "Engajou" = respondeu à IA OU vendedor já etiquetou) — mantém o funil
@@ -14,6 +14,10 @@ export interface FunilUnion {
 
 function windowFromPreset(preset: DashboardPreset): { from: string | null; to: string | null } {
   if (!preset) return { from: null, to: null } // '' = tudo
+  const _custom = parseCustomRange(preset)
+  // 'to' EXCLUSIVO (início do dia seguinte) p/ casar com a semântica dos presets fixos
+  // deste hook (que usam `tomorrow`). +1ms sobre o fim do dia = 00:00 do dia seguinte.
+  if (_custom) return { from: _custom.from.toISOString(), to: new Date(_custom.to.getTime() + 1).toISOString() }
   const now = new Date()
   const startOfDay = (d: Date) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x }
   const tomorrow = startOfDay(now); tomorrow.setDate(tomorrow.getDate() + 1)

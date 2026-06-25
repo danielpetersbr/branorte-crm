@@ -11,7 +11,8 @@ import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 const DASHBOARD_LIMIT = 50000
 const META_MENSAL_REAIS = 2_000_000
 
-export type DashboardPreset = '' | 'hoje' | 'ontem' | '7d' | '30d' | 'mes'
+// '' = Tudo · presets fixos · `custom:YYYY-MM-DD:YYYY-MM-DD` = período personalizado.
+export type DashboardPreset = '' | 'hoje' | 'ontem' | '7d' | '30d' | 'mes' | `custom:${string}`
 
 export interface DashboardFilters {
   preset: DashboardPreset
@@ -173,8 +174,25 @@ function endOfDay(d: Date): Date { return new Date(d.getFullYear(), d.getMonth()
 
 interface DateRange { from: Date; to: Date }
 
+// Período personalizado: preset no formato "custom:YYYY-MM-DD:YYYY-MM-DD".
+// Retorna { from: início do dia FROM, to: fim do dia TO } ou null se inválido.
+// COMPARTILHADO: os outros hooks do dashboard importam isto pra tratar o mesmo formato.
+export function parseCustomRange(preset: DashboardPreset): { from: Date; to: Date } | null {
+  if (typeof preset !== 'string' || !preset.startsWith('custom:')) return null
+  const [, fromStr, toStr] = preset.split(':')
+  if (!fromStr || !toStr) return null
+  const from = new Date(`${fromStr}T00:00:00`)
+  const to = new Date(`${toStr}T00:00:00`)
+  if (isNaN(from.getTime()) || isNaN(to.getTime())) return null
+  // Se o vendedor inverter as datas, ordena.
+  const [a, b] = from <= to ? [from, to] : [to, from]
+  return { from: startOfDay(a), to: endOfDay(b) }
+}
+
 function rangeForPreset(preset: DashboardPreset, now: Date): DateRange | null {
   if (!preset) return null
+  const custom = parseCustomRange(preset)
+  if (custom) return custom
   if (preset === 'hoje') return { from: startOfDay(now), to: endOfDay(now) }
   if (preset === 'ontem') {
     const y = new Date(now); y.setDate(y.getDate() - 1)

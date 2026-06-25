@@ -28,6 +28,20 @@ const PRESET_LABELS: { value: DashboardPreset; label: string }[] = [
   { value: 'mes',  label: 'Este mês' },
 ]
 
+// Período personalizado — codificado no preset como "custom:YYYY-MM-DD:YYYY-MM-DD".
+function isCustomPreset(p: DashboardPreset): boolean {
+  return typeof p === 'string' && p.startsWith('custom:')
+}
+function customDates(p: DashboardPreset): { from: string; to: string } {
+  if (!isCustomPreset(p)) return { from: '', to: '' }
+  const [, from = '', to = ''] = (p as string).split(':')
+  return { from, to }
+}
+function ddmm(iso: string): string {
+  const [, m, d] = (iso || '').split('-')
+  return d && m ? `${d}/${m}` : iso
+}
+
 const COLORS = {
   accent: 'hsl(152 60% 40%)',
   warn: 'hsl(38 92% 50%)',
@@ -146,6 +160,12 @@ function CardHeader({ title, subtitle, right }: { title: string; subtitle?: stri
 
 export function Dashboard() {
   const [preset, setPreset] = usePresetFilter()
+  // Período personalizado: popover + inputs de data (De/Até).
+  const [customOpen, setCustomOpen] = useState(false)
+  const [customDe, setCustomDe] = useState('')
+  const [customAte, setCustomAte] = useState('')
+  // Data de hoje (local) — teto dos inputs pra não escolher período futuro.
+  const hojeISO = (() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}` })()
   const [openSec, toggleSec] = useOpenSections()
   const [dark, toggleDark] = useDarkMode()
   const { data, isLoading, error } = useDashboard({ preset })
@@ -270,9 +290,11 @@ export function Dashboard() {
 
   // Delta so faz sentido quando ha filtro de periodo (compara com periodo anterior)
   const showDelta = !!preset
-  const periodoLabel = preset
-    ? PRESET_LABELS.find(p => p.value === preset)?.label ?? 'período'
-    : 'no total'
+  const periodoLabel = isCustomPreset(preset)
+    ? (() => { const { from, to } = customDates(preset); return `${ddmm(from)}–${ddmm(to)}` })()
+    : preset
+      ? PRESET_LABELS.find(p => p.value === preset)?.label ?? 'período'
+      : 'no total'
 
   // 5 KPIs essenciais (cortado de 9): o funil de entrada (leads), a qualidade
   // (qualificados), e o resultado (orçamento, vendido, taxa). "Hoje/Não respondeu/
@@ -382,6 +404,67 @@ export function Dashboard() {
                 </button>
               )
             })}
+            {/* Período personalizado (intervalo de datas) */}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  // Pré-preenche com o range atual se já estiver em modo personalizado.
+                  const { from, to } = customDates(preset)
+                  setCustomDe(from)
+                  setCustomAte(to)
+                  setCustomOpen(v => !v)
+                }}
+                className={
+                  'h-8 px-3 rounded-md text-[12px] font-medium border transition-colors inline-flex items-center gap-1 ' +
+                  (isCustomPreset(preset)
+                    ? 'bg-accent-bg text-accent border-accent/30'
+                    : 'bg-surface text-ink-muted border-border hover:text-ink hover:border-border-strong')
+                }
+                title="Escolher um intervalo de datas específico"
+              >
+                📅 {isCustomPreset(preset) ? periodoLabel : 'Personalizado'}
+              </button>
+              {customOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setCustomOpen(false)} />
+                  <div className="absolute right-0 top-full mt-1.5 z-50 bg-surface border border-border rounded-lg shadow-xl p-3 w-[250px]">
+                    <p className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide mb-2">Período personalizado</p>
+                    <label className="block text-[11px] text-ink-muted mb-0.5">De</label>
+                    <input
+                      type="date"
+                      value={customDe}
+                      max={customAte || hojeISO}
+                      onChange={e => setCustomDe(e.target.value)}
+                      className="w-full mb-2 h-8 px-2 rounded-md border border-border bg-bg text-[12px] text-ink"
+                    />
+                    <label className="block text-[11px] text-ink-muted mb-0.5">Até</label>
+                    <input
+                      type="date"
+                      value={customAte}
+                      min={customDe || undefined}
+                      max={hojeISO}
+                      onChange={e => setCustomAte(e.target.value)}
+                      className="w-full mb-3 h-8 px-2 rounded-md border border-border bg-bg text-[12px] text-ink"
+                    />
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => setCustomOpen(false)}
+                        className="h-8 px-3 rounded-md text-[12px] text-ink-muted hover:bg-surface-3 border border-border"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        disabled={!customDe || !customAte}
+                        onClick={() => { setPreset(`custom:${customDe}:${customAte}`); setCustomOpen(false) }}
+                        className="h-8 px-3 rounded-md text-[12px] font-bold bg-accent text-white hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        Aplicar
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>

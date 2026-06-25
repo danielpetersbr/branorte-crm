@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import type { DashboardPreset } from './useDashboard'
+import { parseCustomRange, type DashboardPreset } from './useDashboard'
 
 // Painel por vendedor: funil de etiquetas do WhatsApp + motivos de perda, por vendedor.
 // Fonte: RPC dashboard_painel_vendedores (junta atendimentos -> wa_chat_labels ->
@@ -32,6 +32,8 @@ export interface VendedorPainel {
 
 // '' (Tudo) = últimos 90 dias (igual useDashboardEtiquetas — etiqueta é sinal recente).
 function rangeFromPreset(preset: DashboardPreset): { from: Date; to: Date } {
+  const _custom = parseCustomRange(preset)
+  if (_custom) return _custom
   const now = new Date()
   const sod = (d: Date) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x }
   const eod = (d: Date) => { const x = new Date(d); x.setHours(23, 59, 59, 999); return x }

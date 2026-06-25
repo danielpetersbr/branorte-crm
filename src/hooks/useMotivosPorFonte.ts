@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import type { DashboardPreset } from './useDashboard'
+import { parseCustomRange, type DashboardPreset } from './useDashboard'
 
 // Motivos de fechamento/perda por CRIATIVO e por ORIGEM — pra saber qual anúncio/canal
 // traz mais "não respondeu mais", "não tem interesse", "não fabricamos" etc. e dar pra
@@ -51,6 +51,8 @@ export const MOTIVO_LABELS: { key: MotivoKey; label: string }[] = [
 ]
 
 function rangeFromPreset(preset: DashboardPreset): { from: string; to: string } {
+  const _custom = parseCustomRange(preset)
+  if (_custom) return { from: _custom.from.toISOString(), to: _custom.to.toISOString() }
   const now = new Date()
   const sod = (back: number) => { const x = new Date(now); x.setDate(x.getDate() - back); x.setHours(0, 0, 0, 0); return x }
   const eod = new Date(now); eod.setHours(23, 59, 59, 999)
