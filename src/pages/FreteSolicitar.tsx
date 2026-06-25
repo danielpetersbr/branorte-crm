@@ -11,7 +11,7 @@ import { Truck, Plus, X, MapPin, Loader2, ArrowLeft, CheckCircle2, Package, Copy
 import { useAuth } from '@/hooks/useAuth'
 import {
   useFreteCatalogoItens, useTiposCaminhao, useAnttVigente, useMunicipiosUF,
-  useCriarSolicitacao, useCotacoesProximas, gerarLinkFrete, UFS_BR, type FreteCatalogoItem, type FreteEquipItem,
+  useCriarSolicitacao, useCotacoesProximas, useTransportadoras, useEnfileirarCotacao, gerarLinkFrete, UFS_BR, type FreteCatalogoItem, type FreteEquipItem,
 } from '@/hooks/useFrete'
 import {
   recomendarCaminhao, calcularPisoANTT, geocodificarCidade, calcularDistanciaOSRM,
@@ -92,6 +92,8 @@ export function FreteSolicitar() {
   const tipos = useTiposCaminhao()
   const antt = useAnttVigente()
   const criar = useCriarSolicitacao()
+  const transportadoras = useTransportadoras()
+  const enfileirar = useEnfileirarCotacao()
 
   // Esta tela fica com fundo branco (não o cinza padrão da página). O CSS pinta
   // `html, body` com --bg (cinza), então precisa whitenar OS DOIS — senão o <html>
@@ -133,6 +135,7 @@ export function FreteSolicitar() {
   const [show3d, setShow3d] = useState(false)
   const [okCodigo, setOkCodigo] = useState<string | null>(null)
   const [okSolicId, setOkSolicId] = useState<string | null>(null)
+  const [okEnviado, setOkEnviado] = useState<number | null>(null)
 
   const catItens: FreteCatalogoItem[] = catalogo.data ?? []
 
@@ -289,6 +292,19 @@ export function FreteSolicitar() {
       })
       setOkCodigo(res.codigo ?? '✓')
       setOkSolicId(res.id ?? null)
+      // Auto-envia a cotação pras transportadoras AUTORIZADAS da UF, pelo WhatsApp do
+      // vendedor (não é mais só link manual). O frete-enfileirar casa o nome pela 1ª palavra.
+      const aptas = (transportadoras.data ?? []).filter(
+        t => t.ativo && t.autorizado && (!t.ufs_atende?.length || t.ufs_atende.includes(uf)),
+      )
+      if (res.id && aptas.length) {
+        try {
+          const r = await enfileirar.mutateAsync({ solicitacao_id: res.id, transportadora_ids: aptas.map(t => t.id) })
+          setOkEnviado((r as any)?.enfileirados ?? aptas.length)
+        } catch { setOkEnviado(0) }
+      } else {
+        setOkEnviado(0)
+      }
     } catch (e: any) {
       setErro(`Não consegui salvar: ${e?.message ?? e}`)
     }
@@ -298,7 +314,7 @@ export function FreteSolicitar() {
     setItens([]); setForm(FORM_VAZIO)
     setUf(''); setCidade(''); setLatLng(null); setDistancia(null); setCalcMsg('')
     setClienteNome(''); setDescricao(''); setObs(''); setValorNota(''); setTipoCotacao('cotacao'); setUrgente(false)
-    setOkCodigo(null); setOkSolicId(null); setErro('')
+    setOkCodigo(null); setOkSolicId(null); setOkEnviado(null); setErro('')
   }
 
   if (okCodigo) {
@@ -308,8 +324,13 @@ export function FreteSolicitar() {
           <CheckCircle2 className="h-8 w-8 text-accent" />
         </div>
         <h1 className="text-xl font-bold text-ink mb-1">Pedido de frete enviado!</h1>
-        <p className="text-sm text-ink-muted mb-1">Código <b className="text-ink">{okCodigo}</b> — já está disponível pras transportadoras dos estados de destino. Elas veem e respondem direto no portal.</p>
-        {okSolicId && <LinkRapido solicId={okSolicId} />}
+        <p className="text-sm text-ink-muted mb-1">
+          Código <b className="text-ink">{okCodigo}</b>
+          {okEnviado != null && okEnviado > 0
+            ? <> — cotação enviada no <b className="text-accent">WhatsApp</b> pra <b className="text-ink">{okEnviado}</b> transportadora{okEnviado > 1 ? 's' : ''} da UF. Os valores aparecem em "Ver cotações" conforme responderem.</>
+            : <> — registrado. Nenhuma transportadora <b>autorizada</b> atende essa UF ainda — autorize uma em Transportadoras, ou mande o link manual abaixo.</>}
+        </p>
+        {okEnviado === 0 && okSolicId && <LinkRapido solicId={okSolicId} />}
         <div className="flex items-center justify-center gap-2 mt-6">
           <button onClick={novaSolicitacao} className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:opacity-90">Novo pedido</button>
           <Link to="/frete/aprovar" className="px-4 py-2 rounded-lg border border-border text-sm text-ink-muted hover:text-ink">Ver cotações</Link>
