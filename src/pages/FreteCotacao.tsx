@@ -362,19 +362,18 @@ export default function FreteCotacao() {
     return cotarFreteComercial(distanciaKm, antt, modoCargaBranorte, Number(margem) || 1, temRetorno)
   }, [caminhaoEfetivo, distanciaKm, antts.data, modoCargaBranorte, margem, temRetorno])
 
-  // ── Estimativa: Parceiras (aplica ida+volta igual ao card principal) ──
+  // ── Estimativa: Parceiras (sempre só a ida — sem ida+volta) ──
   const estimativasParceiras = useMemo(() => {
     if (!caminhaoEfetivo || !distanciaKm || !parceiras.data || !destino) return []
-    const km = freteComercial?.kmCobravel ?? distanciaKm // carga completa = ida+volta
     return parceiras.data
       .filter(p => p.ativo)
       .map(p => ({
         parceira: p,
-        valor: calcularParceira(km, destino.uf, caminhaoEfetivo, p),
+        valor: calcularParceira(distanciaKm, destino.uf, caminhaoEfetivo, p),
       }))
       .filter(x => x.valor != null)
       .sort((a, b) => (a.valor ?? 0) - (b.valor ?? 0))
-  }, [caminhaoEfetivo, distanciaKm, parceiras.data, destino, freteComercial])
+  }, [caminhaoEfetivo, distanciaKm, parceiras.data, destino])
 
   // ── Estimativa 4: Histórico ──
   const mediaHist = useMediaHistorica(caminhaoEfetivo?.id ?? null, destino?.uf ?? null, distanciaKm)
@@ -989,7 +988,7 @@ export default function FreteCotacao() {
             </div>
           )}
 
-          {/* DESTAQUE = mínimo de ida (tabela ANTT). Comercial (ida+volta × margem) fica secundário. */}
+          {/* VALOR 1 = mínimo da tabela ANTT (sempre — frete do equipamento não tem ida+volta) */}
           {caminhaoEfetivo && (
             <div className="relative overflow-hidden p-6 bg-gradient-to-br from-amber-500/15 to-amber-500/5 border-2 border-amber-500/40 rounded-2xl">
               <div className="absolute -top-16 -right-16 w-40 h-40 bg-amber-500/20 rounded-full blur-3xl pointer-events-none" />
@@ -999,56 +998,16 @@ export default function FreteCotacao() {
                     <Building2 className="h-5 w-5 text-amber-600" />
                   </div>
                   <span className="text-xs font-black uppercase tracking-wider text-amber-700 dark:text-amber-400">
-                    Mínimo de ida · tabela ANTT
+                    Valor mínimo · tabela ANTT
                   </span>
                 </div>
                 <div className="text-5xl font-black tabular-nums text-amber-700 dark:text-amber-400 leading-none tracking-tighter">
-                  {formatBRL(freteComercial?.pisoLegalIda)}
+                  {formatBRL(pisoAntt)}
                 </div>
                 <div className="text-xs text-ink-muted mt-3 leading-relaxed">
-                  Piso legal mínimo, <b className="text-ink">só ida</b> (Res. 6.076/2026)
+                  Piso legal do frete (Res. 6.076/2026)
                   {distanciaKm != null && <> · <b className="tabular-nums">{distanciaKm.toLocaleString('pt-BR')} km</b></>}
-                  <br />Caminhão: <b>{caminhaoEfetivo.nome}</b> · Modo: <b>{MODOS_CARGA_LABELS[modoCargaBranorte]}</b>
-                </div>
-
-                {/* Preço sugerido comercial (base ida/volta × margem) — secundário */}
-                <div className="mt-4 pt-4 border-t border-amber-500/20">
-                  <div className="flex items-end justify-between gap-3 flex-wrap">
-                    <div>
-                      <div className="text-[10px] font-black uppercase tracking-wider text-ink-muted/70">
-                        Preço sugerido (negociar)
-                      </div>
-                      <div className="text-2xl font-black tabular-nums text-ink leading-tight">
-                        {formatBRL(freteComercial?.comMargem)}
-                      </div>
-                      <div className="text-[11px] text-ink-muted mt-0.5">
-                        base {formatBRL(freteComercial?.base)} × margem
-                        {freteComercial?.idaEVolta && (
-                          <> · <b className="text-amber-700 dark:text-amber-400">ida + volta ({freteComercial.kmCobravel.toLocaleString('pt-BR')} km)</b></>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-ink-muted font-bold">× margem</span>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={margem}
-                        onChange={e => setMargem(e.target.value)}
-                        className="w-16 border border-amber-500/40 rounded-lg px-2 py-1.5 text-sm bg-bg tabular-nums font-bold focus:outline-none focus:ring-2 focus:ring-amber-500/30"
-                      />
-                    </div>
-                  </div>
-                  {modoCargaBranorte === 'completa' && (
-                    <label className="mt-3 flex items-center gap-2 text-xs text-ink-muted cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={temRetorno}
-                        onChange={e => setTemRetorno(e.target.checked)}
-                      />
-                      Tem carga de retorno? <span className="text-ink-muted/70">(cobra só a ida, sem dobrar)</span>
-                    </label>
-                  )}
+                  <br />Caminhão: <b>{caminhaoEfetivo.nome}</b>
                 </div>
               </div>
             </div>
@@ -1153,7 +1112,7 @@ export default function FreteCotacao() {
                 Pronto pra cotar
               </h2>
               <p className="text-sm text-ink-muted max-w-md mt-2 mb-8">
-                Informe o <b className="text-ink">destino</b> e a <b className="text-ink">carga</b> — o frete estimado aparece na hora (ida+volta na carga completa), comparado com parceiras e histórico e travado no piso legal.
+                Informe o <b className="text-ink">destino</b> e a <b className="text-ink">carga</b> — o valor mínimo da tabela ANTT aparece na hora, e a base de cotações reais do item vai sendo construída conforme você cota.
               </p>
 
               {/* 3 passos com status ao vivo */}
