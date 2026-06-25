@@ -3,13 +3,11 @@
 
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Truck, Plus, Edit, Trash2, ArrowLeft, Phone, User, Zap, ShieldCheck, MapPin } from 'lucide-react'
+import { Truck, Plus, Edit, Trash2, ArrowLeft, Phone, User, Zap, MapPin } from 'lucide-react'
 import {
   useTransportadoras,
   useUpsertTransportadora,
   useDeleteTransportadora,
-  useTranspContasAdmin,
-  useAprovarTransp,
 } from '@/hooks/useFrete'
 import type { TransportadoraParceira } from '@/lib/calcFrete'
 
@@ -55,8 +53,6 @@ export default function FreteTransportadoras() {
   const { data: lista, isLoading } = useTransportadoras()
   const upsert = useUpsertTransportadora()
   const del = useDeleteTransportadora()
-  const contas = useTranspContasAdmin()
-  const aprovar = useAprovarTransp()
   const [editando, setEditando] = useState<Partial<TransportadoraParceira> | null>(null)
 
   function abrirNovo() {
@@ -119,40 +115,6 @@ export default function FreteTransportadoras() {
         >
           <Plus className="h-4 w-4" /> Nova
         </button>
-      </div>
-
-      {/* Contas do portal de transportadoras — aprovar acesso às cotações */}
-      <div className="rounded-2xl border border-border bg-surface p-4 mb-6">
-        <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-          <h2 className="font-semibold text-ink flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-accent" /> Contas do portal <span className="text-xs text-ink-faint font-normal">(/transportadora)</span></h2>
-          {(contas.data ?? []).filter(c => !c.aprovado).length > 0
-            ? <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 font-medium">{(contas.data ?? []).filter(c => !c.aprovado).length} aguardando</span>
-            : <span className="text-xs text-ink-faint">tudo aprovado</span>}
-        </div>
-        {contas.isLoading && <div className="text-sm text-ink-muted">Carregando…</div>}
-        {!contas.isLoading && (contas.data?.length ?? 0) === 0 && (
-          <div className="text-sm text-ink-faint">Nenhuma transportadora entrou pelo portal ainda.</div>
-        )}
-        <div className="space-y-2">
-          {(contas.data ?? []).map(c => (
-            <div key={c.user_id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-bg p-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="h-9 w-9 shrink-0 rounded-lg bg-surface-2 text-ink-muted flex items-center justify-center text-xs font-bold">{iniciais(c.nome)}</div>
-                <div className="min-w-0">
-                  <div className="font-medium text-sm text-ink flex items-center gap-2">{c.nome}
-                    {c.aprovado
-                      ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-600 font-medium">aprovada</span>
-                      : <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 font-medium">aguardando</span>}
-                  </div>
-                  <div className="text-xs text-ink-muted truncate">{c.email}{c.cnpj ? ` · ${c.cnpj}` : ''} · atende {c.estados.join(', ') || '—'}</div>
-                </div>
-              </div>
-              {c.aprovado
-                ? <button type="button" onClick={() => aprovar.mutate({ user_id: c.user_id, aprovar: false })} disabled={aprovar.isPending} className="px-3 py-1.5 text-xs border border-border rounded-lg text-ink-muted hover:text-ink hover:bg-surface-2 shrink-0">Revogar</button>
-                : <button type="button" onClick={() => aprovar.mutate({ user_id: c.user_id, aprovar: true })} disabled={aprovar.isPending} className="px-3 py-1.5 text-xs bg-accent text-white rounded-lg font-medium hover:opacity-90 shrink-0">Aprovar</button>}
-            </div>
-          ))}
-        </div>
       </div>
 
       {isLoading && (
