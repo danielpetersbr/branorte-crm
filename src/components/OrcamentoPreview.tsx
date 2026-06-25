@@ -1208,9 +1208,16 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             title={!renderMode && onUpdateValor ? 'Duplo-clique para editar valor' : undefined}
                             onDoubleClick={() => {
                               if (!renderMode && onUpdateValor && it.uid) {
-                                setSenhaModalUid(it.uid)
-                                setSenhaInput('')
-                                setSenhaErro(false)
+                                // FINAME: duplo-clique edita direto (sem senha) — vendedor só
+                                // redistribui o total travado entre as linhas, não muda o total.
+                                if (finameMode) {
+                                  setEditingValorStr(String(it.valor))
+                                  setEditingValorUid(it.uid)
+                                } else {
+                                  setSenhaModalUid(it.uid)
+                                  setSenhaInput('')
+                                  setSenhaErro(false)
+                                }
                               }
                             }}
                           >R$ {formatBRLBare(subtotal)}</span>
@@ -1943,6 +1950,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     <div className="font-bold">⚠ A soma dos itens não bate com o total da proposta</div>
                     <div className="mt-1">
                       Itens somam <b>R$ {formatBRLBare(finameSomaItens)}</b> · total travado <b>R$ {formatBRLBare(totalGeral)}</b>.
+                    </div>
+                    <div className="mt-1 font-bold text-[15px]">
+                      {totalGeral - finameSomaItens >= 0
+                        ? <>Falta <span className="text-red-600">R$ {formatBRLBare(totalGeral - finameSomaItens)}</span> pra fechar.</>
+                        : <>Passou <span className="text-red-600">R$ {formatBRLBare(finameSomaItens - totalGeral)}</span> do total.</>}
                     </div>
                     <div className="mt-1 text-[13px] text-amber-800">
                       Ajuste os valores pra fechar em R$ {formatBRLBare(totalGeral)} — ou use a soma atual como novo total:
