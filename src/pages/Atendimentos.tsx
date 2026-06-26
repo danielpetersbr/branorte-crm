@@ -17,7 +17,7 @@ import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTime
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, type StatusReal } from '@/types/atendimento'
-import { useAtendimentos, useAtendimentoKpis, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, type DataPreset } from '@/hooks/useAtendimentos'
+import { useAtendimentos, useAtendimentoKpis, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, type DataPreset } from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 
@@ -349,6 +349,8 @@ export function Atendimentos() {
   const { data: waLabelsMap } = useWaLabelsByPhones(phonesAtuais)
   // Indicador automático "orçamento gerado" cruzando o telefone com orcamentos_gerados.
   const { data: orcMap } = useOrcamentosPorTelefone(phonesAtuais)
+  // Indicador automático "vendido" cruzando o telefone → orçamento → pedido (venda).
+  const { data: vendaMap } = useVendasPorTelefone(phonesAtuais)
   const deleteMut = useDeleteAtendimento()
   const { profile } = useAuth()
   const { data: vendorsData } = useVendors()
@@ -717,6 +719,8 @@ export function Atendimentos() {
                     <th className="w-[88px]">Vendedor</th>
                     <th className="hidden 2xl:table-cell w-[110px]" title="Etiqueta atribuída no WhatsApp do vendedor">Etiqueta WA</th>
                     <th className="w-[76px]" title="Já foi montado orçamento pra esse telefone? (match automático pelo número)">Orçamento</th>
+                    <th className="w-[60px]" title="Esse lead virou venda? (orçamento dele virou pedido não-cancelado)">Vendido</th>
+                    <th className="hidden lg:table-cell w-[96px] !text-right" title="Valor da venda fechada (soma dos pedidos do lead)">Valor</th>
                     <th className="!text-right w-[40px]"></th>
                   </tr>
                 </thead>
@@ -991,6 +995,38 @@ export function Atendimentos() {
                             )
                           })()}
                         </td>
+                        {/* VENDIDO — o orçamento desse lead virou pedido (venda não-cancelada)? */}
+                        <td className="px-1.5 py-2.5 whitespace-nowrap">
+                          {(() => {
+                            const venda = lookupVenda(vendaMap, r.telefone)
+                            if (!venda) return <span className="text-[10px] text-ink-faint">Não</span>
+                            const title = `Vendido${venda.ultimoPedido ? ` · ${venda.ultimoPedido}` : ''}`
+                              + (venda.ultimaVenda ? ` em ${new Date(venda.ultimaVenda + 'T00:00:00').toLocaleDateString('pt-BR')}` : '')
+                              + (venda.valor ? ` · ${venda.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : '')
+                              + (venda.qtd > 1 ? ` · ${venda.qtd} pedidos` : '')
+                            return (
+                              <Badge
+                                className="text-[10px] font-semibold"
+                                style={{ background: 'rgba(59,130,246,0.14)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.35)' }}
+                                title={title}
+                              >
+                                ✓ Sim{venda.qtd > 1 ? ` (${venda.qtd})` : ''}
+                              </Badge>
+                            )
+                          })()}
+                        </td>
+                        {/* VALOR — soma das vendas fechadas do lead */}
+                        <td className="hidden lg:table-cell px-1.5 py-2.5 whitespace-nowrap text-right">
+                          {(() => {
+                            const venda = lookupVenda(vendaMap, r.telefone)
+                            if (!venda || !venda.valor) return <span className="text-[10px] text-ink-faint">—</span>
+                            return (
+                              <span className="text-[11px] font-semibold tabular-nums text-ink" title={venda.ultimoPedido ?? undefined}>
+                                {venda.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
+                              </span>
+                            )
+                          })()}
+                        </td>
                         {/* AÇÕES */}
                         <td className="px-2 py-2.5 text-right whitespace-nowrap">
                           {(() => {
@@ -1021,7 +1057,7 @@ export function Atendimentos() {
                   })}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={17} className="px-4 py-16 text-center">
+                      <td colSpan={19} className="px-4 py-16 text-center">
                         <div className="flex flex-col items-center gap-2">
                           <div className="h-10 w-10 rounded-full bg-surface-2 flex items-center justify-center">
                             <Inbox className="h-5 w-5 text-ink-faint" />

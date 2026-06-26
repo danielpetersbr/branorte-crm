@@ -316,7 +316,7 @@ export function Dashboard() {
     { label: 'Qualificados',  kpi: data.kpiQualificados, icon: CheckCircle2, color: COLORS.accent, sub: 'quer algo que a Branorte faz' },
     { label: 'Orçamentos',    kpi: { valor: orcamentosReais ?? orcamentoEtq, deltaPct: 0, sparkline: [] }, icon: FilePlus2, color: 'hsl(280 65% 50%)', sub: 'telefone × orçamentos montados' },
     { label: 'Vendidos',      kpi: { valor: vendidosReais ?? vendidoEtq, deltaPct: 0, sparkline: [] }, icon: CheckCircle2, color: 'hsl(152 60% 35%)', sub: 'vendas no período (pedido)' },
-    { label: 'Valor convertido', kpi: { valor: vendas?.valor ?? 0, deltaPct: 0, sparkline: [] }, icon: Banknote, color: 'hsl(152 60% 40%)', sub: 'faturamento no período', prefix: 'R$ ' },
+    { label: 'Valor convertido', kpi: { valor: vendas?.valor ?? 0, deltaPct: 0, sparkline: [] }, icon: Banknote, color: 'hsl(152 60% 40%)', sub: `faturamento · R$ ${(vendas?.valorLead ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} de lead`, prefix: 'R$ ' },
     { label: 'Conversão',     kpi: { valor: taxaConv, deltaPct: 0, sparkline: [] }, icon: TrendingUp, color: COLORS.info, sub: 'lead → vendido', suffix: '%' },
   ]
 

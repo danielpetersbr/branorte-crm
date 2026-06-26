@@ -35,10 +35,11 @@ export function useDashboardOrcamentos(preset: DashboardPreset) {
   })
 }
 
-export type VendasPeriodo = { qtd: number; valor: number }
+export type VendasPeriodo = { qtd: number; valor: number; qtdLead: number; valorLead: number }
 
 /** Vendas (pedidos não-cancelados) com data_venda no período + valor convertido (R$).
- *  Detecta a venda pelo pedido (orçamento→pedido), não só pela etiqueta VENDIDO. */
+ *  Detecta a venda pelo pedido (orçamento→pedido), não só pela etiqueta VENDIDO.
+ *  qtdLead/valorLead = subconjunto amarrado a um lead do atendimento (orçamento→telefone→atendimento). */
 export function useDashboardVendas(preset: DashboardPreset) {
   const { from, to } = rangeFor(preset)
   return useQuery({
@@ -47,7 +48,12 @@ export function useDashboardVendas(preset: DashboardPreset) {
       const { data, error } = await (supabase as any).rpc('dashboard_vendas_periodo', { p_from: from, p_to: to })
       if (error) throw error
       const row = Array.isArray(data) ? data[0] : data
-      return { qtd: Number(row?.qtd ?? 0), valor: Number(row?.valor ?? 0) }
+      return {
+        qtd: Number(row?.qtd ?? 0),
+        valor: Number(row?.valor ?? 0),
+        qtdLead: Number(row?.qtd_lead ?? 0),
+        valorLead: Number(row?.valor_lead ?? 0),
+      }
     },
     staleTime: 60_000,
   })

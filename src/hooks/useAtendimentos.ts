@@ -226,6 +226,47 @@ export function lookupOrcamento(
   return c ? (map[c] ?? null) : null
 }
 
+// ─── Indicador derivado: "vendido" por telefone ─────────────────────────────
+// Estende a cadeia: telefone do lead → orçamento (orcamentos_gerados) → nº →
+// pedido (mirror_pedidos_venda, não-cancelado) → valor. Sinaliza quando o lead
+// virou VENDA de verdade (não só etiqueta). Read-only.
+export type VendaMatch = { valor: number; qtd: number; ultimoPedido: string | null; ultimaVenda: string | null }
+export type VendaPhoneMap = Record<string, VendaMatch> // keyed pelo canônico
+
+export function useVendasPorTelefone(phones: (string | null | undefined)[], enabled = true) {
+  const canons = [...new Set(phones.map(foneCanon).filter((c): c is string => !!c))]
+  return useQuery({
+    queryKey: ['vendas-por-telefone', canons.slice().sort().join(',')],
+    enabled: enabled && canons.length > 0,
+    queryFn: async (): Promise<VendaPhoneMap> => {
+      if (canons.length === 0) return {}
+      const { data, error } = await (supabase as any).rpc('vendas_por_telefone_canon', { p_canons: canons })
+      if (error) throw error
+      const map: VendaPhoneMap = {}
+      for (const row of (data ?? []) as any[]) {
+        if (!row.fone_canon) continue
+        map[String(row.fone_canon)] = {
+          valor: row.valor != null ? Number(row.valor) : 0,
+          qtd: Number(row.qtd ?? 0),
+          ultimoPedido: row.ultimo_pedido ?? null,
+          ultimaVenda: row.ultima_venda ?? null,
+        }
+      }
+      return map
+    },
+    staleTime: 60_000,
+  })
+}
+
+export function lookupVenda(
+  map: VendaPhoneMap | undefined,
+  phone: string | null | undefined
+): VendaMatch | null {
+  if (!map) return null
+  const c = foneCanon(phone)
+  return c ? (map[c] ?? null) : null
+}
+
 export function useAtendimentos(filters: AtendimentoFilters) {
   return useQuery({
     queryKey: ['atendimentos', filters],
