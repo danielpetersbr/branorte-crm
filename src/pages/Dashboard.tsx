@@ -182,7 +182,8 @@ export function Dashboard() {
   const { data: orcamentosReais } = useDashboardOrcamentos(preset)
   // Vendas REAIS do período (pedidos não-cancelados, via orçamento→pedido) + valor convertido.
   const { data: vendas } = useDashboardVendas(preset)
-  const vendidosReais = vendas?.qtd
+  const vendidosReais = vendas?.qtd        // todas as vendas do período (pedidos)
+  const vendidosLead = vendas?.qtdLead     // subconjunto amarrado a um lead do atendimento
   // Propostas × estágio atual do funil (dinheiro em aberto vs vendido, por vendedor)
   const { data: propStatus } = usePropostasStatus(preset)
   // Painel por vendedor: funil de etiquetas WhatsApp + motivos de perda
@@ -210,7 +211,10 @@ export function Dashboard() {
       { etapa: 'Engajou',           valor: funilUnion?.engajou ?? data.funil[1]?.valor ?? 0 },
       { etapa: 'Qualificou',        valor: funilUnion?.qualificou ?? data.funil[2]?.valor ?? 0 },
       { etapa: 'Orçamento enviado', valor: orcamentosReais ?? etq?.por_categoria.orcamento ?? 0 },
-      { etapa: 'Vendido',           valor: vendidosReais ?? etq?.por_categoria.vendido ?? 0 },
+      // Vendido do FUNIL = vendas amarradas a um lead (orçamento→pedido). Mantém o funil
+      // monotônico (Orçamento ≥ Vendido) — antes usava o total de pedidos (378) e estourava
+      // acima dos 134 orçamentos, quebrando o trapézio.
+      { etapa: 'Vendido',           valor: vendidosLead ?? etq?.por_categoria.vendido ?? 0 },
     ]
     const topo = raw[0].valor || 1
     return raw.map((e, i) => {
@@ -223,7 +227,7 @@ export function Dashboard() {
         perdidos: i > 0 ? Math.max(0, prev - e.valor) : 0,
       }
     })
-  }, [data?.funil, etq, funilUnion, orcamentosReais, vendidosReais])
+  }, [data?.funil, etq, funilUnion, orcamentosReais, vendidosLead])
 
   // Cards de vendedor (3 fontes mescladas + veredito), computados uma vez e
   // usados pelo Resumo do gerente e pelo Painel por vendedor.
@@ -309,13 +313,15 @@ export function Dashboard() {
   // Em andamento/Com vendedor" saíram — são estágios do funil, não KPI de topo.
   const orcamentoEtq = etq?.por_categoria.orcamento ?? 0
   const vendidoEtq = etq?.por_categoria.vendido ?? 0
-  const taxaConv = data.totalLeads > 0 ? Math.round(((vendidosReais ?? vendidoEtq) / data.totalLeads) * 1000) / 10 : 0
+  // Conversão "lead → vendido" REAL: usa só as vendas amarradas a um lead (vendidosLead),
+  // não o total de pedidos. O total inclui compradores que nunca passaram pelo funil.
+  const taxaConv = data.totalLeads > 0 ? Math.round(((vendidosLead ?? vendidoEtq) / data.totalLeads) * 1000) / 10 : 0
 
   const heroKpis = [
     { label: preset ? 'Leads no período' : 'Total de leads', kpi: data.kpiTotal, icon: Users, color: COLORS.ink, sub: preset ? periodoLabel.toLowerCase() : 'desde o início' },
     { label: 'Qualificados',  kpi: data.kpiQualificados, icon: CheckCircle2, color: COLORS.accent, sub: 'quer algo que a Branorte faz' },
     { label: 'Orçamentos',    kpi: { valor: orcamentosReais ?? orcamentoEtq, deltaPct: 0, sparkline: [] }, icon: FilePlus2, color: 'hsl(280 65% 50%)', sub: 'telefone × orçamentos montados' },
-    { label: 'Vendidos',      kpi: { valor: vendidosReais ?? vendidoEtq, deltaPct: 0, sparkline: [] }, icon: CheckCircle2, color: 'hsl(152 60% 35%)', sub: 'vendas no período (pedido)' },
+    { label: 'Vendidos',      kpi: { valor: vendidosReais ?? vendidoEtq, deltaPct: 0, sparkline: [] }, icon: CheckCircle2, color: 'hsl(152 60% 35%)', sub: `vendas (pedido) · ${vendidosLead ?? 0} de lead` },
     { label: 'Valor convertido', kpi: { valor: vendas?.valor ?? 0, deltaPct: 0, sparkline: [] }, icon: Banknote, color: 'hsl(152 60% 40%)', sub: `faturamento · R$ ${(vendas?.valorLead ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} de lead`, prefix: 'R$ ' },
     { label: 'Conversão',     kpi: { valor: taxaConv, deltaPct: 0, sparkline: [] }, icon: TrendingUp, color: COLORS.info, sub: 'lead → vendido', suffix: '%' },
   ]
