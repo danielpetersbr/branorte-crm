@@ -101,6 +101,9 @@ export interface CarrinhoSnapshot {
   }>
   // Componentes adicionais (não fabricados pela Branorte) — painel, balança, célula de carga…
   componentesExtras?: Array<{ id: string; nome: string; valor: number }>
+  // Vendedor dispensou a Balança Eletrônica (auto-adicionada pela Caçamba de
+  // Pesagem). Persistido pra trava de auto-adição respeitar ao reabrir.
+  balancaDispensada?: boolean
   // Seção "Observação — por conta do cliente" editável. null = default histórico.
   obsPorConta?: string[] | null
   // Modo FINAME ligado: os itens já vêm transformados (nomes FINAME, motor/acessórios
@@ -756,6 +759,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         prazo_entrega: snapshot.termsInline?.prazoEntrega || prazoEntrega.trim() || null,
         parcelas: snapshot.parcelas?.length ? snapshot.parcelas : null,
         componentes_extras: snapshot.componentesExtras ?? null,
+        balanca_dispensada: snapshot.balancaDispensada ?? false,
         // null = cai no default histórico (5 linhas) na hora de renderizar
         obs_por_conta: snapshot.obsPorConta ?? null,
         foto_principal_url: fotoPrincipalUrl,

@@ -124,6 +124,7 @@ export interface OrcamentoGerado {
   total_motores: number
   total_proposta: number
   componentes_extras: Array<{ id: string; nome: string; valor: number }> | null
+  balanca_dispensada: boolean | null
   observacoes: string | null
   forma_pagamento: string | null
   prazo_entrega: string | null
@@ -474,6 +475,8 @@ export interface CriarOrcamentoInput {
   numero_override?: { ano: number; sequencial: number; numero: string } | null
   // Componentes adicionais (NÃO fabricados pela Branorte) — painel, balança, célula de carga…
   componentes_extras?: Array<{ id: string; nome: string; valor: number }> | null
+  // Vendedor dispensou a balança auto-adicionada pela Caçamba de Pesagem.
+  balanca_dispensada?: boolean | null
   // Foto principal do orçamento (URL pública no Storage após upload)
   foto_principal_url?: string | null
   // Seção "Observação — por conta do cliente" editável (null = default histórico)
@@ -558,6 +561,7 @@ export function useCriarOrcamento() {
         prazo_entrega: input.prazo_entrega ?? null,
         status: input.status ?? 'rascunho',
         componentes_extras: input.componentes_extras ?? null,
+        balanca_dispensada: input.balanca_dispensada ?? false,
         obs_por_conta: input.obs_por_conta ?? null,
         foto_principal_url: input.foto_principal_url ?? null,
         numero_base: numero,
@@ -675,6 +679,7 @@ export function useCriarAlteracao() {
         prazo_entrega: rest.prazo_entrega ?? null,
         status: rest.status ?? 'rascunho',
         componentes_extras: rest.componentes_extras ?? null,
+        balanca_dispensada: rest.balanca_dispensada ?? false,
         obs_por_conta: rest.obs_por_conta ?? null,
         foto_principal_url: rest.foto_principal_url ?? null,
         parent_id,

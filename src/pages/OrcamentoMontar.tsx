@@ -463,6 +463,11 @@ export function OrcamentoMontar() {
   // Componentes adicionais (NÃO fabricados pela Branorte) — painel elétrico, balança, célula de carga, etc.
   // Cada item: nome livre + valor R$. Vai pro totalGeral mas NÃO é "equipamento" nem "motor".
   const [componentesExtras, setComponentesExtras] = useState<ComponenteExtra[]>([])
+  // Vendedor removeu manualmente a Balança Eletrônica que a Caçamba de Pesagem
+  // auto-adiciona. Quando true, a trava de auto-adição (useEffect abaixo) NÃO
+  // re-insere a balança — respeitando a decisão do vendedor (ex.: cliente já
+  // tem balança própria). Persistido no orçamento (coluna balanca_dispensada).
+  const [balancaDispensada, setBalancaDispensada] = useState(false)
   // Seção "Observação — por conta do cliente" editável por orçamento.
   // null = usa OBS_POR_CONTA_DEFAULT (5 linhas históricas) na preview/PDF/DOCX.
   const [obsPorConta, setObsPorConta] = useState<string[] | null>(null)
@@ -484,12 +489,13 @@ export function OrcamentoMontar() {
     parcelasPagamento,
     fotoPrincipal,
     componentesExtras,
+    balancaDispensada,
     obsPorConta,
   }), [
     carrinho, acessorios, voltagem, tensaoMotores, marcaMotores, descontoCfg,
     dataVendaTxt, prazoEntregaTxt, formaPagamentoTxt, freteTipo, freteTxt,
     parcelasPagamento, fotoPrincipal,
-    componentesExtras, obsPorConta,
+    componentesExtras, balancaDispensada, obsPorConta,
   ])
 
   // Autosave so liga depois que catalogo carregar (evita salvar snapshot vazio
@@ -552,6 +558,7 @@ export function OrcamentoMontar() {
     setParcelasPagamento(prev.parcelasPagamento ?? [])
     setFotoPrincipal(prev.fotoPrincipal ?? null)
     setComponentesExtras(prev.componentesExtras ?? [])
+    setBalancaDispensada((prev as any).balancaDispensada ?? false)
     setObsPorConta((prev as any).obsPorConta ?? null)
     setHistoryStack(stack => stack.slice(0, -1))
   }
@@ -589,6 +596,7 @@ export function OrcamentoMontar() {
     setParcelasPagamento(d.parcelasPagamento ?? [])
     setFotoPrincipal(d.fotoPrincipal ?? null)
     setComponentesExtras(d.componentesExtras ?? [])
+    setBalancaDispensada((d as any).balancaDispensada ?? false)
     setObsPorConta((d as any).obsPorConta ?? null)
     draft.dismissRecovered()
   }
@@ -1117,6 +1125,8 @@ export function OrcamentoMontar() {
     const nome = nomeItem.toUpperCase()
     const eCacamba = categoriaItem === 'CACAMBA_PESAGEM' || /CA[ÇC]AMBA.*PESAGEM/i.test(nome)
     if (!eCacamba) return
+    // Vendedor dispensou a balança neste orçamento → não re-adiciona.
+    if (balancaDispensada) return
 
     const NOME_BALANCA = 'Balança Eletrônica'
     // Match relaxado (qualquer 'Balança Eletrônica' nos componentes ja conta)
@@ -1161,15 +1171,19 @@ export function OrcamentoMontar() {
     if (balancaNoCarrinho !== -1) {
       const valor = Number(carrinho[balancaNoCarrinho].valor) || 8728
       setCarrinho(c => c.filter((_, i) => i !== balancaNoCarrinho))
-      // Adiciona como componente extra se ainda nao tem
-      setComponentesExtras(arr => {
-        if (arr.some(c => BALANCA_RE.test(c.nome.trim()))) return arr
-        return [...arr, {
-          id: `migrated-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          nome: 'Balança Eletrônica',
-          valor,
-        }]
-      })
+      // Adiciona como componente extra se ainda nao tem.
+      // Se o vendedor dispensou a balança neste orçamento, só remove do carrinho
+      // e NÃO recria nos extras.
+      if (!balancaDispensada) {
+        setComponentesExtras(arr => {
+          if (arr.some(c => BALANCA_RE.test(c.nome.trim()))) return arr
+          return [...arr, {
+            id: `migrated-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            nome: 'Balança Eletrônica',
+            valor,
+          }]
+        })
+      }
       return // sai pra rodar de novo apos o estado atualizar
     }
 
@@ -1180,6 +1194,8 @@ export function OrcamentoMontar() {
       it.categoria === 'CACAMBA_PESAGEM' || /CA[ÇC]AMBA.*PESAGEM/i.test(it.nome)
     )
     if (!temCacamba) return
+    // Vendedor dispensou a balança neste orçamento → não re-adiciona.
+    if (balancaDispensada) return
     const jaTemBalanca = componentesExtras.some(c => BALANCA_RE.test(c.nome.trim()))
     if (jaTemBalanca) return
     const balancaPreco = precos.find(p =>
@@ -1191,7 +1207,7 @@ export function OrcamentoMontar() {
       nome: 'Balança Eletrônica',
       valor,
     }])
-  }, [carrinho, precos, componentesExtras])
+  }, [carrinho, precos, componentesExtras, balancaDispensada])
 
   // Adiciona item ao carrinho direto de uma entrada de precos_branorte.
   // Faz lookup do catalogo_items linkado (via preco_branorte_id) pra puxar
@@ -2208,6 +2224,9 @@ export function OrcamentoMontar() {
     // Não inferir do primeiro item — orçamentos antigos não tinham hero.
     // Hidrata componentes extras + observacoes + termos
     if (o.componentes_extras) setComponentesExtras(o.componentes_extras as any)
+    // Dispensa da balança (migration 2026-06-26): se o vendedor removeu a balança
+    // num orçamento com caçamba, a trava de auto-adição respeita isso ao reabrir.
+    setBalancaDispensada(!!(o as any).balanca_dispensada)
     // Observação "por conta do cliente" editável (migration 2026-06-23).
     // Array salvo = usa ele; null/ausente = cai no default histórico.
     if (Array.isArray((o as any).obs_por_conta)) setObsPorConta((o as any).obs_por_conta)
@@ -2873,7 +2892,16 @@ export function OrcamentoMontar() {
                 onTogglePorConta={finameMode ? undefined : (uid) => setCarrinho(prev => prev.map(c => c.uid === uid ? { ...c, por_conta_cliente: !c.por_conta_cliente, ...(!c.por_conta_cliente ? { valor: 0, valor_original: 0 } : {}) } : c))}
                 onUpdateQtd={finameMode ? undefined : alterarQtd}
                 componentesExtras={componentesExtrasFinal}
-                onUpdateComponentesExtras={finameMode ? undefined : setComponentesExtras}
+                onUpdateComponentesExtras={finameMode ? undefined : (novos) => {
+                  // Detecta dispensa/re-inclusão manual da balança pra travar (ou
+                  // destravar) a auto-adição da Caçamba de Pesagem.
+                  const BAL = /balan.a.*el.tr.nica/i
+                  const tinha = componentesExtras.some(c => BAL.test(c.nome.trim()))
+                  const temAgora = novos.some(c => BAL.test(c.nome.trim()))
+                  if (tinha && !temAgora) setBalancaDispensada(true)
+                  else if (!tinha && temAgora) setBalancaDispensada(false)
+                  setComponentesExtras(novos)
+                }}
                 componentesAdicionaisCatalogo={componentesAdicionaisCatalogo}
                 tensaoMotores={tensaoMotores}
                 onUpdateTensaoMotores={setTensaoMotores}
@@ -3098,6 +3126,7 @@ export function OrcamentoMontar() {
           },
           parcelas: parcelasPagamento,
           componentesExtras: componentesExtrasFinal,
+          balancaDispensada,
           obsPorConta: obsPorConta,
         } as CarrinhoSnapshot}
         onClose={() => { setFinalizarOpen(false); setAutoSubmitFromIA(false); }}
