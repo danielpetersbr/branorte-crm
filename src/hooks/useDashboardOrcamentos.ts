@@ -34,3 +34,21 @@ export function useDashboardOrcamentos(preset: DashboardPreset) {
     staleTime: 60_000,
   })
 }
+
+export type VendasPeriodo = { qtd: number; valor: number }
+
+/** Vendas (pedidos não-cancelados) com data_venda no período + valor convertido (R$).
+ *  Detecta a venda pelo pedido (orçamento→pedido), não só pela etiqueta VENDIDO. */
+export function useDashboardVendas(preset: DashboardPreset) {
+  const { from, to } = rangeFor(preset)
+  return useQuery({
+    queryKey: ['dashboard-vendas', from, to],
+    queryFn: async (): Promise<VendasPeriodo> => {
+      const { data, error } = await (supabase as any).rpc('dashboard_vendas_periodo', { p_from: from, p_to: to })
+      if (error) throw error
+      const row = Array.isArray(data) ? data[0] : data
+      return { qtd: Number(row?.qtd ?? 0), valor: Number(row?.valor ?? 0) }
+    },
+    staleTime: 60_000,
+  })
+}

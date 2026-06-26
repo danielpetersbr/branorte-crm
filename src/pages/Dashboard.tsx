@@ -5,7 +5,7 @@ import { useDashboardEtiquetas, useHeatmapSemanal, CATEGORIA_LABEL, type Etiquet
 import { useDashboardVendedorFunil, type VendedorFunilRow } from '@/hooks/useDashboardVendedorFunil'
 import { useDashboardExtra, type DashboardExtra } from '@/hooks/useDashboardExtra'
 import { useFunilUnion } from '@/hooks/useFunilUnion'
-import { useDashboardOrcamentos } from '@/hooks/useDashboardOrcamentos'
+import { useDashboardOrcamentos, useDashboardVendas } from '@/hooks/useDashboardOrcamentos'
 import { useOrcamentosResumo, type OrcamentosResumo } from '@/hooks/useOrcamentosResumo'
 import { usePropostasStatus, CATS_ABERTO, type PropostasStatus, type PropCategoria } from '@/hooks/usePropostasStatus'
 import { useVendedoresPainel, type VendedorPainel } from '@/hooks/useVendedoresPainel'
@@ -180,6 +180,9 @@ export function Dashboard() {
   // Contagem REAL de orçamentos: leads do período com orçamento montado (match por
   // telefone). Substitui a etiqueta do WhatsApp, que subconta (vendedor esquece de marcar).
   const { data: orcamentosReais } = useDashboardOrcamentos(preset)
+  // Vendas REAIS do período (pedidos não-cancelados, via orçamento→pedido) + valor convertido.
+  const { data: vendas } = useDashboardVendas(preset)
+  const vendidosReais = vendas?.qtd
   // Propostas × estágio atual do funil (dinheiro em aberto vs vendido, por vendedor)
   const { data: propStatus } = usePropostasStatus(preset)
   // Painel por vendedor: funil de etiquetas WhatsApp + motivos de perda
@@ -207,7 +210,7 @@ export function Dashboard() {
       { etapa: 'Engajou',           valor: funilUnion?.engajou ?? data.funil[1]?.valor ?? 0 },
       { etapa: 'Qualificou',        valor: funilUnion?.qualificou ?? data.funil[2]?.valor ?? 0 },
       { etapa: 'Orçamento enviado', valor: orcamentosReais ?? etq?.por_categoria.orcamento ?? 0 },
-      { etapa: 'Vendido',           valor: etq?.por_categoria.vendido ?? 0 },
+      { etapa: 'Vendido',           valor: vendidosReais ?? etq?.por_categoria.vendido ?? 0 },
     ]
     const topo = raw[0].valor || 1
     return raw.map((e, i) => {
@@ -220,7 +223,7 @@ export function Dashboard() {
         perdidos: i > 0 ? Math.max(0, prev - e.valor) : 0,
       }
     })
-  }, [data?.funil, etq, funilUnion, orcamentosReais])
+  }, [data?.funil, etq, funilUnion, orcamentosReais, vendidosReais])
 
   // Cards de vendedor (3 fontes mescladas + veredito), computados uma vez e
   // usados pelo Resumo do gerente e pelo Painel por vendedor.
@@ -306,13 +309,14 @@ export function Dashboard() {
   // Em andamento/Com vendedor" saíram — são estágios do funil, não KPI de topo.
   const orcamentoEtq = etq?.por_categoria.orcamento ?? 0
   const vendidoEtq = etq?.por_categoria.vendido ?? 0
-  const taxaConv = data.totalLeads > 0 ? Math.round((vendidoEtq / data.totalLeads) * 1000) / 10 : 0
+  const taxaConv = data.totalLeads > 0 ? Math.round(((vendidosReais ?? vendidoEtq) / data.totalLeads) * 1000) / 10 : 0
 
   const heroKpis = [
     { label: preset ? 'Leads no período' : 'Total de leads', kpi: data.kpiTotal, icon: Users, color: COLORS.ink, sub: preset ? periodoLabel.toLowerCase() : 'desde o início' },
     { label: 'Qualificados',  kpi: data.kpiQualificados, icon: CheckCircle2, color: COLORS.accent, sub: 'quer algo que a Branorte faz' },
     { label: 'Orçamentos',    kpi: { valor: orcamentosReais ?? orcamentoEtq, deltaPct: 0, sparkline: [] }, icon: FilePlus2, color: 'hsl(280 65% 50%)', sub: 'telefone × orçamentos montados' },
-    { label: 'Vendidos',      kpi: { valor: vendidoEtq, deltaPct: 0, sparkline: [] }, icon: CheckCircle2, color: 'hsl(152 60% 35%)', sub: 'etiqueta VENDIDO' },
+    { label: 'Vendidos',      kpi: { valor: vendidosReais ?? vendidoEtq, deltaPct: 0, sparkline: [] }, icon: CheckCircle2, color: 'hsl(152 60% 35%)', sub: 'vendas no período (pedido)' },
+    { label: 'Valor convertido', kpi: { valor: vendas?.valor ?? 0, deltaPct: 0, sparkline: [] }, icon: Banknote, color: 'hsl(152 60% 40%)', sub: 'faturamento no período', prefix: 'R$ ' },
     { label: 'Conversão',     kpi: { valor: taxaConv, deltaPct: 0, sparkline: [] }, icon: TrendingUp, color: COLORS.info, sub: 'lead → vendido', suffix: '%' },
   ]
 
@@ -476,7 +480,7 @@ export function Dashboard() {
           </h2>
           <span className="text-[11px] text-ink-faint">o que importa agora — abra as seções abaixo pro detalhe</span>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
           {heroKpis.map(k => (
             <KpiHero key={k.label} {...k} showDelta={showDelta} />
           ))}
@@ -823,13 +827,14 @@ export function Dashboard() {
 // COMPONENTES
 // ============================================================================
 
-function KpiHero({ label, kpi, icon: Icon, color, sub, suffix, showDelta: showDeltaProp = true }: {
+function KpiHero({ label, kpi, icon: Icon, color, sub, suffix, prefix, showDelta: showDeltaProp = true }: {
   label: string;
   kpi: { valor: number; deltaPct: number; sparkline: number[] };
   icon: typeof Users;
   color: string;
   sub: string;
   suffix?: string;
+  prefix?: string;
   showDelta?: boolean;
 }) {
   const showDelta = showDeltaProp && Math.abs(kpi.deltaPct) > 0.5
@@ -843,6 +848,7 @@ function KpiHero({ label, kpi, icon: Icon, color, sub, suffix, showDelta: showDe
         <Icon className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" style={{ color }} />
       </div>
       <p className="text-[26px] sm:text-[40px] leading-[1.05] font-semibold tracking-tight tabular-nums" style={{ color }}>
+        {prefix && <span className="text-base sm:text-2xl font-medium mr-0.5">{prefix}</span>}
         {suffix ? kpi.valor.toString().replace('.', ',') : fmtN(kpi.valor)}
         {suffix && <span className="text-base sm:text-xl font-medium ml-0.5">{suffix}</span>}
       </p>
