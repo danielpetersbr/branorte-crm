@@ -17,7 +17,7 @@ import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTime
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, type StatusReal } from '@/types/atendimento'
-import { useAtendimentos, useAtendimentoKpis, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, type DataPreset } from '@/hooks/useAtendimentos'
+import { useAtendimentos, useAtendimentoKpis, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, type DataPreset } from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 
@@ -345,6 +345,8 @@ export function Atendimentos() {
   // Etiquetas WA por telefone — fetcha em paralelo aos atendimentos
   const phonesAtuais = (data?.rows ?? []).map(r => r.telefone)
   const { data: waLabelsMap } = useWaLabelsByPhones(phonesAtuais)
+  // Indicador automático "orçamento gerado" cruzando o telefone com orcamentos_gerados.
+  const { data: orcMap } = useOrcamentosPorTelefone(phonesAtuais)
   const deleteMut = useDeleteAtendimento()
   const { profile } = useAuth()
   const { data: vendorsData } = useVendors()
@@ -913,7 +915,6 @@ export function Atendimentos() {
                         <td className="hidden 2xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
                           {(() => {
                             const allLabels = lookupWaLabels(waLabelsMap, r.telefone)
-                            if (allLabels.length === 0) return <EmptyCell />
                             const v = vendedorEfetivo(r)
                             const respFirstUp = v ? v.name.trim().split(/\s+/)[0]?.toUpperCase() : null
                             // Se há vendedor responsável, filtra só as etiquetas dele.
@@ -921,9 +922,21 @@ export function Atendimentos() {
                             const labels = respFirstUp
                               ? allLabels.filter(l => l.vendedor?.toUpperCase() === respFirstUp)
                               : allLabels
-                            if (labels.length === 0) return <EmptyCell />
+                            // Indicador AUTOMÁTICO: tem orçamento gerado pra esse telefone?
+                            const orc = lookupOrcamento(orcMap, r.telefone)
+                            if (labels.length === 0 && !orc) return <EmptyCell />
+                            // Vendedor já marcou alguma etiqueta de "orçamento"? Se não, sinaliza
+                            // (o caso que o Daniel descreveu: orçamento feito mas etiqueta esquecida).
+                            const temEtiquetaOrc = labels.some(l => /or[çc]ament/i.test(l.name))
+                            const orcTitle = orc
+                              ? `Orçamento ${orc.numero ?? ''} gerado`
+                                + (orc.em ? ` em ${new Date(orc.em).toLocaleDateString('pt-BR')}` : '')
+                                + (orc.valor ? ` · ${orc.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : '')
+                                + (orc.qtd > 1 ? ` · ${orc.qtd} orçamentos pra este número` : '')
+                                + (!temEtiquetaOrc ? ' — detectado pelo telefone (vendedor não marcou a etiqueta de orçamento)' : '')
+                              : ''
                             return (
-                              <div className="flex flex-wrap gap-1 max-w-[180px]">
+                              <div className="flex flex-wrap gap-1 max-w-[190px]">
                                 {labels.slice(0, 3).map(l => (
                                   <Badge
                                     key={l.id + ':' + l.vendedor}
@@ -940,6 +953,17 @@ export function Atendimentos() {
                                 ))}
                                 {labels.length > 3 && (
                                   <span className="text-[10px] text-ink-faint">+{labels.length - 3}</span>
+                                )}
+                                {orc && (
+                                  <Badge
+                                    className="text-[10px] font-semibold"
+                                    style={temEtiquetaOrc
+                                      ? { background: 'rgba(59,130,246,0.12)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.3)' }
+                                      : { background: 'rgba(245,158,11,0.15)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.4)' }}
+                                    title={orcTitle}
+                                  >
+                                    📄 ORÇAMENTO{!temEtiquetaOrc ? ' ⚠' : ''}
+                                  </Badge>
                                 )}
                               </div>
                             )

@@ -170,6 +170,60 @@ export function lookupWaLabels(map: WaLabelMap | undefined, phone: string | null
   return []
 }
 
+// ─── Indicador derivado: "orçamento gerado" por telefone ────────────────────
+// Cruza o telefone do atendimento com orcamentos_gerados (MESMO banco). Sinal
+// AUTOMÁTICO de orçamento enviado, independente da etiqueta manual do vendedor —
+// pega o caso "vendedor esqueceu de marcar a etiqueta". Read-only, não toca no funil.
+
+// Normalização canônica (ESPELHA a função public.fone_canon do banco):
+// reduz a DDD(2)+8 dígitos, removendo "55" do país (só se >=12) e o 9º dígito do
+// celular. Assim casa com/sem 9 e com/sem +55, sem confundir DDD 55 com país.
+export function foneCanon(p?: string | null): string | null {
+  const d = String(p ?? '').replace(/\D/g, '')
+  if (d.length < 10) return null
+  let n = (d.length >= 12 && d.startsWith('55')) ? d.slice(2) : d
+  if (n.length === 11 && n[2] === '9') n = n.slice(0, 2) + n.slice(3)
+  if (n.length > 10) n = n.slice(-10)
+  return n.length === 10 ? n : null
+}
+
+export type OrcamentoMatch = { numero: string | null; em: string | null; valor: number | null; qtd: number }
+export type OrcamentoPhoneMap = Record<string, OrcamentoMatch> // keyed pelo canônico
+
+export function useOrcamentosPorTelefone(phones: (string | null | undefined)[], enabled = true) {
+  const canons = [...new Set(phones.map(foneCanon).filter((c): c is string => !!c))]
+  return useQuery({
+    queryKey: ['orcamentos-por-telefone', canons.slice().sort().join(',')],
+    enabled: enabled && canons.length > 0,
+    queryFn: async (): Promise<OrcamentoPhoneMap> => {
+      if (canons.length === 0) return {}
+      const { data, error } = await (supabase as any).rpc('orcamentos_por_telefone_canon', { p_canons: canons })
+      if (error) throw error
+      const map: OrcamentoPhoneMap = {}
+      for (const row of (data ?? []) as any[]) {
+        if (!row.fone_canon) continue
+        map[String(row.fone_canon)] = {
+          numero: row.ultimo_numero ?? null,
+          em: row.ultimo_em ?? null,
+          valor: row.ultimo_valor != null ? Number(row.ultimo_valor) : null,
+          qtd: Number(row.qtd ?? 0),
+        }
+      }
+      return map
+    },
+    staleTime: 60_000,
+  })
+}
+
+export function lookupOrcamento(
+  map: OrcamentoPhoneMap | undefined,
+  phone: string | null | undefined
+): OrcamentoMatch | null {
+  if (!map) return null
+  const c = foneCanon(phone)
+  return c ? (map[c] ?? null) : null
+}
+
 export function useAtendimentos(filters: AtendimentoFilters) {
   return useQuery({
     queryKey: ['atendimentos', filters],
