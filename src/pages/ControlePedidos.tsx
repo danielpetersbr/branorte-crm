@@ -51,7 +51,7 @@ function usePedidos(filters: { search: string; status: string; page: number }) {
         .order('data_venda', { ascending: false, nullsFirst: false })
 
       if (filters.search) {
-        query = query.or(`cliente.ilike.%${filters.search}%,pedido_numero.ilike.%${filters.search}%,vendedor.ilike.%${filters.search}%`)
+        query = query.or(`cliente.ilike.%${filters.search}%,pedido_numero.ilike.%${filters.search}%,numero_orcamento.ilike.%${filters.search}%,vendedor.ilike.%${filters.search}%`)
       }
       if (filters.status) query = query.eq('status', filters.status)
 
@@ -89,7 +89,7 @@ export function ControlePedidos() {
       <Card className="p-4">
         <div className="flex flex-wrap gap-3 items-center">
           <Input
-            placeholder="Buscar por cliente, nº do pedido ou vendedor..."
+            placeholder="Buscar por cliente, nº do pedido/orçamento ou vendedor..."
             leftIcon={<Search className="h-4 w-4" />}
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
@@ -139,6 +139,7 @@ export function ControlePedidos() {
                   <tr className="border-b border-surface-border bg-surface-secondary">
                     <th className="text-left text-xs font-medium text-text-muted px-3 py-3">Data</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Pedido</th>
+                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Orçamento</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Cliente</th>
                     <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Vendedor</th>
                     <th className="text-left text-xs font-medium text-text-muted px-3 py-3 w-12">UF</th>
@@ -153,7 +154,8 @@ export function ControlePedidos() {
                     return (
                       <tr key={p.id} className="hover:bg-surface-secondary/50 transition-colors">
                         <td className="px-3 py-3"><span className="text-xs text-text-muted font-mono whitespace-nowrap">{dataFmt}</span></td>
-                        <td className="px-4 py-3"><span className="text-sm font-medium text-text-primary font-mono">{p.pedido_numero || p.numero_orcamento || '-'}</span></td>
+                        <td className="px-4 py-3"><span className="text-sm font-medium text-text-primary font-mono">{p.pedido_numero || '-'}</span></td>
+                        <td className="px-4 py-3"><span className="text-sm text-text-secondary font-mono whitespace-nowrap">{p.numero_orcamento || '-'}</span></td>
                         <td className="px-4 py-3"><span className="text-sm text-text-primary truncate max-w-[220px] block" title={p.cliente || ''}>{p.cliente || '(sem nome)'}</span></td>
                         <td className="px-4 py-3"><span className="text-sm text-text-secondary">{vendedor || '-'}</span></td>
                         <td className="px-3 py-3">{p.estado ? <Badge className="bg-blue-50 text-blue-700 font-mono text-[11px]">{p.estado}</Badge> : <span className="text-xs text-text-muted">-</span>}</td>
@@ -165,7 +167,7 @@ export function ControlePedidos() {
                     )
                   })}
                   {pedidos.length === 0 && (
-                    <tr><td colSpan={7} className="px-4 py-8 text-center text-text-muted">Nenhum pedido encontrado.</td></tr>
+                    <tr><td colSpan={8} className="px-4 py-8 text-center text-text-muted">Nenhum pedido encontrado.</td></tr>
                   )}
                 </tbody>
               </table>
