@@ -58,3 +58,46 @@ export function useDashboardVendas(preset: DashboardPreset) {
     staleTime: 60_000,
   })
 }
+
+// ─── Atribuição de orçamento/venda REAIS por criativo e por origem ──────────
+// Cruza os leads do período (atendimentos) com orcamentos_gerados (orçamento real,
+// match por telefone) e mirror_pedidos_venda (venda real, via orçamento→pedido).
+// Substitui a contagem por ETIQUETA nas tabelas "por criativo" e "por origem",
+// que subconta. Keyed por criativo_codigo / origem crua (mesma chave do dashboard).
+export type OrcVendaAttr = { orc: number; venda: number; valor: number }
+
+function buildAttrMap(rows: any[], keyField: string): Map<string, OrcVendaAttr> {
+  const m = new Map<string, OrcVendaAttr>()
+  for (const r of (rows ?? [])) {
+    const k = r?.[keyField]
+    if (k == null) continue
+    m.set(String(k), { orc: Number(r.orc ?? 0), venda: Number(r.venda ?? 0), valor: Number(r.valor ?? 0) })
+  }
+  return m
+}
+
+export function useDashboardOrcVendaPorCriativo(preset: DashboardPreset) {
+  const { from, to } = rangeFor(preset)
+  return useQuery({
+    queryKey: ['dash-orcvenda-criativo', from, to],
+    queryFn: async (): Promise<Map<string, OrcVendaAttr>> => {
+      const { data, error } = await (supabase as any).rpc('dashboard_orcvenda_por_criativo', { p_from: from, p_to: to })
+      if (error) throw error
+      return buildAttrMap(data, 'criativo')
+    },
+    staleTime: 60_000,
+  })
+}
+
+export function useDashboardOrcVendaPorOrigem(preset: DashboardPreset) {
+  const { from, to } = rangeFor(preset)
+  return useQuery({
+    queryKey: ['dash-orcvenda-origem', from, to],
+    queryFn: async (): Promise<Map<string, OrcVendaAttr>> => {
+      const { data, error } = await (supabase as any).rpc('dashboard_orcvenda_por_origem', { p_from: from, p_to: to })
+      if (error) throw error
+      return buildAttrMap(data, 'origem')
+    },
+    staleTime: 60_000,
+  })
+}

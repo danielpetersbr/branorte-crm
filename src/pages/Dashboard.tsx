@@ -5,7 +5,7 @@ import { useDashboardEtiquetas, useHeatmapSemanal, CATEGORIA_LABEL, type Etiquet
 import { useDashboardVendedorFunil, type VendedorFunilRow } from '@/hooks/useDashboardVendedorFunil'
 import { useDashboardExtra, type DashboardExtra } from '@/hooks/useDashboardExtra'
 import { useFunilUnion } from '@/hooks/useFunilUnion'
-import { useDashboardOrcamentos, useDashboardVendas } from '@/hooks/useDashboardOrcamentos'
+import { useDashboardOrcamentos, useDashboardVendas, useDashboardOrcVendaPorCriativo, useDashboardOrcVendaPorOrigem, type OrcVendaAttr } from '@/hooks/useDashboardOrcamentos'
 import { useOrcamentosResumo, type OrcamentosResumo } from '@/hooks/useOrcamentosResumo'
 import { usePropostasStatus, CATS_ABERTO, type PropostasStatus, type PropCategoria } from '@/hooks/usePropostasStatus'
 import { useVendedoresPainel, type VendedorPainel } from '@/hooks/useVendedoresPainel'
@@ -184,6 +184,9 @@ export function Dashboard() {
   const { data: vendas } = useDashboardVendas(preset)
   const vendidosReais = vendas?.qtd        // todas as vendas do período (pedidos)
   const vendidosLead = vendas?.qtdLead     // subconjunto amarrado a um lead do atendimento
+  // Orçamento/venda REAIS atribuídos por criativo e por origem (via telefone do lead).
+  const { data: orcVendaCriativo } = useDashboardOrcVendaPorCriativo(preset)
+  const { data: orcVendaOrigem } = useDashboardOrcVendaPorOrigem(preset)
   // Propostas × estágio atual do funil (dinheiro em aberto vs vendido, por vendedor)
   const { data: propStatus } = usePropostasStatus(preset)
   // Painel por vendedor: funil de etiquetas WhatsApp + motivos de perda
@@ -724,7 +727,7 @@ export function Dashboard() {
           title="🎯 Onde investir — por criativo"
           subtitle="Escalar / pausar cada criativo. Decisão por qualidade do lead (conversão ~0 em tudo)."
         />
-        <VereditoInvestimento criativos={data.porCriativo} etq={etq} />
+        <VereditoInvestimento criativos={data.porCriativo} etq={etq} real={orcVendaCriativo} />
       </Card>
       {data.porOrigem.length > 0 && (
         <Card>
@@ -732,7 +735,7 @@ export function Dashboard() {
             title="🎯 Onde investir — por origem (canal)"
             subtitle="Meta / Google / Instagram… origens WhatsApp de vendedor individual excluídas."
           />
-          <VereditoOrigem origens={data.porOrigem} etq={etq} />
+          <VereditoOrigem origens={data.porOrigem} etq={etq} real={orcVendaOrigem} />
         </Card>
       )}
       {motivosFonte && (motivosFonte.por_criativo.length > 0 || motivosFonte.por_origem.length > 0) && (
@@ -2188,9 +2191,11 @@ interface FunilRow {
   qualifPct: number
   followUp: number
   leadQuente: number
-  conv: number          // vendido + orçamento (etiqueta)
+  conv: number          // vendido + orçamento
   vendido: number
   orcamento: number
+  valorVenda?: number   // R$ da venda real atribuída (quando real=true)
+  real?: boolean        // orç/venda vêm do match por telefone (não etiqueta)
   convPct: number
   nf: number
   nfPct: number
@@ -2212,7 +2217,7 @@ function montarHeadline(rows: FunilRow[]): { acoes: string; alerta: string | nul
   const semVenda = rows.length > 0 && rows.every(r => r.vendido === 0)
   return {
     acoes: partes.join('  ·  '),
-    alerta: semVenda ? '⚠️ Nenhuma venda fechada por etiqueta no período — o gargalo é o FECHAMENTO (vendedor), não a mídia.' : null,
+    alerta: semVenda ? '⚠️ Nenhuma venda real atribuída a lead no período (pedido casado pelo telefone) — pode ser fechamento lento OU venda que não veio do funil rastreado.' : null,
   }
 }
 
@@ -2241,7 +2246,7 @@ function FunilTable({ rows, primeiraColuna, semEtq }: { rows: FunilRow[]; primei
               <th className="text-right py-2 px-2 font-semibold" title="% que quer algo que a Branorte fabrica">Qualificou</th>
               <th className="text-right py-2 px-2 font-semibold" title="Chegou a Follow Up (negociação)">Follow-up</th>
               <th className="text-right py-2 px-2 font-semibold" title="Chegou a Lead Quente (perto de fechar)">Quente</th>
-              <th className="text-right py-2 px-2 font-semibold" title="Orçamentos enviados e vendas (etiqueta WhatsApp)">Orç / Venda</th>
+              <th className="text-right py-2 px-2 font-semibold" title="Orçamentos e vendas REAIS atribuídos pelo telefone do lead: orçamento = montado no sistema; venda = pedido fechado (+ R$). Não depende da etiqueta.">Orç / Venda</th>
               <th className="text-right py-2 px-2 font-semibold" title="Etiqueta NÃO FABRICAMOS: o lead pediu algo que a Branorte não faz">Não fabricamos</th>
               <th className="text-right py-2 px-2 font-semibold">Veredito</th>
             </tr>
@@ -2267,10 +2272,12 @@ function FunilTable({ rows, primeiraColuna, semEtq }: { rows: FunilRow[]; primei
                   <td className={`text-right py-1.5 px-2 font-mono tabular-nums ${r.qualifPct >= 35 ? 'text-success' : r.qualifPct >= 22 ? 'text-warning' : 'text-danger'}`}>{r.qualifPct.toFixed(0)}%</td>
                   <td className="text-right py-1.5 px-2 font-mono tabular-nums text-ink-muted">{r.followUp || '—'}</td>
                   <td className={`text-right py-1.5 px-2 font-mono tabular-nums ${r.leadQuente > 0 ? 'text-success font-semibold' : 'text-ink-faint'}`}>{r.leadQuente || '—'}</td>
-                  <td className="text-right py-1.5 px-2 font-mono tabular-nums text-accent whitespace-nowrap">
+                  <td className="text-right py-1.5 px-2 font-mono tabular-nums text-accent whitespace-nowrap"
+                      title={r.valorVenda ? `Venda real: ${r.valorVenda.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : undefined}>
                     {r.orcamento > 0 || r.vendido > 0
                       ? [r.orcamento > 0 ? `${r.orcamento} orç` : null, r.vendido > 0 ? `${r.vendido} vd` : null].filter(Boolean).join(' · ')
                       : '—'}
+                    {r.vendido > 0 && r.valorVenda ? <span className="text-success"> · R$ {Math.round(r.valorVenda / 1000)}k</span> : null}
                   </td>
                   <td className={`text-right py-1.5 px-2 font-mono tabular-nums ${r.nfPct >= 20 ? 'text-danger font-semibold' : r.nfPct >= 10 ? 'text-warning' : 'text-ink-faint'}`}>
                     {r.nf > 0 ? `${r.nfPct.toFixed(0)}%` : '—'}
@@ -2291,7 +2298,7 @@ function FunilTable({ rows, primeiraColuna, semEtq }: { rows: FunilRow[]; primei
         </table>
       </div>
       <div className="text-[11px] text-ink-faint pt-1 space-y-1 whitespace-normal leading-relaxed">
-        <p>Funil: <strong className="text-ink-muted">Respondeu</strong> (à IA) → <strong className="text-ink-muted">Qualificou</strong> (a IA viu que quer algo que a Branorte faz, OU o vendedor já moveu pra follow-up/quente/orçamento) → <strong className="text-ink-muted">Follow-up</strong> (negociação) → <strong className="text-ink-muted">Quente</strong> (perto de fechar) → <strong className="text-ink-muted">Orç / Venda</strong> (etiqueta no WhatsApp).</p>
+        <p>Funil: <strong className="text-ink-muted">Respondeu</strong> (à IA) → <strong className="text-ink-muted">Qualificou</strong> (a IA viu que quer algo que a Branorte faz, OU o vendedor já moveu pra follow-up/quente/orçamento) → <strong className="text-ink-muted">Follow-up</strong> (negociação) → <strong className="text-ink-muted">Quente</strong> (perto de fechar) → <strong className="text-ink-muted">Orç / Venda</strong> (REAL: orçamento montado no sistema / pedido fechado, casado pelo telefone do lead — não pela etiqueta).</p>
         <p><strong className="text-danger">Não fabricamos</strong> = leads com a etiqueta NÃO FABRICAMOS: pediram uma máquina/produto que a Branorte <strong>não faz</strong> — o anúncio atraiu o público errado (segmentação ruim, não criativo fraco). Os outros motivos de fechamento (não respondeu, sem interesse…) estão no card "Motivos de fechamento" abaixo.</p>
         <p>Passe o mouse no veredito pra ver o porquê. 🟢 escalar verba · 🔴 pausar · 🟠 ajustar ângulo/segmentação · 🟡 manter · ⚪ amostra &lt;{AMOSTRA_MIN} leads · ⚫ sem atribuição. Decisão por QUALIDADE (conversão ~0 em tudo).</p>
       </div>
@@ -2309,17 +2316,23 @@ function sortFunil(a: FunilRow, b: FunilRow): number {
 function VereditoInvestimento({
   criativos,
   etq,
+  real,
 }: {
   criativos: { codigo: string; nome: string; total: number; qualificados: number; ctr: number; engajou: number; bovinos: number; suinos: number; aves: number }[]
   etq: ReturnType<typeof useDashboardEtiquetas>['data']
+  real?: Map<string, OrcVendaAttr>
 }) {
   if (!criativos.length) return <p className="text-sm text-ink-faint">Nenhum criativo registrado.</p>
   const etqByCodigo = new Map((etq?.por_criativo ?? []).map(c => [c.codigo, c]))
 
   const rows: FunilRow[] = criativos.map(c => {
     const e = etqByCodigo.get(c.codigo)
-    const vendido = e?.vendido ?? 0
-    const orcamento = e?.orcamento ?? 0
+    // Orç/Venda REAIS (match por telefone) substituem a contagem por etiqueta. Enquanto
+    // o mapa não carregou, cai pra etiqueta pra não piscar zerado.
+    const r = real?.get(c.codigo)
+    const vendido = real ? (r?.venda ?? 0) : (e?.vendido ?? 0)
+    const orcamento = real ? (r?.orc ?? 0) : (e?.orcamento ?? 0)
+    const valorVenda = r?.valor ?? 0
     const conv = vendido + orcamento
     const engajouPct = c.total > 0 ? (c.engajou / c.total) * 100 : 0
     const convPct = c.total > 0 ? (conv / c.total) * 100 : 0
@@ -2338,7 +2351,7 @@ function VereditoInvestimento({
       perfil: perfilCliente(c), total: c.total,
       engajouPct, qualifPct,
       followUp, leadQuente,
-      conv, vendido, orcamento, convPct, nf, nfPct,
+      conv, vendido, orcamento, valorVenda, real: !!real, convPct, nf, nfPct,
       verdict, score, reason: reasonFor(reasonKey, vi),
     }
   }).sort(sortFunil)
@@ -2349,9 +2362,11 @@ function VereditoInvestimento({
 function VereditoOrigem({
   origens,
   etq,
+  real,
 }: {
   origens: { origem: string; total: number; qualificados: number; ctr: number; engajou: number; bovinos: number; suinos: number; aves: number; orcamentos: number; vendidos: number }[]
   etq: ReturnType<typeof useDashboardEtiquetas>['data']
+  real?: Map<string, OrcVendaAttr>
 }) {
   if (!origens.length) return <p className="text-sm text-ink-faint">Nenhuma origem registrada.</p>
   // Junta por origem CRUA (mesma string em ambas as fontes — leem apc.origem)
@@ -2361,8 +2376,11 @@ function VereditoOrigem({
     .filter(o => o.total >= 3) // tira ruído de origens com 1-2 leads
     .map(o => {
       const e = etqByOrigem.get(o.origem)
-      const vendido = e?.vendido ?? 0
-      const orcamento = e?.orcamento ?? 0
+      // Orç/Venda REAIS (match por telefone) no lugar da etiqueta.
+      const rl = real?.get(o.origem)
+      const vendido = real ? (rl?.venda ?? 0) : (e?.vendido ?? 0)
+      const orcamento = real ? (rl?.orc ?? 0) : (e?.orcamento ?? 0)
+      const valorVenda = rl?.valor ?? 0
       const conv = vendido + orcamento
       const engajouPct = o.total > 0 ? (o.engajou / o.total) * 100 : 0
       const convPct = o.total > 0 ? (conv / o.total) * 100 : 0
@@ -2380,7 +2398,7 @@ function VereditoOrigem({
         perfil: perfilCliente(o), total: o.total,
         engajouPct, qualifPct,
         followUp, leadQuente,
-        conv, vendido, orcamento, convPct, nf, nfPct,
+        conv, vendido, orcamento, valorVenda, real: !!real, convPct, nf, nfPct,
         verdict, score, reason: reasonFor(reasonKey, vi),
       }
     }).sort(sortFunil)
