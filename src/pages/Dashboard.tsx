@@ -5,6 +5,7 @@ import { useDashboardEtiquetas, useHeatmapSemanal, CATEGORIA_LABEL, type Etiquet
 import { useDashboardVendedorFunil, type VendedorFunilRow } from '@/hooks/useDashboardVendedorFunil'
 import { useDashboardExtra, type DashboardExtra } from '@/hooks/useDashboardExtra'
 import { useFunilUnion } from '@/hooks/useFunilUnion'
+import { useDashboardOrcamentos } from '@/hooks/useDashboardOrcamentos'
 import { useOrcamentosResumo, type OrcamentosResumo } from '@/hooks/useOrcamentosResumo'
 import { usePropostasStatus, CATS_ABERTO, type PropostasStatus, type PropCategoria } from '@/hooks/usePropostasStatus'
 import { useVendedoresPainel, type VendedorPainel } from '@/hooks/useVendedoresPainel'
@@ -176,6 +177,9 @@ export function Dashboard() {
   const { data: funilUnion } = useFunilUnion(preset)
   // Valor das propostas montadas no builder (orcamentos_gerados) — única fonte real de R$
   const { data: orc } = useOrcamentosResumo(preset)
+  // Contagem REAL de orçamentos: leads do período com orçamento montado (match por
+  // telefone). Substitui a etiqueta do WhatsApp, que subconta (vendedor esquece de marcar).
+  const { data: orcamentosReais } = useDashboardOrcamentos(preset)
   // Propostas × estágio atual do funil (dinheiro em aberto vs vendido, por vendedor)
   const { data: propStatus } = usePropostasStatus(preset)
   // Painel por vendedor: funil de etiquetas WhatsApp + motivos de perda
@@ -202,7 +206,7 @@ export function Dashboard() {
       { etapa: 'Entrou',            valor: funilUnion?.entrou ?? data.funil[0]?.valor ?? 0 },
       { etapa: 'Engajou',           valor: funilUnion?.engajou ?? data.funil[1]?.valor ?? 0 },
       { etapa: 'Qualificou',        valor: funilUnion?.qualificou ?? data.funil[2]?.valor ?? 0 },
-      { etapa: 'Orçamento enviado', valor: etq?.por_categoria.orcamento ?? 0 },
+      { etapa: 'Orçamento enviado', valor: orcamentosReais ?? etq?.por_categoria.orcamento ?? 0 },
       { etapa: 'Vendido',           valor: etq?.por_categoria.vendido ?? 0 },
     ]
     const topo = raw[0].valor || 1
@@ -216,7 +220,7 @@ export function Dashboard() {
         perdidos: i > 0 ? Math.max(0, prev - e.valor) : 0,
       }
     })
-  }, [data?.funil, etq, funilUnion])
+  }, [data?.funil, etq, funilUnion, orcamentosReais])
 
   // Cards de vendedor (3 fontes mescladas + veredito), computados uma vez e
   // usados pelo Resumo do gerente e pelo Painel por vendedor.
@@ -307,7 +311,7 @@ export function Dashboard() {
   const heroKpis = [
     { label: preset ? 'Leads no período' : 'Total de leads', kpi: data.kpiTotal, icon: Users, color: COLORS.ink, sub: preset ? periodoLabel.toLowerCase() : 'desde o início' },
     { label: 'Qualificados',  kpi: data.kpiQualificados, icon: CheckCircle2, color: COLORS.accent, sub: 'quer algo que a Branorte faz' },
-    { label: 'Orçamentos',    kpi: { valor: orcamentoEtq, deltaPct: 0, sparkline: [] }, icon: FilePlus2, color: 'hsl(280 65% 50%)', sub: 'etiqueta no WhatsApp' },
+    { label: 'Orçamentos',    kpi: { valor: orcamentosReais ?? orcamentoEtq, deltaPct: 0, sparkline: [] }, icon: FilePlus2, color: 'hsl(280 65% 50%)', sub: 'telefone × orçamentos montados' },
     { label: 'Vendidos',      kpi: { valor: vendidoEtq, deltaPct: 0, sparkline: [] }, icon: CheckCircle2, color: 'hsl(152 60% 35%)', sub: 'etiqueta VENDIDO' },
     { label: 'Conversão',     kpi: { valor: taxaConv, deltaPct: 0, sparkline: [] }, icon: TrendingUp, color: COLORS.info, sub: 'lead → vendido', suffix: '%' },
   ]

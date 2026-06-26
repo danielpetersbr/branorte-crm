@@ -1,0 +1,36 @@
+// Contagem REAL de orçamentos do Dashboard: leads (atendimentos que chegaram no
+// período) cujo telefone tem orçamento montado em orcamentos_gerados (match por
+// fone_canon). Substitui a contagem por etiqueta do WhatsApp, que subconta quando
+// o vendedor esquece de marcar a etiqueta de "orçamento".
+import { useQuery } from '@tanstack/react-query'
+import { supabase } from '@/lib/supabase'
+import { parseCustomRange, type DashboardPreset } from './useDashboard'
+
+function rangeFor(preset: DashboardPreset): { from: string | null; to: string | null } {
+  if (!preset) return { from: null, to: null } // 'Tudo' = sem corte de data
+  const c = parseCustomRange(preset)
+  if (c) return { from: c.from.toISOString(), to: c.to.toISOString() }
+  const now = new Date()
+  const sod = (d: Date) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x }
+  const eod = (d: Date) => { const x = new Date(d); x.setHours(23, 59, 59, 999); return x }
+  if (preset === 'hoje') return { from: sod(now).toISOString(), to: eod(now).toISOString() }
+  if (preset === 'ontem') { const y = new Date(now); y.setDate(y.getDate() - 1); return { from: sod(y).toISOString(), to: eod(y).toISOString() } }
+  if (preset === '7d') { const f = new Date(now); f.setDate(f.getDate() - 6); return { from: sod(f).toISOString(), to: eod(now).toISOString() } }
+  if (preset === '30d') { const f = new Date(now); f.setDate(f.getDate() - 29); return { from: sod(f).toISOString(), to: eod(now).toISOString() } }
+  if (preset === 'mes') return { from: sod(new Date(now.getFullYear(), now.getMonth(), 1)).toISOString(), to: eod(now).toISOString() }
+  return { from: null, to: null }
+}
+
+/** Nº de leads no período com orçamento montado (match por telefone). */
+export function useDashboardOrcamentos(preset: DashboardPreset) {
+  const { from, to } = rangeFor(preset)
+  return useQuery({
+    queryKey: ['dashboard-orcamentos', from, to],
+    queryFn: async (): Promise<number> => {
+      const { data, error } = await (supabase as any).rpc('dashboard_orcamentos_periodo', { p_from: from, p_to: to })
+      if (error) throw error
+      return Number(data ?? 0)
+    },
+    staleTime: 60_000,
+  })
+}
