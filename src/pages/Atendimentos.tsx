@@ -312,6 +312,7 @@ export function Atendimentos() {
     origem: string
     criativo: string
     etiqueta: string
+    comOrcamento: boolean
     page: number
   }>(() => ({
     search: '',
@@ -323,6 +324,7 @@ export function Atendimentos() {
     origem: searchParams.get('origem') || '',
     criativo: searchParams.get('criativo') || '',
     etiqueta: searchParams.get('etiqueta') || '',
+    comOrcamento: searchParams.get('orc') === '1',
     page: 0,
   }))
   const [searchInput, setSearchInput] = useState('')
@@ -358,7 +360,7 @@ export function Atendimentos() {
   const rows = data?.rows ?? []
   const total = data?.total ?? 0
   const totalPages = Math.ceil(total / ATENDIMENTO_PAGE_SIZE)
-  const hasFilters = filters.search || filters.responsavel || filters.status_real || filters.uf || filters.data || filters.origem || filters.criativo || filters.etiqueta
+  const hasFilters = filters.search || filters.responsavel || filters.status_real || filters.uf || filters.data || filters.origem || filters.criativo || filters.etiqueta || filters.comOrcamento
 
   // Resolve o "vendedor efetivo" do lead. Prioridade:
   // 1. auditoria.responsavel (atribuido manualmente no CRM)
@@ -374,7 +376,7 @@ export function Atendimentos() {
   }
 
   const clearFilters = () => {
-    setFilters({ search: '', responsavel: '', status_real: '', uf: '', data: '', origem: '', criativo: '', etiqueta: '', page: 0 })
+    setFilters({ search: '', responsavel: '', status_real: '', uf: '', data: '', origem: '', criativo: '', etiqueta: '', comOrcamento: false, page: 0 })
     setSearchInput('')
   }
 
@@ -539,6 +541,22 @@ export function Atendimentos() {
           onChange={e => setFilters(f => ({ ...f, uf: e.target.value, page: 0 }))}
           className="lg:w-24"
         />
+        {/* Filtro: só atendimentos cujo telefone já tem orçamento montado */}
+        <button
+          type="button"
+          onClick={() => setFilters(f => f.comOrcamento
+            ? { ...f, comOrcamento: false, page: 0 }
+            // Ao ligar, limpa a data pra mostrar TODOS os leads com orçamento (cobertura completa).
+            : { ...f, comOrcamento: true, data: '', page: 0 })}
+          className={`px-2.5 py-1.5 rounded-md border text-[12px] font-medium transition-colors whitespace-nowrap ${
+            filters.comOrcamento
+              ? 'bg-emerald-500/15 text-emerald-500 border-emerald-500/40'
+              : 'bg-surface-2 text-ink-muted border-border hover:text-ink'
+          }`}
+          title="Mostrar só os atendimentos cujo telefone já tem orçamento montado (todas as datas)"
+        >
+          📄 {filters.comOrcamento ? 'Com orçamento ✓' : 'Com orçamento'}
+        </button>
         {hasFilters && (
           <Button variant="ghost" size="sm" onClick={clearFilters}>
             <X className="h-3.5 w-3.5" /> Limpar
@@ -554,6 +572,11 @@ export function Atendimentos() {
           <div className="flex items-center justify-between shrink-0">
             <p className="text-[12px] text-ink-faint tabular-nums">
               {formatNumber(total)} resultado{total !== 1 ? 's' : ''}
+              {/* Cobertura: quantos dos atendimentos mostrados já têm orçamento montado */}
+              {!filters.comOrcamento && (() => {
+                const n = (data?.rows ?? []).filter(r => lookupOrcamento(orcMap, r.telefone)).length
+                return n > 0 ? <span className="text-emerald-500"> · 📄 {n} com orçamento</span> : null
+              })()}
             </p>
             {totalPages > 1 && (
               <div className="flex items-center gap-1">

@@ -41,6 +41,8 @@ export interface AtendimentoFilters {
   // Filtro por etiqueta do WhatsApp (nome normalizado, ex: 'FOLLOW UP', 'VENDIDO').
   // Resolvido server-side via RPC atendimentos_telefones_por_etiqueta. Vazio = sem filtro.
   etiqueta: string
+  // Só atendimentos cujo telefone já tem orçamento montado (match automático).
+  comOrcamento: boolean
   page: number
 }
 
@@ -255,6 +257,15 @@ export function useAtendimentos(filters: AtendimentoFilters) {
       // (em toda a base), e filtramos os atendimentos por eles.
       if (filters.etiqueta) {
         const { data: tels, error: telErr } = await supabase.rpc('atendimentos_telefones_por_etiqueta', { p_etiqueta: filters.etiqueta })
+        if (telErr) throw telErr
+        const list = (tels ?? []) as string[]
+        if (list.length === 0) return { rows: [], total: 0 }
+        query = query.in('telefone_norm', list)
+      }
+      // Filtro "só com orçamento": a RPC devolve os telefones (telefone_norm) que têm
+      // orçamento montado (match por fone_canon), e filtramos os atendimentos por eles.
+      if (filters.comOrcamento) {
+        const { data: tels, error: telErr } = await (supabase as any).rpc('atendimentos_telefones_com_orcamento')
         if (telErr) throw telErr
         const list = (tels ?? []) as string[]
         if (list.length === 0) return { rows: [], total: 0 }
