@@ -693,6 +693,7 @@ export function Atendimentos() {
                     <th className="hidden 2xl:table-cell w-[64px]" title="Produção desejada quando é venda (kg/h)">Kg/h</th>
                     <th className="w-[88px]">Vendedor</th>
                     <th className="hidden 2xl:table-cell w-[110px]" title="Etiqueta atribuída no WhatsApp do vendedor">Etiqueta WA</th>
+                    <th className="w-[76px]" title="Já foi montado orçamento pra esse telefone? (match automático pelo número)">Orçamento</th>
                     <th className="!text-right w-[40px]"></th>
                   </tr>
                 </thead>
@@ -915,6 +916,7 @@ export function Atendimentos() {
                         <td className="hidden 2xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
                           {(() => {
                             const allLabels = lookupWaLabels(waLabelsMap, r.telefone)
+                            if (allLabels.length === 0) return <EmptyCell />
                             const v = vendedorEfetivo(r)
                             const respFirstUp = v ? v.name.trim().split(/\s+/)[0]?.toUpperCase() : null
                             // Se há vendedor responsável, filtra só as etiquetas dele.
@@ -922,21 +924,9 @@ export function Atendimentos() {
                             const labels = respFirstUp
                               ? allLabels.filter(l => l.vendedor?.toUpperCase() === respFirstUp)
                               : allLabels
-                            // Indicador AUTOMÁTICO: tem orçamento gerado pra esse telefone?
-                            const orc = lookupOrcamento(orcMap, r.telefone)
-                            if (labels.length === 0 && !orc) return <EmptyCell />
-                            // Vendedor já marcou alguma etiqueta de "orçamento"? Se não, sinaliza
-                            // (o caso que o Daniel descreveu: orçamento feito mas etiqueta esquecida).
-                            const temEtiquetaOrc = labels.some(l => /or[çc]ament/i.test(l.name))
-                            const orcTitle = orc
-                              ? `Orçamento ${orc.numero ?? ''} gerado`
-                                + (orc.em ? ` em ${new Date(orc.em).toLocaleDateString('pt-BR')}` : '')
-                                + (orc.valor ? ` · ${orc.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : '')
-                                + (orc.qtd > 1 ? ` · ${orc.qtd} orçamentos pra este número` : '')
-                                + (!temEtiquetaOrc ? ' — detectado pelo telefone (vendedor não marcou a etiqueta de orçamento)' : '')
-                              : ''
+                            if (labels.length === 0) return <EmptyCell />
                             return (
-                              <div className="flex flex-wrap gap-1 max-w-[190px]">
+                              <div className="flex flex-wrap gap-1 max-w-[180px]">
                                 {labels.slice(0, 3).map(l => (
                                   <Badge
                                     key={l.id + ':' + l.vendedor}
@@ -954,18 +944,27 @@ export function Atendimentos() {
                                 {labels.length > 3 && (
                                   <span className="text-[10px] text-ink-faint">+{labels.length - 3}</span>
                                 )}
-                                {orc && (
-                                  <Badge
-                                    className="text-[10px] font-semibold"
-                                    style={temEtiquetaOrc
-                                      ? { background: 'rgba(59,130,246,0.12)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.3)' }
-                                      : { background: 'rgba(245,158,11,0.15)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.4)' }}
-                                    title={orcTitle}
-                                  >
-                                    📄 ORÇAMENTO{!temEtiquetaOrc ? ' ⚠' : ''}
-                                  </Badge>
-                                )}
                               </div>
+                            )
+                          })()}
+                        </td>
+                        {/* ORÇAMENTO — foi montado orçamento pra esse telefone? (match automático pelo número) */}
+                        <td className="px-1.5 py-2.5 whitespace-nowrap">
+                          {(() => {
+                            const orc = lookupOrcamento(orcMap, r.telefone)
+                            if (!orc) return <EmptyCell />
+                            const title = `Orçamento ${orc.numero ?? ''} montado`
+                              + (orc.em ? ` em ${new Date(orc.em).toLocaleDateString('pt-BR')}` : '')
+                              + (orc.valor ? ` · ${orc.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : '')
+                              + (orc.qtd > 1 ? ` · ${orc.qtd} orçamentos pra este número` : '')
+                            return (
+                              <Badge
+                                className="text-[10px] font-semibold"
+                                style={{ background: 'rgba(16,185,129,0.14)', color: '#10b981', border: '1px solid rgba(16,185,129,0.35)' }}
+                                title={title}
+                              >
+                                ✓ Sim{orc.qtd > 1 ? ` (${orc.qtd})` : ''}
+                              </Badge>
                             )
                           })()}
                         </td>
@@ -999,7 +998,7 @@ export function Atendimentos() {
                   })}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={16} className="px-4 py-16 text-center">
+                      <td colSpan={17} className="px-4 py-16 text-center">
                         <div className="flex flex-col items-center gap-2">
                           <div className="h-10 w-10 rounded-full bg-surface-2 flex items-center justify-center">
                             <Inbox className="h-5 w-5 text-ink-faint" />
