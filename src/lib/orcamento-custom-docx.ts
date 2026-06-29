@@ -44,6 +44,7 @@ export interface CustomDocxCliente {
   cep?: string | null
   cnpj?: string | null
   ie?: string | null
+  ie_tipo?: 'estadual' | 'produtor_rural' | 'isento' | null
   email?: string | null
 }
 
@@ -386,7 +387,7 @@ function buildClienteGrid(c: CustomDocxCliente): Paragraph[] {
     ['ENDEREÇO', c.endereco],
     ['CEP', c.cep],
     ['CPF/CNPJ', c.cnpj],
-    ['I.E.', c.ie],
+    [c.ie_tipo === 'produtor_rural' ? 'INSC. PROD. RURAL' : 'I.E.', c.ie_tipo === 'isento' ? 'ISENTO' : c.ie],
     ['E-MAIL', c.email],
   ]
   return campos.map(([label, valor]) => new Paragraph({

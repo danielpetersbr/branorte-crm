@@ -96,6 +96,8 @@ export interface ClienteDados {
   cep?: string
   cnpj?: string
   ie?: string
+  // Tipo da inscrição: estadual (padrão) | produtor rural | isento.
+  ie_tipo?: 'estadual' | 'produtor_rural' | 'isento' | null
   email?: string
 }
 

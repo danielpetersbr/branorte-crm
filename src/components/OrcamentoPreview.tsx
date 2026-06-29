@@ -73,6 +73,9 @@ export interface PreviewClienteDados {
   cep?: string | null
   cnpj?: string | null
   ie?: string | null
+  // Tipo da inscrição: estadual (padrão), produtor rural ou isento.
+  // 'isento' → linha mostra "ISENTO"; 'produtor_rural' → label "INSC. PROD. RURAL".
+  ie_tipo?: 'estadual' | 'produtor_rural' | 'isento' | null
   email?: string | null
 }
 
@@ -434,13 +437,17 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     return <span className="text-gray-400 font-bold ml-1">{ph}</span>
   }
 
+  // Inscrição: label e valor variam com o tipo escolhido no modal do cliente.
+  const ieLabel = cli.ie_tipo === 'produtor_rural' ? 'INSC. PROD. RURAL' : 'I.E.'
+  const ieValor = cli.ie_tipo === 'isento' ? 'ISENTO' : cli.ie
+
   const camposEmpilhados: Array<[string, string | null | undefined]> = [
     ['CIDADE', cli.cidade],
     ['BAIRRO', cli.bairro],
     ['ENDEREÇO', cli.endereco],
     ['CEP', cli.cep],
     ['CPF/CNPJ', cli.cnpj],
-    ['I.E.', cli.ie],
+    [ieLabel, ieValor],
     ['E-MAIL', cli.email],
   ]
 

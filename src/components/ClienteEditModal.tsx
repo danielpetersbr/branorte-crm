@@ -12,6 +12,9 @@ interface Props {
   onSave: (dados: PreviewClienteDados) => void
 }
 
+// Tipo da inscrição do cliente (espelha PreviewClienteDados.ie_tipo).
+type IeTipo = 'estadual' | 'produtor_rural' | 'isento'
+
 // Limpa CNPJ/CPF: só dígitos
 function somenteDigitos(v: string): string {
   return v.replace(/\D/g, '')
@@ -225,6 +228,8 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
   const [cep, setCep] = useState('')
   const [cnpj, setCnpj] = useState('')
   const [ie, setIe] = useState('')
+  // Tipo da inscrição: estadual (padrão) | produtor rural | isento.
+  const [ieTipo, setIeTipo] = useState<IeTipo>('estadual')
   const [email, setEmail] = useState('')
 
   const [buscando, setBuscando] = useState(false)
@@ -243,6 +248,12 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
     setCep(cliente.cep || '')
     setCnpj(cliente.cnpj || '')
     setIe(cliente.ie || '')
+    // Tipo da inscrição: usa o salvo; se ausente, infere "isento" quando o valor
+    // gravado é literalmente ISENTO, senão cai no padrão "estadual".
+    setIeTipo(
+      cliente.ie_tipo
+        || (/^isento$/i.test((cliente.ie || '').trim()) ? 'isento' : 'estadual')
+    )
     setEmail(cliente.email || '')
     setErroBusca(null)
     setErroSalvar(null)
@@ -341,6 +352,7 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
         // CNPJ não encontrado — se tinha dígitos extras, pode ser IE
         if (d.length > 14) {
           setIe(cnpj.trim())
+          setIeTipo(t => t === 'isento' ? 'estadual' : t)
           setCnpj('')
           setSucessoBusca('✓ Inscrição salva no campo I.E. Preencha os demais dados manualmente.')
           return
@@ -365,7 +377,7 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
       // Sobra dos dígitos (ex: IE veio colada junto) → salva no campo IE
       if (d.length > 14) {
         const sobra = d.slice(14)
-        if (sobra.length >= 8) setIe(sobra)
+        if (sobra.length >= 8) { setIe(sobra); setIeTipo(t => t === 'isento' ? 'estadual' : t) }
       }
       if (dados.email) setEmail(dados.email.toLowerCase())
       if (dados.ddd_telefone_1) setFone(fmtFone(dados.ddd_telefone_1))
@@ -376,6 +388,7 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
         const sint = await buscarSintegra({ documento: cnpj14, tipo: 'cnpj', uf: dados.uf })
         if (sint?.ok && sint.resultado?.ie) {
           setIe(sint.resultado.ie)
+          setIeTipo(t => t === 'isento' ? 'estadual' : t)
           ieMsg = ` · IE ${sint.resultado.ie}${sint.resultado.situacao ? ` (${sint.resultado.situacao})` : ''}`
         }
       } catch {
@@ -397,6 +410,7 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
       // Mantém o valor no campo pra permitir re-buscar depois de preencher a UF.
       const ieVal = cnpj.trim()
       setIe(ieVal)
+      setIeTipo(t => t === 'isento' ? 'estadual' : t)
       setErroBusca(null)
       await tentarSintegraPorIe(ieVal)
       return
@@ -431,7 +445,16 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
       setErroSalvar('Telefone é obrigatório (com DDD) — é o que amarra o orçamento ao cliente/lead.')
       return
     }
+    // Inscrição é obrigatória: ou informa o número (Estadual/Produtor Rural) ou
+    // marca "Isento". Evita orçamento sair sem definir a situação fiscal.
+    if (ieTipo !== 'isento' && !ie.trim()) {
+      setErroSalvar('Informe a Inscrição (Estadual ou Produtor Rural) ou marque "Isento".')
+      return
+    }
     setErroSalvar(null)
+    // Isento → grava "ISENTO" no valor pra aparecer em todos os formatos (PDF/DOCX);
+    // os demais gravam o número digitado.
+    const ieFinal = ieTipo === 'isento' ? 'ISENTO' : (ie.trim() || null)
     onSave({
       nome: nome.trim() || undefined,
       ac: ac.trim() || null,
@@ -441,7 +464,8 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
       endereco: endereco.trim() || null,
       cep: cep.trim() || null,
       cnpj: cnpj.trim() || null,
-      ie: ie.trim() || null,
+      ie: ieFinal,
+      ie_tipo: ieTipo,
       email: email.trim() || null,
     })
     onClose()
@@ -462,7 +486,7 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
     if (dados.endereco) setEndereco(dados.endereco)
     if (dados.cep) setCep(dados.cep)
     if (dados.cnpj) setCnpj(dados.cnpj)
-    if (dados.ie) setIe(dados.ie)
+    if (dados.ie) { setIe(dados.ie); setIeTipo(t => t === 'isento' ? 'estadual' : t) }
     if (dados.email) setEmail(dados.email)
     setTextoColado('')
     setColando(false)
@@ -526,7 +550,7 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
                   if (dados.endereco) setEndereco(dados.endereco)
                   if (dados.cep) setCep(dados.cep)
                   if (dados.cnpj) setCnpj(dados.cnpj)
-                  if (dados.ie) setIe(dados.ie)
+                  if (dados.ie) { setIe(dados.ie); setIeTipo(t => t === 'isento' ? 'estadual' : t) }
                   if (dados.email) setEmail(dados.email)
                   setTextoColado('')
                   setColando(false)
@@ -661,16 +685,54 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
             </div>
           </div>
 
-          {/* I.E. + Email */}
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1">Inscrição Estadual</label>
-              <Input value={ie} onChange={e => setIe(e.target.value)} placeholder="I.E." />
+          {/* Inscrição (Estadual / Produtor Rural / Isento) — obrigatória */}
+          <div>
+            <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1">
+              Inscrição <span className="text-danger">*</span>
+            </label>
+            {/* Seletor de tipo */}
+            <div className="flex gap-1 mb-2">
+              {([
+                { key: 'estadual', label: 'Estadual' },
+                { key: 'produtor_rural', label: 'Produtor Rural' },
+                { key: 'isento', label: 'Isento' },
+              ] as Array<{ key: IeTipo; label: string }>).map(opt => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => {
+                    setIeTipo(opt.key)
+                    if (erroSalvar) setErroSalvar(null)
+                  }}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold border transition ${
+                    ieTipo === opt.key
+                      ? 'bg-accent text-white border-accent'
+                      : 'bg-surface-2 text-ink-muted border-border hover:bg-accent/10 hover:text-accent'
+                  }`}
+                >
+                  {opt.key === 'produtor_rural' && <Tractor className="w-3 h-3" />}
+                  {opt.label}
+                </button>
+              ))}
             </div>
-            <div>
-              <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1">E-mail</label>
-              <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="email@empresa.com" />
-            </div>
+            {/* Campo do número — escondido/travado quando Isento */}
+            {ieTipo === 'isento' ? (
+              <div className="text-[12px] text-ink-faint italic px-1 py-2 border border-dashed border-border rounded-md">
+                Cliente isento de inscrição — vai sair como <span className="font-semibold text-ink-muted not-italic">ISENTO</span> no orçamento.
+              </div>
+            ) : (
+              <Input
+                value={ie}
+                onChange={e => { setIe(e.target.value); if (erroSalvar) setErroSalvar(null) }}
+                placeholder={ieTipo === 'produtor_rural' ? 'Nº da Inscrição de Produtor Rural' : 'Nº da Inscrição Estadual'}
+              />
+            )}
+          </div>
+
+          {/* E-mail */}
+          <div>
+            <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1">E-mail</label>
+            <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="email@empresa.com" />
           </div>
         </div>
 

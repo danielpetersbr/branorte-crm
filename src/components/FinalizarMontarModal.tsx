@@ -831,6 +831,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           cep: cliDados.cep,
           cnpj: cliDados.cnpj,
           ie: cliDados.ie,
+          ie_tipo: cliDados.ie_tipo,
           email: cliDados.email,
         },
         terms: {
@@ -887,7 +888,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           cliente: {
             nome: cliNome.trim(), ac: cliDados.ac, fone: cliDados.fone,
             cidade: cliDados.cidade, bairro: cliDados.bairro, endereco: cliDados.endereco,
-            cep: cliDados.cep, cnpj: cliDados.cnpj, ie: cliDados.ie, email: cliDados.email,
+            cep: cliDados.cep, cnpj: cliDados.cnpj, ie: cliDados.ie, ie_tipo: cliDados.ie_tipo, email: cliDados.email,
           },
           voltagem: snapshot.voltagem,
           itens: itensNorm.map((it, idx) => ({
