@@ -229,6 +229,7 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
 
   const [buscando, setBuscando] = useState(false)
   const [erroBusca, setErroBusca] = useState<string | null>(null)
+  const [erroSalvar, setErroSalvar] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -244,6 +245,7 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
     setIe(cliente.ie || '')
     setEmail(cliente.email || '')
     setErroBusca(null)
+    setErroSalvar(null)
   }, [open, cliente])
 
   const [sucessoBusca, setSucessoBusca] = useState<string | null>(null)
@@ -418,6 +420,18 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
   }
 
   function handleSalvar() {
+    // Validação: Nome e Telefone são obrigatórios. O telefone é o que amarra o
+    // orçamento ao lead (match por fone_canon no dashboard/atendimentos) — sem ele,
+    // a venda não rastreia origem. Exige DDD + número (>=10 dígitos).
+    if (!nome.trim()) {
+      setErroSalvar('Preencha o Nome / Razão Social.')
+      return
+    }
+    if (somenteDigitos(fone).length < 10) {
+      setErroSalvar('Telefone é obrigatório (com DDD) — é o que amarra o orçamento ao cliente/lead.')
+      return
+    }
+    setErroSalvar(null)
     onSave({
       nome: nome.trim() || undefined,
       ac: ac.trim() || null,
@@ -587,7 +601,7 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
             <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1">
               Nome / Razão Social <span className="text-danger">*</span>
             </label>
-            <Input value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome do cliente ou empresa" />
+            <Input value={nome} onChange={e => { setNome(e.target.value); if (erroSalvar) setErroSalvar(null) }} placeholder="Nome do cliente ou empresa" />
           </div>
 
           {/* A/C + Fone */}
@@ -597,10 +611,12 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
               <Input value={ac} onChange={e => setAc(e.target.value)} placeholder="Aos cuidados de..." />
             </div>
             <div>
-              <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1">Telefone</label>
+              <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1">
+                Telefone <span className="text-danger">*</span>
+              </label>
               <Input
                 value={fone}
-                onChange={e => setFone(fmtFone(e.target.value))}
+                onChange={e => { setFone(fmtFone(e.target.value)); if (erroSalvar) setErroSalvar(null) }}
                 placeholder="(48) 99999-9999"
               />
             </div>
@@ -660,6 +676,7 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-border flex items-center justify-end gap-2">
+          {erroSalvar && <p className="text-[11px] text-danger mr-auto self-center leading-snug">{erroSalvar}</p>}
           <button
             onClick={onClose}
             className="text-[12px] px-4 py-2 rounded border border-border bg-surface-2 hover:bg-surface-3 text-ink-muted font-semibold transition"
