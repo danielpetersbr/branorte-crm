@@ -47,6 +47,7 @@ function popupGrupo(ps: FreteMapaPonto[], caminhaoNome: (id: number | null) => s
         <div style="min-width:0">
           <div style="font-size:12px;color:#0f172a">${esc(p.transportadora_nome)}${p.vencedor ? ' <b style="color:#16a34a">🏆</b>' : ''}</div>
           <div style="font-size:10px;color:#94a3b8">${p.prazo_dias != null ? `${p.prazo_dias} dias · ` : ''}${data}${cam ? ` · 🚚 ${esc(cam)}` : ''} · ${esc(p.codigo)}</div>
+          ${p.vendedor_nome ? `<div style="font-size:10px;color:#64748b">👤 ${esc(p.vendedor_nome)}</div>` : ''}
         </div>
         <div style="font-size:14px;font-weight:700;color:#22c55e;white-space:nowrap">${brl(p.valor)}</div>
       </div>`

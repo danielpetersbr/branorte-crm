@@ -643,6 +643,7 @@ export type FreteMapaPonto = {
   prazo_dias: number | null;
   respondido_em: string | null;
   vencedor: boolean;
+  vendedor_nome: string | null;
 };
 
 /** Pontos pro mapa: lances respondidos com geolocalização. */
