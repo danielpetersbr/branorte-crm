@@ -11,10 +11,15 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 const CENTRO_BR: [number, number] = [-15.78, -47.93]
 const VERDE = '#22c55e', AZUL = '#3b82f6', AMBAR = '#f59e0b'
 
-function pinIcon(cor: string): L.DivIcon {
+function pinIcon(cor: string, n = 1): L.DivIcon {
+  // Badge com a contagem quando há mais de uma cotação no mesmo destino
+  // (várias transportadoras cotam a mesma cidade → pinos empilhados).
+  const badge = n > 1
+    ? `<div style="position:absolute;top:-7px;right:-9px;background:#0f172a;color:#fff;font-size:10px;font-weight:700;min-width:16px;height:16px;line-height:16px;text-align:center;border-radius:9px;padding:0 3px;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)">${n}</div>`
+    : ''
   return L.divIcon({
     className: 'frete-pin',
-    html: `<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:${cor};transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>`,
+    html: `<div style="position:relative;width:22px;height:22px"><div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:${cor};transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>${badge}</div>`,
     iconSize: [22, 22], iconAnchor: [11, 22], popupAnchor: [0, -22],
   })
 }
@@ -29,16 +34,28 @@ function equipLabel(p: FreteMapaPonto): string {
   return 'Equipamento'
 }
 
-function popup(p: FreteMapaPonto, caminhao: string): string {
-  const data = p.respondido_em ? new Date(p.respondido_em).toLocaleDateString('pt-BR') : '—'
+// Popup de um DESTINO: lista TODAS as cotações daquele ponto (várias
+// transportadoras cotam a mesma cidade). Ordena da mais barata pra mais cara.
+function popupGrupo(ps: FreteMapaPonto[], caminhaoNome: (id: number | null) => string): string {
+  const ordenados = [...ps].sort((a, b) => (a.valor ?? Infinity) - (b.valor ?? Infinity))
+  const first = ordenados[0]
+  const linhas = ordenados.map(p => {
+    const data = p.respondido_em ? new Date(p.respondido_em).toLocaleDateString('pt-BR') : '—'
+    const cam = caminhaoNome(p.caminhao_recomendado_id)
+    return `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:4px 0;border-top:1px solid #f1f5f9">
+        <div style="min-width:0">
+          <div style="font-size:12px;color:#0f172a">${esc(p.transportadora_nome)}${p.vencedor ? ' <b style="color:#16a34a">🏆</b>' : ''}</div>
+          <div style="font-size:10px;color:#94a3b8">${p.prazo_dias != null ? `${p.prazo_dias} dias · ` : ''}${data}${cam ? ` · 🚚 ${esc(cam)}` : ''} · ${esc(p.codigo)}</div>
+        </div>
+        <div style="font-size:14px;font-weight:700;color:#22c55e;white-space:nowrap">${brl(p.valor)}</div>
+      </div>`
+  }).join('')
   return `
-    <div style="min-width:190px;font-family:inherit">
-      <div style="font-weight:600;font-size:13px">${esc(equipLabel(p))}</div>
-      <div style="font-size:12px;color:#64748b">${esc(p.cidade_destino)}/${esc(p.uf_destino)}${p.distancia_km ? ` · ${Math.round(p.distancia_km)} km` : ''}</div>
-      <div style="font-size:16px;font-weight:700;color:#22c55e;margin-top:4px">${brl(p.valor)}</div>
-      <div style="font-size:11px;color:#64748b;margin-top:2px">${esc(p.transportadora_nome)}${p.prazo_dias != null ? ` · ${p.prazo_dias} dias` : ''}</div>
-      ${caminhao ? `<div style="font-size:11px;color:#475569;margin-top:2px">🚚 ${esc(caminhao)}</div>` : ''}
-      <div style="font-size:11px;color:#94a3b8;margin-top:3px">Cotado em ${data} · ${esc(p.codigo)}${p.vencedor ? ' · <b style="color:#16a34a">vencedor</b>' : ''}</div>
+    <div style="min-width:230px;font-family:inherit">
+      <div style="font-weight:600;font-size:13px">${esc(equipLabel(first))}</div>
+      <div style="font-size:12px;color:#64748b">${esc(first.cidade_destino)}/${esc(first.uf_destino)}${first.distancia_km ? ` · ${Math.round(first.distancia_km)} km` : ''} · <b>${ps.length} cotação${ps.length > 1 ? 'ões' : ''}</b></div>
+      <div style="margin-top:4px">${linhas}</div>
     </div>`
 }
 
@@ -136,6 +153,19 @@ export function FreteMapa() {
     (!termo || [p.cidade_destino, p.transportadora_nome, equipLabel(p), p.codigo].some(x => (x || '').toLowerCase().includes(termo)))
   ), [pontos, uf, soVencedores, termo])
 
+  // Agrupa cotações que caem no MESMO destino (mesma lat/lng arredondada) —
+  // várias transportadoras cotam a mesma cidade e os pinos ficam empilhados.
+  // Um pino por destino; o popup lista todas as cotações daquele ponto.
+  const grupos = useMemo(() => {
+    const m = new Map<string, FreteMapaPonto[]>()
+    for (const p of filtrados) {
+      const key = `${p.destino_lat.toFixed(4)},${p.destino_lng.toFixed(4)}`
+      const arr = m.get(key)
+      if (arr) arr.push(p); else m.set(key, [p])
+    }
+    return [...m.values()]
+  }, [filtrados])
+
   const feitosFiltrados = useMemo(() => (feitos.data ?? []).filter(f =>
     f.destino_lat != null && f.destino_lng != null &&
     (!uf || f.uf_destino === uf) &&
@@ -168,11 +198,13 @@ export function FreteMapa() {
     map.invalidateSize()
     layer.clearLayers()
     const bounds: [number, number][] = []
-    for (const p of filtrados) {
-      const m = L.marker([p.destino_lat, p.destino_lng], { icon: pinIcon(p.vencedor ? VERDE : AZUL) })
-      m.bindPopup(popup(p, caminhaoNome(p.caminhao_recomendado_id)))
+    for (const grp of grupos) {
+      const p0 = grp[0]
+      const algumVencedor = grp.some(p => p.vencedor)
+      const m = L.marker([p0.destino_lat, p0.destino_lng], { icon: pinIcon(algumVencedor ? VERDE : AZUL, grp.length) })
+      m.bindPopup(popupGrupo(grp, caminhaoNome), { maxHeight: 280 })
       m.addTo(layer)
-      bounds.push([p.destino_lat, p.destino_lng])
+      bounds.push([p0.destino_lat, p0.destino_lng])
     }
     for (const f of feitosFiltrados) {
       const m = L.marker([f.destino_lat as number, f.destino_lng as number], { icon: pinIcon(AMBAR) })
@@ -182,14 +214,14 @@ export function FreteMapa() {
     }
     if (bounds.length) map.fitBounds(bounds, { padding: [50, 50], maxZoom: 10 })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtrados, feitosFiltrados, tipos.data])
+  }, [grupos, feitosFiltrados, tipos.data])
 
   return (
     <div className="flex h-[calc(100vh-0px)] flex-col p-4 gap-3 overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 shrink-0">
         <div>
           <h1 className="text-[22px] font-semibold text-ink tracking-tight">Mapa de Fretes</h1>
-          <p className="text-[13px] text-ink-muted">{filtrados.length} cotação(ões) no mapa · parâmetro histórico por região</p>
+          <p className="text-[13px] text-ink-muted">{filtrados.length} cotação(ões) em {grupos.length} destino(s) · parâmetro histórico por região</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
