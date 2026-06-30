@@ -1023,6 +1023,20 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
               await escreverArquivo(pastaMes, `${base} - ${vendedorNome}.txt`, txtBlob)
             } catch (txtErr) { console.warn('Falha .txt:', txtErr) }
             salvouNaPasta = true
+
+            // Confirma a gravação relendo o .docx (size > 0) e SÓ então marca o
+            // orçamento como ENTREGUE. Sem isso o status ficava 'rascunho' pra
+            // sempre no fluxo de pasta local — disparando falso alarme de "NÃO foi
+            // salvo / Reenviar pra pasta" toda vez que o vendedor reabria.
+            try {
+              const docxHandle = await (pastaMes as any).getFileHandle(`${base}.docx`)
+              const docxFile = await docxHandle.getFile()
+              if (docxFile.size > 0 && orc.status !== 'enviado') {
+                await atualizar.mutateAsync({ id: orc.id, status: 'enviado' })
+              }
+            } catch (verErr) {
+              console.warn('Não confirmou arquivo na pasta — mantém rascunho:', verErr)
+            }
           }
         } catch (e) {
           console.warn('Falha salvar pasta:', e)

@@ -2312,7 +2312,10 @@ export function OrcamentoMontar() {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button
-              onClick={() => setFinalizarOpen(true)}
+              // saveMode='update': reenvia ATUALIZANDO o próprio orçamento (mantém
+              // número) em vez de criar um novo. Com a gravação verificada na pasta,
+              // o status vira 'enviado' e o banner some.
+              onClick={() => { setSaveMode('update'); setFinalizarOpen(true) }}
               disabled={carrinho.length === 0 || finameBloqueado}
               className="text-[11px] px-2.5 py-1.5 rounded bg-danger hover:bg-danger/90 text-white font-bold flex items-center gap-1 shadow-sm disabled:opacity-50"
             >
