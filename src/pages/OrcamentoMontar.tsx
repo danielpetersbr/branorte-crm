@@ -611,7 +611,7 @@ export function OrcamentoMontar() {
   const [searchParams] = useSearchParams()
   const editingIdParam = searchParams.get('id')
   const editingId = editingIdParam ? Number(editingIdParam) : null
-  const { data: orcamentoEditando, isLoading: loadingOrcamento } = useOrcamentoGerado(editingId)
+  const { data: orcamentoEditando, isLoading: loadingOrcamento, isFetching: fetchingOrcamento } = useOrcamentoGerado(editingId)
   const [orcamentoHidratado, setOrcamentoHidratado] = useState(false)
   // Estado pra hidratar o modal FinalizarMontarModal com dados do orcamento salvo
   const [initialModal, setInitialModal] = useState<{
@@ -2183,6 +2183,13 @@ export function OrcamentoMontar() {
     if (orcamentoHidratado) return
     if (!editingId || !orcamentoEditando) return
     if (loadingItems || loadingMotores) return
+    // Espera o fetch FRESCO do orçamento terminar antes de hidratar. Sem isso, o
+    // React Query (staleTime:0) entrega o CACHE VELHO primeiro numa navegação SPA
+    // (abrir "Editar" sem recarregar a página). Se esse cache tinha
+    // foto_principal_url=null (estado anterior), o hero era hidratado VAZIO e travava,
+    // porque orcamentoHidratado=true impede re-hidratar quando o dado fresco chega.
+    // Full reload não sofria (sem cache). Bug: "ao abrir pra editar a foto some".
+    if (fetchingOrcamento) return
     const o = orcamentoEditando
     // Converte OrcamentoGerado → shape OrcamentoModelo pra reusar carregarDoModelo
     const modeloShape: OrcamentoModelo = {
@@ -2270,9 +2277,11 @@ export function OrcamentoMontar() {
     )
     if (ehFinameSalvo) setFinameMode(true)
     setOrcamentoHidratado(true)
-  }, [editingId, orcamentoEditando, loadingItems, loadingMotores, orcamentoHidratado, modelos])
+  }, [editingId, orcamentoEditando, loadingItems, loadingMotores, orcamentoHidratado, modelos, fetchingOrcamento])
 
-  if (loadingItems || loadingMotores || (editingId && loadingOrcamento)) return <PageLoading />
+  // Enquanto o fetch fresco do orçamento não terminou (e ainda não hidratou), segura
+  // o PageLoading — evita flash do builder vazio antes do estado ser restaurado.
+  if (loadingItems || loadingMotores || (editingId && (loadingOrcamento || (fetchingOrcamento && !orcamentoHidratado)))) return <PageLoading />
 
   // Indicador visual do autosave: status atual + horario do ultimo save.
   const draftStatusLabel = (() => {
