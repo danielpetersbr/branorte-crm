@@ -349,6 +349,30 @@ export async function gerarPdfDoPreview(
         } else {
           thisSliceHeightPx = nextBreak - yPx
         }
+
+        // TRAVA ANTI-CORTE (feedback #55): o fatiamento vinha 100% do
+        // findBreakNear (canvasBreaks). Sem uma checagem final, um break que
+        // (por drift DOM↔canvas ou scaling) caísse DENTRO de um bloco
+        // [data-no-break] cortava o box no meio da página — foi o que aconteceu
+        // com "VALOR TOTAL DE EQUIPAMENTOS" no PDF de fallback (faixa verde).
+        // Aqui recuamos o corte pro TOPO do bloco atingido, jogando o box
+        // inteiro pra próxima página. Só recua se sobrar fatia razoável — se o
+        // bloco começa colado no topo (bloco maior que a página), cortar é
+        // inevitável e deixamos como está.
+        {
+          let cutY = yPx + thisSliceHeightPx
+          for (const r of noBreakCanvasRanges) {
+            if (cutY > r.top && cutY < r.bottom) {
+              const recuado = r.top - yPx
+              if (recuado > sliceHeightPx * 0.15) {
+                thisSliceHeightPx = recuado
+                cutY = yPx + thisSliceHeightPx
+              }
+              break
+            }
+          }
+        }
+
         const fillPct = (thisSliceHeightPx / sliceHeightPx * 100).toFixed(0)
         console.log(`[pdf] page ${pageIdx + 1}: slice ${thisSliceHeightPx}px (fill=${fillPct}%)`)
 
