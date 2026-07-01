@@ -993,6 +993,56 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       const baseWhatsApp = nomeBaseWhatsApp(orc.numero, cliNome)
       let baixouDocx = false, baixouPdf = false, salvouNaPasta = false
 
+      // Salva no SERVIDOR (Storage + confirma status + dispara WhatsApp). É
+      // máquina-independente. Serve como caminho primário (salvarNoServidor) E
+      // como FALLBACK quando a pasta Z: falha — ex: virada de mês com o handle
+      // apontando pro mês antigo (o navegador não pula pra pasta irmã). Retorna
+      // true se salvou. Mutamos baixouDocx/salvouNaPasta via closure.
+      async function uploadServidor(): Promise<boolean> {
+        setStep('Enviando pro servidor...', 75)
+        const vendedorNome = profile?.display_name || 'Vendedor'
+        const notaTxt = montarNotaTxt(vendedorNome, hoje)
+        const txtBlob = new Blob([notaTxt], { type: 'text/plain;charset=utf-8' })
+        const ano = String(hoje.getFullYear())
+        const mes = String(hoje.getMonth() + 1).padStart(2, '0')
+        try {
+          const upRes = await uploadOrcamentoViaServer({
+            orcamentoId: orc.id,
+            numero: orc.numero,
+            ano, mes, base,
+            vendedorNome,
+            clienteNome: cliNome.trim(),
+            docxBlob,
+            pdfBlob,
+            txtBlob,
+            sendWhatsApp: !!pdfBlob,
+            whatsAppFilename: `${baseWhatsApp}.pdf`,
+            whatsAppCaption: `📄 Orçamento ${orc.numero} — ${cliNome.trim()}`,
+            onProgress: (s) => {
+              setGerandoStep(s)
+              setGerandoProgress(p => Math.min(92, Math.max(p, p + 3)))
+            },
+          })
+          baixouDocx = true
+          if (pdfBlob) baixouPdf = true
+          salvouNaPasta = true
+          if (pdfBlob) {
+            if (upRes.whatsapp?.ok) {
+              setWaStatus('sent')
+              setWaMsg(upRes.whatsapp.msg || 'PDF enviado pro seu WhatsApp.')
+            } else if (upRes.whatsapp?.error) {
+              setWaStatus('error')
+              setWaMsg(`WhatsApp falhou: ${upRes.whatsapp.error}`)
+            }
+          }
+          if (upRes.detalhes) console.warn('[salvar-servidor]', upRes.detalhes)
+          return true
+        } catch (e) {
+          console.error('Falha upload via server:', e)
+          return false
+        }
+      }
+
       setStep('Preparando para salvar...', 70)
       // 6a) Salvar na pasta Z: se solicitado
       if (opcoes.salvarNaPasta) {
@@ -1040,62 +1090,28 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           }
         } catch (e) {
           console.warn('Falha salvar pasta:', e)
-          // Fallback: baixa direto
-          baixarBlob(docxBlob, `${base}.docx`)
-          baixouDocx = true
-          if (pdfBlob) {
-            baixarBlob(pdfBlob, `${base}.pdf`)
-            baixouPdf = true
+          // Virada de mês / pasta stale: o navegador NÃO pula pra pasta do mês novo
+          // (handle salvo aponta pro mês antigo). Em vez de largar no Downloads e
+          // ficar 'rascunho' (vendedor acha que "não salvou"), salva no SERVIDOR —
+          // máquina-independente. Só baixa local se o servidor TAMBÉM falhar.
+          const okServer = await uploadServidor()
+          if (okServer) {
+            setErro(`Salvei no servidor (a pasta Z: falhou: ${(e as Error).message}). Pra voltar a arquivar em Z:, clique em "Sincronizar com pasta" e escolha a pasta BASE "3 - Orçamento".`)
+          } else {
+            baixarBlob(docxBlob, `${base}.docx`)
+            baixouDocx = true
+            if (pdfBlob) {
+              baixarBlob(pdfBlob, `${base}.pdf`)
+              baixouPdf = true
+            }
+            setErro(`Não consegui salvar na pasta (${(e as Error).message}) nem no servidor. Arquivos baixados localmente. Tente de novo.`)
           }
         }
       } else if (opcoes.salvarNoServidor) {
         // 6c) Upload via /api/orcamento-presign + /api/orcamento-confirm
         // (server-side, bypassa RLS/session stale, dispara WhatsApp atomicamente).
-        setStep('Enviando pro servidor...', 75)
-        const vendedorNome = profile?.display_name || 'Vendedor'
-        const notaTxt = montarNotaTxt(vendedorNome, hoje)
-        const txtBlob = new Blob([notaTxt], { type: 'text/plain;charset=utf-8' })
-        const ano = String(hoje.getFullYear())
-        const mes = String(hoje.getMonth() + 1).padStart(2, '0')
-
-        try {
-          const upRes = await uploadOrcamentoViaServer({
-            orcamentoId: orc.id,
-            numero: orc.numero,
-            ano, mes, base,
-            vendedorNome,
-            clienteNome: cliNome.trim(),
-            docxBlob,
-            pdfBlob,
-            txtBlob,
-            sendWhatsApp: !!pdfBlob,
-            whatsAppFilename: `${baseWhatsApp}.pdf`,
-            whatsAppCaption: `📄 Orçamento ${orc.numero} — ${cliNome.trim()}`,
-            onProgress: (s) => {
-              // Heurística: cada update do upload empurra +3% (cap em 92%).
-              // Mensagem do server vence o label local.
-              setGerandoStep(s)
-              setGerandoProgress(p => Math.min(92, Math.max(p, p + 3)))
-            },
-          })
-          baixouDocx = true
-          if (pdfBlob) baixouPdf = true
-          salvouNaPasta = true
-          // WhatsApp status (vem do server)
-          if (pdfBlob) {
-            if (upRes.whatsapp?.ok) {
-              setWaStatus('sent')
-              setWaMsg(upRes.whatsapp.msg || 'PDF enviado pro seu WhatsApp.')
-            } else if (upRes.whatsapp?.error) {
-              setWaStatus('error')
-              setWaMsg(`WhatsApp falhou: ${upRes.whatsapp.error}`)
-            }
-          }
-          if (upRes.detalhes) {
-            console.warn('[salvar-pasta]', upRes.detalhes)
-          }
-        } catch (e) {
-          console.error('Falha upload via server:', e)
+        const okServer = await uploadServidor()
+        if (!okServer) {
           // Fallback: baixa local pra nao perder trabalho + erro visivel
           baixarBlob(docxBlob, `${base}.docx`)
           baixouDocx = true
@@ -1103,7 +1119,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             baixarBlob(pdfBlob, `${base}.pdf`)
             baixouPdf = true
           }
-          setErro(`Upload pro servidor FALHOU: ${(e as Error).message}. Arquivos baixados localmente como fallback. Tente de novo ou peça ajuda.`)
+          setErro(`Upload pro servidor FALHOU. Arquivos baixados localmente como fallback. Tente de novo ou peça ajuda.`)
         }
       } else {
         // 6b) Download direto
