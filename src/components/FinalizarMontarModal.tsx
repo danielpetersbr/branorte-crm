@@ -1096,7 +1096,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           // máquina-independente. Só baixa local se o servidor TAMBÉM falhar.
           const okServer = await uploadServidor()
           if (okServer) {
-            setErro(`Salvei no servidor (a pasta Z: falhou: ${(e as Error).message}). Pra voltar a arquivar em Z:, clique em "Sincronizar com pasta" e escolha a pasta BASE "3 - Orçamento".`)
+            setErro(`✅ Orçamento salvo pelo servidor (o arquivo chega na pasta Z: pelo sincronizador). A gravação direta na pasta falhou — provável virada de mês. Pra voltar a gravar direto, clique em "Sincronizar com pasta" e escolha a pasta BASE "3 - Orçamento".`)
           } else {
             baixarBlob(docxBlob, `${base}.docx`)
             baixouDocx = true
