@@ -1006,12 +1006,37 @@ export function OrcamentoMontar() {
     ;(mapa[cat] || (() => setOutrosPickerOpen(true)))()  // fallback: picker Outros
   }
 
+  // Fallback do "Trocar item" (#54): itens vindos de "modelo pronto"/legado chegam com
+  // categoria 'MODELO'/'CUSTOM'/vazia — aí o picker caía em "Diversos". Infere a categoria
+  // pelo NOME pra abrir o picker certo (ex: Misturador). Categorias reais (inclusive
+  // OUTROS/ACESSORIO deliberados) NÃO são tocadas.
+  const inferirCategoriaPeloNome = (nome: string): string | null => {
+    const n = (nome || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    if (/misturador/.test(n)) return 'MISTURADOR'
+    if (/moinho|triturador|moedor|desintegrador/.test(n)) return 'MOINHO'
+    if (/elevador/.test(n)) return 'ELEVADOR'
+    if (/cacamba/.test(n)) return 'CACAMBA_PESAGEM'
+    if (/pre\s*limpeza/.test(n)) return 'PRE_LIMPEZA'
+    if (/ensacadeira|embaladeira/.test(n)) return 'ENSACADEIRA'
+    if (/peneira\s*vibrat/.test(n)) return 'PENEIRA'
+    if (/esteira/.test(n)) return 'ESTEIRA'
+    if (/moega/.test(n)) return 'MOEGA'
+    if (/passarela/.test(n)) return 'PASSARELA'
+    if (/alimentador/.test(n)) return 'ALIMENTADOR'
+    if (/silo/.test(n)) return 'SILO'
+    if (/transportador|chupim|calha\s*th|helicoidal|\brosca\b/.test(n)) return 'TRANSPORTADOR'
+    if (/\bcaixa\b/.test(n)) return 'CAIXA'
+    return null
+  }
+
   const handleTrocarItem = (uid: string) => {
     const item = carrinho.find(c => c.uid === uid)
     if (!item) return
     setSubstituirUid(uid)
     lenAoTrocarRef.current = carrinho.length
-    abrirPickerDaCategoria(item.categoria)
+    const catNorm = (item.categoria || '').toUpperCase()
+    const precisaInferir = !catNorm || catNorm === 'MODELO' || catNorm === 'CUSTOM'
+    abrirPickerDaCategoria(precisaInferir ? (inferirCategoriaPeloNome(item.nome) || catNorm) : catNorm)
   }
 
   const algumPickerAberto =

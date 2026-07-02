@@ -1937,15 +1937,21 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             const descontoValor = _descontoVal
             const totalFinal = totalComDesconto
             const temDesconto = !!desconto && descontoValor > 0
+            // Modo FINAME: UM único valor final (desconto já embutido), sem citar a palavra
+            // "desconto" nem mostrar a caixa "com desconto" separada. Fora do FINAME, o layout
+            // de 2 caixas (proposta sem desconto + destaque com desconto) continua igual.
+            const finameUnico = finameMode
+            const primario = !temDesconto || finameUnico
+            const valorPrincipal = finameUnico && temDesconto ? totalFinal : totalGeral
             return (
               <>
-                <div data-no-break className={`mt-6 px-6 py-5 border-2 rounded-lg tracking-wide relative bg-white ${temDesconto ? 'border-gray-400 bg-gray-50/40' : 'border-gray-900'}`} style={{ zIndex: 1, breakInside: 'avoid', pageBreakInside: 'avoid' }}>
-                  <div className={`flex justify-between items-center gap-4 min-h-[32px] ${temDesconto ? 'text-[15px] font-semibold' : 'text-[19px] font-black'}`}>
-                    <span className={`uppercase flex-1 leading-tight ${temDesconto ? 'text-gray-500' : 'text-gray-900'}`}>
-                      Valor total da proposta{totalMotores > 0 ? ' com motor novo' : ''}{temDesconto ? ' (sem desconto)' : ''}
+                <div data-no-break className={`mt-6 px-6 py-5 border-2 rounded-lg tracking-wide relative bg-white ${primario ? 'border-gray-900' : 'border-gray-400 bg-gray-50/40'}`} style={{ zIndex: 1, breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+                  <div className={`flex justify-between items-center gap-4 min-h-[32px] ${primario ? 'text-[19px] font-black' : 'text-[15px] font-semibold'}`}>
+                    <span className={`uppercase flex-1 leading-tight ${primario ? 'text-gray-900' : 'text-gray-500'}`}>
+                      Valor total da proposta{totalMotores > 0 ? ' com motor novo' : ''}{temDesconto && !finameUnico ? ' (sem desconto)' : ''}
                     </span>
-                    <span className={`tabular-nums whitespace-nowrap leading-tight ${temDesconto ? 'text-[16px] text-gray-500' : 'text-[20px] text-gray-900'}`}>
-                      R$ {formatBRLBare(totalGeral)}
+                    <span className={`tabular-nums whitespace-nowrap leading-tight ${primario ? 'text-[20px] text-gray-900' : 'text-[16px] text-gray-500'}`}>
+                      R$ {formatBRLBare(valorPrincipal)}
                     </span>
                   </div>
                 </div>
@@ -2057,8 +2063,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   </div>
                 )}
 
-                {/* VALOR TOTAL COM DESCONTO — caixa destacada (renderiza no PDF tb) */}
-                {temDesconto && (
+                {/* VALOR TOTAL COM DESCONTO — caixa destacada (renderiza no PDF tb).
+                    No FINAME não aparece: o valor final já foi para a caixa única acima. */}
+                {temDesconto && !finameUnico && (
                   <div data-no-break className="mt-2 px-6 py-5 border-2 border-emerald-700 rounded-lg tracking-wide bg-emerald-50/60 relative" style={{ zIndex: 1 }}>
                     <div className="flex justify-between items-center gap-4 min-h-[40px] text-[20px] font-black">
                       <span className="text-emerald-900 uppercase flex-1 leading-tight">
