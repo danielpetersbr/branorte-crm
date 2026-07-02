@@ -571,7 +571,10 @@ export function useCriarOrcamento() {
       // Tenta inserir; se ainda assim der duplicate (race rara), incrementa e tenta de novo
       let lastErr: any = null
       for (let r = 0; r < 5; r++) {
-        const tryPayload = { ...payload, numero, sequencial }
+        // numero_base acompanha o numero final (num orçamento novo o base é ele mesmo);
+        // sem isso, se o retry por colisão bumpar o número, o base ficava no valor antigo
+        // e um ALT futuro herdaria a base errada.
+        const tryPayload = { ...payload, numero, sequencial, numero_base: numero }
         const { data, error } = await supabase
           .from('orcamentos_gerados')
           .insert(tryPayload)

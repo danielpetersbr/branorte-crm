@@ -411,21 +411,18 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       return
     }
     ;(async () => {
+      // Número vem SEMPRE do banco: obterProximoNumero() lê o índice fresco da pasta
+      // (pasta_orcamento_index, atualizado pelo sync-orcamentos.mjs no PC do escritório)
+      // + MAX(orcamentos_gerados) em 1 round-trip. NÃO varremos mais o Z:\ aqui — o scan
+      // recursivo no Google Drive File Stream custava até ~8s e deixava o modal "pensando".
+      // A detecção de pasta (temPastaLocal) é só um queryPermission rápido, sem listar arquivos.
       try {
         const handle = await getStoredFolderHandle()
-        if (handle) {
-          const scan = await scanFolderForLastNumber(handle)
-          setScanInfo({ ultimo: scan.ultimoNumero, total: scan.total, ano: scan.ano })
-          setNumeroAtual(formatarNumero(scan.ano, scan.proximoNumero))
-          setNumeroFonte('pasta')
-          setTemPastaLocal(true)
-          return
-        }
+        setTemPastaLocal(!!handle)
       } catch {
-        // Pasta esta configurada mas nao acessivel (ex: Z:\ desconectado, vendedor mudou de PC)
-        // Cai pro banco automaticamente
+        // Pasta configurada mas inacessível (Z:\ desconectado, vendedor mudou de PC)
+        setTemPastaLocal(false)
       }
-      setTemPastaLocal(false)
       try {
         const r = await obterProximoNumero()
         setNumeroAtual(r.numero)
@@ -588,44 +585,19 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       const hoje = new Date()
       const dataEmissaoBR = hoje.toLocaleDateString('pt-BR')
 
-      // 1) SEMPRE re-scan pasta pra pegar número fresquinho NA HORA de gerar
-      // (entre abrir o modal e clicar "gerar" outro vendedor pode ter criado um número)
+      // 1) Número fresco NA HORA de gerar SEM varrer o Z:\.
+      // A mutation `criar` já chama obterProximoNumero() (índice fresco da pasta +
+      // MAX(orcamentos_gerados) em 1 round-trip) E re-valida colisão no INSERT
+      // (.gte('sequencial') → pula pro próximo livre). Ou seja: o número certo é
+      // decidido no banco, de forma atômica-ish, sem depender do scan recursivo do
+      // Google Drive File Stream — que custava até ~9s por save e era redundante.
+      // numeroOverride fica null → `criar` decide sozinho.
       let numeroOverride: { ano: number; sequencial: number; numero: string } | null = null
 
-      if (isFolderScanSupported()) {
-        try {
-          setStep('Conferindo número na pasta...', 6)
-          // Time-box (fix "trava em 6%"): getStoredFolderHandle + scan podem
-          // congelar em Z:\ (Google Drive File Stream) — listar a pasta faz
-          // round-trip de rede por arquivo. Se passar de ~9s, desiste e usa o
-          // número do banco/estado. O save NUNCA mais fica preso aqui.
-          const SCAN_TIMEOUT = 9000
-          const fresh = await Promise.race([
-            (async () => {
-              const handle = await getStoredFolderHandle(true)
-              if (!handle) return null
-              return await scanFolderForLastNumber(handle, 8000)
-            })(),
-            new Promise<null>((res) => setTimeout(() => res(null), SCAN_TIMEOUT)),
-          ])
-          if (fresh && !fresh.incompleto) {
-            numeroOverride = {
-              ano: fresh.ano,
-              sequencial: fresh.proximoNumero,
-              numero: formatarNumero(fresh.ano, fresh.proximoNumero),
-            }
-            setScanInfo({ ultimo: fresh.ultimoNumero, total: fresh.total, ano: fresh.ano })
-            setNumeroAtual(numeroOverride.numero)
-            setNumeroFonte('pasta')
-          } else {
-            console.warn('[finalizar] conferência da pasta excedeu o tempo — usando número do banco/estado')
-          }
-        } catch (e) {
-          console.warn('[finalizar] conferência da pasta falhou:', (e as Error)?.message)
-        }
-      }
-      // Fallback: se não conseguiu escanear pasta, usa o state atual
-      if (!numeroOverride && numeroFonte === 'pasta' && scanInfo) {
+      // Exceção: se o vendedor clicou "Sincronizar com pasta" / "Trocar pasta" MANUALMENTE
+      // nesta sessão (numeroFonte === 'pasta'), respeita o número que ele viu da pasta —
+      // `criar` ainda pega o MAX(esse, banco) + 1, então nunca regride.
+      if (numeroFonte === 'pasta' && scanInfo) {
         numeroOverride = { ano: scanInfo.ano, sequencial: scanInfo.ultimo + 1, numero: formatarNumero(scanInfo.ano, scanInfo.ultimo + 1) }
       }
 
@@ -1062,16 +1034,20 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             } else {
               throw new Error(resolved.motivo)
             }
-            await escreverArquivo(pastaMes, `${base}.docx`, docxBlob)
-            if (pdfBlob) await escreverArquivo(pastaMes, `${base}.pdf`, pdfBlob)
-            // .txt com data de envio (igual modelo pronto). Usado p/ rastrear
-            // quando o vendedor enviou o orçamento pro cliente.
-            try {
-              const vendedorNome = profile?.display_name || 'Vendedor'
-              const notaTxt = montarNotaTxt(vendedorNome, hoje)
-              const txtBlob = new Blob([notaTxt], { type: 'text/plain;charset=utf-8' })
-              await escreverArquivo(pastaMes, `${base} - ${vendedorNome}.txt`, txtBlob)
-            } catch (txtErr) { console.warn('Falha .txt:', txtErr) }
+            // Grava os arquivos na pasta EM PARALELO (docx/pdf/txt). Cada escreverArquivo
+            // abre seu próprio writable num arquivo distinto — no Z:\ (Drive File Stream)
+            // gravar concorrente corta o tempo vs sequencial (3 round-trips → 1 janela).
+            // docx/pdf são críticos (se falharem, o catch externo cai pro servidor);
+            // o .txt (data de envio, usado pra rastrear entrega) é best-effort.
+            const vendedorNome = profile?.display_name || 'Vendedor'
+            const txtBlob = new Blob([montarNotaTxt(vendedorNome, hoje)], { type: 'text/plain;charset=utf-8' })
+            const writes: Promise<void>[] = [escreverArquivo(pastaMes, `${base}.docx`, docxBlob)]
+            if (pdfBlob) writes.push(escreverArquivo(pastaMes, `${base}.pdf`, pdfBlob))
+            writes.push(
+              escreverArquivo(pastaMes, `${base} - ${vendedorNome}.txt`, txtBlob)
+                .catch((txtErr) => { console.warn('Falha .txt:', txtErr) })
+            )
+            await Promise.all(writes)
             salvouNaPasta = true
 
             // Confirma a gravação relendo o .docx (size > 0) e SÓ então marca o
