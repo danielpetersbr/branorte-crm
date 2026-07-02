@@ -18,6 +18,25 @@ export async function gerarPdfServerSide(previewProps: OrcamentoPreviewProps): P
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('Sem sessão ativa — relogue')
 
+  // Corpo da requisição: o Vercel rejeita bodies acima de ~4.5MB com 413
+  // ANTES da função rodar (caso real: orçamento com fotos coladas/trocadas no
+  // preview vira data-URL base64 dentro do previewProps). Acima de 3MB, sobe o
+  // JSON pro bucket pdf-tmp (prefixo props/, policy authenticated) e manda só
+  // o caminho — o servidor baixa de lá.
+  const inline = JSON.stringify({ previewProps, responseMode: 'url' })
+  let requestBody = inline
+  if (inline.length > 3_000_000) {
+    const dia = new Date().toISOString().slice(0, 10)
+    const propsPath = `props/${dia}/${crypto.randomUUID()}.json`
+    const { error: upErr } = await supabase.storage.from('pdf-tmp').upload(
+      propsPath,
+      new Blob([JSON.stringify(previewProps)], { type: 'application/json' }),
+    )
+    if (upErr) throw new Error(`upload dos dados do orçamento falhou: ${upErr.message}`)
+    console.log(`[pdf-server] previewProps grande (${(inline.length / 1e6).toFixed(1)}MB) — enviado via storage ${propsPath}`)
+    requestBody = JSON.stringify({ propsPath, responseMode: 'url' })
+  }
+
   // AbortController com timeout de 75s — Puppeteer cold start no Vercel pode
   // levar até ~50s. Sem AbortController, o fetch usaria timeout default do
   // browser (~30s) e cairia pro fallback DOCX antes do Puppeteer terminar.
@@ -31,7 +50,7 @@ export async function gerarPdfServerSide(previewProps: OrcamentoPreviewProps): P
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({ previewProps, responseMode: 'url' }),
+      body: requestBody,
       signal: controller.signal,
     })
 

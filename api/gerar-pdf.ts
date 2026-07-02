@@ -54,8 +54,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { data: u, error: uErr } = await supa.auth.getUser(auth)
   if (uErr || !u?.user) return res.status(401).json({ error: 'invalid_jwt', detail: uErr?.message })
 
-  const body = req.body as { previewProps?: unknown; responseMode?: string }
-  if (!body?.previewProps || typeof body.previewProps !== 'object') {
+  const body = req.body as { previewProps?: unknown; responseMode?: string; propsPath?: string }
+  // propsPath: orçamento com fotos base64 gera previewProps de vários MB e o
+  // corpo da requisição estoura o limite da plataforma (413 antes da função
+  // rodar — caso real do orçamento 1484). O cliente sobe o JSON no bucket
+  // pdf-tmp (prefixo props/, policy de INSERT authenticated) e manda só o path.
+  let previewProps = body?.previewProps
+  let propsPath: string | null = null
+  if (!previewProps && typeof body?.propsPath === 'string' && /^props\/[\w\-/]+\.json$/.test(body.propsPath)) {
+    propsPath = body.propsPath
+    const { data: file, error: dlErr } = await supa.storage.from('pdf-tmp').download(propsPath)
+    if (dlErr || !file) {
+      return res.status(400).json({ error: 'props_download_failed', detail: dlErr?.message })
+    }
+    try {
+      previewProps = JSON.parse(await file.text())
+    } catch {
+      return res.status(400).json({ error: 'props_parse_failed' })
+    }
+    console.log(`[gerar-pdf] previewProps via storage ${propsPath}`)
+  }
+  if (!previewProps || typeof previewProps !== 'object') {
     return res.status(400).json({ error: 'missing_preview_props' })
   }
   // responseMode 'url': sobe o PDF pro Storage e devolve signed URL em JSON.
@@ -90,7 +109,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // window.__BRANORTE_PRINT__ já estará lá.
     await page.evaluateOnNewDocument((data: unknown) => {
       ;(window as unknown as { __BRANORTE_PRINT__: unknown }).__BRANORTE_PRINT__ = data
-    }, body.previewProps)
+    }, previewProps)
 
     await page.goto(printUrl, { waitUntil: 'networkidle0', timeout: 30000 })
 
@@ -117,6 +136,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       `,
     })
     console.log(`[gerar-pdf] PDF generated (${pdfBuffer.length} bytes) in ${Date.now() - t0}ms`)
+
+    // Props temporário já cumpriu o papel — remove (best-effort)
+    if (propsPath) {
+      supa.storage.from('pdf-tmp').remove([propsPath]).catch(() => {})
+    }
 
     if (wantsUrl) {
       const dia = new Date().toISOString().slice(0, 10)
@@ -159,11 +183,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 async function cleanupOldPdfs(supa: ReturnType<typeof createClient>) {
   for (const diasAtras of [2, 3]) {
     const d = new Date(Date.now() - diasAtras * 86400000).toISOString().slice(0, 10)
-    const prefix = `gerar-pdf/${d}`
-    const { data: files } = await supa.storage.from('pdf-tmp').list(prefix, { limit: 100 })
-    if (files?.length) {
-      await supa.storage.from('pdf-tmp').remove(files.map(f => `${prefix}/${f.name}`))
-      console.log(`[gerar-pdf] cleanup: ${files.length} PDFs de ${d} removidos`)
+    for (const raiz of ['gerar-pdf', 'props']) {
+      const prefix = `${raiz}/${d}`
+      const { data: files } = await supa.storage.from('pdf-tmp').list(prefix, { limit: 100 })
+      if (files?.length) {
+        await supa.storage.from('pdf-tmp').remove(files.map(f => `${prefix}/${f.name}`))
+        console.log(`[gerar-pdf] cleanup: ${files.length} arquivos de ${prefix} removidos`)
+      }
     }
   }
 }
