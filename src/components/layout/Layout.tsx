@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, ChevronDown, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Package, Zap, BookOpen, Settings, TrendingUp, MessageSquarePlus, FilePlus2, Truck, History, Search, Wallet, MapPin, Star } from 'lucide-react'
+import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, ChevronDown, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Package, Zap, BookOpen, Settings, TrendingUp, MessageSquarePlus, FilePlus2, Truck, History, Search, Wallet, MapPin, Star, Target } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { cn } from '@/lib/utils'
@@ -47,6 +47,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/contatos', label: 'Contatos', icon: Users, permKey: 'menu.contatos' },
       { to: '/consulta', label: 'Consulta', icon: Search, permKey: 'due_diligence.consultar' },
       { to: '/atribuir', label: 'Atribuir', icon: UserPlus, permKey: 'menu.atribuir' },
+      { to: '/prospeccao', label: 'Prospecção', icon: Target, permKey: 'menu.prospeccao' },
       { to: '/funil', label: 'Funil', icon: GitBranch, permKey: 'menu.funil' },
       { to: '/atividade-diaria', label: 'Atividade Diária', icon: Activity, permKey: 'menu.atividade_diaria' },
       { to: '/avaliacoes', label: 'Avaliações', icon: Star, permKey: 'menu.avaliacoes' },
@@ -119,9 +120,9 @@ const NAV_GROUPS: NavGroup[] = [
 const MOBILE_NAV: NavItem[] = [
   { to: '/', label: 'Início', icon: LayoutDashboard },
   { to: '/atendimentos', label: 'Atender', icon: MessageSquare, countKey: 'atendimentos' },
+  { to: '/prospeccao', label: 'Prospectar', icon: Target },
   { to: '/orcamentos/montar', label: 'Orçar', icon: FilePlus2 },
   { to: '/vendidos', label: 'Vendidos', icon: CheckCircle },
-  { to: '/contatos', label: 'Contatos', icon: Users },
 ]
 
 function useCollapsed(): [boolean, () => void] {
@@ -201,7 +202,7 @@ export function Layout() {
   const mobileNav = profile?.role === 'visualizador'
     ? MOBILE_NAV.filter(l => l.to === '/' || l.to === '/atendimentos')
     : profile?.role === 'vendor'
-    ? MOBILE_NAV.filter(l => l.to === '/atendimentos' || l.to === '/orcamentos/montar')
+    ? MOBILE_NAV.filter(l => l.to === '/atendimentos' || l.to === '/orcamentos/montar' || l.to === '/prospeccao')
     : MOBILE_NAV
 
   // Item dentro de um grupo aberto (modo expandido)
