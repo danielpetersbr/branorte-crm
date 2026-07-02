@@ -227,8 +227,9 @@ function PoolTab({ push, onIrMeus }: { push: (t: string, tone?: ToastMsg['tone']
         </div>
       )}
 
-      <div className="flex flex-col sm:flex-row gap-2">
-        <div className="flex-1">
+      {/* Toolbar: busca + UF + contador + pegar lote (uma linha no desktop) */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+        <div className="flex-1 min-w-0">
           <Input
             leftIcon={<Search className="h-3.5 w-3.5" />}
             placeholder="Buscar nome ou telefone…"
@@ -243,20 +244,18 @@ function PoolTab({ push, onIrMeus }: { push: (t: string, tone?: ToastMsg['tone']
           options={ESTADOS_BR.map(e => ({ value: e, label: e }))}
           className="min-h-[44px] sm:min-h-0"
         />
-      </div>
-
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[12px] text-ink-muted tabular-nums">
-          {total !== undefined ? `${formatNumber(total)} contatos livres` : '…'}
+        <p className="text-[12px] text-ink-muted tabular-nums shrink-0 sm:px-2">
+          {total !== undefined ? `${formatNumber(total)} livres` : '…'}
         </p>
         <Button
           variant="primary"
-          size="sm"
+          size="md"
+          className="shrink-0"
           disabled={semVendedor || cotaCheia || !contatos?.length}
           loading={pegar.isPending}
           onClick={() => contatos && handlePegar(contatos.slice(0, loteRapido).map(c => c.id))}
         >
-          <Hand className="h-3.5 w-3.5" /> Pegar {loteRapido > 0 ? loteRapido : ''}
+          <Hand className="h-3.5 w-3.5" /> Pegar {loteRapido > 0 ? loteRapido : ''} de uma vez
         </Button>
       </div>
 
@@ -269,7 +268,7 @@ function PoolTab({ push, onIrMeus }: { push: (t: string, tone?: ToastMsg['tone']
         />
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2">
             {contatos.map((c: PoolContato) => (
               <Card key={c.id}>
                 <CardContent className="px-4 py-3 flex flex-col gap-1.5">
@@ -410,7 +409,7 @@ function MeusTab({ push, onIrPool }: { push: (t: string, tone?: ToastMsg['tone']
           <EmptyState icon="📁" title="Nenhum contato finalizado ainda" />
         )
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
           {claims.map(claim => {
             const nota = ultimaNota(claim)
             const finalizado = !!claim.released_at
@@ -561,144 +560,155 @@ function MeusTab({ push, onIrPool }: { push: (t: string, tone?: ToastMsg['tone']
 // ===========================================================================
 // ABA GESTÃO (admin)
 // ===========================================================================
+function FunnelRow({ label, valor, base, tone, sub }: {
+  label: string; valor: number; base: number; tone: string; sub?: string
+}) {
+  const pct = base > 0 ? Math.max(valor > 0 ? 4 : 0, Math.round((valor / base) * 100)) : 0
+  return (
+    <div className="flex items-center gap-3">
+      <span className="w-24 shrink-0 text-right text-[12px] font-medium text-ink-muted">{label}</span>
+      <div className="flex-1 h-7 rounded-md bg-surface-2 overflow-hidden relative">
+        <div className={cn('h-full rounded-md transition-all duration-500', tone)} style={{ width: `${pct}%` }} />
+      </div>
+      <span className="w-20 shrink-0 text-[13px] font-semibold text-ink tabular-nums text-right">
+        {formatNumber(valor)}
+        {sub && <span className="text-[11px] font-normal text-ink-faint ml-1">{sub}</span>}
+      </span>
+    </div>
+  )
+}
+
 function GestaoTab({ push }: { push: (t: string, tone?: ToastMsg['tone']) => void }) {
   const [dias, setDias] = useState(30)
   const { data: metricas, isLoading } = useMetricasProspeccao(dias)
   const { data: config } = useProspeccaoConfig()
+  const { data: poolTotal } = usePoolCount({ search: '', uf: '', origem: '' })
   const salvarConfig = useSalvarProspeccaoConfig()
   const [cfgDraft, setCfgDraft] = useState<{ cota: string; prazo: string; lote: string } | null>(null)
+  const [ordenar, setOrdenar] = useState<'convertidos' | 'pegos' | 'trabalhados'>('convertidos')
 
   const totais = useMemo(() => {
     const m = metricas ?? []
     return {
       pegos: m.reduce((a, x) => a + Number(x.pegos), 0),
       trabalhados: m.reduce((a, x) => a + Number(x.trabalhados), 0),
+      negociando: m.reduce((a, x) => a + Number(x.negociando), 0),
       convertidos: m.reduce((a, x) => a + Number(x.convertidos), 0),
+      semInteresse: m.reduce((a, x) => a + Number(x.sem_interesse), 0),
       devolvidos: m.reduce((a, x) => a + Number(x.devolvidos), 0),
+      ativos: m.reduce((a, x) => a + Number(x.ativos), 0),
     }
   }, [metricas])
+
+  const metricasOrd = useMemo(() => {
+    const m = [...(metricas ?? [])]
+    return m.sort((a, b) => Number(b[ordenar]) - Number(a[ordenar]))
+  }, [metricas, ordenar])
 
   const pct = (num: number, den: number) => (den > 0 ? `${Math.round((num / den) * 100)}%` : '—')
 
   const kpis = [
-    { label: 'Pegos', valor: totais.pegos, sub: 'no período' },
-    { label: 'Trabalhados', valor: totais.trabalhados, sub: `≥1 interação · ${pct(totais.trabalhados, totais.pegos)}` },
-    { label: 'Convertidos', valor: totais.convertidos, sub: `conversão ${pct(totais.convertidos, totais.pegos)}` },
-    { label: 'Devolvidos', valor: totais.devolvidos, sub: 'devolvidos + expirados' },
+    { label: 'Pegos', valor: totais.pegos, sub: 'no período', bar: null as number | null, tone: 'bg-accent' },
+    { label: 'Trabalhados', valor: totais.trabalhados, sub: `${pct(totais.trabalhados, totais.pegos)} dos pegos`, bar: totais.pegos ? totais.trabalhados / totais.pegos : 0, tone: 'bg-info' },
+    { label: 'Convertidos', valor: totais.convertidos, sub: `conversão ${pct(totais.convertidos, totais.pegos)}`, bar: totais.pegos ? totais.convertidos / totais.pegos : 0, tone: 'bg-success' },
+    { label: 'Devolvidos', valor: totais.devolvidos, sub: `${pct(totais.devolvidos, totais.pegos)} · devolv+expir`, bar: totais.pegos ? totais.devolvidos / totais.pegos : 0, tone: 'bg-warning' },
   ]
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
+      {/* Barra superior: período + resumo do pool ocupando a largura */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex rounded-md border border-border overflow-hidden">
           {[7, 30, 90].map(d => (
             <button
               key={d}
               onClick={() => setDias(d)}
               className={cn(
-                'h-8 px-3.5 text-[12.5px] font-medium transition-colors',
+                'h-8 px-4 text-[12.5px] font-medium transition-colors',
                 dias === d ? 'bg-accent text-white' : 'bg-surface text-ink-muted hover:bg-surface-2',
               )}
             >
-              {d}d
+              {d} dias
             </button>
           ))}
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge className="bg-accent-bg text-accent gap-1">
+            <Target className="h-3 w-3" /> {poolTotal !== undefined ? formatNumber(poolTotal) : '…'} livres no pool
+          </Badge>
+          <Badge className="bg-surface-2 text-ink-muted">{formatNumber(totais.ativos)} em trabalho agora</Badge>
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+      {/* KPIs com mini-barra de contexto */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
         {kpis.map(k => (
           <Card key={k.label}>
-            <CardContent className="px-4 py-3">
+            <CardContent className="px-4 py-3.5 flex flex-col gap-2">
               <p className="text-[11px] uppercase tracking-wider text-ink-faint font-medium">{k.label}</p>
-              <p className="text-[22px] font-semibold text-ink tabular-nums leading-tight">{formatNumber(k.valor)}</p>
+              <p className="text-[26px] font-semibold text-ink tabular-nums leading-none">{formatNumber(k.valor)}</p>
+              {k.bar !== null && (
+                <div className="h-1 rounded-full bg-surface-2 overflow-hidden">
+                  <div className={cn('h-full rounded-full', k.tone)} style={{ width: `${Math.min(100, Math.round((k.bar ?? 0) * 100))}%` }} />
+                </div>
+              )}
               <p className="text-[11px] text-ink-faint">{k.sub}</p>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {isLoading ? <PageLoading /> : !metricas?.length ? (
-        <EmptyState icon="📊" title="Nenhuma prospecção registrada ainda" sub="Assim que os vendedores pegarem contatos do pool, os números aparecem aqui." />
-      ) : (
-        <Card>
-          <CardContent className="px-0 py-0 overflow-x-auto">
-            <table className="w-full text-[12.5px]">
-              <thead>
-                <tr className="border-b border-border text-left text-[11px] uppercase tracking-wider text-ink-faint">
-                  <th className="px-4 py-2.5 font-medium">Vendedor</th>
-                  <th className="px-3 py-2.5 font-medium text-right">Pegos</th>
-                  <th className="px-3 py-2.5 font-medium text-right">Trabalhados</th>
-                  <th className="px-3 py-2.5 font-medium text-right">Negociando</th>
-                  <th className="px-3 py-2.5 font-medium text-right">Convertidos</th>
-                  <th className="px-3 py-2.5 font-medium text-right">Sem interesse</th>
-                  <th className="px-3 py-2.5 font-medium text-right">Devolvidos</th>
-                  <th className="px-4 py-2.5 font-medium text-right">Ativos agora</th>
-                </tr>
-              </thead>
-              <tbody>
-                {metricas.map(m => {
-                  const pegos = Number(m.pegos)
-                  const trab = Number(m.trabalhados)
-                  const dev = Number(m.devolvidos)
-                  const taxaTrabalhoBaixa = pegos >= 5 && trab / pegos < 0.7
-                  const devolucaoAlta = pegos >= 5 && dev / pegos > 0.2
-                  return (
-                    <tr key={m.vendor_id} className="border-b border-border last:border-0 hover:bg-surface-2/50 transition-colors">
-                      <td className="px-4 py-2.5 font-medium text-ink">{m.vendor_name}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums">{pegos}</td>
-                      <td className={cn('px-3 py-2.5 text-right tabular-nums', taxaTrabalhoBaixa && 'text-warning font-medium')}>
-                        {trab} ({pct(trab, pegos)}){taxaTrabalhoBaixa && ' ⚠'}
-                      </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums">{m.negociando}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-success font-medium">{m.convertidos}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums">{m.sem_interesse}</td>
-                      <td className={cn('px-3 py-2.5 text-right tabular-nums', devolucaoAlta && 'text-warning font-medium')}>
-                        {dev}{devolucaoAlta && ' ⚠'}
-                      </td>
-                      <td className="px-4 py-2.5 text-right tabular-nums">{m.ativos}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+      {/* Funil + Config lado a lado (preenche a largura) */}
+      <div className="grid grid-cols-1 xl:grid-cols-5 gap-3">
+        <Card className="xl:col-span-3">
+          <CardContent className="px-5 py-4 flex flex-col gap-3">
+            <p className="text-[12.5px] font-semibold text-ink">Funil de prospecção · últimos {dias} dias</p>
+            <div className="flex flex-col gap-2.5 pt-1">
+              <FunnelRow label="Pegos" valor={totais.pegos} base={totais.pegos} tone="bg-accent" />
+              <FunnelRow label="Trabalhados" valor={totais.trabalhados} base={totais.pegos} tone="bg-info" sub={pct(totais.trabalhados, totais.pegos)} />
+              <FunnelRow label="Negociando" valor={totais.negociando} base={totais.pegos} tone="bg-accent/70" sub={pct(totais.negociando, totais.pegos)} />
+              <FunnelRow label="Convertidos" valor={totais.convertidos} base={totais.pegos} tone="bg-success" sub={pct(totais.convertidos, totais.pegos)} />
+            </div>
+            <div className="flex items-center gap-4 pt-2 mt-1 border-t border-border text-[11.5px] text-ink-muted">
+              <span>Sem interesse: <b className="text-ink tabular-nums">{formatNumber(totais.semInteresse)}</b></span>
+              <span>Devolvidos/expirados: <b className="text-ink tabular-nums">{formatNumber(totais.devolvidos)}</b></span>
+            </div>
           </CardContent>
         </Card>
-      )}
 
-      {/* Config do pool */}
-      {config && (
-        <Card>
-          <CardContent className="px-4 py-3 flex flex-col gap-2.5">
-            <p className="text-[12.5px] font-semibold text-ink flex items-center gap-1.5">
-              <Settings2 className="h-3.5 w-3.5 text-ink-faint" /> Configurações do Pool
-            </p>
-            <div className="flex flex-wrap items-end gap-3">
-              {[
-                { key: 'cota' as const, label: 'Cota por vendedor', atual: config.cota_ativos },
-                { key: 'prazo' as const, label: 'Prazo de devolução (dias)', atual: config.prazo_dias },
-                { key: 'lote' as const, label: 'Lote máximo por pegada', atual: config.lote_max },
-              ].map(f => (
-                <label key={f.key} className="flex flex-col gap-1">
-                  <span className="text-[11px] text-ink-faint">{f.label}</span>
-                  <input
-                    type="number"
-                    min={1}
-                    value={cfgDraft ? cfgDraft[f.key] : String(f.atual)}
-                    onChange={e => setCfgDraft(d => ({
-                      cota: d?.cota ?? String(config.cota_ativos),
-                      prazo: d?.prazo ?? String(config.prazo_dias),
-                      lote: d?.lote ?? String(config.lote_max),
-                      [f.key]: e.target.value,
-                    }))}
-                    className="h-9 w-28 rounded-md border border-border bg-surface px-3 text-[13px] text-ink focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30"
-                  />
-                </label>
-              ))}
+        {config && (
+          <Card className="xl:col-span-2">
+            <CardContent className="px-5 py-4 flex flex-col gap-3">
+              <p className="text-[12.5px] font-semibold text-ink flex items-center gap-1.5">
+                <Settings2 className="h-3.5 w-3.5 text-ink-faint" /> Configurações do Pool
+              </p>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { key: 'cota' as const, label: 'Cota / vendedor', atual: config.cota_ativos },
+                  { key: 'prazo' as const, label: 'Prazo (dias)', atual: config.prazo_dias },
+                  { key: 'lote' as const, label: 'Lote máx.', atual: config.lote_max },
+                ].map(f => (
+                  <label key={f.key} className="flex flex-col gap-1">
+                    <span className="text-[11px] text-ink-faint leading-tight">{f.label}</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={cfgDraft ? cfgDraft[f.key] : String(f.atual)}
+                      onChange={e => setCfgDraft(d => ({
+                        cota: d?.cota ?? String(config.cota_ativos),
+                        prazo: d?.prazo ?? String(config.prazo_dias),
+                        lote: d?.lote ?? String(config.lote_max),
+                        [f.key]: e.target.value,
+                      }))}
+                      className="h-9 w-full rounded-md border border-border bg-surface px-3 text-[13px] text-ink focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30"
+                    />
+                  </label>
+                ))}
+              </div>
               <Button
                 variant="primary"
                 size="sm"
-                className="h-9"
+                className="h-9 self-start"
                 disabled={!cfgDraft}
                 loading={salvarConfig.isPending}
                 onClick={() => cfgDraft && salvarConfig.mutate(
@@ -709,16 +719,89 @@ function GestaoTab({ push }: { push: (t: string, tone?: ToastMsg['tone']) => voi
                   },
                 )}
               >
-                Salvar
+                Salvar configuração
               </Button>
+              <p className="text-[11px] text-ink-faint leading-relaxed">
+                Contatos sem interação por {config.prazo_dias} dias voltam pro pool sozinhos (exceto em Negociando).
+                Quarentena de {config.quarentena_dias} dias pra quem terminou como sem interesse / incontactável / já é cliente.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Tabela por vendedor (largura total) */}
+      <Card>
+        <CardContent className="px-0 py-0">
+          <div className="flex items-center justify-between gap-2 px-5 py-3 border-b border-border">
+            <p className="text-[12.5px] font-semibold text-ink">Por vendedor</p>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-ink-faint">ordenar:</span>
+              {([['convertidos', 'Convertidos'], ['pegos', 'Pegos'], ['trabalhados', 'Trabalhados']] as const).map(([k, l]) => (
+                <button
+                  key={k}
+                  onClick={() => setOrdenar(k)}
+                  className={cn(
+                    'h-7 px-2.5 rounded-md text-[11.5px] font-medium transition-colors',
+                    ordenar === k ? 'bg-accent-bg text-accent' : 'text-ink-muted hover:bg-surface-2',
+                  )}
+                >
+                  {l}
+                </button>
+              ))}
             </div>
-            <p className="text-[11px] text-ink-faint">
-              Contatos sem interação por {config.prazo_dias} dias voltam pro pool sozinhos (exceto em Negociando).
-              Quarentena de {config.quarentena_dias} dias pra quem terminou como sem interesse / incontactável / já é cliente.
-            </p>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+          {isLoading ? (
+            <div className="py-10"><PageLoading /></div>
+          ) : !metricas?.length ? (
+            <div className="py-10">
+              <EmptyState icon="📊" title="Nenhuma prospecção registrada ainda" sub="Assim que os vendedores pegarem contatos do pool, os números aparecem aqui." />
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12.5px]">
+                <thead>
+                  <tr className="border-b border-border text-left text-[11px] uppercase tracking-wider text-ink-faint">
+                    <th className="px-5 py-2.5 font-medium">Vendedor</th>
+                    <th className="px-3 py-2.5 font-medium text-right">Pegos</th>
+                    <th className="px-3 py-2.5 font-medium text-right">Trabalhados</th>
+                    <th className="px-3 py-2.5 font-medium text-right">Negociando</th>
+                    <th className="px-3 py-2.5 font-medium text-right">Convertidos</th>
+                    <th className="px-3 py-2.5 font-medium text-right">Sem interesse</th>
+                    <th className="px-3 py-2.5 font-medium text-right">Devolvidos</th>
+                    <th className="px-5 py-2.5 font-medium text-right">Ativos agora</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {metricasOrd.map(m => {
+                    const pegos = Number(m.pegos)
+                    const trab = Number(m.trabalhados)
+                    const dev = Number(m.devolvidos)
+                    const taxaTrabalhoBaixa = pegos >= 5 && trab / pegos < 0.7
+                    const devolucaoAlta = pegos >= 5 && dev / pegos > 0.2
+                    return (
+                      <tr key={m.vendor_id} className="border-b border-border last:border-0 hover:bg-surface-2/50 transition-colors">
+                        <td className="px-5 py-2.5 font-medium text-ink">{m.vendor_name}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{pegos}</td>
+                        <td className={cn('px-3 py-2.5 text-right tabular-nums', taxaTrabalhoBaixa && 'text-warning font-medium')}>
+                          {trab} ({pct(trab, pegos)}){taxaTrabalhoBaixa && ' ⚠'}
+                        </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{m.negociando}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-success font-medium">{m.convertidos}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{m.sem_interesse}</td>
+                        <td className={cn('px-3 py-2.5 text-right tabular-nums', devolucaoAlta && 'text-warning font-medium')}>
+                          {dev}{devolucaoAlta && ' ⚠'}
+                        </td>
+                        <td className="px-5 py-2.5 text-right tabular-nums">{m.ativos}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
@@ -740,7 +823,7 @@ export function Prospeccao() {
   ]
 
   return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto flex flex-col gap-4">
+    <div className="p-4 md:p-6 max-w-[1600px] mx-auto flex flex-col gap-4">
       <div>
         <h1 className="text-[18px] font-semibold text-ink flex items-center gap-2">
           <Target className="h-5 w-5 text-accent" /> Prospecção
