@@ -54,10 +54,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { data: u, error: uErr } = await supa.auth.getUser(auth)
   if (uErr || !u?.user) return res.status(401).json({ error: 'invalid_jwt', detail: uErr?.message })
 
-  const body = req.body as { previewProps?: unknown }
+  const body = req.body as { previewProps?: unknown; responseMode?: string }
   if (!body?.previewProps || typeof body.previewProps !== 'object') {
     return res.status(400).json({ error: 'missing_preview_props' })
   }
+  // responseMode 'url': sobe o PDF pro Storage e devolve signed URL em JSON.
+  // Necessário porque resposta binária grande (>~10MB, orçamento com muitas
+  // fotos) não chega no cliente — que caía pro fallback html2canvas (modelo
+  // antigo, faixa verde). Clientes com bundle antigo não mandam o campo e
+  // seguem recebendo o binário direto (comportamento inalterado).
+  const wantsUrl = body.responseMode === 'url'
 
   // Origem da request — usamos pra construir URL da rota /print
   const proto = req.headers['x-forwarded-proto'] || 'https'
@@ -112,6 +118,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
     console.log(`[gerar-pdf] PDF generated (${pdfBuffer.length} bytes) in ${Date.now() - t0}ms`)
 
+    if (wantsUrl) {
+      const dia = new Date().toISOString().slice(0, 10)
+      const path = `gerar-pdf/${dia}/${crypto.randomUUID()}.pdf`
+      const { error: upErr } = await supa.storage.from('pdf-tmp').upload(path, Buffer.from(pdfBuffer), {
+        contentType: 'application/pdf',
+        upsert: false,
+      })
+      if (upErr) throw new Error(`upload pdf-tmp falhou: ${upErr.message}`)
+      const { data: signed, error: signErr } = await supa.storage.from('pdf-tmp').createSignedUrl(path, 900)
+      if (signErr || !signed?.signedUrl) throw new Error(`signed url falhou: ${signErr?.message}`)
+      console.log(`[gerar-pdf] uploaded ${path} + signed url in ${Date.now() - t0}ms`)
+
+      // Limpeza best-effort: apaga PDFs temporários de 2 dias atrás (fire-and-forget)
+      cleanupOldPdfs(supa).catch(() => {})
+
+      return res.status(200).json({ url: signed.signedUrl, size: pdfBuffer.length, ms: Date.now() - t0 })
+    }
+
     res.setHeader('Content-Type', 'application/pdf')
     res.setHeader('Content-Length', String(pdfBuffer.length))
     res.setHeader('X-PDF-Generated-Ms', String(Date.now() - t0))
@@ -126,6 +150,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } finally {
     if (browser) {
       try { await browser.close() } catch {}
+    }
+  }
+}
+
+// Apaga PDFs temporários com 2+ dias (pastas gerar-pdf/YYYY-MM-DD antigas).
+// Best-effort: falha silenciosa, roda em background após responder.
+async function cleanupOldPdfs(supa: ReturnType<typeof createClient>) {
+  for (const diasAtras of [2, 3]) {
+    const d = new Date(Date.now() - diasAtras * 86400000).toISOString().slice(0, 10)
+    const prefix = `gerar-pdf/${d}`
+    const { data: files } = await supa.storage.from('pdf-tmp').list(prefix, { limit: 100 })
+    if (files?.length) {
+      await supa.storage.from('pdf-tmp').remove(files.map(f => `${prefix}/${f.name}`))
+      console.log(`[gerar-pdf] cleanup: ${files.length} PDFs de ${d} removidos`)
     }
   }
 }
