@@ -38,6 +38,7 @@ const OrcamentoMontar = lazy(() => import('@/pages/OrcamentoMontar').then(m => (
 const CatalogoAdmin = lazy(() => import('@/pages/CatalogoAdmin').then(m => ({ default: m.CatalogoAdmin })))
 const AtividadeDiaria = lazy(() => import('@/pages/AtividadeDiaria').then(m => ({ default: m.AtividadeDiaria })))
 const Projeto = lazy(() => import('@/pages/Projeto').then(m => ({ default: m.Projeto })))
+const Projeto3D = lazy(() => import('@/pages/Projeto3D').then(m => ({ default: m.Projeto3D })))
 const AdminUsuarios = lazy(() => import('@/pages/AdminUsuarios').then(m => ({ default: m.AdminUsuarios })))
 const AdminPermissoes = lazy(() => import('@/pages/AdminPermissoes').then(m => ({ default: m.AdminPermissoes })))
 const AdminTransportadorFuncoes = lazy(() => import('@/pages/AdminTransportadorFuncoes'))
@@ -345,6 +346,7 @@ function AppRoutes() {
         <Route path="/etiquetas-zap/painel" element={<PainelEtiquetas />} />
         <Route path="/atividade-diaria" element={<AtividadeDiaria />} />
         <Route path="/projeto" element={<Projeto />} />
+        <Route path="/projeto-3d" element={<Projeto3D />} />
         <Route path="/perfil" element={<Perfil />} />
         {can('menu.disparos') && (
           <Route path="/disparos" element={<Disparos />} />
