@@ -19,6 +19,7 @@ import {
 import { ESTADOS_BR, MOTIVO_PERDA_OPTIONS } from '@/types'
 import { cn, formatPhone, formatNumber, formatRelative, whatsappLink } from '@/lib/utils'
 import { getHumanNotes } from '@/lib/crm-fields'
+import { FichaContatoDrawer } from '@/components/prospeccao/FichaContatoDrawer'
 
 // ============================================================================
 // /prospeccao — Pool de Prospecção
@@ -335,6 +336,7 @@ function MeusTab({ push, onIrPool }: { push: (t: string, tone?: ToastMsg['tone']
   const [notaDraft, setNotaDraft] = useState<Record<string, string>>({})
   const [finalizando, setFinalizando] = useState<string | null>(null) // claim_id com painel de finalizar aberto
   const [motivoSel, setMotivoSel] = useState('')
+  const [fichaContact, setFichaContact] = useState<{ id: string; phone: string | null } | null>(null)
 
   const mudarStatus = (claim: MeuClaim, status: string, motivo?: string) => {
     atualizarStatus.mutate({ claimId: claim.claim_id, status, motivo }, {
@@ -547,12 +549,30 @@ function MeusTab({ push, onIrPool }: { push: (t: string, tone?: ToastMsg['tone']
                       )}
                     </>
                   )}
+
+                  {/* Ficha completa do cliente (ativo ou finalizado) */}
+                  <button
+                    onClick={() => setFichaContact({ id: claim.contact_id, phone: claim.phone })}
+                    className="w-full h-8 mt-0.5 inline-flex items-center justify-center gap-1.5 rounded-md border border-border text-[12px] font-medium text-ink-muted hover:text-ink hover:bg-surface-2 transition-colors"
+                  >
+                    📋 Ficha completa
+                  </button>
                 </CardContent>
               </Card>
             )
           })}
         </div>
       )}
+
+      {fichaContact && (
+        <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setFichaContact(null)} />
+      )}
+      <FichaContatoDrawer
+        contactId={fichaContact?.id ?? null}
+        phone={fichaContact?.phone ?? null}
+        onClose={() => setFichaContact(null)}
+        push={push}
+      />
     </div>
   )
 }
