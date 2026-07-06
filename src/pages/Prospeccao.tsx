@@ -10,11 +10,12 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
 import {
-  usePoolProspeccao, usePoolCount, useMinhaCota, useMeusClaims,
-  usePegarContatos, useAtualizarStatusClaim, useRenovarClaim, useSalvarNotaProspeccao,
+  usePoolProspeccao, usePoolCount, useMinhaCota, usePegarContatos,
+  useAtualizarStatusClaim, useRenovarClaim, useSalvarNotaProspeccao, useSalvarNotaContato,
+  useMinhaCarteira, useMinhaCarteiraCount,
   useMetricasProspeccao, useProspeccaoConfig, useSalvarProspeccaoConfig,
   PROSPECCAO_STATUS_ATIVOS, PROSPECCAO_STATUS_TERMINAIS, PROSPECCAO_STATUS_LABELS,
-  POOL_PAGE_SIZE, type MeuClaim, type PoolContato,
+  POOL_PAGE_SIZE, CARTEIRA_PAGE_SIZE, type CarteiraContato, type PoolContato,
 } from '@/hooks/useProspeccao'
 import { ESTADOS_BR, MOTIVO_PERDA_OPTIONS } from '@/types'
 import { cn, formatPhone, formatNumber, formatRelative, whatsappLink } from '@/lib/utils'
@@ -93,12 +94,14 @@ function QuotaMeter({ ativos, cota }: { ativos: number; cota: number }) {
 }
 
 // ---------------------------------------------------------------------------
-// Tag de prazo ("há X sem interação — volta pro pool em Y")
+// Tag de prazo — só p/ contatos que vieram do pool (têm claim ativo).
+// ("há X sem interação — volta pro pool em Y")
 // ---------------------------------------------------------------------------
-function DeadlineTag({ claim }: { claim: MeuClaim }) {
-  const diasRestantes = Math.ceil((new Date(claim.expires_at).getTime() - Date.now()) / 86_400_000)
-  const ultimaInteracao = claim.last_action_at ?? claim.claimed_at
-  if (claim.status === 'negociando') {
+function DeadlineTag({ item }: { item: CarteiraContato }) {
+  if (!item.expires_at) return null
+  const diasRestantes = Math.ceil((new Date(item.expires_at).getTime() - Date.now()) / 86_400_000)
+  const ultimaInteracao = item.last_action_at ?? item.claimed_at ?? item.expires_at
+  if (item.claim_status === 'negociando') {
     return <StatusDot tone="accent" label="Negociando — não expira" />
   }
   if (diasRestantes <= 0) {
@@ -323,23 +326,38 @@ function PoolTab({ push, onIrMeus }: { push: (t: string, tone?: ToastMsg['tone']
 }
 
 // ===========================================================================
-// ABA MEUS CONTATOS
+// ABA MEUS CONTATOS — carteira completa do vendedor
+// Ativos = em aberto · Finalizados = vendas fechadas.
+// Contatos que vieram do pool (têm claim) mantêm os controles de prazo.
 // ===========================================================================
+const brl = (v: number | null) =>
+  v ? Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }) : ''
+
 function MeusTab({ push, onIrPool }: { push: (t: string, tone?: ToastMsg['tone']) => void; onIrPool: () => void }) {
   const [mostrarAtivos, setMostrarAtivos] = useState(true)
-  const { data: claims, isLoading } = useMeusClaims(mostrarAtivos)
-  const { data: cota } = useMinhaCota()
+  const [search, setSearch] = useState('')
+  const [uf, setUf] = useState('')
+  const [page, setPage] = useState(0)
+  const filtros = { search, uf, ativos: mostrarAtivos, page }
+
+  const { data: itens, isLoading } = useMinhaCarteira(filtros)
+  const { data: total } = useMinhaCarteiraCount({ search, uf, ativos: mostrarAtivos })
   const atualizarStatus = useAtualizarStatusClaim()
   const renovar = useRenovarClaim()
   const salvarNota = useSalvarNotaProspeccao()
+  const salvarNotaContato = useSalvarNotaContato()
 
   const [notaDraft, setNotaDraft] = useState<Record<string, string>>({})
   const [finalizando, setFinalizando] = useState<string | null>(null) // claim_id com painel de finalizar aberto
   const [motivoSel, setMotivoSel] = useState('')
   const [fichaContact, setFichaContact] = useState<{ id: string; phone: string | null } | null>(null)
 
-  const mudarStatus = (claim: MeuClaim, status: string, motivo?: string) => {
-    atualizarStatus.mutate({ claimId: claim.claim_id, status, motivo }, {
+  const trocarAba = (ativos: boolean) => { setMostrarAtivos(ativos); setPage(0) }
+
+  // Só é chamado em contatos que têm claim ativo (item.claim_id != null)
+  const mudarStatus = (item: CarteiraContato, status: string, motivo?: string) => {
+    if (!item.claim_id) return
+    atualizarStatus.mutate({ claimId: item.claim_id, status, motivo }, {
       onSuccess: res => {
         if (res.terminal) {
           if (status === 'convertido') push('🎉 Convertido! O contato agora é seu no CRM.', 'success')
@@ -356,35 +374,38 @@ function MeusTab({ push, onIrPool }: { push: (t: string, tone?: ToastMsg['tone']
     })
   }
 
-  const salvarNotaDo = (claim: MeuClaim) => {
-    const texto = (notaDraft[claim.claim_id] ?? '').trim()
+  const salvarNotaDo = (item: CarteiraContato) => {
+    const texto = (notaDraft[item.contact_id] ?? '').trim()
     if (!texto) return
-    salvarNota.mutate(
-      { contactId: claim.contact_id, claimId: claim.claim_id, notesAtual: claim.notes, texto },
-      {
-        onSuccess: () => {
-          setNotaDraft(d => ({ ...d, [claim.claim_id]: '' }))
-          push('Anotado ✓', 'success')
-        },
-        onError: () => push('Não salvou a anotação', 'danger'),
-      },
-    )
+    const onSuccess = () => {
+      setNotaDraft(d => ({ ...d, [item.contact_id]: '' }))
+      push('Anotado ✓', 'success')
+    }
+    const onError = () => push('Não salvou a anotação', 'danger')
+    if (item.claim_id) {
+      salvarNota.mutate({ contactId: item.contact_id, claimId: item.claim_id, notesAtual: item.notes, texto }, { onSuccess, onError })
+    } else {
+      salvarNotaContato.mutate({ contactId: item.contact_id, notesAtual: item.notes, texto }, { onSuccess, onError })
+    }
   }
 
-  const ultimaNota = (claim: MeuClaim): string | null => {
-    const human = getHumanNotes(claim.notes)
+  const ultimaNota = (item: CarteiraContato): string | null => {
+    const human = getHumanNotes(item.notes)
     if (!human) return null
     return human.split('\n')[0] || null
   }
 
+  const totalPaginas = total !== undefined ? Math.max(1, Math.ceil(total / CARTEIRA_PAGE_SIZE)) : 1
+
   return (
     <div className="flex flex-col gap-3">
+      {/* Abas Ativos / Finalizados + contador */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex rounded-md border border-border overflow-hidden">
           {[{ v: true, l: 'Ativos' }, { v: false, l: 'Finalizados' }].map(o => (
             <button
               key={o.l}
-              onClick={() => setMostrarAtivos(o.v)}
+              onClick={() => trocarAba(o.v)}
               className={cn(
                 'h-8 px-3.5 text-[12.5px] font-medium transition-colors',
                 mostrarAtivos === o.v ? 'bg-accent text-white' : 'bg-surface text-ink-muted hover:bg-surface-2',
@@ -394,174 +415,229 @@ function MeusTab({ push, onIrPool }: { push: (t: string, tone?: ToastMsg['tone']
             </button>
           ))}
         </div>
-        {cota && mostrarAtivos && (
-          <span className="text-[12px] text-ink-muted tabular-nums">{cota.ativos} de {cota.cota} em trabalho</span>
+        {total !== undefined && (
+          <span className="text-[12px] text-ink-muted tabular-nums">
+            {formatNumber(total)} {mostrarAtivos ? 'em aberto' : 'finalizado' + (total === 1 ? '' : 's')}
+          </span>
         )}
       </div>
 
-      {isLoading ? <PageLoading /> : !claims?.length ? (
-        mostrarAtivos ? (
+      {/* Busca + UF */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+        <div className="flex-1 min-w-0">
+          <Input
+            leftIcon={<Search className="h-3.5 w-3.5" />}
+            placeholder="Buscar nome, empresa ou telefone…"
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(0) }}
+          />
+        </div>
+        <Select
+          value={uf}
+          onChange={e => { setUf(e.target.value); setPage(0) }}
+          placeholder="Todos os estados"
+          options={ESTADOS_BR.map(e => ({ value: e, label: e }))}
+          className="min-h-[44px] sm:min-h-0"
+        />
+      </div>
+
+      {isLoading ? <PageLoading /> : !itens?.length ? (
+        (search || uf) ? (
+          <EmptyState
+            icon="🔍"
+            title="Nenhum contato com esses filtros"
+            sub="Tenta limpar a busca ou trocar o estado."
+            cta={<Button size="sm" onClick={() => { setSearch(''); setUf(''); setPage(0) }}>Limpar filtros</Button>}
+          />
+        ) : mostrarAtivos ? (
           <EmptyState
             icon="🎯"
-            title="Você ainda não pegou nenhum contato"
-            sub="Vai no Pool, escolhe o estado que você atende e pega os primeiros."
+            title="Sua carteira está vazia"
+            sub="Você ainda não tem contatos em aberto. Pegue no Pool ou aguarde a chegada de novos leads."
             cta={<Button variant="primary" size="sm" onClick={onIrPool}><Hand className="h-3.5 w-3.5" /> Ir pro Pool</Button>}
           />
         ) : (
-          <EmptyState icon="📁" title="Nenhum contato finalizado ainda" />
+          <EmptyState icon="📁" title="Nenhuma venda finalizada ainda" />
         )
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
-          {claims.map(claim => {
-            const nota = ultimaNota(claim)
-            const finalizado = !!claim.released_at
-            return (
-              <Card key={claim.claim_id}>
-                <CardContent className="px-4 py-3 flex flex-col gap-2">
-                  {/* Cabeçalho: nome + chamar */}
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-[13.5px] font-semibold text-ink truncate">
-                        {claim.name?.trim() || <span className="text-ink-faint font-normal">(sem nome)</span>}
-                        {claim.city && <span className="text-ink-faint font-normal text-[12px]"> · {claim.city}</span>}
-                      </p>
-                      <p className="text-[12.5px] text-ink-muted font-mono flex items-center gap-1">
-                        {formatPhone(claim.phone ?? '')}
-                        {claim.phone && <CopyPhone phone={claim.phone} />}
-                      </p>
-                    </div>
-                    {!finalizado && claim.telefone_normalizado && (
-                      <a
-                        href={whatsappLink(claim.telefone_normalizado)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="shrink-0 h-9 px-3 inline-flex items-center gap-1.5 rounded-md bg-accent text-white text-[12.5px] font-medium hover:bg-accent/90 shadow-sm transition-all"
-                      >
-                        <MessageCircle className="h-3.5 w-3.5" /> Chamar
-                      </a>
-                    )}
-                  </div>
-
-                  {/* Prazo / estado */}
-                  {finalizado ? (
-                    <div className="flex items-center gap-2">
-                      <Badge className={cn(
-                        claim.status === 'convertido' ? 'bg-success/10 text-success' : 'bg-surface-2 text-ink-muted',
-                      )}>
-                        {PROSPECCAO_STATUS_LABELS[claim.status] ?? claim.status}
-                      </Badge>
-                      <span className="text-[11.5px] text-ink-faint">{formatRelative(claim.released_at!)}</span>
-                    </div>
-                  ) : (
-                    <DeadlineTag claim={claim} />
-                  )}
-
-                  {!finalizado && (
-                    <>
-                      {/* Status 1-toque */}
-                      <StatusChips
-                        atual={claim.status}
-                        disabled={atualizarStatus.isPending}
-                        onChange={s => mudarStatus(claim, s)}
-                      />
-
-                      {/* Nota rápida */}
-                      <div className="flex gap-1.5">
-                        <input
-                          value={notaDraft[claim.claim_id] ?? ''}
-                          onChange={e => setNotaDraft(d => ({ ...d, [claim.claim_id]: e.target.value }))}
-                          onKeyDown={e => { if (e.key === 'Enter') salvarNotaDo(claim) }}
-                          placeholder="✏️ Anotar… (ex: pediu preço da Compacta 02)"
-                          className="flex-1 min-w-0 h-9 rounded-md border border-border bg-surface px-3 text-[12.5px] text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-all"
-                        />
-                        <Button size="sm" className="h-9" loading={salvarNota.isPending} onClick={() => salvarNotaDo(claim)}>
-                          Salvar
-                        </Button>
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+            {itens.map(item => {
+              const nota = ultimaNota(item)
+              const temClaim = !!item.claim_id
+              const finalizado = !mostrarAtivos
+              return (
+                <Card key={item.contact_id}>
+                  <CardContent className="px-4 py-3 flex flex-col gap-2">
+                    {/* Cabeçalho: nome + estado + chamar */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-[13.5px] font-semibold text-ink truncate">
+                          {item.name?.trim() || <span className="text-ink-faint font-normal">(sem nome)</span>}
+                          {item.city && <span className="text-ink-faint font-normal text-[12px]"> · {item.city}</span>}
+                        </p>
+                        <p className="text-[12.5px] text-ink-muted font-mono flex items-center gap-1">
+                          {formatPhone(item.phone ?? '')}
+                          {item.phone && <CopyPhone phone={item.phone} />}
+                        </p>
                       </div>
-                      {nota && <p className="text-[11.5px] text-ink-faint truncate">🕐 {nota}</p>}
-
-                      {/* Rodapé: finalizar / devolver / renovar */}
-                      {finalizando === claim.claim_id ? (
-                        <div className="flex flex-col gap-1.5 rounded-md border border-border bg-surface-2/50 p-2.5">
-                          <p className="text-[12px] font-medium text-ink">Finalizar como:</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {PROSPECCAO_STATUS_TERMINAIS.map(s => (
-                              <button
-                                key={s.value}
-                                disabled={atualizarStatus.isPending || (s.value === 'sem_interesse' && !motivoSel)}
-                                onClick={() => mudarStatus(claim, s.value, s.value === 'sem_interesse' ? motivoSel : undefined)}
-                                className={cn(
-                                  'h-8 px-3 rounded-full text-[12px] font-medium border transition-all',
-                                  'disabled:opacity-40 disabled:cursor-not-allowed',
-                                  s.value === 'convertido'
-                                    ? 'bg-success/10 text-success border-success/30 hover:bg-success/20'
-                                    : 'bg-surface text-ink-muted border-border hover:border-border-strong',
-                                )}
-                              >
-                                {s.label}
-                              </button>
-                            ))}
-                          </div>
-                          <Select
-                            value={motivoSel}
-                            onChange={e => setMotivoSel(e.target.value)}
-                            placeholder="Motivo (obrigatório p/ Sem interesse)"
-                            options={MOTIVO_PERDA_OPTIONS}
-                          />
-                          <button onClick={() => { setFinalizando(null); setMotivoSel('') }} className="text-[11.5px] text-ink-faint hover:text-ink self-start">
-                            Cancelar
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-between gap-2 pt-0.5">
-                          <div className="flex items-center gap-1">
-                            {claim.status === 'em_contato' && (
-                              <button
-                                title="Devolver ao pool (só antes do cliente responder)"
-                                disabled={atualizarStatus.isPending}
-                                onClick={() => mudarStatus(claim, 'devolvido')}
-                                className="h-7 px-2 inline-flex items-center gap-1 rounded text-[11.5px] text-ink-faint hover:text-ink hover:bg-surface-2 transition-colors"
-                              >
-                                <Undo2 className="h-3 w-3" /> Devolver
-                              </button>
-                            )}
-                            {!claim.renovado && claim.status !== 'negociando' && (
-                              <button
-                                title="Renovar prazo (1x por contato)"
-                                disabled={renovar.isPending}
-                                onClick={() => renovar.mutate(claim.claim_id, {
-                                  onSuccess: () => push('Prazo renovado ✓', 'success'),
-                                  onError: () => push('Não deu pra renovar', 'danger'),
-                                })}
-                                className="h-7 px-2 inline-flex items-center gap-1 rounded text-[11.5px] text-ink-faint hover:text-ink hover:bg-surface-2 transition-colors"
-                              >
-                                <RotateCw className="h-3 w-3" /> +prazo
-                              </button>
-                            )}
-                          </div>
-                          <button
-                            onClick={() => setFinalizando(claim.claim_id)}
-                            className="h-7 px-2.5 rounded text-[11.5px] font-medium text-ink-muted hover:text-ink hover:bg-surface-2 transition-colors"
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {item.state && <Badge className="bg-surface-2 text-ink-muted">{item.state}</Badge>}
+                        {!finalizado && item.telefone_normalizado && (
+                          <a
+                            href={whatsappLink(item.telefone_normalizado)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="h-9 px-3 inline-flex items-center gap-1.5 rounded-md bg-accent text-white text-[12.5px] font-medium hover:bg-accent/90 shadow-sm transition-all"
                           >
-                            Finalizar…
-                          </button>
-                        </div>
-                      )}
-                    </>
-                  )}
+                            <MessageCircle className="h-3.5 w-3.5" /> Chamar
+                          </a>
+                        )}
+                      </div>
+                    </div>
 
-                  {/* Ficha completa do cliente (ativo ou finalizado) */}
-                  <button
-                    onClick={() => setFichaContact({ id: claim.contact_id, phone: claim.phone })}
-                    className="w-full h-8 mt-0.5 inline-flex items-center justify-center gap-1.5 rounded-md border border-border text-[12px] font-medium text-ink-muted hover:text-ink hover:bg-surface-2 transition-colors"
-                  >
-                    📋 Ficha completa
-                  </button>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
+                    {/* Linha de contexto: orçamento / valor */}
+                    <p className="text-[11.5px] text-ink-faint truncate">
+                      {item.data_orcamento
+                        ? `📄 Orçou em ${new Date(item.data_orcamento + 'T12:00:00').toLocaleDateString('pt-BR')}`
+                        : (item.descricao_orcamento?.trim() || item.origin || '—')}
+                      {item.valor_negociacao ? ` · 💰 ${brl(item.valor_negociacao)}` : ''}
+                    </p>
+
+                    {finalizado ? (
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-success/10 text-success">
+                          {temClaim ? (PROSPECCAO_STATUS_LABELS[item.claim_status ?? ''] ?? 'Fechado') : 'Venda fechada'}
+                        </Badge>
+                        {item.updated_at && <span className="text-[11.5px] text-ink-faint">{formatRelative(item.updated_at)}</span>}
+                      </div>
+                    ) : (
+                      <>
+                        {/* Prazo + status só p/ quem veio do pool */}
+                        {temClaim && <DeadlineTag item={item} />}
+                        {temClaim && (
+                          <StatusChips
+                            atual={item.claim_status ?? 'em_contato'}
+                            disabled={atualizarStatus.isPending}
+                            onChange={s => mudarStatus(item, s)}
+                          />
+                        )}
+
+                        {/* Nota rápida (com ou sem claim) */}
+                        <div className="flex gap-1.5">
+                          <input
+                            value={notaDraft[item.contact_id] ?? ''}
+                            onChange={e => setNotaDraft(d => ({ ...d, [item.contact_id]: e.target.value }))}
+                            onKeyDown={e => { if (e.key === 'Enter') salvarNotaDo(item) }}
+                            placeholder="✏️ Anotar… (ex: pediu preço da Compacta 02)"
+                            className="flex-1 min-w-0 h-9 rounded-md border border-border bg-surface px-3 text-[12.5px] text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-all"
+                          />
+                          <Button size="sm" className="h-9" loading={salvarNota.isPending || salvarNotaContato.isPending} onClick={() => salvarNotaDo(item)}>
+                            Salvar
+                          </Button>
+                        </div>
+                        {nota && <p className="text-[11.5px] text-ink-faint truncate">🕐 {nota}</p>}
+
+                        {/* Rodapé de prospecção: só p/ quem veio do pool */}
+                        {temClaim && (finalizando === item.claim_id ? (
+                          <div className="flex flex-col gap-1.5 rounded-md border border-border bg-surface-2/50 p-2.5">
+                            <p className="text-[12px] font-medium text-ink">Finalizar como:</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {PROSPECCAO_STATUS_TERMINAIS.map(s => (
+                                <button
+                                  key={s.value}
+                                  disabled={atualizarStatus.isPending || (s.value === 'sem_interesse' && !motivoSel)}
+                                  onClick={() => mudarStatus(item, s.value, s.value === 'sem_interesse' ? motivoSel : undefined)}
+                                  className={cn(
+                                    'h-8 px-3 rounded-full text-[12px] font-medium border transition-all',
+                                    'disabled:opacity-40 disabled:cursor-not-allowed',
+                                    s.value === 'convertido'
+                                      ? 'bg-success/10 text-success border-success/30 hover:bg-success/20'
+                                      : 'bg-surface text-ink-muted border-border hover:border-border-strong',
+                                  )}
+                                >
+                                  {s.label}
+                                </button>
+                              ))}
+                            </div>
+                            <Select
+                              value={motivoSel}
+                              onChange={e => setMotivoSel(e.target.value)}
+                              placeholder="Motivo (obrigatório p/ Sem interesse)"
+                              options={MOTIVO_PERDA_OPTIONS}
+                            />
+                            <button onClick={() => { setFinalizando(null); setMotivoSel('') }} className="text-[11.5px] text-ink-faint hover:text-ink self-start">
+                              Cancelar
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between gap-2 pt-0.5">
+                            <div className="flex items-center gap-1">
+                              {item.claim_status === 'em_contato' && (
+                                <button
+                                  title="Devolver ao pool (só antes do cliente responder)"
+                                  disabled={atualizarStatus.isPending}
+                                  onClick={() => mudarStatus(item, 'devolvido')}
+                                  className="h-7 px-2 inline-flex items-center gap-1 rounded text-[11.5px] text-ink-faint hover:text-ink hover:bg-surface-2 transition-colors"
+                                >
+                                  <Undo2 className="h-3 w-3" /> Devolver
+                                </button>
+                              )}
+                              {!item.renovado && item.claim_status !== 'negociando' && (
+                                <button
+                                  title="Renovar prazo (1x por contato)"
+                                  disabled={renovar.isPending}
+                                  onClick={() => renovar.mutate(item.claim_id!, {
+                                    onSuccess: () => push('Prazo renovado ✓', 'success'),
+                                    onError: () => push('Não deu pra renovar', 'danger'),
+                                  })}
+                                  className="h-7 px-2 inline-flex items-center gap-1 rounded text-[11.5px] text-ink-faint hover:text-ink hover:bg-surface-2 transition-colors"
+                                >
+                                  <RotateCw className="h-3 w-3" /> +prazo
+                                </button>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => setFinalizando(item.claim_id)}
+                              className="h-7 px-2.5 rounded text-[11.5px] font-medium text-ink-muted hover:text-ink hover:bg-surface-2 transition-colors"
+                            >
+                              Finalizar…
+                            </button>
+                          </div>
+                        ))}
+                      </>
+                    )}
+
+                    {/* Ficha completa do cliente (ativo ou finalizado) */}
+                    <button
+                      onClick={() => setFichaContact({ id: item.contact_id, phone: item.phone })}
+                      className="w-full h-8 mt-0.5 inline-flex items-center justify-center gap-1.5 rounded-md border border-border text-[12px] font-medium text-ink-muted hover:text-ink hover:bg-surface-2 transition-colors"
+                    >
+                      📋 Ficha completa
+                    </button>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+
+          {/* Paginação */}
+          {total !== undefined && total > CARTEIRA_PAGE_SIZE && (
+            <div className="flex items-center justify-center gap-2 py-2">
+              <Button size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
+                <ChevronLeft className="h-3.5 w-3.5" /> Anterior
+              </Button>
+              <span className="text-[12px] text-ink-muted tabular-nums px-2">Página {page + 1} de {totalPaginas}</span>
+              <Button
+                size="sm"
+                disabled={(page + 1) * CARTEIRA_PAGE_SIZE >= total}
+                onClick={() => setPage(p => p + 1)}
+              >
+                Próxima <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
+        </>
       )}
 
       {fichaContact && (

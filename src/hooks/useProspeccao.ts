@@ -163,6 +163,104 @@ export function useMeusClaims(ativos: boolean) {
   })
 }
 
+// ============================================================================
+// Carteira do vendedor — TODOS os contatos com vendor_id = eu (não só os que
+// peguei no pool). Traz o claim de prospecção anexado quando o contato veio do
+// pool (claim_id != null), pra manter os controles de prazo nesses casos.
+// ============================================================================
+
+export interface CarteiraContato {
+  contact_id: string
+  name: string | null
+  phone: string | null
+  telefone_normalizado: string | null
+  city: string | null
+  state: string | null
+  origin: string | null
+  notes: string | null
+  data_orcamento: string | null
+  descricao_orcamento: string | null
+  empresa: string | null
+  is_closed: boolean
+  status_contato: string | null
+  valor_negociacao: number | null
+  proximo_followup: string | null
+  updated_at: string | null
+  // Claim de prospecção ativo (null quando o contato não veio do pool)
+  claim_id: string | null
+  claim_status: string | null
+  claim_motivo: string | null
+  claimed_at: string | null
+  expires_at: string | null
+  first_action_at: string | null
+  last_action_at: string | null
+  acoes_count: number | null
+  renovado: boolean | null
+}
+
+export interface CarteiraFiltros {
+  search: string
+  uf: string
+  ativos: boolean // true = em aberto, false = fechados/vendas
+  page: number
+}
+
+export const CARTEIRA_PAGE_SIZE = 30
+
+export function useMinhaCarteira(filtros: CarteiraFiltros) {
+  return useQuery({
+    queryKey: ['prospeccao', 'carteira', filtros],
+    queryFn: async (): Promise<CarteiraContato[]> => {
+      const { data, error } = await supabase.rpc('prospeccao_minha_carteira', {
+        p_search: filtros.search || null,
+        p_uf: filtros.uf || null,
+        p_ativos: filtros.ativos,
+        p_limit: CARTEIRA_PAGE_SIZE,
+        p_offset: filtros.page * CARTEIRA_PAGE_SIZE,
+      })
+      if (error) throw error
+      return (data ?? []) as CarteiraContato[]
+    },
+    placeholderData: keepPreviousData,
+    staleTime: 15_000,
+  })
+}
+
+export function useMinhaCarteiraCount(filtros: Omit<CarteiraFiltros, 'page'>) {
+  return useQuery({
+    queryKey: ['prospeccao', 'carteira-count', filtros.search, filtros.uf, filtros.ativos],
+    queryFn: async (): Promise<number> => {
+      const { data, error } = await supabase.rpc('prospeccao_minha_carteira_count', {
+        p_search: filtros.search || null,
+        p_uf: filtros.uf || null,
+        p_ativos: filtros.ativos,
+      })
+      if (error) throw error
+      return Number(data ?? 0)
+    },
+    staleTime: 60_000,
+  })
+}
+
+// Nota rápida em contato SEM claim (grava no notes; não "toca" prazo de pool)
+export function useSalvarNotaContato() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (args: { contactId: string; notesAtual: string | null; texto: string }) => {
+      const novoNotes = addHumanNote(args.notesAtual, args.texto)
+      const { error } = await supabase
+        .from('contacts')
+        .update({ notes: novoNotes, updated_at: new Date().toISOString() })
+        .eq('id', args.contactId)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['prospeccao'] })
+      qc.invalidateQueries({ queryKey: ['contacts'] })
+    },
+  })
+}
+
 export interface PegarResultado {
   ok: boolean
   erro?: string
