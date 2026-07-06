@@ -20,6 +20,7 @@ import {
 import { Flame, TrendingUp, Users, CheckCircle2, ArrowDown, ArrowUp, Hand, FilePlus2, AlertTriangle, Clock, Ghost, Banknote, ChevronRight, Sun, Moon } from 'lucide-react'
 import { useDarkMode } from '@/hooks/useDarkMode'
 import { RangeCalendar } from '@/components/RangeCalendar'
+import { ResumoDiaVendedores } from '@/components/ResumoDiaVendedores'
 
 const PRESET_LABELS: { value: DashboardPreset; label: string }[] = [
   { value: '',     label: 'Tudo' },
@@ -636,6 +637,9 @@ export function Dashboard() {
       {vendCards.length > 0 && (positivo.topOrc || positivo.escalar || positivo.totalVendido > 0) && (
         <ResumoPositivo p={positivo} />
       )}
+
+      {/* RESUMO DO DIA POR VENDEDOR — números de HOJE ao vivo (mesma fonte das mesas do /disparos) */}
+      <ResumoDiaVendedores />
 
       {/* ════════ GRUPO 1 · VISÃO GERAL ════════ */}
       <CollapsibleSection n="1" titulo="Visão geral" pergunta="Propostas e tendência no detalhe" open={openSec.g1} onToggle={() => toggleSec('g1')}>
