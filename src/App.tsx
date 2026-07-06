@@ -271,7 +271,7 @@ function AppRoutes() {
   // Vendedor: acesso restrito a Atendimentos, Consulta, Montar/Editar Orçamento e
   // Mapa de Visitas (+ Perfil). Dashboard escondido → "/" e demais rotas caem em
   // Atendimentos. O menu já esconde; isto trava o acesso por URL direta.
-  const VENDOR_PREFIXES = ['/atendimentos', '/consulta', '/orcamentos/montar', '/orcamentos/salvos', '/orcamentos/novo', '/mapa-visitas', '/frete/solicitar', '/perfil']
+  const VENDOR_PREFIXES = ['/atendimentos', '/consulta', '/prospeccao', '/orcamentos/montar', '/orcamentos/salvos', '/orcamentos/novo', '/mapa-visitas', '/frete/solicitar', '/perfil']
   if (profile.role === 'vendor') {
     const p = loc.pathname
     // gestor de frete pode ter papel 'vendor' + permissão frete.aprovar → libera a fila pra ele
