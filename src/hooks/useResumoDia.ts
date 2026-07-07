@@ -32,6 +32,9 @@ export interface ResumoDiaVendedor {
 
 const firstKey = (nome: string) => (nome.split(/\s+/)[0] || '').toUpperCase()
 
+// Fora do resumo do Dashboard (pedido do Daniel 07/07) — segue normal no /disparos.
+const EXCLUIR_DO_RESUMO = new Set(['DANIEL'])
+
 export function useResumoDia() {
   // Lista de vendedores — MESMA fonte das mesas do /disparos (vendor_dispatch_status).
   // Chave namespaced pra NÃO colidir com o cache de Disparos.tsx (que usa a mesma
@@ -95,7 +98,9 @@ export function useResumoDia() {
     refetchInterval: 20000,
   })
 
-  const linhas: ResumoDiaVendedor[] = useMemo(() => (vendedoresQ.data ?? []).map(v => {
+  const linhas: ResumoDiaVendedor[] = useMemo(() => (vendedoresQ.data ?? [])
+    .filter(v => !EXCLUIR_DO_RESUMO.has(v.vendedor_nome.trim().toUpperCase()))
+    .map(v => {
     const nome = v.vendedor_nome
     const f = funilQ.data?.[nome]
     const followup = f?.followup ?? 0
@@ -111,7 +116,7 @@ export function useResumoDia() {
       negociacao: followup + quente,
       carteira: f?.totalChats ?? 0,
     }
-  }), [vendedoresQ.data, funilQ.data, leadsQ.data, orcQ.data])
+    }), [vendedoresQ.data, funilQ.data, leadsQ.data, orcQ.data])
 
   return {
     linhas,
