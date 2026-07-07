@@ -101,6 +101,8 @@ export interface CarrinhoSnapshot {
   }>
   // Componentes adicionais (não fabricados pela Branorte) — painel, balança, célula de carga…
   componentesExtras?: Array<{ id: string; nome: string; valor: number }>
+  // Motores AVULSOS (sem equipamento host) — linhas extras na tabela de motores.
+  motoresAvulsos?: Array<{ id: string; cv: number; polos: number; qtd: number; por_conta_cliente?: boolean }>
   // Vendedor dispensou a Balança Eletrônica (auto-adicionada pela Caçamba de
   // Pesagem). Persistido pra trava de auto-adição respeitar ao reabrir.
   balancaDispensada?: boolean
@@ -731,6 +733,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         prazo_entrega: snapshot.termsInline?.prazoEntrega || prazoEntrega.trim() || null,
         parcelas: snapshot.parcelas?.length ? snapshot.parcelas : null,
         componentes_extras: snapshot.componentesExtras ?? null,
+        // Motores avulsos (migration 2026-07-07) — round-trip ao reabrir/editar
+        motores_avulsos: snapshot.motoresAvulsos?.length ? snapshot.motoresAvulsos : null,
         balanca_dispensada: snapshot.balancaDispensada ?? false,
         // null = cai no default histórico (5 linhas) na hora de renderizar
         obs_por_conta: snapshot.obsPorConta ?? null,

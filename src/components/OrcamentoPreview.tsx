@@ -221,6 +221,10 @@ export interface OrcamentoPreviewProps {
   // se incluso no preço, recalcula valor_equipamento. Restore: onRestaurarMotor.
   onRemoverMotor?: (itemUid: string, motorIndex?: number) => void
   onRestaurarMotor?: (itemUid: string, motorIndex?: number) => void
+  // Motor AVULSO (sem equipamento): botão "+ Adicionar motor avulso" na seção de
+  // motores. A linha entra com item_uid "avulso:<id>" — remover deleta, trocar
+  // troca cv/polos. Callback recebe o motor escolhido no picker.
+  onAdicionarMotorAvulso?: (novoMotor: MotorCatalogoOption) => void
 
   // Vendedores Branorte pra grid de contatos no rodape. Quando passado, renderiza
   // dinamicamente em vez do hardcoded antigo (que so tinha 3 vendedores).
@@ -355,7 +359,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onAddSpec, onRemoveSpec, onUpdateValor, onToggleInox, onToggleTungstenio, onUpdateQtd, onUpdateTerm, onMoverItem, onTrocarItem, onToggleBrinde, onTogglePorConta,
     componentesExtras = [], onUpdateComponentesExtras, componentesAdicionaisCatalogo = [],
     parcelas, onUpdateParcelas,
-    motoresDisponiveis, onTrocarMotor, onMotorPorContaCliente, onMotorIncluso,
+    motoresDisponiveis, onTrocarMotor, onMotorPorContaCliente, onMotorIncluso, onAdicionarMotorAvulso,
     onRemoverMotor, onRestaurarMotor,
     vendedoresContato, vendedorResponsavelNome,
     onEditCliente,
@@ -408,6 +412,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   // Estado do picker de troca de motor (qual linha tem o dropdown aberto)
   const [trocarMotorIdx, setTrocarMotorIdx] = useState<number | null>(null)
   const [motorBusca, setMotorBusca] = useState('')
+  // Modal do "+ Adicionar motor avulso" (motor sem equipamento host)
+  const [addMotorOpen, setAddMotorOpen] = useState(false)
+  const [addMotorBusca, setAddMotorBusca] = useState('')
   void totalItems  // mostrado no footer do builder, não no preview
 
   // Total com desconto (se houver). Usado nas parcelas de pagamento.
@@ -1327,8 +1334,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
           {/* Motores */}
           {/* Issue #23: em renderMode (PDF), motores removidos NÃO contam pra mostrar a tabela.
-              Se TODOS estão removidos, a seção MOTORES TRIFÁSICOS é omitida do PDF. */}
-          {(renderMode ? motoresAgrupados.filter(m => !m.removido) : motoresAgrupados).length > 0 && (() => {
+              Se TODOS estão removidos, a seção MOTORES TRIFÁSICOS é omitida do PDF.
+              Em modo edição, a seção também aparece VAZIA quando dá pra adicionar motor
+              avulso (senão o botão "+ Adicionar motor avulso" ficaria inalcançável). */}
+          {((renderMode ? motoresAgrupados.filter(m => !m.removido) : motoresAgrupados).length > 0
+            || (!renderMode && !!onAdicionarMotorAvulso && !!motoresDisponiveis?.length)) && (() => {
             const opcoesTensao: (220 | 380 | 660)[] = voltagem === 'monofasico' ? [220] : [220, 380, 660]
             // Monofásico só aceita 220V - corrige se tiver tensão inválida salva
             const tensaoEfetiva = voltagem === 'monofasico' && tensaoMotores && tensaoMotores !== 220 ? 220 : tensaoMotores
@@ -1493,7 +1503,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                         className="w-full pl-8 pr-2 py-1.5 bg-white border border-gray-300 rounded text-[12px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
                                       />
                                     </div>
-                                    {onMotorPorContaCliente && m.item_uid && (
+                                    {onMotorPorContaCliente && m.item_uid && !m.item_uid.startsWith('avulso:') && (
                                       <button
                                         type="button"
                                         onClick={() => {
@@ -1510,8 +1520,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                         {porContaCliente ? '↩ Reverter (Branorte volta a cobrar motor)' : '💵 Marcar como POR CONTA DO CLIENTE'}
                                       </button>
                                     )}
-                                    {/* Marcar como INCLUSO (motor já vai no preço do equipamento) */}
-                                    {onMotorIncluso && m.item_uid && (
+                                    {/* Marcar como INCLUSO (motor já vai no preço do equipamento) — não vale pra avulso */}
+                                    {onMotorIncluso && m.item_uid && !m.item_uid.startsWith('avulso:') && (
                                       <button
                                         type="button"
                                         onClick={() => {
@@ -1537,9 +1547,13 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                           setTrocarMotorIdx(null)
                                         }}
                                         className="mt-2 w-full px-2 py-1.5 rounded text-[11px] border bg-white border-red-300 text-red-700 hover:bg-red-50 transition-colors"
-                                        title="Cliente não quer motor. Subtrai valor do motor do total (se incluso, recalcula valor do equipamento)."
+                                        title={m.item_uid!.startsWith('avulso:')
+                                          ? 'Tira este motor avulso do orçamento (Ctrl+Z desfaz).'
+                                          : 'Cliente não quer motor. Subtrai valor do motor do total (se incluso, recalcula valor do equipamento).'}
                                       >
-                                        ✕ REMOVER motor (cliente compra fora ou não quer)
+                                        {m.item_uid!.startsWith('avulso:')
+                                          ? '✕ TIRAR este motor do orçamento'
+                                          : '✕ REMOVER motor (cliente compra fora ou não quer)'}
                                       </button>
                                     )}
                                   </div>
@@ -1630,21 +1644,117 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                         </tr>
                       )
                     })}
-                    <tr className="border-t-2 border-gray-700 font-bold">
-                      <td className="py-2 text-gray-900">TOTAL</td>
-                      <td className="py-2 text-right text-gray-900 tabular-nums">
-                        {totalMotores > 0
-                          ? `R$ ${formatBRLBare(totalMotores)}`
-                          // Bug #25: só mostra "tudo incluso" se TODOS os motores forem
-                          // realmente inclusos (ou por conta do cliente / removidos).
-                          // Se algum estiver sem valor (semValor), mostra "—" pra não enganar.
-                          : motoresAgrupados.every(mm => !!mm.incluso_real || !!mm.por_conta_cliente || !!mm.removido)
-                            ? <span className="text-gray-400 italic text-[13px]">tudo incluso</span>
-                            : <span className="text-gray-400 italic text-[13px]">—</span>}
-                      </td>
-                    </tr>
+                    {motoresAgrupados.length > 0 && (
+                      <tr className="border-t-2 border-gray-700 font-bold">
+                        <td className="py-2 text-gray-900">TOTAL</td>
+                        <td className="py-2 text-right text-gray-900 tabular-nums">
+                          {totalMotores > 0
+                            ? `R$ ${formatBRLBare(totalMotores)}`
+                            // Bug #25: só mostra "tudo incluso" se TODOS os motores forem
+                            // realmente inclusos (ou por conta do cliente / removidos).
+                            // Se algum estiver sem valor (semValor), mostra "—" pra não enganar.
+                            : motoresAgrupados.every(mm => !!mm.incluso_real || !!mm.por_conta_cliente || !!mm.removido)
+                              ? <span className="text-gray-400 italic text-[13px]">tudo incluso</span>
+                              : <span className="text-gray-400 italic text-[13px]">—</span>}
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
+
+                {/* + ADICIONAR MOTOR AVULSO — motor vendido sem equipamento. Só edição (some no PDF). */}
+                {!renderMode && !!onAdicionarMotorAvulso && !!motoresDisponiveis?.length && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => { setAddMotorBusca(''); setAddMotorOpen(true) }}
+                      className="mt-2 w-full px-3 py-1.5 rounded border border-dashed border-blue-300 text-blue-600 text-[12px] font-medium hover:bg-blue-50 transition-colors print:hidden"
+                      title="Adiciona um motor vendido separado (sem equipamento) nesta listagem"
+                    >
+                      + Adicionar motor avulso
+                    </button>
+                    {addMotorOpen && createPortal(
+                      <div
+                        className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-4 print:hidden"
+                        onClick={() => setAddMotorOpen(false)}
+                      >
+                        <div
+                          className="bg-white border border-gray-300 rounded-lg shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col overflow-hidden"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between bg-gray-50 shrink-0">
+                            <div className="min-w-0">
+                              <div className="text-[12px] uppercase font-bold text-gray-600 tracking-wider">Adicionar motor avulso</div>
+                              <div className="text-[11px] text-gray-500 truncate">Motor vendido sem equipamento — entra só na tabela de motores</div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setAddMotorOpen(false)}
+                              className="text-gray-400 hover:text-gray-700 shrink-0 ml-2"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                          <div className="p-2 border-b border-gray-200 shrink-0">
+                            <div className="relative">
+                              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+                              <input
+                                type="text"
+                                value={addMotorBusca}
+                                onChange={e => setAddMotorBusca(e.target.value)}
+                                placeholder="Buscar motor (ex: 5 CV, 4 polos, trifasico)..."
+                                autoFocus
+                                className="w-full pl-8 pr-2 py-1.5 bg-white border border-gray-300 rounded text-[12px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+                              />
+                            </div>
+                          </div>
+                          <div className="p-1 overflow-y-auto">
+                            {(() => {
+                              const q = addMotorBusca.trim().toLowerCase()
+                              const lista = motoresDisponiveis
+                                .slice()
+                                .sort((a, b) => Number(a.cv) - Number(b.cv) || a.polos - b.polos || a.voltagem.localeCompare(b.voltagem))
+                                .filter(opt => {
+                                  if (!q) return true
+                                  const label = opt.polos === 0
+                                    ? `motorredutor ${Number(opt.cv)} cv ${opt.voltagem}`
+                                    : `${Number(opt.cv)} cv ${opt.polos} polos ${opt.voltagem}`
+                                  return label.toLowerCase().includes(q)
+                                })
+                              if (lista.length === 0) {
+                                return <div className="px-3 py-6 text-[12px] text-gray-400 text-center">Nenhum motor encontrado</div>
+                              }
+                              return lista.map(opt => (
+                                <button
+                                  key={opt.id}
+                                  type="button"
+                                  onClick={() => {
+                                    onAdicionarMotorAvulso!(opt)
+                                    setAddMotorOpen(false)
+                                  }}
+                                  className="w-full text-left px-3 py-2 rounded text-[13px] flex items-center justify-between gap-2 hover:bg-blue-50 transition-colors"
+                                >
+                                  <span className="text-gray-800">
+                                    {opt.polos === 0
+                                      ? <><span className="text-amber-700">Motorredutor</span> {Number(opt.cv)} CV</>
+                                      : <>{Number(opt.cv)} CV {opt.polos} polos</>}
+                                    <span className="text-gray-500 ml-1.5 text-[11px] uppercase">{opt.voltagem}</span>
+                                  </span>
+                                  <span className="text-gray-600 tabular-nums text-[12px]">
+                                    {Number(opt.valor) === 0
+                                      ? <span className="text-gray-400 italic">incluso</span>
+                                      : `R$ ${formatBRLBare(Number(opt.valor))}`}
+                                  </span>
+                                </button>
+                              ))
+                            })()}
+                          </div>
+                        </div>
+                      </div>,
+                      document.body
+                    )}
+                  </>
+                )}
               </div>
             )
           })()}

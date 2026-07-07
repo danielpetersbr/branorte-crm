@@ -126,6 +126,8 @@ export interface OrcamentoGerado {
   total_motores: number
   total_proposta: number
   componentes_extras: Array<{ id: string; nome: string; valor: number }> | null
+  // Motores avulsos (sem equipamento host) — migration 2026-07-07
+  motores_avulsos: Array<{ id: string; cv: number; polos: number; qtd: number; por_conta_cliente?: boolean }> | null
   balanca_dispensada: boolean | null
   observacoes: string | null
   forma_pagamento: string | null
@@ -477,6 +479,8 @@ export interface CriarOrcamentoInput {
   numero_override?: { ano: number; sequencial: number; numero: string } | null
   // Componentes adicionais (NÃO fabricados pela Branorte) — painel, balança, célula de carga…
   componentes_extras?: Array<{ id: string; nome: string; valor: number }> | null
+  // Motores avulsos (sem equipamento host) — migration 2026-07-07
+  motores_avulsos?: Array<{ id: string; cv: number; polos: number; qtd: number; por_conta_cliente?: boolean }> | null
   // Vendedor dispensou a balança auto-adicionada pela Caçamba de Pesagem.
   balanca_dispensada?: boolean | null
   // Foto principal do orçamento (URL pública no Storage após upload)
@@ -563,6 +567,7 @@ export function useCriarOrcamento() {
         prazo_entrega: input.prazo_entrega ?? null,
         status: input.status ?? 'rascunho',
         componentes_extras: input.componentes_extras ?? null,
+        motores_avulsos: input.motores_avulsos ?? null,
         balanca_dispensada: input.balanca_dispensada ?? false,
         obs_por_conta: input.obs_por_conta ?? null,
         foto_principal_url: input.foto_principal_url ?? null,
@@ -684,6 +689,7 @@ export function useCriarAlteracao() {
         prazo_entrega: rest.prazo_entrega ?? null,
         status: rest.status ?? 'rascunho',
         componentes_extras: rest.componentes_extras ?? null,
+        motores_avulsos: rest.motores_avulsos ?? null,
         balanca_dispensada: rest.balanca_dispensada ?? false,
         obs_por_conta: rest.obs_por_conta ?? null,
         foto_principal_url: rest.foto_principal_url ?? null,

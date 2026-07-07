@@ -107,6 +107,17 @@ export interface ComponenteExtra {
   valor: number
 }
 
+// Motor AVULSO — vendido sozinho, sem equipamento host. Vira linha na tabela
+// MOTORES TRIFÁSICOS/MONOFÁSICOS (item_uid "avulso:<id>"), preço resolvido ao
+// vivo via acharMotorCompativel conforme a voltagem (igual motores_extras).
+export interface MotorAvulsoOrc {
+  id: string
+  cv: number
+  polos: number
+  qtd: number
+  por_conta_cliente?: boolean
+}
+
 function formatBRL(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Math.round(v))
 }
@@ -230,8 +241,29 @@ function agruparMotores(
   carrinho: CarrinhoItem[],
   motores?: CatalogoMotor[],
   voltagem: Voltagem = 'trifasico',
+  motoresAvulsos: MotorAvulsoOrc[] = [],
 ): MotorAgrupado[] {
   const linhas: MotorAgrupado[] = []
+
+  // ── MOTORES AVULSOS (sem equipamento host) ──
+  // item_uid "avulso:<id>" identifica a linha pros handlers (trocar troca cv/polos,
+  // remover DELETA a entrada). Preço ao vivo pelo catálogo conforme voltagem.
+  for (const ma of motoresAvulsos) {
+    const match = motores
+      ? acharMotorCompativel(motores, Number(ma.cv), ma.polos, voltagem, voltagem === 'monofasico')
+      : null
+    const valorUnit = ma.por_conta_cliente ? 0 : (match ? Number(match.valor) : 0)
+    for (let i = 0; i < (ma.qtd || 1); i++) {
+      linhas.push({
+        cv: Number(ma.cv), polos: ma.polos, qtd: 1,
+        valor_unit: valorUnit, valor_total: valorUnit,
+        item_nome: 'Motor avulso', item_uid: `avulso:${ma.id}`,
+        por_conta_cliente: !!ma.por_conta_cliente,
+        incluso_real: false,
+        removido: false,
+      })
+    }
+  }
   for (const it of carrinho) {
     const nomeItem = it.nome_custom || it.nome
     const ehAcessorioOuPassiva = it.categoria === 'ACESSORIO' || peneiraSemMotor(nomeItem)
@@ -463,6 +495,8 @@ export function OrcamentoMontar() {
   // Componentes adicionais (NÃO fabricados pela Branorte) — painel elétrico, balança, célula de carga, etc.
   // Cada item: nome livre + valor R$. Vai pro totalGeral mas NÃO é "equipamento" nem "motor".
   const [componentesExtras, setComponentesExtras] = useState<ComponenteExtra[]>([])
+  // Motores avulsos (sem equipamento) — viram linha na tabela de motores.
+  const [motoresAvulsos, setMotoresAvulsos] = useState<MotorAvulsoOrc[]>([])
   // Vendedor removeu manualmente a Balança Eletrônica que a Caçamba de Pesagem
   // auto-adiciona. Quando true, a trava de auto-adição (useEffect abaixo) NÃO
   // re-insere a balança — respeitando a decisão do vendedor (ex.: cliente já
@@ -489,13 +523,14 @@ export function OrcamentoMontar() {
     parcelasPagamento,
     fotoPrincipal,
     componentesExtras,
+    motoresAvulsos,
     balancaDispensada,
     obsPorConta,
   }), [
     carrinho, acessorios, voltagem, tensaoMotores, marcaMotores, descontoCfg,
     dataVendaTxt, prazoEntregaTxt, formaPagamentoTxt, freteTipo, freteTxt,
     parcelasPagamento, fotoPrincipal,
-    componentesExtras, balancaDispensada, obsPorConta,
+    componentesExtras, motoresAvulsos, balancaDispensada, obsPorConta,
   ])
 
   // Autosave so liga depois que catalogo carregar (evita salvar snapshot vazio
@@ -558,6 +593,7 @@ export function OrcamentoMontar() {
     setParcelasPagamento(prev.parcelasPagamento ?? [])
     setFotoPrincipal(prev.fotoPrincipal ?? null)
     setComponentesExtras(prev.componentesExtras ?? [])
+    setMotoresAvulsos((prev as any).motoresAvulsos ?? [])
     setBalancaDispensada((prev as any).balancaDispensada ?? false)
     setObsPorConta((prev as any).obsPorConta ?? null)
     setHistoryStack(stack => stack.slice(0, -1))
@@ -596,6 +632,7 @@ export function OrcamentoMontar() {
     setParcelasPagamento(d.parcelasPagamento ?? [])
     setFotoPrincipal(d.fotoPrincipal ?? null)
     setComponentesExtras(d.componentesExtras ?? [])
+    setMotoresAvulsos((d as any).motoresAvulsos ?? [])
     setBalancaDispensada((d as any).balancaDispensada ?? false)
     setObsPorConta((d as any).obsPorConta ?? null)
     draft.dismissRecovered()
@@ -668,7 +705,10 @@ export function OrcamentoMontar() {
 
   const totalOficiais = useMemo(() => (items ?? []).filter(i => i.is_oficial).length, [items])
 
-  const motoresAgrupados = useMemo(() => agruparMotores(carrinho, motores, voltagem), [carrinho, motores, voltagem])
+  const motoresAgrupados = useMemo(
+    () => agruparMotores(carrinho, motores, voltagem, motoresAvulsos),
+    [carrinho, motores, voltagem, motoresAvulsos],
+  )
 
   const totalItems = useMemo(
     () => carrinho.reduce((s, c) => s + (c.brinde || c.por_conta_cliente ? 0 : c.valor * c.qtd), 0),
@@ -779,7 +819,13 @@ export function OrcamentoMontar() {
         motorValor: motorPorUid.get(it.uid) || 0,
         specs: it.specs, // mantém a descrição original do item no FINAME
       }))
-    return montarItensFiname(inputs, valorAcessoriosExib + totalComponentesExtras)
+    // Motores AVULSOS (uid "avulso:...") não casam com item do carrinho — o valor
+    // deles entraria em NADA e sumiria do total FINAME. Entram no pote distribuído
+    // junto com acessórios/componentes (mesma regra: embutido nos equipamentos).
+    const totalAvulsos = motoresAgrupadosExib
+      .filter(m => m.item_uid?.startsWith('avulso:') && !m.removido)
+      .reduce((s, m) => s + (m.valor_total || 0), 0)
+    return montarItensFiname(inputs, valorAcessoriosExib + totalComponentesExtras + totalAvulsos)
   }, [finameMode, carrinhoExib, motoresAgrupadosExib, valorAcessoriosExib, totalComponentesExtras])
 
   const finameBloqueios: FinameBloqueio[] = finameTransform?.bloqueios ?? []
@@ -1658,6 +1704,7 @@ export function OrcamentoMontar() {
       || !!formaPagamentoTxt
       || parcelasPagamento.length > 0
       || componentesExtras.length > 0
+      || motoresAvulsos.length > 0
       || !!clienteDados.nome
       || !!tensaoMotores
     if (!temAlgoPraLimpar) return
@@ -1671,6 +1718,7 @@ export function OrcamentoMontar() {
     setFormaPagamentoTxt('')
     setParcelasPagamento([])
     setComponentesExtras([])
+    setMotoresAvulsos([])
     setObsPorConta(null)
     setClienteDados({})
     setTensaoMotores(null)
@@ -1734,6 +1782,12 @@ export function OrcamentoMontar() {
   // motorIndex: quando item tem 2 motores na spec (ex: "15 CV e 2 CV"), indica qual trocar (0 ou 1).
   // Marca/desmarca o motor de um item como "por conta do cliente" — Branorte não cobra, mostra texto.
   function marcarMotorPorContaCliente(itemUid: string, isPorConta: boolean, motorIndex?: number) {
+    // Motor AVULSO: flag vive na própria entrada (não há item de carrinho).
+    if (itemUid.startsWith('avulso:')) {
+      const id = itemUid.slice('avulso:'.length)
+      setMotoresAvulsos(ms => ms.map(m => m.id === id ? { ...m, por_conta_cliente: isPorConta } : m))
+      return
+    }
     setCarrinho(c => c.map(it => {
       if (it.uid !== itemUid) return it
       // Motor único (sem índice): flag do item inteiro (comportamento legado).
@@ -1750,6 +1804,7 @@ export function OrcamentoMontar() {
   // Marca/desmarca o motor de um item como INCLUSO no preço do equipamento — não cobra à
   // parte, mostra "incluso". Override manual pra quando a auto-detecção por spec não pegou.
   function marcarMotorIncluso(itemUid: string, isIncluso: boolean, motorIndex?: number) {
+    if (itemUid.startsWith('avulso:')) return // avulso não tem equipamento pra "incluir"
     setCarrinho(c => c.map(it => {
       if (it.uid !== itemUid) return it
       if (motorIndex == null) return { ...it, motor_incluso_manual: isIncluso }
@@ -1768,6 +1823,12 @@ export function OrcamentoMontar() {
   // o que zera o totalMotores — não precisa mexer no valor do item.
   // Para reverter, restaurarMotorDoItem volta valor_pre_remocao.
   function removerMotorDoItem(itemUid: string, motorIndex?: number) {
+    // Motor AVULSO: remover = DELETAR a entrada (Ctrl+Z desfaz).
+    if (itemUid.startsWith('avulso:')) {
+      const id = itemUid.slice('avulso:'.length)
+      setMotoresAvulsos(ms => ms.filter(m => m.id !== id))
+      return
+    }
     setCarrinho(c => c.map(it => {
       if (it.uid !== itemUid) return it
       // Multi-motor: remove SÓ o motorIndex clicado. Esses motores são linhas
@@ -1797,6 +1858,7 @@ export function OrcamentoMontar() {
   }
 
   function restaurarMotorDoItem(itemUid: string, motorIndex?: number) {
+    if (itemUid.startsWith('avulso:')) return // avulso removido = deletado; restaurar via Ctrl+Z
     setCarrinho(c => c.map(it => {
       if (it.uid !== itemUid) return it
       // Multi-motor: restaura SÓ o motorIndex clicado.
@@ -1821,7 +1883,22 @@ export function OrcamentoMontar() {
     }))
   }
 
+  // Adiciona um motor avulso (sem equipamento) — botão "+ Adicionar motor avulso" no preview.
+  // Tipo estrutural (cv/polos) pra aceitar tanto CatalogoMotor quanto MotorCatalogoOption do preview.
+  function adicionarMotorAvulso(novoMotor: { cv: number | string; polos: number }) {
+    const id = `mav-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+    setMotoresAvulsos(ms => [...ms, { id, cv: Number(novoMotor.cv), polos: novoMotor.polos, qtd: 1 }])
+  }
+
   function trocarMotorDoItem(itemUid: string, novoMotor: CatalogoMotor, motorIndex?: number) {
+    // Motor AVULSO: troca cv/polos da entrada (preço re-resolve pelo catálogo).
+    if (itemUid.startsWith('avulso:')) {
+      const id = itemUid.slice('avulso:'.length)
+      setMotoresAvulsos(ms => ms.map(m =>
+        m.id === id ? { ...m, cv: Number(novoMotor.cv), polos: novoMotor.polos } : m
+      ))
+      return
+    }
     setCarrinho(c => c.map(it => {
       if (it.uid !== itemUid) return it
       const incluso = motorJaInclusoNoItem(it.specs)
@@ -2256,6 +2333,8 @@ export function OrcamentoMontar() {
     // Não inferir do primeiro item — orçamentos antigos não tinham hero.
     // Hidrata componentes extras + observacoes + termos
     if (o.componentes_extras) setComponentesExtras(o.componentes_extras as any)
+    // Motores avulsos (migration 2026-07-07) — restaura ao reabrir
+    setMotoresAvulsos(Array.isArray((o as any).motores_avulsos) ? (o as any).motores_avulsos : [])
     // Dispensa da balança (migration 2026-06-26): se o vendedor removeu a balança
     // num orçamento com caçamba, a trava de auto-adição respeita isso ao reabrir.
     setBalancaDispensada(!!(o as any).balanca_dispensada)
@@ -2960,6 +3039,7 @@ export function OrcamentoMontar() {
                 onMotorIncluso={marcarMotorIncluso}
                 onRemoverMotor={removerMotorDoItem}
                 onRestaurarMotor={restaurarMotorDoItem}
+                onAdicionarMotorAvulso={finameMode ? undefined : adicionarMotorAvulso}
                 vendedoresContato={vendedoresContato}
                 vendedorResponsavelNome={profile?.display_name || null}
                 cliente={clienteDados}
@@ -3163,6 +3243,8 @@ export function OrcamentoMontar() {
           },
           parcelas: parcelasPagamento,
           componentesExtras: componentesExtrasFinal,
+          // FINAME embute o valor dos avulsos nos equipamentos → não persiste como avulso
+          motoresAvulsos: finameMode ? [] : motoresAvulsos,
           balancaDispensada,
           obsPorConta: obsPorConta,
         } as CarrinhoSnapshot}
