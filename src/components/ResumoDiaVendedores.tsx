@@ -21,20 +21,21 @@ const COLS: Array<{ key: keyof Pick<ResumoDiaVendedor, 'leads' | 'atendimentos' 
   { key: 'carteira',     icon: '👥', label: 'Carteira',   explica: 'total de conversas do vendedor (histórico)' },
 ]
 
-// Monta o texto pro WhatsApp (negrito com *asteriscos*, uma linha por vendedor)
+// Monta o texto pro WhatsApp (negrito com *asteriscos*, uma linha por vendedor).
+// Sem a contagem de leads — pedido do Daniel (leads ficam só na tela).
 function textoWhatsApp(rows: ResumoDiaVendedor[], tot: Record<string, number>): string {
   const data = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
   const linhas = rows.map(r =>
-    `*${r.nome}:* 📥${r.leads} 💬${r.atendimentos} 📄${r.orcamentos} 🤝${r.negociacao}${r.quente > 0 ? ` 🔥${r.quente}` : ''}`
+    `*${r.nome}:* 💬${r.atendimentos} 📄${r.orcamentos} 🤝${r.negociacao}${r.quente > 0 ? ` 🔥${r.quente}` : ''}`
   )
   return [
     `☀️ *RESUMO DO DIA — ${data}*`,
     '',
-    `*TIME:* 📥 ${tot.leads} leads · 💬 ${tot.atendimentos} atendidos · 📄 ${tot.orcamentos} orçamentos · 🤝 ${tot.negociacao} negociando · 🔥 ${tot.quente} quentes`,
+    `*TIME:* 💬 ${tot.atendimentos} atendidos · 📄 ${tot.orcamentos} orçamentos · 🤝 ${tot.negociacao} negociando · 🔥 ${tot.quente} quentes`,
     '',
     ...linhas,
     '',
-    '_📥 leads de hoje · 💬 atendidos hoje · 📄 orçamentos hoje · 🤝 em negociação · 🔥 quentes_',
+    '_💬 atendidos hoje · 📄 orçamentos hoje · 🤝 em negociação · 🔥 quentes_',
   ].join('\n')
 }
 
