@@ -44,6 +44,8 @@ export function Projeto3D() {
   const projetoDataRef = useRef<unknown>(null)
 
   const { profile } = useAuth()
+  // Papel passado pro iframe: só ADMIN vê o botão "Catálogo de Produtos" no configurador (vendedor não).
+  const iframeSrc = `${CONFIGURADOR_URL}?adm=${profile?.role === 'admin' ? '1' : '0'}`
   const { data: projetos, isLoading: loadingLista } = useConfiguradorProjetos()
   const salvar = useSalvarConfiguradorProjeto()
   const deletar = useDeletarConfiguradorProjeto()
@@ -271,7 +273,7 @@ export function Projeto3D() {
         )}
         <iframe
           ref={frameRef}
-          src={CONFIGURADOR_URL}
+          src={iframeSrc}
           title="Configurador 3D Branorte"
           onLoad={() => setLoading(false)}
           className="absolute inset-0 h-full w-full border-0"
