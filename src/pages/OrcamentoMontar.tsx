@@ -418,6 +418,12 @@ function agruparMotores(
   return linhas
 }
 
+// Key estável pra override manual de preço de motor. Inclui cv/polos: se o vendedor
+// trocar o motor (muda cv/polos), o override antigo cai fora naturalmente.
+function motorOverrideKey(m: { item_uid?: string; motorIndex?: number; cv: number; polos: number }): string {
+  return `${m.item_uid ?? '?'}::${m.motorIndex ?? 'main'}::${m.cv}p${m.polos}`
+}
+
 export function OrcamentoMontar() {
   const { data: items, isLoading: loadingItems } = useCatalogoItems()
   const { data: motores, isLoading: loadingMotores } = useCatalogoMotores()
@@ -439,6 +445,12 @@ export function OrcamentoMontar() {
   // FINAME: total da proposta "travado" (referência). A soma das linhas precisa bater
   // com ele pra gerar; senão o vendedor ajusta os valores ou aceita o novo total.
   const [finameTotalTravado, setFinameTotalTravado] = useState<number | null>(null)
+  // Override manual do preço de motor (duplo-clique no preço no preview + senha 2104).
+  // Key estável por motor: item_uid::motorIndex::cvPpolos. Vive no rascunho (autosave/undo)
+  // e é capturado no snapshot gerado (PDF/DOCX/orçamento salvo). Reabrir um orçamento
+  // salvo re-deriva o motor do catálogo (comportamento atual), então o override vale
+  // pro momento da montagem/geração — exatamente "aumentar o preço na hora".
+  const [motorPrecoOverride, setMotorPrecoOverride] = useState<Record<string, number>>({})
   // Tensão dos motores (global pra todos). null = "tensão a confirmar".
   const [tensaoMotores, setTensaoMotores] = useState<TensaoMotor>(null)
   // #32: Marca dos motores (global). Texto livre. null = "marca a confirmar".
@@ -490,6 +502,8 @@ export function OrcamentoMontar() {
   // Default = FOB + 'por conta do cliente' (comportamento legado). Vendedor pode mudar.
   const [freteTipo, setFreteTipo] = useState<'CIF' | 'FOB'>('FOB')
   const [freteTxt, setFreteTxt] = useState<string>('')
+  // Validade da proposta em dias, editavel inline no preview. Default legado = 10.
+  const [validadeDias, setValidadeDias] = useState<number>(10)
   // Parcelas estruturadas (tabela DATA/MÉTODO/VALOR) — alternativa ao texto livre acima
   const [parcelasPagamento, setParcelasPagamento] = useState<ParcelaPagamento[]>([])
   // Componentes adicionais (NÃO fabricados pela Branorte) — painel elétrico, balança, célula de carga, etc.
@@ -520,17 +534,20 @@ export function OrcamentoMontar() {
     formaPagamentoTxt,
     freteTipo,
     freteTxt,
+    validadeDias,
     parcelasPagamento,
     fotoPrincipal,
     componentesExtras,
     motoresAvulsos,
     balancaDispensada,
     obsPorConta,
+    motorPrecoOverride,
   }), [
     carrinho, acessorios, voltagem, tensaoMotores, marcaMotores, descontoCfg,
-    dataVendaTxt, prazoEntregaTxt, formaPagamentoTxt, freteTipo, freteTxt,
+    dataVendaTxt, prazoEntregaTxt, formaPagamentoTxt, freteTipo, freteTxt, validadeDias,
     parcelasPagamento, fotoPrincipal,
     componentesExtras, motoresAvulsos, balancaDispensada, obsPorConta,
+    motorPrecoOverride,
   ])
 
   // Autosave so liga depois que catalogo carregar (evita salvar snapshot vazio
@@ -590,12 +607,14 @@ export function OrcamentoMontar() {
     setFormaPagamentoTxt(prev.formaPagamentoTxt ?? '')
     setFreteTipo((prev as any).freteTipo ?? 'FOB')
     setFreteTxt((prev as any).freteTxt ?? '')
+    setValidadeDias((prev as any).validadeDias ?? 10)
     setParcelasPagamento(prev.parcelasPagamento ?? [])
     setFotoPrincipal(prev.fotoPrincipal ?? null)
     setComponentesExtras(prev.componentesExtras ?? [])
     setMotoresAvulsos((prev as any).motoresAvulsos ?? [])
     setBalancaDispensada((prev as any).balancaDispensada ?? false)
     setObsPorConta((prev as any).obsPorConta ?? null)
+    setMotorPrecoOverride((prev as any).motorPrecoOverride ?? {})
     setHistoryStack(stack => stack.slice(0, -1))
   }
 
@@ -629,12 +648,14 @@ export function OrcamentoMontar() {
     setFormaPagamentoTxt(d.formaPagamentoTxt ?? '')
     setFreteTipo((d as any).freteTipo ?? 'FOB')
     setFreteTxt((d as any).freteTxt ?? '')
+    setValidadeDias((d as any).validadeDias ?? 10)
     setParcelasPagamento(d.parcelasPagamento ?? [])
     setFotoPrincipal(d.fotoPrincipal ?? null)
     setComponentesExtras(d.componentesExtras ?? [])
     setMotoresAvulsos((d as any).motoresAvulsos ?? [])
     setBalancaDispensada((d as any).balancaDispensada ?? false)
     setObsPorConta((d as any).obsPorConta ?? null)
+    setMotorPrecoOverride((d as any).motorPrecoOverride ?? {})
     draft.dismissRecovered()
   }
 
@@ -663,7 +684,7 @@ export function OrcamentoMontar() {
   const [clienteDados, setClienteDados] = useState<PreviewClienteDados>({})
   const [clienteModalOpen, setClienteModalOpen] = useState(false)
 
-  function atualizarTermo(key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento' | 'freteTxt' | 'freteTipo', v: string) {
+  function atualizarTermo(key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento' | 'freteTxt' | 'freteTipo' | 'validadeDias', v: string) {
     if (key === 'dataVenda') {
       setDataVendaTxt(v)
     } else if (key === 'prazoEntrega') {
@@ -683,6 +704,10 @@ export function OrcamentoMontar() {
       setFreteTipo(novoTipo)
     } else if (key === 'freteTxt') {
       setFreteTxt(v)
+    } else if (key === 'validadeDias') {
+      // Nº de dias inteiro > 0; qualquer coisa inválida cai no default 10.
+      const n = parseInt(v, 10)
+      setValidadeDias(Number.isFinite(n) && n > 0 ? n : 10)
     }
   }
 
@@ -705,10 +730,30 @@ export function OrcamentoMontar() {
 
   const totalOficiais = useMemo(() => (items ?? []).filter(i => i.is_oficial).length, [items])
 
-  const motoresAgrupados = useMemo(
-    () => agruparMotores(carrinho, motores, voltagem, motoresAvulsos),
-    [carrinho, motores, voltagem, motoresAvulsos],
-  )
+  const motoresAgrupados = useMemo(() => {
+    const linhas = agruparMotores(carrinho, motores, voltagem, motoresAvulsos)
+    if (!Object.keys(motorPrecoOverride).length) return linhas
+    return linhas.map(m => {
+      // Não sobrescreve motor incluso / por conta do cliente / removido — essas linhas
+      // não mostram preço cobrável (mostram "incluso"/"removido"), então override não vale.
+      if (m.por_conta_cliente || m.removido || m.incluso_real) return m
+      const ov = motorPrecoOverride[motorOverrideKey(m)]
+      if (ov == null) return m
+      return { ...m, valor_unit: ov, valor_total: ov }
+    })
+  }, [carrinho, motores, voltagem, motoresAvulsos, motorPrecoOverride])
+
+  // Duplo-clique no preço do motor (preview) → senha 2104 → novo valor. novoValor null
+  // limpa o override (volta ao preço do catálogo). A senha é validada no preview.
+  function editarPrecoMotor(m: MotorAgrupado, novoValor: number | null) {
+    const key = motorOverrideKey(m)
+    setMotorPrecoOverride(prev => {
+      const next = { ...prev }
+      if (novoValor == null) delete next[key]
+      else next[key] = novoValor
+      return next
+    })
+  }
 
   const totalItems = useMemo(
     () => carrinho.reduce((s, c) => s + (c.brinde || c.por_conta_cliente ? 0 : c.valor * c.qtd), 0),
@@ -1727,6 +1772,7 @@ export function OrcamentoMontar() {
     // Reseta frete pro default legado (FOB + texto vazio = "por conta do cliente")
     setFreteTipo('FOB')
     setFreteTxt('')
+    setValidadeDias(10)
     // initialModal e usado pra hidratar o modal Finalizar — limpa tambem
     setInitialModal(null)
   }
@@ -2352,6 +2398,8 @@ export function OrcamentoMontar() {
     if (typeof (o as any).frete_txt === 'string') {
       setFreteTxt((o as any).frete_txt)
     }
+    // Validade da proposta (coluna validade_dias). Ausente/nulo = default legado 10.
+    setValidadeDias((o as any).validade_dias ?? 10)
     // Desconto, tensão e marca dos motores (migration 2026-06-10): antes sumiam ao
     // reabrir (só viviam no rascunho local). Agora restaura do banco.
     if ((o as any).desconto) setDescontoCfg((o as any).desconto)
@@ -3025,7 +3073,7 @@ export function OrcamentoMontar() {
                 onUpdateMarcaMotores={setMarcaMotores}
                 desconto={descontoCfg}
                 onUpdateDesconto={setDescontoCfg}
-                terms={{ dataVenda: dataVendaTxt, prazoEntrega: prazoEntregaTxt, formaPagamento: formaPagamentoTxt, freteTipo, freteTxt }}
+                terms={{ dataVenda: dataVendaTxt, prazoEntrega: prazoEntregaTxt, formaPagamento: formaPagamentoTxt, freteTipo, freteTxt, validadeDias }}
                 onUpdateTerm={atualizarTermo}
                 onMoverItem={moverItem}
                 onTrocarItem={finameMode ? undefined : handleTrocarItem}
@@ -3039,6 +3087,7 @@ export function OrcamentoMontar() {
                 onMotorIncluso={marcarMotorIncluso}
                 onRemoverMotor={removerMotorDoItem}
                 onRestaurarMotor={restaurarMotorDoItem}
+                onEditarPrecoMotor={finameMode ? undefined : editarPrecoMotor}
                 onAdicionarMotorAvulso={finameMode ? undefined : adicionarMotorAvulso}
                 vendedoresContato={vendedoresContato}
                 vendedorResponsavelNome={profile?.display_name || null}
@@ -3240,6 +3289,7 @@ export function OrcamentoMontar() {
             formaPagamento: formaPagamentoTxt || 'a combinar',
             freteTipo,
             freteTxt: freteTxt || null,
+            validadeDias,
           },
           parcelas: parcelasPagamento,
           componentesExtras: componentesExtrasFinal,

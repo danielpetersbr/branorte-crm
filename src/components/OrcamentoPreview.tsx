@@ -88,6 +88,8 @@ export interface PreviewTerms {
   // Default quando nada foi setado: 'FOB' + 'por conta do cliente' (comportamento legado).
   freteTipo?: 'CIF' | 'FOB' | null
   freteTxt?: string | null
+  // Validade da proposta em dias (editavel inline). Default legado = 10.
+  validadeDias?: number | null
 }
 
 // Parcela estruturada de pagamento
@@ -199,7 +201,7 @@ export interface OrcamentoPreviewProps {
   onToggleInox?: (uid: string, tipo?: '304' | '316' | false) => void
   onToggleTungstenio?: (uid: string) => void
   onUpdateQtd?: (uid: string, novaQtd: number) => void
-  onUpdateTerm?: (key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento' | 'freteTxt' | 'freteTipo', valor: string) => void
+  onUpdateTerm?: (key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento' | 'freteTxt' | 'freteTipo' | 'validadeDias', valor: string) => void
   onMoverItem?: (uid: string, direcao: 'cima' | 'baixo') => void
   onTrocarItem?: (uid: string) => void   // abre o picker da categoria pra substituir o item
   onToggleBrinde?: (uid: string) => void
@@ -225,6 +227,10 @@ export interface OrcamentoPreviewProps {
   // motores. A linha entra com item_uid "avulso:<id>" — remover deleta, trocar
   // troca cv/polos. Callback recebe o motor escolhido no picker.
   onAdicionarMotorAvulso?: (novoMotor: MotorCatalogoOption) => void
+  // Editar preço do motor "na hora": duplo-clique no preço → senha 2104 → novo valor.
+  // novoValor null limpa o override (volta ao preço do catálogo). Só edição (renderMode
+  // não recebe, então o PDF não expõe o gesto). A senha é conferida aqui no preview.
+  onEditarPrecoMotor?: (m: PreviewMotor, novoValor: number | null) => void
 
   // Vendedores Branorte pra grid de contatos no rodape. Quando passado, renderiza
   // dinamicamente em vez do hardcoded antigo (que so tinha 3 vendedores).
@@ -360,11 +366,33 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     componentesExtras = [], onUpdateComponentesExtras, componentesAdicionaisCatalogo = [],
     parcelas, onUpdateParcelas,
     motoresDisponiveis, onTrocarMotor, onMotorPorContaCliente, onMotorIncluso, onAdicionarMotorAvulso,
-    onRemoverMotor, onRestaurarMotor,
+    onRemoverMotor, onRestaurarMotor, onEditarPrecoMotor,
     vendedoresContato, vendedorResponsavelNome,
     onEditCliente,
     onUpdateFotoItem,
   } = props
+
+  // Duplo-clique no preço de um motor → pede senha (2104) e o novo valor. Só roda em
+  // modo edição (onEditarPrecoMotor não é passado em renderMode/PDF). Valor vazio limpa
+  // o override e volta ao preço do catálogo.
+  function editarPrecoMotorPrompt(m: PreviewMotor) {
+    if (!onEditarPrecoMotor) return
+    const senha = window.prompt('Senha para alterar o preço do motor:')
+    if (senha == null) return
+    if (senha.trim() !== '2104') { window.alert('Senha incorreta.'); return }
+    const atual = m.valor_total || 0
+    const entrada = window.prompt('Novo valor do motor em R$ (deixe vazio pra voltar ao preço do catálogo):', String(atual))
+    if (entrada == null) return
+    const bruto = entrada.trim()
+    if (bruto === '') { onEditarPrecoMotor(m, null); return }
+    // Aceita "8000", "8.000", "8.000,00", "R$ 8.000,50"
+    const num = Number(
+      bruto.replace(/[^\d.,-]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'),
+    )
+    if (!isFinite(num) || num < 0) { window.alert('Valor inválido.'); return }
+    onEditarPrecoMotor(m, num)
+  }
+
   const [editingNomeUid, setEditingNomeUid] = useState<string | null>(null)
   const [editingNomeValor, setEditingNomeValor] = useState<string>('')
 
@@ -1639,7 +1667,13 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                     ? renderMode
                                       ? <span className="text-gray-500 italic">a confirmar</span>
                                       : <span className="text-amber-700 font-semibold print:text-gray-500 print:font-normal print:italic" title="Motor sem valor cadastrado no catálogo. Clique pra trocar e escolher um motor com preço.">⚠ definir valor</span>
-                                    : <>R$ {formatBRLBare(m.valor_total)}</>}
+                                    : (onEditarPrecoMotor && !renderMode
+                                        ? <span
+                                            onDoubleClick={() => editarPrecoMotorPrompt(m)}
+                                            className="cursor-pointer select-none rounded px-1 -mx-1 hover:bg-amber-50 hover:ring-1 hover:ring-amber-300 print:hover:bg-transparent print:hover:ring-0"
+                                            title="Duplo-clique pra alterar o preço deste motor (pede senha)"
+                                          >R$ {formatBRLBare(m.valor_total)}</span>
+                                        : <>R$ {formatBRLBare(m.valor_total)}</>)}
                           </td>
                         </tr>
                       )
