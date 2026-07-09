@@ -88,6 +88,7 @@ export interface CarrinhoSnapshot {
     formaPagamento?: string | null
     freteTipo?: 'CIF' | 'FOB' | null
     freteTxt?: string | null
+    validadeDias?: number | null
   }
   // Parcelas estruturadas (tabela DATA/MÉTODO/VALOR)
   parcelas?: Array<{
@@ -743,6 +744,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         // motores agora sobrevivem ao reabrir/editar (antes só viviam no rascunho local).
         frete_tipo: snapshot.termsInline?.freteTipo ?? null,
         frete_txt: snapshot.termsInline?.freteTxt ?? null,
+        validade_dias: snapshot.termsInline?.validadeDias ?? null,
         desconto: snapshot.desconto ?? null,
         tensao_motores: snapshot.tensaoMotores ?? null,
         marca_motores: snapshot.marcaMotores ?? null,
@@ -821,6 +823,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           // default FOB "por conta do cliente" mesmo num orçamento CIF.
           freteTipo: snapshot.termsInline?.freteTipo ?? null,
           freteTxt: snapshot.termsInline?.freteTxt ?? null,
+          validadeDias: snapshot.termsInline?.validadeDias ?? null,
         },
         observacoesExtra: observacoes.trim() || null,
         obsPorConta: snapshot.obsPorConta ?? null,
@@ -898,6 +901,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           tensaoMotores: snapshot.tensaoMotores ?? null,
           freteTipo: snapshot.termsInline?.freteTipo ?? null,
           freteTxt: snapshot.termsInline?.freteTxt ?? null,
+          validadeDias: snapshot.termsInline?.validadeDias ?? null,
           // Modo FINAME: mostra a linha "Código FINAME" no DOCX (oculta em modo normal).
           finameMode: snapshot.finameMode ?? false,
         })

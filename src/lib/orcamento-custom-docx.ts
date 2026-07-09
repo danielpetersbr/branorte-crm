@@ -90,6 +90,8 @@ export interface GerarCustomDocxOpts {
   tensaoMotores?: 220 | 380 | 660 | null
   freteTipo?: 'CIF' | 'FOB' | null
   freteTxt?: string | null
+  // Validade da proposta em dias (editavel pelo vendedor). Default legado = 10.
+  validadeDias?: number | null
   // Modo FINAME: mostra a linha "Código FINAME" nas specs (em modo normal fica oculta).
   // As fotos já vêm removidas (foto_url null) e motores/acessórios já vêm embutidos
   // pelos itens transformados em OrcamentoMontar.
@@ -891,6 +893,7 @@ function buildTermosComerciais(
   totalProposta?: number,
   freteTipo?: 'CIF' | 'FOB' | null,
   freteTxt?: string | null,
+  validadeDias?: number | null,
 ): (Paragraph | Table)[] {
   // Frete: usa o texto escolhido pelo vendedor; senão deriva do tipo (CIF = Branorte
   // paga, FOB = cliente paga). Antes era hardcoded "por conta do cliente" — errado em CIF.
@@ -903,7 +906,7 @@ function buildTermosComerciais(
       ? [['Forma de pagamento', formaPagamento || 'a combinar'] as [string, string]]
       : []),
     ['Frete', freteFinal],
-    ['Validade da proposta', '10 dias após o envio'],
+    ['Validade da proposta', `${validadeDias ?? 10} dias após o envio`],
   ]
   const result: (Paragraph | Table)[] = [
     new Paragraph({
@@ -1270,7 +1273,7 @@ export async function gerarOrcamentoCustomDocx(opts: GerarCustomDocxOpts): Promi
   blocos.push(...buildValorTotalProposta(opts.totalProposta, opts.totalMotores > 0, opts.desconto, opts.totalEquip))
 
   // Termos comerciais (with parcelas support) — frete escolhido pelo vendedor
-  blocos.push(...buildTermosComerciais(opts.formaPagamento, opts.dataVenda, opts.prazoEntrega, opts.parcelas, totalEfetivo, opts.freteTipo, opts.freteTxt))
+  blocos.push(...buildTermosComerciais(opts.formaPagamento, opts.dataVenda, opts.prazoEntrega, opts.parcelas, totalEfetivo, opts.freteTipo, opts.freteTxt, opts.validadeDias))
 
   // Redes sociais
   blocos.push(sectionHeader('Nossas redes sociais'))

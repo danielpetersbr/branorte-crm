@@ -18,6 +18,8 @@ interface PdfInput {
   total_motores: number
   total_proposta: number
   observacoes?: string | null
+  // Validade da proposta em dias. Default legado = 10.
+  validadeDias?: number | null
 }
 
 const PAGE_W = 210
@@ -183,7 +185,7 @@ export function gerarOrcamentoPdf(input: PdfInput): jsPDF {
     'Prazo de entrega – 90 dias (úteis)',
     'Forma de pagamento – a combinar',
     'Frete – por conta do cliente',
-    'Validade da proposta – 10 dias após o envio.',
+    `Validade da proposta – ${input.validadeDias ?? 10} dias após o envio.`,
   ]
   for (const t of termos) {
     doc.text(`- ${t}`, MARGIN, y)
