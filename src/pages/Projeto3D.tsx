@@ -16,6 +16,9 @@ import {
   useConfiguradorProjetos, useSalvarConfiguradorProjeto, useDeletarConfiguradorProjeto,
   useBuscarContatos, fetchConfiguradorProjeto, type ConfiguradorProjetoMeta,
 } from '@/hooks/useConfiguradorProjetos'
+import {
+  fetchConfiguradorBlocos, upsertConfiguradorBloco, deleteConfiguradorBloco,
+} from '@/hooks/useConfiguradorBlocos'
 
 const CONFIGURADOR_ORIGIN = 'https://branorte-configurador-3d.vercel.app'
 const CONFIGURADOR_URL = CONFIGURADOR_ORIGIN
@@ -44,6 +47,8 @@ export function Projeto3D() {
   const projetoDataRef = useRef<unknown>(null)
 
   const { profile } = useAuth()
+  const profileRef = useRef(profile)
+  useEffect(() => { profileRef.current = profile }, [profile])
   // Papel passado pro iframe: só ADMIN vê o botão "Catálogo de Produtos" no configurador (vendedor não).
   const iframeSrc = `${CONFIGURADOR_URL}?adm=${profile?.role === 'admin' ? '1' : '0'}`
   const { data: projetos, isLoading: loadingLista } = useConfiguradorProjetos()
@@ -66,6 +71,16 @@ export function Projeto3D() {
       if (m.type === 'branorte:project' && m.requestId) {
         const fn = pendings.current.get(m.requestId)
         if (fn) { pendings.current.delete(m.requestId); fn(m.project) }
+      } else if (m.type === 'branorte:ready') {
+        // iframe subiu → manda os BLOCOS PERSONALIZADOS salvos (Supabase) pro catálogo dele
+        fetchConfiguradorBlocos()
+          .then((defs) => frameRef.current?.contentWindow?.postMessage({ type: 'branorte:blocks:load', defs }, CONFIGURADOR_ORIGIN))
+          .catch(() => {})
+      } else if (m.type === 'branorte:block:upsert' && m.def) {
+        // usuário criou/editou um bloco no configurador → grava no Supabase (compartilhado pela equipe)
+        upsertConfiguradorBloco(m.def, profileRef.current?.id ?? null, profileRef.current?.display_name ?? null).catch(() => {})
+      } else if (m.type === 'branorte:block:delete' && m.id) {
+        deleteConfiguradorBloco(String(m.id)).catch(() => {})
       }
     }
     window.addEventListener('message', onMsg)
