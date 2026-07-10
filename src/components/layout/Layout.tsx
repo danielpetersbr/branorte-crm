@@ -101,8 +101,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     id: 'producao', label: 'Produção', icon: Factory,
     items: [
-      { to: '/projeto', label: 'Projeto', icon: Factory, permKey: 'menu.projeto' },
-      { to: '/projeto-3d', label: 'Projeto 3D', icon: Boxes, permKey: 'menu.projeto' },
+      { to: '/projeto-3d', label: 'Projeto 3D', icon: Boxes, permKey: 'menu.projeto_3d' },
     ],
   },
   {
