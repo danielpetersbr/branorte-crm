@@ -339,8 +339,17 @@ function agruparMotores(
     // "motorredutor"). Sem isto o "(incluso)" era ignorado e os 2 motores eram cobrados.
     // Restrito a essa categoria pra NÃO zerar moinho/triturador (avulso) que tem "(incluso)"
     // perdido na spec.
+    // Bug #46: itens legados/de modelo chegam com categoria 'MODELO' — detecta
+    // pré-limpeza pelo NOME, ancorado no início pra NÃO casar transportadores
+    // "(Alimentação da pré limpeza)", cujo motor é avulso e cobrado à parte.
     const inclusoDireto = it.categoria === 'PRE_LIMPEZA'
-    const eInclusoSpec = /\(\s*inclus[oa]s?\.?\s*\)/i.test(specMotor)
+      || /^\s*(m[aá]quina\s+)?pr[eé]\s*-?\s*limpeza/i.test(nomeItem)
+    // Bug #46: aceita "(Motor incluso)", "(motores inclusos)" etc — MESMO padrão do
+    // motorJaInclusoNoItem — mas nunca com negação ("(motor não incluso)"). Antes o
+    // regex exigia parêntese contendo SÓ "incluso": o item entrava com
+    // motor_valor_unit=0 (detector permissivo) e agruparMotores recobrava os motores
+    // pelo catálogo (detector estrito) — pré-limpeza saía com 3 CV + 1,5 CV cobrados.
+    const eInclusoSpec = /\((?![^)]*\bn[ãa]o\b)[^)]*\binclus[oa]s?\b[^)]*\)/i.test(specMotor)
     // CV mencionado como incluso no spec (1º CV do match). Se motor REAL (it.motor_cv)
     // é diferente, NAO trata como incluso — é outro motor avulso.
     // Ex: spec "Acionamento 10 CV (incluso)" + motor pareado 15 CV → NÃO incluso.
@@ -1706,7 +1715,12 @@ export function OrcamentoMontar() {
               }
             }
             const capIdx = novas.findIndex(s => /capacidade/i.test(s))
-            if (capIdx >= 0) {
+            // Bug #51: NUNCA sobrescrever a própria linha que o vendedor acabou de
+            // editar. O auto-recálculo só vale quando a peneira mudou em OUTRA linha
+            // (ex: editar "Montado com peneira 5mm" atualiza a linha de capacidade).
+            // Sem este guard, editar a linha "Capacidade X kg/h (... peneira 3,0mm)"
+            // disparava o recálculo nela mesma e a edição sumia no blur.
+            if (capIdx >= 0 && capIdx !== idx) {
               novas[capIdx] = novas[capIdx].replace(
                 /\d[\d.]*\s*kg\/h.*/i,
                 `${novaCapacidade.toLocaleString('pt-BR')} kg/h (na densidade do milho e peneira ${penMm.toLocaleString('pt-BR')}mm)`
@@ -2227,6 +2241,10 @@ export function OrcamentoMontar() {
         else if (n.includes('MISTURADOR')) categoria = 'MISTURADOR'
         else if (n.includes('SILO')) categoria = 'SILO'
         else if (n.includes('ELEVADOR')) categoria = 'ELEVADOR'
+        // Bug #46: pré-limpeza ANTES de PENEIRA — sem isto caía em 'MODELO' e perdia
+        // o "motor incluso direto" do agruparMotores (motores cobrados indevidamente).
+        // normalizar() já vira "Pré-Limpeza"/"PRÉ - LIMPEZA" em "PRE LIMPEZA".
+        else if (n.includes('PRE LIMPEZA')) categoria = 'PRE_LIMPEZA'
         else if (n.includes('PENEIRA')) categoria = 'PENEIRA'
         else if (n.includes('CACAMBA_PESAGEM') || n.includes('CACAMBA_PESAGEM') || n.includes('PESAGEM')) categoria = 'CACAMBA_PESAGEM'
         else if (n.includes('ENSACADEIRA')) categoria = 'ENSACADEIRA'

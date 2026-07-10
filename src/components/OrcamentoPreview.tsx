@@ -15,6 +15,9 @@ export interface PreviewItem {
   uid?: string
   catalogo_id?: number
   categoria: string
+  // Bug #6: item com inversor roda motor TRIFÁSICO mesmo em orçamento mono —
+  // o modal Trocar Motor usa isto pra ordenar a voltagem efetiva primeiro.
+  usa_inversor?: boolean
   nome: string
   nome_custom?: string | null  // se preenchido, sobrescreve nome no display
   specs: string[]
@@ -1611,9 +1614,16 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                   <div className="p-1 overflow-y-auto">
                                     {(() => {
                                       const q = motorBusca.trim().toLowerCase()
+                                      // Bug #6: motores da voltagem EFETIVA do orçamento primeiro na lista.
+                                      // Ex: 50 CV só existe em trifásico — num orçamento monofásico o vendedor
+                                      // selecionava o trifásico sem perceber e o preço saía trocado (ou a linha
+                                      // zerava "a confirmar" ao reaplicar a voltagem).
+                                      const voltEfetiva = itemCarrinho?.usa_inversor ? 'trifasico' : voltagem
                                       const lista = motoresDisponiveis
                                         .slice()
-                                        .sort((a, b) => Number(a.cv) - Number(b.cv) || a.polos - b.polos || a.voltagem.localeCompare(b.voltagem))
+                                        .sort((a, b) =>
+                                          (Number(b.voltagem === voltEfetiva) - Number(a.voltagem === voltEfetiva))
+                                          || (Number(a.cv) - Number(b.cv)) || (a.polos - b.polos) || a.voltagem.localeCompare(b.voltagem))
                                         .filter(opt => {
                                           if (!q) return true
                                           const label = opt.polos === 0
