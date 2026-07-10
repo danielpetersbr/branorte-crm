@@ -278,7 +278,9 @@ function AppRoutes() {
     const aprovarOk = p.startsWith('/frete/aprovar') && can('frete.aprovar')
     // Projeto 3D: liberado por permissão (menu.projeto_3d), não por allowlist fixa
     const projeto3dOk = p.startsWith('/projeto-3d') && can('menu.projeto_3d')
-    const allowed = freteLiberado || aprovarOk || projeto3dOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
+    // Roadmap & Feedback: vendedor VÊ o retorno dos feedbacks que enviou (#49)
+    const roadmapOk = p.startsWith('/roadmap') && can('menu.roadmap')
+    const allowed = freteLiberado || aprovarOk || projeto3dOk || roadmapOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
     if (!allowed) return <Navigate to="/atendimentos" replace />
   }
 

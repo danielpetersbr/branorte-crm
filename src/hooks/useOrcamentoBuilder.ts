@@ -7,7 +7,8 @@ export interface OrcamentoItem {
   nome: string
   specs: string[]
   valor: number
-  brinde?: boolean      // item brinde (valor não entra no total)
+  brinde?: boolean
+  incluso?: boolean     // #45: item incluso — valor não soma, mostra "INCLUSO"      // item brinde (valor não entra no total)
   por_conta_cliente?: boolean  // item fornecido pelo cliente — mostra "por conta do cliente"
   // ── Round-trip completo (2026-06-10) ──────────────────────────────────────
   // Quando __full=true, o item foi salvo com TODOS os campos do carrinho e a
@@ -436,23 +437,25 @@ export function detectarBalancaDuplicada(
   return { duplicada: false, motivo: '' }
 }
 
-// Suffix voltagem (Monofásico/Trifásico) ao nome do item se ainda não tiver.
-// Resolve bug #21: vendedores estavam concatenando à mão pra identificar a tensão.
-// Aplica somente se o orçamento tem motor(es) — caso contrário voltagem é irrelevante.
+// Feedback #64: NÃO sufixa mais a voltagem no nome ("... - Trifásico") — o builder
+// mostra o chip ⚡Trif/Mono ao lado do título, então o sufixo virou ruído.
+// (Inverte o fix #21.) O save agora LIMPA o sufixo legado dos orçamentos antigos.
+// Só remove quando precedido de " - " — não mexe em nomes que contêm a palavra
+// legitimamente (ex: "PAINEL ELÉTRICO TRIFÁSICO", sem hífen).
+const SUFIXO_VOLTAGEM_RE = /\s+[-–—]\s*(mono|tri)f[aá]sicos?\.?\s*$/i
+
+export function stripSufixoVoltagem(nome: string): string {
+  return (nome || '').replace(SUFIXO_VOLTAGEM_RE, '').trim()
+}
+
 function suffixVoltagemNosItens(
   itens: OrcamentoItem[],
-  voltagem: 'monofasico' | 'trifasico',
-  motores: OrcamentoMotor[] | null | undefined
+  _voltagem: 'monofasico' | 'trifasico',
+  _motores: OrcamentoMotor[] | null | undefined
 ): OrcamentoItem[] {
-  const temMotores = Array.isArray(motores) && motores.length > 0
-  if (!temMotores) return itens
-  const label = voltagem === 'monofasico' ? 'Monofásico' : 'Trifásico'
-  const jaTemVoltagem = /\b(mono(f[aá]sico)?|trif[aá]sico)\b/i
   return itens.map(it => {
-    const nome = it.nome || ''
-    if (!nome) return it
-    if (jaTemVoltagem.test(nome)) return it
-    return { ...it, nome: `${nome} - ${label}` }
+    const limpo = stripSufixoVoltagem(it.nome || '')
+    return limpo === (it.nome || '') ? it : { ...it, nome: limpo }
   })
 }
 

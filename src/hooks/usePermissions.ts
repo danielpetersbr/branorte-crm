@@ -72,6 +72,7 @@ const FALLBACK: Record<AssignableRole, Record<string, boolean>> = {
     'menu.orcamentos': true,
     'menu.prospeccao': true,
     'menu.projeto_3d': true,
+    'menu.roadmap': true,
     'orcamentos.criar': true,
     'due_diligence.consultar': true,
     'frete.solicitar': true,

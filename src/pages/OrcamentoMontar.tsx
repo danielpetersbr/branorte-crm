@@ -18,7 +18,7 @@ import { OrcamentoPreview, type ParcelaPagamento, type PreviewClienteDados } fro
 import { montarItensFiname, type FinameBloqueio } from '@/lib/finame'
 import { ResponsiveScaler } from '@/components/ResponsiveScaler'
 import { ClienteEditModal } from '@/components/ClienteEditModal'
-import { useOrcamentoModelos, useOrcamentoGerado, type OrcamentoModelo, detectarBalancaDuplicada } from '@/hooks/useOrcamentoBuilder'
+import { useOrcamentoModelos, useOrcamentoGerado, type OrcamentoModelo, detectarBalancaDuplicada, stripSufixoVoltagem } from '@/hooks/useOrcamentoBuilder'
 import { OrcamentoAIChat } from '@/components/orcamento/OrcamentoAIChat'
 import { useSearchParams } from 'react-router-dom'
 import { useOrcamentoDraft } from '@/hooks/useOrcamentoDraft'
@@ -63,6 +63,9 @@ interface CarrinhoItem {
   specs_original?: string[]
   /** Quando true, item é brinde (valor não entra no total, mostra "BRINDE" no preview). */
   brinde?: boolean
+  /** Feedback #45: quando true, item está INCLUSO no conjunto — valor não entra
+   *  no total e o preview/DOCX mostram "INCLUSO" no lugar do preço. */
+  incluso?: boolean
   /** Quando true, item é fornecido/comprado pelo CLIENTE (ex: caixa, estrutura própria).
    *  A Branorte não cobra: valor não entra no total e o preview mostra
    *  "por conta do cliente" em vez de um valor. */
@@ -756,7 +759,7 @@ export function OrcamentoMontar() {
   }
 
   const totalItems = useMemo(
-    () => carrinho.reduce((s, c) => s + (c.brinde || c.por_conta_cliente ? 0 : c.valor * c.qtd), 0),
+    () => carrinho.reduce((s, c) => s + (c.brinde || c.por_conta_cliente || c.incluso ? 0 : c.valor * c.qtd), 0),
     [carrinho],
   )
   const totalMotores = useMemo(
@@ -771,7 +774,7 @@ export function OrcamentoMontar() {
     if (acessorios.valorFixo != null && acessorios.valorFixo > 0) return Math.ceil(acessorios.valorFixo)
     const excluded = new Set(acessorios.excludedItemUids ?? [])
     const base = carrinho.reduce(
-      (s, c) => s + (c.brinde || c.por_conta_cliente || excluded.has(c.uid) ? 0 : c.valor * c.qtd),
+      (s, c) => s + (c.brinde || c.por_conta_cliente || c.incluso || excluded.has(c.uid) ? 0 : c.valor * c.qtd),
       0,
     )
     return Math.ceil((base * acessorios.pct) / 100)
@@ -828,7 +831,7 @@ export function OrcamentoMontar() {
     [motoresAgrupados, fExp],
   )
   const totalItemsExib = useMemo(
-    () => carrinhoExib.reduce((s, c) => s + (c.brinde || c.por_conta_cliente ? 0 : c.valor * c.qtd), 0),
+    () => carrinhoExib.reduce((s, c) => s + (c.brinde || c.por_conta_cliente || c.incluso ? 0 : c.valor * c.qtd), 0),
     [carrinhoExib],
   )
   const totalMotoresExib = useMemo(() => motoresAgrupadosExib.reduce((s, m) => s + m.valor_total, 0), [motoresAgrupadosExib])
@@ -854,7 +857,7 @@ export function OrcamentoMontar() {
       motorPorUid.set(m.item_uid, (motorPorUid.get(m.item_uid) || 0) + (m.valor_total || 0))
     }
     const inputs = carrinhoExib
-      .filter(it => !it.por_conta_cliente && !it.brinde) // cliente/brinde ficam fora do FINAME
+      .filter(it => !it.por_conta_cliente && !it.brinde && !it.incluso) // cliente/brinde/incluso ficam fora do FINAME
       .map(it => ({
         uid: it.uid,
         nome: it.nome_custom || it.nome,
@@ -899,6 +902,7 @@ export function OrcamentoMontar() {
         // Sem imagens no FINAME.
         foto_url: null,
         brinde: false,
+        incluso: false,
       }
     })
   }, [finameMode, finameTransform, carrinhoExib, origByUid, finameValorOverride])
@@ -2176,7 +2180,7 @@ export function OrcamentoMontar() {
           catalogo_id: typeof itAny.catalogo_id === 'number' ? itAny.catalogo_id : -1,
           preco_branorte_id: itAny.preco_branorte_id ?? null,
           categoria: itAny.categoria || 'MODELO',
-          nome: it.nome,
+          nome: stripSufixoVoltagem(it.nome),  // #64: limpa " - Trifásico" legado
           specs: it.specs || [],
           specs_original: itAny.specs_original ?? undefined,
           qtd: it.qtd || 1,
@@ -2193,6 +2197,7 @@ export function OrcamentoMontar() {
           inox: itAny.inox ?? false,
           tungstenio: !!itAny.tungstenio,
           brinde: !!itAny.brinde,
+          incluso: !!itAny.incluso,
           por_conta_cliente: !!itAny.por_conta_cliente,
           motor_por_conta_cliente: !!itAny.motor_por_conta_cliente,
           motor_removido: !!itAny.motor_removido,
@@ -2257,7 +2262,7 @@ export function OrcamentoMontar() {
         catalogo_id: ci?.id ?? -1,
         preco_branorte_id: ci?.preco_branorte_id ?? null,
         categoria,
-        nome: it.nome,
+        nome: stripSufixoVoltagem(it.nome),  // #64: limpa " - Trifásico" legado
         specs: it.specs || [],
         qtd: it.qtd || 1,
         valor: valorFinal,
@@ -2273,6 +2278,7 @@ export function OrcamentoMontar() {
         foto_url: foto,
         usa_inversor: !!(ci?.usa_inversor),
         brinde: !!(it as any).brinde,
+        incluso: !!(it as any).incluso,
         motor_por_conta_cliente: !!(it as any).motor_por_conta_cliente,
         por_conta_cliente: !!(it as any).por_conta_cliente,
       })
@@ -3053,6 +3059,7 @@ export function OrcamentoMontar() {
                 onToggleInox={finameMode ? undefined : toggleInox}
                 onToggleTungstenio={finameMode ? undefined : toggleTungstenio}
                 onToggleBrinde={finameMode ? undefined : (uid) => setCarrinho(prev => prev.map(c => c.uid === uid ? { ...c, brinde: !c.brinde } : c))}
+                onToggleIncluso={finameMode ? undefined : (uid) => setCarrinho(prev => prev.map(c => c.uid === uid ? { ...c, incluso: !c.incluso } : c))}
                 onTogglePorConta={finameMode ? undefined : (uid) => setCarrinho(prev => prev.map(c => c.uid === uid ? { ...c, por_conta_cliente: !c.por_conta_cliente, ...(!c.por_conta_cliente ? { valor: 0, valor_original: 0 } : {}) } : c))}
                 onUpdateQtd={finameMode ? undefined : alterarQtd}
                 componentesExtras={componentesExtrasFinal}
@@ -3250,6 +3257,7 @@ export function OrcamentoMontar() {
             motor_valor_unit: c.motor_valor_unit,
             foto_url: c.foto_url,
             brinde: c.brinde,
+            incluso: c.incluso,
             motor_por_conta_cliente: c.motor_por_conta_cliente,
             por_conta_cliente: c.por_conta_cliente,
             // Round-trip completo: campos extras pra recarregar a edição 1:1
@@ -4563,7 +4571,7 @@ function AcessoriosModal({
 
   // Base de cálculo (preview ao vivo dentro do modal).
   const itensCarrinho = useMemo(
-    () => carrinho.filter(c => !c.brinde && !c.por_conta_cliente),
+    () => carrinho.filter(c => !c.brinde && !c.por_conta_cliente && !c.incluso),
     [carrinho],
   )
   const baseCalculo = useMemo(() => {

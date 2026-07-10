@@ -29,6 +29,8 @@ export interface PreviewItem {
   inox?: '304' | '316' | false
   tungstenio?: boolean
   brinde?: boolean
+  /** Feedback #45: item incluso no conjunto — valor não soma; coluna mostra "INCLUSO". */
+  incluso?: boolean
   /** Item fornecido/comprado pelo cliente — coluna de valor mostra "por conta do cliente". */
   por_conta_cliente?: boolean
 }
@@ -205,6 +207,7 @@ export interface OrcamentoPreviewProps {
   onMoverItem?: (uid: string, direcao: 'cima' | 'baixo') => void
   onTrocarItem?: (uid: string) => void   // abre o picker da categoria pra substituir o item
   onToggleBrinde?: (uid: string) => void
+  onToggleIncluso?: (uid: string) => void
   onTogglePorConta?: (uid: string) => void
 
   // Parcelas estruturadas (alternativa ao texto livre de formaPagamento)
@@ -362,7 +365,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     tensaoMotores = null, onUpdateTensaoMotores,
     marcaMotores = null, onUpdateMarcaMotores,
     desconto, onUpdateDesconto,
-    onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onAddSpec, onRemoveSpec, onUpdateValor, onToggleInox, onToggleTungstenio, onUpdateQtd, onUpdateTerm, onMoverItem, onTrocarItem, onToggleBrinde, onTogglePorConta,
+    onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onAddSpec, onRemoveSpec, onUpdateValor, onToggleInox, onToggleTungstenio, onUpdateQtd, onUpdateTerm, onMoverItem, onTrocarItem, onToggleBrinde, onToggleIncluso, onTogglePorConta,
     componentesExtras = [], onUpdateComponentesExtras, componentesAdicionaisCatalogo = [],
     parcelas, onUpdateParcelas,
     motoresDisponiveis, onTrocarMotor, onMotorPorContaCliente, onMotorIncluso, onAdicionarMotorAvulso,
@@ -1196,7 +1199,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   {/* Valor abaixo do bloco texto+foto */}
                   <div data-no-break>
                   <div className="mt-2.5 pt-1.5 border-t border-gray-300">
-                    {it.qtd > 1 && it.valor > 0 && (
+                    {it.qtd > 1 && it.valor > 0 && !it.incluso && (
                       <div className="flex justify-between text-[12.5px] text-gray-500 mb-0.5">
                         <span>Valor unitário</span>
                         <span>R$ {formatBRLBare(it.valor)}</span>
@@ -1223,6 +1226,17 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                               onClick={() => onToggleBrinde(it.uid!)}
                               className="text-[11px] text-gray-400 hover:text-red-500 print:hidden"
                               title="Remover brinde"
+                            >✕</button>
+                          )}
+                        </span>
+                      ) : it.incluso ? (
+                        <span className="flex items-center gap-2">
+                          <span className="text-gray-600 font-bold text-[15px]">INCLUSO</span>
+                          {!renderMode && onToggleIncluso && it.uid && (
+                            <button
+                              onClick={() => onToggleIncluso(it.uid!)}
+                              className="text-[11px] text-gray-400 hover:text-red-500 print:hidden"
+                              title="Remover 'incluso' (voltar a cobrar)"
                             >✕</button>
                           )}
                         </span>
@@ -1271,6 +1285,13 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                               className="text-[10px] text-gray-400 hover:text-green-600 border border-gray-300 hover:border-green-500 rounded px-1.5 py-0.5 print:hidden"
                               title="Marcar como brinde"
                             >BRINDE</button>
+                          )}
+                          {!renderMode && onToggleIncluso && it.uid && (
+                            <button
+                              onClick={() => onToggleIncluso(it.uid!)}
+                              className="text-[10px] text-gray-400 hover:text-blue-600 border border-gray-300 hover:border-blue-500 rounded px-1.5 py-0.5 print:hidden"
+                              title="Marcar como INCLUSO — não cobra este item, mostra 'INCLUSO' no lugar do preço"
+                            >INCLUSO</button>
                           )}
                         </span>
                       ) : (
