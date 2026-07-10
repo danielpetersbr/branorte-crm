@@ -497,6 +497,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   const freteTipoSel: 'CIF' | 'FOB' = terms?.freteTipo === 'CIF' ? 'CIF' : 'FOB'
   const freteTxtRaw = (terms?.freteTxt ?? '').trim()
   const freteTxtFinal = freteTxtRaw || (freteTipoSel === 'CIF' ? 'por conta da Branorte' : 'por conta do cliente')
+  // Validade da proposta (dias). Default legado 10. Editável inline; persiste via onUpdateTerm (#57).
+  const validadeDiasFinal = terms?.validadeDias ?? 10
 
   // Helper: cabeçalho de seção
   const SectionHeader = ({ children }: { children: React.ReactNode }) => (
@@ -2791,7 +2793,26 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       <span>Frete ({freteTipoSel}) – {freteTxtFinal}</span>
                     )}
                   </div>
-                  <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Validade da proposta – 10 dias após o envio</span></div>
+                  <div className="flex gap-1.5 items-center">
+                    <span className="text-gray-400">•</span>
+                    {!renderMode && onUpdateTerm ? (
+                      <span className="inline-flex items-center gap-1.5 flex-wrap">
+                        <span>Validade da proposta –</span>
+                        <input
+                          type="number"
+                          min={1}
+                          defaultValue={validadeDiasFinal}
+                          key={validadeDiasFinal}
+                          onBlur={e => onUpdateTerm('validadeDias', e.target.value)}
+                          className="bg-transparent border-b border-dashed border-gray-300 hover:border-blue-500 focus:border-blue-600 focus:outline-none px-1 w-14 text-right text-gray-800"
+                          title="Dias de validade da proposta"
+                        />
+                        <span>dias após o envio</span>
+                      </span>
+                    ) : (
+                      <span>Validade da proposta – {validadeDiasFinal} dias após o envio</span>
+                    )}
+                  </div>
                 </>
               )
             })()}
