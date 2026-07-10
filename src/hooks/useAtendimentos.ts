@@ -529,6 +529,45 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
   })
 }
 
+// ─── Contagem "aberto vs fechado" do funil (estado ATUAL da etiqueta WhatsApp) ──
+// Base INTEIRA (independe do filtro de data — etiqueta é estado atual, não do dia).
+// Respeita o escopo do vendedor logado (vê os seus + não-atribuídos), igual aos KPIs.
+//   Aberto  = sem nenhuma etiqueta OU com etiqueta de funil ativo
+//             (PROSPECCAO / NOVO LEAD / FOLLOW UP / LEAD QUENTE).
+//   Fechado = tem etiqueta, mas nenhuma delas é de funil ativo.
+export interface AtendimentoFunilContagem {
+  total: number
+  abertos: number
+  fechados: number
+  semEtiqueta: number
+  comEtiquetaAberta: number
+}
+
+export function useAtendimentoFunilContagem() {
+  return useQuery({
+    queryKey: ['atendimentos-funil-contagem'],
+    queryFn: async (): Promise<AtendimentoFunilContagem> => {
+      const vendorFirst = await getCurrentVendorFirstName()
+      const { data, error } = await (supabase as any).rpc('atendimentos_contagem_funil', {
+        p_responsavel_prefix: vendorFirst,
+      })
+      if (error) throw error
+      const row = (Array.isArray(data) ? data[0] : data) ?? {}
+      return {
+        total:             Number(row.total ?? 0),
+        abertos:           Number(row.abertos ?? 0),
+        fechados:          Number(row.fechados ?? 0),
+        semEtiqueta:       Number(row.sem_etiqueta ?? 0),
+        comEtiquetaAberta: Number(row.com_etiqueta_aberta ?? 0),
+      }
+    },
+    staleTime: 60_000,
+    refetchInterval: 120_000,          // etiqueta muda devagar — não precisa de polling agressivo
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+  })
+}
+
 export function useAtendimentoResponsaveis() {
   return useQuery({
     queryKey: ['atendimentos-responsaveis'],

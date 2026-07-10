@@ -17,7 +17,7 @@ import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTime
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, type StatusReal } from '@/types/atendimento'
-import { useAtendimentos, useAtendimentoKpis, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, type DataPreset } from '@/hooks/useAtendimentos'
+import { useAtendimentos, useAtendimentoKpis, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, type DataPreset } from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 
@@ -342,6 +342,8 @@ export function Atendimentos() {
 
   const { data, isLoading, isFetching, dataUpdatedAt, error: atendimentosError, refetch } = useAtendimentos(filters)
   const { data: kpis } = useAtendimentoKpis(filters)
+  // Contagem "em aberto" do funil (estado atual da etiqueta WA, base inteira — independe dos filtros).
+  const { data: funil } = useAtendimentoFunilContagem()
   const { data: origens } = useAtendimentoOrigens(filters)
   const { data: responsaveis } = useAtendimentoResponsaveis()
   // Etiquetas WA por telefone — fetcha em paralelo aos atendimentos
@@ -574,6 +576,21 @@ export function Atendimentos() {
           <div className="flex items-center justify-between shrink-0">
             <p className="text-[12px] text-ink-faint tabular-nums">
               {formatNumber(total)} resultado{total !== 1 ? 's' : ''}
+              {/* Em aberto no funil — base inteira, estado atual da etiqueta WA (não do filtro/dia).
+                  Aberto = sem etiqueta OU Prospecção/Novo lead/Follow-up/Lead quente. */}
+              {funil && funil.abertos > 0 && (
+                <span
+                  className="text-emerald-600"
+                  title={
+                    `${formatNumber(funil.abertos)} de ${formatNumber(funil.total)} atendimentos em aberto no funil (estado atual da etiqueta no WhatsApp).\n\n` +
+                    `Aberto = sem nenhuma etiqueta (${formatNumber(funil.semEtiqueta)}) ou com Prospecção / Novo lead / Follow-up / Lead quente (${formatNumber(funil.comEtiquetaAberta)}).\n` +
+                    `Fechado = ${formatNumber(funil.fechados)} (já têm etiqueta de encerramento: vendido, sem interesse, etc.).\n\n` +
+                    `Conta a base toda, independente dos filtros da tela.`
+                  }
+                >
+                  {' · 🟢 '}{formatNumber(funil.abertos)} em aberto
+                </span>
+              )}
               {/* Cobertura: quantos dos atendimentos mostrados já têm orçamento montado */}
               {!filters.comOrcamento && (() => {
                 const n = (data?.rows ?? []).filter(r => lookupOrcamento(orcMap, r.telefone)).length
@@ -975,22 +992,49 @@ export function Atendimentos() {
                             )
                           })()}
                         </td>
-                        {/* ORÇAMENTO — foi montado orçamento pra esse telefone? (match automático pelo número) */}
+                        {/* ORÇAMENTO — detecta por DOIS caminhos: (1) telefone bate com orcamentos_gerados
+                            (match automático → VERDE "✓ Sim") OU (2) o vendedor responsável marcou a
+                            etiqueta ORÇAMENTO no WhatsApp mas o número NÃO casou (ÂMBAR "🏷️ Sim" — vale
+                            conferir; orçamento pode ter saído por outro telefone ou não ficou registrado). */}
                         <td className="px-1.5 py-2.5 whitespace-nowrap">
                           {(() => {
                             const orc = lookupOrcamento(orcMap, r.telefone)
-                            if (!orc) return <EmptyCell />
-                            const title = `Orçamento ${orc.numero ?? ''} montado`
-                              + (orc.em ? ` em ${new Date(orc.em).toLocaleDateString('pt-BR')}` : '')
-                              + (orc.valor ? ` · ${orc.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : '')
-                              + (orc.qtd > 1 ? ` · ${orc.qtd} orçamentos pra este número` : '')
+                            // Etiqueta ORÇAMENTO do vendedor responsável (mesma fonte/filtro da coluna "Etiqueta WA").
+                            // startsWith('ORCAMENTO') pega "ORCAMENTO"/"ORCAMENTO ENVIADO" e IGNORA "FORA DO ORCAMENTO".
+                            const allLabels = lookupWaLabels(waLabelsMap, r.telefone)
+                            const vEf = vendedorEfetivo(r)
+                            const respUp = vEf ? vEf.name.trim().split(/\s+/)[0]?.toUpperCase() : null
+                            const labelsResp = respUp
+                              ? allLabels.filter(l => l.vendedor?.toUpperCase() === respUp)
+                              : allLabels
+                            const temEtiquetaOrc = labelsResp.some(l =>
+                              l.name.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim().startsWith('ORCAMENTO')
+                            )
+                            if (!orc && !temEtiquetaOrc) return <EmptyCell />
+                            // (1) Confirmado pelo número — VERDE
+                            if (orc) {
+                              const title = `Orçamento ${orc.numero ?? ''} montado`
+                                + (orc.em ? ` em ${new Date(orc.em).toLocaleDateString('pt-BR')}` : '')
+                                + (orc.valor ? ` · ${orc.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : '')
+                                + (orc.qtd > 1 ? ` · ${orc.qtd} orçamentos pra este número` : '')
+                              return (
+                                <Badge
+                                  className="text-[10px] font-semibold"
+                                  style={{ background: 'rgba(16,185,129,0.14)', color: '#10b981', border: '1px solid rgba(16,185,129,0.35)' }}
+                                  title={title}
+                                >
+                                  ✓ Sim{orc.qtd > 1 ? ` (${orc.qtd})` : ''}
+                                </Badge>
+                              )
+                            }
+                            // (2) Só etiqueta do vendedor — ÂMBAR (não localizei o orçamento pelo número)
                             return (
                               <Badge
                                 className="text-[10px] font-semibold"
-                                style={{ background: 'rgba(16,185,129,0.14)', color: '#10b981', border: '1px solid rgba(16,185,129,0.35)' }}
-                                title={title}
+                                style={{ background: 'rgba(245,158,11,0.14)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.35)' }}
+                                title="Marcado como orçamento pela etiqueta do vendedor no WhatsApp — mas não localizei o orçamento pelo número (pode ter saído por outro telefone ou não ficou registrado). Vale conferir."
                               >
-                                ✓ Sim{orc.qtd > 1 ? ` (${orc.qtd})` : ''}
+                                🏷️ Sim
                               </Badge>
                             )
                           })()}
