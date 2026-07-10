@@ -117,13 +117,15 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ]
 
-// Bottom nav mobile — 5 destinos mais usados pelo vendedor no dia-a-dia.
+// Bottom nav mobile — destinos mais usados no dia-a-dia. Itens com permKey só
+// aparecem pra quem tem a permissão (ver filtro `mobileNav`).
 const MOBILE_NAV: NavItem[] = [
   { to: '/', label: 'Início', icon: LayoutDashboard },
   { to: '/atendimentos', label: 'Atender', icon: MessageSquare, countKey: 'atendimentos' },
   { to: '/prospeccao', label: 'Prospectar', icon: Target },
   { to: '/orcamentos/montar', label: 'Orçar', icon: FilePlus2 },
   { to: '/vendidos', label: 'Vendidos', icon: CheckCircle },
+  { to: '/projeto-3d', label: 'Projeto 3D', icon: Boxes, permKey: 'menu.projeto' },
 ]
 
 function useCollapsed(): [boolean, () => void] {
@@ -200,11 +202,13 @@ export function Layout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loc.pathname])
 
-  const mobileNav = profile?.role === 'visualizador'
+  const mobileBase = profile?.role === 'visualizador'
     ? MOBILE_NAV.filter(l => l.to === '/' || l.to === '/atendimentos')
     : profile?.role === 'vendor'
     ? MOBILE_NAV.filter(l => l.to === '/atendimentos' || l.to === '/orcamentos/montar' || l.to === '/prospeccao')
     : MOBILE_NAV
+  // Respeita permKey: item só entra na barra se o usuário tiver a permissão.
+  const mobileNav = mobileBase.filter(visible)
 
   // Item dentro de um grupo aberto (modo expandido)
   const renderItem = (it: NavItem) => (
