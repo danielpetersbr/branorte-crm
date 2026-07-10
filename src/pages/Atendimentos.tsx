@@ -17,7 +17,7 @@ import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTime
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, type StatusReal } from '@/types/atendimento'
-import { useAtendimentos, useAtendimentoKpis, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, type DataPreset } from '@/hooks/useAtendimentos'
+import { useAtendimentos, useAtendimentoKpis, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, type DataPreset } from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 
@@ -351,6 +351,8 @@ export function Atendimentos() {
   const { data: orcMap } = useOrcamentosPorTelefone(phonesAtuais)
   // Indicador automático "vendido" cruzando o telefone → orçamento → pedido (venda).
   const { data: vendaMap } = useVendasPorTelefone(phonesAtuais)
+  // Marca "NUNCA RESPONDEU" (bot → auditoria.sem_resposta_em).
+  const { data: semRespMap } = useSemRespostaPorTelefone(phonesAtuais)
   const deleteMut = useDeleteAtendimento()
   const { profile } = useAuth()
   const { data: vendorsData } = useVendors()
@@ -375,6 +377,16 @@ export function Atendimentos() {
     const vendedorFromWa = labels.find(l => l.vendedor)?.vendedor
     if (vendedorFromWa) return { name: vendedorFromWa, source: 'wa' }
     return null
+  }
+
+  // "NUNCA RESPONDEU": marca do bot (auditoria.sem_resposta_em). Mostra o selo
+  // vermelho só ENQUANTO o lead não engaja — some sozinho quando ganha etiqueta
+  // real do Zap ou é atribuído a um vendedor (a etiqueta/vendedor real ganha).
+  function isSemResposta(r: typeof rows[number]): boolean {
+    if (!lookupSemResposta(semRespMap, r.telefone)) return false
+    if (r.responsavel && r.responsavel.trim()) return false
+    if (lookupWaLabels(waLabelsMap, r.telefone).length > 0) return false
+    return true
   }
 
   const clearFilters = () => {
@@ -609,13 +621,16 @@ export function Atendimentos() {
               const isFechado = !!r.finished_at
               // Trata "(sem nome)" do webhook como nome vazio pra UI ficar consistente
               const nomeReal = r.nome && !/^\(sem nome\)$/i.test(r.nome.trim()) ? r.nome : null
+              const semResp = isSemResposta(r)
               return (
                 <div
                   key={r.id}
                   className={`rounded-lg border p-3 ${
-                    isHot
-                      ? 'bg-danger-bg/40 border-danger/30'
-                      : 'bg-surface border-border'
+                    semResp
+                      ? 'bg-red-500/10 border-red-500/40'
+                      : isHot
+                        ? 'bg-danger-bg/40 border-danger/30'
+                        : 'bg-surface border-border'
                   }`}
                 >
                   <div className="flex items-start gap-2.5">
@@ -641,6 +656,13 @@ export function Atendimentos() {
                         </span>
                       </div>
                       <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                        {semResp && (
+                          <Badge className="text-[10px] font-semibold" style={{
+                            background: 'rgba(239,68,68,0.14)',
+                            color: '#ef4444',
+                            border: '1px solid rgba(239,68,68,0.4)',
+                          }}>NUNCA RESPONDEU</Badge>
+                        )}
                         {status && (
                           <Badge style={{
                             background: `hsl(var(--${status.tone}-bg))`,
@@ -735,13 +757,18 @@ export function Atendimentos() {
                     const quandoTone = r.quando_investir ? QUANDO_TONE[r.quando_investir] : null
                     // Trata "(sem nome)" do webhook como nome vazio (UI fallback fica consistente)
                     const nomeReal = r.nome && !/^\(sem nome\)$/i.test(r.nome.trim()) ? r.nome : null
+                    const semResp = isSemResposta(r)
                     return (
                       <tr key={r.id}
                           className={`group border-b border-border/30 last:border-0 transition-all duration-150
-                                     ${isHot
-                                        ? 'bg-danger-bg/30 hover:bg-danger-bg/50'
-                                        : 'odd:bg-surface even:bg-surface-2/20 hover:bg-surface-2/60 hover:shadow-sm'}`}
-                          style={isHot ? { boxShadow: 'inset 3px 0 0 0 hsl(var(--danger))' } : undefined}>
+                                     ${semResp
+                                        ? 'bg-red-500/10 hover:bg-red-500/[0.16]'
+                                        : isHot
+                                          ? 'bg-danger-bg/30 hover:bg-danger-bg/50'
+                                          : 'odd:bg-surface even:bg-surface-2/20 hover:bg-surface-2/60 hover:shadow-sm'}`}
+                          style={semResp
+                            ? { boxShadow: 'inset 3px 0 0 0 rgb(239 68 68)' }
+                            : isHot ? { boxShadow: 'inset 3px 0 0 0 hsl(var(--danger))' } : undefined}>
                         {/* CHEGOU */}
                         <td className="px-2 py-2.5 whitespace-nowrap" title={r.primeira_data ?? r.created_at ?? ''}>
                           <span className="text-[11px] text-ink-muted font-mono tabular-nums">
@@ -942,6 +969,25 @@ export function Atendimentos() {
                             filtra pelo first-name UPPERCASE do vendedor efetivo. */}
                         <td className="hidden 2xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
                           {(() => {
+                            // Selo sintético "NUNCA RESPONDEU" (marca do bot). Prioridade
+                            // baixa: isSemResposta já é false se houver etiqueta real ou vendedor.
+                            if (semResp) {
+                              return (
+                                <div className="flex flex-wrap gap-1 max-w-[180px]">
+                                  <Badge
+                                    className="text-[10px] font-semibold"
+                                    style={{
+                                      background: 'rgba(239,68,68,0.14)',
+                                      color: '#ef4444',
+                                      border: '1px solid rgba(239,68,68,0.4)',
+                                    }}
+                                    title="O contato nunca respondeu — marcado automaticamente pelo bot"
+                                  >
+                                    NUNCA RESPONDEU
+                                  </Badge>
+                                </div>
+                              )
+                            }
                             const allLabels = lookupWaLabels(waLabelsMap, r.telefone)
                             if (allLabels.length === 0) return <EmptyCell />
                             const v = vendedorEfetivo(r)

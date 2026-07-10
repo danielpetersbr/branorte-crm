@@ -267,6 +267,41 @@ export function lookupVenda(
   return c ? (map[c] ?? null) : null
 }
 
+// ─── Marca "NUNCA RESPONDEU" por telefone ────────────────────────────────────
+// Setada pelo bot (endpoint /api/leads/no-reply → auditoria.sem_resposta_em).
+// Read-only, canon-match (mesmo padrão de orçamento/venda por telefone).
+export type SemRespostaMap = Record<string, string> // fone_canon → sem_resposta_em (ISO)
+
+export function useSemRespostaPorTelefone(phones: (string | null | undefined)[], enabled = true) {
+  const canons = [...new Set(phones.map(foneCanon).filter((c): c is string => !!c))]
+  return useQuery({
+    queryKey: ['sem-resposta-por-telefone', canons.slice().sort().join(',')],
+    enabled: enabled && canons.length > 0,
+    queryFn: async (): Promise<SemRespostaMap> => {
+      if (canons.length === 0) return {}
+      const { data, error } = await (supabase as any).rpc('atendimentos_sem_resposta_por_telefone', { p_canons: canons })
+      if (error) throw error
+      const map: SemRespostaMap = {}
+      for (const row of (data ?? []) as any[]) {
+        if (row.fone_canon && row.sem_resposta_em) map[String(row.fone_canon)] = String(row.sem_resposta_em)
+      }
+      return map
+    },
+    staleTime: 30_000,
+    refetchInterval: 45_000,
+    refetchIntervalInBackground: false,
+  })
+}
+
+export function lookupSemResposta(
+  map: SemRespostaMap | undefined,
+  phone: string | null | undefined
+): string | null {
+  if (!map) return null
+  const c = foneCanon(phone)
+  return c ? (map[c] ?? null) : null
+}
+
 export function useAtendimentos(filters: AtendimentoFilters) {
   return useQuery({
     queryKey: ['atendimentos', filters],
