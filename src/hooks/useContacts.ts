@@ -21,7 +21,9 @@ export function useContacts(filters: ContactFilters) {
       const so = sortMap[sortKey] ?? sortMap.recente
       let query = supabase
         .from('contacts')
-        .select('*', { count: 'exact' })
+        // 'estimated' evita seq-scan de contagem exata em 201k linhas (timeout sob carga):
+        // exato pra resultados pequenos, estimativa do planner pros grandes.
+        .select('*', { count: 'estimated' })
         .order(so.col, { ascending: so.asc, nullsFirst: so.nullsFirst ?? !so.asc })
 
       if (filters.search) {
