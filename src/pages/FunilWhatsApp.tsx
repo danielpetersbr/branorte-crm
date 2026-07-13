@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   MessageCircle, Clock, Mic, Image as ImageIcon, Video, FileText, Sticker,
@@ -272,29 +272,73 @@ function metaTipoMsg(tipo: string): { Icon: typeof Mic; label: string } | null {
   }
 }
 
+// Lightbox: imagem em tela cheia sobre um backdrop escuro (fecha no clique/Esc)
+function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <img src={src} alt="Imagem da conversa" className="max-h-[92vh] max-w-[92vw] rounded-lg object-contain shadow-2xl" onClick={e => e.stopPropagation()} />
+      <button
+        onClick={onClose}
+        aria-label="Fechar"
+        className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white text-xl leading-none hover:bg-white/20"
+      >×</button>
+      <a
+        href={src} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+        className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-white/10 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-white/20"
+      >Abrir original ↗</a>
+    </div>
+  )
+}
+
+// mídia (áudio/foto) sem binário há mais de ~2 dias provavelmente expirou no aparelho
+// (a extensão só busca <14d e o WhatsApp não guarda mídia velha) — não vai chegar.
+function midiaExpirada(m: WaMensagem): boolean {
+  if (m.media_url) return false
+  if (!m.data_msg) return false
+  return Date.now() - new Date(m.data_msg).getTime() > 2 * 86_400_000
+}
+
 function BolhaMensagem({ m }: { m: WaMensagem }) {
+  const [zoom, setZoom] = useState(false)
   const meta = metaTipoMsg(m.tipo)
   const fromMe = m.from_me === true
+  const autoriaIndef = m.from_me == null // null/undefined = extensão não determinou quem falou
   const ehAudio = m.tipo === 'ptt' || m.tipo === 'audio'
+  const ehImagem = m.tipo === 'image'
+  const temFoto = ehImagem && m.media_url && m.media_url !== 'unavailable'
+  const expirou = midiaExpirada(m)
+  const align = autoriaIndef ? 'justify-center' : fromMe ? 'justify-end' : 'justify-start'
   return (
-    <div className={`flex ${fromMe ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex ${align}`}>
       <div
         className={[
           'max-w-[86%] rounded-2xl px-3 py-2 text-[12.5px] leading-snug',
-          fromMe
-            ? 'rounded-br-md bg-[hsl(var(--accent)/0.13)] text-ink ring-1 ring-inset ring-[hsl(var(--accent)/0.2)]'
-            : 'rounded-bl-md bg-surface-2 text-ink ring-1 ring-inset ring-border',
+          autoriaIndef
+            ? 'rounded-md bg-surface-2/60 text-ink-muted ring-1 ring-inset ring-border/60'
+            : fromMe
+              ? 'rounded-br-md bg-[hsl(var(--accent)/0.13)] text-ink ring-1 ring-inset ring-[hsl(var(--accent)/0.2)]'
+              : 'rounded-bl-md bg-surface-2 text-ink ring-1 ring-inset ring-border',
         ].join(' ')}
       >
-        {meta && (
+        {/* cabeçalho de tipo — some pra imagem com preview (o próprio thumb já diz que é foto) */}
+        {meta && !temFoto && (
           <div className="flex items-center gap-1.5 text-[11px] font-semibold text-ink-muted">
             <meta.Icon className="h-3.5 w-3.5" />
             {meta.label}
             {ehAudio && m.duracao_seg ? <span className="tabular-nums">· {fmtDuracao(m.duracao_seg)}</span> : null}
           </div>
         )}
+
         {ehAudio && (
-          m.media_url === 'unavailable' ? (
+          m.media_url === 'unavailable' || expirou ? (
             <div className="mt-0.5 text-[11px] italic text-ink-faint">áudio indisponível (expirou no aparelho)</div>
           ) : m.media_url ? (
             <audio controls preload="none" src={m.media_url} className="mt-1.5 h-9 w-[240px] max-w-full" />
@@ -302,18 +346,48 @@ function BolhaMensagem({ m }: { m: WaMensagem }) {
             <div className="mt-0.5 text-[11px] italic text-ink-faint">áudio sincronizando…</div>
           )
         )}
+
+        {ehImagem && (
+          temFoto ? (
+            <button
+              type="button"
+              onClick={() => setZoom(true)}
+              className="mt-0.5 block overflow-hidden rounded-lg ring-1 ring-inset ring-black/10 transition hover:brightness-95"
+              title="Clique pra ampliar"
+            >
+              <img
+                src={m.media_url as string}
+                alt={m.body || 'Foto'}
+                loading="lazy"
+                className="max-h-52 w-auto max-w-full cursor-zoom-in object-cover"
+              />
+            </button>
+          ) : m.media_url === 'unavailable' || expirou ? (
+            <div className="mt-0.5 flex items-center gap-1.5 text-[11px] italic text-ink-faint">
+              <ImageIcon className="h-3.5 w-3.5" /> foto indisponível (expirou no aparelho)
+            </div>
+          ) : (
+            <div className="mt-0.5 flex items-center gap-1.5 text-[11px] italic text-ink-faint">
+              <ImageIcon className="h-3.5 w-3.5 animate-pulse" /> foto sincronizando…
+            </div>
+          )
+        )}
+
         {m.tipo === 'revoked' ? (
           <div className="flex items-center gap-1 italic text-ink-faint"><Ban className="h-3 w-3" /> Mensagem apagada</div>
         ) : m.body ? (
-          <p className={`${meta ? 'mt-1 ' : ''}whitespace-pre-wrap break-words`}>{m.body}</p>
-        ) : (!meta && !ehAudio) ? (
+          <p className={`${(meta && !temFoto) || temFoto ? 'mt-1.5 ' : ''}whitespace-pre-wrap break-words`}>{m.body}</p>
+        ) : (!meta && !ehAudio && !ehImagem) ? (
           <p className="italic text-ink-faint">({m.tipo})</p>
         ) : null}
+
         <div className={`mt-1 text-right text-[10px] tabular-nums ${fromMe ? 'text-[hsl(var(--accent)/0.8)]' : 'text-ink-faint'}`}>
           {fromMe && <span className="mr-1 font-medium not-italic">Você</span>}
+          {autoriaIndef && <span className="mr-1 not-italic" title="Autoria não identificada">autoria?</span>}
           {fmtDataHora(m.data_msg)}
         </div>
       </div>
+      {zoom && temFoto && <Lightbox src={m.media_url as string} onClose={() => setZoom(false)} />}
     </div>
   )
 }
@@ -321,9 +395,13 @@ function BolhaMensagem({ m }: { m: WaMensagem }) {
 function ChatDrawer({
   chat, etiquetas, vendedor, onClose, agendada,
 }: { chat: WaChat; etiquetas: { nome: string; cor: string }[]; vendedor: string; onClose: () => void; agendada?: WaAgendada | null }) {
-  const temConversa = etiquetas.some(e => COLUNAS_COM_CONVERSA.has(e.nome))
+  // Coluna de captura ativa (a extensão só puxa msgs em FOLLOW UP/LEAD QUENTE). Mas a
+  // LEITURA é habilitada sempre que há chat_id: um lead que passou por LEAD QUENTE e
+  // avançou pra VENDIDO mantém as msgs gravadas — esconder isso é perda aparente de dado.
+  const colunaAtiva = etiquetas.some(e => COLUNAS_COM_CONVERSA.has(e.nome))
   const { data: movimentos = [] } = useWaMovimentos(vendedor, chat.phone)
-  const { data: mensagens, isLoading: carregandoMsgs } = useWaMensagens(vendedor, chat.chat_id, temConversa)
+  const { data: mensagens, isLoading: carregandoMsgs } = useWaMensagens(vendedor, chat.chat_id, !!chat.chat_id)
+  const temMsgs = !!mensagens && mensagens.length > 0
   const nome = nomeContato(chat.contact_name, chat.phone)
   return (
     <>
@@ -373,30 +451,31 @@ function ChatDrawer({
             </div>
           )}
 
-          {/* Conversa — últimas 10 mensagens (FOLLOW UP / LEAD QUENTE) */}
-          {temConversa ? (
+          {/* Conversa — últimas 10 mensagens (capturadas em FOLLOW UP / LEAD QUENTE) */}
+          {temMsgs ? (
             <div>
               <div className="mb-2 flex items-baseline justify-between">
-                <div className="text-[11px] uppercase tracking-wide text-ink-faint">Conversa · últimas {Math.min(mensagens?.length ?? 10, 10)} mensagens</div>
+                <div className="text-[11px] uppercase tracking-wide text-ink-faint">Conversa · últimas {mensagens!.length} mensagens</div>
                 {chat.last_message_at && <div className="text-[10px] tabular-nums text-ink-faint">{tempoRelativo(chat.last_message_at)}</div>}
               </div>
-              {carregandoMsgs ? (
-                <p className="py-3 text-center text-[12px] text-ink-faint">Carregando conversa…</p>
-              ) : mensagens && mensagens.length > 0 ? (
-                <div className="space-y-2 rounded-xl border border-border bg-[hsl(var(--bg))] p-3">
-                  {mensagens.map(m => <BolhaMensagem key={m.msg_id} m={m} />)}
-                </div>
-              ) : (
-                <div className="rounded-xl border border-dashed border-border p-4 text-center">
-                  <p className="text-[12px] text-ink-muted">Conversa ainda não sincronizada.</p>
-                  <p className="mt-1 text-[11px] text-ink-faint">
-                    A extensão do vendedor (v1.6.71+) envia as últimas mensagens deste chat em até ~1 min com o WhatsApp Web aberto.
-                  </p>
-                </div>
+              {!colunaAtiva && (
+                <p className="mb-2 text-[10.5px] text-ink-faint">Fora de FOLLOW UP/LEAD QUENTE — histórico pode estar desatualizado.</p>
               )}
+              <div className="space-y-2 rounded-xl border border-border bg-[hsl(var(--bg))] p-3">
+                {mensagens!.map(m => <BolhaMensagem key={m.msg_id} m={m} />)}
+              </div>
+            </div>
+          ) : carregandoMsgs ? (
+            <p className="py-3 text-center text-[12px] text-ink-faint">Carregando conversa…</p>
+          ) : colunaAtiva ? (
+            <div className="rounded-xl border border-dashed border-border p-4 text-center">
+              <p className="text-[12px] text-ink-muted">Conversa ainda não sincronizada.</p>
+              <p className="mt-1 text-[11px] text-ink-faint">
+                Aparece aqui em ~1 min <span className="font-medium">se o vendedor estiver com o WhatsApp Web aberto</span>.
+              </p>
             </div>
           ) : (
-            /* Fora de FOLLOW UP / LEAD QUENTE: só o preview da última mensagem */
+            /* Nunca esteve em FOLLOW UP/LEAD QUENTE: só o preview da última mensagem */
             <div className="rounded-xl border border-border bg-surface-2 p-3">
               <div className="mb-1.5 text-[11px] uppercase tracking-wide text-ink-faint">
                 Última mensagem · {tempoRelativo(chat.last_message_at)}
@@ -409,6 +488,7 @@ function ChatDrawer({
               ) : (
                 <p className="text-[13px] text-ink-faint">Sem preview disponível.</p>
               )}
+              <p className="mt-2 text-[10.5px] text-ink-faint">A conversa completa aparece quando o lead entra em FOLLOW UP ou LEAD QUENTE.</p>
             </div>
           )}
 
