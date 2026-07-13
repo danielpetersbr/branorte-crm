@@ -30,6 +30,7 @@
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
+    "jszip": "^3.10.1",
     "konva": "^9.3.16",
     "leaflet": "^1.9.4",
     "leaflet.markercluster": "^1.5.3",
