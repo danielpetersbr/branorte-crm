@@ -34,6 +34,7 @@ export const FEATURE_CATALOG: Array<{
   { key: 'menu.frete', label: 'Frete', group: 'Menu' },
   { key: 'menu.controle', label: 'Controle (Vendas)', group: 'Menu' },
   { key: 'menu.projeto', label: 'Projeto', group: 'Menu' },
+  { key: 'menu.projeto_3d', label: 'Projeto 3D', group: 'Menu' },
   { key: 'menu.disparos', label: 'Roteamento (Disparos)', group: 'Menu' },
   { key: 'menu.admin_usuarios', label: 'Admin: Usuários', group: 'Menu' },
   { key: 'menu.admin_permissoes', label: 'Admin: Permissões', group: 'Menu' },
