@@ -7,8 +7,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { scrubDocxPrices } from './_lib/scrubDocxPrices.js'
 
+// Limite real de request body na Vercel: ~4.5MB (o chamador pula PDFs > 3MB)
 export const config = {
-  api: { bodyParser: { sizeLimit: '25mb' } },
   maxDuration: 60,
 }
 

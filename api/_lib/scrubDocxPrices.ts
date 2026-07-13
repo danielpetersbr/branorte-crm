@@ -3,14 +3,34 @@
 // e produção NUNCA pode ver preço. "R$ 0,00" é mantido (não revela margem e
 // evita esvaziar células tipo motor por conta do cliente).
 //
-// Dois passes: (A) dentro de cada <w:t> isolado; (B) por parágrafo com o texto
-// dos runs concatenado — PDFs convertidos fragmentam "R$ 1.234,56" em vários
-// runs e o passe A sozinho vazaria preço.
+// Ordem dos passes (IMPORTANTE): primeiro o passe por parágrafo com os runs
+// concatenados (PDF convertido fragmenta "R$ 12.617,63" em vários runs — um
+// passe por nó isolado ANTES mutilaria o prefixo e deixaria resíduo invisível
+// pro gate), depois o passe por nó isolado (parágrafos de run único).
+//
+// O GATE de verificação é deliberadamente MAIS paranoico que o scrub: decimal
+// monetário sem "R$", resíduo órfão em linha de dinheiro, parágrafo terminando
+// em "R$" e valor por extenso derrubam o documento (melhor sem doc que com preço).
+// Imagens também são removidas: preço rasterizado em imagem passaria pelo gate.
 import JSZip from 'jszip'
 
-const MONEY_RX = /R\$[\s ]*\d{1,3}(?:[.  ]?\d{3})*(?:,\d{1,2})?/g
-// pós-scrub: qualquer "R$" seguido de dígito 1-9 por perto = vazamento
-const LEAK_RX = /R\$[^0-9A-Za-z]{0,6}[\d.,\s ]*[1-9]/
+// "R " opcional entre R e $; dígitos corridos (1234,56) e milhar com ponto/
+// NBSP/espaço. Preferimos remover DEMAIS a remover de menos.
+const MONEY_RX = /R\s?\$\s*\d+(?:[.\s]\d{3})*(?:,\d{1,2})?/g
+
+const KW_DINHEIRO = /TOTAL|VALOR|PRE[ÇC]O|UNIT|SUBTOTAL|DESCONTO|ENTRADA|PARCELA|SALDO|PAGAMENTO|BOLETO/i
+
+/** Gate anti-vazamento sobre o texto visível de um parágrafo. */
+function textoVazaPreco(l: string): boolean {
+  const rs = l.match(/R\s?\$[^0-9A-Za-z]{0,6}([\d.,\s]*)/)
+  if (rs && /[1-9]/.test(rs[1] ?? '')) return true
+  const dec = l.match(/\d{1,3}(?:[.\s]\d{3})+,\d{2}/)
+  if (dec && /[1-9]/.test(dec[0])) return true
+  if (KW_DINHEIRO.test(l) && /\d*[1-9]\d*,\d{2}\b/.test(l)) return true
+  if (/R\s?\$\s*[.:]?\s*$/.test(l)) return true
+  if (KW_DINHEIRO.test(l) && /\breais\b/i.test(l)) return true
+  return false
+}
 
 const WT_RX = /(<w:t(?:\s[^>]*)?>)([^<]*)(<\/w:t>)/g
 
@@ -60,12 +80,13 @@ function scrubFragmentedParagraph(para: string, onRemove: () => void): string {
 }
 
 function scrubXml(xml: string, onRemove: () => void): string {
-  let out = scrubSingleNodes(xml, onRemove)
-  out = out.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (para) => scrubFragmentedParagraph(para, onRemove))
+  // fragmentado PRIMEIRO (vê a string inteira do parágrafo), nós isolados depois
+  let out = xml.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (para) => scrubFragmentedParagraph(para, onRemove))
+  out = scrubSingleNodes(out, onRemove)
   return out
 }
 
-/** Texto visível de um trecho XML, com runs do mesmo parágrafo concatenados. */
+/** Texto visível por parágrafo, com os runs concatenados. */
 function joinedParagraphTexts(xml: string): string[] {
   const paras = xml.match(/<w:p\b[\s\S]*?<\/w:p>/g) || []
   return paras.map((p) =>
@@ -84,21 +105,27 @@ export async function scrubDocxPrices(docx: Buffer): Promise<ScrubResult> {
   const zip = await JSZip.loadAsync(docx)
   let removed = 0
   const parts = Object.keys(zip.files).filter((p) =>
-    /^word\/(document|header\d*|footer\d*)\.xml$/.test(p)
+    /^word\/(document|header\d*|footer\d*|footnotes|endnotes|comments)\.xml$/.test(p)
   )
   if (!parts.includes('word/document.xml')) throw new Error('DOCX sem word/document.xml')
 
   for (const p of parts) {
-    const xml = await zip.file(p)!.async('string')
-    zip.file(p, scrubXml(xml, () => removed++))
+    let xml = await zip.file(p)!.async('string')
+    xml = scrubXml(xml, () => removed++)
+    // imagens fora: preço rasterizado passaria pelo gate de texto
+    xml = xml.replace(/<w:drawing\b[\s\S]*?<\/w:drawing>/g, '')
+    xml = xml.replace(/<w:pict\b[\s\S]*?<\/w:pict>/g, '')
+    zip.file(p, xml)
+  }
+  for (const p of Object.keys(zip.files)) {
+    if (/^word\/media\//.test(p)) zip.remove(p)
   }
 
   const leaks: string[] = []
   for (const p of parts) {
     const xml = await zip.file(p)!.async('string')
     for (const text of joinedParagraphTexts(xml)) {
-      const leak = text.match(LEAK_RX)
-      if (leak) leaks.push(leak[0].slice(0, 30).replace(/\d/g, '#'))
+      if (textoVazaPreco(text)) leaks.push(text.slice(0, 40).replace(/\d/g, '#'))
     }
   }
 
