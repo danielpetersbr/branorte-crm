@@ -20,8 +20,28 @@ const MONEY_RX = /R\s?\$\s*\d+(?:[.\s]\d{3})*(?:,\d{1,2})?/g
 
 const KW_DINHEIRO = /TOTAL|VALOR|PRE[ÇC]O|UNIT|SUBTOTAL|DESCONTO|ENTRADA|PARCELA|SALDO|PAGAMENTO|BOLETO/i
 
+// ——— Dados do cliente: produção só pode ver NOME, CIDADE e ESTADO ———
+const LABELS_PROIBIDOS =
+  'A\\s*\\/\\s*C|FONE|TELEFONE|CELULAR|WHATSAPP|ENDERE[ÇC]O|BAIRRO|CEP|CPF\\s*\\/?\\s*CNPJ|CPF|CNPJ|INSCRI[ÇC][ÃA]O\\s+ESTADUAL|E-?MAIL'
+const LABELS_TODOS = `CLIENTE|CIDADE|ESTADO|UF|DATA|OR[ÇC]AMENTO|${LABELS_PROIBIDOS}`
+const SEG_PROIBIDO_RX = new RegExp(
+  `\\b(?:${LABELS_PROIBIDOS})\\s*:[^]*?(?=\\b(?:${LABELS_TODOS})\\s*:|$)`,
+  'gi'
+)
+const PII_RX: RegExp[] = [
+  /\d{3}\.\d{3}\.\d{3}\s?-\s?\d{2}/g, // CPF
+  /\d{2}\.\d{3}\.\d{3}\s?\/\s?\d{4}\s?-?\s?\d{2}/g, // CNPJ
+  /\(\d{2}\)\s?\d{4,5}[-.\s]?\d{4}\b/g, // telefone (xx) xxxxx-xxxx
+  /\b\d{2}\s\d{4,5}[-\s]\d{4}\b/g, // telefone xx xxxxx-xxxx
+  /\b\d{5}-\d{3}\b/g, // CEP
+]
+
 /** Gate anti-vazamento sobre o texto visível de um parágrafo. */
 function textoVazaPreco(l: string): boolean {
+  // dados pessoais: CPF/CNPJ nunca podem sobrar (formatado ou rótulo com dígitos)
+  if (/\d{3}\.\d{3}\.\d{3}\s?-\s?\d{2}/.test(l)) return true
+  if (/\d{2}\.\d{3}\.\d{3}\s?\/\s?\d{4}/.test(l)) return true
+  if (/\bCPF\b|\bCNPJ\b/i.test(l) && /\d/.test(l)) return true
   const rs = l.match(/R\s?\$[^0-9A-Za-z]{0,6}([\d.,\s]*)/)
   if (rs && /[1-9]/.test(rs[1] ?? '')) return true
   const dec = l.match(/\d{1,3}(?:[.\s]\d{3})+,\d{2}/)
@@ -36,12 +56,33 @@ const WT_RX = /(<w:t(?:\s[^>]*)?>)([^<]*)(<\/w:t>)/g
 
 function scrubSingleNodes(xml: string, onRemove: () => void): string {
   return xml.replace(WT_RX, (_m, open: string, text: string, close: string) => {
-    const scrubbed = text.replace(MONEY_RX, (v) => {
+    let scrubbed = text.replace(MONEY_RX, (v) => {
       if (/[1-9]/.test(v)) { onRemove(); return '' }
       return v
     })
+    scrubbed = scrubbed.replace(new RegExp(SEG_PROIBIDO_RX.source, 'gi'), () => { onRemove(); return '' })
+    for (const rx of PII_RX) {
+      scrubbed = scrubbed.replace(new RegExp(rx.source, 'g'), () => { onRemove(); return '' })
+    }
     return open + scrubbed + close
   })
+}
+
+/** Ranges (no texto concatenado do parágrafo) de tudo que produção não pode ver. */
+function collectSensitiveRanges(joined: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = []
+  const push = (source: string, flags: string, filtro?: (m: string) => boolean) => {
+    const r = new RegExp(source, flags)
+    let m: RegExpExecArray | null
+    while ((m = r.exec(joined))) {
+      if (m[0].length === 0) { r.lastIndex++; continue }
+      if (!filtro || filtro(m[0])) ranges.push([m.index, m.index + m[0].length])
+    }
+  }
+  push(MONEY_RX.source, 'g', (v) => /[1-9]/.test(v))
+  push(SEG_PROIBIDO_RX.source, 'gi')
+  for (const rx of PII_RX) push(rx.source, 'g')
+  return ranges
 }
 
 function scrubFragmentedParagraph(para: string, onRemove: () => void): string {
@@ -56,12 +97,7 @@ function scrubFragmentedParagraph(para: string, onRemove: () => void): string {
   }
   if (nodes.length < 2) return para
 
-  const ranges: Array<[number, number]> = []
-  const money = new RegExp(MONEY_RX.source, 'g')
-  let mm: RegExpExecArray | null
-  while ((mm = money.exec(joined))) {
-    if (/[1-9]/.test(mm[0])) ranges.push([mm.index, mm.index + mm[0].length])
-  }
+  const ranges = collectSensitiveRanges(joined)
   if (!ranges.length) return para
 
   for (const _ of ranges) onRemove()
