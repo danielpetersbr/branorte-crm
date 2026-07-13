@@ -5,8 +5,6 @@
 // scrubDocxPrices remove todo R$ > 0 → GATE: se sobrar qualquer preço,
 // retorna 422 e o chamador cai no fluxo sem documento. Produção nunca vê preço.
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-// @ts-ignore - lib sem tipos completos
-import ConvertAPI from 'convertapi'
 import { scrubDocxPrices } from './_lib/scrubDocxPrices.js'
 
 export const config = {
@@ -36,28 +34,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const t0 = Date.now()
-    const convertapi = new ConvertAPI(SECRET)
-    const result = await convertapi.convert('docx',
-      {
-        File: { name: filename, data: pdfBase64 },
-        FileName: filename.replace(/\.pdf$/i, ''),
-      },
-      'pdf',
-    )
-
-    const files = result.files || (result as any).Files
-    const file = files?.[0]
+    // REST direto (a lib npm convertapi nao aceita base64 em memoria)
+    const convResp = await fetch(`https://v2.convertapi.com/convert/pdf/to/docx?Secret=${SECRET}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        Parameters: [
+          { Name: 'File', FileValue: { Name: filename, Data: pdfBase64 } },
+          { Name: 'FileName', Value: filename.replace(/\.pdf$/i, '') },
+        ],
+      }),
+    })
+    if (!convResp.ok) {
+      const detail = (await convResp.text()).slice(0, 300)
+      throw new Error(`ConvertAPI HTTP ${convResp.status}: ${detail}`)
+    }
+    const conv = await convResp.json() as { Files?: Array<{ FileName?: string; FileData?: string; Url?: string }> }
+    const file = conv.Files?.[0]
     if (!file) throw new Error('ConvertAPI nao retornou files')
 
     let docxBuf: Buffer
-    if (typeof file.fileBase64 === 'function') {
-      docxBuf = Buffer.from(await file.fileBase64(), 'base64')
-    } else if (file.url || file.Url) {
-      const dr = await fetch(file.url || file.Url)
+    if (file.FileData) {
+      docxBuf = Buffer.from(file.FileData, 'base64')
+    } else if (file.Url) {
+      const dr = await fetch(file.Url)
       if (!dr.ok) throw new Error(`Falha baixar DOCX: HTTP ${dr.status}`)
       docxBuf = Buffer.from(await dr.arrayBuffer())
     } else {
-      throw new Error('File sem fileBase64() nem url')
+      throw new Error('File sem FileData nem Url')
     }
 
     const { out, removed, leaks } = await scrubDocxPrices(docxBuf)
