@@ -1,9 +1,15 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { MessageCircle } from 'lucide-react'
+import {
+  MessageCircle, Clock, Mic, Image as ImageIcon, Video, FileText, Sticker,
+  MapPin, Contact2, Ban, PhoneCall,
+} from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
-import { useWaKanban, useWaVendedores, useWaMovimentos, TODOS, type WaChat } from '@/hooks/useWaKanban'
+import {
+  useWaKanban, useWaVendedores, useWaMovimentos, useWaMensagens, useWaAgendadas,
+  lookupAgendada, TODOS, type WaChat, type WaMensagem, type WaAgendada,
+} from '@/hooks/useWaKanban'
 import { useOrcamentosPorTelefone, lookupOrcamento, foneCanon } from '@/hooks/useAtendimentos'
 import {
   tempoRelativo, temperaturaDe, TEMP_META, resumoColuna,
@@ -31,7 +37,24 @@ const FUNIL_ATIVO = new Set([
 // (cruzado por telefone via orcamentos_gerados / RPC orcamentos_por_telefone_canon)
 const COLUNAS_COM_VALOR = new Set(['FOLLOW UP', 'LEAD QUENTE'])
 
+// Colunas cujo histórico de conversa (últimas 10 msgs) é sincronizado pela
+// extensão v1.6.71+ e aparece no drawer
+const COLUNAS_COM_CONVERSA = new Set(['FOLLOW UP', 'LEAD QUENTE'])
+
 const brl = (v: number) => 'R$ ' + v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+
+const fmtDataHora = (s: string | null) => {
+  if (!s) return ''
+  const d = new Date(s)
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' ' +
+    d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+}
+
+const fmtDuracao = (seg: number | null) => {
+  if (!seg || seg <= 0) return ''
+  const m = Math.floor(seg / 60), s = seg % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
 
 function BotaoWhats({ phone }: { phone: string }) {
   return (
@@ -58,8 +81,8 @@ function IconCifrao({ className }: { className?: string }) {
 }
 
 function ChatCard({
-  chat, onClick, mostrarVendedor, compacto, valorOrcamento,
-}: { chat: WaChat; onClick: () => void; mostrarVendedor?: boolean; compacto?: boolean; valorOrcamento?: number | null }) {
+  chat, onClick, mostrarVendedor, compacto, valorOrcamento, agendada,
+}: { chat: WaChat; onClick: () => void; mostrarVendedor?: boolean; compacto?: boolean; valorOrcamento?: number | null; agendada?: WaAgendada | null }) {
   const temp = temperaturaDe(chat.last_message_at)
   const meta = TEMP_META[temp]
   const fresco = temp === 'fresco'
@@ -178,6 +201,16 @@ function ChatCard({
             <span className="text-[10px] text-ink-faint">você respondeu</span>
           ) : null}
 
+          {/* mensagem agendada na extensão ainda pendente de envio */}
+          {agendada && (
+            <span
+              title={`Mensagem agendada pra ${fmtDataHora(agendada.scheduled_at)}${agendada.body ? `:\n"${agendada.body.slice(0, 180)}"` : ''}`}
+              className="inline-flex items-center gap-1 rounded-md bg-[hsl(var(--accent)/0.10)] px-1.5 py-0.5 text-[10px] font-semibold text-accent ring-1 ring-inset ring-[hsl(var(--accent)/0.3)]"
+            >
+              <Clock className="h-3 w-3" /> {fmtDataHora(agendada.scheduled_at)}
+            </span>
+          )}
+
           {/* stopPropagation: clicar no WhatsApp não abre o drawer do card */}
           <span className="ml-auto" onClick={e => e.stopPropagation()}>
             <BotaoWhats phone={chat.phone} />
@@ -222,80 +255,198 @@ function ResumoTemperatura({
   )
 }
 
+// Ícone + rótulo por tipo de mensagem (null = texto comum, sem cabeçalho)
+function metaTipoMsg(tipo: string): { Icon: typeof Mic; label: string } | null {
+  switch (tipo) {
+    case 'ptt':
+    case 'audio': return { Icon: Mic, label: 'Áudio' }
+    case 'image': return { Icon: ImageIcon, label: 'Foto' }
+    case 'video': return { Icon: Video, label: 'Vídeo' }
+    case 'document': return { Icon: FileText, label: 'Documento' }
+    case 'sticker': return { Icon: Sticker, label: 'Figurinha' }
+    case 'location': return { Icon: MapPin, label: 'Localização' }
+    case 'vcard':
+    case 'multi_vcard': return { Icon: Contact2, label: 'Contato' }
+    case 'call_log': return { Icon: PhoneCall, label: 'Chamada' }
+    default: return null
+  }
+}
+
+function BolhaMensagem({ m }: { m: WaMensagem }) {
+  const meta = metaTipoMsg(m.tipo)
+  const fromMe = m.from_me === true
+  const ehAudio = m.tipo === 'ptt' || m.tipo === 'audio'
+  return (
+    <div className={`flex ${fromMe ? 'justify-end' : 'justify-start'}`}>
+      <div
+        className={[
+          'max-w-[86%] rounded-2xl px-3 py-2 text-[12.5px] leading-snug',
+          fromMe
+            ? 'rounded-br-md bg-[hsl(var(--accent)/0.13)] text-ink ring-1 ring-inset ring-[hsl(var(--accent)/0.2)]'
+            : 'rounded-bl-md bg-surface-2 text-ink ring-1 ring-inset ring-border',
+        ].join(' ')}
+      >
+        {meta && (
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-ink-muted">
+            <meta.Icon className="h-3.5 w-3.5" />
+            {meta.label}
+            {ehAudio && m.duracao_seg ? <span className="tabular-nums">· {fmtDuracao(m.duracao_seg)}</span> : null}
+          </div>
+        )}
+        {ehAudio && (
+          m.media_url === 'unavailable' ? (
+            <div className="mt-0.5 text-[11px] italic text-ink-faint">áudio indisponível (expirou no aparelho)</div>
+          ) : m.media_url ? (
+            <audio controls preload="none" src={m.media_url} className="mt-1.5 h-9 w-[240px] max-w-full" />
+          ) : (
+            <div className="mt-0.5 text-[11px] italic text-ink-faint">áudio sincronizando…</div>
+          )
+        )}
+        {m.tipo === 'revoked' ? (
+          <div className="flex items-center gap-1 italic text-ink-faint"><Ban className="h-3 w-3" /> Mensagem apagada</div>
+        ) : m.body ? (
+          <p className={`${meta ? 'mt-1 ' : ''}whitespace-pre-wrap break-words`}>{m.body}</p>
+        ) : (!meta && !ehAudio) ? (
+          <p className="italic text-ink-faint">({m.tipo})</p>
+        ) : null}
+        <div className={`mt-1 text-right text-[10px] tabular-nums ${fromMe ? 'text-[hsl(var(--accent)/0.8)]' : 'text-ink-faint'}`}>
+          {fromMe && <span className="mr-1 font-medium not-italic">Você</span>}
+          {fmtDataHora(m.data_msg)}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ChatDrawer({
-  chat, etiquetas, vendedor, onClose,
-}: { chat: WaChat; etiquetas: { nome: string; cor: string }[]; vendedor: string; onClose: () => void }) {
+  chat, etiquetas, vendedor, onClose, agendada,
+}: { chat: WaChat; etiquetas: { nome: string; cor: string }[]; vendedor: string; onClose: () => void; agendada?: WaAgendada | null }) {
+  const temConversa = etiquetas.some(e => COLUNAS_COM_CONVERSA.has(e.nome))
   const { data: movimentos = [] } = useWaMovimentos(vendedor, chat.phone)
+  const { data: mensagens, isLoading: carregandoMsgs } = useWaMensagens(vendedor, chat.chat_id, temConversa)
   const nome = nomeContato(chat.contact_name, chat.phone)
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
-      <aside className="fixed right-0 top-0 z-50 h-full w-full max-w-[400px] overflow-y-auto border-l border-border bg-surface p-5 space-y-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <Avatar name={nome} size="md" />
-            <div className="min-w-0">
-              <h2 className="text-[16px] font-semibold text-ink truncate">{nome}</h2>
-              <div className="text-[12px] font-mono text-ink-muted">{formatarTelefone(chat.phone)}</div>
-              {chat.vendedor && <div className="text-[11px] text-accent font-semibold">{chat.vendedor}</div>}
+      <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-[2px]" onClick={onClose} />
+      <aside className="fixed right-0 top-0 z-50 flex h-full w-full max-w-[460px] flex-col border-l border-border bg-surface">
+        {/* Cabeçalho fixo */}
+        <div className="shrink-0 border-b border-border bg-gradient-to-b from-surface-2/80 to-surface px-5 pb-4 pt-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <Avatar name={nome} src={chat.foto_url ?? undefined} size="md" />
+              <div className="min-w-0">
+                <h2 className="truncate text-[16px] font-semibold text-ink">{nome}</h2>
+                <div className="font-mono text-[12px] text-ink-muted">{formatarTelefone(chat.phone)}</div>
+                {chat.vendedor && <div className="text-[11px] font-semibold text-accent">{chat.vendedor}</div>}
+              </div>
             </div>
+            <button onClick={onClose} aria-label="Fechar" className="px-1 text-xl leading-none text-ink-muted hover:text-ink">×</button>
           </div>
-          <button onClick={onClose} className="text-ink-muted hover:text-ink text-xl leading-none px-1">×</button>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {etiquetas.map(e => (
+              <span key={e.nome} className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+                style={{ backgroundColor: `${e.cor}22`, color: e.cor, border: `1px solid ${e.cor}55` }}>
+                {e.nome}
+              </span>
+            ))}
+            {etiquetas.length === 0 && (
+              <span className="rounded-full border border-warning/30 bg-warning-bg px-2.5 py-0.5 text-[11px] font-semibold text-warning">
+                SEM ETIQUETA
+              </span>
+            )}
+          </div>
         </div>
 
-        <div className="flex flex-wrap gap-1.5">
-          {etiquetas.map(e => (
-            <span key={e.nome} className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-              style={{ backgroundColor: `${e.cor}22`, color: e.cor, border: `1px solid ${e.cor}55` }}>
-              {e.nome}
-            </span>
-          ))}
-          {etiquetas.length === 0 && (
-            <span className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-warning-bg text-warning border border-warning/30">
-              SEM ETIQUETA
-            </span>
+        {/* Corpo rolável */}
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
+          {/* Mensagem agendada pendente (construtor da extensão) */}
+          {agendada && (
+            <div className="rounded-xl border border-[hsl(var(--accent)/0.35)] bg-[hsl(var(--accent)/0.07)] p-3">
+              <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-accent">
+                <Clock className="h-3.5 w-3.5" /> Mensagem agendada · {fmtDataHora(agendada.scheduled_at)}
+              </div>
+              {agendada.body ? (
+                <p className="whitespace-pre-wrap break-words text-[12.5px] leading-snug text-ink">{agendada.body.slice(0, 500)}</p>
+              ) : (
+                <p className="text-[12px] italic text-ink-faint">{agendada.media_type ? `Mídia (${agendada.media_type})` : 'Sem texto'}</p>
+              )}
+            </div>
           )}
-        </div>
 
-        <div className="rounded-lg border border-border bg-surface-2 p-3">
-          <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-1.5">
-            Última mensagem · {tempoRelativo(chat.last_message_at)}
-          </div>
-          {chat.last_message_preview ? (
-            <p className="text-[13px] text-ink leading-snug">
-              {chat.last_message_from_me ? <span className="text-accent font-medium">Você: </span> : null}
-              {chat.last_message_preview}
-            </p>
+          {/* Conversa — últimas 10 mensagens (FOLLOW UP / LEAD QUENTE) */}
+          {temConversa ? (
+            <div>
+              <div className="mb-2 flex items-baseline justify-between">
+                <div className="text-[11px] uppercase tracking-wide text-ink-faint">Conversa · últimas {Math.min(mensagens?.length ?? 10, 10)} mensagens</div>
+                {chat.last_message_at && <div className="text-[10px] tabular-nums text-ink-faint">{tempoRelativo(chat.last_message_at)}</div>}
+              </div>
+              {carregandoMsgs ? (
+                <p className="py-3 text-center text-[12px] text-ink-faint">Carregando conversa…</p>
+              ) : mensagens && mensagens.length > 0 ? (
+                <div className="space-y-2 rounded-xl border border-border bg-[hsl(var(--bg))] p-3">
+                  {mensagens.map(m => <BolhaMensagem key={m.msg_id} m={m} />)}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-border p-4 text-center">
+                  <p className="text-[12px] text-ink-muted">Conversa ainda não sincronizada.</p>
+                  <p className="mt-1 text-[11px] text-ink-faint">
+                    A extensão do vendedor (v1.6.71+) envia as últimas mensagens deste chat em até ~1 min com o WhatsApp Web aberto.
+                  </p>
+                </div>
+              )}
+            </div>
           ) : (
-            <p className="text-[13px] text-ink-faint">Sem preview disponível.</p>
+            /* Fora de FOLLOW UP / LEAD QUENTE: só o preview da última mensagem */
+            <div className="rounded-xl border border-border bg-surface-2 p-3">
+              <div className="mb-1.5 text-[11px] uppercase tracking-wide text-ink-faint">
+                Última mensagem · {tempoRelativo(chat.last_message_at)}
+              </div>
+              {chat.last_message_preview ? (
+                <p className="text-[13px] leading-snug text-ink">
+                  {chat.last_message_from_me ? <span className="font-medium text-accent">Você: </span> : null}
+                  {chat.last_message_preview}
+                </p>
+              ) : (
+                <p className="text-[13px] text-ink-faint">Sem preview disponível.</p>
+              )}
+            </div>
           )}
+
           {chat.last_message_from_me === false && (
-            <p className="mt-1.5 text-[11px] text-warning">⏳ Cliente aguardando resposta</p>
+            <p className="text-[11px] text-warning">⏳ Cliente aguardando resposta</p>
           )}
+
+          {/* Histórico de etiquetas */}
+          <div>
+            <div className="mb-2 text-[11px] uppercase tracking-wide text-ink-faint">Histórico de etiquetas</div>
+            {movimentos.length === 0 ? (
+              <p className="text-[12px] text-ink-faint">Nenhuma movimentação registrada.</p>
+            ) : (
+              <ul className="space-y-0">
+                {movimentos.map((m, i) => (
+                  <li key={i} className="relative flex items-baseline gap-2.5 pb-2.5 pl-4 text-[12px]">
+                    <span aria-hidden className="absolute left-0 top-[5px] h-2 w-2 rounded-full bg-[hsl(var(--accent)/0.6)]" />
+                    {i < movimentos.length - 1 && (
+                      <span aria-hidden className="absolute bottom-0 left-[3.5px] top-[13px] w-px bg-border" />
+                    )}
+                    <span className="shrink-0 tabular-nums text-ink-faint">{tempoRelativo(m.detectado_em)}</span>
+                    <span className="text-ink-muted">
+                      {m.etiqueta_de ? <>{m.etiqueta_de} → </> : <>+ </>}
+                      <span className="font-medium text-ink">{m.etiqueta_para ?? '(removida)'}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
 
-        <a href={`https://wa.me/${chat.phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer"
-          className="flex w-full items-center justify-center gap-2 rounded-md bg-accent-bg border border-accent/30 text-accent text-[13px] font-semibold py-2 hover:brightness-110 transition">
-          <MessageCircle className="h-4 w-4" /> Abrir conversa no WhatsApp
-        </a>
-
-        <div>
-          <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">Histórico de etiquetas</div>
-          {movimentos.length === 0 ? (
-            <p className="text-[12px] text-ink-faint">Nenhuma movimentação registrada.</p>
-          ) : (
-            <ul className="space-y-2">
-              {movimentos.map((m, i) => (
-                <li key={i} className="flex items-baseline gap-2 text-[12px]">
-                  <span className="text-ink-faint tabular-nums shrink-0">{tempoRelativo(m.detectado_em)}</span>
-                  <span className="text-ink-muted">
-                    {m.etiqueta_de ? <>{m.etiqueta_de} → </> : <>+ </>}
-                    <span className="text-ink font-medium">{m.etiqueta_para ?? '(removida)'}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
+        {/* Rodapé fixo: ação principal */}
+        <div className="shrink-0 border-t border-border p-4">
+          <a href={`https://wa.me/${chat.phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer"
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-accent/30 bg-accent-bg py-2.5 text-[13px] font-semibold text-accent transition hover:brightness-110">
+            <MessageCircle className="h-4 w-4" /> Abrir conversa no WhatsApp
+          </a>
         </div>
       </aside>
     </>
@@ -346,6 +497,7 @@ export function FunilWhatsApp() {
   const vendedor = vendedorTravado ?? vendedorSel ?? (vendedores.length ? TODOS : null)
   const modoTodos = vendedor === TODOS
   const { data, isLoading, error } = useWaKanban(vendedor)
+  const { data: agendadasMap } = useWaAgendadas(vendedor)
 
   const filtro = busca.trim().toLowerCase()
   const filtroDigitos = filtro.replace(/\D/g, '')
@@ -636,8 +788,10 @@ export function FunilWhatsApp() {
                   }, 0)
                 : 0
               return (
-                <div key={col.nome} className="flex h-full w-[280px] shrink-0 flex-col rounded-xl border border-border bg-surface-2/50">
-                  <div className="border-b border-border shrink-0">
+                <div key={col.nome} className="relative flex h-full w-[280px] shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-surface-2/50 shadow-[0_1px_8px_-4px_rgba(0,0,0,0.35)]">
+                  {/* filete da etiqueta — identidade visual da coluna */}
+                  <span aria-hidden className="absolute inset-x-0 top-0 h-[3px]" style={{ backgroundColor: col.cor, opacity: 0.9 }} />
+                  <div className="border-b border-border shrink-0 pt-[3px]">
                     <div className="flex items-center gap-2 px-3 pt-2.5 pb-1.5">
                       <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: col.cor }} />
                       <span className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">{col.nome}</span>
@@ -661,6 +815,7 @@ export function FunilWhatsApp() {
                     {visiveis.map(c => (
                       <ChatCard key={`${c.vendedor ?? ''}:${c.phone}`} chat={c} mostrarVendedor={modoTodos} compacto={compacto}
                         valorOrcamento={mostrarValor ? lookupOrcamento(orcMap, c.phone)?.valor ?? null : null}
+                        agendada={lookupAgendada(agendadasMap, c.vendedor ?? (modoTodos ? null : vendedor), c.chat_id, c.phone)}
                         onClick={() => setChatAberto(c)} />
                     ))}
                     {chats.length > limite && (
@@ -683,6 +838,7 @@ export function FunilWhatsApp() {
           chat={chatAberto}
           etiquetas={etiquetasDoChat}
           vendedor={chatAberto.vendedor ?? vendedor}
+          agendada={lookupAgendada(agendadasMap, chatAberto.vendedor ?? (modoTodos ? null : vendedor), chatAberto.chat_id, chatAberto.phone)}
           onClose={() => setChatAberto(null)}
         />
       )}

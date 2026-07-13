@@ -132,6 +132,105 @@ export function useWaKanban(vendedor: string | null) {
   })
 }
 
+export interface WaMensagem {
+  msg_id: string
+  from_me: boolean | null
+  tipo: string
+  body: string | null
+  duracao_seg: number | null
+  media_url: string | null
+  data_msg: string | null
+}
+
+/**
+ * Últimas ~10 mensagens do chat (sincronizadas pela extensão v1.6.71+ só pra
+ * chats em FOLLOW UP / LEAD QUENTE). Ordem cronológica (antiga → recente).
+ */
+export function useWaMensagens(vendedor: string | null, chatId: string | null, habilitado = true) {
+  return useQuery<WaMensagem[]>({
+    queryKey: ['wa-mensagens', vendedor, chatId],
+    enabled: habilitado && !!vendedor && !!chatId,
+    refetchInterval: 30_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('wa_chat_messages')
+        .select('msg_id, from_me, tipo, body, duracao_seg, media_url, data_msg')
+        .eq('vendedor_nome', vendedor!)
+        .eq('chat_id', chatId!)
+        .order('data_msg', { ascending: false, nullsFirst: false })
+        .limit(10)
+      if (error) throw error
+      return (data ?? []).reverse()
+    },
+  })
+}
+
+export interface WaAgendada {
+  id: string
+  vendedor_nome: string
+  chat_id: string | null
+  contato_numero: string | null
+  body: string | null
+  scheduled_at: string
+  media_type: string | null
+}
+
+/**
+ * Mensagens agendadas PENDENTES (construtor da extensão) — pra badge ⏰ nos
+ * cards e seção no drawer. Indexadas por vendedor::chat_id e por dígitos do
+ * telefone (fallback quando o agendamento não gravou o chat_id igual).
+ */
+export function useWaAgendadas(vendedor: string | null) {
+  const todos = vendedor === TODOS
+  return useQuery({
+    queryKey: ['wa-agendadas', vendedor],
+    enabled: !!vendedor,
+    refetchInterval: 60_000,
+    queryFn: async () => {
+      let q = supabase
+        .from('wa_scheduled_messages')
+        .select('id, vendedor_nome, chat_id, contato_numero, body, scheduled_at, media_type')
+        .eq('status', 'pending')
+        .eq('to_self', false)
+        .order('scheduled_at', { ascending: true })
+        .limit(500)
+      if (!todos) q = q.eq('vendedor_nome', vendedor!)
+      const { data, error } = await q
+      if (error) throw error
+      const porChat = new Map<string, WaAgendada>()
+      const porFone = new Map<string, WaAgendada>()
+      for (const a of (data ?? []) as WaAgendada[]) {
+        // primeira do map = mais próxima de disparar (query já vem ordenada)
+        if (a.chat_id && !porChat.has(`${a.vendedor_nome}::${a.chat_id}`)) {
+          porChat.set(`${a.vendedor_nome}::${a.chat_id}`, a)
+        }
+        const fone = String(a.contato_numero ?? '').replace(/\D/g, '')
+        if (fone.length >= 10 && !porFone.has(`${a.vendedor_nome}::${fone}`)) {
+          porFone.set(`${a.vendedor_nome}::${fone}`, a)
+        }
+      }
+      return { porChat, porFone }
+    },
+  })
+}
+
+/** Agendada pendente de um chat específico (chat_id primeiro, telefone como fallback) */
+export function lookupAgendada(
+  mapas: { porChat: Map<string, WaAgendada>; porFone: Map<string, WaAgendada> } | undefined,
+  vendedor: string | null | undefined,
+  chatId: string | null,
+  phone: string | null,
+): WaAgendada | null {
+  if (!mapas || !vendedor) return null
+  if (chatId) {
+    const hit = mapas.porChat.get(`${vendedor}::${chatId}`)
+    if (hit) return hit
+  }
+  const fone = String(phone ?? '').replace(/\D/g, '')
+  if (fone.length >= 10) return mapas.porFone.get(`${vendedor}::${fone}`) ?? null
+  return null
+}
+
 export interface WaMovimento {
   etiqueta_de: string | null
   etiqueta_para: string | null
