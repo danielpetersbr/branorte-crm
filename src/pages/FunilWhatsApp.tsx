@@ -4,7 +4,7 @@ import { MessageCircle } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 import { useWaKanban, useWaVendedores, useWaMovimentos, TODOS, type WaChat } from '@/hooks/useWaKanban'
-import { useOrcamentosPorTelefone, lookupOrcamento } from '@/hooks/useAtendimentos'
+import { useOrcamentosPorTelefone, lookupOrcamento, foneCanon } from '@/hooks/useAtendimentos'
 import {
   tempoRelativo, temperaturaDe, TEMP_META, resumoColuna,
   formatarTelefone, nomeContato, ordenarChats, ORDENACAO_LABEL,
@@ -424,7 +424,12 @@ export function FunilWhatsApp() {
 
   const etiquetasDoChat = useMemo(() => {
     if (!chatAberto || !data) return []
-    return data.colunas.filter(c => c.chats.includes(chatAberto)).map(c => ({ nome: c.nome, cor: c.cor }))
+    // Casa por chave estável (vendedor:phone), não por referência de objeto — a lista
+    // é recriada no refetch de 30s, então `.includes(chatAberto)` (ref antiga) falharia
+    // e o drawer mostraria "SEM ETIQUETA" errado pra um cliente etiquetado.
+    return data.colunas
+      .filter(c => c.chats.some(x => x.phone === chatAberto.phone && x.vendedor === chatAberto.vendedor))
+      .map(c => ({ nome: c.nome, cor: c.cor }))
   }, [chatAberto, data])
 
   return (
@@ -619,8 +624,16 @@ export function FunilWhatsApp() {
               const limite = limites[col.nome] ?? LIMITE_INICIAL
               const visiveis = chats.slice(0, limite)
               const mostrarValor = COLUNAS_COM_VALOR.has(col.nome)
+              // dedupe por telefone canônico — o mesmo cliente pode ter card em 2 vendedores
+              // (modo Todos); somar por linha contaria o orçamento em dobro.
+              const vistosValor = new Set<string>()
               const totalValor = mostrarValor
-                ? chats.reduce((s, c) => s + (lookupOrcamento(orcMap, c.phone)?.valor ?? 0), 0)
+                ? chats.reduce((s, c) => {
+                    const k = foneCanon(c.phone)
+                    if (!k || vistosValor.has(k)) return s
+                    vistosValor.add(k)
+                    return s + (lookupOrcamento(orcMap, c.phone)?.valor ?? 0)
+                  }, 0)
                 : 0
               return (
                 <div key={col.nome} className="flex h-full w-[280px] shrink-0 flex-col rounded-xl border border-border bg-surface-2/50">
