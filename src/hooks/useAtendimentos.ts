@@ -28,6 +28,11 @@ async function getCurrentVendorFirstName(): Promise<string | null> {
 
 export type DataPreset = '' | 'hoje' | 'ontem' | '7d' | '30d' | 'mes'
 
+// Valor sentinela do filtro de etiqueta pra "nunca respondeu (auto)" — é a marca do
+// bot (auditoria.sem_resposta_em), NÃO uma etiqueta real do Zap. Tratado à parte no
+// queryFn via RPC atendimentos_telefones_sem_resposta (não passa pela RPC de etiqueta).
+export const FILTRO_SEM_RESPOSTA = '__sem_resposta_bot__'
+
 export interface AtendimentoFilters {
   search: string
   responsavel: string
@@ -302,6 +307,23 @@ export function lookupSemResposta(
   return c ? (map[c] ?? null) : null
 }
 
+// Lista global de telefones marcados "nunca respondeu (auto)" e ainda sem vendedor.
+// Alimenta o card de KPI (length) e espelha o que o filtro FILTRO_SEM_RESPOSTA usa.
+export function useSemRespostaTelefones(enabled = true) {
+  return useQuery({
+    queryKey: ['sem-resposta-telefones'],
+    enabled,
+    queryFn: async (): Promise<string[]> => {
+      const { data, error } = await (supabase as any).rpc('atendimentos_telefones_sem_resposta')
+      if (error) throw error
+      return (data ?? []) as string[]
+    },
+    staleTime: 30_000,
+    refetchInterval: 45_000,
+    refetchIntervalInBackground: false,
+  })
+}
+
 export function useAtendimentos(filters: AtendimentoFilters) {
   return useQuery({
     queryKey: ['atendimentos', filters],
@@ -331,7 +353,14 @@ export function useAtendimentos(filters: AtendimentoFilters) {
       if (filters.status_real) query = query.eq('status_real', filters.status_real)
       // Filtro por etiqueta do WhatsApp: a RPC devolve os telefones com a etiqueta
       // (em toda a base), e filtramos os atendimentos por eles.
-      if (filters.etiqueta) {
+      if (filters.etiqueta === FILTRO_SEM_RESPOSTA) {
+        // "Nunca respondeu (auto)": marca do bot (sem_resposta_em) + sem vendedor.
+        const { data: tels, error: telErr } = await (supabase as any).rpc('atendimentos_telefones_sem_resposta')
+        if (telErr) throw telErr
+        const list = (tels ?? []) as string[]
+        if (list.length === 0) return { rows: [], total: 0 }
+        query = query.in('telefone_norm', list)
+      } else if (filters.etiqueta) {
         const { data: tels, error: telErr } = await supabase.rpc('atendimentos_telefones_por_etiqueta', { p_etiqueta: filters.etiqueta })
         if (telErr) throw telErr
         const list = (tels ?? []) as string[]

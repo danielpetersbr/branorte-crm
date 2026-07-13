@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, Flame, AlarmClock, CheckCircle2, Inbox, Trash2, Calendar, Hand, ListChecks, MessageSquareDot, EyeOff, UserPlus, RefreshCw, AlertCircle } from 'lucide-react'
+import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, Flame, AlarmClock, CheckCircle2, Inbox, Trash2, Calendar, Hand, ListChecks, MessageSquareDot, EyeOff, UserPlus, RefreshCw, AlertCircle, PhoneOff } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -17,7 +17,7 @@ import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTime
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, type StatusReal } from '@/types/atendimento'
-import { useAtendimentos, useAtendimentoKpis, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, type DataPreset } from '@/hooks/useAtendimentos'
+import { useAtendimentos, useAtendimentoKpis, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, FILTRO_SEM_RESPOSTA, type DataPreset } from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 
@@ -45,6 +45,7 @@ const DATA_PRESETS: { value: DataPreset; label: string }[] = [
 // Opções do filtro por etiqueta do WhatsApp (value = nome normalizado, casado
 // server-side pela RPC atendimentos_telefones_por_etiqueta).
 const ETIQUETA_OPCOES: { value: string; label: string }[] = [
+  { value: FILTRO_SEM_RESPOSTA,     label: '🔴 Nunca respondeu (auto)' },
   { value: 'NOVO LEAD',             label: '🆕 Novo lead' },
   { value: 'PROSPECCAO',            label: '🔍 Prospecção' },
   { value: '2A TENTATIVA',          label: '↩️ 2ª tentativa' },
@@ -353,6 +354,8 @@ export function Atendimentos() {
   const { data: vendaMap } = useVendasPorTelefone(phonesAtuais)
   // Marca "NUNCA RESPONDEU" (bot → auditoria.sem_resposta_em).
   const { data: semRespMap } = useSemRespostaPorTelefone(phonesAtuais)
+  // Total global de "nunca respondeu (auto)" pra o card de KPI.
+  const { data: semRespTels } = useSemRespostaTelefones()
   const deleteMut = useDeleteAtendimento()
   const { profile } = useAuth()
   const { data: vendorsData } = useVendors()
@@ -423,10 +426,11 @@ export function Atendimentos() {
 
       {/* KPIs - funil: ENTRADA → ENGAJAMENTO → QUALIFICAÇÃO → HANDOFF → CONTATO */}
       {kpis && (
-        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-7 gap-3">
           <KpiCard label="Hoje"           value={kpis.hoje}         hero tone="accent"
                    icon={Calendar}        hint={kpis.hoje === 0 ? 'Nenhum lead hoje' : 'leads novos'} />
           <KpiCard label="Não engajaram"  value={kpis.naoEngajaram}      tone="neutral"  icon={EyeOff}            hint="nem começou o bot" />
+          <KpiCard label="Nunca respondeu" value={semRespTels?.length ?? 0} tone="danger" icon={PhoneOff}         hint="marcado pelo bot — sem resposta" />
           <KpiCard label="Em andamento"   value={kpis.emAndamento}       tone="warning"  icon={MessageSquareDot}  hint="no meio do fluxo" />
           <KpiCard label="Qualificados"   value={kpis.qualificados} hero tone="info"     icon={ListChecks}        hint="fábrica completa ou equipamento do catálogo Branorte" />
           <KpiCard label="Pra pegar"      value={kpis.paraPegar}    hero tone="warning"
