@@ -127,7 +127,15 @@ async function processFile(remotePath) {
 async function markAsProcessed(remotePath) {
   // Move pra _processados/<original_path> dentro do bucket
   const newPath = `_processados/${remotePath}`
-  const { error } = await supa.storage.from(BUCKET).move(remotePath, newPath)
+  let { error } = await supa.storage.from(BUCKET).move(remotePath, newPath)
+  if (error && /exist/i.test(error.message)) {
+    // Destino ja existe = orcamento re-gerado com o mesmo nome depois de um
+    // processamento anterior. Sem tratamento o move falha 400 pra sempre e o
+    // arquivo nunca sai da lista de pendentes (flood de retries a cada tick).
+    // Descarta a copia antiga do historico e move a versao nova por cima.
+    await supa.storage.from(BUCKET).remove([newPath])
+    ;({ error } = await supa.storage.from(BUCKET).move(remotePath, newPath))
+  }
   if (error) log(`WARN nao consegui mover ${remotePath} pra _processados: ${error.message}`)
 }
 

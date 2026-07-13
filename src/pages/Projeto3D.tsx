@@ -8,7 +8,7 @@
 //   Novo    → manda o iframe abrir um editor vazio (branorte:new).
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  Boxes, ExternalLink, Maximize2, RefreshCw, Save, FolderOpen, Plus, Trash2,
+  Boxes, Maximize2, RefreshCw, Save, FolderOpen, Plus, Trash2,
   ChevronDown, X, Search, Check, Loader2,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
@@ -16,6 +16,9 @@ import {
   useConfiguradorProjetos, useSalvarConfiguradorProjeto, useDeletarConfiguradorProjeto,
   useBuscarContatos, fetchConfiguradorProjeto, type ConfiguradorProjetoMeta,
 } from '@/hooks/useConfiguradorProjetos'
+import {
+  fetchConfiguradorBlocos, upsertConfiguradorBloco, deleteConfiguradorBloco,
+} from '@/hooks/useConfiguradorBlocos'
 
 const CONFIGURADOR_ORIGIN = 'https://branorte-configurador-3d.vercel.app'
 const CONFIGURADOR_URL = CONFIGURADOR_ORIGIN
@@ -44,6 +47,10 @@ export function Projeto3D() {
   const projetoDataRef = useRef<unknown>(null)
 
   const { profile } = useAuth()
+  const profileRef = useRef(profile)
+  useEffect(() => { profileRef.current = profile }, [profile])
+  // Papel passado pro iframe: só ADMIN vê o botão "Catálogo de Produtos" no configurador (vendedor não).
+  const iframeSrc = `${CONFIGURADOR_URL}?adm=${profile?.role === 'admin' ? '1' : '0'}`
   const { data: projetos, isLoading: loadingLista } = useConfiguradorProjetos()
   const salvar = useSalvarConfiguradorProjeto()
   const deletar = useDeletarConfiguradorProjeto()
@@ -64,6 +71,31 @@ export function Projeto3D() {
       if (m.type === 'branorte:project' && m.requestId) {
         const fn = pendings.current.get(m.requestId)
         if (fn) { pendings.current.delete(m.requestId); fn(m.project) }
+      } else if (m.type === 'branorte:ready') {
+        // iframe subiu → manda os BLOCOS PERSONALIZADOS salvos (Supabase) pro catálogo dele
+        fetchConfiguradorBlocos()
+          .then((defs) => frameRef.current?.contentWindow?.postMessage({ type: 'branorte:blocks:load', defs }, CONFIGURADOR_ORIGIN))
+          .catch(() => {})
+      } else if (m.type === 'branorte:block:upsert' && m.def) {
+        // usuário criou/editou um bloco no configurador → grava no Supabase (compartilhado pela equipe)
+        upsertConfiguradorBloco(m.def, profileRef.current?.id ?? null, profileRef.current?.display_name ?? null).catch(() => {})
+      } else if (m.type === 'branorte:block:delete' && m.id) {
+        deleteConfiguradorBloco(String(m.id)).catch(() => {})
+      } else if (m.type === 'branorte:download' && (typeof m.dataUrl === 'string' || m.blob instanceof Blob)) {
+        // "Bater foto" (imagem 4K) e "Vídeo" (webm): o Chrome bloqueia download iniciado dentro do
+        // iframe cross-origin, então o configurador manda o arquivo pra cá e o CRM (top-level) baixa.
+        const baixar = (blob: Blob) => {
+          const url = URL.createObjectURL(blob)
+          const link = document.createElement('a')
+          link.download = typeof m.filename === 'string' ? m.filename : 'branorte-3d'
+          link.href = url
+          document.body.appendChild(link)
+          link.click()
+          link.remove()
+          setTimeout(() => URL.revokeObjectURL(url), 15000)
+        }
+        if (m.blob instanceof Blob) baixar(m.blob)
+        else fetch(m.dataUrl as string).then((r) => r.blob()).then(baixar).catch(() => flash('Falha ao baixar', true))
       }
     }
     window.addEventListener('message', onMsg)
@@ -254,9 +286,6 @@ export function Projeto3D() {
           <button onClick={telaCheia} title="Tela cheia" className="h-9 w-9 rounded-lg border border-border text-ink-muted hover:text-ink hover:bg-bg hidden sm:flex items-center justify-center">
             <Maximize2 className="h-4 w-4" />
           </button>
-          <a href={CONFIGURADOR_URL} target="_blank" rel="noopener noreferrer" title="Abrir em nova aba" className="h-9 w-9 rounded-lg border border-border text-ink-muted hover:text-ink hover:bg-bg flex items-center justify-center">
-            <ExternalLink className="h-4 w-4" />
-          </a>
         </div>
       </header>
 
@@ -271,7 +300,7 @@ export function Projeto3D() {
         )}
         <iframe
           ref={frameRef}
-          src={CONFIGURADOR_URL}
+          src={iframeSrc}
           title="Configurador 3D Branorte"
           onLoad={() => setLoading(false)}
           className="absolute inset-0 h-full w-full border-0"

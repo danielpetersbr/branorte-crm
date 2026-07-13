@@ -18,7 +18,7 @@ import { OrcamentoPreview, type ParcelaPagamento, type PreviewClienteDados } fro
 import { montarItensFiname, type FinameBloqueio } from '@/lib/finame'
 import { ResponsiveScaler } from '@/components/ResponsiveScaler'
 import { ClienteEditModal } from '@/components/ClienteEditModal'
-import { useOrcamentoModelos, useOrcamentoGerado, type OrcamentoModelo, detectarBalancaDuplicada } from '@/hooks/useOrcamentoBuilder'
+import { useOrcamentoModelos, useOrcamentoGerado, type OrcamentoModelo, detectarBalancaDuplicada, stripSufixoVoltagem } from '@/hooks/useOrcamentoBuilder'
 import { OrcamentoAIChat } from '@/components/orcamento/OrcamentoAIChat'
 import { useSearchParams } from 'react-router-dom'
 import { useOrcamentoDraft } from '@/hooks/useOrcamentoDraft'
@@ -63,6 +63,9 @@ interface CarrinhoItem {
   specs_original?: string[]
   /** Quando true, item é brinde (valor não entra no total, mostra "BRINDE" no preview). */
   brinde?: boolean
+  /** Feedback #45: quando true, item está INCLUSO no conjunto — valor não entra
+   *  no total e o preview/DOCX mostram "INCLUSO" no lugar do preço. */
+  incluso?: boolean
   /** Quando true, item é fornecido/comprado pelo CLIENTE (ex: caixa, estrutura própria).
    *  A Branorte não cobra: valor não entra no total e o preview mostra
    *  "por conta do cliente" em vez de um valor. */
@@ -336,8 +339,17 @@ function agruparMotores(
     // "motorredutor"). Sem isto o "(incluso)" era ignorado e os 2 motores eram cobrados.
     // Restrito a essa categoria pra NÃO zerar moinho/triturador (avulso) que tem "(incluso)"
     // perdido na spec.
+    // Bug #46: itens legados/de modelo chegam com categoria 'MODELO' — detecta
+    // pré-limpeza pelo NOME, ancorado no início pra NÃO casar transportadores
+    // "(Alimentação da pré limpeza)", cujo motor é avulso e cobrado à parte.
     const inclusoDireto = it.categoria === 'PRE_LIMPEZA'
-    const eInclusoSpec = /\(\s*inclus[oa]s?\.?\s*\)/i.test(specMotor)
+      || /^\s*(m[aá]quina\s+)?pr[eé]\s*-?\s*limpeza/i.test(nomeItem)
+    // Bug #46: aceita "(Motor incluso)", "(motores inclusos)" etc — MESMO padrão do
+    // motorJaInclusoNoItem — mas nunca com negação ("(motor não incluso)"). Antes o
+    // regex exigia parêntese contendo SÓ "incluso": o item entrava com
+    // motor_valor_unit=0 (detector permissivo) e agruparMotores recobrava os motores
+    // pelo catálogo (detector estrito) — pré-limpeza saía com 3 CV + 1,5 CV cobrados.
+    const eInclusoSpec = /\((?![^)]*\bn[ãa]o\b)[^)]*\binclus[oa]s?\b[^)]*\)/i.test(specMotor)
     // CV mencionado como incluso no spec (1º CV do match). Se motor REAL (it.motor_cv)
     // é diferente, NAO trata como incluso — é outro motor avulso.
     // Ex: spec "Acionamento 10 CV (incluso)" + motor pareado 15 CV → NÃO incluso.
@@ -418,6 +430,12 @@ function agruparMotores(
   return linhas
 }
 
+// Key estável pra override manual de preço de motor. Inclui cv/polos: se o vendedor
+// trocar o motor (muda cv/polos), o override antigo cai fora naturalmente.
+function motorOverrideKey(m: { item_uid?: string; motorIndex?: number; cv: number; polos: number }): string {
+  return `${m.item_uid ?? '?'}::${m.motorIndex ?? 'main'}::${m.cv}p${m.polos}`
+}
+
 export function OrcamentoMontar() {
   const { data: items, isLoading: loadingItems } = useCatalogoItems()
   const { data: motores, isLoading: loadingMotores } = useCatalogoMotores()
@@ -439,6 +457,12 @@ export function OrcamentoMontar() {
   // FINAME: total da proposta "travado" (referência). A soma das linhas precisa bater
   // com ele pra gerar; senão o vendedor ajusta os valores ou aceita o novo total.
   const [finameTotalTravado, setFinameTotalTravado] = useState<number | null>(null)
+  // Override manual do preço de motor (duplo-clique no preço no preview + senha 2104).
+  // Key estável por motor: item_uid::motorIndex::cvPpolos. Vive no rascunho (autosave/undo)
+  // e é capturado no snapshot gerado (PDF/DOCX/orçamento salvo). Reabrir um orçamento
+  // salvo re-deriva o motor do catálogo (comportamento atual), então o override vale
+  // pro momento da montagem/geração — exatamente "aumentar o preço na hora".
+  const [motorPrecoOverride, setMotorPrecoOverride] = useState<Record<string, number>>({})
   // Tensão dos motores (global pra todos). null = "tensão a confirmar".
   const [tensaoMotores, setTensaoMotores] = useState<TensaoMotor>(null)
   // #32: Marca dos motores (global). Texto livre. null = "marca a confirmar".
@@ -490,6 +514,8 @@ export function OrcamentoMontar() {
   // Default = FOB + 'por conta do cliente' (comportamento legado). Vendedor pode mudar.
   const [freteTipo, setFreteTipo] = useState<'CIF' | 'FOB'>('FOB')
   const [freteTxt, setFreteTxt] = useState<string>('')
+  // Validade da proposta em dias, editavel inline no preview. Default legado = 10.
+  const [validadeDias, setValidadeDias] = useState<number>(10)
   // Parcelas estruturadas (tabela DATA/MÉTODO/VALOR) — alternativa ao texto livre acima
   const [parcelasPagamento, setParcelasPagamento] = useState<ParcelaPagamento[]>([])
   // Componentes adicionais (NÃO fabricados pela Branorte) — painel elétrico, balança, célula de carga, etc.
@@ -520,17 +546,20 @@ export function OrcamentoMontar() {
     formaPagamentoTxt,
     freteTipo,
     freteTxt,
+    validadeDias,
     parcelasPagamento,
     fotoPrincipal,
     componentesExtras,
     motoresAvulsos,
     balancaDispensada,
     obsPorConta,
+    motorPrecoOverride,
   }), [
     carrinho, acessorios, voltagem, tensaoMotores, marcaMotores, descontoCfg,
-    dataVendaTxt, prazoEntregaTxt, formaPagamentoTxt, freteTipo, freteTxt,
+    dataVendaTxt, prazoEntregaTxt, formaPagamentoTxt, freteTipo, freteTxt, validadeDias,
     parcelasPagamento, fotoPrincipal,
     componentesExtras, motoresAvulsos, balancaDispensada, obsPorConta,
+    motorPrecoOverride,
   ])
 
   // Autosave so liga depois que catalogo carregar (evita salvar snapshot vazio
@@ -590,12 +619,14 @@ export function OrcamentoMontar() {
     setFormaPagamentoTxt(prev.formaPagamentoTxt ?? '')
     setFreteTipo((prev as any).freteTipo ?? 'FOB')
     setFreteTxt((prev as any).freteTxt ?? '')
+    setValidadeDias((prev as any).validadeDias ?? 10)
     setParcelasPagamento(prev.parcelasPagamento ?? [])
     setFotoPrincipal(prev.fotoPrincipal ?? null)
     setComponentesExtras(prev.componentesExtras ?? [])
     setMotoresAvulsos((prev as any).motoresAvulsos ?? [])
     setBalancaDispensada((prev as any).balancaDispensada ?? false)
     setObsPorConta((prev as any).obsPorConta ?? null)
+    setMotorPrecoOverride((prev as any).motorPrecoOverride ?? {})
     setHistoryStack(stack => stack.slice(0, -1))
   }
 
@@ -629,12 +660,14 @@ export function OrcamentoMontar() {
     setFormaPagamentoTxt(d.formaPagamentoTxt ?? '')
     setFreteTipo((d as any).freteTipo ?? 'FOB')
     setFreteTxt((d as any).freteTxt ?? '')
+    setValidadeDias((d as any).validadeDias ?? 10)
     setParcelasPagamento(d.parcelasPagamento ?? [])
     setFotoPrincipal(d.fotoPrincipal ?? null)
     setComponentesExtras(d.componentesExtras ?? [])
     setMotoresAvulsos((d as any).motoresAvulsos ?? [])
     setBalancaDispensada((d as any).balancaDispensada ?? false)
     setObsPorConta((d as any).obsPorConta ?? null)
+    setMotorPrecoOverride((d as any).motorPrecoOverride ?? {})
     draft.dismissRecovered()
   }
 
@@ -663,7 +696,7 @@ export function OrcamentoMontar() {
   const [clienteDados, setClienteDados] = useState<PreviewClienteDados>({})
   const [clienteModalOpen, setClienteModalOpen] = useState(false)
 
-  function atualizarTermo(key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento' | 'freteTxt' | 'freteTipo', v: string) {
+  function atualizarTermo(key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento' | 'freteTxt' | 'freteTipo' | 'validadeDias', v: string) {
     if (key === 'dataVenda') {
       setDataVendaTxt(v)
     } else if (key === 'prazoEntrega') {
@@ -683,6 +716,10 @@ export function OrcamentoMontar() {
       setFreteTipo(novoTipo)
     } else if (key === 'freteTxt') {
       setFreteTxt(v)
+    } else if (key === 'validadeDias') {
+      // Nº de dias inteiro > 0; qualquer coisa inválida cai no default 10.
+      const n = parseInt(v, 10)
+      setValidadeDias(Number.isFinite(n) && n > 0 ? n : 10)
     }
   }
 
@@ -705,13 +742,33 @@ export function OrcamentoMontar() {
 
   const totalOficiais = useMemo(() => (items ?? []).filter(i => i.is_oficial).length, [items])
 
-  const motoresAgrupados = useMemo(
-    () => agruparMotores(carrinho, motores, voltagem, motoresAvulsos),
-    [carrinho, motores, voltagem, motoresAvulsos],
-  )
+  const motoresAgrupados = useMemo(() => {
+    const linhas = agruparMotores(carrinho, motores, voltagem, motoresAvulsos)
+    if (!Object.keys(motorPrecoOverride).length) return linhas
+    return linhas.map(m => {
+      // Não sobrescreve motor incluso / por conta do cliente / removido — essas linhas
+      // não mostram preço cobrável (mostram "incluso"/"removido"), então override não vale.
+      if (m.por_conta_cliente || m.removido || m.incluso_real) return m
+      const ov = motorPrecoOverride[motorOverrideKey(m)]
+      if (ov == null) return m
+      return { ...m, valor_unit: ov, valor_total: ov }
+    })
+  }, [carrinho, motores, voltagem, motoresAvulsos, motorPrecoOverride])
+
+  // Duplo-clique no preço do motor (preview) → senha 2104 → novo valor. novoValor null
+  // limpa o override (volta ao preço do catálogo). A senha é validada no preview.
+  function editarPrecoMotor(m: MotorAgrupado, novoValor: number | null) {
+    const key = motorOverrideKey(m)
+    setMotorPrecoOverride(prev => {
+      const next = { ...prev }
+      if (novoValor == null) delete next[key]
+      else next[key] = novoValor
+      return next
+    })
+  }
 
   const totalItems = useMemo(
-    () => carrinho.reduce((s, c) => s + (c.brinde || c.por_conta_cliente ? 0 : c.valor * c.qtd), 0),
+    () => carrinho.reduce((s, c) => s + (c.brinde || c.por_conta_cliente || c.incluso ? 0 : c.valor * c.qtd), 0),
     [carrinho],
   )
   const totalMotores = useMemo(
@@ -726,7 +783,7 @@ export function OrcamentoMontar() {
     if (acessorios.valorFixo != null && acessorios.valorFixo > 0) return Math.ceil(acessorios.valorFixo)
     const excluded = new Set(acessorios.excludedItemUids ?? [])
     const base = carrinho.reduce(
-      (s, c) => s + (c.brinde || c.por_conta_cliente || excluded.has(c.uid) ? 0 : c.valor * c.qtd),
+      (s, c) => s + (c.brinde || c.por_conta_cliente || c.incluso || excluded.has(c.uid) ? 0 : c.valor * c.qtd),
       0,
     )
     return Math.ceil((base * acessorios.pct) / 100)
@@ -783,7 +840,7 @@ export function OrcamentoMontar() {
     [motoresAgrupados, fExp],
   )
   const totalItemsExib = useMemo(
-    () => carrinhoExib.reduce((s, c) => s + (c.brinde || c.por_conta_cliente ? 0 : c.valor * c.qtd), 0),
+    () => carrinhoExib.reduce((s, c) => s + (c.brinde || c.por_conta_cliente || c.incluso ? 0 : c.valor * c.qtd), 0),
     [carrinhoExib],
   )
   const totalMotoresExib = useMemo(() => motoresAgrupadosExib.reduce((s, m) => s + m.valor_total, 0), [motoresAgrupadosExib])
@@ -809,7 +866,7 @@ export function OrcamentoMontar() {
       motorPorUid.set(m.item_uid, (motorPorUid.get(m.item_uid) || 0) + (m.valor_total || 0))
     }
     const inputs = carrinhoExib
-      .filter(it => !it.por_conta_cliente && !it.brinde) // cliente/brinde ficam fora do FINAME
+      .filter(it => !it.por_conta_cliente && !it.brinde && !it.incluso) // cliente/brinde/incluso ficam fora do FINAME
       .map(it => ({
         uid: it.uid,
         nome: it.nome_custom || it.nome,
@@ -854,6 +911,7 @@ export function OrcamentoMontar() {
         // Sem imagens no FINAME.
         foto_url: null,
         brinde: false,
+        incluso: false,
       }
     })
   }, [finameMode, finameTransform, carrinhoExib, origByUid, finameValorOverride])
@@ -1657,7 +1715,12 @@ export function OrcamentoMontar() {
               }
             }
             const capIdx = novas.findIndex(s => /capacidade/i.test(s))
-            if (capIdx >= 0) {
+            // Bug #51: NUNCA sobrescrever a própria linha que o vendedor acabou de
+            // editar. O auto-recálculo só vale quando a peneira mudou em OUTRA linha
+            // (ex: editar "Montado com peneira 5mm" atualiza a linha de capacidade).
+            // Sem este guard, editar a linha "Capacidade X kg/h (... peneira 3,0mm)"
+            // disparava o recálculo nela mesma e a edição sumia no blur.
+            if (capIdx >= 0 && capIdx !== idx) {
               novas[capIdx] = novas[capIdx].replace(
                 /\d[\d.]*\s*kg\/h.*/i,
                 `${novaCapacidade.toLocaleString('pt-BR')} kg/h (na densidade do milho e peneira ${penMm.toLocaleString('pt-BR')}mm)`
@@ -1727,6 +1790,7 @@ export function OrcamentoMontar() {
     // Reseta frete pro default legado (FOB + texto vazio = "por conta do cliente")
     setFreteTipo('FOB')
     setFreteTxt('')
+    setValidadeDias(10)
     // initialModal e usado pra hidratar o modal Finalizar — limpa tambem
     setInitialModal(null)
   }
@@ -2130,7 +2194,7 @@ export function OrcamentoMontar() {
           catalogo_id: typeof itAny.catalogo_id === 'number' ? itAny.catalogo_id : -1,
           preco_branorte_id: itAny.preco_branorte_id ?? null,
           categoria: itAny.categoria || 'MODELO',
-          nome: it.nome,
+          nome: stripSufixoVoltagem(it.nome),  // #64: limpa " - Trifásico" legado
           specs: it.specs || [],
           specs_original: itAny.specs_original ?? undefined,
           qtd: it.qtd || 1,
@@ -2147,6 +2211,7 @@ export function OrcamentoMontar() {
           inox: itAny.inox ?? false,
           tungstenio: !!itAny.tungstenio,
           brinde: !!itAny.brinde,
+          incluso: !!itAny.incluso,
           por_conta_cliente: !!itAny.por_conta_cliente,
           motor_por_conta_cliente: !!itAny.motor_por_conta_cliente,
           motor_removido: !!itAny.motor_removido,
@@ -2176,6 +2241,10 @@ export function OrcamentoMontar() {
         else if (n.includes('MISTURADOR')) categoria = 'MISTURADOR'
         else if (n.includes('SILO')) categoria = 'SILO'
         else if (n.includes('ELEVADOR')) categoria = 'ELEVADOR'
+        // Bug #46: pré-limpeza ANTES de PENEIRA — sem isto caía em 'MODELO' e perdia
+        // o "motor incluso direto" do agruparMotores (motores cobrados indevidamente).
+        // normalizar() já vira "Pré-Limpeza"/"PRÉ - LIMPEZA" em "PRE LIMPEZA".
+        else if (n.includes('PRE LIMPEZA')) categoria = 'PRE_LIMPEZA'
         else if (n.includes('PENEIRA')) categoria = 'PENEIRA'
         else if (n.includes('CACAMBA_PESAGEM') || n.includes('CACAMBA_PESAGEM') || n.includes('PESAGEM')) categoria = 'CACAMBA_PESAGEM'
         else if (n.includes('ENSACADEIRA')) categoria = 'ENSACADEIRA'
@@ -2211,7 +2280,7 @@ export function OrcamentoMontar() {
         catalogo_id: ci?.id ?? -1,
         preco_branorte_id: ci?.preco_branorte_id ?? null,
         categoria,
-        nome: it.nome,
+        nome: stripSufixoVoltagem(it.nome),  // #64: limpa " - Trifásico" legado
         specs: it.specs || [],
         qtd: it.qtd || 1,
         valor: valorFinal,
@@ -2227,6 +2296,7 @@ export function OrcamentoMontar() {
         foto_url: foto,
         usa_inversor: !!(ci?.usa_inversor),
         brinde: !!(it as any).brinde,
+        incluso: !!(it as any).incluso,
         motor_por_conta_cliente: !!(it as any).motor_por_conta_cliente,
         por_conta_cliente: !!(it as any).por_conta_cliente,
       })
@@ -2352,6 +2422,8 @@ export function OrcamentoMontar() {
     if (typeof (o as any).frete_txt === 'string') {
       setFreteTxt((o as any).frete_txt)
     }
+    // Validade da proposta (coluna validade_dias). Ausente/nulo = default legado 10.
+    setValidadeDias((o as any).validade_dias ?? 10)
     // Desconto, tensão e marca dos motores (migration 2026-06-10): antes sumiam ao
     // reabrir (só viviam no rascunho local). Agora restaura do banco.
     if ((o as any).desconto) setDescontoCfg((o as any).desconto)
@@ -3005,6 +3077,7 @@ export function OrcamentoMontar() {
                 onToggleInox={finameMode ? undefined : toggleInox}
                 onToggleTungstenio={finameMode ? undefined : toggleTungstenio}
                 onToggleBrinde={finameMode ? undefined : (uid) => setCarrinho(prev => prev.map(c => c.uid === uid ? { ...c, brinde: !c.brinde } : c))}
+                onToggleIncluso={finameMode ? undefined : (uid) => setCarrinho(prev => prev.map(c => c.uid === uid ? { ...c, incluso: !c.incluso } : c))}
                 onTogglePorConta={finameMode ? undefined : (uid) => setCarrinho(prev => prev.map(c => c.uid === uid ? { ...c, por_conta_cliente: !c.por_conta_cliente, ...(!c.por_conta_cliente ? { valor: 0, valor_original: 0 } : {}) } : c))}
                 onUpdateQtd={finameMode ? undefined : alterarQtd}
                 componentesExtras={componentesExtrasFinal}
@@ -3025,7 +3098,7 @@ export function OrcamentoMontar() {
                 onUpdateMarcaMotores={setMarcaMotores}
                 desconto={descontoCfg}
                 onUpdateDesconto={setDescontoCfg}
-                terms={{ dataVenda: dataVendaTxt, prazoEntrega: prazoEntregaTxt, formaPagamento: formaPagamentoTxt, freteTipo, freteTxt }}
+                terms={{ dataVenda: dataVendaTxt, prazoEntrega: prazoEntregaTxt, formaPagamento: formaPagamentoTxt, freteTipo, freteTxt, validadeDias }}
                 onUpdateTerm={atualizarTermo}
                 onMoverItem={moverItem}
                 onTrocarItem={finameMode ? undefined : handleTrocarItem}
@@ -3039,6 +3112,7 @@ export function OrcamentoMontar() {
                 onMotorIncluso={marcarMotorIncluso}
                 onRemoverMotor={removerMotorDoItem}
                 onRestaurarMotor={restaurarMotorDoItem}
+                onEditarPrecoMotor={finameMode ? undefined : editarPrecoMotor}
                 onAdicionarMotorAvulso={finameMode ? undefined : adicionarMotorAvulso}
                 vendedoresContato={vendedoresContato}
                 vendedorResponsavelNome={profile?.display_name || null}
@@ -3201,6 +3275,7 @@ export function OrcamentoMontar() {
             motor_valor_unit: c.motor_valor_unit,
             foto_url: c.foto_url,
             brinde: c.brinde,
+            incluso: c.incluso,
             motor_por_conta_cliente: c.motor_por_conta_cliente,
             por_conta_cliente: c.por_conta_cliente,
             // Round-trip completo: campos extras pra recarregar a edição 1:1
@@ -3240,6 +3315,7 @@ export function OrcamentoMontar() {
             formaPagamento: formaPagamentoTxt || 'a combinar',
             freteTipo,
             freteTxt: freteTxt || null,
+            validadeDias,
           },
           parcelas: parcelasPagamento,
           componentesExtras: componentesExtrasFinal,
@@ -4513,7 +4589,7 @@ function AcessoriosModal({
 
   // Base de cálculo (preview ao vivo dentro do modal).
   const itensCarrinho = useMemo(
-    () => carrinho.filter(c => !c.brinde && !c.por_conta_cliente),
+    () => carrinho.filter(c => !c.brinde && !c.por_conta_cliente && !c.incluso),
     [carrinho],
   )
   const baseCalculo = useMemo(() => {

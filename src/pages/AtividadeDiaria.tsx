@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, MessageSquare, Users, Calendar, RefreshCw } from 'lucide-react'
+import { Activity, MessageSquare, Users, Calendar, RefreshCw, Headset } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts'
@@ -8,12 +8,21 @@ import { Card } from '@/components/ui/Card'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatNumber } from '@/lib/utils'
 
+type Metrica = 'atendimentos' | 'chats_ativos' | 'msgs_estimadas'
+
 interface AtividadeRow {
   vendedor_nome: string
   dia: string  // YYYY-MM-DD
+  atendimentos: number   // conversa de mao-dupla no dia (fonte: vendedor_atend_dia)
   chats_ativos: number
   msgs_estimadas: number
-  atualizado_em: string
+}
+
+// Rotulo / cor / emoji de cada metrica (atendimento e o foco).
+const META_INFO: Record<Metrica, { label: string; emoji: string }> = {
+  atendimentos: { label: 'Atendimentos', emoji: '📞' },
+  chats_ativos: { label: 'Chats ativos', emoji: '👥' },
+  msgs_estimadas: { label: 'Mensagens', emoji: '💬' },
 }
 
 // Vendedores ocultos do dashboard (admins/testes que distorcem ranking).
@@ -44,7 +53,7 @@ function corDoVendedor(nome: string): string {
 }
 
 function fmtData(d: string): string {
-  const [y, m, dd] = d.split('-')
+  const [, m, dd] = d.split('-')
   return `${dd}/${m}`
 }
 
@@ -52,7 +61,7 @@ export function AtividadeDiaria() {
   const [rows, setRows] = useState<AtividadeRow[]>([])
   const [loading, setLoading] = useState(true)
   const [periodo, setPeriodo] = useState<1 | 7 | 14 | 30>(7)
-  const [metrica, setMetrica] = useState<'chats_ativos' | 'msgs_estimadas'>('chats_ativos')
+  const [metrica, setMetrica] = useState<Metrica>('atendimentos')
 
   async function carregar() {
     setLoading(true)
@@ -60,24 +69,50 @@ export function AtividadeDiaria() {
     desde.setDate(desde.getDate() - periodo + 1)
     desde.setHours(0, 0, 0, 0)
     const desdeStr = desde.toISOString().slice(0, 10)
-    const { data, error } = await supabase
-      .from('wa_daily_activity')
-      .select('*')
-      .gte('dia', desdeStr)
-      .order('dia', { ascending: true })
-    if (!error && data) {
-      const filtradas = (data as AtividadeRow[]).filter(r => {
+
+    // Atendimento vem de vendedor_atend_dia (mão-dupla/dia); chats+msgs de wa_daily_activity.
+    // Mescla por (vendedor, dia) — ambas usam nome curto em maiúscula.
+    const [atendRes, actRes] = await Promise.all([
+      supabase
+        .from('vendedor_atend_dia')
+        .select('vendedor_nome,dia,atendimentos')
+        .gte('dia', desdeStr),
+      supabase
+        .from('wa_daily_activity')
+        .select('vendedor_nome,dia,chats_ativos,msgs_estimadas')
+        .gte('dia', desdeStr),
+    ])
+
+    const merged = new Map<string, AtividadeRow>()
+    const keyOf = (v: string, d: string) => `${(v || '').toUpperCase()}|${d}`
+    const base = (v: string, d: string): AtividadeRow =>
+      merged.get(keyOf(v, d)) ?? { vendedor_nome: v, dia: d, atendimentos: 0, chats_ativos: 0, msgs_estimadas: 0 }
+
+    for (const r of (atendRes.data ?? []) as Array<{ vendedor_nome: string; dia: string; atendimentos: number }>) {
+      const cur = base(r.vendedor_nome, r.dia)
+      cur.atendimentos = r.atendimentos ?? 0
+      merged.set(keyOf(r.vendedor_nome, r.dia), cur)
+    }
+    for (const r of (actRes.data ?? []) as Array<{ vendedor_nome: string; dia: string; chats_ativos: number; msgs_estimadas: number }>) {
+      const cur = base(r.vendedor_nome, r.dia)
+      cur.chats_ativos = r.chats_ativos ?? 0
+      cur.msgs_estimadas = r.msgs_estimadas ?? 0
+      merged.set(keyOf(r.vendedor_nome, r.dia), cur)
+    }
+
+    const filtradas = Array.from(merged.values())
+      .filter(r => {
         const nome = r.vendedor_nome.toUpperCase()
         return !VENDEDORES_OCULTOS.some(oculto => nome.includes(oculto))
       })
-      setRows(filtradas)
-    }
+      .sort((a, b) => a.dia.localeCompare(b.dia))
+    setRows(filtradas)
     setLoading(false)
   }
 
   useEffect(() => { carregar() }, [periodo])
 
-  // Agrega: pra cada dia, soma todos os vendedores
+  // Agrega: pra cada dia, soma todos os vendedores (usando a métrica selecionada)
   const { dadosGrafico, vendedores, totaisHoje, totaisPeriodo } = useMemo(() => {
     const vendedoresSet = new Set<string>()
     const porDia = new Map<string, Record<string, number>>()
@@ -95,6 +130,7 @@ export function AtividadeDiaria() {
     const hoje = new Date().toISOString().slice(0, 10)
     const dadosHoje = rows.filter(r => r.dia === hoje)
     const totaisHoje = {
+      atend: dadosHoje.reduce((s, r) => s + r.atendimentos, 0),
       chats: dadosHoje.reduce((s, r) => s + r.chats_ativos, 0),
       msgs: dadosHoje.reduce((s, r) => s + r.msgs_estimadas, 0),
       vendedores_ativos: dadosHoje.length,
@@ -102,6 +138,7 @@ export function AtividadeDiaria() {
 
     // Totais período
     const totaisPeriodo = {
+      atend: rows.reduce((s, r) => s + r.atendimentos, 0),
       chats: rows.reduce((s, r) => s + r.chats_ativos, 0),
       msgs: rows.reduce((s, r) => s + r.msgs_estimadas, 0),
     }
@@ -110,19 +147,29 @@ export function AtividadeDiaria() {
 
   // Ranking por vendedor (período)
   const ranking = useMemo(() => {
-    const map = new Map<string, { chats: number; msgs: number }>()
+    const map = new Map<string, { atend: number; chats: number; msgs: number }>()
     for (const r of rows) {
-      const cur = map.get(r.vendedor_nome) || { chats: 0, msgs: 0 }
+      const cur = map.get(r.vendedor_nome) || { atend: 0, chats: 0, msgs: 0 }
+      cur.atend += r.atendimentos
       cur.chats += r.chats_ativos
       cur.msgs += r.msgs_estimadas
       map.set(r.vendedor_nome, cur)
     }
+    const val = (o: { atend: number; chats: number; msgs: number }) =>
+      metrica === 'atendimentos' ? o.atend : metrica === 'chats_ativos' ? o.chats : o.msgs
     return Array.from(map.entries())
-      .map(([vendedor, val]) => ({ vendedor, ...val }))
-      .sort((a, b) => b[metrica === 'chats_ativos' ? 'chats' : 'msgs'] - a[metrica === 'chats_ativos' ? 'chats' : 'msgs'])
+      .map(([vendedor, v]) => ({ vendedor, ...v }))
+      .sort((a, b) => val(b) - val(a))
   }, [rows, metrica])
 
   if (loading) return <PageLoading />
+
+  const info = META_INFO[metrica]
+  const valorRanking = (r: { atend: number; chats: number; msgs: number }) =>
+    metrica === 'atendimentos' ? r.atend : metrica === 'chats_ativos' ? r.chats : r.msgs
+  // texto secundário do ranking: mostra atendimento quando não é a métrica ativa (msgs é irrelevante)
+  const secundarioRanking = (r: { atend: number; chats: number; msgs: number }) =>
+    metrica === 'atendimentos' ? `${formatNumber(r.chats)} chats` : `${formatNumber(r.atend)} atend`
 
   return (
     <div className="p-6 max-w-[1600px] mx-auto space-y-6">
@@ -133,7 +180,7 @@ export function AtividadeDiaria() {
             <h1 className="text-2xl font-bold">Atividade Diária</h1>
           </div>
           <p className="text-sm text-zinc-400">
-            Quantos clientes cada vendedor conversou e mensagens trocadas por dia
+            Atendimentos (conversa de mão-dupla) por vendedor e por dia
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -149,6 +196,12 @@ export function AtividadeDiaria() {
             ))}
           </div>
           <div className="flex items-center gap-1 bg-zinc-900 rounded-lg p-1 border border-zinc-800">
+            <button
+              onClick={() => setMetrica('atendimentos')}
+              className={`px-3 py-1.5 rounded text-xs font-semibold transition ${metrica === 'atendimentos' ? 'bg-emerald-500 text-white' : 'text-zinc-400 hover:text-zinc-100'}`}
+            >
+              <Headset className="w-3 h-3 inline mr-1" /> Atendimentos
+            </button>
             <button
               onClick={() => setMetrica('chats_ativos')}
               className={`px-3 py-1.5 rounded text-xs font-semibold transition ${metrica === 'chats_ativos' ? 'bg-blue-500 text-white' : 'text-zinc-400 hover:text-zinc-100'}`}
@@ -176,42 +229,40 @@ export function AtividadeDiaria() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="p-5">
           <div className="text-xs text-zinc-500 uppercase tracking-wide mb-1 flex items-center gap-2">
-            <Calendar className="w-3.5 h-3.5" /> Hoje
+            <Headset className="w-3.5 h-3.5" /> Atendimentos hoje
           </div>
-          <div className="text-3xl font-bold text-emerald-400">{formatNumber(totaisHoje.chats)}</div>
-          <div className="text-xs text-zinc-500 mt-1">chats ativos · {totaisHoje.vendedores_ativos} vendedores</div>
+          <div className="text-3xl font-bold text-emerald-400">{formatNumber(totaisHoje.atend)}</div>
+          <div className="text-xs text-zinc-500 mt-1">mão-dupla · {totaisHoje.vendedores_ativos} vendedores ativos</div>
+        </Card>
+        <Card className="p-5">
+          <div className="text-xs text-zinc-500 uppercase tracking-wide mb-1 flex items-center gap-2">
+            <Calendar className="w-3.5 h-3.5" /> {periodo === 1 ? 'Atend. hoje' : `Atend. ${periodo}d`}
+          </div>
+          <div className="text-3xl font-bold text-blue-400">{formatNumber(totaisPeriodo.atend)}</div>
+          {periodo > 1 && (
+            <div className="text-xs text-zinc-500 mt-1">~{Math.round(totaisPeriodo.atend / periodo)}/dia</div>
+          )}
+        </Card>
+        <Card className="p-5">
+          <div className="text-xs text-zinc-500 uppercase tracking-wide mb-1 flex items-center gap-2">
+            <Users className="w-3.5 h-3.5" /> Chats hoje
+          </div>
+          <div className="text-3xl font-bold text-zinc-300">{formatNumber(totaisHoje.chats)}</div>
+          <div className="text-xs text-zinc-500 mt-1">conversas com atividade</div>
         </Card>
         <Card className="p-5">
           <div className="text-xs text-zinc-500 uppercase tracking-wide mb-1 flex items-center gap-2">
             <MessageSquare className="w-3.5 h-3.5" /> Mensagens hoje
           </div>
-          <div className="text-3xl font-bold text-purple-400">{formatNumber(totaisHoje.msgs)}</div>
+          <div className="text-3xl font-bold text-zinc-300">{formatNumber(totaisHoje.msgs)}</div>
           <div className="text-xs text-zinc-500 mt-1">trocas estimadas</div>
-        </Card>
-        <Card className="p-5">
-          <div className="text-xs text-zinc-500 uppercase tracking-wide mb-1">
-            {periodo === 1 ? 'Hoje · chats' : `Total ${periodo}d · chats`}
-          </div>
-          <div className="text-3xl font-bold text-blue-400">{formatNumber(totaisPeriodo.chats)}</div>
-          {periodo > 1 && (
-            <div className="text-xs text-zinc-500 mt-1">~{Math.round(totaisPeriodo.chats / periodo)}/dia</div>
-          )}
-        </Card>
-        <Card className="p-5">
-          <div className="text-xs text-zinc-500 uppercase tracking-wide mb-1">
-            {periodo === 1 ? 'Hoje · msgs' : `Total ${periodo}d · msgs`}
-          </div>
-          <div className="text-3xl font-bold text-orange-400">{formatNumber(totaisPeriodo.msgs)}</div>
-          {periodo > 1 && (
-            <div className="text-xs text-zinc-500 mt-1">~{Math.round(totaisPeriodo.msgs / periodo)}/dia</div>
-          )}
         </Card>
       </div>
 
       {/* Gráfico empilhado */}
       <Card className="p-5">
         <div className="text-sm font-bold uppercase tracking-wide text-zinc-300 mb-4">
-          {metrica === 'chats_ativos' ? '👥 Chats ativos' : '💬 Mensagens trocadas'} por vendedor · {periodo === 1 ? 'hoje' : `últimos ${periodo} dias`}
+          {info.emoji} {info.label} por vendedor · {periodo === 1 ? 'hoje' : `últimos ${periodo} dias`}
         </div>
         {dadosGrafico.length === 0 ? (
           <div className="h-72 flex items-center justify-center text-zinc-500 text-sm">
@@ -239,12 +290,12 @@ export function AtividadeDiaria() {
       {/* Ranking */}
       <Card className="p-5">
         <div className="text-sm font-bold uppercase tracking-wide text-zinc-300 mb-4">
-          🏆 Ranking · {metrica === 'chats_ativos' ? 'chats ativos' : 'mensagens'} no período
+          🏆 Ranking · {info.label.toLowerCase()} no período
         </div>
         <div className="space-y-2">
           {ranking.map((r, i) => {
-            const valor = metrica === 'chats_ativos' ? r.chats : r.msgs
-            const max = ranking[0] ? (metrica === 'chats_ativos' ? ranking[0].chats : ranking[0].msgs) : 1
+            const valor = valorRanking(r)
+            const max = ranking[0] ? valorRanking(ranking[0]) : 1
             const pct = max > 0 ? (valor / max) * 100 : 0
             return (
               <div key={r.vendedor} className="flex items-center gap-3">
@@ -265,7 +316,7 @@ export function AtividadeDiaria() {
                   </div>
                 </div>
                 <div className="text-xs text-zinc-500 tabular-nums">
-                  {metrica === 'chats_ativos' ? `${formatNumber(r.msgs)} msgs` : `${formatNumber(r.chats)} chats`}
+                  {secundarioRanking(r)}
                 </div>
               </div>
             )
@@ -277,7 +328,8 @@ export function AtividadeDiaria() {
       </Card>
 
       <div className="text-xs text-zinc-500 text-center">
-        Atualizado a cada 30s pela extensão Branorte WA Sync. Mensagens são <b>estimativa</b> baseada em diff de timestamps.
+        Atendimento = conversa individual com mensagem dos <b>dois lados</b> no mesmo dia (mesma régua do painel do escritório).
+        Atualizado pela extensão Branorte WA Sync. Mensagens são <b>estimativa</b>.
       </div>
     </div>
   )

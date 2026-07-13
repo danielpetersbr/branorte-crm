@@ -15,6 +15,9 @@ export interface PreviewItem {
   uid?: string
   catalogo_id?: number
   categoria: string
+  // Bug #6: item com inversor roda motor TRIFÁSICO mesmo em orçamento mono —
+  // o modal Trocar Motor usa isto pra ordenar a voltagem efetiva primeiro.
+  usa_inversor?: boolean
   nome: string
   nome_custom?: string | null  // se preenchido, sobrescreve nome no display
   specs: string[]
@@ -29,6 +32,8 @@ export interface PreviewItem {
   inox?: '304' | '316' | false
   tungstenio?: boolean
   brinde?: boolean
+  /** Feedback #45: item incluso no conjunto — valor não soma; coluna mostra "INCLUSO". */
+  incluso?: boolean
   /** Item fornecido/comprado pelo cliente — coluna de valor mostra "por conta do cliente". */
   por_conta_cliente?: boolean
 }
@@ -88,6 +93,8 @@ export interface PreviewTerms {
   // Default quando nada foi setado: 'FOB' + 'por conta do cliente' (comportamento legado).
   freteTipo?: 'CIF' | 'FOB' | null
   freteTxt?: string | null
+  // Validade da proposta em dias (editavel inline). Default legado = 10.
+  validadeDias?: number | null
 }
 
 // Parcela estruturada de pagamento
@@ -199,10 +206,11 @@ export interface OrcamentoPreviewProps {
   onToggleInox?: (uid: string, tipo?: '304' | '316' | false) => void
   onToggleTungstenio?: (uid: string) => void
   onUpdateQtd?: (uid: string, novaQtd: number) => void
-  onUpdateTerm?: (key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento' | 'freteTxt' | 'freteTipo', valor: string) => void
+  onUpdateTerm?: (key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento' | 'freteTxt' | 'freteTipo' | 'validadeDias', valor: string) => void
   onMoverItem?: (uid: string, direcao: 'cima' | 'baixo') => void
   onTrocarItem?: (uid: string) => void   // abre o picker da categoria pra substituir o item
   onToggleBrinde?: (uid: string) => void
+  onToggleIncluso?: (uid: string) => void
   onTogglePorConta?: (uid: string) => void
 
   // Parcelas estruturadas (alternativa ao texto livre de formaPagamento)
@@ -225,6 +233,10 @@ export interface OrcamentoPreviewProps {
   // motores. A linha entra com item_uid "avulso:<id>" — remover deleta, trocar
   // troca cv/polos. Callback recebe o motor escolhido no picker.
   onAdicionarMotorAvulso?: (novoMotor: MotorCatalogoOption) => void
+  // Editar preço do motor "na hora": duplo-clique no preço → senha 2104 → novo valor.
+  // novoValor null limpa o override (volta ao preço do catálogo). Só edição (renderMode
+  // não recebe, então o PDF não expõe o gesto). A senha é conferida aqui no preview.
+  onEditarPrecoMotor?: (m: PreviewMotor, novoValor: number | null) => void
 
   // Vendedores Branorte pra grid de contatos no rodape. Quando passado, renderiza
   // dinamicamente em vez do hardcoded antigo (que so tinha 3 vendedores).
@@ -356,15 +368,37 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     tensaoMotores = null, onUpdateTensaoMotores,
     marcaMotores = null, onUpdateMarcaMotores,
     desconto, onUpdateDesconto,
-    onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onAddSpec, onRemoveSpec, onUpdateValor, onToggleInox, onToggleTungstenio, onUpdateQtd, onUpdateTerm, onMoverItem, onTrocarItem, onToggleBrinde, onTogglePorConta,
+    onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onAddSpec, onRemoveSpec, onUpdateValor, onToggleInox, onToggleTungstenio, onUpdateQtd, onUpdateTerm, onMoverItem, onTrocarItem, onToggleBrinde, onToggleIncluso, onTogglePorConta,
     componentesExtras = [], onUpdateComponentesExtras, componentesAdicionaisCatalogo = [],
     parcelas, onUpdateParcelas,
     motoresDisponiveis, onTrocarMotor, onMotorPorContaCliente, onMotorIncluso, onAdicionarMotorAvulso,
-    onRemoverMotor, onRestaurarMotor,
+    onRemoverMotor, onRestaurarMotor, onEditarPrecoMotor,
     vendedoresContato, vendedorResponsavelNome,
     onEditCliente,
     onUpdateFotoItem,
   } = props
+
+  // Duplo-clique no preço de um motor → pede senha (2104) e o novo valor. Só roda em
+  // modo edição (onEditarPrecoMotor não é passado em renderMode/PDF). Valor vazio limpa
+  // o override e volta ao preço do catálogo.
+  function editarPrecoMotorPrompt(m: PreviewMotor) {
+    if (!onEditarPrecoMotor) return
+    const senha = window.prompt('Senha para alterar o preço do motor:')
+    if (senha == null) return
+    if (senha.trim() !== '2104') { window.alert('Senha incorreta.'); return }
+    const atual = m.valor_total || 0
+    const entrada = window.prompt('Novo valor do motor em R$ (deixe vazio pra voltar ao preço do catálogo):', String(atual))
+    if (entrada == null) return
+    const bruto = entrada.trim()
+    if (bruto === '') { onEditarPrecoMotor(m, null); return }
+    // Aceita "8000", "8.000", "8.000,00", "R$ 8.000,50"
+    const num = Number(
+      bruto.replace(/[^\d.,-]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'),
+    )
+    if (!isFinite(num) || num < 0) { window.alert('Valor inválido.'); return }
+    onEditarPrecoMotor(m, num)
+  }
+
   const [editingNomeUid, setEditingNomeUid] = useState<string | null>(null)
   const [editingNomeValor, setEditingNomeValor] = useState<string>('')
 
@@ -469,6 +503,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   const freteTipoSel: 'CIF' | 'FOB' = terms?.freteTipo === 'CIF' ? 'CIF' : 'FOB'
   const freteTxtRaw = (terms?.freteTxt ?? '').trim()
   const freteTxtFinal = freteTxtRaw || (freteTipoSel === 'CIF' ? 'por conta da Branorte' : 'por conta do cliente')
+  // Validade da proposta (dias). Default legado 10. Editável inline; persiste via onUpdateTerm (#57).
+  const validadeDiasFinal = terms?.validadeDias ?? 10
 
   // Helper: cabeçalho de seção
   const SectionHeader = ({ children }: { children: React.ReactNode }) => (
@@ -1166,7 +1202,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   {/* Valor abaixo do bloco texto+foto */}
                   <div data-no-break>
                   <div className="mt-2.5 pt-1.5 border-t border-gray-300">
-                    {it.qtd > 1 && it.valor > 0 && (
+                    {it.qtd > 1 && it.valor > 0 && !it.incluso && (
                       <div className="flex justify-between text-[12.5px] text-gray-500 mb-0.5">
                         <span>Valor unitário</span>
                         <span>R$ {formatBRLBare(it.valor)}</span>
@@ -1193,6 +1229,17 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                               onClick={() => onToggleBrinde(it.uid!)}
                               className="text-[11px] text-gray-400 hover:text-red-500 print:hidden"
                               title="Remover brinde"
+                            >✕</button>
+                          )}
+                        </span>
+                      ) : it.incluso ? (
+                        <span className="flex items-center gap-2">
+                          <span className="text-gray-600 font-bold text-[15px]">INCLUSO</span>
+                          {!renderMode && onToggleIncluso && it.uid && (
+                            <button
+                              onClick={() => onToggleIncluso(it.uid!)}
+                              className="text-[11px] text-gray-400 hover:text-red-500 print:hidden"
+                              title="Remover 'incluso' (voltar a cobrar)"
                             >✕</button>
                           )}
                         </span>
@@ -1241,6 +1288,13 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                               className="text-[10px] text-gray-400 hover:text-green-600 border border-gray-300 hover:border-green-500 rounded px-1.5 py-0.5 print:hidden"
                               title="Marcar como brinde"
                             >BRINDE</button>
+                          )}
+                          {!renderMode && onToggleIncluso && it.uid && (
+                            <button
+                              onClick={() => onToggleIncluso(it.uid!)}
+                              className="text-[10px] text-gray-400 hover:text-blue-600 border border-gray-300 hover:border-blue-500 rounded px-1.5 py-0.5 print:hidden"
+                              title="Marcar como INCLUSO — não cobra este item, mostra 'INCLUSO' no lugar do preço"
+                            >INCLUSO</button>
                           )}
                         </span>
                       ) : (
@@ -1560,9 +1614,16 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                   <div className="p-1 overflow-y-auto">
                                     {(() => {
                                       const q = motorBusca.trim().toLowerCase()
+                                      // Bug #6: motores da voltagem EFETIVA do orçamento primeiro na lista.
+                                      // Ex: 50 CV só existe em trifásico — num orçamento monofásico o vendedor
+                                      // selecionava o trifásico sem perceber e o preço saía trocado (ou a linha
+                                      // zerava "a confirmar" ao reaplicar a voltagem).
+                                      const voltEfetiva = itemCarrinho?.usa_inversor ? 'trifasico' : voltagem
                                       const lista = motoresDisponiveis
                                         .slice()
-                                        .sort((a, b) => Number(a.cv) - Number(b.cv) || a.polos - b.polos || a.voltagem.localeCompare(b.voltagem))
+                                        .sort((a, b) =>
+                                          (Number(b.voltagem === voltEfetiva) - Number(a.voltagem === voltEfetiva))
+                                          || (Number(a.cv) - Number(b.cv)) || (a.polos - b.polos) || a.voltagem.localeCompare(b.voltagem))
                                         .filter(opt => {
                                           if (!q) return true
                                           const label = opt.polos === 0
@@ -1639,7 +1700,13 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                     ? renderMode
                                       ? <span className="text-gray-500 italic">a confirmar</span>
                                       : <span className="text-amber-700 font-semibold print:text-gray-500 print:font-normal print:italic" title="Motor sem valor cadastrado no catálogo. Clique pra trocar e escolher um motor com preço.">⚠ definir valor</span>
-                                    : <>R$ {formatBRLBare(m.valor_total)}</>}
+                                    : (onEditarPrecoMotor && !renderMode
+                                        ? <span
+                                            onDoubleClick={() => editarPrecoMotorPrompt(m)}
+                                            className="cursor-pointer select-none rounded px-1 -mx-1 hover:bg-amber-50 hover:ring-1 hover:ring-amber-300 print:hover:bg-transparent print:hover:ring-0"
+                                            title="Duplo-clique pra alterar o preço deste motor (pede senha)"
+                                          >R$ {formatBRLBare(m.valor_total)}</span>
+                                        : <>R$ {formatBRLBare(m.valor_total)}</>)}
                           </td>
                         </tr>
                       )
@@ -2757,7 +2824,26 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       <span>Frete ({freteTipoSel}) – {freteTxtFinal}</span>
                     )}
                   </div>
-                  <div className="flex gap-1.5"><span className="text-gray-400">•</span><span>Validade da proposta – 10 dias após o envio</span></div>
+                  <div className="flex gap-1.5 items-center">
+                    <span className="text-gray-400">•</span>
+                    {!renderMode && onUpdateTerm ? (
+                      <span className="inline-flex items-center gap-1.5 flex-wrap">
+                        <span>Validade da proposta –</span>
+                        <input
+                          type="number"
+                          min={1}
+                          defaultValue={validadeDiasFinal}
+                          key={validadeDiasFinal}
+                          onBlur={e => onUpdateTerm('validadeDias', e.target.value)}
+                          className="bg-transparent border-b border-dashed border-gray-300 hover:border-blue-500 focus:border-blue-600 focus:outline-none px-1 w-14 text-right text-gray-800"
+                          title="Dias de validade da proposta"
+                        />
+                        <span>dias após o envio</span>
+                      </span>
+                    ) : (
+                      <span>Validade da proposta – {validadeDiasFinal} dias após o envio</span>
+                    )}
+                  </div>
                 </>
               )
             })()}

@@ -21,7 +21,8 @@ export interface CustomDocxItem {
   motor_polos?: number | null
   motor_qtd?: number
   foto_url?: string | null      // URL da foto do equipamento (opcional)
-  brinde?: boolean              // quando true, mostra "BRINDE" em vez do valor
+  brinde?: boolean
+  incluso?: boolean             // #45: quando true, mostra "INCLUSO" em vez do valor              // quando true, mostra "BRINDE" em vez do valor
   por_conta_cliente?: boolean   // quando true, mostra "por conta do cliente" em vez do valor
 }
 
@@ -90,6 +91,8 @@ export interface GerarCustomDocxOpts {
   tensaoMotores?: 220 | 380 | 660 | null
   freteTipo?: 'CIF' | 'FOB' | null
   freteTxt?: string | null
+  // Validade da proposta em dias (editavel pelo vendedor). Default legado = 10.
+  validadeDias?: number | null
   // Modo FINAME: mostra a linha "Código FINAME" nas specs (em modo normal fica oculta).
   // As fotos já vêm removidas (foto_url null) e motores/acessórios já vêm embutidos
   // pelos itens transformados em OrcamentoMontar.
@@ -496,7 +499,9 @@ async function buildItemTable(item: CustomDocxItem, voltagemTxt: string, finameM
         ? r('por conta do cliente', { italics: true, size: 20, color: '4B5563' })
         : item.brinde
           ? r('BRINDE', { bold: true, size: 22, color: '059669' })
-          : r(`R$ ${formatBRL(subtotal)}`, { bold: true, size: 22, color: '111827' }),
+          : item.incluso
+            ? r('INCLUSO', { bold: true, size: 22, color: '4B5563' })
+            : r(`R$ ${formatBRL(subtotal)}`, { bold: true, size: 22, color: '111827' }),
     ],
   })
 
@@ -891,6 +896,7 @@ function buildTermosComerciais(
   totalProposta?: number,
   freteTipo?: 'CIF' | 'FOB' | null,
   freteTxt?: string | null,
+  validadeDias?: number | null,
 ): (Paragraph | Table)[] {
   // Frete: usa o texto escolhido pelo vendedor; senão deriva do tipo (CIF = Branorte
   // paga, FOB = cliente paga). Antes era hardcoded "por conta do cliente" — errado em CIF.
@@ -903,7 +909,7 @@ function buildTermosComerciais(
       ? [['Forma de pagamento', formaPagamento || 'a combinar'] as [string, string]]
       : []),
     ['Frete', freteFinal],
-    ['Validade da proposta', '10 dias após o envio'],
+    ['Validade da proposta', `${validadeDias ?? 10} dias após o envio`],
   ]
   const result: (Paragraph | Table)[] = [
     new Paragraph({
@@ -1270,7 +1276,7 @@ export async function gerarOrcamentoCustomDocx(opts: GerarCustomDocxOpts): Promi
   blocos.push(...buildValorTotalProposta(opts.totalProposta, opts.totalMotores > 0, opts.desconto, opts.totalEquip))
 
   // Termos comerciais (with parcelas support) — frete escolhido pelo vendedor
-  blocos.push(...buildTermosComerciais(opts.formaPagamento, opts.dataVenda, opts.prazoEntrega, opts.parcelas, totalEfetivo, opts.freteTipo, opts.freteTxt))
+  blocos.push(...buildTermosComerciais(opts.formaPagamento, opts.dataVenda, opts.prazoEntrega, opts.parcelas, totalEfetivo, opts.freteTipo, opts.freteTxt, opts.validadeDias))
 
   // Redes sociais
   blocos.push(sectionHeader('Nossas redes sociais'))

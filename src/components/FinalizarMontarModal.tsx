@@ -38,6 +38,7 @@ export interface CarrinhoSnapshot {
     motor_valor_unit: number
     foto_url?: string | null
     brinde?: boolean
+  incluso?: boolean
     por_conta_cliente?: boolean
     // Round-trip completo (2026-06-10): campos extras pra recarregar a edição
     // exatamente como estava (foto manual, custom, inox, função, etc).
@@ -88,6 +89,7 @@ export interface CarrinhoSnapshot {
     formaPagamento?: string | null
     freteTipo?: 'CIF' | 'FOB' | null
     freteTxt?: string | null
+    validadeDias?: number | null
   }
   // Parcelas estruturadas (tabela DATA/MÉTODO/VALOR)
   parcelas?: Array<{
@@ -667,6 +669,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         motores_por_conta_idx: it.motores_por_conta_idx,
         motores_removidos_idx: it.motores_removidos_idx,
         ...(it.brinde ? { brinde: true } : {}),
+        ...(it.incluso ? { incluso: true } : {}),
         ...(it.por_conta_cliente ? { por_conta_cliente: true } : {}),
       }))
       // BUGFIX v1.4.1: salva valor UNITÁRIO do motor (não o total já multiplicado).
@@ -743,6 +746,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         // motores agora sobrevivem ao reabrir/editar (antes só viviam no rascunho local).
         frete_tipo: snapshot.termsInline?.freteTipo ?? null,
         frete_txt: snapshot.termsInline?.freteTxt ?? null,
+        validade_dias: snapshot.termsInline?.validadeDias ?? null,
         desconto: snapshot.desconto ?? null,
         tensao_motores: snapshot.tensaoMotores ?? null,
         marca_motores: snapshot.marcaMotores ?? null,
@@ -783,6 +787,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           motor_valor_unit: it.motor_valor_unit,
           foto_url: it.foto_url ?? null,
           brinde: it.brinde,
+          incluso: it.incluso,
           por_conta_cliente: it.por_conta_cliente,
         })),
         motoresAgrupados: snapshot.motoresAgrupados,
@@ -821,6 +826,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           // default FOB "por conta do cliente" mesmo num orçamento CIF.
           freteTipo: snapshot.termsInline?.freteTipo ?? null,
           freteTxt: snapshot.termsInline?.freteTxt ?? null,
+          validadeDias: snapshot.termsInline?.validadeDias ?? null,
         },
         observacoesExtra: observacoes.trim() || null,
         obsPorConta: snapshot.obsPorConta ?? null,
@@ -870,7 +876,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           itens: itensNorm.map((it, idx) => ({
             letra: letraItem(idx),
             qtd: it.qtd, nome: it.nome, specs: it.specs,
-            valor: it.valor, brinde: it.brinde, por_conta_cliente: it.por_conta_cliente,
+            valor: it.valor, brinde: it.brinde, incluso: it.incluso, por_conta_cliente: it.por_conta_cliente,
             motor_cv: it.motor_cv, motor_polos: it.motor_polos,
             motor_qtd: it.motor_qtd, foto_url: it.foto_url ?? null,
           })),
@@ -898,6 +904,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           tensaoMotores: snapshot.tensaoMotores ?? null,
           freteTipo: snapshot.termsInline?.freteTipo ?? null,
           freteTxt: snapshot.termsInline?.freteTxt ?? null,
+          validadeDias: snapshot.termsInline?.validadeDias ?? null,
           // Modo FINAME: mostra a linha "Código FINAME" no DOCX (oculta em modo normal).
           finameMode: snapshot.finameMode ?? false,
         })

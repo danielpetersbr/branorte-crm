@@ -280,7 +280,9 @@ function AppRoutes() {
     // Projeto 3D é liberado por permissão (menu.projeto_3d) — o menu já mostra pro vendedor,
     // então o guard precisa deixar passar por URL/nav também (senão redireciona pra /atendimentos).
     const projeto3dOk = p.startsWith('/projeto-3d') && can('menu.projeto_3d')
-    const allowed = freteLiberado || aprovarOk || projeto3dOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
+    // Roadmap & Feedback: vendedor VÊ o retorno dos feedbacks que enviou (#49)
+    const roadmapOk = p.startsWith('/roadmap') && can('menu.roadmap')
+    const allowed = freteLiberado || aprovarOk || projeto3dOk || roadmapOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
     if (!allowed) return <Navigate to="/atendimentos" replace />
   }
 
