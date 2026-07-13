@@ -64,6 +64,9 @@ function scrubSingleNodes(xml: string, onRemove: () => void): string {
     for (const rx of PII_RX) {
       scrubbed = scrubbed.replace(new RegExp(rx.source, 'g'), () => { onRemove(); return '' })
     }
+    // sanitizador do App2 corta linhas com rótulo CIDADE; cidade/estado são
+    // permitidos pra produção → re-rotula pra "Destino:" pra sobreviverem lá
+    scrubbed = scrubbed.replace(/\bCIDADE\s*:/gi, 'Destino:')
     return open + scrubbed + close
   })
 }
