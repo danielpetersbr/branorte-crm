@@ -69,9 +69,9 @@ export function useFunilSiteList(filters: FunilFilters) {
 export const FUNNEL_STAGES = [
   { key: 'iniciou', label: 'Iniciaram', passo: 0 },
   { key: 'nome', label: 'Deram o nome', passo: 1 },
-  { key: 'contato', label: 'Deram o WhatsApp', passo: 2 },
-  { key: 'objetivo', label: 'Escolheram objetivo', passo: 3 },
-  { key: 'qualificou', label: 'Qualificaram', passo: 4 },
+  { key: 'objetivo', label: 'Escolheram o que quer', passo: 2 },
+  { key: 'qualificou', label: 'Qualificaram', passo: 3 },
+  { key: 'contato', label: 'Deram o WhatsApp', passo: 4 },
   { key: 'concluiu', label: 'Concluíram', passo: 5 },
   { key: 'enviado', label: 'Foram pro vendedor', passo: 6 },
 ] as const

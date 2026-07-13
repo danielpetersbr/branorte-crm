@@ -12,9 +12,9 @@ import {
 const PASSO_LABEL = [
   'Iniciou',
   'Deu o nome',
-  'Deu o WhatsApp',
-  'Escolheu objetivo',
+  'Escolheu o que quer',
   'Qualificou',
+  'Deu o WhatsApp',
   'Concluiu',
   'Enviado ao vendedor',
 ]
@@ -72,7 +72,7 @@ function StatusBadge({ s }: { s: FunilSessao }) {
     return <span className="inline-flex items-center gap-1 rounded-full bg-accent-bg text-accent text-xs font-semibold px-2.5 py-1 whitespace-nowrap">→ {s.vendedor || 'vendedor'}</span>
   if (s.ultimo_passo >= 5)
     return <span className="inline-flex items-center rounded-full bg-accent-bg text-accent text-xs font-semibold px-2.5 py-1">Concluiu</span>
-  if (s.ultimo_passo >= 2)
+  if (s.ultimo_passo >= 4)
     return <span className="inline-flex items-center rounded-full bg-info-bg text-info text-xs font-semibold px-2.5 py-1">Só contato</span>
   return <span className="inline-flex items-center rounded-full bg-warning-bg text-warning text-xs font-semibold px-2.5 py-1">Abandonou</span>
 }
@@ -96,7 +96,7 @@ export function FunilSite() {
   const totalPages = Math.max(1, Math.ceil(total / FUNIL_PAGE_SIZE))
 
   const iniciaram = funil?.find((s) => s.passo === 0)?.count ?? 0
-  const contato = funil?.find((s) => s.passo === 2)?.count ?? 0
+  const contato = funil?.find((s) => s.passo === 4)?.count ?? 0
   const concluiram = funil?.find((s) => s.passo === 5)?.count ?? 0
   const enviados = funil?.find((s) => s.passo === 6)?.count ?? 0
   const pct = (n: number) => (iniciaram > 0 ? Math.round((n / iniciaram) * 100) : 0)
