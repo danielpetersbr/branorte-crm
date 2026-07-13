@@ -15,6 +15,7 @@ export interface WaChat {
   last_message_at: string | null
   last_message_from_me: boolean | null
   last_message_preview: string | null
+  foto_url: string | null // foto de perfil do WhatsApp (via extensão → wa-sync-avatars)
   vendedor?: string // preenchido no modo "Todos"
 }
 
@@ -64,7 +65,7 @@ export function useWaKanban(vendedor: string | null) {
         .select('vendedor_nome, etiqueta_id_wascript, etiqueta_nome, etiqueta_nome_normalizado, synced_at')
       let chatsQuery = supabase
         .from('wa_chat_labels')
-        .select('vendedor_nome, phone, chat_id, contact_name, label_ids, last_message_at, last_message_from_me, last_message_preview, updated_at')
+        .select('vendedor_nome, phone, chat_id, contact_name, label_ids, last_message_at, last_message_from_me, last_message_preview, foto_url, updated_at')
         .order('last_message_at', { ascending: false, nullsFirst: false })
         .limit(todos ? 12000 : 4000)
       if (todos) {

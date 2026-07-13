@@ -48,6 +48,15 @@ function BotaoWhats({ phone }: { phone: string }) {
   )
 }
 
+// Cifrão inline — render consistente cross-plataforma (evita o emoji 💰 variar por SO)
+function IconCifrao({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 1.5v21M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+    </svg>
+  )
+}
+
 function ChatCard({
   chat, onClick, mostrarVendedor, compacto, valorOrcamento,
 }: { chat: WaChat; onClick: () => void; mostrarVendedor?: boolean; compacto?: boolean; valorOrcamento?: number | null }) {
@@ -58,58 +67,121 @@ function ChatCard({
   const encerrou = chat.last_message_from_me === false && !pendente
   const nome = nomeContato(chat.contact_name, chat.phone)
   const tel = formatarTelefone(chat.phone)
+  const temValor = valorOrcamento != null && valorOrcamento > 0
 
   return (
     <div
       role="button"
       tabIndex={0}
       onClick={onClick}
-      onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && onClick()}
-      className="w-full cursor-pointer text-left rounded-lg border bg-surface p-2.5 hover:bg-surface-2 transition-colors"
-      style={{ borderColor: pendente ? `${meta.cor}66` : undefined, borderLeftWidth: 3, borderLeftColor: meta.cor }}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick()
+        }
+      }}
+      title={pendente ? 'Cliente aguardando resposta' : undefined}
+      className={[
+        'group relative w-full cursor-pointer select-none overflow-hidden text-left',
+        'rounded-xl border border-border',
+        'bg-gradient-to-b from-surface-2 to-surface',
+        'pl-3.5 pr-3 transition-[border-color,box-shadow,transform] duration-150 ease-out',
+        'hover:-translate-y-px hover:border-border-strong hover:shadow-[0_4px_14px_-4px_rgba(0,0,0,0.5)]',
+        'focus:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--accent)/0.5)]',
+        compacto ? 'py-2' : 'py-2.5',
+      ].join(' ')}
+      style={{
+        borderColor: pendente ? 'hsl(var(--warning) / 0.55)' : undefined,
+        boxShadow: pendente ? '0 0 0 1px hsl(var(--warning) / 0.4)' : undefined,
+      }}
     >
-      <div className="flex items-start gap-2">
-        <Avatar name={nome} size="sm" pulse={fresco} />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[13px] font-medium text-ink truncate">{nome}</span>
-            <span className="text-[10px] text-ink-faint shrink-0 tabular-nums">
-              {tempoRelativo(chat.last_message_at)}
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] font-mono text-ink-faint truncate">{tel}</span>
-            {mostrarVendedor && chat.vendedor && (
-              <span className="text-[10px] font-semibold text-accent bg-accent-bg rounded px-1 shrink-0">{chat.vendedor}</span>
-            )}
-          </div>
+      {/* tint âmbar levíssimo quando o cliente está aguardando resposta */}
+      {pendente && (
+        <span aria-hidden className="pointer-events-none absolute inset-0 rounded-xl bg-[hsl(var(--warning)/0.06)]" />
+      )}
 
-          {valorOrcamento != null && valorOrcamento > 0 && (
-            <div className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-success tabular-nums" title="Valor do último orçamento gerado pra este telefone">
-              💰 {brl(valorOrcamento)}
+      {/* trilho de temperatura — hairline vertical à esquerda */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-y-2.5 left-0 w-[3px] rounded-full"
+        style={{ backgroundColor: meta.cor, opacity: pendente ? 1 : 0.55 }}
+      />
+
+      <div className="relative">
+        {/* topo: avatar (photo-ready) + identidade */}
+        <div className="flex items-start gap-2.5">
+          <Avatar name={nome} src={chat.foto_url ?? undefined} size="sm" pulse={fresco} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="truncate text-[13px] font-medium leading-tight text-ink">{nome}</span>
+              <span className="shrink-0 text-[10px] tabular-nums text-ink-faint">{tempoRelativo(chat.last_message_at)}</span>
             </div>
-          )}
-
-          {!compacto && chat.last_message_preview && (
-            <p className="mt-1 text-[12px] text-ink-muted leading-snug line-clamp-2">
-              {chat.last_message_from_me ? <span className="text-accent">Você: </span> : null}
-              {chat.last_message_preview}
-            </p>
-          )}
-
-          <div className="mt-1.5 flex items-center gap-1.5">
-            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: `${meta.cor}22`, color: meta.cor }}>
-              {meta.label}
-            </span>
-            {pendente ? (
-              <span className="text-[10px] font-semibold text-warning">↙ aguardando</span>
-            ) : encerrou ? (
-              <span className="text-[10px] text-ink-faint">✓ encerrou</span>
-            ) : chat.last_message_from_me ? (
-              <span className="text-[10px] text-ink-faint">↗ você</span>
-            ) : null}
-            <span className="ml-auto"><BotaoWhats phone={chat.phone} /></span>
+            <div className="mt-0.5 flex items-center gap-1.5">
+              <span className="truncate font-mono text-[11px] tracking-tight text-ink-faint">{tel}</span>
+              {mostrarVendedor && chat.vendedor && (
+                <span className="shrink-0 rounded px-1 text-[10px] font-medium text-accent ring-1 ring-inset ring-[hsl(var(--accent)/0.25)]">
+                  {chat.vendedor}
+                </span>
+              )}
+            </div>
           </div>
+        </div>
+
+        {/* VALOR da negociação — a estrela: campo verde da marca, número tabular forte */}
+        {temValor && (
+          <div
+            className={[
+              compacto ? 'mt-2' : 'mt-2.5',
+              'flex items-center justify-between gap-2 rounded-lg bg-accent-bg',
+              'px-2.5 ring-1 ring-inset ring-[hsl(var(--success)/0.22)]',
+              compacto ? 'py-1' : 'py-1.5',
+            ].join(' ')}
+            title="Valor do último orçamento gerado pra este telefone"
+          >
+            {!compacto && (
+              <span className="inline-flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-[hsl(var(--success)/0.8)]">
+                <IconCifrao className="h-3 w-3 text-success" />
+                Negociação
+              </span>
+            )}
+            <span className="ml-auto flex items-baseline gap-0.5 text-success">
+              <span className="text-[10px] font-semibold text-[hsl(var(--success)/0.6)]">R$</span>
+              <span className="whitespace-nowrap text-[17px] font-bold tabular-nums tracking-tight">
+                {brl(valorOrcamento as number).replace(/^R\$\s?/, '')}
+              </span>
+            </span>
+          </div>
+        )}
+
+        {/* preview — escondido no modo compacto */}
+        {!compacto && chat.last_message_preview && (
+          <p className="mt-2 line-clamp-2 text-[12px] leading-relaxed text-ink-muted">
+            {chat.last_message_from_me && <span className="text-ink-faint">Você: </span>}
+            {chat.last_message_preview}
+          </p>
+        )}
+
+        {/* rodapé: temperatura + status + whatsapp */}
+        <div className={`${compacto ? 'mt-2' : 'mt-2.5'} flex items-center gap-2`}>
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-ink-faint">
+            <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: meta.cor }} />
+            {meta.label}
+          </span>
+
+          {pendente ? (
+            <span className="inline-flex items-center gap-1 rounded-md bg-[hsl(var(--warning)/0.12)] px-1.5 py-0.5 text-[10px] font-semibold text-warning ring-1 ring-inset ring-[hsl(var(--warning)/0.35)]">
+              <MessageCircle className="h-3 w-3 animate-pulse" /> aguardando
+            </span>
+          ) : encerrou ? (
+            <span className="text-[10px] text-ink-faint">encerrou</span>
+          ) : chat.last_message_from_me ? (
+            <span className="text-[10px] text-ink-faint">você respondeu</span>
+          ) : null}
+
+          {/* stopPropagation: clicar no WhatsApp não abre o drawer do card */}
+          <span className="ml-auto" onClick={e => e.stopPropagation()}>
+            <BotaoWhats phone={chat.phone} />
+          </span>
         </div>
       </div>
     </div>
@@ -555,16 +627,17 @@ export function FunilWhatsApp() {
                   <div className="border-b border-border shrink-0">
                     <div className="flex items-center gap-2 px-3 pt-2.5 pb-1.5">
                       <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: col.cor }} />
-                      <span className="text-[12px] font-bold tracking-wide text-ink truncate">{col.nome}</span>
-                      <span className="ml-auto text-[11px] tabular-nums text-ink-muted bg-surface border border-border rounded-full px-2 py-0.5">
+                      <span className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">{col.nome}</span>
+                      {mostrarValor && totalValor > 0 && (
+                        <span className="flex shrink-0 items-baseline gap-0.5 text-success" title="Soma dos últimos orçamentos gerados nesta coluna">
+                          <span className="text-[9px] font-semibold text-[hsl(var(--success)/0.6)]">R$</span>
+                          <span className="whitespace-nowrap text-[13px] font-bold tabular-nums tracking-tight">{brl(totalValor).replace(/^R\$\s?/, '')}</span>
+                        </span>
+                      )}
+                      <span className="shrink-0 text-[11px] tabular-nums text-ink-muted bg-surface border border-border rounded-full px-2 py-0.5">
                         {chats.length}
                       </span>
                     </div>
-                    {mostrarValor && totalValor > 0 && (
-                      <div className="px-3 pb-1.5 -mt-0.5 text-[12px] font-semibold text-success tabular-nums" title="Soma dos últimos orçamentos gerados nesta coluna">
-                        💰 {brl(totalValor)}
-                      </div>
-                    )}
                     <ResumoTemperatura
                       chats={col.chats}
                       filtroTemp={filtroTemp}
