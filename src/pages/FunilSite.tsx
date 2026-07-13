@@ -62,7 +62,7 @@ function interesse(s: FunilSessao): { titulo: string; detalhe: string } {
     return { titulo: 'Fábrica de ração', detalhe: partes.join(' · ') || 'ainda qualificando' }
   }
   if (s.objetivo === 'equipamento') {
-    const partes = [s.equip, s.porte].filter(Boolean)
+    const partes = [s.equip, s.porte, s.uso].filter(Boolean)
     return { titulo: 'Equipamento', detalhe: partes.join(' · ') || 'ainda qualificando' }
   }
   return { titulo: '—', detalhe: 'ainda não escolheu' }
