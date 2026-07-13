@@ -4,6 +4,7 @@ import { MessageCircle } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 import { useWaKanban, useWaVendedores, useWaMovimentos, TODOS, type WaChat } from '@/hooks/useWaKanban'
+import { useOrcamentosPorTelefone, lookupOrcamento } from '@/hooks/useAtendimentos'
 import {
   tempoRelativo, temperaturaDe, TEMP_META, resumoColuna,
   formatarTelefone, nomeContato, ordenarChats, ORDENACAO_LABEL,
@@ -26,6 +27,12 @@ const FUNIL_ATIVO = new Set([
   'LEAD QUENTE', 'ORCAMENTO ENVIADO', 'INTERESSE FUTURO',
 ])
 
+// Colunas de negociação: mostram o valor do orçamento no card + total no topo
+// (cruzado por telefone via orcamentos_gerados / RPC orcamentos_por_telefone_canon)
+const COLUNAS_COM_VALOR = new Set(['FOLLOW UP', 'LEAD QUENTE'])
+
+const brl = (v: number) => 'R$ ' + v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+
 function BotaoWhats({ phone }: { phone: string }) {
   return (
     <a
@@ -42,8 +49,8 @@ function BotaoWhats({ phone }: { phone: string }) {
 }
 
 function ChatCard({
-  chat, onClick, mostrarVendedor, compacto,
-}: { chat: WaChat; onClick: () => void; mostrarVendedor?: boolean; compacto?: boolean }) {
+  chat, onClick, mostrarVendedor, compacto, valorOrcamento,
+}: { chat: WaChat; onClick: () => void; mostrarVendedor?: boolean; compacto?: boolean; valorOrcamento?: number | null }) {
   const temp = temperaturaDe(chat.last_message_at)
   const meta = TEMP_META[temp]
   const fresco = temp === 'fresco'
@@ -76,6 +83,12 @@ function ChatCard({
               <span className="text-[10px] font-semibold text-accent bg-accent-bg rounded px-1 shrink-0">{chat.vendedor}</span>
             )}
           </div>
+
+          {valorOrcamento != null && valorOrcamento > 0 && (
+            <div className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-success tabular-nums" title="Valor do último orçamento gerado pra este telefone">
+              💰 {brl(valorOrcamento)}
+            </div>
+          )}
 
           {!compacto && chat.last_message_preview && (
             <p className="mt-1 text-[12px] text-ink-muted leading-snug line-clamp-2">
@@ -276,6 +289,17 @@ export function FunilWhatsApp() {
     () => (escondidas.size === 0 ? colunasTodas : colunasTodas.filter(c => !escondidas.has(c.nome))),
     [colunasTodas, escondidas]
   )
+
+  // Telefones das colunas de negociação → valor do orçamento (cruzado por telefone)
+  const telefonesNegociacao = useMemo(() => {
+    const set = new Set<string>()
+    for (const col of colunasTodas) {
+      if (!COLUNAS_COM_VALOR.has(col.nome)) continue
+      for (const c of col.chats) if (c.phone) set.add(c.phone)
+    }
+    return [...set]
+  }, [colunasTodas])
+  const { data: orcMap } = useOrcamentosPorTelefone(telefonesNegociacao)
 
   // Pipeline de exibição: busca → só-aguardando → filtro-temperatura → ordenação
   const processar = (chats: WaChat[]): WaChat[] => {
@@ -522,6 +546,10 @@ export function FunilWhatsApp() {
               const chats = processar(col.chats)
               const limite = limites[col.nome] ?? LIMITE_INICIAL
               const visiveis = chats.slice(0, limite)
+              const mostrarValor = COLUNAS_COM_VALOR.has(col.nome)
+              const totalValor = mostrarValor
+                ? chats.reduce((s, c) => s + (lookupOrcamento(orcMap, c.phone)?.valor ?? 0), 0)
+                : 0
               return (
                 <div key={col.nome} className="flex h-full w-[280px] shrink-0 flex-col rounded-xl border border-border bg-surface-2/50">
                   <div className="border-b border-border shrink-0">
@@ -532,6 +560,11 @@ export function FunilWhatsApp() {
                         {chats.length}
                       </span>
                     </div>
+                    {mostrarValor && totalValor > 0 && (
+                      <div className="px-3 pb-1.5 -mt-0.5 text-[12px] font-semibold text-success tabular-nums" title="Soma dos últimos orçamentos gerados nesta coluna">
+                        💰 {brl(totalValor)}
+                      </div>
+                    )}
                     <ResumoTemperatura
                       chats={col.chats}
                       filtroTemp={filtroTemp}
@@ -540,7 +573,9 @@ export function FunilWhatsApp() {
                   </div>
                   <div className="flex-1 overflow-y-auto p-2 space-y-2">
                     {visiveis.map(c => (
-                      <ChatCard key={`${c.vendedor ?? ''}:${c.phone}`} chat={c} mostrarVendedor={modoTodos} compacto={compacto} onClick={() => setChatAberto(c)} />
+                      <ChatCard key={`${c.vendedor ?? ''}:${c.phone}`} chat={c} mostrarVendedor={modoTodos} compacto={compacto}
+                        valorOrcamento={mostrarValor ? lookupOrcamento(orcMap, c.phone)?.valor ?? null : null}
+                        onClick={() => setChatAberto(c)} />
                     ))}
                     {chats.length > limite && (
                       <button onClick={() => setLimites(l => ({ ...l, [col.nome]: limite + 50 }))}
