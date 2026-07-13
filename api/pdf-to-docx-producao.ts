@@ -7,7 +7,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 // @ts-ignore - lib sem tipos completos
 import ConvertAPI from 'convertapi'
-import { scrubDocxPrices } from './_lib/scrubDocxPrices'
+import { scrubDocxPrices } from './_lib/scrubDocxPrices.js'
 
 export const config = {
   api: { bodyParser: { sizeLimit: '25mb' } },
