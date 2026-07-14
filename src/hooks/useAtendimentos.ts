@@ -515,14 +515,6 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
     queryKey: ['atendimentos-kpis', filterKey],
     queryFn: async (): Promise<AtendimentoKpis> => {
       const vendorFirst = await getCurrentVendorFirstName()
-      const baseQ = () => {
-        const q = supabaseAuditoria
-          .from('atendimentos_por_cliente')
-          .select('*', { count: 'exact', head: true })
-          .eq('is_internal', false)
-        return applyBaseFilters(q, filters, vendorFirst)
-      }
-
       const todayIso = startOfTodayISO()
 
       // Allowlist do catálogo Branorte (fonte: SELECT DISTINCT categoria FROM precos_branorte).
@@ -535,56 +527,58 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
         'passarela', 'peneira', 'limpeza', 'silo', 'big bag', 'bigbag',
         'transporta', 'esteira',
       ]
-      const equipOrFilter = BRANORTE_EQUIP_KEYWORDS
-        .map(kw => `o_que_precisa.ilike.%${kw}%`)
-        .join(',')
 
-      const [
-        totalRes,
-        hojeRes,
-        contatadosRes,
-        naoEngajaramRes,
-        qualFabricaRes,
-        qualEquipRes,
-        emAndamentoRes,
-        paraPegarRes,
-      ] = await Promise.all([
-        baseQ(),
-        baseQ().gte('last_message_at', todayIso),
-        // IMPORTANTE: os KPIs do funil filtram por last_message_at>=hoje (como o card "Hoje").
-        // Isso (1) deixa os números do dia consistentes e (2) EVITA o 500/timeout do count exact
-        // varrendo a view inteira (que é grande) — sem o filtro, fábrica/equip estouravam e o card
-        // mostrava 0. Ver investigação 2026-06-24.
-        // Contatados: lead tem vendedor responsável atribuído (não "a definir")
-        baseQ().gte('last_message_at', todayIso).not('responsavel', 'is', null).neq('responsavel', '').neq('responsavel', 'a definir'),
-        // Nao engajaram: chegou no anuncio mas nem clicou no primeiro botao (motivo_contato)
-        baseQ().gte('last_message_at', todayIso).is('motivo_contato', null).is('tocou_botao_em', null),
-        // Qualificados FÁBRICA: motivo é "montar fábrica" (a intenção por si só já qualifica).
-        baseQ().gte('last_message_at', todayIso)
-          .or('motivo_contato.ilike.%fab%,motivo_contato.ilike.%fáb%'),
-        // Qualificados EQUIPAMENTO: motivo equipamento + o_que_precisa bate no catálogo Branorte.
-        baseQ().gte('last_message_at', todayIso)
-          .ilike('motivo_contato', '%equip%')
-          .or(equipOrFilter),
-        // Em andamento: clicou no MOTIVO mas nao clicou no botao final
-        baseQ().gte('last_message_at', todayIso).not('motivo_contato', 'is', null).is('tocou_botao_em', null),
-        // Pra pegar: sem responsavel — null, vazio, ou "a definir"
-        baseQ().gte('last_message_at', todayIso).or('responsavel.is.null,responsavel.eq.,responsavel.eq.a definir'),
-      ])
-      // Throw só no 'hoje' (query leve, indexada por last_message_at). O 'total' conta a view
-      // INTEIRA (pesado, pode dar timeout/500) — se falhar, degrada pra 0 SEM derrubar os cards.
-      // Removidas as queries de 'quentes' (quando_investir) e 'byStatus' (5 status_real): eram
-      // count exact caros que NINGUÉM exibia nesta tela e só aumentavam o risco de timeout.
+      // PERFORMANCE (fix 2026-07-14): a view atendimentos_por_cliente é cara (25 window
+      // functions + LATERAL join materializados ANTES de qualquer filtro). Fazer 8 count
+      // exact em paralelo a cada 30s estourava o statement_timeout intermitentemente (500,
+      // pior em cache frio de manhã) e o throw no 'hoje' derrubava TODOS os cards com o erro
+      // "canceling statement due to statement timeout".
+      // Agora: 1 SELECT leve das linhas de HOJE (last_message_at>=hoje ⇒ ~dezenas de linhas)
+      // e os 6 KPIs do funil são agregados no client. Só o 'total' (view inteira) segue como
+      // count — degradável (sem throw): se estourar, mostra 0 sem quebrar a tela.
+      const hojeQ = applyBaseFilters(
+        supabaseAuditoria
+          .from('atendimentos_por_cliente')
+          .select('responsavel, motivo_contato, tocou_botao_em, o_que_precisa')
+          .eq('is_internal', false)
+          .gte('last_message_at', todayIso),
+        filters, vendorFirst,
+      )
+      const totalQ = applyBaseFilters(
+        supabaseAuditoria
+          .from('atendimentos_por_cliente')
+          .select('*', { count: 'exact', head: true })
+          .eq('is_internal', false),
+        filters, vendorFirst,
+      )
+
+      const [hojeRes, totalRes] = await Promise.all([hojeQ, totalQ])
+      // 'hoje' agora é leve (poucas linhas) — se falhar, é erro real; vale sinalizar.
       if (hojeRes.error) throw hojeRes.error
 
+      type LinhaKpi = { responsavel: string | null; motivo_contato: string | null; tocou_botao_em: string | null; o_que_precisa: string | null }
+      const rows = (hojeRes.data ?? []) as LinhaKpi[]
+      const semResp = (r: LinhaKpi) => !r.responsavel || r.responsavel === '' || r.responsavel === 'a definir'
+      const motivoDe = (r: LinhaKpi) => (r.motivo_contato ?? '').toLowerCase()
+      const ehEquipBranorte = (s: string | null) => {
+        const t = (s ?? '').toLowerCase()
+        return BRANORTE_EQUIP_KEYWORDS.some(kw => t.includes(kw))
+      }
+      const qualificado = (r: LinhaKpi) => {
+        const m = motivoDe(r)
+        if (m.includes('fab') || m.includes('fáb')) return true          // fábrica
+        if (m.includes('equip') && ehEquipBranorte(r.o_que_precisa)) return true // equipamento do catálogo
+        return false
+      }
+
       return {
-        total:           totalRes.count ?? 0,
-        hoje:            hojeRes.count ?? 0,
-        contatados:      contatadosRes.count ?? 0,
-        naoEngajaram:    naoEngajaramRes.count ?? 0,
-        qualificados:    (qualFabricaRes.count ?? 0) + (qualEquipRes.count ?? 0),
-        emAndamento:     emAndamentoRes.count ?? 0,
-        paraPegar:       paraPegarRes.count ?? 0,
+        total:        totalRes.count ?? 0,
+        hoje:         rows.length,
+        contatados:   rows.filter(r => !semResp(r)).length,
+        naoEngajaram: rows.filter(r => !r.motivo_contato && !r.tocou_botao_em).length,
+        qualificados: rows.filter(qualificado).length,
+        emAndamento:  rows.filter(r => r.motivo_contato && !r.tocou_botao_em).length,
+        paraPegar:    rows.filter(semResp).length,
       }
     },
     refetchInterval: 30_000,
