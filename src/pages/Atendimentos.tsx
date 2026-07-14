@@ -688,12 +688,19 @@ export function Atendimentos() {
                           {formatRelative(r.last_message_at ?? r.primeira_data ?? r.created_at)}
                         </span>
                       </div>
+                      {/* Resumo do que o lead quer — contexto no celular (paridade com o desktop) */}
+                      {(() => {
+                        const resumo = (r.ai_context_summary || r.last_message_text || '').trim()
+                        return resumo ? (
+                          <p className="mt-1 text-[11px] text-ink-muted leading-snug line-clamp-2">{resumo}</p>
+                        ) : null
+                      })()}
                       <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                         {semResp && (
                           <Badge className="text-[10px] font-semibold" style={{
-                            background: 'rgba(239,68,68,0.14)',
-                            color: '#ef4444',
-                            border: '1px solid rgba(239,68,68,0.4)',
+                            background: 'hsl(var(--danger-bg))',
+                            color: 'hsl(var(--danger))',
+                            border: '1px solid hsl(var(--danger)/0.4)',
                           }}>NUNCA RESPONDEU</Badge>
                         )}
                         {status && (
@@ -1059,9 +1066,9 @@ export function Atendimentos() {
                                   <Badge
                                     className="text-[10px] font-semibold"
                                     style={{
-                                      background: 'rgba(239,68,68,0.14)',
-                                      color: '#ef4444',
-                                      border: '1px solid rgba(239,68,68,0.4)',
+                                      background: 'hsl(var(--danger-bg))',
+                                      color: 'hsl(var(--danger))',
+                                      border: '1px solid hsl(var(--danger)/0.4)',
                                     }}
                                     title="O contato nunca respondeu — marcado automaticamente pelo bot"
                                   >
@@ -1087,9 +1094,9 @@ export function Atendimentos() {
                                     key={l.id + ':' + l.vendedor}
                                     className="text-[10px] font-semibold"
                                     style={{
-                                      background: 'rgba(16,185,129,0.12)',
-                                      color: '#10b981',
-                                      border: '1px solid rgba(16,185,129,0.3)',
+                                      background: 'hsl(var(--success-bg))',
+                                      color: 'hsl(var(--success))',
+                                      border: '1px solid hsl(var(--success)/0.3)',
                                     }}
                                     title={`${l.name}${l.vendedor ? ` (${l.vendedor})` : ''}`}
                                   >
@@ -1131,7 +1138,7 @@ export function Atendimentos() {
                               return (
                                 <Badge
                                   className="text-[10px] font-semibold"
-                                  style={{ background: 'rgba(16,185,129,0.14)', color: '#10b981', border: '1px solid rgba(16,185,129,0.35)' }}
+                                  style={{ background: 'hsl(var(--success-bg))', color: 'hsl(var(--success))', border: '1px solid hsl(var(--success)/0.35)' }}
                                   title={title}
                                 >
                                   ✓ Sim{orc.qtd > 1 ? ` (${orc.qtd})` : ''}
@@ -1142,7 +1149,7 @@ export function Atendimentos() {
                             return (
                               <Badge
                                 className="text-[10px] font-semibold"
-                                style={{ background: 'rgba(245,158,11,0.14)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.35)' }}
+                                style={{ background: 'hsl(var(--warning-bg))', color: 'hsl(var(--warning))', border: '1px solid hsl(var(--warning)/0.35)' }}
                                 title="Marcado como orçamento pela etiqueta do vendedor no WhatsApp — mas não localizei o orçamento pelo número (pode ter saído por outro telefone ou não ficou registrado). Vale conferir."
                               >
                                 🏷️ Sim
