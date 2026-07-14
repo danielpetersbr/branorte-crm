@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   MessageCircle, Clock, Mic, Image as ImageIcon, Video, FileText, Sticker,
-  MapPin, Contact2, Ban, PhoneCall, Zap,
+  MapPin, Contact2, Ban, PhoneCall, Zap, ArrowDownLeft, Trophy, Hourglass,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
@@ -252,7 +252,7 @@ function ResumoTemperatura({
   return (
     <div className="flex items-center gap-2 px-3 pb-2 text-[11px] tabular-nums flex-wrap">
       {r.aguardando > 0 && (
-        <span className="text-warning font-semibold" title="Cliente aguardando resposta">↙ {r.aguardando}</span>
+        <span className="inline-flex items-center gap-0.5 text-warning font-semibold" title="Cliente aguardando resposta"><ArrowDownLeft className="h-3 w-3" /> {r.aguardando}</span>
       )}
       {itens.map(i => (
         <button
@@ -510,7 +510,7 @@ function ChatDrawer({
           )}
 
           {chat.last_message_from_me === false && (
-            <p className="text-[11px] text-warning">⏳ Cliente aguardando resposta</p>
+            <p className="inline-flex items-center gap-1 text-[11px] text-warning"><Hourglass className="h-3 w-3" /> Cliente aguardando resposta</p>
           )}
 
           {/* Histórico de etiquetas */}
@@ -772,7 +772,7 @@ export function FunilWhatsApp() {
               className="rounded-lg border border-border bg-surface px-3 py-1.5 text-left hover:border-border-strong"
             >
               <div className="text-[12px] font-semibold text-ink flex items-center gap-1.5">
-                {i === 0 && <span>🏆</span>}{r.vendedor}
+                {i === 0 && <Trophy className="h-3.5 w-3.5 text-warning" />}{r.vendedor}
               </div>
               <div className="text-[11px] text-ink-muted tabular-nums">
                 <span className="text-warning font-semibold">{r.aguardando}</span> aguardando · {r.total} total
@@ -820,10 +820,10 @@ export function FunilWhatsApp() {
 
         {/* Toggle só aguardando */}
         <button onClick={() => setSoAguardando(v => !v)}
-          className={'h-9 px-3 rounded-md text-[13px] border ' + (soAguardando
+          className={'h-9 px-3 rounded-md text-[13px] border inline-flex items-center gap-1.5 ' + (soAguardando
             ? 'bg-warning-bg text-warning border-warning/40 font-semibold'
             : 'bg-surface text-ink-muted border-border hover:text-ink hover:border-border-strong')}>
-          ↙ Só aguardando
+          <ArrowDownLeft className="h-3.5 w-3.5" /> Só aguardando
         </button>
 
         {/* Filtro de temperatura ativo → chip pra limpar */}

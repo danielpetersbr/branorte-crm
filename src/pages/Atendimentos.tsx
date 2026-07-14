@@ -16,7 +16,7 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTimeShort, estadoNome } from '@/lib/utils'
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { ESTADOS_BR } from '@/types'
-import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, type StatusReal } from '@/types/atendimento'
+import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, STATUS_VENDEDOR_MAP, type StatusReal } from '@/types/atendimento'
 import { useAtendimentos, useAtendimentoKpis, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, FILTRO_SEM_RESPOSTA, type DataPreset } from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
@@ -772,7 +772,7 @@ export function Atendimentos() {
                     <th className="hidden 2xl:table-cell w-[50px]" title="Cabeças (consumo) — vazio se for venda (ver Produção/h)">Qtd</th>
                     <th className="hidden 2xl:table-cell w-[64px]" title="Produção desejada quando é venda (kg/h)">Kg/h</th>
                     <th className="w-[88px]">Vendedor</th>
-                    <th className="hidden 2xl:table-cell w-[110px]" title="Etiqueta atribuída no WhatsApp do vendedor">Etiqueta WA</th>
+                    <th className="hidden lg:table-cell w-[110px]" title="Etiqueta atribuída no WhatsApp do vendedor">Etiqueta WA</th>
                     <th className="w-[76px]" title="Já foi montado orçamento pra esse telefone? (match automático pelo número)">Orçamento</th>
                     <th className="w-[60px]" title="Esse lead virou venda? (orçamento dele virou pedido não-cancelado)">Vendido</th>
                     <th className="hidden lg:table-cell w-[96px] !text-right" title="Valor da venda fechada (soma dos pedidos do lead)">Valor</th>
@@ -791,6 +791,9 @@ export function Atendimentos() {
                     // Trata "(sem nome)" do webhook como nome vazio (UI fallback fica consistente)
                     const nomeReal = r.nome && !/^\(sem nome\)$/i.test(r.nome.trim()) ? r.nome : null
                     const semResp = isSemResposta(r)
+                    // Lead sem vendedor que já falou = está na fila esperando alguém pegar
+                    const semVendedor = !vendedorEfetivo(r)
+                    const esperando = semVendedor && !semResp && !!(r.last_message_at || r.created_at)
                     return (
                       <tr key={r.id}
                           className={`group border-b border-border/30 last:border-0 transition-all duration-150
@@ -804,9 +807,14 @@ export function Atendimentos() {
                             : isHot ? { boxShadow: 'inset 3px 0 0 0 hsl(var(--danger))' } : undefined}>
                         {/* CHEGOU */}
                         <td className="px-2 py-2.5 whitespace-nowrap" title={r.primeira_data ?? r.created_at ?? ''}>
-                          <span className="text-[11px] text-ink-muted font-mono tabular-nums">
+                          <span className="text-[11px] text-ink-muted font-mono tabular-nums block">
                             {formatDateTimeShort(r.primeira_data ?? r.created_at)}
                           </span>
+                          {esperando && (
+                            <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-semibold text-warning" title="Sem vendedor — na fila desde a última mensagem">
+                              <AlarmClock className="h-2.5 w-2.5" /> {formatRelative(r.last_message_at ?? r.created_at)}
+                            </span>
+                          )}
                         </td>
                         {/* LEAD — só primeiro nome pra não esticar a coluna */}
                         <td className="px-2 py-2.5 whitespace-nowrap">
@@ -979,13 +987,27 @@ export function Atendimentos() {
                             const v = vendedorEfetivo(r)
                             if (v) {
                               const firstName = v.name.trim().split(/\s+/)[0]
+                              // estágio manual do vendedor (proposta/negociando/fechou) — sinal quente que já vem no payload
+                              const sv = r.status_vendedor ? STATUS_VENDEDOR_MAP[r.status_vendedor] : null
+                              const svRelevante = sv && ['proposta', 'negociando', 'fechou', 'nao_fechou'].includes(sv.value)
                               return (
-                                <span
-                                  className="text-[12px] text-ink-muted truncate block max-w-[70px] capitalize"
-                                  title={`${v.name}${v.source === 'wa' ? ' (via etiqueta WA)' : ''}`}
-                                >
-                                  {firstName.toLowerCase()}
-                                </span>
+                                <div className="min-w-0">
+                                  <span
+                                    className="text-[12px] text-ink-muted truncate block max-w-[70px] capitalize"
+                                    title={`${v.name}${v.source === 'wa' ? ' (via etiqueta WA)' : ''}`}
+                                  >
+                                    {firstName.toLowerCase()}
+                                  </span>
+                                  {svRelevante && (
+                                    <span
+                                      className="mt-0.5 inline-block rounded px-1 text-[9px] font-semibold leading-tight"
+                                      style={{ background: `${sv!.bg}22`, color: sv!.bg, border: `1px solid ${sv!.bg}55` }}
+                                      title={`Estágio do vendedor: ${sv!.label}`}
+                                    >
+                                      {sv!.label}
+                                    </span>
+                                  )}
+                                </div>
                               )
                             }
                             return (
@@ -1000,7 +1022,7 @@ export function Atendimentos() {
                             o cliente no Zap (ex: aparecia "NAO RESPONDEU MAIS" do
                             Pedro quando o responsável real era o Gustavo). Agora
                             filtra pelo first-name UPPERCASE do vendedor efetivo. */}
-                        <td className="hidden 2xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
+                        <td className="hidden lg:table-cell px-1.5 py-2.5 whitespace-nowrap">
                           {(() => {
                             // Selo sintético "NUNCA RESPONDEU" (marca do bot). Prioridade
                             // baixa: isSemResposta já é false se houver etiqueta real ou vendedor.
