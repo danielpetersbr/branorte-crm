@@ -707,6 +707,25 @@ export function Atendimentos() {
                             <Flame className="h-3 w-3" />Quente
                           </span>
                         )}
+                        {/* Orçamento / Vendido / Valor — dinheiro visível no celular (antes só no desktop) */}
+                        {(() => {
+                          const orc = lookupOrcamento(orcMap, r.telefone)
+                          const venda = lookupVenda(vendaMap, r.telefone)
+                          return (
+                            <>
+                              {orc && (
+                                <Badge className="text-[10px] font-semibold" style={{ background: 'hsl(var(--success-bg))', color: 'hsl(var(--success))', border: '1px solid hsl(var(--success)/0.35)' }}>
+                                  Orçamento{orc.valor ? ` ${orc.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}` : ''}
+                                </Badge>
+                              )}
+                              {venda && (
+                                <Badge className="text-[10px] font-semibold" style={{ background: 'hsl(var(--info-bg))', color: 'hsl(var(--info))', border: '1px solid hsl(var(--info)/0.35)' }}>
+                                  ✓ Vendido{venda.valor ? ` ${venda.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}` : ''}
+                                </Badge>
+                              )}
+                            </>
+                          )
+                        })()}
                       </div>
                     </div>
                   </div>

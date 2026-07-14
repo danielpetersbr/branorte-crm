@@ -894,7 +894,7 @@ export function FunilWhatsApp() {
       ) : isLoading || !data ? (
         <PageLoading />
       ) : (
-        <div className="flex-1 overflow-x-auto overflow-y-hidden">
+        <div className="flex-1 overflow-x-auto overflow-y-hidden snap-x snap-mandatory md:snap-none">
           <div className="flex h-full gap-3 pb-2">
             {colunas.map(col => {
               const chats = processar(col.chats)
@@ -913,7 +913,7 @@ export function FunilWhatsApp() {
                   }, 0)
                 : 0
               return (
-                <div key={col.nome} className="relative flex h-full w-[280px] shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-surface-2/50 shadow-[0_1px_8px_-4px_rgba(0,0,0,0.35)]">
+                <div key={col.nome} className="relative flex h-full w-[85vw] max-w-[300px] sm:w-[280px] shrink-0 snap-start flex-col overflow-hidden rounded-xl border border-border bg-surface-2/50 shadow-[0_1px_8px_-4px_rgba(0,0,0,0.35)]">
                   {/* filete da etiqueta — identidade visual da coluna */}
                   <span aria-hidden className="absolute inset-x-0 top-0 h-[3px]" style={{ backgroundColor: col.cor, opacity: 0.9 }} />
                   <div className="border-b border-border shrink-0 pt-[3px]">
