@@ -37,15 +37,13 @@
     <meta name="twitter:card" content="summary" />
 
     <script>
-      // FLASH-FREE THEME: aplica .dark ANTES do React render pra evitar
-      // flash branco em PWA dark mode. Roda inline antes do bundle JS.
-      // Usa key 'theme-v2' (migracao do 'theme' antigo) pra dark default funcionar
-      // mesmo pra usuarios que ja tinham 'light' salvo no localStorage.
+      // FLASH-FREE THEME: aplica .dark ANTES do React render. Roda inline antes do JS.
+      // Key 'theme-v3' (migracao do 'theme-v2'): como o default virou CLARO (tema Apple)
+      // e o hook antigo persistia 'dark' automaticamente, trocamos a key pra ignorar o
+      // 'dark' salvo antigo — todo mundo recomeca no claro (so fica dark quem escolher).
       (function() {
         try {
-          var saved = localStorage.getItem('theme-v2')
-          // Default CLARO (tema Apple). Só aplica dark se o user escolheu dark
-          // explicitamente (o toggle continua funcionando pra quem prefere escuro).
+          var saved = localStorage.getItem('theme-v3')
           if (saved === 'dark') document.documentElement.classList.add('dark')
         } catch (_) {
           // default claro
