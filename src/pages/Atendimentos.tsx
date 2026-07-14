@@ -194,9 +194,11 @@ interface KpiCardProps {
   tone?: Tone
   icon?: typeof Flame
   hint?: string
+  onClick?: () => void
+  active?: boolean
 }
 
-function KpiCard({ label, value, hero, tone = 'neutral', icon: Icon, hint }: KpiCardProps) {
+function KpiCard({ label, value, hero, tone = 'neutral', icon: Icon, hint, onClick, active }: KpiCardProps) {
   const accentClass: Record<Tone, string> = {
     success: 'before:bg-success',
     warning: 'before:bg-warning',
@@ -213,10 +215,16 @@ function KpiCard({ label, value, hero, tone = 'neutral', icon: Icon, hint }: Kpi
     : undefined
   return (
     <div
-      className={`group relative overflow-hidden rounded-xl bg-surface border border-border ${hero ? 'p-5' : 'p-4'}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } }) : undefined}
+      title={onClick ? 'Clique pra filtrar a lista' : undefined}
+      className={`group relative overflow-hidden rounded-xl bg-surface border ${hero ? 'p-5' : 'p-4'}
                   before:absolute before:inset-y-0 before:left-0 before:w-[3px] ${accentClass[tone]}
                   transition-all duration-200 hover:border-${tone === 'neutral' ? 'border' : tone}/40
-                  hover:shadow-lg hover:shadow-${tone === 'neutral' ? 'black' : tone}/5 hover:-translate-y-0.5`}
+                  hover:shadow-lg hover:shadow-${tone === 'neutral' ? 'black' : tone}/5 hover:-translate-y-0.5
+                  ${onClick ? 'cursor-pointer' : ''} ${active ? 'border-accent ring-2 ring-accent/40' : 'border-border'}`}
       style={gradientStyle}
     >
       <div className="flex items-start justify-between gap-2">
@@ -430,9 +438,13 @@ export function Atendimentos() {
       {kpis && (
         <div className="grid grid-cols-2 lg:grid-cols-7 gap-3">
           <KpiCard label="Hoje"           value={kpis.hoje}         hero tone="accent"
-                   icon={Calendar}        hint={kpis.hoje === 0 ? 'Nenhum lead hoje' : 'leads novos'} />
+                   icon={Calendar}        hint={kpis.hoje === 0 ? 'Nenhum lead hoje' : 'leads novos'}
+                   active={filters.data === 'hoje'}
+                   onClick={() => setFilters(f => ({ ...f, data: f.data === 'hoje' ? '' as DataPreset : 'hoje', page: 0 }))} />
           <KpiCard label="Não engajaram"  value={kpis.naoEngajaram}      tone="neutral"  icon={EyeOff}            hint="nem começou o bot" />
-          <KpiCard label="Nunca respondeu" value={semRespTels?.length ?? 0} tone="danger" icon={PhoneOff}         hint="marcado pelo bot — sem resposta" />
+          <KpiCard label="Nunca respondeu" value={semRespTels?.length ?? 0} tone="danger" icon={PhoneOff}         hint="marcado pelo bot — sem resposta"
+                   active={filters.responsavel === FILTRO_SEM_RESPOSTA}
+                   onClick={() => setFilters(f => ({ ...f, responsavel: f.responsavel === FILTRO_SEM_RESPOSTA ? '' : FILTRO_SEM_RESPOSTA, page: 0 }))} />
           <KpiCard label="Em andamento"   value={kpis.emAndamento}       tone="warning"  icon={MessageSquareDot}  hint="no meio do fluxo" />
           <KpiCard label="Qualificados"   value={kpis.qualificados} hero tone="info"     icon={ListChecks}        hint="fábrica completa ou equipamento do catálogo Branorte" />
           <KpiCard label="Pra pegar"      value={kpis.paraPegar}    hero tone="warning"
@@ -1127,6 +1139,19 @@ export function Atendimentos() {
                             const ids = (r.auditoria_ids && r.auditoria_ids.length > 0) ? r.auditoria_ids : [r.id]
                             return (
                               <div className="inline-flex items-center gap-1">
+                                {/* ABRIR NO WHATSAPP — ação nº1 do dia (antes só dava pra copiar o número) */}
+                                {r.telefone && (
+                                  <a
+                                    href={whatsappLink(r.telefone)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={e => e.stopPropagation()}
+                                    title="Abrir conversa no WhatsApp"
+                                    className="h-7 w-7 inline-flex items-center justify-center rounded-md text-accent hover:bg-accent-bg transition-all"
+                                  >
+                                    <MessageCircle className="h-3.5 w-3.5" />
+                                  </a>
+                                )}
                                 {/* EXCLUIR */}
                                 <button
                                   type="button"

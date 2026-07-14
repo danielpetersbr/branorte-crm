@@ -482,6 +482,88 @@ export function Dashboard() {
         </div>
       </div>
 
+      {/* ════════ META DO MÊS — a pergunta nº1 do dono: "bato a meta?" ════════ */}
+      {data?.forecast && (() => {
+        const f = data.forecast
+        const pctMeta = Math.min(f.pctMeta, 100)
+        const projOk = f.pctProjecao >= 100
+        const projPerto = f.pctProjecao >= 80 && f.pctProjecao < 100
+        const projCor = projOk ? 'text-success' : projPerto ? 'text-warning' : 'text-danger'
+        const projBg = projOk ? 'bg-success' : projPerto ? 'bg-warning' : 'bg-danger'
+        return (
+          <div className="bg-surface border border-border rounded-xl p-5">
+            <div className="flex items-baseline justify-between gap-2 flex-wrap mb-3">
+              <h2 className="text-[15px] font-bold text-ink tracking-tight">Meta do mês</h2>
+              <span className="text-[11px] text-ink-faint tabular-nums">
+                dia {f.diaDoMes} de {f.diasNoMes} · ritmo {fmtBRL(f.ritmoDia)}/dia
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+              {/* Vendido no mês vs meta */}
+              <div className="sm:col-span-2">
+                <div className="flex items-baseline justify-between mb-1.5">
+                  <span className="text-[11px] uppercase tracking-wider text-ink-faint font-medium">Vendido no mês</span>
+                  <span className="text-[11px] tabular-nums text-ink-faint">meta {fmtBRL(f.meta)}</span>
+                </div>
+                <div className="flex items-baseline gap-2 mb-2">
+                  <span className="text-[28px] font-bold text-ink tabular-nums leading-none">{fmtBRL(f.vendidoMes)}</span>
+                  <span className="text-[13px] font-semibold text-accent tabular-nums">{Math.round(f.pctMeta)}%</span>
+                </div>
+                {/* barra: preenchido = vendido; marcador tracejado = projeção */}
+                <div className="relative h-3 rounded-full bg-surface-2 overflow-hidden">
+                  <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${Math.max(pctMeta, 1)}%` }} />
+                  {f.pctProjecao > 0 && f.pctProjecao < 100 && (
+                    <div className="absolute top-0 h-full w-0.5 bg-ink/50" style={{ left: `${Math.min(f.pctProjecao, 99)}%` }} title={`Projeção: ${fmtBRL(f.projecao)}`} />
+                  )}
+                </div>
+                <div className="mt-1 text-[10.5px] text-ink-faint">
+                  {f.pedidosMes} {f.pedidosMes === 1 ? 'pedido' : 'pedidos'} fechados este mês
+                </div>
+              </div>
+              {/* Projeção no ritmo atual */}
+              <div className={`rounded-lg border p-3 ${projOk ? 'border-success/30 bg-success-bg/20' : projPerto ? 'border-warning/30 bg-warning-bg/20' : 'border-danger/30 bg-danger-bg/20'}`}>
+                <div className="text-[11px] uppercase tracking-wider text-ink-faint font-medium mb-1">No ritmo atual, fecha</div>
+                <div className={`text-[22px] font-bold tabular-nums leading-none ${projCor}`}>{fmtBRL(f.projecao)}</div>
+                <div className="mt-1.5 flex items-center gap-1.5">
+                  <span className={`inline-block h-1.5 w-1.5 rounded-full ${projBg}`} />
+                  <span className={`text-[11px] font-semibold tabular-nums ${projCor}`}>
+                    {Math.round(f.pctProjecao)}% da meta
+                    {projOk ? ' — no caminho 🎯' : projPerto ? ' — quase lá' : ' — abaixo do ritmo'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* ════════ DINHEIRO PARADO — orçamento por tempo sem resposta (aciona cobrança) ════════ */}
+      {data?.leadAging && data.leadAging.some(a => a.valor > 0 || a.leads > 0) && (
+        <div className="bg-surface border border-border rounded-xl p-4">
+          <div className="flex items-baseline justify-between gap-2 mb-2.5">
+            <h2 className="text-[13px] font-bold text-ink tracking-tight">Dinheiro parado — sem resposta há</h2>
+            <span className="text-[10.5px] text-ink-faint">quanto mais velho, mais frio: cobre os da direita primeiro</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            {data.leadAging.map((a, i) => {
+              const critico = i >= 2 // 7d-30d e +30d
+              return (
+                <div
+                  key={a.faixa}
+                  className={`rounded-lg border p-2.5 ${critico ? 'border-danger/25 bg-danger-bg/15' : 'border-border bg-surface-2/40'}`}
+                >
+                  <div className="text-[10px] uppercase tracking-wider text-ink-faint font-medium">{a.faixa}</div>
+                  <div className={`text-[18px] font-bold tabular-nums leading-tight ${critico ? 'text-danger' : 'text-ink'}`}>
+                    {a.valor > 0 ? fmtBRL(a.valor) : '—'}
+                  </div>
+                  <div className="text-[10.5px] text-ink-muted tabular-nums">{a.leads} {a.leads === 1 ? 'lead' : 'leads'}</div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ════════ O ESSENCIAL — glance de 5 segundos, no topo da página ════════ */}
       <Card className="border-accent/25 bg-accent-bg/30">
         <div className="flex items-baseline justify-between mb-3 gap-2 flex-wrap">

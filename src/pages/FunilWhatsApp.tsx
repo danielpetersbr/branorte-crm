@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   MessageCircle, Clock, Mic, Image as ImageIcon, Video, FileText, Sticker,
-  MapPin, Contact2, Ban, PhoneCall,
+  MapPin, Contact2, Ban, PhoneCall, Zap,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
@@ -34,14 +34,23 @@ const FUNIL_ATIVO = new Set([
 ])
 
 // Colunas de negociação: mostram o valor do orçamento no card + total no topo
-// (cruzado por telefone via orcamentos_gerados / RPC orcamentos_por_telefone_canon)
-const COLUNAS_COM_VALOR = new Set(['FOLLOW UP', 'LEAD QUENTE'])
+// (cruzado por telefone via orcamentos_gerados / RPC orcamentos_por_telefone_canon).
+// ORÇAMENTO ENVIADO é a etapa mais perto do fechamento — é onde o dono MAIS quer ver R$.
+const COLUNAS_COM_VALOR = new Set(['FOLLOW UP', 'LEAD QUENTE', 'ORCAMENTO ENVIADO'])
 
 // Colunas cujo histórico de conversa (últimas 10 msgs) é sincronizado pela
 // extensão v1.6.71+ e aparece no drawer
 const COLUNAS_COM_CONVERSA = new Set(['FOLLOW UP', 'LEAD QUENTE'])
 
 const brl = (v: number) => 'R$ ' + v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+
+// dias inteiros desde uma data ISO (pra "parado há Nd" no card)
+const diasDesde = (iso: string | null): number | null => {
+  if (!iso) return null
+  const t = new Date(iso).getTime()
+  if (Number.isNaN(t)) return null
+  return Math.floor((Date.now() - t) / 86_400_000)
+}
 
 const fmtDataHora = (s: string | null) => {
   if (!s) return ''
@@ -86,6 +95,8 @@ function ChatCard({
   const temp = temperaturaDe(chat.last_message_at)
   const meta = TEMP_META[temp]
   const fresco = temp === 'fresco'
+  const parado = temp === 'parado'
+  const dias = diasDesde(chat.last_message_at)
   const pendente = precisaResposta(chat)
   const encerrou = chat.last_message_from_me === false && !pendente
   const nome = nomeContato(chat.contact_name, chat.phone)
@@ -186,9 +197,15 @@ function ChatCard({
 
         {/* rodapé: temperatura + status + whatsapp */}
         <div className={`${compacto ? 'mt-2' : 'mt-2.5'} flex items-center gap-2`}>
-          <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-ink-faint">
+          <span
+            className="inline-flex items-center gap-1.5 text-[10px] font-medium"
+            style={{ color: parado ? meta.cor : undefined }}
+            title={meta.label}
+          >
             <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: meta.cor }} />
-            {meta.label}
+            <span className={parado ? 'font-semibold' : 'text-ink-faint'}>
+              {parado && dias != null ? `parado há ${dias}d` : meta.label}
+            </span>
           </span>
 
           {pendente ? (
@@ -632,6 +649,23 @@ export function FunilWhatsApp() {
     return { total, aguardando, parado7 }
   }, [colunas])
 
+  // Pipeline total: soma do último orçamento por telefone nas colunas de negociação
+  // (dedupe por telefone canônico — mesmo cliente em 2 vendedores não conta em dobro).
+  const pipelineTotal = useMemo(() => {
+    const vistos = new Set<string>()
+    let soma = 0
+    for (const col of colunas) {
+      if (!COLUNAS_COM_VALOR.has(col.nome)) continue
+      for (const c of col.chats) {
+        const k = foneCanon(c.phone)
+        if (!k || vistos.has(k)) continue
+        vistos.add(k)
+        soma += lookupOrcamento(orcMap, c.phone)?.valor ?? 0
+      }
+    }
+    return soma
+  }, [colunas, orcMap])
+
   // Ranking por vendedor (modo Todos): quem tem mais cliente aguardando
   const ranking = useMemo(() => {
     if (!modoTodos) return []
@@ -686,6 +720,17 @@ export function FunilWhatsApp() {
       {/* Painel de números */}
       {data && (
         <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {/* Pipeline em R$ — a métrica que o dono decide por cima (dinheiro em negociação) */}
+          {pipelineTotal > 0 && (
+            <div
+              className="h-9 px-3 rounded-md bg-accent-bg border border-[hsl(var(--success)/0.3)] inline-flex items-center gap-1.5"
+              title="Soma dos últimos orçamentos gerados nas colunas de negociação (FOLLOW UP, LEAD QUENTE, ORÇAMENTO ENVIADO)"
+            >
+              <IconCifrao className="h-3.5 w-3.5 text-success" />
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-[hsl(var(--success)/0.75)]">Pipeline</span>
+              <span className="tabular-nums text-[14px] font-bold text-success">{brl(pipelineTotal)}</span>
+            </div>
+          )}
           <button
             onClick={ativarFila}
             className={
@@ -696,7 +741,7 @@ export function FunilWhatsApp() {
             }
             title="Mostra só quem está aguardando resposta, mais antigo no topo"
           >
-            ⚡ Fila de resposta
+            <Zap className="h-3.5 w-3.5" /> Fila de resposta
             <span className="tabular-nums rounded-full bg-warning/20 text-warning px-1.5">{kpis.aguardando}</span>
           </button>
           <div className="h-9 px-3 rounded-md bg-surface border border-border inline-flex items-center gap-1.5 text-[12px] text-ink-muted">
