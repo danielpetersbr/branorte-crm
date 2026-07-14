@@ -564,6 +564,41 @@ export function Dashboard() {
         </div>
       )}
 
+      {/* ════════ URGÊNCIA — quem quer comprar AGORA vs quem está pesquisando ════════ */}
+      {data?.porMomento && (() => {
+        const moms = data.porMomento.filter(m => m.momento !== 'Não respondeu' && m.valor > 0)
+        const totalMom = moms.reduce((s, m) => s + m.valor, 0)
+        const agora = data.porMomento.find(m => m.momento === 'Agora')?.valor ?? 0
+        if (totalMom === 0) return null
+        return (
+          <div className="bg-surface border border-border rounded-xl p-4">
+            <div className="flex items-baseline justify-between gap-2 mb-2.5">
+              <h2 className="text-[13px] font-bold text-ink tracking-tight">Urgência dos leads</h2>
+              {agora > 0 && (
+                <span className="text-[11px] font-semibold text-danger tabular-nums">
+                  {agora} {agora === 1 ? 'quer' : 'querem'} comprar AGORA — priorize
+                </span>
+              )}
+            </div>
+            {/* barra segmentada por momento */}
+            <div className="flex h-3 rounded-full overflow-hidden bg-surface-2 border border-border/50">
+              {moms.map(m => (
+                <div key={m.momento} className="h-full transition-all" style={{ width: `${(m.valor / totalMom) * 100}%`, backgroundColor: m.cor }}
+                     title={`${m.momento}: ${m.valor} (${Math.round((m.valor / totalMom) * 100)}%)`} />
+              ))}
+            </div>
+            <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+              {moms.map(m => (
+                <span key={m.momento} className="inline-flex items-center gap-1 text-[10.5px] text-ink-muted">
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: m.cor }} />
+                  {m.momento} <span className="tabular-nums font-semibold text-ink">{m.valor}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
       {/* ════════ O ESSENCIAL — glance de 5 segundos, no topo da página ════════ */}
       <Card className="border-accent/25 bg-accent-bg/30">
         <div className="flex items-baseline justify-between mb-3 gap-2 flex-wrap">

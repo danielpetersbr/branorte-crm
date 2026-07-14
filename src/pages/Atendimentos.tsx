@@ -921,6 +921,9 @@ export function Atendimentos() {
                             // Prioridade 2: nome do criativo do anúncio (fallback)
                             const ehUmEquipamento = /equipamento/i.test(motivo)
                             const equipamento = ehUmEquipamento ? (r.o_que_precisa || criativoNome) : null
+                            // Contexto do que o lead quer (resumo IA ou última mensagem) — já vem
+                            // no payload e ficava invisível; dá pra triar sem abrir o WhatsApp.
+                            const resumo = (r.ai_context_summary || r.last_message_text || '').trim()
                             return (
                               <div className="flex flex-col gap-0.5 min-w-0 max-w-[220px]">
                                 <Badge style={{
@@ -932,6 +935,11 @@ export function Atendimentos() {
                                 {equipamento && (
                                   <span className="text-[10.5px] text-ink-faint truncate capitalize" title={equipamento}>
                                     {equipamento}
+                                  </span>
+                                )}
+                                {resumo && resumo.toLowerCase() !== (equipamento || '').toLowerCase() && (
+                                  <span className="text-[10.5px] text-ink-muted leading-snug line-clamp-2" title={resumo}>
+                                    {resumo}
                                   </span>
                                 )}
                               </div>
