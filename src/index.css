@@ -6,32 +6,31 @@
 
 @layer base {
   :root {
-    /* Surface — claro: página BRANCA (pedido do Daniel, 2026-06-24). A separação
-       vem da BORDA visível (--border 82%) + cards levemente off-white, não mais do
-       fundo cinza. (O all-white antigo 99% ficava "sem separação" porque a borda era
-       fraca; agora a borda é 82%, então branco funciona.) */
-    --bg: 0 0% 100%;            /* página: branco */
-    --surface: 240 24% 96%;     /* cards: off-white macio (separa do branco via borda) */
-    --surface-2: 240 14% 91%;   /* preenchimentos / barras */
-    --border: 240 11% 82%;      /* borda nítida pra cards se destacarem */
-    --border-strong: 240 10% 72%;
+    /* Tema APPLE (claro) — como apple.com/br: página CINZA-CLARA (#f5f5f7), cards
+       BRANCOS que "flutuam" sobre o cinza (separação via cor + borda suave), texto
+       quase-preto (#1d1d1f), azul Apple no lugar do acento, bordas discretas. */
+    --bg: 240 17% 96%;          /* página: cinza-claro Apple (#f5f5f7) */
+    --surface: 0 0% 100%;       /* cards: branco puro (flutuam sobre o cinza) */
+    --surface-2: 240 17% 93%;   /* preenchimentos / barras */
+    --border: 240 12% 90%;      /* borda suave estilo Apple */
+    --border-strong: 240 10% 82%;
 
-    /* Ink */
-    --ink: 240 12% 15%;
-    --ink-muted: 240 6% 40%;
-    --ink-faint: 240 5% 54%;
+    /* Ink (texto) */
+    --ink: 240 6% 11%;          /* quase-preto Apple (#1d1d1f) */
+    --ink-muted: 240 3% 44%;    /* secundário (#6e6e73) */
+    --ink-faint: 240 3% 56%;    /* terciário (#86868b) */
 
     /* Semantic */
-    --success: 152 60% 40%;
-    --success-bg: 152 70% 96%;
+    --success: 152 55% 40%;
+    --success-bg: 152 60% 96%;
     --warning: 38 92% 50%;
     --warning-bg: 38 100% 96%;
     --danger: 0 72% 51%;
     --danger-bg: 0 80% 97%;
-    --info: 217 91% 60%;
-    --info-bg: 217 95% 96%;
-    --accent: 152 60% 40%;
-    --accent-bg: 152 70% 96%;
+    --info: 211 100% 45%;
+    --info-bg: 211 100% 96%;
+    --accent: 211 100% 45%;     /* azul Apple (#0071e3) */
+    --accent-bg: 211 100% 96%;
   }
 
   .dark {

@@ -44,10 +44,11 @@
       (function() {
         try {
           var saved = localStorage.getItem('theme-v2')
-          // Default dark a nao ser que user EXPLICITAMENTE escolheu light na v2
-          if (saved !== 'light') document.documentElement.classList.add('dark')
+          // Default CLARO (tema Apple). Só aplica dark se o user escolheu dark
+          // explicitamente (o toggle continua funcionando pra quem prefere escuro).
+          if (saved === 'dark') document.documentElement.classList.add('dark')
         } catch (_) {
-          document.documentElement.classList.add('dark')
+          // default claro
         }
       })()
 
