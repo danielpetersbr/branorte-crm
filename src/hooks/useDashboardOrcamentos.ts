@@ -65,7 +65,8 @@ export function useDashboardVendas(preset: DashboardPreset) {
 
 export type VendaDetalhe = {
   numero: string; pedido: string | null; cliente: string | null; vendedor: string | null;
-  valor: number; data_venda: string | null; cidade: string | null; estado: string | null; is_lead: boolean
+  valor: number; data_venda: string | null; cidade: string | null; estado: string | null; is_lead: boolean;
+  origem: string | null; criativo: string | null
 }
 
 /** Linhas das vendas do período (pedidos não-cancelados). is_lead = amarrada a um lead. */
@@ -80,6 +81,7 @@ export function useDashboardVendasDetalhe(preset: DashboardPreset, enabled: bool
       return (data ?? []).map((r: any) => ({
         numero: r.numero, pedido: r.pedido, cliente: r.cliente, vendedor: r.vendedor,
         valor: Number(r.valor ?? 0), data_venda: r.data_venda, cidade: r.cidade, estado: r.estado, is_lead: !!r.is_lead,
+        origem: r.origem, criativo: r.criativo,
       }))
     },
     staleTime: 60_000,
@@ -88,7 +90,8 @@ export function useDashboardVendasDetalhe(preset: DashboardPreset, enabled: bool
 
 export type OrcamentoDetalhe = {
   fone: string; cliente: string | null; vendedor: string | null; qtd: number;
-  valor_total: number; ultima_data: string | null; numeros: string[]
+  valor_total: number; ultima_data: string | null; numeros: string[];
+  origem: string | null; criativo: string | null
 }
 
 /** Um item por telefone (= a unidade que o KPI "Orçamentos" conta) com o resumo dos orçamentos. */
@@ -103,6 +106,7 @@ export function useDashboardOrcamentosDetalhe(preset: DashboardPreset, enabled: 
       return (data ?? []).map((r: any) => ({
         fone: r.fone, cliente: r.cliente, vendedor: r.vendedor, qtd: Number(r.qtd ?? 0),
         valor_total: Number(r.valor_total ?? 0), ultima_data: r.ultima_data, numeros: r.numeros ?? [],
+        origem: r.origem, criativo: r.criativo,
       }))
     },
     staleTime: 60_000,

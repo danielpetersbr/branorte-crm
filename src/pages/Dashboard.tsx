@@ -1022,6 +1022,8 @@ function DrillModal({ kind, preset, onClose }: { kind: 'orcamentos' | 'vendidos'
                     <tr className="text-ink-faint text-[10px] uppercase tracking-wide">
                       <th className="text-left py-1 px-2 font-semibold">Cliente</th>
                       <th className="text-left py-1 px-2 font-semibold">Vendedor</th>
+                      <th className="text-left py-1 px-2 font-semibold">Origem</th>
+                      <th className="text-left py-1 px-2 font-semibold">Criativo</th>
                       <th className="text-right py-1 px-2 font-semibold">Valor</th>
                       <th className="text-left py-1 px-2 font-semibold">Data</th>
                       <th className="text-left py-1 px-2 font-semibold">Cidade/UF</th>
@@ -1033,13 +1035,15 @@ function DrillModal({ kind, preset, onClose }: { kind: 'orcamentos' | 'vendidos'
                       <tr key={i} className="border-t border-border/50 hover:bg-surface-2/50">
                         <td className="py-1.5 px-2 text-ink">{v.cliente || '—'}</td>
                         <td className="py-1.5 px-2 text-ink-muted">{v.vendedor || '—'}</td>
+                        <td className="py-1.5 px-2 text-ink-muted">{v.origem || '—'}</td>
+                        <td className="py-1.5 px-2 text-ink-faint font-mono">{v.criativo || '—'}</td>
                         <td className="py-1.5 px-2 text-right font-mono tabular-nums text-ink">{brl(v.valor)}</td>
                         <td className="py-1.5 px-2 text-ink-muted whitespace-nowrap">{dt(v.data_venda)}</td>
                         <td className="py-1.5 px-2 text-ink-muted">{[v.cidade, v.estado].filter(Boolean).join('/') || '—'}</td>
                         <td className="py-1.5 px-2 text-ink-faint font-mono">{v.numero || '—'}</td>
                       </tr>
                     ))}
-                    {vendasView.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-ink-faint">Nada no período.</td></tr>}
+                    {vendasView.length === 0 && <tr><td colSpan={8} className="py-8 text-center text-ink-faint">Nada no período.</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -1057,6 +1061,8 @@ function DrillModal({ kind, preset, onClose }: { kind: 'orcamentos' | 'vendidos'
                     <th className="text-right py-1 px-2 font-semibold">Valor total</th>
                     <th className="text-left py-1 px-2 font-semibold">Último</th>
                     <th className="text-left py-1 px-2 font-semibold">Vendedor</th>
+                    <th className="text-left py-1 px-2 font-semibold">Origem</th>
+                    <th className="text-left py-1 px-2 font-semibold">Criativo</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1068,9 +1074,11 @@ function DrillModal({ kind, preset, onClose }: { kind: 'orcamentos' | 'vendidos'
                       <td className="py-1.5 px-2 text-right font-mono tabular-nums text-ink">{brl(o.valor_total)}</td>
                       <td className="py-1.5 px-2 text-ink-muted whitespace-nowrap">{dt(o.ultima_data)}</td>
                       <td className="py-1.5 px-2 text-ink-muted">{o.vendedor || '—'}</td>
+                      <td className="py-1.5 px-2 text-ink-muted">{o.origem || '—'}</td>
+                      <td className="py-1.5 px-2 text-ink-faint font-mono">{o.criativo || '—'}</td>
                     </tr>
                   ))}
-                  {orc.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-ink-faint">Nada no período.</td></tr>}
+                  {orc.length === 0 && <tr><td colSpan={8} className="py-8 text-center text-ink-faint">Nada no período.</td></tr>}
                 </tbody>
               </table>
             </div>
