@@ -59,6 +59,56 @@ export function useDashboardVendas(preset: DashboardPreset) {
   })
 }
 
+// ─── DRILL-DOWN: de onde vem cada KPI (linhas por trás do número) ───────────
+// Espelham EXATAMENTE o match dos agregados acima (verificado: batem 1:1).
+// `enabled` = lazy: só busca quando o modal abre.
+
+export type VendaDetalhe = {
+  numero: string; pedido: string | null; cliente: string | null; vendedor: string | null;
+  valor: number; data_venda: string | null; cidade: string | null; estado: string | null; is_lead: boolean
+}
+
+/** Linhas das vendas do período (pedidos não-cancelados). is_lead = amarrada a um lead. */
+export function useDashboardVendasDetalhe(preset: DashboardPreset, enabled: boolean) {
+  const { from, to } = rangeFor(preset)
+  return useQuery({
+    queryKey: ['dashboard-vendas-detalhe', from, to],
+    enabled,
+    queryFn: async (): Promise<VendaDetalhe[]> => {
+      const { data, error } = await (supabase as any).rpc('dashboard_vendas_periodo_detalhe', { p_from: from, p_to: to })
+      if (error) throw error
+      return (data ?? []).map((r: any) => ({
+        numero: r.numero, pedido: r.pedido, cliente: r.cliente, vendedor: r.vendedor,
+        valor: Number(r.valor ?? 0), data_venda: r.data_venda, cidade: r.cidade, estado: r.estado, is_lead: !!r.is_lead,
+      }))
+    },
+    staleTime: 60_000,
+  })
+}
+
+export type OrcamentoDetalhe = {
+  fone: string; cliente: string | null; vendedor: string | null; qtd: number;
+  valor_total: number; ultima_data: string | null; numeros: string[]
+}
+
+/** Um item por telefone (= a unidade que o KPI "Orçamentos" conta) com o resumo dos orçamentos. */
+export function useDashboardOrcamentosDetalhe(preset: DashboardPreset, enabled: boolean) {
+  const { from, to } = rangeFor(preset)
+  return useQuery({
+    queryKey: ['dashboard-orcamentos-detalhe', from, to],
+    enabled,
+    queryFn: async (): Promise<OrcamentoDetalhe[]> => {
+      const { data, error } = await (supabase as any).rpc('dashboard_orcamentos_periodo_detalhe', { p_from: from, p_to: to })
+      if (error) throw error
+      return (data ?? []).map((r: any) => ({
+        fone: r.fone, cliente: r.cliente, vendedor: r.vendedor, qtd: Number(r.qtd ?? 0),
+        valor_total: Number(r.valor_total ?? 0), ultima_data: r.ultima_data, numeros: r.numeros ?? [],
+      }))
+    },
+    staleTime: 60_000,
+  })
+}
+
 // ─── Atribuição de orçamento/venda REAIS por criativo e por origem ──────────
 // Cruza os leads do período (atendimentos) com orcamentos_gerados (orçamento real,
 // match por telefone) e mirror_pedidos_venda (venda real, via orçamento→pedido).

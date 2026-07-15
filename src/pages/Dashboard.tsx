@@ -5,7 +5,7 @@ import { useDashboardEtiquetas, useHeatmapSemanal, CATEGORIA_LABEL, type Etiquet
 import { useDashboardVendedorFunil, type VendedorFunilRow } from '@/hooks/useDashboardVendedorFunil'
 import { useDashboardExtra, type DashboardExtra } from '@/hooks/useDashboardExtra'
 import { useFunilUnion } from '@/hooks/useFunilUnion'
-import { useDashboardOrcamentos, useDashboardVendas, useDashboardOrcVendaPorCriativo, useDashboardOrcVendaPorOrigem, type OrcVendaAttr } from '@/hooks/useDashboardOrcamentos'
+import { useDashboardOrcamentos, useDashboardVendas, useDashboardOrcVendaPorCriativo, useDashboardOrcVendaPorOrigem, useDashboardVendasDetalhe, useDashboardOrcamentosDetalhe, type OrcVendaAttr } from '@/hooks/useDashboardOrcamentos'
 import { useOrcamentosResumo, type OrcamentosResumo } from '@/hooks/useOrcamentosResumo'
 import { usePropostasStatus, CATS_ABERTO, type PropostasStatus, type PropCategoria } from '@/hooks/usePropostasStatus'
 import { useVendedoresPainel, type VendedorPainel } from '@/hooks/useVendedoresPainel'
@@ -17,7 +17,7 @@ import {
   Area, AreaChart, Cell, Pie, PieChart, XAxis,
   ResponsiveContainer, Tooltip,
 } from 'recharts'
-import { Flame, TrendingUp, Users, CheckCircle2, ArrowDown, ArrowUp, Hand, FilePlus2, AlertTriangle, Clock, Ghost, Banknote, ChevronRight, Sun, Moon } from 'lucide-react'
+import { Flame, TrendingUp, Users, CheckCircle2, ArrowDown, ArrowUp, Hand, FilePlus2, AlertTriangle, Clock, Ghost, Banknote, ChevronRight, Sun, Moon, X } from 'lucide-react'
 import { useDarkMode } from '@/hooks/useDarkMode'
 import { RangeCalendar } from '@/components/RangeCalendar'
 import { ResumoDiaVendedores } from '@/components/ResumoDiaVendedores'
@@ -171,6 +171,8 @@ export function Dashboard() {
   const hojeISO = (() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}` })()
   const [openSec, toggleSec] = useOpenSections()
   const [dark, toggleDark] = useDarkMode()
+  // Drill-down "de onde vem" dos KPIs de resultado (clicar no card abre a lista).
+  const [drill, setDrill] = useState<null | 'orcamentos' | 'vendidos' | 'valor'>(null)
   const { data, isLoading, error } = useDashboard({ preset })
   const { data: etq } = useDashboardEtiquetas(preset)
   const { data: vendFunil } = useDashboardVendedorFunil(preset)
@@ -324,9 +326,9 @@ export function Dashboard() {
   const heroKpis = [
     { label: preset ? 'Leads no período' : 'Total de leads', kpi: data.kpiTotal, icon: Users, color: COLORS.ink, sub: preset ? periodoLabel.toLowerCase() : 'desde o início' },
     { label: 'Qualificados',  kpi: data.kpiQualificados, icon: CheckCircle2, color: COLORS.accent, sub: 'quer algo que a Branorte faz' },
-    { label: 'Orçamentos',    kpi: { valor: orcamentosReais ?? orcamentoEtq, deltaPct: 0, sparkline: [] }, icon: FilePlus2, color: 'hsl(280 65% 50%)', sub: 'telefone × orçamentos montados' },
-    { label: 'Vendidos',      kpi: { valor: vendidosLead ?? vendidoEtq, deltaPct: 0, sparkline: [] }, icon: CheckCircle2, color: 'hsl(152 60% 35%)', sub: `vendas de lead · ${vendidosReais ?? 0} no total` },
-    { label: 'Valor convertido', kpi: { valor: vendas?.valorLead ?? 0, deltaPct: 0, sparkline: [] }, icon: Banknote, color: 'hsl(152 60% 40%)', sub: `de lead · R$ ${(vendas?.valor ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} no total`, prefix: 'R$ ' },
+    { label: 'Orçamentos',    kpi: { valor: orcamentosReais ?? orcamentoEtq, deltaPct: 0, sparkline: [] }, icon: FilePlus2, color: 'hsl(280 65% 50%)', sub: 'telefone × orçamentos montados', onClick: () => setDrill('orcamentos') },
+    { label: 'Vendidos',      kpi: { valor: vendidosLead ?? vendidoEtq, deltaPct: 0, sparkline: [] }, icon: CheckCircle2, color: 'hsl(152 60% 35%)', sub: `vendas de lead · ${vendidosReais ?? 0} no total`, onClick: () => setDrill('vendidos') },
+    { label: 'Valor convertido', kpi: { valor: vendas?.valorLead ?? 0, deltaPct: 0, sparkline: [] }, icon: Banknote, color: 'hsl(152 60% 40%)', sub: `de lead · R$ ${(vendas?.valor ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} no total`, prefix: 'R$ ', onClick: () => setDrill('valor') },
     { label: 'Conversão',     kpi: { valor: taxaConv, deltaPct: 0, sparkline: [] }, icon: TrendingUp, color: COLORS.info, sub: 'lead → vendido', suffix: '%' },
   ]
 
@@ -598,6 +600,9 @@ export function Dashboard() {
           </div>
         )
       })()}
+
+      {/* Drill-down "de onde vem" (Orçamentos / Vendidos / Valor convertido) */}
+      {drill && <DrillModal kind={drill} preset={preset} onClose={() => setDrill(null)} />}
 
       {/* ════════ O ESSENCIAL — glance de 5 segundos, no topo da página ════════ */}
       <Card className="border-accent/25 bg-accent-bg/30">
@@ -957,7 +962,126 @@ export function Dashboard() {
 // COMPONENTES
 // ============================================================================
 
-function KpiHero({ label, kpi, icon: Icon, color, sub, suffix, prefix, showDelta: showDeltaProp = true }: {
+// ════════ DRILL-DOWN: "de onde vem" (Orçamentos / Vendidos / Valor convertido) ════════
+// Abre ao clicar no card. Lista as linhas por trás do número (reconcilia 1:1 com o KPI).
+function DrillModal({ kind, preset, onClose }: { kind: 'orcamentos' | 'vendidos' | 'valor'; preset: DashboardPreset; onClose: () => void }) {
+  const isVendas = kind === 'vendidos' || kind === 'valor'
+  const vendasQ = useDashboardVendasDetalhe(preset, isVendas)
+  const orcQ = useDashboardOrcamentosDetalhe(preset, kind === 'orcamentos')
+  const [soLead, setSoLead] = useState(true)
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [onClose])
+
+  const brl = (v: number) => 'R$ ' + v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+  const dt = (s: string | null) => s ? new Date(s.length <= 10 ? s + 'T12:00:00' : s).toLocaleDateString('pt-BR') : '—'
+
+  const loading = isVendas ? vendasQ.isLoading : orcQ.isLoading
+  const err = (isVendas ? vendasQ.error : orcQ.error) as Error | null
+
+  const vendas = vendasQ.data ?? []
+  const vendasView = soLead ? vendas.filter(v => v.is_lead) : vendas
+  const vTot = vendasView.reduce((s, v) => s + v.valor, 0)
+  const orc = orcQ.data ?? []
+  const orcValTot = orc.reduce((s, o) => s + o.valor_total, 0)
+
+  const title = kind === 'orcamentos' ? 'Orçamentos — de onde vem'
+    : kind === 'vendidos' ? 'Vendidos — de onde vem' : 'Valor convertido — de onde vem'
+  const subtitle = isVendas
+    ? `${vendasView.length} venda(s) · ${brl(vTot)}${soLead ? ' — amarradas a um lead do atendimento' : ' — todas as vendas do período'}`
+    : `${orc.length} telefone(s) com orçamento · ${brl(orcValTot)} montados`
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-start sm:items-center justify-center p-3 sm:p-4 overflow-y-auto" onClick={onClose}>
+      <div className="bg-surface border border-border rounded-xl w-full max-w-3xl max-h-[88vh] flex flex-col shadow-2xl my-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-ink truncate">{title}</h3>
+            <p className="text-[11px] text-ink-faint truncate">{subtitle}</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded hover:bg-surface-2 text-ink-faint shrink-0" aria-label="Fechar"><X className="h-4 w-4" /></button>
+        </div>
+
+        <div className="overflow-y-auto p-2 sm:p-3">
+          {loading && <div className="p-8 text-center text-[12px] text-ink-faint">Carregando…</div>}
+          {err && <div className="p-4 text-[12px] text-danger font-mono break-all">Erro: {err.message}</div>}
+
+          {!loading && !err && isVendas && (
+            <>
+              <div className="flex items-center gap-2 mb-2 px-1">
+                <button onClick={() => setSoLead(true)} className={`text-[11px] px-2 py-1 rounded transition-colors ${soLead ? 'bg-accent text-white' : 'bg-surface-2 text-ink-muted hover:text-ink'}`}>De lead ({vendas.filter(v => v.is_lead).length})</button>
+                <button onClick={() => setSoLead(false)} className={`text-[11px] px-2 py-1 rounded transition-colors ${!soLead ? 'bg-accent text-white' : 'bg-surface-2 text-ink-muted hover:text-ink'}`}>Todas ({vendas.length})</button>
+                <span className="ml-auto text-[12px] font-semibold text-ink tabular-nums">{brl(vTot)}</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[12px]">
+                  <thead>
+                    <tr className="text-ink-faint text-[10px] uppercase tracking-wide">
+                      <th className="text-left py-1 px-2 font-semibold">Cliente</th>
+                      <th className="text-left py-1 px-2 font-semibold">Vendedor</th>
+                      <th className="text-right py-1 px-2 font-semibold">Valor</th>
+                      <th className="text-left py-1 px-2 font-semibold">Data</th>
+                      <th className="text-left py-1 px-2 font-semibold">Cidade/UF</th>
+                      <th className="text-left py-1 px-2 font-semibold">Nº orç.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vendasView.map((v, i) => (
+                      <tr key={i} className="border-t border-border/50 hover:bg-surface-2/50">
+                        <td className="py-1.5 px-2 text-ink">{v.cliente || '—'}</td>
+                        <td className="py-1.5 px-2 text-ink-muted">{v.vendedor || '—'}</td>
+                        <td className="py-1.5 px-2 text-right font-mono tabular-nums text-ink">{brl(v.valor)}</td>
+                        <td className="py-1.5 px-2 text-ink-muted whitespace-nowrap">{dt(v.data_venda)}</td>
+                        <td className="py-1.5 px-2 text-ink-muted">{[v.cidade, v.estado].filter(Boolean).join('/') || '—'}</td>
+                        <td className="py-1.5 px-2 text-ink-faint font-mono">{v.numero || '—'}</td>
+                      </tr>
+                    ))}
+                    {vendasView.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-ink-faint">Nada no período.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
+          {!loading && !err && !isVendas && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="text-ink-faint text-[10px] uppercase tracking-wide">
+                    <th className="text-left py-1 px-2 font-semibold">Cliente</th>
+                    <th className="text-left py-1 px-2 font-semibold">Telefone</th>
+                    <th className="text-right py-1 px-2 font-semibold">Qtd</th>
+                    <th className="text-right py-1 px-2 font-semibold">Valor total</th>
+                    <th className="text-left py-1 px-2 font-semibold">Último</th>
+                    <th className="text-left py-1 px-2 font-semibold">Vendedor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {orc.map((o, i) => (
+                    <tr key={i} className="border-t border-border/50 hover:bg-surface-2/50">
+                      <td className="py-1.5 px-2 text-ink">{o.cliente || '—'}</td>
+                      <td className="py-1.5 px-2 text-ink-muted font-mono">{o.fone}</td>
+                      <td className="py-1.5 px-2 text-right tabular-nums text-ink-muted">{o.qtd}</td>
+                      <td className="py-1.5 px-2 text-right font-mono tabular-nums text-ink">{brl(o.valor_total)}</td>
+                      <td className="py-1.5 px-2 text-ink-muted whitespace-nowrap">{dt(o.ultima_data)}</td>
+                      <td className="py-1.5 px-2 text-ink-muted">{o.vendedor || '—'}</td>
+                    </tr>
+                  ))}
+                  {orc.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-ink-faint">Nada no período.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function KpiHero({ label, kpi, icon: Icon, color, sub, suffix, prefix, onClick, showDelta: showDeltaProp = true }: {
   label: string;
   kpi: { valor: number; deltaPct: number; sparkline: number[] };
   icon: typeof Users;
@@ -965,6 +1089,7 @@ function KpiHero({ label, kpi, icon: Icon, color, sub, suffix, prefix, showDelta
   sub: string;
   suffix?: string;
   prefix?: string;
+  onClick?: () => void;
   showDelta?: boolean;
 }) {
   const showDelta = showDeltaProp && Math.abs(kpi.deltaPct) > 0.5
@@ -972,7 +1097,10 @@ function KpiHero({ label, kpi, icon: Icon, color, sub, suffix, prefix, showDelta
   const sparkData = kpi.sparkline.map((v, i) => ({ i, v }))
   const gid = `spark-${label.replace(/\s+/g, '')}`
   return (
-    <div className="bg-surface border border-border rounded-xl p-3 sm:p-5 transition-colors hover:border-border-strong relative overflow-hidden">
+    <div
+      className={`bg-surface border border-border rounded-xl p-3 sm:p-5 transition-colors relative overflow-hidden ${onClick ? 'cursor-pointer hover:border-accent/60 hover:bg-accent-bg/20' : 'hover:border-border-strong'}`}
+      {...(onClick ? { role: 'button', tabIndex: 0, onClick, onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } } } : {})}
+    >
       <div className="flex items-start justify-between mb-0.5">
         <p className="text-[9px] sm:text-[10px] uppercase tracking-[0.08em] text-ink-faint font-medium leading-tight">{label}</p>
         <Icon className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" style={{ color }} />
@@ -983,7 +1111,7 @@ function KpiHero({ label, kpi, icon: Icon, color, sub, suffix, prefix, showDelta
         {suffix && <span className="text-base sm:text-xl font-medium ml-0.5">{suffix}</span>}
       </p>
       <div className="flex items-center justify-between mt-0.5 sm:mt-1.5">
-        <p className="text-[10px] sm:text-[11px] text-ink-faint leading-tight">{sub}</p>
+        <p className="text-[10px] sm:text-[11px] text-ink-faint leading-tight">{sub}{onClick && <span className="text-accent font-medium"> · ver origem</span>}</p>
         {showDelta && (
           <span className={`inline-flex items-center gap-0.5 text-[10px] sm:text-[11px] font-medium tabular-nums ${
             positivo ? 'text-accent' : 'text-danger'
