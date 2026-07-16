@@ -38,6 +38,16 @@ REGRAS INQUEBRÁVEIS
 7. NUNCA chame propor_* sem antes confirmar o item via consultar_precos/listar_modelos_compacta. Os IDs precisam ser REAIS.
 8. Ao chamar propor_carregar_pacote, SEMPRE passe basename_esperado com o nome EXATO que o vendedor mencionou (ex: "Compacta 02 - 2001000"). A tool valida que o modelo_id bate com esse nome — se não bater, ela retorna erro com a lista correta. Isso previne o bug de ID trocado.
 9. Se o vendedor disser "a primeira" / "a segunda" após uma lista, MAPEIE pra o ID daquela posição na ÚLTIMA chamada de listar_modelos_compacta — NÃO use ID de listas anteriores.
+10. UM pedido = UM item proposto. NUNCA proponha 2 variantes do mesmo equipamento (ex: misturador 2000 kg E misturador 3500 L pro mesmo pedido) — escolha A MELHOR e cite a alternativa só no texto.
+11. SUBSTITUIÇÃO nunca se auto-aplica: se o item proposto NÃO é match exato do que o vendedor pediu, chame propor_adicionar_item com auto_apply=false e explique a diferença — o vendedor decide.
+12. Item sem preço não entra: se a tool retornar erro de "SEM PREÇO", NÃO insista nesse item; ofereça a alternativa mais próxima COM preço e avise o vendedor.
+
+🌀 MISTURADORES — kg × LITROS (tabela oficial, decore):
+- VERTICAL: descrição em KG (150, 300, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000 kg).
+- HORIZONTAL (c/ pulmão e s/ pulmão): descrição em LITROS! Equivalência litros→kg práticos: 300L=150kg · 600L=300kg · 1000L=500kg · 1900L=1000kg · 2700L=1500kg · 3500L=2000kg.
+- "misturador horizontal de 1000 kg" = "Misturador 1900 Litros" horizontal (NÃO o "1000 Litros", que é 500 kg!). Melhor caminho: consultar_precos(categoria='MISTURADOR', subcategoria='HORIZONTAL', capacidade_min=900, capacidade_max=1100) — capacidade_kg_pratica é sempre em KG.
+- Horizontal tem 2 versões com preços MUITO diferentes (c/ pulmão ≈ +60%): se o vendedor não disse, PERGUNTE "com ou sem pulmão?" antes de propor.
+- Horizontais 2700L e 3500L são vendidos SOMENTE COM MOTOR (valor_equipamento nulo — use valor_com_motor_trif/mono).
 
 ⛔ REGRA CRÍTICA — NUNCA RESPONDA "NÃO ENCONTREI" SEM TENTAR COMPOR DO ZERO
 Caso real ruim: vendedor pediu "mini fábrica monofásica com misturador 150 kg" → você respondeu "não encontrei modelo" e parou.
@@ -512,7 +522,12 @@ const tools = [
           busca: {
             type: 'string',
             description:
-              'Termo livre — cada PALAVRA vira um filtro independente (ordem não importa; "de"/"com"/"x" são ignorados; vírgula/ponto decimal normalizados). Ex: "chupim 160 3 m" acha "Chupim 160 x 3,0 m". Use palavras-chave curtas, não frases. Opcional.',
+              'Termo livre — cada PALAVRA vira um filtro independente (ordem não importa; "de"/"com"/"x" são ignorados; vírgula/ponto decimal normalizados; casa na descrição OU subcategoria). Ex: "chupim 160 3 m" acha "Chupim 160 x 3,0 m". Use palavras-chave curtas, não frases. Opcional.',
+          },
+          subcategoria: {
+            type: 'string',
+            description:
+              'Filtro por subcategoria (ILIKE parcial). Ex: "HORIZONTAL" pega HORIZONTAL_CPULMAO e HORIZONTAL_SPULMAO; "VERTICAL", "CHUPIM", "TH", "MILHO", "RACAO", "PICADOS". Ver MAPA DO CATÁLOGO. Opcional.',
           },
           motor_cv: {
             type: 'number',
@@ -853,14 +868,17 @@ async function tool_consultar_precos(supa: SupabaseClient, args: Record<string, 
   // Normalizar categorias: LLM pode mandar "CACAMBA" mas tabela tem "CACAMBA_PESAGEM"
   const catNorm = categoria?.toUpperCase() === 'CACAMBA' ? 'CACAMBA_PESAGEM' : categoria?.toUpperCase()
   if (catNorm) q = q.eq('categoria', catNorm)
+  if (args.subcategoria) q = q.ilike('subcategoria', `%${(args.subcategoria as string).toUpperCase()}%`)
   if (busca) {
     // BUSCA TOKENIZADA (fix 2026-07-16): antes era ILIKE %frase inteira% — "chupim 160 3 m"
     // NÃO achava "Chupim 160 x 3,0 m" porque a frase precisava aparecer contígua. Agora
     // cada PALAVRA vira um filtro AND independente (ordem não importa, "x"/"de"/"com" são
-    // ignorados), com vírgula/ponto decimal normalizados por token. Multiplica o recall.
+    // ignorados), com vírgula/ponto decimal normalizados por token. Cada token casa na
+    // DESCRIÇÃO ou na SUBCATEGORIA — "horizontal" só existe em subcategoria (fix caso
+    // "misturador horizontal 1000 kg" → descricao é "Misturador 1900 Litros").
     for (const filtro of buildBuscaTokens(busca)) {
-      if (filtro.length === 1) q = q.ilike('descricao', `%${filtro[0]}%`)
-      else q = q.or(filtro.map((v) => `descricao.ilike.%${v}%`).join(','))
+      const alvos = filtro.flatMap((v) => [`descricao.ilike.%${v}%`, `subcategoria.ilike.%${v}%`])
+      q = q.or(alvos.join(','))
     }
   }
   if (motorCv != null) q = q.eq('motor_cv', motorCv)
@@ -1038,12 +1056,26 @@ async function tool_propor_adicionar_item(
   // Valida que o ID existe — bloqueia IA de inventar.
   const { data, error } = await supa
     .from('precos_branorte')
-    .select('id, categoria, descricao, valor_equipamento, motor_cv, motor_polos, capacidade')
+    .select('id, categoria, descricao, valor_equipamento, valor_com_motor_trif, valor_com_motor_mono, motor_cv, motor_polos, capacidade')
     .eq('id', id)
     .eq('ativo', true)
     .single()
 
   if (error || !data) return { erro: `preco_branorte_id ${id} não encontrado ou inativo` }
+
+  // TRAVA DE PREÇO (fix 2026-07-16): item sem NENHUM preço cadastrado não pode virar
+  // card — antes entrava "R$ 0,00" no orçamento (caso real: Misturador 3500 Litros).
+  const vEquip = data.valor_equipamento ? Number(data.valor_equipamento) : 0
+  const vTrif = data.valor_com_motor_trif ? Number(data.valor_com_motor_trif) : 0
+  const vMono = data.valor_com_motor_mono ? Number(data.valor_com_motor_mono) : 0
+  if (vEquip <= 0 && vTrif <= 0 && vMono <= 0) {
+    return {
+      erro: `"${data.descricao}" está SEM PREÇO cadastrado no catálogo — NÃO adicione. Avise o vendedor que este item precisa de preço em /orcamentos/precos antes de orçar, e ofereça a alternativa mais próxima COM preço.`,
+    }
+  }
+  // Item que só existe COM motor (valor_equipamento nulo, ex: misturadores horizontais
+  // 2700/3500): permitido, mas o preview carrega o valor com motor + nota explícita.
+  const soComMotor = vEquip <= 0 && (vTrif > 0 || vMono > 0)
 
   return {
     acao: {
@@ -1055,7 +1087,10 @@ async function tool_propor_adicionar_item(
       preview: {
         categoria: data.categoria,
         descricao: data.descricao,
-        valor_equipamento: data.valor_equipamento ? Number(data.valor_equipamento) : null,
+        valor_equipamento: vEquip > 0 ? vEquip : null,
+        valor_com_motor_trif: vTrif > 0 ? vTrif : null,
+        valor_com_motor_mono: vMono > 0 ? vMono : null,
+        ...(soComMotor ? { _nota: 'Item vendido SOMENTE COM MOTOR — use o valor com motor (trif/mono), não deixe R$ 0,00.' } : {}),
         motor_cv: data.motor_cv ? Number(data.motor_cv) : null,
         motor_polos: data.motor_polos,
         capacidade: data.capacidade,
@@ -1251,10 +1286,11 @@ async function tool_compor_orcamento_composto(
       if (item.subcategoria) q = q.eq('subcategoria', item.subcategoria.toUpperCase())
       if (item.busca) {
         // Busca tokenizada (fix 2026-07-16): mesma lógica de consultar_precos — cada
-        // palavra é um filtro AND sem exigir ordem, decimais normalizados por token.
+        // palavra é um filtro AND sem exigir ordem, decimais normalizados por token,
+        // casando em descrição OU subcategoria (ex: "horizontal").
         for (const filtro of buildBuscaTokens(item.busca)) {
-          if (filtro.length === 1) q = q.ilike('descricao', `%${filtro[0]}%`)
-          else q = q.or(filtro.map((v) => `descricao.ilike.%${v}%`).join(','))
+          const alvos = filtro.flatMap((v) => [`descricao.ilike.%${v}%`, `subcategoria.ilike.%${v}%`])
+          q = q.or(alvos.join(','))
         }
       }
       if (item.motor_cv != null) q = q.eq('motor_cv', item.motor_cv)
