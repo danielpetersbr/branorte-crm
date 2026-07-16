@@ -93,11 +93,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const form = new FormData()
   const blob = new Blob([new Uint8Array(buf)], { type: mime })
   form.append('file', blob, `audio.${ext}`)
-  form.append('model', 'gpt-4o-mini-transcribe')
+  // Upgrade 2026-07-16: gpt-4o-transcribe (full) — WER visivelmente menor em jargão
+  // de domínio vs o mini. Áudios são curtos (~30s), o custo extra é centavos.
+  form.append('model', 'gpt-4o-transcribe')
   form.append('language', 'pt')
   form.append('response_format', 'json')
   // Prompt de contexto: vocabulário técnico Branorte melhora MUITO a precisão.
-  form.append('prompt', 'Orçamento Branorte metalúrgica. Equipamentos: chupim, transportador helicoidal, TH, rosca transportadora, moinho de martelo, BNMM, misturador vertical, misturador horizontal, caçamba de pesagem, silo, ensacadeira, balança eletrônica, elevador de canecas, pré-limpeza, moega, caixa de ração. Medidas: 160 x 3,0 m, 210 x 12,0 m, TH 200, 500 kg/h, 1000 litros, 42 toneladas. Potência: 1,5 CV, 3 CV, 5 CV, 7,5 CV, 10 CV, 15 CV, 20 CV, monofásico, trifásico. Compacta, mini fábrica, fábrica de ração. Orçamento para cliente, cidade, CNPJ, gerar PDF, mandar no WhatsApp.')
+  // Cobre TODAS as 22 categorias do catálogo (fix 2026-07-16 — antes faltava
+  // alimentador, passarela, suporte big bag, descarga, peneira, helicóide, SAB, EC...).
+  form.append('prompt', 'Orçamento Branorte metalúrgica, fábrica de ração. Equipamentos: chupim, transportador helicoidal, TH, rosca transportadora, moinho de martelo, BNMM, misturador vertical, misturador horizontal com pulmão, sem pulmão, BNMV, BNMH, caçamba de pesagem, silo de milho, silo de ração, SAB, toneladas, ensacadeira, balança eletrônica, balança mecânica, célula de carga, elevador de canecas, EC-2310, EC-4012, EC-5014, elevador de sacaria, pré-limpeza, moega, caixa de ração, caixa de picados, caixa de recepção, BNCX, alimentador com levante, esteira transportadora, descarga duas vias, peneira do moinho, helicóide, passarela com guarda-corpo, suporte para big bag com funil, painel elétrico, motorredutor, embaladeira. Medidas: 160 x 3,0 m, 210 x 12,0 m, TH 200, 500 kg/h, 1000 litros, 42 toneladas, 25 metros cúbicos. Potência: 1,5 CV, 3 CV, 5 CV, 7,5 CV, 10 CV, 15 CV, 20 CV, 30 CV, 2 polos, 4 polos, monofásico, trifásico, 220V, 380V. Modelos: Compacta 01, Compacta 02, Compacta 03, Master, JR, júnior, mini fábrica, Biomart inox 304. Orçamento para cliente, cidade, CNPJ, frete, gerar PDF, mandar no WhatsApp.')
 
   const startedAt = Date.now()
   const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {

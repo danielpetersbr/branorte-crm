@@ -507,12 +507,12 @@ const tools = [
           categoria: {
             type: 'string',
             description:
-              'Categoria exata. Ex: CACAMBA, TRANSPORTADOR, MISTURADOR, SILO, BALANCA, COMPACTA, MOINHO, ENSACADEIRA, etc. Opcional — se omitir, busca em todas.',
+              'Categoria EXATA (ver MAPA DO CATÁLOGO no system prompt). Valores reais: ACESSORIO, ALIMENTADOR, BALANCA, CACAMBA_PESAGEM, CAIXA, COMPACTA, DESCARGA, ELEVADOR, ELEVADOR_SACARIA, ENSACADEIRA, ESTEIRA, HELICOIDE, MISTURADOR, MOEGA, MOINHO, OUTROS, PAINEL_ELETRICO, PASSARELA, PRE_LIMPEZA, SILO, SUPORTE_BAG, TRANSPORTADOR. Opcional — se omitir, busca em todas.',
           },
           busca: {
             type: 'string',
             description:
-              'Termo livre que filtra por descrição (ILIKE %busca%). Ex: "pesagem 1900", "silo 30 ton", "chupim 160", "horizontal 300". Aceita vírgula ou ponto decimal. Opcional.',
+              'Termo livre — cada PALAVRA vira um filtro independente (ordem não importa; "de"/"com"/"x" são ignorados; vírgula/ponto decimal normalizados). Ex: "chupim 160 3 m" acha "Chupim 160 x 3,0 m". Use palavras-chave curtas, não frases. Opcional.',
           },
           motor_cv: {
             type: 'number',
@@ -751,6 +751,83 @@ const tools = [
 // TOOL IMPLEMENTATIONS (executadas server-side via Supabase service role)
 // ============================================================================
 
+// Tokeniza a busca livre: cada palavra vira um filtro AND; palavras de ligação
+// ("de", "com", "x", "para"...) caem fora; tokens com decimal geram as duas
+// variantes (vírgula E ponto) num OR. "metros"/"metro" normaliza pra "m".
+// Retorna lista de grupos: cada grupo é [variante] ou [varianteA, varianteB].
+const BUSCA_STOPWORDS = new Set(['de', 'da', 'do', 'dos', 'das', 'com', 'para', 'pra', 'x', 'por', 'um', 'uma', 'o', 'a', 'e', 'em', 'no', 'na'])
+function buildBuscaTokens(busca: string): string[][] {
+  const bruto = busca
+    .toLowerCase()
+    .replace(/[øØ⌀]/g, ' ')
+    .replace(/metros?\b/g, 'm')
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0 && !BUSCA_STOPWORDS.has(t))
+    .slice(0, 8) // sanidade: máx 8 tokens
+  const grupos: string[][] = []
+  for (const t of bruto) {
+    const comVirgula = t.replace(/\./g, ',')
+    const comPonto = t.replace(/,/g, '.')
+    if (comVirgula !== comPonto) grupos.push([comVirgula, comPonto])
+    else grupos.push([t])
+  }
+  return grupos
+}
+
+// ============================================================================
+// MAPA DO CATÁLOGO — visão geral viva injetada no system prompt (fix 2026-07-16).
+// Antes a IA "não sabia o que existe" e chutava buscas/desistia. Agora todo
+// request recebe um digest compacto (categoria/sub → nº de itens, faixa de CV,
+// exemplos das categorias pequenas), gerado do banco e cacheado 10 min por
+// instância. ~2 KB — barato e elimina o "não encontrei" por desconhecimento.
+// ============================================================================
+let _digestCache: { text: string; at: number } | null = null
+async function getCatalogoDigest(supa: SupabaseClient): Promise<string> {
+  if (_digestCache && Date.now() - _digestCache.at < 10 * 60 * 1000) return _digestCache.text
+  try {
+    const { data, error } = await supa
+      .from('precos_branorte')
+      .select('categoria, subcategoria, descricao, motor_cv, capacidade_ton, capacidade_kg_pratica, capacidade_litros')
+      .eq('ativo', true)
+      .limit(1000)
+    if (error || !data || data.length === 0) return ''
+    type Grp = { n: number; cvMin: number | null; cvMax: number | null; tonMin: number | null; tonMax: number | null; exemplos: string[] }
+    const grupos = new Map<string, Grp>()
+    for (const r of data as Array<Record<string, unknown>>) {
+      const key = `${r.categoria}${r.subcategoria ? '/' + r.subcategoria : ''}`
+      let g = grupos.get(key)
+      if (!g) { g = { n: 0, cvMin: null, cvMax: null, tonMin: null, tonMax: null, exemplos: [] }; grupos.set(key, g) }
+      g.n++
+      const cv = r.motor_cv != null ? Number(r.motor_cv) : null
+      if (cv != null && !Number.isNaN(cv)) {
+        g.cvMin = g.cvMin == null ? cv : Math.min(g.cvMin, cv)
+        g.cvMax = g.cvMax == null ? cv : Math.max(g.cvMax, cv)
+      }
+      const ton = r.capacidade_ton != null ? Number(r.capacidade_ton) : null
+      if (ton != null && !Number.isNaN(ton)) {
+        g.tonMin = g.tonMin == null ? ton : Math.min(g.tonMin, ton)
+        g.tonMax = g.tonMax == null ? ton : Math.max(g.tonMax, ton)
+      }
+      if (g.exemplos.length < 6) g.exemplos.push(String(r.descricao ?? '').slice(0, 48))
+    }
+    const linhas: string[] = []
+    for (const [key, g] of [...grupos.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+      let l = `- ${key}: ${g.n} itens`
+      if (g.cvMin != null) l += ` (${g.cvMin}–${g.cvMax} CV)`
+      if (g.tonMin != null) l += ` (${g.tonMin}–${g.tonMax} ton)`
+      // Categorias pequenas: lista os itens — é onde a busca mais falhava
+      if (g.n <= 6 && g.exemplos.length > 0) l += ` → ${g.exemplos.join(' | ')}`
+      linhas.push(l)
+    }
+    const text = `\n📚 MAPA DO CATÁLOGO ORÇÁVEL (ao vivo, ${data.length} itens ativos em precos_branorte — TUDO que existe pra orçar; use categoria EXATA nos filtros):\n${linhas.join('\n')}`
+    _digestCache = { text, at: Date.now() }
+    return text
+  } catch {
+    return ''
+  }
+}
+
 async function tool_consultar_precos(supa: SupabaseClient, args: Record<string, unknown>) {
   const categoria = args.categoria as string | undefined
   const busca = args.busca as string | undefined
@@ -777,12 +854,13 @@ async function tool_consultar_precos(supa: SupabaseClient, args: Record<string, 
   const catNorm = categoria?.toUpperCase() === 'CACAMBA' ? 'CACAMBA_PESAGEM' : categoria?.toUpperCase()
   if (catNorm) q = q.eq('categoria', catNorm)
   if (busca) {
-    const buscaNormalizada = busca.replace(/\./g, ',')
-    const buscaAlternativa = busca.replace(/,/g, '.')
-    if (buscaNormalizada !== buscaAlternativa) {
-      q = q.or(`descricao.ilike.%${buscaNormalizada}%,descricao.ilike.%${buscaAlternativa}%`)
-    } else {
-      q = q.ilike('descricao', `%${busca}%`)
+    // BUSCA TOKENIZADA (fix 2026-07-16): antes era ILIKE %frase inteira% — "chupim 160 3 m"
+    // NÃO achava "Chupim 160 x 3,0 m" porque a frase precisava aparecer contígua. Agora
+    // cada PALAVRA vira um filtro AND independente (ordem não importa, "x"/"de"/"com" são
+    // ignorados), com vírgula/ponto decimal normalizados por token. Multiplica o recall.
+    for (const filtro of buildBuscaTokens(busca)) {
+      if (filtro.length === 1) q = q.ilike('descricao', `%${filtro[0]}%`)
+      else q = q.or(filtro.map((v) => `descricao.ilike.%${v}%`).join(','))
     }
   }
   if (motorCv != null) q = q.eq('motor_cv', motorCv)
@@ -1172,20 +1250,11 @@ async function tool_compor_orcamento_composto(
     if (tentativa === 'precisa') {
       if (item.subcategoria) q = q.eq('subcategoria', item.subcategoria.toUpperCase())
       if (item.busca) {
-        const b = item.busca
-        const bComVirgula = b.replace(/\./g, ',')
-        const bComPonto = b.replace(/,/g, '.')
-        if (bComVirgula !== bComPonto) {
-          q = q.or(`descricao.ilike.%${bComVirgula}%,descricao.ilike.%${bComPonto}%`)
-        } else {
-          // Busca flexível: "160 14" → tenta "%160%14%" pra pegar "chupim 160 x 14,0 m"
-          const partes = b.trim().split(/\s+/)
-          if (partes.length >= 2) {
-            const pattern = partes.map(p => `%${p}%`).join('')
-            q = q.ilike('descricao', pattern)
-          } else {
-            q = q.ilike('descricao', `%${b}%`)
-          }
+        // Busca tokenizada (fix 2026-07-16): mesma lógica de consultar_precos — cada
+        // palavra é um filtro AND sem exigir ordem, decimais normalizados por token.
+        for (const filtro of buildBuscaTokens(item.busca)) {
+          if (filtro.length === 1) q = q.ilike('descricao', `%${filtro[0]}%`)
+          else q = q.or(filtro.map((v) => `descricao.ilike.%${v}%`).join(','))
         }
       }
       if (item.motor_cv != null) q = q.eq('motor_cv', item.motor_cv)
@@ -1378,8 +1447,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const body = req.body as ReqBody
   if (!body?.messages?.length) return res.status(400).json({ error: 'no_messages' })
 
-  // Monta histórico inicial com system prompt + contexto opcional
-  const messages: ChatMsg[] = [{ role: 'system', content: SYSTEM_PROMPT }]
+  // Monta histórico inicial com system prompt + MAPA DO CATÁLOGO ao vivo (cache 10 min)
+  // + contexto opcional. O mapa dá à IA a visão COMPLETA do que existe pra orçar.
+  const catalogoDigest = await getCatalogoDigest(supa)
+  const messages: ChatMsg[] = [{ role: 'system', content: SYSTEM_PROMPT + catalogoDigest }]
   if (body.context) {
     const ctx = []
     if (body.context.cliente_nome) ctx.push(`Cliente: ${body.context.cliente_nome}`)
