@@ -1654,10 +1654,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         acoesDedup.push(acao)
       }
     }
-    // Forçar auto_apply em TODAS as ações de adicionar_item
-    for (const acao of acoesDedup) {
-      if (acao.tipo === 'adicionar_item') {
-        acao.auto_apply = true
+    // auto_apply (fix 2026-07-16): NÃO forçar mais TRUE em tudo — isso atropelava a
+    // decisão deliberada do modelo (substituição deve vir auto_apply=false, regra 11)
+    // e aplicava DUAS variantes do mesmo equipamento no carrinho (caso real: misturador
+    // 2000 kg + 3500 L pro mesmo pedido). O default TRUE já vem da tool quando o modelo
+    // não especifica. GUARDA adicional: 2+ propostas com a MESMA descrição (ex: Misturador
+    // 1900 Litros c/ e s/ pulmão) → NENHUMA se auto-aplica; o vendedor escolhe no card.
+    const porDescricao = new Map<string, number[]>()
+    acoesDedup.forEach((a, i) => {
+      if (a.tipo === 'adicionar_item') {
+        const prev = (a as { preview?: { descricao?: string } }).preview
+        const key = String(prev?.descricao ?? '').trim().toUpperCase()
+        if (!key) return
+        const arr = porDescricao.get(key) ?? []
+        arr.push(i)
+        porDescricao.set(key, arr)
+      }
+    })
+    for (const idxs of porDescricao.values()) {
+      if (idxs.length > 1) {
+        for (const i of idxs) {
+          ;(acoesDedup[i] as { auto_apply?: boolean }).auto_apply = false
+        }
       }
     }
 
