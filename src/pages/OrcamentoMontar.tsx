@@ -459,6 +459,10 @@ export function OrcamentoMontar() {
   // caixa de ração pronta → Silo de Armazenagem) e resgata itens que iam embutidos
   // (ex: misturador diluído → Silo Misturador). Vazio = classificação automática.
   const [finameTipoOverride, setFinameTipoOverride] = useState<Record<string, string>>({})
+  // FINAME: override manual do NOME da linha (por uid). Deixa o vendedor renomear o
+  // equipamento mantendo o código FINAME do tipo (ex: "Silo de Armazenagem" →
+  // "Caixa de Armazenagem Milho/Soja"). Vazio = usa o nome oficial do tipo.
+  const [finameNomeOverride, setFinameNomeOverride] = useState<Record<string, string>>({})
   // FINAME: total da proposta "travado" (referência). A soma das linhas precisa bater
   // com ele pra gerar; senão o vendedor ajusta os valores ou aceita o novo total.
   const [finameTotalTravado, setFinameTotalTravado] = useState<number | null>(null)
@@ -898,9 +902,10 @@ export function OrcamentoMontar() {
     if (!finameMode || !finameTransform) return carrinhoExib
     return finameTransform.itens.map(fi => {
       const o = origByUid.get(fi.uid) as CarrinhoItem | undefined
+      const nomeEditado = (finameNomeOverride[fi.uid] ?? '').trim()
       return {
         ...(o as CarrinhoItem),
-        nome_custom: fi.nomeFiname,
+        nome_custom: nomeEditado || fi.nomeFiname,
         specs: fi.specs,
         specs_original: o?.specs_original ?? o?.specs,
         // Valor editável: usa o override do vendedor se houver; senão o valor embutido.
@@ -919,7 +924,7 @@ export function OrcamentoMontar() {
         incluso: false,
       }
     })
-  }, [finameMode, finameTransform, carrinhoExib, origByUid, finameValorOverride])
+  }, [finameMode, finameTransform, carrinhoExib, origByUid, finameValorOverride, finameNomeOverride])
 
   // Soma das linhas FINAME (com overrides). Precisa bater com o total travado pra gerar.
   const finameSomaItens = useMemo(
@@ -937,7 +942,7 @@ export function OrcamentoMontar() {
     if (!finameMode || !finameTransform) {
       setFinameTotalTravado(null)
       setFinameValorOverride({})
-      if (!finameMode) setFinameTipoOverride({})
+      if (!finameMode) { setFinameTipoOverride({}); setFinameNomeOverride({}) }
       return
     }
     setFinameTotalTravado(finameTransform.totalGeral)
@@ -2984,34 +2989,59 @@ export function OrcamentoMontar() {
                     const embutido = c.status === 'acessorio' || c.status === 'motor'
                     const tipoAtual = c.key ? FINAME_TIPOS.find(t => t.key === c.key)?.nome : undefined
                     return (
-                      <div key={c.uid} className="flex items-center gap-2 flex-wrap">
-                        <span className={`text-[12px] ${bloqueado ? 'font-semibold text-red-700' : 'text-gray-800'}`}>
-                          {c.nome}
-                        </span>
-                        <span className="text-[11px] text-gray-500">
-                          {bloqueado
-                            ? '— sem FINAME'
-                            : embutido
-                              ? '— embutido no valor'
-                              : `→ ${tipoAtual ?? ''}${c.overridden ? ' (manual)' : ''}`}
-                        </span>
-                        <select
-                          value={finameTipoOverride[c.uid] ?? ''}
-                          onChange={(e) => setFinameTipoOverride(prev => {
-                            const next = { ...prev }
-                            if (e.target.value) next[c.uid] = e.target.value
-                            else delete next[c.uid]
-                            return next
-                          })}
-                          className="ml-auto text-[12px] border border-gray-300 rounded px-1.5 py-0.5 bg-white text-gray-800"
-                        >
-                          <option value="">
-                            {bloqueado ? 'Automático (bloqueia)' : embutido ? 'Automático (embutido)' : 'Automático'}
-                          </option>
-                          {FINAME_TIPOS.map(t => (
-                            <option key={t.key} value={t.key}>Tratar como {t.nome}</option>
-                          ))}
-                        </select>
+                      <div key={c.uid} className="flex flex-col gap-1 border-b border-gray-200/70 last:border-0 pb-1.5 last:pb-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-[12px] ${bloqueado ? 'font-semibold text-red-700' : 'text-gray-800'}`}>
+                            {c.nome}
+                          </span>
+                          <span className="text-[11px] text-gray-500">
+                            {bloqueado
+                              ? '— sem FINAME'
+                              : embutido
+                                ? '— embutido no valor'
+                                : `→ ${tipoAtual ?? ''}${c.overridden ? ' (manual)' : ''}`}
+                          </span>
+                          <select
+                            value={finameTipoOverride[c.uid] ?? ''}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              setFinameTipoOverride(prev => {
+                                const next = { ...prev }
+                                if (val) next[c.uid] = val
+                                else delete next[c.uid]
+                                return next
+                              })
+                              // Trocar o tipo reseta o nome editado (pega o nome do novo tipo).
+                              setFinameNomeOverride(prev => {
+                                if (!(c.uid in prev)) return prev
+                                const next = { ...prev }
+                                delete next[c.uid]
+                                return next
+                              })
+                            }}
+                            className="ml-auto text-[12px] border border-gray-300 rounded px-1.5 py-0.5 bg-white text-gray-800"
+                          >
+                            <option value="">
+                              {bloqueado ? 'Automático (bloqueia)' : embutido ? 'Automático (embutido)' : 'Automático'}
+                            </option>
+                            {FINAME_TIPOS.map(t => (
+                              <option key={t.key} value={t.key}>Tratar como {t.nome}</option>
+                            ))}
+                          </select>
+                        </div>
+                        {/* Nome editável da linha (só pros itens que viram equipamento com código). */}
+                        {c.status === 'principal' && (
+                          <div className="flex items-center gap-2 pl-1">
+                            <span className="text-[11px] text-gray-500 shrink-0">Nome no orçamento:</span>
+                            <input
+                              type="text"
+                              value={finameNomeOverride[c.uid] ?? tipoAtual ?? ''}
+                              onChange={(e) => setFinameNomeOverride(prev => ({ ...prev, [c.uid]: e.target.value }))}
+                              placeholder={tipoAtual}
+                              className="flex-1 min-w-0 text-[12px] border border-gray-300 rounded px-1.5 py-0.5 bg-white text-gray-800"
+                            />
+                          </div>
+                        )}
                       </div>
                     )
                   })}
