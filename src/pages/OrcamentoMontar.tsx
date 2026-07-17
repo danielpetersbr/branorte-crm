@@ -3841,7 +3841,7 @@ export function OrcamentoMontar() {
           <div className="px-4 py-3 space-y-1.5 text-[11px]">
             {sucesso.salvouNaPasta && (
               <div className="flex items-start gap-2 text-ink-muted">
-                <FolderOpen className="h-3.5 w-3.5 text-blue-400 shrink-0 mt-0.5" />
+                <FolderOpen className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
                 <span>
                   {typeof window !== 'undefined' && !('showDirectoryPicker' in window)
                     ? <>Enviado pro servidor — vai aparecer em <code className="text-[10px] bg-surface-2 px-1 rounded">Z:\1 - Comercial\3 - Orçamento\2026\Orçamentos 2026\</code> em até 30s.</>
@@ -3851,7 +3851,7 @@ export function OrcamentoMontar() {
             )}
             {sucesso.baixouDocx && (
               <div className="flex items-center gap-2 text-ink-muted">
-                <FileText className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                <FileText className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
                 <span>.docx baixado</span>
               </div>
             )}
@@ -4381,7 +4381,7 @@ function SelectorModelo({ onCarregar }: { onCarregar: (m: OrcamentoModelo) => vo
                     </div>
                     <div className="text-[9px] text-ink-faint mt-0.5 flex items-center gap-1.5 flex-wrap">
                       {m.pacote && <span className="px-1 py-0.5 rounded bg-surface-3 text-accent font-bold">{m.pacote}</span>}
-                      <span className="text-blue-400 font-medium">{m.voltagem}</span>
+                      <span className="text-emerald-500 font-medium">{m.voltagem}</span>
                       {m.is_master && <span className="text-warning font-bold">MASTER</span>}
                       {m.is_jr && <span className="text-info font-bold">JR</span>}
                       <span>· {m.itens.length} items · {m.motores.length} motores</span>

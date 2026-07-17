@@ -726,7 +726,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           </div>
         )}
         {!renderMode && !isMobile && pageBreaks.length > 0 && (
-          <div className="absolute top-2 right-2 bg-blue-600 text-white text-[14px] font-bold px-2 py-0.5 rounded shadow z-10 pointer-events-none">
+          <div className="absolute top-2 right-2 bg-emerald-600 text-white text-[14px] font-bold px-2 py-0.5 rounded shadow z-10 pointer-events-none">
             {pageBreaks.length + 1} folhas A4
           </div>
         )}
@@ -756,7 +756,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
         {/* CLIENTE | A/C | FONE */}
         <div
-          className={`${!renderMode && onEditCliente ? 'cursor-pointer hover:bg-blue-50/60 -mx-2 px-2 rounded transition-colors' : ''}`}
+          className={`${!renderMode && onEditCliente ? 'cursor-pointer hover:bg-emerald-50/60 -mx-2 px-2 rounded transition-colors' : ''}`}
           onClick={!renderMode && onEditCliente ? onEditCliente : undefined}
           title={!renderMode && onEditCliente ? 'Clique pra preencher dados do cliente' : undefined}
         >
@@ -832,7 +832,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       }
                       inp.click()
                     }}
-                    className="text-[12px] bg-blue-600/90 text-white px-2 py-1 rounded shadow hover:bg-blue-700"
+                    className="text-[12px] bg-emerald-600/90 text-white px-2 py-1 rounded shadow hover:bg-emerald-700"
                   >
                     Trocar
                   </button>
@@ -862,7 +862,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                 }
                 inp.click()
               }}
-              className="block w-full mb-3 py-2 text-center border border-dashed border-blue-300 rounded text-blue-700 hover:bg-blue-50 hover:border-blue-500 transition cursor-pointer text-[15px] font-semibold print:hidden"
+              className="block w-full mb-3 py-2 text-center border border-dashed border-emerald-300 rounded text-emerald-700 hover:bg-emerald-50 hover:border-emerald-500 transition cursor-pointer text-[15px] font-semibold print:hidden"
             >
               📷 + Adicionar Foto Principal (opcional)
             </button>
@@ -892,7 +892,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
                             if (e.key === 'Escape') setEditingQtdUid(null)
                           }}
-                          className="w-12 text-[15.5px] font-bold text-gray-900 bg-yellow-50 border border-blue-400 rounded px-1 py-0 outline-none text-center tabular-nums"
+                          className="w-12 text-[15.5px] font-bold text-gray-900 bg-yellow-50 border border-emerald-400 rounded px-1 py-0 outline-none text-center tabular-nums"
                           onFocus={(e) => e.currentTarget.select()}
                         />
                       ) : (
@@ -924,7 +924,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
                             if (e.key === 'Escape') { setEditingNomeUid(null) }
                           }}
-                          className="uppercase text-[15.5px] font-bold text-gray-900 bg-yellow-50 border border-blue-400 rounded px-1 py-0 outline-none w-[80%]"
+                          className="uppercase text-[15.5px] font-bold text-gray-900 bg-yellow-50 border border-emerald-400 rounded px-1 py-0 outline-none w-[80%]"
                         />
                       ) : (
                         <span
@@ -947,7 +947,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           className={`inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider align-middle ${
                             voltagem === 'monofasico'
                               ? 'bg-orange-100 text-orange-700 border border-orange-300'
-                              : 'bg-blue-100 text-blue-700 border border-blue-300'
+                              : 'bg-emerald-100 text-emerald-700 border border-emerald-300'
                           }`}
                           title={`Motor ${voltagem === 'monofasico' ? 'monofásico (220V)' : 'trifásico (220/380/660V)'}`}
                         >
@@ -1028,7 +1028,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           <button
                             onClick={() => onMoverItem(it.uid!, 'cima')}
                             disabled={idx === 0}
-                            className="text-gray-400 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed bg-gray-50 hover:bg-blue-50 border border-gray-200 rounded px-1.5 py-0.5 text-[14px] leading-none font-bold transition-all"
+                            className="text-gray-400 hover:text-emerald-600 disabled:opacity-30 disabled:cursor-not-allowed bg-gray-50 hover:bg-emerald-50 border border-gray-200 rounded px-1.5 py-0.5 text-[14px] leading-none font-bold transition-all"
                             title="Subir item"
                             type="button"
                           >▲</button>
@@ -1037,7 +1037,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           <button
                             onClick={() => onMoverItem(it.uid!, 'baixo')}
                             disabled={idx === carrinho.length - 1}
-                            className="text-gray-400 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed bg-gray-50 hover:bg-blue-50 border border-gray-200 rounded px-1.5 py-0.5 text-[14px] leading-none font-bold transition-all"
+                            className="text-gray-400 hover:text-emerald-600 disabled:opacity-30 disabled:cursor-not-allowed bg-gray-50 hover:bg-emerald-50 border border-gray-200 rounded px-1.5 py-0.5 text-[14px] leading-none font-bold transition-all"
                             title="Descer item"
                             type="button"
                           >▼</button>
@@ -1099,7 +1099,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                         if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
                                         if (e.key === 'Escape') setEditingSpecKey(null)
                                       }}
-                                      className="flex-1 bg-yellow-50 border border-blue-400 rounded px-1 py-0 outline-none text-[14.5px] text-gray-700"
+                                      className="flex-1 bg-yellow-50 border border-emerald-400 rounded px-1 py-0 outline-none text-[14.5px] text-gray-700"
                                     />
                                   ) : (
                                     <>
@@ -1144,7 +1144,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                   setEditingSpecValor('Nova linha')
                                   setEditingSpecKey(`${it.uid ?? idx}|${novoIdx}`)
                                 }}
-                                className="text-[12px] text-blue-600 hover:text-blue-800 hover:underline print:hidden mt-0.5"
+                                className="text-[12px] text-emerald-600 hover:text-emerald-800 hover:underline print:hidden mt-0.5"
                                 title="Adicionar uma linha de descrição neste item"
                               >
                                 + adicionar linha
@@ -1161,7 +1161,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     {!finameMode && (it.foto_url ? (
                       <div
                         className={`flex-shrink-0 w-[100px] h-[100px] sm:w-[220px] sm:h-[180px] bg-white border border-gray-200 rounded relative group ${
-                          !renderMode && onUpdateFotoItem ? 'cursor-pointer hover:border-blue-400' : ''
+                          !renderMode && onUpdateFotoItem ? 'cursor-pointer hover:border-emerald-400' : ''
                         }`}
                         style={{ overflow: 'hidden' }}
                         onDoubleClick={() => trocarFotoItem(it.uid)}
@@ -1189,7 +1189,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       </div>
                     ) : !renderMode && onUpdateFotoItem ? (
                       <div
-                        className="flex-shrink-0 w-[100px] h-[100px] sm:w-[220px] sm:h-[180px] bg-gray-50 border border-dashed border-gray-300 rounded cursor-pointer hover:border-blue-400 hover:bg-blue-50/40 flex items-center justify-center text-center px-2"
+                        className="flex-shrink-0 w-[100px] h-[100px] sm:w-[220px] sm:h-[180px] bg-gray-50 border border-dashed border-gray-300 rounded cursor-pointer hover:border-emerald-400 hover:bg-emerald-50/40 flex items-center justify-center text-center px-2"
                         onDoubleClick={() => trocarFotoItem(it.uid)}
                         title="Duplo-clique pra adicionar foto"
                       >
@@ -1260,7 +1260,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
                             if (e.key === 'Escape') setEditingValorUid(null)
                           }}
-                          className="w-40 text-right bg-yellow-50 border border-blue-400 rounded px-2 py-0.5 outline-none text-[15px] text-gray-900 font-bold"
+                          className="w-40 text-right bg-yellow-50 border border-emerald-400 rounded px-2 py-0.5 outline-none text-[15px] text-gray-900 font-bold"
                         />
                       ) : subtotal > 0 ? (
                         <span className="flex items-center gap-2">
@@ -1292,7 +1292,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           {!renderMode && onToggleIncluso && it.uid && (
                             <button
                               onClick={() => onToggleIncluso(it.uid!)}
-                              className="text-[10px] text-gray-400 hover:text-blue-600 border border-gray-300 hover:border-blue-500 rounded px-1.5 py-0.5 print:hidden"
+                              className="text-[10px] text-gray-400 hover:text-emerald-600 border border-gray-300 hover:border-emerald-500 rounded px-1.5 py-0.5 print:hidden"
                               title="Marcar como INCLUSO — não cobra este item, mostra 'INCLUSO' no lugar do preço"
                             >INCLUSO</button>
                           )}
@@ -1326,7 +1326,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
           {!renderMode && onAddItem && carrinho.length > 0 && (
             <button
               onClick={onAddItem}
-              className="w-full mt-4 mb-2 py-2 text-[15px] font-semibold text-blue-700 hover:bg-blue-50 border border-dashed border-blue-300 rounded transition-colors print:hidden"
+              className="w-full mt-4 mb-2 py-2 text-[15px] font-semibold text-emerald-700 hover:bg-emerald-50 border border-dashed border-emerald-300 rounded transition-colors print:hidden"
             >
               + Adicionar mais um item
             </button>
@@ -1342,7 +1342,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                 </div>
                 {!renderMode && (onEditAcessorios || onRemoveAcessorios) && (
                   <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {onEditAcessorios && <button onClick={onEditAcessorios} className="text-[14px] text-blue-600 hover:underline">editar ({acessorios.valorFixo != null && acessorios.valorFixo > 0 ? 'R$ fixo' : `${acessorios.pct}%`})</button>}
+                    {onEditAcessorios && <button onClick={onEditAcessorios} className="text-[14px] text-emerald-600 hover:underline">editar ({acessorios.valorFixo != null && acessorios.valorFixo > 0 ? 'R$ fixo' : `${acessorios.pct}%`})</button>}
                     {onRemoveAcessorios && <button onClick={onRemoveAcessorios} className="text-[14px] text-red-600 hover:underline">remover</button>}
                   </div>
                 )}
@@ -1369,7 +1369,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             !renderMode && onAddAcessorios && carrinho.length > 0 && (
               <button
                 onClick={onAddAcessorios}
-                className="w-full mt-4 py-2 text-[15px] font-semibold text-blue-700 hover:bg-blue-50 border border-dashed border-blue-300 rounded transition-colors"
+                className="w-full mt-4 py-2 text-[15px] font-semibold text-emerald-700 hover:bg-emerald-50 border border-dashed border-emerald-300 rounded transition-colors"
               >
                 + Adicionar Acessórios
               </button>
@@ -1413,7 +1413,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             onClick={() => onUpdateTensaoMotores!(tensaoEfetiva === v ? null : v)}
                             className={`text-[15px] px-2 py-0.5 rounded font-bold transition-all ${
                               tensaoEfetiva === v
-                                ? 'bg-blue-600 text-white'
+                                ? 'bg-emerald-600 text-white'
                                 : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                             }`}
                             title={`Tensão ${v}V (clique no selecionado pra voltar a "a confirmar")`}
@@ -1426,7 +1426,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                         )}
                       </span>
                     ) : (
-                      <span className={`text-[15px] font-semibold ${tensaoEfetiva ? 'text-blue-700' : 'text-gray-400 italic'}`}>
+                      <span className={`text-[15px] font-semibold ${tensaoEfetiva ? 'text-emerald-700' : 'text-gray-400 italic'}`}>
                         {tensaoLabel}
                       </span>
                     )}
@@ -1495,7 +1495,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                               <button
                                 type="button"
                                 onClick={() => { setMotorBusca(''); setTrocarMotorIdx(aberto ? null : idx) }}
-                                className="font-semibold underline decoration-dotted underline-offset-2 decoration-gray-400 hover:decoration-blue-500 hover:text-blue-700 cursor-pointer print:no-underline print:text-gray-800"
+                                className="font-semibold underline decoration-dotted underline-offset-2 decoration-gray-400 hover:decoration-emerald-500 hover:text-emerald-700 cursor-pointer print:no-underline print:text-gray-800"
                                 title="Clique pra trocar o motor"
                               >
                                 {m.cv} CV {tipoMotor}
@@ -1554,7 +1554,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                         onChange={e => setMotorBusca(e.target.value)}
                                         placeholder="Buscar motor (ex: 5 CV, 4 polos, trifasico)..."
                                         autoFocus
-                                        className="w-full pl-8 pr-2 py-1.5 bg-white border border-gray-300 rounded text-[12px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+                                        className="w-full pl-8 pr-2 py-1.5 bg-white border border-gray-300 rounded text-[12px] text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
                                       />
                                     </div>
                                     {onMotorPorContaCliente && m.item_uid && !m.item_uid.startsWith('avulso:') && (
@@ -1644,8 +1644,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                               onTrocarMotor!(m.item_uid!, opt, m.motorIndex)
                                               setTrocarMotorIdx(null)
                                             }}
-                                            className={`w-full text-left px-3 py-2 rounded text-[13px] flex items-center justify-between gap-2 hover:bg-blue-50 transition-colors ${
-                                              isAtual ? 'bg-blue-100 font-semibold' : ''
+                                            className={`w-full text-left px-3 py-2 rounded text-[13px] flex items-center justify-between gap-2 hover:bg-emerald-50 transition-colors ${
+                                              isAtual ? 'bg-emerald-100 font-semibold' : ''
                                             }`}
                                           >
                                             <span className="text-gray-800">
@@ -1680,7 +1680,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                     <button
                                       type="button"
                                       onClick={() => onRestaurarMotor(m.item_uid!, m.motorIndex)}
-                                      className="text-[11px] text-blue-600 hover:text-blue-800 underline decoration-dotted print:hidden"
+                                      className="text-[11px] text-emerald-600 hover:text-emerald-800 underline decoration-dotted print:hidden"
                                       title="Restaurar motor neste item"
                                     >
                                       restaurar
@@ -1735,7 +1735,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     <button
                       type="button"
                       onClick={() => { setAddMotorBusca(''); setAddMotorOpen(true) }}
-                      className="mt-2 w-full px-3 py-1.5 rounded border border-dashed border-blue-300 text-blue-600 text-[12px] font-medium hover:bg-blue-50 transition-colors print:hidden"
+                      className="mt-2 w-full px-3 py-1.5 rounded border border-dashed border-emerald-300 text-emerald-600 text-[12px] font-medium hover:bg-emerald-50 transition-colors print:hidden"
                       title="Adiciona um motor vendido separado (sem equipamento) nesta listagem"
                     >
                       + Adicionar motor avulso
@@ -1771,7 +1771,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                 onChange={e => setAddMotorBusca(e.target.value)}
                                 placeholder="Buscar motor (ex: 5 CV, 4 polos, trifasico)..."
                                 autoFocus
-                                className="w-full pl-8 pr-2 py-1.5 bg-white border border-gray-300 rounded text-[12px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+                                className="w-full pl-8 pr-2 py-1.5 bg-white border border-gray-300 rounded text-[12px] text-gray-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
                               />
                             </div>
                           </div>
@@ -1799,7 +1799,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                     onAdicionarMotorAvulso!(opt)
                                     setAddMotorOpen(false)
                                   }}
-                                  className="w-full text-left px-3 py-2 rounded text-[13px] flex items-center justify-between gap-2 hover:bg-blue-50 transition-colors"
+                                  className="w-full text-left px-3 py-2 rounded text-[13px] flex items-center justify-between gap-2 hover:bg-emerald-50 transition-colors"
                                 >
                                   <span className="text-gray-800">
                                     {opt.polos === 0
@@ -1902,7 +1902,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                   onChange={e => atualizar(c.id, { nome: e.target.value })}
                                   placeholder="nome do componente"
                                   list={`componentes-cadastro-list`}
-                                  className="font-semibold text-[15px] bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 outline-none px-1 py-0 w-[60%]"
+                                  className="font-semibold text-[15px] bg-transparent border-b border-transparent hover:border-gray-300 focus:border-emerald-500 outline-none px-1 py-0 w-[60%]"
                                 />
                                 <datalist id={`componentes-cadastro-list`}>
                                   {componentesAdicionaisCatalogo.map(opt => (
@@ -1959,7 +1959,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     <button
                       type="button"
                       onClick={() => setExtraPickerOpen(true)}
-                      className="text-[12px] px-3 py-1.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 font-semibold transition-all"
+                      className="text-[12px] px-3 py-1.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 font-semibold transition-all"
                     >+ Adicionar componente</button>
                     {/* Modal de senha pra editar valor */}
                     {senhaModalUid && createPortal(
@@ -2037,14 +2037,14 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                               placeholder="Buscar componente..."
                               value={extraPickerBusca}
                               onChange={e => setExtraPickerBusca(e.target.value)}
-                              className="w-full px-2.5 py-1.5 bg-gray-50 dark:bg-surface-2 border border-gray-200 dark:border-border rounded text-[12px] text-gray-800 dark:text-ink outline-none focus:border-blue-400"
+                              className="w-full px-2.5 py-1.5 bg-gray-50 dark:bg-surface-2 border border-gray-200 dark:border-border rounded text-[12px] text-gray-800 dark:text-ink outline-none focus:border-emerald-400"
                             />
                           </div>
                           <div className="flex-1 overflow-y-auto">
                             {/* Section 1: do cadastro (precos_branorte) */}
                             {componentesAdicionaisCatalogo.filter(c => !extraPickerBusca || c.nome.toLowerCase().includes(extraPickerBusca.toLowerCase())).length > 0 && (
                               <>
-                                <div className="px-3 py-2 border-b border-gray-200 dark:border-border bg-blue-50/60 dark:bg-accent/10 text-[10px] uppercase font-bold text-blue-700 dark:text-accent tracking-wider">
+                                <div className="px-3 py-2 border-b border-gray-200 dark:border-border bg-emerald-50/60 dark:bg-accent/10 text-[10px] uppercase font-bold text-emerald-700 dark:text-accent tracking-wider">
                                   Do cadastro de preços
                                 </div>
                                 <div className="p-1">
@@ -2055,7 +2055,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                       key={c.id}
                                       type="button"
                                       onClick={() => { adicionar(c.nome, c.valorSugerido ?? 0); setExtraPickerBusca('') }}
-                                      className="w-full text-left px-3 py-2 rounded-md text-[13px] hover:bg-blue-50 dark:hover:bg-accent/10 transition-colors text-gray-800 dark:text-ink flex items-center justify-between gap-2"
+                                      className="w-full text-left px-3 py-2 rounded-md text-[13px] hover:bg-emerald-50 dark:hover:bg-accent/10 transition-colors text-gray-800 dark:text-ink flex items-center justify-between gap-2"
                                     >
                                       <span>{c.nome}</span>
                                       <span className="text-[11px] tabular-nums text-gray-500 dark:text-ink-muted">
@@ -2080,7 +2080,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                       key={p}
                                       type="button"
                                       onClick={() => { adicionar(p); setExtraPickerBusca('') }}
-                                      className="w-full text-left px-3 py-2 rounded-md text-[13px] hover:bg-blue-50 dark:hover:bg-accent/10 transition-colors text-gray-800 dark:text-ink"
+                                      className="w-full text-left px-3 py-2 rounded-md text-[13px] hover:bg-emerald-50 dark:hover:bg-accent/10 transition-colors text-gray-800 dark:text-ink"
                                     >{p}</button>
                                   ))}
                                 </div>
@@ -2162,9 +2162,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
                 {/* Caixa editável de desconto + total final (modo edit) */}
                 {!renderMode && onUpdateDesconto && (
-                  <div className="mt-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg space-y-2 text-[15px] print:hidden">
+                  <div className="mt-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg space-y-2 text-[15px] print:hidden">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-blue-900 font-semibold">Desconto:</span>
+                      <span className="text-emerald-900 font-semibold">Desconto:</span>
                       <select
                         value={desconto?.tipo || ''}
                         onChange={e => {
@@ -2176,7 +2176,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             valor: desconto?.valor || 0,
                           })
                         }}
-                        className="text-[15px] px-2 py-1 border border-blue-300 rounded bg-white"
+                        className="text-[15px] px-2 py-1 border border-emerald-300 rounded bg-white"
                       >
                         <option value="">Nenhum</option>
                         <option value="pct">% percentual</option>
@@ -2188,23 +2188,23 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           step="0.01" min={0}
                           value={desconto.valor || ''}
                           onChange={e => onUpdateDesconto({ ...desconto, valor: parseFloat(e.target.value) || 0 })}
-                          className="w-24 text-[15px] px-2 py-1 border border-blue-300 rounded bg-white"
+                          className="w-24 text-[15px] px-2 py-1 border border-emerald-300 rounded bg-white"
                           placeholder={desconto.tipo === 'pct' ? '5' : '500.00'}
                         />
                       )}
                       {desconto && (
-                        <span className="text-blue-700 text-[15px]">
+                        <span className="text-emerald-700 text-[15px]">
                           = R$ {formatBRLBare(descontoValor)} de abatimento
                         </span>
                       )}
                     </div>
                     {desconto && (
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-blue-900 text-[13.5px]">Aplicado sobre:</span>
+                        <span className="text-emerald-900 text-[13.5px]">Aplicado sobre:</span>
                         <select
                           value={desconto.base || 'total'}
                           onChange={e => onUpdateDesconto({ ...desconto, base: e.target.value as 'total' | 'equipamento' })}
-                          className="text-[13.5px] px-2 py-1 border border-blue-300 rounded bg-white"
+                          className="text-[13.5px] px-2 py-1 border border-emerald-300 rounded bg-white"
                         >
                           <option value="total">Valor total (equipamento + motores)</option>
                           <option value="equipamento">Apenas equipamento (sem motores)</option>
@@ -2213,12 +2213,12 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     )}
                     {desconto && (
                       <div className="flex items-center gap-2 flex-wrap">
-                        <label className="flex items-center gap-1.5 text-[13.5px] text-blue-900 cursor-pointer">
+                        <label className="flex items-center gap-1.5 text-[13.5px] text-emerald-900 cursor-pointer">
                           <input
                             type="checkbox"
                             checked={!!desconto.manterValorParcelas}
                             onChange={e => onUpdateDesconto({ ...desconto, manterValorParcelas: e.target.checked })}
-                            className="accent-blue-700"
+                            className="accent-emerald-700"
                           />
                           Parcelas pelo valor original (sem aplicar desconto)
                         </label>
@@ -2226,13 +2226,13 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     )}
                     {desconto && (
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-blue-900 text-[13.5px] whitespace-nowrap">Motivo:</span>
+                        <span className="text-emerald-900 text-[13.5px] whitespace-nowrap">Motivo:</span>
                         <input
                           type="text"
                           value={desconto.motivo || ''}
                           onChange={e => onUpdateDesconto({ ...desconto, motivo: e.target.value })}
                           placeholder="Ex: pagamento à vista, cliente fidelidade"
-                          className="flex-1 min-w-[200px] text-[13.5px] px-2 py-1 border border-blue-300 rounded bg-white"
+                          className="flex-1 min-w-[200px] text-[13.5px] px-2 py-1 border border-emerald-300 rounded bg-white"
                           maxLength={120}
                         />
                       </div>
@@ -2292,7 +2292,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                         type="date"
                         value={brToIso(valor || '')}
                         onChange={e => onUpdateTerm(key, e.target.value ? isoToBr(e.target.value) : '')}
-                        className={`bg-transparent border-b border-dashed border-gray-300 hover:border-blue-500 focus:border-blue-600 focus:outline-none px-1 cursor-pointer ${isPh ? 'text-gray-400' : 'text-gray-800'}`}
+                        className={`bg-transparent border-b border-dashed border-gray-300 hover:border-emerald-500 focus:border-emerald-600 focus:outline-none px-1 cursor-pointer ${isPh ? 'text-gray-400' : 'text-gray-800'}`}
                       />
                     )
                   }
@@ -2319,13 +2319,13 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             if (!isNaN(d) && d > 0) writeBack(d, tipo)
                           }}
                           placeholder="90"
-                          className="bg-transparent border-b border-dashed border-gray-300 hover:border-blue-500 focus:border-blue-600 focus:outline-none px-1 w-[55px] text-center text-gray-800 tabular-nums"
+                          className="bg-transparent border-b border-dashed border-gray-300 hover:border-emerald-500 focus:border-emerald-600 focus:outline-none px-1 w-[55px] text-center text-gray-800 tabular-nums"
                         />
                         <span className="text-gray-600">dias</span>
                         <select
                           value={tipo}
                           onChange={e => writeBack(dias || 90, e.target.value as 'uteis' | 'corridos')}
-                          className="bg-transparent border border-gray-300 hover:border-blue-500 focus:border-blue-600 focus:outline-none rounded px-1.5 py-0 text-gray-800 cursor-pointer"
+                          className="bg-transparent border border-gray-300 hover:border-emerald-500 focus:border-emerald-600 focus:outline-none rounded px-1.5 py-0 text-gray-800 cursor-pointer"
                           title="Tipo de contagem"
                         >
                           <option value="uteis">(úteis)</option>
@@ -2346,7 +2346,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                         key={valor || 'empty'}
                         onBlur={e => onUpdateTerm(key, e.target.value)}
                         rows={(valor || placeholder).length > 80 ? 2 : 1}
-                        className="w-full resize-none bg-transparent border-b border-dashed border-gray-300 hover:border-blue-500 focus:border-blue-600 focus:outline-none px-1 text-gray-800"
+                        className="w-full resize-none bg-transparent border-b border-dashed border-gray-300 hover:border-emerald-500 focus:border-emerald-600 focus:outline-none px-1 text-gray-800"
                       />
                     )
                   }
@@ -2356,7 +2356,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       defaultValue={valor || ''}
                       onBlur={e => onUpdateTerm(key, e.target.value)}
                       placeholder={placeholder}
-                      className={`bg-transparent border-b border-dashed border-gray-300 hover:border-blue-500 focus:border-blue-600 focus:outline-none px-1 min-w-[140px] ${isPh ? 'italic text-gray-400' : 'text-gray-800'}`}
+                      className={`bg-transparent border-b border-dashed border-gray-300 hover:border-emerald-500 focus:border-emerald-600 focus:outline-none px-1 min-w-[140px] ${isPh ? 'italic text-gray-400' : 'text-gray-800'}`}
                     />
                   )
                 }
@@ -2588,7 +2588,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                               <div className="flex items-center gap-1 print:hidden">
                                 <select
                                   onChange={e => { if (e.target.value) { applyTemplate(e.target.value); e.target.value = '' } }}
-                                  className="text-[12px] px-1 py-0.5 bg-blue-50 border border-blue-300 rounded text-blue-700 cursor-pointer focus:outline-none"
+                                  className="text-[12px] px-1 py-0.5 bg-emerald-50 border border-emerald-300 rounded text-emerald-700 cursor-pointer focus:outline-none"
                                   defaultValue=""
                                 >
                                   <option value="">📋 Templates</option>
@@ -2607,7 +2607,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                   <button
                                     type="button"
                                     onClick={dividirRestoIgual}
-                                    className="text-[12px] px-1.5 py-0.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-300 rounded text-indigo-700 font-bold"
+                                    className="text-[12px] px-1.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded text-emerald-700 font-bold"
                                     title="Fecha o total: preenche as parcelas vazias com o que falta. Se as preenchidas já somam o total, divide o total igualmente entre TODAS."
                                   >÷ Dividir</button>
                                 )}
@@ -2748,7 +2748,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                                 })}
                                                 placeholder="%"
                                                 title="% sobre o total. Editar atualiza o R$ automaticamente."
-                                                className="w-14 text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded text-right hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none"
+                                                className="w-14 text-[12px] px-1 py-0.5 bg-white border border-gray-300 rounded text-right hover:border-emerald-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-200 outline-none"
                                               />
                                               <span className="text-gray-500 text-[11px]">% =</span>
                                               <span className="text-gray-700 text-[12px] font-bold">R$</span>
@@ -2804,7 +2804,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                         <select
                           value={freteTipoSel}
                           onChange={e => onUpdateTerm('freteTipo', e.target.value)}
-                          className="bg-transparent border border-gray-300 hover:border-blue-500 focus:border-blue-600 focus:outline-none rounded px-1.5 py-0 text-gray-800 cursor-pointer"
+                          className="bg-transparent border border-gray-300 hover:border-emerald-500 focus:border-emerald-600 focus:outline-none rounded px-1.5 py-0 text-gray-800 cursor-pointer"
                           title="Tipo de frete (CIF=incluso / FOB=por conta do cliente)"
                         >
                           <option value="FOB">FOB</option>
@@ -2817,7 +2817,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           key={freteTxtFinal}
                           onBlur={e => onUpdateTerm('freteTxt', e.target.value)}
                           placeholder={freteTipoSel === 'CIF' ? 'por conta da Branorte' : 'por conta do cliente'}
-                          className="bg-transparent border-b border-dashed border-gray-300 hover:border-blue-500 focus:border-blue-600 focus:outline-none px-1 min-w-[240px] text-gray-800"
+                          className="bg-transparent border-b border-dashed border-gray-300 hover:border-emerald-500 focus:border-emerald-600 focus:outline-none px-1 min-w-[240px] text-gray-800"
                         />
                       </span>
                     ) : (
@@ -2835,7 +2835,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           defaultValue={validadeDiasFinal}
                           key={validadeDiasFinal}
                           onBlur={e => onUpdateTerm('validadeDias', e.target.value)}
-                          className="bg-transparent border-b border-dashed border-gray-300 hover:border-blue-500 focus:border-blue-600 focus:outline-none px-1 w-14 text-right text-gray-800"
+                          className="bg-transparent border-b border-dashed border-gray-300 hover:border-emerald-500 focus:border-emerald-600 focus:outline-none px-1 w-14 text-right text-gray-800"
                           title="Dias de validade da proposta"
                         />
                         <span>dias após o envio</span>
@@ -2940,7 +2940,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                 if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
                                 if (e.key === 'Escape') setEditingObsIdx(null)
                               }}
-                              className="flex-1 bg-yellow-50 border border-blue-400 rounded px-1 py-0 outline-none text-[14.5px] text-gray-800"
+                              className="flex-1 bg-yellow-50 border border-emerald-400 rounded px-1 py-0 outline-none text-[14.5px] text-gray-800"
                             />
                           ) : (
                             <>
@@ -2978,7 +2978,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           setEditingObsValor('Nova observação')
                           setEditingObsIdx(novas.length - 1)
                         }}
-                        className="text-[12px] text-blue-600 hover:text-blue-800 hover:underline print:hidden mt-0.5"
+                        className="text-[12px] text-emerald-600 hover:text-emerald-800 hover:underline print:hidden mt-0.5"
                         title="Adicionar uma linha nesta seção"
                       >
                         + adicionar linha
