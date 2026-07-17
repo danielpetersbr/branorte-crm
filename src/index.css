@@ -29,8 +29,8 @@
     --danger-bg: 0 80% 97%;
     --info: 211 100% 45%;
     --info-bg: 211 100% 96%;
-    --accent: 211 100% 45%;     /* azul Apple (#0071e3) */
-    --accent-bg: 211 100% 96%;
+    --accent: 152 60% 40%;      /* verde da marca Branorte (brand-600) */
+    --accent-bg: 152 60% 96%;
   }
 
   .dark {
