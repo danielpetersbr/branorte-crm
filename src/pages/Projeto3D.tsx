@@ -21,6 +21,9 @@ import {
 import {
   fetchConfiguradorBlocos, upsertConfiguradorBloco, deleteConfiguradorBloco,
 } from '@/hooks/useConfiguradorBlocos'
+import {
+  fetchConfiguradorModelos, saveConfiguradorModelo, deleteConfiguradorModelo,
+} from '@/hooks/useConfiguradorModelos'
 
 const CONFIGURADOR_ORIGIN = 'https://branorte-configurador-3d.vercel.app'
 const CONFIGURADOR_URL = CONFIGURADOR_ORIGIN
@@ -75,10 +78,36 @@ export function Projeto3D() {
         const fn = pendings.current.get(m.requestId)
         if (fn) { pendings.current.delete(m.requestId); fn(m.project) }
       } else if (m.type === 'branorte:ready') {
-        // iframe subiu → manda os BLOCOS PERSONALIZADOS salvos (Supabase) pro catálogo dele
+        // iframe subiu → manda os BLOCOS PERSONALIZADOS e os MODELOS IMPORTADOS salvos (Supabase) pro catálogo dele
         fetchConfiguradorBlocos()
           .then((defs) => frameRef.current?.contentWindow?.postMessage({ type: 'branorte:blocks:load', defs }, CONFIGURADOR_ORIGIN))
           .catch(() => {})
+        fetchConfiguradorModelos()
+          .then((defs) => frameRef.current?.contentWindow?.postMessage({ type: 'branorte:models:load', defs }, CONFIGURADOR_ORIGIN))
+          .catch(() => {})
+      } else if (m.type === 'branorte:model:save' && m.requestId) {
+        // MODELO IMPORTADO (GLB/STL): sobe o binário no Storage e grava a def compartilhada.
+        // Responde com branorte:store:result (formato que o crmRequest do configurador espera).
+        void (async () => {
+          try {
+            const assetUrl = await saveConfiguradorModelo({
+              def: m.def, buffer: m.buffer as ArrayBuffer, format: m.format === 'stl' ? 'stl' : 'glb',
+              thumb: typeof m.def?.thumb === 'string' ? m.def.thumb : null,
+              createdBy: profileRef.current?.id ?? null, createdByNome: profileRef.current?.display_name ?? null,
+            })
+            frameRef.current?.contentWindow?.postMessage(
+              { type: 'branorte:store:result', requestId: m.requestId, ok: true, assetUrl },
+              CONFIGURADOR_ORIGIN,
+            )
+          } catch (err) {
+            frameRef.current?.contentWindow?.postMessage(
+              { type: 'branorte:store:result', requestId: m.requestId, ok: false, error: String((err as Error)?.message ?? err) },
+              CONFIGURADOR_ORIGIN,
+            )
+          }
+        })()
+      } else if (m.type === 'branorte:model:delete' && m.id) {
+        deleteConfiguradorModelo(String(m.id)).catch(() => {})
       } else if (m.type === 'branorte:block:upsert' && m.def) {
         // usuário criou/editou um bloco no configurador → grava no Supabase (compartilhado pela equipe)
         upsertConfiguradorBloco(m.def, profileRef.current?.id ?? null, profileRef.current?.display_name ?? null).catch(() => {})
