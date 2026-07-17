@@ -127,6 +127,13 @@ function finamePorKey(key: string): FinameTipo | undefined {
   return FINAME_MAP.find(t => t.key === key)
 }
 
+// Lista pronta pra popular o seletor "Tratar como" na UI (key → nome/código oficiais).
+export const FINAME_TIPOS = FINAME_MAP.map(t => ({
+  key: t.key,
+  nome: t.nomeFiname,
+  codigo: t.codigoFiname,
+}))
+
 export const FINAME_NAO_RESOLVIDO_MSG =
   'Este item não possui código FINAME cadastrado e não pode ser incluído no orçamento FINAME.'
 
@@ -233,11 +240,24 @@ export interface FinameBloqueio {
   sugestao: string
 }
 
+/** Como cada item de entrada foi tratado no FINAME — alimenta o seletor "Tratar como". */
+export interface FinameClassificacao {
+  uid: string
+  nome: string
+  status: FinameClasse['tipo'] // 'principal' | 'acessorio' | 'motor' | 'naoResolvido'
+  /** key do FINAME_MAP quando principal (auto ou forçado). */
+  key?: string
+  /** true quando o tipo veio de override manual do vendedor (não da classificação automática). */
+  overridden: boolean
+}
+
 export interface FinameTransformResult {
   itens: FinameResultItem[]
   /** Soma das linhas (valor unitário × qtd) — total da proposta FINAME. */
   totalGeral: number
   bloqueios: FinameBloqueio[]
+  /** Classificação item-a-item (todos os itens de entrada), pra UI de ajuste. */
+  classificacoes: FinameClassificacao[]
 }
 
 /**
@@ -248,18 +268,35 @@ export interface FinameTransformResult {
  *
  * Garantia: total = soma das linhas (o documento sempre fecha internamente).
  */
-export function montarItensFiname(itens: FinameInputItem[], poolExtra: number): FinameTransformResult {
+/**
+ * @param tipoOverride  Mapa uid → key do FINAME_MAP. Força o item a ser tratado como
+ *   aquele equipamento principal (com nome + código oficiais), independentemente da
+ *   classificação automática. Serve pra: desbloquear itens sem FINAME (ex: "caixa de
+ *   ração pronta" → Silo de Armazenagem) e resgatar itens que iam embutidos (ex: um
+ *   misturador diluído → Silo Misturador). Key inválida é ignorada (cai no automático).
+ */
+export function montarItensFiname(
+  itens: FinameInputItem[],
+  poolExtra: number,
+  tipoOverride: Record<string, string> = {},
+): FinameTransformResult {
   const principais: Array<{ in: FinameInputItem; fin: FinameTipo; base: number }> = []
   const bloqueios: FinameBloqueio[] = []
+  const classificacoes: FinameClassificacao[] = []
   let pool = Math.max(0, Math.round(poolExtra || 0))
 
   for (const it of itens) {
-    const cls = classificarItemFiname(it.nome, it.categoria)
+    const ovFin = tipoOverride[it.uid] ? finamePorKey(tipoOverride[it.uid]) : undefined
+    const cls: FinameClasse = ovFin
+      ? { tipo: 'principal', fin: ovFin }
+      : classificarItemFiname(it.nome, it.categoria)
     const base = Math.max(0, Math.round((it.subtotal || 0) + (it.motorValor || 0)))
     if (cls.tipo === 'principal') {
       principais.push({ in: it, fin: cls.fin, base })
+      classificacoes.push({ uid: it.uid, nome: it.nome, status: 'principal', key: cls.fin.key, overridden: !!ovFin })
     } else if (cls.tipo === 'acessorio' || cls.tipo === 'motor') {
       pool += base // valor embutido
+      classificacoes.push({ uid: it.uid, nome: it.nome, status: cls.tipo, overridden: false })
     } else {
       bloqueios.push({
         uid: it.uid,
@@ -267,6 +304,7 @@ export function montarItensFiname(itens: FinameInputItem[], poolExtra: number): 
         mensagem: FINAME_NAO_RESOLVIDO_MSG,
         sugestao: cls.sugestao,
       })
+      classificacoes.push({ uid: it.uid, nome: it.nome, status: 'naoResolvido', overridden: false })
     }
   }
 
@@ -278,7 +316,7 @@ export function montarItensFiname(itens: FinameInputItem[], poolExtra: number): 
       mensagem: 'Nenhum equipamento com código FINAME no orçamento. Adicione ao menos um equipamento principal (ex: Misturador, Silo, Transportador).',
       sugestao: FINAME_SUGESTAO_GENERICA,
     })
-    return { itens: [], totalGeral: 0, bloqueios }
+    return { itens: [], totalGeral: 0, bloqueios, classificacoes }
   }
 
   const totalBase = principais.reduce((s, p) => s + p.base, 0)
@@ -343,5 +381,5 @@ export function montarItensFiname(itens: FinameInputItem[], poolExtra: number): 
     }
   })
 
-  return { itens: itensOut, totalGeral, bloqueios }
+  return { itens: itensOut, totalGeral, bloqueios, classificacoes }
 }

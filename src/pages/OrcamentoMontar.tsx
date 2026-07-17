@@ -15,7 +15,7 @@ import {
 } from '@/hooks/useCatalogo'
 import { FinalizarMontarModal, type CarrinhoSnapshot } from '@/components/FinalizarMontarModal'
 import { OrcamentoPreview, type ParcelaPagamento, type PreviewClienteDados } from '@/components/OrcamentoPreview'
-import { montarItensFiname, type FinameBloqueio } from '@/lib/finame'
+import { montarItensFiname, FINAME_TIPOS, type FinameBloqueio } from '@/lib/finame'
 import { ResponsiveScaler } from '@/components/ResponsiveScaler'
 import { ClienteEditModal } from '@/components/ClienteEditModal'
 import { useOrcamentoModelos, useOrcamentoGerado, type OrcamentoModelo, detectarBalancaDuplicada, stripSufixoVoltagem } from '@/hooks/useOrcamentoBuilder'
@@ -454,6 +454,11 @@ export function OrcamentoMontar() {
   // FINAME: override manual do valor de cada linha (por uid). Edita o valor FINAL
   // (já embutido), sem re-distribuir motor/acessórios por cima.
   const [finameValorOverride, setFinameValorOverride] = useState<Record<string, number>>({})
+  // FINAME: override manual do TIPO de cada item (por uid → key do FINAME_MAP). Deixa o
+  // vendedor "tratar como" outro equipamento FINAME — desbloqueia itens sem código (ex:
+  // caixa de ração pronta → Silo de Armazenagem) e resgata itens que iam embutidos
+  // (ex: misturador diluído → Silo Misturador). Vazio = classificação automática.
+  const [finameTipoOverride, setFinameTipoOverride] = useState<Record<string, string>>({})
   // FINAME: total da proposta "travado" (referência). A soma das linhas precisa bater
   // com ele pra gerar; senão o vendedor ajusta os valores ou aceita o novo total.
   const [finameTotalTravado, setFinameTotalTravado] = useState<number | null>(null)
@@ -882,8 +887,8 @@ export function OrcamentoMontar() {
     const totalAvulsos = motoresAgrupadosExib
       .filter(m => m.item_uid?.startsWith('avulso:') && !m.removido)
       .reduce((s, m) => s + (m.valor_total || 0), 0)
-    return montarItensFiname(inputs, valorAcessoriosExib + totalComponentesExtras + totalAvulsos)
-  }, [finameMode, carrinhoExib, motoresAgrupadosExib, valorAcessoriosExib, totalComponentesExtras])
+    return montarItensFiname(inputs, valorAcessoriosExib + totalComponentesExtras + totalAvulsos, finameTipoOverride)
+  }, [finameMode, carrinhoExib, motoresAgrupadosExib, valorAcessoriosExib, totalComponentesExtras, finameTipoOverride])
 
   const finameBloqueios: FinameBloqueio[] = finameTransform?.bloqueios ?? []
 
@@ -932,6 +937,7 @@ export function OrcamentoMontar() {
     if (!finameMode || !finameTransform) {
       setFinameTotalTravado(null)
       setFinameValorOverride({})
+      if (!finameMode) setFinameTipoOverride({})
       return
     }
     setFinameTotalTravado(finameTransform.totalGeral)
@@ -2955,22 +2961,61 @@ export function OrcamentoMontar() {
               overflow-x: hidden no mobile pra ResponsiveScaler funcionar sem
               gerar scroll horizontal residual. */}
           <div className="flex-1 overflow-y-auto overflow-x-hidden bg-white">
-            {/* Modo FINAME: aviso de bloqueio quando há itens sem código FINAME. */}
-            {finameMode && finameBloqueios.length > 0 && (
-              <div className="m-3 rounded-lg border border-red-300 bg-red-50 p-3 text-[13px] text-red-800">
-                <div className="font-bold mb-1">⚠️ Orçamento FINAME bloqueado</div>
-                <p className="mb-2">
-                  Os itens abaixo precisam ser ajustados (substituir por um item com código FINAME
-                  ou remover) antes de gerar o orçamento FINAME:
+            {/* Modo FINAME: painel de classificação. Mostra como cada item entra no
+                orçamento e deixa o vendedor "tratar como" outro tipo FINAME — desbloqueia
+                itens sem código e resgata itens que iriam embutidos. */}
+            {finameMode && finameTransform && finameTransform.classificacoes.length > 0 && (
+              <div className={`m-3 rounded-lg border p-3 text-[13px] ${
+                finameBloqueios.length > 0
+                  ? 'border-red-300 bg-red-50 text-red-800'
+                  : 'border-gray-200 bg-gray-50 text-gray-700'
+              }`}>
+                <div className="font-bold mb-1">
+                  {finameBloqueios.length > 0 ? '⚠️ Orçamento FINAME bloqueado' : '🏷️ Classificação FINAME'}
+                </div>
+                <p className="mb-2 text-[12px]">
+                  {finameBloqueios.length > 0
+                    ? 'Há itens sem código FINAME. Escolha em "Tratar como" o equipamento correspondente (ou remova o item) pra desbloquear:'
+                    : 'Como cada item entra no orçamento FINAME. Use "Tratar como" pra ajustar se precisar:'}
                 </p>
-                <ul className="list-disc pl-5 space-y-1.5">
-                  {finameBloqueios.map((b, i) => (
-                    <li key={i}>
-                      <b>{b.nome}</b>
-                      <div className="text-red-700/90 text-[12px] mt-0.5">{b.sugestao}</div>
-                    </li>
-                  ))}
-                </ul>
+                <div className="space-y-1.5">
+                  {finameTransform.classificacoes.map((c) => {
+                    const bloqueado = c.status === 'naoResolvido'
+                    const embutido = c.status === 'acessorio' || c.status === 'motor'
+                    const tipoAtual = c.key ? FINAME_TIPOS.find(t => t.key === c.key)?.nome : undefined
+                    return (
+                      <div key={c.uid} className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-[12px] ${bloqueado ? 'font-semibold text-red-700' : 'text-gray-800'}`}>
+                          {c.nome}
+                        </span>
+                        <span className="text-[11px] text-gray-500">
+                          {bloqueado
+                            ? '— sem FINAME'
+                            : embutido
+                              ? '— embutido no valor'
+                              : `→ ${tipoAtual ?? ''}${c.overridden ? ' (manual)' : ''}`}
+                        </span>
+                        <select
+                          value={finameTipoOverride[c.uid] ?? ''}
+                          onChange={(e) => setFinameTipoOverride(prev => {
+                            const next = { ...prev }
+                            if (e.target.value) next[c.uid] = e.target.value
+                            else delete next[c.uid]
+                            return next
+                          })}
+                          className="ml-auto text-[12px] border border-gray-300 rounded px-1.5 py-0.5 bg-white text-gray-800"
+                        >
+                          <option value="">
+                            {bloqueado ? 'Automático (bloqueia)' : embutido ? 'Automático (embutido)' : 'Automático'}
+                          </option>
+                          {FINAME_TIPOS.map(t => (
+                            <option key={t.key} value={t.key}>Tratar como {t.nome}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             )}
             {carrinho.length === 0 ? (
