@@ -7,6 +7,7 @@
 //   Abrir   → busca o JSON e manda pro iframe (branorte:load), que vai pro editor.
 //   Novo    → manda o iframe abrir um editor vazio (branorte:new).
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   Boxes, Maximize2, RefreshCw, Save, FolderOpen, Plus, Trash2,
   ChevronDown, X, Search, Check, Loader2,
@@ -15,6 +16,7 @@ import { useAuth } from '@/hooks/useAuth'
 import {
   useConfiguradorProjetos, useSalvarConfiguradorProjeto, useDeletarConfiguradorProjeto,
   useBuscarContatos, fetchConfiguradorProjeto, type ConfiguradorProjetoMeta,
+  bridgeList, bridgeLoad, bridgeSave, bridgeDelete, bridgeThumb,
 } from '@/hooks/useConfiguradorProjetos'
 import {
   fetchConfiguradorBlocos, upsertConfiguradorBloco, deleteConfiguradorBloco,
@@ -49,6 +51,7 @@ export function Projeto3D() {
   const { profile } = useAuth()
   const profileRef = useRef(profile)
   useEffect(() => { profileRef.current = profile }, [profile])
+  const qc = useQueryClient()
   // Papel passado pro iframe: só ADMIN vê o botão "Catálogo de Produtos" no configurador (vendedor não).
   const iframeSrc = `${CONFIGURADOR_URL}?adm=${profile?.role === 'admin' ? '1' : '0'}`
   const { data: projetos, isLoading: loadingLista } = useConfiguradorProjetos()
@@ -81,6 +84,46 @@ export function Projeto3D() {
         upsertConfiguradorBloco(m.def, profileRef.current?.id ?? null, profileRef.current?.display_name ?? null).catch(() => {})
       } else if (m.type === 'branorte:block:delete' && m.id) {
         deleteConfiguradorBloco(String(m.id)).catch(() => {})
+      } else if (typeof m.type === 'string' && m.type.startsWith('branorte:store:') && m.requestId) {
+        // GALERIA COMPARTILHADA: a tela inicial do configurador lista/salva/abre/exclui
+        // projetos daqui (Supabase) via RPC postMessage — o iframe não tem sessão própria.
+        const reply = (extra: Record<string, unknown>) =>
+          frameRef.current?.contentWindow?.postMessage(
+            { type: 'branorte:store:result', requestId: m.requestId, ok: true, ...extra },
+            CONFIGURADOR_ORIGIN,
+          )
+        const fail = (err: unknown) =>
+          frameRef.current?.contentWindow?.postMessage(
+            { type: 'branorte:store:result', requestId: m.requestId, ok: false, error: String((err as Error)?.message ?? err) },
+            CONFIGURADOR_ORIGIN,
+          )
+        void (async () => {
+          try {
+            if (m.type === 'branorte:store:list') {
+              const items = await bridgeList()
+              reply({ items, meId: profileRef.current?.id ?? null, meNome: profileRef.current?.display_name ?? null })
+            } else if (m.type === 'branorte:store:load') {
+              reply({ project: await bridgeLoad(String(m.id)) })
+            } else if (m.type === 'branorte:store:save') {
+              await bridgeSave(m.project, typeof m.thumbnail === 'string' ? m.thumbnail : null, {
+                id: profileRef.current?.id ?? null,
+                nome: profileRef.current?.display_name ?? null,
+              })
+              qc.invalidateQueries({ queryKey: ['configurador-projetos'] })
+              reply({})
+            } else if (m.type === 'branorte:store:delete') {
+              await bridgeDelete(String(m.id))
+              qc.invalidateQueries({ queryKey: ['configurador-projetos'] })
+              reply({})
+            } else {
+              fail('tipo de mensagem desconhecido')
+            }
+          } catch (err) {
+            fail(err)
+          }
+        })()
+      } else if (m.type === 'branorte:store:thumb' && typeof m.id === 'string' && typeof m.dataUrl === 'string') {
+        bridgeThumb(m.id, m.dataUrl).catch(() => {})
       } else if (m.type === 'branorte:download' && (typeof m.dataUrl === 'string' || m.blob instanceof Blob)) {
         // "Bater foto" (imagem 4K) e "Vídeo" (webm): o Chrome bloqueia download iniciado dentro do
         // iframe cross-origin, então o configurador manda o arquivo pra cá e o CRM (top-level) baixa.
