@@ -2863,7 +2863,7 @@ export function OrcamentoMontar() {
               onClick={() => setFinameMode(v => !v)}
               className={`text-[12px] px-3 py-1.5 rounded-md font-semibold transition-all min-h-[34px] border ${
                 finameMode
-                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                  ? 'bg-accent text-white border-accent shadow-sm'
                   : 'bg-surface text-ink-muted border-border hover:bg-surface-3'
               }`}
               title="Modo FINAME: gera o orçamento no padrão FINAME — sem imagens, equipamentos com nome e código FINAME, motores e acessórios embutidos no valor (sem linha separada). Não altera o orçamento normal."
