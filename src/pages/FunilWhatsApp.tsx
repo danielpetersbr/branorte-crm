@@ -488,7 +488,7 @@ function ChatDrawer({
               {!colunaAtiva && (
                 <p className="mb-2 text-[10.5px] text-ink-faint">Estágio sem captura ativa — o histórico pode estar desatualizado.</p>
               )}
-              <div className="space-y-2 rounded-xl border border-border bg-[hsl(var(--bg))] p-3">
+              <div className="space-y-2.5 rounded-xl border border-border bg-gradient-to-b from-surface-2/50 to-surface-2/15 p-3 shadow-inner">
                 {mensagens!.map(m => <BolhaMensagem key={m.msg_id} m={m} />)}
               </div>
             </div>
