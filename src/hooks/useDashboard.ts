@@ -354,15 +354,24 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
       // casado por fone_canon (espelhado em foneCanon()).
       const canons = [...new Set(rows.map(r => foneCanon(r.telefone)).filter((x): x is string => !!x))]
       const orcValorByCanon = new Map<string, number>()
+      const fechados = new Set<string>()   // fone_canon com etiqueta VENDIDO ou MORTO → fora do "dinheiro parado"
       try {
-        const orcRes = await (supabase as any).rpc('orcamentos_por_telefone_canon', { p_canons: canons })
+        const [orcRes, sitRes] = await Promise.all([
+          (supabase as any).rpc('orcamentos_por_telefone_canon', { p_canons: canons }),
+          (supabase as any).rpc('dashboard_fone_situacao'),
+        ])
         if (!orcRes?.error) {
           for (const o of (orcRes?.data ?? []) as { fone_canon?: string; ultimo_valor?: number }[]) {
             if (o?.fone_canon) orcValorByCanon.set(String(o.fone_canon), Number(o.ultimo_valor ?? 0))
           }
         }
-      } catch { /* map vazio -> fallback 0; dashboard não quebra */ }
-      return aggregate(rows, filters.preset, orcValorByCanon)
+        if (!sitRes?.error) {
+          for (const s of (sitRes?.data ?? []) as { fone_canon?: string; situacao?: string }[]) {
+            if (s?.fone_canon && (s.situacao === 'vendido' || s.situacao === 'morto')) fechados.add(String(s.fone_canon))
+          }
+        }
+      } catch { /* maps vazios -> fallback; dashboard não quebra */ }
+      return aggregate(rows, filters.preset, orcValorByCanon, fechados)
     },
     staleTime: 60_000,
     refetchInterval: 60_000,
@@ -377,7 +386,7 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
 // AGREGADOR
 // ============================================================================
 
-function aggregate(rows: RawRow[], preset: DashboardPreset, orcValorByCanon: Map<string, number> = new Map()): DashboardData {
+function aggregate(rows: RawRow[], preset: DashboardPreset, orcValorByCanon: Map<string, number> = new Map(), fechados: Set<string> = new Set()): DashboardData {
   const now = new Date()
   const range = rangeForPreset(preset, now)
   const prev = previousRange(range)
@@ -640,9 +649,11 @@ function aggregate(rows: RawRow[], preset: DashboardPreset, orcValorByCanon: Map
   // "+30D" fica estruturalmente zero e some ~R$10M do maior monte. Igual forecast/byDay.
   for (const r of rows) {
     const status = (r.status_real || '').toLowerCase()
-    if (status.includes('vendid') || status.includes('perdid') || !r.last_message_at) continue
+    const fc = foneCanon(r.telefone)
+    // Exclui quem já VENDEU ou foi PERDIDO pela etiqueta do funil (status_real não captura isso).
+    if (status.includes('vendid') || status.includes('perdid') || !r.last_message_at || (fc != null && fechados.has(fc))) continue
     const ageH = (now.getTime() - new Date(r.last_message_at).getTime()) / 3600000
-    const valor = orcValorByCanon.get(foneCanon(r.telefone) ?? '') ?? 0
+    const valor = orcValorByCanon.get(fc ?? '') ?? 0
     if (ageH >= 24 && ageH < 48) { aging24++; agingValor24 += valor }
     else if (ageH >= 48 && ageH < 168) { aging48++; agingValor48 += valor }
     else if (ageH >= 168 && ageH < 720) { aging7d++; agingValor7d += valor }
