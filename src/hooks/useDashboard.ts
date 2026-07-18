@@ -633,30 +633,33 @@ function aggregate(rows: RawRow[], preset: DashboardPreset, orcValorByCanon: Map
       byDayHour.set(`${wd}-${hr}`, (byDayHour.get(`${wd}-${hr}`) ?? 0) + 1)
     }
 
-    // Lead aging — leads ATIVOS (status nao Vendido/Perdido) sem resposta recente
-    const status = (r.status_real || '').toLowerCase()
-    const isAtivo = !status.includes('vendid') && !status.includes('perdid')
-    if (isAtivo && r.last_message_at) {
-      const ageH = (now.getTime() - new Date(r.last_message_at).getTime()) / 3600000
-      const valor = orcValorByCanon.get(foneCanon(r.telefone) ?? '') ?? 0
-      if (ageH >= 24 && ageH < 48) { aging24++; agingValor24 += valor }
-      else if (ageH >= 48 && ageH < 168) { aging48++; agingValor48 += valor }
-      else if (ageH >= 168 && ageH < 720) { aging7d++; agingValor7d += valor }
-      else if (ageH >= 720) { agingMais++; agingValorMais += valor }
+  }
 
-      // Lead em risco = quente OU com orcamento + sem resposta > 24h
-      const eQuente = momento === 'Agora'
-      if ((eQuente || valor > 0) && ageH > 24) {
-        candidatosRisco.push({
-          id: r.id,
-          nome: r.nome,
-          telefone: r.telefone,
-          vendedor,
-          horasSemResposta: ageH,
-          valor: valor || null,
-          momento,
-        })
-      }
+  // Lead aging + leads em risco — SNAPSHOT sobre TODOS os leads (rows), não o período
+  // filtrado. Com `filtered` (default 30d) nenhum lead alcança ageH>=720h → o bucket
+  // "+30D" fica estruturalmente zero e some ~R$10M do maior monte. Igual forecast/byDay.
+  for (const r of rows) {
+    const status = (r.status_real || '').toLowerCase()
+    if (status.includes('vendid') || status.includes('perdid') || !r.last_message_at) continue
+    const ageH = (now.getTime() - new Date(r.last_message_at).getTime()) / 3600000
+    const valor = orcValorByCanon.get(foneCanon(r.telefone) ?? '') ?? 0
+    if (ageH >= 24 && ageH < 48) { aging24++; agingValor24 += valor }
+    else if (ageH >= 48 && ageH < 168) { aging48++; agingValor48 += valor }
+    else if (ageH >= 168 && ageH < 720) { aging7d++; agingValor7d += valor }
+    else if (ageH >= 720) { agingMais++; agingValorMais += valor }
+
+    // Lead em risco = quente OU com orçamento + sem resposta > 24h
+    const momentoR = normQuando(r.quando_investir)
+    if ((momentoR === 'Agora' || valor > 0) && ageH > 24) {
+      candidatosRisco.push({
+        id: r.id,
+        nome: r.nome,
+        telefone: r.telefone,
+        vendedor: r.responsavel?.trim() || null,
+        horasSemResposta: ageH,
+        valor: valor || null,
+        momento: momentoR,
+      })
     }
   }
 
@@ -860,7 +863,8 @@ function buildSparkSeries(
   const today = new Date().toISOString().slice(0, 10)
 
   for (const r of rows) {
-    const refIso = r.last_message_at ?? r.data
+    // Bucketiza por r.data (chegada) — MESMO campo do KPI; senão a curva não bate com o número.
+    const refIso = r.data
     if (!refIso) continue
     const t = new Date(refIso).getTime()
     if (t < range.from.getTime() || t > range.to.getTime()) continue
@@ -868,11 +872,7 @@ function buildSparkSeries(
     total[idx]++
     if (refIso.slice(0, 10) === today) hoje[idx]++
     if (normQuando(r.quando_investir) === 'Agora') quentes[idx]++
-    const fin = normFinalidade(r.finalidade_fabrica)
-    const animal = normAnimal(r.qual_animal)
-    const qtd = r.quantos_animais?.trim() || null
-    const momento = normQuando(r.quando_investir)
-    if (fin && animal && qtd && momento) qualificados[idx]++
+    if (isQualificadoBranorte(r)) qualificados[idx]++   // mesma def do KPI Qualificados
     if (r.tocou_botao_em) botao[idx]++
   }
   return { total, hoje, quentes, qualificados, botao }

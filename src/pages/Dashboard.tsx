@@ -820,7 +820,7 @@ export function Dashboard() {
       <Card>
         <CardHeader
           title="Funil de qualificação"
-          subtitle={`${fmtN(data.totalLeads)} leads · IA qualifica · vendedor fecha via etiqueta WA`}
+          subtitle={`${fmtN(funilCanonico[0]?.valor ?? data.totalLeads)} leads com telefone · IA qualifica · vendedor fecha via etiqueta WA`}
         />
         <FunilHero etapas={funilCanonico} />
       </Card>
