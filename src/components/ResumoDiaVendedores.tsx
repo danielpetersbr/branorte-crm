@@ -127,7 +127,7 @@ export function ResumoDiaVendedores() {
                       <td className="text-right tabular-nums py-2 px-2 text-ink">{fmt(r.atendimentos)}</td>
                       <td className="text-right tabular-nums py-2 px-2 text-ink">{fmt(r.orcamentos)}</td>
                       <td className="text-right tabular-nums py-2 px-2 text-ink">{fmt(r.negociacao)}</td>
-                      <td className={`text-right tabular-nums py-2 px-2 ${r.quente > 0 ? 'text-orange-300 font-semibold' : 'text-ink-muted'}`}>{fmt(r.quente)}</td>
+                      <td className={`text-right tabular-nums py-2 px-2 ${r.quente > 0 ? 'text-warning font-semibold' : 'text-ink-muted'}`}>{fmt(r.quente)}</td>
                       <td className="text-right tabular-nums py-2 px-2 text-ink-muted">{fmt(r.carteira)}</td>
                     </tr>
                   )
@@ -140,7 +140,7 @@ export function ResumoDiaVendedores() {
                   <td className="text-right tabular-nums py-2 px-2 text-ink">{fmt(tot.atendimentos)}</td>
                   <td className="text-right tabular-nums py-2 px-2 text-ink">{fmt(tot.orcamentos)}</td>
                   <td className="text-right tabular-nums py-2 px-2 text-ink">{fmt(tot.negociacao)}</td>
-                  <td className="text-right tabular-nums py-2 px-2 text-orange-300">{fmt(tot.quente)}</td>
+                  <td className="text-right tabular-nums py-2 px-2 text-warning">{fmt(tot.quente)}</td>
                   <td className="text-right tabular-nums py-2 px-2 text-ink-muted">{fmt(tot.carteira)}</td>
                 </tr>
               </tfoot>

@@ -325,7 +325,7 @@ export function Dashboard() {
 
   const heroKpis = [
     { label: preset ? 'Leads no período' : 'Total de leads', kpi: data.kpiTotal, icon: Users, color: COLORS.ink, sub: preset ? periodoLabel.toLowerCase() : 'desde o início' },
-    { label: 'Qualificados',  kpi: data.kpiQualificados, icon: CheckCircle2, color: COLORS.accent, sub: 'quer algo que a Branorte faz' },
+    { label: 'Qualificados (IA)',  kpi: data.kpiQualificados, icon: CheckCircle2, color: COLORS.accent, sub: 'quer algo que a Branorte faz' },
     { label: 'Orçamentos',    kpi: { valor: orcamentosReais ?? orcamentoEtq, deltaPct: 0, sparkline: [] }, icon: FilePlus2, color: 'hsl(280 65% 50%)', sub: 'telefone × orçamentos montados', onClick: () => setDrill('orcamentos') },
     { label: 'Vendidos',      kpi: { valor: vendidosLead ?? vendidoEtq, deltaPct: 0, sparkline: [] }, icon: CheckCircle2, color: 'hsl(152 60% 35%)', sub: `vendas de lead · ${vendidosReais ?? 0} no total`, onClick: () => setDrill('vendidos') },
     { label: 'Valor convertido', kpi: { valor: vendas?.valorLead ?? 0, deltaPct: 0, sparkline: [] }, icon: Banknote, color: 'hsl(152 60% 40%)', sub: `de lead · R$ ${(vendas?.valor ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} no total`, prefix: 'R$ ', onClick: () => setDrill('valor') },
@@ -1214,7 +1214,7 @@ function PropostasPorEstagio({ status }: { status: PropostasStatus }) {
           <div className="text-[10px] text-ink-faint">{fmtN(status.vendido.n)} propostas · sub-registro*</div>
         </div>
         <div className="rounded-lg px-3 py-2.5 border border-border/40 bg-surface-2/30 col-span-2 sm:col-span-1">
-          <div className="text-[10px] uppercase tracking-wide text-ink-faint">Conversão aparente</div>
+          <div className="text-[10px] uppercase tracking-wide text-ink-faint">% já com etiqueta VENDIDO</div>
           <div className="text-[22px] leading-tight font-bold tabular-nums text-ink">
             {status.aberto.brl + status.vendido.brl > 0 ? ((status.vendido.brl / (status.aberto.brl + status.vendido.brl)) * 100).toFixed(0) : '0'}%
           </div>
@@ -1497,7 +1497,7 @@ function vereditoVendedor(c: Omit<CardVend, 'veredito'>): CardVend['veredito'] {
     return { nivel: 'atencao', tag: 'DESTRAVAR', cor: 'warning', motivo: `${c.orcN} orçamentos (${fmtBRL(c.orcBRL)}) e 0 venda — fechamento ou falta etiquetar` }
   if (c.totalPassado >= 80 && semPct >= 0.3)
     return { nivel: 'atencao', tag: 'ETIQUETAR', cor: 'warning', motivo: `${Math.round(semPct * 100)}% dos clientes sem etiqueta — pedir pra etiquetar pra dar pra acompanhar` }
-  return { nivel: 'ok', tag: 'OK', cor: 'success', motivo: c.v.vendido > 0 ? `${c.v.vendido} vendas etiquetadas` : 'em dia' }
+  return { nivel: 'ok', tag: 'OK', cor: 'success', motivo: c.v.vendido > 0 ? `${c.v.vendido} leads marcados VENDIDO` : 'em dia' }
 }
 
 const ORDEM_VEREDITO: Record<CardVend['veredito']['nivel'], number> = { cobrar: 0, atencao: 1, ok: 2 }
@@ -1594,7 +1594,7 @@ function ResumoPositivo({ p }: { p: PositivoData }) {
     { v: fmtBRL(p.rMontado), l: 'em propostas montadas' },
     { v: fmtN(p.qualificou), l: 'leads qualificados' },
     { v: fmtN(p.propostas), l: 'propostas no período' },
-    { v: fmtN(p.totalVendido), l: 'vendas etiquetadas' },
+    { v: fmtN(p.totalVendido), l: 'leads marcados VENDIDO' },
   ]
   return (
     <div className="rounded-xl border border-success/30 bg-success/[0.05] p-3 lg:p-4">
@@ -1773,7 +1773,7 @@ function VendedorCard({ c }: { c: CardVend }) {
         title="Ver os orçamentos deste vendedor"
       >
         <FilePlus2 className="h-3.5 w-3.5 text-success shrink-0" />
-        <span className="text-ink-muted">Orçamentos montados:</span>
+        <span className="text-ink-muted">Clientes c/ orçamento:</span>
         <span className="font-semibold text-ink tabular-nums">{orcN}</span>
         {orcBRL > 0 && <span className="font-semibold text-success tabular-nums">· {fmtBRL(orcBRL)}</span>}
         {orcN === 0 && <span className="text-ink-faint">— nenhum no sistema</span>}
