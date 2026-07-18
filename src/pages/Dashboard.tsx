@@ -127,6 +127,61 @@ function CorridaVendas({ corrida, metaVendedor }: { corrida: CorridaVendedor[]; 
   )
 }
 
+// Placar dos 3 times de vendas (composição fixa; meta R$833k/time = 2,5M/3).
+// Dados = a MESMA Corrida de vendas (ao vivo do Controle), somados por time.
+const TIMES_DEF: { nome: string; membros: string[] }[] = [
+  { nome: 'Esquadrão Classe A', membros: ['ALVARO', 'IGOR', 'EDER'] },
+  { nome: 'Los Melhores', membros: ['JARDEL', 'LUCAS', 'RAMON'] },
+  { nome: 'Os Caça Lead', membros: ['PEDRO', 'GUSTAVO', 'EDILSON'] },
+]
+const META_TIME = 833_000
+const primeiroToken = (s: string) => (s || '').trim().toUpperCase().split(/\s+/)[0]
+
+function PlacarTimes({ corrida }: { corrida: CorridaVendedor[] }) {
+  const porVend = new Map(corrida.map(c => [primeiroToken(c.vendedor), c]))
+  const times = TIMES_DEF.map(t => {
+    const membros = t.membros
+      .map(m => ({ nome: m, valor: porVend.get(m)?.valor ?? 0, vendas: porVend.get(m)?.numVendas ?? 0 }))
+      .sort((a, b) => b.valor - a.valor)
+    const valor = membros.reduce((s, m) => s + m.valor, 0)
+    return { nome: t.nome, membros, valor, pct: META_TIME > 0 ? (valor / META_TIME) * 100 : 0 }
+  }).sort((a, b) => b.valor - a.valor)
+  const medalhas = ['🥇', '🥈', '🥉']
+  const barBg = (pct: number) => (pct >= 100 ? 'bg-success' : pct >= 75 ? 'bg-warning' : 'bg-info')
+  const pctTxt = (pct: number) => (pct >= 100 ? 'text-success' : pct >= 75 ? 'text-warning' : 'text-ink-muted')
+  return (
+    <div className="bg-surface border border-border rounded-xl p-5">
+      <div className="flex items-baseline justify-between gap-2 flex-wrap mb-4">
+        <h2 className="text-[15px] font-bold text-ink tracking-tight">🏆 Placar dos times</h2>
+        <span className="text-[11px] text-ink-faint tabular-nums">meta {fmtBRL(META_TIME)}/time · ao vivo do Controle</span>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {times.map((t, i) => (
+          <div key={t.nome} className={`rounded-xl border p-3.5 ${i === 0 ? 'border-warning/50 bg-warning-bg/20' : 'border-border/60 bg-surface-2/30'}`}>
+            <div className="flex items-center justify-between gap-1 mb-1">
+              <span className="text-[13px] font-bold text-ink truncate">{medalhas[i]} {t.nome}</span>
+              <span className={`text-[13px] font-bold tabular-nums ${pctTxt(t.pct)}`}>{t.pct.toFixed(0)}%</span>
+            </div>
+            <div className="text-[18px] font-bold text-ink tabular-nums leading-tight">{fmtBRL(t.valor)}</div>
+            <div className="text-[10px] text-ink-faint mb-2">de {fmtBRL(META_TIME)}</div>
+            <div className="h-2 rounded-full bg-surface-2 overflow-hidden mb-2.5">
+              <div className={`h-full rounded-full ${barBg(t.pct)} transition-all`} style={{ width: `${Math.max(Math.min(t.pct, 100), 2)}%` }} />
+            </div>
+            <div className="space-y-0.5 border-t border-border/40 pt-1.5">
+              {t.membros.map(m => (
+                <div key={m.nome} className="flex items-center justify-between text-[11px]">
+                  <span className="text-ink-muted capitalize">{m.nome.toLowerCase()}</span>
+                  <span className="tabular-nums text-ink-faint">{fmtBRL(m.valor)}<span className="opacity-60"> · {m.vendas}v</span></span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function fmtHoras(h: number): string {
   if (h < 1) return Math.round(h * 60) + 'min'
   if (h < 24) return h.toFixed(1).replace('.', ',') + 'h'
@@ -601,6 +656,11 @@ export function Dashboard() {
       {/* ════════ CORRIDA DE VENDAS — placar por vendedor, ao vivo do Controle ════════ */}
       {vendasReais?.corrida && vendasReais.corrida.length > 0 && (
         <CorridaVendas corrida={vendasReais.corrida} metaVendedor={vendasReais.metaVendedor} />
+      )}
+
+      {/* ════════ PLACAR DOS TIMES — 3 times, meta R$833k, ao vivo do Controle ════════ */}
+      {vendasReais?.corrida && vendasReais.corrida.length > 0 && (
+        <PlacarTimes corrida={vendasReais.corrida} />
       )}
 
       {/* ════════ DINHEIRO PARADO — orçamento por tempo sem resposta (aciona cobrança) ════════ */}
