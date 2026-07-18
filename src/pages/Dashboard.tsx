@@ -373,11 +373,11 @@ export function Dashboard() {
 
   const heroKpis = [
     { label: preset ? 'Leads no período' : 'Total de leads', kpi: data.kpiTotal, icon: Users, color: COLORS.ink, sub: preset ? periodoLabel.toLowerCase() : 'desde o início' },
-    { label: 'Qualificados (IA)',  kpi: data.kpiQualificados, icon: CheckCircle2, color: COLORS.accent, sub: 'quer algo que a Branorte faz' },
+    { label: 'Qualificados',  kpi: { valor: funilUnion?.qualificou ?? data.kpiQualificados.valor, deltaPct: 0, sparkline: [] }, icon: CheckCircle2, color: COLORS.accent, sub: 'IA ou etiqueta (novo lead, follow-up, quente…)' },
     { label: 'Orçamentos',    kpi: { valor: orcamentosReais ?? orcamentoEtq, deltaPct: 0, sparkline: [] }, icon: FilePlus2, color: 'hsl(280 65% 50%)', sub: 'telefone × orçamentos montados', onClick: () => setDrill('orcamentos') },
     { label: 'Vendidos',      kpi: { valor: vendidosLead ?? vendidoEtq, deltaPct: 0, sparkline: [] }, icon: CheckCircle2, color: 'hsl(152 60% 35%)', sub: `vendas de lead · ${vendidosReais ?? 0} no total`, onClick: () => setDrill('vendidos') },
     { label: 'Valor convertido', kpi: { valor: vendas?.valorLead ?? 0, deltaPct: 0, sparkline: [] }, icon: Banknote, color: 'hsl(152 60% 40%)', sub: `de lead · R$ ${(vendas?.valor ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} no total`, prefix: 'R$ ', onClick: () => setDrill('valor') },
-    { label: 'Conversão',     kpi: { valor: taxaConv, deltaPct: 0, sparkline: [] }, icon: TrendingUp, color: COLORS.info, sub: 'lead → vendido', suffix: '%' },
+    { label: 'Conversão',     kpi: { valor: taxaConv, deltaPct: 0, sparkline: [] }, icon: TrendingUp, color: COLORS.info, sub: 'vendas ÷ leads do período', suffix: '%' },
   ]
 
   // ⚡ AÇÃO DO DIA — pega tudo que já temos, prioriza por urgência e vira 1-3 frases clicáveis.
@@ -631,40 +631,6 @@ export function Dashboard() {
       )}
 
       {/* ════════ URGÊNCIA — quem quer comprar AGORA vs quem está pesquisando ════════ */}
-      {data?.porMomento && (() => {
-        const moms = data.porMomento.filter(m => m.momento !== 'Não respondeu' && m.valor > 0)
-        const totalMom = moms.reduce((s, m) => s + m.valor, 0)
-        const agora = data.porMomento.find(m => m.momento === 'Agora')?.valor ?? 0
-        if (totalMom === 0) return null
-        return (
-          <div className="bg-surface border border-border rounded-xl p-4">
-            <div className="flex items-baseline justify-between gap-2 mb-2.5">
-              <h2 className="text-[13px] font-bold text-ink tracking-tight">Urgência dos leads</h2>
-              {agora > 0 && (
-                <span className="text-[11px] font-semibold text-danger tabular-nums">
-                  {agora} {agora === 1 ? 'quer' : 'querem'} comprar AGORA — priorize
-                </span>
-              )}
-            </div>
-            {/* barra segmentada por momento */}
-            <div className="flex h-3 rounded-full overflow-hidden bg-surface-2 border border-border/50">
-              {moms.map(m => (
-                <div key={m.momento} className="h-full transition-all" style={{ width: `${(m.valor / totalMom) * 100}%`, backgroundColor: m.cor }}
-                     title={`${m.momento}: ${m.valor} (${Math.round((m.valor / totalMom) * 100)}%)`} />
-              ))}
-            </div>
-            <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
-              {moms.map(m => (
-                <span key={m.momento} className="inline-flex items-center gap-1 text-[10.5px] text-ink-muted">
-                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: m.cor }} />
-                  {m.momento} <span className="tabular-nums font-semibold text-ink">{m.valor}</span>
-                </span>
-              ))}
-            </div>
-          </div>
-        )
-      })()}
-
       {/* Drill-down "de onde vem" (Orçamentos / Vendidos / Valor convertido) */}
       {drill && <DrillModal kind={drill} preset={preset} onClose={() => setDrill(null)} />}
 
@@ -871,32 +837,6 @@ export function Dashboard() {
 
       {/* ════════ GRUPO 4 · OPERAÇÃO DO TIME ════════ */}
       <CollapsibleSection n="4" titulo="Operação do time" pergunta="Quem eu cobro hoje e qual lead resgato?" open={openSec.g4} onToggle={() => toggleSec('g4')}>
-      {data.leadsEmRisco.length > 0 && (
-        <Card id="leads-resgatar">
-          <CardHeader
-            title="🔥 Leads pra resgatar agora"
-            subtitle="Disseram que querem investir agora e pararam de responder (+24h sem atividade) — quentes que sumiram, vale uma ligação"
-          />
-          <LeadsResgatar leads={data.leadsEmRisco} />
-        </Card>
-      )}
-      {orfaos && orfaos.total > 0 ? (
-        <Card id="leads-orfaos">
-          <CardHeader
-            title="Leads órfãos (zumbis no funil)"
-            subtitle="Parados +7 dias antes da negociação: em PROSPECÇÃO, NOVO LEAD (etiquetados mas travados) ou SEM ETIQUETA nenhuma (nem registrado) — quem recebeu e não levou pra frente"
-          />
-          <LeadsOrfaosVendedor orfaos={orfaos} />
-        </Card>
-      ) : etq && (
-        <Card id="leads-orfaos">
-          <CardHeader
-            title="Leads órfãos (zumbis no funil)"
-            subtitle={`Etiqueta NOVO ou PROSPECCAO há mais de ${etq.leads_orfaos_dias_limite} dias sem evoluir`}
-          />
-          <LeadsOrfaos etq={etq} />
-        </Card>
-      )}
       <Card id="vendedores">
         <CardHeader
           title="Painel por vendedor"
