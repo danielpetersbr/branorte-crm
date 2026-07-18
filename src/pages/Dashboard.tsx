@@ -491,7 +491,7 @@ export function Dashboard() {
       {/* ════════ META DO MÊS — a pergunta nº1 do dono: "bato a meta?" ════════ */}
       {data?.forecast && (() => {
         const f0 = data.forecast
-        // vendido/meta REAIS (mirror do Controle) sobrescrevem o forecast (que lia status_real, sempre 0)
+        // vendido/meta REAIS (fonte viva do Controle: pedidos_venda) sobrescrevem o forecast (que lia status_real, sempre 0)
         const vendidoMes = vendasReais?.vendidoMes ?? f0.vendidoMes
         const pedidosMes = vendasReais?.pedidosMes ?? f0.pedidosMes
         const meta = vendasReais?.meta ?? f0.meta
