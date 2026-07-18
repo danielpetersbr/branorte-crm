@@ -4,7 +4,7 @@ import { useDashboard, type DashboardPreset, type FunilEtapa, type SlaVendedor, 
 import { useDashboardEtiquetas, useHeatmapSemanal, CATEGORIA_LABEL, type EtiquetaCategoria } from '@/hooks/useDashboardEtiquetas'
 import { useDashboardVendedorFunil, type VendedorFunilRow } from '@/hooks/useDashboardVendedorFunil'
 import { useDashboardExtra, type DashboardExtra } from '@/hooks/useDashboardExtra'
-import { useVendasReais } from '@/hooks/useVendasReais'
+import { useVendasReais, type CorridaVendedor } from '@/hooks/useVendasReais'
 import { useFunilUnion } from '@/hooks/useFunilUnion'
 import { useDashboardOrcamentos, useDashboardVendas, useDashboardOrcVendaPorCriativo, useDashboardOrcVendaPorOrigem, useDashboardVendasDetalhe, useDashboardOrcamentosDetalhe, type OrcVendaAttr } from '@/hooks/useDashboardOrcamentos'
 import { useOrcamentosResumo, type OrcamentosResumo } from '@/hooks/useOrcamentosResumo'
@@ -81,6 +81,50 @@ function fmtBRL(v: number): string {
   if (v >= 1_000_000) return 'R$ ' + (v / 1_000_000).toFixed(1).replace('.', ',') + 'M'
   if (v >= 1_000) return 'R$ ' + (v / 1_000).toFixed(0) + 'k'
   return 'R$ ' + v.toFixed(0)
+}
+
+// Placar por vendedor — vinculado AO VIVO ao Controle (mesmos dados da Corrida de Vendas de lá).
+function CorridaVendas({ corrida, metaVendedor }: { corrida: CorridaVendedor[]; metaVendedor: number }) {
+  if (!corrida.length) return null
+  const barBg = (pct: number) => (pct >= 100 ? 'bg-success' : pct >= 75 ? 'bg-warning' : 'bg-info')
+  const pctTxt = (pct: number) => (pct >= 100 ? 'text-success' : pct >= 75 ? 'text-warning' : 'text-ink-muted')
+  return (
+    <div className="bg-surface border border-border rounded-xl p-5">
+      <div className="flex items-baseline justify-between gap-2 flex-wrap mb-3">
+        <h2 className="text-[15px] font-bold text-ink tracking-tight">Corrida de vendas</h2>
+        <a
+          href="https://controle.branorte.com/dashboard"
+          target="_blank"
+          rel="noreferrer"
+          className="text-[11px] text-ink-faint hover:text-accent tabular-nums"
+        >
+          ao vivo do Controle · meta {fmtBRL(metaVendedor)}/vendedor ↗
+        </a>
+      </div>
+      <div className="space-y-1.5">
+        {corrida.map((v, i) => {
+          const w = Math.max(Math.min(v.pct, 100), 2)
+          return (
+            <div key={v.vendedor} className="flex items-center gap-2">
+              <span className="w-5 shrink-0 text-right text-[11px] tabular-nums text-ink-faint">{i + 1}º</span>
+              <span className="w-24 shrink-0 truncate text-[12px] font-medium text-ink" title={v.vendedor}>{v.vendedor}</span>
+              <div className="relative h-3.5 flex-1 overflow-hidden rounded bg-surface-2">
+                <div className={`h-full rounded ${barBg(v.pct)} transition-all`} style={{ width: `${w}%` }} />
+              </div>
+              <span className={`w-12 shrink-0 text-right text-[11px] font-semibold tabular-nums ${pctTxt(v.pct)}`}>{v.pct.toFixed(0)}%</span>
+              <span className="w-16 shrink-0 text-right text-[11px] tabular-nums text-ink-muted">{fmtBRL(v.valor)}</span>
+              <span className="w-8 shrink-0 text-right text-[10px] tabular-nums text-ink-faint">{v.numVendas}v</span>
+            </div>
+          )
+        })}
+      </div>
+      <div className="mt-3 flex items-center gap-3 text-[10px] text-ink-faint">
+        <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-info" /> &lt; 75%</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-warning" /> 75–99%</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-success" /> ≥ 100%</span>
+      </div>
+    </div>
+  )
 }
 
 function fmtHoras(h: number): string {
@@ -553,6 +597,11 @@ export function Dashboard() {
           </div>
         )
       })()}
+
+      {/* ════════ CORRIDA DE VENDAS — placar por vendedor, ao vivo do Controle ════════ */}
+      {vendasReais?.corrida && vendasReais.corrida.length > 0 && (
+        <CorridaVendas corrida={vendasReais.corrida} metaVendedor={vendasReais.metaVendedor} />
+      )}
 
       {/* ════════ DINHEIRO PARADO — orçamento por tempo sem resposta (aciona cobrança) ════════ */}
       {data?.leadAging && data.leadAging.some(a => a.valor > 0 || a.leads > 0) && (
