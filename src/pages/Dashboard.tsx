@@ -849,16 +849,6 @@ export function Dashboard() {
           : <SlaTable rows={data.slaPorVendedor} etqPorVendedor={etq?.por_vendedor} />}
       </Card>
 
-      {vendFunil && vendFunil.length > 0 && (
-        <Card id="vendedores-funil">
-          <CardHeader
-            title="Leads por vendedor — funil + qualificação"
-            subtitle="Quantos leads entraram em cada vendedor e em que etapa estão. QUALIFICADO = qualificado pela IA do bot OU recebeu etiqueta de avanço (Novo Lead / Follow Up / Lead Quente / Interesse Futuro / Vendido). Atribuição = dono do WhatsApp."
-          />
-          <FunilVendedorTable rows={vendFunil} />
-        </Card>
-      )}
-
       </CollapsibleSection>
 
       {/* ════════ GRUPO 5 · CONTEXTO (colapsável no caminho diário) ════════ */}
