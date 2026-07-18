@@ -717,14 +717,9 @@ export function Dashboard() {
         <AlertasBanner etq={etq} />
       )}
 
-      {/* RESUMO DO GERENTE — as 2 decisões (marketing + cobrar vendedor) no topo */}
+      {/* DECISÕES DO GERENTE — reforçar 🟢 + cobrar 🔴 num card só */}
       {(data.porOrigem.length > 0 || vendCards.length > 0) && (
-        <ResumoGerente porOrigem={data.porOrigem} cards={vendCards} />
-      )}
-
-      {/* DESTAQUES POSITIVOS — o que tá indo bem, pra reforçar e dobrar a aposta */}
-      {vendCards.length > 0 && (positivo.topOrc || positivo.escalar || positivo.totalVendido > 0) && (
-        <ResumoPositivo p={positivo} />
+        <DecisoesGerente porOrigem={data.porOrigem} cards={vendCards} p={positivo} />
       )}
 
       {/* RESUMO DO DIA POR VENDEDOR — números de HOJE ao vivo (mesma fonte das mesas do /disparos) */}
@@ -1522,49 +1517,62 @@ function montarCardsVendedor(painel: VendedorPainel[], sla: SlaVendedor[], orc: 
 }
 
 // ════════ RESUMO DO GERENTE — as 2 decisões em 10 segundos, no topo ════════
-function ResumoGerente({ porOrigem, cards }: {
+// ════════ DECISÕES DO GERENTE — fusão do "resumo" (cobrar) + "positivo" (reforçar) num card só ════════
+function DecisoesGerente({ porOrigem, cards, p }: {
   porOrigem: { origem: string; total: number; ctr: number; engajou: number }[]
   cards: CardVend[]
+  p: PositivoData
 }) {
-  // MARKETING: melhor canal por qualidade, canal que queima verba, dívida de rastreio
-  const escalar = [...porOrigem].filter(o => o.total >= 30).sort((a, b) => b.ctr - a.ctr)[0]
   const queima = porOrigem.filter(o => o.total >= 50 && o.total > 0 && o.engajou / o.total < 0.12).sort((a, b) => b.total - a.total)[0]
   const semRastreio = porOrigem.filter(o => /n[aã]o identif|sem origem|desconhec|^outros$|direto/i.test(o.origem)).reduce((s, o) => s + o.total, 0)
-  // VENDEDORES: pega os de "cobrar" e "destravar"
   const cobrar = cards.filter(c => c.veredito.nivel === 'cobrar').slice(0, 3)
   const destravar = cards.filter(c => c.veredito.nivel === 'atencao').slice(0, 2)
-
+  const numeros = [
+    { v: fmtBRL(p.rMontado), l: 'em propostas montadas' },
+    { v: fmtN(p.qualificou), l: 'leads qualificados' },
+    { v: fmtN(p.propostas), l: 'propostas no período' },
+    { v: fmtN(p.totalVendido), l: 'leads marcados VENDIDO' },
+  ]
   return (
-    <div className="rounded-xl border border-accent/30 bg-accent/[0.04] p-3 lg:p-4">
+    <div className="rounded-xl border border-border bg-surface p-3 lg:p-4">
       <div className="flex items-center gap-2 mb-2.5">
-        <span className="text-[13px] font-bold text-ink">👔 Resumo do gerente</span>
-        <span className="text-[10px] text-ink-faint">— o que decidir agora</span>
+        <span className="text-[13px] font-bold text-ink">👔 Decisões do gerente</span>
+        <span className="text-[10px] text-ink-faint">— o que reforçar e o que cobrar agora</span>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        {/* MARKETING */}
-        <a href="#criativo-veredito" className="block rounded-lg bg-surface-2/40 border border-border/40 p-3 hover:border-accent/30 transition-colors">
-          <p className="text-[10px] uppercase tracking-widest text-ink-faint mb-1.5">📈 Marketing — onde botar dinheiro</p>
+        {/* REFORÇAR */}
+        <div className="rounded-lg border border-success/30 bg-success/[0.05] p-3">
+          <p className="text-[10px] uppercase tracking-widest text-success mb-1.5">🟢 Reforçar / dobrar</p>
           <ul className="space-y-1 text-[12px] text-ink">
-            {escalar && <li><span className="text-success font-semibold">▲ Escalar {escalar.origem}</span> <span className="text-ink-faint">— melhor lead ({escalar.ctr.toFixed(0)}% qualificam)</span></li>}
-            {queima && <li><span className="text-danger font-semibold">▼ Revisar {queima.origem}</span> <span className="text-ink-faint">— {fmtN(queima.total)} leads e quase ninguém engaja ({Math.round(queima.engajou / queima.total * 100)}%)</span></li>}
-            {semRastreio > 0 && <li><span className="text-warning font-semibold">🔧 Rastreio: {fmtN(semRastreio)} leads sem origem</span> <span className="text-ink-faint">— e é onde caem vendas; corrigir antes de cortar verba</span></li>}
+            {p.escalar && <li><span className="text-success font-semibold">▲ {p.escalar.origem}</span> <span className="text-ink-faint">melhor canal — {p.escalar.ctr.toFixed(0)}% qualificam</span></li>}
+            {p.criativo && p.criativo.pct >= 20 && <li><span className="text-success font-semibold">🎨 {p.criativo.nome || p.criativo.codigo}</span> <span className="text-ink-faint">criativo campeão — {p.criativo.pct.toFixed(0)}%</span></li>}
+            {p.topOrc && <li><span className="text-success font-semibold">🏆 {capitalizar(primeiroNome(p.topOrc.vendedor))}</span> <span className="text-ink-faint">lidera em proposta — {fmtBRL(p.topOrc.brl)} ({p.topOrc.n})</span></li>}
+            {p.cobertura && p.cobertura.pct >= 55 && <li><span className="text-success font-semibold">🎯 {p.cobertura.nome.split(' ')[0]}</span> <span className="text-ink-faint">etiqueta {p.cobertura.pct}% dos clientes</span></li>}
+            {p.rNegoc > 0 && <li><span className="text-success font-semibold">💰 {fmtBRL(p.rNegoc)} em negociação ativa</span> <span className="text-ink-faint">— pipeline vivo</span></li>}
+            {!p.escalar && !p.topOrc && !p.rNegoc && <li className="text-ink-faint">Sem destaque no período.</li>}
           </ul>
-        </a>
-        {/* VENDEDORES */}
-        <a href="#vendedores" className="block rounded-lg bg-surface-2/40 border border-border/40 p-3 hover:border-accent/30 transition-colors">
-          <p className="text-[10px] uppercase tracking-widest text-ink-faint mb-1.5">👥 Vendedores — quem cobrar</p>
+        </div>
+        {/* COBRAR */}
+        <div className="rounded-lg border border-danger/25 bg-danger/[0.04] p-3">
+          <p className="text-[10px] uppercase tracking-widest text-danger mb-1.5">🔴 Cobrar / revisar</p>
           <ul className="space-y-1 text-[12px] text-ink">
-            {cobrar.map(c => (
-              <li key={c.nome}><span className="text-danger font-semibold">🔴 {c.nome.split(' ')[0]}</span> <span className="text-ink-faint">— {c.veredito.motivo}</span></li>
-            ))}
-            {destravar.map(c => (
-              <li key={c.nome}><span className="text-warning font-semibold">🟠 {c.nome.split(' ')[0]}</span> <span className="text-ink-faint">— {c.veredito.motivo}</span></li>
-            ))}
-            {cobrar.length === 0 && destravar.length === 0 && <li className="text-ink-faint">Time em dia — ninguém no vermelho.</li>}
+            {queima && <li><span className="text-danger font-semibold">▼ Revisar {queima.origem}</span> <span className="text-ink-faint">— {fmtN(queima.total)} leads, quase ninguém engaja ({Math.round(queima.engajou / queima.total * 100)}%)</span></li>}
+            {semRastreio > 0 && <li><span className="text-warning font-semibold">🔧 {fmtN(semRastreio)} leads sem origem</span> <span className="text-ink-faint">— corrigir rastreio antes de cortar verba</span></li>}
+            {cobrar.map(c => <li key={c.nome}><a href="#vendedores" className="hover:underline"><span className="text-danger font-semibold">🔴 {c.nome.split(' ')[0]}</span> <span className="text-ink-faint">— {c.veredito.motivo}</span></a></li>)}
+            {destravar.map(c => <li key={c.nome}><a href="#vendedores" className="hover:underline"><span className="text-warning font-semibold">🟠 {c.nome.split(' ')[0]}</span> <span className="text-ink-faint">— {c.veredito.motivo}</span></a></li>)}
+            {!queima && !semRastreio && cobrar.length === 0 && destravar.length === 0 && <li className="text-ink-faint">Nada crítico — time e verba em dia.</li>}
           </ul>
-        </a>
+        </div>
       </div>
-      <p className="text-[10px] text-ink-faint mt-2">⚠️ "Venda" é sub-registro (depende do vendedor etiquetar à mão) — cobre PROCESSO (orçamento montado, follow-up), não o placar de vendas.</p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+        {numeros.map(x => (
+          <div key={x.l} className="rounded-md bg-surface-2/30 border border-border/30 px-2.5 py-2">
+            <div className="text-[15px] font-bold tabular-nums text-ink">{x.v}</div>
+            <div className="text-[10px] text-ink-faint leading-tight">{x.l}</div>
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] text-ink-faint mt-2">⚠️ "Venda" aqui é sub-registro (depende do vendedor etiquetar) — cobre PROCESSO (orçamento, follow-up), não o placar real.</p>
     </div>
   )
 }
@@ -1578,66 +1586,6 @@ interface PositivoData {
   escalar: { origem: string; ctr: number } | null
   criativo: { codigo: string | null; nome: string | null; pct: number } | null
   rMontado: number; rNegoc: number; qualificou: number; propostas: number
-}
-function ResumoPositivo({ p }: { p: PositivoData }) {
-  const numeros = [
-    { v: fmtBRL(p.rMontado), l: 'em propostas montadas' },
-    { v: fmtN(p.qualificou), l: 'leads qualificados' },
-    { v: fmtN(p.propostas), l: 'propostas no período' },
-    { v: fmtN(p.totalVendido), l: 'leads marcados VENDIDO' },
-  ]
-  return (
-    <div className="rounded-xl border border-success/30 bg-success/[0.05] p-3 lg:p-4">
-      <div className="flex items-center gap-2 mb-2.5">
-        <span className="text-[13px] font-bold text-ink">✨ O que tá indo bem</span>
-        <span className="text-[10px] text-ink-faint">— pra reforçar e dobrar a aposta</span>
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        {/* TIME */}
-        <div className="rounded-lg bg-surface-2/40 border border-border/40 p-3">
-          <p className="text-[10px] uppercase tracking-widest text-ink-faint mb-1.5">💪 Time — quem reforçar</p>
-          <ul className="space-y-1 text-[12px] text-ink">
-            {p.topOrc && (
-              <li><span className="text-success font-semibold">🏆 {capitalizar(primeiroNome(p.topOrc.vendedor))}</span> <span className="text-ink-faint">lidera em proposta — {fmtBRL(p.topOrc.brl)} montados ({p.topOrc.n})</span></li>
-            )}
-            {p.cobertura && p.cobertura.pct >= 55 && (
-              <li><span className="text-success font-semibold">🎯 {p.cobertura.nome.split(' ')[0]}</span> <span className="text-ink-faint">organiza bem — etiqueta {p.cobertura.pct}% dos clientes ({fmtN(p.cobertura.com)}/{fmtN(p.cobertura.total)})</span></li>
-            )}
-            {p.totalVendido > 0 && (
-              <li><span className="text-success font-semibold">✅ {p.totalVendido} venda{p.totalVendido > 1 ? 's' : ''} etiquetada{p.totalVendido > 1 ? 's' : ''}</span> <span className="text-ink-faint">— {p.fecharam.slice(0, 3).map(c => `${c.nome.split(' ')[0]} (${c.v.vendido})`).join(', ')}</span></li>
-            )}
-            {!p.topOrc && !p.totalVendido && <li className="text-ink-faint">Sem destaque de time no período.</li>}
-          </ul>
-        </div>
-        {/* MARKETING */}
-        <div className="rounded-lg bg-surface-2/40 border border-border/40 p-3">
-          <p className="text-[10px] uppercase tracking-widest text-ink-faint mb-1.5">📈 Marketing — onde dobrar</p>
-          <ul className="space-y-1 text-[12px] text-ink">
-            {p.escalar && (
-              <li><span className="text-success font-semibold">▲ {p.escalar.origem}</span> <span className="text-ink-faint">é o melhor canal — {p.escalar.ctr.toFixed(0)}% qualificam</span></li>
-            )}
-            {p.criativo && p.criativo.pct >= 20 && (
-              <li><span className="text-success font-semibold">🎨 {p.criativo.nome || p.criativo.codigo}</span> <span className="text-ink-faint">criativo campeão — {p.criativo.pct.toFixed(0)}% qualificam</span></li>
-            )}
-            {p.rNegoc > 0 && (
-              <li><span className="text-success font-semibold">💰 {fmtBRL(p.rNegoc)} em negociação ativa</span> <span className="text-ink-faint">— pipeline vivo pra fechar</span></li>
-            )}
-            {!p.escalar && !p.rNegoc && <li className="text-ink-faint">Sem destaque de marketing no período.</li>}
-          </ul>
-        </div>
-      </div>
-      {/* Números bons do período */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
-        {numeros.map(x => (
-          <div key={x.l} className="rounded-md bg-surface-2/30 border border-border/30 px-2.5 py-2">
-            <div className="text-[16px] font-bold tabular-nums text-success">{x.v}</div>
-            <div className="text-[10px] text-ink-faint leading-tight">{x.l}</div>
-          </div>
-        ))}
-      </div>
-      <p className="text-[10px] text-ink-faint mt-2">👏 Reforce quem aparece aqui e dobre a verba no canal/criativo campeão. "Negociação ativa" = propostas abertas, dinheiro perto de fechar.</p>
-    </div>
-  )
 }
 
 function PainelVendedores({ cards }: { cards: CardVend[] }) {
