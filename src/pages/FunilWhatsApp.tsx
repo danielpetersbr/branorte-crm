@@ -39,8 +39,10 @@ const FUNIL_ATIVO = new Set([
 const COLUNAS_COM_VALOR = new Set(['FOLLOW UP', 'LEAD QUENTE', 'ORCAMENTO ENVIADO'])
 
 // Colunas cujo histórico de conversa (últimas 10 msgs) é sincronizado pela
-// extensão v1.6.71+ e aparece no drawer
-const COLUNAS_COM_CONVERSA = new Set(['FOLLOW UP', 'LEAD QUENTE'])
+// extensão e aparece no drawer. Estendido aos 5 estágios do funil (a LEITURA no
+// CRM já é agnóstica ao estágio — filtra só por vendedor+chat_id; a captura na
+// extensão é que define quais chats têm msgs sincronizadas).
+const COLUNAS_COM_CONVERSA = new Set(['PROSPECCAO', '2A TENTATIVA', 'NOVO LEAD', 'FOLLOW UP', 'LEAD QUENTE'])
 
 const brl = (v: number) => 'R$ ' + v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })
 
@@ -315,12 +317,12 @@ function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
   )
 }
 
-// mídia (áudio/foto) sem binário há mais de ~2 dias provavelmente expirou no aparelho
-// (a extensão só busca <14d e o WhatsApp não guarda mídia velha) — não vai chegar.
+// mídia (áudio/foto) sem binário há mais de ~10 dias provavelmente expirou no aparelho
+// (a extensão ainda tenta baixar até ~10-14d; antes disso é só "sincronizando", não expirado).
 function midiaExpirada(m: WaMensagem): boolean {
   if (m.media_url) return false
   if (!m.data_msg) return false
-  return Date.now() - new Date(m.data_msg).getTime() > 2 * 86_400_000
+  return Date.now() - new Date(m.data_msg).getTime() > 10 * 86_400_000
 }
 
 function BolhaMensagem({ m }: { m: WaMensagem }) {
@@ -420,15 +422,23 @@ function ChatDrawer({
   const { data: mensagens, isLoading: carregandoMsgs } = useWaMensagens(vendedor, chat.chat_id, !!chat.chat_id)
   const temMsgs = !!mensagens && mensagens.length > 0
   const nome = nomeContato(chat.contact_name, chat.phone)
+  const [fotoAberta, setFotoAberta] = useState(false)
   return (
     <>
+      {fotoAberta && chat.foto_url && <Lightbox src={chat.foto_url} onClose={() => setFotoAberta(false)} />}
       <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-[2px]" onClick={onClose} />
       <aside className="fixed right-0 top-0 z-50 flex h-full w-full max-w-[460px] flex-col border-l border-border bg-surface">
         {/* Cabeçalho fixo */}
         <div className="shrink-0 border-b border-border bg-gradient-to-b from-surface-2/80 to-surface px-5 pb-4 pt-5">
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              <Avatar name={nome} src={chat.foto_url ?? undefined} size="md" />
+              {chat.foto_url ? (
+                <button onClick={() => setFotoAberta(true)} title="Ver foto" className="rounded-full transition hover:ring-2 hover:ring-accent/40">
+                  <Avatar name={nome} src={chat.foto_url} size="xl" />
+                </button>
+              ) : (
+                <Avatar name={nome} src={undefined} size="xl" />
+              )}
               <div className="min-w-0">
                 <h2 className="truncate text-[16px] font-semibold text-ink">{nome}</h2>
                 <div className="font-mono text-[12px] text-ink-muted">{formatarTelefone(chat.phone)}</div>
@@ -476,7 +486,7 @@ function ChatDrawer({
                 {chat.last_message_at && <div className="text-[10px] tabular-nums text-ink-faint">{tempoRelativo(chat.last_message_at)}</div>}
               </div>
               {!colunaAtiva && (
-                <p className="mb-2 text-[10.5px] text-ink-faint">Fora de FOLLOW UP/LEAD QUENTE — histórico pode estar desatualizado.</p>
+                <p className="mb-2 text-[10.5px] text-ink-faint">Estágio sem captura ativa — o histórico pode estar desatualizado.</p>
               )}
               <div className="space-y-2 rounded-xl border border-border bg-[hsl(var(--bg))] p-3">
                 {mensagens!.map(m => <BolhaMensagem key={m.msg_id} m={m} />)}
@@ -492,7 +502,7 @@ function ChatDrawer({
               </p>
             </div>
           ) : (
-            /* Nunca esteve em FOLLOW UP/LEAD QUENTE: só o preview da última mensagem */
+            /* Sem histórico capturado ainda: só o preview da última mensagem */
             <div className="rounded-xl border border-border bg-surface-2 p-3">
               <div className="mb-1.5 text-[11px] uppercase tracking-wide text-ink-faint">
                 Última mensagem · {tempoRelativo(chat.last_message_at)}
@@ -505,7 +515,7 @@ function ChatDrawer({
               ) : (
                 <p className="text-[13px] text-ink-faint">Sem preview disponível.</p>
               )}
-              <p className="mt-2 text-[10.5px] text-ink-faint">A conversa completa aparece quando o lead entra em FOLLOW UP ou LEAD QUENTE.</p>
+              <p className="mt-2 text-[10.5px] text-ink-faint">A conversa completa aparece quando o vendedor estiver com o WhatsApp Web aberto.</p>
             </div>
           )}
 

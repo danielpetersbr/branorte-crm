@@ -5,7 +5,7 @@ interface AvatarProps {
   name: string | null | undefined
   /** Foto do cliente (opcional). Ausente ou com erro de load → fallback de inicial colorida. */
   src?: string | null
-  size?: 'xs' | 'sm' | 'md' | 'lg'
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
   pulse?: boolean
   className?: string
 }
@@ -15,6 +15,7 @@ const SIZE: Record<NonNullable<AvatarProps['size']>, string> = {
   sm: 'h-6 w-6 text-[10px]',
   md: 'h-7 w-7 text-[11px]',
   lg: 'h-9 w-9 text-sm',
+  xl: 'h-14 w-14 text-xl',
 }
 
 // Color from name hash (consistent per person)

@@ -143,8 +143,8 @@ export interface WaMensagem {
 }
 
 /**
- * Últimas ~10 mensagens do chat (sincronizadas pela extensão v1.6.71+ só pra
- * chats em FOLLOW UP / LEAD QUENTE). Ordem cronológica (antiga → recente).
+ * Últimas ~10 mensagens do chat (sincronizadas pela extensão). Ordem cronológica
+ * (antiga → recente). A leitura é agnóstica ao estágio — filtra só por vendedor+chat_id.
  */
 export function useWaMensagens(vendedor: string | null, chatId: string | null, habilitado = true) {
   return useQuery<WaMensagem[]>({
@@ -160,7 +160,12 @@ export function useWaMensagens(vendedor: string | null, chatId: string | null, h
         .order('data_msg', { ascending: false, nullsFirst: false })
         .limit(10)
       if (error) throw error
-      return (data ?? []).reverse()
+      // ordena cronológico ASC com msgs sem data_msg no FIM (senão flutuam pro topo, fora de ordem)
+      return (data ?? []).slice().sort((a, b) => {
+        if (!a.data_msg) return 1
+        if (!b.data_msg) return -1
+        return new Date(a.data_msg).getTime() - new Date(b.data_msg).getTime()
+      })
     },
   })
 }
