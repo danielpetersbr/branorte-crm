@@ -828,17 +828,6 @@ export function Dashboard() {
         </Card>
       )}
 
-      {/* PROPOSTAS × ESTÁGIO DO FUNIL — dinheiro em aberto (não vendido) + filtro por etapa */}
-      {propStatus && propStatus.porCategoria.length > 0 && (
-        <Card id="propostas-estagio">
-          <CardHeader
-            title="Propostas por estágio do funil — dinheiro na mesa"
-            subtitle="Cruza cada proposta montada com a etiqueta ATUAL do cliente no WhatsApp. Clique numa etapa pra ver quem montou mais ali e abrir a lista. Estado de agora — ignora o período."
-          />
-          <PropostasPorEstagio status={propStatus} />
-        </Card>
-      )}
-
       </CollapsibleSection>
 
       {/* ════════ GRUPO 2 · FUNIL ════════ */}
