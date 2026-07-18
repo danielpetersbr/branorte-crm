@@ -715,11 +715,10 @@ export function Dashboard() {
         <Card>
           <div className="flex items-baseline justify-between mb-3 gap-2 flex-wrap">
             <h2 className="text-[14px] font-bold text-ink tracking-tight">📊 Gráficos do dia</h2>
-            <span className="text-[11px] text-ink-faint">orçamentos · avaliação · hoje, aberto e negociação</span>
+            <span className="text-[11px] text-ink-faint">orçamentos · hoje, aberto e negociação</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             <OrcamentosPorDiaChart data={extra.orcamentos_por_dia} />
-            <AvaliacaoCliente data={extra.avaliacao} />
             <AtendimentosHojeCard data={extra.atendimentos} />
             <AbertoCard data={extra.aberto} onIr={() => irParaSecao('g4', 'vendedores-funil')} />
             <NegociacaoCard data={extra.negociacao} />

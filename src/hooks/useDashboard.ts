@@ -1,6 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
-import { supabaseAuditoria } from '@/lib/supabase'
+import { supabase, supabaseAuditoria } from '@/lib/supabase'
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
+
+// fone_canon espelhado (idêntico a public.fone_canon / useAtendimentos.foneCanon):
+// DDD(2)+8 dígitos, tira +55 e o 9º do celular. Casa lead <-> orçamento por telefone.
+function foneCanon(p?: string | null): string | null {
+  const d = String(p ?? '').replace(/\D/g, '')
+  if (d.length < 10) return null
+  let n = (d.length >= 12 && d.startsWith('55')) ? d.slice(2) : d
+  if (n.length === 11 && n[2] === '9') n = n.slice(0, 2) + n.slice(3)
+  if (n.length > 10) n = n.slice(-10)
+  return n.length === 10 ? n : null
+}
 
 // Teto de linhas puxadas da view. Precisa ser MAIOR que o total de contatos, senão
 // o Dashboard corta os mais antigos (ordenado por data desc) e tanto a contagem total
@@ -326,7 +337,7 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
   return useQuery({
     queryKey: ['dashboard-data-v2', filters],
     queryFn: async (): Promise<DashboardData> => {
-      const { data, error } = await supabaseAuditoria
+      const viewRes = await supabaseAuditoria
         .from('atendimentos_por_cliente')
         .select(
           'id, nome, telefone, responsavel, criativo_codigo, criativo_facebook, origem, motivo_contato, finalidade_fabrica, qual_animal, quantos_animais, capacidade_producao, quando_investir, tocou_botao_em, o_que_precisa, data, ultima_msg, last_message_at, is_internal, chegou_no_vendedor, orcamento_enviado, orcamento_valor, status_real, status_vendedor, finished_at'
@@ -334,10 +345,24 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
         .eq('is_internal', false)
         .order('data', { ascending: false, nullsFirst: false })
         .limit(DASHBOARD_LIMIT)
+      if (viewRes.error) throw viewRes.error
+      const rows = (viewRes.data ?? []) as RawRow[]
 
-      if (error) throw error
-      const rows = (data ?? []) as RawRow[]
-      return aggregate(rows, filters.preset)
+      // "Dinheiro parado" = valor do ÚLTIMO orçamento de cada lead (NÃO a soma das revisões,
+      // que infla: há telefone com 32 orçamentos → R$82M somado vs R$47M no último).
+      // Fonte: orcamentos_gerados.total_proposta via RPC orcamentos_por_telefone_canon,
+      // casado por fone_canon (espelhado em foneCanon()).
+      const canons = [...new Set(rows.map(r => foneCanon(r.telefone)).filter((x): x is string => !!x))]
+      const orcValorByCanon = new Map<string, number>()
+      try {
+        const orcRes = await (supabase as any).rpc('orcamentos_por_telefone_canon', { p_canons: canons })
+        if (!orcRes?.error) {
+          for (const o of (orcRes?.data ?? []) as { fone_canon?: string; ultimo_valor?: number }[]) {
+            if (o?.fone_canon) orcValorByCanon.set(String(o.fone_canon), Number(o.ultimo_valor ?? 0))
+          }
+        }
+      } catch { /* map vazio -> fallback 0; dashboard não quebra */ }
+      return aggregate(rows, filters.preset, orcValorByCanon)
     },
     staleTime: 60_000,
     refetchInterval: 60_000,
@@ -352,7 +377,7 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
 // AGREGADOR
 // ============================================================================
 
-function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
+function aggregate(rows: RawRow[], preset: DashboardPreset, orcValorByCanon: Map<string, number> = new Map()): DashboardData {
   const now = new Date()
   const range = rangeForPreset(preset, now)
   const prev = previousRange(range)
@@ -613,7 +638,7 @@ function aggregate(rows: RawRow[], preset: DashboardPreset): DashboardData {
     const isAtivo = !status.includes('vendid') && !status.includes('perdid')
     if (isAtivo && r.last_message_at) {
       const ageH = (now.getTime() - new Date(r.last_message_at).getTime()) / 3600000
-      const valor = r.orcamento_valor || 0
+      const valor = orcValorByCanon.get(foneCanon(r.telefone) ?? '') ?? 0
       if (ageH >= 24 && ageH < 48) { aging24++; agingValor24 += valor }
       else if (ageH >= 48 && ageH < 168) { aging48++; agingValor48 += valor }
       else if (ageH >= 168 && ageH < 720) { aging7d++; agingValor7d += valor }
