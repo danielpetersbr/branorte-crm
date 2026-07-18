@@ -332,17 +332,20 @@ export function Layout() {
         'sticky top-0 h-screen shrink-0 overflow-hidden',
         collapsed ? 'w-14' : 'w-64',
       )}>
-        {/* Brand + avatar + collapse */}
+        {/* Brand (wordmark BRANORTE, adaptável ao tema) + avatar + collapse */}
         <div className={cn('flex items-center h-14 border-b border-border', collapsed ? 'justify-center px-2' : 'gap-2 px-4')}>
-          <div className="h-7 w-7 rounded-md bg-accent flex items-center justify-center shadow-sm shrink-0">
-            <span className="text-white font-bold text-[13px] tracking-tight">B</span>
-          </div>
-          {!collapsed && (
+          {collapsed ? (
+            <NavLink to="/" title="Branorte CRM" className="flex items-center justify-center h-8 w-8 select-none">
+              <span className="font-extrabold text-[20px] leading-none tracking-[-0.05em] text-accent">B</span>
+            </NavLink>
+          ) : (
             <>
-              <div className="leading-tight flex-1 min-w-0">
-                <h1 className="font-semibold text-ink text-[13px] tracking-tight">Branorte</h1>
-                <p className="text-[10px] text-ink-faint -mt-0.5 uppercase tracking-wider">CRM</p>
-              </div>
+              <NavLink to="/" title="Branorte CRM" className="flex items-baseline gap-1.5 min-w-0 flex-1 select-none">
+                <span className="font-extrabold text-[18px] leading-none tracking-[-0.045em] whitespace-nowrap">
+                  <span className="text-accent">BRA</span><span className="text-ink">NORTE</span>
+                </span>
+                <span className="text-[8.5px] font-semibold uppercase tracking-[0.18em] text-ink-faint">CRM</span>
+              </NavLink>
               {profile && (
                 <NavLink
                   to="/perfil"

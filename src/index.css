@@ -1,4 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap');
+/* Tipografia Apple: SF Pro real nos dispositivos Apple (-apple-system) e Inter
+   (carregado no index.html) como fallback tipo-SF no Windows/Android. */
 
 @tailwind base;
 @tailwind components;
@@ -54,12 +55,14 @@
   html, body {
     background: hsl(var(--bg));
     color: hsl(var(--ink));
-    font-family: 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
-    font-feature-settings: 'cv11', 'ss01', 'ss03';
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'SF Pro', 'Inter', ui-sans-serif, system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';   /* Inter → glifos mais parecidos com SF (a/g single-story) */
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
     font-size: 14px;
-    line-height: 1.5;
+    line-height: 1.47059;   /* proporção de corpo do apple.com */
+    letter-spacing: -0.006em;
     /* Previne scroll horizontal residual em mobile.
        ResponsiveScaler centraliza/escala o preview do orçamento. */
     overflow-x: hidden;
@@ -76,8 +79,13 @@
   }
 
   .font-mono {
-    font-family: 'Geist Mono', ui-monospace, 'JetBrains Mono', monospace;
+    font-family: ui-monospace, 'SF Mono', 'SFMono-Regular', Menlo, 'Cascadia Code', 'Roboto Mono', monospace;
   }
+
+  /* Tracking apertado nos títulos = "voz" tipográfica da Apple (apple.com usa
+     letter-spacing negativo proporcional ao tamanho). */
+  h1, h2, h3 { letter-spacing: -0.021em; }
+  h4, h5, h6 { letter-spacing: -0.014em; }
 
   /* Mapa Leaflet: deixa o browser entregar o gesto (pinch/drag/double-tap) pro
      Leaflet no touch — senão o bloqueio global de pinch (index.html) trava o zoom. */
