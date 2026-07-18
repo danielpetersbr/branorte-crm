@@ -111,7 +111,7 @@ function SectionTitle({ n, titulo, pergunta }: { n: string; titulo: string; perg
 // Default: só "Visão geral" aberta — o resto começa fechado pra não afogar.
 function useOpenSections() {
   const [open, setOpen] = useState<Record<string, boolean>>(() => {
-    const fallback = { g1: true, g2: false, g3: false, g4: false, g5: false }
+    const fallback = { g1: false, g2: false, g3: false, g4: false, g5: false }
     if (typeof window === 'undefined') return fallback
     try {
       const stored = localStorage.getItem('dashboard-sections')
@@ -618,8 +618,8 @@ export function Dashboard() {
           ))}
         </div>
 
-        {/* MINI-GRÁFICOS — funil (onde vaza) · tendência · onde estão os leads */}
-        <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3">
+        {/* MINI-GRÁFICOS — funil (onde vaza) · tendência (o detalhe abre nas seções) */}
+        <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
           {/* Funil */}
           <div className="rounded-lg border border-border/60 bg-surface p-3">
             <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-2.5">Funil — onde vaza</div>
@@ -668,35 +668,6 @@ export function Dashboard() {
             </div>
           </div>
 
-          {/* Onde estão (rosca) */}
-          <div className="rounded-lg border border-border/60 bg-surface p-3">
-            <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-1.5">Onde estão (etiqueta)</div>
-            {pieData.length > 0 ? (
-              <div className="flex items-center gap-3">
-                <div className="h-[120px] w-[120px] shrink-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={pieData} dataKey="valor" nameKey="nome" innerRadius={32} outerRadius={56} paddingAngle={2} stroke="none">
-                        {pieData.map((d, i) => <Cell key={i} fill={d.cor} />)}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={{ background: 'hsl(var(--surface))', border: `1px solid ${COLORS.border}`, borderRadius: 6, fontSize: 11 }}
-                        formatter={((v: number, n: string) => [fmtN(v), n]) as never}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <ul className="flex-1 space-y-1 text-[11px]">
-                  {pieData.map(d => (
-                    <li key={d.nome} className="flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-1.5 text-ink-muted"><span className="h-2 w-2 rounded-full shrink-0" style={{ background: d.cor }} />{d.nome}</span>
-                      <span className="font-mono tabular-nums text-ink">{fmtN(d.valor)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : <div className="h-[120px] grid place-items-center text-[11px] text-ink-faint">Sem etiquetas no período</div>}
-          </div>
         </div>
 
         {acoesTop.length > 0 && (
@@ -729,15 +700,11 @@ export function Dashboard() {
         <Card>
           <div className="flex items-baseline justify-between mb-3 gap-2 flex-wrap">
             <h2 className="text-[14px] font-bold text-ink tracking-tight">📊 Gráficos do dia</h2>
-            <span className="text-[11px] text-ink-faint">funil · orçamentos, avaliação, quem atrai · hoje, aberto e negociação</span>
-          </div>
-          <div className="mb-3">
-            <FunilDeVenda etapas={funilCanonico} />
+            <span className="text-[11px] text-ink-faint">orçamentos · avaliação · hoje, aberto e negociação</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             <OrcamentosPorDiaChart data={extra.orcamentos_por_dia} />
             <AvaliacaoCliente data={extra.avaliacao} />
-            <Top3em1 origem={positivo.escalar} criativo={positivo.criativo} vendFunil={vendFunil ?? []} />
             <AtendimentosHojeCard data={extra.atendimentos} />
             <AbertoCard data={extra.aberto} onIr={() => irParaSecao('g4', 'vendedores-funil')} />
             <NegociacaoCard data={extra.negociacao} />
@@ -764,7 +731,7 @@ export function Dashboard() {
       <ResumoDiaVendedores />
 
       {/* ════════ GRUPO 1 · VISÃO GERAL ════════ */}
-      <CollapsibleSection n="1" titulo="Visão geral" pergunta="Propostas e tendência no detalhe" open={openSec.g1} onToggle={() => toggleSec('g1')}>
+      <CollapsibleSection n="1" titulo="Propostas & dinheiro na mesa" pergunta="Quanto tem montado e em que estágio" open={openSec.g1} onToggle={() => toggleSec('g1')}>
 
       {/* DINHEIRO — valor das propostas montadas no período (único R$ real no fluxo de lead) */}
       {orc && orc.geradas > 0 && (
@@ -787,38 +754,6 @@ export function Dashboard() {
           <PropostasPorEstagio status={propStatus} />
         </Card>
       )}
-
-      {/* LEADS POR DIA — fecha o grupo Visão geral (tendência) */}
-      <Card>
-        <CardHeader
-          title="Leads por dia"
-          subtitle={data.leadsPorDia.length > 0 ? `${data.leadsPorDia.length} dias com atividade` : 'Sem dados'}
-        />
-        <div className="h-[220px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data.leadsPorDia} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
-              <defs>
-                <linearGradient id="gT" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={COLORS.info} stopOpacity={0.4} />
-                  <stop offset="100%" stopColor={COLORS.info} stopOpacity={0.02} />
-                </linearGradient>
-                <linearGradient id="gQ" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={COLORS.accent} stopOpacity={0.5} />
-                  <stop offset="100%" stopColor={COLORS.accent} stopOpacity={0.02} />
-                </linearGradient>
-              </defs>
-              <XAxis dataKey="dia" hide />
-              <Tooltip
-                contentStyle={{ background: 'hsl(var(--surface))', border: `1px solid ${COLORS.border}`, borderRadius: 6, fontSize: 12 }}
-                formatter={((v: number, n: string) => [fmtN(v), n === 'total' ? 'Total' : 'Qualificados']) as never}
-                labelFormatter={((l: string) => new Date(l + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', weekday: 'short' })) as never}
-              />
-              <Area type="monotone" dataKey="total" stroke={COLORS.info} strokeWidth={2} fill="url(#gT)" />
-              <Area type="monotone" dataKey="qualificados" stroke={COLORS.accent} strokeWidth={2} fill="url(#gQ)" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </Card>
 
       </CollapsibleSection>
 
