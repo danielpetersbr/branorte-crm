@@ -4,6 +4,7 @@ import { useDashboard, type DashboardPreset, type FunilEtapa, type SlaVendedor, 
 import { useDashboardEtiquetas, useHeatmapSemanal, CATEGORIA_LABEL, type EtiquetaCategoria } from '@/hooks/useDashboardEtiquetas'
 import { useDashboardVendedorFunil, type VendedorFunilRow } from '@/hooks/useDashboardVendedorFunil'
 import { useDashboardExtra, type DashboardExtra } from '@/hooks/useDashboardExtra'
+import { useVendasReais } from '@/hooks/useVendasReais'
 import { useFunilUnion } from '@/hooks/useFunilUnion'
 import { useDashboardOrcamentos, useDashboardVendas, useDashboardOrcVendaPorCriativo, useDashboardOrcVendaPorOrigem, useDashboardVendasDetalhe, useDashboardOrcamentosDetalhe, type OrcVendaAttr } from '@/hooks/useDashboardOrcamentos'
 import { useOrcamentosResumo, type OrcamentosResumo } from '@/hooks/useOrcamentosResumo'
@@ -177,6 +178,9 @@ export function Dashboard() {
   const { data: etq } = useDashboardEtiquetas(preset)
   const { data: vendFunil } = useDashboardVendedorFunil(preset)
   const { data: extra } = useDashboardExtra()
+  // Vendas REAIS do mês (espelho do Controle) — o forecast do useDashboard lê status_real
+  // dos atendimentos, que NUNCA tem "vendido" → sempre R$ 0. Aqui vem o número de verdade.
+  const { data: vendasReais } = useVendasReais()
   const { data: funilUnion } = useFunilUnion(preset)
   // Valor das propostas montadas no builder (orcamentos_gerados) — única fonte real de R$
   const { data: orc } = useOrcamentosResumo(preset)
@@ -486,7 +490,18 @@ export function Dashboard() {
 
       {/* ════════ META DO MÊS — a pergunta nº1 do dono: "bato a meta?" ════════ */}
       {data?.forecast && (() => {
-        const f = data.forecast
+        const f0 = data.forecast
+        // vendido/meta REAIS (mirror do Controle) sobrescrevem o forecast (que lia status_real, sempre 0)
+        const vendidoMes = vendasReais?.vendidoMes ?? f0.vendidoMes
+        const pedidosMes = vendasReais?.pedidosMes ?? f0.pedidosMes
+        const meta = vendasReais?.meta ?? f0.meta
+        const ritmoDia = f0.diaDoMes > 0 ? vendidoMes / f0.diaDoMes : 0
+        const projecao = ritmoDia * f0.diasNoMes
+        const f = {
+          ...f0, vendidoMes, pedidosMes, meta, ritmoDia, projecao,
+          pctMeta: meta > 0 ? (vendidoMes / meta) * 100 : 0,
+          pctProjecao: meta > 0 ? (projecao / meta) * 100 : 0,
+        }
         const pctMeta = Math.min(f.pctMeta, 100)
         const projOk = f.pctProjecao >= 100
         const projPerto = f.pctProjecao >= 80 && f.pctProjecao < 100
