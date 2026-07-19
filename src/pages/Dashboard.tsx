@@ -1129,9 +1129,11 @@ function KpiHero({ label, kpi, icon: Icon, color, sub, suffix, prefix, onClick, 
   const gid = `spark-${label.replace(/\s+/g, '')}`
   // Count-up nos KPIs numéricos (o de % fica estático — count-up em decimal fica feio).
   const animVal = useCountUp(kpi.valor)
+  // Sempre inteiro no número grande (o ",1" de R$ é inútil e fazia o card de dinheiro
+  // quebrar em 2 linhas). A precisão fica na sub-linha "de lead · R$ ... no total".
   const numShown = suffix
     ? kpi.valor.toString().replace('.', ',')
-    : (animVal === kpi.valor ? fmtN(kpi.valor) : fmtN(Math.round(animVal)))
+    : fmtN(Math.round(animVal))
   return (
     <div
       className={`bg-surface border border-border rounded-xl p-3 sm:p-5 transition-colors relative overflow-hidden ${onClick ? 'cursor-pointer hover:border-accent/60 hover:bg-accent-bg/20' : 'hover:border-border-strong'}`}
@@ -1141,7 +1143,7 @@ function KpiHero({ label, kpi, icon: Icon, color, sub, suffix, prefix, onClick, 
         <p className="text-[9px] sm:text-[10px] uppercase tracking-[0.08em] text-ink-faint font-medium leading-tight">{label}</p>
         <Icon className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" style={{ color }} />
       </div>
-      <p className="text-[26px] sm:text-[40px] leading-[1.05] font-semibold tracking-tight tabular-nums" style={{ color }}>
+      <p className={`${prefix ? 'text-[22px] sm:text-[34px]' : 'text-[26px] sm:text-[40px]'} leading-[1.05] font-semibold tracking-tight tabular-nums whitespace-nowrap`} style={{ color }}>
         {prefix && <span className="text-base sm:text-2xl font-medium mr-0.5">{prefix}</span>}
         {numShown}
         {suffix && <span className="text-base sm:text-xl font-medium ml-0.5">{suffix}</span>}
