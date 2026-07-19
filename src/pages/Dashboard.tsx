@@ -745,6 +745,22 @@ export function Dashboard() {
         )}
       </Card>
 
+      {/* ════════ GRÁFICOS DO DIA — logo abaixo do essencial (pedido do gerente) ════════ */}
+      {extra && (
+        <Card>
+          <div className="flex items-baseline justify-between mb-2 gap-2 flex-wrap">
+            <h2 className="text-[14px] font-bold text-ink tracking-tight">📊 Gráficos do dia</h2>
+            <span className="text-[11px] text-ink-faint">orçamentos · hoje, aberto e negociação</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2.5">
+            <OrcamentosPorDiaChart data={extra.orcamentos_por_dia} />
+            <AtendimentosHojeCard data={extra.atendimentos} />
+            <AbertoCard data={extra.aberto} onIr={() => irParaSecao('g4', 'vendedores-funil')} />
+            <NegociacaoCard data={extra.negociacao} />
+          </div>
+        </Card>
+      )}
+
       {/* ════════ PROPOSTAS NO BUILDER — dinheiro na mesa, logo abaixo do essencial ════════ */}
       {orc && orc.geradas > 0 && (
         <Card>
@@ -860,22 +876,6 @@ export function Dashboard() {
       {/* ════════ URGÊNCIA — quem quer comprar AGORA vs quem está pesquisando ════════ */}
       {/* Drill-down "de onde vem" (Orçamentos / Vendidos / Valor convertido) */}
       {drill && <DrillModal kind={drill} preset={preset} onClose={() => setDrill(null)} />}
-
-      {/* ════════ GRÁFICOS DO DIA — no início da página (pedido do gerente) ════════ */}
-      {extra && (
-        <Card>
-          <div className="flex items-baseline justify-between mb-3 gap-2 flex-wrap">
-            <h2 className="text-[14px] font-bold text-ink tracking-tight">📊 Gráficos do dia</h2>
-            <span className="text-[11px] text-ink-faint">orçamentos · hoje, aberto e negociação</span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            <OrcamentosPorDiaChart data={extra.orcamentos_por_dia} />
-            <AtendimentosHojeCard data={extra.atendimentos} />
-            <AbertoCard data={extra.aberto} onIr={() => irParaSecao('g4', 'vendedores-funil')} />
-            <NegociacaoCard data={extra.negociacao} />
-          </div>
-        </Card>
-      )}
 
       {/* BANNER DE ALERTAS — só aparece se há algo crítico */}
       {etq && (etq.alertas.criativos_nao_fabricamos > 0 || etq.alertas.leads_orfaos > 0 || etq.alertas.vendedores_sem_orc > 0) && (
