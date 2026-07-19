@@ -247,7 +247,7 @@ function CollapsibleSection({ n, titulo, pergunta, open, onToggle, children }: {
         <h2 className="text-[14px] font-bold text-ink tracking-tight group-hover:text-accent transition-colors">{titulo}</h2>
         <span className="text-[11px] text-ink-faint truncate">— {pergunta}</span>
       </button>
-      {open && <div className="space-y-3 lg:space-y-5 mt-3 lg:mt-5">{children}</div>}
+      {open && <div className="bsb-rise-group space-y-3 lg:space-y-5 mt-3 lg:mt-5">{children}</div>}
     </div>
   )
 }
@@ -519,7 +519,7 @@ export function Dashboard() {
   }
 
   return (
-    <div className="p-3 lg:p-6 space-y-3 lg:space-y-5 max-w-[1700px]">
+    <div className="bsb-page p-3 lg:p-6 space-y-3 lg:space-y-5 max-w-[1700px]">
       {/* Header + filtros */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>

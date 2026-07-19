@@ -107,6 +107,35 @@
     0%, 100% { transform: scale(0.85); opacity: 0.6; }
     50%      { transform: scale(1.5); opacity: 0; }
   }
+
+  /* Entrada estilo Apple: cada bloco de topo do dashboard "sobe" e aparece
+     em cascata quando a tela carrega. Roda 1x no mount — como os blocos ficam
+     montados durante os refetches (placeholderData), NAO repete a cada 60s.
+     Abrir uma secao colapsada tambem dispara a entrada dos cards dela. */
+  @keyframes bsb-rise {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: none; }
+  }
+  .bsb-page > *,
+  .bsb-rise-group > * {
+    animation: bsb-rise 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  }
+  .bsb-page > *:nth-child(1)  { animation-delay: 0.00s; }
+  .bsb-page > *:nth-child(2)  { animation-delay: 0.05s; }
+  .bsb-page > *:nth-child(3)  { animation-delay: 0.10s; }
+  .bsb-page > *:nth-child(4)  { animation-delay: 0.15s; }
+  .bsb-page > *:nth-child(5)  { animation-delay: 0.20s; }
+  .bsb-page > *:nth-child(6)  { animation-delay: 0.25s; }
+  .bsb-page > *:nth-child(7)  { animation-delay: 0.30s; }
+  .bsb-page > *:nth-child(8)  { animation-delay: 0.35s; }
+  .bsb-page > *:nth-child(n+9) { animation-delay: 0.40s; }
+  .bsb-rise-group > *:nth-child(2) { animation-delay: 0.08s; }
+  .bsb-rise-group > *:nth-child(3) { animation-delay: 0.16s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bsb-page > *,
+    .bsb-rise-group > * { animation: none; }
+  }
 }
 
 /* Blocos com data-no-break sao tratados pelo algoritmo de slicing do
