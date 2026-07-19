@@ -41,6 +41,7 @@ export const FEATURE_CATALOG: Array<{
   { key: 'menu.admin_permissoes', label: 'Admin: Permissões', group: 'Menu' },
   { key: 'menu.admin_transportador_funcoes', label: 'Admin: Funções Transportador', group: 'Menu' },
   { key: 'menu.roadmap', label: 'Roadmap & Feedback', group: 'Menu' },
+  { key: 'menu.reunioes', label: 'Adm de Reunião', group: 'Menu' },
   { key: 'menu.due_diligence', label: 'Consulta (Due Diligence)', group: 'Menu' },
   { key: 'contacts.view_all', label: 'Ver TODOS os contatos (não só do próprio vendedor)', group: 'Ações' },
   { key: 'prospeccao.gestao', label: 'Prospecção: ver métricas e configurar o pool', group: 'Ações' },

@@ -51,6 +51,7 @@ const OrcamentosConversao = lazy(() => import('@/pages/OrcamentosConversao').the
 const OrcamentosSalvos = lazy(() => import('@/pages/OrcamentosSalvos').then(m => ({ default: m.OrcamentosSalvos })))
 const Roadmap = lazy(() => import('@/pages/Roadmap').then(m => ({ default: m.Roadmap })))
 const Avaliacoes = lazy(() => import('@/pages/Avaliacoes').then(m => ({ default: m.Avaliacoes })))
+const Reunioes = lazy(() => import('@/pages/Reunioes').then(m => ({ default: m.Reunioes })))
 const FreteCotacao = lazy(() => import('@/pages/FreteCotacao'))
 const FreteTransportadoras = lazy(() => import('@/pages/FreteTransportadoras'))
 const FreteHistorico = lazy(() => import('@/pages/FreteHistorico'))
@@ -344,6 +345,8 @@ function AppRoutes() {
         {/* Painel admin das avaliações de atendimento (página pública /avaliacao).
             Vendedor/visualizador são redirecionados pelos guards acima. */}
         <Route path="/avaliacoes" element={<Avaliacoes />} />
+        {/* Adm de Reunião — pauta + checklist de tarefas + resumo */}
+        <Route path="/reunioes" element={<Reunioes />} />
         {/* /funil = Kanban WhatsApp (espelho das etiquetas Wascript); o kanban
             manual antigo (status_vendedor) continua em /funil/manual */}
         <Route path="/funil" element={<FunilWhatsApp />} />
