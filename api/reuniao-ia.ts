@@ -107,8 +107,7 @@ Seja conciso. Se a transcrição estiver vazia, resuma a partir da pauta.`
       body: JSON.stringify({
         model: MODEL,
         messages: [{ role: 'user', content: prompt }],
-        temperature: 0.3,
-        max_tokens: 1200,
+        max_completion_tokens: 1200,
       }),
     })
     if (!gr.ok) return res.status(502).json({ error: 'llm', detail: (await gr.text()).slice(0, 400) })
