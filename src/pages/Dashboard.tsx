@@ -889,22 +889,24 @@ export function Dashboard() {
 
       {/* ════════ GRUPO 3 · ONDE INVESTIR (canônico de mídia) ════════ */}
       <CollapsibleSection n="3" titulo="Onde investir" pergunta="Pra onde vai (ou corta) a verba?" open={openSec.g3} onToggle={() => toggleSec('g3')}>
-      <Card id="criativo-veredito">
-        <CardHeader
-          title="🎯 Onde investir — por criativo"
-          subtitle="Escalar / pausar cada criativo. Decisão por qualidade do lead (conversão ~0 em tudo)."
-        />
-        <VereditoInvestimento criativos={data.porCriativo} etq={etq} real={orcVendaCriativo} />
-      </Card>
-      {data.porOrigem.length > 0 && (
-        <Card>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 lg:gap-5 items-start">
+        <Card id="criativo-veredito">
           <CardHeader
-            title="🎯 Onde investir — por origem (canal)"
-            subtitle="Meta / Google / Instagram… origens WhatsApp de vendedor individual excluídas."
+            title="🎯 Onde investir — por criativo"
+            subtitle="Escalar / pausar cada criativo. Decisão por qualidade do lead (conversão ~0 em tudo)."
           />
-          <VereditoOrigem origens={data.porOrigem} etq={etq} real={orcVendaOrigem} />
+          <VereditoInvestimento criativos={data.porCriativo} etq={etq} real={orcVendaCriativo} />
         </Card>
-      )}
+        {data.porOrigem.length > 0 && (
+          <Card>
+            <CardHeader
+              title="🎯 Onde investir — por origem (canal)"
+              subtitle="Meta / Google / Instagram… origens WhatsApp de vendedor individual excluídas."
+            />
+            <VereditoOrigem origens={data.porOrigem} etq={etq} real={orcVendaOrigem} />
+          </Card>
+        )}
+      </div>
       {motivosFonte && (motivosFonte.por_criativo.length > 0 || motivosFonte.por_origem.length > 0) && (
         <Card id="motivos-fonte">
           <CardHeader
