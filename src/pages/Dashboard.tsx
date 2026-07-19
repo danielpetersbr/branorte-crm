@@ -668,58 +668,6 @@ export function Dashboard() {
           ))}
         </div>
 
-        {/* MINI-GRÁFICOS — funil (onde vaza) · tendência (o detalhe abre nas seções) */}
-        <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
-          {/* Funil */}
-          <div className="rounded-lg border border-border/60 bg-surface p-3">
-            <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-2.5">Funil por etiqueta (WhatsApp)</div>
-            <div className="space-y-2">
-              {(funilEtiquetas.length ? funilEtiquetas : funilCanonico).map((e, i) => (
-                <div key={e.etapa}>
-                  <div className="flex items-baseline justify-between text-[11px] mb-0.5">
-                    <span className="text-ink-muted truncate pr-2">{e.etapa}</span>
-                    <span className="font-mono tabular-nums text-ink shrink-0">
-                      {fmtN(e.valor)}{i > 0 && <span className="text-ink-faint"> · {Math.round(e.pctTopo)}%</span>}
-                    </span>
-                  </div>
-                  <div className="h-2 rounded-full bg-surface-2 overflow-hidden">
-                    <div
-                      className="h-full rounded-full"
-                      style={{ width: `${Math.max(e.pctTopo, 2)}%`, background: i === 6 ? COLORS.accent : i === 5 ? 'hsl(280 65% 55%)' : COLORS.info }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Tendência */}
-          <div className="rounded-lg border border-border/60 bg-surface p-3">
-            <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-1.5">Leads por dia (30d)</div>
-            <div className="h-[132px]">
-              {data.leadsPorDia.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={data.leadsPorDia} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="gEss1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={COLORS.info} stopOpacity={0.4} /><stop offset="100%" stopColor={COLORS.info} stopOpacity={0.02} /></linearGradient>
-                      <linearGradient id="gEss2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={COLORS.accent} stopOpacity={0.5} /><stop offset="100%" stopColor={COLORS.accent} stopOpacity={0.02} /></linearGradient>
-                    </defs>
-                    <XAxis dataKey="dia" hide />
-                    <Tooltip
-                      contentStyle={{ background: 'hsl(var(--surface))', border: `1px solid ${COLORS.border}`, borderRadius: 6, fontSize: 11 }}
-                      formatter={((v: number, n: string) => [fmtN(v), n === 'total' ? 'Total' : 'Qualif.']) as never}
-                      labelFormatter={((l: string) => new Date(l + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })) as never}
-                    />
-                    <Area type="monotone" dataKey="total" stroke={COLORS.info} strokeWidth={2} fill="url(#gEss1)" />
-                    <Area type="monotone" dataKey="qualificados" stroke={COLORS.accent} strokeWidth={2} fill="url(#gEss2)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              ) : <div className="h-full grid place-items-center text-[11px] text-ink-faint">Sem dados</div>}
-            </div>
-          </div>
-
-        </div>
-
         {acoesTop.length > 0 && (
           <div className="mt-4 pt-3 border-t border-border/60">
             <span className="text-[11px] font-bold uppercase tracking-widest text-ink-faint">⚡ Ação do dia</span>
@@ -745,21 +693,67 @@ export function Dashboard() {
         )}
       </Card>
 
-      {/* ════════ GRÁFICOS DO DIA — logo abaixo do essencial (pedido do gerente) ════════ */}
-      {extra && (
-        <Card>
-          <div className="flex items-baseline justify-between mb-2 gap-2 flex-wrap">
-            <h2 className="text-[14px] font-bold text-ink tracking-tight">📊 Gráficos do dia</h2>
-            <span className="text-[11px] text-ink-faint">orçamentos · hoje, aberto e negociação</span>
+      {/* ════════ GRÁFICOS DO DIA — funil, tendências e operação juntos (até 3 na linha) ════════ */}
+      <Card>
+        <div className="flex items-baseline justify-between mb-3 gap-2 flex-wrap">
+          <h2 className="text-[14px] font-bold text-ink tracking-tight">📊 Gráficos do dia</h2>
+          <span className="text-[11px] text-ink-faint">funil · leads · orçamentos · atendimento · negociação</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 [&>*]:transition-shadow [&>*:hover]:shadow-md">
+          {/* Funil por etiqueta */}
+          <div className="rounded-lg border border-border/60 bg-surface p-3">
+            <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-2.5">Funil por etiqueta (WhatsApp)</div>
+            <div className="space-y-2">
+              {(funilEtiquetas.length ? funilEtiquetas : funilCanonico).map((e, i) => (
+                <div key={e.etapa}>
+                  <div className="flex items-baseline justify-between text-[11px] mb-0.5">
+                    <span className="text-ink-muted truncate pr-2">{e.etapa}</span>
+                    <span className="font-mono tabular-nums text-ink shrink-0">
+                      {fmtN(e.valor)}{i > 0 && <span className="text-ink-faint"> · {Math.round(e.pctTopo)}%</span>}
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full bg-surface-2 overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{ width: `${Math.max(e.pctTopo, 2)}%`, background: i === 6 ? COLORS.accent : i === 5 ? 'hsl(280 65% 55%)' : COLORS.info }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2.5">
-            <OrcamentosPorDiaChart data={extra.orcamentos_por_dia} />
-            <AtendimentosHojeCard data={extra.atendimentos} />
-            <AbertoCard data={extra.aberto} onIr={() => irParaSecao('g4', 'vendedores-funil')} />
-            <NegociacaoCard data={extra.negociacao} />
+
+          {/* Leads por dia */}
+          <div className="rounded-lg border border-border/60 bg-surface p-3">
+            <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-1.5">Leads por dia (30d)</div>
+            <div className="h-[132px]">
+              {data.leadsPorDia.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={data.leadsPorDia} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="gEss1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={COLORS.info} stopOpacity={0.4} /><stop offset="100%" stopColor={COLORS.info} stopOpacity={0.02} /></linearGradient>
+                      <linearGradient id="gEss2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={COLORS.accent} stopOpacity={0.5} /><stop offset="100%" stopColor={COLORS.accent} stopOpacity={0.02} /></linearGradient>
+                    </defs>
+                    <XAxis dataKey="dia" hide />
+                    <Tooltip
+                      contentStyle={{ background: 'hsl(var(--surface))', border: `1px solid ${COLORS.border}`, borderRadius: 6, fontSize: 11 }}
+                      formatter={((v: number, n: string) => [fmtN(v), n === 'total' ? 'Total' : 'Qualif.']) as never}
+                      labelFormatter={((l: string) => new Date(l + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })) as never}
+                    />
+                    <Area type="monotone" dataKey="total" stroke={COLORS.info} strokeWidth={2} fill="url(#gEss1)" />
+                    <Area type="monotone" dataKey="qualificados" stroke={COLORS.accent} strokeWidth={2} fill="url(#gEss2)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : <div className="h-full grid place-items-center text-[11px] text-ink-faint">Sem dados</div>}
+            </div>
           </div>
-        </Card>
-      )}
+
+          {extra && <OrcamentosPorDiaChart data={extra.orcamentos_por_dia} />}
+          {extra && <AtendimentosHojeCard data={extra.atendimentos} />}
+          {extra && <AbertoCard data={extra.aberto} onIr={() => irParaSecao('g4', 'vendedores-funil')} />}
+          {extra && <NegociacaoCard data={extra.negociacao} />}
+        </div>
+      </Card>
 
       {/* ════════ PROPOSTAS NO BUILDER — dinheiro na mesa, logo abaixo do essencial ════════ */}
       {orc && orc.geradas > 0 && (
