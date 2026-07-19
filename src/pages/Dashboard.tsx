@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, lazy, Suspense } from 'react'
+import { useEffect, useMemo, useState, useRef, lazy, Suspense } from 'react'
 import { Link } from 'react-router-dom'
 import { useDashboard, UF_NOMES, PAIS_SIGLAS, type DashboardPreset, type FunilEtapa, type SlaVendedor, type LeadEmRisco } from '@/hooks/useDashboard'
 import { DDD_TO_UF } from '@/lib/ddd-uf'
@@ -84,6 +84,33 @@ function fmtBRL(v: number): string {
   if (v >= 1_000_000) return 'R$ ' + (v / 1_000_000).toFixed(1).replace('.', ',') + 'M'
   if (v >= 1_000) return 'R$ ' + (v / 1_000).toFixed(0) + 'k'
   return 'R$ ' + v.toFixed(0)
+}
+
+// Count-up: anima 0 -> valor UMA vez, quando o KPI monta (easeOutCubic, ~0.6s).
+// Respeita prefers-reduced-motion. Mudancas posteriores de valor (filtro/refetch)
+// dao snap direto, sem recontar. O consumidor detecta o fim por (retorno === target)
+// e ai formata o valor exato — preservando decimais (ex: R$ 228.857,1).
+function useCountUp(target: number, durationMs = 620): number {
+  const prefersReduced = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  const [val, setVal] = useState(() => (prefersReduced ? target : 0))
+  const started = useRef(false)
+  useEffect(() => {
+    if (started.current) { setVal(target); return }
+    started.current = true
+    if (prefersReduced || !isFinite(target) || target === 0) { setVal(target); return }
+    let raf = 0, start = 0
+    const ease = (t: number) => 1 - Math.pow(1 - t, 3)
+    const step = (ts: number) => {
+      if (!start) start = ts
+      const p = Math.min(1, (ts - start) / durationMs)
+      if (p < 1) { setVal(target * ease(p)); raf = requestAnimationFrame(step) }
+      else setVal(target)
+    }
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target])
+  return val
 }
 
 // Placar por vendedor — vinculado AO VIVO ao Controle (mesmos dados da Corrida de Vendas de lá).
@@ -1122,6 +1149,11 @@ function KpiHero({ label, kpi, icon: Icon, color, sub, suffix, prefix, onClick, 
   const positivo = kpi.deltaPct > 0
   const sparkData = kpi.sparkline.map((v, i) => ({ i, v }))
   const gid = `spark-${label.replace(/\s+/g, '')}`
+  // Count-up nos KPIs numéricos (o de % fica estático — count-up em decimal fica feio).
+  const animVal = useCountUp(kpi.valor)
+  const numShown = suffix
+    ? kpi.valor.toString().replace('.', ',')
+    : (animVal === kpi.valor ? fmtN(kpi.valor) : fmtN(Math.round(animVal)))
   return (
     <div
       className={`bg-surface border border-border rounded-xl p-3 sm:p-5 transition-colors relative overflow-hidden ${onClick ? 'cursor-pointer hover:border-accent/60 hover:bg-accent-bg/20' : 'hover:border-border-strong'}`}
@@ -1133,7 +1165,7 @@ function KpiHero({ label, kpi, icon: Icon, color, sub, suffix, prefix, onClick, 
       </div>
       <p className="text-[26px] sm:text-[40px] leading-[1.05] font-semibold tracking-tight tabular-nums" style={{ color }}>
         {prefix && <span className="text-base sm:text-2xl font-medium mr-0.5">{prefix}</span>}
-        {suffix ? kpi.valor.toString().replace('.', ',') : fmtN(kpi.valor)}
+        {numShown}
         {suffix && <span className="text-base sm:text-xl font-medium ml-0.5">{suffix}</span>}
       </p>
       <div className="flex items-center justify-between mt-0.5 sm:mt-1.5">
