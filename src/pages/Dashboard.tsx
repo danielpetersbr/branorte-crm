@@ -942,31 +942,33 @@ export function Dashboard() {
           <HeatmapDiaHora heatmap={heatmap30d} />
         </Card>
       )}
-      <Card>
-        <CardHeader
-          title="Distribuição geográfica"
-          subtitle={`${fmtN(data.porUf.reduce((s, u) => s + u.total, 0))} leads · ${data.porUf.filter(u => u.isBrasil).length} estados BR · ${data.porUf.filter(u => !u.isBrasil).length} países`}
-        />
-        <DistribuicaoGeo items={data.porUf} />
-      </Card>
-      {orcPorUf.length > 0 && (
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 lg:gap-5">
         <Card>
           <CardHeader
-            title="Orçamentos por estado"
-            subtitle={`${fmtN(orcPorUf.reduce((s, u) => s + u.total, 0))} clientes com orçamento · onde estão os que já pediram proposta`}
+            title="Distribuição geográfica"
+            subtitle={`${fmtN(data.porUf.reduce((s, u) => s + u.total, 0))} leads · ${data.porUf.filter(u => u.isBrasil).length} estados BR · ${data.porUf.filter(u => !u.isBrasil).length} países`}
           />
-          <DistribuicaoGeo items={orcPorUf} />
+          <DistribuicaoGeo items={data.porUf} />
         </Card>
-      )}
-      {negItems.length > 0 && (
-        <Card>
-          <CardHeader
-            title="Onde está a negociação"
-            subtitle={`${fmtN(negItems.reduce((s, n) => s + n.total, 0))} leads em negociação ativa (follow-up + quente) · ${negItems.length} estados — onde o pipeline está esquentando agora`}
-          />
-          <NegociacaoGeo items={negItems} />
-        </Card>
-      )}
+        {orcPorUf.length > 0 && (
+          <Card>
+            <CardHeader
+              title="Orçamentos por estado"
+              subtitle={`${fmtN(orcPorUf.reduce((s, u) => s + u.total, 0))} clientes com orçamento · onde estão os que já pediram proposta`}
+            />
+            <DistribuicaoGeo items={orcPorUf} />
+          </Card>
+        )}
+        {negItems.length > 0 && (
+          <Card>
+            <CardHeader
+              title="Onde está a negociação"
+              subtitle={`${fmtN(negItems.reduce((s, n) => s + n.total, 0))} leads em negociação ativa (follow-up + quente) · ${negItems.length} estados — onde o pipeline está esquentando agora`}
+            />
+            <NegociacaoGeo items={negItems} />
+          </Card>
+        )}
+      </div>
       </CollapsibleSection>
     </div>
   )
