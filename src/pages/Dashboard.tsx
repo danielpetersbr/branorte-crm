@@ -96,7 +96,7 @@ function CorridaVendas({ corrida, metaVendedor }: { corrida: CorridaVendedor[]; 
       <div className="flex items-baseline justify-between gap-2 flex-wrap mb-3">
         <h2 className="text-[15px] font-bold text-ink tracking-tight">Corrida de vendas</h2>
         <a
-          href="https://controle.branorte.com/dashboard"
+          href="https://controle.branorte.com/controle-vendas"
           target="_blank"
           rel="noreferrer"
           className="text-[11px] text-ink-faint hover:text-accent tabular-nums"
@@ -917,8 +917,8 @@ export function Dashboard() {
 
       </CollapsibleSection>
 
-      {/* ════════ GRUPO 4 · OPERAÇÃO DO TIME ════════ */}
-      <CollapsibleSection n="4" titulo="Operação do time" pergunta="Quem eu cobro hoje e qual lead resgato?" open={openSec.g4} onToggle={() => toggleSec('g4')}>
+      {/* ════════ GRUPO 4 · POR VENDEDOR ════════ */}
+      <CollapsibleSection n="4" titulo="Por vendedor" pergunta="Quem está com o quê e qual lead resgatar?" open={openSec.g4} onToggle={() => toggleSec('g4')}>
       <Card id="vendedores">
         <CardHeader
           title="Painel por vendedor"
