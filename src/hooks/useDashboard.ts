@@ -30,7 +30,7 @@ export interface DashboardFilters {
 }
 
 // Nome dos estados BR + paises principais
-const UF_NOMES: Record<string, string> = {
+export const UF_NOMES: Record<string, string> = {
   AC: 'Acre',           AL: 'Alagoas',          AM: 'Amazonas',           AP: 'Amapá',
   BA: 'Bahia',          CE: 'Ceará',            DF: 'Distrito Federal',   ES: 'Espírito Santo',
   GO: 'Goiás',          MA: 'Maranhão',         MG: 'Minas Gerais',       MS: 'Mato Grosso do Sul',
@@ -44,7 +44,7 @@ const UF_NOMES: Record<string, string> = {
   MX: 'México',         DE: 'Alemanha',         FR: 'França',             IT: 'Itália',
   GB: 'Reino Unido',    INTL: 'Internacional',  SEM: 'Sem origem',
 }
-const PAIS_SIGLAS = new Set(['AR', 'PY', 'UY', 'CL', 'CO', 'BO', 'EC', 'VE', 'US', 'PT', 'MX', 'DE', 'FR', 'IT', 'GB', 'INTL'])
+export const PAIS_SIGLAS = new Set(['AR', 'PY', 'UY', 'CL', 'CO', 'BO', 'EC', 'VE', 'US', 'PT', 'MX', 'DE', 'FR', 'IT', 'GB', 'INTL'])
 
 interface RawRow {
   id: string

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, lazy, Suspense } from 'react'
 import { Link } from 'react-router-dom'
-import { useDashboard, type DashboardPreset, type FunilEtapa, type SlaVendedor, type LeadEmRisco } from '@/hooks/useDashboard'
+import { useDashboard, UF_NOMES, PAIS_SIGLAS, type DashboardPreset, type FunilEtapa, type SlaVendedor, type LeadEmRisco } from '@/hooks/useDashboard'
+import { DDD_TO_UF } from '@/lib/ddd-uf'
 import { useDashboardEtiquetas, useHeatmapSemanal, CATEGORIA_LABEL, type EtiquetaCategoria } from '@/hooks/useDashboardEtiquetas'
 import { useDashboardVendedorFunil, type VendedorFunilRow } from '@/hooks/useDashboardVendedorFunil'
 import { useDashboardExtra, type DashboardExtra } from '@/hooks/useDashboardExtra'
@@ -285,6 +286,7 @@ export function Dashboard() {
   const { data: funilUnion } = useFunilUnion(preset)
   const { data: funilEtq } = useFunilEtiquetas()
   const { data: ciclo } = useCicloVenda(preset)
+  const { data: orcDetalhe } = useDashboardOrcamentosDetalhe(preset, true)
   // Valor das propostas montadas no builder (orcamentos_gerados) — única fonte real de R$
   const { data: orc } = useOrcamentosResumo(preset)
   // Contagem REAL de orçamentos: leads do período com orçamento montado (match por
@@ -358,6 +360,23 @@ export function Dashboard() {
       perdidos: 0,
     }))
   }, [funilEtq])
+
+  // Orçamentos por estado — UF pelo DDD do telefone canônico do cliente (mesmo shape do mapa de leads).
+  const orcPorUf = useMemo(() => {
+    const byUf = new Map<string, number>()
+    for (const o of orcDetalhe ?? []) {
+      const uf = DDD_TO_UF[String(o.fone ?? '').slice(0, 2)] ?? 'INTL'
+      byUf.set(uf, (byUf.get(uf) ?? 0) + 1)
+    }
+    const total = [...byUf.values()].reduce((s, n) => s + n, 0) || 1
+    return [...byUf.entries()]
+      .map(([uf, n]) => ({
+        uf, nome: UF_NOMES[uf] ?? uf, total: n,
+        pct: Math.round((n / total) * 1000) / 10,
+        isBrasil: UF_NOMES[uf] !== undefined && uf !== 'INTL' && !PAIS_SIGLAS.has(uf),
+      }))
+      .sort((a, b) => b.total - a.total)
+  }, [orcDetalhe])
 
   // Cards de vendedor (3 fontes mescladas + veredito), computados uma vez e
   // usados pelo Resumo do gerente e pelo Painel por vendedor.
@@ -937,6 +956,15 @@ export function Dashboard() {
         />
         <DistribuicaoGeo items={data.porUf} />
       </Card>
+      {orcPorUf.length > 0 && (
+        <Card>
+          <CardHeader
+            title="Orçamentos por estado"
+            subtitle={`${fmtN(orcPorUf.reduce((s, u) => s + u.total, 0))} clientes com orçamento · onde estão os que já pediram proposta`}
+          />
+          <DistribuicaoGeo items={orcPorUf} />
+        </Card>
+      )}
       {negItems.length > 0 && (
         <Card>
           <CardHeader
