@@ -2215,6 +2215,12 @@ function NegociacaoCard({ data }: { data: DashboardExtra['negociacao'] }) {
         <span className="text-[11px] text-ink-faint">previsto</span>
       </div>
       <div className="text-[11px] text-ink-faint mt-0.5">soma dos orçamentos de quem está em follow up + lead quente</div>
+      {data.valor_followup > 0 && (
+        <div className="mt-2 rounded-md bg-warning/10 border border-warning/25 px-2.5 py-1.5 flex items-baseline justify-between gap-2">
+          <span className="text-[11px] text-ink-muted">📋 só em <span className="font-semibold text-warning">FOLLOW UP</span></span>
+          <span className="font-mono tabular-nums text-[14px] font-bold text-warning">{fmtBRL(data.valor_followup)} <span className="text-[10px] text-ink-faint font-normal">· {fmtN(data.com_orcamento_followup)} orç.</span></span>
+        </div>
+      )}
       <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
         <span className="text-ink"><span className="font-mono tabular-nums font-semibold">{fmtN(data.em_negociacao)}</span> <span className="text-ink-faint">em negociação</span></span>
         <span className="text-ink-faint">·</span>

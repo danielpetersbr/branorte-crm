@@ -8,7 +8,7 @@ export interface DashboardExtra {
   fechados_por_dia: { dia: string; total: number }[]   // não usado na UI (sinal poluído por sync)
   avaliacao: { media: number; total: number; por_nota: { nota: number; qtd: number }[] }
   aberto: { total: number; prospeccao: number; novo_lead: number; follow_up: number; lead_quente: number; em_negociacao: number }
-  negociacao: { follow_up: number; lead_quente: number; em_negociacao: number; com_orcamento: number; valor: number }
+  negociacao: { follow_up: number; lead_quente: number; em_negociacao: number; com_orcamento: number; valor: number; valor_followup: number; com_orcamento_followup: number }
   atendimentos: { hoje: number; ontem: number }
 }
 
@@ -31,7 +31,7 @@ export function useDashboardExtra() {
         fechados_por_dia: r.fechados_por_dia ?? [],
         avaliacao: { media: Number(av.media) || 0, total: Number(av.total) || 0, por_nota: (av.por_nota ?? []).map(p => ({ nota: Number(p.nota), qtd: Number(p.qtd) })) },
         aberto: r.aberto ?? { total: 0, prospeccao: 0, novo_lead: 0, follow_up: 0, lead_quente: 0, em_negociacao: 0 },
-        negociacao: r.negociacao ?? { follow_up: 0, lead_quente: 0, em_negociacao: 0, com_orcamento: 0, valor: 0 },
+        negociacao: r.negociacao ?? { follow_up: 0, lead_quente: 0, em_negociacao: 0, com_orcamento: 0, valor: 0, valor_followup: 0, com_orcamento_followup: 0 },
         atendimentos: r.atendimentos ?? { hoje: 0, ontem: 0 },
       }
     },
