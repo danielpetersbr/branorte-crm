@@ -855,11 +855,6 @@ export function Dashboard() {
       {/* Drill-down "de onde vem" (Orçamentos / Vendidos / Valor convertido) */}
       {drill && <DrillModal kind={drill} preset={preset} onClose={() => setDrill(null)} />}
 
-      {/* BANNER DE ALERTAS — só aparece se há algo crítico */}
-      {etq && (etq.alertas.criativos_nao_fabricamos > 0 || etq.alertas.leads_orfaos > 0 || etq.alertas.vendedores_sem_orc > 0) && (
-        <AlertasBanner etq={etq} />
-      )}
-
       {/* DECISÕES DO GERENTE — reforçar 🟢 + cobrar 🔴 num card só */}
       {(data.porOrigem.length > 0 || vendCards.length > 0) && (
         <DecisoesGerente porOrigem={data.porOrigem} cards={vendCards} p={positivo} />
@@ -875,7 +870,9 @@ export function Dashboard() {
           title="Funil por etiqueta (WhatsApp)"
           subtitle={`${fmtN(funilEtiquetas[0]?.valor ?? 0)} contatos com etiqueta · estágio atual pela etiqueta do WhatsApp (o mais avançado por telefone)`}
         />
-        <FunilHero etapas={funilEtiquetas.length ? funilEtiquetas : funilCanonico} />
+        {/* .slice(1) tira a linha "Entrou" (topo/100%) — o total já está no subtítulo.
+            O funil rebaseia visualmente em Prospecção; os % continuam sobre o total (pctTopo). */}
+        <FunilHero etapas={(funilEtiquetas.length ? funilEtiquetas : funilCanonico).slice(1)} />
       </Card>
       {etq && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
