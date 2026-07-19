@@ -337,16 +337,24 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
   return useQuery({
     queryKey: ['dashboard-data-v2', filters],
     queryFn: async (): Promise<DashboardData> => {
-      const viewRes = await supabaseAuditoria
-        .from('atendimentos_por_cliente')
-        .select(
-          'id, nome, telefone, responsavel, criativo_codigo, criativo_facebook, origem, motivo_contato, finalidade_fabrica, qual_animal, quantos_animais, quando_investir, tocou_botao_em, o_que_precisa, data, last_message_at, is_internal, chegou_no_vendedor, orcamento_enviado, orcamento_valor, status_real, status_vendedor, finished_at'
-        )
-        .eq('is_internal', false)
-        .order('data', { ascending: false, nullsFirst: false })
-        .limit(DASHBOARD_LIMIT)
-      if (viewRes.error) throw viewRes.error
-      const rows = (viewRes.data ?? []) as RawRow[]
+      // Read PAGINADO: a view tem ~8000 linhas; puxar tudo de uma vez (~5MB) faz o PostgREST
+      // dar 500 ao serializar sob pico de carga (frota + syncs). Em páginas de 2500 (~1.5MB)
+      // cada resposta é leve e sempre completa.
+      const PAGE = 2500
+      const SEL = 'id, nome, telefone, responsavel, criativo_codigo, criativo_facebook, origem, motivo_contato, finalidade_fabrica, qual_animal, quantos_animais, quando_investir, tocou_botao_em, o_que_precisa, data, last_message_at, is_internal, chegou_no_vendedor, orcamento_enviado, orcamento_valor, status_real, status_vendedor, finished_at'
+      const rows: RawRow[] = []
+      for (let from = 0; from < DASHBOARD_LIMIT; from += PAGE) {
+        const pageRes = await supabaseAuditoria
+          .from('atendimentos_por_cliente')
+          .select(SEL)
+          .eq('is_internal', false)
+          .order('data', { ascending: false, nullsFirst: false })
+          .range(from, from + PAGE - 1)
+        if (pageRes.error) throw pageRes.error
+        const chunk = (pageRes.data ?? []) as RawRow[]
+        rows.push(...chunk)
+        if (chunk.length < PAGE) break
+      }
 
       // "Dinheiro parado" = valor do ÚLTIMO orçamento de cada lead (NÃO a soma das revisões,
       // que infla: há telefone com 32 orçamentos → R$82M somado vs R$47M no último).
@@ -375,10 +383,10 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
     },
     staleTime: 120_000,
     refetchInterval: 180_000,  // read pesado (~5MB) — refetch a cada 3min p/ não somar carga ao polling da frota
-    // Resiliente a 500 pontual (view pesada estoura sob pico de polling das extensões).
-    // 6 tentativas com backoff ~1-8s atravessam a janela de pico até o banco acalmar.
-    retry: 6,
-    retryDelay: attempt => Math.min(1200 * 2 ** attempt, 8000),
+    // Resiliente a 500 pontual (PostgREST estoura ao serializar ~5MB sob pico de carga).
+    // 3 tentativas com backoff — sem amplificar carga demais quando o banco está saturado.
+    retry: 3,
+    retryDelay: attempt => Math.min(2000 * 2 ** attempt, 10000),
     placeholderData: prev => prev,
   })
 }
