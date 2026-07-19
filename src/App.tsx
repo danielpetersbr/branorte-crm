@@ -40,6 +40,7 @@ const AtividadeDiaria = lazy(() => import('@/pages/AtividadeDiaria').then(m => (
 const Projeto = lazy(() => import('@/pages/Projeto').then(m => ({ default: m.Projeto })))
 const Projeto3D = lazy(() => import('@/pages/Projeto3D').then(m => ({ default: m.Projeto3D })))
 const Viabilidade = lazy(() => import('@/pages/Viabilidade').then(m => ({ default: m.Viabilidade })))
+const Guia = lazy(() => import('@/pages/Guia').then(m => ({ default: m.Guia })))
 const AdminUsuarios = lazy(() => import('@/pages/AdminUsuarios').then(m => ({ default: m.AdminUsuarios })))
 const AdminPermissoes = lazy(() => import('@/pages/AdminPermissoes').then(m => ({ default: m.AdminPermissoes })))
 const AdminTransportadorFuncoes = lazy(() => import('@/pages/AdminTransportadorFuncoes'))
@@ -282,7 +283,7 @@ function AppRoutes() {
     // então o guard precisa deixar passar por URL/nav também (senão redireciona pra /atendimentos).
     const projeto3dOk = p.startsWith('/projeto-3d') && can('menu.projeto_3d')
     // Viabilidade da Ração: ferramenta de apoio à venda, liberada pra quem tem a permissão
-    const viabilidadeOk = p.startsWith('/viabilidade') && can('menu.viabilidade')
+    const viabilidadeOk = (p.startsWith('/viabilidade') || p.startsWith('/guia-')) && can('menu.viabilidade')
     // Roadmap & Feedback: vendedor VÊ o retorno dos feedbacks que enviou (#49)
     const roadmapOk = p.startsWith('/roadmap') && can('menu.roadmap')
     const allowed = freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || roadmapOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
@@ -359,6 +360,8 @@ function AppRoutes() {
         <Route path="/projeto" element={<Projeto />} />
         <Route path="/projeto-3d" element={<Projeto3D />} />
         <Route path="/viabilidade" element={<Viabilidade />} />
+        <Route path="/guia-animais" element={<Guia hash="animais" title="Guia de Animais" subtitle="Raças e criações de cada cliente — o que falar pro produtor" />} />
+        <Route path="/guia-materias" element={<Guia hash="materias" title="Matérias-primas da Ração" subtitle="Pra que serve cada ingrediente, quanto entra e o que muda por região" />} />
         <Route path="/perfil" element={<Perfil />} />
         {can('menu.disparos') && (
           <Route path="/disparos" element={<Disparos />} />

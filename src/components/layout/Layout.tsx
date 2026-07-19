@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, ChevronDown, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Package, Zap, BookOpen, Settings, TrendingUp, MessageSquarePlus, FilePlus2, Truck, History, Search, Wallet, MapPin, Star, Target, Boxes, Calculator, ClipboardList } from 'lucide-react'
+import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, ChevronDown, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Package, Zap, BookOpen, Settings, TrendingUp, MessageSquarePlus, FilePlus2, Truck, History, Search, Wallet, MapPin, Star, Target, Boxes, Calculator, ClipboardList, Beef, Wheat } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { cn } from '@/lib/utils'
@@ -109,6 +109,8 @@ const NAV_GROUPS: NavGroup[] = [
     id: 'estudo', label: 'Estudo', icon: Calculator,
     items: [
       { to: '/viabilidade', label: 'Viabilidade da Ração', icon: Calculator, permKey: 'menu.viabilidade' },
+      { to: '/guia-animais', label: 'Guia de Animais', icon: Beef, permKey: 'menu.viabilidade' },
+      { to: '/guia-materias', label: 'Matérias-primas', icon: Wheat, permKey: 'menu.viabilidade' },
     ],
   },
   {
