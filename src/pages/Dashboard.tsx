@@ -1656,7 +1656,6 @@ function DecisoesGerente({ porOrigem, cards, p }: {
     { v: fmtBRL(p.rMontado), l: 'em propostas montadas' },
     { v: fmtN(p.qualificou), l: 'leads qualificados' },
     { v: fmtN(p.propostas), l: 'propostas no período' },
-    { v: fmtN(p.totalVendido), l: 'leads marcados VENDIDO' },
   ]
   return (
     <div className="rounded-xl border border-border bg-surface p-3 lg:p-4">
@@ -1689,7 +1688,7 @@ function DecisoesGerente({ porOrigem, cards, p }: {
           </ul>
         </div>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+      <div className="grid grid-cols-3 gap-2 mt-3">
         {numeros.map(x => (
           <div key={x.l} className="rounded-md bg-surface-2/30 border border-border/30 px-2.5 py-2">
             <div className="text-[15px] font-bold tabular-nums text-ink">{x.v}</div>
