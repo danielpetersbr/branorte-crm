@@ -6,6 +6,8 @@ import { useDashboardVendedorFunil, type VendedorFunilRow } from '@/hooks/useDas
 import { useDashboardExtra, type DashboardExtra } from '@/hooks/useDashboardExtra'
 import { useVendasReais, type CorridaVendedor } from '@/hooks/useVendasReais'
 import { useFunilUnion } from '@/hooks/useFunilUnion'
+import { useFunilEtiquetas } from '@/hooks/useFunilEtiquetas'
+import { useCicloVenda, type CicloVenda as CicloVendaData } from '@/hooks/useCicloVenda'
 import { useDashboardOrcamentos, useDashboardVendas, useDashboardOrcVendaPorCriativo, useDashboardOrcVendaPorOrigem, useDashboardVendasDetalhe, useDashboardOrcamentosDetalhe, type OrcVendaAttr } from '@/hooks/useDashboardOrcamentos'
 import { useOrcamentosResumo, type OrcamentosResumo } from '@/hooks/useOrcamentosResumo'
 import { usePropostasStatus, CATS_ABERTO, type PropostasStatus, type PropCategoria } from '@/hooks/usePropostasStatus'
@@ -281,6 +283,8 @@ export function Dashboard() {
   // dos atendimentos, que NUNCA tem "vendido" → sempre R$ 0. Aqui vem o número de verdade.
   const { data: vendasReais } = useVendasReais()
   const { data: funilUnion } = useFunilUnion(preset)
+  const { data: funilEtq } = useFunilEtiquetas()
+  const { data: ciclo } = useCicloVenda(preset)
   // Valor das propostas montadas no builder (orcamentos_gerados) — única fonte real de R$
   const { data: orc } = useOrcamentosResumo(preset)
   // Contagem REAL de orçamentos: leads do período com orçamento montado (match por
@@ -337,6 +341,23 @@ export function Dashboard() {
       }
     })
   }, [data?.funil, etq, funilUnion, orcamentosReais, vendidosLead])
+
+  // Funil pelas ETIQUETAS REAIS do WhatsApp (Prospecção → ... → Vendido).
+  // DISTRIBUIÇÃO: cada telefone no seu estágio MAIS AVANÇADO (dedup por telefone).
+  // pctAnterior=100 / perdidos=0 de propósito: os estágios são um SNAPSHOT do estado
+  // atual (não marcos sequenciais), então não inventamos "perdidos" entre eles.
+  const funilEtiquetas = useMemo<FunilEtapa[]>(() => {
+    const rows = funilEtq ?? []
+    if (rows.length === 0) return []
+    const topo = rows.find(r => r.ord === 0)?.phones || rows[0].phones || 1
+    return rows.map(r => ({
+      etapa: r.stage,
+      valor: r.phones,
+      pctTopo: Math.min(100, (r.phones / topo) * 100),
+      pctAnterior: 100,
+      perdidos: 0,
+    }))
+  }, [funilEtq])
 
   // Cards de vendedor (3 fontes mescladas + veredito), computados uma vez e
   // usados pelo Resumo do gerente e pelo Painel por vendedor.
@@ -712,9 +733,9 @@ export function Dashboard() {
         <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
           {/* Funil */}
           <div className="rounded-lg border border-border/60 bg-surface p-3">
-            <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-2.5">Funil — onde vaza</div>
+            <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-2.5">Funil por etiqueta (WhatsApp)</div>
             <div className="space-y-2">
-              {funilCanonico.map((e, i) => (
+              {(funilEtiquetas.length ? funilEtiquetas : funilCanonico).map((e, i) => (
                 <div key={e.etapa}>
                   <div className="flex items-baseline justify-between text-[11px] mb-0.5">
                     <span className="text-ink-muted truncate pr-2">{e.etapa}</span>
@@ -725,7 +746,7 @@ export function Dashboard() {
                   <div className="h-2 rounded-full bg-surface-2 overflow-hidden">
                     <div
                       className="h-full rounded-full"
-                      style={{ width: `${Math.max(e.pctTopo, 2)}%`, background: i === 4 ? COLORS.accent : i === 3 ? 'hsl(280 65% 55%)' : COLORS.info }}
+                      style={{ width: `${Math.max(e.pctTopo, 2)}%`, background: i === 6 ? COLORS.accent : i === 5 ? 'hsl(280 65% 55%)' : COLORS.info }}
                     />
                   </div>
                 </div>
@@ -834,16 +855,16 @@ export function Dashboard() {
       <CollapsibleSection n="2" titulo="Funil" pergunta="Onde o lead morre?" open={openSec.g2} onToggle={() => toggleSec('g2')}>
       <Card>
         <CardHeader
-          title="Funil de qualificação"
-          subtitle={`${fmtN(funilCanonico[0]?.valor ?? data.totalLeads)} leads com telefone · IA qualifica · vendedor fecha via etiqueta WA`}
+          title="Funil por etiqueta (WhatsApp)"
+          subtitle={`${fmtN(funilEtiquetas[0]?.valor ?? 0)} contatos com etiqueta · estágio atual pela etiqueta do WhatsApp (o mais avançado por telefone)`}
         />
-        <FunilHero etapas={funilCanonico} />
+        <FunilHero etapas={funilEtiquetas.length ? funilEtiquetas : funilCanonico} />
       </Card>
       {etq && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <Card>
-            <CardHeader title="Ciclo de venda" subtitle="Mediana de tempo entre etapas" />
-            <CicloVenda etq={etq} />
+            <CardHeader title="Ciclo de venda" subtitle="Mediana de tempo entre etapas (timestamps reais)" />
+            <CicloVenda ciclo={ciclo} />
           </Card>
           <Card>
             <CardHeader title="Motivos de trava / perda" subtitle="Por que o lead não avança (etiquetas do vendedor)" />
@@ -2766,31 +2787,13 @@ function AlertasBanner({ etq }: { etq: NonNullable<ReturnType<typeof useDashboar
   )
 }
 
-function CicloVenda({ etq }: { etq: NonNullable<ReturnType<typeof useDashboardEtiquetas>['data']> }) {
+function CicloVenda({ ciclo }: { ciclo?: CicloVendaData }) {
+  if (!ciclo) return null
+  const MIN_N = 8   // corte de amostra: com menos casos a mediana não é confiável → "—"
   const stages = [
-    {
-      label: 'Lead chega → 1ª etiqueta',
-      value: etq.tempo_chegada_etiqueta_horas,
-      unit: 'h',
-      target: 4,
-      desc: 'SLA: vendedor deveria classificar em <4h',
-    },
-    {
-      label: 'Lead chega → ORÇAMENTO ENVIADO',
-      value: etq.tempo_lead_orcamento_dias,
-      unit: 'd',
-      target: 3,
-      desc: 'Meta: orçamento sai em até 3 dias',
-    },
-    {
-      label: 'ORÇAMENTO → VENDIDO',
-      value: etq.tempo_lead_vendido_dias != null && etq.tempo_lead_orcamento_dias != null
-        ? Math.max(0, Math.round((etq.tempo_lead_vendido_dias - etq.tempo_lead_orcamento_dias) * 10) / 10)
-        : null,
-      unit: 'd',
-      target: 7,
-      desc: 'Mediana de ciclo após o orçamento',
-    },
+    { label: 'Lead chega → 1ª etiqueta', n: ciclo.n_chegada, value: ciclo.n_chegada >= MIN_N ? ciclo.chegada_1a_etq_horas : null, unit: 'h', target: 4, desc: 'SLA: classificar em <4h' },
+    { label: 'Lead → orçamento enviado', n: ciclo.n_orcamento, value: ciclo.n_orcamento >= MIN_N ? ciclo.lead_orcamento_dias : null, unit: 'd', target: 3, desc: 'Data real do orçamento gerado' },
+    { label: 'Orçamento → vendido', n: ciclo.n_orc_vendido, value: ciclo.n_orc_vendido >= MIN_N ? ciclo.orcamento_vendido_dias : null, unit: 'd', target: 7, desc: 'Mesma coorte (orçou E vendeu)' },
   ]
   return (
     <div className="space-y-3">
@@ -2812,7 +2815,7 @@ function CicloVenda({ etq }: { etq: NonNullable<ReturnType<typeof useDashboardEt
                 <Clock className="h-3 w-3 text-ink-faint" />
                 <span className="font-medium">{s.label}</span>
               </div>
-              <p className="text-[10.5px] text-ink-faint mt-0.5">{s.desc}</p>
+              <p className="text-[10.5px] text-ink-faint mt-0.5">{s.desc}{s.n > 0 && ` · ${s.n} casos`}</p>
             </div>
             <div className="text-right shrink-0">
               <div className={`text-2xl font-bold tabular-nums leading-none ${overBudget ? 'text-danger' : 'text-success'}`}>

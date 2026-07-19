@@ -200,7 +200,7 @@ export function parseCustomRange(preset: DashboardPreset): { from: Date; to: Dat
   return { from: startOfDay(a), to: endOfDay(b) }
 }
 
-function rangeForPreset(preset: DashboardPreset, now: Date): DateRange | null {
+export function rangeForPreset(preset: DashboardPreset, now: Date): DateRange | null {
   if (!preset) return null
   const custom = parseCustomRange(preset)
   if (custom) return custom

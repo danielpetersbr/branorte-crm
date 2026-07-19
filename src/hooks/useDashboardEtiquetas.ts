@@ -56,7 +56,7 @@ export interface DashboardEtiquetas {
   }
 }
 
-function rangeFromPreset(preset: DashboardPreset): { from: Date; to: Date } {
+export function rangeFromPreset(preset: DashboardPreset): { from: Date; to: Date } {
   const _custom = parseCustomRange(preset)
   if (_custom) return _custom
   const now = new Date()
