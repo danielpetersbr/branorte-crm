@@ -673,30 +673,38 @@ export function Dashboard() {
       <Card>
         <div className="flex items-baseline justify-between mb-3 gap-2 flex-wrap">
           <h2 className="text-[14px] font-bold text-ink tracking-tight">📊 Gráficos do dia</h2>
-          <span className="text-[11px] text-ink-faint">funil · leads · orçamentos · atendimento · negociação</span>
+          <span className="text-[11px] text-ink-faint">propostas · leads · orçamentos · atendimento · negociação</span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 [&>*]:transition-shadow [&>*:hover]:shadow-md">
-          {/* Funil por etiqueta */}
+          {/* Propostas feitas no período — clientes distintos (sem repetir), segue o filtro */}
           <div className="rounded-lg border border-border/60 bg-surface p-3">
-            <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-2.5">Funil por etiqueta (WhatsApp)</div>
-            <div className="space-y-2">
-              {(funilEtiquetas.length ? funilEtiquetas : funilCanonico).map((e, i) => (
-                <div key={e.etapa}>
-                  <div className="flex items-baseline justify-between text-[11px] mb-0.5">
-                    <span className="text-ink-muted truncate pr-2">{e.etapa}</span>
-                    <span className="font-mono tabular-nums text-ink shrink-0">
-                      {fmtN(e.valor)}{i > 0 && <span className="text-ink-faint"> · {Math.round(e.pctTopo)}%</span>}
-                    </span>
+            <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-2">Propostas feitas{preset ? ` · ${periodoLabel}` : ''}</div>
+            {orc ? (
+              <>
+                <div className="flex items-end justify-between mb-1">
+                  <div>
+                    <div className="text-3xl font-mono tabular-nums text-ink leading-none">{fmtN(orc.geradas)}</div>
+                    <div className="text-[11px] text-ink-faint mt-1">clientes com proposta · sem repetir</div>
                   </div>
-                  <div className="h-2 rounded-full bg-surface-2 overflow-hidden">
-                    <div
-                      className="h-full rounded-full"
-                      style={{ width: `${Math.max(e.pctTopo, 2)}%`, background: i === 6 ? COLORS.accent : i === 5 ? 'hsl(280 65% 55%)' : COLORS.info }}
-                    />
+                  <div className="text-right">
+                    <div className="text-sm font-mono tabular-nums text-ink-muted leading-none">{fmtN(orc.propostasBrutas)}</div>
+                    <div className="text-[11px] text-ink-faint mt-0.5">c/ re-cotação</div>
                   </div>
                 </div>
-              ))}
-            </div>
+                <div className="mt-3 pt-2.5 border-t border-border/50 flex items-end justify-between">
+                  <div>
+                    <div className="text-[15px] font-bold tabular-nums text-accent leading-none">{fmtBRL(orc.valorTotalBRL)}</div>
+                    <div className="text-[10.5px] text-ink-faint mt-0.5">em propostas</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[13px] font-mono tabular-nums text-ink-muted leading-none">{fmtBRL(orc.ticketMedioBRL)}</div>
+                    <div className="text-[10.5px] text-ink-faint mt-0.5">ticket médio</div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="h-[120px] grid place-items-center text-[11px] text-ink-faint">Sem dados no período</div>
+            )}
           </div>
 
           {/* Leads por dia */}
