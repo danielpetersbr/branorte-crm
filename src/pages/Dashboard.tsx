@@ -627,6 +627,108 @@ export function Dashboard() {
         </div>
       </div>
 
+      {/* ════════ O ESSENCIAL — glance de 5 segundos, no TOPO da página ════════ */}
+      <Card className="border-accent/25 bg-accent-bg/30">
+        <div className="flex items-baseline justify-between mb-3 gap-2 flex-wrap">
+          <h2 className="text-[15px] font-bold text-ink tracking-tight">
+            O essencial{preset && <span className="text-accent"> · {periodoLabel}</span>}
+          </h2>
+          <span className="text-[11px] text-ink-faint">o que importa agora — abra as seções abaixo pro detalhe</span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
+          {heroKpis.map(k => (
+            <KpiHero key={k.label} {...k} showDelta={showDelta} />
+          ))}
+        </div>
+
+        {/* MINI-GRÁFICOS — funil (onde vaza) · tendência (o detalhe abre nas seções) */}
+        <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {/* Funil */}
+          <div className="rounded-lg border border-border/60 bg-surface p-3">
+            <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-2.5">Funil por etiqueta (WhatsApp)</div>
+            <div className="space-y-2">
+              {(funilEtiquetas.length ? funilEtiquetas : funilCanonico).map((e, i) => (
+                <div key={e.etapa}>
+                  <div className="flex items-baseline justify-between text-[11px] mb-0.5">
+                    <span className="text-ink-muted truncate pr-2">{e.etapa}</span>
+                    <span className="font-mono tabular-nums text-ink shrink-0">
+                      {fmtN(e.valor)}{i > 0 && <span className="text-ink-faint"> · {Math.round(e.pctTopo)}%</span>}
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full bg-surface-2 overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{ width: `${Math.max(e.pctTopo, 2)}%`, background: i === 6 ? COLORS.accent : i === 5 ? 'hsl(280 65% 55%)' : COLORS.info }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Tendência */}
+          <div className="rounded-lg border border-border/60 bg-surface p-3">
+            <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-1.5">Leads por dia (30d)</div>
+            <div className="h-[132px]">
+              {data.leadsPorDia.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={data.leadsPorDia} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="gEss1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={COLORS.info} stopOpacity={0.4} /><stop offset="100%" stopColor={COLORS.info} stopOpacity={0.02} /></linearGradient>
+                      <linearGradient id="gEss2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={COLORS.accent} stopOpacity={0.5} /><stop offset="100%" stopColor={COLORS.accent} stopOpacity={0.02} /></linearGradient>
+                    </defs>
+                    <XAxis dataKey="dia" hide />
+                    <Tooltip
+                      contentStyle={{ background: 'hsl(var(--surface))', border: `1px solid ${COLORS.border}`, borderRadius: 6, fontSize: 11 }}
+                      formatter={((v: number, n: string) => [fmtN(v), n === 'total' ? 'Total' : 'Qualif.']) as never}
+                      labelFormatter={((l: string) => new Date(l + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })) as never}
+                    />
+                    <Area type="monotone" dataKey="total" stroke={COLORS.info} strokeWidth={2} fill="url(#gEss1)" />
+                    <Area type="monotone" dataKey="qualificados" stroke={COLORS.accent} strokeWidth={2} fill="url(#gEss2)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : <div className="h-full grid place-items-center text-[11px] text-ink-faint">Sem dados</div>}
+            </div>
+          </div>
+
+        </div>
+
+        {acoesTop.length > 0 && (
+          <div className="mt-4 pt-3 border-t border-border/60">
+            <span className="text-[11px] font-bold uppercase tracking-widest text-ink-faint">⚡ Ação do dia</span>
+            <ul className="mt-2 space-y-1.5">
+              {acoesTop.map((a, i) => {
+                const dot = a.sev === 'critica' ? 'bg-danger' : a.sev === 'alta' ? 'bg-warning' : 'bg-info'
+                return (
+                  <li key={i}>
+                    <button
+                      type="button"
+                      onClick={() => irParaSecao(a.key, a.anchor)}
+                      className={`w-full flex items-start gap-2 text-left text-[13px] group transition-colors ${i === 0 ? 'font-semibold text-ink' : 'text-ink-muted'} hover:text-accent`}
+                    >
+                      <span className={`mt-[7px] h-1.5 w-1.5 rounded-full shrink-0 ${dot}`} />
+                      <span className="flex-1">{a.texto}</span>
+                      <ChevronRight className="h-3.5 w-3.5 mt-0.5 text-ink-faint group-hover:text-accent group-hover:translate-x-0.5 transition-all shrink-0" />
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )}
+      </Card>
+
+      {/* ════════ PROPOSTAS NO BUILDER — dinheiro na mesa, logo abaixo do essencial ════════ */}
+      {orc && orc.geradas > 0 && (
+        <Card>
+          <CardHeader
+            title="Propostas no builder (R$)"
+            subtitle="Valor montado pelos vendedores no sistema de orçamento — NÃO confundir com a etiqueta ORÇAMENTO do WhatsApp (KPI acima), nem com venda fechada (vive em Controle)."
+          />
+          <PropostasResumoView orc={orc} periodoLabel={periodoLabel} />
+        </Card>
+      )}
+
       {/* ════════ META DO MÊS — a pergunta nº1 do dono: "bato a meta?" ════════ */}
       {data?.forecast && (() => {
         const f0 = data.forecast
@@ -734,97 +836,6 @@ export function Dashboard() {
       {/* Drill-down "de onde vem" (Orçamentos / Vendidos / Valor convertido) */}
       {drill && <DrillModal kind={drill} preset={preset} onClose={() => setDrill(null)} />}
 
-      {/* ════════ O ESSENCIAL — glance de 5 segundos, no topo da página ════════ */}
-      <Card className="border-accent/25 bg-accent-bg/30">
-        <div className="flex items-baseline justify-between mb-3 gap-2 flex-wrap">
-          <h2 className="text-[15px] font-bold text-ink tracking-tight">
-            O essencial{preset && <span className="text-accent"> · {periodoLabel}</span>}
-          </h2>
-          <span className="text-[11px] text-ink-faint">o que importa agora — abra as seções abaixo pro detalhe</span>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
-          {heroKpis.map(k => (
-            <KpiHero key={k.label} {...k} showDelta={showDelta} />
-          ))}
-        </div>
-
-        {/* MINI-GRÁFICOS — funil (onde vaza) · tendência (o detalhe abre nas seções) */}
-        <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
-          {/* Funil */}
-          <div className="rounded-lg border border-border/60 bg-surface p-3">
-            <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-2.5">Funil por etiqueta (WhatsApp)</div>
-            <div className="space-y-2">
-              {(funilEtiquetas.length ? funilEtiquetas : funilCanonico).map((e, i) => (
-                <div key={e.etapa}>
-                  <div className="flex items-baseline justify-between text-[11px] mb-0.5">
-                    <span className="text-ink-muted truncate pr-2">{e.etapa}</span>
-                    <span className="font-mono tabular-nums text-ink shrink-0">
-                      {fmtN(e.valor)}{i > 0 && <span className="text-ink-faint"> · {Math.round(e.pctTopo)}%</span>}
-                    </span>
-                  </div>
-                  <div className="h-2 rounded-full bg-surface-2 overflow-hidden">
-                    <div
-                      className="h-full rounded-full"
-                      style={{ width: `${Math.max(e.pctTopo, 2)}%`, background: i === 6 ? COLORS.accent : i === 5 ? 'hsl(280 65% 55%)' : COLORS.info }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Tendência */}
-          <div className="rounded-lg border border-border/60 bg-surface p-3">
-            <div className="text-[11px] font-bold uppercase tracking-widest text-ink-faint mb-1.5">Leads por dia (30d)</div>
-            <div className="h-[132px]">
-              {data.leadsPorDia.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={data.leadsPorDia} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="gEss1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={COLORS.info} stopOpacity={0.4} /><stop offset="100%" stopColor={COLORS.info} stopOpacity={0.02} /></linearGradient>
-                      <linearGradient id="gEss2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={COLORS.accent} stopOpacity={0.5} /><stop offset="100%" stopColor={COLORS.accent} stopOpacity={0.02} /></linearGradient>
-                    </defs>
-                    <XAxis dataKey="dia" hide />
-                    <Tooltip
-                      contentStyle={{ background: 'hsl(var(--surface))', border: `1px solid ${COLORS.border}`, borderRadius: 6, fontSize: 11 }}
-                      formatter={((v: number, n: string) => [fmtN(v), n === 'total' ? 'Total' : 'Qualif.']) as never}
-                      labelFormatter={((l: string) => new Date(l + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })) as never}
-                    />
-                    <Area type="monotone" dataKey="total" stroke={COLORS.info} strokeWidth={2} fill="url(#gEss1)" />
-                    <Area type="monotone" dataKey="qualificados" stroke={COLORS.accent} strokeWidth={2} fill="url(#gEss2)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              ) : <div className="h-full grid place-items-center text-[11px] text-ink-faint">Sem dados</div>}
-            </div>
-          </div>
-
-        </div>
-
-        {acoesTop.length > 0 && (
-          <div className="mt-4 pt-3 border-t border-border/60">
-            <span className="text-[11px] font-bold uppercase tracking-widest text-ink-faint">⚡ Ação do dia</span>
-            <ul className="mt-2 space-y-1.5">
-              {acoesTop.map((a, i) => {
-                const dot = a.sev === 'critica' ? 'bg-danger' : a.sev === 'alta' ? 'bg-warning' : 'bg-info'
-                return (
-                  <li key={i}>
-                    <button
-                      type="button"
-                      onClick={() => irParaSecao(a.key, a.anchor)}
-                      className={`w-full flex items-start gap-2 text-left text-[13px] group transition-colors ${i === 0 ? 'font-semibold text-ink' : 'text-ink-muted'} hover:text-accent`}
-                    >
-                      <span className={`mt-[7px] h-1.5 w-1.5 rounded-full shrink-0 ${dot}`} />
-                      <span className="flex-1">{a.texto}</span>
-                      <ChevronRight className="h-3.5 w-3.5 mt-0.5 text-ink-faint group-hover:text-accent group-hover:translate-x-0.5 transition-all shrink-0" />
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-          </div>
-        )}
-      </Card>
-
       {/* ════════ GRÁFICOS DO DIA — no início da página (pedido do gerente) ════════ */}
       {extra && (
         <Card>
@@ -853,22 +864,6 @@ export function Dashboard() {
 
       {/* RESUMO DO DIA POR VENDEDOR — números de HOJE ao vivo (mesma fonte das mesas do /disparos) */}
       <ResumoDiaVendedores preset={preset} periodoLabel={periodoLabel} />
-
-      {/* ════════ GRUPO 1 · VISÃO GERAL ════════ */}
-      <CollapsibleSection n="1" titulo="Propostas & dinheiro na mesa" pergunta="Quanto tem montado e em que estágio" open={openSec.g1} onToggle={() => toggleSec('g1')}>
-
-      {/* DINHEIRO — valor das propostas montadas no período (único R$ real no fluxo de lead) */}
-      {orc && orc.geradas > 0 && (
-        <Card>
-          <CardHeader
-            title="Propostas no builder (R$)"
-            subtitle="Valor montado pelos vendedores no sistema de orçamento — NÃO confundir com a etiqueta ORÇAMENTO do WhatsApp (KPI acima), nem com venda fechada (vive em Controle)."
-          />
-          <PropostasResumoView orc={orc} periodoLabel={periodoLabel} />
-        </Card>
-      )}
-
-      </CollapsibleSection>
 
       {/* ════════ GRUPO 2 · FUNIL ════════ */}
       <CollapsibleSection n="2" titulo="Funil" pergunta="Onde o lead morre?" open={openSec.g2} onToggle={() => toggleSec('g2')}>
