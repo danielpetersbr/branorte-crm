@@ -1485,6 +1485,13 @@ function MotivosPorFonteView({ data }: { data: { por_criativo: MotivoFonte[]; po
   const idDe = (it: MotivoFonte) => fonte === 'criativo' ? (it.codigo || it.nome || '?') : (it.origem || '?')
   const labelDe = (it: MotivoFonte) => fonte === 'criativo' ? (it.nome || it.codigo || '—') : (it.origem || '—')
 
+  // Donut ao lado: proporção do motivo selecionado entre as fontes (top 6 + "outros").
+  const DONUT_COLORS = ['hsl(0 72% 55%)', 'hsl(22 82% 55%)', 'hsl(40 90% 52%)', 'hsl(280 60% 58%)', 'hsl(217 74% 58%)', 'hsl(160 45% 45%)']
+  const totalMotivo = ranked.reduce((s, r) => s + r.n, 0)
+  const donutTop = ranked.slice(0, 6).map((r, i) => ({ nome: labelDe(r.it), value: r.n, cor: DONUT_COLORS[i % DONUT_COLORS.length] }))
+  const restoN = ranked.slice(6).reduce((s, r) => s + r.n, 0)
+  const donutData = restoN > 0 ? [...donutTop, { nome: 'outros', value: restoN, cor: 'hsl(240 5% 42%)' }] : donutTop
+
   return (
     <div className="space-y-3">
       {/* Controles: fonte + motivo + ordem */}
@@ -1513,6 +1520,7 @@ function MotivosPorFonteView({ data }: { data: { por_criativo: MotivoFonte[]; po
       {ranked.length === 0 ? (
         <p className="text-[12px] text-ink-faint">Nenhum{fonte === 'criativo' ? ' criativo' : 'a origem'} com "{motivoLabel}" no período.</p>
       ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_230px] gap-4 items-start">
         <div className="space-y-1.5">
           {ranked.map((r, i) => {
             const cod = r.it.codigo
@@ -1535,6 +1543,37 @@ function MotivosPorFonteView({ data }: { data: { por_criativo: MotivoFonte[]; po
               </div>
             )
           })}
+        </div>
+        {/* Donut ao lado — proporção do motivo entre as fontes (top 6 + outros) */}
+        <div className="rounded-lg border border-border/60 bg-surface-2/30 p-3">
+          <div className="text-[10px] uppercase tracking-widest text-ink-faint mb-1 text-center truncate" title={`${motivoLabel} · por ${fonte}`}>{motivoLabel} · por {fonte}</div>
+          <div className="relative h-[170px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={donutData} dataKey="value" nameKey="nome" cx="50%" cy="50%" innerRadius={44} outerRadius={68} paddingAngle={2} stroke="none">
+                  {donutData.map((d, i) => <Cell key={i} fill={d.cor} />)}
+                </Pie>
+                <Tooltip
+                  contentStyle={{ background: 'hsl(var(--surface))', border: `1px solid ${COLORS.border}`, borderRadius: 6, fontSize: 11 }}
+                  formatter={((v: number, n: string) => [`${fmtN(v)} · ${totalMotivo > 0 ? Math.round((v / totalMotivo) * 100) : 0}%`, n]) as never}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <span className="text-[22px] font-bold text-ink tabular-nums leading-none">{fmtN(totalMotivo)}</span>
+              <span className="text-[9px] text-ink-faint uppercase tracking-wide mt-0.5">total</span>
+            </div>
+          </div>
+          <div className="mt-2 space-y-0.5">
+            {donutData.map((d, i) => (
+              <div key={i} className="flex items-center gap-1.5 text-[10px]">
+                <span className="h-2 w-2 rounded-sm shrink-0" style={{ background: d.cor }} />
+                <span className="truncate text-ink-muted flex-1" title={d.nome}>{d.nome}</span>
+                <span className="tabular-nums text-ink-faint shrink-0">{d.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
         </div>
       )}
       <p className="text-[10px] text-ink-faint pt-1">
