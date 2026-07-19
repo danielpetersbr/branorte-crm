@@ -92,10 +92,16 @@ function Gravador({ reuniaoId, onAdd }: { reuniaoId: string; onAdd: (g: Gravacao
       setErr('Seu navegador não suporta gravação.'); return
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+      })
       streamRef.current = stream
       const mime = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : ''
-      const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+      // 32 kbps mono: voz nítida e ~4x mais leve que o padrão (~128kbps) → cabe
+      // ~1h45 no limite de 25 MB do Whisper (antes o padrão só dava ~25 min).
+      const mrOpts: MediaRecorderOptions = { audioBitsPerSecond: 32000 }
+      if (mime) mrOpts.mimeType = mime
+      const mr = new MediaRecorder(stream, mrOpts)
       chunksRef.current = []
       mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
       mr.onstop = () => { void finalize() }
@@ -198,8 +204,8 @@ export function Reunioes() {
 }
 
 function ReuniaoCard({ r, onAbrir }: { r: Reuniao; onAbrir: () => void }) {
-  const feitos = r.pauta.filter(p => p.feito).length
-  const total = r.pauta.length
+  const feitos = r.tarefas.filter(p => p.feito).length
+  const total = r.tarefas.length
   const pct = total > 0 ? (feitos / total) * 100 : 0
   const S = STATUS_META[r.status]
   return (
@@ -230,30 +236,82 @@ function ReuniaoCard({ r, onAbrir }: { r: Reuniao; onAbrir: () => void }) {
   )
 }
 
+// Lista com checkbox reutilizável — serve tanto pra Pauta (tópicos) quanto
+// pra Tarefas (ações + responsável). Gerencia seu próprio input de "adicionar".
+function ChecklistSection({ titulo, sub, icon: Icon, iconCls, doneCls, items, onChange, showResp, placeholder, emptyHint }: {
+  titulo: string; sub: string; icon: typeof ClipboardList; iconCls: string; doneCls: string
+  items: PautaItem[]; onChange: (items: PautaItem[]) => void; showResp: boolean; placeholder: string; emptyHint: string
+}) {
+  const [novo, setNovo] = useState('')
+  const feitos = items.filter(i => i.feito).length
+  const add = () => { const t = novo.trim(); if (!t) return; onChange([...items, { id: uid(), texto: t, feito: false }]); setNovo('') }
+  const toggle = (id: string) => onChange(items.map(p => p.id === id ? { ...p, feito: !p.feito } : p))
+  const editTexto = (id: string, texto: string) => onChange(items.map(p => p.id === id ? { ...p, texto } : p))
+  const editResp = (id: string, responsavel: string) => onChange(items.map(p => p.id === id ? { ...p, responsavel: responsavel || undefined } : p))
+  const remove = (id: string) => onChange(items.filter(p => p.id !== id))
+  return (
+    <div className="rounded-xl border border-border bg-surface p-4 mb-3">
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <h2 className="text-[13px] font-bold text-ink flex items-center gap-1.5">
+          <Icon className={`h-4 w-4 ${iconCls}`} /> {titulo}
+          <span className="text-[11px] font-normal text-ink-faint">— {sub}</span>
+        </h2>
+        {items.length > 0 && <span className="text-[11px] text-ink-faint tabular-nums">{feitos}/{items.length}</span>}
+      </div>
+      <div className="space-y-1.5">
+        {items.map(item => (
+          <div key={item.id} className="group flex items-center gap-2 rounded-lg border border-border/60 bg-surface-2/30 px-2.5 py-2 hover:border-border transition-colors">
+            <button onClick={() => toggle(item.id)} className="shrink-0" title={item.feito ? 'Desmarcar' : 'Marcar'}>
+              {item.feito
+                ? <CheckCircle2 className={`h-[18px] w-[18px] ${doneCls}`} />
+                : <Circle className="h-[18px] w-[18px] text-ink-faint hover:text-accent transition-colors" />}
+            </button>
+            <input
+              defaultValue={item.texto}
+              onBlur={e => { const v = e.target.value.trim(); if (v && v !== item.texto) editTexto(item.id, v) }}
+              className={`flex-1 bg-transparent text-[13px] outline-none min-w-0 ${item.feito ? 'line-through text-ink-faint' : 'text-ink'}`}
+            />
+            {showResp && (
+              <input
+                defaultValue={item.responsavel ?? ''}
+                onBlur={e => { const v = e.target.value.trim(); if (v !== (item.responsavel ?? '')) editResp(item.id, v) }}
+                placeholder="quem?"
+                className="w-20 shrink-0 bg-surface border border-border/60 rounded px-1.5 py-0.5 text-[11px] text-ink-muted outline-none focus:border-accent placeholder:text-ink-faint/60"
+              />
+            )}
+            <button onClick={() => remove(item.id)} className="shrink-0 text-ink-faint/50 hover:text-danger opacity-0 group-hover:opacity-100 transition-all" title="Remover">
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ))}
+        {items.length === 0 && <p className="text-[11px] text-ink-faint px-1 py-1">{emptyHint}</p>}
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <Plus className="h-4 w-4 text-ink-faint shrink-0" />
+        <input
+          value={novo}
+          onChange={e => setNovo(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') add() }}
+          placeholder={placeholder}
+          className="flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-faint"
+        />
+        {novo.trim() && <button onClick={add} className="shrink-0 h-7 px-2.5 rounded-md bg-accent text-white text-[12px] font-semibold">Add</button>}
+      </div>
+    </div>
+  )
+}
+
 function Editor({ reuniao, onVoltar }: { reuniao: Reuniao; onVoltar: () => void }) {
   const atualizar = useAtualizarReuniao()
   const excluir = useExcluirReuniao()
-  const [novoItem, setNovoItem] = useState('')
   const [confirmDel, setConfirmDel] = useState(false)
   const [resumoLocal, setResumoLocal] = useState(reuniao.resumo)
   const [transcrevendo, setTranscrevendo] = useState<string | null>(null)
   const [resumindo, setResumindo] = useState(false)
   const [iaErr, setIaErr] = useState<string | null>(null)
 
-  const patch = (p: Partial<Pick<Reuniao, 'titulo' | 'data_reuniao' | 'status' | 'pauta' | 'resumo'>>) =>
+  const patch = (p: Partial<Pick<Reuniao, 'titulo' | 'data_reuniao' | 'status' | 'pauta' | 'tarefas' | 'resumo' | 'gravacoes'>>) =>
     atualizar.mutate({ id: reuniao.id, ...p })
-
-  const savePauta = (nova: PautaItem[]) => patch({ pauta: nova })
-  const addItem = () => {
-    const t = novoItem.trim()
-    if (!t) return
-    savePauta([...reuniao.pauta, { id: uid(), texto: t, feito: false }])
-    setNovoItem('')
-  }
-  const toggle = (id: string) => savePauta(reuniao.pauta.map(p => p.id === id ? { ...p, feito: !p.feito } : p))
-  const editTexto = (id: string, texto: string) => savePauta(reuniao.pauta.map(p => p.id === id ? { ...p, texto } : p))
-  const editResp = (id: string, responsavel: string) => savePauta(reuniao.pauta.map(p => p.id === id ? { ...p, responsavel: responsavel || undefined } : p))
-  const remove = (id: string) => savePauta(reuniao.pauta.filter(p => p.id !== id))
 
   const addGravacao = (g: Gravacao) => patch({ gravacoes: [...reuniao.gravacoes, g] })
   const removeGravacao = (g: Gravacao) => {
@@ -274,14 +332,11 @@ function Editor({ reuniao, onVoltar }: { reuniao: Reuniao; onVoltar: () => void 
     setIaErr(null); setResumindo(true)
     try {
       const transcricoes = reuniao.gravacoes.map(g => g.transcricao).filter(Boolean) as string[]
-      const { resumo } = await callReuniaoIA({ action: 'resumo', transcricoes, pauta: reuniao.pauta, titulo: reuniao.titulo }) as { resumo: string }
+      const { resumo } = await callReuniaoIA({ action: 'resumo', transcricoes, pauta: reuniao.pauta, tarefas: reuniao.tarefas, titulo: reuniao.titulo }) as { resumo: string }
       if (resumo) { setResumoLocal(resumo); patch({ resumo }) }
     } catch (e) { setIaErr('Resumo falhou: ' + (e as Error).message) }
     finally { setResumindo(false) }
   }
-
-  const feitos = reuniao.pauta.filter(p => p.feito).length
-  const total = reuniao.pauta.length
 
   return (
     <div>
@@ -327,54 +382,25 @@ function Editor({ reuniao, onVoltar }: { reuniao: Reuniao; onVoltar: () => void 
         </label>
       </div>
 
-      {/* Pauta / tarefas */}
-      <div className="rounded-xl border border-border bg-surface p-4 mb-3">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-[13px] font-bold text-ink flex items-center gap-1.5"><ClipboardList className="h-4 w-4 text-accent" /> Pauta &amp; tarefas</h2>
-          {total > 0 && <span className="text-[11px] text-ink-faint tabular-nums">{feitos}/{total} feitas</span>}
-        </div>
+      {/* PAUTA — o que discutir (preparado antes) */}
+      <ChecklistSection
+        titulo="Pauta" sub="o que discutir (prepare antes)"
+        icon={ClipboardList} iconCls="text-accent" doneCls="text-accent"
+        items={reuniao.pauta} onChange={p => patch({ pauta: p })}
+        showResp={false}
+        placeholder="Adicionar tópico da pauta e Enter…"
+        emptyHint="Liste aqui os assuntos que quer tratar na reunião."
+      />
 
-        <div className="space-y-1.5">
-          {reuniao.pauta.map(item => (
-            <div key={item.id} className="group flex items-center gap-2 rounded-lg border border-border/60 bg-surface-2/30 px-2.5 py-2 hover:border-border transition-colors">
-              <button onClick={() => toggle(item.id)} className="shrink-0" title={item.feito ? 'Desmarcar' : 'Marcar como feita'}>
-                {item.feito
-                  ? <CheckCircle2 className="h-[18px] w-[18px] text-success" />
-                  : <Circle className="h-[18px] w-[18px] text-ink-faint hover:text-accent transition-colors" />}
-              </button>
-              <input
-                defaultValue={item.texto}
-                onBlur={e => { const v = e.target.value.trim(); if (v && v !== item.texto) editTexto(item.id, v) }}
-                className={`flex-1 bg-transparent text-[13px] outline-none min-w-0 ${item.feito ? 'line-through text-ink-faint' : 'text-ink'}`}
-              />
-              <input
-                defaultValue={item.responsavel ?? ''}
-                onBlur={e => { const v = e.target.value.trim(); if (v !== (item.responsavel ?? '')) editResp(item.id, v) }}
-                placeholder="quem?"
-                className="w-20 shrink-0 bg-surface border border-border/60 rounded px-1.5 py-0.5 text-[11px] text-ink-muted outline-none focus:border-accent placeholder:text-ink-faint/60"
-              />
-              <button onClick={() => remove(item.id)} className="shrink-0 text-ink-faint/50 hover:text-danger opacity-0 group-hover:opacity-100 transition-all" title="Remover">
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ))}
-        </div>
-
-        {/* Add item */}
-        <div className="mt-2 flex items-center gap-2">
-          <Plus className="h-4 w-4 text-ink-faint shrink-0" />
-          <input
-            value={novoItem}
-            onChange={e => setNovoItem(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') addItem() }}
-            placeholder="Adicionar tarefa/pauta e Enter…"
-            className="flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-faint"
-          />
-          {novoItem.trim() && (
-            <button onClick={addItem} className="shrink-0 h-7 px-2.5 rounded-md bg-accent text-white text-[12px] font-semibold">Add</button>
-          )}
-        </div>
-      </div>
+      {/* TAREFAS — anotadas durante a reunião (ações + responsável) */}
+      <ChecklistSection
+        titulo="Tarefas" sub="anote durante a reunião (o que ficou pra fazer)"
+        icon={CheckCircle2} iconCls="text-success" doneCls="text-success"
+        items={reuniao.tarefas} onChange={t => patch({ tarefas: t })}
+        showResp={true}
+        placeholder="Adicionar tarefa e Enter…"
+        emptyHint="Durante a reunião, anote aqui as ações que surgirem — com o responsável."
+      />
 
       {/* Gravações de áudio */}
       <div className="rounded-xl border border-border bg-surface p-4 mb-3">

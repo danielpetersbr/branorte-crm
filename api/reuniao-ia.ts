@@ -21,6 +21,7 @@ interface ReqBody {
   url?: string
   transcricoes?: string[]
   pauta?: PautaItem[]
+  tarefas?: PautaItem[]
   titulo?: string
 }
 
@@ -76,18 +77,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // ---------- RESUMO ----------
   if (body.action === 'resumo') {
-    const pautaTxt = (body.pauta ?? [])
+    const fmtItens = (arr?: PautaItem[]) => (arr ?? [])
       .map(p => `- [${p.feito ? 'x' : ' '}] ${p.texto}${p.responsavel ? ` (resp: ${p.responsavel})` : ''}`)
       .join('\n')
+    const pautaTxt = fmtItens(body.pauta)
+    const tarefasTxt = fmtItens(body.tarefas)
     const transcrTxt = (body.transcricoes ?? []).filter(Boolean).join('\n\n— — —\n\n')
-    if (!pautaTxt && !transcrTxt) return res.status(400).json({ error: 'nada_pra_resumir' })
+    if (!pautaTxt && !tarefasTxt && !transcrTxt) return res.status(400).json({ error: 'nada_pra_resumir' })
 
     const prompt = `Você é o secretário executivo da Branorte (metalúrgica / fábrica de máquinas para ração). Faça a ATA/resumo desta reunião em português, objetivo e direto. Baseie-se SOMENTE no que está abaixo — não invente.
 
 TÍTULO: ${body.titulo || 'Reunião'}
 
-PAUTA (tarefas; [x] = concluída):
+PAUTA (assuntos que iam ser discutidos; [x] = coberto):
 ${pautaTxt || '(sem pauta registrada)'}
+
+TAREFAS ANOTADAS NA REUNIÃO ([x] = concluída; resp = responsável):
+${tarefasTxt || '(nenhuma tarefa anotada)'}
 
 TRANSCRIÇÃO DO ÁUDIO:
 ${transcrTxt || '(sem transcrição)'}
