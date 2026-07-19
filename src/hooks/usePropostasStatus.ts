@@ -16,6 +16,7 @@ export interface PropostasStatus {
   porCategoria: { categoria: PropCategoria; n: number; brl: number }[]
   porCatVendedor: { categoria: PropCategoria; vendedor: string; n: number; brl: number }[]
   aberto: { n: number; brl: number }   // não vendido/perdido = orcamento+lead_quente+quente+novo+sem_etiqueta
+  abertoQuente: { n: number; brl: number } // orcamento+quente+lead_quente = pipeline QUENTE real (sem 'novo'/sem-etiqueta)
   vendido: { n: number; brl: number }
 }
 
@@ -50,7 +51,7 @@ export function usePropostasStatus(preset: DashboardPreset = '') {
       const porCatVendedor = (obj.por_cat_vendedor ?? []).map(r => ({ categoria: r.categoria, vendedor: r.vendedor, n: Number(r.n) || 0, brl: Number(r.brl) || 0 }))
       const soma = (cats: PropCategoria[]) => porCategoria.filter(c => cats.includes(c.categoria))
         .reduce((a, c) => ({ n: a.n + c.n, brl: a.brl + c.brl }), { n: 0, brl: 0 })
-      return { porCategoria, porCatVendedor, aberto: soma(CATS_ABERTO), vendido: soma(['vendido']) }
+      return { porCategoria, porCatVendedor, aberto: soma(CATS_ABERTO), abertoQuente: soma(['orcamento', 'lead_quente', 'quente']), vendido: soma(['vendido']) }
     },
     staleTime: 60_000,
     refetchInterval: 60_000,

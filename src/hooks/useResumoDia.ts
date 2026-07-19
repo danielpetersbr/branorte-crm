@@ -1,15 +1,15 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
+import { rangeForPreset, type DashboardPreset } from './useDashboard'
 
 // ============================================================================
-// Resumo do dia por vendedor — MESMA fonte "ao vivo" das mesas do /disparos
-// (EscritorioMapa). Reaproveita as queryKeys do escritório, então o React Query
-// compartilha o cache (sem refetch duplicado quando as duas telas estão abertas).
-//   • leads que chegaram hoje  → RPC escritorio_leads_hoje
-//   • orçamentos feitos hoje   → tabela orcamentos_gerados (created_at hoje)
-//   • atendimentos / followup / quente / carteira → RPC escritorio_funil_vivo
+// Resumo por vendedor — leads / orçamentos / atendidos seguem o FILTRO de período
+// do topo do Dashboard (RPC escritorio_fluxo_periodo, p_from/p_to null = Tudo).
+// followup / quente / carteira continuam SNAPSHOT ("agora", via escritorio_funil_vivo).
 // "Negociação" = Follow-up + Quente (decisão de negócio do Daniel).
+// Atendidos em "Hoje/Tudo" usa o funil_vivo (paridade com as mesas do /disparos);
+// nos demais períodos usa wa_daily_activity (existe desde 2026-05-07).
 // ============================================================================
 
 type FunilRow = {
@@ -21,24 +21,24 @@ type FunilRow = {
 export interface ResumoDiaVendedor {
   nome: string
   online: boolean
-  leads: number        // leads que chegaram hoje
-  orcamentos: number   // orçamentos montados hoje
-  atendimentos: number // chats trabalhados hoje
-  followup: number     // etiqueta FOLLOW UP (atual)
-  quente: number       // etiqueta LEAD QUENTE (atual)
-  negociacao: number   // followup + quente
-  carteira: number     // total de conversas do vendedor
+  leads: number
+  orcamentos: number
+  atendimentos: number
+  followup: number
+  quente: number
+  negociacao: number
+  carteira: number
 }
 
 const firstKey = (nome: string) => (nome.split(/\s+/)[0] || '').toUpperCase()
-
-// Fora do resumo do Dashboard (pedido do Daniel 07/07) — segue normal no /disparos.
 const EXCLUIR_DO_RESUMO = new Set(['DANIEL'])
 
-export function useResumoDia() {
-  // Lista de vendedores — MESMA fonte das mesas do /disparos (vendor_dispatch_status).
-  // Chave namespaced pra NÃO colidir com o cache de Disparos.tsx (que usa a mesma
-  // tabela com select('*') e shape diferente — colisão contaminaria os toggles de lá).
+export function useResumoDia(preset: DashboardPreset = '') {
+  const range = rangeForPreset(preset, new Date())
+  const pFrom = range ? range.from.toISOString() : null
+  const pTo = range ? range.to.toISOString() : null
+  const liveHoje = preset === '' || preset === 'hoje'
+
   const vendedoresQ = useQuery<Array<{ vendedor_nome: string; online: boolean }>>({
     queryKey: ['vendor-dispatch-status', 'resumo-dia'],
     queryFn: async () => {
@@ -53,34 +53,20 @@ export function useResumoDia() {
     refetchInterval: 30000,
   })
 
-  // Orçamentos feitos hoje por vendedor — via RPC SECURITY DEFINER. A RLS da tabela
-  // orcamentos_gerados só libera admin/vendor, mas o Dashboard também é visto por
-  // gerente/marketing/visualizador; ler direto zeraria a coluna pra eles em silêncio.
-  // Chave namespaced (queryFn difere da leitura direta do /disparos).
-  const orcQ = useQuery<Record<string, number>>({
-    queryKey: ['escritorio-orcamentos-hoje', 'resumo-dia'],
+  // Leads + orçamentos + atendidos por vendedor, PARAMETRIZADO pelo período do filtro.
+  const fluxoQ = useQuery<Record<string, { leads: number; orcamentos: number; atendimentos: number }>>({
+    queryKey: ['escritorio-fluxo-periodo', pFrom, pTo],
     queryFn: async () => {
-      const { data } = await supabase.rpc('escritorio_orcamentos_hoje')
-      const m: Record<string, number> = {}
-      for (const r of (data ?? []) as Array<{ vend: string; orcamentos: number }>) m[r.vend] = r.orcamentos
+      const { data } = await supabase.rpc('escritorio_fluxo_periodo', { p_from: pFrom, p_to: pTo })
+      const m: Record<string, { leads: number; orcamentos: number; atendimentos: number }> = {}
+      for (const r of (data ?? []) as Array<{ vend: string; leads: number; orcamentos: number; atendimentos: number }>)
+        m[r.vend] = { leads: r.leads, orcamentos: r.orcamentos, atendimentos: r.atendimentos }
       return m
     },
     refetchInterval: 30000,
   })
 
-  // Leads recebidos hoje — mesma fonte da página Atendimentos.
-  const leadsQ = useQuery<Record<string, number>>({
-    queryKey: ['escritorio-leads-hoje'],
-    queryFn: async () => {
-      const { data } = await supabase.rpc('escritorio_leads_hoje')
-      const m: Record<string, number> = {}
-      for (const r of (data ?? []) as Array<{ vend: string; leads: number }>) m[r.vend] = r.leads
-      return m
-    },
-    refetchInterval: 30000,
-  })
-
-  // Funil ao vivo por vendedor (etiquetas do heartbeat via RPC).
+  // Funil ao vivo por vendedor (etiquetas do heartbeat) — SNAPSHOT, alimenta followup/quente/carteira.
   const funilQ = useQuery<Record<string, FunilRow>>({
     queryKey: ['escritorio-funil'],
     queryFn: async () => {
@@ -101,27 +87,26 @@ export function useResumoDia() {
   const linhas: ResumoDiaVendedor[] = useMemo(() => (vendedoresQ.data ?? [])
     .filter(v => !EXCLUIR_DO_RESUMO.has(v.vendedor_nome.trim().toUpperCase()))
     .map(v => {
-    const nome = v.vendedor_nome
-    const f = funilQ.data?.[nome]
-    const followup = f?.followup ?? 0
-    const quente = f?.quente ?? 0
-    return {
-      nome,
-      online: v.online,
-      leads: leadsQ.data?.[firstKey(nome)] ?? 0,
-      orcamentos: orcQ.data?.[firstKey(nome)] ?? 0,
-      atendimentos: f?.atendimentos ?? 0,
-      followup,
-      quente,
-      negociacao: followup + quente,
-      carteira: f?.totalChats ?? 0,
-    }
-    }), [vendedoresQ.data, funilQ.data, leadsQ.data, orcQ.data])
+      const nome = v.vendedor_nome
+      const f = funilQ.data?.[nome]
+      const fx = fluxoQ.data?.[firstKey(nome)]
+      const followup = f?.followup ?? 0
+      const quente = f?.quente ?? 0
+      return {
+        nome,
+        online: v.online,
+        leads: fx?.leads ?? 0,
+        orcamentos: fx?.orcamentos ?? 0,
+        atendimentos: liveHoje ? (f?.atendimentos ?? 0) : (fx?.atendimentos ?? 0),
+        followup,
+        quente,
+        negociacao: followup + quente,
+        carteira: f?.totalChats ?? 0,
+      }
+    }), [vendedoresQ.data, funilQ.data, fluxoQ.data, liveHoje])
 
   return {
     linhas,
-    // A lista de vendedores decide se HÁ linhas; funil/leads/orç só preenchem colunas
-    // (degradam pra 0 se falharem, igual às mesas do /disparos — não derrubam o card).
     isLoading: vendedoresQ.isLoading,
     isError: vendedoresQ.isError,
   }

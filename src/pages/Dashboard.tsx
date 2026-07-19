@@ -382,7 +382,7 @@ export function Dashboard() {
     return {
       topOrc, cobertura, fecharam, totalVendido, escalar, criativo,
       rMontado: orc?.valorTotalBRL ?? 0,
-      rNegoc: propStatus?.aberto.brl ?? 0,
+      rNegoc: propStatus?.abertoQuente.brl ?? 0,
       qualificou: funilCanonico.find(e => e.etapa === 'Qualificou')?.valor ?? 0,
       propostas: orc?.geradas ?? 0,
     }
@@ -833,7 +833,7 @@ export function Dashboard() {
       )}
 
       {/* RESUMO DO DIA POR VENDEDOR — números de HOJE ao vivo (mesma fonte das mesas do /disparos) */}
-      <ResumoDiaVendedores />
+      <ResumoDiaVendedores preset={preset} periodoLabel={periodoLabel} />
 
       {/* ════════ GRUPO 1 · VISÃO GERAL ════════ */}
       <CollapsibleSection n="1" titulo="Propostas & dinheiro na mesa" pergunta="Quanto tem montado e em que estágio" open={openSec.g1} onToggle={() => toggleSec('g1')}>
@@ -1552,7 +1552,7 @@ function vereditoVendedor(c: Omit<CardVend, 'veredito'>): CardVend['veredito'] {
   if (c.totalPassado >= 80 && semPct >= 0.5)
     return { nivel: 'cobrar', tag: 'NÃO ETIQUETA', cor: 'danger', motivo: `${fmtN(c.semEtiqueta)} dos ${fmtN(c.totalPassado)} clientes (${Math.round(semPct * 100)}%) sem nenhuma etiqueta — sem rastreio do que fez` }
   if (c.orcN >= 25 && c.v.vendido === 0)
-    return { nivel: 'atencao', tag: 'DESTRAVAR', cor: 'warning', motivo: `${c.orcN} orçamentos (${fmtBRL(c.orcBRL)}) e 0 venda — fechamento ou falta etiquetar` }
+    return { nivel: 'atencao', tag: 'DESTRAVAR', cor: 'warning', motivo: `${c.orcN} orçamentos (${fmtBRL(c.orcBRL)}) e 0 venda ETIQUETADA — conferir vendas reais antes de cobrar fechamento` }
   if (c.totalPassado >= 80 && semPct >= 0.3)
     return { nivel: 'atencao', tag: 'ETIQUETAR', cor: 'warning', motivo: `${Math.round(semPct * 100)}% dos clientes sem etiqueta — pedir pra etiquetar pra dar pra acompanhar` }
   return { nivel: 'ok', tag: 'OK', cor: 'success', motivo: c.v.vendido > 0 ? `${c.v.vendido} leads marcados VENDIDO` : 'em dia' }
@@ -1563,9 +1563,21 @@ const ORDEM_VEREDITO: Record<CardVend['veredito']['nivel'], number> = { cobrar: 
 // Mescla painel (etiqueta) + atendimentos (qualif IA) + orçamentos (R$) por primeiro
 // nome, calcula o veredito e ordena por gravidade (cobrar primeiro). Daniel fora.
 function montarCardsVendedor(painel: VendedorPainel[], sla: SlaVendedor[], orc: OrcamentosResumo | undefined, cobertura: VendedorCobertura[]): CardVend[] {
-  const slaByNome = new Map(sla.map(s => [primeiroNome(s.vendedor), s]))
-  const orcByNome = new Map((orc?.porVendedor ?? []).map(o => [primeiroNome(o.vendedor), o]))
-  const cobByNome = new Map(cobertura.map(c => [primeiroNome(c.vendedor), c]))
+  // Merge por 1º nome mantendo o MAIOR bucket. Sem isso, quando o responsável tem grafia
+  // dupla (ex.: "Igor" e "IGOR" → 2 linhas na cobertura/SLA), o Map simples ficava com a
+  // ÚLTIMA (a menor), zerando o card (Igor mostrava 3 de 392).
+  const maiorPorNome = <T,>(rows: T[], nome: (t: T) => string, tam: (t: T) => number): Map<string, T> => {
+    const m = new Map<string, T>()
+    for (const r of rows) {
+      const k = primeiroNome(nome(r))
+      const cur = m.get(k)
+      if (!cur || tam(r) > tam(cur)) m.set(k, r)
+    }
+    return m
+  }
+  const slaByNome = maiorPorNome(sla, s => s.vendedor, s => s.totalLeads ?? 0)
+  const orcByNome = maiorPorNome(orc?.porVendedor ?? [], o => o.vendedor, o => o.n ?? 0)
+  const cobByNome = maiorPorNome(cobertura, c => c.vendedor, c => c.total_passado ?? 0)
   return painel
     .filter(v => !ehDaniel(v.vendedor))
     .map(v => {
@@ -1600,6 +1612,11 @@ function DecisoesGerente({ porOrigem, cards, p }: {
   const semRastreio = porOrigem.filter(o => /n[aã]o identif|sem origem|desconhec|^outros$|direto/i.test(o.origem)).reduce((s, o) => s + o.total, 0)
   const cobrar = cards.filter(c => c.veredito.nivel === 'cobrar').slice(0, 3)
   const destravar = cards.filter(c => c.veredito.nivel === 'atencao').slice(0, 2)
+  // Não cobrar/destravar quem já está no 🏆 (topo em propostas) — evita a contradição
+  // "Igor lidera E Igor cobrar", que confundia o gerente.
+  const heroNome = p.topOrc ? primeiroNome(p.topOrc.vendedor) : null
+  const cobrarF = cobrar.filter(c => primeiroNome(c.nome) !== heroNome)
+  const destravarF = destravar.filter(c => primeiroNome(c.nome) !== heroNome)
   const numeros = [
     { v: fmtBRL(p.rMontado), l: 'em propostas montadas' },
     { v: fmtN(p.qualificou), l: 'leads qualificados' },
@@ -1619,9 +1636,9 @@ function DecisoesGerente({ porOrigem, cards, p }: {
           <ul className="space-y-1 text-[12px] text-ink">
             {p.escalar && <li><span className="text-success font-semibold">▲ {p.escalar.origem}</span> <span className="text-ink-faint">melhor canal — {p.escalar.ctr.toFixed(0)}% qualificam</span></li>}
             {p.criativo && p.criativo.pct >= 20 && <li><span className="text-success font-semibold">🎨 {p.criativo.nome || p.criativo.codigo}</span> <span className="text-ink-faint">criativo campeão — {p.criativo.pct.toFixed(0)}%</span></li>}
-            {p.topOrc && <li><span className="text-success font-semibold">🏆 {capitalizar(primeiroNome(p.topOrc.vendedor))}</span> <span className="text-ink-faint">lidera em proposta — {fmtBRL(p.topOrc.brl)} ({p.topOrc.n})</span></li>}
+            {p.topOrc && <li><span className="text-success font-semibold">🏆 {capitalizar(primeiroNome(p.topOrc.vendedor))}</span> <span className="text-ink-faint">lidera em propostas montadas — {fmtBRL(p.topOrc.brl)} ({p.topOrc.n} clientes)</span></li>}
             {p.cobertura && p.cobertura.pct >= 55 && <li><span className="text-success font-semibold">🎯 {p.cobertura.nome.split(' ')[0]}</span> <span className="text-ink-faint">etiqueta {p.cobertura.pct}% dos clientes</span></li>}
-            {p.rNegoc > 0 && <li><span className="text-success font-semibold">💰 {fmtBRL(p.rNegoc)} em negociação ativa</span> <span className="text-ink-faint">— pipeline vivo</span></li>}
+            {p.rNegoc > 0 && <li><span className="text-success font-semibold">💰 {fmtBRL(p.rNegoc)} em negociação quente</span> <span className="text-ink-faint">— orçamento/quente (sem 'novo' e sem-etiqueta)</span></li>}
             {!p.escalar && !p.topOrc && !p.rNegoc && <li className="text-ink-faint">Sem destaque no período.</li>}
           </ul>
         </div>
@@ -1631,8 +1648,8 @@ function DecisoesGerente({ porOrigem, cards, p }: {
           <ul className="space-y-1 text-[12px] text-ink">
             {queima && <li><span className="text-danger font-semibold">▼ Revisar {queima.origem}</span> <span className="text-ink-faint">— {fmtN(queima.total)} leads, quase ninguém engaja ({Math.round(queima.engajou / queima.total * 100)}%)</span></li>}
             {semRastreio > 0 && <li><span className="text-warning font-semibold">🔧 {fmtN(semRastreio)} leads sem origem</span> <span className="text-ink-faint">— corrigir rastreio antes de cortar verba</span></li>}
-            {cobrar.map(c => <li key={c.nome}><a href="#vendedores" className="hover:underline"><span className="text-danger font-semibold">🔴 {c.nome.split(' ')[0]}</span> <span className="text-ink-faint">— {c.veredito.motivo}</span></a></li>)}
-            {destravar.map(c => <li key={c.nome}><a href="#vendedores" className="hover:underline"><span className="text-warning font-semibold">🟠 {c.nome.split(' ')[0]}</span> <span className="text-ink-faint">— {c.veredito.motivo}</span></a></li>)}
+            {cobrarF.map(c => <li key={c.nome}><a href="#vendedores" className="hover:underline"><span className="text-danger font-semibold">🔴 {c.nome.split(' ')[0]}</span> <span className="text-ink-faint">— {c.veredito.motivo}</span></a></li>)}
+            {destravarF.map(c => <li key={c.nome}><a href="#vendedores" className="hover:underline"><span className="text-warning font-semibold">🟠 {c.nome.split(' ')[0]}</span> <span className="text-ink-faint">— {c.veredito.motivo}</span></a></li>)}
             {!queima && !semRastreio && cobrar.length === 0 && destravar.length === 0 && <li className="text-ink-faint">Nada crítico — time e verba em dia.</li>}
           </ul>
         </div>

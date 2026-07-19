@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Copy, Check } from 'lucide-react'
 import { useResumoDia, type ResumoDiaVendedor } from '@/hooks/useResumoDia'
+import type { DashboardPreset } from '@/hooks/useDashboard'
 
 // ============================================================================
 // "Resumo do dia por vendedor" — card do Dashboard com os números de HOJE ao
@@ -39,8 +40,9 @@ function textoWhatsApp(rows: ResumoDiaVendedor[], tot: Record<string, number>): 
   ].join('\n')
 }
 
-export function ResumoDiaVendedores() {
-  const { linhas, isLoading, isError } = useResumoDia()
+export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: DashboardPreset; periodoLabel?: string }) {
+  const liveHoje = preset === '' || preset === 'hoje'
+  const { linhas, isLoading, isError } = useResumoDia(preset)
   const [copiado, setCopiado] = useState(false)
 
   // Ordena por atendimentos do dia (quem mais trabalhou hoje no topo).
@@ -70,10 +72,12 @@ export function ResumoDiaVendedores() {
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="min-w-0">
           <h3 className="text-[13px] font-semibold text-ink tracking-tight flex items-center gap-1.5">
-            <span>☀️</span> Resumo do dia por vendedor
+            <span>☀️</span> Resumo por vendedor{!liveHoje && periodoLabel ? ` · ${periodoLabel}` : ''}
           </h3>
           <p className="text-[11px] text-ink-faint mt-0.5">
-            Números de hoje, ao vivo — mesma fonte das mesas do escritório. Atualiza sozinho.
+            {liveHoje
+              ? 'Números de hoje, ao vivo — mesma fonte das mesas do escritório. Atualiza sozinho.'
+              : 'Leads · orçamentos · atendidos seguem o período. Negociando/quentes/carteira = estado agora.'}
           </p>
         </div>
         {rows.length > 0 && (
