@@ -12,6 +12,26 @@ import type { DashboardPreset } from '@/hooks/useDashboard'
 
 const fmt = (n: number) => new Intl.NumberFormat('pt-BR').format(n)
 
+// Célula numérica com barra proporcional (bar-in-cell) — deixa a tabela escaneável:
+// a barra é relativa ao maior valor da coluna; o líder da coluna fica destacado.
+function NumCell({ val, max, warn = false }: { val: number; max: number; warn?: boolean }) {
+  const pct = max > 0 ? (val / max) * 100 : 0
+  const leader = val > 0 && val === max
+  return (
+    <td className="py-1.5 px-2">
+      <div className="relative flex items-center justify-end h-5">
+        <div
+          className={`absolute inset-y-[3px] right-0 rounded-sm ${warn ? 'bg-warning/20' : leader ? 'bg-accent/25' : 'bg-accent/10'}`}
+          style={{ width: `${Math.max(pct, 3)}%` }}
+        />
+        <span className={`relative tabular-nums px-1 ${val === 0 ? 'text-ink-faint/50' : warn ? 'text-warning font-semibold' : leader ? 'text-ink font-semibold' : 'text-ink'}`}>
+          {fmt(val)}
+        </span>
+      </div>
+    </td>
+  )
+}
+
 // Colunas: ícone + rótulo curto (header) + explicação (legenda e tooltip)
 const COLS: Array<{ key: keyof Pick<ResumoDiaVendedor, 'leads' | 'atendimentos' | 'orcamentos' | 'negociacao' | 'quente' | 'carteira'>; icon: string; label: string; explica: string }> = [
   { key: 'leads',        icon: '📥', label: 'Leads',      explica: 'leads novos que chegaram hoje' },
@@ -59,6 +79,13 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
     quente: a.quente + r.quente,
     carteira: a.carteira + r.carteira,
   }), { leads: 0, atendimentos: 0, orcamentos: 0, negociacao: 0, quente: 0, carteira: 0 }), [rows])
+
+  // Maior valor por coluna — base das barras proporcionais em cada célula.
+  const maxByCol = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const c of COLS) m[c.key] = Math.max(1, ...rows.map(r => Number(r[c.key]) || 0))
+    return m
+  }, [rows])
 
   const copiar = () => {
     navigator.clipboard?.writeText(textoWhatsApp(rows, tot)).then(() => {
@@ -127,12 +154,12 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                           <span className={`font-medium truncate ${semAtividade ? 'text-ink-faint' : 'text-ink'}`}>{r.nome}</span>
                         </span>
                       </td>
-                      <td className="text-right tabular-nums py-2 px-2 text-ink">{fmt(r.leads)}</td>
-                      <td className="text-right tabular-nums py-2 px-2 text-ink">{fmt(r.atendimentos)}</td>
-                      <td className="text-right tabular-nums py-2 px-2 text-ink">{fmt(r.orcamentos)}</td>
-                      <td className="text-right tabular-nums py-2 px-2 text-ink">{fmt(r.negociacao)}</td>
-                      <td className={`text-right tabular-nums py-2 px-2 ${r.quente > 0 ? 'text-warning font-semibold' : 'text-ink-muted'}`}>{fmt(r.quente)}</td>
-                      <td className="text-right tabular-nums py-2 px-2 text-ink-muted">{fmt(r.carteira)}</td>
+                      <NumCell val={r.leads} max={maxByCol.leads} />
+                      <NumCell val={r.atendimentos} max={maxByCol.atendimentos} />
+                      <NumCell val={r.orcamentos} max={maxByCol.orcamentos} />
+                      <NumCell val={r.negociacao} max={maxByCol.negociacao} />
+                      <NumCell val={r.quente} max={maxByCol.quente} warn />
+                      <NumCell val={r.carteira} max={maxByCol.carteira} />
                     </tr>
                   )
                 })}
