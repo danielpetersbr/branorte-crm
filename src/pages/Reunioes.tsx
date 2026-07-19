@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Plus, Trash2, ArrowLeft, CalendarClock, ClipboardList, CheckCircle2, Circle, PlayCircle, Mic, Square, Loader2 } from 'lucide-react'
+import { Plus, Trash2, ArrowLeft, CalendarClock, ClipboardList, CheckCircle2, Circle, PlayCircle, Mic, Square, Loader2, Sparkles, FileText } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import {
   useReunioes, useCriarReuniao, useAtualizarReuniao, useExcluirReuniao,
@@ -37,6 +37,19 @@ function uid(): string {
 function fmtDur(seg: number): string {
   const m = Math.floor(seg / 60), s = seg % 60
   return `${m}:${String(s).padStart(2, '0')}`
+}
+
+// Chama o endpoint de IA das reuniões (transcrever/resumo) com o JWT da sessão.
+async function callReuniaoIA(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/api/reuniao-ia', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token ?? ''}` },
+    body: JSON.stringify(payload),
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((json?.detail as string) || (json?.error as string) || `HTTP ${res.status}`)
+  return json
 }
 
 // Gravador de áudio da reunião: MediaRecorder (mic) → Blob → Supabase Storage
@@ -222,6 +235,10 @@ function Editor({ reuniao, onVoltar }: { reuniao: Reuniao; onVoltar: () => void 
   const excluir = useExcluirReuniao()
   const [novoItem, setNovoItem] = useState('')
   const [confirmDel, setConfirmDel] = useState(false)
+  const [resumoLocal, setResumoLocal] = useState(reuniao.resumo)
+  const [transcrevendo, setTranscrevendo] = useState<string | null>(null)
+  const [resumindo, setResumindo] = useState(false)
+  const [iaErr, setIaErr] = useState<string | null>(null)
 
   const patch = (p: Partial<Pick<Reuniao, 'titulo' | 'data_reuniao' | 'status' | 'pauta' | 'resumo'>>) =>
     atualizar.mutate({ id: reuniao.id, ...p })
@@ -242,6 +259,25 @@ function Editor({ reuniao, onVoltar }: { reuniao: Reuniao; onVoltar: () => void 
   const removeGravacao = (g: Gravacao) => {
     patch({ gravacoes: reuniao.gravacoes.filter(x => x.id !== g.id) })
     supabase.storage.from('reunioes-audio').remove([g.path]).catch(() => { /* noop */ })
+  }
+
+  const transcrever = async (g: Gravacao) => {
+    setIaErr(null); setTranscrevendo(g.id)
+    try {
+      const { texto } = await callReuniaoIA({ action: 'transcrever', url: g.url }) as { texto: string }
+      patch({ gravacoes: reuniao.gravacoes.map(x => x.id === g.id ? { ...x, transcricao: texto } : x) })
+    } catch (e) { setIaErr('Transcrição falhou: ' + (e as Error).message) }
+    finally { setTranscrevendo(null) }
+  }
+
+  const gerarResumo = async () => {
+    setIaErr(null); setResumindo(true)
+    try {
+      const transcricoes = reuniao.gravacoes.map(g => g.transcricao).filter(Boolean) as string[]
+      const { resumo } = await callReuniaoIA({ action: 'resumo', transcricoes, pauta: reuniao.pauta, titulo: reuniao.titulo }) as { resumo: string }
+      if (resumo) { setResumoLocal(resumo); patch({ resumo }) }
+    } catch (e) { setIaErr('Resumo falhou: ' + (e as Error).message) }
+    finally { setResumindo(false) }
   }
 
   const feitos = reuniao.pauta.filter(p => p.feito).length
@@ -351,15 +387,32 @@ function Editor({ reuniao, onVoltar }: { reuniao: Reuniao; onVoltar: () => void 
         ) : (
           <div className="space-y-2">
             {[...reuniao.gravacoes].reverse().map((g, i) => (
-              <div key={g.id} className="flex items-center gap-2 rounded-lg border border-border/60 bg-surface-2/30 px-3 py-2">
-                <span className="text-[11px] text-ink-muted shrink-0 tabular-nums w-[92px]">
-                  Gravação {reuniao.gravacoes.length - i}<span className="text-ink-faint block text-[10px]">{fmtDur(g.duracao_seg)}</span>
-                </span>
-                <audio controls preload="none" src={g.url} className="flex-1 h-8 min-w-0" />
-                <a href={g.url} download className="shrink-0 text-[11px] text-accent hover:underline" title="Baixar áudio">baixar</a>
-                <button onClick={() => removeGravacao(g)} className="shrink-0 text-ink-faint/60 hover:text-danger" title="Excluir gravação">
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+              <div key={g.id} className="rounded-lg border border-border/60 bg-surface-2/30 px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-ink-muted shrink-0 tabular-nums w-[92px]">
+                    Gravação {reuniao.gravacoes.length - i}<span className="text-ink-faint block text-[10px]">{fmtDur(g.duracao_seg)}</span>
+                  </span>
+                  <audio controls preload="none" src={g.url} className="flex-1 h-8 min-w-0" />
+                  <button
+                    onClick={() => transcrever(g)}
+                    disabled={transcrevendo === g.id}
+                    className="shrink-0 h-7 px-2 inline-flex items-center gap-1 rounded-md border border-border text-[11px] text-ink-muted hover:text-ink hover:border-border-strong disabled:opacity-60 transition-colors"
+                    title="Transcrever o áudio com IA (Whisper)"
+                  >
+                    {transcrevendo === g.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}
+                    {g.transcricao ? 're-transcrever' : 'transcrever'}
+                  </button>
+                  <a href={g.url} download className="shrink-0 text-[11px] text-accent hover:underline" title="Baixar áudio">baixar</a>
+                  <button onClick={() => removeGravacao(g)} className="shrink-0 text-ink-faint/60 hover:text-danger" title="Excluir gravação">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                {g.transcricao && (
+                  <details className="mt-2">
+                    <summary className="text-[11px] text-accent cursor-pointer select-none">📄 Transcrição</summary>
+                    <p className="mt-1.5 text-[12px] text-ink-muted leading-relaxed whitespace-pre-wrap bg-surface rounded-md border border-border/50 p-2.5 max-h-52 overflow-y-auto">{g.transcricao}</p>
+                  </details>
+                )}
               </div>
             ))}
           </div>
@@ -368,15 +421,28 @@ function Editor({ reuniao, onVoltar }: { reuniao: Reuniao; onVoltar: () => void 
 
       {/* Resumo */}
       <div className="rounded-xl border border-border bg-surface p-4">
-        <h2 className="text-[13px] font-bold text-ink mb-2">📝 Resumo da reunião</h2>
+        <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+          <h2 className="text-[13px] font-bold text-ink">📝 Resumo da reunião</h2>
+          <button
+            onClick={gerarResumo}
+            disabled={resumindo}
+            className="h-8 px-3 inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/10 text-accent text-[12px] font-semibold hover:bg-accent/15 disabled:opacity-60 transition-colors"
+            title="Gera o resumo a partir da pauta + transcrições das gravações"
+          >
+            {resumindo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            {resumindo ? 'Gerando…' : 'Gerar resumo com IA'}
+          </button>
+        </div>
+        {iaErr && <p className="text-[11px] text-danger mb-2">{iaErr}</p>}
         <textarea
-          defaultValue={reuniao.resumo}
-          onBlur={e => { if (e.target.value !== reuniao.resumo) patch({ resumo: e.target.value }) }}
-          placeholder="O que foi decidido, próximos passos, responsáveis…"
-          rows={5}
+          value={resumoLocal}
+          onChange={e => setResumoLocal(e.target.value)}
+          onBlur={() => { if (resumoLocal !== reuniao.resumo) patch({ resumo: resumoLocal }) }}
+          placeholder="O que foi decidido, próximos passos, responsáveis… ou clique em 'Gerar resumo com IA'."
+          rows={6}
           className="w-full bg-surface-2/40 border border-border rounded-lg px-3 py-2 text-[13px] text-ink leading-relaxed outline-none focus:border-accent resize-y placeholder:text-ink-faint"
         />
-        <p className="text-[10.5px] text-ink-faint mt-1.5">Salva automático ao sair do campo.</p>
+        <p className="text-[10.5px] text-ink-faint mt-1.5">Salva automático ao sair do campo. A IA usa a pauta + as transcrições das gravações.</p>
       </div>
 
       {/* Confirm excluir */}

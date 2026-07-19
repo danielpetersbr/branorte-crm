@@ -21,6 +21,7 @@ export interface Gravacao {
   path: string
   duracao_seg: number
   created_at: string
+  transcricao?: string
 }
 
 export interface Reuniao {
