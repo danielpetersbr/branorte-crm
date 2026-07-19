@@ -15,6 +15,14 @@ export interface PautaItem {
   responsavel?: string
 }
 
+export interface Gravacao {
+  id: string
+  url: string
+  path: string
+  duracao_seg: number
+  created_at: string
+}
+
 export interface Reuniao {
   id: string
   titulo: string
@@ -22,6 +30,7 @@ export interface Reuniao {
   status: ReuniaoStatus
   pauta: PautaItem[]
   resumo: string
+  gravacoes: Gravacao[]
   created_by: string | null
   created_at: string
   updated_at: string
@@ -37,6 +46,7 @@ function normalize(r: Record<string, unknown>): Reuniao {
     status: (r.status as ReuniaoStatus) || 'planejada',
     pauta: Array.isArray(r.pauta) ? (r.pauta as PautaItem[]) : [],
     resumo: (r.resumo as string) || '',
+    gravacoes: Array.isArray(r.gravacoes) ? (r.gravacoes as Gravacao[]) : [],
     created_by: (r.created_by as string) ?? null,
     created_at: r.created_at as string,
     updated_at: r.updated_at as string,
@@ -78,7 +88,7 @@ export function useCriarReuniao() {
 export function useAtualizarReuniao() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (input: { id: string } & Partial<Pick<Reuniao, 'titulo' | 'data_reuniao' | 'status' | 'pauta' | 'resumo'>>): Promise<void> => {
+    mutationFn: async (input: { id: string } & Partial<Pick<Reuniao, 'titulo' | 'data_reuniao' | 'status' | 'pauta' | 'resumo' | 'gravacoes'>>): Promise<void> => {
       const { id, ...patch } = input
       const { error } = await supabase.from('reunioes').update(patch).eq('id', id)
       if (error) throw error

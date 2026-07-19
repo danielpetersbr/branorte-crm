@@ -1,8 +1,9 @@
-import { useState } from 'react'
-import { Plus, Trash2, ArrowLeft, CalendarClock, ClipboardList, CheckCircle2, Circle, PlayCircle } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { Plus, Trash2, ArrowLeft, CalendarClock, ClipboardList, CheckCircle2, Circle, PlayCircle, Mic, Square, Loader2 } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 import {
   useReunioes, useCriarReuniao, useAtualizarReuniao, useExcluirReuniao,
-  type Reuniao, type PautaItem, type ReuniaoStatus,
+  type Reuniao, type PautaItem, type ReuniaoStatus, type Gravacao,
 } from '@/hooks/useReunioes'
 
 // ============================================================================
@@ -32,6 +33,99 @@ function fromLocalInput(v: string): string {
 }
 function uid(): string {
   return (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `i${Date.now()}${Math.round(Math.random() * 1e6)}`
+}
+function fmtDur(seg: number): string {
+  const m = Math.floor(seg / 60), s = seg % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
+// Gravador de áudio da reunião: MediaRecorder (mic) → Blob → Supabase Storage
+// (bucket reunioes-audio, público) → devolve a Gravacao pra salvar na reunião.
+function Gravador({ reuniaoId, onAdd }: { reuniaoId: string; onAdd: (g: Gravacao) => void }) {
+  const [rec, setRec] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
+  const [uploading, setUploading] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const mrRef = useRef<MediaRecorder | null>(null)
+  const chunksRef = useRef<Blob[]>([])
+  const streamRef = useRef<MediaStream | null>(null)
+  const timerRef = useRef<number | null>(null)
+  const startRef = useRef<number>(0)
+
+  const stopTimer = () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null } }
+  useEffect(() => () => { stopTimer(); streamRef.current?.getTracks().forEach(t => t.stop()) }, [])
+
+  const finalize = async () => {
+    const dur = Math.floor((Date.now() - startRef.current) / 1000)
+    const blob = new Blob(chunksRef.current, { type: mrRef.current?.mimeType || 'audio/webm' })
+    if (blob.size === 0) { setErr('Gravação vazia.'); return }
+    setUploading(true)
+    try {
+      const path = `${reuniaoId}/${Date.now()}.webm`
+      const { error } = await supabase.storage.from('reunioes-audio').upload(path, blob, { contentType: blob.type || 'audio/webm', upsert: false })
+      if (error) throw error
+      const { data: pub } = supabase.storage.from('reunioes-audio').getPublicUrl(path)
+      onAdd({ id: uid(), url: pub.publicUrl, path, duracao_seg: dur, created_at: new Date().toISOString() })
+    } catch (e) {
+      setErr('Falhou ao salvar: ' + ((e as Error)?.message || 'erro'))
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const start = async () => {
+    setErr(null)
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setErr('Seu navegador não suporta gravação.'); return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      streamRef.current = stream
+      const mime = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : ''
+      const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+      chunksRef.current = []
+      mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+      mr.onstop = () => { void finalize() }
+      mr.start()
+      mrRef.current = mr
+      startRef.current = Date.now()
+      setElapsed(0)
+      setRec(true)
+      timerRef.current = window.setInterval(() => setElapsed(Math.floor((Date.now() - startRef.current) / 1000)), 500)
+    } catch {
+      setErr('Não deu pra acessar o microfone — permita o acesso no navegador.')
+    }
+  }
+
+  const stop = () => {
+    stopTimer()
+    try { mrRef.current?.stop() } catch { /* noop */ }
+    streamRef.current?.getTracks().forEach(t => t.stop())
+    setRec(false)
+  }
+
+  return (
+    <div>
+      {rec ? (
+        <button onClick={stop} className="h-9 px-3.5 inline-flex items-center gap-2 rounded-lg bg-danger text-white text-[13px] font-semibold shadow-sm">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white/70" />
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white" />
+          </span>
+          <Square className="h-3.5 w-3.5" /> Parar · {fmtDur(elapsed)}
+        </button>
+      ) : uploading ? (
+        <span className="h-9 px-3.5 inline-flex items-center gap-2 rounded-lg bg-surface-2 text-ink-muted text-[13px] font-medium">
+          <Loader2 className="h-4 w-4 animate-spin" /> Salvando gravação…
+        </span>
+      ) : (
+        <button onClick={start} className="h-9 px-3.5 inline-flex items-center gap-2 rounded-lg border border-danger/40 bg-danger/10 text-danger text-[13px] font-semibold hover:bg-danger/15 transition-colors">
+          <Mic className="h-4 w-4" /> Gravar reunião
+        </button>
+      )}
+      {err && <p className="text-[11px] text-danger mt-1.5">{err}</p>}
+    </div>
+  )
 }
 
 export function Reunioes() {
@@ -144,6 +238,12 @@ function Editor({ reuniao, onVoltar }: { reuniao: Reuniao; onVoltar: () => void 
   const editResp = (id: string, responsavel: string) => savePauta(reuniao.pauta.map(p => p.id === id ? { ...p, responsavel: responsavel || undefined } : p))
   const remove = (id: string) => savePauta(reuniao.pauta.filter(p => p.id !== id))
 
+  const addGravacao = (g: Gravacao) => patch({ gravacoes: [...reuniao.gravacoes, g] })
+  const removeGravacao = (g: Gravacao) => {
+    patch({ gravacoes: reuniao.gravacoes.filter(x => x.id !== g.id) })
+    supabase.storage.from('reunioes-audio').remove([g.path]).catch(() => { /* noop */ })
+  }
+
   const feitos = reuniao.pauta.filter(p => p.feito).length
   const total = reuniao.pauta.length
 
@@ -238,6 +338,32 @@ function Editor({ reuniao, onVoltar }: { reuniao: Reuniao; onVoltar: () => void 
             <button onClick={addItem} className="shrink-0 h-7 px-2.5 rounded-md bg-accent text-white text-[12px] font-semibold">Add</button>
           )}
         </div>
+      </div>
+
+      {/* Gravações de áudio */}
+      <div className="rounded-xl border border-border bg-surface p-4 mb-3">
+        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+          <h2 className="text-[13px] font-bold text-ink flex items-center gap-1.5"><Mic className="h-4 w-4 text-danger" /> Gravações da reunião</h2>
+          <Gravador reuniaoId={reuniao.id} onAdd={addGravacao} />
+        </div>
+        {reuniao.gravacoes.length === 0 ? (
+          <p className="text-[11px] text-ink-faint">Nenhuma gravação ainda. Clique em "Gravar reunião" pra começar (o navegador vai pedir permissão do microfone).</p>
+        ) : (
+          <div className="space-y-2">
+            {[...reuniao.gravacoes].reverse().map((g, i) => (
+              <div key={g.id} className="flex items-center gap-2 rounded-lg border border-border/60 bg-surface-2/30 px-3 py-2">
+                <span className="text-[11px] text-ink-muted shrink-0 tabular-nums w-[92px]">
+                  Gravação {reuniao.gravacoes.length - i}<span className="text-ink-faint block text-[10px]">{fmtDur(g.duracao_seg)}</span>
+                </span>
+                <audio controls preload="none" src={g.url} className="flex-1 h-8 min-w-0" />
+                <a href={g.url} download className="shrink-0 text-[11px] text-accent hover:underline" title="Baixar áudio">baixar</a>
+                <button onClick={() => removeGravacao(g)} className="shrink-0 text-ink-faint/60 hover:text-danger" title="Excluir gravação">
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Resumo */}
