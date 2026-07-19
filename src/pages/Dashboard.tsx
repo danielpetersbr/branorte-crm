@@ -795,14 +795,12 @@ export function Dashboard() {
         )
       })()}
 
-      {/* ════════ CORRIDA DE VENDAS — placar por vendedor, ao vivo do Controle ════════ */}
+      {/* ════════ CORRIDA (individual) + PLACAR DOS TIMES — lado a lado no wide ════════ */}
       {vendasReais?.corrida && vendasReais.corrida.length > 0 && (
-        <CorridaVendas corrida={vendasReais.corrida} metaVendedor={vendasReais.metaVendedor} />
-      )}
-
-      {/* ════════ PLACAR DOS TIMES — 3 times, meta R$833k, ao vivo do Controle ════════ */}
-      {vendasReais?.corrida && vendasReais.corrida.length > 0 && (
-        <PlacarTimes corrida={vendasReais.corrida} />
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+          <CorridaVendas corrida={vendasReais.corrida} metaVendedor={vendasReais.metaVendedor} />
+          <PlacarTimes corrida={vendasReais.corrida} />
+        </div>
       )}
 
       {/* ════════ DINHEIRO PARADO — orçamento por tempo sem resposta (aciona cobrança) ════════ */}
