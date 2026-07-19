@@ -373,11 +373,12 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
       } catch { /* maps vazios -> fallback; dashboard não quebra */ }
       return aggregate(rows, filters.preset, orcValorByCanon, fechados)
     },
-    staleTime: 60_000,
-    refetchInterval: 60_000,
-    // Resiliente a timeouts pontuais do Supabase (statement_timeout em pico de carga).
-    retry: 3,
-    retryDelay: attempt => Math.min(1500 * 2 ** attempt, 12000),
+    staleTime: 120_000,
+    refetchInterval: 180_000,  // read pesado (~5MB) — refetch a cada 3min p/ não somar carga ao polling da frota
+    // Resiliente a 500 pontual (view pesada estoura sob pico de polling das extensões).
+    // 6 tentativas com backoff ~1-8s atravessam a janela de pico até o banco acalmar.
+    retry: 6,
+    retryDelay: attempt => Math.min(1200 * 2 ** attempt, 8000),
     placeholderData: prev => prev,
   })
 }
