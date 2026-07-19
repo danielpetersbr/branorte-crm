@@ -1697,7 +1697,6 @@ function DecisoesGerente({ porOrigem, cards, p }: {
           </div>
         ))}
       </div>
-      <p className="text-[10px] text-ink-faint mt-2">⚠️ "Venda" aqui é sub-registro (depende do vendedor etiquetar) — cobre PROCESSO (orçamento, follow-up), não o placar real.</p>
     </div>
   )
 }
