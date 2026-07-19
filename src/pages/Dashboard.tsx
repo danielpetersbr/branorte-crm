@@ -2330,6 +2330,16 @@ const VERDICT_META: Record<VerdictKey, { label: string; emoji: string; cls: stri
   excluir:  { label: 'Excluir',  emoji: '⚫', cls: 'text-ink-faint border-border bg-surface-2/10',  rank: 5 },
 }
 
+// Cor sólida (ponto + preenchimento da barra) por veredito — pareia com VERDICT_META.
+const VERDICT_TONE: Record<VerdictKey, { dot: string; fill: string }> = {
+  escalar:  { dot: 'bg-success',      fill: 'bg-success' },
+  pausar:   { dot: 'bg-danger',       fill: 'bg-danger' },
+  otimizar: { dot: 'bg-warning',      fill: 'bg-warning' },
+  manter:   { dot: 'bg-ink-muted',    fill: 'bg-ink-muted' },
+  amostra:  { dot: 'bg-ink-faint',    fill: 'bg-ink-faint' },
+  excluir:  { dot: 'bg-ink-faint/50', fill: 'bg-ink-faint/40' },
+}
+
 // Origens sem canal pagável real — não dá pra investir nem cortar, só corrigir rastreio.
 const ORIGEM_NAO_RASTREAVEL = new Set([
   'não identificou', 'nao identificou', 'sem origem', 'desconhecido', 'outros', 'direto', '',
@@ -2443,8 +2453,15 @@ function montarHeadline(rows: FunilRow[]): { acoes: string; alerta: string | nul
 
 function FunilTable({ rows, primeiraColuna, semEtq }: { rows: FunilRow[]; primeiraColuna: string; semEtq: boolean }) {
   const { acoes, alerta } = montarHeadline(rows)
+  const [verTudo, setVerTudo] = useState(false)
+  const TOP = 8
+  const maxLeads = Math.max(1, ...rows.map(r => r.total))
+  const visiveis = verTudo ? rows : rows.slice(0, TOP)
+  const ocultos = rows.length - visiveis.length
+  const noun = primeiraColuna.toLowerCase().includes('origem') ? 'origens menores' : 'criativos menores'
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       {/* Headline: o que fazer com a verba, em linguagem clara */}
       <div className="rounded-lg border border-accent/30 bg-accent/5 px-3 py-2">
         <p className="text-[12px] text-ink font-medium leading-snug">{acoes}</p>
@@ -2455,72 +2472,67 @@ function FunilTable({ rows, primeiraColuna, semEtq }: { rows: FunilRow[]; primei
           ⚠️ Sem etiquetas no período — Follow Up / Lead Quente / Converteu ficam zerados (só os sinais da IA contam).
         </p>
       )}
-      <div className="overflow-x-auto">
-        <table className="w-full text-[13px] whitespace-nowrap [&_td]:py-2.5">
-          <thead>
-            <tr className="text-[11px] uppercase tracking-wide text-ink-faint border-b border-border">
-              <th className="text-left py-2.5 px-2 font-semibold">{primeiraColuna}</th>
-              <th className="text-left py-2 px-2 font-semibold">Perfil</th>
-              <th className="text-right py-2 px-2 font-semibold">Leads</th>
-              <th className="text-right py-2 px-2 font-semibold" title="% dos leads que responderam à IA">Respondeu</th>
-              <th className="text-right py-2 px-2 font-semibold" title="% que quer algo que a Branorte fabrica">Qualificou</th>
-              <th className="text-right py-2 px-2 font-semibold" title="Chegou a Follow Up (negociação)">Follow-up</th>
-              <th className="text-right py-2 px-2 font-semibold" title="Chegou a Lead Quente (perto de fechar)">Quente</th>
-              <th className="text-right py-2 px-2 font-semibold" title="Orçamentos e vendas REAIS atribuídos pelo telefone do lead: orçamento = montado no sistema; venda = pedido fechado (+ R$). Não depende da etiqueta.">Orç / Venda</th>
-              <th className="text-right py-2 px-2 font-semibold" title="Etiqueta NÃO FABRICAMOS: o lead pediu algo que a Branorte não faz">Não fabricamos</th>
-              <th className="text-right py-2 px-2 font-semibold">Veredito</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(r => {
-              const vm = VERDICT_META[r.verdict]
-              return (
-                <tr key={r.key} className="border-b border-border/30 hover:bg-surface-2/40">
-                  <td className="py-1.5 px-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      {r.codigo && <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-surface-2 text-ink-muted shrink-0">{r.codigo}</span>}
-                      <span className="truncate text-ink font-medium max-w-[240px]" title={r.label}>{r.label}</span>
+
+      {/* Faixas de investimento: barra = volume de leads, preenchimento = % qualificou, cor = veredito */}
+      <div className="space-y-1.5">
+        {visiveis.map(r => {
+          const vm = VERDICT_META[r.verdict]
+          const tone = VERDICT_TONE[r.verdict]
+          const barW = Math.max(6, Math.round((r.total / maxLeads) * 100))
+          return (
+            <div key={r.key} className="rounded-lg border border-border bg-surface-2/30 hover:bg-surface-2/60 transition-colors px-3 py-2.5" title={r.reason}>
+              <div className="flex items-start gap-2.5">
+                <span className={`shrink-0 mt-1 h-2.5 w-2.5 rounded-full ${tone.dot}`} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    {r.codigo && <span className="text-[10px] font-mono px-1 py-0.5 rounded bg-surface text-ink-faint shrink-0">{r.codigo}</span>}
+                    <span className="truncate text-[13px] text-ink font-medium max-w-[260px]" title={r.label}>{r.label}</span>
+                    {r.perfil && <span className="text-[10px] text-ink-faint shrink-0 tabular-nums">{r.perfil.emoji} {r.perfil.pct}%</span>}
+                  </div>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <div className="relative h-2.5 rounded-full bg-surface overflow-hidden shrink-0" style={{ width: `${barW}%` }}
+                         title={`${r.total} leads · ${r.qualifPct.toFixed(0)}% qualificaram p/ Branorte`}>
+                      <div className={`absolute inset-y-0 left-0 rounded-full ${tone.fill}`} style={{ width: `${Math.min(100, r.qualifPct)}%` }} />
                     </div>
-                  </td>
-                  <td className="py-1.5 px-2">
-                    {r.perfil
-                      ? <span className="text-ink-muted">{r.perfil.emoji} {r.perfil.label} <span className="text-ink-faint tabular-nums">{r.perfil.pct}%</span></span>
-                      : <span className="text-ink-faint">n/d</span>}
-                  </td>
-                  <td className="text-right py-1.5 px-2 font-mono tabular-nums text-ink">{r.total}</td>
-                  <td className={`text-right py-1.5 px-2 font-mono tabular-nums ${r.engajouPct >= 45 ? 'text-success' : r.engajouPct >= 30 ? 'text-warning' : 'text-danger'}`}>{r.engajouPct.toFixed(0)}%</td>
-                  <td className={`text-right py-1.5 px-2 font-mono tabular-nums ${r.qualifPct >= 35 ? 'text-success' : r.qualifPct >= 22 ? 'text-warning' : 'text-danger'}`}>{r.qualifPct.toFixed(0)}%</td>
-                  <td className="text-right py-1.5 px-2 font-mono tabular-nums text-ink-muted">{r.followUp || '—'}</td>
-                  <td className={`text-right py-1.5 px-2 font-mono tabular-nums ${r.leadQuente > 0 ? 'text-success font-semibold' : 'text-ink-faint'}`}>{r.leadQuente || '—'}</td>
-                  <td className="text-right py-1.5 px-2 font-mono tabular-nums text-accent whitespace-nowrap"
-                      title={r.valorVenda ? `Venda real: ${r.valorVenda.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : undefined}>
-                    {r.orcamento > 0 || r.vendido > 0
-                      ? [r.orcamento > 0 ? `${r.orcamento} orç` : null, r.vendido > 0 ? `${r.vendido} vd` : null].filter(Boolean).join(' · ')
-                      : '—'}
+                    <span className="text-[11px] tabular-nums text-ink-faint shrink-0">{r.total} leads · <span className="text-ink-muted">{r.qualifPct.toFixed(0)}% qualif</span></span>
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${vm.cls}`}>{vm.emoji} {vm.label}</span>
+                  <div className="text-[10px] text-ink-faint tabular-nums mt-0.5">score {r.score}</div>
+                </div>
+              </div>
+              {/* chips de métrica */}
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] pl-5 tabular-nums">
+                <span className={r.engajouPct >= 45 ? 'text-success' : r.engajouPct >= 30 ? 'text-warning' : 'text-danger'}>{r.engajouPct.toFixed(0)}% respondeu</span>
+                {(r.followUp > 0 || r.leadQuente > 0) && (
+                  <span className="text-ink-muted">{r.followUp} follow · <span className={r.leadQuente > 0 ? 'text-success font-semibold' : ''}>{r.leadQuente} quente</span></span>
+                )}
+                {(r.orcamento > 0 || r.vendido > 0) ? (
+                  <span className="text-accent">
+                    {[r.orcamento > 0 ? `${r.orcamento} orç` : null, r.vendido > 0 ? `${r.vendido} vd` : null].filter(Boolean).join(' · ')}
                     {r.vendido > 0 && r.valorVenda ? <span className="text-success"> · R$ {Math.round(r.valorVenda / 1000)}k</span> : null}
-                  </td>
-                  <td className={`text-right py-1.5 px-2 font-mono tabular-nums ${r.nfPct >= 20 ? 'text-danger font-semibold' : r.nfPct >= 10 ? 'text-warning' : 'text-ink-faint'}`}>
-                    {r.nf > 0 ? `${r.nfPct.toFixed(0)}%` : '—'}
-                  </td>
-                  <td className="py-1.5 px-2 text-right">
-                    <span
-                      className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full border cursor-help ${vm.cls}`}
-                      title={r.reason}
-                    >
-                      {vm.emoji} {vm.label}
-                    </span>
-                    <div className="text-[10px] text-ink-faint tabular-nums mt-0.5">score {r.score}</div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+                  </span>
+                ) : <span className="text-ink-faint">sem orç/venda</span>}
+                {r.nf > 0 && <span className={r.nfPct >= 20 ? 'text-danger font-semibold' : 'text-warning'}>🚩 {r.nfPct.toFixed(0)}% não fab.</span>}
+              </div>
+            </div>
+          )
+        })}
       </div>
+
+      {ocultos > 0 && !verTudo && (
+        <button onClick={() => setVerTudo(true)} className="w-full text-[12px] text-accent hover:text-accent/80 border border-dashed border-border rounded-lg py-1.5">
+          + {ocultos} {noun} (menor volume) ↓
+        </button>
+      )}
+      {verTudo && rows.length > TOP && (
+        <button onClick={() => setVerTudo(false)} className="w-full text-[12px] text-ink-faint hover:text-ink-muted py-1">Mostrar só o top {TOP} ↑</button>
+      )}
+
       <div className="text-[11px] text-ink-faint pt-1 space-y-1 whitespace-normal leading-relaxed">
-        <p>Funil: <strong className="text-ink-muted">Respondeu</strong> (à IA) → <strong className="text-ink-muted">Qualificou</strong> (a IA viu que quer algo que a Branorte faz, OU o vendedor já moveu pra follow-up/quente/orçamento) → <strong className="text-ink-muted">Follow-up</strong> (negociação) → <strong className="text-ink-muted">Quente</strong> (perto de fechar) → <strong className="text-ink-muted">Orç / Venda</strong> (REAL: orçamento montado no sistema / pedido fechado, casado pelo telefone do lead — não pela etiqueta).</p>
-        <p><strong className="text-danger">Não fabricamos</strong> = leads com a etiqueta NÃO FABRICAMOS: pediram uma máquina/produto que a Branorte <strong>não faz</strong> — o anúncio atraiu o público errado (segmentação ruim, não criativo fraco). Os outros motivos de fechamento (não respondeu, sem interesse…) estão no card "Motivos de fechamento" abaixo.</p>
-        <p>Passe o mouse no veredito pra ver o porquê. 🟢 escalar verba · 🔴 pausar · 🟠 ajustar ângulo/segmentação · 🟡 manter · ⚪ amostra &lt;{AMOSTRA_MIN} leads · ⚫ sem atribuição. Decisão por QUALIDADE (conversão ~0 em tudo).</p>
+        <p><strong className="text-ink-muted">Barra</strong> = volume de leads (quanto maior, mais lead o {primeiraColuna.toLowerCase()} trouxe); <strong className="text-ink-muted">preenchimento</strong> = % que qualificou p/ Branorte; <strong className="text-ink-muted">cor</strong> = veredito. Barra longa e verde = escalar verba; barra longa e vermelha = verba queimada, cortar.</p>
+        <p>🟢 escalar · 🔴 pausar · 🟠 ajustar ângulo/segmentação · 🟡 manter · ⚪ amostra &lt;{AMOSTRA_MIN} leads · ⚫ sem atribuição. Orç/Venda são REAIS (casados pelo telefone do lead, não pela etiqueta). Passe o mouse na faixa pra ver o porquê do veredito.</p>
       </div>
     </div>
   )
