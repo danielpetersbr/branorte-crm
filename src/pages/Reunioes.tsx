@@ -60,29 +60,40 @@ function Gravador({ reuniaoId, onAdd }: { reuniaoId: string; onAdd: (g: Gravacao
   const [uploading, setUploading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const mrRef = useRef<MediaRecorder | null>(null)
-  const chunksRef = useRef<Blob[]>([])
   const streamRef = useRef<MediaStream | null>(null)
   const timerRef = useRef<number | null>(null)
+  const segTimerRef = useRef<number | null>(null)
   const startRef = useRef<number>(0)
+  const segStartRef = useRef<number>(0)
+  const stoppingRef = useRef<boolean>(false)
+  const partRef = useRef<number>(0)
+
+  // Fatiamento automático: cada bloco tem no máx. 15 min — bem abaixo do limite
+  // de ~25 min do modelo gpt-4o-transcribe (áudio maior é rejeitado pela OpenAI
+  // como "corrupted or unsupported"). Cada bloco vira uma gravação curta,
+  // transcrita à parte; o resumo junta todas. Reunião de qualquer duração passa.
+  const SEG_MS = 15 * 60 * 1000
 
   const stopTimer = () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null } }
-  useEffect(() => () => { stopTimer(); streamRef.current?.getTracks().forEach(t => t.stop()) }, [])
+  const stopSegTimer = () => { if (segTimerRef.current) { clearInterval(segTimerRef.current); segTimerRef.current = null } }
+  useEffect(() => () => { stopTimer(); stopSegTimer(); streamRef.current?.getTracks().forEach(t => t.stop()) }, [])
 
-  const finalize = async () => {
-    const dur = Math.floor((Date.now() - startRef.current) / 1000)
-    const blob = new Blob(chunksRef.current, { type: mrRef.current?.mimeType || 'audio/webm' })
-    if (blob.size === 0) { setErr('Gravação vazia.'); return }
-    setUploading(true)
+  // Sobe um bloco pro Storage e devolve a Gravacao. Só mexe no estado de UI
+  // (uploading) no bloco final — os intermediários sobem em silêncio, sem
+  // interromper a gravação em curso.
+  const finalize = async (blob: Blob, durSeg: number, isFinal: boolean) => {
+    if (blob.size === 0) { if (isFinal) setUploading(false); return }
+    if (isFinal) setUploading(true)
     try {
-      const path = `${reuniaoId}/${Date.now()}.webm`
+      const path = `${reuniaoId}/${Date.now()}-${(partRef.current++).toString().padStart(2, '0')}.webm`
       const { error } = await supabase.storage.from('reunioes-audio').upload(path, blob, { contentType: blob.type || 'audio/webm', upsert: false })
       if (error) throw error
       const { data: pub } = supabase.storage.from('reunioes-audio').getPublicUrl(path)
-      onAdd({ id: uid(), url: pub.publicUrl, path, duracao_seg: dur, created_at: new Date().toISOString() })
+      onAdd({ id: uid(), url: pub.publicUrl, path, duracao_seg: durSeg, created_at: new Date().toISOString() })
     } catch (e) {
-      setErr('Falhou ao salvar: ' + ((e as Error)?.message || 'erro'))
+      setErr('Falhou ao salvar um bloco: ' + ((e as Error)?.message || 'erro'))
     } finally {
-      setUploading(false)
+      if (isFinal) setUploading(false)
     }
   }
 
@@ -96,28 +107,52 @@ function Gravador({ reuniaoId, onAdd }: { reuniaoId: string; onAdd: (g: Gravacao
         audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
       })
       streamRef.current = stream
-      const mime = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : ''
-      // 32 kbps mono: voz nítida e ~4x mais leve que o padrão (~128kbps) → cabe
-      // ~1h45 no limite de 25 MB do Whisper (antes o padrão só dava ~25 min).
-      const mrOpts: MediaRecorderOptions = { audioBitsPerSecond: 32000 }
-      if (mime) mrOpts.mimeType = mime
-      const mr = new MediaRecorder(stream, mrOpts)
-      chunksRef.current = []
-      mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
-      mr.onstop = () => { void finalize() }
-      mr.start()
-      mrRef.current = mr
+      stoppingRef.current = false
+      partRef.current = 0
+      startRecorder()
       startRef.current = Date.now()
       setElapsed(0)
       setRec(true)
       timerRef.current = window.setInterval(() => setElapsed(Math.floor((Date.now() - startRef.current) / 1000)), 500)
+      segTimerRef.current = window.setInterval(rotate, SEG_MS)
     } catch {
       setErr('Não deu pra acessar o microfone — permita o acesso no navegador.')
     }
   }
 
+  // Abre um MediaRecorder num bloco novo. Cada recorder acumula no seu próprio
+  // array (não num ref compartilhado) pra não perder chunks durante a rotação.
+  const startRecorder = () => {
+    const mime = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : ''
+    // 32 kbps mono: voz nítida e leve. Bloco de 15 min ≈ 3,4 MB.
+    const mrOpts: MediaRecorderOptions = { audioBitsPerSecond: 32000 }
+    if (mime) mrOpts.mimeType = mime
+    const mr = new MediaRecorder(streamRef.current!, mrOpts)
+    const localChunks: Blob[] = []
+    const segStart = Date.now()
+    segStartRef.current = segStart
+    mr.ondataavailable = e => { if (e.data.size > 0) localChunks.push(e.data) }
+    mr.onstop = () => {
+      const durSeg = Math.max(1, Math.round((Date.now() - segStart) / 1000))
+      void finalize(new Blob(localChunks, { type: mr.mimeType || 'audio/webm' }), durSeg, stoppingRef.current)
+    }
+    mr.start()
+    mrRef.current = mr
+  }
+
+  // Fecha o bloco atual (dispara o upload dele) e abre o próximo — sem soltar o
+  // microfone. Chamado a cada SEG_MS enquanto a reunião está sendo gravada.
+  const rotate = () => {
+    if (stoppingRef.current) return
+    try { mrRef.current?.stop() } catch { /* noop */ }
+    startRecorder()
+  }
+
   const stop = () => {
     stopTimer()
+    stopSegTimer()
+    stoppingRef.current = true
+    setUploading(true)
     try { mrRef.current?.stop() } catch { /* noop */ }
     streamRef.current?.getTracks().forEach(t => t.stop())
     setRec(false)
@@ -142,6 +177,7 @@ function Gravador({ reuniaoId, onAdd }: { reuniaoId: string; onAdd: (g: Gravacao
           <Mic className="h-4 w-4" /> Gravar reunião
         </button>
       )}
+      {rec && <p className="text-[11px] text-ink-muted mt-1.5">Salvando em blocos de 15 min — cada bloco é transcrito à parte.</p>}
       {err && <p className="text-[11px] text-danger mt-1.5">{err}</p>}
     </div>
   )

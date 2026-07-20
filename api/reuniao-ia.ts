@@ -70,7 +70,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       headers: { Authorization: `Bearer ${OPENAI_KEY}` },
       body: form,
     })
-    if (!wr.ok) return res.status(502).json({ error: 'whisper', detail: (await wr.text()).slice(0, 400) })
+    if (!wr.ok) {
+      const raw = (await wr.text()).slice(0, 500)
+      // A OpenAI devolve "corrupted or unsupported" também quando o áudio passa
+      // do limite de duração do modelo (~25 min). Traduz pra algo acionável.
+      const detail = /corrupted|unsupported/i.test(raw)
+        ? 'Áudio longo demais para transcrever de uma vez (limite ~25 min do modelo). Gravações novas já são salvas em blocos de 15 min e transcrevem normal — esta é uma gravação antiga, longa.'
+        : raw
+      return res.status(502).json({ error: 'whisper', detail })
+    }
     const j = (await wr.json()) as { text?: string }
     return res.status(200).json({ texto: (j.text || '').trim() })
   }
