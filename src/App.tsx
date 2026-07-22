@@ -44,6 +44,7 @@ const Guia = lazy(() => import('@/pages/Guia').then(m => ({ default: m.Guia })))
 const AdminUsuarios = lazy(() => import('@/pages/AdminUsuarios').then(m => ({ default: m.AdminUsuarios })))
 const AdminPermissoes = lazy(() => import('@/pages/AdminPermissoes').then(m => ({ default: m.AdminPermissoes })))
 const AdminTransportadorFuncoes = lazy(() => import('@/pages/AdminTransportadorFuncoes'))
+const IaAtendente = lazy(() => import('@/pages/IaAtendente').then(m => ({ default: m.IaAtendente })))
 const Perfil = lazy(() => import('@/pages/Perfil').then(m => ({ default: m.Perfil })))
 const Disparos = lazy(() => import('@/pages/Disparos').then(m => ({ default: m.Disparos })))
 const MotoresAdmin = lazy(() => import('@/pages/MotoresAdmin').then(m => ({ default: m.MotoresAdmin })))
@@ -374,6 +375,9 @@ function AppRoutes() {
         )}
         {can('menu.admin_transportador_funcoes') && (
           <Route path="/admin/transportador-funcoes" element={<AdminTransportadorFuncoes />} />
+        )}
+        {can('menu.ia_atendente') && (
+          <Route path="/ia-atendente" element={<IaAtendente />} />
         )}
         {can('menu.roadmap') && (
           <Route path="/roadmap" element={<Roadmap />} />
