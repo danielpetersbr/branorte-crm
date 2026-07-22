@@ -8,6 +8,7 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 import { letraItem } from '@/lib/utils'
+import { DESCRICOES_POR_MODELO } from '@/lib/orcamento-descricoes'
 import { gerarPdfDoPreview } from '@/lib/preview-to-pdf'
 import { gerarPdfServerSide } from '@/lib/pdf-server'
 import { docxParaPdfServer } from '@/lib/docx-to-pdf-server'
@@ -245,6 +246,9 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
   // Auto-sugere a partir dos itens do carrinho, mas vendedor pode editar.
   const [descricao, setDescricao] = useState('')
   const [descricaoTocada, setDescricaoTocada] = useState(false)
+  // Picker de variações por modelo (chip com lista cadastrada em orcamento-descricoes.ts)
+  const [modeloAberto, setModeloAberto] = useState<string | null>(null)
+  const [buscaVar, setBuscaVar] = useState('')
   const sugestao = useMemo(() => sugerirDescricao(snapshot), [snapshot])
   // Em modo 'alt' (criar alteracao), pre-preenche com prefix "(Alteração)" pra avisar.
   // Em outros casos, deixa VAZIO de proposito: forca vendedor a confirmar/digitar
@@ -1301,7 +1305,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
                 </button>
               )}
             </div>
-            {/* Atalhos rápidos — modelos mais comuns */}
+            {/* Atalhos rápidos — modelos. Modelos com variações cadastradas abrem um picker;
+                os demais (Mini Fábrica, Equipamento Avulso) só preenchem o nome do modelo. */}
             <div className="flex flex-wrap gap-1.5 mb-2">
               {[
                 'Mini Fábrica 300',
@@ -1313,21 +1318,68 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
                 'Compacta 03',
                 'Compacta 03 Master',
                 'Equipamento Avulso',
-              ].map(modelo => (
-                <button
-                  key={modelo}
-                  type="button"
-                  onClick={() => { setDescricao(modelo); setDescricaoTocada(true) }}
-                  className={`px-2 py-1 text-[11px] rounded-md border transition-colors ${
-                    descricao === modelo
-                      ? 'bg-accent/20 border-accent text-accent font-semibold'
-                      : 'bg-surface-2/50 border-border text-ink-muted hover:border-ink-faint hover:text-ink'
-                  }`}
-                >
-                  {modelo}
-                </button>
-              ))}
+              ].map(modelo => {
+                const variacoes = DESCRICOES_POR_MODELO[modelo]
+                const ativo = modeloAberto === modelo || descricao === modelo || !!variacoes?.includes(descricao)
+                return (
+                  <button
+                    key={modelo}
+                    type="button"
+                    onClick={() => {
+                      if (variacoes?.length) {
+                        setModeloAberto(m => (m === modelo ? null : modelo))
+                        setBuscaVar('')
+                      } else {
+                        setDescricao(modelo); setDescricaoTocada(true); setModeloAberto(null)
+                      }
+                    }}
+                    className={`px-2 py-1 text-[11px] rounded-md border transition-colors ${
+                      ativo
+                        ? 'bg-accent/20 border-accent text-accent font-semibold'
+                        : 'bg-surface-2/50 border-border text-ink-muted hover:border-ink-faint hover:text-ink'
+                    }`}
+                  >
+                    {modelo}{variacoes?.length ? ` ${modeloAberto === modelo ? '▴' : '▾'}` : ''}
+                  </button>
+                )
+              })}
             </div>
+            {/* Lista de variações cadastradas do modelo aberto (com busca) */}
+            {modeloAberto && DESCRICOES_POR_MODELO[modeloAberto] && (() => {
+              const busca = buscaVar.trim().toLowerCase()
+              const lista = DESCRICOES_POR_MODELO[modeloAberto].filter(v => v.toLowerCase().includes(busca))
+              return (
+                <div className="mb-2 rounded-lg border border-border bg-surface-2/40 p-2">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <input
+                      autoFocus
+                      value={buscaVar}
+                      onChange={e => setBuscaVar(e.target.value)}
+                      placeholder={`Buscar variação de ${modeloAberto}...`}
+                      className="flex-1 px-2 py-1 text-[11px] rounded-md border border-border bg-surface text-ink placeholder:text-ink-faint outline-none focus:border-accent"
+                    />
+                    <button type="button" onClick={() => setModeloAberto(null)} className="text-[11px] text-ink-faint hover:text-ink px-1" title="Fechar">✕</button>
+                  </div>
+                  <div className="max-h-52 overflow-y-auto flex flex-col gap-0.5">
+                    {lista.map(v => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => { setDescricao(v); setDescricaoTocada(true); setModeloAberto(null) }}
+                        className={`text-left px-2 py-1 text-[11px] rounded-md transition-colors ${
+                          descricao === v ? 'bg-accent/20 text-accent font-semibold' : 'text-ink-muted hover:bg-surface hover:text-ink'
+                        }`}
+                      >
+                        {v}
+                      </button>
+                    ))}
+                    {lista.length === 0 && (
+                      <div className="text-[11px] text-ink-faint px-2 py-2">Nenhuma variação bate com “{buscaVar}”.</div>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
             <Input
               value={descricao}
               onChange={e => { setDescricao(e.target.value); setDescricaoTocada(true) }}
