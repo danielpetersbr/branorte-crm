@@ -121,6 +121,62 @@ interface ConfigForm {
 const MODELOS_SUGERIDOS = ['gpt-5.4-mini', 'gpt-5.4', 'gpt-4o-mini', 'gpt-4.1-mini']
 const LIMITE_UPLOAD_BYTES = 16 * 1024 * 1024 // 16MB
 
+// Edge da IA atendente (mesmo shared secret estático usado pela extensão da frota)
+const IA_EDGE_URL = 'https://flwbeevtvjiouxdjmziv.supabase.co/functions/v1/ia-atendente'
+const IA_EDGE_SECRET = 'branorte-wa-sync-2026'
+
+// Modelos de chat REAIS disponíveis na conta OpenAI (via edge, chave fica no servidor)
+function useModelosOpenai() {
+  return useQuery({
+    queryKey: ['ia-modelos-openai'],
+    queryFn: async (): Promise<string[]> => {
+      const r = await fetch(IA_EDGE_URL, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + IA_EDGE_SECRET, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'listar_modelos' }),
+      })
+      const j = await r.json()
+      if (!j?.ok || !Array.isArray(j.modelos)) throw new Error(j?.error ?? 'falha ao listar modelos')
+      return j.modelos as string[]
+    },
+    staleTime: 10 * 60 * 1000,
+    retry: 1,
+  })
+}
+
+// Select com os modelos da conta + opção de digitar um id manualmente
+function SeletorModelo({ value, onChange, modelos }: { value: string; onChange: (v: string) => void; modelos: string[] }) {
+  const [livre, setLivre] = useState(false)
+  const naLista = modelos.includes(value)
+  if (livre || (!naLista && value !== '')) {
+    return (
+      <div className="flex gap-1.5">
+        <Input value={value} onChange={e => onChange(e.target.value)} placeholder="id do modelo (ex: gpt-5.4-mini)" />
+        {modelos.length > 0 && (
+          <button
+            type="button"
+            onClick={() => { setLivre(false); if (!modelos.includes(value)) onChange(modelos[0]) }}
+            className="shrink-0 px-2 rounded-md border border-border text-[11px] text-ink-muted hover:text-ink hover:bg-surface-2 transition-colors"
+            title="Voltar pra lista de modelos da conta"
+          >
+            Lista
+          </button>
+        )}
+      </div>
+    )
+  }
+  return (
+    <select
+      value={value}
+      onChange={e => { if (e.target.value === '__outro__') setLivre(true); else onChange(e.target.value) }}
+      className="w-full bg-surface border border-border rounded-md px-3 py-2 text-[13px] text-ink focus:outline-none focus:ring-1 focus:ring-accent"
+    >
+      {modelos.map(m => <option key={m} value={m}>{m}</option>)}
+      <option value="__outro__">✏️ Digitar outro…</option>
+    </select>
+  )
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 function formatDataHora(iso: string | null | undefined): string {
   if (!iso) return '—'
@@ -250,9 +306,26 @@ function useIaMidias() {
 // Seção 1 — Visão geral
 // ============================================================================
 function SecaoVisaoGeral({ push }: { push: (t: string, tone?: ToastMsg['tone']) => void }) {
+  const qc = useQueryClient()
   const atendimentos = useIaAtendimentos()
   const runs = useIaRuns()
   const hoje = hojeISO()
+
+  // Kill switch do admin: desliga a IA de qualquer cliente direto pelo painel
+  const desligar = useMutation({
+    mutationFn: async (id: number) => {
+      const { error } = await supabase
+        .from('ia_atendimentos')
+        .update({ ativo: false, atualizado_em: new Date().toISOString() })
+        .eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ia-atendimentos'] })
+      push('IA desligada pra este cliente', 'success')
+    },
+    onError: (err: Error) => push('Erro ao desligar: ' + (err?.message ?? 'falha de rede'), 'danger'),
+  })
 
   async function atualizar() {
     await Promise.all([atendimentos.refetch(), runs.refetch()])
@@ -295,6 +368,7 @@ function SecaoVisaoGeral({ push }: { push: (t: string, tone?: ToastMsg['tone']) 
                 <th className="text-left px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Vendedor</th>
                 <th className="text-right px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Respostas hoje</th>
                 <th className="text-right px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Última atividade</th>
+                <th className="px-3 py-1.5" />
               </tr>
             </thead>
             <tbody>
@@ -309,6 +383,16 @@ function SecaoVisaoGeral({ push }: { push: (t: string, tone?: ToastMsg['tone']) 
                     {a.dia_ref === hoje ? a.respostas_hoje : 0}
                   </td>
                   <td className="px-3 py-2 text-right text-ink-faint tabular-nums">{formatDataHora(a.atualizado_em)}</td>
+                  <td className="px-3 py-2 text-right">
+                    <button
+                      onClick={() => desligar.mutate(a.id)}
+                      disabled={desligar.isPending}
+                      className="px-2 py-1 rounded-md border border-danger/40 text-danger text-[11px] font-semibold hover:bg-danger/10 transition-colors disabled:opacity-50"
+                      title="Desligar a IA pra este cliente agora (o vendedor pode religar pela conversa)"
+                    >
+                      Desligar
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -535,6 +619,17 @@ function SecaoConfig({ push }: { push: (t: string, tone?: ToastMsg['tone']) => v
   const qc = useQueryClient()
   const { data: cfg, isLoading } = useIaConfig()
   const [form, setForm] = useState<ConfigForm | null>(null)
+  const modelosApi = useModelosOpenai()
+
+  // Lista real da conta OpenAI; cai nas sugestões fixas se a chamada falhar.
+  // Os valores salvos entram na lista mesmo se não vierem da API (não some config).
+  const modelos = useMemo(() => {
+    const base = (modelosApi.data && modelosApi.data.length ? modelosApi.data : MODELOS_SUGERIDOS).slice()
+    for (const v of [form?.modelo_openai, form?.modelo_fallback]) {
+      if (v && !base.includes(v)) base.unshift(v)
+    }
+    return base
+  }, [modelosApi.data, form?.modelo_openai, form?.modelo_fallback])
 
   useEffect(() => {
     if (cfg && !form) {
@@ -572,32 +667,29 @@ function SecaoConfig({ push }: { push: (t: string, tone?: ToastMsg['tone']) => v
 
   return (
     <div className="space-y-3 max-w-2xl">
-      <datalist id="ia-modelos">
-        {MODELOS_SUGERIDOS.map(m => <option key={m} value={m} />)}
-      </datalist>
-
       <div className="bg-surface border border-border rounded-lg p-4 space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-[11px] font-semibold uppercase tracking-wide text-ink-muted mb-1">
               Modelo principal
             </label>
-            <Input
-              list="ia-modelos"
+            <SeletorModelo
               value={form.modelo_openai}
-              onChange={e => setForm({ ...form, modelo_openai: e.target.value })}
-              placeholder="gpt-5.4-mini"
+              onChange={v => setForm({ ...form, modelo_openai: v })}
+              modelos={modelos}
             />
+            <p className="text-[10px] text-ink-faint mt-1">
+              {modelosApi.data ? `${modelosApi.data.length} modelos disponíveis na conta OpenAI` : modelosApi.isLoading ? 'Buscando modelos da conta…' : 'Não consegui listar a conta — usando sugestões'}
+            </p>
           </div>
           <div>
             <label className="block text-[11px] font-semibold uppercase tracking-wide text-ink-muted mb-1">
               Modelo reserva (fallback)
             </label>
-            <Input
-              list="ia-modelos"
+            <SeletorModelo
               value={form.modelo_fallback}
-              onChange={e => setForm({ ...form, modelo_fallback: e.target.value })}
-              placeholder="gpt-4o-mini"
+              onChange={v => setForm({ ...form, modelo_fallback: v })}
+              modelos={modelos}
             />
             <p className="text-[10px] text-ink-faint mt-1">Usado se o principal falhar.</p>
           </div>
