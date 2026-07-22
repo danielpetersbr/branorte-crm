@@ -38,6 +38,7 @@ export const FEATURE_CATALOG: Array<{
   { key: 'menu.viabilidade', label: 'Viabilidade da Ração', group: 'Menu' },
   { key: 'menu.disparos', label: 'Roteamento (Disparos)', group: 'Menu' },
   { key: 'menu.ia_atendente', label: 'IA Atendente (admin)', group: 'Menu' },
+  { key: 'menu.fluxos_funil', label: 'Fluxos do Funil (admin)', group: 'Menu' },
   { key: 'menu.admin_usuarios', label: 'Admin: Usuários', group: 'Menu' },
   { key: 'menu.admin_permissoes', label: 'Admin: Permissões', group: 'Menu' },
   { key: 'menu.admin_transportador_funcoes', label: 'Admin: Funções Transportador', group: 'Menu' },

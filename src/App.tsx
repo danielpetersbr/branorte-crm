@@ -45,6 +45,7 @@ const AdminUsuarios = lazy(() => import('@/pages/AdminUsuarios').then(m => ({ de
 const AdminPermissoes = lazy(() => import('@/pages/AdminPermissoes').then(m => ({ default: m.AdminPermissoes })))
 const AdminTransportadorFuncoes = lazy(() => import('@/pages/AdminTransportadorFuncoes'))
 const IaAtendente = lazy(() => import('@/pages/IaAtendente').then(m => ({ default: m.IaAtendente })))
+const FluxosFunil = lazy(() => import('@/pages/FluxosFunil').then(m => ({ default: m.FluxosFunil })))
 const Perfil = lazy(() => import('@/pages/Perfil').then(m => ({ default: m.Perfil })))
 const Disparos = lazy(() => import('@/pages/Disparos').then(m => ({ default: m.Disparos })))
 const MotoresAdmin = lazy(() => import('@/pages/MotoresAdmin').then(m => ({ default: m.MotoresAdmin })))
@@ -378,6 +379,9 @@ function AppRoutes() {
         )}
         {can('menu.ia_atendente') && (
           <Route path="/ia-atendente" element={<IaAtendente />} />
+        )}
+        {can('menu.fluxos_funil') && (
+          <Route path="/fluxos" element={<FluxosFunil />} />
         )}
         {can('menu.roadmap') && (
           <Route path="/roadmap" element={<Roadmap />} />
