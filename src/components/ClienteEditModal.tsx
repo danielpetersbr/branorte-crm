@@ -445,12 +445,7 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
       setErroSalvar('Telefone é obrigatório (com DDD) — é o que amarra o orçamento ao cliente/lead.')
       return
     }
-    // Inscrição é obrigatória: ou informa o número (Estadual/Produtor Rural) ou
-    // marca "Isento". Evita orçamento sair sem definir a situação fiscal.
-    if (ieTipo !== 'isento' && !ie.trim()) {
-      setErroSalvar('Informe a Inscrição (Estadual ou Produtor Rural) ou marque "Isento".')
-      return
-    }
+    // Inscrição é opcional — o vendedor define a situação fiscal se/quando tiver.
     setErroSalvar(null)
     // Isento → grava "ISENTO" no valor pra aparecer em todos os formatos (PDF/DOCX);
     // os demais gravam o número digitado.
@@ -685,10 +680,10 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
             </div>
           </div>
 
-          {/* Inscrição (Estadual / Produtor Rural / Isento) — obrigatória */}
+          {/* Inscrição (Estadual / Produtor Rural / Isento) — opcional */}
           <div>
             <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1">
-              Inscrição <span className="text-danger">*</span>
+              Inscrição
             </label>
             {/* Seletor de tipo */}
             <div className="flex gap-1 mb-2">
