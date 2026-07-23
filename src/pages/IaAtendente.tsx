@@ -127,6 +127,9 @@ interface IaVendedorConfigRow {
 const MODELOS_SUGERIDOS = ['gpt-5.4-mini', 'gpt-5.4', 'gpt-4o-mini', 'gpt-4.1-mini']
 const LIMITE_UPLOAD_BYTES = 16 * 1024 * 1024 // 16MB
 
+// Texto de exemplo pra abordagem automática na transferência (usa {vendedor} e {origem})
+const ABORDAGEM_EXEMPLO = 'Oi! Aqui é o {vendedor}, da Branorte. O {origem} me passou seu contato pra te atender. Como posso te ajudar?'
+
 // Edge da IA atendente (mesmo shared secret estático usado pela extensão da frota)
 const IA_EDGE_URL = 'https://flwbeevtvjiouxdjmziv.supabase.co/functions/v1/ia-atendente'
 const IA_EDGE_SECRET = 'branorte-wa-sync-2026'
@@ -783,6 +786,127 @@ function SecaoAutoProspeccao({ push }: { push: (t: string, tone?: ToastMsg['tone
   )
 }
 
+// ─── Bloco: Abordagem automática na transferência ──────────────────────────
+// Server-side: ao transferir um contato, o WhatsApp de quem recebe manda sozinho
+// a 1ª mensagem e põe PROSPECÇÃO. Dois campos em ia_config controlam isso:
+//  • transferencia_auto_abordar  (boolean) — liga/desliga
+//  • transferencia_abordagem_texto (string) — texto com {vendedor} e {origem}
+function SecaoTransferenciaAbordagem({ push }: { push: (t: string, tone?: ToastMsg['tone']) => void }) {
+  const qc = useQueryClient()
+  const { data: cfg, isLoading } = useIaConfig() // reusa a query ['ia-config']
+  const [texto, setTexto] = useState<string | null>(null)
+
+  const ligado = cfg?.transferencia_auto_abordar === true
+  const salvo = typeof cfg?.transferencia_abordagem_texto === 'string' ? cfg.transferencia_abordagem_texto : ''
+
+  // Carrega o texto salvo uma vez; se vazio, pré-preenche com o exemplo.
+  useEffect(() => {
+    if (cfg && texto === null) setTexto(salvo || ABORDAGEM_EXEMPLO)
+  }, [cfg, texto, salvo])
+
+  const dirty = texto !== null && texto !== salvo
+
+  const toggleAuto = useMutation({
+    mutationFn: async (on: boolean) => {
+      const { error } = await supabase.from('ia_config').upsert(
+        { chave: 'transferencia_auto_abordar', valor: { v: on } },
+        { onConflict: 'chave' },
+      )
+      if (error) throw error
+    },
+    onSuccess: (_data, on) => {
+      qc.invalidateQueries({ queryKey: ['ia-config'] })
+      push(on ? 'Abordagem automática LIGADA' : 'Abordagem automática desligada', 'success')
+    },
+    onError: (err: Error) => push('Erro ao salvar: ' + (err?.message ?? 'falha de rede'), 'danger'),
+  })
+
+  const salvarTexto = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from('ia_config').upsert(
+        { chave: 'transferencia_abordagem_texto', valor: { v: texto ?? '' } },
+        { onConflict: 'chave' },
+      )
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ia-config'] })
+      push('Mensagem de abordagem salva — vale na hora', 'success')
+    },
+    onError: (err: Error) => push('Erro ao salvar: ' + (err?.message ?? 'falha de rede'), 'danger'),
+  })
+
+  if (isLoading || texto === null) {
+    return (
+      <div className="bg-surface border border-border rounded-lg p-4 flex items-center justify-center gap-2 text-[12px] text-ink-faint">
+        <Loader2 className="h-4 w-4 animate-spin" /> Carregando…
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-surface border border-border rounded-lg p-4 space-y-3">
+      <div className="flex items-start gap-2">
+        <MessageSquare className="h-4 w-4 text-accent shrink-0 mt-0.5" />
+        <div className="min-w-0 flex-1">
+          <h3 className="text-[13px] font-semibold text-ink">Abordagem automática na transferência</h3>
+          <p className="text-[11px] text-ink-muted mt-0.5 leading-relaxed">
+            Quando um vendedor transfere um contato pra outro, o WhatsApp de quem recebe manda sozinho a
+            primeira mensagem pro cliente e põe <strong className="text-ink">PROSPECÇÃO</strong>.
+          </p>
+        </div>
+      </div>
+
+      {/* Liga/desliga */}
+      <div className="flex items-center gap-2">
+        <Toggle on={ligado} onChange={v => toggleAuto.mutate(v)} disabled={toggleAuto.isPending} />
+        <span className="text-[12px] text-ink-muted">
+          {ligado ? 'Ligada — quem recebe já aborda o cliente' : 'Desligada — a transferência não manda mensagem'}
+        </span>
+        {toggleAuto.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin text-ink-faint" />}
+      </div>
+
+      {/* Texto da mensagem */}
+      <div>
+        <label className="block text-[11px] font-semibold uppercase tracking-wide text-ink-muted mb-1">
+          Mensagem de abordagem
+        </label>
+        <textarea
+          value={texto}
+          onChange={e => setTexto(e.target.value)}
+          placeholder="Ex: Oi! Aqui é o {vendedor}, o {origem} me passou seu contato..."
+          className={cn(
+            'w-full min-h-[90px] rounded-md border border-border bg-surface px-3 py-2 text-[13px]',
+            'text-ink placeholder:text-ink-faint resize-y',
+            'focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-all',
+          )}
+        />
+        <p className="text-[10px] text-ink-faint mt-1">
+          <code className="text-ink-muted">{'{vendedor}'}</code> vira o nome de quem recebe e{' '}
+          <code className="text-ink-muted">{'{origem}'}</code> o de quem passou (só o primeiro nome).
+        </p>
+      </div>
+
+      {/* Aviso + salvar */}
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] text-ink-faint">Vale pra frota toda; muda na hora, sem atualizar extensão.</span>
+        <button
+          onClick={() => salvarTexto.mutate()}
+          disabled={salvarTexto.isPending || !dirty}
+          className={cn(
+            'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors shrink-0',
+            dirty ? 'bg-accent text-white hover:opacity-90' : 'bg-surface-2 text-ink-faint cursor-default',
+            'disabled:opacity-60',
+          )}
+        >
+          {salvarTexto.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          {dirty ? 'Salvar' : 'Salvo'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function SecaoConfig({ push }: { push: (t: string, tone?: ToastMsg['tone']) => void }) {
   const qc = useQueryClient()
   const { data: cfg, isLoading } = useIaConfig()
@@ -835,6 +959,9 @@ function SecaoConfig({ push }: { push: (t: string, tone?: ToastMsg['tone']) => v
     <div className="space-y-3 max-w-2xl">
       {/* IA automática na Prospecção (por vendedor) — no topo, antes dos modelos */}
       <SecaoAutoProspeccao push={push} />
+
+      {/* Abordagem automática na transferência (2 chaves em ia_config) */}
+      <SecaoTransferenciaAbordagem push={push} />
 
       {(isLoading || !form) ? (
         <PageLoading />

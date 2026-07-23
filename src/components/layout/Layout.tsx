@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, ChevronDown, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Package, Zap, BookOpen, Settings, TrendingUp, MessageSquarePlus, FilePlus2, Truck, History, Search, Wallet, MapPin, Star, Target, Boxes, Calculator, ClipboardList, Beef, Wheat, Bot, Workflow } from 'lucide-react'
+import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, ChevronDown, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Package, Zap, BookOpen, Settings, TrendingUp, MessageSquarePlus, FilePlus2, Truck, History, Search, Wallet, MapPin, Star, Target, Boxes, Calculator, ClipboardList, Beef, Wheat, Bot, Workflow, CalendarDays } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { cn } from '@/lib/utils'
@@ -10,6 +10,7 @@ import { useDarkMode } from '@/hooks/useDarkMode'
 import { RoadmapFAB } from '@/components/RoadmapFAB'
 import { GenerationOverlay } from '@/components/GenerationOverlay'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { LembretesNotifier } from '@/components/LembretesNotifier'
 
 // Abrevia numero pra caber no badge: 1234 -> 1.2k
 function fmtCount(n: number): string {
@@ -44,6 +45,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true, permKey: 'menu.dashboard' },
       { to: '/atendimentos', label: 'Atendimentos', icon: MessageSquare, countKey: 'atendimentos', permKey: 'menu.atendimentos' },
+      { to: '/agenda', label: 'Agenda', icon: CalendarDays },
       { to: '/contatos', label: 'Contatos', icon: Users, permKey: 'menu.contatos' },
       { to: '/consulta', label: 'Consulta', icon: Search, permKey: 'due_diligence.consultar' },
       { to: '/atribuir', label: 'Atribuir', icon: UserPlus, permKey: 'menu.atribuir' },
@@ -462,6 +464,13 @@ export function Layout() {
 
       {/* Overlay global de geração de orçamento */}
       <GenerationOverlay />
+
+      {/* Aviso na tela quando um lembrete/compromisso da Agenda vence.
+          Isolado em ErrorBoundary: é overlay GLOBAL — se algo nele falhar,
+          não pode derrubar o app inteiro. */}
+      <ErrorBoundary resetKey="lembretes-notifier">
+        <LembretesNotifier />
+      </ErrorBoundary>
 
       <nav className={cn(
         'md:hidden fixed bottom-0 left-0 right-0 bg-bg/95 backdrop-blur border-t border-border flex items-center justify-around px-2 py-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] z-50',
