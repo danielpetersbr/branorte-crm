@@ -191,6 +191,13 @@ export function Layout() {
   const aiDrawerOpen = useAiDrawerOpen()
   const [openGroups, toggleGroup, ensureGroupOpen] = useOpenGroups()
   const [confirmSair, setConfirmSair] = useState(false)
+  // Tooltip instantâneo do menu colapsado — substitui o title nativo (Chrome mostra
+  // o nome do botão anterior por um instante ao passar rápido entre vizinhos).
+  const [tip, setTip] = useState<{ label: string; x: number; y: number } | null>(null)
+  const mostrarTip = (label: string, el: HTMLElement) => {
+    const r = el.getBoundingClientRect()
+    setTip({ label, x: r.right + 8, y: r.top + r.height / 2 })
+  }
 
   const visible = (item: NavItem) => !item.permKey || can(item.permKey)
   // Grupos com itens visiveis (descarta grupos vazios pro usuario)
@@ -289,8 +296,9 @@ export function Layout() {
     return (
       <button
         key={g.id}
-        title={g.label}
         onClick={() => { toggleCollapsed(); ensureGroupOpen(g.id) }}
+        onMouseEnter={e => mostrarTip(g.label, e.currentTarget)}
+        onMouseLeave={() => setTip(null)}
         className={cn(
           'h-9 w-9 flex items-center justify-center rounded-md transition-colors',
           groupActive ? 'bg-accent-bg text-accent' : 'text-ink-faint hover:text-ink hover:bg-surface-2',
@@ -338,6 +346,15 @@ export function Layout() {
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-bg">
+      {/* Tooltip do menu colapsado — fixo no viewport (não é cortado pelo overflow do aside) */}
+      {collapsed && tip && (
+        <div
+          className="fixed z-[1200] -translate-y-1/2 pointer-events-none whitespace-nowrap rounded-md border border-border bg-surface px-2 py-1 text-[12px] font-medium text-ink shadow-lg"
+          style={{ left: tip.x, top: tip.y }}
+        >
+          {tip.label}
+        </div>
+      )}
       <aside className={cn(
         'hidden md:flex flex-col border-r border-border bg-surface transition-all duration-200',
         'sticky top-0 h-screen shrink-0 overflow-hidden',
