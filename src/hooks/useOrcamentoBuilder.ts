@@ -490,6 +490,16 @@ export interface CriarOrcamentoInput {
   foto_principal_url?: string | null
   // Seção "Observação — por conta do cliente" editável (null = default histórico)
   obs_por_conta?: string[] | null
+  // Termos inline da preview (migration 2026-06-10). ANTES eram DROPADOS no INSERT
+  // (só o UPDATE salvava via ...rest) — por isso desconto/frete/validade/parcelas
+  // sumiam em TODO orçamento novo. Agora o create persiste igual ao update.
+  frete_tipo?: 'CIF' | 'FOB' | null
+  frete_txt?: string | null
+  validade_dias?: number | null
+  desconto?: { tipo: 'pct' | 'valor'; valor: number; motivo?: string; base?: 'total' | 'equipamento'; manterValorParcelas?: boolean } | null
+  tensao_motores?: 220 | 380 | 660 | null
+  marca_motores?: string | null
+  parcelas?: any[] | null
 }
 
 export function useCriarOrcamento() {
@@ -574,6 +584,14 @@ export function useCriarOrcamento() {
         balanca_dispensada: input.balanca_dispensada ?? false,
         obs_por_conta: input.obs_por_conta ?? null,
         foto_principal_url: input.foto_principal_url ?? null,
+        // Termos inline (fix: antes sumiam no INSERT — só o UPDATE salvava).
+        frete_tipo: input.frete_tipo ?? null,
+        frete_txt: input.frete_txt ?? null,
+        validade_dias: input.validade_dias ?? null,
+        desconto: input.desconto ?? null,
+        tensao_motores: input.tensao_motores ?? null,
+        marca_motores: input.marca_motores ?? null,
+        parcelas: input.parcelas ?? null,
         numero_base: numero,
       }
       // Tenta inserir; se ainda assim der duplicate (race rara), incrementa e tenta de novo
@@ -696,6 +714,14 @@ export function useCriarAlteracao() {
         balanca_dispensada: rest.balanca_dispensada ?? false,
         obs_por_conta: rest.obs_por_conta ?? null,
         foto_principal_url: rest.foto_principal_url ?? null,
+        // Termos inline (fix: antes sumiam no INSERT da ALT também).
+        frete_tipo: rest.frete_tipo ?? null,
+        frete_txt: rest.frete_txt ?? null,
+        validade_dias: rest.validade_dias ?? null,
+        desconto: rest.desconto ?? null,
+        tensao_motores: rest.tensao_motores ?? null,
+        marca_motores: rest.marca_motores ?? null,
+        parcelas: rest.parcelas ?? null,
         parent_id,
         versao_alt: nextAlt,
         numero_base: numeroBase,
