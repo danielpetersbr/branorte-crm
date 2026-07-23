@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Bot, Brain, Settings2, Film, Loader2, Save, Plus, Trash2, Upload,
   RefreshCw, AlertCircle, Image as ImageIcon, FileText, Zap, MessageSquare,
+  Users, Search,
 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -116,6 +117,11 @@ interface ConfigForm {
   tom: string
   max_respostas_dia: number
   permitir_midia: boolean
+}
+
+interface IaVendedorConfigRow {
+  vendedor_nome: string
+  auto_prospeccao: boolean
 }
 
 const MODELOS_SUGERIDOS = ['gpt-5.4-mini', 'gpt-5.4', 'gpt-4o-mini', 'gpt-4.1-mini']
@@ -299,6 +305,40 @@ function useIaMidias() {
       return (data ?? []) as MidiaRow[]
     },
     staleTime: 30 * 1000,
+  })
+}
+
+// Estado da IA automática por vendedor. Chave canônica = vendedor_nome MAIÚSCULO.
+function useIaAutoConfig() {
+  return useQuery({
+    queryKey: ['ia-auto-config'],
+    queryFn: async (): Promise<IaVendedorConfigRow[]> => {
+      const { data, error } = await supabase
+        .from('ia_vendedor_config')
+        .select('vendedor_nome, auto_prospeccao')
+      if (error) throw error
+      return (data ?? []) as IaVendedorConfigRow[]
+    },
+    staleTime: 30 * 1000,
+  })
+}
+
+// Vendedores REAIS do WhatsApp (distinct client-side, ordenado pt-BR).
+function useVendedoresLista() {
+  return useQuery({
+    queryKey: ['vendedores-lista'],
+    queryFn: async (): Promise<string[]> => {
+      const { data, error } = await supabase
+        .from('wascript_etiquetas')
+        .select('vendedor_nome')
+      if (error) throw error
+      const set = new Set<string>()
+      for (const row of (data ?? []) as Array<{ vendedor_nome: string | null }>) {
+        if (row.vendedor_nome?.trim()) set.add(row.vendedor_nome.trim())
+      }
+      return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    },
+    staleTime: 5 * 60 * 1000,
   })
 }
 
@@ -615,6 +655,134 @@ function SecaoCerebro({ push }: { push: (t: string, tone?: ToastMsg['tone']) => 
 // ============================================================================
 // Seção 3 — Configuração
 // ============================================================================
+
+// ─── Bloco: IA automática na Prospecção (por vendedor) ──────────────────────
+function SecaoAutoProspeccao({ push }: { push: (t: string, tone?: ToastMsg['tone']) => void }) {
+  const qc = useQueryClient()
+  const autoCfg = useIaAutoConfig()
+  const vendedores = useVendedoresLista()
+  const [busca, setBusca] = useState('')
+
+  // Mapa: vendedor MAIÚSCULO → ligado? (default false quando não há linha)
+  const estadoPorVendedor = useMemo(() => {
+    const map = new Map<string, boolean>()
+    for (const row of autoCfg.data ?? []) {
+      map.set((row.vendedor_nome ?? '').trim().toUpperCase(), !!row.auto_prospeccao)
+    }
+    return map
+  }, [autoCfg.data])
+
+  const togglar = useMutation({
+    mutationFn: async ({ vendedor, on }: { vendedor: string; on: boolean }) => {
+      const { error } = await supabase.from('ia_vendedor_config').upsert(
+        {
+          vendedor_nome: vendedor.trim().toUpperCase(),
+          auto_prospeccao: on,
+          atualizado_em: new Date().toISOString(),
+        },
+        { onConflict: 'vendedor_nome' },
+      )
+      if (error) throw error
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ['ia-auto-config'] })
+      push(
+        vars.on
+          ? `IA automática LIGADA pra ${vars.vendedor}`
+          : `IA automática desligada pra ${vars.vendedor}`,
+        'success',
+      )
+    },
+    onError: (err: Error) => push('Erro ao salvar: ' + (err?.message ?? 'falha de rede'), 'danger'),
+  })
+
+  const listaFiltrada = useMemo(() => {
+    const termo = busca.trim().toLowerCase()
+    const base = vendedores.data ?? []
+    if (!termo) return base
+    return base.filter(v => v.toLowerCase().includes(termo))
+  }, [vendedores.data, busca])
+
+  const ligados = useMemo(
+    () => (vendedores.data ?? []).filter(v => estadoPorVendedor.get(v.trim().toUpperCase()) === true).length,
+    [vendedores.data, estadoPorVendedor],
+  )
+
+  const carregando = autoCfg.isLoading || vendedores.isLoading
+
+  return (
+    <div className="bg-surface border border-border rounded-lg p-4 space-y-3">
+      <div className="flex items-start gap-2">
+        <Users className="h-4 w-4 text-accent shrink-0 mt-0.5" />
+        <div className="min-w-0">
+          <h3 className="text-[13px] font-semibold text-ink">IA automática na Prospecção</h3>
+          <p className="text-[11px] text-ink-muted mt-0.5 leading-relaxed">
+            Quando ligada, a IA começa o atendimento sozinha assim que um contato recebe a etiqueta{' '}
+            <strong className="text-ink">PROSPECÇÃO</strong> — e no fim aplica{' '}
+            <strong className="text-ink">NOVO LEAD</strong>, <strong className="text-ink">NÃO FABRICAMOS</strong> ou{' '}
+            <strong className="text-ink">RESOLVIDO</strong>.
+          </p>
+        </div>
+      </div>
+
+      {/* Busca + contador */}
+      <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+        <div className="flex-1">
+          <Input
+            value={busca}
+            onChange={e => setBusca(e.target.value)}
+            placeholder="Buscar vendedor…"
+            leftIcon={<Search className="h-3.5 w-3.5" />}
+          />
+        </div>
+        <span className="text-[11px] text-ink-muted whitespace-nowrap sm:px-1">
+          <strong className="text-accent tabular-nums">{ligados}</strong> ligado{ligados === 1 ? '' : 's'}
+          {vendedores.data ? ` de ${vendedores.data.length}` : ''}
+        </span>
+      </div>
+
+      {/* Lista de vendedores */}
+      {carregando ? (
+        <div className="flex items-center justify-center gap-2 text-[12px] text-ink-faint py-4">
+          <Loader2 className="h-4 w-4 animate-spin" /> Carregando vendedores…
+        </div>
+      ) : (vendedores.data?.length ?? 0) === 0 ? (
+        <div className="text-center text-[12px] text-ink-faint py-4">
+          Nenhum vendedor encontrado nas etiquetas do WhatsApp.
+        </div>
+      ) : listaFiltrada.length === 0 ? (
+        <div className="text-center text-[12px] text-ink-faint py-4">
+          Nenhum vendedor bate com “{busca}”.
+        </div>
+      ) : (
+        <div className="border border-border rounded-md divide-y divide-border/50 max-h-[340px] overflow-y-auto">
+          {listaFiltrada.map(v => {
+            const on = estadoPorVendedor.get(v.trim().toUpperCase()) === true
+            const salvandoEste = togglar.isPending && togglar.variables?.vendedor === v
+            return (
+              <div key={v} className="flex items-center gap-2 px-3 py-2 hover:bg-surface-2/40">
+                <span className="flex-1 min-w-0 truncate text-[13px] text-ink">{v}</span>
+                {salvandoEste && <Loader2 className="h-3.5 w-3.5 animate-spin text-ink-faint" />}
+                <span className={cn(
+                  'text-[10px] font-semibold uppercase tracking-wide',
+                  on ? 'text-accent' : 'text-ink-faint',
+                )}>
+                  {on ? 'Auto' : 'Manual'}
+                </span>
+                <Toggle
+                  on={on}
+                  onChange={val => togglar.mutate({ vendedor: v, on: val })}
+                  disabled={togglar.isPending}
+                />
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SecaoConfig({ push }: { push: (t: string, tone?: ToastMsg['tone']) => void }) {
   const qc = useQueryClient()
   const { data: cfg, isLoading } = useIaConfig()
@@ -663,10 +831,15 @@ function SecaoConfig({ push }: { push: (t: string, tone?: ToastMsg['tone']) => v
     onError: (err: Error) => push('Erro ao salvar: ' + (err?.message ?? 'falha de rede'), 'danger'),
   })
 
-  if (isLoading || !form) return <PageLoading />
-
   return (
     <div className="space-y-3 max-w-2xl">
+      {/* IA automática na Prospecção (por vendedor) — no topo, antes dos modelos */}
+      <SecaoAutoProspeccao push={push} />
+
+      {(isLoading || !form) ? (
+        <PageLoading />
+      ) : (
+      <>
       <div className="bg-surface border border-border rounded-lg p-4 space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
@@ -753,6 +926,8 @@ function SecaoConfig({ push }: { push: (t: string, tone?: ToastMsg['tone']) => v
           Salvar configurações
         </button>
       </div>
+      </>
+      )}
     </div>
   )
 }
