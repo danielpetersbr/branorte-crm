@@ -94,7 +94,7 @@ function Toggle({ on, onChange, disabled }: { on: boolean; onChange: (v: boolean
 // ─── Tipos do CONTRATO (engine lê esse formato — não mudar) ─────────────────
 type TipoNo = 'inicio' | 'decisao' | 'espera' | 'acao' | 'fim'
 type ModoFluxo = 'desativado' | 'alertar' | 'automatico'
-type TipoAcao = 'mover_etiqueta' | 'enviar_msg' | 'avisar_vendedor'
+type TipoAcao = 'mover_etiqueta' | 'enviar_msg' | 'avisar_vendedor' | 'ia_assumir'
 
 interface NoConfig {
   etiqueta?: string
@@ -104,6 +104,7 @@ interface NoConfig {
   acao?: TipoAcao
   se_ainda_em?: string
   mensagem?: string
+  criterio?: 'respondeu_alguma_vez'
 }
 
 interface DefNode {
@@ -155,7 +156,7 @@ const NO_META: Record<TipoNo, {
   },
   acao: {
     titulo: 'Ação', header: 'bg-emerald-500', borda: 'border-emerald-500', chip: 'bg-emerald-500',
-    Icone: Zap, hint: 'Move etiqueta, envia mensagem ou avisa o vendedor',
+    Icone: Zap, hint: 'Move etiqueta, envia mensagem, avisa o vendedor ou passa pra IA',
   },
   fim: {
     titulo: 'Fim', header: 'bg-purple-900', borda: 'border-purple-900', chip: 'bg-purple-900',
@@ -191,6 +192,7 @@ function resumoNo(tipo: TipoNo, c: NoConfig): string {
     case 'inicio':
       return c.etiqueta ? `🏷️ ${c.etiqueta}` : '⚠️ escolha a etiqueta'
     case 'decisao':
+      if (c.criterio === 'respondeu_alguma_vez') return '❓ respondeu alguma vez?'
       return `❓ respondeu em ${c.janela_h ?? '?'}h?`
     case 'espera':
       return `⏱️ ${c.horas ?? '?'}h`
@@ -200,6 +202,7 @@ function resumoNo(tipo: TipoNo, c: NoConfig): string {
       }
       if (c.acao === 'enviar_msg') return c.mensagem ? `✉️ ${truncar(c.mensagem)}` : '✉️ ⚠️ escreva a mensagem'
       if (c.acao === 'avisar_vendedor') return c.mensagem ? `🔔 ${truncar(c.mensagem)}` : '🔔 ⚠️ escreva o aviso'
+      if (c.acao === 'ia_assumir') return '🤖 IA assume o atendimento'
       return '⚠️ configure a ação'
     case 'fim':
       return '🏁 encerra o fluxo'
@@ -638,17 +641,36 @@ function PainelPropriedades({ no, etiquetas, onLabel, onConfig, onRemover }: {
             </select>
           </div>
           <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-wide text-ink-muted mb-1">Janela (horas)</label>
-            <Input
-              type="number" min="1" step="1"
-              value={c.janela_h ?? 24}
-              onChange={e => onConfig({ janela_h: Math.max(1, Number(e.target.value) || 1) })}
-            />
-            <p className="text-[10px] text-ink-faint mt-1">
-              Saída <span className="text-emerald-500 font-bold">SIM</span> = respondeu ·{' '}
-              <span className="text-red-500 font-bold">NÃO</span> = não respondeu.
-            </p>
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-ink-muted mb-1">Critério</label>
+            <select
+              value={c.criterio ?? 'janela'}
+              // 'janela' (default) usa janela_h; 'respondeu_alguma_vez' é decisão instantânea sem janela
+              onChange={e => onConfig({ criterio: e.target.value === 'respondeu_alguma_vez' ? 'respondeu_alguma_vez' : undefined })}
+              className="w-full bg-surface border border-border rounded-md px-2.5 py-2 text-[13px] text-ink focus:outline-none focus:ring-1 focus:ring-accent"
+            >
+              <option value="janela">Respondeu dentro de X horas?</option>
+              <option value="respondeu_alguma_vez">Já respondeu alguma vez? (nunca × respondeu e parou)</option>
+            </select>
           </div>
+          {c.criterio === 'respondeu_alguma_vez' ? (
+            <p className="text-[10px] text-ink-faint">
+              <span className="text-emerald-500 font-bold">Sim</span> = já respondeu alguma vez ·{' '}
+              <span className="text-red-500 font-bold">Não</span> = nunca respondeu.
+            </p>
+          ) : (
+            <div>
+              <label className="block text-[11px] font-semibold uppercase tracking-wide text-ink-muted mb-1">Janela (horas)</label>
+              <Input
+                type="number" min="1" step="1"
+                value={c.janela_h ?? 24}
+                onChange={e => onConfig({ janela_h: Math.max(1, Number(e.target.value) || 1) })}
+              />
+              <p className="text-[10px] text-ink-faint mt-1">
+                Saída <span className="text-emerald-500 font-bold">SIM</span> = respondeu ·{' '}
+                <span className="text-red-500 font-bold">NÃO</span> = não respondeu.
+              </p>
+            </div>
+          )}
         </>
       )}
 
@@ -676,8 +698,15 @@ function PainelPropriedades({ no, etiquetas, onLabel, onConfig, onRemover }: {
               <option value="mover_etiqueta">Mover pra outra etiqueta</option>
               <option value="enviar_msg">Enviar mensagem ao cliente</option>
               <option value="avisar_vendedor">Avisar o vendedor</option>
+              <option value="ia_assumir">🤖 IA assume o atendimento</option>
             </select>
           </div>
+
+          {c.acao === 'ia_assumir' && (
+            <p className="text-[11px] text-ink-muted">
+              A IA atendente assume a conversa com o cliente a partir daqui. Nada mais a configurar.
+            </p>
+          )}
 
           {c.acao === 'mover_etiqueta' && (
             <>
