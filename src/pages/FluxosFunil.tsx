@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import ReactFlow, {
   ReactFlowProvider,
@@ -26,7 +26,7 @@ import type {
 import 'reactflow/dist/style.css'
 import {
   Workflow, Plus, Trash2, Save, Loader2, ArrowLeft, AlertTriangle,
-  Play, Diamond, Clock, Zap, Flag, Pencil,
+  Play, Diamond, Clock, Zap, Flag, Pencil, Maximize2, Minimize2,
 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -788,6 +788,24 @@ function EditorFluxo({ fluxo, vendedores, etiquetas, onVoltar, push }: {
   const [escopo, setEscopo] = useState<string>(fluxo.escopo_vendedor ?? '')
   const [selId, setSelId] = useState<string | null>(null)
 
+  // Tela cheia do canvas (pedido do Daniel: "ver o fluxo em tela grande").
+  // requestFullscreen no wrapper do ReactFlow + re-fit ao entrar/sair.
+  const [isFs, setIsFs] = useState(false)
+  const toggleFullscreen = useCallback(() => {
+    const el = wrapperRef.current
+    if (!el) return
+    if (document.fullscreenElement) document.exitFullscreen?.()
+    else el.requestFullscreen?.()
+  }, [])
+  useEffect(() => {
+    const onFs = () => {
+      setIsFs(document.fullscreenElement === wrapperRef.current)
+      setTimeout(() => rf.fitView({ padding: 0.2, maxZoom: 1 }), 120)
+    }
+    document.addEventListener('fullscreenchange', onFs)
+    return () => document.removeEventListener('fullscreenchange', onFs)
+  }, [rf])
+
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     setNodes(nds => applyNodeChanges(changes, nds))
   }, [])
@@ -986,10 +1004,19 @@ function EditorFluxo({ fluxo, vendedores, etiquetas, onVoltar, push }: {
         {/* Canvas */}
         <div
           ref={wrapperRef}
-          className="flex-1 min-w-0 h-[62vh] min-h-[420px] rounded-lg border border-border bg-surface overflow-hidden rf-branorte"
+          className="relative flex-1 min-w-0 h-[62vh] min-h-[420px] rounded-lg border border-border bg-surface overflow-hidden rf-branorte"
           onDragOver={onDragOver}
           onDrop={onDrop}
         >
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            title={isFs ? 'Sair da tela cheia (Esc)' : 'Ver o fluxo em tela cheia'}
+            className="absolute top-2 right-2 z-10 flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-surface border border-border text-ink text-[11px] font-semibold hover:bg-[hsl(var(--surface-2))] transition-colors shadow-sm"
+          >
+            {isFs ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+            {isFs ? 'Sair' : 'Tela cheia'}
+          </button>
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -1032,6 +1059,8 @@ function EditorFluxo({ fluxo, vendedores, etiquetas, onVoltar, push }: {
           border-bottom: 1px solid hsl(var(--border));
         }
         .rf-branorte .react-flow__controls button:hover { background: hsl(var(--surface-2)); }
+        .rf-branorte:fullscreen { height: 100vh !important; width: 100vw; border-radius: 0; background: hsl(var(--surface)); }
+        .rf-branorte:fullscreen .react-flow { height: 100%; }
         .rf-branorte .react-flow__controls button svg { fill: hsl(var(--ink)); }
         .rf-branorte .react-flow__edge-textbg { rx: 4; }
       `}</style>
