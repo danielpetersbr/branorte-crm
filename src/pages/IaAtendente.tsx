@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Bot, Brain, Settings2, Film, Loader2, Save, Plus, Trash2, Upload,
   RefreshCw, AlertCircle, Image as ImageIcon, FileText, Zap, MessageSquare,
-  Users, Search,
+  Users, Search, History, X,
 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -1281,13 +1281,342 @@ function SecaoMidias({ push }: { push: (t: string, tone?: ToastMsg['tone']) => v
 // ============================================================================
 // Página
 // ============================================================================
-type Aba = 'visao' | 'cerebro' | 'config' | 'midias'
+// Seção 5 — Histórico (estudo dos atendimentos da IA)
+// ============================================================================
+type TurnoIa = { de: 'cliente' | 'ia'; txt: string; t?: number | null }
+interface AtendimentoEstudo {
+  chat_id: string
+  vendedor: string
+  fone: string
+  nome: string
+  n: number
+  ultima: string
+  dados: Record<string, any> | null
+  bastao: boolean
+  etiqueta: string | null
+  modelo: string | null
+  midias: number
+  conversa: TurnoIa[] | null
+  respostas: { quando: string; texto: string; cliente_msg: string }[]
+  flags: string[]
+  problema: boolean
+}
+
+function useIaHistorico() {
+  return useQuery({
+    queryKey: ['ia-historico'],
+    queryFn: async (): Promise<AutomationRunRow[]> => {
+      const { data, error } = await supabase
+        .from('automation_runs')
+        .select('id, created_at, vendedor_nome, chat_id, acao, payload')
+        .eq('regra_key', 'ia_atendente')
+        .eq('acao', 'ia_resposta')
+        .order('created_at', { ascending: false })
+        .limit(500)
+      if (error) throw error
+      return (data ?? []) as AutomationRunRow[]
+    },
+    staleTime: 30 * 1000,
+  })
+}
+
+function ChipsQualificacao({ dados }: { dados: Record<string, any> | null }) {
+  const items: string[] = []
+  if (dados) {
+    if (dados.animal) items.push(String(dados.animal))
+    if (dados.quantidade) items.push(dados.quantidade + ' cab.')
+    if (dados.producao_kgh) items.push(dados.producao_kgh + ' kg/h')
+    if (dados.uso) items.push(dados.uso === 'venda' ? 'venda' : 'consumo')
+    if (dados.equipamento) items.push(String(dados.equipamento))
+  }
+  if (!items.length) return <span className="text-ink-faint">—</span>
+  return (
+    <div className="flex flex-wrap gap-1">
+      {items.map((it, i) => (
+        <span key={i} className="inline-block px-1.5 py-0.5 rounded bg-surface-2 border border-border text-[10px] text-ink-muted">{it}</span>
+      ))}
+    </div>
+  )
+}
+
+function CampoEstudo({ k, v }: { k: string; v: any }) {
+  return (
+    <div className="flex gap-1">
+      <span className="text-ink-faint">{k}:</span>
+      <span className="text-ink font-medium break-words">{v != null && v !== '' ? String(v) : '—'}</span>
+    </div>
+  )
+}
+
+function DrawerAtendimento({ at, onClose }: { at: AtendimentoEstudo; onClose: () => void }) {
+  const conversa: TurnoIa[] = (at.conversa && at.conversa.length)
+    ? at.conversa
+    : [...at.respostas].reverse().flatMap(r => {
+        const t: TurnoIa[] = []
+        if (r.cliente_msg) t.push({ de: 'cliente', txt: r.cliente_msg })
+        if (r.texto) t.push({ de: 'ia', txt: r.texto })
+        return t
+      })
+  const d = at.dados ?? {}
+  return (
+    <div className="fixed inset-0 z-[1200] flex justify-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      <div className="relative w-full max-w-md bg-bg border-l border-border h-full overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-surface border-b border-border px-4 py-3 flex items-center justify-between z-10">
+          <div>
+            <div className="font-semibold text-ink text-[14px]">{at.nome || at.fone}</div>
+            <div className="text-[10px] text-ink-faint font-mono">{at.fone} · {at.vendedor}</div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-md border border-border text-ink-muted hover:bg-surface-2 transition-colors"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="p-4 space-y-4">
+          <div className="bg-surface border border-border rounded-lg p-3 space-y-2">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">O que a IA entendeu</div>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[12px]">
+              <CampoEstudo k="Animal" v={d.animal} />
+              <CampoEstudo k="Cabeças" v={d.quantidade} />
+              <CampoEstudo k="Uso" v={d.uso} />
+              <CampoEstudo k="kg/h" v={d.producao_kgh} />
+              <CampoEstudo k="Equipamento" v={d.equipamento} />
+              <CampoEstudo k="Cidade" v={d.cidade || d.uf} />
+            </div>
+            {d.resumo && <div className="text-[12px] text-ink-muted pt-1 border-t border-border/50">{String(d.resumo)}</div>}
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              <span className={cn('inline-block px-2 py-0.5 rounded text-[10px] font-semibold border', at.bastao ? 'bg-success/10 border-success/30 text-success' : 'bg-surface-2 border-border text-ink-muted')}>
+                {at.bastao ? 'Passou o bastão' : 'Em andamento'}
+              </span>
+              {at.etiqueta && <span className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-info/10 border border-info/30 text-info">{at.etiqueta}</span>}
+              {at.modelo && <span className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-surface-2 border border-border text-ink-muted">{at.modelo}</span>}
+              {at.midias > 0 && <span className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-surface-2 border border-border text-ink-muted">{at.midias} mídia(s) enviada(s)</span>}
+            </div>
+            {at.flags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-2 border-t border-border/50">
+                {at.flags.map((f, i) => (
+                  <span key={i} className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-danger/10 border border-danger/30 text-danger">⚠ {f}</span>
+                ))}
+              </div>
+            )}
+          </div>
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted mb-2">Conversa</div>
+            {conversa.length === 0 ? (
+              <div className="text-[12px] text-ink-faint">Sem conversa registrada (atendimento antigo, antes do registro completo).</div>
+            ) : (
+              <div className="space-y-1.5">
+                {conversa.map((t, i) => (
+                  <div key={i} className={cn('flex flex-col', t.de === 'ia' ? 'items-end' : 'items-start')}>
+                    <div className={cn(
+                      'max-w-[85%] px-3 py-1.5 rounded-lg text-[12px] whitespace-pre-wrap break-words',
+                      t.de === 'ia' ? 'bg-accent/15 border border-accent/25 text-ink' : 'bg-surface-2 border border-border text-ink-muted',
+                    )}>
+                      {t.txt}
+                    </div>
+                    {t.t ? <span className="text-[9px] text-ink-faint mt-0.5 px-1 tabular-nums">{new Date(t.t * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span> : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SecaoHistorico() {
+  const runs = useIaHistorico()
+  const [busca, setBusca] = useState('')
+  const [filtro, setFiltro] = useState<'todos' | 'problema' | 'bastao' | 'andamento'>('todos')
+  const [aberto, setAberto] = useState<AtendimentoEstudo | null>(null)
+
+  const todos = useMemo<AtendimentoEstudo[]>(() => {
+    const rows = runs.data ?? []
+    const map = new Map<string, AtendimentoEstudo>()
+    for (const r of rows) { // rows vêm mais novo → mais antigo
+      const cid = r.chat_id || '(sem chat)'
+      const p = (r.payload ?? {}) as Record<string, any>
+      let a = map.get(cid)
+      if (!a) {
+        a = {
+          chat_id: cid, vendedor: r.vendedor_nome ?? '—', fone: foneDoChatId(r.chat_id),
+          nome: '', n: 0, ultima: r.created_at, dados: null, bastao: false,
+          etiqueta: null, modelo: null, midias: 0, conversa: null, respostas: [], flags: [], problema: false,
+        }
+        // 1ª ocorrência = mais recente → define o estado final do atendimento
+        a.dados = (p.dados && typeof p.dados === 'object') ? p.dados : null
+        a.etiqueta = typeof p.etiqueta === 'string' ? p.etiqueta : null
+        a.modelo = typeof p.modelo === 'string' ? p.modelo : null
+        a.midias = Number(p.midias_fabrica) || 0
+        map.set(cid, a)
+      }
+      a.n++
+      if (p.vendedor_assumir === true) a.bastao = true
+      // conversa: pega a 1ª (mais nova) que tiver transcrição completa
+      if (!a.conversa && Array.isArray(p.conversa) && p.conversa.length) a.conversa = p.conversa as TurnoIa[]
+      if (!a.nome) {
+        const nc = (p.dados && typeof p.dados === 'object') ? (p.dados as any).nome_cliente : null
+        if (nc) a.nome = String(nc)
+      }
+      a.respostas.push({
+        quando: r.created_at,
+        texto: typeof p.texto === 'string' ? p.texto : '',
+        cliente_msg: typeof p.cliente_msg === 'string' ? p.cliente_msg : '',
+      })
+    }
+    const arr = Array.from(map.values())
+    // SINAIS PRA ESTUDO: acha os atendimentos que merecem revisão
+    for (const a of arr) {
+      const flags: string[] = []
+      const textos = a.respostas.map(r => r.texto).filter(Boolean)
+      const cont = new Map<string, number>()
+      for (const t of textos) cont.set(t, (cont.get(t) || 0) + 1)
+      if ([...cont.values()].some(v => v >= 2)) flags.push('repetiu resposta')
+      if (a.n >= 4 && !a.bastao) flags.push('longo sem bastão')
+      if (textos.some(t => /R\$\s?\d/.test(t))) flags.push('falou preço')
+      const txtCli = a.respostas.map(r => r.cliente_msg).join(' ').toLowerCase()
+      if (/humano|atendente|pessoa de verdade|reclam/.test(txtCli)) flags.push('cliente pediu humano')
+      a.flags = flags
+      a.problema = flags.length > 0
+    }
+    arr.sort((x, y) => y.ultima.localeCompare(x.ultima))
+    return arr
+  }, [runs.data])
+
+  const stats = useMemo(() => {
+    const total = todos.length
+    const comBastao = todos.filter(a => a.bastao).length
+    const comProblema = todos.filter(a => a.problema).length
+    const somaResp = todos.reduce((s, a) => s + a.n, 0)
+    return { total, comBastao, comProblema, mediaResp: total ? somaResp / total : 0 }
+  }, [todos])
+
+  const atendimentos = useMemo(() => {
+    let out = todos
+    if (filtro === 'problema') out = out.filter(a => a.problema)
+    else if (filtro === 'bastao') out = out.filter(a => a.bastao)
+    else if (filtro === 'andamento') out = out.filter(a => !a.bastao)
+    const q = busca.trim().toLowerCase()
+    if (q) out = out.filter(a => (a.nome + ' ' + a.fone + ' ' + a.vendedor).toLowerCase().includes(q))
+    return out
+  }, [todos, filtro, busca])
+
+  if (runs.isLoading) return <PageLoading />
+
+  const FILTROS: Array<{ id: typeof filtro; label: string }> = [
+    { id: 'todos', label: `Todos (${stats.total})` },
+    { id: 'problema', label: `⚠ Com problema (${stats.comProblema})` },
+    { id: 'bastao', label: `Passou o bastão (${stats.comBastao})` },
+    { id: 'andamento', label: 'Em andamento' },
+  ]
+
+  return (
+    <div className="space-y-4">
+      <p className="text-[12px] text-ink-muted">
+        Registro dos atendimentos da IA — clique num pra abrir a conversa, ver o que ela entendeu e o desfecho. Os marcados com ⚠ são os que valem revisar pra melhorar a IA.
+      </p>
+
+      {/* Resumo */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="bg-surface border border-border rounded-lg px-3 py-2">
+          <div className="text-[10px] uppercase tracking-wider text-ink-faint">Atendimentos</div>
+          <div className="text-[18px] font-semibold text-ink tabular-nums">{stats.total}</div>
+        </div>
+        <div className="bg-surface border border-border rounded-lg px-3 py-2">
+          <div className="text-[10px] uppercase tracking-wider text-ink-faint">Passou o bastão</div>
+          <div className="text-[18px] font-semibold text-success tabular-nums">{stats.total ? Math.round((stats.comBastao / stats.total) * 100) : 0}%</div>
+        </div>
+        <div className="bg-surface border border-border rounded-lg px-3 py-2">
+          <div className="text-[10px] uppercase tracking-wider text-ink-faint">Com problema</div>
+          <div className="text-[18px] font-semibold text-danger tabular-nums">{stats.comProblema}</div>
+        </div>
+        <div className="bg-surface border border-border rounded-lg px-3 py-2">
+          <div className="text-[10px] uppercase tracking-wider text-ink-faint">Média de respostas</div>
+          <div className="text-[18px] font-semibold text-ink tabular-nums">{stats.mediaResp.toFixed(1)}</div>
+        </div>
+      </div>
+
+      {/* Filtros + busca */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex flex-wrap gap-1.5">
+          {FILTROS.map(f => (
+            <button key={f.id} onClick={() => setFiltro(f.id)} className={cn(
+              'px-2.5 py-1 rounded-md text-[11px] font-medium border transition-colors',
+              filtro === f.id ? 'bg-accent text-white border-accent' : 'bg-surface text-ink-muted border-border hover:bg-surface-2',
+            )}>{f.label}</button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-56">
+            <Input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar cliente / vendedor" leftIcon={<Search className="h-3.5 w-3.5" />} />
+          </div>
+          <button onClick={() => runs.refetch()} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border bg-surface text-[12px] font-medium text-ink hover:bg-surface-2 transition-colors">
+            <RefreshCw className="h-3.5 w-3.5" /> Atualizar
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-surface border border-border rounded-lg overflow-hidden">
+        <div className="px-3 py-2 bg-accent/15 border-b border-accent/30 flex items-center justify-between">
+          <h3 className="text-[11px] font-bold uppercase tracking-wider text-accent flex items-center gap-1.5">
+            <History className="h-3.5 w-3.5" /> Atendimentos da IA
+          </h3>
+          <span className="text-[10px] text-ink-muted">{atendimentos.length} de {stats.total}</span>
+        </div>
+        {atendimentos.length === 0 ? (
+          <div className="px-4 py-6 text-center text-[12px] text-ink-faint">Nenhum atendimento {filtro !== 'todos' ? 'nesse filtro' : 'registrado ainda'}.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12px]">
+              <thead className="bg-surface-2/50 text-ink-muted">
+                <tr>
+                  <th className="text-left px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Cliente</th>
+                  <th className="text-left px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Vendedor</th>
+                  <th className="text-left px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Qualificação</th>
+                  <th className="text-right px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Resp.</th>
+                  <th className="text-left px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Desfecho</th>
+                  <th className="text-right px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Última</th>
+                </tr>
+              </thead>
+              <tbody>
+                {atendimentos.map(a => (
+                  <tr key={a.chat_id} onClick={() => setAberto(a)} className={cn('border-t border-border/40 hover:bg-surface-2/40 cursor-pointer align-top', a.problema && 'bg-danger/5')}>
+                    <td className="px-3 py-2">
+                      <div className="font-semibold text-ink flex items-center gap-1">{a.problema && <span className="text-danger" title={a.flags.join(', ')}>⚠</span>}{a.nome || a.fone}</div>
+                      <div className="text-[10px] text-ink-faint font-mono">{a.fone}</div>
+                    </td>
+                    <td className="px-3 py-2 text-ink-muted whitespace-nowrap">{a.vendedor}</td>
+                    <td className="px-3 py-2"><ChipsQualificacao dados={a.dados} /></td>
+                    <td className="px-3 py-2 text-right tabular-nums text-ink">{a.n}</td>
+                    <td className="px-3 py-2">
+                      {a.bastao ? (
+                        <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-success/10 border border-success/30 text-success">Passou o bastão{a.midias ? ' + mídia' : ''}</span>
+                      ) : (
+                        <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-surface-2 border border-border text-ink-muted">Em andamento</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right text-ink-faint tabular-nums whitespace-nowrap">{formatDataHora(a.ultima)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {aberto && <DrawerAtendimento at={aberto} onClose={() => setAberto(null)} />}
+    </div>
+  )
+}
+
+// ============================================================================
+type Aba = 'visao' | 'cerebro' | 'config' | 'midias' | 'historico'
 
 const ABAS: Array<{ id: Aba; label: string; icon: typeof Bot }> = [
   { id: 'visao', label: 'Visão geral', icon: Bot },
   { id: 'cerebro', label: 'Cérebro', icon: Brain },
   { id: 'config', label: 'Configuração', icon: Settings2 },
   { id: 'midias', label: 'Mídias', icon: Film },
+  { id: 'historico', label: 'Histórico', icon: History },
 ]
 
 export function IaAtendente() {
@@ -1334,6 +1663,7 @@ export function IaAtendente() {
         {aba === 'cerebro' && <SecaoCerebro push={push} />}
         {aba === 'config' && <SecaoConfig push={push} />}
         {aba === 'midias' && <SecaoMidias push={push} />}
+        {aba === 'historico' && <SecaoHistorico />}
       </div>
       <ToastStack toasts={toasts} />
     </div>
