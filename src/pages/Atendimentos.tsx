@@ -798,6 +798,7 @@ export function Atendimentos() {
                     <th className="hidden 2xl:table-cell w-[50px]" title="Cabeças (consumo) — vazio se for venda (ver Produção/h)">Qtd</th>
                     <th className="hidden 2xl:table-cell w-[64px]" title="Produção desejada quando é venda (kg/h)">Kg/h</th>
                     <th className="w-[88px]">Vendedor</th>
+                    <th className="w-[76px]" title="Cliente tocou no botão FALAR COM CONSULTOR e foi levado pro WhatsApp do vendedor">Tocou</th>
                     <th className="hidden lg:table-cell w-[110px]" title="Etiqueta atribuída no WhatsApp do vendedor">Etiqueta WA</th>
                     <th className="w-[76px]" title="Já foi montado orçamento pra esse telefone? (match automático pelo número)">Orçamento</th>
                     <th className="w-[60px]" title="Esse lead virou venda? (orçamento dele virou pedido não-cancelado)">Vendido</th>
@@ -1050,6 +1051,18 @@ export function Atendimentos() {
                               </div>
                             )
                           })()}
+                        </td>
+                        {/* TOCOU — cliente clicou em FALAR COM CONSULTOR (edge function `ir` grava tocou_botao_em) */}
+                        <td className="px-1.5 py-2.5 whitespace-nowrap" title={r.tocou_botao_em ?? ''}>
+                          {r.tocou_botao_em ? (
+                            <span
+                              className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-semibold leading-tight bg-success-bg/40 text-success"
+                              title={`Tocou no botão em ${formatDateTimeShort(r.tocou_botao_em)}`}
+                            >
+                              <Hand className="h-2.5 w-2.5" />
+                              {formatDateTimeShort(r.tocou_botao_em)}
+                            </span>
+                          ) : <EmptyCell />}
                         </td>
                         {/* ETIQUETA WA — etiquetas do VENDEDOR RESPONSÁVEL apenas.
                             Antes mostrava etiquetas de qualquer vendedor que tivesse
