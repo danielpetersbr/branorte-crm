@@ -222,6 +222,37 @@ export function useOrcamentosPorTelefone(phones: (string | null | undefined)[], 
   })
 }
 
+// ─── Mensagem que o cliente envia ao vendedor no botão FALAR COM CONSULTOR ──────
+// Já enviada (gravada em mensagem_clique) ou a prévia do que sairia, montada no banco
+// por montar_mensagem_cliente() a partir do anúncio/animal/quantidade/origem do lead.
+// Em lote pelos ids da página — a view atendimentos_por_cliente é cara, não dá pra
+// pendurar isso nela (ver comentário de performance em useAtendimentoKpis).
+export type MensagemClique = { texto: string; enviada: boolean }
+export type MensagemCliqueMap = Record<string, MensagemClique>
+
+export function useMensagensClique(ids: (string | null | undefined)[], enabled = true) {
+  const limpos = [...new Set(ids.filter((i): i is string => !!i))]
+  return useQuery({
+    queryKey: ['mensagens-clique', limpos.slice().sort().join(',')],
+    enabled: enabled && limpos.length > 0,
+    queryFn: async (): Promise<MensagemCliqueMap> => {
+      if (limpos.length === 0) return {}
+      const { data, error } = await (supabase as any).rpc('mensagens_do_clique', { p_ids: limpos })
+      if (error) throw error
+      const map: MensagemCliqueMap = {}
+      for (const row of (data ?? []) as any[]) {
+        if (!row.atendimento_id) continue
+        map[String(row.atendimento_id)] = {
+          texto: row.mensagem ?? '',
+          enviada: row.enviada === true,
+        }
+      }
+      return map
+    },
+    staleTime: 60_000,
+  })
+}
+
 export function lookupOrcamento(
   map: OrcamentoPhoneMap | undefined,
   phone: string | null | undefined
@@ -438,6 +469,7 @@ export interface AtendimentoKpis {
   qualificados: number
   emAndamento: number
   paraPegar: number  // leads sem responsavel (null, vazio, "a definir") — disponíveis pra puxar
+  tocaram: number    // clicaram em FALAR COM CONSULTOR e foram levados pro WhatsApp do vendedor
 }
 
 function startOfTodayISO(): string {
@@ -579,6 +611,7 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
         qualificados: rows.filter(qualificado).length,
         emAndamento:  rows.filter(r => r.motivo_contato && !r.tocou_botao_em).length,
         paraPegar:    rows.filter(semResp).length,
+        tocaram:      rows.filter(r => !!r.tocou_botao_em).length,
       }
     },
     refetchInterval: 30_000,
