@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, Flame, AlarmClock, CheckCircle2, Inbox, Trash2, Calendar, Hand, ListChecks, MessageSquareDot, EyeOff, UserPlus, RefreshCw, AlertCircle, PhoneOff } from 'lucide-react'
+import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, Flame, AlarmClock, CheckCircle2, Inbox, Trash2, Calendar, Hand, ListChecks, MessageSquareDot, EyeOff, UserPlus, RefreshCw, AlertCircle, PhoneOff, MousePointerClick } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -17,7 +17,7 @@ import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTime
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, STATUS_VENDEDOR_MAP, type StatusReal } from '@/types/atendimento'
-import { useAtendimentos, useAtendimentoKpis, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, FILTRO_SEM_RESPOSTA, type DataPreset } from '@/hooks/useAtendimentos'
+import { useAtendimentos, useAtendimentoKpis, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, FILTRO_SEM_RESPOSTA, type DataPreset , useMensagensClique} from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 
@@ -362,6 +362,8 @@ export function Atendimentos() {
   const { data: orcMap } = useOrcamentosPorTelefone(phonesAtuais)
   // Indicador automático "vendido" cruzando o telefone → orçamento → pedido (venda).
   const { data: vendaMap } = useVendasPorTelefone(phonesAtuais)
+  // Mensagem que o cliente manda pro vendedor ao tocar no botão (já enviada ou prévia).
+  const { data: msgMap } = useMensagensClique((data?.rows ?? []).map(r => r.id))
   // Marca "NUNCA RESPONDEU" (bot → auditoria.sem_resposta_em).
   const { data: semRespMap } = useSemRespostaPorTelefone(phonesAtuais)
   // Total global de "nunca respondeu (auto)" pra o card de KPI.
@@ -436,7 +438,7 @@ export function Atendimentos() {
 
       {/* KPIs - funil: ENTRADA → ENGAJAMENTO → QUALIFICAÇÃO → HANDOFF → CONTATO */}
       {kpis && (
-        <div className="grid grid-cols-2 lg:grid-cols-7 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-8 gap-3">
           <KpiCard label="Hoje"           value={kpis.hoje}         hero tone="accent"
                    icon={Calendar}        hint={kpis.hoje === 0 ? 'Nenhum lead hoje' : 'leads novos'}
                    active={filters.data === 'hoje'}
@@ -449,6 +451,7 @@ export function Atendimentos() {
           <KpiCard label="Qualificados"   value={kpis.qualificados} hero tone="info"     icon={ListChecks}        hint="fábrica completa ou equipamento do catálogo Branorte" />
           <KpiCard label="Pra pegar"      value={kpis.paraPegar}    hero tone="warning"
                    icon={UserPlus}        hint={kpis.paraPegar === 0 ? 'Fila vazia' : 'Sem vendedor — puxe!'} />
+          <KpiCard label="Tocaram no botão" value={kpis.tocaram}    hero tone="success"  icon={MousePointerClick} hint="foram pro WhatsApp do vendedor" />
           <KpiCard label="Contatados"     value={kpis.contatados}        tone="success"  icon={Hand}              hint="vendedor já abordou" />
         </div>
       )}
@@ -799,6 +802,7 @@ export function Atendimentos() {
                     <th className="hidden 2xl:table-cell w-[64px]" title="Produção desejada quando é venda (kg/h)">Kg/h</th>
                     <th className="w-[88px]">Vendedor</th>
                     <th className="w-[76px]" title="Cliente tocou no botão FALAR COM CONSULTOR e foi levado pro WhatsApp do vendedor">Tocou</th>
+                    <th className="hidden xl:table-cell w-[220px]" title="Mensagem que o cliente envia pro vendedor ao tocar no botão (montada com o anúncio que ele viu, animal e quantidade)">Mensagem</th>
                     <th className="hidden lg:table-cell w-[110px]" title="Etiqueta atribuída no WhatsApp do vendedor">Etiqueta WA</th>
                     <th className="w-[76px]" title="Já foi montado orçamento pra esse telefone? (match automático pelo número)">Orçamento</th>
                     <th className="w-[60px]" title="Esse lead virou venda? (orçamento dele virou pedido não-cancelado)">Vendido</th>
@@ -1063,6 +1067,28 @@ export function Atendimentos() {
                               {formatDateTimeShort(r.tocou_botao_em)}
                             </span>
                           ) : <EmptyCell />}
+                        </td>
+                        {/* MENSAGEM — o que o cliente manda pro vendedor ao tocar no botão.
+                            Verde = já enviada (gravada no clique); cinza = prévia do que sairia. */}
+                        <td className="hidden xl:table-cell px-1.5 py-2.5">
+                          {(() => {
+                            const m = msgMap?.[r.id]
+                            if (!m || !m.texto) return <EmptyCell />
+                            const tocou = !!r.tocou_botao_em
+                            const rotulo = m.enviada
+                              ? 'ENVIADA pelo cliente'
+                              : tocou
+                                ? 'Cliente tocou no botão — texto reconstruído (clique anterior à gravação)'
+                                : 'Prévia — ainda não tocou no botão'
+                            return (
+                              <span
+                                className={`text-[11px] leading-tight line-clamp-2 block max-w-[220px] ${m.enviada ? 'text-success' : tocou ? 'text-ink-muted' : 'text-ink-faint'}`}
+                                title={`${rotulo}\n\n${m.texto}`}
+                              >
+                                {m.texto}
+                              </span>
+                            )
+                          })()}
                         </td>
                         {/* ETIQUETA WA — etiquetas do VENDEDOR RESPONSÁVEL apenas.
                             Antes mostrava etiquetas de qualquer vendedor que tivesse
