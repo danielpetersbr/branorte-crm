@@ -51,6 +51,36 @@ function idadeLabel(dataRecente: string | null): string {
   return `há ${m} ${m === 1 ? 'mês' : 'meses'}`
 }
 
+// Destaque de valor no mapa (só ORÇADOS, não vendidos):
+//  • total ≥ 300 mil → 💎 diamante   • total ≥ 100 mil → ⭐ estrela
+// A COR continua sendo a da idade (verde/vermelho/cinza); só a FORMA muda.
+const LIMITE_ESTRELA = 100_000
+const LIMITE_DIAMANTE = 300_000
+function formaValor(total: number | null, vendido: boolean): 'diamante' | 'estrela' | null {
+  if (vendido || total == null) return null
+  if (total >= LIMITE_DIAMANTE) return 'diamante'
+  if (total >= LIMITE_ESTRELA) return 'estrela'
+  return null
+}
+// SVG puro (sem lib) da forma, preenchido com a cor da idade + contorno branco.
+function svgForma(forma: 'diamante' | 'estrela', cor: string, tam = 24): string {
+  const path = forma === 'diamante'
+    ? 'M12 1.5 22.5 12 12 22.5 1.5 12Z'
+    : 'M12 1.6l2.9 5.88 6.49.94-4.7 4.58 1.11 6.46L12 20.9l-5.8 3.06 1.11-6.46-4.7-4.58 6.49-.94Z'
+  return `<svg width="${tam}" height="${tam}" viewBox="0 0 24 24" style="display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))">`
+    + `<path d="${path}" fill="${cor}" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>`
+}
+function iconeForma(forma: 'diamante' | 'estrela', cor: string): L.DivIcon {
+  const tam = forma === 'diamante' ? 22 : 26 // estrela um tico maior pra "pesar" igual
+  return L.divIcon({
+    className: 'orc-forma-valor',
+    html: svgForma(forma, cor, tam),
+    iconSize: [tam, tam],
+    iconAnchor: [tam / 2, tam / 2],
+    popupAnchor: [0, -tam / 2],
+  })
+}
+
 // distância em km (haversine)
 function distKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
   const R = 6371, toRad = (x: number) => (x * Math.PI) / 180
@@ -261,13 +291,15 @@ export function MapaVisitas() {
 
   // legenda orçamentos (por idade + vendido)
   const orcStats = useMemo(() => {
-    let verde = 0, vermelho = 0, cinza = 0, vendido = 0
+    let verde = 0, vermelho = 0, cinza = 0, vendido = 0, estrela = 0, diamante = 0
     for (const p of orcFiltrados) {
       if (p.vendido) { vendido++; continue }
+      const f = formaValor(p.total, p.vendido)
+      if (f === 'diamante') diamante++; else if (f === 'estrela') estrela++
       const c = corIdade(p.data_recente)
       if (c === VERDE) verde++; else if (c === VERMELHO) vermelho++; else cinza++
     }
-    return { verde, vermelho, cinza, vendido }
+    return { verde, vermelho, cinza, vendido, estrela, diamante }
   }, [orcFiltrados])
 
   // lista (tabela) filtrada
@@ -372,9 +404,14 @@ export function MapaVisitas() {
     }
     if (showOrc) {
       for (const p of orcFiltrados) {
-        const m = L.circleMarker([p.lat, p.lng], {
-          renderer, radius: 5, fillColor: corOrcamento(p), color: '#fff', weight: 1, fillOpacity: 0.92,
-        })
+        const forma = formaValor(p.total, p.vendido)
+        const m = forma
+          // orçado de alto valor → estrela/diamante (marcador DOM, cor pela idade)
+          ? L.marker([p.lat, p.lng], { icon: iconeForma(forma, corOrcamento(p)) })
+          // demais → círculo no canvas (rápido pra milhares de pontos)
+          : L.circleMarker([p.lat, p.lng], {
+              renderer, radius: 5, fillColor: corOrcamento(p), color: '#fff', weight: 1, fillOpacity: 0.92,
+            })
         m.bindPopup(() => popupOrcamento(p))
         m.addTo(layer)
         bounds.push([p.lat, p.lng])
@@ -622,6 +659,12 @@ export function MapaVisitas() {
             <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: VERMELHO }} /><span className="text-ink-muted">1–3 meses</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.vermelho}</span></div>
             <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: CINZA_VELHO }} /><span className="text-ink-muted">+3 meses</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.cinza}</span></div>
             <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: AZUL_VENDIDO }} /><span className="text-ink-muted font-semibold">Vendido</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.vendido}</span></div>
+            {(orcStats.estrela > 0 || orcStats.diamante > 0) && (
+              <div className="mt-1 pt-1 border-t border-border flex flex-col gap-1">
+                <div className="flex items-center gap-1.5"><span className="w-3 flex justify-center" dangerouslySetInnerHTML={{ __html: svgForma('estrela', '#64748b', 13) }} /><span className="text-ink-muted">⭐ ≥ 100 mil</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.estrela}</span></div>
+                <div className="flex items-center gap-1.5"><span className="w-3 flex justify-center" dangerouslySetInnerHTML={{ __html: svgForma('diamante', '#64748b', 12) }} /><span className="text-ink-muted">💎 ≥ 300 mil</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.diamante}</span></div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -657,6 +700,15 @@ export function MapaVisitas() {
                     <li className="flex items-center gap-2 text-[12px] text-ink"><span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: CINZA_VELHO }} /><span className="truncate">+ de 3 meses</span><span className="ml-auto tabular-nums text-ink-faint">{orcStats.cinza}</span></li>
                     <li className="flex items-center gap-2 text-[12px] text-ink pt-1.5 mt-1 border-t border-border"><span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: AZUL_VENDIDO }} /><span className="truncate font-semibold">✓ Vendido</span><span className="ml-auto tabular-nums text-ink-faint">{orcStats.vendido}</span></li>
                   </ul>
+                  {(orcStats.estrela > 0 || orcStats.diamante > 0) && (
+                    <>
+                      <div className="text-[11px] uppercase tracking-wide text-ink-faint mt-3 mb-2">Orçado · por valor</div>
+                      <ul className="space-y-1.5">
+                        <li className="flex items-center gap-2 text-[12px] text-ink"><span className="shrink-0 w-4 flex justify-center" dangerouslySetInnerHTML={{ __html: svgForma('estrela', '#64748b', 16) }} /><span className="truncate">⭐ ≥ 100 mil</span><span className="ml-auto tabular-nums text-ink-faint">{orcStats.estrela}</span></li>
+                        <li className="flex items-center gap-2 text-[12px] text-ink"><span className="shrink-0 w-4 flex justify-center" dangerouslySetInnerHTML={{ __html: svgForma('diamante', '#64748b', 15) }} /><span className="truncate">💎 ≥ 300 mil</span><span className="ml-auto tabular-nums text-ink-faint">{orcStats.diamante}</span></li>
+                      </ul>
+                    </>
+                  )}
                   {vendasCount > 0 && (
                     <div className="text-[10px] text-ink-faint mt-1.5 leading-snug">
                       {orcStats.vendido} clientes vendidos · {vendasCount.toLocaleString('pt-BR')} vendas no total
