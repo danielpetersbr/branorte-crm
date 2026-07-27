@@ -128,13 +128,14 @@ function chaveMarc(telefone: string | null, fone: string | null, cliente: string
   const tel = (telefone || fone || '').replace(/\D/g, '')
   return tel || ('nome:' + normTxt(cliente))
 }
-// Selo ✓ verde (visita feita) — marcador leve sobreposto no canto do pino.
+// Selo ✓ verde (visita feita) — badge grudado no canto sup-direito do pino.
+// pointer-events:none pra o clique cair no pino embaixo (abre o popup).
 function checkIcon(): L.DivIcon {
   return L.divIcon({
     className: 'marc-check',
-    html: `<div style="width:14px;height:14px;border-radius:50%;background:#16a34a;border:1.5px solid #fff;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(0,0,0,.45)"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>`,
+    html: `<div style="pointer-events:none;width:14px;height:14px;border-radius:50%;background:#16a34a;border:2px solid #fff;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(0,0,0,.4)"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>`,
     iconSize: [14, 14],
-    iconAnchor: [-3, 17], // empurra pro canto superior-direito do pino
+    iconAnchor: [1, 13], // centro do badge ~6px pra direita e 6px acima do ponto = canto do pino
   })
 }
 
@@ -613,6 +614,8 @@ export function MapaVisitas() {
 
   return (
     <div className="relative flex flex-col overflow-hidden md:p-4 md:gap-3 h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))]">
+      {/* selo ✓ não pode capturar clique — senão não dá pra abrir o popup do pino visitado */}
+      <style>{`.leaflet-marker-icon.marc-check{pointer-events:none!important}`}</style>
       {/* HEADER + TOOLBAR — só no desktop. No celular o mapa é tela cheia com filtros flutuantes. */}
       <div className="hidden md:flex flex-wrap items-center justify-between gap-2 md:gap-3 shrink-0">
         <div>
