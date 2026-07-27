@@ -162,7 +162,7 @@ function popupOrcamento(p: OrcamentoPonto, dist?: number): string {
     </div>`
 }
 
-type VendFiltro = 'todos' | 'orcados' | 'vendidos'
+type VendFiltro = 'todos' | 'orcados' | 'vendidos' | 'alto' | 'diamante'
 
 export function MapaVisitas() {
   const { data: visitas = [], isLoading } = useVisitas()
@@ -238,8 +238,17 @@ export function MapaVisitas() {
   const comCoord = useMemo(() => visitas.filter(v => v.lat != null && v.lng != null), [visitas])
   const semCoord = visitas.length - comCoord.length
   const termo = busca.trim().toLowerCase()
-  const passaVend = (vendido: boolean) =>
-    vendFiltro === 'todos' || (vendFiltro === 'vendidos' ? vendido : !vendido)
+  // filtro por status/valor. 'alto' = orçado ≥100 mil (estrela+diamante);
+  // 'diamante' = orçado ≥300 mil. Ambos só valem pra NÃO vendidos.
+  const passaFiltro = (vendido: boolean, total: number | null) => {
+    switch (vendFiltro) {
+      case 'vendidos': return vendido
+      case 'orcados': return !vendido
+      case 'alto': return !vendido && (total ?? 0) >= LIMITE_ESTRELA
+      case 'diamante': return !vendido && (total ?? 0) >= LIMITE_DIAMANTE
+      default: return true // 'todos'
+    }
+  }
 
   const visFiltradas = useMemo(
     () => comCoord.filter(v =>
@@ -252,7 +261,7 @@ export function MapaVisitas() {
   const orcFiltrados = useMemo(
     () => orcPontos.filter(p =>
       (!vendedorSel || (p.vendedor || '—') === vendedorSel) &&
-      passaVend(p.vendido) &&
+      passaFiltro(p.vendido, p.total) &&
       (!termo || [p.cliente, p.cidade, p.uf, p.telefone, p.fone, p.numeros, p.vendedor]
         .some(x => (x || '').toLowerCase().includes(termo)))
     ),
@@ -311,7 +320,7 @@ export function MapaVisitas() {
   // lista (tabela) filtrada
   const listaFiltrada = useMemo(() => {
     return lista.filter(r =>
-      passaVend(r.vendido) &&
+      passaFiltro(r.vendido, r.total) &&
       (!termo || [r.numero, r.cliente, r.equipamento, r.cidade, r.uf]
         .some(x => (x || '').toLowerCase().includes(termo)))
     )
@@ -561,7 +570,7 @@ export function MapaVisitas() {
           <div className="flex items-center gap-2 w-full overflow-x-auto flex-nowrap md:contents pb-1 [&>*]:shrink-0">
           {/* filtro vendido / orçado */}
           <div className="flex h-9 rounded-md border border-border overflow-hidden text-[12px] font-semibold">
-            {([['todos', 'Todos'], ['orcados', 'Só orçados'], ['vendidos', 'Vendidos']] as [VendFiltro, string][]).map(([v, label]) => (
+            {([['todos', 'Todos'], ['orcados', 'Só orçados'], ['vendidos', 'Vendidos'], ['alto', '⭐ Alto valor'], ['diamante', '💎 ≥300 mil']] as [VendFiltro, string][]).map(([v, label]) => (
               <button key={v} onClick={() => setVendFiltro(v)}
                 className={`px-2.5 transition-colors ${vendFiltro === v ? 'bg-accent-bg text-accent' : 'bg-surface text-ink-muted hover:text-ink'}`}>
                 {label}
@@ -642,7 +651,7 @@ export function MapaVisitas() {
           </div>
           <div className="pointer-events-auto flex items-center gap-1.5 overflow-x-auto flex-nowrap [&>*]:shrink-0">
             <div className="flex h-9 rounded-lg overflow-hidden border border-border bg-surface/95 backdrop-blur text-[12px] font-semibold shadow">
-              {([['todos', 'Todos'], ['orcados', 'Só orçados'], ['vendidos', 'Vendidos']] as [VendFiltro, string][]).map(([v, label]) => (
+              {([['todos', 'Todos'], ['orcados', 'Só orçados'], ['vendidos', 'Vendidos'], ['alto', '⭐ Alto valor'], ['diamante', '💎 ≥300 mil']] as [VendFiltro, string][]).map(([v, label]) => (
                 <button key={v} onClick={() => setVendFiltro(v)} className={`px-3 ${vendFiltro === v ? 'bg-accent text-white' : 'text-ink-muted'}`}>{label}</button>
               ))}
             </div>
@@ -752,7 +761,7 @@ export function MapaVisitas() {
                 <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar…" className="h-8 w-52 px-2 rounded-md bg-surface-2 border border-border text-[13px] text-ink outline-none focus:border-accent" />
               </div>
               <div className="flex h-8 rounded-md border border-border overflow-hidden text-[12px] font-semibold">
-                {([['todos', 'Todos'], ['orcados', 'Só orçados'], ['vendidos', 'Vendidos']] as [VendFiltro, string][]).map(([v, label]) => (
+                {([['todos', 'Todos'], ['orcados', 'Só orçados'], ['vendidos', 'Vendidos'], ['alto', '⭐ Alto valor'], ['diamante', '💎 ≥300 mil']] as [VendFiltro, string][]).map(([v, label]) => (
                   <button key={v} onClick={() => setVendFiltro(v)} className={`px-2.5 ${vendFiltro === v ? 'bg-accent-bg text-accent' : 'bg-surface text-ink-muted hover:text-ink'}`}>{label}</button>
                 ))}
               </div>
