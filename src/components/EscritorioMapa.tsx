@@ -102,7 +102,14 @@ function nomeCurto(nome: string): string {
 const WORK_DOW = new Set([1, 2, 3, 4, 5])
 const WORK_INI_MIN = 7 * 60 + 15   // 07:15
 const WORK_FIM_MIN = 17 * 60 + 30  // 17:30
-const OFFLINE_STATUSES = new Set<LiveStatus['status']>(['desconectado', 'wa_fechado', 'verificar_wa', 'versao_antiga', 'desligado'])
+// VERMELHO "inativo" = SÓ quando o navegador está REALMENTE fechado (pedido do Daniel).
+// 'desconectado' = sem heartbeat há 15min+ (ou nenhum ping em 30min). Como o heartbeat pinga
+// MESMO sem aba do WhatsApp aberta, ausência de ping = navegador/PC fechado de verdade.
+// TIRADOS do vermelho (disparavam com ping RECENTE = navegador ABERTO, falso alarme):
+//   wa_fechado/verificar_wa (aba do WA momentaneamente não-pronta, ex: logo após reload),
+//   versao_antiga, e desligado (admin desligou de propósito — não é queda).
+// Esses seguem com o DOT colorido próprio (laranja/âmbar/slate) no STATUS_CFG — informa sem alarmar.
+const OFFLINE_STATUSES = new Set<LiveStatus['status']>(['desconectado'])
 // Minutos ÚTEIS entre dois instantes (intersecção com a janela seg–sex 07:15–17:30).
 function minutosUteisInativo(fromMs: number, toMs: number): number {
   if (!fromMs || toMs <= fromMs) return 0
