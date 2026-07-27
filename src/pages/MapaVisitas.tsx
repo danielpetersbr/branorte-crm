@@ -3,9 +3,11 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import {
   useVisitas, useGeocodarVisitas, useOrcamentosMapa, useListaOrcamentos, useVendasMapaCount,
-  type Visita, type OrcamentoPonto, type OrcamentoLinha,
+  useMapaMarcacoes, useSalvarMarcacao,
+  type Visita, type OrcamentoPonto, type OrcamentoLinha, type Marcacao,
 } from '@/hooks/useVisitas'
 import { useEtiquetas } from '@/hooks/useEtiquetas'
+import { useAuth } from '@/hooks/useAuth'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 
 // Mapa de visitas — camadas (liga/desliga):
@@ -116,9 +118,25 @@ const brl = (v: number | null) =>
   v == null ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 const esc = (s: string | null) => (s || '').replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] as string))
 const dataBR = (iso: string | null) => (iso ? new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR') : '—')
+const dataHoraBR = (iso: string | null) => (iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—')
 // Normaliza texto pra busca: sem acento, minúsculo (ex "Ji-Paraná" casa "ji parana")
 const normTxt = (s: string | null) =>
   (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
+
+// Chave estável de um cliente pra marcação (telefone só-dígitos; senão nome normalizado).
+function chaveMarc(telefone: string | null, fone: string | null, cliente: string | null): string {
+  const tel = (telefone || fone || '').replace(/\D/g, '')
+  return tel || ('nome:' + normTxt(cliente))
+}
+// Selo ✓ verde (visita feita) — marcador leve sobreposto no canto do pino.
+function checkIcon(): L.DivIcon {
+  return L.divIcon({
+    className: 'marc-check',
+    html: `<div style="width:14px;height:14px;border-radius:50%;background:#16a34a;border:1.5px solid #fff;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(0,0,0,.45)"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>`,
+    iconSize: [14, 14],
+    iconAnchor: [-3, 17], // empurra pro canto superior-direito do pino
+  })
+}
 
 function popupVisita(v: Visita, isFollowUp: boolean, labels: string[]): string {
   const tel = (v.telefone || '').replace(/\D/g, '')
@@ -140,7 +158,7 @@ function popupVisita(v: Visita, isFollowUp: boolean, labels: string[]): string {
     </div>`
 }
 
-function popupOrcamento(p: OrcamentoPonto, dist?: number): string {
+function popupOrcamento(p: OrcamentoPonto, marc?: Marcacao | null, dist?: number): string {
   const tel = (p.telefone || '').replace(/\D/g, '')
   const foneFmt = p.fone || p.telefone || ''
   const loc = [esc(p.cidade), esc(p.uf)].filter(Boolean).join(' - ')
@@ -148,8 +166,17 @@ function popupOrcamento(p: OrcamentoPonto, dist?: number): string {
   const vendBadge = p.vendido
     ? `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:#dbeafe;color:#1e40af;font-weight:700">✓ VENDIDO${compras}</span>`
     : `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:#fef9c3;color:#854d0e;font-weight:600">Orçado</span>`
+  const feito = marc?.visitado
+  const chave = chaveMarc(p.telefone, p.fone, p.cliente)
+  const visitaLinha = feito
+    ? `<div style="font-size:12px;color:#166534;font-weight:600;margin-top:6px">✅ Visita feita${marc?.visitado_em ? ' · ' + dataHoraBR(marc.visitado_em) : ''}${marc?.autor ? ' · ' + esc(marc.autor) : ''}</div>`
+    : ''
+  const notaLinha = marc?.nota
+    ? `<div style="font-size:12px;color:#334155;margin-top:4px;white-space:pre-wrap;background:#f1f5f9;border-radius:6px;padding:5px 7px">📝 ${esc(marc.nota)}</div>`
+    : ''
+  const btn = `<button data-marcar data-chave="${encodeURIComponent(chave)}" style="margin-top:8px;width:100%;padding:8px;border:0;border-radius:8px;background:${feito ? '#e2e8f0' : '#16a34a'};color:${feito ? '#0f172a' : '#fff'};font-weight:700;font-size:12px;cursor:pointer">${feito ? '✏️ Editar visita / nota' : '✅ Marcar visita / anotar'}</button>`
   return `
-    <div style="min-width:190px;font-family:inherit">
+    <div style="min-width:200px;font-family:inherit">
       <div style="font-weight:600;font-size:13px">${esc(p.cliente) || 'Sem nome'}</div>
       ${loc ? `<div style="font-size:12px;color:#64748b">${loc}${dist != null ? ` · <b>${dist.toFixed(0)} km</b>` : ''}</div>` : ''}
       <div style="margin-top:4px">${vendBadge}</div>
@@ -159,10 +186,14 @@ function popupOrcamento(p: OrcamentoPonto, dist?: number): string {
       <div style="font-size:11px;color:#64748b;margin-top:3px">Vendedor: ${esc(p.vendedor) || '—'}</div>
       ${foneFmt ? `<div style="font-size:12px;color:#0f172a;margin-top:4px">📱 ${esc(foneFmt)}</div>` : ''}
       ${tel ? `<a href="https://wa.me/${tel}" target="_blank" rel="noopener" style="display:inline-block;margin-top:4px;font-size:12px;color:#10b981;font-weight:600">Abrir WhatsApp ↗</a>` : ''}
+      ${visitaLinha}
+      ${notaLinha}
+      ${btn}
     </div>`
 }
 
 type VendFiltro = 'todos' | 'orcados' | 'vendidos' | 'alto' | 'diamante'
+type VisitaFiltro = 'todos' | 'visitados' | 'pendentes'
 
 export function MapaVisitas() {
   const { data: visitas = [], isLoading } = useVisitas()
@@ -170,6 +201,9 @@ export function MapaVisitas() {
   const { data: lista = [] } = useListaOrcamentos()
   const { data: vendasCount = 0 } = useVendasMapaCount()
   const { data: etiquetasWa = [] } = useEtiquetas()
+  const { data: marc = {} } = useMapaMarcacoes()
+  const salvarMarc = useSalvarMarcacao()
+  const { profile } = useAuth()
   const geocodar = useGeocodarVisitas()
   const [vendedorSel, setVendedorSel] = useState<string>('')
   const [showOrc, setShowOrc] = useState(true)
@@ -177,7 +211,14 @@ export function MapaVisitas() {
   const [busca, setBusca] = useState('')
   const [sugAberta, setSugAberta] = useState(false)
   const [vendFiltro, setVendFiltro] = useState<VendFiltro>('todos')
+  const [visitaFiltro, setVisitaFiltro] = useState<VisitaFiltro>('todos')
   const [showLista, setShowLista] = useState(false)
+  // modal de marcação (visita feita + anotação)
+  const [marcarAlvo, setMarcarAlvo] = useState<{ chave: string; cliente: string | null; telefone: string | null } | null>(null)
+  const [formVisitado, setFormVisitado] = useState(true)
+  const [formNota, setFormNota] = useState('')
+  // lookup chave -> dados do cliente (pro clique no botão do popup abrir o modal)
+  const pontoInfoRef = useRef<Map<string, { cliente: string | null; telefone: string | null }>>(new Map())
   const [sortKey, setSortKey] = useState<'numero' | 'data' | 'cliente' | 'cidade' | 'total' | 'vendido'>('data')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   // raio
@@ -249,6 +290,12 @@ export function MapaVisitas() {
       default: return true // 'todos'
     }
   }
+  // filtro de visita (só na camada de orçamentos do mapa)
+  const passaVisita = (p: OrcamentoPonto) => {
+    if (visitaFiltro === 'todos') return true
+    const feito = !!marc[chaveMarc(p.telefone, p.fone, p.cliente)]?.visitado
+    return visitaFiltro === 'visitados' ? feito : !feito
+  }
 
   const visFiltradas = useMemo(
     () => comCoord.filter(v =>
@@ -262,10 +309,12 @@ export function MapaVisitas() {
     () => orcPontos.filter(p =>
       (!vendedorSel || (p.vendedor || '—') === vendedorSel) &&
       passaFiltro(p.vendido, p.total) &&
+      passaVisita(p) &&
       (!termo || [p.cliente, p.cidade, p.uf, p.telefone, p.fone, p.numeros, p.vendedor]
         .some(x => (x || '').toLowerCase().includes(termo)))
     ),
-    [orcPontos, vendedorSel, termo, vendFiltro]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [orcPontos, vendedorSel, termo, vendFiltro, visitaFiltro, marc]
   )
 
   // Autocomplete de CIDADES: índice de cidades distintas (dos orçamentos) + contagem.
@@ -352,6 +401,37 @@ export function MapaVisitas() {
     else { setSortKey(k); setSortDir(k === 'data' || k === 'total' ? 'desc' : 'asc') }
   }
 
+  // lookup chave -> {cliente, telefone} (o clique no botão do popup usa isso)
+  useEffect(() => {
+    const m = new Map<string, { cliente: string | null; telefone: string | null }>()
+    for (const p of orcPontos) m.set(chaveMarc(p.telefone, p.fone, p.cliente), { cliente: p.cliente, telefone: p.telefone || p.fone })
+    pontoInfoRef.current = m
+  }, [orcPontos])
+
+  // ao abrir o modal, preenche o form com a marcação existente (se houver)
+  useEffect(() => {
+    if (!marcarAlvo) return
+    const ex = marc[marcarAlvo.chave]
+    setFormVisitado(ex?.visitado ?? true)
+    setFormNota(ex?.nota ?? '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [marcarAlvo])
+
+  function salvarMarcacao() {
+    if (!marcarAlvo) return
+    const ex = marc[marcarAlvo.chave]
+    salvarMarc.mutate({
+      chave: marcarAlvo.chave,
+      telefone: marcarAlvo.telefone,
+      cliente: marcarAlvo.cliente,
+      visitado: formVisitado,
+      // mantém a data original se já estava visitado; senão o hook carimba agora
+      visitado_em: formVisitado && ex?.visitado ? ex.visitado_em : null,
+      nota: formNota.trim() || null,
+      autor: profile?.display_name || profile?.email || null,
+    }, { onSuccess: () => setMarcarAlvo(null) })
+  }
+
   // init do mapa (uma vez)
   useEffect(() => {
     if (mapRef.current || !divRef.current) return
@@ -372,6 +452,17 @@ export function MapaVisitas() {
     raioLayerRef.current = L.layerGroup().addTo(map)
     map.on('click', (e: L.LeafletMouseEvent) => {
       if (modoRaioRef.current) setCentro({ lat: e.latlng.lat, lng: e.latlng.lng })
+    })
+    // botão "marcar visita" dentro do popup abre o modal (React)
+    map.on('popupopen', (e: L.PopupEvent) => {
+      const btn = e.popup.getElement()?.querySelector('button[data-marcar]') as HTMLButtonElement | null
+      if (!btn) return
+      btn.onclick = () => {
+        const chave = decodeURIComponent(btn.dataset.chave || '')
+        const info = pontoInfoRef.current.get(chave)
+        setMarcarAlvo({ chave, cliente: info?.cliente ?? null, telefone: info?.telefone ?? null })
+        map.closePopup()
+      }
     })
     mapRef.current = map
     setTimeout(() => map.invalidateSize(), 0)
@@ -427,13 +518,17 @@ export function MapaVisitas() {
           : L.circleMarker([p.lat, p.lng], {
               renderer, radius: 5, fillColor: corOrcamento(p), color: '#fff', weight: 1, fillOpacity: 0.92,
             })
-        m.bindPopup(() => popupOrcamento(p))
+        const mk = marc[chaveMarc(p.telefone, p.fone, p.cliente)]
+        m.bindPopup(() => popupOrcamento(p, mk))
         m.addTo(layer)
+        // selo ✓ pra quem já teve visita
+        if (mk?.visitado) L.marker([p.lat, p.lng], { icon: checkIcon(), interactive: false, zIndexOffset: 1000 }).addTo(layer)
         bounds.push([p.lat, p.lng])
       }
     }
     if (bounds.length && !centro) map.fitBounds(bounds, { padding: [50, 50], maxZoom: 10 })
-  }, [showVis, showOrc, visFiltradas, orcFiltrados, vendedores, byVendId, globId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showVis, showOrc, visFiltradas, orcFiltrados, vendedores, byVendId, globId, marc])
 
   // desenha círculo do raio
   useEffect(() => {
@@ -479,7 +574,7 @@ export function MapaVisitas() {
     const map = mapRef.current
     if (!map) return
     map.setView([p.lat, p.lng], 11)
-    L.popup().setLatLng([p.lat, p.lng]).setContent(popupOrcamento(p)).openOn(map)
+    L.popup().setLatLng([p.lat, p.lng]).setContent(popupOrcamento(p, marc[chaveMarc(p.telefone, p.fone, p.cliente)])).openOn(map)
   }
 
   function focarLinha(r: OrcamentoLinha) {
@@ -577,6 +672,15 @@ export function MapaVisitas() {
               </button>
             ))}
           </div>
+          {/* filtro de visita */}
+          <div className="flex h-9 rounded-md border border-border overflow-hidden text-[12px] font-semibold">
+            {([['todos', 'Todas'], ['visitados', '✅ Visitadas'], ['pendentes', '⏳ A visitar']] as [VisitaFiltro, string][]).map(([v, label]) => (
+              <button key={v} onClick={() => setVisitaFiltro(v)}
+                className={`px-2.5 transition-colors ${visitaFiltro === v ? 'bg-accent-bg text-accent' : 'bg-surface text-ink-muted hover:text-ink'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
           <button className={togglePill(showOrc)} onClick={() => setShowOrc(v => !v)} title="Pinos a partir dos orçamentos">💰 Orçamentos</button>
           <button className={togglePill(showVis)} onClick={() => setShowVis(v => !v)} title="Visitas anotadas no WhatsApp">📍 Visitas</button>
           <button className={togglePill(modoRaio)} onClick={() => { setModoRaio(v => !v); if (modoRaio) setCentro(null) }} title="Filtrar clientes a partir de um ponto no mapa">🎯 Raio</button>
@@ -653,6 +757,11 @@ export function MapaVisitas() {
             <div className="flex h-9 rounded-lg overflow-hidden border border-border bg-surface/95 backdrop-blur text-[12px] font-semibold shadow">
               {([['todos', 'Todos'], ['orcados', 'Só orçados'], ['vendidos', 'Vendidos'], ['alto', '⭐ Alto valor'], ['diamante', '💎 ≥300 mil']] as [VendFiltro, string][]).map(([v, label]) => (
                 <button key={v} onClick={() => setVendFiltro(v)} className={`px-3 ${vendFiltro === v ? 'bg-accent text-white' : 'text-ink-muted'}`}>{label}</button>
+              ))}
+            </div>
+            <div className="flex h-9 rounded-lg overflow-hidden border border-border bg-surface/95 backdrop-blur text-[12px] font-semibold shadow">
+              {([['todos', 'Todas'], ['visitados', '✅'], ['pendentes', '⏳']] as [VisitaFiltro, string][]).map(([v, label]) => (
+                <button key={v} onClick={() => setVisitaFiltro(v)} className={`px-3 ${visitaFiltro === v ? 'bg-accent text-white' : 'text-ink-muted'}`} title={v === 'visitados' ? 'Visitadas' : v === 'pendentes' ? 'A visitar' : 'Todas'}>{label}</button>
               ))}
             </div>
             <button onClick={() => { setModoRaio(v => !v); if (modoRaio) setCentro(null) }} className={`h-9 px-3 rounded-lg border text-[12px] font-semibold shadow ${modoRaio ? 'bg-accent text-white border-accent' : 'bg-surface/95 backdrop-blur border-border text-ink-muted'}`}>🎯 Raio</button>
@@ -812,6 +921,47 @@ export function MapaVisitas() {
               <span>Soma: <b className="text-ink tabular-nums">{brl(somaTotal)}</b></span>
               <span className="ml-auto text-ink-faint">Clique numa linha pra ver no mapa · clique no cabeçalho pra ordenar</span>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: marcar visita + anotação */}
+      {marcarAlvo && (
+        <div className="fixed inset-0 z-[1300] bg-black/40 flex items-end md:items-center justify-center p-0 md:p-4" onClick={() => setMarcarAlvo(null)}>
+          <div className="bg-surface w-full md:max-w-md rounded-t-2xl md:rounded-2xl border border-border p-4 flex flex-col gap-3" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-[15px] font-semibold text-ink truncate">{marcarAlvo.cliente || 'Cliente'}</div>
+                {marcarAlvo.telefone && <div className="text-[12px] text-ink-muted">📱 {marcarAlvo.telefone}</div>}
+              </div>
+              <button onClick={() => setMarcarAlvo(null)} className="h-8 w-8 shrink-0 rounded-md hover:bg-surface-2 text-ink-muted">✕</button>
+            </div>
+            <label className="flex items-center gap-2 text-[14px] text-ink cursor-pointer select-none">
+              <input type="checkbox" checked={formVisitado} onChange={e => setFormVisitado(e.target.checked)} className="h-4 w-4 accent-green-600" />
+              <span className="font-medium">✅ Visita já realizada</span>
+            </label>
+            <div>
+              <div className="text-[12px] text-ink-muted mb-1">Anotação</div>
+              <textarea
+                value={formNota}
+                onChange={e => setFormNota(e.target.value)}
+                rows={4}
+                placeholder="Ex: cliente pediu retorno em 15 dias · tem interesse na Compacta 02 · achou o preço alto…"
+                className="w-full rounded-lg bg-surface-2 border border-border px-3 py-2 text-[14px] text-ink placeholder:text-ink-faint outline-none focus:border-accent resize-none"
+              />
+            </div>
+            {marc[marcarAlvo.chave]?.updated_at && (
+              <div className="text-[11px] text-ink-faint">
+                Última atualização{marc[marcarAlvo.chave]?.autor ? ` por ${marc[marcarAlvo.chave]?.autor}` : ''} · {dataHoraBR(marc[marcarAlvo.chave]?.updated_at ?? null)}
+              </div>
+            )}
+            <div className="flex items-center gap-2 pt-1">
+              <button onClick={salvarMarcacao} disabled={salvarMarc.isPending}
+                className="flex-1 h-11 rounded-lg bg-accent text-white font-semibold text-[14px] disabled:opacity-60">
+                {salvarMarc.isPending ? 'Salvando…' : 'Salvar'}
+              </button>
+            </div>
+            {salvarMarc.isError && <div className="text-[12px] text-red-600">Não consegui salvar. Tenta de novo.</div>}
           </div>
         </div>
       )}

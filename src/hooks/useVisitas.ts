@@ -112,6 +112,66 @@ export function useListaOrcamentos() {
   })
 }
 
+// ── Marcações de VISITA + anotação por cliente ────────────────────────────
+// 1 registro por cliente (chave = telefone só-dígitos, ou 'nome:'+slug sem fone).
+export interface Marcacao {
+  chave: string
+  telefone: string | null
+  cliente: string | null
+  visitado: boolean
+  visitado_em: string | null
+  nota: string | null
+  autor: string | null
+  updated_at: string | null
+}
+
+// Retorna um mapa chave -> Marcacao pra lookup O(1) no mapa.
+export function useMapaMarcacoes() {
+  return useQuery<Record<string, Marcacao>>({
+    queryKey: ['mapa-marcacoes'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('mapa_marcacoes')
+        .select('chave, telefone, cliente, visitado, visitado_em, nota, autor, updated_at')
+      if (error) throw error
+      const map: Record<string, Marcacao> = {}
+      for (const m of (data ?? []) as Marcacao[]) map[m.chave] = m
+      return map
+    },
+  })
+}
+
+export interface SalvarMarcacaoInput {
+  chave: string
+  telefone?: string | null
+  cliente?: string | null
+  visitado: boolean
+  visitado_em?: string | null // se já visitado, preserva a data original
+  nota?: string | null
+  autor?: string | null
+}
+
+export function useSalvarMarcacao() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (m: SalvarMarcacaoInput) => {
+      const payload = {
+        chave: m.chave,
+        telefone: m.telefone ?? null,
+        cliente: m.cliente ?? null,
+        visitado: m.visitado,
+        visitado_em: m.visitado ? (m.visitado_em ?? new Date().toISOString()) : null,
+        nota: m.nota ?? null,
+        autor: m.autor ?? null,
+        updated_at: new Date().toISOString(),
+      }
+      const { error } = await supabase.from('mapa_marcacoes').upsert(payload, { onConflict: 'chave' })
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['mapa-marcacoes'] }),
+  })
+}
+
 // Geocoda as cidades de orçamento que ainda não estão no cache (Nominatim, server-side)
 export function useGeocodarCidades() {
   const qc = useQueryClient()
