@@ -63,15 +63,21 @@ function formaValor(total: number | null, vendido: boolean): 'diamante' | 'estre
   return null
 }
 // SVG puro (sem lib) da forma, preenchido com a cor da idade + contorno branco.
+//  • estrela: geometria Lucide (pontas levemente arredondadas — visual mais limpo)
+//  • diamante: gema lapidada = silhueta preenchida + facetas brancas por cima
 function svgForma(forma: 'diamante' | 'estrela', cor: string, tam = 24): string {
-  const path = forma === 'diamante'
-    ? 'M12 1.5 22.5 12 12 22.5 1.5 12Z'
-    : 'M12 1.6l2.9 5.88 6.49.94-4.7 4.58 1.11 6.46L12 20.9l-5.8 3.06 1.11-6.46-4.7-4.58 6.49-.94Z'
-  return `<svg width="${tam}" height="${tam}" viewBox="0 0 24 24" style="display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))">`
-    + `<path d="${path}" fill="${cor}" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>`
+  const open = `<svg width="${tam}" height="${tam}" viewBox="0 0 24 24" style="display:block;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.5))">`
+  if (forma === 'estrela') {
+    const p = 'M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z'
+    return `${open}<path d="${p}" fill="${cor}" stroke="#fff" stroke-width="1.3" stroke-linejoin="round"/></svg>`
+  }
+  return `${open}`
+    + `<path d="M5 3H19L22 9L12 22L2 9Z" fill="${cor}" stroke="#fff" stroke-width="1.3" stroke-linejoin="round"/>`
+    + `<g stroke="#fff" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity=".85">`
+    + `<path d="M2 9H22"/><path d="M5 3L12 9M19 3L12 9M12 9V22"/></g></svg>`
 }
 function iconeForma(forma: 'diamante' | 'estrela', cor: string): L.DivIcon {
-  const tam = forma === 'diamante' ? 22 : 26 // estrela um tico maior pra "pesar" igual
+  const tam = forma === 'diamante' ? 22 : 24
   return L.divIcon({
     className: 'orc-forma-valor',
     html: svgForma(forma, cor, tam),
