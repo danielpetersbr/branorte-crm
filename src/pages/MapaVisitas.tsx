@@ -128,14 +128,25 @@ function chaveMarc(telefone: string | null, fone: string | null, cliente: string
   const tel = (telefone || fone || '').replace(/\D/g, '')
   return tel || ('nome:' + normTxt(cliente))
 }
-// Selo ✓ verde (visita feita) — badge grudado no canto sup-direito do pino.
-// pointer-events:none pra o clique cair no pino embaixo (abre o popup).
+// Pino VISITADO (caso comum): um único ponto com o ✓ dentro, na cor da idade.
+// Um blob só (sem bolinha extra colada) e é o próprio marcador clicável.
+function iconeVisitado(cor: string): L.DivIcon {
+  return L.divIcon({
+    className: 'pin-visitado',
+    html: `<div style="width:16px;height:16px;border-radius:50%;background:${cor};border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>`,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+    popupAnchor: [0, -9],
+  })
+}
+// Selo ✓ pequeno no canto — usado só quando o pino já é estrela/diamante
+// (aí não dá pra trocar a forma, então marca no cantinho). Não captura clique.
 function checkIcon(): L.DivIcon {
   return L.divIcon({
     className: 'marc-check',
-    html: `<div style="pointer-events:none;width:14px;height:14px;border-radius:50%;background:#16a34a;border:2px solid #fff;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(0,0,0,.4)"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>`,
-    iconSize: [14, 14],
-    iconAnchor: [1, 13], // centro do badge ~6px pra direita e 6px acima do ponto = canto do pino
+    html: `<div style="pointer-events:none;width:13px;height:13px;border-radius:50%;background:#16a34a;border:2px solid #fff;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(0,0,0,.4)"><svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>`,
+    iconSize: [13, 13],
+    iconAnchor: [-1, 15], // grudado no canto sup-direito da estrela/diamante
   })
 }
 
@@ -511,19 +522,23 @@ export function MapaVisitas() {
     }
     if (showOrc) {
       for (const p of orcFiltrados) {
+        const mk = marc[chaveMarc(p.telefone, p.fone, p.cliente)]
+        const visitado = !!mk?.visitado
         const forma = formaValor(p.total, p.vendido)
         const m = forma
           // orçado de alto valor → estrela/diamante (marcador DOM, cor pela idade)
           ? L.marker([p.lat, p.lng], { icon: iconeForma(forma, corOrcamento(p)) })
-          // demais → círculo no canvas (rápido pra milhares de pontos)
-          : L.circleMarker([p.lat, p.lng], {
-              renderer, radius: 5, fillColor: corOrcamento(p), color: '#fff', weight: 1, fillOpacity: 0.92,
-            })
-        const mk = marc[chaveMarc(p.telefone, p.fone, p.cliente)]
+          : visitado
+            // visitado (comum) → ponto único com ✓ dentro
+            ? L.marker([p.lat, p.lng], { icon: iconeVisitado(corOrcamento(p)) })
+            // demais → círculo no canvas (rápido pra milhares de pontos)
+            : L.circleMarker([p.lat, p.lng], {
+                renderer, radius: 5, fillColor: corOrcamento(p), color: '#fff', weight: 1, fillOpacity: 0.92,
+              })
         m.bindPopup(() => popupOrcamento(p, mk))
         m.addTo(layer)
-        // selo ✓ pra quem já teve visita
-        if (mk?.visitado) L.marker([p.lat, p.lng], { icon: checkIcon(), interactive: false, zIndexOffset: 1000 }).addTo(layer)
+        // estrela/diamante visitado mantém a forma; ✓ vai num selinho no canto
+        if (visitado && forma) L.marker([p.lat, p.lng], { icon: checkIcon(), interactive: false, zIndexOffset: 1000 }).addTo(layer)
         bounds.push([p.lat, p.lng])
       }
     }
