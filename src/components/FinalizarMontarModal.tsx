@@ -26,6 +26,25 @@ import { supabase } from '@/lib/supabase'
 import { parseClienteText, titleCasePtBr } from '@/lib/parse-cliente-text'
 import { uploadOrcamentoViaServer } from '@/lib/orcamento-upload'
 
+// Envolve uma promise num timeout que REJEITA se estourar. Usado nas operações de
+// File System Access sobre o Z:\ (Google Drive File Stream): num PC com o drive
+// desconectado/lento os async iterators (resolverPastaDoMes) e createWritable podem
+// TRAVAR pra sempre — nunca resolvem NEM rejeitam. Sem isso o save congelava em 70%
+// "Preparando para salvar..." e o fallback pro servidor (que só dispara em erro
+// LANÇADO) nunca rodava. Com o timeout, estoura → cai no catch → uploadServidor().
+// A promise pendurada é abandonada (Promise.race não cancela), mas isso é inofensivo.
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`Tempo esgotado (${Math.round(ms / 1000)}s) em: ${label}. A pasta Z:\\ pode estar desconectada/lenta.`)),
+        ms,
+      ),
+    ),
+  ])
+}
+
 export interface CarrinhoSnapshot {
   voltagem: 'monofasico' | 'trifasico'
   itens: Array<{
@@ -1037,10 +1056,10 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           let handle = await getStoredFolderHandle(true)
           if (!handle) handle = await pickOrcamentoFolder(true)
           if (handle) {
-            const ok = await ensureWritePermission(handle)
+            const ok = await withTimeout(ensureWritePermission(handle), 20000, 'permissão de escrita na pasta')
             if (!ok) throw new Error('Permissão de escrita negada')
 
-            const resolved = await resolverPastaDoMes(handle, hoje)
+            const resolved = await withTimeout(resolverPastaDoMes(handle, hoje), 20000, 'localizar a pasta do mês no Z:\\')
             let pastaMes
             if (resolved.ok) {
               pastaMes = resolved.pastaMes
@@ -1062,7 +1081,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
               escreverArquivo(pastaMes, `${base} - ${vendedorNome}.txt`, txtBlob)
                 .catch((txtErr) => { console.warn('Falha .txt:', txtErr) })
             )
-            await Promise.all(writes)
+            await withTimeout(Promise.all(writes), 30000, 'gravar arquivos na pasta Z:\\')
             salvouNaPasta = true
 
             // Confirma a gravação relendo o .docx (size > 0) e SÓ então marca o
@@ -1070,8 +1089,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             // sempre no fluxo de pasta local — disparando falso alarme de "NÃO foi
             // salvo / Reenviar pra pasta" toda vez que o vendedor reabria.
             try {
-              const docxHandle = await (pastaMes as any).getFileHandle(`${base}.docx`)
-              const docxFile = await docxHandle.getFile()
+              const docxHandle: any = await withTimeout((pastaMes as any).getFileHandle(`${base}.docx`), 15000, 'confirmar arquivo na pasta')
+              const docxFile: any = await withTimeout(docxHandle.getFile(), 15000, 'ler arquivo gravado')
               if (docxFile.size > 0 && orc.status !== 'enviado') {
                 await atualizar.mutateAsync({ id: orc.id, status: 'enviado' })
               }
