@@ -17,7 +17,7 @@ import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTime
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, STATUS_VENDEDOR_MAP, type StatusReal } from '@/types/atendimento'
-import { useAtendimentos, useAtendimentoKpis, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, useDadosIaPorTelefone, lookupDadosIa, useIaClientesAtivos, FILTRO_SEM_RESPOSTA, type DataPreset , useMensagensClique} from '@/hooks/useAtendimentos'
+import { useAtendimentos, useAtendimentoKpis, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, useDadosIaPorTelefone, lookupDadosIa, useIaStatusContagem, useIaStatusPorTelefone, lookupIaStatus, FILTRO_SEM_RESPOSTA, type DataPreset , useMensagensClique} from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 
@@ -124,6 +124,18 @@ function humanizeTipoRacao(raw: string | null | undefined): string | null {
   return raw
 }
 
+// Rótulo curto pra caber na coluna Finalidade (96px) sem invadir a coluna Animal.
+// O texto completo continua no tooltip da célula.
+function shortFinalidade(label: string): string {
+  const s = label.toLowerCase()
+  if (/consumo/.test(s) && /(vend|revend)/.test(s)) return 'Consumo+Venda'
+  if (/consumo/.test(s)) return 'Consumo'
+  if (/revend|vender|venda/.test(s)) return 'Revenda'
+  if (/ra[çc][ãa]o completa/.test(s)) return 'Ração compl.'
+  if (/sal mineral/.test(s)) return 'Sal mineral'
+  return label
+}
+
 function humanizeQuando(raw: string | null | undefined): string | null {
   if (!raw) return null
   const s = String(raw).toLowerCase().trim()
@@ -194,11 +206,12 @@ interface KpiCardProps {
   tone?: Tone
   icon?: typeof Flame
   hint?: string
+  tooltip?: string
   onClick?: () => void
   active?: boolean
 }
 
-function KpiCard({ label, value, hero, tone = 'neutral', icon: Icon, hint, onClick, active }: KpiCardProps) {
+function KpiCard({ label, value, hero, tone = 'neutral', icon: Icon, hint, tooltip, onClick, active }: KpiCardProps) {
   const accentClass: Record<Tone, string> = {
     success: 'before:bg-success',
     warning: 'before:bg-warning',
@@ -219,7 +232,7 @@ function KpiCard({ label, value, hero, tone = 'neutral', icon: Icon, hint, onCli
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
       onKeyDown={onClick ? (e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } }) : undefined}
-      title={onClick ? 'Clique pra filtrar a lista' : undefined}
+      title={tooltip ?? (onClick ? 'Clique pra filtrar a lista' : undefined)}
       className={`group relative overflow-hidden rounded-xl bg-surface border ${hero ? 'p-5' : 'p-4'}
                   before:absolute before:inset-y-0 before:left-0 before:w-[3px] ${accentClass[tone]}
                   transition-all duration-200 hover:border-${tone === 'neutral' ? 'border' : tone}/40
@@ -371,8 +384,10 @@ export function Atendimentos() {
   // Dados que a IA atendente coletou (animal/qtd/uso/equipamento/kg-h), cruzados por telefone —
   // preenche as colunas que a view auditoria deixou vazias (ReplyAgent descontinuado).
   const { data: dadosIaMap } = useDadosIaPorTelefone(phonesAtuais)
-  // Contador global "atendidos pela IA agora" pra o card de KPI.
-  const { data: iaAtivos } = useIaClientesAtivos()
+  // Status global da IA (card de KPI): quantos chats com IA ligada e quantos conversando hoje.
+  const { data: iaStatus } = useIaStatusContagem()
+  // Status da IA por telefone — marca na linha quem está com a IA atendendo.
+  const { data: iaStatusMap } = useIaStatusPorTelefone(phonesAtuais)
   const deleteMut = useDeleteAtendimento()
   const { profile } = useAuth()
   const { data: vendorsData } = useVendors()
@@ -444,8 +459,13 @@ export function Atendimentos() {
       {/* KPIs - funil: ENTRADA → ENGAJAMENTO → QUALIFICAÇÃO → HANDOFF → CONTATO */}
       {kpis && (
         <div className="grid grid-cols-2 lg:grid-cols-9 gap-3">
-          <KpiCard label="Atendidos pela IA" value={iaAtivos ?? 0} hero tone="info" icon={Bot}
-                   hint={(iaAtivos ?? 0) === 0 ? 'Nenhum na IA agora' : 'IA respondendo agora'} />
+          {/* IA: o número grande é quem está CONVERSANDO com a IA hoje (ela já respondeu
+              o cliente). O "ligados" inclui prospecção que ainda não engajou. */}
+          <KpiCard label="Conversando com a IA" value={iaStatus?.conversando ?? 0} hero tone="info" icon={Bot}
+                   hint={(iaStatus?.conversando ?? 0) === 0
+                     ? `nenhuma conversa hoje · ${formatNumber(iaStatus?.ligados ?? 0)} com IA ligada`
+                     : `IA respondendo · ${formatNumber(iaStatus?.ligados ?? 0)} com IA ligada`}
+                   tooltip={`${formatNumber(iaStatus?.conversando ?? 0)} cliente(s) trocando mensagem com a IA hoje (ela já respondeu ao menos uma vez).\n\n${formatNumber(iaStatus?.ligados ?? 0)} chats estão com a IA ligada no total — a maioria é prospecção que ainda não respondeu.`} />
           <KpiCard label="Hoje"           value={kpis.hoje}         hero tone="accent"
                    icon={Calendar}        hint={kpis.hoje === 0 ? 'Nenhum lead hoje' : 'leads novos'}
                    active={filters.data === 'hoje'}
@@ -665,6 +685,7 @@ export function Atendimentos() {
               // Trata "(sem nome)" do webhook como nome vazio pra UI ficar consistente
               const nomeReal = r.nome && !/^\(sem nome\)$/i.test(r.nome.trim()) ? r.nome : null
               const semResp = isSemResposta(r)
+              const ia = lookupIaStatus(iaStatusMap, r.telefone)
               return (
                 <div
                   key={r.id}
@@ -718,6 +739,19 @@ export function Atendimentos() {
                             background: `hsl(var(--${status.tone}-bg))`,
                             color: `hsl(var(--${status.tone}))`,
                           }} className="text-[10px]">{status.label}</Badge>
+                        )}
+                        {ia?.ia_ativa && (
+                          <Badge
+                            className="text-[10px] font-semibold"
+                            style={ia.conversando ? {
+                              background: 'hsl(var(--info-bg))',
+                              color: 'hsl(var(--info))',
+                              border: '1px solid hsl(var(--info)/0.35)',
+                            } : { background: 'hsl(var(--surface-2))', color: 'hsl(var(--ink-faint))' }}
+                            title={ia.conversando ? 'IA conversando com esse cliente hoje' : 'IA ligada nesse chat (ainda sem conversa hoje)'}
+                          >
+                            🤖 {ia.conversando ? 'IA conversando' : 'IA ligada'}
+                          </Badge>
                         )}
                         {isHot && (
                           <span className="text-[10px] font-semibold text-danger inline-flex items-center gap-0.5">
@@ -803,13 +837,13 @@ export function Atendimentos() {
                     <th className="hidden lg:table-cell w-[88px]">Origem</th>
                     <th className="hidden 2xl:table-cell w-[100px]">Criativo</th>
                     <th className="hidden lg:table-cell w-[140px]">Motivo</th>
-                    <th className="hidden 2xl:table-cell w-[100px]" title="Pra que serve a fábrica: consumo, venda ou os dois (Ana V16.24)">Finalidade</th>
-                    <th className="hidden 2xl:table-cell w-[60px]">Animal</th>
+                    <th className="hidden 2xl:table-cell w-[96px]" title="Pra que serve a fábrica: consumo, venda ou os dois (Ana V16.24)">Finalidade</th>
+                    <th className="hidden 2xl:table-cell w-[78px]">Animal</th>
                     <th className="hidden 2xl:table-cell w-[50px]" title="Cabeças (consumo) — vazio se for venda (ver Produção/h)">Qtd</th>
                     <th className="hidden 2xl:table-cell w-[64px]" title="Produção desejada quando é venda (kg/h)">Kg/h</th>
                     <th className="w-[88px]">Vendedor</th>
                     <th className="w-[76px]" title="Cliente tocou no botão FALAR COM CONSULTOR e foi levado pro WhatsApp do vendedor">Tocou</th>
-                    <th className="hidden xl:table-cell w-[220px]" title="Mensagem que o cliente envia pro vendedor ao tocar no botão (montada com o anúncio que ele viu, animal e quantidade)">Mensagem</th>
+                    <th className="hidden xl:table-cell w-[196px]" title="Mensagem que o cliente envia pro vendedor ao tocar no botão (montada com o anúncio que ele viu, animal e quantidade)">Mensagem</th>
                     <th className="hidden lg:table-cell w-[110px]" title="Etiqueta atribuída no WhatsApp do vendedor">Etiqueta WA</th>
                     <th className="w-[76px]" title="Já foi montado orçamento pra esse telefone? (match automático pelo número)">Orçamento</th>
                     <th className="w-[60px]" title="Esse lead virou venda? (orçamento dele virou pedido não-cancelado)">Vendido</th>
@@ -829,6 +863,8 @@ export function Atendimentos() {
                     // Trata "(sem nome)" do webhook como nome vazio (UI fallback fica consistente)
                     const nomeReal = r.nome && !/^\(sem nome\)$/i.test(r.nome.trim()) ? r.nome : null
                     const semResp = isSemResposta(r)
+                    // IA atendente ligada nesse chat? (e conversando = já respondeu o cliente hoje)
+                    const ia = lookupIaStatus(iaStatusMap, r.telefone)
                     // Lead sem vendedor que já falou = está na fila esperando alguém pegar
                     const semVendedor = !vendedorEfetivo(r)
                     const esperando = semVendedor && !semResp && !!(r.last_message_at || r.created_at)
@@ -856,7 +892,7 @@ export function Atendimentos() {
                         </td>
                         {/* LEAD — só primeiro nome pra não esticar a coluna */}
                         <td className="px-2 py-2.5 whitespace-nowrap">
-                          <div className="flex items-center max-w-[110px]">
+                          <div className="flex items-center w-full min-w-0">
                             <div className="leading-tight min-w-0">
                               <span className="text-[13px] font-medium text-ink truncate block" title={nomeReal ?? ''}>
                                 {nomeReal ? nomeReal.trim().split(/\s+/)[0] : (
@@ -900,7 +936,7 @@ export function Atendimentos() {
                           <PhoneCopyButton telefone={r.telefone} />
                         </td>
                         {/* ORIGEM */}
-                        <td className="hidden lg:table-cell px-1.5 py-2.5 whitespace-nowrap">
+                        <td className="hidden lg:table-cell px-1.5 py-2.5 overflow-hidden">
                           {r.origem ? (() => {
                             const o = r.origem.toLowerCase()
                             const tone =
@@ -913,8 +949,8 @@ export function Atendimentos() {
                               <Badge style={{
                                 background: `hsl(var(--${tone}-bg))`,
                                 color: `hsl(var(--${tone}))`,
-                              }}>
-                                {r.origem}
+                              }} className="max-w-full overflow-hidden" title={r.origem}>
+                                <span className="truncate">{r.origem}</span>
                               </Badge>
                             )
                           })() : (
@@ -924,7 +960,7 @@ export function Atendimentos() {
                         {/* CRIATIVO */}
                         <td className="hidden 2xl:table-cell px-1.5 py-2.5">
                           {r.criativo_codigo || criativoNome ? (
-                            <div className="flex items-center gap-1.5 min-w-0 max-w-[200px]">
+                            <div className="flex items-center gap-1.5 min-w-0 w-full">
                               {r.criativo_codigo && (
                                 <CriativoHoverBadge
                                   codigo={r.criativo_codigo}
@@ -949,7 +985,7 @@ export function Atendimentos() {
                           )}
                         </td>
                         {/* MOTIVO DO CONTATO + nome do equipamento (o_que_precisa OU criativo) */}
-                        <td className="hidden lg:table-cell px-1.5 py-2.5">
+                        <td className="hidden lg:table-cell px-1.5 py-2.5 overflow-hidden">
                           {(() => {
                             const motivo = humanizeMotivo(r.motivo_contato)
                             if (!motivo) return <EmptyCell />
@@ -963,12 +999,12 @@ export function Atendimentos() {
                             // no payload e ficava invisível; dá pra triar sem abrir o WhatsApp.
                             const resumo = (r.ai_context_summary || r.last_message_text || '').trim()
                             return (
-                              <div className="flex flex-col gap-0.5 min-w-0 max-w-[220px]">
+                              <div className="flex flex-col gap-0.5 min-w-0 w-full">
                                 <Badge style={{
                                   background: `hsl(var(--${tone}-bg))`,
                                   color: `hsl(var(--${tone}))`,
-                                }} className="w-fit">
-                                  {motivo}
+                                }} className="w-fit max-w-full overflow-hidden" title={motivo}>
+                                  <span className="truncate">{motivo}</span>
                                 </Badge>
                                 {equipamento && (
                                   <span className="text-[10.5px] text-ink-faint truncate capitalize" title={equipamento}>
@@ -986,7 +1022,7 @@ export function Atendimentos() {
                         </td>
                         {/* FINALIDADE — Ana V16.24 pergunta isso logo após o nome.
                             consumo_proprio / revenda / misto. Substitui a coluna antiga "Tipo de Ração". */}
-                        <td className="hidden 2xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
+                        <td className="hidden 2xl:table-cell px-1.5 py-2.5 overflow-hidden">
                           {(() => {
                             const fin = r.finalidade_fabrica || lookupDadosIa(dadosIaMap, r.telefone)?.finalidade
                             if (!fin) return <EmptyCell />
@@ -996,17 +1032,19 @@ export function Atendimentos() {
                               <Badge style={{
                                 background: `hsl(var(--${tone}-bg))`,
                                 color: `hsl(var(--${tone}))`,
-                              }} className="capitalize">
-                                {label}
+                              }} className="capitalize max-w-full overflow-hidden" title={label}>
+                                <span className="truncate">{shortFinalidade(label)}</span>
                               </Badge>
                             )
                           })()}
                         </td>
                         {/* ANIMAL */}
-                        <td className="hidden 2xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
+                        <td className="hidden 2xl:table-cell px-1.5 py-2.5 overflow-hidden">
                           {(() => {
                             const animal = (r.qual_animal && r.qual_animal !== 'null') ? r.qual_animal : lookupDadosIa(dadosIaMap, r.telefone)?.animal
-                            return animal ? <span className="text-[12px] text-ink-muted">{normalizarAnimal(String(animal))}</span> : <EmptyCell />
+                            if (!animal) return <EmptyCell />
+                            const label = normalizarAnimal(String(animal))
+                            return <span className="text-[12px] text-ink-muted block truncate" title={label}>{label}</span>
                           })()}
                         </td>
                         {/* QTD (cabeças) — V16.24: vazio quando finalidade=revenda (vendedor não pergunta qtd nesse caso) */}
@@ -1023,8 +1061,26 @@ export function Atendimentos() {
                             return kgh ? <span className="text-[12px] text-ink-muted tabular-nums block truncate" title={String(kgh)}>{kgh}</span> : <EmptyCell />
                           })()}
                         </td>
-                        {/* VENDEDOR — só primeiro nome (sem avatar) */}
+                        {/* VENDEDOR — só primeiro nome (sem avatar) + selo da IA atendente */}
                         <td className="px-1.5 py-2.5 whitespace-nowrap w-[72px]">
+                          {ia?.ia_ativa && (
+                            <span
+                              className={`mb-0.5 inline-flex items-center gap-0.5 rounded px-1 text-[9px] font-semibold leading-tight ${
+                                ia.conversando ? '' : 'bg-surface-2 text-ink-faint'
+                              }`}
+                              style={ia.conversando ? {
+                                background: 'hsl(var(--info-bg))',
+                                color: 'hsl(var(--info))',
+                                border: '1px solid hsl(var(--info)/0.35)',
+                              } : undefined}
+                              title={ia.conversando
+                                ? `IA conversando com esse cliente hoje (${ia.respostas_hoje} resposta${ia.respostas_hoje === 1 ? '' : 's'})${ia.vendedor ? ` — no WhatsApp do ${ia.vendedor}` : ''}`
+                                : `IA ligada nesse chat, mas ainda sem conversa hoje${ia.vendedor ? ` — no WhatsApp do ${ia.vendedor}` : ''}`}
+                            >
+                              <Bot className="h-2.5 w-2.5" />
+                              {ia.conversando ? 'IA on' : 'IA'}
+                            </span>
+                          )}
                           {(() => {
                             const ids = (r.auditoria_ids && r.auditoria_ids.length > 0) ? r.auditoria_ids : [r.id]
                             const v = vendedorEfetivo(r)
@@ -1086,7 +1142,7 @@ export function Atendimentos() {
                                 : 'Prévia — ainda não tocou no botão'
                             return (
                               <span
-                                className={`text-[11px] leading-tight line-clamp-2 block max-w-[220px] ${m.enviada ? 'text-success' : tocou ? 'text-ink-muted' : 'text-ink-faint'}`}
+                                className={`text-[11px] leading-tight line-clamp-2 block w-full ${m.enviada ? 'text-success' : tocou ? 'text-ink-muted' : 'text-ink-faint'}`}
                                 title={`${rotulo}\n\n${m.texto}`}
                               >
                                 {m.texto}
@@ -1099,13 +1155,13 @@ export function Atendimentos() {
                             o cliente no Zap (ex: aparecia "NAO RESPONDEU MAIS" do
                             Pedro quando o responsável real era o Gustavo). Agora
                             filtra pelo first-name UPPERCASE do vendedor efetivo. */}
-                        <td className="hidden lg:table-cell px-1.5 py-2.5 whitespace-nowrap">
+                        <td className="hidden lg:table-cell px-1.5 py-2.5 overflow-hidden">
                           {(() => {
                             // Selo sintético "NUNCA RESPONDEU" (marca do bot). Prioridade
                             // baixa: isSemResposta já é false se houver etiqueta real ou vendedor.
                             if (semResp) {
                               return (
-                                <div className="flex flex-wrap gap-1 max-w-[180px]">
+                                <div className="flex flex-wrap gap-1 w-full min-w-0">
                                   <Badge
                                     className="text-[10px] font-semibold"
                                     style={{
@@ -1131,11 +1187,11 @@ export function Atendimentos() {
                               : allLabels
                             if (labels.length === 0) return <EmptyCell />
                             return (
-                              <div className="flex flex-wrap gap-1 max-w-[180px]">
+                              <div className="flex flex-wrap gap-1 w-full min-w-0">
                                 {labels.slice(0, 3).map(l => (
                                   <Badge
                                     key={l.id + ':' + l.vendedor}
-                                    className="text-[10px] font-semibold"
+                                    className="text-[10px] font-semibold max-w-full overflow-hidden"
                                     style={{
                                       background: 'hsl(var(--success-bg))',
                                       color: 'hsl(var(--success))',
@@ -1143,7 +1199,7 @@ export function Atendimentos() {
                                     }}
                                     title={`${l.name}${l.vendedor ? ` (${l.vendedor})` : ''}`}
                                   >
-                                    {l.name.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase()}
+                                    <span className="truncate">{l.name.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase()}</span>
                                   </Badge>
                                 ))}
                                 {labels.length > 3 && (

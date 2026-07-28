@@ -392,21 +392,68 @@ export function lookupDadosIa(map: DadosIaMap | undefined, phone: string | null 
   return c ? (map[c] ?? null) : null
 }
 
-// Contador global de clientes sendo atendidos pela IA agora (ia_atendimentos.ativo=true).
-// Alimenta o card de KPI "Atendidos pela IA" no topo da /atendimentos.
-export function useIaClientesAtivos(enabled = true) {
+// Status global da IA atendente (alimenta o card de KPI no topo da /atendimentos):
+//  • ligados     = chats com a IA ligada (ia_atendimentos.ativo = true) — inclui prospecção parada
+//  • conversando = desses, os que estão de fato em conversa HOJE (a IA já respondeu ao cliente hoje)
+export type IaStatusContagem = { ligados: number; conversando: number }
+
+export function useIaStatusContagem(enabled = true) {
   return useQuery({
-    queryKey: ['ia-clientes-ativos'],
+    queryKey: ['ia-status-contagem'],
     enabled,
-    queryFn: async (): Promise<number> => {
-      const { data, error } = await (supabase as any).rpc('ia_clientes_ativos_count')
+    queryFn: async (): Promise<IaStatusContagem> => {
+      const { data, error } = await (supabase as any).rpc('ia_status_contagem')
       if (error) throw error
-      return Number(data ?? 0)
+      const d = (data ?? {}) as { ligados?: number; conversando?: number }
+      return { ligados: Number(d.ligados ?? 0), conversando: Number(d.conversando ?? 0) }
     },
     staleTime: 30_000,
     refetchInterval: 45_000,
     refetchIntervalInBackground: false,
   })
+}
+
+// Status da IA por telefone — marca na linha quais atendimentos estão com a IA ligada
+// e quais estão conversando agora. Só volta telefone com IA ativa (RPC já filtra).
+export type IaStatus = {
+  ia_ativa: boolean
+  conversando: boolean
+  respostas_hoje: number
+  vendedor: string | null
+}
+export type IaStatusMap = Record<string, IaStatus> // keyed pelo canônico
+
+export function useIaStatusPorTelefone(phones: (string | null | undefined)[], enabled = true) {
+  const canons = [...new Set(phones.map(foneCanon).filter((c): c is string => !!c))]
+  return useQuery({
+    queryKey: ['ia-status-por-telefone', canons.slice().sort().join(',')],
+    enabled: enabled && canons.length > 0,
+    queryFn: async (): Promise<IaStatusMap> => {
+      if (canons.length === 0) return {}
+      const { data, error } = await (supabase as any).rpc('ia_status_por_telefone_canon', { p_canons: canons })
+      if (error) throw error
+      const map: IaStatusMap = {}
+      for (const row of (data ?? []) as any[]) {
+        if (!row.fone_canon) continue
+        map[String(row.fone_canon)] = {
+          ia_ativa: row.ia_ativa === true,
+          conversando: row.conversando === true,
+          respostas_hoje: Number(row.respostas_hoje ?? 0),
+          vendedor: row.vendedor_nome ?? null,
+        }
+      }
+      return map
+    },
+    staleTime: 30_000,
+    refetchInterval: 45_000,
+    refetchIntervalInBackground: false,
+  })
+}
+
+export function lookupIaStatus(map: IaStatusMap | undefined, phone: string | null | undefined): IaStatus | null {
+  if (!map) return null
+  const c = foneCanon(phone)
+  return c ? (map[c] ?? null) : null
 }
 
 // Lista global de telefones marcados "nunca respondeu (auto)" e ainda sem vendedor.
