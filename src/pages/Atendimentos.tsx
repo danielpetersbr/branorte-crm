@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, Flame, AlarmClock, CheckCircle2, Inbox, Trash2, Calendar, Hand, ListChecks, MessageSquareDot, EyeOff, UserPlus, RefreshCw, AlertCircle, PhoneOff, MousePointerClick } from 'lucide-react'
+import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, Flame, AlarmClock, CheckCircle2, Inbox, Trash2, Calendar, Hand, ListChecks, MessageSquareDot, EyeOff, UserPlus, RefreshCw, AlertCircle, PhoneOff, MousePointerClick, Bot } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -17,7 +17,7 @@ import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTime
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, STATUS_VENDEDOR_MAP, type StatusReal } from '@/types/atendimento'
-import { useAtendimentos, useAtendimentoKpis, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, FILTRO_SEM_RESPOSTA, type DataPreset , useMensagensClique} from '@/hooks/useAtendimentos'
+import { useAtendimentos, useAtendimentoKpis, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, useDadosIaPorTelefone, lookupDadosIa, useIaClientesAtivos, FILTRO_SEM_RESPOSTA, type DataPreset , useMensagensClique} from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 
@@ -368,6 +368,11 @@ export function Atendimentos() {
   const { data: semRespMap } = useSemRespostaPorTelefone(phonesAtuais)
   // Total global de "nunca respondeu (auto)" pra o card de KPI.
   const { data: semRespTels } = useSemRespostaTelefones()
+  // Dados que a IA atendente coletou (animal/qtd/uso/equipamento/kg-h), cruzados por telefone —
+  // preenche as colunas que a view auditoria deixou vazias (ReplyAgent descontinuado).
+  const { data: dadosIaMap } = useDadosIaPorTelefone(phonesAtuais)
+  // Contador global "atendidos pela IA agora" pra o card de KPI.
+  const { data: iaAtivos } = useIaClientesAtivos()
   const deleteMut = useDeleteAtendimento()
   const { profile } = useAuth()
   const { data: vendorsData } = useVendors()
@@ -438,7 +443,9 @@ export function Atendimentos() {
 
       {/* KPIs - funil: ENTRADA → ENGAJAMENTO → QUALIFICAÇÃO → HANDOFF → CONTATO */}
       {kpis && (
-        <div className="grid grid-cols-2 lg:grid-cols-8 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-9 gap-3">
+          <KpiCard label="Atendidos pela IA" value={iaAtivos ?? 0} hero tone="info" icon={Bot}
+                   hint={(iaAtivos ?? 0) === 0 ? 'Nenhum na IA agora' : 'IA respondendo agora'} />
           <KpiCard label="Hoje"           value={kpis.hoje}         hero tone="accent"
                    icon={Calendar}        hint={kpis.hoje === 0 ? 'Nenhum lead hoje' : 'leads novos'}
                    active={filters.data === 'hoje'}
@@ -951,7 +958,7 @@ export function Atendimentos() {
                             // Prioridade 1: o_que_precisa (Ana V16.24 grava 'misturador 150 kg')
                             // Prioridade 2: nome do criativo do anúncio (fallback)
                             const ehUmEquipamento = /equipamento/i.test(motivo)
-                            const equipamento = ehUmEquipamento ? (r.o_que_precisa || criativoNome) : null
+                            const equipamento = ehUmEquipamento ? (r.o_que_precisa || lookupDadosIa(dadosIaMap, r.telefone)?.equipamento || criativoNome) : null
                             // Contexto do que o lead quer (resumo IA ou última mensagem) — já vem
                             // no payload e ficava invisível; dá pra triar sem abrir o WhatsApp.
                             const resumo = (r.ai_context_summary || r.last_message_text || '').trim()
@@ -981,7 +988,7 @@ export function Atendimentos() {
                             consumo_proprio / revenda / misto. Substitui a coluna antiga "Tipo de Ração". */}
                         <td className="hidden 2xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
                           {(() => {
-                            const fin = r.finalidade_fabrica
+                            const fin = r.finalidade_fabrica || lookupDadosIa(dadosIaMap, r.telefone)?.finalidade
                             if (!fin) return <EmptyCell />
                             const label = humanizeTipoRacao(fin) ?? fin
                             const tone = FINALIDADE_TONE[fin] ?? FINALIDADE_TONE[label] ?? 'neutral'
@@ -997,27 +1004,24 @@ export function Atendimentos() {
                         </td>
                         {/* ANIMAL */}
                         <td className="hidden 2xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
-                          {r.qual_animal && r.qual_animal !== 'null' ? (
-                            <span className="text-[12px] text-ink-muted">{normalizarAnimal(r.qual_animal)}</span>
-                          ) : (
-                            <EmptyCell />
-                          )}
+                          {(() => {
+                            const animal = (r.qual_animal && r.qual_animal !== 'null') ? r.qual_animal : lookupDadosIa(dadosIaMap, r.telefone)?.animal
+                            return animal ? <span className="text-[12px] text-ink-muted">{normalizarAnimal(String(animal))}</span> : <EmptyCell />
+                          })()}
                         </td>
                         {/* QTD (cabeças) — V16.24: vazio quando finalidade=revenda (vendedor não pergunta qtd nesse caso) */}
                         <td className="hidden 2xl:table-cell px-1.5 py-2.5 whitespace-nowrap">
-                          {r.quantos_animais && r.quantos_animais !== 'null' ? (
-                            <span className="text-[12px] text-ink-muted tabular-nums">{r.quantos_animais}</span>
-                          ) : (
-                            <EmptyCell />
-                          )}
+                          {(() => {
+                            const qtd = (r.quantos_animais && r.quantos_animais !== 'null') ? r.quantos_animais : lookupDadosIa(dadosIaMap, r.telefone)?.quantidade
+                            return qtd ? <span className="text-[12px] text-ink-muted tabular-nums">{qtd}</span> : <EmptyCell />
+                          })()}
                         </td>
                         {/* PRODUÇÃO/H (kg/h) — V16.24: usado quando finalidade=venda (substitui Momento) */}
                         <td className="hidden 2xl:table-cell px-1.5 py-2.5 max-w-[100px]">
-                          {r.capacidade_producao ? (
-                            <span className="text-[12px] text-ink-muted tabular-nums block truncate" title={r.capacidade_producao}>{r.capacidade_producao}</span>
-                          ) : (
-                            <EmptyCell />
-                          )}
+                          {(() => {
+                            const kgh = r.capacidade_producao || lookupDadosIa(dadosIaMap, r.telefone)?.kg_h
+                            return kgh ? <span className="text-[12px] text-ink-muted tabular-nums block truncate" title={String(kgh)}>{kgh}</span> : <EmptyCell />
+                          })()}
                         </td>
                         {/* VENDEDOR — só primeiro nome (sem avatar) */}
                         <td className="px-1.5 py-2.5 whitespace-nowrap w-[72px]">

@@ -338,6 +338,77 @@ export function lookupSemResposta(
   return c ? (map[c] ?? null) : null
 }
 
+// ─── Dados que a IA atendente coletou, por telefone ──────────────────────────
+// Cruza o telefone do atendimento com public.ia_atendimentos.dados_coletados (a IA da
+// extensão coleta animal/quantidade/uso/equipamento/kg-h no 1º atendimento). A view
+// auditoria NÃO tem esses dados (eram do ReplyAgent antigo, descontinuado); esta ponte
+// preenche as colunas MOTIVO/FINALIDADE/ANIMAL/QTD/KG-H. Read-only, canon-match.
+export type DadosIa = {
+  animal: string | null
+  quantidade: string | null
+  finalidade: string | null
+  equipamento: string | null
+  kg_h: string | null
+  resumo: string | null
+  temperatura: string | null
+  ia_ativa: boolean
+}
+export type DadosIaMap = Record<string, DadosIa> // keyed pelo canônico
+
+export function useDadosIaPorTelefone(phones: (string | null | undefined)[], enabled = true) {
+  const canons = [...new Set(phones.map(foneCanon).filter((c): c is string => !!c))]
+  return useQuery({
+    queryKey: ['dados-ia-por-telefone', canons.slice().sort().join(',')],
+    enabled: enabled && canons.length > 0,
+    queryFn: async (): Promise<DadosIaMap> => {
+      if (canons.length === 0) return {}
+      const { data, error } = await (supabase as any).rpc('ia_dados_por_telefone_canon', { p_canons: canons })
+      if (error) throw error
+      const map: DadosIaMap = {}
+      for (const row of (data ?? []) as any[]) {
+        if (!row.fone_canon) continue
+        map[String(row.fone_canon)] = {
+          animal: row.animal ?? null,
+          quantidade: row.quantidade ?? null,
+          finalidade: row.finalidade ?? null,
+          equipamento: row.equipamento ?? null,
+          kg_h: row.kg_h ?? null,
+          resumo: row.resumo ?? null,
+          temperatura: row.temperatura ?? null,
+          ia_ativa: row.ia_ativa === true,
+        }
+      }
+      return map
+    },
+    staleTime: 30_000,
+    refetchInterval: 45_000,
+    refetchIntervalInBackground: false,
+  })
+}
+
+export function lookupDadosIa(map: DadosIaMap | undefined, phone: string | null | undefined): DadosIa | null {
+  if (!map) return null
+  const c = foneCanon(phone)
+  return c ? (map[c] ?? null) : null
+}
+
+// Contador global de clientes sendo atendidos pela IA agora (ia_atendimentos.ativo=true).
+// Alimenta o card de KPI "Atendidos pela IA" no topo da /atendimentos.
+export function useIaClientesAtivos(enabled = true) {
+  return useQuery({
+    queryKey: ['ia-clientes-ativos'],
+    enabled,
+    queryFn: async (): Promise<number> => {
+      const { data, error } = await (supabase as any).rpc('ia_clientes_ativos_count')
+      if (error) throw error
+      return Number(data ?? 0)
+    },
+    staleTime: 30_000,
+    refetchInterval: 45_000,
+    refetchIntervalInBackground: false,
+  })
+}
+
 // Lista global de telefones marcados "nunca respondeu (auto)" e ainda sem vendedor.
 // Alimenta o card de KPI (length) e espelha o que o filtro FILTRO_SEM_RESPOSTA usa.
 export function useSemRespostaTelefones(enabled = true) {
