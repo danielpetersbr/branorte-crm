@@ -162,6 +162,27 @@ async function avisarVendedorSkip(supa: any, chatId: string, vendedor: string, m
   } catch (e) { console.error('[ia-atendente] avisarVendedorSkip:', String(e)) }
 }
 
+// (29/07, caso Pompeu/LUCAS) A PERGUNTA TEM QUE SER DO EQUIPAMENTO, NAO DE ANIMAL.
+// Antes o ramo EQUIPAMENTO usava um texto unico — "esse {equip} e pra qual animal e quantas
+// cabecas?" — que so faz sentido pra fabrica de racao. Cliente pediu ESTEIRA pra SACARIA DE CAFE
+// e levou pergunta de cabeca de gado. Regra do Daniel: equipamento individual pergunta UM exemplo
+// especifico e passa. A frase evita concordancia quebrada ("Esse rosca") nao repetindo o termo
+// cru do cliente quando o equipamento e reconhecido.
+function perguntaDoEquipamento(equipTxt: string): string {
+  const e = normNome(equipTxt)
+  if (/MISTURAD/.test(e))                             return 'Certo. O que você vai misturar nele — ração, sal mineral, outro produto?'
+  if (/MOINHO|TRITURA|MARTELO/.test(e))               return 'Certo. O que você vai moer nele — milho, grão inteiro, outro material?'
+  if (/ESTEIRA|CORREIA/.test(e))                      return 'Certo. Essa esteira é pra transportar o quê — sacaria, produto a granel?'
+  if (/ROSCA|HELICOID|TRANSPORTAD|CHUPIM|PNEUMAT/.test(e)) return 'Certo. Você vai transportar o quê nele — grão a granel, ração, farelo?'
+  if (/ELEVADOR|CANECA/.test(e))                      return 'Certo. Esse elevador é pra subir o quê, e mais ou menos quantos kg por hora?'
+  if (/ENSACAD|EMPACOT/.test(e))                      return 'Certo. Você vai ensacar o quê, e em saco de quantos kg?'
+  if (/SILO|MOEGA|ARMAZ/.test(e))                     return 'Certo. É pra armazenar o quê, e mais ou menos quanto?'
+  if (/BALAN|PESAGEM|CA[ÇC]AMBA/.test(e))             return 'Certo. Você vai pesar o quê nele?'
+  if (/PENEIR|LIMPEZA|CICLONE/.test(e))               return 'Certo. É pra limpar/peneirar qual produto?'
+  if (/TALHA|GUINCHO|PONTE/.test(e))                  return 'Certo. É pra movimentar o quê, e qual o peso mais ou menos?'
+  return 'Certo. Me conta pra que você vai usar ele, que aí te oriento melhor.'
+}
+
 // Escolhe o modelo de fabrica pela regra do mapa: venda = kg/h direto; consumo =
 // cabecas x media/dia do animal x 7 / 12h (3 meios-periodos/semana).
 function mediaAnimalDia(animal: string): number {
@@ -279,7 +300,7 @@ Responda SOMENTE com JSON válido neste formato:
 - midia_id: id de UMA mídia da lista quando encaixar; senão null.
 - mostrar_fabrica: quando o cliente pedir pra VER o modelo de fábrica (fotos/vídeo/valores) ou disser "quero ver a do vídeo/anúncio/aquela", coloque o modelo: "compacta-01" | "compacta-02" | "compacta-03" | "mini-fabrica" (se ele veio de um anúncio, use o modelo do anúncio). A extensão manda foto + valores + vídeo dele; NÃO escreva preço no texto (os valores vão na foto). Senão null.
 - temperatura: "quente" | "morno" | "frio" quando o TOM do cliente deixar claro (pressa/prazo curto/"tô comprando" = quente; planejando = morno; só pesquisando = frio); senão null.
-- dados: registre TUDO que o cliente informar na conversa (pro cadastro dele no CRM): {"nome_cliente": "SÓ o nome PRÓPRIO da pessoa (ex: João, Delciney) — se responder algo que não é nome de gente (equipamento tipo triturador/moinho, finalidade), deixe null", "animal": "bovino|suino|ave|ovino|caprino|misto", "quantidade": <int cabeças>, "uso": "venda|consumo", "producao_kgh": <int kg por hora, só se ele disser>, "equipamento": "o que ele quer (ex: mini fábrica, moinho de martelo)", "finalidade": "consumo_proprio|revenda|misto", "cidade": "...", "uf": "SC", "resumo": "1 frase do que ele quer"}. nome_cliente/cidade/uf/finalidade SÓ se ele disser ESPONTANEAMENTE — NUNCA pergunte cidade, UF nem finalidade. Campos que não souber: omita. Nada novo = null.
+- dados: registre TUDO que o cliente informar na conversa (pro cadastro dele no CRM): {"nome_cliente": "SÓ o nome PRÓPRIO da pessoa (ex: João, Delciney) — se responder algo que não é nome de gente (equipamento tipo triturador/moinho, finalidade), deixe null", "animal": "bovino|suino|ave|ovino|caprino|misto", "quantidade": <int cabeças>, "uso": "venda|consumo", "producao_kgh": <int kg por hora, só se ele disser>, "equipamento": "o que ele quer (ex: mini fábrica, moinho de martelo)", "aplicacao": "SÓ pra EQUIPAMENTO avulso: o que ele vai processar/transportar/misturar nele, na palavra dele (ex: 'sacaria de café', 'sal mineral e farelo', 'milho') — NÃO é animal", "finalidade": "consumo_proprio|revenda|misto", "cidade": "...", "uf": "SC", "resumo": "1 frase do que ele quer"}. nome_cliente/cidade/uf/finalidade SÓ se ele disser ESPONTANEAMENTE — NUNCA pergunte cidade, UF nem finalidade. Campos que não souber: omita. Nada novo = null.
 - vendedor_assumir: true SÓ em dois casos: (a) o cliente pediu preço/condições/detalhe técnico/reclamou/pediu atendente humano; ou (b) você JÁ TEM o essencial do ramo (Fábrica-consumo: o ANIMAL; Fábrica-venda: a CAPACIDADE em kg/h; Equipamento: a aplicação). Sem o essencial e sem pedido de humano → PERGUNTE primeiro e vendedor_assumir=false. SAUDAÇÃO PURA (oi, olá, boa tarde, bom dia, "tudo bem?") sem dizer o que procura NUNCA passa o bastão e NÃO é qualificação — apenas cumprimente e pergunte o que ele precisa (fábrica de ração ou equipamento), com vendedor_assumir=false. NUNCA faça pergunta de qualificação e passe o bastão na MESMA resposta — se o seu texto contém pergunta, vendedor_assumir=false. Quando true, o texto é um FECHAMENTO CURTO em 1ª pessoa e natural (ex: "entendi tudo aqui, {nome}. vou organizar os detalhes certinhos e te retorno") — SEM pergunta junto, SEM dizer que alguém vai assumir/continuar/atender, SEM terceira pessoa, SEM "vou te transferir", SEM a palavra "já" (não passe a ideia de que vai ser feito na hora). Você só dá esse retorno e para.
 - encerrar: true SÓ quando o cliente se despediu de vez ou pediu pra parar de receber mensagens (texto = despedida curta).
 - etiqueta: UMA etiqueta do funil conforme o desfecho, ou null:
@@ -923,15 +944,24 @@ Deno.serve(async (req: Request) => {
       const falouFabricaNaConversa = /(f[áa]bric|compacta|mini\s*f[áa]bric)/i.test(convCliente)
       const equipEhFabrica = /f[áa]bric|compacta|\bmini\b/i.test(equipTxt) || falouFabricaNaConversa
       // (28/07) EQUIPAMENTO SOZINHO NAO E QUALIFICACAO: a palavra solta ("misturador") fechava o
-      // lead. O essencial do RAMO EQUIPAMENTO e a APLICACAO — pra que / quanto / qual animal.
+      // lead. O essencial do RAMO EQUIPAMENTO e a APLICACAO — pra que ele vai usar.
+      //
+      // (29/07, caso Pompeu/LUCAS) EQUIPAMENTO NAO SE QUALIFICA COM ANIMAL/CABECAS. O cliente
+      // pediu uma ESTEIRA pra SACARIA DE CAFE e a IA respondeu "essa esteira de sacaria e pra
+      // qual animal e quantas cabecas?" — pergunta sem sentido, e ele JA tinha dito a aplicacao.
+      // Agora: (a) a pergunta e ESPECIFICA do equipamento (ver PERGUNTA_EQUIP abaixo);
+      // (b) UMA pergunta basta — respondeu, passa o bastao (regra do Daniel: "quando e
+      // equipamento individual pode passar direto, so pergunta um exemplo"). O contador
+      // `_qualif_tent` ja incrementa a cada pergunta feita, entao >=1 significa "ja perguntei".
       const temAplicacaoEquip = !!(
-        dadosMem.animal || dadosMem.uso || dadosMem.finalidade ||
+        dadosMem.aplicacao || dadosMem.uso || dadosMem.finalidade || dadosMem.animal ||
         Number(dadosMem.quantidade) > 0 || Number(dadosMem.producao_kgh) > 0
       )
+      const jaPerguntouEquip = Number(dadosMem._qualif_tent || 0) >= 1
       const temEssencial = !!(
         (dadosMem.animal && Number(dadosMem.quantidade) > 0) ||
         Number(dadosMem.producao_kgh) > 0 ||
-        (equipTxt && !equipEhFabrica && temAplicacaoEquip)
+        (equipTxt && !equipEhFabrica && (temAplicacaoEquip || jaPerguntouEquip))
       )
       // (28/07) PEDIR PRECO DEIXOU DE SER PASSE-LIVRE. 'preco|valor|orcamento' entrava no mesmo
       // regex do pedido de humano e PULAVA o guard inteiro — e lead de anuncio SEMPRE abre
@@ -963,8 +993,8 @@ Deno.serve(async (req: Request) => {
         if (!temNome) {
           texto = 'Boa! Antes, como é o seu nome?'
         } else if (equipTxt && !equipEhFabrica && !temAplicacaoEquip) {
-          // (28/07) RAMO EQUIPAMENTO sem aplicacao: pergunta PRA QUE serve antes de entregar.
-          texto = 'Certo. Esse ' + equipTxt + ' é pra qual animal e quantas cabeças, mais ou menos?'
+          // (29/07) RAMO EQUIPAMENTO: UMA pergunta, e ela e do EQUIPAMENTO — nao de animal.
+          texto = perguntaDoEquipamento(equipTxt)
         } else if (!ehVenda && !ehConsumo) {
           texto = 'Entendi. Essa ração é pra você vender ou pra consumo dos seus animais?'
         } else if (ehVenda) {
