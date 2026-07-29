@@ -31,18 +31,24 @@ const semEmoji = (s: string) => String(s || '')
   .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{2190}-\u{21FF}\u{FE00}-\u{FE0F}\u{200D}]/gu, '')
   .replace(/[ \t]{2,}/g, ' ').replace(/ +\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
 
+// (29/07) supabase-js NAO lanca em erro de query: devolve {error} e o `catch` fica decorativo.
+// Erro/timeout/RLS virava data=null em silencio, a config caia toda pro default e ninguem ficava
+// sabendo. Agora o erro e lido e logado; e o kill switch de midia falha FECHADO (se nao deu pra ler
+// se o Daniel desligou a midia, o certo e nao mandar).
 async function carregarConfig(supa: any) {
   const cfg: Record<string, any> = {}
+  let falhou = false
   try {
-    const { data } = await supa.from('ia_config').select('chave, valor')
+    const { data, error } = await supa.from('ia_config').select('chave, valor')
+    if (error) { falhou = true; console.error('[ia-atendente] ia_config indisponivel:', error.message) }
     for (const r of (data || [])) cfg[r.chave] = r.valor?.v
-  } catch { /* defaults abaixo */ }
+  } catch (e) { falhou = true; console.error('[ia-atendente] ia_config excecao:', String(e)) }
   return {
     modelo: String(cfg.modelo_openai || 'gpt-5.4-mini'),
     fallback: String(cfg.modelo_fallback || 'gpt-4o-mini'),
     tom: String(cfg.tom || '').slice(0, 1200),
     capDia: Math.max(1, Math.min(100, Number(cfg.max_respostas_dia) || 15)),
-    permitirMidia: cfg.permitir_midia !== false,
+    permitirMidia: falhou ? false : cfg.permitir_midia !== false,
   }
 }
 
@@ -55,11 +61,16 @@ async function carregarMidias(supa: any) {
   } catch { return [] }
 }
 
+// Mesma armadilha do carregarConfig: sem ler {error}, uma falha de leitura fazia a IA seguir
+// conversando com o cliente SEM os ~12 mil chars de base de produto (o que a Branorte fabrica e o
+// que nao fabrica), e sem deixar rastro. Nao interrompe o atendimento — a persona dura continua
+// valendo — mas agora a falha aparece no log em vez de sumir.
 async function carregarConhecimento(supa: any, vendedor: string): Promise<string> {
   try {
-    const { data } = await supa.from('ia_conhecimento')
+    const { data, error } = await supa.from('ia_conhecimento')
       .select('titulo, conteudo, escopo, vendedor_nome, ordem')
       .eq('ativo', true).order('ordem', { ascending: true })
+    if (error) console.error('[ia-atendente] KB indisponivel:', error.message)
     if (!Array.isArray(data) || !data.length) return ''
     const up = String(vendedor || '').toUpperCase()
     let empresa = '', pessoal = ''
@@ -1156,7 +1167,10 @@ Deno.serve(async (req: Request) => {
               em.video2_url ? { tipo: 'video', url: em.video2_url, titulo: em.nome } : null,
             ].filter(Boolean)
             midiaId = null
-            texto = 'Olha' + (pn ? ', ' + pn : '') + '. Te mandei a foto e o vídeo do nosso ' + em.nome + ' pra você ver de perto. É um desse que você procura?'
+            // (29/07) O texto era fixo em "a foto e o vídeo", mas a lista acima e condicional:
+            // equipamento sem video1/video2 anunciava um anexo que nao ia junto, e o cliente ficava
+            // procurando. O ramo de fabrica ja resolvia isso com descreveMidias(); aqui faltava.
+            texto = 'Olha' + (pn ? ', ' + pn : '') + '. Te mandei ' + descreveMidias(fabricaMidias) + ' do nosso ' + em.nome + ' pra você ver de perto. É um desse que você procura?'
           } else if (!llmAssumiu) {
             // nos forcamos o bastao e nao ha modelo -> fecha neutro (o texto do LLM era de continuar a conversa)
             texto = 'Entendi tudo aqui' + (pn ? ', ' + pn : '') + '. Vou organizar os detalhes certinhos e te retorno.'
@@ -1282,7 +1296,12 @@ Deno.serve(async (req: Request) => {
         acoes.desligada = true
       }
       acoes.marcar_nao_lida = vendedorAssumir === true
-      await supa.from('ia_atendimentos').update(upd).eq('chat_id', chat_id)
+      // Este update carrega TRES travas de uma vez: respostas_hoje+1 (teto do dia), ativo=false +
+      // motivo (desligamento no bastao) e os dados coletados. Auditado em 20/07 a 29/07: 0 falhas em
+      // 710 respostas — nao e um bug ativo. Mas era um write cego: se um dia falhar (um CHECK novo
+      // ja engoliu 760 logs assim), a mensagem sai e o estado nao grava, sem rastro. Fica logado.
+      const upEstado = await supa.from('ia_atendimentos').update(upd).eq('chat_id', chat_id)
+      if (upEstado?.error) console.error('[ia-atendente] estado nao gravado (' + chat_id + '):', upEstado.error.message)
 
       if (upd.dados_coletados) {
         await sincronizarPerfil(supa, chat_id, st.vendedor_nome, upd.dados_coletados)
@@ -1319,7 +1338,13 @@ Deno.serve(async (req: Request) => {
       const transcricaoLog = [...msgs].sort((a: any, b: any) => (a.t ?? 0) - (b.t ?? 0)).slice(-16)
         .map((m: any) => ({ de: m.fromMe ? 'ia' : 'cliente', txt: String(m.body || m.transcricao || (m.type && m.type !== 'chat' ? '[' + m.type + ']' : '')).slice(0, 280), t: m.t ?? null }))
       transcricaoLog.push({ de: 'ia', txt: texto.slice(0, 400), t: null })
-      try { await supa.from('automation_runs').insert({ regra_key: 'ia_atendente', vendedor_nome, chat_id, acao: 'ia_resposta', modo: 'automatico', executor: 'ia', status: 'executado', payload: { texto: texto.slice(0, 500), cliente_msg: clienteMsg, conversa: transcricaoLog, midia_id: midia ? midia.id : null, midias_fabrica: fabricaMidias.length || 0, modelo: modelos[0], temperatura, dados: dadosMem, vendedor_assumir: vendedorAssumir, encerrar, etiqueta: acoes.etiqueta, respostas_hoje: respostasHoje + 1 }, motivo: 'resposta automatica ao cliente (IA ligada pelo vendedor)' }) } catch (_) { /* auditoria best-effort */ }
+      // O SLA do bastao (aviso de 1h, cobranca de 4h) e o historico do /atendimentos saem TODOS
+      // desta linha. Bastao que nao virou registro aqui e invisivel: nunca cobra ninguem. Auditado:
+      // 146/146 gravaram. Segue best-effort (nao vale derrubar a resposta por causa do log), mas a
+      // falha passa a aparecer.
+      try { const insLog = await supa.from('automation_runs').insert({ regra_key: 'ia_atendente', vendedor_nome, chat_id, acao: 'ia_resposta', modo: 'automatico', executor: 'ia', status: 'executado', payload: { texto: texto.slice(0, 500), cliente_msg: clienteMsg, conversa: transcricaoLog, midia_id: midia ? midia.id : null, midias_fabrica: fabricaMidias.length || 0, modelo: modelos[0], temperatura, dados: dadosMem, vendedor_assumir: vendedorAssumir, encerrar, etiqueta: acoes.etiqueta, respostas_hoje: respostasHoje + 1 }, motivo: 'resposta automatica ao cliente (IA ligada pelo vendedor)' })
+        if (insLog?.error) console.error('[ia-atendente] log ia_resposta nao gravado (' + chat_id + '):', insLog.error.message)
+      } catch (_) { /* auditoria best-effort */ }
       return j({ ok: true, texto, midia, midias: fabricaMidias.length ? fabricaMidias : undefined, acoes, respostas_hoje: respostasHoje + 1 })
     }
 
