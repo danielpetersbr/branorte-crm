@@ -157,6 +157,20 @@ function isHotLead(_quando: string | null): boolean {
   return false
 }
 
+// Espera compacta ("3h", "45min", "2d") — o formatRelative gera "há cerca de 3 horas",
+// que não cabe na coluna Chegou (72px) e vazava por cima da coluna Lead.
+function formatEsperaCurta(dateStr: string | null | undefined): string {
+  if (!dateStr) return ''
+  const ms = Date.now() - new Date(dateStr).getTime()
+  if (!Number.isFinite(ms) || ms < 0) return ''
+  const min = Math.floor(ms / 60000)
+  if (min < 1) return 'agora'
+  if (min < 60) return `${min}min`
+  const h = Math.floor(min / 60)
+  if (h < 24) return `${h}h`
+  return `${Math.floor(h / 24)}d`
+}
+
 function isFreshLead(dateStr: string | null | undefined): boolean {
   if (!dateStr) return false
   const minutesAgo = (Date.now() - new Date(dateStr).getTime()) / 60000
@@ -835,20 +849,20 @@ export function Atendimentos() {
                     <th className="hidden md:table-cell w-[48px]">UF</th>
                     <th className="w-[132px]">Telefone</th>
                     <th className="hidden lg:table-cell w-[88px]">Origem</th>
-                    <th className="hidden 2xl:table-cell w-[100px]">Criativo</th>
+                    <th className="hidden 2xl:table-cell w-[92px]">Criativo</th>
                     <th className="hidden lg:table-cell w-[140px]">Motivo</th>
                     <th className="hidden 2xl:table-cell w-[96px]" title="Pra que serve a fábrica: consumo, venda ou os dois (Ana V16.24)">Finalidade</th>
                     <th className="hidden 2xl:table-cell w-[78px]">Animal</th>
                     <th className="hidden 2xl:table-cell w-[50px]" title="Cabeças (consumo) — vazio se for venda (ver Produção/h)">Qtd</th>
                     <th className="hidden 2xl:table-cell w-[64px]" title="Produção desejada quando é venda (kg/h)">Kg/h</th>
                     <th className="w-[88px]">Vendedor</th>
-                    <th className="w-[76px]" title="Cliente tocou no botão FALAR COM CONSULTOR e foi levado pro WhatsApp do vendedor">Tocou</th>
-                    <th className="hidden xl:table-cell w-[196px]" title="Mensagem que o cliente envia pro vendedor ao tocar no botão (montada com o anúncio que ele viu, animal e quantidade)">Mensagem</th>
+                    <th className="w-[86px]" title="Cliente tocou no botão FALAR COM CONSULTOR e foi levado pro WhatsApp do vendedor">Tocou</th>
+                    <th className="hidden xl:table-cell w-[166px]" title="Mensagem que o cliente envia pro vendedor ao tocar no botão (montada com o anúncio que ele viu, animal e quantidade)">Mensagem</th>
                     <th className="hidden lg:table-cell w-[110px]" title="Etiqueta atribuída no WhatsApp do vendedor">Etiqueta WA</th>
                     <th className="w-[76px]" title="Já foi montado orçamento pra esse telefone? (match automático pelo número)">Orçamento</th>
                     <th className="w-[60px]" title="Esse lead virou venda? (orçamento dele virou pedido não-cancelado)">Vendido</th>
                     <th className="hidden lg:table-cell w-[96px] !text-right" title="Valor da venda fechada (soma dos pedidos do lead)">Valor</th>
-                    <th className="!text-right w-[40px]"></th>
+                    <th className="!text-right w-[68px]"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -885,8 +899,9 @@ export function Atendimentos() {
                             {formatDateTimeShort(r.primeira_data ?? r.created_at)}
                           </span>
                           {esperando && (
-                            <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-semibold text-warning" title="Sem vendedor — na fila desde a última mensagem">
-                              <AlarmClock className="h-2.5 w-2.5" /> {formatRelative(r.last_message_at ?? r.created_at)}
+                            <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-semibold text-warning"
+                                  title={`Sem vendedor — na fila ${formatRelative(r.last_message_at ?? r.created_at)}`}>
+                              <AlarmClock className="h-2.5 w-2.5" /> {formatEsperaCurta(r.last_message_at ?? r.created_at)}
                             </span>
                           )}
                         </td>
@@ -1117,10 +1132,10 @@ export function Atendimentos() {
                           })()}
                         </td>
                         {/* TOCOU — cliente clicou em FALAR COM CONSULTOR (edge function `ir` grava tocou_botao_em) */}
-                        <td className="px-1.5 py-2.5 whitespace-nowrap" title={r.tocou_botao_em ?? ''}>
+                        <td className="px-1.5 py-2.5 overflow-hidden" title={r.tocou_botao_em ?? ''}>
                           {r.tocou_botao_em ? (
                             <span
-                              className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-semibold leading-tight bg-success-bg/40 text-success"
+                              className="inline-flex max-w-full items-center gap-1 overflow-hidden whitespace-nowrap rounded px-1 py-0.5 text-[10px] font-semibold leading-tight bg-success-bg/40 text-success"
                               title={`Tocou no botão em ${formatDateTimeShort(r.tocou_botao_em)}`}
                             >
                               <Hand className="h-2.5 w-2.5" />
@@ -1163,7 +1178,7 @@ export function Atendimentos() {
                               return (
                                 <div className="flex flex-wrap gap-1 w-full min-w-0">
                                   <Badge
-                                    className="text-[10px] font-semibold"
+                                    className="text-[10px] font-semibold max-w-full overflow-hidden"
                                     style={{
                                       background: 'hsl(var(--danger-bg))',
                                       color: 'hsl(var(--danger))',
@@ -1171,7 +1186,7 @@ export function Atendimentos() {
                                     }}
                                     title="O contato nunca respondeu — marcado automaticamente pelo bot"
                                   >
-                                    NUNCA RESPONDEU
+                                    <span className="truncate">NUNCA RESPONDEU</span>
                                   </Badge>
                                 </div>
                               )
@@ -1289,7 +1304,7 @@ export function Atendimentos() {
                           })()}
                         </td>
                         {/* AÇÕES */}
-                        <td className="px-2 py-2.5 text-right whitespace-nowrap">
+                        <td className="px-1 py-2.5 text-right whitespace-nowrap">
                           {(() => {
                             const ids = (r.auditoria_ids && r.auditoria_ids.length > 0) ? r.auditoria_ids : [r.id]
                             return (
