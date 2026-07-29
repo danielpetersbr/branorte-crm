@@ -487,9 +487,13 @@ export function Atendimentos() {
                    active={filters.data === 'hoje'}
                    onClick={() => setFilters(f => ({ ...f, data: f.data === 'hoje' ? '' as DataPreset : 'hoje', page: 0 }))} />
           <KpiCard label="Não engajaram"  value={kpis.naoEngajaram}      tone="neutral"  icon={EyeOff}            hint="nem começou o bot" />
-          <KpiCard label="Nunca respondeu" value={semRespTels?.length ?? 0} tone="danger" icon={PhoneOff}         hint="marcado pelo bot — sem resposta"
-                   active={filters.responsavel === FILTRO_SEM_RESPOSTA}
-                   onClick={() => setFilters(f => ({ ...f, responsavel: f.responsavel === FILTRO_SEM_RESPOSTA ? '' : FILTRO_SEM_RESPOSTA, page: 0 }))} />
+          {/* Clique filtra por ETIQUETA (é onde a listagem trata o FILTRO_SEM_RESPOSTA).
+              Antes setava `responsavel`, que virava .eq('responsavel','__sem_resposta_bot__')
+              e devolvia lista vazia. */}
+          <KpiCard label="Nunca respondeu" value={semRespTels?.length ?? 0} tone="danger" icon={PhoneOff}
+                   hint={filters.data ? 'marcado pelo bot — no período' : 'marcado pelo bot — sem resposta'}
+                   active={filters.etiqueta === FILTRO_SEM_RESPOSTA}
+                   onClick={() => setFilters(f => ({ ...f, etiqueta: f.etiqueta === FILTRO_SEM_RESPOSTA ? '' : FILTRO_SEM_RESPOSTA, page: 0 }))} />
           <KpiCard label="Em andamento"   value={kpis.emAndamento}       tone="warning"  icon={MessageSquareDot}  hint="no meio do fluxo" />
           <KpiCard label="Qualificados"   value={kpis.qualificados} hero tone="info"     icon={ListChecks}        hint="fábrica completa ou equipamento do catálogo Branorte" />
           <KpiCard label="Pra pegar"      value={kpis.paraPegar}    hero tone="warning"
