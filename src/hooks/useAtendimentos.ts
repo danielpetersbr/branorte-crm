@@ -666,6 +666,11 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
     queryFn: async (): Promise<AtendimentoKpis> => {
       const vendorFirst = await getCurrentVendorFirstName()
       const todayIso = startOfTodayISO()
+      // Janela dos KPIs de funil: por padrão HOJE (performance — poucas linhas), mas se o
+      // usuário filtrou uma data (Ontem/7d/mês), os cards passam a refletir ESSE período —
+      // senão ficavam zerados em "Ontem" (a lista mostrava, os cards não). Daniel 29/07.
+      const _kpiRange = dateRangeFromPreset((filters?.data as DataPreset) ?? '')
+      const _kpiFrom = _kpiRange.from || todayIso
 
       // Allowlist do catálogo Branorte (fonte: SELECT DISTINCT categoria FROM precos_branorte).
       // Quem pede "Extrusora", "Peletizadora", etc. NÃO bate em nenhuma keyword e NÃO qualifica.
@@ -686,14 +691,13 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
       // Agora: 1 SELECT leve das linhas de HOJE (last_message_at>=hoje ⇒ ~dezenas de linhas)
       // e os 6 KPIs do funil são agregados no client. Só o 'total' (view inteira) segue como
       // count — degradável (sem throw): se estourar, mostra 0 sem quebrar a tela.
-      const hojeQ = applyBaseFilters(
-        supabaseAuditoria
-          .from('atendimentos_por_cliente')
-          .select('responsavel, motivo_contato, tocou_botao_em, o_que_precisa')
-          .eq('is_internal', false)
-          .gte('last_message_at', todayIso),
-        filters, vendorFirst,
-      )
+      let _hojeBase = supabaseAuditoria
+        .from('atendimentos_por_cliente')
+        .select('responsavel, motivo_contato, tocou_botao_em, o_que_precisa')
+        .eq('is_internal', false)
+        .gte('last_message_at', _kpiFrom)
+      if (_kpiRange.to) _hojeBase = _hojeBase.lte('last_message_at', _kpiRange.to)
+      const hojeQ = applyBaseFilters(_hojeBase, filters, vendorFirst)
       const totalQ = applyBaseFilters(
         supabaseAuditoria
           .from('atendimentos_por_cliente')
