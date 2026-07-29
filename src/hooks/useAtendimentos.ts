@@ -456,16 +456,47 @@ export function lookupIaStatus(map: IaStatusMap | undefined, phone: string | nul
   return c ? (map[c] ?? null) : null
 }
 
-// Lista global de telefones marcados "nunca respondeu (auto)" e ainda sem vendedor.
+// Telefones marcados "nunca respondeu (auto)" e ainda sem vendedor.
 // Alimenta o card de KPI (length) e espelha o que o filtro FILTRO_SEM_RESPOSTA usa.
-export function useSemRespostaTelefones(enabled = true) {
+//
+// (29/07) BUG CORRIGIDO — o card ignorava o filtro de período. A RPC devolve a lista GLOBAL,
+// e o card mostrava esse total enquanto os outros 8 cards respeitavam o preset de data. Com o
+// filtro em "Hoje" aparecia "35 nunca respondeu" ao lado de "25 leads novos" — número maior que
+// o universo, o que faz o painel inteiro perder credibilidade. Medido em 29/07: a lista global
+// tinha 36, e só 8 eram de hoje (o resto era de ontem).
+// Agora recorta pelo MESMO range de `useAtendimentoKpis` (dateRangeFromPreset + last_message_at).
+// Sem preset de data (visão "tudo"), continua devolvendo a lista global — comportamento antigo.
+export function useSemRespostaTelefones(enabled = true, filters?: Partial<AtendimentoFilters>) {
+  const filterKey = JSON.stringify({ data: filters?.data ?? '' })
   return useQuery({
-    queryKey: ['sem-resposta-telefones'],
+    queryKey: ['sem-resposta-telefones', filterKey],
     enabled,
     queryFn: async (): Promise<string[]> => {
       const { data, error } = await (supabase as any).rpc('atendimentos_telefones_sem_resposta')
       if (error) throw error
-      return (data ?? []) as string[]
+      const todos = (data ?? []) as string[]
+
+      const range = dateRangeFromPreset((filters?.data as DataPreset) ?? '')
+      if (!range.from || todos.length === 0) return todos
+
+      // .in() vai na URL; acima de ~800 itens o PostgREST estoura. Nesse caso devolve o global
+      // (mesmo comportamento de antes) em vez de quebrar o card — degradar > sumir.
+      if (todos.length > 800) {
+        console.warn('[sem-resposta] lista global com', todos.length, '— sem recorte por período')
+        return todos
+      }
+
+      let q = supabaseAuditoria
+        .from('atendimentos_por_cliente')
+        .select('telefone_norm')
+        .eq('is_internal', false)
+        .in('telefone_norm', todos)
+        .gte('last_message_at', range.from)
+      if (range.to) q = q.lte('last_message_at', range.to)
+
+      const { data: rows, error: err2 } = await q
+      if (err2) throw err2
+      return [...new Set((rows ?? []).map((r: any) => String(r.telefone_norm)).filter(Boolean))]
     },
     staleTime: 30_000,
     refetchInterval: 45_000,
