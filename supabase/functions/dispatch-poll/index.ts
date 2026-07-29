@@ -1,7 +1,9 @@
-// dispatch-poll v7: extensão do vendedor chama a cada 30s pedindo dispatches pendentes.
+// dispatch-poll v13: extensão do vendedor chama a cada 30s pedindo dispatches pendentes.
 // Faz claim atômico (status=pending → sending) e devolve lista pra extensão enviar via WPP.
 // 2026-05-18: reativado depois de neutralização em 15/05. Agora puxa de public.outbound_dispatch.
 // 2026-06-23: BLOQUEIO ANTI-DUPLICATA — recovery por claimed_at + guard de cooldown 30d (cross-vendor).
+// 2026-07-08: TRAVA DE HORÁRIO COMERCIAL REVERTIDA. Lead que entra é cliente ATIVO — vai NA HORA, 24/7.
+// 2026-07-26: TRAVA ANTI-BAN (v13) — no máximo 1 disparo a cada 3 min POR VENDEDOR (não blasta a fila).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -17,6 +19,8 @@ const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 // Janela de cooldown: não reenvia automático pro mesmo número (QUALQUER vendedor) por N dias.
 const COOLDOWN_DIAS = 30;
+// Trava anti-ban: intervalo MÍNIMO entre 2 disparos do MESMO vendedor (proteção contra rajada).
+const DELAY_MIN_ENTRE_ENVIOS = 3;
 
 const json = (body: unknown, init?: ResponseInit) =>
   new Response(JSON.stringify(body), {
@@ -63,6 +67,23 @@ Deno.serve(async (req: Request) => {
     .is('claimed_at', null)
     .lt('created_at', stuckCutoff);
 
+  // ===== TRAVA ANTI-BAN (v13): no máximo 1 disparo a cada DELAY_MIN por vendedor =====
+  // Se este vendedor JÁ enviou (sent) OU está enviando (sending, claim recente) nos últimos
+  // DELAY_MIN minutos, SEGURA — devolve fila vazia. O próximo poll (30s depois) tenta de novo,
+  // e assim que passar o intervalo o próximo lead sai. Não blasta 100 contatos em rajada.
+  // Global por vendedor no servidor: vale pra QUALQUER instância (PC do vendedor + central).
+  const delayCutoff = new Date(Date.now() - DELAY_MIN_ENTRE_ENVIOS * 60 * 1000).toISOString();
+  const { data: recente } = await sb
+    .from('outbound_dispatch')
+    .select('id, status, sent_at, claimed_at')
+    .eq('vendedor_nome', vendedorNome)
+    .in('status', ['sent', 'sending'])
+    .or(`sent_at.gte.${delayCutoff},claimed_at.gte.${delayCutoff}`)
+    .limit(1);
+  if (recente && recente.length > 0) {
+    return json({ ok: true, leads: [], throttled: true, aguardando_s: DELAY_MIN_ENTRE_ENVIOS * 60 });
+  }
+
   // CLAIM ATÔMICO: pega 1 pending mais antigo e marca como sending
   const { data: candidates } = await sb
     .from('outbound_dispatch')
@@ -93,7 +114,6 @@ Deno.serve(async (req: Request) => {
 
   // GUARD ANTI-DUPLICATA: se este número já recebeu disparo 'sent' nos últimos COOLDOWN_DIAS
   // (por QUALQUER vendedor), NÃO reenvia — marca 'skipped' (auditável) e devolve fila vazia neste ciclo.
-  // Próximo poll pega o próximo lead. Casa com o índice único que impede 2 ativos pro mesmo número.
   const cooldownCutoff = new Date(Date.now() - COOLDOWN_DIAS * 24 * 60 * 60 * 1000).toISOString();
   const { data: jaEnviado } = await sb
     .from('outbound_dispatch')

@@ -1,7 +1,9 @@
-// cliente-perfil v1
+// cliente-perfil v5
 // GET (action=get): retorna dados merged do cliente (cards.raw_data + auditoria + overrides do vendedor)
 // PATCH (action=update): salva overrides em cards.raw_data.overrides — não modifica dados originais da Ana,
 //   só adiciona uma camada de "edição do vendedor" que tem precedência no GET.
+// v5: retorna também criativo (codigo + nome do anúncio) e chegou_em (data de chegada do lead, da auditoria),
+//     pra a extensão mostrar origem/criativo/data no card do cliente — mesmo quando não há card no CRM.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -61,12 +63,17 @@ Deno.serve(async (req: Request) => {
     .order('created_at', { ascending: false })
     .limit(1).maybeSingle()
 
-  // Atendimento (auditoria) do telefone
+  // Atendimento (auditoria) do telefone — inclui criativo e data de chegada (created_at)
   const { data: atendArr } = await supaAud.from('atendimentos_por_cliente')
-    .select('nome, telefone, telefone_norm, qual_animal, quantidade, quantos_animais, finalidade_fabrica, capacidade_producao, quando_investir, motivo_contato, origem, ai_context_summary, last_message_text, qualificacao')
+    .select('nome, telefone, telefone_norm, qual_animal, quantidade, quantos_animais, finalidade_fabrica, capacidade_producao, quando_investir, motivo_contato, origem, ai_context_summary, last_message_text, qualificacao, criativo_codigo, criativo_facebook, created_at, primeira_data')
     .in('telefone_norm', variants)
+    .order('created_at', { ascending: true })
     .limit(1)
   const atend = (atendArr && atendArr[0]) ?? null
+
+  // Nome do criativo do anúncio (quando é criativo do Facebook): nome oficial ou headline
+  const cfb = atend?.criativo_facebook ?? null
+  const criativoNome = clean(cfb?.nome_oficial ?? cfb?.headline)
 
   // Vendor designado (do card)
   let vendedorAtual = null
@@ -106,6 +113,10 @@ Deno.serve(async (req: Request) => {
     capacidade:  pick(overrides.capacidade, atend?.capacidade_producao),
     qualificacao: pick(atend?.qualificacao),
     notas_vendedor: clean(overrides.notas_vendedor),
+    // Marketing / rastreio da origem do lead (read-only, vem da auditoria)
+    criativo_codigo: clean(atend?.criativo_codigo),
+    criativo_nome: criativoNome,
+    chegou_em: atend?.created_at ?? atend?.primeira_data ?? null,
     // Metadata
     _editado_em: overrides._updated_at ?? null,
     _editado_por: overrides._updated_by ?? null,
