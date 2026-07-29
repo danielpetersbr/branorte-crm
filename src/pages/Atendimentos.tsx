@@ -863,8 +863,8 @@ export function Atendimentos() {
                     <th className="w-[86px]" title="Cliente tocou no botão FALAR COM CONSULTOR e foi levado pro WhatsApp do vendedor">Tocou</th>
                     <th className="hidden xl:table-cell w-[140px]" title="Mensagem que o cliente envia pro vendedor ao tocar no botão (montada com o anúncio que ele viu, animal e quantidade)">Mensagem</th>
                     <th className="hidden lg:table-cell w-[104px]" title="Etiqueta atribuída no WhatsApp do vendedor">Etiqueta WA</th>
-                    <th className="w-[70px]" title="Já foi montado orçamento pra esse telefone? (match automático pelo número)">Orçamento</th>
-                    <th className="w-[54px]" title="Esse lead virou venda? (orçamento dele virou pedido não-cancelado)">Vendido</th>
+                    <th className="w-[70px]" title="Já foi montado orçamento pra esse telefone? (match automático pelo número)">Orç.</th>
+                    <th className="w-[54px]" title="Esse lead virou venda? (orçamento dele virou pedido não-cancelado)">Venda</th>
                     <th className="hidden lg:table-cell w-[84px] !text-right" title="Valor da venda fechada (soma dos pedidos do lead)">Valor</th>
                     <th className="!text-right w-[68px]"></th>
                   </tr>
