@@ -106,6 +106,62 @@ async function etiquetaAtualEhProspeccao(supa: any, chatId: string, vendedor: st
   } catch { return null }
 }
 
+// (28/07) OS GATES DEIXARAM DE SER CEGOS.
+// Dos 25 gates do sistema, 16 nao deixavam rastro nenhum: quando a IA nao respondia, sumia, e
+// descobrir o porque exigia investigacao manual (caso "Everson"). Agora os skips que significam
+// "a IA QUERIA responder e nao pode" viram linha em automation_runs.
+//
+// Cuidado com volume: a extensao chama 'responder' a cada 5s por vendedor. Por isso:
+//  (a) so registra os skips ACIONAVEIS — 'ultima_nao_e_do_cliente' e 'ia_desligada' sao o
+//      estado NORMAL (a IA respondeu e espera o cliente) e ficam de fora;
+//  (b) dedup de 1h por (chat, motivo): 1 SELECT + 1 INSERT so quando muda de estado.
+// Com 24h disso da pra responder "por que o lead X nao foi atendido?" sem abrir o codigo.
+const SKIPS_ACIONAVEIS = ['etiqueta_indeterminada', 'cap_diario', 'sem_mensagem_real']
+// (28/07) Os 10 vendedores conversam entre si e com o Daniel pelo mesmo WhatsApp da operacao.
+// Esses chats viram "bastao" e entram na cobranca de SLA como se fossem lead. Usado pra filtrar.
+const VENDEDORES_INTERNOS = ['DANIEL', 'EDILSON', 'EDER', 'GUSTAVO', 'RAMON', 'JARDEL', 'PEDRO', 'ALVARO', 'LUCAS', 'IGOR']
+async function registrarSkip(supa: any, chatId: string, vendedor: string, skip: string, detalhe = '') {
+  if (!SKIPS_ACIONAVEIS.includes(skip)) return
+  try {
+    const desde1h = new Date(Date.now() - 3600_000).toISOString()
+    const { data: ja } = await supa.from('automation_runs').select('id')
+      .eq('regra_key', 'ia_atendente').eq('acao', 'ia_skip').eq('chat_id', chatId)
+      .ilike('motivo', skip + '%').gte('created_at', desde1h).limit(1)
+    if (ja && ja.length) return
+    const ins = await supa.from('automation_runs').insert({
+      regra_key: 'ia_atendente', vendedor_nome: vendedor, chat_id: chatId, acao: 'ia_skip',
+      modo: 'automatico', executor: 'sistema', status: 'executado',
+      motivo: (skip + (detalhe ? ' — ' + detalhe : '')).slice(0, 160),
+    })
+    if (ins.error) console.error('[ia-atendente] log de skip falhou:', ins.error.message)
+  } catch (e) { console.error('[ia-atendente] registrarSkip:', String(e)) }
+}
+
+// (28/07) AVISO NA HORA, sem depender da frota. O conselho mostrou que mexer nos 10 PCs pra
+// destravar o skip entregaria uma notificacao atrasada em ate 2h pra no maximo 8 chats. Daqui
+// o mesmo aviso sai NA HORA e nao encosta em maquina nenhuma. Dedup diario por chat.
+async function avisarVendedorSkip(supa: any, chatId: string, vendedor: string, motivoHumano: string) {
+  try {
+    const hoje = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
+    const { data: ja } = await supa.from('automation_runs').select('id')
+      .eq('regra_key', 'ia_atendente').eq('acao', 'ia_skip_aviso').eq('chat_id', chatId)
+      .gte('created_at', hoje + 'T00:00:00Z').limit(1)
+    if (ja && ja.length) return
+    const { data: cl } = await supa.from('wa_chat_labels').select('contact_name')
+      .eq('chat_id', chatId).ilike('vendedor_nome', vendedor).maybeSingle()
+    const quem = (cl && cl.contact_name) || String(chatId).split('@')[0]
+    await supa.from('wa_scheduled_messages').insert({
+      vendedor_nome: vendedor, to_self: true, chat_id: chatId, contato_nome: (cl && cl.contact_name) || null,
+      body: `🤖⚠️ *A IA não vai responder este cliente* — ${quem}\n${motivoHumano}\nEle está esperando. É na mão.`,
+      scheduled_at: new Date().toISOString(), status: 'pending',
+    })
+    await supa.from('automation_runs').insert({
+      regra_key: 'ia_atendente', vendedor_nome: vendedor, chat_id: chatId, acao: 'ia_skip_aviso',
+      modo: 'automatico', executor: 'sistema', status: 'alertado', motivo: motivoHumano.slice(0, 160),
+    })
+  } catch (e) { console.error('[ia-atendente] avisarVendedorSkip:', String(e)) }
+}
+
 // Escolhe o modelo de fabrica pela regra do mapa: venda = kg/h direto; consumo =
 // cabecas x media/dia do animal x 7 / 12h (3 meios-periodos/semana).
 function mediaAnimalDia(animal: string): number {
@@ -561,13 +617,26 @@ Deno.serve(async (req: Request) => {
     if (action === 'sla_scan') {
       // SLA POS-BASTAO (cron 30min): a IA qualificou (vendedor_assumir) e o VENDEDOR nao falou
       // nada depois. 1h -> re-aviso pro vendedor; 4h -> escala pro DANIEL. Dedup por automation_runs.
+      // (28/07) JANELA DE 24h -> 7 DIAS. A busca so olhava bastoes das ultimas 24h, entao bastao
+      // esquecido por mais de um dia NUNCA era reavaliado — sumia da cobranca justamente quando
+      // mais precisava dela. Era a causa dos 25 casos de 'sla_bastao_4h' que nunca tiveram o de
+      // 1h: o chat cruzava as 24h entre uma execucao e outra. Medido: 64,3% dos bastoes estouram
+      // SLA (83 de 129). O dedup abaixo virou CUMULATIVO (nao por 24h), entao alargar a janela
+      // NAO gera re-aviso: cada bastao rende no maximo 1 aviso de 1h e 1 de 4h, na vida.
       const { data: bastoes } = await supa.from('automation_runs')
         .select('id, created_at, vendedor_nome, chat_id')
         .eq('regra_key', 'ia_atendente').eq('acao', 'ia_resposta')
-        .gte('created_at', new Date(Date.now() - 24 * 3600_000).toISOString())
+        .gte('created_at', new Date(Date.now() - 7 * 86400_000).toISOString())
         .contains('payload', { vendedor_assumir: true })
+        .order('created_at', { ascending: false })
       let avisos1 = 0, escalados4 = 0
+      // Trava anti-enxurrada: na PRIMEIRA execucao com a janela de 7 dias existe um backlog de
+      // bastoes antigos que nunca foram avisados. Sem cap, o vendedor levaria dezenas de recados
+      // de uma vez e ignoraria todos. Com 15 por rodada (cron de 30min) o backlog escoa em
+      // algumas horas, do mais novo pro mais velho.
+      const CAP_AVISOS_POR_RODADA = 15
       for (const b of (bastoes || [])) {
+        if (avisos1 + escalados4 >= CAP_AVISOS_POR_RODADA) break
         const idadeMs = Date.now() - Date.parse(b.created_at)
         if (idadeMs < 3600_000) continue
         const { data: cl } = await supa.from('wa_chat_labels').select('last_message_at, last_message_from_me, contact_name').eq('chat_id', b.chat_id).ilike('vendedor_nome', b.vendedor_nome).maybeSingle()
@@ -580,8 +649,19 @@ Deno.serve(async (req: Request) => {
         const bast = Date.parse(b.created_at)
         const pendente = cl.last_message_from_me === false ? (Date.now() - lm >= 3600_000) : (lm <= bast + 180_000)
         if (!pendente) continue
+        // (28/07) NAO COBRAR SLA DE CONTATO INTERNO. Ao alargar a janela pra 7 dias, a primeira
+        // execucao escalou 7 chats que eram teste/pessoal do proprio Daniel ("Meu Amor", "Daniel
+        // Branorte", "Lucas Maier - Branorte"...) — bastoes antigos de teste que a janela de 24h
+        // vinha escondendo. Vira spam no WhatsApp de quem deveria estar cobrando lead de verdade.
+        // Mesma lista de ruido usada na query [3.1] do ia-atendente-monitoramento.sql.
+        const nomeCt = String(cl.contact_name || '')
+        if (/branorte|meu amor|crm log|atual cargas|coquim|teste|^\.$/i.test(nomeCt)) continue
+        if (VENDEDORES_INTERNOS.some((v) => normNome(nomeCt).includes(v))) continue
         const nivel = idadeMs >= 4 * 3600_000 ? 'sla_bastao_4h' : 'sla_bastao_1h'
-        const { data: ja } = await supa.from('automation_runs').select('id').eq('regra_key', 'ia_atendente').eq('acao', nivel).eq('chat_id', b.chat_id).gte('created_at', new Date(Date.now() - 24 * 3600_000).toISOString()).limit(1)
+        // (28/07) DEDUP CUMULATIVO: sem a janela de 24h. Antes, um bastao parado por dias podia
+        // levar um aviso por dia (spam) OU nenhum (se a busca ja tinha passado dele). Agora e
+        // 1 aviso por nivel por chat, definitivo — e por isso alargar a busca pra 7 dias e seguro.
+        const { data: ja } = await supa.from('automation_runs').select('id').eq('regra_key', 'ia_atendente').eq('acao', nivel).eq('chat_id', b.chat_id).limit(1)
         if (ja && ja.length) continue
         const quem = cl.contact_name || String(b.chat_id).split('@')[0]
         if (nivel === 'sla_bastao_1h') {
@@ -639,6 +719,11 @@ Deno.serve(async (req: Request) => {
         return j({ ok: false, skip: 'fora_prospeccao', desligada: true })
       }
       if (prosp === null && String(st.origem || '') !== 'vendedor') {
+        // (28/07) Gate cego virou gate visivel + aviso na hora. Este e o caso "o cliente falou,
+        // a IA esta ligada e nao vai responder" — o pior de todos, porque o vendedor ve o robo
+        // aceso e acha que esta coberto.
+        await registrarSkip(supa, chat_id, st.vendedor_nome, 'etiqueta_indeterminada', 'sem etiqueta reconhecida no espelho')
+        await avisarVendedorSkip(supa, chat_id, st.vendedor_nome, 'A etiqueta do chat não está sincronizada, então o robô fica travado por segurança.')
         return j({ ok: false, skip: 'etiqueta_indeterminada' })
       }
 
@@ -647,7 +732,11 @@ Deno.serve(async (req: Request) => {
       const hojeBR = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
       let respostasHoje = st.respostas_hoje || 0
       if (String(st.dia_ref) !== hojeBR) respostasHoje = 0
-      if (respostasHoje >= cfg.capDia) return j({ ok: false, skip: 'cap_diario', cap: cfg.capDia })
+      if (respostasHoje >= cfg.capDia) {
+        await registrarSkip(supa, chat_id, st.vendedor_nome, 'cap_diario', 'cap=' + cfg.capDia)
+        await avisarVendedorSkip(supa, chat_id, st.vendedor_nome, 'A IA bateu o limite de ' + cfg.capDia + ' respostas do dia neste cliente.')
+        return j({ ok: false, skip: 'cap_diario', cap: cfg.capDia })
+      }
 
       const limpaTs = st.memoria_limpa_em ? Math.floor(Date.parse(st.memoria_limpa_em) / 1000) : 0
       const todasMsgs = Array.isArray(mensagens_chat) ? mensagens_chat : []
@@ -661,7 +750,12 @@ Deno.serve(async (req: Request) => {
       const ultTxt = String(ult.body || '').trim()
       const soNotificacao = !ult.transcricao && (!ultTxt || /^\[[a-z0-9_]{2,40}\]$/i.test(ultTxt))
       const pareceBase64 = !ult.transcricao && ultTxt.length > 300 && !/\s/.test(ultTxt.slice(0, 120)) && /^[A-Za-z0-9+/=]+$/.test(ultTxt.slice(0, 120))
-      if (soNotificacao || pareceBase64) return j({ ok: false, skip: 'sem_mensagem_real' })
+      if (soNotificacao || pareceBase64) {
+        // Nao avisa o vendedor (foto/figurinha/notificacao sem texto e caso normal), mas REGISTRA:
+        // era o balde mais gordo dos gates cegos e ninguem sabia o tamanho dele.
+        await registrarSkip(supa, chat_id, st.vendedor_nome, 'sem_mensagem_real', soNotificacao ? 'notificacao de sistema' : 'midia sem texto')
+        return j({ ok: false, skip: 'sem_mensagem_real' })
+      }
 
       const [kb, midias] = await Promise.all([
         carregarConhecimento(supa, vendedor_nome),
@@ -903,7 +997,10 @@ Deno.serve(async (req: Request) => {
         // fabrica_midia, sem deploy. O gate espelha EXATAMENTE o ramo que vai rodar, senao
         // promete anexo que nao vai: ramo MINI (so com preco_url) ja tem >=1 midia garantida;
         // ramo GENERICO manda apenas foto/trabalhando/explicacao -> exige uma das 3.
-        const ehRamoMini = escolha.slug === 'mini-fabrica' && !!(fm && fm.preco_url)
+        // !!escolha na frente: escolherModeloFabrica retorna null (sem kg/h calculavel — pedido de
+        // humano, equipamento individual, qualificacao estourada) e sem essa guarda o `escolha.slug`
+        // estourava TypeError -> 500, matando o bastao e o ramo de EQUIPAMENTO INDIVIDUAL abaixo.
+        const ehRamoMini = !!escolha && escolha.slug === 'mini-fabrica' && !!(fm && fm.preco_url)
         const temMidiaFabrica = !!fm && (ehRamoMini || !!(fm.foto_url || fm.video_trabalhando_url || fm.video_explicacao_url))
         if (temMidiaFabrica) {
           if (escolha.slug === 'mini-fabrica' && fm.preco_url) {
@@ -965,11 +1062,15 @@ Deno.serve(async (req: Request) => {
       const MODELOS_FAB = ['compacta-01', 'compacta-02', 'compacta-03', 'mini-fabrica']
       if (!fabricaMidias.length && !encerrar && mostrarFabrica && MODELOS_FAB.includes(mostrarFabrica)) {
         const fmv = await carregarFabricaMidia(supa, mostrarFabrica)
-        if (fmv && fmv.foto_url) {
+        // (29/07) MESMA regra do bastao: a foto deixou de ser obrigatoria. Com foto_url NULL na
+        // mini (o Daniel desligou — a tabela de preco ja mostra o equipamento), este ramo ficava
+        // MUDO: quem pedia pra VER a mini nao recebia nada, mesmo com preco e video cadastrados.
+        if (fmv && (fmv.foto_url || fmv.preco_url || fmv.video_trabalhando_url || fmv.video_explicacao_url)) {
           fabricaMidias = [
-            { tipo: 'image', url: fmv.foto_url, titulo: fmv.nome },
+            fmv.foto_url ? { tipo: 'image', url: fmv.foto_url, titulo: fmv.nome } : null,
             fmv.preco_url ? { tipo: 'image', url: fmv.preco_url, titulo: fmv.nome + ' — valores' } : null,
             fmv.video_trabalhando_url ? { tipo: 'video', url: fmv.video_trabalhando_url, titulo: fmv.nome + ' trabalhando' } : null,
+            fmv.video_explicacao_url ? { tipo: 'video', url: fmv.video_explicacao_url, titulo: fmv.nome + ' explicacao' } : null,
           ].filter(Boolean)
           midiaId = null
         }
