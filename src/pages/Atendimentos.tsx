@@ -394,7 +394,9 @@ export function Atendimentos() {
   // Marca "NUNCA RESPONDEU" (bot → auditoria.sem_resposta_em).
   const { data: semRespMap } = useSemRespostaPorTelefone(phonesAtuais)
   // Total global de "nunca respondeu (auto)" pra o card de KPI.
-  const { data: semRespTels } = useSemRespostaTelefones()
+  // (29/07) passa os filtros: sem isso o card contava a base inteira e mostrava um número
+  // MAIOR que o total do período selecionado (36 "nunca respondeu" com 25 leads no dia).
+  const { data: semRespTels } = useSemRespostaTelefones(true, filters)
   // Dados que a IA atendente coletou (animal/qtd/uso/equipamento/kg-h), cruzados por telefone —
   // preenche as colunas que a view auditoria deixou vazias (ReplyAgent descontinuado).
   const { data: dadosIaMap } = useDadosIaPorTelefone(phonesAtuais)
@@ -838,30 +840,32 @@ export function Atendimentos() {
             )}
           </div>
 
-          {/* ─── DESKTOP: tabela completa (sem scroll horizontal — cabe na tela) ─── */}
+          {/* ─── DESKTOP: tabela completa. As colunas somam ~1632px: cabe inteira com a
+               sidebar recolhida e, com ela aberta em telas menores, rola na horizontal
+               (antes era overflow-x-hidden e a coluna de ações sumia sem aviso). ─── */}
           <Card className="hidden md:flex md:flex-col flex-1 min-h-0 overflow-hidden p-0">
-            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
               <table className="w-full table-fixed">
                 <thead className="sticky top-0 z-10 bg-surface backdrop-blur-sm">
                   <tr className="border-b border-border bg-surface-2/40 [&>th]:text-left [&>th]:text-[10px] [&>th]:uppercase [&>th]:tracking-wider [&>th]:font-bold [&>th]:text-ink-muted [&>th]:px-1.5 [&>th]:py-3 [&>th]:whitespace-nowrap">
-                    <th className="w-[72px]">Chegou</th>
-                    <th className="w-[110px]">Lead</th>
+                    <th className="w-[68px]">Chegou</th>
+                    <th className="w-[104px]">Lead</th>
                     <th className="hidden md:table-cell w-[48px]">UF</th>
-                    <th className="w-[132px]">Telefone</th>
+                    <th className="w-[126px]">Telefone</th>
                     <th className="hidden lg:table-cell w-[88px]">Origem</th>
-                    <th className="hidden 2xl:table-cell w-[92px]">Criativo</th>
-                    <th className="hidden lg:table-cell w-[140px]">Motivo</th>
+                    <th className="hidden 2xl:table-cell w-[86px]">Criativo</th>
+                    <th className="hidden lg:table-cell w-[130px]">Motivo</th>
                     <th className="hidden 2xl:table-cell w-[96px]" title="Pra que serve a fábrica: consumo, venda ou os dois (Ana V16.24)">Finalidade</th>
                     <th className="hidden 2xl:table-cell w-[78px]">Animal</th>
                     <th className="hidden 2xl:table-cell w-[50px]" title="Cabeças (consumo) — vazio se for venda (ver Produção/h)">Qtd</th>
                     <th className="hidden 2xl:table-cell w-[64px]" title="Produção desejada quando é venda (kg/h)">Kg/h</th>
                     <th className="w-[88px]">Vendedor</th>
                     <th className="w-[86px]" title="Cliente tocou no botão FALAR COM CONSULTOR e foi levado pro WhatsApp do vendedor">Tocou</th>
-                    <th className="hidden xl:table-cell w-[166px]" title="Mensagem que o cliente envia pro vendedor ao tocar no botão (montada com o anúncio que ele viu, animal e quantidade)">Mensagem</th>
-                    <th className="hidden lg:table-cell w-[110px]" title="Etiqueta atribuída no WhatsApp do vendedor">Etiqueta WA</th>
-                    <th className="w-[76px]" title="Já foi montado orçamento pra esse telefone? (match automático pelo número)">Orçamento</th>
-                    <th className="w-[60px]" title="Esse lead virou venda? (orçamento dele virou pedido não-cancelado)">Vendido</th>
-                    <th className="hidden lg:table-cell w-[96px] !text-right" title="Valor da venda fechada (soma dos pedidos do lead)">Valor</th>
+                    <th className="hidden xl:table-cell w-[140px]" title="Mensagem que o cliente envia pro vendedor ao tocar no botão (montada com o anúncio que ele viu, animal e quantidade)">Mensagem</th>
+                    <th className="hidden lg:table-cell w-[104px]" title="Etiqueta atribuída no WhatsApp do vendedor">Etiqueta WA</th>
+                    <th className="w-[70px]" title="Já foi montado orçamento pra esse telefone? (match automático pelo número)">Orçamento</th>
+                    <th className="w-[54px]" title="Esse lead virou venda? (orçamento dele virou pedido não-cancelado)">Vendido</th>
+                    <th className="hidden lg:table-cell w-[84px] !text-right" title="Valor da venda fechada (soma dos pedidos do lead)">Valor</th>
                     <th className="!text-right w-[68px]"></th>
                   </tr>
                 </thead>
@@ -1292,12 +1296,12 @@ export function Atendimentos() {
                           })()}
                         </td>
                         {/* VALOR — soma das vendas fechadas do lead */}
-                        <td className="hidden lg:table-cell px-1.5 py-2.5 whitespace-nowrap text-right">
+                        <td className="hidden lg:table-cell px-1.5 py-2.5 overflow-hidden text-right">
                           {(() => {
                             const venda = lookupVenda(vendaMap, r.telefone)
                             if (!venda || !venda.valor) return <span className="text-[10px] text-ink-faint">—</span>
                             return (
-                              <span className="text-[11px] font-semibold tabular-nums text-ink" title={venda.ultimoPedido ?? undefined}>
+                              <span className="text-[11px] font-semibold tabular-nums text-ink block truncate" title={venda.ultimoPedido ?? undefined}>
                                 {venda.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
                               </span>
                             )
