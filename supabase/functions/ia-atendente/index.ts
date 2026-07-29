@@ -208,25 +208,40 @@ async function carregarFabricaMidia(supa: any, modelo: string): Promise<any | nu
   try { const { data } = await supa.from('fabrica_midia').select('*').eq('modelo', modelo).maybeSingle(); return data || null } catch { return null }
 }
 
+// (29/07) O matcher comparava texto cru: o nome no banco e "Pre Limpeza" (espaco) e o cliente
+// escreve "pre-limpeza" (hifen), entao `includes` dava false e a midia nunca ia. Vale pra todo
+// nome composto ("chupim com levante", "esteira com levante"). normEquip achata hifen/underline/
+// pontuacao em espaco e colapsa espaco repetido, para os dois lados da comparacao.
+const normEquip = (s: unknown) => normNome(s).replace(/[-_/.,;:]+/g, ' ').replace(/\s{2,}/g, ' ').trim()
+
 // Acha a midia do EQUIPAMENTO individual pelo texto que o cliente falou (dadosMem.equipamento).
 // Match por contencao exata primeiro ('moinho de martelo' x 'Moinho'); fallback por palavra-chave
 // SO quando um unico equipamento casa — na ambiguidade ('misturador' casa 3) melhor nao mandar
 // midia errada do que chutar.
 async function carregarEquipamentoMidia(supa: any, equipTxt: string): Promise<any | null> {
-  const q = normNome(equipTxt)
+  const q = normEquip(equipTxt)
   if (!q || q.length < 4) return null
   try {
     const { data } = await supa.from('equipamento_midia').select('*').eq('ativo', true).order('ordem', { ascending: true })
     const lista = Array.isArray(data) ? data : []
-    // cliente falou o nome COMPLETO (ou mais): match direto e seguro
+    // cliente falou o nome COMPLETO (ou mais): match direto e seguro.
+    // (29/07) Retornava o PRIMEIRO que casava: quem pedia "chupim com levante" recebia a midia do
+    // "Chupim" simples, porque ele vem antes na ordem. Vence o nome MAIS LONGO que casa — o mais
+    // especifico e sempre o que o cliente pediu.
+    let melhor: any = null
+    let melhorLen = 0
     for (const e of lista) {
-      const n = normNome(e.nome)
-      if (n && q.includes(n)) return e
+      const n = normEquip(e.nome)
+      if (n && q.includes(n) && n.length > melhorLen) { melhor = e; melhorLen = n.length }
     }
-    // cliente falou um termo GENERICO ('misturador' casa 3 modelos): so vale se for UNICO
+    if (melhor) return melhor
+    // cliente falou um termo GENERICO ('misturador' casa 3 modelos): so vale se for UNICO.
+    // A chave vinha da 1a palavra; em "Pre Limpeza" isso dava "PRE" (3 letras) e a guarda de >=4
+    // matava o fallback. Passa a valer a 1a palavra com >=4 letras (ex.: "LIMPEZA"), que e a que
+    // de fato identifica o equipamento.
     const parciais = lista.filter((e: any) => {
-      const n = normNome(e.nome)
-      const chave = n.split(' ')[0]
+      const n = normEquip(e.nome)
+      const chave = n.split(' ').find((p: string) => p.length >= 4) || ''
       return (n && n.includes(q)) || (chave.length >= 4 && q.includes(chave))
     })
     return parciais.length === 1 ? parciais[0] : null
@@ -637,7 +652,8 @@ Deno.serve(async (req: Request) => {
 
     if (action === 'sla_scan') {
       // SLA POS-BASTAO (cron 30min): a IA qualificou (vendedor_assumir) e o VENDEDOR nao falou
-      // nada depois. 1h -> re-aviso pro vendedor; 4h -> escala pro DANIEL. Dedup por automation_runs.
+      // nada depois. 1h -> re-aviso pro vendedor; 4h -> cobranca mais forte DIRETO pro vendedor (Daniel
+      // 29/07: antes escalava pro DANIEL, agora vai no proprio vendedor). Dedup por automation_runs.
       // (28/07) JANELA DE 24h -> 7 DIAS. A busca so olhava bastoes das ultimas 24h, entao bastao
       // esquecido por mais de um dia NUNCA era reavaliado — sumia da cobranca justamente quando
       // mais precisava dela. Era a causa dos 25 casos de 'sla_bastao_4h' que nunca tiveram o de
@@ -689,7 +705,7 @@ Deno.serve(async (req: Request) => {
           await supa.from('wa_scheduled_messages').insert({ vendedor_nome: b.vendedor_nome, to_self: true, chat_id: b.chat_id, contato_nome: cl.contact_name || null, body: `🤖⏰ *Lead qualificado esperando VOCÊ* — ${quem}\nA IA passou o bastão há mais de 1h e você ainda não respondeu. Lead quente esfria rápido — assume aí!`, scheduled_at: new Date().toISOString(), status: 'pending' })
           avisos1++
         } else {
-          await supa.from('wa_scheduled_messages').insert({ vendedor_nome: 'DANIEL', to_self: true, chat_id: b.chat_id, contato_nome: cl.contact_name || null, body: `🚨 *SLA estourado (4h)* — ${b.vendedor_nome} não respondeu o lead ${quem} que a IA qualificou. Cobra ele!`, scheduled_at: new Date().toISOString(), status: 'pending' })
+          await supa.from('wa_scheduled_messages').insert({ vendedor_nome: b.vendedor_nome, to_self: true, chat_id: b.chat_id, contato_nome: cl.contact_name || null, body: `🚨 *SLA estourado (4h)* — o lead ${quem} que a IA qualificou tá te esperando há mais de 4h. Lead quente esfria rápido — assume esse aí agora!`, scheduled_at: new Date().toISOString(), status: 'pending' })
           escalados4++
         }
         try { await supa.from('automation_runs').insert({ regra_key: 'ia_atendente', vendedor_nome: b.vendedor_nome, chat_id: b.chat_id, acao: nivel, modo: 'automatico', executor: 'sistema', status: 'executado', motivo: 'vendedor sem resposta apos bastao da IA' }) } catch (_) {}
