@@ -970,12 +970,36 @@ Deno.serve(async (req: Request) => {
       // assim que possivel" e ainda qualifica, ate o teto de 2 perguntas.
       const pedidoHumano = /(humano|atendente|pessoa de verdade|falar com algu|reclam|garantia|assist[êe]nc)/i.test(convCliente)
       const pediuPreco = /(pre[çc]o|valor|quanto custa|or[çc]ament|parcel|financ)/i.test(convCliente)
+      // (29/07) N=3. A cascata canned do guard tem 3 degraus (nome -> vender/consumo -> kg/h ou
+      // animal+cabecas): com teto 2 a IA desistia antes de terminar o proprio roteiro. Medido em
+      // 14 dias: dos 152 chats que precisaram perguntar, 89,5% fecharam em ate 3; dos 16 que
+      // iriam pra 4a, 11 NUNCA qualificaram — e o loop que faz o cliente sumir.
+      const QUALIF_MAX = 3
       const qualifTent = Number(dadosMem._qualif_tent || 0)
-      const aindaPossoPerguntar = qualifTent < 2
+      const aindaPossoPerguntar = qualifTent < QUALIF_MAX
       let qualifPerguntou = false
       let fabricaMidias: any[] = []
+      // (29/07) SUBIU pra ca: o bastao passou a consultar o modelo que o CLIENTE apontou.
+      // A declaracao antiga (antes do ramo mostrarFabrica) FOI REMOVIDA — const redeclarado
+      // no mesmo escopo = BOOT_ERROR silencioso (a funcao sobe ACTIVE e nao roda).
+      const MODELOS_FAB = ['compacta-01', 'compacta-02', 'compacta-03', 'mini-fabrica']
+      // DEDUP DE MIDIA DE FABRICA — espelho do _midia_eq, mas guarda a LISTA de slugs: nenhum
+      // modelo pode sair 2x (caso Junior 29/07: a mesma tabela de preco 2x em 2 minutos).
+      const fabJaMandadas = String((st.dados_coletados || {})._midia_fab || '').split(',').filter(Boolean)
+      let midiaFabSlug: string | null = null
       const llmAssumiu = vendedorAssumir
       if (encerrar) vendedorAssumir = false
+      // Quantas vezes o CLIENTE falou de verdade. TRAVA: lead frio de prospeccao (a IA abriu e
+      // ninguem respondeu) NUNCA cai na desistencia — senao a IA joga tabela de preco em quem
+      // nunca demonstrou interesse (~38 chats/semana).
+      const falasCliente = msgs.filter((m: any) => !m.fromMe && !_ehSistema(m)).length
+      // Pediu preco em 2 mensagens DIFERENTES: a persona ja manda parar de re-perguntar e passar
+      // o bastao. Aqui isso deixa de depender do humor do LLM.
+      const insistiuPreco = msgs.filter((m: any) => !m.fromMe &&
+        /(pre[çc]o|valor|quanto custa|quanto fica)/i.test(String(m.body || m.transcricao || ''))).length >= 2
+      // DESISTENCIA (regra do Daniel): "se o cliente nao ta querendo responder, manda o que ele
+      // pediu e ja bota NOVO LEAD".
+      const desistir = !encerrar && !temEssencial && falasCliente >= 2 && (!aindaPossoPerguntar || insistiuPreco)
       // (28/07) O TETO VALE SEMPRE. Na 1a versao deste patch a condicao era
       // `(!pediuPreco || aindaPossoPerguntar)` — o OR curto-circuitava quando o cliente NAO
       // pedia preco, e `aindaPossoPerguntar` nunca era avaliado: guard sem trava, a mesma frase
@@ -1014,7 +1038,9 @@ Deno.serve(async (req: Request) => {
         // o que ele quis saber e devolve uma pergunta seca. So na 1a vez: a auditoria mostrou a
         // frase de preco repetindo (9,4% -> 21,8%) quando saia em toda rodada.
         if (pediuPreco && qualifTent === 0) texto = 'O valor certinho eu te passo assim que possível. ' + texto
-      } else if (!encerrar && !vendedorAssumir && (pedidoHumano || (temNome && temEssencial))) {
+      // (29/07) 'desistir' entrou aqui: perguntei QUALIF_MAX vezes (ou ele insistiu no preco), o
+      // essencial nao veio e ele continua falando comigo -> paro de insistir e passo o bastao.
+      } else if (!encerrar && !vendedorAssumir && (pedidoHumano || desistir || (temNome && temEssencial))) {
         // FORCA o bastao quando ja tem NOME + ESSENCIAL — e tambem quando o cliente PEDIU HUMANO
         // ou reclamou. Antes 'pedidoHumano' so impedia o guard de bloquear: se o LLM resolvia
         // seguir conversando, quem pediu pra falar com alguem ficava preso na IA.
@@ -1044,7 +1070,16 @@ Deno.serve(async (req: Request) => {
         // continua valendo para a QUALIFICAÇÃO (exigir animal+cabeças), que é outra decisão.
         const equipExtraidoEhFabrica = /f[áa]bric|compacta|\bmini\b/i.test(equipTxt)
         const escolha = (equipTxt && !equipExtraidoEhFabrica) ? null : escolherModeloFabrica(dadosMem)
-        const fm = escolha ? await carregarFabricaMidia(supa, escolha.slug) : null
+        // (29/07) O MODELO QUE O CLIENTE APONTOU MANDA MAIS QUE O CALCULADO — mas so quando este
+        // ramo ja e de fabrica (respeita o filtro de equipamento avulso logo acima). Sem isto o
+        // cliente do EDER levou a Compacta 02 e, 4 min depois, a Compacta 01: dois modelos e dois
+        // precos na mesma conversa.
+        const slugFab = (escolha || !equipTxt || equipExtraidoEhFabrica)
+          ? ((mostrarFabrica && MODELOS_FAB.includes(mostrarFabrica)) ? mostrarFabrica : (escolha ? escolha.slug : null))
+          : null
+        const fm = slugFab ? await carregarFabricaMidia(supa, slugFab) : null
+        // JA MANDEI ESTE MODELO NESTA CONVERSA? Nao repete.
+        const fabRepetida = !!slugFab && fabJaMandadas.includes(slugFab)
         // (28/07) A FOTO deixou de ser obrigatoria: o Daniel liga/desliga cada midia pela tabela
         // fabrica_midia, sem deploy. O gate espelha EXATAMENTE o ramo que vai rodar, senao
         // promete anexo que nao vai: ramo MINI (so com preco_url) ja tem >=1 midia garantida;
@@ -1052,10 +1087,13 @@ Deno.serve(async (req: Request) => {
         // !!escolha na frente: escolherModeloFabrica retorna null (sem kg/h calculavel — pedido de
         // humano, equipamento individual, qualificacao estourada) e sem essa guarda o `escolha.slug`
         // estourava TypeError -> 500, matando o bastao e o ramo de EQUIPAMENTO INDIVIDUAL abaixo.
-        const ehRamoMini = !!escolha && escolha.slug === 'mini-fabrica' && !!(fm && fm.preco_url)
-        const temMidiaFabrica = !!fm && (ehRamoMini || !!(fm.foto_url || fm.video_trabalhando_url || fm.video_explicacao_url))
+        // (29/07) slugFab no lugar de escolha.slug: o modelo pedido pelo cliente vence o calculado.
+        // fabRepetida corta a 2a remessa do MESMO modelo na mesma conversa.
+        const ehRamoMini = slugFab === 'mini-fabrica' && !!(fm && fm.preco_url)
+        const temMidiaFabrica = !fabRepetida && !!fm && (ehRamoMini || !!(fm.foto_url || fm.video_trabalhando_url || fm.video_explicacao_url))
         if (temMidiaFabrica) {
-          if (escolha.slug === 'mini-fabrica' && fm.preco_url) {
+          midiaFabSlug = slugFab
+          if (slugFab === 'mini-fabrica' && fm.preco_url) {
             // MINI FÁBRICA (necessidade até 600 kg/h) — pedido do Daniel: manda as 2 FOTOS
             // (produto + tabela de preço) e os 3 VÍDEOS (trabalhando, explicação, depoimento)
             // e SÓ DEPOIS o texto perguntando qual das duas capacidades ele prefere.
@@ -1084,7 +1122,9 @@ Deno.serve(async (req: Request) => {
           midiaId = null // manda SO as midias da fabrica; descarta a midia avulsa que o LLM porventura escolheu (evita 4a midia aleatoria)
           // Lead pequeno: ate a MENOR fabrica (mini, piso 300 kg/h) sobra pro consumo dele.
           // Nao promete "te atende bem" (soaria empurrado) -- fala honesto que e a menor e ja da com folga.
-          const sobraDemais = escolha.slug === 'mini-fabrica' && escolha.kgh > 0 && escolha.kgh < 150
+          // !!escolha na frente: slugFab pode vir do mostrar_fabrica com escolha=null (sem kg/h
+          // calculavel) e o escolha.kgh estourava TypeError -> 500, matando o bastao inteiro.
+          const sobraDemais = !!escolha && slugFab === 'mini-fabrica' && escolha.kgh > 0 && escolha.kgh < 150
           texto = sobraDemais
             ? 'Olha' + (pn ? ', ' + pn : '') + '. Pra esse tamanho, a menor fábrica que a gente faz é a ' + fm.nome + ' (' + fm.faixa_kgh + ') — ela já dá conta do seu consumo com folga de sobra. Te mandei ' + descreveMidias(fabricaMidias) + ' dela pra você ver. Faz sentido pro seu caso?'
             : 'Olha' + (pn ? ', ' + pn : '') + '. Pelo que você me passou, acho que a ' + fm.nome + ' (' + fm.faixa_kgh + ') te atende bem. Te mandei ' + descreveMidias(fabricaMidias) + ' dela. Seria um modelo desse que você procura?'
@@ -1109,10 +1149,17 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      // FASE 2 do criativo (Daniel 28/07): a IA setou mostrar_fabrica → o cliente quer VER o modelo
-      // (do anúncio ou o que ela indicou). Manda foto+valores+vídeo dele mesmo SEM bastão/kg-h.
-      const MODELOS_FAB = ['compacta-01', 'compacta-02', 'compacta-03', 'mini-fabrica']
-      if (!fabricaMidias.length && !encerrar && mostrarFabrica && MODELOS_FAB.includes(mostrarFabrica)) {
+      // FASE 2 do criativo (Daniel 28/07): a IA setou mostrar_fabrica → o cliente quer VER o modelo.
+      // (29/07) ORDEM NOVA (Daniel): QUALIFICA -> MANDA A MIDIA CERTA -> BASTAO. Este ramo mandava
+      // preco no 1o turno JUNTO com a pergunta de qualificacao (ele nao toca no 'texto' — quem
+      // escreve e o guard) e o bastao remandava a MESMA tabela 2 min depois. Em 30 dias disparou
+      // 4x: 3 duplicaram e no 4o o cliente sumiu. Agora so sai com o essencial em maos OU quando
+      // eu DESISTI de perguntar — que e exatamente "manda o que ele pediu".
+      // MODELOS_FAB subiu pro topo do handler; a declaracao daqui foi REMOVIDA (redeclarar
+      // const no mesmo escopo = BOOT_ERROR silencioso).
+      if (!fabricaMidias.length && !encerrar && (temEssencial || desistir)
+          && mostrarFabrica && MODELOS_FAB.includes(mostrarFabrica)
+          && !fabJaMandadas.includes(mostrarFabrica)) {
         const fmv = await carregarFabricaMidia(supa, mostrarFabrica)
         // (29/07) MESMA regra do bastao: a foto deixou de ser obrigatoria. Com foto_url NULL na
         // mini (o Daniel desligou — a tabela de preco ja mostra o equipamento), este ramo ficava
@@ -1125,7 +1172,18 @@ Deno.serve(async (req: Request) => {
             fmv.video_explicacao_url ? { tipo: 'video', url: fmv.video_explicacao_url, titulo: fmv.nome + ' explicacao' } : null,
           ].filter(Boolean)
           midiaId = null
+          midiaFabSlug = mostrarFabrica
         }
+      }
+
+      // (29/07) DESISTENCIA — ele nao quis responder a qualificacao. Entreguei o que ele pediu e
+      // FECHO: sem mais pergunta no fim (insistir aqui e o que faz o cliente sumir de vez). O
+      // NOVO LEAD, o desligamento da IA e o aviso pro vendedor saem pelo caminho normal do bastao.
+      if (desistir && vendedorAssumir && !encerrar) {
+        const pnD = nomeBom.trim().split(' ')[0]
+        texto = fabricaMidias.length
+          ? 'Olha' + (pnD ? ', ' + pnD : '') + '. Te mandei ' + descreveMidias(fabricaMidias) + ' do que você me perguntou. Vou organizar os detalhes certinhos e te retorno.'
+          : 'Entendi' + (pnD ? ', ' + pnD : '') + '. Vou organizar os detalhes certinhos e te retorno.'
       }
 
       // Cliente PEDIU foto/video no meio da conversa: manda a midia do equipamento NA HORA
@@ -1177,9 +1235,22 @@ Deno.serve(async (req: Request) => {
       }
       // marca a midia de equipamento enviada sob pedido (nao repetir o mesmo equipamento)
       if (midiaEqPedidaSlug) upd.dados_coletados = { ...(upd.dados_coletados || st.dados_coletados || {}), _midia_eq: midiaEqPedidaSlug }
-      // (28/07) Conta as perguntas de qualificacao. No teto (2) o guard solta o bastao mesmo sem
-      // o dado — lead incompleto vale mais que cliente irritado com pergunta repetida.
-      if (qualifPerguntou) upd.dados_coletados = { ...(upd.dados_coletados || st.dados_coletados || {}), _qualif_tent: qualifTent + 1 }
+      // (29/07) MIDIA DE FABRICA: 1 vez por conversa POR MODELO. Guarda a LISTA de slugs ja
+      // enviados. Mesmo padrao de escrita do _midia_eq — spread encadeado, senao apaga
+      // nome/animal/cabecas do cliente.
+      if (midiaFabSlug && !fabJaMandadas.includes(midiaFabSlug)) {
+        upd.dados_coletados = { ...(upd.dados_coletados || st.dados_coletados || {}), _midia_fab: fabJaMandadas.concat(midiaFabSlug).join(',') }
+      }
+      // (28/07) Conta as perguntas de qualificacao. No teto (QUALIF_MAX) o guard solta o bastao
+      // mesmo sem o dado — lead incompleto vale mais que cliente irritado com pergunta repetida.
+      // (29/07) O CONTADOR DEIXOU DE SER CEGO: so subia quando o guard reescrevia o texto, e o
+      // guard so roda se o LLM pedir o bastao. De 51 abandonos auditados, 50 morreram com
+      // _qualif_tent=0 — quem perguntava era o proprio LLM e ninguem contava. Agora conta TODA
+      // resposta minha que fez pergunta SEM o essencial em maos. MESMO campo, MESMO ponto de
+      // gravacao: nao existe um segundo contador concorrente.
+      const perguntouAgora = qualifPerguntou ||
+        (!vendedorAssumir && !encerrar && !temEssencial && /\?/.test(String(texto || '')))
+      if (perguntouAgora) upd.dados_coletados = { ...(upd.dados_coletados || st.dados_coletados || {}), _qualif_tent: qualifTent + 1 }
       // Promessa "te confirmo" SEM bastao: avisa o vendedor (1x por dia por chat) — senao a
       // promessa morre no vacuo e ninguem confirma nada pro cliente.
       if (!vendedorAssumir && !encerrar && /te confirmo/i.test(texto)) {
