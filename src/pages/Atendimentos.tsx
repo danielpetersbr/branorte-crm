@@ -1044,7 +1044,8 @@ export function Atendimentos() {
                         <td className="hidden 2xl:table-cell px-1.5 py-2.5 overflow-hidden">
                           {(() => {
                             const fin = r.finalidade_fabrica || lookupDadosIa(dadosIaMap, r.telefone)?.finalidade
-                            if (!fin) return <EmptyCell />
+                            // Webhook às vezes grava a string "null"/"Null" — não é finalidade.
+                            if (!fin || /^(null|undefined|nan)$/i.test(String(fin).trim())) return <EmptyCell />
                             const label = humanizeTipoRacao(fin) ?? fin
                             const tone = FINALIDADE_TONE[fin] ?? FINALIDADE_TONE[label] ?? 'neutral'
                             return (
