@@ -741,8 +741,14 @@ Deno.serve(async (req: Request) => {
       const limpaTs = st.memoria_limpa_em ? Math.floor(Date.parse(st.memoria_limpa_em) / 1000) : 0
       const todasMsgs = Array.isArray(mensagens_chat) ? mensagens_chat : []
       const msgs = limpaTs ? todasMsgs.filter((m: any) => (m.t ?? 0) > limpaTs) : todasMsgs
+      // Ignora NOTIFICACOES DE SISTEMA do WhatsApp: lead de ANUNCIO (click-to-WhatsApp) gera
+      // [e2e_notification]/[notification_template]/gp2/protocol... DEPOIS da msg real do cliente,
+      // e essas viravam a "ultima msg" -> a IA pulava (skip 'sem_mensagem_real'). Agora acha a
+      // ultima msg REAL do cliente ignorando esses tipos. (Daniel 29/07 — caso Leandro/anuncios)
+      const _tiposSistema = new Set(['e2e_notification','notification_template','gp2','protocol','broadcast_notification','newsletter_admin_invite','revoked','call_log','ciphertext','notification'])
+      const _ehSistema = (m: any) => _tiposSistema.has(String(m.type || '')) || (!m.transcricao && /^\[[a-z0-9_]{2,40}\]$/i.test(String(m.body || '').trim()))
       let ult: any = null
-      for (const m of msgs) { if (!ult || (m.t ?? 0) > (ult.t ?? 0)) ult = m }
+      for (const m of msgs) { if (_ehSistema(m)) continue; if (!ult || (m.t ?? 0) > (ult.t ?? 0)) ult = m }
       if (!ult || ult.fromMe) return j({ ok: false, skip: 'ultima_nao_e_do_cliente' })
       // NAO responder a NOTIFICACAO DE SISTEMA do WhatsApp ([e2e_notification], [notification_template],
       // [revoked], [ptt]...) nem a MIDIA CRUA (base64) sem texto: a IA estava mandando "Entendi. fabrica
