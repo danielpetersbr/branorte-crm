@@ -33,6 +33,15 @@ export type DataPreset = '' | 'hoje' | 'ontem' | '7d' | '30d' | 'mes'
 // queryFn via RPC atendimentos_telefones_sem_resposta (não passa pela RPC de etiqueta).
 export const FILTRO_SEM_RESPOSTA = '__sem_resposta_bot__'
 
+// Sentinela do filtro "sem etiqueta". Também não é etiqueta real: no banco a
+// etiqueta mora em wa_chat_labels.label_ids, então "sem etiqueta" = ausência de
+// linha, não NULL em coluna. Resolvido pela RPC atendimentos_telefones_sem_etiqueta.
+export const FILTRO_SEM_ETIQUETA = '__sem_etiqueta__'
+
+// Teto da RPC de sem-etiqueta (o mesmo da RPC de etiqueta). Acima disso a lista é
+// truncada pelos mais recentes e a tela avisa, em vez de sumir com gente calada.
+export const SEM_ETIQUETA_LIMITE = 700
+
 export interface AtendimentoFilters {
   search: string
   responsavel: string
@@ -531,6 +540,14 @@ export function useAtendimentos(filters: AtendimentoFilters) {
       }
       if (filters.responsavel) query = query.eq('responsavel', filters.responsavel)
       if (filters.status_real) query = query.eq('status_real', filters.status_real)
+
+      // A janela de data é aplicada na query lá embaixo, mas o filtro de "sem
+      // etiqueta" precisa dela ANTES: a RPC trunca em 700, e truncar sem olhar a
+      // data devolveria telefones que o range descartaria depois — a tela ficaria
+      // vazia tendo resultado. Calculado aqui, usado nos dois lugares.
+      const range = dateRangeFromPreset(filters.data)
+      let truncado = false
+
       // Filtro por etiqueta do WhatsApp: a RPC devolve os telefones com a etiqueta
       // (em toda a base), e filtramos os atendimentos por eles.
       if (filters.etiqueta === FILTRO_SEM_RESPOSTA) {
@@ -538,13 +555,25 @@ export function useAtendimentos(filters: AtendimentoFilters) {
         const { data: tels, error: telErr } = await (supabase as any).rpc('atendimentos_telefones_sem_resposta')
         if (telErr) throw telErr
         const list = (tels ?? []) as string[]
-        if (list.length === 0) return { rows: [], total: 0 }
+        if (list.length === 0) return { rows: [], total: 0, truncado: false }
+        query = query.in('telefone_norm', list)
+      } else if (filters.etiqueta === FILTRO_SEM_ETIQUETA) {
+        // "Sem etiqueta": anti-join contra wa_chat_labels, dentro da janela de data.
+        const { data: tels, error: telErr } = await (supabase as any).rpc('atendimentos_telefones_sem_etiqueta', {
+          p_desde: range.from ?? null,
+          p_ate:   range.to   ?? null,
+          p_limit: SEM_ETIQUETA_LIMITE,
+        })
+        if (telErr) throw telErr
+        const list = (tels ?? []) as string[]
+        if (list.length === 0) return { rows: [], total: 0, truncado: false }
+        truncado = list.length >= SEM_ETIQUETA_LIMITE
         query = query.in('telefone_norm', list)
       } else if (filters.etiqueta) {
         const { data: tels, error: telErr } = await supabase.rpc('atendimentos_telefones_por_etiqueta', { p_etiqueta: filters.etiqueta })
         if (telErr) throw telErr
         const list = (tels ?? []) as string[]
-        if (list.length === 0) return { rows: [], total: 0 }
+        if (list.length === 0) return { rows: [], total: 0, truncado: false }
         query = query.in('telefone_norm', list)
       }
       // Filtro "só com orçamento": a RPC devolve os telefones (telefone_norm) que têm
@@ -553,10 +582,9 @@ export function useAtendimentos(filters: AtendimentoFilters) {
         const { data: tels, error: telErr } = await (supabase as any).rpc('atendimentos_telefones_com_orcamento')
         if (telErr) throw telErr
         const list = (tels ?? []) as string[]
-        if (list.length === 0) return { rows: [], total: 0 }
+        if (list.length === 0) return { rows: [], total: 0, truncado: false }
         query = query.in('telefone_norm', list)
       }
-      const range = dateRangeFromPreset(filters.data)
       // Filtra por data de CHEGADA do lead (created_at)
       if (range.from) query = query.gte('created_at', range.from)
       if (range.to)   query = query.lte('created_at', range.to)
@@ -601,7 +629,7 @@ export function useAtendimentos(filters: AtendimentoFilters) {
 
       const { data, error, count } = await query
       if (error) throw error
-      return { rows: (data ?? []) as Atendimento[], total: count ?? 0 }
+      return { rows: (data ?? []) as Atendimento[], total: count ?? 0, truncado }
     },
     placeholderData: prev => prev,
     refetchInterval: 30_000,                  // polling a cada 30s

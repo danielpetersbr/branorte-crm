@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, Flame, AlarmClock, CheckCircle2, Inbox, Trash2, Calendar, Hand, ListChecks, MessageSquareDot, EyeOff, UserPlus, RefreshCw, AlertCircle, PhoneOff, MousePointerClick, Bot } from 'lucide-react'
+import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, Flame, AlarmClock, CheckCircle2, Inbox, Trash2, Calendar, Hand, ListChecks, MessageSquareDot, EyeOff, UserPlus, RefreshCw, AlertCircle, PhoneOff, MousePointerClick, Bot, Send } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -11,13 +11,15 @@ import { StatusVendedorPicker } from '@/components/StatusVendedorPicker'
 import { CriativoHoverBadge } from '@/components/CriativoHoverBadge'
 import { PhoneCopyButton } from '@/components/PhoneCopyButton'
 import { AtribuirVendedorPicker } from '@/components/AtribuirVendedorPicker'
+import { NovaCampanhaModal } from '@/components/NovaCampanhaModal'
+import { CampanhasAtivas } from '@/components/CampanhasAtivas'
 import { StatusDot } from '@/components/ui/StatusDot'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTimeShort, estadoNome } from '@/lib/utils'
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, STATUS_VENDEDOR_MAP, type StatusReal } from '@/types/atendimento'
-import { useAtendimentos, useAtendimentoKpis, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, useDadosIaPorTelefone, lookupDadosIa, useIaStatusContagem, useIaStatusPorTelefone, lookupIaStatus, FILTRO_SEM_RESPOSTA, type DataPreset , useMensagensClique} from '@/hooks/useAtendimentos'
+import { useAtendimentos, useAtendimentoKpis, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, useDadosIaPorTelefone, lookupDadosIa, useIaStatusContagem, useIaStatusPorTelefone, lookupIaStatus, FILTRO_SEM_RESPOSTA, FILTRO_SEM_ETIQUETA, SEM_ETIQUETA_LIMITE, type DataPreset , useMensagensClique} from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 
@@ -46,6 +48,7 @@ const DATA_PRESETS: { value: DataPreset; label: string }[] = [
 // server-side pela RPC atendimentos_telefones_por_etiqueta).
 const ETIQUETA_OPCOES: { value: string; label: string }[] = [
   { value: FILTRO_SEM_RESPOSTA,     label: '🔴 Nunca respondeu (auto)' },
+  { value: FILTRO_SEM_ETIQUETA,     label: '🏷️ Sem etiqueta' },
   { value: 'NOVO LEAD',             label: '🆕 Novo lead' },
   { value: 'PROSPECCAO',            label: '🔍 Prospecção' },
   { value: '2A TENTATIVA',          label: '↩️ 2ª tentativa' },
@@ -415,6 +418,43 @@ export function Atendimentos() {
   const rows = data?.rows ?? []
   const total = data?.total ?? 0
   const totalPages = Math.ceil(total / ATENDIMENTO_PAGE_SIZE)
+
+  // Seleção para chamada em massa. Guarda os DADOS, não só a chave: o vendedor
+  // seleciona na página 1, vai pra 2 e seleciona mais — as linhas da 1 já saíram
+  // de `rows`, então um Set de ids perderia telefone e nome na hora de montar a campanha.
+  // Chave = telefone só com dígitos (a view é 1 linha por cliente).
+  const [selecionados, setSelecionados] = useState<Map<string, { telefone: string; nome: string | null }>>(new Map())
+  const [campanhaAberta, setCampanhaAberta] = useState(false)
+  const selKey = (t: string | null) => (t || '').replace(/\D/g, '')
+
+  function toggleSelecionado(r: typeof rows[number]) {
+    const k = selKey(r.telefone)
+    if (!k) return
+    setSelecionados(prev => {
+      const next = new Map(prev)
+      if (next.has(k)) next.delete(k)
+      else next.set(k, { telefone: r.telefone, nome: r.nome ?? null })
+      return next
+    })
+  }
+
+  const chavesDaPagina = rows.map(r => selKey(r.telefone)).filter(Boolean)
+  const todosDaPaginaSelecionados = chavesDaPagina.length > 0 && chavesDaPagina.every(k => selecionados.has(k))
+
+  function togglePagina() {
+    setSelecionados(prev => {
+      const next = new Map(prev)
+      if (todosDaPaginaSelecionados) {
+        chavesDaPagina.forEach(k => next.delete(k))
+      } else {
+        rows.forEach(r => {
+          const k = selKey(r.telefone)
+          if (k) next.set(k, { telefone: r.telefone, nome: r.nome ?? null })
+        })
+      }
+      return next
+    })
+  }
   const hasFilters = filters.search || filters.responsavel || filters.status_real || filters.uf || filters.data || filters.origem || filters.criativo || filters.etiqueta || filters.comOrcamento
 
   // Resolve o "vendedor efetivo" do lead. Prioridade:
@@ -651,9 +691,20 @@ export function Atendimentos() {
         <PageLoading />
       ) : (
         <div className="flex-1 min-h-0 flex flex-col gap-3">
+          <CampanhasAtivas />
           <div className="flex items-center justify-between shrink-0">
             <p className="text-[12px] text-ink-faint tabular-nums">
               {formatNumber(total)} resultado{total !== 1 ? 's' : ''}
+              {/* A RPC de "sem etiqueta" trunca nos N mais recentes. Avisa em vez de
+                  sumir com gente calado — com preset de data real nunca bate no teto. */}
+              {data?.truncado && (
+                <span
+                  className="ml-1.5 text-amber-600"
+                  title={`A lista "sem etiqueta" foi limitada aos ${SEM_ETIQUETA_LIMITE} contatos mais recentes. Escolha um período (7 dias, 30 dias, este mês) para ver o recorte completo.`}
+                >
+                  · limitado aos {SEM_ETIQUETA_LIMITE} mais recentes
+                </span>
+              )}
               {/* Em aberto no funil — base inteira, estado atual da etiqueta WA (não do filtro/dia).
                   Aberto = sem etiqueta OU Prospecção/Novo lead/Follow-up/Lead quente. */}
               {funil && funil.abertos > 0 && (
@@ -852,6 +903,16 @@ export function Atendimentos() {
               <table className="w-full table-fixed">
                 <thead className="sticky top-0 z-10 bg-surface backdrop-blur-sm">
                   <tr className="border-b border-border bg-surface-2/40 [&>th]:text-left [&>th]:text-[10px] [&>th]:uppercase [&>th]:tracking-wider [&>th]:font-bold [&>th]:text-ink-muted [&>th]:px-1.5 [&>th]:py-3 [&>th]:whitespace-nowrap">
+                    <th className="w-[34px] !px-1">
+                      <input
+                        type="checkbox"
+                        className="align-middle cursor-pointer accent-emerald-600"
+                        checked={todosDaPaginaSelecionados}
+                        onChange={togglePagina}
+                        title="Selecionar todos desta página"
+                        aria-label="Selecionar todos desta página"
+                      />
+                    </th>
                     <th className="w-[68px]">Chegou</th>
                     <th className="w-[104px]">Lead</th>
                     <th className="hidden md:table-cell w-[48px]">UF</th>
@@ -901,6 +962,16 @@ export function Atendimentos() {
                           style={semResp
                             ? { boxShadow: 'inset 3px 0 0 0 rgb(239 68 68)' }
                             : isHot ? { boxShadow: 'inset 3px 0 0 0 hsl(var(--danger))' } : undefined}>
+                        {/* SELEÇÃO pra chamada em massa */}
+                        <td className="px-1 py-2.5">
+                          <input
+                            type="checkbox"
+                            className="align-middle cursor-pointer accent-emerald-600"
+                            checked={selecionados.has(selKey(r.telefone))}
+                            onChange={() => toggleSelecionado(r)}
+                            aria-label={`Selecionar ${nomeReal ?? r.telefone ?? 'lead'}`}
+                          />
+                        </td>
                         {/* CHEGOU */}
                         <td className="px-2 py-2.5 whitespace-nowrap" title={r.primeira_data ?? r.created_at ?? ''}>
                           <span className="text-[11px] text-ink-muted font-mono tabular-nums block">
@@ -1355,7 +1426,7 @@ export function Atendimentos() {
                   })}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={19} className="px-4 py-16 text-center">
+                      <td colSpan={20} className="px-4 py-16 text-center">
                         <div className="flex flex-col items-center gap-2">
                           <div className="h-10 w-10 rounded-full bg-surface-2 flex items-center justify-center">
                             <Inbox className="h-5 w-5 text-ink-faint" />
@@ -1376,6 +1447,33 @@ export function Atendimentos() {
           </Card>
         </div>
       )}
+
+      {/* Barra de seleção — só aparece com alguém marcado. Fica flutuando porque a
+          seleção sobrevive à troca de página, e sumir junto com a linha confundiria. */}
+      {selecionados.size > 0 && (
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 rounded-xl border border-border bg-bg/95 backdrop-blur px-4 py-2.5 shadow-2xl">
+          <span className="text-[13px] text-ink tabular-nums">
+            <strong>{selecionados.size}</strong> selecionado{selecionados.size !== 1 ? 's' : ''}
+          </span>
+          <button
+            onClick={() => setSelecionados(new Map())}
+            className="text-[12px] text-ink-faint hover:text-ink transition"
+          >
+            Limpar
+          </button>
+          <Button onClick={() => setCampanhaAberta(true)}>
+            <Send className="h-3.5 w-3.5" /> Chamar no WhatsApp
+          </Button>
+        </div>
+      )}
+
+      <NovaCampanhaModal
+        open={campanhaAberta}
+        alvos={[...selecionados.values()]}
+        origemFiltro={{ ...filters, page: undefined }}
+        onClose={() => setCampanhaAberta(false)}
+        onCriada={() => setSelecionados(new Map())}
+      />
     </div>
   )
 }
