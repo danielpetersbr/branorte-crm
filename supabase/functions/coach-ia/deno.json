@@ -1,0 +1,7 @@
+{
+  "_comment": "Fonte recuperado transpilado da Management API (producao v26): os tipos se perderam na transpilacao. O check estrito fica desligado SO nesta funcao ate ela ser reescrita tipada. Nao afeta o runtime.",
+  "compilerOptions": {
+    "strict": false,
+    "noImplicitAny": false
+  }
+}
