@@ -997,7 +997,15 @@ Deno.serve(async (req: Request) => {
       if (!encerrar && vendedorAssumir) {
         if (!etiquetaModelo) etiquetaModelo = 'NOVO LEAD'
         const pn = nomeBom.trim().split(' ')[0]
-        const escolha = escolherModeloFabrica(dadosMem)
+        // (29/07, caso José/PEDRO) NÃO OFERECER FÁBRICA A QUEM PEDIU UM EQUIPAMENTO AVULSO.
+        // O cliente pediu "orçamento de misturador 500 kg" e recebeu foto + vídeo da Compacta 02.
+        // Causa: 'escolherModeloFabrica' só olha animal+quantidade, e a pergunta de qualificação
+        // de EQUIPAMENTO ("pra qual animal e quantas cabeças?", linha ~975) alimenta justamente
+        // esses dois campos — 230 vacas × 8 kg/dia × 7 ÷ 12 = ~1073 kg/h => compacta-02.
+        // Agora só calcula modelo de fábrica quando o cliente FALOU de fábrica (equipEhFabrica
+        // cobre tanto o campo extraído quanto qualquer menção na conversa). Pedido de equipamento
+        // individual cai no ramo de mídia de equipamento, logo abaixo.
+        const escolha = (equipTxt && !equipEhFabrica) ? null : escolherModeloFabrica(dadosMem)
         const fm = escolha ? await carregarFabricaMidia(supa, escolha.slug) : null
         // (28/07) A FOTO deixou de ser obrigatoria: o Daniel liga/desliga cada midia pela tabela
         // fabrica_midia, sem deploy. O gate espelha EXATAMENTE o ramo que vai rodar, senao
