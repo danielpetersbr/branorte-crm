@@ -216,6 +216,98 @@ export function ordenarChats<T extends ChatLite>(chats: T[], modo: Ordenacao): T
   return arr
 }
 
+// ---------------------------------------------------------------------------
+// Conversa do drawer (histórico persistido em wa_chat_messages)
+// ---------------------------------------------------------------------------
+
+/** Só o que a montagem da conversa precisa — evita acoplar este módulo ao hook. */
+export interface MensagemLite {
+  msg_id: string
+  data_msg: string | null
+  media_url?: string | null
+}
+
+/**
+ * Identidade canônica de uma mensagem do WhatsApp.
+ *
+ * A extensão grava o mesmo id em duas formas, dependendo de por onde leu a
+ * mensagem: o hash curto (`3EB0201F4BF2...`) e o serializado
+ * (`true_5547999@lid_3EB0201F4BF2...`). São a MESMA mensagem, mas strings
+ * diferentes — e como o UNIQUE do banco é sobre msg_id cru, viram duas linhas
+ * e a bolha aparece duplicada no drawer. O hash final é o que as duas formas
+ * têm em comum, então é ele que identifica a mensagem.
+ */
+export const idCanonicoMsg = (msgId: string): string => {
+  const s = String(msgId || '')
+  const i = s.lastIndexOf('_')
+  return i === -1 ? s : s.slice(i + 1)
+}
+
+// Miniatura base64 que o WhatsApp Web põe em `body` de mídia sem legenda.
+// Sem legenda, esse blob virava um paredão de texto dentro da bolha.
+const SO_BASE64 = /^[A-Za-z0-9+/]{120,}={0,2}$/
+
+/**
+ * Texto realmente exibível de uma mensagem. Devolve null quando o corpo é só
+ * o thumbnail base64 (mídia sem legenda) — aí a bolha mostra o rótulo do tipo
+ * / o player / a foto, em vez do blob.
+ */
+export function corpoVisivel(body: string | null | undefined): string | null {
+  const t = (body || '').trim()
+  if (!t) return null
+  if (SO_BASE64.test(t)) return null
+  return t
+}
+
+export interface ConversaMontada<T extends MensagemLite> {
+  mensagens: T[]
+  /** Existe histórico mais antigo além da janela carregada. */
+  temMais: boolean
+}
+
+/**
+ * Monta a janela de conversa a partir das linhas cruas do banco.
+ *
+ * Recebe as linhas em ordem DECRESCENTE por data_msg (mais recente primeiro),
+ * como devolve a query, e no máximo `limite + 1` linhas — a linha extra é só a
+ * sonda que indica se ainda há histórico anterior.
+ *
+ * Garante: dedup por msg_id, janela = as `limite` MAIS RECENTES, e saída em
+ * ordem cronológica ASC com mensagens sem data no fim (senão flutuariam pro topo).
+ */
+export function montarConversa<T extends MensagemLite>(linhas: T[], limite: number): ConversaMontada<T> {
+  // Dedup pela identidade CANÔNICA (hash), não pela string crua: a mesma
+  // mensagem existe no banco nas duas formas de msg_id e renderizaria em dobro.
+  // Entre duplicatas, fica a que tem mídia — perder o áudio/foto seria pior.
+  const porId = new Map<string, T>()
+  for (const l of linhas) {
+    if (!l) continue
+    const id = idCanonicoMsg(l.msg_id)
+    const atual = porId.get(id)
+    if (!atual) { porId.set(id, l); continue }
+    const temMidia = (m: T) => !!m.media_url && m.media_url !== 'unavailable'
+    if (!temMidia(atual) && temMidia(l)) porId.set(id, l)
+  }
+  // temMais vem da contagem CRUA (o banco devolveu mais linhas que a janela).
+  // Usar a contagem já deduplicada esconderia histórico real quando o excedente
+  // fosse duplicata; assim, no pior caso oferecemos um "carregar" a mais — nunca
+  // deixamos de oferecer quando existe mensagem antiga pra mostrar.
+  const temMais = linhas.length > limite
+  const unicas = [...porId.values()]
+  // vieram DESC → cortar o excedente pelo FIM descarta as mais antigas
+  const janela = unicas.slice(0, limite)
+  // ordem cronológica ASC, com desempate estável pelo id canônico: sem isso,
+  // mensagens do MESMO segundo trocam de lugar a cada refetch de 30s.
+  const mensagens = janela.slice().sort((a, b) => {
+    if (!a.data_msg && !b.data_msg) return idCanonicoMsg(a.msg_id).localeCompare(idCanonicoMsg(b.msg_id))
+    if (!a.data_msg) return 1
+    if (!b.data_msg) return -1
+    const d = new Date(a.data_msg).getTime() - new Date(b.data_msg).getTime()
+    return d !== 0 ? d : idCanonicoMsg(a.msg_id).localeCompare(idCanonicoMsg(b.msg_id))
+  })
+  return { mensagens, temMais }
+}
+
 /** "há 5 min", "há 3 h", "ontem", "10/06" */
 export function tempoRelativo(iso: string | null): string {
   if (!iso) return ''

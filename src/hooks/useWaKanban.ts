@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { canonico, ordemDe, corDaEtiqueta, ETIQUETAS_OCULTAS } from '@/lib/wa-funil'
+import { canonico, ordemDe, corDaEtiqueta, ETIQUETAS_OCULTAS, montarConversa } from '@/lib/wa-funil'
 
 // Kanban de etiquetas WhatsApp — espelho do que o vendedor vê no Wascript.
 // Fontes (sincronizadas pela extensão Branorte WA Sync a cada 30s):
@@ -142,15 +142,41 @@ export interface WaMensagem {
   data_msg: string | null
 }
 
+/** Quantas mensagens o drawer carrega de cara (cobre ~87% dos chats por inteiro). */
+export const MSGS_PAGINA_INICIAL = 30
+/** Quanto cada clique em "carregar anteriores" acrescenta. */
+export const MSGS_PAGINA_INCREMENTO = 50
+
+export interface WaConversa {
+  mensagens: WaMensagem[]
+  /** Há mensagens mais antigas no banco além das carregadas. */
+  temMais: boolean
+}
+
 /**
- * Últimas ~10 mensagens do chat (sincronizadas pela extensão). Ordem cronológica
- * (antiga → recente). A leitura é agnóstica ao estágio — filtra só por vendedor+chat_id.
+ * Mensagens já persistidas do chat, em ordem cronológica (antiga → recente).
+ *
+ * Lê de wa_chat_messages, que é o HISTÓRICO GRAVADO — não depende do WhatsApp Web
+ * do vendedor estar aberto agora. A leitura é agnóstica ao estágio do funil:
+ * filtra só por vendedor+chat_id (o par que identifica a conversa; todo chat_id é
+ * um jid @lid único por contato).
+ *
+ * Pagina para trás: busca `limite + 1` linhas pra saber se ainda há histórico mais
+ * antigo sem precisar de um count. Antes isso era um `.limit(10)` fixo, que escondia
+ * ~4,7 mil mensagens já gravadas (metade dos chats tem mais de 10).
  */
-export function useWaMensagens(vendedor: string | null, chatId: string | null, habilitado = true) {
-  return useQuery<WaMensagem[]>({
-    queryKey: ['wa-mensagens', vendedor, chatId],
+export function useWaMensagens(
+  vendedor: string | null,
+  chatId: string | null,
+  habilitado = true,
+  limite = MSGS_PAGINA_INICIAL,
+) {
+  return useQuery<WaConversa>({
+    queryKey: ['wa-mensagens', vendedor, chatId, limite],
     enabled: habilitado && !!vendedor && !!chatId,
     refetchInterval: 30_000,
+    // mantém a página anterior visível durante o refetch/expansão (não pisca vazio)
+    placeholderData: prev => prev,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('wa_chat_messages')
@@ -158,14 +184,13 @@ export function useWaMensagens(vendedor: string | null, chatId: string | null, h
         .eq('vendedor_nome', vendedor!)
         .eq('chat_id', chatId!)
         .order('data_msg', { ascending: false, nullsFirst: false })
-        .limit(10)
+        // desempate determinístico: sem ele, mensagens do mesmo segundo entram e
+        // saem da janela a cada refetch de 30s e a conversa "embaralha" na tela
+        .order('msg_id', { ascending: false })
+        .limit(limite + 1) // +1 sonda se existe página anterior
       if (error) throw error
-      // ordena cronológico ASC com msgs sem data_msg no FIM (senão flutuam pro topo, fora de ordem)
-      return (data ?? []).slice().sort((a, b) => {
-        if (!a.data_msg) return 1
-        if (!b.data_msg) return -1
-        return new Date(a.data_msg).getTime() - new Date(b.data_msg).getTime()
-      })
+      // dedup + janela + ordem cronológica ficam numa função pura (testável em wa-funil.ts)
+      return montarConversa<WaMensagem>(data ?? [], limite)
     },
   })
 }

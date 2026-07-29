@@ -8,13 +8,14 @@ import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 import {
   useWaKanban, useWaVendedores, useWaMovimentos, useWaMensagens, useWaAgendadas,
-  lookupAgendada, TODOS, type WaChat, type WaMensagem, type WaAgendada,
+  lookupAgendada, TODOS, MSGS_PAGINA_INICIAL, MSGS_PAGINA_INCREMENTO,
+  type WaChat, type WaMensagem, type WaAgendada,
 } from '@/hooks/useWaKanban'
 import { useOrcamentosPorTelefone, lookupOrcamento, foneCanon } from '@/hooks/useAtendimentos'
 import {
   tempoRelativo, temperaturaDe, TEMP_META, resumoColuna,
   formatarTelefone, nomeContato, ordenarChats, ORDENACAO_LABEL,
-  precisaResposta,
+  precisaResposta, corpoVisivel, idCanonicoMsg,
   type Ordenacao, type Temperatura,
 } from '@/lib/wa-funil'
 import { Avatar } from '@/components/ui/Avatar'
@@ -327,6 +328,8 @@ function midiaExpirada(m: WaMensagem): boolean {
 
 function BolhaMensagem({ m }: { m: WaMensagem }) {
   const [zoom, setZoom] = useState(false)
+  // mídia sem legenda traz o thumbnail base64 no body — não é texto pra ler
+  const texto = corpoVisivel(m.body)
   const meta = metaTipoMsg(m.tipo)
   const fromMe = m.from_me === true
   const autoriaIndef = m.from_me == null // null/undefined = extensão não determinou quem falou
@@ -376,7 +379,7 @@ function BolhaMensagem({ m }: { m: WaMensagem }) {
             >
               <img
                 src={m.media_url as string}
-                alt={m.body || 'Foto'}
+                alt={texto || 'Foto'}
                 loading="lazy"
                 className="max-h-52 w-auto max-w-full cursor-zoom-in object-cover"
               />
@@ -394,8 +397,8 @@ function BolhaMensagem({ m }: { m: WaMensagem }) {
 
         {m.tipo === 'revoked' ? (
           <div className="flex items-center gap-1 italic text-ink-faint"><Ban className="h-3 w-3" /> Mensagem apagada</div>
-        ) : m.body ? (
-          <p className={`${(meta && !temFoto) || temFoto ? 'mt-1.5 ' : ''}whitespace-pre-wrap break-words`}>{m.body}</p>
+        ) : texto ? (
+          <p className={`${(meta && !temFoto) || temFoto ? 'mt-1.5 ' : ''}whitespace-pre-wrap break-words`}>{texto}</p>
         ) : (!meta && !ehAudio && !ehImagem) ? (
           <p className="italic text-ink-faint">({m.tipo})</p>
         ) : null}
@@ -414,13 +417,21 @@ function BolhaMensagem({ m }: { m: WaMensagem }) {
 function ChatDrawer({
   chat, etiquetas, vendedor, onClose, agendada,
 }: { chat: WaChat; etiquetas: { nome: string; cor: string }[]; vendedor: string; onClose: () => void; agendada?: WaAgendada | null }) {
-  // Coluna de captura ativa (a extensão só puxa msgs em FOLLOW UP/LEAD QUENTE). Mas a
-  // LEITURA é habilitada sempre que há chat_id: um lead que passou por LEAD QUENTE e
-  // avançou pra VENDIDO mantém as msgs gravadas — esconder isso é perda aparente de dado.
+  // Coluna de captura ativa = estágio em que a extensão sincroniza a conversa.
+  // A LEITURA é habilitada sempre que há chat_id: o histórico já gravado continua
+  // visível mesmo se o lead avançou pra VENDIDO — esconder isso é perda aparente de dado.
   const colunaAtiva = etiquetas.some(e => COLUNAS_COM_CONVERSA.has(e.nome))
   const { data: movimentos = [] } = useWaMovimentos(vendedor, chat.phone)
-  const { data: mensagens, isLoading: carregandoMsgs } = useWaMensagens(vendedor, chat.chat_id, !!chat.chat_id)
+  const [limiteMsgs, setLimiteMsgs] = useState(MSGS_PAGINA_INICIAL)
+  const {
+    data: conversa, isLoading: carregandoMsgs, isFetching: buscandoMsgs,
+    isError: erroMsgs, error: erroMsgsDetalhe, refetch: recarregarMsgs,
+  } = useWaMensagens(vendedor, chat.chat_id, !!chat.chat_id, limiteMsgs)
+  const mensagens = conversa?.mensagens
   const temMsgs = !!mensagens && mensagens.length > 0
+  const temMaisAntigas = !!conversa?.temMais
+  // sem chat_id não há como localizar a conversa — é um estado distinto de "não sincronizada"
+  const semChatId = !chat.chat_id
   const nome = nomeContato(chat.contact_name, chat.phone)
   const [fotoAberta, setFotoAberta] = useState(false)
   return (
@@ -478,28 +489,67 @@ function ChatDrawer({
             </div>
           )}
 
-          {/* Conversa — últimas 10 mensagens (capturadas em FOLLOW UP / LEAD QUENTE) */}
-          {temMsgs ? (
+          {/* Conversa — histórico já gravado (não depende do WhatsApp Web estar aberto agora).
+              Estados distintos e honestos: erro ≠ vazio ≠ carregando ≠ nunca sincronizada. */}
+          {erroMsgs ? (
+            <div className="rounded-xl border border-danger/40 bg-danger-bg p-4 text-center">
+              <p className="text-[12px] font-medium text-danger">Não foi possível carregar a conversa.</p>
+              <p className="mt-1 break-words text-[11px] text-ink-faint">
+                {(erroMsgsDetalhe as Error | null)?.message || 'Falha ao consultar o histórico.'}
+              </p>
+              <button
+                onClick={() => { void recarregarMsgs() }}
+                disabled={buscandoMsgs}
+                className="mt-2.5 rounded-lg border border-border px-3 py-1 text-[11px] font-semibold text-ink hover:bg-surface-2 disabled:opacity-50"
+              >
+                {buscandoMsgs ? 'Tentando…' : 'Tentar novamente'}
+              </button>
+            </div>
+          ) : temMsgs ? (
             <div>
               <div className="mb-2 flex items-baseline justify-between">
-                <div className="text-[11px] uppercase tracking-wide text-ink-faint">Conversa · últimas {mensagens!.length} mensagens</div>
+                <div className="text-[11px] uppercase tracking-wide text-ink-faint">
+                  Conversa · {mensagens!.length} mensagens{temMaisAntigas ? ' (mais recentes)' : ''}
+                </div>
                 {chat.last_message_at && <div className="text-[10px] tabular-nums text-ink-faint">{tempoRelativo(chat.last_message_at)}</div>}
               </div>
               {!colunaAtiva && (
                 <p className="mb-2 text-[10.5px] text-ink-faint">Estágio sem captura ativa — o histórico pode estar desatualizado.</p>
               )}
+              {temMaisAntigas && (
+                <button
+                  onClick={() => setLimiteMsgs(l => l + MSGS_PAGINA_INCREMENTO)}
+                  disabled={buscandoMsgs}
+                  className="mb-2 w-full rounded-lg border border-border py-1.5 text-[11px] font-semibold text-ink-muted hover:bg-surface-2 hover:text-ink disabled:opacity-50"
+                >
+                  {buscandoMsgs ? 'Carregando…' : 'Carregar mensagens anteriores'}
+                </button>
+              )}
               <div className="space-y-2.5 rounded-xl border border-border bg-gradient-to-b from-surface-2/50 to-surface-2/15 p-3 shadow-inner">
-                {mensagens!.map(m => <BolhaMensagem key={m.msg_id} m={m} />)}
+                {mensagens!.map(m => <BolhaMensagem key={idCanonicoMsg(m.msg_id)} m={m} />)}
               </div>
             </div>
           ) : carregandoMsgs ? (
             <p className="py-3 text-center text-[12px] text-ink-faint">Carregando conversa…</p>
+          ) : semChatId ? (
+            <div className="rounded-xl border border-dashed border-border p-4 text-center">
+              <p className="text-[12px] text-ink-muted">Contato sem conversa vinculada.</p>
+              <p className="mt-1 text-[11px] text-ink-faint">Este card não tem chat do WhatsApp associado, então não há histórico pra buscar.</p>
+            </div>
           ) : colunaAtiva ? (
             <div className="rounded-xl border border-dashed border-border p-4 text-center">
-              <p className="text-[12px] text-ink-muted">Conversa ainda não sincronizada.</p>
+              <p className="text-[12px] text-ink-muted">Nenhuma mensagem sincronizada ainda.</p>
               <p className="mt-1 text-[11px] text-ink-faint">
-                Aparece aqui em ~1 min <span className="font-medium">se o vendedor estiver com o WhatsApp Web aberto</span>.
+                A captura roda no WhatsApp Web do vendedor. Assim que ele abrir o WhatsApp, o histórico
+                aparece aqui — e depois disso fica salvo, mesmo com o WhatsApp fechado.
               </p>
+              <button
+                onClick={() => { void recarregarMsgs() }}
+                disabled={buscandoMsgs}
+                className="mt-2.5 rounded-lg border border-border px-3 py-1 text-[11px] font-semibold text-ink hover:bg-surface-2 disabled:opacity-50"
+              >
+                {buscandoMsgs ? 'Verificando…' : 'Verificar agora'}
+              </button>
             </div>
           ) : (
             /* Sem histórico capturado ainda: só o preview da última mensagem */
@@ -970,6 +1020,8 @@ export function FunilWhatsApp() {
 
       {chatAberto && vendedor && (
         <ChatDrawer
+          // remonta ao trocar de card: zera paginação/lightbox e evita estado vazando entre conversas
+          key={`${chatAberto.vendedor ?? vendedor}::${chatAberto.chat_id ?? chatAberto.phone}`}
           chat={chatAberto}
           etiquetas={etiquetasDoChat}
           vendedor={chatAberto.vendedor ?? vendedor}
