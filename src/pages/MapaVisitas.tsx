@@ -662,6 +662,9 @@ export function MapaVisitas() {
   const togglePill = (ativo: boolean) =>
     `h-9 px-3 rounded-md border text-[13px] font-semibold transition-colors ${ativo ? 'bg-accent-bg border-accent/40 text-accent' : 'bg-surface border-border text-ink-muted hover:text-ink'}`
 
+  // Com 'todos' a soma mistura orçado em aberto + vendido, então o rótulo não pode dizer "Orçado".
+  const rotuloValor = vendFiltro === 'vendidos' ? 'Vendido' : vendFiltro === 'todos' ? 'Valor' : 'Orçado'
+
   // Lista "por estado" — barra proporcional ao valor; clicar filtra o mapa naquele estado.
   const listaUF = (cls: string, aoEscolher?: () => void) => (
     <ul className={`space-y-0.5 ${cls}`}>
@@ -928,7 +931,7 @@ export function MapaVisitas() {
                     <div className="mt-3 pt-3 border-t border-border">
                       <div className="flex items-center gap-1.5 mb-1">
                         <span className="text-[11px] uppercase tracking-wide text-ink-faint">
-                          {vendFiltro === 'vendidos' ? 'Vendido' : 'Orçado'} · por estado
+                          {rotuloValor} · por estado
                         </span>
                         {ufSel && (
                           <button onClick={() => setUfSel('')} className="ml-auto text-[10px] font-semibold text-accent hover:underline">
@@ -968,7 +971,7 @@ export function MapaVisitas() {
         <div className="md:hidden fixed inset-0 z-[1300] bg-black/40 flex items-end" onClick={() => setUfSheet(false)}>
           <div className="bg-surface w-full rounded-t-2xl border-t border-border p-4 pb-safe max-h-[78vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2">
-              <div className="text-[15px] font-semibold text-ink">{vendFiltro === 'vendidos' ? 'Vendido' : 'Orçado'} por estado</div>
+              <div className="text-[15px] font-semibold text-ink">{rotuloValor} por estado</div>
               {ufSel && <button onClick={() => { setUfSel(''); setUfSheet(false) }} className="ml-auto text-[13px] font-semibold text-accent">Brasil todo</button>}
               <button onClick={() => setUfSheet(false)} className={`h-8 w-8 rounded-md text-ink-muted ${ufSel ? '' : 'ml-auto'}`}>✕</button>
             </div>
