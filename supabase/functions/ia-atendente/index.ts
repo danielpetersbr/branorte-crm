@@ -332,8 +332,9 @@ O que cada campo significa (QUANDO usar cada um, voce decide pelo seu raciocinio
 - vendedor_assumir: true quando VOCE decidir encerrar a sua parte do atendimento. Quando true,
   o texto e um fechamento curto em 1a pessoa, SEM pergunta junto e SEM anunciar handoff.
 - encerrar: true quando o cliente se despediu de vez ou pediu pra parar de receber mensagem.
-- etiqueta: "NOVO LEAD" (interessado em algo que a gente fabrica) | "NAO FABRICAMOS" | "RESOLVIDO"
-  (assunto que nao e venda, ja encaminhado) | null enquanto nao houver desfecho.`
+- etiqueta: o nome que a conversa recebe no funil QUANDO voce encerra a sua parte. Enquanto estiver
+  conduzindo, null. As opcoes: "NOVO LEAD" | "NAO FABRICAMOS" | "RESOLVIDO". Quando usar cada uma —
+  e quando ainda e cedo pra qualquer uma — esta no seu raciocinio acima.`
 
 function montarPersonaPiloto(p: any, vendedor: string, kb: string, midias: any[]): string {
   const primeiro = String(vendedor || '').split(' ')[0]
@@ -1153,10 +1154,15 @@ Deno.serve(async (req: Request) => {
         if (pediuPreco && qualifTent === 0) texto = 'O valor certinho eu te passo assim que possível. ' + texto
       // (29/07) 'desistir' entrou aqui: perguntei QUALIF_MAX vezes (ou ele insistiu no preco), o
       // essencial nao veio e ele continua falando comigo -> paro de insistir e passo o bastao.
-      } else if (!encerrar && !vendedorAssumir && (pedidoHumano || desistir || (temNome && temEssencial))) {
-        // FORCA o bastao quando ja tem NOME + ESSENCIAL — e tambem quando o cliente PEDIU HUMANO
-        // ou reclamou. Antes 'pedidoHumano' so impedia o guard de bloquear: se o LLM resolvia
-        // seguir conversando, quem pediu pra falar com alguem ficava preso na IA.
+      // (30/07) O PILOTO NAO SOFRE O BASTAO FORCADO.
+      // 'temNome && temEssencial' existe pra IA antiga, cujo trabalho ACABA na qualificacao: sabe
+      // o animal, entrega o lead. A persona nova tem trabalho DEPOIS disso — mostrar o modelo,
+      // conferir se coube no orcamento, responder galpao/energia/prazo. Com este forcado ligado,
+      // nenhum prompt ganharia: o codigo encerrava por ela assim que soubesse o animal, e foi
+      // exatamente o que o Daniel viu ("passa as midias e para").
+      // 'pedidoHumano' continua forcando pra TODO mundo: quem pede pra falar com gente nao pode
+      // ficar preso na IA, por melhor que ela seja.
+      } else if (!encerrar && !vendedorAssumir && (pedidoHumano || (!personaPiloto && (desistir || (temNome && temEssencial))))) {
         vendedorAssumir = true
       }
       // Vai passar o bastao (seja a IA que decidiu sozinha, seja o forcado acima): se der pra
@@ -1337,7 +1343,10 @@ Deno.serve(async (req: Request) => {
           if (encerrar) acoes.etiqueta = etiquetaModelo
         } else if (vendedorAssumir) {
           acoes.etiqueta = 'NOVO LEAD'
-        } else if (temperatura === 'quente') {
+        // (30/07) LEAD QUENTE por temperatura nao vale no piloto: etiquetava a conversa no meio
+        // do caminho, so porque o cliente soou apressado, e etiqueta e o sinal de que a persona
+        // ENCERROU. No piloto quem nomeia o funil e ela, junto com a decisao de parar.
+        } else if (temperatura === 'quente' && !personaPiloto) {
           acoes.etiqueta = 'LEAD QUENTE'
         }
       }
