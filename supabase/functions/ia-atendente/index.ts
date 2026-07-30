@@ -625,6 +625,99 @@ Deno.serve(async (req: Request) => {
   const action = body.action
 
   try {
+    // CONSULTA INTERNA (30/07) ----------------------------------------------------------------
+    // A extensao avisa se conseguiu ENTREGAR o recado. Sem isto o painel mostraria "aguardando"
+    // pra uma consulta que nunca saiu — e o vendedor seria cobrado por algo que nao recebeu.
+    if (action === 'consulta_entregue') {
+      const { codigo, ok, erro } = body
+      if (!codigo) return j({ ok: false, error: 'codigo obrigatorio' }, 400)
+      if (ok) {
+        await supa.from('ia_consultas_internas')
+          .update({ enviada_em: new Date().toISOString(), atualizado_em: new Date().toISOString() })
+          .eq('codigo', codigo)
+      } else {
+        // Nao entregou: cancela e DESTRAVA a conversa. Deixar em WAITING_INTERNAL_GUIDANCE com
+        // recado que nunca chegou congela o cliente esperando uma resposta que ninguem viu.
+        const { data: c } = await supa.from('ia_consultas_internas')
+          .update({ status: 'cancelada', atualizado_em: new Date().toISOString() })
+          .eq('codigo', codigo).eq('status', 'aguardando').select('chat_id').maybeSingle()
+        if (c?.chat_id) {
+          await supa.from('ia_atendimentos').update({
+            estado: 'AI_ACTIVE', estado_desde: new Date().toISOString(),
+            estado_motivo: 'consulta nao entregue: ' + String(erro || '?').slice(0, 80),
+          }).eq('chat_id', c.chat_id)
+        }
+        console.warn('[ia-atendente] consulta ' + codigo + ' nao entregue: ' + erro)
+      }
+      return j({ ok: true })
+    }
+
+    // Consultas abertas de um vendedor — a extensao usa pra saber se deve olhar o chat proprio.
+    if (action === 'consultas_abertas') {
+      const { vendedor_nome } = body
+      if (!vendedor_nome) return j({ ok: false, error: 'vendedor_nome obrigatorio' }, 400)
+      const { data } = await supa.from('ia_consultas_internas')
+        .select('codigo, chat_id, cliente_nome, duvida, criado_em, enviada_em')
+        .eq('vendedor_nome', String(vendedor_nome).toUpperCase())
+        .eq('status', 'aguardando').not('enviada_em', 'is', null)
+        .order('criado_em', { ascending: true }).limit(20)
+      return j({ ok: true, consultas: Array.isArray(data) ? data : [] })
+    }
+
+    // O vendedor respondeu no chat dele. A extensao manda o texto; aqui decidimos o que fazer.
+    if (action === 'consulta_responder') {
+      const { codigo, resposta, vendedor_nome } = body
+      const txt = String(resposta || '').trim()
+      if (!codigo || !txt) return j({ ok: false, error: 'codigo e resposta obrigatorios' }, 400)
+
+      const { data: c } = await supa.from('ia_consultas_internas')
+        .select('id, chat_id, status, vendedor_nome').eq('codigo', codigo).maybeSingle()
+      if (!c) return j({ ok: false, error: 'consulta_inexistente' }, 404)
+      if (c.status !== 'aguardando') return j({ ok: true, skip: 'ja_fechada', status: c.status })
+
+      // "Deixa comigo" e suas variacoes: o vendedor assume, a IA sai da conversa. Reconhecer isto
+      // aqui (e nao no modelo) e de proposito — desligar a IA nao pode depender de interpretacao.
+      const assumiu = /\b(deixa comigo|eu assumo|assumo daqui|pode desligar|vou responder|eu respondo|pausa a ia|desliga a ia|deixa que eu)\b/i.test(txt)
+
+      await supa.from('ia_consultas_internas').update({
+        status: assumiu ? 'assumida' : 'respondida', resposta: txt.slice(0, 2000),
+        respondido_em: new Date().toISOString(),
+        respondido_por: String(vendedor_nome || c.vendedor_nome).toUpperCase(),
+        atualizado_em: new Date().toISOString(),
+      }).eq('id', c.id)
+
+      if (assumiu) {
+        await supa.from('ia_atendimentos').update({
+          ativo: false, estado: 'HUMAN_TAKEOVER', estado_desde: new Date().toISOString(),
+          estado_motivo: 'vendedor assumiu pela consulta ' + codigo,
+          assumido_por: String(vendedor_nome || c.vendedor_nome).toUpperCase(),
+          assumido_em: new Date().toISOString(),
+          motivo_desligamento: 'vendedor_assumiu_consulta',
+          atualizado_em: new Date().toISOString(),
+        }).eq('chat_id', c.chat_id)
+      } else {
+        // Volta a atender COM a orientacao em maos. A resposta crua nao vai pro cliente: a
+        // persona recebe como instrucao e escreve com as palavras dela, no contexto da conversa.
+        await supa.from('ia_atendimentos').update({
+          estado: 'AI_ACTIVE', estado_desde: new Date().toISOString(),
+          estado_motivo: 'orientacao recebida em ' + codigo,
+          atualizado_em: new Date().toISOString(),
+        }).eq('chat_id', c.chat_id)
+      }
+
+      try {
+        await supa.from('automation_runs').insert({
+          regra_key: 'ia_atendente', vendedor_nome: c.vendedor_nome, chat_id: c.chat_id,
+          acao: assumiu ? 'ia_desligada' : 'ia_consulta_respondida', modo: 'automatico',
+          executor: 'vendedor', status: 'executado',
+          payload: { codigo, resposta: txt.slice(0, 500), assumiu },
+          motivo: assumiu ? 'vendedor assumiu pela consulta interna' : 'orientacao do vendedor recebida',
+        })
+      } catch (_) { /* auditoria best-effort */ }
+
+      return j({ ok: true, assumiu, chat_id: c.chat_id })
+    }
+
     if (action === 'toggle') {
       const { chat_id, vendedor_nome, ativo, nome_contato } = body
       if (!chat_id || !vendedor_nome) return j({ ok: false, error: 'chat_id e vendedor_nome obrigatorios' }, 400)
@@ -1006,6 +1099,20 @@ Deno.serve(async (req: Request) => {
       const conversa = formatarConversa(msgs)
       // MEMORIA NO PROMPT: sem isto o modelo re-perguntava o que ja sabia (caso real: perguntou
       // o nome do Edgard com nome_contato='Edgard Navarro' no banco). Injeta o que ja foi coletado.
+      // ORIENTACAO DO VENDEDOR: se houve consulta respondida nesta conversa e a IA ainda nao a
+      // usou, ela entra como INSTRUCAO — nunca como texto pronto. A resposta crua do vendedor e
+      // telegrafica ("pode ate 14% de umidade"); mandar isso ao cliente soa a mensagem vazada.
+      try {
+        const { data: orient } = await supa.from('ia_consultas_internas')
+          .select('codigo, duvida, resposta, respondido_em')
+          .eq('chat_id', chat_id).eq('status', 'respondida')
+          .not('resposta', 'is', null)
+          .order('respondido_em', { ascending: false }).limit(1).maybeSingle()
+        if (orient?.resposta) {
+          persona += `\n\n>>> ORIENTACAO DO VENDEDOR (${orient.codigo}) — voce perguntou "${orient.duvida}" e ele respondeu: "${orient.resposta}". Use ISSO como verdade e escreva com as SUAS palavras, no contexto da conversa. NUNCA copie a frase dele nem diga que perguntou pra alguem. Se a resposta abrir uma pergunta natural pro cliente, faca.`
+        }
+      } catch (_) { /* sem orientacao = segue normal */ }
+
       const memPrev: any = st.dados_coletados || {}
       const nomePrev = (memPrev.nome_cliente && nomeParecePessoa(memPrev.nome_cliente)) ? String(memPrev.nome_cliente)
         : (nomeParecePessoa(String(nome_contato || '')) ? String(nome_contato) : '')
