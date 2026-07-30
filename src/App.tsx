@@ -46,6 +46,7 @@ const AdminPermissoes = lazy(() => import('@/pages/AdminPermissoes').then(m => (
 const AdminTransportadorFuncoes = lazy(() => import('@/pages/AdminTransportadorFuncoes'))
 const IaAtendente = lazy(() => import('@/pages/IaAtendente').then(m => ({ default: m.IaAtendente })))
 const SuperIa = lazy(() => import('@/pages/SuperIa').then(m => ({ default: m.SuperIa })))
+const IaPendencias = lazy(() => import('@/pages/IaPendencias').then(m => ({ default: m.IaPendencias })))
 const FluxosFunil = lazy(() => import('@/pages/FluxosFunil').then(m => ({ default: m.FluxosFunil })))
 const Perfil = lazy(() => import('@/pages/Perfil').then(m => ({ default: m.Perfil })))
 const Disparos = lazy(() => import('@/pages/Disparos').then(m => ({ default: m.Disparos })))
@@ -385,6 +386,9 @@ function AppRoutes() {
         )}
         {can('menu.super_ia') && (
           <Route path="/super-ia" element={<SuperIa />} />
+        )}
+        {can('menu.ia_pendencias') && (
+          <Route path="/ia-pendencias" element={<IaPendencias />} />
         )}
         {can('menu.fluxos_funil') && (
           <Route path="/fluxos" element={<FluxosFunil />} />

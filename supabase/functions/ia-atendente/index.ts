@@ -369,7 +369,21 @@ O que cada campo significa (QUANDO usar cada um, voce decide pelo seu raciocinio
   o campo "texto" e uma frase CURTA avisando o cliente que voce esta confirmando — sem dizer que
   perguntou pra alguem, sem prometer prazo. Deixe null quando souber responder.
   NUNCA use isto pra fugir de pergunta que a sua base responde: consultar por preguica gasta o
-  tempo do vendedor e faz o cliente esperar a toa.`
+  tempo do vendedor e faz o cliente esperar a toa.
+- pedir_aprovacao: {"tipo": "desconto"|"condicao", "pedido": "<o que o cliente pediu, na palavra
+  dele>", "valor_referencia": <numero ou null>} quando o cliente pedir DESCONTO acima do que voce
+  pode dar, ou CONDICAO DE PAGAMENTO fora do padrao da casa (entrada menor, mais parcelas, prazo
+  diferente). O teto de desconto e 5% a vista sobre o valor do equipamento — nao existe excecao.
+  A condicao padrao e: 25% no pedido, 25% com o equipamento pronto e 50% no boleto apos o
+  carregamento (sujeito a analise de credito); producao em 90 dias uteis. Qualquer coisa diferente
+  disso quem aprova e o financeiro, nunca voce. "valor_referencia" e o numero que da liga ao pedido
+  (o % que ele pediu, ou o valor da entrada que ele propos) — null se ele nao citou numero.
+  NAO use este campo pra desconto a vista DENTRO do teto: esse voce ja pode oferecer na hora.
+  Enquanto a aprovacao nao volta, o campo "texto" e uma frase CURTA dizendo que voce esta vendo
+  isso pra ele. NAO prometa o desconto nem a condicao, NAO de contraproposta e NAO diga que
+  perguntou pra alguem. E NUNCA anuncie o limite ("meu maximo e 5%", "so posso parcelar em X"):
+  quem ouve o limite passa a pedir sempre o limite. Voce entrega o resultado, nao a regra da casa.
+  Deixe null quando nao for pedido de desconto nem de condicao.`
 
 function montarPersonaPiloto(p: any, vendedor: string, kb: string, midias: any[]): string {
   const primeiro = String(vendedor || '').split(' ')[0]
@@ -496,6 +510,24 @@ function textoConsulta(c: any): string {
   if (c.contexto) linhas.push('Contexto: ' + c.contexto)
   linhas.push('', 'Duvida:', c.duvida, '', 'Me responde aqui que eu passo pro cliente.')
   linhas.push('Se preferir atender voce mesmo, responda "deixa comigo".')
+  return linhas.join('\n')
+}
+
+// Recado de APROVACAO COMERCIAL. Nao e duvida: aqui a IA SABE a regra e sabe que o pedido esta
+// fora dela — o que falta e a decisao de quem pode abrir excecao. Por isso o texto poe o pedido
+// em destaque e cobra um sim ou um nao, nao uma explicacao. O vendedor le no celular, no meio
+// de outra coisa: se ele precisar interpretar, ele nao responde.
+function textoAprovacao(c: any): string {
+  const linhas = [
+    'Pedido de aprovacao — ' + c.codigo,
+    '',
+    'Cliente: ' + (c.cliente_nome || 'sem nome') + (c.cliente_telefone ? ' (' + c.cliente_telefone + ')' : ''),
+    (c.ehDesconto ? 'Pediu desconto: ' : 'Pediu condicao: ') + c.pedido,
+  ]
+  if (c.valorRef !== null && c.valorRef !== undefined) linhas.push('Referencia: ' + c.valorRef)
+  if (c.contexto) linhas.push('Contexto: ' + c.contexto)
+  linhas.push('', 'Pode?', 'Responde "pode" ou "nao pode" — se valer outra condicao, me diz qual que eu passo pro cliente.')
+  linhas.push('Se preferir negociar voce mesmo, responda "deixa comigo".')
   return linhas.join('\n')
 }
 
@@ -1163,6 +1195,12 @@ Deno.serve(async (req: Request) => {
             ? `
 
 >>> BASE DE FRETE RECEBIDA (${orient.codigo}) — voce pediu frete para "${orient.duvida}" e a logistica respondeu: "${orient.resposta}". Passe esse valor ao cliente com as SUAS palavras, deixando claro que e ESTIMATIVA e pode ajustar na contratacao da transportadora. NUNCA diga que perguntou pra alguem nem cite nome de colega. Se a resposta nao trouxer valor claro, NAO invente: use consultar_vendedor.`
+            : orient.tipo === 'aprovacao'
+            // Aprovacao volta como SIM ou NAO, e o NAO e o caso perigoso: sem instrucao o modelo
+            // inventa um meio-termo pra nao frustrar o cliente — e meio-termo aqui e desconto que
+            // ninguem autorizou. Perder a venda no nao e recuperavel; conceder o que a casa nao
+            // honra, nao e.
+            ? `\n\n>>> RESPOSTA DA APROVACAO (${orient.codigo}) — voce pediu aprovacao para "${orient.duvida}" e a resposta foi: "${orient.resposta}". Se APROVARAM, passe a condicao ao cliente com as SUAS palavras, como decisao sua, e siga pro proximo passo. Se NAO aprovaram, NAO invente meio-termo, NAO prometa tentar de novo e NAO devolva a bola pro cliente ("quanto voce consegue?"): apresente a condicao padrao com naturalidade e continue a conversa. Nos dois casos, nunca diga que consultou alguem e nunca cite limite, teto nem regra interna da casa.`
             : `\n\n>>> ORIENTACAO DO VENDEDOR (${orient.codigo}) — voce perguntou "${orient.duvida}" e ele respondeu: "${orient.resposta}". Use ISSO como verdade e escreva com as SUAS palavras, no contexto da conversa. NUNCA copie a frase dele nem diga que perguntou pra alguem. Se a resposta abrir uma pergunta natural pro cliente, faca.`
         }
       } catch (_) { /* sem orientacao = segue normal */ }
@@ -1222,7 +1260,7 @@ Deno.serve(async (req: Request) => {
       // Persona que RACIOCINA merece modelo cheio; a global segue mini pros outros vendedores.
       const modelos = [personaPilotoAtiva?.modelo || cfg.modelo, cfg.modelo, cfg.fallback]
         .filter((v, i, a) => v && a.indexOf(v) === i)
-      let texto: string | null = null, midiaId: number | null = null, mostrarFabrica: string | null = null, consultarVendedor: string | null = null, pedirFrete: string | null = null, gerarOrcamento: any = null, lastErr = ''
+      let texto: string | null = null, midiaId: number | null = null, mostrarFabrica: string | null = null, consultarVendedor: string | null = null, pedirFrete: string | null = null, gerarOrcamento: any = null, pedirAprovacao: any = null, lastErr = ''
       let temperatura: string | null = null, dados: any = null, vendedorAssumir = false, encerrar = false
       let etiquetaModelo: string | null = null
       for (const model of modelos) {
@@ -1251,6 +1289,12 @@ Deno.serve(async (req: Request) => {
               ? parsed.pedir_frete.trim().slice(0, 300) : null
             gerarOrcamento = (parsed.gerar_orcamento && typeof parsed.gerar_orcamento === 'object'
               && typeof parsed.gerar_orcamento.modelo === 'string') ? parsed.gerar_orcamento : null
+            // Sem "pedido" escrito nao existe recado: o vendedor leria "Pediu desconto:" em branco
+            // e teria que abrir a conversa pra descobrir o que foi pedido. O tipo pode vir torto,
+            // o pedido nao pode faltar.
+            pedirAprovacao = (parsed.pedir_aprovacao && typeof parsed.pedir_aprovacao === 'object'
+              && typeof parsed.pedir_aprovacao.pedido === 'string' && parsed.pedir_aprovacao.pedido.trim())
+              ? parsed.pedir_aprovacao : null
             temperatura = ['quente', 'morno', 'frio'].includes(parsed.temperatura) ? parsed.temperatura : null
             dados = (parsed.dados && typeof parsed.dados === 'object') ? parsed.dados : null
             vendedorAssumir = parsed.vendedor_assumir === true
@@ -1262,7 +1306,12 @@ Deno.serve(async (req: Request) => {
       }
       if (!texto) return j({ ok: false, error: 'openai_failed', detail: lastErr }, 500)
 
-      if (/R\$\s?\d/.test(texto)) {
+      // (30/07) O piloto PODE falar preco — ele tem a tabela na base e a instrucao de dizer o
+      // numero (cliente que le no celular muitas vezes nao abre a foto). Este guard existe pra IA
+      // fixa, que NAO tem os precos e por isso so podia inventar.
+      // Se ficasse valendo pro piloto, ele engoliria justamente o que o fluxo novo produz: a base
+      // de frete que o Jardel respondeu e o desconto que o vendedor aprovou.
+      if (!personaPiloto && /R\$\s?\d/.test(texto)) {
         // Modelo vazou preco: troca por texto seguro SEM re-perguntar uso ja respondido.
         const usoPrev = String(((st.dados_coletados || {}).uso || (st.dados_coletados || {}).finalidade) || '')
         texto = usoPrev
@@ -1682,6 +1731,60 @@ Deno.serve(async (req: Request) => {
         }
       }
 
+      // APROVACAO COMERCIAL (30/07) — desconto e condicao de pagamento nao se respondem na hora.
+      // O teto (5% a vista sobre o equipamento) e a condicao padrao (25% no pedido / 25% pronto /
+      // 50% no boleto apos carregar) sao regra da casa; fora deles quem decide e o financeiro.
+      // A IA pede e ESPERA: prometer primeiro e pedir depois cria uma negociacao que a casa nao
+      // vai honrar, e desdizer isso na frente do cliente queima o vendedor.
+      // Roda ANTES do bloco de orcamento de proposito — com desconto pendente, gerar o PDF no
+      // preco cheio manda ao cliente exatamente a resposta que ele nao pediu. O !consultaAberta
+      // la embaixo ja segura isso sozinho, sem precisar de guarda nova.
+      if (personaPiloto && pedirAprovacao && !encerrar && !consultaAberta) {
+        const mem: any = st.dados_coletados || {}
+        const pedido = String(pedirAprovacao.pedido || '').trim().slice(0, 300)
+        // Tipo torto nao invalida o pedido — quem carrega o sentido e a frase do cliente. Cair em
+        // "condicao" e o lado seguro: condicao e o caso que sempre exige o financeiro.
+        const ehDesconto = String(pedirAprovacao.tipo || '').toLowerCase() === 'desconto'
+        // null/''/undefined viram 0 no Number(), e "Referencia: 0" o vendedor le como zero de
+        // verdade. Sem numero e sem linha — melhor faltar do que mentir um valor.
+        const vrRaw = pedirAprovacao.valor_referencia
+        const vr = (vrRaw === null || vrRaw === undefined || vrRaw === '') ? NaN : Number(vrRaw)
+        const valorRef = Number.isFinite(vr) ? vr : null
+        const ctx = [mem.equipamento, mem.producao_kgh ? `${mem.producao_kgh} kg/h` : null,
+                     mem.cidade, mem.resumo].filter(Boolean).join(' · ').slice(0, 300)
+        const ap = await abrirConsulta(supa, {
+          tipo: 'aprovacao', chat_id, vendedor_nome: st.vendedor_nome,
+          cliente_nome: nomeBom || st.nome_contato || null,
+          cliente_telefone: String(chat_id).replace(/@.*/, ''),
+          // Esta string e o que vira hash de idempotencia: o mesmo pedido repetido ("e ai, saiu o
+          // desconto?") reaproveita a consulta em vez de cutucar o vendedor de novo.
+          duvida: (ehDesconto ? 'Desconto: ' : 'Condicao de pagamento: ') + pedido
+                  + (valorRef !== null ? ' (referencia: ' + valorRef + ')' : ''),
+          contexto: ctx || null,
+        })
+        // Reaproveitada tambem ocupa a vaga: o pedido segue pendente, e cair no bloco de orcamento
+        // agora entregaria a proposta no preco cheio no meio da espera. O recado em si nao repete —
+        // quem filtra e o !reaproveitada la na montagem da resposta.
+        if (ap) consultaAberta = { ...ap, ehAprovacao: true, pedido, valorRef, ehDesconto }
+        if (ap && !ap.reaproveitada) {
+          await supa.from('ia_atendimentos').update({
+            estado: 'WAITING_INTERNAL_GUIDANCE', estado_desde: new Date().toISOString(),
+            estado_motivo: ap.codigo, atualizado_em: new Date().toISOString(),
+          }).eq('chat_id', chat_id)
+          try {
+            await supa.from('automation_runs').insert({
+              regra_key: 'ia_atendente', vendedor_nome: st.vendedor_nome, chat_id,
+              acao: 'ia_pediu_aprovacao', modo: 'automatico', executor: 'ia', status: 'executado',
+              payload: { codigo: ap.codigo, tipo: ehDesconto ? 'desconto' : 'condicao',
+                         pedido, valor_referencia: valorRef, destinatario: ap.destinatario_nome },
+              motivo: 'IA pediu aprovacao comercial em vez de prometer',
+            })
+          } catch (_) { /* auditoria best-effort */ }
+        }
+        // Esperando aprovacao ela nao encerra nem etiqueta: a conversa nao acabou, esta em espera.
+        if (ap) { vendedorAssumir = false; etiquetaModelo = null }
+      }
+
       // PEDIDO DE ORCAMENTO (30/07) — a IA ESCOLHE um modelo pronto, nao monta itens.
       // Montar item a item e engenharia de layout: o orcamento real de uma fabrica completa tem
       // 11 pecas com a funcao de cada transportador escrita a mao. A IA inventaria isso.
@@ -1860,10 +1963,13 @@ Deno.serve(async (req: Request) => {
       const consultaInterna = (consultaAberta && !consultaAberta.reaproveitada)
         ? { codigo: consultaAberta.codigo, telefone: consultaAberta.destinatario_tel,
             // Frete vai pro responsavel pela logistica, e num formato proprio (destino + carga).
+            // Aprovacao vai pro vendedor pedindo um sim ou um nao, nao uma explicacao.
             // Duvida comum vai pro vendedor, com o contexto comercial.
             texto: consultaAberta.ehFrete
               ? textoFrete({ ...consultaAberta, duvida: pedirFrete, vendedor_nome: st.vendedor_nome })
-              : textoConsulta({ ...consultaAberta, duvida: consultarVendedor }) }
+              : consultaAberta.ehAprovacao
+                ? textoAprovacao(consultaAberta)
+                : textoConsulta({ ...consultaAberta, duvida: consultarVendedor }) }
         : undefined
 
       return j({ ok: true, texto, midia, midias: fabricaMidias.length ? fabricaMidias : undefined,

@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, ChevronDown, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Package, Zap, BookOpen, Settings, TrendingUp, MessageSquarePlus, FilePlus2, Truck, History, Search, Wallet, MapPin, Star, Target, Boxes, Calculator, ClipboardList, Beef, Wheat, Bot, Workflow, CalendarDays, Brain } from 'lucide-react'
+import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, ChevronDown, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Package, Zap, BookOpen, Settings, TrendingUp, MessageSquarePlus, FilePlus2, Truck, History, Search, Wallet, MapPin, Star, Target, Boxes, Calculator, ClipboardList, Beef, Wheat, Bot, Workflow, CalendarDays, Brain, BellRing } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { cn } from '@/lib/utils'
@@ -121,6 +121,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/disparos', label: 'Roteamento', icon: GitBranch, permKey: 'menu.disparos' },
       { to: '/ia-atendente', label: 'IA Atendente', icon: Bot, permKey: 'menu.ia_atendente' },
       { to: '/super-ia', label: 'Super IA', icon: Brain, permKey: 'menu.super_ia' },
+      { to: '/ia-pendencias', label: 'Pendências da IA', icon: BellRing, permKey: 'menu.ia_pendencias' },
       { to: '/fluxos', label: 'Fluxos do Funil', icon: Workflow, permKey: 'menu.fluxos_funil' },
       { to: '/admin/usuarios', label: 'Usuários', icon: Shield, permKey: 'menu.admin_usuarios' },
       { to: '/admin/permissoes', label: 'Permissões', icon: Settings, permKey: 'menu.admin_permissoes' },
