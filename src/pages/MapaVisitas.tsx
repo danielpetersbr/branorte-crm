@@ -116,6 +116,15 @@ function pinCentro(): L.DivIcon {
 
 const brl = (v: number | null) =>
   v == null ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+// Valor curto pro painel por estado (a coluna é estreita): R$ 6,7 mi · R$ 904 mil
+const brlCurto = (v: number) => {
+  if (!v) return 'R$ 0'
+  if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mi`
+  if (v >= 1_000) return `R$ ${Math.round(v / 1_000).toLocaleString('pt-BR')} mil`
+  return brl(v)
+}
+// UF normalizada. Sem estado vira '—' (bucket próprio) pra não colidir com ''=“todos”.
+const ufKey = (uf: string | null) => (uf || '').trim().toUpperCase() || '—'
 const esc = (s: string | null) => (s || '').replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] as string))
 const dataBR = (iso: string | null) => (iso ? new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR') : '—')
 const dataHoraBR = (iso: string | null) => (iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—')
@@ -224,6 +233,8 @@ export function MapaVisitas() {
   const [sugAberta, setSugAberta] = useState(false)
   const [vendFiltro, setVendFiltro] = useState<VendFiltro>('todos')
   const [visitaFiltro, setVisitaFiltro] = useState<VisitaFiltro>('todos')
+  const [ufSel, setUfSel] = useState<string>('')   // '' = todos os estados
+  const [ufSheet, setUfSheet] = useState(false)    // painel por estado no celular
   const [showLista, setShowLista] = useState(false)
   // modal de marcação (visita feita + anotação)
   const [marcarAlvo, setMarcarAlvo] = useState<{ chave: string; cliente: string | null; telefone: string | null } | null>(null)
@@ -312,12 +323,15 @@ export function MapaVisitas() {
   const visFiltradas = useMemo(
     () => comCoord.filter(v =>
       (!vendedorSel || (v.vendedor_nome || '—') === vendedorSel) &&
+      (!ufSel || ufKey(v.estado) === ufSel) &&
       (!termo || [v.nome, v.cidade, v.estado, v.telefone, v.vendedor_nome, v.interesse]
         .some(x => (x || '').toLowerCase().includes(termo)))
     ),
-    [comCoord, vendedorSel, termo]
+    [comCoord, vendedorSel, termo, ufSel]
   )
-  const orcFiltrados = useMemo(
+  // Base = todos os filtros MENOS o de estado. É dela que sai o painel "por estado"
+  // (se saísse de orcFiltrados, ao escolher um estado os outros sumiriam da lista).
+  const orcBase = useMemo(
     () => orcPontos.filter(p =>
       (!vendedorSel || (p.vendedor || '—') === vendedorSel) &&
       passaFiltro(p.vendido, p.total) &&
@@ -328,6 +342,26 @@ export function MapaVisitas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [orcPontos, vendedorSel, termo, vendFiltro, visitaFiltro, marc]
   )
+  const orcFiltrados = useMemo(
+    () => (ufSel ? orcBase.filter(p => ufKey(p.uf) === ufSel) : orcBase),
+    [orcBase, ufSel]
+  )
+
+  // Soma por ESTADO do que está no mapa. 1 valor por cliente: orçamento mais recente
+  // (ou, se já comprou, a soma das vendas dele) — mesmo valor que decide ⭐/💎 no pino.
+  const porUF = useMemo(() => {
+    const m = new Map<string, { uf: string; n: number; total: number }>()
+    for (const p of orcBase) {
+      const k = ufKey(p.uf)
+      const e = m.get(k) ?? { uf: k, n: 0, total: 0 }
+      e.n++
+      e.total += p.total || 0
+      m.set(k, e)
+    }
+    return [...m.values()].sort((a, b) => b.total - a.total || b.n - a.n)
+  }, [orcBase])
+  const ufMaior = porUF[0]?.total || 1
+  const ufSomaGeral = useMemo(() => porUF.reduce((s, u) => s + u.total, 0), [porUF])
 
   // Autocomplete de CIDADES: índice de cidades distintas (dos orçamentos) + contagem.
   const cidadesIndex = useMemo(() => {
@@ -382,11 +416,12 @@ export function MapaVisitas() {
   const listaFiltrada = useMemo(() => {
     return lista.filter(r =>
       passaFiltro(r.vendido, r.total) &&
+      (!ufSel || ufKey(r.uf) === ufSel) &&
       (!termo || [r.numero, r.cliente, r.equipamento, r.cidade, r.uf]
         .some(x => (x || '').toLowerCase().includes(termo)))
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lista, termo, vendFiltro])
+  }, [lista, termo, vendFiltro, ufSel])
 
   // lista ordenada (clique no header)
   const sortedLista = useMemo(() => {
@@ -627,6 +662,30 @@ export function MapaVisitas() {
   const togglePill = (ativo: boolean) =>
     `h-9 px-3 rounded-md border text-[13px] font-semibold transition-colors ${ativo ? 'bg-accent-bg border-accent/40 text-accent' : 'bg-surface border-border text-ink-muted hover:text-ink'}`
 
+  // Lista "por estado" — barra proporcional ao valor; clicar filtra o mapa naquele estado.
+  const listaUF = (cls: string, aoEscolher?: () => void) => (
+    <ul className={`space-y-0.5 ${cls}`}>
+      {porUF.map(u => (
+        <li key={u.uf}>
+          <button
+            onClick={() => { setUfSel(s => (s === u.uf ? '' : u.uf)); aoEscolher?.() }}
+            title={`${u.uf === '—' ? 'Sem estado no cadastro' : u.uf} · ${u.n} cliente${u.n === 1 ? '' : 's'} · ${brl(u.total)}`}
+            className={`relative w-full overflow-hidden rounded-md px-2 py-1.5 text-left transition-colors ${ufSel === u.uf ? 'bg-accent-bg ring-1 ring-accent/40' : 'hover:bg-surface-2 active:bg-surface-2'}`}
+          >
+            <span className="absolute inset-y-0 left-0 bg-accent/15 pointer-events-none"
+                  style={{ width: `${Math.max(2, (u.total / ufMaior) * 100)}%` }} />
+            <span className="relative flex items-center gap-2">
+              <span className="w-7 shrink-0 text-[12px] font-bold text-ink">{u.uf}</span>
+              <span className="text-[10px] tabular-nums text-ink-faint">{u.n}</span>
+              <span className="ml-auto text-[12px] font-semibold tabular-nums text-ink">{brlCurto(u.total)}</span>
+            </span>
+          </button>
+        </li>
+      ))}
+      {porUF.length === 0 && <li className="text-[12px] text-ink-muted px-2 py-1.5">Nenhum cliente no filtro atual.</li>}
+    </ul>
+  )
+
   return (
     <div className="relative flex flex-col overflow-hidden md:p-4 md:gap-3 h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))]">
       {/* selo ✓ não pode capturar clique — senão não dá pra abrir o popup do pino visitado */}
@@ -640,6 +699,11 @@ export function MapaVisitas() {
             {showOrc && showVis && ' · '}
             {showVis && <>{visFiltradas.length} visitas{semCoord > 0 && <> · <span className="text-warning">{semCoord} sem localização</span></>}</>}
             {!showOrc && !showVis && 'Ligue uma camada pra ver os pontos'}
+            {ufSel && (
+              <> · <button onClick={() => setUfSel('')} className="text-accent font-semibold hover:underline" title="Mostrar o Brasil todo">
+                {ufSel === '—' ? 'sem estado' : ufSel} ✕
+              </button></>
+            )}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
@@ -784,6 +848,7 @@ export function MapaVisitas() {
             </div>
             <button onClick={() => { setModoRaio(v => !v); if (modoRaio) setCentro(null) }} className={`h-9 px-3 rounded-lg border text-[12px] font-semibold shadow ${modoRaio ? 'bg-accent text-white border-accent' : 'bg-surface/95 backdrop-blur border-border text-ink-muted'}`}>🎯 Raio</button>
             <button onClick={() => setShowVis(v => !v)} className={`h-9 px-3 rounded-lg border text-[12px] font-semibold shadow ${showVis ? 'bg-accent text-white border-accent' : 'bg-surface/95 backdrop-blur border-border text-ink-muted'}`}>📍 Visitas</button>
+            <button onClick={() => setUfSheet(true)} className={`h-9 px-3 rounded-lg border text-[12px] font-semibold shadow ${ufSel ? 'bg-accent text-white border-accent' : 'bg-surface/95 backdrop-blur border-border text-ink-muted'}`}>🗺️ {ufSel || 'Estados'}</button>
           </div>
           {modoRaio && (
             <div className="pointer-events-auto flex items-center gap-2 rounded-lg bg-surface/95 backdrop-blur border border-border px-3 py-2 text-[12px] text-ink shadow">
@@ -857,6 +922,27 @@ export function MapaVisitas() {
                       <br />(1 pino por cliente — quem comprou +1x conta como 1)
                     </div>
                   )}
+
+                  {/* ===== Soma por ESTADO (clique filtra o mapa) ===== */}
+                  {porUF.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-border">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="text-[11px] uppercase tracking-wide text-ink-faint">
+                          {vendFiltro === 'vendidos' ? 'Vendido' : 'Orçado'} · por estado
+                        </span>
+                        {ufSel && (
+                          <button onClick={() => setUfSel('')} className="ml-auto text-[10px] font-semibold text-accent hover:underline">
+                            limpar
+                          </button>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-ink-faint mb-2 leading-snug"
+                           title="Soma dos pinos exibidos: 1 valor por cliente — o orçamento mais recente dele (ou a soma das vendas, se já comprou).">
+                        Total <b className="text-ink-muted tabular-nums">{brl(ufSomaGeral)}</b> · 1 valor por cliente
+                      </div>
+                      {listaUF('max-h-[42vh] overflow-y-auto -mx-1 px-1')}
+                    </div>
+                  )}
                 </div>
               )}
               {showVis && vendedores.length > 1 && (
@@ -877,6 +963,23 @@ export function MapaVisitas() {
         </div>
       </div>
 
+      {/* Celular: folha "por estado" (mesma soma da sidebar do desktop) */}
+      {ufSheet && (
+        <div className="md:hidden fixed inset-0 z-[1300] bg-black/40 flex items-end" onClick={() => setUfSheet(false)}>
+          <div className="bg-surface w-full rounded-t-2xl border-t border-border p-4 pb-safe max-h-[78vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <div className="text-[15px] font-semibold text-ink">{vendFiltro === 'vendidos' ? 'Vendido' : 'Orçado'} por estado</div>
+              {ufSel && <button onClick={() => { setUfSel(''); setUfSheet(false) }} className="ml-auto text-[13px] font-semibold text-accent">Brasil todo</button>}
+              <button onClick={() => setUfSheet(false)} className={`h-8 w-8 rounded-md text-ink-muted ${ufSel ? '' : 'ml-auto'}`}>✕</button>
+            </div>
+            <div className="text-[11px] text-ink-faint mt-1 mb-2 leading-snug">
+              Total <b className="text-ink-muted tabular-nums">{brl(ufSomaGeral)}</b> · 1 valor por cliente · toque num estado pra filtrar o mapa
+            </div>
+            {listaUF('flex-1 overflow-y-auto -mx-1 px-1', () => setUfSheet(false))}
+          </div>
+        </div>
+      )}
+
       {/* Overlay: lista (tabela) */}
       {showLista && (
         <div className="fixed inset-0 z-[1000] bg-black/40 flex items-center justify-center p-4" onClick={() => setShowLista(false)}>
@@ -884,6 +987,11 @@ export function MapaVisitas() {
             <div className="flex flex-wrap items-center gap-2 md:gap-3 p-3 border-b border-border shrink-0">
               <h2 className="text-[16px] font-semibold text-ink">Orçamentos cadastrados</h2>
               <span className="text-[12px] text-ink-muted">{sortedLista.length} de {lista.length}</span>
+              {ufSel && (
+                <button onClick={() => setUfSel('')} className="text-[12px] font-semibold text-accent hover:underline" title="Tirar o filtro de estado">
+                  {ufSel === '—' ? 'sem estado' : ufSel} ✕
+                </button>
+              )}
               <div className="relative ml-2">
                 <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar…" className="h-8 w-52 px-2 rounded-md bg-surface-2 border border-border text-[13px] text-ink outline-none focus:border-accent" />
               </div>
