@@ -353,6 +353,11 @@ O que cada campo significa (QUANDO usar cada um, voce decide pelo seu raciocinio
 - etiqueta: o nome que a conversa recebe no funil QUANDO voce encerra a sua parte. Enquanto estiver
   conduzindo, null. As opcoes: "NOVO LEAD" | "NAO FABRICAMOS" | "RESOLVIDO". Quando usar cada uma —
   e quando ainda e cedo pra qualquer uma — esta no seu raciocinio acima.
+- pedir_frete: quando o cliente pedir valor de frete E voce ja tiver o ESSENCIAL (o equipamento e
+  a cidade/UF dele), coloque aqui a descricao da carga como voce diria pro responsavel pela
+  logistica (ex.: "Mini Fabrica 300 kg/h, 1 conjunto"). O sistema pede a base pra ele e traz o
+  valor. Se faltar cidade ou equipamento, NAO use este campo — pergunte ao cliente primeiro, e so
+  o que falta. Deixe null quando nao for pedido de frete.
 - consultar_vendedor: quando voce NAO souber e nao puder responder com seguranca, escreva aqui a
   pergunta que voce faria ao vendedor — direta, do jeito que um colega pergunta pro outro. O
   sistema leva ate ele e traz a resposta; voce nao fala com ele, so escreve a pergunta. Nesse caso
@@ -457,6 +462,23 @@ async function contatoInterno(supa: any, papel: string, vendedor: string): Promi
     if (!Array.isArray(data) || !data.length) return null
     return data.find((c: any) => c.vendedor_nome) || data[0]
   } catch (e) { console.error('[ia-atendente] contato interno falhou:', String(e)); return null }
+}
+
+// Recado de FRETE. Formato diferente do de duvida: quem cota precisa de destino e carga, nao do
+// contexto comercial. Mantem o codigo visivel pra ele poder citar quando responder — e o que
+// desambigua quando ha varias cotacoes abertas ao mesmo tempo.
+function textoFrete(c: any): string {
+  const linhas = [
+    'Solicitacao de frete — ' + c.codigo,
+    '',
+    'Cliente: ' + (c.cliente_nome || 'sem nome'),
+    'Destino: ' + (c.destino || 'nao informado'),
+    'Carga: ' + c.duvida,
+    'Vendedor: ' + c.vendedor_nome,
+    '',
+    'Me passa uma base de valor e o prazo, por favor.',
+  ]
+  return linhas.join('\n')
 }
 
 // Monta o recado que o vendedor le. Curto de proposito: ele esta no meio do dia, no celular.
@@ -1104,12 +1126,18 @@ Deno.serve(async (req: Request) => {
       // telegrafica ("pode ate 14% de umidade"); mandar isso ao cliente soa a mensagem vazada.
       try {
         const { data: orient } = await supa.from('ia_consultas_internas')
-          .select('codigo, duvida, resposta, respondido_em')
+          .select('codigo, tipo, duvida, resposta, respondido_em')
           .eq('chat_id', chat_id).eq('status', 'respondida')
           .not('resposta', 'is', null)
           .order('respondido_em', { ascending: false }).limit(1).maybeSingle()
         if (orient?.resposta) {
-          persona += `\n\n>>> ORIENTACAO DO VENDEDOR (${orient.codigo}) — voce perguntou "${orient.duvida}" e ele respondeu: "${orient.resposta}". Use ISSO como verdade e escreva com as SUAS palavras, no contexto da conversa. NUNCA copie a frase dele nem diga que perguntou pra alguem. Se a resposta abrir uma pergunta natural pro cliente, faca.`
+          persona += orient.tipo === 'frete'
+            // Frete e BASE, nao valor fechado. Prometer numero fixo aqui gera discussao na hora
+            // de contratar a transportadora, porque o valor muda.
+            ? `
+
+>>> BASE DE FRETE RECEBIDA (${orient.codigo}) — voce pediu frete para "${orient.duvida}" e a logistica respondeu: "${orient.resposta}". Passe esse valor ao cliente com as SUAS palavras, deixando claro que e ESTIMATIVA e pode ajustar na contratacao da transportadora. NUNCA diga que perguntou pra alguem nem cite nome de colega. Se a resposta nao trouxer valor claro, NAO invente: use consultar_vendedor.`
+            : `\n\n>>> ORIENTACAO DO VENDEDOR (${orient.codigo}) — voce perguntou "${orient.duvida}" e ele respondeu: "${orient.resposta}". Use ISSO como verdade e escreva com as SUAS palavras, no contexto da conversa. NUNCA copie a frase dele nem diga que perguntou pra alguem. Se a resposta abrir uma pergunta natural pro cliente, faca.`
         }
       } catch (_) { /* sem orientacao = segue normal */ }
 
@@ -1168,7 +1196,7 @@ Deno.serve(async (req: Request) => {
       // Persona que RACIOCINA merece modelo cheio; a global segue mini pros outros vendedores.
       const modelos = [personaPilotoAtiva?.modelo || cfg.modelo, cfg.modelo, cfg.fallback]
         .filter((v, i, a) => v && a.indexOf(v) === i)
-      let texto: string | null = null, midiaId: number | null = null, mostrarFabrica: string | null = null, consultarVendedor: string | null = null, lastErr = ''
+      let texto: string | null = null, midiaId: number | null = null, mostrarFabrica: string | null = null, consultarVendedor: string | null = null, pedirFrete: string | null = null, lastErr = ''
       let temperatura: string | null = null, dados: any = null, vendedorAssumir = false, encerrar = false
       let etiquetaModelo: string | null = null
       for (const model of modelos) {
@@ -1193,6 +1221,8 @@ Deno.serve(async (req: Request) => {
             mostrarFabrica = (typeof parsed.mostrar_fabrica === 'string') ? parsed.mostrar_fabrica.trim().toLowerCase() : null
             consultarVendedor = (typeof parsed.consultar_vendedor === 'string' && parsed.consultar_vendedor.trim())
               ? parsed.consultar_vendedor.trim().slice(0, 500) : null
+            pedirFrete = (typeof parsed.pedir_frete === 'string' && parsed.pedir_frete.trim())
+              ? parsed.pedir_frete.trim().slice(0, 300) : null
             temperatura = ['quente', 'morno', 'frio'].includes(parsed.temperatura) ? parsed.temperatura : null
             dados = (parsed.dados && typeof parsed.dados === 'object') ? parsed.dados : null
             vendedorAssumir = parsed.vendedor_assumir === true
@@ -1587,6 +1617,43 @@ Deno.serve(async (req: Request) => {
         if (consultaAberta) { vendedorAssumir = false; etiquetaModelo = null }
       }
 
+      // PEDIDO DE FRETE (30/07) — pergunta a base pro responsavel em vez de inventar valor.
+      // Exige cidade: sem destino nao existe cotacao, e mandar "quanto custa o frete?" sem cidade
+      // so faz o Jardel devolver a mesma pergunta. Se faltar, a IA pergunta ao cliente (o proprio
+      // prompt manda isso) e este bloco nem roda.
+      if (personaPiloto && pedirFrete && !encerrar && !consultaAberta) {
+        const mem: any = st.dados_coletados || {}
+        const cidade = String(mem.cidade || '').trim()
+        const uf = String(mem.uf || '').trim()
+        if (!cidade) {
+          console.log('[ia-atendente] pedir_frete ignorado: sem cidade (' + chat_id + ')')
+        } else {
+          const destino = [cidade, uf].filter(Boolean).join('/')
+          const fr = await abrirConsulta(supa, {
+            tipo: 'frete', chat_id, vendedor_nome: st.vendedor_nome,
+            cliente_nome: nomeBom || st.nome_contato || null,
+            cliente_telefone: String(chat_id).replace(/@.*/, ''),
+            duvida: pedirFrete, contexto: destino,
+          })
+          if (fr && !fr.reaproveitada) {
+            consultaAberta = { ...fr, destino, ehFrete: true }
+            await supa.from('ia_atendimentos').update({
+              estado: 'WAITING_FREIGHT_QUOTE', estado_desde: new Date().toISOString(),
+              estado_motivo: fr.codigo, atualizado_em: new Date().toISOString(),
+            }).eq('chat_id', chat_id)
+            try {
+              await supa.from('automation_runs').insert({
+                regra_key: 'ia_atendente', vendedor_nome: st.vendedor_nome, chat_id,
+                acao: 'ia_pediu_frete', modo: 'automatico', executor: 'ia', status: 'executado',
+                payload: { codigo: fr.codigo, carga: pedirFrete, destino },
+                motivo: 'IA solicitou base de frete',
+              })
+            } catch (_) { /* auditoria best-effort */ }
+            vendedorAssumir = false; etiquetaModelo = null
+          }
+        }
+      }
+
       const acoes: any = { etiqueta: null, desligada: false }
       const upd: any = { respostas_hoje: respostasHoje + 1, dia_ref: hojeBR, atualizado_em: new Date().toISOString() }
       if (temperatura) upd.temperatura = temperatura
@@ -1703,7 +1770,11 @@ Deno.serve(async (req: Request) => {
       // registramos, mas NAO mandamos de novo (era a rajada que enchia o vendedor).
       const consultaInterna = (consultaAberta && !consultaAberta.reaproveitada)
         ? { codigo: consultaAberta.codigo, telefone: consultaAberta.destinatario_tel,
-            texto: textoConsulta({ ...consultaAberta, duvida: consultarVendedor }) }
+            // Frete vai pro responsavel pela logistica, e num formato proprio (destino + carga).
+            // Duvida comum vai pro vendedor, com o contexto comercial.
+            texto: consultaAberta.ehFrete
+              ? textoFrete({ ...consultaAberta, duvida: pedirFrete, vendedor_nome: st.vendedor_nome })
+              : textoConsulta({ ...consultaAberta, duvida: consultarVendedor }) }
         : undefined
 
       return j({ ok: true, texto, midia, midias: fabricaMidias.length ? fabricaMidias : undefined,
