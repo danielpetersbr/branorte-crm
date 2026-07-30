@@ -65,7 +65,13 @@ async function carregarMidias(supa: any) {
 // conversando com o cliente SEM os ~12 mil chars de base de produto (o que a Branorte fabrica e o
 // que nao fabrica), e sem deixar rastro. Nao interrompe o atendimento — a persona dura continua
 // valendo — mas agora a falha aparece no log em vez de sumir.
-async function carregarConhecimento(supa: any, vendedor: string): Promise<string> {
+// (30/07) O CORTE DEIXOU DE SER SILENCIOSO — e passou a ser configuravel.
+// Medido: 58.855 chars ativos de escopo 'empresa' contra um teto fixo de 12.000. 22 dos 29 blocos
+// eram descartados sem uma linha de log — inclusive Dimensionamento, Condicoes comerciais,
+// Objecao/negociacao e Cliente em decisao. A IA respondia como se aquilo nao existisse, e do lado
+// de fora parecia teimosia do modelo. Nao era: o texto nunca chegava nele.
+// Agora quem descarta AVISA, e o piloto pode carregar a base inteira (ia_persona.kb_limite).
+async function carregarConhecimento(supa: any, vendedor: string, limiteEmpresa = 12000): Promise<string> {
   try {
     const { data, error } = await supa.from('ia_conhecimento')
       .select('titulo, conteudo, escopo, vendedor_nome, ordem')
@@ -74,13 +80,19 @@ async function carregarConhecimento(supa: any, vendedor: string): Promise<string
     if (!Array.isArray(data) || !data.length) return ''
     const up = String(vendedor || '').toUpperCase()
     let empresa = '', pessoal = ''
+    const fora: string[] = []
     for (const r of data) {
       const b = `\n## ${r.titulo}\n${r.conteudo}\n`
       if (r.escopo === 'empresa') {
-        if (empresa.length + b.length <= 12000) empresa += b
+        if (empresa.length + b.length <= limiteEmpresa) empresa += b
+        else fora.push(String(r.titulo))
       } else if (String(r.vendedor_nome || '').toUpperCase() === up) {
         if (pessoal.length + b.length <= 2200) pessoal += b
+        else fora.push(String(r.titulo) + ' (pessoal)')
       }
+    }
+    if (fora.length) {
+      console.warn(`[ia-atendente] KB truncada (teto ${limiteEmpresa}): ${fora.length} bloco(s) FORA -> ${fora.join(' | ')}`)
     }
     return empresa + pessoal
   } catch { return '' }
@@ -302,7 +314,7 @@ async function carregarPersonaPiloto(supa: any, vendedor: string): Promise<any |
     if (!data || !data.ativo) return null
     if (data.expira_em && new Date(data.expira_em).getTime() < Date.now()) return null
     const p = await supa.from('ia_persona')
-      .select('versao, conteudo, incluir_kb, incluir_midias')
+      .select('versao, conteudo, incluir_kb, incluir_midias, modelo, kb_limite')
       .eq('versao', data.persona_versao).eq('ativo', true).maybeSingle()
     if (p.error) { console.error('[ia-atendente] persona ilegivel:', p.error.message); return null }
     if (!p.data || !String(p.data.conteudo || '').trim()) return null
@@ -888,7 +900,8 @@ Deno.serve(async (req: Request) => {
       }
 
       const [kb, midias] = await Promise.all([
-        carregarConhecimento(supa, vendedor_nome),
+        // piloto carrega a base inteira; os demais seguem no teto historico de 12k
+        carregarConhecimento(supa, vendedor_nome, personaPilotoAtiva?.kb_limite || 12000),
         cfg.permitirMidia ? carregarMidias(supa) : Promise.resolve([]),
       ])
       const personaPiloto = personaPilotoAtiva   // ja lido no guardrail acima; nao reconsulta
@@ -951,7 +964,9 @@ Deno.serve(async (req: Request) => {
       } catch (_) { /* best-effort: sem criativo, atende normal */ }
       const user = `CONVERSA (WhatsApp, cliente ${nome_contato || 'sem nome'}):\n${conversa}${blocoSei}\n\nEscreva a PRÓXIMA resposta ao cliente (JSON no formato combinado).`
 
-      const modelos = [cfg.modelo, cfg.fallback].filter((v, i, a) => v && a.indexOf(v) === i)
+      // Persona que RACIOCINA merece modelo cheio; a global segue mini pros outros vendedores.
+      const modelos = [personaPilotoAtiva?.modelo || cfg.modelo, cfg.modelo, cfg.fallback]
+        .filter((v, i, a) => v && a.indexOf(v) === i)
       let texto: string | null = null, midiaId: number | null = null, mostrarFabrica: string | null = null, lastErr = ''
       let temperatura: string | null = null, dados: any = null, vendedorAssumir = false, encerrar = false
       let etiquetaModelo: string | null = null
