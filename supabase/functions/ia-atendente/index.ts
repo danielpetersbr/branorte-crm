@@ -353,6 +353,11 @@ O que cada campo significa (QUANDO usar cada um, voce decide pelo seu raciocinio
 - etiqueta: o nome que a conversa recebe no funil QUANDO voce encerra a sua parte. Enquanto estiver
   conduzindo, null. As opcoes: "NOVO LEAD" | "NAO FABRICAMOS" | "RESOLVIDO". Quando usar cada uma —
   e quando ainda e cedo pra qualquer uma — esta no seu raciocinio acima.
+- gerar_orcamento: {"modelo": "<slug do modelo>", "voltagem": "monofasico|trifasico"} quando o
+  cliente JA CONFIRMOU o equipamento e a rede eletrica, e voce tiver o NOME dele. O sistema monta
+  a proposta a partir do modelo, gera o PDF e envia. Antes de usar, CONFIRME com ele numa frase:
+  "so confirmando: mini fabrica de 300, monofasica, correto?". Nunca gere de um modelo que voce
+  nao mostrou. Deixe null quando nao for hora de orcamento.
 - pedir_frete: quando o cliente pedir valor de frete E voce ja tiver o ESSENCIAL (o equipamento e
   a cidade/UF dele), coloque aqui a descricao da carga como voce diria pro responsavel pela
   logistica (ex.: "Mini Fabrica 300 kg/h, 1 conjunto"). O sistema pede a base pra ele e traz o
@@ -675,15 +680,36 @@ Deno.serve(async (req: Request) => {
     }
 
     // Consultas abertas de um vendedor — a extensao usa pra saber se deve olhar o chat proprio.
+    // Devolve junto o que passou do prazo: 'alertar' (1a vez) ou 'reforcar' (uma unica vez mais).
+    // O escopo pede explicitamente que isso NAO vire lembrete infinito — por isso as marcas
+    // ficam em colunas (alertado_em / reforcado_em) e nao em contador: cada uma preenche uma vez.
     if (action === 'consultas_abertas') {
       const { vendedor_nome } = body
       if (!vendedor_nome) return j({ ok: false, error: 'vendedor_nome obrigatorio' }, 400)
+      const vend = String(vendedor_nome).toUpperCase()
+
       const { data } = await supa.from('ia_consultas_internas')
-        .select('codigo, chat_id, cliente_nome, duvida, criado_em, enviada_em')
-        .eq('vendedor_nome', String(vendedor_nome).toUpperCase())
+        .select('codigo, tipo, chat_id, cliente_nome, duvida, criado_em, enviada_em')
+        .eq('vendedor_nome', vend)
         .eq('status', 'aguardando').not('enviada_em', 'is', null)
         .order('criado_em', { ascending: true }).limit(20)
-      return j({ ok: true, consultas: Array.isArray(data) ? data : [] })
+
+      // Vencidas: le a view, marca a coluna correspondente e devolve o aviso UMA vez.
+      let avisos: any[] = []
+      try {
+        const { data: venc } = await supa.from('v_ia_consultas_vencidas')
+          .select('codigo, tipo, cliente_nome, duvida, destinatario_nome, minutos_esperando, acao')
+          .eq('vendedor_nome', vend).neq('acao', 'aguardar').limit(10)
+        for (const v of (venc || [])) {
+          const campo = v.acao === 'alertar' ? 'alertado_em' : 'reforcado_em'
+          const { error } = await supa.from('ia_consultas_internas')
+            .update({ [campo]: new Date().toISOString(), atualizado_em: new Date().toISOString() })
+            .eq('codigo', v.codigo).is(campo, null)   // is(null) = so marca se ninguem marcou antes
+          if (!error) avisos.push(v)
+        }
+      } catch (e) { console.error('[ia-atendente] vencidas falhou:', String(e)) }
+
+      return j({ ok: true, consultas: Array.isArray(data) ? data : [], avisos })
     }
 
     // O vendedor respondeu no chat dele. A extensao manda o texto; aqui decidimos o que fazer.
@@ -1196,7 +1222,7 @@ Deno.serve(async (req: Request) => {
       // Persona que RACIOCINA merece modelo cheio; a global segue mini pros outros vendedores.
       const modelos = [personaPilotoAtiva?.modelo || cfg.modelo, cfg.modelo, cfg.fallback]
         .filter((v, i, a) => v && a.indexOf(v) === i)
-      let texto: string | null = null, midiaId: number | null = null, mostrarFabrica: string | null = null, consultarVendedor: string | null = null, pedirFrete: string | null = null, lastErr = ''
+      let texto: string | null = null, midiaId: number | null = null, mostrarFabrica: string | null = null, consultarVendedor: string | null = null, pedirFrete: string | null = null, gerarOrcamento: any = null, lastErr = ''
       let temperatura: string | null = null, dados: any = null, vendedorAssumir = false, encerrar = false
       let etiquetaModelo: string | null = null
       for (const model of modelos) {
@@ -1223,6 +1249,8 @@ Deno.serve(async (req: Request) => {
               ? parsed.consultar_vendedor.trim().slice(0, 500) : null
             pedirFrete = (typeof parsed.pedir_frete === 'string' && parsed.pedir_frete.trim())
               ? parsed.pedir_frete.trim().slice(0, 300) : null
+            gerarOrcamento = (parsed.gerar_orcamento && typeof parsed.gerar_orcamento === 'object'
+              && typeof parsed.gerar_orcamento.modelo === 'string') ? parsed.gerar_orcamento : null
             temperatura = ['quente', 'morno', 'frio'].includes(parsed.temperatura) ? parsed.temperatura : null
             dados = (parsed.dados && typeof parsed.dados === 'object') ? parsed.dados : null
             vendedorAssumir = parsed.vendedor_assumir === true
@@ -1650,6 +1678,67 @@ Deno.serve(async (req: Request) => {
               })
             } catch (_) { /* auditoria best-effort */ }
             vendedorAssumir = false; etiquetaModelo = null
+          }
+        }
+      }
+
+      // PEDIDO DE ORCAMENTO (30/07) — a IA ESCOLHE um modelo pronto, nao monta itens.
+      // Montar item a item e engenharia de layout: o orcamento real de uma fabrica completa tem
+      // 11 pecas com a funcao de cada transportador escrita a mao. A IA inventaria isso.
+      // O modelo precisa EXISTIR e estar ativo: slug errado vira erro registrado, nao PDF torto.
+      if (personaPiloto && gerarOrcamento && !encerrar && !consultaAberta) {
+        const mem: any = st.dados_coletados || {}
+        const nomeCli = String(nomeBom || mem.nome_cliente || st.nome_contato || '').trim()
+        const slug = String(gerarOrcamento.modelo || '').trim()
+        const volt = String(gerarOrcamento.voltagem || '').trim()
+
+        if (!nomeCli || !slug || !['monofasico', 'trifasico'].includes(volt)) {
+          console.warn('[ia-atendente] gerar_orcamento incompleto (nome/modelo/voltagem) — ignorado')
+        } else {
+          const { data: mod } = await supa.from('orcamento_modelos')
+            .select('slug').eq('slug', slug).eq('ativo', true).maybeSingle()
+          if (!mod) {
+            // Modelo inexistente: NAO gera nada e escala pro vendedor. Melhor o cliente esperar
+            // do que receber proposta de um modelo que a casa nao vende.
+            console.warn('[ia-atendente] modelo de orcamento inexistente: ' + slug)
+            consultaAberta = await abrirConsulta(supa, {
+              tipo: 'orcamento', chat_id, vendedor_nome: st.vendedor_nome,
+              cliente_nome: nomeCli, cliente_telefone: String(chat_id).replace(/@.*/, ''),
+              duvida: 'Tentei montar o orcamento mas o modelo "' + slug + '" nao existe no sistema. Qual configuracao eu uso?',
+              contexto: mem.resumo || null,
+            })
+            if (consultaAberta) {
+              await supa.from('ia_atendimentos').update({
+                estado: 'AI_ERROR', estado_desde: new Date().toISOString(),
+                estado_motivo: 'modelo de orcamento inexistente: ' + slug,
+              }).eq('chat_id', chat_id)
+            }
+          } else {
+            const { error: errOrc } = await supa.from('ia_orcamento_pedidos').insert({
+              chat_id, vendedor_nome: st.vendedor_nome, cliente_nome: nomeCli,
+              cliente_telefone: String(chat_id).replace(/@.*/, ''),
+              modelo_slug: slug, voltagem: volt,
+              cidade: mem.cidade || null, uf: mem.uf || null,
+            })
+            // 23505 = ja existe pedido em andamento neste chat. E o comportamento certo: cliente
+            // que pede duas vezes ("manda o orcamento" / "ja mandou?") nao pode virar dois PDFs.
+            if (errOrc && String(errOrc.code) !== '23505') {
+              console.error('[ia-atendente] pedido de orcamento falhou:', errOrc.message)
+            } else if (!errOrc) {
+              await supa.from('ia_atendimentos').update({
+                estado: 'WAITING_QUOTE_GENERATION', estado_desde: new Date().toISOString(),
+                estado_motivo: slug + ' / ' + volt, atualizado_em: new Date().toISOString(),
+              }).eq('chat_id', chat_id)
+              try {
+                await supa.from('automation_runs').insert({
+                  regra_key: 'ia_atendente', vendedor_nome: st.vendedor_nome, chat_id,
+                  acao: 'ia_pediu_orcamento', modo: 'automatico', executor: 'ia', status: 'executado',
+                  payload: { modelo: slug, voltagem: volt, cliente: nomeCli },
+                  motivo: 'IA solicitou geracao de orcamento',
+                })
+              } catch (_) { /* auditoria best-effort */ }
+              vendedorAssumir = false
+            }
           }
         }
       }
