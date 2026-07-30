@@ -341,8 +341,9 @@ O que cada campo significa (QUANDO usar cada um, voce decide pelo seu raciocinio
 - texto: a mensagem que vai pro cliente. Sempre preenchido.
 - midia_id: id de UMA midia da lista, quando quiser anexar. Senao null.
 - mostrar_fabrica: "compacta-01" | "compacta-02" | "compacta-03" | "mini-fabrica" quando quiser
-  que o sistema mande foto + valores + video daquele modelo. Nesse caso NAO escreva preco no
-  texto — os valores vao na imagem. Senao null.
+  que o sistema mande foto + valores + video daquele modelo. Senao null.
+  (A tabela vai na imagem; se voce tambem escreve o numero no texto e decisao sua — veja o seu
+  raciocinio acima. Este campo so dispara o envio.)
 - temperatura: "quente" | "morno" | "frio" conforme o tom do cliente; null se nao der pra dizer.
 - dados: o que o cliente informou, pro cadastro dele: {"nome_cliente": "so nome PROPRIO de pessoa, senao null", "animal": "bovino|suino|ave|ovino|caprino|misto", "quantidade": <int cabecas>, "uso": "venda|consumo", "producao_kgh": <int kg/h de RACAO PRODUZIDA — capacidade de peca ("misturador de 500 kg", "saco de 50 kg") NAO e isto, deixe null>, "equipamento": "o que ele quer", "aplicacao": "so pra equipamento avulso: o que vai processar nele, na palavra dele", "finalidade": "consumo_proprio|revenda|misto", "cidade": "...", "uf": "SC", "resumo": "1 frase"}. Campos que nao souber: omita. Nada novo: null.
   NUNCA invente: se ele nao disse, nao preencha.
