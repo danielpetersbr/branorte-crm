@@ -49,6 +49,11 @@ async function carregarConfig(supa: any) {
     tom: String(cfg.tom || '').slice(0, 1200),
     capDia: Math.max(1, Math.min(100, Number(cfg.max_respostas_dia) || 15)),
     permitirMidia: falhou ? false : cfg.permitir_midia !== false,
+    // (30/07) Quanto da base de conhecimento cabe no prompt. Era 12.000 fixo, e com 58.855 chars
+    // ativos isso descartava 22 dos 29 blocos — em silencio. Virou config pra dar pra baixar sem
+    // deploy se custo ou latencia incomodarem. Se a leitura falhou, cai no valor historico: sem
+    // config confiavel e melhor mandar menos base do que arriscar prompt gigante sem querer.
+    kbLimite: falhou ? 12000 : Math.max(4000, Math.min(200000, Number(cfg.kb_limite_empresa) || 12000)),
   }
 }
 
@@ -900,8 +905,8 @@ Deno.serve(async (req: Request) => {
       }
 
       const [kb, midias] = await Promise.all([
-        // piloto carrega a base inteira; os demais seguem no teto historico de 12k
-        carregarConhecimento(supa, vendedor_nome, personaPilotoAtiva?.kb_limite || 12000),
+        // o piloto pode ter teto proprio; os demais usam o global de ia_config.kb_limite_empresa
+        carregarConhecimento(supa, vendedor_nome, personaPilotoAtiva?.kb_limite || cfg.kbLimite),
         cfg.permitirMidia ? carregarMidias(supa) : Promise.resolve([]),
       ])
       const personaPiloto = personaPilotoAtiva   // ja lido no guardrail acima; nao reconsulta
