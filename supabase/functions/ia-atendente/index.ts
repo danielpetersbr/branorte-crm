@@ -312,6 +312,29 @@ async function carregarPersonaPiloto(supa: any, vendedor: string): Promise<any |
 
 // O texto do piloto e LIVRE (escrito no /super-ia). A edge so anexa o encanamento: identidade
 // minima, midias e base de conhecimento (conforme as flags) e o contrato JSON no fim.
+// (30/07) CONTRATO NEUTRO — so pro piloto.
+// O CONTRATO_JSON de cima nao e so formato: ele carrega a CONDUTA da persona antiga
+// ("passe o bastao assim que souber o animal", "etiquete NOVO LEAD"). Anexado a persona
+// nova, ele decidia por ela — a V3 escrevia o texto e a persona velha mandava na conduta.
+// Este aqui diz o que cada campo E; QUANDO usar cada um e decisao da persona.
+const CONTRATO_JSON_NEUTRO = `Responda SOMENTE com JSON valido neste formato:
+{"texto": "mensagem ao cliente", "midia_id": null, "mostrar_fabrica": null, "temperatura": null, "dados": null, "vendedor_assumir": false, "encerrar": false, "etiqueta": null}
+
+O que cada campo significa (QUANDO usar cada um, voce decide pelo seu raciocinio acima):
+- texto: a mensagem que vai pro cliente. Sempre preenchido.
+- midia_id: id de UMA midia da lista, quando quiser anexar. Senao null.
+- mostrar_fabrica: "compacta-01" | "compacta-02" | "compacta-03" | "mini-fabrica" quando quiser
+  que o sistema mande foto + valores + video daquele modelo. Nesse caso NAO escreva preco no
+  texto — os valores vao na imagem. Senao null.
+- temperatura: "quente" | "morno" | "frio" conforme o tom do cliente; null se nao der pra dizer.
+- dados: o que o cliente informou, pro cadastro dele: {"nome_cliente": "so nome PROPRIO de pessoa, senao null", "animal": "bovino|suino|ave|ovino|caprino|misto", "quantidade": <int cabecas>, "uso": "venda|consumo", "producao_kgh": <int kg/h de RACAO PRODUZIDA — capacidade de peca ("misturador de 500 kg", "saco de 50 kg") NAO e isto, deixe null>, "equipamento": "o que ele quer", "aplicacao": "so pra equipamento avulso: o que vai processar nele, na palavra dele", "finalidade": "consumo_proprio|revenda|misto", "cidade": "...", "uf": "SC", "resumo": "1 frase"}. Campos que nao souber: omita. Nada novo: null.
+  NUNCA invente: se ele nao disse, nao preencha.
+- vendedor_assumir: true quando VOCE decidir encerrar a sua parte do atendimento. Quando true,
+  o texto e um fechamento curto em 1a pessoa, SEM pergunta junto e SEM anunciar handoff.
+- encerrar: true quando o cliente se despediu de vez ou pediu pra parar de receber mensagem.
+- etiqueta: "NOVO LEAD" (interessado em algo que a gente fabrica) | "NAO FABRICAMOS" | "RESOLVIDO"
+  (assunto que nao e venda, ja encaminhado) | null enquanto nao houver desfecho.`
+
 function montarPersonaPiloto(p: any, vendedor: string, kb: string, midias: any[]): string {
   const primeiro = String(vendedor || '').split(' ')[0]
   const nomeVend = primeiro.charAt(0) + primeiro.slice(1).toLowerCase()
@@ -325,7 +348,7 @@ function montarPersonaPiloto(p: any, vendedor: string, kb: string, midias: any[]
 
 ${p.conteudo}${blocoMidias}${blocoKb}
 
-${CONTRATO_JSON}`
+${CONTRATO_JSON_NEUTRO}`
 }
 
 function montarPersona(vendedor: string, kb: string, tom: string, midias: any[]): string {
