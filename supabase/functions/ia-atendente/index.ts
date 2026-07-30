@@ -799,7 +799,14 @@ Deno.serve(async (req: Request) => {
       // GUARDRAIL PROSPECCAO (Daniel): so responde se o cliente ainda esta na etiqueta
       // PROSPECCAO. Migrou pra outra (o vendedor assumiu) -> a IA cala. Fail-open: se nao
       // conseguir determinar a etiqueta (null), responde (nao quebra a IA por dado faltante).
-      const prosp = await etiquetaAtualEhProspeccao(supa, chat_id, st.vendedor_nome)
+      // (30/07) EXCECAO DO PILOTO. O guardrail cria um laco no teste: a persona qualifica,
+      // etiqueta o chat como NOVO LEAD e o proprio guardrail a desliga em seguida — obrigando a
+      // reetiquetar o chat na mao a cada rodada. Enquanto a persona piloto estiver VIVA, o
+      // guardrail nao se aplica ao vendedor dela. Some junto com o piloto (12h), e nao existe
+      // pra mais ninguem: carregarPersonaPiloto so responde pro DANIEL.
+      // true (nao null): null ainda cairia no gate seguinte quando origem != 'vendedor'.
+      const personaPilotoAtiva = await carregarPersonaPiloto(supa, st.vendedor_nome)
+      const prosp = personaPilotoAtiva ? true : await etiquetaAtualEhProspeccao(supa, chat_id, st.vendedor_nome)
       // (28/07) DESLIGA em vez de so calar: o registro ficava ativo=true e mudo, entulhando o
       // teto de 100 do 'listar' (bug do Edgard 24/07) e deixando o robozinho aceso num chat que
       // o vendedor ja tinha movido. Medido: 156 ativas, so 66 em PROSPECCAO.
@@ -860,7 +867,7 @@ Deno.serve(async (req: Request) => {
         carregarConhecimento(supa, vendedor_nome),
         cfg.permitirMidia ? carregarMidias(supa) : Promise.resolve([]),
       ])
-      const personaPiloto = await carregarPersonaPiloto(supa, vendedor_nome)
+      const personaPiloto = personaPilotoAtiva   // ja lido no guardrail acima; nao reconsulta
       let persona = personaPiloto
         ? montarPersonaPiloto(personaPiloto, vendedor_nome, kb, midias)
         : montarPersona(vendedor_nome, kb, cfg.tom, midias)
