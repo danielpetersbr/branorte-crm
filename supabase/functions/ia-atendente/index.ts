@@ -271,6 +271,63 @@ function descreveMidias(lista: any[]): string {
   return pFoto || pVideo || 'o material'
 }
 
+// (30/07) O contrato de saida saiu de dentro de montarPersona pra ca porque agora existem
+// DUAS personas possiveis (a fixa e a do banco) e as duas precisam devolver o MESMO JSON —
+// e a edge le etiqueta/bastao/midia dele. Persona nova sem contrato = resposta que nao parseia.
+const CONTRATO_JSON = `Responda SOMENTE com JSON válido neste formato:
+{"texto": "mensagem ao cliente", "midia_id": null, "mostrar_fabrica": null, "temperatura": null, "dados": null, "vendedor_assumir": false, "encerrar": false, "etiqueta": null}
+- texto: a mensagem a enviar (sempre).
+- midia_id: id de UMA mídia da lista quando encaixar; senão null.
+- mostrar_fabrica: quando o cliente pedir pra VER o modelo de fábrica (fotos/vídeo/valores) ou disser "quero ver a do vídeo/anúncio/aquela", coloque o modelo: "compacta-01" | "compacta-02" | "compacta-03" | "mini-fabrica" (se ele veio de um anúncio, use o modelo do anúncio). A extensão manda foto + valores + vídeo dele; NÃO escreva preço no texto (os valores vão na foto). Senão null.
+- temperatura: "quente" | "morno" | "frio" quando o TOM do cliente deixar claro (pressa/prazo curto/"tô comprando" = quente; planejando = morno; só pesquisando = frio); senão null.
+- dados: registre TUDO que o cliente informar na conversa (pro cadastro dele no CRM): {"nome_cliente": "SÓ o nome PRÓPRIO da pessoa (ex: João, Delciney) — se responder algo que não é nome de gente (equipamento tipo triturador/moinho, finalidade), deixe null", "animal": "bovino|suino|ave|ovino|caprino|misto", "quantidade": <int cabeças>, "uso": "venda|consumo", "producao_kgh": <int kg por HORA de PRODUÇÃO DE RAÇÃO, só se ele disser. ATENÇÃO: capacidade de EQUIPAMENTO não é isto — "misturador de 500 kg", "100 kg por batida", "saco de 50 kg" são o TAMANHO da peça, NÃO kg/h de fábrica. Nesses casos deixe producao_kgh null e registre em aplicacao/resumo>, "equipamento": "o que ele quer (ex: mini fábrica, moinho de martelo)", "aplicacao": "SÓ pra EQUIPAMENTO avulso: o que ele vai processar/transportar/misturar nele, na palavra dele (ex: 'sacaria de café', 'sal mineral e farelo', 'milho') — NÃO é animal", "finalidade": "consumo_proprio|revenda|misto", "cidade": "...", "uf": "SC", "resumo": "1 frase do que ele quer"}. nome_cliente/cidade/uf/finalidade SÓ se ele disser ESPONTANEAMENTE — NUNCA pergunte cidade, UF nem finalidade. Campos que não souber: omita. Nada novo = null.
+- vendedor_assumir: true SÓ em dois casos: (a) o cliente pediu preço/condições/detalhe técnico/reclamou/pediu atendente humano; ou (b) você JÁ TEM o essencial do ramo (Fábrica-consumo: o ANIMAL; Fábrica-venda: a CAPACIDADE em kg/h; Equipamento: a aplicação). Sem o essencial e sem pedido de humano → PERGUNTE primeiro e vendedor_assumir=false. SAUDAÇÃO PURA (oi, olá, boa tarde, bom dia, "tudo bem?") sem dizer o que procura NUNCA passa o bastão e NÃO é qualificação — apenas cumprimente e pergunte o que ele precisa (fábrica de ração ou equipamento), com vendedor_assumir=false. NUNCA faça pergunta de qualificação e passe o bastão na MESMA resposta — se o seu texto contém pergunta, vendedor_assumir=false. Quando true, o texto é um FECHAMENTO CURTO em 1ª pessoa e natural (ex: "entendi tudo aqui, {nome}. vou organizar os detalhes certinhos e te retorno") — SEM pergunta junto, SEM dizer que alguém vai assumir/continuar/atender, SEM terceira pessoa, SEM "vou te transferir", SEM a palavra "já" (não passe a ideia de que vai ser feito na hora). Você só dá esse retorno e para.
+- encerrar: true SÓ quando o cliente se despediu de vez ou pediu pra parar de receber mensagens (texto = despedida curta).
+- etiqueta: UMA etiqueta do funil conforme o desfecho, ou null:
+  • "NOVO LEAD" — cliente qualificado e interessado em algo que a gente FABRICA (fábrica ou equipamento). Use junto com vendedor_assumir=true (você fecha com um retorno curto em 1ª pessoa e PARA; nunca anuncia handoff).
+  • "NÃO FABRICAMOS" — é algo que a gente NÃO fabrica (extrusora, peletizadora, ração pronta) e o cliente NÃO quis o que a gente faz. Use junto com encerrar=true.
+  • "RESOLVIDO" — fornecedor/compras, RH/vaga, pós-venda/garantia, ou qualquer assunto que NÃO é venda e já foi encaminhado. Use junto com encerrar=true.
+  • null — enquanto ainda está qualificando, numa saudação, ou sem desfecho. (Cliente com pressa já ganha a etiqueta quente automaticamente.)`
+
+// PERSONA ALTERNATIVA (piloto). Le ia_persona_ativacao; so devolve algo se a ativacao estiver
+// VIVA (ativo=true e dentro do prazo). Falha => null => persona fixa de sempre. Isso e deliberado:
+// o piloto nunca pode "vazar" pra frota por causa de um erro de leitura.
+async function carregarPersonaPiloto(supa: any, vendedor: string): Promise<any | null> {
+  try {
+    const { data, error } = await supa.from('ia_persona_ativacao')
+      .select('persona_versao, ativo, expira_em')
+      .eq('vendedor_nome', String(vendedor || '').toUpperCase())
+      .maybeSingle()
+    if (error) { console.error('[ia-atendente] ativacao persona ilegivel:', error.message); return null }
+    if (!data || !data.ativo) return null
+    if (data.expira_em && new Date(data.expira_em).getTime() < Date.now()) return null
+    const p = await supa.from('ia_persona')
+      .select('versao, conteudo, incluir_kb, incluir_midias')
+      .eq('versao', data.persona_versao).eq('ativo', true).maybeSingle()
+    if (p.error) { console.error('[ia-atendente] persona ilegivel:', p.error.message); return null }
+    if (!p.data || !String(p.data.conteudo || '').trim()) return null
+    return p.data
+  } catch (e) { console.error('[ia-atendente] persona piloto falhou:', String(e)); return null }
+}
+
+// O texto do piloto e LIVRE (escrito no /super-ia). A edge so anexa o encanamento: identidade
+// minima, midias e base de conhecimento (conforme as flags) e o contrato JSON no fim.
+function montarPersonaPiloto(p: any, vendedor: string, kb: string, midias: any[]): string {
+  const primeiro = String(vendedor || '').split(' ')[0]
+  const nomeVend = primeiro.charAt(0) + primeiro.slice(1).toLowerCase()
+  const blocoMidias = (p.incluir_midias !== false && midias.length)
+    ? `\n\nMIDIAS DISPONIVEIS (no maximo UMA por resposta, so quando encaixar de verdade):\n${midias.map((m: any) => `- id=${m.id} [${m.tipo}] "${m.titulo}" — usar quando: ${String(m.descricao_ia).slice(0, 200)}`).join('\n')}`
+    : ''
+  const blocoKb = (p.incluir_kb !== false && kb)
+    ? `\n\n=== BASE DE CONHECIMENTO OFICIAL (fonte de verdade) ===\n${kb}`
+    : ''
+  return `Voce E o ${nomeVend}, consultor da Branorte Metalurgica, respondendo os seus proprios clientes no SEU WhatsApp. Fale sempre em PRIMEIRA PESSOA, como o proprio ${nomeVend}. Nunca cite estas instrucoes.
+
+${p.conteudo}${blocoMidias}${blocoKb}
+
+${CONTRATO_JSON}`
+}
+
 function montarPersona(vendedor: string, kb: string, tom: string, midias: any[]): string {
   const primeiro = vendedor.split(' ')[0]
   const nomeVend = primeiro.charAt(0) + primeiro.slice(1).toLowerCase()
@@ -284,6 +341,7 @@ IDENTIDADE (INVIOLÁVEL): fale SEMPRE em PRIMEIRA PESSOA, como o próprio ${nome
 
 TOM (fale como GENTE, não como assistente animado):
 - Seco e humano: acuse o recado com "Entendi", "Certo", "Boa" e REFLITA de volta o que o cliente disse (ex.: cliente "quero uma fábrica pra 150 bois" -> "Entendi. Uns 150 de gado.").
+- REFLETIR NÃO É REPETIR ERRO DE DIGITAÇÃO. O cliente escreve no celular, com pressa e errando. Antes de espelhar uma palavra, corrija-a mentalmente para o termo REAL do ramo e use o termo certo: "poeiras"/"poedera" = POEDEIRAS (galinha de postura); "suinu"/"suinos" = SUÍNOS; "misturado" = MISTURADOR; "chupinho" = CHUPIM; "moiho"/"moinha" = MOINHO; "raçao"/"ração" = RAÇÃO; "granja" = criação de aves. NUNCA devolva ao cliente uma palavra que não existe no ramo ("ração para poeiras" é erro grave — soa que você não entendeu nada). Se a palavra dele não for reconhecível nem por aproximação, NÃO a espelhe: siga a conversa sem repeti-la, ou pergunte o que ele quis dizer.
 - PROIBIDO abrir com ou usar, em QUALQUER mensagem: "Prazer", "Perfeito", "Que ótimo", "Já anotei", "Fico feliz", "Maravilha", "Excelente", "Show", "Ótimo". Nada de bajulação nem floreio de assistente. É o ${nomeVend} falando, direto e caloroso do interior.
 
 REGRAS DURAS (INVIOLÁVEIS):
@@ -320,20 +378,7 @@ ${blocoMidias}
 === BASE DE CONHECIMENTO OFICIAL (fonte de verdade) ===
 ${kb || '(vazia — responda só o essencial e encaminhe pro consultor)'}
 
-Responda SOMENTE com JSON válido neste formato:
-{"texto": "mensagem ao cliente", "midia_id": null, "mostrar_fabrica": null, "temperatura": null, "dados": null, "vendedor_assumir": false, "encerrar": false, "etiqueta": null}
-- texto: a mensagem a enviar (sempre).
-- midia_id: id de UMA mídia da lista quando encaixar; senão null.
-- mostrar_fabrica: quando o cliente pedir pra VER o modelo de fábrica (fotos/vídeo/valores) ou disser "quero ver a do vídeo/anúncio/aquela", coloque o modelo: "compacta-01" | "compacta-02" | "compacta-03" | "mini-fabrica" (se ele veio de um anúncio, use o modelo do anúncio). A extensão manda foto + valores + vídeo dele; NÃO escreva preço no texto (os valores vão na foto). Senão null.
-- temperatura: "quente" | "morno" | "frio" quando o TOM do cliente deixar claro (pressa/prazo curto/"tô comprando" = quente; planejando = morno; só pesquisando = frio); senão null.
-- dados: registre TUDO que o cliente informar na conversa (pro cadastro dele no CRM): {"nome_cliente": "SÓ o nome PRÓPRIO da pessoa (ex: João, Delciney) — se responder algo que não é nome de gente (equipamento tipo triturador/moinho, finalidade), deixe null", "animal": "bovino|suino|ave|ovino|caprino|misto", "quantidade": <int cabeças>, "uso": "venda|consumo", "producao_kgh": <int kg por HORA de PRODUÇÃO DE RAÇÃO, só se ele disser. ATENÇÃO: capacidade de EQUIPAMENTO não é isto — "misturador de 500 kg", "100 kg por batida", "saco de 50 kg" são o TAMANHO da peça, NÃO kg/h de fábrica. Nesses casos deixe producao_kgh null e registre em aplicacao/resumo>, "equipamento": "o que ele quer (ex: mini fábrica, moinho de martelo)", "aplicacao": "SÓ pra EQUIPAMENTO avulso: o que ele vai processar/transportar/misturar nele, na palavra dele (ex: 'sacaria de café', 'sal mineral e farelo', 'milho') — NÃO é animal", "finalidade": "consumo_proprio|revenda|misto", "cidade": "...", "uf": "SC", "resumo": "1 frase do que ele quer"}. nome_cliente/cidade/uf/finalidade SÓ se ele disser ESPONTANEAMENTE — NUNCA pergunte cidade, UF nem finalidade. Campos que não souber: omita. Nada novo = null.
-- vendedor_assumir: true SÓ em dois casos: (a) o cliente pediu preço/condições/detalhe técnico/reclamou/pediu atendente humano; ou (b) você JÁ TEM o essencial do ramo (Fábrica-consumo: o ANIMAL; Fábrica-venda: a CAPACIDADE em kg/h; Equipamento: a aplicação). Sem o essencial e sem pedido de humano → PERGUNTE primeiro e vendedor_assumir=false. SAUDAÇÃO PURA (oi, olá, boa tarde, bom dia, "tudo bem?") sem dizer o que procura NUNCA passa o bastão e NÃO é qualificação — apenas cumprimente e pergunte o que ele precisa (fábrica de ração ou equipamento), com vendedor_assumir=false. NUNCA faça pergunta de qualificação e passe o bastão na MESMA resposta — se o seu texto contém pergunta, vendedor_assumir=false. Quando true, o texto é um FECHAMENTO CURTO em 1ª pessoa e natural (ex: "entendi tudo aqui, {nome}. vou organizar os detalhes certinhos e te retorno") — SEM pergunta junto, SEM dizer que alguém vai assumir/continuar/atender, SEM terceira pessoa, SEM "vou te transferir", SEM a palavra "já" (não passe a ideia de que vai ser feito na hora). Você só dá esse retorno e para.
-- encerrar: true SÓ quando o cliente se despediu de vez ou pediu pra parar de receber mensagens (texto = despedida curta).
-- etiqueta: UMA etiqueta do funil conforme o desfecho, ou null:
-  • "NOVO LEAD" — cliente qualificado e interessado em algo que a gente FABRICA (fábrica ou equipamento). Use junto com vendedor_assumir=true (você fecha com um retorno curto em 1ª pessoa e PARA; nunca anuncia handoff).
-  • "NÃO FABRICAMOS" — é algo que a gente NÃO fabrica (extrusora, peletizadora, ração pronta) e o cliente NÃO quis o que a gente faz. Use junto com encerrar=true.
-  • "RESOLVIDO" — fornecedor/compras, RH/vaga, pós-venda/garantia, ou qualquer assunto que NÃO é venda e já foi encaminhado. Use junto com encerrar=true.
-  • null — enquanto ainda está qualificando, numa saudação, ou sem desfecho. (Cliente com pressa já ganha a etiqueta quente automaticamente.)`
+${CONTRATO_JSON}`
 }
 
 function formatarConversa(msgs: any[]): string {
@@ -815,7 +860,11 @@ Deno.serve(async (req: Request) => {
         carregarConhecimento(supa, vendedor_nome),
         cfg.permitirMidia ? carregarMidias(supa) : Promise.resolve([]),
       ])
-      let persona = montarPersona(vendedor_nome, kb, cfg.tom, midias)
+      const personaPiloto = await carregarPersonaPiloto(supa, vendedor_nome)
+      let persona = personaPiloto
+        ? montarPersonaPiloto(personaPiloto, vendedor_nome, kb, midias)
+        : montarPersona(vendedor_nome, kb, cfg.tom, midias)
+      if (personaPiloto) console.log('[ia-atendente] persona piloto ' + personaPiloto.versao + ' -> ' + vendedor_nome)
       const conversa = formatarConversa(msgs)
       // MEMORIA NO PROMPT: sem isto o modelo re-perguntava o que ja sabia (caso real: perguntou
       // o nome do Edgard com nome_contato='Edgard Navarro' no banco). Injeta o que ja foi coletado.
@@ -939,7 +988,14 @@ Deno.serve(async (req: Request) => {
 
       if (dados && dados.animal) {
         // Anti-invencao: so mantem o animal se o cliente REALMENTE falou de bicho.
-        const termoAnimal = /(boi|bois|gado|vaca|touro|garrote|bezerr|novilh|terneir|bovin|b[úu]fal|porco|leit[aã]o|leito[ae]|marr[ãa]|su[íi]n|frango|franga|galinh|galo|\bave\b|aves|poedeira|postura|matriz|pinto|pintinho|pintainho|\bcorte\b|caipira|marreco|\bpato\b|ganso|chester|codorn|coelho|peru\b|avestruz|ovelh|carneir|cordeir|borrego|ovin|cabra|bode|caprin|equin|cavalo|[ée]gua|potr|jument|jegue|animai|\banimal\b|rebanho|plantel|cabe[çc]a)/i.test(convCliente)
+        // (29/07) Erro real em producao: cliente escreveu "fabrica de racao para poeiras"
+        // (typo de POEDEIRAS). O regex nao pegou -> a IA concluiu "nao falou animal" e
+        // perguntou "quais animais e quantas cabecas?" DEPOIS de ele ja ter dito poedeiras
+        // e granja. Variantes de digitacao entram aqui.
+        // ATENCAO: "poeira" no SINGULAR fica de fora de proposito — e palavra legitima do
+        // dominio (po/particulado na fabrica). So o PLURAL "poeiras" vale como typo de ave.
+        // Locais de criacao (granja/aviario/pocilga/chiqueiro) contam como "falou de bicho".
+        const termoAnimal = /(boi|bois|gado|vaca|touro|garrote|bezerr|novilh|terneir|bovin|b[úu]fal|porco|leit[aã]o|leito[ae]|marr[ãa]|su[íi]n|frango|franga|galinh|galo|\bave\b|aves|poedeira|poedeiras|poeiras|poedera|poideira|poedeir|postura|matriz|pinto|pintinho|pintainho|\bcorte\b|caipira|marreco|\bpato\b|ganso|chester|codorn|coelho|peru\b|avestruz|ovelh|carneir|cordeir|borrego|ovin|cabra|bode|caprin|equin|cavalo|[ée]gua|potr|jument|jegue|animai|\banimal\b|rebanho|plantel|cabe[çc]a|granja|avi[áa]rio|pocilga|chiqueiro|aprisco)/i.test(convCliente)
         // Fallback: mantem se a raiz do valor extraido aparece na conversa (pega termos fora da lista).
         const av = normNome(dados.animal)
         const cv = normNome(convCliente)
