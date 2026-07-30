@@ -1405,7 +1405,11 @@ Deno.serve(async (req: Request) => {
       // desta linha. Bastao que nao virou registro aqui e invisivel: nunca cobra ninguem. Auditado:
       // 146/146 gravaram. Segue best-effort (nao vale derrubar a resposta por causa do log), mas a
       // falha passa a aparecer.
-      try { const insLog = await supa.from('automation_runs').insert({ regra_key: 'ia_atendente', vendedor_nome, chat_id, acao: 'ia_resposta', modo: 'automatico', executor: 'ia', status: 'executado', payload: { texto: texto.slice(0, 500), cliente_msg: clienteMsg, conversa: transcricaoLog, midia_id: midia ? midia.id : null, midias_fabrica: fabricaMidias.length || 0, modelo: modelos[0], temperatura, dados: dadosMem, vendedor_assumir: vendedorAssumir, encerrar, etiqueta: acoes.etiqueta, respostas_hoje: respostasHoje + 1 }, motivo: 'resposta automatica ao cliente (IA ligada pelo vendedor)' })
+      try { const insLog = await supa.from('automation_runs').insert({ regra_key: 'ia_atendente', vendedor_nome, chat_id, acao: 'ia_resposta', modo: 'automatico', executor: 'ia', status: 'executado', payload: { texto: texto.slice(0, 500), cliente_msg: clienteMsg, conversa: transcricaoLog, midia_id: midia ? midia.id : null, midias_fabrica: fabricaMidias.length || 0, modelo: modelos[0], temperatura, dados: dadosMem, vendedor_assumir: vendedorAssumir, encerrar, etiqueta: acoes.etiqueta, respostas_hoje: respostasHoje + 1,
+        // (30/07) Sem isto nao da pra saber QUAL persona escreveu: as duas proibem as mesmas
+        // palavras, entao o texto nao denuncia. Perguntar "essa resposta foi da nova?" virava
+        // adivinhacao. Agora fica no log de cada resposta.
+        persona: personaPiloto ? personaPiloto.versao : 'fixa' }, motivo: 'resposta automatica ao cliente (IA ligada pelo vendedor)' })
         if (insLog?.error) console.error('[ia-atendente] log ia_resposta nao gravado (' + chat_id + '):', insLog.error.message)
       } catch (_) { /* auditoria best-effort */ }
       return j({ ok: true, texto, midia, midias: fabricaMidias.length ? fabricaMidias : undefined, acoes, respostas_hoje: respostasHoje + 1 })
