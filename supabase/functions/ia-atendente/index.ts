@@ -352,7 +352,14 @@ O que cada campo significa (QUANDO usar cada um, voce decide pelo seu raciocinio
 - encerrar: true quando o cliente se despediu de vez ou pediu pra parar de receber mensagem.
 - etiqueta: o nome que a conversa recebe no funil QUANDO voce encerra a sua parte. Enquanto estiver
   conduzindo, null. As opcoes: "NOVO LEAD" | "NAO FABRICAMOS" | "RESOLVIDO". Quando usar cada uma —
-  e quando ainda e cedo pra qualquer uma — esta no seu raciocinio acima.`
+  e quando ainda e cedo pra qualquer uma — esta no seu raciocinio acima.
+- consultar_vendedor: quando voce NAO souber e nao puder responder com seguranca, escreva aqui a
+  pergunta que voce faria ao vendedor — direta, do jeito que um colega pergunta pro outro. O
+  sistema leva ate ele e traz a resposta; voce nao fala com ele, so escreve a pergunta. Nesse caso
+  o campo "texto" e uma frase CURTA avisando o cliente que voce esta confirmando — sem dizer que
+  perguntou pra alguem, sem prometer prazo. Deixe null quando souber responder.
+  NUNCA use isto pra fugir de pergunta que a sua base responde: consultar por preguica gasta o
+  tempo do vendedor e faz o cliente esperar a toa.`
 
 function montarPersonaPiloto(p: any, vendedor: string, kb: string, midias: any[]): string {
   const primeiro = String(vendedor || '').split(' ')[0]
@@ -421,6 +428,87 @@ ${blocoMidias}
 ${kb || '(vazia — responda só o essencial e encaminhe pro consultor)'}
 
 ${CONTRATO_JSON}`
+}
+
+
+// ATENDIMENTO ASSISTIDO (30/07) --------------------------------------------------------------
+// A IA nao precisa mais escolher entre inventar e encerrar quando nao sabe: ela pergunta.
+// Este bloco cuida do lado do REGISTRO; quem entrega a mensagem e a extensao, que ja e a unica
+// porta de saida do WhatsApp. A edge nunca fala com o WhatsApp direto.
+
+// Hash da duvida pra idempotencia. Normaliza pra que "posso dar 10%?" e "Posso dar 10%???" nao
+// virem duas consultas. Nao precisa ser criptografico — precisa ser ESTAVEL.
+function hashDuvida(txt: string): string {
+  const norm = String(txt || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200)
+  let h = 0
+  for (let i = 0; i < norm.length; i++) { h = ((h << 5) - h + norm.charCodeAt(i)) | 0 }
+  return 'd' + (h >>> 0).toString(36)
+}
+
+async function contatoInterno(supa: any, papel: string, vendedor: string): Promise<any | null> {
+  try {
+    // Especifico do vendedor primeiro; depois o coringa (vendedor_nome null), usado pelo frete.
+    const { data, error } = await supa.from('ia_contatos_internos')
+      .select('nome, telefone, espera_minutos, vendedor_nome')
+      .eq('papel', papel).eq('ativo', true)
+      .or(`vendedor_nome.eq.${String(vendedor || '').toUpperCase()},vendedor_nome.is.null`)
+    if (error) { console.error('[ia-atendente] contato interno ilegivel:', error.message); return null }
+    if (!Array.isArray(data) || !data.length) return null
+    return data.find((c: any) => c.vendedor_nome) || data[0]
+  } catch (e) { console.error('[ia-atendente] contato interno falhou:', String(e)); return null }
+}
+
+// Monta o recado que o vendedor le. Curto de proposito: ele esta no meio do dia, no celular.
+function textoConsulta(c: any): string {
+  const linhas = [
+    'Consulta automatica da IA — ' + c.codigo,
+    '',
+    'Cliente: ' + (c.cliente_nome || 'sem nome') + (c.cliente_telefone ? ' (' + c.cliente_telefone + ')' : ''),
+  ]
+  if (c.contexto) linhas.push('Contexto: ' + c.contexto)
+  linhas.push('', 'Duvida:', c.duvida, '', 'Me responde aqui que eu passo pro cliente.')
+  linhas.push('Se preferir atender voce mesmo, responda "deixa comigo".')
+  return linhas.join('\n')
+}
+
+// Cria (ou reaproveita) a consulta. Devolve null se nao houver pra quem mandar — nesse caso o
+// chamador NAO deve pausar a conversa: pausar sem ter quem responda deixa o cliente no vacuo.
+async function abrirConsulta(supa: any, args: any): Promise<any | null> {
+  const dest = await contatoInterno(supa, args.tipo === 'frete' ? 'frete' : 'vendedor', args.vendedor_nome)
+  if (!dest || !dest.telefone) {
+    console.warn('[ia-atendente] sem contato interno para ' + args.vendedor_nome + ' — consulta abortada')
+    return null
+  }
+  const dh = hashDuvida(args.duvida)
+
+  // Ja existe a MESMA duvida aberta neste chat? Entao nao cutuca de novo — devolve a existente.
+  const { data: aberta } = await supa.from('ia_consultas_internas')
+    .select('id, codigo, enviada_em').eq('chat_id', args.chat_id).eq('duvida_hash', dh)
+    .eq('status', 'aguardando').maybeSingle()
+  if (aberta) return { ...aberta, reaproveitada: true }
+
+  // O numero sai do banco: duas instancias da edge gerando codigo ao mesmo tempo colidiriam no
+  // unique, e a segunda perderia a consulta.
+  const { data: cod, error: errCod } = await supa.rpc('ia_novo_codigo_consulta', { p_tipo: args.tipo })
+  if (errCod || !cod) { console.error('[ia-atendente] codigo de consulta falhou:', errCod?.message); return null }
+  const codigo = String(cod)
+
+  const { data, error } = await supa.from('ia_consultas_internas').insert({
+    codigo, tipo: args.tipo, chat_id: args.chat_id, vendedor_nome: args.vendedor_nome,
+    cliente_nome: args.cliente_nome || null, cliente_telefone: args.cliente_telefone || null,
+    duvida: args.duvida, contexto: args.contexto || null, duvida_hash: dh,
+    destinatario_tel: dest.telefone, destinatario_nome: dest.nome,
+    expira_em: new Date(Date.now() + (dest.espera_minutos || 15) * 4 * 60000).toISOString(),
+  }).select('id, codigo, destinatario_tel, destinatario_nome, cliente_nome, cliente_telefone, contexto, duvida').maybeSingle()
+
+  if (error) {
+    // 23505 = a corrida perdeu pra outra chamada que criou a mesma consulta. Nao e erro de verdade.
+    if (String(error.code) === '23505') return null
+    console.error('[ia-atendente] consulta nao criada:', error.message)
+    return null
+  }
+  return data
 }
 
 function formatarConversa(msgs: any[]): string {
@@ -973,7 +1061,7 @@ Deno.serve(async (req: Request) => {
       // Persona que RACIOCINA merece modelo cheio; a global segue mini pros outros vendedores.
       const modelos = [personaPilotoAtiva?.modelo || cfg.modelo, cfg.modelo, cfg.fallback]
         .filter((v, i, a) => v && a.indexOf(v) === i)
-      let texto: string | null = null, midiaId: number | null = null, mostrarFabrica: string | null = null, lastErr = ''
+      let texto: string | null = null, midiaId: number | null = null, mostrarFabrica: string | null = null, consultarVendedor: string | null = null, lastErr = ''
       let temperatura: string | null = null, dados: any = null, vendedorAssumir = false, encerrar = false
       let etiquetaModelo: string | null = null
       for (const model of modelos) {
@@ -996,6 +1084,8 @@ Deno.serve(async (req: Request) => {
             const mid = Number(parsed.midia_id)
             midiaId = Number.isFinite(mid) && mid > 0 ? mid : null
             mostrarFabrica = (typeof parsed.mostrar_fabrica === 'string') ? parsed.mostrar_fabrica.trim().toLowerCase() : null
+            consultarVendedor = (typeof parsed.consultar_vendedor === 'string' && parsed.consultar_vendedor.trim())
+              ? parsed.consultar_vendedor.trim().slice(0, 500) : null
             temperatura = ['quente', 'morno', 'frio'].includes(parsed.temperatura) ? parsed.temperatura : null
             dados = (parsed.dados && typeof parsed.dados === 'object') ? parsed.dados : null
             vendedorAssumir = parsed.vendedor_assumir === true
@@ -1354,6 +1444,42 @@ Deno.serve(async (req: Request) => {
         if (m) midia = { id: m.id, titulo: m.titulo, tipo: m.tipo, url: m.url, filename: m.filename || null }
       }
 
+      // CONSULTA INTERNA (30/07) — a IA pediu ajuda em vez de inventar.
+      // So vale no piloto: a IA fixa nao tem o campo no contrato dela, e soltar isso pra frota
+      // sem o painel de pendencias pronto encheria o WhatsApp dos vendedores.
+      // Falha FECHADA em dois sentidos: sem contato cadastrado, a consulta nao abre E a conversa
+      // NAO pausa — pausar sem ter quem responda deixaria o cliente esperando pra sempre.
+      let consultaAberta: any = null
+      if (personaPiloto && consultarVendedor && !encerrar) {
+        const mem: any = st.dados_coletados || {}
+        const ctx = [mem.equipamento, mem.animal ? `${mem.quantidade || ''} ${mem.animal}`.trim() : null,
+                     mem.producao_kgh ? `${mem.producao_kgh} kg/h` : null, mem.cidade, mem.resumo]
+          .filter(Boolean).join(' · ').slice(0, 300)
+        consultaAberta = await abrirConsulta(supa, {
+          tipo: 'duvida_tecnica', chat_id, vendedor_nome: st.vendedor_nome,
+          cliente_nome: nomeBom || st.nome_contato || null,
+          cliente_telefone: String(chat_id).replace(/@.*/, ''),
+          duvida: consultarVendedor, contexto: ctx || null,
+        })
+        if (consultaAberta && !consultaAberta.reaproveitada) {
+          await supa.from('ia_atendimentos').update({
+            estado: 'WAITING_INTERNAL_GUIDANCE', estado_desde: new Date().toISOString(),
+            estado_motivo: consultaAberta.codigo, atualizado_em: new Date().toISOString(),
+          }).eq('chat_id', chat_id)
+          try {
+            await supa.from('automation_runs').insert({
+              regra_key: 'ia_atendente', vendedor_nome: st.vendedor_nome, chat_id,
+              acao: 'ia_consulta_interna', modo: 'automatico', executor: 'ia', status: 'executado',
+              payload: { codigo: consultaAberta.codigo, duvida: consultarVendedor, contexto: ctx,
+                         destinatario: consultaAberta.destinatario_nome },
+              motivo: 'IA nao soube responder e consultou o vendedor',
+            })
+          } catch (_) { /* auditoria best-effort */ }
+        }
+        // Consulta aberta = a IA nao encerra nem etiqueta agora: ela esta esperando, nao acabou.
+        if (consultaAberta) { vendedorAssumir = false; etiquetaModelo = null }
+      }
+
       const acoes: any = { etiqueta: null, desligada: false }
       const upd: any = { respostas_hoje: respostasHoje + 1, dia_ref: hojeBR, atualizado_em: new Date().toISOString() }
       if (temperatura) upd.temperatura = temperatura
@@ -1458,14 +1584,23 @@ Deno.serve(async (req: Request) => {
       // desta linha. Bastao que nao virou registro aqui e invisivel: nunca cobra ninguem. Auditado:
       // 146/146 gravaram. Segue best-effort (nao vale derrubar a resposta por causa do log), mas a
       // falha passa a aparecer.
-      try { const insLog = await supa.from('automation_runs').insert({ regra_key: 'ia_atendente', vendedor_nome, chat_id, acao: 'ia_resposta', modo: 'automatico', executor: 'ia', status: 'executado', payload: { texto: texto.slice(0, 500), cliente_msg: clienteMsg, conversa: transcricaoLog, midia_id: midia ? midia.id : null, midias_fabrica: fabricaMidias.length || 0, modelo: modelos[0], temperatura, dados: dadosMem, vendedor_assumir: vendedorAssumir, encerrar, etiqueta: acoes.etiqueta, respostas_hoje: respostasHoje + 1,
+      try { const insLog = await supa.from('automation_runs').insert({ regra_key: 'ia_atendente', vendedor_nome, chat_id, acao: 'ia_resposta', modo: 'automatico', executor: 'ia', status: 'executado', payload: { texto: texto.slice(0, 500), cliente_msg: clienteMsg, conversa: transcricaoLog, midia_id: midia ? midia.id : null, midias_fabrica: fabricaMidias.length || 0, consulta: consultaAberta ? consultaAberta.codigo : null, modelo: modelos[0], temperatura, dados: dadosMem, vendedor_assumir: vendedorAssumir, encerrar, etiqueta: acoes.etiqueta, respostas_hoje: respostasHoje + 1,
         // (30/07) Sem isto nao da pra saber QUAL persona escreveu: as duas proibem as mesmas
         // palavras, entao o texto nao denuncia. Perguntar "essa resposta foi da nova?" virava
         // adivinhacao. Agora fica no log de cada resposta.
         persona: personaPiloto ? personaPiloto.versao : 'fixa' }, motivo: 'resposta automatica ao cliente (IA ligada pelo vendedor)' })
         if (insLog?.error) console.error('[ia-atendente] log ia_resposta nao gravado (' + chat_id + '):', insLog.error.message)
       } catch (_) { /* auditoria best-effort */ }
-      return j({ ok: true, texto, midia, midias: fabricaMidias.length ? fabricaMidias : undefined, acoes, respostas_hoje: respostasHoje + 1 })
+      // O recado interno vai junto da resposta ao cliente. Quem entrega e a extensao — a edge
+      // nunca fala com o WhatsApp direto. 'reaproveitada' significa que a duvida ja estava aberta:
+      // registramos, mas NAO mandamos de novo (era a rajada que enchia o vendedor).
+      const consultaInterna = (consultaAberta && !consultaAberta.reaproveitada)
+        ? { codigo: consultaAberta.codigo, telefone: consultaAberta.destinatario_tel,
+            texto: textoConsulta({ ...consultaAberta, duvida: consultarVendedor }) }
+        : undefined
+
+      return j({ ok: true, texto, midia, midias: fabricaMidias.length ? fabricaMidias : undefined,
+                 acoes, consulta_interna: consultaInterna, respostas_hoje: respostasHoje + 1 })
     }
 
     return j({ ok: false, error: 'action invalida' }, 400)
