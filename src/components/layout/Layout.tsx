@@ -26,6 +26,7 @@ interface NavItem {
   countKey?: 'atendimentos'
   end?: boolean      // ativa SO na rota exata (pra paths que sao prefixo de irmaos)
   permKey?: string   // so mostra quando can(permKey) === true
+  adminOnly?: boolean // so mostra pro role 'admin' (o guard de rota em App.tsx trava o resto)
 }
 interface NavGroup {
   id: string
@@ -99,6 +100,9 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/controle/novo-pedido', label: 'Novo Pedido', icon: FilePlus2, permKey: 'menu.controle' },
       { to: '/vendidos', label: 'Vendidos', icon: CheckCircle, permKey: 'menu.vendidos' },
       { to: '/mapa-visitas', label: 'Mapa de Visitas', icon: MapPin },
+      // Visão de gestão: mostra a carteira de TODOS os reps e o quanto cada um está
+      // acima/abaixo da média. Só admin — o guard em App.tsx trava a URL direta.
+      { to: '/mapa-representantes', label: 'Mapa de Representantes', icon: MapPin, adminOnly: true },
     ],
   },
   {
@@ -201,7 +205,8 @@ export function Layout() {
     setTip({ label, x: r.right + 8, y: r.top + r.height / 2 })
   }
 
-  const visible = (item: NavItem) => !item.permKey || can(item.permKey)
+  const visible = (item: NavItem) =>
+    (!item.adminOnly || profile?.role === 'admin') && (!item.permKey || can(item.permKey))
   // Grupos com itens visiveis (descarta grupos vazios pro usuario)
   const groups = NAV_GROUPS
     .map(g => ({ ...g, items: g.items.filter(visible) }))
@@ -311,11 +316,28 @@ export function Layout() {
     )
   }
 
-  // Conta "mapa" (Patrick e afins): SÓ o Mapa de Visitas, em tela cheia. Sem sidebar,
+  // Conta "mapa" (Patrick e afins): SÓ os dois mapas, em tela cheia. Sem sidebar,
   // sem bottom-nav — pensado pra uso no celular. Botão de sair discreto e flutuante.
   if (profile?.role === 'mapa') {
     return (
       <div className="min-h-screen bg-bg">
+        {/* Sem menu nesse papel — este seletor é a ÚNICA forma de trocar de mapa.
+            Fica À DIREITA, empilhado acima do Sair: no celular o canto inferior
+            ESQUERDO é da legenda do Mapa de Visitas. */}
+        <div className="fixed right-3 bottom-[calc(max(0.75rem,env(safe-area-inset-bottom))+3.25rem)] z-[1100] flex h-11 rounded-full overflow-hidden border border-border bg-surface/95 backdrop-blur shadow-md text-[13px] font-semibold">
+          {[
+            { to: '/mapa-visitas', label: 'Visitas' },
+            { to: '/mapa-representantes', label: 'Representantes' },
+          ].map(m => (
+            <NavLink
+              key={m.to}
+              to={m.to}
+              className={({ isActive }) => cn('px-4 inline-flex items-center', isActive ? 'bg-accent text-white' : 'text-ink-muted')}
+            >
+              {m.label}
+            </NavLink>
+          ))}
+        </div>
         {/* Botão sair — canto INFERIOR direito, com confirmação antes de sair */}
         <button
           onClick={() => setConfirmSair(true)}

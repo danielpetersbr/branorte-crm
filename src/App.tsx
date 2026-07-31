@@ -27,6 +27,7 @@ const Prospeccao = lazy(() => import('@/pages/Prospeccao').then(m => ({ default:
 const Orcamentos = lazy(() => import('@/pages/Orcamentos').then(m => ({ default: m.Orcamentos })))
 const Vendidos = lazy(() => import('@/pages/Vendidos').then(m => ({ default: m.Vendidos })))
 const MapaVisitas = lazy(() => import('@/pages/MapaVisitas').then(m => ({ default: m.MapaVisitas })))
+const MapaRepresentantes = lazy(() => import('@/pages/MapaRepresentantes').then(m => ({ default: m.MapaRepresentantes })))
 const Funil = lazy(() => import('@/pages/Funil').then(m => ({ default: m.Funil })))
 const FunilWhatsApp = lazy(() => import('@/pages/FunilWhatsApp').then(m => ({ default: m.FunilWhatsApp })))
 const FunilRelatorio = lazy(() => import('@/pages/FunilRelatorio').then(m => ({ default: m.FunilRelatorio })))
@@ -265,6 +266,13 @@ function AppRoutes() {
     return <PendenteOuTransportadora />
   }
 
+  // Mapa de Representantes: visão de gestão (carteira de todos os reps + comparação
+  // com a média). Só ADMIN e as contas de papel 'mapa' (Patrick) — vendedor/visualizador
+  // caem no início mesmo digitando a URL. O menu já esconde pra quem não pode.
+  if (loc.pathname.startsWith('/mapa-representantes') && !['admin', 'mapa'].includes(profile.role)) {
+    return <Navigate to="/" replace />
+  }
+
   // Visualizador: acesso restrito a Dashboard + Atendimentos. Bloqueia URL direta
   // pra qualquer outra rota (o menu já esconde; isto trava o acesso por link).
   const VIEWER_PATHS = new Set(['/', '/dashboard', '/atendimentos', '/perfil', '/agenda'])
@@ -298,7 +306,9 @@ function AppRoutes() {
   // então ao logar já abre o mapa. O Layout esconde todo o chrome pra esse papel.
   if (profile.role === 'mapa') {
     const p = loc.pathname
-    if (p !== '/mapa-visitas' && p !== '/perfil') return <Navigate to="/mapa-visitas" replace />
+    if (p !== '/mapa-visitas' && p !== '/mapa-representantes' && p !== '/perfil') {
+      return <Navigate to="/mapa-visitas" replace />
+    }
   }
 
   // Aprovado → app
@@ -341,6 +351,7 @@ function AppRoutes() {
         <Route path="/frete/aprovar" element={<Navigate to="/frete/cotacoes" replace />} />
         <Route path="/vendidos" element={<Vendidos />} />
         <Route path="/mapa-visitas" element={<MapaVisitas />} />
+        <Route path="/mapa-representantes" element={<MapaRepresentantes />} />
         <Route path="/controle" element={<ControleDashboard />} />
         <Route path="/controle/pedidos" element={<ControlePedidos />} />
         <Route path="/controle/financeiro" element={<ControleFinanceiro />} />
