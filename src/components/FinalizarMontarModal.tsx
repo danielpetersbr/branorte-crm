@@ -580,12 +580,21 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       setErro('Adicione pelo menos um item ao carrinho antes de gerar')
       return
     }
-    if (!snapshot.totalGeral || snapshot.totalGeral <= 0) {
-      setErro('Valor total do orçamento está zerado — confira os preços dos itens')
-      return
+    // Total zerado é PERMITIDO (brinde, cortesia, reposição em garantia). Não bloqueia —
+    // só confirma, pra não salvar sem querer um orçamento que ficou sem cotar.
+    const totalZerado = !snapshot.totalGeral || snapshot.totalGeral <= 0
+    if (totalZerado && !headlessMode) {
+      const ok = confirm(
+        `O orçamento está com valor total R$ 0,00.\n\n` +
+        `Se for brinde/cortesia, pode salvar assim mesmo.\n\n` +
+        `OK = salvar zerado.\n` +
+        `Cancelar = voltar e cotar os itens.`
+      )
+      if (!ok) return
     }
-    // Avisa se item tem valor zerado (vendedor esqueceu de cotar)
-    const itemSemValor = snapshot.itens.find(it => !it.valor || it.valor <= 0)
+    // Avisa se ALGUM item ficou zerado (vendedor esqueceu de cotar). Se o total inteiro
+    // já é zero, o aviso acima cobriu — não pergunta duas vezes.
+    const itemSemValor = totalZerado ? undefined : snapshot.itens.find(it => !it.valor || it.valor <= 0)
     if (itemSemValor) {
       const ok = confirm(`O item "${itemSemValor.nome}" está com R$ 0,00. Gerar mesmo assim?`)
       if (!ok) return
@@ -1672,14 +1681,15 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             </div>
           )}
 
-          {/* Aviso preventivo: total zerado ou sem itens (bloqueia o botao Salvar). */}
+          {/* Sem itens BLOQUEIA o Salvar. Total zerado NAO bloqueia (brinde/cortesia):
+              e so um lembrete, e o Salvar pede confirmacao. */}
           {(!snapshot.itens?.length || (snapshot.totalGeral ?? 0) <= 0) && !erro && (
             <div className="p-3 bg-warning/10 border border-warning/40 rounded-md text-[11px] text-warning flex items-start gap-2">
               <span className="text-[14px] leading-none mt-0.5">⚠</span>
               <span>
                 {!snapshot.itens?.length
                   ? 'Adicione pelo menos um item ao orcamento antes de salvar.'
-                  : 'Valor total do orcamento esta zerado. Confira os precos dos itens (ou marque como brinde se for o caso) antes de salvar.'}
+                  : 'Valor total do orcamento esta zerado. Se for brinde/cortesia pode salvar assim mesmo — vou so pedir uma confirmacao. Senao, confira os precos dos itens.'}
               </span>
             </div>
           )}
@@ -1709,12 +1719,12 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
               nele por engano e o arquivo nao ia pra pasta. */}
           <button
             onClick={() => handleGerar({ salvarNaPasta: temPastaLocal, salvarNoServidor: !temPastaLocal, pdfQuality: pdfAltaQualidade ? 'high' : 'normal' })}
-            disabled={gerando || !cliNome.trim() || !snapshot.itens?.length || (snapshot.totalGeral ?? 0) <= 0}
+            disabled={gerando || !cliNome.trim() || !snapshot.itens?.length}
             className="text-[13px] px-5 py-2.5 rounded bg-accent hover:bg-accent/90 text-white font-bold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 min-h-[44px] shadow-sm flex-1 sm:flex-initial"
             title={
               !cliNome.trim() ? 'Preencha o nome do cliente'
               : !snapshot.itens?.length ? 'Adicione pelo menos um item ao orcamento'
-              : (snapshot.totalGeral ?? 0) <= 0 ? 'Valor total esta zerado — confira os precos dos itens'
+              : (snapshot.totalGeral ?? 0) <= 0 ? 'Total zerado (brinde/cortesia) — vai pedir confirmacao antes de salvar'
               : "Salva pra pasta Z:\\1 - Comercial\\3 - Orçamento — sincronizado pelo PC do escritório"
             }
           >
