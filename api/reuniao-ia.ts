@@ -12,6 +12,7 @@ const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!
 const SVC_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
 const OPENAI_KEY = process.env.OPENAI_API_KEY!
 const MODEL = 'gpt-5.4-mini'
+const WHISPER_PROMPT = 'Reunião interna da Branorte (metalúrgica, fábrica de máquinas para ração animal). Termos: chupim, transportador helicoidal, moinho de martelo, misturador, silo, orçamento, pedido, vendedor, meta, comissão, follow-up, lead, etiqueta, Wascript, WhatsApp.'
 
 export const config = { api: { bodyParser: { sizeLimit: '2mb' } } }
 
@@ -63,7 +64,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     form.append('model', 'gpt-4o-transcribe')
     form.append('language', 'pt')
     form.append('response_format', 'json')
-    form.append('prompt', 'Reunião interna da Branorte (metalúrgica, fábrica de máquinas para ração animal). Termos: chupim, transportador helicoidal, moinho de martelo, misturador, silo, orçamento, pedido, vendedor, meta, comissão, follow-up, lead, etiqueta, Wascript, WhatsApp.')
+    form.append('prompt', WHISPER_PROMPT)
 
     const wr = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
@@ -80,7 +81,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(502).json({ error: 'whisper', detail })
     }
     const j = (await wr.json()) as { text?: string }
-    return res.status(200).json({ texto: (j.text || '').trim() })
+    let texto = (j.text || '').trim()
+    // O modelo às vezes devolve o PRÓPRIO prompt no lugar da fala (aconteceu
+    // num bloco da reunião de 27/07 — voltou só o texto do prompt, 260 chars).
+    // Nesse caso refaz sem prompt, que transcreve normal.
+    if (texto.startsWith(WHISPER_PROMPT.slice(0, 40))) {
+      const form2 = new FormData()
+      form2.append('file', new Blob([new Uint8Array(buf)], { type: 'audio/webm' }), 'reuniao.webm')
+      form2.append('model', 'gpt-4o-transcribe')
+      form2.append('language', 'pt')
+      form2.append('response_format', 'json')
+      const wr2 = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${OPENAI_KEY}` },
+        body: form2,
+      })
+      if (wr2.ok) texto = (((await wr2.json()) as { text?: string }).text || '').trim()
+    }
+    return res.status(200).json({ texto })
   }
 
   // ---------- RESUMO ----------
