@@ -90,9 +90,16 @@ function Gravador({ reuniaoId, onAdd }: { reuniaoId: string; onAdd: (g: Gravacao
     if (blob.size === 0) { if (isFinal) setUploading(false); return }
     if (isFinal) setUploading(true)
     try {
-      const path = `${reuniaoId}/${Date.now()}-${(partRef.current++).toString().padStart(2, '0')}.webm`
-      const { error } = await supabase.storage.from('reunioes-audio').upload(path, blob, { contentType: blob.type || 'audio/webm', upsert: false })
-      if (error) throw error
+      // Falha de rede aqui perde o bloco inteiro (em 27/07, 1 dos 6 blocos nunca
+      // chegou no Storage). Tenta de novo uma vez antes de desistir.
+      const subir = async () => {
+        const path = `${reuniaoId}/${Date.now()}-${(partRef.current++).toString().padStart(2, '0')}.webm`
+        const { error } = await supabase.storage.from('reunioes-audio').upload(path, blob, { contentType: blob.type || 'audio/webm', upsert: false })
+        if (error) throw error
+        return path
+      }
+      let path: string
+      try { path = await subir() } catch { await new Promise(r => setTimeout(r, 2000)); path = await subir() }
       const { data: pub } = supabase.storage.from('reunioes-audio').getPublicUrl(path)
       onAddRef.current({ id: uid(), url: pub.publicUrl, path, duracao_seg: durSeg, created_at: new Date().toISOString() })
     } catch (e) {
@@ -350,13 +357,18 @@ function Editor({ reuniao, onVoltar }: { reuniao: Reuniao; onVoltar: () => void 
   const [transcrevendo, setTranscrevendo] = useState<string | null>(null)
   const [resumindo, setResumindo] = useState(false)
   const [iaErr, setIaErr] = useState<string | null>(null)
+  // Todo patch de gravacoes acontece DEPOIS de uma chamada de IA (30 s+) ou de um
+  // upload (15 min). Sem a ref, o handler grava por cima com a lista de quando
+  // foi clicado — duas transcricoes em paralelo perdiam uma.
+  const reuniaoRef = useRef(reuniao)
+  useEffect(() => { reuniaoRef.current = reuniao })
 
   const patch = (p: Partial<Pick<Reuniao, 'titulo' | 'data_reuniao' | 'status' | 'pauta' | 'tarefas' | 'resumo' | 'gravacoes'>>) =>
     atualizar.mutate({ id: reuniao.id, ...p })
 
-  const addGravacao = (g: Gravacao) => patch({ gravacoes: [...reuniao.gravacoes, g] })
+  const addGravacao = (g: Gravacao) => patch({ gravacoes: [...reuniaoRef.current.gravacoes, g] })
   const removeGravacao = (g: Gravacao) => {
-    patch({ gravacoes: reuniao.gravacoes.filter(x => x.id !== g.id) })
+    patch({ gravacoes: reuniaoRef.current.gravacoes.filter(x => x.id !== g.id) })
     supabase.storage.from('reunioes-audio').remove([g.path]).catch(() => { /* noop */ })
   }
 
@@ -364,7 +376,7 @@ function Editor({ reuniao, onVoltar }: { reuniao: Reuniao; onVoltar: () => void 
     setIaErr(null); setTranscrevendo(g.id)
     try {
       const { texto } = await callReuniaoIA({ action: 'transcrever', url: g.url }) as { texto: string }
-      patch({ gravacoes: reuniao.gravacoes.map(x => x.id === g.id ? { ...x, transcricao: texto } : x) })
+      patch({ gravacoes: reuniaoRef.current.gravacoes.map(x => x.id === g.id ? { ...x, transcricao: texto } : x) })
     } catch (e) { setIaErr('Transcrição falhou: ' + (e as Error).message) }
     finally { setTranscrevendo(null) }
   }
