@@ -55,6 +55,11 @@ async function callReuniaoIA(payload: Record<string, unknown>): Promise<Record<s
 // Gravador de áudio da reunião: MediaRecorder (mic) → Blob → Supabase Storage
 // (bucket reunioes-audio, público) → devolve a Gravacao pra salvar na reunião.
 function Gravador({ reuniaoId, onAdd }: { reuniaoId: string; onAdd: (g: Gravacao) => void }) {
+  // O upload de um bloco só acontece até 15 min depois de o recorder abrir — o
+  // onAdd capturado ali carrega uma lista de gravações velha e sobrescreve os
+  // blocos já salvos. A ref aponta sempre pro onAdd do render atual.
+  const onAddRef = useRef(onAdd)
+  useEffect(() => { onAddRef.current = onAdd })
   const [rec, setRec] = useState(false)
   const [elapsed, setElapsed] = useState(0)
   const [uploading, setUploading] = useState(false)
@@ -89,7 +94,7 @@ function Gravador({ reuniaoId, onAdd }: { reuniaoId: string; onAdd: (g: Gravacao
       const { error } = await supabase.storage.from('reunioes-audio').upload(path, blob, { contentType: blob.type || 'audio/webm', upsert: false })
       if (error) throw error
       const { data: pub } = supabase.storage.from('reunioes-audio').getPublicUrl(path)
-      onAdd({ id: uid(), url: pub.publicUrl, path, duracao_seg: durSeg, created_at: new Date().toISOString() })
+      onAddRef.current({ id: uid(), url: pub.publicUrl, path, duracao_seg: durSeg, created_at: new Date().toISOString() })
     } catch (e) {
       setErr('Falhou ao salvar um bloco: ' + ((e as Error)?.message || 'erro'))
     } finally {
