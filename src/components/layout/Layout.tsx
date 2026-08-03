@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, ChevronDown, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Package, Zap, BookOpen, Settings, TrendingUp, MessageSquarePlus, FilePlus2, Truck, History, Search, Wallet, MapPin, Star, Target, Boxes, Calculator, ClipboardList, Beef, Wheat, Bot, Workflow, CalendarDays } from 'lucide-react'
+import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, ChevronDown, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Package, Zap, BookOpen, Settings, TrendingUp, MessageSquarePlus, FilePlus2, Truck, History, Search, Wallet, MapPin, Star, Target, Boxes, Calculator, ClipboardList, Beef, Wheat, Bot, Workflow, CalendarDays, ShoppingBag } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { cn } from '@/lib/utils'
@@ -21,19 +21,22 @@ import { LembretesNotifier } from '@/components/LembretesNotifier'
  * que existe mas ninguém alcança; item aqui sem rota lá = clique que devolve o
  * sujeito pro começo.
  */
+// As duas telas de ração são estudos OPOSTOS e aparecem separadas de propósito:
+//   Produção Própria = vale a pena o CLIENTE parar de comprar e produzir
+//   Venda de Ração   = a Branorte vendendo: custo, margem, preço, proposta
+// (a /viabilidade antiga era iframe e foi absorvida pela Produção Própria)
 const MENUS_RESTRITOS: Record<string, Array<{ to: string; label: string; icon: typeof MapPin }>> = {
-  // Patrick e afins: consulta os mapas + o estudo.
+  // Patrick e afins: consulta os mapas + os dois estudos.
   mapa: [
     { to: '/mapa-visitas', label: 'Mapa de Visitas', icon: MapPin },
     { to: '/mapa-representantes', label: 'Representantes', icon: Users },
-    // Os dois estudos viraram UM: /viabilidade era iframe da calculadora pública
-    // e /venda-racao precificava ração, que a Branorte não vende. Os dois
-    // redirecionam pra cá — dois itens apontando pra mesma tela seriam confusão.
     { to: '/producao-propria', label: 'Produção Própria', icon: Calculator },
+    { to: '/venda-racao', label: 'Venda de Ração', icon: ShoppingBag },
   ],
-  // Consultor externo: SÓ o estudo. Sem mapa, sem contato, sem orçamento.
+  // Consultor externo: SÓ os dois estudos. Sem mapa, sem contato, sem orçamento.
   consultor: [
     { to: '/producao-propria', label: 'Produção Própria', icon: Calculator },
+    { to: '/venda-racao', label: 'Venda de Ração', icon: ShoppingBag },
   ],
 }
 
@@ -140,6 +143,7 @@ const NAV_GROUPS: NavGroup[] = [
     id: 'estudo', label: 'Estudo', icon: Calculator,
     items: [
       { to: '/producao-propria', label: 'Produção Própria', icon: Calculator, permKey: 'menu.venda_racao' },
+      { to: '/venda-racao', label: 'Venda de Ração', icon: ShoppingBag, permKey: 'menu.venda_racao' },
       { to: '/guia-animais', label: 'Guia de Animais', icon: Beef, permKey: 'menu.viabilidade' },
       { to: '/guia-materias', label: 'Matérias-primas', icon: Wheat, permKey: 'menu.viabilidade' },
     ],

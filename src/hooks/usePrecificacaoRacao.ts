@@ -1,24 +1,20 @@
 /**
- * Acesso ao banco do módulo Produção Própria (/producao-propria).
- *
- * As tabelas mantêm o nome `venda_racao_*` de quando o módulo era de
- * precificação: renomeá-las quebraria RLS, grants e os estudos já salvos. O que
- * mudou foi o significado das colunas, não o endereço.
+ * Acesso ao banco do módulo Venda de Ração.
  *
  * Tudo passa pelo client Supabase do CRM (mesma sessão do vendedor) — sem auth
- * paralela. A RLS é quem decide o que cada um enxerga: vendedor vê os próprios
- * estudos, admin (ou quem tem `venda_racao.ver_todas`) vê todos.
+ * paralela. A RLS é quem decide o que cada um enxerga: vendedor vê as próprias
+ * simulações, admin (ou quem tem `venda_racao.ver_todas`) vê todas.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { mesclarConfig } from '@/lib/venda-racao/catalogo'
+import { mesclarConfig } from '@/lib/precificacao-racao/catalogo'
 import type {
-  ConfigEstudo, Especie, EstudoInput, EstudoRow, FormulaSalvaRow,
-  IngredienteCatalogoRow, StatusEstudo,
-} from '@/lib/venda-racao/tipos'
+  ConfigVendaRacao, Especie, FormulaSalvaRow, IngredienteCatalogoRow,
+  SimulacaoInput, SimulacaoRow, StatusProposta,
+} from '@/lib/precificacao-racao/tipos'
 
 const CHAVE_CONFIG = ['venda-racao', 'config'] as const
-const CHAVE_ESTUDOS = ['venda-racao', 'estudos'] as const
+const CHAVE_SIMULACOES = ['venda-racao', 'simulacoes'] as const
 const CHAVE_INGREDIENTES = ['venda-racao', 'ingredientes'] as const
 const CHAVE_FORMULAS = ['venda-racao', 'formulas'] as const
 
@@ -26,14 +22,17 @@ const CHAVE_FORMULAS = ['venda-racao', 'formulas'] as const
 // Config da empresa
 // ---------------------------------------------------------------------------
 
-export function useConfigEstudo() {
+export function useConfigVendaRacao() {
   return useQuery({
     queryKey: CHAVE_CONFIG,
-    queryFn: async (): Promise<ConfigEstudo> => {
+    queryFn: async (): Promise<ConfigVendaRacao> => {
       const { data, error } = await supabase
         .from('venda_racao_config')
+        // id=2 e a linha DESTE modulo. A id=1 pertence ao /producao-propria:
+        // o shape do jsonb e outro, e quem salvasse por ultimo apagaria os
+        // defaults do vizinho. Ver migration 20260803_discriminar_estudo_venda.
         .select('config')
-        .eq('id', 1)
+        .eq('id', 2)
         .maybeSingle()
       if (error) throw error
       return mesclarConfig(data?.config)
@@ -46,12 +45,12 @@ export function useSalvarConfig() {
   const qc = useQueryClient()
   return useMutation({
     mutationKey: ['venda-racao', 'config', 'salvar'],
-    mutationFn: async (config: ConfigEstudo) => {
+    mutationFn: async (config: ConfigVendaRacao) => {
       const { data: { user } } = await supabase.auth.getUser()
       const { error } = await supabase
         .from('venda_racao_config')
         .update({ config, updated_by: user?.id ?? null })
-        .eq('id', 1)
+        .eq('id', 2)
       if (error) throw error
       return config
     },
@@ -184,40 +183,36 @@ export function useRemoverFormula() {
 }
 
 // ---------------------------------------------------------------------------
-// Estudos
+// Simulações
 // ---------------------------------------------------------------------------
 
-export interface FiltrosEstudo {
+export interface FiltrosSimulacao {
   busca?: string
-  status?: StatusEstudo | ''
+  status?: StatusProposta | ''
   especie?: Especie | ''
   vendedor?: string
   de?: string
   ate?: string
-  /** 'nao' (padrão) esconde arquivados; 'sim' mostra só eles; 'todos' não filtra. */
-  arquivados?: 'nao' | 'sim' | 'todos'
 }
 
 /** Lista sem o JSONB `dados` — é pesado e a listagem não usa. */
 const COLUNAS_LISTA =
   'id, codigo, created_by, vendedor_nome, cliente_nome, cliente_empresa, cliente_cidade, '
   + 'cliente_uf, especie, categoria, quantidade_kg, quantidade_mensal_kg, peso_saco, '
-  + 'custo_atual_kg, custo_proprio_kg, economia_kg, economia_mensal, economia_anual, '
-  + 'reducao_pct, capacidade_kg_hora, investimento_total, payback_meses, '
-  + 'status, arquivado, validade, created_at, updated_at'
+  + 'preco_negociado_kg, preco_sugerido_kg, preco_minimo_kg, margem_real_pct, valor_total, '
+  + 'lucro_total, lucro_mensal, status, validade, created_at, updated_at'
 
-export function useEstudos(filtros: FiltrosEstudo = {}) {
+export function useSimulacoes(filtros: FiltrosSimulacao = {}) {
   return useQuery({
-    queryKey: [...CHAVE_ESTUDOS, filtros],
+    queryKey: [...CHAVE_SIMULACOES, filtros],
     queryFn: async () => {
       let q = supabase
         .from('venda_racao_simulacoes')
         .select(COLUNAS_LISTA)
-        // A tabela é compartilhada com o /venda-racao (precificação da venda),
-        // que grava tipo='venda' e tem outro formato no `dados`. Sem o filtro,
-        // este Histórico listaria as linhas de lá. O insert daqui não seta o
-        // campo — o default da coluna é 'estudo'.
-        .eq('tipo', 'estudo')
+        // A tabela e compartilhada com o /producao-propria; sem este filtro o
+        // Historico de uma tela listaria as linhas da outra, e abrir a linha do
+        // tipo errado quebraria o normalizarInput (o `dados` tem outro formato).
+        .eq('tipo', 'venda')
         .order('created_at', { ascending: false })
         .limit(300)
 
@@ -230,23 +225,21 @@ export function useEstudos(filtros: FiltrosEstudo = {}) {
       if (filtros.vendedor?.trim()) q = q.ilike('vendedor_nome', `%${filtros.vendedor.trim()}%`)
       if (filtros.de) q = q.gte('created_at', `${filtros.de}T00:00:00`)
       if (filtros.ate) q = q.lte('created_at', `${filtros.ate}T23:59:59`)
-      if (filtros.arquivados === 'sim') q = q.eq('arquivado', true)
-      else if (filtros.arquivados !== 'todos') q = q.eq('arquivado', false)
 
       const { data, error } = await q
       if (error) throw error
-      return (data ?? []) as unknown as EstudoRow[]
+      return (data ?? []) as unknown as SimulacaoRow[]
     },
     staleTime: 30_000,
   })
 }
 
-/** Um estudo completo (com `dados`) pra reabrir no formulário. */
-export function useEstudo(id: string | null) {
+/** Uma simulação completa (com `dados`) pra reabrir no formulário. */
+export function useSimulacao(id: string | null) {
   return useQuery({
-    queryKey: [...CHAVE_ESTUDOS, 'item', id],
+    queryKey: [...CHAVE_SIMULACOES, 'item', id],
     enabled: !!id,
-    queryFn: async (): Promise<EstudoRow | null> => {
+    queryFn: async (): Promise<SimulacaoRow | null> => {
       if (!id) return null
       const { data, error } = await supabase
         .from('venda_racao_simulacoes')
@@ -254,32 +247,31 @@ export function useEstudo(id: string | null) {
         .eq('id', id)
         .maybeSingle()
       if (error) throw error
-      return (data ?? null) as EstudoRow | null
+      return (data ?? null) as SimulacaoRow | null
     },
   })
 }
 
-export interface PayloadEstudo {
+export interface PayloadSimulacao {
   /** Presente = update; ausente = insert. */
   id?: string
-  input: EstudoInput
+  input: SimulacaoInput
   /** Números já calculados (o motor é a fonte da verdade, não o banco). */
   resumo: {
-    consumoMensalKg: number
-    custoAtualPorKg: number
-    custoProprioPorKg: number
-    economiaPorKg: number
-    economiaMensal: number
-    economiaAnual: number
-    reducaoPct: number
-    capacidadeKgHora: number
-    investimentoTotal: number
-    /** null quando não há economia — payback não existe, e o banco guarda null. */
-    paybackMeses: number | null
+    quantidadeKg: number
+    quantidadeMensalKg: number
+    custoBasePorKg: number
+    precoSugeridoPorKg: number
+    precoMinimoPorKg: number
+    precoNegociadoPorKg: number
+    margemRealPct: number
+    valorTotal: number
+    lucroTotal: number
+    lucroMensal: number
   }
 }
 
-function paraLinha(p: PayloadEstudo) {
+function paraLinha(p: PayloadSimulacao) {
   const { input, resumo } = p
   const id = input.identificacao
   return {
@@ -293,22 +285,19 @@ function paraLinha(p: PayloadEstudo) {
     categoria: input.produto.categoria === 'outro'
       ? (input.produto.categoriaLivre || 'Outro')
       : input.produto.categoria,
-
-    // quantidade_kg fica igual ao mensal: no estudo não existe "pedido"
-    quantidade_kg: resumo.consumoMensalKg,
-    quantidade_mensal_kg: resumo.consumoMensalKg,
-    peso_saco: input.necessidade.pesoSaco || 40,
-
-    custo_atual_kg: resumo.custoAtualPorKg,
-    custo_proprio_kg: resumo.custoProprioPorKg,
-    economia_kg: resumo.economiaPorKg,
-    economia_mensal: resumo.economiaMensal,
-    economia_anual: resumo.economiaAnual,
-    reducao_pct: resumo.reducaoPct,
-    capacidade_kg_hora: resumo.capacidadeKgHora,
-    investimento_total: resumo.investimentoTotal,
-    payback_meses: resumo.paybackMeses,
-
+    quantidade_kg: resumo.quantidadeKg,
+    quantidade_mensal_kg: resumo.quantidadeMensalKg,
+    peso_saco: input.quantidade.pesoSaco || 40,
+    custo_base_kg: resumo.custoBasePorKg,
+    margem_desejada_pct: input.venda.margemDesejadaPct,
+    margem_minima_pct: input.venda.margemMinimaPct,
+    preco_sugerido_kg: resumo.precoSugeridoPorKg,
+    preco_minimo_kg: resumo.precoMinimoPorKg,
+    preco_negociado_kg: resumo.precoNegociadoPorKg,
+    margem_real_pct: resumo.margemRealPct,
+    valor_total: resumo.valorTotal,
+    lucro_total: resumo.lucroTotal,
+    lucro_mensal: resumo.lucroMensal,
     status: input.status,
     validade: id.validade || null,
     observacoes: id.observacoesInternas || null,
@@ -316,11 +305,11 @@ function paraLinha(p: PayloadEstudo) {
   }
 }
 
-export function useSalvarEstudo() {
+export function useSalvarSimulacao() {
   const qc = useQueryClient()
   return useMutation({
-    mutationKey: ['venda-racao', 'estudo', 'salvar'],
-    mutationFn: async (p: PayloadEstudo): Promise<EstudoRow> => {
+    mutationKey: ['venda-racao', 'simulacao', 'salvar'],
+    mutationFn: async (p: PayloadSimulacao): Promise<SimulacaoRow> => {
       if (!p.input.identificacao.clienteNome.trim()) {
         throw new Error('Informe o nome do cliente antes de salvar.')
       }
@@ -334,61 +323,46 @@ export function useSalvarEstudo() {
           .select('*')
           .single()
         if (error) throw error
-        return data as EstudoRow
+        return data as SimulacaoRow
       }
 
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Sessão expirada — entre de novo pra salvar.')
       const { data, error } = await supabase
         .from('venda_racao_simulacoes')
-        .insert({ ...linha, created_by: user.id })
+        .insert({ ...linha, tipo: 'venda', created_by: user.id })
         .select('*')
         .single()
       if (error) throw error
-      return data as EstudoRow
+      return data as SimulacaoRow
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: CHAVE_ESTUDOS }) },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: CHAVE_SIMULACOES }) },
   })
 }
 
 export function useAtualizarStatus() {
   const qc = useQueryClient()
   return useMutation({
-    mutationKey: ['venda-racao', 'estudo', 'status'],
-    mutationFn: async ({ id, status }: { id: string; status: StatusEstudo }) => {
+    mutationKey: ['venda-racao', 'simulacao', 'status'],
+    mutationFn: async ({ id, status }: { id: string; status: StatusProposta }) => {
       const { error } = await supabase
         .from('venda_racao_simulacoes')
         .update({ status })
         .eq('id', id)
       if (error) throw error
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: CHAVE_ESTUDOS }) },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: CHAVE_SIMULACOES }) },
   })
 }
 
-export function useArquivarEstudo() {
+export function useRemoverSimulacao() {
   const qc = useQueryClient()
   return useMutation({
-    mutationKey: ['venda-racao', 'estudo', 'arquivar'],
-    mutationFn: async ({ id, arquivado }: { id: string; arquivado: boolean }) => {
-      const { error } = await supabase
-        .from('venda_racao_simulacoes')
-        .update({ arquivado })
-        .eq('id', id)
-      if (error) throw error
-    },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: CHAVE_ESTUDOS }) },
-  })
-}
-
-export function useRemoverEstudo() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationKey: ['venda-racao', 'estudo', 'remover'],
+    mutationKey: ['venda-racao', 'simulacao', 'remover'],
     mutationFn: async (id: string) => {
       const { error } = await supabase.from('venda_racao_simulacoes').delete().eq('id', id)
       if (error) throw error
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: CHAVE_ESTUDOS }) },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: CHAVE_SIMULACOES }) },
   })
 }

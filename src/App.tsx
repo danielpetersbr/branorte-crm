@@ -41,6 +41,7 @@ const AtividadeDiaria = lazy(() => import('@/pages/AtividadeDiaria').then(m => (
 const Projeto = lazy(() => import('@/pages/Projeto').then(m => ({ default: m.Projeto })))
 const Projeto3D = lazy(() => import('@/pages/Projeto3D').then(m => ({ default: m.Projeto3D })))
 const ProducaoPropria = lazy(() => import('@/pages/ProducaoPropria').then(m => ({ default: m.ProducaoPropria })))
+const VendaRacao = lazy(() => import('@/pages/VendaRacao').then(m => ({ default: m.VendaRacao })))
 const Guia = lazy(() => import('@/pages/Guia').then(m => ({ default: m.Guia })))
 const AdminUsuarios = lazy(() => import('@/pages/AdminUsuarios').then(m => ({ default: m.AdminUsuarios })))
 const AdminPermissoes = lazy(() => import('@/pages/AdminPermissoes').then(m => ({ default: m.AdminPermissoes })))
@@ -408,14 +409,21 @@ function AppRoutes() {
         <Route path="/atividade-diaria" element={<AtividadeDiaria />} />
         <Route path="/projeto" element={<Projeto />} />
         <Route path="/projeto-3d" element={<Projeto3D />} />
-        {/* Estudo de Viabilidade da Produção Própria — motor ÚNICO da conta de
-            economia/payback. Absorveu a calculadora que ficava em iframe na
-            /viabilidade e o antigo /venda-racao (precificação de ração, que a
-            Branorte não faz). As duas rotas antigas redirecionam pra cá pra não
-            quebrar link salvo, favorito nem atalho no celular do vendedor. */}
+        {/* DUAS telas de ração, com propósitos opostos — não confundir:
+            /producao-propria = vale a pena o CLIENTE parar de comprar e produzir?
+                                (economia, payback, investimento). Absorveu a
+                                calculadora que ficava em iframe na /viabilidade.
+            /venda-racao      = a Branorte VENDENDO ração: custo, margem, preço
+                                sugerido, desconto máximo e proposta do cliente.
+            A /venda-racao chegou a ser removida em 13b5278 (com a premissa de
+            que a Branorte não vende ração) e foi restaurada a pedido do Daniel
+            em 03/08/2026, com motor e componentes em namespace próprio
+            (lib/components `precificacao-racao`) — o lib compartilhado foi
+            reescrito pelo estudo e os dois formatos não convivem.
+            /viabilidade segue redirecionando: aquela era iframe, morreu mesmo. */}
         <Route path="/producao-propria" element={<ProducaoPropria />} />
+        <Route path="/venda-racao" element={<VendaRacao />} />
         <Route path="/viabilidade" element={<Navigate to="/producao-propria" replace />} />
-        <Route path="/venda-racao" element={<Navigate to="/producao-propria" replace />} />
         <Route path="/guia-animais" element={<Guia hash="animais" title="Guia de Animais" subtitle="Raças e criações de cada cliente — o que falar pro produtor" />} />
         <Route path="/guia-materias" element={<Guia hash="materias" title="Matérias-primas da Ração" subtitle="Pra que serve cada ingrediente, quanto entra e o que muda por região" />} />
         <Route path="/perfil" element={<Perfil />} />
