@@ -198,6 +198,31 @@ export function Layout() {
   const aiDrawerOpen = useAiDrawerOpen()
   const [openGroups, toggleGroup, ensureGroupOpen] = useOpenGroups()
   const [confirmSair, setConfirmSair] = useState(false)
+
+  // A conta 'mapa' (Patrick) roda SEMPRE em tema claro. Motivo concreto: a
+  // /viabilidade é um iframe de app externo que só existe em claro — com o cromo
+  // do CRM escuro em volta, a tela fica partida ao meio.
+  //
+  // Declarado DEPOIS do useDarkMode de propósito: efeitos rodam na ordem de
+  // declaração, então este desfaz o `dark` que aquele acabou de aplicar.
+  //
+  // NÃO grava em localStorage: o tema é por NAVEGADOR, não por usuário
+  // (`theme-v3`). Se o dono da máquina usa escuro, o cleanup devolve ao sair
+  // desta conta — foi assim que o Patrick herdou o escuro de quem logou antes.
+  const ehPapelMapa = profile?.role === 'mapa'
+  useEffect(() => {
+    if (!ehPapelMapa) return
+    const root = document.documentElement
+    if (!root.classList.contains('dark')) return
+    root.classList.remove('dark')
+    const meta = document.querySelector('meta[name="theme-color"]')
+    const corAntes = meta?.getAttribute('content') ?? null
+    meta?.setAttribute('content', '#f5f5f7')
+    return () => {
+      root.classList.add('dark')
+      if (corAntes) meta?.setAttribute('content', corAntes)
+    }
+  }, [ehPapelMapa])
   // Tooltip instantâneo do menu colapsado — substitui o title nativo (Chrome mostra
   // o nome do botão anterior por um instante ao passar rápido entre vizinhos).
   const [tip, setTip] = useState<{ label: string; x: number; y: number } | null>(null)
