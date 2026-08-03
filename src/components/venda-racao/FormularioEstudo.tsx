@@ -19,6 +19,8 @@ import type {
 import { Alternador, Campo, CampoNumero, CampoTexto, CustoLinha, Etapa, Selecao } from './campos'
 
 interface Props {
+  /** Fase de preencher: o formulario ocupa a tela toda em multiplas colunas. */
+  largo?: boolean
   input: EstudoInput
   onChange: (fn: (s: EstudoInput) => EstudoInput) => void
   onTrocarEspecie: (e: Especie) => void
@@ -43,6 +45,7 @@ const UNIDADES_PRECO = [
 ]
 
 export function FormularioEstudo({
+  largo,
   input, onChange, onTrocarEspecie, resultado, config,
   ingredientesCatalogo, formulasSalvas, onSalvarFormula, salvandoFormula,
 }: Props) {
@@ -127,7 +130,7 @@ export function FormularioEstudo({
   const d = resultado.demanda
 
   return (
-    <div className="vr-card">
+    <div className={`vr-card${largo ? ' vr-form-largo' : ''}`}>
       <h2>Dados do estudo</h2>
 
       {/* ---------------------------------------------------- identificação */}

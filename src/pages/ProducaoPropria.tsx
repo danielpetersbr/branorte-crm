@@ -21,8 +21,8 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Calculator, Copy, FilePlus2, FileText, History, ListChecks, MessageCircle,
-  Presentation, Printer, Save, Settings,
+  Calculator, ChevronLeft, Copy, FilePlus2, FileText, History, ListChecks,
+  MessageCircle, Presentation, Printer, Save, Settings,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
@@ -91,6 +91,8 @@ export function ProducaoPropria() {
   const { data: ingredientes = [] } = useIngredientesCatalogo()
 
   const [aba, setAba] = useState<Aba>('simulacao')
+  /** 'preencher' = formulário na tela toda; 'resultado' = painel na tela toda. */
+  const [fase, setFase] = useState<'preencher' | 'resultado'>('preencher')
   const [input, setInput] = useState<EstudoInput | null>(null)
   const [estudoId, setEstudoId] = useState<string | null>(null)
   const [codigo, setCodigo] = useState<string>(codigoProvisorio)
@@ -216,14 +218,29 @@ export function ProducaoPropria() {
   }
 
   /**
-   * O cálculo é reativo (roda a cada tecla). O botão existe pra fechar a conta:
-   * confere os bloqueios e leva o vendedor até o resultado — no celular o painel
-   * fica embaixo do formulário inteiro.
+   * O cálculo é reativo (roda a cada tecla); este botão é quem FECHA a conta e
+   * troca a tela de preencher pra resultado.
+   *
+   * Bloqueio não avança de fase — e como o painel (único lugar que renderiza os
+   * problemas de nível 'bloqueio') fica escondido na fase de preencher, a lista
+   * do que falta vai no próprio aviso. Sem isso o vendedor clicaria no botão
+   * sem entender por que nada acontece.
    */
   const calcular = () => {
     if (resultado.bloqueado) {
-      setAviso({ tipo: 'erro', texto: 'Ainda faltam dados — veja o que está marcado no resultado.' })
-    } else if (!resultado.comparacao.vantajoso) {
+      const faltas = resultado.problemas
+        .filter(p => p.nivel === 'bloqueio')
+        .map(p => p.mensagem)
+      setAviso({
+        tipo: 'erro',
+        texto: faltas.length
+          ? `Falta preencher: ${faltas.join(' · ')}`
+          : 'Ainda faltam dados pra fechar o estudo.',
+      })
+      return
+    }
+    setFase('resultado')
+    if (!resultado.comparacao.vantajoso) {
       setAviso({
         tipo: 'erro',
         texto: 'Com os dados atuais, a produção própria não apresenta economia. '
@@ -384,10 +401,32 @@ export function ProducaoPropria() {
           <div className={aviso.tipo === 'ok' ? 'vr-nota' : 'vr-erro'}>{aviso.texto}</div>
         )}
 
-        {/* ---------------------------------------------------- conteúdo */}
-        {aba === 'simulacao' && (
-          <div className="vr-grid">
+        {/* ---------------------------------------------------- conteúdo
+            DUAS FASES. Preencher usa a tela inteira (formulário em colunas);
+            o resultado só aparece quando o vendedor manda calcular, e aí ele
+            é que fica com a largura toda. O cálculo NÃO congela entre as duas:
+            segue no useMemo, alimentando os blocos .vr-live dentro do próprio
+            formulário e a barra de progresso. O que muda é só o que se vê. */}
+        {aba === 'simulacao' && fase === 'resultado' && (
+          <>
+            <div className="vr-voltar vr-no-print">
+              <button type="button" className="vr-btn ghost" onClick={() => setFase('preencher')}>
+                <ChevronLeft className="h-4 w-4" /> Voltar e editar
+              </button>
+              <span style={{ fontSize: 12.5, color: 'var(--vr-ink40)' }}>
+                Resultado de {input.identificacao.clienteNome || 'estudo sem nome'}
+              </span>
+            </div>
+            <div id="vr-topo-resultado">
+              <PainelEstudo input={input} resultado={resultado} />
+            </div>
+          </>
+        )}
+
+        {aba === 'simulacao' && fase === 'preencher' && (
+          <div>
             <FormularioEstudo
+              largo
               input={input}
               onChange={fn => setInput(s => (s ? fn(s) : s))}
               onTrocarEspecie={(e: Especie) => setInput(s => (s ? trocarEspecie(s, e, config) : s))}
@@ -412,8 +451,17 @@ export function ProducaoPropria() {
                 })
               }}
             />
-            <div id="vr-topo-resultado">
-              <PainelEstudo input={input} resultado={resultado} />
+
+            {/* "depois no final eu clico em gerar resultado" */}
+            <div className="vr-gerar vr-no-print">
+              <button type="button" className="vr-btn primary" onClick={calcular}>
+                <Calculator className="h-4 w-4" /> Gerar resultado
+              </button>
+              <span className="aviso">
+                {concluidas < etapas.length
+                  ? `${etapas.length - concluidas} de ${etapas.length} etapas ainda faltam`
+                  : 'Todas as etapas preenchidas'}
+              </span>
             </div>
           </div>
         )}

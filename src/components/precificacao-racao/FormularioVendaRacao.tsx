@@ -18,6 +18,8 @@ import type {
 import { Alternador, Campo, CampoNumero, CampoTexto, CustoLinha, Etapa, Selecao } from './campos'
 
 interface Props {
+  /** Fase de preencher: o formulario ocupa a tela toda em multiplas colunas. */
+  largo?: boolean
   input: SimulacaoInput
   onChange: (fn: (s: SimulacaoInput) => SimulacaoInput) => void
   onTrocarEspecie: (e: Especie) => void
@@ -42,6 +44,7 @@ const UNIDADES_PRECO = [
 ]
 
 export function FormularioVendaRacao({
+  largo,
   input, onChange, onTrocarEspecie, resultado, config,
   ingredientesCatalogo, formulasSalvas, onSalvarFormula, salvandoFormula,
 }: Props) {
@@ -111,7 +114,7 @@ export function FormularioVendaRacao({
   const somaOk = f.fechada
 
   return (
-    <div className="vr-card">
+    <div className={`vr-card${largo ? ' vr-form-largo' : ''}`}>
       <h2>Seus dados</h2>
 
       {/* ---------------------------------------------------------------- 1 */}

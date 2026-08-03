@@ -15,7 +15,7 @@
  * pode custar 20 minutos de digitação do vendedor.
  */
 import { useEffect, useMemo, useState } from 'react'
-import { Calculator, Copy, FilePlus2, FileText, History, Save, Settings } from 'lucide-react'
+import { Calculator, ChevronLeft, Copy, FilePlus2, FileText, History, Save, Settings } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
 import {
@@ -68,6 +68,8 @@ export function VendaRacao() {
   const { data: ingredientes = [] } = useIngredientesCatalogo()
 
   const [aba, setAba] = useState<Aba>('simulacao')
+  /** 'preencher' = formulário na tela toda; 'resultado' = painel na tela toda. */
+  const [fase, setFase] = useState<'preencher' | 'resultado'>('preencher')
   const [input, setInput] = useState<SimulacaoInput | null>(null)
   const [simulacaoId, setSimulacaoId] = useState<string | null>(null)
   const [codigo, setCodigo] = useState<string>(codigoProvisorio)
@@ -139,6 +141,25 @@ export function VendaRacao() {
   })
 
   // --- ações -----------------------------------------------------------------
+
+  /**
+   * Fecha a conta e troca a tela de preencher pra resultado.
+   *
+   * Bloqueio não avança — e como o PainelResultados (único lugar que lista os
+   * problemas de nível 'bloqueio') fica escondido enquanto se preenche, o que
+   * falta vai no próprio aviso. Sem isso o botão pareceria quebrado.
+   */
+  const gerarResultado = () => {
+    const faltas = resultado.problemas
+      .filter(p => p.nivel === 'bloqueio')
+      .map(p => p.mensagem)
+    if (faltas.length > 0) {
+      setAviso({ tipo: 'erro', texto: `Falta preencher: ${faltas.join(' · ')}` })
+      return
+    }
+    setFase('resultado')
+  }
+
   const novaProposta = () => {
     setInput(novaSimulacao(config, input.produto.especie, profile?.display_name ?? ''))
     setSimulacaoId(null)
@@ -294,9 +315,34 @@ export function VendaRacao() {
         )}
 
         {/* ---------------------------------------------------- conteúdo */}
-        {aba === 'simulacao' && (
-          <div className="vr-grid">
+        {/* DUAS FASES: preencher usa a tela inteira (formulário em colunas) e o
+            resultado só entra quando o vendedor manda gerar — aí ele é que fica
+            com a largura toda. O cálculo segue reativo no useMemo entre as duas.
+            O painel continua INTERATIVO na fase de resultado: é lá que mora o
+            campo de preço negociado, que o vendedor mexe conversando com o
+            cliente. Transformá-lo em somente-leitura quebraria a negociação. */}
+        {aba === 'simulacao' && fase === 'resultado' && (
+          <>
+            <div className="vr-voltar vr-no-print">
+              <button type="button" className="vr-btn ghost" onClick={() => setFase('preencher')}>
+                <ChevronLeft className="h-4 w-4" /> Voltar e editar
+              </button>
+              <span style={{ fontSize: 12.5, color: 'var(--vr-ink40)' }}>
+                {input.identificacao.clienteNome || 'proposta sem nome'}
+              </span>
+            </div>
+            <PainelResultados
+              input={input}
+              resultado={resultado}
+              onPrecoNegociado={v => setInput(s => (s ? { ...s, venda: { ...s.venda, precoNegociadoPorKg: v } } : s))}
+            />
+          </>
+        )}
+
+        {aba === 'simulacao' && fase === 'preencher' && (
+          <div>
             <FormularioVendaRacao
+              largo
               input={input}
               onChange={fn => setInput(s => (s ? fn(s) : s))}
               onTrocarEspecie={(e: Especie) => setInput(s => (s ? trocarEspecie(s, e, config) : s))}
@@ -321,11 +367,13 @@ export function VendaRacao() {
                 })
               }}
             />
-            <PainelResultados
-              input={input}
-              resultado={resultado}
-              onPrecoNegociado={v => setInput(s => (s ? { ...s, venda: { ...s.venda, precoNegociadoPorKg: v } } : s))}
-            />
+
+            {/* "depois no final eu clico em gerar resultado" */}
+            <div className="vr-gerar vr-no-print">
+              <button type="button" className="vr-btn primary" onClick={gerarResultado}>
+                <Calculator className="h-4 w-4" /> Gerar resultado
+              </button>
+            </div>
           </div>
         )}
 

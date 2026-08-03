@@ -110,6 +110,57 @@
   background: var(--vr-card); border: 1px solid var(--vr-hair);
   border-radius: 14px; padding: 20px;
 }
+
+/* ===========================================================================
+   FORMULÁRIO LARGO — a fase de PREENCHER ocupando a tela inteira.
+   ===========================================================================
+   O problema do layout antigo não era o resultado: era a coluna de formulário
+   presa em ~400px enquanto sobrava meia tela. A saída NÃO é esticar os campos
+   (campo de 800px é pior de ler e de mirar que um de 300) — é mostrar MAIS
+   SEÇÕES AO MESMO TEMPO, cada uma na largura confortável de sempre.
+
+   Por isso multi-coluna e não grade: as seções têm alturas muito diferentes
+   (a Fórmula é uma lista, o Cenário atual são dois campos). Numa grade, a
+   seção mais alta dita a altura da linha inteira e abre buracos; em coluna o
+   conteúdo se empacota sozinho. `break-inside: avoid` impede que uma seção
+   seja cortada no meio entre duas colunas.
+
+   O número de colunas sai da LARGURA DISPONÍVEL (column-width), então escala
+   sozinho: ~1 no celular, 2 em tablet, 4 em 1920, 6 em 2560 — sem media query
+   e sem nada esticar. */
+.vr .vr-card.vr-form-largo {
+  background: transparent; border: 0; padding: 0; border-radius: 0;
+  column-width: 330px;
+  column-gap: 18px;
+}
+.vr .vr-card.vr-form-largo > h2 { column-span: all; margin-bottom: 12px; }
+/* Cada seção vira um cartão fechado: no fluxo de colunas, sem moldura elas se
+   confundem com a seção de cima da coluna vizinha. */
+.vr .vr-card.vr-form-largo > .vr-det,
+.vr .vr-card.vr-form-largo > .vr-step {
+  break-inside: avoid; -webkit-column-break-inside: avoid;
+  background: var(--vr-card); border: 1px solid var(--vr-hair);
+  border-radius: 12px; padding: 14px 16px;
+  margin: 0 0 18px; display: inline-block; width: 100%;
+}
+.vr .vr-card.vr-form-largo > .vr-det { padding-top: 14px; }
+.vr .vr-card.vr-form-largo > .vr-step:first-of-type { margin-top: 0; }
+
+/* Chamada pra ação no FIM do formulário — "depois no final eu clico em gerar
+   resultado". Fica fora do fluxo de colunas, atravessando a largura toda. */
+.vr .vr-gerar {
+  margin-top: 6px; display: flex; flex-wrap: wrap; gap: 12px;
+  align-items: center; justify-content: center;
+  border-top: 1px solid var(--vr-hair); padding-top: 20px;
+}
+.vr .vr-gerar .vr-btn { font-size: 15px; padding: 14px 26px; }
+.vr .vr-gerar .aviso { font-size: 12.5px; color: var(--vr-ink40); }
+
+/* Barra de volta na fase de RESULTADO */
+.vr .vr-voltar {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+  margin-top: 16px; margin-bottom: 4px;
+}
 .vr .vr-card h2 {
   font-size: 13px; margin: 0 0 4px; letter-spacing: 0.02em; text-transform: uppercase;
   font-family: var(--vr-mono); color: var(--vr-ink40);
