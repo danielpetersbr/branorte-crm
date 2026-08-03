@@ -325,15 +325,19 @@ export function Layout() {
         {/* Sem menu nesse papel — este seletor é a ÚNICA forma de trocar de mapa.
             Fica À DIREITA, empilhado acima do Sair: no celular o canto inferior
             ESQUERDO é da legenda do Mapa de Visitas. */}
-        <div className="fixed right-3 bottom-[calc(max(0.75rem,env(safe-area-inset-bottom))+3.25rem)] z-[1100] flex h-11 rounded-full overflow-hidden border border-border bg-surface/95 backdrop-blur shadow-md text-[13px] font-semibold">
+        <div className="fixed right-3 bottom-[calc(max(0.75rem,env(safe-area-inset-bottom))+3.25rem)] z-[1100] flex h-11 max-w-[calc(100vw-1.5rem)] rounded-full overflow-hidden border border-border bg-surface/95 backdrop-blur shadow-md text-[13px] font-semibold">
           {[
             { to: '/mapa-visitas', label: 'Visitas' },
             { to: '/mapa-representantes', label: 'Representantes' },
+            { to: '/viabilidade', label: 'Viabilidade' },
           ].map(m => (
             <NavLink
               key={m.to}
               to={m.to}
-              className={({ isActive }) => cn('px-4 inline-flex items-center', isActive ? 'bg-accent text-white' : 'text-ink-muted')}
+              /* px-3 no celular: com o terceiro botão os três labels não cabiam
+                 em 360px de tela com px-4. O max-w do container é a rede de
+                 segurança pra nunca sangrar pra fora da viewport. */
+              className={({ isActive }) => cn('px-3 sm:px-4 inline-flex items-center whitespace-nowrap', isActive ? 'bg-accent text-white' : 'text-ink-muted')}
             >
               {m.label}
             </NavLink>

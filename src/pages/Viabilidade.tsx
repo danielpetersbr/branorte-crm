@@ -4,12 +4,17 @@
 // ferramenta de apoio; o resumo o próprio app manda pro cliente (WhatsApp/imprimir).
 import { useRef, useState } from 'react'
 import { Calculator, Maximize2, RefreshCw, ExternalLink } from 'lucide-react'
+import { useAuth } from '@/hooks/useAuth'
 
 const CALC_URL = 'https://branorte-viabilidade.vercel.app'
 
 export function Viabilidade() {
   const frameRef = useRef<HTMLIFrameElement>(null)
   const [loading, setLoading] = useState(true)
+  // A conta 'mapa' (Patrick) roda num Layout sem bottom-nav — descontar os 4rem
+  // dela deixaria uma faixa morta embaixo do iframe no celular.
+  const { profile } = useAuth()
+  const semBottomNav = profile?.role === 'mapa'
 
   const telaCheia = () => frameRef.current?.requestFullscreen?.().catch(() => {})
   const recarregar = () => {
@@ -20,7 +25,7 @@ export function Viabilidade() {
   }
 
   return (
-    <div className="h-[calc(100dvh_-_4rem_-_env(safe-area-inset-bottom))] md:h-screen flex flex-col bg-bg">
+    <div className={`${semBottomNav ? 'h-[100dvh]' : 'h-[calc(100dvh_-_4rem_-_env(safe-area-inset-bottom))]'} md:h-screen flex flex-col bg-bg`}>
       <header className="shrink-0 flex items-center justify-between gap-2 px-3 sm:px-4 py-2.5 border-b border-border bg-surface relative z-20">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <div className="h-9 w-9 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">

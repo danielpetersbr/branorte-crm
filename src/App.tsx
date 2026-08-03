@@ -304,12 +304,19 @@ function AppRoutes() {
     if (!allowed) return <Navigate to="/atendimentos" replace />
   }
 
-  // Mapa: conta externa que só consulta o Mapa de Visitas. Acesso EXCLUSIVO a
-  // /mapa-visitas (+ /perfil). Qualquer outra URL (inclusive "/") cai no mapa —
-  // então ao logar já abre o mapa. O Layout esconde todo o chrome pra esse papel.
+  // Mapa: conta externa que só consulta os mapas. Acesso por LISTA BRANCA —
+  // qualquer outra URL (inclusive "/") cai no mapa, então ao logar já abre nele.
+  // O Layout esconde todo o chrome pra esse papel; o seletor flutuante é a única
+  // navegação. Não passa por role_permissions de propósito: não existe linha
+  // 'mapa' lá, e o papel nem aparece na matriz de /permissoes.
+  //
+  // /viabilidade entrou em 03/08/2026: é ferramenta de apoio comercial e a página
+  // é só um iframe da calculadora pública (branorte-viabilidade.vercel.app) — não
+  // expõe nenhum dado do CRM. As guias (/guia-animais, /guia-materias) ficaram DE
+  // FORA por ora; se for pra liberar, é acrescentar aqui e no seletor do Layout.
   if (profile.role === 'mapa') {
-    const p = loc.pathname
-    if (p !== '/mapa-visitas' && p !== '/mapa-representantes' && p !== '/perfil') {
+    const MAPA_PERMITIDAS = ['/mapa-visitas', '/mapa-representantes', '/viabilidade', '/perfil']
+    if (!MAPA_PERMITIDAS.includes(loc.pathname)) {
       return <Navigate to="/mapa-visitas" replace />
     }
   }
