@@ -6,7 +6,11 @@ export interface UserProfile {
   id: string
   email: string
   display_name: string | null
-  role: 'admin' | 'vendor' | 'marketing' | 'visualizador' | 'mapa' | 'pending' | 'rejected'
+  // 'mapa' e 'consultor' são papéis de ACESSO RESTRITO: não estão em
+  // ASSIGNABLE_ROLES nem em role_permissions (useCan() é sempre false pra eles).
+  // Quem libera tela é ROTAS_RESTRITAS no App.tsx + MENUS_RESTRITOS no Layout.
+  // Espelha o CHECK user_profiles_role_check no banco.
+  role: 'admin' | 'vendor' | 'marketing' | 'visualizador' | 'mapa' | 'consultor' | 'pending' | 'rejected'
   vendor_id: string | null
   approved_at: string | null
 }

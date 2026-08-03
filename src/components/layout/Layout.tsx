@@ -12,6 +12,31 @@ import { GenerationOverlay } from '@/components/GenerationOverlay'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { LembretesNotifier } from '@/components/LembretesNotifier'
 
+/**
+ * Papéis de ACESSO RESTRITO: contas externas sem a sidebar do CRM. Não passam
+ * por `role_permissions` (o papel nem existe lá, e `useCan()` devolve false pra
+ * tudo), então o menu abaixo é a ÚNICA navegação que elas têm.
+ *
+ * ⚠️ Casar com ROTAS_RESTRITAS no App.tsx: rota liberada lá sem item aqui = tela
+ * que existe mas ninguém alcança; item aqui sem rota lá = clique que devolve o
+ * sujeito pro começo.
+ */
+const MENUS_RESTRITOS: Record<string, Array<{ to: string; label: string; icon: typeof MapPin }>> = {
+  // Patrick e afins: consulta os mapas + o estudo.
+  mapa: [
+    { to: '/mapa-visitas', label: 'Mapa de Visitas', icon: MapPin },
+    { to: '/mapa-representantes', label: 'Representantes', icon: Users },
+    // Os dois estudos viraram UM: /viabilidade era iframe da calculadora pública
+    // e /venda-racao precificava ração, que a Branorte não vende. Os dois
+    // redirecionam pra cá — dois itens apontando pra mesma tela seriam confusão.
+    { to: '/producao-propria', label: 'Produção Própria', icon: Calculator },
+  ],
+  // Consultor externo: SÓ o estudo. Sem mapa, sem contato, sem orçamento.
+  consultor: [
+    { to: '/producao-propria', label: 'Produção Própria', icon: Calculator },
+  ],
+}
+
 // Abrevia numero pra caber no badge: 1234 -> 1.2k
 function fmtCount(n: number): string {
   if (n < 1000) return String(n)
@@ -198,7 +223,13 @@ export function Layout() {
   const [openGroups, toggleGroup, ensureGroupOpen] = useOpenGroups()
   const [confirmSair, setConfirmSair] = useState(false)
 
-  // A conta 'mapa' (Patrick) roda SEMPRE em tema claro. O motivo original era a
+  // Papel restrito? Então o chrome do CRM não monta — vale o menu próprio.
+  const menuRestrito = profile?.role ? MENUS_RESTRITOS[profile.role] : undefined
+
+  // A conta 'mapa' (Patrick) roda SEMPRE em tema claro — e SÓ ela. O 'consultor'
+  // segue o tema normal do navegador (que já nasce claro por padrão): a razão da
+  // trava era o iframe externo, que morreu na unificação, e conta nova não tem
+  // hábito pra preservar. O motivo original era a
   // /viabilidade em iframe de app externo (só existia em claro), que saiu na
   // unificação de 08/2026 — a tela nativa tem os dois temas. A trava fica de pé
   // porque o Patrick já se acostumou com ela; derrubar é decisão dele, não do
@@ -350,16 +381,8 @@ export function Layout() {
   // POR CIMA do conteúdo e não tinha pra onde crescer — virou menu.
   // Este menu é a ÚNICA navegação do papel — o que não estiver aqui, ele não
   // alcança. Manter em sincronia com MAPA_PERMITIDAS no App.tsx.
-  if (profile?.role === 'mapa') {
-    const MENU_MAPA = [
-      { to: '/mapa-visitas', label: 'Mapa de Visitas', icon: MapPin },
-      { to: '/mapa-representantes', label: 'Representantes', icon: Users },
-      // Os dois estudos viraram UM: /viabilidade era iframe da calculadora pública
-      // e /venda-racao precificava ração, que a Branorte não vende. Os dois
-      // redirecionam pra cá — dois itens de menu apontando pra mesma tela seriam
-      // só confusão pro Patrick.
-      { to: '/producao-propria', label: 'Produção Própria', icon: Calculator },
-    ]
+  if (menuRestrito) {
+    const MENU_MAPA = menuRestrito
     return (
       <div className="min-h-screen flex bg-bg">
         <aside className="w-14 md:w-56 shrink-0 sticky top-0 h-[100dvh] flex flex-col border-r border-border bg-surface">

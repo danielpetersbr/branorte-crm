@@ -306,28 +306,43 @@ function AppRoutes() {
     if (!allowed) return <Navigate to="/atendimentos" replace />
   }
 
-  // Mapa: conta externa que só consulta os mapas. Acesso por LISTA BRANCA —
-  // qualquer outra URL (inclusive "/") cai no mapa, então ao logar já abre nele.
-  // O Layout esconde todo o chrome pra esse papel; o seletor flutuante é a única
-  // navegação. Não passa por role_permissions de propósito: não existe linha
-  // 'mapa' lá, e o papel nem aparece na matriz de /permissoes.
+  // PAPÉIS DE ACESSO RESTRITO: contas externas liberadas por LISTA BRANCA —
+  // qualquer outra URL (inclusive "/") cai na primeira rota do papel. O Layout
+  // esconde todo o chrome deles e serve um menu lateral próprio (MENUS_RESTRITOS),
+  // que é a ÚNICA navegação que têm. ⚠️ As duas listas precisam casar: rota sem
+  // item = tela inalcançável; item sem rota = clique que devolve pro começo.
+  //
+  // Não passam por role_permissions de propósito: não existe linha pra eles lá,
+  // nem estão em ASSIGNABLE_ROLES — `useCan()` é sempre false. Quem barra é aqui.
   //
   // Os DOIS estudos de ração que entraram em 03/08/2026 viraram UM só: a
   // /viabilidade era um iframe da calculadora pública e o /venda-racao precificava
   // ração pronta — que a Branorte não vende. Ambos redirecionam pra
-  // /producao-propria, o estudo nativo. As duas rotas antigas seguem na lista
-  // porque o guard roda ANTES do <Navigate>: tirá-las mandaria o link salvo do
-  // Patrick pro mapa em vez do estudo.
+  // /producao-propria, o estudo nativo.
   // As guias (/guia-animais, /guia-materias) ficaram DE FORA por ora; se for pra
-  // liberar, é acrescentar aqui E no MENU_MAPA do Layout — os dois têm que casar.
-  if (profile.role === 'mapa') {
-    const MAPA_PERMITIDAS = [
+  // liberar, é acrescentar aqui E no MENUS_RESTRITOS do Layout.
+  //
+  // A lista é mapa papel -> rotas. Cai
+  // SEMPRE na primeira rota do papel, então ao logar já abre nela.
+  //   mapa      = Patrick. Mapas + o estudo.
+  //   consultor = consultor externo (03/08/2026). SÓ o estudo — sem mapa, sem
+  //               contato, sem orçamento: não enxerga carteira nem dado
+  //               comercial. No /producao-propria a RLS já cobre (só vê/edita
+  //               as próprias simulações; venda_racao_ve_todas() é falso, então
+  //               não altera os padrões da empresa).
+  // As rotas antigas /viabilidade e /venda-racao seguem nas listas porque este
+  // guard roda ANTES do <Navigate> que as redireciona — tirá-las mandaria link
+  // salvo pro começo em vez do estudo.
+  const ROTAS_RESTRITAS: Record<string, string[]> = {
+    mapa: [
       '/mapa-visitas', '/mapa-representantes', '/producao-propria',
       '/viabilidade', '/venda-racao', '/perfil',
-    ]
-    if (!MAPA_PERMITIDAS.includes(loc.pathname)) {
-      return <Navigate to="/mapa-visitas" replace />
-    }
+    ],
+    consultor: ['/producao-propria', '/viabilidade', '/venda-racao', '/perfil'],
+  }
+  const rotasDoPapel = ROTAS_RESTRITAS[profile.role]
+  if (rotasDoPapel && !rotasDoPapel.includes(loc.pathname)) {
+    return <Navigate to={rotasDoPapel[0]} replace />
   }
 
   // Aprovado → app
