@@ -112,39 +112,68 @@
 }
 
 /* ===========================================================================
-   FORMULÁRIO LARGO — a fase de PREENCHER ocupando a tela inteira.
+   FORMULÁRIO EM QUESTIONÁRIO — a fase de PREENCHER, uma pergunta por vez.
    ===========================================================================
-   O problema do layout antigo não era o resultado: era a coluna de formulário
-   presa em ~400px enquanto sobrava meia tela. A saída NÃO é esticar os campos
-   (campo de 800px é pior de ler e de mirar que um de 300) — é mostrar MAIS
-   SEÇÕES AO MESMO TEMPO, cada uma na largura confortável de sempre.
+   Esta tela já teve os três formatos, nesta ordem, e vale registrar por quê:
 
-   Por isso multi-coluna e não grade: as seções têm alturas muito diferentes
-   (a Fórmula é uma lista, o Cenário atual são dois campos). Numa grade, a
-   seção mais alta dita a altura da linha inteira e abre buracos; em coluna o
-   conteúdo se empacota sozinho. `break-inside: avoid` impede que uma seção
-   seja cortada no meio entre duas colunas.
+   1. Coluna estreita (~400px) ao lado do painel de resultado.
+      Morreu porque era apertada de preencher e sobrava meia tela vazia.
+   2. Multi-coluna (column-width: 330px), 4 colunas em 1920, 6 em 2560.
+      Resolveu o aperto e criou coisa pior — com as 8 seções lado a lado o
+      vendedor não sabia qual pergunta responder primeiro nem qual era a
+      próxima. Aproveitar largura não paga o preço de perder a ordem de leitura.
+   3. ESTE: uma coluna central, cada etapa um cartão, uma abaixo da outra.
 
-   O número de colunas sai da LARGURA DISPONÍVEL (column-width), então escala
-   sozinho: ~1 no celular, 2 em tablet, 4 em 1920, 6 em 2560 — sem media query
-   e sem nada esticar. */
+   A largura NÃO é livre: em 760px o rótulo e o campo ainda são lidos como um
+   par. Acima disso o olho perde a linha e os campos viram faixas. Quem usa a
+   sobra da tela agora é a fase de RESULTADO — ela é feita de números e ganha em
+   espalhar (as grades de lá são auto-fit).
+
+   NOME DA CLASSE: `vr-form-largo` ficou mentiroso depois do item 3. Renomear
+   exige tocar os dois formulários; fica pendente pra não misturar com o resto. */
 .vr .vr-card.vr-form-largo {
   background: transparent; border: 0; padding: 0; border-radius: 0;
-  column-width: 330px;
-  column-gap: 18px;
+  max-width: 760px;
+  margin-inline: auto;
 }
-.vr .vr-card.vr-form-largo > h2 { column-span: all; margin-bottom: 12px; }
-/* Cada seção vira um cartão fechado: no fluxo de colunas, sem moldura elas se
-   confundem com a seção de cima da coluna vizinha. */
+.vr .vr-card.vr-form-largo > h2 { margin-bottom: 14px; }
+/* Cada etapa é um cartão fechado, com respiro entre elas — é o que separa
+   "assunto" de "assunto" quando tudo está empilhado. */
 .vr .vr-card.vr-form-largo > .vr-det,
 .vr .vr-card.vr-form-largo > .vr-step {
-  break-inside: avoid; -webkit-column-break-inside: avoid;
   background: var(--vr-card); border: 1px solid var(--vr-hair);
-  border-radius: 12px; padding: 14px 16px;
-  margin: 0 0 18px; display: inline-block; width: 100%;
+  border-radius: 14px; padding: 20px 22px;
+  margin: 0 0 22px; width: 100%;
 }
-.vr .vr-card.vr-form-largo > .vr-det { padding-top: 14px; }
+.vr .vr-card.vr-form-largo > .vr-det { padding-top: 18px; }
 .vr .vr-card.vr-form-largo > .vr-step:first-of-type { margin-top: 0; }
+/* Título da etapa maior e mais separado dos campos: ele é a PERGUNTA. */
+.vr .vr-card.vr-form-largo > .vr-step > .vr-q {
+  font-size: 15.5px; margin-bottom: 14px; align-items: center;
+}
+.vr .vr-card.vr-form-largo > .vr-step > .vr-q .vr-n {
+  width: 22px; height: 22px; font-size: 12px;
+}
+/* Campo NUMÉRICO não se estica. Num formulário de coluna única de 760px, um
+   input de "quantas cabeças" com 714px de largura é ridículo e ainda atrapalha:
+   o olho tem que percorrer a faixa toda pra achar o cursor. Texto livre (nome,
+   propriedade, observação) segue cheio, porque ali a largura serve pra alguma
+   coisa. `.txt` é a marca que campos.tsx põe nos campos de texto. */
+/* `input.` de propósito: sem isso a regra pega o <select> junto e a categoria
+   ("Ciclo completo (média)") sai truncada em 230px. */
+.vr .vr-card.vr-form-largo input.vr-inp:not(.txt) { max-width: 230px; }
+.vr .vr-card.vr-form-largo select.vr-inp { max-width: 360px; }
+/* Dentro de par (cidade+estado, data+validade, valor+unidade) o par já limita. */
+.vr .vr-card.vr-form-largo .vr-row2 .vr-inp,
+.vr .vr-card.vr-form-largo .vr-row3 .vr-inp { max-width: none; }
+
+@media (max-width: 640px) {
+  .vr .vr-card.vr-form-largo > .vr-det,
+  .vr .vr-card.vr-form-largo > .vr-step { padding: 16px 14px; margin-bottom: 16px; }
+  /* No celular o campo ocupa o que tiver — apertar aqui só atrapalha o dedo. */
+  .vr .vr-card.vr-form-largo input.vr-inp:not(.txt),
+  .vr .vr-card.vr-form-largo select.vr-inp { max-width: none; }
+}
 
 /* Chamada pra ação no FIM do formulário — "depois no final eu clico em gerar
    resultado". Fica fora do fluxo de colunas, atravessando a largura toda. */
