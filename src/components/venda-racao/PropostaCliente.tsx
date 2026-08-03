@@ -84,7 +84,15 @@ export function PropostaCliente({ dados }: { dados: DadosProposta }) {
       <div className="vr-folha" id="vr-print-area">
         <div className="vr-folha-hdr">
           <div>
-            <div className="vr-brand" style={{ color: '#1f6d3a' }}>BRA<b style={{ color: '#2f8f4e' }}>NORTE</b></div>
+            {/* Mesmo asset e mesmo ratio do orçamento (natural 2715x427 = 6,36).
+                Dimensões explícitas porque width:auto quebra na impressão. */}
+            <img
+              src="/branorte-logo.png"
+              alt="BRANORTE"
+              width={191}
+              height={30}
+              style={{ display: 'block', width: 191, height: 30, maxWidth: '100%', marginBottom: 8 }}
+            />
             <h2>Proposta comercial</h2>
             <div style={{ fontSize: 12, color: '#5c6b60' }}>Fábricas de ração e nutrição animal</div>
           </div>
