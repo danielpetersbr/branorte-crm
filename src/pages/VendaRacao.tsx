@@ -143,21 +143,26 @@ export function VendaRacao() {
   // --- ações -----------------------------------------------------------------
 
   /**
-   * Fecha a conta e troca a tela de preencher pra resultado.
+   * Fecha a conta e troca a vista de preencher pra resultado.
    *
-   * Bloqueio não avança — e como o PainelResultados (único lugar que lista os
-   * problemas de nível 'bloqueio') fica escondido enquanto se preenche, o que
-   * falta vai no próprio aviso. Sem isso o botão pareceria quebrado.
+   * SEMPRE avança, inclusive bloqueado. Parece contraintuitivo, mas era o
+   * comportamento de antes: o painel já nasceu sabendo se mostrar incompleto —
+   * ele lista os bloqueios numa caixa vermelha em cima e segue exibindo o que
+   * dá pra calcular. E na conversa com o cliente a proposta nasce bloqueada (o
+   * produtor não sabe de cabeça quanto paga no saco). Trancar o botão até estar
+   * tudo preenchido esconderia o número justo na hora em que ele é útil.
+   *
+   * O aviso diz o que falta porque o painel está fora da tela na hora do clique.
    */
   const gerarResultado = () => {
     const faltas = resultado.problemas
       .filter(p => p.nivel === 'bloqueio')
       .map(p => p.mensagem)
-    if (faltas.length > 0) {
-      setAviso({ tipo: 'erro', texto: `Falta preencher: ${faltas.join(' · ')}` })
-      return
-    }
+    setAviso(faltas.length
+      ? { tipo: 'erro', texto: `Ainda falta: ${faltas.join(' · ')}` }
+      : null)
     setFase('resultado')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const novaProposta = () => {
@@ -165,6 +170,7 @@ export function VendaRacao() {
     setSimulacaoId(null)
     setCodigo(codigoProvisorio())
     setAba('simulacao')
+    setFase('preencher')  // senão cai no resultado do estudo anterior
     setAviso({ tipo: 'ok', texto: 'Simulação nova aberta.' })
   }
 
@@ -173,6 +179,7 @@ export function VendaRacao() {
     setCodigo(codigoProvisorio())
     setInput(s => (s ? { ...s, status: 'rascunho' } : s))
     setAba('simulacao')
+    setFase('preencher')  // senão cai no resultado do estudo anterior
     setAviso({ tipo: 'ok', texto: 'Cópia criada — salve pra gerar um código novo.' })
   }
 
@@ -218,6 +225,7 @@ export function VendaRacao() {
     setSimulacaoId(linha.id)
     setCodigo(linha.codigo)
     setAba('simulacao')
+    setFase('preencher')  // senão cai no resultado do estudo anterior
   }
 
   const duplicarDoHistorico = async (id: string) => {
@@ -240,6 +248,7 @@ export function VendaRacao() {
     setSimulacaoId(null)
     setCodigo(codigoProvisorio())
     setAba('simulacao')
+    setFase('preencher')  // senão cai no resultado do estudo anterior
     setAviso({ tipo: 'ok', texto: 'Cópia aberta — salve pra gerar um código novo.' })
   }
 

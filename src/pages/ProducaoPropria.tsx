@@ -180,6 +180,7 @@ export function ProducaoPropria() {
     setEstudoId(null)
     setCodigo(codigoProvisorio())
     setAba('simulacao')
+    setFase('preencher')  // senão cai no resultado do estudo anterior
     setAviso({ tipo: 'ok', texto: 'Estudo novo aberto.' })
   }
 
@@ -188,6 +189,7 @@ export function ProducaoPropria() {
     setCodigo(codigoProvisorio())
     setInput(s => (s ? { ...s, status: 'rascunho' } : s))
     setAba('simulacao')
+    setFase('preencher')  // senão cai no resultado do estudo anterior
     setAviso({ tipo: 'ok', texto: 'Cópia criada — salve pra gerar um código novo.' })
   }
 
@@ -221,12 +223,18 @@ export function ProducaoPropria() {
    * O cálculo é reativo (roda a cada tecla); este botão é quem FECHA a conta e
    * troca a tela de preencher pra resultado.
    *
-   * Bloqueio não avança de fase — e como o painel (único lugar que renderiza os
-   * problemas de nível 'bloqueio') fica escondido na fase de preencher, a lista
-   * do que falta vai no próprio aviso. Sem isso o vendedor clicaria no botão
-   * sem entender por que nada acontece.
+   * SEMPRE avança de vista, inclusive bloqueado. Parece contraintuitivo, mas era
+   * o comportamento de antes: o PainelEstudo já nasceu sabendo se mostrar
+   * incompleto — lista os bloqueios numa caixa vermelha em cima e segue exibindo
+   * o que dá pra calcular. E em campo o estudo nasce bloqueado (o produtor não
+   * sabe de cabeça o preço do saco, dita a fórmula por alto). Trancar o botão até
+   * estar tudo preenchido esconderia o número justo na hora em que ele serve.
+   *
+   * O aviso diz o que falta porque o painel está fora da tela na hora do clique.
    */
   const calcular = () => {
+    setFase('resultado')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
     if (resultado.bloqueado) {
       const faltas = resultado.problemas
         .filter(p => p.nivel === 'bloqueio')
@@ -234,13 +242,10 @@ export function ProducaoPropria() {
       setAviso({
         tipo: 'erro',
         texto: faltas.length
-          ? `Falta preencher: ${faltas.join(' · ')}`
+          ? `Ainda falta: ${faltas.join(' · ')}`
           : 'Ainda faltam dados pra fechar o estudo.',
       })
-      return
-    }
-    setFase('resultado')
-    if (!resultado.comparacao.vantajoso) {
+    } else if (!resultado.comparacao.vantajoso) {
       setAviso({
         tipo: 'erro',
         texto: 'Com os dados atuais, a produção própria não apresenta economia. '
@@ -254,7 +259,6 @@ export function ProducaoPropria() {
           + (resultado.retorno.aplicavel ? ` · retorno em ${meses(resultado.retorno.paybackMeses, 1)}.` : '.'),
       })
     }
-    irPara('vr-topo-resultado')
   }
 
   const apresentar = () => {
@@ -301,6 +305,7 @@ export function ProducaoPropria() {
     setEstudoId(null)
     setCodigo(codigoProvisorio())
     setAba('simulacao')
+    setFase('preencher')  // senão cai no resultado do estudo anterior
     setAviso({ tipo: 'ok', texto: 'Cópia aberta — salve pra gerar um código novo.' })
   }
 
