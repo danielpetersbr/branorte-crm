@@ -41,6 +41,7 @@ const AtividadeDiaria = lazy(() => import('@/pages/AtividadeDiaria').then(m => (
 const Projeto = lazy(() => import('@/pages/Projeto').then(m => ({ default: m.Projeto })))
 const Projeto3D = lazy(() => import('@/pages/Projeto3D').then(m => ({ default: m.Projeto3D })))
 const Viabilidade = lazy(() => import('@/pages/Viabilidade').then(m => ({ default: m.Viabilidade })))
+const VendaRacao = lazy(() => import('@/pages/VendaRacao').then(m => ({ default: m.VendaRacao })))
 const Guia = lazy(() => import('@/pages/Guia').then(m => ({ default: m.Guia })))
 const AdminUsuarios = lazy(() => import('@/pages/AdminUsuarios').then(m => ({ default: m.AdminUsuarios })))
 const AdminPermissoes = lazy(() => import('@/pages/AdminPermissoes').then(m => ({ default: m.AdminPermissoes })))
@@ -295,9 +296,11 @@ function AppRoutes() {
     const projeto3dOk = p.startsWith('/projeto-3d') && can('menu.projeto_3d')
     // Viabilidade da Ração: ferramenta de apoio à venda, liberada pra quem tem a permissão
     const viabilidadeOk = (p.startsWith('/viabilidade') || p.startsWith('/guia-')) && can('menu.viabilidade')
+    // Venda de Ração: precificação/proposta — permissão própria, separada da viabilidade
+    const vendaRacaoOk = p.startsWith('/venda-racao') && can('menu.venda_racao')
     // Roadmap & Feedback: vendedor VÊ o retorno dos feedbacks que enviou (#49)
     const roadmapOk = p.startsWith('/roadmap') && can('menu.roadmap')
-    const allowed = freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || roadmapOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
+    const allowed = freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || vendaRacaoOk || roadmapOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
     if (!allowed) return <Navigate to="/atendimentos" replace />
   }
 
@@ -375,6 +378,9 @@ function AppRoutes() {
         <Route path="/projeto" element={<Projeto />} />
         <Route path="/projeto-3d" element={<Projeto3D />} />
         <Route path="/viabilidade" element={<Viabilidade />} />
+        {/* Módulo separado da /viabilidade: aqui a Branorte VENDE a ração (preço,
+            margem, proposta), lá o estudo é sobre o cliente montar a fábrica. */}
+        <Route path="/venda-racao" element={<VendaRacao />} />
         <Route path="/guia-animais" element={<Guia hash="animais" title="Guia de Animais" subtitle="Raças e criações de cada cliente — o que falar pro produtor" />} />
         <Route path="/guia-materias" element={<Guia hash="materias" title="Matérias-primas da Ração" subtitle="Pra que serve cada ingrediente, quanto entra e o que muda por região" />} />
         <Route path="/perfil" element={<Perfil />} />

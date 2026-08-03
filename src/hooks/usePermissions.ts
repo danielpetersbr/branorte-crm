@@ -36,6 +36,7 @@ export const FEATURE_CATALOG: Array<{
   { key: 'menu.projeto', label: 'Projeto', group: 'Menu' },
   { key: 'menu.projeto_3d', label: 'Projeto 3D', group: 'Menu' },
   { key: 'menu.viabilidade', label: 'Viabilidade da Ração', group: 'Menu' },
+  { key: 'menu.venda_racao', label: 'Venda de Ração (preço e proposta)', group: 'Menu' },
   { key: 'menu.disparos', label: 'Roteamento (Disparos)', group: 'Menu' },
   { key: 'menu.ia_atendente', label: 'IA Atendente (admin)', group: 'Menu' },
   { key: 'menu.fluxos_funil', label: 'Fluxos do Funil (admin)', group: 'Menu' },
@@ -54,6 +55,7 @@ export const FEATURE_CATALOG: Array<{
   { key: 'frete.solicitar', label: 'Frete: abrir pedido de frete', group: 'Ações' },
   { key: 'frete.aprovar', label: 'Frete: aprovar e disparar pras transportadoras', group: 'Ações' },
   { key: 'due_diligence.consultar', label: 'Consultar Due Diligence (SPC + Datajud + IA)', group: 'Ações' },
+  { key: 'venda_racao.ver_todas', label: 'Venda de Ração: ver propostas de todos e editar os padrões', group: 'Ações' },
   { key: 'admin.due_diligence', label: 'Admin: ver consultas de todos vendedores', group: 'Ações' },
 ]
 
@@ -78,6 +80,7 @@ const FALLBACK: Record<AssignableRole, Record<string, boolean>> = {
     'menu.prospeccao': true,
     'menu.projeto_3d': true,
     'menu.viabilidade': true,
+    'menu.venda_racao': true,
     'menu.roadmap': true,
     'orcamentos.criar': true,
     'due_diligence.consultar': true,
