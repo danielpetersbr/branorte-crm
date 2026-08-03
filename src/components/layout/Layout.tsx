@@ -226,24 +226,25 @@ export function Layout() {
   // Papel restrito? Então o chrome do CRM não monta — vale o menu próprio.
   const menuRestrito = profile?.role ? MENUS_RESTRITOS[profile.role] : undefined
 
-  // A conta 'mapa' (Patrick) roda SEMPRE em tema claro — e SÓ ela. O 'consultor'
-  // segue o tema normal do navegador (que já nasce claro por padrão): a razão da
-  // trava era o iframe externo, que morreu na unificação, e conta nova não tem
-  // hábito pra preservar. O motivo original era a
-  // /viabilidade em iframe de app externo (só existia em claro), que saiu na
-  // unificação de 08/2026 — a tela nativa tem os dois temas. A trava fica de pé
-  // porque o Patrick já se acostumou com ela; derrubar é decisão dele, não do
-  // refactor.
+  // TODO papel restrito (mapa, consultor) roda SEMPRE em tema claro.
+  //
+  // A trava nasceu pra /viabilidade, que era iframe de um app externo só-claro e
+  // saiu na unificação de 08/2026. Ficou de pé por outra razão, que é a que vale
+  // agora: são contas de gente de FORA, que não tem o botão de trocar tema no
+  // menu. Como o tema é por NAVEGADOR e não por usuário, essas contas herdam o
+  // escuro de quem usou a máquina antes e não têm como sair dele.
+  //
+  // Chegou a ficar só no 'mapa' e o consultor abriu escuro na máquina do Daniel —
+  // o mesmo sintoma, pela mesma causa. Por isso vale pro conjunto, não caso a caso.
   //
   // Declarado DEPOIS do useDarkMode de propósito: efeitos rodam na ordem de
   // declaração, então este desfaz o `dark` que aquele acabou de aplicar.
   //
-  // NÃO grava em localStorage: o tema é por NAVEGADOR, não por usuário
-  // (`theme-v3`). Se o dono da máquina usa escuro, o cleanup devolve ao sair
-  // desta conta — foi assim que o Patrick herdou o escuro de quem logou antes.
-  const ehPapelMapa = profile?.role === 'mapa'
+  // NÃO grava em localStorage: o cleanup devolve o tema do dono da máquina ao
+  // sair da conta.
+  const ehPapelRestrito = !!menuRestrito
   useEffect(() => {
-    if (!ehPapelMapa) return
+    if (!ehPapelRestrito) return
     const root = document.documentElement
     if (!root.classList.contains('dark')) return
     root.classList.remove('dark')
@@ -254,7 +255,7 @@ export function Layout() {
       root.classList.add('dark')
       if (corAntes) meta?.setAttribute('content', corAntes)
     }
-  }, [ehPapelMapa])
+  }, [ehPapelRestrito])
   // Tooltip instantâneo do menu colapsado — substitui o title nativo (Chrome mostra
   // o nome do botão anterior por um instante ao passar rápido entre vizinhos).
   const [tip, setTip] = useState<{ label: string; x: number; y: number } | null>(null)
