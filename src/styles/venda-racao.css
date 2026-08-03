@@ -303,6 +303,68 @@
 .vr .vr-kpi .v.neg { color: var(--vr-red); }
 .vr .vr-kpi .s { font-size: 11.5px; color: var(--vr-ink60); margin-top: 4px; }
 
+/* ===========================================================================
+   RESTAURADAS (03/08/2026). Estas quatro famílias sumiram do CSS na virada pra
+   /producao-propria, mas os 64 usos no JSX continuaram: PainelEstudo,
+   PainelResultados, HistoricoEstudos e HistoricoSimulacoes — ou seja, as DUAS
+   telas e os DOIS históricos ficaram com os tiles de métrica sem estilo
+   nenhum. Recuperadas de 896226f, idênticas.
+   =========================================================================== */
+
+/* comparativo lado a lado (custo x preço / comprar x produzir) */
+.vr .vr-compare {
+  display: flex; margin-top: 14px; border: 1px solid var(--vr-hair);
+  border-radius: 12px; overflow: hidden;
+}
+@media (max-width: 520px) { .vr .vr-compare { flex-direction: column; } }
+.vr .vr-compare > div { flex: 1; padding: 13px 15px; }
+.vr .vr-compare .a { background: var(--vr-red-l); border-right: 1px solid var(--vr-hair); }
+.vr .vr-compare .b { background: var(--vr-green-l); }
+.vr .vr-compare .t {
+  font: 700 11px/1 var(--vr-mono); text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--vr-ink60);
+}
+.vr .vr-compare .m { font: 800 21px inherit; font-variant-numeric: tabular-nums; margin-top: 5px; }
+.vr .vr-compare .a .m { color: var(--vr-red); }
+.vr .vr-compare .b .m { color: var(--vr-green-d); }
+.vr .vr-compare .s { font-size: 11px; color: var(--vr-ink60); margin-top: 2px; }
+
+/* card do desconto máximo — o número que o vendedor mais olha */
+.vr .vr-desconto {
+  margin-top: 14px; background: var(--vr-gold-l); border: 1px solid var(--vr-gold-hair);
+  border-radius: 14px; padding: 16px 18px;
+}
+.vr .vr-desconto .dt {
+  font: 700 11px/1 var(--vr-mono); letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--vr-gold);
+}
+.vr .vr-desconto .dv {
+  font: 800 clamp(26px, 4vw, 34px)/1 inherit; font-variant-numeric: tabular-nums;
+  color: var(--vr-gold-ink); margin: 8px 0 4px;
+}
+.vr .vr-desconto .ds { font-size: 12.5px; color: var(--vr-gold-ink); font-weight: 600; }
+
+/* Os blocos de métrica têm de 3 a 9 tiles. Em tela larga eles se espalham em
+   mais colunas em vez de virar 3 caixas gigantes com um número pequeno dentro. */
+.vr .vr-metrics {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px; margin-top: 14px;
+}
+.vr .vr-mt {
+  background: var(--vr-card); border: 1px solid var(--vr-hair);
+  border-radius: 10px; padding: 10px 12px;
+}
+.vr .vr-mt .l {
+  font: 700 10px/1.2 var(--vr-mono); letter-spacing: 0.03em;
+  text-transform: uppercase; color: var(--vr-ink40);
+}
+.vr .vr-mt .val {
+  font: 800 17px/1 inherit; font-variant-numeric: tabular-nums;
+  color: var(--vr-ink); margin-top: 5px;
+}
+.vr .vr-mt .val.pos { color: var(--vr-green-d); }
+.vr .vr-mt .val.neg { color: var(--vr-red); }
+
 .vr .vr-scen {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 8px; margin-top: 14px;

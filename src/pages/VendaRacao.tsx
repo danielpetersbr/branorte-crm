@@ -41,7 +41,14 @@ import '@/styles/venda-racao.css'
 
 type Aba = 'simulacao' | 'proposta' | 'historico' | 'config'
 
-const CHAVE_RASCUNHO = 'venda-racao:rascunho'
+/**
+ * Chave PRÓPRIA. Não usar 'venda-racao:rascunho': a /producao-propria trata
+ * aquela como rascunho legado DELA — lê e apaga (ProducaoPropria.tsx). Como o
+ * `dados` aqui é SimulacaoInput e lá é EstudoInput, o vendedor que preenchesse
+ * a venda e navegasse pro estudo perderia o rascunho e ainda veria um estudo
+ * montado com lixo. Bug real, criado quando esta tela foi restaurada.
+ */
+const CHAVE_RASCUNHO = 'precificacao-racao:rascunho'
 
 /** Código provisório enquanto a proposta não foi salva (o banco gera o oficial). */
 function codigoProvisorio(): string {

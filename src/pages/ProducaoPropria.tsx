@@ -50,8 +50,14 @@ import '@/styles/venda-racao.css'
 type Aba = 'simulacao' | 'apresentacao' | 'historico' | 'config'
 
 const CHAVE_RASCUNHO = 'producao-propria:rascunho'
-/** O rascunho do módulo antigo de precificação — migrado uma única vez. */
-const CHAVE_RASCUNHO_LEGADO = 'venda-racao:rascunho'
+/*
+ * NÃO tocar em 'venda-racao:rascunho'. Esta tela chegou a lê-la como "rascunho
+ * legado" e a apagar em seguida — nunca foi legado: aquela chave só guardou
+ * `SimulacaoInput` (venda), e aqui o formato é `EstudoInput`. Normalizar um
+ * como o outro monta um estudo com lixo, e o removeItem destruía o rascunho de
+ * quem estava preenchendo a /venda-racao. Aquela tela hoje grava em
+ * 'precificacao-racao:rascunho'; a chave velha fica parada e é inofensiva.
+ */
 
 /** Código provisório enquanto o estudo não foi salvo (o banco gera o oficial). */
 function codigoProvisorio(): string {
@@ -110,13 +116,12 @@ export function ProducaoPropria() {
     if (input || !config) return
     const vendedor = profile?.display_name ?? ''
     try {
-      const bruto = localStorage.getItem(CHAVE_RASCUNHO) ?? localStorage.getItem(CHAVE_RASCUNHO_LEGADO)
+      const bruto = localStorage.getItem(CHAVE_RASCUNHO)
       if (bruto) {
         const salvo = JSON.parse(bruto) as { input: unknown; id: string | null; codigo?: string }
         setInput(normalizarInput(salvo.input, config))
         setEstudoId(salvo.id ?? null)
         if (salvo.codigo) setCodigo(salvo.codigo)
-        localStorage.removeItem(CHAVE_RASCUNHO_LEGADO)
         return
       }
     } catch { /* rascunho corrompido: começa limpo */ }
