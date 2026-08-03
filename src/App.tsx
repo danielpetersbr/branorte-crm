@@ -310,12 +310,17 @@ function AppRoutes() {
   // navegação. Não passa por role_permissions de propósito: não existe linha
   // 'mapa' lá, e o papel nem aparece na matriz de /permissoes.
   //
-  // /viabilidade entrou em 03/08/2026: é ferramenta de apoio comercial e a página
-  // é só um iframe da calculadora pública (branorte-viabilidade.vercel.app) — não
-  // expõe nenhum dado do CRM. As guias (/guia-animais, /guia-materias) ficaram DE
-  // FORA por ora; se for pra liberar, é acrescentar aqui e no seletor do Layout.
+  // Os DOIS estudos de ração entraram em 03/08/2026 — são coisas diferentes:
+  //   /viabilidade  = vale a pena o CLIENTE fazer a própria ração (iframe da
+  //                   calculadora pública, não expõe dado do CRM)
+  //   /venda-racao  = a Branorte VENDER ração pronta (preço, margem, proposta).
+  //                   A RLS já protege: ele só vê/edita as simulações dele e não
+  //                   consegue alterar os padrões da empresa (venda_racao_ve_todas
+  //                   é falso pra esse papel).
+  // As guias (/guia-animais, /guia-materias) ficaram DE FORA por ora; se for pra
+  // liberar, é acrescentar aqui E no MENU_MAPA do Layout — os dois têm que casar.
   if (profile.role === 'mapa') {
-    const MAPA_PERMITIDAS = ['/mapa-visitas', '/mapa-representantes', '/viabilidade', '/perfil']
+    const MAPA_PERMITIDAS = ['/mapa-visitas', '/mapa-representantes', '/viabilidade', '/venda-racao', '/perfil']
     if (!MAPA_PERMITIDAS.includes(loc.pathname)) {
       return <Navigate to="/mapa-visitas" replace />
     }

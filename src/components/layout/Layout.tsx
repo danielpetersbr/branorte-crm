@@ -317,40 +317,66 @@ export function Layout() {
     )
   }
 
-  // Conta "mapa" (Patrick e afins): SÓ os dois mapas, em tela cheia. Sem sidebar,
-  // sem bottom-nav — pensado pra uso no celular. Botão de sair discreto e flutuante.
+  // Conta "mapa" (Patrick e afins): acesso restrito, mas com MENU LATERAL próprio —
+  // mesma gramática da sidebar do CRM. Rail de ícones no celular, rótulos no md+.
+  //
+  // Substituiu (03/08/2026) a pill flutuante no canto inferior direito: ela ficava
+  // POR CIMA do conteúdo e não tinha pra onde crescer. Com 4 destinos virou menu.
+  // Este menu é a ÚNICA navegação do papel — o que não estiver aqui, ele não
+  // alcança. Manter em sincronia com MAPA_PERMITIDAS no App.tsx.
   if (profile?.role === 'mapa') {
+    const MENU_MAPA = [
+      { to: '/mapa-visitas', label: 'Mapa de Visitas', icon: MapPin },
+      { to: '/mapa-representantes', label: 'Representantes', icon: Users },
+      // As duas viabilidades são estudos DIFERENTES e vivem lado a lado de propósito:
+      // /viabilidade = o cliente fazer a própria ração; /venda-racao = a Branorte vender.
+      { to: '/viabilidade', label: 'Viabilidade da Ração', icon: Calculator },
+      { to: '/venda-racao', label: 'Venda de Ração', icon: ShoppingBag },
+    ]
     return (
-      <div className="min-h-screen bg-bg">
-        {/* Sem menu nesse papel — este seletor é a ÚNICA forma de trocar de mapa.
-            Fica À DIREITA, empilhado acima do Sair: no celular o canto inferior
-            ESQUERDO é da legenda do Mapa de Visitas. */}
-        <div className="fixed right-3 bottom-[calc(max(0.75rem,env(safe-area-inset-bottom))+3.25rem)] z-[1100] flex h-11 max-w-[calc(100vw-1.5rem)] rounded-full overflow-hidden border border-border bg-surface/95 backdrop-blur shadow-md text-[13px] font-semibold">
-          {[
-            { to: '/mapa-visitas', label: 'Visitas' },
-            { to: '/mapa-representantes', label: 'Representantes' },
-            { to: '/viabilidade', label: 'Viabilidade' },
-          ].map(m => (
-            <NavLink
-              key={m.to}
-              to={m.to}
-              /* px-3 no celular: com o terceiro botão os três labels não cabiam
-                 em 360px de tela com px-4. O max-w do container é a rede de
-                 segurança pra nunca sangrar pra fora da viewport. */
-              className={({ isActive }) => cn('px-3 sm:px-4 inline-flex items-center whitespace-nowrap', isActive ? 'bg-accent text-white' : 'text-ink-muted')}
-            >
-              {m.label}
-            </NavLink>
-          ))}
-        </div>
-        {/* Botão sair — canto INFERIOR direito, com confirmação antes de sair */}
-        <button
-          onClick={() => setConfirmSair(true)}
-          title="Sair"
-          className="fixed right-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-[1100] h-11 px-4 inline-flex items-center gap-1.5 rounded-full bg-surface/95 backdrop-blur border border-border text-ink-muted hover:text-red-600 shadow-md text-[13px] font-semibold"
-        >
-          <LogOut className="h-4 w-4" /> Sair
-        </button>
+      <div className="min-h-screen flex bg-bg">
+        <aside className="w-14 md:w-56 shrink-0 sticky top-0 h-[100dvh] flex flex-col border-r border-border bg-surface">
+          <div className="h-14 shrink-0 flex items-center justify-center md:justify-start md:px-4 border-b border-border select-none">
+            <span className="font-extrabold text-[18px] leading-none tracking-[-0.045em] whitespace-nowrap">
+              <span className="text-accent">B</span><span className="text-ink hidden md:inline">RANORTE</span>
+            </span>
+          </div>
+          <nav className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-0.5 p-2">
+            {MENU_MAPA.map(m => (
+              <NavLink
+                key={m.to}
+                to={m.to}
+                title={m.label}
+                className={({ isActive }) => cn(
+                  'h-11 shrink-0 rounded-lg text-[13px] font-semibold flex items-center',
+                  'justify-center md:justify-start md:px-3 md:gap-2.5',
+                  isActive ? 'bg-accent text-white' : 'text-ink-muted hover:bg-bg hover:text-ink',
+                )}
+              >
+                <m.icon className="h-5 w-5 shrink-0" />
+                <span className="hidden md:inline truncate">{m.label}</span>
+              </NavLink>
+            ))}
+          </nav>
+          {/* Sair no pé do menu, com confirmação — era flutuante antes */}
+          <button
+            onClick={() => setConfirmSair(true)}
+            title="Sair"
+            className="m-2 h-11 shrink-0 rounded-lg text-[13px] font-semibold flex items-center justify-center md:justify-start md:px-3 md:gap-2.5 text-ink-muted hover:bg-bg hover:text-red-600"
+          >
+            <LogOut className="h-5 w-5 shrink-0" />
+            <span className="hidden md:inline">Sair</span>
+          </button>
+        </aside>
+
+        <main className="flex-1 min-w-0">
+          <ErrorBoundary resetKey={loc.pathname}>
+            <Suspense fallback={<PageLoading />}>
+              <Outlet />
+            </Suspense>
+          </ErrorBoundary>
+        </main>
+
         {confirmSair && (
           <div className="fixed inset-0 z-[1200] bg-black/50 flex items-center justify-center p-6" onClick={() => setConfirmSair(false)}>
             <div className="bg-surface rounded-2xl border border-border p-5 w-full max-w-xs text-center shadow-xl" onClick={e => e.stopPropagation()}>
@@ -364,11 +390,6 @@ export function Layout() {
             </div>
           </div>
         )}
-        <ErrorBoundary resetKey={loc.pathname}>
-          <Suspense fallback={<PageLoading />}>
-            <Outlet />
-          </Suspense>
-        </ErrorBoundary>
       </div>
     )
   }

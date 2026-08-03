@@ -233,7 +233,9 @@ export function MapaRepresentantes() {
   const telaCheia = profile?.role === 'mapa'
 
   return (
-    <div className={`flex flex-col gap-3 min-h-0 ${telaCheia ? 'h-[100dvh] p-3 pb-16' : 'h-[calc(100dvh-7rem)]'}`}>
+    /* O pb-16 saiu junto com a pill flutuante (03/08/2026): a navegação do papel
+       'mapa' virou menu lateral, então o rodapé não é mais coberto por nada. */
+    <div className={`flex flex-col gap-3 min-h-0 ${telaCheia ? 'h-[100dvh] p-3' : 'h-[calc(100dvh-7rem)]'}`}>
       <style>{`
         .uf-sigla{font:700 10px/14px ui-sans-serif,system-ui;color:#fff;text-align:center;
           text-shadow:0 1px 2px rgba(0,0,0,.85);pointer-events:none;background:none;border:0}
