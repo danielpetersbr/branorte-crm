@@ -19,8 +19,19 @@ import type {
 import { Alternador, Campo, CampoNumero, CampoTexto, CustoLinha, Etapa, Selecao } from './campos'
 
 interface Props {
-  /** Fase de preencher: o formulario ocupa a tela toda em multiplas colunas. */
+  /** Fase de preencher: layout de questionário (coluna única). */
   largo?: boolean
+  /**
+   * Modo assistente: renderiza SÓ a etapa pedida (1–8). `undefined` mostra
+   * todas, que é como as duas telas se comportavam antes — o fallback existe
+   * pra nenhuma outra chamada quebrar.
+   *
+   * Trocar de etapa DESMONTA os campos da anterior. Isso é seguro porque o
+   * valor mora em `input` (estado da página), não no DOM. O que NÃO pode é
+   * desmontar a cada tecla: o CampoNumero guarda a string local enquanto está
+   * focado, e remontar no meio da digitação comeria o que foi digitado.
+   */
+  etapa?: number
   input: EstudoInput
   onChange: (fn: (s: EstudoInput) => EstudoInput) => void
   onTrocarEspecie: (e: Especie) => void
@@ -46,6 +57,7 @@ const UNIDADES_PRECO = [
 
 export function FormularioEstudo({
   largo,
+  etapa,
   input, onChange, onTrocarEspecie, resultado, config,
   ingredientesCatalogo, formulasSalvas, onSalvarFormula, salvandoFormula,
 }: Props) {
@@ -53,6 +65,9 @@ export function FormularioEstudo({
     identificacao: ident, produto, necessidade: nec, atual, formula,
     custos, dimensionamento: dim, investimento: inv,
   } = input
+
+  /** No modo assistente só a etapa atual aparece; sem ele, tudo. */
+  const ver = (n: number) => etapa === undefined || etapa === n
 
   const ehMilho = produto.especie === 'milho'
   const categorias = CATEGORIAS[produto.especie] ?? []
@@ -134,8 +149,8 @@ export function FormularioEstudo({
       <h2>Dados do estudo</h2>
 
       {/* ---------------------------------------------------- identificação */}
-      <details className="vr-det" open style={{ marginTop: 10, borderTop: 0, paddingTop: 0 }}>
-        <summary>Identificação (cliente, propriedade, vendedor)</summary>
+      {ver(1) && (
+      <Etapa numero={1} titulo="Dados do cliente e do estudo" descricao="Aparecem na apresentação e no PDF — menos as observações internas.">
         <div className="vr-detbody">
           <Campo label="Nome do cliente">
             <CampoTexto valor={ident.clienteNome} onChange={v => setIdent({ clienteNome: v })} placeholder="Ex.: João da Silva" />
@@ -174,10 +189,12 @@ export function FormularioEstudo({
             />
           </Campo>
         </div>
-      </details>
+      </Etapa>
+      )}
 
-      {/* ------------------------------------------------------------ 1 */}
-      <Etapa numero={1} titulo="Qual produto o cliente precisa produzir?">
+      {/* ------------------------------------------------------------ 3 */}
+      {ver(2) && (
+      <Etapa numero={2} titulo="Qual produto o cliente precisa produzir?">
         <div className="vr-species">
           {ESPECIES.map(e => (
             <div
@@ -214,10 +231,12 @@ export function FormularioEstudo({
           {categoriaAtual?.nota && <div className="vr-hint">{categoriaAtual.nota}</div>}
         </div>
       </Etapa>
+      )}
 
       {/* ------------------------------------------------------------ 2 */}
+      {ver(3) && (
       <Etapa
-        numero={2}
+        numero={3}
         titulo="Qual é a necessidade de produção do cliente?"
         descricao="Pelo plantel ou pela quantidade que ele já sabe que consome."
       >
@@ -347,10 +366,12 @@ export function FormularioEstudo({
           <b>{toneladas(d.toneladasMes)}</b>/mês · <b>{toneladas(d.toneladasAno)}</b>/ano
         </div>
       </Etapa>
+      )}
 
-      {/* ------------------------------------------------------------ 3 */}
+      {/* ------------------------------------------------------------ 4 */}
+      {ver(4) && (
       <Etapa
-        numero={3}
+        numero={4}
         titulo="Quanto o cliente gasta atualmente?"
         descricao="É este número que a produção própria vai tentar reduzir."
       >
@@ -423,10 +444,12 @@ export function FormularioEstudo({
           <b>{brl(resultado.atual.custoAnual)}</b>/ano
         </div>
       </Etapa>
+      )}
 
-      {/* ------------------------------------------------------------ 4 */}
+      {/* ------------------------------------------------------------ 5 */}
+      {ver(5) && (
       <Etapa
-        numero={4}
+        numero={5}
         titulo={ehMilho ? 'Preço do milho a triturar' : 'O que ele vai usar na fórmula'}
         descricao={ehMilho ? undefined : 'Ingredientes que o cliente consegue comprar ou já tem na propriedade.'}
       >
@@ -580,10 +603,12 @@ export function FormularioEstudo({
           </>
         )}
       </Etapa>
+      )}
 
-      {/* ------------------------------------------------------------ 5 */}
+      {/* ------------------------------------------------------------ 6 */}
+      {ver(6) && (
       <Etapa
-        numero={5}
+        numero={6}
         titulo="Custos de produzir na propriedade"
         descricao="Todo valor abaixo é ESTIMATIVA. Confirme com o cliente, ajuste ou desligue o que não existe lá."
       >
@@ -633,10 +658,12 @@ export function FormularioEstudo({
           <b>{brl(resultado.producao.custoMensal)}</b>/mês
         </div>
       </Etapa>
+      )}
 
-      {/* ------------------------------------------------------------ 6 */}
+      {/* ------------------------------------------------------------ 7 */}
+      {ver(7) && (
       <Etapa
-        numero={6}
+        numero={7}
         titulo="Capacidade de produção necessária"
         descricao="Como o cliente pretende produzir define o tamanho da fábrica."
       >
@@ -683,10 +710,12 @@ export function FormularioEstudo({
           ) : 'Informe dias e horas pra dimensionar.'}
         </div>
       </Etapa>
+      )}
 
-      {/* ------------------------------------------------------------ 7 */}
+      {/* ------------------------------------------------------------ 8 */}
+      {ver(8) && (
       <Etapa
-        numero={7}
+        numero={8}
         titulo="Investimento estimado na fábrica"
         descricao="Sem investimento informado o estudo mostra só a economia, sem prazo de retorno."
       >
@@ -745,6 +774,7 @@ export function FormularioEstudo({
           )}
         </div>
       </Etapa>
+      )}
 
       <div className="vr-hint" style={{ marginTop: 14 }}>
         Cenários em uso: conservador com ingredientes {pct(input.cenarios.conservador.ingredientesPct, 0)} e

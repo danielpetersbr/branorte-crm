@@ -21,7 +21,7 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Calculator, ChevronLeft, Copy, FilePlus2, FileText, History, ListChecks,
+  Calculator, ChevronLeft, ChevronRight, Copy, FilePlus2, FileText, History, ListChecks,
   MessageCircle, Presentation, Printer, Save, Settings,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
@@ -91,8 +91,10 @@ export function ProducaoPropria() {
   const { data: ingredientes = [] } = useIngredientesCatalogo()
 
   const [aba, setAba] = useState<Aba>('simulacao')
-  /** 'preencher' = formulário na tela toda; 'resultado' = painel na tela toda. */
+  /** 'preencher' = questionário; 'resultado' = painel na tela toda. */
   const [fase, setFase] = useState<'preencher' | 'resultado'>('preencher')
+  /** Assistente: 1..8, uma etapa por vez. Bate com a barra de progresso. */
+  const [etapaAtual, setEtapaAtual] = useState(1)
   const [input, setInput] = useState<EstudoInput | null>(null)
   const [estudoId, setEstudoId] = useState<string | null>(null)
   const [codigo, setCodigo] = useState<string>(codigoProvisorio)
@@ -181,6 +183,7 @@ export function ProducaoPropria() {
     setCodigo(codigoProvisorio())
     setAba('simulacao')
     setFase('preencher')  // senão cai no resultado do estudo anterior
+    setEtapaAtual(1)
     setAviso({ tipo: 'ok', texto: 'Estudo novo aberto.' })
   }
 
@@ -190,6 +193,7 @@ export function ProducaoPropria() {
     setInput(s => (s ? { ...s, status: 'rascunho' } : s))
     setAba('simulacao')
     setFase('preencher')  // senão cai no resultado do estudo anterior
+    setEtapaAtual(1)
     setAviso({ tipo: 'ok', texto: 'Cópia criada — salve pra gerar um código novo.' })
   }
 
@@ -306,6 +310,7 @@ export function ProducaoPropria() {
     setCodigo(codigoProvisorio())
     setAba('simulacao')
     setFase('preencher')  // senão cai no resultado do estudo anterior
+    setEtapaAtual(1)
     setAviso({ tipo: 'ok', texto: 'Cópia aberta — salve pra gerar um código novo.' })
   }
 
@@ -394,9 +399,25 @@ export function ProducaoPropria() {
                 <span style={{ width: `${(concluidas / etapas.length) * 100}%` }} />
               </div>
               <div className="passos">
-                {etapas.map(e => (
-                  <span key={e.rotulo} className={e.ok ? 'ok' : ''}>{e.rotulo}</span>
-                ))}
+                {etapas.map((e, i) => {
+                  const n = i + 1
+                  // A barra é a navegação: clicar pula direto pra etapa, sem
+                  // travar. Nada de gate — se travasse por etapa, mudaria regra
+                  // (só 3 dos 8 blocos bloqueiam) e prenderia o vendedor.
+                  const classe = [e.ok ? 'ok' : '', n === etapaAtual ? 'atual' : '']
+                    .filter(Boolean).join(' ')
+                  return (
+                    <button
+                      key={e.rotulo}
+                      type="button"
+                      className={classe}
+                      aria-current={n === etapaAtual ? 'step' : undefined}
+                      onClick={() => { setEtapaAtual(n); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+                    >
+                      {e.rotulo}
+                    </button>
+                  )
+                })}
               </div>
             </div>
           </>
@@ -432,6 +453,7 @@ export function ProducaoPropria() {
           <div>
             <FormularioEstudo
               largo
+              etapa={etapaAtual}
               input={input}
               onChange={fn => setInput(s => (s ? fn(s) : s))}
               onTrocarEspecie={(e: Especie) => setInput(s => (s ? trocarEspecie(s, e, config) : s))}
@@ -457,16 +479,34 @@ export function ProducaoPropria() {
               }}
             />
 
-            {/* "depois no final eu clico em gerar resultado" */}
-            <div className="vr-gerar vr-no-print">
-              <button type="button" className="vr-btn primary" onClick={calcular}>
-                <Calculator className="h-4 w-4" /> Gerar resultado
+            {/* Um bloco por vez: preenche, avança. Na última, gera o resultado. */}
+            <div className="vr-passos vr-no-print">
+              <button
+                type="button"
+                className="vr-btn ghost"
+                disabled={etapaAtual === 1}
+                onClick={() => { setEtapaAtual(n => Math.max(1, n - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+              >
+                <ChevronLeft className="h-4 w-4" /> Voltar
               </button>
-              <span className="aviso">
-                {concluidas < etapas.length
-                  ? `${etapas.length - concluidas} de ${etapas.length} etapas ainda faltam`
-                  : 'Todas as etapas preenchidas'}
+
+              <span className="conta">
+                Etapa {etapaAtual} de {etapas.length} · {etapas[etapaAtual - 1]?.rotulo}
               </span>
+
+              {etapaAtual < etapas.length ? (
+                <button
+                  type="button"
+                  className="vr-btn primary"
+                  onClick={() => { setEtapaAtual(n => Math.min(etapas.length, n + 1)); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+                >
+                  Próximo <ChevronRight className="h-4 w-4" />
+                </button>
+              ) : (
+                <button type="button" className="vr-btn primary" onClick={calcular}>
+                  <Calculator className="h-4 w-4" /> Gerar resultado
+                </button>
+              )}
             </div>
           </div>
         )}

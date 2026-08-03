@@ -136,7 +136,9 @@
   max-width: 760px;
   margin-inline: auto;
 }
-.vr .vr-card.vr-form-largo > h2 { margin-bottom: 14px; }
+/* O "Dados do estudo" era o título do cartão único de antes. Agora cada etapa
+   tem título próprio e numerado — o rótulo genérico só polui o topo. */
+.vr .vr-card.vr-form-largo > h2 { display: none; }
 /* Cada etapa é um cartão fechado, com respiro entre elas — é o que separa
    "assunto" de "assunto" quando tudo está empilhado. */
 .vr .vr-card.vr-form-largo > .vr-det,
@@ -685,9 +687,49 @@
   font: 600 11px/1.4 var(--vr-mono); color: var(--vr-ink40);
   text-transform: uppercase; letter-spacing: 0.04em;
 }
-.vr .vr-progress .passos span::before { content: "○ "; }
-.vr .vr-progress .passos span.ok { color: var(--vr-green-d); }
-.vr .vr-progress .passos span.ok::before { content: "● "; }
+/* Os passos viraram BOTÃO: a barra é a navegação do assistente. Clicar pula
+   direto pra etapa, sem travar — gate por etapa mudaria regra de negócio (só 3
+   dos 8 blocos bloqueiam de verdade) e prenderia o vendedor no meio. */
+.vr .vr-progress .passos button {
+  border: 0; background: none; padding: 2px 0; cursor: pointer;
+  font: inherit; color: inherit; letter-spacing: inherit;
+  text-transform: inherit; white-space: nowrap;
+}
+.vr .vr-progress .passos button:hover { color: var(--vr-ink); }
+.vr .vr-progress .passos button::before { content: "○ "; }
+.vr .vr-progress .passos button.ok { color: var(--vr-green-d); }
+.vr .vr-progress .passos button.ok::before { content: "● "; }
+/* A etapa aberta agora: o vendedor tem que achar onde está num relance. */
+.vr .vr-progress .passos button.atual {
+  color: var(--vr-green-d); font-weight: 800;
+  box-shadow: inset 0 -2px 0 var(--vr-green);
+}
+@media (max-width: 700px) {
+  /* No celular a barra rola na horizontal em vez de virar 4 linhas de texto. */
+  .vr .vr-progress .passos {
+    flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    gap: 0 14px; padding-bottom: 4px; scrollbar-width: none;
+  }
+  .vr .vr-progress .passos::-webkit-scrollbar { display: none; }
+}
+
+/* Rodapé do assistente: Voltar · onde estou · Próximo */
+.vr .vr-passos {
+  max-width: 760px; margin: 4px auto 0;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  border-top: 1px solid var(--vr-hair); padding-top: 18px;
+}
+.vr .vr-passos .conta {
+  font-size: 12.5px; color: var(--vr-ink40); text-align: center;
+  flex: 1; min-width: 0;
+}
+.vr .vr-passos .vr-btn { font-size: 14.5px; padding: 12px 20px; }
+@media (max-width: 560px) {
+  /* No celular a conta vai pro meio e os botões seguram as pontas. */
+  .vr .vr-passos { flex-wrap: wrap; }
+  .vr .vr-passos .conta { order: -1; flex-basis: 100%; }
+  .vr .vr-passos .vr-btn { flex: 1; justify-content: center; }
+}
 
 /* --- formulário ---------------------------------------------------------- */
 .vr .vr-stepdesc {
