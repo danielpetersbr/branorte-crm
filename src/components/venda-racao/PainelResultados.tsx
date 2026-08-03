@@ -275,13 +275,17 @@ export function PainelResultados({ input, resultado, onPrecoNegociado }: Props) 
         </div>
       ) : null}
 
-      {/* --------------------------------------------------------- gráficos */}
-      <GraficoVolume lucroPorKg={negociado.lucroPorKg} toneladasAtual={demanda.toneladas} />
-      <GraficoPrecos
-        precos={precos}
-        negociado={negociado}
-        precoAtualCliente={input.venda.precoAtualClientePorKg}
-      />
+      {/* --------------------------------------------------------- gráficos
+          Os dois vão dentro de .vr-charts: lado a lado quando o painel é largo,
+          empilhados quando não é. Só embrulho — os gráficos não mudaram. */}
+      <div className="vr-charts">
+        <GraficoVolume lucroPorKg={negociado.lucroPorKg} toneladasAtual={demanda.toneladas} />
+        <GraficoPrecos
+          precos={precos}
+          negociado={negociado}
+          precoAtualCliente={input.venda.precoAtualClientePorKg}
+        />
+      </div>
 
       {/* ------------------------------------------------ memória de cálculo */}
       <details className="vr-memo">
