@@ -1,40 +1,41 @@
 /**
- * Catálogos do módulo Venda de Ração: espécies, categorias/fases, consumo
- * sugerido, fórmulas de partida, ingredientes e defaults da empresa.
+ * Catálogos do Estudo de Viabilidade da Produção Própria: espécies, fases,
+ * consumo de REFERÊNCIA, fórmulas de partida, matérias-primas, capacidades da
+ * linha Branorte e defaults da empresa.
  *
  * ORIGEM DOS NÚMEROS: reaproveitados do estudo de viabilidade que já roda em
- * produção (branorte-viabilidade), que foi calibrado com criadores reais e
- * material Embrapa/genéticas. NÃO são recomendação nutricional — são ponto de
- * partida EDITÁVEL. O consumo real varia com peso, genética, fase, manejo e
- * objetivo produtivo; a formulação tem que ser definida/validada por
- * profissional habilitado.
+ * produção (branorte-viabilidade), calibrado com criadores reais e material
+ * Embrapa/genéticas. NÃO são recomendação nutricional nem verdade sobre o
+ * cliente — são ponto de partida EDITÁVEL. O consumo real varia com peso,
+ * genética, fase, manejo, formulação e objetivo produtivo; a formulação tem que
+ * ser definida/validada por profissional habilitado.
  *
  * Consumo está sempre em **kg por animal por mês** (mês comercial de 30 dias).
  * Preço de ingrediente em **R$/kg**.
  */
 import type {
-  Cenarios, ConfigVendaRacao, Especie, IngredienteFormula, UnidadePreco,
+  Cenarios, ConfigEstudo, Especie, IngredienteFormula, StatusEstudo, UnidadePreco,
 } from './tipos'
 
 export const ESPECIES: Array<{
   chave: Especie
   nome: string
   icone: string
-  /** Como chamar o animal no plural ("frangos", "cabeças"…). */
+  /** Como chamar o animal no plural ("aves", "cabeças"…). */
   animal: string
-  /** Espécie sem contagem de animais (vende por volume direto). */
+  /** Produto sem contagem de animais (dimensiona por volume direto). */
   semAnimais?: boolean
 }> = [
-  { chave: 'bovinos', nome: 'Ração para bovinos', icone: '🐂', animal: 'cabeças' },
-  { chave: 'suinos',  nome: 'Ração para suínos',  icone: '🐷', animal: 'suínos' },
-  { chave: 'aves',    nome: 'Ração para aves',    icone: '🐔', animal: 'aves' },
-  { chave: 'milho',   nome: 'Milho triturado',    icone: '🌽', animal: 'animais', semAnimais: true },
+  { chave: 'bovinos', nome: 'Ração farelada para bovinos', icone: '🐂', animal: 'cabeças' },
+  { chave: 'suinos',  nome: 'Ração farelada para suínos',  icone: '🐷', animal: 'suínos' },
+  { chave: 'aves',    nome: 'Ração farelada para aves',    icone: '🐔', animal: 'aves' },
+  { chave: 'milho',   nome: 'Milho triturado',             icone: '🌽', animal: 'animais', semAnimais: true },
 ]
 
 export interface Categoria {
   chave: string
   nome: string
-  /** kg por animal por mês — sugestão editável. 0 = sem sugestão. */
+  /** kg por animal por mês — REFERÊNCIA editável. 0 = sem sugestão. */
   consumoMes: number
   nota?: string
 }
@@ -78,15 +79,22 @@ export const CATEGORIAS: Record<Especie, Categoria[]> = {
     { chave: 'outro',               nome: 'Outro',                         consumoMes: 0 },
   ],
   milho: [
-    { chave: 'granel',    nome: 'Milho triturado a granel',      consumoMes: 0 },
-    { chave: 'ensacado',  nome: 'Milho triturado ensacado',      consumoMes: 0 },
-    { chave: 'com_entrega', nome: 'Milho triturado com entrega', consumoMes: 0 },
-    { chave: 'outro',     nome: 'Outro',                         consumoMes: 0 },
+    { chave: 'granel',      nome: 'Milho triturado a granel', consumoMes: 0 },
+    { chave: 'ensacado',    nome: 'Milho triturado ensacado', consumoMes: 0 },
+    { chave: 'outro',       nome: 'Outro',                    consumoMes: 0 },
   ],
 }
 
-/** Catálogo local de matérias-primas (fallback quando o banco está vazio). */
-export const INGREDIENTES_PADRAO: Array<{ nome: string; preco: number; unidade: UnidadePreco }> = [
+/**
+ * Catálogo local de matérias-primas (fallback quando o banco está vazio).
+ *
+ * `umido` e `liquido` marcam o que NÃO entra numa fábrica farelada comum. Só
+ * aparecem no seletor quando a configuração declara que o equipamento e o
+ * processo são compatíveis (`permiteIngredientesUmidos`).
+ */
+export const INGREDIENTES_PADRAO: Array<{
+  nome: string; preco: number; unidade: UnidadePreco; umido?: boolean; liquido?: boolean
+}> = [
   { nome: 'Milho',              preco: 1.08, unidade: 'kg' },
   { nome: 'Farelo de soja',     preco: 1.60, unidade: 'kg' },
   { nome: 'Sorgo',              preco: 0.95, unidade: 'kg' },
@@ -100,10 +108,23 @@ export const INGREDIENTES_PADRAO: Array<{ nome: string; preco: number; unidade: 
   { nome: 'Calcário',           preco: 0.40, unidade: 'kg' },
   { nome: 'Sal comum',          preco: 1.20, unidade: 'kg' },
   { nome: 'Fosfato bicálcico',  preco: 4.50, unidade: 'kg' },
-  { nome: 'Óleo / gordura',     preco: 6.00, unidade: 'kg' },
-  { nome: 'Silagem / volumoso', preco: 0.40, unidade: 'kg' },
   { nome: 'Ureia',              preco: 3.50, unidade: 'kg' },
+  { nome: 'Óleo / gordura',     preco: 6.00, unidade: 'kg', liquido: true },
+  { nome: 'Silagem / volumoso', preco: 0.40, unidade: 'kg', umido: true },
 ]
+
+/** Nomes que exigem processo compatível — usado pra avisar em fórmula salva. */
+export const INGREDIENTES_RESTRITOS = INGREDIENTES_PADRAO
+  .filter(i => i.umido || i.liquido)
+  .map(i => i.nome.toLowerCase())
+
+/** Detecta ingrediente úmido/líquido pelo nome (fórmulas antigas e digitadas). */
+export function ehIngredienteRestrito(nome: string): boolean {
+  const t = (nome || '').toLowerCase()
+  if (!t) return false
+  return ['silagem', 'volumoso', 'óleo', 'oleo', 'gordura', 'melaço', 'melaco', 'soro']
+    .some(x => t.includes(x))
+}
 
 let seqIngrediente = 0
 export function novoIdIngrediente(): string {
@@ -124,8 +145,9 @@ function item(nome: string, pct: number, preco: number): IngredienteFormula {
 }
 
 /**
- * Composição de PARTIDA por espécie (soma 100%). É um rascunho pro vendedor
- * editar — não substitui formulação profissional.
+ * Composição de PARTIDA por espécie (soma exatamente 100%). É um rascunho pro
+ * vendedor editar — não substitui formulação profissional. Só ingredientes
+ * secos: a Compacta é farelada.
  */
 export function formulaPadrao(especie: Especie): IngredienteFormula[] {
   switch (especie) {
@@ -133,8 +155,8 @@ export function formulaPadrao(especie: Especie): IngredienteFormula[] {
       return [
         item('Milho', 58, 1.08),
         item('Farelo de soja', 33, 1.60),
-        item('Óleo / gordura', 2, 6.00),
         item('Núcleo / premix', 7, 6.80),
+        item('Calcário', 2, 0.40),
       ]
     case 'suinos':
       return [
@@ -144,10 +166,10 @@ export function formulaPadrao(especie: Especie): IngredienteFormula[] {
       ]
     case 'bovinos':
       return [
-        item('Milho', 56, 1.08),
-        item('Silagem / volumoso', 20, 0.40),
-        item('Núcleo mineral', 14, 2.20),
-        item('Farelo de soja', 10, 1.60),
+        item('Milho', 60, 1.08),
+        item('Farelo de soja', 22, 1.60),
+        item('Núcleo mineral', 15, 2.20),
+        item('Calcário', 3, 0.40),
       ]
     case 'milho':
     default:
@@ -157,34 +179,81 @@ export function formulaPadrao(especie: Especie): IngredienteFormula[] {
 
 export const PESOS_SACO = [20, 25, 30, 40, 50]
 
-export const STATUS_PROPOSTA: Array<{ chave: string; nome: string; cor: string }> = [
-  { chave: 'rascunho',   nome: 'Rascunho',        cor: 'cinza' },
-  { chave: 'enviada',    nome: 'Proposta enviada', cor: 'azul' },
-  { chave: 'negociacao', nome: 'Em negociação',    cor: 'ouro' },
-  { chave: 'aprovada',   nome: 'Aprovada',         cor: 'verde' },
-  { chave: 'vendida',    nome: 'Vendida',          cor: 'verde' },
-  { chave: 'perdida',    nome: 'Perdida',          cor: 'vermelho' },
-  { chave: 'cancelada',  nome: 'Cancelada',        cor: 'cinza' },
+/** Capacidades da linha Branorte, em kg/h. Editável em Configurações. */
+export const CAPACIDADES_BRANORTE = [300, 600, 1000, 1500, 2000, 3000, 5000]
+
+export const STATUS_ESTUDO: Array<{ chave: StatusEstudo; nome: string; cor: string }> = [
+  { chave: 'rascunho',    nome: 'Rascunho',              cor: 'cinza' },
+  { chave: 'apresentado', nome: 'Estudo apresentado',    cor: 'azul' },
+  { chave: 'analisando',  nome: 'Cliente analisando',    cor: 'azul' },
+  { chave: 'negociacao',  nome: 'Projeto em negociação', cor: 'ouro' },
+  { chave: 'aprovado',    nome: 'Projeto aprovado',      cor: 'verde' },
+  { chave: 'vendido',     nome: 'Equipamento vendido',   cor: 'verde' },
+  { chave: 'nao_avancou', nome: 'Não avançou',           cor: 'vermelho' },
+  { chave: 'cancelado',   nome: 'Cancelado',             cor: 'cinza' },
 ]
 
+/**
+ * Status do módulo antigo de precificação → status do estudo. Simulação salva
+ * antes de 08/2026 continua abrindo, só que já com o nome novo.
+ */
+export const STATUS_LEGADO: Record<string, StatusEstudo> = {
+  rascunho: 'rascunho',
+  enviada: 'apresentado',
+  negociacao: 'negociacao',
+  aprovada: 'aprovado',
+  vendida: 'vendido',
+  perdida: 'nao_avancou',
+  cancelada: 'cancelado',
+}
+
+export function normalizarStatus(bruto: unknown): StatusEstudo {
+  const s = String(bruto ?? '')
+  if (STATUS_ESTUDO.some(x => x.chave === s)) return s as StatusEstudo
+  return STATUS_LEGADO[s] ?? 'rascunho'
+}
+
+export function nomeStatus(s: string): string {
+  return STATUS_ESTUDO.find(x => x.chave === normalizarStatus(s))?.nome ?? s
+}
+
+/**
+ * Cenários: variam SÓ o que é coerente com um estudo de viabilidade — preço de
+ * ingrediente, perda, custo operacional, preço da ração comprada, consumo e
+ * investimento. Nada de margem comercial.
+ */
 export const CENARIOS_PADRAO: Cenarios = {
-  conservador: { materiaPrimaPct: 20, fretePct: 20,  perdaPct: 0,   margemPct: null },
-  provavel:    { materiaPrimaPct: 0,  fretePct: 0,   perdaPct: 0,   margemPct: null },
-  otimista:    { materiaPrimaPct: -10, fretePct: -5, perdaPct: -50, margemPct: null },
+  conservador: { ingredientesPct: 20, perdaPct: 50, operacionaisPct: 20, racaoCompradaPct: -10, consumoPct: 0, investimentoPct: 10 },
+  provavel:    { ingredientesPct: 0,  perdaPct: 0,  operacionaisPct: 0,  racaoCompradaPct: 0,   consumoPct: 0, investimentoPct: 0 },
+  otimista:    { ingredientesPct: -10, perdaPct: -50, operacionaisPct: -10, racaoCompradaPct: 5, consumoPct: 0, investimentoPct: 0 },
+}
+
+/**
+ * De onde veio cada valor padrão. Aparece na tela ao lado do campo — nenhum
+ * default pode ser tratado como custo real da propriedade sem o vendedor
+ * confirmar.
+ */
+export const ORIGEM_CUSTOS: Record<string, string> = {
+  perdaPct: 'Estimativa: quebra de moagem e mistura em fábrica farelada bem operada.',
+  energia: 'Estimativa: motores da linha a ~70% de carga, tarifa rural média.',
+  maoDeObra: 'Estimativa: operador em tempo parcial rateado no volume produzido.',
+  moagem: 'Estimativa: desgaste de martelos e peneiras do moinho.',
+  mistura: 'Estimativa: energia e desgaste do misturador.',
+  manutencao: 'Estimativa: manutenção preventiva anual diluída no volume.',
+  depreciacao: 'Estimativa: depreciação contábil do equipamento diluída no volume.',
+  administrativo: 'Estimativa: controle de estoque, notas e conferência.',
+  carregamento: 'Estimativa: movimentação interna até o trato.',
+  outrosVariaveis: 'Campo livre — desligado por padrão.',
+  embalagem: 'Estimativa: saco de ráfia novo. Desligue quando o trato for a granel.',
+  etiqueta: 'Só quando o cliente identifica lote. Desligado por padrão.',
+  custosFixosMensais: 'Informe apenas o que existe de fato na propriedade.',
 }
 
 /**
  * Defaults da empresa. Ficam em venda_racao_config (JSONB) e são editáveis na
- * área de Configurações — o código nunca trava valor comercial.
+ * área de Configurações — o código nunca trava valor de custo.
  */
-export const CONFIG_PADRAO: ConfigVendaRacao = {
-  margemPorEspecie:       { bovinos: 20, suinos: 18, aves: 15, milho: 15 },
-  margemMinimaPorEspecie: { bovinos: 15, suinos: 12, aves: 10, milho: 10 },
-  impostosPct: 5,
-  comissaoPct: 3,
-  taxaFinanceiraPct: 0,
-  taxaCartaoPct: 0,
-  pesoSacoPadrao: 40,
+export const CONFIG_PADRAO: ConfigEstudo = {
   custosPadrao: {
     perdaPct: 1.5,
     energia:        { ativo: true,  valor: 0.035 },
@@ -193,33 +262,50 @@ export const CONFIG_PADRAO: ConfigVendaRacao = {
     mistura:        { ativo: true,  valor: 0.02 },
     manutencao:     { ativo: true,  valor: 0.03 },
     depreciacao:    { ativo: true,  valor: 0.03 },
-    administrativo: { ativo: true,  valor: 0.03 },
-    carregamento:   { ativo: true,  valor: 0.02 },
+    administrativo: { ativo: false, valor: 0.03 },
+    carregamento:   { ativo: false, valor: 0.02 },
     outrosVariaveis:{ ativo: false, valor: 0 },
-    embalagem:      { ativo: true,  valor: 1.20 },
+    embalagem:      { ativo: false, valor: 1.20 },
     etiqueta:       { ativo: false, valor: 0.10 },
   },
-  prazoPadrao: '28 dias',
-  formaPagamentoPadrao: 'Boleto',
-  condicaoEntregaPadrao: 'CIF — entrega inclusa',
-  validadeDias: 7,
-  textoComercial: 'Ração produzida sob encomenda, com matéria-prima conferida lote a lote.',
+  dimensionamentoPadrao: {
+    diasPorMes: 26,
+    horasPorDia: 4,
+    lotesPorDia: 0,
+    frequencia: 'diaria',
+    margemOperacionalPct: 20,
+  },
+  capacidades: CAPACIDADES_BRANORTE,
+  pesoSacoPadrao: 40,
+  validadeDias: 15,
+  permiteIngredientesUmidos: false,
+  textoApresentacao:
+    'Estudo preliminar preparado pela Branorte a partir das informações fornecidas pelo cliente. '
+    + 'O objetivo é comparar o custo atual da ração comprada com o custo estimado de produzi-la na própria propriedade.',
   avisoNutricional:
     'A formulação deve ser definida ou validada por profissional habilitado em nutrição animal. '
     + 'O consumo pode variar conforme peso, genética, fase, manejo e objetivo produtivo.',
+  avisoEstimativa:
+    'Todos os valores são ESTIMATIVAS baseadas nas informações informadas pelo vendedor e pelo cliente. '
+    + 'Preços de matéria-prima, consumo, custos operacionais e investimento podem variar. '
+    + 'Este documento não constitui garantia de resultado.',
   cenarios: CENARIOS_PADRAO,
 }
 
 /** Mescla o que veio do banco em cima dos defaults (config parcial é válida). */
-export function mesclarConfig(bruto: unknown): ConfigVendaRacao {
+export function mesclarConfig(bruto: unknown): ConfigEstudo {
   if (!bruto || typeof bruto !== 'object') return CONFIG_PADRAO
-  const c = bruto as Partial<ConfigVendaRacao>
+  const c = bruto as Partial<ConfigEstudo>
+  const capacidades = Array.isArray(c.capacidades) && c.capacidades.length > 0
+    ? c.capacidades.map(Number).filter(x => Number.isFinite(x) && x > 0).sort((a, b) => a - b)
+    : CONFIG_PADRAO.capacidades
+
   return {
     ...CONFIG_PADRAO,
     ...c,
-    margemPorEspecie:       { ...CONFIG_PADRAO.margemPorEspecie,       ...(c.margemPorEspecie ?? {}) },
-    margemMinimaPorEspecie: { ...CONFIG_PADRAO.margemMinimaPorEspecie, ...(c.margemMinimaPorEspecie ?? {}) },
-    custosPadrao:           { ...CONFIG_PADRAO.custosPadrao,           ...(c.custosPadrao ?? {}) },
+    capacidades,
+    custosPadrao: { ...CONFIG_PADRAO.custosPadrao, ...(c.custosPadrao ?? {}) },
+    dimensionamentoPadrao: { ...CONFIG_PADRAO.dimensionamentoPadrao, ...(c.dimensionamentoPadrao ?? {}) },
     cenarios: {
       conservador: { ...CONFIG_PADRAO.cenarios.conservador, ...(c.cenarios?.conservador ?? {}) },
       provavel:    { ...CONFIG_PADRAO.cenarios.provavel,    ...(c.cenarios?.provavel ?? {}) },

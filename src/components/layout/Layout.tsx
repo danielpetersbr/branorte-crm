@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, ChevronDown, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Package, Zap, BookOpen, Settings, TrendingUp, MessageSquarePlus, FilePlus2, Truck, History, Search, Wallet, MapPin, Star, Target, Boxes, Calculator, ClipboardList, Beef, Wheat, Bot, Workflow, CalendarDays, ShoppingBag } from 'lucide-react'
+import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, ChevronDown, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Package, Zap, BookOpen, Settings, TrendingUp, MessageSquarePlus, FilePlus2, Truck, History, Search, Wallet, MapPin, Star, Target, Boxes, Calculator, ClipboardList, Beef, Wheat, Bot, Workflow, CalendarDays } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { cn } from '@/lib/utils'
@@ -114,8 +114,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     id: 'estudo', label: 'Estudo', icon: Calculator,
     items: [
-      { to: '/viabilidade', label: 'Viabilidade da Ração', icon: Calculator, permKey: 'menu.viabilidade' },
-      { to: '/venda-racao', label: 'Venda de Ração', icon: ShoppingBag, permKey: 'menu.venda_racao' },
+      { to: '/producao-propria', label: 'Produção Própria', icon: Calculator, permKey: 'menu.venda_racao' },
       { to: '/guia-animais', label: 'Guia de Animais', icon: Beef, permKey: 'menu.viabilidade' },
       { to: '/guia-materias', label: 'Matérias-primas', icon: Wheat, permKey: 'menu.viabilidade' },
     ],
@@ -199,9 +198,11 @@ export function Layout() {
   const [openGroups, toggleGroup, ensureGroupOpen] = useOpenGroups()
   const [confirmSair, setConfirmSair] = useState(false)
 
-  // A conta 'mapa' (Patrick) roda SEMPRE em tema claro. Motivo concreto: a
-  // /viabilidade é um iframe de app externo que só existe em claro — com o cromo
-  // do CRM escuro em volta, a tela fica partida ao meio.
+  // A conta 'mapa' (Patrick) roda SEMPRE em tema claro. O motivo original era a
+  // /viabilidade em iframe de app externo (só existia em claro), que saiu na
+  // unificação de 08/2026 — a tela nativa tem os dois temas. A trava fica de pé
+  // porque o Patrick já se acostumou com ela; derrubar é decisão dele, não do
+  // refactor.
   //
   // Declarado DEPOIS do useDarkMode de propósito: efeitos rodam na ordem de
   // declaração, então este desfaz o `dark` que aquele acabou de aplicar.
@@ -346,17 +347,18 @@ export function Layout() {
   // mesma gramática da sidebar do CRM. Rail de ícones no celular, rótulos no md+.
   //
   // Substituiu (03/08/2026) a pill flutuante no canto inferior direito: ela ficava
-  // POR CIMA do conteúdo e não tinha pra onde crescer. Com 4 destinos virou menu.
+  // POR CIMA do conteúdo e não tinha pra onde crescer — virou menu.
   // Este menu é a ÚNICA navegação do papel — o que não estiver aqui, ele não
   // alcança. Manter em sincronia com MAPA_PERMITIDAS no App.tsx.
   if (profile?.role === 'mapa') {
     const MENU_MAPA = [
       { to: '/mapa-visitas', label: 'Mapa de Visitas', icon: MapPin },
       { to: '/mapa-representantes', label: 'Representantes', icon: Users },
-      // As duas viabilidades são estudos DIFERENTES e vivem lado a lado de propósito:
-      // /viabilidade = o cliente fazer a própria ração; /venda-racao = a Branorte vender.
-      { to: '/viabilidade', label: 'Viabilidade da Ração', icon: Calculator },
-      { to: '/venda-racao', label: 'Venda de Ração', icon: ShoppingBag },
+      // Os dois estudos viraram UM: /viabilidade era iframe da calculadora pública
+      // e /venda-racao precificava ração, que a Branorte não vende. Os dois
+      // redirecionam pra cá — dois itens de menu apontando pra mesma tela seriam
+      // só confusão pro Patrick.
+      { to: '/producao-propria', label: 'Produção Própria', icon: Calculator },
     ]
     return (
       <div className="min-h-screen flex bg-bg">

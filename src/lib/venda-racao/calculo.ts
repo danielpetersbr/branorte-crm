@@ -1,30 +1,35 @@
 /**
- * Motor de cálculo do módulo Venda de Ração.
+ * Motor de cálculo do Estudo de Viabilidade da Produção Própria.
  *
  * FUNÇÕES PURAS, sem React e sem Supabase — dá pra testar tudo com `npm test`.
- * O componente só monta o input e lê o resultado.
+ * O componente só monta o input e lê o resultado. É a ÚNICA fonte de verdade de
+ * consumo, economia, dimensionamento, investimento e payback do CRM.
  *
  * Decisões que valem repetir:
  *
- * 1) MARGEM SOBRE O PREÇO DE VENDA é o padrão (não markup sobre o custo).
- *    preço = custo ÷ (1 − margem − impostos − comissão − taxas)
- *    Somar 20% ao custo NÃO dá 20% de margem: dá 16,7%. E se ainda saem
- *    imposto e comissão de cima do preço, o vendedor acha que ganhou 20% e
- *    ganhou 8%. Por isso o divisor.
+ * 1) A conta central é uma SUBTRAÇÃO, não uma precificação:
+ *      economia/kg = custo de comprar pronta − custo de produzir na propriedade
+ *    Não existe margem, markup, imposto sobre venda nem comissão aqui — a
+ *    Branorte não vende ração, vende a fábrica.
  *
  * 2) Percentual entra como inteiro (20 = 20%) e vira decimal UMA vez, em `dec`.
  *
- * 3) Tudo em kg / R$ por kg. Saco e tonelada só na borda.
+ * 3) Tudo em kg / R$ por kg. Saco e tonelada só na borda. Arredondamento SÓ na
+ *    exibição (formato.ts) — aqui a precisão é cheia.
  *
  * 4) Nada de NaN/Infinity vazando: toda divisão passa por `dividir`, que
  *    devolve 0 quando o denominador é 0.
+ *
+ * 5) Economia negativa NÃO é escondida: o resultado sai com `vantajoso: false`
+ *    e o payback fica `aplicavel: false` em vez de virar um número absurdo.
  */
 import type {
-  AjusteCenario, CenarioCalculado, ComparacaoMercado, Custos, CustosCalculados,
-  DemandaCalculada, Especie, Formula, FormulaCalculada, GruposCusto,
-  LinhaIngredienteCalculada, LinhaMemoria, PontoEquilibrio, PrecosCalculados,
-  ProblemaValidacao, Quantidade, CondicoesVenda, ResultadoNegociado,
-  ResultadoSimulacao, SimulacaoInput, UnidadePreco,
+  AjusteCenario, CenarioAtual, CenarioCalculado, ComparacaoEconomia,
+  CustoAtualCalculado, CustosProducao, CustosProducaoCalculados, DemandaCalculada,
+  Dimensionamento, DimensionamentoCalculado, EquipamentoSugerido, Especie,
+  EstudoInput, Formula, FormulaCalculada, GruposCusto, Investimento,
+  LinhaIngredienteCalculada, LinhaMemoria, Necessidade, ProblemaValidacao,
+  ResultadoEstudo, RetornoCalculado, UnidadePreco,
 } from './tipos'
 
 // ---------------------------------------------------------------------------
@@ -56,14 +61,21 @@ function ligado(c: { ativo: boolean; valor: number } | undefined): number {
   return Math.max(0, n(c.valor))
 }
 
-/** Mês comercial usado quando o consumo é por dia/ciclo. */
+/** Multiplicador de cenário: -10 → 0,90. Nunca negativo. */
+function fator(percentual: number): number {
+  return Math.max(0, 1 + dec(percentual))
+}
+
+/** Mês comercial. */
 export const DIAS_MES = 30
+/** Semanas num mês comercial (30 ÷ 7). */
+export const SEMANAS_MES = 30 / 7
 
 // ---------------------------------------------------------------------------
 // 1) Demanda
 // ---------------------------------------------------------------------------
 
-/** Converte preço de matéria-prima pra R$/kg. */
+/** Converte preço de matéria-prima (ou ração pronta) pra R$/kg. */
 export function precoPorKg(preco: number, unidade: UnidadePreco, pesoSaco: number): number {
   const p = Math.max(0, n(preco))
   if (unidade === 'kg') return p
@@ -72,18 +84,25 @@ export function precoPorKg(preco: number, unidade: UnidadePreco, pesoSaco: numbe
 }
 
 /** Converte quantidade informada pra kg. */
-export function quantidadeParaKg(valor: number, unidade: Quantidade['unidadeQuantidade'], pesoSaco: number): number {
+export function quantidadeParaKg(
+  valor: number, unidade: Necessidade['unidadeQuantidade'], pesoSaco: number,
+): number {
   const v = Math.max(0, n(valor))
   if (unidade === 'kg') return v
   if (unidade === 't') return v * 1000
   return v * Math.max(0, n(pesoSaco)) // 'sacos'
 }
 
-export function calcularDemanda(q: Quantidade): DemandaCalculada {
-  const pesoSaco = Math.max(0, n(q.pesoSaco))
-  const sobra = 1 + Math.max(0, dec(q.sobraPct))
+export interface OpcoesDemanda {
+  /** Multiplicador do consumo (cenários). 1 = sem ajuste. */
+  fatorConsumo?: number
+}
 
-  let pedidoKg = 0
+export function calcularDemanda(q: Necessidade, opcoes: OpcoesDemanda = {}): DemandaCalculada {
+  const pesoSaco = Math.max(0, n(q.pesoSaco))
+  const folga = 1 + Math.max(0, dec(q.margemSegurancaPct))
+  const fConsumo = opcoes.fatorConsumo ?? 1
+
   let mensalKg = 0
 
   if (q.modo === 'animais') {
@@ -91,33 +110,32 @@ export function calcularDemanda(q: Quantidade): DemandaCalculada {
     const consumo = Math.max(0, n(q.consumoPorAnimal))
     const dias = Math.max(0, n(q.dias))
 
-    if (q.baseConsumo === 'dia') {
-      // Spec: demanda mensal = nº animais × consumo/dia × nº de dias.
-      pedidoKg = animais * consumo * dias
-      mensalKg = pedidoKg
-    } else if (q.baseConsumo === 'mes') {
-      pedidoKg = animais * consumo
-      mensalKg = pedidoKg
+    if (q.baseConsumo === 'mes') {
+      mensalKg = animais * consumo
+    } else if (q.baseConsumo === 'dia') {
+      // consumo/dia × nº de dias considerados no mês
+      mensalKg = animais * consumo * (dias > 0 ? dias : DIAS_MES)
     } else {
-      // 'ciclo': o pedido é o ciclo inteiro. O equivalente mensal serve só pras
-      // métricas "por mês" — se o ciclo não tem duração informada, assume 1 mês.
-      pedidoKg = animais * consumo
-      mensalKg = dias > 0 ? dividir(pedidoKg, dividir(dias, DIAS_MES)) : pedidoKg
+      // 'ciclo': o total do ciclo diluído na duração dele.
+      const totalCiclo = animais * consumo
+      mensalKg = dias > 0 ? dividir(totalCiclo, dividir(dias, DIAS_MES)) : totalCiclo
     }
-    pedidoKg *= sobra
-    mensalKg *= sobra
   } else {
-    pedidoKg = quantidadeParaKg(q.quantidadeInformada, q.unidadeQuantidade, pesoSaco) * sobra
-    mensalKg = pedidoKg * Math.max(0, n(q.pedidosPorMes))
+    const kgInformado = quantidadeParaKg(q.quantidadeInformada, q.unidadeQuantidade, pesoSaco)
+    if (q.periodoQuantidade === 'dia') mensalKg = kgInformado * DIAS_MES
+    else if (q.periodoQuantidade === 'ano') mensalKg = dividir(kgInformado, 12)
+    else mensalKg = kgInformado
   }
 
+  mensalKg = mensalKg * folga * fConsumo
+
   return {
-    quantidadeKg: pedidoKg,
-    quantidadeMensalKg: mensalKg,
-    sacos: dividir(pedidoKg, pesoSaco),
-    toneladas: dividir(pedidoKg, 1000),
-    sacosMes: dividir(mensalKg, pesoSaco),
+    diariaKg: dividir(mensalKg, DIAS_MES),
+    mensalKg,
+    anualKg: mensalKg * 12,
     toneladasMes: dividir(mensalKg, 1000),
+    toneladasAno: dividir(mensalKg * 12, 1000),
+    sacosMes: dividir(mensalKg, pesoSaco),
   }
 }
 
@@ -180,67 +198,116 @@ export function calcularFormula(formula: Formula, especie: Especie): FormulaCalc
 }
 
 // ---------------------------------------------------------------------------
-// 3) Custos
+// 3) Cenário atual — quanto ele gasta HOJE
 // ---------------------------------------------------------------------------
 
-export interface OpcoesCusto {
-  /** Multiplicador da matéria-prima (cenários). 1 = sem ajuste. */
-  fatorMateriaPrima?: number
-  /** Multiplicador do frete (cenários). 1 = sem ajuste. */
-  fatorFrete?: number
-  /** Multiplicador da perda (cenários). 1 = sem ajuste. */
-  fatorPerda?: number
+export interface OpcoesCustoAtual {
+  /** Multiplicador do preço da ração comprada (cenários). */
+  fatorRacaoComprada?: number
 }
 
-export function calcularCustos(
-  custoIngredientesPorKg: number,
-  custos: Custos,
-  quantidadeKg: number,
-  pesoSaco: number,
-  opcoes: OpcoesCusto = {},
-): CustosCalculados {
-  const fMp = opcoes.fatorMateriaPrima ?? 1
-  const fFrete = opcoes.fatorFrete ?? 1
-  const fPerda = opcoes.fatorPerda ?? 1
+export function calcularCustoAtual(
+  atual: CenarioAtual, demanda: DemandaCalculada, opcoes: OpcoesCustoAtual = {},
+): CustoAtualCalculado {
+  const f = opcoes.fatorRacaoComprada ?? 1
 
-  const ingredientes = Math.max(0, n(custoIngredientesPorKg)) * fMp
+  // Já produz de outro jeito: o vendedor informa o custo apurado da operação.
+  if (atual.modo === 'proprio') {
+    const manual = Math.max(0, n(atual.custoManualPorKg)) * f
+    return {
+      informado: manual > 0,
+      precoBasePorKg: manual,
+      fretePorKg: 0, descargaPorKg: 0, outrosPorKg: 0, perdasPorKg: 0,
+      custoPorKg: manual,
+      custoPorTonelada: manual * 1000,
+      custoMensal: manual * demanda.mensalKg,
+      custoAnual: manual * demanda.anualKg,
+    }
+  }
+
+  const base = precoPorKg(atual.preco, atual.unidadePreco, atual.pesoSacoCompra) * f
+  const frete = ligado(atual.frete)
+  const descarga = ligado(atual.descarga)
+  const outros = ligado(atual.outros)
+  const soma = base + frete + descarga + outros
+
+  // Perda de armazenagem/manuseio: pra APROVEITAR 1 kg com x% de perda ele
+  // precisa COMPRAR 1/(1−x) kg. Trava em 90% pra digitação absurda não explodir.
+  const perdas = Math.min(0.9, Math.max(0, dec(atual.perdasPct)))
+  const custoPorKg = dividir(soma, 1 - perdas)
+
+  return {
+    informado: custoPorKg > 0,
+    precoBasePorKg: base,
+    fretePorKg: frete,
+    descargaPorKg: descarga,
+    outrosPorKg: outros,
+    perdasPorKg: custoPorKg - soma,
+    custoPorKg,
+    custoPorTonelada: custoPorKg * 1000,
+    custoMensal: custoPorKg * demanda.mensalKg,
+    custoAnual: custoPorKg * demanda.anualKg,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 4) Custo de produzir na propriedade
+// ---------------------------------------------------------------------------
+
+export interface OpcoesCustoProducao {
+  /** Multiplicador do preço dos ingredientes (cenários). */
+  fatorIngredientes?: number
+  /** Multiplicador da perda de produção (cenários). */
+  fatorPerda?: number
+  /** Multiplicador dos custos operacionais (cenários). */
+  fatorOperacionais?: number
+}
+
+export function calcularCustosProducao(
+  custoIngredientesPorKg: number,
+  custos: CustosProducao,
+  mensalKg: number,
+  pesoSaco: number,
+  opcoes: OpcoesCustoProducao = {},
+): CustosProducaoCalculados {
+  const fIng = opcoes.fatorIngredientes ?? 1
+  const fPerda = opcoes.fatorPerda ?? 1
+  const fOp = opcoes.fatorOperacionais ?? 1
+
+  const ingredientes = Math.max(0, n(custoIngredientesPorKg)) * fIng
 
   // Perda: pra ENTREGAR 1 kg com x% de perda é preciso PARTIR de 1/(1−x) kg.
-  // Trava em 90% pra não explodir a conta com digitação absurda.
   const perda = Math.min(0.9, Math.max(0, dec(custos.perdaPct) * fPerda))
   const ingredientesAjustado = dividir(ingredientes, 1 - perda)
 
-  const energia        = ligado(custos.energia)
-  const maoDeObra      = ligado(custos.maoDeObra)
-  const moagem         = ligado(custos.moagem)
-  const mistura        = ligado(custos.mistura)
-  const manutencao     = ligado(custos.manutencao)
-  const depreciacao    = ligado(custos.depreciacao)
-  const administrativo = ligado(custos.administrativo)
-  const carregamento   = ligado(custos.carregamento)
-  const outrosVar      = ligado(custos.outrosVariaveis)
+  const energia        = ligado(custos.energia) * fOp
+  const maoDeObra      = ligado(custos.maoDeObra) * fOp
+  const moagem         = ligado(custos.moagem) * fOp
+  const mistura        = ligado(custos.mistura) * fOp
+  const manutencao     = ligado(custos.manutencao) * fOp
+  const depreciacao    = ligado(custos.depreciacao) * fOp
+  const administrativo = ligado(custos.administrativo) * fOp
+  const carregamento   = ligado(custos.carregamento) * fOp
+  const outrosVar      = ligado(custos.outrosVariaveis) * fOp
 
   // Embalagem e etiqueta vêm por SACO → viram R$/kg dividindo pelo peso do saco.
-  const porSaco = ligado(custos.embalagem) + ligado(custos.etiqueta)
+  const porSaco = (ligado(custos.embalagem) + ligado(custos.etiqueta)) * fOp
   const embalagemPorKg = dividir(porSaco, pesoSaco)
 
-  const freteBruto = ligado(custos.frete) * fFrete
-  const fretePorKg = custos.freteModo === 'total'
-    ? dividir(freteBruto, quantidadeKg)
-    : freteBruto
+  // Custo fixo mensal diluído no volume REAL do mês (nunca na capacidade nominal).
+  const fixosPorKg = dividir(ligado(custos.custosFixosMensais) * fOp, mensalKg)
 
-  const fixosPedidoPorKg = dividir(ligado(custos.outrosFixosPedido), quantidadeKg)
+  const producao = energia + maoDeObra + moagem + mistura + manutencao
+    + depreciacao + administrativo + carregamento + outrosVar
 
   const grupos: GruposCusto = {
     materiaPrima: ingredientesAjustado,
-    producao: energia + maoDeObra + moagem + mistura + manutencao + depreciacao + administrativo + outrosVar,
+    producao,
     embalagem: embalagemPorKg,
-    logistica: fretePorKg + carregamento,
-    fixos: fixosPedidoPorKg,
+    fixos: fixosPorKg,
   }
 
-  const custoBasePorKg =
-    grupos.materiaPrima + grupos.producao + grupos.embalagem + grupos.logistica + grupos.fixos
+  const custoTotalPorKg = grupos.materiaPrima + grupos.producao + grupos.embalagem + grupos.fixos
 
   return {
     custoIngredientesPorKg: ingredientes,
@@ -256,143 +323,168 @@ export function calcularCustos(
     carregamentoPorKg: carregamento,
     outrosVariaveisPorKg: outrosVar,
     embalagemPorKg,
-    fretePorKg,
-    fixosPedidoPorKg,
+    fixosPorKg,
+    operacionaisPorKg: producao + embalagemPorKg + fixosPorKg,
     grupos,
-    custoBasePorKg,
-    custoVariavelPorKg: custoBasePorKg - fixosPedidoPorKg,
-    custoPorSaco: custoBasePorKg * Math.max(0, n(pesoSaco)),
-    custoPorTonelada: custoBasePorKg * 1000,
-    custoTotalPedido: custoBasePorKg * Math.max(0, n(quantidadeKg)),
+    custoTotalPorKg,
+    custoPorTonelada: custoTotalPorKg * 1000,
+    custoMensal: custoTotalPorKg * Math.max(0, n(mensalKg)),
+    custoAnual: custoTotalPorKg * Math.max(0, n(mensalKg)) * 12,
   }
 }
 
 // ---------------------------------------------------------------------------
-// 4) Preço
+// 5) Comparação — a conta que interessa
 // ---------------------------------------------------------------------------
 
-/** Impostos + comissão + taxas, em decimal (o que sai de cima do PREÇO). */
-export function cargaSemMargem(v: CondicoesVenda): number {
-  return dec(v.impostosPct) + dec(v.comissaoPct) + dec(v.taxaFinanceiraPct) + dec(v.taxaCartaoPct)
+export function compararEconomia(
+  custoAtualPorKg: number,
+  custoProprioPorKg: number,
+  demanda: DemandaCalculada,
+  numeroAnimais = 0,
+): ComparacaoEconomia {
+  const atual = n(custoAtualPorKg)
+  const proprio = n(custoProprioPorKg)
+  const economiaPorKg = atual - proprio
+  const economiaMensal = economiaPorKg * demanda.mensalKg
+
+  return {
+    economiaPorKg,
+    economiaPorTonelada: economiaPorKg * 1000,
+    economiaMensal,
+    economiaAnual: economiaMensal * 12,
+    reducaoPct: dividir(economiaPorKg, atual) * 100,
+    vantajoso: economiaPorKg > 0,
+    economiaPorAnimalMes: dividir(economiaMensal, numeroAnimais),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 6) Dimensionamento
+// ---------------------------------------------------------------------------
+
+export function rotuloCapacidade(kgHora: number): string {
+  return `${n(kgHora).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} kg/h`
 }
 
 /**
- * Preço que cobre custo + os percentuais que saem de cima da venda, deixando
- * `margem` de sobra. margem=0 devolve o preço de equilíbrio.
- *
- * Quando a soma dos percentuais chega em 100% não existe preço possível
- * (a conta divide por zero) — devolve 0 e a validação bloqueia antes.
+ * Escolhe a menor capacidade da linha que atende a recomendada. Quando nem a
+ * maior atende, devolve a maior com `acimaDaLinha` — a decisão de somar linhas
+ * ou subir de porte é comercial, não do software.
  */
-export function precoComMargem(custoBasePorKg: number, margemDecimal: number, cargaDecimal: number): number {
-  const divisor = 1 - margemDecimal - cargaDecimal
-  if (divisor <= 0) return 0
-  return dividir(Math.max(0, n(custoBasePorKg)), divisor)
-}
+export function sugerirEquipamento(
+  capacidadeRecomendada: number,
+  capacidades: number[],
+  producaoPorDiaKg: number,
+  horasDisponiveisPorDia: number,
+): EquipamentoSugerido | null {
+  const lista = [...capacidades].map(n).filter(c => c > 0).sort((a, b) => a - b)
+  if (lista.length === 0) return null
 
-/** Markup puro sobre o custo — modo avançado, não cobre impostos/comissão. */
-export function precoComMarkup(custoBasePorKg: number, markupDecimal: number): number {
-  return Math.max(0, n(custoBasePorKg)) * (1 + Math.max(0, markupDecimal))
-}
-
-export function precificar(custoBasePorKg: number, v: CondicoesVenda): PrecosCalculados {
-  const carga = cargaSemMargem(v)
-  const mDes = Math.max(0, dec(v.margemDesejadaPct))
-  const mMin = Math.max(0, dec(v.margemMinimaPct))
-
-  let precoSugerido: number
-  let precoMinimo: number
-  if (v.modoPreco === 'markup') {
-    precoSugerido = precoComMarkup(custoBasePorKg, mDes)
-    precoMinimo = precoComMarkup(custoBasePorKg, mMin)
-  } else {
-    precoSugerido = precoComMargem(custoBasePorKg, mDes, carga)
-    precoMinimo = precoComMargem(custoBasePorKg, mMin, carga)
-  }
-
-  const precoEquilibrio = precoComMargem(custoBasePorKg, 0, carga)
-  const descontoReais = Math.max(0, precoSugerido - precoMinimo)
+  const escolhida = lista.find(c => c >= capacidadeRecomendada) ?? lista[lista.length - 1]
+  const horas = dividir(producaoPorDiaKg, escolhida)
 
   return {
-    cargaTotal: mDes + carga,
-    cargaMinima: mMin + carga,
-    cargaSemMargem: carga,
-    precoEquilibrioPorKg: precoEquilibrio,
-    precoMinimoPorKg: precoMinimo,
-    precoSugeridoPorKg: precoSugerido,
-    descontoMaximoReaisPorKg: descontoReais,
-    descontoMaximoPct: dividir(descontoReais, precoSugerido) * 100,
+    capacidade: escolhida,
+    rotulo: rotuloCapacidade(escolhida),
+    horasPorDia: horas,
+    utilizacaoPct: dividir(horas, horasDisponiveisPorDia) * 100,
+    acimaDaLinha: capacidadeRecomendada > lista[lista.length - 1],
   }
 }
 
-// ---------------------------------------------------------------------------
-// 5) Resultado no preço negociado
-// ---------------------------------------------------------------------------
+function rotinaSugerida(d: Dimensionamento, horasPorVez: number): string {
+  const dias = Math.max(0, n(d.diasPorMes))
+  if (dias <= 0) return ''
+  const porSemana = dividir(dias, SEMANAS_MES)
+  const horas = horasPorVez > 0
+    ? `, cerca de ${horasPorVez.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} h por vez`
+    : ''
+  if (porSemana >= 6) return `Produção praticamente diária (${Math.round(dias)} dias no mês)${horas}.`
+  if (porSemana >= 1) {
+    return `Cerca de ${porSemana.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}× por semana `
+      + `(${Math.round(dias)} dias no mês)${horas}.`
+  }
+  return `${Math.round(dias)} dia(s) de produção por mês${horas}.`
+}
 
-export function calcularNegociado(
-  precoPorKgNegociado: number,
-  custos: CustosCalculados,
-  precos: PrecosCalculados,
-  v: CondicoesVenda,
-  demanda: DemandaCalculada,
-  pesoSaco: number,
-): ResultadoNegociado {
-  const preco = Math.max(0, n(precoPorKgNegociado))
+export function calcularDimensionamento(
+  d: Dimensionamento, demanda: DemandaCalculada, capacidades: number[],
+): DimensionamentoCalculado {
+  const dias = Math.max(0, n(d.diasPorMes))
+  const horas = Math.max(0, n(d.horasPorDia))
+  const vazio: DimensionamentoCalculado = {
+    aplicavel: false, producaoPorDiaKg: 0, kgPorLote: 0,
+    capacidadeMinimaKgHora: 0, capacidadeRecomendadaKgHora: 0,
+    sugerido: null, rotinaSugerida: '',
+  }
+  if (dias <= 0 || horas <= 0 || demanda.mensalKg <= 0) return vazio
 
-  const impostos = preco * dec(v.impostosPct)
-  const comissao = preco * dec(v.comissaoPct)
-  const taxas = preco * (dec(v.taxaFinanceiraPct) + dec(v.taxaCartaoPct))
-  const lucro = preco - custos.custoBasePorKg - impostos - comissao - taxas
+  const producaoPorDiaKg = dividir(demanda.mensalKg, dias)
+  const capacidadeMinimaKgHora = dividir(producaoPorDiaKg, horas)
+  const capacidadeRecomendadaKgHora = capacidadeMinimaKgHora * (1 + Math.max(0, dec(d.margemOperacionalPct)))
+  const sugerido = sugerirEquipamento(capacidadeRecomendadaKgHora, capacidades, producaoPorDiaKg, horas)
+  const lotes = Math.max(0, n(d.lotesPorDia))
 
   return {
-    precoPorKg: preco,
-    precoPorSaco: preco * Math.max(0, n(pesoSaco)),
-    precoPorTonelada: preco * 1000,
-    impostosPorKg: impostos,
-    comissaoPorKg: comissao,
-    taxasPorKg: taxas,
-    lucroPorKg: lucro,
-    lucroPorSaco: lucro * Math.max(0, n(pesoSaco)),
-    lucroPorTonelada: lucro * 1000,
-    margemRealPct: dividir(lucro, preco) * 100,
-    abaixoDoMinimo: preco > 0 && preco < precos.precoMinimoPorKg - 1e-9,
-    descontoAplicadoPct: dividir(precos.precoSugeridoPorKg - preco, precos.precoSugeridoPorKg) * 100,
-    valorTotalPedido: preco * demanda.quantidadeKg,
-    lucroTotalPedido: lucro * demanda.quantidadeKg,
-    impostosTotalPedido: impostos * demanda.quantidadeKg,
-    comissaoTotalPedido: comissao * demanda.quantidadeKg,
-    receitaMensal: preco * demanda.quantidadeMensalKg,
-    lucroMensal: lucro * demanda.quantidadeMensalKg,
+    aplicavel: true,
+    producaoPorDiaKg,
+    kgPorLote: lotes > 0 ? dividir(producaoPorDiaKg, lotes) : 0,
+    capacidadeMinimaKgHora,
+    capacidadeRecomendadaKgHora,
+    sugerido,
+    rotinaSugerida: rotinaSugerida(d, sugerido?.horasPorDia ?? 0),
   }
 }
 
 // ---------------------------------------------------------------------------
-// 6) Comparação com o que o cliente paga hoje
+// 7) Investimento e retorno
 // ---------------------------------------------------------------------------
 
-export function compararMercado(
-  precoNegociadoPorKg: number, v: CondicoesVenda, demanda: DemandaCalculada, pesoSaco: number,
-): ComparacaoMercado {
-  const atual = Math.max(0, n(v.precoAtualClientePorKg))
-  if (atual <= 0) {
-    return {
-      informado: false, diferencaPorKg: 0, diferencaPorSaco: 0,
-      diferencaMensal: 0, diferencaAnual: 0, diferencaPct: 0, maisBarato: false,
-    }
-  }
-  const dif = n(precoNegociadoPorKg) - atual
+export function somarInvestimento(i: Investimento): number {
+  return Math.max(0, n(i.equipamentos))
+    + Math.max(0, n(i.frete))
+    + Math.max(0, n(i.montagem))
+    + Math.max(0, n(i.instalacaoEletrica))
+    + Math.max(0, n(i.obraCivil))
+    + Math.max(0, n(i.outros))
+}
+
+export const ANOS_PROJECAO = [1, 2, 3, 4, 5]
+
+export function calcularRetorno(
+  investimento: Investimento,
+  economiaMensal: number,
+  economiaAnual: number,
+  fatorInvestimento = 1,
+): RetornoCalculado {
+  const investimentoTotal = somarInvestimento(investimento) * Math.max(0, fatorInvestimento)
+  const custoFinanceiro = investimento.modoFinanciamento === 'informado'
+    ? Math.max(0, n(investimento.custoFinanceiroInformado))
+    : 0
+  const investimentoConsiderado = investimentoTotal + custoFinanceiro
+
+  const mensal = n(economiaMensal)
+  // Sem economia não existe payback — devolver um número aqui seria mentira.
+  const aplicavel = mensal > 0 && investimentoConsiderado > 0
+  const paybackMeses = aplicavel ? dividir(investimentoConsiderado, mensal) : 0
+
   return {
-    informado: true,
-    diferencaPorKg: dif,
-    diferencaPorSaco: dif * Math.max(0, n(pesoSaco)),
-    diferencaMensal: dif * demanda.quantidadeMensalKg,
-    diferencaAnual: dif * demanda.quantidadeMensalKg * 12,
-    diferencaPct: dividir(dif, atual) * 100,
-    maisBarato: dif < 0,
+    investimentoTotal,
+    custoFinanceiro,
+    investimentoConsiderado,
+    aplicavel,
+    paybackMeses,
+    paybackAnos: aplicavel ? dividir(paybackMeses, 12) : 0,
+    acumulado: ANOS_PROJECAO.map(ano => {
+      const economia = n(economiaAnual) * ano
+      return { ano, economia, liquido: economia - investimentoConsiderado }
+    }),
   }
 }
 
 // ---------------------------------------------------------------------------
-// 7) Cenários
+// 8) Cenários
 // ---------------------------------------------------------------------------
 
 const ROTULOS_CENARIO: Record<CenarioCalculado['chave'], string> = {
@@ -401,75 +493,39 @@ const ROTULOS_CENARIO: Record<CenarioCalculado['chave'], string> = {
   otimista: 'Otimista',
 }
 
-function calcularCenario(
-  chave: CenarioCalculado['chave'],
-  ajuste: AjusteCenario,
-  input: SimulacaoInput,
-  custoIngredientesPorKg: number,
-  demanda: DemandaCalculada,
+export function calcularCenario(
+  chave: CenarioCalculado['chave'], ajuste: AjusteCenario, input: EstudoInput,
 ): CenarioCalculado {
-  const custos = calcularCustos(
-    custoIngredientesPorKg, input.custos, demanda.quantidadeKg, input.quantidade.pesoSaco,
+  const demanda = calcularDemanda(input.necessidade, { fatorConsumo: fator(ajuste.consumoPct) })
+  const formula = calcularFormula(input.formula, input.produto.especie)
+
+  const producao = calcularCustosProducao(
+    formula.custoIngredientesPorKg, input.custos, demanda.mensalKg, input.necessidade.pesoSaco,
     {
-      fatorMateriaPrima: 1 + dec(ajuste.materiaPrimaPct),
-      fatorFrete: 1 + dec(ajuste.fretePct),
-      fatorPerda: 1 + dec(ajuste.perdaPct),
+      fatorIngredientes: fator(ajuste.ingredientesPct),
+      fatorPerda: fator(ajuste.perdaPct),
+      fatorOperacionais: fator(ajuste.operacionaisPct),
     },
   )
-
-  const margem = ajuste.margemPct != null ? ajuste.margemPct : input.venda.margemDesejadaPct
-  const venda: CondicoesVenda = { ...input.venda, margemDesejadaPct: margem }
-  const precos = precificar(custos.custoBasePorKg, venda)
-  const negociado = calcularNegociado(
-    precos.precoSugeridoPorKg, custos, precos, venda, demanda, input.quantidade.pesoSaco,
+  const atual = calcularCustoAtual(input.atual, demanda, {
+    fatorRacaoComprada: fator(ajuste.racaoCompradaPct),
+  })
+  const comparacao = compararEconomia(atual.custoPorKg, producao.custoTotalPorKg, demanda)
+  const retorno = calcularRetorno(
+    input.investimento, comparacao.economiaMensal, comparacao.economiaAnual,
+    fator(ajuste.investimentoPct),
   )
 
   return {
     chave,
     rotulo: ROTULOS_CENARIO[chave],
-    custoBasePorKg: custos.custoBasePorKg,
-    precoPorKg: precos.precoSugeridoPorKg,
-    margemPct: negociado.margemRealPct,
-    lucroMensal: negociado.lucroMensal,
-    descontoDisponivelPct: precos.descontoMaximoPct,
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 8) Ponto de equilíbrio
-// ---------------------------------------------------------------------------
-
-export function calcularEquilibrio(
-  precoNegociadoPorKg: number,
-  custos: CustosCalculados,
-  v: CondicoesVenda,
-  custosFixosMensais: number,
-  demanda: DemandaCalculada,
-  pesoSaco: number,
-): PontoEquilibrio {
-  const fixos = Math.max(0, n(custosFixosMensais))
-  const preco = Math.max(0, n(precoNegociadoPorKg))
-  // Margem de contribuição = preço − custo VARIÁVEL − o que sai de cima da venda.
-  const mc = preco - custos.custoVariavelPorKg - preco * cargaSemMargem(v)
-
-  if (fixos <= 0 || mc <= 0) {
-    return {
-      aplicavel: false, margemContribuicaoPorKg: mc,
-      kgPorMes: 0, sacosPorMes: 0, toneladasPorMes: 0, clientesDesseTamanho: 0,
-    }
-  }
-  const kgMes = dividir(fixos, mc)
-  return {
-    aplicavel: true,
-    margemContribuicaoPorKg: mc,
-    kgPorMes: kgMes,
-    sacosPorMes: dividir(kgMes, pesoSaco),
-    toneladasPorMes: dividir(kgMes, 1000),
-    // O -1e-9 evita o off-by-one do ponto flutuante: 24.000,000000000004 ÷ 12.000
-    // dá 2,0000000000000004 e o Math.ceil cru devolveria 3 clientes em vez de 2.
-    clientesDesseTamanho: demanda.quantidadeMensalKg > 0
-      ? Math.max(1, Math.ceil(dividir(kgMes, demanda.quantidadeMensalKg) - 1e-9))
-      : 0,
+    custoProprioPorKg: producao.custoTotalPorKg,
+    custoAtualPorKg: atual.custoPorKg,
+    economiaPorKg: comparacao.economiaPorKg,
+    economiaMensal: comparacao.economiaMensal,
+    economiaAnual: comparacao.economiaAnual,
+    paybackMeses: retorno.paybackMeses,
+    paybackAplicavel: retorno.aplicavel,
   }
 }
 
@@ -477,61 +533,41 @@ export function calcularEquilibrio(
 // 9) Validação
 // ---------------------------------------------------------------------------
 
-export function validar(input: SimulacaoInput, demanda: DemandaCalculada, formula: FormulaCalculada): ProblemaValidacao[] {
-  const p: ProblemaValidacao[] = []
-  const v = input.venda
-  const q = input.quantidade
+export const MSG_FORMULA_ABERTA =
+  'A fórmula ainda não totaliza 100%. Revise as participações antes de concluir o estudo.'
 
-  if (demanda.quantidadeKg <= 0) {
-    p.push({ campo: 'quantidade', mensagem: 'Informe a quantidade — sem volume não dá pra precificar.', nivel: 'bloqueio' })
-  }
-  if (n(q.pesoSaco) <= 0) {
-    p.push({ campo: 'pesoSaco', mensagem: 'O peso do saco tem que ser maior que zero.', nivel: 'bloqueio' })
+export function validar(
+  input: EstudoInput,
+  demanda: DemandaCalculada,
+  formula: FormulaCalculada,
+  atual: CustoAtualCalculado,
+): ProblemaValidacao[] {
+  const p: ProblemaValidacao[] = []
+  const q = input.necessidade
+
+  if (demanda.mensalKg <= 0) {
+    p.push({
+      campo: 'necessidade',
+      mensagem: 'Informe a necessidade de produção — sem volume não dá pra calcular economia.',
+      nivel: 'bloqueio',
+    })
   }
   if (n(q.numeroAnimais) < 0 || n(q.consumoPorAnimal) < 0 || n(q.quantidadeInformada) < 0) {
-    p.push({ campo: 'quantidade', mensagem: 'Quantidade não pode ser negativa.', nivel: 'bloqueio' })
+    p.push({ campo: 'necessidade', mensagem: 'Quantidade não pode ser negativa.', nivel: 'bloqueio' })
+  }
+  if (n(q.pesoSaco) <= 0 && (q.unidadeQuantidade === 'sacos' || input.atual.unidadePreco === 'saco')) {
+    p.push({ campo: 'pesoSaco', mensagem: 'O peso do saco tem que ser maior que zero.', nivel: 'bloqueio' })
   }
 
   const percentuais: Array<[string, number, string]> = [
-    ['impostosPct', n(v.impostosPct), 'Impostos'],
-    ['comissaoPct', n(v.comissaoPct), 'Comissão'],
-    ['taxaFinanceiraPct', n(v.taxaFinanceiraPct), 'Taxa financeira'],
-    ['taxaCartaoPct', n(v.taxaCartaoPct), 'Taxa de cartão'],
-    ['margemDesejadaPct', n(v.margemDesejadaPct), 'Margem desejada'],
-    ['margemMinimaPct', n(v.margemMinimaPct), 'Margem mínima'],
-    ['perdaPct', n(input.custos.perdaPct), 'Perda'],
-    ['sobraPct', n(q.sobraPct), 'Sobra/segurança'],
+    ['perdaPct', n(input.custos.perdaPct), 'Perda de produção'],
+    ['margemSegurancaPct', n(q.margemSegurancaPct), 'Margem de segurança'],
+    ['perdasAtuaisPct', n(input.atual.perdasPct), 'Perdas na ração comprada'],
+    ['margemOperacionalPct', n(input.dimensionamento.margemOperacionalPct), 'Margem operacional'],
   ]
   for (const [campo, valor, rotulo] of percentuais) {
     if (valor < 0) p.push({ campo, mensagem: `${rotulo} não pode ser negativa.`, nivel: 'bloqueio' })
     if (valor > 100) p.push({ campo, mensagem: `${rotulo} não pode passar de 100%.`, nivel: 'bloqueio' })
-  }
-
-  if (v.modoPreco === 'margem') {
-    const soma = dec(v.margemDesejadaPct) + cargaSemMargem(v)
-    if (soma >= 1) {
-      p.push({
-        campo: 'margemDesejadaPct',
-        mensagem: 'Margem + impostos + comissão + taxas somam 100% ou mais — não existe preço que feche essa conta. Reduza algum percentual.',
-        nivel: 'bloqueio',
-      })
-    }
-    const somaMin = dec(v.margemMinimaPct) + cargaSemMargem(v)
-    if (somaMin >= 1) {
-      p.push({
-        campo: 'margemMinimaPct',
-        mensagem: 'Margem mínima + impostos + comissão + taxas somam 100% ou mais.',
-        nivel: 'bloqueio',
-      })
-    }
-  }
-
-  if (n(v.margemMinimaPct) > n(v.margemDesejadaPct)) {
-    p.push({
-      campo: 'margemMinimaPct',
-      mensagem: 'A margem mínima está acima da desejada — o desconto máximo fica negativo.',
-      nivel: 'aviso',
-    })
   }
 
   if (input.produto.especie !== 'milho') {
@@ -539,20 +575,51 @@ export function validar(input: SimulacaoInput, demanda: DemandaCalculada, formul
       p.push({ campo: 'formula', mensagem: 'Monte a fórmula ou selecione uma cadastrada.', nivel: 'bloqueio' })
     } else if (!formula.fechada) {
       const d = formula.diferencaKgPorTonelada
-      p.push({
-        campo: 'formula',
-        mensagem: d > 0
-          ? `Faltam ${d.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} kg para completar uma tonelada.`
-          : `A fórmula passou ${Math.abs(d).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} kg de uma tonelada.`,
-        nivel: 'bloqueio',
-      })
+      const detalhe = d > 0
+        ? ` Faltam ${d.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} kg para completar uma tonelada.`
+        : ` A fórmula passou ${Math.abs(d).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} kg de uma tonelada.`
+      p.push({ campo: 'formula', mensagem: MSG_FORMULA_ABERTA + detalhe, nivel: 'bloqueio' })
     }
   } else if (formula.custoIngredientesPorKg <= 0) {
     p.push({ campo: 'milhoPreco', mensagem: 'Informe o preço do milho.', nivel: 'bloqueio' })
   }
 
+  if (!atual.informado) {
+    p.push({
+      campo: 'atual',
+      mensagem: input.atual.modo === 'proprio'
+        ? 'Informe o custo atual da operação do cliente — sem ele não há com o que comparar.'
+        : 'Informe quanto o cliente paga hoje pela ração pronta — sem isso não há comparação.',
+      nivel: 'bloqueio',
+    })
+  }
+
+  if (q.modo === 'animais' && !q.consumoConfirmado) {
+    p.push({
+      campo: 'consumoPorAnimal',
+      mensagem: 'O consumo por animal ainda está no valor de referência do catálogo. '
+        + 'Confirme com o cliente antes de apresentar o estudo.',
+      nivel: 'aviso',
+    })
+  }
+
+  const dim = input.dimensionamento
+  if (n(dim.diasPorMes) <= 0 || n(dim.horasPorDia) <= 0) {
+    p.push({
+      campo: 'dimensionamento',
+      mensagem: 'Informe dias por mês e horas por dia para dimensionar a capacidade.',
+      nivel: 'aviso',
+    })
+  }
+  if (n(dim.diasPorMes) > 31) {
+    p.push({ campo: 'diasPorMes', mensagem: 'Um mês não tem mais de 31 dias.', nivel: 'bloqueio' })
+  }
+  if (n(dim.horasPorDia) > 24) {
+    p.push({ campo: 'horasPorDia', mensagem: 'Um dia não tem mais de 24 horas.', nivel: 'bloqueio' })
+  }
+
   if (!input.identificacao.clienteNome.trim()) {
-    p.push({ campo: 'clienteNome', mensagem: 'Informe o nome do cliente para salvar ou enviar a proposta.', nivel: 'aviso' })
+    p.push({ campo: 'clienteNome', mensagem: 'Informe o nome do cliente para salvar ou apresentar o estudo.', nivel: 'aviso' })
   }
 
   return p
@@ -562,88 +629,79 @@ export function validar(input: SimulacaoInput, demanda: DemandaCalculada, formul
 // 10) Orquestração
 // ---------------------------------------------------------------------------
 
-export function calcularSimulacao(input: SimulacaoInput): ResultadoSimulacao {
-  const demanda = calcularDemanda(input.quantidade)
+/**
+ * Capacidades da linha Branorte usadas quando a tela não passa a lista
+ * configurada (testes, cálculo de cenário). Iguais ao default do catálogo.
+ */
+export const CAPACIDADES_FALLBACK = [300, 600, 1000, 1500, 2000, 3000, 5000]
+
+export function calcularEstudo(input: EstudoInput, capacidades?: number[]): ResultadoEstudo {
+  const lista = capacidades && capacidades.length > 0 ? capacidades : CAPACIDADES_FALLBACK
+  const demanda = calcularDemanda(input.necessidade)
   const formula = calcularFormula(input.formula, input.produto.especie)
-  const pesoSaco = input.quantidade.pesoSaco
 
-  const custos = calcularCustos(
-    formula.custoIngredientesPorKg, input.custos, demanda.quantidadeKg, pesoSaco,
+  const producao = calcularCustosProducao(
+    formula.custoIngredientesPorKg, input.custos, demanda.mensalKg, input.necessidade.pesoSaco,
   )
-  const precos = precificar(custos.custoBasePorKg, input.venda)
-
-  const precoNegociado = input.venda.precoNegociadoPorKg != null
-    ? Math.max(0, n(input.venda.precoNegociadoPorKg))
-    : precos.precoSugeridoPorKg
-
-  const negociado = calcularNegociado(precoNegociado, custos, precos, input.venda, demanda, pesoSaco)
-  const comparacao = compararMercado(precoNegociado, input.venda, demanda, pesoSaco)
+  const atual = calcularCustoAtual(input.atual, demanda)
+  const comparacao = compararEconomia(
+    atual.custoPorKg, producao.custoTotalPorKg, demanda,
+    input.necessidade.modo === 'animais' ? input.necessidade.numeroAnimais : 0,
+  )
+  const dimensionamento = calcularDimensionamento(input.dimensionamento, demanda, lista)
+  const retorno = calcularRetorno(input.investimento, comparacao.economiaMensal, comparacao.economiaAnual)
 
   const cenarios: CenarioCalculado[] = [
-    calcularCenario('conservador', {
-      ...input.cenarios.conservador,
-      margemPct: input.cenarios.conservador.margemPct ?? input.venda.margemMinimaPct,
-    }, input, formula.custoIngredientesPorKg, demanda),
-    calcularCenario('provavel', input.cenarios.provavel, input, formula.custoIngredientesPorKg, demanda),
-    calcularCenario('otimista', input.cenarios.otimista, input, formula.custoIngredientesPorKg, demanda),
+    calcularCenario('conservador', input.cenarios.conservador, input),
+    calcularCenario('provavel', input.cenarios.provavel, input),
+    calcularCenario('otimista', input.cenarios.otimista, input),
   ]
 
-  const equilibrio = calcularEquilibrio(
-    precoNegociado, custos, input.venda, input.custos.custosFixosMensais, demanda, pesoSaco,
-  )
-
-  const problemas = validar(input, demanda, formula)
+  const problemas = validar(input, demanda, formula, atual)
 
   return {
     problemas,
     bloqueado: problemas.some(x => x.nivel === 'bloqueio'),
-    demanda, formula, custos, precos, negociado, comparacao, cenarios, equilibrio,
-    memoria: montarMemoria(custos, precos, negociado, input),
+    demanda, formula, atual, producao, comparacao, dimensionamento, retorno, cenarios,
+    memoria: montarMemoria(atual, producao, comparacao, input),
   }
 }
 
-/** Memória de cálculo — o caminho do custo até o preço, linha a linha. */
+/** Memória de cálculo — o caminho do custo até a economia, linha a linha. */
 export function montarMemoria(
-  custos: CustosCalculados, precos: PrecosCalculados,
-  negociado: ResultadoNegociado, input: SimulacaoInput,
+  atual: CustoAtualCalculado,
+  producao: CustosProducaoCalculados,
+  comparacao: ComparacaoEconomia,
+  input: EstudoInput,
 ): LinhaMemoria[] {
-  const l: LinhaMemoria[] = [
-    { rotulo: 'Custo dos ingredientes', valor: custos.custoIngredientesPorKg, formato: 'moeda' },
-    { rotulo: `Perdas (${input.custos.perdaPct}%)`, valor: custos.perdaPorKg, formato: 'moeda' },
-    { rotulo: 'Custo industrial (energia, mão de obra, moagem, mistura…)', valor: custos.grupos.producao, formato: 'moeda' },
-    { rotulo: 'Embalagem', valor: custos.embalagemPorKg, formato: 'moeda' },
-    { rotulo: 'Logística (frete + carregamento)', valor: custos.grupos.logistica, formato: 'moeda' },
-    { rotulo: 'Custos fixos rateados no pedido', valor: custos.fixosPedidoPorKg, formato: 'moeda' },
-    { rotulo: 'Custo total por kg', valor: custos.custoBasePorKg, formato: 'moeda', destaque: true },
-    { rotulo: `Impostos (${input.venda.impostosPct}%)`, valor: negociado.impostosPorKg, formato: 'moeda' },
-    { rotulo: `Comissão (${input.venda.comissaoPct}%)`, valor: negociado.comissaoPorKg, formato: 'moeda' },
-    {
-      rotulo: `Taxas (${n(input.venda.taxaFinanceiraPct) + n(input.venda.taxaCartaoPct)}%)`,
-      valor: negociado.taxasPorKg, formato: 'moeda',
-    },
-    { rotulo: 'Margem (o que sobra)', valor: negociado.lucroPorKg, formato: 'moeda' },
-    { rotulo: 'Preço final por kg', valor: negociado.precoPorKg, formato: 'moeda', destaque: true },
+  const linhas: LinhaMemoria[] = [
+    { rotulo: 'Ração comprada — preço informado', valor: atual.precoBasePorKg, formato: 'moeda' },
   ]
-  if (input.venda.modoPreco === 'markup') {
-    l.splice(7, 0, {
-      rotulo: 'Modo markup: preço = custo × (1 + markup)',
-      valor: precos.precoSugeridoPorKg, formato: 'moeda',
-      nota: 'No markup o percentual é somado ao custo — impostos e comissão saem depois, então a margem real fica abaixo do markup.',
+  if (atual.fretePorKg > 0) linhas.push({ rotulo: 'Frete da ração comprada', valor: atual.fretePorKg, formato: 'moeda' })
+  if (atual.descargaPorKg > 0) linhas.push({ rotulo: 'Descarga', valor: atual.descargaPorKg, formato: 'moeda' })
+  if (atual.outrosPorKg > 0) linhas.push({ rotulo: 'Outros custos da compra', valor: atual.outrosPorKg, formato: 'moeda' })
+  if (atual.perdasPorKg !== 0) {
+    linhas.push({ rotulo: `Perdas na ração comprada (${n(input.atual.perdasPct)}%)`, valor: atual.perdasPorKg, formato: 'moeda' })
+  }
+  linhas.push({ rotulo: 'Custo atual por kg', valor: atual.custoPorKg, formato: 'moeda', destaque: true })
+
+  linhas.push({ rotulo: 'Ingredientes da fórmula', valor: producao.custoIngredientesPorKg, formato: 'moeda' })
+  linhas.push({ rotulo: `Perda de produção (${n(input.custos.perdaPct)}%)`, valor: producao.perdaPorKg, formato: 'moeda' })
+  linhas.push({
+    rotulo: 'Operação (energia, mão de obra, moagem, mistura, manutenção…)',
+    valor: producao.grupos.producao, formato: 'moeda',
+  })
+  if (producao.embalagemPorKg > 0) {
+    linhas.push({ rotulo: 'Embalagem e etiqueta', valor: producao.embalagemPorKg, formato: 'moeda' })
+  }
+  if (producao.fixosPorKg > 0) {
+    linhas.push({
+      rotulo: 'Custos fixos mensais rateados', valor: producao.fixosPorKg, formato: 'moeda',
+      nota: 'Diluídos no volume real do mês, não na capacidade nominal da fábrica.',
     })
   }
-  return l
-}
+  linhas.push({ rotulo: 'Custo de produção própria por kg', valor: producao.custoTotalPorKg, formato: 'moeda', destaque: true })
+  linhas.push({ rotulo: 'Economia por kg', valor: comparacao.economiaPorKg, formato: 'moeda', destaque: true })
 
-// ---------------------------------------------------------------------------
-// 11) Lucro por volume (gráfico)
-// ---------------------------------------------------------------------------
-
-export function lucroPorVolume(
-  lucroPorKg: number, toneladas: number[],
-): Array<{ toneladas: number; kg: number; lucro: number }> {
-  return toneladas.map(t => ({
-    toneladas: t,
-    kg: t * 1000,
-    lucro: n(lucroPorKg) * t * 1000,
-  }))
+  return linhas
 }

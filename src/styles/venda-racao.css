@@ -303,59 +303,6 @@
 .vr .vr-kpi .v.neg { color: var(--vr-red); }
 .vr .vr-kpi .s { font-size: 11.5px; color: var(--vr-ink60); margin-top: 4px; }
 
-.vr .vr-compare {
-  display: flex; margin-top: 14px; border: 1px solid var(--vr-hair);
-  border-radius: 12px; overflow: hidden;
-}
-@media (max-width: 520px) { .vr .vr-compare { flex-direction: column; } }
-.vr .vr-compare > div { flex: 1; padding: 13px 15px; }
-.vr .vr-compare .a { background: var(--vr-red-l); border-right: 1px solid var(--vr-hair); }
-.vr .vr-compare .b { background: var(--vr-green-l); }
-.vr .vr-compare .t {
-  font: 700 11px/1 var(--vr-mono); text-transform: uppercase;
-  letter-spacing: 0.05em; color: var(--vr-ink60);
-}
-.vr .vr-compare .m { font: 800 21px inherit; font-variant-numeric: tabular-nums; margin-top: 5px; }
-.vr .vr-compare .a .m { color: var(--vr-red); }
-.vr .vr-compare .b .m { color: var(--vr-green-d); }
-.vr .vr-compare .s { font-size: 11px; color: var(--vr-ink60); margin-top: 2px; }
-
-/* card do desconto máximo — o número que o vendedor mais olha */
-.vr .vr-desconto {
-  margin-top: 14px; background: var(--vr-gold-l); border: 1px solid var(--vr-gold-hair);
-  border-radius: 14px; padding: 16px 18px;
-}
-.vr .vr-desconto .dt {
-  font: 700 11px/1 var(--vr-mono); letter-spacing: 0.05em;
-  text-transform: uppercase; color: var(--vr-gold);
-}
-.vr .vr-desconto .dv {
-  font: 800 clamp(26px, 4vw, 34px)/1 inherit; font-variant-numeric: tabular-nums;
-  color: var(--vr-gold-ink); margin: 8px 0 4px;
-}
-.vr .vr-desconto .ds { font-size: 12.5px; color: var(--vr-gold-ink); font-weight: 600; }
-
-/* Os blocos de métrica têm de 3 a 9 tiles. Em tela larga eles se espalham em
-   mais colunas em vez de virar 3 caixas gigantes com um número pequeno dentro. */
-.vr .vr-metrics {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 8px; margin-top: 14px;
-}
-.vr .vr-mt {
-  background: var(--vr-card); border: 1px solid var(--vr-hair);
-  border-radius: 10px; padding: 10px 12px;
-}
-.vr .vr-mt .l {
-  font: 700 10px/1.2 var(--vr-mono); letter-spacing: 0.03em;
-  text-transform: uppercase; color: var(--vr-ink40);
-}
-.vr .vr-mt .val {
-  font: 800 17px/1 inherit; font-variant-numeric: tabular-nums;
-  color: var(--vr-ink); margin-top: 5px;
-}
-.vr .vr-mt .val.pos { color: var(--vr-green-d); }
-.vr .vr-mt .val.neg { color: var(--vr-red); }
-
 .vr .vr-scen {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 8px; margin-top: 14px;
@@ -567,4 +514,212 @@
     background: #fff !important; color: #000 !important; border: 0 !important;
   }
   html.vr-printing .vr-no-print, html.vr-printing [data-no-print="true"] { display: none !important; }
+}
+
+/* =========================================================================
+   Estudo de viabilidade da produção própria
+   Blocos que nasceram com a virada de "precificação" pra "estudo": comparação
+   lado a lado, dimensionamento, progresso das etapas e o resumo fixo do
+   celular. Tudo dentro do escopo .vr — nada vaza pro resto do CRM.
+   ========================================================================= */
+
+/* --- barra de ações e progresso ----------------------------------------- */
+.vr .vr-acoes {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+  justify-content: space-between; margin-top: 14px;
+}
+.vr .vr-acoes-status { display: flex; gap: 8px; align-items: center; }
+
+.vr .vr-progress { margin-top: 12px; }
+.vr .vr-progress .trilho {
+  height: 5px; border-radius: 3px; background: var(--vr-hair); overflow: hidden;
+}
+.vr .vr-progress .trilho > span {
+  display: block; height: 100%; background: var(--vr-green);
+  transition: width 0.25s ease;
+}
+.vr .vr-progress .passos {
+  display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 7px;
+  font: 600 11px/1.4 var(--vr-mono); color: var(--vr-ink40);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.vr .vr-progress .passos span::before { content: "○ "; }
+.vr .vr-progress .passos span.ok { color: var(--vr-green-d); }
+.vr .vr-progress .passos span.ok::before { content: "● "; }
+
+/* --- formulário ---------------------------------------------------------- */
+.vr .vr-stepdesc {
+  font-size: 12.5px; color: var(--vr-ink60); margin: -2px 0 10px; line-height: 1.5;
+}
+.vr .vr-row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 9px; }
+@media (max-width: 520px) { .vr .vr-row3 { grid-template-columns: 1fr; } }
+
+.vr .vr-custo { margin-bottom: 2px; }
+/* de onde veio o valor padrão: nenhum default pode passar por custo real */
+.vr .vr-origem {
+  font-size: 11px; color: var(--vr-ink40); line-height: 1.45;
+  margin: -2px 0 8px 26px;
+}
+
+/* confirmação explícita — o consumo sugerido é referência até alguém marcar */
+.vr .vr-check {
+  display: flex; gap: 9px; align-items: flex-start; cursor: pointer;
+  border: 1px solid var(--vr-gold-hair); background: var(--vr-gold-l);
+  border-radius: 10px; padding: 10px 12px;
+  font-size: 12.5px; line-height: 1.5; color: var(--vr-gold-ink);
+}
+.vr .vr-check.on {
+  border-color: var(--vr-green-hair); background: var(--vr-green-l); color: var(--vr-green-d);
+}
+.vr .vr-check input {
+  width: 16px; height: 16px; margin-top: 1px; accent-color: var(--vr-green); flex: none;
+}
+
+/* --- comparação lado a lado --------------------------------------------- */
+.vr .vr-lado {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px;
+}
+@media (max-width: 620px) { .vr .vr-lado { grid-template-columns: 1fr; } }
+.vr .vr-lado .col {
+  border: 1px solid var(--vr-hair); border-radius: 14px; padding: 14px 16px;
+}
+.vr .vr-lado .col.atual { background: var(--vr-red-l); border-color: var(--vr-red-hair); }
+.vr .vr-lado .col.propria { background: var(--vr-green-l); border-color: var(--vr-green-hair); }
+.vr .vr-lado .ct {
+  font: 700 10.5px/1.3 var(--vr-mono); text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--vr-ink60);
+}
+.vr .vr-lado .cm {
+  font: 800 26px/1 inherit; font-variant-numeric: tabular-nums; margin: 6px 0 10px;
+}
+.vr .vr-lado .cm span { font-size: 0.5em; font-weight: 600; opacity: 0.8; }
+.vr .vr-lado .col.atual .cm { color: var(--vr-red); }
+.vr .vr-lado .col.propria .cm { color: var(--vr-green-d); }
+.vr .vr-lado dl { margin: 0; display: grid; gap: 4px; }
+.vr .vr-lado dl > div { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; }
+.vr .vr-lado dt { color: var(--vr-ink60); margin: 0; }
+.vr .vr-lado dd {
+  margin: 0; font-weight: 700; color: var(--vr-ink);
+  font-variant-numeric: tabular-nums; text-align: right;
+}
+
+.vr .vr-resultado {
+  margin-top: 14px; border: 1px solid var(--vr-hair); border-radius: 14px;
+  padding: 14px 16px; background: var(--vr-card);
+}
+.vr .vr-resultado .rt {
+  display: flex; gap: 7px; align-items: center;
+  font: 700 10.5px/1 var(--vr-mono); text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--vr-ink40); margin-bottom: 10px;
+}
+
+/* barras comprar × produzir */
+.vr .vr-vs {
+  display: grid; grid-template-columns: 150px minmax(0, 1fr) 110px;
+  gap: 10px; align-items: center; margin-top: 8px; font-size: 12px;
+}
+@media (max-width: 560px) { .vr .vr-vs { grid-template-columns: 1fr; gap: 3px; } }
+.vr .vr-vs .rot { color: var(--vr-ink60); font-weight: 600; }
+.vr .vr-vs .trilha {
+  height: 14px; border-radius: 7px; background: var(--vr-hair); overflow: hidden;
+}
+.vr .vr-vs .trilha > span { display: block; height: 100%; border-radius: 7px; }
+.vr .vr-vs .val {
+  text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--vr-ink);
+}
+
+/* --- capacidade sugerida ------------------------------------------------- */
+.vr .vr-sugestao {
+  margin-top: 12px; background: var(--vr-gold-l); border: 1px solid var(--vr-gold-hair);
+  border-radius: 12px; padding: 14px 16px;
+}
+.vr .vr-sugestao .st {
+  font: 700 10.5px/1 var(--vr-mono); text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--vr-gold-ink);
+}
+.vr .vr-sugestao .sv {
+  font: 800 22px/1.1 inherit; color: var(--vr-gold-ink); margin: 6px 0 4px;
+  font-variant-numeric: tabular-nums;
+}
+.vr .vr-sugestao .sd { font-size: 12.5px; color: var(--vr-gold-ink); line-height: 1.5; }
+
+/* --- resumo fixo (celular) ----------------------------------------------
+   No desktop o painel de resultados está ao lado e essa barra só atrapalha.
+   Abaixo de 1180 o formulário empilha e o número principal sai da tela. */
+.vr .vr-resumofixo { display: none; }
+@media (max-width: 1180px) {
+  .vr .vr-resumofixo {
+    position: fixed; left: 10px; right: 10px;
+    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 3.6rem);
+    z-index: 60; display: flex; gap: 10px; align-items: center;
+    padding: 10px 14px; border-radius: 14px; border: 1px solid var(--vr-green-hair);
+    background: var(--vr-green-d); color: #fff; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+    font: inherit; text-align: left; cursor: pointer;
+  }
+  .vr .vr-resumofixo .l {
+    font: 700 10px/1.2 var(--vr-mono); text-transform: uppercase;
+    letter-spacing: 0.05em; opacity: 0.85;
+  }
+  .vr .vr-resumofixo .v {
+    font: 800 17px/1 inherit; font-variant-numeric: tabular-nums; margin-left: auto;
+  }
+  .vr .vr-resumofixo .v i { font-size: 0.65em; font-style: normal; font-weight: 600; opacity: 0.85; }
+  .vr .vr-resumofixo .a {
+    font: 700 10.5px/1 var(--vr-mono); text-transform: uppercase;
+    border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 20px; padding: 5px 9px;
+  }
+}
+
+/* --- folha do cliente ---------------------------------------------------- */
+.vr .vr-folha .vr-selo-estimativa {
+  margin-top: 14px; border: 1px dashed #c98a2b; border-radius: 8px;
+  padding: 7px 10px; font: 700 10.5px/1.4 var(--vr-mono);
+  text-transform: uppercase; letter-spacing: 0.04em; color: #7a5a1e; background: #fbf3e6;
+}
+.vr .vr-folha .vr-folha-lado {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 4px;
+}
+@media (max-width: 620px) { .vr .vr-folha .vr-folha-lado { grid-template-columns: 1fr; } }
+.vr .vr-folha .vr-folha-lado .col {
+  border: 1px solid #eef2ec; border-radius: 10px; padding: 12px 14px; background: #fbfcfa;
+}
+.vr .vr-folha .vr-folha-lado .col.verde { background: #e8f4ec; border-color: #b8ddc5; }
+.vr .vr-folha .vr-folha-lado .ct {
+  font: 700 10px/1.3 var(--vr-mono); text-transform: uppercase;
+  letter-spacing: 0.05em; color: #8a988d;
+}
+.vr .vr-folha .vr-folha-lado .cm {
+  font: 800 24px/1 inherit; color: #17231a; margin: 6px 0 8px; font-variant-numeric: tabular-nums;
+}
+.vr .vr-folha .vr-folha-lado .cm span { font-size: 0.5em; font-weight: 600; color: #5c6b60; }
+.vr .vr-folha .vr-folha-lado .col.verde .cm { color: #1f6d3a; }
+.vr .vr-folha .vr-folha-lado .cs { font-size: 12px; color: #5c6b60; line-height: 1.6; }
+
+.vr .vr-folha .vr-folha-barras { margin-top: 14px; display: grid; gap: 8px; }
+.vr .vr-folha .vr-folha-barras .lin {
+  display: grid; grid-template-columns: 140px minmax(0, 1fr) 100px;
+  gap: 10px; align-items: center; font-size: 12px; color: #5c6b60;
+}
+.vr .vr-folha .vr-folha-barras .trilha {
+  height: 13px; border-radius: 7px; background: #eef2ec; overflow: hidden; display: block;
+}
+.vr .vr-folha .vr-folha-barras .trilha > i { display: block; height: 100%; border-radius: 7px; }
+.vr .vr-folha .vr-folha-barras .val {
+  text-align: right; font-weight: 700; color: #17231a; font-variant-numeric: tabular-nums;
+}
+
+.vr .vr-folha .vr-folha-total.neutro { background: #fbf3e6; border-color: #e6cfa0; }
+.vr .vr-folha .vr-folha-total.neutro .tl,
+.vr .vr-folha .vr-folha-total.neutro .tv { color: #7a5a1e; }
+
+.vr .vr-folha .vr-folha-frase {
+  margin-top: 14px; font-size: 13.5px; line-height: 1.65; color: #17231a;
+  border-left: 3px solid #2f8f4e; padding-left: 12px;
+}
+
+/* A folha ganhou tabela com cabeçalho (cenários, acumulado). O CSS antigo só
+   estilizava td — sem isto o th fica sem alinhamento nem contraste. */
+.vr .vr-folha table th {
+  padding: 7px 0; border-bottom: 1px solid #dfe6da; color: #8a988d;
+  font: 700 10.5px/1.4 var(--vr-mono); text-transform: uppercase; letter-spacing: 0.04em;
 }

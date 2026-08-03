@@ -1,598 +1,682 @@
 /**
- * Testes do motor de precificação da Venda de Ração.
+ * Testes do motor do Estudo de Viabilidade da Produção Própria.
  *
- * Runner nativo do Node (sem dependência nova):
- *   npm test
- *   npx tsx --test src/lib/venda-racao/calculo.test.ts
- *
- * Os 4 cenários obrigatórios (bovinos/suínos/aves/milho) estão no fim, com os
- * valores conferidos na mão — se alguém mexer na fórmula do preço, quebra aqui.
+ * Roda com `npm test` (tsx --test). Nenhum teste toca React ou Supabase — o
+ * motor é puro de propósito.
  */
-import test from 'node:test'
 import assert from 'node:assert/strict'
+import { describe, it } from 'node:test'
+
 import {
-  calcularCustos, calcularDemanda, calcularEquilibrio, calcularFormula,
-  calcularNegociado, calcularSimulacao, cargaSemMargem, dec, dividir, lucroPorVolume,
-  participacaoParaKgPorTonelada, precificar, precoComMargem, precoComMarkup,
-  precoPorKg, quantidadeParaKg, validar,
+  calcularCustoAtual, calcularCustosProducao, calcularDemanda, calcularDimensionamento,
+  calcularEstudo, calcularFormula, calcularRetorno, compararEconomia, dec, dividir,
+  MSG_FORMULA_ABERTA, n, participacaoParaKgPorTonelada, precoPorKg, quantidadeParaKg,
+  somarInvestimento, sugerirEquipamento, validar,
 } from './calculo'
-import { novaSimulacao } from './estado'
-import { CONFIG_PADRAO } from './catalogo'
-import type { CondicoesVenda, Custos, Formula, Quantidade, SimulacaoInput } from './tipos'
-
-const PERTO = 1e-6
-const perto = (a: number, b: number, msg?: string) =>
-  assert.ok(Math.abs(a - b) < PERTO, msg ?? `esperava ${b}, veio ${a}`)
+import { CAPACIDADES_BRANORTE, formulaPadrao, normalizarStatus } from './catalogo'
+import { novoEstudo, normalizarInput, trocarEspecie } from './estado'
+import { dadosEstudo, frasePrincipal, resumoTexto, telefoneWhatsApp, textoWhatsApp } from './estudo'
+import type { EstudoInput, Necessidade } from './tipos'
 
 // ---------------------------------------------------------------------------
-// Helpers de fixture
+// Fixtures
 // ---------------------------------------------------------------------------
 
-function venda(over: Partial<CondicoesVenda> = {}): CondicoesVenda {
-  return {
-    modoPreco: 'margem',
-    impostosPct: 5, comissaoPct: 3, taxaFinanceiraPct: 0, taxaCartaoPct: 0,
-    margemDesejadaPct: 20, margemMinimaPct: 15,
-    precoAtualClientePorKg: 0, precoMercadoPorKg: 0,
-    prazoPagamento: '', formaPagamento: '', condicaoEntrega: '',
-    precoNegociadoPorKg: null,
-    ...over,
-  }
-}
-
-function custosZerados(over: Partial<Custos> = {}): Custos {
-  const off = { ativo: false, valor: 0 }
-  return {
-    perdaPct: 0,
-    energia: { ...off }, maoDeObra: { ...off }, moagem: { ...off }, mistura: { ...off },
-    manutencao: { ...off }, depreciacao: { ...off }, administrativo: { ...off },
-    carregamento: { ...off }, outrosVariaveis: { ...off },
-    embalagem: { ...off }, etiqueta: { ...off },
-    frete: { ...off }, freteModo: 'total',
-    outrosFixosPedido: { ...off },
-    custosFixosMensais: 0,
-    ...over,
-  }
-}
-
-function quantidade(over: Partial<Quantidade> = {}): Quantidade {
-  return {
+/** Estudo mínimo que fecha a conta: aves, 10.000 kg/mês, fórmula 100%. */
+function base(): EstudoInput {
+  const e = novoEstudo(null, 'aves', 'Vendedor Teste')
+  e.identificacao.clienteNome = 'João da Silva'
+  e.necessidade = {
+    ...e.necessidade,
     modo: 'direto',
-    numeroAnimais: 0, consumoPorAnimal: 0, baseConsumo: 'mes', dias: 30, sobraPct: 0,
-    quantidadeInformada: 10000, unidadeQuantidade: 'kg', pedidosPorMes: 1,
-    pesoSaco: 40,
-    ...over,
+    quantidadeInformada: 10_000,
+    unidadeQuantidade: 'kg',
+    periodoQuantidade: 'mes',
+    consumoConfirmado: true,
   }
+  e.atual = { ...e.atual, preco: 2.5, unidadePreco: 'kg' }
+  // a fórmula de partida das aves já soma 100%
+  return e
 }
 
-// ---------------------------------------------------------------------------
-// Utilitários numéricos
-// ---------------------------------------------------------------------------
-
-test('dividir por zero devolve 0 em vez de Infinity', () => {
-  assert.equal(dividir(10, 0), 0)
-  assert.equal(dividir(0, 0), 0)
-  assert.ok(Number.isFinite(dividir(10, 0)))
-})
-
-test('dec converte percentual inteiro pra decimal e sanitiza lixo', () => {
-  perto(dec(20), 0.2)
-  perto(dec(0), 0)
-  perto(dec(undefined), 0)
-  perto(dec(NaN), 0)
-})
-
-// ---------------------------------------------------------------------------
-// Conversões de unidade
-// ---------------------------------------------------------------------------
-
-test('saca vira kg: 100 sacos de 40 kg = 4.000 kg', () => {
-  assert.equal(quantidadeParaKg(100, 'sacos', 40), 4000)
-})
-
-test('tonelada vira kg: 8,5 t = 8.500 kg', () => {
-  assert.equal(quantidadeParaKg(8.5, 't', 40), 8500)
-})
-
-test('kg continua kg e negativo é tratado como zero', () => {
-  assert.equal(quantidadeParaKg(1234, 'kg', 40), 1234)
-  assert.equal(quantidadeParaKg(-500, 'kg', 40), 0)
-})
-
-test('preço por saca vira R$/kg (saca de 60 kg a R$ 64,62 = R$ 1,077/kg)', () => {
-  perto(precoPorKg(64.62, 'saco', 60), 1.077)
-})
-
-test('preço por tonelada vira R$/kg', () => {
-  perto(precoPorKg(1500, 't', 60), 1.5)
-})
-
-test('preço por saca com peso zero não estoura', () => {
-  assert.equal(precoPorKg(64.62, 'saco', 0), 0)
-})
-
-test('participação em % / kg por t / g por t convergem pra kg por tonelada', () => {
-  assert.equal(participacaoParaKgPorTonelada(58, 'pct'), 580)
-  assert.equal(participacaoParaKgPorTonelada(580, 'kg_t'), 580)
-  assert.equal(participacaoParaKgPorTonelada(580_000, 'g_t'), 580)
-})
-
-// ---------------------------------------------------------------------------
-// Demanda
-// ---------------------------------------------------------------------------
-
-test('demanda por animais com consumo mensal: 5.000 frangos × 3 kg = 15.000 kg', () => {
-  const d = calcularDemanda(quantidade({
-    modo: 'animais', numeroAnimais: 5000, consumoPorAnimal: 3, baseConsumo: 'mes',
-  }))
-  assert.equal(d.quantidadeKg, 15000)
-  assert.equal(d.quantidadeMensalKg, 15000)
-  assert.equal(d.toneladas, 15)
-  assert.equal(d.sacos, 375)
-})
-
-test('demanda por consumo diário multiplica pelos dias informados', () => {
-  const d = calcularDemanda(quantidade({
-    modo: 'animais', numeroAnimais: 100, consumoPorAnimal: 2, baseConsumo: 'dia', dias: 30,
-  }))
-  assert.equal(d.quantidadeKg, 6000)
-})
-
-test('consumo por ciclo: pedido é o ciclo, mensal é proporcional aos dias', () => {
-  const d = calcularDemanda(quantidade({
-    modo: 'animais', numeroAnimais: 1000, consumoPorAnimal: 120, baseConsumo: 'ciclo', dias: 90,
-  }))
-  assert.equal(d.quantidadeKg, 120000)
-  perto(d.quantidadeMensalKg, 40000) // 90 dias = 3 meses comerciais
-})
-
-test('sobra de segurança de 10% aumenta a demanda', () => {
-  const d = calcularDemanda(quantidade({
-    modo: 'animais', numeroAnimais: 1000, consumoPorAnimal: 10, baseConsumo: 'mes', sobraPct: 10,
-  }))
-  perto(d.quantidadeKg, 11000)
-})
-
-test('modo direto com pedidos recorrentes projeta o mensal', () => {
-  const d = calcularDemanda(quantidade({
-    modo: 'direto', quantidadeInformada: 5, unidadeQuantidade: 't', pedidosPorMes: 4,
-  }))
-  assert.equal(d.quantidadeKg, 5000)
-  assert.equal(d.quantidadeMensalKg, 20000)
-})
-
-test('quantidade vazia não gera NaN', () => {
-  const d = calcularDemanda(quantidade({ quantidadeInformada: 0, pesoSaco: 0 }))
-  assert.equal(d.quantidadeKg, 0)
-  assert.equal(d.sacos, 0)
-  assert.ok(Number.isFinite(d.sacos))
-})
-
-// ---------------------------------------------------------------------------
-// Fórmula
-// ---------------------------------------------------------------------------
-
-function formula(itens: Array<[string, number, number]>): Formula {
-  return {
-    formulaId: null, nome: '',
-    itens: itens.map(([nome, pct, preco], i) => ({
-      id: `i${i}`, nome, participacao: pct, unidadeParticipacao: 'pct' as const,
-      preco, unidadePreco: 'kg' as const, pesoSacoIngrediente: 60,
-    })),
-    milhoPreco: 0, milhoUnidadePreco: 'kg', milhoPesoSaca: 60,
+/** Zera todos os custos operacionais pra isolar a matéria-prima nos testes. */
+function semOperacionais(e: EstudoInput): EstudoInput {
+  const off = { ativo: false, valor: 0 }
+  e.custos = {
+    ...e.custos,
+    perdaPct: 0,
+    energia: off, maoDeObra: off, moagem: off, mistura: off, manutencao: off,
+    depreciacao: off, administrativo: off, carregamento: off, outrosVariaveis: off,
+    embalagem: off, etiqueta: off, custosFixosMensais: off,
   }
+  return e
 }
 
-test('custo dos ingredientes: 58% milho 1,08 + 33% farelo 1,60 + 2% óleo 6,00 + 7% núcleo 6,80', () => {
-  const f = calcularFormula(formula([
-    ['Milho', 58, 1.08], ['Farelo de soja', 33, 1.60],
-    ['Óleo', 2, 6.00], ['Núcleo', 7, 6.80],
-  ]), 'aves')
-  perto(f.custoIngredientesPorKg, 1.7504)
-  perto(f.custoIngredientesPorTonelada, 1750.4)
-  assert.equal(f.totalKgPorTonelada, 1000)
-  assert.equal(f.fechada, true)
-  assert.equal(f.diferencaKgPorTonelada, 0)
-})
-
-test('fórmula que soma 100% é aceita; a que não soma é bloqueada com a diferença', () => {
-  const ok = calcularFormula(formula([['Milho', 70, 1], ['Farelo', 30, 2]]), 'suinos')
-  assert.equal(ok.fechada, true)
-
-  const falta = calcularFormula(formula([['Milho', 70, 1], ['Farelo', 26.5, 2]]), 'suinos')
-  assert.equal(falta.fechada, false)
-  perto(falta.diferencaKgPorTonelada, 35) // faltam 35 kg pra fechar a tonelada
-})
-
-test('fórmula que passou de 100% acusa diferença negativa', () => {
-  const passou = calcularFormula(formula([['Milho', 70, 1], ['Farelo', 40, 2]]), 'bovinos')
-  assert.equal(passou.fechada, false)
-  perto(passou.diferencaKgPorTonelada, -100)
-})
-
-test('milho triturado dispensa composição: custo vem do preço da saca', () => {
-  const f = calcularFormula(
-    { formulaId: null, nome: '', itens: [], milhoPreco: 72, milhoUnidadePreco: 'saco', milhoPesoSaca: 60 },
-    'milho',
-  )
-  perto(f.custoIngredientesPorKg, 1.2)
-  assert.equal(f.fechada, true)
-})
+const APROX = (a: number, b: number, tol = 1e-6) =>
+  assert.ok(Math.abs(a - b) <= tol, `esperava ~${b}, veio ${a}`)
 
 // ---------------------------------------------------------------------------
-// Custos
-// ---------------------------------------------------------------------------
 
-test('perda de 10% eleva o custo dos ingredientes de 1,80 para 2,00 (÷ 0,9)', () => {
-  const c = calcularCustos(1.80, custosZerados({ perdaPct: 10 }), 10000, 40)
-  perto(c.custoIngredientesAjustadoPorKg, 2)
-  perto(c.perdaPorKg, 0.2)
-  perto(c.custoBasePorKg, 2)
+describe('utilitários numéricos', () => {
+  it('n() sanitiza lixo', () => {
+    assert.equal(n(NaN), 0)
+    assert.equal(n(Infinity), 0)
+    assert.equal(n(null), 0)
+    assert.equal(n('abc'), 0)
+    assert.equal(n('12.5'), 12.5)
+  })
+
+  it('dividir() nunca estoura', () => {
+    assert.equal(dividir(10, 0), 0)
+    assert.equal(dividir(0, 0), 0)
+    assert.equal(dividir(10, 4), 2.5)
+  })
+
+  it('dec() converte inteiro pra decimal', () => {
+    assert.equal(dec(20), 0.2)
+    assert.equal(dec(0), 0)
+  })
 })
 
-test('embalagem por saco vira R$/kg dividindo pelo peso do saco', () => {
-  const c = calcularCustos(0, custosZerados({
-    embalagem: { ativo: true, valor: 1.20 },
-    etiqueta: { ativo: true, valor: 0.20 },
-  }), 10000, 40)
-  perto(c.embalagemPorKg, 0.035) // (1,20 + 0,20) ÷ 40
+describe('conversão de unidades', () => {
+  it('preço por saco/tonelada vira R$/kg', () => {
+    assert.equal(precoPorKg(1.08, 'kg', 60), 1.08)
+    assert.equal(precoPorKg(1080, 't', 60), 1.08)
+    APROX(precoPorKg(64.8, 'saco', 60), 1.08)
+    assert.equal(precoPorKg(64.8, 'saco', 0), 0, 'saco sem peso não divide por zero')
+  })
+
+  it('quantidade informada vira kg', () => {
+    assert.equal(quantidadeParaKg(10, 'kg', 40), 10)
+    assert.equal(quantidadeParaKg(10, 't', 40), 10_000)
+    assert.equal(quantidadeParaKg(10, 'sacos', 40), 400)
+  })
+
+  it('participação vira kg por tonelada', () => {
+    assert.equal(participacaoParaKgPorTonelada(58, 'pct'), 580)
+    assert.equal(participacaoParaKgPorTonelada(580, 'kg_t'), 580)
+    assert.equal(participacaoParaKgPorTonelada(500, 'g_t'), 0.5)
+  })
 })
 
-test('custo desligado não entra na conta', () => {
-  const c = calcularCustos(1, custosZerados({
-    energia: { ativo: false, valor: 99 },
-    maoDeObra: { ativo: true, valor: 0.10 },
-  }), 10000, 40)
-  perto(c.energiaPorKg, 0)
-  perto(c.custoBasePorKg, 1.10)
+describe('demanda', () => {
+  const nec = (p: Partial<Necessidade>): Necessidade => ({
+    ...novoEstudo(null, 'aves').necessidade, ...p,
+  })
+
+  it('por nº de animais com consumo mensal', () => {
+    const d = calcularDemanda(nec({ modo: 'animais', numeroAnimais: 1000, consumoPorAnimal: 3, baseConsumo: 'mes' }))
+    assert.equal(d.mensalKg, 3000)
+    assert.equal(d.anualKg, 36_000)
+    APROX(d.diariaKg, 100)
+  })
+
+  it('por consumo diário × nº de dias', () => {
+    const d = calcularDemanda(nec({ modo: 'animais', numeroAnimais: 100, consumoPorAnimal: 0.12, baseConsumo: 'dia', dias: 30 }))
+    APROX(d.mensalKg, 360)
+  })
+
+  it('por ciclo dilui o total na duração do ciclo', () => {
+    // 1.000 aves × 5,4 kg num ciclo de 45 dias → 1,5 mês → 3.600 kg/mês
+    const d = calcularDemanda(nec({ modo: 'animais', numeroAnimais: 1000, consumoPorAnimal: 5.4, baseConsumo: 'ciclo', dias: 45 }))
+    APROX(d.mensalKg, 3600)
+  })
+
+  it('margem de segurança acresce a demanda', () => {
+    const d = calcularDemanda(nec({ modo: 'animais', numeroAnimais: 1000, consumoPorAnimal: 3, baseConsumo: 'mes', margemSegurancaPct: 10 }))
+    APROX(d.mensalKg, 3300)
+  })
+
+  it('quantidade direta respeita o período informado', () => {
+    APROX(calcularDemanda(nec({ modo: 'direto', quantidadeInformada: 500, unidadeQuantidade: 'kg', periodoQuantidade: 'dia' })).mensalKg, 15_000)
+    APROX(calcularDemanda(nec({ modo: 'direto', quantidadeInformada: 120, unidadeQuantidade: 't', periodoQuantidade: 'ano' })).mensalKg, 10_000)
+    APROX(calcularDemanda(nec({ modo: 'direto', quantidadeInformada: 10, unidadeQuantidade: 't', periodoQuantidade: 'mes' })).toneladasMes, 10)
+  })
+
+  it('campos vazios não geram NaN', () => {
+    const d = calcularDemanda(nec({ modo: 'animais', numeroAnimais: 0, consumoPorAnimal: 0, pesoSaco: 0 }))
+    assert.equal(d.mensalKg, 0)
+    assert.equal(d.sacosMes, 0)
+    assert.ok(Number.isFinite(d.anualKg))
+  })
+
+  it('número muito grande continua finito', () => {
+    const d = calcularDemanda(nec({ modo: 'direto', quantidadeInformada: 1e9, unidadeQuantidade: 't', periodoQuantidade: 'mes' }))
+    assert.ok(Number.isFinite(d.mensalKg))
+    assert.equal(d.mensalKg, 1e12)
+  })
+
+  it('valor negativo é tratado como zero', () => {
+    const d = calcularDemanda(nec({ modo: 'direto', quantidadeInformada: -500, unidadeQuantidade: 'kg', periodoQuantidade: 'mes' }))
+    assert.equal(d.mensalKg, 0)
+  })
 })
 
-test('frete total é rateado pela quantidade do pedido', () => {
-  const c = calcularCustos(1, custosZerados({
-    frete: { ativo: true, valor: 800 }, freteModo: 'total',
-  }), 10000, 40)
-  perto(c.fretePorKg, 0.08)
-  perto(c.custoBasePorKg, 1.08)
+describe('fórmula', () => {
+  it('as fórmulas de partida fecham exatamente 100%', () => {
+    for (const especie of ['aves', 'suinos', 'bovinos'] as const) {
+      const f = calcularFormula({ ...base().formula, itens: formulaPadrao(especie) }, especie)
+      assert.equal(f.fechada, true, `${especie} deveria fechar`)
+      APROX(f.totalKgPorTonelada, 1000, 1e-9)
+    }
+  })
+
+  it('nenhuma fórmula de partida traz silagem, volumoso ou líquido', () => {
+    for (const especie of ['aves', 'suinos', 'bovinos'] as const) {
+      for (const item of formulaPadrao(especie)) {
+        const nome = item.nome.toLowerCase()
+        assert.ok(!nome.includes('silagem'), `${especie} não pode trazer silagem`)
+        assert.ok(!nome.includes('volumoso'), `${especie} não pode trazer volumoso`)
+        assert.ok(!nome.includes('óleo'), `${especie} não pode trazer óleo`)
+      }
+    }
+  })
+
+  it('abaixo de 100% é detectado e a sobra é informada', () => {
+    const e = base()
+    e.formula.itens = e.formula.itens.slice(0, 2) // 58 + 33 = 91%
+    const f = calcularFormula(e.formula, 'aves')
+    assert.equal(f.fechada, false)
+    APROX(f.totalParticipacaoPct, 91)
+    APROX(f.diferencaKgPorTonelada, 90)
+  })
+
+  it('acima de 100% também bloqueia', () => {
+    const e = base()
+    e.formula.itens = [{ ...e.formula.itens[0], participacao: 120 }]
+    const f = calcularFormula(e.formula, 'aves')
+    assert.equal(f.fechada, false)
+    assert.ok(f.diferencaKgPorTonelada < 0)
+  })
+
+  it('mistura de unidades (%, kg/t, g/t) soma certo', () => {
+    const it = (nome: string, participacao: number, unidadeParticipacao: 'pct' | 'kg_t' | 'g_t') => ({
+      id: nome, nome, participacao, unidadeParticipacao,
+      preco: 1, unidadePreco: 'kg' as const, pesoSacoIngrediente: 60,
+    })
+    const f = calcularFormula(
+      { ...base().formula, itens: [it('A', 50, 'pct'), it('B', 499_500, 'g_t'), it('C', 0.5, 'kg_t')] },
+      'aves',
+    )
+    APROX(f.totalKgPorTonelada, 1000, 1e-9)
+    assert.equal(f.fechada, true)
+  })
+
+  it('preço em R$/kg, R$/saco e R$/t dá o mesmo custo', () => {
+    const mk = (preco: number, unidadePreco: 'kg' | 'saco' | 't') => calcularFormula(
+      {
+        ...base().formula,
+        itens: [{ id: 'x', nome: 'Milho', participacao: 100, unidadeParticipacao: 'pct', preco, unidadePreco, pesoSacoIngrediente: 60 }],
+      },
+      'aves',
+    ).custoIngredientesPorKg
+    APROX(mk(1.08, 'kg'), 1.08)
+    APROX(mk(64.8, 'saco'), 1.08)
+    APROX(mk(1080, 't'), 1.08)
+  })
+
+  it('milho triturado dispensa composição', () => {
+    const f = calcularFormula({ ...base().formula, milhoPreco: 64.8, milhoUnidadePreco: 'saco', milhoPesoSaca: 60 }, 'milho')
+    assert.equal(f.fechada, true)
+    APROX(f.custoIngredientesPorKg, 1.08)
+  })
 })
 
-test('frete informado direto em R$/kg entra sem rateio', () => {
-  const c = calcularCustos(1, custosZerados({
-    frete: { ativo: true, valor: 0.12 }, freteModo: 'kg',
-  }), 10000, 40)
-  perto(c.fretePorKg, 0.12)
+describe('custo atual (o que ele paga hoje)', () => {
+  const demanda = calcularDemanda(base().necessidade)
+
+  it('preço por saco vira R$/kg e projeta mês e ano', () => {
+    const e = base()
+    e.atual = { ...e.atual, preco: 100, unidadePreco: 'saco', pesoSacoCompra: 40 }
+    const a = calcularCustoAtual(e.atual, demanda)
+    APROX(a.custoPorKg, 2.5)
+    APROX(a.custoPorTonelada, 2500)
+    APROX(a.custoMensal, 25_000)
+    APROX(a.custoAnual, 300_000)
+  })
+
+  it('frete, descarga e outros somam ao custo', () => {
+    const e = base()
+    e.atual = {
+      ...e.atual, preco: 2, unidadePreco: 'kg',
+      frete: { ativo: true, valor: 0.1 },
+      descarga: { ativo: true, valor: 0.05 },
+      outros: { ativo: true, valor: 0.02 },
+    }
+    APROX(calcularCustoAtual(e.atual, demanda).custoPorKg, 2.17)
+  })
+
+  it('custo desligado não entra na conta', () => {
+    const e = base()
+    e.atual = { ...e.atual, preco: 2, unidadePreco: 'kg', frete: { ativo: false, valor: 999 } }
+    APROX(calcularCustoAtual(e.atual, demanda).custoPorKg, 2)
+  })
+
+  it('perda encarece o kg efetivamente aproveitado', () => {
+    const e = base()
+    e.atual = { ...e.atual, preco: 2, unidadePreco: 'kg', perdasPct: 10 }
+    APROX(calcularCustoAtual(e.atual, demanda).custoPorKg, 2 / 0.9)
+  })
+
+  it('quem já produz informa o custo direto', () => {
+    const e = base()
+    e.atual = { ...e.atual, modo: 'proprio', custoManualPorKg: 1.9, preco: 999 }
+    const a = calcularCustoAtual(e.atual, demanda)
+    APROX(a.custoPorKg, 1.9)
+    assert.equal(a.informado, true)
+  })
+
+  it('sem preço informado, não está informado', () => {
+    const e = base()
+    e.atual = { ...e.atual, preco: 0 }
+    assert.equal(calcularCustoAtual(e.atual, demanda).informado, false)
+  })
 })
 
-test('custo fixo do pedido é rateado e fica FORA do custo variável', () => {
-  const c = calcularCustos(1, custosZerados({
-    outrosFixosPedido: { ativo: true, valor: 500 },
-  }), 10000, 40)
-  perto(c.fixosPedidoPorKg, 0.05)
-  perto(c.custoBasePorKg, 1.05)
-  perto(c.custoVariavelPorKg, 1.00)
+describe('custo de produzir', () => {
+  it('perda de produção encarece a matéria-prima', () => {
+    const e = semOperacionais(base())
+    e.custos.perdaPct = 5
+    const c = calcularCustosProducao(1, e.custos, 10_000, 40)
+    APROX(c.custoIngredientesAjustadoPorKg, 1 / 0.95)
+    APROX(c.perdaPorKg, 1 / 0.95 - 1)
+  })
+
+  it('operacionais ligados somam por kg', () => {
+    const e = semOperacionais(base())
+    e.custos.energia = { ativo: true, valor: 0.03 }
+    e.custos.maoDeObra = { ativo: true, valor: 0.1 }
+    const c = calcularCustosProducao(1, e.custos, 10_000, 40)
+    APROX(c.custoTotalPorKg, 1.13)
+    APROX(c.operacionaisPorKg, 0.13)
+  })
+
+  it('embalagem é por saco e vira R$/kg', () => {
+    const e = semOperacionais(base())
+    e.custos.embalagem = { ativo: true, valor: 1.2 }
+    const c = calcularCustosProducao(0, e.custos, 10_000, 40)
+    APROX(c.embalagemPorKg, 0.03)
+  })
+
+  it('custo fixo mensal é diluído no volume real do mês', () => {
+    const e = semOperacionais(base())
+    e.custos.custosFixosMensais = { ativo: true, valor: 1000 }
+    APROX(calcularCustosProducao(0, e.custos, 10_000, 40).fixosPorKg, 0.1)
+    // volume zero não pode virar Infinity
+    assert.equal(calcularCustosProducao(0, e.custos, 0, 40).fixosPorKg, 0)
+  })
+
+  it('não sobra margem, imposto nem comissão no resultado', () => {
+    const c = calcularCustosProducao(1, base().custos, 10_000, 40) as unknown as Record<string, unknown>
+    for (const proibido of ['margemRealPct', 'precoSugeridoPorKg', 'impostosPorKg', 'comissaoPorKg', 'lucroPorKg']) {
+      assert.equal(proibido in c, false, `${proibido} não pode existir no estudo`)
+    }
+  })
 })
 
-test('grupos de custo somam exatamente o custo-base', () => {
-  const c = calcularCustos(1.75, custosZerados({
-    perdaPct: 1.5,
-    energia: { ativo: true, valor: 0.035 },
-    maoDeObra: { ativo: true, valor: 0.10 },
-    embalagem: { ativo: true, valor: 1.20 },
-    carregamento: { ativo: true, valor: 0.02 },
-    frete: { ativo: true, valor: 0.05 }, freteModo: 'kg',
-    outrosFixosPedido: { ativo: true, valor: 300 },
-  }), 10000, 40)
-  const soma = c.grupos.materiaPrima + c.grupos.producao + c.grupos.embalagem
-    + c.grupos.logistica + c.grupos.fixos
-  perto(soma, c.custoBasePorKg)
+describe('comparação e economia', () => {
+  const demanda = calcularDemanda(base().necessidade) // 10.000 kg/mês
+
+  it('economia positiva bate por kg, mês e ano', () => {
+    const c = compararEconomia(2.5, 2.0, demanda)
+    APROX(c.economiaPorKg, 0.5)
+    APROX(c.economiaPorTonelada, 500)
+    APROX(c.economiaMensal, 5000)
+    APROX(c.economiaAnual, 60_000)
+    APROX(c.reducaoPct, 20)
+    assert.equal(c.vantajoso, true)
+  })
+
+  it('economia negativa NÃO é escondida', () => {
+    const c = compararEconomia(2.0, 2.5, demanda)
+    APROX(c.economiaPorKg, -0.5)
+    APROX(c.economiaMensal, -5000)
+    assert.equal(c.vantajoso, false)
+    assert.ok(c.reducaoPct < 0)
+  })
+
+  it('economia exatamente zero não é vantajosa', () => {
+    const c = compararEconomia(2.0, 2.0, demanda)
+    assert.equal(c.economiaPorKg, 0)
+    assert.equal(c.vantajoso, false)
+    assert.equal(c.reducaoPct, 0)
+  })
+
+  it('custo atual zero não gera divisão por zero na redução', () => {
+    assert.equal(compararEconomia(0, 2, demanda).reducaoPct, 0)
+  })
+
+  it('economia por animal só existe quando há plantel', () => {
+    APROX(compararEconomia(2.5, 2, demanda, 1000).economiaPorAnimalMes, 5)
+    assert.equal(compararEconomia(2.5, 2, demanda, 0).economiaPorAnimalMes, 0)
+  })
 })
 
-test('custo por saco e por tonelada derivam do custo por kg', () => {
-  const c = calcularCustos(2, custosZerados(), 10000, 40)
-  perto(c.custoPorSaco, 80)
-  perto(c.custoPorTonelada, 2000)
-  perto(c.custoTotalPedido, 20000)
+describe('dimensionamento', () => {
+  const demanda = calcularDemanda({ ...base().necessidade, quantidadeInformada: 60_750 })
+
+  it('capacidade mínima = produção do dia ÷ horas disponíveis', () => {
+    const d = calcularDimensionamento(
+      { diasPorMes: 26, horasPorDia: 4, lotesPorDia: 0, frequencia: 'diaria', margemOperacionalPct: 20 },
+      demanda, CAPACIDADES_BRANORTE,
+    )
+    assert.equal(d.aplicavel, true)
+    APROX(d.producaoPorDiaKg, 60_750 / 26)
+    APROX(d.capacidadeMinimaKgHora, 60_750 / 26 / 4)
+    APROX(d.capacidadeRecomendadaKgHora, (60_750 / 26 / 4) * 1.2)
+    assert.equal(d.sugerido?.capacidade, 1000, 'recomendada ~701 kg/h → sobe pra 1.000')
+  })
+
+  it('sugere a menor capacidade que atende', () => {
+    assert.equal(sugerirEquipamento(250, CAPACIDADES_BRANORTE, 1000, 4)?.capacidade, 300)
+    assert.equal(sugerirEquipamento(300, CAPACIDADES_BRANORTE, 1000, 4)?.capacidade, 300)
+    assert.equal(sugerirEquipamento(301, CAPACIDADES_BRANORTE, 1000, 4)?.capacidade, 600)
+  })
+
+  it('acima da linha devolve a maior e sinaliza', () => {
+    const s = sugerirEquipamento(9000, CAPACIDADES_BRANORTE, 40_000, 8)
+    assert.equal(s?.capacidade, 5000)
+    assert.equal(s?.acimaDaLinha, true)
+  })
+
+  it('utilização é a fração do tempo disponível', () => {
+    const s = sugerirEquipamento(500, [600], 1200, 4)
+    APROX(s!.horasPorDia, 2)
+    APROX(s!.utilizacaoPct, 50)
+  })
+
+  it('sem dias ou horas o bloco não se aplica', () => {
+    const vazio = calcularDimensionamento(
+      { diasPorMes: 0, horasPorDia: 4, lotesPorDia: 0, frequencia: 'diaria', margemOperacionalPct: 20 },
+      demanda, CAPACIDADES_BRANORTE,
+    )
+    assert.equal(vazio.aplicavel, false)
+    assert.equal(vazio.capacidadeMinimaKgHora, 0)
+  })
+
+  it('kg por lote sai da produção do dia', () => {
+    const d = calcularDimensionamento(
+      { diasPorMes: 30, horasPorDia: 4, lotesPorDia: 2, frequencia: 'diaria', margemOperacionalPct: 0 },
+      calcularDemanda({ ...base().necessidade, quantidadeInformada: 30_000 }), CAPACIDADES_BRANORTE,
+    )
+    APROX(d.kgPorLote, 500)
+  })
 })
 
-test('frete total com quantidade zero não gera Infinity', () => {
-  const c = calcularCustos(1, custosZerados({
-    frete: { ativo: true, valor: 800 }, freteModo: 'total',
-  }), 0, 40)
-  assert.equal(c.fretePorKg, 0)
-  assert.ok(Number.isFinite(c.custoBasePorKg))
-})
-
-// ---------------------------------------------------------------------------
-// Preço: margem × markup
-// ---------------------------------------------------------------------------
-
-test('margem é sobre o PREÇO: custo 1,50 com 20% e sem taxas dá 1,875 (não 1,80)', () => {
-  perto(precoComMargem(1.50, 0.20, 0), 1.875)
-  perto(precoComMarkup(1.50, 0.20), 1.80)
-})
-
-test('markup de 20% sobre o custo entrega margem real de 16,67% (não 20%)', () => {
-  const p = precoComMarkup(1.50, 0.20)
-  perto((p - 1.50) / p, 1 / 6)
-})
-
-test('cargaSemMargem soma impostos + comissão + taxas', () => {
-  perto(cargaSemMargem(venda({
-    impostosPct: 5, comissaoPct: 3, taxaFinanceiraPct: 1.5, taxaCartaoPct: 2,
-  })), 0.115)
-})
-
-test('preço de equilíbrio cobre custo + impostos + comissão, com margem zero', () => {
-  const p = precificar(1.50, venda())
-  perto(p.precoEquilibrioPorKg, 1.5 / 0.92)
-  const eq = p.precoEquilibrioPorKg
-  perto(eq - 1.5 - eq * 0.08, 0) // sobra zero
-})
-
-test('margem + impostos + comissão + taxas em 100% não gera preço (protege de divisão por zero)', () => {
-  const p = precificar(1.50, venda({
-    margemDesejadaPct: 60, impostosPct: 20, comissaoPct: 10, taxaFinanceiraPct: 10,
-  }))
-  assert.equal(p.precoSugeridoPorKg, 0)
-  assert.ok(Number.isFinite(p.precoSugeridoPorKg))
-})
-
-// ---------------------------------------------------------------------------
-// Preço negociado
-// ---------------------------------------------------------------------------
-
-test('no preço sugerido a margem real bate exatamente com a desejada', () => {
-  const custos = calcularCustos(1.50, custosZerados(), 10000, 40)
-  const v = venda({ margemDesejadaPct: 20 })
-  const precos = precificar(custos.custoBasePorKg, v)
-  const d = calcularDemanda(quantidade())
-  const r = calcularNegociado(precos.precoSugeridoPorKg, custos, precos, v, d, 40)
-  perto(r.margemRealPct, 20)
-  assert.equal(r.abaixoDoMinimo, false)
-  perto(r.descontoAplicadoPct, 0)
-})
-
-test('preço negociado abaixo do mínimo acende o alerta e derruba a margem real', () => {
-  const custos = calcularCustos(1.50, custosZerados(), 10000, 40)
-  const v = venda({ margemDesejadaPct: 20, margemMinimaPct: 15 })
-  const precos = precificar(custos.custoBasePorKg, v)
-  const d = calcularDemanda(quantidade())
-  const r = calcularNegociado(1.90, custos, precos, v, d, 40)
-  assert.equal(r.abaixoDoMinimo, true)
-  assert.ok(r.margemRealPct < 15)
-  // 1,90 − 1,50 − 1,90×0,08 = 0,248 → 13,05%
-  perto(r.lucroPorKg, 1.90 - 1.50 - 1.90 * 0.08)
-})
-
-test('no preço mínimo a margem real bate com a margem mínima (não acende alerta)', () => {
-  const custos = calcularCustos(1.50, custosZerados(), 10000, 40)
-  const v = venda({ margemDesejadaPct: 20, margemMinimaPct: 15 })
-  const precos = precificar(custos.custoBasePorKg, v)
-  const d = calcularDemanda(quantidade())
-  const r = calcularNegociado(precos.precoMinimoPorKg, custos, precos, v, d, 40)
-  perto(r.margemRealPct, 15)
-  assert.equal(r.abaixoDoMinimo, false)
-})
-
-test('totais do pedido e do mês saem do lucro por kg', () => {
-  const custos = calcularCustos(1.50, custosZerados(), 10000, 40)
-  const v = venda()
-  const precos = precificar(custos.custoBasePorKg, v)
-  const d = calcularDemanda(quantidade({ quantidadeInformada: 10000, pedidosPorMes: 2 }))
-  const r = calcularNegociado(precos.precoSugeridoPorKg, custos, precos, v, d, 40)
-  perto(r.valorTotalPedido, r.precoPorKg * 10000)
-  perto(r.lucroTotalPedido, r.lucroPorKg * 10000)
-  perto(r.receitaMensal, r.precoPorKg * 20000)
-  perto(r.lucroMensal, r.lucroPorKg * 20000)
-  perto(r.precoPorSaco, r.precoPorKg * 40)
-})
-
-// ---------------------------------------------------------------------------
-// Ponto de equilíbrio
-// ---------------------------------------------------------------------------
-
-test('ponto de equilíbrio: R$ 10.000 fixos ÷ R$ 0,4167 de margem = 24 t/mês', () => {
-  const custos = calcularCustos(1.50, custosZerados(), 10000, 40)
-  const v = venda({ margemDesejadaPct: 20 })
-  const precos = precificar(custos.custoBasePorKg, v)
-  const eq = calcularEquilibrio(
-    precos.precoSugeridoPorKg, custos, v, 10000,
-    calcularDemanda(quantidade({ quantidadeInformada: 12000 })), 40,
-  )
-  assert.equal(eq.aplicavel, true)
-  perto(eq.margemContribuicaoPorKg, 1 / 2.4)
-  perto(eq.kgPorMes, 24000)
-  perto(eq.toneladasPorMes, 24)
-  assert.equal(eq.clientesDesseTamanho, 2) // 24.000 ÷ 12.000
-})
-
-test('sem custo fixo mensal o ponto de equilíbrio não se aplica', () => {
-  const custos = calcularCustos(1.50, custosZerados(), 10000, 40)
-  const v = venda()
-  const precos = precificar(custos.custoBasePorKg, v)
-  const eq = calcularEquilibrio(precos.precoSugeridoPorKg, custos, v, 0, calcularDemanda(quantidade()), 40)
-  assert.equal(eq.aplicavel, false)
-  assert.equal(eq.kgPorMes, 0)
-})
-
-// ---------------------------------------------------------------------------
-// Validação
-// ---------------------------------------------------------------------------
-
-function inputBase(over: Partial<SimulacaoInput> = {}): SimulacaoInput {
-  const base = novaSimulacao(CONFIG_PADRAO, 'aves', 'Teste')
-  return {
-    ...base,
-    identificacao: { ...base.identificacao, clienteNome: 'Cliente Teste' },
-    quantidade: { ...base.quantidade, modo: 'direto', quantidadeInformada: 15000, unidadeQuantidade: 'kg' },
-    ...over,
+describe('investimento e retorno', () => {
+  const inv = {
+    equipamentos: 70_000, frete: 5000, montagem: 4000,
+    instalacaoEletrica: 6000, obraCivil: 10_000, outros: 5000,
+    modoFinanciamento: 'sem' as const, custoFinanceiroInformado: 0,
   }
-}
 
-test('bloqueia quando a soma de margem + impostos + comissão + taxas chega a 100%', () => {
-  const input = inputBase()
-  input.venda = venda({ margemDesejadaPct: 70, impostosPct: 20, comissaoPct: 10 })
-  const r = calcularSimulacao(input)
-  assert.equal(r.bloqueado, true)
-  assert.ok(r.problemas.some(p => p.campo === 'margemDesejadaPct' && p.nivel === 'bloqueio'))
+  it('soma todos os componentes', () => {
+    assert.equal(somarInvestimento(inv), 100_000)
+  })
+
+  it('payback = investimento ÷ economia mensal', () => {
+    const r = calcularRetorno(inv, 10_000, 120_000)
+    assert.equal(r.aplicavel, true)
+    APROX(r.paybackMeses, 10)
+    APROX(r.paybackAnos, 10 / 12)
+  })
+
+  it('sem economia NÃO calcula payback', () => {
+    for (const economia of [0, -5000]) {
+      const r = calcularRetorno(inv, economia, economia * 12)
+      assert.equal(r.aplicavel, false)
+      assert.equal(r.paybackMeses, 0)
+    }
+  })
+
+  it('custo financeiro informado entra na base do payback', () => {
+    const r = calcularRetorno({ ...inv, modoFinanciamento: 'informado', custoFinanceiroInformado: 20_000 }, 10_000, 120_000)
+    assert.equal(r.investimentoConsiderado, 120_000)
+    APROX(r.paybackMeses, 12)
+  })
+
+  it('acumulado de 1 a 5 anos desconta o investimento', () => {
+    const r = calcularRetorno(inv, 10_000, 120_000)
+    assert.equal(r.acumulado.length, 5)
+    assert.equal(r.acumulado[0].economia, 120_000)
+    assert.equal(r.acumulado[0].liquido, 20_000)
+    assert.equal(r.acumulado[4].economia, 600_000)
+    assert.equal(r.acumulado[4].liquido, 500_000)
+  })
+
+  it('investimento zerado não gera payback', () => {
+    const zero = { ...inv, equipamentos: 0, frete: 0, montagem: 0, instalacaoEletrica: 0, obraCivil: 0, outros: 0 }
+    assert.equal(calcularRetorno(zero, 10_000, 120_000).aplicavel, false)
+  })
 })
 
-test('bloqueia percentual negativo e margem acima de 100%', () => {
-  const input = inputBase()
-  input.venda = venda({ margemDesejadaPct: 120, comissaoPct: -5 })
-  const r = calcularSimulacao(input)
-  assert.ok(r.problemas.some(p => p.campo === 'margemDesejadaPct'))
-  assert.ok(r.problemas.some(p => p.campo === 'comissaoPct'))
+describe('validação', () => {
+  const validarDe = (e: EstudoInput) => {
+    const d = calcularDemanda(e.necessidade)
+    const f = calcularFormula(e.formula, e.produto.especie)
+    return validar(e, d, f, calcularCustoAtual(e.atual, d))
+  }
+
+  it('estudo completo não tem bloqueio', () => {
+    const p = validarDe(base())
+    assert.equal(p.filter(x => x.nivel === 'bloqueio').length, 0, JSON.stringify(p))
+  })
+
+  it('fórmula aberta bloqueia com a mensagem combinada', () => {
+    const e = base()
+    e.formula.itens = e.formula.itens.slice(0, 2)
+    const p = validarDe(e)
+    const bloqueio = p.find(x => x.campo === 'formula' && x.nivel === 'bloqueio')
+    assert.ok(bloqueio, 'deveria bloquear')
+    assert.ok(bloqueio!.mensagem.startsWith(MSG_FORMULA_ABERTA))
+  })
+
+  it('sem custo atual bloqueia', () => {
+    const e = base()
+    e.atual.preco = 0
+    assert.ok(validarDe(e).some(x => x.campo === 'atual' && x.nivel === 'bloqueio'))
+  })
+
+  it('sem volume bloqueia', () => {
+    const e = base()
+    e.necessidade.quantidadeInformada = 0
+    assert.ok(validarDe(e).some(x => x.campo === 'necessidade' && x.nivel === 'bloqueio'))
+  })
+
+  it('percentual acima de 100 bloqueia', () => {
+    const e = base()
+    e.custos.perdaPct = 120
+    assert.ok(validarDe(e).some(x => x.campo === 'perdaPct' && x.nivel === 'bloqueio'))
+  })
+
+  it('consumo de referência não confirmado é aviso, não bloqueio', () => {
+    const e = novoEstudo(null, 'aves', 'V')
+    e.identificacao.clienteNome = 'X'
+    e.necessidade = { ...e.necessidade, modo: 'animais', numeroAnimais: 1000, consumoPorAnimal: 3 }
+    e.atual = { ...e.atual, preco: 2.5, unidadePreco: 'kg' }
+    const aviso = validarDe(e).find(x => x.campo === 'consumoPorAnimal')
+    assert.ok(aviso)
+    assert.equal(aviso!.nivel, 'aviso')
+  })
+
+  it('dias/horas impossíveis bloqueiam', () => {
+    const e = base()
+    e.dimensionamento = { ...e.dimensionamento, diasPorMes: 40, horasPorDia: 30 }
+    const p = validarDe(e)
+    assert.ok(p.some(x => x.campo === 'diasPorMes' && x.nivel === 'bloqueio'))
+    assert.ok(p.some(x => x.campo === 'horasPorDia' && x.nivel === 'bloqueio'))
+  })
+
+  it('milho sem preço bloqueia', () => {
+    const e = trocarEspecie(base(), 'milho', null)
+    e.formula.milhoPreco = 0
+    assert.ok(validarDe(e).some(x => x.campo === 'milhoPreco' && x.nivel === 'bloqueio'))
+  })
 })
 
-test('bloqueia quantidade zerada e peso de saco zero', () => {
-  const input = inputBase()
-  input.quantidade = { ...input.quantidade, quantidadeInformada: 0, pesoSaco: 0 }
-  const r = calcularSimulacao(input)
-  assert.ok(r.problemas.some(p => p.campo === 'quantidade' && p.nivel === 'bloqueio'))
-  assert.ok(r.problemas.some(p => p.campo === 'pesoSaco' && p.nivel === 'bloqueio'))
+describe('estudo completo', () => {
+  it('encadeia demanda → custos → economia → payback', () => {
+    const e = semOperacionais(base())
+    e.custos.energia = { ativo: true, valor: 0.05 }
+    e.atual = { ...e.atual, preco: 2.5, unidadePreco: 'kg' }
+    e.investimento = { ...e.investimento, equipamentos: 50_000 }
+
+    const r = calcularEstudo(e)
+    assert.equal(r.bloqueado, false)
+    APROX(r.demanda.mensalKg, 10_000)
+    APROX(r.producao.custoTotalPorKg, r.formula.custoIngredientesPorKg + 0.05)
+    APROX(r.comparacao.economiaPorKg, 2.5 - r.producao.custoTotalPorKg)
+    APROX(r.comparacao.economiaMensal, r.comparacao.economiaPorKg * 10_000)
+    assert.equal(r.retorno.aplicavel, true)
+    APROX(r.retorno.paybackMeses, 50_000 / r.comparacao.economiaMensal)
+  })
+
+  it('investimento sem economia não gera payback', () => {
+    const e = base()
+    e.atual = { ...e.atual, preco: 0.5, unidadePreco: 'kg' } // ração pronta baratíssima
+    e.investimento = { ...e.investimento, equipamentos: 80_000 }
+    const r = calcularEstudo(e)
+    assert.equal(r.comparacao.vantajoso, false)
+    assert.equal(r.retorno.aplicavel, false)
+  })
+
+  it('cenários variam na ordem esperada', () => {
+    const r = calcularEstudo(base())
+    const [cons, prov, otim] = r.cenarios
+    assert.ok(cons.custoProprioPorKg > prov.custoProprioPorKg, 'conservador custa mais')
+    assert.ok(otim.custoProprioPorKg < prov.custoProprioPorKg, 'otimista custa menos')
+    assert.ok(cons.economiaMensal < prov.economiaMensal)
+    assert.ok(otim.economiaMensal > prov.economiaMensal)
+  })
+
+  it('capacidade da configuração é respeitada', () => {
+    const r = calcularEstudo(base(), [500, 5000])
+    assert.ok([500, 5000].includes(r.dimensionamento.sugerido!.capacidade))
+  })
+
+  it('memória de cálculo termina na economia por kg', () => {
+    const r = calcularEstudo(base())
+    const ultima = r.memoria[r.memoria.length - 1]
+    assert.equal(ultima.rotulo, 'Economia por kg')
+    APROX(ultima.valor, r.comparacao.economiaPorKg)
+  })
+
+  it('bovinos, suínos, aves e milho calculam sem quebrar', () => {
+    for (const especie of ['bovinos', 'suinos', 'aves', 'milho'] as const) {
+      const e = trocarEspecie(base(), especie, null)
+      e.atual = { ...e.atual, preco: 2.5, unidadePreco: 'kg' }
+      const r = calcularEstudo(e)
+      assert.ok(Number.isFinite(r.producao.custoTotalPorKg), especie)
+      assert.ok(Number.isFinite(r.comparacao.economiaMensal), especie)
+    }
+  })
 })
 
-test('bloqueia fórmula incompleta', () => {
-  const input = inputBase()
-  input.formula = { ...input.formula, itens: input.formula.itens.slice(0, 2) }
-  const r = calcularSimulacao(input)
-  assert.equal(r.bloqueado, true)
-  assert.ok(r.problemas.some(p => p.campo === 'formula'))
+describe('compatibilidade com o que já estava salvo', () => {
+  it('status antigos viram os novos', () => {
+    assert.equal(normalizarStatus('enviada'), 'apresentado')
+    assert.equal(normalizarStatus('vendida'), 'vendido')
+    assert.equal(normalizarStatus('perdida'), 'nao_avancou')
+    assert.equal(normalizarStatus('cancelada'), 'cancelado')
+    assert.equal(normalizarStatus('aprovado'), 'aprovado')
+    assert.equal(normalizarStatus('lixo'), 'rascunho')
+  })
+
+  it('simulação do módulo antigo reabre como estudo', () => {
+    const legado = {
+      identificacao: { clienteNome: 'Antigo', clienteEmpresa: 'Fazenda', vendedorNome: 'V' },
+      produto: { especie: 'suinos', categoria: 'terminacao', categoriaLivre: '' },
+      quantidade: {
+        modo: 'direto', quantidadeInformada: 2000, unidadeQuantidade: 'kg',
+        pedidosPorMes: 4, pesoSaco: 40, sobraPct: 5,
+      },
+      venda: { precoAtualClientePorKg: 2.2, margemDesejadaPct: 20 },
+      custos: { perdaPct: 2, custosFixosMensais: 1500 },
+      cenarios: { conservador: { materiaPrimaPct: 30 } },
+      status: 'negociacao',
+    }
+    const e = normalizarInput(legado, null)
+
+    assert.equal(e.identificacao.clienteNome, 'Antigo')
+    assert.equal(e.necessidade.quantidadeInformada, 8000, 'pedido × pedidos/mês vira o mensal')
+    assert.equal(e.necessidade.periodoQuantidade, 'mes')
+    assert.equal(e.necessidade.margemSegurancaPct, 5)
+    assert.equal(e.atual.preco, 2.2)
+    assert.equal(e.atual.unidadePreco, 'kg')
+    assert.deepEqual(e.custos.custosFixosMensais, { ativo: true, valor: 1500 })
+    assert.equal(e.cenarios.conservador.ingredientesPct, 30, 'materiaPrimaPct vira ingredientesPct')
+    assert.equal(e.status, 'negociacao')
+    assert.ok(Number.isFinite(calcularEstudo(e).comparacao.economiaMensal))
+  })
+
+  it('lixo no JSONB não derruba a tela', () => {
+    for (const lixo of [null, undefined, 'texto', 42, {}]) {
+      const e = normalizarInput(lixo, null)
+      assert.ok(Number.isFinite(calcularEstudo(e).producao.custoTotalPorKg))
+    }
+  })
 })
 
-test('avisa quando falta o nome do cliente, mas não bloqueia o cálculo', () => {
-  const input = inputBase()
-  input.identificacao = { ...input.identificacao, clienteNome: '' }
-  const r = calcularSimulacao(input)
-  const p = r.problemas.find(x => x.campo === 'clienteNome')
-  assert.ok(p)
-  assert.equal(p!.nivel, 'aviso')
-  assert.equal(r.bloqueado, false)
-})
+describe('apresentação e WhatsApp', () => {
+  const montar = () => {
+    const e = base()
+    e.investimento = { ...e.investimento, equipamentos: 60_000 }
+    const r = calcularEstudo(e)
+    return dadosEstudo(e, r, {
+      codigo: 'VR-ABC123',
+      textoApresentacao: 'texto', avisoNutricional: 'aviso nutri', avisoEstimativa: 'aviso estimativa',
+    })
+  }
 
-test('avisa quando a margem mínima passa da desejada', () => {
-  const input = inputBase()
-  input.venda = venda({ margemDesejadaPct: 10, margemMinimaPct: 15 })
-  const problemas = validar(input, calcularDemanda(input.quantidade), calcularFormula(input.formula, 'aves'))
-  assert.ok(problemas.some(p => p.campo === 'margemMinimaPct' && p.nivel === 'aviso'))
-})
+  it('a mensagem apresenta o estudo, não uma oferta de ração', () => {
+    const t = textoWhatsApp(montar())
+    assert.ok(t.includes('estudo preliminar sobre a produção própria'))
+    assert.ok(t.includes('Custo atual informado'))
+    assert.ok(t.includes('Custo estimado de produção própria'))
+    assert.ok(t.includes('Os valores são estimativas'))
+    for (const proibido of ['saco de', 'Valor total', 'Boleto', 'CIF', 'Validade da proposta', 'fornecimento']) {
+      assert.ok(!t.includes(proibido), `"${proibido}" não pode aparecer`)
+    }
+  })
 
-test('nenhum resultado da simulação sai NaN ou Infinity com o formulário vazio', () => {
-  const vazio = novaSimulacao(CONFIG_PADRAO, 'bovinos')
-  const r = calcularSimulacao(vazio)
-  const numeros = [
-    r.demanda.quantidadeKg, r.demanda.sacos, r.custos.custoBasePorKg,
-    r.precos.precoSugeridoPorKg, r.precos.descontoMaximoPct,
-    r.negociado.margemRealPct, r.negociado.lucroTotalPedido, r.negociado.lucroMensal,
-    r.equilibrio.kgPorMes,
-  ]
-  for (const x of numeros) assert.ok(Number.isFinite(x), `valor não finito: ${x}`)
-})
+  it('a frase principal usa custo, economia mensal e anual', () => {
+    const f = frasePrincipal(montar())
+    assert.ok(f.includes('poderá reduzir o custo estimado'))
+    assert.ok(f.includes('por mês'))
+    assert.ok(f.includes('por ano'))
+  })
 
-// ---------------------------------------------------------------------------
-// Comparação com mercado
-// ---------------------------------------------------------------------------
+  it('sem economia a frase muda e não promete nada', () => {
+    const e = base()
+    e.atual = { ...e.atual, preco: 0.5, unidadePreco: 'kg' }
+    const d = dadosEstudo(e, calcularEstudo(e), {
+      codigo: 'X', textoApresentacao: '', avisoNutricional: '', avisoEstimativa: '',
+    })
+    assert.equal(
+      frasePrincipal(d),
+      'Com os dados atuais, a produção própria não apresenta economia. '
+      + 'Revise os preços, a fórmula e os custos operacionais.',
+    )
+  })
 
-test('comparação com o preço atual do cliente: mais barato por kg, mês e ano', () => {
-  const input = inputBase()
-  input.venda = venda({ margemDesejadaPct: 15, margemMinimaPct: 10, precoAtualClientePorKg: 3.00 })
-  input.venda.precoNegociadoPorKg = 2.80
-  const r = calcularSimulacao(input)
-  assert.equal(r.comparacao.informado, true)
-  assert.equal(r.comparacao.maisBarato, true)
-  perto(r.comparacao.diferencaPorKg, -0.20)
-  perto(r.comparacao.diferencaMensal, -0.20 * 15000)
-  perto(r.comparacao.diferencaAnual, -0.20 * 15000 * 12)
-})
+  it('o estudo do cliente não carrega dado interno do vendedor', () => {
+    const e = base()
+    e.identificacao.observacoesInternas = 'cliente pechincha demais'
+    const d = dadosEstudo(e, calcularEstudo(e), {
+      codigo: 'X', textoApresentacao: '', avisoNutricional: '', avisoEstimativa: '',
+    })
+    assert.equal(JSON.stringify(d).includes('pechincha'), false)
+    assert.equal(resumoTexto(d).includes('pechincha'), false)
+  })
 
-test('sem preço atual informado a comparação fica desligada e zerada', () => {
-  const r = calcularSimulacao(inputBase())
-  assert.equal(r.comparacao.informado, false)
-  assert.equal(r.comparacao.diferencaPorKg, 0)
-})
+  it('telefone vira formato wa.me', () => {
+    assert.equal(telefoneWhatsApp('(66) 99999-8888'), '5566999998888')
+    assert.equal(telefoneWhatsApp('5566999998888'), '5566999998888')
+    assert.equal(telefoneWhatsApp(''), '')
+  })
 
-// ---------------------------------------------------------------------------
-// Cenários e gráfico
-// ---------------------------------------------------------------------------
-
-test('cenário conservador custa mais e o otimista custa menos que o provável', () => {
-  const r = calcularSimulacao(inputBase())
-  const [cons, prov, otim] = r.cenarios
-  assert.ok(cons.custoBasePorKg > prov.custoBasePorKg)
-  assert.ok(otim.custoBasePorKg < prov.custoBasePorKg)
-})
-
-test('lucro por volume escala linearmente com as toneladas', () => {
-  const linhas = lucroPorVolume(0.4, [1, 5, 10, 20])
-  perto(linhas[0].lucro, 400)
-  perto(linhas[3].lucro, 8000)
-  assert.equal(linhas[2].kg, 10000)
-})
-
-// ===========================================================================
-// CENÁRIOS OBRIGATÓRIOS — valores conferidos na mão
-// ===========================================================================
-
-test('TESTE 1 — BOVINOS: 10.000 kg, custo 1,50, imp 5%, com 3%, margem 20%, mín 15%', () => {
-  const v = venda({ impostosPct: 5, comissaoPct: 3, margemDesejadaPct: 20, margemMinimaPct: 15 })
-  const custos = calcularCustos(1.50, custosZerados(), 10000, 40)
-  const precos = precificar(custos.custoBasePorKg, v)
-  const d = calcularDemanda(quantidade({ quantidadeInformada: 10000 }))
-  const r = calcularNegociado(precos.precoSugeridoPorKg, custos, precos, v, d, 40)
-
-  perto(precos.precoSugeridoPorKg, 1.50 / 0.72)       // 2,083333
-  perto(precos.precoMinimoPorKg, 1.50 / 0.77)         // 1,948052
-  perto(precos.precoEquilibrioPorKg, 1.50 / 0.92)     // 1,630435
-  perto(precos.descontoMaximoReaisPorKg, 1.50 / 0.72 - 1.50 / 0.77)
-  perto(precos.descontoMaximoPct, 6.4935064935, )
-  perto(r.margemRealPct, 20)
-  perto(r.lucroPorKg, (1.50 / 0.72) * 0.20)
-  perto(r.valorTotalPedido, (1.50 / 0.72) * 10000)    // 20.833,33
-  perto(r.lucroTotalPedido, (1.50 / 0.72) * 0.20 * 10000) // 4.166,67
-})
-
-test('TESTE 2 — SUÍNOS: 20.000 kg, custo 1,80, imp 5%, com 3%, margem 18%, mín 12%', () => {
-  const v = venda({ impostosPct: 5, comissaoPct: 3, margemDesejadaPct: 18, margemMinimaPct: 12 })
-  const custos = calcularCustos(1.80, custosZerados(), 20000, 40)
-  const precos = precificar(custos.custoBasePorKg, v)
-  const d = calcularDemanda(quantidade({ quantidadeInformada: 20000 }))
-  const r = calcularNegociado(precos.precoSugeridoPorKg, custos, precos, v, d, 40)
-
-  perto(precos.precoSugeridoPorKg, 1.80 / 0.74)  // 2,432432
-  perto(precos.precoMinimoPorKg, 2.25)           // 1,80 ÷ 0,80
-  perto(precos.descontoMaximoPct, 7.5)
-  perto(r.margemRealPct, 18)
-  perto(r.valorTotalPedido, (1.80 / 0.74) * 20000)
-  perto(r.lucroTotalPedido, (1.80 / 0.74) * 0.18 * 20000)
-})
-
-test('TESTE 3 — AVES: 15.000 kg, custo 2,06, imp 5%, com 3%, margem 15%, mín 10%', () => {
-  const v = venda({ impostosPct: 5, comissaoPct: 3, margemDesejadaPct: 15, margemMinimaPct: 10 })
-  const custos = calcularCustos(2.06, custosZerados(), 15000, 40)
-  const precos = precificar(custos.custoBasePorKg, v)
-  const d = calcularDemanda(quantidade({ quantidadeInformada: 15000 }))
-  const r = calcularNegociado(precos.precoSugeridoPorKg, custos, precos, v, d, 40)
-
-  perto(precos.precoSugeridoPorKg, 2.06 / 0.77)  // 2,675325
-  perto(precos.precoMinimoPorKg, 2.06 / 0.82)    // 2,512195
-  perto(precos.descontoMaximoPct, 6.0975609756)
-  perto(r.margemRealPct, 15)
-  perto(r.precoPorSaco, (2.06 / 0.77) * 40)
-  perto(r.valorTotalPedido, (2.06 / 0.77) * 15000)
-  perto(r.lucroTotalPedido, (2.06 / 0.77) * 0.15 * 15000)
-})
-
-test('TESTE 4 — MILHO TRITURADO: 8.000 kg, custo 1,20, imp 4%, com 2%, margem 15%, mín 10%', () => {
-  const v = venda({ impostosPct: 4, comissaoPct: 2, margemDesejadaPct: 15, margemMinimaPct: 10 })
-  const custos = calcularCustos(1.20, custosZerados(), 8000, 40)
-  const precos = precificar(custos.custoBasePorKg, v)
-  const d = calcularDemanda(quantidade({ quantidadeInformada: 8000 }))
-  const r = calcularNegociado(precos.precoSugeridoPorKg, custos, precos, v, d, 40)
-
-  perto(precos.precoSugeridoPorKg, 1.20 / 0.79)  // 1,518987
-  perto(precos.precoMinimoPorKg, 1.20 / 0.84)    // 1,428571
-  perto(precos.descontoMaximoPct, 5.9523809524)
-  perto(r.margemRealPct, 15)
-  perto(r.valorTotalPedido, (1.20 / 0.79) * 8000)
-  perto(r.lucroTotalPedido, (1.20 / 0.79) * 0.15 * 8000)
+  it('formatação brasileira nos valores', () => {
+    const t = resumoTexto(montar())
+    assert.ok(/R\$\s?\d{1,3}(\.\d{3})*,\d{2}/.test(t), `sem número pt-BR em:\n${t}`)
+  })
 })

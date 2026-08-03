@@ -40,8 +40,7 @@ const CatalogoAdmin = lazy(() => import('@/pages/CatalogoAdmin').then(m => ({ de
 const AtividadeDiaria = lazy(() => import('@/pages/AtividadeDiaria').then(m => ({ default: m.AtividadeDiaria })))
 const Projeto = lazy(() => import('@/pages/Projeto').then(m => ({ default: m.Projeto })))
 const Projeto3D = lazy(() => import('@/pages/Projeto3D').then(m => ({ default: m.Projeto3D })))
-const Viabilidade = lazy(() => import('@/pages/Viabilidade').then(m => ({ default: m.Viabilidade })))
-const VendaRacao = lazy(() => import('@/pages/VendaRacao').then(m => ({ default: m.VendaRacao })))
+const ProducaoPropria = lazy(() => import('@/pages/ProducaoPropria').then(m => ({ default: m.ProducaoPropria })))
 const Guia = lazy(() => import('@/pages/Guia').then(m => ({ default: m.Guia })))
 const AdminUsuarios = lazy(() => import('@/pages/AdminUsuarios').then(m => ({ default: m.AdminUsuarios })))
 const AdminPermissoes = lazy(() => import('@/pages/AdminPermissoes').then(m => ({ default: m.AdminPermissoes })))
@@ -294,13 +293,16 @@ function AppRoutes() {
     // Projeto 3D é liberado por permissão (menu.projeto_3d) — o menu já mostra pro vendedor,
     // então o guard precisa deixar passar por URL/nav também (senão redireciona pra /atendimentos).
     const projeto3dOk = p.startsWith('/projeto-3d') && can('menu.projeto_3d')
-    // Viabilidade da Ração: ferramenta de apoio à venda, liberada pra quem tem a permissão
+    // Guias de apoio à venda, liberadas pra quem tem a permissão da viabilidade
     const viabilidadeOk = (p.startsWith('/viabilidade') || p.startsWith('/guia-')) && can('menu.viabilidade')
-    // Venda de Ração: precificação/proposta — permissão própria, separada da viabilidade
-    const vendaRacaoOk = p.startsWith('/venda-racao') && can('menu.venda_racao')
+    // Produção Própria: o estudo de viabilidade completo. Aceita QUALQUER uma das
+    // duas permissões porque absorveu a calculadora que ficava em /viabilidade —
+    // quem já usava a antiga não pode perder a ferramenta.
+    const producaoPropriaOk = (p.startsWith('/producao-propria') || p.startsWith('/venda-racao') || p.startsWith('/viabilidade'))
+      && (can('menu.venda_racao') || can('menu.viabilidade'))
     // Roadmap & Feedback: vendedor VÊ o retorno dos feedbacks que enviou (#49)
     const roadmapOk = p.startsWith('/roadmap') && can('menu.roadmap')
-    const allowed = freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || vendaRacaoOk || roadmapOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
+    const allowed = freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || producaoPropriaOk || roadmapOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
     if (!allowed) return <Navigate to="/atendimentos" replace />
   }
 
@@ -310,17 +312,19 @@ function AppRoutes() {
   // navegação. Não passa por role_permissions de propósito: não existe linha
   // 'mapa' lá, e o papel nem aparece na matriz de /permissoes.
   //
-  // Os DOIS estudos de ração entraram em 03/08/2026 — são coisas diferentes:
-  //   /viabilidade  = vale a pena o CLIENTE fazer a própria ração (iframe da
-  //                   calculadora pública, não expõe dado do CRM)
-  //   /venda-racao  = a Branorte VENDER ração pronta (preço, margem, proposta).
-  //                   A RLS já protege: ele só vê/edita as simulações dele e não
-  //                   consegue alterar os padrões da empresa (venda_racao_ve_todas
-  //                   é falso pra esse papel).
+  // Os DOIS estudos de ração que entraram em 03/08/2026 viraram UM só: a
+  // /viabilidade era um iframe da calculadora pública e o /venda-racao precificava
+  // ração pronta — que a Branorte não vende. Ambos redirecionam pra
+  // /producao-propria, o estudo nativo. As duas rotas antigas seguem na lista
+  // porque o guard roda ANTES do <Navigate>: tirá-las mandaria o link salvo do
+  // Patrick pro mapa em vez do estudo.
   // As guias (/guia-animais, /guia-materias) ficaram DE FORA por ora; se for pra
   // liberar, é acrescentar aqui E no MENU_MAPA do Layout — os dois têm que casar.
   if (profile.role === 'mapa') {
-    const MAPA_PERMITIDAS = ['/mapa-visitas', '/mapa-representantes', '/viabilidade', '/venda-racao', '/perfil']
+    const MAPA_PERMITIDAS = [
+      '/mapa-visitas', '/mapa-representantes', '/producao-propria',
+      '/viabilidade', '/venda-racao', '/perfil',
+    ]
     if (!MAPA_PERMITIDAS.includes(loc.pathname)) {
       return <Navigate to="/mapa-visitas" replace />
     }
@@ -389,10 +393,14 @@ function AppRoutes() {
         <Route path="/atividade-diaria" element={<AtividadeDiaria />} />
         <Route path="/projeto" element={<Projeto />} />
         <Route path="/projeto-3d" element={<Projeto3D />} />
-        <Route path="/viabilidade" element={<Viabilidade />} />
-        {/* Módulo separado da /viabilidade: aqui a Branorte VENDE a ração (preço,
-            margem, proposta), lá o estudo é sobre o cliente montar a fábrica. */}
-        <Route path="/venda-racao" element={<VendaRacao />} />
+        {/* Estudo de Viabilidade da Produção Própria — motor ÚNICO da conta de
+            economia/payback. Absorveu a calculadora que ficava em iframe na
+            /viabilidade e o antigo /venda-racao (precificação de ração, que a
+            Branorte não faz). As duas rotas antigas redirecionam pra cá pra não
+            quebrar link salvo, favorito nem atalho no celular do vendedor. */}
+        <Route path="/producao-propria" element={<ProducaoPropria />} />
+        <Route path="/viabilidade" element={<Navigate to="/producao-propria" replace />} />
+        <Route path="/venda-racao" element={<Navigate to="/producao-propria" replace />} />
         <Route path="/guia-animais" element={<Guia hash="animais" title="Guia de Animais" subtitle="Raças e criações de cada cliente — o que falar pro produtor" />} />
         <Route path="/guia-materias" element={<Guia hash="materias" title="Matérias-primas da Ração" subtitle="Pra que serve cada ingrediente, quanto entra e o que muda por região" />} />
         <Route path="/perfil" element={<Perfil />} />

@@ -1,5 +1,5 @@
 /**
- * Formatação pt-BR do módulo Venda de Ração.
+ * Formatação pt-BR do módulo Produção Própria.
  *
  * Regra do projeto: a interface NUNCA mostra número em padrão americano.
  * Internamente os cálculos guardam precisão cheia; o arredondamento pra 2 casas
@@ -55,6 +55,26 @@ export function kg(v: number, casas = 0): string {
 /** 15,0 t */
 export function toneladas(v: number, casas = 1): string {
   return `${numero(v, casas)} t`
+}
+
+/** 18,4 meses — o prazo de retorno do investimento. */
+export function meses(v: number, casas = 1): string {
+  const x = num(v)
+  if (x <= 0) return '—'
+  if (x < 1) return 'menos de 1 mês'
+  return `${numero(x, casas)} ${x < 2 ? 'mês' : 'meses'}`
+}
+
+/** 1,5 ano / 3,2 anos. */
+export function anos(v: number, casas = 1): string {
+  const x = num(v)
+  if (x <= 0) return '—'
+  return `${numero(x, casas)} ${x < 2 ? 'ano' : 'anos'}`
+}
+
+/** 250 kg/h */
+export function kgHora(v: number): string {
+  return `${numero(v, 0)} kg/h`
 }
 
 /** DD/MM/AAAA a partir de ISO yyyy-mm-dd (sem passar por Date, que puxa fuso). */

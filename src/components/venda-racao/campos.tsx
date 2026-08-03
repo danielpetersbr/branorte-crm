@@ -1,5 +1,5 @@
 /**
- * Campos do formulário da Venda de Ração.
+ * Campos do formulário do estudo de produção própria.
  *
  * Números são digitados em pt-BR (vírgula decimal, ponto de milhar) e guardados
  * como `number`. O truque é o mesmo do BRLInput do CRM: manter uma string local
@@ -121,11 +121,17 @@ export function Campo({
 }
 
 export function Etapa({
-  numero, titulo, children,
-}: { numero: number | string; titulo: ReactNode; children: ReactNode }) {
+  numero, titulo, descricao, children,
+}: {
+  numero: number | string
+  titulo: ReactNode
+  descricao?: ReactNode
+  children: ReactNode
+}) {
   return (
     <div className="vr-step">
       <div className="vr-q"><span className="vr-n">{numero}</span><span>{titulo}</span></div>
+      {descricao ? <div className="vr-stepdesc">{descricao}</div> : null}
       {children}
     </div>
   )
@@ -165,36 +171,48 @@ export function Selecao<T extends string>({
   )
 }
 
-/** Custo com liga/desliga — desligado sai da conta e o campo fica inerte. */
+/**
+ * Custo com liga/desliga — desligado sai da conta e o campo fica inerte.
+ *
+ * `origem` existe porque nenhum valor padrão pode ser tratado como custo real
+ * da propriedade: o vendedor precisa ver de onde a estimativa veio pra decidir
+ * se confirma, ajusta ou desliga.
+ */
 export function CustoLinha({
-  label, unidade, custo, onChange, casas = 3,
+  label, unidade, custo, onChange, casas = 3, origem, disabled,
 }: {
   label: string
   unidade: string
   custo: CustoOpcional
   onChange: (c: CustoOpcional) => void
   casas?: number
+  origem?: string
+  disabled?: boolean
 }) {
   return (
-    <div className="vr-frow" style={{ gridTemplateColumns: 'auto minmax(0,1fr) 90px' }}>
-      <input
-        type="checkbox"
-        checked={custo.ativo}
-        aria-label={`Ativar ${label}`}
-        style={{ width: 16, height: 16, accentColor: 'var(--vr-green)' }}
-        onChange={e => onChange({ ...custo, ativo: e.target.checked })}
-      />
-      <span className="fn" style={{ opacity: custo.ativo ? 1 : 0.5 }}>
-        {label} <span style={{ color: 'var(--vr-ink40)', fontWeight: 400 }}>{unidade}</span>
-      </span>
-      <CampoNumero
-        valor={custo.valor}
-        casas={casas}
-        disabled={!custo.ativo}
-        aria-label={label}
-        onChange={v => onChange({ ...custo, valor: v })}
-        className=""
-      />
+    <div className="vr-custo">
+      <div className="vr-frow" style={{ gridTemplateColumns: 'auto minmax(0,1fr) 90px' }}>
+        <input
+          type="checkbox"
+          checked={custo.ativo}
+          disabled={disabled}
+          aria-label={`Ativar ${label}`}
+          style={{ width: 16, height: 16, accentColor: 'var(--vr-green)' }}
+          onChange={e => onChange({ ...custo, ativo: e.target.checked })}
+        />
+        <span className="fn" style={{ opacity: custo.ativo ? 1 : 0.5 }}>
+          {label} <span style={{ color: 'var(--vr-ink40)', fontWeight: 400 }}>{unidade}</span>
+        </span>
+        <CampoNumero
+          valor={custo.valor}
+          casas={casas}
+          disabled={disabled || !custo.ativo}
+          aria-label={label}
+          onChange={v => onChange({ ...custo, valor: v })}
+          className=""
+        />
+      </div>
+      {origem ? <div className="vr-origem">{origem}</div> : null}
     </div>
   )
 }
