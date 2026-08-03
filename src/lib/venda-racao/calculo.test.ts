@@ -16,6 +16,7 @@ import {
 import { CAPACIDADES_BRANORTE, formulaPadrao, normalizarStatus } from './catalogo'
 import { novoEstudo, normalizarInput, trocarEspecie } from './estado'
 import { dadosEstudo, frasePrincipal, resumoTexto, telefoneWhatsApp, textoWhatsApp } from './estudo'
+import { brl, num } from './formato'
 import type { EstudoInput, Necessidade } from './tipos'
 
 // ---------------------------------------------------------------------------
@@ -75,6 +76,14 @@ describe('utilitários numéricos', () => {
   it('dec() converte inteiro pra decimal', () => {
     assert.equal(dec(20), 0.2)
     assert.equal(dec(0), 0)
+  })
+
+  it('zero negativo nunca chega na tela como "-R$ 0,00"', () => {
+    // estudo em branco: (0 - custo) x 0 kg = -0
+    assert.equal(Object.is(num(-0), 0), true)
+    assert.equal(brl(-0), brl(0))
+    assert.equal(brl((0 - 1.6) * 0), 'R$'.concat(brl(0).slice(2)))
+    assert.equal(brl(-0).includes('-'), false)
   })
 })
 

@@ -6,10 +6,17 @@
  * acontece SÓ aqui, na hora de exibir.
  */
 
-/** Troca NaN/Infinity por 0 — nunca deixa vazar pra tela. */
+/**
+ * Troca NaN/Infinity por 0 — nunca deixa vazar pra tela.
+ *
+ * O `n === 0 ? 0 : n` mata o ZERO NEGATIVO. Ele aparece de verdade: com o estudo
+ * em branco a economia é (0 − custo) × 0 kg = -0, e `(-0).toLocaleString` cospe
+ * "-R$ 0,00" no rodapé. Menos zero não existe pra quem lê.
+ */
 export function num(v: unknown): number {
   const n = typeof v === 'number' ? v : Number(v)
-  return Number.isFinite(n) ? n : 0
+  if (!Number.isFinite(n)) return 0
+  return n === 0 ? 0 : n
 }
 
 /** R$ 1.234,56 */
