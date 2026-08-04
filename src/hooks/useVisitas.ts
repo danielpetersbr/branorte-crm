@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
+import type { Precisao } from '@/lib/viagem'
 
 export interface Visita {
   id: string
@@ -62,6 +63,14 @@ export interface OrcamentoPonto {
   n_vendas: number
   lat: number
   lng: number
+  // ── vindos da v2 ──
+  // cli_key: identidade estável do cliente (a RPC já calculava internamente; a v2 expõe).
+  //   É a chave que a viagem persiste — telefone bruto não serve, 119 clientes têm mais de um.
+  // precisao: de onde veio a coordenada. Hoje NENHUM cliente tem 'endereco' — cidade_geocache
+  //   e vendas_mapa são ambos por município. 'estado' = a coordenada serve a várias cidades,
+  //   então o cliente aparece numa cidade que não é a dele.
+  cli_key: string
+  precisao: Precisao
 }
 
 // contagem real de vendas (pontos) com coordenada — pra reconciliar com o mapa-vendas do controle
@@ -77,11 +86,14 @@ export function useVendasMapaCount() {
   })
 }
 
+// v2 = mesmas 14 colunas da v1 (verificado: 0 divergências) + cli_key + precisao.
+// A v2 faz left join em cliente_localizacao, então confirmar um endereço move o pino
+// na hora — basta invalidar esta query.
 export function useOrcamentosMapa() {
   return useQuery<OrcamentoPonto[]>({
     queryKey: ['orcamentos-mapa'],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('mapa_orcamentos')
+      const { data, error } = await supabase.rpc('mapa_orcamentos_v2')
       if (error) throw error
       return (data ?? []) as OrcamentoPonto[]
     },
