@@ -57,6 +57,37 @@ async function carregarConfig(supa: any) {
   }
 }
 
+// PRECO NO EXPEDIENTE (Daniel 03/08) ----------------------------------------------------------
+// Cinco vendedores (LUCAS, GUSTAVO, IGOR, EDILSON JR, RAMON) votaram contra a IA mandar a IMAGEM
+// DE PRECO das fabricas enquanto eles estao no batente: no expediente quem trata valor sao eles.
+// Fora da faixa (noite, fim de semana, feriado) nada muda — a IA manda como sempre mandou.
+// Dia util 8h-18h no fuso de Sao Paulo. Uso 'en-GB' com hour12:false porque o padrao BR devolve
+// "24" na meia-noite; e leio hora e dia da semana da MESMA formatacao pra nao misturar fusos.
+function ehExpedienteBR(agora: Date = new Date()): boolean {
+  const f = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'America/Sao_Paulo', hour: '2-digit', hour12: false, weekday: 'short',
+  }).formatToParts(agora)
+  const hora = Number(f.find((p) => p.type === 'hour')?.value ?? '-1')
+  const dia = String(f.find((p) => p.type === 'weekday')?.value ?? '')
+  const diaUtil = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(dia)
+  return diaUtil && hora >= 8 && hora < 18
+}
+
+// Le a flag do vendedor. FAIL-OPEN de proposito: se a consulta cair, a IA segue mandando o preco
+// como sempre fez. O contrario (banco fora do ar => todo mundo fica sem preco) seria uma mudanca
+// de comportamento silenciosa na frota inteira por causa de um erro de rede.
+async function vendedorSemPrecoNoExpediente(supa: any, vendedor: string): Promise<boolean> {
+  try {
+    const { data, error } = await supa.from('ia_vendedor_config')
+      .select('sem_preco_expediente').ilike('vendedor_nome', String(vendedor || '')).maybeSingle()
+    if (error) { console.error('[ia-atendente] flag sem_preco_expediente indisponivel:', error.message); return false }
+    return data?.sem_preco_expediente === true
+  } catch (e) {
+    console.error('[ia-atendente] flag sem_preco_expediente excecao:', String(e))
+    return false
+  }
+}
+
 async function carregarMidias(supa: any) {
   try {
     const { data } = await supa.from('ia_midias')
@@ -508,7 +539,11 @@ function textoConsulta(c: any): string {
     'Cliente: ' + (c.cliente_nome || 'sem nome') + (c.cliente_telefone ? ' (' + c.cliente_telefone + ')' : ''),
   ]
   if (c.contexto) linhas.push('Contexto: ' + c.contexto)
-  linhas.push('', 'Duvida:', c.duvida, '', 'Me responde aqui que eu passo pro cliente.')
+  // Blindagem: recado sem duvida nao da pro vendedor responder. Melhor uma linha honesta do que
+  // um campo em branco que ele le tres vezes procurando a pergunta.
+  const d = String(c.duvida || '').trim()
+  linhas.push('', 'Duvida:', d || '(a IA nao registrou a duvida — me chama que eu vejo o que ela precisa)',
+              '', 'Me responde aqui que eu passo pro cliente.')
   linhas.push('Se preferir atender voce mesmo, responda "deixa comigo".')
   return linhas.join('\n')
 }
@@ -672,6 +707,74 @@ async function sincronizarAtendimento(supa: any, chatId: string, vendedor: strin
   } catch (_) { /* best-effort — nunca derruba a resposta da IA */ }
 }
 
+// SLUG QUASE-CERTO NAO PODE MATAR A CONVERSA (31/07) ------------------------------------------
+// O catalogo do prompt mostra a producao ja corrigida (`producao_kgh * 10`, porque a coluna
+// guarda o CV do moinho — erro de importacao conhecido). So que varios slugs REAIS carregam o
+// numero CRU: compacta-02-2001000, compacta-01-100500. O modelo entao ve "~2000 kg/h", nota que
+// slug costuma ter o numero dentro, e COMPOE "compacta-02-2000". O padrao e quase verdadeiro e
+// ele completa errado. Placar medido na conversa de teste: 4 tentativas, 0 acertos
+// (mini-fabrica-300, mini-fabrica, mini-fabrica-30150, compacta-02-2000). Nas 4 o cliente ouviu
+// "vou formalizar o orcamento" e ficou pendurado — a IA se desligou em AI_ERROR e emudeceu.
+//
+// Isto NAO afrouxa a regra de nao inventar produto: o resolver so devolve linha que EXISTE e
+// esta ativa. Empate continua virando consulta — chutar armazenamento e pior que perguntar.
+async function resolverModelo(supa: any, slugBruto: string, volt: string, mem: any) {
+  const norm = (s: string) => String(s || '').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  const alvo = norm(slugBruto)
+  if (!alvo) return { modelo: null as any, via: 'vazio' }
+
+  const { data: todos } = await supa.from('orcamento_modelos')
+    .select('slug, pacote, producao_kgh, armazenamento_kg, voltagem, total_proposta, is_master, is_jr')
+    .eq('ativo', true)
+  if (!todos?.length) return { modelo: null as any, via: 'catalogo-vazio' }
+
+  const exato = todos.find((m: any) => m.slug === slugBruto)
+  if (exato) return { modelo: exato, via: 'exato' }
+
+  const porNorm = todos.filter((m: any) => norm(m.slug) === alvo)
+  if (porNorm.length === 1) return { modelo: porNorm[0], via: 'normalizado' }
+
+  // Daqui pra baixo so a voltagem confirmada: mono e tri tem precos diferentes, chutar sai caro.
+  const daVolt = todos.filter((m: any) => m.voltagem === volt)
+  if (!daVolt.length) return { modelo: null as any, via: 'sem-voltagem' }
+
+  // "compacta-02-2000" contra "compacta-02-2001000-trifasico"
+  const semVolt = (n: string) => n.replace(/-(mono|tri)fasico$/, '')
+  const porTexto = daVolt.filter((m: any) => {
+    const n = norm(m.slug)
+    return semVolt(n) === alvo || n.startsWith(alvo + '-') || semVolt(n).startsWith(alvo)
+  })
+  if (porTexto.length === 1) return { modelo: porTexto[0], via: 'prefixo' }
+
+  // Pelo numero que o cliente falou: catalogo e cliente conversam em kg/h (producao_kgh * 10).
+  const pac = /compacta-?0?3/.test(alvo) ? 'COMPACTA 03'
+    : /compacta-?0?2/.test(alvo) ? 'COMPACTA 02'
+    : /compacta-?0?1/.test(alvo) ? 'COMPACTA 01'
+    : /mini-?fabrica/.test(alvo) ? 'MINI FABRICA' : null
+  const kgh = Number(mem?.producao_kgh) > 0 ? Number(mem.producao_kgh) : null
+  if (pac && kgh) {
+    let cand = daVolt.filter((m: any) =>
+      m.pacote === pac && (Number(m.producao_kgh) || 0) * 10 === kgh)
+    // Desempate por LINHA (master/jr), nunca filtro duro: "master" e "jr" sao palavras que o
+    // modelo escreve ou omite de proposito — sinal de verdade, diferente do numero que ele chuta.
+    // Duro quebraria a MINI FABRICA, que so existe como jr: o pedido vem "mini-fabrica-300",
+    // sem "jr", e a unica linha real e is_jr=true. Por isso so desempata quando ja ha empate.
+    if (cand.length > 1) {
+      const querMaster = /(^|-)master(-|$)/.test(alvo)
+      const querJr = /(^|-)jr(-|$)/.test(alvo)
+      const daLinha = cand.filter((m: any) => !!m.is_master === querMaster && !!m.is_jr === querJr)
+      if (daLinha.length === 1) cand = daLinha
+    }
+    if (cand.length === 1) return { modelo: cand[0], via: 'producao' }
+    if (cand.length > 1) {
+      return { modelo: null as any, via: 'ambiguo', candidatos: cand.map((m: any) => m.slug) }
+    }
+  }
+  return { modelo: null as any, via: 'sem-match' }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS })
   if (req.method !== 'POST') return new Response('method not allowed', { status: 405, headers: CORS })
@@ -721,7 +824,7 @@ Deno.serve(async (req: Request) => {
       const vend = String(vendedor_nome).toUpperCase()
 
       const { data } = await supa.from('ia_consultas_internas')
-        .select('codigo, tipo, chat_id, cliente_nome, duvida, criado_em, enviada_em')
+        .select('codigo, tipo, chat_id, cliente_nome, duvida, criado_em, enviada_em, destinatario_tel')
         .eq('vendedor_nome', vend)
         .eq('status', 'aguardando').not('enviada_em', 'is', null)
         .order('criado_em', { ascending: true }).limit(20)
@@ -740,6 +843,20 @@ Deno.serve(async (req: Request) => {
           if (!error) avisos.push(v)
         }
       } catch (e) { console.error('[ia-atendente] vencidas falhou:', String(e)) }
+
+      // (30/07) DIAGNOSTICO DA LEITURA. Cinco consultas ficaram 'aguardando' o dia inteiro com a
+      // resposta escrita no WhatsApp, e daqui nao da pra saber ONDE quebrou: o ciclo nao rodou? o
+      // WPP nao estava pronto? leu o chat e nao achou mensagem? achou e nao casou com a consulta?
+      // A extensao manda o que viu no ciclo ANTERIOR e isso fica visivel no banco.
+      if (body.diag) {
+        try {
+          await supa.from('ia_ciclo_debug').upsert({
+            vendedor_nome: vend,
+            consultas_diag: JSON.stringify(body.diag).slice(0, 800),
+            consultas_diag_em: new Date().toISOString(),
+          }, { onConflict: 'vendedor_nome' })
+        } catch (e) { console.error('[ia-atendente] diag consultas:', (e as Error).message) }
+      }
 
       return j({ ok: true, consultas: Array.isArray(data) ? data : [], avisos })
     }
@@ -798,9 +915,121 @@ Deno.serve(async (req: Request) => {
       return j({ ok: true, assumiu, chat_id: c.chat_id })
     }
 
+    // (31/07) BLOQUEIO PERMANENTE POR CLIENTE — o botao do vendedor.
+    // Desligar a IA e pontual: o proximo fluxo do funil, a auto-prospeccao ou uma troca de
+    // etiqueta religam. Foi assim que o Eder desligou as 15:07 e a cadencia escreveu por cima
+    // dele as 15:30. Bloquear e definitivo: nenhum caminho de ativacao passa por cima.
+    if (action === 'bloquear') {
+      const { chat_id, vendedor_nome, bloquear, nome_contato } = body
+      if (!chat_id || !vendedor_nome) return j({ ok: false, error: 'chat_id e vendedor_nome obrigatorios' }, 400)
+      const bloq = bloquear !== false
+      await supa.from('ia_atendimentos').upsert({
+        chat_id, vendedor_nome, nome_contato: nome_contato || null,
+        // Bloquear tambem DESLIGA agora: o vendedor que aperta o botao no meio de um atendimento
+        // quer a IA calada ja, nao a partir da proxima tentativa de ligar.
+        ...(bloq ? { ativo: false, motivo_desligamento: 'vendedor_bloqueou' } : {}),
+        bloqueado_em: bloq ? new Date().toISOString() : null,
+        bloqueado_por: bloq ? String(vendedor_nome).toUpperCase() : null,
+        atualizado_em: new Date().toISOString(),
+      }, { onConflict: 'chat_id' })
+      try {
+        await supa.from('automation_runs').insert({
+          regra_key: 'ia_atendente', vendedor_nome, chat_id,
+          acao: bloq ? 'ia_bloqueada' : 'ia_desbloqueada', modo: 'auto', executor: 'vendedor', status: 'executado',
+          motivo: bloq ? 'vendedor barrou a IA neste cliente (permanente)' : 'vendedor liberou a IA neste cliente',
+        })
+      } catch (_) { /* auditoria best-effort */ }
+      return j({ ok: true, bloqueado: bloq })
+    }
+
+    // (31/07) COMANDO DE ATIVACAO DA PERSONA V3 pelo proprio WhatsApp.
+    // Ate agora "#branorte-v3-on" nao existia em lugar nenhum do codigo — combinamos o codigo,
+    // mas quem ligava era eu, na mao, no banco. O Daniel mandou tres vezes hoje e nada aconteceu.
+    if (action === 'persona_comando') {
+      const { vendedor_nome, texto } = body
+      if (!vendedor_nome || !texto) return j({ ok: false, error: 'vendedor_nome e texto obrigatorios' }, 400)
+      const t = String(texto).toLowerCase().replace(/\s+/g, '')
+      const liga = /#branorte-?v3-?on\b/.test(t)
+      const desliga = /#branorte-?v3-?off\b/.test(t)
+      if (!liga && !desliga) return j({ ok: true, skip: 'nao_e_comando' })
+      const vend = normNome(vendedor_nome)
+      // TRAVA ANTI-LOOP (31/07): a mensagem de confirmacao carrega o proprio codigo ("para
+      // desligar: #branorte-v3-off") e a extensao a relia como comando novo — ligou/desligou
+      // ~20 vezes em 2 minutos, cada volta mandando mensagem de verdade no WhatsApp. A extensao
+      // agora ignora msg propria, mas a trava fica AQUI tambem: e o unico ponto que nenhuma
+      // versao velha de extensao consegue contornar.
+      {
+        const { data: ant } = await supa.from('ia_persona_ativacao')
+          .select('ativo, atualizado_em').eq('vendedor_nome', vend).maybeSingle()
+        if (ant?.atualizado_em && Date.now() - Date.parse(ant.atualizado_em) < 60_000) {
+          console.warn('[ia-atendente] comando ignorado (menos de 60s do anterior) -> ' + vend)
+          return j({ ok: true, skip: 'comando_repetido', ligada: !!ant.ativo })
+        }
+      }
+      // 7 dias: a trava original de 12h expirava de madrugada e derrubava o piloto no meio do
+      // teste do dia seguinte, sem aviso — protegia de um risco menor do que o que causava.
+      await supa.from('ia_persona_ativacao').upsert({
+        vendedor_nome: vend, persona_versao: 'v3', ativo: liga,
+        expira_em: liga ? new Date(Date.now() + 7 * 86400_000).toISOString() : null,
+        atualizado_em: new Date().toISOString(),
+      }, { onConflict: 'vendedor_nome' })
+      console.log('[ia-atendente] persona v3 ' + (liga ? 'LIGADA' : 'desligada') + ' por comando -> ' + vend)
+      return j({ ok: true, ligada: liga, ate: liga ? new Date(Date.now() + 7 * 86400_000).toISOString() : null })
+    }
+
+    // (31/07) CONSULTA DE MODELOS — a IA (e a tela, e quem mais precisar) pergunta em vez de
+    // carregar catalogo inteiro no prompt. Aceita o jeito que o CLIENTE fala: "compacta 02",
+    // "2000 kg/h", "trifasica". A traducao "producao real = CV do moinho x 10" mora AQUI, num
+    // lugar so — nao espalhada por prompt, tela e worker.
+    if (action === 'buscar_modelos') {
+      const termo = String(body.termo || '').toLowerCase()
+      const pacote = /compacta\s*0?3/.test(termo) ? 'COMPACTA 03'
+        : /compacta\s*0?2/.test(termo) ? 'COMPACTA 02'
+        : /compacta\s*0?1/.test(termo) ? 'COMPACTA 01'
+        : /mini\s*f[aá]brica/.test(termo) ? 'MINI FABRICA' : (body.pacote || null)
+      const volt = /trif[aá]sic/.test(termo) ? 'trifasico'
+        : /monof[aá]sic/.test(termo) ? 'monofasico' : (body.voltagem || null)
+      // "2000 kg/h" -> o campo guarda o CV do moinho (200), nao a producao. Divide por 10.
+      const mKg = termo.match(/(\d{2,5})\s*(?:kg|kg\/h|quilos?)/)
+      const kgh = body.producao_kgh ? Number(body.producao_kgh) : (mKg ? Number(mKg[1]) : null)
+
+      let q = supa.from('orcamento_modelos')
+        .select('slug, pacote, producao_kgh, armazenamento_kg, voltagem, total_proposta')
+        .eq('ativo', true)
+      if (pacote) q = q.eq('pacote', pacote)
+      if (volt) q = q.eq('voltagem', volt)
+      if (kgh) q = q.eq('producao_kgh', Math.round(kgh / 10))
+      const { data, error } = await q.order('producao_kgh').limit(40)
+      if (error) return j({ ok: false, error: error.message }, 500)
+
+      return j({ ok: true, filtro: { pacote, voltagem: volt, producao_kgh: kgh },
+        modelos: (data || []).map((m: any) => ({
+          slug: m.slug, pacote: m.pacote,
+          producao_kgh: (Number(m.producao_kgh) || 0) * 10,   // como o cliente fala
+          armazenamento_kg: m.armazenamento_kg,
+          voltagem: m.voltagem, total: Number(m.total_proposta || 0),
+        })) })
+    }
+
+    if (action === 'bloqueio_status') {
+      const { chat_id } = body
+      if (!chat_id) return j({ ok: false, error: 'chat_id obrigatorio' }, 400)
+      const { data } = await supa.from('ia_atendimentos').select('bloqueado_em, bloqueado_por').eq('chat_id', chat_id).maybeSingle()
+      return j({ ok: true, bloqueado: !!data?.bloqueado_em, por: data?.bloqueado_por || null })
+    }
+
     if (action === 'toggle') {
       const { chat_id, vendedor_nome, ativo, nome_contato } = body
       if (!chat_id || !vendedor_nome) return j({ ok: false, error: 'chat_id e vendedor_nome obrigatorios' }, 400)
+      // Ligar num chat bloqueado nao passa — venha o pedido de onde vier (botao, fluxo, scan).
+      // Desligar sempre passa: nunca queremos travar o caminho que CALA a IA.
+      if (ativo !== false) {
+        const { data: bl } = await supa.from('ia_atendimentos').select('bloqueado_em').eq('chat_id', chat_id).maybeSingle()
+        if (bl?.bloqueado_em) {
+          console.log('[ia-atendente] ativacao barrada (chat bloqueado): ' + chat_id)
+          return j({ ok: false, skip: 'chat_bloqueado' })
+        }
+      }
       // Auditoria honesta: o desligamento AUTOMATICO (detector vendedor-assumiu) nao pode
       // aparecer como clique humano. A extensao manda executor/motivo; default = vendedor.
       const execRaw = ['detector', 'sistema', 'fluxo'].includes(String(body.executor)) ? String(body.executor) : 'vendedor'
@@ -829,8 +1058,9 @@ Deno.serve(async (req: Request) => {
     if (action === 'status') {
       const { chat_id } = body
       if (!chat_id) return j({ ok: false, error: 'chat_id obrigatorio' }, 400)
-      const { data } = await supa.from('ia_atendimentos').select('ativo, vendedor_nome').eq('chat_id', chat_id).maybeSingle()
-      return j({ ok: true, ativo: !!(data && data.ativo), vendedor: data?.vendedor_nome || null })
+      const { data } = await supa.from('ia_atendimentos').select('ativo, vendedor_nome, bloqueado_em, bloqueado_por').eq('chat_id', chat_id).maybeSingle()
+      return j({ ok: true, ativo: !!(data && data.ativo), vendedor: data?.vendedor_nome || null,
+                 bloqueado: !!data?.bloqueado_em, bloqueado_por: data?.bloqueado_por || null })
     }
 
     if (action === 'listar') {
@@ -843,7 +1073,22 @@ Deno.serve(async (req: Request) => {
       // HEARTBEAT DO CICLO (diagnostico): marca que a extensao DESTE vendedor pediu a lista.
       // Sem isto nao da pra saber se a IA muda e' ciclo parado (nao chama) ou filtro local.
       try { await supa.from('ia_ciclo_debug').upsert({ vendedor_nome, ultimo_listar: new Date().toISOString(), chats_ativos: (data || []).length, client_hint: body.diag ? JSON.stringify(body.diag).slice(0, 400) : null }, { onConflict: 'vendedor_nome' }) } catch (_) {}
-      return j({ ok: true, chats: data || [] })
+      // (30/07) ORIENTACAO PENDENTE marcada AQUI, na lista. O ciclo da extensao pula o chat
+      // quando a ultima msg e da propria IA (background.js: `if (ult.fromMe) continue`) — e o
+      // fluxo de consulta cai exatamente nisso: ela diz "vou confirmar", o vendedor responde,
+      // e ninguem mais chama esta edge. Marcar na lista custa UMA query por ciclo (nao uma por
+      // chat) e deixa a extensao decidir sem round-trip extra.
+      const chats: any[] = data || []
+      if (chats.length) {
+        try {
+          const { data: pend } = await supa.from('ia_consultas_internas')
+            .select('chat_id').eq('status', 'respondida').is('usada_em', null)
+            .in('chat_id', chats.map((c: any) => c.chat_id))
+          const comOrient = new Set((pend || []).map((p: any) => p.chat_id))
+          for (const c of chats) if (comOrient.has(c.chat_id)) c.orientacao_nova = true
+        } catch (e) { console.error('[ia-atendente] listar orientacoes pendentes:', (e as Error).message) }
+      }
+      return j({ ok: true, chats })
     }
 
     if (action === 'listar_modelos') {
@@ -920,7 +1165,8 @@ Deno.serve(async (req: Request) => {
           .overlaps('label_ids', prospIds).gt('updated_at', desde).limit(300)
         for (const c of (chats || [])) {
           if (normNome(c.vendedor_nome) !== vend) continue
-          const { data: ex } = await supa.from('ia_atendimentos').select('id, ativo, motivo_desligamento, atualizado_em').eq('chat_id', c.chat_id).maybeSingle()
+          const { data: ex } = await supa.from('ia_atendimentos').select('id, ativo, motivo_desligamento, atualizado_em, bloqueado_em').eq('chat_id', c.chat_id).maybeSingle()
+          if (ex?.bloqueado_em) continue   // vendedor barrou a IA neste cliente: nem religa nem cria
           // (28/07) RELIGAMENTO. Antes era `if (ex) continue`: bastava ter tido registro UMA VEZ
           // na vida pra nunca mais religar, mesmo o chat voltando pra PROSPECÇÃO com o cliente
           // falando. Medido: 193 travados, 31 com cliente esperando. Religa SO quando quem
@@ -976,7 +1222,19 @@ Deno.serve(async (req: Request) => {
       const { chat_id } = body
       if (!chat_id) return j({ ok: false, error: 'chat_id obrigatorio' }, 400)
       await supa.from('ia_atendimentos').update({ dados_coletados: {}, temperatura: null, memoria_limpa_em: new Date().toISOString(), atualizado_em: new Date().toISOString() }).eq('chat_id', chat_id)
-      return j({ ok: true })
+      // (30/07) O reset apaga a CONVERSA (memoria_limpa_em corta as msgs) mas nao apagava as
+      // consultas — e a orientacao sobrevivente chegava orfa: o modelo recebia "a resposta foi
+      // 5 vezes" sem nenhuma conversa em volta, se reapresentava do zero e enrolava. Se nao ha
+      // mais historico, nao ha o que responder com aquela orientacao. Fecha tudo que estava no ar
+      // neste chat — aberta (ninguem vai mais responder um contexto que sumiu) e respondida ainda
+      // nao entregue (perdeu o dono).
+      const { data: fechadas } = await supa.from('ia_consultas_internas')
+        .update({ status: 'cancelada', usada_em: new Date().toISOString(), atualizado_em: new Date().toISOString() })
+        .eq('chat_id', chat_id).in('status', ['aguardando', 'respondida']).is('usada_em', null)
+        .select('codigo')
+      const codigos = (fechadas || []).map((c: any) => c.codigo)
+      if (codigos.length) console.log('[ia-atendente] reset de memoria fechou ' + codigos.join(', ') + ' (' + chat_id + ')')
+      return j({ ok: true, consultas_fechadas: codigos })
     }
 
     if (action === 'get_consciencia') {
@@ -1095,7 +1353,66 @@ Deno.serve(async (req: Request) => {
       if (!chat_id || !vendedor_nome) return j({ ok: false, error: 'chat_id e vendedor_nome obrigatorios' }, 400)
       if (!OPENAI_KEY) return j({ ok: false, error: 'OPENAI_API_KEY nao configurada' }, 500)
 
+      // (31/07) COMANDO DA PERSONA CHEGA COMO MENSAGEM DE CLIENTE.
+      // Eu tinha implementado a leitura no chat do vendedor consigo mesmo — mas o combinado
+      // sempre foi "codigo enviado de OUTRO WhatsApp". O comando entra como msg recebida num
+      // chat normal, e este e o unico ponto por onde toda mensagem passa. Trata e NAO responde:
+      // e comando, nao conversa.
+      {
+        const ultCli = [...(Array.isArray(mensagens_chat) ? mensagens_chat : [])]
+          .filter((m: any) => !m.fromMe).sort((a: any, b: any) => (b.t ?? 0) - (a.t ?? 0))[0]
+        const corpo = String(ultCli?.body || '').toLowerCase().replace(/\s+/g, '')
+        const cmdOn = /#branorte-?v3-?on\b/.test(corpo)
+        const cmdOff = /#branorte-?v3-?off\b/.test(corpo)
+        if (cmdOn || cmdOff) {
+          const vendC = normNome(vendedor_nome)
+          await supa.from('ia_persona_ativacao').upsert({
+            vendedor_nome: vendC, persona_versao: 'v3', ativo: cmdOn,
+            expira_em: cmdOn ? new Date(Date.now() + 7 * 86400_000).toISOString() : null,
+            atualizado_em: new Date().toISOString(),
+          }, { onConflict: 'vendedor_nome' })
+          try {
+            await supa.from('automation_runs').insert({
+              regra_key: 'ia_atendente', vendedor_nome: vendC, chat_id,
+              acao: cmdOn ? 'persona_v3_ligada' : 'persona_v3_desligada', modo: 'auto',
+              executor: 'vendedor', status: 'executado', motivo: 'comando no chat: ' + corpo.slice(0, 40),
+            })
+          } catch (_) { /* auditoria best-effort */ }
+          // (31/07) O comando LIGA A IA NESTE CHAT tambem. Antes ele so trocava a persona e o
+          // vendedor ainda tinha que apertar o robo — mandou o codigo, recebeu "IA V3 ligada" e
+          // a IA continuava muda. Duas acoes pra uma intencao so. Nao mexe em chat BLOQUEADO:
+          // cadeado e decisao permanente e nenhum comando passa por cima.
+          if (cmdOn) {
+            const { data: bl } = await supa.from('ia_atendimentos').select('bloqueado_em').eq('chat_id', chat_id).maybeSingle()
+            if (!bl?.bloqueado_em) {
+              await supa.from('ia_atendimentos').upsert({
+                chat_id, vendedor_nome: vendC, nome_contato: nome_contato || null,
+                ativo: true, origem: 'comando_v3', ligado_em: new Date().toISOString(),
+                motivo_desligamento: null, atualizado_em: new Date().toISOString(),
+              }, { onConflict: 'chat_id' })
+            }
+          }
+          console.log('[ia-atendente] persona v3 ' + (cmdOn ? 'LIGADA' : 'desligada') + ' por comando -> ' + vendC)
+          // Responde a confirmacao NO PROPRIO chat: sem retorno visivel o vendedor manda o
+          // codigo de novo achando que nao pegou (aconteceu 5x hoje).
+          // Sem o codigo por extenso: a confirmacao carregando "#branorte-v3-off" era relida
+          // como comando novo e virava loop de liga/desliga.
+          return j({ ok: true, texto: cmdOn
+            ? 'IA V3 ligada e ja atendendo esta conversa. Vale 7 dias. Mande o codigo terminando em "off" para desligar.'
+            : 'IA V3 desligada. Atendimentos voltam ao modo normal. Mande o codigo terminando em "on" para ligar.',
+            acoes: { etiqueta: null, desligada: false, marcar_nao_lida: false }, comando: true })
+        }
+      }
+
       const { data: st } = await supa.from('ia_atendimentos').select('*').eq('chat_id', chat_id).maybeSingle()
+      // Rede de seguranca do bloqueio: barrar so na ATIVACAO depende de eu ter coberto todos os
+      // caminhos que ligam a IA (toggle, auto_scan, ia_assumir do fluxo, auto-inicio por
+      // etiqueta) — e basta um passar despercebido pro vendedor ver a IA falando num cliente que
+      // ele barrou. Aqui e o funil unico por onde TODA resposta passa: se esta bloqueado, cala.
+      if (st?.bloqueado_em) {
+        await registrarSkip(supa, chat_id, st.vendedor_nome, 'chat_bloqueado', 'bloqueado por ' + (st.bloqueado_por || '?'))
+        return j({ ok: false, skip: 'chat_bloqueado' })
+      }
       if (!st || !st.ativo) return j({ ok: false, skip: 'ia_desligada' })
       if (String(st.vendedor_nome).toUpperCase() !== String(vendedor_nome).toUpperCase()) return j({ ok: false, skip: 'outro_vendedor' })
 
@@ -1132,13 +1449,23 @@ Deno.serve(async (req: Request) => {
 
       const cfg = await carregarConfig(supa)
 
+      // (03/08) A imagem de preco sai? Curto-circuito de proposito: fora do expediente nem
+      // consulta o banco — a maioria das respostas cai nessa faixa e a query seria desperdicio.
+      const bloquearPreco = ehExpedienteBR() && await vendedorSemPrecoNoExpediente(supa, st.vendedor_nome)
+      if (bloquearPreco) console.log('[ia-atendente] preco bloqueado no expediente -> ' + st.vendedor_nome)
+
       const hojeBR = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
       let respostasHoje = st.respostas_hoje || 0
       if (String(st.dia_ref) !== hojeBR) respostasHoje = 0
-      if (respostasHoje >= cfg.capDia) {
-        await registrarSkip(supa, chat_id, st.vendedor_nome, 'cap_diario', 'cap=' + cfg.capDia)
-        await avisarVendedorSkip(supa, chat_id, st.vendedor_nome, 'A IA bateu o limite de ' + cfg.capDia + ' respostas do dia neste cliente.')
-        return j({ ok: false, skip: 'cap_diario', cap: cfg.capDia })
+      // (30/07) O cap por cliente e do fluxo NORMAL (frota) — la ele protege contra a IA metralhar
+      // o mesmo contato. No PILOTO ele so atrapalha: uma conversa de teste passa das 30 trocas
+      // facil e a IA emudecia no meio. Teto alto em vez de nenhum: se um bug entrar em loop, ele
+      // ainda para — e o piloto roda num aparelho so.
+      const capEfetivo = personaPilotoAtiva ? 200 : cfg.capDia
+      if (respostasHoje >= capEfetivo) {
+        await registrarSkip(supa, chat_id, st.vendedor_nome, 'cap_diario', 'cap=' + capEfetivo)
+        await avisarVendedorSkip(supa, chat_id, st.vendedor_nome, 'A IA bateu o limite de ' + capEfetivo + ' respostas do dia neste cliente.')
+        return j({ ok: false, skip: 'cap_diario', cap: capEfetivo })
       }
 
       const limpaTs = st.memoria_limpa_em ? Math.floor(Date.parse(st.memoria_limpa_em) / 1000) : 0
@@ -1152,7 +1479,29 @@ Deno.serve(async (req: Request) => {
       const _ehSistema = (m: any) => _tiposSistema.has(String(m.type || '')) || (!m.transcricao && /^\[[a-z0-9_]{2,40}\]$/i.test(String(m.body || '').trim()))
       let ult: any = null
       for (const m of msgs) { if (_ehSistema(m)) continue; if (!ult || (m.t ?? 0) > (ult.t ?? 0)) ult = m }
-      if (!ult || ult.fromMe) return j({ ok: false, skip: 'ultima_nao_e_do_cliente' })
+      // (30/07) EXCECAO: ORIENTACAO NAO ENTREGUE LIBERA UMA FALA.
+      // O gate existe pra IA nao falar sozinha, e vale. Mas no fluxo de consulta ele virava
+      // armadilha: ela avisa o cliente "vou confirmar" (ULTIMA MSG PASSA A SER DELA), o vendedor
+      // responde, e a IA fica MUDA esperando o cliente cutucar de novo — com a resposta na mao.
+      // O criterio e usada_em IS NULL, nao uma janela de tempo: a primeira versao disto usava
+      // "respondida nos ultimos 10 min" + comparacao com a ultima ia_resposta, e errava nos dois
+      // sentidos — vendedor que demorava 11 min perdia a volta, e uma resposta dada por outro
+      // motivo no meio "consumia" a orientacao sem ela ter sido dita. Agora quem baixa a
+      // pendencia e o envio (usada_em, marcado no fim do responder), entao isto e exato e
+      // fecha sozinho: sem pendente, sem licenca pra falar.
+      let liberadoPorOrientacao = false
+      if (!ult || ult.fromMe) {
+        try {
+          const { data: orientNova } = await supa.from('ia_consultas_internas')
+            .select('codigo').eq('chat_id', chat_id).eq('status', 'respondida')
+            .is('usada_em', null).not('resposta', 'is', null).limit(1).maybeSingle()
+          if (orientNova?.codigo) {
+            liberadoPorOrientacao = true
+            console.log('[ia-atendente] fala liberada por ' + orientNova.codigo + ' (' + chat_id + ')')
+          }
+        } catch (e) { console.error('[ia-atendente] check de orientacao falhou:', String(e)) }
+      }
+      if ((!ult || ult.fromMe) && !liberadoPorOrientacao) return j({ ok: false, skip: 'ultima_nao_e_do_cliente' })
       // NAO responder a NOTIFICACAO DE SISTEMA do WhatsApp ([e2e_notification], [notification_template],
       // [revoked], [ptt]...) nem a MIDIA CRUA (base64) sem texto: a IA estava mandando "Entendi. fabrica
       // ou equipamento?" pra quem NAO falou nada, e ate vazando base64. So responde a mensagem REAL.
@@ -1176,19 +1525,75 @@ Deno.serve(async (req: Request) => {
         ? montarPersonaPiloto(personaPiloto, vendedor_nome, kb, midias)
         : montarPersona(vendedor_nome, kb, cfg.tom, midias)
       if (personaPiloto) console.log('[ia-atendente] persona piloto ' + personaPiloto.versao + ' -> ' + vendedor_nome)
+      // (03/08) O contrato JSON promete ao modelo que "a extensao manda foto + valores + video".
+      // Com o preco bloqueado isso vira mentira, e ele escreveria "te mandei os valores" sem que
+      // valor nenhum va — o erro classico de prometer anexo que nao existe. Corrige a promessa na
+      // origem. Vale so pro texto que ELE escreve; quem de fato corta a imagem e o codigo abaixo.
+      if (bloquearPreco) {
+        persona += `\n\n>>> AGORA VOCÊ NÃO ENVIA VALORES: neste horário a tabela de preços NÃO vai junto com as fotos/vídeos. Continue podendo usar mostrar_fabrica (o cliente recebe o material do modelo), mas NUNCA diga que mandou "os valores", "a tabela" ou "o preço" — eles não vão. Quando o assunto for valor, feche em 1ª pessoa ("organizo os valores certinhos e te retorno") e passe o bastão.`
+      }
+      // (31/07) CATALOGO DE MODELOS NO PROMPT — ela nao pode INVENTAR o slug.
+      // Duas consultas travaram por isso hoje: pediu "mini-fabrica-30150" e "compacta-02-2000",
+      // nenhum existe. E o pior: os dois modelos EXISTEM, com outro nome. O codigo no slug e
+      // "CV do moinho + kg do misturador", nao a producao — "Compacta 02 de 2000 kg/h" e o
+      // compacta-02-2001000 (moinho 20 CV + misturador 1000 kg). Ela nao tem como adivinhar
+      // essa traducao; entao recebe a lista pronta e escolhe DELA.
+      if (personaPiloto) {
+        try {
+          // Os 319 modelos custam 37 mil chars em TODA resposta — inclusive nas que nao tem nada
+          // a ver com preco. Entao filtro pelo que a conversa JA revelou (linha e voltagem) e so
+          // caio na lista inteira quando nada foi dito. Na pratica: "quero a compacta 02
+          // trifasica" derruba de 319 pra 13 linhas.
+          const _txt = (msgs || []).map((m: any) => String(m.body || m.transcricao || '')).join(' ').toLowerCase()
+          const _pacote = /compacta\s*0?3/.test(_txt) ? 'COMPACTA 03'
+            : /compacta\s*0?2/.test(_txt) ? 'COMPACTA 02'
+            : /compacta\s*0?1/.test(_txt) ? 'COMPACTA 01'
+            : /mini\s*f[aá]brica/.test(_txt) ? 'MINI FABRICA' : null
+          const _volt = /trif[aá]sic/.test(_txt) ? 'trifasico' : /monof[aá]sic/.test(_txt) ? 'monofasico' : null
+
+          let q = supa.from('orcamento_modelos')
+            .select('slug, pacote, producao_kgh, armazenamento_kg, voltagem, total_proposta')
+            .eq('ativo', true)
+          if (_pacote) q = q.eq('pacote', _pacote)
+          if (_volt) q = q.eq('voltagem', _volt)
+          // Sem pista nenhuma a lista inteira nao ajuda ela a decidir — atrapalha. Nesse caso
+          // manda so a MINI FABRICA (a porta de entrada, o que mais sai) e ela pergunta o resto.
+          if (!_pacote && !_volt) q = q.eq('pacote', 'MINI FABRICA')
+
+          const { data: mods } = await q.order('pacote').order('producao_kgh').limit(60)
+          if (mods?.length) {
+            // `producao_kgh` na tabela guarda o CV do moinho, nao a producao (erro de importacao
+            // conhecido). A producao real e ~10x — e e assim que o cliente fala. Mostro as duas
+            // pra ela casar tanto "2000 kg/h" quanto o codigo do slug.
+            const linhas = mods.map((m: any) =>
+              `${m.slug} | ${m.pacote} | ~${(Number(m.producao_kgh) || 0) * 10} kg/h | armaz ${m.armazenamento_kg || '?'} kg | ${m.voltagem} | R$ ${Number(m.total_proposta || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`)
+            persona += `\n\n>>> MODELOS DE ORCAMENTO (use o slug EXATO da coluna 1 em gerar_orcamento; NUNCA invente):\n${linhas.join('\n')}\n`
+            persona += `\nComo escolher: case a PRODUCAO que o cliente quer (kg/h) e a VOLTAGEM que ele confirmou. Se ele nao disse a voltagem, PERGUNTE antes — trifasico e monofasico tem precos diferentes. Se nenhum modelo casar, ai sim use consultar_vendedor.`
+          }
+        } catch (e) { console.error('[ia-atendente] catalogo de modelos:', (e as Error).message) }
+      }
+
       const conversa = formatarConversa(msgs)
       // MEMORIA NO PROMPT: sem isto o modelo re-perguntava o que ja sabia (caso real: perguntou
       // o nome do Edgard com nome_contato='Edgard Navarro' no banco). Injeta o que ja foi coletado.
       // ORIENTACAO DO VENDEDOR: se houve consulta respondida nesta conversa e a IA ainda nao a
       // usou, ela entra como INSTRUCAO — nunca como texto pronto. A resposta crua do vendedor e
       // telegrafica ("pode ate 14% de umidade"); mandar isso ao cliente soa a mensagem vazada.
+      // (30/07) TODAS as pendentes, nao so a ultima. Com .limit(1) o cliente que perguntava
+      // preco E frete gerava duas consultas; as duas voltavam respondidas e o modelo so via a
+      // mais recente — a outra resposta do vendedor sumia sem ninguem notar (caso real 15:37/
+      // 15:38: a aprovacao "5 vezes consigo" foi engolida pelo frete que chegou 37s depois).
+      // Ordem CRESCENTE: chegam ao prompt na ordem em que foram perguntadas.
+      const orientUsadas: string[] = []
       try {
-        const { data: orient } = await supa.from('ia_consultas_internas')
+        const { data: orients } = await supa.from('ia_consultas_internas')
           .select('codigo, tipo, duvida, resposta, respondido_em')
           .eq('chat_id', chat_id).eq('status', 'respondida')
+          .is('usada_em', null)
           .not('resposta', 'is', null)
-          .order('respondido_em', { ascending: false }).limit(1).maybeSingle()
-        if (orient?.resposta) {
+          .order('respondido_em', { ascending: true }).limit(5)
+        for (const orient of (orients || [])) {
+          orientUsadas.push(orient.codigo)
           persona += orient.tipo === 'frete'
             // Frete e BASE, nao valor fechado. Prometer numero fixo aqui gera discussao na hora
             // de contratar a transportadora, porque o valor muda.
@@ -1203,7 +1608,12 @@ Deno.serve(async (req: Request) => {
             ? `\n\n>>> RESPOSTA DA APROVACAO (${orient.codigo}) — voce pediu aprovacao para "${orient.duvida}" e a resposta foi: "${orient.resposta}". Se APROVARAM, passe a condicao ao cliente com as SUAS palavras, como decisao sua, e siga pro proximo passo. Se NAO aprovaram, NAO invente meio-termo, NAO prometa tentar de novo e NAO devolva a bola pro cliente ("quanto voce consegue?"): apresente a condicao padrao com naturalidade e continue a conversa. Nos dois casos, nunca diga que consultou alguem e nunca cite limite, teto nem regra interna da casa.`
             : `\n\n>>> ORIENTACAO DO VENDEDOR (${orient.codigo}) — voce perguntou "${orient.duvida}" e ele respondeu: "${orient.resposta}". Use ISSO como verdade e escreva com as SUAS palavras, no contexto da conversa. NUNCA copie a frase dele nem diga que perguntou pra alguem. Se a resposta abrir uma pergunta natural pro cliente, faca.`
         }
-      } catch (_) { /* sem orientacao = segue normal */ }
+        // Duas ou mais de uma vez: sem isto o modelo responde so a ultima que leu e deixa a
+        // outra pendencia no ar — pro cliente parece que ele ignorou metade do que perguntou.
+        if (orientUsadas.length > 1) {
+          persona += `\n\n>>> Voce tem ${orientUsadas.length} respostas pendentes acima. Contemple TODAS numa unica mensagem, na ordem em que aparecem. Nao deixe nenhuma de fora nem mande uma mensagem para cada.`
+        }
+      } catch (e) { console.error('[ia-atendente] orientacoes:', (e as Error).message) }
 
       const memPrev: any = st.dados_coletados || {}
       const nomePrev = (memPrev.nome_cliente && nomeParecePessoa(memPrev.nome_cliente)) ? String(memPrev.nome_cliente)
@@ -1251,7 +1661,7 @@ Deno.serve(async (req: Request) => {
               : /COMPACTA\s*0?2/.test(_n) ? 'compacta-02'
               : /COMPACTA\s*0?3/.test(_n) ? 'compacta-03'
               : /MINI\s*FABRICA/.test(_n) ? 'mini-fabrica' : ''
-            persona += `\n\n>>> ANÚNCIO DE ORIGEM: este cliente veio do anúncio "${nomeCri}"${modeloCri ? ` (nosso modelo ${modeloCri})` : ''}. Se ele falar "do vídeo", "do anúncio", "aquela", "a que vi", "essa máquina" — é ESSE que ele viu no anúncio. NÃO pergunte qual equipamento é; fale direto sobre ${modeloCri || 'o item do anúncio'} e siga a qualificação (uso, animal/cabeças).${modeloSlug ? ` Se ele pedir pra ver/quiser as informações ou os valores, coloque mostrar_fabrica="${modeloSlug}" no JSON — a extensão manda foto+valores+vídeo dele.` : ' Se ele pedir pra ver, mande a mídia dele.'}`
+            persona += `\n\n>>> ANÚNCIO DE ORIGEM: este cliente veio do anúncio "${nomeCri}"${modeloCri ? ` (nosso modelo ${modeloCri})` : ''}. Se ele falar "do vídeo", "do anúncio", "aquela", "a que vi", "essa máquina" — é ESSE que ele viu no anúncio. NÃO pergunte qual equipamento é; fale direto sobre ${modeloCri || 'o item do anúncio'} e siga a qualificação (uso, animal/cabeças).${modeloSlug ? ` MANDE O MATERIAL, NÃO OFEREÇA: quem chega de anúncio dizendo "quero informações", "quero saber mais", "me passa os valores" JÁ PEDIU — coloque mostrar_fabrica="${modeloSlug}" no JSON AGORA (a extensão manda foto+valores+vídeo) e escreva o texto como quem já está mandando. NUNCA responda "se você quiser eu te mostro" nem "posso te passar": isso soa a enrolação e o cliente desiste (caso Ivan 31/07 — ela ofereceu três vezes seguidas, ele respondeu "já está enrolando de novo" e a conversa morreu). Só pergunte antes se ele ainda não disse o que quer.` : ' Se ele pedir pra ver, mande a mídia dele.'}`
           }
         }
       } catch (_) { /* best-effort: sem criativo, atende normal */ }
@@ -1324,6 +1734,20 @@ Deno.serve(async (req: Request) => {
       if (!texto) return j({ ok: false, error: 'texto_vazio_pos_filtro' }, 500)
 
       const convCliente = msgs.filter((m: any) => !m.fromMe).map((m: any) => String(m.body || m.transcricao || '')).join(' ').toLowerCase()
+
+      // NAO EXISTE TRAVA DE PRECO AQUI — e deliberado. Tentei uma em 31/07 e ela estava ERRADA.
+      // A ideia era: todo "R$" que sair tem de bater com o catalogo injetado, senao a IA cala e
+      // chama o vendedor. Parecia obvio depois de ver R$ 227.027,00 numa Compacta 03 Master de
+      // 2.500 kg/h — valor e capacidade que NAO existem em orcamento_modelos (la o teto e 500
+      // kg/h no campo, 5000 reais, e nenhum dos 319 modelos custa 227.027).
+      // So que a IA estava CERTA: ia_conhecimento #35 tem um bloco "MODELOS QUE SO EXISTEM EM
+      // ANUNCIO", e la esta, textual: "Compacta 03 Master 250500/4000-4000 (2500 kg/h) —
+      // anunciada a R$ 227.027 tri". Ela ate disse "do anuncio que te mandei" e se recusou a
+      // cravar como preco final — exatamente o que aquele bloco manda fazer.
+      // A trava teria BLOQUEADO preco legitimo de anuncio e enchido o vendedor de consulta.
+      // Licao: o catalogo NAO e a unica fonte de verdade de preco. Quem quiser tentar de novo
+      // tem de somar orcamento_modelos + os precos de anuncio do ia_conhecimento — e mesmo assim
+      // conferir contra o Marketing antes, senao quebra a venda que vem do anuncio.
 
       // ROTEAMENTO DETERMINISTICO: PECA DE REPOSICAO -> JARDEL. Nao qualifica como fabrica,
       // nao pergunta modelo/potencia, passa o contato do Jardel e encerra. (KB sozinha era inconstante.)
@@ -1533,11 +1957,21 @@ Deno.serve(async (req: Request) => {
         // estourava TypeError -> 500, matando o bastao e o ramo de EQUIPAMENTO INDIVIDUAL abaixo.
         // (29/07) slugFab no lugar de escolha.slug: o modelo pedido pelo cliente vence o calculado.
         // fabRepetida corta a 2a remessa do MESMO modelo na mesma conversa.
-        const ehRamoMini = slugFab === 'mini-fabrica' && !!(fm && fm.preco_url)
-        const temMidiaFabrica = !fabRepetida && !!fm && (ehRamoMini || !!(fm.foto_url || fm.video_trabalhando_url || fm.video_explicacao_url))
+        // (03/08) `!bloquearPreco` no ehRamoMini: pra esses vendedores, no expediente, a tabela de
+        // preco nao sai — e o ramo MINI existe justamente porque ela sai. Sem isso o gate abriria
+        // prometendo a tabela e o anexo iria sem ela.
+        const ehRamoMini = slugFab === 'mini-fabrica' && !!(fm && fm.preco_url) && !bloquearPreco
+        // MINI SEM PRECO: a mini vive da tabela (foto_url esta NULL no banco — o Daniel desligou
+        // porque a propria tabela mostra o equipamento). Bloqueada a tabela, o que resta sao os
+        // videos. Precisa de gate proprio porque o generico so olha foto/trabalhando/explicacao:
+        // a mini hoje tem SO o video de explicacao, e no dia em que sobrar so o depoimento o ramo
+        // generico ficaria mudo — mesmo bug de 29/07, do outro lado.
+        const ehMiniSemPreco = !!fm && slugFab === 'mini-fabrica' && bloquearPreco
+          && !!(fm.video_trabalhando_url || fm.video_explicacao_url || fm.video_depoimento_url)
+        const temMidiaFabrica = !fabRepetida && !!fm && (ehRamoMini || ehMiniSemPreco || !!(fm.foto_url || fm.video_trabalhando_url || fm.video_explicacao_url))
         if (temMidiaFabrica) {
           midiaFabSlug = slugFab
-          if (slugFab === 'mini-fabrica' && fm.preco_url) {
+          if (ehRamoMini) {
             // MINI FÁBRICA (necessidade até 600 kg/h) — pedido do Daniel: manda as 2 FOTOS
             // (produto + tabela de preço) e os 3 VÍDEOS (trabalhando, explicação, depoimento)
             // e SÓ DEPOIS o texto perguntando qual das duas capacidades ele prefere.
@@ -1557,6 +1991,18 @@ Deno.serve(async (req: Request) => {
               ? descreveMidias(fabricaMidias) + ' dela — os valores estão na tabela'
               : 'a tabela com os valores' + (nVideosMini > 1 ? ' e uns vídeos explicando' : nVideosMini === 1 ? ' e um vídeo explicando' : '')
             texto = 'Olha' + (pn ? ', ' + pn : '') + '. Pela sua necessidade, a nossa Mini Fábrica de Ração atende bem. Te mandei ' + anexoMini + '. Qual atende melhor pro senhor: a de 300 kg/h ou a de 600 kg/h?'
+          } else if (ehMiniSemPreco) {
+            // (03/08) Mesma mini, sem a tabela: manda os videos e FECHA com o retorno em 1a pessoa.
+            // Nao pergunta "300 ou 600 kg/h?" de proposito — essa pergunta so faz sentido depois de
+            // ele ver os dois valores lado a lado. Sem a tabela ela seria pergunta no vazio, e o
+            // vendedor perderia a conversa pra uma duvida que ele mesmo vai tratar daqui a pouco.
+            fabricaMidias = [
+              fm.video_trabalhando_url ? { tipo: 'video', url: fm.video_trabalhando_url, titulo: fm.nome + ' trabalhando' } : null,
+              fm.video_explicacao_url ? { tipo: 'video', url: fm.video_explicacao_url, titulo: fm.nome + ' explicacao' } : null,
+              fm.video_depoimento_url ? { tipo: 'video', url: fm.video_depoimento_url, titulo: 'Depoimento de cliente' } : null,
+            ].filter(Boolean)
+            midiaId = null
+            texto = 'Olha' + (pn ? ', ' + pn : '') + '. Pela sua necessidade, a nossa Mini Fábrica de Ração atende bem. Te mandei ' + descreveMidias(fabricaMidias) + ' dela. Organizo os valores certinhos e te retorno.'
           } else {
           fabricaMidias = [
             fm.foto_url ? { tipo: 'image', url: fm.foto_url, titulo: fm.nome } : null,
@@ -1611,10 +2057,15 @@ Deno.serve(async (req: Request) => {
         // (29/07) MESMA regra do bastao: a foto deixou de ser obrigatoria. Com foto_url NULL na
         // mini (o Daniel desligou — a tabela de preco ja mostra o equipamento), este ramo ficava
         // MUDO: quem pedia pra VER a mini nao recebia nada, mesmo com preco e video cadastrados.
-        if (fmv && (fmv.foto_url || fmv.preco_url || fmv.video_trabalhando_url || fmv.video_explicacao_url)) {
+        // (03/08) Este e o ramo que manda preco nos QUATRO modelos (o bastao acima so manda na
+        // mini). `usaPreco` entra no GATE tambem, nao so na lista: se entrasse so na lista, a mini
+        // bloqueada passaria pelo gate por causa do preco e sairia com a lista vazia — marcando
+        // midiaFabSlug como "ja mandei" sem ter mandado nada, e queimando o envio legitimo depois.
+        const usaPreco = !!(fmv && fmv.preco_url) && !bloquearPreco
+        if (fmv && (fmv.foto_url || usaPreco || fmv.video_trabalhando_url || fmv.video_explicacao_url)) {
           fabricaMidias = [
             fmv.foto_url ? { tipo: 'image', url: fmv.foto_url, titulo: fmv.nome } : null,
-            fmv.preco_url ? { tipo: 'image', url: fmv.preco_url, titulo: fmv.nome + ' — valores' } : null,
+            usaPreco ? { tipo: 'image', url: fmv.preco_url, titulo: fmv.nome + ' — valores' } : null,
             fmv.video_trabalhando_url ? { tipo: 'video', url: fmv.video_trabalhando_url, titulo: fmv.nome + ' trabalhando' } : null,
             fmv.video_explicacao_url ? { tipo: 'video', url: fmv.video_explicacao_url, titulo: fmv.nome + ' explicacao' } : null,
           ].filter(Boolean)
@@ -1798,8 +2249,11 @@ Deno.serve(async (req: Request) => {
         if (!nomeCli || !slug || !['monofasico', 'trifasico'].includes(volt)) {
           console.warn('[ia-atendente] gerar_orcamento incompleto (nome/modelo/voltagem) — ignorado')
         } else {
-          const { data: mod } = await supa.from('orcamento_modelos')
-            .select('slug').eq('slug', slug).eq('ativo', true).maybeSingle()
+          const resolvido = await resolverModelo(supa, slug, volt, mem)
+          const mod = resolvido.modelo
+          if (mod && resolvido.via !== 'exato') {
+            console.warn('[ia-atendente] slug "' + slug + '" -> "' + mod.slug + '" (via ' + resolvido.via + ')')
+          }
           if (!mod) {
             // Modelo inexistente: NAO gera nada e escala pro vendedor. Melhor o cliente esperar
             // do que receber proposta de um modelo que a casa nao vende.
@@ -1807,7 +2261,9 @@ Deno.serve(async (req: Request) => {
             consultaAberta = await abrirConsulta(supa, {
               tipo: 'orcamento', chat_id, vendedor_nome: st.vendedor_nome,
               cliente_nome: nomeCli, cliente_telefone: String(chat_id).replace(/@.*/, ''),
-              duvida: 'Tentei montar o orcamento mas o modelo "' + slug + '" nao existe no sistema. Qual configuracao eu uso?',
+              duvida: 'Tentei montar o orcamento mas o modelo "' + slug + '" nao existe no sistema. Qual configuracao eu uso?'
+                      + ((resolvido as any).candidatos?.length
+                         ? ' (candidatos: ' + (resolvido as any).candidatos.join(', ') + ')' : ''),
               contexto: mem.resumo || null,
             })
             if (consultaAberta) {
@@ -1820,7 +2276,7 @@ Deno.serve(async (req: Request) => {
             const { error: errOrc } = await supa.from('ia_orcamento_pedidos').insert({
               chat_id, vendedor_nome: st.vendedor_nome, cliente_nome: nomeCli,
               cliente_telefone: String(chat_id).replace(/@.*/, ''),
-              modelo_slug: slug, voltagem: volt,
+              modelo_slug: mod.slug, voltagem: volt,
               cidade: mem.cidade || null, uf: mem.uf || null,
             })
             // 23505 = ja existe pedido em andamento neste chat. E o comportamento certo: cliente
@@ -1830,13 +2286,14 @@ Deno.serve(async (req: Request) => {
             } else if (!errOrc) {
               await supa.from('ia_atendimentos').update({
                 estado: 'WAITING_QUOTE_GENERATION', estado_desde: new Date().toISOString(),
-                estado_motivo: slug + ' / ' + volt, atualizado_em: new Date().toISOString(),
+                estado_motivo: mod.slug + ' / ' + volt, atualizado_em: new Date().toISOString(),
               }).eq('chat_id', chat_id)
               try {
                 await supa.from('automation_runs').insert({
                   regra_key: 'ia_atendente', vendedor_nome: st.vendedor_nome, chat_id,
                   acao: 'ia_pediu_orcamento', modo: 'automatico', executor: 'ia', status: 'executado',
-                  payload: { modelo: slug, voltagem: volt, cliente: nomeCli },
+                  payload: { modelo: mod.slug, voltagem: volt, cliente: nomeCli,
+                             slug_pedido: slug, resolvido_via: resolvido.via },
                   motivo: 'IA solicitou geracao de orcamento',
                 })
               } catch (_) { /* auditoria best-effort */ }
@@ -1856,11 +2313,11 @@ Deno.serve(async (req: Request) => {
           if (encerrar) acoes.etiqueta = etiquetaModelo
         } else if (vendedorAssumir) {
           acoes.etiqueta = 'NOVO LEAD'
-        // (30/07) LEAD QUENTE por temperatura nao vale no piloto: etiquetava a conversa no meio
-        // do caminho, so porque o cliente soou apressado, e etiqueta e o sinal de que a persona
-        // ENCERROU. No piloto quem nomeia o funil e ela, junto com a decisao de parar.
-        } else if (temperatura === 'quente' && !personaPiloto) {
-          acoes.etiqueta = 'LEAD QUENTE'
+        // (31/07) LEAD QUENTE AUTOMATICO REMOVIDO — DA FROTA INTEIRA, nao so do piloto.
+        // A IA marcava no MEIO da conversa so porque o cliente soou apressado, e sair de
+        // PROSPECCAO e justamente o que faz o guardrail calar a IA (ver etiquetaAtualEhProspeccao):
+        // ela etiquetava o lead como quente e emudecia na conversa que estava indo bem —
+        // autossabotagem. 11 vezes por dia na frota. Quem etiqueta o funil e o vendedor.
         }
       }
       if (dados) {
@@ -1940,6 +2397,57 @@ Deno.serve(async (req: Request) => {
       }
 
       { const t2 = semEmoji(texto); if (t2) texto = t2 } // blindagem final anti-emoji (cobre textos forcados/handoff)
+
+      // (04/08, caso Kotarski/PEDRO) PROMESSA VAZIA — o texto oferece material e NAO vai anexo.
+      // Ele disse "gostaria de ver"; a IA respondeu 4x seguidas "eu te mostro a mini fabrica",
+      // "separo a Compacta 01", "vou te mostrar" — e nunca foi nada, porque sem cabecas nao da
+      // pra escolher modelo e o ramo de midia nunca abriu. 40 min depois ela ainda mandou
+      // "conseguiu ver minha mensagem?" e o cliente respondeu "Estava aguardando vc mandar".
+      // Ja existia instrucao na persona contra isso (caso Ivan 31/07: "MANDE O MATERIAL, NAO
+      // OFERECA"), mas so entra quando o anuncio tem modelo — e instrucao e pedido, nao garantia.
+      // Aqui e deterministico e no ultimo ponto: promessa sem anexo vira a pergunta que
+      // destrava o modelo. O `&&` com a lista de coisas mostraveis evita pegar handoff humano
+      // ("te mando o contato do vendedor").
+      const _vaiAnexo = !!midia || fabricaMidias.length > 0
+      const _PROMESSA = /(te mostro|te mando|te envio|posso te (mostrar|mandar|enviar)|vou te (mostrar|mandar|enviar)|vou (mostrar|mandar)|separo (a|o)|te encaminho|j[aá] te (mando|envio))/i
+      const _MOSTRAVEL = /(f[aá]brica|compacta|mini|modelo|m[aá]quina|equipamento|foto|v[ií]deo|material|tabela)/i
+      if (!_vaiAnexo && _PROMESSA.test(texto) && _MOSTRAVEL.test(texto)) {
+        const _an = String(dadosMem.animal || '').toLowerCase()
+        const _venda = /venda|revenda/i.test(String(dadosMem.uso || '') + ' ' + String(dadosMem.finalidade || ''))
+        const _pergunta = _venda
+          ? 'Quantos kg de racao por hora o senhor pretende produzir? Com esse numero eu ja sei qual modelo encaixa.'
+          : _an === 'ave'
+            ? 'Quantas aves o senhor tem, mais ou menos? Com esse numero eu ja sei qual modelo encaixa.'
+            : _an
+              ? 'Quantas cabecas o senhor tem, mais ou menos? Com esse numero eu ja sei qual modelo encaixa.'
+              : 'Qual animal e quantas cabecas o senhor tem, mais ou menos? Com isso eu ja sei qual modelo encaixa.'
+        const _limpo = texto.split(/(?<=[.!?])\s+/).filter((f: string) => !_PROMESSA.test(f)).join(' ').trim()
+        texto = (_limpo.length >= 25 ? _limpo + ' ' : '') + _pergunta
+        console.log('[ia-atendente] promessa sem anexo reescrita (' + chat_id + ')')
+        try {
+          await supa.from('automation_runs').insert({ regra_key: 'ia_atendente', vendedor_nome, chat_id,
+            acao: 'promessa_sem_anexo', modo: 'automatico', executor: 'ia', status: 'executado',
+            payload: { texto_final: texto.slice(0, 300) }, motivo: 'texto prometia material sem anexo — reescrito' })
+        } catch (_) { /* log best-effort */ }
+      }
+
+      // (30/07) NAO REPETIR A MESMA FRASE. Esperando uma consulta ela nao tem o que dizer de
+      // novo, e devolvia a frase de espera identica a cada ciclo ("Vou organizar os detalhes
+      // certinhos e te retorno" duas vezes seguidas, 16:48 e 16:50 — caso Branorte). Pro cliente
+      // parece robo travado. Uma vez o aviso ja foi dado; a segunda so atrapalha. Comparacao
+      // frouxa (sem acento/pontuacao/caixa) porque o modelo varia uma virgula e escapa do ==.
+      const _norm = (s: string) => String(s || '').toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim()
+      const _novo = _norm(texto)
+      const _jaDisse = msgs.filter((m: any) => m.fromMe)
+        .sort((a: any, b: any) => (b.t ?? 0) - (a.t ?? 0)).slice(0, 3)
+        .some((m: any) => _novo.length > 12 && _norm(m.body) === _novo)
+      if (_jaDisse) {
+        console.log('[ia-atendente] resposta identica a uma das ultimas 3 — segurando (' + chat_id + ')')
+        await registrarSkip(supa, chat_id, st.vendedor_nome, 'resposta_repetida', texto.slice(0, 80))
+        return j({ ok: false, skip: 'resposta_repetida' })
+      }
       // REGISTRO PRA ESTUDO: guarda a conversa (cliente + IA) pra abrir e analisar/melhorar depois.
       const ultCliente = [...msgs].reverse().find((m: any) => !m.fromMe)
       const clienteMsg = ultCliente ? String(ultCliente.body || ultCliente.transcricao || '').slice(0, 400) : ''
@@ -1965,12 +2473,29 @@ Deno.serve(async (req: Request) => {
             // Frete vai pro responsavel pela logistica, e num formato proprio (destino + carga).
             // Aprovacao vai pro vendedor pedindo um sim ou um nao, nao uma explicacao.
             // Duvida comum vai pro vendedor, com o contexto comercial.
+            // (30/07) `|| consultaAberta.duvida` NAO e cinto e suspensorio: consulta de ORCAMENTO
+            // e aberta pelo CODIGO (o worker nao achou o modelo), nao pelo modelo pedindo — entao
+            // consultarVendedor vem vazio e sobrescrevia a duvida ja gravada. O vendedor recebia
+            // "Duvida:" em branco e nao tinha como responder (caso CONSULTA-000018, 17:24).
             texto: consultaAberta.ehFrete
-              ? textoFrete({ ...consultaAberta, duvida: pedirFrete, vendedor_nome: st.vendedor_nome })
+              ? textoFrete({ ...consultaAberta, duvida: pedirFrete || consultaAberta.duvida, vendedor_nome: st.vendedor_nome })
               : consultaAberta.ehAprovacao
                 ? textoAprovacao(consultaAberta)
-                : textoConsulta({ ...consultaAberta, duvida: consultarVendedor }) }
+                : textoConsulta({ ...consultaAberta, duvida: consultarVendedor || consultaAberta.duvida }) }
         : undefined
+
+      // (30/07) BAIXA a orientacao: ela ja esta DENTRO deste texto. Marcar aqui e nao na
+      // confirmacao de envio e deliberado — se a extensao nunca confirmasse, a orientacao
+      // ficaria pendente pra sempre e o chat seria reaberto a cada ciclo (a IA falando sozinha
+      // em loop). O risco oposto — envio falhar e a orientacao se perder — custa uma resposta,
+      // nao uma enxurrada, e fica visivel no /ia-pendencias.
+      if (orientUsadas.length) {
+        const { error: eUso } = await supa.from('ia_consultas_internas')
+          .update({ usada_em: new Date().toISOString(), atualizado_em: new Date().toISOString() })
+          .in('codigo', orientUsadas)
+        if (eUso) console.error('[ia-atendente] usada_em NAO gravado (' + orientUsadas.join(',') + '):', eUso.message)
+        else console.log('[ia-atendente] orientacao entregue: ' + orientUsadas.join(', '))
+      }
 
       return j({ ok: true, texto, midia, midias: fabricaMidias.length ? fabricaMidias : undefined,
                  acoes, consulta_interna: consultaInterna, respostas_hoje: respostasHoje + 1 })
