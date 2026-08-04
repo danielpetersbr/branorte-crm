@@ -140,3 +140,19 @@ test('suínos ganharam alternativa de proteína; bovinos mantêm a deles', () =>
   const bov = substitutosDe('Farelo de soja', 'bovinos').map(s => s.nome)
   assert.ok(bov.some(n => n === 'Caroço de algodão'), `bovinos: ${bov.join(', ')}`)
 })
+
+test('aves agora tem alternativa de PROTEINA — era a lacuna que o Daniel achou', () => {
+  const av = substitutosDe('Farelo de soja', 'aves').map(s => s.nome)
+  assert.ok(av.length > 0, 'farelo de soja em ave NÃO pode ficar sem opção')
+  assert.ok(av.some(n => n === 'Farinha de carne e ossos'), `aves: ${av.join(', ')}`)
+  // e o que é de ruminante/suíno continua sem vazar
+  assert.ok(!av.some(n => /algod/i.test(n)), 'algodão não está fonteado pra ave')
+  assert.equal(temSubstituto('Farelo de soja', 'aves'), true)
+})
+
+test('as três espécies têm opção de energia E de proteína — nenhum card fica órfão', () => {
+  for (const e of ['bovinos', 'suinos', 'aves'] as const) {
+    assert.ok(temSubstituto('Milho triturado', e), `${e} sem alternativa de energia`)
+    assert.ok(temSubstituto('Farelo de soja', e), `${e} sem alternativa de proteína`)
+  }
+})
