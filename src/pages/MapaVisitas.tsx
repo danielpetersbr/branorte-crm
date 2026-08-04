@@ -1304,7 +1304,9 @@ export function MapaVisitas() {
             title="Montar roteiro de visitas escolhendo clientes pelo pino"
             className={`h-9 px-3 rounded-md border text-[13px] font-bold transition-colors ${modoViagem ? 'bg-blue-600 border-blue-600 text-white' : 'bg-blue-50 border-blue-300 text-blue-700 hover:bg-blue-100'}`}
           >
-            🧭 {modoViagem ? `Viagem (${paradas.length})` : 'Planejar viagem'}
+            {/* Com paradas fora do modo (rascunho restaurado depois de um F5) o botão
+                mostra a contagem — senão o trabalho fica invisível e parece perdido. */}
+            🧭 {modoViagem || paradas.length > 0 ? `Viagem (${paradas.length})` : 'Planejar viagem'}
           </button>
           <select value={vendedorSel} onChange={e => setVendedorSel(e.target.value)} className="h-9 px-3 rounded-md bg-surface border border-border text-[13px] text-ink">
             <option value="">Todos os vendedores</option>
@@ -1392,7 +1394,7 @@ export function MapaVisitas() {
               onClick={() => { if (modoViagem) { setViagemSheet(true) } else { entrarNaViagem(); setViagemSheet(true) } }}
               className={`h-9 px-3 rounded-lg border text-[12px] font-bold shadow ${modoViagem ? 'bg-blue-600 text-white border-blue-600' : 'bg-surface/95 backdrop-blur border-blue-300 text-blue-700'}`}
             >
-              🧭 {modoViagem ? `Viagem ${paradas.length}` : 'Viagem'}
+              🧭 {modoViagem || paradas.length > 0 ? `Viagem ${paradas.length}` : 'Viagem'}
             </button>
           </div>
           {modoRaio && (

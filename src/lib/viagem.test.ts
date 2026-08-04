@@ -21,6 +21,8 @@ import {
   resumoWhatsApp, mensagemConfirmacao,
   type Parada, type ConfigViagem, type PontoMapa, type Coord,
   type Programacao, type Trecho, type Precisao,
+  hhmmComDia,
+  diasNecessarios,
 } from './viagem'
 
 // ── coordenadas reais ────────────────────────────────────────────────────────
@@ -356,4 +358,29 @@ test('dia com UMA parada ainda leva a parada no link do Google Maps', () => {
   const prog = programar([parada({ id: 'a', ...AEROPORTO, visitaMinutos: 30 })], c)
   const link = linkGoogleMaps(prog.dias[0], c)
   assert.ok(link.includes('-5.0597'), `a parada sumiu do link: ${link}`)
+})
+
+test('hhmmComDia marca a virada de meia-noite em vez de dar a volta no relógio', () => {
+  // Regressão: trecho de 16h fazia o painel mostrar "00:02" como se fosse o mesmo
+  // dia. minParaHhmm sozinho faz módulo 1440 e mente sobre quando o vendedor chega.
+  assert.equal(hhmmComDia(480), '08:00')
+  assert.equal(hhmmComDia(1439), '23:59')
+  assert.equal(hhmmComDia(1442), '00:02 +1d')
+  assert.equal(hhmmComDia(1440 * 2 + 90), '01:30 +2d')
+  assert.equal(minParaHhmm(1442), '00:02', 'minParaHhmm continua sendo só a hora')
+})
+
+test('diasNecessarios acha o menor número de dias em que tudo cabe', () => {
+  const ps = [
+    parada({ id: 'a', lat: -5.09, lng: -42.80, visitaMinutos: 200 }),
+    parada({ id: 'b', lat: -5.15, lng: -42.85, visitaMinutos: 200 }),
+    parada({ id: 'c', lat: -5.20, lng: -42.90, visitaMinutos: 200 }),
+    parada({ id: 'd', lat: -5.25, lng: -42.95, visitaMinutos: 200 }),
+  ]
+  const c = cfg({ dias: 1 })
+  assert.ok(programar(ps, c).foraDoPlano.length > 0, 'com 1 dia sobra gente')
+  const n = diasNecessarios(ps, c)
+  assert.ok(n > 1, `precisa de mais de 1 dia (deu ${n})`)
+  assert.equal(programar(ps, { ...c, dias: n }).foraDoPlano.length, 0, 'com o nº sugerido nada fica de fora')
+  assert.ok(programar(ps, { ...c, dias: n - 1 }).foraDoPlano.length > 0, 'e é o MENOR: com 1 a menos ainda sobra')
 })

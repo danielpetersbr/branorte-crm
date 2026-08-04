@@ -336,6 +336,16 @@ export const minParaHhmm = (v: number): string => {
   return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`
 }
 
+/**
+ * Hora com marcação de virada de dia. Um trecho de 16 h faz a chegada passar da
+ * meia-noite; sem isso o painel mostrava "00:02" como se fosse o mesmo dia — o
+ * relógio dava a volta e o roteiro mentia sobre quando o vendedor chega.
+ */
+export const hhmmComDia = (v: number): string => {
+  const d = Math.floor(v / 1440)
+  return minParaHhmm(v) + (d > 0 ? ` +${d}d` : '')
+}
+
 export const somarDias = (iso: string | null, n: number): string | null => {
   if (!iso) return null
   const d = new Date(iso + 'T12:00:00')
@@ -389,7 +399,7 @@ export function programar(
         // Sem este aviso o roteiro promete 18:00 e entrega meia-noite.
         if (atual.fim > fimDia) {
           const ultima = atual.paradas[atual.paradas.length - 1]
-          const msg = `⚠️ Volta pra ${volta.nome} só às ${minParaHhmm(atual.fim)} (${Math.round(t.metros / 1000)} km depois do encerramento)`
+          const msg = `⚠️ Volta pra ${volta.nome} só às ${hhmmComDia(atual.fim)} (${Math.round(t.metros / 1000)} km depois do encerramento)`
           if (ultima) ultima.alertas.push(msg)
           alertas.push(`Dia ${atual.dia}: ${msg.replace('⚠️ ', '')}`)
         }
@@ -423,7 +433,7 @@ export function programar(
       if (chegada < ji) { chegada = ji; alertasParada.push(`Espera até ${p.janelaInicio}`) }
     }
     if (p.janelaFim && chegada > hhmmParaMin(p.janelaFim)) {
-      alertasParada.push(`⚠️ Chega ${minParaHhmm(chegada)}, depois da janela (${p.janelaFim})`)
+      alertasParada.push(`⚠️ Chega ${hhmmComDia(chegada)}, depois da janela (${p.janelaFim})`)
     }
 
     if (t.metros / 1000 > TRECHO_LONGO_KM) {
@@ -481,6 +491,20 @@ export function programar(
     alertas,
     estimado: !algumReal,
   }
+}
+
+/**
+ * Menor número de dias em que TUDO cabe (ou `teto`, se nem assim couber).
+ * Existe porque o padrão de 1 dia joga quase tudo em `foraDoPlano` assim que o
+ * usuário escolhe o segundo cliente — a feature parece quebrada quando na verdade
+ * só falta aumentar os dias. A UI usa isso pra oferecer "caber em N dias".
+ */
+export function diasNecessarios(paradas: Parada[], cfg: ConfigViagem, teto = 60): number {
+  if (!paradas.some(roteavel)) return cfg.dias
+  for (let d = 1; d <= teto; d++) {
+    if (programar(paradas, { ...cfg, dias: d }).foraDoPlano.length === 0) return d
+  }
+  return teto
 }
 
 function novoDia(n: number, cfg: ConfigViagem, inicio: number): DiaProgramado {
@@ -566,7 +590,7 @@ export function resumoWhatsApp(prog: Programacao, cfg: ConfigViagem): string {
     L.push(`${d.paradas.length} parada(s) · ${km(d.metros)} · ${dur(d.deslocamentoSeg)} na estrada`)
     for (const x of d.paradas) {
       const p = x.parada
-      L.push(`${x.ordem}. ${minParaHhmm(x.chegada)}–${minParaHhmm(x.saida)} · ${nomeParada(p)}`)
+      L.push(`${x.ordem}. ${hhmmComDia(x.chegada)}–${hhmmComDia(x.saida)} · ${nomeParada(p)}`)
       const loc = [p.cidade, p.uf].filter(Boolean).join('/')
       const info = [loc, p.clientes[0]?.vendedor, p.clientes[0]?.telefone].filter(Boolean).join(' · ')
       if (info) L.push(`   ${info}`)
@@ -598,7 +622,7 @@ export function mensagemConfirmacao(p: Parada, cfg: ConfigViagem, dia: DiaProgra
   const vendedor = p.clientes[0]?.vendedor || 'você'
   const nomes = p.clientes.map(c => c.nome || '—')
   const quando = dia?.data ? `${dataBRcurta(dia.data)} (${diaSemana(dia.data)})` : 'em breve'
-  const hora = chegada != null ? ` por volta das ${minParaHhmm(chegada)}` : ''
+  const hora = chegada != null ? ` por volta das ${hhmmComDia(chegada)}` : ''
   const L: string[] = []
   L.push(`Oi ${vendedor}, tudo bem?`)
   L.push('')
