@@ -1,17 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
+import { foneCanon } from '@/lib/fone-canon'
 import { supabase, supabaseAuditoria } from '@/lib/supabase'
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 
-// fone_canon espelhado (idêntico a public.fone_canon / useAtendimentos.foneCanon):
-// DDD(2)+8 dígitos, tira +55 e o 9º do celular. Casa lead <-> orçamento por telefone.
-function foneCanon(p?: string | null): string | null {
-  const d = String(p ?? '').replace(/\D/g, '')
-  if (d.length < 10) return null
-  let n = (d.length >= 12 && d.startsWith('55')) ? d.slice(2) : d
-  if (n.length === 11 && n[2] === '9') n = n.slice(0, 2) + n.slice(3)
-  if (n.length > 10) n = n.slice(-10)
-  return n.length === 10 ? n : null
-}
 
 // Teto de linhas puxadas da view. Precisa ser MAIOR que o total de contatos, senão
 // o Dashboard corta os mais antigos (ordenado por data desc) e tanto a contagem total

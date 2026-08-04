@@ -191,17 +191,11 @@ export function lookupWaLabels(map: WaLabelMap | undefined, phone: string | null
 // AUTOMÁTICO de orçamento enviado, independente da etiqueta manual do vendedor —
 // pega o caso "vendedor esqueceu de marcar a etiqueta". Read-only, não toca no funil.
 
-// Normalização canônica (ESPELHA a função public.fone_canon do banco):
-// reduz a DDD(2)+8 dígitos, removendo "55" do país (só se >=12) e o 9º dígito do
-// celular. Assim casa com/sem 9 e com/sem +55, sem confundir DDD 55 com país.
-export function foneCanon(p?: string | null): string | null {
-  const d = String(p ?? '').replace(/\D/g, '')
-  if (d.length < 10) return null
-  let n = (d.length >= 12 && d.startsWith('55')) ? d.slice(2) : d
-  if (n.length === 11 && n[2] === '9') n = n.slice(0, 2) + n.slice(3)
-  if (n.length > 10) n = n.slice(-10)
-  return n.length === 10 ? n : null
-}
+// foneCanon mora em @/lib/fone-canon (testado). Reexportado aqui porque meia
+// duzia de telas ja importam deste caminho.
+import { foneCanon } from '@/lib/fone-canon'
+// Reexportado porque meia duzia de telas ja importam foneCanon deste caminho.
+export { foneCanon }
 
 export type OrcamentoMatch = { numero: string | null; em: string | null; valor: number | null; qtd: number }
 export type OrcamentoPhoneMap = Record<string, OrcamentoMatch> // keyed pelo canônico
