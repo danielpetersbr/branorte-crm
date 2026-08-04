@@ -264,3 +264,42 @@ test('produção acima do catálogo vira pendência com o número na frente', ()
   assert.ok(d.pendencias.some(p => /passa do maior moinho/i.test(p)), d.pendencias.join(' | '))
   assert.ok(d.pendencias.some(p => /\d+ kg\/h/.test(p)), 'a pendência tem que trazer o número')
 })
+
+test('degrau enorme do catálogo: oferece a combinação de menores', () => {
+  // Medido no catálogo real: pra 45 t de milho o menor silo que cabe SOZINHO é
+  // o de 196,5 t — 4× o necessário — porque a linha pula de 42,47 direto pra
+  // 196,5. Dois de 42,47 resolvem. Quem escolhe é o vendedor; a conta mostra as
+  // duas em vez de empurrar o silo grande.
+  const r = necessidadesDeMateria(
+    [{ nome: 'Milho moído', participacaoPct: 100 }],
+    45_000, 30, CATALOGO,
+  )
+  const m = r[0]
+  assert.ok(m.silo, 'devia escolher um silo')
+  assert.ok(m.alternativa, 'devia oferecer alternativa — a sobra é de 4×')
+  assert.ok(m.alternativa!.quantidade >= 2)
+  const capAlt = capacidadeEmKg(m.alternativa!.silo.capacidade)!
+  const capUnico = capacidadeEmKg(m.silo!.capacidade)!
+  assert.ok(capAlt * m.alternativa!.quantidade < capUnico,
+    'a combinação tem que somar MENOS que o silo único, senão não é alternativa')
+  assert.ok(capAlt * m.alternativa!.quantidade >= 45_000, 'e ainda tem que caber')
+  assert.match(m.observacao ?? '', /Sobra muita capacidade/)
+})
+
+test('quando o silo único serve bem, NÃO inventa alternativa', () => {
+  // 25 t no silo de 28 t: sobra pouca. Oferecer combinação aqui seria ruído.
+  const r = necessidadesDeMateria(
+    [{ nome: 'Farelo de soja', participacaoPct: 100 }], 25_000, 30, CATALOGO,
+  )
+  assert.equal(r[0].alternativa, null)
+})
+
+test('a alternativa respeita o funil obrigatório', () => {
+  const r = necessidadesDeMateria(
+    [{ nome: 'Farelo de soja', participacaoPct: 100 }], 80_000, 30, CATALOGO,
+  )
+  if (r[0].alternativa) {
+    assert.equal(r[0].alternativa.silo.funilTipo, '60',
+      'alternativa de farelo não pode cair em 45° nem em fundo plano')
+  }
+})

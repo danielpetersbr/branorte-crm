@@ -122,6 +122,13 @@ export interface NecessidadeMateria {
   silo: ItemCatalogo | null
   /** Quantos silos desse modelo. */
   quantidadeSilos: number
+  /**
+   * Combinação de silos MENORES que atende o mesmo volume com menos sobra.
+   * Existe porque "o menor que cabe sozinho" às vezes é absurdo: pra 45 t de
+   * milho o catálogo pula de 42,47 t direto pra 196,5 t — 4× o necessário.
+   * Dois de 28 t resolvem. Quem decide é o vendedor; a conta mostra as duas.
+   */
+  alternativa: { silo: ItemCatalogo; quantidade: number } | null
   /** Por que caiu nessa recomendação — vai pra tela, não é log. */
   observacao: string | null
 }
@@ -189,7 +196,7 @@ export function necessidadesDeMateria(
     if (sacaria || recebimento === 'ensacado') {
       return {
         nome: f.nome, participacaoPct: f.participacaoPct, kgPorMes, kgEstocar,
-        recebimento, silo: null, quantidadeSilos: 0,
+        recebimento, silo: null, quantidadeSilos: 0, alternativa: null,
         observacao: sacaria
           ? 'Produto industrializado — chega ensacado e fica na sacaria. Não entra silo.'
           : 'Marcado como ensacado — fica na sacaria.',
@@ -200,26 +207,48 @@ export function necessidadesDeMateria(
     if (!opcoes.length) {
       return {
         nome: f.nome, participacaoPct: f.participacaoPct, kgPorMes, kgEstocar,
-        recebimento, silo: null, quantidadeSilos: 0,
+        recebimento, silo: null, quantidadeSilos: 0, alternativa: null,
         observacao: exigeFunil60(f.nome)
           ? 'Precisa de funil 60° (empedra) e não há silo 60° no catálogo pra esse volume. Falar com a fábrica.'
           : 'Não achei silo pra esse volume no catálogo.',
       }
     }
 
-    // Um silo que dê conta sozinho é sempre melhor que vários pequenos.
+    const nota60 = exigeFunil60(f.nome)
+      ? 'Funil 60° obrigatório: o produto empedra e forma ponte.' : null
+
+    // Um silo que dê conta sozinho costuma ser melhor que vários pequenos.
     const unico = opcoes.find(o => o.kg >= kgEstocar)
     if (unico) {
+      // ...mas nem sempre: o catálogo tem degraus enormes. Quando o único que
+      // cabe passa de 1,8× o necessário, mostra também a combinação de menores
+      // que chega mais perto — sem escolher pelo vendedor.
+      let alternativa: { silo: ItemCatalogo; quantidade: number } | null = null
+      if (unico.kg > kgEstocar * 1.8) {
+        const menores = opcoes.filter(o => o.kg < unico.kg)
+        const cand = menores[menores.length - 1]
+        if (cand) {
+          const qtd = Math.ceil(kgEstocar / cand.kg)
+          // Mais de 4 silos deixa de ser economia e vira obra.
+          if (qtd > 1 && qtd <= 4 && cand.kg * qtd < unico.kg) {
+            alternativa = { silo: cand.i, quantidade: qtd }
+          }
+        }
+      }
       return {
         nome: f.nome, participacaoPct: f.participacaoPct, kgPorMes, kgEstocar,
-        recebimento, silo: unico.i, quantidadeSilos: 1,
-        observacao: exigeFunil60(f.nome) ? 'Funil 60° obrigatório: o produto empedra e forma ponte.' : null,
+        recebimento, silo: unico.i, quantidadeSilos: 1, alternativa,
+        observacao: alternativa
+          ? [nota60, `Sobra muita capacidade: ${alternativa.quantidade}× o de `
+              + `${alternativa.silo.capacidade} chega mais perto.`]
+              .filter(Boolean).join(' ')
+          : nota60,
       }
     }
     const maior = opcoes[opcoes.length - 1]
     return {
       nome: f.nome, participacaoPct: f.participacaoPct, kgPorMes, kgEstocar,
-      recebimento, silo: maior.i,
+      recebimento, silo: maior.i, alternativa: null,
       quantidadeSilos: Math.ceil(kgEstocar / maior.kg),
       observacao: `Nenhum silo isolado dá conta: ${Math.ceil(kgEstocar / maior.kg)}× o maior do catálogo.`,
     }

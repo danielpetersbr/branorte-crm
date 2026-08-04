@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
 import { Alerta } from './Selos'
 import { Perguntas, Secao } from './DetalhePartes'
+import { ConfiguradorFabrica } from './ConfiguradorFabrica'
 import { analisar, resumoParaCopiar } from '@/lib/guia/atendimento'
 import { EQUIPAMENTOS, ESPECIES, NOME_SISTEMA, SISTEMAS } from '@/lib/guia/catalogo'
 import { CATEGORIAS } from '@/lib/venda-racao/catalogo'
@@ -343,6 +344,17 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
             </div>
           </Secao>
         )}
+
+        {/* CONFIGURADOR — o passo seguinte ao levantamento. Do consumo mensal sai
+            a producao por hora, e dela o equipamento. Fica AQUI, no painel de
+            resposta, e nao numa tela a parte: o vendedor esta no telefone e o
+            cliente pergunta "e quanto custa?" no mesmo minuto em que diz o
+            rebanho. */}
+        <ConfiguradorFabrica
+          necessidadeMesKg={r.necessidadeMesKg}
+          especie={a.especie}
+          fase={a.fase}
+        />
 
         <div className="flex flex-wrap gap-2">
           <Button
