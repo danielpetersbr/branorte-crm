@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { useCan } from '@/hooks/usePermissions'
+import { FilaRevisao } from '@/components/guia/FilaRevisao'
 import { useAuth } from '@/hooks/useAuth'
 import {
   useGuiaAnimais, useGuiaFontes, useGuiaImagens, useGuiaMaterias, useSalvarAnimal,
@@ -30,7 +31,7 @@ import type {
   GuiaAnimal, GuiaFonte, GuiaImagem, GuiaMateria, StatusConteudo, StatusImagem,
 } from '@/lib/guia/tipos'
 
-type Aba = 'animais' | 'materias' | 'imagens' | 'fontes'
+type Aba = 'fila' | 'animais' | 'materias' | 'imagens' | 'fontes'
 
 const FLUXO: StatusConteudo[] = ['rascunho', 'em_revisao', 'aprovado', 'desatualizado', 'arquivado']
 
@@ -417,7 +418,8 @@ function EditorFonte({ fonte, onFechar }: { fonte: GuiaFonte; onFechar: () => vo
 export function GuiaAdmin() {
   const can = useCan()
   const { profile } = useAuth()
-  const [aba, setAba] = useState<Aba>('animais')
+  // A fila é a porta de entrada: é ela que faz as pendências serem assináveis.
+  const [aba, setAba] = useState<Aba>('fila')
   const [q, setQ] = useState('')
   const [status, setStatus] = useState<StatusConteudo | ''>('')
   const [editando, setEditando] = useState<string | null>(null)
@@ -501,6 +503,7 @@ export function GuiaAdmin() {
 
       <nav className="flex gap-1.5 overflow-x-auto border-b border-border pb-px">
         {([
+          ['fila', 'Fila de revisão'],
           ['animais', `Animais (${animais.length})`],
           ['materias', `Matérias-primas (${materias.length})`],
           ['imagens', `Imagens (${imagens.length})`],
@@ -516,6 +519,8 @@ export function GuiaAdmin() {
           </button>
         ))}
       </nav>
+
+      {aba === 'fila' && <FilaRevisao nomePadrao={autorPadrao} />}
 
       {(aba === 'animais' || aba === 'materias') && (
         <div className="flex flex-wrap gap-2">

@@ -11,7 +11,8 @@ import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import type {
-  GuiaAnimal, GuiaFonte, GuiaImagem, GuiaMateria, GuiaVersao, TipoItem,
+  FrenteRevisao, GuiaAnimal, GuiaFonte, GuiaImagem, GuiaMateria, GuiaVersao,
+  ItemFila, TipoItem,
 } from '@/lib/guia/tipos'
 
 const K_ANIMAIS = ['guia', 'animais'] as const
@@ -239,5 +240,72 @@ export function useVersoes(tabela: string, registroId: number | null) {
       if (error) throw error
       return (data ?? []) as GuiaVersao[]
     },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Fila de revisão e assinatura EM LOTE
+//
+// Existe porque o painel item-a-item não escala para o volume que a migração
+// gerou: pedir a um nutricionista que abra 81 cards, um por um, garante que
+// ninguém assina nunca. A view `guia_fila_revisao` já devolve quais frentes
+// cada card exige e quais faltam; a assinatura vai por RPC, que valida a
+// permissão e exige responsável nomeado do lado do banco.
+// ---------------------------------------------------------------------------
+const K_FILA = ['guia', 'fila-revisao'] as const
+
+export function useFilaRevisao() {
+  return useQuery({
+    queryKey: K_FILA,
+    queryFn: async (): Promise<ItemFila[]> => {
+      const { data, error } = await supabase
+        .from('guia_fila_revisao')
+        .select('*')
+        .order('nome')
+      if (error) throw error
+      return (data ?? []) as ItemFila[]
+    },
+    staleTime: 60 * 1000,
+  })
+}
+
+/** Invalida tudo que a assinatura muda: a fila e os dois catálogos. */
+function invalidarRevisao(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: K_FILA })
+  qc.invalidateQueries({ queryKey: K_ANIMAIS })
+  qc.invalidateQueries({ queryKey: K_MATERIAS })
+  qc.invalidateQueries({ queryKey: K_IMAGENS })
+}
+
+export function useAssinarRevisao() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (p: {
+      tabela: 'guia_animais' | 'guia_materias'
+      slugs: string[]
+      frente: FrenteRevisao
+      por: string
+    }): Promise<number> => {
+      const { data, error } = await supabase.rpc('guia_assinar_revisao', {
+        p_tabela: p.tabela, p_slugs: p.slugs, p_frente: p.frente, p_por: p.por,
+      })
+      if (error) throw error
+      return (data as number) ?? 0
+    },
+    onSuccess: () => invalidarRevisao(qc),
+  })
+}
+
+export function useVerificarImagens() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (p: { slugs: string[]; por: string }): Promise<number> => {
+      const { data, error } = await supabase.rpc('guia_verificar_imagens', {
+        p_slugs: p.slugs, p_por: p.por,
+      })
+      if (error) throw error
+      return (data as number) ?? 0
+    },
+    onSuccess: () => invalidarRevisao(qc),
   })
 }

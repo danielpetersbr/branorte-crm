@@ -113,6 +113,8 @@ export interface GuiaAnimal {
   revisor_tecnico: string | null
   revisado_em: string | null
   proxima_revisao: string | null
+  /** Assinaturas por frente. `pendente_validacao` é derivado disto por trigger. */
+  revisao: Revisao
   ordem: number
   updated_at: string
 }
@@ -175,8 +177,33 @@ export interface GuiaMateria {
   revisor_tecnico: string | null
   revisado_em: string | null
   proxima_revisao: string | null
+  /** Assinaturas por frente. `pendente_validacao` é derivado disto por trigger. */
+  revisao: Revisao
   ordem: number
   updated_at: string
+}
+
+/** Frente de revisão: cada uma é assinada por gente diferente. */
+export type FrenteRevisao = 'nutricao' | 'engenharia'
+
+export interface Assinatura { por: string; em: string }
+
+/** `{ nutricao: {por, em}, engenharia: {por, em} }` — vazio até alguém assinar. */
+export type Revisao = Partial<Record<FrenteRevisao, Assinatura>>
+
+/** Uma linha da fila de revisão (view `guia_fila_revisao`). */
+export interface ItemFila {
+  tabela: 'guia_animais' | 'guia_materias'
+  slug: string
+  nome: string
+  grupo: string
+  status: StatusConteudo
+  pendente_validacao: boolean
+  /** Frentes que ESTE card exige, derivadas do que ele afirma. */
+  frentes_exigidas: FrenteRevisao[]
+  /** Das exigidas, as que ainda não têm assinatura. */
+  frentes_pendentes: FrenteRevisao[]
+  revisao: Revisao
 }
 
 export interface GuiaVersao {
