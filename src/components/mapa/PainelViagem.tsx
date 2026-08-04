@@ -32,7 +32,28 @@ interface Props {
   onPDF: () => void
   gerandoPdf: boolean
   onConfirmarLocalizacao: (p: Parada) => void
+  // persistência (§19)
+  viagemId: string | null
+  status: ViagemStatus
+  setStatus: (s: ViagemStatus) => void
+  onAbrirSalvas: () => void
+  onNova: () => void
+  carregando: boolean
 }
+
+export type ViagemStatus =
+  | 'rascunho' | 'aguardando_localizacoes' | 'aguardando_confirmacoes'
+  | 'pronta' | 'em_andamento' | 'concluida' | 'cancelada'
+
+const STATUS_OPCOES: Array<[ViagemStatus, string]> = [
+  ['rascunho', 'Rascunho'],
+  ['aguardando_localizacoes', 'Aguardando localizações'],
+  ['aguardando_confirmacoes', 'Aguardando confirmações'],
+  ['pronta', 'Pronta'],
+  ['em_andamento', 'Em andamento'],
+  ['concluida', 'Concluída'],
+  ['cancelada', 'Cancelada'],
+]
 
 export function PainelViagem(p: Props) {
   const [aba, setAba] = useState<'roteiro' | 'ajustes'>('roteiro')
@@ -92,8 +113,27 @@ export function PainelViagem(p: Props) {
             placeholder="Nome da viagem"
             className="flex-1 min-w-0 h-8 px-2 rounded-md bg-surface-2 border border-border text-[14px] font-semibold text-ink placeholder:text-ink-faint outline-none focus:border-accent"
           />
+          <button onClick={p.onAbrirSalvas} title="Viagens salvas — abrir, duplicar, excluir"
+                  className="h-8 w-8 shrink-0 rounded-md text-ink-muted hover:bg-surface-2">📁</button>
           <button onClick={p.onSair} title="Sair do planejamento (mantém seus filtros)"
                   className="h-8 w-8 shrink-0 rounded-md text-ink-muted hover:bg-surface-2">✕</button>
+        </div>
+
+        {p.carregando && <div className="mt-1 text-[11px] text-ink-muted">Carregando viagem salva…</div>}
+
+        <div className="mt-1.5 flex items-center gap-1.5">
+          <select
+            value={p.status}
+            onChange={e => p.setStatus(e.target.value as ViagemStatus)}
+            title="Estado do planejamento (§19)"
+            className="h-7 flex-1 min-w-0 px-1.5 rounded-md border border-border bg-surface-2 text-[11.5px] text-ink outline-none focus:border-accent"
+          >
+            {STATUS_OPCOES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          {p.viagemId
+            ? <button onClick={p.onNova} title="Começar uma viagem em branco"
+                      className="h-7 px-2 shrink-0 rounded-md border border-border bg-surface text-[11px] font-semibold text-ink-muted">＋ nova</button>
+            : <span className="text-[10px] text-ink-faint shrink-0 px-1">não salva</span>}
         </div>
 
         <div className="mt-2 flex items-center gap-1 text-[12px]">
