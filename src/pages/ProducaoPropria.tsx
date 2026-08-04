@@ -353,13 +353,6 @@ export function ProducaoPropria() {
     }
   }
 
-  const apresentar = () => {
-    setAba('apresentacao')
-    setAviso(resultado.bloqueado
-      ? { tipo: 'erro', texto: 'O estudo ainda tem pendências — confira antes de mostrar ao cliente.' }
-      : null)
-  }
-
   const carregarLinha = async (id: string): Promise<EstudoRow | null> => {
     const { data, error } = await supabase
       .from('venda_racao_simulacoes')
@@ -404,7 +397,7 @@ export function ProducaoPropria() {
 
   const abas: Array<{ id: Aba; label: string; icone: typeof Calculator }> = [
     { id: 'simulacao', label: 'Simulação', icone: Calculator },
-    { id: 'apresentacao', label: 'Apresentação do estudo', icone: FileText },
+    { id: 'apresentacao', label: 'Apresentação', icone: FileText },
     { id: 'historico', label: 'Histórico', icone: History },
     { id: 'config', label: 'Configurações', icone: Settings },
   ]
@@ -422,31 +415,44 @@ export function ProducaoPropria() {
           <h1 className="vr-h1">Estudo de Viabilidade da Produção Própria</h1>
         </div>
 
-        {/* -------------------------------------------------------- abas */}
-        <div className="vr-tabs vr-no-print">
-          {abas.map(t => (
-            <button
-              key={t.id}
-              type="button"
-              className={`vr-tab${aba === t.id ? ' on' : ''}`}
-              onClick={() => setAba(t.id)}
-            >
-              <t.icone className="h-4 w-4" /> {t.label}
-            </button>
-          ))}
-        </div>
+        {/* ------------------------------------------- abas + ações (1 linha)
+            Eram duas fileiras empilhadas: abas em cima, seis botões embaixo.
+            Somando com marca, título, barra de progresso e passos, o vendedor
+            rolava a tela antes de chegar no primeiro campo. Agora dividem a
+            MESMA linha — abas à esquerda, ações à direita — e os secundários
+            viraram ícone com tooltip (continuam a um clique).
+            A classe é `vr-topo`: `vr-barra` já é a barra empilhada dos gráficos.
+            A borda de baixo saiu de `.vr-tabs` e veio pra cá, senão ela
+            terminaria no meio da linha, embaixo só das abas. */}
+        <div className="vr-topo vr-no-print">
+          <div className="vr-tabs">
+            {abas.map(t => (
+              <button
+                key={t.id}
+                type="button"
+                className={`vr-tab${aba === t.id ? ' on' : ''}`}
+                onClick={() => {
+                  setAba(t.id)
+                  // Herdado do botão "Apresentar ao cliente", que foi removido por
+                  // fazer exatamente o que esta aba faz. A checagem não podia ir
+                  // junto: sem ela o vendedor abre a apresentação com pendência e
+                  // só descobre na frente do cliente.
+                  if (t.id === 'apresentacao') {
+                    setAviso(resultado.bloqueado
+                      ? { tipo: 'erro', texto: 'O estudo ainda tem pendências — confira antes de mostrar ao cliente.' }
+                      : null)
+                  }
+                }}
+              >
+                <t.icone className="h-4 w-4" /> {t.label}
+              </button>
+            ))}
+          </div>
 
-        {/* --------------------------------------------- barra de ações */}
-        {(aba === 'simulacao' || aba === 'apresentacao') && (
-          <>
-            {/* Era uma fileira de 8 botões do mesmo peso — em tela menor virava
-                uma parede. Agora: 1 principal (Calcular), 4 secundários e o resto
-                em "Mais ações", com o indicador de salvamento junto. O código do
-                estudo e o seletor de status entram pelo slot `extra`. */}
+          {(aba === 'simulacao' || aba === 'apresentacao') && (
             <BarraAcoes
               onCalcular={calcular}
               onSalvar={salvar}
-              onApresentar={apresentar}
               onGerarPdf={() => { setAba('apresentacao'); setTimeout(imprimirEstudo, 120) }}
               onWhatsApp={() => { setAba('apresentacao'); setTimeout(() => irPara('vr-whats'), 60) }}
               onRevisarPremissas={() => { setAba('apresentacao'); setTimeout(() => irPara('vr-premissas'), 60) }}
@@ -471,7 +477,11 @@ export function ProducaoPropria() {
                 </>
               }
             />
+          )}
+        </div>
 
+        {(aba === 'simulacao' || aba === 'apresentacao') && (
+          <>
             {/* ----------------------------------------- progresso */}
             <div className="vr-progress vr-no-print">
               <div className="trilho">

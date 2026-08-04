@@ -198,9 +198,19 @@ export function FormularioEstudo({
     <div className={`vr-card${largo ? ' vr-form-largo' : ''}`}>
       <h2>Dados do estudo</h2>
 
-      {/* ---------------------------------------------------- identificação */}
+      {/* ---------------------------------------------------- identificação
+          Nada aqui é obrigatório — o estudo calcula sem preencher um campo só
+          desta etapa. O que está aqui é o que sai impresso no cabeçalho da
+          apresentação e do PDF.
+
+          SAÍRAM DOIS CAMPOS (04/08/2026, pedido do Daniel): "Telefone" e
+          "Observações internas". O telefone servia pra montar o link
+          wa.me/NUMERO; sem ele o botão de WhatsApp abre o seletor de contato do
+          próprio app, que é o que o vendedor faz na prática — ele já está na
+          conversa. O campo continua no tipo e no banco, então estudo antigo que
+          tem telefone gravado segue abrindo a conversa direto. */}
       {ver(1) && (
-      <Etapa numero={1} titulo="Dados do cliente e do estudo" descricao="Aparecem na apresentação e no PDF — menos as observações internas.">
+      <Etapa numero={1} titulo="Dados do cliente e do estudo" descricao="Saem no cabeçalho da apresentação e do PDF. Nenhum é obrigatório.">
         <div className="vr-detbody">
           <Campo label="Nome do cliente">
             <CampoTexto valor={ident.clienteNome} onChange={v => setIdent({ clienteNome: v })} placeholder="Ex.: João da Silva" />
@@ -216,9 +226,6 @@ export function FormularioEstudo({
               <CampoTexto valor={ident.clienteUf} onChange={v => setIdent({ clienteUf: v.toUpperCase().slice(0, 2) })} placeholder="UF" />
             </Campo>
           </div>
-          <Campo label="Telefone" unidade="pro WhatsApp">
-            <CampoTexto tipo="tel" valor={ident.clienteTelefone} onChange={v => setIdent({ clienteTelefone: v })} placeholder="(00) 00000-0000" />
-          </Campo>
           <Campo label="Vendedor responsável">
             <CampoTexto valor={ident.vendedorNome} onChange={v => setIdent({ vendedorNome: v })} />
           </Campo>
@@ -230,14 +237,6 @@ export function FormularioEstudo({
               <CampoTexto tipo="date" valor={ident.validade} onChange={v => setIdent({ validade: v })} />
             </Campo>
           </div>
-          <Campo label="Observações internas" dica="Não aparece na apresentação do cliente.">
-            <textarea
-              className="vr-inp txt"
-              style={{ minHeight: 70, resize: 'vertical' }}
-              value={ident.observacoesInternas}
-              onChange={e => setIdent({ observacoesInternas: e.target.value })}
-            />
-          </Campo>
         </div>
       </Etapa>
       )}
