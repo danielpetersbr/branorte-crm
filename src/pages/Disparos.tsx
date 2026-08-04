@@ -701,6 +701,7 @@ function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onTo
           <p className="text-[10px] text-ink-muted mt-0.5">
             Quem acumula cliente parado em PROSPECÇÃO + 2ª TENTATIVA + NOVO LEAD recebe menos lead novo,
             e volta sozinho quando limpa. O % que você define aqui continua valendo — a cota só multiplica por cima.
+            A fatia que sobra vai pros outros ligados (por isso eles recebem mais do que o slider indica).
             Teto: {cotaZero} parados.
           </p>
           <div className="flex flex-wrap gap-1.5 mt-2">
@@ -716,7 +717,9 @@ function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onTo
                   title={`${ef?.parados_prospeccao ?? 0} prospecção · ${ef?.parados_2a_tentativa ?? 0} 2ª tentativa · ${ef?.parados_novo_lead ?? 0} novo lead`}
                 >
                   {v.vendedor_nome}: {ef?.parados_topo ?? 0} parados →{' '}
-                  {zerado ? 'não recebe' : `${efetivoDe(v.vendedor_nome).toFixed(1)}%`}
+                  {zerado
+                    ? 'não recebe'
+                    : `recebe ${Math.round((efetivoDe(v.vendedor_nome) / (somaEfetiva || 1)) * 100)} de cada 100`}
                 </span>
               )
             })}
@@ -836,10 +839,14 @@ function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onTo
                       if (valor === 0) return <span className="text-ink-faint/50">— não recebe leads —</span>
                       if (soma <= 0) return null
                       const f = fator(v.vendedor_nome)
-                      if (!cotaAtiva || f >= 1) {
-                        return <>recebe <span className="text-ink font-semibold">{Math.round((valor / soma) * 100)}</span> de cada 100 leads</>
-                      }
                       const ef = efetivo[v.vendedor_nome]
+                      const cotaMexe = cotaAtiva && cortados.length > 0
+                      // Sem cota atuando, a base é a soma configurada. Com alguém
+                      // freado, a base é a soma EFETIVA — a fatia que o cortado
+                      // deixou de receber vai pros outros.
+                      const emCada100 = cotaMexe
+                        ? Math.round((efetivoDe(v.vendedor_nome) / (somaEfetiva || 1)) * 100)
+                        : Math.round((valor / soma) * 100)
                       if (f === 0) {
                         return (
                           <span className="text-danger font-semibold">
@@ -847,11 +854,18 @@ function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onTo
                           </span>
                         )
                       }
+                      if (f < 1) {
+                        return (
+                          <span className="text-warning">
+                            cota reduziu: recebe <span className="font-semibold">{emCada100}</span>
+                            {' '}de cada 100 ({ef?.parados_topo ?? 0} parados)
+                          </span>
+                        )
+                      }
                       return (
-                        <span className="text-warning">
-                          cota reduziu: recebe{' '}
-                          <span className="font-semibold">{Math.round((efetivoDe(v.vendedor_nome) / (somaEfetiva || 1)) * 100)}</span>
-                          {' '}de cada 100 ({ef?.parados_topo ?? 0} parados)
+                        <span title={cotaMexe ? 'Subiu porque a cota freou outro vendedor e a fatia dele foi redistribuída.' : undefined}>
+                          recebe <span className="text-ink font-semibold">{emCada100}</span> de cada 100 leads
+                          {cotaMexe && <span className="text-success"> ↑</span>}
                         </span>
                       )
                     })()}
