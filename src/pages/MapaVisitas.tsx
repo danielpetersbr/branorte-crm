@@ -10,7 +10,8 @@ import { useEtiquetas } from '@/hooks/useEtiquetas'
 import { useAuth } from '@/hooks/useAuth'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { PainelViagem, corDoDia } from '@/components/mapa/PainelViagem'
-import { useSalvarViagem, useSalvarLocalizacaoCliente } from '@/hooks/useViagens'
+import { useSalvarViagem, useSalvarLocalizacaoCliente, useViagem, type ViagemStatus } from '@/hooks/useViagens'
+import { ViagensSalvas } from '@/components/mapa/ViagensSalvas'
 import { supabase } from '@/lib/supabase'
 import {
   type ConfigViagem, type Parada, type Trecho, type PontoMapa, type Programacao,
@@ -326,7 +327,58 @@ export function MapaVisitas() {
   const [viagemSalvaEm, setViagemSalvaEm] = useState<string | null>(null)
   const [gerandoPdf, setGerandoPdf] = useState(false)
   const [corrigirLocal, setCorrigirLocal] = useState<Parada | null>(null)
+  const [viagemId, setViagemId] = useState<string | null>(null)
+  const [viagemStatus, setViagemStatus] = useState<ViagemStatus>('rascunho')
+  const [abrirSalvas, setAbrirSalvas] = useState(false)
+  const [carregarId, setCarregarId] = useState<string | null>(null)
   const setCfgViagem = (patch: Partial<ConfigViagem>) => setCfgViagemState(c => ({ ...c, ...patch }))
+
+  // Abrir uma viagem salva: o hook busca, o effect aplica no painel.
+  const { data: viagemCarregada, isFetching: carregandoViagem } = useViagem(carregarId)
+  useEffect(() => {
+    if (!carregarId || !viagemCarregada || viagemCarregada.id !== carregarId) return
+    setCfgViagemState(viagemCarregada.cfg)
+    setParadas(viagemCarregada.paradas)
+    setViagemId(viagemCarregada.id)
+    setViagemStatus(viagemCarregada.status)
+    setTrechos(new Map())            // trechos são do roteiro antigo
+    geometriasRef.current = []
+    setProvedorRota(null)
+    setViagemSalvaEm(null)
+    setCarregarId(null)
+    setAbrirSalvas(false)
+    setModoViagem(true)
+  }, [carregarId, viagemCarregada])
+
+  // §25.19 — o planejamento tem que sobreviver ao F5. Salvar no banco é explícito
+  // (botão), mas trabalho NÃO salvo também não pode evaporar: guarda um rascunho
+  // local e devolve na volta. Só o rascunho — nada de telefone/coordenada vai pro
+  // localStorage além do que o próprio mapa já mostra na tela.
+  const RASCUNHO_KEY = 'branorte:viagem-rascunho:v1'
+  const rascunhoLido = useRef(false)
+  useEffect(() => {
+    if (rascunhoLido.current) return
+    rascunhoLido.current = true
+    try {
+      const cru = localStorage.getItem(RASCUNHO_KEY)
+      if (!cru) return
+      const r = JSON.parse(cru) as { cfg?: ConfigViagem; paradas?: Parada[]; id?: string | null; status?: ViagemStatus }
+      if (!r?.paradas?.length && !r?.cfg?.origem) return
+      if (r.cfg) setCfgViagemState({ ...CONFIG_PADRAO, ...r.cfg })
+      if (r.paradas) setParadas(r.paradas)
+      setViagemId(r.id ?? null)
+      if (r.status) setViagemStatus(r.status)
+    } catch {
+      localStorage.removeItem(RASCUNHO_KEY)   // rascunho corrompido não pode travar a tela
+    }
+  }, [])
+  useEffect(() => {
+    if (!rascunhoLido.current) return
+    try {
+      if (!paradas.length && !cfgViagem.origem) localStorage.removeItem(RASCUNHO_KEY)
+      else localStorage.setItem(RASCUNHO_KEY, JSON.stringify({ cfg: cfgViagem, paradas, id: viagemId, status: viagemStatus }))
+    } catch { /* quota cheia: o rascunho é conveniência, não pode quebrar a tela */ }
+  }, [cfgViagem, paradas, viagemId, viagemStatus])
 
   const viagemLayerRef = useRef<L.LayerGroup | null>(null)
   // O handler de popupopen é registrado UMA vez (deps []), então o closure congela.
@@ -645,6 +697,18 @@ export function MapaVisitas() {
     setModoRaio(false)
     if (!cfgViagem.nome) setCfgViagem({ nome: `Viagem ${new Date().toLocaleDateString('pt-BR')}` })
   }
+  function novaViagem() {
+    if (paradas.length && !window.confirm('Começar uma viagem em branco? O que está no painel some se não estiver salvo.')) return
+    setCfgViagemState({ ...CONFIG_PADRAO, nome: `Viagem ${new Date().toLocaleDateString('pt-BR')}` })
+    setParadas([])
+    setTrechos(new Map())
+    geometriasRef.current = []
+    setProvedorRota(null)
+    setViagemId(null)
+    setViagemStatus('rascunho')
+    setViagemSalvaEm(null)
+  }
+
   function sairDaViagem() {
     setModoViagem(false)
     setViagemSheet(false)
@@ -766,7 +830,11 @@ export function MapaVisitas() {
     if (!cfgViagem.nome.trim()) return
     setSalvandoViagem(true)
     try {
-      await salvarViagemMut.mutateAsync({ cfg: cfgViagem, paradas, programacao: prog })
+      // id presente = regrava por cima da mesma viagem (não cria uma cópia a cada salvar)
+      const id = await salvarViagemMut.mutateAsync({
+        id: viagemId ?? undefined, cfg: cfgViagem, paradas, programacao: prog, status: viagemStatus,
+      })
+      setViagemId(id)
       setViagemSalvaEm(new Date().toISOString())
     } catch (e) {
       // O hook valida os CHECK do banco antes do INSERT e joga mensagem em pt-BR
@@ -1373,6 +1441,12 @@ export function MapaVisitas() {
               onPDF={() => void gerarPdfViagem()}
               gerandoPdf={gerandoPdf}
               onConfirmarLocalizacao={setCorrigirLocal}
+              viagemId={viagemId}
+              status={viagemStatus}
+              setStatus={setViagemStatus}
+              onAbrirSalvas={() => setAbrirSalvas(true)}
+              onNova={novaViagem}
+              carregando={carregandoViagem}
             />
           </div>
         )}
@@ -1522,6 +1596,12 @@ export function MapaVisitas() {
                 onPDF={() => void gerarPdfViagem()}
                 gerandoPdf={gerandoPdf}
                 onConfirmarLocalizacao={p => { setCorrigirLocal(p); setViagemSheet(false) }}
+                viagemId={viagemId}
+                status={viagemStatus}
+                setStatus={setViagemStatus}
+                onAbrirSalvas={() => { setAbrirSalvas(true); setViagemSheet(false) }}
+                onNova={novaViagem}
+                carregando={carregandoViagem}
               />
             </div>
           </div>
@@ -1534,6 +1614,15 @@ export function MapaVisitas() {
           Clique no mapa pra marcar o ponto de partida
           <button onClick={() => setEscolhendoOrigem(false)} className="opacity-70 hover:opacity-100">✕</button>
         </div>
+      )}
+
+      {/* Modal: viagens salvas (§19 — abrir, duplicar, excluir) */}
+      {abrirSalvas && (
+        <ViagensSalvas
+          viagemAtual={viagemId}
+          onFechar={() => setAbrirSalvas(false)}
+          onAbrir={id => setCarregarId(id)}
+        />
       )}
 
       {/* Modal: corrigir localização de um cliente (grava em cliente_localizacao) */}
