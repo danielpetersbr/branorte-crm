@@ -44,8 +44,9 @@ export function useGeocodarVisitas() {
 }
 
 // ── Camada de ORÇAMENTOS no mapa ──────────────────────────────────────────
-// 1 ponto por cliente (telefone): orçamento mais recente define a idade/cor,
-// total = soma dos orçamentos do cliente. lat/lng vem do cache de cidade.
+// 1 ponto por cliente (telefone): orçamento mais recente define a idade/cor.
+// total = valor do orçamento MAIS RECENTE do cliente (não a soma dos orçamentos dele);
+// se o cliente já comprou, é a soma das vendas. lat/lng vem do cache de cidade.
 export interface OrcamentoPonto {
   cliente: string | null
   telefone: string | null
