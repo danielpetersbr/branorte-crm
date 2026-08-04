@@ -1054,6 +1054,21 @@
 }
 .vr .vr-topo .vr-cta { gap: 7px; }
 
+/* Ações da /venda-racao na mesma linha das abas. Ela não usa a BarraAcoes da
+   /producao-propria (não tem Calcular/PDF/WhatsApp), então precisa do próprio
+   alinhamento — mesma altura e mesmo respiro, pra as duas telas abrirem iguais. */
+.vr .vr-topo .vr-topo-acoes {
+  display: flex; align-items: center; gap: 7px;
+  flex: 0 1 auto; justify-content: flex-end;
+  padding-bottom: 6px; flex-wrap: wrap;
+}
+/* Secundários viram ícone: com o rótulo, "Duplicar" + "Nova simulação" + código
+   + status estouravam a linha e a barra quebrava em duas — que é exatamente o
+   que ela existe pra evitar. O title fica no TSX. */
+.vr .vr-topo .vr-topo-acoes .vr-btn.ghost { padding: 9px; gap: 0; }
+.vr .vr-topo .vr-topo-acoes .vr-btn.ghost svg { display: block; }
+.vr .vr-topo .vr-topo-acoes select { max-width: 140px; }
+
 /* Secundários só com ícone: quadrado, sem o padding lateral do rótulo.
    Título e aria-label vão no TSX — sem eles isto é um quadrado mudo. */
 .vr .vr-btn.icone { padding: 9px; gap: 0; }
@@ -1070,6 +1085,7 @@
      o comportamento antigo, e não espremidas numa linha ilegível. */
   .vr .vr-topo { align-items: stretch; }
   .vr .vr-topo .vr-acoes { justify-content: flex-start; padding-bottom: 8px; }
+  .vr .vr-topo .vr-topo-acoes { justify-content: flex-start; padding-bottom: 8px; }
 }
 
 /* Só pro leitor de tela. Nada de `display:none` nem `visibility:hidden` — os

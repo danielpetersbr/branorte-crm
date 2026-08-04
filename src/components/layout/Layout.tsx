@@ -475,11 +475,25 @@ export function Layout() {
             </NavLink>
           ) : (
             <>
-              <NavLink to="/" title="Branorte CRM" className="flex items-baseline gap-1.5 min-w-0 flex-1 select-none">
-                <span className="font-extrabold text-[18px] leading-none tracking-[-0.045em] whitespace-nowrap">
-                  <span className="text-accent">BRA</span><span className="text-ink">NORTE</span>
-                </span>
-                <span className="text-[8.5px] font-semibold uppercase tracking-[0.18em] text-ink-faint">CRM</span>
+              <NavLink to="/" title="Branorte CRM" className="flex items-center gap-1.5 min-w-0 flex-1 select-none">
+                {/* Logo de verdade, não o nome imitado com duas <span>. São dois
+                    arquivos porque a marca tem duas versões oficiais: verde+preto
+                    no claro, verde+branco no escuro. Um arquivo só com filtro CSS
+                    não serve — filtro não sabe recolorir SÓ o preto e ia comer o
+                    verde junto. Troca por `dark:` (Tailwind darkMode: 'class'),
+                    sem JS: no instante do toggle já está certo. */}
+                <img
+                  src="/branorte-logo.png"
+                  alt="Branorte"
+                  className="h-[17px] w-auto shrink-0 dark:hidden"
+                />
+                <img
+                  src="/branorte-logo-dark.png"
+                  alt=""
+                  aria-hidden="true"
+                  className="h-[17px] w-auto shrink-0 hidden dark:block"
+                />
+                <span className="text-[8.5px] font-semibold uppercase tracking-[0.18em] text-ink-faint self-end pb-[2px]">CRM</span>
               </NavLink>
               {profile && (
                 <NavLink

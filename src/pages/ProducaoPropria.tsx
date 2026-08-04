@@ -172,7 +172,15 @@ export function ProducaoPropria() {
       const bruto = localStorage.getItem(CHAVE_RASCUNHO)
       if (bruto) {
         const salvo = JSON.parse(bruto) as { input: unknown; id: string | null; codigo?: string }
-        setInput(normalizarInput(salvo.input, config))
+        // O rascunho e do NAVEGADOR, nao da conta. Se quem esta logado agora e
+        // outra pessoa, o estudo passa a ser dela — em computador compartilhado o
+        // vendedor herdava o nome de quem mexeu antes e mandava a proposta
+        // assinada com o nome errado. Estudo SALVO (do historico) nao passa por
+        // aqui: la o autor gravado continua valendo.
+        const restaurado = normalizarInput(salvo.input, config)
+        setInput(vendedor && restaurado.identificacao.vendedorNome !== vendedor
+          ? { ...restaurado, identificacao: { ...restaurado.identificacao, vendedorNome: vendedor } }
+          : restaurado)
         setEstudoId(salvo.id ?? null)
         if (salvo.codigo) setCodigo(salvo.codigo)
         return

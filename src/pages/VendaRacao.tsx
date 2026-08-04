@@ -114,7 +114,15 @@ export function VendaRacao() {
       const bruto = localStorage.getItem(CHAVE_RASCUNHO)
       if (bruto) {
         const salvo = JSON.parse(bruto) as { input: unknown; id: string | null; codigo?: string }
-        setInput(normalizarInput(salvo.input, config))
+        // O rascunho e do NAVEGADOR, nao da conta. Se quem esta logado agora e
+        // outra pessoa, o estudo passa a ser dela — em computador compartilhado o
+        // vendedor herdava o nome de quem mexeu antes e mandava a proposta
+        // assinada com o nome errado. Estudo SALVO (do historico) nao passa por
+        // aqui: la o autor gravado continua valendo.
+        const restaurado = normalizarInput(salvo.input, config)
+        setInput(vendedor && restaurado.identificacao.vendedorNome !== vendedor
+          ? { ...restaurado, identificacao: { ...restaurado.identificacao, vendedorNome: vendedor } }
+          : restaurado)
         setSimulacaoId(salvo.id ?? null)
         if (salvo.codigo) setCodigo(salvo.codigo)
         return
@@ -288,48 +296,51 @@ export function VendaRacao() {
   return (
     <div className="vr">
       <div className="vr-wrap">
-        <div className="vr-brand">BRA<b>NORTE</b> · Fábricas de Ração</div>
-        <div className="vr-eyebrow">Proposta comercial</div>
-        <h1 className="vr-h1">Venda de Ração</h1>
-        <p className="vr-lede">
-          Calcule o custo, o preço ideal de venda, a margem e o resultado de cada negociação.
-          Ração farelada para bovinos, suínos e aves — e milho triturado.
-        </p>
-
-        {/* -------------------------------------------------------- abas */}
-        <div className="vr-tabs vr-no-print">
-          {abas.map(t => (
-            <button
-              key={t.id}
-              type="button"
-              className={`vr-tab${aba === t.id ? ' on' : ''}`}
-              onClick={() => setAba(t.id)}
-            >
-              <t.icone className="h-4 w-4" /> {t.label}
-            </button>
-          ))}
+        {/* Mesmo cabeçalho ENXUTO da /producao-propria — as duas telas são a
+            mesma ferramenta e não podiam abrir diferente. Saíram o "eyebrow"
+            (dizia "Proposta comercial", que o subtítulo já diz) e o parágrafo de
+            apresentação: quem abre esta tela sabe o que ela é, e cada linha aqui
+            em cima é rolagem que o vendedor faz o dia inteiro antes de chegar no
+            primeiro campo. Nada disto ia pro PDF. */}
+        <div className="vr-cab">
+          <span className="vr-brand">BRA<b>NORTE</b> · Fábricas de Ração</span>
+          <h1 className="vr-h1">Venda de Ração</h1>
         </div>
 
-        {/* --------------------------------------------- barra de ações */}
-        {(aba === 'simulacao' || aba === 'proposta') && (
-          <div
-            className="vr-cta vr-no-print"
-            style={{ marginTop: 14, alignItems: 'center', justifyContent: 'space-between' }}
-          >
-            <div className="vr-cta" style={{ marginTop: 0 }}>
+        {/* ------------------------------------------- abas + ações (1 linha)
+            Eram duas fileiras: abas em cima, três botões embaixo. Agora dividem
+            a MESMA linha, igual à /producao-propria. */}
+        <div className="vr-topo vr-no-print">
+          <div className="vr-tabs">
+            {abas.map(t => (
+              <button
+                key={t.id}
+                type="button"
+                className={`vr-tab${aba === t.id ? ' on' : ''}`}
+                onClick={() => setAba(t.id)}
+              >
+                <t.icone className="h-4 w-4" /> {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* As MESMAS acoes de antes, so que nesta linha em vez de numa fileira
+              propria embaixo. Nao usei a BarraAcoes da /producao-propria porque
+              ela exige Calcular / PDF / WhatsApp, e esta tela nao tem: o calculo
+              aqui e ao vivo e a impressao mora dentro da aba Proposta. Botao que
+              nao faz nada e pior que layout diferente. */}
+          {(aba === 'simulacao' || aba === 'proposta') && (
+            <div className="vr-topo-acoes">
               <button type="button" className="vr-btn primary" disabled={salvarSimulacao.isPending} onClick={salvar}>
                 <Save className="h-4 w-4" />
                 {salvarSimulacao.isPending ? 'Salvando…' : simulacaoId ? 'Salvar alterações' : 'Salvar simulação'}
               </button>
-              <button type="button" className="vr-btn ghost" onClick={duplicarAtual}>
-                <Copy className="h-4 w-4" /> Duplicar
+              <button type="button" className="vr-btn ghost" title="Duplicar" onClick={duplicarAtual}>
+                <Copy className="h-4 w-4" />
               </button>
-              <button type="button" className="vr-btn ghost" onClick={novaProposta}>
-                <FilePlus2 className="h-4 w-4" /> Nova simulação
+              <button type="button" className="vr-btn ghost" title="Nova simulação" onClick={novaProposta}>
+                <FilePlus2 className="h-4 w-4" />
               </button>
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <span style={{ fontSize: 12, color: 'var(--vr-ink40)', fontFamily: 'var(--vr-mono)' }}>
                 {codigo}
               </span>
@@ -342,8 +353,8 @@ export function VendaRacao() {
                 }}
               />
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {aviso && (
           <div className={aviso.tipo === 'ok' ? 'vr-nota' : 'vr-erro'}>{aviso.texto}</div>
