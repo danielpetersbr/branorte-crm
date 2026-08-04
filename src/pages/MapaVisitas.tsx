@@ -344,6 +344,7 @@ export function MapaVisitas() {
     setViagemStatus(viagemCarregada.status)
     setTrechos(new Map())            // trechos são do roteiro antigo
     geometriasRef.current = []
+    setGeoTrechos(new Map())
     setProvedorRota(null)
     setViagemSalvaEm(null)
     setCarregarId(null)
@@ -719,6 +720,7 @@ export function MapaVisitas() {
     setParadas([])
     setTrechos(new Map())
     geometriasRef.current = []
+    setGeoTrechos(new Map())
     setProvedorRota(null)
     setViagemId(null)
     setViagemStatus('rascunho')
@@ -777,7 +779,18 @@ export function MapaVisitas() {
       }
       setTrechos(m)
       setProvedorRota(j.provedor || 'osrm')
-      if (Array.isArray(j.geometrias)) geometriasRef.current = j.geometrias
+      if (Array.isArray(j.geometrias)) {
+        geometriasRef.current = j.geometrias
+        // geometrias[i] é a perna pontos[i] -> pontos[i+1] (contrato de api/rota.ts).
+        const g = new Map<string, Array<[number, number]>>()
+        for (let i = 0; i < j.geometrias.length; i++) {
+          const de = pontos[i], para = pontos[i + 1]
+          const linha = j.geometrias[i]
+          if (!de || !para || !Array.isArray(linha) || linha.length < 2) continue
+          g.set(chaveTrecho(de, para), linha)
+        }
+        setGeoTrechos(g)
+      }
     } catch (e) {
       if ((e as Error)?.name !== 'AbortError') {
         setProvedorRota('estimado')
@@ -788,6 +801,13 @@ export function MapaVisitas() {
     }
   }
   const geometriasRef = useRef<Array<Array<[number, number]>>>([])
+  /**
+   * Mesma geometria do ref acima, mas chaveada por trecho (`chaveTrecho`) — é o
+   * que permite desenhar CADA perna na cor do dia dela, em vez de um fio cinza
+   * solto por cima de linhas retas coloridas. Estado e não ref de propósito: o
+   * desenho precisa reagir quando a rota chega.
+   */
+  const [geoTrechos, setGeoTrechos] = useState<Map<string, Array<[number, number]>>>(new Map())
 
   // Recalcula sozinho quando muda o conjunto/ordem — com debounce, pra não
   // bater na API a cada clique (§10 e §23).
@@ -795,7 +815,7 @@ export function MapaVisitas() {
   useEffect(() => {
     if (!modoViagem) return
     if (primeiroRenderViagem.current) { primeiroRenderViagem.current = false; return }
-    if (!paradas.length) { setTrechos(new Map()); geometriasRef.current = []; return }
+    if (!paradas.length) { setTrechos(new Map()); geometriasRef.current = []; setGeoTrechos(new Map()); return }
     const t = window.setTimeout(() => { void calcularRota() }, 900)
     return () => window.clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -816,7 +836,10 @@ export function MapaVisitas() {
           roteiro: {
             cfg: cfgViagem,
             prog,
-            geometrias: geometriasRef.current,
+            // Chaveada por trecho, não por índice: parada que caiu em
+            // "não coube" some do prog e desalinharia um array plano, fazendo o
+            // PDF desenhar o traçado de uma perna no lugar de outra.
+            geometrias: Object.fromEntries(geoTrechos),
             responsavel: profile?.display_name || profile?.email || null,
             provedor: provedorRota,
           },
@@ -1048,6 +1071,7 @@ export function MapaVisitas() {
       setParadas(atualizadas)
       setTrechos(new Map())          // trechos antigos apontam pra coordenada velha
       geometriasRef.current = []
+    setGeoTrechos(new Map())
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pontoPorKey, modoViagem])
@@ -1059,6 +1083,7 @@ export function MapaVisitas() {
     if (!map || !vl) return
     vl.clearLayers()
     if (!modoViagem) return
+    const pernoitando = cfgViagem.pernoitar !== false
 
     if (cfgViagem.origem) {
       L.marker([cfgViagem.origem.lat, cfgViagem.origem.lng], {
@@ -1073,17 +1098,28 @@ export function MapaVisitas() {
 
     // Trechos calculados de verdade viram linha cheia; o resto fica pontilhado
     // (§17: "trechos ainda não calculados em linha pontilhada").
+    // `anterior` atravessa os dias: dormindo na estrada o dia 2 sai de onde o dia 1
+    // parou. Reiniciar na origem a cada volta do laço era o que desenhava três
+    // linhas saindo do mesmo ponto A, contradizendo o roteiro do painel.
+    let anterior: [number, number] | null =
+      cfgViagem.origem ? [cfgViagem.origem.lat, cfgViagem.origem.lng] : null
     for (const d of prog.dias) {
       const cor = corDoDia(d.dia)
-      let anterior: [number, number] | null =
-        cfgViagem.origem ? [cfgViagem.origem.lat, cfgViagem.origem.lng] : null
+      if (!pernoitando && cfgViagem.origem) anterior = [cfgViagem.origem.lat, cfgViagem.origem.lng]
       for (const pp of d.paradas) {
         const aqui: [number, number] = [pp.parada.lat, pp.parada.lng]
         if (anterior) {
           const real = pp.trechoAnterior && !pp.trechoAnterior.estimado
-          L.polyline([anterior, aqui], {
+          // Traçado da estrada NA COR DO DIA. Sem geometria (rota ainda não
+          // calculada, ou ponto fora da malha) cai na reta pontilhada — que aí
+          // significa "ainda não sei o caminho", não "o caminho é reto".
+          const via = geoTrechos.get(chaveTrecho(
+            { lat: anterior[0], lng: anterior[1] },
+            { lat: aqui[0], lng: aqui[1] },
+          ))
+          L.polyline(via && via.length > 1 ? via : [anterior, aqui], {
             color: cor, weight: real ? 3.5 : 2.5, opacity: 0.85,
-            dashArray: real ? undefined : '7 7',
+            dashArray: via ? undefined : (real ? undefined : '7 7'),
           }).bindPopup(
             `<div style="font-size:12px"><b>${esc(pp.deQuem)}</b> → <b>${esc(nomeParada(pp.parada))}</b><br>`
             + `${pp.trechoAnterior ? `${(pp.trechoAnterior.metros / 1000).toFixed(0)} km · ${Math.round(pp.trechoAnterior.segundos / 60)} min` : '—'}`
@@ -1111,20 +1147,32 @@ export function MapaVisitas() {
         ).addTo(vl)
         anterior = aqui
       }
+      // Dia que dorme na estrada não volta pra base — só o último. Desenhar a
+      // volta em todo dia mostrava um retorno que o roteiro não prevê.
+      const ehUltimo = d.dia === prog.dias[prog.dias.length - 1]?.dia
       const volta = cfgViagem.retornarOrigem ? cfgViagem.origem : cfgViagem.destino
-      if (volta && anterior) {
-        L.polyline([anterior, [volta.lat, volta.lng]], { color: cor, weight: 2, opacity: 0.5, dashArray: '4 8' }).addTo(vl)
+      if (volta && anterior && (!pernoitando || ehUltimo)) {
+        const via = geoTrechos.get(chaveTrecho(
+          { lat: anterior[0], lng: anterior[1] }, { lat: volta.lat, lng: volta.lng },
+        ))
+        L.polyline(via && via.length > 1 ? via : [anterior, [volta.lat, volta.lng]], {
+          color: cor, weight: 2, opacity: 0.5, dashArray: via ? undefined : '4 8',
+        }).addTo(vl)
       }
-    }
-
-    // Geometria real do OSRM por cima (a linha reta vira o traçado da estrada).
-    for (const g of geometriasRef.current) {
-      if (Array.isArray(g) && g.length > 1) {
-        L.polyline(g, { color: '#0f172a', weight: 1.5, opacity: 0.35 }).addTo(vl)
+      // Marca onde o vendedor dorme: o roteiro sumia entre um dia e outro.
+      if (pernoitando && !ehUltimo && anterior) {
+        L.marker(anterior, {
+          icon: L.divIcon({
+            className: 'viagem-pernoite',
+            html: `<div style="width:20px;height:20px;border-radius:50%;background:#fff;border:2px solid ${cor};box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:11px">🛏️</div>`,
+            iconSize: [20, 20], iconAnchor: [-6, 14],
+          }),
+          zIndexOffset: 1400,
+        }).bindPopup(`<b>Fim do dia ${d.dia}</b><br>Pernoite em ${esc(d.pernoiteEm ?? '')}`).addTo(vl)
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modoViagem, prog, cfgViagem.origem, cfgViagem.destino, cfgViagem.retornarOrigem, provedorRota])
+  }, [modoViagem, prog, cfgViagem.origem, cfgViagem.destino, cfgViagem.retornarOrigem, cfgViagem.pernoitar, geoTrechos, provedorRota])
 
   // desenha círculo do raio
   useEffect(() => {

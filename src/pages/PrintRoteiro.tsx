@@ -27,6 +27,7 @@ import {
   diaSemana,
   somarDias,
   linkGoogleMaps,
+  chaveTrecho,
   type ConfigViagem,
   type Programacao,
   type DiaProgramado,
@@ -39,6 +40,9 @@ import {
 export interface RoteiroPrintPayload {
   cfg: ConfigViagem
   prog: Programacao
+  /** Traçado real das estradas, por trecho (`chaveTrecho(a,b)` -> lista de
+   *  pontos). Ausente = rota não calculada; aí o mapa cai na reta tracejada. */
+  geometrias?: Record<string, Array<[number, number]>>
   /** Quem viaja / quem assina o roteiro. */
   responsavel?: string | null
   /** ISO. Default: agora. */
@@ -122,6 +126,7 @@ async function montarMapa(
   div: HTMLDivElement,
   cfg: ConfigViagem,
   prog: Programacao,
+  geometrias?: Record<string, Array<[number, number]>>,
 ): Promise<{ map: LeafletNS.Map; resultado: ResultadoMapa }> {
   const L = await carregarLeaflet()
 
@@ -159,17 +164,43 @@ async function montarMapa(
   const pontos: LeafletNS.LatLngTuple[] = []
   const multiDia = prog.dias.length > 1
 
-  // Trajeto + pinos, um grupo por dia
+  const pernoitando = cfg.pernoitar !== false
+  /** Traçado real da perna a->b, se a rota foi calculada. */
+  const via = (a: LeafletNS.LatLngTuple, b: LeafletNS.LatLngTuple) => {
+    const g = geometrias?.[chaveTrecho({ lat: a[0], lng: a[1] }, { lat: b[0], lng: b[1] })]
+    return Array.isArray(g) && g.length > 1 ? (g as LeafletNS.LatLngTuple[]) : null
+  }
+
+  // Trajeto + pinos, um grupo por dia. `anterior` ATRAVESSA os dias: dormindo na
+  // estrada, o dia 2 sai de onde o dia 1 parou. Reiniciar na origem a cada dia
+  // desenhava várias linhas saindo do mesmo ponto A — retorno que o roteiro não
+  // prevê, e que contradiz a tabela impressa logo abaixo do mapa.
+  let anterior: LeafletNS.LatLngTuple | null =
+    cfg.origem ? [cfg.origem.lat, cfg.origem.lng] : null
+
   for (const d of prog.dias) {
     const cor = corDia(d.dia)
-    const seq: LeafletNS.LatLngTuple[] = []
-    if (cfg.origem) seq.push([cfg.origem.lat, cfg.origem.lng])
-    for (const x of d.paradas) seq.push([x.parada.lat, x.parada.lng])
-    if (volta) seq.push([volta.lat, volta.lng])
-    pontos.push(...seq)
+    if (!pernoitando && cfg.origem) anterior = [cfg.origem.lat, cfg.origem.lng]
+    const ehUltimo = d.dia === prog.dias[prog.dias.length - 1]?.dia
 
-    if (seq.length > 1) {
-      L.polyline(seq, {
+    // Uma polyline por PERNA (não uma por dia): só assim cada trecho pode usar o
+    // traçado da estrada quando ele existe, em vez de uma reta ligando tudo.
+    const pernas: LeafletNS.LatLngTuple[][] = []
+    for (const x of d.paradas) {
+      const aqui: LeafletNS.LatLngTuple = [x.parada.lat, x.parada.lng]
+      if (anterior) pernas.push(via(anterior, aqui) ?? [anterior, aqui])
+      pontos.push(aqui)
+      anterior = aqui
+    }
+    if (volta && anterior && (!pernoitando || ehUltimo)) {
+      const fim: LeafletNS.LatLngTuple = [volta.lat, volta.lng]
+      pernas.push(via(anterior, fim) ?? [anterior, fim])
+    }
+    if (cfg.origem) pontos.push([cfg.origem.lat, cfg.origem.lng])
+
+    for (const perna of pernas) {
+      if (perna.length < 2) continue
+      L.polyline(perna, {
         color: cor,
         weight: 3,
         opacity: 0.85,
@@ -348,7 +379,7 @@ export default function PrintRoteiro() {
     jaMontou.current = true
     const div = mapaRef.current
 
-    montarMapa(div, payload.cfg, payload.prog)
+    montarMapa(div, payload.cfg, payload.prog, payload.geometrias)
       .then(({ map, resultado }) => {
         mapaInstancia.current = map
         setMapaTiles(resultado.tiles)
