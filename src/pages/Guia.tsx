@@ -223,7 +223,14 @@ export function Guia({ modoInicial = 'animais' }: { modoInicial?: Modo }) {
 
   // ================================= índice =================================
   return (
-    <div className="mx-auto max-w-6xl space-y-4 px-3 py-4 sm:px-4">
+    <div className={cn(
+      'mx-auto space-y-4 px-3 py-4 sm:px-4',
+      // O Atendimento rápido é FORMULÁRIO em três colunas: com o teto de 1152px
+      // as opções quebravam de três em três e as 12 perguntas empurravam o
+      // resultado pra fora da tela. As outras abas são grade de cards, que já
+      // fica boa em 1152 e viraria uma fileira longa demais se esticasse.
+      modo === 'atendimento' ? 'max-w-[1600px]' : 'max-w-6xl',
+    )}>
       <header>
         <h1 className="text-lg font-bold text-ink">Guia do Vendedor</h1>
         <p className="text-[12.5px] text-ink-muted">

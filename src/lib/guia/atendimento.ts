@@ -70,13 +70,20 @@ export function analisar(
   animais: GuiaAnimal[],
   materias: GuiaMateria[],
 ): ResultadoAtendimento {
+  const modo = a.modo ?? 'rebanho'
   const faltando: string[] = []
   if (!a.especie) faltando.push('Espécie')
   if (!a.fase) faltando.push('Fase ou sistema de criação')
-  if (!a.quantidade || a.quantidade <= 0) faltando.push('Quantidade de animais')
+  if (modo === 'volume') {
+    // Vendendo ração não existe rebanho, e o volume JÁ é o número final: pedir
+    // "confirme o consumo" seria pedir pra confirmar o que ele acabou de digitar.
+    if (!a.volumeMesKg || a.volumeMesKg <= 0) faltando.push('Volume mensal de ração')
+  } else {
+    if (!a.quantidade || a.quantidade <= 0) faltando.push('Quantidade de animais')
+    if (!a.consumoConfirmado) faltando.push('Confirmação do consumo com o cliente')
+  }
   if (!a.produto) faltando.push('Produto desejado (ração, concentrado, mineral, milho triturado)')
   if (!a.materias.length) faltando.push('Matérias-primas que o cliente já tem')
-  if (!a.consumoConfirmado) faltando.push('Confirmação do consumo com o cliente')
 
   // Categorias da espécie: as que casam com a fase escolhida, ou todas da espécie.
   const daEspecie = animais.filter(x => x.especie === a.especie)
@@ -88,8 +95,18 @@ export function analisar(
   // Perguntas ainda não respondidas: as das categorias que casam, sem repetir.
   const perguntas = Array.from(new Set(base.flatMap(x => x.perguntas)))
 
-  const consumoMesKg = consumoDeReferencia(a.especie, a.fase)
-  const necessidadeMesKg = consumoMesKg && a.quantidade ? consumoMesKg * a.quantidade : null
+  // O consumo do CLIENTE ganha do de catálogo. O de catálogo é média de tabela;
+  // o produtor sabe o dele, e a diferença multiplica pelo rebanho inteiro —
+  // 20 kg a mais em 500 cabeças são 10 t/mês de fábrica a mais.
+  const consumoCatalogo = consumoDeReferencia(a.especie, a.fase)
+  const consumoInformado = a.consumoKgAnimalMes && a.consumoKgAnimalMes > 0
+    ? a.consumoKgAnimalMes : null
+  const consumoMesKg = consumoInformado ?? consumoCatalogo
+
+  // Quem VENDE ração informa a tonelagem direto: não há rebanho pra multiplicar.
+  const necessidadeMesKg = a.modo === 'volume'
+    ? (a.volumeMesKg && a.volumeMesKg > 0 ? a.volumeMesKg : null)
+    : (consumoMesKg && a.quantidade ? consumoMesKg * a.quantidade : null)
 
   // Processo provável: união do que as categorias dizem.
   const processo = Array.from(new Set(base.map(x => x.processo).filter(Boolean))) as string[]
@@ -146,8 +163,9 @@ export function analisar(
 
   if (faltando.length) atencao.unshift({ nivel: 'informacao', texto: AVISO_SEM_DADOS })
 
-  const podeFecharEquipamento =
-    !!a.especie && !!a.fase && !!a.quantidade && a.quantidade > 0 && a.consumoConfirmado
+  const podeFecharEquipamento = modo === 'volume'
+    ? !!a.especie && !!a.fase && !!a.volumeMesKg && a.volumeMesKg > 0
+    : !!a.especie && !!a.fase && !!a.quantidade && a.quantidade > 0 && a.consumoConfirmado
 
   const { kgH, nota } = capacidadeParaAnalise(necessidadeMesKg)
 

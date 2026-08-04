@@ -360,3 +360,76 @@ describe('resumo para copiar', () => {
     assert.match(t, /17\.000 kg\/mês|17000/)
   })
 })
+
+// ═════════════════════════════════════════════════════════════════════════════
+// dois modos de volume: quem CONSOME e quem VENDE
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('modo de volume', () => {
+  /** Poedeira: o fixture POSTURA tem consumo de 3,4 kg/ave/mês. */
+  const aves = (o: Partial<Atendimento> = {}): Atendimento => ({
+    especie: 'aves', fase: 'postura', quantidade: null, sistema: null,
+    produto: 'Ração farelada completa', materias: ['milho'], consumoConfirmado: false,
+    ...o,
+  })
+
+  it('modo rebanho: volume = animais × consumo por animal', () => {
+    const r = analisar(aves({ quantidade: 20_000, consumoConfirmado: true }), ANIMAIS, MATERIAS)
+    assert.equal(r.consumoMesKg, 3.4)
+    assert.equal(r.necessidadeMesKg, 68_000)
+  })
+
+  it('o consumo DITO PELO CLIENTE ganha do de catálogo', () => {
+    // O de catálogo é média de tabela. A diferença multiplica pelo plantel:
+    // 0,6 kg a mais em 20 mil aves são 12 t/mês de fábrica a mais.
+    const r = analisar(
+      aves({ quantidade: 20_000, consumoConfirmado: true, consumoKgAnimalMes: 4 }),
+      ANIMAIS, MATERIAS,
+    )
+    assert.equal(r.consumoMesKg, 4)
+    assert.equal(r.necessidadeMesKg, 80_000)
+  })
+
+  it('consumo informado inválido cai de volta no catálogo', () => {
+    for (const v of [0, -5, null]) {
+      const r = analisar(
+        aves({ quantidade: 20_000, consumoConfirmado: true, consumoKgAnimalMes: v }),
+        ANIMAIS, MATERIAS,
+      )
+      assert.equal(r.consumoMesKg, 3.4, `${v} devia cair no catálogo`)
+    }
+  })
+
+  it('modo volume: quem VENDE ração informa a tonelagem, sem rebanho', () => {
+    const r = analisar(aves({ modo: 'volume', volumeMesKg: 150_000 }), ANIMAIS, MATERIAS)
+    assert.equal(r.necessidadeMesKg, 150_000)
+    assert.ok(!r.faltando.some(f => /Quantidade de animais/i.test(f)),
+      'não pode cobrar rebanho de quem vende ração')
+  })
+
+  it('modo volume não pede "confirme o consumo" — o número JÁ é o final', () => {
+    const r = analisar(aves({ modo: 'volume', volumeMesKg: 150_000 }), ANIMAIS, MATERIAS)
+    assert.ok(!r.faltando.some(f => /Confirmação do consumo/i.test(f)),
+      'seria pedir pra confirmar o que ele acabou de digitar')
+  })
+
+  it('modo volume SEM volume cobra o volume, não o rebanho', () => {
+    const r = analisar(aves({ modo: 'volume' }), ANIMAIS, MATERIAS)
+    assert.ok(r.faltando.some(f => /Volume mensal/i.test(f)), r.faltando.join(' | '))
+    assert.equal(r.necessidadeMesKg, null)
+    assert.equal(r.podeFecharEquipamento, false)
+  })
+
+  it('modo volume fecha equipamento sem rebanho nenhum', () => {
+    const r = analisar(aves({ modo: 'volume', volumeMesKg: 150_000 }), ANIMAIS, MATERIAS)
+    assert.equal(r.podeFecharEquipamento, true)
+    assert.ok(r.capacidadeSugeridaKgH, 'e tem que sair capacidade')
+  })
+
+  it('sem `modo` no objeto, funciona como sempre funcionou (rebanho)', () => {
+    // Compatibilidade com atendimento antigo, montado sem o campo.
+    const r = analisar(aves({ quantidade: 20_000, consumoConfirmado: true }), ANIMAIS, MATERIAS)
+    assert.equal(r.necessidadeMesKg, 68_000)
+    assert.equal(r.podeFecharEquipamento, true)
+  })
+})

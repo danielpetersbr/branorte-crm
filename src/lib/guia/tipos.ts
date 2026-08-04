@@ -243,6 +243,16 @@ export interface ItemGuia {
 }
 
 /** Estado do modo Atendimento Rápido. */
+/**
+ * De onde vem o volume mensal.
+ *  `rebanho` — o cliente CONSOME: o volume sai de animais x consumo por animal.
+ *  `volume`  — o cliente VENDE ração, ou já sabe o quanto quer produzir: informa
+ *              a tonelagem direto, e o rebanho deixa de fazer sentido.
+ * Sem isto, quem vende ração tinha que inventar um rebanho pra chegar no número
+ * que ele já sabia.
+ */
+export type ModoVolume = 'rebanho' | 'volume'
+
 export interface Atendimento {
   especie: Especie | null
   fase: string | null
@@ -251,6 +261,16 @@ export interface Atendimento {
   produto: string | null
   materias: string[]
   consumoConfirmado: boolean
+  /** default 'rebanho' quando ausente — é como o campo sempre funcionou. */
+  modo?: ModoVolume
+  /**
+   * Consumo por animal/mês DITO PELO CLIENTE. Sobrepõe o de catálogo.
+   * O de catálogo é média de tabela; o produtor sabe o dele, e a diferença
+   * multiplica pelo rebanho inteiro — 20 kg a mais em 500 cabeças são 10 t/mês.
+   */
+  consumoKgAnimalMes?: number | null
+  /** Só no modo `volume`: tonelagem por mês, em kg. */
+  volumeMesKg?: number | null
 }
 
 /** O que o Atendimento Rápido devolve. Nunca fecha equipamento sem dados. */

@@ -19,12 +19,12 @@ import { Badge } from '@/components/ui/Badge'
 import { Alerta } from './Selos'
 import { Perguntas, Secao } from './DetalhePartes'
 import { ConfiguradorFabrica } from './ConfiguradorFabrica'
-import { analisar, resumoParaCopiar } from '@/lib/guia/atendimento'
+import { analisar, consumoDeReferencia, resumoParaCopiar } from '@/lib/guia/atendimento'
 import { EQUIPAMENTOS, ESPECIES, NOME_SISTEMA, SISTEMAS } from '@/lib/guia/catalogo'
 import { CATEGORIAS } from '@/lib/venda-racao/catalogo'
 import { cn } from '@/lib/utils'
 import type {
-  Atendimento, Especie, GuiaAnimal, GuiaMateria, ItemGuia,
+  Atendimento, Especie, GuiaAnimal, GuiaMateria, ItemGuia, ModoVolume,
 } from '@/lib/guia/tipos'
 
 const PRODUTOS = [
@@ -35,7 +35,14 @@ const PRODUTOS = [
 const VAZIO: Atendimento = {
   especie: null, fase: null, quantidade: null, sistema: null,
   produto: null, materias: [], consumoConfirmado: false,
+  modo: 'rebanho', consumoKgAnimalMes: null, volumeMesKg: null,
 }
+
+/** De onde vem a tonelagem: do rebanho (consome) ou digitada (vende). */
+const MODOS: Array<[ModoVolume, string, string]> = [
+  ['rebanho', 'Pelo rebanho', 'o cliente consome a ração'],
+  ['volume', 'Direto em toneladas', 'o cliente vende ração, ou já sabe quanto quer produzir'],
+]
 
 interface Props {
   animais: GuiaAnimal[]
@@ -93,6 +100,10 @@ function Opcoes<T extends string>({ valor, opcoes, onEscolher, rotulo }: {
 
 export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }: Props) {
   const [a, setA] = useState<Atendimento>(VAZIO)
+  const modo: ModoVolume = a.modo ?? 'rebanho'
+  // O de TABELA, pra dizer de quanto o cliente discordou. `r.consumoMesKg` ja e
+  // o valor em uso (o informado, quando existe), entao nao serve pra comparar.
+  const consumoCatalogo = consumoDeReferencia(a.especie, a.fase)
   const [copiado, setCopiado] = useState(false)
 
   const fases = useMemo(() => {
@@ -132,7 +143,13 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
     }))
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+    // TRES colunas em tela larga. Eram duas de 50%: o formulario ficava numa
+    // coluna estreita com as opcoes quebrando de tres em tres, e as 12 perguntas
+    // empurravam a Necessidade e os Pontos de atencao pra fora da tela — o
+    // vendedor rolava enquanto o cliente falava. Agora o que ele PREENCHE tem
+    // mais largura, o que ele LE fica ao lado, e as perguntas ganham coluna
+    // propria em vez de disputar espaco com o resultado.
+    <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,0.85fr)]">
       {/* ---------------- entrada ---------------- */}
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-2">
@@ -175,38 +192,113 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
           </Passo>
         )}
 
-        <Passo n={4} titulo="Quantidade de animais" ok={!!a.quantidade}>
-          <div className="flex items-center gap-2">
-            <div className="w-40">
-              <Input
-                type="number"
-                min={0}
-                inputMode="numeric"
-                value={a.quantidade ?? ''}
-                onChange={e => setA(s => ({ ...s, quantidade: e.target.value ? Number(e.target.value) : null }))}
-                placeholder="0"
-                aria-label="Quantidade de animais"
-              />
-            </div>
-            <span className="text-[12.5px] text-ink-faint">
-              {ESPECIES.find(e => e.chave === a.especie)?.animal ?? 'animais'}
-            </span>
+        <Passo n={4} titulo="Quanto de ração por mês" ok={!!r.necessidadeMesKg}>
+          {/* DUAS origens pro volume. Quem VENDE ração já sabe a tonelagem e não
+              tem rebanho — antes precisava inventar um pra chegar no número que
+              já sabia. */}
+          <div className="mb-2 flex gap-1.5">
+            {MODOS.map(([m, rot, dica]) => (
+              <button
+                key={m}
+                type="button"
+                title={dica}
+                aria-pressed={modo === m}
+                onClick={() => setA(s => ({ ...s, modo: m }))}
+                className={cn(
+                  'rounded-full border px-2.5 py-1 text-[12px] transition-colors',
+                  modo === m
+                    ? 'border-accent bg-accent text-white'
+                    : 'border-border bg-surface text-ink-muted hover:text-ink',
+                )}
+              >
+                {rot}
+              </button>
+            ))}
           </div>
-          {r.consumoMesKg !== null && (
-            <label className="mt-2.5 flex items-start gap-2 text-[12.5px] text-ink">
-              <input
-                type="checkbox"
-                checked={a.consumoConfirmado}
-                onChange={e => setA(s => ({ ...s, consumoConfirmado: e.target.checked }))}
-                className="mt-0.5 h-3.5 w-3.5 accent-current"
-              />
-              <span>
-                Confirmei com o cliente que o consumo é de <strong>{r.consumoMesKg} kg por animal por mês</strong>.
-                <span className="block text-ink-faint">
-                  Enquanto não confirmar, o número é referência de catálogo — não dimensiona equipamento.
-                </span>
+
+          {modo === 'volume' ? (
+            <div className="flex items-center gap-2">
+              <div className="w-40">
+                <Input
+                  type="number" min={0} inputMode="numeric"
+                  value={a.volumeMesKg ?? ''}
+                  onChange={e => setA(s => ({ ...s, volumeMesKg: e.target.value ? Number(e.target.value) : null }))}
+                  placeholder="0"
+                  aria-label="Volume mensal em kg"
+                />
+              </div>
+              <span className="text-[12.5px] text-ink-faint">
+                kg por mês
+                {!!a.volumeMesKg && ` · ${(a.volumeMesKg / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} t`}
               </span>
-            </label>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="block">
+                  <span className="mb-1 block text-[11px] text-ink-faint">
+                    {ESPECIES.find(e => e.chave === a.especie)?.animal ?? 'Animais'}
+                  </span>
+                  <div className="w-32">
+                    <Input
+                      type="number" min={0} inputMode="numeric"
+                      value={a.quantidade ?? ''}
+                      onChange={e => setA(s => ({ ...s, quantidade: e.target.value ? Number(e.target.value) : null }))}
+                      placeholder="0"
+                      aria-label="Quantidade de animais"
+                    />
+                  </div>
+                </label>
+                {/* Consumo por animal EDITÁVEL. O de catálogo é média de tabela;
+                    o produtor sabe o dele, e a diferença multiplica pelo rebanho
+                    inteiro — 20 kg a mais em 500 cabeças são 10 t/mês. */}
+                <label className="block">
+                  <span className="mb-1 block text-[11px] text-ink-faint">kg por animal/mês</span>
+                  <div className="w-28">
+                    <Input
+                      type="number" min={0} step="0.1" inputMode="decimal"
+                      value={a.consumoKgAnimalMes ?? (r.consumoMesKg ?? '')}
+                      onChange={e => setA(s => ({
+                        ...s,
+                        consumoKgAnimalMes: e.target.value ? Number(e.target.value) : null,
+                        consumoConfirmado: false,
+                      }))}
+                      placeholder="—"
+                      aria-label="Consumo por animal por mês"
+                    />
+                  </div>
+                </label>
+                {!!r.necessidadeMesKg && (
+                  <div className="pb-1.5 text-[12.5px] text-ink-muted">
+                    ={' '}
+                    <b className="text-ink">
+                      {(r.necessidadeMesKg / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} t/mês
+                    </b>
+                  </div>
+                )}
+              </div>
+              {a.consumoKgAnimalMes != null && a.consumoKgAnimalMes > 0 && (
+                <div className="mt-1 text-[11px] text-ink-faint">
+                  Informado pelo cliente. O catálogo diz {consumoCatalogo ?? '—'} kg.
+                </div>
+              )}
+              {r.consumoMesKg !== null && (
+                <label className="mt-2 flex items-start gap-2 text-[12.5px] text-ink">
+                  <input
+                    type="checkbox"
+                    checked={a.consumoConfirmado}
+                    onChange={e => setA(s => ({ ...s, consumoConfirmado: e.target.checked }))}
+                    className="mt-0.5 h-3.5 w-3.5 accent-current"
+                  />
+                  <span>
+                    Confirmei com o cliente: <strong>{r.consumoMesKg} kg por animal por mês</strong>.
+                    <span className="block text-ink-faint">
+                      Sem confirmar, o número é referência — não dimensiona equipamento.
+                    </span>
+                  </span>
+                </label>
+              )}
+            </>
           )}
         </Passo>
 
@@ -241,7 +333,7 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
         </Passo>
       </div>
 
-      {/* ---------------- saída ---------------- */}
+      {/* ---------------- resultado: o que o vendedor LÊ enquanto fala ------ */}
       <div className="space-y-3">
         {!!r.faltando.length && (
           <Secao titulo="Ainda falta levantar" icone={<AlertCircle className="h-3.5 w-3.5" />}>
@@ -285,12 +377,6 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
                 </p>
               )}
             </div>
-          </Secao>
-        )}
-
-        {!!r.perguntas.length && (
-          <Secao titulo="Perguntas que ainda cabem" icone={<ListChecks className="h-3.5 w-3.5" />}>
-            <Perguntas perguntas={r.perguntas.slice(0, 12)} />
           </Secao>
         )}
 
@@ -375,6 +461,19 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
         </div>
         {a.sistema && (
           <p className="text-[11px] text-ink-faint">Sistema marcado: {NOME_SISTEMA(a.sistema)}</p>
+        )}
+      </div>
+
+      {/* -------- TERCEIRA coluna: apoio de conversa -------------------------
+          As 12 perguntas e o conteúdo relacionado são o que o vendedor lê PRA
+          PERGUNTAR — não é resultado. Empilhadas junto da Necessidade, elas
+          empurravam o número e os pontos de atenção pra fora da tela. Em telas
+          menores voltam pro fim da coluna do meio, que é o comportamento antigo. */}
+      <div className="space-y-3 2xl:col-start-3 2xl:row-start-1">
+        {!!r.perguntas.length && (
+          <Secao titulo="Perguntas que ainda cabem" icone={<ListChecks className="h-3.5 w-3.5" />}>
+            <Perguntas perguntas={r.perguntas.slice(0, 12)} />
+          </Secao>
         )}
       </div>
     </div>
