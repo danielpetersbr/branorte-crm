@@ -10,6 +10,19 @@ import { GitBranch, Users, AlertCircle, Activity, Send, Copy, Check, Star, Tag }
 import { EscritorioMapa } from '@/components/EscritorioMapa'
 import { AtividadeDiaria } from '@/pages/AtividadeDiaria'
 
+/** Linha de `vendor_roteamento_efetivo`: o que o vendedor recebe DEPOIS da cota. */
+type Efetivo = {
+  vendedor_nome: string
+  parados_topo: number
+  parados_prospeccao: number
+  parados_2a_tentativa: number
+  parados_novo_lead: number
+  fator_cota: number
+  share_efetivo: number
+  cortado_por_cota: boolean
+  sync_min: number | null
+}
+
 type Vendedor = {
   vendedor_nome: string
   online: boolean
@@ -37,6 +50,29 @@ export function Disparos() {
       return data || []
     },
     refetchInterval: 10000,
+  })
+
+  // COTA DE PARADOS: a fatia acima é a INTENÇÃO do admin; a cota reduz por cima
+  // dela conforme o vendedor acumula cliente parado no topo do funil. Sem mostrar
+  // isso aqui a tela mente — o JARDEL aparecia com 14,29% e recebia ZERO.
+  const { data: efetivo } = useQuery<Record<string, Efetivo>>({
+    queryKey: ['vendor-roteamento-efetivo'],
+    queryFn: async () => {
+      const { data } = await supabase.from('vendor_roteamento_efetivo').select('*')
+      const m: Record<string, Efetivo> = {}
+      for (const r of (data ?? []) as Efetivo[]) m[r.vendedor_nome] = r
+      return m
+    },
+    refetchInterval: 30000,
+  })
+  const { data: cotaCfg } = useQuery<{ cota_ativa: boolean; cota_verde: number; cota_zero: number } | null>({
+    queryKey: ['outbound-rota-config'],
+    queryFn: async () => {
+      const { data } = await supabase.from('outbound_rota_config')
+        .select('cota_ativa, cota_verde, cota_zero').eq('id', 1).maybeSingle()
+      return data ?? null
+    },
+    refetchInterval: 60000,
   })
 
   // Heartbeat da extensão por vendedor (só pra saber se está online/com WA aberto).
@@ -479,6 +515,27 @@ export function Disparos() {
                       </div>
                       <div className="mt-1 text-[10px] text-ink-muted">
                         fatia: <span className="text-ink font-semibold tabular-nums">{Number(v.share_percent).toFixed(0)}%</span>
+                        {(() => {
+                          const ef = efetivo?.[v.vendedor_nome]
+                          if (!ef || !cotaCfg?.cota_ativa) return null
+                          const f = Number(ef.fator_cota)
+                          // Só avisa quando a cota MUDA alguma coisa. Repetir "100%"
+                          // em quem está normal só polui.
+                          if (f >= 1) {
+                            return <span className="text-ink-faint"> · {ef.parados_topo} parados</span>
+                          }
+                          return (
+                            <span
+                              className={f === 0 ? 'text-danger font-semibold' : 'text-warning font-semibold'}
+                              title={`${ef.parados_topo} parados no topo (${ef.parados_prospeccao} prospecção, `
+                                + `${ef.parados_2a_tentativa} 2ª tentativa, ${ef.parados_novo_lead} novo lead). `
+                                + `Teto: ${cotaCfg.cota_zero}.`}
+                            >
+                              {' · '}{ef.parados_topo} parados →{' '}
+                              {f === 0 ? 'NÃO RECEBE' : `recebe ${Number(ef.share_efetivo).toFixed(1)}%`}
+                            </span>
+                          )
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -501,6 +558,9 @@ export function Disparos() {
       {/* DISTRIBUIÇÃO GLOBAL (% padrão) */}
       <DistribuicaoGlobalCard
         vendedores={vendedores ?? []}
+        efetivo={efetivo ?? {}}
+        cotaAtiva={!!cotaCfg?.cota_ativa}
+        cotaZero={cotaCfg?.cota_zero ?? 60}
         onToggleBloqueado={(nome, bloqueado) => toggleBloqueado.mutate({ nome, bloqueado })}
       />
 
@@ -519,7 +579,13 @@ export function Disparos() {
 // ============================================================================
 // DistribuicaoGlobalCard — painel de % global de roteamento
 // ============================================================================
-function DistribuicaoGlobalCard({ vendedores, onToggleBloqueado }: { vendedores: Vendedor[]; onToggleBloqueado: (nome: string, bloqueado: boolean) => void }) {
+function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onToggleBloqueado }: {
+  vendedores: Vendedor[]
+  efetivo: Record<string, Efetivo>
+  cotaAtiva: boolean
+  cotaZero: number
+  onToggleBloqueado: (nome: string, bloqueado: boolean) => void
+}) {
   const qc = useQueryClient()
   // Todos os online (mesmo bloqueados aparecem na lista pra dar opção de desbloquear)
   const online = useMemo(() => vendedores.filter(v => v.online), [vendedores])
@@ -532,6 +598,20 @@ function DistribuicaoGlobalCard({ vendedores, onToggleBloqueado }: { vendedores:
   }, [online.map(v => `${v.vendedor_nome}:${v.share_percent}`).join('|')])
 
   const soma = useMemo(() => Object.values(local).reduce((s, n) => s + (Number(n) || 0), 0), [local])
+
+  // O que SAI na prática: a fatia configurada multiplicada pelo fator da cota de
+  // parados. Sem isso o admin mexe no slider achando que mandou 16% pro Jardel
+  // enquanto o banco manda zero.
+  const fator = (nome: string) => (cotaAtiva ? Number(efetivo[nome]?.fator_cota ?? 1) : 1)
+  const efetivoDe = (nome: string) => (Number(local[nome] ?? 0)) * fator(nome)
+  const somaEfetiva = useMemo(
+    () => online.reduce((s, v) => s + (v.bloqueado ? 0 : efetivoDe(v.vendedor_nome)), 0),
+    [local, online, efetivo, cotaAtiva]
+  )
+  const cortados = useMemo(
+    () => online.filter(v => !v.bloqueado && cotaAtiva && fator(v.vendedor_nome) < 1),
+    [online, efetivo, cotaAtiva]
+  )
   const proximoDe100 = soma >= 99.5 && soma <= 100.5
   const cores = ['bg-emerald-500', 'bg-cyan-500', 'bg-purple-500', 'bg-amber-500', 'bg-blue-500', 'bg-pink-500', 'bg-orange-500', 'bg-rose-500', 'bg-teal-500']
 
@@ -611,6 +691,39 @@ function DistribuicaoGlobalCard({ vendedores, onToggleBloqueado }: { vendedores:
         </div>
       </div>
 
+      {/* Cota de parados: quem está sendo freado e por quê */}
+      {cotaAtiva && cortados.length > 0 && (
+        <div className="mb-3 rounded-lg border border-warning/30 bg-warning-bg/50 p-2.5">
+          <div className="text-[11px] font-semibold text-ink flex items-center gap-1.5">
+            <AlertCircle className="h-3.5 w-3.5 text-warning" />
+            A cota de parados está reduzindo a fatia de {cortados.length} vendedor{cortados.length > 1 ? 'es' : ''}
+          </div>
+          <p className="text-[10px] text-ink-muted mt-0.5">
+            Quem acumula cliente parado em PROSPECÇÃO + 2ª TENTATIVA + NOVO LEAD recebe menos lead novo,
+            e volta sozinho quando limpa. O % que você define aqui continua valendo — a cota só multiplica por cima.
+            Teto: {cotaZero} parados.
+          </p>
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {cortados.map(v => {
+              const ef = efetivo[v.vendedor_nome]
+              const zerado = fator(v.vendedor_nome) === 0
+              return (
+                <span
+                  key={v.vendedor_nome}
+                  className={`text-[10px] px-1.5 py-0.5 rounded font-medium border ${
+                    zerado ? 'bg-danger-bg text-danger border-danger/30' : 'bg-surface-2 text-ink-muted border-border'
+                  }`}
+                  title={`${ef?.parados_prospeccao ?? 0} prospecção · ${ef?.parados_2a_tentativa ?? 0} 2ª tentativa · ${ef?.parados_novo_lead ?? 0} novo lead`}
+                >
+                  {v.vendedor_nome}: {ef?.parados_topo ?? 0} parados →{' '}
+                  {zerado ? 'não recebe' : `${efetivoDe(v.vendedor_nome).toFixed(1)}%`}
+                </span>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Barra de proporção visual */}
       {soma > 0 ? (
         <div className="flex h-6 rounded-lg overflow-hidden border border-border bg-surface-2 mb-3">
@@ -631,6 +744,28 @@ function DistribuicaoGlobalCard({ vendedores, onToggleBloqueado }: { vendedores:
       ) : (
         <div className="h-6 rounded-lg border border-dashed border-border bg-surface-2/40 mb-3 flex items-center justify-center text-[10px] text-ink-faint">
           Sem distribuição definida — clique em "Dividir igualmente" pra começar
+        </div>
+      )}
+
+      {/* Como fica DEPOIS da cota — só aparece quando difere do configurado */}
+      {cotaAtiva && cortados.length > 0 && somaEfetiva > 0 && (
+        <div className="mb-3">
+          <div className="text-[10px] text-ink-muted mb-1">na prática, depois da cota:</div>
+          <div className="flex h-5 rounded-lg overflow-hidden border border-border bg-surface-2">
+            {online.filter(v => !v.bloqueado && efetivoDe(v.vendedor_nome) > 0).map((v, i) => {
+              const pct = (efetivoDe(v.vendedor_nome) / somaEfetiva) * 100
+              return (
+                <div
+                  key={v.vendedor_nome}
+                  className={`${cores[i % cores.length]} flex items-center justify-center text-[10px] font-bold text-black/80`}
+                  style={{ width: `${pct}%` }}
+                  title={`${v.vendedor_nome}: ${pct.toFixed(1)}% dos leads`}
+                >
+                  {pct >= 6 ? v.vendedor_nome.substring(0, Math.max(2, Math.floor(pct / 4))) : ''}
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
 
@@ -697,9 +832,29 @@ function DistribuicaoGlobalCard({ vendedores, onToggleBloqueado }: { vendedores:
                     className={`w-full h-1.5 ${corAccent} cursor-pointer`}
                   />
                   <div className="text-[10px] text-ink-faint mt-1.5 min-h-[14px]">
-                    {soma > 0 && valor > 0
-                      ? <>recebe <span className="text-ink font-semibold">{Math.round((valor / soma) * 100)}</span> de cada 100 leads</>
-                      : valor === 0 ? <span className="text-ink-faint/50">— não recebe leads —</span> : null}
+                    {(() => {
+                      if (valor === 0) return <span className="text-ink-faint/50">— não recebe leads —</span>
+                      if (soma <= 0) return null
+                      const f = fator(v.vendedor_nome)
+                      if (!cotaAtiva || f >= 1) {
+                        return <>recebe <span className="text-ink font-semibold">{Math.round((valor / soma) * 100)}</span> de cada 100 leads</>
+                      }
+                      const ef = efetivo[v.vendedor_nome]
+                      if (f === 0) {
+                        return (
+                          <span className="text-danger font-semibold">
+                            cota travou: {ef?.parados_topo ?? 0} parados, não recebe
+                          </span>
+                        )
+                      }
+                      return (
+                        <span className="text-warning">
+                          cota reduziu: recebe{' '}
+                          <span className="font-semibold">{Math.round((efetivoDe(v.vendedor_nome) / (somaEfetiva || 1)) * 100)}</span>
+                          {' '}de cada 100 ({ef?.parados_topo ?? 0} parados)
+                        </span>
+                      )
+                    })()}
                   </div>
                 </>
               )}
