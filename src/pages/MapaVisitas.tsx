@@ -768,8 +768,16 @@ export function MapaVisitas() {
     try {
       await salvarViagemMut.mutateAsync({ cfg: cfgViagem, paradas, programacao: prog })
       setViagemSalvaEm(new Date().toISOString())
-    } catch {
-      window.alert('Não consegui salvar a viagem. Nada foi perdido — tente de novo.')
+    } catch (e) {
+      // O hook valida os CHECK do banco antes do INSERT e joga mensagem em pt-BR
+      // ("o fim da jornada precisa ser depois do início"). Mostrar ela, não um
+      // genérico — senão o usuário não sabe o que corrigir.
+      const msg = (e as Error)?.message || ''
+      window.alert(
+        msg && !/^\w+ error/i.test(msg)
+          ? `${msg}\n\nNada foi perdido — corrija e salve de novo.`
+          : 'Não consegui salvar a viagem. Nada foi perdido — tente de novo.',
+      )
     } finally {
       setSalvandoViagem(false)
     }
