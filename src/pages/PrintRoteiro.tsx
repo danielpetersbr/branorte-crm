@@ -20,6 +20,7 @@ import {
   PRECISAO_INFO,
   nomeParada,
   minParaHhmm,
+  hhmmComDia,
   km,
   dur,
   dataBRcurta,
@@ -560,7 +561,7 @@ export default function PrintRoteiro() {
                   <td className="num">{dur(d.deslocamentoSeg)}</td>
                   <td className="num">{dur(d.visitaSeg)}</td>
                   <td className="num">{minParaHhmm(d.inicio)}</td>
-                  <td className="num">{minParaHhmm(d.fim)}</td>
+                  <td className="num">{hhmmComDia(d.fim)}</td>
                 </tr>
               )
             })}
@@ -733,7 +734,7 @@ function BlocoDia({ dia, cfg }: { dia: DiaProgramado; cfg: ConfigViagem }) {
           {dia.data ? <span className="dia-data"> · {dataBRcurta(dia.data)} ({diaSemana(dia.data)})</span> : null}
         </div>
         <div className="dia-metricas">
-          {minParaHhmm(dia.inicio)}–{minParaHhmm(dia.fim)} · {dia.paradas.length} parada
+          {minParaHhmm(dia.inicio)}–{hhmmComDia(dia.fim)} · {dia.paradas.length} parada
           {dia.paradas.length > 1 ? 's' : ''} · {clientes.size} cliente{clientes.size > 1 ? 's' : ''} ·{' '}
           {km(dia.metros)} · {dur(dia.deslocamentoSeg)} dirigindo · {dur(dia.visitaSeg)} em visita
         </div>
@@ -769,9 +770,9 @@ function BlocoDia({ dia, cfg }: { dia: DiaProgramado; cfg: ConfigViagem }) {
           <tbody className="grupo">
             <tr className="linha-volta">
               <td>↩</td>
-              <td>{minParaHhmm(dia.paradas[dia.paradas.length - 1].saida)}</td>
+              <td>{hhmmComDia(dia.paradas[dia.paradas.length - 1].saida)}</td>
               <td>—</td>
-              <td>{minParaHhmm(dia.fim)}</td>
+              <td>{hhmmComDia(dia.fim)}</td>
               <td colSpan={4}>
                 {cfg.retornarOrigem ? 'Retorno a ' : 'Destino final: '}<b>{volta.nome}</b>
               </td>
@@ -795,11 +796,11 @@ function LinhaParada({ x, saiu }: { x: ParadaProgramada; saiu: number }) {
     <tbody className={`grupo${aproximada(p) ? ' grupo-aprox' : ''}`}>
       <tr className="linha-a">
         <td className="num">{x.ordem}</td>
-        <td className="num">{minParaHhmm(saiu)}</td>
+        <td className="num">{hhmmComDia(saiu)}</td>
         <td className="num">
           {t && t.metros > 0 ? <>{km(t.metros)} · {dur(t.segundos)}</> : '—'}
         </td>
-        <td className="num forte">{minParaHhmm(x.chegada)}</td>
+        <td className="num forte">{hhmmComDia(x.chegada)}</td>
         <td>
           <b>{nomeParada(p)}</b>
           {aproximada(p) && <span className="tag tag-aprox">APROX.</span>}
@@ -807,7 +808,7 @@ function LinhaParada({ x, saiu }: { x: ParadaProgramada; saiu: number }) {
         </td>
         <td>{cidadeUf(p)}</td>
         <td className="num">{x.visitaMinutos} min</td>
-        <td className="num forte">{minParaHhmm(x.saida)}</td>
+        <td className="num forte">{hhmmComDia(x.saida)}</td>
       </tr>
       <tr className="linha-b">
         <td />

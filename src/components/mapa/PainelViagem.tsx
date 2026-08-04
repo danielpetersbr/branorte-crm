@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import {
   type ConfigViagem, type Parada, type Programacao, type Precisao,
   PRECISAO_INFO, MAX_PARADAS, nomeParada, minutosDaParada, roteavel,
-  km, dur, durMin, minParaHhmm, dataBRcurta, diaSemana, linkGoogleMaps,
+  km, dur, durMin, minParaHhmm, hhmmComDia, dataBRcurta, diaSemana, linkGoogleMaps, diasNecessarios,
   resumoWhatsApp, mensagemConfirmacao,
 } from '@/lib/viagem'
 
@@ -63,6 +63,11 @@ export function PainelViagem(p: Props) {
   const aproximadas = useMemo(() => p.paradas.filter(x => x.precisao === 'cidade').length, [p.paradas])
   const semLoc = p.prog.semLocalizacao.length
   const totalClientes = useMemo(() => p.paradas.reduce((s, x) => s + x.clientes.length, 0), [p.paradas])
+  // Só calcula quando algo ficou de fora — é um programar() por dia testado.
+  const precisaDias = useMemo(
+    () => (p.prog.foraDoPlano.length ? diasNecessarios(p.paradas, p.cfg) : p.cfg.dias),
+    [p.prog.foraDoPlano.length, p.paradas, p.cfg],
+  )
 
   const patch = (id: string, mud: Partial<Parada>) =>
     p.setParadas(p.paradas.map(x => (x.id === id ? { ...x, ...mud } : x)))
@@ -152,6 +157,21 @@ export function PainelViagem(p: Props) {
         </div>
       </div>
 
+      {/* Sem origem a rota é ficção: o 1º trecho não existe e o dia começa "0 km".
+          Isso tem que estar na cara, não escondido na aba de ajustes. */}
+      {p.paradas.length > 0 && !p.cfg.origem && (
+        <button
+          onClick={p.onPedirOrigemNoMapa}
+          className="shrink-0 w-full px-3 py-2 border-b border-border bg-blue-50 dark:bg-blue-950/20 text-left"
+        >
+          <div className="text-[12px] font-bold text-blue-800 dark:text-blue-300">📍 Falta o ponto de partida</div>
+          <div className="text-[11px] text-blue-700 dark:text-blue-400 leading-snug">
+            Sem ele não dá pra calcular deslocamento — o roteiro começa direto no cliente, com 0 km.
+            Toque aqui pra marcar no mapa, ou use a aba Ajustes pra buscar um aeroporto.
+          </div>
+        </button>
+      )}
+
       {/* avisos honestos sobre o dado */}
       {(semLoc > 0 || aproximadas > 0 || p.prog.foraDoPlano.length > 0) && (
         <div className="shrink-0 px-3 py-2 border-b border-border bg-amber-50 dark:bg-amber-950/20 text-[11px] leading-snug space-y-1">
@@ -167,7 +187,17 @@ export function PainelViagem(p: Props) {
           )}
           {p.prog.foraDoPlano.length > 0 && (
             <div className="text-red-700 dark:text-red-400">
-              <b>{p.prog.foraDoPlano.length} não coube</b> em {p.cfg.dias} dia(s): {p.prog.foraDoPlano.map(nomeParada).join(', ')}
+              <b>{p.prog.foraDoPlano.length} não coube</b> em {p.cfg.dias} dia{p.cfg.dias === 1 ? '' : 's'}:{' '}
+              {p.prog.foraDoPlano.map(nomeParada).join(', ')}
+              {/* §11 — "sugerir divisão em mais dias". Sugere, não decide sozinho. */}
+              {precisaDias > p.cfg.dias && (
+                <button
+                  onClick={() => p.setCfg({ dias: precisaDias })}
+                  className="ml-1 font-bold underline decoration-dotted"
+                >
+                  usar {precisaDias} dias →
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -200,7 +230,7 @@ export function PainelViagem(p: Props) {
                     Dia {d.dia}{d.data ? ` · ${dataBRcurta(d.data)} ${diaSemana(d.data)}` : ''}
                   </span>
                   <span className="ml-auto text-[10px] tabular-nums text-ink-faint">
-                    {d.paradas.length} · {km(d.metros)} · {minParaHhmm(d.inicio)}–{minParaHhmm(d.fim)}
+                    {d.paradas.length} · {km(d.metros)} · {minParaHhmm(d.inicio)}–{hhmmComDia(d.fim)}
                   </span>
                 </div>
                 <ul className="space-y-1.5">
@@ -354,8 +384,8 @@ function CardParada({
             {c0?.vendedor ? ` · ${c0.vendedor}` : ''}
           </div>
           <div className="mt-0.5 flex items-center gap-1.5 text-[11px] tabular-nums">
-            <span className="font-semibold text-ink">{minParaHhmm(pp.chegada)}</span>
-            <span className="text-ink-faint">→ {minParaHhmm(pp.saida)}</span>
+            <span className="font-semibold text-ink">{hhmmComDia(pp.chegada)}</span>
+            <span className="text-ink-faint">→ {hhmmComDia(pp.saida)}</span>
             <span className="text-ink-faint">· {durMin(pp.visitaMinutos)}</span>
           </div>
           {pp.trechoAnterior && pp.trechoAnterior.metros > 0 && (
