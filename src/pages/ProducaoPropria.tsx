@@ -64,6 +64,43 @@ function codigoProvisorio(): string {
   return `VR-${Date.now().toString(36).toUpperCase().slice(-6)}`
 }
 
+/**
+ * De qual ETAPA é cada problema de validação.
+ *
+ * O `campo` do ProblemaValidacao é string estável, emitida por `validar()` em
+ * lib/venda-racao/calculo.ts — é o único elo entre o erro e o lugar onde ele se
+ * conserta. Sem este mapa o vendedor lê "informe a perda" e não sabe em qual das
+ * 8 etapas isso mora.
+ *
+ * Dois campos mudam de etapa conforme a espécie, e isso não é descuido:
+ *  - `perdaPct`  mora em Custos (6), MAS no ramo do milho o campo é renderizado
+ *                dentro da Fórmula (5).
+ *  - `pesaSaco`  vive no <details> "Conversão em sacos" da Necessidade (3), e a
+ *                condição também dispara por unidade de preço da etapa 4.
+ * Nos dois casos aponto pro lugar onde o campo é EDITADO, que é o que serve pro
+ * vendedor. Se um dia a validação ganhar campo novo e ele não estiver aqui, cai
+ * no fallback: sem etapa, e o erro segue aparecendo no painel como hoje.
+ */
+function etapaDoProblema(campo: string, ehMilho: boolean): number | null {
+  if (campo === 'perdaPct') return ehMilho ? 5 : 6
+  const mapa: Record<string, number> = {
+    clienteNome: 1,
+    necessidade: 3,
+    margemSegurancaPct: 3,
+    pesoSaco: 3,
+    consumoPorAnimal: 3,
+    atual: 4,
+    perdasAtuaisPct: 4,
+    formula: 5,
+    milhoPreco: 5,
+    dimensionamento: 7,
+    diasPorMes: 7,
+    horasPorDia: 7,
+    margemOperacionalPct: 7,
+  }
+  return mapa[campo] ?? null
+}
+
 /** Quais etapas já têm dado suficiente — alimenta a barra de progresso. */
 function etapasConcluidas(input: EstudoInput, r: ReturnType<typeof calcularEstudo>) {
   return [
@@ -168,6 +205,16 @@ export function ProducaoPropria() {
     avisoNutricional: config.avisoNutricional,
     avisoEstimativa: config.avisoEstimativa,
   })
+
+  // Bloqueios agrupados por etapa: pinta a barra e mostra o erro DENTRO da
+  // etapa culpada, em vez de um toast genérico longe do campo.
+  const bloqueiosPorEtapa = new Map<number, string[]>()
+  for (const p of resultado.problemas) {
+    if (p.nivel !== 'bloqueio') continue
+    const n = etapaDoProblema(p.campo, input.produto.especie === 'milho')
+    if (n === null) continue
+    bloqueiosPorEtapa.set(n, [...(bloqueiosPorEtapa.get(n) ?? []), p.mensagem])
+  }
 
   const etapas = etapasConcluidas(input, resultado)
   const concluidas = etapas.filter(e => e.ok).length
@@ -404,8 +451,11 @@ export function ProducaoPropria() {
                   // A barra é a navegação: clicar pula direto pra etapa, sem
                   // travar. Nada de gate — se travasse por etapa, mudaria regra
                   // (só 3 dos 8 blocos bloqueiam) e prenderia o vendedor.
-                  const classe = [e.ok ? 'ok' : '', n === etapaAtual ? 'atual' : '']
-                    .filter(Boolean).join(' ')
+                  const temErro = bloqueiosPorEtapa.has(n)
+                  const classe = [
+                    temErro ? 'erro' : (e.ok ? 'ok' : ''),
+                    n === etapaAtual ? 'atual' : '',
+                  ].filter(Boolean).join(' ')
                   return (
                     <button
                       key={e.rotulo}
@@ -451,6 +501,15 @@ export function ProducaoPropria() {
 
         {aba === 'simulacao' && fase === 'preencher' && (
           <div>
+            {bloqueiosPorEtapa.has(etapaAtual) && (
+              <div className="vr-erro vr-no-print" style={{ maxWidth: 760, margin: '14px auto 0' }}>
+                <strong>Falta preencher nesta etapa:</strong>
+                <ul>
+                  {bloqueiosPorEtapa.get(etapaAtual)!.map((m, i) => <li key={i}>{m}</li>)}
+                </ul>
+              </div>
+            )}
+
             <FormularioEstudo
               largo
               etapa={etapaAtual}

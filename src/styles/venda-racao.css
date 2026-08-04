@@ -699,6 +699,12 @@
 .vr .vr-progress .passos button::before { content: "○ "; }
 .vr .vr-progress .passos button.ok { color: var(--vr-green-d); }
 .vr .vr-progress .passos button.ok::before { content: "● "; }
+/* Etapa com bloqueio: vermelho vence o verde de "ok", porque uma etapa pode ter
+   dado suficiente pra barra e mesmo assim conter um erro que trava o estudo. */
+.vr .vr-progress .passos button.erro { color: var(--vr-red); }
+.vr .vr-progress .passos button.erro::before { content: "▲ "; }
+.vr .vr-progress .passos button.erro.atual { box-shadow: inset 0 -2px 0 var(--vr-red); }
+
 /* A etapa aberta agora: o vendedor tem que achar onde está num relance. */
 .vr .vr-progress .passos button.atual {
   color: var(--vr-green-d); font-weight: 800;
