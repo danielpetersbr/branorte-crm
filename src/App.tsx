@@ -43,6 +43,7 @@ const Projeto3D = lazy(() => import('@/pages/Projeto3D').then(m => ({ default: m
 const ProducaoPropria = lazy(() => import('@/pages/ProducaoPropria').then(m => ({ default: m.ProducaoPropria })))
 const VendaRacao = lazy(() => import('@/pages/VendaRacao').then(m => ({ default: m.VendaRacao })))
 const Guia = lazy(() => import('@/pages/Guia').then(m => ({ default: m.Guia })))
+const GuiaAdmin = lazy(() => import('@/pages/GuiaAdmin').then(m => ({ default: m.GuiaAdmin })))
 const AdminUsuarios = lazy(() => import('@/pages/AdminUsuarios').then(m => ({ default: m.AdminUsuarios })))
 const AdminPermissoes = lazy(() => import('@/pages/AdminPermissoes').then(m => ({ default: m.AdminPermissoes })))
 const AdminTransportadorFuncoes = lazy(() => import('@/pages/AdminTransportadorFuncoes'))
@@ -295,7 +296,7 @@ function AppRoutes() {
     // então o guard precisa deixar passar por URL/nav também (senão redireciona pra /atendimentos).
     const projeto3dOk = p.startsWith('/projeto-3d') && can('menu.projeto_3d')
     // Guias de apoio à venda, liberadas pra quem tem a permissão da viabilidade
-    const viabilidadeOk = (p.startsWith('/viabilidade') || p.startsWith('/guia-')) && can('menu.viabilidade')
+    const viabilidadeOk = (p.startsWith('/viabilidade') || p.startsWith('/guia')) && can('menu.viabilidade')
     // Produção Própria: o estudo de viabilidade completo. Aceita QUALQUER uma das
     // duas permissões porque absorveu a calculadora que ficava em /viabilidade —
     // quem já usava a antiga não pode perder a ferramenta.
@@ -424,8 +425,15 @@ function AppRoutes() {
         <Route path="/producao-propria" element={<ProducaoPropria />} />
         <Route path="/venda-racao" element={<VendaRacao />} />
         <Route path="/viabilidade" element={<Navigate to="/producao-propria" replace />} />
-        <Route path="/guia-animais" element={<Guia hash="animais" title="Guia de Animais" subtitle="Raças e criações de cada cliente — o que falar pro produtor" />} />
-        <Route path="/guia-materias" element={<Guia hash="materias" title="Matérias-primas da Ração" subtitle="Pra que serve cada ingrediente, quanto entra e o que muda por região" />} />
+        {/* Guia do Vendedor — nativo desde 03/08/2026 (era iframe de
+            branorte-viabilidade.vercel.app/guia.html). /guia-animais e
+            /guia-materias continuam funcionando: viraram os modos da mesma tela,
+            pra não quebrar link salvo nem o menu antigo. */}
+        <Route path="/guia" element={<Guia />} />
+        <Route path="/guia/:slug" element={<Guia />} />
+        <Route path="/guia-animais" element={<Navigate to="/guia?modo=animais" replace />} />
+        <Route path="/guia-materias" element={<Navigate to="/guia?modo=materias" replace />} />
+        <Route path="/guia/admin" element={<GuiaAdmin />} />
         <Route path="/perfil" element={<Perfil />} />
         {can('menu.disparos') && (
           <Route path="/disparos" element={<Disparos />} />

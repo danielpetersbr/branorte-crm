@@ -1,0 +1,362 @@
+/**
+ * Testes do Guia do Vendedor — busca, filtros e motor do Atendimento Rápido.
+ *
+ * Roda com `npm test` (tsx --test). Nada aqui toca React ou Supabase: as duas
+ * bibliotecas são puras de propósito.
+ *
+ * O que estes testes protegem, em ordem de importância:
+ *   1. Ingrediente incompatível (silagem, óleo) tem que APARECER como
+ *      incompatível quando o vendedor o marca. Foi o defeito nº 1 da auditoria.
+ *   2. `podeFecharEquipamento` não pode virar true sem consumo confirmado.
+ *   3. A busca tem que aguentar acento, plural e a intenção escrita por extenso.
+ */
+import assert from 'node:assert/strict'
+import { describe, it } from 'node:test'
+
+import {
+  buscar, detectarAtalho, filtrarMaterias, normalizar, tokens,
+} from './busca'
+import {
+  analisar, capacidadeParaAnalise, consumoDeReferencia, especieDoEstudo, resumoParaCopiar,
+} from './atendimento'
+import type { Atendimento, GuiaAnimal, GuiaMateria } from './tipos'
+
+// ---------------------------------------------------------------------------
+// Fábricas de teste — só os campos que a lógica lê.
+// ---------------------------------------------------------------------------
+function materia(p: Partial<GuiaMateria> & { slug: string; nome: string }): GuiaMateria {
+  return {
+    id: 1, sinonimos: [], categoria: 'energetico', resumo: '', funcao: null, composicao: null,
+    inclusao: {}, especies: [], restricoes: [], umidade: null, densidade_kg_m3: null,
+    forma_fisica: null, fluidez: null, empedra: null, forma_ponte: null, abrasivo: null,
+    oleoso: null, gera_poeira: null, corrosivo: null, risco_micotoxina: null, precisa_moer: null,
+    granulometria: null, direto_misturador: null, exige_pre_mistura: null, microingrediente: null,
+    compat_rosca: null, exige_exaustao: null, exige_limpeza_rapida: null, misturador_indicado: null,
+    afeta_homogeneidade: null, armazenamento: null, compat_branorte: 'ok', compat_motivo: null,
+    equipamentos: [], nivel_risco: 'informacao', alerta: null, perguntas: [],
+    explicar_cliente: null, resumo_30s: null, regiao: null, imagem_slug: null, emoji: null,
+    status: 'aprovado', pendente_validacao: false, pendencias: [], fontes: [], autor: null,
+    revisor_tecnico: null, revisado_em: null, proxima_revisao: null, ordem: 0,
+    updated_at: '2026-08-03T00:00:00Z', ...p,
+  } as GuiaMateria
+}
+
+function animal(p: Partial<GuiaAnimal> & { slug: string; nome: string }): GuiaAnimal {
+  return {
+    id: 1, sinonimos: [], especie: 'bovinos', subgrupo: null, tipo: 'categoria',
+    classificacao: null, finalidade: null, resumo: '', sistemas: [], fases: [], fase_estudo: null,
+    peso_min_kg: null, peso_max_kg: null, peso_nota: null, consumo_ref: null,
+    consumo_unidade: null, consumo_fatores: [], tipos_alimentacao: [], forma_fisica: [],
+    materias_comuns: [], restricoes: [], perguntas: [], sinais_falta_info: [], processo: null,
+    equipamentos: [], argumento: null, promessas_proibidas: [], branorte: {},
+    explicar_cliente: null, resumo_30s: null, regiao: null, imagem_slug: null, emoji: null,
+    status: 'aprovado', pendente_validacao: false, pendencias: [], fontes: [], autor: null,
+    revisor_tecnico: null, revisado_em: null, proxima_revisao: null, ordem: 0,
+    updated_at: '2026-08-03T00:00:00Z', ...p,
+  } as GuiaAnimal
+}
+
+const MILHO = materia({
+  slug: 'milho', nome: 'Milho (grão)', sinonimos: ['fubá', 'milho triturado'],
+  categoria: 'energetico', resumo: 'Base energética da ração.',
+  especies: ['aves', 'suinos', 'bovinos'], precisa_moer: true, equipamentos: ['MOINHO'],
+  regiao: 'Centro-Oeste e Sul',
+})
+const SILAGEM = materia({
+  slug: 'silagem-volumoso', nome: 'Silagem e volumosos', categoria: 'fibroso',
+  resumo: 'Volumoso úmido.', especies: ['bovinos'], compat_branorte: 'incompativel',
+  compat_motivo: 'A fábrica é de ração farelada — produto seco.',
+  nivel_risco: 'incompativel',
+})
+const UREIA = materia({
+  slug: 'ureia', nome: 'Ureia pecuária', categoria: 'risco', resumo: 'NNP.',
+  especies: ['bovinos'], nivel_risco: 'alto_risco', alerta: 'Pode matar o animal.',
+  compat_branorte: 'ressalva', microingrediente: true, corrosivo: true,
+})
+const CAROCO = materia({
+  slug: 'caroco-algodao', nome: 'Caroço de algodão', categoria: 'proteico',
+  resumo: 'Três em um.', especies: ['bovinos'], misturador_indicado: 'horizontal',
+  compat_branorte: 'ressalva', compat_motivo: 'Não flui.',
+})
+const SAL = materia({
+  slug: 'sal-comum', nome: 'Sal comum', categoria: 'mineral', resumo: 'NaCl.',
+  especies: ['aves', 'suinos', 'bovinos'], corrosivo: true, misturador_indicado: 'horizontal',
+})
+const MATERIAS = [MILHO, SILAGEM, UREIA, CAROCO, SAL]
+
+const CONFINAMENTO = animal({
+  slug: 'bov-corte-confinamento', nome: 'Corte — Confinamento', especie: 'bovinos',
+  subgrupo: 'corte', tipo: 'categoria', fases: ['confinamento'], fase_estudo: 'confinamento',
+  sistemas: ['confinamento'], perguntas: ['Quantos animais?', 'Qual o peso médio?'],
+  materias_comuns: ['milho', 'caroco-algodao'], equipamentos: ['MOINHO', 'MISTURADOR'],
+  processo: 'Moagem + mistura seca.', restricoes: ['Silagem não entra na fábrica farelada.'],
+  resumo: 'Cocho com dieta de alto concentrado.',
+})
+const NELORE = animal({
+  slug: 'nelore', nome: 'Nelore', especie: 'bovinos', subgrupo: 'corte', tipo: 'raca',
+  fases: ['manutencao'], sistemas: ['pasto'], resumo: 'Zebuíno predominante no rebanho de corte.',
+  regiao: 'Todo o Brasil', materias_comuns: ['sal-comum'],
+})
+const POSTURA = animal({
+  slug: 'ave-postura', nome: 'Poedeiras — Postura', especie: 'aves', subgrupo: 'postura',
+  tipo: 'categoria', fases: ['postura'], fase_estudo: 'postura', sistemas: ['comercial'],
+  resumo: 'Fase produtiva da poedeira.', perguntas: ['Quantas aves alojadas?'],
+})
+const ANIMAIS = [CONFINAMENTO, NELORE, POSTURA]
+
+const rotA = (a: GuiaAnimal) => a.especie
+const rotM = (m: GuiaMateria) => m.categoria
+const SEM_FAVORITOS = new Set<string>()
+
+// ===========================================================================
+describe('normalização e tokens', () => {
+  it('tira acento, pontuação e caixa', () => {
+    assert.equal(normalizar('Óleo / Gordura'), 'oleo gordura')
+    assert.equal(normalizar('Caroço de algodão (integral)'), 'caroco de algodao integral')
+    assert.equal(normalizar(''), '')
+  })
+
+  it('descarta palavras de ligação, que só distorcem o score', () => {
+    assert.deepEqual(tokens('ração para os suínos de corte'), ['racao', 'suinos', 'corte'])
+  })
+})
+
+describe('atalhos semânticos', () => {
+  it('reconhece a intenção escrita por extenso', () => {
+    const a = detectarAtalho('ingrediente que não pode ir para aves')
+    assert.ok(a, 'deveria ter detectado o atalho')
+    assert.equal(a!.filtro.restritoPara, 'aves')
+  })
+
+  it('reconhece "misturador para sal"', () => {
+    assert.equal(detectarAtalho('misturador para sal')?.filtro.misturador, 'horizontal')
+  })
+
+  it('avisa sobre peletização em vez de devolver resultado', () => {
+    const a = detectarAtalho('ração peletizada')
+    assert.ok(a)
+    assert.match(a!.rotulo, /FARELADA/)
+  })
+
+  it('NÃO dispara em busca curta e comum — "sal" é um item, não uma intenção', () => {
+    assert.equal(detectarAtalho('sal'), null)
+    assert.equal(detectarAtalho('milho'), null)
+  })
+})
+
+describe('busca', () => {
+  it('acha por nome mesmo sem acento e sem plural exato', () => {
+    const r = buscar(ANIMAIS, MATERIAS, 'caroco', {}, SEM_FAVORITOS, rotA, rotM)
+    assert.equal(r.itens[0].slug, 'caroco-algodao')
+  })
+
+  it('acha por sinônimo', () => {
+    const r = buscar([], MATERIAS, 'fuba', {}, SEM_FAVORITOS, rotA, rotM)
+    assert.equal(r.itens[0].slug, 'milho')
+  })
+
+  it('exige TODOS os termos (AND): "gado confinamento" não traz tudo que fala de gado', () => {
+    const r = buscar(ANIMAIS, MATERIAS, 'corte confinamento', {}, SEM_FAVORITOS, rotA, rotM)
+    assert.equal(r.itens.length, 1)
+    assert.equal(r.itens[0].slug, 'bov-corte-confinamento')
+  })
+
+  it('ordena por onde o termo casou — nome vale mais que corpo do texto', () => {
+    const r = buscar(ANIMAIS, MATERIAS, 'milho', {}, SEM_FAVORITOS, rotA, rotM)
+    assert.equal(r.itens[0].slug, 'milho')
+  })
+
+  it('sem consulta, devolve a lista inteira', () => {
+    const r = buscar(ANIMAIS, MATERIAS, '', {}, SEM_FAVORITOS, rotA, rotM)
+    assert.equal(r.itens.length, ANIMAIS.length + MATERIAS.length)
+  })
+
+  it('o atalho vira FILTRO, não busca textual', () => {
+    const r = buscar([], MATERIAS, 'ingrediente que não pode ir para aves', {}, SEM_FAVORITOS, rotA, rotM)
+    assert.ok(r.atalho)
+    // milho e sal servem pra ave; silagem, ureia e caroço não.
+    const slugs = r.itens.map(i => i.slug).sort()
+    assert.deepEqual(slugs, ['caroco-algodao', 'silagem-volumoso', 'ureia'])
+  })
+})
+
+describe('filtros de matéria-prima', () => {
+  it('"o que não entra na fábrica" devolve só o incompatível', () => {
+    const r = filtrarMaterias(MATERIAS, { compat: 'incompativel' }, SEM_FAVORITOS)
+    assert.deepEqual(r.map(m => m.slug), ['silagem-volumoso'])
+  })
+
+  it('filtra por risco alto', () => {
+    const r = filtrarMaterias(MATERIAS, { risco: 'alto_risco' }, SEM_FAVORITOS)
+    assert.deepEqual(r.map(m => m.slug), ['ureia'])
+  })
+
+  it('filtra por propriedade mecânica (corrosivo)', () => {
+    const r = filtrarMaterias(MATERIAS, { propriedade: 'corrosivo' }, SEM_FAVORITOS)
+    assert.deepEqual(r.map(m => m.slug).sort(), ['sal-comum', 'ureia'])
+  })
+
+  it('filtra por misturador indicado', () => {
+    const r = filtrarMaterias(MATERIAS, { misturador: 'horizontal' }, SEM_FAVORITOS)
+    assert.deepEqual(r.map(m => m.slug).sort(), ['caroco-algodao', 'sal-comum'])
+  })
+
+  it('restritoPara devolve o que NÃO serve pra espécie', () => {
+    const r = filtrarMaterias(MATERIAS, { restritoPara: 'aves' }, SEM_FAVORITOS)
+    assert.ok(r.every(m => !m.especies.includes('aves')))
+  })
+
+  it('favoritos filtram pela chave tipo:slug', () => {
+    const favs = new Set(['materia:ureia'])
+    const r = filtrarMaterias(MATERIAS, { soFavoritos: true }, favs)
+    assert.deepEqual(r.map(m => m.slug), ['ureia'])
+  })
+})
+
+// ===========================================================================
+describe('consumo de referência', () => {
+  it('lê do catálogo de /producao-propria — os dois módulos usam o mesmo número', () => {
+    assert.equal(consumoDeReferencia('aves', 'postura'), 3.4)
+    assert.equal(consumoDeReferencia('suinos', 'terminacao'), 90)
+  })
+
+  it('devolve null pra espécie que o estudo ainda não conhece', () => {
+    assert.equal(especieDoEstudo('ovinos'), null)
+    assert.equal(consumoDeReferencia('ovinos', 'recria'), null)
+  })
+
+  it('devolve null pra fase inexistente', () => {
+    assert.equal(consumoDeReferencia('aves', 'fase-que-nao-existe'), null)
+  })
+})
+
+describe('capacidade para análise', () => {
+  it('escolhe a menor capacidade da linha que dá conta', () => {
+    // 50.000 kg/mês ÷ (26 × 8 × 0,8) = 300,5 kg/h → 600 é a primeira que atende
+    const { kgH } = capacidadeParaAnalise(50_000)
+    assert.equal(kgH, 600)
+  })
+
+  it('avisa quando a linha escolhida fica perto do limite', () => {
+    // 49.000 ÷ (26 × 8 × 0,8) = 294,7 kg/h → cabe em 300, mas a 98% do tempo
+    const { kgH, nota } = capacidadeParaAnalise(49_000)
+    assert.equal(kgH, 300)
+    assert.match(nota!, /perto do limite/i)
+  })
+
+  it('com folga, a nota explica a conta em vez de alarmar', () => {
+    // 30.000 ÷ 166,4 = 180 kg/h → 300 kg/h a 60% do tempo
+    const { kgH, nota } = capacidadeParaAnalise(30_000)
+    assert.equal(kgH, 300)
+    assert.doesNotMatch(nota!, /perto do limite/i)
+  })
+
+  it('não inventa equipamento acima da linha — manda pra engenharia', () => {
+    const { kgH, nota } = capacidadeParaAnalise(10_000_000)
+    assert.equal(kgH, null)
+    assert.match(nota!, /engenharia/i)
+  })
+
+  it('sem necessidade, não devolve capacidade', () => {
+    assert.deepEqual(capacidadeParaAnalise(null), { kgH: null, nota: null })
+    assert.deepEqual(capacidadeParaAnalise(0), { kgH: null, nota: null })
+  })
+})
+
+describe('Atendimento Rápido — motor', () => {
+  const vazio: Atendimento = {
+    especie: null, fase: null, quantidade: null, sistema: null,
+    produto: null, materias: [], consumoConfirmado: false,
+  }
+
+  it('em branco, lista tudo que falta e não fecha equipamento', () => {
+    const r = analisar(vazio, ANIMAIS, MATERIAS)
+    assert.equal(r.podeFecharEquipamento, false)
+    assert.equal(r.capacidadeSugeridaKgH, null)
+    assert.ok(r.faltando.includes('Espécie'))
+    assert.ok(r.faltando.includes('Confirmação do consumo com o cliente'))
+  })
+
+  it('NÃO fecha equipamento sem consumo confirmado, mesmo com todo o resto preenchido', () => {
+    const a: Atendimento = {
+      ...vazio, especie: 'aves', fase: 'postura', quantidade: 20_000,
+      produto: 'Ração farelada completa', materias: ['milho'], consumoConfirmado: false,
+    }
+    const r = analisar(a, ANIMAIS, MATERIAS)
+    assert.equal(r.necessidadeMesKg, 68_000)          // 3,4 × 20.000
+    assert.equal(r.podeFecharEquipamento, false)
+    assert.equal(r.capacidadeSugeridaKgH, null, 'capacidade não pode sair sem confirmação')
+  })
+
+  it('com consumo confirmado, devolve a capacidade para análise', () => {
+    const a: Atendimento = {
+      ...vazio, especie: 'aves', fase: 'postura', quantidade: 20_000,
+      produto: 'Ração farelada completa', materias: ['milho'], consumoConfirmado: true,
+    }
+    const r = analisar(a, ANIMAIS, MATERIAS)
+    assert.equal(r.podeFecharEquipamento, true)
+    assert.ok(r.capacidadeSugeridaKgH && r.capacidadeSugeridaKgH > 0)
+  })
+
+  it('marcar SILAGEM avisa que não entra na fábrica farelada', () => {
+    const a: Atendimento = { ...vazio, especie: 'bovinos', fase: 'confinamento', materias: ['silagem-volumoso'] }
+    const r = analisar(a, ANIMAIS, MATERIAS)
+    const inc = r.atencao.find(x => x.nivel === 'incompativel')
+    assert.ok(inc, 'deveria ter alerta de incompatibilidade')
+    assert.match(inc!.texto, /não entra na fábrica farelada/i)
+  })
+
+  it('marcar UREIA levanta alto risco', () => {
+    const a: Atendimento = { ...vazio, especie: 'bovinos', fase: 'confinamento', materias: ['ureia'] }
+    const r = analisar(a, ANIMAIS, MATERIAS)
+    assert.ok(r.atencao.some(x => x.nivel === 'alto_risco'))
+  })
+
+  it('avisa quando o ingrediente não serve pra espécie escolhida', () => {
+    // caroço de algodão só serve pra ruminante; aqui a espécie é aves
+    const a: Atendimento = { ...vazio, especie: 'aves', fase: 'postura', materias: ['caroco-algodao'] }
+    const r = analisar(a, ANIMAIS, MATERIAS)
+    assert.ok(r.atencao.some(x => x.nivel === 'incompativel' && /NÃO é indicado/.test(x.texto)))
+  })
+
+  it('ingrediente corrosivo vira ponto de atenção de limpeza', () => {
+    const a: Atendimento = { ...vazio, especie: 'bovinos', fase: 'confinamento', materias: ['sal-comum'] }
+    const r = analisar(a, ANIMAIS, MATERIAS)
+    assert.ok(r.atencao.some(x => /corrosivo/i.test(x.texto)))
+  })
+
+  it('não repete o mesmo aviso duas vezes', () => {
+    const a: Atendimento = {
+      ...vazio, especie: 'bovinos', fase: 'confinamento', materias: ['sal-comum', 'ureia'],
+    }
+    const r = analisar(a, ANIMAIS, MATERIAS)
+    const textos = r.atencao.map(x => x.texto)
+    assert.equal(new Set(textos).size, textos.length)
+  })
+
+  it('traz as perguntas da fase escolhida', () => {
+    const a: Atendimento = { ...vazio, especie: 'bovinos', fase: 'confinamento' }
+    const r = analisar(a, ANIMAIS, MATERIAS)
+    assert.ok(r.perguntas.includes('Quantos animais?'))
+  })
+
+  it('relaciona as matérias comuns daquela criação', () => {
+    const a: Atendimento = { ...vazio, especie: 'bovinos', fase: 'confinamento' }
+    const r = analisar(a, ANIMAIS, MATERIAS)
+    assert.deepEqual(r.relacionados.map(x => x.slug).sort(), ['caroco-algodao', 'milho'])
+  })
+})
+
+describe('resumo para copiar', () => {
+  it('inclui o que falta levantar e a ressalva de profissional habilitado', () => {
+    const a: Atendimento = {
+      especie: 'aves', fase: 'postura', quantidade: 5000, sistema: 'comercial',
+      produto: null, materias: [], consumoConfirmado: false,
+    }
+    const r = analisar(a, ANIMAIS, MATERIAS)
+    const t = resumoParaCopiar(a, r, 'Postura')
+    assert.match(t, /Ainda falta levantar/)
+    assert.match(t, /profissional habilitado/)
+    assert.match(t, /17\.000 kg\/mês|17000/)
+  })
+})

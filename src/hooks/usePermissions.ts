@@ -47,6 +47,10 @@ export const FEATURE_CATALOG: Array<{
   { key: 'menu.reunioes', label: 'Adm de Reunião', group: 'Menu' },
   { key: 'menu.agenda', label: 'Agenda (calendário/tarefas)', group: 'Menu' },
   { key: 'menu.due_diligence', label: 'Consulta (Due Diligence)', group: 'Menu' },
+  // Editar o Guia = criar/alterar/aprovar conteúdo técnico e imagens. É poder
+  // editorial, não de menu: quem tem isso enxerga rascunho e em_revisão (a RLS
+  // usa a mesma chave, em public.guia_pode_editar()).
+  { key: 'guia.editar', label: 'Editar o Guia do Vendedor (conteúdo técnico e imagens)', group: 'Ações' },
   { key: 'contacts.view_all', label: 'Ver TODOS os contatos (não só do próprio vendedor)', group: 'Ações' },
   { key: 'prospeccao.gestao', label: 'Prospecção: ver métricas e configurar o pool', group: 'Ações' },
   { key: 'atendimentos.reatribuir', label: 'Reatribuir atendimento pra outro vendedor', group: 'Ações' },

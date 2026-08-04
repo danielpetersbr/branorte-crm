@@ -20,6 +20,7 @@
  * pode custar 20 minutos de digitação do vendedor.
  */
 import { useEffect, useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
   Calculator, ChevronLeft, ChevronRight, Copy, FilePlus2, FileText, History, ListChecks,
   MessageCircle, Presentation, Printer, Save, Settings,
@@ -33,7 +34,7 @@ import {
   type FiltrosEstudo,
 } from '@/hooks/useVendaRacao'
 import { calcularEstudo } from '@/lib/venda-racao/calculo'
-import { novoEstudo, normalizarInput, trocarEspecie } from '@/lib/venda-racao/estado'
+import { consumoSugerido, novoEstudo, normalizarInput, trocarEspecie } from '@/lib/venda-racao/estado'
 import { dadosEstudo } from '@/lib/venda-racao/estudo'
 import { brl, hojeISO, meses, pct } from '@/lib/venda-racao/formato'
 import { supabase } from '@/lib/supabase'
@@ -115,9 +116,18 @@ function etapasConcluidas(input: EstudoInput, r: ReturnType<typeof calcularEstud
   ]
 }
 
+/** Dados que o Guia do Vendedor manda quando o vendedor clica "usar no estudo". */
+interface SementeGuia {
+  especie: Especie
+  categoria: string
+  numeroAnimais: number
+  consumoPorAnimal: number | null
+}
+
 export function ProducaoPropria() {
   const { profile } = useAuth()
   const can = useCan()
+  const loc = useLocation()
   const podeVerTodas = profile?.role === 'admin' || can('venda_racao.ver_todas')
 
   // Se a config da empresa não carregar (rede caiu, RLS negou), o módulo NÃO
@@ -168,6 +178,35 @@ export function ProducaoPropria() {
     } catch { /* rascunho corrompido: começa limpo */ }
     setInput(novoEstudo(config, 'bovinos', vendedor))
   }, [config, input, profile?.display_name])
+
+  // --- semente vinda do Guia do Vendedor ------------------------------------
+  // O vendedor levantou espécie/fase/quantidade no /guia e clicou "usar no
+  // estudo". A semente sobrescreve produto e necessidade, e mantém o resto do
+  // rascunho (identificação do cliente, custos já ajustados). `consumoConfirmado`
+  // volta a false de propósito: consumo trazido de catálogo ainda é referência.
+  useEffect(() => {
+    const s = (loc.state as { guiaSemente?: SementeGuia } | null)?.guiaSemente
+    if (!s || !input || !config) return
+    setInput(atual => {
+      if (!atual) return atual
+      const base = atual.produto.especie === s.especie ? atual : trocarEspecie(atual, s.especie, config)
+      return {
+        ...base,
+        produto: { ...base.produto, especie: s.especie, categoria: s.categoria, categoriaLivre: '' },
+        necessidade: {
+          ...base.necessidade,
+          modo: 'animais',
+          numeroAnimais: s.numeroAnimais || base.necessidade.numeroAnimais,
+          consumoPorAnimal: s.consumoPorAnimal ?? consumoSugerido(s.especie, s.categoria),
+          baseConsumo: 'mes',
+          consumoConfirmado: false,
+        },
+      }
+    })
+    setAviso({ tipo: 'ok', texto: 'Dados trazidos do Guia do Vendedor. Confirme o consumo com o cliente antes de dimensionar.' })
+    // Limpa o state pra um F5 não reaplicar a semente por cima do que o vendedor já editou.
+    window.history.replaceState({}, '')
+  }, [loc.state, input, config])
 
   // --- rascunho automático ---------------------------------------------------
   useEffect(() => {
