@@ -45,6 +45,8 @@ import { PainelEstudo } from '@/components/venda-racao/PainelEstudo'
 import { ApresentacaoEstudo, imprimirEstudo } from '@/components/venda-racao/ApresentacaoEstudo'
 import { HistoricoEstudos } from '@/components/venda-racao/HistoricoEstudos'
 import { ConfiguracoesEstudo } from '@/components/venda-racao/ConfiguracoesEstudo'
+import { BarraAcoes } from '@/components/venda-racao/BarraAcoes'
+import { ResumoAntesDeCalcular } from '@/components/venda-racao/ResumoAntesDeCalcular'
 import { Selecao } from '@/components/venda-racao/campos'
 import '@/styles/venda-racao.css'
 
@@ -435,49 +437,38 @@ export function ProducaoPropria() {
         {/* --------------------------------------------- barra de ações */}
         {(aba === 'simulacao' || aba === 'apresentacao') && (
           <>
-            <div className="vr-acoes vr-no-print">
-              <div className="vr-cta" style={{ marginTop: 0 }}>
-                <button type="button" className="vr-btn ghost" disabled={salvarEstudo.isPending} onClick={salvar}>
-                  <Save className="h-4 w-4" />
-                  {salvarEstudo.isPending ? 'Salvando…' : estudoId ? 'Salvar alterações' : 'Salvar rascunho'}
-                </button>
-                <button type="button" className="vr-btn primary" onClick={calcular}>
-                  <Calculator className="h-4 w-4" /> Calcular viabilidade
-                </button>
-                <button type="button" className="vr-btn ghost" onClick={() => { setAba('apresentacao'); setTimeout(() => irPara('vr-premissas'), 60) }}>
-                  <ListChecks className="h-4 w-4" /> Revisar premissas
-                </button>
-                <button type="button" className="vr-btn ghost" onClick={apresentar}>
-                  <Presentation className="h-4 w-4" /> Apresentar ao cliente
-                </button>
-                <button type="button" className="vr-btn ghost" onClick={() => { setAba('apresentacao'); setTimeout(imprimirEstudo, 120) }}>
-                  <Printer className="h-4 w-4" /> Gerar PDF
-                </button>
-                <button type="button" className="vr-btn ghost" onClick={() => { setAba('apresentacao'); setTimeout(() => irPara('vr-whats'), 60) }}>
-                  <MessageCircle className="h-4 w-4" /> Preparar mensagem do WhatsApp
-                </button>
-                <button type="button" className="vr-btn ghost" onClick={duplicarAtual}>
-                  <Copy className="h-4 w-4" /> Duplicar
-                </button>
-                <button type="button" className="vr-btn ghost" onClick={novo}>
-                  <FilePlus2 className="h-4 w-4" /> Novo estudo
-                </button>
-              </div>
-
-              <div className="vr-acoes-status">
-                <span style={{ fontSize: 12, color: 'var(--vr-ink40)', fontFamily: 'var(--vr-mono)' }}>
-                  {codigo}
-                </span>
-                <Selecao
-                  valor={input.status}
-                  opcoes={STATUS_ESTUDO.map(s => ({ v: s.chave as StatusEstudo, label: s.nome }))}
-                  onChange={v => {
-                    setInput(s => (s ? { ...s, status: v } : s))
-                    if (estudoId) atualizarStatus.mutate({ id: estudoId, status: v })
-                  }}
-                />
-              </div>
-            </div>
+            {/* Era uma fileira de 8 botões do mesmo peso — em tela menor virava
+                uma parede. Agora: 1 principal (Calcular), 4 secundários e o resto
+                em "Mais ações", com o indicador de salvamento junto. O código do
+                estudo e o seletor de status entram pelo slot `extra`. */}
+            <BarraAcoes
+              onCalcular={calcular}
+              onSalvar={salvar}
+              onApresentar={apresentar}
+              onGerarPdf={() => { setAba('apresentacao'); setTimeout(imprimirEstudo, 120) }}
+              onWhatsApp={() => { setAba('apresentacao'); setTimeout(() => irPara('vr-whats'), 60) }}
+              onRevisarPremissas={() => { setAba('apresentacao'); setTimeout(() => irPara('vr-premissas'), 60) }}
+              onDuplicar={duplicarAtual}
+              onNovoEstudo={novo}
+              salvando={salvarEstudo.isPending}
+              salvoEm={salvarEstudo.isSuccess ? new Date(salvarEstudo.submittedAt) : null}
+              estudoSalvo={!!estudoId}
+              extra={
+                <>
+                  <span style={{ fontSize: 12, color: 'var(--vr-ink40)', fontFamily: 'var(--vr-mono)' }}>
+                    {codigo}
+                  </span>
+                  <Selecao
+                    valor={input.status}
+                    opcoes={STATUS_ESTUDO.map(s => ({ v: s.chave as StatusEstudo, label: s.nome }))}
+                    onChange={v => {
+                      setInput(s => (s ? { ...s, status: v } : s))
+                      if (estudoId) atualizarStatus.mutate({ id: estudoId, status: v })
+                    }}
+                  />
+                </>
+              }
+            />
 
             {/* ----------------------------------------- progresso */}
             <div className="vr-progress vr-no-print">
@@ -576,6 +567,12 @@ export function ProducaoPropria() {
                 })
               }}
             />
+
+            {/* Fecha a prova: na última etapa repete as respostas que importam e
+                diz o que ainda falta, antes de oferecer o botão. */}
+            {etapaAtual === etapas.length && (
+              <ResumoAntesDeCalcular input={input} resultado={resultado} onCalcular={calcular} />
+            )}
 
             {/* Um bloco por vez: preenche, avança. Na última, gera o resultado. */}
             <div className="vr-passos vr-no-print">
