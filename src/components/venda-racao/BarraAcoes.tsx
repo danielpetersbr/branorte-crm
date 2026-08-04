@@ -1,13 +1,20 @@
 /**
  * Barra de ações do estudo de produção própria.
  *
- * Antes eram oito botões na mesma fileira, todos com o mesmo peso visual. Numa
- * tela de 1366 aquilo quebrava em duas linhas e o vendedor não sabia qual era o
- * botão do dia a dia. Aqui a hierarquia é explícita:
+ * Ela divide a MESMA LINHA com as abas (ver `.vr-topo` no venda-racao.css).
+ * Antes eram duas fileiras empilhadas — abas em cima, seis botões embaixo — e
+ * o topo da tela virava uma parede antes do formulário começar. A hierarquia
+ * que faz caber tudo numa linha:
  *
  *   primário    → Calcular viabilidade (é o que fecha a conta e troca de vista)
- *   secundários → Salvar, Apresentar ao cliente, Gerar PDF, WhatsApp
+ *   secundários → Salvar, Gerar PDF, WhatsApp — SÓ ÍCONE, com tooltip e
+ *                 aria-label. Continuam a um clique; o que sumiu foi o rótulo.
  *   "Mais ações" → Revisar premissas, Duplicar, Novo estudo
+ *
+ * "Apresentar ao cliente" FOI EMBORA: ele era `setAba('apresentacao')`, exatamente
+ * o que a aba "Apresentação do estudo" — ao lado dele na mesma barra — já fazia.
+ * A checagem de pendências que ele carregava passou pro clique da aba, senão
+ * o vendedor abriria a apresentação furada e só descobriria na frente do cliente.
  *
  * O que foi pro menu é o que o vendedor usa uma vez por estudo (ou nem isso).
  * "Novo estudo" em particular estava a um clique de distância de "Gerar PDF" e
@@ -20,14 +27,13 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import {
   Calculator, Copy, FilePlus2, ListChecks, Loader2, MessageCircle,
-  MoreHorizontal, Presentation, Printer, Save,
+  MoreHorizontal, Printer, Save,
 } from 'lucide-react'
 
 export interface BarraAcoesProps {
   /** Ação principal — fecha a conta e leva pro resultado. */
   onCalcular: () => void
   onSalvar: () => void
-  onApresentar: () => void
   onGerarPdf: () => void
   onWhatsApp: () => void
   onRevisarPremissas: () => void
@@ -51,7 +57,7 @@ interface ItemMenu {
 }
 
 export function BarraAcoes({
-  onCalcular, onSalvar, onApresentar, onGerarPdf, onWhatsApp,
+  onCalcular, onSalvar, onGerarPdf, onWhatsApp,
   onRevisarPremissas, onDuplicar, onNovoEstudo,
   salvando, salvoEm, estudoSalvo = false, extra,
 }: BarraAcoesProps) {
@@ -164,6 +170,13 @@ export function BarraAcoes({
     ? salvoEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
     : null
 
+  /** Tooltip e nome acessível do botão de salvar — carrega o estado inteiro. */
+  const rotuloSalvar = salvando
+    ? 'Salvando…'
+    : horaSalvo
+      ? `Salvo às ${horaSalvo} — salvar de novo`
+      : estudoSalvo ? 'Salvar alterações' : 'Salvar rascunho'
+
   return (
     <div className="vr-acoes vr-no-print">
       <div className="vr-cta" style={{ marginTop: 0 }}>
@@ -171,23 +184,44 @@ export function BarraAcoes({
           <Calculator className="h-4 w-4" /> Calcular viabilidade
         </button>
 
-        <button type="button" className="vr-btn ghost" disabled={salvando} onClick={onSalvar}>
+        {/* SÓ ÍCONE daqui pra baixo. `title` dá o tooltip do mouse e `aria-label`
+            dá o nome pro leitor de tela — sem os dois, um botão sem texto é um
+            quadrado mudo.
+
+            O ESTADO DO SALVAMENTO MORA AQUI DENTRO. Antes era um texto solto ao
+            lado ("Alterações salvas às 14:32") que custava ~90px de uma linha de
+            1076 — e ele só aparecia DEPOIS de salvar, ou seja, a barra cabia
+            enquanto ninguém salvava e quebrava na hora que o vendedor salvava.
+            Agora o ícone fica verde e a hora vai pro tooltip. */}
+        <button
+          type="button"
+          className={`vr-btn ghost icone${horaSalvo && !salvando ? ' salvo' : ''}`}
+          disabled={salvando}
+          title={rotuloSalvar}
+          aria-label={rotuloSalvar}
+          onClick={onSalvar}
+        >
           {salvando
             ? <Loader2 className="h-4 w-4 animate-spin" />
             : <Save className="h-4 w-4" />}
-          {estudoSalvo ? 'Salvar alterações' : 'Salvar rascunho'}
         </button>
 
-        <button type="button" className="vr-btn ghost" onClick={onApresentar}>
-          <Presentation className="h-4 w-4" /> Apresentar ao cliente
+        <button
+          type="button"
+          className="vr-btn ghost icone"
+          title="Gerar PDF" aria-label="Gerar PDF"
+          onClick={onGerarPdf}
+        >
+          <Printer className="h-4 w-4" />
         </button>
 
-        <button type="button" className="vr-btn ghost" onClick={onGerarPdf}>
-          <Printer className="h-4 w-4" /> Gerar PDF
-        </button>
-
-        <button type="button" className="vr-btn ghost" onClick={onWhatsApp}>
-          <MessageCircle className="h-4 w-4" /> WhatsApp
+        <button
+          type="button"
+          className="vr-btn ghost icone"
+          title="Enviar no WhatsApp" aria-label="Enviar no WhatsApp"
+          onClick={onWhatsApp}
+        >
+          <MessageCircle className="h-4 w-4" />
         </button>
 
         {/* --------------------------------------------------- mais ações
@@ -198,14 +232,16 @@ export function BarraAcoes({
           <button
             ref={gatilhoRef}
             type="button"
-            className="vr-btn ghost"
+            className="vr-btn ghost icone"
+            title="Mais ações"
+            aria-label="Mais ações"
             aria-haspopup="menu"
             aria-expanded={aberto}
             aria-controls={aberto ? idMenu : undefined}
             onClick={() => (aberto ? fechar() : abrir(-1))}
             onKeyDown={teclasDoGatilho}
           >
-            <MoreHorizontal className="h-4 w-4" /> Mais ações
+            <MoreHorizontal className="h-4 w-4" />
           </button>
 
           {aberto && (
@@ -254,24 +290,12 @@ export function BarraAcoes({
       </div>
 
       <div className="vr-acoes-status">
-        {/* aria-live: quem usa leitor de tela precisa saber que salvou sem ter
-            que ir procurar o texto. `polite` pra não cortar a leitura em curso. */}
-        <span
-          aria-live="polite"
-          style={{
-            fontSize: 12,
-            color: salvando ? 'var(--vr-ink60)' : 'var(--vr-ink40)',
-            display: 'inline-flex', alignItems: 'center', gap: 5,
-            minWidth: 128,  // reserva o espaço: sem isso o seletor de status pula quando o texto troca
-            justifyContent: 'flex-end',
-          }}
-        >
-          {salvando && <Loader2 className="h-3 w-3 animate-spin" />}
-          {salvando
-            ? 'Salvando…'
-            : horaSalvo
-              ? `Alterações salvas às ${horaSalvo}`
-              : ''}
+        {/* O aviso de salvamento sumiu da tela mas NÃO da acessibilidade: quem
+            usa leitor de tela não vê a cor do ícone nem passa o mouse pra ler o
+            tooltip. Este span é invisível e só existe pro aria-live anunciar.
+            `polite` pra não cortar a leitura em curso. */}
+        <span aria-live="polite" className="vr-sr">
+          {salvando ? 'Salvando…' : horaSalvo ? `Estudo salvo às ${horaSalvo}` : ''}
         </span>
         {extra}
       </div>

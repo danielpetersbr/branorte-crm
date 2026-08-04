@@ -1020,3 +1020,65 @@
   margin: 0;
   line-height: 1.15;
 }
+
+/* Abas e ações NA MESMA LINHA (04/08/2026).
+   Eram duas fileiras: abas em cima, seis botões embaixo. Com marca, título,
+   barra de progresso e passos, o topo comia a tela antes do primeiro campo.
+
+   O escopo é `.vr-topo` de propósito: `.vr-tabs` também é usada na
+   /venda-racao, que continua com as abas sozinhas na linha delas.
+
+   E o nome é `vr-topo` e NÃO `vr-barra` porque `.vr .vr-barra` JÁ EXISTE desde
+   os gráficos (linha ~499): é a barra empilhada de composição de custo, com
+   `height: 12px` fixo. Usar o mesmo nome espremia esta linha inteira em 12px de
+   altura e ainda jogava flex/space-between/border em cima dos dois gráficos. */
+.vr .vr-topo {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 8px 14px; flex-wrap: wrap;
+  border-bottom: 1px solid var(--vr-hair);
+  margin-top: 14px;
+}
+/* A borda subiu pro pai: aqui embaixo ela pararia no meio da linha, só sob as
+   abas, deixando as ações penduradas fora do traço. */
+/* `flex: 0 1 auto` e NÃO `1 1 auto`: com o grow ligado as abas engoliam a linha
+   inteira (medido: 1076 de 1076px) e jogavam as ações pra segunda linha — o
+   contrário do que a barra existe pra fazer. */
+.vr .vr-topo .vr-tabs { border-bottom: 0; margin-top: 0; flex: 0 1 auto; }
+.vr .vr-topo .vr-tab { padding: 9px 10px; }
+/* O <select> de status se dimensiona pela MAIOR opção e sozinho pedia 212px.
+   Ele mostra o valor atual, que é curto; a lista aberta não é afetada. */
+.vr .vr-topo .vr-acoes-status select { max-width: 140px; }
+.vr .vr-topo .vr-acoes {
+  margin-top: 0; padding-bottom: 6px;
+  flex: 0 1 auto; justify-content: flex-end; gap: 8px 12px;
+}
+.vr .vr-topo .vr-cta { gap: 7px; }
+
+/* Secundários só com ícone: quadrado, sem o padding lateral do rótulo.
+   Título e aria-label vão no TSX — sem eles isto é um quadrado mudo. */
+.vr .vr-btn.icone { padding: 9px; gap: 0; }
+.vr .vr-btn.icone svg { display: block; }
+
+/* Os passos colados na barrinha: eram duas linhas com 7px de respiro no meio
+   e mais 12px antes. Continuam legíveis com metade do espaço. */
+.vr .vr-topo + .vr-progress,
+.vr .vr-progress { margin-top: 9px; }
+.vr .vr-progress .passos { margin-top: 5px; }
+
+@media (max-width: 900px) {
+  /* Empilha de volta quando não cabe — as ações vão pra baixo das abas, que é
+     o comportamento antigo, e não espremidas numa linha ilegível. */
+  .vr .vr-topo { align-items: stretch; }
+  .vr .vr-topo .vr-acoes { justify-content: flex-start; padding-bottom: 8px; }
+}
+
+/* Só pro leitor de tela. Nada de `display:none` nem `visibility:hidden` — os
+   dois tiram o nó da árvore de acessibilidade e o aria-live cala junto. */
+.vr .vr-sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* Salvou: o ícone fica verde. É o que restou do texto "Alterações salvas às
+   14:32" — a hora exata vive no `title` do botão. */
+.vr .vr-btn.icone.salvo { color: var(--vr-green); border-color: var(--vr-green); }
