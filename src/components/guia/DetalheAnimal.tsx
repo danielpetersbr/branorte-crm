@@ -56,6 +56,17 @@ export function DetalheAnimal({
         <div className="overflow-hidden rounded-lg border border-border bg-surface">
           <Foto imagem={imagem} emoji={a.emoji} nome={a.nome} variante="detalhe" mostrarCredito
             semRetrato={a.tipo === 'categoria'} />
+          {/* Lacuna vira informação. Sem isso, o vendedor abre o card do Ross,
+              vê um espaço vazio e supõe que o guia está incompleto — quando na
+              verdade a foto é IMPOSSÍVEL: nenhuma imagem distingue Cobb de Ross. */}
+          {!imagem?.arquivo_url && a.especie === 'aves' && a.tipo === 'linhagem' && (
+            <p className="border-b border-border bg-surface-2/60 px-4 py-2 text-[11.5px] leading-relaxed text-ink-muted">
+              Sem foto porque nenhuma foto resolve: linhagens comerciais de ave não são
+              visualmente distinguíveis entre si. Frangos de corte são todos brancos; poedeiras
+              comerciais, todas marrons ou todas brancas. Quem identifica a linhagem é o
+              documento do incubatório, não a aparência da ave.
+            </p>
+          )}
           <div className="space-y-2 p-4">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-lg font-bold leading-tight text-ink">{a.nome}</h2>

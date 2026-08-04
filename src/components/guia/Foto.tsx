@@ -105,6 +105,23 @@ export function Foto({
         <figcaption className="px-1 pt-1.5 text-[10px] text-ink-faint">
           Foto: {imagem!.autor ?? 'autoria não identificada'}
           {imagem!.licenca ? ` · ${imagem!.licenca}` : ''}
+          {/* Crédito tem que ser CONFERÍVEL. Texto solto não prova procedência —
+              foi assim que uma foto de fabricante de peletizadora passou batida
+              no guia antigo. Os dois links levam à obra e ao arquivo original. */}
+          {imagem!.fonte_url && (
+            <>
+              {' · '}
+              <a href={imagem!.fonte_url} target="_blank" rel="noopener noreferrer"
+                 className="underline hover:text-ink">obra</a>
+            </>
+          )}
+          {imagem!.url_original && (
+            <>
+              {' · '}
+              <a href={imagem!.url_original} target="_blank" rel="noopener noreferrer"
+                 className="underline hover:text-ink">arquivo original</a>
+            </>
+          )}
           {imagem!.status === 'pendente' && ' · verificação pendente'}
         </figcaption>
       )}
