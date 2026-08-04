@@ -91,10 +91,12 @@ const soHora = (t: unknown): string | null => {
   return m ? `${m[1].padStart(2, '0')}:${m[2]}` : null
 }
 
-/** 'HH:MM' do front → time do banco. Lixo vira null em vez de estourar o INSERT. */
+/** 'HH:MM' do front → time do banco. Lixo vira null em vez de estourar o INSERT.
+ *  A faixa é checada de verdade: '99:99' casa com \d{1,2}:\d{2} mas não é hora,
+ *  e o Postgres recusaria o literal em vez de gravar null. */
 const praHora = (h: string | null | undefined): string | null => {
-  const s = (h ?? '').trim()
-  return /^\d{1,2}:\d{2}$/.test(s) ? `${s.padStart(5, '0')}:00` : null
+  const min = hhmm(h)
+  return min == null ? null : `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}:00`
 }
 
 const num = (v: unknown): number | null => (v == null || v === '' ? null : Number(v))
@@ -141,11 +143,58 @@ function indexarProgramacao(prog?: Programacao): Map<string, Encaixe> {
   return m
 }
 
+/**
+ * Traduz os CHECK da tabela `viagens` pra mensagem legível ANTES do INSERT.
+ * O painel deixa passar: os dois <input type="time"> não se conversam (dá pra
+ * fechar às 07:00 e abrir às 08:00) e visitaMinutosPadrao só é travado por
+ * baixo (Math.max(5, …), sem teto). Sem isto, o usuário levaria um
+ * `23514 viagens_jornada_valida` cru na tela.
+ */
+function validarCfg(cfg: ConfigViagem): void {
+  const ini = hhmm(cfg.horaInicio), fim = hhmm(cfg.horaFim)
+  if (ini == null || fim == null) {
+    throw new Error('Horário de início ou de fim inválido. Use o formato HH:MM.')
+  }
+  if (fim <= ini) {
+    throw new Error(`O fim da jornada (${cfg.horaFim}) precisa ser depois do início (${cfg.horaInicio}).`)
+  }
+  if (!Number.isFinite(cfg.dias) || cfg.dias < 1 || cfg.dias > 60) {
+    throw new Error('A viagem precisa ter entre 1 e 60 dias.')
+  }
+  if (cfg.almocoMinutos < 0 || cfg.almocoMinutos > 240) {
+    throw new Error('O almoço precisa ter entre 0 e 240 minutos.')
+  }
+  if (cfg.visitaMinutosPadrao < 5 || cfg.visitaMinutosPadrao > 600) {
+    throw new Error('O tempo padrão de visita precisa ficar entre 5 e 600 minutos.')
+  }
+}
+
+/** 'HH:MM' → minutos. null quando não é hora. (Local: não vale importar de viagem.ts,
+ *  cujo hhmmParaMin aceita lixo e devolve 0 — aqui 0 e inválido são coisas diferentes.) */
+function hhmm(s: string | null | undefined): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec((s ?? '').trim())
+  if (!m) return null
+  const h = Number(m[1]), min = Number(m[2])
+  return h > 23 || min > 59 ? null : h * 60 + min
+}
+
 function linhaDaParada(viagemId: string, p: Parada, ordem: number, e: Encaixe | undefined) {
   const c0 = p.clientes[0] ?? null
   const keys = p.clientes.map(c => c.cliKey).filter((k): k is string => !!k)
   if (p.tipo === 'cliente' && !keys.length) {
     throw new Error(`Parada "${p.rotulo || p.cidade || p.id}" está marcada como cliente mas não tem cli_key.`)
+  }
+  const quem = p.rotulo || p.clientes[0]?.nome || p.cidade || p.id
+  // CHECK visita_minutos between 0 and 1440 — o painel só trava o piso (Math.max(0, …))
+  if (p.visitaMinutos != null && (p.visitaMinutos > 1440 || p.visitaMinutos < 0)) {
+    throw new Error(`Tempo de visita de "${quem}" precisa ficar entre 0 e 1440 minutos.`)
+  }
+  // CHECK viagem_paradas_janela_valida (janela_fim > janela_inicio). Os dois
+  // <input type="time"> do painel são independentes, então dá pra pedir visita
+  // "das 14:00 às 09:00" e só descobrir no INSERT.
+  const jIni = praHora(p.janelaInicio), jFim = praHora(p.janelaFim)
+  if (jIni && jFim && jFim <= jIni) {
+    throw new Error(`Em "${quem}", o fim da janela (${p.janelaFim}) precisa ser depois do início (${p.janelaInicio}).`)
   }
   return {
     viagem_id: viagemId,
@@ -377,6 +426,7 @@ export function useSalvarViagem() {
   const qc = useQueryClient()
   return useMutation<string, Error, SalvarViagemInput>({
     mutationFn: async ({ id, cfg, paradas, programacao, status, observacoes }) => {
+      validarCfg(cfg)
       const base = linhaDaCfg(cfg, programacao)
       const patch: Record<string, unknown> = { ...base }
       if (status) patch.status = status
