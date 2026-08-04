@@ -18,8 +18,10 @@ import type {
 import { Alternador, Campo, CampoNumero, CampoTexto, CustoLinha, Etapa, Selecao } from './campos'
 
 interface Props {
-  /** Fase de preencher: o formulario ocupa a tela toda em multiplas colunas. */
+  /** Fase de preencher: layout de questionário (coluna única). */
   largo?: boolean
+  /** Modo assistente: renderiza SÓ a etapa pedida (1–6). `undefined` = todas. */
+  etapa?: number
   input: SimulacaoInput
   onChange: (fn: (s: SimulacaoInput) => SimulacaoInput) => void
   onTrocarEspecie: (e: Especie) => void
@@ -45,10 +47,14 @@ const UNIDADES_PRECO = [
 
 export function FormularioVendaRacao({
   largo,
+  etapa,
   input, onChange, onTrocarEspecie, resultado, config,
   ingredientesCatalogo, formulasSalvas, onSalvarFormula, salvandoFormula,
 }: Props) {
   const { identificacao: ident, produto, quantidade: qtd, formula, custos, venda } = input
+  /** No modo assistente só a etapa atual aparece; sem ele, tudo. */
+  const ver = (n: number) => etapa === undefined || etapa === n
+
   const ehMilho = produto.especie === 'milho'
   const categorias = CATEGORIAS[produto.especie] ?? []
   const categoriaAtual = categorias.find(c => c.chave === produto.categoria)
@@ -118,8 +124,8 @@ export function FormularioVendaRacao({
       <h2>Seus dados</h2>
 
       {/* ---------------------------------------------------------------- 1 */}
-      <details className="vr-det" style={{ marginTop: 10, borderTop: 0, paddingTop: 0 }}>
-        <summary>Identificação (cliente, vendedor, validade)</summary>
+      {ver(1) && (
+      <Etapa numero={1} titulo="Dados do cliente e da proposta" descricao="Aparecem na proposta que o cliente recebe — menos o que for interno.">
         <div className="vr-detbody">
           <Campo label="Nome do cliente">
             <CampoTexto valor={ident.clienteNome} onChange={v => setIdent({ clienteNome: v })} placeholder="Ex.: João da Silva" />
@@ -158,10 +164,12 @@ export function FormularioVendaRacao({
             />
           </Campo>
         </div>
-      </details>
+      </Etapa>
+      )}
 
       {/* ---------------------------------------------------------------- 2 */}
-      <Etapa numero={1} titulo="O que você vai vender?">
+      {ver(2) && (
+      <Etapa numero={2} titulo="O que você vai vender?">
         <div className="vr-species">
           {ESPECIES.map(e => (
             <div
@@ -198,9 +206,11 @@ export function FormularioVendaRacao({
           {categoriaAtual?.nota && <div className="vr-hint">{categoriaAtual.nota}</div>}
         </div>
       </Etapa>
+      )}
 
       {/* ---------------------------------------------------------------- 3 */}
-      <Etapa numero={2} titulo="Quanto o cliente precisa?">
+      {ver(3) && (
+      <Etapa numero={3} titulo="Quanto o cliente precisa?">
         <Alternador
           valor={qtd.modo}
           opcoes={[
@@ -296,9 +306,11 @@ export function FormularioVendaRacao({
           )}
         </div>
       </Etapa>
+      )}
 
       {/* ---------------------------------------------------------------- 4 */}
-      <Etapa numero={3} titulo={ehMilho ? 'Preço do milho' : 'Fórmula e ingredientes'}>
+      {ver(4) && (
+      <Etapa numero={4} titulo={ehMilho ? 'Preço do milho' : 'Fórmula e ingredientes'}>
         {ehMilho ? (
           <div style={{ display: 'grid', gap: 9 }}>
             <div className="vr-row2">
@@ -441,9 +453,11 @@ export function FormularioVendaRacao({
           </>
         )}
       </Etapa>
+      )}
 
       {/* ---------------------------------------------------------------- 5 */}
-      <Etapa numero={4} titulo="Custos de produção">
+      {ver(5) && (
+      <Etapa numero={5} titulo="Custos de produção">
         {!ehMilho && (
           <Campo label="Perda na produção" unidade="%">
             <CampoNumero valor={custos.perdaPct} casas={2} onChange={v => setCustos({ perdaPct: v })} />
@@ -519,9 +533,11 @@ export function FormularioVendaRacao({
           <b>{brl(resultado.custos.custoPorTonelada)}</b>/t
         </div>
       </Etapa>
+      )}
 
       {/* ---------------------------------------------------------------- 6 */}
-      <Etapa numero={5} titulo="Margem, impostos e condições">
+      {ver(6) && (
+      <Etapa numero={6} titulo="Margem, impostos e condições">
         <Campo label="Como calcular o preço">
           <Alternador
             valor={venda.modoPreco}
@@ -586,6 +602,7 @@ export function FormularioVendaRacao({
           </div>
         </details>
       </Etapa>
+      )}
     </div>
   )
 }

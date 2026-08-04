@@ -121,11 +121,19 @@ export function Campo({
 }
 
 export function Etapa({
-  numero, titulo, children,
-}: { numero: number | string; titulo: ReactNode; children: ReactNode }) {
+  numero, titulo, descricao, children,
+}: {
+  numero: number | string
+  titulo: ReactNode
+  /** Linha curta abaixo do título — o "pra que serve esta etapa". Igual à do
+   *  formulário do estudo, que já tinha; aqui faltava. */
+  descricao?: ReactNode
+  children: ReactNode
+}) {
   return (
     <div className="vr-step">
       <div className="vr-q"><span className="vr-n">{numero}</span><span>{titulo}</span></div>
+      {descricao ? <div className="vr-stepdesc">{descricao}</div> : null}
       {children}
     </div>
   )

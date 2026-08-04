@@ -15,7 +15,7 @@
  * pode custar 20 minutos de digitação do vendedor.
  */
 import { useEffect, useMemo, useState } from 'react'
-import { Calculator, ChevronLeft, Copy, FilePlus2, FileText, History, Save, Settings } from 'lucide-react'
+import { Calculator, ChevronLeft, ChevronRight, Copy, FilePlus2, FileText, History, Save, Settings } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
 import {
@@ -50,6 +50,23 @@ type Aba = 'simulacao' | 'proposta' | 'historico' | 'config'
  */
 const CHAVE_RASCUNHO = 'precificacao-racao:rascunho'
 
+/**
+ * Quais etapas já têm dado suficiente — alimenta a barra de progresso.
+ * Espelha `etapasConcluidas` da /producao-propria, mas lendo o motor daqui.
+ * A ordem TEM que bater com a numeração das <Etapa> do FormularioVendaRacao.
+ */
+function etapasConcluidas(input: SimulacaoInput, r: ReturnType<typeof calcularSimulacao>) {
+  const ehMilho = input.produto.especie === 'milho'
+  return [
+    { rotulo: 'Cliente', ok: input.identificacao.clienteNome.trim().length > 0 },
+    { rotulo: 'Produto', ok: true },
+    { rotulo: 'Necessidade', ok: r.demanda.quantidadeKg > 0 },
+    { rotulo: 'Fórmula', ok: r.formula.fechada && (ehMilho || r.formula.linhas.length > 0) },
+    { rotulo: 'Custos', ok: r.custos.custoBasePorKg > 0 },
+    { rotulo: 'Margem', ok: input.venda.margemDesejadaPct > 0 },
+  ]
+}
+
 /** Código provisório enquanto a proposta não foi salva (o banco gera o oficial). */
 function codigoProvisorio(): string {
   return `VR-${Date.now().toString(36).toUpperCase().slice(-6)}`
@@ -68,8 +85,10 @@ export function VendaRacao() {
   const { data: ingredientes = [] } = useIngredientesCatalogo()
 
   const [aba, setAba] = useState<Aba>('simulacao')
-  /** 'preencher' = formulário na tela toda; 'resultado' = painel na tela toda. */
+  /** 'preencher' = questionário; 'resultado' = painel na tela toda. */
   const [fase, setFase] = useState<'preencher' | 'resultado'>('preencher')
+  /** Assistente: 1..6, uma etapa por vez. Bate com a barra de progresso. */
+  const [etapaAtual, setEtapaAtual] = useState(1)
   const [input, setInput] = useState<SimulacaoInput | null>(null)
   const [simulacaoId, setSimulacaoId] = useState<string | null>(null)
   const [codigo, setCodigo] = useState<string>(codigoProvisorio)
@@ -140,6 +159,9 @@ export function VendaRacao() {
     avisoNutricional: config.avisoNutricional,
   })
 
+  const etapas = etapasConcluidas(input, resultado)
+  const concluidas = etapas.filter(e => e.ok).length
+
   // --- ações -----------------------------------------------------------------
 
   /**
@@ -171,6 +193,7 @@ export function VendaRacao() {
     setCodigo(codigoProvisorio())
     setAba('simulacao')
     setFase('preencher')  // senão cai no resultado do estudo anterior
+    setEtapaAtual(1)
     setAviso({ tipo: 'ok', texto: 'Simulação nova aberta.' })
   }
 
@@ -180,6 +203,7 @@ export function VendaRacao() {
     setInput(s => (s ? { ...s, status: 'rascunho' } : s))
     setAba('simulacao')
     setFase('preencher')  // senão cai no resultado do estudo anterior
+    setEtapaAtual(1)
     setAviso({ tipo: 'ok', texto: 'Cópia criada — salve pra gerar um código novo.' })
   }
 
@@ -226,6 +250,7 @@ export function VendaRacao() {
     setCodigo(linha.codigo)
     setAba('simulacao')
     setFase('preencher')  // senão cai no resultado do estudo anterior
+    setEtapaAtual(1)
   }
 
   const duplicarDoHistorico = async (id: string) => {
@@ -249,6 +274,7 @@ export function VendaRacao() {
     setCodigo(codigoProvisorio())
     setAba('simulacao')
     setFase('preencher')  // senão cai no resultado do estudo anterior
+    setEtapaAtual(1)
     setAviso({ tipo: 'ok', texto: 'Cópia aberta — salve pra gerar um código novo.' })
   }
 
@@ -350,8 +376,35 @@ export function VendaRacao() {
 
         {aba === 'simulacao' && fase === 'preencher' && (
           <div>
+            {/* Barra de etapas: a venda nunca teve. É a navegação do assistente —
+                clicar pula direto, sem travar (gate mudaria regra de negócio). */}
+            <div className="vr-progress vr-no-print">
+              <div className="trilho">
+                <span style={{ width: `${(concluidas / etapas.length) * 100}%` }} />
+              </div>
+              <div className="passos">
+                {etapas.map((e, i) => {
+                  const n = i + 1
+                  const classe = [e.ok ? 'ok' : '', n === etapaAtual ? 'atual' : '']
+                    .filter(Boolean).join(' ')
+                  return (
+                    <button
+                      key={e.rotulo}
+                      type="button"
+                      className={classe}
+                      aria-current={n === etapaAtual ? 'step' : undefined}
+                      onClick={() => { setEtapaAtual(n); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+                    >
+                      {e.rotulo}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
             <FormularioVendaRacao
               largo
+              etapa={etapaAtual}
               input={input}
               onChange={fn => setInput(s => (s ? fn(s) : s))}
               onTrocarEspecie={(e: Especie) => setInput(s => (s ? trocarEspecie(s, e, config) : s))}
@@ -377,11 +430,34 @@ export function VendaRacao() {
               }}
             />
 
-            {/* "depois no final eu clico em gerar resultado" */}
-            <div className="vr-gerar vr-no-print">
-              <button type="button" className="vr-btn primary" onClick={gerarResultado}>
-                <Calculator className="h-4 w-4" /> Gerar resultado
+            {/* Um bloco por vez: preenche, avança. Na última, gera o resultado. */}
+            <div className="vr-passos vr-no-print">
+              <button
+                type="button"
+                className="vr-btn ghost"
+                disabled={etapaAtual === 1}
+                onClick={() => { setEtapaAtual(n => Math.max(1, n - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+              >
+                <ChevronLeft className="h-4 w-4" /> Voltar
               </button>
+
+              <span className="conta">
+                Etapa {etapaAtual} de {etapas.length} · {etapas[etapaAtual - 1]?.rotulo}
+              </span>
+
+              {etapaAtual < etapas.length ? (
+                <button
+                  type="button"
+                  className="vr-btn primary"
+                  onClick={() => { setEtapaAtual(n => Math.min(etapas.length, n + 1)); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+                >
+                  Próximo <ChevronRight className="h-4 w-4" />
+                </button>
+              ) : (
+                <button type="button" className="vr-btn primary" onClick={gerarResultado}>
+                  <Calculator className="h-4 w-4" /> Gerar resultado
+                </button>
+              )}
             </div>
           </div>
         )}
