@@ -2398,6 +2398,35 @@ Deno.serve(async (req: Request) => {
 
       { const t2 = semEmoji(texto); if (t2) texto = t2 } // blindagem final anti-emoji (cobre textos forcados/handoff)
 
+      // (04/08, caso Valdivino/ALVARO) ABERTURA REPETIDA — "Entendi, {nome}." em 3 de 4
+      // respostas seguidas (08:00, 08:01, 08:02, 08:06). Conversa fica macante e robotica.
+      // A persona JA manda variar e usar o nome no maximo 1x a cada 2-3 mensagens (bloco
+      // ABERTURA da montarPersona) — instrucao, de novo, nao segurou. E metade dessas frases
+      // nem vem do LLM: sao canned com 'Entendi' escrito no codigo (bastao, desistencia).
+      // Aqui pega os dois, porque roda depois de tudo: se a MINHA ultima mensagem ja abriu
+      // com acuse, esta vai direto ao ponto. Alterna sozinho, sem depender do humor do modelo.
+      {
+        const ABERTURA = /^\s*(entendi(\s+tudo\s+aqui)?|certo|perfeito|boa|isso|show|beleza|ok|t[aá] bom)\s*[,.!]*\s*/i
+        const _ultIA = msgs.filter((m: any) => m.fromMe && !_ehSistema(m))
+          .sort((a: any, b: any) => (b.t ?? 0) - (a.t ?? 0))[0]
+        const _anteriorAbriu = ABERTURA.test(String(_ultIA?.body || ''))
+        if (_anteriorAbriu && ABERTURA.test(texto)) {
+          let _t = texto.replace(ABERTURA, '')
+          // Tira o vocativo que sobra depois do acuse ("Entendi, Valdivino. X" -> "X").
+          // Sem RegExp montado com string: nome de cliente pode ter ponto/parentese, e
+          // '\s' dentro de aspas vira 's' — os dois viram bug silencioso.
+          const _pnAb = String(nomeBom || '').trim().split(' ')[0]
+          if (_pnAb && _t.toLowerCase().startsWith(_pnAb.toLowerCase())) {
+            _t = _t.slice(_pnAb.length).replace(/^[\s,.!]+/, '')
+          }
+          _t = _t.trim()
+          if (_t.length >= 15) {
+            texto = _t.charAt(0).toUpperCase() + _t.slice(1)
+            console.log('[ia-atendente] abertura repetida removida (' + chat_id + ')')
+          }
+        }
+      }
+
       // (04/08, caso Kotarski/PEDRO) PROMESSA VAZIA — o texto oferece material e NAO vai anexo.
       // Ele disse "gostaria de ver"; a IA respondeu 4x seguidas "eu te mostro a mini fabrica",
       // "separo a Compacta 01", "vou te mostrar" — e nunca foi nada, porque sem cabecas nao da
