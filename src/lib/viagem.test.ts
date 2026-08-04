@@ -384,3 +384,131 @@ test('diasNecessarios acha o menor número de dias em que tudo cabe', () => {
   assert.equal(programar(ps, { ...c, dias: n }).foraDoPlano.length, 0, 'com o nº sugerido nada fica de fora')
   assert.ok(programar(ps, { ...c, dias: n - 1 }).foraDoPlano.length > 0, 'e é o MENOR: com 1 a menos ainda sobra')
 })
+
+// ═════════════════════════════════════════════════════════════════════════════
+// dormir na estrada — o defeito que fazia viagem longa parecer impossível
+// ═════════════════════════════════════════════════════════════════════════════
+
+/** Base em Teresina/PI, clientes no Ceará: ~465 km de ida. É o caso real. */
+const LONGE_A: Coord = { lat: -4.0833, lng: -39.2400 }  // Paramoti/CE
+const LONGE_B: Coord = { lat: -5.7333, lng: -39.0100 }  // Solonópole/CE
+const LONGE_C: Coord = { lat: -4.0983, lng: -38.4956 }  // Horizonte/CE
+
+const viagemLonga = (over: Partial<ConfigViagem> = {}) => ({
+  ps: [
+    parada({ id: 'a', ...LONGE_A, visitaMinutos: 90 }),
+    parada({ id: 'b', ...LONGE_B, visitaMinutos: 90 }),
+    parada({ id: 'c', ...LONGE_C, visitaMinutos: 90 }),
+  ],
+  c: cfg({ dias: 5, origem: { nome: 'Base', ...TERESINA }, retornarOrigem: true, ...over }),
+})
+
+test('dormir na estrada corta a viagem longa pela metade', () => {
+  // O caso real: 3 clientes no Ceará, base em Teresina, ~465 km de ida.
+  // Voltando pra base toda noite, cada dia gasta ~930 km só pra dormir em casa.
+  // Medido: 3.449 km em 3 dias contra 1.659 km em 2. Não é "cabe/não cabe" — é
+  // que uma das duas contas é absurda e era a única que existia.
+  const { ps, c } = viagemLonga()
+  const velho = programar(ps, { ...c, pernoitar: false })
+  const novo = programar(ps, { ...c, pernoitar: true })
+
+  assert.equal(velho.foraDoPlano.length, 0, 'com dias sobrando, os dois modos acomodam os 3')
+  assert.equal(novo.foraDoPlano.length, 0)
+
+  assert.ok(novo.totalMetros < velho.totalMetros * 0.6,
+    `dormir na estrada tem que cortar pelo menos 40% da estrada ` +
+    `(novo ${Math.round(novo.totalMetros / 1000)} km vs velho ${Math.round(velho.totalMetros / 1000)} km)`)
+  assert.ok(novo.dias.length < velho.dias.length,
+    `e gastar menos dias (novo ${novo.dias.length} vs velho ${velho.dias.length})`)
+})
+
+test('com 1 dia fixo os dois modos deixam gente de fora — quem resolve é o dias automático', () => {
+  // Este era o print do usuário: 3 escolhidos, 2 em "não coube". Pernoitar
+  // sozinho não salva; o que salva é o nº de dias deixar de ser 1 fixo. Os dois
+  // consertos são necessários, e este teste é o que impede achar que um basta.
+  const { ps, c } = viagemLonga({ dias: 1 })
+  assert.equal(programar(ps, { ...c, pernoitar: true }).foraDoPlano.length, 2)
+  assert.equal(programar(ps, { ...c, pernoitar: false }).foraDoPlano.length, 2)
+  assert.equal(diasNecessarios(ps, { ...c, pernoitar: true }), 2, 'o automático pede 2 dias')
+})
+
+test('só o ÚLTIMO dia volta pro ponto de partida', () => {
+  const { ps, c } = viagemLonga()
+  const prog = programar(ps, { ...c, pernoitar: true })
+  assert.ok(prog.dias.length > 1, 'o caso precisa de mais de um dia pra ter sentido')
+
+  for (const d of prog.dias.slice(0, -1)) {
+    assert.ok(d.pernoiteEm, `dia ${d.dia} devia terminar num pernoite, não na base`)
+  }
+  const ultimo = prog.dias[prog.dias.length - 1]
+  assert.equal(ultimo.pernoiteEm, null, 'o último dia volta pra base, então não pernoita')
+})
+
+test('voltando pra base todo dia, NENHUM dia pernoita', () => {
+  const { ps, c } = viagemLonga()
+  const prog = programar(ps, { ...c, pernoitar: false })
+  for (const d of prog.dias) {
+    assert.equal(d.pernoiteEm, null, `dia ${d.dia} não devia pernoitar nesse modo`)
+  }
+})
+
+test('o dia seguinte começa ONDE O ANTERIOR PAROU, não na base', () => {
+  const { ps, c } = viagemLonga()
+  const prog = programar(ps, { ...c, pernoitar: true })
+  const dia2 = prog.dias[1]
+  if (!dia2 || !dia2.paradas.length) return // caso raro: tudo coube num dia
+
+  const fimDoDia1 = prog.dias[0].paradas[prog.dias[0].paradas.length - 1]
+  assert.equal(dia2.paradas[0].deQuem, nomeParada(fimDoDia1.parada),
+    'a primeira parada do dia 2 tem que vir da última do dia 1')
+
+  // E o trecho tem que ser curto: entre dois clientes do Ceará, não 465 km da base.
+  const kmPrimeiroTrecho = (dia2.paradas[0].trechoAnterior?.metros ?? 0) / 1000
+  assert.ok(kmPrimeiroTrecho < 400,
+    `o dia 2 saiu de longe demais (${Math.round(kmPrimeiroTrecho)} km) — parece que voltou pra base`)
+})
+
+test('viagem de 1 dia não muda nada com pernoitar ligado', () => {
+  // Só existe o último dia, então a volta pra base entra igual nos dois modos.
+  const c1 = cfg({ dias: 1, origem: { nome: 'Base', ...TERESINA }, retornarOrigem: true })
+  const ps = [parada({ id: 'a', ...AEROPORTO, visitaMinutos: 30 })]
+  const comPernoite = programar(ps, { ...c1, pernoitar: true })
+  const semPernoite = programar(ps, { ...c1, pernoitar: false })
+  assert.equal(comPernoite.totalMetros, semPernoite.totalMetros)
+  assert.equal(comPernoite.dias[0].pernoiteEm, null)
+})
+
+test('o link do Google Maps do dia 2 sai do pernoite, não da base', () => {
+  const { ps, c } = viagemLonga()
+  const prog = programar(ps, { ...c, pernoitar: true })
+  if (prog.dias.length < 2) return
+
+  const link = linkGoogleMaps(prog.dias[1], c, prog.dias[0])
+  assert.ok(!link.includes(`origin=${TERESINA.lat}`),
+    `o dia 2 não pode sair da base: ${link}`)
+
+  // E o último dia tem que terminar NA base.
+  const ultimo = prog.dias[prog.dias.length - 1]
+  const linkFim = linkGoogleMaps(ultimo, c, prog.dias[prog.dias.length - 2] ?? null)
+  assert.ok(linkFim.includes(`destination=${TERESINA.lat}`),
+    `o último dia tem que voltar pra base: ${linkFim}`)
+})
+
+test('o aviso de volta tardia continua saindo — no dia que de fato volta', () => {
+  // Regressão: ao mover a volta pro fim, o alerta "volta só às 01:10" não podia
+  // sumir. Ele é o que impede o roteiro de prometer 18:00 e entregar meia-noite.
+  const { ps, c } = viagemLonga()
+  const prog = programar(ps, { ...c, pernoitar: true })
+  const ultimo = prog.dias[prog.dias.length - 1]
+  const temAviso = ultimo.paradas.some(p => p.alertas.some(a => a.includes('Volta pra')))
+  assert.ok(temAviso || ultimo.fim <= hhmmParaMin(c.horaFim),
+    'ou a volta cabe no expediente, ou o alerta tem que estar lá')
+})
+
+test('dias seguem as paradas: diasNecessarios enxerga o modo de pernoite', () => {
+  const { ps, c } = viagemLonga()
+  const comPernoite = diasNecessarios(ps, { ...c, pernoitar: true })
+  const semPernoite = diasNecessarios(ps, { ...c, pernoitar: false, dias: 60 }, undefined, 60)
+  assert.ok(comPernoite < semPernoite || semPernoite === 60,
+    `dormir na estrada tem que precisar de menos dias (com ${comPernoite}, sem ${semPernoite})`)
+})

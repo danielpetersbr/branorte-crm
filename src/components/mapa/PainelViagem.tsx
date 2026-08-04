@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import {
-  type ConfigViagem, type Parada, type Programacao, type Precisao,
+  type ConfigViagem, type Parada, type Programacao, type Precisao, type Trecho,
   PRECISAO_INFO, MAX_PARADAS, nomeParada, minutosDaParada, roteavel,
   km, dur, durMin, minParaHhmm, hhmmComDia, dataBRcurta, diaSemana, linkGoogleMaps, diasNecessarios,
   resumoWhatsApp, mensagemConfirmacao,
@@ -19,6 +19,9 @@ interface Props {
   paradas: Parada[]
   setParadas: (p: Parada[]) => void
   prog: Programacao
+  /** Distâncias reais já resolvidas. Sem isto o "usar N dias" conta por
+      haversine e pode sugerir um número que ainda deixa parada de fora. */
+  trechos: Map<string, Trecho>
   calculando: boolean
   provedor: string | null
   onCalcular: () => void
@@ -65,7 +68,7 @@ export function PainelViagem(p: Props) {
   const totalClientes = useMemo(() => p.paradas.reduce((s, x) => s + x.clientes.length, 0), [p.paradas])
   // Só calcula quando algo ficou de fora — é um programar() por dia testado.
   const precisaDias = useMemo(
-    () => (p.prog.foraDoPlano.length ? diasNecessarios(p.paradas, p.cfg) : p.cfg.dias),
+    () => (p.prog.foraDoPlano.length ? diasNecessarios(p.paradas, p.cfg, p.trechos) : p.cfg.dias),
     [p.prog.foraDoPlano.length, p.paradas, p.cfg],
   )
 
@@ -189,10 +192,12 @@ export function PainelViagem(p: Props) {
             <div className="text-red-700 dark:text-red-400">
               <b>{p.prog.foraDoPlano.length} não coube</b> em {p.cfg.dias} dia{p.cfg.dias === 1 ? '' : 's'}:{' '}
               {p.prog.foraDoPlano.map(nomeParada).join(', ')}
-              {/* §11 — "sugerir divisão em mais dias". Sugere, não decide sozinho. */}
+              {/* Só aparece com os dias FIXOS: no automático o ajuste já
+                  aconteceu antes deste aviso existir. Aqui a pessoa disse
+                  quantos dias tem, então o botão pergunta em vez de decidir. */}
               {precisaDias > p.cfg.dias && (
                 <button
-                  onClick={() => p.setCfg({ dias: precisaDias })}
+                  onClick={() => p.setCfg({ dias: precisaDias, diasManual: true })}
                   className="ml-1 font-bold underline decoration-dotted"
                 >
                   usar {precisaDias} dias →
@@ -250,6 +255,13 @@ export function PainelViagem(p: Props) {
                     />
                   ))}
                 </ul>
+                {/* Onde o dia acaba é informação de viagem: é ali que se procura
+                    hotel. Sem isto o roteiro some entre um dia e outro. */}
+                {d.pernoiteEm && (
+                  <div className="mt-1.5 ml-1 text-[11px] text-ink-faint">
+                    🛏️ Dia termina em <b className="text-ink">{d.pernoiteEm}</b> — pernoite por conta
+                  </div>
+                )}
                 {linkGoogleMaps(d, p.cfg) && (
                   <a href={linkGoogleMaps(d, p.cfg)} target="_blank" rel="noopener"
                      className="mt-1.5 ml-1 inline-block text-[11px] font-semibold text-accent hover:underline">
@@ -553,10 +565,19 @@ function Ajustes({
         <BuscaLocal onEscolher={pt => setCfg({ origem: pt })} placeholder="Ou busque: Aeroporto de Teresina…" />
       </div>
 
+      {/* A pergunta que decide se a viagem longa é possível. Marcada = o dia
+          acaba na última visita e o seguinte começa dali. Desmarcada = volta pra
+          base todo fim de dia, o que só fecha a conta com cliente perto. */}
+      <label className="flex items-center gap-2 text-[12.5px] text-ink cursor-pointer">
+        <input type="checkbox" checked={cfg.pernoitar !== false} onChange={e => setCfg({ pernoitar: e.target.checked })}
+               className="h-4 w-4 accent-blue-600" />
+        Dormir na estrada <span className="text-ink-faint">— volta pra base só no fim</span>
+      </label>
+
       <label className="flex items-center gap-2 text-[12.5px] text-ink cursor-pointer">
         <input type="checkbox" checked={cfg.retornarOrigem} onChange={e => setCfg({ retornarOrigem: e.target.checked })}
                className="h-4 w-4 accent-blue-600" />
-        Voltar ao ponto de partida no fim do dia
+        {cfg.pernoitar !== false ? 'Voltar ao ponto de partida no fim da viagem' : 'Voltar ao ponto de partida no fim do dia'}
       </label>
 
       {!cfg.retornarOrigem && (
@@ -577,9 +598,21 @@ function Ajustes({
           <input type="date" value={cfg.dataInicio ?? ''} onChange={e => setCfg({ dataInicio: e.target.value || null })} className={campo} />
         </div>
         <div>
-          <div className={rot}>Dias</div>
+          <div className={rot}>
+            Dias
+            {/* Precisa ficar explícito que o número se mexe sozinho — senão a
+                pessoa digita 2, vê virar 5 e acha que a tela está com defeito. */}
+            {cfg.diasManual
+              ? <button type="button" onClick={() => setCfg({ diasManual: false })}
+                        className="ml-1 font-normal normal-case underline decoration-dotted opacity-70 hover:opacity-100">
+                  fixo · voltar ao automático
+                </button>
+              : <span className="ml-1 font-normal normal-case opacity-60">automático</span>}
+          </div>
+          {/* Digitar aqui é dizer "só tenho N dias": vira restrição de verdade e
+              o que não couber passa a aparecer em "Fora da rota". */}
           <input type="number" min={1} max={60} value={cfg.dias}
-                 onChange={e => setCfg({ dias: Math.max(1, Math.min(60, Number(e.target.value) || 1)) })} className={campo} />
+                 onChange={e => setCfg({ dias: Math.max(1, Math.min(60, Number(e.target.value) || 1)), diasManual: true })} className={campo} />
         </div>
         <div>
           <div className={rot}>Sai às</div>

@@ -61,6 +61,21 @@ export interface ConfigViagem {
   nome: string
   dataInicio: string | null      // 'YYYY-MM-DD'
   dias: number
+  /**
+   * `true` = o número de dias é do usuário e ninguém mexe. `false`/ausente = o
+   * sistema ajusta os dias pra caber o que foi escolhido.
+   *
+   * O padrão é AUTOMÁTICO porque o vendedor escolhe ONDE vai; quantos dias isso
+   * leva é resposta, não pergunta. Com `dias: 1` fixo, escolher o segundo
+   * cliente já jogava o primeiro em `foraDoPlano` e a tela parecia recusar a
+   * viagem que a pessoa acabou de montar.
+   *
+   * Vira `true` no instante em que o campo "Dias" é editado — aí o número é uma
+   * restrição real ("só tenho 2 dias") e o certo é obedecer e mostrar o que não
+   * coube. Viagem SALVA também volta como `true`: o número gravado foi decisão
+   * de alguém e recalcular por cima seria reescrever o plano dos outros.
+   */
+  diasManual?: boolean
   horaInicio: string             // 'HH:MM'
   horaFim: string                // 'HH:MM'
   almocoInicio: string | null    // 'HH:MM'
@@ -69,17 +84,33 @@ export interface ConfigViagem {
   origem: PontoFixo | null
   destino: PontoFixo | null
   retornarOrigem: boolean
+  /**
+   * `true` (padrão) = DORME NA ESTRADA: o dia acaba na última visita e o
+   * seguinte começa dali. A volta pro ponto de partida entra uma vez só, no
+   * fim do último dia.
+   *
+   * `false` = volta pra base TODO fim de dia e recomeça de lá — viagem de
+   * vendedor urbano, que sai e volta pra casa.
+   *
+   * Isto era fixo em `false` e quebrava qualquer viagem longa: com a base a
+   * 465 km, cada dia gastava ~930 km só pra ir e voltar dormir, e o vendedor
+   * nunca alcançava o segundo cliente por mais dias que colocasse. A viagem
+   * aparecia recusada quando o problema era o modelo, não a rota.
+   *
+   * Num roteiro de 1 dia não muda nada: só existe o último dia.
+   */
+  pernoitar?: boolean
   modo: 'otimizar' | 'manual'
 }
 
 export interface PontoFixo { nome: string; lat: number; lng: number }
 
 export const CONFIG_PADRAO: ConfigViagem = {
-  nome: '', dataInicio: null, dias: 1,
+  nome: '', dataInicio: null, dias: 1, diasManual: false,
   horaInicio: '08:00', horaFim: '18:00',
   almocoInicio: '12:00', almocoMinutos: 60,
   visitaMinutosPadrao: 90,
-  origem: null, destino: null, retornarOrigem: true,
+  origem: null, destino: null, retornarOrigem: true, pernoitar: true,
   modo: 'otimizar',
 }
 
@@ -314,6 +345,12 @@ export interface DiaProgramado {
   visitaSeg: number
   inicio: number
   fim: number
+  /**
+   * Onde o dia termina quando se dorme na estrada — o nome da última parada.
+   * `null` nos dias que voltam pro ponto de partida (último dia, ou viagem
+   * configurada pra voltar todo dia).
+   */
+  pernoiteEm?: string | null
 }
 
 export interface Programacao {
@@ -384,27 +421,37 @@ export function programar(
     cfg.origem ? { coord: cfg.origem, nome: cfg.origem.nome } : null
   let atual: DiaProgramado = novoDia(1, cfg, iniDia)
 
+  // Dormir na estrada é o padrão. `false` = vendedor que volta pra base todo dia.
+  const pernoita = cfg.pernoitar !== false
+
+  // Fecha e empilha, sem decidir nada sobre a volta. Quem decide é `aplicarVolta`
+  // DEPOIS do laço, quando já se sabe qual dia é o último de verdade — mid-laço
+  // não dá pra saber: o dia recém-fechado vira o último se o resto das paradas
+  // estourar o limite de dias.
   const fecharDia = () => {
-    if (atual.paradas.length) {
-      atual.fim = relogio
-      // volta pro ponto de partida/hotel no fim do dia
-      const volta = cfg.retornarOrigem ? cfg.origem : cfg.destino
-      if (volta && anterior) {
-        const t = trechoEntre(anterior.coord, volta, trechos, anterior.nome, volta.nome)
-        if (!t.estimado) algumReal = true
-        atual.metros += t.metros
-        atual.deslocamentoSeg += t.segundos
-        atual.fim = relogio + Math.round(t.segundos / 60)
-        // A visita pode caber até o horário de encerramento e a VOLTA não caber.
-        // Sem este aviso o roteiro promete 18:00 e entrega meia-noite.
-        if (atual.fim > fimDia) {
-          const ultima = atual.paradas[atual.paradas.length - 1]
-          const msg = `⚠️ Volta pra ${volta.nome} só às ${hhmmComDia(atual.fim)} (${Math.round(t.metros / 1000)} km depois do encerramento)`
-          if (ultima) ultima.alertas.push(msg)
-          alertas.push(`Dia ${atual.dia}: ${msg.replace('⚠️ ', '')}`)
-        }
-      }
-      dias.push(atual)
+    if (!atual.paradas.length) return
+    atual.fim = relogio
+    atual.pernoiteEm = anterior?.nome ?? null
+    dias.push(atual)
+  }
+
+  /** Acrescenta a perna de volta pro ponto de partida no fim de UM dia. */
+  const aplicarVolta = (d: DiaProgramado) => {
+    const volta = cfg.retornarOrigem ? cfg.origem : cfg.destino
+    const ultima = d.paradas[d.paradas.length - 1]
+    if (!volta || !ultima) return
+    d.pernoiteEm = null
+    const t = trechoEntre(ultima.parada, volta, trechos, nomeParada(ultima.parada), volta.nome)
+    if (!t.estimado) algumReal = true
+    d.metros += t.metros
+    d.deslocamentoSeg += t.segundos
+    d.fim = ultima.saida + Math.round(t.segundos / 60)
+    // A visita pode caber até o horário de encerramento e a VOLTA não caber.
+    // Sem este aviso o roteiro promete 18:00 e entrega meia-noite.
+    if (d.fim > fimDia) {
+      const msg = `⚠️ Volta pra ${volta.nome} só às ${hhmmComDia(d.fim)} (${Math.round(t.metros / 1000)} km depois do encerramento)`
+      ultima.alertas.push(msg)
+      alertas.push(`Dia ${d.dia}: ${msg.replace('⚠️ ', '')}`)
     }
   }
 
@@ -452,7 +499,11 @@ export function programar(
       atual = novoDia(diaNum, cfg, iniDia)
       if (diaNum > cfg.dias) { foraDoPlano.push(p); continue }
       relogio = iniDia
-      anterior = cfg.retornarOrigem && cfg.origem ? { coord: cfg.origem, nome: cfg.origem.nome } : anterior
+      // Dormindo na estrada, o dia novo começa ONDE O ANTERIOR PAROU — por isso
+      // `anterior` fica intocado. Só quem volta pra base todo dia recomeça nela.
+      if (!pernoita && cfg.retornarOrigem && cfg.origem) {
+        anterior = { coord: cfg.origem, nome: cfg.origem.nome }
+      }
       const t2 = anterior ? trechoEntre(anterior.coord, p, trechos, anterior.nome, nomeParada(p)) : { metros: 0, segundos: 0, estimado: true }
       if (!t2.estimado) algumReal = true
       const chegada2 = relogio + Math.round(t2.segundos / 60)
@@ -475,6 +526,15 @@ export function programar(
     anterior = { coord: p, nome: nomeParada(p) }
   }
   fecharDia()
+
+  // Dormindo na estrada, só o ÚLTIMO dia volta pro ponto de partida — os do meio
+  // encerram onde a última visita terminou. Voltando pra base todo dia, todos.
+  if (pernoita) {
+    const ultimo = dias[dias.length - 1]
+    if (ultimo) aplicarVolta(ultimo)
+  } else {
+    for (const d of dias) aplicarVolta(d)
+  }
 
   if (foraDoPlano.length) {
     alertas.push(`${foraDoPlano.length} parada(s) não couberam em ${cfg.dias} dia(s). Aumente os dias ou reduza o tempo de visita.`)
@@ -499,10 +559,18 @@ export function programar(
  * usuário escolhe o segundo cliente — a feature parece quebrada quando na verdade
  * só falta aumentar os dias. A UI usa isso pra oferecer "caber em N dias".
  */
-export function diasNecessarios(paradas: Parada[], cfg: ConfigViagem, teto = 60): number {
+export function diasNecessarios(
+  paradas: Parada[],
+  cfg: ConfigViagem,
+  trechos?: Map<string, Trecho>,
+  teto = 60,
+): number {
   if (!paradas.some(roteavel)) return cfg.dias
   for (let d = 1; d <= teto; d++) {
-    if (programar(paradas, { ...cfg, dias: d }).foraDoPlano.length === 0) return d
+    // `trechos` importa: sem ele a conta usa haversine e o número de dias pode
+    // divergir do plano que a tela mostra — daria pra ver "3 dias" e ainda
+    // sobrar parada fora.
+    if (programar(paradas, { ...cfg, dias: d }, trechos).foraDoPlano.length === 0) return d
   }
   return teto
 }
@@ -556,14 +624,29 @@ export const diaSemana = (iso: string | null) =>
  * senão ela some do link (era o bug: dia com 1 parada + origem + retorno gerava
  * um trajeto origem→origem sem passar em ninguém).
  */
-export function linkGoogleMaps(d: DiaProgramado, cfg: ConfigViagem): string {
+/**
+ * @param diaAnterior dia que veio antes. Dormindo na estrada, o dia começa ONDE
+ *   O ANTERIOR PAROU — sem isto o link do dia 2 manda o vendedor sair de casa de
+ *   novo, e o roteiro do Google não bate com o do painel.
+ */
+export function linkGoogleMaps(
+  d: DiaProgramado,
+  cfg: ConfigViagem,
+  diaAnterior?: DiaProgramado | null,
+): string {
   const pts = d.paradas.map(x => `${x.parada.lat},${x.parada.lng}`)
   if (!pts.length) return ''
-  const volta = cfg.retornarOrigem ? cfg.origem : cfg.destino
+  // `pernoiteEm` preenchido = este dia NÃO volta pro ponto de partida.
+  const volta = d.pernoiteEm ? null : (cfg.retornarOrigem ? cfg.origem : cfg.destino)
+
+  const fimAnterior = diaAnterior?.pernoiteEm ? diaAnterior.paradas[diaAnterior.paradas.length - 1] : null
+  const partida = fimAnterior
+    ? `${fimAnterior.parada.lat},${fimAnterior.parada.lng}`
+    : (cfg.origem ? `${cfg.origem.lat},${cfg.origem.lng}` : null)
 
   let origem: string, destino: string, meio: string[]
-  if (cfg.origem) {
-    origem = `${cfg.origem.lat},${cfg.origem.lng}`
+  if (partida) {
+    origem = partida
     if (volta) { destino = `${volta.lat},${volta.lng}`; meio = pts }
     else { destino = pts[pts.length - 1]; meio = pts.slice(0, -1) }
   } else {
@@ -585,7 +668,7 @@ export function resumoWhatsApp(prog: Programacao, cfg: ConfigViagem): string {
   L.push(`${prog.dias.length} dia(s) · ${km(prog.totalMetros)} · ${dur(prog.totalDeslocamentoSeg)} dirigindo`)
   if (prog.estimado) L.push('_Distâncias estimadas (rota não calculada)_')
   L.push('')
-  for (const d of prog.dias) {
+  for (const [i, d] of prog.dias.entries()) {
     L.push(`*DIA ${d.dia}${d.data ? ` — ${dataBRcurta(d.data)} (${diaSemana(d.data)})` : ''}*`)
     L.push(`${d.paradas.length} parada(s) · ${km(d.metros)} · ${dur(d.deslocamentoSeg)} na estrada`)
     for (const x of d.paradas) {
@@ -602,7 +685,10 @@ export function resumoWhatsApp(prog: Programacao, cfg: ConfigViagem): string {
         L.push(`   (${km(x.trechoAnterior.metros)} · ${dur(x.trechoAnterior.segundos)} desde ${x.deQuem})`)
       }
     }
-    const link = linkGoogleMaps(d, cfg)
+    // Onde dorme entra no resumo: quem recebe no WhatsApp precisa saber em que
+    // cidade procurar hotel, senão o roteiro some entre um dia e outro.
+    if (d.pernoiteEm) L.push(`Pernoite em ${d.pernoiteEm}`)
+    const link = linkGoogleMaps(d, cfg, prog.dias[i - 1] ?? null)
     if (link) L.push(`Rota do dia: ${link}`)
     L.push('')
   }

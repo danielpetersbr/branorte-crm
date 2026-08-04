@@ -194,6 +194,11 @@ export function cfgDaLinha(v: Record<string, unknown>): ConfigViagem {
     nome: (v.nome as string | null) ?? '',
     dataInicio: (v.data_inicio as string | null) ?? null,
     dias: num(v.dias) ?? CONFIG_PADRAO.dias,
+    // Viagem salva volta com os dias FIXOS: o número gravado foi decisão de
+    // alguém (talvez de outro vendedor) e recalcular por cima ao abrir seria
+    // reescrever o plano dos outros sem avisar. Quem quiser o automático
+    // clica em "voltar ao automático" no campo Dias.
+    diasManual: true,
     horaInicio: soHora(v.hora_inicio) ?? CONFIG_PADRAO.horaInicio,
     horaFim: soHora(v.hora_fim) ?? CONFIG_PADRAO.horaFim,
     almocoInicio: soHora(v.almoco_inicio),
@@ -204,6 +209,7 @@ export function cfgDaLinha(v: Record<string, unknown>): ConfigViagem {
     destino: dLat != null && dLng != null
       ? { nome: (v.destino_nome as string | null) ?? 'Destino', lat: dLat, lng: dLng } : null,
     retornarOrigem: v.retornar_origem !== false,
+    pernoitar: v.pernoitar !== false,
     modo: v.modo_otimizacao === 'manual' ? 'manual' : 'otimizar',
   }
 }
@@ -220,6 +226,7 @@ export function linhaDaCfg(cfg: ConfigViagem, prog?: Programacao) {
     destino_lat: cfg.destino?.lat ?? null,
     destino_lng: cfg.destino?.lng ?? null,
     retornar_origem: cfg.retornarOrigem,
+    pernoitar: cfg.pernoitar !== false,
     hora_inicio: praHora(cfg.horaInicio) ?? praHora(CONFIG_PADRAO.horaInicio),
     hora_fim: praHora(cfg.horaFim) ?? praHora(CONFIG_PADRAO.horaFim),
     almoco_inicio: praHora(cfg.almocoInicio),

@@ -17,6 +17,7 @@ import {
   type ConfigViagem, type Parada, type Trecho, type PontoMapa, type Programacao,
   CONFIG_PADRAO, MAX_PARADAS, PRECISAO_INFO,
   montarParadas, otimizarOrdem, programar, chaveTrecho, nomeParada, roteavel,
+  diasNecessarios,
 } from '@/lib/viagem'
 
 // Mapa de visitas — camadas (liga/desliga):
@@ -659,6 +660,21 @@ export function MapaVisitas() {
     () => programar(paradas, cfgViagem, trechos),
     [paradas, cfgViagem, trechos],
   )
+
+  // Os dias SEGUEM as paradas enquanto ninguém mexer no campo "Dias". O
+  // vendedor escolhe onde vai; quantos dias leva é resposta, não pergunta —
+  // com 1 dia fixo, escolher o segundo cliente já derrubava o primeiro pra
+  // "não coube" e a viagem que ele acabou de montar aparecia recusada.
+  //
+  // Sobe E desce: `diasNecessarios` devolve o MÍNIMO, então tirar uma parada
+  // encolhe a viagem de volta em vez de deixar dia vazio pendurado.
+  useEffect(() => {
+    if (cfgViagem.diasManual) return
+    if (!paradas.some(roteavel)) return
+    const n = diasNecessarios(paradas, cfgViagem, trechos)
+    // Só grava se mudou — senão o setState realimenta o efeito em loop.
+    if (n !== cfgViagem.dias) setCfgViagem({ dias: n })
+  }, [paradas, trechos, cfgViagem])
 
   function adicionarClientes(keys: string[]) {
     const novos = keys
@@ -1429,7 +1445,7 @@ export function MapaVisitas() {
             <PainelViagem
               cfg={cfgViagem} setCfg={setCfgViagem}
               paradas={paradas} setParadas={setParadas}
-              prog={prog}
+              prog={prog} trechos={trechos}
               calculando={calculandoRota}
               provedor={provedorRota}
               onCalcular={() => void calcularRota()}
@@ -1584,7 +1600,7 @@ export function MapaVisitas() {
               <PainelViagem
                 cfg={cfgViagem} setCfg={setCfgViagem}
                 paradas={paradas} setParadas={setParadas}
-                prog={prog}
+                prog={prog} trechos={trechos}
                 calculando={calculandoRota}
                 provedor={provedorRota}
                 onCalcular={() => void calcularRota()}

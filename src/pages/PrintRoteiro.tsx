@@ -692,8 +692,10 @@ export default function PrintRoteiro() {
           Um link por dia, já com origem, paradas na ordem e retorno. Abra pelo celular
           para navegar com trânsito em tempo real.
         </p>
-        {prog.dias.map(d => {
-          const link = linkGoogleMaps(d, cfg)
+        {prog.dias.map((d, i) => {
+          // Dormindo na estrada o dia começa onde o anterior parou — sem passar
+          // o dia anterior, o link do PDF sai de casa de novo todo dia.
+          const link = linkGoogleMaps(d, cfg, prog.dias[i - 1] ?? null)
           return (
             <div key={d.dia} className="link-dia">
               <div className="link-cab">
@@ -766,7 +768,23 @@ function BlocoDia({ dia, cfg }: { dia: DiaProgramado; cfg: ConfigViagem }) {
         {dia.paradas.map((x, i) => (
           <LinhaParada key={x.parada.id} x={x} saiu={saidaAnterior(dia, i)} />
         ))}
-        {volta && dia.paradas.length > 0 && (
+        {/* Dia que dorme na estrada não volta pra base: encerra na última visita.
+            Trocar a linha de retorno pela de pernoite é o que faz o PDF impresso
+            bater com o painel — senão promete um retorno que não acontece. */}
+        {dia.pernoiteEm && dia.paradas.length > 0 && (
+          <tbody className="grupo">
+            <tr className="linha-volta">
+              <td>🛏</td>
+              <td>{hhmmComDia(dia.fim)}</td>
+              <td>—</td>
+              <td>—</td>
+              <td colSpan={4}>
+                Pernoite em <b>{dia.pernoiteEm}</b>
+              </td>
+            </tr>
+          </tbody>
+        )}
+        {volta && !dia.pernoiteEm && dia.paradas.length > 0 && (
           <tbody className="grupo">
             <tr className="linha-volta">
               <td>↩</td>
