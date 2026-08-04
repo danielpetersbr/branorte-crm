@@ -64,8 +64,20 @@
     line-height: 1.47059;   /* proporção de corpo do apple.com */
     letter-spacing: -0.006em;
     /* Previne scroll horizontal residual em mobile.
-       ResponsiveScaler centraliza/escala o preview do orçamento. */
+       ResponsiveScaler centraliza/escala o preview do orçamento.
+
+       `clip` e NÃO `hidden`: os dois cortam o transbordo horizontal, mas
+       `hidden` transforma o body em CONTAINER DE ROLAGEM — e aí todo
+       `position: sticky` descendente para de funcionar, porque passa a se
+       ancorar num scrollport que nunca rola (quem rola é a viewport).
+       Foi o que deixava o rodapé da sidebar (tema + sair) subir junto com a
+       página em vez de ficar preso no pé. São 46 usos de `sticky` no app,
+       incluindo cabeçalho de tabela — todos estavam quebrados por isto.
+
+       O `hidden` fica como fallback pra navegador sem `clip`
+       (anterior a Chrome 90 / Firefox 81 / Safari 16). */
     overflow-x: hidden;
+    overflow-x: clip;
   }
 
   /* Safe area insets pra PWA instalado em iOS/Android — evita conteúdo
