@@ -192,6 +192,23 @@ export const SUBSTITUICOES: GrupoSubstituicao[] = [
         especies: ['bovinos'],
       },
       {
+        nome: 'Farinha de carne e ossos',
+        apelidos: ['fco', 'farinha de carne'],
+        preco: 2.20,
+        limite: { max: 9, base: 'formula' },
+        ganho:
+          'Alternativa proteica de origem animal para ave. Em ração comercial de frango de corte a '
+          + 'inclusão vai de 3,9 a 9% conforme a formulação; os ensaios testaram 3 e 6%, e também 5 e 10%. '
+          + 'Entra com cálcio e fósforo junto, o que alivia o fosfato e o calcário da fórmula.',
+        risco:
+          'O ganho de peso foi MAIOR sem a farinha nos ensaios — ela abarata, não melhora desempenho. '
+          + 'E como carrega cálcio e fósforo, entrar com ela sem baixar fosfato bicálcico e calcário '
+          + 'desequilibra o mineral da fórmula. Produto de origem animal: confirme a restrição do '
+          + 'comprador antes de propor.',
+        fonte: 'Revista Brasileira de Ciência Avícola (SciELO) — Avaliação da farinha de carne e ossos na alimentação de frangos de corte; inclusão comercial de 3,9 a 9%',
+        especies: ['aves'],
+      },
+      {
         nome: 'Farelo de caroço de algodão',
         apelidos: ['farelo de algodao', 'farelo caroco de algodao'],
         preco: 1.40,

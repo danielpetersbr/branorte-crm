@@ -412,13 +412,15 @@ export function ProducaoPropria() {
   return (
     <div className="vr">
       <div className="vr-wrap">
-        <div className="vr-brand">BRA<b>NORTE</b> · Fábricas de Ração</div>
-        <div className="vr-eyebrow">Estudo de viabilidade</div>
-        <h1 className="vr-h1">Estudo de Viabilidade da Produção Própria</h1>
-        <p className="vr-lede">
-          Compare o custo da ração comprada com a produção própria e estime a economia e o retorno
-          do investimento. Ração farelada para bovinos, suínos e aves — e milho triturado.
-        </p>
+        {/* Cabeçalho ENXUTO. O vendedor preenche 7 etapas nesta tela e cada
+            linha aqui em cima é rolagem que ele faz o dia inteiro. Saíram o
+            "eyebrow" (dizia "Estudo de viabilidade", o mesmo que o h1) e o
+            parágrafo de apresentação — quem abre esta tela já sabe o que ela é.
+            Nada disto ia pro PDF: a impressão só mostra #vr-print-area. */}
+        <div className="vr-cab">
+          <span className="vr-brand">BRA<b>NORTE</b> · Fábricas de Ração</span>
+          <h1 className="vr-h1">Estudo de Viabilidade da Produção Própria</h1>
+        </div>
 
         {/* -------------------------------------------------------- abas */}
         <div className="vr-tabs vr-no-print">

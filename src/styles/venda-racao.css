@@ -1008,3 +1008,15 @@
 }
 .vr .vr-subst .acao .ok:disabled { opacity: .45; cursor: default; }
 .vr .vr-subst .rodape { margin: 7px 0 0; font-size: 10.5px; line-height: 1.4; color: var(--vr-ink40); }
+
+/* Cabeçalho compacto do /producao-propria (04/08/2026).
+   Marca e título na mesma pilha, sem eyebrow e sem parágrafo de apresentação:
+   são 7 etapas de formulário nesta tela, e cada linha no topo vira rolagem que
+   o vendedor repete o dia inteiro. Medido: ~96px a menos antes do formulário. */
+.vr .vr-cab { display: flex; flex-direction: column; gap: 2px; }
+.vr .vr-cab .vr-brand { font: 800 13px/1 inherit; }
+.vr .vr-cab h1.vr-h1 {
+  font-size: clamp(19px, 2.1vw, 25px);
+  margin: 0;
+  line-height: 1.15;
+}
