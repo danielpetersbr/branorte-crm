@@ -145,11 +145,240 @@ function item(nome: string, pct: number, preco: number): IngredienteFormula {
 }
 
 /**
+ * CATÁLOGO DE FORMULAÇÕES DE REFERÊNCIA.
+ *
+ * Cada entrada é uma composição de partida rastreável a uma fonte técnica —
+ * Embrapa, Rostagno (Tabelas Brasileiras para Aves e Suínos), NRC, universidade.
+ * O vendedor escolhe a que se parece com o caso do cliente e edita em cima.
+ *
+ * Por que existe: até 03/08/2026 havia UMA composição fixa por espécie, e a de
+ * bovinos trazia "núcleo mineral 15%" — número que o dono da empresa apontou
+ * como alto pela experiência de campo. A checagem confirmou: 15% é participação
+ * de PROTEINADO (suplemento proteico-mineral), não de núcleo. São produtos
+ * diferentes com funções diferentes, e a tela tratava como um só.
+ *
+ * REGRA: nada entra aqui sem `fonte` preenchida com instituição e ano. Este
+ * número vai pra dentro de um estudo que um produtor usa pra decidir
+ * investimento — estimativa de memória aqui vira prejuízo na fazenda dele.
+ */
+export interface FormulaReferencia {
+  chave: string
+  nome: string
+  especie: Especie
+  /** Categorias do sistema em que faz sentido oferecer. Vazio = todas. */
+  categorias: string[]
+  /** Onde faz sentido. Vazio = Brasil todo. Usado pras trocas regionais. */
+  regiao?: string
+  /** Instituição + ano. Sem isto, não entra. */
+  fonte: string
+  /** O que o vendedor precisa saber antes de usar. */
+  nota?: string
+  itens: IngredienteFormula[]
+}
+
+/**
+ * Ainda VAZIO de propósito. O mecanismo (escolher e carregar) está pronto e
+ * ligado; o conteúdo entra quando cada percentual tiver passado pela conferência
+ * de fonte. Enquanto está vazio, o seletor mostra só as fórmulas salvas pelo
+ * próprio time, exatamente como antes — nada muda pro vendedor.
+ */
+export const FORMULAS_REFERENCIA: FormulaReferencia[] = [
+  // ═══════════ BOVINOS DE CORTE ═══════════
+  {
+    chave: 'bc-semiconf', nome: 'Semiconfinamento — Embrapa', especie: 'bovinos',
+    categorias: ['gado_corte', 'semi_confinamento'],
+    fonte: 'Embrapa, Nutrição de bovinos de corte (2015), Cap. 9, Quadro 9.4, p.128',
+    nota: 'A Embrapa apresenta como produzível no estabelecimento rural. É a resposta direta ao antigo "núcleo 15%": menos de UM por cento de mineral.',
+    itens: [
+      item('Milho triturado', 69.8, 1.08), item('Farelo de soja', 28, 1.6),
+      item('Ureia', 1, 3.6), item('Sal mineral', 0.7, 2.2),
+      item('Sal comum (NaCl)', 0.4, 0.9), item('Sulfato de amônia', 0.1, 2.8),
+    ],
+  },
+  {
+    chave: 'bc-pasto-8', nome: 'Engorda a pasto — oferta 8 g/kg PV', especie: 'bovinos',
+    categorias: ['engorda', 'recria'],
+    fonte: 'Embrapa Gado de Corte, Documentos 108 (2001), Tabela 3',
+    nota: 'PB 21,1% / NDT 80,1%. Compare com a de 12 g/kg: mesma fonte, mesmo animal, só mudou a oferta diária — e o mineral cai pela metade.',
+    itens: [
+      item('Milho triturado', 78.94, 1.08), item('Farelo de soja', 16.49, 1.6),
+      item('Ureia', 1.69, 3.6), item('Calcário calcítico', 1.29, 0.4),
+      item('Mistura mineral', 1.24, 2.2), item('Sulfato de amônio', 0.3, 2.8),
+      item('Ionóforo', 0.05, 45),
+    ],
+  },
+  {
+    chave: 'bc-pasto-12', nome: 'Engorda a pasto — oferta 12 g/kg PV', especie: 'bovinos',
+    categorias: ['engorda'],
+    fonte: 'Embrapa Gado de Corte, Documentos 108 (2001), Tabela 3',
+    nota: 'O mineral cai de 1,24% para 0,60% só porque o animal come mais por dia. A exigência é em GRAMAS/dia; a porcentagem é consequência da diluição.',
+    itens: [
+      item('Milho triturado', 81.86, 1.08), item('Farelo de soja', 15.17, 1.6),
+      item('Ureia', 1.22, 3.6), item('Calcário calcítico', 0.89, 0.4),
+      item('Mistura mineral', 0.6, 2.2), item('Sulfato de amônio', 0.22, 2.8),
+      item('Ionóforo', 0.04, 45),
+    ],
+  },
+  {
+    chave: 'bc-confinamento', nome: 'Concentrado de confinamento', especie: 'bovinos',
+    categorias: ['confinamento'],
+    fonte: 'Embrapa Pecuária Sudeste, Criação de Bovinos de Corte na Região Sudeste',
+    nota: 'É a parte CONCENTRADA da dieta — o volumoso entra por fora e não conta aqui.',
+    itens: [
+      item('Milho em grão moído', 56.6, 1.08), item('Farelo de trigo', 21.6, 1.05),
+      item('Farelo de soja', 18.4, 1.6), item('Mistura mineral', 2, 2.2),
+      item('Calcário calcítico', 1.4, 0.4),
+    ],
+  },
+
+  // ═══════════ BOVINOS DE LEITE ═══════════
+  {
+    chave: 'bl-15-25', nome: 'Concentrado — vaca de 15 a 25 L/dia', especie: 'bovinos',
+    categorias: ['gado_leite'],
+    fonte: 'Embrapa Gado de Leite, Orientação Técnica nº 17 (1996), opção 02',
+    nota: 'PB 20,0%. A fração mineral fica em 3% em 17 das 23 formulações oficiais da Embrapa.',
+    itens: [
+      item('Milho moído', 51.5, 1.08), item('Farelo de soja', 27, 1.6),
+      item('Farelo de algodão', 15, 1.3), item('Farelo de trigo', 3.5, 1.05),
+      item('Calcário calcítico', 2, 0.4), item('Mistura mineral', 1, 2.2),
+    ],
+  },
+  {
+    chave: 'bl-acima-25', nome: 'Concentrado — vaca acima de 25 L/dia', especie: 'bovinos',
+    categorias: ['gado_leite'],
+    fonte: 'Embrapa Gado de Leite, Orientação Técnica nº 17 (1996), opção 01',
+    nota: 'PB 22,0%.',
+    itens: [
+      item('Milho moído', 62, 1.08), item('Farelo de soja', 35, 1.6),
+      item('Calcário calcítico', 1.5, 0.4), item('Mistura mineral', 1.5, 2.2),
+    ],
+  },
+  {
+    chave: 'bl-ate-15', nome: 'Concentrado — vaca até 15 L/dia', especie: 'bovinos',
+    categorias: ['gado_leite', 'manutencao'],
+    fonte: 'Embrapa Gado de Leite, Orientação Técnica nº 17 (1996), opção 09',
+    nota: 'PB 19,7%.',
+    itens: [
+      item('Milho moído', 85, 1.08), item('Farelo de soja', 10, 1.6),
+      item('Ureia', 2, 3.6), item('Calcário calcítico', 2, 0.4),
+      item('Mistura mineral', 1, 2.2),
+    ],
+  },
+  {
+    chave: 'bl-bezerra', nome: 'Concentrado — bezerra/novilha até 12 meses', especie: 'bovinos',
+    categorias: ['cria', 'recria'],
+    fonte: 'Embrapa Gado de Leite, Instrução Técnica 39, opção 8',
+    itens: [
+      item('Milho moído', 75, 1.08), item('Farelo de soja', 22, 1.6),
+      item('Calcário calcítico', 2, 0.4), item('Mistura mineral', 1, 2.2),
+    ],
+  },
+
+  // ═══════════ SUÍNOS ═══════════
+  {
+    chave: 'su-ciclo', nome: 'Ciclo completo (quando não separa fases)', especie: 'suinos',
+    categorias: [],
+    fonte: 'Embrapa Suínos e Aves, Sistema de Produção de Suínos',
+    nota: 'MATRIZ FECHADA, não estimativa: 7.000 kg de ração = 5.260 milho + 1.500 soja + 240 núcleo, por porca/ano com 20 leitões terminados a 105 kg. É o número mais defensável do catálogo.',
+    itens: [
+      item('Milho', 75.14, 1.08), item('Farelo de soja', 21.43, 1.6),
+      item('Núcleo suínos', 3.43, 5.33),
+    ],
+  },
+  {
+    chave: 'su-cresc', nome: 'Crescimento (25 a 55/70 kg)', especie: 'suinos',
+    categorias: ['crescimento'],
+    fonte: 'Ficha técnica ADM Núcleo Suínos Crescimento/Terminação 3%',
+    nota: 'Garantia de Ca 24-24,5% no núcleo dá 0,72% de Ca na ração — a exigência Embrapa na casa decimal. Sem calcário por fora: o núcleo já traz.',
+    itens: [
+      item('Milho', 77, 1.08), item('Farelo de soja', 20, 1.6),
+      item('Núcleo suínos', 3, 5.33),
+    ],
+  },
+  {
+    chave: 'su-term', nome: 'Terminação (55/70 a 110 kg)', especie: 'suinos',
+    categorias: ['terminacao'],
+    fonte: 'Ficha técnica ADM Núcleo Suínos Crescimento/Terminação 3%',
+    nota: 'A fase que mais pesa no custo total. PB 13,9% contra 13,0% da exigência Embrapa.',
+    itens: [
+      item('Milho', 82, 1.08), item('Farelo de soja', 15, 1.6),
+      item('Núcleo suínos', 3, 5.33),
+    ],
+  },
+  {
+    chave: 'su-gest', nome: 'Matriz em gestação', especie: 'suinos',
+    categorias: ['gestacao', 'reprodutores'],
+    fonte: 'Ficha técnica ADM Núcleo Suínos Reprodução 3% (580+240+150+30 kg/t)',
+    nota: 'O farelo de trigo entra como FIBRA: a matriz é arraçoada restrita e precisa de saciedade. Sem trigo na região, a fórmula muda bastante.',
+    itens: [
+      item('Milho', 58, 1.08), item('Farelo de trigo', 24, 1.05),
+      item('Farelo de soja', 15, 1.6), item('Núcleo suínos', 3, 5.33),
+    ],
+  },
+  {
+    chave: 'su-lact', nome: 'Matriz em lactação', especie: 'suinos',
+    categorias: ['lactacao'],
+    fonte: 'Ficha técnica ADM Núcleo Suínos Reprodução 3% (650+280+40+30 kg/t)',
+    itens: [
+      item('Milho', 65, 1.08), item('Farelo de soja', 28, 1.6),
+      item('Açúcar', 4, 3.2), item('Núcleo suínos', 3, 5.33),
+    ],
+  },
+
+  // ═══════════ AVES ═══════════
+  {
+    chave: 'av-postura', nome: 'Poedeira em postura', especie: 'aves',
+    categorias: ['postura', 'pre_postura'],
+    fonte: 'Ficha Integral Mix Avenúcleo Postura (50 kg/1.000 kg) — garantia Ca 200-300 g/kg, P 75 g/kg, Na 30 g/kg',
+    nota: 'ÚNICA categoria de ave em que calcário por fora é OBRIGATÓRIO: a poedeira precisa de 3,4 a 4,2% de cálcio pra fazer casca. 5% de núcleo + 7,5% de calcário entrega 3,9-4,4%. O padrão antigo (calcário 2%) entregava 0,76% — ração incapaz de fazer casca de ovo.',
+    itens: [
+      item('Milho moído', 63, 1.08), item('Farelo de soja', 24.5, 1.6),
+      item('Calcário calcítico', 7.5, 0.4), item('Núcleo de postura', 5, 6.8),
+    ],
+  },
+  {
+    chave: 'av-frango-ini', nome: 'Frango de corte — inicial (1 a 21 dias)', especie: 'aves',
+    categorias: ['frango_inicial'],
+    fonte: 'Ficha técnica ADM Núcleo Frangos Inicial 5%',
+    nota: 'ATENÇÃO: a diluição 65/30/5 está na ficha, mas os níveis de garantia da MESMA página não fecham — e a mesma marca publica outra ficha com Fósforo 27%, que é fisicamente impossível. Use como referência e confira o rótulo do núcleo que o cliente compra antes de fechar o estudo.',
+    itens: [
+      item('Milho', 65, 1.08), item('Farelo de soja', 30, 1.6),
+      item('Núcleo aves', 5, 6.8),
+    ],
+  },
+]
+
+/**
+ * As de referência que servem pra esta espécie/categoria.
+ *
+ * ORDEM IMPORTA: quem cita a categoria explicitamente vem antes de quem vale
+ * pra todas (`categorias: []`), porque `formulaPadrao` usa o primeiro da lista.
+ * Sem isso, o "Ciclo completo" de suínos — que é o coringa — sequestrava
+ * Crescimento e Terminação, que têm fórmula própria e mais precisa.
+ */
+export function formulasReferencia(especie: Especie, categoria: string): FormulaReferencia[] {
+  const daEspecie = FORMULAS_REFERENCIA.filter(f => f.especie === especie)
+  const especificas = daEspecie.filter(f => f.categorias.includes(categoria))
+  const coringas = daEspecie.filter(f => f.categorias.length === 0)
+  return [...especificas, ...coringas]
+}
+
+/**
  * Composição de PARTIDA por espécie (soma exatamente 100%). É um rascunho pro
  * vendedor editar — não substitui formulação profissional. Só ingredientes
  * secos: a Compacta é farelada.
  */
-export function formulaPadrao(especie: Especie): IngredienteFormula[] {
+export function formulaPadrao(especie: Especie, categoria?: string): IngredienteFormula[] {
+  // O catálogo de referência manda, quando tem entrada pra esta categoria.
+  // Era aqui que morava o problema: UMA composição por espécie, sendo que
+  // bovinos tem 9 categorias com consumo de 5 a 300 kg/mês. A participação de
+  // mineral é INVERSAMENTE proporcional ao quanto o animal come por dia — a
+  // exigência é em gramas/dia, e a porcentagem é só a diluição. Por isso
+  // nenhum número único podia estar certo em mais de uma linha.
+  if (categoria) {
+    const doCatalogo = formulasReferencia(especie, categoria)[0]
+    if (doCatalogo) return doCatalogo.itens.map(i => ({ ...i, id: novoIdIngrediente() }))
+  }
   switch (especie) {
     case 'aves':
       return [

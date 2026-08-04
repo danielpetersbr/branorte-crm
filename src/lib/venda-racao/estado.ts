@@ -67,7 +67,7 @@ export function novoEstudo(
     formula: {
       formulaId: null,
       nome: '',
-      itens: formulaPadrao(especie),
+      itens: formulaPadrao(especie, categoria),
       milhoPreco: 1.08,
       milhoUnidadePreco: 'kg',
       milhoPesoSaca: 60,
@@ -116,7 +116,7 @@ export function trocarEspecie(
       // o consumo voltou a ser referência de catálogo: precisa ser reconfirmado
       consumoConfirmado: false,
     },
-    formula: { ...atual.formula, formulaId: null, nome: '', itens: formulaPadrao(especie) },
+    formula: { ...atual.formula, formulaId: null, nome: '', itens: formulaPadrao(especie, categoria) },
   }
 }
 

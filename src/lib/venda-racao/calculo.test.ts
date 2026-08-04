@@ -183,11 +183,19 @@ describe('fórmula', () => {
 
   it('abaixo de 100% é detectado e a sobra é informada', () => {
     const e = base()
-    e.formula.itens = e.formula.itens.slice(0, 2) // 58 + 33 = 91%
+    // Antes daqui o teste cravava "58 + 33 = 91", que era a soma dos dois
+    // primeiros itens do padrão ANTIGO de aves. Quando o padrão passou a vir do
+    // catálogo de referência (com fonte), a soma virou 95 e o teste quebrou —
+    // apontando uma mudança legítima, não um defeito. Agora ele afere a REGRA:
+    // sobrou %, a fórmula não fecha e a diferença em kg/t bate com a sobra.
+    e.formula.itens = e.formula.itens.slice(0, 2)
+    const somaEsperada = e.formula.itens.reduce((a, i) => a + i.participacao, 0)
+    assert.ok(somaEsperada < 100, 'o recorte tem que deixar a fórmula aberta')
+
     const f = calcularFormula(e.formula, 'aves')
     assert.equal(f.fechada, false)
-    APROX(f.totalParticipacaoPct, 91)
-    APROX(f.diferencaKgPorTonelada, 90)
+    APROX(f.totalParticipacaoPct, somaEsperada)
+    APROX(f.diferencaKgPorTonelada, (100 - somaEsperada) * 10)
   })
 
   it('acima de 100% também bloqueia', () => {
