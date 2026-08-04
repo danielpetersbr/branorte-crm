@@ -913,7 +913,9 @@ export function Atendimentos() {
                         aria-label="Selecionar todos desta página"
                       />
                     </th>
-                    <th className="w-[68px]">Chegou</th>
+                    <th className="w-[78px]" title="Em cima: quando o lead chegou. Embaixo: última mensagem — é por ela que a lista está ordenada.">
+                      Chegou <span className="text-ink-faint font-normal">/ ativo</span>
+                    </th>
                     <th className="w-[104px]">Lead</th>
                     <th className="hidden md:table-cell w-[48px]">UF</th>
                     <th className="w-[126px]">Telefone</th>
@@ -977,6 +979,22 @@ export function Atendimentos() {
                           <span className="text-[11px] text-ink-muted font-mono tabular-nums block">
                             {formatDateTimeShort(r.primeira_data ?? r.created_at)}
                           </span>
+                          {(() => {
+                            // A lista é ordenada por last_message_at. Sem mostrar esse
+                            // horário, a coluna parecia fora de ordem — era só relógio
+                            // diferente do critério de ordenação.
+                            const chegou = r.primeira_data ?? r.created_at
+                            const ativo = r.last_message_at
+                            if (!ativo || !chegou) return null
+                            const mesmoMinuto = formatDateTimeShort(ativo) === formatDateTimeShort(chegou)
+                            if (mesmoMinuto) return null
+                            return (
+                              <span className="text-[10px] text-ink-faint font-mono tabular-nums block"
+                                    title={`Última mensagem em ${formatDateTimeShort(ativo)} — a lista está ordenada por isto`}>
+                                ↻ {formatDateTimeShort(ativo)}
+                              </span>
+                            )
+                          })()}
                           {esperando && (
                             <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-semibold text-warning"
                                   title={`Sem vendedor — na fila ${formatRelative(r.last_message_at ?? r.created_at)}`}>
