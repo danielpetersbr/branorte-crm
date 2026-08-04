@@ -48,7 +48,11 @@ interface Props {
   animais: GuiaAnimal[]
   materias: GuiaMateria[]
   onAbrir: (i: ItemGuia) => void
-  onUsarNoEstudo: (dados: { especie: Especie; fase: string; quantidade: number; consumo: number | null }) => void
+  onUsarNoEstudo: (dados: {
+    especie: Especie; fase: string; quantidade: number; consumo: number | null
+    /** Modo VENDA: tonelagem mensal em kg. O estudo cai no modo `direto`. */
+    volumeMesKg?: number | null
+  }) => void
 }
 
 function Passo({ n, titulo, children, ok }: {
@@ -445,9 +449,15 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
         <div className="flex flex-wrap gap-2">
           <Button
             variant="primary"
-            disabled={!a.especie || !a.fase || !a.quantidade}
+            // No modo VENDA não existe rebanho: exigir `quantidade` deixava o
+            // botão desabilitado pra sempre — quem vende ração nunca chegava ao
+            // estudo. Agora cada modo cobra o SEU dado.
+            disabled={!a.especie || !a.fase || (modo === 'volume' ? !a.volumeMesKg : !a.quantidade)}
             onClick={() => onUsarNoEstudo({
-              especie: a.especie!, fase: a.fase!, quantidade: a.quantidade!, consumo: r.consumoMesKg,
+              especie: a.especie!, fase: a.fase!,
+              quantidade: a.quantidade ?? 0,
+              consumo: r.consumoMesKg,
+              volumeMesKg: modo === 'volume' ? a.volumeMesKg ?? null : null,
             })}
           >
             <Factory className="h-4 w-4" />

@@ -58,7 +58,16 @@ const resolvida = (p: ParadaConfirmacao) =>
 /** Lembra se o quadro estava aberto entre uma visita e outra à página. */
 const CHAVE_ABERTO = 'branorte:organizacao-viagem-aberto'
 
-export function OrganizacaoViagem({ onAbrirViagem }: { onAbrirViagem: (id: string) => void }) {
+export function OrganizacaoViagem({
+  onAbrirViagem, semMoldura = false,
+}: {
+  onAbrirViagem: (id: string) => void
+  /**
+   * Em PAGINA PROPRIA nao existe o que colapsar: quem entrou aqui veio ver isto.
+   * O sanfonado so faz sentido quando o bloco divide a tela com outra coisa.
+   */
+  semMoldura?: boolean
+}) {
   const { data: viagens = [], isLoading, isError, refetch } = useQuadroViagens()
   const [aberta, setAberta] = useState<string | null>(null)
 
@@ -66,9 +75,10 @@ export function OrganizacaoViagem({ onAbrirViagem }: { onAbrirViagem: (id: strin
   // valor por estado, planejador. Mais um bloco sempre aberto embaixo empurra o
   // mapa pra cima e vira ruído pra quem só quer ver os pinos. Fica como OPÇÃO,
   // com o contador do lado pra não precisar abrir só pra saber se tem algo.
-  const [aberto, setAberto] = useState(() => {
+  const [abertoLocal, setAberto] = useState(() => {
     try { return localStorage.getItem(CHAVE_ABERTO) === '1' } catch { return false }
   })
+  const aberto = semMoldura || abertoLocal
   const alternar = () => setAberto(v => {
     const novo = !v
     try { localStorage.setItem(CHAVE_ABERTO, novo ? '1' : '0') } catch { /* modo anônimo */ }
@@ -85,11 +95,11 @@ export function OrganizacaoViagem({ onAbrirViagem }: { onAbrirViagem: (id: strin
   )
 
   if (isLoading) {
-    return <Moldura aberto={aberto} alternar={alternar} viagens={lista.length} pendentes={pendentes}><div className="p-4 text-[13px] text-ink-faint">Carregando viagens…</div></Moldura>
+    return <Moldura aberto={aberto} alternar={alternar} viagens={lista.length} pendentes={pendentes} semMoldura={semMoldura}><div className="p-4 text-[13px] text-ink-faint">Carregando viagens…</div></Moldura>
   }
   if (isError) {
     return (
-      <Moldura aberto={aberto} alternar={alternar} viagens={lista.length} pendentes={pendentes}>
+      <Moldura aberto={aberto} alternar={alternar} viagens={lista.length} pendentes={pendentes} semMoldura={semMoldura}>
         <div className="p-4 text-[13px] text-red-600 flex items-center gap-2">
           Não consegui carregar as viagens.
           <button onClick={() => refetch()} className="underline font-semibold">tentar de novo</button>
@@ -99,7 +109,7 @@ export function OrganizacaoViagem({ onAbrirViagem }: { onAbrirViagem: (id: strin
   }
   if (!lista.length) {
     return (
-      <Moldura aberto={aberto} alternar={alternar} viagens={lista.length} pendentes={pendentes}>
+      <Moldura aberto={aberto} alternar={alternar} viagens={lista.length} pendentes={pendentes} semMoldura={semMoldura}>
         <div className="p-4 text-[13px] text-ink-faint">
           Nenhuma viagem aguardando. Monte um roteiro em <b className="text-ink">🧭 Planejar viagem</b> e
           clique em <b className="text-ink">Salvar</b> — ele aparece aqui pra os vendedores confirmarem.
@@ -109,7 +119,7 @@ export function OrganizacaoViagem({ onAbrirViagem }: { onAbrirViagem: (id: strin
   }
 
   return (
-    <Moldura aberto={aberto} alternar={alternar} viagens={lista.length} pendentes={pendentes}>
+    <Moldura aberto={aberto} alternar={alternar} viagens={lista.length} pendentes={pendentes} semMoldura={semMoldura}>
       <div className="divide-y divide-border">
         {lista.map(v => (
           <CardViagem
@@ -126,19 +136,23 @@ export function OrganizacaoViagem({ onAbrirViagem }: { onAbrirViagem: (id: strin
 }
 
 function Moldura({
-  children, aberto, alternar, viagens, pendentes,
+  children, aberto, alternar, viagens, pendentes, semMoldura,
 }: {
   children: React.ReactNode
   aberto: boolean
   alternar: () => void
   viagens: number
   pendentes: number
+  semMoldura: boolean
 }) {
   return (
-    <section className="mt-4 rounded-xl border border-border bg-surface overflow-hidden">
+    <section className={semMoldura
+      ? 'rounded-xl border border-border bg-surface overflow-hidden'
+      : 'mt-4 rounded-xl border border-border bg-surface overflow-hidden'}>
       {/* Fechado, é UMA LINHA. Os números ficam do lado justamente pra não ter
-          que abrir só pra descobrir se tem algo esperando. */}
-      <button
+          que abrir só pra descobrir se tem algo esperando. Em página própria o
+          cabeçalho-botão sai: não há o que colapsar. */}
+      {!semMoldura && <button
         onClick={alternar}
         className="w-full px-4 py-3 flex items-center gap-2 text-left hover:bg-surface-2 transition-colors"
       >
@@ -161,8 +175,8 @@ function Moldura({
         <span className="ml-auto text-[12px] text-ink-faint">
           {aberto ? 'fechar' : 'abrir'}
         </span>
-      </button>
-      {aberto && <div className="border-t border-border">{children}</div>}
+      </button>}
+      {aberto && <div className={semMoldura ? '' : 'border-t border-border'}>{children}</div>}
     </section>
   )
 }

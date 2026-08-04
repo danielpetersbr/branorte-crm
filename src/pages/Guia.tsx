@@ -116,6 +116,8 @@ export function Guia({ modoInicial = 'animais' }: { modoInicial?: Modo }) {
   // ---------------------------------------------------------------- estudo
   const irParaEstudo = useCallback((d: {
     especie: Especie; fase: string; quantidade?: number; consumo?: number | null
+    /** Modo VENDA: tonelagem mensal em kg, sem rebanho. */
+    volumeMesKg?: number | null
   }) => {
     // Ovino e caprino ainda não existem no catálogo de /producao-propria: manda
     // sem semente, em vez de mandar semente inválida.
@@ -128,6 +130,7 @@ export function Guia({ modoInicial = 'animais' }: { modoInicial?: Modo }) {
               categoria: d.fase,
               numeroAnimais: d.quantidade ?? 0,
               consumoPorAnimal: d.consumo ?? null,
+              volumeMesKg: d.volumeMesKg ?? null,
             },
           }
         : undefined,

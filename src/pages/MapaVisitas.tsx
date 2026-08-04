@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import {
@@ -12,7 +13,6 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { PainelViagem, corDoDia } from '@/components/mapa/PainelViagem'
 import { useSalvarViagem, useSalvarLocalizacaoCliente, useViagem, type ViagemStatus } from '@/hooks/useViagens'
 import { ViagensSalvas } from '@/components/mapa/ViagensSalvas'
-import { OrganizacaoViagem } from '@/components/mapa/OrganizacaoViagem'
 import { supabase } from '@/lib/supabase'
 import {
   type ConfigViagem, type Parada, type Trecho, type PontoMapa, type Programacao,
@@ -715,6 +715,22 @@ export function MapaVisitas() {
     setModoRaio(false)
     if (!cfgViagem.nome) setCfgViagem({ nome: `Viagem ${new Date().toLocaleDateString('pt-BR')}` })
   }
+
+  // `/mapa-visitas?viagem=ID` — é como a página Organização de viagem manda o
+  // vendedor de volta pro planejador com a viagem já aberta. Sem isto o botão
+  // "Abrir no planejador" navegava e não acontecia nada.
+  // Limpa o parâmetro depois: um F5 não pode reabrir por cima do que ele mexeu.
+  const [params, setParams] = useSearchParams()
+  useEffect(() => {
+    const id = params.get('viagem')
+    if (!id) return
+    entrarNaViagem()
+    setCarregarId(id)
+    const p = new URLSearchParams(params)
+    p.delete('viagem')
+    setParams(p, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params])
   function novaViagem() {
     if (paradas.length && !window.confirm('Começar uma viagem em branco? O que está no painel some se não estiver salvo.')) return
     setCfgViagemState({ ...CONFIG_PADRAO, nome: `Viagem ${new Date().toLocaleDateString('pt-BR')}` })
@@ -1284,11 +1300,10 @@ export function MapaVisitas() {
   )
 
   return (
-    // A raiz ROLA. Era `overflow-hidden` com altura travada na viewport: não
-    // existia "abaixo do mapa" — qualquer coisa posta ali ficava recortada. O
-    // mapa continua ocupando a tela inteira no primeiro rolo do celular; o que
-    // muda é que agora dá pra descer até a Organização de viagem.
-    <div className="relative flex flex-col overflow-y-auto md:p-4 md:gap-3 min-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))]">
+    // Volta a ser casca de altura fixa: a Organização de viagem virou página
+    // própria (menu, abaixo de "Mapa de Visitas"), então não há mais nada
+    // embaixo do mapa — e com a página rolando o mapa perdia altura à toa.
+    <div className="relative flex flex-col overflow-hidden md:p-4 md:gap-3 h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))]">
       {/* selo ✓ não pode capturar clique — senão não dá pra abrir o popup do pino visitado */}
       <style>{`.leaflet-marker-icon.marc-check{pointer-events:none!important}`}</style>
       {/* HEADER + TOOLBAR — só no desktop. No celular o mapa é tela cheia com filtros flutuantes. */}
@@ -1407,10 +1422,7 @@ export function MapaVisitas() {
         </div>
       )}
 
-      {/* Altura concreta, não `flex-1`: num pai que rola, flex-1 colapsa o mapa
-          pra zero. Celular = viewport cheia (igual antes). Desktop = 62vh, com
-          piso pra não virar tarja em tela baixa. */}
-      <div className="relative shrink-0 h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))] md:h-[62vh] md:min-h-[480px] md:flex md:gap-3">
+      <div className="relative flex-1 min-h-0 md:flex md:gap-3">
         <div ref={divRef} className="absolute inset-0 md:static md:flex-1 md:rounded-xl md:border md:border-border overflow-hidden z-0" />
         {(isLoading || loadingOrc) && (
           <div className="absolute inset-0 flex items-center justify-center z-[400]"><PageLoading /></div>
@@ -1613,20 +1625,6 @@ export function MapaVisitas() {
         </div>
       </div>
 
-      {/* ORGANIZAÇÃO DE VIAGEM — abaixo do mapa, sempre visível.
-          Montar o roteiro é o passo fácil. O que leva dias é o vaivém: o
-          vendedor fala com cada cliente, volta com "pode nessa data?" e com a
-          localização REAL da propriedade. Esse trabalho não morava em lugar
-          nenhum — quem salvava a viagem perdia de vista o que faltava. */}
-      <div className="px-3 pb-6 md:px-0">
-        <OrganizacaoViagem
-          onAbrirViagem={id => {
-            if (!modoViagem) entrarNaViagem()
-            setCarregarId(id)
-            window.scrollTo({ top: 0, behavior: 'smooth' })
-          }}
-        />
-      </div>
 
       {/* Celular: folha "por estado" (mesma soma da sidebar do desktop) */}
       {ufSheet && (

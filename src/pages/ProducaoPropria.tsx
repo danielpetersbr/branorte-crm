@@ -124,6 +124,12 @@ interface SementeGuia {
   categoria: string
   numeroAnimais: number
   consumoPorAnimal: number | null
+  /**
+   * Quem VENDE ração não tem rebanho: informou a tonelagem no Guia. Vem em kg/mês
+   * e cai no modo `direto` do estudo, que já existe. Sem isto o botão "usar no
+   * estudo" ficava desabilitado pra sempre nesse caso — beco sem saída.
+   */
+  volumeMesKg?: number | null
 }
 
 export function ProducaoPropria() {
@@ -203,7 +209,15 @@ export function ProducaoPropria() {
       return {
         ...base,
         produto: { ...base.produto, especie: s.especie, categoria: s.categoria, categoriaLivre: '' },
-        necessidade: {
+        necessidade: s.volumeMesKg
+          ? {
+              ...base.necessidade,
+              modo: 'direto',
+              quantidadeInformada: s.volumeMesKg,
+              unidadeQuantidade: 'kg',
+              periodoQuantidade: 'mes',
+            }
+          : {
           ...base.necessidade,
           modo: 'animais',
           numeroAnimais: s.numeroAnimais || base.necessidade.numeroAnimais,

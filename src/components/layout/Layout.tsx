@@ -1,5 +1,7 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, UserPlus, FileText, CheckCircle, MessageSquare, Moon, Sun, ChevronsLeft, ChevronsRight, ChevronDown, Shield, LogOut, BarChart2, List, GitBranch, Tag, Activity, Factory, AlertCircle, Package, Zap, BookOpen, Settings, TrendingUp, MessageSquarePlus, FilePlus2, Truck, History, Search, Wallet, MapPin, Star, Target, Boxes, Calculator, ClipboardList, Beef, Wheat, Headphones, BookCheck, Bot, Workflow, CalendarDays, ShoppingBag } from 'lucide-react'
+import {
+  Activity, AlertCircle, BarChart2, Beef, BookCheck, BookOpen, Bot, Boxes, Calculator, CalendarDays, CheckCircle, ChevronDown, ChevronsLeft, ChevronsRight, ClipboardList, Compass, Factory, FilePlus2, FileText, GitBranch, Headphones, History, LayoutDashboard, List, LogOut, MapPin, MessageSquare, MessageSquarePlus, Moon, Package, Search, Settings, Shield, ShoppingBag, Star, Sun, Tag, Target, TrendingUp, Truck, UserPlus, Users, Wallet, Wheat, Workflow, Zap,
+} from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { cn } from '@/lib/utils'
@@ -128,6 +130,10 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/controle/novo-pedido', label: 'Novo Pedido', icon: FilePlus2, permKey: 'menu.controle' },
       { to: '/vendidos', label: 'Vendidos', icon: CheckCircle, permKey: 'menu.vendidos' },
       { to: '/mapa-visitas', label: 'Mapa de Visitas', icon: MapPin },
+      // Página própria porque não é trabalho de MAPA: é o vaivém com o vendedor
+      // (confirmar data, receber a localização), que dura dias. Dentro do mapa
+      // virava rodapé que ninguém abre.
+      { to: '/organizacao-viagem', label: 'Organização de Viagem', icon: Compass },
       // Visão de gestão: mostra a carteira de TODOS os reps e o quanto cada um está
       // acima/abaixo da média. Só admin — o guard em App.tsx trava a URL direta.
       { to: '/mapa-representantes', label: 'Mapa de Representantes', icon: MapPin, adminOnly: true },
