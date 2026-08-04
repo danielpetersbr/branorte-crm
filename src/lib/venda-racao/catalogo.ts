@@ -173,6 +173,15 @@ export interface FormulaReferencia {
   fonte: string
   /** O que o vendedor precisa saber antes de usar. */
   nota?: string
+  /**
+   * A fórmula leva ingrediente LÍQUIDO (óleo). A Compacta é farelada: mistura
+   * só ingrediente seco. Marcar aqui não esconde a fórmula — ela continua
+   * escolhível, porque é a nutricionalmente correta e o vendedor precisa saber
+   * que existe. O que a marca faz é impedir que ela entre como padrão
+   * automático, pra ninguém montar estudo de um equipamento que não faz aquilo
+   * sem ter lido o aviso.
+   */
+  exigeLiquido?: boolean
   itens: IngredienteFormula[]
 }
 
@@ -337,15 +346,74 @@ export const FORMULAS_REFERENCIA: FormulaReferencia[] = [
     ],
   },
   {
-    chave: 'av-frango-ini', nome: 'Frango de corte — inicial (1 a 21 dias)', especie: 'aves',
+    chave: 'av-frango-ini', nome: 'Frango de corte — inicial (0 a 21 dias)', especie: 'aves',
     categorias: ['frango_inicial'],
-    fonte: 'Ficha técnica ADM Núcleo Frangos Inicial 5%',
-    nota: 'ATENÇÃO: a diluição 65/30/5 está na ficha, mas os níveis de garantia da MESMA página não fecham — e a mesma marca publica outra ficha com Fósforo 27%, que é fisicamente impossível. Use como referência e confira o rótulo do núcleo que o cliente compra antes de fechar o estudo.',
+    exigeLiquido: true,
+    fonte: 'Embrapa Suínos e Aves, Coeficientes técnicos para o cálculo do custo de produção de frango de corte (2010), Tabela 7, p.9 — extraída do PDF e somada: fecha 100,000%',
+    nota: 'ATENÇÃO — LEVA ÓLEO. A Embrapa formula com 4 a 5,7% de óleo de soja, e a Compacta é FARELADA: mistura só ingrediente seco. Ou o cliente tem kit de adição de líquido, ou um zootecnista precisa refazer a fórmula sem óleo — o que derruba a energia e muda o desempenho. Não tire o óleo por conta própria. Percentuais são da Embrapa; os preços são referência, ajuste pelos da região.',
     itens: [
-      item('Milho', 65, 1.08), item('Farelo de soja', 30, 1.6),
-      item('Núcleo aves', 5, 6.8),
+      item('Milho moído', 55.64, 1.08),
+      item('Farelo de soja', 36.0, 1.6),
+      item('Óleo de soja', 4.0, 7.5),
+      item('Fosfato bicálcico', 1.85, 4.5),
+      item('Calcário calcítico', 1.2, 0.4),
+      item('Sal comum', 0.5, 0.9),
+      item('Adsorvente', 0.2, 3.0),
+      item('DL-Metionina', 0.25, 28.0),
+      item('Premix mineral', 0.1, 15.0),
+      item('Premix vitamínico', 0.1, 22.0),
+      item('Cloreto de colina', 0.04, 12.0),
+      item('Aditivo zootécnico', 0.01, 45.0),
+      item('Antioxidante', 0.015, 18.0),
+      item('Aditivo anticoccidiano', 0.025, 60.0),
+      item('L-Lisina HCL', 0.07, 12.0),
     ],
   },
+  {
+    chave: 'av-frango-cres', nome: 'Frango de corte — crescimento (22 a 35 dias)', especie: 'aves',
+    categorias: ['frango_crescimento'],
+    exigeLiquido: true,
+    fonte: 'Embrapa Suínos e Aves, Coeficientes técnicos para o cálculo do custo de produção de frango de corte (2010), Tabela 7, p.9 — extraída do PDF e somada: fecha 100,000%',
+    nota: 'ATENÇÃO — LEVA ÓLEO. A Embrapa formula com 4 a 5,7% de óleo de soja, e a Compacta é FARELADA: mistura só ingrediente seco. Ou o cliente tem kit de adição de líquido, ou um zootecnista precisa refazer a fórmula sem óleo — o que derruba a energia e muda o desempenho. Não tire o óleo por conta própria. Percentuais são da Embrapa; os preços são referência, ajuste pelos da região.',
+    itens: [
+      item('Milho moído', 58.19, 1.08),
+      item('Farelo de soja', 33.2, 1.6),
+      item('Óleo de soja', 5.0, 7.5),
+      item('Fosfato bicálcico', 1.65, 4.5),
+      item('Calcário calcítico', 0.8, 0.4),
+      item('Sal comum', 0.45, 0.9),
+      item('Adsorvente', 0.2, 3.0),
+      item('DL-Metionina', 0.19, 28.0),
+      item('Premix mineral', 0.1, 15.0),
+      item('Premix vitamínico', 0.1, 22.0),
+      item('Cloreto de colina', 0.07, 12.0),
+      item('Aditivo zootécnico', 0.01, 45.0),
+      item('Antioxidante', 0.015, 18.0),
+      item('Aditivo anticoccidiano', 0.025, 60.0),
+    ],
+  },
+  {
+    chave: 'av-frango-fin', nome: 'Frango de corte — final (36 dias ao abate)', especie: 'aves',
+    categorias: ['frango_final'],
+    exigeLiquido: true,
+    fonte: 'Embrapa Suínos e Aves, Coeficientes técnicos para o cálculo do custo de produção de frango de corte (2010), Tabela 7, p.9 — extraída do PDF e somada: fecha 100,000%',
+    nota: 'ATENÇÃO — LEVA ÓLEO. A Embrapa formula com 4 a 5,7% de óleo de soja, e a Compacta é FARELADA: mistura só ingrediente seco. Ou o cliente tem kit de adição de líquido, ou um zootecnista precisa refazer a fórmula sem óleo — o que derruba a energia e muda o desempenho. Não tire o óleo por conta própria. Percentuais são da Embrapa; os preços são referência, ajuste pelos da região.',
+    itens: [
+      item('Milho moído', 62.43, 1.08),
+      item('Farelo de soja', 28.59, 1.6),
+      item('Óleo de soja', 5.693, 7.5),
+      item('Fosfato bicálcico', 1.5, 4.5),
+      item('Calcário calcítico', 0.75, 0.4),
+      item('Sal comum', 0.44, 0.9),
+      item('Adsorvente', 0.2, 3.0),
+      item('DL-Metionina', 0.109, 28.0),
+      item('Premix mineral', 0.1, 15.0),
+      item('Premix vitamínico', 0.1, 22.0),
+      item('Cloreto de colina', 0.063, 12.0),
+      item('Aditivo zootécnico', 0.01, 45.0),
+      item('Antioxidante', 0.015, 18.0),
+    ],
+  }
 ]
 
 /**
@@ -376,7 +444,17 @@ export function formulaPadrao(especie: Especie, categoria?: string): Ingrediente
   // exigência é em gramas/dia, e a porcentagem é só a diluição. Por isso
   // nenhum número único podia estar certo em mais de uma linha.
   if (categoria) {
-    const doCatalogo = formulasReferencia(especie, categoria)[0]
+    const opcoes = formulasReferencia(especie, categoria)
+    // PREFERE a que não exige líquido — a Compacta é farelada. Mas se a única
+    // com fonte carrega óleo (é o caso do frango de corte, onde a Embrapa
+    // formula com 4 a 5,7%), ela entra mesmo assim, com a ressalva junto.
+    //
+    // A escolha entre os dois erros possíveis: cair no padrão antigo deixaria o
+    // vendedor montando estudo com premix 7% — 35 vezes o real — e cálcio mal
+    // especificado, SEM aviso nenhum. Com a da Embrapa ele vê o número certo e
+    // lê que precisa de kit de líquido ou de um zootecnista pra refazer. Erro
+    // avisado é melhor que erro silencioso.
+    const doCatalogo = opcoes.find(f => !f.exigeLiquido) ?? opcoes[0]
     if (doCatalogo) return doCatalogo.itens.map(i => ({ ...i, id: novoIdIngrediente() }))
   }
   switch (especie) {
