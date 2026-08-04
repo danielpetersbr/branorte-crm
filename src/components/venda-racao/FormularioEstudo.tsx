@@ -90,17 +90,24 @@ export function FormularioEstudo({
     onChange(s => ({ ...s, investimento: { ...s.investimento, ...p } }))
 
   const trocarCategoria = (chave: string) => {
-    onChange(s => ({
-      ...s,
-      produto: { ...s.produto, categoria: chave },
-      necessidade: {
-        ...s.necessidade,
-        // o consumo acompanha a fase escolhida e volta a ser REFERÊNCIA:
-        // precisa ser reconfirmado com o cliente antes de virar número do estudo
-        consumoPorAnimal: consumoSugerido(s.produto.especie, chave) || s.necessidade.consumoPorAnimal,
-        consumoConfirmado: false,
-      },
-    }))
+    onChange(s => {
+      // Consumo CONFIRMADO é dado que veio da boca do cliente — trocar de fase
+      // não pode apagá-lo. Antes daqui, quem confirmava 340 kg/mês e depois
+      // corrigia a categoria via o número virar 297 sem aviso nenhum.
+      if (s.necessidade.consumoConfirmado) {
+        return { ...s, produto: { ...s.produto, categoria: chave } }
+      }
+      return {
+        ...s,
+        produto: { ...s.produto, categoria: chave },
+        necessidade: {
+          ...s.necessidade,
+          // ainda não confirmado = é referência de catálogo, pode acompanhar a fase
+          consumoPorAnimal: consumoSugerido(s.produto.especie, chave) || s.necessidade.consumoPorAnimal,
+          consumoConfirmado: false,
+        },
+      }
+    })
   }
 
   const alterarItem = (id: string, p: Partial<IngredienteFormula>) =>

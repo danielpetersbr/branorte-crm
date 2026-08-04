@@ -94,6 +94,11 @@ export function novaSimulacao(
 export function trocarEspecie(
   atual: SimulacaoInput, especie: Especie, cfgBruta: Partial<ConfigVendaRacao> | null | undefined,
 ): SimulacaoInput {
+  // Clicar no card da espécie JÁ selecionada não é troca — e esse clique-à-toa
+  // resetava a fórmula pra `formulaPadrao()`, apagando ingredientes digitados.
+  // Trocar de verdade continua zerando, que é o certo.
+  if (atual.produto.especie === especie) return atual
+
   const cfg = mesclarConfig(cfgBruta ?? CONFIG_PADRAO)
   const categoria = categoriaPadrao(especie)
   const semAnimais = ESPECIES.find(e => e.chave === especie)?.semAnimais === true

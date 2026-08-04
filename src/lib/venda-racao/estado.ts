@@ -95,6 +95,13 @@ export function novoEstudo(
 export function trocarEspecie(
   atual: EstudoInput, especie: Especie, cfgBruta: Partial<ConfigEstudo> | null | undefined,
 ): EstudoInput {
+  // Clicar no card da espécie JÁ selecionada não é troca — e antes daqui esse
+  // clique-à-toa resetava a fórmula pra `formulaPadrao()` e desmarcava o consumo
+  // confirmado. O vendedor perdia ingredientes que tinha digitado sem entender
+  // por quê. Trocar de verdade continua zerando, que é o certo: fórmula de aves
+  // não serve pra bovinos.
+  if (atual.produto.especie === especie) return atual
+
   mesclarConfig(cfgBruta ?? CONFIG_PADRAO)
   const categoria = categoriaPadrao(especie)
   const semAnimais = ESPECIES.find(e => e.chave === especie)?.semAnimais === true
