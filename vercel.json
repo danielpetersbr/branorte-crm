@@ -4,6 +4,13 @@
     "api/gerar-pdf.ts": {
       "memory": 1024,
       "maxDuration": 60
+    },
+    "api/gerar-pdf-roteiro.ts": {
+      "memory": 1536,
+      "maxDuration": 90
+    },
+    "api/rota.ts": {
+      "maxDuration": 30
     }
   },
   "headers": [
@@ -12,7 +19,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy-Report-Only",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://flwbeevtvjiouxdjmziv.supabase.co https://*.supabase.co wss://flwbeevtvjiouxdjmziv.supabase.co wss://*.supabase.co; frame-ancestors 'self' https://web.whatsapp.com chrome-extension://*; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://flwbeevtvjiouxdjmziv.supabase.co https://*.supabase.co wss://flwbeevtvjiouxdjmziv.supabase.co wss://*.supabase.co https://nominatim.openstreetmap.org; frame-ancestors 'self' https://web.whatsapp.com chrome-extension://*; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'"
         },
         {
           "key": "Content-Security-Policy",

@@ -76,6 +76,8 @@ const ControleNovoPedido = lazy(() => import('@/pages/ControleNovoPedido').then(
 // /print/orcamento é importado direto (sem lazy) pra evitar precisar de Suspense
 // no fallback antes do auth. Rota usada APENAS pelo Puppeteer server-side.
 import PrintOrcamento from '@/pages/PrintOrcamento'
+// /print/roteiro — mesma ideia, pro PDF do roteiro de viagem (/mapa-visitas).
+import PrintRoteiro from '@/pages/PrintRoteiro'
 
 // /sso é o pouso do login automático vindo do controle.branorte.com.
 // Importado direto (sem lazy) porque roda antes do gate de auth.
@@ -212,6 +214,12 @@ function AppRoutes() {
   // sem chrome do app. Dados injetados via window.__BRANORTE_PRINT__ pelo Puppeteer.
   if (loc.pathname === '/print/orcamento') {
     return <PrintOrcamento />
+  }
+
+  // Rota pública /print/roteiro — Puppeteer renderiza o roteiro de viagem.
+  // Dados via window.__BRANORTE_ROTEIRO__, injetado antes do navigate.
+  if (loc.pathname === '/print/roteiro') {
+    return <PrintRoteiro />
   }
 
   // Rota pública /sso — pouso do login automático do sistema principal.
@@ -464,14 +472,30 @@ function AppRoutes() {
   )
 }
 
+/**
+ * Overlays globais (instalar PWA, aviso de nova versão).
+ * NÃO podem aparecer nas rotas /print/* — elas são renderizadas pelo Puppeteer e
+ * qualquer coisa flutuante entra no PDF. Foi assim que o banner "Instalar Branorte
+ * CRM" apareceu no roteiro de viagem (e aparecia no PDF de orçamento também).
+ */
+function OverlaysGlobais() {
+  const { pathname } = useLocation()
+  if (pathname.startsWith('/print/')) return null
+  return (
+    <>
+      <InstallPrompt />
+      <NovaVersaoBanner />
+    </>
+  )
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <BrowserRouter>
           <AppRoutes />
-          <InstallPrompt />
-          <NovaVersaoBanner />
+          <OverlaysGlobais />
         </BrowserRouter>
       </AuthProvider>
     </QueryClientProvider>

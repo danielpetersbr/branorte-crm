@@ -9,6 +9,14 @@ import {
 import { useEtiquetas } from '@/hooks/useEtiquetas'
 import { useAuth } from '@/hooks/useAuth'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
+import { PainelViagem, corDoDia } from '@/components/mapa/PainelViagem'
+import { useSalvarViagem, useSalvarLocalizacaoCliente } from '@/hooks/useViagens'
+import { supabase } from '@/lib/supabase'
+import {
+  type ConfigViagem, type Parada, type Trecho, type PontoMapa, type Programacao,
+  CONFIG_PADRAO, MAX_PARADAS, PRECISAO_INFO,
+  montarParadas, otimizarOrdem, programar, chaveTrecho, nomeParada, roteavel,
+} from '@/lib/viagem'
 
 // Mapa de visitas — camadas (liga/desliga):
 //  • Orçamentos: 1 pino por cliente. Cor pela IDADE do orçamento mais recente
@@ -179,7 +187,56 @@ function popupVisita(v: Visita, isFollowUp: boolean, labels: string[]): string {
     </div>`
 }
 
-function popupOrcamento(p: OrcamentoPonto, marc?: Marcacao | null, dist?: number): string {
+// Selo de precisão da coordenada. Aparece SEMPRE — o spec §7 é explícito:
+// "Nunca esconder que uma localização é aproximada".
+function seloPrecisao(p: OrcamentoPonto): string {
+  const i = PRECISAO_INFO[p.precisao] ?? PRECISAO_INFO.cidade
+  return `<div style="font-size:11px;margin-top:4px;padding:3px 6px;border-radius:6px;background:${i.cor}18;color:${i.cor};font-weight:600" title="${esc(i.rotulo)}">${i.icone} ${esc(i.rotulo)}</div>`
+}
+
+/**
+ * Bloco de "adicionar à viagem" do popup.
+ * Se houver vários clientes na MESMA coordenada (o caso comum — 68,85% dividem
+ * coordenada), lista todos com botão individual + "adicionar todos". Sem isso o
+ * usuário só consegue escolher o cliente que o Leaflet desenhou por cima.
+ */
+function blocoViagem(p: OrcamentoPonto, vizinhos: OrcamentoPonto[], jaNaViagem: Set<string>): string {
+  const btn = (c: OrcamentoPonto, largura: string, rotulo: string) => {
+    const dentro = jaNaViagem.has(c.cli_key)
+    return `<button data-viagem data-key="${encodeURIComponent(c.cli_key)}" ${dentro ? 'disabled' : ''}
+      style="width:${largura};padding:7px 8px;border:0;border-radius:8px;background:${dentro ? '#e2e8f0' : '#2563eb'};color:${dentro ? '#64748b' : '#fff'};font-weight:700;font-size:12px;cursor:${dentro ? 'default' : 'pointer'};margin-top:5px">${dentro ? '✓ na viagem' : rotulo}</button>`
+  }
+  if (vizinhos.length <= 1) return btn(p, '100%', '＋ Adicionar à viagem')
+
+  const faltam = vizinhos.filter(c => !jaNaViagem.has(c.cli_key))
+  const linhas = vizinhos.map(c => {
+    const dentro = jaNaViagem.has(c.cli_key)
+    return `<li style="display:flex;align-items:center;gap:6px;padding:3px 0;border-top:1px solid #e2e8f0">
+      <span style="flex:1;min-width:0;font-size:12px;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.cliente)}">${esc(c.cliente) || '—'}</span>
+      <span style="font-size:11px;color:#64748b;white-space:nowrap">${brl(c.total)}</span>
+      <button data-viagem data-key="${encodeURIComponent(c.cli_key)}" ${dentro ? 'disabled' : ''}
+        style="padding:2px 8px;border:0;border-radius:6px;background:${dentro ? '#e2e8f0' : '#2563eb'};color:${dentro ? '#64748b' : '#fff'};font-weight:700;font-size:11px;cursor:${dentro ? 'default' : 'pointer'}">${dentro ? '✓' : '＋'}</button>
+    </li>`
+  }).join('')
+
+  return `
+    <div style="margin-top:8px;padding-top:6px;border-top:1px solid #cbd5e1">
+      <div style="font-size:11px;font-weight:700;color:#0f172a">${vizinhos.length} clientes neste ponto</div>
+      <div style="font-size:10.5px;color:#64748b;line-height:1.35;margin-top:2px">Todos caem no centro da cidade — o CRM não tem o endereço deles.</div>
+      <ul style="list-style:none;margin:5px 0 0;padding:0;max-height:150px;overflow-y:auto">${linhas}</ul>
+      ${faltam.length > 1
+        ? `<button data-viagem-todos data-keys="${encodeURIComponent(faltam.map(c => c.cli_key).join('|'))}"
+             style="width:100%;padding:7px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-weight:700;font-size:12px;cursor:pointer;margin-top:6px">＋ Adicionar os ${faltam.length} como uma parada</button>`
+        : ''}
+    </div>`
+}
+
+function popupOrcamento(
+  p: OrcamentoPonto,
+  marc?: Marcacao | null,
+  dist?: number,
+  viagem?: { vizinhos: OrcamentoPonto[]; jaNaViagem: Set<string> },
+): string {
   const tel = (p.telefone || '').replace(/\D/g, '')
   const foneFmt = p.fone || p.telefone || ''
   const loc = [esc(p.cidade), esc(p.uf)].filter(Boolean).join(' - ')
@@ -207,9 +264,11 @@ function popupOrcamento(p: OrcamentoPonto, marc?: Marcacao | null, dist?: number
       <div style="font-size:11px;color:#64748b;margin-top:3px">Vendedor: ${esc(p.vendedor) || '—'}</div>
       ${foneFmt ? `<div style="font-size:12px;color:#0f172a;margin-top:4px">📱 ${esc(foneFmt)}</div>` : ''}
       ${tel ? `<a href="https://wa.me/${tel}" target="_blank" rel="noopener" style="display:inline-block;margin-top:4px;font-size:12px;color:#10b981;font-weight:600">Abrir WhatsApp ↗</a>` : ''}
+      ${seloPrecisao(p)}
+      <a href="https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}" target="_blank" rel="noopener" style="display:inline-block;margin-top:4px;font-size:11px;color:#2563eb;font-weight:600">Abrir no Google Maps ↗</a>
       ${visitaLinha}
       ${notaLinha}
-      ${btn}
+      ${viagem ? blocoViagem(p, viagem.vizinhos, viagem.jaNaViagem) : btn}
     </div>`
 }
 
@@ -224,6 +283,8 @@ export function MapaVisitas() {
   const { data: etiquetasWa = [] } = useEtiquetas()
   const { data: marc = {} } = useMapaMarcacoes()
   const salvarMarc = useSalvarMarcacao()
+  const salvarViagemMut = useSalvarViagem()
+  const salvarLocalMut = useSalvarLocalizacaoCliente()
   const { profile } = useAuth()
   const geocodar = useGeocodarVisitas()
   const [vendedorSel, setVendedorSel] = useState<string>('')
@@ -250,6 +311,40 @@ export function MapaVisitas() {
   const [raioKm, setRaioKm] = useState(100)
   const modoRaioRef = useRef(false)
   useEffect(() => { modoRaioRef.current = modoRaio }, [modoRaio])
+
+  // ── MODO PLANEJAMENTO DE VIAGEM ───────────────────────────────────────────
+  // Estado isolado: entrar e sair NÃO mexe em busca, filtros, raio ou lista.
+  const [modoViagem, setModoViagem] = useState(false)
+  const [cfgViagem, setCfgViagemState] = useState<ConfigViagem>(CONFIG_PADRAO)
+  const [paradas, setParadas] = useState<Parada[]>([])
+  const [trechos, setTrechos] = useState<Map<string, Trecho>>(new Map())
+  const [provedorRota, setProvedorRota] = useState<string | null>(null)
+  const [calculandoRota, setCalculandoRota] = useState(false)
+  const [escolhendoOrigem, setEscolhendoOrigem] = useState(false)
+  const [viagemSheet, setViagemSheet] = useState(false)
+  const [salvandoViagem, setSalvandoViagem] = useState(false)
+  const [viagemSalvaEm, setViagemSalvaEm] = useState<string | null>(null)
+  const [gerandoPdf, setGerandoPdf] = useState(false)
+  const [corrigirLocal, setCorrigirLocal] = useState<Parada | null>(null)
+  const setCfgViagem = (patch: Partial<ConfigViagem>) => setCfgViagemState(c => ({ ...c, ...patch }))
+
+  const viagemLayerRef = useRef<L.LayerGroup | null>(null)
+  // O handler de popupopen é registrado UMA vez (deps []), então o closure congela.
+  // Tudo que ele precisa saber "agora" passa por ref — mesmo padrão do modoRaioRef.
+  const acoesPopupRef = useRef({
+    adicionar: (_keys: string[]) => {},
+    marcar: (_chave: string) => {},
+    origem: (_c: { lat: number; lng: number }) => {},
+  })
+  const escolhendoOrigemRef = useRef(false)
+  useEffect(() => { escolhendoOrigemRef.current = escolhendoOrigem }, [escolhendoOrigem])
+  // Contexto do popup por REF, não por dep do effect: entrar no modo viagem ou
+  // adicionar uma parada NÃO pode repintar os milhares de pinos.
+  const ctxPopupRef = useRef<{ ativo: boolean; porCoord: Map<string, OrcamentoPonto[]>; dentro: Set<string> }>({
+    ativo: false, porCoord: new Map(), dentro: new Set(),
+  })
+  const modoViagemRef = useRef(false)
+  useEffect(() => { modoViagemRef.current = modoViagem }, [modoViagem])
 
   // resolve etiqueta_id (por vendedor) -> nome (IDs do Wascript não são globais).
   const { byVendId, globId } = useMemo(() => {
@@ -479,6 +574,207 @@ export function MapaVisitas() {
     }, { onSuccess: () => setMarcarAlvo(null) })
   }
 
+  // ── viagem: dados derivados ───────────────────────────────────────────────
+  const kCoord = (lat: number, lng: number) => `${lat.toFixed(5)},${lng.toFixed(5)}`
+
+  // Índice coordenada -> clientes ali. É o que permite escolher UM entre os
+  // sobrepostos (§6) — sem isso só dá pra clicar em quem o Leaflet pintou por cima.
+  const pontosPorCoord = useMemo(() => {
+    const m = new Map<string, OrcamentoPonto[]>()
+    for (const p of orcPontos) {
+      const k = kCoord(p.lat, p.lng)
+      if (!m.has(k)) m.set(k, [])
+      m.get(k)!.push(p)
+    }
+    return m
+  }, [orcPontos])
+
+  const pontoPorKey = useMemo(() => {
+    const m = new Map<string, OrcamentoPonto>()
+    for (const p of orcPontos) m.set(p.cli_key, p)
+    return m
+  }, [orcPontos])
+
+  const naViagem = useMemo(() => {
+    const s = new Set<string>()
+    for (const p of paradas) for (const c of p.clientes) s.add(c.cliKey)
+    return s
+  }, [paradas])
+
+  // Programação: recalcula a cada mudança de parada/config/trecho. É barato
+  // (puro, ~40 paradas) — o que tem debounce é a chamada de ROTA, não isto.
+  const prog: Programacao = useMemo(
+    () => programar(paradas, cfgViagem, trechos),
+    [paradas, cfgViagem, trechos],
+  )
+
+  function adicionarClientes(keys: string[]) {
+    const novos = keys
+      .map(k => pontoPorKey.get(k))
+      .filter((x): x is OrcamentoPonto => !!x && !naViagem.has(x.cli_key))
+    if (!novos.length) return
+    const total = paradas.reduce((s, p) => s + p.clientes.length, 0)
+    if (total + novos.length > MAX_PARADAS * 4) {
+      window.alert(`Muitos clientes na viagem. Limite prático: ${MAX_PARADAS} paradas.`)
+      return
+    }
+    // Reconstrói as paradas a partir dos clientes antigos + novos, preservando
+    // ordem/tempo/travas do que já estava. Assim dois clientes da mesma cidade
+    // caem na MESMA parada em vez de virar duas.
+    const antigos: PontoMapa[] = []
+    for (const p of paradas) for (const c of p.clientes) {
+      const orig = pontoPorKey.get(c.cliKey)
+      if (orig) antigos.push(orig as unknown as PontoMapa)
+    }
+    const recriadas = montarParadas([...antigos, ...(novos as unknown as PontoMapa[])])
+    const antes = new Map(paradas.map(p => [p.id, p]))
+    setParadas(recriadas.map(p => {
+      const a = antes.get(p.id)
+      return a
+        ? { ...p, visitaMinutos: a.visitaMinutos, janelaInicio: a.janelaInicio, janelaFim: a.janelaFim,
+            ordemTravada: a.ordemTravada, notas: a.notas, confirmacao: a.confirmacao }
+        : p
+    }))
+    if (paradas.length + 1 >= MAX_PARADAS) {
+      window.setTimeout(() => window.alert(`Você chegou em ${MAX_PARADAS} paradas — é o teto pra rota continuar útil.`), 0)
+    }
+  }
+
+  function entrarNaViagem() {
+    setModoViagem(true)
+    setModoRaio(false)
+    if (!cfgViagem.nome) setCfgViagem({ nome: `Viagem ${new Date().toLocaleDateString('pt-BR')}` })
+  }
+  function sairDaViagem() {
+    setModoViagem(false)
+    setViagemSheet(false)
+    setEscolhendoOrigem(false)
+  }
+
+  /**
+   * Calcula a rota REAL. Ordem: otimiza (se modo auto) → pede trechos ao
+   * /api/rota (server-side, sem chave no front) → guarda os trechos.
+   * Se a API cair, a programação continua saindo com estimativa por haversine.
+   */
+  const abortRotaRef = useRef<AbortController | null>(null)
+  async function calcularRota() {
+    const uteis = paradas.filter(roteavel)
+    if (!uteis.length) return
+    setCalculandoRota(true)
+    abortRotaRef.current?.abort()          // cancela cálculo anterior (§23)
+    const ac = new AbortController()
+    abortRotaRef.current = ac
+    try {
+      let ordenadas = paradas
+      if (cfgViagem.modo === 'otimizar') {
+        ordenadas = otimizarOrdem(paradas, cfgViagem.origem, cfgViagem.retornarOrigem ? cfgViagem.origem : cfgViagem.destino)
+        setParadas(ordenadas)
+      }
+      const seq = ordenadas.filter(roteavel)
+      const pontos = [
+        ...(cfgViagem.origem ? [{ lat: cfgViagem.origem.lat, lng: cfgViagem.origem.lng }] : []),
+        ...seq.map(p => ({ lat: p.lat, lng: p.lng })),
+        ...(cfgViagem.retornarOrigem && cfgViagem.origem ? [{ lat: cfgViagem.origem.lat, lng: cfgViagem.origem.lng }]
+            : cfgViagem.destino ? [{ lat: cfgViagem.destino.lat, lng: cfgViagem.destino.lng }] : []),
+      ]
+      if (pontos.length < 2) { setCalculandoRota(false); return }
+
+      const r = await fetch('/api/rota', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pontos }), signal: ac.signal,
+      })
+      const j = r.ok ? await r.json() : null
+      if (!j || j.erro || !Array.isArray(j.trechos) || !j.trechos.length) {
+        setProvedorRota('estimado')
+        setTrechos(new Map())
+        return
+      }
+      const m = new Map<string, Trecho>()
+      for (const t of j.trechos as Array<{ de: number; para: number; metros: number; segundos: number }>) {
+        const a = pontos[t.de], b = pontos[t.para]
+        if (!a || !b) continue
+        m.set(chaveTrecho(a, b), { metros: t.metros, segundos: t.segundos, estimado: false })
+      }
+      setTrechos(m)
+      setProvedorRota(j.provedor || 'osrm')
+      if (Array.isArray(j.geometrias)) geometriasRef.current = j.geometrias
+    } catch (e) {
+      if ((e as Error)?.name !== 'AbortError') {
+        setProvedorRota('estimado')
+        setTrechos(new Map())
+      }
+    } finally {
+      setCalculandoRota(false)
+    }
+  }
+  const geometriasRef = useRef<Array<Array<[number, number]>>>([])
+
+  // Recalcula sozinho quando muda o conjunto/ordem — com debounce, pra não
+  // bater na API a cada clique (§10 e §23).
+  const primeiroRenderViagem = useRef(true)
+  useEffect(() => {
+    if (!modoViagem) return
+    if (primeiroRenderViagem.current) { primeiroRenderViagem.current = false; return }
+    if (!paradas.length) { setTrechos(new Map()); geometriasRef.current = []; return }
+    const t = window.setTimeout(() => { void calcularRota() }, 900)
+    return () => window.clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modoViagem, paradas.map(p => p.id).join('|'), cfgViagem.origem?.lat, cfgViagem.origem?.lng, cfgViagem.retornarOrigem])
+
+  async function gerarPdfViagem() {
+    setGerandoPdf(true)
+    try {
+      // O endpoint valida o JWT do Supabase (§22 — nada de rota aberta).
+      const { data: sess } = await supabase.auth.getSession()
+      const token = sess?.session?.access_token
+      if (!token) throw new Error('sem sessão')
+
+      const r = await fetch('/api/gerar-pdf-roteiro', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          roteiro: {
+            cfg: cfgViagem,
+            prog,
+            geometrias: geometriasRef.current,
+            responsavel: profile?.display_name || profile?.email || null,
+            provedor: provedorRota,
+          },
+          responseMode: 'url',
+          nomeArquivo: `${(cfgViagem.nome || 'roteiro').replace(/[^\w\- ]+/g, '').trim() || 'roteiro'}.pdf`,
+        }),
+      })
+      if (!r.ok) {
+        const det = await r.json().catch(() => null)
+        throw new Error(det?.error || String(r.status))
+      }
+      const j = await r.json()
+      const url = j.url || (j.base64 ? `data:application/pdf;base64,${j.base64}` : null)
+      if (!url) throw new Error('sem pdf')
+      window.open(url, '_blank', 'noopener')
+    } catch (e) {
+      window.alert(
+        `Não consegui gerar o PDF agora (${(e as Error).message}). `
+        + 'O planejamento continua na tela e o que estava salvo não foi perdido.',
+      )
+    } finally {
+      setGerandoPdf(false)
+    }
+  }
+
+  async function salvarViagem() {
+    if (!cfgViagem.nome.trim()) return
+    setSalvandoViagem(true)
+    try {
+      await salvarViagemMut.mutateAsync({ cfg: cfgViagem, paradas, programacao: prog })
+      setViagemSalvaEm(new Date().toISOString())
+    } catch {
+      window.alert('Não consegui salvar a viagem. Nada foi perdido — tente de novo.')
+    } finally {
+      setSalvandoViagem(false)
+    }
+  }
+
   // init do mapa (uma vez)
   useEffect(() => {
     if (mapRef.current || !divRef.current) return
@@ -497,18 +793,46 @@ export function MapaVisitas() {
     canvasRef.current = L.canvas({ padding: 0.5 })
     layerRef.current = L.layerGroup().addTo(map)
     raioLayerRef.current = L.layerGroup().addTo(map)
+    // Camada PRÓPRIA da viagem. Separada de propósito: o effect dos pinos faz
+    // clearLayers() em layerRef, e a rota não pode ser apagada junto.
+    viagemLayerRef.current = L.layerGroup().addTo(map)
     map.on('click', (e: L.LeafletMouseEvent) => {
+      if (escolhendoOrigemRef.current) {
+        acoesPopupRef.current.origem({ lat: e.latlng.lat, lng: e.latlng.lng })
+        return
+      }
       if (modoRaioRef.current) setCentro({ lat: e.latlng.lat, lng: e.latlng.lng })
     })
-    // botão "marcar visita" dentro do popup abre o modal (React)
+    // Botões dentro do popup (HTML string) → ações React.
+    // Cada botão é ligado de forma INDEPENDENTE: antes havia um `if (!btn) return`
+    // que abortava tudo quando o popup não tinha o botão de marcar visita.
     map.on('popupopen', (e: L.PopupEvent) => {
-      const btn = e.popup.getElement()?.querySelector('button[data-marcar]') as HTMLButtonElement | null
-      if (!btn) return
-      btn.onclick = () => {
-        const chave = decodeURIComponent(btn.dataset.chave || '')
-        const info = pontoInfoRef.current.get(chave)
-        setMarcarAlvo({ chave, cliente: info?.cliente ?? null, telefone: info?.telefone ?? null })
-        map.closePopup()
+      const el = e.popup.getElement()
+      if (!el) return
+
+      const btnMarcar = el.querySelector('button[data-marcar]') as HTMLButtonElement | null
+      if (btnMarcar) {
+        btnMarcar.onclick = () => {
+          acoesPopupRef.current.marcar(decodeURIComponent(btnMarcar.dataset.chave || ''))
+          map.closePopup()
+        }
+      }
+
+      el.querySelectorAll('button[data-viagem]').forEach(n => {
+        const b = n as HTMLButtonElement
+        if (b.disabled) return
+        b.onclick = () => {
+          acoesPopupRef.current.adicionar([decodeURIComponent(b.dataset.key || '')])
+          map.closePopup()
+        }
+      })
+
+      const btnTodos = el.querySelector('button[data-viagem-todos]') as HTMLButtonElement | null
+      if (btnTodos) {
+        btnTodos.onclick = () => {
+          acoesPopupRef.current.adicionar(decodeURIComponent(btnTodos.dataset.keys || '').split('|').filter(Boolean))
+          map.closePopup()
+        }
       }
     })
     mapRef.current = map
@@ -519,8 +843,24 @@ export function MapaVisitas() {
       mapRef.current = null
       layerRef.current = null
       raioLayerRef.current = null
+      viagemLayerRef.current = null
     }
   }, [])
+
+  // Mantém as ações do popup sempre atuais (o handler acima tem closure congelado).
+  useEffect(() => {
+    acoesPopupRef.current = {
+      adicionar: (keys: string[]) => adicionarClientes(keys),
+      marcar: (chave: string) => {
+        const info = pontoInfoRef.current.get(chave)
+        setMarcarAlvo({ chave, cliente: info?.cliente ?? null, telefone: info?.telefone ?? null })
+      },
+      origem: (c: { lat: number; lng: number }) => {
+        setCfgViagem({ origem: { nome: `Ponto no mapa (${c.lat.toFixed(3)}, ${c.lng.toFixed(3)})`, lat: c.lat, lng: c.lng } })
+        setEscolhendoOrigem(false)
+      },
+    }
+  })
 
   // Celular: revalida o tamanho do mapa em resize/rotação (senão fica cinza/cortado).
   useEffect(() => {
@@ -570,16 +910,129 @@ export function MapaVisitas() {
             : L.circleMarker([p.lat, p.lng], {
                 renderer, radius: 5, fillColor: corOrcamento(p), color: '#fff', weight: 1, fillOpacity: 0.92,
               })
-        m.bindPopup(() => popupOrcamento(p, mk))
+        m.bindPopup(() => {
+          const ctx = ctxPopupRef.current
+          return popupOrcamento(p, mk, undefined, ctx.ativo
+            ? { vizinhos: ctx.porCoord.get(kCoord(p.lat, p.lng)) ?? [p], jaNaViagem: ctx.dentro }
+            : undefined)
+        })
         m.addTo(layer)
         // estrela/diamante visitado mantém a forma; ✓ vai num selinho no canto
         if (visitado && forma) L.marker([p.lat, p.lng], { icon: checkIcon(), interactive: false, zIndexOffset: 1000 }).addTo(layer)
         bounds.push([p.lat, p.lng])
       }
     }
-    if (bounds.length && !centro) map.fitBounds(bounds, { padding: [50, 50], maxZoom: 10 })
+    // No modo viagem o enquadramento é da ROTA — não pode ser roubado a cada
+    // repintura de pino, senão o mapa pula toda vez que um filtro muda.
+    if (bounds.length && !centro && !modoViagemRef.current) map.fitBounds(bounds, { padding: [50, 50], maxZoom: 10 })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showVis, showOrc, visFiltradas, orcFiltrados, vendedores, byVendId, globId, marc])
+
+  // Mantém o contexto do popup atual sem forçar repintura da camada de pinos.
+  useEffect(() => {
+    ctxPopupRef.current = { ativo: modoViagem, porCoord: pontosPorCoord, dentro: naViagem }
+  }, [modoViagem, pontosPorCoord, naViagem])
+
+  // §25.18 — confirmar uma localização tem que recalcular a rota.
+  // Quando a RPC volta com coordenada nova (a v2 faz left join em
+  // cliente_localizacao), as paradas já montadas são reposicionadas. Se a
+  // precisão subiu de 'cidade'/'estado' pra real, a parada vira parada de CLIENTE.
+  useEffect(() => {
+    if (!modoViagem || !paradas.length) return
+    let mudou = false
+    const atualizadas = paradas.map(p => {
+      const primeiro = p.clientes[0] ? pontoPorKey.get(p.clientes[0].cliKey) : undefined
+      if (!primeiro) return p
+      if (primeiro.lat === p.lat && primeiro.lng === p.lng && primeiro.precisao === p.precisao) return p
+      mudou = true
+      const virouReal = primeiro.precisao !== 'cidade' && primeiro.precisao !== 'estado'
+      return {
+        ...p,
+        lat: primeiro.lat, lng: primeiro.lng, precisao: primeiro.precisao,
+        tipo: virouReal && p.clientes.length === 1 ? ('cliente' as const) : p.tipo,
+      }
+    })
+    if (mudou) {
+      setParadas(atualizadas)
+      setTrechos(new Map())          // trechos antigos apontam pra coordenada velha
+      geometriasRef.current = []
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pontoPorKey, modoViagem])
+
+  // ── camada da VIAGEM: pinos numerados + linha da rota ─────────────────────
+  useEffect(() => {
+    const map = mapRef.current
+    const vl = viagemLayerRef.current
+    if (!map || !vl) return
+    vl.clearLayers()
+    if (!modoViagem) return
+
+    if (cfgViagem.origem) {
+      L.marker([cfgViagem.origem.lat, cfgViagem.origem.lng], {
+        icon: L.divIcon({
+          className: 'viagem-origem',
+          html: `<div style="width:26px;height:26px;border-radius:50%;background:#0f172a;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;font-size:13px">🛫</div>`,
+          iconSize: [26, 26], iconAnchor: [13, 13], popupAnchor: [0, -14],
+        }),
+        zIndexOffset: 2000,
+      }).bindPopup(`<b>Partida</b><br>${esc(cfgViagem.origem.nome)}`).addTo(vl)
+    }
+
+    // Trechos calculados de verdade viram linha cheia; o resto fica pontilhado
+    // (§17: "trechos ainda não calculados em linha pontilhada").
+    for (const d of prog.dias) {
+      const cor = corDoDia(d.dia)
+      let anterior: [number, number] | null =
+        cfgViagem.origem ? [cfgViagem.origem.lat, cfgViagem.origem.lng] : null
+      for (const pp of d.paradas) {
+        const aqui: [number, number] = [pp.parada.lat, pp.parada.lng]
+        if (anterior) {
+          const real = pp.trechoAnterior && !pp.trechoAnterior.estimado
+          L.polyline([anterior, aqui], {
+            color: cor, weight: real ? 3.5 : 2.5, opacity: 0.85,
+            dashArray: real ? undefined : '7 7',
+          }).bindPopup(
+            `<div style="font-size:12px"><b>${esc(pp.deQuem)}</b> → <b>${esc(nomeParada(pp.parada))}</b><br>`
+            + `${pp.trechoAnterior ? `${(pp.trechoAnterior.metros / 1000).toFixed(0)} km · ${Math.round(pp.trechoAnterior.segundos / 60)} min` : '—'}`
+            + `${real ? '' : ' <i>(estimado)</i>'}<br>`
+            + `Saída ${String(Math.floor((pp.chegada - Math.round((pp.trechoAnterior?.segundos ?? 0) / 60)) / 60)).padStart(2, '0')}h · Chegada ${String(Math.floor(pp.chegada / 60)).padStart(2, '0')}:${String(pp.chegada % 60).padStart(2, '0')}</div>`,
+          ).addTo(vl)
+        }
+        const aprox = pp.parada.precisao === 'cidade'
+        L.marker(aqui, {
+          icon: L.divIcon({
+            className: 'viagem-parada',
+            html: `<div style="position:relative;width:26px;height:26px">
+              <div style="width:26px;height:26px;border-radius:50%;background:${cor};border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:12px">${pp.ordem}</div>
+              ${aprox ? `<div style="position:absolute;right:-4px;bottom:-3px;font-size:11px;line-height:1" title="Localização aproximada">⚠️</div>` : ''}
+            </div>`,
+            iconSize: [26, 26], iconAnchor: [13, 13], popupAnchor: [0, -14],
+          }),
+          zIndexOffset: 1500,
+        }).bindPopup(
+          `<div style="min-width:180px"><b>${pp.ordem}. ${esc(nomeParada(pp.parada))}</b><br>`
+          + `<span style="color:#64748b;font-size:12px">Dia ${d.dia} · ${[esc(pp.parada.cidade), esc(pp.parada.uf)].filter(Boolean).join('/')}</span><br>`
+          + `<span style="font-size:12px">Chega ${String(Math.floor(pp.chegada / 60)).padStart(2, '0')}:${String(pp.chegada % 60).padStart(2, '0')} · sai ${String(Math.floor(pp.saida / 60)).padStart(2, '0')}:${String(pp.saida % 60).padStart(2, '0')}</span>`
+          + (aprox ? `<div style="margin-top:4px;font-size:11px;color:#d97706;font-weight:600">⚠️ Centro da cidade — não é o endereço</div>` : '')
+          + `</div>`,
+        ).addTo(vl)
+        anterior = aqui
+      }
+      const volta = cfgViagem.retornarOrigem ? cfgViagem.origem : cfgViagem.destino
+      if (volta && anterior) {
+        L.polyline([anterior, [volta.lat, volta.lng]], { color: cor, weight: 2, opacity: 0.5, dashArray: '4 8' }).addTo(vl)
+      }
+    }
+
+    // Geometria real do OSRM por cima (a linha reta vira o traçado da estrada).
+    for (const g of geometriasRef.current) {
+      if (Array.isArray(g) && g.length > 1) {
+        L.polyline(g, { color: '#0f172a', weight: 1.5, opacity: 0.35 }).addTo(vl)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modoViagem, prog, cfgViagem.origem, cfgViagem.destino, cfgViagem.retornarOrigem, provedorRota])
 
   // desenha círculo do raio
   useEffect(() => {
@@ -770,6 +1223,13 @@ export function MapaVisitas() {
           <button className={togglePill(showVis)} onClick={() => setShowVis(v => !v)} title="Visitas anotadas no WhatsApp">📍 Visitas</button>
           <button className={togglePill(modoRaio)} onClick={() => { setModoRaio(v => !v); if (modoRaio) setCentro(null) }} title="Filtrar clientes a partir de um ponto no mapa">🎯 Raio</button>
           <button className={togglePill(showLista)} onClick={() => setShowLista(true)} title="Lista de todos os orçamentos cadastrados">📋 Lista</button>
+          <button
+            onClick={() => (modoViagem ? sairDaViagem() : entrarNaViagem())}
+            title="Montar roteiro de visitas escolhendo clientes pelo pino"
+            className={`h-9 px-3 rounded-md border text-[13px] font-bold transition-colors ${modoViagem ? 'bg-blue-600 border-blue-600 text-white' : 'bg-blue-50 border-blue-300 text-blue-700 hover:bg-blue-100'}`}
+          >
+            🧭 {modoViagem ? `Viagem (${paradas.length})` : 'Planejar viagem'}
+          </button>
           <select value={vendedorSel} onChange={e => setVendedorSel(e.target.value)} className="h-9 px-3 rounded-md bg-surface border border-border text-[13px] text-ink">
             <option value="">Todos os vendedores</option>
             {vendedores.map(v => <option key={v} value={v}>{v}</option>)}
@@ -852,6 +1312,12 @@ export function MapaVisitas() {
             <button onClick={() => { setModoRaio(v => !v); if (modoRaio) setCentro(null) }} className={`h-9 px-3 rounded-lg border text-[12px] font-semibold shadow ${modoRaio ? 'bg-accent text-white border-accent' : 'bg-surface/95 backdrop-blur border-border text-ink-muted'}`}>🎯 Raio</button>
             <button onClick={() => setShowVis(v => !v)} className={`h-9 px-3 rounded-lg border text-[12px] font-semibold shadow ${showVis ? 'bg-accent text-white border-accent' : 'bg-surface/95 backdrop-blur border-border text-ink-muted'}`}>📍 Visitas</button>
             <button onClick={() => setUfSheet(true)} className={`h-9 px-3 rounded-lg border text-[12px] font-semibold shadow ${ufSel ? 'bg-accent text-white border-accent' : 'bg-surface/95 backdrop-blur border-border text-ink-muted'}`}>🗺️ {ufSel || 'Estados'}</button>
+            <button
+              onClick={() => { if (modoViagem) { setViagemSheet(true) } else { entrarNaViagem(); setViagemSheet(true) } }}
+              className={`h-9 px-3 rounded-lg border text-[12px] font-bold shadow ${modoViagem ? 'bg-blue-600 text-white border-blue-600' : 'bg-surface/95 backdrop-blur border-blue-300 text-blue-700'}`}
+            >
+              🧭 {modoViagem ? `Viagem ${paradas.length}` : 'Viagem'}
+            </button>
           </div>
           {modoRaio && (
             <div className="pointer-events-auto flex items-center gap-2 rounded-lg bg-surface/95 backdrop-blur border border-border px-3 py-2 text-[12px] text-ink shadow">
@@ -878,8 +1344,33 @@ export function MapaVisitas() {
           </div>
         </div>
 
+        {/* Desktop: no modo viagem o painel lateral vira a viagem (§4 do spec).
+            A sidebar de legenda/estados volta inteira ao sair — nada é perdido. */}
+        {modoViagem && (
+          <div className="hidden md:flex w-[400px] shrink-0 rounded-xl border border-border bg-surface overflow-hidden">
+            <PainelViagem
+              cfg={cfgViagem} setCfg={setCfgViagem}
+              paradas={paradas} setParadas={setParadas}
+              prog={prog}
+              calculando={calculandoRota}
+              provedor={provedorRota}
+              onCalcular={() => void calcularRota()}
+              onSair={sairDaViagem}
+              onFocar={pr => mapRef.current?.setView([pr.lat, pr.lng], 11)}
+              onPedirOrigemNoMapa={() => setEscolhendoOrigem(true)}
+              escolhendoOrigem={escolhendoOrigem}
+              onSalvar={() => void salvarViagem()}
+              salvando={salvandoViagem}
+              salvoEm={viagemSalvaEm}
+              onPDF={() => void gerarPdfViagem()}
+              gerandoPdf={gerandoPdf}
+              onConfirmarLocalizacao={setCorrigirLocal}
+            />
+          </div>
+        )}
+
         {/* sidebar (legenda / lista do raio) — só no desktop */}
-        <div className="hidden md:block w-56 shrink-0 rounded-xl border border-border bg-surface p-3 overflow-y-auto">
+        <div className={`${modoViagem ? 'hidden' : 'hidden md:block'} w-56 shrink-0 rounded-xl border border-border bg-surface p-3 overflow-y-auto`}>
           {modoRaio && centro ? (
             <div>
               <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">{noRaio.length} clientes em {raioKm} km</div>
@@ -981,6 +1472,77 @@ export function MapaVisitas() {
             {listaUF('flex-1 overflow-y-auto -mx-1 px-1', () => setUfSheet(false))}
           </div>
         </div>
+      )}
+
+      {/* Celular: barra da viagem quando a folha está fechada (§4 — expandir/recolher) */}
+      {modoViagem && !viagemSheet && (
+        <button
+          onClick={() => setViagemSheet(true)}
+          className="md:hidden fixed left-2 right-2 bottom-2 z-[1250] h-12 rounded-xl bg-blue-600 text-white shadow-lg flex items-center gap-2 px-3"
+        >
+          <span className="text-[16px]">🧭</span>
+          <span className="text-[13px] font-bold">{paradas.length} parada(s)</span>
+          <span className="text-[11px] opacity-90 tabular-nums">
+            {prog.dias.length} dia(s) · {(prog.totalMetros / 1000).toFixed(0)} km{prog.estimado ? ' ~' : ''}
+          </span>
+          <span className="ml-auto text-[12px] font-semibold">abrir ▲</span>
+        </button>
+      )}
+
+      {/* Celular: folha do planejamento */}
+      {modoViagem && viagemSheet && (
+        <div className="md:hidden fixed inset-0 z-[1300] bg-black/40 flex items-end" onClick={() => setViagemSheet(false)}>
+          <div className="bg-surface w-full rounded-t-2xl border-t border-border h-[82vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="shrink-0 flex justify-center pt-2 pb-1" onClick={() => setViagemSheet(false)}>
+              <span className="h-1 w-10 rounded-full bg-border" />
+            </div>
+            <div className="flex-1 min-h-0">
+              <PainelViagem
+                cfg={cfgViagem} setCfg={setCfgViagem}
+                paradas={paradas} setParadas={setParadas}
+                prog={prog}
+                calculando={calculandoRota}
+                provedor={provedorRota}
+                onCalcular={() => void calcularRota()}
+                onSair={sairDaViagem}
+                onFocar={pr => { setViagemSheet(false); mapRef.current?.setView([pr.lat, pr.lng], 11) }}
+                onPedirOrigemNoMapa={() => { setEscolhendoOrigem(true); setViagemSheet(false) }}
+                escolhendoOrigem={escolhendoOrigem}
+                onSalvar={() => void salvarViagem()}
+                salvando={salvandoViagem}
+                salvoEm={viagemSalvaEm}
+                onPDF={() => void gerarPdfViagem()}
+                gerandoPdf={gerandoPdf}
+                onConfirmarLocalizacao={p => { setCorrigirLocal(p); setViagemSheet(false) }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Aviso flutuante enquanto escolhe a origem clicando no mapa */}
+      {escolhendoOrigem && (
+        <div className="fixed left-1/2 -translate-x-1/2 top-20 md:top-28 z-[1400] rounded-full bg-slate-900 text-white text-[12.5px] font-semibold px-4 py-2 shadow-lg flex items-center gap-2">
+          Clique no mapa pra marcar o ponto de partida
+          <button onClick={() => setEscolhendoOrigem(false)} className="opacity-70 hover:opacity-100">✕</button>
+        </div>
+      )}
+
+      {/* Modal: corrigir localização de um cliente (grava em cliente_localizacao) */}
+      {corrigirLocal && (
+        <CorrigirLocalModal
+          parada={corrigirLocal}
+          onFechar={() => setCorrigirLocal(null)}
+          onSalvar={async (lat, lng, endereco) => {
+            const keys = corrigirLocal.clientes.map(c => c.cliKey)
+            await Promise.all(keys.map(k => salvarLocalMut.mutateAsync({
+              cliKey: k, lat, lng, precisao: 'confirmada', fonte: 'manual', endereco,
+            })))
+            setCorrigirLocal(null)
+            // a RPC faz left join em cliente_localizacao: o pino se move sozinho
+            await refetchOrc()
+          }}
+        />
       )}
 
       {/* Overlay: lista (tabela) */}
@@ -1094,6 +1656,117 @@ export function MapaVisitas() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Corrigir a localização real de um cliente (§13/§14).
+ * Aceita link do Google Maps, coordenada colada ou endereço (Nominatim).
+ * Grava em cliente_localizacao com precisao='confirmada' — a partir daí a
+ * mapa_orcamentos_v2() passa a devolver essa coordenada pro cliente.
+ */
+function CorrigirLocalModal({
+  parada, onFechar, onSalvar,
+}: {
+  parada: Parada
+  onFechar: () => void
+  onSalvar: (lat: number, lng: number, endereco: string | null) => Promise<void>
+}) {
+  const [txt, setTxt] = useState('')
+  const [endereco, setEndereco] = useState('')
+  const [coord, setCoord] = useState<{ lat: number; lng: number } | null>(null)
+  const [buscando, setBuscando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+  const [salvando, setSalvando] = useState(false)
+
+  async function interpretar() {
+    setErro(null)
+    const t = txt.trim()
+    if (!t) return
+    const g = t.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) || t.match(/[?&]q=(-?\d+\.\d+),\s*(-?\d+\.\d+)/)
+    if (g) return setCoord({ lat: Number(g[1]), lng: Number(g[2]) })
+    const c = t.match(/^\s*(-?\d+[.,]\d+)\s*[,;]\s*(-?\d+[.,]\d+)\s*$/)
+    if (c) return setCoord({ lat: Number(c[1].replace(',', '.')), lng: Number(c[2].replace(',', '.')) })
+    setBuscando(true)
+    try {
+      const busca = [t, parada.cidade, parada.uf].filter(Boolean).join(', ')
+      const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=${encodeURIComponent(busca)}`)
+      const j = await r.json()
+      if (Array.isArray(j) && j[0]) {
+        setCoord({ lat: Number(j[0].lat), lng: Number(j[0].lon) })
+        setEndereco(String(j[0].display_name).split(',').slice(0, 4).join(',').trim())
+      } else {
+        setErro('Não achei esse endereço. Cole o link do Google Maps da propriedade — é mais confiável pra zona rural.')
+      }
+    } catch {
+      setErro('Falha na busca. Cole o link do Google Maps.')
+    } finally {
+      setBuscando(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[1400] bg-black/40 flex items-end md:items-center justify-center p-0 md:p-4" onClick={onFechar}>
+      <div className="bg-surface w-full md:max-w-md rounded-t-2xl md:rounded-2xl border border-border p-4 flex flex-col gap-3" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-[15px] font-semibold text-ink truncate">{nomeParada(parada)}</div>
+            <div className="text-[12px] text-ink-muted">{[parada.cidade, parada.uf].filter(Boolean).join('/') || '—'}</div>
+          </div>
+          <button onClick={onFechar} className="h-8 w-8 shrink-0 rounded-md hover:bg-surface-2 text-ink-muted">✕</button>
+        </div>
+
+        <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 px-3 py-2 text-[11.5px] text-amber-900 dark:text-amber-300 leading-snug">
+          A coordenada atual é <b>{PRECISAO_INFO[parada.precisao]?.rotulo?.toLowerCase()}</b>. Corrigir aqui vale pra
+          {parada.clientes.length > 1 ? ` os ${parada.clientes.length} clientes desta parada` : ' este cliente'} e move o pino no mapa.
+        </div>
+
+        <div>
+          <div className="text-[12px] text-ink-muted mb-1">Link do Google Maps, coordenada ou endereço</div>
+          <div className="flex gap-1.5">
+            <input
+              value={txt}
+              onChange={e => { setTxt(e.target.value); setCoord(null) }}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void interpretar() } }}
+              placeholder="https://maps.app.goo.gl/… ou -5.0919, -42.8034"
+              className="flex-1 min-w-0 h-10 px-3 rounded-lg bg-surface-2 border border-border text-[13.5px] text-ink placeholder:text-ink-faint outline-none focus:border-accent"
+            />
+            <button onClick={() => void interpretar()} disabled={buscando || !txt.trim()}
+                    className="h-10 px-3 rounded-lg bg-surface border border-border text-[13px] font-semibold text-ink disabled:opacity-50">
+              {buscando ? '…' : 'Ler'}
+            </button>
+          </div>
+          {erro && <div className="text-[11.5px] text-red-600 mt-1.5 leading-snug">{erro}</div>}
+        </div>
+
+        {coord && (
+          <div className="rounded-lg border border-green-300 bg-green-50 dark:bg-green-950/20 px-3 py-2">
+            <div className="text-[12px] font-semibold text-green-800 dark:text-green-400">✓ Localização lida</div>
+            <div className="text-[11.5px] tabular-nums text-ink-muted">{coord.lat.toFixed(6)}, {coord.lng.toFixed(6)}</div>
+            <a href={`https://www.google.com/maps/search/?api=1&query=${coord.lat},${coord.lng}`} target="_blank" rel="noopener"
+               className="text-[11.5px] font-semibold text-accent">conferir no Google Maps ↗</a>
+            <input
+              value={endereco} onChange={e => setEndereco(e.target.value)}
+              placeholder="Endereço (opcional, pra registro)"
+              className="mt-2 w-full h-8 px-2 rounded-md bg-surface border border-border text-[12px] text-ink placeholder:text-ink-faint outline-none"
+            />
+          </div>
+        )}
+
+        <button
+          onClick={async () => {
+            if (!coord) return
+            setSalvando(true)
+            try { await onSalvar(coord.lat, coord.lng, endereco.trim() || null) }
+            catch { setErro('Não consegui salvar. Tente de novo.'); setSalvando(false) }
+          }}
+          disabled={!coord || salvando}
+          className="h-11 rounded-lg bg-accent text-white font-semibold text-[14px] disabled:opacity-50"
+        >
+          {salvando ? 'Salvando…' : 'Confirmar localização'}
+        </button>
+      </div>
     </div>
   )
 }
