@@ -94,7 +94,11 @@ export function GraficoVolume({
     <div className="vr-chart" data-no-break>
       <h3>Resultado por volume</h3>
       <p>Lucro estimado no preço negociado, conforme o volume vendido.</p>
-      <svg viewBox={`0 0 320 ${A + 28}`} preserveAspectRatio="none" role="img" aria-label="Lucro por volume vendido">
+      {/* SEM preserveAspectRatio="none": com ele o SVG era esticado pra largura
+          do container, e a distorcao horizontal achatava o texto, arredondava
+          errado os cantos das barras e deixava o grafico com cara de imagem
+          espremida. O padrao (xMidYMid meet) escala proporcional. */}
+      <svg viewBox={`0 0 320 ${A + 28}`} role="img" aria-label="Lucro por volume vendido">
         <line x1="0" y1={A} x2="320" y2={A} stroke="var(--vr-hair)" strokeWidth="1" />
         {pontos.map((p, i) => {
           const h = Math.max(2, (Math.abs(p.lucro) / maior) * (A - L))
