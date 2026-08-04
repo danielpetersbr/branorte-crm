@@ -513,6 +513,33 @@ export function Disparos() {
                           <span className="text-[9px] text-ink-faint">· v{st.versao}</span>
                         )}
                       </div>
+                      {/* O QUE ESTA LIGADO nesse vendedor. Desligar no painel parava
+                          só o roteamento — a prospecção seguia abrindo cliente novo
+                          na extensão dele. Agora não, e a tela mostra. */}
+                      {(() => {
+                        const ef = efetivo?.[v.vendedor_nome]
+                        const cortado = cotaCfg?.cota_ativa && Number(ef?.fator_cota ?? 1) === 0
+                        const ligado = v.online && !v.bloqueado
+                        const itens: Array<[string, boolean, string]> = [
+                          ['lead', !!ligado && !cortado,
+                           cortado ? 'Não recebe lead novo: cota de parados' : ligado ? 'Recebe lead novo' : 'Desligado no painel'],
+                          ['prospec', !!ligado && !cortado && v.prospec_ativa !== false,
+                           'Prospecção automática — só roda em quem está ligado e dentro da cota'],
+                          ['funil', v.funil_ativa === true, 'Automação de etiqueta do funil (independe do toggle)'],
+                          ['aval', v.avaliacao_ativa !== false, 'Pedido de avaliação (independe do toggle)'],
+                        ]
+                        return (
+                          <div className="flex items-center gap-1 mt-1 flex-wrap">
+                            {itens.map(([nome, on, hint]) => (
+                              <span key={nome} title={hint}
+                                className={`text-[8px] px-1 py-0.5 rounded font-bold tracking-wide border ${
+                                  on ? 'bg-success-bg text-success border-success/30'
+                                     : 'bg-surface-2 text-ink-faint border-border line-through'
+                                }`}>{nome}</span>
+                            ))}
+                          </div>
+                        )
+                      })()}
                       <div className="mt-1 text-[10px] text-ink-muted">
                         fatia: <span className="text-ink font-semibold tabular-nums">{Number(v.share_percent).toFixed(0)}%</span>
                         {(() => {

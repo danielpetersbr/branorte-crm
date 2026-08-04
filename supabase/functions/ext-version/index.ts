@@ -31,14 +31,36 @@ Deno.serve(async (req: Request) => {
     if (av && typeof av.funil_auto_ativa === 'boolean') funilMaster = av.funil_auto_ativa
     if (av && typeof av.funil_dry_run === 'boolean') funilDryRun = av.funil_dry_run
   } catch (_e) { /* defaults */ }
+  // COTA DE PARADOS: quem a cota zerou tambem para de prospectar. Prospectar e
+  // abrir cliente novo — nao faz sentido barrar o lead que chega e deixar ele ir
+  // buscar mais. FAIL-OPEN: se a leitura falhar, ninguem e cortado.
+  const cortadosPelaCota = new Set<string>()
   try {
-    const { data: vs } = await supa.from('vendor_dispatch_status').select('vendedor_nome, avaliacao_ativa, funil_ativa, prospec_ativa')
+    const { data: cota } = await supa.from('vendor_roteamento_efetivo').select('vendedor_nome, fator_cota')
+    for (const c of (cota ?? [])) {
+      if (c && c.vendedor_nome && Number(c.fator_cota) === 0) {
+        cortadosPelaCota.add(String(c.vendedor_nome).toUpperCase().trim())
+      }
+    }
+  } catch (_e) { /* fail-open: sem cortes */ }
+  try {
+    const { data: vs } = await supa.from('vendor_dispatch_status').select('vendedor_nome, avaliacao_ativa, funil_ativa, prospec_ativa, online, bloqueado')
     for (const v of (vs ?? [])) {
       if (v && v.vendedor_nome) {
         const nome = String(v.vendedor_nome).toUpperCase().trim()
+        // DESLIGADO no painel = nao gera CLIENTE NOVO. So isso.
+        // 2026-08-04: o toggle do /disparos so barrava o roteamento. A prospeccao
+        // automatica seguia rodando na extensao do vendedor desligado, abrindo
+        // conversa nova o dia inteiro — e no /atendimentos parecia que o sistema
+        // estava mandando lead pra quem estava desligado.
+        const ligado = v.online === true && v.bloqueado !== true
+        // Avaliacao e automacao do funil NAO entram nessa regra de proposito:
+        // mexem em conversa que ja existe (etiqueta, pedido de avaliacao). Vendedor
+        // desligado continua trabalhando a carteira dele.
         avaliacaoVendedores[nome] = v.avaliacao_ativa !== false   // avaliacao: opt-out (default ligado)
         funilVendedores[nome] = v.funil_ativa === true            // funil: opt-in (default desligado)
-        prospecVendedores[nome] = v.prospec_ativa !== false        // prospeccao: opt-out (default ligado)
+        // prospeccao: so pra quem esta ligado E nao foi zerado pela cota de parados
+        prospecVendedores[nome] = ligado && !cortadosPelaCota.has(nome) && v.prospec_ativa !== false
       }
     }
   } catch (_e) { /* mapa vazio = todos default */ }
