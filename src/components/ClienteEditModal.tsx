@@ -3,6 +3,9 @@ import { X, Search, Loader2, Check, Building2, User, Tractor, ClipboardPaste } f
 import { Input } from '@/components/ui/Input'
 import type { PreviewClienteDados } from './OrcamentoPreview'
 import { parseClienteText, titleCasePtBr } from '@/lib/parse-cliente-text'
+import {
+  OPCOES_DDI, DDI_BRASIL, montarFone, separarFone, validarFone, formatarFone,
+} from '@/lib/telefone-ddi'
 import { supabase } from '@/lib/supabase'
 
 interface Props {
@@ -46,13 +49,12 @@ function fmtDocumento(v: string): string {
   return fmtCnpj(v)
 }
 
-// Formata telefone: (48) 99999-9999
+// A mascara mora em @/lib/telefone-ddi, com teste. Aqui ficava uma copia que
+// aplicava o formato BRASILEIRO em cima de qualquer coisa: numero do Paraguai
+// (12 digitos) saia "(59) 59811-2345" — com cara de brasileiro E com o ultimo
+// digito comido. Agora depende do DDI escolhido.
 function fmtFone(v: string): string {
-  const d = somenteDigitos(v)
-  if (d.length <= 2) return d
-  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`
-  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`
-  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7, 11)}`
+  return formatarFone(v, DDI_BRASIL)
 }
 
 // Formata CEP: 88890-000
@@ -221,6 +223,9 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
   const [nome, setNome] = useState('')
   const [ac, setAc] = useState('')
   const [fone, setFone] = useState('')
+  // Fora do Brasil a mascara e a validacao sao OUTRAS. Sem isto o vendedor nao
+  // consegue registrar cliente do exterior — o campo mutilava o numero.
+  const [ddi, setDdi] = useState(DDI_BRASIL)
   const [cidade, setCidade] = useState('')
   const [uf, setUf] = useState('')
   const [bairro, setBairro] = useState('')
@@ -240,7 +245,8 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
     if (!open) return
     setNome(cliente.nome || '')
     setAc(cliente.ac || '')
-    setFone(cliente.fone || '')
+    // Reabrir orcamento de cliente estrangeiro tem que voltar no pais certo.
+    { const sep = separarFone(cliente.fone); setDdi(sep.ddi); setFone(sep.numero) }
     setCidade(cliente.cidade || '')
     setUf('')
     setBairro(cliente.bairro || '')
@@ -441,10 +447,9 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
       setErroSalvar('Preencha o Nome / Razão Social.')
       return
     }
-    if (somenteDigitos(fone).length < 10) {
-      setErroSalvar('Telefone é obrigatório (com DDD) — é o que amarra o orçamento ao cliente/lead.')
-      return
-    }
+    // A regra do Brasil (DDD + 10 digitos) NAO vale fora daqui: numero nacional
+    // varia de 6 a 12 digitos pelo mundo, e exigir 10 recusaria cliente legitimo.
+    { const v = validarFone(fone, ddi); if (!v.ok) { setErroSalvar(v.erro); return } }
     // Inscrição é opcional — o vendedor define a situação fiscal se/quando tiver.
     setErroSalvar(null)
     // Isento → grava "ISENTO" no valor pra aparecer em todos os formatos (PDF/DOCX);
@@ -453,7 +458,9 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
     onSave({
       nome: nome.trim() || undefined,
       ac: ac.trim() || null,
-      fone: fone.trim() || null,
+      // BR sai sem prefixo (e o formato que o CRM inteiro ja espera, e o que casa
+      // com o lead por fone_canon); estrangeiro sai com +DDI, senao nao disca.
+      fone: montarFone(fone, ddi) || null,
       cidade: cidade.trim() ? `${cidade.trim()}${uf.trim() ? ` - ${uf.trim().toUpperCase()}` : ''}` : null,
       bairro: bairro.trim() || null,
       endereco: endereco.trim() || null,
@@ -474,7 +481,7 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
     const { cliente_nome, dados } = parseClienteText(textoColado)
     if (cliente_nome) setNome(titleCasePtBr(cliente_nome))
     if (dados.ac) setAc(dados.ac)
-    if (dados.fone) setFone(dados.fone)
+    if (dados.fone) { const sep = separarFone(dados.fone); setDdi(sep.ddi); setFone(sep.numero) }
     if (dados.cidade) setCidade(dados.cidade)
     if (dados.uf) setUf(dados.uf)
     if (dados.bairro) setBairro(dados.bairro)
@@ -538,7 +545,7 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
                   const { cliente_nome, dados } = parseClienteText(pasted)
                   if (cliente_nome) setNome(titleCasePtBr(cliente_nome))
                   if (dados.ac) setAc(dados.ac)
-                  if (dados.fone) setFone(dados.fone)
+                  if (dados.fone) { const sep = separarFone(dados.fone); setDdi(sep.ddi); setFone(sep.numero) }
                   if (dados.cidade) setCidade(dados.cidade)
                   if (dados.uf) setUf(dados.uf)
                   if (dados.bairro) setBairro(dados.bairro)
@@ -633,11 +640,39 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
               <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1">
                 Telefone <span className="text-danger">*</span>
               </label>
-              <Input
-                value={fone}
-                onChange={e => { setFone(fmtFone(e.target.value)); if (erroSalvar) setErroSalvar(null) }}
-                placeholder="(48) 99999-9999"
-              />
+              {/* DDI ao lado, nao dentro: o vendedor precisa VER em que pais esta
+                  antes de digitar, senao digita o numero e depois descobre que a
+                  mascara errada ja comeu um digito. */}
+              <div className="flex gap-1.5">
+                <select
+                  value={ddi}
+                  onChange={e => {
+                    const novo = e.target.value
+                    setDdi(novo)
+                    // Reaplica a mascara do pais novo em cima do que ja esta
+                    // digitado — trocar o DDI e deixar o texto no formato antigo
+                    // deixaria "(48) 99999-9999" num campo do Paraguai.
+                    setFone(f => formatarFone(f, novo))
+                    if (erroSalvar) setErroSalvar(null)
+                  }}
+                  title="Codigo do pais"
+                  className="h-9 shrink-0 rounded-md bg-surface border border-border px-1.5 text-[13px] text-ink outline-none focus:border-accent max-w-[104px]"
+                >
+                  {OPCOES_DDI.map(o => (
+                    <option key={o.ddi} value={o.ddi}>+{o.ddi} {o.sigla}</option>
+                  ))}
+                </select>
+                <Input
+                  value={fone}
+                  onChange={e => { setFone(formatarFone(e.target.value, ddi)); if (erroSalvar) setErroSalvar(null) }}
+                  placeholder={ddi === DDI_BRASIL ? '(48) 99999-9999' : 'numero sem o codigo do pais'}
+                />
+              </div>
+              {ddi !== DDI_BRASIL && (
+                <div className="mt-1 text-[11px] text-ink-faint">
+                  Vai gravar como <b className="text-ink">+{ddi} {fone || '…'}</b>
+                </div>
+              )}
             </div>
           </div>
 

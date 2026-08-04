@@ -17,6 +17,10 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 const HOSTS = ['maps.app.goo.gl', 'goo.gl', 'g.co']
 const UA = 'BranorteCRM/1.0 (planejamento de viagem; contato: daniel.peters.br@gmail.com)'
 const TIMEOUT_MS = 8000
+/** Teto do TOTAL, não de cada salto. 5 saltos x 8 s davam 40 s de pior caso, e a
+ *  função não tem maxDuration declarado no vercel.json: a plataforma cortava
+ *  antes, e aí o contrato "nunca 500 silencioso" virava exatamente isso. */
+const TIMEOUT_TOTAL_MS = 12000
 /** Encurtador às vezes encadeia. Mais que isso é laço ou armadilha. */
 const MAX_SALTOS = 5
 
@@ -74,6 +78,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let atual = url
   try {
     for (let salto = 0; salto < MAX_SALTOS; salto++) {
+      if (Date.now() - t0 > TIMEOUT_TOTAL_MS) {
+        console.log(`[resolver-link] estourou o total host=${new URL(url).hostname} saltos=${salto}`)
+        res.status(200).json({
+          ok: false,
+          motivo: 'O link demorou demais pra responder. Tente de novo em alguns segundos.',
+        } satisfies Falha)
+        return
+      }
       const ac = new AbortController()
       const timer = setTimeout(() => ac.abort(), TIMEOUT_MS)
       let r: Response
@@ -92,8 +104,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const destino = r.headers.get('location')
       if (destino) {
-        atual = destino.startsWith('http') ? destino : new URL(destino, atual).toString()
-        const achou = coordDaUrl(atual)
+        const proximo = destino.startsWith('http') ? destino : new URL(destino, atual).toString()
+        // A coordenada pode estar no Location SEM que a gente precise seguir.
+        // Lê primeiro, e só depois decide se vale continuar.
+        const achouAqui = coordDaUrl(proximo)
+        // ALLOWLIST A CADA SALTO, não só na entrada. Antes, o destino lido do
+        // Location era refetchado na volta seguinte sem passar por
+        // hostPermitido(): bastava um host da lista responder 30x apontando pra
+        // um endereço interno e o servidor ia atrás. O que segurava era o Google
+        // não ter open redirect — não havia defesa no código.
+        if (!achouAqui && !hostPermitido(proximo)) {
+          console.log(`[resolver-link] salto barrado host=${new URL(url).hostname}`)
+          res.status(200).json({
+            ok: false,
+            motivo: 'Esse link redireciona pra fora do Google Maps. Não vou seguir.',
+          } satisfies Falha)
+          return
+        }
+        atual = proximo
+        const achou = achouAqui
         if (achou) {
           console.log(`[resolver-link] ok host=${new URL(url).hostname} saltos=${salto + 1} ms=${Date.now() - t0}`)
           res.status(200).json({ ok: true, ...achou, url: atual } satisfies Ok)

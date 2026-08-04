@@ -34,28 +34,62 @@ const dataBR = (iso: string | null) =>
 
 /** Falta o quê pra essa parada estar pronta. Vazio = pronta. */
 function pendencias(p: ParadaConfirmacao): string[] {
+  // Cliente que já disse não: não se cobra localização de visita que não vai
+  // acontecer. Antes o quadro pedia o endereço de quem tinha recusado.
+  if (p.confirmacao === 'indisponivel') return []
   const f: string[] = []
   if (p.precisao === 'cidade' || p.precisao === 'estado') f.push('localização')
-  if (p.confirmacao !== 'visita_confirmada' && p.confirmacao !== 'indisponivel') f.push('confirmação')
+  if (p.confirmacao !== 'visita_confirmada') f.push('confirmação')
   return f
 }
 
+/**
+ * Pronta = dá pra visitar. Cliente que disse NÃO está RESOLVIDO, não pronto —
+ * tratar os dois como a mesma coisa fazia a barra ficar 100% verde e oferecer
+ * "marcar como pronta pra rodar" numa viagem onde ninguém pode receber.
+ */
 const pronta = (p: ParadaConfirmacao) =>
-  p.confirmacao === 'indisponivel' || pendencias(p).length === 0
+  p.confirmacao !== 'indisponivel' && pendencias(p).length === 0
+
+/** Já não pede mais nada — ou porque está pronta, ou porque o cliente recusou. */
+const resolvida = (p: ParadaConfirmacao) =>
+  p.confirmacao === 'indisponivel' || pronta(p)
+
+/** Lembra se o quadro estava aberto entre uma visita e outra à página. */
+const CHAVE_ABERTO = 'branorte:organizacao-viagem-aberto'
 
 export function OrganizacaoViagem({ onAbrirViagem }: { onAbrirViagem: (id: string) => void }) {
   const { data: viagens = [], isLoading, isError, refetch } = useQuadroViagens()
   const [aberta, setAberta] = useState<string | null>(null)
 
+  // FECHADO por padrão. O /mapa-visitas já é uma tela cheia — filtros, painel de
+  // valor por estado, planejador. Mais um bloco sempre aberto embaixo empurra o
+  // mapa pra cima e vira ruído pra quem só quer ver os pinos. Fica como OPÇÃO,
+  // com o contador do lado pra não precisar abrir só pra saber se tem algo.
+  const [aberto, setAberto] = useState(() => {
+    try { return localStorage.getItem(CHAVE_ABERTO) === '1' } catch { return false }
+  })
+  const alternar = () => setAberto(v => {
+    const novo = !v
+    try { localStorage.setItem(CHAVE_ABERTO, novo ? '1' : '0') } catch { /* modo anônimo */ }
+    return novo
+  })
+
   // Viagem que ainda não tem parada nenhuma é rascunho vazio: só polui.
   const lista = useMemo(() => viagens.filter(v => v.paradas > 0), [viagens])
 
+  // Quanto falta no total — é o que justifica abrir.
+  const pendentes = useMemo(
+    () => lista.reduce((n, v) => n + v.paradasDetalhe.filter(p => pendencias(p).length > 0).length, 0),
+    [lista],
+  )
+
   if (isLoading) {
-    return <Moldura><div className="p-4 text-[13px] text-ink-faint">Carregando viagens…</div></Moldura>
+    return <Moldura aberto={aberto} alternar={alternar} viagens={lista.length} pendentes={pendentes}><div className="p-4 text-[13px] text-ink-faint">Carregando viagens…</div></Moldura>
   }
   if (isError) {
     return (
-      <Moldura>
+      <Moldura aberto={aberto} alternar={alternar} viagens={lista.length} pendentes={pendentes}>
         <div className="p-4 text-[13px] text-red-600 flex items-center gap-2">
           Não consegui carregar as viagens.
           <button onClick={() => refetch()} className="underline font-semibold">tentar de novo</button>
@@ -65,7 +99,7 @@ export function OrganizacaoViagem({ onAbrirViagem }: { onAbrirViagem: (id: strin
   }
   if (!lista.length) {
     return (
-      <Moldura>
+      <Moldura aberto={aberto} alternar={alternar} viagens={lista.length} pendentes={pendentes}>
         <div className="p-4 text-[13px] text-ink-faint">
           Nenhuma viagem aguardando. Monte um roteiro em <b className="text-ink">🧭 Planejar viagem</b> e
           clique em <b className="text-ink">Salvar</b> — ele aparece aqui pra os vendedores confirmarem.
@@ -75,7 +109,7 @@ export function OrganizacaoViagem({ onAbrirViagem }: { onAbrirViagem: (id: strin
   }
 
   return (
-    <Moldura>
+    <Moldura aberto={aberto} alternar={alternar} viagens={lista.length} pendentes={pendentes}>
       <div className="divide-y divide-border">
         {lista.map(v => (
           <CardViagem
@@ -91,17 +125,44 @@ export function OrganizacaoViagem({ onAbrirViagem }: { onAbrirViagem: (id: strin
   )
 }
 
-function Moldura({ children }: { children: React.ReactNode }) {
+function Moldura({
+  children, aberto, alternar, viagens, pendentes,
+}: {
+  children: React.ReactNode
+  aberto: boolean
+  alternar: () => void
+  viagens: number
+  pendentes: number
+}) {
   return (
     <section className="mt-4 rounded-xl border border-border bg-surface overflow-hidden">
-      <header className="px-4 py-3 border-b border-border flex items-center gap-2">
+      {/* Fechado, é UMA LINHA. Os números ficam do lado justamente pra não ter
+          que abrir só pra descobrir se tem algo esperando. */}
+      <button
+        onClick={alternar}
+        className="w-full px-4 py-3 flex items-center gap-2 text-left hover:bg-surface-2 transition-colors"
+      >
+        <span className="text-[12px] text-ink-faint w-3">{aberto ? '▾' : '▸'}</span>
         <span className="text-[15px]">🧭</span>
         <h2 className="text-[14px] font-bold text-ink">Organização de viagem</h2>
-        <span className="text-[12px] text-ink-faint">
-          — aguardando o vendedor confirmar com o cliente
+        {viagens > 0 && (
+          <span className="text-[12px] text-ink-faint">
+            {viagens} viagem{viagens > 1 ? 's' : ''}
+          </span>
+        )}
+        {pendentes > 0 && (
+          <span
+            className="text-[11px] font-bold px-2 py-0.5 rounded"
+            style={{ color: '#d97706', background: 'rgba(217,119,6,.14)' }}
+          >
+            {pendentes} aguardando o vendedor
+          </span>
+        )}
+        <span className="ml-auto text-[12px] text-ink-faint">
+          {aberto ? 'fechar' : 'abrir'}
         </span>
-      </header>
-      {children}
+      </button>
+      {aberto && <div className="border-t border-border">{children}</div>}
     </section>
   )
 }
@@ -116,8 +177,11 @@ function CardViagem({
 }) {
   const status = useStatusViagem()
   const prontas = v.paradasDetalhe.filter(pronta).length
-  const pct = v.paradas ? Math.round((prontas / v.paradas) * 100) : 0
-  const tudoPronto = prontas === v.paradas && v.paradas > 0
+  const resolvidas = v.paradasDetalhe.filter(resolvida).length
+  const pct = v.paradas ? Math.round((resolvidas / v.paradas) * 100) : 0
+  // Só oferece rodar se sobrou visita PRA VALER. Sem o `prontas > 0`, uma viagem
+  // em que os 4 clientes recusaram batia 100% e virava roteiro de zero visitas.
+  const tudoPronto = resolvidas === v.paradas && prontas > 0
 
   return (
     <div>
@@ -135,6 +199,7 @@ function CardViagem({
           )}
           <span className="ml-auto text-[12px] font-bold tabular-nums" style={{ color: tudoPronto ? '#16a34a' : '#d97706' }}>
             {prontas}/{v.paradas} pronta{v.paradas > 1 ? 's' : ''}
+            {v.indisponiveis > 0 ? ` · ${v.indisponiveis} fora` : ''}
           </span>
         </div>
         {/* A barra é o resumo honesto: verde só quando dá pra sair dirigindo. */}
@@ -220,7 +285,9 @@ function LinhaParada({ p, viagem }: { p: ParadaConfirmacao; viagem: ViagemQuadro
   function copiarRecado() {
     const onde = [p.cidade, p.uf].filter(Boolean).join('/') || '—'
     const msg = [
-      `Oi ${p.vendedor || ''}, tudo bem?`.replace('  ', ' '),
+      // Sem nome do vendedor, "Oi , tudo bem?" — o replace de espaço duplo não
+      // pegava, porque a sobra é ANTES da vírgula.
+      p.vendedor ? `Oi ${p.vendedor}, tudo bem?` : 'Oi, tudo bem?',
       '',
       `Tô montando a *${viagem.nome}* e o cliente *${p.nome}* (${onde}) está na lista.`,
       `Previsão: ${dataBR(viagem.data_inicio)}${viagem.dias > 1 ? ` (dia ${p.dia} da viagem)` : ''}.`,
@@ -235,13 +302,19 @@ function LinhaParada({ p, viagem }: { p: ParadaConfirmacao; viagem: ViagemQuadro
         ? 'O que eu tenho aqui é só o centro da cidade, então sem isso a rota sai errada.'
         : '',
     ].filter(l => l !== '').join('\n')
+    // O avanço para "com o vendedor" só acontece SE a cópia deu certo. Fora do
+    // then, a parada mudava de estado mesmo com o erro "não consegui copiar" na
+    // tela — o quadro passava a dizer que o vendedor foi acionado sem nenhuma
+    // mensagem ter saído.
     navigator.clipboard.writeText(msg).then(
-      () => { setCopiado(true); setTimeout(() => setCopiado(false), 2200) },
+      () => {
+        setCopiado(true); setTimeout(() => setCopiado(false), 2200)
+        if (p.confirmacao === 'nao_solicitado') {
+          confirmar.mutate({ paradaId: p.id, confirmacao: 'aguardando_vendedor' })
+        }
+      },
       () => setErro('Não consegui copiar. Selecione o texto na mão.'),
     )
-    if (p.confirmacao === 'nao_solicitado') {
-      confirmar.mutate({ paradaId: p.id, confirmacao: 'aguardando_vendedor' })
-    }
   }
 
   /** Aceita link do Google, localização do WhatsApp, geo: ou coordenada colada. */
@@ -251,6 +324,7 @@ function LinhaParada({ p, viagem }: { p: ParadaConfirmacao; viagem: ViagemQuadro
     if (!t) return
 
     let achado = lerLocal(t)
+    let motivo: string | null = null
 
     // Link curto do celular não tem coordenada dentro — precisa seguir o
     // redirecionamento, e isso só dá server-side (o encurtador não manda CORS).
@@ -263,16 +337,20 @@ function LinhaParada({ p, viagem }: { p: ParadaConfirmacao; viagem: ViagemQuadro
         })
         const j = await r.json()
         if (j?.ok) achado = { lat: j.lat, lng: j.lng, fonte: 'link_curto_resolvido' }
-        else setErro(j?.motivo || 'Não consegui abrir esse link.')
+        else motivo = j?.motivo || 'Não consegui abrir esse link.'
       } catch {
-        setErro('Não consegui abrir esse link agora. Tente de novo.')
+        motivo = 'Não consegui abrir esse link agora. Tente de novo.'
       } finally {
         setResolvendo(false)
       }
     }
 
     if (!achado) {
-      if (!erro) setErro('Não achei coordenada aí. Cole o link do Google Maps, a localização do WhatsApp, ou "-7.2297, -44.5561".')
+      // `motivo` local, NÃO o state `erro`: dentro desta função o `erro` ainda é
+      // o valor do render anterior. Lendo dele, o motivo específico que o
+      // servidor devolveu ("esse link expirou") era sempre trocado pela
+      // mensagem genérica — e na segunda tentativa a mensagem sumia de vez.
+      setErro(motivo ?? 'Não achei coordenada aí. Cole o link do Google Maps, a localização do WhatsApp, ou "-7.2297, -44.5561".')
       return
     }
 
@@ -319,6 +397,22 @@ function LinhaParada({ p, viagem }: { p: ParadaConfirmacao; viagem: ViagemQuadro
       )}
       {falta.length > 0 && !aprox && (
         <div className="mt-1.5 text-[11.5px] text-ink-faint">Falta: {falta.join(' e ')}.</div>
+      )}
+
+      {/* A RPC nega com 42501 quando a parada e de outro vendedor — e o quadro
+          mostra TODAS as paradas da viagem, entao esse caminho e COMUM. Sem
+          isto o clique nao fazia nada e nao dizia nada: so console. */}
+      {confirmar.isError && (
+        <div className="mt-1.5 text-[11.5px] text-red-600">
+          {/^.*42501|permission|nao e sua|não é sua/i.test(confirmar.error?.message ?? '')
+            ? 'Essa parada é de outro vendedor — só ele (ou quem montou a viagem) pode confirmar.'
+            : `Não consegui salvar: ${confirmar.error?.message}`}
+        </div>
+      )}
+      {corrigir.isError && !colando && (
+        <div className="mt-1.5 text-[11.5px] text-red-600">
+          Não consegui gravar a localização: {corrigir.error?.message}
+        </div>
       )}
 
       <div className="mt-2 flex flex-wrap gap-1.5">

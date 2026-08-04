@@ -11,6 +11,9 @@
     },
     "api/rota.ts": {
       "maxDuration": 30
+    },
+    "api/resolver-link.ts": {
+      "maxDuration": 20
     }
   },
   "headers": [

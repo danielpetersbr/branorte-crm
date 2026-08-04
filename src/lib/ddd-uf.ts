@@ -60,6 +60,20 @@ const DDI_TO_PAIS: Record<string, { sigla: string; nome: string }> = {
   '44':  { sigla: 'GB', nome: 'Reino Unido' },
 }
 
+/**
+ * A MESMA lista acima, com o Brasil na frente, pra quem precisa OFERECER os
+ * países (seletor de DDI do orçamento) e não só classificar um número que já
+ * chegou. O Brasil não está em DDI_TO_PAIS de propósito — lá o `null` significa
+ * "é daqui" — então ele entra aqui explicitamente.
+ *
+ * Exportar daqui em vez de recriar a lista no orçamento: duas listas divergindo
+ * fariam o orçamento aceitar um país que o resto do CRM não sabe classificar.
+ */
+export const DDIS_CONHECIDOS: Array<{ ddi: string; sigla: string; nome: string }> = [
+  { ddi: '55', sigla: 'BR', nome: 'Brasil' },
+  ...Object.entries(DDI_TO_PAIS).map(([ddi, p]) => ({ ddi, ...p })),
+]
+
 export function paisDoTelefone(tel: string | null | undefined): { sigla: string; nome: string } | null {
   if (!tel) return null
   const digits = tel.replace(/\D/g, '')

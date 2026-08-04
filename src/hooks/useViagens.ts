@@ -229,6 +229,7 @@ export function useSalvarViagem() {
     },
     onSuccess: (viagemId) => {
       qc.invalidateQueries({ queryKey: ['viagens'] })
+      qc.invalidateQueries({ queryKey: ['viagens-quadro'] })
       qc.invalidateQueries({ queryKey: ['viagem', viagemId] })
     },
   })
@@ -245,6 +246,7 @@ export function useExcluirViagem() {
     },
     onSuccess: (id) => {
       qc.invalidateQueries({ queryKey: ['viagens'] })
+      qc.invalidateQueries({ queryKey: ['viagens-quadro'] })
       qc.removeQueries({ queryKey: ['viagem', id] })
     },
   })
@@ -290,7 +292,10 @@ export function useDuplicarViagem() {
       }
       return novoId
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['viagens'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['viagens'] })
+      qc.invalidateQueries({ queryKey: ['viagens-quadro'] })
+    },
   })
 }
 
@@ -325,6 +330,9 @@ export function useSalvarLocalizacaoCliente() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['orcamentos-mapa-v2'] })
       qc.invalidateQueries({ queryKey: ['viagem'] })
+      // O quadro mostra a precisão de cada parada: sem isto ele segue dizendo
+      // "no centro da cidade" depois de o vendedor ter corrigido.
+      qc.invalidateQueries({ queryKey: ['viagens-quadro'] })
     },
   })
 }
@@ -472,6 +480,7 @@ export function useStatusViagem() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['viagens-quadro'] })
       qc.invalidateQueries({ queryKey: ['viagens'] })
+      qc.invalidateQueries({ queryKey: ['viagens-quadro'] })
       qc.invalidateQueries({ queryKey: ['viagem'] })
     },
   })

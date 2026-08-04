@@ -92,3 +92,64 @@ test('distanciaKm mede a correção — pra flagrar link errado antes de virar r
   assert.ok(d > 250 && d < 350, `Uruçuí→Teresina deu ${Math.round(d)} km (esperado ~300)`)
   assert.ok(distanciaKm(URUCUI.lat, URUCUI.lng, URUCUI.lat, URUCUI.lng) < 0.001)
 })
+
+// ═════════════════════════════════════════════════════════════════════════════
+// defeitos achados na conferência adversarial (04/08) — cada um mandava o
+// vendedor pra coordenada errada EM SILÊNCIO, por baixo do aviso de 150 km
+// ═════════════════════════════════════════════════════════════════════════════
+
+test('link de DIREÇÕES não devolve a câmera — ela fica no meio do caminho', () => {
+  // Rota Uruçuí→Balsas: o @ da URL é o centro da tela, ~83 km da fazenda. Como
+  // 83 < 150, o confirm não disparava e gravava errado sem ninguém ver.
+  const dir = 'https://www.google.com/maps/dir/-7.2297,-44.5561/-7.5326,-46.0353/@-7.3811,-45.2958,9z'
+  const r = lerLocal(dir)
+  if (r) {
+    assert.ok(Math.abs(r.lat - (-7.3811)) > 0.01,
+      `devolveu a câmera (${r.lat}) — é o ponto do meio da rota, não o cliente`)
+  }
+})
+
+test('em texto com DUAS coordenadas, a que o CLIENTE mandou ganha da câmera', () => {
+  // Vendedor cola o link novo junto com uma câmera velha que estava no
+  // clipboard. Antes a câmera vencia por prioridade e gravava 17 km errado.
+  const dois = 'https://www.google.com/maps/@-7.3200,-44.6800,12z e o novo https://maps.google.com/maps?q=-7.2297,-44.5561'
+  const r = lerLocal(dois)
+  assert.ok(r, 'não leu nada')
+  assert.ok(Math.abs(r.lat - (-7.2297)) < 0.001,
+    `pegou a câmera velha (${r.lat}) em vez do que o cliente mandou`)
+})
+
+test('formato ESTRUTURADO não tem inversão "consertada"', () => {
+  // A ordem em @lat,lng e !3d!4d é definida pelo Google. Inverter ali vira
+  // coordenada de aparência confiável no meio do Atlântico.
+  assert.equal(lerLocal('https://www.google.com/maps/@-45.0,-33.0,10z'), null,
+    'inverteu uma URL do Google e pôs o cliente no oceano')
+  assert.equal(lerLocal('data=!3d-44.5561!4d-7.2297'), null)
+})
+
+test('coordenada colada na mão CONTINUA sendo consertada', () => {
+  // Aqui a inversão é real: gente copia de planilha com as colunas trocadas.
+  const r = lerLocal('-44.5561, -7.2297')
+  assert.ok(r && Math.abs(r.lat - (-7.2297)) < 0.001)
+  assert.ok(r.fonte.endsWith('_invertido'))
+})
+
+test('primeiro padrão fora do Brasil não aborta os seguintes', () => {
+  // Antes era `return null`: um !3d!4d apontando pra outra coisa (uma foto, um
+  // negócio vizinho) fazia perder a câmera correta logo abaixo. E o servidor
+  // fazia `continue`, então o MESMO link dava resposta diferente conforme fosse
+  // curto ou completo.
+  const misto = 'https://www.google.com/maps/place/X/@-7.2297,-44.5561,15z/data=!3d48.8566!4d2.3522'
+  const r = lerLocal(misto)
+  assert.ok(r, 'desistiu no primeiro padrão fora da caixa')
+  assert.ok(Math.abs(r.lat - (-7.2297)) < 0.001, `pegou ${r.lat}`)
+})
+
+test('texto gigante não trava a aba (era 21 s com 125 KB)', () => {
+  // `\s*[,;\s]\s*` fazia os dois \s* disputarem os mesmos espaços: O(n²).
+  const bomba = '-7.2297' + ' '.repeat(120_000) + 'x'
+  const t0 = Date.now()
+  lerLocal(bomba)
+  const ms = Date.now() - t0
+  assert.ok(ms < 500, `levou ${ms} ms — a regex voltou a fazer backtracking`)
+})

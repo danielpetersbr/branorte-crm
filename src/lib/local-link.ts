@@ -29,6 +29,10 @@ export interface LocalLido {
  */
 const BR = { latMin: -34.5, latMax: 6, lngMin: -74.5, lngMax: -32.5 }
 
+/** Teto do texto analisado. Ninguém cola link de 8 KB; o que chega grande é
+ *  planilha inteira, e ela não tem por que passar por regex. */
+const LIMITE_TEXTO = 8192
+
 export function dentroDoBrasil(lat: number, lng: number): boolean {
   return lat >= BR.latMin && lat <= BR.latMax && lng >= BR.lngMin && lng <= BR.lngMax
 }
@@ -55,39 +59,57 @@ const num = (s: string) => Number(s.replace(',', '.'))
  * que vale — a câmera pode estar deslocada. Por isso !3d!4d é testado primeiro.
  */
 export function lerLocal(texto: string): LocalLido | null {
-  const t = (texto || '').trim()
+  const t = (texto || '').trim().slice(0, LIMITE_TEXTO)
   if (!t) return null
 
-  const tentativas: Array<{ re: RegExp; fonte: string }> = [
+  // Link de DIREÇÕES: o `@` é o CENTRO DA CÂMERA, que fica no MEIO DO CAMINHO
+  // entre origem e destino — não é nem o cliente nem o vendedor. Medido: numa
+  // rota Uruçuí→Balsas isso dava um ponto 83 km fora da fazenda, e como 83 < 150
+  // o aviso de salto grande não disparava: gravava errado em silêncio.
+  const ehDirecoes = /\/maps\/dir\//.test(t)
+
+  const tentativas: Array<{ re: RegExp; fonte: string; estruturado: boolean }> = [
     // pino de um lugar do Google (mais confiável que a câmera)
-    { re: /!3d(-?\d+[.,]\d+)!4d(-?\d+[.,]\d+)/, fonte: 'google_maps_pino' },
-    // câmera da URL do Google Maps
-    { re: /@(-?\d+[.,]\d+),(-?\d+[.,]\d+)/, fonte: 'google_maps_url' },
-    // WhatsApp / maps?q= / ?ll= / ?daddr= / ?destination=
-    { re: /[?&](?:q|ll|sll|daddr|destination|center)=(-?\d+[.,]\d+),\s*(-?\d+[.,]\d+)/i, fonte: 'whatsapp_ou_query' },
+    { re: /!3d(-?\d+[.,]\d+)!4d(-?\d+[.,]\d+)/, fonte: 'google_maps_pino', estruturado: true },
+    // WhatsApp / maps?q= / ?ll= / ?daddr= — é o que o cliente MANDA, então vale
+    // mais que a câmera, que é só onde a tela estava.
+    { re: /[?&](?:q|ll|sll|daddr|destination|center)=(-?\d+[.,]\d+),\s*(-?\d+[.,]\d+)/i, fonte: 'whatsapp_ou_query', estruturado: true },
     // geo: do Android
-    { re: /geo:(-?\d+[.,]\d+),(-?\d+[.,]\d+)/i, fonte: 'geo_android' },
-    // /dir/ e /place/ com coordenada no caminho
-    { re: /\/(?:dir|place|search)\/(-?\d+[.,]\d+),(-?\d+[.,]\d+)/, fonte: 'google_maps_caminho' },
+    { re: /geo:(-?\d+[.,]\d+),(-?\d+[.,]\d+)/i, fonte: 'geo_android', estruturado: true },
+    // /place/ e /search/ com coordenada no caminho. `dir` saiu daqui: em rota, a
+    // coordenada do caminho é a ORIGEM, que é o vendedor, não o cliente.
+    { re: /\/(?:place|search)\/(-?\d+[.,]\d+),(-?\d+[.,]\d+)/, fonte: 'google_maps_caminho', estruturado: true },
+    // câmera da URL — último recurso, e nunca em link de direções.
+    ...(ehDirecoes ? [] : [{ re: /@(-?\d+[.,]\d+),(-?\d+[.,]\d+)/, fonte: 'google_maps_url', estruturado: true }]),
     // colado na mão: "-5.1, -42.6" ou "-5.1 -42.6" (a linha INTEIRA, pra não
-    // casar com números soltos no meio de um endereço)
-    { re: /^(-?\d+[.,]\d+)\s*[,;\s]\s*(-?\d+[.,]\d+)$/, fonte: 'coordenada_colada' },
+    // casar com número solto no meio de um endereço).
+    // A classe é UMA só com `+`: a versão anterior era `\s*[,;\s]\s*`, onde os
+    // dois `\s*` disputavam os mesmos espaços — backtracking O(n²) que travava a
+    // aba por 21 s com um texto de 125 KB colado de planilha.
+    { re: /^(-?\d+[.,]\d+)[\s,;]+(-?\d+[.,]\d+)$/, fonte: 'coordenada_colada', estruturado: false },
   ]
 
-  for (const { re, fonte } of tentativas) {
+  for (const { re, fonte, estruturado } of tentativas) {
     const m = t.match(re)
     if (!m) continue
     const lat = num(m[1]), lng = num(m[2])
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue
 
     if (dentroDoBrasil(lat, lng)) return { lat, lng, fonte }
-    // Invertido? Acontece com quem copia de planilha. Só aceito quando a troca
-    // cai no Brasil E a ordem original não caía — assim não "conserto" o que
-    // estava certo.
-    if (dentroDoBrasil(lng, lat)) return { lat: lng, lng: lat, fonte: `${fonte}_invertido` }
-    // Coordenada válida em número mas fora do Brasil: NÃO devolvo. É quase
-    // sempre lixo, e marcar cliente no Atlântico é pior que não marcar.
-    return null
+
+    // INVERSÃO só vale pra coordenada digitada/colada na mão. Em formato
+    // ESTRUTURADO a ordem é definida pelo Google e não vem trocada — "consertar"
+    // ali transforma URL corrompida em coordenada de aparência confiável, e
+    // joga o cliente no meio do Atlântico com fonte de alta confiança.
+    if (!estruturado && dentroDoBrasil(lng, lat)) {
+      return { lat: lng, lng: lat, fonte: `${fonte}_invertido` }
+    }
+    // Fora da caixa: NÃO devolve, mas TAMBÉM não desiste — segue pros próximos
+    // padrões. Antes era `return null`, e um bloco !3d!4d apontando pra outra
+    // coisa (uma foto, um negócio vizinho) fazia perder a câmera correta logo
+    // abaixo. O servidor em api/resolver-link.ts sempre fez `continue`; era o
+    // mesmo link dando resposta diferente conforme fosse curto ou completo.
+    continue
   }
   return null
 }
