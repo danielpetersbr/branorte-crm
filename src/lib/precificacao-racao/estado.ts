@@ -55,7 +55,7 @@ export function novaSimulacao(
     formula: {
       formulaId: null,
       nome: '',
-      itens: formulaPadrao(especie),
+      itens: formulaPadrao(especie, categoria),
       milhoPreco: 1.08,
       milhoUnidadePreco: 'kg',
       milhoPesoSaca: 60,
@@ -111,7 +111,7 @@ export function trocarEspecie(
       modo: semAnimais ? 'direto' : atual.quantidade.modo,
       consumoPorAnimal: consumoSugerido(especie, categoria),
     },
-    formula: { ...atual.formula, formulaId: null, nome: '', itens: formulaPadrao(especie) },
+    formula: { ...atual.formula, formulaId: null, nome: '', itens: formulaPadrao(especie, categoria) },
     venda: {
       ...atual.venda,
       margemDesejadaPct: cfg.margemPorEspecie[especie] ?? atual.venda.margemDesejadaPct,

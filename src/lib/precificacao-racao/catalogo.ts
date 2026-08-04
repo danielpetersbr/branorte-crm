@@ -12,6 +12,7 @@
  * Consumo está sempre em **kg por animal por mês** (mês comercial de 30 dias).
  * Preço de ingrediente em **R$/kg**.
  */
+import { formulasReferencia } from '@/lib/formulacoes-racao'
 import type {
   Cenarios, ConfigVendaRacao, Especie, IngredienteFormula, UnidadePreco,
 } from './tipos'
@@ -127,7 +128,17 @@ function item(nome: string, pct: number, preco: number): IngredienteFormula {
  * Composição de PARTIDA por espécie (soma 100%). É um rascunho pro vendedor
  * editar — não substitui formulação profissional.
  */
-export function formulaPadrao(especie: Especie): IngredienteFormula[] {
+export function formulaPadrao(especie: Especie, categoria?: string): IngredienteFormula[] {
+  // MESMA fonte da /producao-propria: @/lib/formulacoes-racao, com percentual
+  // rastreado a Embrapa/ficha técnica. Antes daqui esta tela tinha catálogo
+  // próprio, e ele estava PIOR que o do estudo: bovinos com "Silagem/volumoso
+  // 20%" — que a Compacta nem mistura, e o outro módulo proíbe por teste — mais
+  // núcleo mineral 14%, o mesmo erro de confundir núcleo com proteinado.
+  if (categoria) {
+    const opcoes = formulasReferencia(especie, categoria)
+    const escolhida = opcoes.find(f => !f.exigeLiquido) ?? opcoes[0]
+    if (escolhida) return escolhida.itens.map(i => ({ ...i, id: novoIdIngrediente() }))
+  }
   switch (especie) {
     case 'aves':
       return [
