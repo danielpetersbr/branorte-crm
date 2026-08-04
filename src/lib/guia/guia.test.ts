@@ -433,3 +433,37 @@ describe('modo de volume', () => {
     assert.equal(r.podeFecharEquipamento, true)
   })
 })
+
+describe('texto copiado pro WhatsApp respeita o modo', () => {
+  const aves = (o: Partial<Atendimento> = {}): Atendimento => ({
+    especie: 'aves', fase: 'postura', quantidade: null, sistema: null,
+    produto: 'Ração farelada completa', materias: ['milho'], consumoConfirmado: false,
+    ...o,
+  })
+
+  it('modo VENDA não fala de consumo por animal nem de rebanho', () => {
+    // O cliente que VENDE ração não tem animal. O texto vai colado no WhatsApp
+    // dele — dizer "consumo de referência: 3,4 kg/animal/mês" é dizer besteira.
+    const a = aves({ modo: 'volume', volumeMesKg: 150_000, quantidade: 20_000 })
+    const r = analisar(a, ANIMAIS, MATERIAS)
+    const txt = resumoParaCopiar(a, r, 'Postura')
+    assert.ok(!/kg\/animal/i.test(txt), `sobrou consumo por animal:\n${txt}`)
+    assert.ok(!/\d+ animais/i.test(txt), `sobrou o rebanho que não existe mais:\n${txt}`)
+    assert.match(txt, /150\.000 kg\/mês/)
+    assert.match(txt, /venda de ração/i, 'tem que dizer de onde veio o volume')
+  })
+
+  it('modo rebanho continua trazendo rebanho e consumo', () => {
+    const a = aves({ quantidade: 20_000, consumoConfirmado: true })
+    const r = analisar(a, ANIMAIS, MATERIAS)
+    const txt = resumoParaCopiar(a, r, 'Postura')
+    assert.match(txt, /20\.000 animais/)
+    assert.match(txt, /3\.4 kg\/animal\/mês/)
+  })
+
+  it('consumo INFORMADO pelo cliente sai rotulado como tal', () => {
+    const a = aves({ quantidade: 20_000, consumoConfirmado: true, consumoKgAnimalMes: 4 })
+    const r = analisar(a, ANIMAIS, MATERIAS)
+    assert.match(resumoParaCopiar(a, r, 'Postura'), /Consumo informado: 4 kg/)
+  })
+})

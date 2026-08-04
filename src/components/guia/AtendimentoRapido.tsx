@@ -170,7 +170,13 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
             rotulo="Espécie"
             valor={a.especie}
             opcoes={ESPECIES.map(e => ({ chave: e.chave, nome: e.nome, icone: e.icone }))}
-            onEscolher={v => setA(s => ({ ...s, especie: v, fase: null, sistema: null, consumoConfirmado: false }))}
+            // O consumo informado é POR ESPÉCIE. Sobrevivendo à troca, 240 kg de bovino
+            // passavam a valer por AVE — medido: 4.800.000 kg/mês no lugar de 68.000,
+            // e o número ia direto pro texto que o vendedor manda pro cliente.
+            onEscolher={v => setA(s => ({
+              ...s, especie: v, fase: null, sistema: null,
+              consumoConfirmado: false, consumoKgAnimalMes: null,
+            }))}
           />
         </Passo>
 
@@ -180,7 +186,7 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
               rotulo="Fase"
               valor={a.fase}
               opcoes={fases}
-              onEscolher={v => setA(s => ({ ...s, fase: v, consumoConfirmado: false }))}
+              onEscolher={v => setA(s => ({ ...s, fase: v, consumoConfirmado: false, consumoKgAnimalMes: null }))}
             />
           </Passo>
         )}
@@ -259,15 +265,25 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
                 <label className="block">
                   <span className="mb-1 block text-[11px] text-ink-faint">kg por animal/mês</span>
                   <div className="w-28">
+                    {/* O valor de catálogo é PLACEHOLDER, não `value`.
+                        Estava como value com fallback (`?? r.consumoMesKg`), e
+                        isso formava um laço: <input type="number"> devolve ""
+                        em TODO estado intermediário de decimal ("3,", "0."), o
+                        handler gravava null, o value voltava a ser o catálogo e
+                        o React sobrescrevia o que o vendedor estava digitando.
+                        Não dava pra apagar o campo, e — pior — ele MENTIA:
+                        digitar "3,5" virava 3.45, porque o catálogo se colava
+                        aos dígitos. O campo de volume ao lado nunca teve isso,
+                        justamente por usar `?? ''`. */}
                     <Input
                       type="number" min={0} step="0.1" inputMode="decimal"
-                      value={a.consumoKgAnimalMes ?? (r.consumoMesKg ?? '')}
+                      value={a.consumoKgAnimalMes ?? ''}
                       onChange={e => setA(s => ({
                         ...s,
                         consumoKgAnimalMes: e.target.value ? Number(e.target.value) : null,
                         consumoConfirmado: false,
                       }))}
-                      placeholder="—"
+                      placeholder={r.consumoMesKg != null ? String(r.consumoMesKg) : '—'}
                       aria-label="Consumo por animal por mês"
                     />
                   </div>
@@ -479,13 +495,24 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
           PERGUNTAR — não é resultado. Empilhadas junto da Necessidade, elas
           empurravam o número e os pontos de atenção pra fora da tela. Em telas
           menores voltam pro fim da coluna do meio, que é o comportamento antigo. */}
-      <div className="space-y-3 2xl:col-start-3 2xl:row-start-1">
-        {!!r.perguntas.length && (
+      {/* SÓ renderiza quando há pergunta. Renderizando sempre, a terceira trilha
+          reservava ~28% da largura EM BRANCO na abertura da tela (sem espécie
+          escolhida não há pergunta), e em duas colunas sobrava uma linha
+          fantasma de 14px. Medido em Chrome com o CSS de produção.
+
+          `lg:col-span-2`: entre 1024 e 1535px o grid tem DUAS colunas, e este é
+          o terceiro filho — ele caía na coluna 1, linha 2, ou seja embaixo do
+          FORMULÁRIO e depois da linha inteira. Eu tinha afirmado que "voltava
+          pro fim da coluna do meio"; não voltava. Ocupando a largura toda ele
+          vira uma faixa de perguntas embaixo das duas colunas, que é legível —
+          e é a faixa que pega notebook de 1280 e 1366. */}
+      {!!r.perguntas.length && (
+        <div className="space-y-3 lg:col-span-2 2xl:col-span-1 2xl:col-start-3 2xl:row-start-1">
           <Secao titulo="Perguntas que ainda cabem" icone={<ListChecks className="h-3.5 w-3.5" />}>
             <Perguntas perguntas={r.perguntas.slice(0, 12)} />
           </Secao>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }

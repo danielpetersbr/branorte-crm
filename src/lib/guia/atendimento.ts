@@ -201,10 +201,19 @@ export function resumoParaCopiar(a: Atendimento, r: ResultadoAtendimento, nomeFa
   const L: string[] = ['*Levantamento — Guia do Vendedor Branorte*', '']
   if (a.especie) L.push(`Espécie: ${a.especie}`)
   if (nomeFase) L.push(`Fase/sistema: ${nomeFase}`)
-  if (a.quantidade) L.push(`Quantidade: ${a.quantidade.toLocaleString('pt-BR')} animais`)
+  // O texto TEM que respeitar o modo. Ignorando, saía "Consumo de referência:
+  // 3,4 kg/animal/mês" pra um cliente que VENDE ração e não tem animal — e, se
+  // ele tivesse passado pelo modo rebanho antes, o "Quantidade: 20.000 animais"
+  // ia junto, de um rebanho que não existe mais. Isso é texto que o vendedor
+  // cola no WhatsApp do cliente.
+  const vendendo = a.modo === 'volume'
+  if (!vendendo && a.quantidade) L.push(`Quantidade: ${a.quantidade.toLocaleString('pt-BR')} animais`)
   if (a.produto) L.push(`Produto: ${a.produto}`)
   if (a.materias.length) L.push(`Matérias-primas: ${a.materias.join(', ')}`)
-  if (r.consumoMesKg) L.push(`Consumo de referência: ${r.consumoMesKg} kg/animal/mês`)
+  if (!vendendo && r.consumoMesKg) {
+    L.push(`Consumo${a.consumoKgAnimalMes ? ' informado' : ' de referência'}: ${r.consumoMesKg} kg/animal/mês`)
+  }
+  if (vendendo) L.push('Origem do volume: informado pelo cliente (venda de ração)')
   if (r.necessidadeMesKg) L.push(`Necessidade estimada: ${Math.round(r.necessidadeMesKg).toLocaleString('pt-BR')} kg/mês`)
   if (r.capacidadeSugeridaKgH) L.push(`Capacidade para análise: ${r.capacidadeSugeridaKgH} kg/h`)
   if (r.faltando.length) {
