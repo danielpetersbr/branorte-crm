@@ -656,10 +656,14 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
                     if (erroSalvar) setErroSalvar(null)
                   }}
                   title="Codigo do pais"
-                  className="h-9 shrink-0 rounded-md bg-surface border border-border px-1.5 text-[13px] text-ink outline-none focus:border-accent max-w-[104px]"
+                  className="h-9 shrink-0 w-[128px] rounded-md bg-surface border border-border px-1.5 text-[13px] text-ink outline-none focus:border-accent"
                 >
+                  {/* O texto traz o NOME do pais, nao so a sigla: com 134 opcoes,
+                      "AO" e "AD" nao se distinguem, e o <select> nativo procura
+                      digitando o TEXTO da opcao — assim da pra achar "Angola"
+                      escrevendo "ang". A caixa fica estreita e corta o resto. */}
                   {OPCOES_DDI.map(o => (
-                    <option key={o.ddi} value={o.ddi}>+{o.ddi} {o.sigla}</option>
+                    <option key={o.ddi} value={o.ddi}>+{o.ddi} {o.nome} ({o.sigla})</option>
                   ))}
                 </select>
                 <Input
