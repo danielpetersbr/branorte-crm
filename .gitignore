@@ -8,3 +8,7 @@ scripts/.env
 
 .env*.local
 .env.production
+
+# Bytecode Python. Havia um .pyc de 18 KB commitado e nada barrava o proximo.
+__pycache__/
+*.pyc

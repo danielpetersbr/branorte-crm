@@ -213,7 +213,10 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
                 type="button"
                 title={dica}
                 aria-pressed={modo === m}
-                onClick={() => setA(s => ({ ...s, modo: m }))}
+                // Trocar de modo tem que zerar o que só vale no outro: o
+                // `consumoConfirmado` atravessava a ida e volta e a tela voltava a
+                // fechar equipamento com um consumo que ninguém reconfirmou.
+                onClick={() => setA(s => ({ ...s, modo: m, consumoConfirmado: false }))}
                 className={cn(
                   'rounded-full border px-2.5 py-1 text-[12px] transition-colors',
                   modo === m
@@ -302,7 +305,7 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
                   Informado pelo cliente. O catálogo diz {consumoCatalogo ?? '—'} kg.
                 </div>
               )}
-              {r.consumoMesKg !== null && (
+              {modo === 'rebanho' && r.consumoMesKg !== null && (
                 <label className="mt-2 flex items-start gap-2 text-[12.5px] text-ink">
                   <input
                     type="checkbox"
@@ -458,6 +461,7 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
             rebanho. */}
         <ConfiguradorFabrica
           necessidadeMesKg={r.necessidadeMesKg}
+          podeFechar={r.podeFecharEquipamento}
           especie={a.especie}
           fase={a.fase}
         />

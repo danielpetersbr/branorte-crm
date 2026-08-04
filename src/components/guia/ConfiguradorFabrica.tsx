@@ -41,9 +41,17 @@ interface Props {
   necessidadeMesKg: number | null
   especie: string | null
   fase: string | null
+  /**
+   * O levantamento tem TODOS os dados? A tela inteira segue a disciplina de não
+   * fechar equipamento sem isso — e o configurador estava furando: nomeava
+   * modelo, capacidade e CV enquanto o painel ao lado dizia "sem todos os dados
+   * não dá pra fechar equipamento". Nomear máquina é o que o cliente leva
+   * embora da conversa.
+   */
+  podeFechar: boolean
 }
 
-export function ConfiguradorFabrica({ necessidadeMesKg, especie, fase }: Props) {
+export function ConfiguradorFabrica({ necessidadeMesKg, especie, fase, podeFechar }: Props) {
   // Padrão = 6 × 8, que dá os mesmos ~26 dias/mês que o resumo acima assume.
   // Assim o número não pula ao abrir o configurador — muda quando o vendedor
   // mexe, que é o ponto.
@@ -106,8 +114,8 @@ export function ConfiguradorFabrica({ necessidadeMesKg, especie, fase }: Props) 
 
       {!necessidadeMesKg ? (
         <p className="text-[12.5px] text-ink-faint">
-          Falta o consumo mensal. Preencha espécie, fase e quantidade de animais lá em cima —
-          é dele que sai a produção por hora.
+          Falta o volume mensal. Lá em cima: pelo rebanho (espécie, fase e quantidade)
+          ou direto em toneladas — é dele que sai a produção por hora.
         </p>
       ) : (
         <div className="space-y-3">
@@ -154,6 +162,11 @@ export function ConfiguradorFabrica({ necessidadeMesKg, especie, fase }: Props) 
               <div className="mt-1.5 border-t border-accent/20 pt-1.5 text-[12.5px]">
                 {carregandoCatalogo ? (
                   <span className="text-ink-faint">Carregando catálogo…</span>
+                ) : !podeFechar ? (
+                  <span className="text-ink-faint">
+                    Falta confirmar os dados com o cliente — o número acima é ponto de
+                    partida, e ainda não dá pra apontar equipamento.
+                  </span>
                 ) : d.moinho ? (
                   <>
                     <b className="text-ink">{d.moinho.modelo}</b>
