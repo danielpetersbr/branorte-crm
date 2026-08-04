@@ -12,6 +12,7 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { PainelViagem, corDoDia } from '@/components/mapa/PainelViagem'
 import { useSalvarViagem, useSalvarLocalizacaoCliente, useViagem, type ViagemStatus } from '@/hooks/useViagens'
 import { ViagensSalvas } from '@/components/mapa/ViagensSalvas'
+import { OrganizacaoViagem } from '@/components/mapa/OrganizacaoViagem'
 import { supabase } from '@/lib/supabase'
 import {
   type ConfigViagem, type Parada, type Trecho, type PontoMapa, type Programacao,
@@ -1283,7 +1284,11 @@ export function MapaVisitas() {
   )
 
   return (
-    <div className="relative flex flex-col overflow-hidden md:p-4 md:gap-3 h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))]">
+    // A raiz ROLA. Era `overflow-hidden` com altura travada na viewport: não
+    // existia "abaixo do mapa" — qualquer coisa posta ali ficava recortada. O
+    // mapa continua ocupando a tela inteira no primeiro rolo do celular; o que
+    // muda é que agora dá pra descer até a Organização de viagem.
+    <div className="relative flex flex-col overflow-y-auto md:p-4 md:gap-3 min-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))]">
       {/* selo ✓ não pode capturar clique — senão não dá pra abrir o popup do pino visitado */}
       <style>{`.leaflet-marker-icon.marc-check{pointer-events:none!important}`}</style>
       {/* HEADER + TOOLBAR — só no desktop. No celular o mapa é tela cheia com filtros flutuantes. */}
@@ -1402,7 +1407,10 @@ export function MapaVisitas() {
         </div>
       )}
 
-      <div className="relative flex-1 min-h-0 md:flex md:gap-3">
+      {/* Altura concreta, não `flex-1`: num pai que rola, flex-1 colapsa o mapa
+          pra zero. Celular = viewport cheia (igual antes). Desktop = 62vh, com
+          piso pra não virar tarja em tela baixa. */}
+      <div className="relative shrink-0 h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))] md:h-[62vh] md:min-h-[480px] md:flex md:gap-3">
         <div ref={divRef} className="absolute inset-0 md:static md:flex-1 md:rounded-xl md:border md:border-border overflow-hidden z-0" />
         {(isLoading || loadingOrc) && (
           <div className="absolute inset-0 flex items-center justify-center z-[400]"><PageLoading /></div>
@@ -1603,6 +1611,21 @@ export function MapaVisitas() {
             </>
           )}
         </div>
+      </div>
+
+      {/* ORGANIZAÇÃO DE VIAGEM — abaixo do mapa, sempre visível.
+          Montar o roteiro é o passo fácil. O que leva dias é o vaivém: o
+          vendedor fala com cada cliente, volta com "pode nessa data?" e com a
+          localização REAL da propriedade. Esse trabalho não morava em lugar
+          nenhum — quem salvava a viagem perdia de vista o que faltava. */}
+      <div className="px-3 pb-6 md:px-0">
+        <OrganizacaoViagem
+          onAbrirViagem={id => {
+            if (!modoViagem) entrarNaViagem()
+            setCarregarId(id)
+            window.scrollTo({ top: 0, behavior: 'smooth' })
+          }}
+        />
       </div>
 
       {/* Celular: folha "por estado" (mesma soma da sidebar do desktop) */}

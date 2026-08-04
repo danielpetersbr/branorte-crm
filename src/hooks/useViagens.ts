@@ -328,3 +328,192 @@ export function useSalvarLocalizacaoCliente() {
     },
   })
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ORGANIZAÇÃO DE VIAGEM — o quadro que fica ABAIXO do mapa
+//
+// Entre "montei a viagem" e "posso fechar o roteiro" existe um trabalho que não
+// é de planejamento: falar com o vendedor, ele falar com o cliente, e voltar com
+// (a) pode visitar nessa data? e (b) qual é a localização REAL da propriedade.
+// Isso leva dias e não morava em lugar nenhum — quem salvava a viagem perdia de
+// vista o que faltava. Estes hooks alimentam esse quadro sem precisar reabrir o
+// planejador.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** Uma parada como o quadro precisa dela: quem é, onde está, e o que falta. */
+export interface ParadaConfirmacao {
+  id: string
+  viagemId: string
+  cliKeys: string[]
+  nome: string
+  cidade: string | null
+  uf: string | null
+  vendedor: string | null
+  telefone: string | null
+  lat: number
+  lng: number
+  precisao: Precisao
+  confirmacao: Confirmacao
+  dia: number
+  ordem: number
+  chegadaPrevista: string | null
+  notas: string | null
+}
+
+export interface ViagemQuadro extends ViagemResumo {
+  paradasDetalhe: ParadaConfirmacao[]
+  /** paradas com visita confirmada pelo cliente */
+  confirmadas: number
+  /** ainda no centro da cidade — a rota sai errada enquanto for assim */
+  aproximadas: number
+  /** cliente disse que não dá — fica visível em vez de sumir */
+  indisponiveis: number
+}
+
+/**
+ * Viagens + paradas em DUAS consultas, não N+1.
+ *
+ * Traz todas menos concluída/cancelada: viagem que já rodou não tem o que
+ * confirmar, e deixar acumular transforma o quadro em lixo que ninguém lê.
+ */
+export function useQuadroViagens() {
+  return useQuery<ViagemQuadro[]>({
+    queryKey: ['viagens-quadro'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('viagens')
+        .select('id, nome, status, data_inicio, dias, criado_por, created_at')
+        .not('status', 'in', '("concluida","cancelada")')
+        .order('created_at', { ascending: false })
+      if (error) throw error
+
+      const viagens = (data ?? []) as Omit<ViagemResumo, 'paradas'>[]
+      if (!viagens.length) return []
+
+      const { data: ps, error: erroParadas } = await supabase
+        .from('viagem_paradas')
+        .select('id, viagem_id, cli_key, cli_keys, rotulo, cliente_nome, vendedor, telefone, cidade, uf, lat, lng, precisao, confirmacao, dia, ordem, chegada_prevista, notas')
+        .in('viagem_id', viagens.map(v => v.id))
+        .order('dia', { ascending: true })
+        .order('ordem', { ascending: true })
+      if (erroParadas) throw erroParadas
+
+      const porViagem = new Map<string, ParadaConfirmacao[]>()
+      for (const r of (ps ?? []) as Record<string, unknown>[]) {
+        const vid = String(r.viagem_id)
+        const arr = Array.isArray(r.cli_keys) ? (r.cli_keys as string[]).filter(Boolean) : []
+        const keys = arr.length ? arr : (r.cli_key ? [String(r.cli_key)] : [])
+        const lista = porViagem.get(vid) ?? []
+        lista.push({
+          id: String(r.id),
+          viagemId: vid,
+          cliKeys: keys,
+          nome: (r.rotulo as string) || (r.cliente_nome as string) || (r.cidade as string) || 'Parada',
+          cidade: (r.cidade as string | null) ?? null,
+          uf: (r.uf as string | null) ?? null,
+          vendedor: (r.vendedor as string | null) ?? null,
+          telefone: (r.telefone as string | null) ?? null,
+          lat: Number(r.lat) || 0,
+          lng: Number(r.lng) || 0,
+          precisao: ((r.precisao as Precisao) ?? 'cidade'),
+          confirmacao: ((r.confirmacao as Confirmacao) ?? 'nao_solicitado'),
+          dia: Number(r.dia) || 1,
+          ordem: Number(r.ordem) || 0,
+          chegadaPrevista: (r.chegada_prevista as string | null) ?? null,
+          notas: (r.notas as string | null) ?? null,
+        })
+        porViagem.set(vid, lista)
+      }
+
+      return viagens.map(v => {
+        const det = porViagem.get(v.id) ?? []
+        return {
+          ...v,
+          paradas: det.length,
+          paradasDetalhe: det,
+          confirmadas: det.filter(p => p.confirmacao === 'visita_confirmada').length,
+          aproximadas: det.filter(p => p.precisao === 'cidade' || p.precisao === 'estado').length,
+          indisponiveis: det.filter(p => p.confirmacao === 'indisponivel').length,
+        }
+      })
+    },
+  })
+}
+
+/** Muda o estado de UMA parada. */
+export function useConfirmarParada() {
+  const qc = useQueryClient()
+  return useMutation<void, Error, { paradaId: string; confirmacao: Confirmacao; notas?: string | null }>({
+    mutationFn: async ({ paradaId, confirmacao, notas }) => {
+      // Via RPC, não UPDATE direto: a policy da tabela só deixa quem CRIOU a
+      // viagem escrever. O vendedor confirma viagem montada pelo escritório, e
+      // pela tabela ele levaria "0 linhas afetadas" — sem erro, sem efeito.
+      const { error } = await supabase.rpc('viagem_confirmar_parada', {
+        p_parada: paradaId, p_confirmacao: confirmacao, p_notas: notas ?? null,
+      })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['viagens-quadro'] })
+      qc.invalidateQueries({ queryKey: ['viagem'] })
+    },
+  })
+}
+
+/** Muda o status da viagem inteira (aguardando → pronta → em andamento). */
+export function useStatusViagem() {
+  const qc = useQueryClient()
+  return useMutation<void, Error, { id: string; status: ViagemStatus }>({
+    mutationFn: async ({ id, status }) => {
+      const { error } = await supabase
+        .from('viagens').update({ status, updated_at: new Date().toISOString() }).eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['viagens-quadro'] })
+      qc.invalidateQueries({ queryKey: ['viagens'] })
+      qc.invalidateQueries({ queryKey: ['viagem'] })
+    },
+  })
+}
+
+/**
+ * Grava a localização real E deixa a parada da viagem coerente com ela.
+ *
+ * Os dois passos juntos de propósito: `cliente_localizacao` é do CLIENTE (vale
+ * pra toda viagem futura), mas a parada JÁ SALVA guarda a coordenada antiga em
+ * colunas próprias. Gravar só o primeiro deixava o quadro mostrando "aproximada"
+ * depois de o vendedor ter corrigido — parecia que não tinha salvado.
+ */
+export function useCorrigirLocalDaParada() {
+  const qc = useQueryClient()
+  return useMutation<void, Error, {
+    paradaId: string
+    /** Não vai pra RPC — ela lê os cli_keys da própria parada, pra ninguém pedir
+     *  a correção de um cliente passando a chave de outro. Fica no tipo porque
+     *  a UI usa a lista pra dizer "N clientes nessa parada". */
+    cliKeys?: string[]
+    lat: number
+    lng: number
+    endereco?: string | null
+    fonte?: string | null
+  }>({
+    mutationFn: async ({ paradaId, lat, lng, endereco, fonte }) => {
+      // Uma RPC só, pelo mesmo motivo do confirmar — e porque os dois destinos
+      // (cliente_localizacao + a parada) têm que cair juntos: gravar só o
+      // primeiro deixava o quadro mostrando "aproximada" depois de corrigido.
+      // A função lê os cli_keys da própria parada, então não dá pra pedir a
+      // correção de um cliente passando a chave de outro.
+      const { error } = await supabase.rpc('viagem_localizacao_parada', {
+        p_parada: paradaId, p_lat: lat, p_lng: lng,
+        p_endereco: endereco ?? null, p_fonte: fonte ?? 'link_do_cliente',
+      })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['viagens-quadro'] })
+      qc.invalidateQueries({ queryKey: ['orcamentos-mapa-v2'] })
+      qc.invalidateQueries({ queryKey: ['viagem'] })
+    },
+  })
+}
