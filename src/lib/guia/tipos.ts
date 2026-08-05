@@ -297,10 +297,14 @@ export interface ResultadoAtendimento {
    */
   bloqueioEquipamento: string | null
   /**
-   * `true` quando NENHUMA categoria casou com fase/sistema e o motor caiu pra
-   * "todas as categorias da espécie". Nesse estado, `processo`, `perguntas` e
-   * as restrições são a UNIÃO de tudo — úteis como repertório, mentirosas como
-   * resposta específica.
+   * `true` quando MAIS DE UMA categoria casou — e aí `processo`, `perguntas` e
+   * as restrições são a UNIÃO de todas elas: úteis como repertório, mentirosas
+   * como resposta específica.
+   *
+   * O critério é `base.length > 1`, e NÃO "a queda pra todas as categorias da
+   * espécie disparou" — sem fase escolhida, `casaFase` devolve true pra todo
+   * mundo, então as 12 entram pelo caminho normal e a queda nem roda. Este
+   * comentário já disse a coisa errada uma vez.
    */
   baseAmpla: boolean
   /**

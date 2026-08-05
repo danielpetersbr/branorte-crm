@@ -232,10 +232,11 @@ describe('consumo de referência', () => {
 
 describe('capacidade para análise', () => {
   it('escolhe a menor capacidade da linha que dá conta', () => {
-    // 50.000 kg/mês ÷ (26 × 8 × 0,8) = 300,5 kg/h → 500 é a primeira que atende.
-    // Era 600 enquanto a lista era sintética; 600 kg/h não existe na linha.
+    // 50.000 kg/mês ÷ (26 × 8 × 0,8) = 300,5 kg/h → 750 é a primeira que atende.
+    // Era 600 (inexistente) na lista sintética, e virou 500 quando eu montei a
+    // lista sem filtrar `ativo` — o BNMM150 de 500 kg/h está desativado.
     const { kgH } = capacidadeParaAnalise(50_000)
-    assert.equal(kgH, 500)
+    assert.equal(kgH, 750)
   })
 
   it('avisa quando a linha escolhida fica perto do limite', () => {
@@ -606,14 +607,14 @@ describe('o produto pedido tem que bater com o consumo em uso', () => {
     // boiada é da ordem de 15.000; mineral, de 1.500.
     const r = analisar(bov({ produto: 'Sal mineral / proteinado' }), ANIMAIS, MATERIAS)
     assert.equal(r.podeFecharEquipamento, false)
-    assert.ok(r.atencao.some(x => /RAÇÃO COMPLETA/.test(x.texto)))
+    assert.ok(r.atencao.some(x => /CONCENTRADO/.test(x.texto)))
     assert.ok(r.faltando.some(x => /Consumo de sal mineral/i.test(x)))
   })
 
   it('ração farelada completa fecha normalmente', () => {
     const r = analisar(bov({ produto: 'Ração farelada completa' }), ANIMAIS, MATERIAS)
     assert.equal(r.podeFecharEquipamento, true)
-    assert.ok(!r.atencao.some(x => /RAÇÃO COMPLETA/.test(x.texto)))
+    assert.ok(!r.atencao.some(x => /CONCENTRADO/.test(x.texto)))
   })
 
   it('com o consumo digitado pelo vendedor, o número é do produtor e vale', () => {
@@ -742,5 +743,96 @@ describe('"Gado de corte" é subgrupo, não fase — e casava com nada', () => {
   it('subgrupo é repertório do subgrupo — e a tela avisa', () => {
     const r = analisar(bov('gado_corte'), REBANHO, MATERIAS)
     assert.equal(r.baseAmpla, true, 'mais de uma categoria = repertório, não resposta')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Correções da revisão de 05/08/2026. Cada teste aqui DISCRIMINA: falha na
+// implementação anterior e passa na atual.
+// ---------------------------------------------------------------------------
+describe('a trava de produto tem que olhar a FASE, não só o nome do produto', () => {
+  const CORTE_PROT = animal({
+    slug: 'bov-corte-proteinado', nome: 'Corte — Proteinado', especie: 'bovinos',
+    subgrupo: 'corte', tipo: 'categoria', fases: ['proteica'], fase_estudo: 'proteica',
+    sistemas: ['pasto'], resumo: 'Proteinado de seca.',
+  })
+  const REBANHO = [CONFINAMENTO, CORTE_PROT, NELORE]
+  const bov = (fase: string, produto: string): Atendimento => ({
+    especie: 'bovinos', fase, quantidade: 500, sistema: null,
+    produto, materias: [], consumoConfirmado: true,
+  })
+
+  it('fase de suplemento + produto de suplemento é o par CERTO e não trava', () => {
+    // `proteica` traz consumoMes 18 kg/mês, e a nota do catálogo diz
+    // "Proteinado de seca". Pedir proteinado aí é exatamente o que a fase
+    // pressupõe. A versão anterior travava e ainda dizia que 18 kg/mês "é de
+    // RAÇÃO COMPLETA" — o oposto do que o dado diz.
+    const r = analisar(bov('proteica', 'Sal mineral / proteinado'), REBANHO, MATERIAS)
+    assert.equal(r.podeFecharEquipamento, true)
+    assert.ok(!r.atencao.some(x => /CONCENTRADO/.test(x.texto)))
+  })
+
+  it('fase de concentrado + produto de suplemento continua travando', () => {
+    // 297 kg/mês é "Concentrado ~2,2% do peso vivo". Pedir mineral com esse
+    // consumo erra por ordem de grandeza — é o defeito de verdade.
+    const r = analisar(bov('confinamento', 'Sal mineral / proteinado'), REBANHO, MATERIAS)
+    assert.equal(r.podeFecharEquipamento, false)
+    assert.match(r.bloqueioEquipamento ?? '', /consumo de sal mineral/i)
+  })
+
+  it('"Concentrado" não trava mais — a fase JÁ é de concentrado', () => {
+    const r = analisar(bov('confinamento', 'Concentrado'), REBANHO, MATERIAS)
+    assert.equal(r.podeFecharEquipamento, true)
+  })
+
+  it('e "Ainda não sabe" não pode ser mais permissivo que responder', () => {
+    // Antes, quem respondia "Concentrado" travava e quem respondia "Ainda não
+    // sabe" passava — ser específico era punido.
+    const especifico = analisar(bov('confinamento', 'Concentrado'), REBANHO, MATERIAS)
+    const vago = analisar(bov('confinamento', 'Ainda não sabe'), REBANHO, MATERIAS)
+    assert.equal(especifico.podeFecharEquipamento, vago.podeFecharEquipamento)
+  })
+})
+
+describe('"Gado de leite" NÃO vira subgrupo — já funcionava pelas fases', () => {
+  const LACT = animal({
+    slug: 'bov-leite-lactacao', nome: 'Leite — Lactação', especie: 'bovinos',
+    subgrupo: 'leite', tipo: 'categoria', fases: ['gado_leite'], fase_estudo: 'gado_leite',
+    sistemas: ['pasto'], perguntas: ['Quantos litros por vaca por dia?'],
+    processo: 'Mistura seca do concentrado.', resumo: 'Vaca em produção.',
+  })
+  const SECA = animal({
+    slug: 'bov-leite-seca', nome: 'Leite — Vacas secas', especie: 'bovinos',
+    subgrupo: 'leite', tipo: 'categoria', fases: ['manutencao'], fase_estudo: 'manutencao',
+    sistemas: ['pasto'], perguntas: ['Quanto tempo de seca?'],
+    processo: 'Mistura seca de mineral.', resumo: 'Vaca seca.',
+  })
+  const BEZERRA = animal({
+    slug: 'bov-leite-bezerras', nome: 'Leite — Bezerras', especie: 'bovinos',
+    subgrupo: 'leite', tipo: 'categoria', fases: ['recria'], fase_estudo: 'recria',
+    sistemas: ['bezerreiro'], perguntas: ['Aleita com balde ou com vaca?'],
+    processo: 'Mistura seca fina.', resumo: 'Aleitamento.',
+  })
+  const REBANHO = [LACT, SECA, BEZERRA, CONFINAMENTO]
+
+  it('traz lactação e NÃO arrasta vaca seca nem bezerra', () => {
+    // Casando por subgrupo, `gado_leite` ia de 3 categorias pra 6 — vaca seca e
+    // bezerra em aleitamento entrando numa conversa de vaca em lactação.
+    const r = analisar({
+      especie: 'bovinos', fase: 'gado_leite', quantidade: 100, sistema: null,
+      produto: null, materias: [], consumoConfirmado: false,
+    }, REBANHO, MATERIAS)
+    assert.ok(r.perguntas.some(p => /litros por vaca/i.test(p)), 'a de lactação tem que vir')
+    assert.ok(!r.perguntas.some(p => /tempo de seca/i.test(p)), 'vaca seca não entra')
+    assert.ok(!r.perguntas.some(p => /aleita/i.test(p)), 'bezerra não entra')
+    assert.equal(r.baseAmpla, false, 'uma categoria só = resposta, não repertório')
+  })
+
+  it('gado_corte segue casando por subgrupo, que é onde precisa', () => {
+    const r = analisar({
+      especie: 'bovinos', fase: 'gado_corte', quantidade: 100, sistema: null,
+      produto: null, materias: [], consumoConfirmado: false,
+    }, REBANHO, MATERIAS)
+    assert.ok(!r.perguntas.some(p => /litros por vaca/i.test(p)), 'nada de leite em corte')
   })
 })

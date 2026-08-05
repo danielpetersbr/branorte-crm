@@ -66,22 +66,41 @@ const AVISO_SEM_DADOS =
   'Sem todos os dados não dá pra fechar equipamento. O que está abaixo é ponto de partida para a conversa.'
 
 /**
- * Produtos cujo consumo NÃO é o consumo de ração completa.
+ * O que o `consumoMes` de cada fase JÁ representa — segundo a `nota` que o
+ * próprio `CATEGORIAS` carrega em `venda-racao/catalogo.ts`.
  *
- * `CATEGORIAS[].consumoMes` é kg de RAÇÃO por animal/mês. O produto escolhido
- * não entrava em conta nenhuma: dava pra marcar "Confinamento" (297 kg/mês) com
- * produto "Sal mineral / proteinado" e a tela devolvia 148.500 kg/mês para 500
- * cabeças — quando proteinado nessa boiada é da ordem de 15.000 e mineral, de
- * 1.500. Erro de 10× a 99×, e o número ia pro texto que o vendedor cola no
- * WhatsApp do cliente.
+ * ⚠️ MINHA PRIMEIRA VERSÃO DISTO ESTAVA ERRADA e vale registrar por quê.
+ * Eu tinha escrito que "`consumoMes` é kg de RAÇÃO por animal/mês" e travado
+ * três produtos por nome, sem olhar a fase. O catálogo diz o contrário, com
+ * todas as letras, em 7 das 9 fases de bovino:
+ *     proteica    18  → "Proteinado de seca."
+ *     cria         5  → "Sal mineral/proteinado — ~165 g/dia."
+ *     manutencao  18  → "Suplementação a pasto — ~0,15% do peso vivo."
+ *     confinamento 297 → "Concentrado ~2,2% do peso vivo (450 kg)."
+ *     gado_leite  240 → "Só o concentrado; a vaca também consome pasto/silagem."
+ * Ou seja: em "Ração proteica" o consumo JÁ É de proteinado. Minha trava
+ * recusava dimensionar o par perfeitamente casado e ainda escrevia na tela que
+ * aquele número "é de RAÇÃO COMPLETA" — afirmando o oposto do dado. Travava 27
+ * de 27 combinações de bovino, e quem respondesse "Ainda não sabe" passava.
+ *
+ * O defeito REAL, que continua valendo: fase cujo consumo é de CONCENTRADO
+ * (297 kg/mês em confinamento) com o cliente pedindo mineral/proteinado. Aí sim
+ * a conta erra por ordem de grandeza — 148.500 kg/mês para 500 cabeças quando
+ * proteinado nessa boiada é da ordem de 15.000 e mineral, de 1.500.
  *
  * Não há tabela de consumo por produto aqui, e inventar uma seria pior que o
  * defeito. Então a tela faz o que já faz com o resto: PERGUNTA, e não fecha
  * equipamento até o vendedor trazer o número do cliente.
  */
-const PRODUTOS_FORA_DA_RACAO = [
-  'Concentrado', 'Sal mineral / proteinado', 'Milho triturado',
-]
+const CONSUMO_DA_FASE: Record<string, 'concentrado' | 'suplemento'> = {
+  confinamento: 'concentrado', semi_confinamento: 'concentrado',
+  engorda: 'concentrado', gado_corte: 'concentrado', gado_leite: 'concentrado',
+  recria: 'concentrado',
+  cria: 'suplemento', manutencao: 'suplemento', proteica: 'suplemento',
+}
+
+/** Produtos que se consomem em dose de SUPLEMENTO, não de concentrado. */
+const PRODUTOS_SUPLEMENTO = ['Sal mineral / proteinado']
 
 export function analisar(
   a: Atendimento,
@@ -116,7 +135,16 @@ export function analisar(
   // de leite ("Quantos litros por vaca por dia?") no meio da conversa de boi.
   // Medido em 05/08/2026: das 9 chaves de bovino, `gado_corte` era a única
   // órfã; aves e suínos não têm nenhuma.
-  const SUBGRUPO_POR_FASE: Record<string, string> = { gado_corte: 'corte', gado_leite: 'leite' }
+  //
+  // ⚠️ SÓ `gado_corte`. Eu tinha posto `gado_leite: 'leite'` junto, por simetria
+  // — e PIOREI o que já funcionava: `gado_leite` casa com 3 categorias pelas
+  // `fases` (lactação alta, média e baixa), e por subgrupo passava a casar com
+  // 6, arrastando bezerras em aleitamento, novilhas e vacas secas pra dentro de
+  // uma conversa sobre vaca em lactação. O commit irmão se chama "o painel era a
+  // UNIÃO de todas as fases" e eu dobrei a união justamente onde ela estava
+  // certa. `gado_corte` precisa do subgrupo porque casava com ZERO; `gado_leite`
+  // não precisava de nada.
+  const SUBGRUPO_POR_FASE: Record<string, string> = { gado_corte: 'corte' }
   const subgrupoEscolhido = a.fase ? SUBGRUPO_POR_FASE[a.fase] : undefined
   const casaFase = (x: GuiaAnimal) => subgrupoEscolhido
     ? x.subgrupo === subgrupoEscolhido
@@ -209,21 +237,26 @@ export function analisar(
   // Só morde no modo rebanho (no modo volume a tonelagem é palavra do cliente,
   // seja qual for o produto) e só quando o número veio do CATÁLOGO — se o
   // vendedor digitou o consumo, o número é do produtor e vale.
+  // Só morde quando a FASE assume concentrado e o cliente pediu suplemento —
+  // que é o caso de ordem de grandeza. Fase de suplemento com produto de
+  // suplemento é o par certo e passa direto.
   const produtoForaDaRacao =
     modo === 'rebanho'
     && !!a.produto
-    && PRODUTOS_FORA_DA_RACAO.includes(a.produto)
+    && !!a.fase
+    && CONSUMO_DA_FASE[a.fase] === 'concentrado'
+    && PRODUTOS_SUPLEMENTO.includes(a.produto)
     && consumoInformado === null
     && consumoCatalogo !== null
 
   if (produtoForaDaRacao) {
-    faltando.push(`Consumo de ${a.produto!.toLowerCase()} por animal (o de catálogo é de ração completa)`)
+    faltando.push(`Consumo de ${a.produto!.toLowerCase()} por animal (o de catálogo é de concentrado)`)
     atencao.push({
       nivel: 'atencao',
-      texto: `O cliente pediu ${a.produto}, e o consumo em uso (${consumoCatalogo} kg/animal/mês) `
-        + 'é de RAÇÃO COMPLETA. Concentrado, mineral e proteinado entram em dose muito menor — '
-        + 'perguntar quanto ele dá por cabeça e digitar no campo de consumo. Sem isso a necessidade '
-        + 'mensal fica alta demais e o equipamento sai grande demais.',
+      texto: `O cliente pediu ${a.produto}, mas o consumo em uso (${consumoCatalogo} kg/animal/mês) `
+        + 'é de CONCENTRADO — é o que esta fase pressupõe. Mineral e proteinado entram em dose muito '
+        + 'menor: perguntar quanto ele dá por cabeça e digitar no campo de consumo. Sem isso a '
+        + 'necessidade mensal fica alta demais e o equipamento sai grande demais.',
     })
   }
 

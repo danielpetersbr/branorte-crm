@@ -381,21 +381,42 @@ describe('dimensionamento', () => {
     APROX(d.producaoPorDiaKg, 60_750 / 26)
     APROX(d.capacidadeMinimaKgHora, 60_750 / 26 / 4)
     APROX(d.capacidadeRecomendadaKgHora, (60_750 / 26 / 4) * 1.2)
-    assert.equal(d.sugerido?.capacidade, 750, 'recomendada ~701 kg/h → sobe pra 750')
+    assert.equal(d.sugerido?.capacidade, 750, 'recomendada ~701 kg/h → sobe pra 750 (BNMM175)')
   })
 
   it('sugere a menor capacidade que atende', () => {
     assert.equal(sugerirEquipamento(250, CAPACIDADES_BRANORTE, 1000, 4)?.capacidade, 300)
     assert.equal(sugerirEquipamento(300, CAPACIDADES_BRANORTE, 1000, 4)?.capacidade, 300)
-    // 301 subia pra 600 — máquina que a Branorte não fabrica. O degrau real é 500.
-    assert.equal(sugerirEquipamento(301, CAPACIDADES_BRANORTE, 1000, 4)?.capacidade, 500)
+    // 301 subia pra 600, máquina que nunca existiu. O degrau real e ATIVO é 750
+    // — o BNMM150 de 500 kg/h está desativado no catálogo.
+    assert.equal(sugerirEquipamento(301, CAPACIDADES_BRANORTE, 1000, 4)?.capacidade, 750)
   })
 
-  it('a linha é a do catálogo, não uma escada inventada', () => {
-    // Guarda de regressão: os dois erros que a lista sintética cometia.
-    assert.ok(!CAPACIDADES_BRANORTE.includes(600), '600 kg/h não existe em precos_branorte')
-    assert.equal(Math.max(...CAPACIDADES_BRANORTE), 10_000, 'BNMM7100 fecha a linha, não o 5.000')
-    assert.ok(!CAPACIDADES_BRANORTE.includes(75_000), '75 t/h é erro de digitação do BNMM775')
+  it('a linha bate com os moinhos ATIVOS do catálogo', () => {
+    // Este teste já foi tautológico: afirmava coisas sobre `precos_branorte` e
+    // conferia contra um literal do mesmo repositório — o array olhando pro
+    // espelho. Passava em verde enquanto a lista carregava 8 SKUs desativados.
+    //
+    // Agora ele confere contra a ÚNICA cópia independente que existe offline:
+    // os modelos e o estado `ativo` transcritos da consulta, com a data. Não
+    // substitui conferir no banco, mas quebra se alguém acrescentar capacidade
+    // sem dizer de qual modelo ela veio.
+    const ATIVOS_EM_05_08_2026: Array<[number, string]> = [
+      [300, 'BNMM130'], [750, 'BNMM175'], [1000, 'BNMM210'], [1500, 'BNMM215'],
+      [1700, 'BNMM315'], [2000, 'BNMM320'], [2200, 'BNMM425'], [3000, 'BNMM440'],
+      [4500, 'BNMM540'], [5000, 'BNMM550'], [7500, 'BNMM675'], [10000, 'BNMM7100'],
+    ]
+    assert.deepEqual(
+      [...CAPACIDADES_BRANORTE].sort((a, b) => a - b),
+      ATIVOS_EM_05_08_2026.map(([kg]) => kg),
+      'toda capacidade tem que ter um modelo ativo por trás',
+    )
+    // Os desativados que a primeira versão desta lista ressuscitou.
+    for (const morto of [500, 1250, 2500, 2900, 4000, 5500, 6000, 6500, 75_000]) {
+      assert.ok(!CAPACIDADES_BRANORTE.includes(morto), `${morto} kg/h é SKU inativo`)
+    }
+    // E o que a lista sintética inventava.
+    assert.ok(!CAPACIDADES_BRANORTE.includes(600), '600 kg/h nunca existiu')
   })
 
   it('acima da linha devolve a maior e sinaliza', () => {

@@ -21,11 +21,15 @@ export function Secao({
       destaque ? 'border-accent/30 bg-accent-bg/30' : 'border-border bg-surface',
       className,
     )}>
-      {/* Era `text-[11px] uppercase tracking-wide text-ink-faint`. No tema
-          escuro, `ink-faint` (240 3% 50%) sobre `surface` (240 8% 11%) dá ~4,2:1
-          — em caixa-alta de 11px com tracking aberto, era o texto mais difícil
-          da tela nomeando todas as seções dela. */}
-      <h3 className="mb-2.5 flex items-center gap-1.5 text-[13px] font-semibold tracking-[-0.01em] text-ink">
+      {/* O contraste era o problema, não o tamanho. `ink-faint` (240 3% 50%)
+          sobre `surface` (240 8% 11%) mede 4,23:1 — reprova no AA, que pede 4,5.
+          Subir a COR resolve isso.
+          Eu tinha trocado por `text-[13px] text-ink` e criado outro defeito: o
+          corpo de `Lista` e `Perguntas` também é 13px/ink, então título e texto
+          ficavam idênticos a menos do peso. Em `DetalheAnimal` são 10 seções
+          empilhadas e em `DetalheMateria` 8 — virava parede de 13px sem nada
+          nomeando nada. Caixa-alta menor É a hierarquia; só faltava contraste. */}
+      <h3 className="mb-2.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-ink-muted">
         {icone}{titulo}
       </h3>
       {children}
