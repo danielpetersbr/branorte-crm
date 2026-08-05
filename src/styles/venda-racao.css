@@ -1330,6 +1330,15 @@
    Estende `.vr-subst`, que já existia — o painel cresceu de "nome + limite" pra
    classificação, motivos, o que muda e a prévia com rebalanceamento. Tudo
    escopado dentro de `.vr-subst` pra não vazar. */
+/* Linha de ajuda: com 16 opções fechadas, nada dizia que era pra clicar. */
+.vr .vr-subst .ajuda {
+  margin: 0 0 6px; font-size: 11px; line-height: 1.4; color: var(--vr-ink40);
+}
+/* A linha inteira é clicável — o cursor tem que dizer isso. */
+.vr .vr-subst .tit { cursor: pointer; }
+.vr .vr-subst .tit:hover { background: var(--vr-bg); }
+.vr .vr-subst li:has(.corpo) { border-color: var(--vr-green-hair); }
+
 .vr .vr-subst .tit .compat {
   font: 700 9.5px var(--vr-mono); padding: 2px 6px; border-radius: 20px;
   border: 1px solid var(--vr-hair); white-space: nowrap; flex: none;

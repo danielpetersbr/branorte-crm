@@ -61,8 +61,21 @@ export function SubstituirIngrediente({
     () => alternativasPara(item.nome, atual, especie),
     [item.nome, atual, especie],
   )
+  /**
+   * A MELHOR OPÇÃO JÁ ABRE.
+   *
+   * Enquanto eram 1 a 3 alternativas, só abria sozinha quando havia exatamente
+   * uma — nos outros casos a lista era curta e o vendedor achava o caminho. Com
+   * 16 opções o resultado foi uma parede de 16 linhas fechadas e NENHUM botão de
+   * aplicar em lugar nenhum da tela: o Daniel abriu, olhou e perguntou se não
+   * dava mais pra substituir. Dava — só não havia nada dizendo que era preciso
+   * clicar na linha.
+   *
+   * Abrir a primeira resolve as duas coisas de uma vez: mostra a ação (o campo
+   * "Trocar", a prévia, o botão) e ensina que as outras linhas abrem igual.
+   */
   const [aberta, setAberta] = useState<string | null>(
-    alternativas.length === 1 ? alternativas[0].ingrediente.id : null,
+    alternativas[0]?.ingrediente.id ?? null,
   )
   const [pontos, setPontos] = useState<Record<string, number>>({})
 
@@ -87,6 +100,11 @@ export function SubstituirIngrediente({
         </p>
       )}
 
+      <p className="ajuda">
+        {alternativas.length} {alternativas.length === 1 ? 'opção' : 'opções'}, da mais compatível
+        para a menos. Clique em qualquer uma para ver o que ela muda e aplicar.
+      </p>
+
       <ul>
         {alternativas.map(a => (
           <Opcao
@@ -95,16 +113,11 @@ export function SubstituirIngrediente({
             onAbrir={() => setAberta(v => (v === a.ingrediente.id ? null : a.ingrediente.id))}
             quanto={pontos[a.ingrediente.id] ?? (a.maximoSubstituivel ?? atual)}
             onQuanto={v => setPontos(p => ({ ...p, [a.ingrediente.id]: v }))}
+            item={item} itens={itens} especie={especie} categoria={categoria}
+            onAplicar={onAplicar}
           />
         ))}
       </ul>
-
-      {escolhida && quanto > 0 && (
-        <Previa
-          item={item} itens={itens} alternativa={escolhida} pontos={quanto}
-          especie={especie} categoria={categoria} onAplicar={onAplicar}
-        />
-      )}
 
       <p className="rodape">
         Limite e ressalva vêm da literatura citada em cada opção. O rebalanceamento é feito por um
@@ -117,9 +130,13 @@ export function SubstituirIngrediente({
 
 function Opcao({
   a, atual, aberta, onAbrir, quanto, onQuanto,
+  item, itens, especie, categoria, onAplicar,
 }: {
   a: Alternativa; atual: number; aberta: boolean; onAbrir: () => void
   quanto: number; onQuanto: (v: number) => void
+  item: IngredienteFormula; itens: IngredienteFormula[]
+  especie: Especie; categoria: string
+  onAplicar: (novos: IngredienteFormula[]) => void
 }) {
   const teto = a.maximoSubstituivel ?? atual
   return (
@@ -194,6 +211,18 @@ function Opcao({
           </div>
 
           <p className="fonte">{a.fonte}</p>
+
+          {/* A PRÉVIA FICA AQUI DENTRO, e não depois da lista.
+              Estava renderizada abaixo do <ul> inteiro: com 16 opções, quem
+              abria a quarta tinha o botão de aplicar doze linhas mais embaixo,
+              fora da tela. Meu teste conferiu que o botão EXISTIA e passou —
+              existir não é o mesmo que estar à vista. */}
+          {quanto > 0 && (
+            <Previa
+              item={item} itens={itens} alternativa={a} pontos={quanto}
+              especie={especie} categoria={categoria} onAplicar={onAplicar}
+            />
+          )}
         </div>
       )}
     </li>
