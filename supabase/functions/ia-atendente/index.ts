@@ -257,21 +257,42 @@ function perguntaDoEquipamento(equipTxt: string): string {
 // de linha sem motivo: plantel que cabe na Mini nao vai pra Compacta 03 — isso e erro de dezenas
 // de milhares de reais". O codigo contradizia a KB, e o codigo sempre ganha.
 // Valores kg/cabeca/dia: os mesmos do cartao `dimensionamento` (media da faixa por especie).
-const CONSUMO_DIA: Array<{ re: RegExp, kg: number }> = [
-  { re: /su[íi]n|porcos?\b|porcas?\b|leit[ãa]o|leitoas?\b|marr[ãa]/,                                     kg: 2 },
-  { re: /\baves?\b|frangos?\b|frangas?\b|galinh|\bgalos?\b|poedeira|poeiras\b|caipira|codorn|\bperus?\b|\bpatos?\b|marreco|ganso|pintinho|\bpintos?\b/, kg: 0.11 },
+const CONSUMO_DIA: Array<{ id: string, re: RegExp, kg: number }> = [
+  { id: 'suino', re: /su[íi]n|porcos?\b|porcas?\b|leit[ãa]o|leitoas?\b|marr[ãa]/,                        kg: 2 },
+  { id: 'ave',   re: /\baves?\b|frangos?\b|frangas?\b|galinh|\bgalos?\b|poedeira|poeiras\b|caipira|codorn|\bperus?\b|\bpatos?\b|marreco|ganso|pintinho|\bpintos?\b/, kg: 0.11 },
   // \b na frente de "ovino" e OBRIGATORIO: sem ele, "bOVINO" casa aqui e vira 1,5 kg/dia — o
   // gado inteiro sairia dimensionado como ovelha. Pego no teste, nao em producao.
-  { re: /ovelh|\bovinos?\b|carneir|cordeir|borrego|cabras?\b|\bbodes?\b|caprin|cabrit/,                   kg: 1.5 },
-  { re: /coelh/,                                                                                          kg: 0.15 },
-  { re: /equin|cavalos?\b|[ée]guas?\b|potr|jument|jegue|muar/,                                             kg: 6 },
-  { re: /bovin|\bbois?\b|\bgado\b|\bvacas?\b|\btouros?\b|garrote|bezerr|novilh|terneir|b[úu]fal|confinament/, kg: 8 },
+  { id: 'ovino', re: /ovelh|\bovinos?\b|carneir|cordeir|borrego|cabras?\b|\bbodes?\b|caprin|cabrit/,      kg: 1.5 },
+  { id: 'coelho', re: /coelh/,                                                                            kg: 0.15 },
+  { id: 'equino', re: /equin|cavalos?\b|[ée]guas?\b|potr|jument|jegue|muar/,                               kg: 6 },
+  { id: 'bovino', re: /bovin|\bbois?\b|\bgado\b|\bvacas?\b|\btouros?\b|garrote|bezerr|novilh|terneir|b[úu]fal|confinament/, kg: 8 },
 ]
+// (05/08) O cartao `dimensionamento` da KB ABRE com isto: "ERRO Nº1: NAO PERGUNTAR O TIPO DE
+// RACAO — consumo de bovino varia de 0,1 a 10 kg/cab/dia conforme a FORMULACAO, cem vezes de
+// diferenca". O codigo usava 8 (confinamento) pra TODO bovino. Caso de hoje, PEDRO, chat
+// 2336663584995@lid 05/08 14:54: cliente pediu MINI FABRICA pra "proteico e sal mineral", 1000
+// cabecas -> 1000 x 8 = 8000 kg/dia -> 4667 kg/h -> COMPACTA 03. Com proteinado (0,6) sao 600
+// kg/dia -> 350 kg/h -> Mini 600, que e o que ele pediu.
+// Quando o cliente DIZ a formulacao, ela manda. Numeros: os do proprio cartao da KB.
+const FORMULACAO_BOVINO: Array<{ re: RegExp, kg: number }> = [
+  { re: /sal\s*mineral|mineraliza[çc]/i,             kg: 0.1 },
+  { re: /proteinad|proteico|energ[ée]tico/i,          kg: 0.6 },
+  { re: /creep/i,                                     kg: 1.5 },
+  { re: /\bcria\b|recria/i,                           kg: 3 },
+  { re: /semi.?confinament/i,                         kg: 5 },
+  { re: /confinament/i,                               kg: 10 },
+]
+function ajustePorFormulacao(id: string, kgPadrao: number, conv?: string): number {
+  if (id !== 'bovino' || !conv) return kgPadrao
+  const t = textoNumerico(conv)
+  for (const f of FORMULACAO_BOVINO) if (f.re.test(t)) return f.kg
+  return kgPadrao
+}
 // Retorna null quando NAO reconhece a especie — nao chuta gado (era exatamente o bug).
-function mediaAnimalDia(animal: string): number | null {
+function mediaAnimalDia(animal: string, conv?: string): number | null {
   const a = String(animal || '').toLowerCase()
   if (!a) return null
-  for (const c of CONSUMO_DIA) if (c.re.test(a)) return c.kg
+  for (const c of CONSUMO_DIA) if (c.re.test(a)) return ajustePorFormulacao(c.id, c.kg, conv)
   return null
 }
 // "1.500" -> 1500 · "1,5" -> 1.5
@@ -312,7 +333,7 @@ function rebanhoDoTexto(conv: string): { cabecas: number, consumoDia: number, es
       const depois = t.match(new RegExp('(?:' + esp + ')[^0-9]{0,14}?([0-9][0-9.,]*)(?![0-9.,])(?!\\s*(?:kg|quilo|ton|cv\\b|%|m[²³]))', 'i'))
       if (depois) q = numeroBR(depois[1])
     }
-    if (q > 0 && q <= 500000) { cabecas += q; consumoDia += q * c.kg; especies++ }
+    if (q > 0 && q <= 500000) { cabecas += q; consumoDia += q * ajustePorFormulacao(c.id, c.kg, conv); especies++ }
   }
   return { cabecas, consumoDia, especies }
 }
@@ -337,7 +358,7 @@ function escolherModeloFabrica(dados: any, convCliente?: string): { slug: string
     if (reb.especies >= 2) consumoDia = reb.consumoDia
     // 2o) especie unica reconhecida + cabecas (caminho de sempre).
     if (!consumoDia && dados.animal && Number(dados.quantidade) > 0) {
-      const m = mediaAnimalDia(dados.animal)
+      const m = mediaAnimalDia(dados.animal, convCliente)
       if (m != null) consumoDia = Number(dados.quantidade) * m
     }
     // 3o) so uma especie apareceu no texto (e o campo `animal` esta "misto"/vazio).
@@ -346,7 +367,7 @@ function escolherModeloFabrica(dados: any, convCliente?: string): { slug: string
     //     Errar pra baixo o vendedor corrige na conversa; errar pra cima espanta o cliente.
     if (!consumoDia && Number(dados.quantidade) > 0 && convCliente) {
       const t = ' ' + textoNumerico(convCliente) + ' '
-      const citadas = CONSUMO_DIA.filter((c) => c.re.test(t)).map((c) => c.kg)
+      const citadas = CONSUMO_DIA.filter((c) => c.re.test(t)).map((c) => ajustePorFormulacao(c.id, c.kg, convCliente))
       if (citadas.length) consumoDia = Number(dados.quantidade) * Math.min(...citadas)
     }
     if (consumoDia <= 0) return null   // especie desconhecida: NAO escolhe modelo (nao manda midia errada)
