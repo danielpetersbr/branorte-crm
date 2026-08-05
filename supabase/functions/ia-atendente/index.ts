@@ -374,10 +374,18 @@ function escolherModeloFabrica(dados: any, convCliente?: string): { slug: string
     kgh = consumoDia * 7 / 12
   }
   if (kgh <= 0) return null
+  // (05/08, decisao do Daniel) A FAIXA AGORA SEGUE A KB. O codigo mandava compacta-02 ate 2500
+  // kg/h; o cartao `dimensionamento` diz "1500-2999 Compacta 03". Eram 8 leads em 60 dias
+  // recebendo uma linha abaixo do que a propria base manda.
+  // ⚠️ A outra metade da regra da KB — "1500-3000 MASTER, misturador HORIZONTAL, e a indicada
+  // para BOVINOS; bovino entre 1500 e 3000 vai para Master, nunca Compacta 03" — NAO foi
+  // implementada porque NAO EXISTE linha 'master' em `fabrica_midia` (so compacta-01/02/03 e
+  // mini-fabrica): a IA nao teria foto, tabela nem video pra mandar. Quando o MASTER for
+  // cadastrado, o desvio de bovino entra aqui.
   let slug = 'compacta-03'
   if (kgh <= 600) slug = 'mini-fabrica'
   else if (kgh <= 1000) slug = 'compacta-01'
-  else if (kgh <= 2500) slug = 'compacta-02'
+  else if (kgh <= 1499) slug = 'compacta-02'
   return { slug, kgh }
 }
 async function carregarFabricaMidia(supa: any, modelo: string): Promise<any | null> {
