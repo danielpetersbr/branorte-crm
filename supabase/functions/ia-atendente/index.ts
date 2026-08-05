@@ -244,18 +244,114 @@ function perguntaDoEquipamento(equipTxt: string): string {
 
 // Escolhe o modelo de fabrica pela regra do mapa: venda = kg/h direto; consumo =
 // cabecas x media/dia do animal x 7 / 12h (3 meios-periodos/semana).
-function mediaAnimalDia(animal: string): number {
+//
+// (05/08) CONSUMO POR ESPECIE. O default `return 8` (bovino de confinamento) valia pra TUDO que
+// nao fosse ave/suino — inclusive o valor "misto", que a propria IA grava quando o cliente cria
+// mais de um bicho. Caso levado ao grupo "IA Branorte Melhorias" pelo EDILSON JR ("acho que a
+// i.a se enganou ai"), chat 122660038172861@lid, 03/08 07:46: o cliente disse "aves em torno de
+// 500" + "porco uns 30"; ficou animal="misto", quantidade=530, e 530 x 8 x 7/12 = 2473 kg/h ->
+// COMPACTA 02. O consumo real e 500x0,11 + 30x2 = 115 kg/dia -> 67 kg/h -> MINI FABRICA.
+// Uma linha inteira de diferenca, pra cima.
+// A KB (cartao `dimensionamento`) ja mandava, com todas as letras: "ovino e caprino NAO consomem
+// como bovino. Tratar ovelha como boi superdimensiona a fabrica em varias vezes" e "NUNCA suba
+// de linha sem motivo: plantel que cabe na Mini nao vai pra Compacta 03 — isso e erro de dezenas
+// de milhares de reais". O codigo contradizia a KB, e o codigo sempre ganha.
+// Valores kg/cabeca/dia: os mesmos do cartao `dimensionamento` (media da faixa por especie).
+const CONSUMO_DIA: Array<{ re: RegExp, kg: number }> = [
+  { re: /su[íi]n|porcos?\b|porcas?\b|leit[ãa]o|leitoas?\b|marr[ãa]/,                                     kg: 2 },
+  { re: /\baves?\b|frangos?\b|frangas?\b|galinh|\bgalos?\b|poedeira|poeiras\b|caipira|codorn|\bperus?\b|\bpatos?\b|marreco|ganso|pintinho|\bpintos?\b/, kg: 0.11 },
+  // \b na frente de "ovino" e OBRIGATORIO: sem ele, "bOVINO" casa aqui e vira 1,5 kg/dia — o
+  // gado inteiro sairia dimensionado como ovelha. Pego no teste, nao em producao.
+  { re: /ovelh|\bovinos?\b|carneir|cordeir|borrego|cabras?\b|\bbodes?\b|caprin|cabrit/,                   kg: 1.5 },
+  { re: /coelh/,                                                                                          kg: 0.15 },
+  { re: /equin|cavalos?\b|[ée]guas?\b|potr|jument|jegue|muar/,                                             kg: 6 },
+  { re: /bovin|\bbois?\b|\bgado\b|\bvacas?\b|\btouros?\b|garrote|bezerr|novilh|terneir|b[úu]fal|confinament/, kg: 8 },
+]
+// Retorna null quando NAO reconhece a especie — nao chuta gado (era exatamente o bug).
+function mediaAnimalDia(animal: string): number | null {
   const a = String(animal || '').toLowerCase()
-  if (/su[íi]n|porco/.test(a)) return 2
-  if (/ave|frango|galinh|poedeira|caipira|codorn|peru/.test(a)) return 0.11
-  return 8 // bovino/gado/leite/ovino/caprino/equino (default gado)
+  if (!a) return null
+  for (const c of CONSUMO_DIA) if (c.re.test(a)) return c.kg
+  return null
 }
-function escolherModeloFabrica(dados: any): { slug: string, kgh: number } | null {
+// "1.500" -> 1500 · "1,5" -> 1.5
+function numeroBR(s: string): number {
+  const t = String(s || '').trim().replace(/\.(?=\d{3}\b)/g, '').replace(',', '.')
+  const n = Number(t)
+  return Number.isFinite(n) ? n : 0
+}
+// Texto do cliente preparado pra extracao NUMERICA. Tira o boilerplate de anuncio/LP — ele traz
+// "#1785879965" e "Mini Fabrica 300 kg/h" sem o cliente ter dito nada disso, e viraria numero
+// fantasma no rebanho e na producao.
+function textoNumerico(conv: string): string {
+  return String(conv || '')
+    // O ponto SO separa frase quando nao esta entre digitos — senao "3.000 kg/h" vira "3" e
+    // "000 kg/h" e o numero do cliente evapora.
+    .split(/(?:(?<!\d)[.!?]+(?!\d)|\n)+/)
+    .filter((s) => !/(vim pela lp|vi o an[úu]ncio|vim pelo facebook|quero mais informa|tenho interesse na)/i.test(s))
+    .join(' . ')
+    .replace(/#\d{3,}/g, ' ')
+    .replace(/\d{9,}/g, ' ')
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+}
+// Soma o rebanho que o CLIENTE descreveu, por especie. Pega "500 galinhas", "uns 30 porcos",
+// "aves em torno de 500", "60 novilhas", "530 cabecas de aves". Ignora numero colado em unidade
+// (kg, ton, cv, %) pra nao confundir "porcos de 200 kg" com 200 cabecas.
+function rebanhoDoTexto(conv: string): { cabecas: number, consumoDia: number, especies: number } {
+  const t = ' ' + textoNumerico(conv) + ' '
+  let cabecas = 0, consumoDia = 0, especies = 0
+  for (const c of CONSUMO_DIA) {
+    const esp = c.re.source
+    let q = 0
+    const antes = t.match(new RegExp('([0-9][0-9.,]*)\\s*(mil\\s+)?(?:cabe[çc]as?\\s*(?:de\\s*)?)?(?:' + esp + ')', 'i'))
+    if (antes) q = numeroBR(antes[1]) * (antes[2] ? 1000 : 1)
+    if (!q) {
+      // (?![\d.,]) ancora o FIM do numero: sem isso "porcos de 200 kg" era salvo pelo
+      // backtracking como "20" (o motor corta o ultimo digito ate a unidade sair da frente).
+      const depois = t.match(new RegExp('(?:' + esp + ')[^0-9]{0,14}?([0-9][0-9.,]*)(?![0-9.,])(?!\\s*(?:kg|quilo|ton|cv\\b|%|m[²³]))', 'i'))
+      if (depois) q = numeroBR(depois[1])
+    }
+    if (q > 0 && q <= 500000) { cabecas += q; consumoDia += q * c.kg; especies++ }
+  }
+  return { cabecas, consumoDia, especies }
+}
+// kg/h dito pelo proprio cliente ("3.000 kg racao hora", "2 t/h", "500 kg por hora").
+function kghDoTexto(conv: string): number {
+  const t = textoNumerico(conv)
+  let m = t.match(/([0-9][0-9.,]*)\s*(?:kg|quilos?)\s*(?:(?:de\s+)?ra[çc][ãa]o\s*)?(?:\/|por\s+|na\s+|a\s+cada\s+)?\s*(?:h\b|hora)/i)
+  if (m) return numeroBR(m[1])
+  m = t.match(/([0-9][0-9.,]*)\s*(?:t\b|ton\b|toneladas?)\s*(?:(?:de\s+)?ra[çc][ãa]o\s*)?(?:\/|por\s+|na\s+)?\s*(?:h\b|hora)/i)
+  if (m) return numeroBR(m[1]) * 1000
+  return 0
+}
+function escolherModeloFabrica(dados: any, convCliente?: string): { slug: string, kgh: number } | null {
   if (!dados) return null
   let kgh = 0
   if (Number(dados.producao_kgh) > 0) kgh = Number(dados.producao_kgh)
-  else if (dados.animal && Number(dados.quantidade) > 0) kgh = Number(dados.quantidade) * mediaAnimalDia(dados.animal) * 7 / 12
-  else return null
+  else {
+    let consumoDia = 0
+    const reb = convCliente ? rebanhoDoTexto(convCliente) : { cabecas: 0, consumoDia: 0, especies: 0 }
+    // 1o) criacao MISTA: a quebra por especie tem que vir do texto do cliente. Uma soma unica de
+    //     cabecas com uma media unica nunca vai dar certo com bichos de consumo tao diferente.
+    if (reb.especies >= 2) consumoDia = reb.consumoDia
+    // 2o) especie unica reconhecida + cabecas (caminho de sempre).
+    if (!consumoDia && dados.animal && Number(dados.quantidade) > 0) {
+      const m = mediaAnimalDia(dados.animal)
+      if (m != null) consumoDia = Number(dados.quantidade) * m
+    }
+    // 3o) so uma especie apareceu no texto (e o campo `animal` esta "misto"/vazio).
+    if (!consumoDia && reb.especies === 1) consumoDia = reb.consumoDia
+    // 4o) tem cabecas mas a especie nao da pra resolver: usa a MENOR media entre as citadas.
+    //     Errar pra baixo o vendedor corrige na conversa; errar pra cima espanta o cliente.
+    if (!consumoDia && Number(dados.quantidade) > 0 && convCliente) {
+      const t = ' ' + textoNumerico(convCliente) + ' '
+      const citadas = CONSUMO_DIA.filter((c) => c.re.test(t)).map((c) => c.kg)
+      if (citadas.length) consumoDia = Number(dados.quantidade) * Math.min(...citadas)
+    }
+    if (consumoDia <= 0) return null   // especie desconhecida: NAO escolhe modelo (nao manda midia errada)
+    kgh = consumoDia * 7 / 12
+  }
   if (kgh <= 0) return null
   let slug = 'compacta-03'
   if (kgh <= 600) slug = 'mini-fabrica'
@@ -1789,6 +1885,25 @@ Deno.serve(async (req: Request) => {
       // As DECISOES usam a memoria acumulada -> nao "esquece" um dado se o modelo deixar de
       // re-extrair num turno (evita loop mesmo com extracao inconsistente do LLM entre turnos).
       const dadosMem: any = { ...(st.dados_coletados || {}), ...(dados || {}) }
+      // (05/08) RE-PERGUNTA DO QUE JA FOI RESPONDIDO. A quantidade e o kg/h so chegavam pela
+      // extracao do LLM; quando ele falhava, o texto canned perguntava de novo o que o cliente
+      // JA tinha dito. Foi a queixa do EDILSON JR no grupo "IA Branorte Melhorias" ("cliente
+      // disse que tem 500 galinha e depois a i.a perguntou quantas galinhas tem") e o caso
+      // Rodrigo/PEDRO 03/08 ("Cerca de 60 novilhas" -> "me diz mais ou menos quantas cabecas
+      // sao?"). Agora, ANTES de decidir perguntar, o codigo le o que ele falou — deterministico,
+      // sem depender do humor do modelo. So preenche o que esta VAZIO: nunca sobrescreve.
+      if (!(Number(dadosMem.quantidade) > 0)) {
+        const _reb = rebanhoDoTexto(convCliente)
+        if (_reb.cabecas > 0) { dadosMem.quantidade = _reb.cabecas; if (dados) dados.quantidade = _reb.cabecas }
+      }
+      if (!(Number(dadosMem.producao_kgh) > 0)) {
+        const _kgh = kghDoTexto(convCliente)
+        // (caso Lucas 03/08) "quero ver o orcamento de uma mini fabrica com 3.000 kg racao hora"
+        // -> a IA respondeu "e seria quantas cabecas de gado para esse confinamento?". Ele JA
+        // tinha definido o que queria. E o ponto do Alvaro no grupo: quando o cliente define,
+        // para de questionar.
+        if (_kgh > 0) { dadosMem.producao_kgh = _kgh; if (dados) dados.producao_kgh = _kgh }
+      }
       const nomeBom = (dadosMem.nome_cliente && nomeParecePessoa(dadosMem.nome_cliente)) ? String(dadosMem.nome_cliente)
         : (nomeParecePessoa(nomeContatoTxt) ? nomeContatoTxt : '')
       const temNome = !!nomeBom
@@ -1877,30 +1992,57 @@ Deno.serve(async (req: Request) => {
         const uso = String((dadosMem.uso || dadosMem.finalidade) || '').toLowerCase()
         const ehVenda = /venda|vender|revend|comerci/.test(uso)
         const ehConsumo = /consumo|propri/.test(uso)
+        // (05/08, Alvaro no grupo) "nao precisa iniciar em 100% das frases desta forma,
+        // intercalar seria melhor pra nao ficar uma conversa macante". Toda pergunta canned
+        // abria com "Certo." — o cliente via a mesma abertura 3x seguidas. Alterna pela
+        // tentativa (0 = vai direto ao ponto). Palavras banidas da persona ficam de fora.
+        const _ab = ['', 'Certo. ', 'Só me confirma isso: '][Math.min(qualifTent, 2)]
+        // "misto" e um rotulo INTERNO da IA, nao e bicho. Interpolado cru virava "quantas
+        // cabecas de misto voce tem" (chat 68341586772119@lid, ALVARO, 05/08 09:12 e 09:14).
+        const _animalFalavel = /^(misto|misturad|v[áa]rio|diverso|outro|animal|animais)/i.test(String(dadosMem.animal || ''))
+          ? '' : String(dadosMem.animal || '').trim()
         if (!temNome) {
           texto = 'Boa! Antes, como é o seu nome?'
         } else if (equipTxt && !equipEhFabrica && !temAplicacaoEquip) {
           // (29/07) RAMO EQUIPAMENTO: UMA pergunta, e ela e do EQUIPAMENTO — nao de animal.
           texto = perguntaDoEquipamento(equipTxt)
         } else if (!ehVenda && !ehConsumo) {
-          texto = 'Entendi. Essa ração é pra você vender ou pra consumo dos seus animais?'
+          texto = 'Essa ração é pra você vender ou pra consumo dos seus animais?'
         } else if (ehVenda) {
           // (28/07) "Show" e palavra BANIDA na persona (linha de tom de voz) e estava hardcoded aqui.
-          texto = 'Certo. Quantos kg por hora você pretende produzir, mais ou menos?'
+          texto = _ab + 'Quantos kg por hora você pretende produzir, mais ou menos?'
         } else {
           // consumo: precisa do ANIMAL e das CABECAS
           if (dadosMem.animal && !(Number(dadosMem.quantidade) > 0)) {
-            texto = 'Certo. E quantas cabeças de ' + String(dadosMem.animal) + ' você tem, mais ou menos?'
+            texto = _animalFalavel
+              ? _ab + 'E quantas cabeças de ' + _animalFalavel + ' você tem, mais ou menos?'
+              : _ab + 'E quantas cabeças de cada bicho, mais ou menos?'
           } else if (!dadosMem.animal) {
-            texto = 'Certo. Pra qual animal é a ração, e quantas cabeças mais ou menos?'
+            texto = _ab + 'Pra qual animal é a ração, e quantas cabeças mais ou menos?'
           } else {
-            texto = 'Certo. Me confirma só quantas cabeças mais ou menos?'
+            texto = _ab + 'Me confirma só quantas cabeças mais ou menos?'
           }
+        }
+        // (05/08) NUNCA REPETIR A MESMA PERGUNTA. Caso Jose Carlos/ALVARO (68341586772119@lid):
+        // "Certo. E quantas cabeças de misto você tem, mais ou menos?" as 09:12 e, depois do
+        // cliente responder por audio, LETRA POR LETRA de novo as 09:14. E o "agressiva e
+        // repetitiva" que o Eder e o Edilson descreveram no grupo. Se ja perguntei isso, nao
+        // pergunto de novo: solto o bastao e deixo o vendedor conduzir.
+        // normNome devolve MAIUSCULA e sem acento — a classe do replace tem que ser [^A-Z0-9 ].
+        const _achatar = (s: string) => normNome(s).replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+        const _assinatura = _achatar(String(texto || '')).slice(0, 45)
+        const _jaPerguntei = _assinatura.length >= 15 && msgs.some((m: any) => m.fromMe &&
+          _achatar(String(m.body || '')).includes(_assinatura))
+        if (_jaPerguntei) {
+          vendedorAssumir = true
+          qualifPerguntou = false
+          texto = (nomeBom ? 'Beleza, ' + String(nomeBom).trim().split(' ')[0] + '. ' : 'Beleza. ') +
+            'Vou organizar aqui com o que você já me passou e te retorno com tudo certinho.'
         }
         // (28/07) Se ele PEDIU PRECO, reconhece o pedido ANTES de perguntar — senao a IA ignora
         // o que ele quis saber e devolve uma pergunta seca. So na 1a vez: a auditoria mostrou a
         // frase de preco repetindo (9,4% -> 21,8%) quando saia em toda rodada.
-        if (pediuPreco && qualifTent === 0) texto = 'O valor certinho eu te passo assim que possível. ' + texto
+        if (pediuPreco && qualifTent === 0 && !_jaPerguntei) texto = 'O valor certinho eu te passo assim que possível. ' + texto
       // (29/07) 'desistir' entrou aqui: perguntei QUALIF_MAX vezes (ou ele insistiu no preco), o
       // essencial nao veio e ele continua falando comigo -> paro de insistir e passo o bastao.
       // (30/07) O PILOTO NAO SOFRE O BASTAO FORCADO.
@@ -1937,7 +2079,9 @@ Deno.serve(async (req: Request) => {
         // vale só o que ele está pedindo agora (`dadosMem.equipamento`); a menção à fábrica
         // continua valendo para a QUALIFICAÇÃO (exigir animal+cabeças), que é outra decisão.
         const equipExtraidoEhFabrica = /f[áa]bric|compacta|\bmini\b/i.test(equipTxt)
-        const escolha = (equipTxt && !equipExtraidoEhFabrica) ? null : escolherModeloFabrica(dadosMem)
+        // (05/08) convCliente entra aqui pra quebrar a criacao MISTA por especie — sem isso
+        // "500 aves + 30 porcos" virava 530 cabecas de gado e saia Compacta 02.
+        const escolha = (equipTxt && !equipExtraidoEhFabrica) ? null : escolherModeloFabrica(dadosMem, convCliente)
         // (29/07) O MODELO QUE O CLIENTE APONTOU MANDA MAIS QUE O CALCULADO — mas so quando este
         // ramo ja e de fabrica (respeita o filtro de equipamento avulso logo acima). Sem isto o
         // cliente do EDER levou a Compacta 02 e, 4 min depois, a Compacta 01: dois modelos e dois
@@ -2443,13 +2587,25 @@ Deno.serve(async (req: Request) => {
       if (!_vaiAnexo && _PROMESSA.test(texto) && _MOSTRAVEL.test(texto)) {
         const _an = String(dadosMem.animal || '').toLowerCase()
         const _venda = /venda|revenda/i.test(String(dadosMem.uso || '') + ' ' + String(dadosMem.finalidade || ''))
+        // (05/08) A pergunta tem que ser a do dado QUE FALTA. Ela era escolhida so pelo ramo e
+        // reperguntava cabecas pra quem ja tinha respondido — parte do "agressiva e repetitiva"
+        // que o grupo apontou. Tambem: o texto ia sem acento pro cliente ("Quantas cabecas o
+        // senhor tem"), o que nao e o portugues que a Branorte escreve.
+        const _temQtd = Number(dadosMem.quantidade) > 0
         const _pergunta = _venda
-          ? 'Quantos kg de racao por hora o senhor pretende produzir? Com esse numero eu ja sei qual modelo encaixa.'
-          : _an === 'ave'
-            ? 'Quantas aves o senhor tem, mais ou menos? Com esse numero eu ja sei qual modelo encaixa.'
-            : _an
-              ? 'Quantas cabecas o senhor tem, mais ou menos? Com esse numero eu ja sei qual modelo encaixa.'
-              : 'Qual animal e quantas cabecas o senhor tem, mais ou menos? Com isso eu ja sei qual modelo encaixa.'
+          ? (Number(dadosMem.producao_kgh) > 0
+              ? 'Deixa eu conferir o modelo certo aqui e já te mando.'
+              : 'Quantos kg de ração por hora o senhor pretende produzir? Com esse número eu já sei qual modelo encaixa.')
+          : (_temQtd && _an)
+            // tem cabeças e tem bicho, mas o modelo não fechou: falta separar a espécie
+            ? 'São aves, suínos ou gado? Com isso eu já fecho o modelo certo e te mando.'
+            : _temQtd
+              ? 'É pra qual bicho, mais ou menos? Com isso eu já sei qual modelo encaixa.'
+              : _an === 'ave'
+                ? 'Quantas aves o senhor tem, mais ou menos? Com esse número eu já sei qual modelo encaixa.'
+                : _an
+                  ? 'Quantas cabeças o senhor tem, mais ou menos? Com esse número eu já sei qual modelo encaixa.'
+                  : 'Qual animal e quantas cabeças o senhor tem, mais ou menos? Com isso eu já sei qual modelo encaixa.'
         const _limpo = texto.split(/(?<=[.!?])\s+/).filter((f: string) => !_PROMESSA.test(f)).join(' ').trim()
         texto = (_limpo.length >= 25 ? _limpo + ' ' : '') + _pergunta
         console.log('[ia-atendente] promessa sem anexo reescrita (' + chat_id + ')')
@@ -2458,6 +2614,60 @@ Deno.serve(async (req: Request) => {
             acao: 'promessa_sem_anexo', modo: 'automatico', executor: 'ia', status: 'executado',
             payload: { texto_final: texto.slice(0, 300) }, motivo: 'texto prometia material sem anexo — reescrito' })
         } catch (_) { /* log best-effort */ }
+      }
+
+      // (05/08, grupo "IA Branorte Melhorias") NAO PERGUNTAR O QUE JA ESTA RESPONDIDO, NEM A
+      // MESMA COISA 3 VEZES. Eder: "pareceu meio agressivo". Edilson: "agressiva e repetitiva" e
+      // "cliente disse que tem 500 galinha e depois a i.a perguntou quantas galinhas tem".
+      // Alvaro: "importante extrair as informacoes, mas quando o cliente definir o que quer,
+      // parar de questionar". A persona ja mandava tudo isso em prosa (bloco ABERTURA) e nao
+      // segurou — mesma historia do emoji: precisa de trava deterministica pos-geracao. Aqui
+      // roda no fim, entao pega os tres emissores: o LLM, os textos canned do guard e a pergunta
+      // que o bloco de "promessa sem anexo" acabou de anexar.
+      // Casos reais: 68341586772119@lid (ALVARO 05/08, "quantas cabecas de misto" 09:12 e 09:14)
+      // e 205505830117548@lid (GUSTAVO 05/08, "qual animal e quantas cabecas" 13:14 e 13:23,
+      // com palavras diferentes — por isso a comparacao e por INTENCAO, nao por texto).
+      {
+        const INTENCOES: Array<{ id: string, re: RegExp, jaSei: boolean }> = [
+          { id: 'cabecas', re: /quantas?\s+(cabe[çc]a|ave|galinha|animai|bicho)|quantos\s+(animai|bicho|porco|boi|su[íi]no|frango|cabe[çc]a)/i,
+            jaSei: Number(dadosMem.quantidade) > 0 },
+          { id: 'especie', re: /(qual|quais)\s+(o\s+|os\s+)?anima(l|is)|pra\s+qual\s+animal|que\s+bicho|qual\s+cria[çc]/i,
+            jaSei: !!dadosMem.animal },
+          { id: 'kgh', re: /quantos?\s+kg|kg\s*(por|\/)\s*hora|quantas?\s+toneladas?\s*(por|\/)/i,
+            jaSei: Number(dadosMem.producao_kgh) > 0 },
+          { id: 'uso', re: /(vender|venda|revend)[^?]{0,40}consumo|consumo[^?]{0,40}(vender|venda|revend)/i,
+            jaSei: !!(dadosMem.uso || dadosMem.finalidade) },
+          { id: 'nome', re: /(qual|como)[^?]{0,20}seu\s+nome|seu\s+nome\s*\?/i, jaSei: !!nomeBom },
+        ]
+        const _minhasAntes = msgs.filter((m: any) => m.fromMe && !_ehSistema(m)).map((m: any) => String(m.body || ''))
+        const _vezes = (intencao: { re: RegExp }) => _minhasAntes.filter((b) => intencao.re.test(b)).length
+        const _frases = texto.split(/(?<=[.!?])\s+/)
+        const _cortadas: string[] = []
+        const _mantidas = _frases.filter((f: string) => {
+          if (!f.includes('?')) return true
+          // Pergunta COMBINADA ("qual animal e quantas cabeças?") casa 2 intencoes. So corta se
+          // TODAS ja estiverem satisfeitas — senao, sabendo as cabecas mas nao a especie, a
+          // frase sumiria e a IA perderia a unica pergunta que ainda faltava.
+          const alvos = INTENCOES.filter((i) => i.re.test(f))
+          if (!alvos.length) return true
+          // ja tenho o dado (o cliente JA respondeu) OU ja perguntei isso 2x: nao insisto.
+          if (alvos.every((a) => a.jaSei || _vezes(a) >= 2)) { _cortadas.push(...alvos.map((a) => a.id)); return false }
+          return true
+        })
+        if (_cortadas.length) {
+          const _resto = _mantidas.join(' ').replace(/\s{2,}/g, ' ').trim()
+          texto = _resto.length >= 25
+            ? _resto
+            : (nomeBom ? 'Beleza, ' + String(nomeBom).trim().split(' ')[0] + '. ' : 'Beleza. ') +
+              'Anotei aqui o que você me passou. Vou organizar e te retorno certinho.'
+          console.log('[ia-atendente] pergunta ja respondida/repetida removida (' + chat_id + '): ' + _cortadas.join(','))
+          try {
+            await supa.from('automation_runs').insert({ regra_key: 'ia_atendente', vendedor_nome, chat_id,
+              acao: 'pergunta_repetida', modo: 'automatico', executor: 'ia', status: 'executado',
+              payload: { intencoes: _cortadas, texto_final: texto.slice(0, 300) },
+              motivo: 'pergunta ja respondida ou repetida — removida antes do envio' })
+          } catch (_) { /* auditoria best-effort */ }
+        }
       }
 
       // (30/07) NAO REPETIR A MESMA FRASE. Esperando uma consulta ela nao tem o que dizer de
