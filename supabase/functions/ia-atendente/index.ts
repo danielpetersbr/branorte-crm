@@ -374,18 +374,28 @@ function escolherModeloFabrica(dados: any, convCliente?: string): { slug: string
     kgh = consumoDia * 7 / 12
   }
   if (kgh <= 0) return null
-  // (05/08, decisao do Daniel) A FAIXA AGORA SEGUE A KB. O codigo mandava compacta-02 ate 2500
-  // kg/h; o cartao `dimensionamento` diz "1500-2999 Compacta 03". Eram 8 leads em 60 dias
-  // recebendo uma linha abaixo do que a propria base manda.
-  // ⚠️ A outra metade da regra da KB — "1500-3000 MASTER, misturador HORIZONTAL, e a indicada
-  // para BOVINOS; bovino entre 1500 e 3000 vai para Master, nunca Compacta 03" — NAO foi
-  // implementada porque NAO EXISTE linha 'master' em `fabrica_midia` (so compacta-01/02/03 e
-  // mini-fabrica): a IA nao teria foto, tabela nem video pra mandar. Quando o MASTER for
-  // cadastrado, o desvio de bovino entra aqui.
+  // (05/08) ESTA FAIXA SEGUE `fabrica_midia.faixa_kgh` — a UNICA das tres fontes que o CLIENTE
+  // le, porque e o texto que vai junto da foto no WhatsApp:
+  //     mini-fabrica 300-600 · compacta-01 700-1000 · compacta-02 1500-2500 · compacta-03 3000-5000
+  // Cheguei a mudar o corte pra 1499 seguindo o cartao `dimensionamento` da KB ("1500-2999
+  // Compacta 03") e REVERTI no mesmo dia: com o corte em 1499, um cliente de 2.000 kg/h recebia
+  // a Compacta 03 com o card dela dizendo "3000-5000 kg/h" — maquina anunciada maior que a
+  // necessidade, e pulando justamente a Compacta 02, que o card descreve como 1500-2500.
+  //
+  // ⚠️ AS TRES FONTES DIVERGEM. Antes de mexer aqui de novo, resolva a divergencia na origem:
+  //   `fabrica_midia.faixa_kgh` (cliente le) : c02 1500-2500 · c03 3000-5000
+  //   `catalogo` (KB, ordem 20)              : c02 1000-2000 · c03 1000-5000 · "COMPACTA 04 NAO EXISTE"
+  //   `dimensionamento` (KB, ordem 47)       : c02 ate 1499 · c03 1500-2999 · cita "Compacta 04"
+  // Enquanto elas nao baterem, o codigo segue a que o cliente ve — e a unica que, se estiver
+  // errada, o cliente percebe.
+  //
+  // Tambem NAO implementado por falta de material: a KB manda "bovino entre 1500 e 3000 vai para
+  // MASTER, nunca Compacta 03", mas NAO EXISTE linha 'master' em `fabrica_midia` (so
+  // compacta-01/02/03 e mini-fabrica) — a IA nao teria foto, tabela nem video pra mandar.
   let slug = 'compacta-03'
   if (kgh <= 600) slug = 'mini-fabrica'
   else if (kgh <= 1000) slug = 'compacta-01'
-  else if (kgh <= 1499) slug = 'compacta-02'
+  else if (kgh <= 2500) slug = 'compacta-02'
   return { slug, kgh }
 }
 async function carregarFabricaMidia(supa: any, modelo: string): Promise<any | null> {
