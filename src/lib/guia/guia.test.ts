@@ -665,3 +665,32 @@ describe('o mostrador nomeia o que TRAVA, não o primeiro item da lista', () => 
     assert.equal(analisar(a, ANIMAIS, MATERIAS).bloqueioEquipamento, null)
   })
 })
+
+describe('a tela sabe quando está mostrando repertório, não resposta', () => {
+  const bov = (o: Partial<Atendimento> = {}): Atendimento => ({
+    especie: 'bovinos', fase: null, quantidade: 500, sistema: null,
+    produto: null, materias: [], consumoConfirmado: false, ...o,
+  })
+  const CONFINAMENTO2 = animal({
+    slug: 'bov-corte-engorda', nome: 'Corte — Engorda', especie: 'bovinos',
+    tipo: 'categoria', fases: ['engorda'], sistemas: ['pasto'],
+    processo: 'Mistura seca em pasto.', perguntas: ['Quantos litros por vaca por dia?'],
+    resumo: 'Engorda a pasto.',
+  })
+  const LISTA = [CONFINAMENTO, CONFINAMENTO2, NELORE, POSTURA]
+
+  it('sem fase, o processo e as perguntas são a UNIÃO de todas as categorias', () => {
+    // `casaFase` devolve true pra todo mundo quando `a.fase` é null — então a
+    // queda "todas as categorias" nem chega a rodar, e mesmo assim a lista sai
+    // misturada. Foi por isso que checar a queda não detectava nada.
+    const r = analisar(bov(), LISTA, MATERIAS)
+    assert.equal(r.baseAmpla, true)
+    assert.ok(r.processo.length > 1, 'mais de um processo = repertório, não resposta')
+  })
+
+  it('com a fase marcada, estreita e para de avisar', () => {
+    const r = analisar(bov({ fase: 'confinamento' }), LISTA, MATERIAS)
+    assert.equal(r.baseAmpla, false)
+    assert.equal(r.processo.length, 1)
+  })
+})

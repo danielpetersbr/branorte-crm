@@ -297,6 +297,13 @@ export interface ResultadoAtendimento {
    */
   bloqueioEquipamento: string | null
   /**
+   * `true` quando NENHUMA categoria casou com fase/sistema e o motor caiu pra
+   * "todas as categorias da espécie". Nesse estado, `processo`, `perguntas` e
+   * as restrições são a UNIÃO de tudo — úteis como repertório, mentirosas como
+   * resposta específica.
+   */
+  baseAmpla: boolean
+  /**
    * O que a linha NÃO faz, vindo de `branorte.nao_atende` das categorias que
    * casam com espécie/fase. Existia no banco e só era renderizado na FICHA do
    * animal — a tela em que o vendedor está com o cliente no telefone não lia o
