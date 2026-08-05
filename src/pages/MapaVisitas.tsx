@@ -148,6 +148,57 @@ function chaveMarc(telefone: string | null, fone: string | null, cliente: string
   const tel = (telefone || fone || '').replace(/\D/g, '')
   return tel || ('nome:' + normTxt(cliente))
 }
+
+// ── clientes empilhados na MESMA coordenada ─────────────────────────────────
+// A precisão é CIDADE, não endereço: 68,85% dos clientes dividem coordenada. Sem
+// espalhar, o Leaflet pinta um EM CIMA do outro e só dá pra clicar no de cima —
+// os de trás ficam invisíveis. O deslocamento é só de DESENHO: lat/lng do dado
+// continua intacto (rota da viagem, "Abrir no Google Maps", distância do raio).
+// Dado real (ago/2026): 2.346 clientes em 1.267 coordenadas — 352 pontos empilham
+// 1.431 clientes (61%). 93% dessas pilhas têm até 7 (cabem no 1º anel); a maior tem 112.
+const PASSO_PX = 18        // distância entre pinos vizinhos, em pixels de tela
+const RAIO_MAX_M = 20_000  // teto no chão: NENHUM pino fica a mais de 20 km do ponto real
+
+/** Em que anel cai o índice i (0 = centro, 1..6 = 1º anel, 7..18 = 2º…). */
+function anelDoIndice(i: number): number {
+  if (i <= 0) return 0
+  let k = 1, base = 1
+  while (i >= base + 6 * k) { base += 6 * k; k++ }
+  return k
+}
+
+/** Anel hexagonal: 0 fica no centro, 6 no 1º anel, 12 no 2º… devolve (dx, dy) em anéis. */
+function anelHex(i: number): [number, number] {
+  const k = anelDoIndice(i)
+  if (!k) return [0, 0]
+  let base = 1
+  for (let j = 1; j < k; j++) base += 6 * j
+  const ang = (2 * Math.PI * (i - base)) / (6 * k) - Math.PI / 2
+  return [Math.cos(ang) * k, Math.sin(ang) * k]
+}
+
+/**
+ * Converte o deslocamento (em anéis) na coordenada de desenho do zoom atual.
+ * O passo encolhe com o mapa longe pra o pino não pousar na cidade vizinha, e é
+ * calibrado pelo anel MAIS EXTERNO do grupo (`anelMax`): assim o pino mais afastado
+ * nunca passa de RAIO_MAX_M e, como o passo é o mesmo pra todo o grupo, os anéis
+ * encolhem juntos em vez de um colapsar em cima do outro. De estado inteiro pra fora
+ * eles voltam a se sobrepor — aí quem resolve é a lista "neste mesmo ponto" do popup.
+ */
+function posEspalhada(map: L.Map, lat: number, lng: number, dx: number, dy: number, anelMax: number): L.LatLng {
+  if (!dx && !dy) return L.latLng(lat, lng)
+  const z = map.getZoom()
+  const mPorPx = (156543.03392 * Math.cos((lat * Math.PI) / 180)) / Math.pow(2, z)
+  const passo = Math.min(PASSO_PX, RAIO_MAX_M / (mPorPx * Math.max(1, anelMax)))
+  const pt = map.project([lat, lng], z)
+  return map.unproject(L.point(pt.x + dx * passo, pt.y + dy * passo), z)
+}
+
+/** Só o que o zoom precisa mexer: o pino e a coordenada real de onde ele saiu. */
+type Espalhado = {
+  m: { setLatLng: (ll: L.LatLng) => unknown }
+  lat: number; lng: number; dx: number; dy: number; anelMax: number
+}
 // Pino VISITADO (caso comum): um único ponto com o ✓ dentro, na cor da idade.
 // Um blob só (sem bolinha extra colada) e é o próprio marcador clicável.
 function iconeVisitado(cor: string): L.DivIcon {
@@ -234,11 +285,36 @@ function blocoViagem(p: OrcamentoPonto, vizinhos: OrcamentoPonto[], jaNaViagem: 
     </div>`
 }
 
+/**
+ * Fora do modo viagem o popup também precisa dar saída pros empilhados: mesmo
+ * espalhados, num zoom baixo os pinos voltam a se encavalar. Aqui a lista é dos
+ * clientes VISÍVEIS no ponto (respeita os filtros da tela) e cada um abre o popup dele.
+ */
+function blocoVizinhos(p: OrcamentoPonto, vizinhos: OrcamentoPonto[]): string {
+  const outros = vizinhos.filter(c => c.cli_key !== p.cli_key)
+  if (!outros.length) return ''
+  const linhas = outros.map(c => `
+    <li style="border-top:1px solid #e2e8f0">
+      <button data-ir data-key="${encodeURIComponent(c.cli_key)}"
+        style="display:flex;align-items:center;gap:6px;width:100%;padding:4px 0;border:0;background:none;cursor:pointer;text-align:left">
+        <span style="flex:1;min-width:0;font-size:12px;color:#1d4ed8;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.cliente)}">${esc(c.cliente) || '—'}</span>
+        <span style="font-size:11px;color:#64748b;white-space:nowrap">${brl(c.total)}</span>
+      </button>
+    </li>`).join('')
+  return `
+    <div style="margin-top:8px;padding-top:6px;border-top:1px solid #cbd5e1">
+      <div style="font-size:11px;font-weight:700;color:#0f172a">＋${outros.length} cliente${outros.length > 1 ? 's' : ''} neste mesmo ponto</div>
+      <div style="font-size:10.5px;color:#64748b;line-height:1.35;margin-top:2px">Todos caem no centro da cidade — o CRM não tem o endereço deles.</div>
+      <ul style="list-style:none;margin:4px 0 0;padding:0;max-height:150px;overflow-y:auto">${linhas}</ul>
+    </div>`
+}
+
 function popupOrcamento(
   p: OrcamentoPonto,
   marc?: Marcacao | null,
   dist?: number,
   viagem?: { vizinhos: OrcamentoPonto[]; jaNaViagem: Set<string> },
+  vizinhos?: OrcamentoPonto[],
 ): string {
   const tel = (p.telefone || '').replace(/\D/g, '')
   const foneFmt = p.fone || p.telefone || ''
@@ -271,7 +347,7 @@ function popupOrcamento(
       <a href="https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}" target="_blank" rel="noopener" style="display:inline-block;margin-top:4px;font-size:11px;color:#2563eb;font-weight:600">Abrir no Google Maps ↗</a>
       ${visitaLinha}
       ${notaLinha}
-      ${viagem ? blocoViagem(p, viagem.vizinhos, viagem.jaNaViagem) : btn}
+      ${viagem ? blocoViagem(p, viagem.vizinhos, viagem.jaNaViagem) : `${blocoVizinhos(p, vizinhos ?? [])}${btn}`}
     </div>`
 }
 
@@ -390,7 +466,14 @@ export function MapaVisitas() {
     adicionar: (_keys: string[]) => {},
     marcar: (_chave: string) => {},
     origem: (_c: { lat: number; lng: number }) => {},
+    irPara: (_cliKey: string) => {},
   })
+  // Pinos que saíram do centro (empilhados): o zoom tem que reposicionar, senão o
+  // espaçamento em pixels vira espaçamento em quilômetros.
+  const espalhadosRef = useRef<Espalhado[]>([])
+  // cli_key -> pino desenhado. É o que faz "ir pro vizinho" e a busca abrirem o
+  // popup DO MARCADOR (com os botões ligados) em vez de um popup solto na coordenada.
+  const marcadorPorKeyRef = useRef<Map<string, { openPopup: () => unknown }>>(new Map())
   const escolhendoOrigemRef = useRef(false)
   useEffect(() => { escolhendoOrigemRef.current = escolhendoOrigem }, [escolhendoOrigem])
   // Contexto do popup por REF, não por dep do effect: entrar no modo viagem ou
@@ -966,6 +1049,16 @@ export function MapaVisitas() {
           map.closePopup()
         }
       }
+
+      // "outros clientes neste ponto" → abre o popup do vizinho
+      el.querySelectorAll('button[data-ir]').forEach(n => {
+        const b = n as HTMLButtonElement
+        b.onclick = () => acoesPopupRef.current.irPara(decodeURIComponent(b.dataset.key || ''))
+      })
+    })
+    // Espaçamento dos empilhados é em PIXEL, então muda com o zoom.
+    map.on('zoomend', () => {
+      for (const it of espalhadosRef.current) it.m.setLatLng(posEspalhada(map, it.lat, it.lng, it.dx, it.dy, it.anelMax))
     })
     mapRef.current = map
     setTimeout(() => map.invalidateSize(), 0)
@@ -991,6 +1084,7 @@ export function MapaVisitas() {
         setCfgViagem({ origem: { nome: `Ponto no mapa (${c.lat.toFixed(3)}, ${c.lng.toFixed(3)})`, lat: c.lat, lng: c.lng } })
         setEscolhendoOrigem(false)
       },
+      irPara: (cliKey: string) => { marcadorPorKeyRef.current.get(cliKey)?.openPopup() },
     }
   })
 
@@ -1012,48 +1106,95 @@ export function MapaVisitas() {
     if (!map || !layer) return
     map.invalidateSize()
     layer.clearLayers()
+    marcadorPorKeyRef.current.clear()   // os pinos antigos morreram no clearLayers
     const renderer = canvasRef.current ?? undefined
     const bounds: [number, number][] = []
+    // Empilhados: quem divide coordenada é espalhado em anel em volta do ponto real.
+    // O índice sai da ORDEM DESENHADA (respeita os filtros), então o que sobrar
+    // sozinho na tela volta pro centro exato da cidade em vez de ficar deslocado.
+    const espalhados: Espalhado[] = []
+    // Quantos pinos (das DUAS camadas) caem em cada coordenada. Precisa ser o total
+    // pra calibrar o anel externo — e pra visita e orçamento da mesma cidade não
+    // sentarem um em cima do outro.
+    const totalPorCoord = new Map<string, number>()
+    const contar = (lat: number, lng: number) => {
+      const k = kCoord(lat, lng)
+      totalPorCoord.set(k, (totalPorCoord.get(k) ?? 0) + 1)
+    }
+    if (showVis) for (const v of visFiltradas) contar(v.lat as number, v.lng as number)
+    if (showOrc) for (const p of orcFiltrados) contar(p.lat, p.lng)
+
+    const usados = new Map<string, number>()
+    /** Reserva o próximo slot livre da coordenada. [dx, dy, anelMax]; [0,0,0] = ponto solto. */
+    const proximo = (lat: number, lng: number): [number, number, number] => {
+      const k = kCoord(lat, lng)
+      const total = totalPorCoord.get(k) ?? 1
+      if (total <= 1) return [0, 0, 0]
+      const i = usados.get(k) ?? 0
+      usados.set(k, i + 1)
+      const [dx, dy] = anelHex(i)
+      return [dx, dy, anelDoIndice(total - 1)]
+    }
     if (showVis) {
       for (const v of visFiltradas) {
         const { nomes, isFollowUp } = resolverEtiquetas(v)
         const cor = isFollowUp ? corDoVendedor(v.vendedor_nome, vendedores) : CINZA
-        const m = L.circleMarker([v.lat as number, v.lng as number], {
+        const lat = v.lat as number, lng = v.lng as number
+        const [dx, dy, anelMax] = proximo(lat, lng)
+        const m = L.circleMarker(posEspalhada(map, lat, lng, dx, dy, anelMax), {
           renderer, radius: isFollowUp ? 6 : 5, fillColor: cor, color: '#fff', weight: 1, fillOpacity: isFollowUp ? 0.95 : 0.7,
         })
         // popup lazy: só monta o HTML quando abre
         m.bindPopup(() => popupVisita(v, isFollowUp, nomes))
         m.addTo(layer)
-        bounds.push([v.lat as number, v.lng as number])
+        if (dx || dy) espalhados.push({ m, lat, lng, dx, dy, anelMax })
+        bounds.push([lat, lng])
       }
     }
     if (showOrc) {
+      // Vizinhos = os que estão VISÍVEIS no mesmo ponto (o popup lista só o que dá pra abrir).
+      const porCoord = new Map<string, OrcamentoPonto[]>()
+      for (const p of orcFiltrados) {
+        const k = kCoord(p.lat, p.lng)
+        const arr = porCoord.get(k)
+        if (arr) arr.push(p); else porCoord.set(k, [p])
+      }
       for (const p of orcFiltrados) {
         const mk = marc[chaveMarc(p.telefone, p.fone, p.cliente)]
         const visitado = !!mk?.visitado
         const forma = formaValor(p.total, p.vendido)
+        const irmaos = porCoord.get(kCoord(p.lat, p.lng)) ?? [p]
+        const [dx, dy, anelMax] = proximo(p.lat, p.lng)
+        const pos = posEspalhada(map, p.lat, p.lng, dx, dy, anelMax)
         const m = forma
           // orçado de alto valor → estrela/diamante (marcador DOM, cor pela idade)
-          ? L.marker([p.lat, p.lng], { icon: iconeForma(forma, corOrcamento(p)) })
+          ? L.marker(pos, { icon: iconeForma(forma, corOrcamento(p)) })
           : visitado
             // visitado (comum) → ponto único com ✓ dentro
-            ? L.marker([p.lat, p.lng], { icon: iconeVisitado(corOrcamento(p)) })
+            ? L.marker(pos, { icon: iconeVisitado(corOrcamento(p)) })
             // demais → círculo no canvas (rápido pra milhares de pontos)
-            : L.circleMarker([p.lat, p.lng], {
+            : L.circleMarker(pos, {
                 renderer, radius: 5, fillColor: corOrcamento(p), color: '#fff', weight: 1, fillOpacity: 0.92,
               })
         m.bindPopup(() => {
           const ctx = ctxPopupRef.current
           return popupOrcamento(p, mk, undefined, ctx.ativo
             ? { vizinhos: ctx.porCoord.get(kCoord(p.lat, p.lng)) ?? [p], jaNaViagem: ctx.dentro }
-            : undefined)
+            : undefined, irmaos)
         })
         m.addTo(layer)
+        marcadorPorKeyRef.current.set(p.cli_key, m)
+        if (dx || dy) espalhados.push({ m, lat: p.lat, lng: p.lng, dx, dy, anelMax })
         // estrela/diamante visitado mantém a forma; ✓ vai num selinho no canto
-        if (visitado && forma) L.marker([p.lat, p.lng], { icon: checkIcon(), interactive: false, zIndexOffset: 1000 }).addTo(layer)
+        if (visitado && forma) {
+          const selo = L.marker(pos, { icon: checkIcon(), interactive: false, zIndexOffset: 1000 })
+          selo.addTo(layer)
+          if (dx || dy) espalhados.push({ m: selo, lat: p.lat, lng: p.lng, dx, dy, anelMax })
+        }
         bounds.push([p.lat, p.lng])
       }
     }
+    espalhadosRef.current = espalhados
     // No modo viagem o enquadramento é da ROTA — não pode ser roubado a cada
     // repintura de pino, senão o mapa pula toda vez que um filtro muda.
     if (bounds.length && !centro && !modoViagemRef.current) map.fitBounds(bounds, { padding: [50, 50], maxZoom: 10 })
@@ -1235,6 +1376,10 @@ export function MapaVisitas() {
     const map = mapRef.current
     if (!map) return
     map.setView([p.lat, p.lng], 11)
+    // Abre o popup DO PINO (já espalhado, com os botões ligados). Só cai no popup
+    // solto se o cliente estiver escondido pelos filtros da tela.
+    const pino = marcadorPorKeyRef.current.get(p.cli_key)
+    if (pino) { pino.openPopup(); return }
     L.popup().setLatLng([p.lat, p.lng]).setContent(popupOrcamento(p, marc[chaveMarc(p.telefone, p.fone, p.cliente)])).openOn(map)
   }
 
