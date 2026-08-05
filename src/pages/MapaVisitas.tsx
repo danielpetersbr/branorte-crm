@@ -373,6 +373,9 @@ function popupOrcamento(
     </div>`
 }
 
+/** Linha da tabela: 1 orçamento, ou 1 cliente com os orçamentos dele somados. */
+type LinhaLista = OrcamentoLinha & { n_orc: number; numeros: string }
+
 type VendFiltro = 'todos' | 'orcados' | 'vendidos' | 'alto' | 'diamante'
 type VisitaFiltro = 'todos' | 'visitados' | 'pendentes'
 
@@ -398,6 +401,7 @@ export function MapaVisitas() {
   const [ufSel, setUfSel] = useState<string>('')   // '' = todos os estados
   const [ufSheet, setUfSheet] = useState(false)    // painel por estado no celular
   const [showLista, setShowLista] = useState(false)
+  const [porCliente, setPorCliente] = useState(false)   // lista/CSV: 1 linha por cliente
   // modal de marcação (visita feita + anotação)
   const [marcarAlvo, setMarcarAlvo] = useState<{ chave: string; cliente: string | null; telefone: string | null } | null>(null)
   const [formVisitado, setFormVisitado] = useState(true)
@@ -678,9 +682,52 @@ export function MapaVisitas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lista, termo, vendFiltro, ufSel])
 
+  // "1 linha por cliente". A lista é de ORÇAMENTOS — o mesmo cliente aparece uma vez
+  // por proposta, e quem tem quatro propostas ocupa quatro linhas. Está certo pro
+  // que a tela é, mas quem quer olhar carteira precisa do outro corte.
+  const listaPorCliente = useMemo<LinhaLista[]>(() => {
+    const grupos = new Map<string, LinhaLista>()
+    // Nome normalizado + UF: só nome fundiria homônimos de estados diferentes.
+    const chave = (r: OrcamentoLinha) => `${normTxt(r.cliente)}|${ufKey(r.uf)}`
+    // O "mais recente" manda em cliente/cidade/equipamento/vendedor — grafia velha
+    // do nome não pode ganhar da atual.
+    const maisNovo = (a: string | null, b: string | null) => (a || '') >= (b || '')
+    for (const r of listaFiltrada) {
+      const k = chave(r)
+      const g = grupos.get(k)
+      if (!g) {
+        grupos.set(k, { ...r, n_orc: 1, numeros: r.numero || '' })
+        continue
+      }
+      g.n_orc++
+      if (r.numero) g.numeros = g.numeros ? `${g.numeros}, ${r.numero}` : r.numero
+      g.total = (g.total || 0) + (r.total || 0)
+      g.vendido = g.vendido || r.vendido
+      if (g.lat == null && r.lat != null) { g.lat = r.lat; g.lng = r.lng }
+      if (maisNovo(r.data_emissao, g.data_emissao)) {
+        g.data_emissao = r.data_emissao
+        g.cliente = r.cliente
+        g.cidade = r.cidade
+        g.uf = r.uf
+        g.equipamento = r.equipamento
+      }
+      // Vendedor: o do mais recente QUE TEM — 811 orçamentos legados vêm sem, e
+      // sem esta ressalva o mais recente vazio apagaria o nome que existia.
+      if (r.vendedor && (!g.vendedor || maisNovo(r.data_emissao, g.data_emissao))) g.vendedor = r.vendedor
+    }
+    for (const g of grupos.values()) {
+      if (g.n_orc > 1) g.equipamento = `${g.n_orc} orçamentos · último: ${g.equipamento || '—'}`
+    }
+    return [...grupos.values()]
+  }, [listaFiltrada])
+
+  const baseLista: LinhaLista[] = porCliente
+    ? listaPorCliente
+    : listaFiltrada.map(r => ({ ...r, n_orc: 1, numeros: r.numero || '' }))
+
   // lista ordenada (clique no header)
   const sortedLista = useMemo(() => {
-    const arr = [...listaFiltrada]
+    const arr = [...baseLista]
     const dir = sortDir === 'asc' ? 1 : -1
     const txt = (s: string | null) => (s || '').toLowerCase()
     arr.sort((a, b) => {
@@ -694,7 +741,8 @@ export function MapaVisitas() {
       }
     })
     return arr
-  }, [listaFiltrada, sortKey, sortDir])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseLista, sortKey, sortDir])
 
   const somaTotal = useMemo(() => sortedLista.reduce((s, r) => s + (r.total || 0), 0), [sortedLista])
 
@@ -1422,17 +1470,28 @@ export function MapaVisitas() {
   }
 
   function baixarCSV() {
-    const head = ['Numero', 'Data', 'Cliente', 'Vendedor', 'Equipamento', 'Cidade', 'UF', 'Total', 'Status']
-    const linhas = sortedLista.map(r => [
-      r.numero || '', r.data_emissao || '', r.cliente || '', r.vendedor || '',
-      (r.equipamento || '').replace(/[\r\n]+/g, ' '),
-      r.cidade || '', r.uf || '', r.total ?? '', r.vendido ? 'VENDIDO' : 'Orçado',
-    ].map(c => `"${String(c).replace(/"/g, '""')}"`).join(';'))
+    // Agrupado leva colunas próprias: "Numero" vira a lista de números e entra a
+    // contagem — sem isso a planilha perde a informação de quantas propostas somaram.
+    const head = porCliente
+      ? ['Cliente', 'Vendedor', 'Orcamentos', 'Numeros', 'Ultimo', 'Ultimo equipamento', 'Cidade', 'UF', 'Total', 'Status']
+      : ['Numero', 'Data', 'Cliente', 'Vendedor', 'Equipamento', 'Cidade', 'UF', 'Total', 'Status']
+    const linhas = sortedLista.map(r => (porCliente
+      ? [
+          r.cliente || '', r.vendedor || '', r.n_orc, r.numeros || '', r.data_emissao || '',
+          (r.equipamento || '').replace(/[\r\n]+/g, ' ').replace(/^\d+ orçamentos · último: /, ''),
+          r.cidade || '', r.uf || '', r.total ?? '', r.vendido ? 'VENDIDO' : 'Orçado',
+        ]
+      : [
+          r.numero || '', r.data_emissao || '', r.cliente || '', r.vendedor || '',
+          (r.equipamento || '').replace(/[\r\n]+/g, ' '),
+          r.cidade || '', r.uf || '', r.total ?? '', r.vendido ? 'VENDIDO' : 'Orçado',
+        ]
+    ).map(c => `"${String(c).replace(/"/g, '""')}"`).join(';'))
     const csv = '﻿' + [head.join(';'), ...linhas].join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
-    a.download = `orcamentos-mapa-${new Date().toISOString().slice(0, 10)}.csv`
+    a.download = `${porCliente ? 'clientes' : 'orcamentos'}-mapa-${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(a.href)
   }
@@ -1902,8 +1961,12 @@ export function MapaVisitas() {
         <div className="fixed inset-0 z-[1000] bg-black/40 flex items-center justify-center p-4" onClick={() => setShowLista(false)}>
           <div className="bg-surface rounded-xl border border-border w-full max-w-[1200px] max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex flex-wrap items-center gap-2 md:gap-3 p-3 border-b border-border shrink-0">
-              <h2 className="text-[16px] font-semibold text-ink">Orçamentos cadastrados</h2>
-              <span className="text-[12px] text-ink-muted">{sortedLista.length} de {lista.length}</span>
+              <h2 className="text-[16px] font-semibold text-ink">{porCliente ? 'Clientes' : 'Orçamentos cadastrados'}</h2>
+              <span className="text-[12px] text-ink-muted">
+                {porCliente
+                  ? `${sortedLista.length} clientes · ${listaFiltrada.length} orçamentos`
+                  : `${sortedLista.length} de ${lista.length}`}
+              </span>
               {ufSel && (
                 <button onClick={() => setUfSel('')} className="text-[12px] font-semibold text-accent hover:underline" title="Tirar o filtro de estado">
                   {ufSel === '—' ? 'sem estado' : ufSel} ✕
@@ -1917,6 +1980,14 @@ export function MapaVisitas() {
                   <button key={v} onClick={() => setVendFiltro(v)} className={`px-2.5 ${vendFiltro === v ? 'bg-accent-bg text-accent' : 'bg-surface text-ink-muted hover:text-ink'}`}>{label}</button>
                 ))}
               </div>
+              <button
+                onClick={() => setPorCliente(v => !v)}
+                title="Junta as propostas do mesmo cliente numa linha só, somando os valores"
+                className={`h-8 px-3 rounded-md border text-[12px] font-semibold ${porCliente
+                  ? 'bg-accent-bg border-accent/40 text-accent'
+                  : 'bg-surface border-border text-ink-muted hover:text-ink'}`}>
+                👤 1 linha por cliente
+              </button>
               <button onClick={baixarCSV} className="h-8 px-3 rounded-md bg-accent-bg border border-accent/30 text-accent text-[12px] font-semibold ml-auto">⬇ CSV</button>
               <button onClick={() => setShowLista(false)} className="h-8 w-8 rounded-md hover:bg-surface-2 text-ink-muted">✕</button>
             </div>
@@ -1928,7 +1999,7 @@ export function MapaVisitas() {
                 </colgroup>
                 <thead className="sticky top-0 z-10 bg-surface-2 text-ink-muted">
                   <tr className="text-left">
-                    {([['numero', 'Nº', ''], ['data', 'Data', ''], ['cliente', 'Cliente', ''], [null, 'Equipamento', ''], ['cidade', 'Cidade', ''], ['total', 'Total', 'text-right'], ['vendido', 'Status', '']] as [typeof sortKey | null, string, string][]).map(([k, label, cls]) => (
+                    {([['numero', porCliente ? 'Nºs' : 'Nº', ''], ['data', porCliente ? 'Último' : 'Data', ''], ['cliente', 'Cliente', ''], [null, porCliente ? 'Orçamentos' : 'Equipamento', ''], ['cidade', 'Cidade', ''], ['total', 'Total', 'text-right'], ['vendido', 'Status', '']] as [typeof sortKey | null, string, string][]).map(([k, label, cls]) => (
                       <th key={label} className={`px-3 py-2 font-semibold ${cls} ${k ? 'cursor-pointer select-none hover:text-ink' : ''}`} onClick={() => k && ordenarPor(k)}>
                         {label}{k && sortKey === k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
                       </th>
@@ -1940,7 +2011,7 @@ export function MapaVisitas() {
                     <tr key={i} onClick={() => focarLinha(r)}
                         className={`border-t border-border hover:bg-accent-bg/40 ${r.lat != null ? 'cursor-pointer' : ''}`}
                         title={r.lat != null ? 'Ver no mapa' : 'Sem localização'}>
-                      <td className="px-3 py-1.5 whitespace-nowrap text-ink-muted">{r.numero}</td>
+                      <td className="px-3 py-1.5 whitespace-nowrap text-ink-muted truncate" title={porCliente ? r.numeros : ''}>{porCliente ? r.numeros || '—' : r.numero}</td>
                       <td className="px-3 py-1.5 whitespace-nowrap text-ink-muted">{dataBR(r.data_emissao)}</td>
                       <td className="px-3 py-1.5 text-ink font-medium truncate" title={r.cliente || ''}>{r.cliente || '—'}</td>
                       <td className={`px-3 py-1.5 truncate ${r.equipamento === '(venda sem orçamento)' ? 'text-ink-faint italic' : 'text-ink-muted'}`} title={r.equipamento || ''}>{r.equipamento || '—'}</td>
@@ -1960,7 +2031,10 @@ export function MapaVisitas() {
               </table>
             </div>
             <div className="flex items-center gap-4 px-3 py-2 border-t border-border shrink-0 text-[12px] text-ink-muted bg-surface-2 rounded-b-xl">
-              <span><b className="text-ink">{sortedLista.length}</b> orçamentos</span>
+              <span>
+                <b className="text-ink">{sortedLista.length}</b> {porCliente ? 'clientes' : 'orçamentos'}
+                {porCliente && <> · <b className="text-ink">{listaFiltrada.length}</b> orçamentos somados</>}
+              </span>
               <span>Soma: <b className="text-ink tabular-nums">{brl(somaTotal)}</b></span>
               <span className="ml-auto text-ink-faint">Clique numa linha pra ver no mapa · clique no cabeçalho pra ordenar</span>
             </div>
