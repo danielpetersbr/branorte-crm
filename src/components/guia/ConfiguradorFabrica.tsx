@@ -159,9 +159,10 @@ export function ConfiguradorFabrica({
           {carregandoCatalogo ? (
             <p className="mt-1 text-[13px] text-ink-faint">Carregando catálogo…</p>
           ) : !podeFechar ? (
-            <p className="mt-1 text-[13px] leading-relaxed text-warning">
-              Falta confirmar os dados com o cliente. Enquanto isso a tela não aponta modelo —
-              o número acima é ponto de partida.
+            // O mostrador logo acima já nomeia o que falta. Repetir aqui era
+            // dizer a mesma coisa duas vezes em 20px de distância.
+            <p className="mt-1 text-[13px] text-warning">
+              Sem modelo enquanto o levantamento não fecha.
             </p>
           ) : d.moinho ? (
             <>

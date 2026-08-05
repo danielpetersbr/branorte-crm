@@ -631,9 +631,15 @@ export function validar(
 
 /**
  * Capacidades da linha Branorte usadas quando a tela não passa a lista
- * configurada (testes, cálculo de cenário). Iguais ao default do catálogo.
+ * configurada (testes, cálculo de cenário).
+ *
+ * REEXPORTA o catálogo em vez de repetir os números. Eram duas listas literais
+ * idênticas em arquivos diferentes: qualquer acerto numa deixava a outra
+ * mentindo, em silêncio, no caminho que ninguém olha — que é justamente este,
+ * o fallback.
  */
-export const CAPACIDADES_FALLBACK = [300, 600, 1000, 1500, 2000, 3000, 5000]
+export { CAPACIDADES_BRANORTE as CAPACIDADES_FALLBACK } from './catalogo'
+import { CAPACIDADES_BRANORTE as CAPACIDADES_FALLBACK } from './catalogo'
 
 export function calcularEstudo(input: EstudoInput, capacidades?: number[]): ResultadoEstudo {
   const lista = capacidades && capacidades.length > 0 ? capacidades : CAPACIDADES_FALLBACK

@@ -381,18 +381,31 @@ describe('dimensionamento', () => {
     APROX(d.producaoPorDiaKg, 60_750 / 26)
     APROX(d.capacidadeMinimaKgHora, 60_750 / 26 / 4)
     APROX(d.capacidadeRecomendadaKgHora, (60_750 / 26 / 4) * 1.2)
-    assert.equal(d.sugerido?.capacidade, 1000, 'recomendada ~701 kg/h → sobe pra 1.000')
+    assert.equal(d.sugerido?.capacidade, 750, 'recomendada ~701 kg/h → sobe pra 750')
   })
 
   it('sugere a menor capacidade que atende', () => {
     assert.equal(sugerirEquipamento(250, CAPACIDADES_BRANORTE, 1000, 4)?.capacidade, 300)
     assert.equal(sugerirEquipamento(300, CAPACIDADES_BRANORTE, 1000, 4)?.capacidade, 300)
-    assert.equal(sugerirEquipamento(301, CAPACIDADES_BRANORTE, 1000, 4)?.capacidade, 600)
+    // 301 subia pra 600 — máquina que a Branorte não fabrica. O degrau real é 500.
+    assert.equal(sugerirEquipamento(301, CAPACIDADES_BRANORTE, 1000, 4)?.capacidade, 500)
+  })
+
+  it('a linha é a do catálogo, não uma escada inventada', () => {
+    // Guarda de regressão: os dois erros que a lista sintética cometia.
+    assert.ok(!CAPACIDADES_BRANORTE.includes(600), '600 kg/h não existe em precos_branorte')
+    assert.equal(Math.max(...CAPACIDADES_BRANORTE), 10_000, 'BNMM7100 fecha a linha, não o 5.000')
+    assert.ok(!CAPACIDADES_BRANORTE.includes(75_000), '75 t/h é erro de digitação do BNMM775')
   })
 
   it('acima da linha devolve a maior e sinaliza', () => {
-    const s = sugerirEquipamento(9000, CAPACIDADES_BRANORTE, 40_000, 8)
-    assert.equal(s?.capacidade, 5000)
+    // 9.000 deixou de ser "acima da linha": o BNMM7100 entrega 10.000.
+    const dentro = sugerirEquipamento(9000, CAPACIDADES_BRANORTE, 40_000, 8)
+    assert.equal(dentro?.capacidade, 10_000)
+    assert.equal(dentro?.acimaDaLinha, false)
+
+    const s = sugerirEquipamento(12_000, CAPACIDADES_BRANORTE, 40_000, 8)
+    assert.equal(s?.capacidade, 10_000)
     assert.equal(s?.acimaDaLinha, true)
   })
 
