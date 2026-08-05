@@ -112,6 +112,10 @@ export interface OrcamentoLinha {
   vendido: boolean
   lat: number | null
   lng: number | null
+  // Só existe pra 1.371 das 3.911 linhas: orcamentos_gerados tem vendedor_nome em
+  // 100% delas e vendas_mapa em parte, mas orcamentos_legado NÃO TEM a coluna —
+  // os 811 orçamentos antigos vêm vazios e não há de onde tirar.
+  vendedor: string | null
 }
 
 export function useListaOrcamentos() {

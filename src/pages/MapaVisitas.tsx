@@ -1422,9 +1422,10 @@ export function MapaVisitas() {
   }
 
   function baixarCSV() {
-    const head = ['Numero', 'Data', 'Cliente', 'Equipamento', 'Cidade', 'UF', 'Total', 'Status']
+    const head = ['Numero', 'Data', 'Cliente', 'Vendedor', 'Equipamento', 'Cidade', 'UF', 'Total', 'Status']
     const linhas = sortedLista.map(r => [
-      r.numero || '', r.data_emissao || '', r.cliente || '', (r.equipamento || '').replace(/[\r\n]+/g, ' '),
+      r.numero || '', r.data_emissao || '', r.cliente || '', r.vendedor || '',
+      (r.equipamento || '').replace(/[\r\n]+/g, ' '),
       r.cidade || '', r.uf || '', r.total ?? '', r.vendido ? 'VENDIDO' : 'Orçado',
     ].map(c => `"${String(c).replace(/"/g, '""')}"`).join(';'))
     const csv = '﻿' + [head.join(';'), ...linhas].join('\n')
