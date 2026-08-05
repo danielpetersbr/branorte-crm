@@ -51,10 +51,16 @@ function txt(v: unknown): string | null {
   return t.length ? t.slice(0, 300) : null
 }
 
-/** Pagina neutra pros robos de preview. Nao sorteia vendedor, nao grava clique. */
+/** Pagina neutra pros robos de preview. Nao sorteia vendedor, nao grava clique.
+ *
+ *  NAO PODE ser cacheavel. A resposta desta rota varia por User-Agent, e a chave
+ *  de cache do CDN e so a URL: um `public, max-age` aqui faz o primeiro robo que
+ *  passar CONGELAR esta pagina na URL, e todo cliente humano depois dele recebe
+ *  "Abrindo o WhatsApp..." em vez de ir pro WhatsApp. Aconteceu em producao
+ *  (05/08/2026): X-Vercel-Cache=HIT, Age=90, zero clique gravado.
+ *  Por isso aqui NAO se mexe no Cache-Control -- vale o no-store do handler. */
 function paginaPreview(res: VercelResponse, nome: string) {
   res.setHeader('Content-Type', 'text/html; charset=utf-8')
-  res.setHeader('Cache-Control', 'public, max-age=3600')
   return res.status(200).send(
     `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">` +
       `<meta name="viewport" content="width=device-width,initial-scale=1">` +
@@ -67,9 +73,14 @@ function paginaPreview(res: VercelResponse, nome: string) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // O redirect e por visitante: nunca pode ficar em cache de CDN, senao TODO
-  // mundo cai no vendedor do primeiro clique.
+  // Vale pra TODAS as saidas desta rota (302, 404 e a pagina de robo). A
+  // resposta e por visitante: nunca pode ficar em cache de CDN, senao todo
+  // mundo recebe a resposta do primeiro que passou -- seja o vendedor do
+  // primeiro clique, seja a pagina estatica que so o robo deveria ver.
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+  // Redundante com o no-store, mas declara a intencao: quem um dia reintroduzir
+  // cache aqui precisa saber que a resposta depende do User-Agent.
+  res.setHeader('Vary', 'User-Agent')
 
   const slug = (txt(req.query.s) || '').toLowerCase()
   if (!slug || !/^[a-z0-9][a-z0-9-]{1,40}$/.test(slug)) {
