@@ -1195,7 +1195,7 @@
 /* avisos: bloqueio, atenção, lacuna */
 .vr .vr-nutri .avisos { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
 .vr .vr-nutri .avisos li { border-radius: 8px; padding: 7px 9px; border: 1px solid var(--vr-hair); }
-.vr .vr-nutri .avisos b { display: block; font-size: 11.5px; line-height: 1.35; }
+.vr .vr-nutri .avisos > li > b { display: block; font-size: 11.5px; line-height: 1.35; }
 .vr .vr-nutri .avisos p { margin: 3px 0 0; font-size: 11px; line-height: 1.45; color: var(--vr-ink60); }
 .vr .vr-nutri .avisos .fnt {
   display: block; margin-top: 5px; font: 500 9.5px var(--vr-mono); color: var(--vr-ink40);
@@ -1225,3 +1225,103 @@
 @media (max-width: 560px) {
   .vr .vr-nutri th.n + .n, .vr .vr-nutri td.meta { display: none; }
 }
+
+/* ── Rebalancear fórmula (etapa 5) ───────────────────────────────────────────
+   Prefixos `.vr-rebal` e `.vr-rebal-acoes` conferidos: 0 ocorrências antes.
+   Reaproveita `.avisos` e `.dot` do painel nutricional escopando por `.vr-rebal`
+   em vez de duplicar as regras — as duas caixas falam a mesma língua visual. */
+.vr .vr-rebal-acoes { display: flex; gap: 7px; margin-top: 10px; flex-wrap: wrap; }
+.vr .vr-rebal-acoes .vr-btn.on { background: var(--vr-ink); color: var(--vr-card); border-color: var(--vr-ink); }
+
+.vr .vr-rebal {
+  margin-top: 10px; border: 1px solid var(--vr-green-hair); border-radius: 10px;
+  background: var(--vr-card); padding: 11px;
+}
+.vr .vr-rebal > .cab { display: flex; align-items: center; gap: 6px; margin-bottom: 9px; }
+.vr .vr-rebal > .cab b { flex: 1; min-width: 0; font-size: 13px; }
+.vr .vr-rebal > .cab button {
+  border: 1px solid var(--vr-hair); background: var(--vr-card); border-radius: 6px;
+  width: 22px; height: 22px; line-height: 1; cursor: pointer; color: var(--vr-ink60); flex: none;
+}
+
+.vr .vr-rebal .obj { display: flex; gap: 5px; margin-bottom: 10px; flex-wrap: wrap; }
+.vr .vr-rebal .obj button {
+  border: 1px solid var(--vr-hair); background: var(--vr-card); border-radius: 20px;
+  padding: 4px 11px; font-size: 11.5px; cursor: pointer; color: var(--vr-ink60);
+}
+.vr .vr-rebal .obj button.on {
+  background: var(--vr-green-l); border-color: var(--vr-green-hair);
+  color: var(--vr-green-d); font-weight: 700;
+}
+
+.vr .vr-rebal h4 {
+  margin: 12px 0 4px; font: 700 10px var(--vr-mono); text-transform: uppercase;
+  letter-spacing: .05em; color: var(--vr-ink40);
+}
+.vr .vr-rebal .obs { margin: 0; font-size: 11.5px; color: var(--vr-ink60); }
+.vr .vr-rebal .trav {
+  margin: 8px 0 0; font-size: 10.5px; line-height: 1.45; color: var(--vr-ink40);
+  background: var(--vr-bg); border-radius: 7px; padding: 6px 8px;
+}
+
+.vr .vr-rebal table.dif { width: 100%; border-collapse: collapse; }
+.vr .vr-rebal table.dif th {
+  padding: 3px 0; border-bottom: 1px solid var(--vr-hair); text-align: left;
+  font: 700 9.5px var(--vr-mono); text-transform: uppercase;
+  letter-spacing: .04em; color: var(--vr-ink40);
+}
+.vr .vr-rebal table.dif td {
+  padding: 4px 0; border-bottom: 1px solid var(--vr-hair); font-size: 12px;
+}
+.vr .vr-rebal table.dif tr:last-child td { border-bottom: 0; }
+.vr .vr-rebal table.dif th.n, .vr .vr-rebal table.dif td.n { text-align: right; white-space: nowrap; }
+.vr .vr-rebal table.dif th.st, .vr .vr-rebal table.dif td.st { width: 20px; text-align: right; }
+.vr .vr-rebal table.dif td.n { font: 500 11.5px var(--vr-mono); }
+.vr .vr-rebal table.dif td.n b { font-weight: 700; }
+.vr .vr-rebal td.d.up { color: var(--vr-green-d); }
+.vr .vr-rebal td.d.down { color: var(--vr-red); }
+
+.vr .vr-rebal .fin {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 7px;
+}
+.vr .vr-rebal .fin > div {
+  border: 1px solid var(--vr-hair); border-radius: 8px; padding: 6px 8px; background: var(--vr-card-2);
+}
+.vr .vr-rebal .fin span { display: block; font: 600 9.5px var(--vr-mono); color: var(--vr-ink40); text-transform: uppercase; }
+.vr .vr-rebal .fin b { font: 700 13px var(--vr-mono); }
+.vr .vr-rebal .fin b.bom { color: var(--vr-green-d); }
+.vr .vr-rebal .fin b.ruim { color: var(--vr-red); }
+
+.vr .vr-rebal .acao { display: flex; gap: 7px; margin-top: 12px; justify-content: flex-end; }
+.vr .vr-rebal .acao button {
+  border-radius: 7px; padding: 7px 14px; cursor: pointer; font-weight: 700; font-size: 12px;
+}
+.vr .vr-rebal .acao .cancelar {
+  border: 1px solid var(--vr-hair); background: var(--vr-card); color: var(--vr-ink60);
+}
+.vr .vr-rebal .acao .ok { border: 0; background: var(--vr-green-d); color: #fff; }
+/* Exigência furada: o botão continua funcionando, mas para de parecer aprovação. */
+.vr .vr-rebal .acao .ok.ressalva { background: var(--vr-gold); }
+.vr .vr-rebal .acao .ok:disabled { opacity: .45; cursor: default; }
+
+.vr .vr-rebal .rodape {
+  margin: 10px 0 0; padding-top: 7px; border-top: 1px dotted var(--vr-hair);
+  font-size: 10px; line-height: 1.45; color: var(--vr-ink40);
+}
+
+/* As caixas de aviso e os semáforos são os mesmos do painel nutricional. */
+.vr .vr-rebal .avisos { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 6px; }
+.vr .vr-rebal .avisos li {
+  border-radius: 8px; padding: 7px 9px; border: 1px solid var(--vr-red-hair);
+  background: var(--vr-red-l);
+}
+.vr .vr-rebal .avisos > li > b { display: block; font-size: 11.5px; color: var(--vr-red-ink); }
+.vr .vr-rebal .avisos p { margin: 3px 0 0; font-size: 11px; line-height: 1.45; color: var(--vr-ink60); }
+.vr .vr-rebal .dot {
+  display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--vr-hair); vertical-align: middle;
+}
+.vr .vr-rebal .dot.ok { background: var(--vr-green); }
+.vr .vr-rebal .dot.lim { background: var(--vr-gold); }
+.vr .vr-rebal .dot.fora { background: var(--vr-red); }
+.vr .vr-rebal .dot.inc { background: var(--vr-hair); border: 1px solid var(--vr-ink40); }

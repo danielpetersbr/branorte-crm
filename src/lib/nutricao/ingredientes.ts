@@ -723,13 +723,32 @@ const MINERAIS: IngredienteNutricional[] = [
       'Composição NÃO cadastrada. Traz cálcio junto do fósforo — mexer nele desequilibra os dois ao '
       + 'mesmo tempo. Use a garantia do rótulo.',
   }),
-  SEM_COMPOSICAO({
+  {
     id: 'sal-comum',
     nome: 'Sal comum (NaCl)',
-    apelidos: ['sal comum', 'sal', 'cloreto de sodio', 'nacl'],
+    apelidos: ['sal comum', 'sal', 'cloreto de sodio', 'cloreto de sódio', 'nacl'],
     categoria: 'mineral',
-    funcao: 'Fonte de sódio e cloro.',
-  }),
+    funcao: 'Fonte de sódio e cloro. É praticamente o único ingrediente da fórmula que carrega sódio.',
+    perfil: perfil({
+      base: 'MN',
+      // ESTE NÚMERO NÃO VEM DE TABELA — vem de ESTEQUIOMETRIA, e por isso é o
+      // único do banco que eu me permito derivar em vez de citar:
+      //   massa atômica Na = 22,990 · Cl = 35,453 · NaCl = 58,443
+      //   22,990 / 58,443 = 0,39337 → 39,34% de sódio
+      // É constante de química, verificável por qualquer um com a tabela
+      // periódica, e não uma média de levantamento que possa variar por safra
+      // ou região. Sal grosso com umidade e impureza entrega um pouco menos.
+      sodio: 39.34,
+    }),
+    fontes: [{
+      ref: 'Estequiometria do cloreto de sódio — massas atômicas Na 22,990 e Cl 35,453 '
+        + '(IUPAC): 22,990/58,443 = 39,34% de sódio',
+      cobre: 'sódio, por cálculo direto da fórmula química (não é média de tabela)',
+    }],
+    alerta:
+      'O valor é o do NaCl PURO. Sal grosso com umidade e impurezas entrega um pouco menos — se a '
+      + 'fórmula estiver no limite do sódio, considere a margem.',
+  },
   SEM_COMPOSICAO({
     id: 'nucleo',
     nome: 'Núcleo / premix',

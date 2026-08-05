@@ -6,7 +6,7 @@
  * sem risco de mudar economia ou payback.
  */
 import { useState } from 'react'
-import { Save } from 'lucide-react'
+import { Save, Scale, Undo2 } from 'lucide-react'
 import {
   CATEGORIAS, ehIngredienteRestrito, ESPECIES, INGREDIENTES_PADRAO, novoIdIngrediente,
   ORIGEM_CUSTOS, PESOS_SACO,
@@ -16,6 +16,7 @@ import { brl, brlKg, kg, kgHora, numero, pct, toneladas } from '@/lib/venda-raca
 import { temSubstituto, type Substituto } from '@/lib/substituicoes-racao'
 import { SubstituirIngrediente } from './SubstituirIngrediente'
 import { PainelNutricional } from './PainelNutricional'
+import { RebalancearFormula } from './RebalancearFormula'
 import type {
   ConfigEstudo, Especie, EstudoInput, FormulaSalvaRow, IngredienteCatalogoRow,
   IngredienteFormula, ResultadoEstudo, UnidadePreco,
@@ -122,6 +123,38 @@ export function FormularioEstudo({
 
   // Qual card está com o painel de substituição aberto.
   const [substituindo, setSubstituindo] = useState<string | null>(null)
+
+  // Rebalanceamento: painel aberto e a fórmula de antes, pra desfazer.
+  // Guardo os ITENS inteiros e não só os percentuais — o rebalanceamento pode
+  // ter entrado em cima de uma fórmula que o vendedor levou 10 minutos montando.
+  const [rebalanceando, setRebalanceando] = useState(false)
+  const [antesDoRebal, setAntesDoRebal] = useState<IngredienteFormula[] | null>(null)
+
+  const aplicarRebalanceamento = (novos: Array<{ id: string; participacao: number }>) => {
+    const mapa = new Map(novos.map(n => [n.id, n.participacao]))
+    setAntesDoRebal(formula.itens)
+    setFormula({
+      formulaId: null, // deixou de ser a de referência — o motor mexeu nela
+      itens: formula.itens.map(i => {
+        const p = mapa.get(i.id)
+        if (p == null) return i
+        // O otimizador raciocina em %, mas o vendedor pode ter digitado kg/t.
+        // Devolvo na unidade DELE — trocar a unidade por baixo é o tipo de
+        // "ajuda" que faz a pessoa desconfiar da tela.
+        const conv = i.unidadeParticipacao === 'pct' ? p
+          : i.unidadeParticipacao === 'kg_t' ? p * 10
+          : p * 10000
+        return { ...i, participacao: Number(conv.toFixed(4)) }
+      }),
+    })
+    setRebalanceando(false)
+  }
+
+  const desfazerRebalanceamento = () => {
+    if (!antesDoRebal) return
+    setFormula({ itens: antesDoRebal })
+    setAntesDoRebal(null)
+  }
 
   /**
    * Troca `pct` pontos do ingrediente pelo substituto. Se sobrar original, vira
@@ -647,6 +680,36 @@ export function FormularioEstudo({
                 ({restritosNaFormula.map(i => i.nome).join(', ')}). A linha farelada só processa
                 material seco — confirme que o equipamento e o processo do cliente são compatíveis.
               </div>
+            )}
+
+            {/* Rebalancear: acha a composição que atende a fase. Fica ANTES do
+                painel porque a ordem de uso é essa — o vendedor olha o que está
+                errado, manda arrumar, e confere de novo logo abaixo. */}
+            <div className="vr-rebal-acoes vr-no-print">
+              <button
+                type="button"
+                className={`vr-btn ghost${rebalanceando ? ' on' : ''}`}
+                onClick={() => setRebalanceando(v => !v)}
+                disabled={formula.itens.length < 2}
+              >
+                <Scale className="h-4 w-4" /> Rebalancear fórmula
+              </button>
+              {antesDoRebal && (
+                <button type="button" className="vr-btn ghost" onClick={desfazerRebalanceamento}>
+                  <Undo2 className="h-4 w-4" /> Desfazer
+                </button>
+              )}
+            </div>
+
+            {rebalanceando && (
+              <RebalancearFormula
+                itens={formula.itens}
+                especie={produto.especie}
+                categoria={produto.categoria}
+                demandaMensalKg={d.mensalKg}
+                onAplicar={aplicarRebalanceamento}
+                onFechar={() => setRebalanceando(false)}
+              />
             )}
 
             {/* O que esta fórmula ENTREGA ao animal. Fica logo abaixo da soma

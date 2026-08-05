@@ -208,8 +208,27 @@ function avaliar(
   const completa = cobertura >= 99.99
   const faltou = Math.max(0, 100 - cobertura)
 
+  /**
+   * Folga numérica ao comparar com a borda.
+   *
+   * Sem isto, uma fórmula que o otimizador deixou EXATAMENTE no piso (é o que um
+   * solver de custo mínimo faz — ele para na restrição) aparecia como "fora"
+   * aqui, porque o arredondamento da participação para 4 casas empurrava o
+   * último dígito pra baixo. Discordância entre dois módulos do mesmo sistema
+   * sobre a mesma fórmula, por 2×10⁻⁵ de cálcio.
+   *
+   * A folga é RELATIVA ao alvo porque o erro também é: ele nasce do
+   * arredondamento da participação, amplificado pelo teor do ingrediente.
+   *
+   * 1×10⁻⁵ do alvo = 0,001%. Em cálcio de terminação isso é 0,000005 ponto
+   * percentual — nenhum nutricionista chamaria de diferença. E é 5.000 vezes
+   * menor que a faixa do amarelo (5%), então nada que esteja de fato apertado
+   * passa despercebido.
+   */
+  const eps = (alvo: number) => Math.max(1e-9, Math.abs(alvo) * 1e-5)
+
   // ── mínimo ──────────────────────────────────────────────────────────────
-  if (meta.min != null && valor < meta.min) {
+  if (meta.min != null && valor < meta.min - eps(meta.min)) {
     if (!completa) {
       return {
         status: 'incompleto',
@@ -226,7 +245,7 @@ function avaliar(
   }
 
   // ── máximo ──────────────────────────────────────────────────────────────
-  if (meta.max != null && valor > meta.max) {
+  if (meta.max != null && valor > meta.max + eps(meta.max)) {
     // Passou do teto SÓ com o que se conhece: o que falta só somaria. Certeza.
     return {
       status: 'fora',
