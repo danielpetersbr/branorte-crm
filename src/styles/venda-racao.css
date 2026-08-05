@@ -1325,3 +1325,75 @@
 .vr .vr-rebal .dot.lim { background: var(--vr-gold); }
 .vr .vr-rebal .dot.fora { background: var(--vr-red); }
 .vr .vr-rebal .dot.inc { background: var(--vr-hair); border: 1px solid var(--vr-ink40); }
+
+/* ── Substituição inteligente (etapa 5) ──────────────────────────────────────
+   Estende `.vr-subst`, que já existia — o painel cresceu de "nome + limite" pra
+   classificação, motivos, o que muda e a prévia com rebalanceamento. Tudo
+   escopado dentro de `.vr-subst` pra não vazar. */
+.vr .vr-subst .tit .compat {
+  font: 700 9.5px var(--vr-mono); padding: 2px 6px; border-radius: 20px;
+  border: 1px solid var(--vr-hair); white-space: nowrap; flex: none;
+}
+.vr .vr-subst .tit .compat.exc { color: var(--vr-green-d); background: var(--vr-green-l); border-color: var(--vr-green-hair); }
+.vr .vr-subst .tit .compat.boa { color: var(--vr-green-d); background: transparent; border-color: var(--vr-green-hair); }
+.vr .vr-subst .tit .compat.par { color: var(--vr-gold-ink); background: var(--vr-gold-l); border-color: var(--vr-gold-hair); }
+.vr .vr-subst .tit .compat.nao { color: var(--vr-red-ink); background: var(--vr-red-l); border-color: var(--vr-red-hair); }
+
+.vr .vr-subst .corpo .funcao { color: var(--vr-ink); font-weight: 600; }
+.vr .vr-subst .corpo .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.vr .vr-subst .corpo .tags span {
+  font: 600 9.5px var(--vr-mono); color: var(--vr-ink60);
+  background: var(--vr-bg); border: 1px solid var(--vr-hair);
+  border-radius: 4px; padding: 2px 5px;
+}
+
+.vr .vr-subst table.muda { width: 100%; border-collapse: collapse; margin-top: 4px; }
+.vr .vr-subst table.muda td {
+  padding: 2px 0; font: 500 11px var(--vr-mono); color: var(--vr-ink60);
+  border-bottom: 1px dotted var(--vr-hair);
+}
+.vr .vr-subst table.muda tr:last-child td { border-bottom: 0; }
+.vr .vr-subst table.muda td.n { text-align: right; white-space: nowrap; }
+.vr .vr-subst table.muda td.seta { width: 18px; color: var(--vr-ink40); }
+.vr .vr-subst table.muda td.up { color: var(--vr-green-d); font-weight: 700; }
+.vr .vr-subst table.muda td.down { color: var(--vr-red); font-weight: 700; }
+
+.vr .vr-subst .acao .preco {
+  margin-left: auto; font: 600 10.5px var(--vr-mono); color: var(--vr-ink40); white-space: nowrap;
+}
+
+/* A prévia do §9: hoje × só a troca × com rebalanceamento */
+.vr .vr-subst .previa {
+  margin-top: 10px; border: 1px solid var(--vr-green-hair); border-radius: 9px;
+  padding: 9px; background: var(--vr-card-2);
+}
+.vr .vr-subst .previa h5 {
+  margin: 0 0 7px; font: 700 11px inherit; color: var(--vr-ink);
+}
+.vr .vr-subst table.cmp { width: 100%; border-collapse: collapse; }
+.vr .vr-subst table.cmp th {
+  padding: 3px 0; border-bottom: 1px solid var(--vr-hair); text-align: left;
+  font: 700 9px var(--vr-mono); text-transform: uppercase;
+  letter-spacing: .03em; color: var(--vr-ink40);
+}
+.vr .vr-subst table.cmp td {
+  padding: 3px 0; border-bottom: 1px solid var(--vr-hair); font-size: 11.5px;
+}
+.vr .vr-subst table.cmp th.n, .vr .vr-subst table.cmp td.n {
+  text-align: right; white-space: nowrap; font-family: var(--vr-mono); font-size: 11px;
+}
+.vr .vr-subst table.cmp td.bom { color: var(--vr-green-d); }
+.vr .vr-subst table.cmp td.ruim { color: var(--vr-red); }
+.vr .vr-subst table.cmp tr.custo td {
+  border-bottom: 0; border-top: 1px solid var(--vr-hair); padding-top: 5px; font-weight: 700;
+}
+
+.vr .vr-subst .previa .botoes { display: flex; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
+.vr .vr-subst .previa .botoes button {
+  border-radius: 7px; padding: 6px 12px; cursor: pointer; font-weight: 700; font-size: 11.5px;
+}
+.vr .vr-subst .previa .botoes .ok { border: 0; background: var(--vr-green-d); color: #fff; }
+.vr .vr-subst .previa .botoes .ok:disabled { opacity: .45; cursor: default; }
+.vr .vr-subst .previa .botoes .sec {
+  border: 1px solid var(--vr-hair); background: var(--vr-card); color: var(--vr-ink60);
+}

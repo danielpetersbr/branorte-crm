@@ -13,7 +13,7 @@ import {
 } from '@/lib/venda-racao/catalogo'
 import { consumoSugerido } from '@/lib/venda-racao/estado'
 import { brl, brlKg, kg, kgHora, numero, pct, toneladas } from '@/lib/venda-racao/formato'
-import { temSubstituto, type Substituto } from '@/lib/substituicoes-racao'
+import { temAlternativa } from '@/lib/nutricao/substituicao'
 import { SubstituirIngrediente } from './SubstituirIngrediente'
 import { PainelNutricional } from './PainelNutricional'
 import { RebalancearFormula } from './RebalancearFormula'
@@ -46,6 +46,13 @@ interface Props {
   formulasSalvas: FormulaSalvaRow[]
   onSalvarFormula: () => void
   salvandoFormula: boolean
+}
+
+/** Participação em % da fórmula, seja qual for a unidade digitada no card. */
+function pctNaFormula(i: IngredienteFormula): number {
+  if (i.unidadeParticipacao === 'pct') return i.participacao
+  if (i.unidadeParticipacao === 'kg_t') return i.participacao / 10
+  return i.participacao / 10000
 }
 
 const UNIDADES_PARTICIPACAO = [
@@ -157,39 +164,18 @@ export function FormularioEstudo({
   }
 
   /**
-   * Troca `pct` pontos do ingrediente pelo substituto. Se sobrar original, vira
-   * DOIS itens — é o caso normal: ninguém troca 69,8% de milho por 69,8% de DDG.
-   * A soma da fórmula não se mexe, porque o que entra é exatamente o que saiu.
+   * Aplica a substituição — a lista nova vem pronta do painel, que já decidiu se
+   * era só a troca ou a troca com rebalanceamento.
+   *
+   * A conta de trocar (que vira duas linhas quando sobra original, e mantém a
+   * soma) mora em `lib/nutricao/substituicao.ts`, testada lá. Aqui é só estado.
+   * Guardo o "antes" no mesmo lugar do rebalanceamento, então o Desfazer serve
+   * pras duas coisas.
    */
-  const aplicarSubstituicao = (id: string, s: Substituto, pct: number) => {
-    const alvo = formula.itens.find(x => x.id === id)
-    if (!alvo) return
-    const emPct = alvo.unidadeParticipacao === 'pct'
-    const atual = emPct ? alvo.participacao : alvo.participacao / 10
-    const trocar = Math.max(0, Math.min(pct, atual))
-    if (trocar <= 0) return
-    const resto = atual - trocar
-    const conv = (v: number) => (emPct ? v : v * 10)
-
-    setFormula({
-      // deixou de ser a fórmula de referência carregada — o vendedor mexeu nela
-      formulaId: null,
-      itens: formula.itens.flatMap(x => {
-        if (x.id !== id) return [x]
-        const entrando = {
-          id: novoIdIngrediente(),
-          nome: s.nome,
-          participacao: Number(conv(trocar).toFixed(4)),
-          unidadeParticipacao: x.unidadeParticipacao,
-          preco: s.preco,
-          unidadePreco: 'kg' as const,
-          pesoSacoIngrediente: 60,
-        }
-        return resto > 0.0001
-          ? [{ ...x, participacao: Number(conv(resto).toFixed(4)) }, entrando]
-          : [entrando]
-      }),
-    })
+  const aplicarSubstituicao = (novos: IngredienteFormula[]) => {
+    setAntesDoRebal(formula.itens)
+    // deixou de ser a fórmula de referência carregada — o vendedor mexeu nela
+    setFormula({ formulaId: null, itens: novos })
     setSubstituindo(null)
   }
 
@@ -589,7 +575,7 @@ export function FormularioEstudo({
                       onChange={e => alterarItem(i.id, { nome: e.target.value })}
                       placeholder="Ingrediente"
                     />
-                    {temSubstituto(i.nome, produto.especie) && (
+                    {temAlternativa(i.nome, pctNaFormula(i), produto.especie) && (
                       <button
                         type="button"
                         className={`frm sub${substituindo === i.id ? ' on' : ''}`}
@@ -637,9 +623,11 @@ export function FormularioEstudo({
                   {substituindo === i.id && (
                     <SubstituirIngrediente
                       item={i}
+                      itens={formula.itens}
                       especie={produto.especie}
+                      categoria={produto.categoria}
                       onFechar={() => setSubstituindo(null)}
-                      onAplicar={(s, pct) => aplicarSubstituicao(i.id, s, pct)}
+                      onAplicar={aplicarSubstituicao}
                     />
                   )}
                 </div>
