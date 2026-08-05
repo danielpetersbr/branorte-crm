@@ -756,10 +756,15 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
                 {/* Sem fase escolhida, tudo aqui é a união de todas as
                     categorias da espécie. Dizer isso é a diferença entre
                     repertório e resposta. */}
+                {/* A frase não pode afirmar "da espécie": escolhendo "Gado de
+                    corte" (que é SUBGRUPO, não fase) o repertório é das 6
+                    categorias de corte, não das 12 da espécie. Dizer o número
+                    é mais honesto e mais útil que dizer o rótulo errado. */}
                 {r.baseAmpla && (
                   <p className="text-[12px] leading-relaxed text-warning">
-                    Sem a fase produtiva, isto é o repertório de TODAS as fases da espécie —
-                    não é o roteiro deste cliente. Escolha a fase pra filtrar.
+                    Isto é o repertório de {r.processo.length > 1 ? `${r.processo.length} ` : ''}
+                    situações diferentes, não o roteiro deste cliente. Escolha a fase produtiva
+                    pra filtrar.
                   </p>
                 )}
 
