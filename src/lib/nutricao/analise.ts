@@ -44,7 +44,7 @@ import type { Especie, IngredienteFormula } from '@/lib/venda-racao/tipos'
 import {
   NUTRIENTES, lerNutriente, type ChaveNutriente, type Valor,
 } from './tipos'
-import { acharIngrediente, type IngredienteNutricional } from './ingredientes'
+import { acharIngrediente, semComposicao, type IngredienteNutricional } from './ingredientes'
 import { exigenciaDe, type ExigenciaNutricional, type Meta } from './exigencias'
 import { verificarSeguranca, temBloqueio, type AlertaSeguranca } from './seguranca'
 
@@ -282,14 +282,16 @@ export function analisarFormula(
   const alertas = verificarSeguranca(itens, especie)
 
   const naoCadastrados = [...new Set(resolvidos.filter(r => !r.ing).map(r => r.nome))]
-  const semComposicao = [...new Set(
-    resolvidos.filter(r => r.ing && r.ing.perfil.materiaSeca == null).map(r => r.ing!.nome),
+  // "Sem composição" = NENHUM nutriente cadastrado. Não dá pra testar só a
+  // matéria seca: núcleo com garantia de rótulo traz cálcio e fósforo e não traz
+  // MS — tem composição parcial, e parcial não é nenhuma.
+  const semComposicaoLista = [...new Set(
+    resolvidos.filter(r => r.ing && semComposicao(r.ing)).map(r => r.ing!.nome),
   )]
   const totalPct = resolvidos.reduce((s, r) => s + r.pct, 0)
   const pctReconhecido = resolvidos.filter(r => r.ing).reduce((s, r) => s + r.pct, 0)
-  // "Com composição" exige perfil preenchido, não só estar no banco.
   const pctComPerfil = resolvidos
-    .filter(r => r.ing && r.ing.perfil.materiaSeca != null)
+    .filter(r => r.ing && !semComposicao(r.ing))
     .reduce((s, r) => s + r.pct, 0)
 
   const linhas: LinhaNutriente[] = NUTRIENTES
@@ -330,7 +332,7 @@ export function analisarFormula(
     coberturaGeralPct: totalPct > 0 ? (pctComPerfil / totalPct) * 100 : 0,
     reconhecidoPct: totalPct > 0 ? (pctReconhecido / totalPct) * 100 : 0,
     naoCadastrados,
-    semComposicao,
+    semComposicao: semComposicaoLista,
     materiaSecaPct: temMs ? msTotal : null,
     coberturaMateriaSecaPct: msCobertura,
     aplicavel: resolvidos.length > 0,

@@ -325,13 +325,53 @@ test('exigência de suíno existe pra todas as fases do catálogo', () => {
   }
 })
 
+test('poedeira tem exigência nas 3 fases que a Embrapa publica', () => {
+  for (const c of ['poedeira_inicial', 'poedeira_crescimento', 'postura']) {
+    assert.ok(exigenciaDe('aves', c), `falta exigência para "${c}"`)
+  }
+  // Frango de corte segue SEM meta — não achei fonte aberta. Se alguém
+  // cadastrar sem fonte, este teste é o lugar de perceber que mudou.
+  for (const c of ['frango_inicial', 'frango_crescimento', 'frango_final']) {
+    assert.equal(exigenciaDe('aves', c), null,
+      `"${c}" ganhou exigência — confira se a fonte foi conferida`)
+  }
+})
+
+test('o salto de cálcio da poedeira em produção está cadastrado', () => {
+  // É o número que separa uma ração que faz casca de ovo de uma que não faz.
+  const recria = exigenciaDe('aves', 'poedeira_crescimento')!
+  const producao = exigenciaDe('aves', 'postura')!
+  assert.equal(recria.metas.calcio!.min, 0.85)
+  assert.equal(producao.metas.calcio!.min, 3.4)
+  assert.ok(producao.metas.calcio!.min! > recria.metas.calcio!.min! * 3,
+    'o cálcio da produção tem que ser MÚLTIPLO do da recria')
+})
+
+test('a fórmula de postura de referência atende o cálcio que a poedeira exige', () => {
+  // Cruzamento de DUAS fontes independentes: a fórmula veio da ficha Integral
+  // Mix (formulacoes-racao.ts) e a meta veio da Embrapa CIT 55. Se as duas não
+  // fechassem, uma das duas estaria errada.
+  const a = analisarFormula(
+    [ing('Milho moído', 63), ing('Farelo de soja', 24.5),
+      ing('Calcário calcítico', 7.5), ing('Núcleo de postura', 5)],
+    'aves', 'postura',
+  )
+  const ca = a.linhas.find(l => l.chave === 'calcio')!
+  // O calcário NÃO tem composição cadastrada, então o que aparece é só o que o
+  // núcleo traz: 5% × 20% = 1,0%. Abaixo da meta de 3,4% — mas com cobertura
+  // parcial, e por isso o status é INCOMPLETO, não "fora".
+  assert.equal(ca.status, 'incompleto')
+  assert.ok(ca.faltando.includes('Calcário calcítico'),
+    'o calcário tem que aparecer como o dado que falta — é ele que fecha o cálcio')
+})
+
 test('cobertura conta COMPOSIÇÃO, não "estar no banco"', () => {
   // Achado dirigindo a tela: ureia e núcleo estão cadastrados (é como a camada
   // de segurança os enxerga) mas têm perfil VAZIO. Contá-los como cobertura
   // escrevia "100% da fórmula tem composição cadastrada" numa tela em que todo
   // nutriente mostrava 21%.
   const a = analisarFormula(
-    [ing('Ureia', 75), ing('Farelo de soja', 22), ing('Núcleo suínos', 3)],
+    [ing('Ureia', 75), ing('Farelo de soja', 22), ing('Núcleo mineral', 3)],
     'bovinos', 'confinamento',
   )
   perto(a.reconhecidoPct, 100, 0.001) // os três estão no banco
@@ -340,6 +380,25 @@ test('cobertura conta COMPOSIÇÃO, não "estar no banco"', () => {
 
   const pb = a.linhas.find(l => l.chave === 'proteinaBruta')!
   perto(pb.coberturaPct, 22, 0.001) // o cabeçalho e a linha têm que bater
+})
+
+test('composição PARCIAL não é "sem composição" — núcleo entra pelo cálcio', () => {
+  // O núcleo com garantia de rótulo traz cálcio e NÃO traz matéria seca. A
+  // primeira versão da métrica testava materiaSeca e teria jogado ele fora.
+  const a = analisarFormula(
+    [ing('Milho', 82), ing('Farelo de soja', 15), ing('Núcleo suínos', 3)],
+    'suinos', 'terminacao',
+  )
+  assert.deepEqual(a.semComposicao, [], 'os três têm ao menos um nutriente')
+  perto(a.coberturaGeralPct, 100, 0.001)
+
+  // A ficha ADM afirma: 3% de núcleo a 24% de Ca dá 0,72% na ração. Confere.
+  const ca = a.linhas.find(l => l.chave === 'calcio')!
+  // 0,82×0,04 + 0,15×0,25 + 0,03×24,0 = 0,0328 + 0,0375 + 0,72 = 0,7903
+  perto(ca.valor!, 0.7903, 0.0001)
+  perto(ca.coberturaPct, 100, 0.001)
+  // Terminação pede 0,50 a 0,60 — 0,79 estoura, e agora dá pra afirmar.
+  assert.equal(ca.status, 'fora')
 })
 
 test('ingrediente que o banco não conhece vira lacuna explícita', () => {

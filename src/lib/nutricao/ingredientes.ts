@@ -734,7 +734,7 @@ const MINERAIS: IngredienteNutricional[] = [
     id: 'nucleo',
     nome: 'Núcleo / premix',
     apelidos: ['nucleo', 'núcleo', 'premix', 'núcleo mineral', 'nucleo mineral',
-      'núcleo suínos', 'nucleo suinos', 'núcleo de postura', 'mistura mineral', 'sal mineral'],
+      'mistura mineral', 'sal mineral'],
     categoria: 'aditivo',
     funcao: 'Concentrado de vitaminas e minerais formulado pelo fabricante.',
     alerta:
@@ -743,6 +743,72 @@ const MINERAIS: IngredienteNutricional[] = [
       + 'sódio da fórmula inteira.',
     exigeAnalise: true,
   }),
+
+  // ── núcleos COM garantia de rótulo ────────────────────────────────────────
+  //
+  // POR QUE ESTES DOIS TÊM NÚMERO E O GENÉRICO ACIMA NÃO
+  // As fichas técnicas destes produtos JÁ ERAM a fonte das fórmulas de referência
+  // em `formulacoes-racao.ts` — o número estava citado lá, em texto, e não estava
+  // no banco nutricional. Trazer pra cá não inventa nada: é o mesmo dado, agora
+  // onde a conta acontece.
+  //
+  // Eles casam com o termo genérico ("Núcleo suínos", "Núcleo de postura") porque
+  // as fórmulas de referência que usam esses nomes foram construídas EXATAMENTE
+  // dessas fichas. O risco de generalizar está escrito no alerta: se o cliente usa
+  // outra marca, o número muda e a conta precisa ser refeita.
+  //
+  // O VALOR CADASTRADO É O MÍNIMO DA GARANTIA — que é o número a que o fabricante
+  // se obriga. A faixa cheia fica no alerta, porque pra checar TETO o mínimo
+  // subestima.
+  {
+    id: 'nucleo-suinos-adm',
+    nome: 'Núcleo suínos 3%',
+    apelidos: ['núcleo suínos', 'nucleo suinos', 'núcleo suino', 'nucleo suino'],
+    categoria: 'aditivo',
+    funcao: 'Concentrado vitamínico-mineral para suíno, formulado para inclusão de 3% na ração.',
+    perfil: perfil({
+      base: 'MN',
+      // Sem MS declarada na ficha; 98% é o usual de produto mineral seco, e eu
+      // NÃO vou cadastrar isso como se fosse dado. Fica null: o que a ficha traz
+      // é o cálcio, e é só o cálcio que entra na conta.
+      calcio: 24.0,
+    }),
+    fontes: [{
+      ref: 'Ficha técnica ADM Núcleo Suínos Crescimento/Terminação 3% — garantia de Ca 24 a 24,5%',
+      cobre: 'cálcio (mínimo da garantia); nenhum outro nutriente consta',
+    }],
+    alerta:
+      'Números da ficha ADM, que é a fonte das fórmulas de referência de suíno deste sistema. '
+      + 'A garantia é de Ca 24 a 24,5% — cadastrei o MÍNIMO (24%), então para checar TETO de cálcio o '
+      + 'valor está subestimado. SE O CLIENTE USA OUTRA MARCA, o número muda: pegue a garantia do rótulo '
+      + 'dele. A 3% de inclusão isto entrega 0,72% de cálcio na ração, e por isso estas fórmulas não '
+      + 'levam calcário por fora — o núcleo já traz.',
+    exigeAnalise: true,
+  },
+  {
+    id: 'nucleo-postura-integral',
+    nome: 'Núcleo de postura 5%',
+    apelidos: ['núcleo de postura', 'nucleo de postura', 'avenúcleo', 'avenucleo', 'núcleo postura'],
+    categoria: 'aditivo',
+    funcao: 'Concentrado vitamínico-mineral para poedeira, formulado para inclusão de 5% na ração.',
+    perfil: perfil({
+      base: 'MN',
+      calcio: 20.0,   // garantia 200-300 g/kg → 20 a 30%
+      fosforo: 7.5,   // 75 g/kg
+      sodio: 3.0,     // 30 g/kg
+    }),
+    fontes: [{
+      ref: 'Ficha Integral Mix Avenúcleo Postura (50 kg/1.000 kg) — garantia Ca 200-300 g/kg, '
+        + 'P 75 g/kg, Na 30 g/kg',
+      cobre: 'cálcio (mínimo da garantia), fósforo e sódio',
+    }],
+    alerta:
+      'Números da ficha Integral Mix, que é a fonte da fórmula de referência de postura deste sistema. '
+      + 'A garantia de cálcio é uma FAIXA (20 a 30%) e cadastrei o mínimo — a 5% de inclusão isso vai de '
+      + '1,0 a 1,5% de cálcio na ração, e é o calcário por fora que fecha os 3,4% que a poedeira precisa '
+      + 'para fazer casca. Outra marca, outro número: use a garantia do rótulo do cliente.',
+    exigeAnalise: true,
+  },
   SEM_COMPOSICAO({
     id: 'oleo',
     nome: 'Óleo / gordura',

@@ -11,14 +11,18 @@
  * Ludke et al. (1997). São tabelas de MÍNIMO e MÁXIMO — exatamente o formato que
  * o painel precisa, e não uma média que teria de ser interpretada.
  *
- * ─────────────────────────────────────────────────────────────────────────────
- * POR QUE AVES E BOVINOS ESTÃO VAZIOS
+ * FONTE (poedeiras): Embrapa Suínos e Aves — Circular Técnica 55, "Alimentos e
+ * Alimentação de Galinhas Poedeiras em Sistemas Orgânicos de Produção",
+ * Tabela 1. Cobre 4 fases da poedeira.
  *
- * Não achei tabela de exigência de ave nem de bovino em fonte aberta com o mesmo
- * grau de confiança. As referências existem — Rostagno (Tabelas Brasileiras para
- * Aves e Suínos, UFV) e BR-CORTE/CQBAL — mas estão atrás de paywall, e escrever
- * "PB mínima 18%" de memória citando Rostagno é exatamente o que os protocolos
- * deste projeto proíbem.
+ * ─────────────────────────────────────────────────────────────────────────────
+ * O QUE AINDA ESTÁ VAZIO: FRANGO DE CORTE E BOVINOS
+ *
+ * Não achei tabela de exigência dessas duas em fonte aberta com o mesmo grau de
+ * confiança. As referências existem — Rostagno (Tabelas Brasileiras para Aves e
+ * Suínos, UFV) e BR-CORTE/CQBAL — mas estão atrás de paywall, e escrever "PB
+ * mínima 18%" de memória citando Rostagno é exatamente o que os protocolos deste
+ * projeto proíbem.
  *
  * O painel trata a ausência como ausência: mostra o valor CALCULADO da fórmula
  * (que depende só do banco de ingredientes, e esse existe pras três espécies) e
@@ -66,6 +70,10 @@ export interface ExigenciaNutricional {
 const FONTE_SUINOS =
   'Embrapa Suínos e Aves / EMATER-RS — BIPERS nº 12 (dez/1999), Tabelas 28 a 32, '
   + '"Limites de nutrientes" (fonte primária: Ludke et al., 1997), nível nutricional Normal'
+
+const FONTE_POEDEIRAS =
+  'Embrapa Suínos e Aves — Circular Técnica 55, "Alimentos e Alimentação de Galinhas '
+  + 'Poedeiras em Sistemas Orgânicos de Produção", Tabela 1 (linhagem Embrapa 051)'
 
 export const EXIGENCIAS: ExigenciaNutricional[] = [
   {
@@ -195,6 +203,67 @@ export const EXIGENCIAS: ExigenciaNutricional[] = [
       metioninaCistina: { min: 0.52 },
       treonina: { min: 0.56 },
       triptofano: { min: 0.15 },
+    },
+  },
+
+  // ═══════════════════════ POEDEIRAS ═══════════════════════
+  //
+  // Embrapa CIT 55, Tabela 1. A própria fonte apresenta a linhagem Embrapa 051
+  // "a título de exemplo" e o contexto é PRODUÇÃO ORGÂNICA — está dito no `nota`
+  // de cada entrada, não escondido. Linhagem comercial convencional exige mais.
+  //
+  // O cálcio confirma, por outra fonte, o que `formulacoes-racao.ts` já dizia:
+  // poedeira em produção precisa de 3,4%+ de cálcio. Duas fontes independentes
+  // chegando no mesmo número é o tipo de coincidência que dá confiança.
+  {
+    especie: 'aves', categorias: ['poedeira_inicial'], nome: 'Poedeira — inicial (0 a 6 semanas)',
+    fonte: FONTE_POEDEIRAS,
+    nota: 'Linhagem Embrapa 051 em sistema ORGÂNICO, apresentada pela própria fonte como exemplo. Linhagem comercial convencional costuma exigir mais.',
+    metas: {
+      emAves: { min: 2850, max: 2900 },
+      proteinaBruta: { min: 20.0, max: 20.5 },
+      fibraBruta: { max: 5.0 },
+      calcio: { min: 0.75, max: 0.80 },
+      fosforoDisponivel: { min: 0.42 },
+      sodio: { min: 0.15 },
+      lisina: { min: 0.90 },
+      metionina: { min: 0.35 },
+      metioninaCistina: { min: 0.65 },
+      triptofano: { min: 0.20 },
+    },
+  },
+  {
+    especie: 'aves', categorias: ['poedeira_crescimento'], nome: 'Poedeira — crescimento (7 a 18 semanas)',
+    fonte: FONTE_POEDEIRAS,
+    nota: 'Linhagem Embrapa 051 em sistema ORGÂNICO. É a fase de menor exigência do ciclo — 14% de PB contra 20% da inicial.',
+    metas: {
+      emAves: { min: 2700, max: 2750 },
+      proteinaBruta: { min: 14.0, max: 14.5 },
+      fibraBruta: { max: 5.0 },
+      calcio: { min: 0.85, max: 0.90 },
+      fosforoDisponivel: { min: 0.36 },
+      sodio: { min: 0.15 },
+      lisina: { min: 0.70 },
+      metionina: { min: 0.25 },
+      metioninaCistina: { min: 0.55 },
+      triptofano: { min: 0.15 },
+    },
+  },
+  {
+    especie: 'aves', categorias: ['postura'], nome: 'Poedeira em produção (19 a 45 semanas)',
+    fonte: FONTE_POEDEIRAS,
+    nota: 'Linhagem Embrapa 051 em sistema ORGÂNICO. O CÁLCIO DÁ O SALTO AQUI: de 0,85% na recria para 3,4-3,6% — é o que forma a casca do ovo. Depois de 46 semanas a fonte sobe para 3,7-3,8% e baixa a proteína para 15,0-15,5%.',
+    metas: {
+      emAves: { min: 2800, max: 2850 },
+      proteinaBruta: { min: 15.5, max: 16.0 },
+      fibraBruta: { max: 5.0 },
+      calcio: { min: 3.4, max: 3.6 },
+      fosforoDisponivel: { min: 0.42 },
+      sodio: { min: 0.15 },
+      lisina: { min: 0.75 },
+      metionina: { min: 0.32 },
+      metioninaCistina: { min: 0.63 },
+      triptofano: { min: 0.16 },
     },
   },
 ]
