@@ -2000,6 +2000,32 @@ Deno.serve(async (req: Request) => {
       // A declaracao antiga (antes do ramo mostrarFabrica) FOI REMOVIDA — const redeclarado
       // no mesmo escopo = BOOT_ERROR silencioso (a funcao sobe ACTIVE e nao roda).
       const MODELOS_FAB = ['compacta-01', 'compacta-02', 'compacta-03', 'mini-fabrica']
+      // (05/08) O CLIENTE NOMEOU O MODELO E A IA MANDOU OUTRO. Caso Dr. Nelson/PEDRO, chat
+      // 2336663584995@lid, 14:52-14:54: ele escreveu "Mini fábrica para consumo da fazenda" e
+      // repetiu no audio; a IA gravou no proprio resumo dela "Quer mini fabrica ... proteico e
+      // sal mineral para cerca de mil cabecas" — e mandou a COMPACTA 03.
+      // A engrenagem pra isso ja existia (`mostrar_fabrica`), mas dependia de o MODELO marcar o
+      // campo, e ele nao marcou. A KB manda, com todas as letras: "Se o cliente NOMEOU o modelo
+      // (ex.: 'mini fábrica'), é aquele que você mostra; se a conta apontar outro, mostre o que
+      // ele pediu e explique a diferença." Agora sai por regra, nao por boa vontade do LLM.
+      // Le do texto do cliente SEM o boilerplate de anuncio/LP (textoNumerico) — quem veio de
+      // "Vi o anuncio da Mini Fabrica" nao esta ESCOLHENDO, esta so chegando; pra esse caso quem
+      // decide segue sendo o bloco do criativo.
+      if (!mostrarFabrica) {
+        const _t = ' ' + textoNumerico(convCliente) + ' '
+        // "master" sozinho NAO entra: existe Compacta 01 Master, 02 Master e 03 Master — casar
+        // por "master" jogaria "compacta 01 master" na 03. A ordem tambem importa: o numero e
+        // testado antes de qualquer termo generico.
+        const _pedido = /compacta\s*0?3/.test(_t) ? 'compacta-03'
+          : /compacta\s*0?2/.test(_t) ? 'compacta-02'
+          : /compacta\s*0?1/.test(_t) ? 'compacta-01'
+          : /mini\s*f[áa]bric|minif[áa]bric|mini\s*fabriq/.test(_t) ? 'mini-fabrica'
+          : null
+        if (_pedido) {
+          mostrarFabrica = _pedido
+          console.log('[ia-atendente] modelo NOMEADO pelo cliente -> ' + _pedido + ' (' + chat_id + ')')
+        }
+      }
       // DEDUP DE MIDIA DE FABRICA — espelho do _midia_eq, mas guarda a LISTA de slugs: nenhum
       // modelo pode sair 2x (caso Junior 29/07: a mesma tabela de preco 2x em 2 minutos).
       const fabJaMandadas = String((st.dados_coletados || {})._midia_fab || '').split(',').filter(Boolean)
