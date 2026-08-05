@@ -188,6 +188,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 function montarUrl(telefone: string, modelo: string, vendedor: string | null, codigoNum: number | null): string {
   let texto = String(modelo || '').replace(/\{vendedor\}/gi, primeiroNome(vendedor || 'consultor'))
-  if (codigoNum !== null) texto += selarInvisivel(codigoNum)
+  // Espaco ANTES do selo, sempre. O parser de "&CODIGO" que existe hoje e
+  // guloso -- ja gravou '&79oi', '&88cade', '&utm_source' -- entao ele pega o &
+  // e tudo que vier colado. Sem esse espaco, um texto terminado em "&LP" viraria
+  // '&LP' + 17 invisiveis: parece '&LP' na tela e nao e igual a '&LP' em lugar
+  // nenhum. O espaco faz qualquer parser de \S+ parar no lugar certo.
+  if (codigoNum !== null) texto += ' ' + selarInvisivel(codigoNum)
   return `https://wa.me/${telefone}?text=${encodeURIComponent(texto)}`
 }
