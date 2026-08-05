@@ -1098,3 +1098,130 @@
 /* Salvou: o ícone fica verde. É o que restou do texto "Alterações salvas às
    14:32" — a hora exata vive no `title` do botão. */
 .vr .vr-btn.icone.salvo { color: var(--vr-green); border-color: var(--vr-green); }
+
+/* ── Painel nutricional (etapa 5) ─────────────────────────────────────────────
+   Prefixo `.vr-nutri` conferido contra o resto do arquivo antes de criar: zero
+   ocorrências. `.vr-alerta` foi descartado justamente por já existir em 11
+   lugares — colisão aqui é silenciosa (já custou uma barra espremida em 12px).
+
+   Cor vem só das variáveis do bloco `.vr`, então o tema escuro funciona sem
+   nenhuma regra `.dark` própria. */
+.vr .vr-nutri {
+  margin-top: 12px; border: 1px solid var(--vr-hair); border-radius: 10px;
+  background: var(--vr-card-2); overflow: hidden;
+}
+.vr .vr-nutri > .cab {
+  width: 100%; display: flex; align-items: center; gap: 8px; padding: 9px 11px;
+  background: none; border: 0; cursor: pointer; text-align: left; color: var(--vr-ink);
+}
+.vr .vr-nutri > .cab .tt { font-weight: 700; font-size: 13px; flex: none; }
+.vr .vr-nutri > .cab .pins { display: flex; gap: 5px; flex-wrap: wrap; flex: 1; min-width: 0; }
+.vr .vr-nutri > .cab .ch { color: var(--vr-ink40); font-size: 9px; flex: none; }
+.vr .vr-nutri .pin {
+  font: 700 10px var(--vr-mono); padding: 2px 6px; border-radius: 20px;
+  border: 1px solid var(--vr-hair); white-space: nowrap;
+}
+.vr .vr-nutri .pin.ok   { color: var(--vr-green-d); background: var(--vr-green-l); border-color: var(--vr-green-hair); }
+.vr .vr-nutri .pin.lim  { color: var(--vr-gold-ink); background: var(--vr-gold-l); border-color: var(--vr-gold-hair); }
+.vr .vr-nutri .pin.fora { color: var(--vr-red-ink); background: var(--vr-red-l); border-color: var(--vr-red-hair); }
+.vr .vr-nutri .pin.inc  { color: var(--vr-ink40); }
+
+.vr .vr-nutri .corpo { padding: 0 11px 11px; border-top: 1px solid var(--vr-hair); }
+
+/* cobertura: quanto da fórmula o sistema conseguiu analisar */
+.vr .vr-nutri .cobertura { margin-top: 9px; }
+.vr .vr-nutri .cobertura .barra {
+  height: 5px; border-radius: 3px; background: var(--vr-hair); overflow: hidden;
+}
+.vr .vr-nutri .cobertura .barra span {
+  display: block; height: 100%; background: var(--vr-green); transition: width .2s;
+}
+.vr .vr-nutri .cobertura p {
+  margin: 5px 0 0; font-size: 11px; color: var(--vr-ink60);
+}
+
+.vr .vr-nutri .semmeta {
+  margin: 9px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--vr-ink60);
+  background: var(--vr-bg); border: 1px dashed var(--vr-hair);
+  border-radius: 8px; padding: 7px 9px;
+}
+
+/* tabela de nutrientes */
+.vr .vr-nutri .grupo { margin-top: 11px; }
+.vr .vr-nutri .grupo h4 {
+  margin: 0 0 4px; font: 700 10px var(--vr-mono); text-transform: uppercase;
+  letter-spacing: .05em; color: var(--vr-ink40);
+}
+.vr .vr-nutri table { width: 100%; border-collapse: collapse; }
+.vr .vr-nutri th {
+  padding: 3px 0; border-bottom: 1px solid var(--vr-hair); text-align: left;
+  font: 700 9.5px var(--vr-mono); text-transform: uppercase;
+  letter-spacing: .04em; color: var(--vr-ink40);
+}
+.vr .vr-nutri td {
+  padding: 5px 0; border-bottom: 1px solid var(--vr-hair);
+  font-size: 12px; vertical-align: top;
+}
+.vr .vr-nutri tr:last-child td { border-bottom: 0; }
+.vr .vr-nutri tr.on td { background: var(--vr-bg); }
+.vr .vr-nutri th.n, .vr .vr-nutri td.n { text-align: right; white-space: nowrap; }
+.vr .vr-nutri th.st, .vr .vr-nutri td.st { width: 20px; text-align: right; }
+.vr .vr-nutri td.n b { font: 700 12px var(--vr-mono); }
+.vr .vr-nutri td.n i { font-style: normal; font-size: 10px; color: var(--vr-ink40); }
+.vr .vr-nutri td.n em {
+  font-style: normal; display: inline-block; margin-left: 5px;
+  font: 700 9px var(--vr-mono); color: var(--vr-gold-ink);
+  background: var(--vr-gold-l); border-radius: 3px; padding: 1px 3px;
+}
+.vr .vr-nutri td.meta { font: 500 11px var(--vr-mono); color: var(--vr-ink40); }
+.vr .vr-nutri .q {
+  display: inline-block; margin-left: 5px; width: 13px; height: 13px; line-height: 13px;
+  text-align: center; border-radius: 50%; background: var(--vr-hair);
+  color: var(--vr-ink60); font: 700 9px var(--vr-mono);
+}
+.vr .vr-nutri .nota { margin-top: 4px; }
+.vr .vr-nutri .nota p { margin: 3px 0 0; font-size: 11px; line-height: 1.45; color: var(--vr-ink60); }
+.vr .vr-nutri .nota .falt { color: var(--vr-ink40); font-style: italic; }
+
+.vr .vr-nutri .dot {
+  display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--vr-hair); vertical-align: middle;
+}
+.vr .vr-nutri .dot.ok   { background: var(--vr-green); }
+.vr .vr-nutri .dot.lim  { background: var(--vr-gold); }
+.vr .vr-nutri .dot.fora { background: var(--vr-red); }
+.vr .vr-nutri .dot.inc  { background: var(--vr-hair); border: 1px solid var(--vr-ink40); }
+
+/* avisos: bloqueio, atenção, lacuna */
+.vr .vr-nutri .avisos { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.vr .vr-nutri .avisos li { border-radius: 8px; padding: 7px 9px; border: 1px solid var(--vr-hair); }
+.vr .vr-nutri .avisos b { display: block; font-size: 11.5px; line-height: 1.35; }
+.vr .vr-nutri .avisos p { margin: 3px 0 0; font-size: 11px; line-height: 1.45; color: var(--vr-ink60); }
+.vr .vr-nutri .avisos .fnt {
+  display: block; margin-top: 5px; font: 500 9.5px var(--vr-mono); color: var(--vr-ink40);
+}
+.vr .vr-nutri .avisos.bloq li {
+  background: var(--vr-red-l); border-color: var(--vr-red-hair);
+}
+.vr .vr-nutri .avisos.bloq b { color: var(--vr-red-ink); }
+.vr .vr-nutri .avisos.aten li {
+  background: var(--vr-gold-l); border-color: var(--vr-gold-hair);
+}
+.vr .vr-nutri .avisos.aten b { color: var(--vr-gold-ink); }
+.vr .vr-nutri .avisos.lac li { background: var(--vr-bg); }
+.vr .vr-nutri .avisos.lac b { color: var(--vr-ink60); }
+
+.vr .vr-nutri .rodape {
+  margin: 10px 0 0; padding-top: 7px; border-top: 1px dotted var(--vr-hair);
+  font-size: 10px; line-height: 1.45; color: var(--vr-ink40);
+}
+
+.vr .vr-nutri .sr {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+/* telas estreitas: a coluna de meta é a primeira a sair */
+@media (max-width: 560px) {
+  .vr .vr-nutri th.n + .n, .vr .vr-nutri td.meta { display: none; }
+}

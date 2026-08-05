@@ -15,6 +15,7 @@ import { consumoSugerido } from '@/lib/venda-racao/estado'
 import { brl, brlKg, kg, kgHora, numero, pct, toneladas } from '@/lib/venda-racao/formato'
 import { temSubstituto, type Substituto } from '@/lib/substituicoes-racao'
 import { SubstituirIngrediente } from './SubstituirIngrediente'
+import { PainelNutricional } from './PainelNutricional'
 import type {
   ConfigEstudo, Especie, EstudoInput, FormulaSalvaRow, IngredienteCatalogoRow,
   IngredienteFormula, ResultadoEstudo, UnidadePreco,
@@ -647,6 +648,16 @@ export function FormularioEstudo({
                 material seco — confirme que o equipamento e o processo do cliente são compatíveis.
               </div>
             )}
+
+            {/* O que esta fórmula ENTREGA ao animal. Fica logo abaixo da soma
+                porque as duas respondem à mesma pergunta — "a fórmula está de
+                pé?" — e até agora só a metade do dinheiro estava respondida. */}
+            <PainelNutricional
+              itens={formula.itens}
+              especie={produto.especie}
+              categoria={produto.categoria}
+              formula={f}
+            />
 
             <div className="vr-row2" style={{ marginTop: 9 }}>
               <Campo label="Nome da fórmula" unidade="pra salvar">
