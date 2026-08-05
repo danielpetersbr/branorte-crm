@@ -65,6 +65,24 @@ export function capacidadeParaAnalise(
 const AVISO_SEM_DADOS =
   'Sem todos os dados não dá pra fechar equipamento. O que está abaixo é ponto de partida para a conversa.'
 
+/**
+ * Produtos cujo consumo NÃO é o consumo de ração completa.
+ *
+ * `CATEGORIAS[].consumoMes` é kg de RAÇÃO por animal/mês. O produto escolhido
+ * não entrava em conta nenhuma: dava pra marcar "Confinamento" (297 kg/mês) com
+ * produto "Sal mineral / proteinado" e a tela devolvia 148.500 kg/mês para 500
+ * cabeças — quando proteinado nessa boiada é da ordem de 15.000 e mineral, de
+ * 1.500. Erro de 10× a 99×, e o número ia pro texto que o vendedor cola no
+ * WhatsApp do cliente.
+ *
+ * Não há tabela de consumo por produto aqui, e inventar uma seria pior que o
+ * defeito. Então a tela faz o que já faz com o resto: PERGUNTA, e não fecha
+ * equipamento até o vendedor trazer o número do cliente.
+ */
+const PRODUTOS_FORA_DA_RACAO = [
+  'Concentrado', 'Sal mineral / proteinado', 'Milho triturado',
+]
+
 export function analisar(
   a: Atendimento,
   animais: GuiaAnimal[],
@@ -161,9 +179,45 @@ export function analisar(
     atencao.push({ nivel: 'atencao', texto: r })
   }
 
-  const podeFecharEquipamento = modo === 'volume'
+  // O consumo em uso é de RAÇÃO COMPLETA, mas o cliente pediu outro produto?
+  // Só morde no modo rebanho (no modo volume a tonelagem é palavra do cliente,
+  // seja qual for o produto) e só quando o número veio do CATÁLOGO — se o
+  // vendedor digitou o consumo, o número é do produtor e vale.
+  const produtoForaDaRacao =
+    modo === 'rebanho'
+    && !!a.produto
+    && PRODUTOS_FORA_DA_RACAO.includes(a.produto)
+    && consumoInformado === null
+    && consumoCatalogo !== null
+
+  if (produtoForaDaRacao) {
+    faltando.push(`Consumo de ${a.produto!.toLowerCase()} por animal (o de catálogo é de ração completa)`)
+    atencao.push({
+      nivel: 'atencao',
+      texto: `O cliente pediu ${a.produto}, e o consumo em uso (${consumoCatalogo} kg/animal/mês) `
+        + 'é de RAÇÃO COMPLETA. Concentrado, mineral e proteinado entram em dose muito menor — '
+        + 'perguntar quanto ele dá por cabeça e digitar no campo de consumo. Sem isso a necessidade '
+        + 'mensal fica alta demais e o equipamento sai grande demais.',
+    })
+  }
+
+  const podeFecharEquipamento = (modo === 'volume'
     ? !!a.especie && !!a.fase && !!a.volumeMesKg && a.volumeMesKg > 0
-    : !!a.especie && !!a.fase && !!a.quantidade && a.quantidade > 0 && a.consumoConfirmado
+    : !!a.especie && !!a.fase && !!a.quantidade && a.quantidade > 0 && a.consumoConfirmado)
+    // Fechar equipamento em cima de um consumo 10x a 99x maior que o real é o
+    // dano exato que esta tela existe pra impedir.
+    && !produtoForaDaRacao
+
+  // Na MESMA ordem das condições acima, pro mostrador nomear o que de fato
+  // segura — e não o primeiro item de uma lista que mistura as duas coisas.
+  const bloqueioEquipamento = podeFecharEquipamento ? null
+    : !a.especie ? 'a espécie'
+    : !a.fase ? 'a fase ou o sistema de criação'
+    : modo === 'volume' ? 'o volume mensal'
+    : !a.quantidade ? 'a quantidade de animais'
+    : !a.consumoConfirmado ? 'confirmar o consumo com o cliente'
+    : produtoForaDaRacao ? `o consumo de ${a.produto!.toLowerCase()} por animal`
+    : 'um dado'
 
   // AVISO_SEM_DADOS NÃO entra mais em `atencao`.
   //
@@ -212,6 +266,7 @@ export function analisar(
     equipamentos,
     relacionados,
     podeFecharEquipamento,
+    bloqueioEquipamento,
     naoAtende,
     promessasProibidas,
     misturadorIndicado,
@@ -250,7 +305,14 @@ export function resumoParaCopiar(
     L.push(`Consumo${a.consumoKgAnimalMes ? ' informado' : ' de referência'}: ${r.consumoMesKg} kg/animal/mês`)
   }
   if (vendendo) L.push('Origem do volume: informado pelo cliente (venda de ração)')
-  if (r.necessidadeMesKg) L.push(`Necessidade estimada: ${Math.round(r.necessidadeMesKg).toLocaleString('pt-BR')} kg/mês`)
+  if (r.necessidadeMesKg) {
+    // A tonelagem saía sem ressalva nenhuma. É o número que o cliente ANOTA —
+    // e com o levantamento aberto ela é referência, não compromisso. Pior no
+    // caso do mineral: o consumo em uso é de ração completa, e o texto ia pro
+    // WhatsApp dele com uma necessidade até 99x maior que a real.
+    L.push(`Necessidade estimada: ${Math.round(r.necessidadeMesKg).toLocaleString('pt-BR')} kg/mês`
+      + (r.podeFecharEquipamento ? '' : ` (referência — falta ${r.bloqueioEquipamento})`))
+  }
   if (linha?.producaoKgH) {
     L.push(`Produção necessária: ${Math.round(linha.producaoKgH).toLocaleString('pt-BR')} kg/h`
       + (linha.jornada ? ` (${linha.jornada})` : ''))

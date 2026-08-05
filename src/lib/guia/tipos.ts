@@ -287,6 +287,16 @@ export interface ResultadoAtendimento {
   relacionados: ItemGuia[]
   podeFecharEquipamento: boolean
   /**
+   * O PRIMEIRO motivo de `podeFecharEquipamento` ser false, em texto curto.
+   * `null` quando pode fechar.
+   *
+   * Existe porque `faltando[0]` não serve pra isso: produto e matérias-primas
+   * entram em `faltando` e não travam equipamento nenhum. O mostrador dizia
+   * "Referência — falta matérias-primas que o cliente já tem" enquanto o que
+   * realmente segurava era o consumo não confirmado.
+   */
+  bloqueioEquipamento: string | null
+  /**
    * O que a linha NÃO faz, vindo de `branorte.nao_atende` das categorias que
    * casam com espécie/fase. Existia no banco e só era renderizado na FICHA do
    * animal — a tela em que o vendedor está com o cliente no telefone não lia o

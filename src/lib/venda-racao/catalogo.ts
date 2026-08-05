@@ -210,8 +210,32 @@ export function formulaPadrao(especie: Especie, categoria?: string): Ingrediente
 
 export const PESOS_SACO = [20, 25, 30, 40, 50]
 
-/** Capacidades da linha Branorte, em kg/h. Editável em Configurações. */
-export const CAPACIDADES_BRANORTE = [300, 600, 1000, 1500, 2000, 3000, 5000]
+/**
+ * Capacidades da linha Branorte, em kg/h. Editável em Configurações.
+ *
+ * Conferido contra `precos_branorte` (categoria MOINHO) em 05/08/2026. A lista
+ * anterior — [300, 600, 1000, 1500, 2000, 3000, 5000] — era sintética e errava
+ * dos dois lados:
+ *   - **600 kg/h não existe.** O degrau real entre 500 e 750 não tem nada, e o
+ *     estudo apontava uma máquina que ninguém fabrica.
+ *   - **parava em 5.000.** Acima disso o resultado vinha marcado `acimaDaLinha`
+ *     ("levar à engenharia") enquanto o catálogo tem BNMM675 (7.500) e
+ *     BNMM7100 (10.000) prontos.
+ *   - faltavam 500, 1.250, 2.200, 2.500, 2.900, 4.000, 4.500, 5.500, 6.000 e
+ *     6.500 — o cliente subia um porte inteiro à toa.
+ *
+ * NÃO inclui o "75000KG/H" do BNMM775: 75 t/h é dez vezes o BNMM675 e sete
+ * vezes e meia o BNMM7100, num modelo cuja nomenclatura (BNMM7-75) aponta 7.500.
+ * É erro de digitação no cadastro, não capacidade. Entrando aqui, viraria o teto
+ * da linha e `acimaDaLinha` nunca mais dispararia.
+ *
+ * Isto é FALLBACK de último recurso: a verdade viva é `precos_branorte`, que o
+ * configurador do guia já lê direto via `usePrecosBranorte`.
+ */
+export const CAPACIDADES_BRANORTE = [
+  300, 500, 750, 1000, 1250, 1500, 1700, 2000, 2200, 2500,
+  2900, 3000, 4000, 4500, 5000, 5500, 6000, 6500, 7500, 10000,
+]
 
 export const STATUS_ESTUDO: Array<{ chave: StatusEstudo; nome: string; cor: string }> = [
   { chave: 'rascunho',    nome: 'Rascunho',              cor: 'cinza' },

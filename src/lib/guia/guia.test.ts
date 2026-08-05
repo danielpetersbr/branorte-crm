@@ -232,9 +232,10 @@ describe('consumo de referência', () => {
 
 describe('capacidade para análise', () => {
   it('escolhe a menor capacidade da linha que dá conta', () => {
-    // 50.000 kg/mês ÷ (26 × 8 × 0,8) = 300,5 kg/h → 600 é a primeira que atende
+    // 50.000 kg/mês ÷ (26 × 8 × 0,8) = 300,5 kg/h → 500 é a primeira que atende.
+    // Era 600 enquanto a lista era sintética; 600 kg/h não existe na linha.
     const { kgH } = capacidadeParaAnalise(50_000)
-    assert.equal(kgH, 600)
+    assert.equal(kgH, 500)
   })
 
   it('avisa quando a linha escolhida fica perto do limite', () => {
@@ -587,5 +588,80 @@ describe('"Pontos de atenção" só fala quando tem o que dizer', () => {
     const r = analisar(a, ANIMAIS, MATERIAS)
     assert.equal(r.podeFecharEquipamento, false)
     assert.match(r.capacidadeNota ?? '', /Sem todos os dados/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// "Produto desejado" não entrava em conta nenhuma. O consumo de catálogo é de
+// RAÇÃO COMPLETA; pedir mineral com ele multiplicava a necessidade por até 99.
+// ---------------------------------------------------------------------------
+describe('o produto pedido tem que bater com o consumo em uso', () => {
+  const bov = (o: Partial<Atendimento> = {}): Atendimento => ({
+    especie: 'bovinos', fase: 'confinamento', quantidade: 500, sistema: null,
+    produto: null, materias: [], consumoConfirmado: true, ...o,
+  })
+
+  it('mineral com consumo de ração completa NÃO fecha equipamento', () => {
+    // 500 × 297 kg/mês = 148.500 kg/mês de "sal mineral". Proteinado nessa
+    // boiada é da ordem de 15.000; mineral, de 1.500.
+    const r = analisar(bov({ produto: 'Sal mineral / proteinado' }), ANIMAIS, MATERIAS)
+    assert.equal(r.podeFecharEquipamento, false)
+    assert.ok(r.atencao.some(x => /RAÇÃO COMPLETA/.test(x.texto)))
+    assert.ok(r.faltando.some(x => /Consumo de sal mineral/i.test(x)))
+  })
+
+  it('ração farelada completa fecha normalmente', () => {
+    const r = analisar(bov({ produto: 'Ração farelada completa' }), ANIMAIS, MATERIAS)
+    assert.equal(r.podeFecharEquipamento, true)
+    assert.ok(!r.atencao.some(x => /RAÇÃO COMPLETA/.test(x.texto)))
+  })
+
+  it('com o consumo digitado pelo vendedor, o número é do produtor e vale', () => {
+    // 3 kg/cabeça/mês de mineral é coisa que o cliente disse. Não travar.
+    const r = analisar(
+      bov({ produto: 'Sal mineral / proteinado', consumoKgAnimalMes: 3 }),
+      ANIMAIS, MATERIAS,
+    )
+    assert.equal(r.podeFecharEquipamento, true)
+    assert.equal(r.necessidadeMesKg, 1500)
+  })
+
+  it('no modo VENDA a tonelagem é palavra do cliente, seja qual for o produto', () => {
+    const r = analisar(
+      bov({ modo: 'volume', volumeMesKg: 40_000, produto: 'Concentrado', quantidade: null }),
+      ANIMAIS, MATERIAS,
+    )
+    assert.equal(r.podeFecharEquipamento, true)
+  })
+})
+
+describe('o mostrador nomeia o que TRAVA, não o primeiro item da lista', () => {
+  it('com mineral travando, aponta o consumo do produto e não as matérias-primas', () => {
+    // `faltando` traz "Matérias-primas..." antes do consumo do produto. O
+    // mostrador apontava a matéria-prima, que não trava equipamento nenhum.
+    const a: Atendimento = {
+      especie: 'bovinos', fase: 'confinamento', quantidade: 500, sistema: null,
+      produto: 'Sal mineral / proteinado', materias: [], consumoConfirmado: true,
+    }
+    const r = analisar(a, ANIMAIS, MATERIAS)
+    assert.equal(r.podeFecharEquipamento, false)
+    assert.ok(/mat[ée]ria/i.test(r.faltando[0]), 'a lista continua na ordem do checklist')
+    assert.match(r.bloqueioEquipamento ?? '', /consumo de sal mineral/i)
+  })
+
+  it('sem confirmar o consumo, é isso que trava', () => {
+    const a: Atendimento = {
+      especie: 'bovinos', fase: 'confinamento', quantidade: 500, sistema: null,
+      produto: 'Ração farelada completa', materias: ['milho'], consumoConfirmado: false,
+    }
+    assert.match(analisar(a, ANIMAIS, MATERIAS).bloqueioEquipamento ?? '', /confirmar o consumo/i)
+  })
+
+  it('liberado, não há bloqueio a nomear', () => {
+    const a: Atendimento = {
+      especie: 'bovinos', fase: 'confinamento', quantidade: 500, sistema: null,
+      produto: 'Ração farelada completa', materias: [], consumoConfirmado: true,
+    }
+    assert.equal(analisar(a, ANIMAIS, MATERIAS).bloqueioEquipamento, null)
   })
 })

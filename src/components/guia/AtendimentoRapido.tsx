@@ -629,9 +629,7 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
             </p>
           ) : (
             <p className="mt-3 text-[12px] text-warning">
-              Referência — falta {r.faltando[0]
-                ? r.faltando[0].charAt(0).toLowerCase() + r.faltando[0].slice(1)
-                : 'dado'}
+              Referência — falta {r.bloqueioEquipamento}
             </p>
           )}
 
