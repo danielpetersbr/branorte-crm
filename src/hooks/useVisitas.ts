@@ -89,8 +89,14 @@ export function useVendasMapaCount() {
 // v2 = mesmas 14 colunas da v1 (verificado: 0 divergências) + cli_key + precisao.
 // A v2 faz left join em cliente_localizacao, então confirmar um endereço move o pino
 // na hora — basta invalidar esta query.
-export function useOrcamentosMapa() {
+/**
+ * `enabled` existe pro mapa da ORGANIZAÇÃO: lá a base inteira (2.349 clientes) só
+ * é buscada quando o usuário abre a caixa de "puxar cliente". Sem parâmetro o
+ * comportamento é o de sempre — o /mapa-visitas precisa dela na hora.
+ */
+export function useOrcamentosMapa(opts?: { enabled?: boolean }) {
   return useQuery<OrcamentoPonto[]>({
+    enabled: opts?.enabled ?? true,
     queryKey: ['orcamentos-mapa'],
     queryFn: async () => {
       const { data, error } = await supabase.rpc('mapa_orcamentos_v2')

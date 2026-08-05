@@ -454,6 +454,41 @@ export function useQuadroViagens() {
 }
 
 /** Muda o estado de UMA parada. */
+/**
+ * Acrescenta UMA parada numa viagem já salva — o cliente que estava geograficamente
+ * "no Pernambuco" mas cuja fazenda é ali do lado, o hotel, a cidade onde se dorme.
+ *
+ * INSERT direto, não RPC: a policy `viagem_paradas_ins` já resolve quem pode
+ * (criador da viagem ou admin). Vendedor NÃO adiciona parada — ele confirma e
+ * corrige localização, que é o trabalho dele. Quem planeja é quem montou a viagem.
+ *
+ * A parada entra no FIM do último dia e SEM horário calculado: dia/ordem aqui é
+ * posicionamento, não programação. Quem recalcula chegada e quilometragem é o
+ * planejador — por isso a tela manda abrir lá depois de adicionar.
+ */
+export function useAdicionarParada() {
+  const qc = useQueryClient()
+  return useMutation<void, Error, { viagemId: string; parada: Parada; dia: number; ordem: number }>({
+    mutationFn: async ({ viagemId, parada, dia, ordem }) => {
+      // linhaDaParada valida os CHECKs da tabela (janela invertida, visita > 1440,
+      // cliente sem cli_key) ANTES do INSERT — o erro sai legível em vez de 23514.
+      const linha = linhaDaParada(viagemId, parada, ordem, undefined)
+      const { error } = await supabase.from('viagem_paradas').insert({ ...linha, dia })
+      if (error) {
+        if (error.code === '42501') {
+          throw new Error('Só quem montou a viagem (ou um admin) pode acrescentar parada.')
+        }
+        throw error
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['viagens-quadro'] })
+      qc.invalidateQueries({ queryKey: ['viagens'] })
+      qc.invalidateQueries({ queryKey: ['viagem'] })
+    },
+  })
+}
+
 export function useConfirmarParada() {
   const qc = useQueryClient()
   return useMutation<void, Error, { paradaId: string; confirmacao: Confirmacao; notas?: string | null }>({

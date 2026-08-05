@@ -6,6 +6,7 @@ import {
 import type { Confirmacao } from '@/lib/viagem'
 import { lerLocal, ehLinkCurto, urlCurta, distanciaKm } from '@/lib/local-link'
 import { MapaDaViagem } from './MapaDaViagem'
+import { useAuth } from '@/hooks/useAuth'
 
 // ORGANIZAÇÃO DE VIAGEM — o quadro que fica ABAIXO do mapa de visitas.
 //
@@ -240,6 +241,10 @@ function CardViagem({
   vendedorSel: string
 }) {
   const status = useStatusViagem()
+  const { profile } = useAuth()
+  // Mesma regra da policy viagem_paradas_ins: criador da viagem ou admin. Checar
+  // aqui é só pra não oferecer um botão que o banco vai negar — a trava é lá.
+  const podeAdicionar = !!profile && (v.criado_por === profile.id || profile.role === 'admin')
   const [verMapa, setVerMapa] = useState(true)
   const mapaParadas = useMemo(
     () => (vendedorSel ? v.paradasDetalhe.filter(p => (p.vendedor || '') === vendedorSel) : v.paradasDetalhe),
@@ -298,7 +303,14 @@ function CardViagem({
                 <span className="ml-1 text-ink-faint">({mapaParadas.length} de {v.paradasDetalhe.length})</span>
               )}
             </button>
-            {verMapa && <MapaDaViagem paradas={mapaParadas} />}
+            {verMapa && (
+              <MapaDaViagem
+                paradas={mapaParadas}
+                viagemId={v.id}
+                podeAdicionar={podeAdicionar}
+                dia={Math.max(1, ...v.paradasDetalhe.map(p => p.dia))}
+              />
+            )}
           </div>
 
           <div className="space-y-2">
