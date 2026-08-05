@@ -163,10 +163,14 @@ function chaveMarc(telefone: string | null, fone: string | null, cliente: string
 // O passo ABRE conforme você aproxima. Com passo fixo em pixel o leque virava um
 // nó apertado do mesmo tamanho em qualquer zoom: quanto mais perto, mais colado
 // ele parecia contra as ruas. Longe manda o teto no chão; perto manda a tela.
+// Os números saem do TAMANHO DO PINO, não de gosto: a estrela tem 24px e o
+// diamante 22px, então 40px de passo deixava 16px de folga — no anel a distância
+// entre vizinhos é igual ao raio, e o resultado era um bolo encostado. 64px dá
+// folga de 40px, uma estrela e meia entre um pino e outro.
 const PASSO_MIN_PX = 18        // piso: menos que isso os pinos voltam a se tocar
-const PASSO_MAX_PX = 40        // teto: leque não vira uma flor gigante na tela
-const PASSO_ALVO_M = 450       // alvo no chão — é o que faz o leque abrir no zoom de rua
-const RAIO_TELA_MAX_PX = 170   // pilha grande não pode ocupar a tela inteira
+const PASSO_MAX_PX = 64        // teto: leque não vira uma flor gigante na tela
+const PASSO_ALVO_M = 700       // alvo no chão — abre o leque já no zoom de cidade
+const RAIO_TELA_MAX_PX = 260   // pilha grande não pode ocupar a tela inteira
 const RAIO_MAX_M = 20_000      // teto no chão: NENHUM pino fica a mais de 20 km do ponto real
 
 /** Em que anel cai o índice i (0 = centro, 1..6 = 1º anel, 7..18 = 2º…). */
