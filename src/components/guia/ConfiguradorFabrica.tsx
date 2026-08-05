@@ -30,6 +30,15 @@ import type { Especie } from '@/lib/venda-racao/tipos'
 import { cn } from '@/lib/utils'
 
 const ton = (n: number) => `${(n / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} t`
+const brl = (n: number | null | undefined) =>
+  n == null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+
+/**
+ * Acima disto o catálogo não tem preço monofásico em SKU nenhum.
+ * Conferido em `precos_branorte` em 05/08/2026: 11 SKUs acima de 20 CV, ZERO
+ * com `valor_com_motor_mono`; o maior CV com preço mono é 15.
+ */
+const LIMITE_CV_MONOFASICO = 15
 
 /**
  * Espécie do Guia → espécie do catálogo de formulações.
@@ -94,6 +103,8 @@ export function ConfiguradorFabrica({
       funilTipo: (p as { funil_tipo?: string | null }).funil_tipo ?? null,
       motorCv: p.motor_cv != null ? Number(p.motor_cv) : null,
       valor: p.valor_equipamento != null ? Number(p.valor_equipamento) : null,
+      valorComMotorTrif: p.valor_com_motor_trif != null ? Number(p.valor_com_motor_trif) : null,
+      valorComMotorMono: p.valor_com_motor_mono != null ? Number(p.valor_com_motor_mono) : null,
     })),
     [precos],
   )
@@ -173,10 +184,59 @@ export function ConfiguradorFabrica({
                 {d.moinho.capacidade}
                 {d.moinho.motorCv ? ` · ${d.moinho.motorCv} CV` : ''}
               </p>
+
+              {/* O preço estava carregado em memória e nunca era impresso: o
+                  vendedor ouvia "e quanto custa?" e abria outra aba. É tabela
+                  do equipamento — não é proposta. */}
+              {(d.moinho.valorComMotorTrif ?? d.moinho.valor) != null && (
+                <p className="mt-1.5 border-t border-border pt-1.5 text-[13px] text-ink">
+                  <b className="tabular-nums">
+                    {brl(d.moinho.valorComMotorTrif ?? d.moinho.valor)}
+                  </b>
+                  <span className="text-ink-muted">
+                    {' '}— tabela{d.moinho.valorComMotorTrif != null ? ' com motor trifásico' : ' do equipamento'}
+                  </span>
+                  {d.moinho.valorComMotorMono != null && (
+                    <span className="block text-[12px] text-ink-muted">
+                      Monofásico: <span className="tabular-nums">{brl(d.moinho.valorComMotorMono)}</span>
+                    </span>
+                  )}
+                  <span className="block text-[11px] text-ink-faint">
+                    Só o equipamento. Sem frete, instalação, painel e obra.
+                  </span>
+                </p>
+              )}
+
+              {/* Energia. Só fala quando o DADO diz algo: nenhum SKU acima de
+                  20 CV tem preço monofásico no catálogo, e o maior com mono é
+                  de 15 CV. Abaixo disso a coluna está vazia em 3 de cada 4
+                  SKUs — ausência de preço não é ausência de máquina, e um
+                  aviso que dispara sempre vira moldura. */}
+              {d.moinho.valorComMotorMono == null && (d.moinho.motorCv ?? 0) > LIMITE_CV_MONOFASICO && (
+                <p className="mt-1.5 text-[12px] leading-relaxed text-warning">
+                  {d.moinho.motorCv} CV: acima de {LIMITE_CV_MONOFASICO} CV o catálogo não tem
+                  opção monofásica. Confirmar se a propriedade tem trifásico antes de seguir.
+                </p>
+              )}
             </>
           ) : (
             <p className="mt-1 text-[13px] text-danger">
               Nenhum moinho do catálogo atende. Levar à engenharia.
+            </p>
+          )}
+
+          {/* O buraco mais sério do dimensionamento, dito na cara em vez de
+              escondido: fábrica farelada é processo em BATELADA, e a vazão da
+              linha sai do par (carga do misturador ÷ tempo de ciclo). O moinho
+              é contínuo. `producao_kgh` é NULL em todos os 21 misturadores de
+              precos_branorte — o tempo de ciclo não existe no catálogo, então
+              a tela não tem como dimensionar o misturador. Calar sobre isso é
+              vender capacidade de MOINHO como capacidade de FÁBRICA. */}
+          {podeFechar && d.moinho && (
+            <p className="mt-2 border-t border-border pt-2 text-[12px] leading-relaxed text-ink-muted">
+              Este kg/h é do <b className="text-ink">moinho</b>. A vazão da fábrica depende também
+              da carga do misturador e do tempo de batida, que não estão no catálogo —
+              dimensionar o misturador com a engenharia.
             </p>
           )}
         </div>

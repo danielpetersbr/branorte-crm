@@ -73,6 +73,18 @@ export interface ItemCatalogo {
   funilTipo: string | null
   motorCv: number | null
   valor: number | null
+  /**
+   * Preço COM motor. `valor` é o equipamento nu — e fábrica de ração não sai
+   * sem motor, então é este que o vendedor precisa ver.
+   */
+  valorComMotorTrif?: number | null
+  /**
+   * Preço com motor MONOFÁSICO. `null` em precos_branorte significa "não
+   * cadastrado", não necessariamente "não existe" — a coluna está preenchida em
+   * só 79 dos 341 SKUs com motor. O que o dado permite afirmar é o TETO:
+   * nenhum SKU acima de 20 CV tem preço mono, e o maior com mono é de 15 CV.
+   */
+  valorComMotorMono?: number | null
 }
 
 /**
