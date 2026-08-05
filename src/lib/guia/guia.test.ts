@@ -467,3 +467,125 @@ describe('texto copiado pro WhatsApp respeita o modo', () => {
     assert.match(resumoParaCopiar(a, r, 'Postura'), /Consumo informado: 4 kg/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// O que a linha NÃO faz, o misturador que as matérias exigem, e o kg/h que vai
+// pro WhatsApp. Os três existiam no banco/na tela e não chegavam ao vendedor no
+// momento em que ele está com o cliente no telefone.
+// ---------------------------------------------------------------------------
+describe('o atendimento lê o bloco Branorte, não só a ficha', () => {
+  const LACTACAO = animal({
+    slug: 'bov-leite-lactacao', nome: 'Leite — Lactação', especie: 'bovinos',
+    subgrupo: 'leite', tipo: 'categoria', fases: ['lactacao'], fase_estudo: 'lactacao',
+    sistemas: ['confinamento'], resumo: 'Vaca em produção.',
+    promessas_proibidas: ['Não prometer ração PELETIZADA'],
+    branorte: {
+      atende: ['Mistura seca do concentrado'],
+      nao_atende: [
+        'Peletização — a linha Branorte não peletiza',
+        'Ingredientes ÚMIDOS',
+      ],
+    },
+  })
+
+  const base = (o: Partial<Atendimento> = {}): Atendimento => ({
+    especie: 'bovinos', fase: 'lactacao', quantidade: 100, sistema: null,
+    produto: null, materias: [], consumoConfirmado: false, ...o,
+  })
+
+  it('o que a Branorte NÃO faz sai no atendimento, não só no card', () => {
+    const r = analisar(base(), [LACTACAO], MATERIAS)
+    assert.ok(
+      r.naoAtende.some(x => /peletiza/i.test(x)),
+      'a frase "não peletiza" existe no banco e tem que chegar ao telefone',
+    )
+    assert.ok(r.promessasProibidas.some(x => /PELETIZADA/.test(x)))
+  })
+
+  it('sem categoria que fale nisso, não inventa restrição', () => {
+    const r = analisar(base({ especie: 'aves', fase: 'postura' }), ANIMAIS, MATERIAS)
+    assert.deepEqual(r.naoAtende, [])
+  })
+
+  it('uma matéria que pede horizontal decide o misturador da fábrica', () => {
+    // Basta o sal na fórmula: mineral denso e corrosivo não roda em vertical.
+    const r = analisar(base({ materias: ['milho', 'sal-comum'] }), [LACTACAO], MATERIAS)
+    assert.equal(r.misturadorIndicado, 'horizontal')
+  })
+
+  it('sem matéria marcada, não opina sobre misturador', () => {
+    assert.equal(analisar(base(), [LACTACAO], MATERIAS).misturadorIndicado, null)
+  })
+})
+
+describe('o texto copiado leva o kg/h da tela, não o da jornada cravada', () => {
+  const a: Atendimento = {
+    especie: 'aves', fase: 'postura', quantidade: 20_000, sistema: null,
+    produto: 'Ração farelada completa', materias: ['milho'], consumoConfirmado: true,
+  }
+
+  it('quando a tela informa a produção, é ela que vai pro WhatsApp', () => {
+    const r = analisar(a, ANIMAIS, MATERIAS)
+    // `capacidadeParaAnalise` assume 26 dias × 8 h × 80% = 166,4 h/mês. Uma
+    // jornada 6 × 8 dá 208 h/mês — 25% a menos de kg/h, dois degraus de moinho.
+    // O texto tem que dizer o que a tela mostra, senão o cliente recebe no
+    // WhatsApp um número que ninguém viu.
+    const txt = resumoParaCopiar(a, r, 'Postura', {
+      producaoKgH: 327,
+      jornada: '6 dias × 8 h',
+    })
+    assert.match(txt, /Produção necessária: 327 kg\/h \(6 dias × 8 h\)/)
+    assert.ok(!/Capacidade para análise/.test(txt), 'não pode sair o número da jornada cravada')
+  })
+
+  it('sem a tela informar, o comportamento antigo continua valendo', () => {
+    const r = analisar(a, ANIMAIS, MATERIAS)
+    assert.match(resumoParaCopiar(a, r, 'Postura'), /Capacidade para análise/)
+  })
+
+  it('modelo de moinho só entra no texto com o levantamento fechado', () => {
+    const semConfirmar = { ...a, consumoConfirmado: false }
+    const r = analisar(semConfirmar, ANIMAIS, MATERIAS)
+    const txt = resumoParaCopiar(semConfirmar, r, 'Postura', {
+      producaoKgH: 327, moinho: 'BNMM175 · 750 kg/h',
+    })
+    assert.ok(!/BNMM175/.test(txt), 'nomear máquina é o que o cliente leva embora da conversa')
+  })
+})
+
+describe('"Pontos de atenção" só fala quando tem o que dizer', () => {
+  it('sem matéria marcada e sem restrição, a seção não existe', () => {
+    // O AVISO_SEM_DADOS enchia a seção com uma tarja azul em 100% das
+    // aberturas, repetindo o que a linha de status do mostrador já diz. Um
+    // aviso que aparece sempre não é atenção, é moldura.
+    const a: Atendimento = {
+      especie: null, fase: null, quantidade: null, sistema: null,
+      produto: null, materias: [], consumoConfirmado: false,
+    }
+    assert.deepEqual(analisar(a, ANIMAIS, MATERIAS).atencao, [])
+  })
+
+  it('mas risco de matéria-prima continua aparecendo', () => {
+    const a: Atendimento = {
+      especie: 'bovinos', fase: 'confinamento', quantidade: 500, sistema: null,
+      produto: null, materias: ['silagem-volumoso'], consumoConfirmado: false,
+    }
+    const r = analisar(a, ANIMAIS, MATERIAS)
+    assert.ok(
+      r.atencao.some(x => x.nivel === 'incompativel' && /Silagem/.test(x.texto)),
+      'silagem incompatível é o defeito nº 1 da auditoria — não pode sumir junto',
+    )
+    assert.ok(!r.atencao.some(x => /Sem todos os dados/.test(x.texto)))
+  })
+
+  it('a capacidade continua explicando por que não fechou', () => {
+    // O texto saiu de `atencao`, mas segue vivo onde responde a uma pergunta.
+    const a: Atendimento = {
+      especie: 'bovinos', fase: 'confinamento', quantidade: 500, sistema: null,
+      produto: null, materias: [], consumoConfirmado: false,
+    }
+    const r = analisar(a, ANIMAIS, MATERIAS)
+    assert.equal(r.podeFecharEquipamento, false)
+    assert.match(r.capacidadeNota ?? '', /Sem todos os dados/)
+  })
+})

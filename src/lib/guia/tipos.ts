@@ -286,4 +286,20 @@ export interface ResultadoAtendimento {
   equipamentos: string[]
   relacionados: ItemGuia[]
   podeFecharEquipamento: boolean
+  /**
+   * O que a linha NÃO faz, vindo de `branorte.nao_atende` das categorias que
+   * casam com espécie/fase. Existia no banco e só era renderizado na FICHA do
+   * animal — a tela em que o vendedor está com o cliente no telefone não lia o
+   * campo. É o defeito que a auditoria de 03-04/08 matou no guia.html (Ross 308
+   * recomendando ração peletizada) voltando pela porta do layout.
+   */
+  naoAtende: string[]
+  /** `promessas_proibidas` das mesmas categorias. Mesmo motivo. */
+  promessasProibidas: string[]
+  /**
+   * Tipo de misturador que as matérias marcadas exigem. `horizontal` ganha:
+   * produto denso ou corrosivo (sal, mineral) não roda em vertical, e basta um
+   * ingrediente da fórmula pedir pra decidir a máquina inteira.
+   */
+  misturadorIndicado: 'vertical' | 'horizontal' | null
 }

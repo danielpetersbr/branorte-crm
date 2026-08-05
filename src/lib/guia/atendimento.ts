@@ -161,13 +161,32 @@ export function analisar(
     atencao.push({ nivel: 'atencao', texto: r })
   }
 
-  if (faltando.length) atencao.unshift({ nivel: 'informacao', texto: AVISO_SEM_DADOS })
-
   const podeFecharEquipamento = modo === 'volume'
     ? !!a.especie && !!a.fase && !!a.volumeMesKg && a.volumeMesKg > 0
     : !!a.especie && !!a.fase && !!a.quantidade && a.quantidade > 0 && a.consumoConfirmado
 
+  // AVISO_SEM_DADOS NÃO entra mais em `atencao`.
+  //
+  // Ele enchia "Pontos de atenção" com uma tarja azul em 100% das aberturas,
+  // dizendo o que o mostrador já diz na linha de status ("Referência — falta
+  // X"). Ponto de atenção é risco de matéria-prima e restrição de categoria —
+  // coisa que muda a conversa. Um aviso que aparece sempre não é atenção, é
+  // moldura. Continua vivo em `capacidadeNota`, que é onde ele responde a uma
+  // pergunta específica.
+
   const { kgH, nota } = capacidadeParaAnalise(necessidadeMesKg)
+
+  // O que a linha NÃO faz. Vem das MESMAS categorias que geram processo e
+  // perguntas — não é texto fixo aqui: é o campo do banco, corrigido na
+  // auditoria, finalmente lido no modo em que o vendedor está no telefone.
+  const naoAtende = Array.from(new Set(base.flatMap(x => x.branorte?.nao_atende ?? [])))
+  const promessasProibidas = Array.from(new Set(base.flatMap(x => x.promessas_proibidas ?? [])))
+
+  // Basta UMA matéria pedir horizontal pra decidir a máquina toda.
+  const indicados = escolhidas.map(m => m.misturador_indicado).filter(Boolean)
+  const misturadorIndicado = indicados.includes('horizontal') ? 'horizontal' as const
+    : indicados.includes('vertical') ? 'vertical' as const
+    : null
 
   // Conteúdo relacionado: as matérias que essas categorias costumam usar.
   const slugsRelacionados = Array.from(new Set(base.flatMap(x => x.materias_comuns)))
@@ -193,11 +212,28 @@ export function analisar(
     equipamentos,
     relacionados,
     podeFecharEquipamento,
+    naoAtende,
+    promessasProibidas,
+    misturadorIndicado,
   }
 }
 
-/** Texto que o vendedor copia e manda pro cliente ou pro grupo interno. */
-export function resumoParaCopiar(a: Atendimento, r: ResultadoAtendimento, nomeFase: string): string {
+/**
+ * Texto que o vendedor copia e manda pro cliente ou pro grupo interno.
+ *
+ * `linha` é o que a TELA está mostrando: a produção por hora calculada com a
+ * jornada que o vendedor ajustou, e o moinho que o catálogo devolveu pra ela.
+ * Sem isso o texto saía com a `capacidadeSugeridaKgH`, que assume 26 dias × 8 h
+ * × 80% CRAVADOS (`capacidadeParaAnalise`) — 166,4 h/mês contra as 208 h de uma
+ * jornada 6 × 8. São 25% de diferença, dois degraus de moinho, e ia num texto
+ * que o vendedor cola no WhatsApp do cliente.
+ */
+export function resumoParaCopiar(
+  a: Atendimento,
+  r: ResultadoAtendimento,
+  nomeFase: string,
+  linha?: { producaoKgH?: number | null; jornada?: string | null; moinho?: string | null },
+): string {
   const L: string[] = ['*Levantamento — Guia do Vendedor Branorte*', '']
   if (a.especie) L.push(`Espécie: ${a.especie}`)
   if (nomeFase) L.push(`Fase/sistema: ${nomeFase}`)
@@ -215,7 +251,17 @@ export function resumoParaCopiar(a: Atendimento, r: ResultadoAtendimento, nomeFa
   }
   if (vendendo) L.push('Origem do volume: informado pelo cliente (venda de ração)')
   if (r.necessidadeMesKg) L.push(`Necessidade estimada: ${Math.round(r.necessidadeMesKg).toLocaleString('pt-BR')} kg/mês`)
-  if (r.capacidadeSugeridaKgH) L.push(`Capacidade para análise: ${r.capacidadeSugeridaKgH} kg/h`)
+  if (linha?.producaoKgH) {
+    L.push(`Produção necessária: ${Math.round(linha.producaoKgH).toLocaleString('pt-BR')} kg/h`
+      + (linha.jornada ? ` (${linha.jornada})` : ''))
+    // Modelo só sai no texto com o levantamento fechado — a mesma trava da tela.
+    if (r.podeFecharEquipamento && linha.moinho) L.push(`Moinho para análise: ${linha.moinho}`)
+  } else if (r.capacidadeSugeridaKgH) {
+    L.push(`Capacidade para análise: ${r.capacidadeSugeridaKgH} kg/h`)
+  }
+  if (r.naoAtende.length) {
+    L.push('', '*A linha Branorte NÃO faz:*', ...r.naoAtende.map(x => `- ${x}`))
+  }
   if (r.faltando.length) {
     L.push('', '*Ainda falta levantar:*', ...r.faltando.map(f => `- ${f}`))
   }
