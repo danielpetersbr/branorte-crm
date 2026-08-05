@@ -226,7 +226,9 @@ test('sem os dados, diz o que falta em vez de inventar equipamento', () => {
   assert.equal(d.producao, null)
   assert.equal(d.moinho, null)
   assert.ok(d.pendencias.length >= 4, d.pendencias.join(' | '))
-  assert.ok(d.pendencias.some(p => /consumo mensal/i.test(p)))
+  // Afirma a REGRA (pede o volume), não a frase exata: a frase mudou quando o
+  // Atendimento rápido ganhou o modo venda, e "consumo" só vale pra quem consome.
+  assert.ok(d.pendencias.some(p => /volume mensal/i.test(p)), d.pendencias.join(' | '))
   assert.ok(d.pendencias.some(p => /dias e quantas horas/i.test(p)))
   assert.ok(d.pendencias.some(p => /formula[çc][ãa]o/i.test(p)))
   assert.ok(d.pendencias.some(p => /expedi[çc][ãa]o/i.test(p)))

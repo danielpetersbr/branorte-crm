@@ -176,6 +176,24 @@ function Moldura({
           {aberto ? 'fechar' : 'abrir'}
         </span>
       </button>}
+      {/* Sem a moldura, o cabeçalho-botão some — e os contadores iam junto. Eles
+          são o resumo mais útil do quadro ("2 aguardando o vendedor"), então
+          voltam como linha, sem o botão. */}
+      {semMoldura && (viagens > 0 || pendentes > 0) && (
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-border">
+          <span className="text-[12.5px] text-ink-muted">
+            {viagens} viagem{viagens > 1 ? 's' : ''} em andamento
+          </span>
+          {pendentes > 0 && (
+            <span
+              className="text-[11px] font-bold px-2 py-0.5 rounded"
+              style={{ color: '#d97706', background: 'rgba(217,119,6,.14)' }}
+            >
+              {pendentes} aguardando o vendedor
+            </span>
+          )}
+        </div>
+      )}
       {aberto && <div className={semMoldura ? '' : 'border-t border-border'}>{children}</div>}
     </section>
   )

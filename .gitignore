@@ -12,3 +12,11 @@ scripts/.env
 # Bytecode Python. Havia um .pyc de 18 KB commitado e nada barrava o proximo.
 __pycache__/
 *.pyc
+
+# Residuo de git filter-branch (1.113 arquivos entraram no HEAD assim) e
+# arquivos de sonda/repro de depuracao, que ja foram commitados por engano
+# duas vezes e so sairam por faxina manual.
+.git-rewrite/
+__*.ts
+_probe*.ts
+**/__sim_*.ts

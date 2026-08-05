@@ -355,7 +355,10 @@ export function dimensionar(e: EntradaDimensionamento, catalogo: ItemCatalogo[])
   // de sistema. Enquanto tiver pendência, o número na tela é ponto de partida
   // de conversa, não orçamento.
   const pendencias: string[] = []
-  if (!e.consumoMensalKg) pendencias.push('Falta o consumo mensal de ração do cliente.')
+  // "consumo" so vale pra quem CONSOME. Quem vende racao informa volume, e a
+  // pendencia dizia a palavra errada — o mesmo vicio de vocabulario que ja tinha
+  // deixado o estado vazio do configurador falando so de rebanho.
+  if (!e.consumoMensalKg) pendencias.push('Falta o volume mensal de ração (pelo rebanho ou em toneladas).')
   if (!e.jornada.diasPorSemana || !e.jornada.horasPorDia) {
     pendencias.push('Falta saber quantos dias e quantas horas por dia ele quer trabalhar.')
   }
