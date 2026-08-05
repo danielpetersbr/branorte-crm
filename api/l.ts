@@ -17,7 +17,11 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
-import { novoCodigoNum, codigoLegivel, selarInvisivel } from './_lib/link-invisivel'
+// Extensao .js OBRIGATORIA: o package.json e "type": "module" e o Node de
+// producao resolve ESM de verdade. Sem ela o import morre com
+// ERR_MODULE_NOT_FOUND -- e nem o tsc (moduleResolution: bundler) nem o tsx
+// reclamam, entao o erro so aparece na function ja publicada.
+import { novoCodigoNum, codigoLegivel, selarInvisivel } from './_lib/link-invisivel.js'
 
 const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!
 const SVC_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
