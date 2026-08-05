@@ -65,9 +65,22 @@ const corDia = (n: number) => COR_DIA[(Math.max(1, n) - 1) % COR_DIA.length]
 
 /** Tamanho FIXO do mapa em px. Fixo de propósito: o Chrome relayouta a página na
  *  impressão e um mapa em % mudaria de tamanho DEPOIS do Leaflet já ter posicionado
- *  as tiles. 720px cabe na largura útil do A4 (200mm ≈ 756px a 96dpi). */
+ *  as tiles. 720px cabe na largura útil do A4 (200mm ≈ 756px a 96dpi).
+ *  A ALTURA é calculada pelo formato da rota (alturaDoMapa) — ver ali o porquê. */
 const MAPA_W = 720
-const MAPA_H = 560
+const MAPA_H_MIN = 300
+const MAPA_H_MAX = 560
+const MAPA_PAD = 26
+
+/** Afastamento entre dias que dividem a mesma estrada, em px de tela. */
+const ESPACO_DIA_PX = 4.5
+/** Afastamento entre pernas do MESMO dia — é o que faz ida e volta virarem duas
+ *  linhas paralelas em vez de uma só. Numa visita bate-e-volta (base → cliente →
+ *  base) as duas pernas são a mesma estrada e sem isto o mapa some com metade. */
+const ESPACO_PERNA_PX = 6
+/** Teto do espalhamento dentro do dia: num dia de 5 paradas o traçado não pode
+ *  descolar da estrada. */
+const ESPACO_PERNA_MAX_PX = 12
 
 /** Orçamento de espera pelas tiles. Passou disso, imprime sem fundo cartográfico. */
 const TILE_TIMEOUT_MS = 15000
@@ -171,10 +184,16 @@ async function montarMapa(
     return Array.isArray(g) && g.length > 1 ? (g as LeafletNS.LatLngTuple[]) : null
   }
 
-  // Trajeto + pinos, um grupo por dia. `anterior` ATRAVESSA os dias: dormindo na
-  // estrada, o dia 2 sai de onde o dia 1 parou. Reiniciar na origem a cada dia
-  // desenhava várias linhas saindo do mesmo ponto A — retorno que o roteiro não
-  // prevê, e que contradiz a tabela impressa logo abaixo do mapa.
+  // PASSO 1 — levantar as pernas. Nada é desenhado ainda: o traçado só pode ser
+  // posicionado depois do fitBounds, porque o afastamento entre dias que dividem
+  // a mesma estrada é medido em PIXEL, e pixel depende do zoom final.
+  //
+  // `anterior` ATRAVESSA os dias: dormindo na estrada, o dia 2 sai de onde o dia 1
+  // parou. Reiniciar na origem a cada dia desenhava várias linhas saindo do mesmo
+  // ponto A — retorno que o roteiro não prevê, e que contradiz a tabela impressa
+  // logo abaixo do mapa.
+  const pernasTodas: Array<{ pts: LeafletNS.LatLngTuple[]; cor: string; dia: number; idxNoDia: number }> = []
+  const pinos: Array<{ ll: LeafletNS.LatLngTuple; cor: string; rotulo: string; aprox: boolean }> = []
   let anterior: LeafletNS.LatLngTuple | null =
     cfg.origem ? [cfg.origem.lat, cfg.origem.lng] : null
 
@@ -185,39 +204,105 @@ async function montarMapa(
 
     // Uma polyline por PERNA (não uma por dia): só assim cada trecho pode usar o
     // traçado da estrada quando ele existe, em vez de uma reta ligando tudo.
-    const pernas: LeafletNS.LatLngTuple[][] = []
+    let idxNoDia = 0
     for (const x of d.paradas) {
       const aqui: LeafletNS.LatLngTuple = [x.parada.lat, x.parada.lng]
-      if (anterior) pernas.push(via(anterior, aqui) ?? [anterior, aqui])
+      if (anterior) pernasTodas.push({ pts: via(anterior, aqui) ?? [anterior, aqui], cor, dia: d.dia, idxNoDia: idxNoDia++ })
       pontos.push(aqui)
       anterior = aqui
+      pinos.push({
+        ll: aqui, cor,
+        rotulo: multiDia ? `${d.dia}.${x.ordem}` : String(x.ordem),
+        aprox: aproximada(x.parada),
+      })
     }
     if (volta && anterior && (!pernoitando || ehUltimo)) {
       const fim: LeafletNS.LatLngTuple = [volta.lat, volta.lng]
-      pernas.push(via(anterior, fim) ?? [anterior, fim])
+      pernasTodas.push({ pts: via(anterior, fim) ?? [anterior, fim], cor, dia: d.dia, idxNoDia: idxNoDia++ })
     }
     if (cfg.origem) pontos.push([cfg.origem.lat, cfg.origem.lng])
+  }
 
-    for (const perna of pernas) {
-      if (perna.length < 2) continue
-      L.polyline(perna, {
-        color: cor,
-        weight: 3,
-        opacity: 0.85,
-        // Tracejado quando nenhum trecho veio de rota real — o desenho não pode
-        // sugerir precisão que o dado não tem.
-        dashArray: prog.estimado ? '7 5' : undefined,
-      }).addTo(map)
-    }
+  if (cfg.origem) pontos.push([cfg.origem.lat, cfg.origem.lng])
+  if (volta) pontos.push([volta.lat, volta.lng])
 
-    for (const x of d.paradas) {
-      const rotulo = multiDia ? `${d.dia}.${x.ordem}` : String(x.ordem)
-      L.marker([x.parada.lat, x.parada.lng], {
-        icon: pinoNumerado(L, cor, rotulo, aproximada(x.parada)),
-        interactive: false,
-        zIndexOffset: 500,
-      }).addTo(map)
+  // PASSO 2 — enquadrar. Padding menor no eixo em que a rota é curta; a altura do
+  // <div> já foi calculada pra casar com o formato dela (ver alturaDoMapa).
+  map.invalidateSize()
+  if (pontos.length >= 2) {
+    map.fitBounds(L.latLngBounds(pontos), { padding: [26, 26], maxZoom: 13 })
+  } else if (pontos.length === 1) {
+    map.setView(pontos[0], 11)
+  }
+
+  // PASSO 3 — desenhar, agora que o zoom é definitivo.
+  //
+  // Dias que dividem a MESMA estrada: sem afastamento, o dia 2 é pintado por cima
+  // do dia 1 e o dia 1 simplesmente some do papel. Cada dia ganha alguns pixels
+  // perpendiculares ao traçado, centrados na estrada real — é a mesma leitura de
+  // mapa de linha de ônibus. Sem isso a legenda promete três cores e o mapa mostra
+  // duas, o que é pior do que não colorir.
+  const nDias = prog.dias.length
+  const desloca = (pts: LeafletNS.LatLngTuple[], px: number): LeafletNS.LatLngTuple[] => {
+    if (!px || pts.length < 2) return pts
+    const z = map.getZoom()
+    const P = pts.map(p => map.project(L.latLng(p[0], p[1]), z))
+    return P.map((p, i) => {
+      const a = P[Math.max(0, i - 1)], b = P[Math.min(P.length - 1, i + 1)]
+      const dx = b.x - a.x, dy = b.y - a.y
+      const len = Math.hypot(dx, dy) || 1
+      const ll = map.unproject(L.point(p.x - (dy / len) * px, p.y + (dx / len) * px), z)
+      return [ll.lat, ll.lng] as LeafletNS.LatLngTuple
+    })
+  }
+
+  const pernasPorDia = new Map<number, number>()
+  for (const p of pernasTodas) pernasPorDia.set(p.dia, (pernasPorDia.get(p.dia) ?? 0) + 1)
+
+  const pernasDesenho = pernasTodas.map(p => {
+    const base = nDias > 1 ? (p.dia - 1 - (nDias - 1) / 2) * ESPACO_DIA_PX : 0
+    const n = pernasPorDia.get(p.dia) ?? 1
+    const passo = n > 1 ? Math.min(ESPACO_PERNA_PX, ESPACO_PERNA_MAX_PX / (n - 1)) : 0
+    return { ...p, pts: desloca(p.pts, base + (p.idxNoDia - (n - 1) / 2) * passo) }
+  })
+
+  // Contorno branco embaixo de TODAS as pernas antes de qualquer cor: o trajeto
+  // precisa se destacar do próprio mapa. O vermelho do dia 2 é exatamente o
+  // vermelho que o OpenStreetMap usa em rodovia — sem contorno, some na malha.
+  for (const p of pernasDesenho) {
+    if (p.pts.length < 2) continue
+    L.polyline(p.pts, { color: '#ffffff', weight: 8, opacity: 0.9, lineCap: 'round', lineJoin: 'round' }).addTo(map)
+  }
+  for (const p of pernasDesenho) {
+    if (p.pts.length < 2) continue
+    L.polyline(p.pts, {
+      color: p.cor, weight: 4.5, opacity: 1, lineCap: 'round', lineJoin: 'round',
+      // Tracejado quando nenhum trecho veio de rota real — o desenho não pode
+      // sugerir precisão que o dado não tem.
+      dashArray: prog.estimado ? '9 6' : undefined,
+    }).addTo(map)
+  }
+
+  // Setas de sentido: o roteiro é uma ORDEM, e sem elas o leitor tem que decorar
+  // os números pra saber pra que lado se anda.
+  for (const p of pernasDesenho) {
+    // Fração ASSIMÉTRICA (38%/30%, nunca 50%). Ida e volta pela mesma estrada são
+    // o mesmo traçado invertido: em 50% as duas setas caem no MESMO pixel, e em
+    // 42%/58% também — 58% da volta é 42% da ida. Fora do meio, 38% da ida fica a
+    // 62% da volta, e as duas aparecem.
+    const seta = pontoNaPerna(map, p.pts, 0.38 - (p.idxNoDia % 2) * 0.08)
+    if (seta) {
+      L.marker(seta.ll, { icon: setaSentido(L, p.cor, seta.angulo), interactive: false, zIndexOffset: 400 })
+        .addTo(map)
     }
+  }
+
+  for (const pin of pinos) {
+    L.marker(pin.ll, {
+      icon: pinoNumerado(L, pin.cor, pin.rotulo, pin.aprox),
+      interactive: false,
+      zIndexOffset: 500,
+    }).addTo(map)
   }
 
   if (cfg.origem) {
@@ -226,7 +311,6 @@ async function montarMapa(
       interactive: false,
       zIndexOffset: 900,
     }).addTo(map)
-    pontos.push([cfg.origem.lat, cfg.origem.lng])
   }
   if (volta && (!cfg.origem || volta.lat !== cfg.origem.lat || volta.lng !== cfg.origem.lng)) {
     L.marker([volta.lat, volta.lng], {
@@ -234,15 +318,10 @@ async function montarMapa(
       interactive: false,
       zIndexOffset: 900,
     }).addTo(map)
-    pontos.push([volta.lat, volta.lng])
   }
 
-  map.invalidateSize()
-  if (pontos.length >= 2) {
-    map.fitBounds(L.latLngBounds(pontos), { padding: [30, 30], maxZoom: 13 })
-  } else if (pontos.length === 1) {
-    map.setView(pontos[0], 11)
-  }
+  // Escala: num mapa de estrada, "quanto é isso em km" é a primeira pergunta.
+  L.control.scale({ imperial: false, position: 'bottomleft', maxWidth: 140 }).addTo(map)
 
   // Espera as tiles. NÃO dá pra usar o evento 'load' do Leaflet como veredito:
   // ele dispara mesmo quando TODAS as tiles falharam (o Leaflet conta a tile como
@@ -275,6 +354,77 @@ async function montarMapa(
   await new Promise<void>(r => setTimeout(r, 350))
 
   return { map, resultado: { tiles: ok } }
+}
+
+/**
+ * Altura do <div> do mapa, pelo FORMATO da rota. Com altura fixa em 560px uma
+ * viagem leste-oeste — que é a maioria, o vendedor corre a BR — desenhava uma
+ * faixa fina no meio de meia página de papel branco: o trajeto ficava pequeno
+ * porque o enquadramento tinha que caber num quadro que ninguém pediu.
+ */
+function alturaDoMapa(cfg: ConfigViagem, prog: Programacao): number {
+  const pts: Array<[number, number]> = []
+  if (cfg.origem) pts.push([cfg.origem.lat, cfg.origem.lng])
+  const volta = cfg.retornarOrigem ? cfg.origem : cfg.destino
+  if (volta) pts.push([volta.lat, volta.lng])
+  for (const d of prog.dias) for (const x of d.paradas) pts.push([x.parada.lat, x.parada.lng])
+  if (pts.length < 2) return 420
+  // y de Mercator em GRAUS, pra ficar na mesma unidade da longitude
+  const mercY = (lat: number) => (180 / Math.PI) * Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360))
+  const xs = pts.map(p => p[1]), ys = pts.map(p => mercY(p[0]))
+  const dx = Math.max(...xs) - Math.min(...xs)
+  const dy = Math.max(...ys) - Math.min(...ys)
+  if (dx <= 0) return MAPA_H_MAX
+  const escala = (MAPA_W - 2 * MAPA_PAD) / dx
+  return Math.round(Math.min(MAPA_H_MAX, Math.max(MAPA_H_MIN, dy * escala + 2 * MAPA_PAD)))
+}
+
+/**
+ * Ponto a `fracao` do comprimento da perna (não do índice de vértice) e o ângulo
+ * de marcha ali. A fração é parâmetro porque ida e volta pela MESMA estrada têm
+ * o mesmo meio: as duas setas cairiam uma em cima da outra e o papel não diria
+ * que houve retorno.
+ */
+function pontoNaPerna(
+  map: LeafletNS.Map,
+  pts: LeafletNS.LatLngTuple[],
+  fracao: number,
+): { ll: LeafletNS.LatLngTuple; angulo: number } | null {
+  if (pts.length < 2) return null
+  const z = map.getZoom()
+  const P = pts.map(p => map.project(p, z))
+  let total = 0
+  for (let i = 1; i < P.length; i++) total += Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y)
+  // Perna curta: a seta encostaria nos dois pinos e viraria borrão.
+  if (total < 46) return null
+  const alvo = total * fracao
+  let andado = 0
+  for (let i = 1; i < P.length; i++) {
+    const dx = P[i].x - P[i - 1].x, dy = P[i].y - P[i - 1].y
+    const seg = Math.hypot(dx, dy)
+    if (andado + seg >= alvo) {
+      const t = (alvo - andado) / (seg || 1)
+      const ll = map.unproject([P[i - 1].x + dx * t, P[i - 1].y + dy * t] as unknown as LeafletNS.PointExpression, z)
+      return { ll: [ll.lat, ll.lng], angulo: (Math.atan2(dy, dx) * 180) / Math.PI }
+    }
+    andado += seg
+  }
+  return null
+}
+
+/** Seta de sentido. Sombra branca dupla pra sobreviver a fundo claro E escuro. */
+function setaSentido(L: LeafletModule, cor: string, angulo: number): LeafletNS.DivIcon {
+  return L.divIcon({
+    className: 'pino-roteiro',
+    html:
+      `<div style="width:20px;height:20px;display:flex;align-items:center;justify-content:center;` +
+      `transform:rotate(${angulo.toFixed(1)}deg);">` +
+      `<div style="width:0;height:0;border-left:10px solid ${cor};border-top:6.5px solid transparent;` +
+      `border-bottom:6.5px solid transparent;` +
+      `filter:drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 1.5px #fff);"></div></div>`,
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+  })
 }
 
 function pinoNumerado(L: LeafletModule, cor: string, texto: string, aprox: boolean): LeafletNS.DivIcon {
@@ -525,7 +675,7 @@ export default function PrintRoteiro() {
         <h2 className="h-secao">Mapa do trajeto</h2>
 
         <div className="mapa-wrap">
-          <div ref={mapaRef} className="mapa" style={{ width: MAPA_W, height: MAPA_H }} />
+          <div ref={mapaRef} className="mapa" style={{ width: MAPA_W, height: alturaDoMapa(cfg, prog) }} />
           {mapaTiles === false && (
             <div className="mapa-nota">
               Fundo cartográfico indisponível na geração — o trajeto e as paradas
@@ -539,6 +689,7 @@ export default function PrintRoteiro() {
             <span className="lg lg-fixo">A</span> ponto de partida
             {volta && <><span className="lg lg-fixo">B</span> {cfg.retornarOrigem ? 'retorno' : 'destino final'}</>}
             <span className="lg lg-aprox">n</span> parada com localização aproximada
+            <span className="lg-seta" /> sentido da viagem
             {prog.estimado && <span className="lg-traco" />}
             {prog.estimado && <span>trajeto estimado (sem rota real)</span>}
           </div>
@@ -960,6 +1111,14 @@ html, body {
 .mapa-wrap { text-align: center; }
 .mapa { margin: 0 auto; border: 1.5px solid #111827; max-width: 100%; }
 .leaflet-container { background: #eef2f7; font-family: 'Carlito', sans-serif; }
+/* O fundo cartográfico é CONTEXTO, o trajeto é o assunto. Sem lavar a cor do
+   OSM, o dia 2 (vermelho) fica igual às rodovias — que o OSM pinta de vermelho —
+   e o dia 3 (verde) some na vegetação. Aqui o mapa vira papel e a rota, tinta. */
+.mapa .leaflet-tile-pane { filter: saturate(0.3) contrast(0.9) brightness(1.08); }
+.leaflet-control-scale-line {
+  font-size: 7.5pt !important; font-weight: 700; color: #111827;
+  background: rgba(255,255,255,.85) !important; border-color: #111827 !important;
+}
 .mapa-sem-tiles {
   background: #eef2f7 !important;
   background-image:
@@ -980,6 +1139,10 @@ html, body {
 .lg-fixo { background: #111827; border-radius: 3px; }
 .lg-aprox { background: #6b7280; border-radius: 50%; box-shadow: 0 0 0 1px #fff, 0 0 0 3px #d97706; }
 .lg-traco { display: inline-block; width: 22px; border-top: 2px dashed #6b7280; }
+.lg-seta {
+  display: inline-block; width: 0; height: 0; vertical-align: middle;
+  border-left: 8px solid #374151; border-top: 5px solid transparent; border-bottom: 5px solid transparent;
+}
 .legenda-nota { color: #6b7280; }
 
 /* ---- tabelas ---- */
