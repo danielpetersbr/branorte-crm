@@ -346,7 +346,52 @@ function kghDoTexto(conv: string): number {
   if (m) return numeroBR(m[1]) * 1000
   return 0
 }
-function escolherModeloFabrica(dados: any, convCliente?: string): { slug: string, kgh: number } | null {
+// (05/08) UMA FONTE SO PRA FAIXA. Existiam TRES, e elas discordavam: a grade hardcoded aqui,
+// o cartao `catalogo` da KB (c02 1000-2000) e o cartao `dimensionamento` (c02 ate 1499). A que
+// vale e `fabrica_midia.faixa_kgh`, porque e o texto que vai JUNTO DA FOTO pro cliente — se o
+// codigo escolher fora dela, a IA manda uma maquina cujo proprio card contradiz a necessidade
+// que ela acabou de calcular (foi o que aconteceu quando cortei em 1499 e reverti).
+// Agora a grade sai do banco: mudar faixa vira UPDATE em fabrica_midia, sem deploy, e nao tem
+// como divergir do card. O fallback hardcoded so existe pra funcao nao morrer se a tabela
+// estiver fora do ar — e repete exatamente os valores que estao la hoje.
+// O modelo que o CLIENTE nomeou nas PROPRIAS palavras. Le de textoNumerico, que tira o
+// boilerplate de anuncio/LP: quem chega por "Vi o anuncio da Mini Fabrica" nao esta ESCOLHENDO,
+// esta chegando — esse caso e do bloco do criativo, nao daqui.
+// "master" sozinho NAO casa: existem Compacta 01/02/03 Master, e casar por "master" jogaria
+// "compacta 01 master" na 03. O numero vem sempre antes de qualquer termo generico.
+// UMA funcao so, usada nos DOIS pontos (o aviso na persona e a escolha da midia) — duplicar a
+// cascata era garantia de as duas divergirem na proxima mexida.
+const NOME_MODELO: Record<string, string> = {
+  'mini-fabrica': 'Mini Fábrica', 'compacta-01': 'Compacta 01',
+  'compacta-02': 'Compacta 02', 'compacta-03': 'Compacta 03',
+}
+function modeloNomeado(conv: string): string | null {
+  const t = ' ' + textoNumerico(conv) + ' '
+  if (/compacta\s*0?3/.test(t)) return 'compacta-03'
+  if (/compacta\s*0?2/.test(t)) return 'compacta-02'
+  if (/compacta\s*0?1/.test(t)) return 'compacta-01'
+  if (/mini\s*f[áa]bric|minif[áa]bric|mini\s*fabriq/.test(t)) return 'mini-fabrica'
+  return null
+}
+async function carregarFaixasFabrica(supa: any): Promise<Array<{ slug: string, max: number }> | null> {
+  try {
+    const { data } = await supa.from('fabrica_midia').select('modelo, faixa_kgh')
+    const linhas = (Array.isArray(data) ? data : [])
+      .map((r: any) => {
+        // "1500–2500 kg/h" (travessao, nao hifen) -> pega o ULTIMO numero = teto da faixa
+        const nums = String(r.faixa_kgh || '').replace(/\./g, '').match(/\d+/g)
+        return { slug: String(r.modelo || ''), max: (nums && nums.length) ? Number(nums[nums.length - 1]) : 0 }
+      })
+      .filter((r: any) => r.slug && r.max > 0)
+      .sort((a: any, b: any) => a.max - b.max)
+    return linhas.length ? linhas : null
+  } catch { return null }
+}
+const GRADE_FALLBACK = [
+  { slug: 'mini-fabrica', max: 600 }, { slug: 'compacta-01', max: 1000 },
+  { slug: 'compacta-02', max: 2500 }, { slug: 'compacta-03', max: Number.MAX_SAFE_INTEGER },
+]
+function escolherModeloFabrica(dados: any, convCliente?: string, tiers?: Array<{ slug: string, max: number }> | null): { slug: string, kgh: number } | null {
   if (!dados) return null
   let kgh = 0
   if (Number(dados.producao_kgh) > 0) kgh = Number(dados.producao_kgh)
@@ -374,29 +419,18 @@ function escolherModeloFabrica(dados: any, convCliente?: string): { slug: string
     kgh = consumoDia * 7 / 12
   }
   if (kgh <= 0) return null
-  // (05/08) ESTA FAIXA SEGUE `fabrica_midia.faixa_kgh` — a UNICA das tres fontes que o CLIENTE
-  // le, porque e o texto que vai junto da foto no WhatsApp:
-  //     mini-fabrica 300-600 · compacta-01 700-1000 · compacta-02 1500-2500 · compacta-03 3000-5000
-  // Cheguei a mudar o corte pra 1499 seguindo o cartao `dimensionamento` da KB ("1500-2999
-  // Compacta 03") e REVERTI no mesmo dia: com o corte em 1499, um cliente de 2.000 kg/h recebia
-  // a Compacta 03 com o card dela dizendo "3000-5000 kg/h" — maquina anunciada maior que a
-  // necessidade, e pulando justamente a Compacta 02, que o card descreve como 1500-2500.
+  // A grade vem de `fabrica_midia.faixa_kgh` (ver carregarFaixasFabrica). Regra: o MENOR modelo
+  // cujo teto cobre a necessidade — nunca subdimensiona, e nunca sobe de linha sem motivo, que e
+  // o que a KB manda ("plantel que cabe na Mini nao vai pra Compacta 03 — erro de dezenas de
+  // milhares de reais"). Acima do maior teto, fica o maior modelo que tem midia.
   //
-  // ⚠️ AS TRES FONTES DIVERGEM. Antes de mexer aqui de novo, resolva a divergencia na origem:
-  //   `fabrica_midia.faixa_kgh` (cliente le) : c02 1500-2500 · c03 3000-5000
-  //   `catalogo` (KB, ordem 20)              : c02 1000-2000 · c03 1000-5000 · "COMPACTA 04 NAO EXISTE"
-  //   `dimensionamento` (KB, ordem 47)       : c02 ate 1499 · c03 1500-2999 · cita "Compacta 04"
-  // Enquanto elas nao baterem, o codigo segue a que o cliente ve — e a unica que, se estiver
-  // errada, o cliente percebe.
-  //
-  // Tambem NAO implementado por falta de material: a KB manda "bovino entre 1500 e 3000 vai para
-  // MASTER, nunca Compacta 03", mas NAO EXISTE linha 'master' em `fabrica_midia` (so
-  // compacta-01/02/03 e mini-fabrica) — a IA nao teria foto, tabela nem video pra mandar.
-  let slug = 'compacta-03'
-  if (kgh <= 600) slug = 'mini-fabrica'
-  else if (kgh <= 1000) slug = 'compacta-01'
-  else if (kgh <= 2500) slug = 'compacta-02'
-  return { slug, kgh }
+  // ⚠️ MASTER: a KB manda "bovino entre 1500 e 3000 vai para MASTER, nunca Compacta 03". O MASTER
+  // EXISTE no catalogo de precos (30 SKUs: 01/02/03 Master), mas NAO tem linha em `fabrica_midia`
+  // — sem foto, tabela e video a IA nao tem o que mandar. Cadastrada a midia, ele entra na grade
+  // sozinho, sem tocar neste codigo.
+  const grade = (tiers && tiers.length) ? tiers : GRADE_FALLBACK
+  const escolhido = grade.find((t) => kgh <= t.max) || grade[grade.length - 1]
+  return { slug: escolhido.slug, kgh }
 }
 async function carregarFabricaMidia(supa: any, modelo: string): Promise<any | null> {
   try { const { data } = await supa.from('fabrica_midia').select('*').eq('modelo', modelo).maybeSingle(); return data || null } catch { return null }
@@ -1660,6 +1694,30 @@ Deno.serve(async (req: Request) => {
         ? montarPersonaPiloto(personaPiloto, vendedor_nome, kb, midias)
         : montarPersona(vendedor_nome, kb, cfg.tom, midias)
       if (personaPiloto) console.log('[ia-atendente] persona piloto ' + personaPiloto.versao + ' -> ' + vendedor_nome)
+      // (05/08) A 2a METADE DA REGRA DO ALVARO. No grupo ele escreveu: "quando o cliente definir
+      // o que quer, parar de questionar" — e a KB completa a frase: "Se o cliente NOMEOU o modelo,
+      // é aquele que você mostra; se a conta apontar outro, MOSTRE O QUE ELE PEDIU E EXPLIQUE A
+      // DIFERENÇA". Mostrar o que ele pediu ja e deterministico la no bloco de midia. Explicar e
+      // conversa, entao tem que chegar ao modelo ANTES dele escrever — por isso vive aqui.
+      // A conta usa o que JA sabiamos (st.dados_coletados) e a grade de fallback: e so um aviso
+      // conversacional, nao a decisao do modelo, entao nao paga uma ida ao banco em toda resposta.
+      {
+        const _convPrev = msgs.filter((m: any) => !m.fromMe)
+          .map((m: any) => String(m.body || m.transcricao || '')).join(' ').toLowerCase()
+        const _nomeado = modeloNomeado(_convPrev)
+        if (_nomeado) {
+          const _calc = escolherModeloFabrica(st.dados_coletados || {}, _convPrev)
+          const _teto = (GRADE_FALLBACK.find((g) => g.slug === _nomeado) || { max: 0 }).max
+          if (_calc && _teto && _calc.kgh > _teto) {
+            persona += '\n\nSOBRE ESTA CONVERSA: o cliente pediu a ' + NOME_MODELO[_nomeado] +
+              ' pelo nome. MOSTRE a ' + NOME_MODELO[_nomeado] + ' — é o que ele pediu. Mas pela conta do que ele te contou ' +
+              'a necessidade dele fica em torno de ' + Math.round(_calc.kgh) + ' kg/h, acima do que essa linha entrega. ' +
+              'Diga isso com franqueza, em uma frase, sem empurrar máquina: que pelo tamanho dele um modelo maior encaixaria ' +
+              'melhor, e que o vendedor fecha o número certinho. Nunca esconda a diferença nem troque o modelo por conta própria.'
+            console.log('[ia-atendente] cliente pediu ' + _nomeado + ' mas a conta da ' + Math.round(_calc.kgh) + ' kg/h (' + chat_id + ')')
+          }
+        }
+      }
       // (03/08) O contrato JSON promete ao modelo que "a extensao manda foto + valores + video".
       // Com o preco bloqueado isso vira mentira, e ele escreveria "te mandei os valores" sem que
       // valor nenhum va — o erro classico de prometer anexo que nao existe. Corrige a promessa na
@@ -2012,15 +2070,7 @@ Deno.serve(async (req: Request) => {
       // "Vi o anuncio da Mini Fabrica" nao esta ESCOLHENDO, esta so chegando; pra esse caso quem
       // decide segue sendo o bloco do criativo.
       if (!mostrarFabrica) {
-        const _t = ' ' + textoNumerico(convCliente) + ' '
-        // "master" sozinho NAO entra: existe Compacta 01 Master, 02 Master e 03 Master — casar
-        // por "master" jogaria "compacta 01 master" na 03. A ordem tambem importa: o numero e
-        // testado antes de qualquer termo generico.
-        const _pedido = /compacta\s*0?3/.test(_t) ? 'compacta-03'
-          : /compacta\s*0?2/.test(_t) ? 'compacta-02'
-          : /compacta\s*0?1/.test(_t) ? 'compacta-01'
-          : /mini\s*f[áa]bric|minif[áa]bric|mini\s*fabriq/.test(_t) ? 'mini-fabrica'
-          : null
+        const _pedido = modeloNomeado(convCliente)
         if (_pedido) {
           mostrarFabrica = _pedido
           console.log('[ia-atendente] modelo NOMEADO pelo cliente -> ' + _pedido + ' (' + chat_id + ')')
@@ -2146,7 +2196,8 @@ Deno.serve(async (req: Request) => {
         const equipExtraidoEhFabrica = /f[áa]bric|compacta|\bmini\b/i.test(equipTxt)
         // (05/08) convCliente entra aqui pra quebrar a criacao MISTA por especie — sem isso
         // "500 aves + 30 porcos" virava 530 cabecas de gado e saia Compacta 02.
-        const escolha = (equipTxt && !equipExtraidoEhFabrica) ? null : escolherModeloFabrica(dadosMem, convCliente)
+        const _faixas = await carregarFaixasFabrica(supa)
+        const escolha = (equipTxt && !equipExtraidoEhFabrica) ? null : escolherModeloFabrica(dadosMem, convCliente, _faixas)
         // (29/07) O MODELO QUE O CLIENTE APONTOU MANDA MAIS QUE O CALCULADO — mas so quando este
         // ramo ja e de fabrica (respeita o filtro de equipamento avulso logo acima). Sem isto o
         // cliente do EDER levou a Compacta 02 e, 4 min depois, a Compacta 01: dois modelos e dois
@@ -2170,6 +2221,17 @@ Deno.serve(async (req: Request) => {
         // preco nao sai — e o ramo MINI existe justamente porque ela sai. Sem isso o gate abriria
         // prometendo a tabela e o anexo iria sem ela.
         const ehRamoMini = slugFab === 'mini-fabrica' && !!(fm && fm.preco_url) && !bloquearPreco
+        // (05/08) "MOSTRE O QUE ELE PEDIU E EXPLIQUE A DIFERENÇA" — a 2a metade da regra da KB e
+        // do recado do Alvaro no grupo. A 1a metade e o slugFab acima (o modelo nomeado vence).
+        // A explicacao PRECISA entrar aqui, e nao so na persona: os textos de apresentacao de
+        // modelo sao CANNED e reescrevem o que o LLM escreveu. Sem isto, o teste com 3.000 bois
+        // em confinamento pedindo "mini fabrica" devolvia "Pela sua necessidade, a nossa Mini
+        // Fábrica atende bem" — mentira, e do tipo que o vendedor tem que desmentir depois.
+        const _tetoMostrado = ((_faixas || GRADE_FALLBACK).find((t: any) => t.slug === slugFab) || { max: 0 }).max
+        const ressalvaPedido = (escolha && slugFab && slugFab !== escolha.slug && _tetoMostrado && escolha.kgh > _tetoMostrado)
+          ? ' Só te falo com franqueza: pela conta do que você me passou, sua necessidade fica em torno de ' +
+            Math.round(escolha.kgh) + ' kg/h, acima do que essa linha entrega. Vale o vendedor te mostrar o porte certo antes de fechar.'
+          : ''
         // MINI SEM PRECO: a mini vive da tabela (foto_url esta NULL no banco — o Daniel desligou
         // porque a propria tabela mostra o equipamento). Bloqueada a tabela, o que resta sao os
         // videos. Precisa de gate proprio porque o generico so olha foto/trabalhando/explicacao:
@@ -2199,7 +2261,11 @@ Deno.serve(async (req: Request) => {
             const anexoMini = fm.foto_url
               ? descreveMidias(fabricaMidias) + ' dela — os valores estão na tabela'
               : 'a tabela com os valores' + (nVideosMini > 1 ? ' e uns vídeos explicando' : nVideosMini === 1 ? ' e um vídeo explicando' : '')
-            texto = 'Olha' + (pn ? ', ' + pn : '') + '. Pela sua necessidade, a nossa Mini Fábrica de Ração atende bem. Te mandei ' + anexoMini + '. Qual atende melhor pro senhor: a de 300 kg/h ou a de 600 kg/h?'
+            // Com ressalva, a pergunta "300 ou 600?" nao pode sair — nenhuma das duas atende, e
+            // perguntar seria empurrar a menor sabendo que nao serve.
+            texto = ressalvaPedido
+              ? 'Olha' + (pn ? ', ' + pn : '') + '. Te mandei ' + anexoMini + ' da Mini Fábrica, como você pediu.' + ressalvaPedido
+              : 'Olha' + (pn ? ', ' + pn : '') + '. Pela sua necessidade, a nossa Mini Fábrica de Ração atende bem. Te mandei ' + anexoMini + '. Qual atende melhor pro senhor: a de 300 kg/h ou a de 600 kg/h?'
           } else if (ehMiniSemPreco) {
             // (03/08) Mesma mini, sem a tabela: manda os videos e FECHA com o retorno em 1a pessoa.
             // Nao pergunta "300 ou 600 kg/h?" de proposito — essa pergunta so faz sentido depois de
@@ -2226,7 +2292,9 @@ Deno.serve(async (req: Request) => {
           const sobraDemais = !!escolha && slugFab === 'mini-fabrica' && escolha.kgh > 0 && escolha.kgh < 150
           texto = sobraDemais
             ? 'Olha' + (pn ? ', ' + pn : '') + '. Pra esse tamanho, a menor fábrica que a gente faz é a ' + fm.nome + ' (' + fm.faixa_kgh + ') — ela já dá conta do seu consumo com folga de sobra. Te mandei ' + descreveMidias(fabricaMidias) + ' dela pra você ver. Faz sentido pro seu caso?'
-            : 'Olha' + (pn ? ', ' + pn : '') + '. Pelo que você me passou, acho que a ' + fm.nome + ' (' + fm.faixa_kgh + ') te atende bem. Te mandei ' + descreveMidias(fabricaMidias) + ' dela. Seria um modelo desse que você procura?'
+            : ressalvaPedido
+              ? 'Olha' + (pn ? ', ' + pn : '') + '. Te mandei ' + descreveMidias(fabricaMidias) + ' da ' + fm.nome + ', como você pediu.' + ressalvaPedido
+              : 'Olha' + (pn ? ', ' + pn : '') + '. Pelo que você me passou, acho que a ' + fm.nome + ' (' + fm.faixa_kgh + ') te atende bem. Te mandei ' + descreveMidias(fabricaMidias) + ' dela. Seria um modelo desse que você procura?'
           }
         } else {
           // EQUIPAMENTO INDIVIDUAL (espelho do fluxo de fabrica): cliente quer moinho,
