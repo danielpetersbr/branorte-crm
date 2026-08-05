@@ -109,6 +109,17 @@ export function analisar(
   const casaSistema = (x: GuiaAnimal) => !a.sistema || x.sistemas.includes(a.sistema)
   const categorias = daEspecie.filter(x => x.tipo === 'categoria' && casaFase(x) && casaSistema(x))
   const base = categorias.length ? categorias : daEspecie.filter(x => x.tipo === 'categoria')
+  // A queda acima é o que gerava papel de parede: sem fase escolhida, `base`
+  // vira TODAS as categorias da espécie, e processo/perguntas/restrições saem
+  // como a UNIÃO de todas elas — 13 parágrafos de processo e "Quantos litros
+  // por vaca por dia?" no meio de uma conversa de gado de corte. A tela precisa
+  // saber que está nesse estado pra não vender a lista como se fosse específica.
+  //
+  // O sinal é `base.length > 1`, e NÃO "a queda disparou": sem fase escolhida,
+  // `casaFase` devolve true pra todo mundo, então `categorias` já vem com as 12
+  // e a queda nem chega a rodar. Medido na tela: 1 processo com a fase marcada,
+  // 12 sem ela.
+  const baseAmpla = base.length > 1
 
   // Perguntas ainda não respondidas: as das categorias que casam, sem repetir.
   const perguntas = Array.from(new Set(base.flatMap(x => x.perguntas)))
@@ -267,6 +278,7 @@ export function analisar(
     relacionados,
     podeFecharEquipamento,
     bloqueioEquipamento,
+    baseAmpla,
     naoAtende,
     promessasProibidas,
     misturadorIndicado,

@@ -21,7 +21,7 @@
  */
 import { useMemo, useState } from 'react'
 import {
-  ArrowRight, Ban, Check, Copy, Factory, ListChecks, RotateCcw, Search, Wrench,
+  ArrowRight, Ban, Check, ChevronDown, Copy, Factory, ListChecks, RotateCcw, Search, Wrench,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -174,6 +174,7 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
   // o valor em uso (o informado, quando existe), entao nao serve pra comparar.
   const consumoCatalogo = consumoDeReferencia(a.especie, a.fase)
   const [copiado, setCopiado] = useState(false)
+  const [apoioAberto, setApoioAberto] = useState(false)
   const [filtroMateria, setFiltroMateria] = useState('')
   // A jornada mora AQUI, não no configurador: é dela que sai o kg/h do
   // mostrador. Ver o cabeçalho de ConfiguradorFabrica.tsx pra história dos dois
@@ -306,20 +307,28 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
     </button>
   )
 
-  // A terceira trilha do grid era EXPLÍCITA e por isso NÃO colapsava por falta
-  // de filho — `fr` distribui espaço livre, não é função do conteúdo. Em 1920
-  // com a sidebar do CRM davam 445px (27,8% da tela) de branco na abertura, que
-  // é o buraco que aparecia no print. Renderizar o filho condicionalmente, como
-  // se fazia antes, não resolvia nada: a trilha continuava lá, vazia.
-  const temApoio = r.perguntas.length > 0
+  // O que GRITA fica na tela; o resto vai pra gaveta. `incompativel` e
+  // `alto_risco` são "silagem não entra" e "ureia mata o animal" — poucos e
+  // decisivos. O nível `atencao` é onde mora o papel de parede ("formulação
+  // por profissional habilitado" repetido por cinco categorias diferentes).
+  const criticos = useMemo(
+    () => r.atencao.filter(x => x.nivel === 'incompativel' || x.nivel === 'alto_risco'),
+    [r.atencao],
+  )
+  const secundarios = useMemo(
+    () => r.atencao.filter(x => x.nivel !== 'incompativel' && x.nivel !== 'alto_risco'),
+    [r.atencao],
+  )
+  const temApoio = !!(r.perguntas.length || r.processo.length || secundarios.length
+    || r.equipamentos.length || r.relacionados.length)
 
+  // DUAS trilhas, sempre. A terceira era EXPLÍCITA e por isso NÃO colapsava por
+  // falta de filho — `fr` distribui espaço livre, não é função do conteúdo: em
+  // 1920 com a sidebar davam 445px de branco na abertura. Agora ela nem existe:
+  // o apoio virou gaveta no pé da coluna do resultado, e não há terceira coisa
+  // a colocar ao lado.
   return (
-    <div className={cn(
-      'grid gap-4 lg:grid-cols-2',
-      temApoio
-        ? '2xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)_minmax(0,0.72fr)]'
-        : '2xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]',
-    )}>
+    <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
       {/* ---------------- entrada ---------------- */}
       <div className="space-y-2.5">
         <div className="flex items-center justify-between gap-2">
@@ -678,61 +687,16 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
             continua em `r.faltando` — alimenta o contador e o texto que vai pro
             WhatsApp, onde a lista tem uso de verdade. */}
 
-        {!!r.atencao.length && (
+        {/* SÓ o que grita. Antes a seção despejava TUDO no mesmo peso: seis
+            tarjas amarelas idênticas, "Formulação por profissional habilitado"
+            do mesmo tamanho de "Silagem NÃO entra na fábrica farelada". É o
+            defeito que Selos.tsx descreve no guia antigo, reintroduzido pelo
+            layout — quando tudo é alerta, nada é. */}
+        {!!criticos.length && (
           <Secao titulo="Pontos de atenção">
             <div className="space-y-2">
-              {r.atencao.slice(0, 10).map((x, i) => (
+              {criticos.map((x, i) => (
                 <Alerta key={i} nivel={x.nivel}>{x.texto}</Alerta>
-              ))}
-            </div>
-          </Secao>
-        )}
-
-        {!!r.processo.length && (
-          <Secao titulo="Processo provável" icone={<Factory className="h-3.5 w-3.5" />}>
-            <ul className="space-y-1.5">
-              {r.processo.map((p, i) => (
-                <li key={i} className="text-[13px] leading-relaxed text-ink">{p}</li>
-              ))}
-            </ul>
-          </Secao>
-        )}
-
-        {!!r.equipamentos.length && (
-          <Secao titulo="Equipamento que pode ser analisado" icone={<Wrench className="h-3.5 w-3.5" />}>
-            <div className="flex flex-wrap gap-1.5">
-              {r.equipamentos.map(e => (
-                <Badge key={e} className="bg-surface-2 text-ink-muted">{EQUIPAMENTOS[e] ?? e}</Badge>
-              ))}
-            </div>
-            {/* `misturador_indicado` já existia nas matérias e era lido só na
-                ficha e na comparação. O vendedor marcava "sal mineral" e a tela
-                não dizia que aquilo é horizontal. */}
-            {!!r.misturadorIndicado && (
-              <p className="mt-2 text-[12.5px] leading-relaxed text-ink">
-                As matérias marcadas pedem misturador{' '}
-                <strong>{r.misturadorIndicado}</strong>.
-              </p>
-            )}
-            {!r.podeFecharEquipamento && (
-              <p className="mt-2 text-[12px] leading-relaxed text-warning">
-                Lista para ANÁLISE. Nada aqui fecha equipamento enquanto faltar dado.
-              </p>
-            )}
-          </Secao>
-        )}
-
-        {!!r.relacionados.length && (
-          <Secao titulo="Conteúdos relacionados">
-            <div className="flex flex-wrap gap-1.5">
-              {r.relacionados.slice(0, 14).map(i => (
-                <button
-                  key={i.slug}
-                  onClick={() => onAbrir(i)}
-                  className="rounded-md border border-border bg-surface px-2.5 py-1 text-[12px] text-ink hover:border-border-strong hover:bg-surface-2"
-                >
-                  {i.emoji} {i.nome}
-                </button>
               ))}
             </div>
           </Secao>
@@ -761,30 +725,124 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
             {copiado ? 'Copiado' : 'Copiar levantamento'}
           </Button>
         </div>
+
+        {/* APOIO DE CONVERSA — fechado por padrão.
+            Perguntas, processo provável, pontos secundários, equipamentos e
+            conteúdo relacionado ocupavam a tela inteira e eram, todos, a UNIÃO
+            de todas as categorias da espécie: 13 parágrafos de processo e
+            "Quantos litros por vaca por dia?" no meio de uma conversa de gado
+            de corte. Vira repertório sob demanda, não parede. */}
+        {temApoio && (
+          <div className="rounded-lg border border-border bg-surface">
+            <button
+              type="button"
+              onClick={() => setApoioAberto(v => !v)}
+              aria-expanded={apoioAberto}
+              className="flex w-full items-center gap-1.5 px-4 py-2.5 text-[12px] text-ink-muted hover:text-ink"
+            >
+              <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', apoioAberto && 'rotate-180')} />
+              Apoio de conversa
+              <span className="text-ink-faint">
+                — {[
+                  r.perguntas.length && `${r.perguntas.length} perguntas`,
+                  r.processo.length && 'processo',
+                  secundarios.length && `${secundarios.length} observações`,
+                ].filter(Boolean).join(' · ')}
+              </span>
+            </button>
+
+            {apoioAberto && (
+              <div className="space-y-4 border-t border-border px-4 py-3">
+                {/* Sem fase escolhida, tudo aqui é a união de todas as
+                    categorias da espécie. Dizer isso é a diferença entre
+                    repertório e resposta. */}
+                {r.baseAmpla && (
+                  <p className="text-[12px] leading-relaxed text-warning">
+                    Sem a fase produtiva, isto é o repertório de TODAS as fases da espécie —
+                    não é o roteiro deste cliente. Escolha a fase pra filtrar.
+                  </p>
+                )}
+
+                {!!r.perguntas.length && (
+                  <div>
+                    <h4 className="mb-2 flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+                      <ListChecks className="h-3.5 w-3.5" />Perguntas que ainda cabem
+                    </h4>
+                    <Perguntas
+                      perguntas={r.perguntas.slice(0, 12)}
+                      className="sm:columns-2 [&>li]:break-inside-avoid"
+                    />
+                  </div>
+                )}
+
+                {!!r.processo.length && (
+                  <div>
+                    <h4 className="mb-2 flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+                      <Factory className="h-3.5 w-3.5" />Processo provável
+                    </h4>
+                    <ul className="space-y-1.5">
+                      {r.processo.map((x, i) => (
+                        <li key={i} className="text-[13px] leading-relaxed text-ink">{x}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {!!secundarios.length && (
+                  <div>
+                    <h4 className="mb-2 text-[13px] font-semibold text-ink">Observações</h4>
+                    <ul className="space-y-1">
+                      {secundarios.map((x, i) => (
+                        <li key={i} className="flex gap-2 text-[13px] leading-relaxed text-ink-muted">
+                          <span aria-hidden className="shrink-0 text-ink-faint">•</span>
+                          <span className="min-w-0">{x.texto}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {!!r.equipamentos.length && (
+                  <div>
+                    <h4 className="mb-2 flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+                      <Wrench className="h-3.5 w-3.5" />Equipamento que pode ser analisado
+                    </h4>
+                    <div className="flex flex-wrap gap-1.5">
+                      {r.equipamentos.map(e => (
+                        <Badge key={e} className="bg-surface-2 text-ink-muted">{EQUIPAMENTOS[e] ?? e}</Badge>
+                      ))}
+                    </div>
+                    {/* `misturador_indicado` já existia nas matérias e era lido
+                        só na ficha e na comparação. */}
+                    {!!r.misturadorIndicado && (
+                      <p className="mt-2 text-[12.5px] leading-relaxed text-ink">
+                        As matérias marcadas pedem misturador <strong>{r.misturadorIndicado}</strong>.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {!!r.relacionados.length && (
+                  <div>
+                    <h4 className="mb-2 text-[13px] font-semibold text-ink">Conteúdos relacionados</h4>
+                    <div className="flex flex-wrap gap-1.5">
+                      {r.relacionados.slice(0, 14).map(i => (
+                        <button
+                          key={i.slug}
+                          onClick={() => onAbrir(i)}
+                          className="rounded-md border border-border bg-surface px-2.5 py-1 text-[12px] text-ink hover:border-border-strong hover:bg-surface-2"
+                        >
+                          {i.emoji} {i.nome}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
-
-      {/* -------- TERCEIRA coluna: apoio de conversa -------------------------
-          As perguntas são o que o vendedor lê PRA PERGUNTAR — não é resultado.
-          Empilhadas junto do mostrador, elas empurravam o número e os pontos de
-          atenção pra fora da tela.
-
-          `lg:col-span-2`: entre 1024 e 1535px o grid tem DUAS colunas, e este é
-          o terceiro filho — ele caía na coluna 1, linha 2, ou seja embaixo do
-          FORMULÁRIO e depois da linha inteira. Ocupando a largura toda ele vira
-          uma faixa de perguntas embaixo das duas colunas, que é a faixa que
-          pega notebook de 1280 e 1366 — e aí as perguntas precisam de
-          multi-coluna, senão viram uma fileira de 12 linhas com 900px de vazio
-          à direita. */}
-      {temApoio && (
-        <div className="space-y-3 lg:col-span-2 2xl:col-span-1 2xl:col-start-3 2xl:row-start-1">
-          <Secao titulo="Perguntas que ainda cabem" icone={<ListChecks className="h-3.5 w-3.5" />}>
-            <Perguntas
-              perguntas={r.perguntas.slice(0, 12)}
-              className="sm:columns-2 xl:columns-3 2xl:columns-1 [&>li]:break-inside-avoid"
-            />
-          </Secao>
-        </div>
-      )}
     </div>
   )
 }
