@@ -428,7 +428,11 @@ function setaSentido(L: LeafletModule, cor: string, angulo: number): LeafletNS.D
 }
 
 function pinoNumerado(L: LeafletModule, cor: string, texto: string, aprox: boolean): LeafletNS.DivIcon {
-  const anel = aprox ? 'box-shadow:0 0 0 2px #fff,0 0 0 5px #d97706;' : 'box-shadow:0 0 0 2px #fff;'
+  // Anel ESCURO, não laranja. O laranja de antes (#d97706) era quase o mesmo tom do
+  // dia 4 (#b45309) da paleta: justo nesse dia o aviso de "localização aproximada"
+  // sumia dentro do próprio pino. Escuro contrasta com as 8 cores de dia, e não
+  // depende de nenhuma delas continuar sendo o que é.
+  const anel = aprox ? 'box-shadow:0 0 0 2px #fff,0 0 0 5px #0f172a;' : 'box-shadow:0 0 0 2px #fff;'
   return L.divIcon({
     className: 'pino-roteiro',
     html:
@@ -571,6 +575,10 @@ export default function PrintRoteiro() {
   const multiDia = prog.dias.length > 1
   const fimPeriodo = somarDias(cfg.dataInicio, Math.max(0, cfg.dias - 1))
   const volta = cfg.retornarOrigem ? cfg.origem : cfg.destino
+  // MESMA condição do marcador B lá no montarMapa. Voltando pra origem — que é o
+  // padrão — o B cairia em cima do A e não é desenhado; a legenda mostrava o símbolo
+  // assim mesmo e prometia no papel um pino que não existe no mapa.
+  const temPinoB = !!volta && (!cfg.origem || volta.lat !== cfg.origem.lat || volta.lng !== cfg.origem.lng)
   const totalClientes = clientesUnicos(prog)
   const todasParadas = prog.dias.flatMap(d => d.paradas)
   const aprox = todasParadas.filter(x => aproximada(x.parada))
@@ -686,8 +694,8 @@ export default function PrintRoteiro() {
 
         <div className="legenda">
           <div className="legenda-linha">
-            <span className="lg lg-fixo">A</span> ponto de partida
-            {volta && <><span className="lg lg-fixo">B</span> {cfg.retornarOrigem ? 'retorno' : 'destino final'}</>}
+            <span className="lg lg-fixo">A</span> {temPinoB ? 'ponto de partida' : 'partida e retorno'}
+            {temPinoB && <><span className="lg lg-fixo">B</span> {cfg.retornarOrigem ? 'retorno' : 'destino final'}</>}
             <span className="lg lg-aprox">n</span> parada com localização aproximada
             <span className="lg-seta" /> sentido da viagem
             {prog.estimado && <span className="lg-traco" />}
@@ -1137,7 +1145,7 @@ html, body {
 .legenda-dia i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .lg { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; font-size: 7.5pt; font-weight: 700; color: #fff; margin-right: 1mm; }
 .lg-fixo { background: #111827; border-radius: 3px; }
-.lg-aprox { background: #6b7280; border-radius: 50%; box-shadow: 0 0 0 1px #fff, 0 0 0 3px #d97706; }
+.lg-aprox { background: #6b7280; border-radius: 50%; box-shadow: 0 0 0 1px #fff, 0 0 0 3px #0f172a; }
 .lg-traco { display: inline-block; width: 22px; border-top: 2px dashed #6b7280; }
 .lg-seta {
   display: inline-block; width: 0; height: 0; vertical-align: middle;
