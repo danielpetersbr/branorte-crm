@@ -328,7 +328,12 @@ export function useSalvarLocalizacaoCliente() {
       return loc.cliKey
     },
     onSuccess: () => {
+      // DUAS chaves de propósito: 'orcamentos-mapa-v2' é do useOrcamentosMapaV2 daqui
+      // (hoje sem nenhum consumidor) e 'orcamentos-mapa' é do useOrcamentosMapa, que
+      // é o que o /mapa-visitas realmente usa. Invalidando só a primeira, o vendedor
+      // corrigia a localização e o pino ficava no lugar velho até recarregar a página.
       qc.invalidateQueries({ queryKey: ['orcamentos-mapa-v2'] })
+      qc.invalidateQueries({ queryKey: ['orcamentos-mapa'] })
       qc.invalidateQueries({ queryKey: ['viagem'] })
       // O quadro mostra a precisão de cada parada: sem isto ele segue dizendo
       // "no centro da cidade" depois de o vendedor ter corrigido.
@@ -521,7 +526,12 @@ export function useCorrigirLocalDaParada() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['viagens-quadro'] })
+      // DUAS chaves de propósito: 'orcamentos-mapa-v2' é do useOrcamentosMapaV2 daqui
+      // (hoje sem nenhum consumidor) e 'orcamentos-mapa' é do useOrcamentosMapa, que
+      // é o que o /mapa-visitas realmente usa. Invalidando só a primeira, o vendedor
+      // corrigia a localização e o pino ficava no lugar velho até recarregar a página.
       qc.invalidateQueries({ queryKey: ['orcamentos-mapa-v2'] })
+      qc.invalidateQueries({ queryKey: ['orcamentos-mapa'] })
       qc.invalidateQueries({ queryKey: ['viagem'] })
     },
   })

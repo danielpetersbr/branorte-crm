@@ -371,6 +371,8 @@ function popupOrcamento(
       ${tel ? `<a href="https://wa.me/${tel}" target="_blank" rel="noopener" style="display:inline-block;margin-top:4px;font-size:12px;color:#10b981;font-weight:600">Abrir WhatsApp ↗</a>` : ''}
       ${seloPrecisao(p)}
       <a href="https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}" target="_blank" rel="noopener" style="display:inline-block;margin-top:4px;font-size:11px;color:#2563eb;font-weight:600">Abrir no Google Maps ↗</a>
+      <button data-mover data-key="${encodeURIComponent(p.cli_key)}"
+        style="display:block;width:100%;margin-top:6px;padding:6px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;color:#0f172a;font-weight:600;font-size:11.5px;cursor:pointer">📍 Mover este ponto no mapa</button>
       ${visitaLinha}
       ${notaLinha}
       ${viagem ? blocoViagem(p, viagem.vizinhos, viagem.jaNaViagem) : `${blocoVizinhos(p, vizinhos ?? [])}${btn}`}
@@ -497,7 +499,14 @@ export function MapaVisitas() {
     marcar: (_chave: string) => {},
     origem: (_c: { lat: number; lng: number }) => {},
     irPara: (_cliKey: string) => {},
+    mover: (_cliKey: string) => {},
   })
+  // MOVER PONTO — o pino só vira arrastável depois de um clique explícito em
+  // "Mover este ponto", e a gravação só acontece no "Salvar aqui". Deixar os 2.349
+  // pinos arrastáveis o tempo todo seria um deslize de mouse virando dado errado,
+  // silenciosamente, na localização de um cliente.
+  const [movendo, setMovendo] = useState<{ cliKey: string; cliente: string | null; lat: number; lng: number } | null>(null)
+  const moverLayerRef = useRef<L.LayerGroup | null>(null)
   // Pinos que saíram do centro (empilhados): o zoom tem que reposicionar, senão o
   // espaçamento em pixels vira espaçamento em quilômetros.
   const espalhadosRef = useRef<Espalhado[]>([])
@@ -1129,6 +1138,14 @@ export function MapaVisitas() {
         const b = n as HTMLButtonElement
         b.onclick = () => acoesPopupRef.current.irPara(decodeURIComponent(b.dataset.key || ''))
       })
+
+      const btnMover = el.querySelector('button[data-mover]') as HTMLButtonElement | null
+      if (btnMover) {
+        btnMover.onclick = () => {
+          acoesPopupRef.current.mover(decodeURIComponent(btnMover.dataset.key || ''))
+          map.closePopup()
+        }
+      }
     })
     // Espaçamento dos empilhados é em PIXEL, então muda com o zoom.
     map.on('zoomend', () => {
@@ -1159,8 +1176,47 @@ export function MapaVisitas() {
         setEscolhendoOrigem(false)
       },
       irPara: (cliKey: string) => { marcadorPorKeyRef.current.get(cliKey)?.openPopup() },
+      mover: (cliKey: string) => {
+        const p = pontoPorKey.get(cliKey)
+        if (!p) return
+        // Começa de onde o pino ESTÁ DESENHADO (que pode estar espalhado no anel),
+        // não da coordenada crua: o pino tem que nascer debaixo do cursor dele.
+        const m = marcadorPorKeyRef.current.get(cliKey) as unknown as { getLatLng?: () => L.LatLng } | undefined
+        const ll = m?.getLatLng?.()
+        setMovendo({ cliKey, cliente: p.cliente, lat: ll?.lat ?? p.lat, lng: ll?.lng ?? p.lng })
+      },
     }
   })
+
+  // Pino arrastável + a camada dele. Fica FORA do layerRef de propósito: o effect
+  // dos pinos faz clearLayers() a cada mudança de filtro e levaria o pino embora
+  // no meio do arrasto.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    if (!moverLayerRef.current) moverLayerRef.current = L.layerGroup().addTo(map)
+    const layer = moverLayerRef.current
+    layer.clearLayers()
+    if (!movendo) return
+    const pino = L.marker([movendo.lat, movendo.lng], {
+      draggable: true,
+      zIndexOffset: 2000,
+      icon: L.divIcon({
+        className: '',
+        html: '<div style="width:30px;height:30px;border-radius:50%;background:#2563eb;'
+            + 'box-shadow:0 0 0 3px #fff,0 0 0 6px #2563eb,0 6px 14px rgba(0,0,0,.45);'
+            + 'display:flex;align-items:center;justify-content:center;font-size:15px">📍</div>',
+        iconSize: [30, 30], iconAnchor: [15, 15],
+      }),
+    })
+    pino.on('dragend', () => {
+      const ll = pino.getLatLng()
+      setMovendo(m => (m ? { ...m, lat: ll.lat, lng: ll.lng } : m))
+    })
+    pino.addTo(layer)
+    map.panTo([movendo.lat, movendo.lng])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [movendo?.cliKey])
 
   // Celular: revalida o tamanho do mapa em resize/rotação (senão fica cinza/cortado).
   useEffect(() => {
@@ -1958,6 +2014,52 @@ export function MapaVisitas() {
             await refetchOrc()
           }}
         />
+      )}
+
+      {/* Barra de MOVER PONTO — nada é gravado enquanto ela estiver aberta. */}
+      {movendo && (
+        <div className="fixed left-1/2 -translate-x-1/2 bottom-4 z-[1200] w-[min(560px,calc(100vw-1.5rem))]
+                        bg-surface border border-accent/40 rounded-xl shadow-2xl p-3 flex flex-col gap-2">
+          <div className="flex items-start gap-2">
+            <span className="text-[18px] leading-none mt-0.5">📍</span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[13px] font-semibold text-ink truncate">{movendo.cliente || 'Cliente'}</div>
+              <div className="text-[11.5px] text-ink-muted">
+                Arraste o pino azul até o lugar certo e clique em <b className="text-ink">Salvar aqui</b>.
+                Nada é gravado antes disso.
+              </div>
+              <div className="text-[11px] text-ink-faint tabular-nums mt-0.5">
+                {movendo.lat.toFixed(5)}, {movendo.lng.toFixed(5)}
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setMovendo(null)}
+              className="h-9 px-3 rounded-md border border-border bg-surface text-ink-muted hover:text-ink text-[13px] font-semibold">
+              Cancelar
+            </button>
+            <button
+              disabled={salvarLocalMut.isPending}
+              onClick={async () => {
+                try {
+                  await salvarLocalMut.mutateAsync({
+                    cliKey: movendo.cliKey,
+                    lat: movendo.lat,
+                    lng: movendo.lng,
+                    precisao: 'confirmada',
+                    fonte: 'arrastado no mapa',
+                  })
+                  setMovendo(null)
+                } catch (e) {
+                  window.alert(`Não consegui salvar a localização.\n\n${(e as Error)?.message || ''}`)
+                }
+              }}
+              className="h-9 flex-1 rounded-md bg-accent-bg border border-accent/40 text-accent text-[13px] font-bold disabled:opacity-60">
+              {salvarLocalMut.isPending ? 'Salvando…' : '✅ Salvar aqui'}
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Overlay: lista (tabela) */}
