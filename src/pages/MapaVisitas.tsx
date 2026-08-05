@@ -127,6 +127,10 @@ function pinCentro(): L.DivIcon {
 
 const brl = (v: number | null) =>
   v == null ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+// Zero no mapa quase nunca é "vendeu por zero": é venda importada sem valor —
+// 1.724 das 2.204 linhas de vendas_mapa vieram só com nome e cidade, sem valor,
+// sem data e sem vendedor. Escrever "R$ 0" afirma um número que ninguém apurou.
+const temValor = (v: number | null) => v != null && Number(v) > 0
 // Valor curto pro painel por estado (a coluna é estreita): R$ 6,7 mi · R$ 904 mil
 const brlCurto = (v: number) => {
   if (!v) return 'R$ 0'
@@ -283,7 +287,7 @@ function blocoViagem(p: OrcamentoPonto, vizinhos: OrcamentoPonto[], jaNaViagem: 
     const dentro = jaNaViagem.has(c.cli_key)
     return `<li style="display:flex;align-items:center;gap:6px;padding:3px 0;border-top:1px solid #e2e8f0">
       <span style="flex:1;min-width:0;font-size:12px;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.cliente)}">${esc(c.cliente) || '—'}</span>
-      <span style="font-size:11px;color:#64748b;white-space:nowrap">${brl(c.total)}</span>
+      <span style="font-size:11px;color:${temValor(c.total) ? '#64748b' : '#cbd5e1'};white-space:nowrap">${temValor(c.total) ? brl(c.total) : '—'}</span>
       <button data-viagem data-key="${encodeURIComponent(c.cli_key)}" ${dentro ? 'disabled' : ''}
         style="padding:2px 8px;border:0;border-radius:6px;background:${dentro ? '#e2e8f0' : '#2563eb'};color:${dentro ? '#64748b' : '#fff'};font-weight:700;font-size:11px;cursor:${dentro ? 'default' : 'pointer'}">${dentro ? '✓' : '＋'}</button>
     </li>`
@@ -314,7 +318,7 @@ function blocoVizinhos(p: OrcamentoPonto, vizinhos: OrcamentoPonto[]): string {
       <button data-ir data-key="${encodeURIComponent(c.cli_key)}"
         style="display:flex;align-items:center;gap:6px;width:100%;padding:4px 0;border:0;background:none;cursor:pointer;text-align:left">
         <span style="flex:1;min-width:0;font-size:12px;color:#1d4ed8;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.cliente)}">${esc(c.cliente) || '—'}</span>
-        <span style="font-size:11px;color:#64748b;white-space:nowrap">${brl(c.total)}</span>
+        <span style="font-size:11px;color:${temValor(c.total) ? '#64748b' : '#cbd5e1'};white-space:nowrap">${temValor(c.total) ? brl(c.total) : '—'}</span>
       </button>
     </li>`).join('')
   return `
@@ -354,8 +358,10 @@ function popupOrcamento(
       ${loc ? `<div style="font-size:12px;color:#64748b">${loc}${dist != null ? ` · <b>${dist.toFixed(0)} km</b>` : ''}</div>` : ''}
       <div style="margin-top:4px">${vendBadge}</div>
       ${p.numeros ? `<div style="font-size:11px;color:#475569;margin-top:3px">🧾 Nº ${esc(p.numeros)}</div>` : ''}
-      <div style="font-size:14px;font-weight:700;color:#10b981;margin-top:3px">${brl(p.total)}</div>
-      <div style="font-size:11px;color:#64748b;margin-top:2px">${p.n_orcamentos} orçamento${p.n_orcamentos === 1 ? '' : 's'} · último ${dataBR(p.data_recente)} <b>(${idadeLabel(p.data_recente)})</b></div>
+      ${temValor(p.total)
+        ? `<div style="font-size:14px;font-weight:700;color:#10b981;margin-top:3px">${brl(p.total)}</div>`
+        : `<div style="font-size:12px;color:#94a3b8;font-style:italic;margin-top:3px">valor não informado</div>`}
+      <div style="font-size:11px;color:#64748b;margin-top:2px">${p.n_orcamentos} orçamento${p.n_orcamentos === 1 ? '' : 's'}${p.data_recente ? ` · último ${dataBR(p.data_recente)} <b>(${idadeLabel(p.data_recente)})</b>` : ' · sem data'}</div>
       <div style="font-size:11px;color:#64748b;margin-top:3px">Vendedor: ${esc(p.vendedor) || '—'}</div>
       ${foneFmt ? `<div style="font-size:12px;color:#0f172a;margin-top:4px">📱 ${esc(foneFmt)}</div>` : ''}
       ${tel ? `<a href="https://wa.me/${tel}" target="_blank" rel="noopener" style="display:inline-block;margin-top:4px;font-size:12px;color:#10b981;font-weight:600">Abrir WhatsApp ↗</a>` : ''}
