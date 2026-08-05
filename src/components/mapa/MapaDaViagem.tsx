@@ -53,9 +53,17 @@ function pino(cor: string, texto: string, aprox: boolean): L.DivIcon {
 type ModoAdd = null | { tipo: TipoParada; nome: string; lat: number | null; lng: number | null }
 
 export function MapaDaViagem({
-  paradas, viagemId, podeAdicionar, dia,
+  paradas, todasDaViagem, viagemId, podeAdicionar, dia,
 }: {
+  /** o que aparece no mapa — pode estar filtrado por vendedor */
   paradas: ParadaConfirmacao[]
+  /**
+   * TODAS as paradas da viagem, sem filtro. Ordem e "já está na viagem" têm que
+   * sair daqui: calculando pela lista filtrada, adicionar com um vendedor
+   * selecionado dava ordem baixa demais (colidindo com parada existente) e a
+   * busca oferecia cliente que já estava na viagem, só que de outro vendedor.
+   */
+  todasDaViagem: ParadaConfirmacao[]
   viagemId: string
   /** criador da viagem ou admin — é o que a policy viagem_paradas_ins exige */
   podeAdicionar: boolean
@@ -83,7 +91,7 @@ export function MapaDaViagem({
   // carregar isso junto com o quadro seria pagar caro por algo raramente usado.
   const [buscaCli, setBuscaCli] = useState<string | null>(null)
   const { data: base = [], isLoading: loadingBase } = useOrcamentosMapa({ enabled: buscaCli != null })
-  const jaNaViagem = useMemo(() => new Set(paradas.flatMap(p => p.cliKeys)), [paradas])
+  const jaNaViagem = useMemo(() => new Set(todasDaViagem.flatMap(p => p.cliKeys)), [todasDaViagem])
   const achados = useMemo(() => {
     const t = (buscaCli || '').trim().toLowerCase()
     if (t.length < 2) return []
@@ -92,6 +100,12 @@ export function MapaDaViagem({
       .filter(p => [p.cliente, p.cidade, p.uf, p.telefone, p.fone].some(x => (x || '').toLowerCase().includes(t)))
       .slice(0, 25)
   }, [base, buscaCli, jaNaViagem])
+
+  // Sempre da lista COMPLETA — ver o comentário do prop todasDaViagem.
+  const proximaOrdem = useMemo(
+    () => todasDaViagem.filter(p => p.dia === dia).length + 1,
+    [todasDaViagem, dia],
+  )
 
   const comCoord = useMemo(() => paradas.filter(p => p.lat != null && p.lng != null), [paradas])
 
@@ -293,7 +307,7 @@ export function MapaDaViagem({
                     if (!parada) return
                     await adicionar.mutateAsync({
                       viagemId, dia,
-                      ordem: paradas.filter(x => x.dia === dia).length + 1,
+                      ordem: proximaOrdem,
                       parada,
                     })
                     setBuscaCli(null)
@@ -363,7 +377,7 @@ export function MapaDaViagem({
                 try {
                   await adicionar.mutateAsync({
                     viagemId, dia,
-                    ordem: paradas.filter(p => p.dia === dia).length + 1,
+                    ordem: proximaOrdem,
                     parada: pontoLivre(modoAdd.tipo, modoAdd.nome.trim(), modoAdd.lat!, modoAdd.lng!),
                   })
                   setModoAdd(null)

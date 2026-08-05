@@ -306,6 +306,7 @@ function CardViagem({
             {verMapa && (
               <MapaDaViagem
                 paradas={mapaParadas}
+                todasDaViagem={v.paradasDetalhe}
                 viagemId={v.id}
                 podeAdicionar={podeAdicionar}
                 dia={Math.max(1, ...v.paradasDetalhe.map(p => p.dia))}
