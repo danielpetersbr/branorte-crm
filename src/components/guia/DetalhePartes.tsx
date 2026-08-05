@@ -21,7 +21,11 @@ export function Secao({
       destaque ? 'border-accent/30 bg-accent-bg/30' : 'border-border bg-surface',
       className,
     )}>
-      <h3 className="mb-2.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-ink-faint">
+      {/* Era `text-[11px] uppercase tracking-wide text-ink-faint`. No tema
+          escuro, `ink-faint` (240 3% 50%) sobre `surface` (240 8% 11%) dá ~4,2:1
+          — em caixa-alta de 11px com tracking aberto, era o texto mais difícil
+          da tela nomeando todas as seções dela. */}
+      <h3 className="mb-2.5 flex items-center gap-1.5 text-[13px] font-semibold tracking-[-0.01em] text-ink">
         {icone}{titulo}
       </h3>
       {children}
@@ -53,11 +57,17 @@ export function Lista({ itens, marcador = '•' }: { itens: string[]; marcador?:
   )
 }
 
-/** Lista numerada de perguntas — o vendedor lê em sequência, no telefone. */
-export function Perguntas({ perguntas }: { perguntas: string[] }) {
+/**
+ * Lista numerada de perguntas — o vendedor lê em sequência, no telefone.
+ *
+ * `className` existe pro Atendimento rápido: quando as perguntas caem na faixa
+ * de largura inteira (notebook 1366), uma coluna só deixaria 900px de vazio à
+ * direita. Lá elas viram `columns-2/3`.
+ */
+export function Perguntas({ perguntas, className }: { perguntas: string[]; className?: string }) {
   if (!perguntas?.length) return null
   return (
-    <ol className="space-y-2">
+    <ol className={cn('space-y-2', className)}>
       {perguntas.map((p, i) => (
         <li key={i} className="flex gap-2.5 text-[13px] leading-relaxed text-ink">
           <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-accent/15 text-[10px] font-bold text-accent">

@@ -7,33 +7,41 @@
  *   consumo mensal  →  QUANTO ELE QUER TRABALHAR  →  produção por hora
  *   →  margem  →  a formulação vira capacidade de silo  →  granel ou ensacado
  *
- * O SEGUNDO PASSO É O QUE MUDA TUDO, e era o que estava escondido: a
- * `capacidadeParaAnalise` do resumo assume 26 dias × 8 h × 80% CRAVADOS no
- * código. Dois clientes com o mesmo rebanho compram máquinas diferentes por
- * causa dessa pergunta, então aqui ela é campo, não premissa.
+ * O SEGUNDO PASSO É O QUE MUDA TUDO — e por isso a jornada NÃO mora mais aqui:
+ * ela é estado do `AtendimentoRapido`, porque o kg/h do mostrador sai dela. Ter
+ * a jornada aqui dentro produzia DOIS kg/h na mesma tela: o painel "Capacidade
+ * para análise" assumia 26 dias × 8 h × 80% = 166,4 h/mês, e este componente
+ * nascia em 6 × (52/12) × 8 = 208 h/mês. 25% de diferença, dois degraus de
+ * moinho, os dois números a 30 cm um do outro e nada dizendo qual valia.
  *
  * O catálogo vem de `precos_branorte` ao vivo. Nada de lista copiada: preço e
  * modelo mudam, e a única verdade é a tabela.
  */
 import { useMemo, useState } from 'react'
-import { AlertCircle, Factory, Truck, Warehouse } from 'lucide-react'
+import { AlertCircle, ChevronDown, Truck, Warehouse } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { usePrecosBranorte } from '@/hooks/usePrecosBranorte'
 import { formulasReferencia } from '@/lib/formulacoes-racao'
 import {
   dimensionar, EXPEDICAO_INFO, LIMITE_CAIXA_KG,
-  type Expedicao, type ItemCatalogo, type Recebimento,
+  type Expedicao, type ItemCatalogo, type Jornada, type Recebimento,
 } from '@/lib/dimensionamento-fabrica'
 import type { Especie } from '@/lib/venda-racao/tipos'
 import { cn } from '@/lib/utils'
 
-const kg = (n: number) => `${Math.round(n).toLocaleString('pt-BR')} kg`
 const ton = (n: number) => `${(n / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} t`
 
-/** Espécie do Guia → espécie do catálogo de formulações. */
+/**
+ * Espécie do Guia → espécie do catálogo de formulações.
+ *
+ * Ovino e caprino ficam de FORA de propósito. O mapa mandava os dois pra
+ * `bovinos`, e no dia em que existir uma fase de ovino chamada `cria` a tela
+ * serviria uma formulação BOVINA rotulada "Formulação de referência · Fonte:
+ * Embrapa" pra ovelha. Mineral formulado pra bovino intoxica ovino por cobre.
+ * Sem formulação é uma resposta; a formulação errada com selo de fonte não é.
+ */
 const ESPECIE_FORMULA: Record<string, Especie> = {
   bovinos: 'bovinos', suinos: 'suinos', aves: 'aves',
-  ovinos: 'bovinos', caprinos: 'bovinos',
 }
 
 interface Props {
@@ -41,28 +49,38 @@ interface Props {
   necessidadeMesKg: number | null
   especie: string | null
   fase: string | null
+  /** Jornada é do PAI — é dela que sai o kg/h do mostrador. */
+  jornada: Jornada
+  onJornada: (j: Jornada) => void
   /**
    * O levantamento tem TODOS os dados? A tela inteira segue a disciplina de não
    * fechar equipamento sem isso — e o configurador estava furando: nomeava
    * modelo, capacidade e CV enquanto o painel ao lado dizia "sem todos os dados
    * não dá pra fechar equipamento". Nomear máquina é o que o cliente leva
    * embora da conversa.
+   *
+   * Silo e caixa de ração pronta TAMBÉM passaram a respeitar isso. "2× silo
+   * 42,47 t · funil 60°" é equipamento fechado com capacidade e quantidade, e
+   * saía sem trava nenhuma enquanto o texto ao lado prometia que "nada aqui
+   * fecha equipamento". Só o moinho cumpria a promessa.
    */
   podeFechar: boolean
 }
 
-export function ConfiguradorFabrica({ necessidadeMesKg, especie, fase, podeFechar }: Props) {
-  // Padrão = 6 × 8, que dá os mesmos ~26 dias/mês que o resumo acima assume.
-  // Assim o número não pula ao abrir o configurador — muda quando o vendedor
-  // mexe, que é o ponto.
-  const [diasPorSemana, setDias] = useState(6)
-  const [horasPorDia, setHoras] = useState(8)
-  const [margemPct, setMargem] = useState(0)
+export function ConfiguradorFabrica({
+  necessidadeMesKg, especie, fase, jornada, onJornada, podeFechar,
+}: Props) {
   const [diasEstoque, setDiasEstoque] = useState(30)
   const [kgRacaoPronta, setKgPronta] = useState(2000)
   const [expedicao, setExpedicao] = useState<Expedicao[]>([])
   const [formulaEscolhida, setFormula] = useState<string | null>(null)
   const [recebimento, setRecebimento] = useState<Record<string, Recebimento>>({})
+  // Formulação, silos, ração pronta e expedição são decisão de PROJETO, de
+  // segunda conversa com o orçamento na mão. Abertas por padrão, competiam por
+  // atenção com o número que a primeira ligação precisa — e convidavam o
+  // vendedor a mexer em granel/ensacado enquanto o cliente ainda contava o
+  // rebanho.
+  const [detalhando, setDetalhando] = useState(false)
 
   const { data: precos = [], isLoading: carregandoCatalogo } = usePrecosBranorte()
 
@@ -89,107 +107,102 @@ export function ConfiguradorFabrica({ necessidadeMesKg, especie, fase, podeFecha
 
   const d = useMemo(() => dimensionar({
     consumoMensalKg: necessidadeMesKg ?? 0,
-    jornada: { diasPorSemana, horasPorDia, margemPct },
+    jornada,
     formula: (formula?.itens ?? []).map(i => ({ nome: i.nome, participacaoPct: i.participacao })),
     diasEstoqueMateria: diasEstoque,
     kgRacaoPronta,
     expedicao,
     recebimentoPorNome: recebimento,
   }, catalogo), [
-    necessidadeMesKg, diasPorSemana, horasPorDia, margemPct, formula,
-    diasEstoque, kgRacaoPronta, expedicao, recebimento, catalogo,
+    necessidadeMesKg, jornada, formula, diasEstoque, kgRacaoPronta,
+    expedicao, recebimento, catalogo,
   ])
 
   const alternarExpedicao = (e: Expedicao) =>
     setExpedicao(v => (v.includes(e) ? v.filter(x => x !== e) : [...v, e]))
 
+  const setJ = (p: Partial<Jornada>) => onJornada({ ...jornada, ...p })
+
   return (
-    <div className="rounded-lg border border-border bg-surface p-3">
-      <div className="mb-3 flex items-center gap-2">
-        <Factory className="h-4 w-4 text-accent" />
-        <h3 className="text-[12px] font-bold uppercase tracking-wide text-ink-muted">
-          Configurar a fábrica
-        </h3>
+    <div className="space-y-3">
+      {/* ── 1. a pergunta que muda tudo — colada ao kg/h de cima ─────────── */}
+      <div>
+        <div className="mb-1.5 text-[12px] text-ink-muted">
+          <span className="font-semibold text-ink">Quanto ele quer trabalhar?</span>
+          {' '}— é isto que define o equipamento, não o rebanho
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <label className="block">
+            <span className="mb-1 block text-[11px] text-ink-faint">Dias por semana</span>
+            <Input type="number" min={1} max={7} value={jornada.diasPorSemana}
+                   onChange={e => setJ({ diasPorSemana: Math.max(1, Math.min(7, Number(e.target.value) || 1)) })} />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[11px] text-ink-faint">Horas por dia</span>
+            <Input type="number" min={1} max={24} value={jornada.horasPorDia}
+                   onChange={e => setJ({ horasPorDia: Math.max(1, Math.min(24, Number(e.target.value) || 1)) })} />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[11px] text-ink-faint">Folga (%)</span>
+            <Input type="number" min={0} max={200} value={jornada.margemPct ?? 0}
+                   onChange={e => setJ({ margemPct: Math.max(0, Math.min(200, Number(e.target.value) || 0)) })} />
+          </label>
+        </div>
       </div>
 
-      {!necessidadeMesKg ? (
-        <p className="text-[12.5px] text-ink-faint">
-          Falta o volume mensal. Lá em cima: pelo rebanho (espécie, fase e quantidade)
-          ou direto em toneladas — é dele que sai a produção por hora.
-        </p>
-      ) : (
-        <div className="space-y-3">
-          {/* ── 1. a pergunta que muda tudo ─────────────────────────────── */}
-          <div>
-            <div className="mb-1.5 text-[11.5px] font-semibold text-ink">
-              Quanto ele quer trabalhar?
-              <span className="ml-1 font-normal text-ink-faint">
-                — é isto que define o equipamento, não o rebanho
-              </span>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <label className="block">
-                <span className="mb-1 block text-[11px] text-ink-faint">Dias por semana</span>
-                <Input type="number" min={1} max={7} value={diasPorSemana}
-                       onChange={e => setDias(Math.max(1, Math.min(7, Number(e.target.value) || 1)))} />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[11px] text-ink-faint">Horas por dia</span>
-                <Input type="number" min={1} max={24} value={horasPorDia}
-                       onChange={e => setHoras(Math.max(1, Math.min(24, Number(e.target.value) || 1)))} />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[11px] text-ink-faint">Folga (%)</span>
-                <Input type="number" min={0} max={200} value={margemPct}
-                       onChange={e => setMargem(Math.max(0, Math.min(200, Number(e.target.value) || 0)))} />
-              </label>
-            </div>
+      {/* ── 2. o equipamento. É o que sai da boca do vendedor ────────────── */}
+      {!!necessidadeMesKg && (
+        <div className="rounded-md border border-border bg-surface px-3 py-2.5">
+          <div className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">
+            Moinho para análise
           </div>
-
-          {/* ── 2. o número que sai disso ───────────────────────────────── */}
-          {d.producao && (
-            <div className="rounded-md border border-accent/30 bg-accent-bg px-3 py-2.5">
-              <div className="text-[11px] uppercase tracking-wide text-ink-faint">
-                Produção necessária
-              </div>
-              <div className="text-[20px] font-bold leading-tight text-ink">
-                {Math.round(d.producao.kgHoraNecessaria).toLocaleString('pt-BR')} kg/h
-              </div>
-              <div className="text-[11.5px] text-ink-muted">
-                {kg(necessidadeMesKg)}/mês em {Math.round(d.producao.horasPorMes)} h de trabalho
-                {margemPct > 0 && ` · com ${margemPct}% de folga sobre ${Math.round(d.producao.kgHoraBase)} kg/h`}
-              </div>
-              <div className="mt-1.5 border-t border-accent/20 pt-1.5 text-[12.5px]">
-                {carregandoCatalogo ? (
-                  <span className="text-ink-faint">Carregando catálogo…</span>
-                ) : !podeFechar ? (
-                  <span className="text-ink-faint">
-                    Falta confirmar os dados com o cliente — o número acima é ponto de
-                    partida, e ainda não dá pra apontar equipamento.
-                  </span>
-                ) : d.moinho ? (
-                  <>
-                    <b className="text-ink">{d.moinho.modelo}</b>
-                    <span className="text-ink-muted">
-                      {' '}— {d.moinho.capacidade}
-                      {d.moinho.motorCv ? ` · ${d.moinho.motorCv} CV` : ''}
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-danger">Nenhum moinho do catálogo atende. Levar à engenharia.</span>
-                )}
-              </div>
-            </div>
+          {carregandoCatalogo ? (
+            <p className="mt-1 text-[13px] text-ink-faint">Carregando catálogo…</p>
+          ) : !podeFechar ? (
+            <p className="mt-1 text-[13px] leading-relaxed text-warning">
+              Falta confirmar os dados com o cliente. Enquanto isso a tela não aponta modelo —
+              o número acima é ponto de partida.
+            </p>
+          ) : d.moinho ? (
+            <>
+              <p className="mt-0.5 text-[19px] font-bold leading-tight tracking-[-0.01em] text-ink">
+                {d.moinho.modelo}
+              </p>
+              <p className="text-[12.5px] text-ink-muted">
+                {d.moinho.capacidade}
+                {d.moinho.motorCv ? ` · ${d.moinho.motorCv} CV` : ''}
+              </p>
+            </>
+          ) : (
+            <p className="mt-1 text-[13px] text-danger">
+              Nenhum moinho do catálogo atende. Levar à engenharia.
+            </p>
           )}
+        </div>
+      )}
 
-          {/* ── 3. formulação ──────────────────────────────────────────── */}
+      {/* ── 3. o resto é projeto: fechado até o vendedor pedir ───────────── */}
+      <button
+        type="button"
+        onClick={() => setDetalhando(v => !v)}
+        aria-expanded={detalhando}
+        className="flex w-full items-center gap-1.5 rounded-md px-1 py-1 text-[12px] text-ink-muted hover:text-ink"
+      >
+        <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', detalhando && 'rotate-180')} />
+        {detalhando ? 'Esconder o projeto' : 'Detalhar o projeto'}
+        <span className="text-ink-faint">— formulação, silos, ração pronta, expedição</span>
+      </button>
+
+      {detalhando && (
+        <div className="space-y-3 border-t border-border pt-3">
+          {/* ── formulação ───────────────────────────────────────────────── */}
           {opcoesFormula.length > 0 && (
             <div>
-              <div className="mb-1.5 text-[11.5px] font-semibold text-ink">Formulação de referência</div>
+              <div className="mb-1.5 text-[12px] font-semibold text-ink">Formulação de referência</div>
               <select
                 value={formula?.chave ?? ''}
                 onChange={e => setFormula(e.target.value)}
-                className="h-9 w-full rounded-md border border-border bg-surface px-2 text-[12.5px] text-ink outline-none focus:border-accent"
+                className="h-9 w-full rounded-md border border-border bg-surface px-2 text-[13px] text-ink outline-none focus:border-accent"
               >
                 {opcoesFormula.map(f => (
                   <option key={f.chave} value={f.chave}>{f.nome}</option>
@@ -199,7 +212,7 @@ export function ConfiguradorFabrica({ necessidadeMesKg, especie, fase, podeFecha
                 <div className="mt-1 text-[11px] text-ink-faint">Fonte: {formula.fonte}</div>
               )}
               {formula?.nota && (
-                <div className="mt-1 flex gap-1.5 text-[11.5px] text-warning">
+                <div className="mt-1 flex gap-1.5 text-[11px] text-warning">
                   <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                   <span>{formula.nota}</span>
                 </div>
@@ -207,13 +220,13 @@ export function ConfiguradorFabrica({ necessidadeMesKg, especie, fase, podeFecha
             </div>
           )}
 
-          {/* ── 4. silos ───────────────────────────────────────────────── */}
+          {/* ── silos ────────────────────────────────────────────────────── */}
           {d.materias.length > 0 && (
             <div>
-              <div className="mb-1.5 flex items-center gap-1.5 text-[11.5px] font-semibold text-ink">
+              <div className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-ink">
                 <Warehouse className="h-3.5 w-3.5" />
                 Recebimento e armazenagem
-                <label className="ml-auto flex items-center gap-1 font-normal text-ink-faint">
+                <label className="ml-auto flex items-center gap-1 text-[11px] font-normal text-ink-faint">
                   guardar
                   <input type="number" min={1} max={365} value={diasEstoque}
                          onChange={e => setDiasEstoque(Math.max(1, Math.min(365, Number(e.target.value) || 1)))}
@@ -221,6 +234,11 @@ export function ConfiguradorFabrica({ necessidadeMesKg, especie, fase, podeFecha
                   dias
                 </label>
               </div>
+              {!podeFechar && (
+                <p className="mb-1.5 text-[11px] leading-relaxed text-warning">
+                  Volume de estocagem para conversa. Silo e funil só saem com o levantamento fechado.
+                </p>
+              )}
               <div className="space-y-1">
                 {d.materias.map(m => (
                   <div key={m.nome} className="rounded border border-border bg-surface-2 px-2.5 py-1.5">
@@ -239,6 +257,7 @@ export function ConfiguradorFabrica({ necessidadeMesKg, especie, fase, podeFecha
                           onClick={() => setRecebimento(v => ({ ...v, [m.nome]: r }))}
                           className={cn(
                             'rounded-full border px-2 py-0.5 text-[11px] transition-colors',
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
                             m.recebimento === r
                               ? 'border-accent bg-accent text-white'
                               : 'border-border bg-surface text-ink-faint hover:text-ink',
@@ -247,7 +266,7 @@ export function ConfiguradorFabrica({ necessidadeMesKg, especie, fase, podeFecha
                           {r === 'granel' ? 'a granel' : 'ensacado'}
                         </button>
                       ))}
-                      {m.silo && (
+                      {podeFechar && m.silo && (
                         <span className="text-[11.5px] text-ink-muted">
                           {m.quantidadeSilos > 1 ? `${m.quantidadeSilos}× ` : ''}
                           silo {m.silo.capacidade}
@@ -257,7 +276,7 @@ export function ConfiguradorFabrica({ necessidadeMesKg, especie, fase, podeFecha
                       {/* O catálogo tem degraus enormes: pra 45 t de milho o menor
                           que cabe sozinho é o de 196,5 t. A combinação fica ao lado
                           pra o vendedor escolher — a conta não decide por ele. */}
-                      {m.alternativa && (
+                      {podeFechar && m.alternativa && (
                         <span className="text-[11.5px] text-accent">
                           ou {m.alternativa.quantidade}× {m.alternativa.silo.capacidade}
                         </span>
@@ -272,9 +291,9 @@ export function ConfiguradorFabrica({ necessidadeMesKg, especie, fase, podeFecha
             </div>
           )}
 
-          {/* ── 5. ração pronta ────────────────────────────────────────── */}
+          {/* ── ração pronta ─────────────────────────────────────────────── */}
           <div>
-            <div className="mb-1.5 flex items-center gap-2 text-[11.5px] font-semibold text-ink">
+            <div className="mb-1.5 flex items-center gap-2 text-[12px] font-semibold text-ink">
               Ração pronta guardada
               <input type="number" min={0} step={500} value={kgRacaoPronta}
                      onChange={e => setKgPronta(Math.max(0, Number(e.target.value) || 0))}
@@ -282,24 +301,26 @@ export function ConfiguradorFabrica({ necessidadeMesKg, especie, fase, podeFecha
               <span className="font-normal text-ink-faint">kg</span>
             </div>
             <div className="text-[12.5px] text-ink-muted">
-              {d.racaoPronta.item
-                ? <>
-                    {d.racaoPronta.quantidade > 1 ? `${d.racaoPronta.quantidade}× ` : ''}
-                    <b className="text-ink">
-                      {d.racaoPronta.tipo === 'caixa' ? 'Caixa' : 'Silo de ração'} {d.racaoPronta.item.capacidade}
-                    </b>
-                    {d.racaoPronta.item.modelo ? ` (${d.racaoPronta.item.modelo})` : ''}
-                  </>
-                : <span className="text-ink-faint">Nada a guardar.</span>}
+              {!podeFechar
+                ? <span className="text-warning">Sai com o levantamento fechado.</span>
+                : d.racaoPronta.item
+                  ? <>
+                      {d.racaoPronta.quantidade > 1 ? `${d.racaoPronta.quantidade}× ` : ''}
+                      <b className="text-ink">
+                        {d.racaoPronta.tipo === 'caixa' ? 'Caixa' : 'Silo de ração'} {d.racaoPronta.item.capacidade}
+                      </b>
+                      {d.racaoPronta.item.modelo ? ` (${d.racaoPronta.item.modelo})` : ''}
+                    </>
+                  : <span className="text-ink-faint">Nada a guardar.</span>}
               <div className="text-[11px] text-ink-faint">
                 Até {ton(LIMITE_CAIXA_KG)} é caixa; acima é silo de ração (funil 60°).
               </div>
             </div>
           </div>
 
-          {/* ── 6. expedição ───────────────────────────────────────────── */}
+          {/* ── expedição ────────────────────────────────────────────────── */}
           <div>
-            <div className="mb-1.5 flex items-center gap-1.5 text-[11.5px] font-semibold text-ink">
+            <div className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-ink">
               <Truck className="h-3.5 w-3.5" /> Como sai a ração
             </div>
             <div className="flex flex-wrap gap-1.5">
@@ -310,7 +331,8 @@ export function ConfiguradorFabrica({ necessidadeMesKg, especie, fase, podeFecha
                   aria-pressed={expedicao.includes(e)}
                   onClick={() => alternarExpedicao(e)}
                   className={cn(
-                    'rounded-full border px-2.5 py-1 text-[12.5px] transition-colors',
+                    'rounded-full border px-2.5 py-1 text-[12px] transition-colors',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
                     expedicao.includes(e)
                       ? 'border-accent bg-accent text-white'
                       : 'border-border bg-surface text-ink-muted hover:text-ink',
@@ -321,16 +343,16 @@ export function ConfiguradorFabrica({ necessidadeMesKg, especie, fase, podeFecha
               ))}
             </div>
             {expedicao.map(e => (
-              <div key={e} className="mt-1 text-[11.5px] text-ink-faint">
+              <div key={e} className="mt-1 text-[11px] text-ink-faint">
                 {EXPEDICAO_INFO[e].rotulo}: {EXPEDICAO_INFO[e].precisa}
               </div>
             ))}
           </div>
 
-          {/* ── o que impede de fechar ─────────────────────────────────── */}
+          {/* ── o que impede de fechar ───────────────────────────────────── */}
           {d.pendencias.length > 0 && (
-            <div className="rounded-md border-l-2 border-warning bg-warning/5 px-2.5 py-2">
-              <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-warning">
+            <div className="rounded-md border-l-[3px] border-l-warning bg-warning-bg/40 px-3 py-2">
+              <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-warning">
                 Falta pra fechar equipamento
               </div>
               <ul className="space-y-0.5 text-[12px] text-ink-muted">

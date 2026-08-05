@@ -8,10 +8,20 @@
  * Disciplina que não se quebra: sem espécie, fase, quantidade e consumo
  * CONFIRMADO, a tela não fecha capacidade de equipamento. Mostra o cálculo como
  * ponto de partida e diz, com todas as letras, o que falta.
+ *
+ * ── A tela tem TRÊS papéis, e cada um tem casca própria ─────────────────────
+ *   ENTRADA    o que o vendedor clica enquanto ouve      → recuada (bg-bg)
+ *   MOSTRADOR  t/mês e kg/h, o que ele fala em voz alta  → elevada (accent/10)
+ *   APOIO      perguntas, atenção, processo              → plana (bg-surface)
+ *
+ * Antes os três usavam `rounded-lg border-border bg-surface`, a menos de 1px de
+ * padding entre eles: na abertura, "Espécie" — a pergunta que destrava a tela
+ * inteira — tinha exatamente o mesmo peso visual da lista de matérias-primas.
+ * O olho ia pro maior objeto, que era o menos importante.
  */
 import { useMemo, useState } from 'react'
 import {
-  AlertCircle, ArrowRight, Check, Copy, Factory, ListChecks, RotateCcw, Wrench,
+  ArrowRight, Ban, Check, Copy, Factory, ListChecks, RotateCcw, Search, Wrench,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -20,7 +30,8 @@ import { Alerta } from './Selos'
 import { Perguntas, Secao } from './DetalhePartes'
 import { ConfiguradorFabrica } from './ConfiguradorFabrica'
 import { analisar, consumoDeReferencia, resumoParaCopiar } from '@/lib/guia/atendimento'
-import { EQUIPAMENTOS, ESPECIES, NOME_SISTEMA, SISTEMAS } from '@/lib/guia/catalogo'
+import { producaoNecessaria, type Jornada } from '@/lib/dimensionamento-fabrica'
+import { EQUIPAMENTOS, ESPECIES, NOME_CATEGORIA, NOME_SISTEMA, SISTEMAS } from '@/lib/guia/catalogo'
 import { CATEGORIAS } from '@/lib/venda-racao/catalogo'
 import { cn } from '@/lib/utils'
 import type {
@@ -37,6 +48,9 @@ const VAZIO: Atendimento = {
   produto: null, materias: [], consumoConfirmado: false,
   modo: 'rebanho', consumoKgAnimalMes: null, volumeMesKg: null,
 }
+
+/** 6 × 8 é o que o vendedor encontra na maioria das propriedades. */
+const JORNADA_PADRAO: Jornada = { diasPorSemana: 6, horasPorDia: 8, margemPct: 0 }
 
 /** De onde vem a tonelagem: do rebanho (consome) ou digitada (vende). */
 const MODOS: Array<[ModoVolume, string, string]> = [
@@ -55,21 +69,53 @@ interface Props {
   }) => void
 }
 
-function Passo({ n, titulo, children, ok }: {
-  n: number; titulo: string; children: React.ReactNode; ok?: boolean
+type EstadoPasso = 'ok' | 'atual' | 'pendente'
+
+/**
+ * O numeral cardinal SAIU do círculo.
+ *
+ * Ele só funciona quando o conjunto é fixo, e aqui não é: fase e sistema não
+ * montavam sem espécie, então o vendedor lia "1, 4, 5, 6" na abertura — um
+ * índice que mente sobre o próprio conjunto. Pior que a estética: ao escolher a
+ * espécie, dois cards se inseriam ENTRE o 1 e o 4 e empurravam tudo pra baixo,
+ * mudando de lugar o alvo que ele ia clicar no meio da fala do cliente.
+ * Agora os passos montam sempre — travados até destravar — e o estado vem do
+ * marcador, não do número. A ordem visual já vem do empilhamento.
+ */
+function Passo({ titulo, estado, travado, valor, extra, children }: {
+  titulo: string
+  estado: EstadoPasso
+  /** Depende de outro passo (espécie). Aparece, mas não aceita clique. */
+  travado?: boolean
+  /** O que já foi respondido, ao lado do título — pro vendedor varrer de relance. */
+  valor?: string | null
+  extra?: React.ReactNode
+  children: React.ReactNode
 }) {
   return (
-    <div className="rounded-lg border border-border bg-surface p-3">
+    <div className={cn(
+      'rounded-lg border p-3 transition-colors',
+      estado === 'atual' ? 'border-accent/30 bg-surface ring-1 ring-accent/10'
+        : estado === 'ok' ? 'border-border bg-surface'
+        : 'border-border bg-bg',
+      travado && 'opacity-45',
+    )}>
       <div className="mb-2 flex items-center gap-2">
         <span className={cn(
-          'flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold',
-          ok ? 'bg-success text-white' : 'bg-surface-2 text-ink-faint',
+          'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border',
+          estado === 'ok' ? 'border-success bg-success text-white'
+            : estado === 'atual' ? 'border-accent'
+            : 'border-border',
         )}>
-          {ok ? <Check className="h-3 w-3" /> : n}
+          {estado === 'ok' && <Check className="h-3 w-3" />}
         </span>
-        <h3 className="text-[12px] font-bold uppercase tracking-wide text-ink-muted">{titulo}</h3>
+        <h3 className="text-[13px] font-semibold tracking-[-0.01em] text-ink">{titulo}</h3>
+        {!!valor && <span className="truncate text-[12px] text-ink-muted">{valor}</span>}
+        {extra && <div className="ml-auto shrink-0">{extra}</div>}
       </div>
-      {children}
+      <div className={cn(travado && 'pointer-events-none')} aria-disabled={travado || undefined}>
+        {children}
+      </div>
     </div>
   )
 }
@@ -89,7 +135,8 @@ function Opcoes<T extends string>({ valor, opcoes, onEscolher, rotulo }: {
           aria-pressed={valor === o.chave}
           onClick={() => onEscolher(valor === o.chave ? null : o.chave)}
           className={cn(
-            'rounded-full border px-2.5 py-1 text-[12.5px] transition-colors',
+            'rounded-full border px-2.5 py-1 text-[12px] transition-colors',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
             valor === o.chave
               ? 'border-accent bg-accent text-white'
               : 'border-border bg-surface text-ink-muted hover:border-border-strong hover:text-ink',
@@ -102,6 +149,24 @@ function Opcoes<T extends string>({ valor, opcoes, onEscolher, rotulo }: {
   )
 }
 
+/** Um número do mostrador. Existe desde a abertura, em `—`. */
+function Numero({ rotulo, valor, unidade }: {
+  rotulo: string; valor: string | null; unidade: string
+}) {
+  return (
+    <div>
+      <dt className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">{rotulo}</dt>
+      <dd className={cn(
+        'mt-1 text-[28px] font-bold leading-none tabular-nums tracking-[-0.02em]',
+        valor ? 'text-ink' : 'text-ink-faint',
+      )}>
+        {valor ?? '—'}
+        <span className="ml-1.5 text-[12px] font-normal tracking-normal text-ink-muted">{unidade}</span>
+      </dd>
+    </div>
+  )
+}
+
 export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }: Props) {
   const [a, setA] = useState<Atendimento>(VAZIO)
   const modo: ModoVolume = a.modo ?? 'rebanho'
@@ -109,6 +174,11 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
   // o valor em uso (o informado, quando existe), entao nao serve pra comparar.
   const consumoCatalogo = consumoDeReferencia(a.especie, a.fase)
   const [copiado, setCopiado] = useState(false)
+  const [filtroMateria, setFiltroMateria] = useState('')
+  // A jornada mora AQUI, não no configurador: é dela que sai o kg/h do
+  // mostrador. Ver o cabeçalho de ConfiguradorFabrica.tsx pra história dos dois
+  // kg/h divergentes que isso resolveu.
+  const [jornada, setJornada] = useState<Jornada>(JORNADA_PADRAO)
 
   const fases = useMemo(() => {
     if (!a.especie) return []
@@ -132,9 +202,20 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
   const r = useMemo(() => analisar(a, animais, materias), [a, animais, materias])
   const nomeFase = fases.find(f => f.chave === a.fase)?.nome ?? ''
 
+  // ── o kg/h. UM só na tela, e sai da jornada que o vendedor ajustou ────────
+  const producao = useMemo(
+    () => (r.necessidadeMesKg ? producaoNecessaria(r.necessidadeMesKg, jornada) : null),
+    [r.necessidadeMesKg, jornada],
+  )
+  const textoJornada = `${jornada.diasPorSemana} dias × ${jornada.horasPorDia} h`
+    + (jornada.margemPct ? ` · ${jornada.margemPct}% de folga` : '')
+
   const copiar = async () => {
     try {
-      await navigator.clipboard.writeText(resumoParaCopiar(a, r, nomeFase))
+      await navigator.clipboard.writeText(resumoParaCopiar(a, r, nomeFase, {
+        producaoKgH: producao?.kgHoraNecessaria ?? null,
+        jornada: textoJornada,
+      }))
       setCopiado(true)
       setTimeout(() => setCopiado(false), 2000)
     } catch { /* clipboard bloqueado */ }
@@ -146,26 +227,121 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
       materias: s.materias.includes(slug) ? s.materias.filter(x => x !== slug) : [...s.materias, slug],
     }))
 
+  // ── progressão ────────────────────────────────────────────────────────────
+  // Derivada, não escrita à mão: no modo VENDA não existe rebanho nem consumo
+  // por animal, e o total tem que acompanhar. "4 de 7" com um total fixo de 7
+  // num modo que só tem 6 passos é a mesma mentira do numeral cardinal.
+  const passos = useMemo(() => {
+    const p: Array<{ chave: string; ok: boolean; travado: boolean }> = [
+      { chave: 'especie', ok: !!a.especie, travado: false },
+      {
+        chave: 'rebanho',
+        ok: modo === 'volume' ? !!a.volumeMesKg : !!a.quantidade,
+        travado: false,
+      },
+      { chave: 'fase', ok: !!a.fase, travado: !a.especie },
+      { chave: 'sistema', ok: !!a.sistema, travado: !a.especie },
+    ]
+    if (modo === 'rebanho') p.push({ chave: 'consumo', ok: a.consumoConfirmado, travado: !a.especie })
+    p.push({ chave: 'produto', ok: !!a.produto, travado: false })
+    p.push({ chave: 'materias', ok: !!a.materias.length, travado: false })
+    return p
+  }, [a, modo])
+
+  const respondidos = passos.filter(p => p.ok).length
+  const atual = passos.find(p => !p.ok && !p.travado)?.chave ?? null
+  const estadoDe = (chave: string): EstadoPasso => {
+    const p = passos.find(x => x.chave === chave)
+    if (p?.ok) return 'ok'
+    return chave === atual ? 'atual' : 'pendente'
+  }
+  const travadoEm = (chave: string) => !!passos.find(x => x.chave === chave)?.travado
+
+  // "Começou" separa o checklist do alarme. Os 6 badges laranja de "ainda falta"
+  // apareciam em 100% das aberturas — um alarme que dispara sempre não é alarme,
+  // é papel de parede, e treina o vendedor a ignorar laranja, que é justamente a
+  // cor dos avisos que importam.
+  const comecou = respondidos > 0
+
+  // ── matérias-primas: filtro, marcadas no topo, agrupadas ─────────────────
+  const materiasFiltradas = useMemo(() => {
+    const t = filtroMateria.trim().toLowerCase()
+    if (!t) return materiasVisiveis
+    return materiasVisiveis.filter(m =>
+      m.nome.toLowerCase().includes(t)
+      || (m.sinonimos ?? []).some(s => s.toLowerCase().includes(t)))
+  }, [materiasVisiveis, filtroMateria])
+
+  const gruposMateria = useMemo(() => {
+    const mapa = new Map<string, GuiaMateria[]>()
+    for (const m of materiasFiltradas) {
+      if (a.materias.includes(m.slug)) continue   // marcadas ficam no topo
+      const nome = NOME_CATEGORIA[m.categoria] ?? m.categoria
+      const lista = mapa.get(nome)
+      if (lista) lista.push(m); else mapa.set(nome, [m])
+    }
+    return Array.from(mapa.entries()).sort((x, y) => x[0].localeCompare(y[0], 'pt-BR'))
+  }, [materiasFiltradas, a.materias])
+
+  const marcadas = useMemo(
+    () => materiasVisiveis.filter(m => a.materias.includes(m.slug)),
+    [materiasVisiveis, a.materias],
+  )
+
+  const pilulaMateria = (m: GuiaMateria) => (
+    <button
+      key={m.slug}
+      type="button"
+      aria-pressed={a.materias.includes(m.slug)}
+      onClick={() => alternarMateria(m.slug)}
+      className={cn(
+        'rounded-full border px-2 py-0.5 text-[12px] transition-colors',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
+        a.materias.includes(m.slug)
+          ? 'border-accent bg-accent text-white'
+          : 'border-border bg-surface text-ink-muted hover:border-border-strong hover:text-ink',
+      )}
+    >
+      {m.nome}
+    </button>
+  )
+
+  // A terceira trilha do grid era EXPLÍCITA e por isso NÃO colapsava por falta
+  // de filho — `fr` distribui espaço livre, não é função do conteúdo. Em 1920
+  // com a sidebar do CRM davam 445px (27,8% da tela) de branco na abertura, que
+  // é o buraco que aparecia no print. Renderizar o filho condicionalmente, como
+  // se fazia antes, não resolvia nada: a trilha continuava lá, vazia.
+  const temApoio = r.perguntas.length > 0
+
   return (
-    // TRES colunas em tela larga. Eram duas de 50%: o formulario ficava numa
-    // coluna estreita com as opcoes quebrando de tres em tres, e as 12 perguntas
-    // empurravam a Necessidade e os Pontos de atencao pra fora da tela — o
-    // vendedor rolava enquanto o cliente falava. Agora o que ele PREENCHE tem
-    // mais largura, o que ele LE fica ao lado, e as perguntas ganham coluna
-    // propria em vez de disputar espaco com o resultado.
-    <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,0.85fr)]">
+    <div className={cn(
+      'grid gap-4 lg:grid-cols-2',
+      temApoio
+        ? '2xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)_minmax(0,0.72fr)]'
+        : '2xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]',
+    )}>
       {/* ---------------- entrada ---------------- */}
-      <div className="space-y-3">
+      <div className="space-y-2.5">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-[12.5px] text-ink-muted">
-            Marque o que o cliente já contou. O que faltar aparece do lado como pergunta.
+          <p className="text-[12px] text-ink-muted">
+            <span className="font-semibold tabular-nums text-ink">
+              {respondidos} de {passos.length}
+            </span>
+            {' '}respondidos
+            {!!r.faltando.length && (
+              <> · falta {r.faltando[0].charAt(0).toLowerCase() + r.faltando[0].slice(1)}</>
+            )}
           </p>
-          <Button size="sm" onClick={() => setA(VAZIO)}>
+          <Button size="sm" onClick={() => { setA(VAZIO); setFiltroMateria('') }}>
             <RotateCcw className="h-3.5 w-3.5" />Limpar
           </Button>
         </div>
 
-        <Passo n={1} titulo="Espécie" ok={!!a.especie}>
+        <Passo
+          titulo="Espécie"
+          estado={estadoDe('especie')}
+          valor={a.especie ? ESPECIES.find(e => e.chave === a.especie)?.nome : null}
+        >
           <Opcoes
             rotulo="Espécie"
             valor={a.especie}
@@ -180,29 +356,19 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
           />
         </Passo>
 
-        {!!a.especie && (
-          <Passo n={2} titulo="Fase produtiva" ok={!!a.fase}>
-            <Opcoes
-              rotulo="Fase"
-              valor={a.fase}
-              opcoes={fases}
-              onEscolher={v => setA(s => ({ ...s, fase: v, consumoConfirmado: false, consumoKgAnimalMes: null }))}
-            />
-          </Passo>
-        )}
-
-        {!!a.especie && (
-          <Passo n={3} titulo="Sistema de criação" ok={!!a.sistema}>
-            <Opcoes
-              rotulo="Sistema"
-              valor={a.sistema}
-              opcoes={sistemas.map(s => ({ chave: s.chave, nome: s.nome }))}
-              onEscolher={v => setA(s => ({ ...s, sistema: v }))}
-            />
-          </Passo>
-        )}
-
-        <Passo n={4} titulo="Quanto de ração por mês" ok={!!r.necessidadeMesKg}>
+        {/* O produtor fala "500 cabeças" logo depois de dizer o animal. A
+            quantidade era um campo escondido DENTRO do passo "Quanto de ração
+            por mês", entre o seletor de modo e o "kg por animal": o vendedor
+            ouvia o número, tinha que descer, achar o campo certo entre outros
+            dois, digitar e SUBIR de volta pra fase. Agora é passo próprio, na
+            posição em que a conversa acontece. */}
+        <Passo
+          titulo={modo === 'volume' ? 'Quantas toneladas por mês' : 'Quantos animais'}
+          estado={estadoDe('rebanho')}
+          valor={modo === 'volume'
+            ? (a.volumeMesKg ? `${(a.volumeMesKg / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} t` : null)
+            : (a.quantidade ? a.quantidade.toLocaleString('pt-BR') : null)}
+        >
           {/* DUAS origens pro volume. Quem VENDE ração já sabe a tonelagem e não
               tem rebanho — antes precisava inventar um pra chegar no número que
               já sabia. */}
@@ -219,6 +385,7 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
                 onClick={() => setA(s => ({ ...s, modo: m, consumoConfirmado: false }))}
                 className={cn(
                   'rounded-full border px-2.5 py-1 text-[12px] transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
                   modo === m
                     ? 'border-accent bg-accent text-white'
                     : 'border-border bg-surface text-ink-muted hover:text-ink',
@@ -240,92 +407,127 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
                   aria-label="Volume mensal em kg"
                 />
               </div>
-              <span className="text-[12.5px] text-ink-faint">
-                kg por mês
-                {!!a.volumeMesKg && ` · ${(a.volumeMesKg / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} t`}
-              </span>
+              <span className="text-[12px] text-ink-faint">kg por mês</span>
             </div>
           ) : (
-            <>
-              <div className="flex flex-wrap items-end gap-2">
-                <label className="block">
-                  <span className="mb-1 block text-[11px] text-ink-faint">
-                    {ESPECIES.find(e => e.chave === a.especie)?.animal ?? 'Animais'}
-                  </span>
-                  <div className="w-32">
-                    <Input
-                      type="number" min={0} inputMode="numeric"
-                      value={a.quantidade ?? ''}
-                      onChange={e => setA(s => ({ ...s, quantidade: e.target.value ? Number(e.target.value) : null }))}
-                      placeholder="0"
-                      aria-label="Quantidade de animais"
-                    />
-                  </div>
-                </label>
-                {/* Consumo por animal EDITÁVEL. O de catálogo é média de tabela;
-                    o produtor sabe o dele, e a diferença multiplica pelo rebanho
-                    inteiro — 20 kg a mais em 500 cabeças são 10 t/mês. */}
-                <label className="block">
-                  <span className="mb-1 block text-[11px] text-ink-faint">kg por animal/mês</span>
-                  <div className="w-28">
-                    {/* O valor de catálogo é PLACEHOLDER, não `value`.
-                        Estava como value com fallback (`?? r.consumoMesKg`), e
-                        isso formava um laço: <input type="number"> devolve ""
-                        em TODO estado intermediário de decimal ("3,", "0."), o
-                        handler gravava null, o value voltava a ser o catálogo e
-                        o React sobrescrevia o que o vendedor estava digitando.
-                        Não dava pra apagar o campo, e — pior — ele MENTIA:
-                        digitar "3,5" virava 3.45, porque o catálogo se colava
-                        aos dígitos. O campo de volume ao lado nunca teve isso,
-                        justamente por usar `?? ''`. */}
-                    <Input
-                      type="number" min={0} step="0.1" inputMode="decimal"
-                      value={a.consumoKgAnimalMes ?? ''}
-                      onChange={e => setA(s => ({
-                        ...s,
-                        consumoKgAnimalMes: e.target.value ? Number(e.target.value) : null,
-                        consumoConfirmado: false,
-                      }))}
-                      placeholder={r.consumoMesKg != null ? String(r.consumoMesKg) : '—'}
-                      aria-label="Consumo por animal por mês"
-                    />
-                  </div>
-                </label>
-                {!!r.necessidadeMesKg && (
-                  <div className="pb-1.5 text-[12.5px] text-ink-muted">
-                    ={' '}
-                    <b className="text-ink">
-                      {(r.necessidadeMesKg / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} t/mês
-                    </b>
-                  </div>
-                )}
+            <div className="flex items-end gap-2">
+              <div className="w-32">
+                <Input
+                  type="number" min={0} inputMode="numeric"
+                  value={a.quantidade ?? ''}
+                  onChange={e => setA(s => ({ ...s, quantidade: e.target.value ? Number(e.target.value) : null }))}
+                  placeholder="0"
+                  aria-label="Quantidade de animais"
+                />
               </div>
-              {a.consumoKgAnimalMes != null && a.consumoKgAnimalMes > 0 && (
-                <div className="mt-1 text-[11px] text-ink-faint">
-                  Informado pelo cliente. O catálogo diz {consumoCatalogo ?? '—'} kg.
-                </div>
-              )}
-              {modo === 'rebanho' && r.consumoMesKg !== null && (
-                <label className="mt-2 flex items-start gap-2 text-[12.5px] text-ink">
-                  <input
-                    type="checkbox"
-                    checked={a.consumoConfirmado}
-                    onChange={e => setA(s => ({ ...s, consumoConfirmado: e.target.checked }))}
-                    className="mt-0.5 h-3.5 w-3.5 accent-current"
-                  />
-                  <span>
-                    Confirmei com o cliente: <strong>{r.consumoMesKg} kg por animal por mês</strong>.
-                    <span className="block text-ink-faint">
-                      Sem confirmar, o número é referência — não dimensiona equipamento.
-                    </span>
-                  </span>
-                </label>
-              )}
-            </>
+              <span className="pb-2 text-[12px] text-ink-faint">
+                {(ESPECIES.find(e => e.chave === a.especie)?.animal ?? 'animais').toLowerCase()}
+              </span>
+            </div>
           )}
         </Passo>
 
-        <Passo n={5} titulo="Produto desejado" ok={!!a.produto}>
+        {/* Fase e sistema MONTAM SEMPRE, travados até a espécie. Montando
+            condicionalmente, eles se inseriam no meio da coluna e empurravam
+            tudo que estava embaixo — layout pulando debaixo do dedo do vendedor
+            no meio da ligação. */}
+        <Passo
+          titulo="Fase produtiva"
+          estado={estadoDe('fase')}
+          travado={travadoEm('fase')}
+          valor={nomeFase || null}
+        >
+          {a.especie ? (
+            <Opcoes
+              rotulo="Fase"
+              valor={a.fase}
+              opcoes={fases}
+              onEscolher={v => setA(s => ({ ...s, fase: v, consumoConfirmado: false, consumoKgAnimalMes: null }))}
+            />
+          ) : (
+            <p className="text-[12px] text-ink-faint">Escolha a espécie primeiro.</p>
+          )}
+        </Passo>
+
+        <Passo
+          titulo="Sistema de criação"
+          estado={estadoDe('sistema')}
+          travado={travadoEm('sistema')}
+          valor={a.sistema ? NOME_SISTEMA(a.sistema) : null}
+        >
+          {a.especie ? (
+            <Opcoes
+              rotulo="Sistema"
+              valor={a.sistema}
+              opcoes={sistemas.map(s => ({ chave: s.chave, nome: s.nome }))}
+              onEscolher={v => setA(s => ({ ...s, sistema: v }))}
+            />
+          ) : (
+            <p className="text-[12px] text-ink-faint">Escolha a espécie primeiro.</p>
+          )}
+        </Passo>
+
+        {/* Consumo por animal EDITÁVEL. O de catálogo é média de tabela; o
+            produtor sabe o dele, e a diferença multiplica pelo rebanho inteiro
+            — 20 kg a mais em 500 cabeças são 10 t/mês. */}
+        {modo === 'rebanho' && (
+          <Passo
+            titulo="Consumo por animal"
+            estado={estadoDe('consumo')}
+            travado={travadoEm('consumo')}
+            valor={r.consumoMesKg !== null ? `${r.consumoMesKg} kg/mês` : null}
+          >
+            <div className="flex items-end gap-2">
+              <div className="w-28">
+                {/* O valor de catálogo é PLACEHOLDER, não `value`.
+                    Estava como value com fallback (`?? r.consumoMesKg`), e
+                    isso formava um laço: <input type="number"> devolve ""
+                    em TODO estado intermediário de decimal ("3,", "0."), o
+                    handler gravava null, o value voltava a ser o catálogo e
+                    o React sobrescrevia o que o vendedor estava digitando.
+                    Não dava pra apagar o campo, e — pior — ele MENTIA:
+                    digitar "3,5" virava 3.45, porque o catálogo se colava
+                    aos dígitos. O campo de volume ao lado nunca teve isso,
+                    justamente por usar `?? ''`. */}
+                <Input
+                  type="number" min={0} step="0.1" inputMode="decimal"
+                  value={a.consumoKgAnimalMes ?? ''}
+                  onChange={e => setA(s => ({
+                    ...s,
+                    consumoKgAnimalMes: e.target.value ? Number(e.target.value) : null,
+                    consumoConfirmado: false,
+                  }))}
+                  placeholder={r.consumoMesKg != null ? String(r.consumoMesKg) : '—'}
+                  aria-label="Consumo por animal por mês"
+                />
+              </div>
+              <span className="pb-2 text-[12px] text-ink-faint">kg por animal/mês</span>
+            </div>
+            {a.consumoKgAnimalMes != null && a.consumoKgAnimalMes > 0 && (
+              <p className="mt-1 text-[11px] text-ink-faint">
+                Informado pelo cliente. O catálogo diz {consumoCatalogo ?? '—'} kg.
+              </p>
+            )}
+            {r.consumoMesKg !== null && (
+              <label className="mt-2 flex items-start gap-2 text-[12.5px] text-ink">
+                <input
+                  type="checkbox"
+                  checked={a.consumoConfirmado}
+                  onChange={e => setA(s => ({ ...s, consumoConfirmado: e.target.checked }))}
+                  className="mt-0.5 h-3.5 w-3.5 accent-current"
+                />
+                <span>
+                  Confirmei com o cliente: <strong>{r.consumoMesKg} kg por animal por mês</strong>.
+                  <span className="block text-ink-faint">
+                    Sem confirmar, o número é referência — não dimensiona equipamento.
+                  </span>
+                </span>
+              </label>
+            )}
+          </Passo>
+        )}
+
+        <Passo titulo="Produto desejado" estado={estadoDe('produto')} valor={a.produto}>
           <Opcoes
             rotulo="Produto"
             valor={a.produto}
@@ -334,74 +536,149 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
           />
         </Passo>
 
-        <Passo n={6} titulo="Matérias-primas que ele já tem" ok={!!a.materias.length}>
-          <div className="flex max-h-52 flex-wrap gap-1.5 overflow-y-auto">
-            {materiasVisiveis.map(m => (
-              <button
-                key={m.slug}
-                type="button"
-                aria-pressed={a.materias.includes(m.slug)}
-                onClick={() => alternarMateria(m.slug)}
-                className={cn(
-                  'rounded-full border px-2 py-0.5 text-[12px] transition-colors',
-                  a.materias.includes(m.slug)
-                    ? 'border-accent bg-accent text-white'
-                    : 'border-border bg-surface text-ink-muted hover:border-border-strong hover:text-ink',
-                )}
-              >
-                {m.nome}
-              </button>
+        {/* Eram ~30 pílulas de 12px soltas num `max-h-52 overflow-y-auto`, sem
+            busca, sem agrupamento e sem nenhum sinal de que havia conteúdo
+            abaixo do corte. O vendedor não sabia que "farelo de soja" estava
+            ali — e era a caixa MAIS ALTA da coluna, o passo menos determinante
+            ocupando o maior volume vertical da tela. */}
+        <Passo
+          titulo="Matérias-primas que ele já tem"
+          estado={estadoDe('materias')}
+          extra={
+            <span className="text-[11px] tabular-nums text-ink-faint">
+              {a.materias.length} de {materiasVisiveis.length}
+            </span>
+          }
+        >
+          {!!marcadas.length && (
+            <div className="mb-2 flex flex-wrap gap-1.5 border-b border-border pb-2">
+              {marcadas.map(pilulaMateria)}
+            </div>
+          )}
+          <Input
+            value={filtroMateria}
+            onChange={e => setFiltroMateria(e.target.value)}
+            placeholder="Filtrar matéria-prima…"
+            aria-label="Filtrar matérias-primas"
+            leftIcon={<Search className="h-3.5 w-3.5" />}
+            className="h-8 text-[12px]"
+          />
+          <div className="mt-2 max-h-64 space-y-2 overflow-y-auto">
+            {gruposMateria.map(([nome, lista]) => (
+              <div key={nome}>
+                <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-ink-muted">
+                  {nome}
+                </p>
+                <div className="flex flex-wrap gap-1.5">{lista.map(pilulaMateria)}</div>
+              </div>
             ))}
+            {!gruposMateria.length && (
+              // As marcadas saem da lista e sobem pro topo. Filtrando "silagem"
+              // e marcando o único resultado, a lista dizia "Nada com esse
+              // nome" — e tinha, estava fixada duas linhas acima.
+              <p className="text-[12px] text-ink-faint">
+                {!materiasFiltradas.length
+                  ? 'Nada com esse nome.'
+                  : filtroMateria
+                    ? 'Já marcada, ali em cima.'
+                    : 'Todas as matérias já foram marcadas.'}
+              </p>
+            )}
           </div>
         </Passo>
       </div>
 
-      {/* ---------------- resultado: o que o vendedor LÊ enquanto fala ------ */}
-      <div className="space-y-3">
-        {!!r.faltando.length && (
-          <Secao titulo="Ainda falta levantar" icone={<AlertCircle className="h-3.5 w-3.5" />}>
-            <ul className="flex flex-wrap gap-1.5">
-              {r.faltando.map(f => (
-                <li key={f}><Badge className="bg-warning-bg text-warning">{f}</Badge></li>
+      {/* ---------------- mostrador: o que o vendedor LÊ e FALA ------------ */}
+      {/* `sticky`: a coluna da entrada cresce conforme o vendedor preenche, e o
+          número que ele lê em voz alta não pode sair da tela enquanto ele rola
+          pra marcar mais uma matéria-prima. */}
+      <div className="space-y-3 lg:sticky lg:top-4 lg:self-start">
+        {/* O MOSTRADOR e o vazio são a MESMA caixa. Nada nasce, some ou pula
+            quando o primeiro dado entra — só o conteúdo muda de `—` pra número.
+            Isso mata o salto de layout e ensina, sem texto explicativo, onde a
+            resposta vai aparecer. */}
+        <div className="rounded-lg border border-accent/30 bg-accent/10 p-4">
+          <dl className="grid grid-cols-2 gap-4">
+            <Numero
+              rotulo="Necessidade mensal"
+              unidade="t/mês"
+              valor={r.necessidadeMesKg
+                ? (r.necessidadeMesKg / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })
+                : null}
+            />
+            <Numero
+              rotulo="Produção necessária"
+              unidade="kg/h"
+              valor={producao ? Math.round(producao.kgHoraNecessaria).toLocaleString('pt-BR') : null}
+            />
+          </dl>
+
+          {/* Uma linha, e ela responde a única pergunta binária que importa:
+              "já posso falar de máquina?". Antes de o vendedor começar não é
+              alarme nenhum — é a frase que ele diz ao telefone. */}
+          {!comecou ? (
+            <p className="mt-3 text-[15px] leading-snug text-ink">
+              “Com que animal o senhor trabalha?”
+              <span className="mt-1 block text-[12px] text-ink-muted">
+                Marque ao lado o que ele for contando. O número aparece aqui.
+              </span>
+            </p>
+          ) : r.podeFecharEquipamento ? (
+            <p className="mt-3 text-[12px] text-success">
+              Pode dimensionar · {textoJornada}
+            </p>
+          ) : (
+            <p className="mt-3 text-[12px] text-warning">
+              Referência — falta {r.faltando[0]
+                ? r.faltando[0].charAt(0).toLowerCase() + r.faltando[0].slice(1)
+                : 'dado'}
+            </p>
+          )}
+
+          {/* O configurador é FILHO do mostrador, sem casca própria: a jornada
+              é o denominador do kg/h logo acima, e os dois estavam em caixas
+              separadas, com o kg/h aparecendo duas vezes em tamanhos
+              diferentes. */}
+          <div className="mt-3 border-t border-accent/20 pt-3">
+            <ConfiguradorFabrica
+              necessidadeMesKg={r.necessidadeMesKg}
+              podeFechar={r.podeFecharEquipamento}
+              especie={a.especie}
+              fase={a.fase}
+              jornada={jornada}
+              onJornada={setJornada}
+            />
+          </div>
+        </div>
+
+        {/* O que a linha NÃO faz. Estava no banco, corrigido na auditoria, e só
+            era renderizado na FICHA do animal — a tela em que o vendedor está
+            com o cliente no telefone não lia o campo. */}
+        {!!r.naoAtende.length && (
+          <Secao titulo="A Branorte NÃO faz" icone={<Ban className="h-3.5 w-3.5 text-danger" />}>
+            <ul className="space-y-1">
+              {r.naoAtende.map((x, i) => (
+                <li key={i} className="flex gap-2 text-[13px] leading-relaxed text-ink">
+                  <span aria-hidden className="shrink-0 text-danger">✗</span>
+                  <span className="min-w-0">{x}</span>
+                </li>
               ))}
             </ul>
+            {!!r.promessasProibidas.length && (
+              <p className="mt-2 border-t border-border pt-2 text-[12px] leading-relaxed text-ink-muted">
+                Não prometer: {r.promessasProibidas.join(' · ')}
+              </p>
+            )}
           </Secao>
         )}
 
-        {(r.consumoMesKg !== null || r.necessidadeMesKg !== null) && (
-          <Secao titulo="Necessidade" destaque>
-            <dl className="grid grid-cols-2 gap-3">
-              <div>
-                <dt className="text-[11px] uppercase tracking-wide text-ink-faint">Consumo de referência</dt>
-                <dd className="text-lg font-bold text-ink">
-                  {r.consumoMesKg !== null ? `${r.consumoMesKg} kg` : '—'}
-                  <span className="ml-1 text-[11px] font-normal text-ink-faint">por animal/mês</span>
-                </dd>
-              </div>
-              <div>
-                <dt className="text-[11px] uppercase tracking-wide text-ink-faint">Necessidade mensal</dt>
-                <dd className="text-lg font-bold text-ink">
-                  {r.necessidadeMesKg !== null
-                    ? `${Math.round(r.necessidadeMesKg).toLocaleString('pt-BR')} kg`
-                    : '—'}
-                </dd>
-              </div>
-            </dl>
-            <div className="mt-3 border-t border-border pt-2.5">
-              <p className="text-[11px] uppercase tracking-wide text-ink-faint">Capacidade para análise</p>
-              {r.capacidadeSugeridaKgH ? (
-                <>
-                  <p className="text-lg font-bold text-ink">{r.capacidadeSugeridaKgH} kg/h</p>
-                  {r.capacidadeNota && <p className="mt-0.5 text-[12px] text-ink-muted">{r.capacidadeNota}</p>}
-                </>
-              ) : (
-                <p className="mt-0.5 text-[12.5px] text-warning">
-                  {r.capacidadeNota ?? 'Preencha espécie, fase, quantidade e confirme o consumo.'}
-                </p>
-              )}
-            </div>
-          </Secao>
-        )}
+        {/* "Ainda falta levantar" SAIU.
+            Era a quarta vez que a tela dizia a mesma coisa: o contador no topo
+            da entrada já nomeia o próximo bloqueio, o círculo de cada passo já
+            mostra se foi respondido, e a linha do mostrador já repete o que
+            falta. As seis etiquetas eram os seis passos, com outro nome. O dado
+            continua em `r.faltando` — alimenta o contador e o texto que vai pro
+            WhatsApp, onde a lista tem uso de verdade. */}
 
         {!!r.atencao.length && (
           <Secao titulo="Pontos de atenção">
@@ -430,6 +707,15 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
                 <Badge key={e} className="bg-surface-2 text-ink-muted">{EQUIPAMENTOS[e] ?? e}</Badge>
               ))}
             </div>
+            {/* `misturador_indicado` já existia nas matérias e era lido só na
+                ficha e na comparação. O vendedor marcava "sal mineral" e a tela
+                não dizia que aquilo é horizontal. */}
+            {!!r.misturadorIndicado && (
+              <p className="mt-2 text-[12.5px] leading-relaxed text-ink">
+                As matérias marcadas pedem misturador{' '}
+                <strong>{r.misturadorIndicado}</strong>.
+              </p>
+            )}
             {!r.podeFecharEquipamento && (
               <p className="mt-2 text-[12px] leading-relaxed text-warning">
                 Lista para ANÁLISE. Nada aqui fecha equipamento enquanto faltar dado.
@@ -454,18 +740,6 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
           </Secao>
         )}
 
-        {/* CONFIGURADOR — o passo seguinte ao levantamento. Do consumo mensal sai
-            a producao por hora, e dela o equipamento. Fica AQUI, no painel de
-            resposta, e nao numa tela a parte: o vendedor esta no telefone e o
-            cliente pergunta "e quanto custa?" no mesmo minuto em que diz o
-            rebanho. */}
-        <ConfiguradorFabrica
-          necessidadeMesKg={r.necessidadeMesKg}
-          podeFechar={r.podeFecharEquipamento}
-          especie={a.especie}
-          fase={a.fase}
-        />
-
         <div className="flex flex-wrap gap-2">
           <Button
             variant="primary"
@@ -489,31 +763,27 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
             {copiado ? 'Copiado' : 'Copiar levantamento'}
           </Button>
         </div>
-        {a.sistema && (
-          <p className="text-[11px] text-ink-faint">Sistema marcado: {NOME_SISTEMA(a.sistema)}</p>
-        )}
       </div>
 
       {/* -------- TERCEIRA coluna: apoio de conversa -------------------------
-          As 12 perguntas e o conteúdo relacionado são o que o vendedor lê PRA
-          PERGUNTAR — não é resultado. Empilhadas junto da Necessidade, elas
-          empurravam o número e os pontos de atenção pra fora da tela. Em telas
-          menores voltam pro fim da coluna do meio, que é o comportamento antigo. */}
-      {/* SÓ renderiza quando há pergunta. Renderizando sempre, a terceira trilha
-          reservava ~28% da largura EM BRANCO na abertura da tela (sem espécie
-          escolhida não há pergunta), e em duas colunas sobrava uma linha
-          fantasma de 14px. Medido em Chrome com o CSS de produção.
+          As perguntas são o que o vendedor lê PRA PERGUNTAR — não é resultado.
+          Empilhadas junto do mostrador, elas empurravam o número e os pontos de
+          atenção pra fora da tela.
 
           `lg:col-span-2`: entre 1024 e 1535px o grid tem DUAS colunas, e este é
           o terceiro filho — ele caía na coluna 1, linha 2, ou seja embaixo do
-          FORMULÁRIO e depois da linha inteira. Eu tinha afirmado que "voltava
-          pro fim da coluna do meio"; não voltava. Ocupando a largura toda ele
-          vira uma faixa de perguntas embaixo das duas colunas, que é legível —
-          e é a faixa que pega notebook de 1280 e 1366. */}
-      {!!r.perguntas.length && (
+          FORMULÁRIO e depois da linha inteira. Ocupando a largura toda ele vira
+          uma faixa de perguntas embaixo das duas colunas, que é a faixa que
+          pega notebook de 1280 e 1366 — e aí as perguntas precisam de
+          multi-coluna, senão viram uma fileira de 12 linhas com 900px de vazio
+          à direita. */}
+      {temApoio && (
         <div className="space-y-3 lg:col-span-2 2xl:col-span-1 2xl:col-start-3 2xl:row-start-1">
           <Secao titulo="Perguntas que ainda cabem" icone={<ListChecks className="h-3.5 w-3.5" />}>
-            <Perguntas perguntas={r.perguntas.slice(0, 12)} />
+            <Perguntas
+              perguntas={r.perguntas.slice(0, 12)}
+              className="sm:columns-2 xl:columns-3 2xl:columns-1 [&>li]:break-inside-avoid"
+            />
           </Secao>
         </div>
       )}
