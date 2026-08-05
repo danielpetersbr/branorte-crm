@@ -5,6 +5,7 @@ import {
 } from '@/hooks/useViagens'
 import type { Confirmacao } from '@/lib/viagem'
 import { lerLocal, ehLinkCurto, urlCurta, distanciaKm } from '@/lib/local-link'
+import { MapaDaViagem } from './MapaDaViagem'
 
 // ORGANIZAÇÃO DE VIAGEM — o quadro que fica ABAIXO do mapa de visitas.
 //
@@ -70,6 +71,12 @@ export function OrganizacaoViagem({
 }) {
   const { data: viagens = [], isLoading, isError, refetch } = useQuadroViagens()
   const [aberta, setAberta] = useState<string | null>(null)
+  const [vendedorSel, setVendedorSel] = useState('')
+  const vendedores = useMemo(() => {
+    const s = new Set<string>()
+    for (const v of viagens) for (const p of v.paradasDetalhe) if (p.vendedor) s.add(p.vendedor)
+    return [...s].sort((a, b) => a.localeCompare(b))
+  }, [viagens])
 
   // FECHADO por padrão. O /mapa-visitas já é uma tela cheia — filtros, painel de
   // valor por estado, planejador. Mais um bloco sempre aberto embaixo empurra o
@@ -120,6 +127,28 @@ export function OrganizacaoViagem({
 
   return (
     <Moldura aberto={aberto} alternar={alternar} viagens={lista.length} pendentes={pendentes} semMoldura={semMoldura}>
+      {/* Filtro por vendedor. Ele NÃO substitui a trava do banco — a RPC já nega
+          (42501) parada de outro vendedor. É pra o vendedor não ter que caçar as
+          dele no meio das dos colegas. */}
+      {vendedores.length > 1 && (
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-surface-2">
+          <span className="text-[12px] text-ink-muted">Vendedor:</span>
+          <select
+            value={vendedorSel}
+            onChange={e => setVendedorSel(e.target.value)}
+            className="h-8 px-2 rounded-md bg-surface border border-border text-[12.5px] text-ink outline-none focus:border-accent">
+            <option value="">Todos ({vendedores.length})</option>
+            {vendedores.map(nome => (
+              <option key={nome} value={nome}>{nome || '(sem vendedor)'}</option>
+            ))}
+          </select>
+          {vendedorSel && (
+            <button onClick={() => setVendedorSel('')} className="text-[12px] font-semibold text-accent hover:underline">
+              limpar ✕
+            </button>
+          )}
+        </div>
+      )}
       <div className="divide-y divide-border">
         {lista.map(v => (
           <CardViagem
@@ -128,6 +157,7 @@ export function OrganizacaoViagem({
             aberta={aberta === v.id}
             onAlternar={() => setAberta(a => (a === v.id ? null : v.id))}
             onAbrirViagem={onAbrirViagem}
+            vendedorSel={vendedorSel}
           />
         ))}
       </div>
@@ -200,14 +230,21 @@ function Moldura({
 }
 
 function CardViagem({
-  v, aberta, onAlternar, onAbrirViagem,
+  v, aberta, onAlternar, onAbrirViagem, vendedorSel,
 }: {
   v: ViagemQuadro
   aberta: boolean
   onAlternar: () => void
   onAbrirViagem: (id: string) => void
+  /** '' = todos. Filtra o mapa E a lista — o vendedor abre e vê só as dele. */
+  vendedorSel: string
 }) {
   const status = useStatusViagem()
+  const [verMapa, setVerMapa] = useState(true)
+  const mapaParadas = useMemo(
+    () => (vendedorSel ? v.paradasDetalhe.filter(p => (p.vendedor || '') === vendedorSel) : v.paradasDetalhe),
+    [v.paradasDetalhe, vendedorSel],
+  )
   const prontas = v.paradasDetalhe.filter(pronta).length
   const resolvidas = v.paradasDetalhe.filter(resolvida).length
   const pct = v.paradas ? Math.round((resolvidas / v.paradas) * 100) : 0
@@ -249,8 +286,28 @@ function CardViagem({
 
       {aberta && (
         <div className="px-4 pb-4">
+          {/* O mapa vem ANTES da lista: a pergunta que trava o roteiro é "onde o
+              cliente fica de verdade", e isso é pergunta de mapa, não de tabela.
+              Montado só quando o card abre — Leaflet num card fechado é peso à toa. */}
+          <div className="mb-3">
+            <button
+              onClick={() => setVerMapa(x => !x)}
+              className="h-8 px-3 mb-2 rounded-md border border-border bg-surface text-[12px] font-semibold text-ink-muted hover:text-ink">
+              {verMapa ? '▾' : '▸'} 🗺️ Mapa desta viagem
+              {mapaParadas.length !== v.paradasDetalhe.length && (
+                <span className="ml-1 text-ink-faint">({mapaParadas.length} de {v.paradasDetalhe.length})</span>
+              )}
+            </button>
+            {verMapa && <MapaDaViagem paradas={mapaParadas} />}
+          </div>
+
           <div className="space-y-2">
-            {v.paradasDetalhe.map(p => <LinhaParada key={p.id} p={p} viagem={v} />)}
+            {mapaParadas.map(p => <LinhaParada key={p.id} p={p} viagem={v} />)}
+            {!mapaParadas.length && (
+              <div className="text-[12px] text-ink-muted py-2">
+                Nenhuma parada de <b className="text-ink">{vendedorSel}</b> nesta viagem.
+              </div>
+            )}
           </div>
 
           <div className="mt-3 flex flex-wrap gap-2">
