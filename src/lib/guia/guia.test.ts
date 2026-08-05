@@ -694,3 +694,53 @@ describe('a tela sabe quando está mostrando repertório, não resposta', () => 
     assert.equal(r.processo.length, 1)
   })
 })
+
+describe('"Gado de corte" é subgrupo, não fase — e casava com nada', () => {
+  const CORTE_CRIA = animal({
+    slug: 'bov-corte-cria', nome: 'Corte — Cria', especie: 'bovinos', subgrupo: 'corte',
+    tipo: 'categoria', fases: ['cria'], sistemas: ['pasto'], fase_estudo: 'cria',
+    processo: 'Mistura seca de mineral.', perguntas: ['É cria, recria ou engorda?'],
+    resumo: 'Matriz com bezerro ao pé.',
+  })
+  const LEITE_LACT = animal({
+    slug: 'bov-leite-lactacao', nome: 'Leite — Lactação', especie: 'bovinos', subgrupo: 'leite',
+    tipo: 'categoria', fases: ['gado_leite'], sistemas: ['pasto'], fase_estudo: 'gado_leite',
+    processo: 'Mistura seca do concentrado.', perguntas: ['Quantos litros por vaca por dia?'],
+    resumo: 'Vaca em produção.',
+  })
+  const REBANHO = [CONFINAMENTO, CORTE_CRIA, LEITE_LACT, NELORE]
+
+  const bov = (fase: string | null): Atendimento => ({
+    especie: 'bovinos', fase, quantidade: 100, sistema: null,
+    produto: null, materias: [], consumoConfirmado: false,
+  })
+
+  it('escolher "Gado de corte" NÃO traz pergunta de leite', () => {
+    // `gado_corte` não existe em `fases` nem em `fase_estudo` de nenhuma
+    // categoria: casava zero, caía na queda "todas da espécie" e o vendedor
+    // lia "Quantos litros por vaca por dia?" numa conversa de boi de corte.
+    const r = analisar(bov('gado_corte'), REBANHO, MATERIAS)
+    assert.ok(
+      !r.perguntas.some(p => /litros por vaca/i.test(p)),
+      'pergunta de leite não pode aparecer em conversa de corte',
+    )
+    assert.ok(r.perguntas.length, 'e ainda tem que trazer as perguntas de CORTE')
+  })
+
+  it('"Gado de leite" traz o leite e deixa o corte de fora', () => {
+    const r = analisar(bov('gado_leite'), REBANHO, MATERIAS)
+    assert.ok(r.perguntas.some(p => /litros por vaca/i.test(p)))
+    assert.ok(!r.perguntas.some(p => /cria, recria ou engorda/i.test(p)))
+  })
+
+  it('fase de verdade continua estreitando pra UMA categoria', () => {
+    const r = analisar(bov('confinamento'), REBANHO, MATERIAS)
+    assert.equal(r.baseAmpla, false)
+    assert.equal(r.processo.length, 1)
+  })
+
+  it('subgrupo é repertório do subgrupo — e a tela avisa', () => {
+    const r = analisar(bov('gado_corte'), REBANHO, MATERIAS)
+    assert.equal(r.baseAmpla, true, 'mais de uma categoria = repertório, não resposta')
+  })
+})

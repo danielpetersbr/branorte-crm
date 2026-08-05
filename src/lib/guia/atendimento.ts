@@ -105,7 +105,22 @@ export function analisar(
 
   // Categorias da espécie: as que casam com a fase escolhida, ou todas da espécie.
   const daEspecie = animais.filter(x => x.especie === a.especie)
-  const casaFase = (x: GuiaAnimal) => !a.fase || x.fases.includes(a.fase) || x.fase_estudo === a.fase
+  // "Gado de corte" e "Gado de leite" NÃO são fases — são SUBGRUPOS, e o
+  // seletor de fase os oferece junto com cria/recria/engorda porque vem de
+  // `CATEGORIAS` (venda-racao), que é lista de PRODUTO, não de fase do guia.
+  //
+  // `gado_corte` não existe em `fases` nem em `fase_estudo` de NENHUMA das 12
+  // categorias de bovino — casava com ZERO. E é a PRIMEIRA opção da lista, a
+  // mais natural numa conversa de corte: escolhê-la derrubava o motor na queda
+  // "todas as categorias da espécie" e despejava a união das 12, com pergunta
+  // de leite ("Quantos litros por vaca por dia?") no meio da conversa de boi.
+  // Medido em 05/08/2026: das 9 chaves de bovino, `gado_corte` era a única
+  // órfã; aves e suínos não têm nenhuma.
+  const SUBGRUPO_POR_FASE: Record<string, string> = { gado_corte: 'corte', gado_leite: 'leite' }
+  const subgrupoEscolhido = a.fase ? SUBGRUPO_POR_FASE[a.fase] : undefined
+  const casaFase = (x: GuiaAnimal) => subgrupoEscolhido
+    ? x.subgrupo === subgrupoEscolhido
+    : (!a.fase || x.fases.includes(a.fase) || x.fase_estudo === a.fase)
   const casaSistema = (x: GuiaAnimal) => !a.sistema || x.sistemas.includes(a.sistema)
   const categorias = daEspecie.filter(x => x.tipo === 'categoria' && casaFase(x) && casaSistema(x))
   const base = categorias.length ? categorias : daEspecie.filter(x => x.tipo === 'categoria')
