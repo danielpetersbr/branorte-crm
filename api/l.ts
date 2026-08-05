@@ -1,0 +1,178 @@
+// GET /l/<slug>  (reescrito pro /api/l?s=<slug> no vercel.json)
+//
+// O link que o Daniel cola em site, formulario, bio, anuncio. No clique:
+//   1. sorteia o proximo vendedor pela MESMA fila do quiz e das ALPs
+//      (RPC public.funil_pick_vendedor) -- ligado no painel + nao bloqueado +
+//      funil_ativa + fatia > 0 + cota de parados, com contador persistente;
+//   2. registra o clique (origem, utm, referer) com um codigo de rastreio;
+//   3. manda o cliente pro wa.me DO VENDEDOR com o texto ja escrito, carregando
+//      o codigo invisivel que depois casa o clique com a conversa.
+//
+// O que este endpoint NAO faz, de proposito: nao cria atendimento e nao dispara
+// mensagem nenhuma. No clique eu ainda nao sei o telefone do cliente -- quem
+// inicia a conversa e ELE. O atendimento nasce quando a mensagem chega e a
+// extensao registra, como em qualquer contato de entrada.
+//
+// Deploy: push na main (auto-deploy Vercel).
+
+import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { createClient } from '@supabase/supabase-js'
+import { novoCodigoNum, codigoLegivel, selarInvisivel } from './_lib/link-invisivel'
+
+const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!
+const SVC_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
+
+/** Ninguem elegivel no painel -> central da Branorte (Edilson Jr).
+ *  Mesmo fallback do /api/leads/alp-dispatch. Lead parado e ruim; perdido e pior. */
+const FALLBACK_TELEFONE = '554888314825'
+
+/** Clique repetido do mesmo visitante (voltar/tocar duas vezes) NAO pode queimar
+ *  outra posicao do rodizio nem gerar um segundo codigo orfao. */
+const REUSO_MIN = 2
+
+/** Robo de preview de link (WhatsApp, Facebook, Google...) buscando a URL nao e
+ *  cliente clicando. Se deixar passar, o simples ato de COLAR o link no
+ *  WhatsApp ja consome um vendedor do rodizio e suja o relatorio. */
+const BOTS = /bot|crawler|spider|crawling|facebookexternalhit|whatsapp|telegram|slack|discord|twitter|linkedin|preview|embed|curl|wget|python-requests|headless|lighthouse|gtmetrix|pingdom|monitor/i
+
+function primeiroNome(nome: string): string {
+  const n = String(nome || '').trim().split(/\s+/)[0] || ''
+  return n ? n[0].toUpperCase() + n.slice(1).toLowerCase() : n
+}
+
+function txt(v: unknown): string | null {
+  if (Array.isArray(v)) v = v[0]
+  if (typeof v !== 'string') return null
+  const t = v.trim()
+  return t.length ? t.slice(0, 300) : null
+}
+
+/** Pagina neutra pros robos de preview. Nao sorteia vendedor, nao grava clique. */
+function paginaPreview(res: VercelResponse, nome: string) {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8')
+  res.setHeader('Cache-Control', 'public, max-age=3600')
+  return res.status(200).send(
+    `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">` +
+      `<meta name="viewport" content="width=device-width,initial-scale=1">` +
+      `<title>Branorte — Falar com um consultor</title>` +
+      `<meta property="og:title" content="Branorte — Falar com um consultor">` +
+      `<meta property="og:description" content="${nome}">` +
+      `<meta name="robots" content="noindex">` +
+      `</head><body><p>Abrindo o WhatsApp…</p></body></html>`
+  )
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // O redirect e por visitante: nunca pode ficar em cache de CDN, senao TODO
+  // mundo cai no vendedor do primeiro clique.
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+
+  const slug = (txt(req.query.s) || '').toLowerCase()
+  if (!slug || !/^[a-z0-9][a-z0-9-]{1,40}$/.test(slug)) {
+    return res.status(404).send('Link não encontrado.')
+  }
+  if (!SUPA_URL || !SVC_KEY) {
+    // Sem banco eu ainda nao deixo o cliente na mao.
+    return res.redirect(302, `https://wa.me/${FALLBACK_TELEFONE}`)
+  }
+
+  const db = createClient(SUPA_URL, SVC_KEY, { auth: { persistSession: false } })
+
+  const { data: link } = await db
+    .from('link_rota')
+    .select('id, slug, nome, mensagem, origem, ativo, fallback_telefone')
+    .eq('slug', slug)
+    .maybeSingle()
+
+  if (!link) return res.status(404).send('Link não encontrado.')
+
+  const ua = String(req.headers['user-agent'] || '')
+  if (req.method === 'HEAD' || BOTS.test(ua)) return paginaPreview(res, link.nome)
+
+  const fallback = String(link.fallback_telefone || FALLBACK_TELEFONE).replace(/\D/g, '')
+
+  // Link desligado no painel: nao roteia nem registra, mas ainda entrega o
+  // cliente na central em vez de dar erro na cara dele.
+  if (!link.ativo) return res.redirect(302, `https://wa.me/${fallback}`)
+
+  const ip =
+    txt((req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]) ||
+    txt(req.headers['x-real-ip']) ||
+    null
+
+  // --- Reuso: mesmo visitante, mesmo link, ultimos REUSO_MIN minutos ---------
+  // Devolve o MESMO vendedor e o MESMO codigo. Nao gira o rodizio de novo.
+  if (ip) {
+    const desde = new Date(Date.now() - REUSO_MIN * 60_000).toISOString()
+    const { data: repetido } = await db
+      .from('link_rota_click')
+      .select('codigo_num, vendedor_nome, vendedor_telefone')
+      .eq('link_id', link.id)
+      .eq('ip', ip)
+      .eq('user_agent', ua)
+      .gte('created_at', desde)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (repetido?.vendedor_telefone) {
+      return res.redirect(
+        302,
+        montarUrl(repetido.vendedor_telefone, link.mensagem, repetido.vendedor_nome, repetido.codigo_num)
+      )
+    }
+  }
+
+  // --- Sorteio do vendedor --------------------------------------------------
+  // Mesma RPC do quiz e das ALPs: o clique entra NA MESMA fila, nao numa
+  // paralela. Se ela nao devolver ninguem, vai pro fallback.
+  let vendedorNome: string | null = null
+  let vendedorTelefone: string | null = null
+  try {
+    const { data: pick } = await db.rpc('funil_pick_vendedor')
+    const escolha = Array.isArray(pick) && pick.length ? (pick[0] as { vendedor: string; telefone: string }) : null
+    if (escolha?.telefone) {
+      vendedorNome = String(escolha.vendedor).toUpperCase().trim()
+      vendedorTelefone = String(escolha.telefone).replace(/\D/g, '')
+    }
+  } catch {
+    /* cai no fallback abaixo */
+  }
+
+  const usouFallback = !vendedorTelefone
+  const telefoneDestino = vendedorTelefone || fallback
+
+  // --- Registra o clique ----------------------------------------------------
+  const codigoNum = novoCodigoNum()
+  const { error: erroClique } = await db.from('link_rota_click').insert({
+    link_id: link.id,
+    codigo_num: codigoNum,
+    codigo: codigoLegivel(codigoNum),
+    vendedor_nome: vendedorNome,
+    vendedor_telefone: telefoneDestino,
+    fallback: usouFallback,
+    ip,
+    user_agent: ua.slice(0, 300) || null,
+    referer: txt(req.headers.referer),
+    utm_source: txt(req.query.utm_source),
+    utm_medium: txt(req.query.utm_medium),
+    utm_campaign: txt(req.query.utm_campaign),
+    utm_content: txt(req.query.utm_content),
+    utm_term: txt(req.query.utm_term),
+  })
+
+  // Falhou o registro? O cliente vai pro WhatsApp do mesmo jeito. Perder o
+  // rastreio e chato; perder o lead e inaceitavel. Sem clique gravado o codigo
+  // nao casa com nada, entao nem selo nele.
+  if (erroClique) {
+    console.error('[link] clique nao registrado:', erroClique.message)
+    return res.redirect(302, montarUrl(telefoneDestino, link.mensagem, vendedorNome, null))
+  }
+
+  return res.redirect(302, montarUrl(telefoneDestino, link.mensagem, vendedorNome, codigoNum))
+}
+
+function montarUrl(telefone: string, modelo: string, vendedor: string | null, codigoNum: number | null): string {
+  let texto = String(modelo || '').replace(/\{vendedor\}/gi, primeiroNome(vendedor || 'consultor'))
+  if (codigoNum !== null) texto += selarInvisivel(codigoNum)
+  return `https://wa.me/${telefone}?text=${encodeURIComponent(texto)}`
+}

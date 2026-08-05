@@ -8,6 +8,7 @@ import { useCan } from '@/hooks/usePermissions'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { GitBranch, Users, AlertCircle, Activity, Send, Copy, Check, Star, Tag } from 'lucide-react'
 import { EscritorioMapa } from '@/components/EscritorioMapa'
+import { LinksRoteamento } from '@/components/LinksRoteamento'
 import { AtividadeDiaria } from '@/pages/AtividadeDiaria'
 
 /** Linha de `vendor_roteamento_efetivo`: o que o vendedor recebe DEPOIS da cota. */
@@ -314,6 +315,10 @@ export function Disparos() {
           Define qual vendedor atende cada lead que cai na central. Se o webhook do ReplyAgent mandar o campo <code className="text-accent">mensagem</code>, o WhatsApp do vendedor inicia o contato com o cliente automaticamente (via extensão Branorte).
         </p>
       </header>
+
+      {/* LINKS DE ROTEAMENTO: link colável que joga o cliente no WhatsApp do
+          próximo vendedor da fila, com texto configurável e rastreio do clique. */}
+      <LinksRoteamento />
 
       {/* AVALIAÇÃO: geral (master) + por vendedor */}
       <Card className="p-4">
