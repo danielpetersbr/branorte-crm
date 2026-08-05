@@ -1098,3 +1098,302 @@
 /* Salvou: o ícone fica verde. É o que restou do texto "Alterações salvas às
    14:32" — a hora exata vive no `title` do botão. */
 .vr .vr-btn.icone.salvo { color: var(--vr-green); border-color: var(--vr-green); }
+
+/* ── Painel nutricional (etapa 5) ─────────────────────────────────────────────
+   Prefixo `.vr-nutri` conferido contra o resto do arquivo antes de criar: zero
+   ocorrências. `.vr-alerta` foi descartado justamente por já existir em 11
+   lugares — colisão aqui é silenciosa (já custou uma barra espremida em 12px).
+
+   Cor vem só das variáveis do bloco `.vr`, então o tema escuro funciona sem
+   nenhuma regra `.dark` própria. */
+.vr .vr-nutri {
+  margin-top: 12px; border: 1px solid var(--vr-hair); border-radius: 10px;
+  background: var(--vr-card-2); overflow: hidden;
+}
+.vr .vr-nutri > .cab {
+  width: 100%; display: flex; align-items: center; gap: 8px; padding: 9px 11px;
+  background: none; border: 0; cursor: pointer; text-align: left; color: var(--vr-ink);
+}
+.vr .vr-nutri > .cab .tt { font-weight: 700; font-size: 13px; flex: none; }
+.vr .vr-nutri > .cab .pins { display: flex; gap: 5px; flex-wrap: wrap; flex: 1; min-width: 0; }
+.vr .vr-nutri > .cab .ch { color: var(--vr-ink40); font-size: 9px; flex: none; }
+.vr .vr-nutri .pin {
+  font: 700 10px var(--vr-mono); padding: 2px 6px; border-radius: 20px;
+  border: 1px solid var(--vr-hair); white-space: nowrap;
+}
+.vr .vr-nutri .pin.ok   { color: var(--vr-green-d); background: var(--vr-green-l); border-color: var(--vr-green-hair); }
+.vr .vr-nutri .pin.lim  { color: var(--vr-gold-ink); background: var(--vr-gold-l); border-color: var(--vr-gold-hair); }
+.vr .vr-nutri .pin.fora { color: var(--vr-red-ink); background: var(--vr-red-l); border-color: var(--vr-red-hair); }
+.vr .vr-nutri .pin.inc  { color: var(--vr-ink40); }
+
+.vr .vr-nutri .corpo { padding: 0 11px 11px; border-top: 1px solid var(--vr-hair); }
+
+/* cobertura: quanto da fórmula o sistema conseguiu analisar */
+.vr .vr-nutri .cobertura { margin-top: 9px; }
+.vr .vr-nutri .cobertura .barra {
+  height: 5px; border-radius: 3px; background: var(--vr-hair); overflow: hidden;
+}
+.vr .vr-nutri .cobertura .barra span {
+  display: block; height: 100%; background: var(--vr-green); transition: width .2s;
+}
+.vr .vr-nutri .cobertura p {
+  margin: 5px 0 0; font-size: 11px; color: var(--vr-ink60);
+}
+
+.vr .vr-nutri .semmeta {
+  margin: 9px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--vr-ink60);
+  background: var(--vr-bg); border: 1px dashed var(--vr-hair);
+  border-radius: 8px; padding: 7px 9px;
+}
+
+/* tabela de nutrientes */
+.vr .vr-nutri .grupo { margin-top: 11px; }
+.vr .vr-nutri .grupo h4 {
+  margin: 0 0 4px; font: 700 10px var(--vr-mono); text-transform: uppercase;
+  letter-spacing: .05em; color: var(--vr-ink40);
+}
+.vr .vr-nutri table { width: 100%; border-collapse: collapse; }
+.vr .vr-nutri th {
+  padding: 3px 0; border-bottom: 1px solid var(--vr-hair); text-align: left;
+  font: 700 9.5px var(--vr-mono); text-transform: uppercase;
+  letter-spacing: .04em; color: var(--vr-ink40);
+}
+.vr .vr-nutri td {
+  padding: 5px 0; border-bottom: 1px solid var(--vr-hair);
+  font-size: 12px; vertical-align: top;
+}
+.vr .vr-nutri tr:last-child td { border-bottom: 0; }
+.vr .vr-nutri tr.on td { background: var(--vr-bg); }
+.vr .vr-nutri th.n, .vr .vr-nutri td.n { text-align: right; white-space: nowrap; }
+.vr .vr-nutri th.st, .vr .vr-nutri td.st { width: 20px; text-align: right; }
+.vr .vr-nutri td.n b { font: 700 12px var(--vr-mono); }
+.vr .vr-nutri td.n i { font-style: normal; font-size: 10px; color: var(--vr-ink40); }
+.vr .vr-nutri td.n em {
+  font-style: normal; display: inline-block; margin-left: 5px;
+  font: 700 9px var(--vr-mono); color: var(--vr-gold-ink);
+  background: var(--vr-gold-l); border-radius: 3px; padding: 1px 3px;
+}
+.vr .vr-nutri td.meta { font: 500 11px var(--vr-mono); color: var(--vr-ink40); }
+.vr .vr-nutri .q {
+  display: inline-block; margin-left: 5px; width: 13px; height: 13px; line-height: 13px;
+  text-align: center; border-radius: 50%; background: var(--vr-hair);
+  color: var(--vr-ink60); font: 700 9px var(--vr-mono);
+}
+.vr .vr-nutri .nota { margin-top: 4px; }
+.vr .vr-nutri .nota p { margin: 3px 0 0; font-size: 11px; line-height: 1.45; color: var(--vr-ink60); }
+.vr .vr-nutri .nota .falt { color: var(--vr-ink40); font-style: italic; }
+
+.vr .vr-nutri .dot {
+  display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--vr-hair); vertical-align: middle;
+}
+.vr .vr-nutri .dot.ok   { background: var(--vr-green); }
+.vr .vr-nutri .dot.lim  { background: var(--vr-gold); }
+.vr .vr-nutri .dot.fora { background: var(--vr-red); }
+.vr .vr-nutri .dot.inc  { background: var(--vr-hair); border: 1px solid var(--vr-ink40); }
+
+/* avisos: bloqueio, atenção, lacuna */
+.vr .vr-nutri .avisos { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.vr .vr-nutri .avisos li { border-radius: 8px; padding: 7px 9px; border: 1px solid var(--vr-hair); }
+.vr .vr-nutri .avisos > li > b { display: block; font-size: 11.5px; line-height: 1.35; }
+.vr .vr-nutri .avisos p { margin: 3px 0 0; font-size: 11px; line-height: 1.45; color: var(--vr-ink60); }
+.vr .vr-nutri .avisos .fnt {
+  display: block; margin-top: 5px; font: 500 9.5px var(--vr-mono); color: var(--vr-ink40);
+}
+.vr .vr-nutri .avisos.bloq li {
+  background: var(--vr-red-l); border-color: var(--vr-red-hair);
+}
+.vr .vr-nutri .avisos.bloq b { color: var(--vr-red-ink); }
+.vr .vr-nutri .avisos.aten li {
+  background: var(--vr-gold-l); border-color: var(--vr-gold-hair);
+}
+.vr .vr-nutri .avisos.aten b { color: var(--vr-gold-ink); }
+.vr .vr-nutri .avisos.lac li { background: var(--vr-bg); }
+.vr .vr-nutri .avisos.lac b { color: var(--vr-ink60); }
+
+.vr .vr-nutri .rodape {
+  margin: 10px 0 0; padding-top: 7px; border-top: 1px dotted var(--vr-hair);
+  font-size: 10px; line-height: 1.45; color: var(--vr-ink40);
+}
+
+.vr .vr-nutri .sr {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+/* telas estreitas: a coluna de meta é a primeira a sair */
+@media (max-width: 560px) {
+  .vr .vr-nutri th.n + .n, .vr .vr-nutri td.meta { display: none; }
+}
+
+/* ── Rebalancear fórmula (etapa 5) ───────────────────────────────────────────
+   Prefixos `.vr-rebal` e `.vr-rebal-acoes` conferidos: 0 ocorrências antes.
+   Reaproveita `.avisos` e `.dot` do painel nutricional escopando por `.vr-rebal`
+   em vez de duplicar as regras — as duas caixas falam a mesma língua visual. */
+.vr .vr-rebal-acoes { display: flex; gap: 7px; margin-top: 10px; flex-wrap: wrap; }
+.vr .vr-rebal-acoes .vr-btn.on { background: var(--vr-ink); color: var(--vr-card); border-color: var(--vr-ink); }
+
+.vr .vr-rebal {
+  margin-top: 10px; border: 1px solid var(--vr-green-hair); border-radius: 10px;
+  background: var(--vr-card); padding: 11px;
+}
+.vr .vr-rebal > .cab { display: flex; align-items: center; gap: 6px; margin-bottom: 9px; }
+.vr .vr-rebal > .cab b { flex: 1; min-width: 0; font-size: 13px; }
+.vr .vr-rebal > .cab button {
+  border: 1px solid var(--vr-hair); background: var(--vr-card); border-radius: 6px;
+  width: 22px; height: 22px; line-height: 1; cursor: pointer; color: var(--vr-ink60); flex: none;
+}
+
+.vr .vr-rebal .obj { display: flex; gap: 5px; margin-bottom: 10px; flex-wrap: wrap; }
+.vr .vr-rebal .obj button {
+  border: 1px solid var(--vr-hair); background: var(--vr-card); border-radius: 20px;
+  padding: 4px 11px; font-size: 11.5px; cursor: pointer; color: var(--vr-ink60);
+}
+.vr .vr-rebal .obj button.on {
+  background: var(--vr-green-l); border-color: var(--vr-green-hair);
+  color: var(--vr-green-d); font-weight: 700;
+}
+
+.vr .vr-rebal h4 {
+  margin: 12px 0 4px; font: 700 10px var(--vr-mono); text-transform: uppercase;
+  letter-spacing: .05em; color: var(--vr-ink40);
+}
+.vr .vr-rebal .obs { margin: 0; font-size: 11.5px; color: var(--vr-ink60); }
+.vr .vr-rebal .trav {
+  margin: 8px 0 0; font-size: 10.5px; line-height: 1.45; color: var(--vr-ink40);
+  background: var(--vr-bg); border-radius: 7px; padding: 6px 8px;
+}
+
+.vr .vr-rebal table.dif { width: 100%; border-collapse: collapse; }
+.vr .vr-rebal table.dif th {
+  padding: 3px 0; border-bottom: 1px solid var(--vr-hair); text-align: left;
+  font: 700 9.5px var(--vr-mono); text-transform: uppercase;
+  letter-spacing: .04em; color: var(--vr-ink40);
+}
+.vr .vr-rebal table.dif td {
+  padding: 4px 0; border-bottom: 1px solid var(--vr-hair); font-size: 12px;
+}
+.vr .vr-rebal table.dif tr:last-child td { border-bottom: 0; }
+.vr .vr-rebal table.dif th.n, .vr .vr-rebal table.dif td.n { text-align: right; white-space: nowrap; }
+.vr .vr-rebal table.dif th.st, .vr .vr-rebal table.dif td.st { width: 20px; text-align: right; }
+.vr .vr-rebal table.dif td.n { font: 500 11.5px var(--vr-mono); }
+.vr .vr-rebal table.dif td.n b { font-weight: 700; }
+.vr .vr-rebal td.d.up { color: var(--vr-green-d); }
+.vr .vr-rebal td.d.down { color: var(--vr-red); }
+
+.vr .vr-rebal .fin {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 7px;
+}
+.vr .vr-rebal .fin > div {
+  border: 1px solid var(--vr-hair); border-radius: 8px; padding: 6px 8px; background: var(--vr-card-2);
+}
+.vr .vr-rebal .fin span { display: block; font: 600 9.5px var(--vr-mono); color: var(--vr-ink40); text-transform: uppercase; }
+.vr .vr-rebal .fin b { font: 700 13px var(--vr-mono); }
+.vr .vr-rebal .fin b.bom { color: var(--vr-green-d); }
+.vr .vr-rebal .fin b.ruim { color: var(--vr-red); }
+
+.vr .vr-rebal .acao { display: flex; gap: 7px; margin-top: 12px; justify-content: flex-end; }
+.vr .vr-rebal .acao button {
+  border-radius: 7px; padding: 7px 14px; cursor: pointer; font-weight: 700; font-size: 12px;
+}
+.vr .vr-rebal .acao .cancelar {
+  border: 1px solid var(--vr-hair); background: var(--vr-card); color: var(--vr-ink60);
+}
+.vr .vr-rebal .acao .ok { border: 0; background: var(--vr-green-d); color: #fff; }
+/* Exigência furada: o botão continua funcionando, mas para de parecer aprovação. */
+.vr .vr-rebal .acao .ok.ressalva { background: var(--vr-gold); }
+.vr .vr-rebal .acao .ok:disabled { opacity: .45; cursor: default; }
+
+.vr .vr-rebal .rodape {
+  margin: 10px 0 0; padding-top: 7px; border-top: 1px dotted var(--vr-hair);
+  font-size: 10px; line-height: 1.45; color: var(--vr-ink40);
+}
+
+/* As caixas de aviso e os semáforos são os mesmos do painel nutricional. */
+.vr .vr-rebal .avisos { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 6px; }
+.vr .vr-rebal .avisos li {
+  border-radius: 8px; padding: 7px 9px; border: 1px solid var(--vr-red-hair);
+  background: var(--vr-red-l);
+}
+.vr .vr-rebal .avisos > li > b { display: block; font-size: 11.5px; color: var(--vr-red-ink); }
+.vr .vr-rebal .avisos p { margin: 3px 0 0; font-size: 11px; line-height: 1.45; color: var(--vr-ink60); }
+.vr .vr-rebal .dot {
+  display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--vr-hair); vertical-align: middle;
+}
+.vr .vr-rebal .dot.ok { background: var(--vr-green); }
+.vr .vr-rebal .dot.lim { background: var(--vr-gold); }
+.vr .vr-rebal .dot.fora { background: var(--vr-red); }
+.vr .vr-rebal .dot.inc { background: var(--vr-hair); border: 1px solid var(--vr-ink40); }
+
+/* ── Substituição inteligente (etapa 5) ──────────────────────────────────────
+   Estende `.vr-subst`, que já existia — o painel cresceu de "nome + limite" pra
+   classificação, motivos, o que muda e a prévia com rebalanceamento. Tudo
+   escopado dentro de `.vr-subst` pra não vazar. */
+.vr .vr-subst .tit .compat {
+  font: 700 9.5px var(--vr-mono); padding: 2px 6px; border-radius: 20px;
+  border: 1px solid var(--vr-hair); white-space: nowrap; flex: none;
+}
+.vr .vr-subst .tit .compat.exc { color: var(--vr-green-d); background: var(--vr-green-l); border-color: var(--vr-green-hair); }
+.vr .vr-subst .tit .compat.boa { color: var(--vr-green-d); background: transparent; border-color: var(--vr-green-hair); }
+.vr .vr-subst .tit .compat.par { color: var(--vr-gold-ink); background: var(--vr-gold-l); border-color: var(--vr-gold-hair); }
+.vr .vr-subst .tit .compat.nao { color: var(--vr-red-ink); background: var(--vr-red-l); border-color: var(--vr-red-hair); }
+
+.vr .vr-subst .corpo .funcao { color: var(--vr-ink); font-weight: 600; }
+.vr .vr-subst .corpo .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.vr .vr-subst .corpo .tags span {
+  font: 600 9.5px var(--vr-mono); color: var(--vr-ink60);
+  background: var(--vr-bg); border: 1px solid var(--vr-hair);
+  border-radius: 4px; padding: 2px 5px;
+}
+
+.vr .vr-subst table.muda { width: 100%; border-collapse: collapse; margin-top: 4px; }
+.vr .vr-subst table.muda td {
+  padding: 2px 0; font: 500 11px var(--vr-mono); color: var(--vr-ink60);
+  border-bottom: 1px dotted var(--vr-hair);
+}
+.vr .vr-subst table.muda tr:last-child td { border-bottom: 0; }
+.vr .vr-subst table.muda td.n { text-align: right; white-space: nowrap; }
+.vr .vr-subst table.muda td.seta { width: 18px; color: var(--vr-ink40); }
+.vr .vr-subst table.muda td.up { color: var(--vr-green-d); font-weight: 700; }
+.vr .vr-subst table.muda td.down { color: var(--vr-red); font-weight: 700; }
+
+.vr .vr-subst .acao .preco {
+  margin-left: auto; font: 600 10.5px var(--vr-mono); color: var(--vr-ink40); white-space: nowrap;
+}
+
+/* A prévia do §9: hoje × só a troca × com rebalanceamento */
+.vr .vr-subst .previa {
+  margin-top: 10px; border: 1px solid var(--vr-green-hair); border-radius: 9px;
+  padding: 9px; background: var(--vr-card-2);
+}
+.vr .vr-subst .previa h5 {
+  margin: 0 0 7px; font: 700 11px inherit; color: var(--vr-ink);
+}
+.vr .vr-subst table.cmp { width: 100%; border-collapse: collapse; }
+.vr .vr-subst table.cmp th {
+  padding: 3px 0; border-bottom: 1px solid var(--vr-hair); text-align: left;
+  font: 700 9px var(--vr-mono); text-transform: uppercase;
+  letter-spacing: .03em; color: var(--vr-ink40);
+}
+.vr .vr-subst table.cmp td {
+  padding: 3px 0; border-bottom: 1px solid var(--vr-hair); font-size: 11.5px;
+}
+.vr .vr-subst table.cmp th.n, .vr .vr-subst table.cmp td.n {
+  text-align: right; white-space: nowrap; font-family: var(--vr-mono); font-size: 11px;
+}
+.vr .vr-subst table.cmp td.bom { color: var(--vr-green-d); }
+.vr .vr-subst table.cmp td.ruim { color: var(--vr-red); }
+.vr .vr-subst table.cmp tr.custo td {
+  border-bottom: 0; border-top: 1px solid var(--vr-hair); padding-top: 5px; font-weight: 700;
+}
+
+.vr .vr-subst .previa .botoes { display: flex; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
+.vr .vr-subst .previa .botoes button {
+  border-radius: 7px; padding: 6px 12px; cursor: pointer; font-weight: 700; font-size: 11.5px;
+}
+.vr .vr-subst .previa .botoes .ok { border: 0; background: var(--vr-green-d); color: #fff; }
+.vr .vr-subst .previa .botoes .ok:disabled { opacity: .45; cursor: default; }
+.vr .vr-subst .previa .botoes .sec {
+  border: 1px solid var(--vr-hair); background: var(--vr-card); color: var(--vr-ink60);
+}

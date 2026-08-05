@@ -6,15 +6,17 @@
  * sem risco de mudar economia ou payback.
  */
 import { useState } from 'react'
-import { Save } from 'lucide-react'
+import { Save, Scale, Undo2 } from 'lucide-react'
 import {
   CATEGORIAS, ehIngredienteRestrito, ESPECIES, INGREDIENTES_PADRAO, novoIdIngrediente,
   ORIGEM_CUSTOS, PESOS_SACO,
 } from '@/lib/venda-racao/catalogo'
 import { consumoSugerido } from '@/lib/venda-racao/estado'
 import { brl, brlKg, kg, kgHora, numero, pct, toneladas } from '@/lib/venda-racao/formato'
-import { temSubstituto, type Substituto } from '@/lib/substituicoes-racao'
+import { temAlternativa } from '@/lib/nutricao/substituicao'
 import { SubstituirIngrediente } from './SubstituirIngrediente'
+import { PainelNutricional } from './PainelNutricional'
+import { RebalancearFormula } from './RebalancearFormula'
 import type {
   ConfigEstudo, Especie, EstudoInput, FormulaSalvaRow, IngredienteCatalogoRow,
   IngredienteFormula, ResultadoEstudo, UnidadePreco,
@@ -44,6 +46,13 @@ interface Props {
   formulasSalvas: FormulaSalvaRow[]
   onSalvarFormula: () => void
   salvandoFormula: boolean
+}
+
+/** Participação em % da fórmula, seja qual for a unidade digitada no card. */
+function pctNaFormula(i: IngredienteFormula): number {
+  if (i.unidadeParticipacao === 'pct') return i.participacao
+  if (i.unidadeParticipacao === 'kg_t') return i.participacao / 10
+  return i.participacao / 10000
 }
 
 const UNIDADES_PARTICIPACAO = [
@@ -122,40 +131,51 @@ export function FormularioEstudo({
   // Qual card está com o painel de substituição aberto.
   const [substituindo, setSubstituindo] = useState<string | null>(null)
 
-  /**
-   * Troca `pct` pontos do ingrediente pelo substituto. Se sobrar original, vira
-   * DOIS itens — é o caso normal: ninguém troca 69,8% de milho por 69,8% de DDG.
-   * A soma da fórmula não se mexe, porque o que entra é exatamente o que saiu.
-   */
-  const aplicarSubstituicao = (id: string, s: Substituto, pct: number) => {
-    const alvo = formula.itens.find(x => x.id === id)
-    if (!alvo) return
-    const emPct = alvo.unidadeParticipacao === 'pct'
-    const atual = emPct ? alvo.participacao : alvo.participacao / 10
-    const trocar = Math.max(0, Math.min(pct, atual))
-    if (trocar <= 0) return
-    const resto = atual - trocar
-    const conv = (v: number) => (emPct ? v : v * 10)
+  // Rebalanceamento: painel aberto e a fórmula de antes, pra desfazer.
+  // Guardo os ITENS inteiros e não só os percentuais — o rebalanceamento pode
+  // ter entrado em cima de uma fórmula que o vendedor levou 10 minutos montando.
+  const [rebalanceando, setRebalanceando] = useState(false)
+  const [antesDoRebal, setAntesDoRebal] = useState<IngredienteFormula[] | null>(null)
 
+  const aplicarRebalanceamento = (novos: Array<{ id: string; participacao: number }>) => {
+    const mapa = new Map(novos.map(n => [n.id, n.participacao]))
+    setAntesDoRebal(formula.itens)
     setFormula({
-      // deixou de ser a fórmula de referência carregada — o vendedor mexeu nela
-      formulaId: null,
-      itens: formula.itens.flatMap(x => {
-        if (x.id !== id) return [x]
-        const entrando = {
-          id: novoIdIngrediente(),
-          nome: s.nome,
-          participacao: Number(conv(trocar).toFixed(4)),
-          unidadeParticipacao: x.unidadeParticipacao,
-          preco: s.preco,
-          unidadePreco: 'kg' as const,
-          pesoSacoIngrediente: 60,
-        }
-        return resto > 0.0001
-          ? [{ ...x, participacao: Number(conv(resto).toFixed(4)) }, entrando]
-          : [entrando]
+      formulaId: null, // deixou de ser a de referência — o motor mexeu nela
+      itens: formula.itens.map(i => {
+        const p = mapa.get(i.id)
+        if (p == null) return i
+        // O otimizador raciocina em %, mas o vendedor pode ter digitado kg/t.
+        // Devolvo na unidade DELE — trocar a unidade por baixo é o tipo de
+        // "ajuda" que faz a pessoa desconfiar da tela.
+        const conv = i.unidadeParticipacao === 'pct' ? p
+          : i.unidadeParticipacao === 'kg_t' ? p * 10
+          : p * 10000
+        return { ...i, participacao: Number(conv.toFixed(4)) }
       }),
     })
+    setRebalanceando(false)
+  }
+
+  const desfazerRebalanceamento = () => {
+    if (!antesDoRebal) return
+    setFormula({ itens: antesDoRebal })
+    setAntesDoRebal(null)
+  }
+
+  /**
+   * Aplica a substituição — a lista nova vem pronta do painel, que já decidiu se
+   * era só a troca ou a troca com rebalanceamento.
+   *
+   * A conta de trocar (que vira duas linhas quando sobra original, e mantém a
+   * soma) mora em `lib/nutricao/substituicao.ts`, testada lá. Aqui é só estado.
+   * Guardo o "antes" no mesmo lugar do rebalanceamento, então o Desfazer serve
+   * pras duas coisas.
+   */
+  const aplicarSubstituicao = (novos: IngredienteFormula[]) => {
+    setAntesDoRebal(formula.itens)
+    // deixou de ser a fórmula de referência carregada — o vendedor mexeu nela
+    setFormula({ formulaId: null, itens: novos })
     setSubstituindo(null)
   }
 
@@ -555,7 +575,7 @@ export function FormularioEstudo({
                       onChange={e => alterarItem(i.id, { nome: e.target.value })}
                       placeholder="Ingrediente"
                     />
-                    {temSubstituto(i.nome, produto.especie) && (
+                    {temAlternativa(i.nome, pctNaFormula(i), produto.especie) && (
                       <button
                         type="button"
                         className={`frm sub${substituindo === i.id ? ' on' : ''}`}
@@ -603,9 +623,11 @@ export function FormularioEstudo({
                   {substituindo === i.id && (
                     <SubstituirIngrediente
                       item={i}
+                      itens={formula.itens}
                       especie={produto.especie}
+                      categoria={produto.categoria}
                       onFechar={() => setSubstituindo(null)}
-                      onAplicar={(s, pct) => aplicarSubstituicao(i.id, s, pct)}
+                      onAplicar={aplicarSubstituicao}
                     />
                   )}
                 </div>
@@ -647,6 +669,46 @@ export function FormularioEstudo({
                 material seco — confirme que o equipamento e o processo do cliente são compatíveis.
               </div>
             )}
+
+            {/* Rebalancear: acha a composição que atende a fase. Fica ANTES do
+                painel porque a ordem de uso é essa — o vendedor olha o que está
+                errado, manda arrumar, e confere de novo logo abaixo. */}
+            <div className="vr-rebal-acoes vr-no-print">
+              <button
+                type="button"
+                className={`vr-btn ghost${rebalanceando ? ' on' : ''}`}
+                onClick={() => setRebalanceando(v => !v)}
+                disabled={formula.itens.length < 2}
+              >
+                <Scale className="h-4 w-4" /> Rebalancear fórmula
+              </button>
+              {antesDoRebal && (
+                <button type="button" className="vr-btn ghost" onClick={desfazerRebalanceamento}>
+                  <Undo2 className="h-4 w-4" /> Desfazer
+                </button>
+              )}
+            </div>
+
+            {rebalanceando && (
+              <RebalancearFormula
+                itens={formula.itens}
+                especie={produto.especie}
+                categoria={produto.categoria}
+                demandaMensalKg={d.mensalKg}
+                onAplicar={aplicarRebalanceamento}
+                onFechar={() => setRebalanceando(false)}
+              />
+            )}
+
+            {/* O que esta fórmula ENTREGA ao animal. Fica logo abaixo da soma
+                porque as duas respondem à mesma pergunta — "a fórmula está de
+                pé?" — e até agora só a metade do dinheiro estava respondida. */}
+            <PainelNutricional
+              itens={formula.itens}
+              especie={produto.especie}
+              categoria={produto.categoria}
+              formula={f}
+            />
 
             <div className="vr-row2" style={{ marginTop: 9 }}>
               <Campo label="Nome da fórmula" unidade="pra salvar">

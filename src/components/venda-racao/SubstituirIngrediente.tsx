@@ -1,35 +1,77 @@
 import { useMemo, useState } from 'react'
 import type { Especie, IngredienteFormula } from '@/lib/venda-racao/tipos'
+import { novoIdIngrediente } from '@/lib/venda-racao/catalogo'
 import {
-  maximoSubstituivel, substitutosDe, textoLimite, type Substituto,
-} from '@/lib/substituicoes-racao'
+  alternativasPara, aplicarTroca, ROTULO_COMPAT,
+  type Alternativa, type Compatibilidade,
+} from '@/lib/nutricao/substituicao'
+import { analisarFormula } from '@/lib/nutricao/analise'
+import { otimizar, prepararIngredientes } from '@/lib/nutricao/otimizador'
 
 /**
  * "O cliente não tem milho — o que entra no lugar?"
  *
- * Abre a partir do próprio card do ingrediente. Não é formulador: mostra o que a
- * literatura permite pôr no lugar, ATÉ QUANTO, e o que pode dar errado. O ajuste
- * de proteína/energia continua sendo do zootecnista.
+ * ─────────────────────────────────────────────────────────────────────────────
+ * O QUE MUDOU (§1, §8, §9 do pedido)
  *
- * A troca pode ser PARCIAL — é o caso normal. Ninguém tira 69,8% de milho e põe
- * 69,8% de DDG; põe um pedaço e mantém o resto. Por isso o resultado pode ser
- * DOIS ingredientes, e a soma da fórmula não se mexe.
+ * ANTES: lista curada de 1 a 3 opções, cada uma com nome e limite, e a troca era
+ * ponto-a-ponto — tirava X% de A, punha X% de B, e não mexia em mais nada.
+ *
+ * AGORA:
+ *   • as alternativas saem do BANCO NUTRICIONAL, ordenadas por mérito
+ *     técnico-econômico, com classificação e motivo;
+ *   • dá pra ver ANTES de aplicar o que a troca faz com cada nutriente e com o
+ *     custo;
+ *   • e "Aplicar e rebalancear" refaz a fórmula inteira com o solver — que é a
+ *     resposta ao §10: pôr DDGS no lugar do milho não é trocar energia por
+ *     energia, e quem ajusta o farelo de soja depois é o motor, não a cabeça do
+ *     vendedor.
+ *
+ * "Aplicar sem rebalancear" continua existindo porque o §9 pede, e porque às
+ * vezes o vendedor sabe algo que o modelo não sabe. Mas não é o padrão.
  */
+
+const CLASSE: Record<Compatibilidade, string> = {
+  excelente: 'exc', boa: 'boa', parcial: 'par', nao_recomendada: 'nao',
+}
+
+const fmt = (v: number, casas = 2) =>
+  v.toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas })
+
+/** Participação em % da fórmula, seja qual for a unidade digitada. */
+function pctDe(i: IngredienteFormula): number {
+  if (i.unidadeParticipacao === 'pct') return i.participacao
+  if (i.unidadeParticipacao === 'kg_t') return i.participacao / 10
+  return i.participacao / 10000
+}
+
 export function SubstituirIngrediente({
-  item, especie, onAplicar, onFechar,
+  item, itens, especie, categoria, onAplicar, onFechar,
 }: {
   item: IngredienteFormula
+  /** A fórmula inteira — necessária pra prévia e pro rebalanceamento. */
+  itens: IngredienteFormula[]
   especie: Especie
-  /** Troca `pct` pontos do item pelo substituto. pct >= participação = troca tudo. */
-  onAplicar: (s: Substituto, pct: number) => void
+  categoria: string
+  onAplicar: (novos: IngredienteFormula[]) => void
   onFechar: () => void
 }) {
-  const opcoes = useMemo(() => substitutosDe(item.nome, especie), [item.nome, especie])
-  const [aberto, setAberto] = useState<string | null>(opcoes.length === 1 ? opcoes[0].nome : null)
-  const [pct, setPct] = useState<Record<string, number>>({})
+  const atual = pctDe(item)
+  const alternativas = useMemo(
+    () => alternativasPara(item.nome, atual, especie),
+    [item.nome, atual, especie],
+  )
+  const [aberta, setAberta] = useState<string | null>(
+    alternativas.length === 1 ? alternativas[0].ingrediente.id : null,
+  )
+  const [pontos, setPontos] = useState<Record<string, number>>({})
 
-  if (!opcoes.length) return null
-  const atual = item.unidadeParticipacao === 'pct' ? item.participacao : item.participacao / 10
+  if (!alternativas.length) return null
+
+  const escolhida = alternativas.find(a => a.ingrediente.id === aberta) ?? null
+  const quanto = escolhida
+    ? pontos[escolhida.ingrediente.id] ?? (escolhida.maximoSubstituivel ?? atual)
+    : 0
 
   return (
     <div className="vr-subst">
@@ -40,85 +82,251 @@ export function SubstituirIngrediente({
 
       {item.unidadeParticipacao !== 'pct' && (
         <p className="obs">
-          Este ingrediente está em kg/t. Os limites abaixo são em % — {atual.toFixed(1)}% equivalem
-          aos {item.participacao} kg/t de hoje.
+          Este ingrediente está em {item.unidadeParticipacao === 'kg_t' ? 'kg/t' : 'g/t'}. Os limites
+          abaixo são em % — {fmt(atual, 1)}% equivalem ao que há hoje.
         </p>
       )}
 
       <ul>
-        {opcoes.map(s => {
-          const max = maximoSubstituivel(s, atual)
-          const escolhido = pct[s.nome] ?? (max ?? Math.min(atual, s.limite.max))
-          const estaAberto = aberto === s.nome
-          return (
-            <li key={s.nome}>
-              <button type="button" className="tit" onClick={() => setAberto(estaAberto ? null : s.nome)}>
-                <span className="nm">{s.nome}</span>
-                <span className="lim">{textoLimite(s)}</span>
-                <span className="ch">{estaAberto ? '▲' : '▼'}</span>
-              </button>
-
-              {estaAberto && (
-                <div className="corpo">
-                  <p className="ganho">{s.ganho}</p>
-                  {s.risco && <p className="risco"><b>Risco:</b> {s.risco}</p>}
-
-                  {s.equivalencia != null && (
-                    <p className="obs">
-                      Vale <b>{Math.round(s.equivalencia * 100)}%</b> da energia do que sai. Trocar quilo por
-                      quilo derruba a energia da fórmula na mesma proporção — e o preço só compensa se
-                      acompanhar essa conta.
-                    </p>
-                  )}
-
-                  {max == null ? (
-                    <p className="obs alerta">
-                      O teto deste ingrediente é sobre a <b>dieta total em matéria seca</b>, e esta tela monta
-                      só o concentrado — ela não sabe quanto de volumoso o animal come. Não dá pra converter
-                      em % da fórmula sem inventar. Use o número como aviso e confirme com o zootecnista.
-                    </p>
-                  ) : max < atual ? (
-                    <p className="obs alerta">
-                      Há {atual.toFixed(1)}% de {item.nome} na fórmula, mas este substituto vai até{' '}
-                      <b>{s.limite.max}%</b>. Dá pra trocar <b>uma parte</b>; o resto continua como está.
-                    </p>
-                  ) : null}
-
-                  <div className="acao">
-                    <label>
-                      Trocar
-                      <input
-                        type="number" min={0} max={atual} step={0.1}
-                        value={Number.isFinite(escolhido) ? Number(escolhido.toFixed(2)) : 0}
-                        onChange={e => setPct(p => ({
-                          ...p,
-                          [s.nome]: Math.max(0, Math.min(atual, Number(e.target.value) || 0)),
-                        }))}
-                        aria-label={`Pontos percentuais a trocar por ${s.nome}`}
-                      />
-                      <span>de {atual.toFixed(1)}%</span>
-                    </label>
-                    <button
-                      type="button" className="ok"
-                      disabled={!(escolhido > 0)}
-                      onClick={() => onAplicar(s, escolhido)}
-                    >
-                      {escolhido >= atual ? 'Trocar tudo' : 'Trocar parte'}
-                    </button>
-                  </div>
-
-                  <p className="fonte">{s.fonte}</p>
-                </div>
-              )}
-            </li>
-          )
-        })}
+        {alternativas.map(a => (
+          <Opcao
+            key={a.ingrediente.id}
+            a={a} atual={atual} aberta={aberta === a.ingrediente.id}
+            onAbrir={() => setAberta(v => (v === a.ingrediente.id ? null : a.ingrediente.id))}
+            quanto={pontos[a.ingrediente.id] ?? (a.maximoSubstituivel ?? atual)}
+            onQuanto={v => setPontos(p => ({ ...p, [a.ingrediente.id]: v }))}
+          />
+        ))}
       </ul>
 
+      {escolhida && quanto > 0 && (
+        <Previa
+          item={item} itens={itens} alternativa={escolhida} pontos={quanto}
+          especie={especie} categoria={categoria} onAplicar={onAplicar}
+        />
+      )}
+
       <p className="rodape">
-        Limite e ressalva vêm da literatura citada em cada opção. Nada aqui balanceia proteína, energia,
-        aminoácido ou mineral — a formulação continua sendo do profissional habilitado.
+        Limite e ressalva vêm da literatura citada em cada opção. O rebalanceamento é feito por um
+        motor de otimização, não por estimativa — mas a formulação final continua sendo do
+        profissional habilitado.
       </p>
+    </div>
+  )
+}
+
+function Opcao({
+  a, atual, aberta, onAbrir, quanto, onQuanto,
+}: {
+  a: Alternativa; atual: number; aberta: boolean; onAbrir: () => void
+  quanto: number; onQuanto: (v: number) => void
+}) {
+  const teto = a.maximoSubstituivel ?? atual
+  return (
+    <li>
+      <button type="button" className="tit" onClick={onAbrir}>
+        <span className="nm">{a.ingrediente.nome}</span>
+        <span className={`compat ${CLASSE[a.compatibilidade]}`}>
+          {ROTULO_COMPAT[a.compatibilidade]}
+        </span>
+        <span className="ch">{aberta ? '▲' : '▼'}</span>
+      </button>
+
+      {aberta && (
+        <div className="corpo">
+          {/* `ganho` (lista curada) e `funcao` (banco) dizem quase a mesma coisa
+              pros ingredientes que estão nos dois — o sorgo aparecia com dois
+              parágrafos quase idênticos. O curado é mais completo, então ganha. */}
+          <p className="funcao">{a.ganho || a.ingrediente.funcao}</p>
+
+          <div className="tags">
+            {a.motivos.map(m => <span key={m}>{m}</span>)}
+          </div>
+          {a.risco && <p className="risco"><b>Risco:</b> {a.risco}</p>}
+          {a.ingrediente.alerta && !a.risco && <p className="obs alerta">{a.ingrediente.alerta}</p>}
+
+          {a.muda.length > 0 && (
+            <>
+              <p className="obs"><b>O que muda, quilo por quilo:</b></p>
+              <table className="muda">
+                <tbody>
+                  {a.muda.map(m => (
+                    <tr key={m.chave}>
+                      <td>{m.rotulo}</td>
+                      <td className="n">{fmt(m.de ?? 0, 2)}</td>
+                      <td className="n seta">→</td>
+                      <td className={`n ${m.sinal > 0 ? 'up' : 'down'}`}>{fmt(m.para ?? 0, 2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {a.maximoSubstituivel == null ? (
+            <p className="obs alerta">
+              O teto deste ingrediente é sobre a <b>dieta total em matéria seca</b>, e esta tela monta
+              só o concentrado — ela não sabe quanto de volumoso o animal come. Não dá pra converter em
+              % da fórmula sem inventar. Use o número como aviso e confirme com o zootecnista.
+            </p>
+          ) : a.maximoSubstituivel < atual - 0.01 ? (
+            <p className="obs alerta">
+              Há {fmt(atual, 1)}% de {a.ingrediente.nome === '' ? 'ingrediente' : 'material'} na
+              fórmula, mas este substituto vai até <b>{a.limite?.max}%</b>. Dá pra trocar{' '}
+              <b>uma parte</b>; o resto continua como está.
+            </p>
+          ) : null}
+
+          <div className="acao">
+            <label>
+              Trocar
+              <input
+                type="number" min={0} max={teto} step={0.1}
+                value={Number.isFinite(quanto) ? Number(quanto.toFixed(2)) : 0}
+                onChange={e => onQuanto(Math.max(0, Math.min(teto, Number(e.target.value) || 0)))}
+                aria-label={`Pontos percentuais a trocar por ${a.ingrediente.nome}`}
+              />
+              <span>de {fmt(atual, 1)}%</span>
+            </label>
+            {a.precoReferencia > 0 && (
+              <span className="preco">ref. R$ {fmt(a.precoReferencia, 2)}/kg</span>
+            )}
+          </div>
+
+          <p className="fonte">{a.fonte}</p>
+        </div>
+      )}
+    </li>
+  )
+}
+
+/**
+ * A PRÉVIA do §9 — o que a troca faz, antes de fazer.
+ *
+ * Calcula os dois caminhos: só a troca, e a troca com rebalanceamento. Mostrar
+ * os dois lado a lado é o que deixa o vendedor entender POR QUE o rebalanceamento
+ * existe: ele vê a proteína desandar na coluna do meio e voltar na da direita.
+ */
+function Previa({
+  item, itens, alternativa, pontos, especie, categoria, onAplicar,
+}: {
+  item: IngredienteFormula
+  itens: IngredienteFormula[]
+  alternativa: Alternativa
+  pontos: number
+  especie: Especie
+  categoria: string
+  onAplicar: (novos: IngredienteFormula[]) => void
+}) {
+  const preco = alternativa.precoReferencia > 0 ? alternativa.precoReferencia : item.preco
+
+  const trocado = useMemo(
+    () => aplicarTroca(itens, item.id, alternativa.ingrediente.nome, pontos, preco, novoIdIngrediente),
+    [itens, item.id, alternativa.ingrediente.nome, pontos, preco],
+  )
+
+  // O rebalanceamento roda EM CIMA da fórmula já trocada — o solver aceita o
+  // ingrediente novo como dado e reajusta os outros. É o §10: quem baixa o
+  // farelo de soja depois do DDGS é o motor.
+  const rebal = useMemo(() => {
+    const r = otimizar(prepararIngredientes(trocado, especie), especie, categoria, 'menor_mudanca')
+    if (r.status === 'impossivel' || r.status === 'erro') return null
+    const mapa = new Map(r.itens.map(x => [x.id, x.participacao]))
+    return {
+      resultado: r,
+      itens: trocado.map(i => {
+        const p = mapa.get(i.id)
+        if (p == null) return i
+        const div = i.unidadeParticipacao === 'pct' ? 1 : i.unidadeParticipacao === 'kg_t' ? 10 : 10000
+        return { ...i, participacao: Number((p * div).toFixed(4)) }
+      }),
+    }
+  }, [trocado, especie, categoria])
+
+  const linhas = useMemo(() => {
+    const a0 = analisarFormula(itens, especie, categoria)
+    const a1 = analisarFormula(trocado, especie, categoria)
+    const a2 = rebal ? analisarFormula(rebal.itens, especie, categoria) : null
+    return a0.linhas.map((l, k) => ({
+      rotulo: l.rotulo, casas: l.casas,
+      antes: l.valor, so: a1.linhas[k]?.valor ?? null, com: a2?.linhas[k]?.valor ?? null,
+      statusSo: a1.linhas[k]?.status, statusCom: a2?.linhas[k]?.status,
+    })).filter(x => x.antes != null || x.so != null)
+  }, [itens, trocado, rebal, especie, categoria])
+
+  const custo = (lista: IngredienteFormula[]) =>
+    lista.reduce((s, i) => s + (pctDe(i) / 100) * i.preco, 0)
+  const c0 = custo(itens)
+  const c1 = custo(trocado)
+  const c2 = rebal ? custo(rebal.itens) : null
+
+  return (
+    <div className="previa">
+      <h5>Prévia — {fmt(pontos, 1)}% de {item.nome} por {alternativa.ingrediente.nome}</h5>
+
+      <table className="cmp">
+        <thead>
+          <tr>
+            <th>Nutriente</th>
+            <th className="n">Hoje</th>
+            <th className="n">Só a troca</th>
+            <th className="n">Com rebalanceamento</th>
+          </tr>
+        </thead>
+        <tbody>
+          {linhas.map(l => (
+            <tr key={l.rotulo}>
+              <td>{l.rotulo}</td>
+              <td className="n">{l.antes == null ? '—' : fmt(l.antes, l.casas)}</td>
+              <td className={`n ${l.statusSo === 'fora' ? 'ruim' : ''}`}>
+                {l.so == null ? '—' : fmt(l.so, l.casas)}
+              </td>
+              <td className={`n ${l.statusCom === 'fora' ? 'ruim' : l.statusCom === 'ok' ? 'bom' : ''}`}>
+                {l.com == null ? '—' : <b>{fmt(l.com, l.casas)}</b>}
+              </td>
+            </tr>
+          ))}
+          <tr className="custo">
+            <td>Custo por kg</td>
+            <td className="n">R$ {fmt(c0, 4)}</td>
+            <td className="n">R$ {fmt(c1, 4)}</td>
+            <td className="n">{c2 == null ? '—' : <b>R$ {fmt(c2, 4)}</b>}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      {rebal && rebal.resultado.naoAtendidas.length > 0 && (
+        <p className="obs alerta">
+          Mesmo rebalanceando, {rebal.resultado.naoAtendidas.length} exigência(s) não fecham:{' '}
+          {rebal.resultado.naoAtendidas.map(x => x.rotulo).join(', ')}.
+        </p>
+      )}
+
+      {/* Sem exigência cadastrada pra esta espécie/fase não existe rebalanceamento
+          — não há meta pra atender. Botão desabilitado e mudo deixaria o vendedor
+          achando que a tela travou; aqui ele fica escondido e o motivo aparece. */}
+      {!rebal && (
+        <p className="obs alerta">
+          Não há exigência nutricional cadastrada para esta espécie e fase, então não há o que
+          rebalancear — sem meta, "otimizar" seria só encher do ingrediente mais barato. A troca
+          simples continua disponível e a coluna do meio mostra o que ela faz.
+        </p>
+      )}
+
+      <div className="botoes">
+        {rebal && (
+          <button type="button" className="ok" onClick={() => onAplicar(rebal.itens)}>
+            Aplicar e rebalancear
+          </button>
+        )}
+        <button
+          type="button" className={rebal ? 'sec' : 'ok'}
+          title={rebal
+            ? 'Troca só este ingrediente e não mexe no resto. Para quem sabe o que está fazendo.'
+            : 'Troca este ingrediente e mantém a soma em 100%.'}
+          onClick={() => onAplicar(trocado)}
+        >{rebal ? 'Aplicar sem rebalancear' : 'Aplicar a troca'}</button>
+      </div>
     </div>
   )
 }
