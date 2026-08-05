@@ -40,14 +40,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { data: cidades, error: e1 } = await db.from('orcamentos_cidades_distintas').select('cidade, uf')
   if (e1) return res.status(502).json({ error: e1.message })
-  const { data: cache, error: e2 } = await db.from('cidade_geocache').select('cidade, uf')
+  const { data: cache, error: e2 } = await db.from('cidade_geocache').select('cidade, uf, lat, lng')
   if (e2) return res.status(502).json({ error: e2.message })
 
-  const have = new Set((cache || []).map(c => `${(c.cidade || '').toLowerCase()}|${c.uf || ''}`))
-  const faltam = (cidades || []).filter(c => c.cidade && !have.has(`${c.cidade.toLowerCase()}|${c.uf || ''}`))
+  // Linha que está EM CIMA do centróide do estado é fallback, não é a cidade — tem
+  // que ser tentada de novo. Sem isto o erro virava PERMANENTE: uma falha passageira
+  // do Nominatim gravava o centro do estado, a cidade entrava no "já tenho" e nunca
+  // mais era reprocessada. Em 05/08/2026 eram 118 linhas assim, e elas empurravam 110
+  // clientes (R$ 19,4 mi) pra fora da rota como "sem localização real" — inclusive
+  // Peritoró, Estreito e Santa Inês empilhados no mesmo ponto no meio do Maranhão.
+  const ehCentroDoEstado = (uf: string, lat: number | null, lng: number | null) => {
+    const c = UF_CENTRO[(uf || '').toUpperCase()]
+    return !!c && lat != null && lng != null &&
+      Math.abs(lat - c.lat) < 0.005 && Math.abs(lng - c.lng) < 0.005
+  }
+  const resolvidas = new Set(
+    (cache || [])
+      .filter(c => !ehCentroDoEstado(c.uf || '', c.lat, c.lng))
+      .map(c => `${(c.cidade || '').toLowerCase()}|${c.uf || ''}`))
+  const faltam = (cidades || []).filter(c => c.cidade && !resolvidas.has(`${c.cidade.toLowerCase()}|${c.uf || ''}`))
   const lote = faltam.slice(0, 30) // teto por chamada (rate-limit Nominatim + timeout)
 
   let atualizados = 0
+  let aproximados = 0
   const falhas: string[] = []
 
   for (const row of lote) {
@@ -66,8 +81,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       { cidade, uf, lat: coord.lat, lng: coord.lng },
       { onConflict: 'cidade,uf' },
     )
-    if (!error) atualizados++
+    // O fallback continua sendo gravado — sem coordenada o cliente sumiria do mapa,
+    // e some ele é pior do que aproximado com aviso. Mas agora conta separado: quem
+    // caiu no centro do estado NÃO é "atualizado", é dívida, e o filtro lá em cima
+    // devolve essa cidade na próxima rodada até o Nominatim responder.
+    if (!error) { if (ehCentroDoEstado(uf, coord.lat, coord.lng)) aproximados++; else atualizados++ }
   }
 
-  return res.status(200).json({ atualizados, pendentes: faltam.length - atualizados, falhas })
+  return res.status(200).json({
+    atualizados,
+    aproximados,                       // caíram no centro do estado; serão tentados de novo
+    pendentes: faltam.length - atualizados - aproximados,
+    falhas,
+  })
 }
