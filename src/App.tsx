@@ -30,6 +30,7 @@ const MapaVisitas = lazy(() => import('@/pages/MapaVisitas').then(m => ({ defaul
 const MinhasVisitas = lazy(() => import('@/pages/MinhasVisitas').then(m => ({ default: m.MinhasVisitas })))
 const OrganizacaoViagemPage = lazy(() => import('./pages/OrganizacaoViagemPage').then(m => ({ default: m.OrganizacaoViagemPage })))
 const MapaRepresentantes = lazy(() => import('@/pages/MapaRepresentantes').then(m => ({ default: m.MapaRepresentantes })))
+const MapaPotenciais = lazy(() => import('@/pages/MapaPotenciais').then(m => ({ default: m.MapaPotenciais })))
 const Representantes = lazy(() => import('@/pages/Representantes').then(m => ({ default: m.Representantes })))
 const SejaRepresentante = lazy(() => import('@/pages/SejaRepresentante').then(m => ({ default: m.SejaRepresentante })))
 const Funil = lazy(() => import('@/pages/Funil').then(m => ({ default: m.Funil })))
@@ -304,6 +305,14 @@ function AppRoutes() {
     return <Navigate to="/" replace />
   }
 
+  // Possíveis Representantes: prospecção OUTBOUND (54 candidatos de fonte pública,
+  // com telefone e e-mail). Este guard só escolhe a tela — a trava real é a RLS de
+  // representante_prospects, que exige pode_gerir_representantes(). Sem ela bastava
+  // o DevTools pra baixar a lista de contatos inteira.
+  if (loc.pathname.startsWith('/mapa-potenciais') && !['admin', 'mapa'].includes(profile.role)) {
+    return <Navigate to="/" replace />
+  }
+
   // Visualizador: acesso restrito a Dashboard + Atendimentos. Bloqueia URL direta
   // pra qualquer outra rota (o menu já esconde; isto trava o acesso por link).
   const VIEWER_PATHS = new Set(['/', '/dashboard', '/atendimentos', '/perfil', '/agenda'])
@@ -391,7 +400,7 @@ function AppRoutes() {
   // salvo pro começo em vez do estudo.
   const ROTAS_RESTRITAS: Record<string, string[]> = {
     mapa: [
-      '/mapa-visitas', '/mapa-representantes', '/representantes', '/ficha-representante',
+      '/mapa-visitas', '/mapa-representantes', '/mapa-potenciais', '/representantes', '/ficha-representante',
       '/producao-propria', '/viabilidade', '/venda-racao', '/perfil',
       // O Patrick tem papel 'mapa' mas vende: 12 pedidos, R$ 5,95 mi. Com o
       // vendor_id apontado, /api/financeiro devolve só os pedidos dele.
@@ -461,6 +470,7 @@ function AppRoutes() {
         <Route path="/minhas-visitas" element={<MinhasVisitas />} />
         <Route path="/organizacao-viagem" element={<OrganizacaoViagemPage />} />
         <Route path="/mapa-representantes" element={<MapaRepresentantes />} />
+        <Route path="/mapa-potenciais" element={<MapaPotenciais />} />
         <Route path="/representantes" element={<Representantes />} />
         {/* Prévia da ficha DENTRO do CRM: mesma tela do candidato, envio travado.
             A pública é /seja-representante e roda antes do login. */}

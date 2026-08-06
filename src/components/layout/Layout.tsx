@@ -32,6 +32,10 @@ const MENUS_RESTRITOS: Record<string, Array<{ to: string; label: string; icon: t
   mapa: [
     { to: '/mapa-visitas', label: 'Mapa de Visitas', icon: MapPin },
     { to: '/mapa-representantes', label: 'Representantes', icon: Users },
+    // Prospecção: 54 candidatos a representante externo, com contato, por UF.
+    // Fica ao lado do mapa de território porque a pergunta é a mesma — quem cobre
+    // este estado? —, só que olhando pra fora da casa.
+    { to: '/mapa-potenciais', label: 'Possíveis Representantes', icon: UserPlus },
     // Painel de gestão do campo. Quem tem 'representantes.gerir' vê número;
     // quem não tem abre a tela e recebe "acesso restrito" — a RPC não devolve linha.
     { to: '/representantes', label: 'Rede em Campo', icon: Target },
@@ -171,6 +175,8 @@ const NAV_GROUPS: NavGroup[] = [
       // Visão de gestão: mostra a carteira de TODOS os reps e o quanto cada um está
       // acima/abaixo da média. Só admin — o guard em App.tsx trava a URL direta.
       { to: '/mapa-representantes', label: 'Mapa de Representantes', icon: MapPin, adminOnly: true },
+      // Prospecção outbound: onde estão os candidatos a representante EXTERNO.
+      { to: '/mapa-potenciais', label: 'Possíveis Representantes', icon: UserPlus, adminOnly: true },
       { to: '/representantes', label: 'Rede em Campo', icon: Target, adminOnly: true },
       // Prévia da ficha que o candidato preenche em /seja-representante (pública).
       // Aqui o envio é travado — é pra conferir o que se pede, não pra testar.
