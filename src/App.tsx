@@ -333,7 +333,20 @@ function AppRoutes() {
       && (can('menu.venda_racao') || can('menu.viabilidade'))
     // Roadmap & Feedback: vendedor VÊ o retorno dos feedbacks que enviou (#49)
     const roadmapOk = p.startsWith('/roadmap') && can('menu.roadmap')
-    const allowed = freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || producaoPropriaOk || roadmapOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
+    /*
+     * Contatos: liberado por PERMISSÃO, não por lista fixa.
+     *
+     * Em 06/08 demos `menu.contatos` aos 9 vendedores e o item continuou fora do
+     * alcance deles. Não bastava o menu: este guard tem lista branca própria, e
+     * quem clicasse cairia de volta em /atendimentos. As duas coisas — permissão
+     * e guard — precisam concordar.
+     *
+     * Amarrado no `can()` de propósito (mesmo padrão de projeto3d/roadmap): se
+     * amanhã tirarem a permissão em /admin/permissoes, o acesso por URL fecha
+     * junto. Numa entrada fixa em VENDOR_PREFIXES, não fecharia.
+     */
+    const contatosOk = p.startsWith('/contatos') && can('menu.contatos')
+    const allowed = freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || producaoPropriaOk || roadmapOk || contatosOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
     if (!allowed) return <Navigate to="/atendimentos" replace />
   }
 
