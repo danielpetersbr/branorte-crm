@@ -171,7 +171,20 @@ const PASSO_MIN_PX = 18        // piso: menos que isso os pinos voltam a se toca
 const PASSO_MAX_PX = 64        // teto: leque não vira uma flor gigante na tela
 const PASSO_ALVO_M = 700       // alvo no chão — abre o leque já no zoom de cidade
 const RAIO_TELA_MAX_PX = 260   // pilha grande não pode ocupar a tela inteira
-const RAIO_MAX_M = 20_000      // teto no chão: NENHUM pino fica a mais de 20 km do ponto real
+
+// Teto no chão. Eram 20 km, e 20 km põe o pino na CIDADE VIZINHA: de Braço do
+// Norte, São Ludgero está a 6,2 km e Grão-Pará a 11,1 km. Medido em 06/08/2026
+// sobre as 316 pilhas do mapa: no zoom 9 eram 652 pinos (58%) desenhados mais
+// perto de outra cidade do que da própria; no zoom 12, 373 (33%).
+// 2,5 km cabe dentro de praticamente qualquer município e ainda dá leque legível
+// do zoom 12 pra cima — que é onde se olha cidade.
+const RAIO_MAX_M = 2_500
+
+// Abaixo disto o leque não separa nada (o pino tem 5px de raio, a estrela 24px):
+// só empurraria o cliente pra fora do município sem ganhar legibilidade. Quando
+// o passo não alcança este piso, o grupo COLAPSA no ponto real — melhor um pino
+// só na cidade certa do que 100 espalhados na cidade errada.
+const PASSO_UTIL_PX = 10
 
 /** Em que anel cai o índice i (0 = centro, 1..6 = 1º anel, 7..18 = 2º…). */
 function anelDoIndice(i: number): number {
@@ -201,19 +214,28 @@ function anelHex(i: number): [number, number] {
  *   • de tela  → uma pilha de 108 não pode virar uma flor do tamanho do monitor;
  *   • de chão  → nenhum pino a mais de RAIO_MAX_M do ponto real.
  * Como o passo é o mesmo pro grupo todo, os anéis encolhem juntos em vez de um
- * colapsar em cima do outro. De estado inteiro pra fora eles voltam a se sobrepor
- * — aí quem resolve é a lista "neste mesmo ponto" do popup.
+ * colapsar em cima do outro.
+ *
+ * Quando nem assim o passo alcança PASSO_UTIL_PX — mapa aberto no estado ou no
+ * país — o grupo volta INTEIRO pro ponto real. Espalhar ali não separava nada e
+ * ainda mandava o cliente pra cidade do lado; quem resolve nessa escala é a
+ * lista "neste mesmo ponto" do popup.
  */
-function posEspalhada(map: L.Map, lat: number, lng: number, dx: number, dy: number, anelMax: number): L.LatLng {
+function posEspalhada(
+  map: L.Map, lat: number, lng: number,
+  dx: number, dy: number, anelMax: number, limiteM = RAIO_MAX_M,
+): L.LatLng {
   if (!dx && !dy) return L.latLng(lat, lng)
   const z = map.getZoom()
   const mPorPx = (156543.03392 * Math.cos((lat * Math.PI) / 180)) / Math.pow(2, z)
   const anel = Math.max(1, anelMax)
+  const raioM = Math.min(RAIO_MAX_M, limiteM)   // o menor entre o teto e a divisa
   const passo = Math.min(
     Math.min(PASSO_MAX_PX, Math.max(PASSO_MIN_PX, PASSO_ALVO_M / mPorPx)),
     RAIO_TELA_MAX_PX / anel,
-    RAIO_MAX_M / (mPorPx * anel),
+    raioM / (mPorPx * anel),
   )
+  if (passo < PASSO_UTIL_PX) return L.latLng(lat, lng)   // não cabe: fica na cidade certa
   const pt = map.project([lat, lng], z)
   return map.unproject(L.point(pt.x + dx * passo, pt.y + dy * passo), z)
 }
@@ -221,7 +243,7 @@ function posEspalhada(map: L.Map, lat: number, lng: number, dx: number, dy: numb
 /** Só o que o zoom precisa mexer: o pino e a coordenada real de onde ele saiu. */
 type Espalhado = {
   m: { setLatLng: (ll: L.LatLng) => unknown }
-  lat: number; lng: number; dx: number; dy: number; anelMax: number
+  lat: number; lng: number; dx: number; dy: number; anelMax: number; limiteM: number
 }
 // Pino VISITADO (caso comum): um único ponto com o ✓ dentro, na cor da idade.
 // Um blob só (sem bolinha extra colada) e é o próprio marcador clicável.
@@ -1150,7 +1172,7 @@ export function MapaVisitas() {
     })
     // Espaçamento dos empilhados é em PIXEL, então muda com o zoom.
     map.on('zoomend', () => {
-      for (const it of espalhadosRef.current) it.m.setLatLng(posEspalhada(map, it.lat, it.lng, it.dx, it.dy, it.anelMax))
+      for (const it of espalhadosRef.current) it.m.setLatLng(posEspalhada(map, it.lat, it.lng, it.dx, it.dy, it.anelMax, it.limiteM))
     })
     mapRef.current = map
     setTimeout(() => map.invalidateSize(), 0)
@@ -1255,30 +1277,56 @@ export function MapaVisitas() {
     if (showVis) for (const v of visFiltradas) contar(v.lat as number, v.lng as number)
     if (showOrc) for (const p of orcFiltrados) contar(p.lat, p.lng)
 
+    // Até onde a pilha pode abrir sem entrar na cidade do lado. Sem isto o teto é
+    // só o RAIO_MAX_M, e onde as sedes são coladas (83 das 316 pilhas têm vizinha
+    // a menos de 3 km) o leque atravessa a divisa. O limite é METADE do caminho
+    // até a coordenada mais próxima — passou disso, o pino está mais perto da
+    // outra cidade do que da própria.
+    const limitePorCoord = new Map<string, number>()
+    {
+      const pts = [...totalPorCoord.keys()].map(k => {
+        const [a, b] = k.split(',')
+        return { k, lat: +a, lng: +b }
+      })
+      for (const p of pts) {
+        if ((totalPorCoord.get(p.k) ?? 1) <= 1) continue
+        let min = Infinity
+        for (const q of pts) {
+          if (q.k === p.k) continue
+          // equirretangular: erro irrelevante nesta escala e MUITO mais barato
+          const dx = (q.lng - p.lng) * Math.cos((p.lat * Math.PI) / 180)
+          const dy = q.lat - p.lat
+          const d2 = dx * dx + dy * dy
+          if (d2 < min) min = d2
+        }
+        if (min < Infinity) limitePorCoord.set(p.k, (Math.sqrt(min) * 111_320) / 2)
+      }
+    }
+
     const usados = new Map<string, number>()
-    /** Reserva o próximo slot livre da coordenada. [dx, dy, anelMax]; [0,0,0] = ponto solto. */
-    const proximo = (lat: number, lng: number): [number, number, number] => {
+    /** Reserva o próximo slot livre da coordenada. [dx, dy, anelMax, limiteM]; [0,0,0,0] = ponto solto. */
+    const proximo = (lat: number, lng: number): [number, number, number, number] => {
       const k = kCoord(lat, lng)
       const total = totalPorCoord.get(k) ?? 1
-      if (total <= 1) return [0, 0, 0]
+      if (total <= 1) return [0, 0, 0, 0]
       const i = usados.get(k) ?? 0
       usados.set(k, i + 1)
       const [dx, dy] = anelHex(i)
-      return [dx, dy, anelDoIndice(total - 1)]
+      return [dx, dy, anelDoIndice(total - 1), limitePorCoord.get(k) ?? RAIO_MAX_M]
     }
     if (showVis) {
       for (const v of visFiltradas) {
         const { nomes, isFollowUp } = resolverEtiquetas(v)
         const cor = isFollowUp ? corDoVendedor(v.vendedor_nome, vendedores) : CINZA
         const lat = v.lat as number, lng = v.lng as number
-        const [dx, dy, anelMax] = proximo(lat, lng)
-        const m = L.circleMarker(posEspalhada(map, lat, lng, dx, dy, anelMax), {
+        const [dx, dy, anelMax, limiteM] = proximo(lat, lng)
+        const m = L.circleMarker(posEspalhada(map, lat, lng, dx, dy, anelMax, limiteM), {
           renderer, radius: isFollowUp ? 6 : 5, fillColor: cor, color: '#fff', weight: 1, fillOpacity: isFollowUp ? 0.95 : 0.7,
         })
         // popup lazy: só monta o HTML quando abre
         m.bindPopup(() => popupVisita(v, isFollowUp, nomes))
         m.addTo(layer)
-        if (dx || dy) espalhados.push({ m, lat, lng, dx, dy, anelMax })
+        if (dx || dy) espalhados.push({ m, lat, lng, dx, dy, anelMax, limiteM })
         bounds.push([lat, lng])
       }
     }
@@ -1295,8 +1343,8 @@ export function MapaVisitas() {
         const visitado = !!mk?.visitado
         const forma = formaValor(p.total, p.vendido)
         const irmaos = porCoord.get(kCoord(p.lat, p.lng)) ?? [p]
-        const [dx, dy, anelMax] = proximo(p.lat, p.lng)
-        const pos = posEspalhada(map, p.lat, p.lng, dx, dy, anelMax)
+        const [dx, dy, anelMax, limiteM] = proximo(p.lat, p.lng)
+        const pos = posEspalhada(map, p.lat, p.lng, dx, dy, anelMax, limiteM)
         const m = forma
           // orçado de alto valor → estrela/diamante (marcador DOM, cor pela idade)
           ? L.marker(pos, { icon: iconeForma(forma, corOrcamento(p)) })
@@ -1315,12 +1363,12 @@ export function MapaVisitas() {
         })
         m.addTo(layer)
         marcadorPorKeyRef.current.set(p.cli_key, m)
-        if (dx || dy) espalhados.push({ m, lat: p.lat, lng: p.lng, dx, dy, anelMax })
+        if (dx || dy) espalhados.push({ m, lat: p.lat, lng: p.lng, dx, dy, anelMax, limiteM })
         // estrela/diamante visitado mantém a forma; ✓ vai num selinho no canto
         if (visitado && forma) {
           const selo = L.marker(pos, { icon: checkIcon(), interactive: false, zIndexOffset: 1000 })
           selo.addTo(layer)
-          if (dx || dy) espalhados.push({ m: selo, lat: p.lat, lng: p.lng, dx, dy, anelMax })
+          if (dx || dy) espalhados.push({ m: selo, lat: p.lat, lng: p.lng, dx, dy, anelMax, limiteM })
         }
         bounds.push([p.lat, p.lng])
       }
