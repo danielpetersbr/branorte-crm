@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useContacts, useUpdateContact } from '@/hooks/useContacts'
 import { useVendors } from '@/hooks/useVendors'
 import { Input } from '@/components/ui/Input'
@@ -10,8 +10,8 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatNumber, formatPhone, whatsappLink, formatDateTimeShort } from '@/lib/utils'
 import { useVendorMap } from '@/hooks/useVendorMap'
 import { useContactsOrcamentos } from '@/hooks/useContactsOrcamentos'
-import { type WaResumoCampos } from '@/hooks/useWaResumo'
-import { canonico, corDaEtiqueta, ETIQUETA_COR, ETIQUETAS_OCULTAS, ordemDe, tempoRelativo, temperaturaDe, TEMP_META } from '@/lib/wa-funil'
+import { useWaEtiquetasDisponiveis, type WaResumoCampos } from '@/hooks/useWaResumo'
+import { canonico, corDaEtiqueta, ETIQUETAS_OCULTAS, ordemDe, tempoRelativo, temperaturaDe, TEMP_META } from '@/lib/wa-funil'
 import { useAuth } from '@/hooks/useAuth'
 import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, FileText, Copy, Check, CornerDownLeft } from 'lucide-react'
 import { ESTADOS_BR, STATUS_OPTIONS, TEMPERATURA_OPTIONS, FUNIL_OPTIONS, PAGE_SIZE, CONTACT_SORT_OPTIONS } from '@/types'
@@ -50,14 +50,19 @@ function isPlaceholderPhone(phone: string | null | undefined): boolean {
 // Célula vazia — o comum nesta tela, já que só ~5% dos contatos têm chat sincronizado.
 const Vazio = () => <span className="text-[11px] text-ink-faint/40">—</span>
 
-// Opções do filtro de etiqueta: as do funil conhecido, na ordem oficial do funil.
-// A RPC compara `etiqueta_principal` por igualdade EXATA, então o que vai daqui
-// precisa ser o texto que está gravado no WhatsApp — por isso as ocultas
-// (BRANORTE, TRANSPORTADORAS...) ficam de fora: não são funil de cliente.
-const ETIQUETA_OPTIONS = Object.keys(ETIQUETA_COR)
-  .filter(nome => !ETIQUETAS_OCULTAS.has(nome))
-  .sort((a, b) => ordemDe(a) - ordemDe(b) || a.localeCompare(b))
-  .map(nome => ({ value: nome, label: nome }))
+// Ordenar por último contato liga o JOIN com a matview na RPC: a lista deixa de
+// ser "todos os contatos" e passa a ser "só quem tem conversa sincronizada".
+// Está correto — ordenar por uma data que 95% não tem não significa nada — mas
+// o contador despenca de ~208k pra ~10,6k, e sem aviso isso parece bug.
+const SORTS_SO_WHATSAPP = new Set<ContactSortKey>(['ultimo_contato_recente', 'ultimo_contato_antigo'])
+
+/**
+ * Sentinela de "contato tem WhatsApp mas ninguem colocou etiqueta".
+ * Nao e etiqueta real: `contatos_page` traduz este valor para
+ * `etiqueta_principal IS NULL`, e `wa_etiquetas_disponiveis` agrupa os NULL
+ * sob ele. Os dois lados TEM que usar a mesma string.
+ */
+const SEM_ETIQUETA = '(sem etiqueta)'
 
 interface EtiquetaEscolhida {
   nome: string
@@ -211,6 +216,52 @@ export function Contacts() {
   const updateContact = useUpdateContact()
   const vendorMap = useVendorMap()
   const { profile } = useAuth()
+  const { data: etiquetasDisponiveis } = useWaEtiquetasDisponiveis()
+
+  /**
+   * Opções do filtro de Etiqueta, vindas do DADO (RPC) e não de `ETIQUETA_COR`.
+   *
+   * A constante só conhece as 18 etiquetas do funil oficial, então etiquetas que
+   * existem de verdade — FEIRA, SUPORTE TECNICO, AGENDAMENTO, IMPORTANTES —
+   * apareciam na COLUNA mas não no dropdown: dava pra ver, não dava pra filtrar.
+   * A contagem ao lado do nome mostra onde tem gente antes de gastar um clique.
+   *
+   * `value` vai CRU: `contatos_page` compara `p_etiqueta` com `etiqueta_principal`
+   * por igualdade EXATA. `canonico()` entra só pra ordenar e pra checar ocultas.
+   *
+   * As ocultas (BRANORTE, TRANSPORTADORAS, FUNCIONARIO...) continuam fora — e é
+   * o MESMO `ETIQUETAS_OCULTAS` que a coluna usa, de propósito: filtrar por uma
+   * etiqueta que a coluna esconde devolveria uma lista inteira com a coluna
+   * Etiqueta vazia. Filtro e coluna precisam concordar sobre o que existe.
+   *
+   * ⚠️ A contagem SÓ pode vir de uma fonte que enxergue o mesmo que o filtro.
+   * A 1a versao da RPC contava linhas da matview, sem escopo de vendedor: o
+   * dropdown dizia "VENDIDO (164)" e o filtro devolvia 70. Errado pra 13 dos 16
+   * usuarios — e, pior, o vendedor lia a distribuicao de funil da empresa toda.
+   * Hoje a RPC junta com `contacts` e aplica o mesmo predicado de RLS, entao
+   * dropdown e cabecalho batem. Se mexer numa, meça a outra.
+   *
+   * "(sem etiqueta)" vem da propria RPC (o COALESCE agrupa os NULL) e e o
+   * sentinela que `contatos_page` traduz de volta pra `IS NULL`: sao contatos
+   * COM conversa no WhatsApp que ninguem classificou.
+   */
+  const etiquetaOptions = useMemo(() => (etiquetasDisponiveis ?? [])
+    .filter(e => e.etiqueta === SEM_ETIQUETA || !ETIQUETAS_OCULTAS.has(canonico(e.etiqueta)))
+    .sort((a, b) =>
+      Number(b.etiqueta === SEM_ETIQUETA) - Number(a.etiqueta === SEM_ETIQUETA)  // sem etiqueta primeiro
+      || ordemDe(canonico(a.etiqueta)) - ordemDe(canonico(b.etiqueta))
+      || b.contatos - a.contatos          // fora do funil conhecido: maior primeiro
+      || a.etiqueta.localeCompare(b.etiqueta))
+    .map(e => ({
+      value: e.etiqueta,
+      label: e.etiqueta === SEM_ETIQUETA
+        ? `Sem etiqueta (${formatNumber(e.contatos)})`
+        : `${e.etiqueta} (${formatNumber(e.contatos)})`,
+    })),
+  [etiquetasDisponiveis])
+
+  // Aviso de "a lista encolheu" — ver SORTS_SO_WHATSAPP.
+  const soComWhatsapp = SORTS_SO_WHATSAPP.has(filters.sort)
 
   // Vendor só vê dropdown com ele mesmo + "não atribuído". Admin vê todos.
   const isVendor = profile?.role === 'vendor'
@@ -248,7 +299,18 @@ export function Contacts() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-text-primary">Contatos</h1>
-          <p className="text-sm text-text-secondary">{formatNumber(total)} contatos encontrados</p>
+          <p className="text-sm text-text-secondary">
+            {formatNumber(total)} contatos encontrados
+            {soComWhatsapp && (
+              <span
+                className="ml-2 inline-flex items-center gap-1 align-middle text-[11px] text-ink-faint"
+                title="Ordenar por ultimo contato so faz sentido pra quem tem conversa sincronizada, entao a lista fica restrita a esses contatos. Troque a ordenacao pra ver a base inteira."
+              >
+                <MessageCircle className="h-3 w-3 shrink-0" aria-hidden />
+                mostrando so quem tem conversa no WhatsApp
+              </span>
+            )}
+          </p>
         </div>
       </div>
 
@@ -330,7 +392,7 @@ export function Contacts() {
           </Button>
 
           <Select
-            options={ETIQUETA_OPTIONS}
+            options={etiquetaOptions}
             placeholder="Etiqueta"
             value={filters.etiqueta ?? ''}
             onChange={e => setFilters(f => ({ ...f, etiqueta: e.target.value, page: 0 }))}

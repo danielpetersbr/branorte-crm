@@ -4,9 +4,16 @@ export interface Vendor {
   name: string
 }
 
-export type Temperatura = 'quente' | 'morno' | 'frio' | 'vendido' | 'perdido'
-export type EstagioFunil = 'novo_lead' | 'primeiro_contato' | 'qualificado' | 'proposta_enviada' | 'negociando' | 'fechado_ganho' | 'fechado_perdido'
-
+/**
+ * Uma linha de `public.contacts`.
+ *
+ * Este tipo já declarou `temperatura`, `estagio_funil`, `valor_estimado`,
+ * `motivo_perda` e `tentativas` — e NENHUM deles é coluna da tabela. Esse dado
+ * mora no JSON da primeira linha de `notes` e quem lê é `parseCrmMeta`
+ * (src/lib/crm-fields.ts), que devolve `CrmMeta`. Como a query fazia
+ * `select('*')`, os cinco chegavam `undefined` em silêncio — ninguém lia, mas o
+ * tipo prometia. Não readicionar campo aqui sem coluna correspondente no banco.
+ */
 export interface Contact {
   id: string
   name: string | null
@@ -22,16 +29,19 @@ export interface Contact {
   telefone_normalizado: string | null
   created_at: string
   updated_at: string
-  // New CRM fields
-  temperatura: Temperatura | null
-  estagio_funil: EstagioFunil | null
-  valor_estimado: number | null
   proximo_followup: string | null
-  ultimo_contato: string | null
-  motivo_perda: string | null
-  tentativas: number | null
   data_orcamento: string | null
   descricao_orcamento: string | null
+  /**
+   * ÚLTIMA MENSAGEM TROCADA NO WHATSAPP — não é coluna de `public.contacts`.
+   *
+   * Vem do LEFT JOIN com a matview do WhatsApp que a RPC `contatos_page` faz.
+   * NÃO confundir com "último followup": a data de followup do CRM mora no JSON
+   * de `notes`, no campo `ultimo` de `CrmMeta`. Quem carrega contato por
+   * `select('*')` (ex.: `useContact`) recebe este campo undefined — só
+   * `contatos_page` o preenche.
+   */
+  ultimo_contato: string | null
 }
 
 export type ContactSortKey =

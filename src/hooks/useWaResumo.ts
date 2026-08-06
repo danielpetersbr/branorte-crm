@@ -78,3 +78,42 @@ export function useWaResumo(phones: string[]) {
     staleTime: 60_000,
   })
 }
+
+/** Uma etiqueta que EXISTE hoje no dado, com quantos contatos carregam ela. */
+export interface WaEtiquetaDisponivel {
+  /** Texto CRU, exatamente como está gravado no WhatsApp. */
+  etiqueta: string
+  contatos: number
+}
+
+/**
+ * Etiquetas que realmente existem em `etiqueta_principal`, com a contagem.
+ *
+ * Serve pra montar filtro de etiqueta a partir do DADO, não de uma constante:
+ * `ETIQUETA_COR` só conhece as 18 do funil oficial e escondia etiquetas reais
+ * (FEIRA, SUPORTE TECNICO, AGENDAMENTO, IMPORTANTES...) que ninguém conseguia
+ * filtrar porque não estavam na lista.
+ *
+ * O texto vem CRU de propósito: `contatos_page` compara `p_etiqueta` com
+ * `etiqueta_principal` por igualdade EXATA, então o valor daqui é o único que
+ * garantidamente casa. Canonizar (`canonico()`) serve pra COR e pra checar
+ * ocultas — nunca pro valor enviado à RPC.
+ *
+ * Papéis restritos recebem lista vazia (a RPC aplica `papel_restrito()`).
+ * `staleTime` alto: etiqueta nova é evento raro, e a fonte é uma matview.
+ */
+export function useWaEtiquetasDisponiveis() {
+  return useQuery({
+    queryKey: ['wa-etiquetas-disponiveis'],
+    queryFn: async (): Promise<WaEtiquetaDisponivel[]> => {
+      const { data, error } = await supabase.rpc('wa_etiquetas_disponiveis')
+      if (error) throw error
+      const linhas = (data ?? []) as { etiqueta: string | null; contatos: number | string | null }[]
+      return linhas
+        .filter(r => !!r?.etiqueta)
+        // `contatos` é bigint no Postgres — pode chegar como string.
+        .map(r => ({ etiqueta: String(r.etiqueta), contatos: Number(r.contatos ?? 0) }))
+    },
+    staleTime: 30 * 60_000,
+  })
+}
