@@ -80,6 +80,11 @@ function fmtN(n: number): string {
   return new Intl.NumberFormat('pt-BR').format(n)
 }
 
+// Percentual com 1 casa em pt-BR (vírgula) — "4,1%", não "4.1%".
+function pct1(v: number): string {
+  return v.toFixed(1).replace('.', ',') + '%'
+}
+
 function fmtBRL(v: number): string {
   if (v >= 1_000_000) return 'R$ ' + (v / 1_000_000).toFixed(1).replace('.', ',') + 'M'
   if (v >= 1_000) return 'R$ ' + (v / 1_000).toFixed(0) + 'k'
@@ -891,6 +896,18 @@ export function Dashboard() {
 
       {/* ════════ GRUPO 3 · ONDE INVESTIR (canônico de mídia) ════════ */}
       <CollapsibleSection n="3" titulo="Onde investir" pergunta="Pra onde vai (ou corta) a verba?" open={openSec.g3} onToggle={() => toggleSec('g3')}>
+      <Card id="top-orcamento">
+        <CardHeader
+          title="🏆 Top 10 — quem gera orçamento e venda"
+          subtitle="Ranking por volume REAL (não por score de qualidade). Qual anúncio e qual canal estão virando proposta e dinheiro."
+        />
+        <TopFontesOrcamento
+          criativos={data.porCriativo}
+          origens={data.porOrigem}
+          realCriativo={orcVendaCriativo}
+          realOrigem={orcVendaOrigem}
+        />
+      </Card>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 lg:gap-5 items-start">
         <Card id="criativo-veredito">
           <CardHeader
@@ -2620,6 +2637,218 @@ function sortFunil(a: FunilRow, b: FunilRow): number {
   // O score já correlaciona com o veredito. Empate vai pelo volume de leads.
   if (b.score !== a.score) return b.score - a.score
   return b.total - a.total
+}
+
+// ─── TOP 10: quem gera mais ORÇAMENTO e VENDA ───────────────────────────────
+// As tabelas de veredito abaixo ordenam por QUALIDADE (score), então quem traz
+// mais orçamento fica espalhado no meio da lista. Este ranking responde a outra
+// pergunta — "de onde saem os orçamentos e o dinheiro?" — pelo VOLUME REAL:
+// orçamento montado casado pelo telefone do lead + pedido não-cancelado (R$).
+// Mesma fonte (dashboard_orcvenda_por_criativo/_por_origem), só reordenada.
+const TOP_RANK = 10
+type RankMetric = 'orc' | 'valor'
+
+interface RankRow {
+  key: string
+  codigo?: string
+  label: string
+  leads: number | null   // null = fonte fora do recorte de volume do dashboard
+  orc: number
+  venda: number
+  valor: number
+  semAtribuicao: boolean // balde "Não identificou": conta, mas não dá pra investir nele
+}
+
+type RankMeta = { label: string; codigo?: string; leads: number }
+
+/** Ordena o mapa real (orç/venda por chave) e enriquece com nome + volume de leads. */
+function buildRank(
+  real: Map<string, OrcVendaAttr> | undefined,
+  meta: Map<string, RankMeta>,
+  excluir?: (key: string) => boolean,
+): { rows: RankRow[]; foraQtd: number; foraOrc: number; foraValor: number } {
+  const rows: RankRow[] = []
+  let foraQtd = 0, foraOrc = 0, foraValor = 0
+  for (const [key, v] of real ?? new Map()) {
+    if (v.orc === 0 && v.venda === 0) continue
+    if (excluir?.(key)) { foraQtd++; foraOrc += v.orc; foraValor += v.valor; continue }
+    const m = meta.get(key)
+    rows.push({
+      key,
+      codigo: m?.codigo,
+      label: m?.label || key,
+      leads: m ? m.leads : null,
+      orc: v.orc, venda: v.venda, valor: v.valor,
+      semAtribuicao: SEM_ATRIB_RE.test(key),
+    })
+  }
+  return { rows, foraQtd, foraOrc, foraValor }
+}
+
+const SEM_ATRIB_RE = /não identific|nao identific|sem origem|desconhec/i
+
+function rankSorter(metric: RankMetric) {
+  return (a: RankRow, b: RankRow) =>
+    metric === 'valor'
+      ? (b.valor - a.valor) || (b.venda - a.venda) || (b.orc - a.orc)
+      : (b.orc - a.orc) || (b.valor - a.valor)
+}
+
+function RankPanel({ titulo, rows, metric, nota }: {
+  titulo: string
+  rows: RankRow[]
+  metric: RankMetric
+  nota?: string
+}) {
+  const [verTudo, setVerTudo] = useState(false)
+  const ordenadas = [...rows].sort(rankSorter(metric))
+  const visiveis = verTudo ? ordenadas : ordenadas.slice(0, TOP_RANK)
+  const ocultos = ordenadas.length - visiveis.length
+  const valorDe = (r: RankRow) => (metric === 'valor' ? r.valor : r.orc)
+  const max = Math.max(1, ...ordenadas.map(valorDe))
+  const totOrc = rows.reduce((s, r) => s + r.orc, 0)
+  const totVenda = rows.reduce((s, r) => s + r.venda, 0)
+  const totValor = rows.reduce((s, r) => s + r.valor, 0)
+
+  return (
+    <div className="min-w-0">
+      <div className="flex items-baseline justify-between gap-2 border-b border-border pb-1.5 mb-2.5">
+        <h4 className="text-[12px] font-semibold text-ink">{titulo}</h4>
+        <span className="text-[10px] tabular-nums text-ink-faint shrink-0">
+          {fmtN(totOrc)} orç · {fmtN(totVenda)} vd · {fmtBRL(totValor)}
+        </span>
+      </div>
+
+      {ordenadas.length === 0 ? (
+        <p className="text-[12px] text-ink-faint py-2">Nenhum orçamento atribuído no período.</p>
+      ) : (
+        <ol className="space-y-2">
+          {visiveis.map((r, i) => {
+            const barPct = Math.max(1.5, (valorDe(r) / max) * 100)
+            // Fatia que virou VENDA — subconjunto do orçamento (todo pedido nasce de um
+            // orçamento), então cabe dentro da mesma barra. Piso de 3px pra 1 venda em 36
+            // orçamentos não sumir; o número exato fica no rótulo ao lado.
+            const vendaPct = metric === 'orc' && r.orc > 0 ? (r.venda / r.orc) * barPct : 0
+            // Taxa só com amostra mínima: "1 lead → 1 orçamento = 100%" é ruído, não sinal.
+            const taxa = r.leads && r.leads >= AMOSTRA_MIN ? (r.orc / r.leads) * 100 : null
+            return (
+              <li key={r.key}>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="w-4 shrink-0 text-right text-[10px] tabular-nums text-ink-faint">{i + 1}</span>
+                  {r.codigo && <span className="shrink-0 text-[10px] font-mono px-1 rounded bg-surface-2 text-ink-faint">{r.codigo}</span>}
+                  <span className="truncate text-[12px] text-ink font-medium" title={r.label}>{r.label}</span>
+                  {r.semAtribuicao && (
+                    <span className="shrink-0 text-[9px] px-1 py-px rounded border border-border text-ink-faint" title="Lead chegou sem UTM/rastreio: entra na conta, mas não dá pra investir nem cortar. Ação: corrigir rastreamento.">
+                      ⚫ sem rastreio
+                    </span>
+                  )}
+                  <span className="ml-auto shrink-0 text-[11px] tabular-nums">
+                    <span className="text-ink font-semibold">{fmtN(r.orc)}</span><span className="text-ink-faint"> orç</span>
+                    {r.venda > 0 && (
+                      <span className="text-success font-semibold"> · {fmtN(r.venda)} vd · {fmtBRL(r.valor)}</span>
+                    )}
+                  </span>
+                </div>
+                <div className="mt-1 ml-6 flex items-center gap-2">
+                  <div className="relative h-2.5 flex-1 min-w-0 rounded-full bg-surface-2 overflow-hidden">
+                    <div className="absolute inset-y-0 left-0 rounded-full bg-info" style={{ width: `${barPct}%` }} />
+                    {vendaPct > 0 && (
+                      <div className="absolute inset-y-0 left-0 rounded-full bg-success ring-2 ring-surface"
+                           style={{ width: `${vendaPct}%`, minWidth: '3px' }} />
+                    )}
+                  </div>
+                  <span className="shrink-0 w-[124px] text-right text-[10px] tabular-nums text-ink-faint">
+                    {r.leads == null ? 'volume n/d' : `${fmtN(r.leads)} lead${r.leads === 1 ? '' : 's'}`}
+                    {taxa != null
+                      ? <> · <span className={taxa >= 4 ? 'text-success' : taxa >= 1.5 ? 'text-ink-muted' : 'text-warning'}>{pct1(taxa)}</span></>
+                      : r.leads != null && <span title={`Menos de ${AMOSTRA_MIN} leads: a taxa ainda não significa nada.`}> · amostra</span>}
+                  </span>
+                </div>
+              </li>
+            )
+          })}
+        </ol>
+      )}
+
+      {ocultos > 0 && !verTudo && (
+        <button onClick={() => setVerTudo(true)} className="mt-2 w-full text-[11px] text-accent hover:text-accent/80 border border-dashed border-border rounded-lg py-1">
+          + {ocultos} com menos orçamento ↓
+        </button>
+      )}
+      {verTudo && ordenadas.length > TOP_RANK && (
+        <button onClick={() => setVerTudo(false)} className="mt-2 w-full text-[11px] text-ink-faint hover:text-ink-muted py-1">Mostrar só o top {TOP_RANK} ↑</button>
+      )}
+      {nota && <p className="mt-2 text-[10px] text-ink-faint leading-relaxed">{nota}</p>}
+    </div>
+  )
+}
+
+function TopFontesOrcamento({ criativos, origens, realCriativo, realOrigem }: {
+  criativos: { codigo: string; nome: string; total: number }[]
+  origens: { origem: string; total: number }[]
+  realCriativo?: Map<string, OrcVendaAttr>
+  realOrigem?: Map<string, OrcVendaAttr>
+}) {
+  const [metric, setMetric] = useState<RankMetric>('orc')
+
+  const metaCriativo = useMemo(
+    () => new Map<string, RankMeta>(criativos.map(c => [c.codigo, { label: c.nome || c.codigo, codigo: c.codigo, leads: c.total }])),
+    [criativos],
+  )
+  const metaOrigem = useMemo(
+    () => new Map<string, RankMeta>(origens.map(o => [o.origem, { label: o.origem, leads: o.total }])),
+    [origens],
+  )
+  const rc = useMemo(() => buildRank(realCriativo, metaCriativo), [realCriativo, metaCriativo])
+  // WhatsApp de vendedor individual não é mídia paga — mesma exclusão do card de
+  // origem ao lado. Não some calado: o rodapé diz quanto ficou de fora.
+  const ro = useMemo(() => buildRank(realOrigem, metaOrigem, k => /^whatsapp\s/i.test(k)), [realOrigem, metaOrigem])
+
+  if (!realCriativo && !realOrigem) {
+    return <p className="text-[12px] text-ink-faint">Carregando atribuição de orçamento…</p>
+  }
+
+  const notaOrigem = ro.foraQtd > 0
+    ? `Fora da lista: ${ro.foraQtd} origem(ns) de WhatsApp de vendedor individual (${fmtN(ro.foraOrc)} orç · ${fmtBRL(ro.foraValor)}) — é atendimento direto, não verba de mídia.`
+    : undefined
+
+  return (
+    <div className="space-y-3">
+      {/* Métrica do ranking: volume de orçamento (o que o time gera) ou R$ fechado. */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="inline-flex rounded-lg border border-border overflow-hidden">
+          {([['orc', 'Mais orçamento'], ['valor', 'Mais venda (R$)']] as [RankMetric, string][]).map(([k, lab]) => (
+            <button key={k} onClick={() => setMetric(k)}
+              className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${metric === k ? 'bg-accent text-white' : 'bg-surface text-ink-muted hover:bg-surface-2'}`}>
+              {lab}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-3 text-[10px] text-ink-faint">
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-info" /> orçamento</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-success" /> virou venda</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-x-6 gap-y-5">
+        <RankPanel titulo="Por criativo (anúncio)" rows={rc.rows} metric={metric} />
+        <RankPanel titulo="Por origem (canal)" rows={ro.rows} metric={metric} nota={notaOrigem} />
+      </div>
+
+      <div className="text-[11px] text-ink-faint pt-1 space-y-1 leading-relaxed border-t border-border/60">
+        <p className="pt-2">
+          <strong className="text-ink-muted">Barra</strong> = {metric === 'valor' ? 'R$ vendido' : 'nº de orçamentos'} (a maior vira 100%);
+          o trecho <span className="text-success font-medium">verde</span> é a parte que virou venda.
+          À direita: leads da fonte e <strong className="text-ink-muted">quantos % viraram orçamento</strong> — é aí que aparece o
+          criativo que traz muito lead e pouco orçamento.
+        </p>
+        <p>
+          Contagem <strong className="text-ink-muted">real</strong>: orçamento montado casado pelo telefone do lead e pedido não-cancelado (orçamento→pedido) —
+          não depende da etiqueta do WhatsApp. Respeita o filtro de período pela data de chegada do lead.
+        </p>
+      </div>
+    </div>
+  )
 }
 
 function VereditoInvestimento({
