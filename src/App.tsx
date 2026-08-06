@@ -27,8 +27,10 @@ const Prospeccao = lazy(() => import('@/pages/Prospeccao').then(m => ({ default:
 const Orcamentos = lazy(() => import('@/pages/Orcamentos').then(m => ({ default: m.Orcamentos })))
 const Vendidos = lazy(() => import('@/pages/Vendidos').then(m => ({ default: m.Vendidos })))
 const MapaVisitas = lazy(() => import('@/pages/MapaVisitas').then(m => ({ default: m.MapaVisitas })))
+const MinhasVisitas = lazy(() => import('@/pages/MinhasVisitas').then(m => ({ default: m.MinhasVisitas })))
 const OrganizacaoViagemPage = lazy(() => import('./pages/OrganizacaoViagemPage').then(m => ({ default: m.OrganizacaoViagemPage })))
 const MapaRepresentantes = lazy(() => import('@/pages/MapaRepresentantes').then(m => ({ default: m.MapaRepresentantes })))
+const Representantes = lazy(() => import('@/pages/Representantes').then(m => ({ default: m.Representantes })))
 const Funil = lazy(() => import('@/pages/Funil').then(m => ({ default: m.Funil })))
 const FunilWhatsApp = lazy(() => import('@/pages/FunilWhatsApp').then(m => ({ default: m.FunilWhatsApp })))
 const FunilRelatorio = lazy(() => import('@/pages/FunilRelatorio').then(m => ({ default: m.FunilRelatorio })))
@@ -284,6 +286,15 @@ function AppRoutes() {
     return <Navigate to="/" replace />
   }
 
+  // Rede de Representantes: painel de GESTÃO do campo (visitas, execução, alertas).
+  // Rota diferente de /mapa-representantes — o startsWith acima NÃO cobre esta.
+  // Aqui o guard só escolhe a tela: a trava real é pode_gerir_representantes()
+  // dentro das RPCs rep_painel/rep_visitas, que devolvem ZERO linha pra quem não
+  // gere. Sem ela, bastava o DevTools pra ler o desempenho de todo mundo.
+  if (loc.pathname.startsWith('/representantes') && !['admin', 'mapa'].includes(profile.role)) {
+    return <Navigate to="/" replace />
+  }
+
   // Visualizador: acesso restrito a Dashboard + Atendimentos. Bloqueia URL direta
   // pra qualquer outra rota (o menu já esconde; isto trava o acesso por link).
   const VIEWER_PATHS = new Set(['/', '/dashboard', '/atendimentos', '/perfil', '/agenda'])
@@ -296,7 +307,7 @@ function AppRoutes() {
   // Vendedor: acesso restrito a Atendimentos, Consulta, Montar/Editar Orçamento e
   // Mapa de Visitas (+ Perfil). Dashboard escondido → "/" e demais rotas caem em
   // Atendimentos. O menu já esconde; isto trava o acesso por URL direta.
-  const VENDOR_PREFIXES = ['/atendimentos', '/consulta', '/prospeccao', '/orcamentos/montar', '/orcamentos/salvos', '/orcamentos/novo', '/mapa-visitas', '/organizacao-viagem', '/frete/solicitar', '/perfil', '/agenda']
+  const VENDOR_PREFIXES = ['/atendimentos', '/consulta', '/prospeccao', '/orcamentos/montar', '/orcamentos/salvos', '/orcamentos/novo', '/mapa-visitas', '/minhas-visitas', '/organizacao-viagem', '/frete/solicitar', '/perfil', '/agenda']
   if (profile.role === 'vendor') {
     const p = loc.pathname
     // gestor de frete pode ter papel 'vendor' + permissão frete.aprovar → libera a fila pra ele
@@ -346,7 +357,7 @@ function AppRoutes() {
   // salvo pro começo em vez do estudo.
   const ROTAS_RESTRITAS: Record<string, string[]> = {
     mapa: [
-      '/mapa-visitas', '/mapa-representantes', '/producao-propria',
+      '/mapa-visitas', '/mapa-representantes', '/representantes', '/producao-propria',
       '/viabilidade', '/venda-racao', '/perfil',
     ],
     consultor: ['/producao-propria', '/viabilidade', '/venda-racao', '/perfil'],
@@ -356,7 +367,14 @@ function AppRoutes() {
     // ufs_visiveis(). Este guard so escolhe a tela; sem a trava do banco ele
     // baixaria a carteira nacional pelo DevTools. Fica FORA do /mapa-representantes,
     // que mostra o territorio e os numeros de todo mundo.
-    representante: ['/mapa-visitas', '/producao-propria', '/viabilidade', '/venda-racao', '/perfil'],
+    // O [0] é a LANDING do papel. Fica /mapa-visitas de propósito: é a tela que
+    // ele já usa e que tem conteúdo hoje. /minhas-visitas só enche quando houver
+    // roteiro montado pra ele — pôr uma tela vazia como porta de entrada seria
+    // trocar o que funciona por uma promessa.
+    representante: [
+      '/mapa-visitas', '/minhas-visitas', '/producao-propria',
+      '/viabilidade', '/venda-racao', '/perfil',
+    ],
   }
   const rotasDoPapel = ROTAS_RESTRITAS[profile.role]
   if (rotasDoPapel && !rotasDoPapel.includes(loc.pathname)) {
@@ -403,8 +421,10 @@ function AppRoutes() {
         <Route path="/frete/aprovar" element={<Navigate to="/frete/cotacoes" replace />} />
         <Route path="/vendidos" element={<Vendidos />} />
         <Route path="/mapa-visitas" element={<MapaVisitas />} />
+        <Route path="/minhas-visitas" element={<MinhasVisitas />} />
         <Route path="/organizacao-viagem" element={<OrganizacaoViagemPage />} />
         <Route path="/mapa-representantes" element={<MapaRepresentantes />} />
+        <Route path="/representantes" element={<Representantes />} />
         <Route path="/controle" element={<ControleDashboard />} />
         <Route path="/controle/pedidos" element={<ControlePedidos />} />
         <Route path="/controle/financeiro" element={<ControleFinanceiro />} />

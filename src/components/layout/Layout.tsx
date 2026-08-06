@@ -32,6 +32,9 @@ const MENUS_RESTRITOS: Record<string, Array<{ to: string; label: string; icon: t
   mapa: [
     { to: '/mapa-visitas', label: 'Mapa de Visitas', icon: MapPin },
     { to: '/mapa-representantes', label: 'Representantes', icon: Users },
+    // Painel de gestão do campo. Quem tem 'representantes.gerir' vê número;
+    // quem não tem abre a tela e recebe "acesso restrito" — a RPC não devolve linha.
+    { to: '/representantes', label: 'Rede em Campo', icon: Target },
     { to: '/producao-propria', label: 'Produção Própria', icon: Calculator },
     { to: '/venda-racao', label: 'Venda de Ração', icon: ShoppingBag },
   ],
@@ -40,6 +43,7 @@ const MENUS_RESTRITOS: Record<string, Array<{ to: string; label: string; icon: t
   // trocar o papel dele pelo mapa não podia TIRAR o que ele usava.
   representante: [
     { to: '/mapa-visitas', label: 'Mapa de Visitas', icon: MapPin },
+    { to: '/minhas-visitas', label: 'Minhas Visitas', icon: ClipboardList },
     { to: '/producao-propria', label: 'Produção Própria', icon: Calculator },
     { to: '/venda-racao', label: 'Venda de Ração', icon: ShoppingBag },
   ],
@@ -138,6 +142,10 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/controle/novo-pedido', label: 'Novo Pedido', icon: FilePlus2, permKey: 'menu.controle' },
       { to: '/vendidos', label: 'Vendidos', icon: CheckCircle, permKey: 'menu.vendidos' },
       { to: '/mapa-visitas', label: 'Mapa de Visitas', icon: MapPin },
+      // O roteiro do dia com check-in e relatório. Serve pro vendedor interno
+      // igual serve pro representante externo — a RPC resolve de quem é a visita
+      // pelo nome de campo, não pelo papel.
+      { to: '/minhas-visitas', label: 'Minhas Visitas', icon: ClipboardList },
       // Página própria porque não é trabalho de MAPA: é o vaivém com o vendedor
       // (confirmar data, receber a localização), que dura dias. Dentro do mapa
       // virava rodapé que ninguém abre.
@@ -145,6 +153,7 @@ const NAV_GROUPS: NavGroup[] = [
       // Visão de gestão: mostra a carteira de TODOS os reps e o quanto cada um está
       // acima/abaixo da média. Só admin — o guard em App.tsx trava a URL direta.
       { to: '/mapa-representantes', label: 'Mapa de Representantes', icon: MapPin, adminOnly: true },
+      { to: '/representantes', label: 'Rede em Campo', icon: Target, adminOnly: true },
     ],
   },
   {
