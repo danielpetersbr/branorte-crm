@@ -16,8 +16,12 @@ export interface Representante {
 }
 
 export const REPRESENTANTES: Representante[] = [
-  { id: 'lucas',   nome: 'Lucas',   cor: '#f59e0b', area: 'Nordeste',            ufs: ['BA', 'PE', 'CE', 'PI', 'RN', 'PB', 'SE', 'AL'] },
-  { id: 'eder',    nome: 'Eder',    cor: '#22c55e', area: 'Pará / Maranhão',     ufs: ['PA', 'MA'] },
+  { id: 'lucas',   nome: 'Lucas',   cor: '#f59e0b', area: 'Nordeste',            ufs: ['BA', 'PE', 'CE', 'RN', 'PB', 'SE', 'AL'] },
+  { id: 'eder',    nome: 'Eder',    cor: '#22c55e', area: 'Pará',                ufs: ['PA'] },
+  // Representante EXTERNO (06/08/2026). Assumiu MA do Eder e PI do Lucas — por isso
+  // as duas UFs saíram das listas deles acima. Cor escolhida longe do verde do Eder
+  // e do âmbar do Lucas, que agora são territórios VIZINHOS do dele.
+  { id: 'hamurabi', nome: 'Hamurabi', cor: '#0ea5e9', area: 'Maranhão / Piauí',  ufs: ['MA', 'PI'] },
   { id: 'igor',    nome: 'Igor',    cor: '#06b6d4', area: 'Amazônia Norte',      ufs: ['AM', 'AP', 'RR'] },
   { id: 'alvaro',  nome: 'Álvaro',  cor: '#a855f7', area: 'Rondônia / Acre',     ufs: ['RO', 'AC'] },
   { id: 'jardel',  nome: 'Jardel',  cor: '#dc2626', area: 'Mato Grosso',         ufs: ['MT'] },
