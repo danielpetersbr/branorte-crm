@@ -6,10 +6,9 @@ import { Badge } from '@/components/ui/Badge'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import {
-  usePodeGerirRepresentantes, useRepPainel, useRepVisitas, alertasDe, useCandidaturas,
+  usePodeGerirRepresentantes, useRepPainel, useRepVisitas, alertasDe,
   type RepKpi,
 } from '@/hooks/useRepresentantes'
-import { PainelCandidaturas } from '@/components/representantes/PainelCandidaturas'
 import { RESULTADO_LABEL } from '@/hooks/useVisitasCampo'
 
 // Painel de gestão da rede de representantes.
@@ -28,8 +27,17 @@ function primeiroDiaDoMes(): string {
   const d = new Date()
   return new Date(d.getFullYear(), d.getMonth(), 1).toLocaleDateString('sv-SE')
 }
-function hoje(): string {
-  return new Date().toLocaleDateString('sv-SE')
+// A janela precisa cobrir o MÊS INTEIRO, não parar em hoje. Roteiro é coisa
+// futura por construção (data_inicio + dia), e uma janela que termina hoje
+// esconde tudo que ainda vai acontecer: a tela abria dizendo "nenhuma visita
+// planejada no período" com o roteiro da semana inteiro carregado no banco.
+function ultimoDiaDoMes(): string {
+  const d = new Date()
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0).toLocaleDateString('sv-SE')
+}
+function ptBr(iso: string): string {
+  const [a, m, d] = iso.split('-')
+  return `${d}/${m}/${a}`
 }
 function brl(n: number | null | undefined): string {
   if (n == null) return '—'
@@ -58,12 +66,13 @@ export function Representantes() {
   const { profile } = useAuth()
   const { data: podeGerir, isLoading: carregandoPermissao } = usePodeGerirRepresentantes()
   const [de, setDe] = useState(primeiroDiaDoMes())
-  const [ate, setAte] = useState(hoje())
+  const [ate, setAte] = useState(ultimoDiaDoMes())
   const [rep, setRep] = useState('')
-  const [aba, setAba] = useState<'painel' | 'mapa' | 'alertas' | 'visitas' | 'candidaturas'>('painel')
-
-  const candidaturasQ = useCandidaturas()
-  const nNovas = (candidaturasQ.data ?? []).filter(c => c.status === 'novo').length
+  const [aba, setAba] = useState<'painel' | 'mapa' | 'alertas' | 'visitas'>('painel')
+  const ampliarAno = () => {
+    const a = new Date().getFullYear()
+    setDe(`${a}-01-01`); setAte(`${a}-12-31`)
+  }
 
   const painel = useRepPainel(de, ate, rep || null)
   const alertasQ = useRepVisitas(de, ate, rep || null, true)
@@ -71,7 +80,9 @@ export function Representantes() {
   const kpis = painel.data ?? []
   const alertas = alertasQ.data ?? []
   const visitas = visitasQ.data ?? []
-  const isLoading = painel.isLoading
+  // as três precisam ter chegado: com só painel.isLoading, a aba Mapa afirmava
+  // "nenhuma visita para desenhar" enquanto rep_visitas ainda estava no ar.
+  const isLoading = painel.isLoading || alertasQ.isLoading || visitasQ.isLoading
   // Query que falha deixa data undefined → o default [] renderizava "nenhuma
   // visita fora do padrão", ou seja, a tela afirmava conformidade quando na
   // verdade não tinha carregado nada.
@@ -166,7 +177,7 @@ export function Representantes() {
       </div>
 
       <div className="flex gap-1.5 mb-3 border-b border-border">
-        {([['painel', 'Indicadores'], ['mapa', 'Mapa'], ['alertas', `Alertas (${alertas.length})`], ['visitas', `Visitas (${visitas.length})`], ['candidaturas', `Candidaturas${nNovas ? ` (${nNovas})` : ''}`]] as const).map(([k, label]) => (
+        {([['painel', 'Indicadores'], ['mapa', 'Mapa'], ['alertas', `Alertas (${alertas.length})`], ['visitas', `Visitas (${visitas.length})`]] as const).map(([k, label]) => (
           <button key={k} onClick={() => setAba(k)}
             className={cn(
               'px-3 py-2 text-[13px] font-medium border-b-2 -mb-px transition-all',
@@ -175,10 +186,7 @@ export function Representantes() {
         ))}
       </div>
 
-      {/* Candidaturas tem query própria — não pode ficar presa ao loading do painel de visitas */}
-      {aba === 'candidaturas' ? (
-        <PainelCandidaturas />
-      ) : erro ? (
+      {erro ? (
         <div className="rounded-xl border border-danger/30 bg-danger/5 py-8 text-center">
           <AlertCircle className="h-7 w-7 text-danger mx-auto mb-2" />
           <p className="text-[13px] text-ink">Não consegui carregar os dados.</p>
@@ -190,7 +198,7 @@ export function Representantes() {
         <p className="text-[13px] text-ink-muted py-10 text-center">Carregando…</p>
       ) : aba === 'painel' ? (
         kpis.length === 0 ? (
-          <Vazio texto="Nenhuma visita planejada no período." />
+          <Vazio texto="Nenhuma visita planejada nesta janela." de={de} ate={ate} onAmpliar={ampliarAno} />
         ) : (
           <div className="space-y-4">
             {ranking.length > 0 && (
@@ -223,7 +231,7 @@ export function Representantes() {
         )
       ) : aba === 'mapa' ? (
         visitas.length === 0 ? (
-          <Vazio texto="Nenhuma visita no período para desenhar." />
+          <Vazio texto="Nenhuma visita nesta janela para desenhar." de={de} ate={ate} onAmpliar={ampliarAno} />
         ) : (
           <Suspense fallback={<p className="text-[13px] text-ink-muted py-10 text-center">Carregando o mapa…</p>}>
             <MapaGestaoVisitas visitas={visitas} />
@@ -231,7 +239,7 @@ export function Representantes() {
         )
       ) : aba === 'alertas' ? (
         alertas.length === 0 ? (
-          <Vazio texto="Nenhuma visita fora do padrão no período." />
+          <Vazio texto="Nenhuma visita fora do padrão nesta janela." de={de} ate={ate} onAmpliar={ampliarAno} />
         ) : (
           <div className="space-y-2">
             {alertas.map(v => (
@@ -255,7 +263,7 @@ export function Representantes() {
         )
       ) : (
         visitas.length === 0 ? (
-          <Vazio texto="Nenhuma visita no período." />
+          <Vazio texto="Nenhuma visita nesta janela." de={de} ate={ate} onAmpliar={ampliarAno} />
         ) : (
           <div className="rounded-xl border border-border overflow-hidden">
             <div className="overflow-x-auto">
@@ -364,11 +372,26 @@ function CardRep({ k }: { k: RepKpi }) {
   )
 }
 
-function Vazio({ texto }: { texto: string }) {
+// Vazio SEMPRE diz qual janela foi consultada, e oferece alargá-la. "Nenhuma
+// visita" sozinho vira afirmação sobre o mundo; o que a tela sabe é só sobre o
+// intervalo que ela perguntou.
+function Vazio({ texto, de, ate, onAmpliar }: {
+  texto: string; de?: string; ate?: string; onAmpliar?: () => void
+}) {
   return (
-    <div className="rounded-xl border border-dashed border-border py-14 text-center">
+    <div className="rounded-xl border border-dashed border-border py-14 text-center px-4">
       <Activity className="h-8 w-8 text-ink-faint mx-auto mb-2" />
       <p className="text-[13px] text-ink-muted">{texto}</p>
+      {de && ate && (
+        <p className="text-[12px] text-ink-faint mt-1">
+          Janela consultada: {ptBr(de)} a {ptBr(ate)}.
+        </p>
+      )}
+      {onAmpliar && (
+        <button onClick={onAmpliar} className="mt-3 text-[13px] text-accent font-medium hover:underline">
+          Ver o ano inteiro →
+        </button>
+      )}
     </div>
   )
 }

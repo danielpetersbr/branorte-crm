@@ -95,7 +95,9 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true, permKey: 'menu.dashboard' },
       { to: '/atendimentos', label: 'Atendimentos', icon: MessageSquare, countKey: 'atendimentos', permKey: 'menu.atendimentos' },
       { to: '/agenda', label: 'Agenda', icon: CalendarDays },
-      { to: '/contatos', label: 'Contatos', icon: Users, permKey: 'menu.contatos' },
+      // vendor TEM menu.contatos no banco, mas /contatos nao esta em
+      // VENDOR_PREFIXES — ele via o item e era devolvido pro /atendimentos.
+      { to: '/contatos', label: 'Contatos', icon: Users, permKey: 'menu.contatos', roles: ['admin', 'marketing'] },
       { to: '/consulta', label: 'Consulta', icon: Search, permKey: 'due_diligence.consultar' },
       { to: '/atribuir', label: 'Atribuir', icon: UserPlus, permKey: 'menu.atribuir' },
       { to: '/prospeccao', label: 'Prospecção', icon: Target, permKey: 'menu.prospeccao' },
@@ -175,9 +177,9 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/producao-propria', label: 'Produção Própria', icon: Calculator, permKey: 'menu.venda_racao' },
       { to: '/venda-racao', label: 'Venda de Ração', icon: ShoppingBag, permKey: 'menu.venda_racao' },
-      { to: '/guia?modo=atendimento', label: 'Atendimento rápido', icon: Headphones, permKey: 'menu.viabilidade' },
-      { to: '/guia?modo=animais', label: 'Guia de Animais', icon: Beef, permKey: 'menu.viabilidade' },
-      { to: '/guia?modo=materias', label: 'Matérias-primas', icon: Wheat, permKey: 'menu.viabilidade' },
+      { to: '/guia?modo=atendimento', label: 'Atendimento rápido', icon: Headphones, permKey: 'menu.viabilidade', roles: ['admin', 'vendor', 'marketing'] },
+      { to: '/guia?modo=animais', label: 'Guia de Animais', icon: Beef, permKey: 'menu.viabilidade', roles: ['admin', 'vendor', 'marketing'] },
+      { to: '/guia?modo=materias', label: 'Matérias-primas', icon: Wheat, permKey: 'menu.viabilidade', roles: ['admin', 'vendor', 'marketing'] },
       { to: '/guia/admin', label: 'Revisão do Guia', icon: BookCheck, permKey: 'guia.editar' },
     ],
   },
