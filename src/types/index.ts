@@ -42,6 +42,8 @@ export type ContactSortKey =
   | 'orcamento_recente'
   | 'orcamento_antigo'
   | 'estado_az'
+  | 'ultimo_contato_recente'
+  | 'ultimo_contato_antigo'
 
 export interface ContactFilters {
   search: string
@@ -54,6 +56,15 @@ export interface ContactFilters {
   temperatura: string
   sort: ContactSortKey
   page: number
+  // Filtros de WhatsApp (RPC contatos_page). OPCIONAIS de proposito: Assign.tsx
+  // monta este objeto como literal completo e passaria a nao compilar se
+  // virassem obrigatorios.
+  /** So contatos com chat de WhatsApp sincronizado. */
+  com_whatsapp?: boolean
+  /** Etiqueta principal do WhatsApp (valor exato, sem alias). */
+  etiqueta?: string
+  /** O CLIENTE falou por ultimo e ninguem respondeu. */
+  esperando_resposta?: boolean
 }
 
 export const CONTACT_SORT_OPTIONS: { value: ContactSortKey; label: string }[] = [
@@ -64,6 +75,10 @@ export const CONTACT_SORT_OPTIONS: { value: ContactSortKey; label: string }[] = 
   { value: 'orcamento_recente', label: 'Orçamento mais novo' },
   { value: 'orcamento_antigo',  label: 'Orçamento mais antigo' },
   { value: 'estado_az',         label: 'Estado A → Z' },
+  // Ordenar por último contato força o JOIN com a matview do WhatsApp na RPC,
+  // ou seja: a lista passa a mostrar SÓ quem tem chat sincronizado (~10,6k).
+  { value: 'ultimo_contato_recente', label: 'Último contato (recente)' },
+  { value: 'ultimo_contato_antigo',  label: 'Último contato (antigo)' },
 ]
 
 export const ESTADOS_BR = [
