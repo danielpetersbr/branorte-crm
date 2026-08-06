@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import type { ContactFilters } from '@/types'
@@ -28,24 +29,53 @@ export interface CrmEtiqueta {
 // Hex, e não classe Tailwind, porque é assim que as etiquetas do WhatsApp já são
 // pintadas (corDaEtiqueta em lib/wa-funil). Mesma paleta → o chip do CRM e o do
 // WhatsApp ficam com o mesmo peso visual na tela.
+// As 8 escolhas antigas produziam selo ilegível: como o selo pinta o hex CRU
+// como texto sobre 12% dele mesmo, todas as 8 falhavam AA (pior: amarelo
+// #eab308 em 1,77:1). Mesmo matiz, um passo mais escuro — 8/8 passam agora, e
+// o `cor` gravado no banco é o NOME ('azul'), não o hex, então trocar o valor é
+// puramente visual e não migra dado nenhum.
 export const CORES_ETIQUETA = [
-  { v: 'cinza',    label: 'Cinza',    hex: '#9ca3af' },
-  { v: 'azul',     label: 'Azul',     hex: '#3b82f6' },
-  { v: 'verde',    label: 'Verde',    hex: '#10b981' },
-  { v: 'amarelo',  label: 'Amarelo',  hex: '#eab308' },
-  { v: 'laranja',  label: 'Laranja',  hex: '#f97316' },
-  { v: 'vermelho', label: 'Vermelho', hex: '#ef4444' },
-  { v: 'roxo',     label: 'Roxo',     hex: '#8b5cf6' },
-  { v: 'rosa',     label: 'Rosa',     hex: '#ec4899' },
+  { v: 'cinza',    label: 'Cinza',    hex: '#52525b' },
+  { v: 'azul',     label: 'Azul',     hex: '#1d4ed8' },
+  { v: 'verde',    label: 'Verde',    hex: '#046e50' },
+  { v: 'amarelo',  label: 'Amarelo',  hex: '#8b5506' },
+  { v: 'laranja',  label: 'Laranja',  hex: '#ac3a0b' },
+  { v: 'vermelho', label: 'Vermelho', hex: '#b91c1c' },
+  { v: 'roxo',     label: 'Roxo',     hex: '#6d28d9' },
+  { v: 'rosa',     label: 'Rosa',     hex: '#b9175b' },
 ] as const
 
 export function hexDaCor(cor: string): string {
-  return CORES_ETIQUETA.find(c => c.v === cor)?.hex ?? '#9ca3af'
+  return CORES_ETIQUETA.find(c => c.v === cor)?.hex ?? '#52525b'
 }
 
-/** Mesmo tratamento visual do Badge de etiqueta do WhatsApp. */
-export function estiloEtiqueta(hex: string) {
-  return { backgroundColor: hex + '1f', color: hex, boxShadow: `inset 0 0 0 1px ${hex}55` }
+/** Versão clara do hue — é ela que vira TEXTO no tema escuro. */
+function clarear(hex: string, k = 0.55): string {
+  const n = parseInt(hex.slice(1), 16)
+  if (Number.isNaN(n)) return hex
+  return '#' + [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+    .map(c => Math.round(c + (255 - c) * k).toString(16).padStart(2, '0'))
+    .join('')
+}
+
+/**
+ * Mesmo tratamento visual do Badge de etiqueta do WhatsApp.
+ *
+ * Devolve VARIÁVEIS, não `color`/`background` prontos: os hues ficaram escuros
+ * (pra passar AA como texto no claro) e um valor único pintado direto deixaria
+ * o selo quase invisível no tema escuro. Quem escolhe entre a versão clara e a
+ * escura é a regra `.etq-soft` / `.dark .etq-soft` no index.css — por isso todo
+ * elemento que usa este estilo TEM que levar a classe `etq-soft`.
+ */
+export function estiloEtiqueta(hex: string): CSSProperties {
+  return {
+    '--etq': hex,
+    '--etq-bg': hex + '1f',
+    '--etq-ring': hex + '55',
+    '--etq-bg-dark': hex + '2e',
+    '--etq-ring-dark': clarear(hex) + '55',
+    '--etq-fg-dark': clarear(hex),
+  } as unknown as CSSProperties
 }
 
 /**

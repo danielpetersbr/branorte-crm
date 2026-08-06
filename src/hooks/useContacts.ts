@@ -53,8 +53,20 @@ export function useContacts(filters: ContactFilters) {
         supabase.rpc('contatos_page_count', args),
       ])
       if (pageRes.error) throw pageRes.error
-      if (countRes.error) throw countRes.error
 
+      /*
+       * A LISTA manda; o count é acessório.
+       *
+       * `contatos_page_count` é a RPC lenta do par (COUNT exato sobre ~208k
+       * linhas, com JOIN na matview e ILIKE): ela é a candidata natural a
+       * estourar statement timeout enquanto a página volta inteira. Jogar aqui
+       * transformava "não sei quantos são" em "não consegui carregar nada" — os
+       * 50 contatos vinham, eram descartados, e a tela dizia que a busca falhou.
+       *
+       * `total: null` = total desconhecido. Quem renderiza degrada a paginação
+       * (some o "de N", "Próxima" segue enquanto a página vier cheia) em vez de
+       * perder a lista.
+       */
       const contacts = ((pageRes.data ?? []) as ContactComWa[]).map(r => ({
         ...r,
         // `etiquetas` é jsonb e vem null quando o contato não tem WhatsApp.
@@ -64,7 +76,7 @@ export function useContacts(filters: ContactFilters) {
 
       // Contagem EXATA (a antiga era `count: 'estimated'`, que devolvia ~126k
       // onde havia 208k e cortava a paginação bem antes do fim da lista).
-      return { contacts, total: Number(countRes.data ?? 0) }
+      return { contacts, total: countRes.error ? null : Number(countRes.data ?? 0) }
     },
     placeholderData: (prev) => prev,
 

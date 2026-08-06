@@ -7,31 +7,45 @@
 
 @layer base {
   :root {
-    /* Tema APPLE (claro) — como apple.com/br: página CINZA-CLARA (#f5f5f7), cards
-       BRANCOS que "flutuam" sobre o cinza (separação via cor + borda suave), texto
-       quase-preto (#1d1d1f), azul Apple no lugar do acento, bordas discretas. */
-    --bg: 240 17% 96%;          /* página: cinza-claro Apple (#f5f5f7) */
+    /* Tema APPLE (claro) — como apple.com/br: página CINZA-CLARA, cards BRANCOS
+       que "flutuam" sobre o cinza (separação via cor + borda suave), texto
+       quase-preto, verde Branorte no acento, bordas discretas.
+
+       Calibrado em 2026-08 contra WCAG 2.x (contraste medido, não estimado). O
+       problema não era excesso de cor, era contraste NO LUGAR ERRADO: a página
+       (96%) e o card (100%) tinham 4pp de diferença, a borda ficava em 1,28:1 e
+       o texto terciário em 3,37:1. Agora: página mais cinza (o card flutua de
+       verdade), borda visível, secundários legíveis, verde/âmbar dessaturados o
+       bastante pra passar AA como TEXTO e como fundo de botão. */
+    --bg: 240 16% 94%;          /* página: cinza-claro (#ededf2) — card ganha 6pp */
     --surface: 0 0% 100%;       /* cards: branco puro (flutuam sobre o cinza) */
-    --surface-2: 240 17% 93%;   /* preenchimentos / barras */
-    --border: 240 12% 90%;      /* borda suave estilo Apple */
-    --border-strong: 240 10% 82%;
+    --surface-2: 240 14% 91%;   /* preenchimentos / barras / cabeçalho de tabela */
+    --border: 240 9% 84%;       /* 1,49:1 no card (era 1,28) — a borda existe */
+    --border-strong: 240 8% 74%;
 
     /* Ink (texto) */
-    --ink: 240 6% 11%;          /* quase-preto Apple (#1d1d1f) */
-    --ink-muted: 240 3% 44%;    /* secundário (#6e6e73) */
-    --ink-faint: 240 3% 56%;    /* terciário (#86868b) */
+    --ink: 240 6% 14%;          /* quase-preto, sem o "preto duro" (15,8:1) */
+    --ink-muted: 240 5% 35%;    /* secundário: 7,38:1 no card, 6,32:1 na página */
+    --ink-faint: 240 4% 43%;    /* terciário: 5,43:1 no card, 4,66:1 na página */
 
-    /* Semantic */
-    --success: 152 55% 40%;
+    /* Semantic — os 5 sólidos abaixo NÃO eram redefinidos no .dark, então um
+       valor servia os dois temas. Ao escurecer pro claro, o .dark passou a
+       redefinir os 3 que mudaram com os valores ANTIGOS: tema escuro fica
+       byte-idêntico ao que era. */
+    --success: 152 48% 33%;     /* 5,03:1 no card (era 3,38 — falhava) */
     --success-bg: 152 60% 96%;
-    --warning: 38 92% 50%;
+    --warning: 38 90% 33%;      /* 4,69:1 no card (era 2,14 — pior nº da folha) */
     --warning-bg: 38 100% 96%;
-    --danger: 0 72% 51%;
+    /* Estes dois passavam NO CARD e por isso ficaram de fora da primeira
+       calibragem — mas `--bg` e `--surface-2` escureceram, e sobre eles os dois
+       ja estavam abaixo de AA (4,33 e 4,31) e pioraram. Sao os unicos semanticos
+       que tinham ficado pra tras. Congelados no .dark logo abaixo. */
+    --danger: 0 72% 45%;        /* 6,08:1 no card, 5,22:1 na pagina */
     --danger-bg: 0 80% 97%;
-    --info: 211 100% 45%;
+    --info: 211 100% 38%;       /* 6,33:1 no card, 5,44:1 na pagina */
     --info-bg: 211 100% 96%;
-    --accent: 152 60% 40%;      /* verde da marca Branorte (brand-600) */
-    --accent-bg: 152 60% 96%;
+    --accent: 152 48% 32%;      /* verde Branorte moderado: 5,30:1 (era 3,20) */
+    --accent-bg: 152 32% 95%;
   }
 
   .dark {
@@ -44,6 +58,15 @@
     --ink: 240 5% 96%;
     --ink-muted: 240 4% 70%;
     --ink-faint: 240 3% 50%;
+
+    /* Congela os 3 sólidos que o :root escureceu. Sem isto, o tema escuro
+       herdaria o verde/âmbar do claro e perderia contraste (accent cairia de
+       5,42 pra 3,27 sobre a superfície escura). Valores = os de antes. */
+    --success: 152 55% 40%;
+    --warning: 38 92% 50%;
+    --accent: 152 60% 40%;
+    --danger: 0 72% 51%;
+    --info: 211 100% 45%;
 
     --success-bg: 152 50% 12%;
     --warning-bg: 38 60% 12%;
@@ -105,6 +128,30 @@
 }
 
 @layer components {
+  /* Selo de etiqueta (WhatsApp e CRM). O hex vem por variável de
+     `estiloEtiqueta()` em duas versões — a escura pro tema claro, a clara pro
+     escuro — porque o mesmo valor não serve aos dois: os hues foram escurecidos
+     pra passar AA como TEXTO sobre branco e ficariam ilegíveis no dark. */
+  .etq-soft {
+    background-color: var(--etq-bg);
+    color: var(--etq);
+    box-shadow: inset 0 0 0 1px var(--etq-ring);
+  }
+  .dark .etq-soft {
+    background-color: var(--etq-bg-dark);
+    color: var(--etq-fg-dark);
+    /* Sem isto o anel ficava com o hex ESCURO sobre fundo escuro (1,2:1) e o
+       contorno do selo simplesmente sumia no tema escuro. */
+    box-shadow: inset 0 0 0 1px var(--etq-ring-dark);
+  }
+
+  /* Mesma cor, mesma variável, mas como MANCHA (bolinha de coluna, filete do
+     topo do card) em vez de texto. Existe pelo mesmo motivo do `.etq-soft`: o
+     hex calibrado pro claro vira mancha invisível no escuro — 14 das 24
+     etiquetas ficavam abaixo de 3:1 contra a superfície escura. */
+  .etq-dot { background-color: var(--etq); }
+  .dark .etq-dot { background-color: var(--etq-fg-dark); }
+
   /* Pulsing dot for live/new lead indicators */
   .pulse-dot::before {
     content: '';

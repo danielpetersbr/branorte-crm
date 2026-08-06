@@ -1013,7 +1013,10 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
                 <button
                   onPointerDown={e => iniciarGirar(e, m.id)}
                   title="Girar a mesa"
-                  className="absolute left-1/2 -top-3 -translate-x-1/2 h-5 w-5 rounded-full bg-accent text-black flex items-center justify-center shadow ring-2 ring-black/30 cursor-grab active:cursor-grabbing z-30 touch-none"
+                  /* `text-black` fixo não serve aos dois temas: o accent claro é
+                     escuro (preto dá 3,95:1) e o escuro é claro (branco dá 3,20:1).
+                     Invertido por tema: 5,31:1 no claro, 6,56:1 no escuro. */
+                  className="absolute left-1/2 -top-3 -translate-x-1/2 h-5 w-5 rounded-full bg-accent text-white dark:text-black flex items-center justify-center shadow ring-2 ring-black/30 cursor-grab active:cursor-grabbing z-30 touch-none"
                 >
                   <RotateCw className="h-3 w-3" />
                 </button>

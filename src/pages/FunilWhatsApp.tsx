@@ -13,11 +13,12 @@ import {
 } from '@/hooks/useWaKanban'
 import { useOrcamentosPorTelefone, lookupOrcamento, foneCanon } from '@/hooks/useAtendimentos'
 import {
-  tempoRelativo, temperaturaDe, TEMP_META, resumoColuna,
+  tempoRelativo, temperaturaDe, TEMP_META, resumoColuna, corDaEtiqueta,
   formatarTelefone, nomeContato, ordenarChats, ORDENACAO_LABEL,
   precisaResposta, corpoVisivel, idCanonicoMsg,
   type Ordenacao, type Temperatura,
 } from '@/lib/wa-funil'
+import { estiloEtiqueta } from '@/hooks/useCrmEtiquetas'
 import { Avatar } from '@/components/ui/Avatar'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 
@@ -460,8 +461,11 @@ function ChatDrawer({
           </div>
           <div className="mt-3 flex flex-wrap gap-1.5">
             {etiquetas.map(e => (
-              <span key={e.nome} className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-                style={{ backgroundColor: `${e.cor}22`, color: e.cor, border: `1px solid ${e.cor}55` }}>
+              /* `.etq-soft` no lugar do hex cru: o mesmo par claro/escuro que a
+                 /contatos usa. Pintar `color: e.cor` direto deixava TODAS as 24
+                 etiquetas abaixo de 4,5:1 no tema escuro (a pior, 1,99:1). */
+              <span key={e.nome} className="etq-soft rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+                style={estiloEtiqueta(e.cor)}>
                 {e.nome}
               </span>
             ))}
@@ -662,7 +666,7 @@ export function FunilWhatsApp() {
   const colunasTodas = useMemo(() => {
     if (!data) return []
     const visiveis = data.colunas.filter(c => !c.oculta)
-    const semEtiqueta = { nome: 'SEM ETIQUETA', cor: '#f59e0b', oculta: false, chats: data.semEtiqueta }
+    const semEtiqueta = { nome: 'SEM ETIQUETA', cor: corDaEtiqueta('SEM ETIQUETA'), oculta: false, chats: data.semEtiqueta }
     return [semEtiqueta, ...visiveis]
   }, [data])
 
@@ -934,7 +938,7 @@ export function FunilWhatsApp() {
                       className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md hover:bg-surface-2 text-left">
                       <span className={'h-4 w-4 shrink-0 rounded border flex items-center justify-center text-[10px] ' +
                         (visivel ? 'bg-accent border-accent text-white' : 'border-border text-transparent')}>✓</span>
-                      <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: c.cor }} />
+                      <span className="etq-dot h-2 w-2 rounded-full shrink-0" style={estiloEtiqueta(c.cor)} />
                       <span className="text-[12px] text-ink truncate flex-1">{c.nome}</span>
                       <span className="text-[11px] tabular-nums text-ink-faint">{c.chats.length}</span>
                     </button>
@@ -975,10 +979,10 @@ export function FunilWhatsApp() {
               return (
                 <div key={col.nome} className="relative flex h-full w-[85vw] max-w-[300px] sm:w-[280px] shrink-0 snap-start flex-col overflow-hidden rounded-xl border border-border bg-surface-2/50 shadow-[0_1px_8px_-4px_rgba(0,0,0,0.35)]">
                   {/* filete da etiqueta — identidade visual da coluna */}
-                  <span aria-hidden className="absolute inset-x-0 top-0 h-[3px]" style={{ backgroundColor: col.cor, opacity: 0.9 }} />
+                  <span aria-hidden className="etq-dot absolute inset-x-0 top-0 h-[3px] opacity-90" style={estiloEtiqueta(col.cor)} />
                   <div className="border-b border-border shrink-0 pt-[3px]">
                     <div className="flex items-center gap-2 px-3 pt-2.5 pb-1.5">
-                      <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: col.cor }} />
+                      <span className="etq-dot h-2.5 w-2.5 rounded-full shrink-0" style={estiloEtiqueta(col.cor)} />
                       <span className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">{col.nome}</span>
                       {mostrarValor && totalValor > 0 && (
                         <span className="flex shrink-0 items-baseline gap-0.5 text-success" title="Soma dos últimos orçamentos gerados nesta coluna">

@@ -45,7 +45,76 @@ export const ETIQUETAS_OCULTAS = new Set([
   'TRANSPORTADORAS', 'FUNCIONARIO', 'FUNCIONARIOS', 'PESSOAL',
 ])
 
+/**
+ * HUE DE IDENTIDADE de cada etiqueta.
+ *
+ * Um hex só faz DOIS trabalhos incompatíveis neste app: é preenchimento sólido
+ * (dot do /funil, faixa do topo da coluna, barra do Recharts em
+ * /painel-etiquetas) E é COR DE TEXTO (badge da /contatos via `estiloEtiqueta`,
+ * chip do drawer do /funil, cabeçalho da matriz do /painel-etiquetas). A paleta
+ * antiga era calibrada só pro primeiro caso: 18 de 18 falhavam AA como texto no
+ * tema claro, e 12 falhavam até o AA-large de 3:1 — 'INTERESSE FUTURO' (#facc15)
+ * ficava em 1,45:1 e 'RESOLVIDO' (#84cc16) em 1,82:1, ilegíveis.
+ *
+ * Valores de 2026-08: mesmo matiz, um passo mais escuro. 24/24 passam AA
+ * (>= 4,5:1) sobre branco e >= 3:1 como dot sobre o fundo pastel da família.
+ * Efeito colateral declarado: os dots e a faixa do /funil e as barras do
+ * /painel-etiquetas ficam ~1 passo mais escuros — ganham definição sobre branco.
+ */
 export const ETIQUETA_COR: Record<string, string> = {
+  // FUNIL DE VENDAS
+  'PROSPECCAO': '#1d4ed8',
+  '2A TENTATIVA': '#0d6982',
+  'NOVO LEAD': '#6d28d9',
+  'FOLLOW UP': '#9e4908',
+  'LEAD QUENTE': '#b9175b',
+  'ORCAMENTO ENVIADO': '#03669c',
+  'INTERESSE FUTURO': '#8b5506',
+  'AGENDAMENTO': '#4338ca',
+  'VENDIDO': '#046e50',
+  // MOTIVO DE FECHAMENTO
+  'RESOLVIDO': '#436c0d',
+  'NAO RESPONDEU MAIS': '#67615c',
+  'NUNCA RESPONDEU': '#57534e',
+  'NAO TEM INTERESSE': '#9f1239',
+  'COMPROU DO CONCORRENTE': '#b91c1c',
+  'SO BASE DE PRECO': '#ac3a0b',
+  'FORA DO ORCAMENTO': '#bc123b',
+  'NAO FABRICAMOS': '#a21caf',
+  // AVULSAS (existem no banco e não tinham cor — caíam no cinza de fallback)
+  'OUTROS ASSUNTOS': '#52525b',
+  'SUPORTE TECNICO': '#3f6212',
+  'FEIRA': '#742eec',
+  'PENDENTE': '#8b5506',
+  'PENDENCIA': '#b91c1c',
+  'IMPORTANTE': '#ac3a0b',
+  'IMPORTANTES': '#ac3a0b',
+  // Coluna sintetica do /funil (nao existe no WhatsApp). Estava com '#f59e0b'
+  // cravado no FunilWhatsApp e virou a unica cor fora da paleta calibrada:
+  // 1,78:1 contra o fundo da coluna, enquanto as vizinhas ficaram em ~5,1.
+  'SEM ETIQUETA': '#8b5506',
+}
+
+/**
+ * Paleta dos GRÁFICOS (Recharts) — proposital e necessariamente diferente da de
+ * cima.
+ *
+ * Estas eram as cores de `ETIQUETA_COR` até 2026-08, quando ela foi escurecida
+ * pra passar AA como TEXTO sobre fundo claro. Os gráficos não podem usar a nova:
+ * o canvas do Recharts é ESCURO por construção e independente do tema do app
+ * (`background: '#11151c'`, ticks `#e7e9ee` — PainelEtiquetas.tsx:412,570), e
+ * as 18 cores calibradas pro claro caem abaixo de 3:1 ali. Barra escura sobre
+ * fundo escuro não é gráfico.
+ *
+ * Está AQUI, e não copiada dentro de cada página, porque até 2026-08 as três
+ * cópias (esta, PainelEtiquetas e EtiquetasZapGraficos) eram byte-idênticas e
+ * ninguém sabia que eram três. Duas paletas com PAPEL declarado é design; três
+ * cópias mudas é armadilha.
+ *
+ * REGRA: `fill`/`stroke` de gráfico usa esta. Texto, selo, dot e borda de UI
+ * usam `ETIQUETA_COR` via `estiloEtiqueta()` + `.etq-soft`/`.etq-dot`.
+ */
+export const ETIQUETA_COR_GRAFICO: Record<string, string> = {
   'PROSPECCAO': '#3b82f6',
   '2A TENTATIVA': '#06b6d4',
   'NOVO LEAD': '#8b5cf6',
@@ -66,6 +135,9 @@ export const ETIQUETA_COR: Record<string, string> = {
   'PENDENCIA': '#dc2626',
 }
 
+export const corDeGrafico = (nomeCanonico: string): string =>
+  ETIQUETA_COR_GRAFICO[nomeCanonico] ?? '#9ca3af'
+
 export const canonico = (nomeNormalizado: string): string =>
   ALIASES[nomeNormalizado.trim()] ?? nomeNormalizado.trim()
 
@@ -74,8 +146,91 @@ export const ordemDe = (nomeCanonico: string): number => {
   return idx === -1 ? 900 : idx
 }
 
+// Fallback antigo era #9ca3af (2,31:1 sobre branco — ilegível como texto).
 export const corDaEtiqueta = (nomeCanonico: string): string =>
-  ETIQUETA_COR[nomeCanonico] ?? '#9ca3af'
+  ETIQUETA_COR[nomeCanonico] ?? '#52525b'
+
+// ---------------------------------------------------------------------------
+// FAMÍLIAS DE ETIQUETA — a calma da barra de chips da /contatos
+// ---------------------------------------------------------------------------
+
+/**
+ * ~27 etiquetas reais, cada uma com um hex saturado próprio, viravam um
+ * arco-íris de 25 chips no topo da lista. A família agrupa por SIGNIFICADO e dá
+ * ao chip um fundo pastel; a identidade individual continua existindo, mas no
+ * dot (ETIQUETA_COR), que é 6px em vez de um bloco inteiro.
+ *
+ * O pastel é CALMA, não identidade: entre os fundos o ΔE fica em 6,7–9,3
+ * (indistinguível sozinho). Quem carrega a família é o TEXTO + a BORDA
+ * (ΔE 23–88). Por isso o texto é escuro e saturado, não cinza.
+ */
+export type FamiliaEtiqueta = 'positivo' | 'andamento' | 'sem-retorno' | 'perdido' | 'neutro'
+
+export const ETIQUETA_FAMILIA: Record<string, FamiliaEtiqueta> = {
+  'VENDIDO': 'positivo',
+  'RESOLVIDO': 'positivo',
+
+  'PROSPECCAO': 'andamento',
+  '2A TENTATIVA': 'andamento',
+  'NOVO LEAD': 'andamento',
+  'FOLLOW UP': 'andamento',
+  'LEAD QUENTE': 'andamento',
+  'ORCAMENTO ENVIADO': 'andamento',
+  'INTERESSE FUTURO': 'andamento',
+  'AGENDAMENTO': 'andamento',
+
+  'NAO RESPONDEU MAIS': 'sem-retorno',
+  'NUNCA RESPONDEU': 'sem-retorno',
+
+  'NAO TEM INTERESSE': 'perdido',
+  'COMPROU DO CONCORRENTE': 'perdido',
+  'SO BASE DE PRECO': 'perdido',
+  'FORA DO ORCAMENTO': 'perdido',
+  'NAO FABRICAMOS': 'perdido',
+
+  'OUTROS ASSUNTOS': 'neutro',
+  'SUPORTE TECNICO': 'neutro',
+  'FEIRA': 'neutro',
+  'PENDENTE': 'neutro',
+  'PENDENCIA': 'neutro',
+  'IMPORTANTE': 'neutro',
+  'IMPORTANTES': 'neutro',
+}
+
+/** Etiqueta desconhecida (ad-hoc de vendedor, etiqueta do CRM) cai em neutro. */
+export const familiaDe = (nomeCanonico: string): FamiliaEtiqueta =>
+  ETIQUETA_FAMILIA[nomeCanonico] ?? 'neutro'
+
+/**
+ * Classes do chip por família. Contraste medido no claro (texto/fundo):
+ * positivo 5,82 · andamento 6,93 · sem-retorno 5,91 · perdido 6,94 · neutro 8,37.
+ * No hover nenhuma cai abaixo de 5,34. No estado SELECIONADO o fundo vira o
+ * próprio tom escuro do texto com letra branca: 6,56–9,53 — e o selecionado
+ * deixa de ser sempre o verde da marca (que colidia com a família 'positivo' e
+ * apagava qual família você tinha filtrado).
+ */
+export const FAMILIA_CHIP: Record<FamiliaEtiqueta, { normal: string; solido: string }> = {
+  positivo: {
+    normal: 'bg-[#e6f5ec] text-[#0b6b45] border-[#9dd5b9] hover:bg-[#d5eede] hover:border-[#0b6b45]/35 dark:bg-[#102c20] dark:text-[#84dcaf] dark:border-[#1f5038] dark:hover:bg-[#173d2c]',
+    solido: 'bg-[#0b6b45] text-white border-[#0b6b45] dark:bg-[#84dcaf] dark:text-[#0d0d0f] dark:border-[#84dcaf]',
+  },
+  andamento: {
+    normal: 'bg-[#e8f0fd] text-[#1a4f9c] border-[#a6c6f2] hover:bg-[#d6e5fb] hover:border-[#1a4f9c]/35 dark:bg-[#132135] dark:text-[#93bdf5] dark:border-[#254063] dark:hover:bg-[#1a2e49]',
+    solido: 'bg-[#1a4f9c] text-white border-[#1a4f9c] dark:bg-[#93bdf5] dark:text-[#0d0d0f] dark:border-[#93bdf5]',
+  },
+  'sem-retorno': {
+    normal: 'bg-[#f8eee0] text-[#7a5327] border-[#e3cba6] hover:bg-[#f2e3cd] hover:border-[#7a5327]/35 dark:bg-[#272016] dark:text-[#dcc19a] dark:border-[#453824] dark:hover:bg-[#342c1f]',
+    solido: 'bg-[#7a5327] text-white border-[#7a5327] dark:bg-[#dcc19a] dark:text-[#0d0d0f] dark:border-[#dcc19a]',
+  },
+  perdido: {
+    normal: 'bg-[#fdeaee] text-[#9b1c39] border-[#f1b2c0] hover:bg-[#fbdae1] hover:border-[#9b1c39]/35 dark:bg-[#2e1621] dark:text-[#f2a3b7] dark:border-[#52273a] dark:hover:bg-[#3e1e2d]',
+    solido: 'bg-[#9b1c39] text-white border-[#9b1c39] dark:bg-[#f2a3b7] dark:text-[#0d0d0f] dark:border-[#f2a3b7]',
+  },
+  neutro: {
+    normal: 'bg-[#f0f0f1] text-[#45454a] border-[#cbcbcf] hover:bg-[#e5e5e7] hover:border-[#45454a]/35 dark:bg-[#212124] dark:text-[#b4b4bb] dark:border-[#3a3a40] dark:hover:bg-[#2b2b2f]',
+    solido: 'bg-[#45454a] text-white border-[#45454a] dark:bg-[#b4b4bb] dark:text-[#0d0d0f] dark:border-[#b4b4bb]',
+  },
+}
 
 // Temperatura do chat pela última mensagem (igual ao painel do WhatsApp/Wascript)
 export type Temperatura = 'fresco' | 'recente' | 'morno' | 'parado' | 'sem-dado'

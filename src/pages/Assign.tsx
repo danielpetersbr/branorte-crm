@@ -24,7 +24,8 @@ export function Assign() {
   const bulkAssign = useBulkAssign()
 
   const contacts = data?.contacts ?? []
-  const total = data?.total ?? 0
+  // null = o COUNT falhou e a pagina veio assim mesmo (ver useContacts).
+  const total = data?.total ?? null
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
@@ -52,7 +53,7 @@ export function Assign() {
     <div className="p-4 lg:p-8 space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-text-primary">Atribuir Contatos</h1>
-        <p className="text-sm text-text-secondary">{formatNumber(total)} contatos sem vendedor</p>
+        <p className="text-sm text-text-secondary">{total === null ? '—' : formatNumber(total)} contatos sem vendedor</p>
       </div>
 
       <Card className="p-4">
@@ -113,7 +114,7 @@ export function Assign() {
             <span className="text-xs text-text-muted">Pagina {page + 1}</span>
             <div className="flex gap-2">
               <Button size="sm" variant="ghost" disabled={page === 0} onClick={() => setPage(p => p - 1)}>Anterior</Button>
-              <Button size="sm" variant="ghost" disabled={(page + 1) * 50 >= total} onClick={() => setPage(p => p + 1)}>Proxima</Button>
+              <Button size="sm" variant="ghost" disabled={total === null ? contacts.length < 50 : (page + 1) * 50 >= total} onClick={() => setPage(p => p + 1)}>Proxima</Button>
             </div>
           </div>
         </Card>

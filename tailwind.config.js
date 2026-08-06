@@ -55,6 +55,12 @@ export default {
           50:  'hsl(152 70% 96%)',
           100: 'hsl(152 60% 90%)',
           200: 'hsl(152 60% 80%)',
+          // NAO alinhar ao --accent. `brand-*` e paleta ESTATICA (legado, sem
+          // variante .dark), entao escurecer pro tema claro escurece o escuro
+          // junto: o spinner do app inteiro (LoadingSpinner.tsx:7) caia de
+          // 4,36:1 pra 3,06:1 no escuro, e o checkbox marcado da /assign de
+          // 5,42 pra 3,27. Quem precisa de verde com os dois temas usa
+          // `accent`, que tem valor no .dark. Valores originais restaurados.
           500: 'hsl(152 60% 45%)',
           600: 'hsl(152 60% 40%)',
           700: 'hsl(152 60% 32%)',

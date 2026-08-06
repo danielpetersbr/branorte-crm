@@ -73,14 +73,22 @@ export function BotaoEtiquetar({
 
   return (
     <>
+      {/* Neutro por padrão MESMO com etiquetas aplicadas: ele se repete uma vez
+          por linha (até 50 por página) e, pintado de accent, virava uma coluna
+          de blocos verdes competindo com as próprias etiquetas — que são a
+          informação. Quem sinaliza "tem etiqueta do CRM" são os SelosCrm ao
+          lado. Verde só quando o menu está ABERTO (elemento ativo). */}
       <button ref={botaoRef} onClick={e => { e.stopPropagation(); aberto ? setAberto(false) : abrir() }}
         title="Etiquetar no CRM (não vai pro WhatsApp)"
+        aria-label="Etiquetar no CRM"
+        aria-expanded={aberto}
         className={cn(
-          'inline-flex items-center justify-center rounded-md border transition-all shrink-0',
+          'inline-flex items-center justify-center rounded-md border transition-colors duration-150 shrink-0',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-1 focus-visible:ring-offset-surface',
           compacto ? 'h-6 w-6' : 'h-7 w-7',
-          aberto || aplicadas.length
-            ? 'border-accent/50 text-accent bg-accent/10'
-            : 'border-border text-ink-faint hover:text-ink hover:border-border-strong',
+          aberto
+            ? 'border-accent/50 text-accent bg-accent-bg'
+            : 'border-border text-ink-faint hover:text-accent hover:border-accent/40 hover:bg-accent-bg/70',
         )}>
         <Tag className={compacto ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
       </button>
@@ -109,7 +117,11 @@ export function BotaoEtiquetar({
                     on ? 'bg-accent border-accent' : 'border-border')}>
                     {on && <Check className="h-3 w-3 text-white" />}
                   </span>
-                  <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: hexDaCor(e.cor) }} />
+                  {/* `.etq-dot` e não o hex cru: os hues foram calibrados pra
+                      serem legíveis sobre branco, então como mancha no tema
+                      escuro sumiriam. (Os quadradinhos do seletor de cor logo
+                      abaixo seguem com o hex puro — ali a cor É a informação.) */}
+                  <span className="etq-dot h-2.5 w-2.5 rounded-full shrink-0" style={estiloEtiqueta(hexDaCor(e.cor))} />
                   <span className="truncate text-ink">{e.nome}</span>
                 </button>
               )
@@ -130,10 +142,13 @@ export function BotaoEtiquetar({
                   className="w-full h-8 rounded-md border border-border bg-surface-2 px-2 text-[13px] text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent" />
                 <div className="flex gap-1">
                   {CORES_ETIQUETA.map(c => (
+                    /* ver BarraEtiquetas: `.etq-dot` da o tom real de cada tema.
+                        `opacity-70` saiu — derrubava o quadradinho pra 1,7:1 no escuro,
+                        e aqui nem havia hover:opacity-100 pra recuperar. */
                     <button key={c.v} onClick={() => setCor(c.v)} title={c.label}
-                      style={{ backgroundColor: c.hex }}
-                      className={cn('h-5 w-5 rounded transition-all',
-                        cor === c.v ? 'ring-2 ring-accent ring-offset-1 ring-offset-surface' : 'opacity-70')} />
+                      style={estiloEtiqueta(c.hex)}
+                      className={cn('etq-dot h-5 w-5 rounded transition-all',
+                        cor === c.v && 'ring-2 ring-accent ring-offset-1 ring-offset-surface')} />
                   ))}
                 </div>
                 {erro && <p className="text-[11.5px] text-danger">{erro}</p>}
@@ -169,9 +184,10 @@ export function SelosCrm({ etiquetas }: { etiquetas: CrmEtiqueta[] }) {
       {etiquetas.map(e => (
         <span key={e.id} style={estiloEtiqueta(hexDaCor(e.cor))}
           title={`${e.nome} — etiqueta do CRM (não vai pro WhatsApp)`}
-          className="inline-flex items-center gap-1 h-[18px] px-1.5 rounded text-[10px] font-medium whitespace-nowrap">
-          <span className="w-1 h-1 rounded-full bg-current opacity-70" />
-          {e.nome}
+          className="etq-soft inline-flex items-center gap-1 h-[20px] px-2 rounded-md text-[10px] font-medium whitespace-nowrap max-w-[130px]">
+          {/* sem `opacity-70`: o dot caia pra 2,95:1 no claro (CRM amarelo) */}
+          <span className="w-1 h-1 rounded-full bg-current shrink-0" />
+          <span className="truncate">{e.nome}</span>
         </span>
       ))}
     </>

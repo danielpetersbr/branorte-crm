@@ -8,27 +8,31 @@ import { useEtiquetas, type WascriptEtiqueta } from '@/hooks/useEtiquetas'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList,
 } from 'recharts'
+import { corDeGrafico } from '@/lib/wa-funil'
 
 // ===== Definições de funil/fechamento =====
 
+// A COR sai da paleta de gráfico compartilhada (lib/wa-funil): estes hexes eram
+// uma terceira cópia byte-idêntica às outras duas — invisível até a de wa-funil
+// ser escurecida pra virar cor de texto. O rótulo continua local (é desta tela).
 const FUNIL: { id: string; label: string; cor: string }[] = [
-  { id: 'PROSPECCAO',       label: 'Prospecção',     cor: '#3b82f6' },
-  { id: '2A TENTATIVA',     label: '2ª Tentativa',   cor: '#06b6d4' },
-  { id: 'NOVO LEAD',        label: 'Novo Lead',      cor: '#8b5cf6' },
-  { id: 'FOLLOW UP',        label: 'Follow Up',      cor: '#f59e0b' },
-  { id: 'INTERESSE FUTURO', label: 'Interesse Fut.', cor: '#facc15' },
-  { id: 'VENDIDO',          label: 'Vendido',        cor: '#10b981' },
+  { id: 'PROSPECCAO',       label: 'Prospecção',     cor: corDeGrafico('PROSPECCAO') },
+  { id: '2A TENTATIVA',     label: '2ª Tentativa',   cor: corDeGrafico('2A TENTATIVA') },
+  { id: 'NOVO LEAD',        label: 'Novo Lead',      cor: corDeGrafico('NOVO LEAD') },
+  { id: 'FOLLOW UP',        label: 'Follow Up',      cor: corDeGrafico('FOLLOW UP') },
+  { id: 'INTERESSE FUTURO', label: 'Interesse Fut.', cor: corDeGrafico('INTERESSE FUTURO') },
+  { id: 'VENDIDO',          label: 'Vendido',        cor: corDeGrafico('VENDIDO') },
 ]
 
 const MOTIVOS: { id: string; label: string; cor: string }[] = [
-  { id: 'NAO RESPONDEU MAIS',      label: 'Não respondeu mais', cor: '#94a3b8' },
-  { id: 'NUNCA RESPONDEU',         label: 'Nunca respondeu',     cor: '#64748b' },
-  { id: 'NAO TEM INTERESSE',       label: 'Sem interesse',       cor: '#a78bfa' },
-  { id: 'COMPROU DO CONCORRENTE',  label: 'Concorrente',         cor: '#ef4444' },
-  { id: 'SO BASE DE PRECO',        label: 'Só base de preço',    cor: '#f97316' },
-  { id: 'FORA DO ORCAMENTO',       label: 'Fora do orçamento',   cor: '#fb7185' },
-  { id: 'NAO FABRICAMOS',          label: 'Não fabricamos',      cor: '#0ea5e9' },
-  { id: 'OUTROS ASSUNTOS',         label: 'Outros',              cor: '#71717a' },
+  { id: 'NAO RESPONDEU MAIS',      label: 'Não respondeu mais', cor: corDeGrafico('NAO RESPONDEU MAIS') },
+  { id: 'NUNCA RESPONDEU',         label: 'Nunca respondeu',     cor: corDeGrafico('NUNCA RESPONDEU') },
+  { id: 'NAO TEM INTERESSE',       label: 'Sem interesse',       cor: corDeGrafico('NAO TEM INTERESSE') },
+  { id: 'COMPROU DO CONCORRENTE',  label: 'Concorrente',         cor: corDeGrafico('COMPROU DO CONCORRENTE') },
+  { id: 'SO BASE DE PRECO',        label: 'Só base de preço',    cor: corDeGrafico('SO BASE DE PRECO') },
+  { id: 'FORA DO ORCAMENTO',       label: 'Fora do orçamento',   cor: corDeGrafico('FORA DO ORCAMENTO') },
+  { id: 'NAO FABRICAMOS',          label: 'Não fabricamos',      cor: corDeGrafico('NAO FABRICAMOS') },
+  { id: 'OUTROS ASSUNTOS',         label: 'Outros',              cor: corDeGrafico('OUTROS ASSUNTOS') },
 ]
 
 const ALIASES: Record<string, string> = {

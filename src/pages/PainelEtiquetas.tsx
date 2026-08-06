@@ -1,4 +1,9 @@
 import { useMemo, useState } from 'react'
+// Paleta de GRÁFICO compartilhada (lib/wa-funil). Era uma cópia privada aqui —
+// idêntica à de wa-funil até 2026-08, quando aquela foi escurecida pra virar cor
+// de TEXTO e as duas divergiram em silêncio. Esta tela desenha sobre canvas
+// escuro fixo, então é a viva que serve; agora está declarado num lugar só.
+import { corDeGrafico as corDaEtiqueta } from '@/lib/wa-funil'
 import { Card } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -25,31 +30,6 @@ const STATUS_LABELS = {
   semDado: 'Sem dado',
 }
 
-// Cor por etiqueta canônica (alinhada com EtiquetasZapGraficos)
-const ETIQUETA_COR: Record<string, string> = {
-  'PROSPECCAO':       '#3b82f6',
-  '2A TENTATIVA':     '#06b6d4',
-  'NOVO LEAD':        '#8b5cf6',
-  'FOLLOW UP':        '#f59e0b',
-  'INTERESSE FUTURO': '#facc15',
-  'VENDIDO':          '#10b981',
-  'LEAD QUENTE':      '#ec4899',
-  'ORCAMENTO ENVIADO':'#22d3ee',
-  'RESOLVIDO':        '#84cc16',
-  'NAO RESPONDEU MAIS':'#94a3b8',
-  'NUNCA RESPONDEU':  '#64748b',
-  'NAO TEM INTERESSE':'#a78bfa',
-  'COMPROU DO CONCORRENTE':'#ef4444',
-  'SO BASE DE PRECO': '#f97316',
-  'FORA DO ORCAMENTO':'#fb7185',
-  'NAO FABRICAMOS':   '#0ea5e9',
-  'OUTROS ASSUNTOS':  '#71717a',
-  'PENDENCIA':        '#dc2626',
-}
-
-function corDaEtiqueta(nome: string): string {
-  return ETIQUETA_COR[nome] ?? '#9ca3af'
-}
 
 function StatusBadge({ status }: { status: 'fresco' | 'recente' | 'parado' | 'semDado' }) {
   const cor = STATUS_COLORS[status]
