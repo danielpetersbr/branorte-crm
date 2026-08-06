@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
 // Página PÚBLICA (sem login) — o candidato a representante se cadastra aqui.
@@ -62,6 +62,25 @@ export function SejaRepresentante() {
   const [enviando, setEnviando] = useState(false)
   const [enviado, setEnviado] = useState(false)
   const [erro, setErro] = useState('')
+
+  // SEMPRE tema claro. Esta é uma página pública: o candidato cai aqui vindo de um
+  // link, e acabava vendo o tema escuro que o DONO da máquina escolheu pro CRM
+  // (classe `dark` no <html>, gravada em localStorage 'theme-v3' pelo useDarkMode).
+  // Mesmo tratamento que o Layout dá aos papéis restritos: mexe só na classe e
+  // devolve no cleanup — NÃO grava em localStorage, senão a página trocaria a
+  // preferência de quem usa o CRM na mesma máquina.
+  useEffect(() => {
+    const root = document.documentElement
+    const eraDark = root.classList.contains('dark')
+    const meta = document.querySelector('meta[name="theme-color"]')
+    const corAntes = meta?.getAttribute('content') ?? null
+    if (eraDark) root.classList.remove('dark')
+    meta?.setAttribute('content', '#f5f5f7')
+    return () => {
+      if (eraDark) root.classList.add('dark')
+      if (corAntes) meta?.setAttribute('content', corAntes)
+    }
+  }, [])
 
   const set = (k: keyof typeof f) => (v: string) => setF(p => ({ ...p, [k]: v }))
   const toggle = (arr: string[], setArr: (a: string[]) => void, v: string) =>

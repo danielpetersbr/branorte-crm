@@ -41,8 +41,13 @@
       // Key 'theme-v3' (migracao do 'theme-v2'): como o default virou CLARO (tema Apple)
       // e o hook antigo persistia 'dark' automaticamente, trocamos a key pra ignorar o
       // 'dark' salvo antigo — todo mundo recomeca no claro (so fica dark quem escolher).
+      // As páginas PÚBLICAS (o candidato/cliente que chega por link) são sempre
+      // claras: quem abre não escolheu tema nenhum, e herdar o 'dark' do dono da
+      // máquina fazia o formulário abrir preto pra quem nunca viu o CRM.
+      // Checado AQUI, e não só no React, senão pisca escuro→claro no primeiro frame.
       (function() {
         try {
+          if (location.pathname === '/seja-representante') return
           var saved = localStorage.getItem('theme-v3')
           if (saved === 'dark') document.documentElement.classList.add('dark')
         } catch (_) {
