@@ -1,87 +1,70 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import type { Contact, ContactFilters } from '@/types'
+import { PAGE_SIZE, type Contact, type ContactFilters } from '@/types'
+import type { WaEtiquetaAplicada, WaResumoCampos } from '@/hooks/useWaResumo'
 
-const PAGE_SIZE = 50
+/**
+ * Linha de `contatos_page`: as 31 colunas de `contacts` + o resumo do WhatsApp
+ * (etiquetas, último contato, quem falou) já embutido, via LEFT JOIN com a
+ * matview. Como os campos de WA vêm na própria linha, a tela NÃO precisa de uma
+ * segunda chamada (`wa_resumo_por_telefone`) pra pintar as colunas.
+ *
+ * Atenção ao `ultimo_contato`: em `Contact` ele é campo-fantasma (não existe na
+ * tabela); aqui ele vem da matview e significa "última mensagem no WhatsApp".
+ */
+export type ContactComWa = Contact & WaResumoCampos
+
+/** Args compartilhados por `contatos_page` e `contatos_page_count`.
+ *  O count PRECISA receber `p_sort`: ordenar por último contato liga o JOIN com
+ *  a matview na RPC, o que muda o universo contado (só quem tem WhatsApp). */
+function rpcArgs(filters: ContactFilters) {
+  return {
+    p_search:             filters.search || null,
+    p_estado:             filters.estado || null,
+    // 'unassigned' é entendido pela RPC (vendor_id IS NULL); '' = qualquer um.
+    p_vendor_id:          filters.vendor_id || null,
+    p_status:             filters.status || null,
+    p_orcamento_ano:      filters.orcamento_ano ? Number(filters.orcamento_ano) : null,
+    p_orcamento_mes:      filters.orcamento_mes ? Number(filters.orcamento_mes) : null,
+    // A RPC ignora `p_orcamento` quando há ano — mesma precedência do código
+    // antigo (`if ano ... else if orcamento`), então dá pra mandar os dois.
+    p_orcamento:          !!filters.orcamento,
+    p_temperatura:        filters.temperatura || null,
+    p_com_whatsapp:       !!filters.com_whatsapp,
+    p_etiqueta:           filters.etiqueta || null,
+    p_esperando_resposta: !!filters.esperando_resposta,
+    p_sort:               filters.sort || 'recente',
+  }
+}
 
 export function useContacts(filters: ContactFilters) {
   return useQuery({
     queryKey: ['contacts', filters],
     queryFn: async () => {
-      const sortKey = filters.sort || 'recente'
-      const sortMap: Record<string, { col: string; asc: boolean; nullsFirst?: boolean }> = {
-        recente:           { col: 'created_at',     asc: false },
-        antigo:            { col: 'created_at',     asc: true },
-        nome_az:           { col: 'name',           asc: true,  nullsFirst: false },
-        nome_za:           { col: 'name',           asc: false, nullsFirst: false },
-        orcamento_recente: { col: 'data_orcamento', asc: false, nullsFirst: false },
-        orcamento_antigo:  { col: 'data_orcamento', asc: true,  nullsFirst: false },
-        estado_az:         { col: 'state',          asc: true,  nullsFirst: false },
-      }
-      const so = sortMap[sortKey] ?? sortMap.recente
-      let query = supabase
-        .from('contacts')
-        // 'estimated' evita seq-scan de contagem exata em 201k linhas (timeout sob carga):
-        // exato pra resultados pequenos, estimativa do planner pros grandes.
-        .select('*', { count: 'estimated' })
-        .order(so.col, { ascending: so.asc, nullsFirst: so.nullsFirst ?? !so.asc })
+      const args = rpcArgs(filters)
+      // Página e contagem em paralelo: são duas RPCs independentes e a contagem
+      // é a mais lenta das duas (~150ms no pior caso medido).
+      const [pageRes, countRes] = await Promise.all([
+        supabase.rpc('contatos_page', {
+          ...args,
+          p_limit: PAGE_SIZE,
+          p_offset: filters.page * PAGE_SIZE,
+        }),
+        supabase.rpc('contatos_page_count', args),
+      ])
+      if (pageRes.error) throw pageRes.error
+      if (countRes.error) throw countRes.error
 
-      if (filters.search) {
-        query = query.or(`name.ilike.%${filters.search}%,phone.ilike.%${filters.search}%`)
-      }
-      if (filters.estado) query = query.eq('state', filters.estado)
-      if (filters.vendor_id === 'unassigned') {
-        query = query.is('vendor_id', null)
-      } else if (filters.vendor_id) {
-        query = query.eq('vendor_id', filters.vendor_id)
-      }
-      if (filters.status) query = query.eq('status', filters.status)
-      if (filters.orcamento_ano) {
-        // Cruza com orcamentos_files: pega contact_ids que têm orçamento neste ano
-        // (eventualmente filtrando por mês via mtime_iso). Mais preciso do que parsear
-        // origin — o origin no banco é só "Orcamento AAAA" sem o número.
-        let orcQ = supabase
-          .from('orcamentos_files')
-          .select('contact_id')
-          .eq('ano', Number(filters.orcamento_ano))
-          .not('contact_id', 'is', null)
-          .limit(10000)
-        if (filters.orcamento_mes) {
-          const m = Number(filters.orcamento_mes)
-          const month = String(m).padStart(2, '0')
-          const yr = Number(filters.orcamento_ano)
-          const nextYr = m === 12 ? yr + 1 : yr
-          const nextM = m === 12 ? '01' : String(m + 1).padStart(2, '0')
-          orcQ = orcQ
-            .gte('mtime_iso', `${yr}-${month}-01T00:00:00Z`)
-            .lt('mtime_iso', `${nextYr}-${nextM}-01T00:00:00Z`)
-        }
-        const { data: orcRows, error: orcErr } = await orcQ
-        if (orcErr) throw orcErr
-        const idsSet = new Set<string>()
-        for (const r of (orcRows ?? []) as { contact_id: string | null }[]) {
-          if (r.contact_id) idsSet.add(r.contact_id)
-        }
-        const ids = Array.from(idsSet)
-        if (ids.length === 0) {
-          return { contacts: [], total: 0 }
-        }
-        query = query.in('id', ids)
-      } else if (filters.orcamento) {
-        // Toggle sem ano: catch tanto "Orcamento AAAA" (origin antigo) quanto
-        // "Orçamento (auto-link)" / "Orçamento (auto-link bucket)" (stubs criados
-        // ao linkar 100% dos orçamentos a contatos).
-        query = query.or('origin.ilike.Orcamento%,origin.ilike.Orçamento%')
-      }
-      if (filters.temperatura) query = query.like('notes', `%"temp":"${filters.temperatura}"%`)
+      const contacts = ((pageRes.data ?? []) as ContactComWa[]).map(r => ({
+        ...r,
+        // `etiquetas` é jsonb e vem null quando o contato não tem WhatsApp.
+        // Normaliza aqui pra quem renderiza poder fazer .map/.filter direto.
+        etiquetas: (Array.isArray(r.etiquetas) ? r.etiquetas : []) as WaEtiquetaAplicada[],
+      }))
 
-      const from = filters.page * PAGE_SIZE
-      const to = from + PAGE_SIZE - 1
-      query = query.range(from, to)
-
-      const { data, error, count } = await query
-      if (error) throw error
-      return { contacts: (data ?? []) as Contact[], total: count ?? 0 }
+      // Contagem EXATA (a antiga era `count: 'estimated'`, que devolvia ~126k
+      // onde havia 208k e cortava a paginação bem antes do fim da lista).
+      return { contacts, total: Number(countRes.data ?? 0) }
     },
     placeholderData: (prev) => prev,
   })
