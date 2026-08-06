@@ -350,6 +350,13 @@ function AppRoutes() {
       '/viabilidade', '/venda-racao', '/perfil',
     ],
     consultor: ['/producao-propria', '/viabilidade', '/venda-racao', '/perfil'],
+    // representante = representante EXTERNO com territorio (06/08/2026). Ve o mapa
+    // de visitas, mas so os estados dele. A restricao NAO e este guard — ela mora
+    // nas RPCs mapa_orcamentos_v2/lista_orcamentos_mapa, que filtram por
+    // ufs_visiveis(). Este guard so escolhe a tela; sem a trava do banco ele
+    // baixaria a carteira nacional pelo DevTools. Fica FORA do /mapa-representantes,
+    // que mostra o territorio e os numeros de todo mundo.
+    representante: ['/mapa-visitas', '/perfil'],
   }
   const rotasDoPapel = ROTAS_RESTRITAS[profile.role]
   if (rotasDoPapel && !rotasDoPapel.includes(loc.pathname)) {

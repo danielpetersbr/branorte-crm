@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import {
-  useVisitas, useGeocodarVisitas, useOrcamentosMapa, useListaOrcamentos, useVendasMapaCount,
+  useVisitas, useGeocodarVisitas, useOrcamentosMapa, useListaOrcamentos, useVendasMapaCount, useUfsVisiveis,
   useMapaMarcacoes, useSalvarMarcacao,
   type Visita, type OrcamentoPonto, type OrcamentoLinha, type Marcacao,
 } from '@/hooks/useVisitas'
@@ -392,6 +392,7 @@ export function MapaVisitas() {
   const { data: vendasCount = 0 } = useVendasMapaCount()
   const { data: etiquetasWa = [] } = useEtiquetas()
   const { data: marc = {} } = useMapaMarcacoes()
+  const { data: ufsVisiveis = [] } = useUfsVisiveis()
   const salvarMarc = useSalvarMarcacao()
   const salvarViagemMut = useSalvarViagem()
   const salvarLocalMut = useSalvarLocalizacaoCliente()
@@ -1598,6 +1599,12 @@ export function MapaVisitas() {
         <div>
           <h1 className="text-[18px] md:text-[22px] font-semibold text-ink tracking-tight">Mapa de Visitas</h1>
           <p className="text-[13px] text-ink-muted">
+            {ufsVisiveis.length > 0 && (
+              <span className="mr-2 px-2 py-0.5 rounded-full bg-accent-bg border border-accent/30 text-accent text-[11px] font-bold"
+                    title="Seu acesso é limitado a estes estados. Os outros nem chegam do servidor.">
+                🗺️ {ufsVisiveis.join(' · ')}
+              </span>
+            )}
             {showOrc && <>{orcFiltrados.length} clientes com orçamento{orcStats.vendido > 0 && <> · <span className="text-blue-600 font-semibold">{orcStats.vendido} vendidos</span></>}</>}
             {showOrc && showVis && ' · '}
             {showVis && <>{visFiltradas.length} visitas{semCoord > 0 && <> · <span className="text-warning">{semCoord} sem localização</span></>}</>}

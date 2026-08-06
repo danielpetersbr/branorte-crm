@@ -35,6 +35,10 @@ const MENUS_RESTRITOS: Record<string, Array<{ to: string; label: string; icon: t
     { to: '/producao-propria', label: 'Produção Própria', icon: Calculator },
     { to: '/venda-racao', label: 'Venda de Ração', icon: ShoppingBag },
   ],
+  // Representante externo: só o mapa de visitas, e nele só os estados dele.
+  representante: [
+    { to: '/mapa-visitas', label: 'Mapa de Visitas', icon: MapPin },
+  ],
   // Consultor externo: SÓ os dois estudos. Sem mapa, sem contato, sem orçamento.
   consultor: [
     { to: '/producao-propria', label: 'Produção Própria', icon: Calculator },

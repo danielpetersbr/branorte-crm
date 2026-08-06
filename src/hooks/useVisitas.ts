@@ -94,6 +94,26 @@ export function useVendasMapaCount() {
  * é buscada quando o usuário abre a caixa de "puxar cliente". Sem parâmetro o
  * comportamento é o de sempre — o /mapa-visitas precisa dela na hora.
  */
+/**
+ * Os estados que ESTE usuário enxerga. Vazio = sem restrição, vê tudo.
+ *
+ * Só pra TELA — a restrição de verdade está nas RPCs mapa_orcamentos_v2 e
+ * lista_orcamentos_mapa, que filtram por ufs_visiveis() no banco. Isto aqui existe
+ * pra o representante saber POR QUE só aparecem dois estados, em vez de achar que
+ * o sistema perdeu a carteira dele. A policy de SELECT já só devolve as linhas dele.
+ */
+export function useUfsVisiveis() {
+  return useQuery<string[]>({
+    queryKey: ['ufs-visiveis'],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('usuario_ufs').select('uf')
+      if (error) throw error
+      return (data ?? []).map(r => String(r.uf).toUpperCase()).sort()
+    },
+  })
+}
+
 export function useOrcamentosMapa(opts?: { enabled?: boolean }) {
   return useQuery<OrcamentoPonto[]>({
     enabled: opts?.enabled ?? true,

@@ -10,7 +10,7 @@ export interface UserProfile {
   // ASSIGNABLE_ROLES nem em role_permissions (useCan() é sempre false pra eles).
   // Quem libera tela é ROTAS_RESTRITAS no App.tsx + MENUS_RESTRITOS no Layout.
   // Espelha o CHECK user_profiles_role_check no banco.
-  role: 'admin' | 'vendor' | 'marketing' | 'visualizador' | 'mapa' | 'consultor' | 'pending' | 'rejected'
+  role: 'admin' | 'vendor' | 'marketing' | 'visualizador' | 'mapa' | 'consultor' | 'representante' | 'pending' | 'rejected'
   vendor_id: string | null
   approved_at: string | null
 }
