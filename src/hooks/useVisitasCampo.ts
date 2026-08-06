@@ -33,6 +33,13 @@ export interface MinhaVisita {
   tem_relatorio: boolean
   resultado: string | null
   proxima_data: string | null
+  // o relatório inteiro volta junto: o formulário de edição precisa abrir
+  // preenchido, senão salvar de novo grava null por cima do que já existia.
+  proximo_passo: string | null
+  interesse: string | null
+  valor_potencial: number | null
+  concorrente: string | null
+  objecao: string | null
 }
 
 export interface MinhaAtividade {

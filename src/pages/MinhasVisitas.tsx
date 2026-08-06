@@ -333,12 +333,15 @@ function FormRelatorio({ v, onAviso, onSalvou }: {
 }) {
   const salvar = useSalvarRelatorio()
   const congelado = !!v.checkout_at
+  // Abre PREENCHIDO com o que já foi relatado. Sem isto, reabrir pra corrigir
+  // uma linha zeraria interesse/valor/concorrente/objeção no banco, porque o
+  // salvar sobrescreve campo a campo.
   const [resultado, setResultado] = useState(v.resultado ?? '')
-  const [proximoPasso, setProximoPasso] = useState('')
-  const [interesse, setInteresse] = useState('')
-  const [valor, setValor] = useState<number | null>(null)
-  const [concorrente, setConcorrente] = useState('')
-  const [objecao, setObjecao] = useState('')
+  const [proximoPasso, setProximoPasso] = useState(v.proximo_passo ?? '')
+  const [interesse, setInteresse] = useState(v.interesse ?? '')
+  const [valor, setValor] = useState<number | null>(v.valor_potencial ?? null)
+  const [concorrente, setConcorrente] = useState(v.concorrente ?? '')
+  const [objecao, setObjecao] = useState(v.objecao ?? '')
   const [proximaData, setProximaData] = useState(v.proxima_data ?? '')
   const [erro, setErro] = useState<string | null>(null)
 
@@ -359,10 +362,27 @@ function FormRelatorio({ v, onAviso, onSalvou }: {
   }
 
   if (congelado) {
+    const campos: Array<[string, string | null]> = [
+      ['Como terminou', v.resultado ? (RESULTADO_LABEL[v.resultado] ?? v.resultado) : null],
+      ['Próximo passo', v.proximo_passo],
+      ['Interesse', v.interesse],
+      ['Valor em jogo', v.valor_potencial != null
+        ? v.valor_potencial.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+        : null],
+      ['Concorrente', v.concorrente],
+      ['Objeção', v.objecao],
+      ['Voltar a falar em', v.proxima_data ? dataBonita(v.proxima_data) : null],
+    ]
     return (
-      <div className="mt-3 pt-3 border-t border-border">
-        <p className="text-[12px] text-ink-muted">
-          Visita encerrada — o relatório ficou registrado. Correção só pela gestão.
+      <div className="mt-3 pt-3 border-t border-border space-y-2">
+        {campos.filter(([, valor]) => !!valor).map(([label, valor]) => (
+          <div key={label}>
+            <p className="text-[10px] uppercase font-bold text-ink-faint">{label}</p>
+            <p className="text-[13px] text-ink whitespace-pre-wrap">{valor}</p>
+          </div>
+        ))}
+        <p className="text-[11px] text-ink-faint pt-1">
+          Visita encerrada — correção só pela gestão.
         </p>
       </div>
     )
