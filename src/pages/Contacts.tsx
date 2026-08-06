@@ -12,6 +12,9 @@ import { useVendorMap } from '@/hooks/useVendorMap'
 import { useContactsOrcamentos } from '@/hooks/useContactsOrcamentos'
 import { useWaEtiquetasDisponiveis, type WaResumoCampos } from '@/hooks/useWaResumo'
 import { canonico, corDaEtiqueta, ETIQUETAS_OCULTAS, ordemDe, tempoRelativo, temperaturaDe, TEMP_META } from '@/lib/wa-funil'
+import { useEtiquetasDeContatos } from '@/hooks/useCrmEtiquetas'
+import { BarraEtiquetas } from '@/components/contacts/BarraEtiquetas'
+import { BotaoEtiquetar, SelosCrm } from '@/components/contacts/BotaoEtiquetar'
 import { useAuth } from '@/hooks/useAuth'
 import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, FileText, Copy, Check, CornerDownLeft } from 'lucide-react'
 import { ESTADOS_BR, STATUS_OPTIONS, TEMPERATURA_OPTIONS, FUNIL_OPTIONS, PAGE_SIZE, CONTACT_SORT_OPTIONS } from '@/types'
@@ -280,6 +283,9 @@ export function Contacts() {
   const contactIds = contacts.map(c => c.id)
   const { data: orcamentosMap } = useContactsOrcamentos(contactIds)
 
+  // Etiquetas do CRM dos contatos desta página, numa consulta só.
+  const { data: etiqCrmMap } = useEtiquetasDeContatos(contactIds)
+
   // O resumo do WhatsApp (etiquetas, último contato, quem falou) já vem embutido
   // em cada linha de `contatos_page` — nada de lookup por telefone aqui.
 
@@ -401,6 +407,13 @@ export function Contacts() {
         </div>
       </Card>
 
+      {/* Chips com a contagem POR etiqueta, respeitando os filtros de cima.
+          Clicar num chip é o mesmo que escolher no Select de Etiqueta. */}
+      <BarraEtiquetas
+        filters={filters}
+        onEscolher={etiqueta => setFilters(f => ({ ...f, etiqueta, page: 0 }))}
+      />
+
       {isLoading ? <PageLoading /> : (
         <>
           {/* Desktop table */}
@@ -431,6 +444,7 @@ export function Contacts() {
                     const tempOpt = TEMPERATURA_OPTIONS.find(t => t.value === meta.temp)
                     const funilOpt = FUNIL_OPTIONS.find(f => f.value === meta.funil)
                     const etiquetaWa = etiquetaDoContato(c, c.vendor_id ? vendorMap[c.vendor_id] ?? null : null)
+                    const etiquetasCrmDoContato = etiqCrmMap?.get(c.id) ?? []
                     return (
                       <tr key={c.id} className="hover:bg-surface-secondary cursor-pointer transition-colors"
                         onClick={() => setSelectedContact(c)}>
@@ -461,9 +475,15 @@ export function Contacts() {
                           <span className="text-sm text-text-secondary">{(c.vendor_id ? vendorMap[c.vendor_id] : null) ?? '-'}</span>
                         </td>
                         <td className="hidden xl:table-cell px-4 py-3">
-                          {etiquetaWa
-                            ? <EtiquetaWa escolhida={etiquetaWa.escolhida} outras={etiquetaWa.outras} nVendedores={etiquetaWa.nVendedores} />
-                            : <Vazio />}
+                          {/* WhatsApp e CRM lado a lado: as do CRM levam um ponto
+                              e nunca substituem a da conversa real. */}
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {etiquetaWa
+                              ? <EtiquetaWa escolhida={etiquetaWa.escolhida} outras={etiquetaWa.outras} nVendedores={etiquetaWa.nVendedores} />
+                              : (!etiquetasCrmDoContato.length && <Vazio />)}
+                            <SelosCrm etiquetas={etiquetasCrmDoContato} />
+                            <BotaoEtiquetar contactId={c.id} aplicadas={etiquetasCrmDoContato} compacto />
+                          </div>
                         </td>
                         <td className="hidden xl:table-cell px-4 py-3 whitespace-nowrap">
                           {c.ultimo_contato ? <UltimoContatoWa resumo={c} /> : <Vazio />}
@@ -562,6 +582,12 @@ export function Contacts() {
                         {c.state && <Badge className="bg-blue-50 text-blue-700">{c.state}</Badge>}
                         {mobileFunilOpt && <Badge className={mobileFunilOpt.color}>{mobileFunilOpt.label}</Badge>}
                         {etiquetaWaM && <EtiquetaWa escolhida={etiquetaWaM.escolhida} outras={etiquetaWaM.outras} nVendedores={etiquetaWaM.nVendedores} />}
+                        <SelosCrm etiquetas={etiqCrmMap?.get(c.id) ?? []} />
+                        {/* stopPropagation: o card inteiro abre o contato — o menu de
+                            etiqueta não pode abrir a ficha por baixo. */}
+                        <span onClick={e => e.stopPropagation()}>
+                          <BotaoEtiquetar contactId={c.id} aplicadas={etiqCrmMap?.get(c.id) ?? []} compacto />
+                        </span>
                         {orcsLinkadosM.length > 0 ? (
                           <Badge
                             className="bg-amber-50 text-amber-700 border border-amber-200"
