@@ -1,8 +1,8 @@
-import { CircleDot, CheckCircle2, HelpCircle, Loader2 } from 'lucide-react'
+import { CircleDot, CheckCircle2, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 /**
- * Os três estados do contato no funil do CRM, como botão na própria linha.
+ * Os dois estados do contato no funil do CRM, como botão na própria linha.
  *
  * ⚠️ Grava SÓ em `contacts.status`. NÃO encosta em `is_closed`, que parece ser a
  * mesma coisa e não é: `is_closed` é DERIVADO de etiqueta (existe etiqueta ativa
@@ -10,8 +10,11 @@ import { cn } from '@/lib/utils'
  * pool de prospecção. Espelhar um no outro devolveria ao pool gente já
  * encerrada. Os dois divergem em 745 contatos hoje, legitimamente.
  *
- * 'ANALISAR' entrou no CHECK de contacts_status_check em 06/08/2026. Sem isso o
- * clique salvaria e o banco recusaria — sem erro visível pro vendedor.
+ * Existiu um terceiro estado 'ANALISAR' ("Falta analisar") por algumas horas em
+ * 06/08/2026 — o Daniel pediu pra tirar: aqui é aberto ou fechado, ponto.
+ * Removido também do CHECK `contacts_status_check`, senão voltaria por qualquer
+ * escrita fora desta tela e a linha ficaria SEM botão aceso (o `ativo` abaixo
+ * compara por igualdade — valor fora da lista não acende nenhum).
  */
 export const STATUS_CONTATO = [
   {
@@ -29,14 +32,6 @@ export const STATUS_CONTATO = [
     icon: CheckCircle2,
     titulo: 'Fechado — encerrado no CRM (não confundir com etiqueta de encerramento do WhatsApp)',
     on: 'bg-success-bg text-success ring-1 ring-success/30',
-  },
-  {
-    v: 'ANALISAR',
-    label: 'Falta analisar',
-    curto: 'An.',
-    icon: HelpCircle,
-    titulo: 'Falta analisar — precisa de uma decisão',
-    on: 'bg-warning-bg text-warning ring-1 ring-warning/30',
   },
 ] as const
 

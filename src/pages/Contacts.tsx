@@ -733,7 +733,7 @@ export function Contacts() {
                     </th>
                     {/* Coluna nova (06/08). Grava so em `status`; `is_closed` continua
                         vindo de etiqueta e nao e tocado aqui. Soma = 100%. */}
-                    <th className="w-[13%] rounded-tr-[11px]" title="Aberto, Fechado ou Falta analisar. Clique pra mudar.">Status</th>
+                    <th className="w-[13%] rounded-tr-[11px]" title="Aberto ou Fechado. Clique pra mudar.">Status</th>
                   </tr>
                 </thead>
                 <tbody>
