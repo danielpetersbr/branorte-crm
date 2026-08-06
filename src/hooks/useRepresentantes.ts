@@ -116,3 +116,95 @@ export function alertasDe(v: RepVisita): string[] {
   if (v.fora_do_roteiro) a.push('fora do dia planejado')
   return a
 }
+
+// ============================================================================
+// CANDIDATURAS — quem se cadastrou no formulário público /seja-representante
+// ============================================================================
+// A leitura passa pela RLS de representante_candidaturas (policy rc_select_gestor
+// → pode_gerir_representantes()). Vendedor comum recebe ZERO linha, não erro.
+// Score/faixa/flags são calculados pelo trigger no banco — nunca pelo cliente.
+
+export interface CandidaturaFlag { t: 'red' | 'amber' | 'green'; k: string; m: string }
+
+export interface Candidatura {
+  id: string
+  created_at: string
+  nome: string
+  telefone: string
+  cidade: string
+  uf: string
+  ufs_desejadas: string[]
+  cidades_atendidas: string
+  cnpj: 'sim' | 'abrindo' | 'nao'
+  veiculo: boolean
+  anos_agro: number
+  linha_principal: string
+  marcas: string
+  conflito: boolean
+  especies: string[]
+  clientes_ativos: number
+  visitados_90d: number
+  visitas_semana: number
+  km_mes: number
+  ticket_faixa: number
+  maior_venda: string
+  clientes_racao: number
+  tres_clientes: string
+  referencia: string
+  score: number
+  faixa: string
+  flags: CandidaturaFlag[]
+  detalhe_score: Record<string, number>
+  status: string
+  notas_internas: string | null
+}
+
+export const CAND_STATUS: Record<string, string> = {
+  novo: 'Novo',
+  em_analise: 'Em análise',
+  chamado: 'Chamado pra conversa',
+  aprovado: 'Aprovado',
+  recusado: 'Recusado',
+  banco_talentos: 'Banco de talentos',
+}
+
+export const LINHA_LABEL: Record<string, string> = {
+  nutricao: 'Nutrição animal',
+  equip: 'Equipamento pecuário',
+  silo: 'Silos / armazenagem',
+  vet: 'Medicamento veterinário',
+  consult: 'Consultoria técnica',
+  insumo: 'Insumo agrícola',
+  outro: 'Outra',
+}
+
+export const TICKET_LABEL: Record<number, string> = {
+  1: 'até R$ 5 mil', 2: 'R$ 5–20 mil', 3: 'R$ 20–50 mil',
+  4: 'R$ 50–150 mil', 5: 'acima de R$ 150 mil',
+}
+
+export function useCandidaturas(status?: string | null) {
+  return useQuery({
+    queryKey: ['rep-candidaturas', status ?? null],
+    queryFn: async (): Promise<Candidatura[]> => {
+      let q = (supabase as any)
+        .from('representante_candidaturas')
+        .select('*')
+        .order('score', { ascending: false })
+        .order('created_at', { ascending: false })
+      if (status) q = q.eq('status', status)
+      const { data, error } = await q
+      if (error) throw error
+      return (data ?? []) as Candidatura[]
+    },
+    staleTime: 30_000,
+  })
+}
+
+export async function salvarTriagem(id: string, patch: { status?: string; notas_internas?: string }) {
+  const { error } = await (supabase as any)
+    .from('representante_candidaturas')
+    .update({ ...patch, avaliado_em: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}

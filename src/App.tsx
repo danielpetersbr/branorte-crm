@@ -31,6 +31,7 @@ const MinhasVisitas = lazy(() => import('@/pages/MinhasVisitas').then(m => ({ de
 const OrganizacaoViagemPage = lazy(() => import('./pages/OrganizacaoViagemPage').then(m => ({ default: m.OrganizacaoViagemPage })))
 const MapaRepresentantes = lazy(() => import('@/pages/MapaRepresentantes').then(m => ({ default: m.MapaRepresentantes })))
 const Representantes = lazy(() => import('@/pages/Representantes').then(m => ({ default: m.Representantes })))
+const SejaRepresentante = lazy(() => import('@/pages/SejaRepresentante').then(m => ({ default: m.SejaRepresentante })))
 const Funil = lazy(() => import('@/pages/Funil').then(m => ({ default: m.Funil })))
 const FunilWhatsApp = lazy(() => import('@/pages/FunilWhatsApp').then(m => ({ default: m.FunilWhatsApp })))
 const FunilRelatorio = lazy(() => import('@/pages/FunilRelatorio').then(m => ({ default: m.FunilRelatorio })))
@@ -241,6 +242,14 @@ function AppRoutes() {
   // Roda deslogada (transportadora não tem conta).
   if (loc.pathname.startsWith('/cotar-frete/')) {
     return <CotarFrete />
+  }
+
+  // Rota pública /seja-representante — link colável do programa de representantes.
+  // Roda deslogada (o candidato não tem conta e não vai ter). Grava em
+  // representante_candidaturas, cuja RLS dá INSERT pro anon e nenhum SELECT.
+  // As candidaturas aparecem em /representantes, aba "Candidaturas".
+  if (loc.pathname === '/seja-representante') {
+    return <SejaRepresentante />
   }
 
   // Portal das transportadoras — auth própria, ANTES do gating do staff (a
