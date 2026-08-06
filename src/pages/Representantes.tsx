@@ -6,9 +6,10 @@ import { Badge } from '@/components/ui/Badge'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import {
-  usePodeGerirRepresentantes, useRepPainel, useRepVisitas, alertasDe,
+  usePodeGerirRepresentantes, useRepPainel, useRepVisitas, alertasDe, useCandidaturas,
   type RepKpi,
 } from '@/hooks/useRepresentantes'
+import { PainelCandidaturas } from '@/components/representantes/PainelCandidaturas'
 import { RESULTADO_LABEL } from '@/hooks/useVisitasCampo'
 
 // Painel de gestão da rede de representantes.
@@ -68,7 +69,12 @@ export function Representantes() {
   const [de, setDe] = useState(primeiroDiaDoMes())
   const [ate, setAte] = useState(ultimoDiaDoMes())
   const [rep, setRep] = useState('')
-  const [aba, setAba] = useState<'painel' | 'mapa' | 'alertas' | 'visitas'>('painel')
+  const [aba, setAba] = useState<'painel' | 'mapa' | 'alertas' | 'visitas' | 'candidaturas'>('painel')
+
+  // Candidaturas do formulário público /seja-representante. Query própria: NÃO
+  // pode ficar presa ao loading/erro do painel de visitas, que é outra RPC.
+  const candidaturasQ = useCandidaturas()
+  const nNovas = (candidaturasQ.data ?? []).filter(c => c.status === 'novo').length
   const ampliarAno = () => {
     const a = new Date().getFullYear()
     setDe(`${a}-01-01`); setAte(`${a}-12-31`)
@@ -177,7 +183,7 @@ export function Representantes() {
       </div>
 
       <div className="flex gap-1.5 mb-3 border-b border-border">
-        {([['painel', 'Indicadores'], ['mapa', 'Mapa'], ['alertas', `Alertas (${alertas.length})`], ['visitas', `Visitas (${visitas.length})`]] as const).map(([k, label]) => (
+        {([['painel', 'Indicadores'], ['mapa', 'Mapa'], ['alertas', `Alertas (${alertas.length})`], ['visitas', `Visitas (${visitas.length})`], ['candidaturas', `Candidaturas${nNovas ? ` (${nNovas})` : ''}`]] as const).map(([k, label]) => (
           <button key={k} onClick={() => setAba(k)}
             className={cn(
               'px-3 py-2 text-[13px] font-medium border-b-2 -mb-px transition-all',
@@ -186,7 +192,11 @@ export function Representantes() {
         ))}
       </div>
 
-      {erro ? (
+      {/* Antes do erro/loading de propósito: a query de candidaturas é outra, e
+          uma falha no painel de visitas não pode esconder a lista de candidatos. */}
+      {aba === 'candidaturas' ? (
+        <PainelCandidaturas />
+      ) : erro ? (
         <div className="rounded-xl border border-danger/30 bg-danger/5 py-8 text-center">
           <AlertCircle className="h-7 w-7 text-danger mx-auto mb-2" />
           <p className="text-[13px] text-ink">Não consegui carregar os dados.</p>
