@@ -356,7 +356,7 @@ function AppRoutes() {
     // ufs_visiveis(). Este guard so escolhe a tela; sem a trava do banco ele
     // baixaria a carteira nacional pelo DevTools. Fica FORA do /mapa-representantes,
     // que mostra o territorio e os numeros de todo mundo.
-    representante: ['/mapa-visitas', '/perfil'],
+    representante: ['/mapa-visitas', '/producao-propria', '/viabilidade', '/venda-racao', '/perfil'],
   }
   const rotasDoPapel = ROTAS_RESTRITAS[profile.role]
   if (rotasDoPapel && !rotasDoPapel.includes(loc.pathname)) {

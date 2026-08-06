@@ -35,9 +35,13 @@ const MENUS_RESTRITOS: Record<string, Array<{ to: string; label: string; icon: t
     { to: '/producao-propria', label: 'Produção Própria', icon: Calculator },
     { to: '/venda-racao', label: 'Venda de Ração', icon: ShoppingBag },
   ],
-  // Representante externo: só o mapa de visitas, e nele só os estados dele.
+  // Representante externo: o mapa de visitas (só os estados dele) MAIS os dois
+  // estudos. Os estudos vieram junto porque ele já os tinha como 'consultor' —
+  // trocar o papel dele pelo mapa não podia TIRAR o que ele usava.
   representante: [
     { to: '/mapa-visitas', label: 'Mapa de Visitas', icon: MapPin },
+    { to: '/producao-propria', label: 'Produção Própria', icon: Calculator },
+    { to: '/venda-racao', label: 'Venda de Ração', icon: ShoppingBag },
   ],
   // Consultor externo: SÓ os dois estudos. Sem mapa, sem contato, sem orçamento.
   consultor: [
