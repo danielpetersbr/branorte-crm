@@ -119,10 +119,12 @@ function etiquetaDoContato(
 // Etiqueta do WhatsApp: primeira + "+N" com o resto no title (mesmo padrão da coluna Orcamento).
 // Usa `estiloEtiqueta` (a MESMA fórmula do selo do CRM) em vez de repetir o
 // `hex+'1f'` inline — eram duas cópias da mesma receita convivendo na mesma célula.
-function EtiquetaWa({ escolhida, outras, nVendedores }: { escolhida: EtiquetaEscolhida; outras: EtiquetaEscolhida[]; nVendedores?: number }) {
+function EtiquetaWa({ escolhida, outras, nVendedores, quebrar }: { escolhida: EtiquetaEscolhida; outras: EtiquetaEscolhida[]; nVendedores?: number; quebrar?: boolean }) {
   const cor = corDaEtiqueta(escolhida.nome)
   return (
-    <div className="flex items-center gap-1 flex-wrap min-w-0">
+    // `quebrar` so no card do mobile. Na TABELA nao pode: uma celula que quebra
+    // em duas linhas estica SO aquela linha, e a lista fica com altura irregular.
+    <div className={cn('flex items-center gap-1 min-w-0', quebrar ? 'flex-wrap' : 'flex-nowrap')}>
       <span
         style={estiloEtiqueta(cor)}
         className="etq-soft inline-flex items-center h-[20px] px-2 rounded-md text-[10px] font-semibold uppercase tracking-[0.02em] whitespace-nowrap max-w-[150px]"
@@ -783,7 +785,12 @@ export function Contacts() {
                           if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedContact(c) }
                         }}
                         className={cn(
-                          'group border-b border-border/60 last:border-b-0 cursor-pointer',
+                          // `h-[56px]` trava a altura: sem isto, QUALQUER celula que
+                          // quebre em duas linhas estica so a sua linha e a lista fica
+                          // serrilhada. Com as celulas em flex-nowrap acima, nada
+                          // quebra — a altura fixa e o cinto de seguranca pro proximo
+                          // conteudo que alguem adicionar.
+                          'group h-[56px] border-b border-border/60 last:border-b-0 cursor-pointer',
                           'transition-colors duration-100 motion-reduce:transition-none hover:bg-surface-2/60',
                           'focus-visible:outline-none focus-visible:bg-surface-2/60 focus-visible:shadow-[inset_2px_0_0_0_hsl(var(--accent))]',
                         )}
@@ -834,7 +841,7 @@ export function Contacts() {
                         <td className="px-2.5 py-3.5">
                           {/* WhatsApp e CRM lado a lado: as do CRM levam um ponto
                               e nunca substituem a da conversa real. */}
-                          <div className="flex items-center gap-1 flex-wrap min-w-0">
+                          <div className="flex items-center gap-1 flex-nowrap min-w-0 overflow-hidden">
                             {etiquetaWa
                               ? <EtiquetaWa escolhida={etiquetaWa.escolhida} outras={etiquetaWa.outras} nVendedores={etiquetaWa.nVendedores} />
                               : (!etiquetasCrmDoContato.length && <Vazio />)}
@@ -847,7 +854,7 @@ export function Contacts() {
                         </td>
                         <td className="px-2.5 py-3.5">
                           {orcsLinkados.length > 0 ? (
-                            <div className="flex items-center gap-1 flex-wrap min-w-0">
+                            <div className="flex items-center gap-1 flex-nowrap min-w-0 overflow-hidden">
                               <span
                                 className="inline-flex items-center gap-1 h-[22px] max-w-full px-1.5 rounded-md border border-border bg-surface-2 text-[11px] font-medium text-ink tabular-nums whitespace-nowrap"
                                 /* O equipamento entra aqui porque a coluna Equipamento
@@ -964,7 +971,7 @@ export function Contacts() {
                           {mobileTempOpt && <Badge className={mobileTempOpt.color}>{mobileTempOpt.icon}</Badge>}
                           {c.state && <Badge className="bg-info-bg text-info ring-info/15">{c.state}</Badge>}
                           {mobileFunilOpt && <Badge className={mobileFunilOpt.color}>{mobileFunilOpt.label}</Badge>}
-                          {etiquetaWaM && <EtiquetaWa escolhida={etiquetaWaM.escolhida} outras={etiquetaWaM.outras} nVendedores={etiquetaWaM.nVendedores} />}
+                          {etiquetaWaM && <EtiquetaWa escolhida={etiquetaWaM.escolhida} outras={etiquetaWaM.outras} nVendedores={etiquetaWaM.nVendedores} quebrar />}
                           <SelosCrm etiquetas={etiqCrmMap?.get(c.id) ?? []} />
                           {/* stopPropagation: o card inteiro abre o contato — o menu de
                               etiqueta não pode abrir a ficha por baixo. */}

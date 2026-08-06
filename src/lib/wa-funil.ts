@@ -3,6 +3,22 @@
 // usada pelo Kanban /funil e alinhada com EtiquetasZap/PainelEtiquetas.
 
 // Ordem oficial do funil de vendas Branorte. Etiquetas fora da lista vão pro final.
+/**
+ * As 5 etapas do FUNIL propriamente dito, na ordem em que o Daniel trabalha:
+ * prospeccao -> 2a tentativa -> novo lead -> follow up -> lead quente.
+ *
+ * Existe separado de ORDEM_FUNIL (que lista TUDO, inclusive motivo de
+ * fechamento) porque a barra de chips fixa estas cinco na frente: sao as que o
+ * vendedor usa pra decidir o que fazer HOJE. As demais ordenam por volume.
+ */
+export const FUNIL_PRINCIPAL: string[] = [
+  'PROSPECCAO',
+  '2A TENTATIVA',
+  'NOVO LEAD',
+  'FOLLOW UP',
+  'LEAD QUENTE',
+]
+
 export const ORDEM_FUNIL: string[] = [
   // FUNIL DE VENDAS
   'PROSPECCAO',

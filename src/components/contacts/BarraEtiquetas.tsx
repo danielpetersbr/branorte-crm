@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Settings2, Plus, X, Check, Tag, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
-  corDaEtiqueta, ETIQUETAS_OCULTAS, familiaDe, FAMILIA_CHIP, type FamiliaEtiqueta,
+  corDaEtiqueta, ETIQUETAS_OCULTAS, familiaDe, FAMILIA_CHIP, FUNIL_PRINCIPAL, type FamiliaEtiqueta,
 } from '@/lib/wa-funil'
 import {
   useContatosEtiquetas, useCrmEtiquetas, useCriarEtiqueta, useEditarEtiqueta,
@@ -70,7 +70,23 @@ export function BarraEtiquetas({
   // ETIQUETAS_OCULTAS são as de sistema do WhatsApp (GRUPOS, FAVORITOS…). A coluna
   // já as esconde; um chip delas prometeria uma lista que a tela não representa.
   const todos = useMemo(
-    () => (chips ?? []).filter(c => !(c.origem === 'wa' && ETIQUETAS_OCULTAS.has(c.etiqueta))),
+    () => (chips ?? [])
+      .filter(c => !(c.origem === 'wa' && ETIQUETAS_OCULTAS.has(c.etiqueta)))
+      /*
+       * As 5 etapas do funil vem FIXAS na frente, na ordem de trabalho, e nao
+       * por volume. A RPC devolve por contagem — o que jogava PROSPECCAO pro
+       * meio da segunda linha e deixava NUNCA RESPONDEU em primeiro, ou seja: a
+       * barra abria pelo que ja morreu, em vez de pelo que tem que ser feito hoje.
+       * O resto continua por volume, que e a ordem util quando nao ha etapa.
+       */
+      .sort((a, b) => {
+        const ia = FUNIL_PRINCIPAL.indexOf(a.etiqueta)
+        const ib = FUNIL_PRINCIPAL.indexOf(b.etiqueta)
+        const pa = ia === -1 ? 99 : ia
+        const pb = ib === -1 ? 99 : ib
+        if (pa !== pb) return pa - pb
+        return b.contatos - a.contatos
+      }),
     [chips])
 
   const visiveis = useMemo(
