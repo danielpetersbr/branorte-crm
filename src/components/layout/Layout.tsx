@@ -35,6 +35,9 @@ const MENUS_RESTRITOS: Record<string, Array<{ to: string; label: string; icon: t
     // Painel de gestão do campo. Quem tem 'representantes.gerir' vê número;
     // quem não tem abre a tela e recebe "acesso restrito" — a RPC não devolve linha.
     { to: '/representantes', label: 'Rede em Campo', icon: Target },
+    // Prévia do que o candidato preenche. Fica logo abaixo de Rede em Campo
+    // porque é onde as respostas caem (aba Candidaturas).
+    { to: '/ficha-representante', label: 'Ficha do Representante', icon: ClipboardList },
     { to: '/producao-propria', label: 'Produção Própria', icon: Calculator },
     { to: '/venda-racao', label: 'Venda de Ração', icon: ShoppingBag },
   ],
@@ -164,6 +167,9 @@ const NAV_GROUPS: NavGroup[] = [
       // acima/abaixo da média. Só admin — o guard em App.tsx trava a URL direta.
       { to: '/mapa-representantes', label: 'Mapa de Representantes', icon: MapPin, adminOnly: true },
       { to: '/representantes', label: 'Rede em Campo', icon: Target, adminOnly: true },
+      // Prévia da ficha que o candidato preenche em /seja-representante (pública).
+      // Aqui o envio é travado — é pra conferir o que se pede, não pra testar.
+      { to: '/ficha-representante', label: 'Ficha do Representante', icon: ClipboardList, adminOnly: true },
     ],
   },
   {

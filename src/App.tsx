@@ -366,8 +366,8 @@ function AppRoutes() {
   // salvo pro começo em vez do estudo.
   const ROTAS_RESTRITAS: Record<string, string[]> = {
     mapa: [
-      '/mapa-visitas', '/mapa-representantes', '/representantes', '/producao-propria',
-      '/viabilidade', '/venda-racao', '/perfil',
+      '/mapa-visitas', '/mapa-representantes', '/representantes', '/ficha-representante',
+      '/producao-propria', '/viabilidade', '/venda-racao', '/perfil',
     ],
     consultor: ['/producao-propria', '/viabilidade', '/venda-racao', '/perfil'],
     // representante = representante EXTERNO com territorio (06/08/2026). Ve o mapa
@@ -434,6 +434,9 @@ function AppRoutes() {
         <Route path="/organizacao-viagem" element={<OrganizacaoViagemPage />} />
         <Route path="/mapa-representantes" element={<MapaRepresentantes />} />
         <Route path="/representantes" element={<Representantes />} />
+        {/* Prévia da ficha DENTRO do CRM: mesma tela do candidato, envio travado.
+            A pública é /seja-representante e roda antes do login. */}
+        <Route path="/ficha-representante" element={<SejaRepresentante previa />} />
         <Route path="/controle" element={<ControleDashboard />} />
         <Route path="/controle/pedidos" element={<ControlePedidos />} />
         <Route path="/controle/financeiro" element={<ControleFinanceiro />} />

@@ -49,7 +49,13 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
   )
 }
 
-export function SejaRepresentante() {
+/**
+ * `previa` = está sendo mostrada DENTRO do CRM, pra equipe conferir o que se pede
+ * ao candidato (rota /ficha-representante). Nesse modo o envio fica travado — a
+ * tela é a mesma, mas ninguém suja a base testando —, e o tema NÃO é forçado,
+ * senão o app inteiro piscaria de escuro pra claro ao abrir a ficha.
+ */
+export function SejaRepresentante({ previa = false }: { previa?: boolean } = {}) {
   const [f, setF] = useState({
     nome: '', telefone: '', cidade: '', uf: '', cidades_atendidas: '',
     cnpj: '', veiculo: '', anos_agro: '',
@@ -70,6 +76,7 @@ export function SejaRepresentante() {
   // devolve no cleanup — NÃO grava em localStorage, senão a página trocaria a
   // preferência de quem usa o CRM na mesma máquina.
   useEffect(() => {
+    if (previa) return // dentro do CRM manda o tema do app, não o desta página
     const root = document.documentElement
     const eraDark = root.classList.contains('dark')
     const meta = document.querySelector('meta[name="theme-color"]')
@@ -80,7 +87,7 @@ export function SejaRepresentante() {
       if (eraDark) root.classList.add('dark')
       if (corAntes) meta?.setAttribute('content', corAntes)
     }
-  }, [])
+  }, [previa])
 
   const set = (k: keyof typeof f) => (v: string) => setF(p => ({ ...p, [k]: v }))
   const toggle = (arr: string[], setArr: (a: string[]) => void, v: string) =>
@@ -100,6 +107,10 @@ export function SejaRepresentante() {
   async function enviar(e: React.FormEvent) {
     e.preventDefault()
     setErro('')
+    if (previa) {
+      setErro('Isto é a prévia da ficha — o envio fica travado aqui pra não criar candidatura de teste.')
+      return
+    }
 
     const faltou: string[] = []
     const obrig: [keyof typeof f, string][] = [
@@ -181,10 +192,23 @@ export function SejaRepresentante() {
   }
 
   return (
-    <div className="min-h-screen bg-bg">
+    <div className={previa ? '' : 'min-h-screen bg-bg'}>
       <div className="max-w-[680px] mx-auto px-5 pb-24">
 
-        <header className="pt-12 pb-7 border-b-2 border-accent mb-8">
+        {previa && (
+          <div className="mt-5 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3">
+            <p className="text-[13px] font-semibold text-ink">Prévia da ficha</p>
+            <p className="text-[12.5px] text-ink-muted leading-snug mt-0.5">
+              É exatamente isto que o candidato vê em{' '}
+              <a href="/seja-representante" target="_blank" rel="noopener"
+                 className="text-accent font-mono hover:underline">/seja-representante</a>.
+              Aqui o envio fica travado, então pode clicar à vontade sem criar candidatura de teste.
+              As respostas caem em <strong className="text-ink">Rede em Campo → Candidaturas</strong>, já pontuadas.
+            </p>
+          </div>
+        )}
+
+        <header className={`pb-7 border-b-2 border-accent mb-8 ${previa ? 'pt-7' : 'pt-12'}`}>
           <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-accent">
             BraNorte · Representação Comercial
           </div>
@@ -431,9 +455,10 @@ export function SejaRepresentante() {
                 {erro}
               </div>
             )}
-            <button type="submit" disabled={enviando}
-              className="w-full bg-accent text-white font-bold text-[16px] rounded-md py-4 hover:opacity-90 disabled:opacity-50 transition-opacity">
-              {enviando ? 'Enviando…' : 'Enviar minha candidatura'}
+            <button type="submit" disabled={enviando || previa}
+              title={previa ? 'Travado na prévia — o candidato de verdade consegue enviar' : undefined}
+              className="w-full bg-accent text-white font-bold text-[16px] rounded-md py-4 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity">
+              {previa ? 'Enviar minha candidatura (travado na prévia)' : enviando ? 'Enviando…' : 'Enviar minha candidatura'}
             </button>
             <p className="text-[12px] text-ink-faint text-center mt-4 leading-relaxed">
               Ao enviar, você autoriza a BraNorte a entrar em contato pelo WhatsApp informado
