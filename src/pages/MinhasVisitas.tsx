@@ -147,7 +147,13 @@ export function MinhasVisitas() {
                   type="checkbox"
                   className="mt-0.5 h-4 w-4 shrink-0 accent-current"
                   checked={a.concluido}
-                  onChange={e => concluir.mutate({ id: a.id, concluido: e.target.checked })}
+                  disabled={concluir.isPending}
+                  // sem onError o clique falhava calado: o checkbox voltava
+                  // sozinho no refetch e o representante achava que marcou.
+                  onChange={e => concluir.mutate(
+                    { id: a.id, concluido: e.target.checked },
+                    { onError: err => push((err as Error).message || 'Não consegui marcar a tarefa.', 'danger') },
+                  )}
                 />
                 <span className="flex-1 leading-snug">
                   {a.titulo}
@@ -204,7 +210,15 @@ export function MinhasVisitas() {
 }
 
 function VisitaCard({ v, onAviso }: { v: MinhaVisita; onAviso: (t: string, tone?: ToastMsg['tone']) => void }) {
-  const [aberto, setAberto] = useState(false)
+  const [aberto, setAbertoRaw] = useState(false)
+  const [jaAbriu, setJaAbriu] = useState(false)
+  const setAberto = (v: boolean | ((a: boolean) => boolean)) => {
+    setAbertoRaw(a => {
+      const novo = typeof v === 'function' ? v(a) : v
+      if (novo) setJaAbriu(true)
+      return novo
+    })
+  }
   const checkin = useCheckin()
   const checkout = useCheckout()
   const estado = estadoDa(v)
@@ -321,7 +335,14 @@ function VisitaCard({ v, onAviso }: { v: MinhaVisita; onAviso: (t: string, tone?
         )}
       </div>
 
-      {aberto && <FormRelatorio v={v} onAviso={onAviso} onSalvou={() => setAberto(false)} />}
+      {/* Fica MONTADO depois da primeira abertura, só escondido. Com render
+          condicional, fechar o card desmontava o formulário e o representante
+          perdia os 7 campos digitados — sem rascunho e sem aviso. */}
+      {jaAbriu && (
+        <div className={cn(!aberto && 'hidden')}>
+          <FormRelatorio v={v} onAviso={onAviso} onSalvou={() => setAberto(false)} />
+        </div>
+      )}
     </div>
   )
 }

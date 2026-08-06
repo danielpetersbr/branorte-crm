@@ -56,17 +56,28 @@ export function Representantes() {
   const [rep, setRep] = useState('')
   const [aba, setAba] = useState<'painel' | 'alertas' | 'visitas'>('painel')
 
-  const { data: kpis = [], isLoading } = useRepPainel(de, ate, rep || null)
-  const { data: alertas = [] } = useRepVisitas(de, ate, rep || null, true)
-  const { data: visitas = [] } = useRepVisitas(de, ate, rep || null, false)
+  const painel = useRepPainel(de, ate, rep || null)
+  const alertasQ = useRepVisitas(de, ate, rep || null, true)
+  const visitasQ = useRepVisitas(de, ate, rep || null, false)
+  const kpis = painel.data ?? []
+  const alertas = alertasQ.data ?? []
+  const visitas = visitasQ.data ?? []
+  const isLoading = painel.isLoading
+  // Query que falha deixa data undefined → o default [] renderizava "nenhuma
+  // visita fora do padrão", ou seja, a tela afirmava conformidade quando na
+  // verdade não tinha carregado nada.
+  const erro = painel.error ?? alertasQ.error ?? visitasQ.error
 
+  // As opções do filtro vêm da consulta SEM filtro (mesma queryKey quando não há
+  // rep selecionado, então o React Query reaproveita). Derivar da lista filtrada
+  // faria o Select se autodestruir: escolher um rep sumia com os outros nomes.
+  const todosKpis = useRepPainel(de, ate, null).data ?? []
   const opcoesRep = useMemo(() => {
     const vistos = new Map<string, string>()
-    for (const v of visitas) if (!vistos.has(v.rep)) vistos.set(v.rep, v.rep_nome ?? v.rep)
-    for (const k of kpis) if (!vistos.has(k.rep)) vistos.set(k.rep, k.rep_nome ?? k.rep)
+    for (const k of todosKpis) if (!vistos.has(k.rep)) vistos.set(k.rep, k.rep_nome ?? k.rep)
     return [...vistos.entries()].sort(([, a], [, b]) => a.localeCompare(b))
       .map(([value, label]) => ({ value, label }))
-  }, [visitas, kpis])
+  }, [todosKpis])
 
   const ranking = useMemo(() => {
     if (kpis.length < MIN_REPS_PRA_RANKING) return []
@@ -155,7 +166,15 @@ export function Representantes() {
         ))}
       </div>
 
-      {isLoading ? (
+      {erro ? (
+        <div className="rounded-xl border border-danger/30 bg-danger/5 py-8 text-center">
+          <AlertCircle className="h-7 w-7 text-danger mx-auto mb-2" />
+          <p className="text-[13px] text-ink">Não consegui carregar os dados.</p>
+          <p className="text-[12px] text-ink-muted mt-1">
+            Nada aqui está zerado — está <strong>indisponível</strong>. Recarregue em instantes.
+          </p>
+        </div>
+      ) : isLoading ? (
         <p className="text-[13px] text-ink-muted py-10 text-center">Carregando…</p>
       ) : aba === 'painel' ? (
         kpis.length === 0 ? (
@@ -288,20 +307,28 @@ function CardRep({ k }: { k: RepKpi }) {
     ['Custo/visita', brl(k.custo_visita)],
     ['Clientes visitados', num(k.clientes_novos)],
     ['Cobertura da carteira', pct(k.cobertura)],
-    ['Propostas', num(k.propostas)],
-    ['Visita → proposta', pct(k.visita_para_proposta)],
-    ['Vendas', num(k.vendas)],
-    ['Proposta → venda', pct(k.proposta_para_venda)],
+    // Estes quatro são o TOTAL do vendedor no período — não só o que saiu das
+    // visitas. orcamentos_gerados e vendas_mapa não têm vínculo com a parada.
+    // Chamar de "visita → proposta" afirmaria uma causa que o dado não prova,
+    // e o número passa de 100% sem nenhum erro (uma visita gera 2 propostas).
+    ['Propostas no período', num(k.propostas)],
+    ['Propostas ÷ visitas', pct(k.visita_para_proposta)],
+    ['Vendas no período', num(k.vendas)],
+    ['Vendas ÷ propostas', pct(k.proposta_para_venda)],
     ['Ticket médio', brl(k.ticket)],
-    ['Receita', brl(k.receita)],
+    ['Receita no período', brl(k.receita)],
     ['Ciclo médio', k.ciclo_dias != null ? `${k.ciclo_dias} dias` : '—'],
     ['Pipeline aberto', brl(k.pipeline)],
     ['Atividades vencidas', num(k.atividades_vencidas)],
   ]
   return (
     <div className="rounded-xl border border-border bg-surface p-4">
-      <p className="text-[14px] font-semibold text-ink tracking-tight flex items-center gap-1.5 mb-3">
+      <p className="text-[14px] font-semibold text-ink tracking-tight flex items-center gap-1.5 mb-1">
         <MapPin className="h-4 w-4 text-accent" /> {k.rep_nome ?? k.rep}
+      </p>
+      <p className="text-[11px] text-ink-faint mb-3">
+        Visitas e relatório vêm do roteiro. Propostas, vendas e receita são o total
+        do vendedor no período — a proposta não guarda de qual visita nasceu.
       </p>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-4 gap-y-2.5">
         {linhas.map(([label, valor]) => (
