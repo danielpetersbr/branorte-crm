@@ -69,6 +69,12 @@ interface NavItem {
   end?: boolean      // ativa SO na rota exata (pra paths que sao prefixo de irmaos)
   permKey?: string   // so mostra quando can(permKey) === true
   adminOnly?: boolean // so mostra pro role 'admin' (o guard de rota em App.tsx trava o resto)
+  // so mostra pros papeis listados. Existe porque nem toda rota tem permKey:
+  // /mapa-visitas, /minhas-visitas e /organizacao-viagem nao tem chave em
+  // role_permissions, entao apareciam pro 'visualizador' — que o guard de rota
+  // manda de volta pro inicio. Item de menu que devolve pro comeco e pior que
+  // item ausente: o usuario acha que quebrou.
+  roles?: string[]
 }
 interface NavGroup {
   id: string
@@ -141,15 +147,17 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/controle/financeiro', label: 'Financeiro', icon: Wallet, permKey: 'menu.controle' },
       { to: '/controle/novo-pedido', label: 'Novo Pedido', icon: FilePlus2, permKey: 'menu.controle' },
       { to: '/vendidos', label: 'Vendidos', icon: CheckCircle, permKey: 'menu.vendidos' },
-      { to: '/mapa-visitas', label: 'Mapa de Visitas', icon: MapPin },
+      // roles: quem o guard do App.tsx deixa entrar. 'visualizador' cai em
+      // VIEWER_PATHS e era devolvido pro inicio ao clicar aqui.
+      { to: '/mapa-visitas', label: 'Mapa de Visitas', icon: MapPin, roles: ['admin', 'vendor', 'marketing'] },
       // O roteiro do dia com check-in e relatório. Serve pro vendedor interno
       // igual serve pro representante externo — a RPC resolve de quem é a visita
       // pelo nome de campo, não pelo papel.
-      { to: '/minhas-visitas', label: 'Minhas Visitas', icon: ClipboardList },
+      { to: '/minhas-visitas', label: 'Minhas Visitas', icon: ClipboardList, roles: ['admin', 'vendor', 'marketing'] },
       // Página própria porque não é trabalho de MAPA: é o vaivém com o vendedor
       // (confirmar data, receber a localização), que dura dias. Dentro do mapa
       // virava rodapé que ninguém abre.
-      { to: '/organizacao-viagem', label: 'Organização de Viagem', icon: Compass },
+      { to: '/organizacao-viagem', label: 'Organização de Viagem', icon: Compass, roles: ['admin', 'vendor', 'marketing'] },
       // Visão de gestão: mostra a carteira de TODOS os reps e o quanto cada um está
       // acima/abaixo da média. Só admin — o guard em App.tsx trava a URL direta.
       { to: '/mapa-representantes', label: 'Mapa de Representantes', icon: MapPin, adminOnly: true },
@@ -294,7 +302,9 @@ export function Layout() {
   }
 
   const visible = (item: NavItem) =>
-    (!item.adminOnly || profile?.role === 'admin') && (!item.permKey || can(item.permKey))
+    (!item.adminOnly || profile?.role === 'admin')
+    && (!item.permKey || can(item.permKey))
+    && (!item.roles || (!!profile?.role && item.roles.includes(profile.role)))
   // Grupos com itens visiveis (descarta grupos vazios pro usuario)
   const groups = NAV_GROUPS
     .map(g => ({ ...g, items: g.items.filter(visible) }))

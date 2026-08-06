@@ -34,12 +34,18 @@ export interface RepVisita {
   parada_id: string
   rep: string
   rep_nome: string | null
+  cliente: string
   data_prevista: string | null
   cidade: string | null
   uf: string | null
+  lat: number | null
+  lng: number | null
+  ponto_exato: boolean
   checkin_at: string | null
   checkout_at: string | null
   minutos: number | null
+  checkin_lat: number | null
+  checkin_lng: number | null
   distancia_m: number | null
   ponto_confiavel: boolean | null
   resultado: string | null
@@ -49,6 +55,14 @@ export interface RepVisita {
   sem_gps: boolean
   visita_relampago: boolean
   fora_do_roteiro: boolean
+}
+
+// Estado da visita — é ele que dá a cor do pino no mapa gerencial.
+export type EstadoVisita = 'alerta' | 'ok' | 'a_visitar'
+
+export function estadoDaVisita(v: RepVisita): EstadoVisita {
+  if (temAlerta(v)) return 'alerta'
+  return v.checkin_at ? 'ok' : 'a_visitar'
 }
 
 export function usePodeGerirRepresentantes() {

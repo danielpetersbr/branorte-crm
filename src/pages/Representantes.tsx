@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import { Users, AlertCircle, TrendingUp, MapPin, Activity } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -17,6 +17,11 @@ import { RESULTADO_LABEL } from '@/hooks/useVisitasCampo'
 // só evita mostrar tela vazia sem explicação.
 
 const MIN_REPS_PRA_RANKING = 3
+
+// Leaflet é pesado (~150 kB). Carrega só quando a aba Mapa abre — o gestor que
+// só olha número não paga por ele.
+const MapaGestaoVisitas = lazy(() =>
+  import('@/components/mapa/MapaGestaoVisitas').then(m => ({ default: m.MapaGestaoVisitas })))
 
 function primeiroDiaDoMes(): string {
   const d = new Date()
@@ -54,7 +59,7 @@ export function Representantes() {
   const [de, setDe] = useState(primeiroDiaDoMes())
   const [ate, setAte] = useState(hoje())
   const [rep, setRep] = useState('')
-  const [aba, setAba] = useState<'painel' | 'alertas' | 'visitas'>('painel')
+  const [aba, setAba] = useState<'painel' | 'mapa' | 'alertas' | 'visitas'>('painel')
 
   const painel = useRepPainel(de, ate, rep || null)
   const alertasQ = useRepVisitas(de, ate, rep || null, true)
@@ -157,7 +162,7 @@ export function Representantes() {
       </div>
 
       <div className="flex gap-1.5 mb-3 border-b border-border">
-        {([['painel', 'Indicadores'], ['alertas', `Alertas (${alertas.length})`], ['visitas', `Visitas (${visitas.length})`]] as const).map(([k, label]) => (
+        {([['painel', 'Indicadores'], ['mapa', 'Mapa'], ['alertas', `Alertas (${alertas.length})`], ['visitas', `Visitas (${visitas.length})`]] as const).map(([k, label]) => (
           <button key={k} onClick={() => setAba(k)}
             className={cn(
               'px-3 py-2 text-[13px] font-medium border-b-2 -mb-px transition-all',
@@ -209,6 +214,14 @@ export function Representantes() {
             {kpis.map(k => <CardRep key={k.rep} k={k} />)}
           </div>
         )
+      ) : aba === 'mapa' ? (
+        visitas.length === 0 ? (
+          <Vazio texto="Nenhuma visita no período para desenhar." />
+        ) : (
+          <Suspense fallback={<p className="text-[13px] text-ink-muted py-10 text-center">Carregando o mapa…</p>}>
+            <MapaGestaoVisitas visitas={visitas} />
+          </Suspense>
+        )
       ) : aba === 'alertas' ? (
         alertas.length === 0 ? (
           <Vazio texto="Nenhuma visita fora do padrão no período." />
@@ -244,6 +257,7 @@ export function Representantes() {
                   <tr className="text-left">
                     <th className="px-3 py-2 font-semibold">Data</th>
                     <th className="px-3 py-2 font-semibold">Representante</th>
+                    <th className="px-3 py-2 font-semibold">Cliente</th>
                     <th className="px-3 py-2 font-semibold">Cidade</th>
                     <th className="px-3 py-2 font-semibold">Chegou</th>
                     <th className="px-3 py-2 font-semibold text-right">Min</th>
@@ -256,6 +270,7 @@ export function Representantes() {
                     <tr key={v.parada_id} className="border-t border-border">
                       <td className="px-3 py-2 text-ink-muted whitespace-nowrap">{v.data_prevista ?? '—'}</td>
                       <td className="px-3 py-2 text-ink">{v.rep_nome ?? v.rep}</td>
+                      <td className="px-3 py-2 text-ink max-w-[220px] truncate" title={v.cliente}>{v.cliente}</td>
                       <td className="px-3 py-2 text-ink-muted">{v.cidade ?? '—'}{v.uf ? `/${v.uf}` : ''}</td>
                       <td className="px-3 py-2 text-ink-muted whitespace-nowrap">
                         {v.checkin_at
