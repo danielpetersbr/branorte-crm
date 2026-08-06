@@ -98,9 +98,14 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true, permKey: 'menu.dashboard' },
       { to: '/atendimentos', label: 'Atendimentos', icon: MessageSquare, countKey: 'atendimentos', permKey: 'menu.atendimentos' },
       { to: '/agenda', label: 'Agenda', icon: CalendarDays },
-      // vendor TEM menu.contatos no banco, mas /contatos nao esta em
-      // VENDOR_PREFIXES — ele via o item e era devolvido pro /atendimentos.
-      { to: '/contatos', label: 'Contatos', icon: Users, permKey: 'menu.contatos', roles: ['admin', 'marketing'] },
+      // SEM `roles` de proposito: quem manda aqui e `menu.contatos`, a permissao
+      // que a tela de admin edita. A lista fixa ['admin','marketing'] existia
+      // porque /contatos nao estava em VENDOR_PREFIXES e o vendedor era chutado
+      // de volta pro /atendimentos ao clicar — o guard foi corrigido em 05a19f4
+      // e a trava ficou orfa, escondendo o item dos 9 vendedores mesmo com a
+      // permissao ligada no banco. Duas fontes de verdade pro mesmo acesso e
+      // armadilha: dar a permissao no admin nao surtia efeito nenhum.
+      { to: '/contatos', label: 'Contatos', icon: Users, permKey: 'menu.contatos' },
       { to: '/consulta', label: 'Consulta', icon: Search, permKey: 'due_diligence.consultar' },
       { to: '/atribuir', label: 'Atribuir', icon: UserPlus, permKey: 'menu.atribuir' },
       { to: '/prospeccao', label: 'Prospecção', icon: Target, permKey: 'menu.prospeccao' },
