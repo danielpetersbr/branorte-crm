@@ -382,7 +382,9 @@ function Linha({ rotulo, children }: { rotulo: string; children: React.ReactNode
   return (
     <div className="grid grid-cols-[6.5rem_1fr] gap-2 py-1 border-b border-border/60 last:border-0">
       <span className="text-[11px] text-ink-faint pt-0.5">{rotulo}</span>
-      <span className="text-[12px] text-ink break-words">{children}</span>
+      {/* min-w-0: item de grid tem min-width:auto por padrão, e um e-mail longo
+          (uma "palavra" só) estourava a largura do painel em ~44px. */}
+      <span className="min-w-0 text-[12px] text-ink break-words">{children}</span>
     </div>
   )
 }
@@ -483,7 +485,7 @@ function FichaCandidato({ p, onFechar, onPatch, salvando, copiado, setCopiado }:
         </Linha>
         <Linha rotulo="E-mail">
           {p.email
-            ? <a href={`mailto:${p.email}`} className="text-accent hover:underline">{p.email}</a>
+            ? <a href={`mailto:${p.email}`} className="text-accent hover:underline break-all">{p.email}</a>
             : <span className="text-ink-faint">sem e-mail publicado</span>}
         </Linha>
         <Linha rotulo="Site">
