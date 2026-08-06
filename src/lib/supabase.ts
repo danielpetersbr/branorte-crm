@@ -8,15 +8,16 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIU
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-// Cliente paralelo apontando para o schema "auditoria" (mesmas creds, view `atendimentos_por_cliente`).
-// Auth desabilitado pra evitar warning "Multiple GoTrueClient instances" — esse client
-// so faz queries; sessao vem do client principal acima.
-export const supabaseAuditoria = createClient(supabaseUrl, supabaseAnonKey, {
-  db: { schema: 'auditoria' },
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false,
-    detectSessionInUrl: false,
-    storageKey: 'sb-flwbeevtvjiouxdjmziv-auth-token-auditoria',
-  },
-})
+// Acesso ao schema "auditoria" (view `atendimentos_por_cliente` etc).
+//
+// ⚠️ Era um createClient SEPARADO com `persistSession: false` — ou seja, SEM a sessão do
+// usuário. Todo request daqui saía como **anon**, e anon tem `statement_timeout = 3s`
+// (authenticated tem 8s). O read do Dashboard (10,4k linhas em páginas de 2500) estourava
+// esses 3 s sob carga e voltava 500 `57014 canceling statement due to statement timeout` —
+// era isso que travava a tela no esqueleto (medido 06/08/2026).
+//
+// `supabase.schema()` reusa o MESMO client (mesma sessão, um só GoTrueClient — que era o
+// motivo do client separado) e manda o JWT do usuário: papel `authenticated`, 8 s.
+// Verificado antes de trocar: anon e authenticated enxergam as MESMAS 10.409 linhas da view,
+// então nada muda no que a tela mostra. Só `.from()` e `.rpc()` são usados daqui.
+export const supabaseAuditoria = supabase.schema('auditoria')

@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { foneCanon } from '@/lib/fone-canon'
 import { supabase, supabaseAuditoria } from '@/lib/supabase'
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
@@ -43,7 +43,6 @@ interface RawRow {
   telefone: string | null
   responsavel: string | null
   criativo_codigo: string | null
-  criativo_facebook: { codigo: string; nome_oficial: string | null; headline: string | null } | null
   origem: string | null
   motivo_contato: string | null
   finalidade_fabrica: string | null
@@ -324,28 +323,63 @@ export interface DashboardData {
 // HOOK
 // ============================================================================
 
+/** codigo do criativo -> nome exibido. Vem de `auditoria.criativos` (901 linhas, ~220 KB)
+ *  em vez do jsonb `criativo_facebook` repetido em cada uma das 10 mil linhas (~1,7 MB).
+ *  Provado equivalente em 06/08/2026: 0 divergência contra o nome que a view entrega; os
+ *  códigos sem par são lixo de parsing de URL (`&54boa`, `&30Oque`), que já valia '—'. */
+async function fetchCriativoNomes(): Promise<Map<string, string>> {
+  const m = new Map<string, string>()
+  const { data, error } = await supabaseAuditoria
+    .from('criativos')
+    .select('codigo, nome_oficial, headline')
+  if (error) return m   // sem nome o dashboard ainda funciona (cai em '—')
+  for (const c of (data ?? []) as { codigo?: string; nome_oficial?: string | null; headline?: string | null }[]) {
+    if (!c?.codigo) continue
+    const nome = (c.nome_oficial || '').trim() || (c.headline || '').trim()
+    if (nome) m.set(c.codigo, nome)
+  }
+  return m
+}
+
 export function useDashboard(filters: DashboardFilters = { preset: '' }) {
+  const qc = useQueryClient()
   return useQuery({
     queryKey: ['dashboard-data-v2', filters],
     queryFn: async (): Promise<DashboardData> => {
-      // Read PAGINADO: a view tem ~8000 linhas; puxar tudo de uma vez (~5MB) faz o PostgREST
-      // dar 500 ao serializar sob pico de carga (frota + syncs). Em páginas de 2500 (~1.5MB)
-      // cada resposta é leve e sempre completa.
+      // Read PAGINADO: a view tem 10.4k linhas. Um único read (~7,8 MB) estoura o
+      // statement_timeout de 8 s do role `authenticated` sob carga (frota + crons) e volta
+      // 500 com `57014`. Em páginas de 2500 cada resposta é leve e sempre completa.
       const PAGE = 2500
-      const SEL = 'id, nome, telefone, responsavel, criativo_codigo, criativo_facebook, origem, motivo_contato, finalidade_fabrica, qual_animal, quantos_animais, quando_investir, tocou_botao_em, o_que_precisa, data, last_message_at, is_internal, chegou_no_vendedor, orcamento_enviado, orcamento_valor, status_real, status_vendedor, finished_at'
+      const SEL = 'id, nome, telefone, responsavel, criativo_codigo, origem, motivo_contato, finalidade_fabrica, qual_animal, quantos_animais, quando_investir, tocou_botao_em, o_que_precisa, data, last_message_at, is_internal, chegou_no_vendedor, orcamento_enviado, orcamento_valor, status_real, status_vendedor, finished_at'
       const rows: RawRow[] = []
       for (let from = 0; from < DASHBOARD_LIMIT; from += PAGE) {
-        const pageRes = await supabaseAuditoria
-          .from('atendimentos_por_cliente')
-          .select(SEL)
-          .eq('is_internal', false)
-          .order('data', { ascending: false, nullsFirst: false })
-          .range(from, from + PAGE - 1)
-        if (pageRes.error) throw pageRes.error
-        const chunk = (pageRes.data ?? []) as RawRow[]
+        // Retry POR PÁGINA: um 57014 numa página não pode jogar fora as páginas que já
+        // vieram — repetir o loop inteiro rebaixava ~6 MB e empilhava carga justo quando o
+        // banco estava saturado. Backoff curto; se as 3 tentativas falharem, sobe o erro.
+        let chunk: RawRow[] | null = null
+        let ultimoErro: unknown = null
+        for (let tentativa = 0; tentativa < 3 && chunk === null; tentativa++) {
+          if (tentativa > 0) await new Promise(r => setTimeout(r, 1500 * tentativa))
+          const pageRes = await supabaseAuditoria
+            .from('atendimentos_por_cliente')
+            .select(SEL)
+            .eq('is_internal', false)
+            .order('data', { ascending: false, nullsFirst: false })
+            .range(from, from + PAGE - 1)
+          if (pageRes.error) { ultimoErro = pageRes.error; continue }
+          chunk = (pageRes.data ?? []) as RawRow[]
+        }
+        if (chunk === null) throw ultimoErro
         rows.push(...chunk)
         if (chunk.length < PAGE) break
       }
+      // Criativo muda raramente: cache próprio de 30 min, fora do refetch de 3 min do read
+      // grande. fetchQuery dedupa entre abas/telas que já tenham buscado.
+      const criativoNomes = await qc.fetchQuery({
+        queryKey: ['criativo-nomes'],
+        queryFn: fetchCriativoNomes,
+        staleTime: 30 * 60_000,
+      })
 
       // "Dinheiro parado" = valor do ÚLTIMO orçamento de cada lead (NÃO a soma das revisões,
       // que infla: há telefone com 32 orçamentos → R$82M somado vs R$47M no último).
@@ -370,14 +404,14 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
           }
         }
       } catch { /* maps vazios -> fallback; dashboard não quebra */ }
-      return aggregate(rows, filters.preset, orcValorByCanon, fechados)
+      return aggregate(rows, filters.preset, orcValorByCanon, fechados, criativoNomes)
     },
     staleTime: 120_000,
-    refetchInterval: 180_000,  // read pesado (~5MB) — refetch a cada 3min p/ não somar carga ao polling da frota
-    // Resiliente a 500 pontual (PostgREST estoura ao serializar ~5MB sob pico de carga).
-    // 3 tentativas com backoff — sem amplificar carga demais quando o banco está saturado.
-    retry: 3,
-    retryDelay: attempt => Math.min(2000 * 2 ** attempt, 10000),
+    refetchInterval: 180_000,  // read pesado (~6MB) — refetch a cada 3min p/ não somar carga ao polling da frota
+    // O retry de verdade agora é POR PÁGINA (acima). Aqui fica 1 tentativa extra só pra
+    // falha fora do loop (RPCs de orçamento) — antes eram 3, e cada uma rebaixava tudo.
+    retry: 1,
+    retryDelay: () => 3000,
     placeholderData: prev => prev,
   })
 }
@@ -386,7 +420,7 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
 // AGREGADOR
 // ============================================================================
 
-function aggregate(rows: RawRow[], preset: DashboardPreset, orcValorByCanon: Map<string, number> = new Map(), fechados: Set<string> = new Set()): DashboardData {
+function aggregate(rows: RawRow[], preset: DashboardPreset, orcValorByCanon: Map<string, number> = new Map(), fechados: Set<string> = new Set(), criativoNomes: Map<string, string> = new Map()): DashboardData {
   const now = new Date()
   const range = rangeForPreset(preset, now)
   const prev = previousRange(range)
@@ -571,7 +605,7 @@ function aggregate(rows: RawRow[], preset: DashboardPreset, orcValorByCanon: Map
 
     if (r.criativo_codigo) {
       const codigo = r.criativo_codigo
-      const nome = r.criativo_facebook?.nome_oficial ?? r.criativo_facebook?.headline ?? '—'
+      const nome = criativoNomes.get(codigo) ?? '—'
       const cc = byCriativo.get(codigo) ?? { codigo, nome, total: 0, qualificados: 0, engajou: 0, bovinos: 0, suinos: 0, aves: 0 }
       cc.total++
       if (isQualificado) cc.qualificados++
