@@ -836,3 +836,31 @@ describe('"Gado de leite" NÃO vira subgrupo — já funcionava pelas fases', ()
     assert.ok(!r.perguntas.some(p => /litros por vaca/i.test(p)), 'nada de leite em corte')
   })
 })
+
+describe('a caixa de risco: uma só, e o crítico não some junto com ela', () => {
+  it('silagem incompatível continua saindo em `atencao` com nível crítico', () => {
+    // A tela deixou de ter a caixa "Pontos de atenção" — os críticos passaram
+    // pra "O que pode dar errado". O motor não mudou, e é ele que garante que o
+    // aviso existe pra tela mostrar. Se este teste cair, o vendedor marca
+    // silagem e a tela não avisa nada.
+    const a: Atendimento = {
+      especie: 'bovinos', fase: 'confinamento', quantidade: 500, sistema: null,
+      produto: null, materias: ['silagem-volumoso'], consumoConfirmado: true,
+    }
+    const r = analisar(a, ANIMAIS, MATERIAS)
+    const criticos = r.atencao.filter(x => x.nivel === 'incompativel' || x.nivel === 'alto_risco')
+    assert.ok(criticos.some(x => /Silagem/i.test(x.texto)), 'silagem tem que gritar')
+  })
+
+  it('ureia sai como alto risco, não como observação', () => {
+    const a: Atendimento = {
+      especie: 'bovinos', fase: 'confinamento', quantidade: 500, sistema: null,
+      produto: null, materias: ['ureia'], consumoConfirmado: true,
+    }
+    const r = analisar(a, ANIMAIS, MATERIAS)
+    assert.ok(
+      r.atencao.some(x => x.nivel === 'alto_risco' && /matar/i.test(x.texto)),
+      'ureia é a que mata — não pode cair pro nível de observação',
+    )
+  })
+})

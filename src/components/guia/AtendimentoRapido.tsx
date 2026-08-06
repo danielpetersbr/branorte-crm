@@ -658,19 +658,37 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
           </div>
         </div>
 
-        {/* O que a linha NÃO faz. Estava no banco, corrigido na auditoria, e só
-            era renderizado na FICHA do animal — a tela em que o vendedor está
-            com o cliente no telefone não lia o campo. */}
-        {!!r.naoAtende.length && (
-          <Secao titulo="A Branorte NÃO faz" icone={<Ban className="h-3.5 w-3.5 text-danger" />}>
-            <ul className="space-y-1">
-              {r.naoAtende.map((x, i) => (
-                <li key={i} className="flex gap-2 text-[13px] leading-relaxed text-ink">
-                  <span aria-hidden className="shrink-0 text-danger">✗</span>
-                  <span className="min-w-0">{x}</span>
-                </li>
-              ))}
-            </ul>
+        {/* UMA caixa só pro que pode dar errado.
+            O Daniel pediu pra tirar "Pontos de atenção" da tela. Tirei a CAIXA,
+            não o aviso: os alertas críticos — silagem que não entra, ureia que
+            mata — passaram pra dentro desta, que já é a caixa do "o que não dá".
+            Duas caixas dizendo a mesma família de coisa viraram uma.
+            O que NÃO voltou é o resto: as tarjas amarelas de nível `atencao`
+            seguem na gaveta, junto com processo e perguntas. */}
+        {(!!r.naoAtende.length || !!criticos.length) && (
+          <Secao titulo="O que pode dar errado" icone={<Ban className="h-3.5 w-3.5 text-danger" />}>
+            {!!criticos.length && (
+              <div className="mb-3 space-y-2">
+                {criticos.map((x, i) => (
+                  <Alerta key={i} nivel={x.nivel}>{x.texto}</Alerta>
+                ))}
+              </div>
+            )}
+            {!!r.naoAtende.length && (
+              <>
+                <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-ink-muted">
+                  A Branorte não faz
+                </p>
+                <ul className="space-y-1">
+                  {r.naoAtende.map((x, i) => (
+                    <li key={i} className="flex gap-2 text-[13px] leading-relaxed text-ink">
+                      <span aria-hidden className="shrink-0 text-danger">✗</span>
+                      <span className="min-w-0">{x}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
             {!!r.promessasProibidas.length && (
               <p className="mt-2 border-t border-border pt-2 text-[12px] leading-relaxed text-ink-muted">
                 Não prometer: {r.promessasProibidas.join(' · ')}
@@ -687,20 +705,8 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
             continua em `r.faltando` — alimenta o contador e o texto que vai pro
             WhatsApp, onde a lista tem uso de verdade. */}
 
-        {/* SÓ o que grita. Antes a seção despejava TUDO no mesmo peso: seis
-            tarjas amarelas idênticas, "Formulação por profissional habilitado"
-            do mesmo tamanho de "Silagem NÃO entra na fábrica farelada". É o
-            defeito que Selos.tsx descreve no guia antigo, reintroduzido pelo
-            layout — quando tudo é alerta, nada é. */}
-        {!!criticos.length && (
-          <Secao titulo="Pontos de atenção">
-            <div className="space-y-2">
-              {criticos.map((x, i) => (
-                <Alerta key={i} nivel={x.nivel}>{x.texto}</Alerta>
-              ))}
-            </div>
-          </Secao>
-        )}
+        {/* "Pontos de atenção" SAIU como caixa própria — os críticos subiram
+            pra "O que pode dar errado", logo acima. */}
 
         <div className="flex flex-wrap gap-2">
           <Button
