@@ -21,6 +21,7 @@ import { useMemo, useState } from 'react'
 import { AlertCircle, ChevronDown, Truck, Warehouse } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { usePrecosBranorte } from '@/hooks/usePrecosBranorte'
+import { useCatalogoMotores } from '@/hooks/useCatalogo'
 import { formulasReferencia } from '@/lib/formulacoes-racao'
 import {
   dimensionar, EXPEDICAO_INFO, LIMITE_CAIXA_KG,
@@ -92,6 +93,11 @@ export function ConfiguradorFabrica({
   const [detalhando, setDetalhando] = useState(false)
 
   const { data: precos = [], isLoading: carregandoCatalogo } = usePrecosBranorte()
+  // Moinho de martelo é vendido com MOTOR AVULSO: `valor_equipamento` NÃO inclui
+  // o motor, e os 12 moinhos ativos têm `valor_com_motor_trif` nulo. Sem somar
+  // daqui, o preço na tela sai de 35% a 54% abaixo do real — e era exatamente o
+  // que ele fazia até agora. Ver o comentário sobre `motorDoMoinho` abaixo.
+  const { data: motores = [] } = useCatalogoMotores()
 
   const catalogo: ItemCatalogo[] = useMemo(
     () => precos.map(p => ({
@@ -128,6 +134,36 @@ export function ConfiguradorFabrica({
     necessidadeMesKg, jornada, formula, diasEstoque, kgRacaoPronta,
     expedicao, recebimento, catalogo,
   ])
+
+  /**
+   * O MOTOR do moinho, de `catalogo_motores`. Trifásico, 2 polos — moinho de
+   * martelo é sempre 2 polos.
+   *
+   * ⚠️ MOINHO DE MARTELO É VENDIDO COM MOTOR AVULSO.
+   * `precos_branorte.valor_equipamento` é a máquina NUA, e `valor_com_motor_trif`
+   * é NULO nos 12 moinhos ativos — ou seja, o preço que eu imprimia era sempre o
+   * equipamento sem motor. E a ressalva que eu escrevi junto ("só o equipamento,
+   * sem frete, instalação, painel e obra") era uma lista de EXCLUSÕES que OMITIA
+   * o motor: quem lê conclui, com razão, que o motor está incluso.
+   *
+   * Medido em 05/08/2026, `precos_branorte` × `catalogo_motores`:
+   *     BNMM130   300 kg/h   7,5 CV   12.124 →  16.346   +35%
+   *     BNMM215  1.500 kg/h   15 CV   14.708 →  21.825   +48%
+   *     BNMM320  2.000 kg/h   20 CV   20.118 →  31.006   +54%
+   *     BNMM550  5.000 kg/h   50 CV   51.503 →  75.625   +47%
+   * Os 12 erram entre 35% e 54%, e o pior caso cai no 2.000 kg/h — o tamanho
+   * mais vendido. O cliente ancorava em 20 mil e ouvia 31 mil depois.
+   *
+   * O vendedor que revisou esta tela leu a ressalva e disse "se eu leio o que
+   * está na tela, tô coberto". Não estava. É por isso que agora o motor entra na
+   * conta em vez de virar mais uma linha de rodapé.
+   */
+  const motor = useMemo(() => {
+    const cv = d.moinho?.motorCv
+    if (cv == null) return null
+    return motores.find(m => Number(m.cv) === Number(cv) && m.polos === 2
+      && /trif/i.test(m.voltagem ?? '')) ?? null
+  }, [d.moinho, motores])
 
   const alternarExpedicao = (e: Expedicao) =>
     setExpedicao(v => (v.includes(e) ? v.filter(x => x !== e) : [...v, e]))
@@ -189,22 +225,39 @@ export function ConfiguradorFabrica({
                   vendedor ouvia "e quanto custa?" e abria outra aba. É tabela
                   do equipamento — não é proposta. */}
               {(d.moinho.valorComMotorTrif ?? d.moinho.valor) != null && (
-                <p className="mt-1.5 border-t border-border pt-1.5 text-[13px] text-ink">
-                  <b className="tabular-nums">
-                    {brl(d.moinho.valorComMotorTrif ?? d.moinho.valor)}
-                  </b>
-                  <span className="text-ink-muted">
-                    {' '}— tabela{d.moinho.valorComMotorTrif != null ? ' com motor trifásico' : ' do equipamento'}
-                  </span>
-                  {d.moinho.valorComMotorMono != null && (
-                    <span className="block text-[12px] text-ink-muted">
-                      Monofásico: <span className="tabular-nums">{brl(d.moinho.valorComMotorMono)}</span>
-                    </span>
+                <div className="mt-1.5 border-t border-border pt-1.5 text-[13px] text-ink">
+                  {d.moinho.valorComMotorTrif != null ? (
+                    <p>
+                      <b className="tabular-nums">{brl(d.moinho.valorComMotorTrif)}</b>
+                      <span className="text-ink-muted"> — tabela com motor trifásico</span>
+                    </p>
+                  ) : motor ? (
+                    // O total é o que o vendedor fala em voz alta. As parcelas
+                    // ficam embaixo pra ele saber o que está somando.
+                    <>
+                      <p>
+                        <b className="tabular-nums">{brl((d.moinho.valor ?? 0) + Number(motor.valor))}</b>
+                        <span className="text-ink-muted"> — equipamento + motor</span>
+                      </p>
+                      <p className="text-[12px] tabular-nums text-ink-muted">
+                        {brl(d.moinho.valor)} o moinho + {brl(Number(motor.valor))} o motor
+                        {' '}de {d.moinho.motorCv} CV trifásico
+                      </p>
+                    </>
+                  ) : (
+                    <p>
+                      <b className="tabular-nums">{brl(d.moinho.valor)}</b>
+                      <span className="text-warning"> — SEM MOTOR</span>
+                      <span className="block text-[12px] text-warning">
+                        Moinho de martelo é motor avulso e o preço do motor de {d.moinho.motorCv} CV
+                        não veio do catálogo — não fale este número sem somar o motor.
+                      </span>
+                    </p>
                   )}
                   <span className="block text-[11px] text-ink-faint">
-                    Só o equipamento. Sem frete, instalação, painel e obra.
+                    Tabela. Sem frete, instalação, painel elétrico e obra.
                   </span>
-                </p>
+                </div>
               )}
 
               {/* Energia. Só fala quando o DADO diz algo: nenhum SKU acima de

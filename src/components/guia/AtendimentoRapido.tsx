@@ -615,8 +615,14 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
                 ? (r.necessidadeMesKg / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })
                 : null}
             />
+            {/* "do MOINHO", não "da fábrica". O rótulo antigo — "Produção
+                necessária" — apresentava o número como propriedade da FÁBRICA, e
+                quem desmentia era uma frase de 12px em outro componente, 200px
+                abaixo, que só aparece com o levantamento fechado. Existia uma
+                janela em que o número de 28px estava na tela e a correção não.
+                Uma palavra no rótulo resolve o que o rodapé não resolvia. */}
             <Numero
-              rotulo="Produção necessária"
+              rotulo="Produção do moinho"
               unidade="kg/h"
               valor={producao ? Math.round(producao.kgHoraNecessaria).toLocaleString('pt-BR') : null}
             />
@@ -632,14 +638,22 @@ export function AtendimentoRapido({ animais, materias, onAbrir, onUsarNoEstudo }
                 Marque ao lado o que ele for contando. O número aparece aqui.
               </span>
             </p>
-          ) : r.podeFecharEquipamento ? (
-            <p className="mt-3 text-[12px] text-success">
-              Pode dimensionar · {textoJornada}
-            </p>
           ) : (
-            <p className="mt-3 text-[12px] text-warning">
-              Referência — falta {r.bloqueioEquipamento}
-            </p>
+            // ⚠️ ESTA LINHA DECIDE SE O VENDEDOR PODE FALAR DE MÁQUINA, e ela
+            // estava ilegível no tema PADRÃO. Era `text-warning`/`text-success`
+            // sobre o `bg-accent/10` do mostrador: medido, ~1,9:1 no tema claro
+            // (AA pede 4,5) e ~2,8:1 o verde. Passei o dia testando só no
+            // escuro — `--accent` só existe no `:root` e foi calibrado lá.
+            // Reaproveita o `Alerta` de Selos.tsx, que já é tarja lateral com
+            // texto em `ink`: sobe pra ~16:1 nos dois temas e não depende do
+            // token de cor pra ser legível.
+            <div className="mt-3">
+              <Alerta nivel={r.podeFecharEquipamento ? 'informacao' : 'atencao'}>
+                {r.podeFecharEquipamento
+                  ? <>Pode dimensionar · {textoJornada}</>
+                  : <>Referência — falta {r.bloqueioEquipamento}</>}
+              </Alerta>
+            </div>
           )}
 
           {/* O configurador é FILHO do mostrador, sem casca própria: a jornada
