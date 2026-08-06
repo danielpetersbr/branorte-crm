@@ -110,6 +110,22 @@ export function useRolePermissions() {
       return (data ?? []) as RolePermissionsRow[]
     },
     staleTime: 60_000,
+
+    /*
+     * Permissao mudada no banco tem que CHEGAR em quem ja esta com o app aberto.
+     *
+     * Sem isto, a query so roda no mount: o default global do app e
+     * `refetchOnWindowFocus: false` (App.tsx) e o Layout nunca desmonta. Quem usa
+     * o CRM como app instalado fica com a permissao do dia em que abriu — foi o
+     * que aconteceu em 06/08: liberamos `menu.contatos` pros 9 vendedores, o
+     * banco devolvia `true` (conferido com JWT de vendedor real via PostgREST) e
+     * o menu continuava sem o item na tela deles.
+     *
+     * 5 min e barato: sao 4 linhas, e so quando a aba esta visivel.
+     */
+    refetchOnWindowFocus: true,
+    refetchInterval: 5 * 60_000,
+    refetchIntervalInBackground: false,
   })
 }
 
