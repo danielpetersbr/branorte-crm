@@ -15,6 +15,8 @@ import { canonico, corDaEtiqueta, ETIQUETAS_OCULTAS, ordemDe, tempoRelativo, tem
 import { useEtiquetasDeContatos, estiloEtiqueta } from '@/hooks/useCrmEtiquetas'
 import { BarraEtiquetas } from '@/components/contacts/BarraEtiquetas'
 import { BotaoEtiquetar, SelosCrm } from '@/components/contacts/BotaoEtiquetar'
+import { CelulaEditavel } from '@/components/contacts/CelulaEditavel'
+import { BotoesStatus, type StatusContato } from '@/components/contacts/BotoesStatus'
 import { useAuth } from '@/hooks/useAuth'
 import { Search, MessageCircle, ChevronLeft, ChevronRight, X, FileText, Copy, Check, CornerDownLeft, SearchX, AlertTriangle } from 'lucide-react'
 import { ESTADOS_BR, STATUS_OPTIONS, TEMPERATURA_OPTIONS, FUNIL_OPTIONS, PAGE_SIZE, CONTACT_SORT_OPTIONS } from '@/types'
@@ -304,6 +306,21 @@ export function Contacts() {
   const semDado = !data
   const mostrarErro = isError && semDado
   const updateContact = useUpdateContact()
+  /*
+   * Qual linha esta gravando e qual falhou. Por ID, e nao um booleano global:
+   * com 50 linhas na tela e o refetch de 60s rodando, um spinner global piscaria
+   * a tela inteira porque UMA celula salvou.
+   */
+  const [gravando, setGravando] = useState<Record<string, true>>({})
+  const [falhou, setFalhou] = useState<Record<string, true>>({})
+  const salvarCampo = useCallback((id: string, campo: 'name' | 'city' | 'status', valor: string | null) => {
+    setGravando(g => ({ ...g, [id]: true }))
+    setFalhou(({ [id]: _, ...resto }) => resto)
+    updateContact.mutate({ id, [campo]: valor }, {
+      onError: () => setFalhou(f => ({ ...f, [id]: true })),
+      onSettled: () => setGravando(({ [id]: _g, ...resto }) => resto),
+    })
+  }, [updateContact])
   const vendorMap = useVendorMap()
   const { profile } = useAuth()
   const { data: etiquetasDisponiveis } = useWaEtiquetasDisponiveis()
@@ -371,6 +388,33 @@ export function Contacts() {
   // Sem total nao da pra saber se existe proxima pagina; o sinal disponivel e
   // "a pagina veio cheia", que erra so no ultimo lote exato.
   const podeAvancar = totalDesconhecido ? contacts.length === PAGE_SIZE : filters.page < totalPages - 1
+
+  /*
+   * O VENDEDOR ABRE JA NO PROPRIO NOME.
+   *
+   * Sem isto ele caia numa lista de 181.855: os dele MAIS o bolsao de 173.564
+   * sem dono (a RPC deixa passar `e admin OU e meu OU nao e de ninguem` —
+   * contatos_page, predicado reimplementado la dentro porque a funcao e
+   * SECURITY DEFINER e a RLS nao valeria sozinha). Nao era vazamento — contato
+   * de outro vendedor ele nunca alcanca — mas achar o proprio cliente no meio
+   * de 173 mil e trabalho.
+   *
+   * PRE-SELECIONA, nao tranca: o filtro Vendedor aparece preenchido com o nome
+   * dele e um clique em limpar devolve o bolsao inteiro, que e onde mora a
+   * prospeccao. Esconder aqueles 173 mil sem ele saber que existem seria pior
+   * que mostrar demais.
+   *
+   * Roda UMA vez: `preFiltrado` fecha a porta pra este efeito nao desfazer a
+   * escolha do usuario num rerender.
+   */
+  const [preFiltrado, setPreFiltrado] = useState(false)
+  useEffect(() => {
+    if (preFiltrado || !profile) return
+    setPreFiltrado(true)
+    // admin ve tudo por padrao; quem nao tem vendor_id nao tem no que filtrar
+    if (profile.role === 'admin' || !profile.vendor_id) return
+    setFilters(f => (f.vendor_id ? f : { ...f, vendor_id: profile.vendor_id as string, page: 0 }))
+  }, [profile, preFiltrado])
 
   /*
    * Prende a pagina dentro do total. Os filtros ja resetam `page: 0`, entao so
@@ -661,32 +705,35 @@ export function Contacts() {
                       que nao cabia — e `title` guarda o nome por extenso.
                       Soma das larguras = 100%.
                     */}
-                    <th className="w-[14%] rounded-tl-[11px]">Nome</th>
+                    <th className="w-[13%] rounded-tl-[11px]">Nome</th>
                     {/* 14%: o telefone formatado ocupa 139px e so cabia inteiro em 1920. */}
-                    <th className="w-[14%]">Telefone</th>
-                    <th className="w-[8%]">Cidade</th>
+                    <th className="w-[12%]">Telefone</th>
+                    <th className="w-[7%]">Cidade</th>
                     {/* 5%: em 4% sobravam 9px de texto pra uma sigla de 2 letras (px-2.5 come 20). */}
-                    <th className="w-[5%]">UF</th>
-                    <th className="w-[9%]" title="Vendedor dono do contato">
-                      <span className="xl:hidden">Vend.</span><span className="hidden xl:inline">Vendedor</span>
+                    <th className="w-[4%]">UF</th>
+                    <th className="w-[7%]" title="Vendedor dono do contato">
+                      <span className="2xl:hidden">Vend.</span><span className="hidden 2xl:inline">Vendedor</span>
                     </th>
                     {/* 12%: sobravam 165px aqui em 1920 enquanto os vizinhos estouravam. */}
-                    <th className="w-[12%]" title="Etiqueta do contato no WhatsApp. Prioriza a etiqueta posta pelo vendedor dono do contato.">Etiqueta</th>
+                    <th className="w-[10%]" title="Etiqueta do contato no WhatsApp. Prioriza a etiqueta posta pelo vendedor dono do contato.">Etiqueta</th>
                     <th className="w-[9%]" title="Ultima mensagem trocada no WhatsApp. O selo ambar marca que o cliente falou por ultimo (aguardando resposta).">
-                      <span className="xl:hidden">Ult. msg</span><span className="hidden xl:inline">Ultimo contato</span>
+                      <span className="2xl:hidden">Ult. msg</span><span className="hidden 2xl:inline">Ultimo contato</span>
                     </th>
-                    <th className="w-[10%]" title="Numero do orcamento mais recente">
-                      <span className="xl:hidden">Orc.</span><span className="hidden xl:inline">Orcamento</span>
+                    <th className="w-[8%]" title="Numero do orcamento mais recente">
+                      <span className="2xl:hidden">Orc.</span><span className="hidden 2xl:inline">Orcamento</span>
                     </th>
-                    <th className="w-[10%] rounded-tr-[11px] lg:rounded-tr-none" title="Equipamento do orcamento">
-                      <span className="xl:hidden">Equip.</span><span className="hidden xl:inline">Equipamento</span>
+                    <th className="hidden xl:table-cell w-[9%]" title="Equipamento do orcamento">
+                      <span className="2xl:hidden">Equip.</span><span className="hidden 2xl:inline">Equipamento</span>
                     </th>
                     {/* `lg` e nao `xl`: entre 1024 e 1279 a data sumia da tabela E do card
                         mobile — o dado nao existia em lugar nenhum, numa tela cuja
                         ordenacao padrao e por orcamento. */}
-                    <th className="hidden lg:table-cell w-[9%] lg:rounded-tr-[11px]" title="Data do orcamento mais recente deste contato.">
-                      <span className="xl:hidden">Data</span><span className="hidden xl:inline">Data orcamento</span>
+                    <th className="hidden lg:table-cell w-[8%]" title="Data do orcamento mais recente deste contato.">
+                      <span className="2xl:hidden">Data</span><span className="hidden 2xl:inline">Data orc.</span>
                     </th>
+                    {/* Coluna nova (06/08). Grava so em `status`; `is_closed` continua
+                        vindo de etiqueta e nao e tocado aqui. Soma = 100%. */}
+                    <th className="w-[13%] rounded-tr-[11px]" title="Aberto, Fechado ou Falta analisar. Clique pra mudar.">Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -719,9 +766,15 @@ export function Contacts() {
                         )}
                         onClick={() => setSelectedContact(c)}>
                         <td className="px-2.5 py-3.5">
-                          <span className="block truncate text-[13.5px] font-medium text-ink" title={c.name || undefined}>
-                            {c.name || <span className="text-ink-faint font-normal">(sem nome)</span>}
-                          </span>
+                          <CelulaEditavel
+                            valor={c.name}
+                            placeholder="(sem nome)"
+                            ariaLabel={`Nome do contato ${c.name || 'sem nome'}`}
+                            className="text-[13.5px] font-medium text-ink"
+                            salvando={!!gravando[c.id]}
+                            erro={!!falhou[c.id]}
+                            onSalvar={v => salvarCampo(c.id, 'name', v)}
+                          />
                         </td>
                         <td className="px-2.5 py-3.5">
                           {tel ? (
@@ -735,9 +788,15 @@ export function Contacts() {
                           ) : <Vazio />}
                         </td>
                         <td className="px-2.5 py-3.5">
-                          {c.city
-                            ? <span className="block truncate text-[13px] text-ink-muted" title={c.city}>{c.city}</span>
-                            : <Vazio />}
+                          <CelulaEditavel
+                            valor={c.city}
+                            placeholder="—"
+                            ariaLabel={`Cidade de ${c.name || 'contato sem nome'}`}
+                            className="text-[13px] text-ink-muted"
+                            salvando={!!gravando[c.id]}
+                            erro={!!falhou[c.id]}
+                            onSalvar={v => salvarCampo(c.id, 'city', v)}
+                          />
                         </td>
                         <td className="px-2.5 py-3.5">
                           {c.state ? (
@@ -768,7 +827,10 @@ export function Contacts() {
                             <div className="flex items-center gap-1 flex-wrap min-w-0">
                               <span
                                 className="inline-flex items-center gap-1 h-[22px] max-w-full px-1.5 rounded-md border border-border bg-surface-2 text-[11px] font-medium text-ink tabular-nums whitespace-nowrap"
-                                title={`${orcsLinkados[0].cliente} · ${orcsLinkados[0].path_principal}`}
+                                /* O equipamento entra aqui porque a coluna Equipamento
+                                   se esconde abaixo de 1280 (a Status ocupou o lugar).
+                                   Sem isto o dado sumiria da tela nessa faixa. */
+                                title={[orcsLinkados[0].cliente, equipamento, orcsLinkados[0].path_principal].filter(Boolean).join(' · ')}
                               >
                                 <FileText className="h-3 w-3 shrink-0 text-ink-faint" aria-hidden />
                                 <span className="truncate">{orcsLinkados[0].ano}-{orcsLinkados[0].numero}</span>
@@ -789,7 +851,11 @@ export function Contacts() {
                             </span>
                           ) : <Vazio />}
                         </td>
-                        <td className="px-2.5 py-3.5">
+                        {/* MESMO breakpoint do <th>. Escondida abaixo de 1280 porque a
+                            coluna Status entrou e 11 colunas nao cabem — mas o dado NAO
+                            some: o equipamento entra no title da celula Orcamento logo
+                            acima, que continua visivel. */}
+                        <td className="hidden xl:table-cell px-2.5 py-3.5">
                           {equipamento
                             ? <span className="block truncate text-[13px] text-ink-muted" title={equipamento}>{equipamento}</span>
                             : <Vazio />}
@@ -807,6 +873,14 @@ export function Contacts() {
                             const yy = d.getFullYear()
                             return <span className="text-[12px] text-ink-muted font-mono tabular-nums whitespace-nowrap">{`${dd}/${mm}/${yy}`}</span>
                           })()}
+                        </td>
+                        <td className="px-2.5 py-3.5">
+                          <BotoesStatus
+                            valor={c.status}
+                            salvando={!!gravando[c.id]}
+                            erro={!!falhou[c.id]}
+                            onEscolher={(v: StatusContato) => salvarCampo(c.id, 'status', v)}
+                          />
                         </td>
                       </tr>
                     )
@@ -845,6 +919,20 @@ export function Contacts() {
                             {[c.city, c.vendor_id ? vendorMap[c.vendor_id] : null].filter(Boolean).join(' · ')}
                           </p>
                         )}
+
+                        {/* Paridade com o desktop: sem isto o status viraria funcao
+                            exclusiva de quem esta no computador, e a coluna nova nao
+                            existiria pro vendedor no celular — que e onde ele esta
+                            quando fecha ou perde a venda. */}
+                        <div className="mt-2">
+                          <BotoesStatus
+                            valor={c.status}
+                            salvando={!!gravando[c.id]}
+                            erro={!!falhou[c.id]}
+                            compacto
+                            onEscolher={(v: StatusContato) => salvarCampo(c.id, 'status', v)}
+                          />
+                        </div>
 
                         <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                           {mobileTempOpt && <Badge className={mobileTempOpt.color}>{mobileTempOpt.icon}</Badge>}

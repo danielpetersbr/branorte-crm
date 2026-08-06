@@ -118,7 +118,18 @@ export function useContact(id: string | null) {
 export function useUpdateContact() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ id, ...updates }: { id: string; status?: string; vendor_id?: string | null; notes?: string }) => {
+    mutationFn: async ({ id, ...updates }: {
+      id: string
+      status?: string
+      vendor_id?: string | null
+      notes?: string
+      /* name/city entraram pra edicao na linha da /contatos. A RLS ja permite:
+         contacts_vendor_update libera `vendor_id = current_vendor_id() OR
+         vendor_id IS NULL`, e o WITH CHECK identico impede o vendedor de passar
+         o contato pra outro. Nao precisou de policy nova. */
+      name?: string | null
+      city?: string | null
+    }) => {
       const { error } = await supabase
         .from('contacts')
         .update({ ...updates, updated_at: new Date().toISOString() })
