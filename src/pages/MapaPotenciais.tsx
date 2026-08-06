@@ -4,12 +4,17 @@ import 'leaflet/dist/leaflet.css'
 import { useAuth } from '@/hooks/useAuth'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import {
-  useProspects, useSalvarProspect, STATUS_PROSPECT, type Prospect,
+  useProspects, useSalvarProspect, STATUS_PROSPECT, BASES,
+  type Prospect, type FonteBase,
 } from '@/hooks/useProspects'
 
 // Mapa de POSSÍVEIS representantes — prospecção outbound.
-// 54 candidatos (2 por UF) levantados em fontes públicas em 06/08/2026:
-// localizadores oficiais de Plasson, Big Dutchman, MSD, Grupo Real e empresas locais.
+// 174 candidatos de DUAS pesquisas públicas de 06/08/2026 (Plasson, Big Dutchman,
+// MSD, Silomax, IRCA, Indubras, Vetnil, Grupo Real e empresas locais):
+//   base-148     → pesquisa nacional, 120 registros que não estavam na outra
+//   planilha-54  → mapeamento de 2 por UF, 54 registros
+// 28 empresas apareciam nas duas (casadas por nome+UF ou por telefone) e entraram
+// uma vez só. As réguas de nota são DIFERENTES — ver pontuacao_max/prioridade_origem.
 //
 // Diferente dos outros dois mapas:
 //   /mapa-visitas          → 1 pino por CLIENTE (quem já cotou ou comprou)
@@ -60,16 +65,31 @@ function corDe(p: Prospect, modo: Colorir): string {
   return COR_PRIORIDADE[p.prioridade ?? ''] ?? CINZA
 }
 
-function pinIcon(cor: string, destacado: boolean): L.DivIcon {
+// Pino de gota = tem cidade. Losango VAZADO = a fonte não publicou a cidade e o
+// ponto é o centro do estado. A forma tem que denunciar isso: uma gota igual às
+// outras seria afirmar um endereço que ninguém apurou.
+function pinIcon(cor: string, destacado: boolean, semCidade: boolean): L.DivIcon {
   const t = destacado ? 28 : 22
+  const halo = destacado ? ',0 0 0 4px rgba(56,189,248,.45)' : ''
+  const html = semCidade
+    ? `<div style="width:${t - 4}px;height:${t - 4}px;margin:2px;background:transparent;`
+      + `border:${destacado ? 3 : 2}px dashed ${cor};transform:rotate(45deg);`
+      + `box-shadow:0 1px 4px rgba(0,0,0,.35)${halo}"></div>`
+    : `<div style="width:${t}px;height:${t}px;border-radius:50% 50% 50% 0;background:${cor};`
+      + `transform:rotate(-45deg);border:${destacado ? 3 : 2}px solid #fff;`
+      + `box-shadow:0 1px 5px rgba(0,0,0,.45)${halo}"></div>`
   return L.divIcon({
     className: 'prospect-pin',
-    html: `<div style="width:${t}px;height:${t}px;border-radius:50% 50% 50% 0;background:${cor};`
-      + `transform:rotate(-45deg);border:${destacado ? 3 : 2}px solid #fff;`
-      + `box-shadow:0 1px 5px rgba(0,0,0,.45)${destacado ? ',0 0 0 4px rgba(56,189,248,.45)' : ''}"></div>`,
-    iconSize: [t, t], iconAnchor: [t / 2, t], popupAnchor: [0, -t],
+    html,
+    iconSize: [t, t],
+    iconAnchor: semCidade ? [t / 2, t / 2] : [t / 2, t],
+    popupAnchor: [0, -t],
   })
 }
+
+// A base nacional publica o site sem protocolo ("silomax.com.br"). Sem o https://
+// o href vira caminho RELATIVO e o clique leva pra dentro do próprio CRM.
+const siteHref = (s: string) => (/^https?:\/\//i.test(s) ? s : `https://${s}`)
 
 /** Telefones vêm como "(75) 3244-2281 / (75) 99199-3029". Separa e devolve os dígitos. */
 function telefones(bruto: string | null): { exibir: string; digitos: string }[] {
@@ -90,9 +110,10 @@ const MSG_BASE = (empresa: string, nome: string | null) =>
   + `personalizados. Você teria interesse numa conversa rápida para entendermos sua carteira, `
   + `território de atuação e possíveis restrições de exclusividade?`
 
-// Dois candidatos na MESMA cidade (Amparo, Rio Verde, Boa Vista, Araguaína, Manaus,
-// Brasília, Maceió, Macapá, Campo Mourão) empilhariam um pino em cima do outro.
-// Espalha em círculo — a coordenada real fica intacta no banco.
+// Candidatos que dividem a mesma coordenada empilhariam um pino em cima do outro:
+// 9 cidades têm 2 candidatos, e os 50 sem cidade publicada caem todos no centro do
+// próprio estado (a Bahia sozinha tem 7). Espalha em círculo — a coordenada real
+// fica intacta no banco.
 function espalhar(lista: Prospect[]): Map<number, [number, number]> {
   const porChave = new Map<string, Prospect[]>()
   for (const p of lista) {
@@ -107,7 +128,9 @@ function espalhar(lista: Prospect[]): Map<number, [number, number]> {
       out.set(grupo[0].id, [grupo[0].lat!, grupo[0].lng!])
       continue
     }
-    const raio = 0.075 // ~8 km: separa no zoom de estado sem mentir sobre a cidade
+    // ~8 km pra empate de cidade; ~40 km pro empate no centro do estado, senão os
+    // 7 da Bahia viram um borrão só no zoom em que se olha um estado.
+    const raio = grupo[0].geo_precisao === 'uf' ? 0.36 : 0.075
     grupo.forEach((p, i) => {
       const ang = (2 * Math.PI * i) / grupo.length
       out.set(p.id, [p.lat! + raio * Math.sin(ang), p.lng! + raio * Math.cos(ang)])
@@ -127,6 +150,8 @@ export function MapaPotenciais() {
   const [fPrioridade, setFPrioridade] = useState('')
   const [fRisco, setFRisco] = useState('')
   const [fStatus, setFStatus] = useState('')
+  const [fBase, setFBase] = useState('')
+  const [soComCidade, setSoComCidade] = useState(false)
   const [selecionado, setSelecionado] = useState<number | null>(null)
   const [copiado, setCopiado] = useState(false)
 
@@ -139,11 +164,13 @@ export function MapaPotenciais() {
       if (fPrioridade && p.prioridade !== fPrioridade) return false
       if (fRisco && p.risco !== fRisco) return false
       if (fStatus && p.status !== fStatus) return false
+      if (fBase && p.fonte_base !== fBase) return false
+      if (soComCidade && p.geo_precisao === 'uf') return false
       if (!q) return true
       return [p.empresa, p.contato, p.cidade, p.uf, p.estado, p.rede, p.segmento, p.especies]
         .some(v => (v ?? '').toLowerCase().includes(q))
     })
-  }, [lista, busca, fRegiao, fPrioridade, fRisco, fStatus])
+  }, [lista, busca, fRegiao, fPrioridade, fRisco, fStatus, fBase, soComCidade])
 
   const posicoes = useMemo(() => espalhar(filtrados), [filtrados])
   const atual = useMemo(
@@ -152,11 +179,12 @@ export function MapaPotenciais() {
   )
 
   const resumo = useMemo(() => ({
-    ufs: new Set(filtrados.map(p => p.uf)).size,
+    ufs: new Set(filtrados.map(p => p.uf).filter(uf => uf !== 'NAC')).size,
     alta: filtrados.filter(p => p.prioridade === 'Alta').length,
     baixoRisco: filtrados.filter(p => p.risco === 'Baixo').length,
     onda1: filtrados.filter(p => p.prioridade === 'Alta' && p.risco === 'Baixo').length,
     trabalhados: filtrados.filter(p => p.status !== 'Não abordado').length,
+    semCidade: filtrados.filter(p => p.geo_precisao === 'uf').length,
   }), [filtrados])
 
   // ── Mapa ────────────────────────────────────────────────────────────────
@@ -187,13 +215,15 @@ export function MapaPotenciais() {
     for (const p of filtrados) {
       const pos = posicoes.get(p.id)
       if (!pos) continue
+      const semCidade = p.geo_precisao === 'uf'
+      const local = semCidade ? `${p.uf} · cidade não publicada` : `${p.cidade}/${p.uf_cidade}`
       const m = L.marker(pos, {
-        icon: pinIcon(corDe(p, colorir), p.id === selecionado),
-        title: `${p.empresa} — ${p.cidade}/${p.uf_cidade}`,
-        zIndexOffset: p.id === selecionado ? 1000 : 0,
+        icon: pinIcon(corDe(p, colorir), p.id === selecionado, semCidade),
+        title: `${p.empresa} — ${local}`,
+        zIndexOffset: p.id === selecionado ? 1000 : semCidade ? -100 : 0,
       })
       m.bindTooltip(
-        `<b>${p.empresa}</b><br>${p.cidade ?? ''}/${p.uf_cidade ?? ''} · ${p.tipo ?? ''}<br>`
+        `<b>${p.empresa}</b><br>${local} · ${p.tipo ?? ''}<br>`
         + `<span style="opacity:.8">${p.segmento ?? ''}</span>`,
         { direction: 'top', offset: [0, -20] },
       )
@@ -234,6 +264,15 @@ export function MapaPotenciais() {
             {filtrados.length} candidatos em {resumo.ufs} estados · {resumo.alta} prioridade alta ·{' '}
             <span className="text-emerald-400 font-semibold">{resumo.onda1} na onda 1</span> (alta + risco baixo)
             {resumo.trabalhados > 0 && <> · {resumo.trabalhados} já trabalhados</>}
+            {resumo.semCidade > 0 && (
+              <> · <button
+                onClick={() => setSoComCidade(true)}
+                className="text-amber-400 hover:underline"
+                title="A fonte não publicou a cidade destes — o pino é o centro do estado. Clique pra escondê-los."
+              >
+                {resumo.semCidade} sem cidade publicada
+              </button></>
+            )}
           </p>
         </div>
         <div className="flex h-9 rounded-lg overflow-hidden border border-border bg-surface text-[12px] font-semibold">
@@ -274,9 +313,28 @@ export function MapaPotenciais() {
             {opcoes.map(o => <option key={o} value={o}>{o}</option>)}
           </select>
         ))}
-        {(busca || fRegiao || fPrioridade || fRisco || fStatus) && (
+        <select
+          value={fBase}
+          onChange={e => setFBase(e.target.value)}
+          title="De qual das duas pesquisas o candidato veio"
+          className={`h-9 rounded-lg border bg-surface px-2 text-[13px] ${fBase ? 'border-accent text-ink' : 'border-border text-ink-muted'}`}
+        >
+          <option value="">Pesquisa: todas</option>
+          {BASES.map(b => <option key={b.id} value={b.id} title={b.descricao}>{b.rotulo}</option>)}
+        </select>
+        <button
+          onClick={() => setSoComCidade(v => !v)}
+          title="Esconde os candidatos cuja cidade a fonte não publicou (pino no centro do estado)"
+          className={`h-9 px-3 rounded-lg border text-[12px] font-semibold ${soComCidade ? 'border-accent bg-accent text-white' : 'border-border bg-surface text-ink-muted hover:bg-surface-2'}`}
+        >
+          Só com cidade
+        </button>
+        {(busca || fRegiao || fPrioridade || fRisco || fStatus || fBase || soComCidade) && (
           <button
-            onClick={() => { setBusca(''); setFRegiao(''); setFPrioridade(''); setFRisco(''); setFStatus('') }}
+            onClick={() => {
+              setBusca(''); setFRegiao(''); setFPrioridade(''); setFRisco('')
+              setFStatus(''); setFBase(''); setSoComCidade(false)
+            }}
             className="h-9 px-3 rounded-lg border border-border bg-surface text-[12px] text-ink-muted hover:bg-surface-2"
           >
             Limpar
@@ -317,6 +375,16 @@ export function MapaPotenciais() {
                 )
               })}
             </ul>
+            {resumo.semCidade > 0 && (
+              <div className="mt-1.5 pt-1.5 border-t border-border flex items-center gap-2 text-[11px]">
+                <span
+                  className="h-3 w-3 shrink-0 border-2 border-dashed border-ink-muted"
+                  style={{ transform: 'rotate(45deg)' }}
+                />
+                <span className="text-ink flex-1">sem cidade — centro do estado</span>
+                <span className="tabular-nums text-ink-faint">{resumo.semCidade}</span>
+              </div>
+            )}
             <p className="mt-1.5 pt-1.5 border-t border-border text-[10px] leading-snug text-ink-faint">{legenda.nota}</p>
           </div>
         </div>
@@ -356,7 +424,8 @@ export function MapaPotenciais() {
                           <span className="text-[11px] font-bold tabular-nums text-ink-muted">{p.pontuacao ?? '—'}</span>
                         </div>
                         <div className="pl-[18px] text-[11px] text-ink-faint truncate">
-                          {p.uf} · {p.cidade} · {p.rede ?? 'sem rede'}
+                          {p.uf} · {p.cidade ?? <span className="text-amber-500/80">sem cidade</span>} ·{' '}
+                          {p.rede ?? 'sem rede'}
                         </div>
                       </button>
                     </li>
@@ -376,6 +445,9 @@ export function MapaPotenciais() {
 }
 
 // ── Ficha do candidato ──────────────────────────────────────────────────────
+
+const baseDe = (p: Prospect) =>
+  BASES.find(b => b.id === p.fonte_base) ?? { id: p.fonte_base as FonteBase, rotulo: 'Pesquisa', descricao: '' }
 
 function Linha({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
   if (children == null || children === '') return null
@@ -413,7 +485,8 @@ function FichaCandidato({ p, onFechar, onPatch, salvando, copiado, setCopiado }:
         <div className="flex-1 min-w-0">
           <h2 className="text-[15px] font-bold text-ink leading-tight">{p.empresa}</h2>
           <p className="text-[12px] text-ink-muted">
-            {p.cidade}/{p.uf_cidade} · atende <b>{p.uf}</b> · {p.regiao}
+            {p.cidade ? `${p.cidade}/${p.uf_cidade}` : 'cidade não publicada'}
+            {' · atende '}<b>{p.uf === 'NAC' ? 'nacional' : p.uf}</b> · {p.regiao}
           </p>
         </div>
         <button
@@ -438,8 +511,21 @@ function FichaCandidato({ p, onFechar, onPatch, salvando, copiado, setCopiado }:
         >
           Risco {p.risco}
         </span>
-        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-surface-2 text-ink">
-          Nota {p.pontuacao}/13
+        {/* A régua NÃO é a mesma nas duas pesquisas (10 numa, 13 na outra) —
+            escrever "/13" pra quem foi medido até 10 rebaixaria o candidato de graça. */}
+        <span
+          className="px-2 py-0.5 rounded text-[11px] font-semibold bg-surface-2 text-ink"
+          title={`Régua da pesquisa "${baseDe(p).rotulo}": ${baseDe(p).descricao}`}
+        >
+          Nota {p.pontuacao}/{p.pontuacao_max ?? 13}
+        </span>
+        <span
+          className="px-2 py-0.5 rounded text-[11px] bg-surface-2 text-ink-muted"
+          title={baseDe(p).descricao}
+        >
+          {baseDe(p).rotulo}
+          {p.prioridade_origem && p.prioridade_origem !== p.prioridade
+            ? ` · ${p.prioridade_origem}` : ''}
         </span>
       </div>
 
@@ -456,12 +542,18 @@ function FichaCandidato({ p, onFechar, onPatch, salvando, copiado, setCopiado }:
         <Linha rotulo="Espécies">{p.especies}</Linha>
         <Linha rotulo="Vínculo">{p.tipo}{p.rede ? ` · ${p.rede}` : ''}</Linha>
         <Linha rotulo="Cobertura">{p.cobertura}</Linha>
+        <Linha rotulo="Atende">{p.regiao_atendida}</Linha>
+        <Linha rotulo="Carteira">{p.indicio_carteira}</Linha>
       </div>
 
       {/* contato */}
       <div className="rounded-lg border border-border bg-surface-2/40 px-2.5 py-1.5">
         <div className="text-[10px] uppercase tracking-wide text-ink-faint mb-0.5">Contato</div>
-        <Linha rotulo="Falar com">{p.contato}</Linha>
+        <Linha rotulo="Falar com">
+          {p.contato || p.cargo
+            ? `${p.contato ?? ''}${p.contato && p.cargo ? ' · ' : ''}${p.cargo ?? ''}`
+            : null}
+        </Linha>
         <Linha rotulo="Telefone">
           {fones.length
             ? (
@@ -489,7 +581,10 @@ function FichaCandidato({ p, onFechar, onPatch, salvando, copiado, setCopiado }:
             : <span className="text-ink-faint">sem e-mail publicado</span>}
         </Linha>
         <Linha rotulo="Site">
-          {p.site ? <a href={p.site} target="_blank" rel="noopener" className="text-accent hover:underline break-all">{p.site}</a> : null}
+          {p.site ? <a href={siteHref(p.site)} target="_blank" rel="noopener" className="text-accent hover:underline break-all">{p.site}</a> : null}
+        </Linha>
+        <Linha rotulo="Perfil">
+          {p.social ? <span className="break-all">{p.social}</span> : null}
         </Linha>
       </div>
 
@@ -544,8 +639,19 @@ function FichaCandidato({ p, onFechar, onPatch, salvando, copiado, setCopiado }:
         <div className="text-[10px] uppercase tracking-wide text-ink-faint mb-0.5">Pesquisa</div>
         <Linha rotulo="Próximo passo">{p.proxima_acao}</Linha>
         <Linha rotulo="Observação">{p.observacoes}</Linha>
+        <Linha rotulo="Verificação">
+          {p.nivel_verificacao
+            ? (
+              <span className={p.nivel_verificacao.startsWith('Confirmado') ? 'text-ink' : 'text-amber-400'}>
+                {p.nivel_verificacao}
+              </span>
+            )
+            : null}
+        </Linha>
         <Linha rotulo="Nota">
-          fit {p.fit}/4 · carteira {p.carteira}/2 · contato {p.contato_pts}/2 · presença {p.presenca}/2
+          fit {p.fit}/4 · carteira {p.carteira}/{p.fonte_base === 'base-148' ? 3 : 2} ·{' '}
+          contato {p.contato_pts}/2 · presença {p.presenca}/2
+          {p.estrutura != null && <> · estrutura {p.estrutura}/2</>}
           {' '}= bruta {p.pontuacao_bruta} → ajustada <b>{p.pontuacao}</b>
         </Linha>
         <Linha rotulo="Fonte">

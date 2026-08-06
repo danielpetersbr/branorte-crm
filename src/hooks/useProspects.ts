@@ -9,9 +9,14 @@ import { supabase } from '@/lib/supabase'
 export type RiscoProspect = 'Baixo' | 'Médio' | 'Alto'
 export type PrioridadeProspect = 'Alta' | 'Média' | 'Exploratória'
 
+/** As duas pesquisas que alimentam o mapa. Elas NÃO usam a mesma régua de nota
+ *  nem o mesmo vocabulário de prioridade — ver pontuacao_max/prioridade_origem. */
+export type FonteBase = 'planilha-54' | 'base-148'
+
 export interface Prospect {
   id: number
   origem_id: number | null
+  fonte_base: FonteBase
   uf: string
   estado: string | null
   regiao: string | null
@@ -24,24 +29,34 @@ export interface Prospect {
   nota_geo: string | null
   empresa: string
   contato: string | null
+  cargo: string | null
   telefone: string | null
+  whatsapp: string | null
   email: string | null
   site: string | null
+  social: string | null
   segmento: string | null
   rede: string | null
   especies: string | null
   tipo: string | null
   cobertura: string | null
+  regiao_atendida: string | null
+  indicio_carteira: string | null
   fonte: string | null
   verificado_em: string | null
+  nivel_verificacao: string | null
   fit: number | null
   carteira: number | null
   contato_pts: number | null
   presenca: number | null
+  estrutura: number | null
   pontuacao_bruta: number | null
   pontuacao: number | null
+  pontuacao_max: number | null
   risco: RiscoProspect | null
   prioridade: PrioridadeProspect | null
+  /** Rótulo cru da fonte: 'Alta'/'Média'/'Exploratória' na planilha-54, 'A'/'B'/'D' na base-148. */
+  prioridade_origem: string | null
   status: string
   responsavel: string | null
   proxima_acao: string | null
@@ -54,6 +69,11 @@ export interface Prospect {
 export const STATUS_PROSPECT = [
   'Não abordado', 'Em contato', 'Negociando', 'Fechado', 'Descartado',
 ] as const
+
+export const BASES: { id: FonteBase; rotulo: string; descricao: string }[] = [
+  { id: 'base-148', rotulo: 'Pesquisa nacional', descricao: 'Base de 148 candidatos (régua até 13, prioridade A/B/C/D)' },
+  { id: 'planilha-54', rotulo: 'Mapeamento 2/UF', descricao: 'Planilha de 54 candidatos, 2 por estado (régua até 10)' },
+]
 
 export function useProspects() {
   return useQuery<Prospect[]>({
