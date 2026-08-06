@@ -71,6 +71,12 @@ export interface ContactFilters {
   // virassem obrigatorios.
   /** So contatos com chat de WhatsApp sincronizado. */
   com_whatsapp?: boolean
+  /**
+   * Faixa de tempo desde a ULTIMA INTERACAO (contacts.ultima_interacao_em).
+   * 'd30' | 'd60' | 'd100' | 'd365' | 'mais' | 'sem'. Vazio = todas.
+   * Some-se aos demais filtros, nao os substitui.
+   */
+  faixa?: string
   /** Etiqueta principal do WhatsApp (valor exato, sem alias). */
   etiqueta?: string
   /** O CLIENTE falou por ultimo e ninguem respondeu. */

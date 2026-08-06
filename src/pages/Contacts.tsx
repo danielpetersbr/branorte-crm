@@ -14,6 +14,8 @@ import { useWaEtiquetasDisponiveis, type WaResumoCampos } from '@/hooks/useWaRes
 import { canonico, corDaEtiqueta, ETIQUETAS_OCULTAS, ordemDe, tempoRelativo, temperaturaDe, TEMP_META, type Temperatura } from '@/lib/wa-funil'
 import { useEtiquetasDeContatos, estiloEtiqueta } from '@/hooks/useCrmEtiquetas'
 import { BarraEtiquetas } from '@/components/contacts/BarraEtiquetas'
+import { FaixaAtividadeContatos } from '@/components/contacts/FaixaAtividade'
+import { STATUS_CONTATO } from '@/components/contacts/BotoesStatus'
 import { BotaoEtiquetar, SelosCrm } from '@/components/contacts/BotaoEtiquetar'
 import { CelulaEditavel } from '@/components/contacts/CelulaEditavel'
 import { BotoesStatus, type StatusContato } from '@/components/contacts/BotoesStatus'
@@ -286,7 +288,7 @@ export function Contacts() {
   const orcamentoAnos = Array.from({ length: currentYear - 2011 }, (_, i) => String(currentYear - i))
 
   const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
-  const [filters, setFilters] = useState<ContactFilters>({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, orcamento_ano: '', orcamento_mes: '', temperatura: '', com_whatsapp: false, etiqueta: '', esperando_resposta: false, sort: 'orcamento_recente', page: 0 })
+  const [filters, setFilters] = useState<ContactFilters>({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, orcamento_ano: '', orcamento_mes: '', temperatura: '', com_whatsapp: false, etiqueta: '', esperando_resposta: false, faixa: '', sort: 'orcamento_recente', page: 0 })
   const [searchInput, setSearchInput] = useState('')
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
 
@@ -444,11 +446,11 @@ export function Contacts() {
   }, [searchInput])
 
   const clearFilters = () => {
-    setFilters({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, orcamento_ano: '', orcamento_mes: '', temperatura: '', com_whatsapp: false, etiqueta: '', esperando_resposta: false, sort: 'orcamento_recente' as ContactSortKey, page: 0 })
+    setFilters({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, orcamento_ano: '', orcamento_mes: '', temperatura: '', com_whatsapp: false, etiqueta: '', esperando_resposta: false, faixa: '', sort: 'orcamento_recente' as ContactSortKey, page: 0 })
     setSearchInput('')
   }
 
-  const hasFilters = filters.search || filters.estado || filters.vendor_id || filters.status || filters.orcamento || filters.orcamento_ano || filters.temperatura || filters.com_whatsapp || filters.etiqueta || filters.esperando_resposta
+  const hasFilters = filters.search || filters.estado || filters.vendor_id || filters.status || filters.orcamento || filters.orcamento_ano || filters.temperatura || filters.com_whatsapp || filters.etiqueta || filters.esperando_resposta || filters.faixa
 
   // Só pra MOSTRAR "N filtros" — o que liga/desliga o botão Limpar continua
   // sendo `hasFilters`, intocado.
@@ -486,6 +488,14 @@ export function Contacts() {
         </p>
       </header>
 
+      {/* Pedido do Daniel: entre o titulo e a area de busca. Reage aos filtros
+          atuais (a RPC recebe os mesmos parametros da lista) e clicar num card
+          SOMA um filtro, sem apagar vendedor/estado/etiqueta/temperatura. */}
+      <FaixaAtividadeContatos
+        filters={filters}
+        onEscolher={faixa => setFilters(f => ({ ...f, faixa, page: 0 }))}
+      />
+
       {/* ── FILTROS ───────────────────────────────────────────────────────── */}
       <Card className="p-3 lg:p-4">
         {/* LINHA 1 — busca larga + ordenação + recortes do CRM */}
@@ -512,6 +522,16 @@ export function Contacts() {
             value={filters.vendor_id} onChange={e => setFilters(f => ({ ...f, vendor_id: e.target.value, page: 0 }))} className="w-full lg:w-40" />
           <Select options={TEMPERATURA_OPTIONS.map(t => ({ value: t.value, label: `${t.icon} ${t.label}` }))} placeholder="Temperatura" aria-label="Temperatura"
             value={filters.temperatura} onChange={e => setFilters(f => ({ ...f, temperatura: e.target.value, page: 0 }))} className="w-full lg:w-36" />
+          {/* Status: SO os 3 que a coluna do fim escreve. O STATUS_OPTIONS antigo
+              oferece 6, mas 4 deles nao existem em contato nenhum do banco —
+              gaveta vazia num filtro e promessa que a lista nao cumpre. */}
+          <Select
+            options={STATUS_CONTATO.map(o => ({ value: o.v, label: o.label }))}
+            placeholder="Status" aria-label="Status do contato"
+            value={filters.status}
+            onChange={e => setFilters(f => ({ ...f, status: e.target.value, page: 0 }))}
+            className="w-full lg:w-36"
+          />
           <Select
             options={orcamentoAnos.map(y => ({ value: y, label: y }))}
             placeholder="Ano"

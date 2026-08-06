@@ -34,6 +34,7 @@ function rpcArgs(filters: ContactFilters) {
     p_etiqueta:           filters.etiqueta || null,
     p_esperando_resposta: !!filters.esperando_resposta,
     p_sort:               filters.sort || 'recente',
+    p_faixa:              filters.faixa || null,
   }
 }
 
