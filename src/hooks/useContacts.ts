@@ -67,6 +67,22 @@ export function useContacts(filters: ContactFilters) {
       return { contacts, total: Number(countRes.data ?? 0) }
     },
     placeholderData: (prev) => prev,
+
+    /*
+     * Esta tela mostra dado que muda SOZINHO: a etiqueta que o vendedor põe no
+     * WhatsApp dele entra na mv_wa_contato_resumo pelo cron (1 em 1 min), sem
+     * ninguém clicar em nada. O default do app é `refetchOnWindowFocus: false`
+     * (App.tsx), então quem deixasse a aba aberta ficava vendo o retrato do
+     * primeiro carregamento até dar F5 — foi exatamente o "não atualizou a
+     * etiqueta que ele colocou".
+     *
+     * Sobrescrito SÓ aqui, não no default global: as outras telas continuam
+     * como estavam.
+     */
+    refetchOnWindowFocus: true,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,   // aba escondida não consulta à toa
+    staleTime: 30_000,
   })
 }
 
