@@ -154,7 +154,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/controle', label: 'Painel de Vendas', icon: LayoutDashboard, end: true, permKey: 'menu.controle' },
       { to: '/controle/pedidos', label: 'Pedidos de Venda', icon: FileText, permKey: 'menu.controle' },
-      { to: '/controle/financeiro', label: 'Financeiro', icon: Wallet, permKey: 'menu.controle' },
+      { to: '/controle/financeiro', label: 'Financeiro', icon: Wallet, permKey: 'menu.financeiro' },
       { to: '/controle/novo-pedido', label: 'Novo Pedido', icon: FilePlus2, permKey: 'menu.controle' },
       { to: '/vendidos', label: 'Vendidos', icon: CheckCircle, permKey: 'menu.vendidos' },
       // roles: quem o guard do App.tsx deixa entrar. 'visualizador' cai em

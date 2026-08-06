@@ -14,12 +14,11 @@ import {
 
 type PermMatrix = Record<AssignableRole, Record<string, boolean>>
 
+// Derivado de ASSIGNABLE_ROLES: papel novo entra sozinho. A lista escrita à mão
+// já estava desatualizada (faltava 'visualizador') e o tsc reclamava disso desde
+// antes — esquecer de somar aqui deixava a coluna do papel sem estado inicial.
 function emptyMatrix(): PermMatrix {
-  return {
-    admin: {},
-    vendor: {},
-    marketing: {},
-  }
+  return Object.fromEntries(ASSIGNABLE_ROLES.map(r => [r, {}])) as PermMatrix
 }
 
 export function AdminPermissoes() {

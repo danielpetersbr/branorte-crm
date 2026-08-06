@@ -346,7 +346,19 @@ function AppRoutes() {
      * junto. Numa entrada fixa em VENDOR_PREFIXES, não fecharia.
      */
     const contatosOk = p.startsWith('/contatos') && can('menu.contatos')
-    const allowed = freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || producaoPropriaOk || roadmapOk || contatosOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
+    /*
+     * Financeiro: SÓ /controle/financeiro, não o grupo /controle inteiro.
+     *
+     * O vendedor precisa ver os recebíveis dos pedidos dele, mas não o Painel de
+     * Vendas nem o Novo Pedido, que moram no mesmo prefixo. Por isso a entrada é
+     * exata e amarrada em `menu.financeiro` (chave própria, não `menu.controle`).
+     *
+     * O recorte "só os pedidos dele" NÃO depende deste guard nem do menu: quem
+     * decide é /api/financeiro, no servidor, a partir do JWT. Este guard só
+     * escolhe a tela.
+     */
+    const financeiroOk = p.startsWith('/controle/financeiro') && can('menu.financeiro')
+    const allowed = freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || producaoPropriaOk || roadmapOk || contatosOk || financeiroOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
     if (!allowed) return <Navigate to="/atendimentos" replace />
   }
 
@@ -381,6 +393,9 @@ function AppRoutes() {
     mapa: [
       '/mapa-visitas', '/mapa-representantes', '/representantes', '/ficha-representante',
       '/producao-propria', '/viabilidade', '/venda-racao', '/perfil',
+      // O Patrick tem papel 'mapa' mas vende: 12 pedidos, R$ 5,95 mi. Com o
+      // vendor_id apontado, /api/financeiro devolve só os pedidos dele.
+      '/controle/financeiro',
     ],
     consultor: ['/producao-propria', '/viabilidade', '/venda-racao', '/perfil'],
     // representante = representante EXTERNO com territorio (06/08/2026). Ve o mapa

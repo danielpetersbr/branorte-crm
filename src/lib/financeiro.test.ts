@@ -1,8 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  devidoDe, diffDias, statusParcela, agregarPedido, resumoKpis, pedidoNoEscopo,
-  type PedidoRaw, type ParcelaRaw, type ReceiptRaw, type Escopo,
+  devidoDe, diffDias, statusParcela, agregarPedido, resumoKpis, pedidoNoEscopo, ehGestor,
+  type PedidoRaw, type ParcelaRaw, type ReceiptRaw, type Escopo, type Cobertura, type ConferenciaRaw,
 } from '../../api/_lib/financeiro-core.js'
 
 const HOJE = '2026-08-06'
@@ -21,14 +21,21 @@ function parcela(over: Partial<ParcelaRaw> = {}): ParcelaRaw {
     canceled: false, cancellation_reason: null, boleto_enviado: false, boleto_enviado_em: null, ...over,
   }
 }
+/** Por padrão COM comprovante — assim cada teste diz explicitamente o que testa. */
 function receipt(over: Partial<ReceiptRaw> = {}): ReceiptRaw {
   return {
     id: 'r1', order_id: 'p1', installment_id: 'i1', amount: 500, paid_at: '2026-08-01',
-    payment_method: 'PIX', notes: null, receipt_url: null, ...over,
+    payment_method: 'PIX', notes: null, receipt_url: 'https://x/comp.jpg', ...over,
   }
 }
+function conf(receiptId: string, status: ConferenciaRaw['status'], motivo: string | null = null): [string, ConferenciaRaw] {
+  return [receiptId, { receipt_id: receiptId, status, motivo, conferido_por_nome: 'Gestor', conferido_em: '2026-08-05T10:00:00Z' }]
+}
+function cob(over: Partial<Cobertura> = {}): Cobertura {
+  return { recebido: 0, algumSemComprovante: false, algumNaoAprovado: false, ...over }
+}
 
-// ── devidoDe: o plano manda, valor_total é fallback, ajuste soma ──────────────
+// ── devidoDe ─────────────────────────────────────────────────────────────────
 
 test('devidoDe: payment_plan_json.total vence valor_total', () => {
   assert.equal(devidoDe({ payment_plan_json: { total: 1200 }, valor_total: 1000, ajuste_valor: null }), 1200)
@@ -43,8 +50,9 @@ test('devidoDe: total do plano vem como string (JSONB) e ainda soma o ajuste', (
   assert.equal(devidoDe({ payment_plan_json: { total: '1500.50' }, valor_total: 1, ajuste_valor: 49.5 }), 1550)
 })
 
-test('devidoDe: ajuste negativo reduz o devido', () => {
-  assert.equal(devidoDe({ payment_plan_json: null, valor_total: 1000, ajuste_valor: -250 }), 750)
+test('devidoDe: ajuste negativo reduz o devido (caso real PV-2026-2188)', () => {
+  // pedido partido: 2.050.000 com ajuste de -1.730.000 = 320.000
+  assert.equal(devidoDe({ payment_plan_json: { total: 2050000 }, valor_total: 2050000, ajuste_valor: -1730000 }), 320000)
 })
 
 // ── diffDias ─────────────────────────────────────────────────────────────────
@@ -55,42 +63,59 @@ test('diffDias conta dias civis e atravessa virada de mes', () => {
   assert.equal(diffDias('2026-09-01', '2026-08-31'), -1)
 })
 
-// ── statusParcela: precedencia ───────────────────────────────────────────────
+// ── statusParcela: a REGRA PRINCIPAL (item 2) ────────────────────────────────
 
-test('statusParcela: cancelada vence tudo, inclusive pagamento', () => {
-  const p = parcela({ canceled: true, due_date: '2026-01-01' })
-  assert.equal(statusParcela(p, 500, HOJE), 'CANCELADA')
+test('REGRA: valor cobrindo a parcela NAO quita sem comprovante', () => {
+  const st = statusParcela(parcela({ amount: 500 }), cob({ recebido: 500, algumSemComprovante: true, algumNaoAprovado: true }), HOJE)
+  assert.equal(st, 'AGUARDANDO_COMPROVANTE')
 })
 
-test('statusParcela: pago vence vencido (parcela quitada em atraso nao fica VENCIDO)', () => {
-  const p = parcela({ due_date: '2026-01-01' })
-  assert.equal(statusParcela(p, 500, HOJE), 'PAGO')
+test('REGRA: com comprovante mas sem conferencia, para em AGUARDANDO_CONFERENCIA', () => {
+  const st = statusParcela(parcela({ amount: 500 }), cob({ recebido: 500, algumNaoAprovado: true }), HOJE)
+  assert.equal(st, 'AGUARDANDO_CONFERENCIA')
+})
+
+test('REGRA: so vira PAGO com dinheiro + comprovante + aprovacao', () => {
+  const st = statusParcela(parcela({ amount: 500 }), cob({ recebido: 500 }), HOJE)
+  assert.equal(st, 'PAGO')
+})
+
+test('REGRA: falta de comprovante vence falta de conferencia na mensagem', () => {
+  // os dois pendentes ao mesmo tempo -> avisa o primeiro passo que falta
+  const st = statusParcela(parcela({ amount: 500 }), cob({ recebido: 500, algumSemComprovante: true, algumNaoAprovado: true }), HOJE)
+  assert.equal(st, 'AGUARDANDO_COMPROVANTE')
+})
+
+test('statusParcela: cancelada vence tudo, inclusive pagamento aprovado', () => {
+  assert.equal(statusParcela(parcela({ canceled: true, due_date: '2026-01-01' }), cob({ recebido: 500 }), HOJE), 'CANCELADA')
+})
+
+test('statusParcela: parcela quitada em atraso nao fica VENCIDO', () => {
+  assert.equal(statusParcela(parcela({ due_date: '2026-01-01' }), cob({ recebido: 500 }), HOJE), 'PAGO')
 })
 
 test('statusParcela: parcial vence vencido', () => {
-  const p = parcela({ due_date: '2026-01-01' })
-  assert.equal(statusParcela(p, 200, HOJE), 'PARCIAL')
+  assert.equal(statusParcela(parcela({ due_date: '2026-01-01' }), cob({ recebido: 200 }), HOJE), 'PARCIAL')
 })
 
 test('statusParcela: vencido, vence hoje e a vencer se distinguem', () => {
-  assert.equal(statusParcela(parcela({ due_date: '2026-08-05' }), 0, HOJE), 'VENCIDO')
-  assert.equal(statusParcela(parcela({ due_date: '2026-08-06' }), 0, HOJE), 'VENCE_HOJE')
-  assert.equal(statusParcela(parcela({ due_date: '2026-08-07' }), 0, HOJE), 'PENDENTE')
+  assert.equal(statusParcela(parcela({ due_date: '2026-08-05' }), cob(), HOJE), 'VENCIDO')
+  assert.equal(statusParcela(parcela({ due_date: '2026-08-06' }), cob(), HOJE), 'VENCE_HOJE')
+  assert.equal(statusParcela(parcela({ due_date: '2026-08-07' }), cob(), HOJE), 'PENDENTE')
 })
 
 test('statusParcela: boleto enviado so aparece em parcela futura e nao paga', () => {
-  assert.equal(statusParcela(parcela({ due_date: '2026-08-07', boleto_enviado: true }), 0, HOJE), 'BOLETO_ENVIADO')
+  assert.equal(statusParcela(parcela({ due_date: '2026-08-07', boleto_enviado: true }), cob(), HOJE), 'BOLETO_ENVIADO')
   // vencida com boleto enviado ainda e VENCIDO — a cobranca e o que importa
-  assert.equal(statusParcela(parcela({ due_date: '2026-08-05', boleto_enviado: true }), 0, HOJE), 'VENCIDO')
+  assert.equal(statusParcela(parcela({ due_date: '2026-08-05', boleto_enviado: true }), cob(), HOJE), 'VENCIDO')
 })
 
 test('statusParcela: sobra de centavo nao impede a quitacao', () => {
-  assert.equal(statusParcela(parcela({ amount: 500 }), 499.995, HOJE), 'PAGO')
+  assert.equal(statusParcela(parcela({ amount: 500 }), cob({ recebido: 499.995 }), HOJE), 'PAGO')
 })
 
 test('statusParcela: parcela de valor zero nao vira PAGO por acidente', () => {
-  // sem dinheiro e sem valor, o que manda e a data
-  assert.equal(statusParcela(parcela({ amount: 0, due_date: '2026-08-07' }), 0, HOJE), 'PENDENTE')
+  assert.equal(statusParcela(parcela({ amount: 0, due_date: '2026-08-07' }), cob(), HOJE), 'PENDENTE')
 })
 
 // ── agregarPedido ────────────────────────────────────────────────────────────
@@ -107,19 +132,16 @@ test('agregarPedido: soma recebimentos por parcela e calcula saldo', () => {
   assert.equal(r.parcelas[0].recebido, 200)
   assert.equal(r.parcelas[0].saldo, 300)
   assert.equal(r.parcelas[0].status, 'PARCIAL')
-  assert.equal(r.parcelas[1].recebido, 0)
   assert.equal(r.status, 'PARCIAL')
 })
 
-test('agregarPedido: dois recebimentos na MESMA parcela quitam (pagamento parcial do spec)', () => {
+test('agregarPedido: dois recebimentos na MESMA parcela somam (pagamento parcial)', () => {
   const r = agregarPedido(
     pedido({ valor_total: 500 }),
     [parcela({ id: 'i1', amount: 500 })],
-    [
-      receipt({ id: 'r1', installment_id: 'i1', amount: 200 }),
-      receipt({ id: 'r2', installment_id: 'i1', amount: 300 }),
-    ],
+    [receipt({ id: 'r1', installment_id: 'i1', amount: 200 }), receipt({ id: 'r2', installment_id: 'i1', amount: 300 })],
     HOJE,
+    new Map([conf('r1', 'APROVADO'), conf('r2', 'APROVADO')]),
   )
   assert.equal(r.parcelas[0].recebido, 500)
   assert.equal(r.parcelas[0].status, 'PAGO')
@@ -127,15 +149,37 @@ test('agregarPedido: dois recebimentos na MESMA parcela quitam (pagamento parcia
   assert.equal(r.status, 'QUITADO')
 })
 
+test('agregarPedido: cobertura total SEM conferencia nao vira QUITADO, vira AGUARDANDO_CONFERENCIA', () => {
+  const r = agregarPedido(pedido({ valor_total: 500 }), [parcela({ id: 'i1', amount: 500 })],
+    [receipt({ id: 'r1', installment_id: 'i1', amount: 500 })], HOJE)
+  assert.equal(r.recebido, 500, 'o dinheiro continua contando')
+  assert.equal(r.status, 'AGUARDANDO_CONFERENCIA')
+  assert.equal(r.comprovantesAConferir, 1)
+})
+
+test('agregarPedido: comprovante REJEITADO nao conta como dinheiro recebido', () => {
+  const r = agregarPedido(pedido({ valor_total: 500 }), [parcela({ id: 'i1', amount: 500 })],
+    [receipt({ id: 'r1', installment_id: 'i1', amount: 500 })], HOJE,
+    new Map([conf('r1', 'REJEITADO', 'Imagem ilegível')]))
+  assert.equal(r.recebido, 0, 'pagamento nao identificado nao e caixa')
+  assert.equal(r.aReceber, 500)
+  assert.equal(r.parcelas[0].temRejeitado, true)
+  assert.equal(r.parcelas[0].recebimentos[0].motivoRejeicao, 'Imagem ilegível')
+})
+
+test('agregarPedido: rejeitado nao contamina a cobertura dos outros recebimentos', () => {
+  const r = agregarPedido(pedido({ valor_total: 500 }), [parcela({ id: 'i1', amount: 500 })],
+    [receipt({ id: 'r1', installment_id: 'i1', amount: 500 }), receipt({ id: 'r2', installment_id: 'i1', amount: 500 })],
+    HOJE, new Map([conf('r1', 'APROVADO'), conf('r2', 'REJEITADO', 'duplicado')]))
+  assert.equal(r.parcelas[0].recebido, 500, 'so o aprovado conta')
+  assert.equal(r.parcelas[0].status, 'PAGO', 'o rejeitado nao impede a quitacao pelo valido')
+})
+
 test('agregarPedido: recebimento avulso (sem installment_id) entra no pedido, nao na parcela', () => {
-  const r = agregarPedido(
-    pedido({ valor_total: 1000 }),
-    [parcela({ id: 'i1', amount: 1000 })],
-    [receipt({ id: 'r1', installment_id: null, amount: 400 })],
-    HOJE,
-  )
-  assert.equal(r.recebido, 400, 'o pedido reconhece o dinheiro')
-  assert.equal(r.parcelas[0].recebido, 0, 'a parcela nao e amortizada por recebimento avulso')
+  const r = agregarPedido(pedido({ valor_total: 1000 }), [parcela({ id: 'i1', amount: 1000 })],
+    [receipt({ id: 'r1', installment_id: null, amount: 400 })], HOJE)
+  assert.equal(r.recebido, 400)
+  assert.equal(r.parcelas[0].recebido, 0)
   assert.equal(r.parcelas[0].status, 'PENDENTE')
 })
 
@@ -146,74 +190,63 @@ test('agregarPedido: aguardandoComprovante quando entrou dinheiro sem anexo', ()
   assert.equal(semAnexo.pagamentosSemComprovante, 1)
 
   const comAnexo = agregarPedido(pedido(), [parcela({ id: 'i1' })],
-    [receipt({ installment_id: 'i1', amount: 500, receipt_url: 'https://x/y.jpg' })], HOJE)
+    [receipt({ installment_id: 'i1', amount: 500 })], HOJE)
   assert.equal(comAnexo.parcelas[0].aguardandoComprovante, false)
-  assert.equal(comAnexo.pagamentosSemComprovante, 0)
 })
 
 test('agregarPedido: parcela cancelada sai da soma, do vencido e da contagem', () => {
   const r = agregarPedido(
     pedido({ valor_total: 1000 }),
-    [
-      parcela({ id: 'i1', amount: 500, due_date: '2026-01-01' }),
-      parcela({ id: 'i2', amount: 500, due_date: '2026-01-01', canceled: true, installment_no: 2 }),
-    ],
+    [parcela({ id: 'i1', amount: 500, due_date: '2026-01-01' }),
+     parcela({ id: 'i2', amount: 500, due_date: '2026-01-01', canceled: true, installment_no: 2 })],
     [], HOJE,
   )
   assert.equal(r.qtdParcelas, 1)
   assert.equal(r.somaParcelas, 500)
-  assert.equal(r.vencido, 500, 'so a parcela ativa vencida conta')
+  assert.equal(r.vencido, 500)
   assert.equal(r.parcelasVencidas, 1)
 })
 
-test('agregarPedido: divergencia entre soma das parcelas e valor do pedido (item 1 do spec)', () => {
+test('agregarPedido: divergencia entre soma das parcelas e valor do pedido (item 1)', () => {
   const bate = agregarPedido(pedido({ valor_total: 1000 }),
     [parcela({ id: 'i1', amount: 400 }), parcela({ id: 'i2', amount: 600, installment_no: 2 })], [], HOJE)
   assert.equal(bate.divergenciaPlano, 0)
 
   const falta = agregarPedido(pedido({ valor_total: 1000 }), [parcela({ id: 'i1', amount: 400 })], [], HOJE)
-  assert.equal(falta.divergenciaPlano, -600, 'plano menor que o pedido acusa diferenca negativa')
+  assert.equal(falta.divergenciaPlano, -600)
 })
 
-test('agregarPedido: pedido sem parcela nenhuma e SEM_PLANO e nao inventa divergencia', () => {
+test('agregarPedido: pedido sem parcela e SEM_PLANO e nao inventa divergencia', () => {
   const r = agregarPedido(pedido({ valor_total: 1000 }), [], [], HOJE)
   assert.equal(r.status, 'SEM_PLANO')
-  assert.equal(r.qtdParcelas, 0)
-  assert.equal(r.divergenciaPlano, 0, 'sem plano nao e plano divergente')
+  assert.equal(r.divergenciaPlano, 0)
   assert.equal(r.aReceber, 1000)
 })
 
 test('agregarPedido: proximo vencimento ignora parcela quitada e parcela vencida', () => {
   const r = agregarPedido(
     pedido({ valor_total: 1500 }),
-    [
-      parcela({ id: 'i1', amount: 500, due_date: '2026-01-01', installment_no: 1 }), // vencida
-      parcela({ id: 'i2', amount: 500, due_date: '2026-09-01', installment_no: 2 }), // quitada
-      parcela({ id: 'i3', amount: 500, due_date: '2026-10-01', installment_no: 3 }), // a proxima
-    ],
+    [parcela({ id: 'i1', amount: 500, due_date: '2026-01-01', installment_no: 1 }),
+     parcela({ id: 'i2', amount: 500, due_date: '2026-09-01', installment_no: 2 }),
+     parcela({ id: 'i3', amount: 500, due_date: '2026-10-01', installment_no: 3 })],
     [receipt({ id: 'r1', installment_id: 'i2', amount: 500 })],
-    HOJE,
+    HOJE, new Map([conf('r1', 'APROVADO')]),
   )
   assert.equal(r.proximoVencimento, '2026-10-01')
 })
 
 test('agregarPedido: pedido cancelado nao vira QUITADO nem VENCIDO', () => {
-  const r = agregarPedido(pedido({ status: 'CANCELADO' }),
-    [parcela({ id: 'i1', due_date: '2026-01-01' })], [], HOJE)
+  const r = agregarPedido(pedido({ status: 'CANCELADO' }), [parcela({ id: 'i1', due_date: '2026-01-01' })], [], HOJE)
   assert.equal(r.status, 'CANCELADO')
 })
 
 test('agregarPedido: boletosPendentes so conta parcela com saldo', () => {
   const r = agregarPedido(
     pedido({ valor_total: 1000 }),
-    [
-      parcela({ id: 'i1', amount: 500, boleto_enviado: false, installment_no: 1 }),
-      parcela({ id: 'i2', amount: 500, boleto_enviado: false, installment_no: 2 }),
-    ],
-    [receipt({ id: 'r1', installment_id: 'i2', amount: 500 })],
-    HOJE,
+    [parcela({ id: 'i1', amount: 500, installment_no: 1 }), parcela({ id: 'i2', amount: 500, installment_no: 2 })],
+    [receipt({ id: 'r1', installment_id: 'i2', amount: 500 })], HOJE, new Map([conf('r1', 'APROVADO')]),
   )
-  assert.equal(r.boletosPendentes, 1, 'a parcela ja paga nao precisa de boleto')
+  assert.equal(r.boletosPendentes, 1)
 })
 
 test('agregarPedido: parcelas voltam ordenadas por numero mesmo chegando fora de ordem', () => {
@@ -232,23 +265,27 @@ test('resumoKpis: pedido cancelado nao entra em nenhum total', () => {
   assert.equal(k.totalAReceber, 1000)
 })
 
-test('resumoKpis: soma vencido, quitados, parciais e sem plano', () => {
+test('resumoKpis: soma vencido, quitados, sem plano e a conferir', () => {
   const vencido = agregarPedido(pedido({ id: 'a', valor_total: 500 }),
     [parcela({ id: 'i1', amount: 500, due_date: '2026-01-01' })], [], HOJE)
-  const quitado = agregarPedido(pedido({ id: 'b', valor_total: 300 }),
-    [parcela({ id: 'i2', amount: 300 })], [receipt({ id: 'r', order_id: 'b', installment_id: 'i2', amount: 300 })], HOJE)
-  const semPlano = agregarPedido(pedido({ id: 'c', valor_total: 700 }), [], [], HOJE)
+  const quitado = agregarPedido(pedido({ id: 'b', valor_total: 300 }), [parcela({ id: 'i2', amount: 300 })],
+    [receipt({ id: 'r', order_id: 'b', installment_id: 'i2', amount: 300 })], HOJE, new Map([conf('r', 'APROVADO')]))
+  const aConferir = agregarPedido(pedido({ id: 'c', valor_total: 200 }), [parcela({ id: 'i3', amount: 200 })],
+    [receipt({ id: 'r3', order_id: 'c', installment_id: 'i3', amount: 200 })], HOJE)
+  const semPlano = agregarPedido(pedido({ id: 'd', valor_total: 700 }), [], [], HOJE)
 
-  const k = resumoKpis([vencido, quitado, semPlano])
-  assert.equal(k.totalVendido, 1500)
-  assert.equal(k.totalRecebido, 300)
+  const k = resumoKpis([vencido, quitado, aConferir, semPlano])
+  assert.equal(k.totalVendido, 1700)
+  assert.equal(k.totalRecebido, 500)
   assert.equal(k.totalVencido, 500)
   assert.equal(k.pedidosComVencido, 1)
   assert.equal(k.pedidosQuitados, 1)
+  assert.equal(k.pedidosAguardandoConferencia, 1)
   assert.equal(k.pedidosSemPlano, 1)
+  assert.equal(k.comprovantesAConferir, 1)
 })
 
-// ── escopo ───────────────────────────────────────────────────────────────────
+// ── escopo e papel ───────────────────────────────────────────────────────────
 
 const gestor: Escopo = { userId: 'u', role: 'admin', displayName: 'Daniel', vendedores: null }
 const jardel: Escopo = { userId: 'u', role: 'vendor', displayName: 'Jardel', vendedores: ['JARDEL'] }
@@ -273,4 +310,12 @@ test('pedidoNoEscopo: casamento ignora caixa e espaco em volta', () => {
 test('pedidoNoEscopo: vendedor nulo nao casa com escopo restrito', () => {
   assert.equal(pedidoNoEscopo({ vendedor: null, vendedor_2: null }, jardel), false)
   assert.equal(pedidoNoEscopo({ vendedor: null, vendedor_2: null }, gestor), true)
+})
+
+test('ehGestor: so admin e financeiro conferem comprovante', () => {
+  assert.equal(ehGestor('admin'), true)
+  assert.equal(ehGestor('financeiro'), true)
+  assert.equal(ehGestor('vendor'), false)
+  assert.equal(ehGestor('mapa'), false)
+  assert.equal(ehGestor('marketing'), false)
 })

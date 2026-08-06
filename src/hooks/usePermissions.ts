@@ -2,7 +2,13 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 
-export type AssignableRole = 'admin' | 'vendor' | 'marketing' | 'visualizador'
+// 'mapa' e 'financeiro' entraram em 06/08/2026 junto com o Financeiro por parcelas.
+// 'mapa' porque o Patrick tem esse papel e vende (12 pedidos, R$ 5,95 mi) — sem uma
+// linha em role_permissions, can() devolve false pra tudo e ele não vê item nenhum.
+// 'financeiro' é o perfil que confere comprovante sem ser admin do sistema.
+// Os dois ficam em ASSIGNABLE_ROLES de propósito: papel que só existe no banco vira
+// fonte de verdade que /admin/permissoes não enxerga, e ninguém descobre por quê.
+export type AssignableRole = 'admin' | 'vendor' | 'marketing' | 'visualizador' | 'mapa' | 'financeiro'
 
 export interface RolePermissionsRow {
   role: AssignableRole
@@ -33,6 +39,11 @@ export const FEATURE_CATALOG: Array<{
   { key: 'menu.vendidos', label: 'Vendidos', group: 'Menu' },
   { key: 'menu.frete', label: 'Frete', group: 'Menu' },
   { key: 'menu.controle', label: 'Controle (Vendas)', group: 'Menu' },
+  // Chave própria, separada de menu.controle: o Financeiro é a única tela do
+  // grupo Controle que o vendedor precisa ver (e só os pedidos dele — o recorte
+  // é feito no servidor, em /api/financeiro). Ligar menu.controle pra ele abriria
+  // junto Painel de Vendas, Pedidos e Novo Pedido, que não é o caso.
+  { key: 'menu.financeiro', label: 'Financeiro (recebíveis — vendedor vê só os pedidos dele)', group: 'Menu' },
   { key: 'menu.projeto', label: 'Projeto', group: 'Menu' },
   { key: 'menu.projeto_3d', label: 'Projeto 3D', group: 'Menu' },
   { key: 'menu.viabilidade', label: 'Guias de apoio (animais e matérias-primas)', group: 'Menu' },
@@ -63,13 +74,15 @@ export const FEATURE_CATALOG: Array<{
   { key: 'admin.due_diligence', label: 'Admin: ver consultas de todos vendedores', group: 'Ações' },
 ]
 
-export const ASSIGNABLE_ROLES: AssignableRole[] = ['admin', 'vendor', 'marketing', 'visualizador']
+export const ASSIGNABLE_ROLES: AssignableRole[] = ['admin', 'financeiro', 'vendor', 'marketing', 'visualizador', 'mapa']
 
 export const ROLE_LABELS: Record<AssignableRole, string> = {
   admin: 'Admin',
+  financeiro: 'Financeiro',
   vendor: 'Vendedor',
   marketing: 'Marketing',
   visualizador: 'Visualizador',
+  mapa: 'Consulta interna (mapa)',
 }
 
 // Fallback usado enquanto a query carrega ou se a row não existir.
@@ -86,6 +99,7 @@ const FALLBACK: Record<AssignableRole, Record<string, boolean>> = {
     'menu.viabilidade': true,
     'menu.venda_racao': true,
     'menu.roadmap': true,
+    'menu.financeiro': true,
     'orcamentos.criar': true,
     'due_diligence.consultar': true,
     'frete.solicitar': true,
@@ -95,6 +109,18 @@ const FALLBACK: Record<AssignableRole, Record<string, boolean>> = {
   visualizador: {
     'menu.dashboard': true,
     'menu.atendimentos': true,
+  },
+  // Financeiro: confere comprovante e confirma pagamento, sem ser admin do sistema.
+  // Do lado do servidor ele é gestor (vê todos os vendedores) — ver PAPEIS_GESTORES
+  // em api/_lib/financeiro-core.ts.
+  financeiro: {
+    'menu.financeiro': true,
+    'menu.controle': true,
+  },
+  // Consulta interna: papel externo, negado por padrão na RLS (papel_restrito()).
+  // Só o Financeiro, e mesmo assim recortado pelos pedidos do vendedor vinculado.
+  mapa: {
+    'menu.financeiro': true,
   },
 }
 

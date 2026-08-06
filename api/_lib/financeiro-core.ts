@@ -75,10 +75,23 @@ export interface ReceiptRaw {
   receipt_url: string | null
 }
 
+/** Conferência do comprovante. Mora no CRM (fin_conferencias) — o controle não tem isso. */
+export type StatusConferencia = 'AGUARDANDO' | 'APROVADO' | 'REJEITADO'
+
+export interface ConferenciaRaw {
+  receipt_id: string
+  status: StatusConferencia
+  motivo: string | null
+  conferido_por_nome: string | null
+  conferido_em: string | null
+}
+
 /** Status derivado da parcela. Derivado, não lido — ver nota em statusParcela(). */
 export type StatusParcela =
   | 'CANCELADA'
   | 'PAGO'
+  | 'AGUARDANDO_CONFERENCIA'
+  | 'AGUARDANDO_COMPROVANTE'
   | 'PARCIAL'
   | 'VENCIDO'
   | 'VENCE_HOJE'
@@ -90,6 +103,7 @@ export type StatusPedido =
   | 'SEM_PLANO'
   | 'QUITADO'
   | 'VENCIDO'
+  | 'AGUARDANDO_CONFERENCIA'
   | 'PARCIAL'
   | 'EM_DIA'
 
@@ -110,8 +124,12 @@ export interface Parcela {
   cancelada: boolean
   motivoCancelamento: string | null
   diasAtraso: number
-  /** recebeu dinheiro mas nenhum recebimento tem comprovante anexado */
+  /** entrou dinheiro mas algum recebimento veio sem arquivo anexado */
   aguardandoComprovante: boolean
+  /** tem comprovante anexado esperando o gestor/financeiro conferir */
+  aguardandoConferencia: boolean
+  /** algum comprovante foi rejeitado — o valor dele não conta como recebido */
+  temRejeitado: boolean
   recebimentos: Recebimento[]
 }
 
@@ -122,6 +140,11 @@ export interface Recebimento {
   meio: string
   observacao: string | null
   comprovanteUrl: string | null
+  /** AGUARDANDO enquanto ninguém conferiu (inclusive nos lançamentos antigos). */
+  conferencia: StatusConferencia
+  motivoRejeicao: string | null
+  conferidoPor: string | null
+  conferidoEm: string | null
 }
 
 export interface PedidoFinanceiro {
@@ -140,6 +163,8 @@ export interface PedidoFinanceiro {
   parcelasVencidas: number
   boletosPendentes: number
   pagamentosSemComprovante: number
+  comprovantesAConferir: number
+  comprovantesRejeitados: number
   status: StatusPedido
   /** soma das parcelas ≠ valor do pedido (item 1 do spec) */
   divergenciaPlano: number
@@ -155,8 +180,11 @@ export interface Kpis {
   pedidosParciais: number
   pedidosSemPlano: number
   pedidosComVencido: number
+  pedidosAguardandoConferencia: number
   boletosPendentes: number
   pagamentosSemComprovante: number
+  comprovantesAConferir: number
+  comprovantesRejeitados: number
   planosDivergentes: number
 }
 
@@ -184,26 +212,48 @@ export function diffDias(de: string, ate: string): number {
   return Math.round((b - a) / 86_400_000)
 }
 
+/** O que os recebimentos que cobrem a parcela dizem sobre a comprovação. */
+export interface Cobertura {
+  /** soma dos recebimentos NÃO rejeitados */
+  recebido: number
+  /** algum recebimento que conta entrou sem arquivo anexado */
+  algumSemComprovante: boolean
+  /** algum recebimento que conta ainda não foi aprovado por alguém */
+  algumNaoAprovado: boolean
+}
+
 /**
- * Status da parcela DERIVADO do dinheiro e da data — nunca lido de
- * order_installments.status.
+ * Status da parcela DERIVADO do dinheiro, da data e da comprovação — nunca lido
+ * de order_installments.status.
  *
- * Motivo: o campo do controle é gravado por trigger/edge e envelhece. Em
- * 06/08/2026 havia 96 parcelas marcadas VENCIDO mas 977 PENDENTE, várias delas
- * com vencimento já passado — a data é a verdade, o campo não. `statusControle`
- * fica exposto no retorno pra quem quiser comparar.
+ * Motivo de derivar: o campo do controle é gravado por trigger/edge e envelhece.
+ * Em 06/08/2026 havia 96 parcelas marcadas VENCIDO mas 977 PENDENTE, várias com
+ * vencimento já passado — a data é a verdade, o campo não. `statusControle` fica
+ * exposto no retorno pra quem quiser comparar.
  *
- * Precedência: cancelada > pago > parcial > vencido > vence hoje > boleto > pendente.
+ * REGRA PRINCIPAL (item 2 do spec): preencher valor recebido NÃO quita. Só vira
+ * PAGO quando o dinheiro cobre a parcela E todo recebimento que a cobre tem
+ * comprovante anexado E foi aprovado na conferência. Sem isso a parcela para em
+ * AGUARDANDO_COMPROVANTE ou AGUARDANDO_CONFERENCIA — nunca em PAGO.
+ *
+ * Precedência: cancelada > (coberta: comprovante > conferência > pago) >
+ * parcial > vencido > vence hoje > boleto > pendente.
  */
 export function statusParcela(
   p: Pick<ParcelaRaw, 'amount' | 'due_date' | 'canceled' | 'boleto_enviado'>,
-  recebido: number,
+  cob: Cobertura,
   hoje: string,
 ): StatusParcela {
   if (p.canceled) return 'CANCELADA'
   const valor = Number(p.amount) || 0
-  if (recebido >= valor - CENT && valor > 0) return 'PAGO'
-  if (recebido > CENT) return 'PARCIAL'
+
+  if (valor > 0 && cob.recebido >= valor - CENT) {
+    if (cob.algumSemComprovante) return 'AGUARDANDO_COMPROVANTE'
+    if (cob.algumNaoAprovado) return 'AGUARDANDO_CONFERENCIA'
+    return 'PAGO'
+  }
+  if (cob.recebido > CENT) return 'PARCIAL'
+
   const d = diffDias(hoje, p.due_date)
   if (d < 0) return 'VENCIDO'
   if (d === 0) return 'VENCE_HOJE'
@@ -211,14 +261,29 @@ export function statusParcela(
   return 'PENDENTE'
 }
 
-/** Agrega um pedido com suas parcelas e recebimentos. Puro — `hoje` é injetado. */
+/**
+ * Agrega um pedido com suas parcelas e recebimentos. Puro — `hoje` é injetado.
+ *
+ * `conferencias` mapeia receipt_id -> conferência (vem do CRM, tabela
+ * fin_conferencias). Recebimento sem linha ali é tratado como AGUARDANDO: é o
+ * caso dos 72 lançamentos que já existiam antes desta tela, que por isso NÃO
+ * viram "quitado" sozinhos (item 17: não marcar pedido antigo como quitado sem
+ * confirmação).
+ */
 export function agregarPedido(
   pedido: PedidoRaw,
   parcelasRaw: ParcelaRaw[],
   receiptsRaw: ReceiptRaw[],
   hoje: string,
+  conferencias: Map<string, ConferenciaRaw> = new Map(),
 ): PedidoFinanceiro & { parcelas: Parcela[] } {
   const valorTotal = devidoDe(pedido)
+
+  const conf = (r: ReceiptRaw): StatusConferencia => conferencias.get(r.id)?.status ?? 'AGUARDANDO'
+  // Comprovante rejeitado = pagamento não identificado. Não é dinheiro em caixa.
+  const conta = (r: ReceiptRaw): boolean => conf(r) !== 'REJEITADO'
+  const soma = (rs: ReceiptRaw[]): number =>
+    rs.filter(conta).reduce((s, r) => s + (Number(r.amount) || 0), 0)
 
   // Recebimentos por parcela. Os que vêm sem installment_id são avulsos:
   // contam no total do pedido, mas não amortizam parcela nenhuma.
@@ -235,9 +300,14 @@ export function agregarPedido(
     .sort((a, b) => a.installment_no - b.installment_no)
     .map(p => {
       const recs = porParcela.get(p.id) ?? []
-      const recebido = recs.reduce((s, r) => s + (Number(r.amount) || 0), 0)
+      const validos = recs.filter(conta)
+      const cob: Cobertura = {
+        recebido: soma(recs),
+        algumSemComprovante: validos.some(r => !r.receipt_url),
+        algumNaoAprovado: validos.some(r => conf(r) !== 'APROVADO'),
+      }
       const valor = Number(p.amount) || 0
-      const st = statusParcela(p, recebido, hoje)
+      const st = statusParcela(p, cob, hoje)
       const atraso = diffDias(p.due_date, hoje)
       return {
         id: p.id,
@@ -246,8 +316,8 @@ export function agregarPedido(
         descricao: p.description,
         vencimento: p.due_date,
         valor,
-        recebido,
-        saldo: Math.max(0, valor - recebido),
+        recebido: cob.recebido,
+        saldo: Math.max(0, valor - cob.recebido),
         status: st,
         statusControle: p.status,
         boletoEnviado: !!p.boleto_enviado,
@@ -255,21 +325,30 @@ export function agregarPedido(
         cancelada: !!p.canceled,
         motivoCancelamento: p.cancellation_reason,
         diasAtraso: st === 'VENCIDO' ? Math.max(0, atraso) : 0,
-        aguardandoComprovante: recebido > CENT && !recs.some(r => !!r.receipt_url),
-        recebimentos: recs.map(r => ({
-          id: r.id,
-          valor: Number(r.amount) || 0,
-          pagoEm: r.paid_at,
-          meio: r.payment_method,
-          observacao: r.notes,
-          comprovanteUrl: r.receipt_url,
-        })),
+        aguardandoComprovante: cob.recebido > CENT && cob.algumSemComprovante,
+        aguardandoConferencia: validos.some(r => !!r.receipt_url && conf(r) === 'AGUARDANDO'),
+        temRejeitado: recs.some(r => conf(r) === 'REJEITADO'),
+        recebimentos: recs.map(r => {
+          const c = conferencias.get(r.id)
+          return {
+            id: r.id,
+            valor: Number(r.amount) || 0,
+            pagoEm: r.paid_at,
+            meio: r.payment_method,
+            observacao: r.notes,
+            comprovanteUrl: r.receipt_url,
+            conferencia: c?.status ?? 'AGUARDANDO',
+            motivoRejeicao: c?.motivo ?? null,
+            conferidoPor: c?.conferido_por_nome ?? null,
+            conferidoEm: c?.conferido_em ?? null,
+          }
+        }),
       }
     })
 
   const ativas = parcelas.filter(p => !p.cancelada)
-  // Recebido do PEDIDO soma todos os receipts, inclusive os avulsos.
-  const recebido = receiptsRaw.reduce((s, r) => s + (Number(r.amount) || 0), 0)
+  // Recebido do PEDIDO soma todos os receipts que contam, inclusive os avulsos.
+  const recebido = soma(receiptsRaw)
   const somaParcelas = ativas.reduce((s, p) => s + p.valor, 0)
   const vencido = ativas
     .filter(p => p.status === 'VENCIDO')
@@ -281,15 +360,18 @@ export function agregarPedido(
     .sort()
 
   const cancelado = (pedido.status || '').toUpperCase() === 'CANCELADO'
-  const quitado = valorTotal > 0 && recebido >= valorTotal - CENT
+  const coberto = valorTotal > 0 && recebido >= valorTotal - CENT
   const temVencida = ativas.some(p => p.status === 'VENCIDO')
+  // QUITADO exige comprovação: dinheiro cobrindo o pedido E nenhuma parcela
+  // presa em "aguardando comprovante/conferência".
+  const pendenteComprovacao = ativas.some(p => p.aguardandoComprovante || p.aguardandoConferencia)
 
   const status: StatusPedido = cancelado
     ? 'CANCELADO'
     : ativas.length === 0
       ? 'SEM_PLANO'
-      : quitado
-        ? 'QUITADO'
+      : coberto
+        ? (pendenteComprovacao ? 'AGUARDANDO_CONFERENCIA' : 'QUITADO')
         : temVencida
           ? 'VENCIDO'
           : recebido > CENT
@@ -312,6 +394,8 @@ export function agregarPedido(
     parcelasVencidas: ativas.filter(p => p.status === 'VENCIDO').length,
     boletosPendentes: ativas.filter(p => !p.boletoEnviado && p.saldo > CENT).length,
     pagamentosSemComprovante: parcelas.filter(p => p.aguardandoComprovante).length,
+    comprovantesAConferir: parcelas.filter(p => p.aguardandoConferencia).length,
+    comprovantesRejeitados: parcelas.filter(p => p.temRejeitado).length,
     status,
     somaParcelas,
     divergenciaPlano: ativas.length > 0 ? somaParcelas - valorTotal : 0,
@@ -323,7 +407,8 @@ export function resumoKpis(rows: PedidoFinanceiro[]): Kpis {
   const k: Kpis = {
     totalVendido: 0, totalRecebido: 0, totalAReceber: 0, totalVencido: 0,
     pedidosQuitados: 0, pedidosParciais: 0, pedidosSemPlano: 0, pedidosComVencido: 0,
-    boletosPendentes: 0, pagamentosSemComprovante: 0, planosDivergentes: 0,
+    pedidosAguardandoConferencia: 0, boletosPendentes: 0, pagamentosSemComprovante: 0,
+    comprovantesAConferir: 0, comprovantesRejeitados: 0, planosDivergentes: 0,
   }
   for (const r of rows) {
     if (r.status === 'CANCELADO') continue
@@ -333,10 +418,13 @@ export function resumoKpis(rows: PedidoFinanceiro[]): Kpis {
     k.totalVencido += r.vencido
     k.boletosPendentes += r.boletosPendentes
     k.pagamentosSemComprovante += r.pagamentosSemComprovante
+    k.comprovantesAConferir += r.comprovantesAConferir
+    k.comprovantesRejeitados += r.comprovantesRejeitados
     if (r.status === 'QUITADO') k.pedidosQuitados++
     if (r.status === 'PARCIAL') k.pedidosParciais++
     if (r.status === 'SEM_PLANO') k.pedidosSemPlano++
     if (r.status === 'VENCIDO') k.pedidosComVencido++
+    if (r.status === 'AGUARDANDO_CONFERENCIA') k.pedidosAguardandoConferencia++
     if (Math.abs(r.divergenciaPlano) > CENT) k.planosDivergentes++
   }
   return k
@@ -456,6 +544,126 @@ export function hojeSP(): string {
     timeZone: 'America/Sao_Paulo',
     year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date())
+}
+
+/** Só gestor/financeiro confere comprovante, edita plano e reabre parcela (item 6). */
+export function ehGestor(role: string): boolean {
+  return PAPEIS_GESTORES.has(role)
+}
+
+/** Cliente do CRM com service_role — usado pela camada de gestão (tabelas fin_*). */
+export function crmAdmin() {
+  return createClient(CRM_URL, CRM_SVC, { auth: { persistSession: false } })
+}
+
+/** Carrega as conferências do CRM para os pedidos informados. */
+export async function lerConferencias(orderIds: string[]): Promise<Map<string, ConferenciaRaw>> {
+  const m = new Map<string, ConferenciaRaw>()
+  if (orderIds.length === 0) return m
+  const crm = crmAdmin()
+  const LOTE = 300 // evita URL gigante no filtro `in`
+  for (let i = 0; i < orderIds.length; i += LOTE) {
+    const { data, error } = await crm
+      .from('fin_conferencias')
+      .select('receipt_id, status, motivo, conferido_por_nome, conferido_em')
+      .in('order_id', orderIds.slice(i, i + LOTE))
+    if (error) throw new Error(`fin_conferencias: ${error.message}`)
+    for (const c of (data ?? []) as ConferenciaRaw[]) m.set(c.receipt_id, c)
+  }
+  return m
+}
+
+/** Grava uma linha de auditoria. Nunca derruba a ação principal se falhar. */
+export async function auditar(reg: {
+  order_id: string
+  installment_id?: string | null
+  receipt_id?: string | null
+  acao: string
+  antes?: unknown
+  depois?: unknown
+  motivo?: string | null
+  ator: string
+  ator_nome: string | null
+  ator_papel: string
+}): Promise<void> {
+  try {
+    await crmAdmin().from('fin_auditoria').insert({
+      order_id: reg.order_id,
+      installment_id: reg.installment_id ?? null,
+      receipt_id: reg.receipt_id ?? null,
+      acao: reg.acao,
+      antes: reg.antes ?? null,
+      depois: reg.depois ?? null,
+      motivo: reg.motivo ?? null,
+      ator: reg.ator,
+      ator_nome: reg.ator_nome,
+      ator_papel: reg.ator_papel,
+    })
+  } catch (e) {
+    // auditoria é registro, não guarda: não pode impedir o trabalho de acontecer.
+    // Mas tem que APARECER no log — engolir calado já escondeu um 42P10 aqui.
+    console.error('[financeiro] falha ao auditar:', (e as Error).message)
+  }
+}
+
+/**
+ * Notifica sem duplicar (item 11). `chave` deduplica por destinatário — o índice
+ * único no banco é quem garante, não uma checagem em memória.
+ */
+export async function notificar(n: {
+  destinatarios: string[]
+  tipo: string
+  titulo: string
+  corpo?: string | null
+  order_id?: string | null
+  installment_id?: string | null
+  chave: string
+}): Promise<void> {
+  if (n.destinatarios.length === 0) return
+  try {
+    const { error } = await crmAdmin().from('fin_notificacoes').upsert(
+      n.destinatarios.map(d => ({
+        destinatario: d,
+        tipo: n.tipo,
+        titulo: n.titulo,
+        corpo: n.corpo ?? null,
+        order_id: n.order_id ?? null,
+        installment_id: n.installment_id ?? null,
+        chave_dedupe: n.chave,
+      })),
+      { onConflict: 'destinatario,chave_dedupe', ignoreDuplicates: true },
+    )
+    // supabase-js NÃO lança: devolve `error`. Sem checar isso o upsert falha mudo
+    // (foi assim que o 42P10 do índice parcial passou batido no primeiro teste).
+    if (error) throw new Error(error.message)
+  } catch (e) {
+    console.error('[financeiro] falha ao notificar:', (e as Error).message)
+  }
+}
+
+/** Quem são os gestores (para notificar). */
+export async function idsDosGestores(): Promise<string[]> {
+  const { data } = await crmAdmin()
+    .from('user_profiles')
+    .select('id')
+    .in('role', ['admin', 'financeiro'])
+    .not('approved_at', 'is', null)
+  return (data ?? []).map(r => r.id as string)
+}
+
+/** Quem é o usuário do CRM dono daquele nome de vendedor (para notificar). */
+export async function idsDoVendedor(nomeVendedor: string | null): Promise<string[]> {
+  if (!nomeVendedor) return []
+  const crm = crmAdmin()
+  const { data: vs } = await crm.from('vendors').select('id, name')
+  const alvo = (vs ?? []).find(v => String(v.name).trim().toUpperCase() === nomeVendedor.trim().toUpperCase())
+  if (!alvo) return []
+  const { data } = await crm
+    .from('user_profiles')
+    .select('id')
+    .eq('vendor_id', alvo.id)
+    .not('approved_at', 'is', null)
+  return (data ?? []).map(r => r.id as string)
 }
 
 export function agrupar<T>(itens: T[], chave: (t: T) => string): Map<string, T[]> {

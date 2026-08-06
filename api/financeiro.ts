@@ -13,11 +13,42 @@
 //   CONTROLE_SERVICE_KEY / CONTROLE_ANON_KEY  -> override da key do controle
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import {
-  resolverEscopo, ehGateErro, pedidoNoEscopo,
-  lerControle, agregarPedido, resumoKpis, agrupar, hojeSP,
+  resolverEscopo, ehGateErro, pedidoNoEscopo, ehGestor,
+  lerControle, lerConferencias, agregarPedido, resumoKpis, agrupar, hojeSP, crmAdmin,
   COLS_PEDIDO, COLS_PARCELA, COLS_RECEIPT,
-  type PedidoRaw, type ParcelaRaw, type ReceiptRaw,
+  type PedidoRaw, type ParcelaRaw, type ReceiptRaw, type PedidoFinanceiro,
 } from './_lib/financeiro-core.js'
+
+/** Item 10: acompanhamento por vendedor, só para quem enxerga a base toda. */
+function porVendedor(rows: PedidoFinanceiro[]) {
+  const m = new Map<string, {
+    vendedor: string; pedidos: number; vendido: number; recebido: number; aReceber: number
+    vencido: number; parcelasVencidas: number; semComprovante: number; aConferir: number
+    boletosPendentes: number; semPlano: number; divergentes: number
+  }>()
+  for (const r of rows) {
+    if (r.status === 'CANCELADO') continue
+    const nome = (r.vendedor || '(sem vendedor)').trim().toUpperCase()
+    let a = m.get(nome)
+    if (!a) {
+      a = { vendedor: nome, pedidos: 0, vendido: 0, recebido: 0, aReceber: 0, vencido: 0,
+        parcelasVencidas: 0, semComprovante: 0, aConferir: 0, boletosPendentes: 0, semPlano: 0, divergentes: 0 }
+      m.set(nome, a)
+    }
+    a.pedidos++
+    a.vendido += r.valorTotal
+    a.recebido += r.recebido
+    a.aReceber += r.aReceber
+    a.vencido += r.vencido
+    a.parcelasVencidas += r.parcelasVencidas
+    a.semComprovante += r.pagamentosSemComprovante
+    a.aConferir += r.comprovantesAConferir
+    a.boletosPendentes += r.boletosPendentes
+    if (r.status === 'SEM_PLANO') a.semPlano++
+    if (Math.abs(r.divergenciaPlano) > 0.01) a.divergentes++
+  }
+  return [...m.values()].sort((a, b) => b.vencido - a.vencido || b.aReceber - a.aReceber)
+}
 
 export const config = { maxDuration: 30 }
 
@@ -57,16 +88,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!pedidoNoEscopo(pedido, esc)) return res.status(403).json({ error: 'fora_do_escopo' })
 
       const ordFiltro = `&order_id=eq.${encodeURIComponent(pedidoId)}`
-      const [parcelas, receipts] = await Promise.all([
+      const [parcelas, receipts, confs] = await Promise.all([
         lerControle<ParcelaRaw>('order_installments', COLS_PARCELA, ordFiltro),
         lerControle<ReceiptRaw>('receipts', COLS_RECEIPT, ordFiltro),
+        lerConferencias([pedidoId]),
       ])
+
+      // Linha do tempo do pedido (item 14)
+      const { data: hist } = await crmAdmin()
+        .from('fin_auditoria')
+        .select('id, acao, motivo, ator_nome, ator_papel, created_at, antes, depois')
+        .eq('order_id', pedidoId)
+        .order('created_at', { ascending: false })
+        .limit(100)
 
       return res.status(200).json({
         ok: true,
         hoje,
-        escopo: { role: esc.role, vendedores: esc.vendedores },
-        pedido: agregarPedido(pedido, parcelas, receipts, hoje),
+        escopo: { role: esc.role, vendedores: esc.vendedores, gestor: ehGestor(esc.role) },
+        pedido: agregarPedido(pedido, parcelas, receipts, hoje, confs),
+        historico: hist ?? [],
       })
     }
 
@@ -78,24 +119,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ])
 
     const pedidos = pedidosTodos.filter(p => pedidoNoEscopo(p, esc))
+    const confs = await lerConferencias(pedidos.map(p => p.id))
     const porPedido = agrupar(parcelas, p => p.order_id)
     const porPedidoRec = agrupar(receipts, r => r.order_id)
 
     const linhas = pedidos.map(p => {
       const { parcelas: _omitido, ...resto } = agregarPedido(
-        p, porPedido.get(p.id) ?? [], porPedidoRec.get(p.id) ?? [], hoje,
+        p, porPedido.get(p.id) ?? [], porPedidoRec.get(p.id) ?? [], hoje, confs,
       )
       return resto
     })
 
     linhas.sort((a, b) => b.vencido - a.vencido || b.aReceber - a.aReceber)
 
+    const gestor = ehGestor(esc.role)
     return res.status(200).json({
       ok: true,
       hoje,
-      escopo: { role: esc.role, vendedores: esc.vendedores },
+      escopo: { role: esc.role, vendedores: esc.vendedores, gestor },
       kpis: resumoKpis(linhas),
       pedidos: linhas,
+      // Item 10: a visão por vendedor só existe para quem enxerga todos.
+      vendedores: gestor ? porVendedor(linhas) : null,
     })
   } catch (e) {
     return res.status(502).json({ error: 'controle_indisponivel', detail: (e as Error).message })
