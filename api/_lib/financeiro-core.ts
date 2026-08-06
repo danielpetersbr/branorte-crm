@@ -551,6 +551,28 @@ export function ehGestor(role: string): boolean {
   return PAPEIS_GESTORES.has(role)
 }
 
+/**
+ * Quem pode ALTERAR ou EXCLUIR um recebimento já lançado.
+ *
+ * Item 6 do spec: o vendedor "não deve excluir pagamentos já confirmados nem
+ * alterar valores confirmados sem autorização". Então:
+ *
+ *   gestor/financeiro          -> sempre
+ *   vendedor, AGUARDANDO       -> sim (é o erro de digitação dele, recém-lançado)
+ *   vendedor, REJEITADO        -> sim (é o que ele tem que consertar)
+ *   vendedor, APROVADO         -> NÃO — dinheiro conferido só o gestor mexe
+ */
+export function podeAlterarRecebimento(
+  role: string,
+  conferencia: StatusConferencia,
+): { ok: true } | { ok: false; motivo: string } {
+  if (ehGestor(role)) return { ok: true }
+  if (conferencia === 'APROVADO') {
+    return { ok: false, motivo: 'Este pagamento já foi conferido e aprovado. Só o gestor pode alterar ou excluir.' }
+  }
+  return { ok: true }
+}
+
 /** Cliente do CRM com service_role — usado pela camada de gestão (tabelas fin_*). */
 export function crmAdmin() {
   return createClient(CRM_URL, CRM_SVC, { auth: { persistSession: false } })

@@ -11,7 +11,7 @@ import {
 import {
   Wallet, TrendingDown, CheckCircle2, Search, AlertTriangle, FileWarning,
   CalendarClock, X, Paperclip, Receipt, ShieldAlert, Clock, Upload, Send,
-  ThumbsUp, ThumbsDown, History, Users, Plus, Loader2,
+  ThumbsUp, ThumbsDown, History, Users, Plus, Loader2, Pencil, Trash2,
 } from 'lucide-react'
 
 const PAGE_SIZE = 60
@@ -74,6 +74,8 @@ const ACAO_ROTULO: Record<string, string> = {
   comprovante_aprovado: 'aprovou o comprovante',
   comprovante_rejeitado: 'rejeitou o comprovante',
   boleto_enviado: 'confirmou o envio do boleto',
+  pagamento_editado: 'alterou um pagamento',
+  pagamento_excluido: 'excluiu um pagamento',
 }
 
 const ACEITA = '.pdf,.jpg,.jpeg,.png,.webp'
@@ -81,9 +83,9 @@ const MIMES_OK = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'im
 
 // ── blocos ───────────────────────────────────────────────────────────────────
 
-function Botao({ children, onClick, tone = 'neutro', disabled, tipo = 'button' }: {
+function Botao({ children, onClick, tone = 'neutro', disabled, tipo = 'button', title }: {
   children: React.ReactNode; onClick?: () => void; disabled?: boolean; tipo?: 'button' | 'submit'
-  tone?: 'neutro' | 'accent' | 'danger' | 'success'
+  tone?: 'neutro' | 'accent' | 'danger' | 'success'; title?: string
 }) {
   const cores = {
     neutro: 'border-border text-text-secondary hover:bg-surface-2',
@@ -92,7 +94,7 @@ function Botao({ children, onClick, tone = 'neutro', disabled, tipo = 'button' }
     success: 'border-success/40 text-success hover:bg-success-bg',
   }[tone]
   return (
-    <button type={tipo} onClick={onClick} disabled={disabled}
+    <button type={tipo} onClick={onClick} disabled={disabled} title={title}
       className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 h-8 text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${cores}`}>
       {children}
     </button>
@@ -206,6 +208,27 @@ function LinhaRecebimento({ r, gestor, orderId, onErro }: {
   const [motivo, setMotivo] = useState('')
   const [anexando, setAnexando] = useState(false)
   const [arq, setArq] = useState<ArquivoUpload | null>(null)
+  const [editando, setEditando] = useState(false)
+  const [excluindo, setExcluindo] = useState(false)
+  const [eValor, setEValor] = useState('')
+  const [eData, setEData] = useState('')
+  const [eMeio, setEMeio] = useState('PIX')
+  const [eObs, setEObs] = useState('')
+  const [justificativa, setJustificativa] = useState('')
+
+  // Espelha a trava do servidor (podeAlterarRecebimento): pagamento já aprovado
+  // é do gestor. Aqui é só cortesia visual — quem barra de verdade é o endpoint.
+  const podeMexer = gestor || r.conferencia !== 'APROVADO'
+  const exigeJustificativa = r.conferencia === 'APROVADO'
+
+  const abrirEdicao = () => {
+    setEValor(String(r.valor.toFixed(2)))
+    setEData(r.pagoEm.slice(0, 10))
+    setEMeio(r.meio)
+    setEObs(r.observacao || '')
+    setJustificativa('')
+    setEditando(true)
+  }
 
   const conferir = (status: 'APROVADO' | 'REJEITADO', just?: string) =>
     acao.mutate({ acao: 'conferir', order_id: orderId, receipt_id: r.id, status, motivo: just },
@@ -244,11 +267,22 @@ function LinhaRecebimento({ r, gestor, orderId, onErro }: {
       )}
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        {!r.comprovanteUrl && !anexando && (
-          <Botao onClick={() => setAnexando(true)}><Upload className="h-3.5 w-3.5" /> Anexar comprovante</Botao>
+        {!anexando && (
+          <Botao onClick={() => setAnexando(true)}>
+            <Upload className="h-3.5 w-3.5" /> {r.comprovanteUrl ? 'Enviar outro' : 'Anexar comprovante'}
+          </Botao>
         )}
-        {r.comprovanteUrl && !anexando && (
-          <Botao onClick={() => setAnexando(true)}><Upload className="h-3.5 w-3.5" /> Enviar outro</Botao>
+        {!editando && !excluindo && (
+          <Botao onClick={abrirEdicao} disabled={!podeMexer}
+            title={podeMexer ? undefined : 'Pagamento aprovado — só o gestor edita'}>
+            <Pencil className="h-3.5 w-3.5" /> Editar
+          </Botao>
+        )}
+        {!editando && !excluindo && (
+          <Botao tone="danger" onClick={() => { setJustificativa(''); setExcluindo(true) }} disabled={!podeMexer}
+            title={podeMexer ? undefined : 'Pagamento aprovado — só o gestor exclui'}>
+            <Trash2 className="h-3.5 w-3.5" /> Excluir
+          </Botao>
         )}
         {gestor && r.conferencia !== 'APROVADO' && !rejeitando && (
           <Botao tone="success" disabled={!r.comprovanteUrl || acao.isPending}
@@ -262,6 +296,83 @@ function LinhaRecebimento({ r, gestor, orderId, onErro }: {
           </Botao>
         )}
       </div>
+
+      {!podeMexer && (
+        <p className="mt-1 text-[11px] text-text-muted">
+          Pagamento já conferido e aprovado — alterar ou excluir só pelo gestor.
+        </p>
+      )}
+
+      {editando && (
+        <div className="mt-2 space-y-2 rounded border border-border p-2">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-text-secondary">Valor</label>
+              <Input value={eValor} onChange={e => setEValor(e.target.value)} inputMode="decimal" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-text-secondary">Data</label>
+              <Input type="date" value={eData} onChange={e => setEData(e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-text-secondary">Forma</label>
+            <select value={eMeio} onChange={e => setEMeio(e.target.value)}
+              className="h-9 w-full rounded-md border border-border bg-surface px-2 text-sm text-text-primary">
+              {['PIX', 'BOLETO', 'TRANSFERENCIA', 'CARTAO', 'DINHEIRO', 'OUTRO'].map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-text-secondary">Observação</label>
+            <Input value={eObs} onChange={e => setEObs(e.target.value)} />
+          </div>
+          {exigeJustificativa && (
+            <>
+              <label className="block text-xs font-medium text-text-secondary">Por que está alterando?</label>
+              <Input value={justificativa} onChange={e => setJustificativa(e.target.value)}
+                placeholder="Fica no histórico do pedido" />
+              <p className="rounded border border-warning/30 bg-warning-bg p-2 text-[11px] text-warning">
+                Este pagamento já estava aprovado. Mudar valor, data ou forma devolve ele para conferência.
+              </p>
+            </>
+          )}
+          <div className="flex gap-2">
+            <Botao tone="accent" disabled={acao.isPending || !(Number(eValor.replace(',', '.')) > 0) || !eData}
+              onClick={() => acao.mutate({
+                acao: 'editar_pagamento', order_id: orderId, receipt_id: r.id,
+                valor: Number(eValor.replace(',', '.')), pago_em: eData, meio: eMeio,
+                observacao: eObs, motivo: justificativa || undefined,
+              }, { onError: e => onErro((e as FinanceiroErro).message), onSuccess: () => setEditando(false) })}>
+              {acao.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />} Salvar
+            </Botao>
+            <Botao onClick={() => setEditando(false)}>Cancelar</Botao>
+          </div>
+        </div>
+      )}
+
+      {excluindo && (
+        <div className="mt-2 space-y-2 rounded border border-danger/30 bg-danger-bg/40 p-2">
+          <p className="text-xs text-danger">
+            Excluir o recebimento de <strong>{brl(r.valor, 2)}</strong> de {dataBR(r.pagoEm)}? A parcela volta a ficar em aberto.
+          </p>
+          {r.comprovanteUrl && (
+            <p className="text-[11px] text-text-muted">
+              O arquivo do comprovante continua guardado no servidor — a exclusão remove o lançamento, não o anexo.
+            </p>
+          )}
+          <Input value={justificativa} onChange={e => setJustificativa(e.target.value)}
+            placeholder={exigeJustificativa ? 'Justificativa (obrigatória)' : 'Motivo (opcional, fica no histórico)'} />
+          <div className="flex gap-2">
+            <Botao tone="danger" disabled={acao.isPending || (exigeJustificativa && !justificativa.trim())}
+              onClick={() => acao.mutate({
+                acao: 'excluir_pagamento', order_id: orderId, receipt_id: r.id, motivo: justificativa.trim() || undefined,
+              }, { onError: e => onErro((e as FinanceiroErro).message), onSuccess: () => setExcluindo(false) })}>
+              {acao.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Confirmar exclusão
+            </Botao>
+            <Botao onClick={() => setExcluindo(false)}>Cancelar</Botao>
+          </div>
+        </div>
+      )}
 
       {anexando && (
         <div className="mt-2 space-y-2 rounded border border-border p-2">

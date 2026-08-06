@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   devidoDe, diffDias, statusParcela, agregarPedido, resumoKpis, pedidoNoEscopo, ehGestor,
+  podeAlterarRecebimento,
   type PedidoRaw, type ParcelaRaw, type ReceiptRaw, type Escopo, type Cobertura, type ConferenciaRaw,
 } from '../../api/_lib/financeiro-core.js'
 
@@ -310,6 +311,31 @@ test('pedidoNoEscopo: casamento ignora caixa e espaco em volta', () => {
 test('pedidoNoEscopo: vendedor nulo nao casa com escopo restrito', () => {
   assert.equal(pedidoNoEscopo({ vendedor: null, vendedor_2: null }, jardel), false)
   assert.equal(pedidoNoEscopo({ vendedor: null, vendedor_2: null }, gestor), true)
+})
+
+// ── quem pode editar/excluir recebimento (item 6) ────────────────────────────
+
+test('podeAlterarRecebimento: gestor mexe em qualquer um', () => {
+  for (const st of ['AGUARDANDO', 'APROVADO', 'REJEITADO'] as const) {
+    assert.equal(podeAlterarRecebimento('admin', st).ok, true, `admin + ${st}`)
+    assert.equal(podeAlterarRecebimento('financeiro', st).ok, true, `financeiro + ${st}`)
+  }
+})
+
+test('podeAlterarRecebimento: vendedor corrige o que ainda nao foi aprovado', () => {
+  assert.equal(podeAlterarRecebimento('vendor', 'AGUARDANDO').ok, true)
+  assert.equal(podeAlterarRecebimento('vendor', 'REJEITADO').ok, true, 'rejeitado e o que ele TEM que consertar')
+})
+
+test('podeAlterarRecebimento: vendedor NAO mexe em pagamento aprovado', () => {
+  const r = podeAlterarRecebimento('vendor', 'APROVADO')
+  assert.equal(r.ok, false)
+  assert.match((r as { motivo: string }).motivo, /gestor/i)
+})
+
+test('podeAlterarRecebimento: papel externo segue a mesma regra do vendedor', () => {
+  assert.equal(podeAlterarRecebimento('mapa', 'AGUARDANDO').ok, true)
+  assert.equal(podeAlterarRecebimento('mapa', 'APROVADO').ok, false)
 })
 
 test('ehGestor: so admin e financeiro conferem comprovante', () => {

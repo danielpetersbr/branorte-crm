@@ -18,11 +18,13 @@
 // arquivo depende da service_role do controle (env CONTROLE_SERVICE_KEY).
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import {
-  resolverEscopo, ehGateErro, pedidoNoEscopo, ehGestor,
+  resolverEscopo, ehGateErro, pedidoNoEscopo, ehGestor, podeAlterarRecebimento,
   lerControle, crmAdmin, auditar, notificar, idsDosGestores, idsDoVendedor, hojeSP,
-  CONTROLE_URL, CONTROLE_KEY, COLS_PEDIDO, COLS_PARCELA,
-  type PedidoRaw, type ParcelaRaw,
+  CONTROLE_URL, CONTROLE_KEY, COLS_PEDIDO, COLS_PARCELA, COLS_RECEIPT,
+  type PedidoRaw, type ParcelaRaw, type ReceiptRaw,
 } from './_lib/financeiro-core.js'
+
+type ReceiptCompleto = ReceiptRaw
 
 export const config = { api: { bodyParser: { sizeLimit: '10mb' } }, maxDuration: 30 }
 
@@ -286,6 +288,124 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         })
 
         return res.status(200).json({ ok: true })
+      }
+
+      // ───────────────────────────────────────────────────────────────────
+      case 'editar_pagamento': {
+        const receiptId = String(b.receipt_id || '')
+        if (!receiptId) return res.status(400).json({ error: 'receipt_id_obrigatorio' })
+
+        const rs = await lerControle<ReceiptCompleto>('receipts', COLS_RECEIPT, `&id=eq.${encodeURIComponent(receiptId)}`)
+        const rec = rs[0]
+        if (!rec || rec.order_id !== orderId) return res.status(400).json({ error: 'recebimento_nao_e_do_pedido' })
+
+        const { data: cf } = await crm.from('fin_conferencias').select('status, motivo').eq('receipt_id', receiptId).maybeSingle()
+        const confAtual = (cf?.status as 'AGUARDANDO' | 'APROVADO' | 'REJEITADO') ?? 'AGUARDANDO'
+        const perm = podeAlterarRecebimento(esc.role, confAtual)
+        if (!perm.ok) return res.status(403).json({ error: 'precisa_gestor', detail: perm.motivo })
+
+        // Só mexe no que veio; o resto fica como está.
+        const patch: Record<string, unknown> = {}
+        if (b.valor !== undefined) {
+          const v = Number(b.valor)
+          if (!(v > 0)) return res.status(400).json({ error: 'valor_invalido', detail: 'Informe um valor maior que zero.' })
+          patch.amount = v
+        }
+        if (b.pago_em !== undefined) {
+          const d = String(b.pago_em).slice(0, 10)
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return res.status(400).json({ error: 'data_invalida' })
+          if (d > hojeSP()) return res.status(400).json({ error: 'data_futura', detail: 'A data do recebimento não pode estar no futuro.' })
+          patch.paid_at = d
+        }
+        if (b.meio !== undefined) {
+          const m = String(b.meio).toUpperCase()
+          if (!MEIOS_PAGAMENTO.has(m)) return res.status(400).json({ error: 'meio_invalido' })
+          patch.payment_method = m
+        }
+        if (b.observacao !== undefined) patch.notes = String(b.observacao) || null
+        if (Object.keys(patch).length === 0) return res.status(400).json({ error: 'nada_a_mudar' })
+
+        const resp = await ctrl(`receipts?id=eq.${encodeURIComponent(receiptId)}`, {
+          method: 'PATCH', body: JSON.stringify(patch),
+        })
+        if (!resp.ok) return res.status(502).json({ error: 'controle_recusou', detail: await resp.text() })
+
+        // Mudou dinheiro/data/forma? A aprovação anterior não vale mais para o
+        // novo valor — volta pra fila de conferência em vez de seguir "aprovado".
+        const mexeuNoDinheiro = patch.amount !== undefined || patch.paid_at !== undefined || patch.payment_method !== undefined
+        const reabriu = mexeuNoDinheiro && confAtual === 'APROVADO'
+        if (reabriu) {
+          await crm.from('fin_conferencias').upsert({
+            receipt_id: receiptId, order_id: orderId, installment_id: rec.installment_id,
+            status: 'AGUARDANDO', motivo: null, conferido_por: null, conferido_por_nome: null,
+            conferido_em: null, updated_at: new Date().toISOString(),
+          })
+        }
+
+        await auditar({ order_id: orderId, installment_id: rec.installment_id, receipt_id: receiptId,
+          acao: 'pagamento_editado',
+          antes: { valor: rec.amount, pago_em: rec.paid_at, meio: rec.payment_method, observacao: rec.notes, conferencia: confAtual },
+          depois: { ...patch, ...(reabriu ? { conferencia: 'AGUARDANDO' } : {}) },
+          motivo: (b.motivo as string) || null, ...ator })
+
+        if (reabriu) {
+          await notificar({
+            destinatarios: await idsDosGestores(), tipo: 'comprovante_a_conferir',
+            titulo: 'Pagamento alterado — precisa conferir de novo',
+            corpo: `${esc.displayName || 'Alguém'} alterou um pagamento já aprovado no pedido ${pedido.pedido_numero}.`,
+            order_id: orderId, installment_id: rec.installment_id,
+            chave: `reabriu:${receiptId}:${Date.now()}`,
+          })
+        }
+
+        return res.status(200).json({ ok: true, reabriu_conferencia: reabriu })
+      }
+
+      // ───────────────────────────────────────────────────────────────────
+      case 'excluir_pagamento': {
+        const receiptId = String(b.receipt_id || '')
+        const motivo = ((b.motivo as string) || '').trim()
+        if (!receiptId) return res.status(400).json({ error: 'receipt_id_obrigatorio' })
+
+        const rs = await lerControle<ReceiptCompleto>('receipts', COLS_RECEIPT, `&id=eq.${encodeURIComponent(receiptId)}`)
+        const rec = rs[0]
+        if (!rec || rec.order_id !== orderId) return res.status(400).json({ error: 'recebimento_nao_e_do_pedido' })
+
+        const { data: cf } = await crm.from('fin_conferencias').select('status').eq('receipt_id', receiptId).maybeSingle()
+        const confAtual = (cf?.status as 'AGUARDANDO' | 'APROVADO' | 'REJEITADO') ?? 'AGUARDANDO'
+        const perm = podeAlterarRecebimento(esc.role, confAtual)
+        if (!perm.ok) return res.status(403).json({ error: 'precisa_gestor', detail: perm.motivo })
+
+        // Apagar dinheiro já conferido exige justificativa — quem aprovou merece
+        // saber por que sumiu.
+        if (confAtual === 'APROVADO' && !motivo) {
+          return res.status(400).json({ error: 'motivo_obrigatorio', detail: 'Excluir um pagamento já aprovado exige justificativa.' })
+        }
+
+        // AUDITA ANTES de apagar: depois da exclusão a linha não existe mais pra
+        // ser lida. Guarda o snapshot inteiro, inclusive a URL do comprovante,
+        // porque o arquivo permanece no bucket (a anon key não apaga storage).
+        await auditar({ order_id: orderId, installment_id: rec.installment_id, receipt_id: receiptId,
+          acao: 'pagamento_excluido',
+          antes: { valor: rec.amount, pago_em: rec.paid_at, meio: rec.payment_method,
+            observacao: rec.notes, comprovante: rec.receipt_url, conferencia: confAtual },
+          depois: null, motivo: motivo || null, ...ator })
+
+        const resp = await ctrl(`receipts?id=eq.${encodeURIComponent(receiptId)}`, { method: 'DELETE' })
+        if (!resp.ok) return res.status(502).json({ error: 'controle_recusou', detail: await resp.text() })
+
+        await crm.from('fin_conferencias').delete().eq('receipt_id', receiptId)
+
+        // Gestores E o vendedor do pedido: quem lançou tem que saber que sumiu.
+        const avisar = [...new Set([...(await idsDosGestores()), ...(await idsDoVendedor(pedido.vendedor))])]
+        await notificar({
+          destinatarios: avisar, tipo: 'pagamento_excluido',
+          titulo: 'Pagamento excluído',
+          corpo: `${esc.displayName || 'Alguém'} excluiu um recebimento de ${Number(rec.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} no pedido ${pedido.pedido_numero}.${motivo ? ' Motivo: ' + motivo : ''}`,
+          order_id: orderId, installment_id: rec.installment_id, chave: `del:${receiptId}`,
+        })
+
+        return res.status(200).json({ ok: true, comprovante_orfao: rec.receipt_url })
       }
 
       default:

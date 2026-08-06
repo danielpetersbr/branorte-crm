@@ -199,6 +199,9 @@ export type AcaoFinanceiro =
   | { acao: 'confirmar_boleto'; order_id: string; installment_id: string; meio: string
       observacao?: string; arquivo?: ArquivoUpload }
   | { acao: 'conferir'; order_id: string; receipt_id: string; status: 'APROVADO' | 'REJEITADO'; motivo?: string }
+  | { acao: 'editar_pagamento'; order_id: string; receipt_id: string; valor?: number
+      pago_em?: string; meio?: string; observacao?: string; motivo?: string }
+  | { acao: 'excluir_pagamento'; order_id: string; receipt_id: string; motivo?: string }
 
 /** Lê um File como base64, do jeito que o endpoint espera. */
 export function lerArquivo(file: File): Promise<ArquivoUpload> {
