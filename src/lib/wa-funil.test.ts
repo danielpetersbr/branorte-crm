@@ -12,7 +12,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   montarConversa, formatarTelefone, nomeContato, canonico, ALIASES, ORDEM_FUNIL,
-  idCanonicoMsg, corpoVisivel,
+  idCanonicoMsg, corpoVisivel, statusDaEtiqueta, statusDerivadoDaEtiqueta,
   type MensagemLite,
 } from './wa-funil'
 
@@ -248,6 +248,10 @@ test('todo alias que aponta pros 5 estágios está listado (pra espelhar na exte
   // Snapshot: se alguém adicionar um alias novo, este teste falha e lembra de
   // replicar em ALIASES_MSG do background.js da extensão.
   assert.deepEqual(aliasesDosEstagios, [
+    // '2O TENTATIVA' entrou em 06/08/2026: existia só na função SQL
+    // wa_etiqueta_canonica e faltava aqui. ⚠️ PENDENTE replicar em ALIASES_MSG
+    // do background.js da extensão — é pra isso que este snapshot existe.
+    '2O TENTATIVA',
     'FALLOW UP', 'FALLOWUP', 'FOLLOWUP', 'LEAD NOVO', 'NOVOS LEADS', 'PROSPECCOES', 'QUENTE',
   ])
 })
@@ -255,4 +259,100 @@ test('todo alias que aponta pros 5 estágios está listado (pra espelhar na exte
 test('etiqueta desconhecida passa direto (não vira estágio por acidente)', () => {
   assert.equal(canonico('ALGO NOVO'), 'ALGO NOVO')
   assert.equal(canonico('  FOLLOW UP  '), 'FOLLOW UP') // trim
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Status derivado da etiqueta (regra ditada pelo Daniel em 06/08/2026)
+// ⚠️ Estes testes existem pra travar o ESPELHO com as funcoes SQL
+// `wa_status_da_etiqueta` e `wa_status_do_contato`. Divergiu, a tela explica uma
+// coisa e o job grava outra.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('statusDaEtiqueta: prospeccao e negociacao sao ABERTO', () => {
+  for (const e of ['PROSPECCAO', '2A TENTATIVA', '3A TENTATIVA', '4A TENTATIVA',
+                   'NOVO LEAD', 'FOLLOW UP', 'LEAD QUENTE', 'ORCAMENTO ENVIADO']) {
+    assert.equal(statusDaEtiqueta(e), 'ABERTO', e)
+  }
+})
+
+test('statusDaEtiqueta: motivo de encerramento e FECHADO', () => {
+  for (const e of ['INTERESSE FUTURO', 'SO BASE DE PRECO', 'NAO TEM INTERESSE',
+                   'NAO FABRICAMOS', 'OUTROS ASSUNTOS', 'FORA DO ORCAMENTO', 'VENDIDO',
+                   'NAO RESPONDEU MAIS', 'NUNCA RESPONDEU', 'RESOLVIDO', 'COMPROU DO CONCORRENTE']) {
+    assert.equal(statusDaEtiqueta(e), 'FECHADO', e)
+  }
+})
+
+test('statusDaEtiqueta: etiqueta avulsa ou interna NAO decide', () => {
+  for (const e of ['IMPORTANTES', 'PENDENTE', 'FEIRA', 'SUPORTE TECNICO', 'AGENDAMENTO',
+                   'BRANORTE', 'TRANSPORTADORAS', 'FUNCIONARIO', '19 - C. EDER / ORC. ENVIADO', '']) {
+    assert.equal(statusDaEtiqueta(e), null, e)
+  }
+})
+
+test('statusDaEtiqueta: typo e caixa passam pelo canonico', () => {
+  assert.equal(statusDaEtiqueta('FALLOW UP'), 'ABERTO')
+  assert.equal(statusDaEtiqueta('fallowup'), 'ABERTO')
+  assert.equal(statusDaEtiqueta('VENDIDOS'), 'FECHADO')
+  assert.equal(statusDaEtiqueta('RESOLVIDOS'), 'FECHADO')
+  assert.equal(statusDaEtiqueta('  quente  '), 'ABERTO')
+  assert.equal(statusDaEtiqueta(null), null)
+})
+
+test('statusDaEtiqueta: toda etiqueta de ORDEM_FUNIL decide algo', () => {
+  // se alguem adicionar etiqueta no funil e esquecer do mapa, cai aqui
+  for (const e of ORDEM_FUNIL) {
+    assert.notEqual(statusDaEtiqueta(e), null, `${e} ficou fora de STATUS_POR_ETIQUETA`)
+  }
+})
+
+test('statusDerivadoDaEtiqueta: a etiqueta do DONO vence a do outro vendedor', () => {
+  const etqs = [
+    { etiqueta: 'VENDIDO', vendedor: 'PEDRO', em: '2026-08-05T10:00:00Z' },
+    { etiqueta: 'NOVO LEAD', vendedor: 'GUSTAVO', em: '2026-08-01T10:00:00Z' },
+  ]
+  assert.equal(statusDerivadoDaEtiqueta(etqs, 'GUSTAVO')?.status, 'ABERTO')
+  assert.equal(statusDerivadoDaEtiqueta(etqs, 'PEDRO')?.status, 'FECHADO')
+})
+
+test('statusDerivadoDaEtiqueta: sem dono, vale a mais recente', () => {
+  const etqs = [
+    { etiqueta: 'VENDIDO', vendedor: 'PEDRO', em: '2026-08-05T10:00:00Z' },
+    { etiqueta: 'NOVO LEAD', vendedor: 'GUSTAVO', em: '2026-08-01T10:00:00Z' },
+  ]
+  assert.equal(statusDerivadoDaEtiqueta(etqs, null)?.status, 'FECHADO')
+  assert.equal(statusDerivadoDaEtiqueta(etqs, 'ALVARO')?.status, 'FECHADO', 'dono sem etiqueta cai na mais recente')
+})
+
+test('statusDerivadoDaEtiqueta: entre as do dono, a mais recente manda', () => {
+  const etqs = [
+    { etiqueta: 'NOVO LEAD', vendedor: 'EDER', em: '2026-08-01T10:00:00Z' },
+    { etiqueta: 'VENDIDO', vendedor: 'EDER', em: '2026-08-05T10:00:00Z' },
+  ]
+  const r = statusDerivadoDaEtiqueta(etqs, 'EDER')
+  assert.equal(r?.status, 'FECHADO')
+  assert.equal(r?.etiqueta, 'VENDIDO')
+})
+
+test('statusDerivadoDaEtiqueta: avulsa nao atrapalha quem decide', () => {
+  const etqs = [
+    { etiqueta: 'IMPORTANTES', vendedor: 'EDER', em: '2026-08-05T10:00:00Z' },
+    { etiqueta: 'NOVO LEAD', vendedor: 'EDER', em: '2026-08-01T10:00:00Z' },
+  ]
+  assert.equal(statusDerivadoDaEtiqueta(etqs, 'EDER')?.status, 'ABERTO')
+})
+
+test('statusDerivadoDaEtiqueta: so avulsa (ou nenhuma) deixa pro vendedor marcar', () => {
+  assert.equal(statusDerivadoDaEtiqueta([{ etiqueta: 'FEIRA', vendedor: 'EDER', em: 'x' }], 'EDER'), null)
+  assert.equal(statusDerivadoDaEtiqueta([], 'EDER'), null)
+  assert.equal(statusDerivadoDaEtiqueta(null, 'EDER'), null)
+  assert.equal(statusDerivadoDaEtiqueta(undefined, null), null)
+})
+
+test('statusDerivadoDaEtiqueta: comparacao de vendedor ignora caixa e espaco', () => {
+  const etqs = [
+    { etiqueta: 'VENDIDO', vendedor: 'PEDRO', em: '2026-08-05T10:00:00Z' },
+    { etiqueta: 'NOVO LEAD', vendedor: ' gustavo ', em: '2026-08-01T10:00:00Z' },
+  ]
+  assert.equal(statusDerivadoDaEtiqueta(etqs, 'GUSTAVO')?.status, 'ABERTO')
 })

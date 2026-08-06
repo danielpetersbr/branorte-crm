@@ -37,6 +37,11 @@ export const ALIASES: Record<string, string> = {
   'VENDIDOS': 'VENDIDO',
   'RESOLVIDOS': 'RESOLVIDO',
   'QUENTE': 'LEAD QUENTE',
+  // Estes dois existiam só na função SQL `wa_etiqueta_canonica` — o front não
+  // os conhecia, então a mesma etiqueta virava duas coisas diferentes conforme
+  // quem estivesse lendo. Achado em 06/08/2026 ao espelhar a regra de status.
+  'COMPROU NA CONCORRENCIA': 'COMPROU DO CONCORRENTE',
+  '2O TENTATIVA': '2A TENTATIVA',
 }
 
 // Etiquetas internas/de organização que não são funil de cliente
@@ -478,4 +483,102 @@ export function tempoRelativo(iso: string | null): string {
   if (diffD < 7) return `há ${diffD} dias`
   const d = new Date(t)
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Status do contato (ABERTO/FECHADO) derivado da etiqueta do WhatsApp
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Etiqueta → status do contato, na regra que o Daniel ditou em 06/08/2026:
+ * prospecção e negociação = ABERTO; motivo de encerramento = FECHADO.
+ *
+ * É a mesma divisão que ORDEM_FUNIL já anotava em comentário ("FUNIL DE VENDAS"
+ * vs "MOTIVO DE FECHAMENTO") — aqui ela vira valor.
+ *
+ * Ausente do mapa = **não decide**. São as avulsas e internas (IMPORTANTES,
+ * PENDENTE, FEIRA, SUPORTE TECNICO, AGENDAMENTO, BRANORTE, TRANSPORTADORAS):
+ * não dizem nada sobre o negócio estar aberto, então o vendedor marca na mão.
+ *
+ * ⚠️ ESPELHO da função SQL `wa_status_da_etiqueta(text)`. Quem manda de verdade
+ * é o banco (job `recompute-contact-status-5min`); isto aqui existe só pra tela
+ * saber EXPLICAR o valor. Mudou um, muda o outro — senão a tela diz uma coisa e
+ * o job grava outra.
+ */
+export const STATUS_POR_ETIQUETA: Record<string, 'ABERTO' | 'FECHADO'> = {
+  // prospecção e negociação: ainda dá pra vender
+  'PROSPECCAO': 'ABERTO',
+  '2A TENTATIVA': 'ABERTO',
+  '3A TENTATIVA': 'ABERTO',
+  '4A TENTATIVA': 'ABERTO',
+  'NOVO LEAD': 'ABERTO',
+  'FOLLOW UP': 'ABERTO',
+  'LEAD QUENTE': 'ABERTO',
+  'ORCAMENTO ENVIADO': 'ABERTO',
+  // motivo de encerramento: a conversa acabou (com ou sem venda)
+  'INTERESSE FUTURO': 'FECHADO',
+  'SO BASE DE PRECO': 'FECHADO',
+  'NAO TEM INTERESSE': 'FECHADO',
+  'NAO FABRICAMOS': 'FECHADO',
+  'OUTROS ASSUNTOS': 'FECHADO',
+  'FORA DO ORCAMENTO': 'FECHADO',
+  'VENDIDO': 'FECHADO',
+  'NAO RESPONDEU MAIS': 'FECHADO',
+  'NUNCA RESPONDEU': 'FECHADO',
+  'RESOLVIDO': 'FECHADO',
+  'COMPROU DO CONCORRENTE': 'FECHADO',
+}
+
+/**
+ * `null` = essa etiqueta não decide nada sobre aberto/fechado.
+ *
+ * ⚠️ Normaliza com `upper` + `trim` ANTES de olhar os aliases, porque é isso que
+ * o `wa_etiqueta_canonica` do banco faz (`case upper(btrim(p))`). O `canonico()`
+ * daqui só apara espaço — quem chama ele já recebe o texto em caixa alta da RPC.
+ * Não dá pra confiar nisso aqui: a própria tela lista "3a tentativa" e "4a
+ * tentativa" em minúsculas. Sem o `upper`, o banco marcaria ABERTO e a tela
+ * diria "não decide" — a divergência exata que este espelho existe pra evitar.
+ */
+export function statusDaEtiqueta(nome: string | null | undefined): 'ABERTO' | 'FECHADO' | null {
+  const bruto = (nome ?? '').trim().toUpperCase()
+  return STATUS_POR_ETIQUETA[ALIASES[bruto] ?? bruto] ?? null
+}
+
+export interface EtiquetaBruta { etiqueta?: string | null; vendedor?: string | null; em?: string | null }
+
+/**
+ * Qual etiqueta decide o status deste contato.
+ *
+ * ⚠️ ESPELHO de `wa_status_do_contato(jsonb, text)` no banco — mesma ordem de
+ * desempate, senão a tela explica com uma etiqueta e o job grava por outra.
+ *
+ * O mesmo telefone costuma estar etiquetado em até 10 WhatsApps, então: entre as
+ * que DECIDEM, a do vendedor DONO do contato manda; empatando, a mais recente.
+ * Sem nenhuma do dono, cai na mais recente de qualquer um.
+ */
+export function statusDerivadoDaEtiqueta(
+  etiquetas: EtiquetaBruta[] | null | undefined,
+  vendedorDono: string | null,
+): { status: 'ABERTO' | 'FECHADO'; etiqueta: string; vendedor: string | null } | null {
+  const dono = (vendedorDono ?? '').trim().toUpperCase()
+  const decidem = (etiquetas ?? [])
+    .map(e => ({
+      // mesma normalização de statusDaEtiqueta, pra o rótulo mostrado bater
+      // com a etiqueta que de fato decidiu
+      nome: (() => { const b = (e.etiqueta ?? '').trim().toUpperCase(); return ALIASES[b] ?? b })(),
+      vendedor: e.vendedor ?? null,
+      em: e.em ?? '',
+      status: statusDaEtiqueta(e.etiqueta),
+    }))
+    .filter((e): e is typeof e & { status: 'ABERTO' | 'FECHADO' } => e.status !== null)
+  if (decidem.length === 0) return null
+
+  decidem.sort((a, b) => {
+    const da = dono && (a.vendedor ?? '').trim().toUpperCase() === dono ? 1 : 0
+    const db = dono && (b.vendedor ?? '').trim().toUpperCase() === dono ? 1 : 0
+    if (da !== db) return db - da
+    return b.em.localeCompare(a.em)
+  })
+  const v = decidem[0]
+  return { status: v.status, etiqueta: v.nome, vendedor: v.vendedor }
 }

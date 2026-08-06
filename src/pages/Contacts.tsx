@@ -11,7 +11,7 @@ import { formatNumber, formatPhone, whatsappLink, formatDateTimeShort, cn } from
 import { useVendorMap } from '@/hooks/useVendorMap'
 import { useContactsOrcamentos } from '@/hooks/useContactsOrcamentos'
 import { useWaEtiquetasDisponiveis, type WaResumoCampos } from '@/hooks/useWaResumo'
-import { canonico, corDaEtiqueta, ETIQUETAS_OCULTAS, ordemDe, tempoRelativo, temperaturaDe, TEMP_META, type Temperatura } from '@/lib/wa-funil'
+import { canonico, corDaEtiqueta, ETIQUETAS_OCULTAS, ordemDe, statusDerivadoDaEtiqueta, tempoRelativo, temperaturaDe, TEMP_META, type Temperatura } from '@/lib/wa-funil'
 import { useEtiquetasDeContatos, estiloEtiqueta } from '@/hooks/useCrmEtiquetas'
 import { BarraEtiquetas } from '@/components/contacts/BarraEtiquetas'
 import { FaixaAtividadeContatos } from '@/components/contacts/FaixaAtividade'
@@ -766,6 +766,9 @@ export function Contacts() {
                     const tempOpt = TEMPERATURA_OPTIONS.find(t => t.value === meta.temp)
                     const funilOpt = FUNIL_OPTIONS.find(f => f.value === meta.funil)
                     const etiquetaWa = etiquetaDoContato(c, c.vendor_id ? vendorMap[c.vendor_id] ?? null : null)
+                    // Quem decide o status é a etiqueta (job recompute-contact-status-5min).
+                    // Aqui só descobrimos QUAL, pra travar o botão e explicar.
+                    const statusDerivado = statusDerivadoDaEtiqueta(c.etiquetas, c.vendor_id ? vendorMap[c.vendor_id] ?? null : null)
                     const etiquetasCrmDoContato = etiqCrmMap?.get(c.id) ?? []
                     const equipamento = orcsLinkados[0]?.equipamento || c.descricao_orcamento || getOrcDescricao(c.notes)
                     return (
@@ -899,6 +902,7 @@ export function Contacts() {
                             valor={c.status}
                             salvando={!!gravando[c.id]}
                             erro={!!falhou[c.id]}
+                            derivadoDe={statusDerivado}
                             onEscolher={(v: StatusContato) => salvarCampo(c.id, 'status', v)}
                           />
                         </td>
@@ -920,6 +924,7 @@ export function Contacts() {
                 const mobileTempOpt = TEMPERATURA_OPTIONS.find(t => t.value === mobileM.temp)
                 const mobileFunilOpt = FUNIL_OPTIONS.find(f => f.value === mobileM.funil)
                 const etiquetaWaM = etiquetaDoContato(c, c.vendor_id ? vendorMap[c.vendor_id] ?? null : null)
+                const statusDerivadoM = statusDerivadoDaEtiqueta(c.etiquetas, c.vendor_id ? vendorMap[c.vendor_id] ?? null : null)
                 return (
                   <Card key={c.id} hover onClick={() => setSelectedContact(c)} className="p-3.5">
                     <div className="flex items-start justify-between gap-2">
@@ -950,6 +955,7 @@ export function Contacts() {
                             salvando={!!gravando[c.id]}
                             erro={!!falhou[c.id]}
                             compacto
+                            derivadoDe={statusDerivadoM}
                             onEscolher={(v: StatusContato) => salvarCampo(c.id, 'status', v)}
                           />
                         </div>

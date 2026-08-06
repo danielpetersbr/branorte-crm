@@ -38,23 +38,37 @@ export const STATUS_CONTATO = [
 export type StatusContato = typeof STATUS_CONTATO[number]['v']
 
 export function BotoesStatus({
-  valor, onEscolher, salvando, erro, compacto,
+  valor, onEscolher, salvando, erro, compacto, derivadoDe,
 }: {
   valor: string | null
   onEscolher: (novo: StatusContato) => void
   salvando?: boolean
   erro?: boolean
   compacto?: boolean
+  /**
+   * Preenchido quando a ETIQUETA do WhatsApp decide o status deste contato.
+   * Nesse caso o botão vira leitura: quem grava é o job
+   * `recompute-contact-status-5min`, e um clique aqui seria desfeito em até 5
+   * minutos — pior que não ter botão, porque parece que funcionou.
+   */
+  derivadoDe?: { etiqueta: string; vendedor: string | null } | null
 }) {
+  const travado = !!derivadoDe
+  const explicacao = derivadoDe
+    ? `Definido pela etiqueta "${derivadoDe.etiqueta}"${derivadoDe.vendedor ? ` no WhatsApp do ${derivadoDe.vendedor}` : ''}. `
+      + `Pra mudar aqui, mude a etiqueta no WhatsApp — o CRM acompanha sozinho.`
+    : null
   return (
     <div
       role="group"
-      aria-label="Status do contato"
+      aria-label={travado ? `Status do contato (definido pela etiqueta ${derivadoDe!.etiqueta})` : 'Status do contato'}
+      title={explicacao ?? undefined}
       /* A linha inteira abre a ficha no clique; sem isto, marcar o status
          abriria o drawer por cima. */
       onClick={e => e.stopPropagation()}
       className={cn('inline-flex items-center rounded-md border border-border overflow-hidden',
-        erro && 'border-danger')}
+        erro && 'border-danger',
+        travado && 'border-dashed opacity-90')}
     >
       {STATUS_CONTATO.map((s, i) => {
         const ativo = (valor ?? 'ABERTO') === s.v
@@ -63,19 +77,24 @@ export function BotoesStatus({
           <button
             key={s.v}
             type="button"
-            disabled={salvando}
+            disabled={salvando || travado}
             aria-pressed={ativo}
             aria-label={s.label}
-            title={s.titulo}
+            title={explicacao ?? s.titulo}
             onClick={e => { e.stopPropagation(); if (!ativo) onEscolher(s.v) }}
             className={cn(
               'inline-flex items-center justify-center gap-1 h-[22px] px-1.5',
               'text-[10px] font-semibold uppercase tracking-[0.02em]',
               'transition-colors duration-100 motion-reduce:transition-none',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset',
-              'disabled:opacity-60 disabled:cursor-wait',
+              // `cursor-wait` só faz sentido enquanto grava. No travado é
+              // `cursor-default`: não está carregando, é assim mesmo.
+              salvando && 'disabled:opacity-60 disabled:cursor-wait',
+              travado && 'disabled:cursor-default',
               i > 0 && 'border-l border-border',
-              ativo ? s.on : 'text-ink-faint hover:text-ink hover:bg-surface-2',
+              ativo ? s.on
+                : travado ? 'text-ink-faint/50'
+                : 'text-ink-faint hover:text-ink hover:bg-surface-2',
             )}
           >
             {salvando && ativo
