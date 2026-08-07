@@ -407,6 +407,18 @@ type LinhaLista = OrcamentoLinha & { n_orc: number; numeros: string }
 type VendFiltro = 'todos' | 'orcados' | 'vendidos' | 'alto' | 'diamante'
 type VisitaFiltro = 'todos' | 'visitados' | 'pendentes'
 
+// Filtro de PERÍODO. O acervo de orçamentos vai de 2012 a hoje; sem este corte a
+// tela abre com 14 anos de uma vez e a régua de cor (verde ≤1m / vermelho 1–3m /
+// cinza >3m) perde o poder de separar, porque quase tudo cai em cinza.
+// Padrão 24 meses: mantém a tela parecida com a de antes da carga do histórico.
+type PeriodoFiltro = '12m' | '24m' | '5a' | 'tudo'
+const PERIODO_DIAS: Record<PeriodoFiltro, number | null> = {
+  '12m': 365, '24m': 730, '5a': 1825, tudo: null,
+}
+const PERIODO_LABEL: [PeriodoFiltro, string][] = [
+  ['12m', '12 meses'], ['24m', '24 meses'], ['5a', '5 anos'], ['tudo', 'Tudo'],
+]
+
 export function MapaVisitas() {
   const { data: visitas = [], isLoading } = useVisitas()
   const { data: orcPontos = [], isLoading: loadingOrc, refetch: refetchOrc } = useOrcamentosMapa()
@@ -427,6 +439,7 @@ export function MapaVisitas() {
   const [sugAberta, setSugAberta] = useState(false)
   const [vendFiltro, setVendFiltro] = useState<VendFiltro>('todos')
   const [visitaFiltro, setVisitaFiltro] = useState<VisitaFiltro>('todos')
+  const [periodo, setPeriodo] = useState<PeriodoFiltro>('24m')
   const [ufSel, setUfSel] = useState<string>('')   // '' = todos os estados
   const [ufSheet, setUfSheet] = useState(false)    // painel por estado no celular
   const [showLista, setShowLista] = useState(false)
@@ -608,6 +621,16 @@ export function MapaVisitas() {
       default: return true // 'todos'
     }
   }
+  // filtro de PERÍODO pela data mais recente do cliente/orçamento.
+  // ⚠️ Sem data NÃO some: 1.5 mil registros de vendas_mapa vieram sem data_venda,
+  // e escondê-los faria o filtro apagar cliente real em vez de filtrar por idade.
+  const passaPeriodo = (dataRecente: string | null) => {
+    const limite = PERIODO_DIAS[periodo]
+    if (limite == null) return true
+    const d = diasDesde(dataRecente)
+    if (d == null) return true
+    return d <= limite
+  }
   // filtro de visita (só na camada de orçamentos do mapa)
   const passaVisita = (p: OrcamentoPonto) => {
     if (visitaFiltro === 'todos') return true
@@ -631,11 +654,12 @@ export function MapaVisitas() {
       (!vendedorSel || (p.vendedor || '—') === vendedorSel) &&
       passaFiltro(p.vendido, p.total) &&
       passaVisita(p) &&
+      passaPeriodo(p.data_recente) &&
       (!termo || [p.cliente, p.cidade, p.uf, p.telefone, p.fone, p.numeros, p.vendedor]
         .some(x => (x || '').toLowerCase().includes(termo)))
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [orcPontos, vendedorSel, termo, vendFiltro, visitaFiltro, marc]
+    [orcPontos, vendedorSel, termo, vendFiltro, visitaFiltro, periodo, marc]
   )
   const orcFiltrados = useMemo(
     () => (ufSel ? orcBase.filter(p => ufKey(p.uf) === ufSel) : orcBase),
@@ -711,12 +735,13 @@ export function MapaVisitas() {
   const listaFiltrada = useMemo(() => {
     return lista.filter(r =>
       passaFiltro(r.vendido, r.total) &&
+      passaPeriodo(r.data_emissao) &&
       (!ufSel || ufKey(r.uf) === ufSel) &&
       (!termo || [r.numero, r.cliente, r.equipamento, r.cidade, r.uf]
         .some(x => (x || '').toLowerCase().includes(termo)))
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lista, termo, vendFiltro, ufSel])
+  }, [lista, termo, vendFiltro, periodo, ufSel])
 
   // "1 linha por cliente". A lista é de ORÇAMENTOS — o mesmo cliente aparece uma vez
   // por proposta, e quem tem quatro propostas ocupa quatro linhas. Está certo pro
@@ -1703,6 +1728,16 @@ export function MapaVisitas() {
           {/* No celular os controles ficam numa faixa que ROLA na horizontal (não empilham
               comendo a tela). md:contents remove o wrapper no desktop → volta ao flex-wrap original. */}
           <div className="flex items-center gap-2 w-full overflow-x-auto flex-nowrap md:contents pb-1 [&>*]:shrink-0">
+          {/* filtro de período — o acervo tem 14 anos; sem ele a tela abre com tudo */}
+          <div className="flex h-9 rounded-md border border-border overflow-hidden text-[12px] font-semibold"
+               title="Período pela data do orçamento. Registros sem data aparecem sempre.">
+            {PERIODO_LABEL.map(([v, label]) => (
+              <button key={v} onClick={() => setPeriodo(v)}
+                className={`px-2.5 transition-colors ${periodo === v ? 'bg-accent-bg text-accent' : 'bg-surface text-ink-muted hover:text-ink'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
           {/* filtro vendido / orçado */}
           <div className="flex h-9 rounded-md border border-border overflow-hidden text-[12px] font-semibold">
             {([['todos', 'Todos'], ['orcados', 'Só orçados'], ['vendidos', 'Vendidos'], ['alto', '⭐ Alto valor'], ['diamante', '💎 ≥300 mil']] as [VendFiltro, string][]).map(([v, label]) => (
@@ -1803,6 +1838,12 @@ export function MapaVisitas() {
             )}
           </div>
           <div className="pointer-events-auto flex items-center gap-1.5 overflow-x-auto flex-nowrap [&>*]:shrink-0">
+            <div className="flex h-9 rounded-lg overflow-hidden border border-border bg-surface/95 backdrop-blur text-[12px] font-semibold shadow"
+                 title="Período pela data do orçamento. Registros sem data aparecem sempre.">
+              {PERIODO_LABEL.map(([v, label]) => (
+                <button key={v} onClick={() => setPeriodo(v)} className={`px-3 ${periodo === v ? 'bg-accent text-white' : 'text-ink-muted'}`}>{label}</button>
+              ))}
+            </div>
             <div className="flex h-9 rounded-lg overflow-hidden border border-border bg-surface/95 backdrop-blur text-[12px] font-semibold shadow">
               {([['todos', 'Todos'], ['orcados', 'Só orçados'], ['vendidos', 'Vendidos'], ['alto', '⭐ Alto valor'], ['diamante', '💎 ≥300 mil']] as [VendFiltro, string][]).map(([v, label]) => (
                 <button key={v} onClick={() => setVendFiltro(v)} className={`px-3 ${vendFiltro === v ? 'bg-accent text-white' : 'text-ink-muted'}`}>{label}</button>
@@ -2135,6 +2176,12 @@ export function MapaVisitas() {
               )}
               <div className="relative ml-2">
                 <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar…" className="h-8 w-52 px-2 rounded-md bg-surface-2 border border-border text-[13px] text-ink outline-none focus:border-accent" />
+              </div>
+              <div className="flex h-8 rounded-md border border-border overflow-hidden text-[12px] font-semibold"
+                   title="Período pela data do orçamento. Registros sem data aparecem sempre.">
+                {PERIODO_LABEL.map(([v, label]) => (
+                  <button key={v} onClick={() => setPeriodo(v)} className={`px-2.5 ${periodo === v ? 'bg-accent-bg text-accent' : 'bg-surface text-ink-muted hover:text-ink'}`}>{label}</button>
+                ))}
               </div>
               <div className="flex h-8 rounded-md border border-border overflow-hidden text-[12px] font-semibold">
                 {([['todos', 'Todos'], ['orcados', 'Só orçados'], ['vendidos', 'Vendidos'], ['alto', '⭐ Alto valor'], ['diamante', '💎 ≥300 mil']] as [VendFiltro, string][]).map(([v, label]) => (
