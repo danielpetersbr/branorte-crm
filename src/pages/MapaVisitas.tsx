@@ -15,9 +15,13 @@ import { useSalvarViagem, useSalvarLocalizacaoCliente, useViagem, type ViagemSta
 import { ViagensSalvas } from '@/components/mapa/ViagensSalvas'
 import { supabase } from '@/lib/supabase'
 import {
-  passaPeriodo as passaPeriodoRegra, rotuloPeriodo, faixaIdade, idadeLabel,
+  passaPeriodo as passaPeriodoRegra, rotuloPeriodo, faixaIdade, idadeLabel, diasDesde,
   PERIODO_LABEL, PERIODO_LABEL_CURTO, type PeriodoFiltro, type FaixaIdade,
 } from '@/lib/periodo'
+import {
+  MODOS, corDoEstado, faixaIdade4, corDaFaixa4, FAIXAS_IDADE4,
+  type ModoMapa, type FaixaIdade4,
+} from '@/lib/mapa-modos'
 import {
   type ConfigViagem, type Parada, type Trecho, type PontoMapa, type Programacao,
   CONFIG_PADRAO, MAX_PARADAS, PRECISAO_INFO,
@@ -423,6 +427,19 @@ export function MapaVisitas() {
   const [vendFiltro, setVendFiltro] = useState<VendFiltro>('todos')
   const [visitaFiltro, setVisitaFiltro] = useState<VisitaFiltro>('todos')
   const [periodo, setPeriodo] = useState<PeriodoFiltro>('24m')
+  // Modo de visualização — ortogonal aos filtros. Padrão: por estado.
+  const [modo, setModo] = useState<ModoMapa>('estado')
+  // Leitor PASSIVO do tema. Não usa useDarkMode porque aquele hook ESCREVE
+  // (localStorage + evento) no efeito — montá-lo aqui alteraria o tema do app.
+  const [temaEscuro, setTemaEscuro] = useState(
+    () => typeof document !== 'undefined' && document.documentElement.classList.contains('dark'))
+  useEffect(() => {
+    const ler = () => setTemaEscuro(document.documentElement.classList.contains('dark'))
+    window.addEventListener('branorte-theme-changed', ler)
+    const obs = new MutationObserver(ler)
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    return () => { window.removeEventListener('branorte-theme-changed', ler); obs.disconnect() }
+  }, [])
   const [ufSel, setUfSel] = useState<string>('')   // '' = todos os estados
   const [ufSheet, setUfSheet] = useState(false)    // painel por estado no celular
   const [showLista, setShowLista] = useState(false)
@@ -604,6 +621,23 @@ export function MapaVisitas() {
       default: return true // 'todos'
     }
   }
+  // ── COR e FORMA do pino: quem manda é o MODO, não o filtro ──────────────────
+  // Trocar entre "Só orçados" e "Vendidos" não altera a leitura visual; só muda
+  // quem aparece. Quem altera a leitura é o seletor de modo.
+  const corDoPino = (p: OrcamentoPonto): string => {
+    if (modo === 'estado') return corDoEstado(p.uf, temaEscuro)
+    if (modo === 'idade') {
+      // no modo IDADE quem já comprou continua azul: é a informação que o
+      // vendedor mais procura no mapa, e perdê-la ao trocar de modo seria regressão
+      if (p.vendido) return AZUL_VENDIDO
+      return corDaFaixa4(faixaIdade4(diasDesde(p.data_recente)), temaEscuro)
+    }
+    return corOrcamento(p)   // modo 'valor' = comportamento de sempre
+  }
+  // Estrela/diamante só no modo VALOR — nos outros o pino é bolinha, como pedido.
+  const formaDoPino = (p: OrcamentoPonto) =>
+    modo === 'valor' ? formaValor(p.total, p.vendido) : null
+
   // filtro de PERÍODO pela data mais recente do cliente/orçamento.
   // ⚠️ Sem data NÃO some: 1.5 mil registros de vendas_mapa vieram sem data_venda,
   // e escondê-los faria o filtro apagar cliente real em vez de filtrar por idade.
@@ -736,6 +770,27 @@ export function MapaVisitas() {
       if (c === VERDE) verde++; else if (c === VERMELHO) vermelho++; else cinza++
     }
     return { verde, vermelho, cinza, vendido, estrela, diamante }
+  }, [orcFiltrados])
+
+  // Contagem da legenda do modo POR IDADE (4 faixas) e do modo POR ESTADO.
+  // Cada modo mostra a legenda do que ele de fato está pintando — legenda de um
+  // modo com as cores de outro é o jeito mais rápido de fazer o mapa mentir.
+  const statsIdade4 = useMemo(() => {
+    const m = new Map<FaixaIdade4 | 'vendido', number>()
+    for (const p of orcFiltrados) {
+      const k = p.vendido ? 'vendido' as const : faixaIdade4(diasDesde(p.data_recente))
+      m.set(k, (m.get(k) ?? 0) + 1)
+    }
+    return m
+  }, [orcFiltrados])
+
+  const statsUF = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const p of orcFiltrados) {
+      const u = (p.uf || '').trim().toUpperCase() || '—'
+      m.set(u, (m.get(u) ?? 0) + 1)
+    }
+    return [...m.entries()].sort((a, b) => b[1] - a[1])
   }, [orcFiltrados])
 
   // lista (tabela) filtrada
@@ -1381,19 +1436,20 @@ export function MapaVisitas() {
       for (const p of orcFiltrados) {
         const mk = marc[chaveMarc(p.telefone, p.fone, p.cliente)]
         const visitado = !!mk?.visitado
-        const forma = formaValor(p.total, p.vendido)
+        const forma = formaDoPino(p)
+        const cor = corDoPino(p)
         const irmaos = porCoord.get(kCoord(p.lat, p.lng)) ?? [p]
         const [dx, dy, anelMax, limiteM] = proximo(p.lat, p.lng)
         const pos = posEspalhada(map, p.lat, p.lng, dx, dy, anelMax, limiteM)
         const m = forma
-          // orçado de alto valor → estrela/diamante (marcador DOM, cor pela idade)
-          ? L.marker(pos, { icon: iconeForma(forma, corOrcamento(p)) })
+          // orçado de alto valor → estrela/diamante (só no modo "por valor")
+          ? L.marker(pos, { icon: iconeForma(forma, cor) })
           : visitado
             // visitado (comum) → ponto único com ✓ dentro
-            ? L.marker(pos, { icon: iconeVisitado(corOrcamento(p)) })
+            ? L.marker(pos, { icon: iconeVisitado(cor) })
             // demais → círculo no canvas (rápido pra milhares de pontos)
             : L.circleMarker(pos, {
-                renderer, radius: 5, fillColor: corOrcamento(p), color: '#fff', weight: 1, fillOpacity: 0.92,
+                renderer, radius: 5, fillColor: cor, color: '#fff', weight: 1, fillOpacity: 0.92,
               })
         m.bindPopup(() => {
           const ctx = ctxPopupRef.current
@@ -1418,7 +1474,9 @@ export function MapaVisitas() {
     // repintura de pino, senão o mapa pula toda vez que um filtro muda.
     if (bounds.length && !centro && !modoViagemRef.current) map.fitBounds(bounds, { padding: [50, 50], maxZoom: 10 })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showVis, showOrc, visFiltradas, orcFiltrados, vendedores, byVendId, globId, marc])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showVis, showOrc, visFiltradas, orcFiltrados, vendedores, byVendId, globId, marc,
+      modo, temaEscuro])   // trocar de modo ou de tema repinta os pinos
 
   // Mantém o contexto do popup atual sem forçar repintura da camada de pinos.
   useEffect(() => {
@@ -1749,6 +1807,16 @@ export function MapaVisitas() {
           {/* No celular os controles ficam numa faixa que ROLA na horizontal (não empilham
               comendo a tela). md:contents remove o wrapper no desktop → volta ao flex-wrap original. */}
           <div className="flex items-center gap-2 w-full overflow-x-auto flex-nowrap md:contents pb-1 [&>*]:shrink-0">
+          {/* MODO de visualização — muda como o mapa PINTA, não o que ele mostra.
+              Fica antes dos filtros porque é a decisão de leitura, não de recorte. */}
+          <div className="flex h-9 rounded-md border border-border overflow-hidden text-[12px] font-semibold">
+            {MODOS.map(([v, label, ajuda]) => (
+              <button key={v} onClick={() => setModo(v)} title={ajuda}
+                className={`px-2.5 transition-colors ${modo === v ? 'bg-accent-bg text-accent' : 'bg-surface text-ink-muted hover:text-ink'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
           {/* filtro de período — o acervo tem 14 anos; sem ele a tela abre com tudo */}
           <div className="flex h-9 rounded-md border border-border overflow-hidden text-[12px] font-semibold"
                title="Período pela data do orçamento. Registros sem data aparecem sempre.">
@@ -1859,6 +1927,12 @@ export function MapaVisitas() {
             )}
           </div>
           <div className="pointer-events-auto flex items-center gap-1.5 overflow-x-auto flex-nowrap [&>*]:shrink-0">
+            <div className="flex h-9 rounded-lg overflow-hidden border border-border bg-surface/95 backdrop-blur text-[12px] font-semibold shadow">
+              {MODOS.map(([v, label, ajuda]) => (
+                <button key={v} onClick={() => setModo(v)} title={ajuda}
+                  className={`px-2.5 ${modo === v ? 'bg-accent text-white' : 'text-ink-muted'}`}>{label.split(' ')[0]}</button>
+              ))}
+            </div>
             <div className="flex h-9 rounded-lg overflow-hidden border border-border bg-surface/95 backdrop-blur text-[12px] font-semibold shadow"
                  title="Período pela data do orçamento. Registros sem data aparecem sempre.">
               {PERIODO_LABEL_CURTO.map(([v, label]) => (
@@ -1975,6 +2049,49 @@ export function MapaVisitas() {
             <>
               {showOrc && (
                 <div className="mb-3">
+                  {/* A legenda segue o MODO: mostrar as faixas de idade enquanto o
+                      mapa pinta por estado seria o jeito mais rápido de mentir. */}
+                  {modo === 'estado' && (
+                    <>
+                      <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">Clientes · por estado</div>
+                      <ul className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                        {statsUF.map(([uf, n]) => (
+                          <li key={uf} className="flex items-center gap-2 text-[12px] text-ink">
+                            <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: corDoEstado(uf === '—' ? null : uf, temaEscuro) }} />
+                            <span className="truncate font-semibold">{uf === '—' ? 'sem estado' : uf}</span>
+                            <span className="ml-auto tabular-nums text-ink-faint">{n}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="text-[10px] text-ink-faint mt-2 leading-snug">
+                        São 4 cores, não 27: no mapa quem precisa contrastar é estado
+                        vizinho de vizinho — e nenhum par de vizinhos divide cor.
+                      </p>
+                    </>
+                  )}
+                  {modo === 'idade' && (
+                    <>
+                      <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">Orçamentos · idade</div>
+                      <ul className="space-y-1.5">
+                        {FAIXAS_IDADE4.map(f => (
+                          <li key={f.id} className="flex items-center gap-2 text-[12px] text-ink">
+                            <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: corDaFaixa4(f.id, temaEscuro) }} />
+                            <span className="truncate">{f.rotulo}</span>
+                            <span className="ml-auto tabular-nums text-ink-faint">{statsIdade4.get(f.id) ?? 0}</span>
+                          </li>
+                        ))}
+                        {(statsIdade4.get('sem-data') ?? 0) > 0 && (
+                          <li className="flex items-center gap-2 text-[12px] text-ink">
+                            <span className="h-3 w-3 rounded-full shrink-0 ring-1 ring-border" style={{ backgroundColor: corDaFaixa4('sem-data', temaEscuro) }} />
+                            <span className="truncate">Sem data</span>
+                            <span className="ml-auto tabular-nums text-ink-faint">{statsIdade4.get('sem-data')}</span>
+                          </li>
+                        )}
+                        <li className="flex items-center gap-2 text-[12px] text-ink pt-1.5 mt-1 border-t border-border"><span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: AZUL_VENDIDO }} /><span className="truncate font-semibold">✓ Vendido</span><span className="ml-auto tabular-nums text-ink-faint">{statsIdade4.get('vendido') ?? 0}</span></li>
+                      </ul>
+                    </>
+                  )}
+                  {modo === 'valor' && (<>
                   <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">Orçamentos · idade</div>
                   <ul className="space-y-1.5">
                     <li className="flex items-center gap-2 text-[12px] text-ink"><span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: VERDE }} /><span className="truncate">Até 1 mês</span><span className="ml-auto tabular-nums text-ink-faint">{orcStats.verde}</span></li>
@@ -1991,6 +2108,7 @@ export function MapaVisitas() {
                       </ul>
                     </>
                   )}
+                  </>)}
                   {vendasCount > 0 && (
                     <div className="text-[10px] text-ink-faint mt-1.5 leading-snug">
                       {orcStats.vendido} clientes vendidos · {vendasCount.toLocaleString('pt-BR')} vendas no total
