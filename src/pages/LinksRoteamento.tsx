@@ -3,11 +3,16 @@
 // Aqui se cria o link que vai no anúncio. O que muda em relação ao card antigo
 // que vivia dentro de /disparos:
 //
-//   1. CRIATIVO POR LINK. O código (&NN) é campo do LINK, não do utm_content.
-//      Medido em 07/08/2026: utm_content chega com ad_id de 18 dígitos ou com a
-//      macro literal "{{ad.id}}" não interpolada — regex de código casaria 0 de
-//      18 cliques. Depender da macro do Meta é apostar num passo que já falhou
-//      em 13 de 20. Vindo do link, é determinístico: um link por criativo.
+//   1. CRIATIVO POR ANÚNCIO — e não por link. Esta página nasceu com a premissa
+//      contrária ("um link por criativo") e os dados a derrubaram no mesmo dia:
+//      em 07/08/2026 DOIS anúncios (&54 e &8) apontavam para o MESMO
+//      /l/compacta02. Código no link creditaria os dois igual — e o carimbo de
+//      criativo é first-touch-wins, ou seja, irreversível.
+//      O de-para vive em public.meta_ad_criativo (ad_id → &NN); o gatilho casa
+//      por utm_content = {{ad.id}}. O criativo do LINK continua existindo, mas
+//      só como rede de segurança para clique que chega sem utm_content.
+//      ⚠ ARMADILHA: os ids do Meta enganam. O ad_id MENOR (…870424) é o
+//      Compacta 02 (&8), não o 01. Conferido abrindo o editor de cada anúncio.
 //
 //   2. PIXEL POR LINK. Antes era env var global. Vazio = usa o global.
 //
@@ -55,7 +60,12 @@ type Resumo = {
   origem: string
   ativo: boolean
   cliques: number
+  /** Soma selo + janela. NÃO usar na tela: janela não é prova. */
   conversas: number
+  /** Casadas pelo selo invisível — a única contagem confiável. */
+  conversas_certas: number
+  /** Só coincidência de tempo. Diagnóstico, nunca métrica de decisão. */
+  conversas_provaveis: number
   cliques_7d: number
   ultimo_clique: string | null
 }
@@ -375,12 +385,17 @@ export function LinksRoteamento() {
               </div>
 
               <div className="grid gap-3 sm:grid-cols-5">
+                {/* utm_content TEM que ser {{ad.id}}: e a coluna que o gatilho
+                    casa contra meta_ad_criativo.ad_id, cujo CHECK exige 10-25
+                    digitos. Codigo "&NN" aqui NUNCA casa e o criativo fica
+                    vazio pra sempre (o carimbo e first-touch-wins). O de-para
+                    ad_id -> &NN mora na tabela, nao na URL. */}
                 {([
                   ['utm_source', 'meta'],
-                  ['utm_medium', 'paid'],
+                  ['utm_medium', '{{placement}}'],
                   ['utm_campaign', '{{campaign.id}}'],
-                  ['utm_content', '54'],
-                  ['utm_term', '{{ad.id}}'],
+                  ['utm_content', '{{ad.id}}'],
+                  ['utm_term', '{{adset.id}}'],
                 ] as const).map(([campo, exemplo]) => (
                   <label className="block" key={campo}>
                     <span className="text-[10px] font-semibold text-ink-muted font-mono">{campo}</span>
@@ -521,9 +536,21 @@ export function LinksRoteamento() {
                     <span className="inline-flex items-center gap-1">
                       <MousePointerClick className="h-3 w-3" /> {l.cliques} clique{l.cliques === 1 ? '' : 's'}
                     </span>
-                    <span className="inline-flex items-center gap-1 text-emerald-300">
-                      <MessageSquare className="h-3 w-3" /> {l.conversas} conversa{l.conversas === 1 ? '' : 's'}
+                    {/* Nunca o total. `conversas` soma selo + janela, e janela
+                        não é prova: dos 7 casamentos por janela em 05-07/08,
+                        NENHUM veio do link (Instagram, quiz do site, um
+                        fornecedor prospectando a Branorte, uma cliente de
+                        22/06). O verde é só o que o selo invisível provou. */}
+                    <span className="inline-flex items-center gap-1 text-emerald-300"
+                          title="Casadas pelo selo invisível — prova de que a mensagem nasceu deste link">
+                      <MessageSquare className="h-3 w-3" /> {l.conversas_certas} conversa{l.conversas_certas === 1 ? '' : 's'}
                     </span>
+                    {l.conversas_provaveis > 0 && (
+                      <span className="inline-flex items-center gap-1 text-ink-faint"
+                            title="Só coincidência de tempo com o clique. Não conte nisso para decidir verba.">
+                        +{l.conversas_provaveis} sem prova
+                      </span>
+                    )}
                     <span className="text-ink-faint">{l.cliques_7d} nos últimos 7 dias</span>
                     {l.ultimo_clique && (
                       <span className="text-ink-faint">
