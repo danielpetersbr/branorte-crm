@@ -59,3 +59,30 @@ export function passaPeriodo(
   if (d == null) return true               // sem data: não dá pra julgar, não esconde
   return d <= limite
 }
+
+/**
+ * Faixa de idade do pino — a régua que o filtro de período existe para proteger.
+ *
+ * Fica aqui, separada da COR, porque a régua é regra e a cor é aparência: assim a
+ * fronteira (30 / 90 dias) pode ser testada sem depender de hex de Tailwind.
+ * `'sem-data'` é faixa própria, e não um apelido de "antigo": o pino é pintado de
+ * cinza nos dois casos, mas os motivos são diferentes e só um deles é idade.
+ */
+export type FaixaIdade = 'recente' | 'medio' | 'antigo' | 'sem-data'
+
+export function faixaIdade(dataISO: string | null | undefined, agora: number = Date.now()): FaixaIdade {
+  const d = diasDesde(dataISO, agora)
+  if (d == null) return 'sem-data'
+  if (d <= 30) return 'recente'
+  if (d <= 90) return 'medio'
+  return 'antigo'
+}
+
+/** Texto de idade do popup ("há 3 dias", "há 5 meses", "—" sem data). */
+export function idadeLabel(dataISO: string | null | undefined, agora: number = Date.now()): string {
+  const d = diasDesde(dataISO, agora)
+  if (d == null) return '—'
+  if (d <= 30) return `há ${d} dia${d === 1 ? '' : 's'}`
+  const m = Math.floor(d / 30)
+  return `há ${m} ${m === 1 ? 'mês' : 'meses'}`
+}

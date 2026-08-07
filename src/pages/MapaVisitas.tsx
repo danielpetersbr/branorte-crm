@@ -15,8 +15,8 @@ import { useSalvarViagem, useSalvarLocalizacaoCliente, useViagem, type ViagemSta
 import { ViagensSalvas } from '@/components/mapa/ViagensSalvas'
 import { supabase } from '@/lib/supabase'
 import {
-  passaPeriodo as passaPeriodoRegra, rotuloPeriodo,
-  PERIODO_LABEL, PERIODO_LABEL_CURTO, type PeriodoFiltro,
+  passaPeriodo as passaPeriodoRegra, rotuloPeriodo, faixaIdade, idadeLabel, diasDesde,
+  PERIODO_LABEL, PERIODO_LABEL_CURTO, type PeriodoFiltro, type FaixaIdade,
 } from '@/lib/periodo'
 import {
   type ConfigViagem, type Parada, type Trecho, type PontoMapa, type Programacao,
@@ -44,28 +44,16 @@ function corDoVendedor(vendedor: string | null, ordem: string[]): string {
 
 // Cor do pino de ORÇAMENTO: vendido=azul; senão pela idade (verde ≤1m, vermelho 1–3m, cinza >3m)
 const VERDE = '#22c55e', VERMELHO = '#ef4444', CINZA_VELHO = '#9ca3af', AZUL_VENDIDO = '#2563eb'
-function diasDesde(dataISO: string | null): number | null {
-  if (!dataISO) return null
-  const t = new Date(dataISO.length <= 10 ? dataISO + 'T00:00:00' : dataISO).getTime()
-  if (Number.isNaN(t)) return null
-  return Math.floor((Date.now() - t) / 86400000)
+// A régua (30/90 dias) mora em src/lib/periodo.ts, testada. Aqui fica só o mapa
+// faixa -> cor, que é aparência. Antes havia uma segunda cópia de diasDesde aqui.
+const COR_DA_FAIXA: Record<FaixaIdade, string> = {
+  recente: VERDE, medio: VERMELHO, antigo: CINZA_VELHO, 'sem-data': CINZA,
 }
 function corIdade(dataRecente: string | null): string {
-  const d = diasDesde(dataRecente)
-  if (d == null) return CINZA
-  if (d <= 30) return VERDE
-  if (d <= 90) return VERMELHO
-  return CINZA_VELHO
+  return COR_DA_FAIXA[faixaIdade(dataRecente)]
 }
 function corOrcamento(p: { data_recente: string | null; vendido: boolean }): string {
   return p.vendido ? AZUL_VENDIDO : corIdade(p.data_recente)
-}
-function idadeLabel(dataRecente: string | null): string {
-  const d = diasDesde(dataRecente)
-  if (d == null) return '—'
-  if (d <= 30) return `há ${d} dia${d === 1 ? '' : 's'}`
-  const m = Math.floor(d / 30)
-  return `há ${m} ${m === 1 ? 'mês' : 'meses'}`
 }
 
 // Destaque de valor no mapa (só ORÇADOS, não vendidos):
@@ -655,20 +643,32 @@ export function MapaVisitas() {
     [orcBase, ufSel]
   )
 
-  // Quantos clientes o PERÍODO está escondendo, mantidos os demais filtros.
-  // O mapa precisa dizer isso: no padrão de 24 meses some 57% da base — e 30% de
-  // quem já comprou. Sem o aviso, o único jeito de descobrir é clicar em "Tudo"
-  // e ver o mapa dobrar. A lista já era honesta ("4.841 de 11.428"); o mapa não era.
-  const ocultosPeriodo = useMemo(() => {
-    if (periodo === 'tudo') return 0
-    return orcPontos.reduce((n, p) => n + (
-      (!vendedorSel || (p.vendedor || '—') === vendedorSel) &&
-      passaFiltro(p.vendido, p.total) &&
-      passaVisita(p) &&
-      (!ufSel || ufKey(p.uf) === ufSel) &&
-      !passaPeriodo(p.data_recente) ? 1 : 0), 0)
+  // Quantos clientes o PERÍODO está escondendo, mantidos TODOS os demais filtros —
+  // inclusive a BUSCA. Sem o termo, digitar "goi" mostrava "8 clientes · +2.998
+  // fora do período" quando o certo era 37: o aviso ficava 81x maior que a verdade
+  // e o botão mentia sobre o que ele mesmo faria.
+  //
+  // Dois recortes porque há dois leitores: o cabeçalho fala da tela inteira; o
+  // rodapé fala só de quem COMPROU, e usar o número geral lá produzia aritmética
+  // impossível (1.210 vendidos + 2.998 ocultos > 2.172 vendas no total).
+  const ocultos = useMemo(() => {
+    if (periodo === 'tudo') return { total: 0, vendidos: 0 }
+    let total = 0, vendidos = 0
+    for (const p of orcPontos) {
+      const passaOsOutros =
+        (!vendedorSel || (p.vendedor || '—') === vendedorSel) &&
+        passaFiltro(p.vendido, p.total) &&
+        passaVisita(p) &&
+        (!ufSel || ufKey(p.uf) === ufSel) &&
+        (!termo || [p.cliente, p.cidade, p.uf, p.telefone, p.fone, p.numeros, p.vendedor]
+          .some(x => (x || '').toLowerCase().includes(termo)))
+      if (!passaOsOutros || passaPeriodo(p.data_recente)) continue
+      total++
+      if (p.vendido) vendidos++
+    }
+    return { total, vendidos }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orcPontos, vendedorSel, vendFiltro, visitaFiltro, ufSel, periodo, marc])
+  }, [orcPontos, vendedorSel, termo, vendFiltro, visitaFiltro, ufSel, periodo, marc])
 
   // Soma por ESTADO do que está no mapa. 1 valor por cliente: orçamento mais recente
   // (ou, se já comprou, a soma das vendas dele) — mesmo valor que decide ⭐/💎 no pino.
@@ -1694,10 +1694,10 @@ export function MapaVisitas() {
               </span>
             )}
             {showOrc && <>{orcFiltrados.length} clientes com orçamento{orcStats.vendido > 0 && <> · <span className="text-blue-600 font-semibold">{orcStats.vendido} vendidos</span></>}</>}
-            {showOrc && ocultosPeriodo > 0 && (
+            {showOrc && ocultos.total > 0 && (
               <> · <button onClick={() => setPeriodo('tudo')} className="text-warning font-semibold hover:underline"
-                    title={`${ocultosPeriodo} clientes estão fora da janela de ${rotuloPeriodo(periodo)}. Clique para ver o acervo inteiro.`}>
-                +{ocultosPeriodo} fora do período ✕
+                    title={`${ocultos.total} clientes estão fora da janela de ${rotuloPeriodo(periodo)}${ocultos.vendidos > 0 ? ` (${ocultos.vendidos} deles já compraram)` : ''}. Clique para ver o acervo inteiro.`}>
+                +{ocultos.total} fora do período ✕
               </button></>
             )}
             {showOrc && showVis && ' · '}
@@ -1865,6 +1865,15 @@ export function MapaVisitas() {
                 <button key={v} onClick={() => setPeriodo(v)} className={`px-3 ${periodo === v ? 'bg-accent text-white' : 'text-ink-muted'}`}>{label}</button>
               ))}
             </div>
+            {/* O aviso de ocultos vive no cabeçalho, que é `hidden md:flex` — sem este
+                chip o celular escondia 57% da base calado. */}
+            {showOrc && ocultos.total > 0 && (
+              <button onClick={() => setPeriodo('tudo')}
+                className="h-9 px-3 rounded-lg border border-warning/40 bg-surface/95 backdrop-blur text-[12px] font-semibold text-warning shadow"
+                title={`${ocultos.total} clientes fora da janela de ${rotuloPeriodo(periodo)}. Toque para ver tudo.`}>
+                +{ocultos.total} ocultos ✕
+              </button>
+            )}
             <div className="flex h-9 rounded-lg overflow-hidden border border-border bg-surface/95 backdrop-blur text-[12px] font-semibold shadow">
               {([['todos', 'Todos'], ['orcados', 'Só orçados'], ['vendidos', 'Vendidos'], ['alto', '⭐ Alto valor'], ['diamante', '💎 ≥300 mil']] as [VendFiltro, string][]).map(([v, label]) => (
                 <button key={v} onClick={() => setVendFiltro(v)} className={`px-3 ${vendFiltro === v ? 'bg-accent text-white' : 'text-ink-muted'}`}>{label}</button>
@@ -1987,10 +1996,12 @@ export function MapaVisitas() {
                       {orcStats.vendido} clientes vendidos · {vendasCount.toLocaleString('pt-BR')} vendas no total
                       <br />(1 pino por cliente — quem comprou +1x conta como 1)
                       {/* Sem esta linha o texto acima atribui à RECOMPRA uma diferença
-                          que é do filtro de período — e a maior parte dela não é recompra. */}
-                      {ocultosPeriodo > 0 && (
+                          que é do filtro de período. E o número aqui tem de ser o de
+                          quem COMPROU e está oculto — usar o total de ocultos daria
+                          mais compradores do que vendas, o que é impossível. */}
+                      {ocultos.vendidos > 0 && (
                         <><br /><span className="text-warning">
-                          Fora da janela de {rotuloPeriodo(periodo)}: {ocultosPeriodo} clientes não entram nesta contagem.
+                          Fora da janela de {rotuloPeriodo(periodo)}: mais {ocultos.vendidos} clientes já compraram e não entram nesta contagem.
                         </span></>
                       )}
                     </div>

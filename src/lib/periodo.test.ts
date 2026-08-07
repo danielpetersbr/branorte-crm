@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { passaPeriodo, diasDesde, rotuloPeriodo, PERIODO_DIAS } from './periodo'
+import { passaPeriodo, diasDesde, rotuloPeriodo, faixaIdade, idadeLabel, PERIODO_DIAS } from './periodo'
 
 // Data fixa para os testes não dependerem do dia em que rodam.
 const HOJE = new Date('2026-08-07T12:00:00Z').getTime()
@@ -73,4 +73,48 @@ test('diasDesde: conta em dias inteiros', () => {
 test('rotuloPeriodo devolve o texto que aparece no botão', () => {
   assert.equal(rotuloPeriodo('24m'), '24 meses')
   assert.equal(rotuloPeriodo('tudo'), 'Tudo')
+})
+
+// ── régua de idade do pino (verde ≤1 mês / vermelho 1–3 meses / cinza >3 meses) ──
+// É a régua que o filtro de período existe para proteger; sem teste ela era a peça
+// solta do conjunto.
+
+test('faixaIdade: fronteiras 30 e 90 dias', () => {
+  assert.equal(faixaIdade(diasAtras(0), HOJE), 'recente')
+  assert.equal(faixaIdade(diasAtras(30), HOJE), 'recente')   // <= 30
+  assert.equal(faixaIdade(diasAtras(31), HOJE), 'medio')
+  assert.equal(faixaIdade(diasAtras(90), HOJE), 'medio')     // <= 90
+  assert.equal(faixaIdade(diasAtras(91), HOJE), 'antigo')
+  assert.equal(faixaIdade(diasAtras(5000), HOJE), 'antigo')
+})
+
+test('faixaIdade: SEM DATA é faixa própria, não "antigo"', () => {
+  // Os dois pintam cinza, mas o motivo é diferente: um é idade, o outro é ausência
+  // de dado. Confundir os dois é o que faria alguém "limpar" 718 pinos reais.
+  assert.equal(faixaIdade(null, HOJE), 'sem-data')
+  assert.equal(faixaIdade('', HOJE), 'sem-data')
+  assert.equal(faixaIdade('data podre', HOJE), 'sem-data')
+  assert.notEqual(faixaIdade(null, HOJE), faixaIdade(diasAtras(5000), HOJE))
+})
+
+test('faixaIdade: data no futuro conta como recente, não quebra', () => {
+  const futuro = new Date(HOJE + 10 * 86400000).toISOString().slice(0, 10)
+  assert.equal(faixaIdade(futuro, HOJE), 'recente')
+})
+
+test('a régua de cor e o filtro concordam: o que é "recente" cabe em qualquer janela', () => {
+  for (const d of [0, 15, 30]) {
+    const dt = diasAtras(d)
+    assert.equal(faixaIdade(dt, HOJE), 'recente')
+    assert.equal(passaPeriodo(dt, '12m', HOJE), true)
+  }
+})
+
+test('idadeLabel: dias até 30, meses depois, travessão sem data', () => {
+  assert.equal(idadeLabel(diasAtras(0), HOJE), 'há 0 dias')
+  assert.equal(idadeLabel(diasAtras(1), HOJE), 'há 1 dia')
+  assert.equal(idadeLabel(diasAtras(30), HOJE), 'há 30 dias')
+  assert.equal(idadeLabel(diasAtras(31), HOJE), 'há 1 mês')
+  assert.equal(idadeLabel(diasAtras(60), HOJE), 'há 2 meses')
+  assert.equal(idadeLabel(null, HOJE), '—')
 })
