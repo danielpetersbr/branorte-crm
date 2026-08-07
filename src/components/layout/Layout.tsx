@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
-  Activity, AlertCircle, BarChart2, Beef, BookCheck, BookOpen, Bot, Boxes, Calculator, CalendarDays, CheckCircle, ChevronDown, ChevronsLeft, ChevronsRight, ClipboardList, Compass, Factory, FilePlus2, FileText, GitBranch, Headphones, History, LayoutDashboard, List, LogOut, MapPin, MessageSquare, MessageSquarePlus, Moon, Package, Search, Settings, Shield, ShoppingBag, Star, Sun, Tag, Target, TrendingUp, Truck, UserPlus, Users, Wallet, Wheat, Workflow, Zap,
+  Activity, AlertCircle, BarChart2, Beef, BookCheck, BookOpen, Bot, Boxes, Calculator, CalendarDays, CheckCircle, ChevronDown, ChevronsLeft, ChevronsRight, ClipboardList, Compass, Factory, FilePlus2, FileText, GitBranch, Headphones, History, LayoutDashboard, Link2, List, LogOut, MapPin, MessageSquare, MessageSquarePlus, Moon, Package, Search, Settings, Shield, ShoppingBag, Star, Sun, Tag, Target, TrendingUp, Truck, UserPlus, Users, Wallet, Wheat, Workflow, Zap,
 } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -204,6 +204,7 @@ const NAV_GROUPS: NavGroup[] = [
     id: 'sistema', label: 'Sistema', icon: Settings,
     items: [
       { to: '/disparos', label: 'Roteamento', icon: GitBranch, permKey: 'menu.disparos' },
+      { to: '/disparos/links', label: 'Links de anúncio', icon: Link2, permKey: 'menu.disparos' },
       { to: '/ia-atendente', label: 'IA Atendente', icon: Bot, permKey: 'menu.ia_atendente' },
       { to: '/fluxos', label: 'Fluxos do Funil', icon: Workflow, permKey: 'menu.fluxos_funil' },
       { to: '/admin/usuarios', label: 'Usuários', icon: Shield, permKey: 'menu.admin_usuarios' },

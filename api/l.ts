@@ -38,7 +38,41 @@ const REUSO_MIN = 2
 /** Robo de preview de link (WhatsApp, Facebook, Google...) buscando a URL nao e
  *  cliente clicando. Se deixar passar, o simples ato de COLAR o link no
  *  WhatsApp ja consome um vendedor do rodizio e suja o relatorio. */
-const BOTS = /bot|crawler|spider|crawling|facebookexternalhit|whatsapp|telegram|slack|discord|twitter|linkedin|preview|embed|curl|wget|python-requests|headless|lighthouse|gtmetrix|pingdom|monitor/i
+const BOTS = /bot|crawler|spider|crawling|facebookexternalhit|whatsapp|telegram|slack|discord|twitter|linkedin|preview|embed|curl|wget|python-requests|aiohttp|httpx|okhttp|go-http|node-fetch|axios|headless|lighthouse|gtmetrix|pingdom|monitor/i
+
+/** Faixas de datacenter que chegam DISFARCADAS de clique humano.
+ *
+ *  Medido em 07/08/2026 nos 77 primeiros cliques do /l/: 26 vieram de
+ *  datacenter e 22 desses das faixas da PROPRIA Meta (AS32934). Eles mandam
+ *  User-Agent de navegador real -- Android Chrome, Windows Chrome e iPhone
+ *  Safari, todos com o mesmo referer legado "http://m.facebook.com" -- entao o
+ *  BOTS acima, que olha so o User-Agent, nao pega nenhum.
+ *
+ *  O estrago era triplo:
+ *    1. giravam o rodizio (20 posicoes de vendedor queimadas num unico dia);
+ *    2. viravam evento na Conversions API com client_ip_address do datacenter,
+ *       ensinando o otimizador do Meta com trafego que nao existe;
+ *    3. sobravam como clique orfao, e o casamento por janela adotava esse orfao
+ *       quando um cliente de verdade escrevia -- 3 conversas reais foram
+ *       creditadas a cliques-fantasma.
+ *
+ *  Prova de que nao e gente: em 77 cliques, ZERO clique de datacenter casou por
+ *  selo invisivel. Robo nao manda mensagem no WhatsApp depois.
+ *
+ *  Lista deliberadamente CURTA: so faixas inequivocas da Meta mais as que
+ *  aparecerem medidas. Prefixo largo demais joga cliente de verdade no
+ *  fallback e quebra a fila -- o erro caro e o falso positivo, nao o falso
+ *  negativo. */
+const INFRA_ANUNCIO = [
+  '173.252.', '69.63.', '31.13.', '157.240.', '66.220.', '129.134.', // Meta / Facebook Inc.
+  '35.16', '54.2',                                                   // AWS (medidos)
+  '47.25',                                                           // Alibaba (medido)
+]
+
+function ehInfraDeAnuncio(ip: string | null): boolean {
+  if (!ip) return false
+  return INFRA_ANUNCIO.some(faixa => ip.startsWith(faixa))
+}
 
 function primeiroNome(nome: string): string {
   const n = String(nome || '').trim().split(/\s+/)[0] || ''
@@ -125,6 +159,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     txt((req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]) ||
     txt(req.headers['x-real-ip']) ||
     null
+
+  // Varredura de datacenter: nao registra, nao gira o rodizio, nao vira evento.
+  // O redirect CONTINUA de proposito: se a heuristica errar com um cliente de
+  // verdade, ele perde o rastreio e cai no fallback -- nunca a conversa.
+  if (ehInfraDeAnuncio(ip)) return res.redirect(302, `https://wa.me/${fallback}`)
 
   // --- Assinatura do clique do anuncio (Meta) -------------------------------
   // O Meta gruda ?fbclid=... em todo clique que sai de um anuncio. E o UNICO
