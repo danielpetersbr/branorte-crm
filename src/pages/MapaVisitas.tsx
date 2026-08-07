@@ -15,7 +15,7 @@ import { useSalvarViagem, useSalvarLocalizacaoCliente, useViagem, type ViagemSta
 import { ViagensSalvas } from '@/components/mapa/ViagensSalvas'
 import { supabase } from '@/lib/supabase'
 import {
-  passaPeriodo as passaPeriodoRegra, rotuloPeriodo, faixaIdade, idadeLabel, diasDesde,
+  passaPeriodo as passaPeriodoRegra, rotuloPeriodo, faixaIdade, idadeLabel,
   PERIODO_LABEL, PERIODO_LABEL_CURTO, type PeriodoFiltro, type FaixaIdade,
 } from '@/lib/periodo'
 import {
