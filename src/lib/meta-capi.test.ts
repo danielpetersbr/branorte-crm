@@ -6,7 +6,8 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { montarFbc, lerFbp, capiConfigurada, montarEvento } from '../../api/_lib/meta-capi'
+import { createHash } from 'node:crypto'
+import { montarFbc, lerFbp, capiConfigurada, montarEvento, hashTelefone } from '../../api/_lib/meta-capi'
 
 test('fbc sai no formato fb.1.<ms>.<fbclid> exigido pelo Meta', () => {
   const fbc = montarFbc('IwAR0abc-DEF_123', 1_754_500_000_000)
@@ -115,4 +116,53 @@ test('sem env configurada a CAPI fica desligada (nao quebra o clique)', () => {
     if (pixel !== undefined) process.env.META_PIXEL_ID = pixel
     if (token !== undefined) process.env.META_CAPI_TOKEN = token
   }
+})
+
+// --- ph (telefone) ---------------------------------------------------------
+// Sem fbc o evento chegava anonimo e nao creditava criativo nenhum. O `ph` e a
+// rede: atribui sem fbc. Mas hash de numero MAL NORMALIZADO nao casa com nada e
+// falha do mesmo jeito mudo -- o Meta responde 200 e nao atribui. Estes testes
+// travam a normalizacao exigida pela spec: so digitos, com DDI, sem '+'.
+
+test('ph e o SHA-256 hex minusculo do numero so-digitos com DDI', () => {
+  // sha256("5548999998888") — valor fixo, calculado fora, pra travar o contrato.
+  const esperado = createHash('sha256').update('5548999998888').digest('hex')
+  assert.equal(hashTelefone('5548999998888'), esperado)
+  assert.match(hashTelefone('5548999998888')!, /^[0-9a-f]{64}$/)
+})
+
+test('pontuacao, espaco e + sao removidos antes do hash', () => {
+  const base = hashTelefone('5548999998888')
+  for (const v of ['+55 48 99999-8888', '55 (48) 99999 8888', '+5548999998888']) {
+    assert.equal(hashTelefone(v), base, `falhou para: ${v}`)
+  }
+})
+
+test('numero brasileiro sem DDI ganha o 55', () => {
+  assert.equal(hashTelefone('48999998888'), hashTelefone('5548999998888'))
+  assert.equal(hashTelefone('4833334444'), hashTelefone('554833334444'))
+})
+
+test('o 9o digito NAO e inventado nem removido', () => {
+  // Fixo e movel do mesmo DDD sao pessoas diferentes: nao podem colidir.
+  assert.notEqual(hashTelefone('554833334444'), hashTelefone('5548933334444'))
+})
+
+test('lixo vira null em vez de hash de lixo', () => {
+  for (const v of [null, undefined, '', '   ', 'abc', '123', 42, {}, '1'.repeat(20)]) {
+    assert.equal(hashTelefone(v as unknown), null, `deveria recusar: ${String(v)}`)
+  }
+})
+
+test('conversa sem fbc ainda atribui, porque vai o ph', () => {
+  const ev = montarEvento({
+    nome: 'Lead', eventId: 'X-c', fbc: null, telefone: '5548999998888',
+    ip: '191.253.1.1', userAgent: 'Mozilla/5.0', sourceUrl: null,
+  })
+  assert.ok(ev, 'evento nao deveria ser recusado')
+  const ud = (ev as any).user_data
+  assert.match(ud.ph, /^[0-9a-f]{64}$/)
+  assert.equal(ud.fbc, undefined)
+  // O numero legivel NAO pode aparecer em lugar nenhum do payload.
+  assert.equal(JSON.stringify(ev).includes('5548999998888'), false)
 })

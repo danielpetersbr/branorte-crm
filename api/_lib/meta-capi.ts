@@ -19,6 +19,8 @@
 // A API versionada fica congelada de proposito: subir de versao sozinho e como
 // o Meta muda contrato sem avisar.
 
+import { createHash } from 'node:crypto';
+
 const GRAPH_VERSION = 'v21.0';
 
 /** O clique nao pode esperar o Meta. Se em TIMEOUT_MS ele nao respondeu, o
@@ -36,6 +38,10 @@ export type EventoCapi = {
   fbc: string | null;
   /** Cookie _fbp, quando existir. Num redirect quase nunca existe. */
   fbp?: string | null;
+  /** Telefone do cliente EM CLARO. Esta funcao hasheia antes de mandar; o numero
+   *  NUNCA sai daqui legivel. So existe no evento de CONVERSA -- no clique ainda
+   *  nao se sabe quem e o cliente. Ver hashTelefone(). */
+  telefone?: string | null;
   ip: string | null;
   userAgent: string | null;
   /** URL que o cliente abriu (o proprio /l/<slug>). */
@@ -68,6 +74,36 @@ export function montarFbc(fbclid: unknown, agoraMs: number = Date.now()): string
   return `fb.1.${Math.floor(agoraMs)}.${limpo}`;
 }
 
+/** ph = telefone do cliente, SHA-256 em hex minusculo, como o Meta exige.
+ *
+ *  POR QUE ELE EXISTE: sem fbc o evento chegava anonimo e nao creditava criativo
+ *  nenhum. Medido em 07/08/2026: so 4 dos 77 cliques trouxeram fbclid -- os de
+ *  placement Instagram. Os de Facebook Right Column vinham sem. Resultado: das 3
+ *  conversas provadas por selo, 2 nunca chegaram ao Meta. O telefone ja estava
+ *  gravado na linha e era o parametro de match que resolvia -- a spec da CAPI
+ *  atribui por `ph` sem precisar de fbc.
+ *
+ *  NORMALIZACAO EXIGIDA PELO META: so digitos, com codigo do pais, sem '+',
+ *  sem espaco, sem pontuacao. Hash de numero mal normalizado nao casa com nada e
+ *  falha em SILENCIO -- o Meta responde 200 e simplesmente nao atribui.
+ *
+ *  O 9o digito: o Brasil tem numero movel com e sem ele circulando. NAO se
+ *  inventa nem se remove digito aqui -- manda-se o numero como o cliente
+ *  escreveu no WhatsApp, que e o mesmo que o Meta tem do cadastro dele.
+ *
+ *  Devolve null quando o numero nao e plausivel, em vez de mandar hash de lixo. */
+export function hashTelefone(telefone: unknown): string | null {
+  if (typeof telefone !== 'string') return null;
+  let d = telefone.replace(/\D/g, '');
+  if (!d) return null;
+  // Numero brasileiro sem DDI (10 ou 11 digitos: DDD + 8 ou 9) ganha o 55.
+  if (d.length === 10 || d.length === 11) d = '55' + d;
+  // Fora de 11..15 digitos nao e telefone com DDI: 5511999999999 tem 13,
+  // o menor com DDI plausivel tem 11. Acima de 15 viola o E.164.
+  if (d.length < 11 || d.length > 15) return null;
+  return createHash('sha256').update(d).digest('hex');
+}
+
 /** Le o cookie _fbp do header Cookie cru. */
 export function lerFbp(cookieHeader: unknown): string | null {
   if (typeof cookieHeader !== 'string') return null;
@@ -90,14 +126,21 @@ export function capiConfigurada(): boolean {
  *  Devolve null quando nao ha identificador nenhum: evento sem user_data o Meta
  *  recusa, e mandar assim so gasta chamada. */
 export function montarEvento(ev: EventoCapi): Record<string, unknown> | null {
-  // Aqui nao ha PII nenhuma (no clique eu ainda nao sei quem e o cliente),
-  // entao nada disto e hasheado: fbc, fbp, IP e user-agent o Meta recebe em
-  // claro por especificacao.
+  // fbc, fbp, IP e user-agent o Meta recebe EM CLARO por especificacao -- nao
+  // sao PII de cliente. O telefone e, e por isso passa por SHA-256 aqui dentro:
+  // quem chama entrega o numero legivel e ele nunca sai deste escopo.
   const userData: Record<string, string> = {};
   if (ev.fbc) userData.fbc = ev.fbc;
   if (ev.fbp) userData.fbp = ev.fbp;
+  const ph = hashTelefone(ev.telefone);
+  if (ph) userData.ph = ph;
   if (ev.ip) userData.client_ip_address = ev.ip;
   if (ev.userAgent) userData.client_user_agent = ev.userAgent;
+  // Mantido permissivo DE PROPOSITO. IP + user-agent sozinhos nao atribuem a
+  // anuncio nenhum (o Meta responde 200 e nao credita nada), mas endurecer aqui
+  // mataria o ViewContent de TODO clique sem fbclid -- e so 4 dos 77 cliques de
+  // 07/08 trouxeram um. Quem precisa de identificador de pessoa e o evento de
+  // CONVERSA, e la a exigencia esta no proprio filtro da varredura.
   if (Object.keys(userData).length === 0) return null;
 
   return {
