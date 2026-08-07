@@ -56,6 +56,7 @@ const IaAtendente = lazy(() => import('@/pages/IaAtendente').then(m => ({ defaul
 const FluxosFunil = lazy(() => import('@/pages/FluxosFunil').then(m => ({ default: m.FluxosFunil })))
 const Perfil = lazy(() => import('@/pages/Perfil').then(m => ({ default: m.Perfil })))
 const Disparos = lazy(() => import('@/pages/Disparos').then(m => ({ default: m.Disparos })))
+const LinksRoteamento = lazy(() => import('@/pages/LinksRoteamento').then(m => ({ default: m.LinksRoteamento })))
 const MotoresAdmin = lazy(() => import('@/pages/MotoresAdmin').then(m => ({ default: m.MotoresAdmin })))
 const PrecosBranorte = lazy(() => import('@/pages/PrecosBranorte').then(m => ({ default: m.PrecosBranorte })))
 const OrcamentosConversao = lazy(() => import('@/pages/OrcamentosConversao').then(m => ({ default: m.OrcamentosConversao })))
@@ -524,6 +525,9 @@ function AppRoutes() {
         <Route path="/perfil" element={<Perfil />} />
         {can('menu.disparos') && (
           <Route path="/disparos" element={<Disparos />} />
+        )}
+        {can('menu.disparos') && (
+          <Route path="/disparos/links" element={<LinksRoteamento />} />
         )}
         {can('menu.admin_usuarios') && (
           <Route path="/admin/usuarios" element={<AdminUsuarios />} />
