@@ -33,7 +33,13 @@ type Resumo = {
   origem: string
   ativo: boolean
   cliques: number
+  /** Total — soma certeza e chute. Mantido por compatibilidade; NÃO exibir. */
   conversas: number
+  /** Casamento provado: selo invisível ou texto do link. */
+  conversas_certas: number
+  /** Casado só pela janela de tempo. Já adotou lead de Instagram, Facebook,
+   *  quiz e até fornecedor prospectando — não é fato, é palpite. */
+  conversas_provaveis: number
   cliques_7d: number
   ultimo_clique: string | null
 }
@@ -313,9 +319,26 @@ export function LinksRoteamento() {
                 <span className="inline-flex items-center gap-1">
                   <MousePointerClick className="h-3 w-3" /> {l.cliques} clique{l.cliques === 1 ? '' : 's'}
                 </span>
-                <span className="inline-flex items-center gap-1 text-emerald-300">
-                  <MessageSquare className="h-3 w-3" /> {l.conversas} conversa{l.conversas === 1 ? '' : 's'}
+                {/* Certeza e palpite NÃO podem somar no mesmo número. O card
+                    mostrava o total em verde, como fato: dizia 10 conversas
+                    quando 3 eram reais e 7 eram lead de outra origem adotado
+                    pela janela de tempo. Quem lê o número grande nunca chega
+                    na tabela de detalhe, que já distinguia os dois. */}
+                <span
+                  className="inline-flex items-center gap-1 text-emerald-300"
+                  title="Casamento provado: o código invisível bateu, ou o texto do link + segundos entre o clique e a mensagem."
+                >
+                  <MessageSquare className="h-3 w-3" /> {l.conversas_certas} conversa
+                  {l.conversas_certas === 1 ? '' : 's'}
                 </span>
+                {l.conversas_provaveis > 0 && (
+                  <span
+                    className="inline-flex items-center gap-1 text-amber-300/80"
+                    title="Casado só pela janela de tempo, sem prova. Já adotou lead vindo de Instagram, Facebook e quiz — não conte como conversão do link."
+                  >
+                    + {l.conversas_provaveis} sem prova
+                  </span>
+                )}
                 <span className="text-ink-faint">{l.cliques_7d} nos últimos 7 dias</span>
                 {l.ultimo_clique && (
                   <span className="text-ink-faint">
@@ -377,8 +400,23 @@ export function LinksRoteamento() {
                     <td className="px-2 py-1.5">
                       {c.matched_at ? (
                         <span className="inline-flex items-center gap-1">
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border bg-emerald-500/10 text-emerald-300 border-emerald-500/30">
-                            {c.match_via === 'codigo' ? 'conversou' : 'provável'}
+                          {/* A cor precisa mudar junto com a palavra. Antes os
+                              dois graus saíam no MESMO verde, e verde lê-se
+                              "confirmado" antes de qualquer texto. */}
+                          <span
+                            className={
+                              'px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border ' +
+                              (c.match_via === 'codigo' || c.match_via === 'texto'
+                                ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                                : 'bg-amber-500/10 text-amber-300 border-amber-500/30')
+                            }
+                            title={
+                              c.match_via === 'codigo' || c.match_via === 'texto'
+                                ? 'Casamento provado.'
+                                : 'Casado só pela janela de tempo — pode ser lead de outra origem.'
+                            }
+                          >
+                            {c.match_via === 'codigo' || c.match_via === 'texto' ? 'conversou' : 'sem prova'}
                           </span>
                           {c.cliente_telefone && (
                             <span className="font-mono text-[10px] text-ink-faint">+{c.cliente_telefone}</span>
@@ -399,9 +437,11 @@ export function LinksRoteamento() {
             </table>
           </div>
           <p className="text-[10px] text-ink-faint mt-2">
-            <b>conversou</b> = o código invisível bateu, é certeza. <b>provável</b> = o WhatsApp limpou o código e o
-            sistema casou pela primeira mensagem daquele contato dentro de 1 hora do clique. <b>só clicou</b> = abriu
-            o WhatsApp e não mandou nada (ou ainda não mandou).
+            <b>conversou</b> = o código invisível bateu, é certeza. <b>sem prova</b> = o WhatsApp limpou o código e o
+            sistema casou por <i>vendedor + tempo</i> — qualquer conversa nova daquele vendedor dentro de 1 hora do
+            clique. Isso adota lead de outra origem: medido em 05–07/08, <b>7 de 7</b> vieram de Instagram, Facebook,
+            quiz e até de um fornecedor. Não conte como conversão do link. <b>só clicou</b> = abriu o WhatsApp e não
+            mandou nada (ou ainda não mandou).
           </p>
         </div>
       )}
