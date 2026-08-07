@@ -45,6 +45,16 @@ function primeiroNome(nome: string): string {
   return n ? n[0].toUpperCase() + n.slice(1).toLowerCase() : n
 }
 
+/** Macro do Meta que NAO foi substituida chega literal: utm_content='{{ad.id}}'.
+ *  Acontece quando o link e aberto fora da entrega real -- previa do anuncio no
+ *  Gerenciador, ou o gestor conferindo o destino. Guardar isso faz o relatorio
+ *  exibir '{{ad.id}}' como se fosse um anuncio de verdade, com cliques e tudo.
+ *  Medido em 07/08/2026: 2 dos 40 cliques do dia. */
+function utm(v: unknown): string | null {
+  const t = txt(v)
+  return t && t.includes('{{') ? null : t
+}
+
 function txt(v: unknown): string | null {
   if (Array.isArray(v)) v = v[0]
   if (typeof v !== 'string') return null
@@ -181,11 +191,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ip,
     user_agent: ua.slice(0, 300) || null,
     referer: txt(req.headers.referer),
-    utm_source: txt(req.query.utm_source),
-    utm_medium: txt(req.query.utm_medium),
-    utm_campaign: txt(req.query.utm_campaign),
-    utm_content: txt(req.query.utm_content),
-    utm_term: txt(req.query.utm_term),
+    utm_source: utm(req.query.utm_source),
+    utm_medium: utm(req.query.utm_medium),
+    utm_campaign: utm(req.query.utm_campaign),
+    utm_content: utm(req.query.utm_content),
+    utm_term: utm(req.query.utm_term),
     fbclid,
     fbc,
   })
