@@ -15,6 +15,10 @@ import { useSalvarViagem, useSalvarLocalizacaoCliente, useViagem, type ViagemSta
 import { ViagensSalvas } from '@/components/mapa/ViagensSalvas'
 import { supabase } from '@/lib/supabase'
 import {
+  passaPeriodo as passaPeriodoRegra, rotuloPeriodo,
+  PERIODO_LABEL, PERIODO_LABEL_CURTO, type PeriodoFiltro,
+} from '@/lib/periodo'
+import {
   type ConfigViagem, type Parada, type Trecho, type PontoMapa, type Programacao,
   CONFIG_PADRAO, MAX_PARADAS, PRECISAO_INFO,
   montarParadas, otimizarOrdem, programar, chaveTrecho, nomeParada, roteavel,
@@ -407,17 +411,8 @@ type LinhaLista = OrcamentoLinha & { n_orc: number; numeros: string }
 type VendFiltro = 'todos' | 'orcados' | 'vendidos' | 'alto' | 'diamante'
 type VisitaFiltro = 'todos' | 'visitados' | 'pendentes'
 
-// Filtro de PERÍODO. O acervo de orçamentos vai de 2012 a hoje; sem este corte a
-// tela abre com 14 anos de uma vez e a régua de cor (verde ≤1m / vermelho 1–3m /
-// cinza >3m) perde o poder de separar, porque quase tudo cai em cinza.
+// Filtro de PERÍODO — regra e rótulos em src/lib/periodo.ts (com testes).
 // Padrão 24 meses: mantém a tela parecida com a de antes da carga do histórico.
-type PeriodoFiltro = '12m' | '24m' | '5a' | 'tudo'
-const PERIODO_DIAS: Record<PeriodoFiltro, number | null> = {
-  '12m': 365, '24m': 730, '5a': 1825, tudo: null,
-}
-const PERIODO_LABEL: [PeriodoFiltro, string][] = [
-  ['12m', '12 meses'], ['24m', '24 meses'], ['5a', '5 anos'], ['tudo', 'Tudo'],
-]
 
 export function MapaVisitas() {
   const { data: visitas = [], isLoading } = useVisitas()
@@ -624,13 +619,7 @@ export function MapaVisitas() {
   // filtro de PERÍODO pela data mais recente do cliente/orçamento.
   // ⚠️ Sem data NÃO some: 1.5 mil registros de vendas_mapa vieram sem data_venda,
   // e escondê-los faria o filtro apagar cliente real em vez de filtrar por idade.
-  const passaPeriodo = (dataRecente: string | null) => {
-    const limite = PERIODO_DIAS[periodo]
-    if (limite == null) return true
-    const d = diasDesde(dataRecente)
-    if (d == null) return true
-    return d <= limite
-  }
+  const passaPeriodo = (dataRecente: string | null) => passaPeriodoRegra(dataRecente, periodo)
   // filtro de visita (só na camada de orçamentos do mapa)
   const passaVisita = (p: OrcamentoPonto) => {
     if (visitaFiltro === 'todos') return true
@@ -666,6 +655,21 @@ export function MapaVisitas() {
     [orcBase, ufSel]
   )
 
+  // Quantos clientes o PERÍODO está escondendo, mantidos os demais filtros.
+  // O mapa precisa dizer isso: no padrão de 24 meses some 57% da base — e 30% de
+  // quem já comprou. Sem o aviso, o único jeito de descobrir é clicar em "Tudo"
+  // e ver o mapa dobrar. A lista já era honesta ("4.841 de 11.428"); o mapa não era.
+  const ocultosPeriodo = useMemo(() => {
+    if (periodo === 'tudo') return 0
+    return orcPontos.reduce((n, p) => n + (
+      (!vendedorSel || (p.vendedor || '—') === vendedorSel) &&
+      passaFiltro(p.vendido, p.total) &&
+      passaVisita(p) &&
+      (!ufSel || ufKey(p.uf) === ufSel) &&
+      !passaPeriodo(p.data_recente) ? 1 : 0), 0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orcPontos, vendedorSel, vendFiltro, visitaFiltro, ufSel, periodo, marc])
+
   // Soma por ESTADO do que está no mapa. 1 valor por cliente: orçamento mais recente
   // (ou, se já comprou, a soma das vendas dele) — mesmo valor que decide ⭐/💎 no pino.
   const porUF = useMemo(() => {
@@ -683,17 +687,20 @@ export function MapaVisitas() {
   const ufSomaGeral = useMemo(() => porUF.reduce((s, u) => s + u.total, 0), [porUF])
 
   // Autocomplete de CIDADES: índice de cidades distintas (dos orçamentos) + contagem.
+  // Respeita o PERÍODO — senão sugere "Goiânia · 33 clientes" e o mapa mostra 4.
+  // (Não sai de orcBase porque orcBase já filtra pela busca: seria circular.)
   const cidadesIndex = useMemo(() => {
     const m = new Map<string, { cidade: string; uf: string; n: number }>()
     for (const p of orcPontos) {
-      if (!p.cidade) continue
+      if (!p.cidade || !passaPeriodo(p.data_recente)) continue
       const key = (p.cidade + '|' + (p.uf || '')).toLowerCase()
       const e = m.get(key)
       if (e) e.n++
       else m.set(key, { cidade: p.cidade, uf: p.uf || '', n: 1 })
     }
     return [...m.values()]
-  }, [orcPontos])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orcPontos, periodo])
 
   // Sugestões conforme digita: "começa com" primeiro, depois mais clientes. Top 8.
   const sugestoesCidade = useMemo(() => {
@@ -848,16 +855,24 @@ export function MapaVisitas() {
 
   // Índice coordenada -> clientes ali. É o que permite escolher UM entre os
   // sobrepostos (§6) — sem isso só dá pra clicar em quem o Leaflet pintou por cima.
+  //
+  // ⚠️ Sai de orcFiltrados, NÃO de orcPontos: este índice alimenta o popup do modo
+  // viagem, e com a base crua ele oferecia (e adicionava à rota) clientes que não
+  // estão desenhados no mapa — "36 clientes neste ponto" onde havia 7 pinos. Mesma
+  // regra do `porCoord` dos vizinhos, que já respeitava os filtros.
   const pontosPorCoord = useMemo(() => {
     const m = new Map<string, OrcamentoPonto[]>()
-    for (const p of orcPontos) {
+    for (const p of orcFiltrados) {
       const k = kCoord(p.lat, p.lng)
       if (!m.has(k)) m.set(k, [])
       m.get(k)!.push(p)
     }
     return m
-  }, [orcPontos])
+  }, [orcFiltrados])
 
+  // Este continua na base CRUA de propósito: é o resolvedor de cli_key, e uma
+  // viagem SALVA precisa reabrir com todos os clientes dela mesmo que o filtro
+  // atual da tela não os mostre.
   const pontoPorKey = useMemo(() => {
     const m = new Map<string, OrcamentoPonto>()
     for (const p of orcPontos) m.set(p.cli_key, p)
@@ -1679,6 +1694,12 @@ export function MapaVisitas() {
               </span>
             )}
             {showOrc && <>{orcFiltrados.length} clientes com orçamento{orcStats.vendido > 0 && <> · <span className="text-blue-600 font-semibold">{orcStats.vendido} vendidos</span></>}</>}
+            {showOrc && ocultosPeriodo > 0 && (
+              <> · <button onClick={() => setPeriodo('tudo')} className="text-warning font-semibold hover:underline"
+                    title={`${ocultosPeriodo} clientes estão fora da janela de ${rotuloPeriodo(periodo)}. Clique para ver o acervo inteiro.`}>
+                +{ocultosPeriodo} fora do período ✕
+              </button></>
+            )}
             {showOrc && showVis && ' · '}
             {showVis && <>{visFiltradas.length} visitas{semCoord > 0 && <> · <span className="text-warning">{semCoord} sem localização</span></>}</>}
             {!showOrc && !showVis && 'Ligue uma camada pra ver os pontos'}
@@ -1840,7 +1861,7 @@ export function MapaVisitas() {
           <div className="pointer-events-auto flex items-center gap-1.5 overflow-x-auto flex-nowrap [&>*]:shrink-0">
             <div className="flex h-9 rounded-lg overflow-hidden border border-border bg-surface/95 backdrop-blur text-[12px] font-semibold shadow"
                  title="Período pela data do orçamento. Registros sem data aparecem sempre.">
-              {PERIODO_LABEL.map(([v, label]) => (
+              {PERIODO_LABEL_CURTO.map(([v, label]) => (
                 <button key={v} onClick={() => setPeriodo(v)} className={`px-3 ${periodo === v ? 'bg-accent text-white' : 'text-ink-muted'}`}>{label}</button>
               ))}
             </div>
@@ -1965,6 +1986,13 @@ export function MapaVisitas() {
                     <div className="text-[10px] text-ink-faint mt-1.5 leading-snug">
                       {orcStats.vendido} clientes vendidos · {vendasCount.toLocaleString('pt-BR')} vendas no total
                       <br />(1 pino por cliente — quem comprou +1x conta como 1)
+                      {/* Sem esta linha o texto acima atribui à RECOMPRA uma diferença
+                          que é do filtro de período — e a maior parte dela não é recompra. */}
+                      {ocultosPeriodo > 0 && (
+                        <><br /><span className="text-warning">
+                          Fora da janela de {rotuloPeriodo(periodo)}: {ocultosPeriodo} clientes não entram nesta contagem.
+                        </span></>
+                      )}
                     </div>
                   )}
 
@@ -1982,8 +2010,12 @@ export function MapaVisitas() {
                         )}
                       </div>
                       <div className="text-[10px] text-ink-faint mb-2 leading-snug"
-                           title="Soma dos pinos exibidos: 1 valor por cliente — o orçamento mais recente dele (ou a soma das vendas, se já comprou).">
+                           title={'Soma dos pinos exibidos: 1 valor por cliente — o orçamento mais recente dele (ou a soma das vendas, se já comprou).'
+                                  + (periodo !== 'tudo'
+                                     ? ` O período filtra QUEM aparece, não o valor: cada cliente entra com o histórico completo dele. Não leia isto como "orçado nos últimos ${rotuloPeriodo(periodo)}".`
+                                     : '')}>
                         Total <b className="text-ink-muted tabular-nums">{brl(ufSomaGeral)}</b> · 1 valor por cliente
+                        {periodo !== 'tudo' && <span className="text-warning"> · dos clientes no período</span>}
                       </div>
                       {listaUF('max-h-[42vh] overflow-y-auto -mx-1 px-1')}
                     </div>
