@@ -22,6 +22,7 @@ import { createClient } from '@supabase/supabase-js'
 // ERR_MODULE_NOT_FOUND -- e nem o tsc (moduleResolution: bundler) nem o tsx
 // reclamam, entao o erro so aparece na function ja publicada.
 import { novoCodigoNum, codigoLegivel, selarInvisivel } from './_lib/link-invisivel.js'
+import { enviarEventoCapi, montarFbc, lerFbp } from './_lib/meta-capi.js'
 
 const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!
 const SVC_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -115,6 +116,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     txt(req.headers['x-real-ip']) ||
     null
 
+  // --- Assinatura do clique do anuncio (Meta) -------------------------------
+  // O Meta gruda ?fbclid=... em todo clique que sai de um anuncio. E o UNICO
+  // elo entre este clique e a campanha que o pagou -- e ele so existe AGORA,
+  // nesta requisicao. Por isso vai gravado no clique tambem: quando a conversa
+  // acontecer de verdade (matched_at), da pra mandar ao Meta o evento que
+  // interessa, e nao so "alguem clicou".
+  const fbclid = txt(req.query.fbclid)
+  const fbc = montarFbc(fbclid)
+  const sourceUrl = req.headers.host
+    ? `https://${req.headers.host}/l/${slug}`
+    : null
+
   // --- Reuso: mesmo visitante, mesmo link, ultimos REUSO_MIN minutos ---------
   // Devolve o MESMO vendedor e o MESMO codigo. Nao gira o rodizio de novo.
   if (ip) {
@@ -173,6 +186,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     utm_campaign: txt(req.query.utm_campaign),
     utm_content: txt(req.query.utm_content),
     utm_term: txt(req.query.utm_term),
+    fbclid,
+    fbc,
+  })
+
+  // --- Evento pro Meta (Conversions API) ------------------------------------
+  // Server-side de proposito: esta rota e um 302, o cliente nunca recebe HTML
+  // nosso e um pixel de navegador nao teria onde rodar. Nao lanca, tem timeout
+  // proprio e vira no-op sem META_PIXEL_ID/META_CAPI_TOKEN -- o redirect abaixo
+  // acontece de qualquer jeito.
+  await enviarEventoCapi({
+    nome: 'Lead',
+    eventId: codigoLegivel(codigoNum),
+    fbc,
+    fbp: lerFbp(req.headers.cookie),
+    ip,
+    userAgent: ua || null,
+    sourceUrl,
+    custom: { content_name: link.nome, content_category: link.origem || 'Link' },
   })
 
   // Falhou o registro? O cliente vai pro WhatsApp do mesmo jeito. Perder o
