@@ -996,7 +996,11 @@ export function MapaVisitas() {
 
   function entrarNaViagem() {
     setModoViagem(true)
+    // O raio some junto com o CENTRO. Só desligar o modo deixava o círculo
+    // desenhado e o painel do raio no ar, e os dois disputavam o clique no mapa:
+    // um define centro, o outro escolhe parada.
     setModoRaio(false)
+    setCentro(null)
     if (!cfgViagem.nome) setCfgViagem({ nome: `Viagem ${new Date().toLocaleDateString('pt-BR')}` })
   }
 
@@ -1202,7 +1206,9 @@ export function MapaVisitas() {
       attribution: '&copy; Google Maps', subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], maxZoom: 20,
     })
     mapa.addTo(map)
-    L.control.layers({ 'Mapa': mapa, 'Satélite': satelite }, {}, { collapsed: false, position: 'bottomleft' }).addTo(map)
+    // collapsed: fica um ícone até passar o mouse. Aberto, ocupava um canto do mapa
+    // permanentemente para uma escolha que se faz uma vez e não se mexe mais.
+    L.control.layers({ 'Mapa': mapa, 'Satélite': satelite }, {}, { collapsed: true, position: 'bottomleft' }).addTo(map)
     // Pontos individuais em CANVAS: pinta milhares de círculos coloridos num único
     // canvas (rápido no celular, sem milhares de elementos no DOM). 1 ponto = 1 cliente,
     // cor pela idade/vendido. Sem cluster (o usuário quer ver os pontos, não as bolas).
@@ -1705,6 +1711,10 @@ export function MapaVisitas() {
 
   const togglePill = (ativo: boolean) =>
     `h-9 px-3 rounded-md border text-[13px] font-semibold transition-colors ${ativo ? 'bg-accent-bg border-accent/40 text-accent' : 'bg-surface border-border text-ink-muted hover:text-ink'}`
+  // Botão de AÇÃO (abre outra coisa). Nunca fica "aceso": não representa estado
+  // ligado/desligado, e dar cara de toggle a quem só abre é o que confundia.
+  const acaoPill =
+    'h-9 px-3 rounded-md border border-border bg-surface text-[13px] font-semibold text-ink-muted hover:text-ink transition-colors'
 
   // Com 'todos' a soma mistura orçado em aberto + vendido, então o rótulo não pode dizer "Orçado".
   const rotuloValor = vendFiltro === 'vendidos' ? 'Vendido' : vendFiltro === 'todos' ? 'Valor' : 'Orçado'
@@ -1752,6 +1762,16 @@ export function MapaVisitas() {
               </span>
             )}
             {showOrc && <>{orcFiltrados.length} clientes com orçamento{orcStats.vendido > 0 && <> · <span className="text-blue-600 font-semibold">{orcStats.vendido} vendidos</span></>}</>}
+            {/* ⭐/💎 são filtro de VALOR, mas a estrela e o diamante só são desenhados
+                no modo "por valor". Fora dele o filtro pega e o mapa não dá sinal —
+                a pessoa acha que não funcionou. Avisamos com atalho, sem sequestrar
+                a escolha de quem está lendo por idade ou por estado. */}
+            {showOrc && modo !== 'valor' && (vendFiltro === 'alto' || vendFiltro === 'diamante') && (
+              <> · <span className="text-warning">
+                filtrando {vendFiltro === 'alto' ? '≥100 mil' : '≥300 mil'} — a forma só aparece no{' '}
+                <button onClick={() => setModo('valor')} className="font-semibold underline">modo Por valor</button>
+              </span></>
+            )}
             {showOrc && ocultos.total > 0 && (
               <> · <button onClick={() => setPeriodo('tudo')} className="text-warning font-semibold hover:underline"
                     title={`${ocultos.total} clientes estão fora da janela de ${rotuloPeriodo(periodo)}${ocultos.vendidos > 0 ? ` (${ocultos.vendidos} deles já compraram)` : ''}. Clique para ver o acervo inteiro.`}>
@@ -1847,8 +1867,24 @@ export function MapaVisitas() {
           </div>
           <button className={togglePill(showOrc)} onClick={() => setShowOrc(v => !v)} title="Pinos a partir dos orçamentos">💰 Orçamentos</button>
           <button className={togglePill(showVis)} onClick={() => setShowVis(v => !v)} title="Visitas anotadas no WhatsApp">📍 Visitas</button>
-          <button className={togglePill(modoRaio)} onClick={() => { setModoRaio(v => !v); if (modoRaio) setCentro(null) }} title="Filtrar clientes a partir de um ponto no mapa">🎯 Raio</button>
-          <button className={togglePill(showLista)} onClick={() => setShowLista(true)} title="Lista de todos os orçamentos cadastrados">📋 Lista</button>
+          {/* O raio NÃO filtra os pinos: os marcadores saem de orcFiltrados, e `noRaio`
+              só alimenta a lista lateral e o contador. O title dizia "Filtrar clientes"
+              e prometia o que a ferramenta não faz. */}
+          {/* title num WRAPPER: navegador não despacha evento de mouse para controle
+              disabled, então tooltip em botão desabilitado nunca aparece. */}
+          <span title={modoViagem
+            ? 'Indisponível durante o planejamento de viagem — os dois usam o clique no mapa'
+            : 'Lista quem está perto de um ponto do mapa (não filtra os pinos)'}>
+            <button className={`${togglePill(modoRaio)} disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-ink-muted`}
+              disabled={modoViagem}
+              onClick={() => { setModoRaio(v => !v); if (modoRaio) setCentro(null) }}>🎯 Raio</button>
+          </span>
+          {/* NÃO é toggle: a lista abre um overlay `fixed inset-0` que cobre esta
+              própria barra, então o botão fica inalcançável no estado ligado e o
+              ramo "desligar" nunca rodaria. É AÇÃO — e agora tem cara de ação.
+              Quem fecha é o ✕ / o backdrop do próprio overlay. */}
+          <button className={acaoPill} onClick={() => setShowLista(true)}
+            title="Abrir a lista de orçamentos (fecha pelo ✕ ou clicando fora)">📋 Lista</button>
           <button
             onClick={() => (modoViagem ? sairDaViagem() : entrarNaViagem())}
             title="Montar roteiro de visitas escolhendo clientes pelo pino"
@@ -1948,6 +1984,14 @@ export function MapaVisitas() {
                 +{ocultos.total} ocultos ✕
               </button>
             )}
+            {/* mesmo aviso do desktop: ⭐/💎 sem efeito visual fora do modo Valor */}
+            {showOrc && modo !== 'valor' && (vendFiltro === 'alto' || vendFiltro === 'diamante') && (
+              <button onClick={() => setModo('valor')}
+                className="h-9 px-3 rounded-lg border border-warning/40 bg-surface/95 backdrop-blur text-[12px] font-semibold text-warning shadow"
+                title="O filtro de valor está ativo, mas estrela e diamante só são desenhados no modo Por valor">
+                {vendFiltro === 'diamante' ? '💎' : '⭐'} ver formas ↗
+              </button>
+            )}
             <div className="flex h-9 rounded-lg overflow-hidden border border-border bg-surface/95 backdrop-blur text-[12px] font-semibold shadow">
               {([['todos', 'Todos'], ['orcados', 'Só orçados'], ['vendidos', 'Vendidos'], ['alto', '⭐ Alto valor'], ['diamante', '💎 ≥300 mil']] as [VendFiltro, string][]).map(([v, label]) => (
                 <button key={v} onClick={() => setVendFiltro(v)} className={`px-3 ${vendFiltro === v ? 'bg-accent text-white' : 'text-ink-muted'}`}>{label}</button>
@@ -1958,7 +2002,12 @@ export function MapaVisitas() {
                 <button key={v} onClick={() => setVisitaFiltro(v)} className={`px-3 ${visitaFiltro === v ? 'bg-accent text-white' : 'text-ink-muted'}`} title={v === 'visitados' ? 'Visitadas' : v === 'pendentes' ? 'A visitar' : 'Todas'}>{label}</button>
               ))}
             </div>
-            <button onClick={() => { setModoRaio(v => !v); if (modoRaio) setCentro(null) }} className={`h-9 px-3 rounded-lg border text-[12px] font-semibold shadow ${modoRaio ? 'bg-accent text-white border-accent' : 'bg-surface/95 backdrop-blur border-border text-ink-muted'}`}>🎯 Raio</button>
+            {/* mesmo tratamento do desktop: title no wrapper (controle disabled não
+                despacha evento de mouse) e cursor coerente com o estado */}
+            <span title={modoViagem ? 'Indisponível durante a viagem' : 'Lista quem está perto de um ponto (não filtra os pinos)'}>
+              <button onClick={() => { setModoRaio(v => !v); if (modoRaio) setCentro(null) }} disabled={modoViagem}
+                className={`h-9 px-3 rounded-lg border text-[12px] font-semibold shadow disabled:opacity-40 disabled:cursor-not-allowed ${modoRaio ? 'bg-accent text-white border-accent' : 'bg-surface/95 backdrop-blur border-border text-ink-muted'}`}>🎯 Raio</button>
+            </span>
             <button onClick={() => setShowVis(v => !v)} className={`h-9 px-3 rounded-lg border text-[12px] font-semibold shadow ${showVis ? 'bg-accent text-white border-accent' : 'bg-surface/95 backdrop-blur border-border text-ink-muted'}`}>📍 Visitas</button>
             <button onClick={() => setUfSheet(true)} className={`h-9 px-3 rounded-lg border text-[12px] font-semibold shadow ${ufSel ? 'bg-accent text-white border-accent' : 'bg-surface/95 backdrop-blur border-border text-ink-muted'}`}>🗺️ {ufSel || 'Estados'}</button>
             <button
@@ -1977,19 +2026,67 @@ export function MapaVisitas() {
           )}
         </div>
 
-        {/* ===== MOBILE: legenda flutuante (canto inferior esquerdo) ===== */}
-        <div className="md:hidden absolute left-2 bottom-2 z-[1000] bg-surface/90 backdrop-blur rounded-lg border border-border px-2.5 py-2 text-[11px] shadow pointer-events-none">
+        {/* ===== MOBILE: legenda flutuante (canto inferior esquerdo) =====
+            SEGUE O MODO. Antes mostrava sempre as faixas de idade — no modo "por
+            estado" o mapa está pintado por UF e a legenda dizia outra coisa; no
+            "por idade" são 4 faixas e ela mostrava 3. Legenda que não corresponde
+            ao que está desenhado é pior que legenda nenhuma. */}
+        {/* bottom-14, não bottom-2: o seletor Mapa|Satélite do Leaflet fica em
+            bottomleft a 10px da borda e, colapsado, virou um ícone de 44px que
+            caía inteiro atrás desta legenda (o mapa é z-0 e cria contexto de
+            empilhamento, então o controle não sobe). Ele continuava clicável —
+            a legenda é pointer-events-none — mas invisível.
+            A conta: 10px de margem + 44px do toggle + 2px de borda em cima e
+            embaixo (.leaflet-touch) = topo em 58px. bottom-16 (64px) deixa 6px
+            de folga; bottom-14 (56px) ainda encostava 2px na borda. */}
+        <div className="md:hidden absolute left-2 bottom-16 z-[1000] bg-surface/90 backdrop-blur rounded-lg border border-border px-2.5 py-2 text-[11px] shadow pointer-events-none">
           <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: VERDE }} /><span className="text-ink-muted">Até 1 mês</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.verde}</span></div>
-            <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: VERMELHO }} /><span className="text-ink-muted">1–3 meses</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.vermelho}</span></div>
-            <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: CINZA_VELHO }} /><span className="text-ink-muted">+3 meses</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.cinza}</span></div>
-            <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: AZUL_VENDIDO }} /><span className="text-ink-muted font-semibold">Vendido</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.vendido}</span></div>
-            {(orcStats.estrela > 0 || orcStats.diamante > 0) && (
-              <div className="mt-1 pt-1 border-t border-border flex flex-col gap-1">
-                <div className="flex items-center gap-1.5"><span className="w-3 flex justify-center" dangerouslySetInnerHTML={{ __html: svgForma('estrela', '#64748b', 13) }} /><span className="text-ink-muted">⭐ ≥ 100 mil</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.estrela}</span></div>
-                <div className="flex items-center gap-1.5"><span className="w-3 flex justify-center" dangerouslySetInnerHTML={{ __html: svgForma('diamante', '#64748b', 12) }} /><span className="text-ink-muted">💎 ≥ 300 mil</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.diamante}</span></div>
-              </div>
-            )}
+            {modo === 'estado' && (<>
+              <div className="text-ink-faint uppercase tracking-wide text-[9px] mb-0.5">Cor = estado</div>
+              {statsUF.slice(0, 5).map(([uf, n]) => (
+                <div key={uf} className="flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: corDoEstado(uf === '—' ? null : uf, temaEscuro) }} />
+                  <span className="text-ink-muted font-semibold">{uf === '—' ? 'sem UF' : uf}</span>
+                  <span className="ml-auto pl-2 tabular-nums text-ink-faint">{n}</span>
+                </div>
+              ))}
+              {statsUF.length > 5 && <div className="text-ink-faint">+{statsUF.length - 5} estados</div>}
+            </>)}
+            {modo === 'idade' && (<>
+              <div className="text-ink-faint uppercase tracking-wide text-[9px] mb-0.5">Cor = idade · 4 faixas</div>
+              {FAIXAS_IDADE4.map(f => (
+                <div key={f.id} className="flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: corDaFaixa4(f.id, temaEscuro) }} />
+                  <span className="text-ink-muted">{f.rotulo}</span>
+                  <span className="ml-auto pl-2 tabular-nums text-ink-faint">{statsIdade4.get(f.id) ?? 0}</span>
+                </div>
+              ))}
+              {/* "Sem data" é bucket próprio e usa o MESMO cinza de "mais de 1 ano".
+                  Sem esta linha o celular mostra pino cinza sem legenda e a contagem
+                  de "mais de 1 ano" fica curta — e o filtro de período garante que
+                  essa população está em tela ("registros sem data aparecem sempre"). */}
+              {(statsIdade4.get('sem-data') ?? 0) > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full ring-1 ring-border" style={{ backgroundColor: corDaFaixa4('sem-data', temaEscuro) }} />
+                  <span className="text-ink-muted">Sem data</span>
+                  <span className="ml-auto pl-2 tabular-nums text-ink-faint">{statsIdade4.get('sem-data')}</span>
+                </div>
+              )}
+              <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: AZUL_VENDIDO }} /><span className="text-ink-muted font-semibold">Vendido</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{statsIdade4.get('vendido') ?? 0}</span></div>
+            </>)}
+            {modo === 'valor' && (<>
+              <div className="text-ink-faint uppercase tracking-wide text-[9px] mb-0.5">Cor = idade · 3 faixas</div>
+              <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: VERDE }} /><span className="text-ink-muted">Até 1 mês</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.verde}</span></div>
+              <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: VERMELHO }} /><span className="text-ink-muted">1–3 meses</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.vermelho}</span></div>
+              <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: CINZA_VELHO }} /><span className="text-ink-muted">+3 meses</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.cinza}</span></div>
+              <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: AZUL_VENDIDO }} /><span className="text-ink-muted font-semibold">Vendido</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.vendido}</span></div>
+              {(orcStats.estrela > 0 || orcStats.diamante > 0) && (
+                <div className="mt-1 pt-1 border-t border-border flex flex-col gap-1">
+                  <div className="flex items-center gap-1.5"><span className="w-3 flex justify-center" dangerouslySetInnerHTML={{ __html: svgForma('estrela', '#64748b', 13) }} /><span className="text-ink-muted">⭐ ≥ 100 mil</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.estrela}</span></div>
+                  <div className="flex items-center gap-1.5"><span className="w-3 flex justify-center" dangerouslySetInnerHTML={{ __html: svgForma('diamante', '#64748b', 12) }} /><span className="text-ink-muted">💎 ≥ 300 mil</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.diamante}</span></div>
+                </div>
+              )}
+            </>)}
           </div>
         </div>
 
@@ -2071,7 +2168,7 @@ export function MapaVisitas() {
                   )}
                   {modo === 'idade' && (
                     <>
-                      <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">Orçamentos · idade</div>
+                      <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">Cor · idade em 4 faixas</div>
                       <ul className="space-y-1.5">
                         {FAIXAS_IDADE4.map(f => (
                           <li key={f.id} className="flex items-center gap-2 text-[12px] text-ink">
@@ -2092,7 +2189,11 @@ export function MapaVisitas() {
                     </>
                   )}
                   {modo === 'valor' && (<>
-                  <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">Orçamentos · idade</div>
+                  {/* Estes swatches são de IDADE, não de valor — o que muda no modo
+                      "valor" é a FORMA (estrela/diamante), listada logo abaixo. O
+                      título tem de dizer o que a cor significa, e quantas faixas,
+                      senão fica indistinguível do modo "idade", que usa 4. */}
+                  <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">Cor · idade em 3 faixas</div>
                   <ul className="space-y-1.5">
                     <li className="flex items-center gap-2 text-[12px] text-ink"><span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: VERDE }} /><span className="truncate">Até 1 mês</span><span className="ml-auto tabular-nums text-ink-faint">{orcStats.verde}</span></li>
                     <li className="flex items-center gap-2 text-[12px] text-ink"><span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: VERMELHO }} /><span className="truncate">1 a 3 meses</span><span className="ml-auto tabular-nums text-ink-faint">{orcStats.vermelho}</span></li>
@@ -2101,7 +2202,7 @@ export function MapaVisitas() {
                   </ul>
                   {(orcStats.estrela > 0 || orcStats.diamante > 0) && (
                     <>
-                      <div className="text-[11px] uppercase tracking-wide text-ink-faint mt-3 mb-2">Orçado · por valor</div>
+                      <div className="text-[11px] uppercase tracking-wide text-ink-faint mt-3 mb-2">Forma · valor orçado</div>
                       <ul className="space-y-1.5">
                         <li className="flex items-center gap-2 text-[12px] text-ink"><span className="shrink-0 w-4 flex justify-center" dangerouslySetInnerHTML={{ __html: svgForma('estrela', '#64748b', 16) }} /><span className="truncate">⭐ ≥ 100 mil</span><span className="ml-auto tabular-nums text-ink-faint">{orcStats.estrela}</span></li>
                         <li className="flex items-center gap-2 text-[12px] text-ink"><span className="shrink-0 w-4 flex justify-center" dangerouslySetInnerHTML={{ __html: svgForma('diamante', '#64748b', 15) }} /><span className="truncate">💎 ≥ 300 mil</span><span className="ml-auto tabular-nums text-ink-faint">{orcStats.diamante}</span></li>
