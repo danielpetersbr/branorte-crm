@@ -73,12 +73,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { data: pendentes, error } = await db
     .from('link_rota_click')
-    .select('id, codigo, fbc, ip, user_agent, cliente_telefone, matched_at, match_via, link_rota(nome, origem, slug)')
+    .select('id, codigo, fbc, fbp, ip, user_agent, cliente_telefone, matched_at, match_via, link_rota(nome, origem, slug)')
     .not('matched_at', 'is', null)
     .is('capi_enviado_at', null)
     // Precisa de PELO MENOS UM identificador de pessoa. Antes exigia fbc e
-    // perdia 2 de cada 3 conversas reais; agora fbc OU telefone serve.
-    .or('fbc.not.is.null,cliente_telefone.not.is.null')
+    // perdia 2 de cada 3 conversas reais; agora fbc, fbp OU telefone serve.
+    .or('fbc.not.is.null,fbp.not.is.null,cliente_telefone.not.is.null')
     .in('match_via', CONFIAVEIS)
     .order('matched_at', { ascending: true })
     .limit(LOTE)
@@ -97,6 +97,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // reprocessamento poderia colidir com ele na deduplicacao do Meta.
       eventId: `${p.codigo}-c`,
       fbc: p.fbc,
+      // O _fbp do instante do clique. O Gerenciador de Eventos reclamou
+      // explicitamente da falta dele (07/08/2026, qualidade 5,0/10): ele existe
+      // mesmo quando o clique nao trouxe fbclid, entao cobre justamente o caso
+      // que o fbc nao cobre.
+      fbp: p.fbp,
       // Entra legivel e sai como SHA-256 dentro de montarEvento().
       telefone: p.cliente_telefone,
       ip: p.ip,

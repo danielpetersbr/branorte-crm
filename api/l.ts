@@ -219,6 +219,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const telefoneDestino = vendedorTelefone || fallback
 
   // --- Registra o clique ----------------------------------------------------
+  // O _fbp e lido UMA vez e usado em dois lugares: no evento do clique, agora, e
+  // gravado pro evento de CONVERSA, que sai por varredura horas depois. Antes
+  // ele era lido e descartado -- e a conversa saia sem ele.
+  const fbp = lerFbp(req.headers.cookie)
   const codigoNum = novoCodigoNum()
   const { error: erroClique } = await db.from('link_rota_click').insert({
     link_id: link.id,
@@ -237,6 +241,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     utm_term: utm(req.query.utm_term),
     fbclid,
     fbc,
+    fbp,
   })
 
   // --- Evento pro Meta (Conversions API) ------------------------------------
@@ -255,7 +260,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     nome: 'ViewContent',
     eventId: codigoLegivel(codigoNum),
     fbc,
-    fbp: lerFbp(req.headers.cookie),
+    fbp,
     ip,
     userAgent: ua || null,
     sourceUrl,
