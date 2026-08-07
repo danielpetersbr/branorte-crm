@@ -195,8 +195,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // nosso e um pixel de navegador nao teria onde rodar. Nao lanca, tem timeout
   // proprio e vira no-op sem META_PIXEL_ID/META_CAPI_TOKEN -- o redirect abaixo
   // acontece de qualquer jeito.
+  //
+  // O evento do CLIQUE e 'ViewContent', nao 'Lead', de proposito. Clique nao e
+  // lead: medido nos 3 primeiros dias, 75 cliques renderam 5 conversas reais.
+  // Chamar clique de Lead faz a campanha perseguir quem TOCA no anuncio barato
+  // -- foi exatamente assim que o criativo &79 virou o melhor do Gerenciador e
+  // o pior do caixa. 'Lead' e reservado pro evento da CONVERSA, que sai por
+  // /api/capi-conversa quando o casamento clique<->mensagem e confiavel.
   await enviarEventoCapi({
-    nome: 'Lead',
+    nome: 'ViewContent',
     eventId: codigoLegivel(codigoNum),
     fbc,
     fbp: lerFbp(req.headers.cookie),

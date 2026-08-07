@@ -40,6 +40,13 @@ export type EventoCapi = {
   userAgent: string | null;
   /** URL que o cliente abriu (o proprio /l/<slug>). */
   sourceUrl: string | null;
+  /** Quando o evento ACONTECEU, em ms. Omitido = agora.
+   *
+   *  Existe por causa do evento de conversa, que e enviado por varredura e nao
+   *  no instante do fato: mandar "agora" faria o Meta atribuir a conversa ao
+   *  minuto da varredura em vez do minuto da mensagem. O Meta recusa qualquer
+   *  coisa fora da janela de 7 dias (error_subcode 2804004). */
+  quandoMs?: number | null;
   /** Aparece no Gerenciador de Eventos — serve pra separar link de link. */
   custom?: Record<string, string | number>;
 };
@@ -75,36 +82,45 @@ export function capiConfigurada(): boolean {
   return Boolean(process.env.META_PIXEL_ID && process.env.META_CAPI_TOKEN);
 }
 
+/** Monta o evento no formato do Meta. Exportado por causa do TESTE: e aqui que
+ *  mora a falha silenciosa da CAPI — payload torto o Meta ACEITA com HTTP 200 e
+ *  `events_received: 1`, e simplesmente nao atribui a anuncio nenhum. Erro que
+ *  so aparece semanas depois como "a campanha nao otimiza".
+ *
+ *  Devolve null quando nao ha identificador nenhum: evento sem user_data o Meta
+ *  recusa, e mandar assim so gasta chamada. */
+export function montarEvento(ev: EventoCapi): Record<string, unknown> | null {
+  // Aqui nao ha PII nenhuma (no clique eu ainda nao sei quem e o cliente),
+  // entao nada disto e hasheado: fbc, fbp, IP e user-agent o Meta recebe em
+  // claro por especificacao.
+  const userData: Record<string, string> = {};
+  if (ev.fbc) userData.fbc = ev.fbc;
+  if (ev.fbp) userData.fbp = ev.fbp;
+  if (ev.ip) userData.client_ip_address = ev.ip;
+  if (ev.userAgent) userData.client_user_agent = ev.userAgent;
+  if (Object.keys(userData).length === 0) return null;
+
+  return {
+    event_name: ev.nome,
+    event_time: Math.floor((ev.quandoMs ?? Date.now()) / 1000),
+    event_id: ev.eventId,
+    action_source: 'website',
+    ...(ev.sourceUrl ? { event_source_url: ev.sourceUrl } : {}),
+    user_data: userData,
+    ...(ev.custom ? { custom_data: ev.custom } : {}),
+  };
+}
+
 /** Dispara o evento. NUNCA lanca — o retorno so serve pra log e teste. */
 export async function enviarEventoCapi(ev: EventoCapi): Promise<'ok' | 'off' | 'erro'> {
   const pixelId = process.env.META_PIXEL_ID;
   const token = process.env.META_CAPI_TOKEN;
   if (!pixelId || !token) return 'off';
 
-  // user_data precisa de pelo menos um identificador. Aqui nao ha PII nenhuma
-  // (no clique eu ainda nao sei quem e o cliente), entao nada disto e hasheado:
-  // fbc, fbp, IP e user-agent o Meta recebe em claro por especificacao.
-  const userData: Record<string, string> = {};
-  if (ev.fbc) userData.fbc = ev.fbc;
-  if (ev.fbp) userData.fbp = ev.fbp;
-  if (ev.ip) userData.client_ip_address = ev.ip;
-  if (ev.userAgent) userData.client_user_agent = ev.userAgent;
-  if (Object.keys(userData).length === 0) return 'off';
+  const evento = montarEvento(ev);
+  if (!evento) return 'off';
 
-  const corpo: Record<string, unknown> = {
-    data: [
-      {
-        event_name: ev.nome,
-        event_time: Math.floor(Date.now() / 1000),
-        event_id: ev.eventId,
-        action_source: 'website',
-        ...(ev.sourceUrl ? { event_source_url: ev.sourceUrl } : {}),
-        user_data: userData,
-        ...(ev.custom ? { custom_data: ev.custom } : {}),
-      },
-    ],
-    access_token: token,
-  };
+  const corpo: Record<string, unknown> = { data: [evento], access_token: token };
   // Enquanto existir, os eventos aparecem SO na aba de teste e nao entram na
   // otimizacao. Tirar a env quando terminar de conferir.
   if (process.env.META_TEST_EVENT_CODE) corpo.test_event_code = process.env.META_TEST_EVENT_CODE;

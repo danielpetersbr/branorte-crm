@@ -6,7 +6,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { montarFbc, lerFbp, capiConfigurada } from '../../api/_lib/meta-capi'
+import { montarFbc, lerFbp, capiConfigurada, montarEvento } from '../../api/_lib/meta-capi'
 
 test('fbc sai no formato fb.1.<ms>.<fbclid> exigido pelo Meta', () => {
   const fbc = montarFbc('IwAR0abc-DEF_123', 1_754_500_000_000)
@@ -46,6 +46,62 @@ test('_fbp e lido do header Cookie e validado', () => {
   assert.equal(lerFbp('_fbp=qualquercoisa'), null)
   assert.equal(lerFbp('_fbpx=fb.1.1.2'), null)
   assert.equal(lerFbp(undefined), null)
+})
+
+// ── payload ───────────────────────────────────────────────────────────────
+// O Meta responde HTTP 200 / events_received:1 para payload torto. Teste de
+// integracao nao pega isso; so asserção sobre o CORPO pega.
+
+const BASE = {
+  nome: 'Lead',
+  eventId: 'ABC123-c',
+  fbc: 'fb.1.1754500000000.IwAR0abc',
+  ip: '177.87.120.10',
+  userAgent: 'Mozilla/5.0 Chrome/120',
+  sourceUrl: 'https://branorte-crm.vercel.app/l/compacta02',
+}
+
+test('event_time sai em SEGUNDOS e vem de quandoMs, nao de agora', () => {
+  const ev = montarEvento({ ...BASE, quandoMs: 1_754_500_123_456 })!
+  // A conversa aconteceu quando a mensagem chegou. A varredura roda depois --
+  // mandar "agora" atribuiria a conversa ao minuto da varredura.
+  assert.equal(ev.event_time, 1_754_500_123)
+  assert.equal(String(ev.event_time).length, 10)
+})
+
+test('sem quandoMs cai em agora (caminho do clique)', () => {
+  const antes = Math.floor(Date.now() / 1000)
+  const ev = montarEvento({ ...BASE })!
+  assert.ok((ev.event_time as number) >= antes)
+})
+
+test('o evento carrega fbc -- sem ele nao credita anuncio nenhum', () => {
+  const ev = montarEvento({ ...BASE })!
+  const ud = ev.user_data as Record<string, string>
+  assert.equal(ud.fbc, BASE.fbc)
+  assert.equal(ud.client_ip_address, BASE.ip)
+  assert.equal(ud.client_user_agent, BASE.userAgent)
+  assert.equal(ev.action_source, 'website')
+  assert.equal(ev.event_id, 'ABC123-c')
+})
+
+test('sem identificador nenhum nao monta evento (o Meta recusaria)', () => {
+  const ev = montarEvento({ nome: 'Lead', eventId: 'X', fbc: null, ip: null, userAgent: null, sourceUrl: null })
+  assert.equal(ev, null)
+})
+
+test('campo ausente nao vira chave vazia no payload', () => {
+  const ev = montarEvento({ nome: 'Lead', eventId: 'X', fbc: 'fb.1.1.a', ip: null, userAgent: null, sourceUrl: null })!
+  assert.ok(!('event_source_url' in ev))
+  assert.ok(!('custom_data' in ev))
+  assert.deepEqual(Object.keys(ev.user_data as object), ['fbc'])
+})
+
+test('clique e conversa nao colidem na deduplicacao do Meta', () => {
+  const clique = montarEvento({ ...BASE, nome: 'ViewContent', eventId: 'ABC123' })!
+  const conversa = montarEvento({ ...BASE, nome: 'Lead', eventId: 'ABC123-c' })!
+  assert.notEqual(clique.event_id, conversa.event_id)
+  assert.notEqual(clique.event_name, conversa.event_name)
 })
 
 test('sem env configurada a CAPI fica desligada (nao quebra o clique)', () => {
