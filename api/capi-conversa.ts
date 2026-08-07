@@ -16,8 +16,24 @@
 // mandar nada. Se um dia o casamento por janela for consertado e virar
 // confiavel, e AQUI que o nome entra na lista.
 //
-// Tambem exige fbc: sem a assinatura do clique no anuncio o evento chega
-// anonimo, nao credita criativo nenhum e so infla o pixel.
+// ATRIBUICAO SEM fbc (mudou em 07/08/2026). Antes exigia fbc e, por isso, das 3
+// conversas provadas por selo apenas 1 chegou ao Meta: so 4 dos 77 cliques do
+// dia trouxeram fbclid, todos de placement Instagram. Os de Facebook Right
+// Column vinham sem -- e a linha sem fbc nunca entrava na lista de pendentes,
+// entao capi_enviado_at ficava NULL pra sempre: sumia em silencio, sem retry e
+// sem marca.
+//
+// O que resolve e o `ph`: telefone do cliente em SHA-256. Ele ja estava gravado
+// em cliente_telefone e nao era selecionado. A spec da CAPI atribui por `ph` sem
+// precisar de fbc. Quando o fbc existe ele continua indo junto -- e o sinal mais
+// forte, o `ph` e a rede.
+//
+// PRE-REQUISITO QUE JA ESTA NO AR: o guarda de datacenter em api/l.ts. Soltar
+// este portao ANTES dele significaria mandar ao Meta conversas nascidas de
+// clique de robo. A ordem importa e nao pode ser invertida.
+//
+// O telefone NUNCA sai daqui legivel: quem hasheia e montarEvento(), e o hash e
+// de mao unica.
 //
 // Chamado por pg_cron (padrao da casa: net.http_post de dentro do banco).
 // Protegido por segredo compartilhado -- este endpoint escreve na conta de
@@ -31,8 +47,13 @@ import { enviarEventoCapi, capiConfigurada } from './_lib/meta-capi.js'
 const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!
 const SVC_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
-/** Graus de certeza que podem virar conversao no Meta. Ver cabecalho. */
-const CONFIAVEIS = ['codigo', 'texto']
+/** Graus de certeza que podem virar conversao no Meta. Ver cabecalho.
+ *
+ *  'texto' saiu: a constraint link_rota_click_via_ck so aceita
+ *  ('codigo','janela'), entao esse valor NUNCA pode aparecer numa linha. Ficar
+ *  na lista dava a impressao de que havia um segundo caminho confiavel quando
+ *  so existe um. */
+const CONFIAVEIS = ['codigo']
 
 /** Teto por rodada. Com ~7 conversas/semana isso nunca morde; existe pro caso
  *  de a varredura ficar dias parada e voltar com fila. */
@@ -52,10 +73,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { data: pendentes, error } = await db
     .from('link_rota_click')
-    .select('id, codigo, fbc, ip, user_agent, matched_at, match_via, link_rota(nome, origem, slug)')
+    .select('id, codigo, fbc, ip, user_agent, cliente_telefone, matched_at, match_via, link_rota(nome, origem, slug)')
     .not('matched_at', 'is', null)
     .is('capi_enviado_at', null)
-    .not('fbc', 'is', null)
+    // Precisa de PELO MENOS UM identificador de pessoa. Antes exigia fbc e
+    // perdia 2 de cada 3 conversas reais; agora fbc OU telefone serve.
+    .or('fbc.not.is.null,cliente_telefone.not.is.null')
     .in('match_via', CONFIAVEIS)
     .order('matched_at', { ascending: true })
     .limit(LOTE)
@@ -74,6 +97,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // reprocessamento poderia colidir com ele na deduplicacao do Meta.
       eventId: `${p.codigo}-c`,
       fbc: p.fbc,
+      // Entra legivel e sai como SHA-256 dentro de montarEvento().
+      telefone: p.cliente_telefone,
       ip: p.ip,
       userAgent: p.user_agent,
       sourceUrl: link?.slug ? `https://branorte-crm.vercel.app/l/${link.slug}` : null,
