@@ -64,6 +64,7 @@ const OrcamentosSalvos = lazy(() => import('@/pages/OrcamentosSalvos').then(m =>
 const Roadmap = lazy(() => import('@/pages/Roadmap').then(m => ({ default: m.Roadmap })))
 const Avaliacoes = lazy(() => import('@/pages/Avaliacoes').then(m => ({ default: m.Avaliacoes })))
 const Reunioes = lazy(() => import('@/pages/Reunioes').then(m => ({ default: m.Reunioes })))
+const Metas = lazy(() => import('@/pages/Metas').then(m => ({ default: m.Metas })))
 const Agenda = lazy(() => import('@/pages/Agenda').then(m => ({ default: m.Agenda })))
 const FreteCotacao = lazy(() => import('@/pages/FreteCotacao'))
 const FreteTransportadoras = lazy(() => import('@/pages/FreteTransportadoras'))
@@ -316,7 +317,7 @@ function AppRoutes() {
 
   // Visualizador: acesso restrito a Dashboard + Atendimentos. Bloqueia URL direta
   // pra qualquer outra rota (o menu já esconde; isto trava o acesso por link).
-  const VIEWER_PATHS = new Set(['/', '/dashboard', '/atendimentos', '/perfil', '/agenda'])
+  const VIEWER_PATHS = new Set(['/', '/dashboard', '/atendimentos', '/perfil', '/agenda', '/metas'])
   // Frete liberado pra TODOS os roles (exceto a fila de aprovação /frete/aprovar, gateada).
   const freteLiberado = loc.pathname.startsWith('/frete') && !loc.pathname.startsWith('/frete/aprovar')
   if (profile.role === 'visualizador' && !VIEWER_PATHS.has(loc.pathname) && !freteLiberado) {
@@ -326,7 +327,7 @@ function AppRoutes() {
   // Vendedor: acesso restrito a Atendimentos, Consulta, Montar/Editar Orçamento e
   // Mapa de Visitas (+ Perfil). Dashboard escondido → "/" e demais rotas caem em
   // Atendimentos. O menu já esconde; isto trava o acesso por URL direta.
-  const VENDOR_PREFIXES = ['/atendimentos', '/consulta', '/prospeccao', '/orcamentos/montar', '/orcamentos/salvos', '/orcamentos/novo', '/mapa-visitas', '/minhas-visitas', '/organizacao-viagem', '/frete/solicitar', '/perfil', '/agenda']
+  const VENDOR_PREFIXES = ['/atendimentos', '/consulta', '/prospeccao', '/orcamentos/montar', '/orcamentos/salvos', '/orcamentos/novo', '/mapa-visitas', '/minhas-visitas', '/organizacao-viagem', '/frete/solicitar', '/perfil', '/agenda', '/metas']
   if (profile.role === 'vendor') {
     const p = loc.pathname
     // gestor de frete pode ter papel 'vendor' + permissão frete.aprovar → libera a fila pra ele
@@ -486,6 +487,8 @@ function AppRoutes() {
         <Route path="/avaliacoes" element={<Avaliacoes />} />
         {/* Adm de Reunião — pauta + checklist de tarefas + resumo */}
         <Route path="/reunioes" element={<Reunioes />} />
+        {/* Placar das metas de comportamento (resgate, pós-orçamento, negócio grande) */}
+        <Route path="/metas" element={<Metas />} />
         <Route path="/agenda" element={<Agenda />} />
         {/* /funil = Kanban WhatsApp (espelho das etiquetas Wascript); o kanban
             manual antigo (status_vendedor) continua em /funil/manual */}
