@@ -117,6 +117,9 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/atividade-diaria', label: 'Atividade Diária', icon: Activity, permKey: 'menu.atividade_diaria' },
       { to: '/avaliacoes', label: 'Avaliações', icon: Star, permKey: 'menu.avaliacoes' },
       { to: '/reunioes', label: 'Adm de Reunião', icon: ClipboardList, permKey: 'menu.reunioes' },
+      // SEM permKey de proposito: o placar e pra reuniao, aparece na TV pra todo
+      // mundo. Chave nova ficaria desligada no banco e o item sumiria calado.
+      { to: '/metas', label: 'Placar de Metas', icon: Target },
     ],
   },
   {
