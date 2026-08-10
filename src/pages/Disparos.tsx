@@ -36,6 +36,10 @@ type Vendedor = {
   avaliacao_ativa: boolean
   funil_ativa: boolean
   prospec_ativa: boolean
+  /** Modo "só recebe": entra no rodízio do link/quiz (onde o CLIENTE chama)
+   *  mesmo com online=false. Pro vendedor restringido pelo WhatsApp, que não
+   *  pode abrir conversa com número novo mas atende quem chama ele. */
+  so_recebe: boolean
 }
 
 export function Disparos() {
@@ -126,7 +130,12 @@ export function Disparos() {
   type StatusVendedor = 'desligado' | 'ativo' | 'ocioso' | 'aguardando' | 'wa_fechado' | 'verificar_wa' | 'lento' | 'desconectado' | 'versao_antiga'
   function statusVendedor(v: Vendedor): { status: StatusVendedor; pingSec: number | null; versao: string | null } {
     const runtime = vendorRuntime?.[v.vendedor_nome]
-    if (!v.online) return { status: 'desligado', pingSec: null, versao: runtime?.versao ?? null }
+    // `so_recebe` NÃO cai em 'desligado': ele está trabalhando e atendendo
+    // quem chega pelo link — só não recebe lead pra disparar. Mostrar
+    // "DESLIGADO · sem sinal" pra quem está pingando a cada 30s é mentira da
+    // tela, e foi assim que Álvaro e Lucas apareceram apagados no mapa do
+    // Escritório enquanto trabalhavam o dia inteiro.
+    if (!v.online && !v.so_recebe) return { status: 'desligado', pingSec: null, versao: runtime?.versao ?? null }
     if (!runtime) return { status: 'desconectado', pingSec: null, versao: null }
     const sec = (Date.now() - new Date(runtime.ts).getTime()) / 1000
     const [maj, min] = (runtime.versao || '0.0').split('.').map(n => parseInt(n, 10) || 0)
@@ -154,12 +163,38 @@ export function Disparos() {
     return `há ${Math.round(sec / 3600)}h`
   }
 
-  // Toggle vendedor online — controla se ele entra no rodízio de leads
+  /** Modo de recebimento do vendedor. São três, não dois — e a diferença é
+   *  QUEM manda a primeira mensagem:
+   *
+   *    LIGADO    online=true             recebe tudo: lead pra chamar + quem chama
+   *    SÓ RECEBE online=false so_recebe  só o link/quiz, onde o CLIENTE chama
+   *    DESLIG.   ambos false             fora de tudo
+   *
+   *  O meio existe pra vendedor restringido pelo WhatsApp: ele não pode abrir
+   *  conversa com número novo, mas atende normalmente quem chama ele. Antes só
+   *  havia LIGADO/DESLIG., então tirá-lo do disparo tirava também do link. */
+  type ModoVendedor = 'ligado' | 'so_recebe' | 'desligado'
+  function modoDe(v: Vendedor): ModoVendedor {
+    if (v.online) return 'ligado'
+    return v.so_recebe ? 'so_recebe' : 'desligado'
+  }
+  const PROXIMO_MODO: Record<ModoVendedor, ModoVendedor> = {
+    ligado: 'so_recebe', so_recebe: 'desligado', desligado: 'ligado',
+  }
+
+  // Toggle vendedor — cicla LIGADO → SÓ RECEBE → DESLIG. a cada clique.
   const toggleVendedor = useMutation({
-    mutationFn: async ({ nome, online }: { nome: string; online: boolean }) => {
-      await supabase.from('vendor_dispatch_status').update({ online }).eq('vendedor_nome', nome)
+    mutationFn: async ({ nome, modo }: { nome: string; modo: ModoVendedor }) => {
+      // As duas colunas vão SEMPRE juntas. Escrever só uma deixaria estado
+      // impossível (online=true com so_recebe=true), que a tela leria como
+      // "ligado" enquanto o banco carrega uma flag esquecida pra trás.
+      const { error } = await supabase.from('vendor_dispatch_status')
+        .update({ online: modo === 'ligado', so_recebe: modo === 'so_recebe' })
+        .eq('vendedor_nome', nome)
+      if (error) throw error
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['vendor-dispatch-status'] }),
+    onError: (err: any) => alert('Não foi possível mudar o modo: ' + (err?.message || err)),
   })
 
   // Toggle vendedor bloqueado — fica visível mas não recebe leads
@@ -525,9 +560,23 @@ export function Disparos() {
                         const ef = efetivo?.[v.vendedor_nome]
                         const cortado = cotaCfg?.cota_ativa && Number(ef?.fator_cota ?? 1) === 0
                         const ligado = v.online && !v.bloqueado
+                        // Espelha public.funil_pick_vendedor_inbound(): quem entra
+                        // no rodízio do link /l/ e do quiz, onde o CLIENTE chama.
+                        // Mexeu num lado, mexe no outro.
+                        const noRodizioEntrada =
+                          !v.bloqueado && v.funil_ativa === true && !cortado &&
+                          ((v.online && Number(v.share_percent) > 0) || v.so_recebe === true)
                         const itens: Array<[string, boolean, string]> = [
                           ['lead', !!ligado && !cortado,
-                           cortado ? 'Não recebe lead novo: cota de parados' : ligado ? 'Recebe lead novo' : 'Desligado no painel'],
+                           cortado ? 'Não recebe lead novo: cota de parados'
+                             : ligado ? 'Recebe lead novo pra CHAMAR (disparo)'
+                             : v.so_recebe ? 'Modo só recebe: não recebe lead pra chamar'
+                             : 'Desligado no painel'],
+                          ['link', noRodizioEntrada,
+                           noRodizioEntrada
+                             ? 'Está no rodízio do link /l/ e do quiz — cliente que clica cai nele'
+                             : cortado ? 'Fora do rodízio do link: cota de parados'
+                             : 'Fora do rodízio do link'],
                           ['prospec', !!ligado && !cortado && v.prospec_ativa !== false,
                            'Prospecção automática — só roda em quem está ligado e dentro da cota'],
                           ['funil', v.funil_ativa === true, 'Automação de etiqueta do funil (independe do toggle)'],
@@ -571,15 +620,26 @@ export function Disparos() {
                       </div>
                     </div>
                   </div>
-                  <button
-                    onClick={() => toggleVendedor.mutate({ nome: v.vendedor_nome, online: !v.online })}
-                    title={v.online ? 'Clique pra desligar (sai do rodízio)' : 'Clique pra ligar (entra no rodízio)'}
-                    className={`text-[9px] px-2 py-1 rounded-full font-bold tracking-wide transition-all flex-shrink-0 ${
-                      v.online ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30' : 'bg-slate-700/50 text-slate-400 hover:bg-slate-600/50'
-                    }`}
-                  >
-                    {v.online ? '◉ LIGADO' : '○ DESLIG.'}
-                  </button>
+                  {(() => {
+                    const modo = modoDe(v)
+                    const cfg = {
+                      ligado:    { rotulo: '◉ LIGADO',    classe: 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30',
+                                   dica: 'Recebe tudo: lead pra chamar e cliente que chama. Clique → SÓ RECEBE' },
+                      so_recebe: { rotulo: '◐ SÓ RECEBE', classe: 'bg-sky-500/20 text-sky-300 hover:bg-sky-500/30',
+                                   dica: 'Só cliente que CHAMA ele (link e quiz). Não recebe lead pra disparar nem prospecta. Clique → DESLIG.' },
+                      desligado: { rotulo: '○ DESLIG.',   classe: 'bg-slate-700/50 text-slate-400 hover:bg-slate-600/50',
+                                   dica: 'Fora de tudo. Clique → LIGADO' },
+                    }[modo]
+                    return (
+                      <button
+                        onClick={() => toggleVendedor.mutate({ nome: v.vendedor_nome, modo: PROXIMO_MODO[modo] })}
+                        title={cfg.dica}
+                        className={`text-[9px] px-2 py-1 rounded-full font-bold tracking-wide transition-all flex-shrink-0 ${cfg.classe}`}
+                      >
+                        {cfg.rotulo}
+                      </button>
+                    )
+                  })()}
                 </div>
               </div>
             )})}
@@ -603,7 +663,11 @@ export function Disparos() {
       <AtividadeDiaria />
 
       {/* ESCRITÓRIO — mapa de mesas (arrasta vendedor pra mesa) */}
-      <EscritorioMapa vendedores={(vendedores ?? []).map(v => ({ vendedor_nome: v.vendedor_nome, online: v.online }))} live={liveMesas} />
+      {/* `online || so_recebe`: no mapa do Escritório a pergunta é "esse cara
+          está trabalhando?", não "recebe disparo?". Quem está em modo só recebe
+          atende cliente do link o dia inteiro — apagar o boneco dele seria o
+          mesmo erro que já pintava Álvaro e Lucas de cinza. */}
+      <EscritorioMapa vendedores={(vendedores ?? []).map(v => ({ vendedor_nome: v.vendedor_nome, online: v.online || v.so_recebe }))} live={liveMesas} />
     </div>
   )
 }

@@ -1,9 +1,10 @@
 // GET /l/<slug>  (reescrito pro /api/l?s=<slug> no vercel.json)
 //
 // O link que o Daniel cola em site, formulario, bio, anuncio. No clique:
-//   1. sorteia o proximo vendedor pela MESMA fila do quiz e das ALPs
-//      (RPC public.funil_pick_vendedor) -- ligado no painel + nao bloqueado +
-//      funil_ativa + fatia > 0 + cota de parados, com contador persistente;
+//   1. sorteia o proximo vendedor pela fila de ENTRADA
+//      (RPC public.funil_pick_vendedor_inbound) -- ligado no painel OU em modo
+//      "so recebe", nao bloqueado, funil_ativa e dentro da cota de parados,
+//      com contador persistente;
 //   2. registra o clique (origem, utm, referer) com um codigo de rastreio;
 //   3. manda o cliente pro wa.me DO VENDEDOR com o texto ja escrito, carregando
 //      o codigo invisivel que depois casa o clique com a conversa.
@@ -250,12 +251,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // --- Sorteio do vendedor --------------------------------------------------
-  // Mesma RPC do quiz e das ALPs: o clique entra NA MESMA fila, nao numa
-  // paralela. Se ela nao devolver ninguem, vai pro fallback.
+  // Fila de ENTRADA (`_inbound`), a mesma do botao FALAR COM CONSULTOR do quiz.
+  // NAO e a `funil_pick_vendedor` crua: aquela serve tambem o quiz/handoff e o
+  // leads/alp-dispatch, que enfileiram em outbound_dispatch e portanto fazem o
+  // WhatsApp DO VENDEDOR abrir a conversa. Aqui quem abre e o cliente, entao a
+  // fila pode incluir quem esta em modo "so recebe" -- vendedor restringido
+  // pelo WhatsApp, que nao pode chamar numero novo mas atende normalmente quem
+  // chama ele. Se ela nao devolver ninguem, vai pro fallback.
   let vendedorNome: string | null = null
   let vendedorTelefone: string | null = null
   try {
-    const { data: pick } = await db.rpc('funil_pick_vendedor')
+    const { data: pick } = await db.rpc('funil_pick_vendedor_inbound')
     const escolha = Array.isArray(pick) && pick.length ? (pick[0] as { vendedor: string; telefone: string }) : null
     if (escolha?.telefone) {
       vendedorNome = String(escolha.vendedor).toUpperCase().trim()
