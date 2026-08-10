@@ -103,17 +103,58 @@ function txt(v: unknown): string | null {
  *  passar CONGELAR esta pagina na URL, e todo cliente humano depois dele recebe
  *  "Abrindo o WhatsApp..." em vez de ir pro WhatsApp. Aconteceu em producao
  *  (05/08/2026): X-Vercel-Cache=HIT, Age=90, zero clique gravado.
- *  Por isso aqui NAO se mexe no Cache-Control -- vale o no-store do handler. */
-function paginaPreview(res: VercelResponse, nome: string) {
+ *  Por isso aqui NAO se mexe no Cache-Control -- vale o no-store do handler.
+ *
+ *  ⚠️ E PRECISA TER CONTEUDO DE VERDADE. Ate 10/08/2026 ela devolvia 398 bytes
+ *  escritos "Abrindo o WhatsApp..." mais um <meta robots=noindex>. O robo de
+ *  revisao do OpenAI Ads (OAI-SearchBot / ChatGPT-User / GPTBot -- todos casam
+ *  no /bot/i acima) recebia isso como landing page do anuncio e REPROVOU os dois
+ *  criativos com `landing_page_crawl_issue`. Pagina de robo nao e pagina
+ *  descartavel: pra quem revisa anuncio, ELA e a landing. Tambem e o que o
+ *  WhatsApp e o Facebook mostram na previa quando o link e colado. */
+function escaparHtml(s: string): string {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string))
+}
+
+function paginaPreview(res: VercelResponse, nome: string, telefone: string) {
   res.setHeader('Content-Type', 'text/html; charset=utf-8')
+  // Interpolar o nome cru quebrava o atributo se ele tivesse aspas -- vem do
+  // painel, entao e texto de usuario.
+  const n = escaparHtml(nome)
+  const wa = `https://wa.me/${String(telefone).replace(/\D/g, '')}`
+  const titulo = 'Branorte — Fábrica de ração própria na sua fazenda'
+  const desc =
+    'Equipamentos Branorte para o produtor fabricar a própria ração: ' +
+    'misturador, moinho de martelo, transportador helicoidal, ensacadeira e silo. ' +
+    'Fale com um consultor pelo WhatsApp e peça um orçamento.'
   return res.status(200).send(
     `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">` +
       `<meta name="viewport" content="width=device-width,initial-scale=1">` +
-      `<title>Branorte — Falar com um consultor</title>` +
-      `<meta property="og:title" content="Branorte — Falar com um consultor">` +
-      `<meta property="og:description" content="${nome}">` +
-      `<meta name="robots" content="noindex">` +
-      `</head><body><p>Abrindo o WhatsApp…</p></body></html>`
+      `<title>${escaparHtml(titulo)}</title>` +
+      `<meta name="description" content="${escaparHtml(desc)}">` +
+      `<meta property="og:type" content="website">` +
+      `<meta property="og:title" content="${escaparHtml(titulo)}">` +
+      `<meta property="og:description" content="${escaparHtml(desc)}">` +
+      // Sem <meta robots=noindex>: quem revisa anuncio precisa conseguir avaliar
+      // esta pagina, e noindex e sinal de "nao me considere".
+      `</head><body>` +
+      `<h1>Fábrica de ração própria na sua fazenda</h1>` +
+      `<p>${escaparHtml(desc)}</p>` +
+      `<h2>O que a Branorte fabrica</h2>` +
+      `<ul>` +
+      `<li>Fábricas de ração compactas, para pequena e média escala</li>` +
+      `<li>Misturadores horizontais e verticais</li>` +
+      `<li>Moinhos de martelo e trituradores de milho</li>` +
+      `<li>Transportadores helicoidais e elevadores</li>` +
+      `<li>Ensacadeiras, silos e caçambas de pesagem</li>` +
+      `</ul>` +
+      `<p>Atendemos gado de corte e leite, suínos, aves, ovinos e caprinos, ` +
+      `com ração farelada. Há financiamento FINAME/BNDES.</p>` +
+      `<p><a href="${wa}">Falar com um consultor no WhatsApp</a></p>` +
+      `<p>Ao abrir este link, você é encaminhado a um consultor da Branorte no WhatsApp.</p>` +
+      `<p>Campanha: ${n}</p>` +
+      `</body></html>`
   )
 }
 
@@ -146,10 +187,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (!link) return res.status(404).send('Link não encontrado.')
 
-  const ua = String(req.headers['user-agent'] || '')
-  if (req.method === 'HEAD' || BOTS.test(ua)) return paginaPreview(res, link.nome)
-
+  // Calculado ANTES da pagina de robo: ela agora mostra um link de WhatsApp, e o
+  // numero tem que ser o da central -- nunca um do rodizio, senao um robo de
+  // preview passaria a "escolher" vendedor sem ninguem ter clicado.
   const fallback = String(link.fallback_telefone || FALLBACK_TELEFONE).replace(/\D/g, '')
+
+  const ua = String(req.headers['user-agent'] || '')
+  if (req.method === 'HEAD' || BOTS.test(ua)) return paginaPreview(res, link.nome, fallback)
 
   // Link desligado no painel: nao roteia nem registra, mas ainda entrega o
   // cliente na central em vez de dar erro na cara dele.
