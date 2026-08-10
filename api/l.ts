@@ -140,7 +140,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { data: link } = await db
     .from('link_rota')
-    .select('id, slug, nome, mensagem, origem, ativo, fallback_telefone')
+    .select('id, slug, nome, mensagem, origem, ativo, fallback_telefone, capi_evento_clique')
     .eq('slug', slug)
     .maybeSingle()
 
@@ -256,8 +256,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // -- foi exatamente assim que o criativo &79 virou o melhor do Gerenciador e
   // o pior do caixa. 'Lead' e reservado pro evento da CONVERSA, que sai por
   // /api/capi-conversa quando o casamento clique<->mensagem e confiavel.
+  //
+  // O NOME do evento vem do link quando ele nao e de trafego do Meta. Ver
+  // link_rota.capi_evento_clique: pro /l/branorte (OpenAI Ads, 10/08/2026) sai
+  // 'ViewContentChatGPT' em vez de 'ViewContent', pra que o clique pago no
+  // ChatGPT nao engorde um evento padrao que as campanhas do Meta otimizam.
   await enviarEventoCapi({
-    nome: 'ViewContent',
+    nome: link.capi_evento_clique || 'ViewContent',
     eventId: codigoLegivel(codigoNum),
     fbc,
     fbp,

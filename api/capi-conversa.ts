@@ -73,7 +73,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { data: pendentes, error } = await db
     .from('link_rota_click')
-    .select('id, codigo, fbc, fbp, ip, user_agent, cliente_telefone, matched_at, match_via, link_rota(nome, origem, slug)')
+    .select('id, codigo, fbc, fbp, ip, user_agent, cliente_telefone, matched_at, match_via, link_rota(nome, origem, slug, capi_evento_conversa)')
     .not('matched_at', 'is', null)
     .is('capi_enviado_at', null)
     // Precisa de PELO MENOS UM identificador de pessoa. Antes exigia fbc e
@@ -92,7 +92,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   for (const p of pendentes as Array<Record<string, any>>) {
     const link = Array.isArray(p.link_rota) ? p.link_rota[0] : p.link_rota
     const r = await enviarEventoCapi({
-      nome: 'Lead',
+      // 'Lead' e o certo pro trafego que veio de anuncio do META -- e o evento
+      // que as campanhas dele otimizam. Para link de OUTRO canal o nome vem do
+      // proprio link (link_rota.capi_evento_conversa): o /l/branorte, do OpenAI
+      // Ads, manda 'LeadChatGPT'.
+      //
+      // POR QUE ISSO IMPORTA: este evento leva `ph`, o telefone hasheado. O Meta
+      // casa esse telefone com gente que viu anuncio DELE e credita a conversa a
+      // campanha dele -- ou seja, o ChatGPT paga o lead e o Gerenciador do Meta
+      // exibe como se fosse dele. Evento custom aparece no Gerenciador de
+      // Eventos (da pra medir) e nao entra na otimizacao (nao contamina).
+      nome: link?.capi_evento_conversa || 'Lead',
       // Sufixo -c: o evento do CLIQUE ja usou o codigo puro. Sem isso, um
       // reprocessamento poderia colidir com ele na deduplicacao do Meta.
       eventId: `${p.codigo}-c`,
