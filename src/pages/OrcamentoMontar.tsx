@@ -15,7 +15,7 @@ import {
 } from '@/hooks/useCatalogo'
 import { FinalizarMontarModal, type CarrinhoSnapshot } from '@/components/FinalizarMontarModal'
 import { OrcamentoPreview, type ParcelaPagamento, type PreviewClienteDados } from '@/components/OrcamentoPreview'
-import { montarItensFiname, FINAME_TIPOS, type FinameBloqueio } from '@/lib/finame'
+import { montarItensFiname, aplicarAcrescimoFiname, FINAME_TIPOS, type FinameBloqueio } from '@/lib/finame'
 import { ResponsiveScaler } from '@/components/ResponsiveScaler'
 import { ClienteEditModal } from '@/components/ClienteEditModal'
 import { useOrcamentoModelos, useOrcamentoGerado, type OrcamentoModelo, detectarBalancaDuplicada, stripSufixoVoltagem } from '@/hooks/useOrcamentoBuilder'
@@ -463,6 +463,12 @@ export function OrcamentoMontar() {
   // equipamento mantendo o código FINAME do tipo (ex: "Silo de Armazenagem" →
   // "Caixa de Armazenagem Milho/Soja"). Vazio = usa o nome oficial do tipo.
   const [finameNomeOverride, setFinameNomeOverride] = useState<Record<string, string>>({})
+  // FINAME: total-ALVO da proposta (A+). Ex: o cálculo dá 258k e o FINAME precisa sair
+  // 298k. A diferença (alvo − calculado) é diluída DENTRO dos equipamentos marcados em
+  // finameAcrescimoUids — não vira linha nova. null = sem acréscimo (total = calculado).
+  const [finameAlvoTotal, setFinameAlvoTotal] = useState<number | null>(null)
+  // Quais equipamentos absorvem o acréscimo. Lista vazia = TODOS os principais.
+  const [finameAcrescimoUids, setFinameAcrescimoUids] = useState<string[]>([])
   // FINAME: total da proposta "travado" (referência). A soma das linhas precisa bater
   // com ele pra gerar; senão o vendedor ajusta os valores ou aceita o novo total.
   const [finameTotalTravado, setFinameTotalTravado] = useState<number | null>(null)
@@ -891,8 +897,15 @@ export function OrcamentoMontar() {
     const totalAvulsos = motoresAgrupadosExib
       .filter(m => m.item_uid?.startsWith('avulso:') && !m.removido)
       .reduce((s, m) => s + (m.valor_total || 0), 0)
-    return montarItensFiname(inputs, valorAcessoriosExib + totalComponentesExtras + totalAvulsos, finameTipoOverride)
-  }, [finameMode, carrinhoExib, motoresAgrupadosExib, valorAcessoriosExib, totalComponentesExtras, finameTipoOverride])
+    const pool = valorAcessoriosExib + totalComponentesExtras + totalAvulsos
+    // 1º passe: total "puro" (sem acréscimo) — é a referência que a UI mostra e a base
+    // do delta. 2º passe: se há alvo maior, dilui a diferença nos itens escolhidos.
+    const base = montarItensFiname(inputs, pool, finameTipoOverride)
+    const delta = finameAlvoTotal != null ? Math.round(finameAlvoTotal - base.totalGeral) : 0
+    if (delta <= 0) return { ...base, totalSemAcrescimo: base.totalGeral, acrescimoAplicado: 0 }
+    const comAcrescimo = aplicarAcrescimoFiname(base, { valor: delta, uids: finameAcrescimoUids })
+    return { ...comAcrescimo, totalSemAcrescimo: base.totalGeral, acrescimoAplicado: delta }
+  }, [finameMode, carrinhoExib, motoresAgrupadosExib, valorAcessoriosExib, totalComponentesExtras, finameTipoOverride, finameAlvoTotal, finameAcrescimoUids])
 
   const finameBloqueios: FinameBloqueio[] = finameTransform?.bloqueios ?? []
 
@@ -935,14 +948,23 @@ export function OrcamentoMontar() {
   // (Re)trava o total no valor computado quando o CONJUNTO de itens muda (add/remove) ou
   // ao entrar/sair do FINAME. Editar valor (override) NÃO re-trava — aí o vendedor decide
   // manter o total ou aceitar o novo. (uids ordenados = NÃO re-trava ao só reordenar.)
+  // O acréscimo (A+) muda o total sem mudar o conjunto de itens — entra na chave pra
+  // re-travar o total no valor novo (senão o alvo digitado marcaria "total divergente").
   const finameUidsKey = finameMode && finameTransform
-    ? finameTransform.itens.map(i => i.uid).slice().sort().join(',')
+    ? [
+        finameTransform.itens.map(i => i.uid).slice().sort().join(','),
+        finameAlvoTotal ?? '',
+        finameAcrescimoUids.slice().sort().join(','),
+      ].join('|')
     : ''
   useEffect(() => {
     if (!finameMode || !finameTransform) {
       setFinameTotalTravado(null)
       setFinameValorOverride({})
-      if (!finameMode) { setFinameTipoOverride({}); setFinameNomeOverride({}) }
+      if (!finameMode) {
+        setFinameTipoOverride({}); setFinameNomeOverride({})
+        setFinameAlvoTotal(null); setFinameAcrescimoUids([])
+      }
       return
     }
     setFinameTotalTravado(finameTransform.totalGeral)
@@ -3046,6 +3068,96 @@ export function OrcamentoMontar() {
                     )
                   })}
                 </div>
+
+                {/* ── A+ : total-alvo do FINAME ───────────────────────────────
+                    O cálculo dá X (ex: 258k) e o FINAME precisa fechar em Y (ex: 298k).
+                    A diferença NÃO vira linha: é diluída proporcionalmente dentro dos
+                    equipamentos marcados, igual motor/acessório já são. */}
+                {finameBloqueios.length === 0 && finameTransform.itens.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-gray-200">
+                    <div className="font-bold text-[12px] mb-1.5">💰 Total-alvo do FINAME (A+)</div>
+                    <div className="flex items-center gap-2 flex-wrap text-[12px]">
+                      <span className="text-gray-600">
+                        Calculado: <b className="text-gray-800">
+                          R$ {finameTransform.totalSemAcrescimo.toLocaleString('pt-BR')}
+                        </b>
+                      </span>
+                      <span className="text-gray-500">→ sair por</span>
+                      <span className="text-gray-600">R$</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1000}
+                        value={finameAlvoTotal ?? ''}
+                        onChange={(e) => {
+                          const v = e.target.value.trim()
+                          setFinameAlvoTotal(v === '' ? null : Math.max(0, Math.round(Number(v) || 0)))
+                        }}
+                        placeholder={String(finameTransform.totalSemAcrescimo)}
+                        className="w-32 text-[12px] border border-gray-300 rounded px-1.5 py-0.5 bg-white text-gray-800"
+                      />
+                      {finameAlvoTotal != null && (
+                        <button
+                          onClick={() => { setFinameAlvoTotal(null); setFinameAcrescimoUids([]) }}
+                          className="text-[11px] text-gray-500 underline hover:text-gray-700"
+                        >
+                          limpar
+                        </button>
+                      )}
+                    </div>
+
+                    {finameAlvoTotal != null && finameTransform.acrescimoAplicado <= 0 && (
+                      <p className="mt-1.5 text-[11px] text-amber-700">
+                        O alvo precisa ser MAIOR que o calculado (R$ {finameTransform.totalSemAcrescimo.toLocaleString('pt-BR')}).
+                        Enquanto for menor ou igual, nada é acrescentado.
+                      </p>
+                    )}
+
+                    {finameTransform.acrescimoAplicado > 0 && (
+                      <>
+                        <p className="mt-2 mb-1 text-[11px] text-gray-600">
+                          <b className="text-green-700">
+                            A+ R$ {finameTransform.acrescimoAplicado.toLocaleString('pt-BR')}
+                          </b>{' '}
+                          diluído (proporcional ao valor) nos equipamentos marcados:
+                        </p>
+                        <div className="space-y-0.5">
+                          {finameTransform.itens.map((fi) => {
+                            const todos = finameAcrescimoUids.length === 0
+                            const marcado = todos || finameAcrescimoUids.includes(fi.uid)
+                            const nome = (finameNomeOverride[fi.uid] ?? '').trim() || fi.nomeFiname
+                            return (
+                              <label key={fi.uid} className="flex items-center gap-2 text-[12px] text-gray-700 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={marcado}
+                                  onChange={() => {
+                                    setFinameAcrescimoUids(prev => {
+                                      // [] = todos. Ao desmarcar um, materializa a lista com o resto.
+                                      const atual = prev.length === 0
+                                        ? finameTransform.itens.map(i => i.uid)
+                                        : prev
+                                      const next = atual.includes(fi.uid)
+                                        ? atual.filter(u => u !== fi.uid)
+                                        : [...atual, fi.uid]
+                                      // Desmarcou todos → volta pro padrão (todos recebem).
+                                      return next.length === 0 ? [] : next
+                                    })
+                                  }}
+                                  className="accent-green-600"
+                                />
+                                <span className={marcado ? '' : 'text-gray-400 line-through'}>{nome}</span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                        <p className="mt-2 text-[12px] text-gray-800">
+                          Total FINAME: <b>R$ {finameTransform.totalGeral.toLocaleString('pt-BR')}</b>
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             )}
             {carrinho.length === 0 ? (

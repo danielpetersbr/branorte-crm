@@ -261,6 +261,19 @@ export interface FinameTransformResult {
 }
 
 /**
+ * Acréscimo dirigido (A+) — valor extra que o vendedor quer embutir no orçamento
+ * FINAME pra fechar num total-alvo (ex: cálculo dá 258k, FINAME sai 298k).
+ * O valor NÃO vira linha: é diluído proporcionalmente DENTRO dos equipamentos
+ * escolhidos, igual motor/acessório.
+ */
+export interface FinameAcrescimo {
+  /** Valor total a acrescentar, em R$ (já é o delta alvo − calculado). */
+  valor: number
+  /** uids que absorvem o acréscimo. Vazio/ausente = todos os equipamentos principais. */
+  uids?: string[] | null
+}
+
+/**
  * Transforma os itens do carrinho no conjunto FINAME:
  *  - mantém só os equipamentos principais (cada um com seu código),
  *  - dilui motores + acessórios + poolExtra (acessórios% + componentes extras) no valor,
@@ -382,4 +395,74 @@ export function montarItensFiname(
   })
 
   return { itens: itensOut, totalGeral, bloqueios, classificacoes }
+}
+
+/**
+ * Aplica o acréscimo dirigido (A+) SOBRE um resultado já montado.
+ *
+ * Roda depois de montarItensFiname (e não dentro dele) de propósito: assim as linhas
+ * NÃO escolhidas ficam byte-idênticas ao cálculo original — nem um real de arredondamento
+ * vaza pra quem o vendedor não marcou.
+ *
+ * Distribui proporcionalmente ao valor da linha (valor × qtd) entre os uids escolhidos
+ * (vazio = todos), e joga a sobra de arredondamento numa linha ESCOLHIDA de qtd 1, pra
+ * o total fechar exatamente no alvo. Se toda linha escolhida tem qtd > 1, pode sobrar
+ * uma diferença de poucos reais (reportada em `totalGeral`, que é sempre a verdade).
+ */
+export function aplicarAcrescimoFiname(
+  base: FinameTransformResult,
+  acrescimo: FinameAcrescimo,
+): FinameTransformResult {
+  const acr = Math.round(acrescimo.valor || 0)
+  if (acr <= 0 || base.itens.length === 0) return base
+
+  const sel = new Set((acrescimo.uids ?? []).filter(Boolean))
+  let alvos = base.itens.map((_, i) => i).filter(i => sel.size === 0 || sel.has(base.itens[i].uid))
+  if (alvos.length === 0) alvos = base.itens.map((_, i) => i) // seleção inválida → todos
+
+  const linha = (i: number) => base.itens[i].valor * base.itens[i].qtd
+  const baseAlvo = alvos.reduce((s, i) => s + linha(i), 0)
+
+  // Quanto (em R$ de linha) cada alvo recebe.
+  const add = new Map<number, number>()
+  let distribuido = 0
+  if (baseAlvo > 0) {
+    for (const i of alvos) {
+      const s = Math.floor((acr * linha(i)) / baseAlvo)
+      add.set(i, s)
+      distribuido += s
+    }
+  } else {
+    const each = Math.floor(acr / alvos.length)
+    for (const i of alvos) { add.set(i, each); distribuido += each }
+  }
+  // Sobra da divisão → maior alvo.
+  let idxMaior = alvos[0]
+  for (const i of alvos) if (linha(i) > linha(idxMaior)) idxMaior = i
+  add.set(idxMaior, (add.get(idxMaior) || 0) + (acr - distribuido))
+
+  let totalGeral = 0
+  const itens = base.itens.map((it, i) => {
+    const extra = add.get(i) || 0
+    const valor = extra === 0 ? it.valor : Math.round((it.valor * it.qtd + extra) / it.qtd)
+    totalGeral += valor * it.qtd
+    return extra === 0 ? it : { ...it, valor }
+  })
+
+  // Sobra do arredondamento unitário (linhas com qtd > 1) → linha escolhida de qtd 1.
+  const alvoTotal = base.totalGeral + acr
+  const residual = alvoTotal - totalGeral
+  if (residual !== 0) {
+    let melhor = -1
+    for (const i of alvos) {
+      if (itens[i].qtd !== 1 || itens[i].valor + residual <= 0) continue
+      if (melhor < 0 || itens[i].valor > itens[melhor].valor) melhor = i
+    }
+    if (melhor >= 0) {
+      itens[melhor] = { ...itens[melhor], valor: itens[melhor].valor + residual }
+      totalGeral += residual
+    }
+  }
+
+  return { ...base, itens, totalGeral }
 }
