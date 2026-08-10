@@ -217,6 +217,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // interessa, e nao so "alguem clicou".
   const fbclid = txt(req.query.fbclid)
   const fbc = montarFbc(fbclid)
+
+  // Mesma ideia, do lado do OpenAI Ads: `oppref` e o click id deles, chega na
+  // query string da URL de destino e SO existe agora. Passa pelo mesmo filtro de
+  // macro nao substituida -- link aberto fora da entrega chega com o
+  // placeholder literal, e gravar isso inventa um anuncio no relatorio.
+  const oppref = utm(req.query.oppref)
   const sourceUrl = req.headers.host
     ? `https://${req.headers.host}/l/${slug}`
     : null
@@ -286,6 +292,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     fbclid,
     fbc,
     fbp,
+    oppref,
   })
 
   // --- Evento pro Meta (Conversions API) ------------------------------------

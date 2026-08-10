@@ -43,6 +43,8 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 // Extensao .js OBRIGATORIA (ESM em producao) -- ver comentario em api/l.ts.
 import { enviarEventoCapi, capiConfigurada } from './_lib/meta-capi.js'
+// Extensao .js OBRIGATORIA aqui tambem -- ESM em producao.
+import { enviarEventoOpenAiAds, openAiAdsConfigurado } from './_lib/openai-ads.js'
 
 const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!
 const SVC_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -67,11 +69,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ erro: 'nao autorizado' })
   }
   if (!SUPA_URL || !SVC_KEY) return res.status(500).json({ erro: 'sem banco' })
-  if (!capiConfigurada()) return res.status(200).json({ pulado: 'CAPI desligada (sem env)' })
+  // Os dois destinos sao independentes: se SO o Meta estiver sem env, o OpenAI
+  // Ads ainda tem que rodar. Sair aqui deixaria o segundo bloco inalcancavel.
+  if (!capiConfigurada() && !openAiAdsConfigurado()) {
+    return res.status(200).json({ pulado: 'nenhum destino configurado (sem env)' })
+  }
 
   const db = createClient(SUPA_URL, SVC_KEY, { auth: { persistSession: false } })
 
-  const { data: pendentes, error } = await db
+  const { data: pendentes, error } = capiConfigurada() ? await db
     .from('link_rota_click')
     .select('id, codigo, fbc, fbp, ip, user_agent, cliente_telefone, matched_at, match_via, link_rota(nome, origem, slug, capi_evento_conversa)')
     .not('matched_at', 'is', null)
@@ -82,14 +88,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .in('match_via', CONFIAVEIS)
     .order('matched_at', { ascending: true })
     .limit(LOTE)
+    : { data: [] as Array<Record<string, any>>, error: null }
 
   if (error) return res.status(500).json({ erro: error.message })
-  if (!pendentes?.length) return res.status(200).json({ enviados: 0, falhas: 0 })
 
   let enviados = 0
   let falhas = 0
 
-  for (const p of pendentes as Array<Record<string, any>>) {
+  // Sem `return` quando a lista vem vazia: o bloco do OpenAI Ads vem depois e
+  // tem pendencias PROPRIAS. Sair aqui deixava ele inalcancavel na maioria das
+  // rodadas -- que e justamente o caso comum (nada pendente pro Meta).
+  for (const p of (pendentes || []) as Array<Record<string, any>>) {
     const link = Array.isArray(p.link_rota) ? p.link_rota[0] : p.link_rota
     const r = await enviarEventoCapi({
       // 'Lead' e o certo pro trafego que veio de anuncio do META -- e o evento
@@ -140,5 +149,55 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .eq('id', p.id)
   }
 
-  return res.status(200).json({ enviados, falhas })
+  // --- Mesma conversa, agora pro OPENAI ADS ---------------------------------
+  // Lista SEPARADA, e nao um segundo destino dentro do laco acima, por dois
+  // motivos: as pendencias sao diferentes (o Meta manda tudo que tem fbc/fbp/
+  // telefone; aqui so serve quem tem `oppref`) e um destino nao pode ficar
+  // preso ao outro -- linha ja enviada ao Meta some daquele filtro e nunca mais
+  // seria olhada por este.
+  //
+  // Nao existe rede de seguranca aqui: a Conversions API do OpenAI proibe
+  // telefone, entao clique sem `oppref` nao tem como ser atribuido. Mandar
+  // assim mesmo so inflaria a contagem de conversao da conta.
+  let openaiEnviados = 0
+  let openaiFalhas = 0
+  if (openAiAdsConfigurado()) {
+    const { data: pendentesOa } = await db
+      .from('link_rota_click')
+      .select('id, codigo, oppref, ip, user_agent, matched_at, link_rota(slug)')
+      .not('matched_at', 'is', null)
+      .not('oppref', 'is', null)
+      .is('openai_enviado_at', null)
+      .in('match_via', CONFIAVEIS)
+      .order('matched_at', { ascending: true })
+      .limit(LOTE)
+
+    for (const p of (pendentesOa || []) as Array<Record<string, any>>) {
+      const link = Array.isArray(p.link_rota) ? p.link_rota[0] : p.link_rota
+      const r = await enviarEventoOpenAiAds({
+        tipo: 'lead_created',
+        // Sufixo -o: o mesmo codigo ja identifica o evento do clique e o do
+        // Meta. Sem isso um reprocessamento colidiria na deduplicacao deles.
+        eventId: `${p.codigo}-o`,
+        oppref: p.oppref,
+        ip: p.ip,
+        userAgent: p.user_agent,
+        sourceUrl: link?.slug ? `https://branorte-crm.vercel.app/l/${link.slug}` : null,
+        // O fato aconteceu quando a mensagem chegou. A API recusa qualquer
+        // coisa fora dos ultimos 7 dias.
+        quandoMs: p.matched_at ? new Date(p.matched_at).getTime() : null,
+      })
+
+      if (r === 'ok') openaiEnviados++
+      else openaiFalhas++
+
+      // Marca SEMPRE, inclusive em erro -- mesma regra do Meta.
+      await db
+        .from('link_rota_click')
+        .update({ openai_enviado_at: new Date().toISOString(), openai_resultado: r })
+        .eq('id', p.id)
+    }
+  }
+
+  return res.status(200).json({ enviados, falhas, openaiEnviados, openaiFalhas })
 }
