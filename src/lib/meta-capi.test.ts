@@ -7,7 +7,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { montarFbc, lerFbp, capiConfigurada, montarEvento, hashTelefone } from '../../api/_lib/meta-capi'
+import { montarFbc, lerFbp, capiConfigurada, montarEvento, hashTelefone, pixelDoEvento } from '../../api/_lib/meta-capi'
 
 test('fbc sai no formato fb.1.<ms>.<fbclid> exigido pelo Meta', () => {
   const fbc = montarFbc('IwAR0abc-DEF_123', 1_754_500_000_000)
@@ -165,4 +165,49 @@ test('conversa sem fbc ainda atribui, porque vai o ph', () => {
   assert.equal(ud.fbc, undefined)
   // O numero legivel NAO pode aparecer em lugar nenhum do payload.
   assert.equal(JSON.stringify(ev).includes('5548999998888'), false)
+})
+
+// --- pixel por link --------------------------------------------------------
+// A coluna link_rota.pixel_id existia desde 07/08/2026 e NAO era lida por
+// ninguem: o painel mostrava o campo, o cabecalho da tela prometia "vazio = usa
+// o global", e todo evento saia no pixel da env do mesmo jeito. Estes testes
+// travam a resolucao pra que ela nao volte a ser decorativa em silencio.
+
+test('pixel do link ganha do pixel da env', () => {
+  const antes = process.env.META_PIXEL_ID
+  process.env.META_PIXEL_ID = '1518870689502747'
+  try {
+    assert.equal(pixelDoEvento({ ...BASE, pixelId: '1444276649743828' }), '1444276649743828')
+  } finally {
+    if (antes === undefined) delete process.env.META_PIXEL_ID
+    else process.env.META_PIXEL_ID = antes
+  }
+})
+
+test('link sem pixel proprio continua caindo no global', () => {
+  const antes = process.env.META_PIXEL_ID
+  process.env.META_PIXEL_ID = '1518870689502747'
+  try {
+    for (const v of [null, undefined, '', '   ']) {
+      assert.equal(pixelDoEvento({ ...BASE, pixelId: v as unknown as string }), '1518870689502747',
+        `deveria cair no global para: ${JSON.stringify(v)}`)
+    }
+  } finally {
+    if (antes === undefined) delete process.env.META_PIXEL_ID
+    else process.env.META_PIXEL_ID = antes
+  }
+})
+
+test('pixel do banco nao consegue injetar caminho na URL do Graph', () => {
+  // O valor vai direto pro path de graph.facebook.com/<pixel>/events. Um
+  // "123/../me" ali chamaria outro endpoint com o token junto.
+  const antes = process.env.META_PIXEL_ID
+  process.env.META_PIXEL_ID = '1518870689502747'
+  try {
+    assert.equal(pixelDoEvento({ ...BASE, pixelId: '1444276649743828/../me' }), '1444276649743828')
+    assert.equal(pixelDoEvento({ ...BASE, pixelId: '?access_token=x' }), '1518870689502747')
+  } finally {
+    if (antes === undefined) delete process.env.META_PIXEL_ID
+    else process.env.META_PIXEL_ID = antes
+  }
 })

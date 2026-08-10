@@ -13,6 +13,7 @@
 //
 // Configuracao (variaveis de ambiente na Vercel):
 //   META_PIXEL_ID          id do dataset/pixel no Gerenciador de Eventos
+//                          (padrao; link_rota.pixel_id sobrepoe por link)
 //   META_CAPI_TOKEN        token da Conversions API (Eventos > Configuracoes)
 //   META_TEST_EVENT_CODE   opcional: so enquanto testa na aba "Testar eventos"
 //
@@ -53,6 +54,21 @@ export type EventoCapi = {
    *  minuto da varredura em vez do minuto da mensagem. O Meta recusa qualquer
    *  coisa fora da janela de 7 dias (error_subcode 2804004). */
   quandoMs?: number | null;
+  /** Pixel/dataset de destino. Vazio = META_PIXEL_ID do ambiente.
+   *
+   *  Existe porque link_rota.pixel_id era LETRA MORTA: a coluna estava na
+   *  tabela desde 07/08/2026, o painel mostrava o campo e o cabecalho de
+   *  LinksRoteamento.tsx prometia "PIXEL POR LINK ... vazio = usa o global" --
+   *  mas nenhum dos dois endpoints selecionava a coluna, entao TODO evento saia
+   *  no pixel da env. Quem preenchia no painel achava que tinha configurado
+   *  algo. Agora preenche de verdade.
+   *
+   *  ⚠️ O token e escopado no Meta. Apontar um link pra um pixel que o
+   *  META_CAPI_TOKEN nao alcanca devolve erro HTTP -- e no evento de CONVERSA
+   *  isso e caro: api/capi-conversa marca capi_enviado_at MESMO no erro (pra nao
+   *  duplicar conversao), entao o evento nao volta sozinho. Antes de apontar um
+   *  link pra pixel novo, conferir o log da rota. */
+  pixelId?: string | null;
   /** Aparece no Gerenciador de Eventos — serve pra separar link de link. */
   custom?: Record<string, string | number>;
 };
@@ -113,9 +129,25 @@ export function lerFbp(cookieHeader: unknown): string | null {
   return /^fb\.\d+\.\d+\.\d+$/.test(v) ? v : null;
 }
 
-/** true quando ha pixel e token configurados. Fora isso tudo aqui e no-op. */
+/** true quando ha pixel e token configurados. Fora isso tudo aqui e no-op.
+ *
+ *  Continua exigindo o pixel da ENV mesmo agora que o link pode trazer o seu.
+ *  Nao e descuido: quem chama isto e a varredura de conversa, que marca
+ *  capi_enviado_at ate no erro. Se ela rodasse sem pixel global, todo clique de
+ *  link SEM pixel proprio viraria 'off' e ficaria marcado como enviado -- evento
+ *  perdido pra sempre, em silencio. Melhor a varredura inteira nao rodar. */
 export function capiConfigurada(): boolean {
   return Boolean(process.env.META_PIXEL_ID && process.env.META_CAPI_TOKEN);
+}
+
+/** Pixel de destino do evento: o do link quando existir, senao o da env.
+ *
+ *  So digitos DE PROPOSITO: este valor vem do banco e vai direto pro caminho da
+ *  URL do Graph. O CHECK link_rota_pixel_ck ja exige 10-20 digitos, mas quem
+ *  monta URL nao confia em constraint de outra camada. */
+export function pixelDoEvento(ev: EventoCapi): string | undefined {
+  const doLink = String(ev.pixelId ?? '').replace(/\D/g, '');
+  return doLink || process.env.META_PIXEL_ID;
 }
 
 /** Monta o evento no formato do Meta. Exportado por causa do TESTE: e aqui que
@@ -156,7 +188,7 @@ export function montarEvento(ev: EventoCapi): Record<string, unknown> | null {
 
 /** Dispara o evento. NUNCA lanca — o retorno so serve pra log e teste. */
 export async function enviarEventoCapi(ev: EventoCapi): Promise<'ok' | 'off' | 'erro'> {
-  const pixelId = process.env.META_PIXEL_ID;
+  const pixelId = pixelDoEvento(ev);
   const token = process.env.META_CAPI_TOKEN;
   if (!pixelId || !token) return 'off';
 

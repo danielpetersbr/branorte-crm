@@ -181,7 +181,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { data: link } = await db
     .from('link_rota')
-    .select('id, slug, nome, mensagem, origem, ativo, fallback_telefone, capi_evento_clique')
+    .select('id, slug, nome, mensagem, origem, ativo, fallback_telefone, capi_evento_clique, pixel_id')
     .eq('slug', slug)
     .maybeSingle()
 
@@ -312,8 +312,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // link_rota.capi_evento_clique: pro /l/branorte (OpenAI Ads, 10/08/2026) sai
   // 'ViewContentChatGPT' em vez de 'ViewContent', pra que o clique pago no
   // ChatGPT nao engorde um evento padrao que as campanhas do Meta otimizam.
+  // O PIXEL tambem vem do link (link_rota.pixel_id), com a env como padrao. Ate
+  // 10/08/2026 essa coluna era decorativa: existia na tabela, aparecia no painel
+  // e nao era selecionada aqui -- todo evento saia no pixel da env, incluindo o
+  // dos 89 links por criativo, que nasceram apontando pro pixel do site.
   await enviarEventoCapi({
     nome: link.capi_evento_clique || 'ViewContent',
+    pixelId: link.pixel_id,
     eventId: codigoLegivel(codigoNum),
     fbc,
     fbp,

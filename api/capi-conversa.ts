@@ -79,7 +79,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { data: pendentes, error } = capiConfigurada() ? await db
     .from('link_rota_click')
-    .select('id, codigo, fbc, fbp, ip, user_agent, cliente_telefone, matched_at, match_via, link_rota(nome, origem, slug, capi_evento_conversa)')
+    .select('id, codigo, fbc, fbp, ip, user_agent, cliente_telefone, matched_at, match_via, link_rota(nome, origem, slug, capi_evento_conversa, pixel_id)')
     .not('matched_at', 'is', null)
     .is('capi_enviado_at', null)
     // Precisa de PELO MENOS UM identificador de pessoa. Antes exigia fbc e
@@ -112,6 +112,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // exibe como se fosse dele. Evento custom aparece no Gerenciador de
       // Eventos (da pra medir) e nao entra na otimizacao (nao contamina).
       nome: link?.capi_evento_conversa || 'Lead',
+      // Mesmo pixel do clique -- os dois eventos da MESMA jornada precisam cair
+      // no mesmo dataset, senao o Meta ve um ViewContent orfao num pixel e um
+      // Lead orfao no outro, e nenhum dos dois conta a historia.
+      pixelId: link?.pixel_id,
       // Sufixo -c: o evento do CLIQUE ja usou o codigo puro. Sem isso, um
       // reprocessamento poderia colidir com ele na deduplicacao do Meta.
       eventId: `${p.codigo}-c`,
