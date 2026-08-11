@@ -62,6 +62,7 @@ const PrecosBranorte = lazy(() => import('@/pages/PrecosBranorte').then(m => ({ 
 const OrcamentosConversao = lazy(() => import('@/pages/OrcamentosConversao').then(m => ({ default: m.OrcamentosConversao })))
 const OrcamentosSalvos = lazy(() => import('@/pages/OrcamentosSalvos').then(m => ({ default: m.OrcamentosSalvos })))
 const Roadmap = lazy(() => import('@/pages/Roadmap').then(m => ({ default: m.Roadmap })))
+const IaTeste = lazy(() => import('@/pages/IaTeste').then(m => ({ default: m.IaTeste })))
 const Avaliacoes = lazy(() => import('@/pages/Avaliacoes').then(m => ({ default: m.Avaliacoes })))
 const Reunioes = lazy(() => import('@/pages/Reunioes').then(m => ({ default: m.Reunioes })))
 const Metas = lazy(() => import('@/pages/Metas').then(m => ({ default: m.Metas })))
@@ -369,7 +370,11 @@ function AppRoutes() {
      * escolhe a tela.
      */
     const financeiroOk = p.startsWith('/controle/financeiro') && can('menu.financeiro')
-    const allowed = freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || producaoPropriaOk || roadmapOk || contatosOk || financeiroOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
+    // Testar a IA: arena isolada onde o vendedor conversa com a própria IA e aponta
+    // o que ela errou. Amarrado no can() pelo mesmo motivo do roadmap/contatos —
+    // tirar a permissão fecha o acesso por URL junto.
+    const iaTesteOk = p.startsWith('/ia-teste') && can('menu.ia_teste')
+    const allowed = freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || producaoPropriaOk || roadmapOk || contatosOk || financeiroOk || iaTesteOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
     if (!allowed) return <Navigate to="/atendimentos" replace />
   }
 
@@ -549,6 +554,9 @@ function AppRoutes() {
         )}
         {can('menu.roadmap') && (
           <Route path="/roadmap" element={<Roadmap />} />
+        )}
+        {can('menu.ia_teste') && (
+          <Route path="/ia-teste" element={<IaTeste />} />
         )}
       </Route>
       <Route path="/login" element={<Navigate to="/" replace />} />
