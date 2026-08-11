@@ -382,9 +382,12 @@ function montarUrl(telefone: string, modelo: string, vendedor: string | null, co
   return `https://wa.me/${telefone}?text=${encodeURIComponent(montarTexto(modelo, vendedor, codigoNum))}`
 }
 
-/** Esquema do APP. E o que o botao "Abrir app" da propria WhatsApp Inc dispara
- *  -- ou seja, ja esta provado que funciona dentro do webview da Meta quando o
- *  toque parte do usuario. O texto (com o selo invisivel) viaja igual. */
+/** Esquema do APP. Serve pro ANDROID, onde esquema custom no toque funciona.
+ *
+ *  ⚠️ NAO SERVE PRO IPHONE dentro do webview da Meta. Testado pelo Daniel em
+ *  11/08/2026, no aparelho, com este codigo ja em producao: o botao apontando
+ *  pra `whatsapp://` NAO abriu -- nem automatico, nem no toque. So abriu quando
+ *  ele tocou no link de baixo, que e `https://wa.me/`. Ver montarUrl(). */
 function montarUrlApp(telefone: string, modelo: string, vendedor: string | null, codigoNum: number | null): string {
   return `whatsapp://send?phone=${telefone}&text=${encodeURIComponent(montarTexto(modelo, vendedor, codigoNum))}`
 }
@@ -396,17 +399,30 @@ function montarUrlApp(telefone: string, modelo: string, vendedor: string | null,
  *  webview da Meta o 302 abre o app e nao ha nada pra consertar; mexer ali seria
  *  risco puro em 233 cliques/semana.
  *
- *  Webview da Meta -> pagina de ~1KB que TENTA o esquema no carregamento. Se o
- *  webview deixar, o WhatsApp abre por cima e o cliente nao chega a ver pagina
- *  nenhuma -- que e o comportamento que o Daniel pediu. Se bloquear, sobra UM
- *  botao nosso apontando pro MESMO esquema, e o toque nele e justamente o gesto
- *  de usuario que faltava.
+ *  Webview da Meta -> pagina com UM botao grande apontando pro `https://wa.me/`.
  *
- *  Tres decisoes de seguranca nessa pagina:
+ *  POR QUE O BOTAO E https E NAO `whatsapp://` (corrigido em 11/08/2026):
+ *  a 1a versao desta pagina apostou no esquema custom, no palpite de que o botao
+ *  "Abrir app" da WhatsApp Inc fosse isso. O Daniel testou no iPhone, dentro do
+ *  Messenger, com o codigo em producao: o botao do esquema NAO abriu -- nem na
+ *  tentativa automatica, nem no toque. Abriu quando ele tocou no link `wa.me`.
+ *
+ *  A explicacao que sobra, e que fecha com TODOS os sintomas: iOS so honra
+ *  Universal Link em navegacao INICIADA PELO USUARIO. Por isso:
+ *    - 302 pro wa.me (sem gesto)      -> nao abre, cai na tela deles. Era o bug.
+ *    - `whatsapp://` no webview       -> bloqueado, com ou sem gesto.
+ *    - TOQUE num <a href="wa.me">     -> abre. E o unico que funciona.
+ *  Ou seja: o destino sempre esteve certo; o que faltava era o DEDO do cliente.
+ *
+ *  O esquema fica de secundario porque no ANDROID ele funciona e evita um toque.
+ *  A tentativa automatica so vai pro Android pelo mesmo motivo -- no iPhone ela
+ *  e inutil (provado acima) e ainda pode disparar alerta de "endereco invalido"
+ *  em quem nao tem o WhatsApp instalado.
+ *
+ *  Decisoes de seguranca que ficam:
  *    1. o botao e <a href>, nao onclick -- JS bloqueado nao quebra a pagina;
- *    2. tem um link pequeno pro wa.me embaixo, que reproduz exatamente o
- *       comportamento de hoje. PIOR CASO desta mudanca = um toque, o mesmo que
- *       o cliente ja da hoje no "Abrir app" deles;
+ *    2. PIOR CASO = um toque, o mesmo que o cliente ja dava no "Abrir app"
+ *       deles, so que num botao nosso e sem dois "Baixar" do lado;
  *    3. nada de recurso externo (CSS, fonte, imagem): rede ruim de fazenda nao
  *       pode atrasar o unico botao que importa.
  *
@@ -441,14 +457,17 @@ function entregarWhatsapp(
       `background:#25d366;color:#0b141a;font-size:18px;font-weight:600;text-decoration:none}` +
       `.s{font-size:14px;color:#8696a0;text-decoration:underline}` +
       `</style></head><body>` +
-      `<p>Abrindo o WhatsApp…</p>` +
-      `<a class="b" href="${escaparHtml(app)}">Abrir o WhatsApp</a>` +
-      `<a class="s" href="${escaparHtml(web)}">Não abriu? Toque aqui</a>` +
-      `<script>` +
+      `<p>Toque para falar com um consultor da Branorte</p>` +
+      `<a class="b" href="${escaparHtml(web)}">Abrir o WhatsApp</a>` +
+      `<a class="s" href="${escaparHtml(app)}">Não abriu? Toque aqui</a>` +
+      // A tentativa automatica so faz sentido no Android. No iPhone dentro do
+      // webview da Meta ela e comprovadamente inutil, e em quem nao tem o
+      // WhatsApp instalado ainda vira alerta de "endereco invalido".
       // location.replace, nao href: nao deixa esta pagina no historico, senao o
       // "voltar" do cliente cai nela de novo em vez de voltar pro anuncio.
-      `try{location.replace(${JSON.stringify(app)})}catch(e){}` +
-      `</script>` +
+      (/Android/i.test(ua)
+        ? `<script>try{location.replace(${JSON.stringify(app)})}catch(e){}</script>`
+        : '') +
       `</body></html>`
   )
 }
