@@ -201,6 +201,9 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/guia?modo=animais', label: 'Guia de Animais', icon: Beef, permKey: 'menu.viabilidade', roles: ['admin', 'vendor', 'marketing'] },
       { to: '/guia?modo=materias', label: 'Matérias-primas', icon: Wheat, permKey: 'menu.viabilidade', roles: ['admin', 'vendor', 'marketing'] },
       { to: '/guia/admin', label: 'Revisão do Guia', icon: BookCheck, permKey: 'guia.editar' },
+      // Sem `roles`: tendo permKey, a lista de papéis é fonte de verdade duplicada
+      // e já escondeu item em silêncio antes (custou três deploys pra achar).
+      { to: '/ia-teste', label: 'Testar a IA', icon: Bot, permKey: 'menu.ia_teste' },
     ],
   },
   {
