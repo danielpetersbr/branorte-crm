@@ -23,7 +23,10 @@ import { createClient } from '@supabase/supabase-js'
 // ERR_MODULE_NOT_FOUND -- e nem o tsc (moduleResolution: bundler) nem o tsx
 // reclamam, entao o erro so aparece na function ja publicada.
 import { novoCodigoNum, codigoLegivel, selarInvisivel } from './_lib/link-invisivel.js'
-import { enviarEventoCapi, montarFbc, lerFbp } from './_lib/meta-capi.js'
+// enviarEventoCapi saiu daqui em 11/08/2026: o evento do clique agora e
+// responsabilidade da varredura (api/capi-conversa.ts). Esta rota volta a ter
+// UM unico destino de rede fora do banco -- nenhum.
+import { montarFbc, lerFbp } from './_lib/meta-capi.js'
 
 const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!
 const SVC_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -224,9 +227,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // macro nao substituida -- link aberto fora da entrega chega com o
   // placeholder literal, e gravar isso inventa um anuncio no relatorio.
   const oppref = utm(req.query.oppref)
-  const sourceUrl = req.headers.host
-    ? `https://${req.headers.host}/l/${slug}`
-    : null
+  // O `sourceUrl` do evento saia daqui, montado com o req.headers.host. Agora
+  // quem monta e a varredura, a partir do slug -- mesma coisa que ela ja faz
+  // pro evento de conversa. Um campo a menos pra gravar no caminho do clique.
 
   // --- Reuso: mesmo visitante, mesmo link, ultimos REUSO_MIN minutos ---------
   // Devolve o MESMO vendedor e o MESMO codigo. Nao gira o rodizio de novo.
@@ -301,38 +304,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     oppref,
   })
 
-  // --- Evento pro Meta (Conversions API) ------------------------------------
-  // Server-side de proposito: esta rota e um 302, o cliente nunca recebe HTML
-  // nosso e um pixel de navegador nao teria onde rodar. Nao lanca, tem timeout
-  // proprio e vira no-op sem META_PIXEL_ID/META_CAPI_TOKEN -- o redirect abaixo
-  // acontece de qualquer jeito.
+  // --- O evento pro Meta NAO sai daqui (mudou em 11/08/2026) ----------------
+  // Ate hoje esta funcao dava `await enviarEventoCapi(...)` exatamente aqui,
+  // antes do 302. O cliente ficava parado esperando o graph.facebook.com --
+  // TIMEOUT_MS = 1200 em api/_lib/meta-capi.ts. Ate 1,2 segundo de espera pra
+  // entregar uma ESTATISTICA. Quem clicou nao ganha nada com isso; quem clicou
+  // quer o WhatsApp abrir.
   //
-  // O evento do CLIQUE e 'ViewContent', nao 'Lead', de proposito. Clique nao e
-  // lead: medido nos 3 primeiros dias, 75 cliques renderam 5 conversas reais.
-  // Chamar clique de Lead faz a campanha perseguir quem TOCA no anuncio barato
-  // -- foi exatamente assim que o criativo &79 virou o melhor do Gerenciador e
-  // o pior do caixa. 'Lead' e reservado pro evento da CONVERSA, que sai por
-  // /api/capi-conversa quando o casamento clique<->mensagem e confiavel.
+  // A doutrina da casa ja era essa e o /l/ e que estava fora dela. Do cabecalho
+  // do api/capi-conversa.ts, sobre o evento de CONVERSA: "pendurar chamada HTTP
+  // la dentro significa que uma indisponibilidade do Meta vira latencia (ou erro
+  // engolido) no caminho de TODA mensagem de cliente. A varredura desacopla: se
+  // o Meta cair, as linhas ficam pendentes e saem no minuto seguinte." Vale
+  // igual aqui -- com o agravante de que la o prejudicado era um processo de
+  // fundo, e aqui e o cliente olhando pra tela.
   //
-  // O NOME do evento vem do link quando ele nao e de trafego do Meta. Ver
-  // link_rota.capi_evento_clique: pro /l/branorte (OpenAI Ads, 10/08/2026) sai
-  // 'ViewContentChatGPT' em vez de 'ViewContent', pra que o clique pago no
-  // ChatGPT nao engorde um evento padrao que as campanhas do Meta otimizam.
-  // O PIXEL tambem vem do link (link_rota.pixel_id), com a env como padrao. Ate
-  // 10/08/2026 essa coluna era decorativa: existia na tabela, aparecia no painel
-  // e nao era selecionada aqui -- todo evento saia no pixel da env, incluindo o
-  // dos 89 links por criativo, que nasceram apontando pro pixel do site.
-  await enviarEventoCapi({
-    nome: link.capi_evento_clique || 'ViewContent',
-    pixelId: link.pixel_id,
-    eventId: codigoLegivel(codigoNum),
-    fbc,
-    fbp,
-    ip,
-    userAgent: ua || null,
-    sourceUrl,
-    custom: { content_name: link.nome, content_category: link.origem || 'Link' },
-  })
+  // O evento agora sai pela mesma varredura (cron 36, de 5 em 5 min), no bloco
+  // "EVENTO DO CLIQUE" de api/capi-conversa.ts. Tudo que ele precisa ja esta
+  // gravado na linha acima: fbc, fbp, ip, user_agent, codigo e, pelo link,
+  // pixel_id e capi_evento_clique.
+  //
+  // NAO PERDE PRECISAO: la o evento vai com `quandoMs = created_at`, ou seja,
+  // carimbado com a hora do CLIQUE e nao com a da varredura. O Meta aceita
+  // evento de ate 7 dias; 5 min e ruido.
+  //
+  // O QUE NAO MUDOU, e nao pode mudar: o evento do clique continua sendo
+  // 'ViewContent', nunca 'Lead'. Clique nao e lead -- medido nos 3 primeiros
+  // dias, 75 cliques renderam 5 conversas reais. Chamar clique de Lead faz a
+  // campanha perseguir quem TOCA no anuncio barato; foi assim que o criativo
+  // &79 virou o melhor do Gerenciador e o pior do caixa. E o nome sai do link
+  // (capi_evento_clique) quando o trafego nao e do Meta: o /l/branorte, do
+  // OpenAI Ads, manda 'ViewContentChatGPT' pra nao engordar um evento padrao
+  // que as campanhas do Meta otimizam.
 
   // Falhou o registro? O cliente vai pro WhatsApp do mesmo jeito. Perder o
   // rastreio e chato; perder o lead e inaceitavel. Sem clique gravado o codigo

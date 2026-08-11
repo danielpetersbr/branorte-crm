@@ -203,5 +203,87 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  return res.status(200).json({ enviados, falhas, openaiEnviados, openaiFalhas })
+  // --- EVENTO DO CLIQUE (ViewContent) ---------------------------------------
+  // Chegou aqui em 11/08/2026, vindo do api/l.ts. La ele saia com `await` ANTES
+  // do 302: o cliente ficava parado ate 1,2 s (TIMEOUT_MS do meta-capi)
+  // esperando o graph.facebook.com receber uma estatistica. O motivo de estar
+  // aqui e o mesmo que o cabecalho deste arquivo ja dava pro evento de conversa:
+  // indisponibilidade do Meta nao pode virar latencia no caminho de ninguem --
+  // muito menos no de quem clicou no anuncio e quer o WhatsApp abrindo.
+  //
+  // Diferenca de filtro em relacao aos dois blocos acima: aqui NAO se exige
+  // matched_at nem match_via. Conversa precisa ser provada; clique e o proprio
+  // fato -- a linha existir ja significa que alguem clicou. Os cliques de robo e
+  // de datacenter nem chegam a virar linha (BOTS e ehInfraDeAnuncio barram no
+  // api/l.ts antes do insert), entao nao ha o que filtrar aqui.
+  //
+  // JANELA DE 7 DIAS: o Meta recusa evento mais velho que isso. Sem o corte,
+  // uma linha antiga que escapasse do backfill ficaria sendo tentada... nao,
+  // seria tentada UMA vez e marcada com o erro -- mas gastaria uma vaga do LOTE
+  // e um POST. Melhor nem levantar.
+  let cliqueEnviados = 0
+  let cliqueFalhas = 0
+  if (capiConfigurada()) {
+    const seteDias = new Date(Date.now() - 7 * 24 * 60 * 60_000).toISOString()
+    const { data: pendentesClique } = await db
+      .from('link_rota_click')
+      .select('id, codigo, fbc, fbp, ip, user_agent, created_at, link_rota(nome, origem, slug, capi_evento_clique, pixel_id)')
+      .is('capi_clique_at', null)
+      .gte('created_at', seteDias)
+      .order('created_at', { ascending: true })
+      .limit(LOTE)
+
+    for (const p of (pendentesClique || []) as Array<Record<string, any>>) {
+      const link = Array.isArray(p.link_rota) ? p.link_rota[0] : p.link_rota
+      const r = await enviarEventoCapi({
+        // 'ViewContent', NUNCA 'Lead'. Clique nao e lead: 75 cliques renderam 5
+        // conversas reais nos 3 primeiros dias. Chamar clique de Lead ensina a
+        // campanha a caçar quem TOCA no anuncio barato -- foi assim que o
+        // criativo &79 virou o melhor do Gerenciador e o pior do caixa.
+        // O nome vem do link quando o trafego nao e do Meta: o /l/branorte, do
+        // OpenAI Ads, manda 'ViewContentChatGPT'.
+        nome: link?.capi_evento_clique || 'ViewContent',
+        // Pixel do proprio link. Os dois eventos da MESMA jornada (clique e
+        // conversa) tem que cair no mesmo dataset.
+        pixelId: link?.pixel_id,
+        // Codigo PURO, sem sufixo -- e assim que o api/l.ts mandava. O '-c' e o
+        // '-o' dos blocos acima existem justamente pra nao colidir com este.
+        // Manter igual e o que faz o Meta deduplicar se um clique da fresta
+        // entre a migration e o deploy tiver saido pelas duas vias.
+        eventId: p.codigo,
+        fbc: p.fbc,
+        fbp: p.fbp,
+        ip: p.ip,
+        userAgent: p.user_agent,
+        sourceUrl: link?.slug ? `https://branorte-crm.vercel.app/l/${link.slug}` : null,
+        // O clique aconteceu quando aconteceu, nao agora. E isto que faz o
+        // atraso da varredura nao custar precisao nenhuma.
+        quandoMs: p.created_at ? new Date(p.created_at).getTime() : null,
+        custom: {
+          content_name: link?.nome || 'link de roteamento',
+          content_category: link?.origem || 'Link',
+        },
+      })
+
+      if (r === 'ok') cliqueEnviados++
+      else cliqueFalhas++
+
+      // Marca SEMPRE, inclusive no erro -- mesma regra dos outros dois blocos.
+      // Reenviar inflaria a contagem, que e o defeito que este arquivo existe
+      // pra evitar.
+      await db
+        .from('link_rota_click')
+        .update({ capi_clique_at: new Date().toISOString(), capi_clique_resultado: r })
+        .eq('id', p.id)
+    }
+  }
+
+  return res.status(200).json({
+    enviados,
+    falhas,
+    openaiEnviados,
+    openaiFalhas,
+    cliqueEnviados,
+    cliqueFalhas,
+  })
 }
