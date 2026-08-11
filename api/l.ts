@@ -78,6 +78,26 @@ function ehInfraDeAnuncio(ip: string | null): boolean {
   return INFRA_ANUNCIO.some(faixa => ip.startsWith(faixa))
 }
 
+/** Navegador EMBUTIDO da Meta (Facebook, Messenger, Instagram). O proprio
+ *  User-Agent carimba: o clique 559, de 11/08/2026, chegou como
+ *  "...Mobile/23G71 Safari/604.1 [FBAN/FBIOS;FBAV/573.0.0.47.73;...;IABMV/1]".
+ *
+ *  POR QUE IMPORTA: dentro desse webview o 302 pro wa.me NAO abre o WhatsApp. O
+ *  wa.me resolve pra api.whatsapp.com, essa pagina tenta o esquema whatsapp:// e
+ *  o webview recusa navegacao automatica pra esquema de app sem gesto do
+ *  usuario. Sobra a tela "Abrir app / Baixar agora" da WhatsApp Inc, com DOIS
+ *  botoes de download disputando o toque. Reproduzido pelo Daniel em 11/08/2026
+ *  clicando no botao do Messenger.
+ *
+ *  NAO E MURO, e atrito: medido em 7 dias, esse publico converte 13,8% (290
+ *  cliques -> 40 conversas), o MELHOR contexto do sistema (navegador normal:
+ *  3,0%). A pessoa toca em "Abrir app" e segue. Entao a mudanca aqui vale por
+ *  tirar um toque de um caminho que ja funciona -- nao e conserto de emergencia,
+ *  e o risco de piorar precisa ficar em zero. Dai o fallback explicito abaixo.
+ *
+ *  Instagram entra na mesma lista: mesmo webview, mesma regra de esquema. */
+const APP_META = /FBAN|FBAV|FB_IAB|FBIOS|IABMV|Instagram/i
+
 function primeiroNome(nome: string): string {
   const n = String(nome || '').trim().split(/\s+/)[0] || ''
   return n ? n[0].toUpperCase() + n.slice(1).toLowerCase() : n
@@ -246,9 +266,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .limit(1)
       .maybeSingle()
     if (repetido?.vendedor_telefone) {
-      return res.redirect(
-        302,
-        montarUrl(repetido.vendedor_telefone, link.mensagem, repetido.vendedor_nome, repetido.codigo_num)
+      return entregarWhatsapp(
+        res, ua, repetido.vendedor_telefone, link.mensagem, repetido.vendedor_nome, repetido.codigo_num
       )
     }
   }
@@ -342,13 +361,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // nao casa com nada, entao nem selo nele.
   if (erroClique) {
     console.error('[link] clique nao registrado:', erroClique.message)
-    return res.redirect(302, montarUrl(telefoneDestino, link.mensagem, vendedorNome, null))
+    return entregarWhatsapp(res, ua, telefoneDestino, link.mensagem, vendedorNome, null)
   }
 
-  return res.redirect(302, montarUrl(telefoneDestino, link.mensagem, vendedorNome, codigoNum))
+  return entregarWhatsapp(res, ua, telefoneDestino, link.mensagem, vendedorNome, codigoNum)
 }
 
-function montarUrl(telefone: string, modelo: string, vendedor: string | null, codigoNum: number | null): string {
+function montarTexto(modelo: string, vendedor: string | null, codigoNum: number | null): string {
   let texto = String(modelo || '').replace(/\{vendedor\}/gi, primeiroNome(vendedor || 'consultor'))
   // Espaco ANTES do selo, sempre. O parser de "&CODIGO" que existe hoje e
   // guloso -- ja gravou '&79oi', '&88cade', '&utm_source' -- entao ele pega o &
@@ -356,5 +375,80 @@ function montarUrl(telefone: string, modelo: string, vendedor: string | null, co
   // '&LP' + 17 invisiveis: parece '&LP' na tela e nao e igual a '&LP' em lugar
   // nenhum. O espaco faz qualquer parser de \S+ parar no lugar certo.
   if (codigoNum !== null) texto += ' ' + selarInvisivel(codigoNum)
-  return `https://wa.me/${telefone}?text=${encodeURIComponent(texto)}`
+  return texto
+}
+
+function montarUrl(telefone: string, modelo: string, vendedor: string | null, codigoNum: number | null): string {
+  return `https://wa.me/${telefone}?text=${encodeURIComponent(montarTexto(modelo, vendedor, codigoNum))}`
+}
+
+/** Esquema do APP. E o que o botao "Abrir app" da propria WhatsApp Inc dispara
+ *  -- ou seja, ja esta provado que funciona dentro do webview da Meta quando o
+ *  toque parte do usuario. O texto (com o selo invisivel) viaja igual. */
+function montarUrlApp(telefone: string, modelo: string, vendedor: string | null, codigoNum: number | null): string {
+  return `whatsapp://send?phone=${telefone}&text=${encodeURIComponent(montarTexto(modelo, vendedor, codigoNum))}`
+}
+
+/** UNICA saida do handler pro WhatsApp. Os tres caminhos (reuso, clique nao
+ *  gravado e fluxo normal) passam por aqui pra nao divergirem com o tempo.
+ *
+ *  Navegador normal -> 302 pro wa.me, exatamente como sempre foi. Fora do
+ *  webview da Meta o 302 abre o app e nao ha nada pra consertar; mexer ali seria
+ *  risco puro em 233 cliques/semana.
+ *
+ *  Webview da Meta -> pagina de ~1KB que TENTA o esquema no carregamento. Se o
+ *  webview deixar, o WhatsApp abre por cima e o cliente nao chega a ver pagina
+ *  nenhuma -- que e o comportamento que o Daniel pediu. Se bloquear, sobra UM
+ *  botao nosso apontando pro MESMO esquema, e o toque nele e justamente o gesto
+ *  de usuario que faltava.
+ *
+ *  Tres decisoes de seguranca nessa pagina:
+ *    1. o botao e <a href>, nao onclick -- JS bloqueado nao quebra a pagina;
+ *    2. tem um link pequeno pro wa.me embaixo, que reproduz exatamente o
+ *       comportamento de hoje. PIOR CASO desta mudanca = um toque, o mesmo que
+ *       o cliente ja da hoje no "Abrir app" deles;
+ *    3. nada de recurso externo (CSS, fonte, imagem): rede ruim de fazenda nao
+ *       pode atrasar o unico botao que importa.
+ *
+ *  Cache-Control: vale o no-store setado no topo do handler, e agora o
+ *  Vary: User-Agent que ja estava la deixou de ser decorativo -- esta resposta
+ *  DE FATO varia por User-Agent. Um cache aqui entregaria o telefone de um
+ *  vendedor pra todo mundo. */
+function entregarWhatsapp(
+  res: VercelResponse,
+  ua: string,
+  telefone: string,
+  modelo: string,
+  vendedor: string | null,
+  codigoNum: number | null,
+) {
+  const web = montarUrl(telefone, modelo, vendedor, codigoNum)
+  if (!APP_META.test(ua)) return res.redirect(302, web)
+
+  const app = montarUrlApp(telefone, modelo, vendedor, codigoNum)
+  res.setHeader('Content-Type', 'text/html; charset=utf-8')
+  return res.status(200).send(
+    `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">` +
+      `<meta name="viewport" content="width=device-width,initial-scale=1">` +
+      `<title>Abrindo o WhatsApp…</title>` +
+      `<style>` +
+      `*{box-sizing:border-box}` +
+      `body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;` +
+      `justify-content:center;gap:18px;padding:24px;text-align:center;background:#0b141a;color:#e9edef;` +
+      `font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}` +
+      `p{margin:0;font-size:16px;line-height:1.4;color:#8696a0}` +
+      `.b{display:block;width:100%;max-width:340px;padding:17px 24px;border-radius:999px;` +
+      `background:#25d366;color:#0b141a;font-size:18px;font-weight:600;text-decoration:none}` +
+      `.s{font-size:14px;color:#8696a0;text-decoration:underline}` +
+      `</style></head><body>` +
+      `<p>Abrindo o WhatsApp…</p>` +
+      `<a class="b" href="${escaparHtml(app)}">Abrir o WhatsApp</a>` +
+      `<a class="s" href="${escaparHtml(web)}">Não abriu? Toque aqui</a>` +
+      `<script>` +
+      // location.replace, nao href: nao deixa esta pagina no historico, senao o
+      // "voltar" do cliente cai nela de novo em vez de voltar pro anuncio.
+      `try{location.replace(${JSON.stringify(app)})}catch(e){}` +
+      `</script>` +
+      `</body></html>`
+  )
 }
