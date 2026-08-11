@@ -4,6 +4,9 @@
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "functions": {
+    "api/l.ts": {
+      "regions": ["gru1"]
+    },
     "api/gerar-pdf.ts": {
       "memory": 1024,
       "maxDuration": 60
