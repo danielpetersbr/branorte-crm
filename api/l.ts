@@ -419,12 +419,45 @@ function montarUrlApp(telefone: string, modelo: string, vendedor: string | null,
  *  e inutil (provado acima) e ainda pode disparar alerta de "endereco invalido"
  *  em quem nao tem o WhatsApp instalado.
  *
+ *  ⚠️ A TELA INTEIRA E O LINK (11/08/2026). O Daniel pediu pra abrir direto, sem
+ *  pagina nenhuma. Levantei o estado da arte antes de responder que nao dava:
+ *
+ *    | tentativa                       | dentro do webview da Meta no iPhone |
+ *    |---------------------------------|-------------------------------------|
+ *    | 302 pro wa.me                   | bloqueado (era o bug do PR #11)      |
+ *    | `whatsapp://` (auto ou toque)   | bloqueado                            |
+ *    | `x-safari-https://`             | a Meta intercepta desde ~2023        |
+ *    | `instagram://extbrowser`        | idem                                 |
+ *    | `window.open()`                 | tela branca                          |
+ *    | clique sintetico em <a> oculto  | ignorado                             |
+ *    | `location.href` sem gesto       | bloqueado                            |
+ *    | TOQUE de verdade num <a https>  | ABRE                                 |
+ *
+ *  A causa e do iOS, nao da Meta e nem nossa: WKWebView so honra Universal Link
+ *  quando a navegacao e `linkActivated` -- dedo no <a>. Nao existe truque; os que
+ *  circulam sao os da tabela acima, todos ja fechados. Entao o piso de atrito no
+ *  iPhone e UM toque, e o que da pra fazer e tirar a MIRA: o <a> agora cobre o
+ *  viewport inteiro (position:fixed, os quatro lados em 0). O cliente toca em
+ *  qualquer lugar da tela e vai. O botao verde continua desenhado la dentro, como
+ *  affordance -- quem procura botao acha botao, quem so encosta na tela tambem
+ *  passa. Zero risco: e o mesmo <a href="https://wa.me/..."> que ja funcionava,
+ *  so que maior.
+ *
+ *  ⚠️ E o "Nao abriu? Toque aqui" saiu do iPhone. Ele aponta pro `whatsapp://`,
+ *  que esta PROVADO nao abrir la -- estavamos servindo um link morto justamente
+ *  pra quem ja tinha tido problema. No Android ele fica, porque la o esquema
+ *  funciona. Nao dava pra deixar dentro do <a> de tela cheia de todo jeito: <a>
+ *  dentro de <a> e HTML invalido e o navegador desmonta os dois.
+ *
  *  Decisoes de seguranca que ficam:
  *    1. o botao e <a href>, nao onclick -- JS bloqueado nao quebra a pagina;
- *    2. PIOR CASO = um toque, o mesmo que o cliente ja dava no "Abrir app"
- *       deles, so que num botao nosso e sem dois "Baixar" do lado;
+ *    2. PIOR CASO = um toque em qualquer ponto da tela, contra o toque mirado que
+ *       o cliente ja dava no "Abrir app" deles, sem dois "Baixar" do lado;
  *    3. nada de recurso externo (CSS, fonte, imagem): rede ruim de fazenda nao
- *       pode atrasar o unico botao que importa.
+ *       pode atrasar o unico botao que importa;
+ *    4. `top/right/bottom/left:0` e nao `inset:0` -- o produtor pode estar num
+ *       aparelho velho, e `inset` so existe do iOS 14.5 pra frente. Um <a> que
+ *       nao cobre nada devolveria uma tela sem alvo nenhum.
  *
  *  Cache-Control: vale o no-store setado no topo do handler, e agora o
  *  Vary: User-Agent que ja estava la deixou de ser decorativo -- esta resposta
@@ -441,6 +474,9 @@ function entregarWhatsapp(
   const web = montarUrl(telefone, modelo, vendedor, codigoNum)
   if (!APP_META.test(ua)) return res.redirect(302, web)
 
+  // O esquema custom so vale no Android -- ver o cabecalho. No iPhone ele nao
+  // abre nem no toque, entao nada nesta pagina aponta pra ele.
+  const android = /Android/i.test(ua)
   const app = montarUrlApp(telefone, modelo, vendedor, codigoNum)
   res.setHeader('Content-Type', 'text/html; charset=utf-8')
   return res.status(200).send(
@@ -449,25 +485,37 @@ function entregarWhatsapp(
       `<title>Abrindo o WhatsApp…</title>` +
       `<style>` +
       `*{box-sizing:border-box}` +
-      `body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;` +
-      `justify-content:center;gap:18px;padding:24px;text-align:center;background:#0b141a;color:#e9edef;` +
+      `body{margin:0;background:#0b141a;color:#e9edef;` +
       `font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}` +
-      `p{margin:0;font-size:16px;line-height:1.4;color:#8696a0}` +
+      // O ALVO. Cobre o viewport inteiro: encostar em qualquer ponto da tela ja
+      // e o gesto que o iOS exige pra honrar o Universal Link do WhatsApp.
+      `.t{position:fixed;top:0;right:0;bottom:0;left:0;z-index:1;display:flex;` +
+      `flex-direction:column;align-items:center;justify-content:center;gap:18px;` +
+      // Folga extra embaixo so quando existe o link secundario, pra ele nao
+      // encostar no botao em tela baixa (aparelho deitado).
+      `padding:24px 24px ${android ? '72px' : '24px'};text-align:center;` +
+      `text-decoration:none;color:inherit;-webkit-tap-highlight-color:transparent}` +
+      `.m{font-size:16px;line-height:1.4;color:#8696a0}` +
+      // O botao continua desenhado: quem procura botao acha botao. Ele e um
+      // <span> DENTRO do <a> -- <a> dentro de <a> desmonta os dois.
       `.b{display:block;width:100%;max-width:340px;padding:17px 24px;border-radius:999px;` +
-      `background:#25d366;color:#0b141a;font-size:18px;font-weight:600;text-decoration:none}` +
-      `.s{font-size:14px;color:#8696a0;text-decoration:underline}` +
+      `background:#25d366;color:#0b141a;font-size:18px;font-weight:600}` +
+      `.s{position:fixed;left:0;right:0;bottom:22px;z-index:2;text-align:center;` +
+      `font-size:14px;color:#8696a0;text-decoration:underline}` +
       `</style></head><body>` +
-      `<p>Toque para falar com um consultor da Branorte</p>` +
-      `<a class="b" href="${escaparHtml(web)}">Abrir o WhatsApp</a>` +
-      `<a class="s" href="${escaparHtml(app)}">Não abriu? Toque aqui</a>` +
+      `<a class="t" href="${escaparHtml(web)}">` +
+      `<span class="m">Toque na tela para falar com um consultor da Branorte</span>` +
+      `<span class="b">Abrir o WhatsApp</span>` +
+      `</a>` +
+      // Escape manual, so no Android: la o esquema custom abre e poupa um toque
+      // de quem caiu aqui porque a tentativa automatica abaixo nao pegou.
+      (android ? `<a class="s" href="${escaparHtml(app)}">Não abriu? Toque aqui</a>` : '') +
       // A tentativa automatica so faz sentido no Android. No iPhone dentro do
       // webview da Meta ela e comprovadamente inutil, e em quem nao tem o
       // WhatsApp instalado ainda vira alerta de "endereco invalido".
       // location.replace, nao href: nao deixa esta pagina no historico, senao o
       // "voltar" do cliente cai nela de novo em vez de voltar pro anuncio.
-      (/Android/i.test(ua)
-        ? `<script>try{location.replace(${JSON.stringify(app)})}catch(e){}</script>`
-        : '') +
+      (android ? `<script>try{location.replace(${JSON.stringify(app)})}catch(e){}</script>` : '') +
       `</body></html>`
   )
 }
