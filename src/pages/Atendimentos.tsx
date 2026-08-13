@@ -19,7 +19,7 @@ import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTime
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, STATUS_VENDEDOR_MAP, type StatusReal } from '@/types/atendimento'
-import { useAtendimentos, useAtendimentoKpis, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, useDadosIaPorTelefone, lookupDadosIa, useIaStatusContagem, useIaStatusPorTelefone, lookupIaStatus, FILTRO_SEM_RESPOSTA, FILTRO_SEM_ETIQUETA, SEM_ETIQUETA_LIMITE, type DataPreset , useMensagensClique} from '@/hooks/useAtendimentos'
+import { useAtendimentos, useAtendimentoKpis, useAtendimentoKpisAcao, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, useDadosIaPorTelefone, lookupDadosIa, useIaStatusContagem, useIaStatusPorTelefone, lookupIaStatus, FILTRO_SEM_RESPOSTA, FILTRO_SEM_ETIQUETA, SEM_ETIQUETA_LIMITE, type DataPreset , useMensagensClique} from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 
@@ -381,6 +381,8 @@ export function Atendimentos() {
 
   const { data, isLoading, isFetching, dataUpdatedAt, error: atendimentosError, refetch } = useAtendimentos(filters)
   const { data: kpis } = useAtendimentoKpis(filters)
+  // KPIs por AÇÃO (quem falou por último) — ver useAtendimentoKpisAcao
+  const { data: acao } = useAtendimentoKpisAcao(filters)
   // Contagem "em aberto" do funil (estado atual da etiqueta WA, base inteira — independe dos filtros).
   const { data: funil } = useAtendimentoFunilContagem()
   const { data: origens } = useAtendimentoOrigens(filters)
@@ -526,7 +528,16 @@ export function Atendimentos() {
                    icon={Calendar}        hint={kpis.hoje === 0 ? 'Nenhum lead hoje' : 'leads novos'}
                    active={filters.data === 'hoje'}
                    onClick={() => setFilters(f => ({ ...f, data: f.data === 'hoje' ? '' as DataPreset : 'hoje', page: 0 }))} />
-          <KpiCard label="Não engajaram"  value={kpis.naoEngajaram}      tone="neutral"  icon={EyeOff}            hint="nem começou o bot" />
+          {/* ⚠️ 13/08: "Não engajaram / nem começou o bot" SAIU daqui. A regra era
+              !motivo_contato && !tocou_botao_em — dois campos do QUIZ DA LP, que lead de
+              click-to-WhatsApp nunca preenche. Media por origem em 30d: Facebook Formulário
+              0% no balde, Meta ADS 73% — o card virou sinônimo de "veio pelo Meta ADS".
+              Em 7 dias, 107 pessoas que escreveram foram contadas como quem não falou,
+              incluindo um lead com 60 mensagens que pediu o valor do investimento.
+              No lugar entram os baldes por AÇÃO, cortados por quem falou por último. */}
+          <KpiCard label="Esperando resposta" value={acao?.esperandoResposta ?? 0} hero tone="danger" icon={MessageSquareDot}
+                   hint={(acao?.esperandoResposta ?? 0) === 0 ? 'ninguém esperando' : 'o cliente falou por último'}
+                   tooltip="O CLIENTE mandou a última mensagem e ninguém respondeu ainda. É a fila mais urgente da tela — cada um destes é uma pessoa esperando." />
           {/* Clique filtra por ETIQUETA (é onde a listagem trata o FILTRO_SEM_RESPOSTA).
               Antes setava `responsavel`, que virava .eq('responsavel','__sem_resposta_bot__')
               e devolvia lista vazia. */}
@@ -534,12 +545,27 @@ export function Atendimentos() {
                    hint={filters.data ? 'marcado pelo bot — no período' : 'marcado pelo bot — sem resposta'}
                    active={filters.etiqueta === FILTRO_SEM_RESPOSTA}
                    onClick={() => setFilters(f => ({ ...f, etiqueta: f.etiqueta === FILTRO_SEM_RESPOSTA ? '' : FILTRO_SEM_RESPOSTA, page: 0 }))} />
-          <KpiCard label="Em andamento"   value={kpis.emAndamento}       tone="warning"  icon={MessageSquareDot}  hint="no meio do fluxo" />
-          <KpiCard label="Qualificados"   value={kpis.qualificados} hero tone="info"     icon={ListChecks}        hint="fábrica completa ou equipamento do catálogo Branorte" />
-          <KpiCard label="Pra pegar"      value={kpis.paraPegar}    hero tone="warning"
-                   icon={UserPlus}        hint={kpis.paraPegar === 0 ? 'Fila vazia' : 'Sem vendedor — puxe!'} />
-          <KpiCard label="Tocaram no botão" value={kpis.tocaram}    hero tone="success"  icon={MousePointerClick} hint="foram pro WhatsApp do vendedor" />
-          <KpiCard label="Contatados"     value={kpis.contatados}        tone="success"  icon={Hand}              hint="vendedor já abordou" />
+          <KpiCard label="Sem primeiro contato" value={acao?.semPrimeiroContato ?? 0} tone="warning" icon={MessageSquareDot}
+                   hint={(acao?.semPrimeiroContato ?? 0) === 0 ? 'todos já foram abordados' : 'tem dono e ninguém escreveu'}
+                   tooltip="Lead distribuído a um vendedor, mas ninguém mandou a primeira mensagem. É o que o gestor cobra." />
+          <KpiCard label="Em conversa"    value={acao?.emConversa ?? 0}   tone="info"     icon={ListChecks}
+                   hint="respondemos por último" />
+          <KpiCard label="Sem retorno"    value={acao?.semRetorno ?? 0}   tone="neutral"  icon={PhoneOff}
+                   hint={(acao?.semRetorno ?? 0) === 0 ? 'ninguém no vácuo' : 'abordamos, ele não respondeu'}
+                   tooltip="Nós escrevemos e o cliente nunca respondeu. Candidato a follow-up — diferente de 'Nunca respondeu', que é a marca do bot." />
+          {/* ⚠️ "Pra pegar" continua: a auditoria abriu as 24 linhas sem responsável e
+              NENHUMA tinha mensagem no WhatsApp. Fila limpa, rótulo honesto — foi o único
+              card da fileira que passou sem ressalva. Agora vem da mesma RPC dos outros
+              (mesma régua), não mais de motivo_contato. */}
+          <KpiCard label="Pra pegar"      value={acao?.semDono ?? 0} hero tone="warning"
+                   icon={UserPlus}        hint={(acao?.semDono ?? 0) === 0 ? 'Fila vazia' : 'Sem vendedor — puxe!'} />
+          {/* ⚠️ "Contatados / vendedor já abordou" SAIU: a regra só testava se o campo
+              responsavel tinha alguém — e quem preenche isso é o ROTEAMENTO AUTOMÁTICO,
+              não o vendedor. "Tem dono" nunca foi "foi abordado". Quem responde a essa
+              pergunta agora é "Sem primeiro contato", pelo avesso e com dado de mensagem.
+              Idem "Tocaram no botão": contava clique que casou com uma linha, e das 13
+              só 7 viraram conversa — além de perder quem chegou por outro caminho.
+              Ambos seguem disponíveis nos filtros; saíram da fileira de decisão. */}
         </div>
       )}
 

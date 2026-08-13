@@ -705,6 +705,54 @@ function applyBaseFilters(query: any, filters?: Partial<AtendimentoFilters>, ven
   return q
 }
 
+// ─── KPIs por AÇÃO (o que fazer agora) ───────────────────────────────────────
+// Substitui a leitura dos cards que eram recortados por motivo_contato/tocou_botao_em —
+// dois campos preenchidos pelo QUIZ DA LANDING PAGE. Quem entra por click-to-WhatsApp do
+// Meta ADS nunca passa pelo quiz, então caía em "não engajaram" fizesse o que fizesse
+// (medido por origem em 30 dias: Facebook Formulário 0% no balde, Meta ADS 73%).
+// Em 7 dias, 107 pessoas que ESCREVERAM foram contadas como quem não falou.
+//
+// Aqui o corte vem das MENSAGENS REAIS: quem falou por último decide o balde. Os 5 são
+// mutuamente exclusivos por construção (CASE em cascata na RPC) e somam o total — ao
+// contrário dos cards antigos, que misturavam etapa, posse e qualidade na mesma fileira.
+export interface AtendimentoKpisAcao {
+  total: number
+  semDono: number              // ninguém puxou → vendedor pega
+  semPrimeiroContato: number   // tem dono e ninguém escreveu → gestor cobra
+  esperandoResposta: number    // o CLIENTE falou por último → responder agora
+  emConversa: number           // nós falamos por último, ele já tinha falado
+  semRetorno: number           // abordamos e ele nunca respondeu → follow-up
+}
+
+export function useAtendimentoKpisAcao(filters?: Partial<AtendimentoFilters>) {
+  const dataKey = filters?.data ?? ''
+  return useQuery({
+    queryKey: ['atendimentos-kpis-acao', dataKey],
+    queryFn: async (): Promise<AtendimentoKpisAcao> => {
+      const vendorFirst = await getCurrentVendorFirstName()
+      const range = dateRangeFromPreset((filters?.data as DataPreset) ?? '')
+      const { data, error } = await (supabase as any).rpc('atendimentos_kpis_acao', {
+        p_from: range.from || startOfTodayISO(),
+        p_to: range.to || null,
+        p_vendedor_first: vendorFirst || null,
+      })
+      if (error) throw error
+      const r = (Array.isArray(data) ? data[0] : data) ?? {}
+      return {
+        total: r.total ?? 0,
+        semDono: r.sem_dono ?? 0,
+        semPrimeiroContato: r.sem_primeiro_contato ?? 0,
+        esperandoResposta: r.esperando_resposta ?? 0,
+        emConversa: r.em_conversa ?? 0,
+        semRetorno: r.sem_retorno ?? 0,
+      }
+    },
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+  })
+}
+
 export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
   // Cache key estavel ignorando page (KPIs nao paginam)
   const filterKey = JSON.stringify({
