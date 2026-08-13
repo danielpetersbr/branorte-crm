@@ -14,18 +14,42 @@ const fmt = (n: number) => new Intl.NumberFormat('pt-BR').format(n)
 
 // Célula numérica com barra proporcional (bar-in-cell) — deixa a tabela escaneável:
 // a barra é relativa ao maior valor da coluna; o líder da coluna fica destacado.
-function NumCell({ val, max, warn = false }: { val: number; max: number; warn?: boolean }) {
+//
+// Três decisões que vieram de olhar a tela em produção (13/08):
+// 1. ZERO NÃO GANHA BARRA. O `Math.max(pct,3)` antigo desenhava um risco de 3% mesmo pra
+//    val=0 — na coluna Quentes, zerada em todo mundo, virava uma fileira de "0|" que
+//    parecia sujeira de render.
+// 2. ZERO VIRA "–". Numa tabela de 8 colunas, uma parede de zeros esconde os números que
+//    importam. O traço lê como "nada aqui" sem competir por atenção.
+// 3. DISCRIÇÃO POR PESO E COR, NUNCA POR OPACITY. `opacity` compõe o glifo com o fundo e
+//    derruba contraste de verdade (medido neste tema: ink-muted com opacity-60 vai de
+//    7,40:1 pra 2,84:1). O zero antigo usava `text-ink-faint/50`.
+// 4. `indisponivel` é diferente de zero: o dado não chegou, e a tela diz isso.
+function NumCell({ val, max, warn = false, indisponivel = false }:
+  { val: number; max: number; warn?: boolean; indisponivel?: boolean }) {
+  if (indisponivel) {
+    return (
+      <td className="py-1.5 px-2 text-right">
+        <span className="tabular-nums text-ink-faint" title="Não deu pra carregar este número agora">·&nbsp;·&nbsp;·</span>
+      </td>
+    )
+  }
+  const vazio = val === 0
   const pct = max > 0 ? (val / max) * 100 : 0
   const leader = val > 0 && val === max
   return (
     <td className="py-1.5 px-2">
       <div className="relative flex items-center justify-end h-5">
-        <div
-          className={`absolute inset-y-[3px] right-0 rounded-sm ${warn ? 'bg-warning/20' : leader ? 'bg-accent/25' : 'bg-accent/10'}`}
-          style={{ width: `${Math.max(pct, 3)}%` }}
-        />
-        <span className={`relative tabular-nums px-1 ${val === 0 ? 'text-ink-faint/50' : warn ? 'text-warning font-semibold' : leader ? 'text-ink font-semibold' : 'text-ink'}`}>
-          {fmt(val)}
+        {!vazio && (
+          <div
+            className={`absolute inset-y-[3px] right-0 rounded-sm ${warn ? 'bg-warning/20' : leader ? 'bg-accent/25' : 'bg-accent/10'}`}
+            style={{ width: `${Math.max(pct, 6)}%` }}
+          />
+        )}
+        <span className={`relative tabular-nums px-1 ${
+          vazio ? 'text-ink-faint' : warn ? 'text-warning font-semibold' : leader ? 'text-ink font-semibold' : 'text-ink'
+        }`}>
+          {vazio ? '–' : fmt(val)}
         </span>
       </div>
     </td>
@@ -45,25 +69,57 @@ const COLS: Array<{ key: keyof Pick<ResumoDiaVendedor, 'leads' | 'atendimentos' 
 
 // Monta o texto pro WhatsApp (negrito com *asteriscos*, uma linha por vendedor).
 // Sem a contagem de leads — pedido do Daniel (leads ficam só na tela).
-function textoWhatsApp(rows: ResumoDiaVendedor[], tot: Record<string, number>): string {
+//
+// O que mudou em 13/08, depois de olhar a mensagem colada de verdade no grupo:
+// • LIGAÇÕES ENTRARAM. A coluna existe na tela e sumia aqui — quem lê o grupo via um
+//   resumo diferente do que o gestor via no painel.
+// • MEDALHA NO TOP 3. A lista vinha achatada, 9 linhas iguais; num grupo de vendas o
+//   ranking É a mensagem. As linhas já chegam ordenadas por atendimentos.
+// • CADA VENDEDOR SÓ MOSTRA O QUE TEM. Antes toda linha carregava 🤝0 mesmo zerado —
+//   três zeros por linha × 9 linhas é ruído que faz ninguém ler até o fim.
+// • NÚMERO INDISPONÍVEL NÃO VIRA ZERO. Se o funil não carregou, a mensagem OMITE em vez
+//   de anunciar "0 negociando" pro time inteiro, que seria mentira.
+function textoWhatsApp(
+  rows: ResumoDiaVendedor[],
+  tot: Record<string, number>,
+  opts: { periodo?: string; funilIndisponivel?: boolean } = {},
+): string {
   const data = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
-  const linhas = rows.map(r =>
-    `*${r.nome}:* 💬${r.atendimentos} 📄${r.orcamentos} 🤝${r.negociacao}${r.quente > 0 ? ` 🔥${r.quente}` : ''}`
-  )
+  const medalha = ['🥇', '🥈', '🥉']
+  const semFunil = !!opts.funilIndisponivel
+
+  const linhas = rows.map((r, i) => {
+    const partes = [`💬${r.atendimentos}`]
+    if (r.ligacoes > 0) partes.push(`📲${r.ligacoes}`)
+    if (r.orcamentos > 0) partes.push(`📄${r.orcamentos}`)
+    if (!semFunil && r.negociacao > 0) partes.push(`🤝${r.negociacao}`)
+    if (!semFunil && r.quente > 0) partes.push(`🔥${r.quente}`)
+    const marca = i < 3 ? `${medalha[i]} ` : '• '
+    return `${marca}*${r.nome}* — ${partes.join('  ')}`
+  })
+
+  const timeParts = [`💬 ${fmt(tot.atendimentos)} atendidos`]
+  if (tot.ligacoes > 0) timeParts.push(`📲 ${fmt(tot.ligacoes)} ligações`)
+  timeParts.push(`📄 ${fmt(tot.orcamentos)} orçamentos`)
+  if (!semFunil) timeParts.push(`🤝 ${fmt(tot.negociacao)} negociando`)
+
+  const legenda = ['💬 atendidos', '📲 ligações feitas', '📄 orçamentos']
+  if (!semFunil) legenda.push('🤝 negociando', '🔥 quentes')
+
   return [
-    `☀️ *RESUMO DO DIA — ${data}*`,
+    `☀️ *RESUMO — ${opts.periodo || data}*`,
     '',
-    `*TIME:* 💬 ${tot.atendimentos} atendidos · 📄 ${tot.orcamentos} orçamentos · 🤝 ${tot.negociacao} negociando · 🔥 ${tot.quente} quentes`,
+    `*TIME:* ${timeParts.join(' · ')}`,
     '',
     ...linhas,
     '',
-    '_💬 atendidos hoje · 📄 orçamentos hoje · 🤝 em negociação · 🔥 quentes_',
+    `_${legenda.join(' · ')}_`,
   ].join('\n')
 }
 
 export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: DashboardPreset; periodoLabel?: string }) {
   const liveHoje = preset === '' || preset === 'hoje'
-  const { linhas, isLoading, isError } = useResumoDia(preset)
+  const { linhas, isLoading, isError, funilIndisponivel } = useResumoDia(preset)
   const [copiado, setCopiado] = useState(false)
 
   // Ordena por atendimentos do dia (quem mais trabalhou hoje no topo).
@@ -90,7 +146,8 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
   }, [rows])
 
   const copiar = () => {
-    navigator.clipboard?.writeText(textoWhatsApp(rows, tot)).then(() => {
+    const periodo = !liveHoje && periodoLabel ? periodoLabel : undefined
+    navigator.clipboard?.writeText(textoWhatsApp(rows, tot, { periodo, funilIndisponivel })).then(() => {
       setCopiado(true)
       setTimeout(() => setCopiado(false), 2500)
     })
@@ -160,9 +217,9 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                       <NumCell val={r.atendimentos} max={maxByCol.atendimentos} />
                       <NumCell val={r.ligacoes} max={maxByCol.ligacoes} />
                       <NumCell val={r.orcamentos} max={maxByCol.orcamentos} />
-                      <NumCell val={r.negociacao} max={maxByCol.negociacao} />
-                      <NumCell val={r.quente} max={maxByCol.quente} warn />
-                      <NumCell val={r.carteira} max={maxByCol.carteira} />
+                      <NumCell val={r.negociacao} max={maxByCol.negociacao} indisponivel={funilIndisponivel} />
+                      <NumCell val={r.quente} max={maxByCol.quente} warn indisponivel={funilIndisponivel} />
+                      <NumCell val={r.carteira} max={maxByCol.carteira} indisponivel={funilIndisponivel} />
                     </tr>
                   )
                 })}
@@ -174,23 +231,36 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                   <td className="text-right tabular-nums py-2 px-2 text-ink">{fmt(tot.atendimentos)}</td>
                   <td className="text-right tabular-nums py-2 px-2 text-ink">{fmt(tot.ligacoes)}</td>
                   <td className="text-right tabular-nums py-2 px-2 text-ink">{fmt(tot.orcamentos)}</td>
-                  <td className="text-right tabular-nums py-2 px-2 text-ink">{fmt(tot.negociacao)}</td>
-                  <td className="text-right tabular-nums py-2 px-2 text-warning">{fmt(tot.quente)}</td>
-                  <td className="text-right tabular-nums py-2 px-2 text-ink-muted">{fmt(tot.carteira)}</td>
+                  <td className="text-right tabular-nums py-2 px-2 text-ink">{funilIndisponivel ? '· · ·' : fmt(tot.negociacao)}</td>
+                  <td className="text-right tabular-nums py-2 px-2 text-warning">{funilIndisponivel ? '· · ·' : fmt(tot.quente)}</td>
+                  <td className="text-right tabular-nums py-2 px-2 text-ink-muted">{funilIndisponivel ? '· · ·' : fmt(tot.carteira)}</td>
                 </tr>
               </tfoot>
             </table>
           </div>
 
-          {/* Legenda — o que cada número significa */}
-          <p className="mt-3 pt-3 border-t border-border/60 text-[11px] leading-relaxed text-ink-faint">
-            {COLS.map((c, i) => (
-              <span key={c.key} className="whitespace-nowrap">
-                {i > 0 && <span className="mx-1.5 text-ink-faint/50">·</span>}
+          {/* Aviso honesto: o número não existe, não é zero. */}
+          {funilIndisponivel && (
+            <p className="mt-3 text-[11px] text-warning flex items-center gap-1.5">
+              <span>⚠️</span>
+              <span>
+                <b className="font-medium">Negociando, Quentes e Carteira não carregaram</b> — por isso aparecem como
+                <span className="tabular-nums"> · · · </span>e não como zero. Os outros números estão certos.
+              </span>
+            </p>
+          )}
+
+          {/* Legenda — o que cada número significa.
+              Era uma linha corrida com whitespace-nowrap: em tela cheia o último item saía
+              pela direita e ficava ilegível (visto no print de 13/08). Grid quebra sozinho. */}
+          <div className="mt-3 pt-3 border-t border-border/60 grid gap-x-4 gap-y-1 text-[11px] leading-relaxed text-ink-faint
+                          [grid-template-columns:repeat(auto-fit,minmax(230px,1fr))]">
+            {COLS.map(c => (
+              <span key={c.key}>
                 {c.icon} <b className="text-ink-muted font-medium">{c.label}</b> = {c.explica}
               </span>
             ))}
-          </p>
+          </div>
         </>
       )}
     </div>
