@@ -395,6 +395,52 @@ export function lookupDadosIa(map: DadosIaMap | undefined, phone: string | null 
   return c ? (map[c] ?? null) : null
 }
 
+// ─── Finalidade DEDUZIDA da conversa (3º fallback da coluna Finalidade) ──────
+// Por que existe: finalidade_fabrica é campo do QUIZ DA LP e vive vazio — 453 de 3.775
+// leads em 30 dias (12%). Por origem: Facebook 0,6%, Meta ADS 12,4% — quem entra por
+// click-to-WhatsApp nunca vê o formulário. O 2º fallback (dados_coletados da IA) também
+// não cobre: ia_atendimentos.ativo está em 0 nas 2.260 linhas, a IA está desligada.
+//
+// A RPC lê o que o CLIENTE escreveu e deduz consumo_proprio | revenda. Read-only —
+// não grava nada, então o histórico inteiro fica coberto sem backfill.
+//
+// ⚠️ NUNCA devolve 'misto'. Quando as duas famílias de palavra aparecem na conversa ela
+// devolve NULL de propósito: o palpite de misto errou 19 dos 24 casos no teste.
+//
+// ACERTO MEDIDO: 90% (161 de 179 disparos) contra os 428 leads que têm finalidade do quiz
+// servindo de gabarito. Cobertura entre quem escreveu: 28,3% → 38,9%.
+export type FinalidadeInferidaMap = Record<string, string> // keyed pelo canônico
+
+export function useFinalidadeInferida(phones: (string | null | undefined)[], enabled = true) {
+  const canons = [...new Set(phones.map(foneCanon).filter((c): c is string => !!c))]
+  return useQuery({
+    queryKey: ['finalidade-inferida', canons.slice().sort().join(',')],
+    enabled: enabled && canons.length > 0,
+    queryFn: async (): Promise<FinalidadeInferidaMap> => {
+      if (canons.length === 0) return {}
+      const { data, error } = await (supabase as any).rpc('atendimentos_finalidade_inferida', { p_canons: canons })
+      if (error) throw error
+      const map: FinalidadeInferidaMap = {}
+      for (const row of (data ?? []) as any[]) {
+        if (!row.fone_canon || !row.finalidade) continue
+        map[String(row.fone_canon)] = String(row.finalidade)
+      }
+      return map
+    },
+    staleTime: 60_000,
+    refetchIntervalInBackground: false,
+  })
+}
+
+export function lookupFinalidadeInferida(
+  map: FinalidadeInferidaMap | undefined,
+  phone: string | null | undefined
+): string | null {
+  if (!map) return null
+  const c = foneCanon(phone)
+  return c ? (map[c] ?? null) : null
+}
+
 // Status global da IA atendente (alimenta o card de KPI no topo da /atendimentos):
 //  • ligados     = chats com a IA ligada (ia_atendimentos.ativo = true) — inclui prospecção parada
 //  • conversando = desses, os que estão de fato em conversa HOJE (a IA já respondeu ao cliente hoje)

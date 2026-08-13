@@ -19,7 +19,7 @@ import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTime
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, STATUS_VENDEDOR_MAP, type StatusReal } from '@/types/atendimento'
-import { useAtendimentos, useAtendimentoKpis, useAtendimentoKpisAcao, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, useDadosIaPorTelefone, lookupDadosIa, useIaStatusContagem, useIaStatusPorTelefone, lookupIaStatus, FILTRO_SEM_RESPOSTA, FILTRO_SEM_ETIQUETA, SEM_ETIQUETA_LIMITE, type DataPreset , useMensagensClique} from '@/hooks/useAtendimentos'
+import { useAtendimentos, useAtendimentoKpis, useAtendimentoKpisAcao, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, useDadosIaPorTelefone, lookupDadosIa, useFinalidadeInferida, lookupFinalidadeInferida, useIaStatusContagem, useIaStatusPorTelefone, lookupIaStatus, FILTRO_SEM_RESPOSTA, FILTRO_SEM_ETIQUETA, SEM_ETIQUETA_LIMITE, type DataPreset , useMensagensClique} from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 
@@ -405,6 +405,8 @@ export function Atendimentos() {
   // Dados que a IA atendente coletou (animal/qtd/uso/equipamento/kg-h), cruzados por telefone —
   // preenche as colunas que a view auditoria deixou vazias (ReplyAgent descontinuado).
   const { data: dadosIaMap } = useDadosIaPorTelefone(phonesAtuais)
+  // 3º fallback da coluna Finalidade — ver comentário do hook. Só os telefones da página.
+  const { data: finalidadeInferidaMap } = useFinalidadeInferida(phonesAtuais)
   // Status global da IA (card de KPI): quantos chats com IA ligada e quantos conversando hoje.
   const { data: iaStatus } = useIaStatusContagem()
   // Status da IA por telefone — marca na linha quem está com a IA atendendo.
@@ -1172,17 +1174,33 @@ export function Atendimentos() {
                             consumo_proprio / revenda / misto. Substitui a coluna antiga "Tipo de Ração". */}
                         <td className="hidden 2xl:table-cell px-1.5 py-2.5 overflow-hidden">
                           {(() => {
-                            const fin = r.finalidade_fabrica || lookupDadosIa(dadosIaMap, r.telefone)?.finalidade
+                            const declarada = r.finalidade_fabrica || lookupDadosIa(dadosIaMap, r.telefone)?.finalidade
                             // Webhook às vezes grava a string "null"/"Null" — não é finalidade.
-                            if (!fin || /^(null|undefined|nan)$/i.test(String(fin).trim())) return <EmptyCell />
+                            const valeu = declarada && !/^(null|undefined|nan)$/i.test(String(declarada).trim())
+                            // 3º fallback: deduzido do que o CLIENTE escreveu no Zap. Só entra quando
+                            // ninguém declarou — o dado declarado sempre ganha do deduzido.
+                            const inferida = valeu ? null : lookupFinalidadeInferida(finalidadeInferidaMap, r.telefone)
+                            const fin = valeu ? declarada : inferida
+                            if (!fin) return <EmptyCell />
                             const label = humanizeTipoRacao(fin) ?? fin
                             const tone = FINALIDADE_TONE[fin] ?? FINALIDADE_TONE[label] ?? 'neutral'
+                            // ⚠️ Deduzido tem que PARECER deduzido. Sem essa marca, um palpite de 90%
+                            // de acerto vira "o cliente disse isso" na cabeça de quem lê a tela.
+                            const ehDeduzido = !valeu
                             return (
+                              // ⚠️ A borda vai em style INLINE, não em classe: `border-current/40`
+                              // não gera CSS no Tailwind 3 (currentColor não aceita canal alfa) —
+                              // conferi no dist e a regra simplesmente não existia. Classe morta
+                              // não avisa que morreu.
                               <Badge style={{
                                 background: `hsl(var(--${tone}-bg))`,
                                 color: `hsl(var(--${tone}))`,
-                              }} className="capitalize max-w-full overflow-hidden" title={label}>
-                                <span className="truncate">{shortFinalidade(label)}</span>
+                                ...(ehDeduzido ? { border: `1px dashed hsl(var(--${tone}) / 0.45)` } : {}),
+                              }} className="capitalize max-w-full overflow-hidden"
+                                 title={ehDeduzido
+                                   ? `${label} — deduzido do que o cliente escreveu no WhatsApp (ninguém preencheu o formulário). Acerto medido: 90%.`
+                                   : label}>
+                                <span className="truncate">{shortFinalidade(label)}{ehDeduzido && <span className="opacity-60">?</span>}</span>
                               </Badge>
                             )
                           })()}
