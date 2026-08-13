@@ -28,6 +28,7 @@ export interface ResumoDiaVendedor {
   quente: number
   negociacao: number
   carteira: number
+  ligacoes: number
 }
 
 const firstKey = (nome: string) => (nome.split(/\s+/)[0] || '').toUpperCase()
@@ -54,13 +55,13 @@ export function useResumoDia(preset: DashboardPreset = '') {
   })
 
   // Leads + orçamentos + atendidos por vendedor, PARAMETRIZADO pelo período do filtro.
-  const fluxoQ = useQuery<Record<string, { leads: number; orcamentos: number; atendimentos: number }>>({
+  const fluxoQ = useQuery<Record<string, { leads: number; orcamentos: number; atendimentos: number; ligacoes: number }>>({
     queryKey: ['escritorio-fluxo-periodo', pFrom, pTo],
     queryFn: async () => {
       const { data } = await supabase.rpc('escritorio_fluxo_periodo', { p_from: pFrom, p_to: pTo })
-      const m: Record<string, { leads: number; orcamentos: number; atendimentos: number }> = {}
-      for (const r of (data ?? []) as Array<{ vend: string; leads: number; orcamentos: number; atendimentos: number }>)
-        m[r.vend] = { leads: r.leads, orcamentos: r.orcamentos, atendimentos: r.atendimentos }
+      const m: Record<string, { leads: number; orcamentos: number; atendimentos: number; ligacoes: number }> = {}
+      for (const r of (data ?? []) as Array<{ vend: string; leads: number; orcamentos: number; atendimentos: number; ligacoes: number }>)
+        m[r.vend] = { leads: r.leads, orcamentos: r.orcamentos, atendimentos: r.atendimentos, ligacoes: r.ligacoes ?? 0 }
       return m
     },
     refetchInterval: 30000,
@@ -102,6 +103,9 @@ export function useResumoDia(preset: DashboardPreset = '') {
         quente,
         negociacao: followup + quente,
         carteira: f?.totalChats ?? 0,
+        // Ligacoes FEITAS no periodo (wa_chat_messages tipo=call_log). PISO: so cobre
+        // chats das etiquetas do funil — ver a view wa_ligacoes_por_vendedor.
+        ligacoes: fx?.ligacoes ?? 0,
       }
     }), [vendedoresQ.data, funilQ.data, fluxoQ.data, liveHoje])
 

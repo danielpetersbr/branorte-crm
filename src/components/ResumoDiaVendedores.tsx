@@ -33,9 +33,10 @@ function NumCell({ val, max, warn = false }: { val: number; max: number; warn?: 
 }
 
 // Colunas: ícone + rótulo curto (header) + explicação (legenda e tooltip)
-const COLS: Array<{ key: keyof Pick<ResumoDiaVendedor, 'leads' | 'atendimentos' | 'orcamentos' | 'negociacao' | 'quente' | 'carteira'>; icon: string; label: string; explica: string }> = [
+const COLS: Array<{ key: keyof Pick<ResumoDiaVendedor, 'leads' | 'atendimentos' | 'ligacoes' | 'orcamentos' | 'negociacao' | 'quente' | 'carteira'>; icon: string; label: string; explica: string }> = [
   { key: 'leads',        icon: '📥', label: 'Leads',      explica: 'leads novos que chegaram hoje' },
   { key: 'atendimentos', icon: '💬', label: 'Atendidos',  explica: 'conversas trabalhadas hoje' },
+  { key: 'ligacoes',     icon: '📲', label: 'Ligações',   explica: 'ligações que o vendedor FEZ no período (piso: só conversas com etiqueta do funil)' },
   { key: 'orcamentos',   icon: '📄', label: 'Orçamentos', explica: 'orçamentos montados hoje' },
   { key: 'negociacao',   icon: '🤝', label: 'Negociando', explica: 'em negociação agora (follow-up + quente)' },
   { key: 'quente',       icon: '🔥', label: 'Quentes',    explica: 'leads quentes agora' },
@@ -74,11 +75,12 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
   const tot = useMemo(() => rows.reduce((a, r) => ({
     leads: a.leads + r.leads,
     atendimentos: a.atendimentos + r.atendimentos,
+    ligacoes: a.ligacoes + r.ligacoes,
     orcamentos: a.orcamentos + r.orcamentos,
     negociacao: a.negociacao + r.negociacao,
     quente: a.quente + r.quente,
     carteira: a.carteira + r.carteira,
-  }), { leads: 0, atendimentos: 0, orcamentos: 0, negociacao: 0, quente: 0, carteira: 0 }), [rows])
+  }), { leads: 0, atendimentos: 0, ligacoes: 0, orcamentos: 0, negociacao: 0, quente: 0, carteira: 0 }), [rows])
 
   // Maior valor por coluna — base das barras proporcionais em cada célula.
   const maxByCol = useMemo(() => {
@@ -156,6 +158,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                       </td>
                       <NumCell val={r.leads} max={maxByCol.leads} />
                       <NumCell val={r.atendimentos} max={maxByCol.atendimentos} />
+                      <NumCell val={r.ligacoes} max={maxByCol.ligacoes} />
                       <NumCell val={r.orcamentos} max={maxByCol.orcamentos} />
                       <NumCell val={r.negociacao} max={maxByCol.negociacao} />
                       <NumCell val={r.quente} max={maxByCol.quente} warn />
@@ -169,6 +172,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                   <td className="py-2 pr-2 text-ink text-[11px] uppercase tracking-wide">Total do time</td>
                   <td className="text-right tabular-nums py-2 px-2 text-ink">{fmt(tot.leads)}</td>
                   <td className="text-right tabular-nums py-2 px-2 text-ink">{fmt(tot.atendimentos)}</td>
+                  <td className="text-right tabular-nums py-2 px-2 text-ink">{fmt(tot.ligacoes)}</td>
                   <td className="text-right tabular-nums py-2 px-2 text-ink">{fmt(tot.orcamentos)}</td>
                   <td className="text-right tabular-nums py-2 px-2 text-ink">{fmt(tot.negociacao)}</td>
                   <td className="text-right tabular-nums py-2 px-2 text-warning">{fmt(tot.quente)}</td>
