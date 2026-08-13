@@ -113,5 +113,11 @@ export function useResumoDia(preset: DashboardPreset = '') {
     linhas,
     isLoading: vendedoresQ.isLoading,
     isError: vendedoresQ.isError,
+    // ⚠️ Negociando/Quentes/Carteira vêm SÓ do funil vivo. Quando essa query falha
+    // (ou volta vazia), o `f?.x ?? 0` pinta ZERO em todo mundo — e zero, num painel de
+    // gestão, é lido como "ninguém está negociando", não como "não carregou". São coisas
+    // diferentes e a tela precisa saber distinguir. Visto em produção 13/08: a RPC
+    // respondia certo no banco (10 linhas) e a tela mostrava a coluna inteira zerada.
+    funilIndisponivel: funilQ.isError || (!funilQ.isLoading && Object.keys(funilQ.data ?? {}).length === 0),
   }
 }
