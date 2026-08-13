@@ -722,6 +722,9 @@ export interface AtendimentoKpisAcao {
   esperandoResposta: number    // o CLIENTE falou por último → responder agora
   emConversa: number           // nós falamos por último, ele já tinha falado
   semRetorno: number           // abordamos e ele nunca respondeu → follow-up
+  // ⚠️ qualificados NÃO entra na soma dos 5 acima — é ortogonal. Um lead pode ser
+  // 'esperandoResposta' E qualificado ao mesmo tempo.
+  qualificados: number         // o cliente escreveu pedindo produto/preço → vale energia
 }
 
 export function useAtendimentoKpisAcao(filters?: Partial<AtendimentoFilters>) {
@@ -745,6 +748,7 @@ export function useAtendimentoKpisAcao(filters?: Partial<AtendimentoFilters>) {
         esperandoResposta: r.esperando_resposta ?? 0,
         emConversa: r.em_conversa ?? 0,
         semRetorno: r.sem_retorno ?? 0,
+        qualificados: r.qualificados ?? 0,
       }
     },
     refetchInterval: 30_000,

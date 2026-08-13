@@ -528,6 +528,16 @@ export function Atendimentos() {
                    icon={Calendar}        hint={kpis.hoje === 0 ? 'Nenhum lead hoje' : 'leads novos'}
                    active={filters.data === 'hoje'}
                    onClick={() => setFilters(f => ({ ...f, data: f.data === 'hoje' ? '' as DataPreset : 'hoje', page: 0 }))} />
+          {/* ⚠️ "Qualificados" VOLTOU (13/08, tarde), mas cortado pelo WHATSAPP e não pelo quiz.
+              A versão antiga saiu de manhã porque a regra era motivo_contato ~ 'fab' — o mesmo
+              campo nulo que fazia o card "não engajaram" mentir. Medido contra as mensagens
+              reais do dia: a regra antiga contava 25, dos quais 10 NUNCA escreveram uma linha
+              no Zap (só clicaram no quiz), e deixava de fora 14 pessoas que pediram
+              fábrica/preço/orçamento por escrito. Errava pros dois lados ao mesmo tempo.
+              Agora: o cliente escreveu E o texto casa vocabulário de produto ou de compra. */}
+          <KpiCard label="Qualificados" value={acao?.qualificados ?? 0} hero tone="success" icon={Flame}
+                   hint={(acao?.qualificados ?? 0) === 0 ? 'ninguém pediu preço ainda' : 'pediram produto ou preço'}
+                   tooltip={'O CLIENTE escreveu falando de equipamento, fábrica, orçamento, preço, frete ou pagamento. É lead que vale energia agora.\n\nNão soma com os outros cards — é uma leitura de qualidade, não um balde do funil: o mesmo lead pode estar em "Esperando resposta" e ser qualificado.\n\n⚠️ É régua de texto: quem qualifica só por áudio sem transcrição, ou por foto, não entra. O número é piso.'} />
           {/* ⚠️ 13/08: "Não engajaram / nem começou o bot" SAIU daqui. A regra era
               !motivo_contato && !tocou_botao_em — dois campos do QUIZ DA LP, que lead de
               click-to-WhatsApp nunca preenche. Media por origem em 30d: Facebook Formulário
