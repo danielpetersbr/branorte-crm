@@ -15,6 +15,8 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { supabase } from '@/lib/supabase'
 import { Link2, Copy, Check, Plus, Trash2, Pencil, X, MousePointerClick, MessageSquare } from 'lucide-react'
+import { useSecaoRecolhivel } from '@/hooks/useSecaoRecolhivel'
+import { TituloRecolhivel } from '@/components/ui/Recolhivel'
 
 type LinkRota = {
   id: string
@@ -74,6 +76,17 @@ export function LinksRoteamento() {
   const [editando, setEditando] = useState<Partial<LinkRota> | null>(null)
   const [copiado, setCopiado] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
+  // A lista passa de 30 links e a tabela de cliques tem 50 linhas: as duas
+  // recolhem separado (e o que você fechar continua fechado na próxima visita).
+  const secao = useSecaoRecolhivel('disparos.links')
+  const secCliques = useSecaoRecolhivel('disparos.links.cliques')
+  // Com formulário aberto o corpo fica aberto NA MARRA. Sem isso, recolher a
+  // seção no meio de uma edição deixava o formulário flutuando sob um título
+  // fechado — e pior: ao salvar, a lista (escondida) não mostrava o link novo,
+  // então parecia que não salvou e o usuário tentava de novo, batendo em
+  // "endereço já está em uso" com um link que ele mesmo acabou de criar.
+  const corpoAberto = secao.aberta || !!editando
+  const secaoVisivel = { aberta: corpoAberto, alternar: secao.alternar }
 
   const { data: links } = useQuery<Resumo[]>({
     queryKey: ['link-rota-resumo'],
@@ -184,17 +197,31 @@ export function LinksRoteamento() {
     <Card className="p-4">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
-            <Link2 className="h-4 w-4 text-accent" /> Links de roteamento
-          </h2>
-          <p className="text-ink-muted text-xs mt-1 max-w-3xl">
-            Um link pra colar onde você quiser — site, formulário, bio, anúncio. Quem clica cai no WhatsApp do{' '}
-            <b>próximo vendedor da fila</b> (a mesma fila do quiz e das landing pages: respeita ligado/desligado,
-            bloqueio, fatia e cota de parados) com o <b>texto que você escrever</b> já pronto. Cada clique leva um
-            código invisível — quando o cliente manda a mensagem, o sistema casa sozinho a conversa com o clique.
-          </p>
+          <TituloRecolhivel
+            secao={secaoVisivel}
+            icone={<Link2 className="h-4 w-4 text-accent" />}
+            resumo={`${(links ?? []).length} links${(links ?? []).some(l => !l.ativo) ? ` · ${(links ?? []).filter(l => !l.ativo).length} desligados` : ''}`}
+          >
+            Links de roteamento
+          </TituloRecolhivel>
+          {corpoAberto && (
+            <p className="text-ink-muted text-xs mt-1 max-w-3xl">
+              Um link pra colar onde você quiser — site, formulário, bio, anúncio. Quem clica cai no WhatsApp do{' '}
+              <b>próximo vendedor da fila</b> (a mesma fila do quiz e das landing pages: respeita ligado/desligado,
+              bloqueio, fatia e cota de parados) com o <b>texto que você escrever</b> já pronto. Cada clique leva um
+              código invisível — quando o cliente manda a mensagem, o sistema casa sozinho a conversa com o clique.
+            </p>
+          )}
         </div>
-        <Button size="sm" variant="primary" onClick={() => abrirEdicao()} className="shrink-0">
+        <Button
+          size="sm"
+          variant="primary"
+          // Recolhido, criar link também abre a seção (o corpoAberto já faria
+          // isso enquanto o formulário existir; alternar deixa o estado gravado
+          // coerente com o que ficou na tela depois de salvar).
+          onClick={() => { if (!secao.aberta) secao.alternar(); abrirEdicao() }}
+          className="shrink-0"
+        >
           <Plus className="h-3.5 w-3.5" /> Novo link
         </Button>
       </div>
@@ -286,6 +313,7 @@ export function LinksRoteamento() {
       )}
 
       {/* ---------- Lista de links ---------- */}
+      {corpoAberto && (
       <div className="mt-3 space-y-2">
         {(links ?? []).length === 0 && !editando && (
           <div className="text-center py-6 text-ink-muted text-[12px]">
@@ -370,11 +398,25 @@ export function LinksRoteamento() {
           </div>
         ))}
       </div>
+      )}
 
       {/* ---------- Últimos cliques ---------- */}
-      {(cliques ?? []).length > 0 && (
+      {corpoAberto && (cliques ?? []).length > 0 && (
         <div className="mt-4">
-          <h3 className="text-[12px] font-semibold text-ink mb-2">Últimos cliques</h3>
+          <TituloRecolhivel
+            secao={secCliques}
+            nivel="h3"
+            className="text-[12px] mb-2"
+            // Só `match_via === 'codigo'` conta como conversa. Contar todo
+            // `matched_at` juntaria os "prováveis" (casados só pela janela de
+            // tempo, que já adotaram lead de Instagram e até fornecedor) — o
+            // resumo viraria a mesma mentira que a tabela abaixo deixou de contar.
+            resumo={`${(cliques ?? []).length} últimos · ${(cliques ?? []).filter(c => c.match_via === 'codigo').length} com prova de conversa`}
+          >
+            Últimos cliques
+          </TituloRecolhivel>
+          {secCliques.aberta && (
+          <>
           <div className="overflow-x-auto">
             <table className="w-full text-[11px]">
               <thead className="text-ink-muted">
@@ -443,6 +485,8 @@ export function LinksRoteamento() {
             quiz e até de um fornecedor. Não conte como conversão do link. <b>só clicou</b> = abriu o WhatsApp e não
             mandou nada (ou ainda não mandou).
           </p>
+          </>
+          )}
         </div>
       )}
     </Card>
