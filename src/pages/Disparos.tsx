@@ -6,10 +6,12 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { GitBranch, Users, AlertCircle, Activity, Send, Copy, Check, Star, Tag } from 'lucide-react'
+import { GitBranch, Users, AlertCircle, Activity, Send, Copy, Check, Star, Tag, Building2 } from 'lucide-react'
 import { EscritorioMapa } from '@/components/EscritorioMapa'
 import { LinksRoteamento } from '@/components/LinksRoteamento'
 import { AtividadeDiaria } from '@/pages/AtividadeDiaria'
+import { useSecaoRecolhivel } from '@/hooks/useSecaoRecolhivel'
+import { TituloRecolhivel, SecaoRecolhivel, BotaoRecolherTudo } from '@/components/ui/Recolhivel'
 
 /** Linha de `vendor_roteamento_efetivo`: o que o vendedor recebe DEPOIS da cota. */
 type Efetivo = {
@@ -329,6 +331,13 @@ export function Disparos() {
     return m
   }, [vendedores, vendorRuntime])
 
+  // Seções recolhíveis — a tela tem 9 blocos e quem opera usa 2 ou 3 por vez.
+  // O que o usuário fecha fica fechado (localStorage), inclusive na próxima visita.
+  const secAvaliacao = useSecaoRecolhivel('disparos.avaliacao')
+  const secProspec = useSecaoRecolhivel('disparos.prospec')
+  const secFunil = useSecaoRecolhivel('disparos.funil')
+  const secVendedores = useSecaoRecolhivel('disparos.vendedores')
+
   if (!profile) return <PageLoading />
   if (!can('menu.disparos')) {
     return (
@@ -342,13 +351,19 @@ export function Disparos() {
 
   return (
     <div className="p-4 space-y-4">
-      <header>
-        <h1 className="text-2xl font-bold text-ink flex items-center gap-2">
-          <GitBranch className="h-6 w-6 text-accent" /> Central de Roteamento
-        </h1>
-        <p className="text-ink-muted text-sm">
-          Define qual vendedor atende cada lead que cai na central. Se o webhook do ReplyAgent mandar o campo <code className="text-accent">mensagem</code>, o WhatsApp do vendedor inicia o contato com o cliente automaticamente (via extensão Branorte).
-        </p>
+      <header className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-ink flex items-center gap-2">
+            <GitBranch className="h-6 w-6 text-accent" /> Central de Roteamento
+          </h1>
+          <p className="text-ink-muted text-sm">
+            Define qual vendedor atende cada lead que cai na central. Se o webhook do ReplyAgent mandar o campo <code className="text-accent">mensagem</code>, o WhatsApp do vendedor inicia o contato com o cliente automaticamente (via extensão Branorte).
+          </p>
+          <p className="text-ink-faint text-[11px] mt-1">
+            Clique no título de qualquer bloco pra recolher — fica assim na próxima vez que você abrir.
+          </p>
+        </div>
+        <BotaoRecolherTudo className="mt-1" />
       </header>
 
       {/* LINKS DE ROTEAMENTO: link colável que joga o cliente no WhatsApp do
@@ -359,12 +374,18 @@ export function Disparos() {
       <Card className="p-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
-              <Star className="h-4 w-4 text-accent" /> Avaliação de atendimento
-            </h2>
-            <p className="text-ink-muted text-xs mt-1 max-w-2xl">
-              A extensão pede a nota (1 a 5) ao cliente no fim do atendimento. <b>Geral</b> é a chave-mestra; abaixo você escolhe <b>vendedor por vendedor</b>. Efetivo = Geral <b>e</b> o vendedor ligado. Muda em ~30s.
-            </p>
+            <TituloRecolhivel
+              secao={secAvaliacao}
+              icone={<Star className="h-4 w-4 text-accent" />}
+              resumo={`${(vendedores ?? []).filter(v => v.avaliacao_ativa !== false).length} de ${(vendedores ?? []).length} vendedores enviando`}
+            >
+              Avaliação de atendimento
+            </TituloRecolhivel>
+            {secAvaliacao.aberta && (
+              <p className="text-ink-muted text-xs mt-1 max-w-2xl">
+                A extensão pede a nota (1 a 5) ao cliente no fim do atendimento. <b>Geral</b> é a chave-mestra; abaixo você escolhe <b>vendedor por vendedor</b>. Efetivo = Geral <b>e</b> o vendedor ligado. Muda em ~30s.
+              </p>
+            )}
           </div>
           <button
             onClick={() => toggleAvaliacao.mutate(!avaliacaoAtiva)}
@@ -374,39 +395,47 @@ export function Disparos() {
             {avaliacaoAtiva === undefined ? '…' : avaliacaoAtiva ? '⭐ Geral LIGADO' : '⛔ Geral DESLIGADO'}
           </button>
         </div>
-        <div className={`mt-3 border-t border-border pt-3 ${avaliacaoAtiva === false ? 'opacity-60' : ''}`}>
-          <p className="text-ink-muted text-[11px] mb-2">
-            Por vendedor{avaliacaoAtiva === false && <span className="text-red-300"> — Geral desligado, ninguém envia; ligue o Geral acima pra valer</span>}:
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {(vendedores ?? []).map((v) => {
-              const on = v.avaliacao_ativa !== false
-              return (
-                <button
-                  key={v.vendedor_nome}
-                  onClick={() => toggleAvaliacaoVendedor.mutate({ nome: v.vendedor_nome, ativa: !on })}
-                  disabled={toggleAvaliacaoVendedor.isPending}
-                  title={on ? 'Envia avaliação — clique pra desligar' : 'Não envia — clique pra ligar'}
-                  className={`px-2.5 py-1 rounded-md text-xs font-medium border transition disabled:opacity-60 ${on ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' : 'bg-surface-2/40 text-ink-muted border-border'}`}
-                >
-                  {on ? '⭐' : '☆'} {v.vendedor_nome}
-                </button>
-              )
-            })}
+        {secAvaliacao.aberta && (
+          <div className={`mt-3 border-t border-border pt-3 ${avaliacaoAtiva === false ? 'opacity-60' : ''}`}>
+            <p className="text-ink-muted text-[11px] mb-2">
+              Por vendedor{avaliacaoAtiva === false && <span className="text-red-300"> — Geral desligado, ninguém envia; ligue o Geral acima pra valer</span>}:
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {(vendedores ?? []).map((v) => {
+                const on = v.avaliacao_ativa !== false
+                return (
+                  <button
+                    key={v.vendedor_nome}
+                    onClick={() => toggleAvaliacaoVendedor.mutate({ nome: v.vendedor_nome, ativa: !on })}
+                    disabled={toggleAvaliacaoVendedor.isPending}
+                    title={on ? 'Envia avaliação — clique pra desligar' : 'Não envia — clique pra ligar'}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium border transition disabled:opacity-60 ${on ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' : 'bg-surface-2/40 text-ink-muted border-border'}`}
+                  >
+                    {on ? '⭐' : '☆'} {v.vendedor_nome}
+                  </button>
+                )
+              })}
+            </div>
           </div>
-        </div>
+        )}
       </Card>
 
       {/* TOGGLE: auto-etiqueta Prospecção */}
       <Card className="p-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
-              <Tag className="h-4 w-4 text-accent" /> Etiqueta automática · Prospecção
-            </h2>
-            <p className="text-ink-muted text-xs mt-1 max-w-2xl">
-              Quando <b>ligado</b>, todo cliente que manda mensagem e está <b>sem nenhuma etiqueta</b> recebe a etiqueta <b>PROSPECÇÃO</b> sozinho (só conversas individuais, não grupos; cria a etiqueta se não existir). Pega clientes novos que chegam; os vendedores aplicam em ~30s.
-            </p>
+            <TituloRecolhivel
+              secao={secProspec}
+              icone={<Tag className="h-4 w-4 text-accent" />}
+              resumo={`${(vendedores ?? []).filter(v => v.prospec_ativa !== false).length} de ${(vendedores ?? []).length} vendedores marcando`}
+            >
+              Etiqueta automática · Prospecção
+            </TituloRecolhivel>
+            {secProspec.aberta && (
+              <p className="text-ink-muted text-xs mt-1 max-w-2xl">
+                Quando <b>ligado</b>, todo cliente que manda mensagem e está <b>sem nenhuma etiqueta</b> recebe a etiqueta <b>PROSPECÇÃO</b> sozinho (só conversas individuais, não grupos; cria a etiqueta se não existir). Pega clientes novos que chegam; os vendedores aplicam em ~30s.
+              </p>
+            )}
           </div>
           <button
             onClick={() => toggleProspec.mutate(!prospecAtiva)}
@@ -416,43 +445,51 @@ export function Disparos() {
             {prospecAtiva === undefined ? '…' : prospecAtiva ? '🏷️ Geral LIGADO' : '⛔ Geral DESLIGADO'}
           </button>
         </div>
-        <div className={`mt-3 border-t border-border pt-3 ${prospecAtiva === false ? 'opacity-60' : ''}`}>
-          <p className="text-ink-muted text-[11px] mb-2">
-            Por vendedor{prospecAtiva === false && <span className="text-red-300"> — Geral desligado, ninguém marca; ligue o Geral acima pra valer</span>}.
-            <span className="text-ink-faint"> Desligue quem está no WhatsApp pessoal pra não etiquetar os contatos dele.</span>
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {(vendedores ?? []).map((v) => {
-              const on = v.prospec_ativa !== false
-              return (
-                <button
-                  key={v.vendedor_nome}
-                  onClick={() => toggleProspecVendedor.mutate({ nome: v.vendedor_nome, ativa: !on })}
-                  disabled={toggleProspecVendedor.isPending}
-                  title={on ? 'Marca prospecção — clique pra desligar' : 'Não marca — clique pra ligar'}
-                  className={`px-2.5 py-1 rounded-md text-xs font-medium border transition disabled:opacity-60 ${on ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' : 'bg-surface-2/40 text-ink-muted border-border'}`}
-                >
-                  {on ? '🏷️' : '○'} {v.vendedor_nome}
-                </button>
-              )
-            })}
+        {secProspec.aberta && (
+          <div className={`mt-3 border-t border-border pt-3 ${prospecAtiva === false ? 'opacity-60' : ''}`}>
+            <p className="text-ink-muted text-[11px] mb-2">
+              Por vendedor{prospecAtiva === false && <span className="text-red-300"> — Geral desligado, ninguém marca; ligue o Geral acima pra valer</span>}.
+              <span className="text-ink-faint"> Desligue quem está no WhatsApp pessoal pra não etiquetar os contatos dele.</span>
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {(vendedores ?? []).map((v) => {
+                const on = v.prospec_ativa !== false
+                return (
+                  <button
+                    key={v.vendedor_nome}
+                    onClick={() => toggleProspecVendedor.mutate({ nome: v.vendedor_nome, ativa: !on })}
+                    disabled={toggleProspecVendedor.isPending}
+                    title={on ? 'Marca prospecção — clique pra desligar' : 'Não marca — clique pra ligar'}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium border transition disabled:opacity-60 ${on ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' : 'bg-surface-2/40 text-ink-muted border-border'}`}
+                  >
+                    {on ? '🏷️' : '○'} {v.vendedor_nome}
+                  </button>
+                )
+              })}
+            </div>
           </div>
-        </div>
+        )}
       </Card>
 
       {/* AUTOMAÇÃO DO FUNIL: geral (master) + modo teste + por vendedor */}
       <Card className="p-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
-              <GitBranch className="h-4 w-4 text-accent" /> Automação do Funil
+            <TituloRecolhivel
+              secao={secFunil}
+              icone={<GitBranch className="h-4 w-4 text-accent" />}
+              resumo={`${(vendedores ?? []).filter(v => v.funil_ativa === true).length} de ${(vendedores ?? []).length} vendedores no automático`}
+            >
+              Automação do Funil
               {funilAtiva && funilDryRun !== false && (
-                <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/40 font-bold tracking-wide">MODO TESTE</span>
+                <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/40 font-bold tracking-wide">MODO TESTE</span>
               )}
-            </h2>
-            <p className="text-ink-muted text-xs mt-1 max-w-2xl">
-              Move a etiqueta do lead sozinho no ritmo certo (começa por <b>PROSPECÇÃO → NOVO LEAD</b> após o cliente responder + 2 dias úteis). <b>Opt-in</b>: nasce desligada; ligue o <b>Geral</b> e depois <b>só os vendedores de teste</b>. Vale só pra conversas <b>novas</b> a partir de ligar — não mexe no histórico. Muda em ~30s.
-            </p>
+            </TituloRecolhivel>
+            {secFunil.aberta && (
+              <p className="text-ink-muted text-xs mt-1 max-w-2xl">
+                Move a etiqueta do lead sozinho no ritmo certo (começa por <b>PROSPECÇÃO → NOVO LEAD</b> após o cliente responder + 2 dias úteis). <b>Opt-in</b>: nasce desligada; ligue o <b>Geral</b> e depois <b>só os vendedores de teste</b>. Vale só pra conversas <b>novas</b> a partir de ligar — não mexe no histórico. Muda em ~30s.
+              </p>
+            )}
           </div>
           <button
             onClick={() => toggleFunil.mutate(!funilAtiva)}
@@ -463,54 +500,58 @@ export function Disparos() {
           </button>
         </div>
 
-        {/* Modo teste (dry-run) */}
-        <div className={`mt-3 border-t border-border pt-3 flex items-center justify-between flex-wrap gap-2 ${!funilAtiva ? 'opacity-60' : ''}`}>
-          <p className="text-ink-muted text-[11px] max-w-xl">
-            <b>Modo teste (dry-run)</b>: a automação só <b>avisa</b> o que faria, sem mexer na etiqueta de verdade. Deixe ligado no 1º dia; depois desligue pra valer.
-          </p>
-          <button
-            onClick={() => toggleFunilDryRun.mutate(!(funilDryRun !== false))}
-            disabled={toggleFunilDryRun.isPending || funilDryRun === undefined}
-            className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border transition disabled:opacity-50 ${funilDryRun !== false ? 'bg-amber-500/15 text-amber-300 border-amber-500/40' : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'}`}
-          >
-            {funilDryRun === undefined ? '…' : funilDryRun !== false ? '🧪 Teste (não aplica)' : '✅ Valendo (aplica)'}
-          </button>
-        </div>
+        {secFunil.aberta && (
+          <>
+            {/* Modo teste (dry-run) */}
+            <div className={`mt-3 border-t border-border pt-3 flex items-center justify-between flex-wrap gap-2 ${!funilAtiva ? 'opacity-60' : ''}`}>
+              <p className="text-ink-muted text-[11px] max-w-xl">
+                <b>Modo teste (dry-run)</b>: a automação só <b>avisa</b> o que faria, sem mexer na etiqueta de verdade. Deixe ligado no 1º dia; depois desligue pra valer.
+              </p>
+              <button
+                onClick={() => toggleFunilDryRun.mutate(!(funilDryRun !== false))}
+                disabled={toggleFunilDryRun.isPending || funilDryRun === undefined}
+                className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border transition disabled:opacity-50 ${funilDryRun !== false ? 'bg-amber-500/15 text-amber-300 border-amber-500/40' : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'}`}
+              >
+                {funilDryRun === undefined ? '…' : funilDryRun !== false ? '🧪 Teste (não aplica)' : '✅ Valendo (aplica)'}
+              </button>
+            </div>
 
-        {/* Por vendedor */}
-        <div className={`mt-3 border-t border-border pt-3 ${!funilAtiva ? 'opacity-60' : ''}`}>
-          <p className="text-ink-muted text-[11px] mb-2">
-            Por vendedor{!funilAtiva && <span className="text-red-300"> — Geral desligado; ligue o Geral acima pra valer</span>}:
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {(vendedores ?? []).map((v) => {
-              const on = v.funil_ativa === true
-              return (
-                <button
-                  key={v.vendedor_nome}
-                  onClick={() => toggleFunilVendedor.mutate({ nome: v.vendedor_nome, ativa: !on })}
-                  disabled={toggleFunilVendedor.isPending}
-                  title={on ? 'Funil ligado — clique pra desligar' : 'Funil desligado — clique pra ligar'}
-                  className={`px-2.5 py-1 rounded-md text-xs font-medium border transition disabled:opacity-60 ${on ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' : 'bg-surface-2/40 text-ink-muted border-border'}`}
-                >
-                  {on ? '⚙️' : '○'} {v.vendedor_nome}
-                </button>
-              )
-            })}
-          </div>
-        </div>
+            {/* Por vendedor */}
+            <div className={`mt-3 border-t border-border pt-3 ${!funilAtiva ? 'opacity-60' : ''}`}>
+              <p className="text-ink-muted text-[11px] mb-2">
+                Por vendedor{!funilAtiva && <span className="text-red-300"> — Geral desligado; ligue o Geral acima pra valer</span>}:
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {(vendedores ?? []).map((v) => {
+                  const on = v.funil_ativa === true
+                  return (
+                    <button
+                      key={v.vendedor_nome}
+                      onClick={() => toggleFunilVendedor.mutate({ nome: v.vendedor_nome, ativa: !on })}
+                      disabled={toggleFunilVendedor.isPending}
+                      title={on ? 'Funil ligado — clique pra desligar' : 'Funil desligado — clique pra ligar'}
+                      className={`px-2.5 py-1 rounded-md text-xs font-medium border transition disabled:opacity-60 ${on ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' : 'bg-surface-2/40 text-ink-muted border-border'}`}
+                    >
+                      {on ? '⚙️' : '○'} {v.vendedor_nome}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </>
+        )}
       </Card>
 
       {/* PAINEL VENDEDORES */}
       <Card className="p-4">
-        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
-            <Users className="h-4 w-4 text-accent" />
+        <div className={`flex items-center justify-between flex-wrap gap-2 ${secVendedores.aberta ? 'mb-3' : ''}`}>
+          <TituloRecolhivel secao={secVendedores} icone={<Users className="h-4 w-4 text-accent" />}>
             Vendedores
-            <span className="text-ink-faint font-normal text-[11px]">
+            <span className="ml-1.5 text-ink-faint font-normal text-[11px]">
               · {(vendedores ?? []).filter(v => statusVendedor(v).status === 'ativo').length} trabalhando de {(vendedores ?? []).length}
             </span>
-          </h2>
+          </TituloRecolhivel>
+          {secVendedores.aberta && (
           <div className="flex gap-2.5 text-[10px] text-ink-muted flex-wrap">
             <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> trabalhando</span>
             <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-yellow-300" /> aberto, parado</span>
@@ -520,8 +561,9 @@ export function Disparos() {
             <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-red-400" /> desconectado</span>
             <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-slate-500" /> desligado</span>
           </div>
+          )}
         </div>
-        {loadingV ? <PageLoading /> : (
+        {!secVendedores.aberta ? null : loadingV ? <PageLoading /> : (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
             {(vendedores ?? []).map(v => {
               const st = statusVendedor(v)
@@ -659,15 +701,30 @@ export function Disparos() {
       {/* OUTBOUND DISPATCH — webhook do ReplyAgent + log */}
       <OutboundDispatchCard />
 
-      {/* ATIVIDADE DIÁRIA — gráfico 7d + ranking (acima do mapa pra achar fácil) */}
-      <AtividadeDiaria />
+      {/* ATIVIDADE DIÁRIA — gráfico 7d + ranking (acima do mapa pra achar fácil).
+          Recolhido o bloco nem monta: os gráficos param de buscar dados. */}
+      <SecaoRecolhivel
+        id="disparos.atividade"
+        icone={<Activity className="h-4 w-4 text-accent" />}
+        titulo="Atividade Diária"
+        resumo="gráfico dos últimos dias + ranking"
+      >
+        <AtividadeDiaria />
+      </SecaoRecolhivel>
 
       {/* ESCRITÓRIO — mapa de mesas (arrasta vendedor pra mesa) */}
-      {/* `online || so_recebe`: no mapa do Escritório a pergunta é "esse cara
-          está trabalhando?", não "recebe disparo?". Quem está em modo só recebe
-          atende cliente do link o dia inteiro — apagar o boneco dele seria o
-          mesmo erro que já pintava Álvaro e Lucas de cinza. */}
-      <EscritorioMapa vendedores={(vendedores ?? []).map(v => ({ vendedor_nome: v.vendedor_nome, online: v.online || v.so_recebe }))} live={liveMesas} />
+      <SecaoRecolhivel
+        id="disparos.escritorio"
+        icone={<Building2 className="h-4 w-4 text-accent" />}
+        titulo="Escritório"
+        resumo="mapa de mesas ao vivo"
+      >
+        {/* `online || so_recebe`: no mapa do Escritório a pergunta é "esse cara
+            está trabalhando?", não "recebe disparo?". Quem está em modo só recebe
+            atende cliente do link o dia inteiro — apagar o boneco dele seria o
+            mesmo erro que já pintava Álvaro e Lucas de cinza. */}
+        <EscritorioMapa vendedores={(vendedores ?? []).map(v => ({ vendedor_nome: v.vendedor_nome, online: v.online || v.so_recebe }))} live={liveMesas} />
+      </SecaoRecolhivel>
     </div>
   )
 }
@@ -683,6 +740,7 @@ function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onTo
   onToggleBloqueado: (nome: string, bloqueado: boolean) => void
 }) {
   const qc = useQueryClient()
+  const secao = useSecaoRecolhivel('disparos.distribuicao')
   // Todos os online (mesmo bloqueados aparecem na lista pra dar opção de desbloquear)
   const online = useMemo(() => vendedores.filter(v => v.online), [vendedores])
   const ativos = useMemo(() => online.filter(v => !v.bloqueado), [online])
@@ -761,32 +819,52 @@ function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onTo
 
   return (
     <Card className="p-4">
-      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+      <div className={`flex items-center justify-between flex-wrap gap-2 ${secao.aberta ? 'mb-3' : ''}`}>
         <div>
-          <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
-            <Activity className="h-4 w-4 text-accent" />
+          <TituloRecolhivel
+            secao={secao}
+            icone={<Activity className="h-4 w-4 text-accent" />}
+            // Conta pela MESMA regra do corpo (fatia > 0), não por "ligado e não
+            // bloqueado". Quem está online, desbloqueado e em 0% não recebe nada —
+            // e é justamente assim que se concentra o funil em 2 closers sem usar
+            // o bloqueio, que tem semântica pesada. Contar `ativos` diria
+            // "9 recebendo de 9" com 7 deles zerados.
+            resumo={
+              soma > 0
+                ? `${online.filter(v => Number(local[v.vendedor_nome] ?? 0) > 0).length} recebendo de ${online.length} ligados`
+                : 'sem distribuição definida'
+            }
+          >
             Quanto cada vendedor recebe
-          </h2>
-          <p className="text-[10px] text-ink-muted mt-0.5">
-            Define a fatia de leads que cada vendedor recebe quando um lead chega na central. Vale para chamadas do ReplyAgent / n8n que não enviam pesos próprios.
-          </p>
+          </TituloRecolhivel>
+          {secao.aberta && (
+            <p className="text-[10px] text-ink-muted mt-0.5">
+              Define a fatia de leads que cada vendedor recebe quando um lead chega na central. Vale para chamadas do ReplyAgent / n8n que não enviam pesos próprios.
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className={`text-[12px] font-bold tabular-nums px-2 py-1 rounded ${proximoDe100 ? 'bg-emerald-500/15 text-emerald-300' : soma > 0 ? 'bg-amber-500/15 text-amber-300' : 'bg-surface-2 text-ink-faint'}`}>
             soma: {soma.toFixed(0)}%{proximoDe100 ? ' ✓' : ''}
           </div>
-          <button onClick={igualar} className="text-[10px] px-2 py-1 rounded bg-accent/10 text-accent border border-accent/30 hover:bg-accent/20 font-medium">
-            Dividir igualmente
-          </button>
-          <button onClick={normalizar} disabled={soma <= 0} className="text-[10px] px-2 py-1 rounded bg-surface-2 text-ink border border-border hover:bg-surface-3 disabled:opacity-40">
-            Ajustar p/ 100%
-          </button>
-          <button onClick={zerar} className="text-[10px] px-2 py-1 rounded bg-surface-2 text-ink-muted border border-border hover:bg-red-500/10 hover:text-red-300">
-            Zerar tudo
-          </button>
+          {secao.aberta && (
+            <>
+              <button onClick={igualar} className="text-[10px] px-2 py-1 rounded bg-accent/10 text-accent border border-accent/30 hover:bg-accent/20 font-medium">
+                Dividir igualmente
+              </button>
+              <button onClick={normalizar} disabled={soma <= 0} className="text-[10px] px-2 py-1 rounded bg-surface-2 text-ink border border-border hover:bg-surface-3 disabled:opacity-40">
+                Ajustar p/ 100%
+              </button>
+              <button onClick={zerar} className="text-[10px] px-2 py-1 rounded bg-surface-2 text-ink-muted border border-border hover:bg-red-500/10 hover:text-red-300">
+                Zerar tudo
+              </button>
+            </>
+          )}
         </div>
       </div>
 
+      {!secao.aberta ? null : (
+      <>
       {/* Cota de parados: quem está sendo freado e por quê */}
       {cotaAtiva && cortados.length > 0 && (
         <div className="mb-3 rounded-lg border border-warning/30 bg-warning-bg/50 p-2.5">
@@ -977,6 +1055,8 @@ function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onTo
           )
         })}
       </div>
+      </>
+      )}
     </Card>
   )
 }
@@ -1001,6 +1081,8 @@ const WEBHOOK_URL = 'https://branorte-auditoria.vercel.app/api/leads/dispatch'
 
 function OutboundDispatchCard() {
   const [copied, setCopied] = useState<string | null>(null)
+  const secao = useSecaoRecolhivel('disparos.outbound')
+  const secWebhook = useSecaoRecolhivel('disparos.outbound.webhook', false)
   const { data: rows, isLoading } = useQuery<DispatchRow[]>({
     queryKey: ['outbound-dispatch-log'],
     queryFn: async () => {
@@ -1042,17 +1124,26 @@ function OutboundDispatchCard() {
 
   return (
     <Card className="p-4">
-      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-        <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
-          <Send className="h-4 w-4 text-accent" />
+      <div className={`flex items-center justify-between gap-2 flex-wrap ${secao.aberta ? 'mb-3' : ''}`}>
+        <TituloRecolhivel secao={secao} icone={<Send className="h-4 w-4 text-accent" />}>
           Envio inicial via WhatsApp do vendedor
-          <span className="text-ink-faint font-normal text-[11px]">· últimos {rows?.length ?? 0} envios</span>
-        </h2>
+          <span className="ml-1.5 text-ink-faint font-normal text-[11px]">· últimos {rows?.length ?? 0} envios</span>
+        </TituloRecolhivel>
       </div>
 
-      {/* Webhook config — pra colar no ReplyAgent */}
+      {!secao.aberta ? null : (
+      <>
+      {/* Webhook config — pra colar no ReplyAgent. Nasce recolhido: configura uma
+          vez e nunca mais se olha. */}
       <div className="border border-border rounded-lg p-3 mb-3 bg-surface-2/30">
-        <div className="text-[11px] uppercase tracking-wider text-ink-faint mb-2 font-semibold">Configuração no ReplyAgent</div>
+        <TituloRecolhivel
+          secao={secWebhook}
+          nivel="h3"
+          className={`text-[11px] uppercase tracking-wider text-ink-faint font-semibold ${secWebhook.aberta ? 'mb-2' : ''}`}
+        >
+          Configuração no ReplyAgent
+        </TituloRecolhivel>
+        {secWebhook.aberta && (
         <div className="grid gap-2 text-[12px]">
           <div className="flex items-start gap-2">
             <div className="text-ink-muted shrink-0 w-16">URL</div>
@@ -1073,9 +1164,12 @@ function OutboundDispatchCard() {
             </button>
           </div>
         </div>
-        <div className="text-[10px] text-ink-faint mt-2">
-          O campo <code className="text-accent">vendedor</code> bate com o vendedor configurado na extensão. Se a extensão dele estiver com WhatsApp aberto, dispara em até 30s.
-        </div>
+        )}
+        {secWebhook.aberta && (
+          <div className="text-[10px] text-ink-faint mt-2">
+            O campo <code className="text-accent">vendedor</code> bate com o vendedor configurado na extensão. Se a extensão dele estiver com WhatsApp aberto, dispara em até 30s.
+          </div>
+        )}
       </div>
 
       {/* Log */}
@@ -1115,6 +1209,8 @@ function OutboundDispatchCard() {
             </tbody>
           </table>
         </div>
+      )}
+      </>
       )}
     </Card>
   )
