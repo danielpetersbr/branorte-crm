@@ -80,6 +80,8 @@ const ControleDashboard = lazy(() => import('@/pages/ControleDashboard').then(m 
 const ControlePedidos = lazy(() => import('@/pages/ControlePedidos').then(m => ({ default: m.ControlePedidos })))
 const ControleFinanceiro = lazy(() => import('@/pages/ControleFinanceiro').then(m => ({ default: m.ControleFinanceiro })))
 const ControleNovoPedido = lazy(() => import('@/pages/ControleNovoPedido').then(m => ({ default: m.ControleNovoPedido })))
+const Supervisao = lazy(() => import('@/pages/Supervisao').then(m => ({ default: m.Supervisao })))
+const SupervisaoVendedor = lazy(() => import('@/pages/SupervisaoVendedor').then(m => ({ default: m.SupervisaoVendedor })))
 
 // /print/orcamento é importado direto (sem lazy) pra evitar precisar de Suspense
 // no fallback antes do auth. Rota usada APENAS pelo Puppeteer server-side.
@@ -557,6 +559,25 @@ function AppRoutes() {
         )}
         {can('menu.ia_teste') && (
           <Route path="/ia-teste" element={<IaTeste />} />
+        )}
+        {/* Central de Supervisao - a IA le as conversas dos vendedores e mostra
+            o que ficou por fazer. Nesta fase e ADMIN ONLY: o motor deterministico
+            esta em modo sombra e a precisao medida em 14/08/2026 REPROVOU
+            (cliente_aguardando acerta ~1 em 4). Nenhum vendedor pode ser cobrado
+            por isso ainda.
+            Gate por ROLE e nao por can(): chave nova de permissao volta false ate
+            pro admin enquanto a linha 'admin' de role_permissions nao a tiver -
+            foi assim que a /motor nasceu morta.
+            Quem tranca de verdade e a RLS de supervisao_* (is_admin() OR
+            supervisao_meu_vendor_id()); o gate de rota e a segunda camada. */}
+        {profile.role === 'admin' && (
+          <>
+            <Route path="/supervisao" element={<Supervisao />} />
+            {/* Sem o :vendedorId (ou com id desconhecido) a propria pagina
+                lista quem tem apontamento aberto, em vez de abrir vazia. */}
+            <Route path="/supervisao/vendedor" element={<SupervisaoVendedor />} />
+            <Route path="/supervisao/vendedor/:vendedorId" element={<SupervisaoVendedor />} />
+          </>
         )}
       </Route>
       <Route path="/login" element={<Navigate to="/" replace />} />

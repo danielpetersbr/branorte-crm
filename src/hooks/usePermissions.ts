@@ -56,6 +56,10 @@ export const FEATURE_CATALOG: Array<{
   { key: 'menu.admin_transportador_funcoes', label: 'Admin: Funções Transportador', group: 'Menu' },
   { key: 'menu.roadmap', label: 'Roadmap & Feedback', group: 'Menu' },
   { key: 'menu.ia_teste', label: 'Testar a IA (arena + apontamentos)', group: 'Menu' },
+  // Central de Supervisao: a chave TAMBEM precisa estar na linha 'admin' de
+  // role_permissions, senao can() volta false ate pro Daniel - o FALLBACK abaixo
+  // so vale quando a linha do role NAO existe, e a de admin existe.
+  { key: 'menu.supervisao', label: 'Central de Supervisao (achados por vendedor)', group: 'Menu' },
   { key: 'menu.reunioes', label: 'Adm de Reunião', group: 'Menu' },
   { key: 'menu.agenda', label: 'Agenda (calendário/tarefas)', group: 'Menu' },
   { key: 'menu.due_diligence', label: 'Consulta (Due Diligence)', group: 'Menu' },
