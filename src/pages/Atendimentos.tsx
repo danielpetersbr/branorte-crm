@@ -490,7 +490,7 @@ export function Atendimentos() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100dvh)] overflow-hidden px-6 py-4 gap-3 max-w-[1800px] mx-auto">
+    <div className="flex flex-col min-h-[calc(100dvh-4rem-env(safe-area-inset-bottom))] md:h-screen overflow-visible md:overflow-hidden px-6 py-4 gap-3 max-w-[1800px] mx-auto">
       {/* Header */}
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
@@ -782,7 +782,7 @@ export function Atendimentos() {
           </div>
 
           {/* ─── MOBILE: cards verticais ─── */}
-          <div className="md:hidden space-y-2 flex-1 min-h-0 overflow-y-auto">
+          <div className="md:hidden space-y-2">
             {rows.map(r => {
               const tel = (r.telefone || '').replace(/\D/g, '')
               const uf = ufFromTelefone(r.telefone)
