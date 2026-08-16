@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Plus, Trash2, ArrowLeft, CalendarClock, ClipboardList, CheckCircle2, Circle, PlayCircle, Mic, Square, Loader2, Sparkles, FileText } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import {
-  useReunioes, useCriarReuniao, useAtualizarReuniao, useExcluirReuniao,
+  useReunioes, useCriarReuniao, useAtualizarReuniao, useExcluirReuniao, useGravacoes,
   type Reuniao, type PautaItem, type ReuniaoStatus, type Gravacao,
 } from '@/hooks/useReunioes'
 
@@ -52,9 +52,15 @@ async function callReuniaoIA(payload: Record<string, unknown>): Promise<Record<s
   return json
 }
 
+// Bloco que não conseguiu ser salvo. Fica guardado em memória pra reenvio manual
+// — 15 min de reunião não podem sumir por uma falha de rede (foi o que a reunião
+// de 12/08/2026 perdeu: o bloco das 13:51 nunca chegou no Storage).
+interface Pendente { id: string; blob: Blob; durSeg: number; parte: string; motivo: string }
+
 // Gravador de áudio da reunião: MediaRecorder (mic) → Blob → Supabase Storage
 // (bucket reunioes-audio, público) → devolve a Gravacao pra salvar na reunião.
-function Gravador({ reuniaoId, onAdd }: { reuniaoId: string; onAdd: (g: Gravacao) => void }) {
+
+function Gravador({ reuniaoId, onAdd, onOcupado }: { reuniaoId: string; onAdd: (g: Gravacao) => Promise<void>; onOcupado: (v: boolean) => void }) {
   // O upload de um bloco só acontece até 15 min depois de o recorder abrir — o
   // onAdd capturado ali carrega uma lista de gravações velha e sobrescreve os
   // blocos já salvos. A ref aponta sempre pro onAdd do render atual.
@@ -64,6 +70,8 @@ function Gravador({ reuniaoId, onAdd }: { reuniaoId: string; onAdd: (g: Gravacao
   const [elapsed, setElapsed] = useState(0)
   const [uploading, setUploading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [pendentes, setPendentes] = useState<Pendente[]>([])
+  const [reenviando, setReenviando] = useState<string | null>(null)
   const mrRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const timerRef = useRef<number | null>(null)
@@ -81,32 +89,82 @@ function Gravador({ reuniaoId, onAdd }: { reuniaoId: string; onAdd: (g: Gravacao
 
   const stopTimer = () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null } }
   const stopSegTimer = () => { if (segTimerRef.current) { clearInterval(segTimerRef.current); segTimerRef.current = null } }
-  useEffect(() => () => { stopTimer(); stopSegTimer(); streamRef.current?.getTracks().forEach(t => t.stop()) }, [])
+  // Ao desmontar, fecha o bloco corrente ANTES de soltar o microfone — sem o
+  // stop() o onstop nunca dispara e o áudio já gravado morre com o componente.
+  useEffect(() => () => {
+    stopTimer(); stopSegTimer()
+    stoppingRef.current = true
+    try { mrRef.current?.stop() } catch { /* noop */ }
+    streamRef.current?.getTracks().forEach(t => t.stop())
+  }, [])
 
-  // Sobe um bloco pro Storage e devolve a Gravacao. Só mexe no estado de UI
+  // Fechar a aba gravando descarta o bloco em curso (até 15 min) e qualquer
+  // bloco que ainda não subiu. O navegador só deixa avisar, não impedir.
+  // O mesmo estado trava o botão "voltar" da tela (o Editor desmontaria o
+  // gravador e o áudio do bloco corrente morreria em silêncio).
+  const ocupado = rec || uploading || pendentes.length > 0
+  useEffect(() => { onOcupado(ocupado) }, [ocupado, onOcupado])
+  useEffect(() => {
+    if (!ocupado) return
+    const aviso = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', aviso)
+    return () => window.removeEventListener('beforeunload', aviso)
+  }, [ocupado])
+
+  // Sobe um bloco pro Storage e registra na reunião. O nome do arquivo (epoch +
+  // nº da parte) é decidido UMA vez, fora do retry: antes o contador era
+  // incrementado dentro da função de upload, então cada tentativa queimava um
+  // número e abria buraco na numeração. Com o path fixo + upsert, reenviar o
+  // mesmo bloco sobrescreve em vez de duplicar. Só mexe no estado de UI
   // (uploading) no bloco final — os intermediários sobem em silêncio, sem
   // interromper a gravação em curso.
+  // Em 12/08 a queda de rede durou mais que os 2 s de espera da versão anterior e
+  // menos que os 15 min até o bloco seguinte (que subiu em 0,79 s). Esperar mais
+  // não atrapalha nada — o upload roda em paralelo à gravação.
+  const ESPERAS = [5_000, 20_000, 60_000, 180_000]
+
+  const subirBloco = async (blob: Blob, durSeg: number, parte: string): Promise<void> => {
+    const path = `${reuniaoId}/${parte}.webm`
+    let ultimoErro = ''
+    for (let i = 0; i <= ESPERAS.length; i++) {
+      if (i > 0) await new Promise(r => setTimeout(r, ESPERAS[i - 1]))
+      const { error } = await supabase.storage.from('reunioes-audio')
+        .upload(path, blob, { contentType: blob.type || 'audio/webm', upsert: true })
+      if (!error) {
+        const { data: pub } = supabase.storage.from('reunioes-audio').getPublicUrl(path)
+        // Registrar na linha pode falhar mesmo com o áudio já no Storage — nesse
+        // caso o bloco vira órfão. Deixa o erro subir pra virar pendente.
+        await onAddRef.current({ id: uid(), url: pub.publicUrl, path, duracao_seg: durSeg, created_at: new Date().toISOString() })
+        return
+      }
+      ultimoErro = error.message || 'erro no upload'
+    }
+    throw new Error(ultimoErro)
+  }
+
   const finalize = async (blob: Blob, durSeg: number, isFinal: boolean) => {
     if (blob.size === 0) { if (isFinal) setUploading(false); return }
     if (isFinal) setUploading(true)
+    const parte = `${Date.now()}-${(partRef.current++).toString().padStart(2, '0')}`
     try {
-      // Falha de rede aqui perde o bloco inteiro (em 27/07, 1 dos 6 blocos nunca
-      // chegou no Storage). Tenta de novo uma vez antes de desistir.
-      const subir = async () => {
-        const path = `${reuniaoId}/${Date.now()}-${(partRef.current++).toString().padStart(2, '0')}.webm`
-        const { error } = await supabase.storage.from('reunioes-audio').upload(path, blob, { contentType: blob.type || 'audio/webm', upsert: false })
-        if (error) throw error
-        return path
-      }
-      let path: string
-      try { path = await subir() } catch { await new Promise(r => setTimeout(r, 2000)); path = await subir() }
-      const { data: pub } = supabase.storage.from('reunioes-audio').getPublicUrl(path)
-      onAddRef.current({ id: uid(), url: pub.publicUrl, path, duracao_seg: durSeg, created_at: new Date().toISOString() })
+      await subirBloco(blob, durSeg, parte)
     } catch (e) {
-      setErr('Falhou ao salvar um bloco: ' + ((e as Error)?.message || 'erro'))
+      const motivo = (e as Error)?.message || 'erro'
+      setPendentes(p => [...p, { id: uid(), blob, durSeg, parte, motivo }])
+      setErr(`Um bloco de ${fmtDur(durSeg)} não subiu (${motivo}). Ele está guardado aqui embaixo — clique em "Reenviar" antes de fechar a página.`)
     } finally {
       if (isFinal) setUploading(false)
     }
+  }
+
+  const reenviar = async (p: Pendente) => {
+    setReenviando(p.id); setErr(null)
+    try {
+      await subirBloco(p.blob, p.durSeg, p.parte)
+      setPendentes(list => list.filter(x => x.id !== p.id))
+    } catch (e) {
+      setErr('Ainda não foi: ' + ((e as Error)?.message || 'erro'))
+    } finally { setReenviando(null) }
   }
 
   const start = async () => {
@@ -121,6 +179,9 @@ function Gravador({ reuniaoId, onAdd }: { reuniaoId: string; onAdd: (g: Gravacao
       streamRef.current = stream
       stoppingRef.current = false
       partRef.current = 0
+      // Micro desconectado no meio da reunião: sem isto a tela seguia "gravando".
+      stream.getAudioTracks()[0]?.addEventListener('ended', () =>
+        encerrarPorFalha('O microfone foi desconectado e a gravação parou. O que já subiu está salvo.'))
       startRecorder()
       startRef.current = Date.now()
       setElapsed(0)
@@ -144,11 +205,14 @@ function Gravador({ reuniaoId, onAdd }: { reuniaoId: string; onAdd: (g: Gravacao
     const segStart = Date.now()
     segStartRef.current = segStart
     mr.ondataavailable = e => { if (e.data.size > 0) localChunks.push(e.data) }
+    mr.onerror = () => encerrarPorFalha('O gravador falhou e a gravação parou. O que já subiu está salvo.')
     mr.onstop = () => {
       const durSeg = Math.max(1, Math.round((Date.now() - segStart) / 1000))
       void finalize(new Blob(localChunks, { type: mr.mimeType || 'audio/webm' }), durSeg, stoppingRef.current)
     }
-    mr.start()
+    // timeslice: o encoder entrega pedaço a cada 30 s em vez de só no stop().
+    // Não salva do crash de aba, mas reduz o que fica preso no encoder.
+    mr.start(30_000)
     mrRef.current = mr
   }
 
@@ -157,14 +221,31 @@ function Gravador({ reuniaoId, onAdd }: { reuniaoId: string; onAdd: (g: Gravacao
   const rotate = () => {
     if (stoppingRef.current) return
     try { mrRef.current?.stop() } catch { /* noop */ }
-    startRecorder()
+    // Se o micro sumiu (máquina dormiu, outro app pegou o device), abrir o
+    // recorder novo lança. Sem este catch a exceção escapava do setInterval e a
+    // tela seguia contando "Parar · 1:12:33" com nada sendo gravado.
+    try { startRecorder() } catch {
+      encerrarPorFalha('A gravação parou sozinha (o microfone foi perdido). Clique em "Gravar reunião" pra retomar — o que já subiu está salvo.')
+    }
+  }
+
+  // Para tudo sem tentar salvar o bloco corrente (ele já se perdeu).
+  const encerrarPorFalha = (msg: string) => {
+    stopTimer(); stopSegTimer()
+    stoppingRef.current = true
+    streamRef.current?.getTracks().forEach(t => t.stop())
+    setRec(false); setUploading(false)
+    setErr(msg)
   }
 
   const stop = () => {
     stopTimer()
     stopSegTimer()
     stoppingRef.current = true
-    setUploading(true)
+    // Só prometer "Salvando…" se existe mesmo um bloco pra salvar: se o recorder
+    // já morreu, o onstop nunca dispara e a tela travava nesse estado pra sempre.
+    const vivo = mrRef.current?.state === 'recording'
+    if (vivo) setUploading(true)
     try { mrRef.current?.stop() } catch { /* noop */ }
     streamRef.current?.getTracks().forEach(t => t.stop())
     setRec(false)
@@ -191,6 +272,32 @@ function Gravador({ reuniaoId, onAdd }: { reuniaoId: string; onAdd: (g: Gravacao
       )}
       {rec && <p className="text-[11px] text-ink-muted mt-1.5">Salvando em blocos de 15 min — cada bloco é transcrito à parte.</p>}
       {err && <p className="text-[11px] text-danger mt-1.5">{err}</p>}
+      {pendentes.length > 0 && (
+        <div className="mt-2 rounded-lg border border-danger/40 bg-danger/5 p-2 space-y-1.5">
+          <p className="text-[11px] font-semibold text-danger">
+            {pendentes.length} bloco{pendentes.length > 1 ? 's' : ''} não salvo{pendentes.length > 1 ? 's' : ''} — não feche esta página sem reenviar.
+          </p>
+          {pendentes.map(p => (
+            <div key={p.id} className="flex items-center gap-2">
+              <span className="text-[11px] text-ink-muted flex-1 truncate">Bloco de {fmtDur(p.durSeg)} · {p.motivo}</span>
+              {/* Escape final: se nem o reenvio for, dá pra salvar o áudio no
+                  disco e subir depois, em vez de perder a reunião. */}
+              <a
+                href={URL.createObjectURL(p.blob)}
+                download={`bloco-${p.parte}.webm`}
+                className="shrink-0 text-[11px] text-accent hover:underline"
+              >baixar</a>
+              <button
+                onClick={() => reenviar(p)}
+                disabled={reenviando === p.id}
+                className="shrink-0 h-7 px-2.5 inline-flex items-center gap-1 rounded-md bg-danger text-white text-[11px] font-semibold disabled:opacity-60"
+              >
+                {reenviando === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : null} Reenviar
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -355,8 +462,13 @@ function Editor({ reuniao, onVoltar }: { reuniao: Reuniao; onVoltar: () => void 
   const [confirmDel, setConfirmDel] = useState(false)
   const [resumoLocal, setResumoLocal] = useState(reuniao.resumo)
   const [transcrevendo, setTranscrevendo] = useState<string | null>(null)
+  const [lote, setLote] = useState<{ feitos: number; total: number } | null>(null)
   const [resumindo, setResumindo] = useState(false)
   const [iaErr, setIaErr] = useState<string | null>(null)
+  const [transcrErr, setTranscrErr] = useState<string | null>(null)
+  const [gravando, setGravando] = useState(false)
+  const gravacoes = useGravacoes()
+  const naoTranscritos = reuniao.gravacoes.filter(g => !g.transcricao).length
   // Todo patch de gravacoes acontece DEPOIS de uma chamada de IA (30 s+) ou de um
   // upload (15 min). Sem a ref, o handler grava por cima com a lista de quando
   // foi clicado — duas transcricoes em paralelo perdiam uma.
@@ -366,26 +478,56 @@ function Editor({ reuniao, onVoltar }: { reuniao: Reuniao; onVoltar: () => void 
   const patch = (p: Partial<Pick<Reuniao, 'titulo' | 'data_reuniao' | 'status' | 'pauta' | 'tarefas' | 'resumo' | 'gravacoes'>>) =>
     atualizar.mutate({ id: reuniao.id, ...p })
 
-  const addGravacao = (g: Gravacao) => patch({ gravacoes: [...reuniaoRef.current.gravacoes, g] })
-  const removeGravacao = (g: Gravacao) => {
-    patch({ gravacoes: reuniaoRef.current.gravacoes.filter(x => x.id !== g.id) })
+  // As 3 escritas em `gravacoes` vão por RPC — o Postgres remonta o array. Ver
+  // o comentário em useGravacoes(): mandar o array inteiro do browser era o que
+  // apagava bloco.
+  const addGravacao = async (g: Gravacao) => { await gravacoes.add(reuniao.id, g) }
+  const removeGravacao = async (g: Gravacao) => {
+    await gravacoes.remove(reuniao.id, g.id)
     supabase.storage.from('reunioes-audio').remove([g.path]).catch(() => { /* noop */ })
   }
 
   const transcrever = async (g: Gravacao) => {
-    setIaErr(null); setTranscrevendo(g.id)
+    setTranscrErr(null); setTranscrevendo(g.id)
     try {
       const { texto } = await callReuniaoIA({ action: 'transcrever', url: g.url }) as { texto: string }
-      patch({ gravacoes: reuniaoRef.current.gravacoes.map(x => x.id === g.id ? { ...x, transcricao: texto } : x) })
-    } catch (e) { setIaErr('Transcrição falhou: ' + (e as Error).message) }
+      await gravacoes.setTranscricao(reuniao.id, g.id, texto)
+    } catch (e) { setTranscrErr('Transcrição falhou: ' + (e as Error).message); throw e }
     finally { setTranscrevendo(null) }
+  }
+
+  // Transcreve de uma vez os blocos que ainda não têm texto. Uma reunião de 1h30
+  // são 7 blocos — clicar 7 vezes e esperar cada um era o motivo de as reuniões
+  // de 10/08 e 12/08 ficarem sem transcrição nenhuma. Sequencial de propósito:
+  // em paralelo estoura o rate limit da OpenAI.
+  const transcreverTudo = async () => {
+    const faltando = reuniaoRef.current.gravacoes.filter(g => !g.transcricao)
+    if (faltando.length === 0) return
+    setTranscrErr(null); setLote({ feitos: 0, total: faltando.length })
+    let feitos = 0
+    for (const g of faltando) {
+      try { await transcrever(g); feitos++; setLote({ feitos, total: faltando.length }) }
+      catch { setTranscrErr(`Parou no bloco ${feitos + 1} de ${faltando.length}. Os anteriores foram salvos — clique de novo pra continuar de onde parou.`); break }
+    }
+    setLote(null)
   }
 
   const gerarResumo = async () => {
     setIaErr(null); setResumindo(true)
     try {
-      const transcricoes = reuniao.gravacoes.map(g => g.transcricao).filter(Boolean) as string[]
-      const { resumo } = await callReuniaoIA({ action: 'resumo', transcricoes, pauta: reuniao.pauta, tarefas: reuniao.tarefas, titulo: reuniao.titulo }) as { resumo: string }
+      const atual = reuniaoRef.current
+      const transcricoes = atual.gravacoes.map(g => g.transcricao).filter(Boolean) as string[]
+      if (transcricoes.length === 0 && atual.pauta.length === 0 && atual.tarefas.length === 0) {
+        setIaErr('Não há nada pra resumir: transcreva as gravações primeiro (botão "Transcrever tudo").')
+        return
+      }
+      // A API aceita lista vazia e resume só a pauta — saía uma ata convincente
+      // que não usou um segundo do áudio. Melhor avisar de quanto está faltando.
+      const faltam = atual.gravacoes.length - transcricoes.length
+      if (faltam > 0 && !window.confirm(`${faltam} de ${atual.gravacoes.length} gravações ainda não foram transcritas e vão ficar de fora da ata. Gerar assim mesmo?`)) return
+      // O resumo escrito à mão é sobrescrito sem volta.
+      if (resumoLocal.trim() && !window.confirm('Isso substitui o resumo que já está escrito. Continuar?')) return
+      const { resumo } = await callReuniaoIA({ action: 'resumo', transcricoes, pauta: atual.pauta, tarefas: atual.tarefas, titulo: atual.titulo }) as { resumo: string }
       if (resumo) { setResumoLocal(resumo); patch({ resumo }) }
     } catch (e) { setIaErr('Resumo falhou: ' + (e as Error).message) }
     finally { setResumindo(false) }
@@ -395,7 +537,15 @@ function Editor({ reuniao, onVoltar }: { reuniao: Reuniao; onVoltar: () => void 
     <div>
       {/* Topo: voltar + status + excluir */}
       <div className="flex items-center gap-2 mb-4">
-        <button onClick={onVoltar} className="h-9 px-3 inline-flex items-center gap-1.5 rounded-lg border border-border text-ink-muted hover:text-ink hover:border-border-strong text-[13px] font-medium transition-colors">
+        <button
+          onClick={() => {
+            // Sair desmonta o gravador: o bloco em curso (até 15 min) morreria
+            // sem chegar no Storage.
+            if (gravando && !window.confirm('A gravação ainda está rodando. Se sair agora, o trecho atual é perdido. Sair mesmo assim?')) return
+            onVoltar()
+          }}
+          className="h-9 px-3 inline-flex items-center gap-1.5 rounded-lg border border-border text-ink-muted hover:text-ink hover:border-border-strong text-[13px] font-medium transition-colors"
+        >
           <ArrowLeft className="h-4 w-4" /> Reuniões
         </button>
         <div className="flex-1" />
@@ -459,8 +609,23 @@ function Editor({ reuniao, onVoltar }: { reuniao: Reuniao; onVoltar: () => void 
       <div className="rounded-xl border border-border bg-surface p-4 mb-3">
         <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
           <h2 className="text-[13px] font-bold text-ink flex items-center gap-1.5"><Mic className="h-4 w-4 text-danger" /> Gravações da reunião</h2>
-          <Gravador reuniaoId={reuniao.id} onAdd={addGravacao} />
+          <div className="flex items-center gap-2 flex-wrap">
+            {naoTranscritos > 0 && (
+              <button
+                onClick={transcreverTudo}
+                disabled={lote !== null || transcrevendo !== null}
+                className="h-9 px-3 inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/10 text-accent text-[12px] font-semibold hover:bg-accent/15 disabled:opacity-60 transition-colors"
+                title="Transcreve de uma vez todos os blocos que ainda não têm texto"
+              >
+                {lote ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+                {lote ? `Transcrevendo ${lote.feitos + 1}/${lote.total}…` : `Transcrever tudo (${naoTranscritos})`}
+              </button>
+            )}
+            <Gravador reuniaoId={reuniao.id} onAdd={addGravacao} onOcupado={setGravando} />
+          </div>
         </div>
+        {transcrErr && <p className="text-[11px] text-danger mb-2">{transcrErr}</p>}
+        {atualizar.isError && <p className="text-[11px] text-danger mb-2">Não deu pra salvar no servidor. Recarregue a página antes de continuar — a última alteração pode ter se perdido.</p>}
         {reuniao.gravacoes.length === 0 ? (
           <p className="text-[11px] text-ink-faint">Nenhuma gravação ainda. Clique em "Gravar reunião" pra começar (o navegador vai pedir permissão do microfone).</p>
         ) : (
