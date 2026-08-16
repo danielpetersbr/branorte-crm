@@ -144,8 +144,16 @@ export function useGravacoes() {
 export function useExcluirReuniao() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (id: string): Promise<void> => {
-      const { error } = await supabase.from('reunioes').delete().eq('id', id)
+    // Apagava só a linha e deixava o áudio no Storage pra sempre — sobrou pelo
+    // menos um arquivo de 19/07/2026 assim. O Storage vai PRIMEIRO: se ele
+    // falhar, a reunião continua ali pra tentar de novo, em vez de virar áudio
+    // órfão que ninguém mais consegue localizar.
+    mutationFn: async (input: { id: string; paths: string[] }): Promise<void> => {
+      if (input.paths.length > 0) {
+        const { error: sErr } = await supabase.storage.from('reunioes-audio').remove(input.paths)
+        if (sErr) throw new Error(`não deu pra apagar o áudio no Storage: ${sErr.message}`)
+      }
+      const { error } = await supabase.from('reunioes').delete().eq('id', input.id)
       if (error) throw error
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
