@@ -14,7 +14,12 @@ const OPENAI_KEY = process.env.OPENAI_API_KEY!
 const MODEL = 'gpt-5.4-mini'
 const WHISPER_PROMPT = 'Reunião interna da Branorte (metalúrgica, fábrica de máquinas para ração animal). Termos: chupim, transportador helicoidal, moinho de martelo, misturador, silo, orçamento, pedido, vendedor, meta, comissão, follow-up, lead, etiqueta, Wascript, WhatsApp.'
 
-export const config = { api: { bodyParser: { sizeLimit: '2mb' } } }
+// maxDuration explícito (os outros 11 endpoints declaram; este era o único sem).
+// Medido em 16/08/2026: transcrever um bloco de 15 min (3,3 MB) leva ~28 s. Hoje
+// o limite efetivo já é folgado, mas deixar implícito é o tipo de coisa que
+// quebra sozinha quando a plataforma muda o padrão — já mordeu este repo duas
+// vezes (ver o comentário em api/rota.ts e api/resolver-link.ts).
+export const config = { api: { bodyParser: { sizeLimit: '2mb' } }, maxDuration: 300 }
 
 interface PautaItem { texto: string; feito: boolean; responsavel?: string }
 interface ReqBody {
@@ -139,12 +144,19 @@ Seja conciso. Se a transcrição estiver vazia, resuma a partir da pauta.`
       body: JSON.stringify({
         model: MODEL,
         messages: [{ role: 'user', content: prompt }],
-        max_completion_tokens: 1200,
+        // gpt-5.4-mini é modelo de raciocínio: os tokens de reasoning saem DESTE
+        // orçamento. Com 7 blocos (~25k tokens de entrada), 1200 podiam ser
+        // gastos inteiros pensando e devolver content vazio — que o cliente
+        // engolia calado. Espaço pra pensar e ainda escrever a ata.
+        max_completion_tokens: 4000,
       }),
     })
     if (!gr.ok) return res.status(502).json({ error: 'llm', detail: (await gr.text()).slice(0, 400) })
-    const gj = (await gr.json()) as { choices?: Array<{ message?: { content?: string } }> }
-    const resumo = gj.choices?.[0]?.message?.content?.trim() || ''
+    const gj = (await gr.json()) as { choices?: Array<{ message?: { content?: string }; finish_reason?: string }> }
+    const escolha = gj.choices?.[0]
+    const resumo = escolha?.message?.content?.trim() || ''
+    // Resposta vazia com HTTP 200 fazia o botão girar e não acontecer nada.
+    if (!resumo) return res.status(502).json({ error: 'llm_vazio', detail: `A IA respondeu vazio (finish_reason=${escolha?.finish_reason ?? '?'}). Tente de novo.` })
     return res.status(200).json({ resumo })
   }
 
