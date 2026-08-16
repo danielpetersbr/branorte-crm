@@ -468,6 +468,24 @@ function Editor({ reuniao, onVoltar }: { reuniao: Reuniao; onVoltar: () => void 
   const [transcrErr, setTranscrErr] = useState<string | null>(null)
   const [gravando, setGravando] = useState(false)
   const gravacoes = useGravacoes()
+  // O bucket é PRIVADO (áudio de reunião de diretoria não pode abrir por link
+  // solto). O player e o download usam URL assinada, gerada sob demanda a partir
+  // do `path` — a `url` pública gravada no jsonb das gravações antigas não vale
+  // mais. Uma chamada em lote por reunião; 2h cobre a sessão.
+  const [assinadas, setAssinadas] = useState<Record<string, string>>({})
+  const paths = reuniao.gravacoes.map(g => g.path).join('|')
+  useEffect(() => {
+    const lista = paths ? paths.split('|') : []
+    if (lista.length === 0) return
+    let vivo = true
+    supabase.storage.from('reunioes-audio').createSignedUrls(lista, 7200).then(({ data }) => {
+      if (!vivo || !data) return
+      const mapa: Record<string, string> = {}
+      data.forEach(d => { if (d.path && d.signedUrl) mapa[d.path] = d.signedUrl })
+      setAssinadas(mapa)
+    })
+    return () => { vivo = false }
+  }, [paths])
   const naoTranscritos = reuniao.gravacoes.filter(g => !g.transcricao).length
   // Todo patch de gravacoes acontece DEPOIS de uma chamada de IA (30 s+) ou de um
   // upload (15 min). Sem a ref, o handler grava por cima com a lista de quando
@@ -482,15 +500,19 @@ function Editor({ reuniao, onVoltar }: { reuniao: Reuniao; onVoltar: () => void 
   // o comentário em useGravacoes(): mandar o array inteiro do browser era o que
   // apagava bloco.
   const addGravacao = async (g: Gravacao) => { await gravacoes.add(reuniao.id, g) }
+  // Storage primeiro: se o delete do arquivo falhar, a gravação continua listada
+  // (dá pra tentar de novo). Ao contrário, sobraria áudio órfão invisível no app.
   const removeGravacao = async (g: Gravacao) => {
+    const { error } = await supabase.storage.from('reunioes-audio').remove([g.path])
+    if (error) { setTranscrErr('Não deu pra apagar o áudio: ' + error.message); return }
     await gravacoes.remove(reuniao.id, g.id)
-    supabase.storage.from('reunioes-audio').remove([g.path]).catch(() => { /* noop */ })
   }
 
   const transcrever = async (g: Gravacao) => {
     setTranscrErr(null); setTranscrevendo(g.id)
     try {
-      const { texto } = await callReuniaoIA({ action: 'transcrever', url: g.url }) as { texto: string }
+      // manda o `path`: o bucket é privado, quem baixa é a API com service_role
+      const { texto } = await callReuniaoIA({ action: 'transcrever', path: g.path }) as { texto: string }
       await gravacoes.setTranscricao(reuniao.id, g.id, texto)
     } catch (e) { setTranscrErr('Transcrição falhou: ' + (e as Error).message); throw e }
     finally { setTranscrevendo(null) }
@@ -636,7 +658,7 @@ function Editor({ reuniao, onVoltar }: { reuniao: Reuniao; onVoltar: () => void 
                   <span className="text-[11px] text-ink-muted shrink-0 tabular-nums w-[92px]">
                     Gravação {reuniao.gravacoes.length - i}<span className="text-ink-faint block text-[10px]">{fmtDur(g.duracao_seg)}</span>
                   </span>
-                  <audio controls preload="none" src={g.url} className="flex-1 h-8 min-w-0" />
+                  <audio controls preload="none" src={assinadas[g.path]} className="flex-1 h-8 min-w-0" />
                   <button
                     onClick={() => transcrever(g)}
                     disabled={transcrevendo === g.id}
@@ -646,7 +668,7 @@ function Editor({ reuniao, onVoltar }: { reuniao: Reuniao; onVoltar: () => void 
                     {transcrevendo === g.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}
                     {g.transcricao ? 're-transcrever' : 'transcrever'}
                   </button>
-                  <a href={g.url} download className="shrink-0 text-[11px] text-accent hover:underline" title="Baixar áudio">baixar</a>
+                  <a href={assinadas[g.path]} download className="shrink-0 text-[11px] text-accent hover:underline" title="Baixar áudio">baixar</a>
                   <button onClick={() => removeGravacao(g)} className="shrink-0 text-ink-faint/60 hover:text-danger" title="Excluir gravação">
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -695,10 +717,20 @@ function Editor({ reuniao, onVoltar }: { reuniao: Reuniao; onVoltar: () => void 
           <div className="bg-surface rounded-2xl border border-border p-5 w-full max-w-xs text-center shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="h-11 w-11 rounded-full bg-danger/10 mx-auto flex items-center justify-center mb-3"><Trash2 className="h-5 w-5 text-danger" /></div>
             <h2 className="font-semibold text-ink mb-1">Excluir reunião?</h2>
-            <p className="text-[13px] text-ink-muted mb-4">"{reuniao.titulo}" e sua pauta serão apagadas.</p>
+            <p className="text-[13px] text-ink-muted mb-4">
+              "{reuniao.titulo}", a pauta e {reuniao.gravacoes.length > 0 ? `as ${reuniao.gravacoes.length} gravações` : 'as gravações'} serão apagadas — inclusive o áudio.
+            </p>
+            {excluir.isError && <p className="text-[11px] text-danger mb-2">{(excluir.error as Error).message}</p>}
             <div className="flex gap-2">
               <button onClick={() => setConfirmDel(false)} className="flex-1 h-10 rounded-lg border border-border text-ink-muted font-medium">Cancelar</button>
-              <button onClick={() => excluir.mutate(reuniao.id, { onSuccess: onVoltar })} className="flex-1 h-10 rounded-lg bg-danger text-white font-semibold">Excluir</button>
+              <button
+                onClick={() => excluir.mutate(
+                  { id: reuniao.id, paths: reuniao.gravacoes.map(g => g.path) },
+                  { onSuccess: onVoltar },
+                )}
+                disabled={excluir.isPending}
+                className="flex-1 h-10 rounded-lg bg-danger text-white font-semibold disabled:opacity-60"
+              >{excluir.isPending ? 'Excluindo…' : 'Excluir'}</button>
             </div>
           </div>
         </div>
