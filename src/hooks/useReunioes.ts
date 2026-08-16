@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 
@@ -91,6 +92,11 @@ export function useCriarReuniao() {
 export function useAtualizarReuniao() {
   const qc = useQueryClient()
   return useMutation({
+    // Sem retry (o padrão do React Query), um token expirado no meio de uma
+    // reunião de 1h30 fazia o update voltar 401, o onError desfazer a alteração
+    // no cache e NADA aparecer na tela — a pauta marcada simplesmente sumia.
+    retry: 3,
+    retryDelay: (n) => Math.min(2000 * 2 ** n, 15_000),
     mutationFn: async (input: { id: string } & Partial<Pick<Reuniao, 'titulo' | 'data_reuniao' | 'status' | 'pauta' | 'tarefas' | 'resumo' | 'gravacoes'>>): Promise<void> => {
       const { id, ...patch } = input
       const { error } = await supabase.from('reunioes').update(patch).eq('id', id)
@@ -106,6 +112,33 @@ export function useAtualizarReuniao() {
     onError: (_e, _v, ctx) => { if (ctx?.prev) qc.setQueryData(KEY, ctx.prev) },
     onSettled: () => qc.invalidateQueries({ queryKey: KEY }),
   })
+}
+
+// Escritas em `gravacoes` NÃO passam mais pelo update genérico. O array era
+// montado no browser (ler do cache → concatenar → mandar inteiro): qualquer
+// refetch que voltasse entre o ler e o escrever levava junto o bloco anterior.
+// Foi assim que a reunião de 12/08/2026 perdeu o bloco -00 (subiu pro Storage,
+// nunca entrou na linha). Agora o Postgres remonta o array numa statement só e
+// devolve a lista final — que vira a verdade do cache.
+export function useGravacoes() {
+  const qc = useQueryClient()
+  return useMemo(() => {
+    const chamar = async (fn: string, args: Record<string, unknown>, reuniaoId: string): Promise<Gravacao[]> => {
+      const { data, error } = await supabase.rpc(fn, args)
+      if (error) throw error
+      const lista = (Array.isArray(data) ? data : []) as Gravacao[]
+      qc.setQueryData<Reuniao[]>(KEY, (old) => (old ?? []).map(r => r.id === reuniaoId ? { ...r, gravacoes: lista } : r))
+      return lista
+    }
+    return {
+      add: (reuniaoId: string, g: Gravacao) =>
+        chamar('reuniao_add_gravacao', { p_id: reuniaoId, p_gravacao: g }, reuniaoId),
+      setTranscricao: (reuniaoId: string, gravId: string, texto: string) =>
+        chamar('reuniao_set_transcricao', { p_id: reuniaoId, p_grav_id: gravId, p_texto: texto }, reuniaoId),
+      remove: (reuniaoId: string, gravId: string) =>
+        chamar('reuniao_remove_gravacao', { p_id: reuniaoId, p_grav_id: gravId }, reuniaoId),
+    }
+  }, [qc])
 }
 
 export function useExcluirReuniao() {
