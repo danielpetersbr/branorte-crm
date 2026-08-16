@@ -12,6 +12,7 @@ const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!
 const SVC_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
 const OPENAI_KEY = process.env.OPENAI_API_KEY!
 const MODEL = 'gpt-5.4-mini'
+const BUCKET = 'reunioes-audio'
 const WHISPER_PROMPT = 'Reunião interna da Branorte (metalúrgica, fábrica de máquinas para ração animal). Termos: chupim, transportador helicoidal, moinho de martelo, misturador, silo, orçamento, pedido, vendedor, meta, comissão, follow-up, lead, etiqueta, Wascript, WhatsApp.'
 
 // maxDuration explícito (os outros 11 endpoints declaram; este era o único sem).
@@ -24,6 +25,7 @@ export const config = { api: { bodyParser: { sizeLimit: '2mb' } }, maxDuration: 
 interface PautaItem { texto: string; feito: boolean; responsavel?: string }
 interface ReqBody {
   action: 'transcrever' | 'resumo'
+  path?: string
   url?: string
   transcricoes?: string[]
   pauta?: PautaItem[]
@@ -51,12 +53,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // ---------- TRANSCREVER ----------
   if (body.action === 'transcrever') {
-    if (!body.url) return res.status(400).json({ error: 'no_url' })
+    if (!body.path && !body.url) return res.status(400).json({ error: 'no_path' })
     let buf: Buffer
     try {
-      const audioRes = await fetch(body.url)
-      if (!audioRes.ok) return res.status(502).json({ error: 'fetch_audio', status: audioRes.status })
-      buf = Buffer.from(await audioRes.arrayBuffer())
+      if (body.path) {
+        // Caminho normal: o bucket é PRIVADO, então quem baixa é esta função com
+        // service_role (ignora RLS e não depende de link público).
+        const { data, error } = await supa.storage.from(BUCKET).download(body.path)
+        if (error || !data) return res.status(502).json({ error: 'fetch_audio', detail: error?.message ?? 'sem dados' })
+        buf = Buffer.from(await data.arrayBuffer())
+      } else {
+        // Compat com chamadas antigas que mandavam a URL pronta (assinada ou não).
+        const audioRes = await fetch(body.url!)
+        if (!audioRes.ok) return res.status(502).json({ error: 'fetch_audio', status: audioRes.status })
+        buf = Buffer.from(await audioRes.arrayBuffer())
+      }
     } catch (e) {
       return res.status(502).json({ error: 'fetch_audio', detail: (e as Error).message })
     }
