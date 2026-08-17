@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import {
   Copy, Check, Info, ChevronDown,
-  UserPlus, MessageSquare, Phone, FileText, Handshake, Flame, Users,
+  UserPlus, MessageSquare, Phone, FileText, Handshake, Flame, Users, Target,
   type LucideIcon,
 } from 'lucide-react'
 import { useResumoDia, type ResumoDiaVendedor } from '@/hooks/useResumoDia'
@@ -44,13 +44,14 @@ const TONE: Record<Tone, { num: string; fio: string; fioLider: string; icone: st
   neutro:  { num: 'text-ink', fio: 'bg-ink-faint/20', fioLider: 'bg-ink-faint/50', icone: 'text-ink-faint', kpiNum: 'text-ink-muted' },
 }
 
-type ColKey = keyof Pick<ResumoDiaVendedor, 'leads' | 'atendimentos' | 'ligacoes' | 'orcamentos' | 'negociacao' | 'quente' | 'carteira'>
+type ColKey = keyof Pick<ResumoDiaVendedor, 'leads' | 'atendimentos' | 'ligacoes' | 'orcamentos' | 'negociacao' | 'quente' | 'carteira' | 'score'>
 
 type Col = {
   key: ColKey
   Icon: LucideIcon
   emoji: string          // a legenda e a mensagem do grupo falam em emoji há meses — mantido
   label: string
+  curto?: string         // rótulo do card do celular: em 390px "NEGOCIANDO" trunca
   explica: string
   tone: Tone
   kpi: boolean           // entra na faixa do topo
@@ -63,13 +64,17 @@ type Col = {
 const COLS: Col[] = [
   { key: 'leads',        Icon: UserPlus,       emoji: '📥', label: 'Leads',      explica: 'leads novos que chegaram hoje',                    tone: 'accent',  kpi: true,  mobile: true,  snapshot: false },
   { key: 'atendimentos', Icon: MessageSquare,  emoji: '💬', label: 'Atendidos',  explica: 'conversas trabalhadas hoje',                       tone: 'accent',  kpi: true,  mobile: true,  snapshot: false },
-  { key: 'ligacoes',     Icon: Phone,          emoji: '📲', label: 'Ligações*',  explica: 'PISO — só o que a captura viu (ver aviso abaixo)',  tone: 'neutro',  kpi: true,  mobile: false, snapshot: false },
-  { key: 'orcamentos',   Icon: FileText,       emoji: '📄', label: 'Orçamentos', explica: 'orçamentos montados hoje',                         tone: 'accent',  kpi: true,  mobile: false, snapshot: false },
-  { key: 'negociacao',   Icon: Handshake,      emoji: '🤝', label: 'Negociando', explica: 'em negociação agora (follow-up + quente)',         tone: 'info',    kpi: true,  mobile: true,  snapshot: true },
+  { key: 'ligacoes',     Icon: Phone,          emoji: '📲', label: 'Ligações*', curto: 'Lig.*',  explica: 'PISO — só o que a captura viu (ver aviso abaixo)',  tone: 'neutro',  kpi: true,  mobile: false, snapshot: false },
+  { key: 'orcamentos',   Icon: FileText,       emoji: '📄', label: 'Orçamentos', curto: 'Orçam.', explica: 'orçamentos montados hoje',                         tone: 'accent',  kpi: true,  mobile: false, snapshot: false },
+  { key: 'negociacao',   Icon: Handshake,      emoji: '🤝', label: 'Negociando', curto: 'Negoc.', explica: 'em negociação agora (follow-up + quente)',         tone: 'info',    kpi: true,  mobile: true,  snapshot: true },
   { key: 'quente',       Icon: Flame,          emoji: '🔥', label: 'Quentes',    explica: 'leads quentes agora',                              tone: 'warning', kpi: true,  mobile: true,  snapshot: true },
   // Carteira é estoque histórico, não corrida de hoje: número puro, sem fio, e
-  // separada por um divisor. Ranquear carteira ali levaria o olho pro lugar errado.
+  // separada por um divisor. Ranquear carteira ali levaria o olho pro lugar errado —
+  // ela é ~70% conversa perdida (PEDRO: 846 perdidos de 1.223).
   { key: 'carteira',     Icon: Users,          emoji: '👥', label: 'Carteira',   explica: 'total de conversas do vendedor (histórico)',       tone: 'neutro',  kpi: false, mobile: false, snapshot: true, separaAntes: true, semFio: true },
+  // SCORE é a carteira que importa: só o que está VIVO no funil. Ganha fio porque
+  // comparar score entre vendedores é exatamente o ponto dele.
+  { key: 'score',        Icon: Target,         emoji: '🎯', label: 'Score',      explica: 'clientes vivos no funil: prospecção + novo lead + 2ª tentativa + follow-up + lead quente', tone: 'accent', kpi: false, mobile: true,  snapshot: true },
 ]
 
 // Iniciais pro avatar. "EDILSON JR" → "EJ", "JARDEL" → "JA".
@@ -240,7 +245,8 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
     negociacao: a.negociacao + r.negociacao,
     quente: a.quente + r.quente,
     carteira: a.carteira + r.carteira,
-  }), { leads: 0, atendimentos: 0, ligacoes: 0, orcamentos: 0, negociacao: 0, quente: 0, carteira: 0 }), [rows])
+    score: a.score + r.score,
+  }), { leads: 0, atendimentos: 0, ligacoes: 0, orcamentos: 0, negociacao: 0, quente: 0, carteira: 0, score: 0 }), [rows])
 
   // Maior valor por coluna — base do fio de comparação em cada célula.
   const maxByCol = useMemo(() => {
@@ -437,18 +443,20 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                       <ChevronDown className={`h-4 w-4 shrink-0 ml-auto text-ink-faint transition-transform duration-200 ${aberto ? 'rotate-180' : ''}`} />
                     </div>
 
-                    <div className="mt-2.5 grid grid-cols-4 gap-2">
+                    {/* 5 métricas em 390px: rótulo em 9px com truncate. Medido —
+                        o documento continua em 390px, sem scroll horizontal. */}
+                    <div className="mt-2.5 grid grid-cols-5 gap-1.5">
                       {principais.map(c => {
                         const ind = c.snapshot && funilIndisponivel
                         const v = r[c.key]
                         return (
                           <div key={c.key}>
-                            <div className={`tabular-nums text-[16px] leading-none font-semibold ${
+                            <div className={`tabular-nums text-[15px] leading-none font-semibold ${
                               ind ? 'text-ink-faint text-[13px]' : v === 0 ? 'text-ink-faint' : TONE[c.tone].kpiNum
                             }`}>
                               {ind ? '···' : fmt(v)}
                             </div>
-                            <div className="text-[9.5px] uppercase tracking-wide text-ink-faint mt-1 truncate">{c.label}</div>
+                            <div className="text-[9px] uppercase tracking-wide text-ink-faint mt-1 truncate">{c.curto ?? c.label}</div>
                           </div>
                         )
                       })}
@@ -467,7 +475,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                             }`}>
                               {ind ? '···' : fmt(v)}
                             </div>
-                            <div className="text-[9.5px] uppercase tracking-wide text-ink-faint mt-1 truncate">{c.label}</div>
+                            <div className="text-[9.5px] uppercase tracking-wide text-ink-faint mt-1 truncate">{c.curto ?? c.label}</div>
                           </div>
                         )
                       })}
@@ -488,7 +496,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                       <div className={`tabular-nums text-[15px] leading-none font-semibold ${ind ? 'text-ink-faint text-[13px]' : TONE[c.tone].kpiNum}`}>
                         {ind ? '···' : fmt(tot[c.key])}
                       </div>
-                      <div className="text-[9.5px] uppercase tracking-wide text-ink-faint mt-1 truncate">{c.label}</div>
+                      <div className="text-[9.5px] uppercase tracking-wide text-ink-faint mt-1 truncate">{c.curto ?? c.label}</div>
                     </div>
                   )
                 })}

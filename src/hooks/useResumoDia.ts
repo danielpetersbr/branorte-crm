@@ -29,7 +29,24 @@ export interface ResumoDiaVendedor {
   negociacao: number
   carteira: number
   ligacoes: number
+  score: number
 }
+
+// SCORE = quantos clientes VIVOS o vendedor tem na mão, somando as 5 etiquetas
+// do funil aberto: PROSPECÇÃO + NOVO LEAD + 2ª TENTATIVA + FOLLOW UP + LEAD QUENTE.
+//
+// ⚠️ ORÇAMENTO ENVIADO ficou de FORA de propósito (decisão do Daniel em 17/08/2026,
+// tomada em cima do dado). A etiqueta mede quem tem o hábito de etiquetar, não quem
+// envia orçamento: medido em 60 dias, IGOR gerou 136 orçamentos e tem ZERO dessa
+// etiqueta, PEDRO gerou 43 e tem zero, JARDEL gerou 87 e tem 3 — enquanto EDILSON
+// gerou 58 e carrega 112 etiquetas paradas. Incluir isso colocaria quem menos
+// orçou na frente de quem mais orçou.
+//
+// VENDIDO e PERDIDO também ficam fora: saíram do jogo. É justamente isso que
+// separa o score da "Carteira" (total_chats), que é ~70% perdido em quase todo
+// mundo (PEDRO: 846 perdidos de 1.223).
+const somaScore = (f?: FunilRow): number =>
+  f ? (f.prospec ?? 0) + (f.novoLead ?? 0) + (f.tentativa ?? 0) + (f.followup ?? 0) + (f.quente ?? 0) : 0
 
 const firstKey = (nome: string) => (nome.split(/\s+/)[0] || '').toUpperCase()
 const EXCLUIR_DO_RESUMO = new Set(['DANIEL'])
@@ -106,6 +123,8 @@ export function useResumoDia(preset: DashboardPreset = '') {
         // Ligacoes FEITAS no periodo (wa_chat_messages tipo=call_log). PISO: so cobre
         // chats das etiquetas do funil — ver a view wa_ligacoes_por_vendedor.
         ligacoes: fx?.ligacoes ?? 0,
+        // SNAPSHOT como carteira/negociacao: e estado AGORA, nao movimento do periodo.
+        score: somaScore(f),
       }
     }), [vendedoresQ.data, funilQ.data, fluxoQ.data, liveHoje])
 
