@@ -60,7 +60,12 @@ type Col = {
   snapshot: boolean      // é estado AGORA (não movimento do período) → pode virar "· · ·"
   separaAntes?: boolean  // divisor: daqui pra frente não é atividade de hoje
   semFio?: boolean       // sem fio de comparação (número puro)
+  pct?: boolean          // o valor é 0-100 e sai com "%"
 }
+
+// Um número da tabela vira texto. Percentual carrega o "%" junto — sem ele,
+// "16" na coluna Score seria lido como 16 clientes, que é outra coisa.
+const fmtCol = (c: Col, v: number) => (c.pct ? `${v}%` : fmt(v))
 
 const COLS: Col[] = [
   { key: 'leads',        Icon: UserPlus,       emoji: '📥', label: 'Leads',      explica: 'leads novos que chegaram hoje',                    tone: 'accent',  kpi: true,  mobile: true,  snapshot: false },
@@ -73,14 +78,14 @@ const COLS: Col[] = [
   // separada por um divisor. Ranquear carteira ali levaria o olho pro lugar errado —
   // carteira grande pode ser mérito ou pode ser fila parada esperando resposta.
   { key: 'carteira',     Icon: Users,          emoji: '👥', label: 'Carteira',   explica: 'clientes que ele está trabalhando: prospecção + 2ª tentativa + novo lead + follow-up + lead quente, tirando quem já foi marcado como vendido ou perdido', tone: 'neutro',  kpi: false, mobile: false, snapshot: true, separaAntes: true, semFio: true },
-  // ⚠️ SCORE e CARTEIRA são as MESMAS 5 etapas desde 17/08/2026 — o Daniel quis a
-  // carteira assim. Só que os dois números NÃO batem, e a diferença é o ponto:
-  // o Score soma `per_label` do heartbeat (duplica cliente com duas etiquetas e
-  // NÃO tira quem já foi marcado vendido/perdido); a Carteira conta cliente
-  // distinto e tira os fechados. IGOR: 202 no Score contra 159 na Carteira — 43
-  // clientes dele estão numa etapa do funil E fechados ao mesmo tempo. Ou seja: a
-  // Carteira é a versão limpa, e a distância entre as colunas mede etiqueta suja.
-  { key: 'score',        Icon: Target,         emoji: '🎯', label: 'Score',      explica: 'clientes vivos no funil: prospecção + novo lead + 2ª tentativa + follow-up + lead quente', tone: 'accent', kpi: false, mobile: true,  snapshot: true },
+  // SCORE virou PERCENTUAL em 17/08/2026 (pedido do Daniel: "no máximo 100%").
+  // É ATENDIDOS ÷ CARTEIRA: quanto da carteira dele ele mexeu no período.
+  //
+  // Antes era a contagem de clientes vivos no funil — que virou a própria coluna
+  // Carteira, então a dupla mostrava o mesmo mundo duas vezes. Agora uma diz o
+  // TAMANHO e a outra o ESFORÇO, e carteira pequena deixou de ser desvantagem:
+  // GUSTAVO tem a menor carteira do time e o maior score, porque trabalhou ela.
+  { key: 'score',        Icon: Target,         emoji: '🎯', label: 'Score',      explica: 'quanto da carteira ele mexeu no período: atendidos ÷ carteira, travado em 100%', tone: 'accent', kpi: false, mobile: true,  snapshot: true, pct: true },
 ]
 
 // Uma celula fica "· · ·" por três motivos distintos, e os três querem dizer
@@ -94,12 +99,17 @@ type Fora = { funil: boolean; carteira: boolean }
 // Vale pra coluna inteira (KPI do topo, total do rodapé).
 function semDadoCol(c: Col, fora: Fora): boolean {
   if (c.key === 'carteira') return fora.carteira
+  // Score é atendidos ÷ carteira: cai junto com QUALQUER um dos dois lados.
+  if (c.key === 'score') return fora.carteira || fora.funil
   return c.snapshot && fora.funil
 }
 
-// Vale pra célula de um vendedor (soma o caso das ligações, que é por pessoa).
+// Vale pra célula de um vendedor (soma os casos que são por pessoa).
 function semDado(c: Col, r: ResumoDiaVendedor, fora: Fora): boolean {
   if (c.key === 'ligacoes' && !r.ligacoesCaptura) return true
+  // Score é uma razão: sem carteira não existe denominador. Mostrar "0%" aí diria
+  // "ele não mexeu em nada", quando a verdade é "não há o que mexer".
+  if (c.key === 'score' && r.carteira === 0) return true
   return semDadoCol(c, fora)
 }
 
@@ -126,8 +136,8 @@ function iniciais(nome: string): string {
 // 4. O FIO É 2px E MORA SOB O NÚMERO. Barra atrás do dígito disputa leitura;
 //    embaixo, ela só responde "esse é grande ou pequeno perto dos outros?".
 // ---------------------------------------------------------------------------
-function NumCell({ val, max, tone, indisponivel = false, separaAntes = false, semFio = false }:
-  { val: number; max: number; tone: Tone; indisponivel?: boolean; separaAntes?: boolean; semFio?: boolean }) {
+function NumCell({ val, max, tone, indisponivel = false, separaAntes = false, semFio = false, sufixo = '' }:
+  { val: number; max: number; tone: Tone; indisponivel?: boolean; separaAntes?: boolean; semFio?: boolean; sufixo?: string }) {
   const divisor = separaAntes ? 'border-l border-border/60 pl-4' : ''
   if (indisponivel) {
     return (
@@ -150,7 +160,7 @@ function NumCell({ val, max, tone, indisponivel = false, separaAntes = false, se
         <span className={`tabular-nums text-[14px] leading-none ${
           vazio ? 'text-ink-faint font-normal' : lider ? `${t.num} font-semibold` : `${t.num} font-medium`
         }`}>
-          {fmt(val)}
+          {fmt(val)}{sufixo}
         </span>
         {!semFio && (
           <span aria-hidden className="block h-[2px] w-full max-w-[52px] rounded-full overflow-hidden">
@@ -186,10 +196,54 @@ function KpiCard({ col, valor, indisponivel, destaque }:
       <div className={`tabular-nums leading-none font-semibold text-[22px] ${
         indisponivel ? 'text-ink-faint text-[16px]' : valor === 0 ? 'text-ink-faint' : t.kpiNum
       }`}>
-        {indisponivel ? '· · ·' : fmt(valor)}
+        {indisponivel ? '· · ·' : fmtCol(col, valor)}
       </div>
     </div>
   )
+}
+
+// Copia texto e diz se conseguiu. Duas rotas, porque a primeira falha em situação
+// banal do dia a dia.
+//
+// ⚠️ 17/08/2026 — "o botão não pega". O código era
+// `navigator.clipboard?.writeText(...).then(...)`, SEM catch: a API rejeita com
+// `NotAllowedError: Document is not focused` (DevTools aberto, janela sem foco,
+// clique logo depois de um alt-tab) e a rejeição morria sem ninguém tratar. O
+// botão não copiava, não avisava e não mudava de estado — indistinguível de um
+// clique que não registrou.
+//
+// Rota 2 é o `execCommand('copy')`: obsoleto, mas roda SÍNCRONO dentro do gesto do
+// clique e por isso não depende do foco do documento. É exatamente o caso que
+// derruba a rota 1.
+async function copiarTexto(texto: string): Promise<boolean> {
+  // Medido em 17/08/2026 com a página aberta e VISÍVEL: `document.hasFocus()`
+  // devolve false sempre que a JANELA do Chrome não está em primeiro plano, e aí
+  // as duas rotas abaixo falham juntas. Este empurrão recupera parte desses casos.
+  try { window.focus() } catch { /* alguns contextos proíbem; segue o jogo */ }
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(texto)
+      return true
+    }
+  } catch {
+    // cai pro fallback — não desiste aqui
+  }
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = texto
+    ta.setAttribute('readonly', '')
+    // Fora da tela, mas NÃO com display:none nem visibility:hidden — elemento
+    // escondido assim não é selecionável e o execCommand não copia nada.
+    ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;padding:0;border:0;opacity:0'
+    document.body.appendChild(ta)
+    ta.select()
+    ta.setSelectionRange(0, texto.length)   // iOS só respeita o range explícito
+    const ok = document.execCommand('copy')
+    ta.remove()
+    return ok
+  } catch {
+    return false
+  }
 }
 
 // Monta o texto pro WhatsApp (negrito com *asteriscos*, uma linha por vendedor).
@@ -255,6 +309,10 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
   const { linhas, isLoading, isError, funilIndisponivel, carteiraIndisponivel } = useResumoDia(preset)
   const fora: Fora = { funil: funilIndisponivel, carteira: carteiraIndisponivel }
   const [copiado, setCopiado] = useState(false)
+  // Texto que a cópia não conseguiu entregar: vira um painel selecionável na tela.
+  // Falhar em silêncio é o bug que estamos consertando — se as duas rotas caírem,
+  // o gestor ainda precisa conseguir levar o resumo pro grupo.
+  const [textoPraCopiarNaMao, setTextoPraCopiarNaMao] = useState<string | null>(null)
   const [legendaAberta, setLegendaAberta] = useState(false)
   const [expandido, setExpandido] = useState<string | null>(null)  // card do celular
 
@@ -272,8 +330,14 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
     negociacao: a.negociacao + r.negociacao,
     quente: a.quente + r.quente,
     carteira: a.carteira + r.carteira,
-    score: a.score + r.score,
+    // score NÃO entra na soma: percentual não se soma. Calculado logo abaixo.
+    score: 0,
   }), { leads: 0, atendimentos: 0, ligacoes: 0, orcamentos: 0, negociacao: 0, quente: 0, carteira: 0, score: 0 }), [rows])
+
+  // Score do TIME = atendidos do time ÷ carteira do time. Somar os nove
+  // percentuais daria 100+; média simples daria o mesmo peso pra quem tem 41 de
+  // carteira e pra quem tem 173. As duas contas mentiriam.
+  if (tot.carteira > 0) tot.score = Math.min(100, Math.round((tot.atendimentos / tot.carteira) * 100))
 
   // Maior valor por coluna — base do fio de comparação em cada célula.
   const maxByCol = useMemo(() => {
@@ -291,12 +355,16 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
   // mundo atualizar — o aviso do rodapé e o "· · ·" das células saem juntos.
   const semCaptura = useMemo(() => rows.filter(r => !r.ligacoesCaptura).map(r => r.nome), [rows])
 
-  const copiar = () => {
+  const copiar = async () => {
     const periodo = !liveHoje && periodoLabel ? periodoLabel : undefined
-    navigator.clipboard?.writeText(textoWhatsApp(rows, tot, { periodo, funilIndisponivel })).then(() => {
+    const texto = textoWhatsApp(rows, tot, { periodo, funilIndisponivel })
+    if (await copiarTexto(texto)) {
+      setTextoPraCopiarNaMao(null)
       setCopiado(true)
       setTimeout(() => setCopiado(false), 2500)
-    })
+    } else {
+      setTextoPraCopiarNaMao(texto)
+    }
   }
 
   return (
@@ -328,6 +396,33 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
           </button>
         )}
       </div>
+
+      {/* Rede de segurança: as duas rotas de cópia falharam. Em vez de não fazer
+          nada (que era o bug), entrega o texto pronto e já selecionado. */}
+      {textoPraCopiarNaMao && (
+        <div className="mt-3 rounded-lg border border-warning/40 bg-warning/5 p-3">
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <p className="text-[11.5px] leading-relaxed text-warning">
+              <b className="font-semibold">O navegador bloqueou a cópia automática.</b>{' '}
+              O texto está aqui embaixo, já selecionado — <b className="font-semibold">Ctrl+C</b> e cola no grupo.
+            </p>
+            <button
+              onClick={() => setTextoPraCopiarNaMao(null)}
+              className="shrink-0 text-[11px] text-ink-muted hover:text-ink underline underline-offset-2"
+            >
+              fechar
+            </button>
+          </div>
+          <textarea
+            readOnly
+            value={textoPraCopiarNaMao}
+            rows={Math.min(16, textoPraCopiarNaMao.split('\n').length + 1)}
+            ref={el => el?.select()}
+            onFocus={e => e.currentTarget.select()}
+            className="w-full rounded-md border border-border bg-surface-2 p-2.5 text-[12px] leading-relaxed text-ink font-mono resize-y"
+          />
+        </div>
+      )}
 
       {isLoading ? (
         <p className="text-[12px] text-ink-muted py-10 text-center">Carregando resumo…</p>
@@ -409,6 +504,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                           indisponivel={semDado(c, r, fora)}
                           separaAntes={c.separaAntes}
                           semFio={c.semFio}
+                          sufixo={c.pct ? '%' : ''}
                         />
                       ))}
                     </tr>
@@ -425,7 +521,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                         semDadoCol(c, fora) ? 'text-ink-faint' : TONE[c.tone].kpiNum
                       } ${c.separaAntes ? 'border-l border-border/60 pl-4' : ''}`}
                     >
-                      {semDadoCol(c, fora) ? '· · ·' : fmt(tot[c.key])}
+                      {semDadoCol(c, fora) ? '· · ·' : fmtCol(c, tot[c.key])}
                     </td>
                   ))}
                 </tr>
@@ -485,7 +581,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                             <div className={`tabular-nums text-[15px] leading-none font-semibold ${
                               ind ? 'text-ink-faint text-[13px]' : v === 0 ? 'text-ink-faint' : TONE[c.tone].kpiNum
                             }`}>
-                              {ind ? '···' : fmt(v)}
+                              {ind ? '···' : fmtCol(c, v)}
                             </div>
                             <div className="text-[9px] uppercase tracking-wide text-ink-faint mt-1 truncate">{c.curto ?? c.label}</div>
                           </div>
@@ -504,7 +600,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                             <div className={`tabular-nums text-[15px] leading-none font-medium ${
                               ind ? 'text-ink-faint text-[13px]' : v === 0 ? 'text-ink-faint' : TONE[c.tone].kpiNum
                             }`}>
-                              {ind ? '···' : fmt(v)}
+                              {ind ? '···' : fmtCol(c, v)}
                             </div>
                             <div className="text-[9.5px] uppercase tracking-wide text-ink-faint mt-1 truncate">{c.curto ?? c.label}</div>
                           </div>
@@ -525,7 +621,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                   return (
                     <div key={c.key}>
                       <div className={`tabular-nums text-[15px] leading-none font-semibold ${ind ? 'text-ink-faint text-[13px]' : TONE[c.tone].kpiNum}`}>
-                        {ind ? '···' : fmt(tot[c.key])}
+                        {ind ? '···' : fmtCol(c, tot[c.key])}
                       </div>
                       <div className="text-[9.5px] uppercase tracking-wide text-ink-faint mt-1 truncate">{c.curto ?? c.label}</div>
                     </div>

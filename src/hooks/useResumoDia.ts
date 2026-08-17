@@ -44,28 +44,27 @@ export interface ResumoDiaVendedor {
   ligacoesCaptura: boolean
 }
 
-// SCORE = quantos clientes VIVOS o vendedor tem na mão, somando as 5 etiquetas
-// do funil aberto: PROSPECÇÃO + NOVO LEAD + 2ª TENTATIVA + FOLLOW UP + LEAD QUENTE.
+// SCORE = % DA CARTEIRA QUE O VENDEDOR MEXEU no período: atendidos ÷ carteira,
+// travado em 100% ("no máximo 100%", pedido do Daniel em 17/08/2026).
 //
-// ⚠️ ORÇAMENTO ENVIADO ficou de FORA de propósito (decisão do Daniel em 17/08/2026,
-// tomada em cima do dado). A etiqueta mede quem tem o hábito de etiquetar, não quem
-// envia orçamento: medido em 60 dias, IGOR gerou 136 orçamentos e tem ZERO dessa
-// etiqueta, PEDRO gerou 43 e tem zero, JARDEL gerou 87 e tem 3 — enquanto EDILSON
-// gerou 58 e carrega 112 etiquetas paradas. Incluir isso colocaria quem menos
-// orçou na frente de quem mais orçou.
+// Por que deixou de ser contagem: até esta mudança o Score era a soma das 5
+// etiquetas do funil aberto — que virou exatamente a definição da coluna Carteira
+// ao lado. As duas colunas passaram a mostrar o mesmo mundo, uma delas com o
+// número inflado (o Score somava `per_label` do heartbeat, que duplica cliente com
+// duas etiquetas e não tira os fechados: IGOR aparecia com 202 contra 159 na
+// Carteira). Agora uma coluna diz o TAMANHO da carteira e a outra o ESFORÇO sobre
+// ela, que é a leitura que o gestor não tinha.
 //
-// VENDIDO e PERDIDO também ficam fora: saíram do jogo.
+// Efeito colateral bom: carteira pequena deixou de ser desvantagem no placar.
+// GUSTAVO tem a menor carteira do time (41) e marca o maior score, porque mexeu
+// em 12 dela — enquanto EDER, com 173, mexeu em 5.
 //
-// A CARTEIRA usa as MESMAS 5 etapas do Score (decisão do Daniel, 17/08/2026:
-// "só esses conta na carteira"). ORÇAMENTO ENVIADO e INTERESSE FUTURO ficaram de
-// fora — o segundo era 31% da coluna, gente que ninguém está trabalhando.
-//
-// ⚠️ Mesma régua NÃO quer dizer mesmo número, e é aí que a dupla ganha sentido:
-// o Score soma `per_label` do heartbeat, que duplica cliente com duas etiquetas e
-// não tira quem já foi marcado vendido/perdido. A Carteira conta cliente DISTINTO
-// e tira os fechados. IGOR: 202 no Score, 159 na Carteira.
-const somaScore = (f?: FunilRow): number =>
-  f ? (f.prospec ?? 0) + (f.novoLead ?? 0) + (f.tentativa ?? 0) + (f.followup ?? 0) + (f.quente ?? 0) : 0
+// ⚠️ O TETO DE 100% NÃO É COSMÉTICO. "Atendidos" segue o filtro de período do topo
+// do Dashboard e a Carteira é SNAPSHOT de agora: num período longo o numerador
+// acumula e o denominador não, então a razão estoura. Sem o cap, "Últimos 30 dias"
+// mostraria 250%.
+const calcScore = (atendimentos: number, carteira: number): number =>
+  carteira > 0 ? Math.min(100, Math.round((atendimentos / carteira) * 100)) : 0
 
 const firstKey = (nome: string) => (nome.split(/\s+/)[0] || '').toUpperCase()
 const EXCLUIR_DO_RESUMO = new Set(['DANIEL'])
@@ -180,8 +179,12 @@ export function useResumoDia(preset: DashboardPreset = '') {
         // e com furo desigual entre as pessoas — envenenava qualquer ranking).
         ligacoes: fx?.ligacoes ?? 0,
         ligacoesCaptura: fx?.captura === true,
-        // SNAPSHOT como carteira/negociacao: e estado AGORA, nao movimento do periodo.
-        score: somaScore(f),
+        // Precisa do MESMO `atendimentos` calculado acima (que respeita o filtro
+        // de período), por isso é derivado aqui e não dentro do objeto.
+        score: calcScore(
+          liveHoje ? (f?.atendimentos ?? 0) : (fx?.atendimentos ?? 0),
+          carteiraQ.data?.[nome] ?? 0,
+        ),
       }
     }), [vendedoresQ.data, funilQ.data, fluxoQ.data, carteiraQ.data, liveHoje])
 
