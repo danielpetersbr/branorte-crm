@@ -66,7 +66,7 @@ function quemE(l: { cliente_nome: string | null; cliente_fone: string | null; pe
   return 'contato não identificado'
 }
 
-const DESFECHO: Record<string, { label: string; cls: string }> = {
+const DESFECHO: Record<string, { label: string; cls: string; titulo?: string }> = {
   Completed:         { label: 'Atendida',            cls: 'text-success bg-success/10 border-success/30' },
   AcceptedElsewhere: { label: 'Atendida no celular', cls: 'text-success bg-success/10 border-success/30' },
   Missed:            { label: 'Perdida',             cls: 'text-danger bg-danger/10 border-danger/30' },
@@ -74,7 +74,19 @@ const DESFECHO: Record<string, { label: string; cls: string }> = {
   Rejected:          { label: 'Recusada',            cls: 'text-danger bg-danger/10 border-danger/30' },
   Canceled:          { label: 'Desistiu antes',      cls: 'text-warning bg-warning/10 border-warning/30' },
 }
-const desfecho = (e: string | null) => DESFECHO[e ?? ''] ?? { label: e || '—', cls: 'text-ink-faint border-border' }
+// ⚠️ Desfecho VAZIO não é o mesmo que desfecho desconhecido pra nós: o próprio
+// WhatsApp mandou `callOutcome`/`finalCallOutcome` nulos. São 11 em 1.880 (0,6%),
+// quase todas RECEBIDAS. Um traço mudo faz o gestor perguntar o que é — o rótulo
+// tem que dizer sozinho que a informação não existe na origem.
+const SEM_DESFECHO = {
+  label: 'sem registro',
+  cls: 'text-ink-faint border-border/70 border-dashed',
+  titulo: 'O WhatsApp não registrou o desfecho desta chamada — não dá pra saber se foi atendida ou perdida. Acontece em menos de 1% dos casos, quase sempre em chamada recebida.',
+}
+const desfecho = (e: string | null) =>
+  DESFECHO[e ?? ''] ?? (e
+    ? { label: e, cls: 'text-ink-faint border-border', titulo: undefined }
+    : SEM_DESFECHO)
 
 const MIN_LIGACOES_TAXA = 5
 
@@ -85,11 +97,13 @@ function somar(linhas: LigacaoResumo[]) {
     fez: a.fez + r.fez,
     recebeu: a.recebeu + r.recebeu,
     atendidas_fez: a.atendidas_fez + r.atendidas_fez,
+    atendidas: a.atendidas + r.atendidas,
     perdidas: a.perdidas + r.perdidas,
+    perdidas_recebidas: a.perdidas_recebidas + r.perdidas_recebidas,
     tempo_seg: a.tempo_seg + r.tempo_seg,
     clientes_fez: a.clientes_fez + r.clientes_fez,
     video_fez: a.video_fez + r.video_fez,
-  }), { fez: 0, recebeu: 0, atendidas_fez: 0, perdidas: 0, tempo_seg: 0, clientes_fez: 0, video_fez: 0 })
+  }), { fez: 0, recebeu: 0, atendidas_fez: 0, atendidas: 0, perdidas: 0, perdidas_recebidas: 0, tempo_seg: 0, clientes_fez: 0, video_fez: 0 })
 }
 
 export function Ligacoes() {
@@ -117,7 +131,11 @@ export function Ligacoes() {
   const taxa = tot.fez > 0 ? (tot.atendidas_fez / tot.fez) * 100 : null
   const taxaAnt = totAnt && totAnt.fez > 0 ? (totAnt.atendidas_fez / totAnt.fez) * 100 : null
   const outras = Math.max(0, tot.fez - tot.atendidas_fez - tot.perdidas)
-  const durMedia = tot.atendidas_fez > 0 && tot.tempo_seg > 0 ? Math.round(tot.tempo_seg / tot.atendidas_fez) : 0
+  // ⚠️ "Tempo ao telefone" soma OS DOIS SENTIDOS — é o tempo que ele passou falando
+  // com cliente, tenha ele ligado ou atendido. Por isso a média divide por TODAS as
+  // atendidas, não só pelas que ele fez: antes o numerador contava as duas direções e o
+  // denominador uma só, e a "média por atendida" saía inflada.
+  const durMedia = tot.atendidas > 0 && tot.tempo_seg > 0 ? Math.round(tot.tempo_seg / tot.atendidas) : 0
 
   // A série do período pode estar cortada no começo: a 1ª leitura de cada
   // vendedor traz as últimas 500 ligações dele. Avisa em vez de fingir tendência.
@@ -188,7 +206,7 @@ export function Ligacoes() {
       </details>
 
       {/* ── Linha 1: KPIs ───────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2.5 lg:gap-3 mb-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-2.5 lg:gap-3 mb-4">
         <Kpi icone={PhoneOutgoing} cor="text-accent" rotulo="Ligações realizadas" valor={tot.fez}
              delta={pctDelta(tot.fez, totAnt?.fez)} rotuloDelta={ROTULO_ANTERIOR[periodo]} />
         <Kpi icone={Users} cor="text-accent" rotulo="Clientes chamados" valor={tot.clientes_fez}
@@ -197,13 +215,20 @@ export function Ligacoes() {
              nota={taxa !== null ? `${taxa.toFixed(1).replace('.', ',')}% de atendimento` : undefined}
              delta={taxa !== null && taxaAnt !== null ? { valor: taxa - taxaAnt, unidade: 'pp' } : null}
              rotuloDelta={ROTULO_ANTERIOR[periodo]} />
-        <Kpi icone={PhoneMissed} cor="text-danger" rotulo="Não atendidas" valor={tot.perdidas} inverso
-             nota={tot.fez > 0 ? `${((tot.perdidas / tot.fez) * 100).toFixed(1).replace('.', ',')}% das ligações` : undefined}
+        {/* ⚠️ DUAS COISAS DIFERENTES, e a tela tratava como uma só:
+            • o vendedor ligou e o CLIENTE não atendeu → problema de alcance;
+            • o CLIENTE ligou e o VENDEDOR não atendeu → oportunidade no chão.
+            A segunda é a que dói, e estava invisível. */}
+        <Kpi icone={PhoneMissed} cor="text-danger" rotulo="Cliente não atendeu" valor={tot.perdidas} inverso
+             nota={tot.fez > 0 ? `${((tot.perdidas / tot.fez) * 100).toFixed(0)}% das que ele ligou` : undefined}
              delta={pctDelta(tot.perdidas, totAnt?.perdidas)} rotuloDelta={ROTULO_ANTERIOR[periodo]} />
+        <Kpi icone={PhoneIncoming} cor="text-danger" rotulo="Perdeu do cliente" valor={tot.perdidas_recebidas} inverso
+             nota={tot.recebeu > 0 ? `${((tot.perdidas_recebidas / tot.recebeu) * 100).toFixed(0)}% das que recebeu` : undefined}
+             delta={pctDelta(tot.perdidas_recebidas, totAnt?.perdidas_recebidas)} rotuloDelta={ROTULO_ANTERIOR[periodo]} />
         <Kpi icone={Video} cor="text-info" rotulo="Chamadas de vídeo" valor={tot.video_fez}
              delta={pctDelta(tot.video_fez, totAnt?.video_fez)} rotuloDelta={ROTULO_ANTERIOR[periodo]} />
         <Kpi icone={Clock} cor="text-success" rotulo="Tempo ao telefone" valor={fmtDur(tot.tempo_seg)}
-             nota={durMedia > 0 ? `Média: ${fmtDur(durMedia)} por atendida` : undefined}
+             nota={durMedia > 0 ? `Média ${fmtDur(durMedia)} · feitas e recebidas` : undefined}
              delta={pctDelta(tot.tempo_seg, totAnt?.tempo_seg)} rotuloDelta={ROTULO_ANTERIOR[periodo]} />
       </div>
 
@@ -241,8 +266,12 @@ export function Ligacoes() {
         as ligações que o vendedor FEZ, e só aparece com {MIN_LIGACOES_TAXA}+ ligações: abaixo disso
         um acerto isolado vira 100%. <b className="text-ink-muted">Clientes chamados</b> conta contatos
         DIFERENTES — quem liga cinco vezes pro mesmo produtor fez cinco ligações e alcançou um.{' '}
-        <b className="text-ink-muted">Tempo ao telefone</b> é piso: o WhatsApp só registra a duração
-        das chamadas atendidas no próprio WhatsApp Web.
+        <b className="text-ink-muted">Cliente não atendeu</b> e <b className="text-ink-muted">perdeu do
+        cliente</b> são coisas diferentes: a primeira é ligação que o vendedor fez e ninguém atendeu
+        do outro lado; a segunda é o cliente ligando e o vendedor não atendendo — essa é oportunidade
+        perdida. Chamada recebida fora do expediente entra na conta, então vale olhar o horário antes
+        de cobrar. <b className="text-ink-muted">Tempo ao telefone</b> soma os dois sentidos e é piso:
+        o WhatsApp só registra a duração das chamadas atendidas no próprio WhatsApp Web.
       </p>
     </div>
   )
@@ -324,6 +353,15 @@ function ResumoInteligente({ linhas, tot, totAnt, horas, serie, rotuloAnterior }
       }
     }
 
+    // Quem mais deixa o cliente na mão. É a frase mais acionável da tela: cliente
+    // que ligou e não foi atendido é oportunidade que bateu na porta e foi embora.
+    const perdendo = linhas.filter(r => r.recebeu >= 10)
+      .map(r => ({ v: r.vendedor, p: r.perdidas_recebidas, t: r.recebeu, pct: Math.round((r.perdidas_recebidas / r.recebeu) * 100) }))
+      .sort((a, b) => b.p - a.p)
+    if (perdendo.length && perdendo[0].p > 0) {
+      f.push(`${perdendo[0].v} deixou ${perdendo[0].p} chamada${perdendo[0].p > 1 ? 's' : ''} de cliente sem atender (${perdendo[0].pct}% das que recebeu).`)
+    }
+
     const melhorDia = [...serie].sort((a, b) => b.feitas - a.feitas)[0]
     if (melhorDia && serie.length > 2) {
       const [, m, dd] = melhorDia.dia.split('-')
@@ -378,11 +416,12 @@ function TabelaVendedores({ linhas, janela, aberto, setAberto }: {
 
       <div className="hidden lg:grid grid-cols-[1.3fr_repeat(7,minmax(0,1fr))] gap-2 px-5 py-2.5 border-y border-border bg-surface-2/40 text-[10.5px] font-medium text-ink-faint uppercase tracking-wide">
         <span>Vendedor</span>
-        <span className="text-right">Ligações</span>
+        <span className="text-right">Feitas</span>
         <span className="text-right">Clientes</span>
         <span className="text-right">Atendidas</span>
         <span className="text-right">Taxa</span>
-        <span className="text-right">Não atend.</span>
+        <span className="text-right">Cliente<br/>não atend.</span>
+        <span className="text-right">Perdeu do<br/>cliente</span>
         <span className="text-right">Vídeo</span>
         <span className="text-right">Tempo</span>
       </div>
@@ -400,7 +439,10 @@ function TabelaVendedores({ linhas, janela, aberto, setAberto }: {
 function LinhaVendedor({ r, maxFez, janela, aberto, onToggle }: {
   r: LigacaoResumo; maxFez: number; janela: Janela; aberto: boolean; onToggle: () => void
 }) {
-  const { data: lista = [], isLoading } = useLigacoesDe(aberto ? r.vendedor : null, janela)
+  const [direcao, setDirecao] = useState<'tudo' | 'fez' | 'recebeu'>('tudo')
+  const { data: bruta = [], isLoading } = useLigacoesDe(aberto ? r.vendedor : null, janela)
+  const lista = useMemo(() => bruta.filter(l =>
+    direcao === 'tudo' || (direcao === 'fez' ? l.outgoing === true : l.outgoing === false)), [bruta, direcao])
   const taxa = r.fez >= MIN_LIGACOES_TAXA ? Math.round((r.atendidas_fez / r.fez) * 100) : null
   const corTaxa = taxa === null ? 'text-ink-faint' : taxa >= 55 ? 'text-success' : taxa >= 40 ? 'text-ink' : 'text-danger'
 
@@ -415,9 +457,10 @@ function LinhaVendedor({ r, maxFez, janela, aberto, onToggle }: {
             {taxa !== null && <span className={`text-[11.5px] font-semibold tabular-nums ${corTaxa}`}>{taxa}% atenderam</span>}
           </div>
           <div className="grid grid-cols-3 gap-2 pl-5">
-            <Mini rotulo="ligações" valor={r.fez} sub={`${r.clientes_fez} clientes`} forte />
+            <Mini rotulo="feitas" valor={r.fez} sub={`${r.clientes_fez} clientes`} forte />
             <Mini rotulo="atendidas" valor={r.atendidas_fez} cls="text-success" />
-            <Mini rotulo="não atend." valor={r.perdidas} cls={r.perdidas > 0 ? 'text-danger' : ''} />
+            <Mini rotulo="cliente não atend." valor={r.perdidas} cls={r.perdidas > 0 ? 'text-danger' : ''} />
+            <Mini rotulo="perdeu do cliente" valor={r.perdidas_recebidas} cls={r.perdidas_recebidas > 0 ? 'text-danger' : ''} />
             <Mini rotulo="tempo" txt={fmtDur(r.tempo_seg)} />
             <Mini rotulo="média" txt={fmtDur(r.dur_media)} />
             <Mini rotulo="vídeo" valor={r.video_fez} cls={r.video_fez > 0 ? 'text-info' : ''} />
@@ -444,6 +487,8 @@ function LinhaVendedor({ r, maxFez, janela, aberto, onToggle }: {
             )}
           </span>
           <Num v={r.perdidas} cls={r.perdidas > 0 ? 'text-danger' : ''} />
+          <Num v={r.perdidas_recebidas} cls={r.perdidas_recebidas > 0 ? 'text-danger' : ''}
+               extra={r.recebeu > 0 ? `${Math.round((r.perdidas_recebidas / r.recebeu) * 100)}%` : undefined} />
           <Num v={r.video_fez} cls={r.video_fez > 0 ? 'text-info' : ''} />
           <Num txt={fmtDur(r.tempo_seg)} extra={r.dur_media > 0 ? `~${fmtDur(r.dur_media)}` : undefined} />
         </div>
@@ -452,15 +497,35 @@ function LinhaVendedor({ r, maxFez, janela, aberto, onToggle }: {
       {aberto && (
         <div className="px-3 lg:px-5 pb-4 bg-surface-2/20">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 py-3">
-            <Resumo rotulo="Ligações" valor={String(r.fez)} />
-            <Resumo rotulo="Clientes chamados" valor={String(r.clientes_fez)} />
+            <Resumo rotulo="Ligações feitas" valor={String(r.fez)} />
+            <Resumo rotulo="Recebidas" valor={String(r.recebeu)} />
             <Resumo rotulo="Atendidas" valor={String(r.atendidas_fez)} cls="text-success" />
-            <Resumo rotulo="Não atendidas" valor={String(r.perdidas)} cls={r.perdidas > 0 ? 'text-danger' : ''} />
+            <Resumo rotulo="Cliente não atendeu" valor={String(r.perdidas)} cls={r.perdidas > 0 ? 'text-danger' : ''} />
+            <Resumo rotulo="Perdeu do cliente" valor={String(r.perdidas_recebidas)} cls={r.perdidas_recebidas > 0 ? 'text-danger' : ''} />
             <Resumo rotulo="Taxa" valor={taxa === null ? '—' : `${taxa}%`} cls={corTaxa} />
             <Resumo rotulo="Tempo ao telefone" valor={fmtDur(r.tempo_seg)} />
           </div>
 
-          <h3 className="text-[11.5px] font-semibold text-ink-muted uppercase tracking-wide mb-2">Ligações recentes</h3>
+          {/* ⚠️ A linha de cima conta só o que ele FEZ; a lista mostra os dois sentidos.
+              Sem dizer isso, a linha marca 1 e a lista exibe 6 — parece conta errada.
+              O filtro deixa reconciliar na hora. */}
+          <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+            <h3 className="text-[11.5px] font-semibold text-ink-muted uppercase tracking-wide">
+              Ligações recentes
+              <span className="ml-1.5 normal-case font-normal text-ink-faint">
+                {r.fez} feita{r.fez === 1 ? '' : 's'} · {r.recebeu} recebida{r.recebeu === 1 ? '' : 's'}
+              </span>
+            </h3>
+            <div className="inline-flex rounded-lg border border-border overflow-hidden">
+              {([['tudo', 'Todas'], ['fez', 'Feitas'], ['recebeu', 'Recebidas']] as const).map(([id, lb]) => (
+                <button key={id} onClick={e => { e.stopPropagation(); setDirecao(id) }}
+                  className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                    direcao === id ? 'bg-accent text-white' : 'bg-surface-2 text-ink-faint hover:text-ink-muted'}`}>
+                  {lb}
+                </button>
+              ))}
+            </div>
+          </div>
           {isLoading ? (
             <p className="text-[11.5px] text-ink-faint py-2">Carregando…</p>
           ) : lista.length === 0 ? (
@@ -479,7 +544,7 @@ function LinhaVendedor({ r, maxFez, janela, aberto, onToggle }: {
                     {l.cliente_nome && l.cliente_fone && (
                       <span className="hidden sm:inline text-ink-faint tabular-nums">{fmtFone(l.cliente_fone)}</span>
                     )}
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${d.cls}`}>{d.label}</span>
+                    <span title={d.titulo} className={`text-[10px] px-1.5 py-0.5 rounded-full border ${d.cls} ${d.titulo ? 'cursor-help' : ''}`}>{d.label}</span>
                     {l.duracao_seg ? <span className="text-ink-muted tabular-nums">{fmtDur(l.duracao_seg)}</span> : null}
                     <span className="flex-1" />
                     <span className="text-ink-faint tabular-nums shrink-0 hidden sm:inline">{fmtQuando(l.offer_time)}</span>

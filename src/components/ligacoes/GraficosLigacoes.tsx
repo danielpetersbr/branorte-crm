@@ -86,11 +86,40 @@ const SERIES = [
   { id: 'video' as const, label: 'Vídeo', cor: COR.video },
 ]
 
+// Segunda-feira da semana daquele dia (rótulo do balde semanal).
+function segundaDa(iso: string): string {
+  const d = new Date(iso + 'T12:00:00')
+  const off = (d.getDay() + 6) % 7   // 0 = segunda
+  d.setDate(d.getDate() - off)
+  return d.toISOString().slice(0, 10)
+}
+
+// ⚠️ Acima de ~45 dias a série diária vira serrote ilegível: em "Tudo" são 7 meses de
+// dias esparsos, e nenhuma barra aparece porque cada dia tem 1-3 ligações numa escala
+// que vai até 28. Agrupa por SEMANA — a leitura de tendência é a mesma e o gráfico volta
+// a ser legível. Abaixo disso, dia a dia continua sendo o mais útil.
+const MAX_DIAS_SEM_AGRUPAR = 45
+
 export function EvolucaoLigacoes({ serie, truncado }: { serie: SerieDia[]; truncado: boolean }) {
   const [ativas, setAtivas] = useState<Record<string, boolean>>({
     feitas: true, atendidas: true, perdidas: true, video: false,
   })
-  const dados = useMemo(() => serie.map(d => ({ ...d, rotulo: diaCurto(d.dia) })), [serie])
+  const porSemana = serie.length > MAX_DIAS_SEM_AGRUPAR
+  const dados = useMemo(() => {
+    if (!porSemana) return serie.map(d => ({ ...d, rotulo: diaCurto(d.dia) }))
+    const baldes = new Map<string, SerieDia>()
+    for (const d of serie) {
+      const k = segundaDa(d.dia)
+      const b = baldes.get(k)
+      if (!b) baldes.set(k, { ...d, dia: k })
+      else {
+        b.feitas += d.feitas; b.atendidas += d.atendidas
+        b.perdidas += d.perdidas; b.video += d.video; b.recebidas += d.recebidas
+      }
+    }
+    return [...baldes.values()].sort((a, b) => a.dia.localeCompare(b.dia))
+      .map(d => ({ ...d, rotulo: diaCurto(d.dia) }))
+  }, [serie, porSemana])
 
   return (
     <Painel
@@ -110,9 +139,10 @@ export function EvolucaoLigacoes({ serie, truncado }: { serie: SerieDia[]; trunc
           ))}
         </div>
       }
-      nota={truncado
-        ? 'Os dias mais antigos aparecem menores do que foram: a primeira leitura de cada vendedor traz as últimas 500 ligações dele, então o começo da série está cortado. Os últimos dias estão completos.'
-        : undefined}
+      nota={[
+        porSemana ? 'Período longo: cada barra é uma SEMANA (começando na segunda), senão o dia a dia vira serrote ilegível.' : '',
+        truncado ? 'Os períodos mais antigos aparecem menores do que foram: a primeira leitura de cada vendedor traz as últimas 500 ligações dele, então o começo da série está cortado. Os últimos dias estão completos.' : '',
+      ].filter(Boolean).join(' ') || undefined}
     >
       {dados.length === 0 ? <Vazio msg="Nenhuma ligação no período selecionado." /> : (
         <ResponsiveContainer width="100%" height={280}>
@@ -127,7 +157,7 @@ export function EvolucaoLigacoes({ serie, truncado }: { serie: SerieDia[]; trunc
                 const d = payload[0].payload as SerieDia & { rotulo: string }
                 const taxa = d.feitas > 0 ? Math.round((d.atendidas / d.feitas) * 100) : null
                 return (
-                  <Caixa titulo={String(label)} linhas={[
+                  <Caixa titulo={porSemana ? `Semana de ${label}` : String(label)} linhas={[
                     { rotulo: 'Ligações', valor: String(d.feitas), cor: COR.feitas },
                     { rotulo: 'Atendidas', valor: String(d.atendidas), cor: COR.atendidas },
                     { rotulo: 'Não atendidas', valor: String(d.perdidas), cor: COR.perdidas },
