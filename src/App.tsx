@@ -63,7 +63,6 @@ const OrcamentosConversao = lazy(() => import('@/pages/OrcamentosConversao').the
 const OrcamentosSalvos = lazy(() => import('@/pages/OrcamentosSalvos').then(m => ({ default: m.OrcamentosSalvos })))
 const Roadmap = lazy(() => import('@/pages/Roadmap').then(m => ({ default: m.Roadmap })))
 const IaTeste = lazy(() => import('@/pages/IaTeste').then(m => ({ default: m.IaTeste })))
-const Avaliacoes = lazy(() => import('@/pages/Avaliacoes').then(m => ({ default: m.Avaliacoes })))
 const Reunioes = lazy(() => import('@/pages/Reunioes').then(m => ({ default: m.Reunioes })))
 const Ligacoes = lazy(() => import('@/pages/Ligacoes').then(m => ({ default: m.Ligacoes })))
 const Metas = lazy(() => import('@/pages/Metas').then(m => ({ default: m.Metas })))
@@ -501,9 +500,6 @@ function AppRoutes() {
         <Route path="/controle/financeiro" element={<ControleFinanceiro />} />
         <Route path="/controle/novo-pedido" element={<ControleNovoPedido />} />
         <Route path="/atendimentos" element={<Atendimentos />} />
-        {/* Painel admin das avaliações de atendimento (página pública /avaliacao).
-            Vendedor/visualizador são redirecionados pelos guards acima. */}
-        <Route path="/avaliacoes" element={<Avaliacoes />} />
         {/* Adm de Reunião — pauta + checklist de tarefas + resumo */}
         <Route path="/reunioes" element={<Reunioes />} />
         {/* ⚠️ /reuniao/<token> (singular, público) é checado ANTES do gate de auth. */}
