@@ -19,12 +19,19 @@ export interface LigacaoResumo {
   fez: number
   recebeu: number
   atendidas: number
+  // Das que ELE ligou, quantas atenderam. A taxa antiga usava atendidas/(fez+recebeu),
+  // misturando o que ele controla com o que só acontece com ele.
+  atendidas_fez: number
   perdidas: number
   tempo_seg: number
+  dur_media: number
   clientes: number
   // Alcance ≠ esforço: 10 ligações pro mesmo cliente não valem 10 produtores diferentes.
   clientes_fez: number
   clientes_recebeu: number
+  // Vídeo é interação de outra natureza: o vendedor MOSTRA o equipamento.
+  video_fez: number
+  clientes_video: number
   ultima: string | null
 }
 
@@ -90,6 +97,24 @@ export function useLigacoesDe(vendedor: string | null, periodo: Periodo) {
       const { data, error } = await q
       if (error) throw error
       return (data ?? []) as Ligacao[]
+    },
+    staleTime: 60_000,
+  })
+}
+
+export interface HoraLigacao { hora: number; feitas: number; atenderam: number }
+
+// Que horas vale ligar. Variação medida em 17/08 sobre 567 ligações feitas:
+// 15h atende 63%, 16h atende 40% — 23 pontos. Sem isso o time chuta o horário.
+export function useLigacoesPorHora(periodo: Periodo) {
+  return useQuery({
+    queryKey: ['ligacoes-hora', periodo],
+    queryFn: async (): Promise<HoraLigacao[]> => {
+      const { data, error } = await supabase.rpc('ligacoes_por_hora', {
+        p_from: inicioDoPeriodo(periodo), p_to: null,
+      })
+      if (error) throw error
+      return ((data ?? []) as HoraLigacao[]).sort((a, b) => a.hora - b.hora)
     },
     staleTime: 60_000,
   })
