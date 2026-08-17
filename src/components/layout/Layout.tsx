@@ -458,7 +458,8 @@ export function Layout() {
     const MENU_MAPA = menuRestrito
     return (
       <div className="min-h-screen flex bg-bg">
-        <aside className="w-14 md:w-56 shrink-0 sticky top-0 h-[100dvh] flex flex-col border-r border-border bg-surface">
+        {/* mesma largura da barra real (w-80): com md:w-56 a tela dava um pulo de 64px quando o perfil carregava */}
+        <aside className="w-14 md:w-80 shrink-0 sticky top-0 h-[100dvh] flex flex-col border-r border-border bg-surface">
           <div className="h-14 shrink-0 flex items-center justify-center md:justify-start md:px-4 border-b border-border select-none">
             <span className="font-extrabold text-[18px] leading-none tracking-[-0.045em] whitespace-nowrap">
               <span className="text-accent">B</span><span className="text-ink hidden md:inline">RANORTE</span>
@@ -531,7 +532,14 @@ export function Layout() {
       <aside className={cn(
         'hidden md:flex flex-col border-r border-border bg-surface transition-all duration-200',
         'sticky top-0 h-screen shrink-0 overflow-hidden',
-        collapsed ? 'w-14' : 'w-64',
+        // w-80 (320px) e MEDIDO, nao chutado: com os rotulos novos do grupo
+        // Comercial o maior item e "Controle de Leads Recebidos" (173px de texto)
+        // E ele e o unico que carrega o badge de contagem ("12k"). Medindo o
+        // markup real do renderItem com o CSS real: 256px dava 121px pro rotulo
+        // (cortava), 288 dava 153 (cortava), 304 dava 169 (cortava por 4px) e
+        // 320 e o primeiro que cabe inteiro. Se algum rotulo crescer, refazer a
+        // conta — nao ir no olho.
+        collapsed ? 'w-14' : 'w-80',
       )}>
         {/* Brand (wordmark BRANORTE, adaptável ao tema) + avatar + collapse */}
         <div className={cn('flex items-center h-14 border-b border-border', collapsed ? 'justify-center px-2' : 'gap-2 px-4')}>
