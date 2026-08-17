@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
-  BarChart2, Beef, BookCheck, BookOpen, Bot, Boxes, Calculator, CalendarDays, CheckCircle, ChevronDown, ChevronsLeft, ChevronsRight, ClipboardList, Compass, Factory, FilePlus2, FileText, GitBranch, Headphones, History, LayoutDashboard, Link2, List, LogOut, MapPin, MessageSquare, MessageSquarePlus, Moon, Package, PhoneCall, ScanEye, Search, Settings, Shield, ShoppingBag, Sun, Target, TrendingUp, Truck, UserPlus, Users, Wallet, Wheat, Workflow, Zap,
+  BarChart2, Beef, BookCheck, BookOpen, Bot, Boxes, Calculator, CalendarDays, CheckCircle, ChevronDown, ChevronsLeft, ChevronsRight, ClipboardList, Compass, FilePlus2, FileText, GitBranch, Headphones, History, LayoutDashboard, Link2, List, LogOut, MapPin, MessageSquare, MessageSquarePlus, Moon, Package, PhoneCall, ScanEye, Search, Settings, Shield, ShoppingBag, Sun, Target, TrendingUp, Truck, UserPlus, Users, Wallet, Wheat, Workflow, Zap,
 } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -104,7 +104,7 @@ const NAV_GROUPS: NavGroup[] = [
     id: 'operacao', label: 'Comercial', icon: LayoutDashboard,
     items: [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true, permKey: 'menu.dashboard' },
-      { to: '/atendimentos', label: 'Controle de Leads Recebidos', icon: MessageSquare, countKey: 'atendimentos', permKey: 'menu.atendimentos' },
+      { to: '/atendimentos', label: 'Leads Recebidos', icon: MessageSquare, countKey: 'atendimentos', permKey: 'menu.atendimentos' },
       { to: '/funil', label: 'Funil de Vendas', icon: GitBranch, permKey: 'menu.funil' },
       // SEM `roles`: a permissão manda sozinha. Item com permKey E roles cria duas fontes
       // de verdade pro mesmo acesso — foi o que escondeu /contatos dos vendedores.
@@ -119,6 +119,9 @@ const NAV_GROUPS: NavGroup[] = [
       // armadilha: dar a permissao no admin nao surtia efeito nenhum.
       { to: '/contatos', label: 'Carteira de Contatos', icon: Users, permKey: 'menu.contatos' },
       { to: '/consulta', label: 'Consultar SPC', icon: Search, permKey: 'due_diligence.consultar' },
+      // Era "Projeto 3D" no grupo Producao (que so tinha ele). Mesma rota e mesma
+      // permKey — o vendedor que ja abria continua abrindo.
+      { to: '/projeto-3d', label: 'Fazer Layout', icon: Boxes, permKey: 'menu.projeto_3d' },
     ],
   },
   {
@@ -148,6 +151,16 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/controle/financeiro', label: 'Financeiro', icon: Wallet, permKey: 'menu.financeiro' },
       { to: '/controle/novo-pedido', label: 'Novo Pedido', icon: FilePlus2, permKey: 'menu.controle' },
       { to: '/vendidos', label: 'Vendidos', icon: CheckCircle, permKey: 'menu.vendidos' },
+    ],
+  },
+  {
+    // "Area do Representante": os 7 itens abaixo estavam soltos no fim do grupo
+    // Vendas, misturados com Painel/Pedidos/Financeiro/Vendidos, que sao outra
+    // conversa. Aqui e o trabalho de CAMPO — visita, viagem, rede de reps.
+    // As travas de acesso vieram junto item a item (roles / adminOnly): quem via
+    // continua vendo, quem nao via continua sem ver. Rotas inalteradas.
+    id: 'representante', label: 'Área do Representante', icon: Compass,
+    items: [
       // roles: quem o guard do App.tsx deixa entrar. 'visualizador' cai em
       // VIEWER_PATHS e era devolvido pro inicio ao clicar aqui.
       { to: '/mapa-visitas', label: 'Mapa de Visitas', icon: MapPin, roles: ['admin', 'vendor', 'marketing'] },
@@ -168,12 +181,6 @@ const NAV_GROUPS: NavGroup[] = [
       // Prévia da ficha que o candidato preenche em /seja-representante (pública).
       // Aqui o envio é travado — é pra conferir o que se pede, não pra testar.
       { to: '/ficha-representante', label: 'Ficha do Representante', icon: ClipboardList, adminOnly: true },
-    ],
-  },
-  {
-    id: 'producao', label: 'Produção', icon: Factory,
-    items: [
-      { to: '/projeto-3d', label: 'Projeto 3D', icon: Boxes, permKey: 'menu.projeto_3d' },
     ],
   },
   {
@@ -236,7 +243,7 @@ const MOBILE_NAV: NavItem[] = [
   { to: '/atendimentos', label: 'Atender', icon: MessageSquare, countKey: 'atendimentos' },
   { to: '/orcamentos/montar', label: 'Orçar', icon: FilePlus2 },
   { to: '/vendidos', label: 'Vendidos', icon: CheckCircle },
-  { to: '/projeto-3d', label: 'Projeto 3D', icon: Boxes, permKey: 'menu.projeto_3d' },
+  { to: '/projeto-3d', label: 'Fazer Layout', icon: Boxes, permKey: 'menu.projeto_3d' },
 ]
 
 function useCollapsed(): [boolean, () => void] {
