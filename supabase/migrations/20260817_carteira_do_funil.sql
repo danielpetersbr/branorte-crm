@@ -16,6 +16,9 @@
 --     quem não limpa etiqueta — eram 188 clientes, distribuídos de forma desigual
 --     (EDILSON 57, GUSTAVO 45, IGOR 44 vs PEDRO 1, EDER 3).
 --  5. Grupos (@g.us) fora.
+--  6. 'COMCORRENTE' entra no regex junto com 'CONCORRENTE': o typo existe no
+--     catálogo real e o front já colapsa os dois via ALIASES (src/lib/wa-funil.ts).
+--     Sem isso, 2 clientes marcados como perdidos ficavam contando na carteira.
 create or replace function public.escritorio_carteira_funil()
 returns table(vendedor_nome text, carteira integer, atualizado_em timestamp with time zone)
 language sql
@@ -36,7 +39,7 @@ as $function$
   por_chat as (
     select ch.vendedor_nome, ch.chat_id, max(ch.updated_at) as updated_at,
       bool_or(cat.nome ~* 'prospec|tentativa|novo[s]? lead|lead novo|f[ao]llow|quente|or.amento enviado|interesse futuro') as vivo,
-      bool_or(cat.nome ~* 'vendido|nunca respondeu|respondeu mais|tem interesse|fora do or.amento|fabricamos|concorren|base de pre')  as terminal
+      bool_or(cat.nome ~* 'vendido|nunca respondeu|respondeu mais|tem interesse|fora do or.amento|fabricamos|co[nm]corren|base de pre')  as terminal
     from ch
     join cat on cat.vendedor_nome = ch.vendedor_nome and cat.id = ch.id
     group by 1, 2
