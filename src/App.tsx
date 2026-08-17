@@ -97,6 +97,10 @@ import { SsoLanding } from '@/pages/SsoLanding'
 // que a extensão WA Sync envia ao cliente. Import direto: roda deslogada.
 import { Avaliacao } from '@/pages/Avaliacao'
 
+// /reuniao/<token> é a página PÚBLICA de feedback pós-reunião, aberta pelo link
+// que o gestor manda pros vendedores. Import direto: roda deslogada.
+import { ReuniaoFeedback } from '@/pages/ReuniaoFeedback'
+
 // /cotar-frete/<token> é a página PÚBLICA da cotação reversa de frete, aberta pela
 // transportadora pelo link que o Jardel envia no WhatsApp. Roda deslogada.
 import { CotarFrete } from '@/pages/CotarFrete'
@@ -242,6 +246,13 @@ function AppRoutes() {
   // Roda deslogada (cliente não tem conta).
   if (loc.pathname === '/avaliacao') {
     return <Avaliacao />
+  }
+
+  // Rota pública /reuniao/<token> — o vendedor comenta a reunião depois dela.
+  // Roda deslogada (ele abre no celular, fora do CRM). A barra depois de
+  // "/reuniao" é o que separa daqui da /reunioes interna.
+  if (loc.pathname.startsWith('/reuniao/')) {
+    return <ReuniaoFeedback />
   }
 
   // Rota pública /cotar-frete/<token> — a transportadora preenche o valor do frete.
@@ -595,7 +606,12 @@ function AppRoutes() {
  */
 function OverlaysGlobais() {
   const { pathname } = useLocation()
-  if (pathname.startsWith('/print/')) return null
+  // /reuniao/<token> é aberta no celular do vendedor por um link do WhatsApp: o
+  // card de instalar o PWA senta em cima do botão de enviar. Ele já tem o CRM.
+  // ⚠️ As outras rotas públicas (/avaliacao, /cotar-frete, /seja-representante)
+  // continuam mostrando o convite — lá quem abre é CLIENTE, transportadora ou
+  // candidato, que não têm nada a instalar. Vale barrar também.
+  if (pathname.startsWith('/print/') || pathname.startsWith('/reuniao/')) return null
   return (
     <>
       <InstallPrompt />

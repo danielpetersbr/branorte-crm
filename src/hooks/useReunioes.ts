@@ -34,9 +34,22 @@ export interface Reuniao {
   tarefas: PautaItem[]
   resumo: string
   gravacoes: Gravacao[]
+  // Token do link público de feedback (/reuniao/<token>). Nasce null: só é
+  // gerado quando o gestor pede o link pela primeira vez.
+  feedback_token: string | null
   created_by: string | null
   created_at: string
   updated_at: string
+}
+
+export interface ReuniaoFeedback {
+  id: string
+  reuniao_id: string
+  nome: string
+  tipo: string | null
+  comentario: string
+  lido: boolean
+  created_at: string
 }
 
 const KEY = ['reunioes']
@@ -51,6 +64,7 @@ function normalize(r: Record<string, unknown>): Reuniao {
     tarefas: Array.isArray(r.tarefas) ? (r.tarefas as PautaItem[]) : [],
     resumo: (r.resumo as string) || '',
     gravacoes: Array.isArray(r.gravacoes) ? (r.gravacoes as Gravacao[]) : [],
+    feedback_token: (r.feedback_token as string) ?? null,
     created_by: (r.created_by as string) ?? null,
     created_at: r.created_at as string,
     updated_at: r.updated_at as string,
@@ -157,5 +171,121 @@ export function useExcluirReuniao() {
       if (error) throw error
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  })
+}
+
+// ============================================================================
+// Link público de feedback (/reuniao/<token>) — o gestor manda pro vendedor
+// depois da reunião e recebe as sugestões aqui dentro.
+// ============================================================================
+
+function novoToken(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, '')
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`
+}
+
+// Gera o token na PRIMEIRA vez que o link é pedido e devolve o que já existe nas
+// seguintes — o link mandado no grupo semana passada não pode virar 404 porque
+// alguém clicou em "copiar" de novo. O `is null` no update resolve a corrida de
+// duas abas pedindo junto: quem perde relê o token do vencedor em vez de
+// derrubá-lo.
+export function useGarantirLinkFeedback() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string): Promise<string> => {
+      const { data: atual, error: e1 } = await supabase.from('reunioes').select('feedback_token').eq('id', id).single()
+      if (e1) throw e1
+      if (atual?.feedback_token) return atual.feedback_token as string
+
+      const token = novoToken()
+      const { data, error } = await supabase
+        .from('reunioes')
+        .update({ feedback_token: token })
+        .eq('id', id)
+        .is('feedback_token', null)
+        .select('feedback_token')
+      if (error) throw error
+      if (data && data.length > 0) return data[0].feedback_token as string
+
+      const { data: depois, error: e2 } = await supabase.from('reunioes').select('feedback_token').eq('id', id).single()
+      if (e2) throw e2
+      return (depois?.feedback_token as string) ?? token
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  })
+}
+
+const FEEDBACK_KEY = (id: string) => ['reuniao-feedbacks', id]
+
+export function useReuniaoFeedbacks(reuniaoId: string) {
+  return useQuery({
+    queryKey: FEEDBACK_KEY(reuniaoId),
+    queryFn: async (): Promise<ReuniaoFeedback[]> => {
+      const { data, error } = await supabase
+        .from('reuniao_feedbacks')
+        .select('*')
+        .eq('reuniao_id', reuniaoId)
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return (data ?? []) as ReuniaoFeedback[]
+    },
+    staleTime: 15_000,
+  })
+}
+
+// Contagem por reunião pros cards da lista — sem isto o gestor só descobre que
+// chegou sugestão abrindo reunião por reunião. A tabela é pequena (uma linha por
+// comentário), então uma leitura só e a soma no browser bastam.
+export function useFeedbackContagem() {
+  return useQuery({
+    queryKey: ['reuniao-feedbacks-contagem'],
+    queryFn: async (): Promise<Record<string, { total: number; novos: number }>> => {
+      const { data, error } = await supabase.from('reuniao_feedbacks').select('reuniao_id, lido')
+      if (error) throw error
+      const mapa: Record<string, { total: number; novos: number }> = {}
+      for (const f of (data ?? []) as { reuniao_id: string; lido: boolean }[]) {
+        const m = mapa[f.reuniao_id] ?? (mapa[f.reuniao_id] = { total: 0, novos: 0 })
+        m.total++
+        if (!f.lido) m.novos++
+      }
+      return mapa
+    },
+    staleTime: 30_000,
+  })
+}
+
+export function useMarcarFeedbackLido() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: { id: string; reuniaoId: string; lido: boolean }): Promise<void> => {
+      const { error } = await supabase.from('reuniao_feedbacks').update({ lido: input.lido }).eq('id', input.id)
+      if (error) throw error
+    },
+    onMutate: async (input) => {
+      const key = FEEDBACK_KEY(input.reuniaoId)
+      await qc.cancelQueries({ queryKey: key })
+      const prev = qc.getQueryData<ReuniaoFeedback[]>(key)
+      qc.setQueryData<ReuniaoFeedback[]>(key, (old) => (old ?? []).map(f => f.id === input.id ? { ...f, lido: input.lido } : f))
+      return { prev, key }
+    },
+    onError: (_e, _v, ctx) => { if (ctx?.prev) qc.setQueryData(ctx.key, ctx.prev) },
+    onSettled: (_d, _e, v) => {
+      qc.invalidateQueries({ queryKey: FEEDBACK_KEY(v.reuniaoId) })
+      qc.invalidateQueries({ queryKey: ['reuniao-feedbacks-contagem'] })
+    },
+  })
+}
+
+export function useExcluirFeedback() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: { id: string; reuniaoId: string }): Promise<void> => {
+      const { error } = await supabase.from('reuniao_feedbacks').delete().eq('id', input.id)
+      if (error) throw error
+    },
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: FEEDBACK_KEY(v.reuniaoId) })
+      qc.invalidateQueries({ queryKey: ['reuniao-feedbacks-contagem'] })
+    },
   })
 }

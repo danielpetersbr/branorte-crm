@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
-import { Plus, Trash2, ArrowLeft, CalendarClock, ClipboardList, CheckCircle2, Circle, PlayCircle, Mic, Square, Loader2, Sparkles, FileText } from 'lucide-react'
+import { Plus, Trash2, ArrowLeft, CalendarClock, ClipboardList, CheckCircle2, Circle, PlayCircle, Mic, Square, Loader2, Sparkles, FileText, MessageSquare, Link2, Copy, Check, Send } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import {
   useReunioes, useCriarReuniao, useAtualizarReuniao, useExcluirReuniao, useGravacoes,
+  useGarantirLinkFeedback, useReuniaoFeedbacks, useFeedbackContagem, useMarcarFeedbackLido, useExcluirFeedback,
   type Reuniao, type PautaItem, type ReuniaoStatus, type Gravacao,
 } from '@/hooks/useReunioes'
 
@@ -304,6 +305,7 @@ function Gravador({ reuniaoId, onAdd, onOcupado }: { reuniaoId: string; onAdd: (
 
 export function Reunioes() {
   const { data: reunioes = [], isLoading } = useReunioes()
+  const { data: contagem = {} } = useFeedbackContagem()
   const criar = useCriarReuniao()
   const [selId, setSelId] = useState<string | null>(null)
   const sel = reunioes.find(r => r.id === selId) ?? null
@@ -349,7 +351,7 @@ export function Reunioes() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {reunioes.map(r => <ReuniaoCard key={r.id} r={r} onAbrir={() => setSelId(r.id)} />)}
+              {reunioes.map(r => <ReuniaoCard key={r.id} r={r} fb={contagem[r.id]} onAbrir={() => setSelId(r.id)} />)}
             </div>
           )}
         </>
@@ -358,7 +360,7 @@ export function Reunioes() {
   )
 }
 
-function ReuniaoCard({ r, onAbrir }: { r: Reuniao; onAbrir: () => void }) {
+function ReuniaoCard({ r, fb, onAbrir }: { r: Reuniao; fb?: { total: number; novos: number }; onAbrir: () => void }) {
   const feitos = r.tarefas.filter(p => p.feito).length
   const total = r.tarefas.length
   const pct = total > 0 ? (feitos / total) * 100 : 0
@@ -374,7 +376,17 @@ function ReuniaoCard({ r, onAbrir }: { r: Reuniao; onAbrir: () => void }) {
           <S.icon className="h-3 w-3" /> {S.label}
         </span>
       </div>
-      <p className="text-[11px] text-ink-faint flex items-center gap-1"><CalendarClock className="h-3 w-3" /> {fmtData(r.data_reuniao)}</p>
+      <div className="flex items-center gap-2 flex-wrap">
+        <p className="text-[11px] text-ink-faint flex items-center gap-1"><CalendarClock className="h-3 w-3" /> {fmtData(r.data_reuniao)}</p>
+        {/* Sugestão que chegou pelo link público — sem isto só se descobre
+            abrindo reunião por reunião. */}
+        {fb && fb.total > 0 && (
+          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${fb.novos > 0 ? 'text-info bg-info/10 border-info/30' : 'text-ink-faint border-border'}`}>
+            <MessageSquare className="h-3 w-3" />
+            {fb.novos > 0 ? `${fb.novos} novo${fb.novos > 1 ? 's' : ''}` : fb.total}
+          </span>
+        )}
+      </div>
       {total > 0 && (
         <div className="mt-3">
           <div className="flex items-center justify-between text-[11px] text-ink-muted mb-1">
@@ -711,6 +723,9 @@ function Editor({ reuniao, onVoltar }: { reuniao: Reuniao; onVoltar: () => void 
         <p className="text-[10.5px] text-ink-faint mt-1.5">Salva automático ao sair do campo. A IA usa a pauta + as transcrições das gravações.</p>
       </div>
 
+      {/* Feedback dos vendedores — o link que vai pro grupo depois da reunião */}
+      <FeedbackSection reuniao={reuniao} />
+
       {/* Confirm excluir */}
       {confirmDel && (
         <div className="fixed inset-0 z-[1200] bg-black/50 flex items-center justify-center p-6" onClick={() => setConfirmDel(false)}>
@@ -733,6 +748,156 @@ function Editor({ reuniao, onVoltar }: { reuniao: Reuniao; onVoltar: () => void 
               >{excluir.isPending ? 'Excluindo…' : 'Excluir'}</button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============================================================================
+// Feedback dos vendedores — gera/copia o link público (/reuniao/<token>) que vai
+// pro grupo depois da reunião, e lista o que voltou.
+// ============================================================================
+
+function fmtQuando(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+function FeedbackSection({ reuniao }: { reuniao: Reuniao }) {
+  const garantirLink = useGarantirLinkFeedback()
+  const { data: feedbacks = [], isLoading } = useReuniaoFeedbacks(reuniao.id)
+  const marcarLido = useMarcarFeedbackLido()
+  const excluir = useExcluirFeedback()
+  const [copiado, setCopiado] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  const link = reuniao.feedback_token ? `${window.location.origin}/reuniao/${reuniao.feedback_token}` : ''
+  const novos = feedbacks.filter(f => !f.lido).length
+  const mensagem = (l: string) =>
+    `Fechamos a reunião "${reuniao.titulo}". Se ficou alguma sugestão de melhoria, dúvida ou algo pra acrescentar, escreve aqui (leva 1 minuto):\n${l}`
+
+  // O token só nasce quando o link é pedido de fato — reunião que ninguém
+  // compartilhou não fica com porta pública aberta à toa.
+  const obterLink = async (): Promise<string | null> => {
+    if (link) return link
+    setErro(null)
+    try {
+      const token = await garantirLink.mutateAsync(reuniao.id)
+      return `${window.location.origin}/reuniao/${token}`
+    } catch (e) {
+      setErro('Não deu pra gerar o link: ' + ((e as Error)?.message || 'erro'))
+      return null
+    }
+  }
+
+  // clipboard.writeText falha calado em contexto sem permissão; o campo abaixo
+  // fica visível justamente pra copiar na mão quando isso acontece.
+  const copiar = async () => {
+    const l = await obterLink()
+    if (!l) return
+    try {
+      await navigator.clipboard.writeText(l)
+      setCopiado(true)
+      window.setTimeout(() => setCopiado(false), 2000)
+    } catch {
+      setErro('Não consegui copiar sozinho — selecione o link no campo abaixo e copie.')
+    }
+  }
+
+  const mandarWhats = async () => {
+    const l = await obterLink()
+    if (!l) return
+    window.open(`https://wa.me/?text=${encodeURIComponent(mensagem(l))}`, '_blank', 'noopener')
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-surface p-4 mt-3">
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <h2 className="text-[13px] font-bold text-ink flex items-center gap-1.5">
+          <MessageSquare className="h-4 w-4 text-info" /> Feedback dos vendedores
+          {feedbacks.length > 0 && (
+            <span className="text-[11px] font-normal text-ink-faint">
+              — {feedbacks.length} comentário{feedbacks.length > 1 ? 's' : ''}{novos > 0 ? ` · ${novos} novo${novos > 1 ? 's' : ''}` : ''}
+            </span>
+          )}
+        </h2>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={copiar}
+            disabled={garantirLink.isPending}
+            className="h-9 px-3 inline-flex items-center gap-1.5 rounded-lg border border-border text-ink-muted hover:text-ink hover:border-border-strong text-[12px] font-semibold disabled:opacity-60 transition-colors"
+            title="Copia o link público pra mandar pros vendedores"
+          >
+            {garantirLink.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : copiado ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+            {copiado ? 'Copiado!' : 'Copiar link'}
+          </button>
+          <button
+            onClick={mandarWhats}
+            disabled={garantirLink.isPending}
+            className="h-9 px-3 inline-flex items-center gap-1.5 rounded-lg bg-accent text-white text-[12px] font-semibold hover:bg-accent/90 disabled:opacity-60 transition-colors"
+            title="Abre o WhatsApp com a mensagem pronta pra escolher o grupo"
+          >
+            <Send className="h-3.5 w-3.5" /> Mandar no WhatsApp
+          </button>
+        </div>
+      </div>
+
+      {erro && <p className="text-[11px] text-danger mb-2">{erro}</p>}
+
+      {link ? (
+        <div className="flex items-center gap-2 mb-3">
+          <Link2 className="h-3.5 w-3.5 text-ink-faint shrink-0" />
+          <input
+            readOnly
+            value={link}
+            onFocus={e => e.currentTarget.select()}
+            className="flex-1 min-w-0 bg-surface-2/40 border border-border rounded-md px-2 py-1.5 text-[11.5px] text-ink-muted outline-none focus:border-accent"
+          />
+        </div>
+      ) : (
+        <p className="text-[11.5px] text-ink-faint mb-3">
+          O vendedor abre sem login, relê a pauta e a ata, e escreve a sugestão. As gravações e as tarefas não aparecem pra ele.
+        </p>
+      )}
+
+      {isLoading ? (
+        <p className="text-[11px] text-ink-faint">Carregando comentários…</p>
+      ) : feedbacks.length === 0 ? (
+        <p className="text-[11px] text-ink-faint">Nenhum comentário ainda.</p>
+      ) : (
+        <div className="space-y-2">
+          {feedbacks.map(f => (
+            <div
+              key={f.id}
+              className={`group rounded-lg border px-3 py-2.5 transition-colors ${f.lido ? 'border-border/60 bg-surface-2/20' : 'border-info/30 bg-info/5'}`}
+            >
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <span className="text-[12.5px] font-semibold text-ink">{f.nome}</span>
+                {f.tipo && (
+                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full border border-border text-ink-muted">{f.tipo}</span>
+                )}
+                <span className="text-[10.5px] text-ink-faint">{fmtQuando(f.created_at)}</span>
+                <div className="flex-1" />
+                <button
+                  onClick={() => marcarLido.mutate({ id: f.id, reuniaoId: reuniao.id, lido: !f.lido })}
+                  className="shrink-0 text-[10.5px] text-ink-faint hover:text-accent transition-colors"
+                  title={f.lido ? 'Marcar como não lido' : 'Marcar como lido'}
+                >
+                  {f.lido ? 'lido' : 'marcar lido'}
+                </button>
+                <button
+                  onClick={() => excluir.mutate({ id: f.id, reuniaoId: reuniao.id })}
+                  className="shrink-0 text-ink-faint/50 hover:text-danger opacity-0 group-hover:opacity-100 transition-all"
+                  title="Excluir comentário"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <p className="text-[13px] text-ink-muted leading-relaxed whitespace-pre-wrap">{f.comentario}</p>
+            </div>
+          ))}
         </div>
       )}
     </div>
