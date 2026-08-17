@@ -246,61 +246,57 @@ async function copiarTexto(texto: string): Promise<boolean> {
   }
 }
 
-// Monta o texto pro WhatsApp (negrito com *asteriscos*, uma linha por vendedor).
-// Sem a contagem de leads — pedido do Daniel (leads ficam só na tela).
+// Monta o texto pro WhatsApp (negrito com *asteriscos*).
 //
-// ⚠️ 17/08/2026 — LIGAÇÕES SAÍRAM DA MENSAGEM (tinham entrado em 13/08). Medido no banco
-// numa segunda-feira às 11:25: o time inteiro tinha *1* ligação feita registrada. Não é que
-// ninguém ligou — é que a captura só enxerga chamada que cai em conversa com etiqueta do
-// funil, e o sync de mensagens cobre 22-47% da carteira de cada vendedor (PEDRO 24,7%,
-// EDILSON JR 22,3%). No painel isso vira um asterisco; numa mensagem que RANQUEIA gente no
-// grupo vira "só o Edilson ligou", que é falso e injusto com quem ligou pra cliente de
-// ORÇAMENTO ENVIADO ou VENDIDO. Mesmo raciocínio do bloco por pessoa do placar dos times,
-// que já sai suprimido.
-// Pra devolver quando a captura por evento estiver rodando: reverter este commit (as 3
-// linhas de `partes`, `timeParts` e `legenda`).
+// ⚠️ ELA DERIVA DE `COLS`. Não escreva métrica na mão aqui: a mensagem sempre
+// mostra exatamente as colunas da tela, na mesma ordem, com o mesmo emoji e a
+// mesma formatação (o Score sai com "%"). Foi justamente por escrever à mão que
+// ela ficou pra trás — a versão anterior listava 4 métricas fixas e não
+// acompanhou Ligações, Carteira e Score quando essas colunas nasceram. Agora
+// coluna nova entra sozinha.
 //
-// O que mudou em 13/08, depois de olhar a mensagem colada de verdade no grupo:
-// • ~~LIGAÇÕES ENTRARAM~~ (revertido em 17/08, acima).
-// • MEDALHA NO TOP 3. A lista vinha achatada, 9 linhas iguais; num grupo de vendas o
-//   ranking É a mensagem. As linhas já chegam ordenadas por atendimentos.
-// • CADA VENDEDOR SÓ MOSTRA O QUE TEM. Antes toda linha carregava 🤝0 mesmo zerado —
-//   três zeros por linha × 9 linhas é ruído que faz ninguém ler até o fim.
-// • NÚMERO INDISPONÍVEL NÃO VIRA ZERO. Se o funil não carregou, a mensagem OMITE em vez
-//   de anunciar "0 negociando" pro time inteiro, que seria mentira.
+// 17/08/2026 — O DANIEL PEDIU A MENSAGEM COMPLETA: as 8 colunas, zero incluído.
+// Isso REVERTE duas decisões minhas anteriores, e vale registrar por que elas
+// existiam, caso alguém queira encolher de novo:
+// • "cada vendedor só mostra o que tem" (13/08) — omitia zeros pra mensagem não
+//   virar parede de 🤝0. O custo escondido: quem estava zerado sumia da cobrança.
+// • ligações fora (17/08) — na época a captura só via chat com etiqueta do funil
+//   (22-47% da carteira), e ranquear por ela era injusto. Isso MUDOU no mesmo
+//   dia: a fonte virou o histórico do WhatsApp e cobre a carteira inteira.
+//
+// O que continua valendo e NÃO deve ser revertido:
+// • MEDALHA NO TOP 3 — num grupo de vendas o ranking é a mensagem.
+// • NÚMERO INDISPONÍVEL NÃO VIRA ZERO. Se o funil não carregou, ou se a extensão
+//   daquele vendedor não captura ligação, a métrica é OMITIDA da linha dele.
+//   Anunciar "📲0" pra quem o sistema não consegue medir é acusação falsa no grupo.
 function textoWhatsApp(
   rows: ResumoDiaVendedor[],
   tot: Record<string, number>,
-  opts: { periodo?: string; funilIndisponivel?: boolean } = {},
+  opts: { periodo?: string; fora: Fora },
 ): string {
   const data = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
   const medalha = ['🥇', '🥈', '🥉']
-  const semFunil = !!opts.funilIndisponivel
 
+  // Uma régua só pros dois casos (vendedor e time): mesmo conjunto, mesma ordem,
+  // pulando o que o sistema não sabe.
+  const metricas = (valor: (c: Col) => number, semDadoNesta: (c: Col) => boolean) =>
+    COLS.filter(c => !semDadoNesta(c)).map(c => `${c.emoji}${fmtCol(c, valor(c))}`).join(' ')
+
+  // Nome e números em linhas separadas: com 8 métricas, tudo numa linha só vira
+  // um bloco que quebra feio na largura do WhatsApp no celular.
   const linhas = rows.map((r, i) => {
-    const partes = [`💬${r.atendimentos}`]
-    if (r.orcamentos > 0) partes.push(`📄${r.orcamentos}`)
-    if (!semFunil && r.negociacao > 0) partes.push(`🤝${r.negociacao}`)
-    if (!semFunil && r.quente > 0) partes.push(`🔥${r.quente}`)
-    const marca = i < 3 ? `${medalha[i]} ` : '• '
-    return `${marca}*${r.nome}* — ${partes.join('  ')}`
+    const marca = i < 3 ? medalha[i] : '•'
+    return `${marca} *${r.nome}*\n${metricas(c => r[c.key], c => semDado(c, r, opts.fora))}`
   })
-
-  const timeParts = [`💬 ${fmt(tot.atendimentos)} atendidos`]
-  timeParts.push(`📄 ${fmt(tot.orcamentos)} orçamentos`)
-  if (!semFunil) timeParts.push(`🤝 ${fmt(tot.negociacao)} negociando`)
-
-  const legenda = ['💬 atendidos', '📄 orçamentos']
-  if (!semFunil) legenda.push('🤝 negociando', '🔥 quentes')
 
   return [
     `☀️ *RESUMO — ${opts.periodo || data}*`,
     '',
-    `*TIME:* ${timeParts.join(' · ')}`,
+    `*TIME:* ${metricas(c => tot[c.key], c => semDadoCol(c, opts.fora))}`,
     '',
-    ...linhas,
+    linhas.join('\n\n'),
     '',
-    `_${legenda.join(' · ')}_`,
+    `_${COLS.map(c => `${c.emoji}${c.label.toLowerCase()}`).join(' · ')}_`,
   ].join('\n')
 }
 
@@ -357,7 +353,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
 
   const copiar = async () => {
     const periodo = !liveHoje && periodoLabel ? periodoLabel : undefined
-    const texto = textoWhatsApp(rows, tot, { periodo, funilIndisponivel })
+    const texto = textoWhatsApp(rows, tot, { periodo, fora })
     if (await copiarTexto(texto)) {
       setTextoPraCopiarNaMao(null)
       setCopiado(true)
