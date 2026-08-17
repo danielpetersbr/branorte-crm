@@ -72,12 +72,14 @@ const COLS: Col[] = [
   // Carteira = estoque em jogo, não corrida de hoje: número puro, sem fio, e
   // separada por um divisor. Ranquear carteira ali levaria o olho pro lugar errado —
   // carteira grande pode ser mérito ou pode ser fila parada esperando resposta.
-  { key: 'carteira',     Icon: Users,          emoji: '👥', label: 'Carteira',   explica: 'clientes em jogo no funil dele: as 5 etapas + orçamento enviado (fora vendido, perdido e interesse futuro)', tone: 'neutro',  kpi: false, mobile: false, snapshot: true, separaAntes: true, semFio: true },
-  // SCORE é a fatia da carteira que ele trabalha HOJE: só as 5 etapas. Ganha fio
-  // porque comparar score entre vendedores é exatamente o ponto dele. A distância
-  // pra Carteira é EXATAMENTE o orçamento enviado esperando resposta — e é assim
-  // desde que INTERESSE FUTURO saiu da carteira (17/08), justamente pra essa
-  // leitura valer. Com a etiqueta dentro, 31% da coluna era gente na geladeira.
+  { key: 'carteira',     Icon: Users,          emoji: '👥', label: 'Carteira',   explica: 'clientes que ele está trabalhando: prospecção + 2ª tentativa + novo lead + follow-up + lead quente, tirando quem já foi marcado como vendido ou perdido', tone: 'neutro',  kpi: false, mobile: false, snapshot: true, separaAntes: true, semFio: true },
+  // ⚠️ SCORE e CARTEIRA são as MESMAS 5 etapas desde 17/08/2026 — o Daniel quis a
+  // carteira assim. Só que os dois números NÃO batem, e a diferença é o ponto:
+  // o Score soma `per_label` do heartbeat (duplica cliente com duas etiquetas e
+  // NÃO tira quem já foi marcado vendido/perdido); a Carteira conta cliente
+  // distinto e tira os fechados. IGOR: 202 no Score contra 159 na Carteira — 43
+  // clientes dele estão numa etapa do funil E fechados ao mesmo tempo. Ou seja: a
+  // Carteira é a versão limpa, e a distância entre as colunas mede etiqueta suja.
   { key: 'score',        Icon: Target,         emoji: '🎯', label: 'Score',      explica: 'clientes vivos no funil: prospecção + novo lead + 2ª tentativa + follow-up + lead quente', tone: 'accent', kpi: false, mobile: true,  snapshot: true },
 ]
 

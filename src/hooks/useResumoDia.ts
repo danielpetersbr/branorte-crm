@@ -56,14 +56,14 @@ export interface ResumoDiaVendedor {
 //
 // VENDIDO e PERDIDO também ficam fora: saíram do jogo.
 //
-// A CARTEIRA é o mesmo funil com a régua um passo mais larga (+ ORÇAMENTO
-// ENVIADO). As duas colunas contam clientes vivos e a diferença entre elas é
-// exatamente o orçamento parado esperando resposta.
+// A CARTEIRA usa as MESMAS 5 etapas do Score (decisão do Daniel, 17/08/2026:
+// "só esses conta na carteira"). ORÇAMENTO ENVIADO e INTERESSE FUTURO ficaram de
+// fora — o segundo era 31% da coluna, gente que ninguém está trabalhando.
 //
-// ⚠️ INTERESSE FUTURO ficou de FORA (decisão do Daniel em 17/08/2026, em cima do
-// dado): era 31% da coluna — 540 de 1.710 clientes entravam SÓ por essa etiqueta,
-// gente que ninguém está trabalhando. Com ela dentro, a Carteira media dois mundos
-// ao mesmo tempo e a distância pro Score não queria dizer nada.
+// ⚠️ Mesma régua NÃO quer dizer mesmo número, e é aí que a dupla ganha sentido:
+// o Score soma `per_label` do heartbeat, que duplica cliente com duas etiquetas e
+// não tira quem já foi marcado vendido/perdido. A Carteira conta cliente DISTINTO
+// e tira os fechados. IGOR: 202 no Score, 159 na Carteira.
 const somaScore = (f?: FunilRow): number =>
   f ? (f.prospec ?? 0) + (f.novoLead ?? 0) + (f.tentativa ?? 0) + (f.followup ?? 0) + (f.quente ?? 0) : 0
 
@@ -119,8 +119,7 @@ export function useResumoDia(preset: DashboardPreset = '') {
   // (useWaKanban) — e faz três coisas que a soma de etiquetas não fazia:
   //  • conta CLIENTE, não etiqueta (quem tinha FOLLOW UP + ORÇAMENTO ENVIADO
   //    contava 2x: EDILSON +45, GUSTAVO +40);
-  //  • inclui ORÇAMENTO ENVIADO (está em jogo, só não é trabalho de hoje — por
-  //    isso entra aqui e não no Score). INTERESSE FUTURO NÃO entra: ver acima;
+  //  • usa só as 5 etapas do funil (ORÇAMENTO ENVIADO e INTERESSE FUTURO fora);
   //  • tira quem já tem VENDIDO ou motivo de fechamento, mesmo carregando etiqueta
   //    viva pendurada. Eram 188 clientes e a sujeira é desigual (EDILSON 57,
   //    GUSTAVO 45, IGOR 44 contra PEDRO 1, EDER 3) — sem esse corte a carteira

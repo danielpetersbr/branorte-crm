@@ -10,9 +10,11 @@
 --     (useWaKanban). Assim o número do Dashboard e o do funil falam do mesmo mundo.
 --  2. Conta CLIENTE DISTINTO, não etiqueta. Somar per_label inflava: cliente com
 --     FOLLOW UP + ORÇAMENTO ENVIADO contava 2x (EDILSON +45, GUSTAVO +40).
---  3. VIVO = 5 etapas + ORÇAMENTO ENVIADO. INTERESSE FUTURO ficou de fora: era
---     31% da coluna (540 de 1.710 entravam SÓ por ela), gente que ninguém está
---     trabalhando. Sem ela, a distância pro Score é o orçamento esperando resposta.
+--  3. VIVO = só as 5 etapas: PROSPECÇÃO, 2ª TENTATIVA, NOVO LEAD, FOLLOW UP e
+--     LEAD QUENTE. ORÇAMENTO ENVIADO fora; INTERESSE FUTURO fora (era 31% da
+--     coluna — 540 de 1.710 entravam SÓ por ela, gente que ninguém trabalha).
+--     Mesma régua do Score, mas número diferente: o Score soma per_label do
+--     heartbeat (duplica e não tira fechado). IGOR: 202 no Score, 159 aqui.
 --  4. TERMINAL exclui: quem tem VENDIDO ou motivo de fechamento SAI, mesmo que a
 --     etiqueta viva antiga tenha ficado pendurada. Sem isso a carteira premiava
 --     quem não limpa etiqueta — eram 188 clientes, distribuídos de forma desigual
@@ -40,7 +42,7 @@ as $function$
   ),
   por_chat as (
     select ch.vendedor_nome, ch.chat_id, max(ch.updated_at) as updated_at,
-      bool_or(cat.nome ~* 'prospec|tentativa|novo[s]? lead|lead novo|f[ao]llow|quente|or.amento enviado') as vivo,
+      bool_or(cat.nome ~* 'prospec|tentativa|novo[s]? lead|lead novo|f[ao]llow|quente') as vivo,
       bool_or(cat.nome ~* 'vendido|nunca respondeu|respondeu mais|tem interesse|fora do or.amento|fabricamos|co[nm]corren|base de pre')  as terminal
     from ch
     join cat on cat.vendedor_nome = ch.vendedor_nome and cat.id = ch.id
