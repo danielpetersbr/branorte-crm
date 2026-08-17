@@ -53,11 +53,18 @@ export function MobileHome() {
     },
     {
       to: '/orcamentos/precos',
-      label: 'Tabela de Preços',
+      label: 'Tabela de Preço',
       sub: 'Consultar valores',
       icon: DollarSign,
       tone: 'text-emerald-400',
-      show: podeOrcar,
+      // `precos.consultar`, a MESMA chave do item no menu lateral. Era
+      // `menu.orcamentos`: dois donos pro mesmo destino e como o acesso se
+      // perde em silencio depois. Os conjuntos sao identicos hoje (admin,
+      // marketing, vendor), entao ninguem ganha nem perde nada agora.
+      // ⚠️ Ate 2026-08-17 este atalho era MORTO pro vendedor: aparecia, mas
+      // /orcamentos/precos nao estava no VENDOR_PREFIXES e o clique devolvia
+      // pro /atendimentos. A rota foi liberada no mesmo commit que criou a chave.
+      show: can('precos.consultar'),
     },
     {
       to: '/frete',
