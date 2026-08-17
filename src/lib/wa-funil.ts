@@ -1,6 +1,7 @@
 // Taxonomia compartilhada do funil de etiquetas WhatsApp (Wascript).
 // Fonte única para ordem oficial, aliases de typo, cores e ocultas —
-// usada pelo Kanban /funil e alinhada com EtiquetasZap/PainelEtiquetas.
+// usada pelo Kanban /funil. (As telas EtiquetasZap/EtiquetasZapGraficos/
+// PainelEtiquetas que também consumiam isto foram removidas em 2026-08-17.)
 
 // Ordem oficial do funil de vendas Branorte. Etiquetas fora da lista vão pro final.
 /**
@@ -123,7 +124,8 @@ export const ETIQUETA_COR: Record<string, string> = {
  * Estas eram as cores de `ETIQUETA_COR` até 2026-08, quando ela foi escurecida
  * pra passar AA como TEXTO sobre fundo claro. Os gráficos não podem usar a nova:
  * o canvas do Recharts é ESCURO por construção e independente do tema do app
- * (`background: '#11151c'`, ticks `#e7e9ee` — PainelEtiquetas.tsx:412,570), e
+ * (`background: '#11151c'`, ticks `#e7e9ee` — era assim em PainelEtiquetas.tsx,
+ * removida em 2026-08-17), e
  * as 18 cores calibradas pro claro caem abaixo de 3:1 ali. Barra escura sobre
  * fundo escuro não é gráfico.
  *
@@ -131,6 +133,11 @@ export const ETIQUETA_COR: Record<string, string> = {
  * cópias (esta, PainelEtiquetas e EtiquetasZapGraficos) eram byte-idênticas e
  * ninguém sabia que eram três. Duas paletas com PAPEL declarado é design; três
  * cópias mudas é armadilha.
+ *
+ * ⚠️ Desde 2026-08-17 esta paleta NÃO tem consumidor: as duas telas de gráfico
+ * de etiqueta foram removidas. Mantida de propósito — é a calibragem AA pro
+ * canvas escuro do Recharts, cara de refazer. Próximo gráfico de etiqueta usa
+ * ela em vez de inventar a quarta cópia.
  *
  * REGRA: `fill`/`stroke` de gráfico usa esta. Texto, selo, dot e borda de UI
  * usam `ETIQUETA_COR` via `estiloEtiqueta()` + `.etq-soft`/`.etq-dot`.

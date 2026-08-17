@@ -29,9 +29,7 @@ export const FEATURE_CATALOG: Array<{
   { key: 'menu.atendimentos', label: 'Atendimentos', group: 'Menu' },
   { key: 'menu.contatos', label: 'Contatos', group: 'Menu' },
   { key: 'menu.atribuir', label: 'Atribuir', group: 'Menu' },
-  { key: 'menu.prospeccao', label: 'Prospecção (Pool)', group: 'Menu' },
   { key: 'menu.funil', label: 'Funil', group: 'Menu' },
-  { key: 'menu.etiquetas_zap', label: 'Etiquetas Zap', group: 'Menu' },
   { key: 'menu.atividade_diaria', label: 'Atividade Diária', group: 'Menu' },
   { key: 'menu.orcamentos', label: 'Orçamentos', group: 'Menu' },
   { key: 'menu.orcamentos_avancado', label: 'Orçamentos avançado (Catálogo/Motores/Preços/Conversão/Painel/Lista)', group: 'Menu' },
@@ -68,7 +66,6 @@ export const FEATURE_CATALOG: Array<{
   // usa a mesma chave, em public.guia_pode_editar()).
   { key: 'guia.editar', label: 'Editar o Guia do Vendedor (conteúdo técnico e imagens)', group: 'Ações' },
   { key: 'contacts.view_all', label: 'Ver TODOS os contatos (não só do próprio vendedor)', group: 'Ações' },
-  { key: 'prospeccao.gestao', label: 'Prospecção: ver métricas e configurar o pool', group: 'Ações' },
   { key: 'atendimentos.reatribuir', label: 'Reatribuir atendimento pra outro vendedor', group: 'Ações' },
   { key: 'orcamentos.criar', label: 'Criar/editar orçamento', group: 'Ações' },
   { key: 'disparos.send', label: 'Enviar disparo (roteamento)', group: 'Ações' },
@@ -99,7 +96,6 @@ const FALLBACK: Record<AssignableRole, Record<string, boolean>> = {
     // de Visitas (este sem permKey, sempre visível). Demais menus ficam ocultos.
     'menu.atendimentos': true,
     'menu.orcamentos': true,
-    'menu.prospeccao': true,
     'menu.projeto_3d': true,
     'menu.viabilidade': true,
     'menu.venda_racao': true,

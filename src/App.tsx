@@ -23,7 +23,6 @@ const Contacts = lazy(() => import('@/pages/Contacts').then(m => ({ default: m.C
 const Consulta = lazy(() => import('@/pages/Consulta').then(m => ({ default: m.Consulta })))
 const ConsultaHistorico = lazy(() => import('@/pages/ConsultaHistorico').then(m => ({ default: m.ConsultaHistorico })))
 const Assign = lazy(() => import('@/pages/Assign').then(m => ({ default: m.Assign })))
-const Prospeccao = lazy(() => import('@/pages/Prospeccao').then(m => ({ default: m.Prospeccao })))
 const Orcamentos = lazy(() => import('@/pages/Orcamentos').then(m => ({ default: m.Orcamentos })))
 const Vendidos = lazy(() => import('@/pages/Vendidos').then(m => ({ default: m.Vendidos })))
 const MapaVisitas = lazy(() => import('@/pages/MapaVisitas').then(m => ({ default: m.MapaVisitas })))
@@ -36,9 +35,6 @@ const SejaRepresentante = lazy(() => import('@/pages/SejaRepresentante').then(m 
 const Funil = lazy(() => import('@/pages/Funil').then(m => ({ default: m.Funil })))
 const FunilWhatsApp = lazy(() => import('@/pages/FunilWhatsApp').then(m => ({ default: m.FunilWhatsApp })))
 const FunilRelatorio = lazy(() => import('@/pages/FunilRelatorio').then(m => ({ default: m.FunilRelatorio })))
-const EtiquetasZap = lazy(() => import('@/pages/EtiquetasZap').then(m => ({ default: m.EtiquetasZap })))
-const EtiquetasZapGraficos = lazy(() => import('@/pages/EtiquetasZapGraficos').then(m => ({ default: m.EtiquetasZapGraficos })))
-const PainelEtiquetas = lazy(() => import('@/pages/PainelEtiquetas').then(m => ({ default: m.PainelEtiquetas })))
 const OrcamentoBuilder = lazy(() => import('@/pages/OrcamentoBuilder').then(m => ({ default: m.OrcamentoBuilder })))
 const OrcamentoMontar = lazy(() => import('@/pages/OrcamentoMontar').then(m => ({ default: m.OrcamentoMontar })))
 const CatalogoAdmin = lazy(() => import('@/pages/CatalogoAdmin').then(m => ({ default: m.CatalogoAdmin })))
@@ -341,7 +337,7 @@ function AppRoutes() {
   // Vendedor: acesso restrito a Atendimentos, Consulta, Montar/Editar Orçamento e
   // Mapa de Visitas (+ Perfil). Dashboard escondido → "/" e demais rotas caem em
   // Atendimentos. O menu já esconde; isto trava o acesso por URL direta.
-  const VENDOR_PREFIXES = ['/atendimentos', '/consulta', '/prospeccao', '/orcamentos/montar', '/orcamentos/salvos', '/orcamentos/novo', '/mapa-visitas', '/minhas-visitas', '/organizacao-viagem', '/frete/solicitar', '/perfil', '/agenda', '/metas']
+  const VENDOR_PREFIXES = ['/atendimentos', '/consulta', '/orcamentos/montar', '/orcamentos/salvos', '/orcamentos/novo', '/mapa-visitas', '/minhas-visitas', '/organizacao-viagem', '/frete/solicitar', '/perfil', '/agenda', '/metas']
   if (profile.role === 'vendor') {
     const p = loc.pathname
     // gestor de frete pode ter papel 'vendor' + permissão frete.aprovar → libera a fila pra ele
@@ -465,7 +461,6 @@ function AppRoutes() {
           </>
         )}
         <Route path="/atribuir" element={<Assign />} />
-        <Route path="/prospeccao" element={<Prospeccao />} />
         <Route path="/orcamentos" element={<Orcamentos />} />
         <Route path="/orcamentos/lista" element={<Orcamentos />} />
         {/* /orcamentos/novo descontinuado: redireciona pro Montar Custom (links antigos continuam funcionando) */}
@@ -512,9 +507,6 @@ function AppRoutes() {
         <Route path="/funil" element={<FunilWhatsApp />} />
         <Route path="/funil/manual" element={<Funil />} />
         <Route path="/funil/relatorio" element={<FunilRelatorio />} />
-        <Route path="/etiquetas-zap" element={<EtiquetasZap />} />
-        <Route path="/etiquetas-zap/graficos" element={<EtiquetasZapGraficos />} />
-        <Route path="/etiquetas-zap/painel" element={<PainelEtiquetas />} />
         <Route path="/atividade-diaria" element={<AtividadeDiaria />} />
         <Route path="/projeto" element={<Projeto />} />
         <Route path="/projeto-3d" element={<Projeto3D />} />

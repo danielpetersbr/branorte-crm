@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
-  Activity, AlertCircle, BarChart2, Beef, BookCheck, BookOpen, Bot, Boxes, Calculator, CalendarDays, CheckCircle, ChevronDown, ChevronsLeft, ChevronsRight, ClipboardList, Compass, Factory, FilePlus2, FileText, GitBranch, Headphones, History, LayoutDashboard, Link2, List, LogOut, MapPin, MessageSquare, MessageSquarePlus, Moon, Package, PhoneCall, ScanEye, Search, Settings, Shield, ShoppingBag, Sun, Tag, Target, TrendingUp, Truck, UserPlus, Users, Wallet, Wheat, Workflow, Zap,
+  Activity, BarChart2, Beef, BookCheck, BookOpen, Bot, Boxes, Calculator, CalendarDays, CheckCircle, ChevronDown, ChevronsLeft, ChevronsRight, ClipboardList, Compass, Factory, FilePlus2, FileText, GitBranch, Headphones, History, LayoutDashboard, Link2, List, LogOut, MapPin, MessageSquare, MessageSquarePlus, Moon, Package, PhoneCall, ScanEye, Search, Settings, Shield, ShoppingBag, Sun, Target, TrendingUp, Truck, UserPlus, Users, Wallet, Wheat, Workflow, Zap,
 } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -112,10 +112,8 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/contatos', label: 'Contatos', icon: Users, permKey: 'menu.contatos' },
       { to: '/consulta', label: 'Consulta', icon: Search, permKey: 'due_diligence.consultar' },
       { to: '/atribuir', label: 'Atribuir', icon: UserPlus, permKey: 'menu.atribuir' },
-      { to: '/prospeccao', label: 'Prospecção', icon: Target, permKey: 'menu.prospeccao' },
       { to: '/funil', label: 'Funil', icon: GitBranch, permKey: 'menu.funil' },
       { to: '/atividade-diaria', label: 'Atividade Diária', icon: Activity, permKey: 'menu.atividade_diaria' },
-      { to: '/reunioes', label: 'Adm de Reunião', icon: ClipboardList, permKey: 'menu.reunioes' },
       // SEM `roles`: a permissão manda sozinha. Item com permKey E roles cria duas fontes
       // de verdade pro mesmo acesso — foi o que escondeu /contatos dos vendedores.
       { to: '/ligacoes', label: 'Ligações', icon: PhoneCall, permKey: 'menu.ligacoes' },
@@ -125,25 +123,10 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    id: 'etiquetas', label: 'Etiquetas Zap', icon: Tag,
-    items: [
-      { to: '/etiquetas-zap', label: 'Cards', icon: List, end: true, permKey: 'menu.etiquetas_zap' },
-      { to: '/etiquetas-zap/graficos', label: 'Gráficos', icon: BarChart2, permKey: 'menu.etiquetas_zap' },
-      { to: '/etiquetas-zap/painel', label: 'Painel Status', icon: AlertCircle, permKey: 'menu.etiquetas_zap' },
-    ],
-  },
-  {
     id: 'orcamentos', label: 'Orçamentos', icon: FileText,
     items: [
       { to: '/orcamentos/montar', label: 'Montar Orçamento', icon: Package, permKey: 'menu.orcamentos' },
       { to: '/orcamentos/salvos', label: 'Salvos (Editar)', icon: List, permKey: 'menu.orcamentos' },
-      { to: '/orcamentos/catalogo-admin', label: 'Catálogo (Admin)', icon: Shield, permKey: 'menu.orcamentos_avancado' },
-      { to: '/orcamentos/motores', label: 'Motores (Preços)', icon: Zap, permKey: 'menu.orcamentos_avancado' },
-      { to: '/orcamentos/precos', label: 'Tabela de Preços', icon: BookOpen, permKey: 'menu.orcamentos_avancado' },
-      { to: '/orcamentos/conversao', label: 'Conversão (KPIs)', icon: TrendingUp, permKey: 'menu.orcamentos_avancado' },
-      { to: '/admin/transportador-funcoes', label: 'Funções Chupim', icon: GitBranch, permKey: 'menu.orcamentos_avancado' },
-      { to: '/orcamentos', label: 'Painel', icon: BarChart2, end: true, permKey: 'menu.orcamentos_avancado' },
-      { to: '/orcamentos/lista', label: 'Lista', icon: List, permKey: 'menu.orcamentos_avancado' },
     ],
   },
   {
@@ -209,6 +192,27 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    // ADM = o que e administracao, nao operacao do dia. Os 7 itens de baixo
+    // saiam do grupo Orcamentos (todos com permKey menu.orcamentos_avancado) e
+    // 'Adm de Reuniao' saia de Operacao — as permKeys foram preservadas item a
+    // item, entao quem via continua vendo e quem nao via continua sem ver.
+    // ⚠️ 'Funcoes Chupim' aparece TAMBEM no grupo Sistema, com OUTRA permKey
+    // (menu.admin_transportador_funcoes). Isso ja era assim antes; as duas
+    // entradas apontam pra mesma rota mas liberam por chaves diferentes, entao
+    // apagar uma tira o acesso de quem so tem a chave dela.
+    id: 'adm', label: 'ADM', icon: Shield,
+    items: [
+      { to: '/reunioes', label: 'Adm de Reunião', icon: ClipboardList, permKey: 'menu.reunioes' },
+      { to: '/orcamentos/catalogo-admin', label: 'Catálogo (Admin)', icon: Shield, permKey: 'menu.orcamentos_avancado' },
+      { to: '/orcamentos/motores', label: 'Motores (Preços)', icon: Zap, permKey: 'menu.orcamentos_avancado' },
+      { to: '/orcamentos/precos', label: 'Tabela de Preços', icon: BookOpen, permKey: 'menu.orcamentos_avancado' },
+      { to: '/orcamentos/conversao', label: 'Conversão (KPIs)', icon: TrendingUp, permKey: 'menu.orcamentos_avancado' },
+      { to: '/admin/transportador-funcoes', label: 'Funções Chupim', icon: GitBranch, permKey: 'menu.orcamentos_avancado' },
+      { to: '/orcamentos', label: 'Painel', icon: BarChart2, end: true, permKey: 'menu.orcamentos_avancado' },
+      { to: '/orcamentos/lista', label: 'Lista', icon: List, permKey: 'menu.orcamentos_avancado' },
+    ],
+  },
+  {
     id: 'sistema', label: 'Sistema', icon: Settings,
     items: [
       { to: '/disparos', label: 'Roteamento', icon: GitBranch, permKey: 'menu.disparos' },
@@ -231,7 +235,6 @@ const NAV_GROUPS: NavGroup[] = [
 const MOBILE_NAV: NavItem[] = [
   { to: '/', label: 'Início', icon: LayoutDashboard },
   { to: '/atendimentos', label: 'Atender', icon: MessageSquare, countKey: 'atendimentos' },
-  { to: '/prospeccao', label: 'Prospectar', icon: Target },
   { to: '/orcamentos/montar', label: 'Orçar', icon: FilePlus2 },
   { to: '/vendidos', label: 'Vendidos', icon: CheckCircle },
   { to: '/projeto-3d', label: 'Projeto 3D', icon: Boxes, permKey: 'menu.projeto_3d' },
@@ -358,7 +361,7 @@ export function Layout() {
   const mobileBase = profile?.role === 'visualizador'
     ? MOBILE_NAV.filter(l => l.to === '/' || l.to === '/atendimentos')
     : profile?.role === 'vendor'
-    ? MOBILE_NAV.filter(l => l.to === '/atendimentos' || l.to === '/orcamentos/montar' || l.to === '/prospeccao')
+    ? MOBILE_NAV.filter(l => l.to === '/atendimentos' || l.to === '/orcamentos/montar')
     : MOBILE_NAV
   // Respeita permKey: item só entra na barra se o usuário tiver a permissão.
   const mobileNav = mobileBase.filter(visible)
