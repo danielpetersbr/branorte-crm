@@ -60,7 +60,7 @@ function NumCell({ val, max, warn = false, indisponivel = false }:
 const COLS: Array<{ key: keyof Pick<ResumoDiaVendedor, 'leads' | 'atendimentos' | 'ligacoes' | 'orcamentos' | 'negociacao' | 'quente' | 'carteira'>; icon: string; label: string; explica: string }> = [
   { key: 'leads',        icon: '📥', label: 'Leads',      explica: 'leads novos que chegaram hoje' },
   { key: 'atendimentos', icon: '💬', label: 'Atendidos',  explica: 'conversas trabalhadas hoje' },
-  { key: 'ligacoes',     icon: '📲', label: 'Ligações',   explica: 'ligações que o vendedor FEZ no período (piso: só conversas com etiqueta do funil)' },
+  { key: 'ligacoes',     icon: '📲', label: 'Ligações*',  explica: 'PISO — só o que a captura viu (ver aviso abaixo)' },
   { key: 'orcamentos',   icon: '📄', label: 'Orçamentos', explica: 'orçamentos montados hoje' },
   { key: 'negociacao',   icon: '🤝', label: 'Negociando', explica: 'em negociação agora (follow-up + quente)' },
   { key: 'quente',       icon: '🔥', label: 'Quentes',    explica: 'leads quentes agora' },
@@ -70,9 +70,19 @@ const COLS: Array<{ key: keyof Pick<ResumoDiaVendedor, 'leads' | 'atendimentos' 
 // Monta o texto pro WhatsApp (negrito com *asteriscos*, uma linha por vendedor).
 // Sem a contagem de leads — pedido do Daniel (leads ficam só na tela).
 //
+// ⚠️ 17/08/2026 — LIGAÇÕES SAÍRAM DA MENSAGEM (tinham entrado em 13/08). Medido no banco
+// numa segunda-feira às 11:25: o time inteiro tinha *1* ligação feita registrada. Não é que
+// ninguém ligou — é que a captura só enxerga chamada que cai em conversa com etiqueta do
+// funil, e o sync de mensagens cobre 22-47% da carteira de cada vendedor (PEDRO 24,7%,
+// EDILSON JR 22,3%). No painel isso vira um asterisco; numa mensagem que RANQUEIA gente no
+// grupo vira "só o Edilson ligou", que é falso e injusto com quem ligou pra cliente de
+// ORÇAMENTO ENVIADO ou VENDIDO. Mesmo raciocínio do bloco por pessoa do placar dos times,
+// que já sai suprimido.
+// Pra devolver quando a captura por evento estiver rodando: reverter este commit (as 3
+// linhas de `partes`, `timeParts` e `legenda`).
+//
 // O que mudou em 13/08, depois de olhar a mensagem colada de verdade no grupo:
-// • LIGAÇÕES ENTRARAM. A coluna existe na tela e sumia aqui — quem lê o grupo via um
-//   resumo diferente do que o gestor via no painel.
+// • ~~LIGAÇÕES ENTRARAM~~ (revertido em 17/08, acima).
 // • MEDALHA NO TOP 3. A lista vinha achatada, 9 linhas iguais; num grupo de vendas o
 //   ranking É a mensagem. As linhas já chegam ordenadas por atendimentos.
 // • CADA VENDEDOR SÓ MOSTRA O QUE TEM. Antes toda linha carregava 🤝0 mesmo zerado —
@@ -90,7 +100,6 @@ function textoWhatsApp(
 
   const linhas = rows.map((r, i) => {
     const partes = [`💬${r.atendimentos}`]
-    if (r.ligacoes > 0) partes.push(`📲${r.ligacoes}`)
     if (r.orcamentos > 0) partes.push(`📄${r.orcamentos}`)
     if (!semFunil && r.negociacao > 0) partes.push(`🤝${r.negociacao}`)
     if (!semFunil && r.quente > 0) partes.push(`🔥${r.quente}`)
@@ -99,11 +108,10 @@ function textoWhatsApp(
   })
 
   const timeParts = [`💬 ${fmt(tot.atendimentos)} atendidos`]
-  if (tot.ligacoes > 0) timeParts.push(`📲 ${fmt(tot.ligacoes)} ligações`)
   timeParts.push(`📄 ${fmt(tot.orcamentos)} orçamentos`)
   if (!semFunil) timeParts.push(`🤝 ${fmt(tot.negociacao)} negociando`)
 
-  const legenda = ['💬 atendidos', '📲 ligações feitas', '📄 orçamentos']
+  const legenda = ['💬 atendidos', '📄 orçamentos']
   if (!semFunil) legenda.push('🤝 negociando', '🔥 quentes')
 
   return [
@@ -261,6 +269,18 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
               </span>
             ))}
           </div>
+
+          {/* Aviso da coluna de ligações. Fica FORA da legenda (que é grid de linha curta)
+              porque não é explicação — é ressalva: o número é baixo demais pra cobrar e
+              alguém ia cobrar em cima dele. Medido em 17/08/2026, segunda 11:25: o time
+              inteiro tinha 1 ligação feita no banco. Sai quando a captura por evento
+              estiver rodando na frota. */}
+          <p className="mt-2 text-[11px] leading-relaxed text-warning">
+            📲 <b>Ligações é PISO — não cobre ninguém por ela ainda.</b> Só entra chamada que
+            cai em conversa com etiqueta do funil, e a sincronização enxerga de 22% a 47% da
+            carteira de cada vendedor. Quem ligou pra cliente de <i>Orçamento enviado</i>,{' '}
+            <i>Vendido</i> ou sem etiqueta aparece zerado aqui.
+          </p>
         </>
       )}
     </div>
