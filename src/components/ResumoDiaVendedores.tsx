@@ -64,7 +64,7 @@ type Col = {
 const COLS: Col[] = [
   { key: 'leads',        Icon: UserPlus,       emoji: '📥', label: 'Leads',      explica: 'leads novos que chegaram hoje',                    tone: 'accent',  kpi: true,  mobile: true,  snapshot: false },
   { key: 'atendimentos', Icon: MessageSquare,  emoji: '💬', label: 'Atendidos',  explica: 'conversas trabalhadas hoje',                       tone: 'accent',  kpi: true,  mobile: true,  snapshot: false },
-  { key: 'ligacoes',     Icon: Phone,          emoji: '📲', label: 'Ligações*', curto: 'Lig.*',  explica: 'PISO — só o que a captura viu (ver aviso abaixo)',  tone: 'neutro',  kpi: true,  mobile: false, snapshot: false },
+  { key: 'ligacoes',     Icon: Phone,          emoji: '📲', label: 'Ligações',  curto: 'Lig.',   explica: 'chamadas que ele FEZ, do histórico do WhatsApp (cobre a carteira toda)', tone: 'neutro',  kpi: true,  mobile: false, snapshot: false },
   { key: 'orcamentos',   Icon: FileText,       emoji: '📄', label: 'Orçamentos', curto: 'Orçam.', explica: 'orçamentos montados hoje',                         tone: 'accent',  kpi: true,  mobile: false, snapshot: false },
   { key: 'negociacao',   Icon: Handshake,      emoji: '🤝', label: 'Negociando', curto: 'Negoc.', explica: 'em negociação agora (follow-up + quente)',         tone: 'info',    kpi: true,  mobile: true,  snapshot: true },
   { key: 'quente',       Icon: Flame,          emoji: '🔥', label: 'Quentes',    explica: 'leads quentes agora',                              tone: 'warning', kpi: true,  mobile: true,  snapshot: true },
@@ -76,6 +76,16 @@ const COLS: Col[] = [
   // comparar score entre vendedores é exatamente o ponto dele.
   { key: 'score',        Icon: Target,         emoji: '🎯', label: 'Score',      explica: 'clientes vivos no funil: prospecção + novo lead + 2ª tentativa + follow-up + lead quente', tone: 'accent', kpi: false, mobile: true,  snapshot: true },
 ]
+
+// Uma celula fica "· · ·" por dois motivos distintos, e os dois querem dizer
+// "o sistema não sabe" — nunca "é zero":
+//  • snapshot + funil fora do ar  → Negociando/Quentes/Carteira/Score
+//  • extensão sem captura de ligação → Ligações daquele vendedor
+function semDado(c: Col, r: ResumoDiaVendedor, funilFora: boolean): boolean {
+  if (c.snapshot && funilFora) return true
+  if (c.key === 'ligacoes' && !r.ligacoesCaptura) return true
+  return false
+}
 
 // Iniciais pro avatar. "EDILSON JR" → "EJ", "JARDEL" → "JA".
 function iniciais(nome: string): string {
@@ -260,6 +270,10 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
   // topo de uma coluna que a tela sempre mostrou.
   const topAtendimentos = rows.length > 0 && rows[0].atendimentos > 0 ? rows[0].nome : null
 
+  // Quem está com a extensão sem captura de ligação. Some sozinho quando todo
+  // mundo atualizar — o aviso do rodapé e o "· · ·" das células saem juntos.
+  const semCaptura = useMemo(() => rows.filter(r => !r.ligacoesCaptura).map(r => r.nome), [rows])
+
   const copiar = () => {
     const periodo = !liveHoje && periodoLabel ? periodoLabel : undefined
     navigator.clipboard?.writeText(textoWhatsApp(rows, tot, { periodo, funilIndisponivel })).then(() => {
@@ -375,7 +389,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                           val={r[c.key]}
                           max={maxByCol[c.key]}
                           tone={c.tone}
-                          indisponivel={c.snapshot && funilIndisponivel}
+                          indisponivel={semDado(c, r, funilIndisponivel)}
                           separaAntes={c.separaAntes}
                           semFio={c.semFio}
                         />
@@ -447,7 +461,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                         o documento continua em 390px, sem scroll horizontal. */}
                     <div className="mt-2.5 grid grid-cols-5 gap-1.5">
                       {principais.map(c => {
-                        const ind = c.snapshot && funilIndisponivel
+                        const ind = semDado(c, r, funilIndisponivel)
                         const v = r[c.key]
                         return (
                           <div key={c.key}>
@@ -466,7 +480,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                   {aberto && (
                     <div className="px-3 pb-3 pt-2 border-t border-border/60 grid grid-cols-3 gap-2">
                       {extras.map(c => {
-                        const ind = c.snapshot && funilIndisponivel
+                        const ind = semDado(c, r, funilIndisponivel)
                         const v = r[c.key]
                         return (
                           <div key={c.key}>
@@ -516,18 +530,29 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
           )}
 
           {/* ── Rodapé: ressalva das ligações + legenda em disclosure ─────
-              A ressalva fica FORA do disclosure de propósito: não é explicação,
-              é aviso de que o número é baixo demais pra cobrar alguém — e
-              alguém ia cobrar em cima dele. Medido em 17/08/2026, segunda
-              11:25: o time inteiro tinha 1 ligação feita no banco. Sai quando a
-              captura por evento estiver rodando na frota. */}
+              A ressalva de ligações fica FORA do disclosure de propósito: não é
+              explicação, é aviso de que falta gente na conta — e alguém ia cobrar
+              em cima do número assim mesmo.
+
+              ⚠️ Ela agora é CONDICIONAL e se apaga sozinha. Até 17/08/2026 era um
+              texto fixo ("Ligações é PISO"), porque a fonte era `call_log`, que só
+              via chat com etiqueta do funil. Trocada a fonte pelo histórico do
+              WhatsApp, o furo que resta não é mais da régua: é de quem está com
+              extensão velha (a captura entrou na 1.13.0). Quando o último vendedor
+              atualizar, o aviso some sem ninguém precisar editar o código — e é
+              por isso que ele NOMEIA quem falta em vez de falar em abstrato. */}
           <div className="mt-4 pt-3 border-t border-border/60 space-y-2.5">
-            <p className="text-[11px] leading-relaxed text-ink-muted">
-              <span className="text-warning font-semibold">* Ligações é PISO — não cobre ninguém por ela ainda.</span>{' '}
-              Só entra chamada que cai em conversa com etiqueta do funil, e a sincronização enxerga de 22% a 47% da
-              carteira de cada vendedor. Quem ligou pra cliente de <i>Orçamento enviado</i>, <i>Vendido</i> ou sem
-              etiqueta aparece zerado aqui.
-            </p>
+            {semCaptura.length > 0 && (
+              <p className="text-[11px] leading-relaxed text-ink-muted">
+                <span className="text-warning font-semibold">
+                  Ligações de {semCaptura.join(', ')} não entram na conta.
+                </span>{' '}
+                A extensão {semCaptura.length > 1 ? 'deles' : 'dele'} ainda não captura chamada — aparece
+                <span className="tabular-nums"> · · · </span>em vez de zero, e o total do time sai por baixo.
+                Atualizar a extensão resolve. Os demais vêm do histórico do WhatsApp e cobrem a carteira inteira,
+                com ou sem etiqueta.
+              </p>
+            )}
 
             <div>
               <button

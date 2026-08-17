@@ -30,6 +30,10 @@ export interface ResumoDiaVendedor {
   carteira: number
   ligacoes: number
   score: number
+  // false = a extensao daquele vendedor nao captura ligacao (nunca gravou uma
+  // linha em wa_ligacoes). A tela mostra "· · ·" em vez de 0: "nao da pra saber"
+  // e "nao ligou" sao coisas diferentes, e so uma delas se cobra.
+  ligacoesCaptura: boolean
 }
 
 // SCORE = quantos clientes VIVOS o vendedor tem na mão, somando as 5 etiquetas
@@ -72,13 +76,18 @@ export function useResumoDia(preset: DashboardPreset = '') {
   })
 
   // Leads + orçamentos + atendidos por vendedor, PARAMETRIZADO pelo período do filtro.
-  const fluxoQ = useQuery<Record<string, { leads: number; orcamentos: number; atendimentos: number; ligacoes: number }>>({
+  type FluxoRow = { leads: number; orcamentos: number; atendimentos: number; ligacoes: number; captura: boolean }
+  const fluxoQ = useQuery<Record<string, FluxoRow>>({
     queryKey: ['escritorio-fluxo-periodo', pFrom, pTo],
     queryFn: async () => {
       const { data } = await supabase.rpc('escritorio_fluxo_periodo', { p_from: pFrom, p_to: pTo })
-      const m: Record<string, { leads: number; orcamentos: number; atendimentos: number; ligacoes: number }> = {}
-      for (const r of (data ?? []) as Array<{ vend: string; leads: number; orcamentos: number; atendimentos: number; ligacoes: number }>)
-        m[r.vend] = { leads: r.leads, orcamentos: r.orcamentos, atendimentos: r.atendimentos, ligacoes: r.ligacoes ?? 0 }
+      const m: Record<string, FluxoRow> = {}
+      for (const r of (data ?? []) as Array<{ vend: string; leads: number; orcamentos: number; atendimentos: number; ligacoes: number; ligacoes_captura: boolean }>)
+        m[r.vend] = {
+          leads: r.leads, orcamentos: r.orcamentos, atendimentos: r.atendimentos,
+          ligacoes: r.ligacoes ?? 0,
+          captura: r.ligacoes_captura === true,
+        }
       return m
     },
     refetchInterval: 30000,
@@ -120,9 +129,13 @@ export function useResumoDia(preset: DashboardPreset = '') {
         quente,
         negociacao: followup + quente,
         carteira: f?.totalChats ?? 0,
-        // Ligacoes FEITAS no periodo (wa_chat_messages tipo=call_log). PISO: so cobre
-        // chats das etiquetas do funil — ver a view wa_ligacoes_por_vendedor.
+        // Ligacoes FEITAS no periodo. Desde 17/08/2026 vem de `wa_ligacoes` — o
+        // HISTORICO da aba "Ligacoes" do WhatsApp, que e retroativo e cobre a
+        // carteira inteira. Antes vinha de wa_chat_messages tipo='call_log', que
+        // so enxergava chat com uma das 5 etiquetas do funil (22-47% da carteira,
+        // e com furo desigual entre as pessoas — envenenava qualquer ranking).
         ligacoes: fx?.ligacoes ?? 0,
+        ligacoesCaptura: fx?.captura === true,
         // SNAPSHOT como carteira/negociacao: e estado AGORA, nao movimento do periodo.
         score: somaScore(f),
       }
