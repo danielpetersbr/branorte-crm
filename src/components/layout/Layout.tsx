@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
-  Activity, AlertCircle, BarChart2, Beef, BookCheck, BookOpen, Bot, Boxes, Calculator, CalendarDays, CheckCircle, ChevronDown, ChevronsLeft, ChevronsRight, ClipboardList, Compass, Factory, FilePlus2, FileText, GitBranch, Headphones, History, LayoutDashboard, Link2, List, LogOut, MapPin, MessageSquare, MessageSquarePlus, Moon, Package, ScanEye, Search, Settings, Shield, ShoppingBag, Star, Sun, Tag, Target, TrendingUp, Truck, UserPlus, Users, Wallet, Wheat, Workflow, Zap,
+  Activity, AlertCircle, BarChart2, Beef, BookCheck, BookOpen, Bot, Boxes, Calculator, CalendarDays, CheckCircle, ChevronDown, ChevronsLeft, ChevronsRight, ClipboardList, Compass, Factory, FilePlus2, FileText, GitBranch, Headphones, History, LayoutDashboard, Link2, List, LogOut, MapPin, MessageSquare, MessageSquarePlus, Moon, Package, PhoneCall, ScanEye, Search, Settings, Shield, ShoppingBag, Star, Sun, Tag, Target, TrendingUp, Truck, UserPlus, Users, Wallet, Wheat, Workflow, Zap,
 } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -117,6 +117,9 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/atividade-diaria', label: 'Atividade Diária', icon: Activity, permKey: 'menu.atividade_diaria' },
       { to: '/avaliacoes', label: 'Avaliações', icon: Star, permKey: 'menu.avaliacoes' },
       { to: '/reunioes', label: 'Adm de Reunião', icon: ClipboardList, permKey: 'menu.reunioes' },
+      // SEM `roles`: a permissão manda sozinha. Item com permKey E roles cria duas fontes
+      // de verdade pro mesmo acesso — foi o que escondeu /contatos dos vendedores.
+      { to: '/ligacoes', label: 'Ligações', icon: PhoneCall, permKey: 'menu.ligacoes' },
       // SEM permKey de proposito: o placar e pra reuniao, aparece na TV pra todo
       // mundo. Chave nova ficaria desligada no banco e o item sumiria calado.
       { to: '/metas', label: 'Placar de Metas', icon: Target },

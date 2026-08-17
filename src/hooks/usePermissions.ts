@@ -61,6 +61,7 @@ export const FEATURE_CATALOG: Array<{
   // so vale quando a linha do role NAO existe, e a de admin existe.
   { key: 'menu.supervisao', label: 'Central de Supervisao (achados por vendedor)', group: 'Menu' },
   { key: 'menu.reunioes', label: 'Adm de Reunião', group: 'Menu' },
+  { key: 'menu.ligacoes', label: 'Ligações', group: 'Menu' },
   { key: 'menu.agenda', label: 'Agenda (calendário/tarefas)', group: 'Menu' },
   { key: 'menu.due_diligence', label: 'Consulta (Due Diligence)', group: 'Menu' },
   // Editar o Guia = criar/alterar/aprovar conteúdo técnico e imagens. É poder
