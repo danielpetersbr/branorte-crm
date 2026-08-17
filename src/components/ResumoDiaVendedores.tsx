@@ -72,10 +72,12 @@ const COLS: Col[] = [
   // Carteira = estoque em jogo, não corrida de hoje: número puro, sem fio, e
   // separada por um divisor. Ranquear carteira ali levaria o olho pro lugar errado —
   // carteira grande pode ser mérito ou pode ser fila parada esperando resposta.
-  { key: 'carteira',     Icon: Users,          emoji: '👥', label: 'Carteira',   explica: 'clientes ainda em jogo no funil dele: as 5 etapas + orçamento enviado + interesse futuro (fora vendido e perdido)', tone: 'neutro',  kpi: false, mobile: false, snapshot: true, separaAntes: true, semFio: true },
+  { key: 'carteira',     Icon: Users,          emoji: '👥', label: 'Carteira',   explica: 'clientes em jogo no funil dele: as 5 etapas + orçamento enviado (fora vendido, perdido e interesse futuro)', tone: 'neutro',  kpi: false, mobile: false, snapshot: true, separaAntes: true, semFio: true },
   // SCORE é a fatia da carteira que ele trabalha HOJE: só as 5 etapas. Ganha fio
   // porque comparar score entre vendedores é exatamente o ponto dele. A distância
-  // pra Carteira é o que está parado esperando resposta de orçamento.
+  // pra Carteira é EXATAMENTE o orçamento enviado esperando resposta — e é assim
+  // desde que INTERESSE FUTURO saiu da carteira (17/08), justamente pra essa
+  // leitura valer. Com a etiqueta dentro, 31% da coluna era gente na geladeira.
   { key: 'score',        Icon: Target,         emoji: '🎯', label: 'Score',      explica: 'clientes vivos no funil: prospecção + novo lead + 2ª tentativa + follow-up + lead quente', tone: 'accent', kpi: false, mobile: true,  snapshot: true },
 ]
 

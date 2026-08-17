@@ -56,10 +56,14 @@ export interface ResumoDiaVendedor {
 //
 // VENDIDO e PERDIDO também ficam fora: saíram do jogo.
 //
-// A CARTEIRA é o mesmo funil com a régua mais larga (+ ORÇAMENTO ENVIADO e
-// INTERESSE FUTURO): "quem ainda está na mão dele", contra "quem ele trabalha
-// hoje". As duas colunas contam clientes vivos — a diferença entre elas é
-// exatamente o estoque parado esperando resposta de orçamento.
+// A CARTEIRA é o mesmo funil com a régua um passo mais larga (+ ORÇAMENTO
+// ENVIADO). As duas colunas contam clientes vivos e a diferença entre elas é
+// exatamente o orçamento parado esperando resposta.
+//
+// ⚠️ INTERESSE FUTURO ficou de FORA (decisão do Daniel em 17/08/2026, em cima do
+// dado): era 31% da coluna — 540 de 1.710 clientes entravam SÓ por essa etiqueta,
+// gente que ninguém está trabalhando. Com ela dentro, a Carteira media dois mundos
+// ao mesmo tempo e a distância pro Score não queria dizer nada.
 const somaScore = (f?: FunilRow): number =>
   f ? (f.prospec ?? 0) + (f.novoLead ?? 0) + (f.tentativa ?? 0) + (f.followup ?? 0) + (f.quente ?? 0) : 0
 
@@ -115,8 +119,8 @@ export function useResumoDia(preset: DashboardPreset = '') {
   // (useWaKanban) — e faz três coisas que a soma de etiquetas não fazia:
   //  • conta CLIENTE, não etiqueta (quem tinha FOLLOW UP + ORÇAMENTO ENVIADO
   //    contava 2x: EDILSON +45, GUSTAVO +40);
-  //  • inclui ORÇAMENTO ENVIADO e INTERESSE FUTURO (estão em jogo, só não são
-  //    trabalho de hoje — por isso entram aqui e não no Score);
+  //  • inclui ORÇAMENTO ENVIADO (está em jogo, só não é trabalho de hoje — por
+  //    isso entra aqui e não no Score). INTERESSE FUTURO NÃO entra: ver acima;
   //  • tira quem já tem VENDIDO ou motivo de fechamento, mesmo carregando etiqueta
   //    viva pendurada. Eram 188 clientes e a sujeira é desigual (EDILSON 57,
   //    GUSTAVO 45, IGOR 44 contra PEDRO 1, EDER 3) — sem esse corte a carteira
