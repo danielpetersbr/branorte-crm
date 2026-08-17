@@ -29,7 +29,6 @@ export const FEATURE_CATALOG: Array<{
   { key: 'menu.atendimentos', label: 'Atendimentos', group: 'Menu' },
   { key: 'menu.contatos', label: 'Contatos', group: 'Menu' },
   { key: 'menu.funil', label: 'Funil', group: 'Menu' },
-  { key: 'menu.atividade_diaria', label: 'Atividade Diária', group: 'Menu' },
   { key: 'menu.orcamentos', label: 'Orçamentos', group: 'Menu' },
   { key: 'menu.orcamentos_avancado', label: 'Orçamentos avançado (Catálogo/Motores/Preços/Conversão/Painel/Lista)', group: 'Menu' },
   { key: 'menu.vendidos', label: 'Vendidos', group: 'Menu' },

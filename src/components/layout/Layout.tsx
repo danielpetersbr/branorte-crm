@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
-  Activity, BarChart2, Beef, BookCheck, BookOpen, Bot, Boxes, Calculator, CalendarDays, CheckCircle, ChevronDown, ChevronsLeft, ChevronsRight, ClipboardList, Compass, Factory, FilePlus2, FileText, GitBranch, Headphones, History, LayoutDashboard, Link2, List, LogOut, MapPin, MessageSquare, MessageSquarePlus, Moon, Package, PhoneCall, ScanEye, Search, Settings, Shield, ShoppingBag, Sun, Target, TrendingUp, Truck, UserPlus, Users, Wallet, Wheat, Workflow, Zap,
+  BarChart2, Beef, BookCheck, BookOpen, Bot, Boxes, Calculator, CalendarDays, CheckCircle, ChevronDown, ChevronsLeft, ChevronsRight, ClipboardList, Compass, Factory, FilePlus2, FileText, GitBranch, Headphones, History, LayoutDashboard, Link2, List, LogOut, MapPin, MessageSquare, MessageSquarePlus, Moon, Package, PhoneCall, ScanEye, Search, Settings, Shield, ShoppingBag, Sun, Target, TrendingUp, Truck, UserPlus, Users, Wallet, Wheat, Workflow, Zap,
 } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -97,11 +97,19 @@ interface NavGroup {
 // ============================================================================
 const NAV_GROUPS: NavGroup[] = [
   {
-    id: 'operacao', label: 'Operação', icon: LayoutDashboard,
+    // "Comercial" (era "Operacao"): a ordem e os rotulos abaixo sao os que o dono
+    // ditou — nomes do que a pessoa VAI FAZER, nao do nome tecnico da tela.
+    // As ROTAS nao mudaram: /atendimentos, /funil, /ligacoes, /agenda, /contatos
+    // e /consulta continuam iguais, entao link salvo e favorito de ninguem quebra.
+    id: 'operacao', label: 'Comercial', icon: LayoutDashboard,
     items: [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true, permKey: 'menu.dashboard' },
-      { to: '/atendimentos', label: 'Atendimentos', icon: MessageSquare, countKey: 'atendimentos', permKey: 'menu.atendimentos' },
-      { to: '/agenda', label: 'Agenda', icon: CalendarDays },
+      { to: '/atendimentos', label: 'Controle de Leads Recebidos', icon: MessageSquare, countKey: 'atendimentos', permKey: 'menu.atendimentos' },
+      { to: '/funil', label: 'Funil de Vendas', icon: GitBranch, permKey: 'menu.funil' },
+      // SEM `roles`: a permissão manda sozinha. Item com permKey E roles cria duas fontes
+      // de verdade pro mesmo acesso — foi o que escondeu /contatos dos vendedores.
+      { to: '/ligacoes', label: 'Controle de Ligações', icon: PhoneCall, permKey: 'menu.ligacoes' },
+      { to: '/agenda', label: 'Agenda e Tarefas', icon: CalendarDays },
       // SEM `roles` de proposito: quem manda aqui e `menu.contatos`, a permissao
       // que a tela de admin edita. A lista fixa ['admin','marketing'] existia
       // porque /contatos nao estava em VENDOR_PREFIXES e o vendedor era chutado
@@ -109,16 +117,8 @@ const NAV_GROUPS: NavGroup[] = [
       // e a trava ficou orfa, escondendo o item dos 9 vendedores mesmo com a
       // permissao ligada no banco. Duas fontes de verdade pro mesmo acesso e
       // armadilha: dar a permissao no admin nao surtia efeito nenhum.
-      { to: '/contatos', label: 'Contatos', icon: Users, permKey: 'menu.contatos' },
-      { to: '/consulta', label: 'Consulta', icon: Search, permKey: 'due_diligence.consultar' },
-      { to: '/funil', label: 'Funil', icon: GitBranch, permKey: 'menu.funil' },
-      { to: '/atividade-diaria', label: 'Atividade Diária', icon: Activity, permKey: 'menu.atividade_diaria' },
-      // SEM `roles`: a permissão manda sozinha. Item com permKey E roles cria duas fontes
-      // de verdade pro mesmo acesso — foi o que escondeu /contatos dos vendedores.
-      { to: '/ligacoes', label: 'Ligações', icon: PhoneCall, permKey: 'menu.ligacoes' },
-      // SEM permKey de proposito: o placar e pra reuniao, aparece na TV pra todo
-      // mundo. Chave nova ficaria desligada no banco e o item sumiria calado.
-      { to: '/metas', label: 'Placar de Metas', icon: Target },
+      { to: '/contatos', label: 'Carteira de Contatos', icon: Users, permKey: 'menu.contatos' },
+      { to: '/consulta', label: 'Consultar SPC', icon: Search, permKey: 'due_diligence.consultar' },
     ],
   },
   {

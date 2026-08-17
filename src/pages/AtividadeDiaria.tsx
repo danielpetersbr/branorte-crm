@@ -1,3 +1,7 @@
+// ⚠️ NAO E MAIS UMA PAGINA. A rota /atividade-diaria e o item de menu foram
+// removidos em 2026-08-17 (o grupo virou "Comercial" e o dono nao quis o item),
+// mas este componente CONTINUA VIVO: o /disparos o renderiza dentro da secao
+// recolhivel "Atividade Diaria". Apagar o arquivo derruba o Roteamento.
 import { useEffect, useMemo, useState } from 'react'
 import { Activity, MessageSquare, Users, Calendar, RefreshCw, Headset } from 'lucide-react'
 import {

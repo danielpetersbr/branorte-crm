@@ -37,7 +37,6 @@ const FunilRelatorio = lazy(() => import('@/pages/FunilRelatorio').then(m => ({ 
 const OrcamentoBuilder = lazy(() => import('@/pages/OrcamentoBuilder').then(m => ({ default: m.OrcamentoBuilder })))
 const OrcamentoMontar = lazy(() => import('@/pages/OrcamentoMontar').then(m => ({ default: m.OrcamentoMontar })))
 const CatalogoAdmin = lazy(() => import('@/pages/CatalogoAdmin').then(m => ({ default: m.CatalogoAdmin })))
-const AtividadeDiaria = lazy(() => import('@/pages/AtividadeDiaria').then(m => ({ default: m.AtividadeDiaria })))
 const Projeto = lazy(() => import('@/pages/Projeto').then(m => ({ default: m.Projeto })))
 const Projeto3D = lazy(() => import('@/pages/Projeto3D').then(m => ({ default: m.Projeto3D })))
 const ProducaoPropria = lazy(() => import('@/pages/ProducaoPropria').then(m => ({ default: m.ProducaoPropria })))
@@ -60,7 +59,6 @@ const Roadmap = lazy(() => import('@/pages/Roadmap').then(m => ({ default: m.Roa
 const IaTeste = lazy(() => import('@/pages/IaTeste').then(m => ({ default: m.IaTeste })))
 const Reunioes = lazy(() => import('@/pages/Reunioes').then(m => ({ default: m.Reunioes })))
 const Ligacoes = lazy(() => import('@/pages/Ligacoes').then(m => ({ default: m.Ligacoes })))
-const Metas = lazy(() => import('@/pages/Metas').then(m => ({ default: m.Metas })))
 const Agenda = lazy(() => import('@/pages/Agenda').then(m => ({ default: m.Agenda })))
 const FreteCotacao = lazy(() => import('@/pages/FreteCotacao'))
 const FreteTransportadoras = lazy(() => import('@/pages/FreteTransportadoras'))
@@ -326,7 +324,7 @@ function AppRoutes() {
 
   // Visualizador: acesso restrito a Dashboard + Atendimentos. Bloqueia URL direta
   // pra qualquer outra rota (o menu já esconde; isto trava o acesso por link).
-  const VIEWER_PATHS = new Set(['/', '/dashboard', '/atendimentos', '/perfil', '/agenda', '/metas'])
+  const VIEWER_PATHS = new Set(['/', '/dashboard', '/atendimentos', '/perfil', '/agenda'])
   // Frete liberado pra TODOS os roles (exceto a fila de aprovação /frete/aprovar, gateada).
   const freteLiberado = loc.pathname.startsWith('/frete') && !loc.pathname.startsWith('/frete/aprovar')
   if (profile.role === 'visualizador' && !VIEWER_PATHS.has(loc.pathname) && !freteLiberado) {
@@ -336,7 +334,7 @@ function AppRoutes() {
   // Vendedor: acesso restrito a Atendimentos, Consulta, Montar/Editar Orçamento e
   // Mapa de Visitas (+ Perfil). Dashboard escondido → "/" e demais rotas caem em
   // Atendimentos. O menu já esconde; isto trava o acesso por URL direta.
-  const VENDOR_PREFIXES = ['/atendimentos', '/consulta', '/orcamentos/montar', '/orcamentos/salvos', '/orcamentos/novo', '/mapa-visitas', '/minhas-visitas', '/organizacao-viagem', '/frete/solicitar', '/perfil', '/agenda', '/metas']
+  const VENDOR_PREFIXES = ['/atendimentos', '/consulta', '/orcamentos/montar', '/orcamentos/salvos', '/orcamentos/novo', '/mapa-visitas', '/minhas-visitas', '/organizacao-viagem', '/frete/solicitar', '/perfil', '/agenda']
   if (profile.role === 'vendor') {
     const p = loc.pathname
     // gestor de frete pode ter papel 'vendor' + permissão frete.aprovar → libera a fila pra ele
@@ -498,14 +496,12 @@ function AppRoutes() {
         {/* ⚠️ /reuniao/<token> (singular, público) é checado ANTES do gate de auth. */}
         <Route path="/ligacoes" element={<Ligacoes />} />
         {/* Placar das metas de comportamento (resgate, pós-orçamento, negócio grande) */}
-        <Route path="/metas" element={<Metas />} />
         <Route path="/agenda" element={<Agenda />} />
         {/* /funil = Kanban WhatsApp (espelho das etiquetas Wascript); o kanban
             manual antigo (status_vendedor) continua em /funil/manual */}
         <Route path="/funil" element={<FunilWhatsApp />} />
         <Route path="/funil/manual" element={<Funil />} />
         <Route path="/funil/relatorio" element={<FunilRelatorio />} />
-        <Route path="/atividade-diaria" element={<AtividadeDiaria />} />
         <Route path="/projeto" element={<Projeto />} />
         <Route path="/projeto-3d" element={<Projeto3D />} />
         {/* DUAS telas de ração, com propósitos opostos — não confundir:
