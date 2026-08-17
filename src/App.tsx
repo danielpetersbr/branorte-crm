@@ -22,7 +22,6 @@ const Analytics = lazy(() => import('@/pages/Analytics').then(m => ({ default: m
 const Contacts = lazy(() => import('@/pages/Contacts').then(m => ({ default: m.Contacts })))
 const Consulta = lazy(() => import('@/pages/Consulta').then(m => ({ default: m.Consulta })))
 const ConsultaHistorico = lazy(() => import('@/pages/ConsultaHistorico').then(m => ({ default: m.ConsultaHistorico })))
-const Assign = lazy(() => import('@/pages/Assign').then(m => ({ default: m.Assign })))
 const Orcamentos = lazy(() => import('@/pages/Orcamentos').then(m => ({ default: m.Orcamentos })))
 const Vendidos = lazy(() => import('@/pages/Vendidos').then(m => ({ default: m.Vendidos })))
 const MapaVisitas = lazy(() => import('@/pages/MapaVisitas').then(m => ({ default: m.MapaVisitas })))
@@ -460,7 +459,6 @@ function AppRoutes() {
             <Route path="/consulta/historico" element={<ConsultaHistorico />} />
           </>
         )}
-        <Route path="/atribuir" element={<Assign />} />
         <Route path="/orcamentos" element={<Orcamentos />} />
         <Route path="/orcamentos/lista" element={<Orcamentos />} />
         {/* /orcamentos/novo descontinuado: redireciona pro Montar Custom (links antigos continuam funcionando) */}

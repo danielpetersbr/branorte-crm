@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
-import { useContacts, useUpdateContact } from '@/hooks/useContacts'
+import { useContacts, useUpdateContact, useBulkAssign } from '@/hooks/useContacts'
 import { useVendors } from '@/hooks/useVendors'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -20,7 +20,8 @@ import { BotaoEtiquetar, SelosCrm } from '@/components/contacts/BotaoEtiquetar'
 import { CelulaEditavel } from '@/components/contacts/CelulaEditavel'
 import { BotoesStatus, type StatusContato } from '@/components/contacts/BotoesStatus'
 import { useAuth } from '@/hooks/useAuth'
-import { Search, MessageCircle, ChevronLeft, ChevronRight, X, FileText, Copy, Check, CornerDownLeft, SearchX, AlertTriangle } from 'lucide-react'
+import { useCan } from '@/hooks/usePermissions'
+import { Search, MessageCircle, ChevronLeft, ChevronRight, X, FileText, Copy, Check, CornerDownLeft, SearchX, AlertTriangle, UserPlus, CheckSquare, Square } from 'lucide-react'
 import { ESTADOS_BR, STATUS_OPTIONS, TEMPERATURA_OPTIONS, FUNIL_OPTIONS, PAGE_SIZE, CONTACT_SORT_OPTIONS } from '@/types'
 import { parseCrmMeta } from '@/lib/crm-fields'
 import type { ContactFilters, Contact, ContactSortKey } from '@/types'
@@ -294,6 +295,19 @@ export function Contacts() {
   const [searchInput, setSearchInput] = useState('')
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
 
+  // Atribuicao em massa — veio da tela /atribuir, removida em 2026-08-17. Ela era
+  // este mesmo grid travado em vendor_id='unassigned'; aqui o filtro "Vendedor: Nao
+  // atribuido" faz o mesmo recorte e sobra o resto dos filtros de brinde.
+  // MODO OPT-IN de proposito: a tabela e `table-fixed` com larguras somadas em 100%
+  // e medidas em 5 resolucoes (ver comentario do <thead>). Coluna fixa de checkbox
+  // custaria 3% de TODO mundo o tempo todo, pra uma acao que e ocasional.
+  const [modoAtribuir, setModoAtribuir] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [targetVendor, setTargetVendor] = useState('')
+  const bulkAssign = useBulkAssign()
+  const can = useCan()
+  const podeAtribuir = can('menu.atribuir')
+
   const { data: vendorsData } = useVendors()
   const { data, isLoading, isFetching, isError, dataUpdatedAt, isPlaceholderData, isPaused } = useContacts(filters)
   /*
@@ -384,6 +398,19 @@ export function Contacts() {
     ...vendors.map(v => ({ value: v.id, label: v.name })),
   ]
   const contacts = data?.contacts ?? []
+
+  // Selecao morre quando a LISTA muda (pagina/filtro/ordem). Sem isto o usuario
+  // filtra, some da tela quem estava marcado, e o "Atribuir" leva junto contato
+  // que ele nao esta mais vendo — o pior tipo de acao em massa.
+  useEffect(() => { setSelectedIds(new Set()) }, [filters])
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }, [])
+
   // `null` = o COUNT falhou mas a PAGINA veio (ver useContacts). Nao e zero:
   // zero significa "nao ha contatos", null significa "nao sei quantos ha".
   const total = data?.total ?? null
@@ -709,6 +736,59 @@ export function Contacts() {
                 O cabeçalho é `sticky top-0` de VERDADE: nada aqui é um
                 scrollport (o Card não leva overflow-hidden, senão a sticky
                 ancoraria num container que nunca rola e ficaria parada). */}
+            {podeAtribuir && (
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <Button
+                  variant={modoAtribuir ? 'primary' : 'secondary'}
+                  size="sm"
+                  onClick={() => { setModoAtribuir(m => !m); setSelectedIds(new Set()); setTargetVendor('') }}
+                >
+                  <UserPlus className="h-3.5 w-3.5" aria-hidden />
+                  {modoAtribuir ? 'Sair da selecao' : 'Atribuir em massa'}
+                </Button>
+                {modoAtribuir && (
+                  <>
+                    <Button
+                      variant="ghost" size="sm"
+                      onClick={() => setSelectedIds(prev =>
+                        prev.size === contacts.length ? new Set() : new Set(contacts.map(c => c.id)))}
+                    >
+                      {selectedIds.size === contacts.length && contacts.length > 0
+                        ? <CheckSquare className="h-3.5 w-3.5" aria-hidden />
+                        : <Square className="h-3.5 w-3.5" aria-hidden />}
+                      Selecionar esta pagina
+                    </Button>
+                    <span className="text-[13px] text-ink-muted" aria-live="polite">
+                      {selectedIds.size} selecionado{selectedIds.size === 1 ? '' : 's'}
+                    </span>
+                    <Select
+                      options={(vendorsData ?? []).map(v => ({ value: v.id, label: v.name }))}
+                      placeholder="Vendedor" aria-label="Vendedor que vai receber"
+                      value={targetVendor} onChange={e => setTargetVendor(e.target.value)}
+                      className="w-full sm:w-48"
+                    />
+                    <Button
+                      variant="primary" size="sm"
+                      loading={bulkAssign.isPending}
+                      disabled={!targetVendor || selectedIds.size === 0}
+                      onClick={() => {
+                        if (!targetVendor || selectedIds.size === 0) return
+                        bulkAssign.mutate(
+                          { contactIds: Array.from(selectedIds), vendorId: targetVendor },
+                          { onSuccess: () => { setSelectedIds(new Set()); setTargetVendor('') } },
+                        )
+                      }}
+                    >
+                      Atribuir
+                    </Button>
+                    {bulkAssign.isError && (
+                      <span className="text-[13px] text-danger">Nao deu pra atribuir. Tente de novo.</span>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
             <div className="hidden lg:block rounded-lg border border-border bg-surface">
               <table className="w-full table-fixed">
                 <thead className="sticky top-0 z-10">
@@ -727,7 +807,11 @@ export function Contacts() {
                       que nao cabia — e `title` guarda o nome por extenso.
                       Soma das larguras = 100%.
                     */}
-                    <th className="w-[13%] rounded-tl-[11px]">Nome</th>
+                    {modoAtribuir && <th className="w-[3%] rounded-tl-[11px]"><span className="sr-only">Selecionar</span></th>}
+                    {/* Em modo selecao o Nome cede os 3% da coluna de checkbox, pra
+                        soma continuar em 100% — `table-fixed` com soma > 100 reescala
+                        TODAS as colunas e desalinha o cabecalho medido acima. */}
+                    <th className={cn(modoAtribuir ? 'w-[10%]' : 'w-[13%] rounded-tl-[11px]')}>Nome</th>
                     {/* 14%: o telefone formatado ocupa 139px e so cabia inteiro em 1920. */}
                     <th className="w-[12%]">Telefone</th>
                     <th className="w-[7%]">Cidade</th>
@@ -779,10 +863,12 @@ export function Contacts() {
                         // A linha inteira abre a ficha. Antes só no clique: agora
                         // também no teclado (WCAG 2.1.1) e com foco visível.
                         tabIndex={0}
-                        aria-label={`Abrir ${c.name || 'contato sem nome'}`}
+                        aria-label={modoAtribuir
+                          ? `Selecionar ${c.name || 'contato sem nome'}`
+                          : `Abrir ${c.name || 'contato sem nome'}`}
                         onKeyDown={e => {
                           if (e.target !== e.currentTarget) return
-                          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedContact(c) }
+                          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); modoAtribuir ? toggleSelect(c.id) : setSelectedContact(c) }
                         }}
                         className={cn(
                           // `h-[56px]` trava a altura: sem isto, QUALQUER celula que
@@ -794,7 +880,20 @@ export function Contacts() {
                           'transition-colors duration-100 motion-reduce:transition-none hover:bg-surface-2/60',
                           'focus-visible:outline-none focus-visible:bg-surface-2/60 focus-visible:shadow-[inset_2px_0_0_0_hsl(var(--accent))]',
                         )}
-                        onClick={() => setSelectedContact(c)}>
+                        onClick={() => modoAtribuir ? toggleSelect(c.id) : setSelectedContact(c)}>
+                        {modoAtribuir && (
+                          /* stopPropagation: sem ele o clique sobe pro <tr> e o
+                             toggle roda DUAS vezes (aqui e la), anulando a marcacao. */
+                          <td className="px-2.5 py-3.5" onClick={e => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 cursor-pointer accent-[hsl(var(--accent))]"
+                              checked={selectedIds.has(c.id)}
+                              onChange={() => toggleSelect(c.id)}
+                              aria-label={`Selecionar ${c.name || 'contato sem nome'}`}
+                            />
+                          </td>
+                        )}
                         <td className="px-2.5 py-3.5">
                           <CelulaEditavel
                             valor={c.name}
@@ -933,8 +1032,18 @@ export function Contacts() {
                 const etiquetaWaM = etiquetaDoContato(c, c.vendor_id ? vendorMap[c.vendor_id] ?? null : null)
                 const statusDerivadoM = statusDerivadoDaEtiqueta(c.etiquetas, c.vendor_id ? vendorMap[c.vendor_id] ?? null : null)
                 return (
-                  <Card key={c.id} hover onClick={() => setSelectedContact(c)} className="p-3.5">
+                  <Card key={c.id} hover onClick={() => modoAtribuir ? toggleSelect(c.id) : setSelectedContact(c)} className="p-3.5">
                     <div className="flex items-start justify-between gap-2">
+                      {modoAtribuir && (
+                        <input
+                          type="checkbox"
+                          className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-[hsl(var(--accent))]"
+                          checked={selectedIds.has(c.id)}
+                          onChange={() => toggleSelect(c.id)}
+                          onClick={e => e.stopPropagation()}
+                          aria-label={`Selecionar ${c.name || 'contato sem nome'}`}
+                        />
+                      )}
                       <div className="min-w-0 flex-1">
                         <p className="text-[15px] font-medium text-ink truncate">{c.name || <span className="text-ink-faint font-normal">(sem nome)</span>}</p>
                         {tel ? (

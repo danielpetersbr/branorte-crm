@@ -28,7 +28,6 @@ export const FEATURE_CATALOG: Array<{
   { key: 'menu.dashboard', label: 'Dashboard', group: 'Menu' },
   { key: 'menu.atendimentos', label: 'Atendimentos', group: 'Menu' },
   { key: 'menu.contatos', label: 'Contatos', group: 'Menu' },
-  { key: 'menu.atribuir', label: 'Atribuir', group: 'Menu' },
   { key: 'menu.funil', label: 'Funil', group: 'Menu' },
   { key: 'menu.atividade_diaria', label: 'Atividade Diária', group: 'Menu' },
   { key: 'menu.orcamentos', label: 'Orçamentos', group: 'Menu' },
@@ -71,6 +70,10 @@ export const FEATURE_CATALOG: Array<{
   { key: 'disparos.send', label: 'Enviar disparo (roteamento)', group: 'Ações' },
   { key: 'frete.solicitar', label: 'Frete: abrir pedido de frete', group: 'Ações' },
   { key: 'frete.aprovar', label: 'Frete: aprovar e disparar pras transportadoras', group: 'Ações' },
+  // Era o menu da tela /atribuir, removida em 2026-08-17. A MESMA chave agora
+  // libera o botao "Atribuir em massa" dentro do /contatos — mantida com o nome
+  // antigo de proposito: renomear apagaria a permissao de quem ja a tem no banco.
+  { key: 'menu.atribuir', label: 'Contatos: atribuir em massa a um vendedor', group: 'Ações' },
   { key: 'due_diligence.consultar', label: 'Consultar Due Diligence (SPC + Datajud + IA)', group: 'Ações' },
   { key: 'venda_racao.ver_todas', label: 'Produção Própria: ver estudos de todos e editar os padrões', group: 'Ações' },
   { key: 'admin.due_diligence', label: 'Admin: ver consultas de todos vendedores', group: 'Ações' },

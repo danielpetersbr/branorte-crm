@@ -66,9 +66,10 @@ export interface ContactFilters {
   temperatura: string
   sort: ContactSortKey
   page: number
-  // Filtros de WhatsApp (RPC contatos_page). OPCIONAIS de proposito: Assign.tsx
-  // monta este objeto como literal completo e passaria a nao compilar se
-  // virassem obrigatorios.
+  // Filtros de WhatsApp (RPC contatos_page). OPCIONAIS de proposito: quem monta
+  // este objeto como literal completo passaria a nao compilar se virassem
+  // obrigatorios. (Era o caso do Assign.tsx, removido em 2026-08-17; a razao
+  // continua valendo pro proximo que montar o filtro na mao.)
   /** So contatos com chat de WhatsApp sincronizado. */
   com_whatsapp?: boolean
   /**

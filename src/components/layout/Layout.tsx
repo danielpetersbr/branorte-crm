@@ -111,7 +111,6 @@ const NAV_GROUPS: NavGroup[] = [
       // armadilha: dar a permissao no admin nao surtia efeito nenhum.
       { to: '/contatos', label: 'Contatos', icon: Users, permKey: 'menu.contatos' },
       { to: '/consulta', label: 'Consulta', icon: Search, permKey: 'due_diligence.consultar' },
-      { to: '/atribuir', label: 'Atribuir', icon: UserPlus, permKey: 'menu.atribuir' },
       { to: '/funil', label: 'Funil', icon: GitBranch, permKey: 'menu.funil' },
       { to: '/atividade-diaria', label: 'Atividade Diária', icon: Activity, permKey: 'menu.atividade_diaria' },
       // SEM `roles`: a permissão manda sozinha. Item com permKey E roles cria duas fontes
