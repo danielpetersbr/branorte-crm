@@ -11,6 +11,13 @@ import { supabase } from '@/lib/supabase'
 // ⚠️ TUDO roda com a RLS da tabela: admin enxerga o time, vendedor enxerga só as
 // próprias ligações. As RPCs são SECURITY INVOKER de propósito.
 //
+// ATUALIZAÇÃO AUTOMÁTICA: 60s. A extensão sobe ligação a cada ciclo de ~30s, então
+// olhar mais rápido que isso é gastar consulta à toa. O app tem
+// `refetchOnWindowFocus: false` no global — sem `refetchInterval` a tela buscava UMA vez
+// ao abrir e congelava até alguém recarregar (era o caso até 17/08/2026).
+// ⚠️ `refetchIntervalInBackground` fica no padrão (false): com a aba em segundo plano o
+// relógio para, senão 10 abas esquecidas abertas viram 10 consultas por minuto pra sempre.
+//
 // PERFORMANCE: são 4 consultas por período (resumo, resumo anterior, série
 // diária, horas) e mais UMA sob demanda quando alguém abre um vendedor. Os
 // gráficos "Evolução" e "Ligações no mês" saem da MESMA série diária — não há
@@ -125,11 +132,19 @@ export function janelaAnterior(p: Periodo, custom?: Janela): Janela | null {
 
 // ── Consultas ───────────────────────────────────────────────────────────────
 
+// 60s: a extensão sobe ligação a cada ~30s, então este é o menor intervalo que
+// ainda faz diferença. Ver o comentário do topo.
+export const REFETCH_MS = 60_000
+
 const args = (j: Janela, vendedor: string | null) => ({
   p_from: j.from, p_to: j.to, p_vendedor: vendedor,
 })
 
-export function useLigacoesResumo(j: Janela, vendedor: string | null, ativo = true) {
+// `auto` desliga o intervalo. A lista do seletor de vendedores usa a janela ABERTA
+// (sem from/to), então cada refetch dela varre a tabela inteira — e o nome de quem
+// tem ligação não muda de minuto em minuto. Medido: sem isso eram 3 chamadas de
+// ligacoes_resumo por ciclo, uma delas o agregado completo.
+export function useLigacoesResumo(j: Janela, vendedor: string | null, ativo = true, auto = true) {
   return useQuery({
     queryKey: ['ligacoes-resumo', j.from, j.to, vendedor],
     enabled: ativo,
@@ -138,7 +153,8 @@ export function useLigacoesResumo(j: Janela, vendedor: string | null, ativo = tr
       if (error) throw error
       return ((data ?? []) as LigacaoResumo[]).sort((a, b) => b.fez - a.fez || b.atendidas_fez - a.atendidas_fez)
     },
-    staleTime: 60_000,
+    staleTime: auto ? 45_000 : 10 * 60_000,
+    refetchInterval: auto ? REFETCH_MS : false,
   })
 }
 
@@ -150,7 +166,8 @@ export function useLigacoesSerie(j: Janela, vendedor: string | null) {
       if (error) throw error
       return ((data ?? []) as SerieDia[]).sort((a, b) => a.dia.localeCompare(b.dia))
     },
-    staleTime: 60_000,
+    staleTime: 45_000,
+    refetchInterval: REFETCH_MS,
   })
 }
 
@@ -162,7 +179,8 @@ export function useLigacoesPorHora(j: Janela, vendedor: string | null) {
       if (error) throw error
       return ((data ?? []) as HoraLigacao[]).sort((a, b) => a.hora - b.hora)
     },
-    staleTime: 60_000,
+    staleTime: 45_000,
+    refetchInterval: REFETCH_MS,
   })
 }
 

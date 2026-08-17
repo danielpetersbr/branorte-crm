@@ -42,6 +42,17 @@ const ROTULO_ANTERIOR: Record<string, string> = {
   hoje: 'vs ontem', '7d': 'vs 7 dias antes', mes: 'vs mês anterior', custom: 'vs período anterior',
 }
 
+// "agora mesmo" / "há 2 min" / hora cheia. Relativo diz mais que carimbo de hora
+// pra responder "esse número é de quando?".
+function fmtAtualizado(ms: number): string {
+  if (!ms) return '—'
+  const seg = Math.round((Date.now() - ms) / 1000)
+  if (seg < 45) return 'agora mesmo'
+  const min = Math.round(seg / 60)
+  if (min < 60) return `há ${min} min`
+  return new Date(ms).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+}
+
 function fmtQuando(iso: string | null): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -115,14 +126,14 @@ export function Ligacoes() {
   const janela = useMemo(() => janelaDoPeriodo(periodo, custom), [periodo, custom])
   const anterior = useMemo(() => janelaAnterior(periodo, custom), [periodo, custom])
 
-  const { data: linhas = [], isLoading, isError } = useLigacoesResumo(janela, vendedor)
+  const { data: linhas = [], isLoading, isError, dataUpdatedAt, isFetching } = useLigacoesResumo(janela, vendedor)
   const { data: linhasAnt = [] } = useLigacoesResumo(anterior ?? janela, vendedor, !!anterior)
   const { data: serie = [] } = useLigacoesSerie(janela, vendedor)
   const { data: horas = [] } = useLigacoesPorHora(janela, vendedor)
 
   // A lista de vendedores do filtro tem que vir de FORA do filtro, senão escolher
   // um vendedor esvazia o próprio seletor e não dá pra voltar.
-  const { data: todos = [] } = useLigacoesResumo({ from: null, to: null }, null)
+  const { data: todos = [] } = useLigacoesResumo({ from: null, to: null }, null, true, false)
   const nomes = useMemo(() => todos.map(t => t.vendedor).sort(), [todos])
 
   const tot = useMemo(() => somar(linhas), [linhas])
@@ -153,6 +164,12 @@ export function Ligacoes() {
           </h1>
           <p className="text-[12px] lg:text-[12.5px] text-ink-faint mt-0.5 max-w-[560px]">
             Acompanhe a atividade de ligações da equipe comercial e a evolução de cada vendedor.
+          </p>
+          {/* Sem este selo não dá pra saber se o número é de agora ou de quando a aba
+              foi aberta — e a pergunta "isso atualiza sozinho?" volta toda vez. */}
+          <p className="text-[11px] text-ink-faint mt-1 inline-flex items-center gap-1.5">
+            <span className={`h-1.5 w-1.5 rounded-full ${isFetching ? 'bg-accent animate-pulse' : 'bg-success'}`} />
+            {isFetching ? 'atualizando…' : <>atualiza sozinho · <b className="font-medium text-ink-muted">{fmtAtualizado(dataUpdatedAt)}</b></>}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
