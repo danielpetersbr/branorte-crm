@@ -33,8 +33,6 @@ const CATEGORIA_LABEL: Record<string, string> = {
   PASSARELA: 'Passarelas',
   SUPORTE_BAG: 'Suporte de Big Bag',
   OUTROS: 'Diversos',
-  PASSARELA: 'Passarelas',
-  SUPORTE_BAG: 'Suporte de Big Bag',
 }
 
 const SUBCATEGORIA_LABEL: Record<string, string> = {
@@ -65,6 +63,29 @@ const SUBCATEGORIA_LABEL: Record<string, string> = {
 }
 
 // Ordem fixa por categoria — VERTICAL → S/Pulmão → C/Pulmão
+// GRUPOS = etapas da fabrica, na ordem em que o material anda: recebe, limpa,
+// guarda, moi/mistura, pesa/ensaca, e transporte ligando tudo. E como o vendedor
+// pensa quando monta um orcamento — nao por "quantos itens tem a categoria",
+// que era a ordem antiga dos chips (Transportador vinha primeiro so por ter 228).
+//
+// ⚠️ TODA categoria de `precos_branorte` precisa estar aqui. Categoria fora da
+// tabela cai em `GRUPO_SOBRA` e continua alcancavel — some do grupo, nao do site.
+// Conferido em 2026-08-17: a soma dos grupos da exatamente 484 (todos os ativos).
+const GRUPO_SOBRA = 'Outros'
+const GRUPOS: { id: string; label: string; cats: string[] }[] = [
+  { id: 'compactas',   label: 'Fábricas Compactas',     cats: ['COMPACTA'] },
+  { id: 'recepcao',    label: 'Recepção e Pré-limpeza', cats: ['MOEGA', 'DESCARGA', 'PRE_LIMPEZA'] },
+  { id: 'armazenagem', label: 'Armazenagem',            cats: ['SILO', 'CAIXA', 'SUPORTE_BAG'] },
+  { id: 'moagem',      label: 'Moagem e Mistura',       cats: ['MOINHO', 'MISTURADOR'] },
+  { id: 'pesagem',     label: 'Pesagem e Ensaque',      cats: ['BALANCA', 'CACAMBA_PESAGEM', 'ENSACADEIRA'] },
+  { id: 'transporte',  label: 'Transporte',             cats: ['TRANSPORTADOR', 'ELEVADOR', 'ESTEIRA', 'ELEVADOR_SACARIA', 'ALIMENTADOR'] },
+  { id: 'eletrica',    label: 'Elétrica',               cats: ['PAINEL_ELETRICO'] },
+  { id: 'pecas',       label: 'Peças e Acessórios',     cats: ['HELICOIDE', 'ACESSORIO', 'PASSARELA', 'OUTROS'] },
+]
+const GRUPO_DE_CAT: Record<string, string> = Object.fromEntries(
+  GRUPOS.flatMap(g => g.cats.map(c => [c, g.id])),
+)
+
 const SUBCAT_ORDER: Record<string, string[]> = {
   COMPACTA: ['01', '01 MASTER', '02', '02 MASTER', '03', '03 MASTER'],
   MISTURADOR: ['VERTICAL', 'HORIZONTAL_SPULMAO', 'HORIZONTAL_CPULMAO'],
@@ -495,11 +516,15 @@ export function PrecosBranorte() {
   const { data: precos, isLoading } = usePrecosBranorte()
   const [busca, setBusca] = useState('')
   const [catSelecionada, setCatSelecionada] = useState<string | null>(null)
+  const [grupoSel, setGrupoSel] = useState<string | null>(null)
 
   const filtrados = useMemo(() => {
     if (!precos) return []
     const q = busca.trim().toLowerCase()
     return precos.filter(p => {
+      // A BUSCA IGNORA o grupo de proposito: quem digita "BNMM" quer achar,
+      // nao lembrar em que etapa da fabrica aquilo mora.
+      if (!q && grupoSel && (GRUPO_DE_CAT[p.categoria] ?? GRUPO_SOBRA) !== grupoSel) return false
       if (catSelecionada && p.categoria !== catSelecionada) return false
       if (q) {
         const hay = `${p.descricao} ${p.codigo ?? ''} ${p.modelo ?? ''} ${p.capacidade ?? ''} ${p.potencia ?? ''}`.toLowerCase()
@@ -507,7 +532,7 @@ export function PrecosBranorte() {
       }
       return true
     })
-  }, [precos, busca, catSelecionada])
+  }, [precos, busca, catSelecionada, grupoSel])
 
   // Agrupa por categoria > subcategoria, respeitando SUBCAT_ORDER
   const grupos = useMemo(() => {
@@ -536,12 +561,28 @@ export function PrecosBranorte() {
     return ordered
   }, [filtrados])
 
+  // Quantos itens em cada etapa (conta sobre TUDO, nao sobre o filtrado — o
+  // numero no chip nao pode mudar conforme o que ja esta filtrado).
+  const contaGrupo = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const p of precos ?? []) {
+      const g = GRUPO_DE_CAT[p.categoria] ?? GRUPO_SOBRA
+      m.set(g, (m.get(g) || 0) + 1)
+    }
+    return m
+  }, [precos])
+
+  // Categorias mostradas na 2a fileira = so as do grupo aberto. Sem grupo aberto
+  // nao ha 2a fileira (era exatamente a parede de 22 chips em 4 fileiras).
   const categorias = useMemo(() => {
     if (!precos) return []
     const m = new Map<string, number>()
-    for (const p of precos) m.set(p.categoria, (m.get(p.categoria) || 0) + 1)
+    for (const p of precos) {
+      if (grupoSel && (GRUPO_DE_CAT[p.categoria] ?? GRUPO_SOBRA) !== grupoSel) continue
+      m.set(p.categoria, (m.get(p.categoria) || 0) + 1)
+    }
     return [...m.entries()].sort((a, b) => b[1] - a[1])
-  }, [precos])
+  }, [precos, grupoSel])
 
   if (isLoading) return <PageLoading />
 
@@ -577,6 +618,43 @@ export function PrecosBranorte() {
               className="pl-7"
             />
           </div>
+          {/* FILEIRA 1 — etapa da fabrica. Trocar de etapa zera a categoria: sem
+              isso sobra filtro de categoria que nao existe na etapa nova e a
+              lista volta vazia sem explicar por que. */}
+          <div className="flex flex-wrap gap-1.5">
+            {GRUPOS.map(g => {
+              const qtd = contaGrupo.get(g.id) ?? 0
+              if (qtd === 0) return null
+              const on = grupoSel === g.id
+              return (
+                <button
+                  key={g.id}
+                  onClick={() => { setGrupoSel(on ? null : g.id); setCatSelecionada(null) }}
+                  className={`text-[11px] px-3 py-1.5 rounded-md font-semibold transition ${
+                    on ? 'bg-accent text-white'
+                       : 'bg-surface-2 text-ink hover:bg-surface-3 border border-border'
+                  }`}
+                >
+                  {g.label} ({qtd})
+                </button>
+              )
+            })}
+            {(contaGrupo.get(GRUPO_SOBRA) ?? 0) > 0 && (
+              <button
+                onClick={() => { setGrupoSel(grupoSel === GRUPO_SOBRA ? null : GRUPO_SOBRA); setCatSelecionada(null) }}
+                className={`text-[11px] px-3 py-1.5 rounded-md font-semibold transition ${
+                  grupoSel === GRUPO_SOBRA ? 'bg-accent text-white'
+                    : 'bg-amber-500/15 text-amber-500 border border-amber-500/40'
+                }`}
+                title="Categoria que ainda nao foi encaixada numa etapa — avise pra arrumar"
+              >
+                {GRUPO_SOBRA} ({contaGrupo.get(GRUPO_SOBRA)})
+              </button>
+            )}
+          </div>
+
+          {/* FILEIRA 2 — categorias DENTRO da etapa aberta */}
+          {grupoSel && categorias.length > 1 && (
           <div className="flex flex-wrap gap-1.5">
             <button
               onClick={() => setCatSelecionada(null)}
@@ -586,7 +664,7 @@ export function PrecosBranorte() {
                   : 'bg-surface-2 text-ink-muted hover:bg-surface-3 hover:text-ink border border-border'
               }`}
             >
-              Todas ({totalGeral})
+              Tudo da etapa ({contaGrupo.get(grupoSel) ?? 0})
             </button>
             {categorias.map(([cat, qtd]) => (
               <button
@@ -603,6 +681,7 @@ export function PrecosBranorte() {
               </button>
             ))}
           </div>
+          )}
           {busca && (
             <div className="text-[10px] text-ink-faint">
               {totalFiltrados} resultado{totalFiltrados !== 1 ? 's' : ''} para "{busca}"
@@ -610,6 +689,24 @@ export function PrecosBranorte() {
           )}
         </div>
 
+        {/* Sem etapa escolhida e sem busca, a tela NAO despeja as 484 linhas em 22
+            secoes — que era a rolagem infinita. Mostra o convite e para. */}
+        {!grupoSel && !busca ? (
+          <div className="bg-surface border border-border rounded-lg p-8 text-center">
+            <BookOpen className="w-6 h-6 text-ink-faint mx-auto mb-2" />
+            <p className="text-[13px] text-ink">Escolha uma etapa da fábrica acima</p>
+            <p className="text-[12px] text-ink-muted mt-1">
+              ou busque direto por nome, código, capacidade ou potência — a busca varre as {totalGeral} linhas de uma vez.
+            </p>
+          </div>
+        ) : totalFiltrados === 0 ? (
+          <div className="bg-surface border border-border rounded-lg p-8 text-center">
+            <p className="text-[13px] text-ink">Nada encontrado</p>
+            <p className="text-[12px] text-ink-muted mt-1">
+              {busca ? <>Nenhum item bate com "{busca}".</> : 'Esta etapa não tem itens ativos.'}
+            </p>
+          </div>
+        ) : (
         <div className="space-y-4">
           {[...grupos.entries()].map(([cat, subs]) => (
             <div key={cat} className="bg-surface border border-border rounded-lg overflow-hidden">
@@ -669,11 +766,6 @@ export function PrecosBranorte() {
             </div>
           ))}
         </div>
-
-        {filtrados.length === 0 && (
-          <div className="bg-surface border border-border rounded-lg p-8 text-center text-ink-faint">
-            Nenhum equipamento encontrado.
-          </div>
         )}
       </div>
     </div>
