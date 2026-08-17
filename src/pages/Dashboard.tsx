@@ -24,6 +24,7 @@ import {
 import { Flame, TrendingUp, Users, CheckCircle2, ArrowDown, ArrowUp, Hand, FilePlus2, AlertTriangle, Clock, Ghost, Banknote, ChevronRight, Sun, Moon, X } from 'lucide-react'
 import { useDarkMode } from '@/hooks/useDarkMode'
 import { RangeCalendar } from '@/components/RangeCalendar'
+import { LigacoesPorDiaCard } from '@/components/dashboard/LigacoesPorDiaCard'
 import { ResumoDiaVendedores } from '@/components/ResumoDiaVendedores'
 
 const PRESET_LABELS: { value: DashboardPreset; label: string }[] = [
@@ -738,6 +739,10 @@ export function Dashboard() {
           </div>
 
           {extra && <OrcamentosPorDiaChart data={extra.orcamentos_por_dia} />}
+          {/* Telefone ao lado de lead e orçamento: é o terceiro esforço do time e
+              era o único sem cartão aqui. Busca própria (30d fixos), não depende
+              do `extra` nem do filtro de período do Dashboard. */}
+          <LigacoesPorDiaCard />
           {extra && <AtendimentosHojeCard data={extra.atendimentos} />}
           {extra && <AbertoCard data={extra.aberto} onIr={() => irParaSecao('g4', 'vendedores-funil')} />}
           {extra && <NegociacaoCard data={extra.negociacao} />}
