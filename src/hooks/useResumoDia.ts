@@ -6,7 +6,8 @@ import { rangeForPreset, type DashboardPreset } from './useDashboard'
 // ============================================================================
 // Resumo por vendedor — leads / orçamentos / atendidos seguem o FILTRO de período
 // do topo do Dashboard (RPC escritorio_fluxo_periodo, p_from/p_to null = Tudo).
-// followup / quente / carteira continuam SNAPSHOT ("agora", via escritorio_funil_vivo).
+// followup / quente / score continuam SNAPSHOT ("agora", via escritorio_funil_vivo);
+// carteira é SNAPSHOT também, mas de outra RPC (escritorio_carteira_funil) — ver abaixo.
 // "Negociação" = Follow-up + Quente (decisão de negócio do Daniel).
 // Atendidos em "Hoje/Tudo" usa o funil_vivo (paridade com as mesas do /disparos);
 // nos demais períodos usa wa_daily_activity (existe desde 2026-05-07).
@@ -15,7 +16,14 @@ import { rangeForPreset, type DashboardPreset } from './useDashboard'
 type FunilRow = {
   aberto: number; prospec: number; novoLead: number; tentativa: number
   followup: number; quente: number; orcamento: number; vendido: number
-  perdidos: number; totalChats: number; atendimentos: number; msgs: number
+  perdidos: number
+  // ⚠️ NÃO é a Carteira. `total_chats` é a contagem bruta de conversas do WhatsApp
+  // do vendedor (heartbeat da extensão) — inclui grupo, contato pessoal, tudo. Era
+  // o que a coluna Carteira mostrava até 17/08/2026 e por isso ela dava 8.141 num
+  // time cujo funil somava 1.095. Segue mapeado porque é o que a RPC devolve; a
+  // Carteira agora vem de `escritorio_carteira_funil` (abaixo). Não religar aqui.
+  totalChats: number
+  atendimentos: number; msgs: number
 }
 
 export interface ResumoDiaVendedor {
@@ -46,9 +54,12 @@ export interface ResumoDiaVendedor {
 // gerou 58 e carrega 112 etiquetas paradas. Incluir isso colocaria quem menos
 // orçou na frente de quem mais orçou.
 //
-// VENDIDO e PERDIDO também ficam fora: saíram do jogo. É justamente isso que
-// separa o score da "Carteira" (total_chats), que é ~70% perdido em quase todo
-// mundo (PEDRO: 846 perdidos de 1.223).
+// VENDIDO e PERDIDO também ficam fora: saíram do jogo.
+//
+// A CARTEIRA é o mesmo funil com a régua mais larga (+ ORÇAMENTO ENVIADO e
+// INTERESSE FUTURO): "quem ainda está na mão dele", contra "quem ele trabalha
+// hoje". As duas colunas contam clientes vivos — a diferença entre elas é
+// exatamente o estoque parado esperando resposta de orçamento.
 const somaScore = (f?: FunilRow): number =>
   f ? (f.prospec ?? 0) + (f.novoLead ?? 0) + (f.tentativa ?? 0) + (f.followup ?? 0) + (f.quente ?? 0) : 0
 
@@ -93,7 +104,37 @@ export function useResumoDia(preset: DashboardPreset = '') {
     refetchInterval: 30000,
   })
 
-  // Funil ao vivo por vendedor (etiquetas do heartbeat) — SNAPSHOT, alimenta followup/quente/carteira.
+  // CARTEIRA — clientes DISTINTOS ainda em jogo no funil do vendedor.
+  //
+  // ⚠️ Até 17/08/2026 esta coluna vinha de `total_chats` (o heartbeat da extensão),
+  // que é a contagem BRUTA de conversas do WhatsApp do vendedor. Dava 8.141 no time
+  // enquanto a tela /funil mostrava 1.095 dos mesmos vendedores: não era carteira,
+  // era caixa de entrada. O Daniel apontou e mandou puxar do funil.
+  //
+  // A RPC lê `wa_chat_labels` + `wascript_etiquetas` — a MESMA fonte do /funil
+  // (useWaKanban) — e faz três coisas que a soma de etiquetas não fazia:
+  //  • conta CLIENTE, não etiqueta (quem tinha FOLLOW UP + ORÇAMENTO ENVIADO
+  //    contava 2x: EDILSON +45, GUSTAVO +40);
+  //  • inclui ORÇAMENTO ENVIADO e INTERESSE FUTURO (estão em jogo, só não são
+  //    trabalho de hoje — por isso entram aqui e não no Score);
+  //  • tira quem já tem VENDIDO ou motivo de fechamento, mesmo carregando etiqueta
+  //    viva pendurada. Eram 188 clientes e a sujeira é desigual (EDILSON 57,
+  //    GUSTAVO 45, IGOR 44 contra PEDRO 1, EDER 3) — sem esse corte a carteira
+  //    premiava quem não limpa etiqueta.
+  const carteiraQ = useQuery<Record<string, number>>({
+    queryKey: ['escritorio-carteira-funil'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('escritorio_carteira_funil')
+      if (error) throw error
+      const m: Record<string, number> = {}
+      for (const r of (data ?? []) as Array<{ vendedor_nome: string; carteira: number }>)
+        m[r.vendedor_nome] = r.carteira ?? 0
+      return m
+    },
+    refetchInterval: 30000,
+  })
+
+  // Funil ao vivo por vendedor (etiquetas do heartbeat) — SNAPSHOT, alimenta followup/quente/score.
   const funilQ = useQuery<Record<string, FunilRow>>({
     queryKey: ['escritorio-funil'],
     queryFn: async () => {
@@ -128,7 +169,7 @@ export function useResumoDia(preset: DashboardPreset = '') {
         followup,
         quente,
         negociacao: followup + quente,
-        carteira: f?.totalChats ?? 0,
+        carteira: carteiraQ.data?.[nome] ?? 0,
         // Ligacoes FEITAS no periodo. Desde 17/08/2026 vem de `wa_ligacoes` — o
         // HISTORICO da aba "Ligacoes" do WhatsApp, que e retroativo e cobre a
         // carteira inteira. Antes vinha de wa_chat_messages tipo='call_log', que
@@ -139,13 +180,17 @@ export function useResumoDia(preset: DashboardPreset = '') {
         // SNAPSHOT como carteira/negociacao: e estado AGORA, nao movimento do periodo.
         score: somaScore(f),
       }
-    }), [vendedoresQ.data, funilQ.data, fluxoQ.data, liveHoje])
+    }), [vendedoresQ.data, funilQ.data, fluxoQ.data, carteiraQ.data, liveHoje])
 
   return {
     linhas,
     isLoading: vendedoresQ.isLoading,
     isError: vendedoresQ.isError,
-    // ⚠️ Negociando/Quentes/Carteira vêm SÓ do funil vivo. Quando essa query falha
+    // ⚠️ A Carteira tem query PRÓPRIA desde 17/08/2026, então precisa da própria
+    // flag: se o funil vivo cair mas a carteira responder (ou o contrário), pintar
+    // "· · ·" nas duas seria mentir sobre a que funcionou.
+    carteiraIndisponivel: carteiraQ.isError || (!carteiraQ.isLoading && Object.keys(carteiraQ.data ?? {}).length === 0),
+    // ⚠️ Negociando/Quentes/Score vêm SÓ do funil vivo. Quando essa query falha
     // (ou volta vazia), o `f?.x ?? 0` pinta ZERO em todo mundo — e zero, num painel de
     // gestão, é lido como "ninguém está negociando", não como "não carregou". São coisas
     // diferentes e a tela precisa saber distinguir. Visto em produção 13/08: a RPC

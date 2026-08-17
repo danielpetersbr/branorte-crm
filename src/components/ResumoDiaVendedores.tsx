@@ -11,7 +11,8 @@ import type { DashboardPreset } from '@/hooks/useDashboard'
 // "Resumo do dia por vendedor" — card do Dashboard com os números de HOJE ao
 // vivo (mesma fonte das mesas do /disparos), legenda explicando cada coluna e
 // botão que copia o resumo formatado pra colar no grupo do WhatsApp.
-// Negociação = Follow-up + Lead Quente. "Carteira" = total de conversas.
+// Negociação = Follow-up + Lead Quente. "Carteira" = clientes ainda em jogo no
+// funil dele (desde 17/08/2026 — antes era o total bruto de conversas do WhatsApp).
 //
 // Redesign visual de 17/08/2026 — NENHUM número, fonte ou regra mudou; só a
 // forma de mostrar. O que guiou:
@@ -56,7 +57,7 @@ type Col = {
   tone: Tone
   kpi: boolean           // entra na faixa do topo
   mobile: boolean        // aparece no card compacto do celular (sem precisar expandir)
-  snapshot: boolean      // vem do funil vivo → some quando `funilIndisponivel`
+  snapshot: boolean      // é estado AGORA (não movimento do período) → pode virar "· · ·"
   separaAntes?: boolean  // divisor: daqui pra frente não é atividade de hoje
   semFio?: boolean       // sem fio de comparação (número puro)
 }
@@ -68,23 +69,34 @@ const COLS: Col[] = [
   { key: 'orcamentos',   Icon: FileText,       emoji: '📄', label: 'Orçamentos', curto: 'Orçam.', explica: 'orçamentos montados hoje',                         tone: 'accent',  kpi: true,  mobile: false, snapshot: false },
   { key: 'negociacao',   Icon: Handshake,      emoji: '🤝', label: 'Negociando', curto: 'Negoc.', explica: 'em negociação agora (follow-up + quente)',         tone: 'info',    kpi: true,  mobile: true,  snapshot: true },
   { key: 'quente',       Icon: Flame,          emoji: '🔥', label: 'Quentes',    explica: 'leads quentes agora',                              tone: 'warning', kpi: true,  mobile: true,  snapshot: true },
-  // Carteira é estoque histórico, não corrida de hoje: número puro, sem fio, e
+  // Carteira = estoque em jogo, não corrida de hoje: número puro, sem fio, e
   // separada por um divisor. Ranquear carteira ali levaria o olho pro lugar errado —
-  // ela é ~70% conversa perdida (PEDRO: 846 perdidos de 1.223).
-  { key: 'carteira',     Icon: Users,          emoji: '👥', label: 'Carteira',   explica: 'total de conversas do vendedor (histórico)',       tone: 'neutro',  kpi: false, mobile: false, snapshot: true, separaAntes: true, semFio: true },
-  // SCORE é a carteira que importa: só o que está VIVO no funil. Ganha fio porque
-  // comparar score entre vendedores é exatamente o ponto dele.
+  // carteira grande pode ser mérito ou pode ser fila parada esperando resposta.
+  { key: 'carteira',     Icon: Users,          emoji: '👥', label: 'Carteira',   explica: 'clientes ainda em jogo no funil dele: as 5 etapas + orçamento enviado + interesse futuro (fora vendido e perdido)', tone: 'neutro',  kpi: false, mobile: false, snapshot: true, separaAntes: true, semFio: true },
+  // SCORE é a fatia da carteira que ele trabalha HOJE: só as 5 etapas. Ganha fio
+  // porque comparar score entre vendedores é exatamente o ponto dele. A distância
+  // pra Carteira é o que está parado esperando resposta de orçamento.
   { key: 'score',        Icon: Target,         emoji: '🎯', label: 'Score',      explica: 'clientes vivos no funil: prospecção + novo lead + 2ª tentativa + follow-up + lead quente', tone: 'accent', kpi: false, mobile: true,  snapshot: true },
 ]
 
-// Uma celula fica "· · ·" por dois motivos distintos, e os dois querem dizer
+// Uma celula fica "· · ·" por três motivos distintos, e os três querem dizer
 // "o sistema não sabe" — nunca "é zero":
-//  • snapshot + funil fora do ar  → Negociando/Quentes/Carteira/Score
+//  • funil vivo fora do ar        → Negociando/Quentes/Score
+//  • RPC da carteira fora do ar   → Carteira (query SEPARADA desde 17/08/2026 —
+//    por isso tem flag própria: uma pode cair sem a outra)
 //  • extensão sem captura de ligação → Ligações daquele vendedor
-function semDado(c: Col, r: ResumoDiaVendedor, funilFora: boolean): boolean {
-  if (c.snapshot && funilFora) return true
+type Fora = { funil: boolean; carteira: boolean }
+
+// Vale pra coluna inteira (KPI do topo, total do rodapé).
+function semDadoCol(c: Col, fora: Fora): boolean {
+  if (c.key === 'carteira') return fora.carteira
+  return c.snapshot && fora.funil
+}
+
+// Vale pra célula de um vendedor (soma o caso das ligações, que é por pessoa).
+function semDado(c: Col, r: ResumoDiaVendedor, fora: Fora): boolean {
   if (c.key === 'ligacoes' && !r.ligacoesCaptura) return true
-  return false
+  return semDadoCol(c, fora)
 }
 
 // Iniciais pro avatar. "EDILSON JR" → "EJ", "JARDEL" → "JA".
@@ -236,7 +248,8 @@ function textoWhatsApp(
 
 export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: DashboardPreset; periodoLabel?: string }) {
   const liveHoje = preset === '' || preset === 'hoje'
-  const { linhas, isLoading, isError, funilIndisponivel } = useResumoDia(preset)
+  const { linhas, isLoading, isError, funilIndisponivel, carteiraIndisponivel } = useResumoDia(preset)
+  const fora: Fora = { funil: funilIndisponivel, carteira: carteiraIndisponivel }
   const [copiado, setCopiado] = useState(false)
   const [legendaAberta, setLegendaAberta] = useState(false)
   const [expandido, setExpandido] = useState<string | null>(null)  // card do celular
@@ -328,7 +341,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                 key={c.key}
                 col={c}
                 valor={tot[c.key]}
-                indisponivel={c.snapshot && funilIndisponivel}
+                indisponivel={semDadoCol(c, fora)}
                 destaque={c.key === 'negociacao' || c.key === 'quente'}
               />
             ))}
@@ -389,7 +402,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                           val={r[c.key]}
                           max={maxByCol[c.key]}
                           tone={c.tone}
-                          indisponivel={semDado(c, r, funilIndisponivel)}
+                          indisponivel={semDado(c, r, fora)}
                           separaAntes={c.separaAntes}
                           semFio={c.semFio}
                         />
@@ -405,10 +418,10 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                     <td
                       key={c.key}
                       className={`text-right tabular-nums py-3 px-3 text-[14px] font-semibold ${
-                        c.snapshot && funilIndisponivel ? 'text-ink-faint' : TONE[c.tone].kpiNum
+                        semDadoCol(c, fora) ? 'text-ink-faint' : TONE[c.tone].kpiNum
                       } ${c.separaAntes ? 'border-l border-border/60 pl-4' : ''}`}
                     >
-                      {c.snapshot && funilIndisponivel ? '· · ·' : fmt(tot[c.key])}
+                      {semDadoCol(c, fora) ? '· · ·' : fmt(tot[c.key])}
                     </td>
                   ))}
                 </tr>
@@ -461,7 +474,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                         o documento continua em 390px, sem scroll horizontal. */}
                     <div className="mt-2.5 grid grid-cols-5 gap-1.5">
                       {principais.map(c => {
-                        const ind = semDado(c, r, funilIndisponivel)
+                        const ind = semDado(c, r, fora)
                         const v = r[c.key]
                         return (
                           <div key={c.key}>
@@ -480,7 +493,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                   {aberto && (
                     <div className="px-3 pb-3 pt-2 border-t border-border/60 grid grid-cols-3 gap-2">
                       {extras.map(c => {
-                        const ind = semDado(c, r, funilIndisponivel)
+                        const ind = semDado(c, r, fora)
                         const v = r[c.key]
                         return (
                           <div key={c.key}>
@@ -504,7 +517,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
               <div className="text-[10px] uppercase tracking-wider font-semibold text-ink mb-2">Total do time</div>
               <div className="grid grid-cols-3 gap-2">
                 {COLS.map(c => {
-                  const ind = c.snapshot && funilIndisponivel
+                  const ind = semDadoCol(c, fora)
                   return (
                     <div key={c.key}>
                       <div className={`tabular-nums text-[15px] leading-none font-semibold ${ind ? 'text-ink-faint text-[13px]' : TONE[c.tone].kpiNum}`}>
@@ -518,12 +531,19 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
             </div>
           </div>
 
-          {/* Aviso honesto: o número não existe, não é zero. */}
-          {funilIndisponivel && (
+          {/* Aviso honesto: o número não existe, não é zero. Nomeia SÓ o que caiu —
+              funil vivo e carteira são duas queries e podem falhar separadas. */}
+          {(funilIndisponivel || carteiraIndisponivel) && (
             <div className="mt-4 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2.5 text-[11.5px] leading-relaxed text-warning flex items-start gap-2">
               <span className="shrink-0">⚠️</span>
               <span>
-                <b className="font-semibold">Negociando, Quentes e Carteira não carregaram</b> — por isso aparecem como
+                <b className="font-semibold">
+                  {funilIndisponivel && carteiraIndisponivel
+                    ? 'Negociando, Quentes, Score e Carteira não carregaram'
+                    : funilIndisponivel
+                      ? 'Negociando, Quentes e Score não carregaram'
+                      : 'A Carteira não carregou'}
+                </b> — por isso {carteiraIndisponivel && !funilIndisponivel ? 'aparece' : 'aparecem'} como
                 <span className="tabular-nums"> · · · </span>e não como zero. Os outros números estão certos.
               </span>
             </div>
