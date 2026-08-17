@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Search, Loader2, Check, Tags, BookOpen, RefreshCw, AlertCircle, Camera, Link2 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
+import { useCan } from '@/hooks/usePermissions'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import {
   usePrecosBranorte, useUpdatePrecoBranorte, useSyncTodosModelos, usePrecosAudit,
@@ -92,10 +93,21 @@ function formatPeso(kg: number | null): string {
 }
 
 // Editor inline de campo numerico (valor)
+//
+// ⚠️ ESTE COMPONENTE E O UNICO PONTO DE ESCRITA DE PRECO DA TELA. Por isso o
+// gate de permissao mora AQUI: quem nao tem `precos.editar` ve o numero como
+// texto morto, sem botao e sem input, em TODAS as tabelas de uma vez. Se um dia
+// aparecer outro caminho de escrita, ele precisa do mesmo gate — a pagina em si
+// nao tem nenhum.
 function ValorEditor({ id, field, valor }: { id: number; field: keyof PrecoBranorte; valor: number | null }) {
   const [editando, setEditando] = useState(false)
   const [v, setV] = useState<number | ''>(valor ?? '')
   const upd = useUpdatePrecoBranorte()
+  const can = useCan()
+
+  if (!can('precos.editar')) {
+    return <span className="block w-full text-right tabular-nums font-semibold text-ink px-2 py-1">{formatBRL(valor)}</span>
+  }
 
   if (!editando) {
     return (
@@ -476,6 +488,10 @@ function PainelAuditoria() {
 }
 
 export function PrecosBranorte() {
+  // `precos.editar` = mexer no preco oficial (celula, sincronizar templates,
+  // painel de auditoria). Quem so tem `precos.consultar` chega aqui pelo menu
+  // Comercial e ve a tabela como referencia, sem nenhum caminho de escrita.
+  const podeEditar = useCan()('precos.editar')
   const { data: precos, isLoading } = usePrecosBranorte()
   const [busca, setBusca] = useState('')
   const [catSelecionada, setCatSelecionada] = useState<string | null>(null)
@@ -543,13 +559,13 @@ export function PrecosBranorte() {
             </div>
             <p className="text-[12px] text-ink-muted">
               Banco oficial extraído da planilha 06/2025 — {totalGeral} equipamentos em {categorias.length} categorias.
-              Clique em qualquer valor pra editar (Enter salva).
+              {podeEditar ? ' Clique em qualquer valor pra editar (Enter salva).' : ' Preços oficiais para consulta.'}
             </p>
           </div>
-          <BotaoSincronizarModelos />
+          {podeEditar && <BotaoSincronizarModelos />}
         </div>
 
-        <PainelAuditoria />
+        {podeEditar && <PainelAuditoria />}
 
         <div className="bg-surface border border-border rounded-lg p-3 mb-4 space-y-3">
           <div className="relative">

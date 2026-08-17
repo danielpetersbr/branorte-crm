@@ -73,6 +73,11 @@ export const FEATURE_CATALOG: Array<{
   // libera o botao "Atribuir em massa" dentro do /contatos — mantida com o nome
   // antigo de proposito: renomear apagaria a permissao de quem ja a tem no banco.
   { key: 'menu.atribuir', label: 'Contatos: atribuir em massa a um vendedor', group: 'Ações' },
+  // Tabela de Precos partida em VER e MEXER. A tela nao tinha trava nenhuma
+  // dentro dela — dependia do menu ser so de admin. Com o item agora no grupo
+  // Comercial (pro vendedor consultar), a trava precisou descer pra dentro.
+  { key: 'precos.consultar', label: 'Tabela de Preço: consultar', group: 'Ações' },
+  { key: 'precos.editar', label: 'Tabela de Preço: editar valor, sincronizar templates e ver auditoria', group: 'Ações' },
   { key: 'due_diligence.consultar', label: 'Consultar Due Diligence (SPC + Datajud + IA)', group: 'Ações' },
   { key: 'venda_racao.ver_todas', label: 'Produção Própria: ver estudos de todos e editar os padrões', group: 'Ações' },
   { key: 'admin.due_diligence', label: 'Admin: ver consultas de todos vendedores', group: 'Ações' },
@@ -106,6 +111,7 @@ const FALLBACK: Record<AssignableRole, Record<string, boolean>> = {
     'menu.ia_teste': true,
     'orcamentos.criar': true,
     'due_diligence.consultar': true,
+    'precos.consultar': true,
     'frete.solicitar': true,
   },
   marketing: {},

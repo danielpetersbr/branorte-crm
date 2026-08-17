@@ -122,6 +122,10 @@ const NAV_GROUPS: NavGroup[] = [
       // Era "Projeto 3D" no grupo Producao (que so tinha ele). Mesma rota e mesma
       // permKey — o vendedor que ja abria continua abrindo.
       { to: '/projeto-3d', label: 'Fazer Layout', icon: Boxes, permKey: 'menu.projeto_3d' },
+      // Mesma rota que estava em ADM — o item MUDOU DE GRUPO, nao foi duplicado.
+      // Duas entradas pra mesma tela com permKeys diferentes ja e armadilha aqui
+      // (ver 'Funcoes Chupim'): apagar uma tira o acesso de quem so tem a chave dela.
+      { to: '/orcamentos/precos', label: 'Tabela de Preço', icon: BookOpen, permKey: 'precos.consultar' },
     ],
   },
   {
@@ -211,7 +215,6 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/reunioes', label: 'Adm de Reunião', icon: ClipboardList, permKey: 'menu.reunioes' },
       { to: '/orcamentos/catalogo-admin', label: 'Catálogo (Admin)', icon: Shield, permKey: 'menu.orcamentos_avancado' },
       { to: '/orcamentos/motores', label: 'Motores (Preços)', icon: Zap, permKey: 'menu.orcamentos_avancado' },
-      { to: '/orcamentos/precos', label: 'Tabela de Preços', icon: BookOpen, permKey: 'menu.orcamentos_avancado' },
       { to: '/orcamentos/conversao', label: 'Conversão (KPIs)', icon: TrendingUp, permKey: 'menu.orcamentos_avancado' },
       { to: '/admin/transportador-funcoes', label: 'Funções Chupim', icon: GitBranch, permKey: 'menu.orcamentos_avancado' },
       { to: '/orcamentos', label: 'Painel', icon: BarChart2, end: true, permKey: 'menu.orcamentos_avancado' },
