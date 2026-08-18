@@ -10,7 +10,7 @@ export function GenerationOverlay() {
   if (!state.active) return null
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[var(--z-blocking)] flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="bg-bg border border-border rounded-xl shadow-2xl w-[380px] overflow-hidden">
         {/* Header */}
         <div className="px-5 pt-5 pb-3 flex items-center gap-3">

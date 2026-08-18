@@ -142,7 +142,7 @@ function NumCell({ val, max, tone, indisponivel = false, separaAntes = false, se
   if (indisponivel) {
     return (
       <td className={`py-3 px-3 text-right align-middle ${divisor}`}>
-        <span className="tabular-nums text-ink-faint text-[14px]" title="Não deu pra carregar este número agora">·&nbsp;·&nbsp;·</span>
+        <span className="tabular-nums text-ink-faint text-body" title="Não deu pra carregar este número agora">·&nbsp;·&nbsp;·</span>
       </td>
     )
   }
@@ -157,7 +157,7 @@ function NumCell({ val, max, tone, indisponivel = false, separaAntes = false, se
   return (
     <td className={`py-3 px-3 align-middle ${divisor}`}>
       <div className="flex flex-col items-end gap-1">
-        <span className={`tabular-nums text-[14px] leading-none ${
+        <span className={`tabular-nums text-body leading-none ${
           vazio ? 'text-ink-faint font-normal' : lider ? `${t.num} font-semibold` : `${t.num} font-medium`
         }`}>
           {fmt(val)}{sufixo}
@@ -191,10 +191,10 @@ function KpiCard({ col, valor, indisponivel, destaque }:
     >
       <div className="flex items-center gap-1.5 mb-1.5">
         <col.Icon className={`h-3.5 w-3.5 shrink-0 ${t.icone}`} strokeWidth={2} />
-        <span className="text-[10.5px] uppercase tracking-wide text-ink-faint truncate">{col.label}</span>
+        <span className="text-micro uppercase tracking-wide text-ink-faint truncate">{col.label}</span>
       </div>
-      <div className={`tabular-nums leading-none font-semibold text-[22px] ${
-        indisponivel ? 'text-ink-faint text-[16px]' : valor === 0 ? 'text-ink-faint' : t.kpiNum
+      <div className={`tabular-nums leading-none font-semibold text-kpi-sm ${
+        indisponivel ? 'text-ink-faint text-title' : valor === 0 ? 'text-ink-faint' : t.kpiNum
       }`}>
         {indisponivel ? '· · ·' : fmtCol(col, valor)}
       </div>
@@ -368,10 +368,10 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
       {/* ── Cabeçalho ──────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-3 flex-wrap sm:flex-nowrap">
         <div className="min-w-0">
-          <h3 className="text-[15px] font-semibold text-ink tracking-tight">
+          <h3 className="text-title font-semibold text-ink tracking-tight">
             Resumo por vendedor{!liveHoje && periodoLabel ? <span className="text-ink-muted font-medium"> · {periodoLabel}</span> : null}
           </h3>
-          <p className="text-[11.5px] text-ink-faint mt-0.5">
+          <p className="text-micro text-ink-faint mt-0.5">
             {liveHoje
               ? 'Visão ao vivo da atividade comercial de hoje — mesma fonte das mesas do escritório.'
               : 'Leads · orçamentos · atendidos seguem o período. Negociando/quentes/carteira = estado agora.'}
@@ -380,7 +380,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
         {rows.length > 0 && (
           <button
             onClick={copiar}
-            className={`shrink-0 h-9 px-3.5 inline-flex items-center gap-2 rounded-lg text-[12.5px] font-medium border transition-all duration-200 ${
+            className={`shrink-0 min-h-[44px] md:min-h-0 md:h-9 px-3.5 inline-flex items-center gap-2 rounded-lg text-label font-medium border transition-all duration-200 ${
               copiado
                 ? 'border-success/40 bg-success/10 text-success'
                 : 'border-border bg-surface-2 text-ink-muted hover:text-ink hover:border-border-strong hover:bg-surface-2'
@@ -398,13 +398,13 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
       {textoPraCopiarNaMao && (
         <div className="mt-3 rounded-lg border border-warning/40 bg-warning/5 p-3">
           <div className="flex items-start justify-between gap-3 mb-2">
-            <p className="text-[11.5px] leading-relaxed text-warning">
+            <p className="text-micro leading-relaxed text-warning">
               <b className="font-semibold">O navegador bloqueou a cópia automática.</b>{' '}
               O texto está aqui embaixo, já selecionado — <b className="font-semibold">Ctrl+C</b> e cola no grupo.
             </p>
             <button
               onClick={() => setTextoPraCopiarNaMao(null)}
-              className="shrink-0 text-[11px] text-ink-muted hover:text-ink underline underline-offset-2"
+              className="shrink-0 text-micro text-ink-muted hover:text-ink underline underline-offset-2"
             >
               fechar
             </button>
@@ -415,17 +415,17 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
             rows={Math.min(16, textoPraCopiarNaMao.split('\n').length + 1)}
             ref={el => el?.select()}
             onFocus={e => e.currentTarget.select()}
-            className="w-full rounded-md border border-border bg-surface-2 p-2.5 text-[12px] leading-relaxed text-ink font-mono resize-y"
+            className="w-full rounded-md border border-border bg-surface-2 p-2.5 text-micro leading-relaxed text-ink font-mono resize-y"
           />
         </div>
       )}
 
       {isLoading ? (
-        <p className="text-[12px] text-ink-muted py-10 text-center">Carregando resumo…</p>
+        <p className="text-micro text-ink-muted py-10 text-center">Carregando resumo…</p>
       ) : isError ? (
-        <p className="text-[12px] text-danger py-10 text-center">Não deu pra carregar o resumo agora.</p>
+        <p className="text-micro text-danger py-10 text-center">Não deu pra carregar o resumo agora.</p>
       ) : rows.length === 0 ? (
-        <p className="text-[12px] text-ink-muted py-10 text-center">Nenhum vendedor no painel.</p>
+        <p className="text-micro text-ink-muted py-10 text-center">Nenhum vendedor no painel.</p>
       ) : (
         <>
           {/* ── Faixa de KPIs do time ────────────────────────────────────
@@ -446,7 +446,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
           <div className="hidden md:block mt-5 overflow-x-auto -mx-1 px-1">
             <table className="w-full border-collapse min-w-[720px]">
               <thead>
-                <tr className="text-ink-faint text-[10px] uppercase tracking-wider">
+                <tr className="text-ink-faint text-micro uppercase tracking-wider">
                   <th className="text-left font-medium pb-2.5 pr-3">Vendedor</th>
                   {COLS.map(c => (
                     <th
@@ -471,7 +471,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                       <td className="py-3 pr-3">
                         <span className="inline-flex items-center gap-2.5 min-w-0">
                           <span className="relative shrink-0">
-                            <span className={`h-7 w-7 rounded-full inline-flex items-center justify-center text-[10.5px] font-semibold tabular-nums ${
+                            <span className={`h-7 w-7 rounded-full inline-flex items-center justify-center text-micro font-semibold tabular-nums ${
                               semAtividade ? 'bg-surface-2 text-ink-faint' : 'bg-surface-2 text-ink-muted'
                             } ${top ? 'ring-1 ring-accent/50' : ''}`}>
                               {iniciais(r.nome)}
@@ -481,11 +481,11 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                               title={r.online ? 'online' : 'offline'}
                             />
                           </span>
-                          <span className={`text-[13px] font-medium truncate ${semAtividade ? 'text-ink-faint' : 'text-ink'}`}>
+                          <span className={`text-label font-medium truncate ${semAtividade ? 'text-ink-faint' : 'text-ink'}`}>
                             {r.nome}
                           </span>
                           {top && (
-                            <span className="shrink-0 text-[9.5px] uppercase tracking-wide font-semibold text-accent border border-accent/30 rounded px-1.5 py-0.5" title="Mais atendimentos hoje">
+                            <span className="shrink-0 text-micro uppercase tracking-wide font-semibold text-accent border border-accent/30 rounded-sm px-1.5 py-0.5" title="Mais atendimentos hoje">
                               Top do dia
                             </span>
                           )}
@@ -509,11 +509,11 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-border-strong bg-surface-2/40">
-                  <td className="py-3 pr-3 text-ink text-[10.5px] font-semibold uppercase tracking-wider">Total do time</td>
+                  <td className="py-3 pr-3 text-ink text-micro font-semibold uppercase tracking-wider">Total do time</td>
                   {COLS.map(c => (
                     <td
                       key={c.key}
-                      className={`text-right tabular-nums py-3 px-3 text-[14px] font-semibold ${
+                      className={`text-right tabular-nums py-3 px-3 text-body font-semibold ${
                         semDadoCol(c, fora) ? 'text-ink-faint' : TONE[c.tone].kpiNum
                       } ${c.separaAntes ? 'border-l border-border/60 pl-4' : ''}`}
                     >
@@ -545,7 +545,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                   >
                     <div className="flex items-center gap-2.5">
                       <span className="relative shrink-0">
-                        <span className={`h-7 w-7 rounded-full inline-flex items-center justify-center text-[10.5px] font-semibold bg-surface-2 ${
+                        <span className={`h-7 w-7 rounded-full inline-flex items-center justify-center text-micro font-semibold bg-surface-2 ${
                           semAtividade ? 'text-ink-faint' : 'text-ink-muted'
                         } ${top ? 'ring-1 ring-accent/50' : ''}`}>
                           {iniciais(r.nome)}
@@ -555,11 +555,11 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                           title={r.online ? 'online' : 'offline'}
                         />
                       </span>
-                      <span className={`text-[13px] font-medium truncate ${semAtividade ? 'text-ink-faint' : 'text-ink'}`}>
+                      <span className={`text-label font-medium truncate ${semAtividade ? 'text-ink-faint' : 'text-ink'}`}>
                         {r.nome}
                       </span>
                       {top && (
-                        <span className="shrink-0 text-[9px] uppercase tracking-wide font-semibold text-accent border border-accent/30 rounded px-1 py-0.5">
+                        <span className="shrink-0 text-micro uppercase tracking-wide font-semibold text-accent border border-accent/30 rounded-sm px-1 py-0.5">
                           Top
                         </span>
                       )}
@@ -574,12 +574,12 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                         const v = r[c.key]
                         return (
                           <div key={c.key}>
-                            <div className={`tabular-nums text-[15px] leading-none font-semibold ${
-                              ind ? 'text-ink-faint text-[13px]' : v === 0 ? 'text-ink-faint' : TONE[c.tone].kpiNum
+                            <div className={`tabular-nums text-title leading-none font-semibold ${
+                              ind ? 'text-ink-faint text-label' : v === 0 ? 'text-ink-faint' : TONE[c.tone].kpiNum
                             }`}>
                               {ind ? '···' : fmtCol(c, v)}
                             </div>
-                            <div className="text-[9px] uppercase tracking-wide text-ink-faint mt-1 truncate">{c.curto ?? c.label}</div>
+                            <div className="text-micro uppercase tracking-wide text-ink-faint mt-1 truncate">{c.curto ?? c.label}</div>
                           </div>
                         )
                       })}
@@ -593,12 +593,12 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
                         const v = r[c.key]
                         return (
                           <div key={c.key}>
-                            <div className={`tabular-nums text-[15px] leading-none font-medium ${
-                              ind ? 'text-ink-faint text-[13px]' : v === 0 ? 'text-ink-faint' : TONE[c.tone].kpiNum
+                            <div className={`tabular-nums text-title leading-none font-medium ${
+                              ind ? 'text-ink-faint text-label' : v === 0 ? 'text-ink-faint' : TONE[c.tone].kpiNum
                             }`}>
                               {ind ? '···' : fmtCol(c, v)}
                             </div>
-                            <div className="text-[9.5px] uppercase tracking-wide text-ink-faint mt-1 truncate">{c.curto ?? c.label}</div>
+                            <div className="text-micro uppercase tracking-wide text-ink-faint mt-1 truncate">{c.curto ?? c.label}</div>
                           </div>
                         )
                       })}
@@ -610,16 +610,16 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
 
             {/* Total do time também no celular */}
             <div className="rounded-lg border border-border-strong bg-surface-2/60 px-3 py-2.5">
-              <div className="text-[10px] uppercase tracking-wider font-semibold text-ink mb-2">Total do time</div>
+              <div className="text-micro uppercase tracking-wider font-semibold text-ink mb-2">Total do time</div>
               <div className="grid grid-cols-3 gap-2">
                 {COLS.map(c => {
                   const ind = semDadoCol(c, fora)
                   return (
                     <div key={c.key}>
-                      <div className={`tabular-nums text-[15px] leading-none font-semibold ${ind ? 'text-ink-faint text-[13px]' : TONE[c.tone].kpiNum}`}>
+                      <div className={`tabular-nums text-title leading-none font-semibold ${ind ? 'text-ink-faint text-label' : TONE[c.tone].kpiNum}`}>
                         {ind ? '···' : fmtCol(c, tot[c.key])}
                       </div>
-                      <div className="text-[9.5px] uppercase tracking-wide text-ink-faint mt-1 truncate">{c.curto ?? c.label}</div>
+                      <div className="text-micro uppercase tracking-wide text-ink-faint mt-1 truncate">{c.curto ?? c.label}</div>
                     </div>
                   )
                 })}
@@ -630,7 +630,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
           {/* Aviso honesto: o número não existe, não é zero. Nomeia SÓ o que caiu —
               funil vivo e carteira são duas queries e podem falhar separadas. */}
           {(funilIndisponivel || carteiraIndisponivel) && (
-            <div className="mt-4 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2.5 text-[11.5px] leading-relaxed text-warning flex items-start gap-2">
+            <div className="mt-4 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2.5 text-micro leading-relaxed text-warning flex items-start gap-2">
               <span className="shrink-0">⚠️</span>
               <span>
                 <b className="font-semibold">
@@ -659,7 +659,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
               por isso que ele NOMEIA quem falta em vez de falar em abstrato. */}
           <div className="mt-4 pt-3 border-t border-border/60 space-y-2.5">
             {semCaptura.length > 0 && (
-              <p className="text-[11px] leading-relaxed text-ink-muted">
+              <p className="text-micro leading-relaxed text-ink-muted">
                 <span className="text-warning font-semibold">
                   Ligações de {semCaptura.join(', ')} não entram na conta.
                 </span>{' '}
@@ -673,7 +673,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
             <div>
               <button
                 onClick={() => setLegendaAberta(v => !v)}
-                className="inline-flex items-center gap-1.5 text-[11px] font-medium text-ink-muted hover:text-ink transition-colors duration-150"
+                className="inline-flex min-h-[44px] md:min-h-0 items-center gap-1.5 text-micro font-medium text-ink-muted hover:text-ink transition-colors duration-150"
                 aria-expanded={legendaAberta}
               >
                 <Info className="h-3.5 w-3.5" />
@@ -682,7 +682,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
               </button>
 
               {legendaAberta && (
-                <div className="mt-2.5 grid gap-x-5 gap-y-1.5 text-[11px] leading-relaxed text-ink-faint
+                <div className="mt-2.5 grid gap-x-5 gap-y-1.5 text-micro leading-relaxed text-ink-faint
                                 [grid-template-columns:repeat(auto-fit,minmax(230px,1fr))]">
                   {COLS.map(c => (
                     <span key={c.key} className="inline-flex items-start gap-1.5">

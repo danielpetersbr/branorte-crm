@@ -34,7 +34,7 @@ function isIOS(): boolean {
 function recentlyDismissed(): boolean {
   try {
     const ts = Number(localStorage.getItem(DISMISS_KEY) || '0')
-    return ts > 0 && Date.now() - ts < DISMISS_TTL_MS
+    return ts > 0  // fechou = nao quer; antes voltava sozinho a cada 7 dias
   } catch { return false }
 }
 
@@ -92,7 +92,7 @@ export function InstallPrompt() {
   if (!evt && !showIosDica) return null
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:max-w-sm z-[100] bg-surface border border-accent/40 rounded-lg shadow-2xl p-3 flex items-start gap-3 animate-in slide-in-from-bottom">
+    <div className="md:hidden fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-4 right-4 z-[var(--z-toast)] bg-surface border border-accent/40 rounded-lg shadow-2xl p-3 flex items-start gap-3 animate-in slide-in-from-bottom">
       <div className="shrink-0 h-10 w-10 rounded-md bg-accent/15 flex items-center justify-center">
         <Download className="h-5 w-5 text-accent" />
       </div>

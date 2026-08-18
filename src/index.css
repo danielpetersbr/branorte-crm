@@ -20,6 +20,7 @@
     --bg: 240 16% 94%;          /* página: cinza-claro (#ededf2) — card ganha 6pp */
     --surface: 0 0% 100%;       /* cards: branco puro (flutuam sobre o cinza) */
     --surface-2: 240 14% 91%;   /* preenchimentos / barras / cabeçalho de tabela */
+    --surface-3: 240 13% 88%;   /* caixa dentro de caixa — fica entre surface-2 e a borda */
     --border: 240 9% 84%;       /* 1,49:1 no card (era 1,28) — a borda existe */
     --border-strong: 240 8% 74%;
 
@@ -46,12 +47,37 @@
     --info-bg: 211 100% 96%;
     --accent: 152 48% 32%;      /* verde Branorte moderado: 5,30:1 (era 3,20) */
     --accent-bg: 152 32% 95%;
+
+    /* ── Série de gráfico ──────────────────────────────────────────────
+       APONTAM pros semânticos acima de propósito: assim herdam a calibragem
+       de contraste desta folha e o congelamento do .dark, em vez de abrir uma
+       segunda paleta que sairia de sincronia. Substituem os 47 tons hsl()
+       que o Dashboard carregava hardcoded e que não respondiam ao tema. */
+    --chart-1: var(--accent);      /* série principal */
+    --chart-2: var(--info);        /* comparação, neutra */
+    --chart-3: var(--warning);     /* atenção */
+    --chart-4: var(--danger);      /* perda */
+    --chart-5: 270 50% 42%;        /* 5ª série, só quando não der pra evitar */
+    --chart-grid: var(--border);
+    --chart-ink: var(--ink-faint);
+
+    /* ── Camadas ───────────────────────────────────────────────────────
+       Escala ÚNICA. Antes: InstallPrompt 100, Lembretes 1300, RoadmapFAB 9997,
+       GenerationOverlay 9999, NovaVersaoBanner 9999 — cinco valores escolhidos
+       isoladamente, todos disputando o mesmo canto inferior direito. */
+    --z-fab: 40;
+    --z-nav: 50;
+    --z-toast: 60;
+    --z-dropdown: 80;
+    --z-modal: 100;
+    --z-blocking: 200;
   }
 
   .dark {
     --bg: 240 10% 7%;
     --surface: 240 8% 11%;
     --surface-2: 240 7% 14%;
+    --surface-3: 240 6% 18%;
     --border: 240 6% 18%;
     --border-strong: 240 5% 26%;
 

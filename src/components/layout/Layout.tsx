@@ -271,8 +271,15 @@ function useOpenGroups(): [Record<string, boolean>, (id: string) => void, (id: s
     if (typeof window === 'undefined') return
     try { localStorage.setItem('sidebar-open-groups', JSON.stringify(open)) } catch {}
   }, [open])
-  const toggle = (id: string) => setOpen(s => ({ ...s, [id]: !(s[id] ?? false) }))
-  const ensureOpen = (id: string) => setOpen(s => (s[id] ? s : { ...s, [id]: true }))
+  // Sanfona DE VERDADE: abrir um grupo fecha os outros. O comentário acima já
+  // dizia "accordion", mas a implementação deixava todos abertos ao mesmo tempo
+  // — com 8 grupos e ~40 itens, a barra virava uma lista rolável gigante e a
+  // página atual sumia no meio dela.
+  const toggle = (id: string) =>
+    setOpen(s => (s[id] ? {} : { [id]: true }))
+  // Navegou pra uma página? O grupo dela abre e os demais fecham.
+  const ensureOpen = (id: string) =>
+    setOpen(s => (s[id] && Object.keys(s).filter(k => s[k]).length === 1 ? s : { [id]: true }))
   return [open, toggle, ensureOpen]
 }
 
@@ -393,7 +400,7 @@ export function Layout() {
           <span className="flex-1 truncate">{it.label}</span>
           {it.countKey && counts[it.countKey] !== undefined && (
             <span className={cn(
-              'text-[10px] tabular-nums px-1.5 py-0.5 rounded-md font-mono shrink-0',
+              'text-micro tabular-nums px-1.5 py-0.5 rounded-md font-mono shrink-0',
               isActive ? 'bg-accent/10 text-accent' : 'bg-surface-2 text-ink-faint',
             )}>
               {fmtCount(counts[it.countKey] as number)}
@@ -423,7 +430,7 @@ export function Layout() {
           <g.icon className={cn('h-[15px] w-[15px] shrink-0', groupActive ? 'text-accent' : 'text-ink-faint group-hover:text-ink-muted')} />
           <span className="flex-1 text-left truncate">{g.label}</span>
           {!open && headerCount > 0 && (
-            <span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded-md font-mono bg-surface-2 text-ink-faint">
+            <span className="text-micro tabular-nums px-1.5 py-0.5 rounded-md font-mono bg-surface-2 text-ink-faint">
               {fmtCount(headerCount)}
             </span>
           )}
@@ -584,7 +591,7 @@ export function Layout() {
                   to="/perfil"
                   title={`${profile.display_name ?? '—'} · ${profile.email}`}
                   className={({ isActive }) => cn(
-                    'h-7 w-7 rounded-full flex items-center justify-center text-white text-[11px] font-semibold shrink-0 ring-2 ring-transparent transition-all',
+                    'h-7 w-7 rounded-full flex items-center justify-center text-white text-micro font-semibold shrink-0 ring-2 ring-transparent transition-all',
                     isActive ? 'bg-accent-700 ring-accent/40' : 'bg-accent hover:ring-accent/30'
                   )}
                 >
@@ -612,7 +619,7 @@ export function Layout() {
               isActive ? 'bg-accent-bg' : 'hover:bg-surface-2'
             )}
           >
-            <div className="h-7 w-7 rounded-full bg-accent flex items-center justify-center text-white text-[11px] font-bold">
+            <div className="h-7 w-7 rounded-full bg-accent flex items-center justify-center text-white text-micro font-bold">
               {(profile.display_name ?? profile.email)[0].toUpperCase()}
             </div>
           </NavLink>
@@ -685,7 +692,7 @@ export function Layout() {
             to={l.to}
             end={l.to === '/'}
             className={({ isActive }) => cn(
-              'flex flex-col items-center gap-0.5 px-2 py-1.5 text-[10px] font-medium rounded-xl min-w-[58px] transition-all',
+              'flex flex-col items-center gap-0.5 px-2 py-1.5 text-micro font-medium rounded-xl min-w-[62px] transition-all',
               isActive
                 ? 'text-accent bg-accent-bg/60'
                 : 'text-ink-faint hover:text-ink-muted active:bg-surface-2',
