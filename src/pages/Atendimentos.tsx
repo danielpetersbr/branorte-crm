@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, Flame, AlarmClock, CheckCircle2, Inbox, Trash2, Calendar, Hand, ListChecks, MessageSquareDot, EyeOff, UserPlus, RefreshCw, AlertCircle, PhoneOff, MousePointerClick, Bot, Send } from 'lucide-react'
+import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, Flame, AlarmClock, CheckCircle2, Inbox, Trash2, Calendar, Hand, ListChecks, EyeOff, RefreshCw, AlertCircle, PhoneOff, MousePointerClick, Bot, Send } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -518,7 +518,7 @@ export function Atendimentos() {
 
       {/* KPIs - funil: ENTRADA → ENGAJAMENTO → QUALIFICAÇÃO → HANDOFF → CONTATO */}
       {kpis && (
-        <div className="grid grid-cols-2 lg:grid-cols-9 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
           {/* IA: o número grande é quem está CONVERSANDO com a IA hoje (ela já respondeu
               o cliente). O "ligados" inclui prospecção que ainda não engajou. */}
           <KpiCard label="Conversando com a IA" value={iaStatus?.conversando ?? 0} hero tone="info" icon={Bot}
@@ -532,7 +532,8 @@ export function Atendimentos() {
                    onClick={() => setFilters(f => ({ ...f, data: f.data === 'hoje' ? '' as DataPreset : 'hoje', page: 0 }))} />
           {/* QUALIFICADO = PASSOU PRO VENDEDOR. Régua do Daniel, reafirmada em 18/08 depois de
               eu apresentar a medição contrária. Não olha mensagem: tem `responsavel`, é
-              qualificado. Por construção é o complemento exato de "Pra pegar" (sem dono).
+              qualificado. Por construção é o complemento exato dos leads sem dono (o card
+              "Pra pegar", que mostrava esse outro lado, saiu da fileira em 18/08).
               ⚠️ Quem for mexer precisa saber (7 dias, 524 leads): `responsavel` é preenchido
               pelo ROTEAMENTO AUTOMÁTICO, não por decisão humana. Dos 325 com vendedor, em 138
               o cliente nunca escreveu nada e em 98 nem o vendedor tinha escrito. O card mede
@@ -540,7 +541,7 @@ export function Atendimentos() {
               quando o cliente esquenta. Em ago/26 essa fatia caiu de 96% pra 52%. */}
           <KpiCard label="Qualificados" value={acao?.qualificados ?? 0} hero tone="success" icon={Flame}
                    hint={(acao?.qualificados ?? 0) === 0 ? 'nenhum passou pro vendedor' : 'passaram pro vendedor'}
-                   tooltip={'Lead que já tem VENDEDOR responsável — passou do roteamento e está na mão de alguém.\n\nNão soma com os outros cards: é o complemento de "Pra pegar" (todo lead ou tem dono, ou está sem dono).\n\n⚠️ Não olha se o cliente respondeu. Quem preenche o responsável é o roteamento automático, então entra também quem ainda não abriu a boca — o card mede DISTRIBUIÇÃO, e cai quando o roteamento trava (cota, vendedor desligado).'} />
+                   tooltip={'Lead que já tem VENDEDOR responsável — passou do roteamento e está na mão de alguém.\n\nNão soma com os outros cards: é o complemento dos leads sem dono (todo lead ou tem dono, ou está sem dono).\n\n⚠️ Não olha se o cliente respondeu. Quem preenche o responsável é o roteamento automático, então entra também quem ainda não abriu a boca — o card mede DISTRIBUIÇÃO, e cai quando o roteamento trava (cota, vendedor desligado).'} />
           {/* ⚠️ 13/08: "Não engajaram / nem começou o bot" SAIU daqui. A regra era
               !motivo_contato && !tocou_botao_em — dois campos do QUIZ DA LP, que lead de
               click-to-WhatsApp nunca preenche. Media por origem em 30d: Facebook Formulário
@@ -548,9 +549,6 @@ export function Atendimentos() {
               Em 7 dias, 107 pessoas que escreveram foram contadas como quem não falou,
               incluindo um lead com 60 mensagens que pediu o valor do investimento.
               No lugar entram os baldes por AÇÃO, cortados por quem falou por último. */}
-          <KpiCard label="Esperando resposta" value={acao?.esperandoResposta ?? 0} hero tone="danger" icon={MessageSquareDot}
-                   hint={(acao?.esperandoResposta ?? 0) === 0 ? 'ninguém esperando' : 'o cliente falou por último'}
-                   tooltip="O CLIENTE mandou a última mensagem e ninguém respondeu ainda. É a fila mais urgente da tela — cada um destes é uma pessoa esperando." />
           {/* Clique filtra por ETIQUETA (é onde a listagem trata o FILTRO_SEM_RESPOSTA).
               Antes setava `responsavel`, que virava .eq('responsavel','__sem_resposta_bot__')
               e devolvia lista vazia. */}
@@ -558,27 +556,18 @@ export function Atendimentos() {
                    hint={filters.data ? 'marcado pelo bot — no período' : 'marcado pelo bot — sem resposta'}
                    active={filters.etiqueta === FILTRO_SEM_RESPOSTA}
                    onClick={() => setFilters(f => ({ ...f, etiqueta: f.etiqueta === FILTRO_SEM_RESPOSTA ? '' : FILTRO_SEM_RESPOSTA, page: 0 }))} />
-          <KpiCard label="Sem primeiro contato" value={acao?.semPrimeiroContato ?? 0} tone="warning" icon={MessageSquareDot}
-                   hint={(acao?.semPrimeiroContato ?? 0) === 0 ? 'todos já foram abordados' : 'tem dono e ninguém escreveu'}
-                   tooltip="Lead distribuído a um vendedor, mas ninguém mandou a primeira mensagem. É o que o gestor cobra." />
           <KpiCard label="Em conversa"    value={acao?.emConversa ?? 0}   tone="info"     icon={ListChecks}
                    hint="respondemos por último" />
           <KpiCard label="Sem retorno"    value={acao?.semRetorno ?? 0}   tone="neutral"  icon={PhoneOff}
                    hint={(acao?.semRetorno ?? 0) === 0 ? 'ninguém no vácuo' : 'abordamos, ele não respondeu'}
                    tooltip="Nós escrevemos e o cliente nunca respondeu. Candidato a follow-up — diferente de 'Nunca respondeu', que é a marca do bot." />
-          {/* ⚠️ "Pra pegar" continua: a auditoria abriu as 24 linhas sem responsável e
-              NENHUMA tinha mensagem no WhatsApp. Fila limpa, rótulo honesto — foi o único
-              card da fileira que passou sem ressalva. Agora vem da mesma RPC dos outros
-              (mesma régua), não mais de motivo_contato. */}
-          <KpiCard label="Pra pegar"      value={acao?.semDono ?? 0} hero tone="warning"
-                   icon={UserPlus}        hint={(acao?.semDono ?? 0) === 0 ? 'Fila vazia' : 'Sem vendedor — puxe!'} />
-          {/* ⚠️ "Contatados / vendedor já abordou" SAIU: a regra só testava se o campo
-              responsavel tinha alguém — e quem preenche isso é o ROTEAMENTO AUTOMÁTICO,
-              não o vendedor. "Tem dono" nunca foi "foi abordado". Quem responde a essa
-              pergunta agora é "Sem primeiro contato", pelo avesso e com dado de mensagem.
-              Idem "Tocaram no botão": contava clique que casou com uma linha, e das 13
-              só 7 viraram conversa — além de perder quem chegou por outro caminho.
-              Ambos seguem disponíveis nos filtros; saíram da fileira de decisão. */}
+          {/* 18/08 (pedido do Daniel): saíram da fileira "Esperando resposta",
+              "Sem primeiro contato" e "Pra pegar". A RPC continua devolvendo
+              esperandoResposta / semPrimeiroContato / semDono — só não são mais
+              exibidos aqui. Pra trazer de volta é só recolocar o KpiCard.
+              ⚠️ "Contatados / vendedor já abordou" e "Tocaram no botão" saíram antes,
+              por régua errada (responsavel = roteamento automático, não abordagem;
+              e clique que casava com linha sem virar conversa). Seguem nos filtros. */}
         </div>
       )}
 
