@@ -35,6 +35,19 @@ function getOrcamento(origin: string | null): string | null {
   return match ? match[1] : null
 }
 
+/**
+ * Descrição do equipamento tirada das NOTAS — último recurso da coluna
+ * Equipamento, quando não há orçamento vinculado nem `descricao_orcamento`.
+ *
+ * ⚠️ As notas são um depósito de tudo: JSON de metadados, histórico de
+ * atendimento, dump de etiqueta do ReplyAgent. Cada linha ignorada aqui é um
+ * tipo de lixo que já vazou pra tela como se fosse equipamento.
+ *
+ * O caso do pool é o pior: quem tem orçamento SAI do pool por construção, então
+ * ali a coluna cai SEMPRE neste fallback — e 86 dos 500 primeiros mostravam
+ * "reply tags: 1144 | I..." (o dump de etiquetas do ReplyAgent) na coluna
+ * Equipamento. Foi o que o Daniel viu no print de 18/08/2026.
+ */
 function getOrcDescricao(notes: string | null): string | null {
   if (!notes) return null
   const lines = notes.split('\n')
@@ -46,6 +59,8 @@ function getOrcDescricao(notes: string | null): string | null {
     if (trimmed.startsWith('[')) continue          // Skip "[31/03/2026] Atendeu..."
     if (trimmed.startsWith('Auto-criado')) continue // Skip stub auto-link notes
     if (trimmed.startsWith('Bucket pra')) continue  // Skip bucket "[Sem cliente]"
+    if (/^reply\s*tags?\s*:/i.test(trimmed)) continue // dump de etiquetas do ReplyAgent
+    if (/^tags?\s*:/i.test(trimmed)) continue         // idem, forma curta
     return trimmed
   }
   return null
