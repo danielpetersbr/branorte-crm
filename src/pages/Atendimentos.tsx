@@ -523,16 +523,14 @@ export function Atendimentos() {
       {kpis && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {/* I.A — régua do Daniel (18/08): sem vendedor e ainda não marcado como "nunca
-              respondeu". Antes o card contava ia_atendimentos.ativo, que virou 0 fixo quando
-              a IA atendente foi desligada em 13/08. Ver useAtendimentoKpiIaFila pro que foi
-              medido antes de publicar (67% do balde não tem telefone). */}
-          <KpiCard label="I.A" value={iaFila?.total ?? 0} hero tone="info" icon={Bot}
-                   hint={(iaFila?.total ?? 0) === 0
-                     ? 'ninguém na fila'
-                     : (iaFila?.semTelefone ?? 0) > 0
-                       ? `${formatNumber(iaFila?.comTelefone ?? 0)} com telefone · ${formatNumber(iaFila?.semTelefone ?? 0)} sem`
-                       : 'sem vendedor ainda'}
-                   tooltip={`Lead que ainda não tem vendedor e ainda não foi marcado como "nunca respondeu".\n\nFecha a conta dos sem dono: sem dono = "Nunca respondeu" + este card.\n\n⚠️ ${formatNumber(iaFila?.semTelefone ?? 0)} destes não têm telefone (vieram de Instagram/Facebook sem número). Não dá pra atender por WhatsApp, e eles nunca saem daqui: a marca de "nunca respondeu" exige telefone. Os que valem energia são os ${formatNumber(iaFila?.comTelefone ?? 0)} com telefone.`} />
+              respondeu", CONTANDO SÓ QUEM TEM TELEFONE ("se não tem telefone nem coloca aí").
+              Antes o card contava ia_atendimentos.ativo, que virou 0 fixo quando a IA
+              atendente foi desligada em 13/08.
+              ⚠️ Por isso o card NÃO fecha mais a conta dos sem dono: sem_dono = "Nunca
+              respondeu" + este + os sem telefone (67% do balde em 10 dias — ver o hook). */}
+          <KpiCard label="I.A" value={iaFila?.comTelefone ?? 0} hero tone="info" icon={Bot}
+                   hint={(iaFila?.comTelefone ?? 0) === 0 ? 'ninguém na fila' : 'sem vendedor ainda'}
+                   tooltip={`Lead que ainda não tem vendedor e ainda não foi marcado como "nunca respondeu".\n\n⚠️ Só conta quem TEM telefone — decisão do Daniel em 18/08. Quem chega sem número (Instagram/Facebook) não dá pra atender por WhatsApp, então não entra na fila.${(iaFila?.semTelefone ?? 0) > 0 ? `\n\nHoje ficaram ${formatNumber(iaFila?.semTelefone ?? 0)} de fora por isso.` : ''}`} />
           <KpiCard label="Hoje"           value={kpis.hoje}         hero tone="accent"
                    icon={Calendar}        hint={kpis.hoje === 0 ? 'Nenhum lead hoje' : 'leads novos'}
                    active={filters.data === 'hoje'}

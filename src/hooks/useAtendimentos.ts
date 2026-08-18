@@ -471,10 +471,16 @@ export function useIaStatusContagem(enabled = true) {
 // leitura morreu na prática: a IA atendente foi DESLIGADA em 13/08/2026 por ordem do
 // Daniel (vendedores atendendo), então o card marcava 0 fixo.
 //
-// ⚠️ ANTES DE USAR ESTE NÚMERO, saiba o que tem dentro (medido em 18/08, 10 dias, 93 leads):
+// ⚠️ O CARD MOSTRA `comTelefone`, NÃO `total` — "se não tem telefone nem coloca aí"
+// (Daniel, 18/08). Consequência: o card deixou de fechar a conta do balde sem dono.
+//     sem_dono = "Nunca respondeu" + comTelefone + semTelefone
+// Quem quiser a conta fechada usa `total`; quem quiser fila de trabalho usa `comTelefone`.
+//
+// Por que isso importa (medido em 18/08, 10 dias, 93 leads no balde):
 //   • 62 de 93 (67%) têm telefone VAZIO — Instagram/Facebook sem número. Não dá pra atender
 //     por WhatsApp, e como a RPC de "nunca respondeu" exige telefone_norm <> '', eles nunca
-//     são marcados: ficam presos neste balde pra sempre. Por isso separo com/sem telefone.
+//     são marcados: ficam presos neste balde pra sempre. Por isso a RPC devolve os dois.
+//   • esses 62 continuam aparecendo na LISTAGEM da tela — só saíram da contagem do card.
 //   • nos 8 de 18/08: chegou_no_vendedor=false, foi_dispatched=false, ZERO mensagem (do
 //     cliente e nossa). O mais antigo estava parado havia 16h.
 //   • não confie em respondeu_a_ia: vem true mesmo em chat sem uma linha escrita.
