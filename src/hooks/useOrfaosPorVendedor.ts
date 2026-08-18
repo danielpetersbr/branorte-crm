@@ -4,7 +4,9 @@ import { supabase } from '@/lib/supabase'
 // Leads "órfãos" / zumbis no funil: parados há mais de N dias num estado de
 // intake/prospecção/sem-etiqueta (não foram trabalhados), por vendedor. 3 baldes:
 // NOVO LEAD, PROSPECÇÃO/tentativa e SEM ETIQUETA nenhuma. Janela por IDADE da
-// etiqueta, não pelo filtro do dashboard. Daniel (testes) fora na RPC.
+// etiqueta, não pelo filtro do dashboard.
+// O DONO fica fora — mas o filtro está DENTRO da RPC (`!~* 'daniel'`), não aqui.
+// Ver `lib/vendedores-fora-do-ranking.ts`: o lado SQL ainda não foi unificado.
 export interface OrfaosPorVendedor {
   total: number
   por_vendedor: { vendedor: string; n: number; novo: number; prospeccao: number; sem_etiqueta: number }[]

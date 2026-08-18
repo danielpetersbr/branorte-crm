@@ -55,7 +55,7 @@ export function LembretesNotifier() {
   if (cards.length === 0) return null
 
   return (
-    <div className="fixed right-3 sm:right-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:bottom-4 z-[1300] flex flex-col gap-2 w-[calc(100vw-1.5rem)] max-w-[340px] pointer-events-none">
+    <div className="fixed right-3 sm:right-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:bottom-4 z-[var(--z-toast)] flex flex-col gap-2 w-[calc(100vw-1.5rem)] max-w-[340px] pointer-events-none">
       {cards.map(item => {
         const compromisso = item.tipo === 'compromisso'
         return (

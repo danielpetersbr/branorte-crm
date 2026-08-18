@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { rangeForPreset, type DashboardPreset } from './useDashboard'
+import { foraDoRanking } from '@/lib/vendedores-fora-do-ranking'
 
 // ============================================================================
 // Resumo por vendedor — leads / orçamentos / atendidos seguem o FILTRO de período
@@ -67,7 +68,6 @@ const calcScore = (atendimentos: number, carteira: number): number =>
   carteira > 0 ? Math.min(100, Math.round((atendimentos / carteira) * 100)) : 0
 
 const firstKey = (nome: string) => (nome.split(/\s+/)[0] || '').toUpperCase()
-const EXCLUIR_DO_RESUMO = new Set(['DANIEL'])
 
 export function useResumoDia(preset: DashboardPreset = '') {
   const range = rangeForPreset(preset, new Date())
@@ -155,7 +155,7 @@ export function useResumoDia(preset: DashboardPreset = '') {
   })
 
   const linhas: ResumoDiaVendedor[] = useMemo(() => (vendedoresQ.data ?? [])
-    .filter(v => !EXCLUIR_DO_RESUMO.has(v.vendedor_nome.trim().toUpperCase()))
+    .filter(v => !foraDoRanking(v.vendedor_nome))
     .map(v => {
       const nome = v.vendedor_nome
       const f = funilQ.data?.[nome]

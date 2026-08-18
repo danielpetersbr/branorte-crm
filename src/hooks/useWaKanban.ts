@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { canonico, ordemDe, corDaEtiqueta, ETIQUETAS_OCULTAS, montarConversa } from '@/lib/wa-funil'
+import { foraDoRanking, NOMES_FORA_DO_RANKING } from '@/lib/vendedores-fora-do-ranking'
 
 // Kanban de etiquetas WhatsApp — espelho do que o vendedor vê no Wascript.
 // Fontes (sincronizadas pela extensão Branorte WA Sync a cada 30s):
@@ -45,9 +46,9 @@ export function useWaVendedores() {
         .from('wascript_etiquetas')
         .select('vendedor_nome')
       if (error) throw error
-      // DANIEL é o dono — o WhatsApp dele não é quadro de vendas
+      // O dono não é vendedor: o WhatsApp dele não é quadro de vendas.
       return [...new Set((data ?? []).map(r => r.vendedor_nome as string))]
-        .filter(v => v !== 'DANIEL')
+        .filter(v => !foraDoRanking(v))
         .sort()
     },
   })
@@ -70,8 +71,10 @@ export function useWaKanban(vendedor: string | null) {
         .limit(todos ? 12000 : 4000)
       if (todos) {
         // consolidado da equipe — exclui o dono
-        etiqQuery = etiqQuery.neq('vendedor_nome', 'DANIEL')
-        chatsQuery = chatsQuery.neq('vendedor_nome', 'DANIEL')
+        // Mesma lista do filtro em JS — ver vendedores-fora-do-ranking.ts.
+        const fora = `(${NOMES_FORA_DO_RANKING.join(',')})`
+        etiqQuery = etiqQuery.not('vendedor_nome', 'in', fora)
+        chatsQuery = chatsQuery.not('vendedor_nome', 'in', fora)
       } else {
         etiqQuery = etiqQuery.eq('vendedor_nome', vendedor!)
         chatsQuery = chatsQuery.eq('vendedor_nome', vendedor!)

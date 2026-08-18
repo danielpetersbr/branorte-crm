@@ -10,6 +10,9 @@ export default {
         surface: {
           DEFAULT: 'hsl(var(--surface) / <alpha-value>)',
           2: 'hsl(var(--surface-2) / <alpha-value>)',
+          // bg-surface-3 tem 101 usos no src e o token NAO existia: o Tailwind
+          // descartava a classe em silencio e o elemento ficava sem fundo nenhum.
+          3: 'hsl(var(--surface-3) / <alpha-value>)',
           // legacy aliases
           secondary: 'hsl(var(--surface) / <alpha-value>)',
           tertiary: 'hsl(var(--surface-2) / <alpha-value>)',
@@ -50,6 +53,22 @@ export default {
           DEFAULT: 'hsl(var(--accent) / <alpha-value>)',
           bg: 'hsl(var(--accent-bg) / <alpha-value>)',
         },
+        // Serie de grafico — usar SEMPRE estes, nunca hsl() literal no JSX.
+        // Apontam pros semanticos calibrados, entao seguem o tema.
+        // Texto sobre bg-accent (botao cheio). Sem isto o codigo usava
+        // text-white cru em 6 arquivos e mudar o verde nao avisava ninguem.
+        'accent-fg': 'hsl(var(--accent-fg) / <alpha-value>)',
+        // Veu de modal — preto puro serve aos dois temas (ver index.css).
+        overlay: 'hsl(var(--overlay) / <alpha-value>)',
+        chart: {
+          1: 'hsl(var(--chart-1) / <alpha-value>)',
+          2: 'hsl(var(--chart-2) / <alpha-value>)',
+          3: 'hsl(var(--chart-3) / <alpha-value>)',
+          4: 'hsl(var(--chart-4) / <alpha-value>)',
+          5: 'hsl(var(--chart-5) / <alpha-value>)',
+          grid: 'hsl(var(--chart-grid) / <alpha-value>)',
+          ink: 'hsl(var(--chart-ink) / <alpha-value>)',
+        },
         // Brand kept for backwards compat
         brand: {
           50:  'hsl(152 70% 96%)',
@@ -71,6 +90,16 @@ export default {
       fontFamily: {
         sans: ['-apple-system', 'BlinkMacSystemFont', 'SF Pro Display', 'SF Pro Text', 'Inter', 'ui-sans-serif', 'system-ui', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
         mono: ['ui-monospace', 'SF Mono', 'SFMono-Regular', 'Menlo', 'Cascadia Code', 'Roboto Mono', 'monospace'],
+      },
+      // Escala tipografica do dashboard — 6 degraus, piso 12px.
+      // A tela antiga tinha 26 tamanhos distintos, 191 deles abaixo de 12px.
+      fontSize: {
+        kpi:      ['32px', { lineHeight: '1.05', fontWeight: '600', letterSpacing: '-0.02em' }],
+        'kpi-sm': ['22px', { lineHeight: '1.1',  fontWeight: '600', letterSpacing: '-0.015em' }],
+        title:    ['15px', { lineHeight: '1.35', fontWeight: '600', letterSpacing: '-0.01em' }],
+        body:     ['14px', { lineHeight: '1.5',  fontWeight: '400' }],
+        label:    ['13px', { lineHeight: '1.4',  fontWeight: '500' }],
+        micro:    ['12px', { lineHeight: '1.35', fontWeight: '500' }],
       },
       borderRadius: {
         sm: '6px',
@@ -104,6 +133,13 @@ export default {
         '.mb-safe': { marginBottom: 'env(safe-area-inset-bottom)' },
         '.mt-safe': { marginTop: 'env(safe-area-inset-top)' },
         '.bottom-safe': { bottom: 'env(safe-area-inset-bottom)' },
+        // Rolagem horizontal DENTRO de um componente (abas, chips) sem barra
+        // visivel. A pagina em si nunca rola na horizontal.
+        '.scrollbar-none': {
+          '-ms-overflow-style': 'none',
+          'scrollbar-width': 'none',
+          '&::-webkit-scrollbar': { display: 'none' },
+        },
       })
     },
   ],
