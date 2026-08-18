@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, Flame, AlarmClock, CheckCircle2, Inbox, Trash2, Calendar, Hand, ListChecks, EyeOff, RefreshCw, AlertCircle, PhoneOff, MousePointerClick, Bot, Send } from 'lucide-react'
+import { Search, MessageCircle, Phone, ChevronLeft, ChevronRight, X, Flame, AlarmClock, CheckCircle2, Inbox, Trash2, Calendar, Hand, EyeOff, RefreshCw, AlertCircle, PhoneOff, MousePointerClick, Bot, Send } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -518,7 +518,7 @@ export function Atendimentos() {
 
       {/* KPIs - funil: ENTRADA → ENGAJAMENTO → QUALIFICAÇÃO → HANDOFF → CONTATO */}
       {kpis && (
-        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {/* IA: o número grande é quem está CONVERSANDO com a IA hoje (ela já respondeu
               o cliente). O "ligados" inclui prospecção que ainda não engajou. */}
           <KpiCard label="Conversando com a IA" value={iaStatus?.conversando ?? 0} hero tone="info" icon={Bot}
@@ -556,15 +556,21 @@ export function Atendimentos() {
                    hint={filters.data ? 'marcado pelo bot — no período' : 'marcado pelo bot — sem resposta'}
                    active={filters.etiqueta === FILTRO_SEM_RESPOSTA}
                    onClick={() => setFilters(f => ({ ...f, etiqueta: f.etiqueta === FILTRO_SEM_RESPOSTA ? '' : FILTRO_SEM_RESPOSTA, page: 0 }))} />
-          <KpiCard label="Em conversa"    value={acao?.emConversa ?? 0}   tone="info"     icon={ListChecks}
-                   hint="respondemos por último" />
-          <KpiCard label="Sem retorno"    value={acao?.semRetorno ?? 0}   tone="neutral"  icon={PhoneOff}
-                   hint={(acao?.semRetorno ?? 0) === 0 ? 'ninguém no vácuo' : 'abordamos, ele não respondeu'}
-                   tooltip="Nós escrevemos e o cliente nunca respondeu. Candidato a follow-up — diferente de 'Nunca respondeu', que é a marca do bot." />
-          {/* 18/08 (pedido do Daniel): saíram da fileira "Esperando resposta",
-              "Sem primeiro contato" e "Pra pegar". A RPC continua devolvendo
-              esperandoResposta / semPrimeiroContato / semDono — só não são mais
-              exibidos aqui. Pra trazer de volta é só recolocar o KpiCard.
+          {/* 18/08 (pedido do Daniel): a fileira por AÇÃO saiu inteira. Foram, nesta ordem,
+              "Esperando resposta", "Sem primeiro contato", "Pra pegar" e depois
+              "Em conversa" e "Sem retorno". Sobraram 4 cards: IA, Hoje, Qualificados
+              e Nunca respondeu.
+
+              A RPC atendimentos_kpis_acao continua devolvendo os 5 baldes
+              (esperandoResposta / semPrimeiroContato / semDono / emConversa / semRetorno)
+              e o hook segue montado — só `qualificados` é lido aqui. Pra trazer qualquer
+              um de volta é recolocar o KpiCard, sem tocar em query.
+
+              ⚠️ Pra quem for reativar "Sem retorno": medido em 18/08, 7 dos 8 leads do
+              balde tinham EXATAMENTE 4 mensagens nossas — a sequência automática de
+              boas-vindas ("Seja bem-vindo à Branorte!" + 2 mídias + "aqui é o <vendedor>"),
+              disparada em ~20s. O hint dizia "abordamos", mas quem abordou foi o robô.
+
               ⚠️ "Contatados / vendedor já abordou" e "Tocaram no botão" saíram antes,
               por régua errada (responsavel = roteamento automático, não abordagem;
               e clique que casava com linha sem virar conversa). Seguem nos filtros. */}
