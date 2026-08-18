@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { Search, Loader2, Check, Tags, BookOpen, RefreshCw, AlertCircle, Camera, Link2 } from 'lucide-react'
+import { createContext, useContext, useMemo, useState } from 'react'
+import { Search, Loader2, Check, Tags, BookOpen, RefreshCw, AlertCircle, Camera, Link2, Zap } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { useCan } from '@/hooks/usePermissions'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -7,6 +7,12 @@ import {
   usePrecosBranorte, useUpdatePrecoBranorte, useSyncTodosModelos, usePrecosAudit,
   type PrecoBranorte,
 } from '@/hooks/usePrecosBranorte'
+import { useCatalogoMotores } from '@/hooks/useCatalogo'
+import {
+  motorDoPreco, classeDeMotor,
+  CHUPIM_INCLINACAO_PADRAO, CHUPIM_MATERIAL_PADRAO,
+  type MotorCatalogoBase, type MotorDoPreco, type VoltagemMotor,
+} from '@/lib/motor-do-preco'
 
 const CATEGORIA_LABEL: Record<string, string> = {
   COMPACTA: 'Fábricas Compactas (pacotes)',
@@ -115,6 +121,200 @@ function formatPeso(kg: number | null): string {
     return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(kg / 1000) + ' ton'
   }
   return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(kg) + ' kg'
+}
+
+// Sem centavos — pra celula estreita da matriz, onde ",60" custa largura e nao
+// muda nenhuma decisao de venda.
+function formatBRLCurto(v: number): string {
+  return 'R$ ' + new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(v)
+}
+
+function formatCv(cv: number): string {
+  return cv.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + ' cv'
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MOTOR AVULSO
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// PARTE DO CATALOGO COBRA O MOTOR À PARTE. O Moinho Martelo BNMM7100 aparecia
+// aqui por R$ 141.499,60 — mas o motor de 100 CV que ele exige custa R$ 49.826
+// e sai por fora. A maquina real e R$ 191.325,60. Somando os 22 itens de
+// MOINHO/MARTELO e MISTURADOR/VERTICAL, a tela escondia R$ 276.352 (43% do
+// moinho, 26% do misturador vertical). O orcamento sempre fez a conta certa;
+// era so esta tela que nao mostrava.
+//
+// A regra de quem cobra à parte mora em `src/lib/motor-do-preco.ts`, a MESMA
+// que o orcamento usa. Aqui e so apresentacao.
+//
+// A voltagem entra no contexto porque muda o preco do motor — e porque o
+// catalogo so tem motor monofasico ate 15 CV: acima disso a resposta correta e
+// "sem motor cadastrado", nao o preco trifasico disfarçado.
+interface CtxMotor {
+  motores: MotorCatalogoBase[]
+  voltagem: VoltagemMotor
+}
+const MotorCtx = createContext<CtxMotor>({ motores: [], voltagem: 'trifasico' })
+
+/** Resolve o motor de cada item da tabela UMA vez, e diz se a tabela precisa
+ *  das colunas de motor. Tabela sem nenhum item avulso nao ganha coluna. */
+function useMotores(items: PrecoBranorte[]): { mapa: Map<number, MotorDoPreco>; temAvulso: boolean } {
+  const { motores, voltagem } = useContext(MotorCtx)
+  return useMemo(() => {
+    const mapa = new Map<number, MotorDoPreco>()
+    let temAvulso = false
+    for (const it of items) {
+      // So paga o custo de resolver quem pode ter motor à parte. Silo, caixa e
+      // painel nao passam nem pela funcao.
+      if (classeDeMotor(it.categoria, it.subcategoria) !== 'AVULSO') continue
+      const r = motorDoPreco(it, motores, voltagem)
+      if (r.tipo === 'AVULSO' || r.tipo === 'INDETERMINADO') {
+        mapa.set(it.id, r)
+        temAvulso = true
+      }
+    }
+    return { mapa, temAvulso }
+  }, [items, motores, voltagem])
+}
+
+/** Coluna "Motor": qual motor esta sendo somado. */
+function CelulaMotor({ r }: { r: MotorDoPreco | undefined }) {
+  if (!r) {
+    return <span className="block text-right text-[10px] text-ink-faint italic">incluso</span>
+  }
+  if (r.tipo === 'INDETERMINADO') {
+    return (
+      <span className="block text-right text-[10px] text-warning" title={r.motivo}>
+        a definir
+      </span>
+    )
+  }
+  if (r.tipo !== 'AVULSO') return null
+  if (!r.motor) {
+    // ⚠️ NUNCA somar 0 e chamar de total. Motor de 100 CV nao existe em
+    // monofasico — a resposta honesta e essa, nao um numero.
+    return (
+      <span
+        className="block text-right text-[10px] text-danger font-semibold"
+        title={`Nenhum motor de ${formatCv(r.cv)} cadastrado em catalogo_motores nesta voltagem.`}
+      >
+        {formatCv(r.cv)} — sem cadastro
+      </span>
+    )
+  }
+  return (
+    <div className="text-right leading-tight">
+      <div className="text-[11px] font-semibold text-ink tabular-nums">
+        {formatBRL(r.motor.valor)}
+      </div>
+      <div className="text-[9px] text-ink-faint tabular-nums">
+        {r.estimado && <span className="text-warning" title="calculado pela fórmula do chupim">≈ </span>}
+        {formatCv(r.motor.cv)} · {r.motor.polos} polos
+      </div>
+    </div>
+  )
+}
+
+/** Coluna "Equipamento + motor": o preco que o vendedor precisa cotar. */
+function CelulaTotal({ r }: { r: MotorDoPreco | undefined }) {
+  if (!r) return <span className="block text-right text-ink-faint">—</span>
+  if (r.tipo === 'INDETERMINADO') {
+    return <span className="block text-right text-[11px] text-ink-faint italic">—</span>
+  }
+  if (r.tipo !== 'AVULSO') return null
+  if (r.total == null) {
+    return (
+      <span className="block text-right text-[11px] text-danger" title="Sem preço de motor: o total não pode ser calculado.">
+        indisponível
+      </span>
+    )
+  }
+  return (
+    <span className="block text-right text-[12px] font-bold text-accent tabular-nums">
+      {formatBRL(r.total)}
+    </span>
+  )
+}
+
+/** Versao de UMA linha, pra celula estreita da matriz do transportador.
+ *  Substitui a linha de potencia: no chupim a `potencia` da planilha e
+ *  exatamente o numero que o orcamento DESCARTA, entao mostra-la ali ao lado
+ *  de um total calculado por outra regra seria mostrar dois motores
+ *  diferentes pro mesmo equipamento. */
+function LinhaMotorCelula({ r }: { r: MotorDoPreco }) {
+  if (r.tipo === 'INDETERMINADO') {
+    return (
+      <div className="text-right pr-2 text-[9px] text-warning leading-none pb-0.5" title={r.motivo}>
+        motor a definir
+      </div>
+    )
+  }
+  if (r.tipo !== 'AVULSO') return null
+  // ⚠️ `total == null` junto no guard de propósito: sem ele o TS aceitaria um
+  // `?? 0` logo abaixo, e "0" apresentado como total é exatamente o defeito.
+  if (!r.motor || r.total == null) {
+    return (
+      <div
+        className="text-right pr-2 text-[9px] text-danger leading-none pb-0.5"
+        title={`Nenhum motor de ${formatCv(r.cv)} cadastrado nesta voltagem — total indisponível.`}
+      >
+        {formatCv(r.cv)} sem cadastro
+      </div>
+    )
+  }
+  return (
+    <div
+      className="text-right pr-2 text-[9px] leading-none pb-0.5 tabular-nums"
+      title={`Equipamento ${formatBRL(r.valorEquipamento)} + motor ${formatCv(r.motor.cv)} ${r.motor.polos} polos ${formatBRL(r.motor.valor)} = ${formatBRL(r.total)}`}
+    >
+      <span className="text-ink-faint">
+        {r.estimado && <span className="text-warning">≈</span>}
+        {formatCv(r.motor.cv)} +{' '}
+      </span>
+      <span className="font-bold text-accent">{formatBRLCurto(r.total)}</span>
+    </div>
+  )
+}
+
+/** Cabecalho das duas colunas de motor. Reusado nas duas tabelas. */
+function ThMotor() {
+  return (
+    <>
+      <th className={THR + ' text-warning'} title="Motor vendido à parte — cobrado como linha separada no orçamento">
+        Motor (à parte)
+      </th>
+      <th className={THR + ' text-accent'} title="Equipamento + motor: o valor real da máquina">
+        Equip. + motor
+      </th>
+    </>
+  )
+}
+
+/** Aviso acima da tabela: por que apareceu uma coluna a mais. */
+function AvisoMotorAvulso({ items }: { items: PrecoBranorte[] }) {
+  const { voltagem } = useContext(MotorCtx)
+  const ehChupim = items.some(it => it.categoria === 'TRANSPORTADOR' && it.subcategoria === 'CHUPIM')
+  return (
+    <div className="px-3 py-1.5 bg-warning/10 border-b border-warning/30 flex items-start gap-1.5">
+      <Zap className="w-3 h-3 text-warning mt-0.5 shrink-0" />
+      <p className="text-[10px] text-ink-muted leading-snug">
+        <span className="font-bold text-warning uppercase tracking-wide">Motor à parte</span>
+        {' — '}o preço de "Equipamento" <span className="font-semibold">não inclui o motor</span>.
+        O orçamento cobra o motor como linha separada, com o preço de{' '}
+        <span className="font-semibold">catalogo_motores</span> em{' '}
+        <span className="font-semibold">{voltagem === 'trifasico' ? 'trifásico' : 'monofásico'}</span>.
+        Cote pela coluna <span className="font-semibold text-accent">Equip. + motor</span>.
+        {ehChupim && (
+          <>
+            {' '}No chupim o CV vem da <span className="font-semibold">fórmula oficial</span> (não da planilha),
+            calculada aqui com os padrões do orçamento — {CHUPIM_MATERIAL_PADRAO.toLowerCase()} e {CHUPIM_INCLINACAO_PADRAO}°.
+            Mudar material ou inclinação no orçamento muda o motor; por isso vem marcado com{' '}
+            <span className="text-warning font-bold">≈</span>.
+          </>
+        )}
+      </p>
+    </div>
+  )
 }
 
 // Editor inline de campo numerico (valor)
@@ -325,9 +525,15 @@ function TabelaCaixas({ items }: { items: PrecoBranorte[] }) {
 
 // MISTURADORES: litros + kg prática + 3 valores motor
 function TabelaMisturadores({ items }: { items: PrecoBranorte[] }) {
+  // Só o VERTICAL é avulso; os horizontais têm o motor no preço. Como a tela
+  // agrupa por subcategoria, as colunas nascem no bloco do vertical e não
+  // aparecem nos horizontais.
+  const { mapa, temAvulso } = useMotores(items)
   if (items.length === 0) return null
   return (
-    <div className="overflow-x-auto">
+    <div>
+      {temAvulso && <AvisoMotorAvulso items={items} />}
+      <div className="overflow-x-auto">
       <table className="w-full text-[12px]">
         <thead className="bg-surface-2/50 sticky top-0">
           <tr>
@@ -339,6 +545,7 @@ function TabelaMisturadores({ items }: { items: PrecoBranorte[] }) {
             <th className={THR}>+ Trif</th>
             <th className={THR}>+ Mono</th>
             <th className={THR}>+ Redutor</th>
+            {temAvulso && <ThMotor />}
           </tr>
         </thead>
         <tbody>
@@ -358,10 +565,17 @@ function TabelaMisturadores({ items }: { items: PrecoBranorte[] }) {
               <td className={TD}><ValorEditor id={it.id} field="valor_com_motor_trif" valor={it.valor_com_motor_trif} /></td>
               <td className={TD}><ValorEditor id={it.id} field="valor_com_motor_mono" valor={it.valor_com_motor_mono} /></td>
               <td className={TD}><ValorEditor id={it.id} field="valor_com_motorredutor" valor={it.valor_com_motorredutor} /></td>
+              {temAvulso && (
+                <>
+                  <td className={TD + ' bg-warning/5'}><CelulaMotor r={mapa.get(it.id)} /></td>
+                  <td className={TD + ' bg-accent/5'}><CelulaTotal r={mapa.get(it.id)} /></td>
+                </>
+              )}
             </tr>
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   )
 }
@@ -374,11 +588,15 @@ function TabelaMisturadores({ items }: { items: PrecoBranorte[] }) {
 // nascia 100% vazia: uma coluna inteira de "—" ocupando largura e sugerindo que
 // o preco existe e alguem esqueceu de preencher.
 function TabelaPrecos({ items }: { items: PrecoBranorte[] }) {
+  // ⚠️ hooks antes de qualquer return — `items` vazio ainda passa por aqui.
+  const { mapa, temAvulso } = useMotores(items)
   if (items.length === 0) return null
   const temTrif = items.some(it => it.valor_com_motor_trif != null)
   const temMono = items.some(it => it.valor_com_motor_mono != null)
   return (
-    <div className="overflow-x-auto">
+    <div>
+      {temAvulso && <AvisoMotorAvulso items={items} />}
+      <div className="overflow-x-auto">
       <table className="w-full text-[12px]">
         <thead className="bg-surface-2/50 sticky top-0">
           <tr>
@@ -389,6 +607,7 @@ function TabelaPrecos({ items }: { items: PrecoBranorte[] }) {
             <th className={THR}>Equipamento</th>
             {temTrif && <th className={THR}>+ Trif</th>}
             {temMono && <th className={THR}>+ Mono</th>}
+            {temAvulso && <ThMotor />}
             <th className={TH}>Obs.</th>
           </tr>
         </thead>
@@ -404,6 +623,12 @@ function TabelaPrecos({ items }: { items: PrecoBranorte[] }) {
               <td className={TD}><ValorEditor id={it.id} field="valor_equipamento" valor={it.valor_equipamento} /></td>
               {temTrif && <td className={TD}><ValorEditor id={it.id} field="valor_com_motor_trif" valor={it.valor_com_motor_trif} /></td>}
               {temMono && <td className={TD}><ValorEditor id={it.id} field="valor_com_motor_mono" valor={it.valor_com_motor_mono} /></td>}
+              {temAvulso && (
+                <>
+                  <td className={TD + ' bg-warning/5'}><CelulaMotor r={mapa.get(it.id)} /></td>
+                  <td className={TD + ' bg-accent/5'}><CelulaTotal r={mapa.get(it.id)} /></td>
+                </>
+              )}
               <td className={TD + ' text-ink-faint text-[10px]'}>
                 {[it.dimensoes, it.observacoes].filter(Boolean).join(' · ')}
               </td>
@@ -411,6 +636,7 @@ function TabelaPrecos({ items }: { items: PrecoBranorte[] }) {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   )
 }
@@ -606,6 +832,9 @@ function MatrizPrecos({
   colunaDe: (it: PrecoBranorte) => ColunaEixo | null
 }) {
   const [variante, setVariante] = useState<CampoValor>('valor_equipamento')
+  // Chupim cobra o motor à parte; Calha TH não. Como as duas dividem a mesma
+  // grade, o mapa só tem as células de chupim e a linha extra nasce só nelas.
+  const { mapa: mapaMotor, temAvulso } = useMotores(items)
   // Depende so de `items`: linhaDe/colunaDe chegam como arrow inline (identidade
   // nova a cada render do pai) mas sao funcoes PURAS de parsing, fixas por
   // matriz. Inclui-las nas deps refaria a grade de 234 celulas a cada tecla
@@ -656,6 +885,7 @@ function MatrizPrecos({
 
   return (
     <div>
+      {temAvulso && <AvisoMotorAvulso items={items} />}
       {/* SELETOR DE VARIANTE — troca o campo de preco da matriz inteira. */}
       <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 border-b border-border/40 bg-surface-2/30">
         <span className="text-[10px] uppercase tracking-wider font-semibold text-ink-faint mr-1">Preço</span>
@@ -755,8 +985,13 @@ function MatrizPrecos({
                     )
                   }
                   const pot = potenciaCurta(it)
+                  const rm = mapaMotor.get(it.id)
+                  // A linha do motor só entra em cima do preço BASE: nas
+                  // variantes "+ motor trifásico" o motor já está dentro do
+                  // valor, e somar de novo cobraria duas vezes.
+                  const mostraMotor = rm != null && ativa.campo === 'valor_equipamento'
                   return (
-                    <td key={c.chave} className={`px-1 py-0.5 ${borda}`}>
+                    <td key={c.chave} className={`px-1 py-0.5 ${borda} ${mostraMotor ? 'bg-warning/5' : ''}`}>
                       <ValorEditor
                         id={it.id}
                         field={ativa.campo}
@@ -765,9 +1000,11 @@ function MatrizPrecos({
                         // So faz sentido cair pro base quando a variante NAO e o base.
                         fallback={ativa.campo === 'valor_equipamento' ? null : it.valor_equipamento}
                       />
-                      {pot && (
-                        <div className="text-right pr-2 text-[10px] text-ink-faint tabular-nums leading-none pb-0.5">{pot}</div>
-                      )}
+                      {mostraMotor
+                        ? <LinhaMotorCelula r={rm} />
+                        : pot && (
+                          <div className="text-right pr-2 text-[10px] text-ink-faint tabular-nums leading-none pb-0.5">{pot}</div>
+                        )}
                     </td>
                   )
                 })}
@@ -978,9 +1215,20 @@ export function PrecosBranorte() {
   // Comercial e ve a tabela como referencia, sem nenhum caminho de escrita.
   const podeEditar = useCan()('precos.editar')
   const { data: precos, isLoading } = usePrecosBranorte()
+  // Motores do catálogo central — a MESMA fonte de onde o orçamento puxa o
+  // preço do motor avulso. Sem isto a tela mostra o equipamento pelado.
+  const { data: motores } = useCatalogoMotores()
   const [busca, setBusca] = useState('')
   const [catSelecionada, setCatSelecionada] = useState<string | null>(null)
   const [grupoSel, setGrupoSel] = useState<string | null>(null)
+  // Trifásico é o default comercial. Monofásico existe, mas o catálogo só tem
+  // motor mono até 15 CV — acima disso a tela diz "sem cadastro" em vez de
+  // devolver o preço trifásico disfarçado.
+  const [voltagem, setVoltagem] = useState<VoltagemMotor>('trifasico')
+  const ctxMotor = useMemo<CtxMotor>(
+    () => ({ motores: motores ?? [], voltagem }),
+    [motores, voltagem],
+  )
 
   const filtrados = useMemo(() => {
     if (!precos) return []
@@ -1054,6 +1302,7 @@ export function PrecosBranorte() {
   const totalFiltrados = filtrados.length
 
   return (
+    <MotorCtx.Provider value={ctxMotor}>
     <div className="min-h-screen bg-bg">
       {/* 1800px e nao `max-w-7xl` (1280): a matriz do transportador tem 7 colunas
           e num monitor de 1920 sobrava ~45% de tela vazia enquanto as celulas de
@@ -1152,6 +1401,33 @@ export function PrecosBranorte() {
             ))}
           </div>
           )}
+          {/* VOLTAGEM — só afeta o preço do MOTOR À PARTE (moinho martelo,
+              chupim, misturador vertical). O preço do equipamento não muda. */}
+          <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-border/40">
+            <Zap className="w-3 h-3 text-warning" />
+            <span className="text-[10px] uppercase tracking-wider font-semibold text-ink-faint mr-1">
+              Motor à parte
+            </span>
+            {([['trifasico', 'Trifásico'], ['monofasico', 'Monofásico']] as const).map(([v, label]) => (
+              <button
+                key={v}
+                onClick={() => setVoltagem(v)}
+                aria-pressed={voltagem === v}
+                className={`text-[11px] px-2.5 py-1 rounded-md font-semibold transition ${
+                  voltagem === v ? 'bg-warning text-white'
+                    : 'bg-surface-2 text-ink-muted hover:text-ink hover:bg-surface-3 border border-border'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+            <span className="text-[10px] text-ink-faint ml-1">
+              muda só o preço do motor vendido à parte
+              {voltagem === 'monofasico' && (
+                <span className="text-warning"> — catálogo só tem motor monofásico até 15 cv</span>
+              )}
+            </span>
+          </div>
           {busca && (
             <div className="text-[10px] text-ink-faint">
               {totalFiltrados} resultado{totalFiltrados !== 1 ? 's' : ''} para "{busca}"
@@ -1219,5 +1495,6 @@ export function PrecosBranorte() {
         )}
       </div>
     </div>
+    </MotorCtx.Provider>
   )
 }

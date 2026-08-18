@@ -13,6 +13,7 @@ import {
   agruparPorCategoria, acharMotorCompativel,
   type CatalogoItem, type CatalogoMotor, type CatalogoAcessorio, type MotorExtra,
 } from '@/hooks/useCatalogo'
+import { valorPorVoltagem } from '@/lib/motor-do-preco'
 import { FinalizarMontarModal, type CarrinhoSnapshot } from '@/components/FinalizarMontarModal'
 import { OrcamentoPreview, type ParcelaPagamento, type PreviewClienteDados } from '@/components/OrcamentoPreview'
 import { montarItensFiname, aplicarAcrescimoFiname, FINAME_TIPOS, type FinameBloqueio } from '@/lib/finame'
@@ -125,25 +126,11 @@ function formatBRL(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Math.round(v))
 }
 
-// Escolhe o valor do equipamento conforme a voltagem.
-// Quando precos_branorte tem valor_com_motor_trif/mono, esse valor JÁ INCLUI o motor —
-// então motor_valor_unit deve virar 0 pra não cobrar 2x. Se a coluna voltagem-specific
-// não existir/for zero, faz fallback pro valor_equipamento (motor cobrado à parte).
-function valorPorVoltagem(
-  p: { valor_equipamento: number | null; valor_com_motor_trif: number | null; valor_com_motor_mono: number | null },
-  voltagemEfetiva: 'monofasico' | 'trifasico',
-): { valor: number; motorIncluso: boolean } {
-  const trifV = p.valor_com_motor_trif != null ? Number(p.valor_com_motor_trif) : null
-  const monoV = p.valor_com_motor_mono != null ? Number(p.valor_com_motor_mono) : null
-  const equipV = p.valor_equipamento != null ? Number(p.valor_equipamento) : 0
-  if (voltagemEfetiva === 'trifasico' && trifV != null && trifV > 0) {
-    return { valor: trifV, motorIncluso: true }
-  }
-  if (voltagemEfetiva === 'monofasico' && monoV != null && monoV > 0) {
-    return { valor: monoV, motorIncluso: true }
-  }
-  return { valor: equipV, motorIncluso: false }
-}
+// `valorPorVoltagem` MUDOU DE CASA: agora vive em src/lib/motor-do-preco.ts e
+// chega por import no topo deste arquivo. Ela é a forma canônica de detectar
+// "motor incluso no preço", e a tabela de preços passou a depender dela — a
+// tela mostrava o Moinho Martelo por R$ 141.499,60 escondendo os R$ 49.826 do
+// motor. Duas cópias da regra voltariam a divergir; por isso, uma só.
 
 function formatBRLBare(v: number): string {
   const abs = Math.abs(Math.round(v))

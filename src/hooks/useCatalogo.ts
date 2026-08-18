@@ -127,32 +127,11 @@ export function agruparPorCategoria(items: CatalogoItem[]): Array<{ categoria: s
 }
 
 // Helper: acha o motor compatível mais próximo do CV/polos de um item.
-// strictVoltagem: quando true, NUNCA cruza voltagem — se não houver motor na
-// voltagem pedida, retorna null em vez de pegar o de outra voltagem. Usado pra
-// cotação monofásica: motor que só existe em trifásico (ex: 6 CV) NÃO pode ser
-// cobrado com o preço trifásico (mais barato) silenciosamente — o vendedor
-// precisa ver "sem motor cadastrado / a confirmar" em vez de subcobrar.
-export function acharMotorCompativel(
-  motores: CatalogoMotor[],
-  cv: number,
-  polos: number,
-  voltagem: 'monofasico' | 'trifasico',
-  strictVoltagem = false,
-): CatalogoMotor | null {
-  // 1) match exato
-  const exato = motores.find(m =>
-    Number(m.cv) === cv && m.polos === polos && m.voltagem === voltagem,
-  )
-  if (exato) return exato
-  if (strictVoltagem) {
-    // Não cruza voltagem: só aceita mesmo cv na MESMA voltagem (polos pode variar).
-    return motores.find(m => Number(m.cv) === cv && m.voltagem === voltagem) ?? null
-  }
-  // 2) match cv+polos (qualquer voltagem)
-  const cvPolos = motores.find(m => Number(m.cv) === cv && m.polos === polos)
-  if (cvPolos) return cvPolos
-  // 3) só cv (qualquer polos+voltagem)
-  const soCv = motores.find(m => Number(m.cv) === cv)
-  if (soCv) return soCv
-  return null
-}
+//
+// ⚠️ A IMPLEMENTAÇÃO MUDOU DE CASA (src/lib/motor-do-preco.ts) e é re-exportada
+// aqui pra não quebrar quem já importava deste módulo. O motivo da mudança:
+// a tabela de preços precisa da MESMA resolução de motor que o orçamento, e
+// não pode importar de um hook que arrasta o cliente supabase. Uma regra só,
+// um lugar só — se um dia divergirem, a tela de preços volta a esconder
+// dinheiro do vendedor.
+export { acharMotorCompativel } from '@/lib/motor-do-preco'
