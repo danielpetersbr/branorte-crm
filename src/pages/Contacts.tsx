@@ -1,5 +1,7 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useContacts, useUpdateContact, useBulkAssign } from '@/hooks/useContacts'
+import { usePegarPraMim, useMeuPlacar, useRelatorioContatos, useViolacoes, MOTIVO_RECUSA_LABEL, type MotivoRecusa } from '@/hooks/useMeusContatos'
+import { PainelDonos } from '@/components/contacts/PainelDonos'
 import { useVendors } from '@/hooks/useVendors'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -21,7 +23,7 @@ import { CelulaEditavel } from '@/components/contacts/CelulaEditavel'
 import { BotoesStatus, type StatusContato } from '@/components/contacts/BotoesStatus'
 import { useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
-import { Search, MessageCircle, ChevronLeft, ChevronRight, X, FileText, Copy, Check, CornerDownLeft, SearchX, AlertTriangle, UserPlus, CheckSquare, Square } from 'lucide-react'
+import { Search, MessageCircle, ChevronLeft, ChevronRight, X, FileText, FileX, Copy, Check, CornerDownLeft, SearchX, AlertTriangle, UserPlus, CheckSquare, Square, Hand, Target, BarChart3, Loader2 } from 'lucide-react'
 import { ESTADOS_BR, STATUS_OPTIONS, TEMPERATURA_OPTIONS, FUNIL_OPTIONS, PAGE_SIZE, CONTACT_SORT_OPTIONS } from '@/types'
 import { parseCrmMeta } from '@/lib/crm-fields'
 import type { ContactFilters, Contact, ContactSortKey } from '@/types'
@@ -291,7 +293,7 @@ export function Contacts() {
   const orcamentoAnos = Array.from({ length: currentYear - 2011 }, (_, i) => String(currentYear - i))
 
   const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
-  const [filters, setFilters] = useState<ContactFilters>({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, orcamento_ano: '', orcamento_mes: '', temperatura: '', com_whatsapp: false, etiqueta: '', esperando_resposta: false, faixa: '', sort: 'orcamento_recente', page: 0 })
+  const [filters, setFilters] = useState<ContactFilters>({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, sem_orcamento: false, orcamento_ano: '', orcamento_mes: '', temperatura: '', com_whatsapp: false, etiqueta: '', esperando_resposta: false, faixa: '', sort: 'orcamento_recente', page: 0 })
   const [searchInput, setSearchInput] = useState('')
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
 
@@ -307,6 +309,33 @@ export function Contacts() {
   const bulkAssign = useBulkAssign()
   const can = useCan()
   const podeAtribuir = can('menu.atribuir')
+
+  /*
+   * PEGAR PRA MIM.
+   *
+   * Nao usa permKey: a condicao e ter um vendedor ligado ao usuario. Quem nao
+   * tem (admin puro, marketing, visualizador) nao tem no que carimbar — a RPC
+   * devolveria 'sem_vendedor' e o botao seria uma promessa falsa.
+   *
+   * O motor e o pool de prospecao que ja existia no banco (claims + 5 travas
+   * anti-colisao); a tela /prospeccao saiu em 17/08 e ele ficou orfao. Aqui ele
+   * volta onde o vendedor ja esta.
+   */
+  const pegar = usePegarPraMim()
+  const resultadoPegar = pegar.data ?? null
+  /** Agrupa as recusas por motivo — 30 linhas de "ja tem dono" nao ajudam ninguem. */
+  const recusasPorMotivo = useMemo(() => {
+    const rs = resultadoPegar?.recusados ?? []
+    const conta = new Map<string, number>()
+    for (const r of rs) conta.set(r.motivo, (conta.get(r.motivo) ?? 0) + 1)
+    return [...conta.entries()]
+      .map(([motivo, qtd]) => ({
+        motivo,
+        qtd,
+        label: MOTIVO_RECUSA_LABEL[motivo as MotivoRecusa] ?? motivo,
+      }))
+      .sort((a, b) => b.qtd - a.qtd)
+  }, [resultadoPegar])
 
   const { data: vendorsData } = useVendors()
   const { data, isLoading, isFetching, isError, dataUpdatedAt, isPlaceholderData, isPaused } = useContacts(filters)
@@ -387,6 +416,14 @@ export function Contacts() {
 
   // Aviso de "a lista encolheu" — ver SORTS_SO_WHATSAPP.
   const soComWhatsapp = SORTS_SO_WHATSAPP.has(filters.sort)
+
+  /** Tem vendedor ligado ao usuário → pode carimbar contato no próprio nome. */
+  const podePegar = !!profile?.vendor_id
+  const { data: placar } = useMeuPlacar(podePegar)
+  const ehAdmin = profile?.role === 'admin'
+  const { data: relatorio } = useRelatorioContatos(!!profile)
+  const [verViolacoes, setVerViolacoes] = useState(false)
+  const { data: violacoes, isLoading: carregandoViolacoes } = useViolacoes(verViolacoes)
 
   // Vendor só vê dropdown com ele mesmo + "não atribuído". Admin vê todos.
   const isVendor = profile?.role === 'vendor'
@@ -475,19 +512,39 @@ export function Contacts() {
   }, [searchInput])
 
   const clearFilters = () => {
-    setFilters({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, orcamento_ano: '', orcamento_mes: '', temperatura: '', com_whatsapp: false, etiqueta: '', esperando_resposta: false, faixa: '', sort: 'orcamento_recente' as ContactSortKey, page: 0 })
+    setFilters({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, sem_orcamento: false, orcamento_ano: '', orcamento_mes: '', temperatura: '', com_whatsapp: false, etiqueta: '', esperando_resposta: false, faixa: '', sort: 'orcamento_recente' as ContactSortKey, page: 0 })
     setSearchInput('')
   }
 
-  const hasFilters = filters.search || filters.estado || filters.vendor_id || filters.status || filters.orcamento || filters.orcamento_ano || filters.temperatura || filters.com_whatsapp || filters.etiqueta || filters.esperando_resposta || filters.faixa
+  const hasFilters = filters.search || filters.estado || filters.vendor_id || filters.status || filters.orcamento || filters.sem_orcamento || filters.orcamento_ano || filters.temperatura || filters.com_whatsapp || filters.etiqueta || filters.esperando_resposta || filters.faixa
 
   // Só pra MOSTRAR "N filtros" — o que liga/desliga o botão Limpar continua
   // sendo `hasFilters`, intocado.
   const nFiltros = [
     filters.search, filters.estado, filters.vendor_id, filters.status,
-    filters.orcamento, filters.orcamento_ano, filters.orcamento_mes,
+    filters.orcamento, filters.sem_orcamento, filters.orcamento_ano, filters.orcamento_mes,
     filters.temperatura, filters.com_whatsapp, filters.etiqueta, filters.esperando_resposta,
   ].filter(Boolean).length
+
+  /**
+   * O ATALHO QUE O DANIEL PEDIU: um clique e a tela mostra só quem não tem
+   * vendedor E não tem orçamento — o bolsão de prospecção de verdade.
+   *
+   * "Sem dono" sozinho traz 172.829, e dentro deles há 1.795 que TÊM orçamento:
+   * esses não são pool, são cliente de alguém cujo dono se perdeu. Chamar um
+   * deles é ligar pra cliente que outro vendedor já atendeu.
+   *
+   * Zera busca, faixa e etiqueta de propósito: é um recorte inteiro, não um
+   * filtro que se soma ao que estava.
+   */
+  const poolAtivo = filters.vendor_id === 'unassigned' && !!filters.sem_orcamento
+  const irParaPool = () => {
+    setSearchInput('')
+    setFilters(f => poolAtivo
+      ? { ...f, vendor_id: '', sem_orcamento: false, page: 0 }
+      : { ...f, vendor_id: 'unassigned', sem_orcamento: true, orcamento: false,
+          orcamento_ano: '', orcamento_mes: '', search: '', faixa: '', etiqueta: '', page: 0 })
+  }
 
   // Busca só aplica no submit (Enter). Sem uma dica, o usuário digitava e
   // achava que a lista não respondia.
@@ -516,6 +573,20 @@ export function Contacts() {
           )}
         </p>
       </header>
+
+      {/* Quem e dono de quem, e o placar de quem prospectou. Vem ANTES da faixa
+          de atividade de proposito: a primeira pergunta e "esse contato tem
+          dono?", e so depois "faz quanto tempo que ninguem fala com ele". */}
+      <PainelDonos
+        relatorio={relatorio}
+        placar={placar}
+        violacoes={violacoes}
+        carregandoViolacoes={carregandoViolacoes}
+        verViolacoes={verViolacoes}
+        onVerViolacoes={setVerViolacoes}
+        poolAtivo={poolAtivo}
+        onPool={irParaPool}
+      />
 
       {/* Pedido do Daniel: entre o titulo e a area de busca. Reage aos filtros
           atuais (a RPC recebe os mesmos parametros da lista) e clicar num card
@@ -580,14 +651,28 @@ export function Contacts() {
             />
           )}
 
-          {/* O recorte com mais peso da linha: é o que separa "base" de "pipeline". */}
+          {/* O recorte com mais peso da linha: é o que separa "base" de "pipeline".
+              ⚠️ Até 18/08/2026 este chip filtrava `origin ILIKE 'Orcamento%'` — a
+              ORIGEM da importação, não o orçamento. Deixava de fora 1.300 contatos
+              com orçamento de verdade e trazia 1.423 que não tinham arquivo nenhum.
+              Hoje olha o vínculo real em orcamentos_files. */}
           <ChipFiltro
             ativo={!!(filters.orcamento || filters.orcamento_ano)}
-            onClick={() => setFilters(f => ({ ...f, orcamento: !f.orcamento, orcamento_ano: '', page: 0 }))}
-            title="So contatos que tem orcamento."
+            onClick={() => setFilters(f => ({ ...f, orcamento: !f.orcamento, sem_orcamento: false, orcamento_ano: '', page: 0 }))}
+            title="So contatos que tem orcamento vinculado."
           >
             <FileText className="h-4 w-4" aria-hidden />
             <span className="font-medium">Orcamentos</span>
+          </ChipFiltro>
+
+          {/* O oposto. Exclusivo com o de cima: marcar os dois devolveria zero. */}
+          <ChipFiltro
+            ativo={!!filters.sem_orcamento}
+            onClick={() => setFilters(f => ({ ...f, sem_orcamento: !f.sem_orcamento, orcamento: false, orcamento_ano: '', orcamento_mes: '', page: 0 }))}
+            title="So contatos que NAO tem nenhum orcamento vinculado."
+          >
+            <FileX className="h-4 w-4" aria-hidden />
+            <span className="font-medium">Sem orcamento</span>
           </ChipFiltro>
 
           <div className="flex items-center gap-2 lg:ml-auto">
@@ -736,15 +821,19 @@ export function Contacts() {
                 O cabeçalho é `sticky top-0` de VERDADE: nada aqui é um
                 scrollport (o Card não leva overflow-hidden, senão a sticky
                 ancoraria num container que nunca rola e ficaria parada). */}
-            {podeAtribuir && (
+            {/* O modo de selecao serve DUAS acoes: o vendedor pegar pra si e o
+                admin atribuir a alguem. Uma coluna de checkbox so, porque a
+                tabela e `table-fixed` com larguras medidas somando 100% — uma
+                segunda reescalaria todas e desalinharia o cabecalho. */}
+            {(podeAtribuir || podePegar) && (
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <Button
                   variant={modoAtribuir ? 'primary' : 'secondary'}
                   size="sm"
-                  onClick={() => { setModoAtribuir(m => !m); setSelectedIds(new Set()); setTargetVendor('') }}
+                  onClick={() => { setModoAtribuir(m => !m); setSelectedIds(new Set()); setTargetVendor(''); pegar.reset() }}
                 >
                   <UserPlus className="h-3.5 w-3.5" aria-hidden />
-                  {modoAtribuir ? 'Sair da selecao' : 'Atribuir em massa'}
+                  {modoAtribuir ? 'Sair da selecao' : 'Selecionar contatos'}
                 </Button>
                 {modoAtribuir && (
                   <>
@@ -761,30 +850,82 @@ export function Contacts() {
                     <span className="text-[13px] text-ink-muted" aria-live="polite">
                       {selectedIds.size} selecionado{selectedIds.size === 1 ? '' : 's'}
                     </span>
-                    <Select
-                      options={(vendorsData ?? []).map(v => ({ value: v.id, label: v.name }))}
-                      placeholder="Vendedor" aria-label="Vendedor que vai receber"
-                      value={targetVendor} onChange={e => setTargetVendor(e.target.value)}
-                      className="w-full sm:w-48"
-                    />
-                    <Button
-                      variant="primary" size="sm"
-                      loading={bulkAssign.isPending}
-                      disabled={!targetVendor || selectedIds.size === 0}
-                      onClick={() => {
-                        if (!targetVendor || selectedIds.size === 0) return
-                        bulkAssign.mutate(
-                          { contactIds: Array.from(selectedIds), vendorId: targetVendor },
-                          { onSuccess: () => { setSelectedIds(new Set()); setTargetVendor('') } },
-                        )
-                      }}
-                    >
-                      Atribuir
-                    </Button>
+
+                    {/* PEGAR PRA MIM — carimba o proprio nome no contato pra
+                        nenhum colega ligar pro mesmo cliente. A recusa vem com
+                        motivo: o backend tem 5 travas e o silencio seria pior
+                        que o "nao". */}
+                    {podePegar && (
+                      <Button
+                        variant="primary" size="sm"
+                        loading={pegar.isPending}
+                        disabled={selectedIds.size === 0}
+                        title="Marca estes contatos como seus. Quem ja tem dono, ja tem conversa no WhatsApp de outro vendedor ou esta em atendimento e recusado — e a tela diz por que."
+                        onClick={() => {
+                          if (selectedIds.size === 0) return
+                          pegar.mutate(Array.from(selectedIds), {
+                            onSuccess: () => setSelectedIds(new Set()),
+                          })
+                        }}
+                      >
+                        <Hand className="h-3.5 w-3.5" aria-hidden />
+                        Pegar pra mim
+                      </Button>
+                    )}
+
+                    {podeAtribuir && (
+                      <>
+                        <Select
+                          options={(vendorsData ?? []).map(v => ({ value: v.id, label: v.name }))}
+                          placeholder="Vendedor" aria-label="Vendedor que vai receber"
+                          value={targetVendor} onChange={e => setTargetVendor(e.target.value)}
+                          className="w-full sm:w-48"
+                        />
+                        <Button
+                          variant="secondary" size="sm"
+                          loading={bulkAssign.isPending}
+                          disabled={!targetVendor || selectedIds.size === 0}
+                          onClick={() => {
+                            if (!targetVendor || selectedIds.size === 0) return
+                            bulkAssign.mutate(
+                              { contactIds: Array.from(selectedIds), vendorId: targetVendor },
+                              { onSuccess: () => { setSelectedIds(new Set()); setTargetVendor('') } },
+                            )
+                          }}
+                        >
+                          Atribuir
+                        </Button>
+                      </>
+                    )}
                     {bulkAssign.isError && (
                       <span className="text-[13px] text-danger">Nao deu pra atribuir. Tente de novo.</span>
                     )}
                   </>
+                )}
+
+                {/* Resultado do "pegar": quantos entraram e, um a um, por que os
+                    outros nao entraram. */}
+                {resultadoPegar && (
+                  <div className="w-full mt-1 rounded-md border border-border bg-surface-2 px-2.5 py-2 text-[12.5px]" aria-live="polite">
+                    {resultadoPegar.ok === false ? (
+                      <span className="text-danger">{resultadoPegar.msg ?? 'Nao deu pra pegar.'}</span>
+                    ) : (
+                      <>
+                        <span className="font-medium text-ink">
+                          {resultadoPegar.n_pegos ?? 0} contato{(resultadoPegar.n_pegos ?? 0) === 1 ? '' : 's'} agora {(resultadoPegar.n_pegos ?? 0) === 1 ? 'e seu' : 'sao seus'}.
+                        </span>
+                        {!!recusasPorMotivo.length && (
+                          <span className="text-ink-muted">
+                            {' '}Nao deu pra pegar {recusasPorMotivo.reduce((s, r) => s + r.qtd, 0)}:{' '}
+                            {recusasPorMotivo.map(r => `${r.qtd} ${r.label}`).join('; ')}.
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+                {pegar.isError && (
+                  <span className="text-[13px] text-danger">Nao deu pra pegar. Tente de novo.</span>
                 )}
               </div>
             )}

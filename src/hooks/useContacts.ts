@@ -26,9 +26,14 @@ function rpcArgs(filters: ContactFilters) {
     p_status:             filters.status || null,
     p_orcamento_ano:      filters.orcamento_ano ? Number(filters.orcamento_ano) : null,
     p_orcamento_mes:      filters.orcamento_mes ? Number(filters.orcamento_mes) : null,
-    // A RPC ignora `p_orcamento` quando há ano — mesma precedência do código
-    // antigo (`if ano ... else if orcamento`), então dá pra mandar os dois.
+    // `p_orcamento` = TEM arquivo vinculado em orcamentos_files.
+    // Até 18/08/2026 isto filtrava `origin ILIKE 'Orcamento%'` — a origem da
+    // importação, não o orçamento. O ano continua sendo um recorte à parte e
+    // pode ir junto.
     p_orcamento:          !!filters.orcamento,
+    // NÃO tem orçamento nenhum. É o que faz o filtro "sem vendedor e sem
+    // orçamento" ser respondível numa consulta só.
+    p_sem_orcamento:      !!filters.sem_orcamento,
     p_temperatura:        filters.temperatura || null,
     p_com_whatsapp:       !!filters.com_whatsapp,
     p_etiqueta:           filters.etiqueta || null,

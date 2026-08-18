@@ -37,6 +37,7 @@ export function useAtividadeContatos(filters: ContactFilters) {
         p_orcamento_ano:      semFaceta.orcamento_ano ? Number(semFaceta.orcamento_ano) : null,
         p_orcamento_mes:      semFaceta.orcamento_mes ? Number(semFaceta.orcamento_mes) : null,
         p_orcamento:          !!semFaceta.orcamento,
+        p_sem_orcamento:      !!semFaceta.sem_orcamento,
         p_temperatura:        semFaceta.temperatura || null,
         p_com_whatsapp:       !!semFaceta.com_whatsapp,
         p_etiqueta:           semFaceta.etiqueta || null,

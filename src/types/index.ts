@@ -82,6 +82,19 @@ export interface ContactFilters {
   etiqueta?: string
   /** O CLIENTE falou por ultimo e ninguem respondeu. */
   esperando_resposta?: boolean
+  /**
+   * SEM nenhum orcamento vinculado (nao existe linha em orcamentos_files com
+   * este contact_id). Espelha `orcamento`, que e o oposto.
+   *
+   * ⚠️ Ate 18/08/2026 `orcamento` NAO media orcamento: filtrava
+   * `origin ILIKE 'Orcamento%'`, ou seja a ORIGEM DA IMPORTACAO. Deixava de
+   * fora 1.300 contatos que tinham orcamento de verdade e incluia 1.423 que
+   * nao tinham arquivo nenhum. Os dois hoje olham o vinculo real.
+   *
+   * Marcar os DOIS devolve zero de proposito (um contato nao pode ter e nao
+   * ter orcamento) — a tela impede o par, mas a RPC nao inventa resultado.
+   */
+  sem_orcamento?: boolean
 }
 
 export const CONTACT_SORT_OPTIONS: { value: ContactSortKey; label: string }[] = [
