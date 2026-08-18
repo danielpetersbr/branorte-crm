@@ -226,9 +226,13 @@ interface KpiCardProps {
   tooltip?: string
   onClick?: () => void
   active?: boolean
+  /** Fatia do card sobre o total do período — sai ao lado do número. Ver pctDe(). */
+  pct?: number
+  /** Denominador usado no pct. Só serve pra explicar a conta no tooltip. */
+  pctBase?: number
 }
 
-function KpiCard({ label, value, hero, tone = 'neutral', icon: Icon, hint, tooltip, onClick, active }: KpiCardProps) {
+function KpiCard({ label, value, hero, tone = 'neutral', icon: Icon, hint, tooltip, onClick, active, pct, pctBase }: KpiCardProps) {
   const accentClass: Record<Tone, string> = {
     success: 'before:bg-success',
     warning: 'before:bg-warning',
@@ -249,7 +253,10 @@ function KpiCard({ label, value, hero, tone = 'neutral', icon: Icon, hint, toolt
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
       onKeyDown={onClick ? (e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } }) : undefined}
-      title={tooltip ?? (onClick ? 'Clique pra filtrar a lista' : undefined)}
+      title={[
+        tooltip,
+        pct !== undefined && pctBase ? `${pct}% dos ${formatNumber(pctBase)} leads do período.` : null,
+      ].filter(Boolean).join('\n\n') || (onClick ? 'Clique pra filtrar a lista' : undefined)}
       className={`group relative overflow-hidden rounded-xl bg-surface border ${hero ? 'p-5' : 'p-4'}
                   before:absolute before:inset-y-0 before:left-0 before:w-[3px] ${accentClass[tone]}
                   transition-all duration-200 hover:border-${tone === 'neutral' ? 'border' : tone}/40
@@ -265,6 +272,9 @@ function KpiCard({ label, value, hero, tone = 'neutral', icon: Icon, hint, toolt
           </p>
           <p className={`mt-1 font-bold tabular-nums tracking-tight text-ink ${hero ? 'text-3xl' : 'text-2xl'}`}>
             {formatNumber(value)}
+            {pct !== undefined && (
+              <span className={`ml-1.5 font-semibold text-ink-faint ${hero ? 'text-sm' : 'text-xs'}`}>{pct}%</span>
+            )}
           </p>
           {hint && <p className="text-[11px] text-ink-faint mt-0.5 leading-tight">{hint}</p>}
         </div>
@@ -520,7 +530,19 @@ export function Atendimentos() {
       </div>
 
       {/* KPIs - funil: ENTRADA → ENGAJAMENTO → QUALIFICAÇÃO → HANDOFF → CONTATO */}
-      {kpis && (
+      {kpis && (() => {
+        // % de cada card sobre o TOTAL DO PERÍODO (o mesmo "N conversas" do cabeçalho).
+        // Base = acao.total, que é a contagem da RPC dos baldes — mesmo recorte por
+        // created_at que alimenta I.A e Qualificados, então essas duas fecham exato.
+        //
+        // ⚠️ "Nunca respondeu" vem de outra fonte (marca do bot, recortada por
+        // last_message_at). Em período curto pode haver lead marcado cuja entrada ficou
+        // fora da janela, e a fração passaria de 100% — por isso o clamp. Sem "Hoje":
+        // ele É o universo, 100% não informa nada.
+        const pctBase = acao?.total ?? 0
+        const pctDe = (n: number | undefined) =>
+          pctBase > 0 && n !== undefined ? Math.min(100, Math.round((n / pctBase) * 100)) : undefined
+        return (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {/* I.A — régua do Daniel (18/08): sem vendedor e ainda não marcado como "nunca
               respondeu", CONTANDO SÓ QUEM TEM TELEFONE ("se não tem telefone nem coloca aí").
@@ -529,6 +551,7 @@ export function Atendimentos() {
               ⚠️ Por isso o card NÃO fecha mais a conta dos sem dono: sem_dono = "Nunca
               respondeu" + este + os sem telefone (67% do balde em 10 dias — ver o hook). */}
           <KpiCard label="I.A" value={iaFila?.comTelefone ?? 0} hero tone="info" icon={Bot}
+                   pct={pctDe(iaFila?.comTelefone)} pctBase={pctBase}
                    hint={(iaFila?.comTelefone ?? 0) === 0 ? 'ninguém na fila' : 'sem vendedor ainda'}
                    tooltip={`Lead que ainda não tem vendedor e ainda não foi marcado como "nunca respondeu".\n\n⚠️ Só conta quem TEM telefone — decisão do Daniel em 18/08. Quem chega sem número (Instagram/Facebook) não dá pra atender por WhatsApp, então não entra na fila.${(iaFila?.semTelefone ?? 0) > 0 ? `\n\nHoje ficaram ${formatNumber(iaFila?.semTelefone ?? 0)} de fora por isso.` : ''}`} />
           <KpiCard label="Hoje"           value={kpis.hoje}         hero tone="accent"
@@ -545,6 +568,7 @@ export function Atendimentos() {
               DISTRIBUIÇÃO — mexe quando o roteamento mexe (cota, vendedor desligado), não
               quando o cliente esquenta. Em ago/26 essa fatia caiu de 96% pra 52%. */}
           <KpiCard label="Qualificados" value={acao?.qualificados ?? 0} hero tone="success" icon={Flame}
+                   pct={pctDe(acao?.qualificados)} pctBase={pctBase}
                    hint={(acao?.qualificados ?? 0) === 0 ? 'nenhum passou pro vendedor' : 'passaram pro vendedor'}
                    tooltip={'Lead que já tem VENDEDOR responsável — passou do roteamento e está na mão de alguém.\n\nNão soma com os outros cards: é o complemento dos leads sem dono (todo lead ou tem dono, ou está sem dono).\n\n⚠️ Não olha se o cliente respondeu. Quem preenche o responsável é o roteamento automático, então entra também quem ainda não abriu a boca — o card mede DISTRIBUIÇÃO, e cai quando o roteamento trava (cota, vendedor desligado).'} />
           {/* ⚠️ 13/08: "Não engajaram / nem começou o bot" SAIU daqui. A regra era
@@ -558,6 +582,7 @@ export function Atendimentos() {
               Antes setava `responsavel`, que virava .eq('responsavel','__sem_resposta_bot__')
               e devolvia lista vazia. */}
           <KpiCard label="Nunca respondeu" value={semRespTels?.length ?? 0} tone="danger" icon={PhoneOff}
+                   pct={pctDe(semRespTels?.length)} pctBase={pctBase}
                    hint={filters.data ? 'marcado pelo bot — no período' : 'marcado pelo bot — sem resposta'}
                    active={filters.etiqueta === FILTRO_SEM_RESPOSTA}
                    onClick={() => setFilters(f => ({ ...f, etiqueta: f.etiqueta === FILTRO_SEM_RESPOSTA ? '' : FILTRO_SEM_RESPOSTA, page: 0 }))} />
@@ -580,7 +605,8 @@ export function Atendimentos() {
               por régua errada (responsavel = roteamento automático, não abordagem;
               e clique que casava com linha sem virar conversa). Seguem nos filtros. */}
         </div>
-      )}
+        )
+      })()}
 
       {/* Origens */}
       {origens && origens.length > 0 && (() => {
