@@ -90,7 +90,7 @@ export function estiloEtiqueta(hex: string): CSSProperties {
  */
 export function useContatosEtiquetas(f: ContactFilters) {
   const chave = [f.search, f.estado, f.vendor_id, f.status, f.orcamento_ano, f.orcamento_mes,
-                 f.orcamento, f.temperatura, f.com_whatsapp, f.esperando_resposta]
+                 f.orcamento, f.sem_orcamento, f.temperatura, f.com_whatsapp, f.esperando_resposta]
   return useQuery({
     queryKey: ['contatos-etiquetas', ...chave],
     queryFn: async (): Promise<ChipEtiqueta[]> => {
@@ -102,6 +102,7 @@ export function useContatosEtiquetas(f: ContactFilters) {
         p_orcamento_ano: f.orcamento_ano ? Number(f.orcamento_ano) : null,
         p_orcamento_mes: f.orcamento_mes ? Number(f.orcamento_mes) : null,
         p_orcamento: !!f.orcamento,
+        p_sem_orcamento: !!f.sem_orcamento,
         p_temperatura: f.temperatura || null,
         p_com_whatsapp: !!f.com_whatsapp,
         p_esperando_resposta: !!f.esperando_resposta,
