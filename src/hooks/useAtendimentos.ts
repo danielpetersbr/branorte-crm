@@ -462,6 +462,48 @@ export function useIaStatusContagem(enabled = true) {
   })
 }
 
+// Card "I.A" do topo da /atendimentos. Régua do Daniel (18/08/2026): lead que ainda NÃO tem
+// vendedor e ainda NÃO foi marcado como "nunca respondeu". Por construção é o complemento
+// exato de atendimentos_telefones_sem_resposta() dentro do balde sem_dono (aquela RPC já
+// exclui quem tem responsável) — a conta fecha: sem_dono = marcados + este.
+//
+// Substituiu a contagem de ia_status_contagem, que media ia_atendimentos.ativo. Aquela
+// leitura morreu na prática: a IA atendente foi DESLIGADA em 13/08/2026 por ordem do
+// Daniel (vendedores atendendo), então o card marcava 0 fixo.
+//
+// ⚠️ ANTES DE USAR ESTE NÚMERO, saiba o que tem dentro (medido em 18/08, 10 dias, 93 leads):
+//   • 62 de 93 (67%) têm telefone VAZIO — Instagram/Facebook sem número. Não dá pra atender
+//     por WhatsApp, e como a RPC de "nunca respondeu" exige telefone_norm <> '', eles nunca
+//     são marcados: ficam presos neste balde pra sempre. Por isso separo com/sem telefone.
+//   • nos 8 de 18/08: chegou_no_vendedor=false, foi_dispatched=false, ZERO mensagem (do
+//     cliente e nossa). O mais antigo estava parado havia 16h.
+//   • não confie em respondeu_a_ia: vem true mesmo em chat sem uma linha escrita.
+export type IaFilaContagem = { total: number; comTelefone: number; semTelefone: number }
+
+export function useAtendimentoKpiIaFila(filters?: Partial<AtendimentoFilters>) {
+  const dataKey = filters?.data ?? ''
+  return useQuery({
+    queryKey: ['atendimentos-kpi-ia-fila', dataKey],
+    queryFn: async (): Promise<IaFilaContagem> => {
+      const range = dateRangeFromPreset((filters?.data as DataPreset) ?? '')
+      const { data, error } = await (supabase as any).rpc('atendimentos_kpi_ia_fila', {
+        p_from: range.from || startOfTodayISO(),
+        p_to: range.to || null,
+      })
+      if (error) throw error
+      const r = (Array.isArray(data) ? data[0] : data) ?? {}
+      return {
+        total: Number(r.total ?? 0),
+        comTelefone: Number(r.com_telefone ?? 0),
+        semTelefone: Number(r.sem_telefone ?? 0),
+      }
+    },
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+  })
+}
+
 // Status da IA por telefone — marca na linha quais atendimentos estão com a IA ligada
 // e quais estão conversando agora. Só volta telefone com IA ativa (RPC já filtra).
 export type IaStatus = {

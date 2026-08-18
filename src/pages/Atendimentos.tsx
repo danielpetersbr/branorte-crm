@@ -19,7 +19,7 @@ import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTime
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, STATUS_VENDEDOR_MAP, type StatusReal } from '@/types/atendimento'
-import { useAtendimentos, useAtendimentoKpis, useAtendimentoKpisAcao, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, useDadosIaPorTelefone, lookupDadosIa, useFinalidadeInferida, lookupFinalidadeInferida, useIaStatusContagem, useIaStatusPorTelefone, lookupIaStatus, FILTRO_SEM_RESPOSTA, FILTRO_SEM_ETIQUETA, SEM_ETIQUETA_LIMITE, type DataPreset , useMensagensClique} from '@/hooks/useAtendimentos'
+import { useAtendimentos, useAtendimentoKpis, useAtendimentoKpisAcao, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, useDadosIaPorTelefone, lookupDadosIa, useFinalidadeInferida, lookupFinalidadeInferida, useAtendimentoKpiIaFila, useIaStatusPorTelefone, lookupIaStatus, FILTRO_SEM_RESPOSTA, FILTRO_SEM_ETIQUETA, SEM_ETIQUETA_LIMITE, type DataPreset , useMensagensClique} from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 
@@ -407,8 +407,11 @@ export function Atendimentos() {
   const { data: dadosIaMap } = useDadosIaPorTelefone(phonesAtuais)
   // 3º fallback da coluna Finalidade — ver comentário do hook. Só os telefones da página.
   const { data: finalidadeInferidaMap } = useFinalidadeInferida(phonesAtuais)
-  // Status global da IA (card de KPI): quantos chats com IA ligada e quantos conversando hoje.
-  const { data: iaStatus } = useIaStatusContagem()
+  // Card "I.A" (KPI do topo): sem vendedor e ainda não marcado como "nunca respondeu".
+  // Trocou useIaStatusContagem, que contava ia_atendimentos.ativo — zerado desde que a IA
+  // atendente foi desligada em 13/08. O hook por telefone abaixo continua: ainda existe
+  // chat antigo com a marca, e é ele que pinta o selo na linha.
+  const { data: iaFila } = useAtendimentoKpiIaFila(filters)
   // Status da IA por telefone — marca na linha quem está com a IA atendendo.
   const { data: iaStatusMap } = useIaStatusPorTelefone(phonesAtuais)
   const deleteMut = useDeleteAtendimento()
@@ -519,13 +522,17 @@ export function Atendimentos() {
       {/* KPIs - funil: ENTRADA → ENGAJAMENTO → QUALIFICAÇÃO → HANDOFF → CONTATO */}
       {kpis && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {/* IA: o número grande é quem está CONVERSANDO com a IA hoje (ela já respondeu
-              o cliente). O "ligados" inclui prospecção que ainda não engajou. */}
-          <KpiCard label="Conversando com a IA" value={iaStatus?.conversando ?? 0} hero tone="info" icon={Bot}
-                   hint={(iaStatus?.conversando ?? 0) === 0
-                     ? `nenhuma conversa hoje · ${formatNumber(iaStatus?.ligados ?? 0)} com IA ligada`
-                     : `IA respondendo · ${formatNumber(iaStatus?.ligados ?? 0)} com IA ligada`}
-                   tooltip={`${formatNumber(iaStatus?.conversando ?? 0)} cliente(s) trocando mensagem com a IA hoje (ela já respondeu ao menos uma vez).\n\n${formatNumber(iaStatus?.ligados ?? 0)} chats estão com a IA ligada no total — a maioria é prospecção que ainda não respondeu.`} />
+          {/* I.A — régua do Daniel (18/08): sem vendedor e ainda não marcado como "nunca
+              respondeu". Antes o card contava ia_atendimentos.ativo, que virou 0 fixo quando
+              a IA atendente foi desligada em 13/08. Ver useAtendimentoKpiIaFila pro que foi
+              medido antes de publicar (67% do balde não tem telefone). */}
+          <KpiCard label="I.A" value={iaFila?.total ?? 0} hero tone="info" icon={Bot}
+                   hint={(iaFila?.total ?? 0) === 0
+                     ? 'ninguém na fila'
+                     : (iaFila?.semTelefone ?? 0) > 0
+                       ? `${formatNumber(iaFila?.comTelefone ?? 0)} com telefone · ${formatNumber(iaFila?.semTelefone ?? 0)} sem`
+                       : 'sem vendedor ainda'}
+                   tooltip={`Lead que ainda não tem vendedor e ainda não foi marcado como "nunca respondeu".\n\nFecha a conta dos sem dono: sem dono = "Nunca respondeu" + este card.\n\n⚠️ ${formatNumber(iaFila?.semTelefone ?? 0)} destes não têm telefone (vieram de Instagram/Facebook sem número). Não dá pra atender por WhatsApp, e eles nunca saem daqui: a marca de "nunca respondeu" exige telefone. Os que valem energia são os ${formatNumber(iaFila?.comTelefone ?? 0)} com telefone.`} />
           <KpiCard label="Hoje"           value={kpis.hoje}         hero tone="accent"
                    icon={Calendar}        hint={kpis.hoje === 0 ? 'Nenhum lead hoje' : 'leads novos'}
                    active={filters.data === 'hoje'}
