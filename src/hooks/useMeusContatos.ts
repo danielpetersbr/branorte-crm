@@ -103,9 +103,23 @@ export interface RelatorioContatos {
   violacoes_disputa: number
   /** Dessas: nenhum orçamento sabe o vendedor (ex-vendedor, sem identificação). */
   violacoes_orfa: number
+  /** Dessas: têm orçamento na origem mas nenhum arquivo ligado — falta o vínculo. */
+  violacoes_sem_vinculo: number
+  /**
+   * Por que os outros ficaram FORA do pool. Sem isto o dono lê "172.826 sem
+   * vendedor" e "167.741 no pool" e não sabe o que houve com os 5.085 do meio.
+   */
+  fora_do_pool_por_motivo: Record<string, number>
   por_vendedor: { vendedor: string; vendor_id: string; contatos: number }[]
   admin: boolean
   gerado_em: string
+}
+
+export const MOTIVO_FORA_LABEL: Record<string, string> = {
+  tem_orcamento:                      'já têm orçamento',
+  ja_tem_conversa_no_whatsapp:        'já têm conversa no WhatsApp de um vendedor',
+  mesmo_telefone_de_contato_com_dono: 'mesmo telefone de um cliente que já tem dono',
+  em_atendimento_ativo:               'estão em atendimento agora',
 }
 
 export function useRelatorioContatos(habilitado = true) {
