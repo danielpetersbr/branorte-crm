@@ -548,12 +548,13 @@ export function Atendimentos() {
               respondeu", CONTANDO SÓ QUEM TEM TELEFONE ("se não tem telefone nem coloca aí").
               Antes o card contava ia_atendimentos.ativo, que virou 0 fixo quando a IA
               atendente foi desligada em 13/08.
-              ⚠️ Por isso o card NÃO fecha mais a conta dos sem dono: sem_dono = "Nunca
-              respondeu" + este + os sem telefone (67% do balde em 10 dias — ver o hook). */}
+              A fileira FECHA a conta desde 18/08: total = Qualificados + Nunca respondeu +
+              este card. Fechou porque os leads sem telefone saíram do universo inteiro da
+              tela (applyBaseFilters + RPC), não só deste card. */}
           <KpiCard label="I.A" value={iaFila?.comTelefone ?? 0} hero tone="info" icon={Bot}
                    pct={pctDe(iaFila?.comTelefone)} pctBase={pctBase}
                    hint={(iaFila?.comTelefone ?? 0) === 0 ? 'ninguém na fila' : 'sem vendedor ainda'}
-                   tooltip={`Lead que ainda não tem vendedor e ainda não foi marcado como "nunca respondeu".\n\n⚠️ Só conta quem TEM telefone — decisão do Daniel em 18/08. Quem chega sem número (Instagram/Facebook) não dá pra atender por WhatsApp, então não entra na fila.${(iaFila?.semTelefone ?? 0) > 0 ? `\n\nHoje ficaram ${formatNumber(iaFila?.semTelefone ?? 0)} de fora por isso.` : ''}`} />
+                   tooltip={`Lead que ainda não tem vendedor e ainda não foi marcado como "nunca respondeu".\n\nFecha a conta da fileira: total = Qualificados + Nunca respondeu + este.\n\n⚠️ Quem chega sem telefone (Instagram/Facebook) não aparece em lugar nenhum desta tela — não dá pra atender por WhatsApp.${(iaFila?.semTelefone ?? 0) > 0 ? ` Hoje foram ${formatNumber(iaFila?.semTelefone ?? 0)} nessa situação.` : ''}`} />
           <KpiCard label="Hoje"           value={kpis.hoje}         hero tone="accent"
                    icon={Calendar}        hint={kpis.hoje === 0 ? 'Nenhum lead hoje' : 'leads novos'}
                    active={filters.data === 'hoje'}

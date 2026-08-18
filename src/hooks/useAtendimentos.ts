@@ -472,15 +472,19 @@ export function useIaStatusContagem(enabled = true) {
 // Daniel (vendedores atendendo), então o card marcava 0 fixo.
 //
 // ⚠️ O CARD MOSTRA `comTelefone`, NÃO `total` — "se não tem telefone nem coloca aí"
-// (Daniel, 18/08). Consequência: o card deixou de fechar a conta do balde sem dono.
-//     sem_dono = "Nunca respondeu" + comTelefone + semTelefone
-// Quem quiser a conta fechada usa `total`; quem quiser fila de trabalho usa `comTelefone`.
+// (Daniel, 18/08). ESTA RPC NÃO FOI FILTRADA de propósito: ela continua medindo o balde
+// BRUTO e separando com/sem telefone, e é o único lugar da tela que ainda enxerga os sem
+// telefone — serve de termômetro de quanto anúncio está trazendo lead sem contato.
+//
+// O resto da tela (applyBaseFilters + RPC atendimentos_kpis_acao) já exclui esses leads do
+// universo, então a fileira fecha: total = Qualificados + Nunca respondeu + comTelefone.
+// Se um dia filtrar esta RPC também, `semTelefone` vira 0 e o termômetro se perde.
 //
 // Por que isso importa (medido em 18/08, 10 dias, 93 leads no balde):
 //   • 62 de 93 (67%) têm telefone VAZIO — Instagram/Facebook sem número. Não dá pra atender
 //     por WhatsApp, e como a RPC de "nunca respondeu" exige telefone_norm <> '', eles nunca
 //     são marcados: ficam presos neste balde pra sempre. Por isso a RPC devolve os dois.
-//   • esses 62 continuam aparecendo na LISTAGEM da tela — só saíram da contagem do card.
+//   • desde 18/08 esses 62 também sumiram da LISTAGEM e do total — ver applyBaseFilters.
 //   • nos 8 de 18/08: chegou_no_vendedor=false, foi_dispatched=false, ZERO mensagem (do
 //     cliente e nossa). O mais antigo estava parado havia 16h.
 //   • não confie em respondeu_a_ia: vem true mesmo em chat sem uma linha escrita.
@@ -747,6 +751,19 @@ function startOfTodayISO(): string {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applyBaseFilters(query: any, filters?: Partial<AtendimentoFilters>, vendorFirst?: string | null): any {
   let q = query
+  // ⚠️ 18/08/2026, ordem do Daniel: "sem telefone não é pra aparecer ali". Lead que chegou
+  // sem número (Instagram/Facebook) sai do universo da tela — total, cards E listagem.
+  // Não dá pra atender por WhatsApp, então não é atendimento.
+  //
+  // Isto CONSERTA a soma que não fechava: o card I.A já contava só quem tem telefone, então
+  // a fileira dava 45 com o cabeçalho dizendo 47. Agora 44 = 26 Qualificados + 13 Nunca
+  // respondeu + 5 I.A.
+  //
+  // ⚠️ ANDA JUNTO com o filtro igual dentro da RPC atendimentos_kpis_acao. Mexeu num, mexe
+  // no outro — senão o total do cabeçalho volta a divergir dos cards.
+  // telefone_norm nunca é NULL nessa view (medido: 0 nulos, 990 vazios em 11.615), por isso
+  // basta o neq.
+  q = q.neq('telefone_norm', '')
   // Vendor scope: vê seus + não-atribuídos
   if (vendorFirst) {
     q = q.or(
