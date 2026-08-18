@@ -12,6 +12,7 @@ import { usePropostasStatus, CATS_ABERTO, type PropostasStatus, type PropCategor
 import { useOrfaosPorVendedor, type OrfaosPorVendedor } from '@/hooks/useOrfaosPorVendedor'
 import { useCicloVenda, type CicloVenda as CicloVendaData } from '@/hooks/useCicloVenda'
 import { useDashboardEtiquetas, type EtiquetaCategoria } from '@/hooks/useDashboardEtiquetas'
+import { useOrcamentosResumo, type OrcamentosResumo } from '@/hooks/useOrcamentosResumo'
 
 import { Card, Inner, CardHeader } from './ui/Card'
 import { JanelaBadge } from './ui/JanelaBadge'
@@ -35,6 +36,13 @@ import { useJanela } from './DashboardFilterContext'
 
    2. Três blocos que estavam DEFINIDOS mas nunca renderizados voltaram ao ar:
       propostas por estágio, leads a resgatar e órfãos por vendedor.
+
+   2b. "Propostas no builder (R$)" caiu no caminho da refatoração das abas: o
+      hook `useOrcamentosResumo` continuava calculando `valorTotalBRL` e
+      `ticketMedioBRL` e NENHUM componente lia esses dois campos — o R$ total
+      montado em proposta simplesmente não aparecia em lugar nenhum do
+      dashboard. Voltou aqui, colado no bloco de propostas por estágio (o
+      total vem primeiro, o recorte por etapa logo abaixo).
 
    3. Todo bloco carrega o carimbo da janela. Nesta aba convivem três janelas
       diferentes na mesma tela — snapshot (etiqueta de agora), período (o filtro
@@ -262,7 +270,107 @@ function AgingBloco({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 4 · PROPOSTAS POR ESTÁGIO (estava morto no arquivo antigo)
+// 4 · PROPOSTAS NO BUILDER (R$) — o único R$ real do fluxo de lead
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Resumo de R$ das propostas MONTADAS no builder de orçamento.
+ *
+ * Duas coisas que este bloco não é, e que a tela já confundiu antes:
+ *  · não é a etiqueta ORÇAMENTO do WhatsApp (isso é o funil, acima);
+ *  · não é venda fechada (isso vive no Controle de Produção).
+ *
+ * O ranking mostra TODOS os vendedores com proposta, não um top-N: quem não
+ * aparece na lista é porque não montou proposta nenhuma no período — e esse
+ * silêncio é justamente a informação que o dono procura.
+ */
+function PropostasResumoView({ orc, periodoLabel }: { orc: OrcamentosResumo; periodoLabel: string }) {
+  const todos = orc.porVendedor.filter(v => v.brl > 0 && v.vendedor !== '—')
+  const maxBrl = Math.max(...todos.map(v => v.brl), 1)
+
+  const tiles: { rotulo: string; valor: string; hint?: string }[] = [
+    { rotulo: 'clientes com proposta', valor: n(orc.geradas) },
+    { rotulo: 'ticket médio', valor: brl(orc.ticketMedioBRL), hint: brlFull(orc.ticketMedioBRL) },
+    { rotulo: 'propostas montadas (c/ re-cotação)', valor: n(orc.propostasBrutas) },
+    { rotulo: 'vendedores ativos', valor: n(todos.length) },
+  ]
+
+  return (
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,340px)_1fr]">
+      {/* ── Números ─────────────────────────────────────────────────────── */}
+      <div>
+        <div className="flex items-start gap-2">
+          <Banknote className="mt-1 h-5 w-5 shrink-0 text-success" aria-hidden="true" />
+          <div className="min-w-0">
+            <div className="text-kpi text-success tabular-nums" title={brlFull(orc.valorTotalBRL)}>
+              {brl(orc.valorTotalBRL)}
+            </div>
+            <p className="mt-1 text-micro text-ink-faint">
+              em propostas · {periodoLabel.toLowerCase()} · 1 por cliente (a última)
+            </p>
+          </div>
+        </div>
+
+        <dl className="mt-3 grid grid-cols-2 gap-2">
+          {tiles.map(t => (
+            <div key={t.rotulo} className="rounded-lg border border-border bg-surface-2 p-3">
+              <dt className="text-micro text-ink-faint">{t.rotulo}</dt>
+              <dd className="text-title text-ink tabular-nums" title={t.hint}>{t.valor}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+
+      {/* ── Ranking: TODOS os vendedores por R$ em proposta ──────────────── */}
+      {todos.length > 0 && (
+        <div>
+          <p className="mb-3 text-micro uppercase tracking-widest text-ink-faint">
+            Quem montou proposta — R$ por cliente
+          </p>
+
+          <ul className="space-y-2">
+            {todos.map(v => (
+              <li key={v.vendedor}>
+                <Link
+                  to={`/orcamentos/salvos?vendedor=${encodeURIComponent(v.vendedor)}`}
+                  title={`${v.n} cliente(s), ${v.propostasN} proposta(s) — ver os orçamentos de ${v.vendedor.toLowerCase()}`}
+                  aria-label={`${capitalizar(v.vendedor)}: ${brlFull(v.brl)} em proposta, ${n(v.n)} clientes e ${n(v.propostasN)} propostas. Ver a lista.`}
+                  className="block min-h-[44px] rounded-lg p-2 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="min-w-0 truncate text-body capitalize text-ink">{v.vendedor.toLowerCase()}</span>
+                    {/* O R$ escrito ao lado é o dado; a barra é só apoio visual. */}
+                    <span className="shrink-0 text-label text-ink-muted tabular-nums" title={brlFull(v.brl)}>
+                      {brl(v.brl)}
+                      <span className="ml-2 text-micro text-ink-faint">
+                        {n(v.n)} cli{v.propostasN > v.n ? ` / ${n(v.propostasN)}p` : ''}
+                      </span>
+                    </span>
+                  </div>
+                  <div className="mt-1 h-2 overflow-hidden rounded-full bg-surface-2">
+                    <div className="h-full rounded-full bg-success" style={{ width: `${(v.brl / maxBrl) * 100}%` }} />
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+
+          {/* A legenda do formato é TEXTO FIXO. No Dashboard antigo ela
+              interpolava `todos.length` aqui — o número de vendedores — dentro
+              da explicação do que "N cli / Np" significa, e a tela imprimia
+              coisas como "7 cli / Np". Legenda de formato não carrega dado. */}
+          <p className="pt-3 text-micro text-ink-faint">
+            Valor = a última proposta de cada cliente (re-cotação do mesmo cliente conta 1×), não venda fechada.
+            Em cada linha, "N cli / Np" = clientes distintos / propostas montadas. Daniel (testes) fica de fora da conta.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 5 · PROPOSTAS POR ESTÁGIO (estava morto no arquivo antigo)
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Metadados por categoria — a cor agora é classe de token (o objeto antigo
@@ -421,7 +529,7 @@ function PropostasPorEstagio({ status }: { status: PropostasStatus }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 5 · LEADS A RESGATAR (estava morto no arquivo antigo)
+// 6 · LEADS A RESGATAR (estava morto no arquivo antigo)
 // ═══════════════════════════════════════════════════════════════════════════
 
 function LeadsResgatar({ leads }: { leads: LeadEmRisco[] }) {
@@ -473,7 +581,7 @@ function LeadsResgatar({ leads }: { leads: LeadEmRisco[] }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 6 · LEADS ÓRFÃOS POR VENDEDOR (estava morto no arquivo antigo)
+// 7 · LEADS ÓRFÃOS POR VENDEDOR (estava morto no arquivo antigo)
 // ═══════════════════════════════════════════════════════════════════════════
 
 const BALDES: { chave: 'prospeccao' | 'novo' | 'sem_etiqueta'; label: string; barra: string }[] = [
@@ -557,7 +665,7 @@ function LeadsOrfaosVendedor({ orfaos }: { orfaos: OrfaosPorVendedor }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 7 · CICLO DE VENDA
+// 8 · CICLO DE VENDA
 // ═══════════════════════════════════════════════════════════════════════════
 
 const MIN_AMOSTRA = 8 // abaixo disso a mediana não é confiável → "—"
@@ -614,7 +722,7 @@ function CicloVenda({ ciclo }: { ciclo: CicloVendaData }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 8 · MOTIVOS DE TRAVA / PERDA (variante 'trava' do MapaEtiquetas)
+// 9 · MOTIVOS DE TRAVA / PERDA (variante 'trava' do MapaEtiquetas)
 // ═══════════════════════════════════════════════════════════════════════════
 
 const CATS_TRAVA: EtiquetaCategoria[] = ['perdido', 'outros', 'interno']
@@ -673,6 +781,7 @@ export function TabFunil({ onAbrirFaixa }: { onAbrirFaixa?: (faixa: string) => v
   const { data: extra } = useDashboardExtra()
   const { data: funilEtq } = useFunilEtiquetas()
   const { data: propStatus } = usePropostasStatus(preset)
+  const { data: orc } = useOrcamentosResumo(preset)
   const { data: orfaos } = useOrfaosPorVendedor(7)
   const { data: ciclo } = useCicloVenda(preset)
   const { data: etq } = useDashboardEtiquetas(preset)
@@ -734,7 +843,22 @@ export function TabFunil({ onAbrirFaixa }: { onAbrirFaixa?: (faixa: string) => v
         </div>
       </Card>
 
-      {/* ── 4 · Propostas por estágio ──────────────────────────────────────── */}
+      {/* ── 4 · Propostas no builder (R$) ───────────────────────────────────
+          Vem ANTES do recorte por estágio de propósito: primeiro quanto de
+          dinheiro foi montado em proposta no período, depois em que etapa do
+          funil esse dinheiro está parado. */}
+      {orc && orc.geradas > 0 && (
+        <Card id="propostas-builder">
+          <CardHeader
+            title="Propostas no builder (R$)"
+            subtitle="Valor montado pelos vendedores no sistema de orçamento — não é a etiqueta ORÇAMENTO do WhatsApp (funil acima) nem venda fechada (isso vive no Controle)."
+            janela={<JanelaBadge tipo="periodo" label={periodoLabel} />}
+          />
+          <PropostasResumoView orc={orc} periodoLabel={periodoLabel} />
+        </Card>
+      )}
+
+      {/* ── 5 · Propostas por estágio ──────────────────────────────────────── */}
       <Card id="propostas-estagio">
         <CardHeader
           title="Propostas por estágio"
@@ -746,7 +870,7 @@ export function TabFunil({ onAbrirFaixa }: { onAbrirFaixa?: (faixa: string) => v
           : <Vazio>Carregando as propostas…</Vazio>}
       </Card>
 
-      {/* ── 5 · Leads a resgatar ─────────────────────────────────────────────
+      {/* ── 6 · Leads a resgatar ─────────────────────────────────────────────
           O hook calcula os leads em risco sobre TODOS os leads (rows), não sobre o
           recorte do filtro: com 30d nenhum lead alcançaria 720h parado e o monte mais
           caro sumiria. Por isso o carimbo aqui é snapshot, não período. */}
@@ -759,7 +883,7 @@ export function TabFunil({ onAbrirFaixa }: { onAbrirFaixa?: (faixa: string) => v
         {data ? <LeadsResgatar leads={data.leadsEmRisco} /> : <Vazio>Carregando os leads…</Vazio>}
       </Card>
 
-      {/* ── 6 · Leads órfãos por vendedor ──────────────────────────────────── */}
+      {/* ── 7 · Leads órfãos por vendedor ──────────────────────────────────── */}
       <Card id="leads-orfaos">
         <CardHeader
           title="Leads órfãos por vendedor"
@@ -769,7 +893,7 @@ export function TabFunil({ onAbrirFaixa }: { onAbrirFaixa?: (faixa: string) => v
         {orfaos ? <LeadsOrfaosVendedor orfaos={orfaos} /> : <Vazio>Carregando os órfãos…</Vazio>}
       </Card>
 
-      {/* ── 7 · Ciclo de venda ─────────────────────────────────────────────── */}
+      {/* ── 8 · Ciclo de venda ─────────────────────────────────────────────── */}
       <Card id="ciclo-venda">
         <CardHeader
           title="Ciclo de venda"
@@ -779,7 +903,7 @@ export function TabFunil({ onAbrirFaixa }: { onAbrirFaixa?: (faixa: string) => v
         {ciclo ? <CicloVenda ciclo={ciclo} /> : <Vazio>Carregando o ciclo…</Vazio>}
       </Card>
 
-      {/* ── 8 · Motivos de trava / perda ───────────────────────────────────── */}
+      {/* ── 9 · Motivos de trava / perda ───────────────────────────────────── */}
       <Card id="motivos-trava">
         <CardHeader
           title="Motivos de trava / perda"

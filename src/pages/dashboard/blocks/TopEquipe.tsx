@@ -55,13 +55,13 @@ export function TopEquipe({
       )}
 
       {top.length === 0 ? (
-        <p className="py-6 text-center text-body text-ink-faint">Nenhuma venda registrada no mês.</p>
+        <p className="py-5 text-center text-body text-ink-faint">Nenhuma venda registrada no mês.</p>
       ) : (
         <ol className="flex flex-col">
           {top.map((v, i) => (
             <li
               key={v.vendedor}
-              className="flex items-center gap-3 border-b border-border/60 py-2.5 last:border-b-0"
+              className="flex items-center gap-3 border-b border-border/60 py-3 last:border-b-0"
             >
               <span className="w-6 shrink-0 text-center text-label tabular-nums text-ink-faint" aria-hidden="true">
                 {MEDALHA[i] ?? i + 1}

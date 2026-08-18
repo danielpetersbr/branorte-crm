@@ -55,6 +55,11 @@ export default {
         },
         // Serie de grafico — usar SEMPRE estes, nunca hsl() literal no JSX.
         // Apontam pros semanticos calibrados, entao seguem o tema.
+        // Texto sobre bg-accent (botao cheio). Sem isto o codigo usava
+        // text-white cru em 6 arquivos e mudar o verde nao avisava ninguem.
+        'accent-fg': 'hsl(var(--accent-fg) / <alpha-value>)',
+        // Veu de modal — preto puro serve aos dois temas (ver index.css).
+        overlay: 'hsl(var(--overlay) / <alpha-value>)',
         chart: {
           1: 'hsl(var(--chart-1) / <alpha-value>)',
           2: 'hsl(var(--chart-2) / <alpha-value>)',

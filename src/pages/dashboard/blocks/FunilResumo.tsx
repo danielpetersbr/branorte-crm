@@ -63,7 +63,7 @@ export function FunilResumo({
     return (
       <Card>
         <CardHeader title="Funil do período" janela={<JanelaBadge tipo="periodo" label={periodoLabel} />} />
-        <p className="py-8 text-center text-body text-ink-faint">Nenhum lead entrou neste período.</p>
+        <p className="py-5 text-center text-body text-ink-faint">Nenhum lead entrou neste período.</p>
       </Card>
     )
   }
@@ -110,11 +110,11 @@ export function FunilResumo({
           const ehGargalo = i === gargaloIdx && piorQueda > 0.15
           return (
             <li key={e.nome}>
-              <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-                <span className="flex items-center gap-1.5 text-label text-ink" title={e.ajuda}>
+              <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <span className="flex items-center gap-1 text-label text-ink" title={e.ajuda}>
                   {e.nome}
                   {ehGargalo && (
-                    <span className="inline-flex items-center gap-1 rounded-sm bg-warning-bg px-1.5 py-0.5 text-micro text-warning">
+                    <span className="inline-flex items-center gap-1 rounded-sm bg-warning-bg px-2 py-1 text-micro text-warning">
                       <AlertTriangle className="h-3 w-3" aria-hidden="true" />
                       maior perda
                     </span>
@@ -123,7 +123,9 @@ export function FunilResumo({
                 <span className="flex items-baseline gap-2">
                   <span className="text-kpi-sm tabular-nums text-ink">{n(e.valor)}</span>
                   {conv != null && (
-                    <span className={`text-micro tabular-nums ${conv > 100 ? 'text-warning' : 'text-ink-faint'}`}>
+                    <span className={`inline-flex items-center gap-1 text-micro tabular-nums ${conv > 100 ? 'text-warning' : 'text-ink-faint'}`}>
+                      {/* a cor sozinha não pode carregar o aviso — vai ícone junto */}
+                      {conv > 100 && <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />}
                       {pct(conv, 0)} da anterior
                     </span>
                   )}

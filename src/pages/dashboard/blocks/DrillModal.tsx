@@ -68,7 +68,7 @@ export function DrillModal({ kind, preset, onClose }: { kind: Kind; preset: Dash
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/50 p-3 sm:items-center sm:p-4"
+      className="fixed inset-0 z-[var(--z-modal)] flex items-start justify-center overflow-y-auto bg-overlay/50 p-3 sm:items-center sm:p-5"
       onClick={onClose}
     >
       <div
@@ -87,7 +87,7 @@ export function DrillModal({ kind, preset, onClose }: { kind: Kind; preset: Dash
           <button
             ref={fecharRef}
             onClick={onClose}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-ink-faint hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-ink-faint hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent md:h-9 md:w-9"
             aria-label="Fechar"
           >
             <X className="h-4 w-4" aria-hidden="true" />
@@ -95,34 +95,34 @@ export function DrillModal({ kind, preset, onClose }: { kind: Kind; preset: Dash
         </div>
 
         <div className="overflow-y-auto p-3">
-          {loading && <div className="p-8 text-center text-body text-ink-faint">Carregando…</div>}
+          {loading && <div className="p-5 text-center text-body text-ink-faint">Carregando…</div>}
           {err && (
-            <div className="rounded-lg border border-danger/30 bg-danger-bg p-4 text-body text-danger">
+            <div className="rounded-lg border border-danger/30 bg-danger-bg p-3 text-body text-danger">
               Não deu para carregar esta lista. <span className="font-mono text-micro break-all">{err.message}</span>
             </div>
           )}
 
           {!loading && !err && isVendas && (
             <>
-              <div className="mb-3 flex flex-wrap items-center gap-2 px-1">
+              <div className="mb-3 flex flex-wrap items-center gap-2 px-2">
                 <button
                   onClick={() => setSoLead(true)}
                   aria-pressed={soLead}
-                  className={`rounded-lg px-3 py-1.5 text-micro transition-colors ${soLead ? 'bg-accent font-semibold text-white' : 'bg-surface-2 text-ink-muted hover:text-ink'}`}
+                  className={`inline-flex min-h-[44px] items-center rounded-lg px-3 py-2 text-micro transition-colors md:min-h-0 ${soLead ? 'bg-accent font-semibold text-accent-fg' : 'bg-surface-2 text-ink-muted hover:text-ink'}`}
                 >
                   Origem comprovada ({n(vendas.filter(v => v.is_lead).length)})
                 </button>
                 <button
                   onClick={() => setSoLead(false)}
                   aria-pressed={!soLead}
-                  className={`rounded-lg px-3 py-1.5 text-micro transition-colors ${!soLead ? 'bg-accent font-semibold text-white' : 'bg-surface-2 text-ink-muted hover:text-ink'}`}
+                  className={`inline-flex min-h-[44px] items-center rounded-lg px-3 py-2 text-micro transition-colors md:min-h-0 ${!soLead ? 'bg-accent font-semibold text-accent-fg' : 'bg-surface-2 text-ink-muted hover:text-ink'}`}
                 >
                   Todas ({n(vendas.length)})
                 </button>
                 <span className="ml-auto text-title tabular-nums text-ink">{brlFull(vTot)}</span>
               </div>
               {soLead && (
-                <p className="mb-3 px-1 text-micro text-ink-faint">
+                <p className="mb-3 px-2 text-micro text-ink-faint">
                   &ldquo;Origem comprovada&rdquo; é piso, não fatia de mercado: a venda só entra aqui quando dá para
                   ligar pedido → orçamento → telefone de um atendimento. Venda de cliente antigo ou de orçamento
                   feito fora do sistema fica de fora mesmo tendo vindo de um lead.
@@ -157,7 +157,7 @@ export function DrillModal({ kind, preset, onClose }: { kind: Kind; preset: Dash
                       </tr>
                     ))}
                     {vendasView.length === 0 && (
-                      <tr><td colSpan={8} className="py-10 text-center text-body text-ink-faint">Nada no período.</td></tr>
+                      <tr><td colSpan={8} className="py-5 text-center text-body text-ink-faint">Nada no período.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -195,7 +195,7 @@ export function DrillModal({ kind, preset, onClose }: { kind: Kind; preset: Dash
                     </tr>
                   ))}
                   {orc.length === 0 && (
-                    <tr><td colSpan={8} className="py-10 text-center text-body text-ink-faint">Nada no período.</td></tr>
+                    <tr><td colSpan={8} className="py-5 text-center text-body text-ink-faint">Nada no período.</td></tr>
                   )}
                 </tbody>
               </table>

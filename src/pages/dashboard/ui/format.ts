@@ -8,9 +8,18 @@
 
 const NF = new Intl.NumberFormat('pt-BR')
 
+/**
+ * O que aparece quando não há dado. Constante e não literal solto porque o
+ * leitor de tela precisa traduzir isto: um KPI que mostra "—" é anunciado como
+ * "traço" (ou silêncio) e o usuário não sabe se o número é zero ou se falhou.
+ * Quem monta rótulo falado usa `VAZIO_FALADO`.
+ */
+export const VAZIO = '—'
+export const VAZIO_FALADO = 'sem dado'
+
 /** Inteiro com separador de milhar: 3509 → "3.509" */
 export function n(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return '—'
+  if (v == null || !Number.isFinite(v)) return VAZIO
   return NF.format(Math.round(v))
 }
 
@@ -22,7 +31,7 @@ export function n(v: number | null | undefined): string {
  * diferença, que num pipeline deste tamanho é dinheiro real.
  */
 export function brl(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return '—'
+  if (v == null || !Number.isFinite(v)) return VAZIO
   const abs = Math.abs(v)
   if (abs >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(2).replace('.', ',')}M`
   if (abs >= 10_000) return `R$ ${(v / 1_000).toFixed(1).replace('.', ',')} mil`
@@ -31,20 +40,20 @@ export function brl(v: number | null | undefined): string {
 
 /** R$ por extenso, para tooltip e drill-down onde o número exato importa. */
 export function brlFull(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return '—'
+  if (v == null || !Number.isFinite(v)) return VAZIO
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 }
 
 /** Percentual com 1 casa, sem casa quando redondo: 12.0 → "12%" · 1.53 → "1,5%" */
 export function pct(v: number | null | undefined, casas = 1): string {
-  if (v == null || !Number.isFinite(v)) return '—'
+  if (v == null || !Number.isFinite(v)) return VAZIO
   const r = Number(v.toFixed(casas))
   return `${String(r).replace('.', ',')}%`
 }
 
 /** Horas → "3h" / "2d 4h" / "45min" */
 export function horas(h: number | null | undefined): string {
-  if (h == null || !Number.isFinite(h)) return '—'
+  if (h == null || !Number.isFinite(h)) return VAZIO
   if (h < 1) return `${Math.round(h * 60)}min`
   if (h < 48) return `${Math.round(h)}h`
   const d = Math.floor(h / 24)

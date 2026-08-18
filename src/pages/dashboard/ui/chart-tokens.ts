@@ -38,7 +38,10 @@ export const TOOLTIP_STYLE = {
   borderRadius: 8,
   fontSize: 12,
   color: 'hsl(var(--ink))',
-  boxShadow: '0 4px 12px hsl(240 10% 7% / 0.10)',
+  // Sombra por variável com fallback: o literal `hsl(240 10% 7% / .10)` era o
+  // --bg do tema ESCURO congelado — o único valor de cor desta folha que não
+  // seguia o tema. Se alguém definir --shadow-color no index.css, entra sozinho.
+  boxShadow: '0 4px 12px hsl(var(--shadow-color, 240 10% 7%) / 0.10)',
   padding: '8px 10px',
 } as const
 

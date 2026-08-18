@@ -27,15 +27,22 @@
     /* Ink (texto) */
     --ink: 240 6% 14%;          /* quase-preto, sem o "preto duro" (15,8:1) */
     --ink-muted: 240 5% 35%;    /* secundário: 7,38:1 no card, 6,32:1 na página */
-    --ink-faint: 240 4% 43%;    /* terciário: 5,43:1 no card, 4,66:1 na página */
+    /* 43% → 39%: passava no card (5,43) e na página (4,66), mas ninguém mediu
+       contra `--surface-2` nem `--border` — o 3º e o 4º fundo (chip, faixa de
+       tabela, painel aninhado, célula). Lá dava 4,33 e 3,99, abaixo de AA.
+       Eram 44 textos reprovados em 3 abas do dashboard. */
+    --ink-faint: 240 4% 39%;
 
     /* Semantic — os 5 sólidos abaixo NÃO eram redefinidos no .dark, então um
        valor servia os dois temas. Ao escurecer pro claro, o .dark passou a
        redefinir os 3 que mudaram com os valores ANTIGOS: tema escuro fica
        byte-idêntico ao que era. */
-    --success: 152 48% 33%;     /* 5,03:1 no card (era 3,38 — falhava) */
+    /* Mesma causa do --ink-faint: a calibragem olhou o card e esqueceu os fundos
+       mais escuros. success dava 4,01 num número de 22px sobre `--surface-2`;
+       warning, 4,09 sobre `--surface-3`. 33% → 30% e 31%. */
+    --success: 152 48% 30%;     /* 5,03:1 no card (era 3,38 — falhava) */
     --success-bg: 152 60% 96%;
-    --warning: 38 90% 33%;      /* 4,69:1 no card (era 2,14 — pior nº da folha) */
+    --warning: 38 90% 31%;      /* 4,69:1 no card (era 2,14 — pior nº da folha) */
     --warning-bg: 38 100% 96%;
     /* Estes dois passavam NO CARD e por isso ficaram de fora da primeira
        calibragem — mas `--bg` e `--surface-2` escureceram, e sobre eles os dois
@@ -47,6 +54,19 @@
     --info-bg: 211 100% 96%;
     --accent: 152 48% 32%;      /* verde Branorte moderado: 5,30:1 (era 3,20) */
     --accent-bg: 152 32% 95%;
+    /* Texto EM CIMA de `--accent` (botão cheio). Existia como `text-white`
+       espalhado por 6 arquivos, sem token — então mudar o verde de acento
+       mexia no contraste do botão e ninguém tinha onde conferir.
+       No claro o accent é verde escuro: branco dá 5,30:1. O `.dark` INVERTE
+       (ver lá embaixo) — lá o accent é claro e branco cairia pra 3,17. */
+    --accent-fg: 0 0% 100%;
+    /* Véu de modal. Não dá pra usar `--ink` com alpha: no escuro ele é
+       quase-branco e o véu sairia BRANCO. Preto puro serve aos dois temas. */
+    --overlay: 0 0% 0%;
+    /* Cor da sombra. O tooltip de gráfico tinha `hsl(240 10% 7% / .10)` cravado
+       — que é o `--bg` do tema ESCURO. Ficava certo no claro por acaso e no
+       escuro somava sombra escura sobre fundo escuro (invisível). */
+    --shadow-color: 240 10% 7%;
 
     /* ── Série de gráfico ──────────────────────────────────────────────
        APONTAM pros semânticos acima de propósito: assim herdam a calibragem
@@ -83,7 +103,14 @@
 
     --ink: 240 5% 96%;
     --ink-muted: 240 4% 70%;
-    --ink-faint: 240 3% 50%;
+    /* 50% → 59%. O bloco claro acima diz "calibrado contra WCAG"; este NUNCA
+       foi. Medido em 18/08/2026 nas abas do dashboard: 301 textos abaixo de AA
+       vinham deste único token — 4,19 sobre `--surface`, e 4,09 / 4,00 / 3,87
+       sobre os fundos mais claros.
+       59% e não 55%: com 55% ainda reprovava sobre `--surface-3` (4,05) e
+       dentro das caixas tintadas `*-bg` (4,22). Medido contra os NOVE fundos
+       do tema, o pior caso agora é 4,61 (surface-3). */
+    --ink-faint: 240 3% 59%;
 
     /* Congela os 3 sólidos que o :root escureceu. Sem isto, o tema escuro
        herdaria o verde/âmbar do claro e perderia contraste (accent cairia de
@@ -91,8 +118,20 @@
     --success: 152 55% 40%;
     --warning: 38 92% 50%;
     --accent: 152 60% 40%;
-    --danger: 0 72% 51%;
-    --info: 211 100% 45%;
+    /* Os outros 4 sólidos passam AA no escuro (accent 4,99 · success 4,74 ·
+       warning 7,52 · ink-muted 7,35). Estes dois não passavam: danger dava
+       3,34 e info 3,37 sobre `--surface-3`. Clareados até 4,62 e 4,59. */
+    --danger: 0 72% 63%;
+    --info: 211 100% 55%;
+
+    /* No escuro a sombra precisa ser mais preta que a superfície pra existir. */
+    --shadow-color: 0 0% 0%;
+
+    /* Aqui o accent é verde CLARO (pra funcionar como texto sobre fundo
+       escuro). Branco em cima dele dá 3,17:1 — reprova. Texto quase-preto
+       dá 5,93:1. É o padrão de botão vivo em tema escuro, e é o motivo de
+       `--accent-fg` existir em vez de `text-white` cravado no JSX. */
+    --accent-fg: 240 10% 7%;
 
     --success-bg: 152 50% 12%;
     --warning-bg: 38 60% 12%;

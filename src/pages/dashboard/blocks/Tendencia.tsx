@@ -102,15 +102,16 @@ export function Tendencia({
               aria-pressed={on}
               title={s.ajuda}
               className={[
-                'inline-flex min-h-[44px] md:min-h-0 items-center gap-2 rounded-full border px-3 py-1.5 text-micro transition-colors',
+                'inline-flex min-h-[44px] md:min-h-0 items-center gap-2 rounded-full border px-3 py-2 text-micro transition-colors',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
                 on ? 'border-border-strong bg-surface-2 text-ink' : 'border-border text-ink-faint hover:text-ink-muted',
               ].join(' ')}
             >
+              {/* série desligada usa o token de cor (bg-ink-faint), não hsl() solto */}
               <span
                 aria-hidden="true"
-                className="h-2 w-2 rounded-full"
-                style={{ background: on ? s.cor : 'hsl(var(--ink-faint))' }}
+                className={`h-2 w-2 rounded-full ${on ? '' : 'bg-ink-faint'}`}
+                style={on ? { background: s.cor } : undefined}
               />
               {s.label}
             </button>
@@ -156,7 +157,7 @@ export function Tendencia({
                 formatter={((v: number, key: string) => [n(v), SERIES.find(s => s.id === key)?.label ?? key]) as never}
               />
               <Legend
-                wrapperStyle={{ fontSize: 12, color: 'hsl(var(--ink-muted))', paddingTop: 8 }}
+                wrapperStyle={{ fontSize: 12, color: CHART.ink, paddingTop: 8 }}
                 formatter={(value: string) => SERIES.find(s => s.id === value)?.label ?? value}
               />
               {SERIES.filter(s => ativas.includes(s.id)).map(s => (

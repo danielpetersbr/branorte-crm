@@ -61,7 +61,7 @@ export function MetaDoMes() {
     <Card>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-title text-ink">Meta do mês</h2>
+          <h3 className="text-title text-ink">Meta do mês</h3>
           <JanelaBadge tipo="mes" label={mesLabel} />
           {/* Procedência do número: sem isso, um Controle fora do ar vira meta
               velha silenciosa (o fallback carrega R$ 2,0M contra R$ 2,5M reais). */}
@@ -69,7 +69,7 @@ export function MetaDoMes() {
             title={degradado
               ? 'O Controle não respondeu. Números vindos do espelho local: podem estar atrasados e a meta pode ser a antiga.'
               : 'Lido ao vivo do sistema de Controle.'}
-            className={`inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-micro ${
+            className={`inline-flex items-center gap-1 rounded-sm border px-2 py-1 text-micro ${
               degradado ? 'border-warning/40 bg-warning-bg text-warning' : 'border-border bg-surface-2 text-ink-muted'
             }`}
           >
@@ -106,7 +106,7 @@ export function MetaDoMes() {
         {situacao}. Vendido {brlFull(vendido)} de {brlFull(meta)}, {pct(pctMeta, 0)} da meta.
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-4 lg:grid-cols-4">
+      <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-5 lg:grid-cols-4">
         <div>
           <div className="text-label text-ink-faint">Falta</div>
           <div className="text-kpi-sm tabular-nums text-ink">{brl(falta)}</div>

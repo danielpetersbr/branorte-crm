@@ -949,7 +949,7 @@ function TopFontesOrcamento({ criativos, origens, realCriativo, realOrigem }: {
               onClick={() => setMetric(k)}
               aria-pressed={metric === k}
               className={`min-h-[44px] px-3 py-2 text-label transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-                metric === k ? 'bg-accent text-white' : 'bg-surface-2 text-ink-muted hover:text-ink'
+                metric === k ? 'bg-accent text-accent-fg' : 'bg-surface-2 text-ink-muted hover:text-ink'
               }`}
             >
               {lab}
@@ -1044,7 +1044,7 @@ function MotivosPorFonteView({ data }: { data: { por_criativo: MotivoFonte[]; po
               onClick={() => setFonte(f)}
               aria-pressed={fonte === f}
               className={`min-h-[44px] px-3 py-2 text-label transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-                fonte === f ? 'bg-accent text-white' : 'bg-surface-2 text-ink-muted hover:text-ink'
+                fonte === f ? 'bg-accent text-accent-fg' : 'bg-surface-2 text-ink-muted hover:text-ink'
               }`}
             >
               {f === 'criativo' ? 'Por criativo' : 'Por origem'}

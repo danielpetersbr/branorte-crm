@@ -1,22 +1,27 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useDashboard } from '@/hooks/useDashboard'
 import { useDashboardEtiquetas } from '@/hooks/useDashboardEtiquetas'
 import { useDashboardExtra } from '@/hooks/useDashboardExtra'
 import { useDashboardVendedorFunil } from '@/hooks/useDashboardVendedorFunil'
 import { useDashboardOrcamentos, useDashboardVendas } from '@/hooks/useDashboardOrcamentos'
 import { useOrcamentosResumo } from '@/hooks/useOrcamentosResumo'
+import { usePropostasStatus } from '@/hooks/usePropostasStatus'
+import { useVendedorCobertura, type VendedorCobertura } from '@/hooks/useVendedorCobertura'
 import { useFunilUnion } from '@/hooks/useFunilUnion'
 import { useVendasReais } from '@/hooks/useVendasReais'
 import { useJanela } from './DashboardFilterContext'
 import { irPara, useDashboardTab, type TabId } from './tabs'
 import { Metric } from './ui/Metric'
-import { brl, n, pct } from './ui/format'
+import { brl, n, pct, primeiroNome } from './ui/format'
 import { MetaDoMes } from './blocks/MetaDoMes'
 import { FunilResumo } from './blocks/FunilResumo'
 import { Tendencia } from './blocks/Tendencia'
-import { AcoesPrioritarias } from './blocks/AcoesPrioritarias'
+import { AcoesPrioritarias, type PositivoDestaques } from './blocks/AcoesPrioritarias'
 import { TopEquipe } from './blocks/TopEquipe'
 import { DrillModal } from './blocks/DrillModal'
+
+/** Mesma exclusão do painel de vendedores: a conta do Daniel é teste. */
+const ehDaniel = (s: string) => /daniel/i.test(s || '')
 
 function Esqueleto() {
   return (
@@ -36,9 +41,9 @@ function Esqueleto() {
  * Ordem escolhida pela pergunta que cada bloco responde, na ordem em que o
  * gerente pergunta:
  *   1. bato a meta?          → Meta do mês
- *   2. quanto entrou e saiu? → os 5 números
+ *   2. quanto entrou e saiu? → os 5 números do período + atendimentos de HOJE
  *   3. onde trava?           → funil + evolução
- *   4. o que faço hoje?      → ações prioritárias
+ *   4. o que faço hoje?      → decisões do gerente (reforçar | cobrar)
  *   5. quem tá entregando?   → top 5
  *
  * O que SAIU daqui: propostas no builder e heatmap (→ Equipe), atendimentos
@@ -59,8 +64,56 @@ export function TabVisaoGeral() {
   const { data: orc } = useOrcamentosResumo(preset)
   const { data: vendas } = useDashboardVendas(preset)
   const { data: vendasReais } = useVendasReais()
+  const { data: propStatus } = usePropostasStatus(preset)
+  const { data: cobertura } = useVendedorCobertura(preset)
 
   const ir = (tab: TabId, anchor?: string) => irPara(setTab, tab, anchor)
+
+  /**
+   * Metade POSITIVA das decisões do gerente — o "reforçar / dobrar".
+   *
+   * Perdida inteira no refactor do Dashboard de 3.696 linhas: o
+   * `DecisoesGerente` tinha as duas colunas e só a vermelha sobreviveu, virando
+   * `AcoesPrioritarias`. Nenhuma aba mostrava mais quem lidera em propostas,
+   * quem cobre melhor com etiqueta, nem o R$ em negociação quente.
+   *
+   * Contas idênticas às do original (linhas 423-441 do arquivo antigo).
+   */
+  const positivo = useMemo<PositivoDestaques>(() => {
+    // porVendedor já vem ordenado por R$ desc no hook — [0] é o topo.
+    const topOrc = (orc?.porVendedor ?? []).filter(v => v.vendedor !== '—' && v.brl > 0)[0] ?? null
+
+    // Merge por 1º nome mantendo o MAIOR bucket: quando o responsável tem grafia
+    // dupla ("Igor" e "IGOR" viram 2 linhas na RPC de cobertura), um Map simples
+    // ficava com a ÚLTIMA — a menor — e o vendedor aparecia com 3 de 392.
+    const porNome = new Map<string, VendedorCobertura>()
+    for (const r of cobertura ?? []) {
+      if (ehDaniel(r.vendedor)) continue
+      const k = primeiroNome(r.vendedor)
+      const cur = porNome.get(k)
+      if (!cur || (r.total_passado ?? 0) > (cur.total_passado ?? 0)) porNome.set(k, r)
+    }
+    const coberturaTop = [...porNome.values()]
+      // Abaixo de 50 clientes passados, o % é ruído: 4 de 5 vira 80% e ganha de
+      // quem etiquetou 300 de 500.
+      .filter(r => (r.total_passado ?? 0) >= 50)
+      .map(r => ({
+        nome: r.vendedor,
+        pct: r.total_passado > 0 ? Math.round((r.com_etiqueta / r.total_passado) * 100) : 0,
+        com: r.com_etiqueta,
+        total: r.total_passado,
+      }))
+      .sort((a, b) => b.pct - a.pct)[0] ?? null
+
+    return {
+      topOrc,
+      cobertura: coberturaTop,
+      rNegoc: propStatus?.abertoQuente.brl ?? 0,
+      rMontado: orc?.valorTotalBRL ?? 0,
+      qualificou: funilUnion?.qualificou ?? data?.kpiQualificados.valor ?? 0,
+      clientesComProposta: orc?.geradas ?? 0,
+    }
+  }, [orc, cobertura, propStatus, funilUnion, data?.kpiQualificados.valor])
 
   if (isLoading) return <Esqueleto />
 
@@ -72,7 +125,7 @@ export function TabVisaoGeral() {
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="mt-4 rounded-lg bg-danger px-3 py-2 text-label font-semibold text-white hover:bg-danger/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger"
+          className="mt-4 rounded-lg bg-danger px-3 py-2 text-label font-semibold text-accent-fg hover:bg-danger/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger"
         >
           Tentar de novo
         </button>
@@ -94,7 +147,7 @@ export function TabVisaoGeral() {
       <MetaDoMes />
 
       {/* ── 2. Os 5 números ─────────────────────────────────────────── */}
-      <section aria-label="Números do período" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <section aria-label="Números do período e do dia" className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Metric
           label="Leads"
           valor={n(data.kpiTotal.valor)}
@@ -138,6 +191,36 @@ export function TabVisaoGeral() {
           ajuda="Soma dos pedidos do período. Atenção: este recorte segue o filtro do topo; o card Meta do mês usa o mês calendário, por isso os dois podem divergir."
           onClick={() => setDrill('valor')}
         />
+        {/*
+          ATENDIMENTOS HOJE — o único tile desta fileira que NÃO segue o filtro
+          do topo. Some no refactor (o `extra.atendimentos` ficou sem leitor
+          nenhum) e com ele o único sinal de "o telefone tocou hoje?".
+
+          A ressalva "dia parcial" aparece TRÊS vezes de propósito: no carimbo
+          da janela, na linha secundária e na ajuda. Sem ela alguém compara meio
+          dia com um dia inteiro e conclui que o movimento caiu 60% às 10h da
+          manhã — o que é só o relógio, não o mercado.
+        */}
+        {extra && (() => {
+          const { hoje, ontem } = extra.atendimentos
+          const dif = hoje - ontem
+          const deltaPct = ontem > 0 ? (dif / ontem) * 100 : null
+          return (
+            <Metric
+              label="Atendimentos hoje"
+              valor={n(hoje)}
+              delta={deltaPct}
+              janela="fixo"
+              janelaLabel="hoje · parcial"
+              secundario={
+                ontem > 0
+                  ? `${dif > 0 ? '+' : ''}${n(dif)} vs. ontem (${n(ontem)}) · dia parcial`
+                  : 'ontem não teve lead · dia parcial'
+              }
+              ajuda="Leads novos que chegaram HOJE, contra o dia de ONTEM inteiro. Ignora o filtro de período do topo. Hoje ainda está correndo: é um dia PARCIAL comparado com um dia fechado, então uma queda aparente de manhã é o relógio, não o mercado."
+            />
+          )
+        })()}
       </section>
 
       {/* ── 3. Onde trava? ──────────────────────────────────────────── */}
@@ -160,7 +243,7 @@ export function TabVisaoGeral() {
       </div>
 
       {/* ── 4. O que faço hoje? ─────────────────────────────────────── */}
-      <AcoesPrioritarias data={data} etq={etq} vendFunil={vendFunil} onIr={ir} />
+      <AcoesPrioritarias data={data} etq={etq} vendFunil={vendFunil} positivo={positivo} onIr={ir} />
 
       {/* ── 5. Quem está entregando? ────────────────────────────────── */}
       <TopEquipe

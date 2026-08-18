@@ -19,6 +19,19 @@ const META: Record<TipoJanela, { Icon: typeof Clock; hint: string }> = {
   fixo:     { Icon: Clock,        hint: 'Janela fixa — ignora o filtro do topo.' },
 }
 
+/**
+ * A ressalva da janela em texto puro, para quem precisa COMPOR um rótulo falado
+ * em vez de renderizar o selo.
+ *
+ * Existe porque `aria-label` num elemento SUBSTITUI o conteúdo dele na árvore de
+ * acessibilidade: um KPI clicável com `aria-label` engolia o selo inteiro — e
+ * com ele a única pista de que aquele número ignora o filtro do topo. Quem põe
+ * aria-label num container que contém um JanelaBadge tem que trazer isto junto.
+ */
+export function janelaHint(tipo: TipoJanela): string {
+  return META[tipo].hint
+}
+
 export function JanelaBadge({
   tipo,
   label,
@@ -39,7 +52,10 @@ export function JanelaBadge({
     >
       <Icon className="h-3 w-3" aria-hidden="true" />
       <span>{label}</span>
-      <span className="sr-only"> — {hint}</span>
+      {/* Vírgula e não travessão: o travessão é anunciado como "traço" por
+          parte dos leitores, e a ressalva soava como um item separado do selo.
+          Dentro do MESMO span, é lido em sequência com o rótulo visível. */}
+      <span className="sr-only">, {hint}</span>
     </span>
   )
 }

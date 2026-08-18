@@ -62,6 +62,7 @@ export function CardHeader({
   titleHint,
   janela,
   right,
+  nivel = 3,
 }: {
   title: string
   subtitle?: string
@@ -69,20 +70,37 @@ export function CardHeader({
   titleHint?: string
   janela?: ReactNode
   right?: ReactNode
+  /**
+   * Nível do heading. Padrão 3 (a página tem `<h1>Dashboard` e as abas põem
+   * `<h2>` em alguns blocos). Só mexa aqui se o Card estiver aninhado dentro de
+   * outro bloco que já tenha `<h3>` — pular nível (h2 → h4) faz o leitor de
+   * tela relatar uma seção que não existe. O tamanho NÃO muda com o nível:
+   * quem manda no visual é `text-title`, o número aqui é só a estrutura.
+   */
+  nivel?: 2 | 3 | 4
 }) {
+  const H = `h${nivel}` as 'h2' | 'h3' | 'h4'
   return (
     <div className="flex items-start justify-between gap-3 mb-4">
       <div className="min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <h3 className="text-title text-ink">{title}</h3>
+          {/* Heading vazio é pior que heading nenhum: entra na lista de títulos
+              do leitor de tela como um item mudo. Se não veio texto, não vira
+              heading — o carimbo de janela ainda aparece. */}
+          {title ? <H className="text-title text-ink">{title}</H> : null}
           {janela}
         </div>
-        {subtitle && (
+        {subtitle ? (
           <p className="text-label text-ink-faint mt-1" title={titleHint}>
             {subtitle}
             {titleHint && <span className="sr-only"> {titleHint}</span>}
           </p>
-        )}
+        ) : titleHint ? (
+          // Sem subtítulo, a ressalva sumia INTEIRA: não virava title= nem
+          // sr-only, porque os dois moravam dentro do <p> do subtítulo. Quem
+          // passasse só `titleHint` escrevia no vazio.
+          <span className="sr-only">{titleHint}</span>
+        ) : null}
       </div>
       {right && <div className="shrink-0">{right}</div>}
     </div>

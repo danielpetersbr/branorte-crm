@@ -1,6 +1,34 @@
-import type { ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 import { ArrowUpRight, ArrowDownRight, Minus, ChevronRight } from 'lucide-react'
-import { JanelaBadge, type TipoJanela } from './JanelaBadge'
+import { JanelaBadge, janelaHint, type TipoJanela } from './JanelaBadge'
+import { VAZIO, VAZIO_FALADO } from './format'
+
+type DeltaBom = 'subir' | 'cair'
+
+/**
+ * Lê o delta UMA vez: o visual e o texto falado saem da mesma conta.
+ *
+ * `falado` carrega o julgamento ("melhora"/"piora") porque no visual quem diz
+ * isso é só a cor — verde/vermelho. A seta indica DIREÇÃO, não se a direção é
+ * boa: subir 20% em "leads sem dono" é péssimo e a seta é a mesma. Sem esta
+ * palavra, um daltônico vê "+20%" e não tem como saber de que lado está.
+ */
+function lerDelta(valor: number | null | undefined, bom: DeltaBom) {
+  if (valor == null || !Number.isFinite(valor)) return null
+  const zero = Math.abs(valor) < 0.5
+  const subiu = valor > 0
+  const positivo = zero ? null : bom === 'subir' ? subiu : !subiu
+  const inteiro = Math.abs(Math.round(valor))
+  return {
+    zero,
+    subiu,
+    positivo,
+    visivel: zero ? 'estável' : `${subiu ? '+' : ''}${Math.round(valor)}%`,
+    falado: zero
+      ? 'estável'
+      : `${subiu ? 'subiu' : 'caiu'} ${inteiro}%, ${positivo ? 'melhora' : 'piora'}`,
+  }
+}
 
 /**
  * Delta vs período anterior.
@@ -14,20 +42,23 @@ export function Delta({
   sufixo = 'vs. período anterior',
 }: {
   pct: number | null | undefined
-  bom?: 'subir' | 'cair'
+  bom?: DeltaBom
   sufixo?: string
 }) {
-  if (pct == null || !Number.isFinite(pct)) return null
-  const zero = Math.abs(pct) < 0.5
-  const subiu = pct > 0
-  const positivo = zero ? null : (bom === 'subir' ? subiu : !subiu)
-  const Icon = zero ? Minus : subiu ? ArrowUpRight : ArrowDownRight
-  const cor = positivo === null ? 'text-ink-faint' : positivo ? 'text-success' : 'text-danger'
+  const d = lerDelta(pct, bom)
+  if (!d) return null
+  const Icon = d.zero ? Minus : d.subiu ? ArrowUpRight : ArrowDownRight
+  const cor = d.positivo === null ? 'text-ink-faint' : d.positivo ? 'text-success' : 'text-danger'
   return (
     <span className={`inline-flex items-center gap-0.5 text-micro tabular-nums ${cor}`}>
       <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-      <span>{zero ? 'estável' : `${subiu ? '+' : ''}${Math.round(pct)}%`}</span>
-      <span className="sr-only"> {sufixo}</span>
+      {/* O visível fica aria-hidden e o falado vem completo logo abaixo: senão
+          o leitor anuncia "mais 12 por cento" e em seguida "subiu 12%", duas
+          vezes o mesmo número. */}
+      <span aria-hidden="true">{d.visivel}</span>
+      <span className="sr-only">
+        {d.falado} {sufixo}
+      </span>
     </span>
   )
 }
@@ -58,16 +89,42 @@ export function Metric({
   /** Linha de baixo: o outro recorte do mesmo assunto, em cinza. */
   secundario?: ReactNode
   delta?: number | null
-  deltaBom?: 'subir' | 'cair'
+  deltaBom?: DeltaBom
   janela: TipoJanela
   janelaLabel: string
-  /** Vira o title= — explica origem e cálculo em uma frase. */
+  /** Vira o title= (mouse) e a descrição acessível — origem e cálculo em uma frase. */
   ajuda: string
   onClick?: () => void
   id?: string
 }) {
   const clicavel = typeof onClick === 'function'
   const Tag = clicavel ? 'button' : 'div'
+  const descId = useId()
+  const d = lerDelta(delta, deltaBom)
+
+  // "R$ —" não existe; quando o formatador devolve o travessão, o leitor de
+  // tela anuncia "traço" ou nada — e o usuário não sabe se é zero ou falha.
+  const valorFalado = valor === VAZIO ? VAZIO_FALADO : valor
+
+  /**
+   * `aria-label` num <button> SUBSTITUI todo o conteúdo dele na árvore de
+   * acessibilidade. O rótulo anterior era "label: valor. Ver detalhamento." e
+   * com isso sumiam, para quem usa leitor de tela, TRÊS coisas que estão na
+   * tela: o delta, a linha secundária e o carimbo de janela — justamente a
+   * pista de que aquele número pode ignorar o filtro do topo.
+   *
+   * Agora o NOME fica curto (rótulo + valor) e todo o resto vira DESCRIÇÃO
+   * (aria-describedby), que é anunciada depois do nome e o usuário pode pular.
+   */
+  const descricaoClicavel = [
+    d ? `${d.falado} vs. período anterior` : '',
+    typeof secundario === 'string' ? secundario : '',
+    `Janela: ${janelaLabel}, ${janelaHint(janela)}`,
+    ajuda,
+    'Ativar para ver a origem do número.',
+  ]
+    .filter(Boolean)
+    .join('. ')
 
   return (
     <Tag
@@ -75,7 +132,8 @@ export function Metric({
       type={clicavel ? 'button' : undefined}
       onClick={onClick}
       title={ajuda}
-      aria-label={clicavel ? `${label}: ${valor}. Ver detalhamento.` : undefined}
+      aria-label={clicavel ? `${label}: ${valorFalado}` : undefined}
+      aria-describedby={clicavel ? descId : undefined}
       className={[
         'group flex flex-col justify-between gap-3 rounded-xl border border-border bg-surface p-5 text-left',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
@@ -106,6 +164,14 @@ export function Metric({
           <ChevronRight className="h-3 w-3" aria-hidden="true" />
         </span>
       )}
+
+      {/* `ajuda` só existia no title=, que o teclado nunca alcança (tooltip de
+          title não abre no foco) e que o leitor de tela pode estar configurado
+          para ignorar. Aqui ela é texto de verdade: no tile clicável entra como
+          descrição do botão; no tile estático é lida na sequência do conteúdo. */}
+      <span id={descId} className="sr-only">
+        {clicavel ? descricaoClicavel : ajuda}
+      </span>
     </Tag>
   )
 }

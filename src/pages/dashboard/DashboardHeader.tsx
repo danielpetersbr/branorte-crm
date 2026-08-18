@@ -67,7 +67,7 @@ export function DashboardHeader({
       {/* ── Linha 1: identidade + ações ───────────────────────────────── */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="min-w-0">
-          <h1 className="text-[22px] font-semibold text-ink tracking-tight leading-tight">Dashboard</h1>
+          <h1 className="text-kpi-sm text-ink">Dashboard</h1>
           <p className="text-label text-ink-faint mt-0.5">
             {periodoLabel}
             {totalLeads != null && <> · {n(totalLeads)} leads no período</>}
@@ -82,7 +82,7 @@ export function DashboardHeader({
             onClick={onAtualizar}
             title="Atualizar agora"
             aria-label="Atualizar dados agora"
-            className="grid h-9 w-9 place-items-center rounded-lg border border-border bg-surface text-ink-muted hover:text-ink hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="grid h-11 w-11 md:h-9 md:w-9 place-items-center rounded-lg border border-border bg-surface text-ink-muted hover:text-ink hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             <RefreshCw className={`h-4 w-4 ${atualizando ? 'animate-spin' : ''}`} aria-hidden="true" />
           </button>
@@ -91,13 +91,13 @@ export function DashboardHeader({
             onClick={toggleDark}
             title={dark ? 'Tema claro' : 'Tema escuro'}
             aria-label={dark ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
-            className="grid h-9 w-9 place-items-center rounded-lg border border-border bg-surface text-ink-muted hover:text-ink hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="grid h-11 w-11 md:h-9 md:w-9 place-items-center rounded-lg border border-border bg-surface text-ink-muted hover:text-ink hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             {dark ? <Sun className="h-4 w-4" aria-hidden="true" /> : <Moon className="h-4 w-4" aria-hidden="true" />}
           </button>
           <Link
             to="/orcamentos/montar"
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent px-3 text-label font-semibold text-white hover:bg-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+            className="inline-flex h-11 md:h-9 items-center gap-1.5 rounded-lg bg-accent px-3 text-label font-semibold text-accent-fg hover:bg-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
           >
             <FilePlus2 className="h-4 w-4" aria-hidden="true" />
             <span className="hidden sm:inline">Novo orçamento</span>
@@ -152,7 +152,7 @@ export function DashboardHeader({
               onClick={() => setPreset(p.value)}
               aria-pressed={preset === p.value}
               className={[
-                'h-8 rounded-lg px-2.5 text-micro transition-colors',
+                'h-11 md:h-8 rounded-lg px-2.5 text-micro transition-colors',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
                 preset === p.value
                   ? 'bg-ink text-bg font-semibold'
@@ -184,7 +184,7 @@ export function DashboardHeader({
             <div
               role="dialog"
               aria-label="Mais períodos"
-              className="absolute right-0 top-full z-[80] mt-1 w-[300px] rounded-xl border border-border bg-surface p-3 shadow-lg"
+              className="absolute right-0 top-full z-[var(--z-dropdown)] mt-1 w-[300px] rounded-xl border border-border bg-surface p-3 shadow-lg"
             >
               <div className="flex flex-col gap-0.5">
                 {PRESETS_SECUNDARIOS.map(p => (
