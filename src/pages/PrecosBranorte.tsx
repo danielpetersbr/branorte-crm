@@ -95,6 +95,10 @@ const SUBCAT_ORDER: Record<string, string[]> = {
   ELEVADOR: ['COMPLETO', 'COMPONENTE'],
 }
 
+// Categorias que sao UM produto parametrizado por duas coordenadas, e por isso
+// viram MATRIZ em vez de lista. Ver o bloco "MATRIZ DE PREÇOS" mais abaixo.
+const CATS_MATRIZ = new Set(['TRANSPORTADOR', 'ELEVADOR'])
+
 function formatBRL(v: number | null): string {
   if (v == null) return '—'
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
@@ -120,23 +124,50 @@ function formatPeso(kg: number | null): string {
 // texto morto, sem botao e sem input, em TODAS as tabelas de uma vez. Se um dia
 // aparecer outro caminho de escrita, ele precisa do mesmo gate — a pagina em si
 // nao tem nenhum.
-function ValorEditor({ id, field, valor }: { id: number; field: keyof PrecoBranorte; valor: number | null }) {
+function ValorEditor({ id, field, valor, rotuloCampo, fallback }: {
+  id: number
+  field: keyof PrecoBranorte
+  valor: number | null
+  /** Nome do campo que o input vai GRAVAR, mostrado enquanto edita.
+   *  Obrigatorio nas matrizes, onde a MESMA celula muda de campo conforme o
+   *  seletor de variante — sem o rotulo os tres casos sao pixel por pixel
+   *  identicos e da pra gravar preco de motor achando que e o preco base. */
+  rotuloCampo?: string
+  /** Preco base mostrado quando ESTA variante nao existe pro item.
+   *  E so exibicao: gravar aqui continua gravando em `field`. */
+  fallback?: number | null
+}) {
   const [editando, setEditando] = useState(false)
   const [v, setV] = useState<number | ''>(valor ?? '')
   const upd = useUpdatePrecoBranorte()
   const can = useCan()
 
+  // Nao ha preco proprio pra variante ativa — mostro o base como referencia.
+  const herdado = valor == null && fallback != null
+  const titulo = herdado
+    ? `Sem preco de "${rotuloCampo ?? 'variante'}" cadastrado neste item.\nO valor mostrado e o preco base (so equipamento), como referencia.`
+    : undefined
+
+  const exibido = herdado
+    ? <span className="text-ink-faint italic">~ {formatBRL(fallback)}</span>
+    : <span className="font-semibold text-ink">{formatBRL(valor)}</span>
+
   if (!can('precos.editar')) {
-    return <span className="block w-full text-right tabular-nums font-semibold text-ink px-2 py-1">{formatBRL(valor)}</span>
+    return <span className="block w-full text-right tabular-nums px-2 py-1" title={titulo}>{exibido}</span>
   }
 
   if (!editando) {
     return (
       <button
+        // ⚠️ Abre com o valor REAL do campo — null vira input VAZIO, nunca o
+        // fallback. Se abrisse com o fallback, um Enter sem digitar nada
+        // copiaria o preco base pra dentro do campo de motor e inventaria um
+        // preco que ninguem cadastrou.
         onClick={() => { setV(valor ?? ''); setEditando(true) }}
-        className="w-full text-right tabular-nums font-semibold text-ink hover:text-accent hover:bg-surface-2 px-2 py-1 rounded transition-all"
+        title={titulo}
+        className="w-full text-right tabular-nums hover:text-accent hover:bg-surface-2 px-2 py-1 rounded transition-all"
       >
-        {formatBRL(valor)}
+        {exibido}
       </button>
     )
   }
@@ -153,27 +184,39 @@ function ValorEditor({ id, field, valor }: { id: number; field: keyof PrecoBrano
   }
 
   return (
-    <div className="flex items-center gap-1 justify-end">
-      <Input
-        type="number"
-        value={v}
-        onChange={e => setV(e.target.value ? Number(e.target.value) : '')}
-        onKeyDown={e => {
-          if (e.key === 'Enter') salvar()
-          if (e.key === 'Escape') setEditando(false)
-        }}
-        autoFocus
-        className="w-28 text-right text-[12px]"
-        min="0"
-        step="0.01"
-      />
-      <button
-        onClick={salvar}
-        disabled={upd.isPending}
-        className="p-1 rounded bg-success hover:bg-success/90 text-white disabled:opacity-40"
-      >
-        {upd.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-      </button>
+    <div className="flex flex-col items-end gap-0.5">
+      {/* QUAL campo esta sendo gravado. Na matriz a celula troca de campo com o
+          seletor de variante, entao o rotulo e a unica coisa que separa
+          "gravei o preco base" de "gravei o preco com motor trifasico". */}
+      {rotuloCampo && (
+        <span className="text-[9px] uppercase tracking-wider font-bold text-accent whitespace-nowrap leading-none">
+          {rotuloCampo}
+        </span>
+      )}
+      <div className="flex items-center gap-1 justify-end">
+        <Input
+          type="number"
+          value={v}
+          onChange={e => setV(e.target.value ? Number(e.target.value) : '')}
+          onKeyDown={e => {
+            if (e.key === 'Enter') salvar()
+            if (e.key === 'Escape') setEditando(false)
+          }}
+          autoFocus
+          aria-label={rotuloCampo ? `Novo valor — ${rotuloCampo}` : 'Novo valor'}
+          className="w-28 text-right text-[12px]"
+          min="0"
+          step="0.01"
+        />
+        <button
+          onClick={salvar}
+          disabled={upd.isPending}
+          title={rotuloCampo ? `Salvar em: ${rotuloCampo}` : 'Salvar'}
+          className="p-1 rounded bg-success hover:bg-success/90 text-white disabled:opacity-40"
+        >
+          {upd.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+        </button>
+      </div>
     </div>
   )
 }
@@ -324,8 +367,16 @@ function TabelaMisturadores({ items }: { items: PrecoBranorte[] }) {
 }
 
 // Tabela genérica padrão (Transportador, Moinho, Elevador, Pré-limpeza, etc)
-function TabelaPrecos({ items, mostrarMotor }: { items: PrecoBranorte[]; mostrarMotor: boolean }) {
+//
+// ⚠️ A coluna de motor nasce por PRESENCA REAL, uma a uma — nao pelo par
+// `trif != null || mono != null`. Com a regra do par, o transportador (90 itens
+// com trifasico, ZERO com monofasico) abria as DUAS colunas e a de monofasico
+// nascia 100% vazia: uma coluna inteira de "—" ocupando largura e sugerindo que
+// o preco existe e alguem esqueceu de preencher.
+function TabelaPrecos({ items }: { items: PrecoBranorte[] }) {
   if (items.length === 0) return null
+  const temTrif = items.some(it => it.valor_com_motor_trif != null)
+  const temMono = items.some(it => it.valor_com_motor_mono != null)
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-[12px]">
@@ -336,12 +387,8 @@ function TabelaPrecos({ items, mostrarMotor }: { items: PrecoBranorte[]; mostrar
             <th className={TH}>Capacidade</th>
             <th className={TH}>Potência</th>
             <th className={THR}>Equipamento</th>
-            {mostrarMotor && (
-              <>
-                <th className={THR}>+ Trif</th>
-                <th className={THR}>+ Mono</th>
-              </>
-            )}
+            {temTrif && <th className={THR}>+ Trif</th>}
+            {temMono && <th className={THR}>+ Mono</th>}
             <th className={TH}>Obs.</th>
           </tr>
         </thead>
@@ -355,12 +402,8 @@ function TabelaPrecos({ items, mostrarMotor }: { items: PrecoBranorte[]; mostrar
               <td className={TD + ' text-ink-muted text-[11px]'}>{it.capacidade || '—'}</td>
               <td className={TD + ' text-ink-muted text-[11px]'}>{it.potencia || '—'}</td>
               <td className={TD}><ValorEditor id={it.id} field="valor_equipamento" valor={it.valor_equipamento} /></td>
-              {mostrarMotor && (
-                <>
-                  <td className={TD}><ValorEditor id={it.id} field="valor_com_motor_trif" valor={it.valor_com_motor_trif} /></td>
-                  <td className={TD}><ValorEditor id={it.id} field="valor_com_motor_mono" valor={it.valor_com_motor_mono} /></td>
-                </>
-              )}
+              {temTrif && <td className={TD}><ValorEditor id={it.id} field="valor_com_motor_trif" valor={it.valor_com_motor_trif} /></td>}
+              {temMono && <td className={TD}><ValorEditor id={it.id} field="valor_com_motor_mono" valor={it.valor_com_motor_mono} /></td>}
               <td className={TD + ' text-ink-faint text-[10px]'}>
                 {[it.dimensoes, it.observacoes].filter(Boolean).join(' · ')}
               </td>
@@ -440,15 +483,436 @@ function TabelaCompactas({ items }: { items: PrecoBranorte[] }) {
   )
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// MATRIZ DE PREÇOS  (transportador e elevador)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// POR QUE MATRIZ, E NAO LISTA:
+// Transportador e elevador nao sao catalogos de itens diferentes — sao UM
+// produto parametrizado por duas coordenadas. O transportador e (bitola ×
+// comprimento): 6 bitolas × 39 comprimentos = 228 linhas que repetem a mesma
+// descricao 39 vezes seguidas. O elevador e (modelo × altura): 5 modelos × 21
+// alturas = 61 linhas. Em lista, achar "TH 200 de 6,5 m" e rolar 228 linhas
+// lendo texto; em matriz e cruzar uma coluna com uma linha.
+//
+// A COLUNA `descricao` SOME de proposito: ela E as duas coordenadas juntas
+// ("TH 200 X 6,5 m"). Repetir isso na celula seria escrever o cabecalho de novo
+// em cada uma das 234 celulas.
+//
+// O QUE SOBE PRO CABECALHO e o que e CONSTANTE na coluna. Conferido no banco:
+// `capacidade` tem 1 valor unico por bitola (⌀160=10 t/h, ⌀300=60 t/h) e por
+// modelo de elevador (EC-2310=6 t/h) — entao vai pro cabecalho. `potencia` NAO:
+// ela cresce com o comprimento (chupim 160 vai de 1,5 a 3 cv conforme o vao),
+// entao fica na celula, junto do preco.
+
+type CampoValor = 'valor_equipamento' | 'valor_com_motor_trif' | 'valor_com_motor_mono'
+
+interface Variante { campo: CampoValor; label: string }
+const VARIANTES: Variante[] = [
+  { campo: 'valor_equipamento', label: 'Só equipamento' },
+  { campo: 'valor_com_motor_trif', label: '+ Motor trifásico' },
+  { campo: 'valor_com_motor_mono', label: '+ Motor monofásico' },
+]
+
+interface Eixo { chave: string; ordem: number; rotulo: string }
+interface ColunaEixo extends Eixo { grupo: string; nota: string | null }
+
+// "1,50" -> 1.5   (numero em pt-BR dentro de texto livre)
+function numeroBR(s: string): number {
+  return parseFloat(s.replace(/\./g, '').replace(',', '.'))
+}
+
+// Potencia legivel. Vem de `potencia` quando existe; senao da descricao —
+// 3 elevadores tem `potencia` NULL no banco mas carregam o cv no texto
+// ("EC-2310 - 10,0 m - 1,5 cv"), e sem esse fallback a celula ficava muda.
+// Normaliza "1,50 CV" e "1,0 cv" pro mesmo "1,5 cv".
+function potenciaCurta(it: PrecoBranorte): string | null {
+  const bruto = it.potencia ?? it.descricao.match(/[\d,.]+\s*cv/i)?.[0] ?? null
+  if (!bruto) return null
+  const n = numeroBR(bruto.match(/[\d,.]+/)?.[0] ?? '')
+  return isFinite(n) ? `${n.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} cv` : null
+}
+
+interface Matriz {
+  linhas: Eixo[]
+  colunas: ColunaEixo[]
+  celulas: Map<string, PrecoBranorte>
+  orfaos: PrecoBranorte[]
+}
+
+/**
+ * Cruza os itens nos dois eixos.
+ *
+ * ⚠️ NENHUM ITEM PODE SUMIR. Quem nao encaixa nos dois eixos (descricao fora do
+ * padrao, item novo com outro formato) vai pra `orfaos` e e renderizado em
+ * lista embaixo da matriz. Uma matriz que engole silenciosamente a linha que
+ * nao soube posicionar e uma matriz que esconde preco — o pior defeito
+ * possivel numa tela de tabela de precos.
+ */
+function montarMatriz(
+  items: PrecoBranorte[],
+  linhaDe: (it: PrecoBranorte) => Eixo | null,
+  colunaDe: (it: PrecoBranorte) => ColunaEixo | null,
+): Matriz {
+  const linhas = new Map<string, Eixo>()
+  const colunas = new Map<string, ColunaEixo>()
+  const celulas = new Map<string, PrecoBranorte>()
+  const orfaos: PrecoBranorte[] = []
+
+  for (const it of items) {
+    const l = linhaDe(it)
+    const c = colunaDe(it)
+    if (!l || !c) { orfaos.push(it); continue }
+    const k = `${l.chave}|${c.chave}`
+    // Dois itens na MESMA coordenada: nao ha desempate honesto, entao o segundo
+    // vira orfao (sai da grade, continua visivel) em vez de sobrescrever o
+    // primeiro em silencio.
+    if (celulas.has(k)) { orfaos.push(it); continue }
+    linhas.set(l.chave, l)
+    colunas.set(c.chave, c)
+    celulas.set(k, it)
+  }
+
+  const ord = <T extends Eixo>(a: T, b: T) => a.ordem - b.ordem || a.chave.localeCompare(b.chave)
+  return {
+    linhas: [...linhas.values()].sort(ord),
+    colunas: [...colunas.values()].sort(ord),
+    celulas,
+    orfaos,
+  }
+}
+
+// Celula sem item: a combinacao nao existe no catalogo (⌀250 nao e fabricado
+// abaixo de 2,5 m; o EC-2310 para em 12 m). Hachura + "·" pra ler como
+// "vazio de proposito", nao como "preco faltando" — a diferenca entre as duas
+// leituras e um vendedor ligando pra fabrica perguntar por um produto que nao
+// existe. O rodape da matriz explica.
+const HACHURA: React.CSSProperties = {
+  backgroundImage:
+    'repeating-linear-gradient(45deg, hsl(var(--border) / 0.55) 0 1px, transparent 1px 7px)',
+}
+
+function MatrizPrecos({
+  items, rotuloEixo, tituloEixo, larguraEixo, rodape,
+  linhaDe, colunaDe,
+}: {
+  items: PrecoBranorte[]
+  rotuloEixo: string
+  tituloEixo: string
+  /** % da largura pro cabecalho de linha; o resto e dividido pelas colunas. */
+  larguraEixo: number
+  rodape: string
+  linhaDe: (it: PrecoBranorte) => Eixo | null
+  colunaDe: (it: PrecoBranorte) => ColunaEixo | null
+}) {
+  const [variante, setVariante] = useState<CampoValor>('valor_equipamento')
+  // Depende so de `items`: linhaDe/colunaDe chegam como arrow inline (identidade
+  // nova a cada render do pai) mas sao funcoes PURAS de parsing, fixas por
+  // matriz. Inclui-las nas deps refaria a grade de 234 celulas a cada tecla
+  // digitada na busca, sem nunca mudar o resultado.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const { linhas, colunas, celulas, orfaos } = useMemo(() => montarMatriz(items, linhaDe, colunaDe), [items])
+
+  // Variantes OFERECIDAS = as que existem de verdade nestes itens (regra de
+  // PRESENCA). No transportador o monofasico tem ZERO itens: oferecer o botao
+  // seria abrir uma matriz inteira de fallback cinza.
+  const disponiveis = VARIANTES.filter(v => items.some(it => it[v.campo] != null))
+  const ativa = disponiveis.find(v => v.campo === variante) ?? disponiveis[0]
+
+  if (linhas.length === 0 || colunas.length === 0 || !ativa) {
+    // Sem os dois eixos nao ha matriz — cai na lista, que sempre funciona.
+    return <TabelaPrecos items={items} />
+  }
+
+  // Quantos itens de CADA coluna tem a variante ativa. Com "+ Motor trifasico"
+  // ligado as colunas de Chupim ficam 100% em fallback (o chupim nao tem
+  // trifasico cadastrado): sem avisar no cabecalho, a coluna parece uma tabela
+  // de preco de motor e nao e.
+  const naColuna = new Map<string, number>()
+  for (const [k, it] of celulas) {
+    if (it[ativa.campo] != null) {
+      const col = k.slice(k.indexOf('|') + 1)
+      naColuna.set(col, (naColuna.get(col) ?? 0) + 1)
+    }
+  }
+
+  // Cabecalho de 2 niveis: agrupa colunas vizinhas do mesmo grupo (CHUPIM /
+  // CALHA TH). Grupo vazio em todas = 1 nivel so (elevador).
+  const faixas: { grupo: string; span: number }[] = []
+  for (const c of colunas) {
+    const ult = faixas[faixas.length - 1]
+    if (ult && ult.grupo === c.grupo) ult.span++
+    else faixas.push({ grupo: c.grupo, span: 1 })
+  }
+  const temNivel2 = faixas.some(f => f.grupo)
+
+  // `table-fixed` + larguras somando 100%: e a licao da tabela de /contatos —
+  // com soma > 100 o navegador reescala TODAS as colunas e o cabecalho medido
+  // deixa de bater com o corpo. Aqui o numero de colunas e derivado do dado
+  // (6 bitolas hoje, 7 se a fabrica lancar outra), entao a divisao e calculada
+  // e nao escrita a mao.
+  const wCol = (100 - larguraEixo) / colunas.length
+  const vazias = linhas.length * colunas.length - celulas.size
+
+  return (
+    <div>
+      {/* SELETOR DE VARIANTE — troca o campo de preco da matriz inteira. */}
+      <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 border-b border-border/40 bg-surface-2/30">
+        <span className="text-[10px] uppercase tracking-wider font-semibold text-ink-faint mr-1">Preço</span>
+        {disponiveis.map(v => {
+          const on = v.campo === ativa.campo
+          return (
+            <button
+              key={v.campo}
+              onClick={() => setVariante(v.campo)}
+              aria-pressed={on}
+              className={`text-[11px] px-2.5 py-1 rounded-md font-semibold transition ${
+                on ? 'bg-accent text-white'
+                   : 'bg-surface-2 text-ink-muted hover:text-ink hover:bg-surface-3 border border-border'
+              }`}
+            >
+              {v.label}
+            </button>
+          )
+        })}
+        {ativa.campo !== 'valor_equipamento' && (
+          <span className="text-[10px] text-ink-faint ml-1">
+            célula em <span className="italic">~ cinza</span> = sem este preço; mostra o base
+          </span>
+        )}
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full table-fixed text-[12px]">
+          <thead className="sticky top-0 z-10">
+            {temNivel2 && (
+              <tr className="[&>th]:bg-surface-2 [&>th]:py-1 [&>th]:whitespace-nowrap [&>th]:overflow-hidden [&>th]:text-ellipsis">
+                <th style={{ width: `${larguraEixo}%` }} />
+                {faixas.map((f, i) => (
+                  <th
+                    key={f.grupo + i}
+                    colSpan={f.span}
+                    className="text-center text-[10px] font-bold uppercase tracking-wider text-accent border-l border-border/60"
+                  >
+                    {f.grupo}
+                  </th>
+                ))}
+              </tr>
+            )}
+            <tr className="[&>th]:bg-surface-2 [&>th]:py-1.5 [&>th]:px-2 [&>th]:whitespace-nowrap [&>th]:overflow-hidden [&>th]:text-ellipsis [&>th]:border-b [&>th]:border-border">
+              <th
+                style={{ width: `${larguraEixo}%` }}
+                title={tituloEixo}
+                className="text-left text-[10px] font-semibold uppercase tracking-wider text-ink-muted"
+              >
+                {rotuloEixo}
+              </th>
+              {colunas.map((c, i) => {
+                const semVariante = (naColuna.get(c.chave) ?? 0) === 0
+                const novaFaixa = i === 0 || colunas[i - 1].grupo !== c.grupo
+                return (
+                  <th
+                    key={c.chave}
+                    style={{ width: `${wCol}%` }}
+                    title={[c.grupo, c.rotulo, c.nota, semVariante ? `Sem preço de "${ativa.label}" nesta coluna` : null]
+                      .filter(Boolean).join(' · ')}
+                    className={`text-right ${novaFaixa ? 'border-l border-border/60' : ''}`}
+                  >
+                    <div className="text-[11px] font-bold text-ink tabular-nums">{c.rotulo}</div>
+                    {/* Capacidade e constante na coluna — por isso mora aqui e
+                        nao repetida em 39 celulas. */}
+                    {c.nota && <div className="text-[9px] font-normal normal-case tracking-normal text-warning">{c.nota}</div>}
+                    {semVariante && (
+                      <div className="text-[9px] font-normal normal-case tracking-normal text-ink-faint italic">sem este preço</div>
+                    )}
+                  </th>
+                )
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {linhas.map(l => (
+              <tr key={l.chave} className="border-t border-border/40 hover:bg-surface-2/30">
+                <th
+                  scope="row"
+                  className="text-left px-2 py-1 text-[11px] font-semibold text-ink-muted tabular-nums whitespace-nowrap"
+                >
+                  {l.rotulo}
+                </th>
+                {colunas.map((c, i) => {
+                  const it = celulas.get(`${l.chave}|${c.chave}`)
+                  const borda = i === 0 || colunas[i - 1].grupo !== c.grupo ? 'border-l border-border/60' : ''
+                  if (!it) {
+                    return (
+                      <td
+                        key={c.chave}
+                        style={HACHURA}
+                        title={`${c.grupo} ${c.rotulo} não é fabricado em ${l.rotulo}`}
+                        className={`text-center text-ink-faint/60 ${borda}`}
+                      >
+                        ·
+                      </td>
+                    )
+                  }
+                  const pot = potenciaCurta(it)
+                  return (
+                    <td key={c.chave} className={`px-1 py-0.5 ${borda}`}>
+                      <ValorEditor
+                        id={it.id}
+                        field={ativa.campo}
+                        valor={it[ativa.campo]}
+                        rotuloCampo={ativa.label}
+                        // So faz sentido cair pro base quando a variante NAO e o base.
+                        fallback={ativa.campo === 'valor_equipamento' ? null : it.valor_equipamento}
+                      />
+                      {pot && (
+                        <div className="text-right pr-2 text-[10px] text-ink-faint tabular-nums leading-none pb-0.5">{pot}</div>
+                      )}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="px-3 py-1.5 text-[10px] text-ink-faint border-t border-border/40 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="inline-flex items-center gap-1">
+          <span style={HACHURA} className="inline-block h-3 w-5 rounded-sm border border-border/60" aria-hidden />
+          {vazias > 0
+            ? <>{vazias} combinaç{vazias === 1 ? 'ão' : 'ões'} sem produto — {rodape}</>
+            : <>combinação sem produto</>}
+        </span>
+        <span>{celulas.size} itens na grade · {linhas.length} × {colunas.length}</span>
+      </div>
+
+      {/* Itens que nao entraram na grade. Ver montarMatriz(). */}
+      {orfaos.length > 0 && (
+        <div className="border-t border-warning/30">
+          <div className="px-3 py-1 bg-warning/10">
+            <span className="text-[10px] uppercase tracking-wider font-bold text-warning">
+              Fora da grade ({orfaos.length})
+            </span>
+            <span className="text-[10px] text-ink-muted ml-2">
+              descrição fora do padrão medida × bitola — avise pra arrumar
+            </span>
+          </div>
+          <TabelaPrecos items={orfaos} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// TRANSPORTADOR — 228 linhas viram 39. Chupim e Calha TH dividem exatamente os
+// mesmos comprimentos (1,0 a 20,0 m de meio em meio), entao sao UMA tabela com
+// cabecalho de 2 niveis, e nao duas tabelas de 39 linhas lado a lado.
+function MatrizTransportador({ items }: { items: PrecoBranorte[] }) {
+  return (
+    <MatrizPrecos
+      items={items}
+      rotuloEixo="Comp."
+      tituloEixo="Comprimento do transportador, em metros"
+      larguraEixo={8}
+      rodape="⌀250 e ⌀300 não são fabricados abaixo de 2,5 m"
+      // "chupim 160 x 1,0 m" / "TH 250 X 10,0 m" — a medida fecha a descricao.
+      linhaDe={it => {
+        const m = it.descricao.match(/([\d,.]+)\s*m\s*$/i)
+        if (!m) return null
+        const n = numeroBR(m[1])
+        if (!isFinite(n)) return null
+        return { chave: n.toFixed(1), ordem: n, rotulo: `${n.toFixed(1).replace('.', ',')} m` }
+      }}
+      colunaDe={it => {
+        const m = it.descricao.match(/(\d{3})\s*[xX]/)
+        if (!m) return null
+        const chupim = it.subcategoria === 'CHUPIM'
+        if (!chupim && it.subcategoria !== 'TH') return null
+        const d = Number(m[1])
+        return {
+          chave: `${it.subcategoria}-${d}`,
+          // Chupim primeiro, depois TH; dentro de cada um, bitola crescente.
+          ordem: (chupim ? 0 : 1000) + d,
+          rotulo: `⌀${d}`,
+          grupo: chupim ? 'Chupim' : 'Calha TH',
+          nota: it.capacidade ? it.capacidade.toLowerCase().replace('ton/h', 't/h') : null,
+        }
+      }}
+    />
+  )
+}
+
+// ELEVADOR — 61 linhas viram 21. As alturas NAO sao uma regua regular: o
+// EC-2310 anda de metro em metro (4 a 11 m) e os demais de 2 em 2 (ate 36 m).
+// A uniao da 21 valores e os vazios formam uma escada — cada modelo cobre a
+// sua faixa. Por isso as linhas saem do DADO, e nao de uma sequencia fixa.
+//
+// Os 2 itens de subcategoria COMPONENTE (pe/padrao, sem altura) ficam FORA da
+// grade: nao tem a segunda coordenada. Viram listinha rotulada embaixo.
+function MatrizElevador({ items }: { items: PrecoBranorte[] }) {
+  const completos = items.filter(it => it.subcategoria === 'COMPLETO')
+  const componentes = items.filter(it => it.subcategoria !== 'COMPLETO')
+
+  return (
+    <div>
+      {completos.length > 0 && (
+        <MatrizPrecos
+          items={completos}
+          rotuloEixo="Altura"
+          tituloEixo="Altura do elevador, em metros"
+          larguraEixo={10}
+          rodape="cada modelo cobre uma faixa de altura"
+          // "EC-2310 - 4,0 m - 1,0 cv" — a altura vem antes do cv.
+          linhaDe={it => {
+            const m = it.descricao.match(/(\d+(?:[,.]\d+)?)\s*m(?![a-zà-ú])/i)
+            if (!m) return null
+            const n = numeroBR(m[1])
+            if (!isFinite(n)) return null
+            return { chave: n.toFixed(1), ordem: n, rotulo: `${n.toFixed(1).replace('.', ',')} m` }
+          }}
+          colunaDe={it => {
+            const cod = it.codigo?.trim()
+            if (!cod) return null
+            // Ordena por capacidade (e assim que o vendedor escolhe), com o
+            // codigo como desempate.
+            const cap = numeroBR(it.capacidade?.match(/[\d,.]+/)?.[0] ?? '')
+            return {
+              chave: cod,
+              ordem: isFinite(cap) ? cap : 9999,
+              rotulo: cod,
+              grupo: '',
+              nota: it.capacidade ? it.capacidade.toLowerCase().replace('ton/h', 't/h') : null,
+            }
+          }}
+        />
+      )}
+      {componentes.length > 0 && (
+        <div className="border-t border-border">
+          <div className="px-3 py-1 bg-surface-2/50 border-b border-border/30">
+            <span className="text-[10px] uppercase tracking-wider font-bold text-ink-muted">
+              {SUBCATEGORIA_LABEL.COMPONENTE}
+            </span>
+            <span className="text-[10px] text-ink-faint ml-2">
+              vendido avulso — sem altura, fora da grade
+            </span>
+          </div>
+          <TabelaPrecos items={componentes} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Dispatcher por categoria
-function TabelaPorCategoria({ items, mostrarMotor }: { items: PrecoBranorte[]; mostrarMotor: boolean }) {
+function TabelaPorCategoria({ items }: { items: PrecoBranorte[] }) {
   if (items.length === 0) return null
   const cat = items[0].categoria
   if (cat === 'COMPACTA') return <TabelaCompactas items={items} />
   if (cat === 'SILO') return <TabelaSilos items={items} />
   if (cat === 'CAIXA') return <TabelaCaixas items={items} />
   if (cat === 'MISTURADOR' || cat === 'CAÇAMBA DE PESAGEM') return <TabelaMisturadores items={items} />
-  return <TabelaPrecos items={items} mostrarMotor={mostrarMotor} />
+  return <TabelaPrecos items={items} />
 }
 
 // Sincroniza todos os 319 orcamento_modelos com os preços vigentes
@@ -591,7 +1055,11 @@ export function PrecosBranorte() {
 
   return (
     <div className="min-h-screen bg-bg">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+      {/* 1800px e nao `max-w-7xl` (1280): a matriz do transportador tem 7 colunas
+          e num monitor de 1920 sobrava ~45% de tela vazia enquanto as celulas de
+          preco se espremiam. `mx-auto` mantem centralizado, entao telas menores
+          nao mudam nada — so param de ser o teto pras grandes. */}
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 py-6">
         <div className="mb-3 flex items-start justify-between gap-3 flex-wrap">
           <div>
             <div className="flex items-center gap-2 mb-1">
@@ -720,38 +1188,18 @@ export function PrecosBranorte() {
                   {[...subs.values()].reduce((s, arr) => s + arr.length, 0)} {[...subs.values()].reduce((s, arr) => s + arr.length, 0) === 1 ? 'item' : 'itens'}
                 </span>
               </div>
-              {[...subs.entries()].map(([sub, items]) => {
-                const mostrarMotor = items.some(it => it.valor_com_motor_trif != null || it.valor_com_motor_mono != null)
-                // Transportadores: sub-agrupar por diâmetro (160, 210, 150, 200, 250, 300)
-                if (cat === 'TRANSPORTADOR' && (sub === 'CHUPIM' || sub === 'TH')) {
-                  const porDiam = new Map<string, PrecoBranorte[]>()
-                  for (const it of items) {
-                    const m = it.descricao.match(/(\d{3})\s*[xX]/)
-                    const diam = m ? m[1] : '?'
-                    if (!porDiam.has(diam)) porDiam.set(diam, [])
-                    porDiam.get(diam)!.push(it)
-                  }
-                  // Ordenar diâmetros numericamente
-                  const diams = [...porDiam.keys()].sort((a, b) => Number(a) - Number(b))
-                  return diams.map(diam => {
-                    const ditems = porDiam.get(diam)!
-                    const tipoLabel = sub === 'CHUPIM' ? 'Chupim' : 'Calha TH'
-                    return (
-                      <div key={`${sub}-${diam}`}>
-                        <div className="px-3 py-1.5 bg-surface-2/50 border-b border-border/30 flex items-center gap-2">
-                          <span className="text-[10px] uppercase tracking-wider font-bold text-accent">
-                            {tipoLabel} ⌀{diam}mm
-                          </span>
-                          <span className="text-[10px] text-ink-faint">
-                            {ditems.length} medidas · {ditems[0]?.capacidade || ''} · 1,0m a {Math.max(...ditems.map(d => { const mm = d.descricao.match(/([\d,\.]+)\s*m$/i); return mm ? parseFloat(mm[1].replace(',', '.')) : 0 })).toFixed(1).replace('.', ',')}m
-                          </span>
-                        </div>
-                        <TabelaPorCategoria items={ditems} mostrarMotor={mostrarMotor} />
-                      </div>
-                    )
-                  })
-                }
-                return (
+              {/* MATRIZ vs LISTA.
+                  Com BUSCA ativa a matriz nao serve: ela e uma grade completa de
+                  6 colunas × 39 linhas, e um resultado de busca preenche 2 ou 3
+                  celulas dela — o usuario receberia uma grade quase toda
+                  hachurada pra achar 3 precos. Buscando, as duas categorias
+                  voltam pra lista, que mostra exatamente o que casou. */}
+              {CATS_MATRIZ.has(cat) && !busca ? (
+                cat === 'TRANSPORTADOR'
+                  ? <MatrizTransportador items={[...subs.values()].flat()} />
+                  : <MatrizElevador items={[...subs.values()].flat()} />
+              ) : (
+                [...subs.entries()].map(([sub, items]) => (
                   <div key={sub ?? '_'}>
                     {sub && (
                       <div className="px-3 py-1 bg-surface-2/50 border-b border-border/30">
@@ -761,10 +1209,10 @@ export function PrecosBranorte() {
                         <span className="text-[10px] text-ink-faint ml-2">{items.length}</span>
                       </div>
                     )}
-                    <TabelaPorCategoria items={items} mostrarMotor={mostrarMotor} />
+                    <TabelaPorCategoria items={items} />
                   </div>
-                )
-              })}
+                ))
+              )}
             </div>
           ))}
         </div>
