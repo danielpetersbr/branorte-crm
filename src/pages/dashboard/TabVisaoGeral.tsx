@@ -19,9 +19,8 @@ import { Tendencia } from './blocks/Tendencia'
 import { AcoesPrioritarias, type PositivoDestaques } from './blocks/AcoesPrioritarias'
 import { TopEquipe } from './blocks/TopEquipe'
 import { DrillModal } from './blocks/DrillModal'
+import { foraDoRanking } from '@/lib/vendedores-fora-do-ranking'
 
-/** Mesma exclusão do painel de vendedores: a conta do Daniel é teste. */
-const ehDaniel = (s: string) => /daniel/i.test(s || '')
 
 function Esqueleto() {
   return (
@@ -88,7 +87,7 @@ export function TabVisaoGeral() {
     // ficava com a ÚLTIMA — a menor — e o vendedor aparecia com 3 de 392.
     const porNome = new Map<string, VendedorCobertura>()
     for (const r of cobertura ?? []) {
-      if (ehDaniel(r.vendedor)) continue
+      if (foraDoRanking(r.vendedor)) continue
       const k = primeiroNome(r.vendedor)
       const cur = porNome.get(k)
       if (!cur || (r.total_passado ?? 0) > (cur.total_passado ?? 0)) porNome.set(k, r)

@@ -361,7 +361,7 @@ function PropostasResumoView({ orc, periodoLabel }: { orc: OrcamentosResumo; per
               coisas como "7 cli / Np". Legenda de formato não carrega dado. */}
           <p className="pt-3 text-micro text-ink-faint">
             Valor = a última proposta de cada cliente (re-cotação do mesmo cliente conta 1×), não venda fechada.
-            Em cada linha, "N cli / Np" = clientes distintos / propostas montadas. Daniel (testes) fica de fora da conta.
+            Em cada linha, "N cli / Np" = clientes distintos / propostas montadas. O dono fica de fora da conta de vendedor.
           </p>
         </div>
       )}

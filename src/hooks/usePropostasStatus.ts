@@ -6,7 +6,9 @@ import { parseCustomRange, type DashboardPreset } from './useDashboard'
 // cliente (estado de agora). Responde "quais orçamentos foram enviados e estão com
 // atendimento aberto, ainda não vendido" (= dinheiro na mesa) e "quem montou mais
 // proposta em cada estágio do funil". Janela = propostas MONTADAS no período; a
-// categoria é o estágio atual, independente do período. Daniel (testes) fora.
+// categoria é o estágio atual, independente do período.
+// O DONO fica fora — filtro DENTRO da RPC (`ilike '%daniel%'`), não aqui.
+// Ver `lib/vendedores-fora-do-ranking.ts`: o lado SQL ainda não foi unificado.
 
 export type PropCategoria =
   | 'orcamento' | 'quente' | 'lead_quente' | 'novo' | 'sem_etiqueta'

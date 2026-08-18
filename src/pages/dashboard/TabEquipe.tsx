@@ -19,6 +19,7 @@ import { Card, CardHeader, Inner } from './ui/Card'
 import { JanelaBadge } from './ui/JanelaBadge'
 import { useJanela } from './DashboardFilterContext'
 import { brl, brlFull, n, pct, primeiroNome } from './ui/format'
+import { foraDoRanking } from '@/lib/vendedores-fora-do-ranking'
 
 /* ═══════════════════════════════════════════════════════════════════════════
    ABA EQUIPE — "quem entrega e quem cobrar?"
@@ -56,7 +57,6 @@ export const META_TIME = 833_000
 /** Chave de merge entre as 3 fontes: 1º nome em MAIÚSCULA.
  *  (etiqueta usa "PEDRO", atendimentos "Pedro Della Giustina", orçamento "PEDRO DELA GIUSTINA ") */
 const chaveNome = (s: string): string => (s || '').trim().split(/\s+/)[0]?.toUpperCase() ?? ''
-const ehDaniel = (s: string) => /daniel/i.test(s || '')
 const capitalizar = (s: string) => (s || '').toLowerCase().replace(/\b\w/g, m => m.toUpperCase())
 
 /** Barra de progresso vs meta: cor + SEMPRE o número ao lado (nunca só cor). */
@@ -335,7 +335,7 @@ export function montarCardsVendedor(
   const cobByNome = maiorPorNome(cobertura, c => c.vendedor, c => c.total_passado ?? 0)
 
   return painel
-    .filter(v => !ehDaniel(v.vendedor))
+    .filter(v => !foraDoRanking(v.vendedor))
     .map(v => {
       const k = chaveNome(v.vendedor)
       const s = slaByNome.get(k); const o = orcByNome.get(k); const cob = cobByNome.get(k)
