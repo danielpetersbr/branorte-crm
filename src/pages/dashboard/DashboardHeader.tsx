@@ -112,7 +112,12 @@ export function DashboardHeader({
           que precisam de 382px — encolhiam até 21px, sobrando um "V|" cortado.
           Como o tablist é overflow-x-auto, ele aceitava sumir sem reclamar. */}
       <div className="mt-4 flex flex-col items-stretch gap-3 border-b border-border md:flex-row md:items-end md:justify-between md:gap-4">
-        {/* Abas. overflow-x-auto SÓ aqui dentro — a página nunca rola na horizontal. */}
+        {/* Abas. overflow-x-auto SÓ aqui dentro — a página nunca rola na horizontal.
+            Em 360px as 5 abas pedem 382px e a última fica cortada no meio da
+            palavra ("Geo|"), o que lê como TEXTO QUEBRADO, não como "arrasta que
+            tem mais". O degradê na borda direita é a única pista de que a faixa
+            rola — a barra de rolagem está escondida por scrollbar-none. */}
+        <div className="relative min-w-0 md:contents">
         <nav
           className="-mb-px flex gap-1 overflow-x-auto scrollbar-none"
           role="tablist"
@@ -143,6 +148,11 @@ export function DashboardHeader({
             )
           })}
         </nav>
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-bg to-transparent md:hidden"
+          />
+        </div>
 
         <div className="relative flex shrink-0 items-center gap-1 pb-2" ref={maisRef}>
           {PRESETS_PRIMARIOS.map(p => (

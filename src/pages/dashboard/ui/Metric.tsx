@@ -135,7 +135,11 @@ export function Metric({
       aria-label={clicavel ? `${label}: ${valorFalado}` : undefined}
       aria-describedby={clicavel ? descId : undefined}
       className={[
-        'group flex flex-col justify-between gap-3 rounded-xl border border-border bg-surface p-5 text-left',
+        // `justify-between` distribuía o espaço livre ENTRE os filhos — e como
+        // uns tiles têm "ver origem" e outros não, o número caía em altura
+        // diferente em cada card e a fileira perdia a linha de base. Agora o
+        // topo é fixo (cabeçalho + número) e só o rodapé é empurrado pro fim.
+        'group flex flex-col gap-3 rounded-xl border border-border bg-surface p-5 text-left',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
         clicavel ? 'cursor-pointer transition-colors hover:border-border-strong' : '',
       ].join(' ')}
@@ -144,7 +148,12 @@ export function Metric({
           janela (shrink-0, ~78px) não cabe ao lado do rótulo. Sem o wrap ele
           vazava 6px e o overflow-x:clip da página cortava o texto EM SILÊNCIO
           — pior que rolar, porque ninguém vê que faltou. Agora ele desce. */}
-      <div className="flex flex-wrap items-start justify-between gap-2">
+      {/* min-h reserva a altura de DUAS linhas em todos os tiles. Sem isso, o
+          tile de rótulo longo ("Clientes com proposta") empurra o carimbo pra
+          segunda linha e o número desce ~25px em relação aos vizinhos —
+          a fileira perde a linha de base e o olho para de varrer na
+          horizontal. Alinhar custa altura; desalinhar custa a leitura. */}
+      <div className="flex min-h-[3rem] flex-wrap items-start justify-between gap-2">
         <span className="min-w-0 text-label text-ink-muted">{label}</span>
         <JanelaBadge tipo={janela} label={janelaLabel} />
       </div>
@@ -159,7 +168,7 @@ export function Metric({
       </div>
 
       {clicavel && (
-        <span className="inline-flex items-center gap-0.5 text-micro text-ink-faint group-hover:text-accent">
+        <span className="mt-auto inline-flex items-center gap-0.5 text-micro text-ink-faint group-hover:text-accent">
           ver origem
           <ChevronRight className="h-3 w-3" aria-hidden="true" />
         </span>
