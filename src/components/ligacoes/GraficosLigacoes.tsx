@@ -224,8 +224,12 @@ export function LigacoesNoMes({ serie }: { serie: SerieDia[] }) {
 }
 
 // ── RESULTADO DAS LIGAÇÕES (donut) ──────────────────────────────────────────
-export function ResultadoLigacoes({ atendidas, perdidas, outras, video }: {
+export function ResultadoLigacoes({ atendidas, perdidas, outras, video, atendidasRecebeu = 0 }: {
   atendidas: number; perdidas: number; outras: number; video: number
+  // ⚠️ O donut é SÓ do que o vendedor discou. As recebidas atendidas não entram na
+  // rosca (senão a taxa dele misturaria mérito com sorte), mas precisam aparecer:
+  // sem isso a tela mostrava 0% atendidas com o vendedor 14 minutos ao telefone.
+  atendidasRecebeu?: number
 }) {
   const total = atendidas + perdidas + outras
   const pct = total > 0 ? Math.round((atendidas / total) * 100) : 0
@@ -237,9 +241,9 @@ export function ResultadoLigacoes({ atendidas, perdidas, outras, video }: {
   ]
 
   return (
-    <Painel titulo="Resultado das ligações" icone={PhoneMissed}
-      nota="Atendidas inclui quem atendeu no celular. Desistiu antes = o vendedor desligou antes de o cliente atender.">
-      {total === 0 ? <Vazio msg="Nenhuma ligação no período selecionado." /> : (
+    <Painel titulo="Resultado das ligações que ele fez" icone={PhoneMissed}
+      nota={'Só as que o vendedor discou — o que ele recebeu não entra nesta rosca. Atendidas inclui quem atendeu no celular. Desistiu antes = o vendedor desligou antes de o cliente atender.'}>
+      {total === 0 ? <Vazio msg="Nenhuma ligação feita no período selecionado." /> : (
         <div className="flex items-center gap-4 flex-wrap sm:flex-nowrap">
           <div className="relative w-[168px] h-[168px] shrink-0 mx-auto sm:mx-0">
             <ResponsiveContainer width="100%" height="100%">

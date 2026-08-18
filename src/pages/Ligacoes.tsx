@@ -77,13 +77,41 @@ function quemE(l: { cliente_nome: string | null; cliente_fone: string | null; pe
   return 'contato não identificado'
 }
 
-const DESFECHO: Record<string, { label: string; cls: string; titulo?: string }> = {
-  Completed:         { label: 'Atendida',            cls: 'text-success bg-success/10 border-success/30' },
-  AcceptedElsewhere: { label: 'Atendida no celular', cls: 'text-success bg-success/10 border-success/30' },
-  Missed:            { label: 'Perdida',             cls: 'text-danger bg-danger/10 border-danger/30' },
-  miss:              { label: 'Perdida',             cls: 'text-danger bg-danger/10 border-danger/30' },
-  Rejected:          { label: 'Recusada',            cls: 'text-danger bg-danger/10 border-danger/30' },
-  Canceled:          { label: 'Desistiu antes',      cls: 'text-warning bg-warning/10 border-warning/30' },
+// ⚠️ O DESFECHO NÃO TEM DONO FIXO — depende de quem discou.
+// "Desistiu antes" (Canceled) numa ligação FEITA é o vendedor que desligou antes de
+// atenderem; numa RECEBIDA é o CLIENTE que cansou de chamar e desligou. O mapa antigo
+// era cego ao sentido e escrevia a mesma coisa nos dois casos, acusando o vendedor de
+// desistir de uma chamada que ele nem fez. Mesma armadilha em Perdida e Recusada.
+const VERDE  = 'text-success bg-success/10 border-success/30'
+const VERM   = 'text-danger bg-danger/10 border-danger/30'
+const AMBAR  = 'text-warning bg-warning/10 border-warning/30'
+
+type Rotulo = { label: string; cls: string; titulo?: string }
+const DESFECHO: Record<string, { fez: Rotulo; recebeu: Rotulo }> = {
+  Completed: {
+    fez:     { label: 'Atendida', cls: VERDE },
+    recebeu: { label: 'Atendida', cls: VERDE },
+  },
+  AcceptedElsewhere: {
+    fez:     { label: 'Atendida no celular', cls: VERDE },
+    recebeu: { label: 'Atendida no celular', cls: VERDE },
+  },
+  Missed: {
+    fez:     { label: 'Cliente não atendeu', cls: VERM },
+    recebeu: { label: 'Ele não atendeu',     cls: VERM, titulo: 'O cliente ligou e o vendedor não atendeu.' },
+  },
+  miss: {
+    fez:     { label: 'Cliente não atendeu', cls: VERM },
+    recebeu: { label: 'Ele não atendeu',     cls: VERM, titulo: 'O cliente ligou e o vendedor não atendeu.' },
+  },
+  Rejected: {
+    fez:     { label: 'Cliente recusou', cls: VERM },
+    recebeu: { label: 'Ele recusou',     cls: VERM, titulo: 'O cliente ligou e o vendedor recusou a chamada.' },
+  },
+  Canceled: {
+    fez:     { label: 'Ele desistiu antes',      cls: AMBAR, titulo: 'O vendedor desligou antes de o cliente atender.' },
+    recebeu: { label: 'Cliente desistiu antes',  cls: AMBAR, titulo: 'O cliente ligou e desligou antes de o vendedor atender. Vale retornar.' },
+  },
 }
 // ⚠️ Desfecho VAZIO não é o mesmo que desfecho desconhecido pra nós: o próprio
 // WhatsApp mandou `callOutcome`/`finalCallOutcome` nulos. São 11 em 1.880 (0,6%),
@@ -94,10 +122,23 @@ const SEM_DESFECHO = {
   cls: 'text-ink-faint border-border/70 border-dashed',
   titulo: 'O WhatsApp não registrou o desfecho desta chamada — não dá pra saber se foi atendida ou perdida. Acontece em menos de 1% dos casos, quase sempre em chamada recebida.',
 }
-const desfecho = (e: string | null) =>
-  DESFECHO[e ?? ''] ?? (e
-    ? { label: e, cls: 'text-ink-faint border-border', titulo: undefined }
-    : SEM_DESFECHO)
+// `saiu` nulo = não sabemos o sentido; aí o rótulo tem que ficar neutro em vez de
+// escolher um dos dois lados no chute.
+const desfecho = (e: string | null, saiu: boolean | null): Rotulo => {
+  const par = DESFECHO[e ?? '']
+  if (!par) {
+    return e ? { label: e, cls: 'text-ink-faint border-border' } : SEM_DESFECHO
+  }
+  if (saiu === null) {
+    return { ...par.fez, label: NEUTRO[e as keyof typeof NEUTRO] ?? par.fez.label,
+             titulo: 'O WhatsApp não registrou quem iniciou esta chamada.' }
+  }
+  return saiu ? par.fez : par.recebeu
+}
+const NEUTRO = {
+  Missed: 'Não atendida', miss: 'Não atendida',
+  Rejected: 'Recusada', Canceled: 'Desistiu antes',
+} as const
 
 const MIN_LIGACOES_TAXA = 5
 
@@ -139,9 +180,17 @@ export function Ligacoes() {
   const tot = useMemo(() => somar(linhas), [linhas])
   const totAnt = useMemo(() => (anterior ? somar(linhasAnt) : null), [linhasAnt, anterior])
 
-  const taxa = tot.fez > 0 ? (tot.atendidas_fez / tot.fez) * 100 : null
-  const taxaAnt = totAnt && totAnt.fez > 0 ? (totAnt.atendidas_fez / totAnt.fez) * 100 : null
+  // ⚠️ A taxa só aparece com volume. A tela já dizia isso na tabela e no gráfico
+  // ("mínimo de 5"), mas o KPI do topo mostrava "0,0% de atendimento" em cima de UMA
+  // ligação — o mesmo acerto isolado que o mínimo existe pra evitar, com o sinal trocado.
+  const taxa = tot.fez >= MIN_LIGACOES_TAXA ? (tot.atendidas_fez / tot.fez) * 100 : null
+  const taxaAnt = totAnt && totAnt.fez >= MIN_LIGACOES_TAXA ? (totAnt.atendidas_fez / totAnt.fez) * 100 : null
   const outras = Math.max(0, tot.fez - tot.atendidas_fez - tot.perdidas)
+  // ⚠️ "Atendidas" no KPI e no donut é SÓ do que ele ligou (atendidas_fez); o resumo do
+  // banco também tem `atendidas`, das duas direções, e é ela que sustenta o tempo ao
+  // telefone. Sem mostrar esta diferença a tela dizia "0 atendidas · 14min31 ao telefone"
+  // e parecia quebrada — era uma recebida atendida, que não tinha onde aparecer.
+  const atendidasRecebeu = Math.max(0, tot.atendidas - tot.atendidas_fez)
   // ⚠️ "Tempo ao telefone" soma OS DOIS SENTIDOS — é o tempo que ele passou falando
   // com cliente, tenha ele ligado ou atendido. Por isso a média divide por TODAS as
   // atendidas, não só pelas que ele fez: antes o numerador contava as duas direções e o
@@ -228,8 +277,12 @@ export function Ligacoes() {
              delta={pctDelta(tot.fez, totAnt?.fez)} rotuloDelta={ROTULO_ANTERIOR[periodo]} />
         <Kpi icone={Users} cor="text-accent" rotulo="Clientes chamados" valor={tot.clientes_fez}
              nota={tot.clientes_fez > 0 ? `${(tot.fez / tot.clientes_fez).toFixed(1).replace('.', ',')} ligações por cliente` : undefined} />
-        <Kpi icone={PhoneCall} cor="text-success" rotulo="Atendidas" valor={tot.atendidas_fez}
-             nota={taxa !== null ? `${taxa.toFixed(1).replace('.', ',')}% de atendimento` : undefined}
+        <Kpi icone={PhoneCall} cor="text-success" rotulo="Atendidas (que ele ligou)" valor={tot.atendidas_fez}
+             nota={[
+               taxa !== null ? `${taxa.toFixed(1).replace('.', ',')}% de atendimento`
+                             : tot.fez > 0 ? `de ${tot.fez} que ligou` : undefined,
+               atendidasRecebeu > 0 ? `+${atendidasRecebeu} que ele recebeu` : undefined,
+             ].filter(Boolean).join(' · ') || undefined}
              delta={taxa !== null && taxaAnt !== null ? { valor: taxa - taxaAnt, unidade: 'pp' } : null}
              rotuloDelta={ROTULO_ANTERIOR[periodo]} />
         {/* ⚠️ DUAS COISAS DIFERENTES, e a tela tratava como uma só:
@@ -261,7 +314,8 @@ export function Ligacoes() {
           <EvolucaoLigacoes serie={serie} truncado={truncado} />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4">
-            <ResultadoLigacoes atendidas={tot.atendidas_fez} perdidas={tot.perdidas} outras={outras} video={tot.video_fez} />
+            <ResultadoLigacoes atendidas={tot.atendidas_fez} perdidas={tot.perdidas} outras={outras}
+                               video={tot.video_fez} atendidasRecebeu={atendidasRecebeu} />
             <PorVendedor linhas={linhas} />
           </div>
 
@@ -277,11 +331,16 @@ export function Ligacoes() {
       )}
 
       <p className="mt-4 text-[11px] leading-relaxed text-ink-faint">
-        <b className="text-ink-muted">Atendidas</b> inclui quem atendeu no celular (o WhatsApp marca{' '}
-        <i>AcceptedElsewhere</i>) — contar só as atendidas no computador puniria justamente quem
-        trabalha com o telefone na mão. <b className="text-ink-muted">Taxa de atendimento</b> é sobre
-        as ligações que o vendedor FEZ, e só aparece com {MIN_LIGACOES_TAXA}+ ligações: abaixo disso
-        um acerto isolado vira 100%. <b className="text-ink-muted">Clientes chamados</b> conta contatos
+        <b className="text-ink-muted">Atendidas (que ele ligou)</b> conta só o que o vendedor discou,
+        e inclui quem atendeu no celular (o WhatsApp marca <i>AcceptedElsewhere</i>) — contar só as
+        atendidas no computador puniria justamente quem trabalha com o telefone na mão. As que ele
+        recebeu e atendeu aparecem ao lado, com sinal de mais, porque são elas que explicam o tempo
+        ao telefone sem entrar na taxa dele. <b className="text-ink-muted">Taxa de atendimento</b> é
+        sobre as ligações que o vendedor FEZ, e só aparece com {MIN_LIGACOES_TAXA}+ ligações: abaixo
+        disso um acerto isolado vira 100% e um erro isolado vira 0%. Nas ligações recentes o rótulo
+        muda conforme o sentido — <b className="text-ink-muted">ele desistiu antes</b> é o vendedor
+        que desligou antes de atenderem; <b className="text-ink-muted">cliente desistiu antes</b> é o
+        cliente que ligou, cansou de chamar e desligou: essa vale retornar. <b className="text-ink-muted">Clientes chamados</b> conta contatos
         DIFERENTES — quem liga cinco vezes pro mesmo produtor fez cinco ligações e alcançou um.{' '}
         <b className="text-ink-muted">Cliente não atendeu</b> e <b className="text-ink-muted">perdeu do
         cliente</b> são coisas diferentes: a primeira é ligação que o vendedor fez e ninguém atendeu
@@ -550,7 +609,7 @@ function LinhaVendedor({ r, maxFez, janela, aberto, onToggle }: {
           ) : (
             <div className="rounded-xl border border-border/60 bg-surface divide-y divide-border/40 max-h-[420px] overflow-y-auto">
               {lista.map(l => {
-                const d = desfecho(l.estado)
+                const d = desfecho(l.estado, l.outgoing)
                 return (
                   <div key={l.call_id} className="flex items-center gap-x-2 gap-y-1 px-3 py-2 text-[12px] flex-wrap">
                     {l.outgoing
