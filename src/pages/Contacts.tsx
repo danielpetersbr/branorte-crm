@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useContacts, useUpdateContact, useBulkAssign } from '@/hooks/useContacts'
-import { usePegarPraMim, useMeuPlacar, useRelatorioContatos, useViolacoes, MOTIVO_RECUSA_LABEL, type MotivoRecusa } from '@/hooks/useMeusContatos'
+import { usePegarPraMim, useMeuPlacar, useRelatorioContatos, useViolacoes, useDefinirDono, MOTIVO_RECUSA_LABEL, type MotivoRecusa } from '@/hooks/useMeusContatos'
 import { PainelDonos } from '@/components/contacts/PainelDonos'
 import { useVendors } from '@/hooks/useVendors'
 import { Input } from '@/components/ui/Input'
@@ -424,6 +424,7 @@ export function Contacts() {
   const { data: relatorio } = useRelatorioContatos(!!profile)
   const [verViolacoes, setVerViolacoes] = useState(false)
   const { data: violacoes, isLoading: carregandoViolacoes } = useViolacoes(verViolacoes)
+  const definirDono = useDefinirDono()
 
   // Vendor só vê dropdown com ele mesmo + "não atribuído". Admin vê todos.
   const isVendor = profile?.role === 'vendor'
@@ -630,6 +631,8 @@ export function Contacts() {
         onVerViolacoes={setVerViolacoes}
         poolAtivo={poolAtivo}
         onPool={irParaPool}
+        podeResolver={ehAdmin}
+        definirDono={definirDono}
       />
 
       {/* Pedido do Daniel: entre o titulo e a area de busca. Reage aos filtros

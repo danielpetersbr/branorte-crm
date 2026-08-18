@@ -143,9 +143,40 @@ export interface Violacao {
   uf: string | null
   n_orcamentos: number
   ano_recente: number | null
+  /** Nome do vendedor no catálogo; se ninguém casou, o nome CRU do arquivo. */
   vendedores: string
-  /** 'disputa' = 2+ vendedores | 'orfao' = nenhum sabe | 'propagar' = devia ter sido carimbado */
-  tipo: 'disputa' | 'orfao' | 'propagar'
+  /**
+   * 'disputa'     = 2+ vendedores ativos no histórico (decisão humana)
+   * 'ex_vendedor' = o arquivo diz o nome, mas essa pessoa saiu da empresa
+   * 'orfao'       = nenhuma pista de quem foi
+   * 'propagar'    = 1 vendedor ativo e o contato ficou sem — não deveria existir
+   */
+  tipo: 'disputa' | 'ex_vendedor' | 'orfao' | 'propagar'
+  /** Vendedores ATIVOS que constam no histórico — as opções honestas de dono. */
+  vendedores_sugeridos: { id: string; nome: string }[]
+}
+
+/**
+ * Dar dono a um contato órfão. Só admin (a RPC recusa o resto) e **nunca
+ * sobrescreve dono existente** — mesmo princípio do resto: o banco é a fonte da
+ * verdade, sem last-write-wins.
+ */
+export function useDefinirDono() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ contactId, vendorId }: { contactId: string; vendorId: string }) => {
+      const { data, error } = await (supabase as any).rpc('contato_definir_dono', {
+        p_contact_id: contactId, p_vendor_id: vendorId,
+      })
+      if (error) throw error
+      return data as { ok: boolean; erro?: string; vendedor?: string }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['contatos-violacoes'] })
+      qc.invalidateQueries({ queryKey: ['contatos-relatorio'] })
+      qc.invalidateQueries({ queryKey: ['contacts'] })
+    },
+  })
 }
 
 export function useViolacoes(habilitado = false) {

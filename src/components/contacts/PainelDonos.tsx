@@ -30,6 +30,16 @@ import { MOTIVO_FORA_LABEL, type MeuPlacar, type RelatorioContatos, type Violaca
  * a torneira vazou de novo.
  */
 
+const TIPO_LABEL: Record<string, string> = {
+  disputa: 'disputa', ex_vendedor: 'ex-vendedor', orfao: 'órfão', propagar: 'propagar',
+}
+const TIPO_AJUDA: Record<string, string> = {
+  disputa: 'Mais de um vendedor ativo no histórico. Pode também ser telefone FUNDIDO pela regra do 9º dígito — dois clientes diferentes no mesmo contato. Confira antes de decidir.',
+  ex_vendedor: 'O orçamento diz o nome de quem atendeu, mas essa pessoa não está mais na lista de vendedores ativos. O nome aparece cru, do arquivo.',
+  orfao: 'Nenhum orçamento identifica o vendedor: arquivo sem identificação.',
+  propagar: 'Um vendedor ativo consta no orçamento e o contato ficou sem. Não deveria aparecer aqui — se aparecer, a propagação automática vazou.',
+}
+
 function Numero({
   icone: Icone, rotulo, valor, cor, ajuda, onClick, ativo,
 }: {
@@ -72,6 +82,7 @@ function Numero({
 export function PainelDonos({
   relatorio, placar, violacoes, carregandoViolacoes,
   verViolacoes, onVerViolacoes, poolAtivo, onPool,
+  podeResolver = false, definirDono,
 }: {
   relatorio: RelatorioContatos | null | undefined
   placar: MeuPlacar | null | undefined
@@ -79,9 +90,12 @@ export function PainelDonos({
   carregandoViolacoes: boolean
   verViolacoes: boolean
   onVerViolacoes: (v: boolean) => void
-  /** O recorte "sem dono e sem orçamento" está ligado? */
+  /** O recorte do pool está ligado? */
   poolAtivo: boolean
   onPool: () => void
+  /** Só admin resolve violação (a RPC recusa o resto de qualquer jeito). */
+  podeResolver?: boolean
+  definirDono?: { mutate: (v: { contactId: string; vendorId: string }) => void; isPending: boolean }
 }) {
   const [verPorVendedor, setVerPorVendedor] = useState(false)
   if (!relatorio) return null
@@ -258,6 +272,7 @@ export function PainelDonos({
                       <th className="w-[64px]">Ano</th>
                       <th>Vendedor no orçamento</th>
                       <th className="w-[92px]">Tipo</th>
+                      {podeResolver && <th className="w-[150px]">Dar dono</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -273,26 +288,48 @@ export function PainelDonos({
                         <td className="px-2.5 py-1.5 text-ink-muted truncate max-w-0">{l.vendedores}</td>
                         <td className="px-2.5 py-1.5">
                           <span
-                            title={
-                              l.tipo === 'disputa'
-                                ? 'Mais de um vendedor no histórico. Pode também ser telefone fundido (dois clientes no mesmo contato) — confira antes de decidir.'
-                                : l.tipo === 'orfao'
-                                ? 'Nenhum orçamento identifica o vendedor: ex-vendedor ou arquivo sem identificação.'
-                                : 'Um vendedor conhecido consta no orçamento e o contato ficou sem — não deveria aparecer aqui.'
-                            }
+                            title={TIPO_AJUDA[l.tipo] ?? ''}
                             className={cn(
                               'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] font-medium',
                               l.tipo === 'disputa' && 'bg-warning-bg text-warning',
+                              l.tipo === 'ex_vendedor' && 'bg-info-bg text-info',
                               l.tipo === 'orfao' && 'bg-surface-2 text-ink-muted',
                               l.tipo === 'propagar' && 'bg-danger-bg text-danger',
                             )}
                           >
                             {l.tipo === 'disputa' ? <Scale className="h-3 w-3" aria-hidden />
-                              : l.tipo === 'orfao' ? <UserMinus className="h-3 w-3" aria-hidden />
-                              : <FileWarning className="h-3 w-3" aria-hidden />}
-                            {l.tipo === 'disputa' ? 'disputa' : l.tipo === 'orfao' ? 'órfão' : 'propagar'}
+                              : l.tipo === 'propagar' ? <FileWarning className="h-3 w-3" aria-hidden />
+                              : <UserMinus className="h-3 w-3" aria-hidden />}
+                            {TIPO_LABEL[l.tipo] ?? l.tipo}
                           </span>
                         </td>
+                        {/* A AÇÃO QUE FALTAVA: o painel mostrava 2.004 problemas e
+                            não deixava resolver nenhum. Só oferece os vendedores
+                            ATIVOS que constam no histórico daquele contato —
+                            escolher da lista inteira seria chute. */}
+                        {podeResolver && (
+                          <td className="px-2.5 py-1.5">
+                            {l.vendedores_sugeridos.length === 0 ? (
+                              <span className="text-[11px] text-ink-faint" title="Nenhum vendedor ativo consta no histórico deste contato — não há opção honesta pra sugerir.">
+                                sem candidato
+                              </span>
+                            ) : (
+                              <div className="flex flex-wrap gap-1">
+                                {l.vendedores_sugeridos.map(s => (
+                                  <button
+                                    key={s.id}
+                                    disabled={definirDono?.isPending}
+                                    onClick={() => definirDono?.mutate({ contactId: l.contact_id, vendorId: s.id })}
+                                    className="rounded border border-border px-1.5 py-0.5 text-[10.5px] text-ink-muted hover:text-ink hover:border-border-strong disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                                    title={`Marcar ${s.nome} como dono deste contato. Não sobrescreve dono existente.`}
+                                  >
+                                    {s.nome}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
