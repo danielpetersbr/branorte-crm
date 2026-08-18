@@ -430,8 +430,21 @@ export function Contacts() {
   const vendors = isVendor && profile?.vendor_id
     ? (vendorsData ?? []).filter(v => v.id === profile.vendor_id)
     : (vendorsData ?? [])
+  /*
+   * "Não atribuído" NÃO é mais só `vendor_id IS NULL`.
+   *
+   * Regra ditada pelo Daniel em 18/08/2026: tem que ser contato que NINGUÉM
+   * nunca conversou e não é de outro — sem etiqueta, sem conversa no WhatsApp,
+   * sem orçamento, sem ser duplicata de um cliente que já tem dono. É o que o
+   * vendedor pode puxar sem risco de ligar pro cliente do colega.
+   *
+   * Quem quiser o número cru (para auditoria) tem "Sem vendedor (todos)".
+   * Esconder os 5.085 que ficaram de fora sem oferecer jeito de vê-los seria
+   * trocar um problema por outro.
+   */
   const vendorSelectOptions = [
-    { value: 'unassigned', label: 'Não atribuído' },
+    { value: 'unassigned', label: 'Não atribuído (livre)' },
+    { value: 'unassigned_all', label: 'Sem vendedor (todos)' },
     ...vendors.map(v => ({ value: v.id, label: v.name })),
   ]
   const contacts = data?.contacts ?? []
@@ -439,7 +452,10 @@ export function Contacts() {
   // Selecao morre quando a LISTA muda (pagina/filtro/ordem). Sem isto o usuario
   // filtra, some da tela quem estava marcado, e o "Atribuir" leva junto contato
   // que ele nao esta mais vendo — o pior tipo de acao em massa.
-  useEffect(() => { setSelectedIds(new Set()) }, [filters])
+  // O RESULTADO do "pegar" morre junto: sem isto ele sobrevive a troca de
+  // filtro/pagina/ordenacao e o vendedor le "3 contatos agora sao seus" achando
+  // que e do clique novo.
+  useEffect(() => { setSelectedIds(new Set()); pegar.reset() }, [filters])
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev)
@@ -537,13 +553,41 @@ export function Contacts() {
    * Zera busca, faixa e etiqueta de propósito: é um recorte inteiro, não um
    * filtro que se soma ao que estava.
    */
-  const poolAtivo = filters.vendor_id === 'unassigned' && !!filters.sem_orcamento
+  /*
+   * O pool agora e o proprio sentinela 'unassigned' (a RPC ja exclui quem tem
+   * conversa/etiqueta/orcamento/duplicata), entao nao precisa mais somar
+   * `sem_orcamento` — que era o que fazia o card e o Select discordarem.
+   */
+  const poolAtivo = filters.vendor_id === 'unassigned'
+  /*
+   * DESLIGAR devolve o usuario para onde ele estava, nao para "vazio".
+   *
+   * A 1a versao jogava vendor_id para '' e o vendedor, que abre a tela
+   * pre-filtrado no proprio nome, caia numa lista de 180 mil ao clicar duas
+   * vezes no card. Guardo o recorte anterior e restauro.
+   */
+  const [antesDoPool, setAntesDoPool] = useState<Partial<ContactFilters> | null>(null)
   const irParaPool = () => {
+    if (poolAtivo) {
+      const volta = antesDoPool
+      setAntesDoPool(null)
+      setSearchInput(volta?.search ?? '')
+      setFilters(f => ({ ...f, ...(volta ?? { vendor_id: '' }), page: 0 }))
+      return
+    }
+    setAntesDoPool({
+      vendor_id: filters.vendor_id, sem_orcamento: filters.sem_orcamento,
+      orcamento: filters.orcamento, orcamento_ano: filters.orcamento_ano,
+      orcamento_mes: filters.orcamento_mes, search: filters.search,
+      faixa: filters.faixa, etiqueta: filters.etiqueta,
+      estado: filters.estado, status: filters.status, temperatura: filters.temperatura,
+    })
     setSearchInput('')
-    setFilters(f => poolAtivo
-      ? { ...f, vendor_id: '', sem_orcamento: false, page: 0 }
-      : { ...f, vendor_id: 'unassigned', sem_orcamento: true, orcamento: false,
-          orcamento_ano: '', orcamento_mes: '', search: '', faixa: '', etiqueta: '', page: 0 })
+    // Recorte INTEIRO: zera tambem estado/status/temperatura, senao o card diz
+    // 167.741 e a lista abre 43 mil por causa de um "SP" que ficou de pe.
+    setFilters(f => ({ ...f, vendor_id: 'unassigned', sem_orcamento: false, orcamento: false,
+      orcamento_ano: '', orcamento_mes: '', search: '', faixa: '', etiqueta: '',
+      estado: '', status: '', temperatura: '', page: 0 }))
   }
 
   // Busca só aplica no submit (Enter). Sem uma dica, o usuário digitava e
@@ -637,7 +681,11 @@ export function Contacts() {
             placeholder="Ano"
             aria-label="Ano do orçamento"
             value={filters.orcamento_ano}
-            onChange={e => setFilters(f => ({ ...f, orcamento_ano: e.target.value, orcamento_mes: '', orcamento: false, page: 0 }))}
+            /* `sem_orcamento: false` tambem: escolher um ANO com "Sem orcamento"
+               ligado pede contatos que tem orcamento naquele ano E nao tem
+               orcamento nenhum — lista vazia, os dois chips acesos e nada na tela
+               explicando. Escolher o ano E pedir orcamento; desliga o oposto. */
+            onChange={e => setFilters(f => ({ ...f, orcamento_ano: e.target.value, orcamento_mes: '', orcamento: false, sem_orcamento: false, page: 0 }))}
             className="w-full lg:w-[86px]"
           />
           {filters.orcamento_ano && (
@@ -774,6 +822,23 @@ export function Contacts() {
           </Card>
         ) : contacts.length === 0 ? (
           <Card className="p-8 text-center">
+            {/* O resultado do "Pegar pra mim" tem que sobreviver a lista ficar
+                vazia: no Pool, pegar um contato TIRA ele do filtro — quem marca
+                os ultimos 4 da pagina ve a lista esvaziar e, sem isto, nunca le
+                quantos entraram nem por que os outros nao entraram. */}
+            {resultadoPegar && (
+              <div className="mb-4 rounded-md border border-border bg-surface-2 px-2.5 py-2 text-left text-[12.5px]" aria-live="polite">
+                <span className="font-medium text-ink">
+                  {resultadoPegar.n_pegos ?? 0} contato{(resultadoPegar.n_pegos ?? 0) === 1 ? '' : 's'} agora {(resultadoPegar.n_pegos ?? 0) === 1 ? 'é seu' : 'são seus'}.
+                </span>
+                {!!recusasPorMotivo.length && (
+                  <span className="text-ink-muted">
+                    {' '}Não deu pra pegar {recusasPorMotivo.reduce((s, r) => s + r.qtd, 0)}:{' '}
+                    {recusasPorMotivo.map(r => `${r.qtd} ${r.label}`).join('; ')}.
+                  </span>
+                )}
+              </div>
+            )}
             <SearchX className="h-8 w-8 mx-auto text-ink-faint" aria-hidden />
             <p className="mt-3 text-[14px] font-medium text-ink">
               {isPaused ? 'Sem conexão' : 'Nenhum contato com esses filtros'}
@@ -864,7 +929,15 @@ export function Contacts() {
                         onClick={() => {
                           if (selectedIds.size === 0) return
                           pegar.mutate(Array.from(selectedIds), {
-                            onSuccess: () => setSelectedIds(new Set()),
+                            // Limpa SO o que entrou. Se a RPC recusou todos, a
+                            // selecao fica de pe: o vendedor acabou de marcar 30
+                            // contatos e vai querer fazer outra coisa com eles,
+                            // nao remarcar um por um.
+                            onSuccess: (r) => {
+                              const pegos = new Set(r.pegos ?? [])
+                              if (!pegos.size) return
+                              setSelectedIds(prev => new Set([...prev].filter(id => !pegos.has(id))))
+                            },
                           })
                         }}
                       >
