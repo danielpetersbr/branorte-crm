@@ -530,17 +530,17 @@ export function Atendimentos() {
                    icon={Calendar}        hint={kpis.hoje === 0 ? 'Nenhum lead hoje' : 'leads novos'}
                    active={filters.data === 'hoje'}
                    onClick={() => setFilters(f => ({ ...f, data: f.data === 'hoje' ? '' as DataPreset : 'hoje', page: 0 }))} />
-          {/* ⚠️ "Qualificados" mudou de régua em 18/08 (Daniel): qualificado = CHEGOU NA MÃO DE
-              UM VENDEDOR e o cliente falou alguma coisa. O corte de negócio é o handoff, não o
-              assunto da mensagem — a régua anterior (vocabulário de produto/preço) deixava de
-              fora quem já estava sendo atendido mas ainda não tinha dito "preço".
-              ⚠️ O "e o cliente falou" NÃO é firula: quem preenche `responsavel` é o ROTEAMENTO
-              AUTOMÁTICO, então só-handoff conta gente que nunca abriu a boca. Medido em 7 dias
-              (524 leads): só-handoff = 325, sendo 138 clientes MUDOS. Com resposta: 187.
-              A régua de texto antiga dava 152. */}
+          {/* QUALIFICADO = PASSOU PRO VENDEDOR. Régua do Daniel, reafirmada em 18/08 depois de
+              eu apresentar a medição contrária. Não olha mensagem: tem `responsavel`, é
+              qualificado. Por construção é o complemento exato de "Pra pegar" (sem dono).
+              ⚠️ Quem for mexer precisa saber (7 dias, 524 leads): `responsavel` é preenchido
+              pelo ROTEAMENTO AUTOMÁTICO, não por decisão humana. Dos 325 com vendedor, em 138
+              o cliente nunca escreveu nada e em 98 nem o vendedor tinha escrito. O card mede
+              DISTRIBUIÇÃO — mexe quando o roteamento mexe (cota, vendedor desligado), não
+              quando o cliente esquenta. Em ago/26 essa fatia caiu de 96% pra 52%. */}
           <KpiCard label="Qualificados" value={acao?.qualificados ?? 0} hero tone="success" icon={Flame}
-                   hint={(acao?.qualificados ?? 0) === 0 ? 'nenhum na mão do vendedor ainda' : 'com vendedor e já responderam'}
-                   tooltip={'Lead que já tem VENDEDOR responsável e o cliente escreveu ao menos uma mensagem. É lead que passou do roteamento e tem alguém do outro lado — vale energia agora.\n\nNão soma com os outros cards — é uma leitura de qualidade, não um balde do funil: o mesmo lead pode estar em "Esperando resposta" e ser qualificado.\n\n⚠️ Quem tem dono mas nunca respondeu NÃO entra: `responsavel` é preenchido pelo roteamento automático, não por decisão de ninguém.'} />
+                   hint={(acao?.qualificados ?? 0) === 0 ? 'nenhum passou pro vendedor' : 'passaram pro vendedor'}
+                   tooltip={'Lead que já tem VENDEDOR responsável — passou do roteamento e está na mão de alguém.\n\nNão soma com os outros cards: é o complemento de "Pra pegar" (todo lead ou tem dono, ou está sem dono).\n\n⚠️ Não olha se o cliente respondeu. Quem preenche o responsável é o roteamento automático, então entra também quem ainda não abriu a boca — o card mede DISTRIBUIÇÃO, e cai quando o roteamento trava (cota, vendedor desligado).'} />
           {/* ⚠️ 13/08: "Não engajaram / nem começou o bot" SAIU daqui. A regra era
               !motivo_contato && !tocou_botao_em — dois campos do QUIZ DA LP, que lead de
               click-to-WhatsApp nunca preenche. Media por origem em 30d: Facebook Formulário

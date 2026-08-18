@@ -770,7 +770,7 @@ export interface AtendimentoKpisAcao {
   semRetorno: number           // abordamos e ele nunca respondeu → follow-up
   // ⚠️ qualificados NÃO entra na soma dos 5 acima — é ortogonal. Um lead pode ser
   // 'esperandoResposta' E qualificado ao mesmo tempo.
-  qualificados: number         // tem vendedor responsável E o cliente já respondeu (18/08)
+  qualificados: number         // passou pro vendedor (tem responsável) — complemento de semDono
 }
 
 export function useAtendimentoKpisAcao(filters?: Partial<AtendimentoFilters>) {
