@@ -653,8 +653,10 @@ export function PrecosBranorte() {
             )}
           </div>
 
-          {/* FILEIRA 2 — categorias DENTRO da etapa aberta */}
-          {grupoSel && categorias.length > 1 && (
+          {/* FILEIRA 2 — categorias. SEMPRE visível: com etapa aberta mostra as dela,
+              sem etapa mostra TODAS as 22. Ficava escondida atrás de um clique e o
+              dono pediu as categorias alcançáveis direto. */}
+          {categorias.length > 1 && (
           <div className="flex flex-wrap gap-1.5">
             <button
               onClick={() => setCatSelecionada(null)}
@@ -664,7 +666,7 @@ export function PrecosBranorte() {
                   : 'bg-surface-2 text-ink-muted hover:bg-surface-3 hover:text-ink border border-border'
               }`}
             >
-              Tudo da etapa ({contaGrupo.get(grupoSel) ?? 0})
+              {grupoSel ? `Tudo da etapa (${contaGrupo.get(grupoSel) ?? 0})` : `Todas (${totalGeral})`}
             </button>
             {categorias.map(([cat, qtd]) => (
               <button
@@ -691,10 +693,10 @@ export function PrecosBranorte() {
 
         {/* Sem etapa escolhida e sem busca, a tela NAO despeja as 484 linhas em 22
             secoes — que era a rolagem infinita. Mostra o convite e para. */}
-        {!grupoSel && !busca ? (
+        {!grupoSel && !catSelecionada && !busca ? (
           <div className="bg-surface border border-border rounded-lg p-8 text-center">
             <BookOpen className="w-6 h-6 text-ink-faint mx-auto mb-2" />
-            <p className="text-[13px] text-ink">Escolha uma etapa da fábrica acima</p>
+            <p className="text-[13px] text-ink">Escolha uma etapa ou uma categoria acima</p>
             <p className="text-[12px] text-ink-muted mt-1">
               ou busque direto por nome, código, capacidade ou potência — a busca varre as {totalGeral} linhas de uma vez.
             </p>
