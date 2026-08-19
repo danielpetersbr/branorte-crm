@@ -482,6 +482,28 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
   })
   const leadsDe = (nome: string) => leadsHoje?.[(nome.split(/\s+/)[0] || '').toUpperCase()] ?? 0
 
+  // Ligações ATENDIDAS e contatos puxados da prospecção, ambos do dia (pedido do Daniel 19/08).
+  //
+  // ⚠️ É "atendidas", NÃO "que ele fez" — e a diferença não é preciosismo: a DIREÇÃO da
+  // chamada não é confiável. Medido em 18/08, das 801 chamadas presentes nas duas fontes,
+  // 7% têm direção conflitante, e pros dois lados. Por isso o ranking nominal de "quem mais
+  // ligou" está travado (LIGACAO_REGUA_CONFIAVEL=false). O DESFECHO é outro campo e é
+  // confiável — dá pra dizer que o cliente atendeu sem saber quem discou.
+  type LigProsp = { atendidas: number; ligTotal: number; puxados: number; trabalhados: number }
+  const { data: ligProsp } = useQuery<Record<string, LigProsp>>({
+    queryKey: ['escritorio-lig-prospec-hoje'],
+    queryFn: async () => {
+      const { data } = await supabase.rpc('escritorio_ligacoes_prospec_hoje')
+      const m: Record<string, LigProsp> = {}
+      for (const r of (data ?? []) as Array<Record<string, any>>) {
+        m[r.vend] = { atendidas: r.lig_atendidas ?? 0, ligTotal: r.lig_total ?? 0, puxados: r.prospec_puxados ?? 0, trabalhados: r.prospec_trabalhados ?? 0 }
+      }
+      return m
+    },
+    refetchInterval: 30000,
+  })
+  const ligProspDe = (nome: string) => ligProsp?.[(nome.split(/\s+/)[0] || '').toUpperCase()]
+
   // Funil ao vivo por vendedor (etiquetas do heartbeat via RPC) — QUENTE/NOVO LEAD/etc.
   type Funil = { aberto: number; prospec: number; novoLead: number; tentativa: number; followup: number; quente: number; orcamento: number; vendido: number; perdidos: number; totalChats: number; atendimentos: number; msgs: number }
   const { data: funil } = useQuery<Record<string, Funil>>({
@@ -1051,6 +1073,23 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
                         <span className="px-1.5 py-1 text-sky-300 flex items-center gap-0.5" title="orçamentos feitos hoje">📄{orcDe(nome)}</span>
                         <span className="px-1.5 py-1 text-violet-300 flex items-center gap-0.5" title="atendimentos hoje (chats trabalhados no dia)">💬{funil?.[nome]?.atendimentos ?? 0}</span>
                         <span className="px-1.5 py-1 text-indigo-300 flex items-center gap-0.5" title="contatos na etiqueta FOLLOW UP">🔔{funil?.[nome]?.followup ?? 0}</span>
+                        {/* Ligações ATENDIDAS hoje. Não é "ligações que ele fez": a direção da
+                            chamada é errada em 7% dos casos (medido), então dizer "fez" seria
+                            cobrar a pessoa errada. Atendida = Completed + AcceptedElsewhere —
+                            esta última é atendida NO CELULAR, e ignorá-la puniria quem atende
+                            no telefone. */}
+                        <span className="px-1.5 py-1 text-teal-300 flex items-center gap-0.5"
+                              title={`ligações ATENDIDAS pelo cliente hoje: ${ligProspDe(nome)?.atendidas ?? 0} de ${ligProspDe(nome)?.ligTotal ?? 0} chamadas.\n\nConta "atendida no celular" também.\nNão diz quem discou — a direção da chamada não é confiável (7% vêm trocadas).`}>
+                          📞{ligProspDe(nome)?.atendidas ?? 0}
+                        </span>
+                        {/* Prospecção puxada hoje. Mostro TRABALHADOS (quem ele encostou) e o
+                            total puxado só no tooltip: medido em 19/08, o LUCAS puxou 43 e
+                            devolveu 42 clicando PRÓXIMO. Número cheio faria quem mais descarta
+                            parecer quem mais produz. */}
+                        <span className="px-1.5 py-1 text-amber-300 flex items-center gap-0.5"
+                              title={`prospecção de hoje: ${ligProspDe(nome)?.trabalhados ?? 0} contato(s) trabalhado(s) de ${ligProspDe(nome)?.puxados ?? 0} puxado(s).\n\nTrabalhado = ele encostou no contato (mandou mensagem/agiu).\nPuxado sem trabalhar = clicou PRÓXIMO e devolveu pro pool.`}>
+                          🎯{ligProspDe(nome)?.trabalhados ?? 0}<span className="opacity-45 font-bold">/{ligProspDe(nome)?.puxados ?? 0}</span>
+                        </span>
                         {quente > 0 && <span className="px-1.5 py-1 text-orange-300 flex items-center gap-0.5" title="leads quentes no funil">🔥{quente}</span>}
                       </span>
                     )}
