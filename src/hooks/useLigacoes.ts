@@ -53,6 +53,10 @@ export interface LigacaoResumo {
   clientes: number
   clientes_fez: number
   clientes_recebeu: number
+  // Com quantas PESSOAS ele conversou de fato: contato distinto com pelo menos uma
+  // chamada atendida, nos dois sentidos. Cinco tentativas até pegar o mesmo produtor
+  // são cinco ligações e UMA conversa — e é a conversa que move venda.
+  clientes_falados: number
   video_fez: number
   clientes_video: number
   ultima: string | null

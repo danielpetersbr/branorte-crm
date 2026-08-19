@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import {
-  PhoneCall, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, Users, ChevronDown, Video,
+  PhoneCall, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, Users, UserCheck, ChevronDown, Video,
   ArrowUp, ArrowDown, Minus, Sparkles, X, Filter,
 } from 'lucide-react'
 import {
@@ -163,9 +163,13 @@ function somar(linhas: LigacaoResumo[]) {
     perdidas_recebidas: a.perdidas_recebidas + r.perdidas_recebidas,
     retornadas: a.retornadas + r.retornadas,
     tempo_seg: a.tempo_seg + r.tempo_seg,
+    // ⚠️ Somar contagem DISTINTA de cada vendedor não dá distinto global: o produtor que
+    // falou com dois vendedores conta duas vezes. É o total de conversas do TIME, não de
+    // pessoas na base — mesma régua que `clientes_fez` já usava.
     clientes_fez: a.clientes_fez + r.clientes_fez,
+    clientes_falados: a.clientes_falados + r.clientes_falados,
     video_fez: a.video_fez + r.video_fez,
-  }), { fez: 0, recebeu: 0, atendidas_fez: 0, atendidas: 0, perdidas: 0, perdidas_recebidas: 0, retornadas: 0, tempo_seg: 0, clientes_fez: 0, video_fez: 0 })
+  }), { fez: 0, recebeu: 0, atendidas_fez: 0, atendidas: 0, perdidas: 0, perdidas_recebidas: 0, retornadas: 0, tempo_seg: 0, clientes_fez: 0, clientes_falados: 0, video_fez: 0 })
 }
 
 export function Ligacoes() {
@@ -282,11 +286,27 @@ export function Ligacoes() {
       </details>
 
       {/* ── Linha 1: KPIs ───────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-2.5 lg:gap-3 mb-4">
+      {/* ⚠️ 4 POR FILEIRA, não 8 — MEDIDO em 19/08/2026 na tela do Daniel (1920px):
+          com `xl:grid-cols-7` o cartão tinha 168px e "Atendidas (que ele ligou)" JÁ
+          cortava (127px de texto em 120 de espaço). Em 8 colunas sobrariam ~78px e
+          cortaria quase todos — e rótulo cortado ("Atendidas" sem o "que ele ligou")
+          foi exatamente o que fez a tela mentir. Em 4 colunas o cartão vai a 302px,
+          nada corta, e custa uma fileira a mais de altura. */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 lg:gap-3 mb-4">
         <Kpi icone={PhoneOutgoing} cor="text-accent" rotulo="Ligações realizadas" valor={tot.fez}
              delta={pctDelta(tot.fez, totAnt?.fez)} rotuloDelta={ROTULO_ANTERIOR[periodo]} />
         <Kpi icone={Users} cor="text-accent" rotulo="Clientes chamados" valor={tot.clientes_fez}
              nota={tot.clientes_fez > 0 ? `${(tot.fez / tot.clientes_fez).toFixed(1).replace('.', ',')} ligações por cliente` : undefined} />
+        {/* ⚠️ "Chamados" e "conversados" são perguntas diferentes, e só a segunda é
+            resultado: discar 83 números e falar com 30 pessoas é um dia; discar 83 e
+            falar com 70 é outro. Conta os DOIS sentidos — o cliente que ligou e foi
+            atendido conversou igual. */}
+        <Kpi icone={UserCheck} cor="text-success" rotulo="Clientes conversados" valor={tot.clientes_falados}
+             nota={[
+               tot.clientes_fez > 0 && tot.clientes_falados > 0
+                 ? `${Math.round((tot.clientes_falados / tot.clientes_fez) * 100)}% dos que chamou` : undefined,
+               tot.atendidas > 0 ? `${tot.atendidas} ligações atendidas no total` : undefined,
+             ].filter(Boolean).join(' · ') || undefined} />
         <Kpi icone={PhoneCall} cor="text-success" rotulo="Atendidas (que ele ligou)" valor={tot.atendidas_fez}
              nota={[
                taxa !== null ? `${taxa.toFixed(1).replace('.', ',')}% de atendimento`
@@ -359,6 +379,11 @@ export function Ligacoes() {
         fim: as duas contam igual, porque o cliente ficou sem falar com ninguém dos dois jeitos.{' '}
         <b className="text-ink-muted">Clientes chamados</b> conta contatos
         DIFERENTES — quem liga cinco vezes pro mesmo produtor fez cinco ligações e alcançou um.{' '}
+        <b className="text-ink-muted">Clientes conversados</b> é com quantos desses ele realmente
+        FALOU: contato diferente com pelo menos uma chamada atendida, tendo sido ele a ligar ou o
+        cliente — atender quem ligou é conversa igual. Discar 83 números e falar com 30 pessoas é um
+        dia; discar 83 e falar com 70 é outro. Somando o time, o produtor que falou com dois
+        vendedores conta duas vezes: é total de conversas, não de gente na base.{' '}
         <b className="text-ink-muted">Cliente não atendeu</b> e <b className="text-ink-muted">perdeu do
         cliente</b> são coisas diferentes: a primeira é ligação que o vendedor fez e ninguém atendeu
         do outro lado; a segunda é o cliente ligando e o vendedor não atendendo — essa é oportunidade
@@ -619,6 +644,8 @@ function LinhaVendedor({ r, maxFez, janela, aberto, onToggle }: {
             <Resumo rotulo="Recebidas" valor={String(r.recebeu)} />
             <Resumo rotulo="Atendidas (que ele ligou)" valor={String(r.atendidas_fez)} cls="text-success"
                     sub={atendRecebeu > 0 ? `+${atendRecebeu} que ele recebeu` : undefined} />
+            <Resumo rotulo="Clientes conversados" valor={String(r.clientes_falados)} cls="text-success"
+                    sub={r.atendidas > 0 ? `em ${r.atendidas} ligação${r.atendidas === 1 ? '' : 'ões'} atendida${r.atendidas === 1 ? '' : 's'}` : undefined} />
             <Resumo rotulo="Cliente não atendeu" valor={String(r.perdidas)} cls={r.perdidas > 0 ? 'text-danger' : ''} />
             <Resumo rotulo="Perdeu do cliente" valor={String(r.perdidas_recebidas)} cls={r.perdidas_recebidas > 0 ? 'text-danger' : ''}
                     sub={r.perdidas_recebidas > 0 ? `${r.retornadas} devolvida${r.retornadas === 1 ? '' : 's'} em até 2h` : undefined} />
