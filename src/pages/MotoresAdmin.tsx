@@ -3,10 +3,15 @@ import { Zap, Search, Save, Check, Loader2, Settings2 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import {
-  useMotoresAdmin, useMotoresRedutorAdmin,
+  useMotoresAdmin, useMotoresRedutorAdmin, useAlcanceMotores,
   useUpdateMotor, useUpdateMotorRedutor,
   type MotorAdmin,
 } from '@/hooks/useMotoresAdmin'
+
+// catalogo_motores.ocorrencias e a contagem congelada da importacao de mai/2026
+// (quantas linhas da planilha viraram esta linha do catalogo). Nada no sistema
+// incrementa esse campo - nao e uso em orcamento.
+const TITULO_IMPORT = 'Contagem da importacao de mai/2026: quantas linhas da planilha original viraram este motor. Nao e uso em orcamento.'
 
 function formatBRL(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
@@ -102,7 +107,7 @@ function TabelaMotores({
             <th className="text-left px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Potência</th>
             <th className="text-left px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Modelo</th>
             <th className="text-right px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Valor (R$)</th>
-            <th className="text-right px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Usos</th>
+            <th className="text-right px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider" title={TITULO_IMPORT}>Importação</th>
           </tr>
         </thead>
         <tbody>
@@ -115,7 +120,7 @@ function TabelaMotores({
               <td className="px-3 py-1.5">
                 <ValorEditor motor={m} />
               </td>
-              <td className="px-3 py-1.5 text-right text-[10px] text-ink-faint tabular-nums">
+              <td className="px-3 py-1.5 text-right text-[10px] text-ink-faint tabular-nums" title={TITULO_IMPORT}>
                 {m.ocorrencias > 0 ? `${m.ocorrencias}×` : '—'}
               </td>
             </tr>
@@ -212,6 +217,7 @@ function TabelaMotorRedutor() {
 
 export function MotoresAdmin() {
   const { data: motores, isLoading } = useMotoresAdmin()
+  const { data: alcance, isError: alcanceErro } = useAlcanceMotores()
   const [busca, setBusca] = useState('')
 
   const filtrados = useMemo(() => {
@@ -226,7 +232,23 @@ export function MotoresAdmin() {
   }, [motores, busca])
 
   const totalAtivos = motores?.filter(m => m.ativo).length ?? 0
-  const totalCovered = motores?.filter(m => m.ativo).reduce((s, m) => s + Number(m.valor), 0) ?? 0
+
+  // Motores ativos que nenhum equipamento consegue selecionar: o numero de polos
+  // nao aparece em nenhuma fonte de selecao e ninguem aponta pra eles por motor_id.
+  // polos = 0 fica de fora: e sentinela dos motorredutores, que sao escolhidos
+  // por CV (catalogo_motorredutor), nao por polos.
+  const orfaos = useMemo(() => {
+    if (!motores || !alcance) return null
+    const polosOk = new Set(alcance.polos)
+    const idsOk = new Set(alcance.motorIds)
+    return motores.filter(m =>
+      m.ativo && m.polos > 0 && !polosOk.has(m.polos) && !idsOk.has(m.id)
+    )
+  }, [motores, alcance])
+
+  const polosOrfaos = orfaos
+    ? [...new Set(orfaos.map(m => m.polos))].sort((a, b) => a - b)
+    : []
 
   if (isLoading) return <PageLoading />
 
@@ -265,9 +287,32 @@ export function MotoresAdmin() {
               {motores?.filter(m => m.ativo && m.voltagem === 'monofasico').length ?? 0}
             </div>
           </div>
-          <div className="bg-surface border border-border rounded-md px-3 py-2.5">
-            <div className="text-[10px] text-ink-faint uppercase tracking-wide">Cobertura total</div>
-            <div className="text-[15px] font-semibold text-success">{formatBRL(totalCovered)}</div>
+          <div
+            className="bg-surface border border-border rounded-md px-3 py-2.5"
+            title="Motor ativo cujo numero de polos nenhuma fonte de selecao pede (precos_branorte, transportador_funcoes, catalogo_items) e que ninguem aponta por motor_id. Motorredutores (polos = 0) nao entram: sao escolhidos por CV."
+          >
+            <div className="text-[10px] text-ink-faint uppercase tracking-wide">
+              Sem equipamento que use
+            </div>
+            {alcanceErro ? (
+              <>
+                <div className="text-[18px] font-semibold text-ink-faint">—</div>
+                <div className="text-[9px] text-ink-faint">não deu pra conferir</div>
+              </>
+            ) : orfaos === null ? (
+              <div className="text-[18px] font-semibold text-ink-faint">…</div>
+            ) : (
+              <>
+                <div className={`text-[18px] font-semibold ${orfaos.length > 0 ? 'text-warning' : 'text-ink'}`}>
+                  {orfaos.length}
+                </div>
+                <div className="text-[9px] text-ink-faint">
+                  {orfaos.length > 0
+                    ? `de ${totalAtivos} ativos · ${polosOrfaos.join(' e ')} polos`
+                    : `de ${totalAtivos} ativos`}
+                </div>
+              </>
+            )}
           </div>
         </div>
 
