@@ -24,8 +24,11 @@ import {
 // REGRAS DE NEGÓCIO PRESERVADAS (não mexer pra deixar gráfico bonito):
 //  • "Atendida" = Completed OU AcceptedElsewhere. AcceptedElsewhere é atendida
 //    NO CELULAR — contar só Completed puniria quem trabalha com o telefone na mão.
-//  • "Não atendida" = Missed / Rejected. Canceled é o VENDEDOR que desligou
-//    antes, então aparece separado ("desistiu antes"), não como perdida.
+//  • Ligação FEITA: "não atendida" = Missed / Rejected; Canceled é o vendedor
+//    que desligou antes de atenderem, e aparece separado ("desistiu antes").
+//  • Ligação RECEBIDA: Canceled conta como PERDIDA junto com Missed/Rejected —
+//    o cliente ligou e ficou sem falar com ninguém, tendo ele desligado antes
+//    ou não. Contar só Missed escondia 44 das 50 perdidas do JARDEL (19/08/2026).
 //  • Taxa de atendimento = atendidas_fez / fez. Nunca sobre (fez+recebeu):
 //    misturaria o que ele controla com o que só acontece com ele.
 //  • Tempo ao telefone é PISO: o WhatsApp só registra duração de chamada
@@ -77,11 +80,12 @@ function quemE(l: { cliente_nome: string | null; cliente_fone: string | null; pe
   return 'contato não identificado'
 }
 
-// ⚠️ O DESFECHO NÃO TEM DONO FIXO — depende de quem discou.
-// "Desistiu antes" (Canceled) numa ligação FEITA é o vendedor que desligou antes de
-// atenderem; numa RECEBIDA é o CLIENTE que cansou de chamar e desligou. O mapa antigo
-// era cego ao sentido e escrevia a mesma coisa nos dois casos, acusando o vendedor de
-// desistir de uma chamada que ele nem fez. Mesma armadilha em Perdida e Recusada.
+// ⚠️ O DESFECHO NÃO TEM DONO FIXO — depende de quem discou. Um mapa cego ao sentido
+// acusava o vendedor de desistir de uma chamada que ele nem fez.
+// ⚠️ O rótulo diz de quem é a FALHA, não quem apertou o botão primeiro. Em chamada
+// recebida, tanto faz se o cliente desligou antes (Canceled) ou se chamou até o fim
+// (Missed): ele ligou e não falou com ninguém — os dois viram "Vendedor não atendeu".
+// A diferença mecânica sobrevive no `titulo` (tooltip), que é onde ela é útil.
 const VERDE  = 'text-success bg-success/10 border-success/30'
 const VERM   = 'text-danger bg-danger/10 border-danger/30'
 const AMBAR  = 'text-warning bg-warning/10 border-warning/30'
@@ -97,20 +101,25 @@ const DESFECHO: Record<string, { fez: Rotulo; recebeu: Rotulo }> = {
     recebeu: { label: 'Atendida no celular', cls: VERDE },
   },
   Missed: {
-    fez:     { label: 'Cliente não atendeu', cls: VERM },
-    recebeu: { label: 'Ele não atendeu',     cls: VERM, titulo: 'O cliente ligou e o vendedor não atendeu.' },
+    fez:     { label: 'Cliente não atendeu',  cls: VERM },
+    recebeu: { label: 'Vendedor não atendeu', cls: VERM, titulo: 'O cliente ligou e o vendedor não atendeu — chamou até o fim.' },
   },
   miss: {
-    fez:     { label: 'Cliente não atendeu', cls: VERM },
-    recebeu: { label: 'Ele não atendeu',     cls: VERM, titulo: 'O cliente ligou e o vendedor não atendeu.' },
+    fez:     { label: 'Cliente não atendeu',  cls: VERM },
+    recebeu: { label: 'Vendedor não atendeu', cls: VERM, titulo: 'O cliente ligou e o vendedor não atendeu — chamou até o fim.' },
   },
   Rejected: {
-    fez:     { label: 'Cliente recusou', cls: VERM },
-    recebeu: { label: 'Ele recusou',     cls: VERM, titulo: 'O cliente ligou e o vendedor recusou a chamada.' },
+    fez:     { label: 'Cliente recusou',  cls: VERM },
+    recebeu: { label: 'Vendedor recusou', cls: VERM, titulo: 'O cliente ligou e o vendedor recusou a chamada.' },
   },
+  // ⚠️ Canceled RECEBIDA dizia "Cliente desistiu antes", em âmbar. Descrevia o mecanismo
+  // (quem desligou primeiro) e o gestor lia como culpa do cliente — quando o fato é que
+  // o telefone tocou e ninguém atendeu. Medido em agosto/2026: era assim que 44 das 50
+  // chamadas perdidas do JARDEL e 12 das 13 do EDER ficavam fora do "Perdeu do cliente".
+  // O rótulo agora nomeia a falha; o detalhe de quem desligou fica no title.
   Canceled: {
-    fez:     { label: 'Ele desistiu antes',      cls: AMBAR, titulo: 'O vendedor desligou antes de o cliente atender.' },
-    recebeu: { label: 'Cliente desistiu antes',  cls: AMBAR, titulo: 'O cliente ligou e desligou antes de o vendedor atender. Vale retornar.' },
+    fez:     { label: 'Vendedor desistiu antes', cls: AMBAR, titulo: 'O vendedor discou e desligou antes de o cliente atender.' },
+    recebeu: { label: 'Vendedor não atendeu',    cls: VERM,  titulo: 'O cliente ligou e desligou antes de ser atendido. Vale retornar.' },
   },
 }
 // ⚠️ Desfecho VAZIO não é o mesmo que desfecho desconhecido pra nós: o próprio
@@ -152,10 +161,11 @@ function somar(linhas: LigacaoResumo[]) {
     atendidas: a.atendidas + r.atendidas,
     perdidas: a.perdidas + r.perdidas,
     perdidas_recebidas: a.perdidas_recebidas + r.perdidas_recebidas,
+    retornadas: a.retornadas + r.retornadas,
     tempo_seg: a.tempo_seg + r.tempo_seg,
     clientes_fez: a.clientes_fez + r.clientes_fez,
     video_fez: a.video_fez + r.video_fez,
-  }), { fez: 0, recebeu: 0, atendidas_fez: 0, atendidas: 0, perdidas: 0, perdidas_recebidas: 0, tempo_seg: 0, clientes_fez: 0, video_fez: 0 })
+  }), { fez: 0, recebeu: 0, atendidas_fez: 0, atendidas: 0, perdidas: 0, perdidas_recebidas: 0, retornadas: 0, tempo_seg: 0, clientes_fez: 0, video_fez: 0 })
 }
 
 export function Ligacoes() {
@@ -293,7 +303,12 @@ export function Ligacoes() {
              nota={tot.fez > 0 ? `${((tot.perdidas / tot.fez) * 100).toFixed(0)}% das que ele ligou` : undefined}
              delta={pctDelta(tot.perdidas, totAnt?.perdidas)} rotuloDelta={ROTULO_ANTERIOR[periodo]} />
         <Kpi icone={PhoneIncoming} cor="text-danger" rotulo="Perdeu do cliente" valor={tot.perdidas_recebidas} inverso
-             nota={tot.recebeu > 0 ? `${((tot.perdidas_recebidas / tot.recebeu) * 100).toFixed(0)}% das que recebeu` : undefined}
+             nota={[
+               tot.recebeu > 0 ? `${((tot.perdidas_recebidas / tot.recebeu) * 100).toFixed(0)}% das que recebeu` : undefined,
+               // sem isto o número vira cobrança cega: retornar a chamada é a saída, e
+               // quem retornou tem que aparecer separado de quem deixou o cliente no chão.
+               tot.perdidas_recebidas > 0 ? `${tot.retornadas} devolvida${tot.retornadas === 1 ? '' : 's'}` : undefined,
+             ].filter(Boolean).join(' · ') || undefined}
              delta={pctDelta(tot.perdidas_recebidas, totAnt?.perdidas_recebidas)} rotuloDelta={ROTULO_ANTERIOR[periodo]} />
         <Kpi icone={Video} cor="text-info" rotulo="Chamadas de vídeo" valor={tot.video_fez}
              delta={pctDelta(tot.video_fez, totAnt?.video_fez)} rotuloDelta={ROTULO_ANTERIOR[periodo]} />
@@ -338,15 +353,18 @@ export function Ligacoes() {
         ao telefone sem entrar na taxa dele. <b className="text-ink-muted">Taxa de atendimento</b> é
         sobre as ligações que o vendedor FEZ, e só aparece com {MIN_LIGACOES_TAXA}+ ligações: abaixo
         disso um acerto isolado vira 100% e um erro isolado vira 0%. Nas ligações recentes o rótulo
-        muda conforme o sentido — <b className="text-ink-muted">ele desistiu antes</b> é o vendedor
-        que desligou antes de atenderem; <b className="text-ink-muted">cliente desistiu antes</b> é o
-        cliente que ligou, cansou de chamar e desligou: essa vale retornar. <b className="text-ink-muted">Clientes chamados</b> conta contatos
+        muda conforme o sentido — <b className="text-ink-muted">vendedor desistiu antes</b> é ele que
+        discou e desligou antes de atenderem; <b className="text-ink-muted">vendedor não atendeu</b> é
+        chamada de cliente que ficou sem resposta, tendo o cliente desligado antes ou tocado até o
+        fim: as duas contam igual, porque o cliente ficou sem falar com ninguém dos dois jeitos.{' '}
+        <b className="text-ink-muted">Clientes chamados</b> conta contatos
         DIFERENTES — quem liga cinco vezes pro mesmo produtor fez cinco ligações e alcançou um.{' '}
         <b className="text-ink-muted">Cliente não atendeu</b> e <b className="text-ink-muted">perdeu do
         cliente</b> são coisas diferentes: a primeira é ligação que o vendedor fez e ninguém atendeu
         do outro lado; a segunda é o cliente ligando e o vendedor não atendendo — essa é oportunidade
-        perdida. Chamada recebida fora do expediente entra na conta, então vale olhar o horário antes
-        de cobrar. <b className="text-ink-muted">Tempo ao telefone</b> soma os dois sentidos e é piso:
+        perdida, e vem com o número de <b className="text-ink-muted">devolvidas</b> ao lado: ligar de
+        volta em até 2h resolve, e quem resolveu não pode ser cobrado igual a quem sumiu. Chamada
+        recebida fora do expediente entra na conta, então vale olhar o horário antes de cobrar. <b className="text-ink-muted">Tempo ao telefone</b> soma os dois sentidos e é piso:
         o WhatsApp só registra a duração das chamadas atendidas no próprio WhatsApp Web.
       </p>
     </div>
@@ -431,11 +449,15 @@ function ResumoInteligente({ linhas, tot, totAnt, horas, serie, rotuloAnterior }
 
     // Quem mais deixa o cliente na mão. É a frase mais acionável da tela: cliente
     // que ligou e não foi atendido é oportunidade que bateu na porta e foi embora.
+    // ⚠️ A frase precisa carregar as DEVOLVIDAS junto. "Deixou 50 sem atender" sozinho
+    // coloca no mesmo balde quem devolveu 9 e quem devolveu 0 — e a diferença entre os
+    // dois é o negócio inteiro.
     const perdendo = linhas.filter(r => r.recebeu >= 10)
-      .map(r => ({ v: r.vendedor, p: r.perdidas_recebidas, t: r.recebeu, pct: Math.round((r.perdidas_recebidas / r.recebeu) * 100) }))
-      .sort((a, b) => b.p - a.p)
+      .map(r => ({ v: r.vendedor, p: r.perdidas_recebidas, t: r.recebeu, dev: r.retornadas, pct: Math.round((r.perdidas_recebidas / r.recebeu) * 100) }))
+      .sort((a, b) => (b.p - b.dev) - (a.p - a.dev))
     if (perdendo.length && perdendo[0].p > 0) {
-      f.push(`${perdendo[0].v} deixou ${perdendo[0].p} chamada${perdendo[0].p > 1 ? 's' : ''} de cliente sem atender (${perdendo[0].pct}% das que recebeu).`)
+      const q = perdendo[0]
+      f.push(`${q.v} deixou ${q.p} chamada${q.p > 1 ? 's' : ''} de cliente sem atender (${q.pct}% das que recebeu) e devolveu ${q.dev} — ${q.p - q.dev} ficaram sem retorno nenhum.`)
     }
 
     const melhorDia = [...serie].sort((a, b) => b.feitas - a.feitas)[0]
@@ -490,12 +512,20 @@ function TabelaVendedores({ linhas, janela, aberto, setAberto }: {
         <p className="text-[11px] text-ink-faint mt-0.5">Clique num vendedor pra ver as ligações dele.</p>
       </div>
 
-      <div className="hidden lg:grid grid-cols-[1.3fr_repeat(7,minmax(0,1fr))] gap-2 px-5 py-2.5 border-y border-border bg-surface-2/40 text-[10.5px] font-medium text-ink-faint uppercase tracking-wide">
+      {/* ⚠️ A CONTA DE COLUNAS TEM QUE BATER COM AS CÉLULAS. Estava `repeat(7)` com NOVE
+          células: a última (Tempo) caía numa segunda linha, e o número aparecia solto
+          embaixo do nome do vendedor parecendo lixo de layout. Mexeu aqui, conte lá
+          embaixo na LinhaVendedor — são os mesmos slots, nas duas grades. */}
+      <div className="hidden lg:grid grid-cols-[1.3fr_repeat(9,minmax(0,1fr))] gap-2 px-5 py-2.5 border-y border-border bg-surface-2/40 text-[10.5px] font-medium text-ink-faint uppercase tracking-wide">
         <span>Vendedor</span>
         <span className="text-right">Feitas</span>
         <span className="text-right">Clientes</span>
-        <span className="text-right">Atendidas</span>
+        <span className="text-right">Atendidas<br/>que ele fez</span>
         <span className="text-right">Taxa</span>
+        {/* sem esta coluna, quem só recebeu e atendeu tinha a linha INTEIRA de traços —
+            era o caso do RAMON em 19/08, que atendeu o cliente no celular e aparecia
+            como se não tivesse feito nada o dia todo. */}
+        <span className="text-right">Recebidas</span>
         <span className="text-right">Cliente<br/>não atend.</span>
         <span className="text-right">Perdeu do<br/>cliente</span>
         <span className="text-right">Vídeo</span>
@@ -521,6 +551,12 @@ function LinhaVendedor({ r, maxFez, janela, aberto, onToggle }: {
     direcao === 'tudo' || (direcao === 'fez' ? l.outgoing === true : l.outgoing === false)), [bruta, direcao])
   const taxa = r.fez >= MIN_LIGACOES_TAXA ? Math.round((r.atendidas_fez / r.fez) * 100) : null
   const corTaxa = taxa === null ? 'text-ink-faint' : taxa >= 55 ? 'text-success' : taxa >= 40 ? 'text-ink' : 'text-danger'
+  // ⚠️ A coluna/card "Atendidas" mostra `atendidas_fez` — só o que ELE discou, porque é
+  // isso que sustenta a taxa. Mas a LISTA embaixo mostra os dois sentidos e o tempo ao
+  // telefone soma os dois: sem este `+N` a tela dizia "Atendidas 2 · 16min15" com TRÊS
+  // etiquetas verdes "Atendida" logo abaixo. Mesma correção que o KPI do topo já tinha
+  // (ver comentário em `atendidasRecebeu`, lá em cima) e que aqui embaixo faltou.
+  const atendRecebeu = Math.max(0, r.atendidas - r.atendidas_fez)
 
   return (
     <div className="border-b border-border/60 last:border-0">
@@ -534,9 +570,11 @@ function LinhaVendedor({ r, maxFez, janela, aberto, onToggle }: {
           </div>
           <div className="grid grid-cols-3 gap-2 pl-5">
             <Mini rotulo="feitas" valor={r.fez} sub={`${r.clientes_fez} clientes`} forte />
-            <Mini rotulo="atendidas" valor={r.atendidas_fez} cls="text-success" />
+            <Mini rotulo="atendidas (que ele fez)" valor={r.atendidas_fez} cls="text-success"
+                  sub={atendRecebeu > 0 ? `+${atendRecebeu} que ele recebeu` : undefined} />
             <Mini rotulo="cliente não atend." valor={r.perdidas} cls={r.perdidas > 0 ? 'text-danger' : ''} />
-            <Mini rotulo="perdeu do cliente" valor={r.perdidas_recebidas} cls={r.perdidas_recebidas > 0 ? 'text-danger' : ''} />
+            <Mini rotulo="perdeu do cliente" valor={r.perdidas_recebidas} cls={r.perdidas_recebidas > 0 ? 'text-danger' : ''}
+                  sub={r.perdidas_recebidas > 0 ? `${r.retornadas} devolvida${r.retornadas === 1 ? '' : 's'}` : undefined} />
             <Mini rotulo="tempo" txt={fmtDur(r.tempo_seg)} />
             <Mini rotulo="média" txt={fmtDur(r.dur_media)} />
             <Mini rotulo="vídeo" valor={r.video_fez} cls={r.video_fez > 0 ? 'text-info' : ''} />
@@ -544,14 +582,15 @@ function LinhaVendedor({ r, maxFez, janela, aberto, onToggle }: {
         </div>
 
         {/* DESKTOP */}
-        <div className="hidden lg:grid grid-cols-[1.3fr_repeat(7,minmax(0,1fr))] gap-2 items-center">
+        <div className="hidden lg:grid grid-cols-[1.3fr_repeat(9,minmax(0,1fr))] gap-2 items-center">
           <span className="flex items-center gap-1.5 min-w-0">
             <ChevronDown className={`h-3.5 w-3.5 text-ink-faint shrink-0 transition-transform ${aberto ? '' : '-rotate-90'}`} />
             <span className="text-[13px] font-semibold text-ink truncate">{r.vendedor}</span>
           </span>
           <Num v={r.fez} destaque barra={r.fez / maxFez} />
           <Num v={r.clientes_fez} />
-          <Num v={r.atendidas_fez} cls="text-success" />
+          <Num v={r.atendidas_fez} cls="text-success"
+               extra={atendRecebeu > 0 ? `${atendRecebeu} receb.` : undefined} />
           <span className="text-right">
             {taxa === null ? <span className="text-[12px] text-ink-faint">—</span> : (
               <>
@@ -562,9 +601,12 @@ function LinhaVendedor({ r, maxFez, janela, aberto, onToggle }: {
               </>
             )}
           </span>
+          {/* sem `extra`: quantas dessas ele atendeu já está na coluna Atendidas, e
+              repetir o mesmo 24 em duas colunas vizinhas faz o gestor procurar erro. */}
+          <Num v={r.recebeu} />
           <Num v={r.perdidas} cls={r.perdidas > 0 ? 'text-danger' : ''} />
           <Num v={r.perdidas_recebidas} cls={r.perdidas_recebidas > 0 ? 'text-danger' : ''}
-               extra={r.recebeu > 0 ? `${Math.round((r.perdidas_recebidas / r.recebeu) * 100)}%` : undefined} />
+               extra={r.perdidas_recebidas > 0 ? `${r.retornadas} devolv.` : undefined} />
           <Num v={r.video_fez} cls={r.video_fez > 0 ? 'text-info' : ''} />
           <Num txt={fmtDur(r.tempo_seg)} extra={r.dur_media > 0 ? `~${fmtDur(r.dur_media)}` : undefined} />
         </div>
@@ -575,9 +617,11 @@ function LinhaVendedor({ r, maxFez, janela, aberto, onToggle }: {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 py-3">
             <Resumo rotulo="Ligações feitas" valor={String(r.fez)} />
             <Resumo rotulo="Recebidas" valor={String(r.recebeu)} />
-            <Resumo rotulo="Atendidas" valor={String(r.atendidas_fez)} cls="text-success" />
+            <Resumo rotulo="Atendidas (que ele ligou)" valor={String(r.atendidas_fez)} cls="text-success"
+                    sub={atendRecebeu > 0 ? `+${atendRecebeu} que ele recebeu` : undefined} />
             <Resumo rotulo="Cliente não atendeu" valor={String(r.perdidas)} cls={r.perdidas > 0 ? 'text-danger' : ''} />
-            <Resumo rotulo="Perdeu do cliente" valor={String(r.perdidas_recebidas)} cls={r.perdidas_recebidas > 0 ? 'text-danger' : ''} />
+            <Resumo rotulo="Perdeu do cliente" valor={String(r.perdidas_recebidas)} cls={r.perdidas_recebidas > 0 ? 'text-danger' : ''}
+                    sub={r.perdidas_recebidas > 0 ? `${r.retornadas} devolvida${r.retornadas === 1 ? '' : 's'} em até 2h` : undefined} />
             <Resumo rotulo="Taxa" valor={taxa === null ? '—' : `${taxa}%`} cls={corTaxa} />
             <Resumo rotulo="Tempo ao telefone" valor={fmtDur(r.tempo_seg)} />
           </div>
@@ -639,11 +683,12 @@ function LinhaVendedor({ r, maxFez, janela, aberto, onToggle }: {
   )
 }
 
-function Resumo({ rotulo, valor, cls = '' }: { rotulo: string; valor: string; cls?: string }) {
+function Resumo({ rotulo, valor, cls = '', sub }: { rotulo: string; valor: string; cls?: string; sub?: string }) {
   return (
     <div className="rounded-lg border border-border/60 bg-surface px-3 py-2">
       <p className="text-[10px] text-ink-faint leading-none mb-1.5">{rotulo}</p>
       <p className={`text-[15px] font-semibold tabular-nums leading-none text-ink ${cls}`}>{valor}</p>
+      {sub && <p className="text-[10px] text-ink-faint mt-1 leading-none">{sub}</p>}
     </div>
   )
 }
@@ -670,7 +715,10 @@ function Num({ v, txt, cls = '', destaque, barra, extra }: {
       <span className={`tabular-nums text-[13px] ${destaque ? 'font-semibold text-ink' : 'text-ink-muted'} ${cls}`}>
         {txt ?? (v === 0 ? '—' : v)}
       </span>
-      {extra && <span className="text-[10px] text-ink-faint ml-1">{extra}</span>}
+      {/* ⚠️ O ponto separador não é enfeite: MEDIDO em 19/08/2026, "50" seguido de
+          "9 devolv." com 4px de respiro é lido como "509". O "·" resolve a ambiguidade
+          sem gastar largura. */}
+      {extra && <span className="text-[10px] text-ink-faint ml-1.5">· {extra}</span>}
       {barra !== undefined && (
         <span className="block h-1 rounded-full bg-surface-2 overflow-hidden mt-1">
           <span className="block h-full rounded-full bg-accent" style={{ width: `${Math.max(4, barra * 100)}%` }} />

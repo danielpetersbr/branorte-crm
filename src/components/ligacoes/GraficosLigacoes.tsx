@@ -289,31 +289,54 @@ export function ResultadoLigacoes({ atendidas, perdidas, outras, video, atendida
 }
 
 // ── LIGAÇÕES POR VENDEDOR (barras horizontais, métrica alternável) ──────────
-const METRICAS = [
-  { id: 'fez', label: 'Ligações', fmt: (v: number) => String(v) },
-  { id: 'atendidas_fez', label: 'Atendidas', fmt: (v: number) => String(v) },
-  { id: 'taxa', label: 'Taxa', fmt: (v: number) => `${v}%` },
-  { id: 'tempo_seg', label: 'Tempo', fmt: fmtDur },
-  { id: 'clientes_fez', label: 'Clientes', fmt: (v: number) => String(v) },
-] as const
-type MetricaId = typeof METRICAS[number]['id']
 
 // Taxa com menos de 5 ligações é ruído: 1 de 1 = 100% e lideraria o ranking sem
 // ninguém ter trabalhado. Some da comparação em vez de mentir.
+// ⚠️ Declarado ANTES de METRICAS: as notas abaixo usam esta constante e o objeto é
+// avaliado na carga do módulo — deixá-la embaixo dá ReferenceError, não erro de tipo.
 const MIN_LIGACOES_TAXA = 5
+
+// ⚠️ QUATRO das cinco métricas contam só o que o vendedor DISCOU (`_fez`), porque é
+// isso que ele controla. `tempo_seg` é a exceção: soma os dois sentidos. Sem dizer
+// isso o gráfico ficava com "Atendidas 2" pro ALVARO enquanto a lista dele mostrava
+// TRÊS etiquetas verdes — a terceira era uma chamada que ele recebeu e atendeu.
+const METRICAS = [
+  { id: 'fez', label: 'Ligações', fmt: (v: number) => String(v),
+    nota: 'Chamadas que o vendedor DISCOU. As que ele recebeu não entram — elas aparecem no detalhe por vendedor, aqui embaixo.' },
+  { id: 'atendidas_fez', label: 'Atendidas', fmt: (v: number) => String(v),
+    nota: 'Só as que ELE ligou e alguém atendeu — é o que sustenta a taxa. O "+N" ao lado da barra é o que ele RECEBEU e atendeu: conta no tempo ao telefone, não na taxa dele. Quem não teve nenhuma das que discou atendida fica de fora desta aba, mesmo tendo atendido cliente: a tabela aqui embaixo mostra os dois sentidos, sem esconder ninguém.' },
+  { id: 'taxa', label: 'Taxa', fmt: (v: number) => `${v}%`,
+    nota: `Das que ele ligou, quantas foram atendidas. Só entra quem fez ${MIN_LIGACOES_TAXA}+ ligações — abaixo disso um acerto isolado vira 100%.` },
+  { id: 'tempo_seg', label: 'Tempo', fmt: fmtDur,
+    nota: 'Única métrica deste gráfico que soma os DOIS sentidos: tempo ao telefone com o cliente, tendo ele ligado ou atendido. É piso — o WhatsApp só cronometra chamada atendida no próprio WhatsApp Web.' },
+  { id: 'clientes_fez', label: 'Clientes', fmt: (v: number) => String(v),
+    nota: 'Clientes DIFERENTES que ele chamou. Cinco ligações pro mesmo produtor contam um.' },
+] as const
+type MetricaId = typeof METRICAS[number]['id']
 
 export function PorVendedor({ linhas }: { linhas: LigacaoResumo[] }) {
   const [metrica, setMetrica] = useState<MetricaId>('fez')
   const meta = METRICAS.find(m => m.id === metrica)!
 
   const dados = useMemo(() => {
-    const base = linhas.map(r => ({
-      vendedor: r.vendedor,
-      valor: metrica === 'taxa'
+    const m = METRICAS.find(x => x.id === metrica)!
+    const base = linhas.map(r => {
+      const valor = metrica === 'taxa'
         ? (r.fez >= MIN_LIGACOES_TAXA ? Math.round((r.atendidas_fez / r.fez) * 100) : -1)
-        : (r[metrica] as number),
-    }))
-    return base.filter(d => d.valor >= 0 && d.valor > 0).sort((a, b) => b.valor - a.valor)
+        : (r[metrica] as number)
+      // Atendidas que ele RECEBEU: só faz sentido ao lado de `atendidas_fez`.
+      const recebeu = metrica === 'atendidas_fez' ? Math.max(0, r.atendidas - r.atendidas_fez) : 0
+      return {
+        vendedor: r.vendedor, valor, recebeu,
+        rotulo: m.fmt(Math.max(0, valor)) + (recebeu > 0 ? `  +${recebeu} receb.` : ''),
+      }
+    })
+    // ⚠️ Não adianta deixar entrar quem tem valor 0 e só recebida (JARDEL/RAMON em
+    // 19/08): MEDIDO no recharts 3.8.1 — barra de valor zero é DESCARTADA (2 pontos
+    // viram 1 retângulo), então o LabelList dela não existe e a pessoa apareceria com
+    // o nome no eixo e NADA ao lado. Fica de fora aqui, e a nota diz isso; quem lista
+    // os dois sentidos sem esconder ninguém é a tabela "Detalhe por vendedor".
+    return base.filter(d => d.valor > 0).sort((a, b) => b.valor - a.valor)
   }, [linhas, metrica])
 
   return (
@@ -330,24 +353,30 @@ export function PorVendedor({ linhas }: { linhas: LigacaoResumo[] }) {
           ))}
         </div>
       }
-      nota={metrica === 'taxa' ? `Só entra quem fez ${MIN_LIGACOES_TAXA}+ ligações — abaixo disso um acerto isolado vira 100%.` : undefined}
+      nota={meta.nota}
     >
       {dados.length === 0 ? <Vazio msg="Nenhum vendedor com dado nesta métrica no período." /> : (
         <ResponsiveContainer width="100%" height={Math.max(160, dados.length * 38)}>
-          <BarChart data={dados} layout="vertical" margin={{ top: 0, right: 44, left: 0, bottom: 0 }}>
+          {/* margem maior quando o rótulo carrega o "+N receb." — senão ele é cortado */}
+          <BarChart data={dados} layout="vertical" margin={{ top: 0, right: metrica === 'atendidas_fez' ? 104 : 44, left: 0, bottom: 0 }}>
             <XAxis type="number" hide />
             <YAxis type="category" dataKey="vendedor" width={92} tick={{ fontSize: 11.5, fill: 'hsl(var(--ink-muted))' }} axisLine={false} tickLine={false} />
             <Tooltip cursor={{ fill: 'hsl(var(--surface-2))', opacity: 0.5 }}
               content={({ active, payload }) => {
                 if (!active || !payload?.length) return null
-                const d = payload[0].payload as { vendedor: string; valor: number }
-                return <Caixa titulo={d.vendedor} linhas={[{ rotulo: meta.label, valor: meta.fmt(d.valor), cor: COR.feitas }]} />
+                const d = payload[0].payload as { vendedor: string; valor: number; recebeu: number }
+                return <Caixa titulo={d.vendedor} linhas={[
+                  { rotulo: metrica === 'atendidas_fez' ? 'Atendidas das que ele ligou' : meta.label,
+                    valor: meta.fmt(Math.max(0, d.valor)), cor: COR.feitas },
+                  ...(d.recebeu > 0
+                    ? [{ rotulo: 'Atendeu de cliente que ligou', valor: String(d.recebeu), cor: COR.atendidas }]
+                    : []),
+                ]} />
               }} />
             <Bar dataKey="valor" fill={COR.feitas} radius={[0, 6, 6, 0]} maxBarSize={22}>
-              {/* o LabelFormatter do recharts 3 recebe `unknown` — converte aqui em vez
-                  de mentir o tipo com `as`, que esconderia um valor inesperado */}
-              <LabelList dataKey="valor" position="right"
-                formatter={(v: unknown) => meta.fmt(Number(v) || 0)}
+              {/* rótulo já vem pronto do memo (número + "+N receb." quando houver), então
+                  aqui não há formatter — o do recharts 3 recebe `unknown` e só atrapalha */}
+              <LabelList dataKey="rotulo" position="right"
                 style={{ fontSize: 11, fill: 'hsl(var(--ink))', fontWeight: 600 }} />
             </Bar>
           </BarChart>

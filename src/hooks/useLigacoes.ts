@@ -41,7 +41,13 @@ export interface LigacaoResumo {
   // perdidas = 105 contra 98 ligações feitas, e o donut fechava 50% com o KPI em 53,1%.
   perdidas: number
   // Chamada que ELE recebeu e não atendeu — outra pergunta, campo separado.
+  // ⚠️ Inclui `Canceled` (cliente desligou antes de ser atendido) desde 19/08/2026. Antes
+  // era só Missed/Rejected, e isso escondia a maioria dos casos de quem deixa tocar: no
+  // mês, JARDEL aparecia com 6 quando eram 50 e EDER com 1 quando eram 13.
   perdidas_recebidas: number
+  // Dessas perdidas, quantas ele devolveu ligando de volta em até 2h. Existe pra que o
+  // campo de cima não vire cobrança cega: quem retorna em 6 minutos não é quem sumiu.
+  retornadas: number
   tempo_seg: number
   dur_media: number
   clientes: number
