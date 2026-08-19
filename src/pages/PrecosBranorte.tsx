@@ -147,92 +147,98 @@ function formatCv(cv: number): string {
 // A regra de quem cobra à parte mora em `src/lib/motor-do-preco.ts`, a MESMA
 // que o orcamento usa. Aqui e so apresentacao.
 //
-// A voltagem entra no contexto porque muda o preco do motor — e porque o
-// catalogo so tem motor monofasico ate 15 CV: acima disso a resposta correta e
-// "sem motor cadastrado", nao o preco trifasico disfarçado.
+// A voltagem NAO entra mais no contexto. Antes havia um botao Trifasico/Monofasico
+// no topo e a tela mostrava UMA voltagem por vez — pra comparar, o vendedor tinha
+// que trocar o botao e guardar o outro numero de cabeca. Agora as duas voltagens
+// ficam lado a lado, cada uma na sua coluna.
+// O catalogo so tem motor monofasico ate 15 CV: acima disso a coluna mono responde
+// "sem motor", nunca o preco trifasico disfarcado de monofasico.
 interface CtxMotor {
   motores: MotorCatalogoBase[]
-  voltagem: VoltagemMotor
 }
-const MotorCtx = createContext<CtxMotor>({ motores: [], voltagem: 'trifasico' })
+const MotorCtx = createContext<CtxMotor>({ motores: [] })
+
+/** Tira o codigo de dentro da descricao — ele ja tem coluna propria, e repetido
+ *  ali dentro rouba a largura de quem precisa ler a especificacao.
+ *  "BNMM130 (3,0 CV 2 POLOS - 300KG/H)" -> "3,0 CV 2 POLOS - 300KG/H"
+ *  ⚠️ So corta quando a descricao REALMENTE comeca pelo codigo. Nome sem codigo
+ *  ("Misturador Vertical 1500 kg") passa intacto, e nunca devolve string vazia. */
+function descricaoSemCodigo(descricao: string | null, codigo: string | null): string {
+  const d = String(descricao ?? '').trim()
+  const c = String(codigo ?? '').trim()
+  if (!c || !d.toUpperCase().startsWith(c.toUpperCase())) return d
+  const resto = d.slice(c.length).trim()
+  // Sobra "(3,0 CV ...)" ou "- 3,0 CV ...". Tira a casca, mantem o conteudo.
+  const semCasca = resto.replace(/^\((.*)\)$/s, '$1').trim().replace(/^[-–—:·]\s*/, '').trim()
+  return semCasca || d
+}
 
 /** Resolve o motor de cada item da tabela UMA vez, e diz se a tabela precisa
  *  das colunas de motor. Tabela sem nenhum item avulso nao ganha coluna. */
-function useMotores(items: PrecoBranorte[]): { mapa: Map<number, MotorDoPreco>; temAvulso: boolean } {
-  const { motores, voltagem } = useContext(MotorCtx)
+function useMotores(items: PrecoBranorte[]): {
+  trif: Map<number, MotorDoPreco>
+  mono: Map<number, MotorDoPreco>
+  temAvulso: boolean
+} {
+  const { motores } = useContext(MotorCtx)
   return useMemo(() => {
-    const mapa = new Map<number, MotorDoPreco>()
+    const trif = new Map<number, MotorDoPreco>()
+    const mono = new Map<number, MotorDoPreco>()
     let temAvulso = false
     for (const it of items) {
       // So paga o custo de resolver quem pode ter motor à parte. Silo, caixa e
       // painel nao passam nem pela funcao.
       if (classeDeMotor(it.categoria, it.subcategoria) !== 'AVULSO') continue
-      const r = motorDoPreco(it, motores, voltagem)
-      if (r.tipo === 'AVULSO' || r.tipo === 'INDETERMINADO') {
-        mapa.set(it.id, r)
+      const t = motorDoPreco(it, motores, 'trifasico')
+      if (t.tipo === 'AVULSO' || t.tipo === 'INDETERMINADO') {
+        trif.set(it.id, t)
+        // ⚠️ Resolvido de verdade, nao copiado do trifasico: acima de 15 CV nao
+        // existe motor monofasico, e a celula precisa dizer isso.
+        mono.set(it.id, motorDoPreco(it, motores, 'monofasico'))
         temAvulso = true
       }
     }
-    return { mapa, temAvulso }
-  }, [items, motores, voltagem])
+    return { trif, mono, temAvulso }
+  }, [items, motores])
 }
 
-/** Coluna "Motor": qual motor esta sendo somado. */
-function CelulaMotor({ r }: { r: MotorDoPreco | undefined }) {
-  if (!r) {
-    return <span className="block text-right text-[10px] text-ink-faint italic">incluso</span>
-  }
+/** UMA coluna por voltagem: o total em cima, o motor somado embaixo.
+ *  Substitui o par "Motor (à parte)" + "Equip. + motor", que so sabia mostrar
+ *  uma voltagem por vez e obrigava o vendedor a trocar um botao pra comparar. */
+function CelulaComMotor({ r }: { r: MotorDoPreco | undefined }) {
+  if (!r) return <span className="block text-right text-[10px] text-ink-faint italic">incluso</span>
   if (r.tipo === 'INDETERMINADO') {
     return (
       <span className="block text-right text-[10px] text-warning" title={r.motivo}>
-        a definir
+        motor a definir
       </span>
     )
   }
   if (r.tipo !== 'AVULSO') return null
-  if (!r.motor) {
-    // ⚠️ NUNCA somar 0 e chamar de total. Motor de 100 CV nao existe em
-    // monofasico — a resposta honesta e essa, nao um numero.
+  // ⚠️ `total == null` no mesmo guard de proposito: sem ele o TS aceitaria um
+  // `?? 0` abaixo, e "R$ 0,00" apresentado como total E o defeito.
+  // Motor de 100 CV nao existe em monofasico — a resposta honesta e essa.
+  if (!r.motor || r.total == null) {
     return (
       <span
-        className="block text-right text-[10px] text-danger font-semibold"
-        title={`Nenhum motor de ${formatCv(r.cv)} cadastrado em catalogo_motores nesta voltagem.`}
+        className="block text-right text-[10px] text-ink-faint italic"
+        title={`Nao existe motor de ${formatCv(r.cv)} nesta voltagem em catalogo_motores — o total nao pode ser calculado.`}
       >
-        {formatCv(r.cv)} — sem cadastro
+        sem motor {formatCv(r.cv)}
       </span>
     )
   }
   return (
-    <div className="text-right leading-tight">
-      <div className="text-[11px] font-semibold text-ink tabular-nums">
-        {formatBRL(r.motor.valor)}
-      </div>
+    <div
+      className="text-right leading-tight"
+      title={`Equipamento ${formatBRL(r.valorEquipamento)} + motor ${formatCv(r.motor.cv)} ${r.motor.polos} polos ${formatBRL(r.motor.valor)} = ${formatBRL(r.total)}`}
+    >
+      <div className="text-[12px] font-bold text-accent tabular-nums">{formatBRL(r.total)}</div>
       <div className="text-[9px] text-ink-faint tabular-nums">
-        {r.estimado && <span className="text-warning" title="calculado pela fórmula do chupim">≈ </span>}
-        {formatCv(r.motor.cv)} · {r.motor.polos} polos
+        {r.estimado && <span className="text-warning" title="calculado pela formula do chupim">≈ </span>}
+        motor {formatBRL(r.motor.valor)} · {formatCv(r.motor.cv)}
       </div>
     </div>
-  )
-}
-
-/** Coluna "Equipamento + motor": o preco que o vendedor precisa cotar. */
-function CelulaTotal({ r }: { r: MotorDoPreco | undefined }) {
-  if (!r) return <span className="block text-right text-ink-faint">—</span>
-  if (r.tipo === 'INDETERMINADO') {
-    return <span className="block text-right text-[11px] text-ink-faint italic">—</span>
-  }
-  if (r.tipo !== 'AVULSO') return null
-  if (r.total == null) {
-    return (
-      <span className="block text-right text-[11px] text-danger" title="Sem preço de motor: o total não pode ser calculado.">
-        indisponível
-      </span>
-    )
-  }
-  return (
-    <span className="block text-right text-[12px] font-bold text-accent tabular-nums">
-      {formatBRL(r.total)}
-    </span>
   )
 }
 
@@ -241,11 +247,13 @@ function CelulaTotal({ r }: { r: MotorDoPreco | undefined }) {
  *  exatamente o numero que o orcamento DESCARTA, entao mostra-la ali ao lado
  *  de um total calculado por outra regra seria mostrar dois motores
  *  diferentes pro mesmo equipamento. */
-function LinhaMotorCelula({ r }: { r: MotorDoPreco }) {
+function LinhaMotorCelula({ r, voltagem }: { r: MotorDoPreco | undefined; voltagem: 'trif' | 'mono' }) {
+  const tag = voltagem === 'trif' ? '3~' : '1~'
+  if (!r) return null
   if (r.tipo === 'INDETERMINADO') {
     return (
       <div className="text-right pr-2 text-[9px] text-warning leading-none pb-0.5" title={r.motivo}>
-        motor a definir
+        {tag} motor a definir
       </div>
     )
   }
@@ -258,7 +266,7 @@ function LinhaMotorCelula({ r }: { r: MotorDoPreco }) {
         className="text-right pr-2 text-[9px] text-danger leading-none pb-0.5"
         title={`Nenhum motor de ${formatCv(r.cv)} cadastrado nesta voltagem — total indisponível.`}
       >
-        {formatCv(r.cv)} sem cadastro
+        {tag} sem motor {formatCv(r.cv)}
       </div>
     )
   }
@@ -269,22 +277,22 @@ function LinhaMotorCelula({ r }: { r: MotorDoPreco }) {
     >
       <span className="text-ink-faint">
         {r.estimado && <span className="text-warning">≈</span>}
-        {formatCv(r.motor.cv)} +{' '}
+        {tag}{' '}
       </span>
       <span className="font-bold text-accent">{formatBRLCurto(r.total)}</span>
     </div>
   )
 }
 
-/** Cabecalho das duas colunas de motor. Reusado nas duas tabelas. */
+/** Cabecalho das duas colunas de motor: uma por voltagem, lado a lado. */
 function ThMotor() {
   return (
     <>
-      <th className={THR + ' text-warning'} title="Motor vendido à parte — cobrado como linha separada no orçamento">
-        Motor (à parte)
+      <th className={THR + ' text-accent border-l border-border/40'} title="Equipamento + motor TRIFASICO — o valor real da maquina">
+        + Motor trif.
       </th>
-      <th className={THR + ' text-accent'} title="Equipamento + motor: o valor real da máquina">
-        Equip. + motor
+      <th className={THR + ' text-warning'} title="Equipamento + motor MONOFASICO. O catalogo so tem motor mono ate 15 CV.">
+        + Motor mono.
       </th>
     </>
   )
@@ -292,7 +300,6 @@ function ThMotor() {
 
 /** Aviso acima da tabela: por que apareceu uma coluna a mais. */
 function AvisoMotorAvulso({ items }: { items: PrecoBranorte[] }) {
-  const { voltagem } = useContext(MotorCtx)
   const ehChupim = items.some(it => it.categoria === 'TRANSPORTADOR' && it.subcategoria === 'CHUPIM')
   return (
     <div className="px-3 py-1.5 bg-warning/10 border-b border-warning/30 flex items-start gap-1.5">
@@ -301,9 +308,9 @@ function AvisoMotorAvulso({ items }: { items: PrecoBranorte[] }) {
         <span className="font-bold text-warning uppercase tracking-wide">Motor à parte</span>
         {' — '}o preço de "Equipamento" <span className="font-semibold">não inclui o motor</span>.
         O orçamento cobra o motor como linha separada, com o preço de{' '}
-        <span className="font-semibold">catalogo_motores</span> em{' '}
-        <span className="font-semibold">{voltagem === 'trifasico' ? 'trifásico' : 'monofásico'}</span>.
-        Cote pela coluna <span className="font-semibold text-accent">Equip. + motor</span>.
+        <span className="font-semibold">catalogo_motores</span>. Cote pela coluna{' '}
+        <span className="font-semibold text-accent">+ Motor</span> da voltagem do cliente —{' '}
+        <span className="font-semibold">acima de 15 CV não existe motor monofásico</span>.
         {ehChupim && (
           <>
             {' '}No chupim o CV vem da <span className="font-semibold">fórmula oficial</span> (não da planilha),
@@ -528,7 +535,7 @@ function TabelaMisturadores({ items }: { items: PrecoBranorte[] }) {
   // Só o VERTICAL é avulso; os horizontais têm o motor no preço. Como a tela
   // agrupa por subcategoria, as colunas nascem no bloco do vertical e não
   // aparecem nos horizontais.
-  const { mapa, temAvulso } = useMotores(items)
+  const { trif, mono, temAvulso } = useMotores(items)
   if (items.length === 0) return null
   return (
     <div>
@@ -567,8 +574,8 @@ function TabelaMisturadores({ items }: { items: PrecoBranorte[] }) {
               <td className={TD}><ValorEditor id={it.id} field="valor_com_motorredutor" valor={it.valor_com_motorredutor} /></td>
               {temAvulso && (
                 <>
-                  <td className={TD + ' bg-warning/5'}><CelulaMotor r={mapa.get(it.id)} /></td>
-                  <td className={TD + ' bg-accent/5'}><CelulaTotal r={mapa.get(it.id)} /></td>
+                  <td className={TD + ' bg-accent/5 border-l border-border/40'}><CelulaComMotor r={trif.get(it.id)} /></td>
+                  <td className={TD + ' bg-warning/5'}><CelulaComMotor r={mono.get(it.id)} /></td>
                 </>
               )}
             </tr>
@@ -589,7 +596,7 @@ function TabelaMisturadores({ items }: { items: PrecoBranorte[] }) {
 // o preco existe e alguem esqueceu de preencher.
 function TabelaPrecos({ items }: { items: PrecoBranorte[] }) {
   // ⚠️ hooks antes de qualquer return — `items` vazio ainda passa por aqui.
-  const { mapa, temAvulso } = useMotores(items)
+  const { trif, mono, temAvulso } = useMotores(items)
   if (items.length === 0) return null
   const temTrif = items.some(it => it.valor_com_motor_trif != null)
   const temMono = items.some(it => it.valor_com_motor_mono != null)
@@ -608,16 +615,20 @@ function TabelaPrecos({ items }: { items: PrecoBranorte[] }) {
             {temTrif && <th className={THR}>+ Trif</th>}
             {temMono && <th className={THR}>+ Mono</th>}
             {temAvulso && <ThMotor />}
-            <th className={TH}>Obs.</th>
           </tr>
         </thead>
         <tbody>
           {items.map(it => (
-            <tr key={it.id} className="border-t border-border/40 hover:bg-surface-2/30">
+            <tr
+              key={it.id}
+              className="border-t border-border/40 hover:bg-surface-2/30"
+              /* Obs. saiu como coluna: o texto vem no title da linha, nao se perde. */
+              title={[it.dimensoes, it.observacoes].filter(Boolean).join(' · ') || undefined}
+            >
               <td className={TD + ' text-ink-muted font-mono text-[11px]'}>
                 {it.codigo || <span className="text-ink-faint italic">—</span>}
               </td>
-              <td className={TD + ' text-ink font-medium'}>{it.descricao}</td>
+              <td className={TD + ' text-ink font-medium'}>{descricaoSemCodigo(it.descricao, it.codigo)}</td>
               <td className={TD + ' text-ink-muted text-[11px]'}>{it.capacidade || '—'}</td>
               <td className={TD + ' text-ink-muted text-[11px]'}>{it.potencia || '—'}</td>
               <td className={TD}><ValorEditor id={it.id} field="valor_equipamento" valor={it.valor_equipamento} /></td>
@@ -625,13 +636,10 @@ function TabelaPrecos({ items }: { items: PrecoBranorte[] }) {
               {temMono && <td className={TD}><ValorEditor id={it.id} field="valor_com_motor_mono" valor={it.valor_com_motor_mono} /></td>}
               {temAvulso && (
                 <>
-                  <td className={TD + ' bg-warning/5'}><CelulaMotor r={mapa.get(it.id)} /></td>
-                  <td className={TD + ' bg-accent/5'}><CelulaTotal r={mapa.get(it.id)} /></td>
+                  <td className={TD + ' bg-accent/5 border-l border-border/40'}><CelulaComMotor r={trif.get(it.id)} /></td>
+                  <td className={TD + ' bg-warning/5'}><CelulaComMotor r={mono.get(it.id)} /></td>
                 </>
               )}
-              <td className={TD + ' text-ink-faint text-[10px]'}>
-                {[it.dimensoes, it.observacoes].filter(Boolean).join(' · ')}
-              </td>
             </tr>
           ))}
         </tbody>
@@ -834,7 +842,7 @@ function MatrizPrecos({
   const [variante, setVariante] = useState<CampoValor>('valor_equipamento')
   // Chupim cobra o motor à parte; Calha TH não. Como as duas dividem a mesma
   // grade, o mapa só tem as células de chupim e a linha extra nasce só nelas.
-  const { mapa: mapaMotor, temAvulso } = useMotores(items)
+  const { trif: mapaMotor, mono: mapaMotorMono, temAvulso } = useMotores(items)
   // Depende so de `items`: linhaDe/colunaDe chegam como arrow inline (identidade
   // nova a cada render do pai) mas sao funcoes PURAS de parsing, fixas por
   // matriz. Inclui-las nas deps refaria a grade de 234 celulas a cada tecla
@@ -1001,7 +1009,10 @@ function MatrizPrecos({
                         fallback={ativa.campo === 'valor_equipamento' ? null : it.valor_equipamento}
                       />
                       {mostraMotor
-                        ? <LinhaMotorCelula r={rm} />
+                        ? <>
+                            <LinhaMotorCelula r={rm} voltagem="trif" />
+                            <LinhaMotorCelula r={mapaMotorMono.get(it.id)} voltagem="mono" />
+                          </>
                         : pot && (
                           <div className="text-right pr-2 text-[10px] text-ink-faint tabular-nums leading-none pb-0.5">{pot}</div>
                         )}
@@ -1224,10 +1235,10 @@ export function PrecosBranorte() {
   // Trifásico é o default comercial. Monofásico existe, mas o catálogo só tem
   // motor mono até 15 CV — acima disso a tela diz "sem cadastro" em vez de
   // devolver o preço trifásico disfarçado.
-  const [voltagem, setVoltagem] = useState<VoltagemMotor>('trifasico')
+
   const ctxMotor = useMemo<CtxMotor>(
-    () => ({ motores: motores ?? [], voltagem }),
-    [motores, voltagem],
+    () => ({ motores: motores ?? [] }),
+    [motores],
   )
 
   const filtrados = useMemo(() => {
@@ -1401,33 +1412,6 @@ export function PrecosBranorte() {
             ))}
           </div>
           )}
-          {/* VOLTAGEM — só afeta o preço do MOTOR À PARTE (moinho martelo,
-              chupim, misturador vertical). O preço do equipamento não muda. */}
-          <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-border/40">
-            <Zap className="w-3 h-3 text-warning" />
-            <span className="text-[10px] uppercase tracking-wider font-semibold text-ink-faint mr-1">
-              Motor à parte
-            </span>
-            {([['trifasico', 'Trifásico'], ['monofasico', 'Monofásico']] as const).map(([v, label]) => (
-              <button
-                key={v}
-                onClick={() => setVoltagem(v)}
-                aria-pressed={voltagem === v}
-                className={`text-[11px] px-2.5 py-1 rounded-md font-semibold transition ${
-                  voltagem === v ? 'bg-warning text-white'
-                    : 'bg-surface-2 text-ink-muted hover:text-ink hover:bg-surface-3 border border-border'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-            <span className="text-[10px] text-ink-faint ml-1">
-              muda só o preço do motor vendido à parte
-              {voltagem === 'monofasico' && (
-                <span className="text-warning"> — catálogo só tem motor monofásico até 15 cv</span>
-              )}
-            </span>
-          </div>
           {busca && (
             <div className="text-[10px] text-ink-faint">
               {totalFiltrados} resultado{totalFiltrados !== 1 ? 's' : ''} para "{busca}"
