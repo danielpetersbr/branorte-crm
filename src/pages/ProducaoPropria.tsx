@@ -23,7 +23,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   Calculator, ChevronLeft, ChevronRight, Copy, FilePlus2, FileText, History, ListChecks,
-  MessageCircle, Presentation, Printer, Save, Settings,
+  MessageCircle, Presentation, Printer, Save, Settings, Sparkles,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
@@ -46,11 +46,12 @@ import { ApresentacaoEstudo, imprimirEstudo } from '@/components/venda-racao/Apr
 import { HistoricoEstudos } from '@/components/venda-racao/HistoricoEstudos'
 import { ConfiguracoesEstudo } from '@/components/venda-racao/ConfiguracoesEstudo'
 import { BarraAcoes } from '@/components/venda-racao/BarraAcoes'
+import { PainelLeadsQuiz } from '@/components/quiz-fabrica/PainelLeadsQuiz'
 import { ResumoAntesDeCalcular } from '@/components/venda-racao/ResumoAntesDeCalcular'
 import { Selecao } from '@/components/venda-racao/campos'
 import '@/styles/venda-racao.css'
 
-type Aba = 'simulacao' | 'apresentacao' | 'historico' | 'config'
+type Aba = 'simulacao' | 'apresentacao' | 'historico' | 'quiz' | 'config'
 
 const CHAVE_RASCUNHO = 'producao-propria:rascunho'
 /*
@@ -421,6 +422,9 @@ export function ProducaoPropria() {
     { id: 'simulacao', label: 'Simulação', icone: Calculator },
     { id: 'apresentacao', label: 'Apresentação', icone: FileText },
     { id: 'historico', label: 'Histórico', icone: History },
+    // Leads do quiz público /monte-sua-fabrica. Mora aqui porque é o mesmo
+    // assunto: o produtor que respondeu o quiz é exatamente quem vira estudo.
+    { id: 'quiz', label: 'Quiz do cliente', icone: Sparkles },
     { id: 'config', label: 'Configurações', icone: Settings },
   ]
 
@@ -670,6 +674,12 @@ export function ProducaoPropria() {
               onStatus={(id, s) => atualizarStatus.mutate({ id, status: s })}
               podeVerTodas={podeVerTodas}
             />
+          </div>
+        )}
+
+        {aba === 'quiz' && (
+          <div style={{ marginTop: 18 }}>
+            <PainelLeadsQuiz />
           </div>
         )}
 

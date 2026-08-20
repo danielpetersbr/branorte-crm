@@ -97,6 +97,12 @@ import { ReuniaoFeedback } from '@/pages/ReuniaoFeedback'
 // /cotar-frete/<token> é a página PÚBLICA da cotação reversa de frete, aberta pela
 // transportadora pelo link que o Jardel envia no WhatsApp. Roda deslogada.
 import { CotarFrete } from '@/pages/CotarFrete'
+
+// /monte-sua-fabrica é o quiz PÚBLICO: o produtor responde 7 perguntas e vê a
+// linha de equipamentos que atende ele, do recebimento à expedição. Import
+// direto (sem lazy) pelo mesmo motivo das de cima: roda ANTES do gate de auth,
+// onde não existe Suspense pra segurar o chunk.
+import { MonteSuaFabrica } from '@/pages/MonteSuaFabrica'
 // /transportadora — portal das transportadoras (auth própria, fora do app do staff).
 import { TransportadoraApp } from '@/pages/TransportadoraApp'
 
@@ -260,6 +266,16 @@ function AppRoutes() {
   // As candidaturas aparecem em /representantes, aba "Candidaturas".
   if (loc.pathname === '/seja-representante') {
     return <SejaRepresentante />
+  }
+
+  // Rota pública /monte-sua-fabrica — o quiz que o produtor responde sozinho,
+  // pelo link do WhatsApp ou do anúncio. Roda deslogada (ele não tem conta e
+  // não vai ter). O resultado NÃO é gateado: ele vê a fábrica antes de dar o
+  // telefone, e quem quiser falar com técnico deixa o contato no fim. Grava em
+  // quiz_fabrica_respostas, cuja RLS dá INSERT pro anon e nenhum SELECT.
+  // A prévia interna (equipe conferindo) é /monte-sua-fabrica/previa, lá embaixo.
+  if (loc.pathname === '/monte-sua-fabrica') {
+    return <MonteSuaFabrica />
   }
 
   // Portal das transportadoras — auth própria, ANTES do gating do staff (a
@@ -517,6 +533,9 @@ function AppRoutes() {
             reescrito pelo estudo e os dois formatos não convivem.
             /viabilidade segue redirecionando: aquela era iframe, morreu mesmo. */}
         <Route path="/producao-propria" element={<ProducaoPropria />} />
+        {/* Prévia do quiz DENTRO do CRM: mesma tela do produtor, envio travado.
+            A pública é /monte-sua-fabrica e roda antes do login. */}
+        <Route path="/monte-sua-fabrica/previa" element={<MonteSuaFabrica previa />} />
         <Route path="/venda-racao" element={<VendaRacao />} />
         <Route path="/viabilidade" element={<Navigate to="/producao-propria" replace />} />
         {/* Guia do Vendedor — nativo desde 03/08/2026 (era iframe de
@@ -593,10 +612,20 @@ function OverlaysGlobais() {
   const { pathname } = useLocation()
   // /reuniao/<token> é aberta no celular do vendedor por um link do WhatsApp: o
   // card de instalar o PWA senta em cima do botão de enviar. Ele já tem o CRM.
+  //
+  // /monte-sua-fabrica é o quiz público: quem abre é PRODUTOR RURAL vindo de um
+  // link do WhatsApp ou de um anúncio. Oferecer "Instalar Branorte CRM" pra ele
+  // é oferecer o sistema interno da empresa — e no celular o card senta em cima
+  // do fluxo de equipamentos. Medido em 360px: cobria a estação 1 inteira.
+  //
   // ⚠️ As outras rotas públicas (/avaliacao, /cotar-frete, /seja-representante)
   // continuam mostrando o convite — lá quem abre é CLIENTE, transportadora ou
-  // candidato, que não têm nada a instalar. Vale barrar também.
-  if (pathname.startsWith('/print/') || pathname.startsWith('/reuniao/')) return null
+  // candidato, que também não têm nada a instalar. Vale barrar também.
+  if (
+    pathname.startsWith('/print/')
+    || pathname.startsWith('/reuniao/')
+    || pathname === '/monte-sua-fabrica'
+  ) return null
   return (
     <>
       <InstallPrompt />
