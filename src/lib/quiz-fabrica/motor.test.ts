@@ -17,7 +17,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { COMPACTAS, MOINHOS, TETO_FAMILIA, degrau, ehMaster, temCacamba, temEnsacadeira } from './linha'
+import { COMPACTAS, MOINHOS, TETO_FAMILIA, degrau, ehMaster, fotoDoModelo, temCacamba, temEnsacadeira } from './linha'
 import {
   BATELADAS_POR_HORA, DIAS_MES_COMERCIAL, FOLGA_OPERACIONAL_PCT, MESES_ENTRESSAFRA,
   baseNaturalDe, calcularDimensionamento, calcularQuiz, consumoDeReferencia,
@@ -740,6 +740,50 @@ describe('consumo e fórmula de referência', () => {
     for (const e of ['bovinos', 'suinos', 'aves'] as const) {
       const f = fracaoMilho(e, 'confinamento')
       assert.ok(f > 0 && f <= 1, `${e} deu ${f}`)
+    }
+  })
+})
+
+describe('foto do modelo', () => {
+  /**
+   * A pasta do marketing tem DUAS versões de cada fábrica: uma com o preço
+   * estampado e outra sem. Esta página é PÚBLICA — subir a errada publicaria a
+   * tabela de preços da empresa. As imagens vieram de "Sem preço".
+   */
+  it('toda recomendação vem com foto', () => {
+    for (const t of [8, 12, 25, 40, 60, 90, 120, 160, 200, 300]) {
+      for (const exp of ['granel', 'ensacada'] as const) {
+        const r = calcularQuiz(bovinos({ modo: 'direto', toneladasMes: t, expedicao: exp }))
+        if (!r.compacta) continue
+        assert.ok(r.compacta.fotoUrl.startsWith('https://'), `${r.compacta.codigo} sem foto`)
+      }
+    }
+  })
+
+  it('usa resize=contain — o padrão do Supabase RECORTA a ficha', () => {
+    // Sem isto o corte come o nome do modelo e metade dos equipamentos.
+    const url = fotoDoModelo('02', 2000, 1000)
+    assert.match(url, /resize=contain/)
+    assert.match(url, /width=\d+/)
+    assert.match(url, /quality=\d+/)
+  })
+
+  it('quem tem ficha própria usa a dela; quem não tem cai na foto da família', () => {
+    assert.match(fotoDoModelo('02', 2000, 1000), /modelos\/02-2000-1000\.png/)
+    // 4.000 kg/h com misturador de 1.000 não tem ficha própria no marketing.
+    assert.match(fotoDoModelo('02 MASTER', 4000, 1000), /compacta-02\/foto-master\.jpg/)
+  })
+
+  it('a MINI aproveita as fichas da 01 — é assim que o marketing as nomeia', () => {
+    // "Compacta 01 - JR - 300150" e "Compacta 01 - 750300" SÃO a Mini.
+    assert.match(fotoDoModelo('MINI', 300, 150), /modelos\/01-300-150\.png/)
+    assert.match(fotoDoModelo('MINI', 750, 300), /modelos\/01-750-300\.png/)
+  })
+
+  it('nunca aponta pra pasta com preço', () => {
+    for (const [linha, p, m] of [['MINI',300,150],['01',1000,500],['02 MASTER',2500,1000],['03',5000,1000]] as const) {
+      const url = fotoDoModelo(linha as string, p as number, m as number)
+      assert.doesNotMatch(url, /preco/i, url)
     }
   })
 })

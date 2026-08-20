@@ -118,6 +118,11 @@ export interface CompactaSugerida {
   misturadorKg: number
   /** Caixas de ração pronta que acompanham a 03/03 MASTER, em kg. */
   caixas: number[]
+  /**
+   * Foto do modelo — a ficha SEM PREÇO que o marketing mantém. Quando não há
+   * imagem daquela configuração exata, é a foto da família.
+   */
+  fotoUrl: string
   /** Por que esta linha e não a de baixo. */
   porque: string
   /** Mesma produção, misturador de outro tamanho — o vendedor fecha isso. */

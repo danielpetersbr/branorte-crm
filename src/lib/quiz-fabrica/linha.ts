@@ -366,6 +366,80 @@ export const COMPACTAS: CompactaSku[] = [
 ]
 
 // ---------------------------------------------------------------------------
+// Foto do modelo
+// ---------------------------------------------------------------------------
+
+const STORAGE = 'https://flwbeevtvjiouxdjmziv.supabase.co/storage/v1'
+
+/**
+ * Modelos que têm foto PRÓPRIA no bucket, por `{linha}-{produção}-{misturador}`.
+ *
+ * As imagens saem de `Z:\4 - Marketing\Lista de Preço\Sem preço\Fábricas sem
+ * preço` — a pasta que o marketing mantém SEM PREÇO. Isso não é detalhe: a
+ * pasta de cima tem as mesmas fábricas com o preço estampado, e esta página é
+ * pública. Subir a errada publicaria a tabela de preços da empresa.
+ *
+ * ⚠️ Os nomes de arquivo do marketing usam DUAS convenções para o mesmo número:
+ * `Compacta 01 - 100500` é [CV×10][misturador] (10 CV → 1.000 kg/h), e
+ * `Compacta 01 - 750300` é [produção][misturador] (750 kg/h). Convivem na mesma
+ * pasta. O que separa as duas leituras é a razão produção/misturador: a certa
+ * cai entre 1 e 10, a errada dá 20 ou 0,1. Aqui já está tudo normalizado para
+ * produção em kg/h — se subir imagem nova, normalizar antes.
+ *
+ * A cobertura é PARCIAL (37 de ~60 configurações). Quem não tem foto própria
+ * cai na foto da família, que é sempre melhor que caixa vazia.
+ */
+const FOTOS_POR_MODELO = new Set([
+  '01-300-150', '01-750-300', '01-1000-500', '01-1000-1000', '01-1500-500',
+  '01-1500-1000', '01-2000-1000',
+  '01-master-750-150', '01-master-750-300', '01-master-1000-300',
+  '01-master-1000-500', '01-master-1500-500', '01-master-2000-500',
+  '02-1000-500', '02-1000-1000', '02-1500-500', '02-1500-1000', '02-2000-1000',
+  '02-master-1000-500', '02-master-1500-500', '02-master-1500-1000',
+  '02-master-2000-500', '02-master-2000-1000', '02-master-2500-500',
+  '02-master-2500-1000',
+  '03-1000-500', '03-1000-1000', '03-1500-500', '03-1500-1000', '03-2000-1000',
+  '03-3000-1000', '03-5000-1000',
+  '03-master-1500-500', '03-master-2000-500', '03-master-3000-500',
+  '03-master-3000-1000', '03-master-5000-1000',
+])
+
+/** Foto da FAMÍLIA — o fallback de quem não tem imagem própria. */
+const FOTO_DA_FAMILIA: Record<string, string> = {
+  MINI: 'mini-fabrica/foto.jpeg',
+  '01': 'compacta-01/foto.jpg',
+  '01 MASTER': 'compacta-01/foto-master.jpg',
+  '02': 'compacta-02/foto.jpg',
+  '02 MASTER': 'compacta-02/foto-master.jpg',
+  '03': 'compacta-03/foto.jpg',
+  '03 MASTER': 'compacta-03/foto-master.jpg',
+}
+
+/**
+ * URL da foto do modelo, já redimensionada pelo Supabase.
+ *
+ * ⚠️ `resize=contain` NÃO é opcional. O padrão do endpoint é `cover`, que
+ * RECORTA — e como estas imagens são fichas em pé, o corte come o nome do
+ * modelo e metade dos equipamentos. Com `contain` a ficha inteira cabe, e de
+ * quebra o arquivo cai de 872 kB para 118 kB, que é o que faz a página abrir
+ * no 3G do interior.
+ *
+ * ⚠️ O caminho é montado AQUI e não lido de `fabrica_midia`. Aquela tabela
+ * existe e é pública, mas as colunas de URL dela são o liga/desliga da IA
+ * atendente: zerar `foto_url` é como o time desliga o envio no WhatsApp. Se o
+ * quiz lesse de lá, um ajuste na IA apagaria a foto desta página sem ninguém
+ * perceber.
+ */
+export function fotoDoModelo(linha: string, producaoKgH: number, misturadorKg: number): string {
+  const familia = linha === 'MINI' ? '01' : linha.toLowerCase().replace(' ', '-')
+  const proprio = `${familia}-${producaoKgH}-${misturadorKg}`
+  const caminho = FOTOS_POR_MODELO.has(proprio)
+    ? `modelos/${proprio}.png`
+    : FOTO_DA_FAMILIA[linha] ?? FOTO_DA_FAMILIA['01']
+  return `${STORAGE}/render/image/public/fabricas-midia/${caminho}?width=900&quality=72&resize=contain`
+}
+
+// ---------------------------------------------------------------------------
 // Escolha na escada
 // ---------------------------------------------------------------------------
 

@@ -145,6 +145,26 @@ function Resultado({ r }: { r: ResultadoQuiz }) {
         )}
       </div>
 
+      {/* ---- a fábrica, em foto ------------------------------------------
+          Ficha oficial do marketing, da pasta SEM PREÇO. `loading="lazy"` e
+          `decoding="async"` porque o produtor abre isso no celular, no meio do
+          mato: a imagem não pode segurar o resto da página. */}
+      {r.compacta && (
+        <figure className="rounded-xl border border-border bg-surface overflow-hidden">
+          <img
+            src={r.compacta.fotoUrl}
+            alt={`Fábrica de ração ${r.compacta.codigo.replace(/ - \d+\/\d+$/, '')}`}
+            loading="lazy"
+            decoding="async"
+            className="w-full h-auto block"
+          />
+          <figcaption className="text-[12px] text-ink-muted leading-snug px-4 py-3 border-t border-border">
+            Ficha da {r.compacta.codigo.replace(/ - \d+\/\d+$/, '')}. As medidas e a disposição
+            mudam conforme o seu galpão — o desenho final sai com o técnico.
+          </figcaption>
+        </figure>
+      )}
+
       {/* ---- os números da rotina */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
         <Numero v={kg(d.demandaMensalKg)} l="de ração por mês" />

@@ -34,8 +34,8 @@ import { CATEGORIAS, formulaPadrao } from '@/lib/venda-racao/catalogo'
 import {
   BANDA_FAMILIA, CACAMBAS, CAIXAS_RACAO, COMPACTAS, ESTEIRAS_SACARIA,
   MISTURADOR_HORIZONTAL, MISTURADOR_VERTICAL, MOINHOS, RECEPCAO_POR_PORTE,
-  SILOS_MILHO, SILOS_RACAO, TETO_FAMILIA, degrau, ehMaster, temCacamba,
-  temEnsacadeira,
+  SILOS_MILHO, SILOS_RACAO, TETO_FAMILIA, degrau, ehMaster, fotoDoModelo,
+  temCacamba, temEnsacadeira,
   type CompactaSku,
 } from './linha'
 import type {
@@ -334,6 +334,7 @@ export function escolherCompacta(r: RespostasQuiz, d: Dimensionamento): Compacta
       producaoKgH: escolhida.producaoKgH,
       misturadorKg: escolhida.misturadorKg,
       caixas: escolhida.caixas,
+      fotoUrl: fotoDoModelo(linha, escolhida.producaoKgH, escolhida.misturadorKg),
       porque: porques.join(' '),
       alternativas: mesmaProducao
         .filter(c => c.codigo !== escolhida.codigo)
