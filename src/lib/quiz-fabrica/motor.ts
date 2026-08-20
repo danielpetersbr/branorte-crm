@@ -515,9 +515,16 @@ export function montarEstacoes(
     titulo: 'Moagem',
     resumo: 'O moinho é quem manda na produção da fábrica inteira.',
     itens: [
+      // O moinho é identificado por CV, não pela capacidade impressa dele.
+      // Mostrar as duas coisas punha números discordantes lado a lado: a
+      // COMPACTA 03 de 4.000 kg/h roda com o BNMM540, que a tabela imprime como
+      // 4.500 — é a MESMA máquina de 40 CV, mas na tela virava "fábrica de
+      // 4.000" com "moinho de 4.500" logo abaixo. Quem manda no número grande é
+      // a fábrica; o moinho se identifica pela potência.
       item(
-        `Moinho de martelo ${moinho.codigo} — ${inteiro(moinho.kgh)} kg/h (${moinho.cv.toLocaleString('pt-BR')} CV)`,
-        `Roda a sua produção do dia em ${horas(d.horasReaisPorDia)}, dentro das `
+        `Moinho de martelo ${moinho.codigo} — ${moinho.cv.toLocaleString('pt-BR')} CV`,
+        `É ele que dá os ${inteiro(d.capacidadeEscolhidaKgH)} kg/h da sua fábrica: roda a `
+        + `produção do dia em ${horas(d.horasReaisPorDia)}, dentro das `
         + `${inteiro(num(r.horasPorDia))} h que você disse ter.`,
       ),
       item(

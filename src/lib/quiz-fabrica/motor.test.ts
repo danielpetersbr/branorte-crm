@@ -543,12 +543,14 @@ describe('coerência da tela: UM número manda na página inteira', () => {
   })
 
   it('o moinho listado dá conta da produção que o produto promete', () => {
+    // Pelo CV, nao pela capacidade impressa: o rotulo do moinho hoje traz so a
+    // potencia, justamente pra nao por dois numeros discordantes na tela.
     for (const t of casos) {
       const r = calcularQuiz(bovinos({ modo: 'direto', toneladasMes: t, expedicao: 'ensacada' }))
       const nome = estacao(r, 'moagem')!.itens[0].nome
-      const kgh = Number(/— ([\d.]+) kg\/h/.exec(nome)![1].replace(/\./g, ''))
-      assert.ok(kgh >= r.dimensionamento.capacidadeEscolhidaKgH,
-        `${t} t/mês: moinho de ${kgh} kg/h abaixo dos ${r.dimensionamento.capacidadeEscolhidaKgH} prometidos`)
+      const cv = Number(/— ([\d,]+) CV/.exec(nome)![1].replace(',', '.'))
+      assert.ok(cv * 100 >= r.dimensionamento.capacidadeEscolhidaKgH,
+        `${t} t/mês: moinho de ${cv} CV abaixo dos ${r.dimensionamento.capacidadeEscolhidaKgH} kg/h prometidos`)
     }
   })
 
@@ -797,5 +799,45 @@ describe('foto do modelo', () => {
       const url = fotoDoModelo(linha as string, p as number, m as number)
       assert.doesNotMatch(url, /preco/i, url)
     }
+  })
+})
+
+describe('coerência: o moinho listado bate com a fábrica anunciada', () => {
+  /**
+   * Achado dirigindo a produção em 20/08: a página anunciava COMPACTA 02
+   * MASTER de 2.500 kg/h e listava embaixo "BNMM440 — 3.000 kg/h (30 CV)",
+   * porque a escada de moinhos não tinha o degrau de 2.500 e a busca arredonda
+   * pra cima. A ficha oficial do produto estampa "Moinho Martelo 25cv".
+   */
+  it('a fábrica de 2.500 kg/h roda com moinho de 25 CV, não de 30', () => {
+    const m = MOINHOS.find(x => x.kgh === 2500)
+    assert.ok(m, 'falta o degrau de 2.500 na escada de moinhos')
+    assert.equal(m!.cv, 25)
+    assert.equal(m!.codigo, 'BNMM325')
+  })
+
+  it('o CV do moinho bate com o codigo da Compacta em toda a escada', () => {
+    // O codigo da Compacta E [CV x 10][misturador], entao o moinho listado tem
+    // que ter exatamente esse CV. Comparar CAPACIDADES nao serve: o BNMM540 e
+    // 40 CV impresso como 4.500 kg/h e roda a Compacta de 4.000.
+    for (const t of [12, 25, 60, 74, 78, 120, 160, 200, 300]) {
+      for (const h of [2, 4, 8]) {
+        const r = calcularQuiz(bovinos({ modo: 'direto', toneladasMes: t, horasPorDia: h, diasPorSemana: 5 }))
+        if (!r.compacta) continue
+        const nome = estacao(r, 'moagem')!.itens[0].nome
+        const cv = Number(/— ([\d,]+) CV/.exec(nome)![1].replace(',', '.'))
+        assert.equal(cv * 100, r.compacta.producaoKgH,
+          `${r.compacta.codigo} (${r.compacta.producaoKgH} kg/h) listou moinho de ${cv} CV`)
+      }
+    }
+  })
+
+  it('o rotulo do moinho nao carrega capacidade — so CV', () => {
+    // Punha dois numeros discordantes lado a lado ("fabrica 4.000" / "moinho
+    // 4.500"), sendo a mesma maquina.
+    const r = calcularQuiz(bovinos({ modo: 'direto', toneladasMes: 300, horasPorDia: 4, diasPorSemana: 5 }))
+    const nome = estacao(r, 'moagem')!.itens[0].nome
+    assert.doesNotMatch(nome, /kg\/h/, nome)
+    assert.match(nome, /\d+ CV$/, nome)
   })
 })

@@ -47,6 +47,13 @@ export const MOINHOS: Array<{ codigo: string; cv: number; kgh: number }> = [
   { codigo: 'BNMM210',  cv: 10,  kgh: 1000 },
   { codigo: 'BNMM215',  cv: 15,  kgh: 1500 },
   { codigo: 'BNMM320',  cv: 20,  kgh: 2000 },
+  // ⚠️ BNMM325 está `ativo = false` em `precos_branorte` — e mesmo assim é o
+  // moinho que a ficha oficial da `Compacta 02 Master - 2501000` estampa
+  // ("Moinho Martelo 25cv"). Sem ele a página se contradizia: anunciava uma
+  // fábrica de 2.500 kg/h e listava embaixo um moinho de 30 CV / 3.000 kg/h,
+  // porque a busca arredonda pra cima e 2.500 não existia na escada.
+  // Alguém precisa reativar o cadastro; até lá, o quiz segue a ficha.
+  { codigo: 'BNMM325',  cv: 25,  kgh: 2500 },
   { codigo: 'BNMM440',  cv: 30,  kgh: 3000 },
   { codigo: 'BNMM540',  cv: 40,  kgh: 4500 },
   { codigo: 'BNMM550',  cv: 50,  kgh: 5000 },
