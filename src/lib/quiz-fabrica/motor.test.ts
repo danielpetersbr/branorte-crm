@@ -20,7 +20,8 @@ import { describe, it } from 'node:test'
 import { COMPACTAS, MOINHOS, TETO_FAMILIA, degrau, ehMaster, temCacamba, temEnsacadeira } from './linha'
 import {
   BATELADAS_POR_HORA, DIAS_MES_COMERCIAL, FOLGA_OPERACIONAL_PCT, MESES_ENTRESSAFRA,
-  calcularDimensionamento, calcularQuiz, consumoDeReferencia, consumoNaBase, consumoParaMes,
+  baseNaturalDe, calcularDimensionamento, calcularQuiz, consumoDeReferencia,
+  consumoNaBase, consumoParaMes,
   escolherCompacta, faltando, familiaCompacta, fracaoMilho,
   porteDeRecepcao, preferemHorizontal, respostasIniciais,
 } from './motor'
@@ -648,15 +649,28 @@ describe('consumo por DIA — como o produtor fala', () => {
     assert.equal(DIAS_MES_COMERCIAL, 30)
     assert.equal(consumoParaMes(10, 'dia'), 300)
     assert.equal(consumoParaMes(300, 'mes'), 300)
-    assert.ok(Math.abs(consumoNaBase(297, 'dia') - 9.9) < 1e-9)
+    assert.equal(consumoNaBase(297, 'dia'), 9.9)
     assert.equal(consumoNaBase(297, 'mes'), 297)
   })
 
-  it('ida e volta não perde valor — trocar de unidade não pode mexer no número', () => {
-    for (const mes of [297, 3.4, 240, 0.9, 165]) {
-      const ida = consumoNaBase(mes, 'dia')
-      assert.ok(Math.abs(consumoParaMes(ida, 'dia') - mes) < 1e-9, `${mes} voltou diferente`)
+  it('o campo nunca mostra dízima — 3,4 kg/mês vira 0,113, não 0,11333333333333333', () => {
+    // Dezessete dígitos num input é número que ninguém confere nem edita.
+    for (const mes of [3.4, 0.9, 1.95, 297, 165]) {
+      for (const base of ['dia', 'mes'] as const) {
+        const v = String(consumoNaBase(mes, base))
+        const casas = (v.split('.')[1] ?? '').length
+        assert.ok(casas <= 3, `${mes} em ${base} saiu "${v}" (${casas} casas)`)
+      }
     }
+    assert.equal(consumoNaBase(3.4, 'dia'), 0.113)
+  })
+
+  it('a unidade natural: boi e porco em kg/dia, ave em kg/mês', () => {
+    // Ave come em GRAMA — 0,113 kg/dia é certo e ilegível; 3,4 kg/mês ela
+    // reconhece. Trocar continua a um clique.
+    assert.equal(baseNaturalDe('bovinos'), 'dia')
+    assert.equal(baseNaturalDe('suinos'), 'dia')
+    assert.equal(baseNaturalDe('aves'), 'mes')
   })
 
   it('o que o produtor digita por dia dá a MESMA fábrica que o mês equivalente', () => {

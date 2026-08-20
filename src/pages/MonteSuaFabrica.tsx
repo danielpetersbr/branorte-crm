@@ -28,8 +28,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { CATEGORIAS, ESPECIES } from '@/lib/venda-racao/catalogo'
 import {
-  DIAS_MES_COMERCIAL, calcularQuiz, consumoDeReferencia, consumoNaBase, consumoParaMes,
-  inteiro, kg, respostasIniciais,
+  DIAS_MES_COMERCIAL, baseNaturalDe, calcularQuiz, consumoDeReferencia, consumoNaBase,
+  consumoParaMes, inteiro, kg, respostasIniciais,
 } from '@/lib/quiz-fabrica/motor'
 import type { Especie, RespostasQuiz, ResultadoQuiz } from '@/lib/quiz-fabrica/tipos'
 
@@ -332,7 +332,11 @@ export function MonteSuaFabrica({ previa = false }: { previa?: boolean } = {}) {
    * cabeça — a fábrica saía 90 vezes menor que a real.
    */
   const escolherEspecie = (e: Especie) => {
-    setR(p => ({ ...p, especie: e, categoria: '', consumoPorAnimalMes: 0, foraDeEscopo: null }))
+    setR(p => ({
+      ...p, especie: e, categoria: '', consumoPorAnimalMes: 0, foraDeEscopo: null,
+      // Boi e porco em kg/dia; ave em kg/mês (por dia ela come grama).
+      baseConsumo: baseNaturalDe(e),
+    }))
   }
 
   const escolherCategoria = (chave: string) => {

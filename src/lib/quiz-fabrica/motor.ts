@@ -126,9 +126,30 @@ export function consumoDeReferencia(especie: Especie | null, categoria: string):
  */
 export const DIAS_MES_COMERCIAL = 30
 
-/** kg/mês guardado → o número que a tela mostra na unidade escolhida. */
+/**
+ * kg/mês guardado → o número que a tela mostra na unidade escolhida.
+ *
+ * ⚠️ ARREDONDA. Sem isto o campo de uma poedeira (3,4 kg/mês) exibia
+ * `0.11333333333333333` — dezessete dígitos que ninguém confere nem edita.
+ * O arredondamento é SÓ de exibição: o valor guardado só muda quando o
+ * produtor digita, então alternar dia↔mês não faz o número derivar.
+ */
 export function consumoNaBase(mes: number, base: 'dia' | 'mes'): number {
-  return base === 'dia' ? dividir(num(mes), DIAS_MES_COMERCIAL) : num(mes)
+  const v = base === 'dia' ? dividir(num(mes), DIAS_MES_COMERCIAL) : num(mes)
+  const casas = base === 'dia' ? 3 : 1
+  return Math.round(v * 10 ** casas) / 10 ** casas
+}
+
+/**
+ * Em que unidade essa criação é falada.
+ *
+ * Boi e porco comem em quilo por dia ("10 kg/dia") — é assim que o produtor
+ * pensa, e foi o pedido. Ave come em GRAMA: 0,113 kg/dia é tecnicamente certo e
+ * praticamente ilegível, enquanto 3,4 kg/mês é um número que ele reconhece.
+ * Então a ave nasce em mês; os outros, em dia. Trocar segue a um clique.
+ */
+export function baseNaturalDe(especie: Especie | null): 'dia' | 'mes' {
+  return especie === 'aves' ? 'mes' : 'dia'
 }
 
 /** O que o produtor digitou → kg/mês, que é como o sistema guarda. */
