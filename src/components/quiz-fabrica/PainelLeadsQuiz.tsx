@@ -26,6 +26,17 @@ const ENERGIA: Record<string, string> = {
   trifasico: 'trifásica', monofasico: 'monofásica', nao_sei: 'não sabe a energia',
 }
 
+/**
+ * Decimal em português: 3,4 — não 3.4.
+ *
+ * Interpolar o número cru dava "20.000 animais × 3.4 kg/mês": milhar certo e
+ * decimal americano na MESMA linha, o que faz o vendedor duvidar do número
+ * inteiro antes de duvidar do formato.
+ */
+function dec(v: number | null): string {
+  return (v ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 })
+}
+
 function data(iso: string): string {
   return new Date(iso).toLocaleString('pt-BR', {
     day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit',
@@ -114,8 +125,8 @@ function Linha({ l }: { l: QuizLeadRow }) {
           {/* O que ele respondeu, cru. */}
           <div className="text-[13px] text-ink-muted leading-relaxed">
             {l.modo === 'animais'
-              ? `${(l.numero_animais ?? 0).toLocaleString('pt-BR')} animais × ${l.consumo_por_animal_mes} kg/mês`
-              : `${l.toneladas_mes} t/mês informadas direto`}
+              ? `${(l.numero_animais ?? 0).toLocaleString('pt-BR')} animais × ${dec(l.consumo_por_animal_mes)} kg/mês`
+              : `${dec(l.toneladas_mes)} t/mês informadas direto`}
             {' · '}
             {l.dias_por_semana} {l.dias_por_semana === 1 ? 'dia' : 'dias'}/semana × {l.horas_por_dia} h/dia
           </div>
