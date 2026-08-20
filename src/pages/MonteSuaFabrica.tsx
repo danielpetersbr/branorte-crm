@@ -527,14 +527,24 @@ export function MonteSuaFabrica({ previa = false }: { previa?: boolean } = {}) {
                 <Opcao key={e.chave} on={r.especie === e.chave} onClick={() => escolherEspecie(e.chave)}
                   titulo={`${e.icone}  ${e.nome}`} />
               ))}
-              {/* As duas saídas honestas. Estão na MESMA lista de propósito: o
-                  produtor que cria tilápia procura a opção dele aqui, não numa
-                  nota de rodapé. */}
-              <Opcao on={false} onClick={() => setR(p => ({ ...p, foraDeEscopo: 'peixe' }))}
-                titulo="🐟  Peixe (tilápia e afins)" desc="Precisa de ração extrusada" />
-              <Opcao on={false} onClick={() => setR(p => ({ ...p, foraDeEscopo: 'peletizada' }))}
-                titulo="⚫  Ração peletizada (pelete)" desc="Precisa de peletizadora" />
             </div>
+
+            {/* Peixe e ração peletizada ficam FORA da lista de cartões — e é
+                deliberado. A Branorte não fabrica extrusora nem peletizadora, e
+                num cartão do mesmo tamanho, ao lado dos produtos, os dois liam
+                como se ela vendesse. Aqui embaixo, em texto miúdo, seguem
+                pegando o lead fora de escopo no primeiro clique (que é o ponto:
+                dizer "não" agora vale mais que dizer depois do quiz inteiro)
+                sem parecerem oferta. */}
+            <p className="text-[13px] text-ink-muted leading-snug mt-5 pt-4 border-t border-border">
+              Não é nada disso? Se você precisa de ração para{' '}
+              <button type="button" onClick={() => setR(p => ({ ...p, foraDeEscopo: 'peixe' }))}
+                className="text-accent font-semibold underline underline-offset-2">peixe</button>
+              {' '}ou de ração{' '}
+              <button type="button" onClick={() => setR(p => ({ ...p, foraDeEscopo: 'peletizada' }))}
+                className="text-accent font-semibold underline underline-offset-2">peletizada</button>
+              , leia isto antes de seguir.
+            </p>
 
             {r.especie && r.especie !== 'milho' && (
               <div className="mt-6">
