@@ -203,7 +203,7 @@ export const ESTEIRAS_SACARIA: number[] = [5.5, 7.5]
  * duas caixas de ração pronta que a linha industrial embarca.
  */
 export interface CompactaSku {
-  linha: '01' | '01 MASTER' | '02' | '02 MASTER' | '03' | '03 MASTER'
+  linha: 'MINI' | '01' | '01 MASTER' | '02' | '02 MASTER' | '03' | '03 MASTER'
   codigo: string
   producaoKgH: number
   misturadorKg: number
@@ -211,24 +211,50 @@ export interface CompactaSku {
 }
 
 /**
- * TETO COMERCIAL de cada família, em kg/h — REGRA DO DONO (20/08/2026):
- * *"Compacta 2 vai até 2 toneladas por hora. Acima de... 2.200 quilo hora pode
- * considerar Compacta 3."*
+ * ═══ A ESCADA COMERCIAL — REGRA DO DONO, ditada em 20/08/2026 ═══
  *
- * ⚠️ Isto NÃO sai do código do SKU, e por isso precisa existir aqui. A tabela
- * de preços tem linhas como `COMPACTA 02 - 3001000`, cujo código decodifica
- * 3.000 kg/h. Derivar a escada só do código fazia o quiz oferecer uma 02 de
- * 3.000 kg/h pra quem precisava de 2.142 — produto que a fábrica não vende
- * nesse porte. Acima do teto, a recomendação sobe de família.
+ *   até 600 kg/h ......... MINI FÁBRICA
+ *   600 a 1.500 kg/h ..... COMPACTA 01
+ *   1.500 a 2.000 kg/h ... COMPACTA 02
+ *   acima de 2.000 ....... COMPACTA 03
  *
- * O teto da 02 MASTER está aqui como 2.000 junto com a 02. A escada antiga
- * registrada dizia 2.500 pra ela; o dono falou "Compacta 2" sem separar Master,
- * e na dúvida vale a leitura mais conservadora — errar pra 03 entrega máquina
- * que existe, errar pra 02 entrega máquina que não se vende.
+ * Palavras dele: *"Até 600 quilo hora tu indica a mini fábrica. De mais de 600
+ * até 1500, Compacta 1. Mais de 1500 até [2] toneladas a hora, Compacta 2.
+ * [Acima] daí indica a Compacta 3."*
+ *
+ * ⚠️ O teto da 02 foi CONFIRMADO em 2.000 kg/h. Ele chegou a dizer "12
+ * toneladas a hora" ditando esta escada, mas confirmou 2 t/h quando perguntei —
+ * bate com o que tinha dito antes no mesmo dia, e 12 t/h não existe: o maior
+ * moinho do catálogo (BNMM7100, 100 CV) faz 10 t/h.
+ *
+ * ⚠️ QUEM DECIDE A LINHA É A CAPACIDADE, e só ela. Ensacar e querer pesagem
+ * automática NÃO mudam de família — viram equipamento dentro da linha
+ * escolhida. Antes disso, dizer "quero ensacar" pulava direto pra 03.
+ *
+ * ⚠️ E isto NÃO sai do código do SKU. A tabela de preços tem
+ * `COMPACTA 02 - 3001000`, cujo código decodifica 3.000 kg/h — derivar a escada
+ * do código fazia o quiz oferecer uma 02 desse porte pra quem precisava de
+ * 2.049. O teto comercial não está no dado; está na cabeça de quem vende.
+ */
+export const BANDA_FAMILIA: Array<{ familia: string; ateKgH: number }> = [
+  { familia: 'MINI', ateKgH: 600 },
+  { familia: '01', ateKgH: 1500 },
+  { familia: '02', ateKgH: 2000 },
+  { familia: '03', ateKgH: Infinity },
+]
+
+/**
+ * Maior SKU que cada família pode oferecer, em kg/h.
+ *
+ * Difere da BANDA porque os degraus de máquina não caem exatamente nos limites
+ * comerciais: a Mini atende "até 600", mas o degrau real acima de 300 é o de
+ * 750 — não existe máquina de 600. Quem precisa de 500 leva a Mini de 750,
+ * dentro da família que a regra manda.
  */
 export const TETO_FAMILIA: Record<string, number> = {
-  '01': 2000,
-  '01 MASTER': 2000,
+  MINI: 750,
+  '01': 1500,
+  '01 MASTER': 1500,
   '02': 2000,
   '02 MASTER': 2000,
   '03': 5000,
@@ -258,6 +284,17 @@ function c(
 }
 
 export const COMPACTAS: CompactaSku[] = [
+  // ---- MINI FÁBRICA — a entrada da linha, até 600 kg/h pela regra do dono
+  //
+  // ⚠️ As máquinas da Mini NÃO estão em `precos_branorte` — só os PAINÉIS dela:
+  // "Painel Elétrico Mini Fábrica Compacta JR (30150)" e "... Compacta 01
+  // (75300)". Ninguém cadastra painel de produto que não vende, então a Mini
+  // existe e o que falta é cadastro de máquina — a mesma situação em que a
+  // Compacta 03 esteve até agosto/2026. Os dois códigos abaixo saem desses
+  // painéis, lidos pela regra [CV×10][kg do misturador].
+  c('MINI', 'MINI FÁBRICA COMPACTA JR - 30150', 300, 150),
+  c('MINI', 'MINI FÁBRICA COMPACTA 01 - 75300', 750, 300),
+
   // ---- 01 — vertical, sem caçamba, sem ensacadeira
   c('01', 'COMPACTA 01 - 30150',    300,  150),
   c('01', 'COMPACTA 01 - 75300',    750,  300),

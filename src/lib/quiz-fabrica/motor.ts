@@ -32,9 +32,10 @@
 import { participacaoParaKgPorTonelada } from '@/lib/venda-racao/calculo'
 import { CATEGORIAS, formulaPadrao } from '@/lib/venda-racao/catalogo'
 import {
-  CACAMBAS, CAIXAS_RACAO, COMPACTAS, ESTEIRAS_SACARIA, MISTURADOR_HORIZONTAL,
-  MISTURADOR_VERTICAL, MOINHOS, RECEPCAO_POR_PORTE, SILOS_MILHO, SILOS_RACAO,
-  TETO_FAMILIA, degrau, ehMaster,
+  BANDA_FAMILIA, CACAMBAS, CAIXAS_RACAO, COMPACTAS, ESTEIRAS_SACARIA,
+  MISTURADOR_HORIZONTAL, MISTURADOR_VERTICAL, MOINHOS, RECEPCAO_POR_PORTE,
+  SILOS_MILHO, SILOS_RACAO, TETO_FAMILIA, degrau, ehMaster, temCacamba,
+  temEnsacadeira,
   type CompactaSku,
 } from './linha'
 import type {
@@ -226,26 +227,22 @@ export function calcularDimensionamento(r: RespostasQuiz): Dimensionamento {
  * ensacadeira de fábrica — não é upsell, é onde o equipamento existe.
  */
 /**
- * ⚠️ QUERER ENSACAR NÃO EXIGE A LINHA 03. A ensacadeira de saco aberto é SKU
- * avulso do catálogo — entra em qualquer linha, e a estação de Expedição já a
- * lista sempre que o produtor diz que ensaca.
+ * A CAPACIDADE decide a linha — e só ela.
  *
- * A primeira versão desta função devolvia '03' assim que `expedicao` incluía
- * ensacada. Como a 03 começa em 1.000 kg/h, um produtor de 25 t/mês — que
- * precisa de 240 kg/h — recebia uma fábrica de 1.000 kg/h, mais de 4× o que
- * usa, só por dizer que ensaca. Vender demais é tão errado quanto vender de
- * menos: o payback do estudo ao lado morre.
+ *   até 600 → MINI · até 1.500 → 01 · até 2.000 → 02 · acima → 03
  *
- * A 03 é a linha INDUSTRIAL integrada (caçamba + caixas grandes + ensacadeira
- * de fábrica). Ela entra quando a PRODUÇÃO já pede esse porte — `capacidadeAlvo`
- * dentro da faixa dela —, não porque o produtor quer saco.
+ * Regra ditada pelo dono em 20/08/2026 (ver `BANDA_FAMILIA` em linha.ts).
+ *
+ * ⚠️ Ensacar e querer pesagem automática NÃO mudam de família. Duas versões
+ * anteriores desta função erraram exatamente aí: a primeira devolvia '03' assim
+ * que o produtor dizia que ensaca, e como a 03 começa em 1.000 kg/h, quem
+ * produz 25 t/mês — 240 kg/h — levava fábrica 4× maior por causa do saco. As
+ * duas respostas seguem valendo, mas pra listar EQUIPAMENTO (caçamba de
+ * pesagem, ensacadeira, esteira) dentro da linha que a capacidade escolheu.
  */
-export function familiaCompacta(r: RespostasQuiz, capacidadeAlvoKgH = 0): '01' | '02' | '03' {
-  const ensaca = r.expedicao === 'ensacada' || r.expedicao === 'ambos'
-  const menorDa03 = Math.min(...COMPACTAS.filter(c => c.linha.startsWith('03')).map(c => c.producaoKgH))
-  if (ensaca && capacidadeAlvoKgH >= menorDa03) return '03'
-  if (r.pesagemAutomatica) return '02'
-  return '01'
+export function familiaCompacta(capacidadeAlvoKgH: number): string {
+  const alvo = Math.max(0, num(capacidadeAlvoKgH))
+  return (BANDA_FAMILIA.find(b => alvo <= b.ateKgH) ?? BANDA_FAMILIA[BANDA_FAMILIA.length - 1]).familia
 }
 
 /**
@@ -262,14 +259,22 @@ export function preferemHorizontal(especie: Especie | null): boolean {
   return especie === 'aves' || especie === 'suinos'
 }
 
-/** Ordem de tentativa: primeiro o que ele pediu, depois o que existe. */
-function linhasCandidatas(familia: '01' | '02' | '03', master: boolean): string[] {
-  // Nunca desce de família: 02 → 01 tiraria a caçamba que ele pediu.
-  const numeros = familia === '01' ? ['01', '02', '03']
-    : familia === '02' ? ['02', '03']
-    : ['03']
+/**
+ * Ordem de tentativa: a família que a capacidade pede, depois as de cima.
+ *
+ * Nunca DESCE de família — descer entregaria máquina menor que o necessário.
+ * Subir só acontece quando a família da banda não tem degrau que atenda (a
+ * Mini, por exemplo, para em 750 kg/h).
+ *
+ * MASTER é VARIANTE, não família: é a mesma linha com misturador horizontal. A
+ * Mini não tem variante Master no catálogo de painéis.
+ */
+function linhasCandidatas(familia: string, master: boolean): string[] {
+  const escada = ['MINI', '01', '02', '03']
+  const daqui = escada.slice(Math.max(0, escada.indexOf(familia)))
   const out: string[] = []
-  for (const n of numeros) {
+  for (const n of daqui) {
+    if (n === 'MINI') { out.push('MINI'); continue }
     if (master) out.push(`${n} MASTER`, n)
     else out.push(n, `${n} MASTER`)
   }
@@ -293,8 +298,8 @@ export function escolherCompacta(r: RespostasQuiz, d: Dimensionamento): Compacta
   // moinho com transporte. Fingir uma fábrica aqui venderia o que ele não usa.
   if (r.especie === 'milho') return null
 
-  const familia = familiaCompacta(r, d.capacidadeAlvoKgH)
-  const master = preferemHorizontal(r.especie)
+  const familia = familiaCompacta(d.capacidadeAlvoKgH)
+  const master = preferemHorizontal(r.especie) && familia !== 'MINI'
   const pedida = master ? `${familia} MASTER` : familia
 
   for (const linha of linhasCandidatas(familia, master)) {
@@ -524,7 +529,11 @@ export function montarEstacoes(
   // ---- 5) Dosagem ---------------------------------------------------------
   if (!soMilho) {
     const bateladaKg = compacta?.misturadorKg ?? degrau(MISTURADOR_VERTICAL, dividir(d.capacidadeEscolhidaKgH, BATELADAS_POR_HORA))
-    if (r.pesagemAutomatica) {
+    // A 02 e a 03 já EMBARCAM caçamba. Se a linha veio pela capacidade e traz a
+    // caçamba de fábrica, ela aparece mesmo que o produtor tenha dito que pesa
+    // na balança — omitir seria esconder um equipamento que ele vai receber.
+    const cacambaVemComALinha = !!compacta && temCacamba(compacta.linha)
+    if (r.pesagemAutomatica || cacambaVemComALinha) {
       const cacamba = degrau(CACAMBAS, bateladaKg)
       brutas.push({
         chave: 'dosagem',
@@ -533,7 +542,10 @@ export function montarEstacoes(
         itens: [
           item(
             `Caçamba de pesagem ${inteiro(cacamba)} kg`,
-            `Pesa a batelada inteira de ${kg(bateladaKg)} de uma vez. Fórmula errada é prejuízo que não aparece na nota.`,
+            cacambaVemComALinha && !r.pesagemAutomatica
+              ? `Já vem com a ${compacta!.linha}. Pesa a batelada inteira de ${kg(bateladaKg)} de uma vez — `
+                + 'você não pediu, mas nessa produção ela é parte da linha.'
+              : `Pesa a batelada inteira de ${kg(bateladaKg)} de uma vez. Fórmula errada é prejuízo que não aparece na nota.`,
           ),
           item(
             'Balança eletrônica com célula de carga',
@@ -625,10 +637,17 @@ export function montarEstacoes(
 
   // ---- 8) Expedição -------------------------------------------------------
   const expedicao: ItemLinha[] = []
-  if (r.expedicao === 'ensacada' || r.expedicao === 'ambos') {
+  const querEnsacar = r.expedicao === 'ensacada' || r.expedicao === 'ambos'
+  // A 03 é a linha industrial: embarca ensacadeira de fábrica. Quem cai nela
+  // pela CAPACIDADE recebe a ensacadeira mesmo tendo dito que entrega a granel.
+  const ensacadeiraVemComALinha = !!compacta && temEnsacadeira(compacta.linha)
+  if (querEnsacar || ensacadeiraVemComALinha) {
     expedicao.push(item(
       'Ensacadeira de saco aberto com painel',
-      'Enche e libera o saco no ponto. É o único jeito de ensacar sem parar a fábrica.',
+      querEnsacar
+        ? 'Enche e libera o saco no ponto. É o único jeito de ensacar sem parar a fábrica.'
+        : `Já vem com a ${compacta!.linha}. Você disse que entrega a granel, mas nessa produção a `
+          + 'linha é industrial e traz a ensacadeira — serve pro dia em que precisar estocar ou vender.',
     ))
     const esteira = d.producaoPorDiaKg > 4000 ? ESTEIRAS_SACARIA[1] : ESTEIRAS_SACARIA[0]
     expedicao.push(item(

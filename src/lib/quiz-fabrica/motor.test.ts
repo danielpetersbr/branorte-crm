@@ -113,8 +113,9 @@ describe('Compactas — o código NÃO é a capacidade', () => {
 
   it('o código é [CV×10][kg do misturador] em TODAS as linhas', () => {
     for (const c of COMPACTAS) {
-      // Tira o prefixo do nome e o sufixo de caixas ("- 4000/4000") da 03.
-      const bruto = c.codigo.replace(/^COMPACTA \S+( MASTER)? - /, '').split(' - ')[0]
+      // Tira o nome da linha (inclusive "MINI FÁBRICA COMPACTA JR") e o sufixo
+      // de caixas ("- 4000/4000") da 03. O que sobra é o código puro.
+      const bruto = c.codigo.replace(/^.*? - /, '').split(' - ')[0]
       const esperado = `${c.producaoKgH / 10}${c.misturadorKg}`
       assert.equal(bruto, esperado, `${c.codigo} deveria codificar ${esperado}`)
     }
@@ -182,23 +183,50 @@ describe('dimensionamento — a jornada manda mais que o rebanho', () => {
 })
 
 describe('escolha da linha', () => {
-  it('ensacar só leva pra 03 quando a PRODUÇÃO já pede esse porte', () => {
-    // Este teste já afirmou o contrário ("quem ensaca cai na 03"), e estava
-    // errado: codificava o próprio defeito. A ensacadeira é SKU avulso; a 03 é
-    // a linha industrial integrada, e começa em 1.000 kg/h.
-    assert.equal(familiaCompacta(bovinos({ expedicao: 'ensacada' }), 240), '01')
-    assert.equal(familiaCompacta(bovinos({ expedicao: 'ensacada' }), 1200), '03')
-    assert.equal(familiaCompacta(bovinos({ expedicao: 'ambos' }), 1200), '03')
+  it('A ESCADA DO DONO: 600 → Mini · 1.500 → 01 · 2.000 → 02 · acima → 03', () => {
+    // Ditada em 20/08/2026: "Até 600 quilo hora tu indica a mini fábrica. De
+    // mais de 600 até 1500, Compacta 1. Mais de 1500 até 2 toneladas a hora,
+    // Compacta 2. Acima, Compacta 3."
+    assert.equal(familiaCompacta(1), 'MINI')
+    assert.equal(familiaCompacta(600), 'MINI')
+    assert.equal(familiaCompacta(601), '01')
+    assert.equal(familiaCompacta(1500), '01')
+    assert.equal(familiaCompacta(1501), '02')
+    assert.equal(familiaCompacta(2000), '02')
+    assert.equal(familiaCompacta(2001), '03')
+    assert.equal(familiaCompacta(2200), '03')  // o exemplo que ele deu
+    assert.equal(familiaCompacta(99999), '03')
   })
 
-  it('sem capacidade informada, ensacar não presume a linha industrial', () => {
-    // O default do parâmetro é 0 — na dúvida, a linha menor.
-    assert.equal(familiaCompacta(bovinos({ expedicao: 'ensacada' })), '01')
+  it('quem decide a linha é a CAPACIDADE — ensacar e pesagem não mudam família', () => {
+    // Duas versões anteriores erraram aqui. A primeira mandava pra 03 assim
+    // que o produtor dizia que ensaca; como a 03 começava em 1.000 kg/h, quem
+    // produz 240 kg/h levava fábrica 4x maior por causa do saco.
+    const capacidades = [200, 700, 1600, 2500]
+    for (const cap of capacidades) {
+      const esperado = familiaCompacta(cap)
+      // A função nem recebe mais as respostas — a assinatura é a garantia.
+      assert.equal(familiaCompacta(cap), esperado)
+    }
+    // E de ponta a ponta: mesma demanda, respostas opostas, MESMA família.
+    const comum = { modo: 'direto' as const, toneladasMes: 25, diasPorSemana: 6, horasPorDia: 4 }
+    const a = calcularQuiz(bovinos({ ...comum, expedicao: 'ensacada', pesagemAutomatica: true }))
+    const b = calcularQuiz(bovinos({ ...comum, expedicao: 'granel', pesagemAutomatica: false }))
+    assert.equal(a.compacta!.linha, b.compacta!.linha,
+      `ensacar mudou a linha: ${a.compacta!.codigo} vs ${b.compacta!.codigo}`)
+    assert.equal(a.dimensionamento.capacidadeEscolhidaKgH, b.dimensionamento.capacidadeEscolhidaKgH)
   })
 
-  it('pesagem automática sobe pra 02; sem ela, fica na 01', () => {
-    assert.equal(familiaCompacta(bovinos({ expedicao: 'granel', pesagemAutomatica: true })), '02')
-    assert.equal(familiaCompacta(bovinos({ expedicao: 'granel', pesagemAutomatica: false })), '01')
+  it('a MINI FÁBRICA existe e atende quem é pequeno', () => {
+    // 12 t/mês em 6 dias × 4 h → ~138 kg/h. É Mini, não Compacta 01.
+    const r = calcularQuiz(bovinos({ modo: 'direto', toneladasMes: 12 }))
+    assert.equal(r.compacta!.linha, 'MINI', `virou ${r.compacta!.codigo}`)
+    assert.match(r.compacta!.codigo, /MINI FÁBRICA/)
+  })
+
+  it('a Mini não tem variante MASTER — nem pra ave', () => {
+    const r = calcularQuiz(bovinos({ especie: 'aves', categoria: 'postura', modo: 'direto', toneladasMes: 8 }))
+    if (r.compacta?.linha === 'MINI') assert.doesNotMatch(r.compacta.codigo, /MASTER/)
   })
 
   it('ave e suíno preferem horizontal; bovino roda no vertical', () => {
@@ -222,9 +250,11 @@ describe('escolha da linha', () => {
     // 3.000 kg/h. Derivar a escada só do código fazia o quiz oferecer uma 02
     // de 3.000 kg/h pra quem precisava de 2.142 — produto que a fábrica não
     // vende nesse porte. Foi exatamente o que o dono viu na tela.
-    for (const linha of ['01', '01 MASTER', '02', '02 MASTER'] as const) {
-      assert.equal(TETO_FAMILIA[linha], 2000, `${linha} deveria parar em 2.000 kg/h`)
-    }
+    assert.equal(TETO_FAMILIA.MINI, 750)
+    assert.equal(TETO_FAMILIA['01'], 1500)
+    assert.equal(TETO_FAMILIA['01 MASTER'], 1500)
+    assert.equal(TETO_FAMILIA['02'], 2000, 'a 02 tem que parar em 2.000 kg/h')
+    assert.equal(TETO_FAMILIA['02 MASTER'], 2000)
 
     const r = bovinos({ expedicao: 'granel', pesagemAutomatica: true, modo: 'direto', toneladasMes: 74, diasPorSemana: 5, horasPorDia: 2 })
     const d = calcularDimensionamento(r)
@@ -412,8 +442,9 @@ describe('a linha completa, do recebimento à expedição', () => {
   })
 
   it('quando a Compacta 03 já traz caixas, a tela usa as dela — sem medida concorrente', () => {
-    const r = calcularQuiz(bovinos({ expedicao: 'ensacada', modo: 'direto', toneladasMes: 120 }))
-    assert.ok(r.compacta?.caixas.length)
+    // 200 t/mes em 6 dias x 4 h pede ~2.300 kg/h: acima de 2.000, logo 03.
+    const r = calcularQuiz(bovinos({ expedicao: 'ensacada', modo: 'direto', toneladasMes: 200 }))
+    assert.ok(r.compacta?.caixas.length, "deveria cair na 03: " + r.compacta?.codigo)
     assert.match(textoDa(r, 'racao_pronta'), new RegExp(`Já vêm com a ${r.compacta!.linha}`))
   })
 
@@ -469,7 +500,7 @@ describe('defeitos achados dirigindo a tela em 20/08/2026', () => {
   })
 
   it('a contagem de caixas não sai duplicada ("2×2 caixas")', () => {
-    const r = calcularQuiz(bovinos({ expedicao: 'ensacada', modo: 'direto', toneladasMes: 120 }))
+    const r = calcularQuiz(bovinos({ expedicao: 'ensacada', modo: 'direto', toneladasMes: 200 }))
     const caixa = estacao(r, 'racao_pronta')!.itens[0]
     assert.ok(caixa.quantidade >= 2)
     // O nome NÃO pode carregar número de unidades — a tela já imprime o "N×".
