@@ -625,24 +625,17 @@ export function OrcamentoBuilder() {
       const { supabase } = await import('@/lib/supabase')
       const { data: { session } } = await supabase.auth.getSession()
 
-      // 1) Pega telefone do vendedor via extensão (WID capturado pelo WhatsApp Web)
-      let { telefone: telefoneExt, vendedor: vendedorExt } = await getTelefoneVendedorDaExtensao()
-      // Fallback: se extensão não respondeu (versão antiga), usa localStorage ou modal
-      if (!telefoneExt) {
-        const saved = localStorage.getItem('branorte_meu_telefone_wa') || ''
-        setWaPromptValue(saved.replace(/^55/, ''))
-        const tel = await new Promise<string | null>((resolve) => {
-          setWaPromptResolve(() => resolve)
-          setWaPromptOpen(true)
-        })
-        setWaPromptOpen(false)
-        setWaPromptResolve(null)
-        if (!tel) throw new Error('Telefone não fornecido')
-        const digits = tel.replace(/[^\d]/g, '')
-        if (digits.length < 10 || digits.length > 13) throw new Error('Telefone inválido (use DDD + número)')
-        telefoneExt = digits.startsWith('55') ? digits : '55' + digits
-        localStorage.setItem('branorte_meu_telefone_wa', telefoneExt)
-      }
+      // 1) Pega telefone do vendedor via extensão (WID capturado pelo WhatsApp Web).
+      //
+      // ⚠️ Esse handshake é postMessage pro window.opener e só responde quando a
+      // janela foi aberta PELO botão da extensão no WhatsApp Web. Aberta direto
+      // (aba normal, favorito, WhatsApp fechado depois) ninguém responde e ele
+      // estoura em 3s. Antes disso já parava o vendedor com o modal do telefone —
+      // mesmo o servidor sabendo resolver sozinho pelo login. Agora o modal é o
+      // ÚLTIMO recurso: só aparece se o servidor também não achar.
+      const { telefone: telefoneExt, vendedor: vendedorExt } = await getTelefoneVendedorDaExtensao()
+      // Sem extensão: reaproveita o número já confirmado antes nesta máquina.
+      const telefoneConhecido = telefoneExt || (localStorage.getItem('branorte_meu_telefone_wa') || '')
       setEnviandoWAMsg('Fazendo upload do PDF...')
       const vendedor = (vendedorExt || '').toUpperCase().trim()
 
@@ -656,20 +649,48 @@ export function OrcamentoBuilder() {
       const { data: pub } = supabase.storage.from('qr-media').getPublicUrl(path)
       if (!pub?.publicUrl) throw new Error('URL pública não gerada')
 
+      const agendar = async (telefoneDestino: string) => {
+        const r = await fetch('https://flwbeevtvjiouxdjmziv.supabase.co/functions/v1/orcamento-enviar-meu-zap', {
+          method: 'POST',
+          headers: { 'authorization': `Bearer ${session?.access_token ?? ''}`, 'content-type': 'application/json' },
+          body: JSON.stringify({
+            vendedor_nome: vendedor,
+            telefone_destino: telefoneDestino,
+            pdf_url: pub.publicUrl,
+            filename,
+            cliente_nome: cliNome,
+          }),
+        })
+        return await r.json()
+      }
+
       setEnviandoWAMsg('Agendando envio pro seu WhatsApp...')
-      const r = await fetch('https://flwbeevtvjiouxdjmziv.supabase.co/functions/v1/orcamento-enviar-meu-zap', {
-        method: 'POST',
-        headers: { 'authorization': `Bearer ${session?.access_token ?? ''}`, 'content-type': 'application/json' },
-        body: JSON.stringify({
-          vendedor_nome: vendedor,
-          telefone_destino: telefoneExt,
-          pdf_url: pub.publicUrl,
-          filename,
-          cliente_nome: cliNome,
-        }),
-      })
-      const j = await r.json()
+      // Vai SEM telefone se não souber: o servidor resolve pelo perfil do login.
+      let j = await agendar(telefoneConhecido)
+
+      // Só incomoda o vendedor se o servidor também não achou o número dele.
+      if (!j.ok && j.error === 'sem_telefone') {
+        setEnviandoWAMsg('Não achei seu número no cadastro — confirme abaixo')
+        const saved = localStorage.getItem('branorte_meu_telefone_wa') || ''
+        setWaPromptValue(saved.replace(/^55/, ''))
+        const tel = await new Promise<string | null>((resolve) => {
+          setWaPromptResolve(() => resolve)
+          setWaPromptOpen(true)
+        })
+        setWaPromptOpen(false)
+        setWaPromptResolve(null)
+        if (!tel) throw new Error('Telefone não fornecido')
+        const digits = tel.replace(/[^\d]/g, '')
+        if (digits.length < 10 || digits.length > 13) throw new Error('Telefone inválido (use DDD + número)')
+        const tel55 = digits.startsWith('55') ? digits : '55' + digits
+        localStorage.setItem('branorte_meu_telefone_wa', tel55)
+        setEnviandoWAMsg('Agendando envio pro seu WhatsApp...')
+        j = await agendar(tel55)
+      }
+
       if (!j.ok) throw new Error(j.error + ': ' + (j.detail || ''))
+      // Guarda o número que o servidor resolveu: da próxima nem depende da extensão.
+      if (j.telefone) { try { localStorage.setItem('branorte_meu_telefone_wa', String(j.telefone)) } catch { /* storage cheio/bloqueado */ } }
       setEnviandoWA('enviado')
       setEnviandoWAMsg(j.msg || 'Agendado!')
     } catch (e: any) {
