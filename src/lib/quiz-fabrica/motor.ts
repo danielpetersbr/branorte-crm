@@ -187,8 +187,25 @@ export function calcularDimensionamento(r: RespostasQuiz): Dimensionamento {
  * Quem vai ensacar cai na 03 porque ela é a única linha que embarca
  * ensacadeira de fábrica — não é upsell, é onde o equipamento existe.
  */
-export function familiaCompacta(r: RespostasQuiz): '01' | '02' | '03' {
-  if (r.expedicao === 'ensacada' || r.expedicao === 'ambos') return '03'
+/**
+ * ⚠️ QUERER ENSACAR NÃO EXIGE A LINHA 03. A ensacadeira de saco aberto é SKU
+ * avulso do catálogo — entra em qualquer linha, e a estação de Expedição já a
+ * lista sempre que o produtor diz que ensaca.
+ *
+ * A primeira versão desta função devolvia '03' assim que `expedicao` incluía
+ * ensacada. Como a 03 começa em 1.000 kg/h, um produtor de 25 t/mês — que
+ * precisa de 240 kg/h — recebia uma fábrica de 1.000 kg/h, mais de 4× o que
+ * usa, só por dizer que ensaca. Vender demais é tão errado quanto vender de
+ * menos: o payback do estudo ao lado morre.
+ *
+ * A 03 é a linha INDUSTRIAL integrada (caçamba + caixas grandes + ensacadeira
+ * de fábrica). Ela entra quando a PRODUÇÃO já pede esse porte — `capacidadeAlvo`
+ * dentro da faixa dela —, não porque o produtor quer saco.
+ */
+export function familiaCompacta(r: RespostasQuiz, capacidadeAlvoKgH = 0): '01' | '02' | '03' {
+  const ensaca = r.expedicao === 'ensacada' || r.expedicao === 'ambos'
+  const menorDa03 = Math.min(...COMPACTAS.filter(c => c.linha.startsWith('03')).map(c => c.producaoKgH))
+  if (ensaca && capacidadeAlvoKgH >= menorDa03) return '03'
   if (r.pesagemAutomatica) return '02'
   return '01'
 }
@@ -238,7 +255,7 @@ export function escolherCompacta(r: RespostasQuiz, d: Dimensionamento): Compacta
   // moinho com transporte. Fingir uma fábrica aqui venderia o que ele não usa.
   if (r.especie === 'milho') return null
 
-  const familia = familiaCompacta(r)
+  const familia = familiaCompacta(r, d.capacidadeAlvoKgH)
   const master = preferemHorizontal(r.especie)
   const pedida = master ? `${familia} MASTER` : familia
 
@@ -279,6 +296,26 @@ export function escolherCompacta(r: RespostasQuiz, d: Dimensionamento): Compacta
   // Acima de 5.000 kg/h não existe Compacta de catálogo: é projeto montado peça
   // a peça. Devolver null é o honesto — a tela mostra a linha avulsa.
   return null
+}
+
+/**
+ * Refaz o dimensionamento com a capacidade da Compacta escolhida no lugar da do
+ * moinho avulso — para que UM número governe título, blocos e estações.
+ *
+ * As horas por dia e a ocupação são recalculadas junto: com a fábrica maior, ela
+ * roda menos tempo, e mentir sobre isso desmontaria a rotina que o produtor
+ * acabou de descrever.
+ */
+export function comCapacidadeDaCompacta(
+  d: Dimensionamento, c: CompactaSugerida, r: RespostasQuiz,
+): Dimensionamento {
+  const horasReaisPorDia = dividir(d.producaoPorDiaKg, c.producaoKgH)
+  return {
+    ...d,
+    capacidadeEscolhidaKgH: c.producaoKgH,
+    horasReaisPorDia,
+    utilizacaoPct: dividir(horasReaisPorDia, Math.max(0, num(r.horasPorDia))) * 100,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -431,7 +468,11 @@ export function montarEstacoes(
   }
 
   // ---- 4) Moagem ----------------------------------------------------------
-  const moinho = MOINHOS.find(m => m.kgh === d.capacidadeEscolhidaKgH) ?? MOINHOS[MOINHOS.length - 1]
+  // `>=`, não `===`: nem toda produção de Compacta tem moinho de mesmo nome na
+  // escada. A 02 MASTER de 4.000 kg/h roda com o BNMM540, que a tabela imprime
+  // como 4.500. Com igualdade exata isso não casava e caía no fallback — o
+  // moinho de 100 CV, vinte vezes maior que o certo.
+  const moinho = MOINHOS.find(m => m.kgh >= d.capacidadeEscolhidaKgH) ?? MOINHOS[MOINHOS.length - 1]
   brutas.push({
     chave: 'moagem',
     titulo: 'Moagem',
@@ -651,7 +692,7 @@ export function montarAlertas(r: RespostasQuiz, d: Dimensionamento): string[] {
     )
   }
 
-  const moinho = MOINHOS.find(m => m.kgh === d.capacidadeEscolhidaKgH)
+  const moinho = MOINHOS.find(m => m.kgh >= d.capacidadeEscolhidaKgH)
   if (r.energia === 'monofasico' && moinho && moinho.cv > 15) {
     a.push(
       `Moinho de ${moinho.cv.toLocaleString('pt-BR')} CV não roda em monofásico — acima de 15 CV só existe `
@@ -728,14 +769,22 @@ export function calcularQuiz(r: RespostasQuiz): ResultadoQuiz {
   }
 
   const compacta = escolherCompacta(r, dimensionamento)
+  // A Compacta escolhida MANDA na capacidade da página inteira.
+  //
+  // Sem isto conviviam duas escadas independentes: a do moinho (`MOINHOS`) e a
+  // do produto (`COMPACTAS`). Quando a família forçava um degrau acima, a mesma
+  // tela mostrava "COMPACTA 03 — o degrau é 1.000 kg/h" no título, "300 kg/h"
+  // no bloco de números e "Moinho BNMM130 (3 CV)" na estação de Moagem. Uma
+  // Compacta de 1.000 kg/h não sai com moinho de 3 CV — sai com 10.
+  const reconciliado = compacta ? comCapacidadeDaCompacta(dimensionamento, compacta, r) : dimensionamento
   return {
     completo: true,
     faltando: [],
     foraDeEscopo: null,
-    dimensionamento,
+    dimensionamento: reconciliado,
     compacta,
-    estacoes: montarEstacoes(r, dimensionamento, compacta),
-    alertas: montarAlertas(r, dimensionamento),
+    estacoes: montarEstacoes(r, reconciliado, compacta),
+    alertas: montarAlertas(r, reconciliado),
   }
 }
 

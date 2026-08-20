@@ -181,9 +181,18 @@ describe('dimensionamento — a jornada manda mais que o rebanho', () => {
 })
 
 describe('escolha da linha', () => {
-  it('quem ensaca cai na 03 — é a única linha com ensacadeira', () => {
-    assert.equal(familiaCompacta(bovinos({ expedicao: 'ensacada' })), '03')
-    assert.equal(familiaCompacta(bovinos({ expedicao: 'ambos' })), '03')
+  it('ensacar só leva pra 03 quando a PRODUÇÃO já pede esse porte', () => {
+    // Este teste já afirmou o contrário ("quem ensaca cai na 03"), e estava
+    // errado: codificava o próprio defeito. A ensacadeira é SKU avulso; a 03 é
+    // a linha industrial integrada, e começa em 1.000 kg/h.
+    assert.equal(familiaCompacta(bovinos({ expedicao: 'ensacada' }), 240), '01')
+    assert.equal(familiaCompacta(bovinos({ expedicao: 'ensacada' }), 1200), '03')
+    assert.equal(familiaCompacta(bovinos({ expedicao: 'ambos' }), 1200), '03')
+  })
+
+  it('sem capacidade informada, ensacar não presume a linha industrial', () => {
+    // O default do parâmetro é 0 — na dúvida, a linha menor.
+    assert.equal(familiaCompacta(bovinos({ expedicao: 'ensacada' })), '01')
   })
 
   it('pesagem automática sobe pra 02; sem ela, fica na 01', () => {
@@ -446,6 +455,103 @@ describe('defeitos achados dirigindo a tela em 20/08/2026', () => {
     // O nome NÃO pode carregar número de unidades — a tela já imprime o "N×".
     assert.doesNotMatch(caixa.nome, /^\d+\s+caixas/i, caixa.nome)
     assert.match(caixa.nome, /^Caixa de ração pronta/i)
+  })
+})
+
+describe('coerência da tela: UM número manda na página inteira', () => {
+  /**
+   * O defeito que isto trava (achado em 20/08 revisando a lógica das perguntas):
+   * conviviam DUAS escadas independentes — a do moinho e a do produto. Quando a
+   * família de Compacta forçava um degrau acima, a mesma tela mostrava
+   * "COMPACTA 03 — o degrau é 1.000 kg/h" no título, "300 kg/h" no bloco de
+   * números e "Moinho BNMM130 (3 CV)" na Moagem. Três números discordando.
+   */
+  const casos = [10, 25, 40, 60, 120, 400, 900]
+
+  it('a capacidade exibida é SEMPRE a da Compacta recomendada', () => {
+    for (const t of casos) {
+      for (const exp of ['granel', 'ensacada'] as const) {
+        const r = calcularQuiz(bovinos({ modo: 'direto', toneladasMes: t, expedicao: exp }))
+        if (!r.compacta) continue
+        assert.equal(r.dimensionamento.capacidadeEscolhidaKgH, r.compacta.producaoKgH,
+          `${t} t/mês ${exp}: tile diz ${r.dimensionamento.capacidadeEscolhidaKgH}, produto é ${r.compacta.producaoKgH}`)
+      }
+    }
+  })
+
+  it('o moinho listado dá conta da produção que o produto promete', () => {
+    for (const t of casos) {
+      const r = calcularQuiz(bovinos({ modo: 'direto', toneladasMes: t, expedicao: 'ensacada' }))
+      const nome = estacao(r, 'moagem')!.itens[0].nome
+      const kgh = Number(/— ([\d.]+) kg\/h/.exec(nome)![1].replace(/\./g, ''))
+      assert.ok(kgh >= r.dimensionamento.capacidadeEscolhidaKgH,
+        `${t} t/mês: moinho de ${kgh} kg/h abaixo dos ${r.dimensionamento.capacidadeEscolhidaKgH} prometidos`)
+    }
+  })
+
+  it('o misturador da estação é o mesmo que o código da Compacta carrega', () => {
+    for (const t of casos) {
+      const r = calcularQuiz(bovinos({ modo: 'direto', toneladasMes: t }))
+      if (!r.compacta) continue
+      const nome = estacao(r, 'mistura')!.itens[0].nome
+      // Tira o separador de milhar antes de comparar: a tela escreve
+      // "Misturador vertical 1.000 kg" e o código carrega 1000.
+      const semSeparador = nome.replace(/\./g, '')
+      assert.ok(semSeparador.includes(String(r.compacta.misturadorKg)) || /L \(carga de/.test(nome),
+        `${t} t/mês: ${nome} vs misturador ${r.compacta.misturadorKg} kg do ${r.compacta.codigo}`)
+    }
+  })
+
+  it('as horas por dia batem com a capacidade exibida', () => {
+    for (const t of casos) {
+      const r = calcularQuiz(bovinos({ modo: 'direto', toneladasMes: t, expedicao: 'ensacada' }))
+      const d = r.dimensionamento
+      const esperado = d.producaoPorDiaKg / d.capacidadeEscolhidaKgH
+      assert.ok(Math.abs(d.horasReaisPorDia - esperado) < 0.001,
+        `${t} t/mês: diz ${d.horasReaisPorDia} h, a conta dá ${esperado}`)
+    }
+  })
+})
+
+describe('ensacar NÃO obriga a linha industrial', () => {
+  /**
+   * A ensacadeira de saco aberto é SKU avulso e a estação de Expedição já a
+   * lista. Forçar a 03 (que começa em 1.000 kg/h) fazia um produtor de 25 t/mês
+   * — que precisa de 240 kg/h — receber fábrica 4x maior por dizer que ensaca.
+   */
+  it('produtor pequeno que ensaca não é empurrado pra 03', () => {
+    const r = calcularQuiz(bovinos({ modo: 'direto', toneladasMes: 25, expedicao: 'ensacada' }))
+    assert.ok(!r.compacta!.linha.startsWith('03'),
+      `25 t/mês virou ${r.compacta!.codigo}`)
+    assert.ok(r.dimensionamento.capacidadeEscolhidaKgH <= 750,
+      `entregou ${r.dimensionamento.capacidadeEscolhidaKgH} kg/h pra quem precisa de ~240`)
+  })
+
+  it('mas ele CONTINUA recebendo a ensacadeira', () => {
+    const r = calcularQuiz(bovinos({ modo: 'direto', toneladasMes: 25, expedicao: 'ensacada' }))
+    assert.match(textoDa(r, 'expedicao'), /Ensacadeira/i)
+  })
+
+  it('quem já é industrial ganha a 03 integrada', () => {
+    const r = calcularQuiz(bovinos({ modo: 'direto', toneladasMes: 200, expedicao: 'ensacada' }))
+    assert.ok(r.compacta!.linha.startsWith('03'), `200 t/mês virou ${r.compacta!.codigo}`)
+    assert.ok(r.compacta!.caixas.length > 0)
+  })
+
+  it('a fábrica entregue nunca passa de 2x o que o produtor precisa', () => {
+    // Superdimensionar mata o payback do Estudo ao lado. O degrau da escada
+    // pode dar folga, mas dobrar já é outra fábrica.
+    for (const t of [10, 25, 40, 60, 120, 200]) {
+      for (const exp of ['granel', 'ensacada'] as const) {
+        const r = calcularQuiz(bovinos({ modo: 'direto', toneladasMes: t, expedicao: exp }))
+        const d = r.dimensionamento
+        const sobra = d.capacidadeEscolhidaKgH / d.capacidadeAlvoKgH
+        // O degrau mínimo (300 kg/h) sempre sobra pra quem é muito pequeno —
+        // não existe fábrica menor pra vender.
+        if (d.capacidadeEscolhidaKgH === 300) continue
+        assert.ok(sobra <= 2, `${t} t/mês ${exp}: ${sobra.toFixed(1)}x o necessário (${r.compacta?.codigo})`)
+      }
+    }
   })
 })
 
