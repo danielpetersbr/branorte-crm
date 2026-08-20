@@ -215,17 +215,21 @@ export interface CompactaSku {
  *
  *   até 600 kg/h ......... MINI FÁBRICA
  *   600 a 1.500 kg/h ..... COMPACTA 01
- *   1.500 a 2.000 kg/h ... COMPACTA 02
- *   acima de 2.000 ....... COMPACTA 03
+ *   1.500 a 2.200 kg/h ... COMPACTA 02
+ *   acima de 2.200 ....... COMPACTA 03
  *
  * Palavras dele: *"Até 600 quilo hora tu indica a mini fábrica. De mais de 600
  * até 1500, Compacta 1. Mais de 1500 até [2] toneladas a hora, Compacta 2.
  * [Acima] daí indica a Compacta 3."*
  *
- * ⚠️ O teto da 02 foi CONFIRMADO em 2.000 kg/h. Ele chegou a dizer "12
- * toneladas a hora" ditando esta escada, mas confirmou 2 t/h quando perguntei —
- * bate com o que tinha dito antes no mesmo dia, e 12 t/h não existe: o maior
- * moinho do catálogo (BNMM7100, 100 CV) faz 10 t/h.
+ * ⚠️ BANDA e TETO são coisas DIFERENTES, e confundi-las trava a escada. A BANDA
+ * é a DEMANDA que cai naquela família ("quem precisa de 2.100 kg/h é 02"). O
+ * TETO é a maior MÁQUINA que a família pode oferecer. Um produtor de 2.100 cai
+ * na banda da 02 e leva a máquina de 2.500 — que é o degrau que atende.
+ *
+ * ⚠️ O teto da 02 andou três vezes num dia só (2.000 → "12 toneladas" → 2.200).
+ * Vale o último: **2.200**. Mas o número sozinho não muda nada — o que decide é
+ * que MÁQUINA existe naquela faixa. Ver a nota das 2.500 em COMPACTAS.
  *
  * ⚠️ QUEM DECIDE A LINHA É A CAPACIDADE, e só ela. Ensacar e querer pesagem
  * automática NÃO mudam de família — viram equipamento dentro da linha
@@ -239,7 +243,7 @@ export interface CompactaSku {
 export const BANDA_FAMILIA: Array<{ familia: string; ateKgH: number }> = [
   { familia: 'MINI', ateKgH: 600 },
   { familia: '01', ateKgH: 1500 },
-  { familia: '02', ateKgH: 2000 },
+  { familia: '02', ateKgH: 2200 },
   { familia: '03', ateKgH: Infinity },
 ]
 
@@ -255,8 +259,11 @@ export const TETO_FAMILIA: Record<string, number> = {
   MINI: 750,
   '01': 1500,
   '01 MASTER': 1500,
+  // A ficha oficial da 02 VERTICAL para em 2.000 kg/h (tabela impressa na
+  // própria ficha: 750 · 1000 · 1000 · 1500 · 1500 · 2000). A MASTER vai a
+  // 2.500 — é o que a ficha `Compacta 02 Master - 2501000` mostra.
   '02': 2000,
-  '02 MASTER': 2000,
+  '02 MASTER': 2500,
   '03': 5000,
   '03 MASTER': 5000,
 }
@@ -330,6 +337,16 @@ export const COMPACTAS: CompactaSku[] = [
   c('02 MASTER', 'COMPACTA 02 MASTER - 150500',  1500, 500),
   c('02 MASTER', 'COMPACTA 02 MASTER - 200500',  2000, 500),
   c('02 MASTER', 'COMPACTA 02 MASTER - 2001000', 2000, 1000),
+  // ⚠️ Estas duas de 2.500 kg/h NÃO estão em `precos_branorte` — vêm das fichas
+  // oficiais do marketing (`Compacta 02 Master - 250500` e `- 2501000`, na pasta
+  // "Sem preço"). É a mesma lacuna que a Compacta 03 teve até agosto/2026:
+  // o produto é vendido e o cadastro de máquina não existe.
+  //
+  // Sem elas o teto de 2.200 da banda 02 seria letra morta: o maior degrau da
+  // família na tabela de preços é 2.000, então quem precisasse de 2.100 caía
+  // direto na 03 de 3.000 — uma fábrica inteira acima do que precisa.
+  c('02 MASTER', 'COMPACTA 02 MASTER - 250500',  2500, 500),
+  c('02 MASTER', 'COMPACTA 02 MASTER - 2501000', 2500, 1000),
   c('02 MASTER', 'COMPACTA 02 MASTER - 300500',  3000, 500),
   c('02 MASTER', 'COMPACTA 02 MASTER - 3001000', 3000, 1000),
   c('02 MASTER', 'COMPACTA 02 MASTER - 400500',  4000, 500),

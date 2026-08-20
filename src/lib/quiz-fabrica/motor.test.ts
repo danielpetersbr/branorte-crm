@@ -193,8 +193,8 @@ describe('escolha da linha', () => {
     assert.equal(familiaCompacta(1500), '01')
     assert.equal(familiaCompacta(1501), '02')
     assert.equal(familiaCompacta(2000), '02')
-    assert.equal(familiaCompacta(2001), '03')
-    assert.equal(familiaCompacta(2200), '03')  // o exemplo que ele deu
+    assert.equal(familiaCompacta(2200), '02')  // teto revisto pelo dono em 20/08
+    assert.equal(familiaCompacta(2201), '03')
     assert.equal(familiaCompacta(99999), '03')
   })
 
@@ -242,7 +242,7 @@ describe('escolha da linha', () => {
     assert.ok(!c!.linha.startsWith('01'), `desceu pra ${c!.linha}`)
   })
 
-  it('TETO DA 02 = 2 t/h: acima disso é 03, não uma 02 grande', () => {
+  it('a 02 atende até 2.200 kg/h — com a máquina de 2.500 da MASTER', () => {
     // REGRA DO DONO (20/08/2026): "Compacta 2 vai até 2 toneladas por hora.
     // Acima de... 2.200 quilo hora pode considerar Compacta 3."
     //
@@ -254,13 +254,25 @@ describe('escolha da linha', () => {
     assert.equal(TETO_FAMILIA['01'], 1500)
     assert.equal(TETO_FAMILIA['01 MASTER'], 1500)
     assert.equal(TETO_FAMILIA['02'], 2000, 'a 02 tem que parar em 2.000 kg/h')
-    assert.equal(TETO_FAMILIA['02 MASTER'], 2000)
+    // A ficha da 02 VERTICAL para em 2.000; a MASTER vai a 2.500.
+    assert.equal(TETO_FAMILIA['02 MASTER'], 2500)
 
+    // 74 t/mes em 5 dias x 2 h pede ~2.049 kg/h. Antes isso caia na 03 de
+    // 3.000 kg/h, porque o maior degrau da 02 em `precos_branorte` e 2.000. As
+    // fichas do marketing provam que existe 02 MASTER de 2.500 — com ela, o
+    // produtor leva meia fabrica a menos.
     const r = bovinos({ expedicao: 'granel', pesagemAutomatica: true, modo: 'direto', toneladasMes: 74, diasPorSemana: 5, horasPorDia: 2 })
     const d = calcularDimensionamento(r)
-    assert.ok(d.capacidadeAlvoKgH > 2000, `alvo deu ${d.capacidadeAlvoKgH}, precisa passar de 2.000`)
+    assert.ok(d.capacidadeAlvoKgH > 2000 && d.capacidadeAlvoKgH <= 2200, `alvo deu ${d.capacidadeAlvoKgH}`)
     const c = escolherCompacta(r, d)!
-    assert.ok(c.linha.startsWith('03'), `${Math.round(d.capacidadeAlvoKgH)} kg/h virou ${c.codigo}`)
+    assert.ok(c.linha.startsWith('02'), `${Math.round(d.capacidadeAlvoKgH)} kg/h virou ${c.codigo}`)
+    assert.equal(c.producaoKgH, 2500)
+
+    // Passou de 2.200, ai sim e 03.
+    const r2 = bovinos({ expedicao: 'granel', pesagemAutomatica: true, modo: 'direto', toneladasMes: 90, diasPorSemana: 5, horasPorDia: 2 })
+    const d2 = calcularDimensionamento(r2)
+    assert.ok(d2.capacidadeAlvoKgH > 2200, `alvo2 deu ${d2.capacidadeAlvoKgH}`)
+    assert.ok(escolherCompacta(r2, d2)!.linha.startsWith('03'))
   })
 
   it('nenhuma recomendação passa do teto da própria família', () => {
