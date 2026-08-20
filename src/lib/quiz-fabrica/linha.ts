@@ -320,10 +320,25 @@ export const COMPACTAS: CompactaSku[] = [
   c('01', 'COMPACTA 01 - 2001000',  2000, 1000),
 
   // ---- 01 MASTER — misturador horizontal
-  c('01 MASTER', 'COMPACTA 01 MASTER - 75150',  750,  150),
-  c('01 MASTER', 'COMPACTA 01 MASTER - 75300',  750,  300),
+  //
+  // ⚠️ O MASTER DE 7,5 CV FAZ 600 kg/h, NÃO 750. É a única quebra conhecida da
+  // regra CV×100 nas Compactas, e ela só existe no horizontal: o vertical de
+  // 7,5 CV (`Compacta 01 - 750300`) faz 750. As fichas oficiais dizem 600 nas
+  // duas configurações de 7,5 CV do Master (`75150` e `75300`) — provável
+  // limite do ciclo do misturador horizontal nesse porte.
+  //
+  // Foi a IMAGEM que denunciou: a tela anunciava "o degrau é 750 kg/h" e a
+  // ficha logo abaixo estampava "600 KG/H". Conferidos 10, 20 e 25 CV do
+  // Master: todos batem em CV×100. O derrate é só no 7,5.
+  c('01 MASTER', 'COMPACTA 01 MASTER - 75150',  600,  150),
+  c('01 MASTER', 'COMPACTA 01 MASTER - 75300',  600,  300),
   c('01 MASTER', 'COMPACTA 01 MASTER - 100300', 1000, 300),
   c('01 MASTER', 'COMPACTA 01 MASTER - 100500', 1000, 500),
+  // ⚠️ Ausente de `precos_branorte`, presente na ficha oficial
+  // `Compacta 01 Master - 150500`. Sem ela, um bovino que precisa de 1.385 kg/h
+  // — que é a faixa mais comum na porta — não achava Master nenhum entre 1.000
+  // e 2.000 e caía no vertical, contrariando a regra da casa.
+  c('01 MASTER', 'COMPACTA 01 MASTER - 150500', 1500, 500),
   c('01 MASTER', 'COMPACTA 01 MASTER - 200500', 2000, 500),
   c('01 MASTER', 'COMPACTA 01 MASTER - 300500', 3000, 500),
 
@@ -342,6 +357,8 @@ export const COMPACTAS: CompactaSku[] = [
   c('02 MASTER', 'COMPACTA 02 MASTER - 100300',  1000, 300),
   c('02 MASTER', 'COMPACTA 02 MASTER - 100500',  1000, 500),
   c('02 MASTER', 'COMPACTA 02 MASTER - 150500',  1500, 500),
+  // Idem: só na ficha (`Compacta 02 Master - 1501000`), não no cadastro.
+  c('02 MASTER', 'COMPACTA 02 MASTER - 1501000', 1500, 1000),
   c('02 MASTER', 'COMPACTA 02 MASTER - 200500',  2000, 500),
   c('02 MASTER', 'COMPACTA 02 MASTER - 2001000', 2000, 1000),
   // ⚠️ Estas duas de 2.500 kg/h NÃO estão em `precos_branorte` — vêm das fichas

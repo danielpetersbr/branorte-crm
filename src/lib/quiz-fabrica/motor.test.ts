@@ -111,13 +111,20 @@ describe('Compactas — o código NÃO é a capacidade', () => {
     assert.equal(c.misturadorKg, 150)
   })
 
-  it('o código é [CV×10][kg do misturador] em TODAS as linhas', () => {
+  it('o codigo guarda [CV x 10][kg do misturador] — e CV nao e sempre producao/100', () => {
+    // O codigo carrega a POTENCIA, nao a producao. Na maior parte da escada as
+    // duas coisas coincidem (producao = CV x 100), mas o MASTER de 7,5 CV faz
+    // 600 kg/h e mesmo assim se chama 75150/75300. A ficha oficial manda.
+    const DERRATADOS: Record<string, number> = {
+      'COMPACTA 01 MASTER - 75150': 75,
+      'COMPACTA 01 MASTER - 75300': 75,
+    }
     for (const c of COMPACTAS) {
-      // Tira o nome da linha (inclusive "MINI FÁBRICA COMPACTA JR") e o sufixo
-      // de caixas ("- 4000/4000") da 03. O que sobra é o código puro.
+      // Tira o nome da linha (inclusive "MINI FABRICA COMPACTA JR") e o sufixo
+      // de caixas ("- 4000/4000") da 03. O que sobra e o codigo puro.
       const bruto = c.codigo.replace(/^.*? - /, '').split(' - ')[0]
-      const esperado = `${c.producaoKgH / 10}${c.misturadorKg}`
-      assert.equal(bruto, esperado, `${c.codigo} deveria codificar ${esperado}`)
+      const cvx10 = DERRATADOS[c.codigo] ?? c.producaoKgH / 10
+      assert.equal(bruto, `${cvx10}${c.misturadorKg}`, `${c.codigo} nao decodifica`)
     }
   })
 
@@ -229,10 +236,29 @@ describe('escolha da linha', () => {
     if (r.compacta?.linha === 'MINI') assert.doesNotMatch(r.compacta.codigo, /MASTER/)
   })
 
-  it('ave e suíno preferem horizontal; bovino roda no vertical', () => {
-    assert.equal(preferemHorizontal('aves'), true)
-    assert.equal(preferemHorizontal('suinos'), true)
-    assert.equal(preferemHorizontal('bovinos'), false)
+  it('MASTER e pra BOVINOS — ave e suino rodam no vertical', () => {
+    // Este teste ja afirmou o CONTRARIO, e estava errado: era heuristica minha
+    // (nucleo a 6-7% exige uniformidade), nao regra da casa. O dono corrigiu em
+    // 20/08/2026: "Master, so quando e bovinos". O que sustenta e o VOLUME —
+    // bovino come ~300 kg/cabeca/mes contra 3,4 de uma poedeira.
+    assert.equal(preferemHorizontal('bovinos'), true)
+    assert.equal(preferemHorizontal('aves'), false)
+    assert.equal(preferemHorizontal('suinos'), false)
+    assert.equal(preferemHorizontal('milho'), false)
+    assert.equal(preferemHorizontal(null), false)
+  })
+
+  it('o MASTER de 7,5 CV faz 600 kg/h — unica quebra do CV x 100', () => {
+    // Achado pela IMAGEM: a tela dizia "degrau 750 kg/h" e a ficha estampava
+    // "600 KG/H". So no horizontal: o vertical de 7,5 CV faz 750.
+    for (const cod of ['COMPACTA 01 MASTER - 75150', 'COMPACTA 01 MASTER - 75300']) {
+      assert.equal(COMPACTAS.find(c => c.codigo === cod)!.producaoKgH, 600, cod)
+    }
+    assert.equal(COMPACTAS.find(c => c.codigo === 'COMPACTA 01 - 75300')!.producaoKgH, 750)
+    // 10, 20 e 25 CV do Master seguem CV x 100 (conferidos nas fichas).
+    assert.equal(COMPACTAS.find(c => c.codigo === 'COMPACTA 01 MASTER - 100500')!.producaoKgH, 1000)
+    assert.equal(COMPACTAS.find(c => c.codigo === 'COMPACTA 01 MASTER - 200500')!.producaoKgH, 2000)
+    assert.equal(COMPACTAS.find(c => c.codigo === 'COMPACTA 02 MASTER - 2501000')!.producaoKgH, 2500)
   })
 
   it('nunca DESCE de família — 02 pedida não vira 01 sem caçamba', () => {
@@ -839,5 +865,29 @@ describe('coerência: o moinho listado bate com a fábrica anunciada', () => {
     const nome = estacao(r, 'moagem')!.itens[0].nome
     assert.doesNotMatch(nome, /kg\/h/, nome)
     assert.match(nome, /\d+ CV$/, nome)
+  })
+})
+
+describe('a regra do MASTER chega no produtor', () => {
+  it('bovino recebe MASTER de verdade na faixa comum (120 t/mes)', () => {
+    const r = calcularQuiz(bovinos({ modo: 'direto', toneladasMes: 120 }))
+    assert.ok(ehMaster(r.compacta!.linha), `bovino virou ${r.compacta!.codigo}`)
+  })
+
+  it('ave e suino recebem o vertical na mesma faixa', () => {
+    for (const [e, c] of [['aves','postura'],['suinos','terminacao']] as const) {
+      const r = calcularQuiz(bovinos({ especie: e, categoria: c, modo: 'direto', toneladasMes: 120 }))
+      assert.ok(!ehMaster(r.compacta!.linha), `${e} virou ${r.compacta!.codigo}`)
+    }
+  })
+
+  it('o MASTER nao tem buraco entre 1.000 e 2.000 kg/h', () => {
+    // Faltava o `01 MASTER - 150500` (so na ficha, nao no cadastro): bovino de
+    // 1.385 kg/h nao achava Master e caia no vertical, contra a regra da casa.
+    for (const t of [90, 100, 110, 120, 130]) {
+      const r = calcularQuiz(bovinos({ modo: 'direto', toneladasMes: t }))
+      assert.ok(ehMaster(r.compacta!.linha),
+        `${t} t/mes (${Math.round(r.dimensionamento.capacidadeAlvoKgH)} kg/h) virou ${r.compacta!.codigo}`)
+    }
   })
 })

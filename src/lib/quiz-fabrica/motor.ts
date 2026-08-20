@@ -246,17 +246,22 @@ export function familiaCompacta(capacidadeAlvoKgH: number): string {
 }
 
 /**
- * MASTER = misturador horizontal. Mistura mais rápido e mais uniforme que o
- * vertical, e é isso que importa quando o que dá a dieta é pouca coisa bem
- * distribuída: núcleo e premix de ave e suíno entram a 6–7% da fórmula, e o que
- * não misturou direito vira lote fora de especificação.
+ * MASTER = misturador horizontal, e ele é pra BOVINOS.
  *
- * Bovino de pasto, com mineral em proporção maior e tolerância bem mais folgada,
- * roda no vertical sem drama — e sai mais barato. A tela mostra a outra opção
- * do mesmo tamanho de qualquer jeito; quem fecha isso é o vendedor.
+ * REGRA DO DONO (20/08/2026): *"Master, só quando é bovinos, né?"*
+ *
+ * ⚠️ Esta função já devolveu o CONTRÁRIO — eu tinha programado ave e suíno pro
+ * horizontal, argumentando que núcleo a 6–7% exige uniformidade. Era HEURÍSTICA
+ * MINHA, nunca regra da casa, e estava errada. O que sustenta a regra real é o
+ * volume: bovino come ~300 kg por cabeça por mês contra 3,4 de uma poedeira, e
+ * é a batelada grande e rápida do horizontal que dá conta disso. Ave e suíno
+ * rodam no vertical.
+ *
+ * A tela mostra a outra opção do mesmo tamanho de qualquer jeito; quem fecha
+ * isso é o vendedor.
  */
 export function preferemHorizontal(especie: Especie | null): boolean {
-  return especie === 'aves' || especie === 'suinos'
+  return especie === 'bovinos'
 }
 
 /**
