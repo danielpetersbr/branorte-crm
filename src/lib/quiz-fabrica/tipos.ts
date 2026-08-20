@@ -46,8 +46,23 @@ export interface RespostasQuiz {
   /** 'animais' = pelo rebanho; 'direto' = ele já sabe a tonelagem. */
   modo: 'animais' | 'direto'
   numeroAnimais: number
-  /** kg por animal por MÊS. Nasce do catálogo e o produtor pode corrigir. */
+  /**
+   * kg por animal por MÊS. Nasce do catálogo e o produtor pode corrigir.
+   *
+   * ⚠️ Este campo é a VERDADE e fica sempre em mês, mesmo quando a tela está
+   * mostrando por dia. Guardar na unidade que o produtor escolheu obrigaria
+   * todo mundo que lê (motor, banco, painel do vendedor) a saber qual era —
+   * e uma leitura errada aí muda o tamanho da fábrica por 30.
+   */
   consumoPorAnimalMes: number
+  /**
+   * Em que unidade o produtor está DIGITANDO. Só afeta a tela: o valor é
+   * convertido na entrada e guardado em mês.
+   *
+   * Nasce em 'dia' porque é assim que se fala no campo — "o boi come 10 kg por
+   * dia", nunca "297 kg por mês".
+   */
+  baseConsumo: 'dia' | 'mes'
   toneladasMes: number
 
   diasPorSemana: number

@@ -27,7 +27,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { CATEGORIAS, ESPECIES } from '@/lib/venda-racao/catalogo'
-import { calcularQuiz, consumoDeReferencia, inteiro, kg, respostasIniciais } from '@/lib/quiz-fabrica/motor'
+import {
+  DIAS_MES_COMERCIAL, calcularQuiz, consumoDeReferencia, consumoNaBase, consumoParaMes,
+  inteiro, kg, respostasIniciais,
+} from '@/lib/quiz-fabrica/motor'
 import type { Especie, RespostasQuiz, ResultadoQuiz } from '@/lib/quiz-fabrica/tipos'
 
 const UFS = ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'] as const
@@ -37,6 +40,23 @@ const TOTAL_PERGUNTAS = 7
 const campo = 'w-full min-h-[46px] rounded-md border border-border bg-surface px-3 py-2.5 text-[15px] text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-all'
 const rotulo = 'block text-[15px] font-semibold text-ink mb-1'
 const ajuda = 'text-[13.5px] text-ink-muted leading-snug mb-3'
+
+/** Número com no máximo uma casa: 297 kg, 9,9 kg. */
+function num1(v: number): string {
+  return v.toLocaleString('pt-BR', { maximumFractionDigits: 1 })
+}
+
+/**
+ * Consumo diário na unidade em que a criação é falada.
+ *
+ * Boi come em quilo ("10 kg por dia"); poedeira come em GRAMA ("113 g por dia").
+ * Mostrar "0,11 kg" pra quem cria ave é tecnicamente certo e praticamente
+ * ilegível — ninguém confere um número que não usa.
+ */
+function porDia(consumoMes: number): string {
+  const d = consumoMes / DIAS_MES_COMERCIAL
+  return d < 1 ? `${Math.round(d * 1000).toLocaleString('pt-BR')} g` : `${num1(d)} kg`
+}
 
 /** Cartão grande de escolha. No celular o produtor responde com o polegar. */
 function Opcao({ on, onClick, titulo, desc }: {
@@ -587,14 +607,42 @@ export function MonteSuaFabrica({ previa = false }: { previa?: boolean } = {}) {
                     placeholder="Ex.: 400" />
                 </div>
                 <div>
-                  <label className={rotulo}>Quanto cada um come por mês (kg)?</label>
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                    <label className={rotulo} style={{ marginBottom: 0 }}>
+                      Quanto cada um come {r.baseConsumo === 'dia' ? 'por dia' : 'por mês'} (kg)?
+                    </label>
+                    {/* Trocar a unidade NÃO mexe no consumo — só em como ele é
+                        mostrado. O valor vive em kg/mês por dentro. */}
+                    <div className="flex gap-1.5">
+                      {([['dia', 'por dia'], ['mes', 'por mês']] as const).map(([v, l]) => (
+                        <button key={v} type="button" onClick={() => set('baseConsumo')(v)}
+                          className={`text-[13px] px-2.5 py-1 rounded-md border transition-all ${
+                            r.baseConsumo === v
+                              ? 'bg-accent text-white border-accent font-semibold'
+                              : 'bg-surface text-ink-muted border-border hover:border-border-strong'
+                          }`}>{l}</button>
+                      ))}
+                    </div>
+                  </div>
                   <p className={ajuda}>
                     Já preenchi com a referência do nosso catálogo. Se você sabe o número do seu
                     rebanho, corrija — é ele que manda no tamanho da fábrica.
                   </p>
-                  <input className={campo} type="number" min={0} step="0.1" inputMode="decimal"
-                    value={r.consumoPorAnimalMes || ''}
-                    onChange={e => set('consumoPorAnimalMes')(Number(e.target.value) || 0)} />
+                  <input className={campo} type="number" min={0} step={r.baseConsumo === 'dia' ? '0.01' : '0.1'}
+                    inputMode="decimal"
+                    value={consumoNaBase(r.consumoPorAnimalMes, r.baseConsumo) || ''}
+                    onChange={e => set('consumoPorAnimalMes')(
+                      consumoParaMes(Number(e.target.value) || 0, r.baseConsumo),
+                    )} />
+                  {/* As duas unidades sempre à vista: quem digita 10 confere na
+                      hora que virou 300 no mês, e vice-versa. */}
+                  {r.consumoPorAnimalMes > 0 && (
+                    <p className="text-[12.5px] text-ink-faint mt-1.5">
+                      {r.baseConsumo === 'dia'
+                        ? `Dá ${num1(r.consumoPorAnimalMes)} kg por mês, por animal.`
+                        : `Dá ${porDia(r.consumoPorAnimalMes)} por animal por dia.`}
+                    </p>
+                  )}
                 </div>
                 {r.numeroAnimais > 0 && r.consumoPorAnimalMes > 0 && (
                   <div className="rounded-lg border border-border bg-surface px-4 py-3 text-[14px] text-ink">

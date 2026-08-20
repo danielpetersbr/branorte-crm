@@ -210,6 +210,31 @@ export interface CompactaSku {
   caixas: number[]
 }
 
+/**
+ * TETO COMERCIAL de cada família, em kg/h — REGRA DO DONO (20/08/2026):
+ * *"Compacta 2 vai até 2 toneladas por hora. Acima de... 2.200 quilo hora pode
+ * considerar Compacta 3."*
+ *
+ * ⚠️ Isto NÃO sai do código do SKU, e por isso precisa existir aqui. A tabela
+ * de preços tem linhas como `COMPACTA 02 - 3001000`, cujo código decodifica
+ * 3.000 kg/h. Derivar a escada só do código fazia o quiz oferecer uma 02 de
+ * 3.000 kg/h pra quem precisava de 2.142 — produto que a fábrica não vende
+ * nesse porte. Acima do teto, a recomendação sobe de família.
+ *
+ * O teto da 02 MASTER está aqui como 2.000 junto com a 02. A escada antiga
+ * registrada dizia 2.500 pra ela; o dono falou "Compacta 2" sem separar Master,
+ * e na dúvida vale a leitura mais conservadora — errar pra 03 entrega máquina
+ * que existe, errar pra 02 entrega máquina que não se vende.
+ */
+export const TETO_FAMILIA: Record<string, number> = {
+  '01': 2000,
+  '01 MASTER': 2000,
+  '02': 2000,
+  '02 MASTER': 2000,
+  '03': 5000,
+  '03 MASTER': 5000,
+}
+
 /** true quando a linha usa misturador HORIZONTAL. É isso que "MASTER" quer dizer. */
 export function ehMaster(linha: string): boolean {
   return linha.endsWith('MASTER')

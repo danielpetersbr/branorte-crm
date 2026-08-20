@@ -17,11 +17,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { COMPACTAS, MOINHOS, degrau, ehMaster, temCacamba, temEnsacadeira } from './linha'
+import { COMPACTAS, MOINHOS, TETO_FAMILIA, degrau, ehMaster, temCacamba, temEnsacadeira } from './linha'
 import {
-  BATELADAS_POR_HORA, FOLGA_OPERACIONAL_PCT, MESES_ENTRESSAFRA,
-  calcularDimensionamento, calcularQuiz,
-  consumoDeReferencia, escolherCompacta, faltando, familiaCompacta, fracaoMilho,
+  BATELADAS_POR_HORA, DIAS_MES_COMERCIAL, FOLGA_OPERACIONAL_PCT, MESES_ENTRESSAFRA,
+  calcularDimensionamento, calcularQuiz, consumoDeReferencia, consumoNaBase, consumoParaMes,
+  escolherCompacta, faltando, familiaCompacta, fracaoMilho,
   porteDeRecepcao, preferemHorizontal, respostasIniciais,
 } from './motor'
 import type { RespostasQuiz } from './tipos'
@@ -213,15 +213,35 @@ describe('escolha da linha', () => {
     assert.ok(!c!.linha.startsWith('01'), `desceu pra ${c!.linha}`)
   })
 
-  it('sobe pra MASTER quando a linha pedida não chega na produção', () => {
-    // 01 vertical para em 2.000 kg/h; 01 MASTER vai até 3.000. 220 t/mês em
-    // 6 dias × 4 h pede ~2.540 kg/h: cai exatamente nessa faixa.
-    const r = bovinos({ expedicao: 'granel', pesagemAutomatica: false, modo: 'direto', toneladasMes: 220, diasPorSemana: 6, horasPorDia: 4 })
+  it('TETO DA 02 = 2 t/h: acima disso é 03, não uma 02 grande', () => {
+    // REGRA DO DONO (20/08/2026): "Compacta 2 vai até 2 toneladas por hora.
+    // Acima de... 2.200 quilo hora pode considerar Compacta 3."
+    //
+    // A tabela de preços TEM `COMPACTA 02 - 3001000`, cujo código decodifica
+    // 3.000 kg/h. Derivar a escada só do código fazia o quiz oferecer uma 02
+    // de 3.000 kg/h pra quem precisava de 2.142 — produto que a fábrica não
+    // vende nesse porte. Foi exatamente o que o dono viu na tela.
+    for (const linha of ['01', '01 MASTER', '02', '02 MASTER'] as const) {
+      assert.equal(TETO_FAMILIA[linha], 2000, `${linha} deveria parar em 2.000 kg/h`)
+    }
+
+    const r = bovinos({ expedicao: 'granel', pesagemAutomatica: true, modo: 'direto', toneladasMes: 74, diasPorSemana: 5, horasPorDia: 2 })
     const d = calcularDimensionamento(r)
-    assert.ok(d.capacidadeAlvoKgH > 2000 && d.capacidadeAlvoKgH <= 3000, `alvo deu ${d.capacidadeAlvoKgH}`)
+    assert.ok(d.capacidadeAlvoKgH > 2000, `alvo deu ${d.capacidadeAlvoKgH}, precisa passar de 2.000`)
     const c = escolherCompacta(r, d)!
-    assert.equal(c.linha, '01 MASTER')
-    assert.match(c.porque, /horizontal/i)
+    assert.ok(c.linha.startsWith('03'), `${Math.round(d.capacidadeAlvoKgH)} kg/h virou ${c.codigo}`)
+  })
+
+  it('nenhuma recomendação passa do teto da própria família', () => {
+    for (const t of [10, 25, 60, 74, 120, 200, 400]) {
+      for (const exp of ['granel', 'ensacada'] as const) {
+        const r = bovinos({ modo: 'direto', toneladasMes: t, expedicao: exp })
+        const c = escolherCompacta(r, calcularDimensionamento(r))
+        if (!c) continue
+        assert.ok(c.producaoKgH <= TETO_FAMILIA[c.linha],
+          `${c.codigo}: ${c.producaoKgH} kg/h passa do teto ${TETO_FAMILIA[c.linha]} da ${c.linha}`)
+      }
+    }
   })
 
   it('a Compacta escolhida atende o alvo, sempre', () => {
@@ -277,9 +297,23 @@ describe('a linha completa, do recebimento à expedição', () => {
     assert.equal(r.completo, true)
     const ordem = r.estacoes.filter(e => e.ordem > 0).map(e => e.chave)
     assert.deepEqual(ordem, [
-      'recebimento', 'prelimpeza', 'armazenagem', 'moagem',
+      'recebimento', 'armazenagem', 'moagem',
       'dosagem', 'mistura', 'racao_pronta', 'expedicao',
     ])
+  })
+
+  it('PRÉ-LIMPEZA nunca é recomendada — falta a pergunta que a qualifica', () => {
+    // REGRA DO DONO (20/08/2026): "não coloca ali porque não tem nenhuma
+    // pergunta que classifica se precisa ou não". Deduzir a máquina de
+    // "recebe a granel" é dedução frouxa: grão de armazém chega limpo, a
+    // granel ou não. Quem carrega palha e pedra é lavoura, e o quiz não
+    // pergunta a procedência.
+    for (const rec of ['granel', 'ensacado', 'propria'] as const) {
+      const r = calcularQuiz(bovinos({ recebimento: rec, estoqueGrao: 'safra' }))
+      assert.equal(estacao(r, 'prelimpeza'), undefined, `recebimento=${rec} trouxe pré-limpeza de volta`)
+      const tudo = r.estacoes.flatMap(e => e.itens.map(i => i.nome)).join(' | ')
+      assert.doesNotMatch(tudo, /pré-limpeza/i, tudo)
+    }
   })
 
   it('a numeração do fluxo é sequencial e a infraestrutura fica fora dela', () => {
@@ -304,16 +338,14 @@ describe('a linha completa, do recebimento à expedição', () => {
     }
   })
 
-  it('grão ensacado não leva pré-limpeza — já veio limpo do armazém', () => {
+  it('grão ensacado leva suporte de big bag, não moega de granel', () => {
     const r = calcularQuiz(bovinos({ recebimento: 'ensacado' }))
-    assert.equal(estacao(r, 'prelimpeza'), undefined)
     assert.match(textoDa(r, 'recebimento'), /big bag/i)
   })
 
-  it('grão a granel leva moega e pré-limpeza', () => {
+  it('grão a granel leva moega', () => {
     const r = calcularQuiz(bovinos({ recebimento: 'granel' }))
     assert.match(textoDa(r, 'recebimento'), /moega/i)
-    assert.ok(estacao(r, 'prelimpeza'))
   })
 
   it('quem não estoca grão não recebe silo', () => {
@@ -365,8 +397,11 @@ describe('a linha completa, do recebimento à expedição', () => {
   })
 
   it('acima de 6 t de ração por dia a indicação é SILO, não caixa (regra do dono)', () => {
-    const r = calcularQuiz(bovinos({ modo: 'direto', toneladasMes: 400, diasPorSemana: 6, horasPorDia: 8 }))
-    assert.ok(r.dimensionamento.producaoPorDiaKg > 6000)
+    // Vale quando a Compacta escolhida NÃO embarca caixas (linhas 01/02). Se a
+    // linha for a 03, as caixas dela é que mandam — ver o teste logo abaixo.
+    const r = calcularQuiz(bovinos({ modo: 'direto', toneladasMes: 250, diasPorSemana: 6, horasPorDia: 8, expedicao: 'granel' }))
+    assert.ok(r.dimensionamento.producaoPorDiaKg > 6000, `dia deu ${r.dimensionamento.producaoPorDiaKg}`)
+    assert.equal(r.compacta?.caixas.length ?? 0, 0, `a ${r.compacta?.linha} embarca caixas — outro caso`)
     assert.match(textoDa(r, 'racao_pronta'), /Silo de ração.*60°/i)
   })
 
@@ -430,22 +465,6 @@ describe('defeitos achados dirigindo a tela em 20/08/2026', () => {
     assert.equal(porteDeRecepcao(10).m3, 25)
     assert.equal(porteDeRecepcao(84).m3, 50)
     assert.equal(porteDeRecepcao(400).m3, 75)
-  })
-
-  it('a pré-limpeza acompanha a DESCARGA, não a moagem', () => {
-    // Fábrica de 1.500 kg/h (1,5 t/h) com moega de carreta: pré-limpeza de
-    // 3 t/h levava 12 h pra limpar uma carga. Tem que subir pra 7 t/h.
-    const r = calcularQuiz(bovinos({ modo: 'direto', toneladasMes: 120, recebimento: 'granel' }))
-    const pl = estacao(r, 'prelimpeza')!.itens[0]
-    const tonH = Number(/([\d,]+) t\/h/.exec(pl.nome)![1].replace(',', '.'))
-    assert.ok(tonH >= 7, `pré-limpeza de ${tonH} t/h é gargalo na descarga`)
-  })
-
-  it('a pré-limpeza nunca fica ABAIXO do que o moinho consome', () => {
-    const r = calcularQuiz(bovinos({ modo: 'direto', toneladasMes: 900, diasPorSemana: 6, horasPorDia: 8 }))
-    const tonH = Number(/([\d,]+) t\/h/.exec(estacao(r, 'prelimpeza')!.itens[0].nome)![1].replace(',', '.'))
-    assert.ok(tonH * 1000 >= r.dimensionamento.capacidadeEscolhidaKgH,
-      `${tonH} t/h abaixo do moinho de ${r.dimensionamento.capacidadeEscolhidaKgH} kg/h`)
   })
 
   it('a contagem de caixas não sai duplicada ("2×2 caixas")', () => {
@@ -611,6 +630,48 @@ describe('validação', () => {
   it('pesagemAutomatica = false é resposta; null é pendência', () => {
     assert.ok(!faltando(bovinos({ pesagemAutomatica: false })).some(x => /pesagem/i.test(x)))
     assert.ok(faltando(bovinos({ pesagemAutomatica: null })).some(x => /pesagem/i.test(x)))
+  })
+})
+
+describe('consumo por DIA — como o produtor fala', () => {
+  /**
+   * Ninguém diz "o boi come 297 kg por mês"; diz "come 10 kg por dia". O quiz
+   * deixa escolher a unidade, mas guarda SEMPRE em kg/mês — a unidade viaja só
+   * na tela. Se o valor guardado mudasse de base, motor, banco e painel do
+   * vendedor teriam que adivinhar qual era, e errar aí muda a fábrica por 30.
+   */
+  it('a base nasce em DIA', () => {
+    assert.equal(respostasIniciais().baseConsumo, 'dia')
+  })
+
+  it('converte nos dois sentidos usando o mês comercial de 30 dias', () => {
+    assert.equal(DIAS_MES_COMERCIAL, 30)
+    assert.equal(consumoParaMes(10, 'dia'), 300)
+    assert.equal(consumoParaMes(300, 'mes'), 300)
+    assert.ok(Math.abs(consumoNaBase(297, 'dia') - 9.9) < 1e-9)
+    assert.equal(consumoNaBase(297, 'mes'), 297)
+  })
+
+  it('ida e volta não perde valor — trocar de unidade não pode mexer no número', () => {
+    for (const mes of [297, 3.4, 240, 0.9, 165]) {
+      const ida = consumoNaBase(mes, 'dia')
+      assert.ok(Math.abs(consumoParaMes(ida, 'dia') - mes) < 1e-9, `${mes} voltou diferente`)
+    }
+  })
+
+  it('o que o produtor digita por dia dá a MESMA fábrica que o mês equivalente', () => {
+    const porMes = calcularQuiz(bovinos({ modo: 'animais', numeroAnimais: 400, consumoPorAnimalMes: 300 }))
+    const porDia = calcularQuiz(bovinos({
+      modo: 'animais', numeroAnimais: 400,
+      consumoPorAnimalMes: consumoParaMes(10, 'dia'), baseConsumo: 'dia',
+    }))
+    assert.equal(porDia.dimensionamento.demandaMensalKg, porMes.dimensionamento.demandaMensalKg)
+    assert.equal(porDia.compacta?.codigo, porMes.compacta?.codigo)
+  })
+
+  it('base zero não estoura', () => {
+    assert.equal(consumoNaBase(0, 'dia'), 0)
+    assert.equal(consumoParaMes(0, 'dia'), 0)
   })
 })
 

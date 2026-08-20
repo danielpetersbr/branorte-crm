@@ -33,8 +33,8 @@ import { participacaoParaKgPorTonelada } from '@/lib/venda-racao/calculo'
 import { CATEGORIAS, formulaPadrao } from '@/lib/venda-racao/catalogo'
 import {
   CACAMBAS, CAIXAS_RACAO, COMPACTAS, ESTEIRAS_SACARIA, MISTURADOR_HORIZONTAL,
-  MISTURADOR_VERTICAL, MOINHOS, PRELIMPEZA_POR_RECEPCAO, PRE_LIMPEZAS,
-  RECEPCAO_POR_PORTE, SILOS_MILHO, SILOS_RACAO, degrau, ehMaster,
+  MISTURADOR_VERTICAL, MOINHOS, RECEPCAO_POR_PORTE, SILOS_MILHO, SILOS_RACAO,
+  TETO_FAMILIA, degrau, ehMaster,
   type CompactaSku,
 } from './linha'
 import type {
@@ -117,6 +117,23 @@ function horas(v: number): string {
 export function consumoDeReferencia(especie: Especie | null, categoria: string): number {
   if (!especie) return 0
   return CATEGORIAS[especie]?.find(c => c.chave === categoria)?.consumoMes ?? 0
+}
+
+/**
+ * Dias no mês comercial. O catálogo de consumo do Estudo é declarado "kg por
+ * animal por MÊS (mês comercial de 30 dias)" — usar 30,44 aqui faria o número
+ * de referência deixar de bater com o da outra tela.
+ */
+export const DIAS_MES_COMERCIAL = 30
+
+/** kg/mês guardado → o número que a tela mostra na unidade escolhida. */
+export function consumoNaBase(mes: number, base: 'dia' | 'mes'): number {
+  return base === 'dia' ? dividir(num(mes), DIAS_MES_COMERCIAL) : num(mes)
+}
+
+/** O que o produtor digitou → kg/mês, que é como o sistema guarda. */
+export function consumoParaMes(valor: number, base: 'dia' | 'mes'): number {
+  return base === 'dia' ? num(valor) * DIAS_MES_COMERCIAL : num(valor)
 }
 
 /**
@@ -260,7 +277,12 @@ export function escolherCompacta(r: RespostasQuiz, d: Dimensionamento): Compacta
   const pedida = master ? `${familia} MASTER` : familia
 
   for (const linha of linhasCandidatas(familia, master)) {
-    const naLinha = COMPACTAS.filter(c => c.linha === linha && c.producaoKgH >= d.capacidadeAlvoKgH)
+    // O TETO_FAMILIA é o que impede o quiz de oferecer uma 02 de 3.000 kg/h só
+    // porque existe um SKU com esse código na tabela de preços. Acima do teto,
+    // a recomendação sobe de família — que é a regra comercial da fábrica.
+    const teto = TETO_FAMILIA[linha] ?? Infinity
+    const naLinha = COMPACTAS.filter(c =>
+      c.linha === linha && c.producaoKgH >= d.capacidadeAlvoKgH && c.producaoKgH <= teto)
     if (!naLinha.length) continue
 
     const menorProducao = Math.min(...naLinha.map(c => c.producaoKgH))
@@ -386,32 +408,20 @@ export function montarEstacoes(
     })
   }
 
-  // ---- 2) Pré-limpeza -----------------------------------------------------
-  // Só faz sentido pra grão solto. Saco e big bag já vêm limpos do armazém.
-  if (r.recebimento === 'granel' || r.recebimento === 'propria') {
-    // Ela limpa o grão NA DESCARGA, então quem manda é a vazão de recebimento.
-    // Dimensionar pela moagem dava 3 t/h numa fábrica com moega de 56 t — 18
-    // horas pra limpar uma carga, com o motorista parado no pátio. O piso
-    // continua sendo a moagem: nunca menor que o moinho consome.
-    const alvoTonH = Math.max(
-      PRELIMPEZA_POR_RECEPCAO[recepcao.m3] ?? 3,
-      dividir(d.capacidadeEscolhidaKgH, 1000),
-    )
-    const pl = PRE_LIMPEZAS.find(p => p.tonH >= alvoTonH) ?? PRE_LIMPEZAS[PRE_LIMPEZAS.length - 1]
-    const horasDescarga = dividir(recepcao.m3 * DENSIDADE_MILHO_T_M3, pl.tonH)
-    brutas.push({
-      chave: 'prelimpeza',
-      titulo: 'Pré-limpeza',
-      resumo: 'Tira palha, terra e pedra antes que cheguem no moinho.',
-      itens: [item(
-        `Máquina de pré-limpeza ${pl.tonH.toLocaleString('pt-BR')} t/h`,
-        (r.recebimento === 'propria'
-          ? 'Grão que veio direto da lavoura carrega palha e torrão, e pedra quebra martelo e rasga peneira. '
-          : 'Palha e terra viram desgaste de martelo e peneira entupida. ')
-        + `Nessa vazão a carga de ${recepcao.veiculo} passa em cerca de ${horas(horasDescarga)}.`,
-      )],
-    })
-  }
+  // ---- Pré-limpeza: FORA do quiz, e de propósito ---------------------------
+  //
+  // REGRA DO DONO (20/08/2026): *"não coloca ali porque não tem nenhuma
+  // pergunta que classifica se precisa ou não"*.
+  //
+  // A versão anterior deduzia a pré-limpeza de `recebimento = 'granel'`, o que
+  // é dedução errada: grão que vem de armazém ou cooperativa já chega limpo, a
+  // granel ou não. Quem carrega palha, torrão e pedra é lavoura — e o quiz não
+  // pergunta a procedência do grão, só como ele chega.
+  //
+  // Recomendar máquina por inferência frouxa é vender o que o cliente talvez
+  // não precise. Pra ela voltar, primeiro entra a pergunta que a qualifica
+  // (algo como "seu grão vem limpo do armazém ou direto da lavoura?"). A escada
+  // de PRE_LIMPEZAS segue em linha.ts esperando esse dia.
 
   // ---- 3) Armazenagem -----------------------------------------------------
   const armazenagem: ItemLinha[] = []
@@ -797,6 +807,8 @@ export function respostasIniciais(): RespostasQuiz {
     modo: 'animais',
     numeroAnimais: 0,
     consumoPorAnimalMes: 0,
+    // Por dia é como o produtor pensa: "o boi come 10 kg por dia".
+    baseConsumo: 'dia',
     toneladasMes: 0,
     diasPorSemana: 6,
     horasPorDia: 4,
