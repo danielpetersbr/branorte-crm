@@ -11,13 +11,16 @@ import {
   calcularCustoAtual, calcularCustosProducao, calcularDemanda, calcularDimensionamento,
   calcularEstudo, calcularFormula, calcularRetorno, compararEconomia, dec, dividir,
   MSG_FORMULA_ABERTA, n, participacaoParaKgPorTonelada, precoPorKg, quantidadeParaKg,
-  somarInvestimento, sugerirEquipamento, validar,
+  ehDoNucleo, somarInvestimento, sugerirEquipamento, totalAnimais, validar,
 } from './calculo'
-import { CAPACIDADES_BRANORTE, formulaPadrao, normalizarStatus } from './catalogo'
-import { novoEstudo, normalizarInput, trocarEspecie } from './estado'
-import { dadosEstudo, frasePrincipal, resumoTexto, telefoneWhatsApp, textoWhatsApp } from './estudo'
+import { CAPACIDADES_BRANORTE, fasesDoProduto, formulaPadrao, normalizarStatus } from './catalogo'
+import { aplicarFases, novoEstudo, normalizarInput, trocarEspecie, usarFaseUnica } from './estado'
+import {
+  dadosEstudo, frasePrincipal, montarPremissas, resumirComposicao, resumoTexto,
+  telefoneWhatsApp, textoWhatsApp,
+} from './estudo'
 import { brl, num } from './formato'
-import type { EstudoInput, Necessidade } from './tipos'
+import type { EstudoInput, IngredienteFormula, Necessidade } from './tipos'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -695,5 +698,366 @@ describe('apresentação e WhatsApp', () => {
   it('formatação brasileira nos valores', () => {
     const t = resumoTexto(montar())
     assert.ok(/R\$\s?\d{1,3}(\.\d{3})*,\d{2}/.test(t), `sem número pt-BR em:\n${t}`)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Ciclo completo / mais de uma fase
+// ---------------------------------------------------------------------------
+
+describe('fases múltiplas (ciclo completo)', () => {
+  const suinos = () => {
+    const e = novoEstudo(null, 'suinos', 'V')
+    e.identificacao.clienteNome = 'Granja'
+    e.necessidade = { ...e.necessidade, modo: 'animais', baseConsumo: 'mes', margemSegurancaPct: 0 }
+    return e
+  }
+
+  it('uma fase só não muda nada: fases fica vazio e a conta é a de sempre', () => {
+    const e = suinos()
+    e.necessidade.numeroAnimais = 200
+    e.necessidade.consumoPorAnimal = 90
+    const antes = calcularDemanda(e.necessidade).mensalKg
+
+    const depois = aplicarFases(e, ['terminacao'])
+    assert.deepEqual(depois.necessidade.fases, [], 'uma fase não cria linhas de plantel')
+    assert.equal(depois.produto.categoria, 'terminacao')
+    assert.equal(calcularDemanda(depois.necessidade).mensalKg, antes)
+  })
+
+  it('a demanda é a SOMA das fases, não a média', () => {
+    let e = suinos()
+    e.necessidade.numeroAnimais = 0
+    e = aplicarFases(e, ['crescimento', 'terminacao', 'gestacao'])
+    assert.equal(e.necessidade.fases?.length, 3)
+
+    e.necessidade.fases = [
+      { categoria: 'crescimento', numeroAnimais: 120, consumoPorAnimal: 57 },
+      { categoria: 'terminacao', numeroAnimais: 80, consumoPorAnimal: 90 },
+      { categoria: 'gestacao', numeroAnimais: 30, consumoPorAnimal: 75 },
+    ]
+    // 6.840 + 7.200 + 2.250
+    assert.equal(calcularDemanda(e.necessidade).mensalKg, 16_290)
+    assert.equal(totalAnimais(e.necessidade), 230)
+  })
+
+  it('base dia e ciclo continuam valendo pra todas as linhas', () => {
+    let e = suinos()
+    e = aplicarFases(e, ['crescimento', 'terminacao'])
+    e.necessidade.fases = [
+      { categoria: 'crescimento', numeroAnimais: 100, consumoPorAnimal: 2 },
+      { categoria: 'terminacao', numeroAnimais: 100, consumoPorAnimal: 3 },
+    ]
+    e.necessidade.baseConsumo = 'dia'
+    e.necessidade.dias = 30
+    assert.equal(calcularDemanda(e.necessidade).mensalKg, 500 * 30)
+
+    e.necessidade.baseConsumo = 'ciclo'
+    e.necessidade.dias = 60
+    // 500 kg no ciclo de 60 dias = 250 kg/mês
+    assert.equal(calcularDemanda(e.necessidade).mensalKg, 250)
+  })
+
+  it('abrir a segunda fase não joga fora o plantel já digitado', () => {
+    let e = suinos()
+    e.produto.categoria = 'terminacao'
+    e.necessidade.numeroAnimais = 350
+    e.necessidade.consumoPorAnimal = 88
+
+    e = aplicarFases(e, ['terminacao', 'crescimento'])
+    const term = e.necessidade.fases?.find(f => f.categoria === 'terminacao')
+    assert.equal(term?.numeroAnimais, 350, 'o plantel digitado vira a linha da fase de origem')
+    assert.equal(term?.consumoPorAnimal, 88)
+    const cresc = e.necessidade.fases?.find(f => f.categoria === 'crescimento')
+    assert.equal(cresc?.numeroAnimais, 0, 'fase nova entra sem plantel')
+    assert.equal(cresc?.consumoPorAnimal, 57, 'fase nova entra com o consumo de catálogo')
+    assert.equal(e.necessidade.consumoConfirmado, false, 'fase nova exige reconfirmar')
+  })
+
+  it('voltar pra uma fase traz o plantel da fase que sobrou', () => {
+    let e = suinos()
+    e = aplicarFases(e, ['crescimento', 'terminacao'])
+    e.necessidade.fases = [
+      { categoria: 'crescimento', numeroAnimais: 111, consumoPorAnimal: 50 },
+      { categoria: 'terminacao', numeroAnimais: 222, consumoPorAnimal: 95 },
+    ]
+    e.produto.categoria = 'terminacao'
+
+    const so = aplicarFases(e, ['terminacao'])
+    assert.deepEqual(so.necessidade.fases, [])
+    assert.equal(so.necessidade.numeroAnimais, 222)
+    assert.equal(calcularDemanda(so.necessidade).mensalKg, 222 * 95)
+  })
+
+  it('usarFaseUnica apaga a marca de seleção múltipla', () => {
+    let e = suinos()
+    e = aplicarFases(e, ['crescimento', 'terminacao'])
+    assert.equal(e.produto.categorias?.length, 2)
+    const uma = usarFaseUnica(e)
+    assert.equal(uma.produto.categorias, undefined, 'sem categorias = tela mostra o seletor simples')
+    assert.deepEqual(uma.necessidade.fases, [])
+  })
+
+  it('desmarcar a última fase não deixa o estudo sem fase', () => {
+    let e = suinos()
+    e = aplicarFases(e, ['terminacao'])
+    const igual = aplicarFases(e, [])
+    assert.equal(igual.produto.categoria, 'terminacao')
+  })
+
+  it('a fase principal continua sendo uma só, e é ela que a fórmula atende', () => {
+    let e = suinos()
+    e.produto.categoria = 'terminacao'
+    e = aplicarFases(e, ['crescimento', 'terminacao', 'gestacao'])
+    assert.equal(e.produto.categoria, 'terminacao', 'principal marcada não muda sozinha')
+    assert.deepEqual(fasesDoProduto(e.produto), ['crescimento', 'terminacao', 'gestacao'])
+
+    // principal desmarcada: cai na primeira que sobrou, na ordem do catálogo
+    const semTerm = aplicarFases(e, ['crescimento', 'gestacao'])
+    assert.equal(semTerm.produto.categoria, 'crescimento')
+  })
+
+  it('trocar de espécie mata o plantel por fase (fase de suíno não existe em aves)', () => {
+    let e = suinos()
+    e = aplicarFases(e, ['crescimento', 'terminacao'])
+    const aves = trocarEspecie(e, 'aves', null)
+    assert.deepEqual(aves.necessidade.fases, [])
+    assert.equal(aves.produto.categorias, undefined)
+  })
+
+  it('estudo antigo (sem categorias) reabre como uma fase só', () => {
+    const antigo = normalizarInput({
+      produto: { especie: 'suinos', categoria: 'terminacao', categoriaLivre: '' },
+      necessidade: { modo: 'animais', numeroAnimais: 100, consumoPorAnimal: 90, baseConsumo: 'mes' },
+    }, null)
+    assert.equal(antigo.produto.categorias, undefined)
+    assert.deepEqual(fasesDoProduto(antigo.produto), ['terminacao'])
+    assert.equal(calcularDemanda(antigo.necessidade).mensalKg, 9_000)
+  })
+
+  it('multi-fase salvo sem as linhas de plantel se reconstrói ao abrir', () => {
+    const salvo = normalizarInput({
+      produto: {
+        especie: 'suinos', categoria: 'terminacao', categoriaLivre: '',
+        categorias: ['crescimento', 'terminacao'],
+      },
+      necessidade: { modo: 'animais', numeroAnimais: 50, consumoPorAnimal: 90, baseConsumo: 'mes' },
+    }, null)
+    assert.equal(salvo.necessidade.fases?.length, 2, 'reabriria calculando com uma fase só')
+  })
+
+  it('o cabeçalho do estudo mostra TODAS as fases', () => {
+    let e = base()
+    e.produto = { especie: 'suinos', categoria: 'terminacao', categoriaLivre: '' }
+    e = aplicarFases(e, ['crescimento', 'terminacao'])
+    const d = dadosEstudo(e, calcularEstudo(e), {
+      codigo: 'VR-1', textoApresentacao: '', avisoNutricional: '', avisoEstimativa: '',
+    })
+    assert.equal(d.categoria, 'Crescimento, Terminação')
+  })
+
+  it('as premissas do PDF abrem o plantel fase a fase', () => {
+    let e = base()
+    e.produto = { especie: 'suinos', categoria: 'terminacao', categoriaLivre: '' }
+    e.necessidade = { ...e.necessidade, modo: 'animais', baseConsumo: 'mes', numeroAnimais: 0 }
+    e = aplicarFases(e, ['crescimento', 'terminacao'])
+    e.necessidade.fases = [
+      { categoria: 'crescimento', numeroAnimais: 120, consumoPorAnimal: 57 },
+      { categoria: 'terminacao', numeroAnimais: 80, consumoPorAnimal: 90 },
+    ]
+    const linha = montarPremissas(e, calcularEstudo(e)).find(x => x.rotulo === 'Plantel considerado')
+    assert.ok(linha?.valor.includes('200'), `total de animais fora: ${linha?.valor}`)
+    assert.ok(linha?.nota?.includes('Crescimento: 120'), `sem detalhe por fase: ${linha?.nota}`)
+    assert.ok(linha?.nota?.includes('Terminação: 80'), `sem detalhe por fase: ${linha?.nota}`)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Uma fórmula POR FASE, custo ponderado, e o núcleo
+// ---------------------------------------------------------------------------
+
+describe('fórmula por fase e custo ponderado', () => {
+  /** Suínos com duas fases, plantel 3:1, e fórmulas de preço bem diferente. */
+  const doisPrecos = () => {
+    let e = base()
+    e.produto = { especie: 'suinos', categoria: 'crescimento', categoriaLivre: '' }
+    e.necessidade = { ...e.necessidade, modo: 'animais', baseConsumo: 'mes', margemSegurancaPct: 0 }
+    e = aplicarFases(e, ['crescimento', 'terminacao'])
+    e.necessidade.fases = [
+      { categoria: 'crescimento', numeroAnimais: 300, consumoPorAnimal: 10 }, // 3.000 kg → 75%
+      { categoria: 'terminacao', numeroAnimais: 100, consumoPorAnimal: 10 },  // 1.000 kg → 25%
+    ]
+    e.formula.porFase = {
+      crescimento: [
+        { id: 'a', nome: 'Cara', participacao: 100, unidadeParticipacao: 'pct', preco: 4, unidadePreco: 'kg', pesoSacoIngrediente: 60 },
+      ],
+      terminacao: [
+        { id: 'b', nome: 'Barata', participacao: 100, unidadeParticipacao: 'pct', preco: 1, unidadePreco: 'kg', pesoSacoIngrediente: 60 },
+      ],
+    }
+    return e
+  }
+
+  it('cada fase tem a sua fórmula e o peso dela é a fatia do volume', () => {
+    const r = calcularEstudo(doisPrecos())
+    const cres = r.formulasPorFase.find(f => f.categoria === 'crescimento')!
+    const term = r.formulasPorFase.find(f => f.categoria === 'terminacao')!
+    assert.equal(cres.peso, 0.75)
+    assert.equal(term.peso, 0.25)
+    assert.equal(cres.calc.custoIngredientesPorKg, 4)
+    assert.equal(term.calc.custoIngredientesPorKg, 1)
+  })
+
+  it('o custo dos ingredientes é a MÉDIA PONDERADA, não a da fase principal', () => {
+    const r = calcularEstudo(doisPrecos())
+    // 0,75 × 4 + 0,25 × 1 = 3,25 — e NÃO 4 (a principal) nem 2,5 (média simples)
+    assert.equal(r.custoIngredientesPonderadoPorKg, 3.25)
+    assert.equal(r.producao.custoIngredientesPorKg, 3.25)
+    assert.notEqual(r.custoIngredientesPonderadoPorKg, r.formula.custoIngredientesPorKg)
+  })
+
+  it('mudar o plantel muda o peso e portanto o custo', () => {
+    const e = doisPrecos()
+    e.necessidade.fases = [
+      { categoria: 'crescimento', numeroAnimais: 100, consumoPorAnimal: 10 },
+      { categoria: 'terminacao', numeroAnimais: 300, consumoPorAnimal: 10 },
+    ]
+    // agora é 25% da cara e 75% da barata
+    assert.equal(calcularEstudo(e).custoIngredientesPonderadoPorKg, 1.75)
+  })
+
+  it('plantel ainda zerado divide igual em vez de inventar custo', () => {
+    const e = doisPrecos()
+    e.necessidade.fases = [
+      { categoria: 'crescimento', numeroAnimais: 0, consumoPorAnimal: 0 },
+      { categoria: 'terminacao', numeroAnimais: 0, consumoPorAnimal: 0 },
+    ]
+    assert.equal(calcularEstudo(e).custoIngredientesPonderadoPorKg, 2.5)
+  })
+
+  it('uma fase só: o custo é o de sempre, sem ponderação nenhuma', () => {
+    const e = base()
+    const r = calcularEstudo(e)
+    assert.equal(r.formulasPorFase.length, 1)
+    assert.equal(r.formulasPorFase[0].peso, 1)
+    assert.equal(r.custoIngredientesPonderadoPorKg, r.formula.custoIngredientesPorKg)
+  })
+
+  it('fase nova entra com a fórmula de referência e já fecha 100%', () => {
+    let e = base()
+    e.produto = { especie: 'suinos', categoria: 'crescimento', categoriaLivre: '' }
+    e = aplicarFases(e, ['crescimento', 'terminacao', 'lactacao'])
+    const r = calcularEstudo(e)
+    assert.equal(r.formulasFechadas, true, 'ninguém deveria travar esperando 3 fórmulas')
+    for (const f of r.formulasPorFase) {
+      assert.ok(f.calc.linhas.length > 0, `fase ${f.categoria} entrou vazia`)
+    }
+  })
+
+  it('fase aberta bloqueia o estudo E diz QUAL fase é', () => {
+    const e = doisPrecos()
+    e.formula.porFase!.terminacao = [
+      { id: 'b', nome: 'Barata', participacao: 80, unidadeParticipacao: 'pct', preco: 1, unidadePreco: 'kg', pesoSacoIngrediente: 60 },
+    ]
+    const r = calcularEstudo(e)
+    assert.equal(r.formulasFechadas, false)
+    const erro = r.problemas.find(x => x.campo === 'formula')
+    assert.ok(erro, 'fórmula aberta tem que bloquear')
+    assert.ok(erro!.mensagem.includes('Terminação'), `sem o nome da fase: ${erro!.mensagem}`)
+  })
+
+  it('colapsar pra uma fase traz a fórmula DELA e apaga o porFase', () => {
+    const e = doisPrecos()
+    const so = aplicarFases(e, ['terminacao'])
+    assert.equal(so.formula.porFase, undefined)
+    assert.equal(so.formula.itens[0].nome, 'Barata')
+    assert.equal(calcularEstudo(so).custoIngredientesPonderadoPorKg, 1)
+  })
+
+  it('trocar de espécie não deixa fórmula de suíno em ave', () => {
+    const aves = trocarEspecie(doisPrecos(), 'aves', null)
+    assert.equal(aves.formula.porFase, undefined)
+  })
+
+  it('preço da ração comprada por fase é ponderado pelo volume', () => {
+    const e = doisPrecos()
+    e.atual = {
+      ...e.atual, modo: 'compra', unidadePreco: 'kg', preco: 2,
+      precoPorFase: { crescimento: 6, terminacao: 2 },
+      perdasPct: 0,
+      frete: { ativo: false, valor: 0 },
+      descarga: { ativo: false, valor: 0 },
+      outros: { ativo: false, valor: 0 },
+    }
+    // 0,75 × 6 + 0,25 × 2 = 5,00
+    assert.equal(calcularEstudo(e).atual.precoBasePorKg, 5)
+  })
+
+  it('fase sem preço próprio cai no preço geral', () => {
+    const e = doisPrecos()
+    e.atual = {
+      ...e.atual, modo: 'compra', unidadePreco: 'kg', preco: 2,
+      precoPorFase: { crescimento: 6 },
+      perdasPct: 0,
+      frete: { ativo: false, valor: 0 },
+      descarga: { ativo: false, valor: 0 },
+      outros: { ativo: false, valor: 0 },
+    }
+    // 0,75 × 6 + 0,25 × 2 (geral) = 5,00
+    assert.equal(calcularEstudo(e).atual.precoBasePorKg, 5)
+  })
+
+  it('sem preço por fase nada muda: continua o preço único', () => {
+    const e = doisPrecos()
+    e.atual = {
+      ...e.atual, modo: 'compra', unidadePreco: 'kg', preco: 2, perdasPct: 0,
+      frete: { ativo: false, valor: 0 },
+      descarga: { ativo: false, valor: 0 },
+      outros: { ativo: false, valor: 0 },
+    }
+    assert.equal(calcularEstudo(e).atual.precoBasePorKg, 2)
+  })
+})
+
+describe('núcleo (agrupamento dos micro)', () => {
+  const ing = (nome: string, participacao: number, extra: Partial<IngredienteFormula> = {}): IngredienteFormula => ({
+    id: nome, nome, participacao, unidadeParticipacao: 'pct',
+    preco: 1, unidadePreco: 'kg', pesoSacoIngrediente: 60, ...extra,
+  })
+
+  it('abaixo de 1% é núcleo; de 1% pra cima não é', () => {
+    assert.equal(ehDoNucleo(ing('Sal', 0.4)), true)
+    assert.equal(ehDoNucleo(ing('Calcário', 1.2)), false)
+    assert.equal(ehDoNucleo(ing('Milho', 60)), false)
+  })
+
+  it('ingrediente zerado fica de fora (acabou de ser adicionado)', () => {
+    assert.equal(ehDoNucleo(ing('Novo', 0)), false)
+  })
+
+  it('a marcação do vendedor manda sobre o corte de 1%', () => {
+    assert.equal(ehDoNucleo(ing('Calcário', 1.2, { noNucleo: true })), true)
+    assert.equal(ehDoNucleo(ing('Premix', 0.1, { noNucleo: false })), false)
+  })
+
+  it('a unidade digitada não muda a decisão (kg/t e g/t viram %)', () => {
+    assert.equal(ehDoNucleo(ing('Premix', 5, { unidadeParticipacao: 'kg_t' })), true)   // 0,5%
+    assert.equal(ehDoNucleo(ing('Milho', 600, { unidadeParticipacao: 'kg_t' })), false) // 60%
+    assert.equal(ehDoNucleo(ing('Aditivo', 200, { unidadeParticipacao: 'g_t' })), true) // 0,02%
+  })
+
+  it('o resumo do PDF agrupa os micro em vez de abrir premix de 0,1%', () => {
+    const calc = calcularFormula({
+      formulaId: null, nome: '', milhoPreco: 0, milhoUnidadePreco: 'kg', milhoPesoSaca: 60,
+      itens: [
+        ing('Milho', 75), ing('Farelo de soja', 21.4), ing('Fosfato', 1.85),
+        ing('Sal', 0.4), ing('Premix mineral', 0.25), ing('Premix vitamínico', 0.1),
+      ],
+    }, 'suinos')
+    const t = resumirComposicao(calc.linhas)
+    assert.ok(t.includes('Milho 75,0%'), t)
+    assert.ok(t.includes('Núcleo 0,75%'), `micro não agrupados: ${t}`)
+    assert.ok(t.includes('Premix vitamínico'), 'os nomes têm que continuar visíveis')
+    assert.ok(!/Premix mineral 0,3%/.test(t), 'micro não pode ter linha própria')
   })
 })

@@ -23,13 +23,14 @@
  * 5) Economia negativa NÃO é escondida: o resultado sai com `vantajoso: false`
  *    e o payback fica `aplicavel: false` em vez de virar um número absurdo.
  */
+import { fasesDoProduto, formulaPadrao, nomeCategoria } from './catalogo'
 import type {
   AjusteCenario, CenarioAtual, CenarioCalculado, ComparacaoEconomia,
   CustoAtualCalculado, CustosProducao, CustosProducaoCalculados, DemandaCalculada,
   Dimensionamento, DimensionamentoCalculado, EquipamentoSugerido, Especie,
-  EstudoInput, Formula, FormulaCalculada, GruposCusto, Investimento,
-  LinhaIngredienteCalculada, LinhaMemoria, Necessidade, ProblemaValidacao,
-  ResultadoEstudo, RetornoCalculado, UnidadePreco,
+  EstudoInput, Formula, FormulaCalculada, FormulaDeFase, GruposCusto,
+  IngredienteFormula, Investimento, LinhaIngredienteCalculada, LinhaMemoria,
+  Necessidade, ProblemaValidacao, ResultadoEstudo, RetornoCalculado, UnidadePreco,
 } from './tipos'
 
 // ---------------------------------------------------------------------------
@@ -98,6 +99,51 @@ export interface OpcoesDemanda {
   fatorConsumo?: number
 }
 
+/**
+ * As linhas de plantel que valem pra este estudo.
+ *
+ * Com mais de uma fase marcada são as linhas de `fases`; senão é uma linha só,
+ * montada dos campos de sempre. Assim a conta é a MESMA nos dois casos e não
+ * existe caminho paralelo pra divergir.
+ */
+export function plantelPorFase(q: Necessidade): Array<{ numeroAnimais: number; consumoPorAnimal: number }> {
+  if (q.fases && q.fases.length > 1) return q.fases
+  return [{ numeroAnimais: q.numeroAnimais, consumoPorAnimal: q.consumoPorAnimal }]
+}
+
+/** Total de animais do estudo, somando as fases quando há mais de uma. */
+export function totalAnimais(q: Necessidade): number {
+  if (q.modo !== 'animais') return 0
+  return plantelPorFase(q).reduce((s, l) => s + Math.max(0, n(l.numeroAnimais)), 0)
+}
+
+/**
+ * Quanto cada fase pesa no volume mensal (0 a 1, somando 1).
+ *
+ * Não precisa converter dia/mês/ciclo nem aplicar margem: essas contas são o
+ * MESMO multiplicador pra todas as linhas e se cancelam na razão. Basta o bruto
+ * `animais × consumo` de cada fase.
+ *
+ * Fase única, quantidade direta, ou plantel todo zerado devolvem a fase
+ * principal com peso 1 — o estudo nunca fica sem base de rateio.
+ */
+export function pesosPorFase(q: Necessidade, principal: string): Array<{ categoria: string; peso: number }> {
+  if (q.modo !== 'animais' || !q.fases || q.fases.length <= 1) {
+    return [{ categoria: principal, peso: 1 }]
+  }
+  const brutos = q.fases.map(f => ({
+    categoria: f.categoria,
+    bruto: Math.max(0, n(f.numeroAnimais)) * Math.max(0, n(f.consumoPorAnimal)),
+  }))
+  const total = brutos.reduce((s, b) => s + b.bruto, 0)
+  if (total <= 0) {
+    // Ainda não digitou plantel nenhum: divide igual, senão o custo do estudo
+    // sairia do nada (ou de uma fase só) enquanto ele preenche.
+    return brutos.map(b => ({ categoria: b.categoria, peso: dividir(1, brutos.length) }))
+  }
+  return brutos.map(b => ({ categoria: b.categoria, peso: dividir(b.bruto, total) }))
+}
+
 export function calcularDemanda(q: Necessidade, opcoes: OpcoesDemanda = {}): DemandaCalculada {
   const pesoSaco = Math.max(0, n(q.pesoSaco))
   const folga = 1 + Math.max(0, dec(q.margemSegurancaPct))
@@ -106,19 +152,21 @@ export function calcularDemanda(q: Necessidade, opcoes: OpcoesDemanda = {}): Dem
   let mensalKg = 0
 
   if (q.modo === 'animais') {
-    const animais = Math.max(0, n(q.numeroAnimais))
-    const consumo = Math.max(0, n(q.consumoPorAnimal))
     const dias = Math.max(0, n(q.dias))
+    // Ciclo completo: cada fase tem plantel e consumo próprios e o bruto é a
+    // SOMA delas. Matriz não come como terminação — média de fase seria número
+    // torto. Uma fase só continua exatamente no caminho de antes.
+    const bruto = plantelPorFase(q)
+      .reduce((s, l) => s + Math.max(0, n(l.numeroAnimais)) * Math.max(0, n(l.consumoPorAnimal)), 0)
 
     if (q.baseConsumo === 'mes') {
-      mensalKg = animais * consumo
+      mensalKg = bruto
     } else if (q.baseConsumo === 'dia') {
       // consumo/dia × nº de dias considerados no mês
-      mensalKg = animais * consumo * (dias > 0 ? dias : DIAS_MES)
+      mensalKg = bruto * (dias > 0 ? dias : DIAS_MES)
     } else {
       // 'ciclo': o total do ciclo diluído na duração dele.
-      const totalCiclo = animais * consumo
-      mensalKg = dias > 0 ? dividir(totalCiclo, dividir(dias, DIAS_MES)) : totalCiclo
+      mensalKg = dias > 0 ? dividir(bruto, dividir(dias, DIAS_MES)) : bruto
     }
   } else {
     const kgInformado = quantidadeParaKg(q.quantidadeInformada, q.unidadeQuantidade, pesoSaco)
@@ -142,6 +190,36 @@ export function calcularDemanda(q: Necessidade, opcoes: OpcoesDemanda = {}): Dem
 // ---------------------------------------------------------------------------
 // 2) Fórmula
 // ---------------------------------------------------------------------------
+
+/**
+ * Abaixo disto o ingrediente é micro — sal, adsorvente, aminoácido, premix. É o
+ * que o produtor chama de "núcleo": entra em grama por tonelada e não é ele que
+ * o vendedor discute com o cliente.
+ */
+export const LIMITE_NUCLEO_PCT = 1
+
+/** Participação em % da fórmula, seja qual for a unidade digitada no card. */
+export function participacaoPct(i: IngredienteFormula): number {
+  return dividir(participacaoParaKgPorTonelada(i.participacao, i.unidadeParticipacao), 10)
+}
+
+/**
+ * Este ingrediente entra no grupo "Núcleo"?
+ *
+ * A marcação manual do vendedor MANDA — cada fórmula é uma fórmula, e não existe
+ * corte percentual que acerte em todas. Sem marcação vale o automático: abaixo
+ * de 1% e acima de zero (zerado é ingrediente recém-adicionado, que não pode
+ * sumir dentro de um grupo fechado).
+ *
+ * Uma regra só, usada pela tela do vendedor E pelo PDF do cliente — senão as
+ * duas contam o núcleo de jeitos diferentes.
+ */
+export function ehDoNucleo(i: IngredienteFormula): boolean {
+  if (i.noNucleo === true) return true
+  if (i.noNucleo === false) return false
+  const p = participacaoPct(i)
+  return p > 0 && p < LIMITE_NUCLEO_PCT
+}
 
 /** Participação do ingrediente convertida pra kg em 1 tonelada de ração. */
 export function participacaoParaKgPorTonelada(
@@ -180,6 +258,7 @@ export function calcularFormula(formula: Formula, especie: Especie): FormulaCalc
       precoPorKg: pKg,
       custoPorToneladaRacao,
       custoPorKgRacao: dividir(custoPorToneladaRacao, 1000),
+      noNucleo: ehDoNucleo(it),
     }
   })
 
@@ -197,6 +276,46 @@ export function calcularFormula(formula: Formula, especie: Especie): FormulaCalc
   }
 }
 
+/**
+ * Os itens da fórmula de uma fase.
+ *
+ * Fase única: é `formula.itens`, como sempre foi. Multi-fase: é `porFase`, e
+ * quem ainda não foi tocada cai na referência do catálogo — que já fecha 100%,
+ * então nenhuma fase nasce "aberta" travando o estudo.
+ */
+export function itensDaFase(formula: Formula, especie: Especie, categoria: string, multi: boolean): IngredienteFormula[] {
+  if (!multi) return formula.itens
+  return formula.porFase?.[categoria] ?? formulaPadrao(especie, categoria)
+}
+
+/**
+ * Uma FormulaCalculada por fase, com o peso de cada uma, mais a média ponderada
+ * do custo dos ingredientes — que é o número que a produção própria usa.
+ */
+export function calcularFormulasPorFase(
+  input: EstudoInput,
+): { fases: FormulaDeFase[]; custoPonderadoPorKg: number; fechadas: boolean } {
+  const { produto, formula } = input
+  const fases = fasesDoProduto(produto)
+  const multi = fases.length > 1
+  const pesos = pesosPorFase(input.necessidade, produto.categoria)
+
+  const lista: FormulaDeFase[] = fases.map(categoria => ({
+    categoria,
+    peso: pesos.find(p => p.categoria === categoria)?.peso ?? 0,
+    calc: calcularFormula(
+      { ...formula, itens: itensDaFase(formula, produto.especie, categoria, multi) },
+      produto.especie,
+    ),
+  }))
+
+  return {
+    fases: lista,
+    custoPonderadoPorKg: lista.reduce((s, f) => s + f.peso * f.calc.custoIngredientesPorKg, 0),
+    fechadas: lista.every(f => f.calc.fechada),
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 3) Cenário atual — quanto ele gasta HOJE
 // ---------------------------------------------------------------------------
@@ -204,6 +323,32 @@ export function calcularFormula(formula: Formula, especie: Especie): FormulaCalc
 export interface OpcoesCustoAtual {
   /** Multiplicador do preço da ração comprada (cenários). */
   fatorRacaoComprada?: number
+  /**
+   * Fatia do volume de cada fase. Quando o cliente informa preço por fase, o
+   * preço base do estudo é a média ponderada por isto. Ausente = preço único.
+   */
+  pesos?: Array<{ categoria: string; peso: number }>
+}
+
+/**
+ * Preço da ração comprada em R$/kg, já ponderado pelas fases quando o vendedor
+ * informou preço por fase. Sem pesos ou sem preço por fase é o preço único de
+ * sempre — o caminho antigo não muda em nada.
+ */
+export function precoBasePonderado(
+  atual: CenarioAtual, pesos?: Array<{ categoria: string; peso: number }>,
+): number {
+  const geral = precoPorKg(atual.preco, atual.unidadePreco, atual.pesoSacoCompra)
+  const porFase = atual.precoPorFase
+  if (!pesos || pesos.length <= 1 || !porFase) return geral
+
+  return pesos.reduce((soma, p) => {
+    const informado = Math.max(0, n(porFase[p.categoria]))
+    const preco = informado > 0
+      ? precoPorKg(informado, atual.unidadePreco, atual.pesoSacoCompra)
+      : geral
+    return soma + p.peso * preco
+  }, 0)
 }
 
 export function calcularCustoAtual(
@@ -225,7 +370,9 @@ export function calcularCustoAtual(
     }
   }
 
-  const base = precoPorKg(atual.preco, atual.unidadePreco, atual.pesoSacoCompra) * f
+  // Preço por fase quando informado: o produtor não paga o preço da pré-inicial
+  // na ração de terminação. Fase sem preço próprio usa o preço geral.
+  const base = precoBasePonderado(atual, opcoes.pesos) * f
   const frete = ligado(atual.frete)
   const descarga = ligado(atual.descarga)
   const outros = ligado(atual.outros)
@@ -497,10 +644,10 @@ export function calcularCenario(
   chave: CenarioCalculado['chave'], ajuste: AjusteCenario, input: EstudoInput,
 ): CenarioCalculado {
   const demanda = calcularDemanda(input.necessidade, { fatorConsumo: fator(ajuste.consumoPct) })
-  const formula = calcularFormula(input.formula, input.produto.especie)
+  const porFase = calcularFormulasPorFase(input)
 
   const producao = calcularCustosProducao(
-    formula.custoIngredientesPorKg, input.custos, demanda.mensalKg, input.necessidade.pesoSaco,
+    porFase.custoPonderadoPorKg, input.custos, demanda.mensalKg, input.necessidade.pesoSaco,
     {
       fatorIngredientes: fator(ajuste.ingredientesPct),
       fatorPerda: fator(ajuste.perdaPct),
@@ -509,6 +656,7 @@ export function calcularCenario(
   )
   const atual = calcularCustoAtual(input.atual, demanda, {
     fatorRacaoComprada: fator(ajuste.racaoCompradaPct),
+    pesos: pesosPorFase(input.necessidade, input.produto.categoria),
   })
   const comparacao = compararEconomia(atual.custoPorKg, producao.custoTotalPorKg, demanda)
   const retorno = calcularRetorno(
@@ -539,11 +687,17 @@ export const MSG_FORMULA_ABERTA =
 export function validar(
   input: EstudoInput,
   demanda: DemandaCalculada,
-  formula: FormulaCalculada,
+  /** As fórmulas do estudo — uma por fase. Aceita a de sempre pra não quebrar
+      quem chama com uma FormulaCalculada solta. */
+  formulas: FormulaCalculada | { fases: FormulaDeFase[] },
   atual: CustoAtualCalculado,
 ): ProblemaValidacao[] {
   const p: ProblemaValidacao[] = []
   const q = input.necessidade
+  const porFase = 'fases' in formulas
+    ? formulas
+    : { fases: [{ categoria: input.produto.categoria, peso: 1, calc: formulas }] }
+  const formula = porFase.fases[0]?.calc ?? formulas as FormulaCalculada
 
   if (demanda.mensalKg <= 0) {
     p.push({
@@ -552,7 +706,9 @@ export function validar(
       nivel: 'bloqueio',
     })
   }
-  if (n(q.numeroAnimais) < 0 || n(q.consumoPorAnimal) < 0 || n(q.quantidadeInformada) < 0) {
+  const negativoNoPlantel = plantelPorFase(q)
+    .some(l => n(l.numeroAnimais) < 0 || n(l.consumoPorAnimal) < 0)
+  if (negativoNoPlantel || n(q.quantidadeInformada) < 0) {
     p.push({ campo: 'necessidade', mensagem: 'Quantidade não pode ser negativa.', nivel: 'bloqueio' })
   }
   if (n(q.pesoSaco) <= 0 && (q.unidadeQuantidade === 'sacos' || input.atual.unidadePreco === 'saco')) {
@@ -571,13 +727,22 @@ export function validar(
   }
 
   if (input.produto.especie !== 'milho') {
-    if (formula.linhas.length === 0) {
+    const vazias = porFase.fases.filter(f => f.calc.linhas.length === 0)
+    const abertas = porFase.fases.filter(f => f.calc.linhas.length > 0 && !f.calc.fechada)
+
+    if (vazias.length > 0) {
       p.push({ campo: 'formula', mensagem: 'Monte a fórmula ou selecione uma cadastrada.', nivel: 'bloqueio' })
-    } else if (!formula.fechada) {
-      const d = formula.diferencaKgPorTonelada
+    }
+    // Nome da fase junto: com ciclo completo, "a fórmula não fecha" sem dizer
+    // QUAL fase manda o vendedor caçar o erro em seis abas.
+    for (const f of abertas) {
+      const d = f.calc.diferencaKgPorTonelada
+      const qual = porFase.fases.length > 1
+        ? ` (${nomeCategoria(input.produto.especie, f.categoria, input.produto.categoriaLivre)})`
+        : ''
       const detalhe = d > 0
-        ? ` Faltam ${d.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} kg para completar uma tonelada.`
-        : ` A fórmula passou ${Math.abs(d).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} kg de uma tonelada.`
+        ? ` Faltam ${d.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} kg para completar uma tonelada${qual}.`
+        : ` A fórmula passou ${Math.abs(d).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} kg de uma tonelada${qual}.`
       p.push({ campo: 'formula', mensagem: MSG_FORMULA_ABERTA + detalhe, nivel: 'bloqueio' })
     }
   } else if (formula.custoIngredientesPorKg <= 0) {
@@ -638,15 +803,20 @@ export const CAPACIDADES_FALLBACK = [300, 600, 1000, 1500, 2000, 3000, 5000]
 export function calcularEstudo(input: EstudoInput, capacidades?: number[]): ResultadoEstudo {
   const lista = capacidades && capacidades.length > 0 ? capacidades : CAPACIDADES_FALLBACK
   const demanda = calcularDemanda(input.necessidade)
-  const formula = calcularFormula(input.formula, input.produto.especie)
+  const pesos = pesosPorFase(input.necessidade, input.produto.categoria)
+  const porFase = calcularFormulasPorFase(input)
+  // A `formula` exposta continua sendo a da fase principal — é o que a tela
+  // edita. Quem entra na conta da produção é a MÉDIA PONDERADA das fases.
+  const formula = porFase.fases.find(f => f.categoria === input.produto.categoria)?.calc
+    ?? calcularFormula(input.formula, input.produto.especie)
 
   const producao = calcularCustosProducao(
-    formula.custoIngredientesPorKg, input.custos, demanda.mensalKg, input.necessidade.pesoSaco,
+    porFase.custoPonderadoPorKg, input.custos, demanda.mensalKg, input.necessidade.pesoSaco,
   )
-  const atual = calcularCustoAtual(input.atual, demanda)
+  const atual = calcularCustoAtual(input.atual, demanda, { pesos })
   const comparacao = compararEconomia(
     atual.custoPorKg, producao.custoTotalPorKg, demanda,
-    input.necessidade.modo === 'animais' ? input.necessidade.numeroAnimais : 0,
+    totalAnimais(input.necessidade),
   )
   const dimensionamento = calcularDimensionamento(input.dimensionamento, demanda, lista)
   const retorno = calcularRetorno(input.investimento, comparacao.economiaMensal, comparacao.economiaAnual)
@@ -657,12 +827,15 @@ export function calcularEstudo(input: EstudoInput, capacidades?: number[]): Resu
     calcularCenario('otimista', input.cenarios.otimista, input),
   ]
 
-  const problemas = validar(input, demanda, formula, atual)
+  const problemas = validar(input, demanda, porFase, atual)
 
   return {
     problemas,
     bloqueado: problemas.some(x => x.nivel === 'bloqueio'),
     demanda, formula, atual, producao, comparacao, dimensionamento, retorno, cenarios,
+    formulasPorFase: porFase.fases,
+    custoIngredientesPonderadoPorKg: porFase.custoPonderadoPorKg,
+    formulasFechadas: porFase.fechadas,
     memoria: montarMemoria(atual, producao, comparacao, input),
   }
 }

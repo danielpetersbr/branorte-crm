@@ -5,20 +5,21 @@
  * Todo cálculo vive em lib/venda-racao/calculo.ts, então dá pra mexer no layout
  * sem risco de mudar economia ou payback.
  */
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Save, Scale, Undo2 } from 'lucide-react'
 import {
-  CATEGORIAS, ehIngredienteRestrito, ESPECIES, INGREDIENTES_PADRAO, novoIdIngrediente,
-  ORIGEM_CUSTOS, PESOS_SACO,
+  CATEGORIAS, CICLOS, ehIngredienteRestrito, ESPECIES, fasesDoProduto, INGREDIENTES_PADRAO,
+  nomeCategoria, novoIdIngrediente, ORIGEM_CUSTOS, PESOS_SACO,
 } from '@/lib/venda-racao/catalogo'
-import { consumoSugerido } from '@/lib/venda-racao/estado'
+import { ehDoNucleo, itensDaFase } from '@/lib/venda-racao/calculo'
+import { aplicarFases, consumoSugerido, usarFaseUnica } from '@/lib/venda-racao/estado'
 import { brl, brlKg, kg, kgHora, numero, pct, toneladas } from '@/lib/venda-racao/formato'
 import { temAlternativa } from '@/lib/nutricao/substituicao'
 import { SubstituirIngrediente } from './SubstituirIngrediente'
 import { PainelNutricional } from './PainelNutricional'
 import { RebalancearFormula } from './RebalancearFormula'
 import type {
-  ConfigEstudo, Especie, EstudoInput, FormulaSalvaRow, IngredienteCatalogoRow,
+  ConfigEstudo, Especie, EstudoInput, FasePlantel, FormulaSalvaRow, IngredienteCatalogoRow,
   IngredienteFormula, ResultadoEstudo, UnidadePreco,
 } from '@/lib/venda-racao/tipos'
 import { Alternador, Campo, CampoNumero, CampoTexto, CustoLinha, Etapa, Selecao } from './campos'
@@ -44,7 +45,8 @@ interface Props {
   config: ConfigEstudo
   ingredientesCatalogo: IngredienteCatalogoRow[]
   formulasSalvas: FormulaSalvaRow[]
-  onSalvarFormula: () => void
+  /** Salva no catálogo a composição da FASE ABERTA — não a da principal. */
+  onSalvarFormula: (itens: IngredienteFormula[], categoria: string) => void
   salvandoFormula: boolean
 }
 
@@ -86,6 +88,21 @@ export function FormularioEstudo({
   const categoriaAtual = categorias.find(c => c.chave === produto.categoria)
   const especieMeta = ESPECIES.find(e => e.chave === produto.especie)
 
+  /**
+   * Seleção múltipla de fases. `produto.categorias` existir é o que marca que o
+   * vendedor abriu o modo — estudo antigo e estudo de uma fase só não têm o
+   * campo, e a tela segue mostrando o seletor simples de sempre.
+   */
+  const multiFase = produto.categorias !== undefined && !ehMilho
+  const fasesMarcadas = fasesDoProduto(produto)
+  const ciclos = CICLOS[produto.especie] ?? []
+  const cicloMarcado = (fases: string[]) =>
+    fases.length === fasesMarcadas.length && fases.every(c => fasesMarcadas.includes(c))
+  /** Linhas de plantel na tela: uma por fase quando há mais de uma. */
+  const linhasPlantel = nec.fases && nec.fases.length > 1 ? nec.fases : []
+  const unidadeConsumo = nec.baseConsumo === 'dia' ? 'kg/dia'
+    : nec.baseConsumo === 'mes' ? 'kg/mês' : 'kg/ciclo'
+
   const setIdent = (p: Partial<typeof ident>) =>
     onChange(s => ({ ...s, identificacao: { ...s.identificacao, ...p } }))
   const setNec = (p: Partial<typeof nec>) =>
@@ -101,7 +118,25 @@ export function FormularioEstudo({
   const setInv = (p: Partial<typeof inv>) =>
     onChange(s => ({ ...s, investimento: { ...s.investimento, ...p } }))
 
+  /** Altera uma linha de plantel do modo multi-fase. */
+  const alterarFase = (categoria: string, p: Partial<FasePlantel>) =>
+    onChange(s => ({
+      ...s,
+      necessidade: {
+        ...s.necessidade,
+        fases: (s.necessidade.fases ?? []).map(x => (x.categoria === categoria ? { ...x, ...p } : x)),
+        // mexeu no consumo = número que veio do cliente, não mais catálogo
+        consumoConfirmado: p.consumoPorAnimal !== undefined ? true : s.necessidade.consumoConfirmado,
+      },
+    }))
+
   const trocarCategoria = (chave: string) => {
+    // Em multi-fase isto só escolhe QUAL fase a fórmula atende — o consumo mora
+    // na linha de cada fase, não neste campo.
+    if (multiFase) {
+      onChange(s => ({ ...s, produto: { ...s.produto, categoria: chave } }))
+      return
+    }
     onChange(s => {
       // Consumo CONFIRMADO é dado que veio da boca do cliente — trocar de fase
       // não pode apagá-lo. Antes daqui, quem confirmava 340 kg/mês e depois
@@ -122,11 +157,28 @@ export function FormularioEstudo({
     })
   }
 
+  /**
+   * Qual fase está aberta na etapa da fórmula. Em ciclo completo cada fase tem a
+   * SUA composição — o vendedor troca de aba, não de estudo.
+   */
+  const [faseEmFoco, setFaseEmFoco] = useState(produto.categoria)
+  const faseFormula = multiFase && fasesMarcadas.includes(faseEmFoco) ? faseEmFoco : produto.categoria
+  const itensEmFoco = itensDaFase(formula, produto.especie, faseFormula, multiFase)
+
+  /** Grava a composição da fase aberta, no lugar certo (única ou por fase). */
+  const setItensEmFoco = (novos: IngredienteFormula[], extra: Partial<typeof formula> = {}) =>
+    onChange(s => ({
+      ...s,
+      formula: multiFase
+        ? { ...s.formula, ...extra, porFase: { ...(s.formula.porFase ?? {}), [faseFormula]: novos } }
+        : { ...s.formula, ...extra, itens: novos },
+    }))
+
   const alterarItem = (id: string, p: Partial<IngredienteFormula>) =>
-    setFormula({ itens: formula.itens.map(i => (i.id === id ? { ...i, ...p } : i)) })
+    setItensEmFoco(itensEmFoco.map(i => (i.id === id ? { ...i, ...p } : i)))
 
   const removerItem = (id: string) =>
-    setFormula({ itens: formula.itens.filter(i => i.id !== id), formulaId: null })
+    setItensEmFoco(itensEmFoco.filter(i => i.id !== id), { formulaId: null })
 
   // Qual card está com o painel de substituição aberto.
   const [substituindo, setSubstituindo] = useState<string | null>(null)
@@ -139,10 +191,9 @@ export function FormularioEstudo({
 
   const aplicarRebalanceamento = (novos: Array<{ id: string; participacao: number }>) => {
     const mapa = new Map(novos.map(n => [n.id, n.participacao]))
-    setAntesDoRebal(formula.itens)
-    setFormula({
-      formulaId: null, // deixou de ser a de referência — o motor mexeu nela
-      itens: formula.itens.map(i => {
+    setAntesDoRebal(itensEmFoco)
+    setItensEmFoco(
+      itensEmFoco.map(i => {
         const p = mapa.get(i.id)
         if (p == null) return i
         // O otimizador raciocina em %, mas o vendedor pode ter digitado kg/t.
@@ -153,13 +204,15 @@ export function FormularioEstudo({
           : p * 10000
         return { ...i, participacao: Number(conv.toFixed(4)) }
       }),
-    })
+      // deixou de ser a de referência — o motor mexeu nela
+      { formulaId: null },
+    )
     setRebalanceando(false)
   }
 
   const desfazerRebalanceamento = () => {
     if (!antesDoRebal) return
-    setFormula({ itens: antesDoRebal })
+    setItensEmFoco(antesDoRebal)
     setAntesDoRebal(null)
   }
 
@@ -173,29 +226,28 @@ export function FormularioEstudo({
    * pras duas coisas.
    */
   const aplicarSubstituicao = (novos: IngredienteFormula[]) => {
-    setAntesDoRebal(formula.itens)
+    setAntesDoRebal(itensEmFoco)
     // deixou de ser a fórmula de referência carregada — o vendedor mexeu nela
-    setFormula({ formulaId: null, itens: novos })
+    setItensEmFoco(novos, { formulaId: null })
     setSubstituindo(null)
   }
 
   const adicionarItem = (nome: string, preco: number, unidade: UnidadePreco, pesoSaco: number) =>
-    setFormula({
-      formulaId: null,
-      itens: [...formula.itens, {
+    setItensEmFoco(
+      [...itensEmFoco, {
         id: novoIdIngrediente(), nome, participacao: 0, unidadeParticipacao: 'pct',
         preco, unidadePreco: unidade, pesoSacoIngrediente: pesoSaco || 60,
       }],
-    })
+      { formulaId: null },
+    )
 
   const carregarFormulaSalva = (id: string) => {
     const f = formulasSalvas.find(x => x.id === id)
     if (!f) { setFormula({ formulaId: null }); return }
-    setFormula({
-      formulaId: f.id,
-      nome: f.nome,
-      itens: (f.itens ?? []).map(i => ({ ...i, id: i.id || novoIdIngrediente() })),
-    })
+    setItensEmFoco(
+      (f.itens ?? []).map(i => ({ ...i, id: i.id || novoIdIngrediente() })),
+      { formulaId: f.id, nome: f.nome },
+    )
   }
 
   // Catálogo do banco quando existir; senão a lista local de referência.
@@ -209,10 +261,151 @@ export function FormularioEstudo({
     : INGREDIENTES_PADRAO.map(i => ({ nome: i.nome, preco: i.preco, unidade: i.unidade, pesoSaco: 60 }))
   ).filter(o => config.permiteIngredientesUmidos || !ehIngredienteRestrito(o.nome))
 
-  const restritosNaFormula = formula.itens.filter(i => ehIngredienteRestrito(i.nome))
-  const f = resultado.formula
+  const restritosNaFormula = itensEmFoco.filter(i => ehIngredienteRestrito(i.nome))
+  // A fórmula na tela é a da fase ABERTA. `resultado.formula` é sempre a da
+  // principal — com ciclo completo elas são coisas diferentes.
+  const f = resultado.formulasPorFase.find(x => x.categoria === faseFormula)?.calc ?? resultado.formula
   const somaOk = f.fechada
   const d = resultado.demanda
+
+  /**
+   * Quais ingredientes estão dentro do card "Núcleo".
+   *
+   * A classificação é CONGELADA de propósito. Se ela acompanhasse cada tecla, um
+   * ingrediente de 0,25% viraria 5% no meio da digitação, saltaria pra fora do
+   * grupo e o React desmontaria o campo — que é exatamente o jeito de comer o
+   * que a pessoa estava digitando (o CampoNumero guarda a string local enquanto
+   * está focado). Então só recalcula quando entra/sai ingrediente (`idsFormula`)
+   * ou quando o campo perde o foco (`revisaoNucleo`).
+   *
+   * Ingrediente zerado fica de fora: quem acabou de clicar em "+ Adicionar" não
+   * pode ver o card sumir dentro de um grupo fechado.
+   */
+  const [revisaoNucleo, setRevisaoNucleo] = useState(0)
+  const listaIngredientes = useRef<HTMLDivElement>(null)
+  const idsFormula = itensEmFoco.map(i => i.id).join('|')
+
+  /**
+   * Rede de segurança do reagrupamento: o blur é o gatilho normal, mas ele não é
+   * garantido (clique fora da janela, troca de aba, campo que some). Sem isto o
+   * grupo podia ficar velho — mostrando "Núcleo" com um ingrediente que já virou
+   * 12%. Só reclassifica com o cursor FORA da lista: dentro, remontar o card
+   * comeria o que está sendo digitado.
+   */
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const ativo = document.activeElement
+      if (ativo && listaIngredientes.current?.contains(ativo)) return
+      setRevisaoNucleo(v => v + 1)
+    }, 600)
+    return () => clearTimeout(t)
+  }, [itensEmFoco])
+  const idsNucleo = useMemo(() => {
+    const micro = itensEmFoco.filter(ehDoNucleo)
+    // Um micro sozinho não é "núcleo", é um ingrediente — a não ser que o
+    // vendedor tenha dito na mão que aquilo é núcleo. Aí manda ele.
+    const marcadoNaMao = itensEmFoco.some(i => i.noNucleo === true)
+    return new Set(micro.length >= 2 || marcadoNaMao ? micro.map(i => i.id) : [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsFormula, revisaoNucleo])
+
+  const itensMacro = itensEmFoco.filter(i => !idsNucleo.has(i.id))
+  const itensNucleo = itensEmFoco.filter(i => idsNucleo.has(i.id))
+  // Agregado do núcleo: sai das MESMAS linhas calculadas, não de conta nova aqui.
+  const nucleoTotais = itensNucleo.reduce(
+    (acc, i) => {
+      const linha = f.linhas.find(l => l.id === i.id)
+      return {
+        kgT: acc.kgT + (linha?.kgPorTonelada ?? 0),
+        custo: acc.custo + (linha?.custoPorKgRacao ?? 0),
+      }
+    },
+    { kgT: 0, custo: 0 },
+  )
+
+  /** Card de um ingrediente — o mesmo solto na lista ou dentro do núcleo. */
+  function cardIngrediente(i: IngredienteFormula) {
+    const linha = f.linhas.find(l => l.id === i.id)
+    const comSaca = i.unidadePreco === 'saco'
+    return (
+      <div key={i.id} className="vr-ing">
+        <div className="l1">
+          <input
+            value={i.nome}
+            aria-label="Nome do ingrediente"
+            onChange={e => alterarItem(i.id, { nome: e.target.value })}
+            placeholder="Ingrediente"
+          />
+          {temAlternativa(i.nome, pctNaFormula(i), produto.especie) && (
+            <button
+              type="button"
+              className={`frm sub${substituindo === i.id ? ' on' : ''}`}
+              title={`O cliente não tem ${i.nome}? Ver o que entra no lugar`}
+              aria-label={`Substituir ${i.nome}`}
+              onClick={() => setSubstituindo(v => (v === i.id ? null : i.id))}
+            >⇄</button>
+          )}
+          <button
+            type="button"
+            className={`frm nuc${idsNucleo.has(i.id) ? ' on' : ''}`}
+            title={idsNucleo.has(i.id) ? `Tirar ${i.nome || 'este item'} do núcleo` : `Colocar ${i.nome || 'este item'} no núcleo`}
+            aria-pressed={idsNucleo.has(i.id)}
+            onClick={() => {
+              // Clique explícito reclassifica na hora — não é digitação, então
+              // não tem campo focado pra perder o que estava sendo escrito.
+              alterarItem(i.id, { noNucleo: !idsNucleo.has(i.id) })
+              setRevisaoNucleo(v => v + 1)
+            }}
+          >N</button>
+          <button type="button" className="frm" title="Remover ingrediente" onClick={() => removerItem(i.id)}>×</button>
+        </div>
+        <div className={`l2${comSaca ? ' comsaca' : ''}`}>
+          <CampoNumero
+            valor={i.participacao} casas={3} className="" aria-label="Participação"
+            onChange={v => alterarItem(i.id, { participacao: v })}
+          />
+          <select
+            value={i.unidadeParticipacao} aria-label="Unidade da participação"
+            onChange={e => alterarItem(i.id, { unidadeParticipacao: e.target.value as IngredienteFormula['unidadeParticipacao'] })}
+          >
+            {UNIDADES_PARTICIPACAO.map(u => <option key={u.v} value={u.v}>{u.label}</option>)}
+          </select>
+          <CampoNumero
+            valor={i.preco} casas={4} className="" aria-label="Preço de compra"
+            onChange={v => alterarItem(i.id, { preco: v })}
+          />
+          <select
+            value={i.unidadePreco} aria-label="Unidade do preço"
+            onChange={e => alterarItem(i.id, { unidadePreco: e.target.value as UnidadePreco })}
+          >
+            {UNIDADES_PRECO.map(u => <option key={u.v} value={u.v}>{u.label}</option>)}
+          </select>
+          {comSaca && (
+            <CampoNumero
+              valor={i.pesoSacoIngrediente} casas={2} className="" aria-label="Peso do saco do ingrediente"
+              onChange={v => alterarItem(i.id, { pesoSacoIngrediente: v })}
+            />
+          )}
+        </div>
+        {linha && (
+          <div className="custo">
+            {numero(linha.kgPorTonelada, 1)} kg/t · {brl(linha.precoPorKg, 4)}/kg ·{' '}
+            {brl(linha.custoPorKgRacao, 4)}/kg de ração
+          </div>
+        )}
+        {substituindo === i.id && (
+          <SubstituirIngrediente
+            item={i}
+            itens={itensEmFoco}
+            especie={produto.especie}
+            categoria={faseFormula}
+            onFechar={() => setSubstituindo(null)}
+            onAplicar={aplicarSubstituicao}
+          />
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className={`vr-card${largo ? ' vr-form-largo' : ''}`}>
@@ -281,14 +474,77 @@ export function FormularioEstudo({
         </div>
 
         <div style={{ marginTop: 10 }}>
-          <Campo label="Categoria / fase">
-            <Selecao
-              valor={produto.categoria}
-              opcoes={categorias.map(c => ({ v: c.chave, label: c.nome }))}
-              onChange={trocarCategoria}
-            />
-          </Campo>
-          {produto.categoria === 'outro' && (
+          {!ehMilho && (
+            <div style={{ marginBottom: 9 }}>
+              <Alternador
+                valor={multiFase ? 'multi' : 'uma'}
+                opcoes={[
+                  { v: 'uma' as const, label: 'Uma fase' },
+                  { v: 'multi' as const, label: 'Ciclo completo / mais de uma' },
+                ]}
+                onChange={v => onChange(s => (v === 'multi' ? aplicarFases(s, fasesMarcadas) : usarFaseUnica(s)))}
+              />
+            </div>
+          )}
+
+          {multiFase ? (
+            <>
+              {ciclos.length > 0 && (
+                <div className="vr-ciclos">
+                  {ciclos.map(c => (
+                    <button
+                      key={c.nome}
+                      type="button"
+                      className={cicloMarcado(c.fases) ? 'on' : ''}
+                      onClick={() => onChange(s => aplicarFases(s, c.fases))}
+                    >
+                      {c.nome}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <Campo label="Fases que o cliente produz" unidade="marque quantas quiser">
+                <div className="vr-fases">
+                  {categorias.map(c => {
+                    const marcada = fasesMarcadas.includes(c.chave)
+                    return (
+                      <label key={c.chave} className={`vr-fase${marcada ? ' on' : ''}`}>
+                        <input
+                          type="checkbox"
+                          checked={marcada}
+                          onChange={() => onChange(s => aplicarFases(
+                            s,
+                            marcada
+                              ? fasesMarcadas.filter(x => x !== c.chave)
+                              : [...fasesMarcadas, c.chave],
+                          ))}
+                        />
+                        <span>{c.nome}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </Campo>
+
+              {fasesMarcadas.length > 1 && (
+                <div className="vr-hint" style={{ marginTop: 9 }}>
+                  Cada fase entra com plantel, consumo e <b>fórmula próprios</b> — o estudo soma o
+                  volume e pondera o custo pelo que cada uma representa.
+                </div>
+              )}
+            </>
+          ) : (
+            <Campo label="Categoria / fase">
+              <Selecao
+                valor={produto.categoria}
+                opcoes={categorias.map(c => ({ v: c.chave, label: c.nome }))}
+                onChange={trocarCategoria}
+              />
+            </Campo>
+          )}
+
+          {fasesMarcadas.includes('outro') && (
             <div style={{ marginTop: 8 }}>
               <CampoTexto
                 valor={produto.categoriaLivre}
@@ -320,13 +576,52 @@ export function FormularioEstudo({
 
         {nec.modo === 'animais' ? (
           <div style={{ marginTop: 10, display: 'grid', gap: 9 }}>
+            {linhasPlantel.length > 0 ? (
+              /* Ciclo completo: uma linha por fase. A demanda é a SOMA — matriz
+                 não come como terminação, então um plantel só daria número
+                 torto. Unidade do consumo e dias valem pra todas as linhas. */
+              <div className="vr-plantel">
+                <div className="cab">
+                  <span>Fase</span>
+                  <span>{especieMeta?.animal ?? 'animais'}</span>
+                  <span>{unidadeConsumo}</span>
+                  <span>subtotal</span>
+                </div>
+                {linhasPlantel.map(l => {
+                  const nome = nomeCategoria(produto.especie, l.categoria, produto.categoriaLivre)
+                  return (
+                    <div key={l.categoria} className="lin">
+                      <span className="nm" title={nome}>{nome}</span>
+                      <CampoNumero
+                        valor={l.numeroAnimais} casas={0} className="" aria-label={`Nº de animais em ${nome}`}
+                        onChange={v => alterarFase(l.categoria, { numeroAnimais: v })}
+                      />
+                      <CampoNumero
+                        valor={l.consumoPorAnimal} casas={3} className="" aria-label={`Consumo por animal em ${nome}`}
+                        onChange={v => alterarFase(l.categoria, { consumoPorAnimal: v })}
+                      />
+                      <span className="sub">
+                        {numero(Math.max(0, l.numeroAnimais) * Math.max(0, l.consumoPorAnimal), 0)} kg
+                      </span>
+                    </div>
+                  )
+                })}
+                <div className="tot">
+                  <span>{numero(linhasPlantel.reduce((s, l) => s + Math.max(0, l.numeroAnimais), 0))} {especieMeta?.animal ?? 'animais'} no total</span>
+                  <span>
+                    {numero(linhasPlantel.reduce((s, l) => s + Math.max(0, l.numeroAnimais) * Math.max(0, l.consumoPorAnimal), 0), 0)} kg
+                    {nec.baseConsumo === 'mes' ? '/mês' : nec.baseConsumo === 'dia' ? '/dia' : '/ciclo'}
+                  </span>
+                </div>
+              </div>
+            ) : (
             <div className="vr-row2">
               <Campo label={`Nº de ${especieMeta?.animal ?? 'animais'}`}>
                 <CampoNumero valor={nec.numeroAnimais} casas={0} onChange={v => setNec({ numeroAnimais: v })} />
               </Campo>
               <Campo
                 label="Consumo por animal"
-                unidade={nec.baseConsumo === 'dia' ? 'kg/dia' : nec.baseConsumo === 'mes' ? 'kg/mês' : 'kg/ciclo'}
+                unidade={unidadeConsumo}
               >
                 <CampoNumero
                   valor={nec.consumoPorAnimal} casas={3}
@@ -334,6 +629,7 @@ export function FormularioEstudo({
                 />
               </Campo>
             </div>
+            )}
             <div className="vr-row2">
               <Campo label="Unidade do consumo">
                 <Selecao
@@ -370,7 +666,9 @@ export function FormularioEstudo({
                 <b>Confirmei o consumo com o cliente.</b>{' '}
                 {nec.consumoConfirmado
                   ? 'O estudo usa o número confirmado.'
-                  : `O valor de ${numero(nec.consumoPorAnimal, 3)} kg é REFERÊNCIA de catálogo — `
+                  : (linhasPlantel.length > 0
+                      ? 'Os consumos por fase são REFERÊNCIA de catálogo — '
+                      : `O valor de ${numero(nec.consumoPorAnimal, 3)} kg é REFERÊNCIA de catálogo — `)
                     + 'o consumo varia com peso, genética, fase, manejo, formulação e objetivo produtivo.'}
               </span>
             </label>
@@ -473,6 +771,41 @@ export function FormularioEstudo({
               </Campo>
             )}
 
+            {/* Ninguém paga o preço da pré-inicial na ração de terminação. Com
+                um preço só pro ciclo inteiro a economia sai torta — mas isto é
+                opcional: fase em branco usa o preço geral acima. */}
+            {linhasPlantel.length > 0 && (
+              <details className="vr-det">
+                <summary>Preço por fase (opcional)</summary>
+                <div style={{ marginTop: 10 }}>
+                  <div className="vr-plantel">
+                    <div className="cab">
+                      <span>Fase</span>
+                      <span>{atual.unidadePreco === 'saco' ? 'R$/saco' : atual.unidadePreco === 't' ? 'R$/t' : 'R$/kg'}</span>
+                    </div>
+                    {linhasPlantel.map(l => {
+                      const nome = nomeCategoria(produto.especie, l.categoria, produto.categoriaLivre)
+                      return (
+                        <div key={l.categoria} className="lin preco">
+                          <span className="nm" title={nome}>{nome}</span>
+                          <CampoNumero
+                            valor={atual.precoPorFase?.[l.categoria] ?? 0}
+                            casas={4} className="" aria-label={`Preço da ração de ${nome}`}
+                            onChange={v => setAtual({
+                              precoPorFase: { ...(atual.precoPorFase ?? {}), [l.categoria]: v },
+                            })}
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <div className="vr-hint" style={{ marginTop: 8 }}>
+                    Fase em branco usa o preço geral. O estudo pondera pelo volume de cada uma.
+                  </div>
+                </div>
+              </details>
+            )}
+
             <details className="vr-det">
               <summary>Frete, descarga, perdas e outros custos da compra</summary>
               <div style={{ marginTop: 10 }}>
@@ -551,6 +884,35 @@ export function FormularioEstudo({
           </div>
         ) : (
           <>
+            {/* Uma aba por fase: cada ração tem a sua composição e o seu custo.
+                O que entra na conta da produção é a média PONDERADA pelo volume
+                — a fatia de cada fase aparece na própria aba. */}
+            {multiFase && fasesMarcadas.length > 1 && (
+              <>
+                <div className="vr-abas-fase">
+                  {resultado.formulasPorFase.map(x => (
+                    <button
+                      key={x.categoria}
+                      type="button"
+                      className={x.categoria === faseFormula ? 'on' : ''}
+                      onClick={() => setFaseEmFoco(x.categoria)}
+                    >
+                      <span className="nm">{nomeCategoria(produto.especie, x.categoria, produto.categoriaLivre)}</span>
+                      <span className="pz">
+                        {pct(x.peso * 100, 0)} do volume
+                        {x.calc.fechada ? '' : ' · não fecha'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <div className="vr-hint" style={{ marginBottom: 10 }}>
+                  Cada fase começa com a fórmula de referência do catálogo — ajuste o que o cliente
+                  usa em cada uma. O custo dos ingredientes do estudo é a média ponderada pelo
+                  volume: <b>{brlKg(resultado.custoIngredientesPonderadoPorKg, 4)}</b>.
+                </div>
+              </>
+            )}
+
             {formulasSalvas.length > 0 && (
               <div style={{ marginBottom: 10 }}>
                 <Campo label="Fórmula cadastrada">
@@ -563,76 +925,31 @@ export function FormularioEstudo({
               </div>
             )}
 
-            {formula.itens.map(i => {
-              const linha = f.linhas.find(l => l.id === i.id)
-              const comSaca = i.unidadePreco === 'saco'
-              return (
-                <div key={i.id} className="vr-ing">
-                  <div className="l1">
-                    <input
-                      value={i.nome}
-                      aria-label="Nome do ingrediente"
-                      onChange={e => alterarItem(i.id, { nome: e.target.value })}
-                      placeholder="Ingrediente"
-                    />
-                    {temAlternativa(i.nome, pctNaFormula(i), produto.especie) && (
-                      <button
-                        type="button"
-                        className={`frm sub${substituindo === i.id ? ' on' : ''}`}
-                        title={`O cliente não tem ${i.nome}? Ver o que entra no lugar`}
-                        aria-label={`Substituir ${i.nome}`}
-                        onClick={() => setSubstituindo(v => (v === i.id ? null : i.id))}
-                      >⇄</button>
-                    )}
-                    <button type="button" className="frm" title="Remover ingrediente" onClick={() => removerItem(i.id)}>×</button>
-                  </div>
-                  <div className={`l2${comSaca ? ' comsaca' : ''}`}>
-                    <CampoNumero
-                      valor={i.participacao} casas={3} className="" aria-label="Participação"
-                      onChange={v => alterarItem(i.id, { participacao: v })}
-                    />
-                    <select
-                      value={i.unidadeParticipacao} aria-label="Unidade da participação"
-                      onChange={e => alterarItem(i.id, { unidadeParticipacao: e.target.value as IngredienteFormula['unidadeParticipacao'] })}
-                    >
-                      {UNIDADES_PARTICIPACAO.map(u => <option key={u.v} value={u.v}>{u.label}</option>)}
-                    </select>
-                    <CampoNumero
-                      valor={i.preco} casas={4} className="" aria-label="Preço de compra"
-                      onChange={v => alterarItem(i.id, { preco: v })}
-                    />
-                    <select
-                      value={i.unidadePreco} aria-label="Unidade do preço"
-                      onChange={e => alterarItem(i.id, { unidadePreco: e.target.value as UnidadePreco })}
-                    >
-                      {UNIDADES_PRECO.map(u => <option key={u.v} value={u.v}>{u.label}</option>)}
-                    </select>
-                    {comSaca && (
-                      <CampoNumero
-                        valor={i.pesoSacoIngrediente} casas={2} className="" aria-label="Peso do saco do ingrediente"
-                        onChange={v => alterarItem(i.id, { pesoSacoIngrediente: v })}
-                      />
-                    )}
-                  </div>
-                  {linha && (
-                    <div className="custo">
-                      {numero(linha.kgPorTonelada, 1)} kg/t · {brl(linha.precoPorKg, 4)}/kg ·{' '}
-                      {brl(linha.custoPorKgRacao, 4)}/kg de ração
+            {/* O agrupamento do núcleo é de VISTA: a conta continua ingrediente
+                a ingrediente. O onBlur reclassifica quem cruzou 1% DEPOIS que a
+                pessoa terminou de digitar, nunca durante. */}
+            <div ref={listaIngredientes} onBlur={() => setRevisaoNucleo(v => v + 1)}>
+              {itensMacro.map(cardIngrediente)}
+
+              {itensNucleo.length > 0 && (
+                <details className="vr-nucleo">
+                  <summary>
+                    <div className="tit">
+                      <span className="nm">
+                        Núcleo <i>{itensNucleo.length} {itensNucleo.length === 1 ? 'ingrediente' : 'ingredientes'}</i>
+                      </span>
+                      <span className="ag">
+                        {numero(nucleoTotais.kgT, 1)} kg/t · {brl(nucleoTotais.custo, 4)}/kg de ração
+                      </span>
                     </div>
-                  )}
-                  {substituindo === i.id && (
-                    <SubstituirIngrediente
-                      item={i}
-                      itens={formula.itens}
-                      especie={produto.especie}
-                      categoria={produto.categoria}
-                      onFechar={() => setSubstituindo(null)}
-                      onAplicar={aplicarSubstituicao}
-                    />
-                  )}
-                </div>
-              )
-            })}
+                    <div className="nomes">
+                      {itensNucleo.map(i => i.nome.trim() || 'sem nome').join(' · ')}
+                    </div>
+                  </summary>
+                  <div className="corpo">{itensNucleo.map(cardIngrediente)}</div>
+                </details>
+              )}
+            </div>
 
             <div style={{ marginTop: 8 }}>
               <select
@@ -678,7 +995,7 @@ export function FormularioEstudo({
                 type="button"
                 className={`vr-btn ghost${rebalanceando ? ' on' : ''}`}
                 onClick={() => setRebalanceando(v => !v)}
-                disabled={formula.itens.length < 2}
+                disabled={itensEmFoco.length < 2}
               >
                 <Scale className="h-4 w-4" /> Rebalancear fórmula
               </button>
@@ -691,9 +1008,9 @@ export function FormularioEstudo({
 
             {rebalanceando && (
               <RebalancearFormula
-                itens={formula.itens}
+                itens={itensEmFoco}
                 especie={produto.especie}
-                categoria={produto.categoria}
+                categoria={faseFormula}
                 demandaMensalKg={d.mensalKg}
                 onAplicar={aplicarRebalanceamento}
                 onFechar={() => setRebalanceando(false)}
@@ -704,9 +1021,9 @@ export function FormularioEstudo({
                 porque as duas respondem à mesma pergunta — "a fórmula está de
                 pé?" — e até agora só a metade do dinheiro estava respondida. */}
             <PainelNutricional
-              itens={formula.itens}
+              itens={itensEmFoco}
               especie={produto.especie}
-              categoria={produto.categoria}
+              categoria={faseFormula}
               formula={f}
             />
 
@@ -719,8 +1036,8 @@ export function FormularioEstudo({
                   type="button"
                   className="vr-btn ghost"
                   style={{ width: '100%', justifyContent: 'center' }}
-                  disabled={!formula.nome.trim() || formula.itens.length === 0 || salvandoFormula}
-                  onClick={onSalvarFormula}
+                  disabled={!formula.nome.trim() || itensEmFoco.length === 0 || salvandoFormula}
+                  onClick={() => onSalvarFormula(itensEmFoco, faseFormula)}
                 >
                   <Save className="h-4 w-4" /> {salvandoFormula ? 'Salvando…' : 'Salvar fórmula'}
                 </button>

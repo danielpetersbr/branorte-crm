@@ -335,6 +335,85 @@
   margin-top: 5px; font: 700 11px var(--vr-mono); color: var(--vr-ink40); text-align: right;
 }
 
+/* --- fases: ciclo completo / mais de uma fase ------------------------------ */
+.vr .vr-ciclos { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.vr .vr-ciclos button {
+  border: 1px solid var(--vr-hair); background: var(--vr-card); color: var(--vr-ink60);
+  border-radius: 999px; padding: 5px 11px; font: 600 11.5px inherit; cursor: pointer;
+}
+.vr .vr-ciclos button:hover { border-color: var(--vr-green); color: var(--vr-ink); }
+.vr .vr-ciclos button.on {
+  background: var(--vr-green); border-color: var(--vr-green); color: #fff;
+}
+.vr .vr-fases { display: flex; flex-wrap: wrap; gap: 6px; }
+.vr label.vr-fase {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  border: 1px solid var(--vr-hair); border-radius: 8px; padding: 5px 9px;
+  background: var(--vr-card); font: 600 11.5px inherit; color: var(--vr-ink60);
+}
+.vr label.vr-fase.on { border-color: var(--vr-green); color: var(--vr-ink); background: var(--vr-card-2); }
+.vr label.vr-fase input { width: 14px; height: 14px; accent-color: var(--vr-green); flex: none; }
+
+/* plantel por fase: nome | animais | consumo | subtotal */
+.vr .vr-plantel { border: 1px solid var(--vr-hair); border-radius: 10px; overflow: hidden; }
+.vr .vr-plantel .cab, .vr .vr-plantel .lin {
+  display: grid; grid-template-columns: minmax(0, 1fr) 74px 82px 88px;
+  gap: 6px; align-items: center; padding: 6px 9px;
+}
+.vr .vr-plantel .cab {
+  background: var(--vr-card-2); font: 600 10px inherit; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--vr-ink40);
+}
+.vr .vr-plantel .cab span:not(:first-child) { text-align: right; }
+.vr .vr-plantel .lin { border-top: 1px solid var(--vr-hair); }
+.vr .vr-plantel .lin .nm {
+  font: 600 12px inherit; color: var(--vr-ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.vr .vr-plantel .lin input {
+  font: 700 12px var(--vr-mono); padding: 5px 6px; border: 1px solid var(--vr-hair);
+  border-radius: 7px; background: var(--vr-card); width: 100%; min-width: 0;
+  text-align: right; color: var(--vr-ink);
+}
+.vr .vr-plantel .lin .sub { font: 700 11px var(--vr-mono); color: var(--vr-ink40); text-align: right; }
+.vr .vr-plantel .tot {
+  display: flex; justify-content: space-between; gap: 8px;
+  border-top: 1px solid var(--vr-hair); background: var(--vr-card-2);
+  padding: 7px 9px; font: 700 11.5px inherit; color: var(--vr-ink60);
+}
+@media (max-width: 560px) {
+  .vr .vr-plantel .cab, .vr .vr-plantel .lin { grid-template-columns: minmax(0, 1fr) 62px 68px; }
+  .vr .vr-plantel .cab span:nth-child(4), .vr .vr-plantel .lin .sub { display: none; }
+}
+
+/* micro-ingredientes (<1%) agrupados num card só: sal, adsorvente, aminoácido,
+   premix. Fechado mostra o que tem dentro; aberto vira a lista de sempre. */
+.vr details.vr-nucleo {
+  border: 1px solid var(--vr-hair); border-radius: 10px;
+  background: var(--vr-card-2); margin-bottom: 6px;
+}
+.vr details.vr-nucleo > summary { list-style: none; cursor: pointer; padding: 8px 9px; }
+.vr details.vr-nucleo > summary::-webkit-details-marker { display: none; }
+.vr .vr-nucleo .tit {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+}
+.vr .vr-nucleo .nm { font: 700 12.5px inherit; color: var(--vr-ink); }
+.vr .vr-nucleo .nm::before {
+  content: "▸"; color: var(--vr-green); display: inline-block;
+  margin-right: 5px; transition: 0.15s;
+}
+.vr details.vr-nucleo[open] .nm::before { transform: rotate(90deg); }
+.vr .vr-nucleo .nm i { font: 600 11px inherit; color: var(--vr-ink40); font-style: normal; }
+.vr .vr-nucleo .ag {
+  font: 700 11px var(--vr-mono); color: var(--vr-ink40); text-align: right; white-space: nowrap;
+}
+.vr .vr-nucleo .nomes {
+  margin-top: 3px; padding-left: 14px; font-size: 11px; line-height: 1.35; color: var(--vr-ink60);
+}
+.vr .vr-nucleo .corpo { padding: 0 9px 9px; }
+.vr .vr-nucleo .corpo .vr-ing { background: var(--vr-card); }
+.vr .vr-nucleo .corpo .vr-ing:last-child { margin-bottom: 0; }
+
 .vr .vr-fsum {
   display: flex; justify-content: space-between; gap: 8px; align-items: center;
   font-size: 12.5px; margin-top: 8px; font-weight: 700; color: var(--vr-ink60);
@@ -1405,4 +1484,27 @@
 .vr .vr-subst .previa .botoes .ok:disabled { opacity: .45; cursor: default; }
 .vr .vr-subst .previa .botoes .sec {
   border: 1px solid var(--vr-hair); background: var(--vr-card); color: var(--vr-ink60);
+}
+
+/* --- abas de fase na fórmula (ciclo completo) ----------------------------- */
+/* Cada fase é uma ração diferente: aba própria, e o quanto ela pesa no volume
+   fica visível — é esse peso que pondera o custo do estudo. */
+.vr .vr-abas-fase { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.vr .vr-abas-fase button {
+  display: grid; gap: 1px; text-align: left; cursor: pointer;
+  border: 1px solid var(--vr-hair); background: var(--vr-card);
+  border-radius: 9px; padding: 6px 10px; color: var(--vr-ink60);
+}
+.vr .vr-abas-fase button:hover { border-color: var(--vr-green); }
+.vr .vr-abas-fase button.on {
+  border-color: var(--vr-green); background: var(--vr-card-2); color: var(--vr-ink);
+  box-shadow: inset 0 -2px 0 var(--vr-green);
+}
+.vr .vr-abas-fase .nm { font: 700 12px inherit; }
+.vr .vr-abas-fase .pz { font: 600 10px var(--vr-mono); color: var(--vr-ink40); }
+.vr .vr-plantel .lin.preco { grid-template-columns: minmax(0, 1fr) 120px; }
+/* pôr/tirar do núcleo: o corte automático de 1% é palpite, a marcação é decisão */
+.vr .vr-ing .frm.nuc { color: var(--vr-ink40); font-size: 11px; font-weight: 800; }
+.vr .vr-ing .frm.nuc.on {
+  color: var(--vr-card); background: var(--vr-green); border-color: var(--vr-green);
 }

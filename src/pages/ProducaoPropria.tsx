@@ -112,7 +112,8 @@ function etapasConcluidas(input: EstudoInput, r: ReturnType<typeof calcularEstud
     { rotulo: 'Produto', ok: true },
     { rotulo: 'Necessidade', ok: r.demanda.mensalKg > 0 },
     { rotulo: 'Cenário atual', ok: r.atual.informado },
-    { rotulo: 'Fórmula', ok: r.formula.fechada && (input.produto.especie === 'milho' || r.formula.linhas.length > 0) },
+    // Ciclo completo: a etapa só está ok quando TODAS as fases fecham.
+    { rotulo: 'Fórmula', ok: r.formulasFechadas && (input.produto.especie === 'milho' || r.formula.linhas.length > 0) },
     { rotulo: 'Custos', ok: r.producao.custoTotalPorKg > 0 },
     { rotulo: 'Capacidade', ok: r.dimensionamento.aplicavel },
     { rotulo: 'Investimento', ok: r.retorno.investimentoConsiderado > 0 },
@@ -209,7 +210,13 @@ export function ProducaoPropria() {
       const base = atual.produto.especie === s.especie ? atual : trocarEspecie(atual, s.especie, config)
       return {
         ...base,
-        produto: { ...base.produto, especie: s.especie, categoria: s.categoria, categoriaLivre: '' },
+        // O Guia manda UMA fase. Se o rascunho estava em ciclo completo, a
+        // seleção múltipla e o plantel por fase morrem aqui — senão a tela
+        // mostraria 3 fases marcadas com o plantel de uma.
+        produto: {
+          ...base.produto, especie: s.especie, categoria: s.categoria,
+          categoriaLivre: '', categorias: undefined,
+        },
         necessidade: s.volumeMesKg
           ? {
               ...base.necessidade,
@@ -217,6 +224,7 @@ export function ProducaoPropria() {
               quantidadeInformada: s.volumeMesKg,
               unidadeQuantidade: 'kg',
               periodoQuantidade: 'mes',
+              fases: [],
             }
           : {
           ...base.necessidade,
@@ -225,6 +233,7 @@ export function ProducaoPropria() {
           consumoPorAnimal: s.consumoPorAnimal ?? consumoSugerido(s.especie, s.categoria),
           baseConsumo: 'mes',
           consumoConfirmado: false,
+          fases: [],
         },
       }
     })
@@ -589,13 +598,14 @@ export function ProducaoPropria() {
               ingredientesCatalogo={ingredientes}
               formulasSalvas={formulasSalvas}
               salvandoFormula={salvarFormula.isPending}
-              onSalvarFormula={() => {
+              onSalvarFormula={(itens, categoria) => {
                 salvarFormula.mutate({
                   id: input.formula.formulaId ?? undefined,
                   nome: input.formula.nome,
                   especie: input.produto.especie,
-                  categoria: input.produto.categoria,
-                  itens: input.formula.itens,
+                  // fase ABERTA na tela: em ciclo completo cada uma tem a sua
+                  categoria,
+                  itens,
                 }, {
                   onSuccess: id => {
                     setInput(s => (s ? { ...s, formula: { ...s.formula, formulaId: id as string } } : s))

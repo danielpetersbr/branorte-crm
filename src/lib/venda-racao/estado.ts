@@ -10,7 +10,10 @@ import {
   CATEGORIAS, CONFIG_PADRAO, ESPECIES, formulaPadrao, mesclarConfig, normalizarStatus,
 } from './catalogo'
 import { emDiasISO, hojeISO } from './formato'
-import type { AjusteCenario, ConfigEstudo, CustoOpcional, Especie, EstudoInput } from './tipos'
+import type {
+  AjusteCenario, ConfigEstudo, CustoOpcional, Especie, EstudoInput, FasePlantel,
+  IngredienteFormula,
+} from './tipos'
 
 export function categoriaPadrao(especie: Especie): string {
   return CATEGORIAS[especie]?.[0]?.chave ?? 'outro'
@@ -115,9 +118,121 @@ export function trocarEspecie(
       consumoPorAnimal: consumoSugerido(especie, categoria),
       // o consumo voltou a ser referência de catálogo: precisa ser reconfirmado
       consumoConfirmado: false,
+      // fase de aves não existe em bovinos: o plantel por fase morre junto
+      fases: [],
     },
-    formula: { ...atual.formula, formulaId: null, nome: '', itens: formulaPadrao(especie, categoria) },
+    formula: {
+      ...atual.formula, formulaId: null, nome: '', porFase: undefined,
+      itens: formulaPadrao(especie, categoria),
+    },
   }
+}
+
+// ---------------------------------------------------------------------------
+// Fases (ciclo completo / mais de uma fase)
+// ---------------------------------------------------------------------------
+
+/**
+ * Aplica a seleção de fases da etapa do produto em TODO o input.
+ *
+ * Cada fase marcada ganha sua linha de plantel — matriz, creche e terminação não
+ * comem igual, então somar plantel de fases diferentes num número só daria
+ * demanda torta. O que o vendedor já digitou nunca é jogado fora: ao abrir a
+ * segunda fase, o plantel que estava lá vira a linha da fase que já existia.
+ *
+ * Fase que ENTRA vem com consumo de catálogo, então o estudo volta a pedir
+ * confirmação — é a mesma regra da troca de fase simples.
+ */
+export function aplicarFases(s: EstudoInput, selecao: string[]): EstudoInput {
+  const especie = s.produto.especie
+  const ordem = (CATEGORIAS[especie] ?? []).map(c => c.chave)
+  const chaves = ordem.filter(c => selecao.includes(c))
+  // Sem nenhuma fase o estudo não existe — ignora a desmarcação da última.
+  if (chaves.length === 0) return s
+
+  const principal = chaves.includes(s.produto.categoria) ? s.produto.categoria : chaves[0]
+  const anteriores = s.necessidade.fases ?? []
+  const jaConhecidas = new Set(
+    anteriores.length > 0 ? anteriores.map(x => x.categoria) : [s.produto.categoria],
+  )
+  const entrouFaseNova = chaves.some(c => !jaConhecidas.has(c))
+
+  const fases: FasePlantel[] = chaves.map(chave => {
+    const existente = anteriores.find(x => x.categoria === chave)
+    if (existente) return existente
+    if (chave === s.produto.categoria && anteriores.length === 0) {
+      // primeira vez que abre multi-fase: o plantel digitado é o da fase de origem
+      return {
+        categoria: chave,
+        numeroAnimais: s.necessidade.numeroAnimais,
+        consumoPorAnimal: s.necessidade.consumoPorAnimal,
+      }
+    }
+    return { categoria: chave, numeroAnimais: 0, consumoPorAnimal: consumoSugerido(especie, chave) }
+  })
+
+  const produto = { ...s.produto, categoria: principal, categorias: chaves }
+
+  if (chaves.length > 1) {
+    // Cada fase come uma ração diferente, então cada uma ganha a SUA fórmula.
+    // A fase de origem leva a que o vendedor já montou; as novas entram com a
+    // referência do catálogo, que já fecha 100% — nada trava esperando ele
+    // preencher seis fórmulas.
+    const antigas = s.formula.porFase ?? {}
+    const porFase: Record<string, IngredienteFormula[]> = {}
+    for (const chave of chaves) {
+      porFase[chave] = antigas[chave]
+        ?? (chave === s.produto.categoria && s.formula.itens.length > 0
+          ? s.formula.itens
+          : formulaPadrao(s.produto.especie, chave))
+    }
+    return {
+      ...s,
+      produto,
+      necessidade: {
+        ...s.necessidade,
+        fases,
+        consumoConfirmado: entrouFaseNova ? false : s.necessidade.consumoConfirmado,
+      },
+      formula: { ...s.formula, porFase },
+    }
+  }
+
+  // Sobrou uma fase: a fórmula DELA vira a fórmula do estudo e o `porFase` some.
+  const itensDaSobrevivente = s.formula.porFase?.[principal] ?? s.formula.itens
+  const { porFase: _saiu, ...formulaSemFases } = s.formula
+
+  // O plantel dela vira o plantel do estudo. O consumo segue a
+  // MESMA regra da troca de fase — confirmado com o cliente não se apaga.
+  //
+  // Vindo de UMA fase (sem linhas anteriores) o plantel não se mexe: trocar a
+  // fase não muda o rebanho do cliente, e zerar os 200 animais que ele acabou de
+  // digitar seria roubo silencioso.
+  return {
+    ...s,
+    produto,
+    necessidade: {
+      ...s.necessidade,
+      fases: [],
+      numeroAnimais: anteriores.length > 0 ? fases[0].numeroAnimais : s.necessidade.numeroAnimais,
+      consumoPorAnimal: s.necessidade.consumoConfirmado
+        ? s.necessidade.consumoPorAnimal
+        : (fases[0].consumoPorAnimal || s.necessidade.consumoPorAnimal),
+      consumoConfirmado: entrouFaseNova ? false : s.necessidade.consumoConfirmado,
+    },
+    formula: { ...formulaSemFases, itens: itensDaSobrevivente },
+  }
+}
+
+/**
+ * Volta pro estudo de uma fase só: mantém a fase principal e o plantel dela, e
+ * apaga a marca de seleção múltipla (`categorias`), que é o que faz a tela
+ * mostrar o seletor simples.
+ */
+export function usarFaseUnica(s: EstudoInput): EstudoInput {
+  const colapsado = aplicarFases(s, [s.produto.categoria])
+  const { categorias: _fora, ...produto } = colapsado.produto
+  return { ...colapsado, produto }
 }
 
 // ---------------------------------------------------------------------------
@@ -229,7 +344,7 @@ export function normalizarInput(
 
   const custosBrutos = (s.custos ?? {}) as Record<string, unknown>
 
-  return {
+  const normalizado: EstudoInput = {
     identificacao: { ...base.identificacao, ...(s.identificacao ?? {}) },
     produto: { ...base.produto, ...(s.produto ?? {}) },
     necessidade,
@@ -254,4 +369,12 @@ export function normalizarInput(
     },
     status: normalizarStatus(s.status),
   }
+
+  // Estudo multi-fase salvo sem as linhas de plantel (ou com linha a menos)
+  // reabriria mostrando 3 fases marcadas e calculando com uma só. Reconstrói.
+  const marcadas = normalizado.produto.categorias ?? []
+  if (marcadas.length > 1 && (normalizado.necessidade.fases?.length ?? 0) !== marcadas.length) {
+    return aplicarFases(normalizado, marcadas)
+  }
+  return normalizado
 }

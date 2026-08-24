@@ -67,10 +67,32 @@ export interface Identificacao {
 
 export interface Produto {
   especie: Especie
-  /** Chave da categoria no catálogo, ou texto livre quando `categoriaLivre`. */
+  /**
+   * Fase PRINCIPAL — a que a fórmula atende. Continua sendo uma só mesmo em
+   * ciclo completo: não dá pra formular duas rações no mesmo estudo.
+   */
   categoria: string
   /** Preenchido quando o vendedor escolheu "Outro" e digitou o nome. */
   categoriaLivre: string
+  /**
+   * Todas as fases que o cliente produz — ciclo completo ou combinação escolhida
+   * a dedo. Inclui a principal.
+   *
+   * `undefined` é o estudo de UMA fase (o caso normal, e todo estudo salvo antes
+   * de 08/2026): `categoria` manda sozinha e a etapa 3 tem um plantel só. Um
+   * array — mesmo com um item — significa que o vendedor abriu a seleção
+   * múltipla na tela.
+   */
+  categorias?: string[]
+}
+
+/** Uma linha de plantel: quantos animais nesta fase e quanto cada um come. */
+export interface FasePlantel {
+  /** Chave da fase no catálogo da espécie. */
+  categoria: string
+  numeroAnimais: number
+  /** Na mesma unidade do `baseConsumo` da necessidade (kg/mês, /dia ou /ciclo). */
+  consumoPorAnimal: number
 }
 
 /** Etapa 2 — a necessidade de produção do cliente. */
@@ -90,6 +112,15 @@ export interface Necessidade {
   consumoConfirmado: boolean
   /** Folga sobre a demanda calculada, em % (10 = +10%). */
   margemSegurancaPct: number
+  /**
+   * Plantel POR FASE, quando o cliente produz mais de uma (ciclo completo). A
+   * demanda vira a soma das linhas.
+   *
+   * Vazio ou com uma linha só = caminho de sempre: `numeroAnimais` e
+   * `consumoPorAnimal` acima é que valem. `baseConsumo`, `dias` e
+   * `margemSegurancaPct` continuam valendo pra TODAS as linhas.
+   */
+  fases?: FasePlantel[]
 
   // --- modo "direto"
   quantidadeInformada: number
@@ -108,6 +139,14 @@ export interface CenarioAtual {
   /** Preço da ração pronta que ele compra. */
   preco: number
   unidadePreco: UnidadePreco
+  /**
+   * Preço por fase, quando o cliente compra mais de uma. Na mesma unidade de
+   * `unidadePreco`. Fase ausente ou zerada usa o `preco` acima.
+   *
+   * Existe porque ninguém paga o preço da pré-inicial na ração de terminação —
+   * com um preço só pro ciclo inteiro a economia sai torta.
+   */
+  precoPorFase?: Record<string, number>
   /** Só usado quando unidadePreco = 'saco'. */
   pesoSacoCompra: number
 
@@ -133,13 +172,37 @@ export interface IngredienteFormula {
   unidadePreco: UnidadePreco
   /** Só usado quando unidadePreco = 'saco'. */
   pesoSacoIngrediente: number
+  /**
+   * Se este ingrediente entra no card "Núcleo" — o punhado de micro que o
+   * produtor compra pronto e não discute item a item.
+   *
+   * `undefined` = automático (abaixo de 1% da fórmula). `true`/`false` é decisão
+   * do vendedor, e ela manda: cada fórmula é uma fórmula, e não existe corte
+   * percentual que acerte em todas.
+   */
+  noNucleo?: boolean
 }
 
 export interface Formula {
   /** id da fórmula salva que originou esta composição (informativo). */
   formulaId: string | null
   nome: string
+  /**
+   * A composição, quando o estudo tem UMA fase. Em ciclo completo quem manda é
+   * `porFase` — aqui vira só o resquício da fase de origem, e volta a valer
+   * quando o vendedor colapsa pra uma fase de novo.
+   */
   itens: IngredienteFormula[]
+  /**
+   * Uma composição POR FASE. Cada fase come uma ração diferente e custa
+   * diferente: cobrar o preço da pré-inicial nas 67 t do ciclo inteiro inventa
+   * economia. O custo dos ingredientes do estudo é a média ponderada pelo
+   * VOLUME de cada fase.
+   *
+   * Toda fase entra com a fórmula de referência do catálogo (que já fecha
+   * 100%), então nada trava esperando o vendedor preencher seis fórmulas.
+   */
+  porFase?: Record<string, IngredienteFormula[]>
 
   // --- modo milho triturado (dispensa composição)
   milhoPreco: number
@@ -267,6 +330,8 @@ export interface LinhaIngredienteCalculada {
   precoPorKg: number
   custoPorToneladaRacao: number
   custoPorKgRacao: number
+  /** Está no grupo "Núcleo" — vale pra tela do vendedor e pro PDF do cliente. */
+  noNucleo: boolean
 }
 
 export interface FormulaCalculada {
@@ -278,6 +343,14 @@ export interface FormulaCalculada {
   fechada: boolean
   custoIngredientesPorKg: number
   custoIngredientesPorTonelada: number
+}
+
+/** A fórmula de uma fase e o peso dela no volume total do estudo. */
+export interface FormulaDeFase {
+  categoria: string
+  /** Fatia do volume mensal que esta fase representa (0 a 1). Soma 1. */
+  peso: number
+  calc: FormulaCalculada
 }
 
 export interface GruposCusto {
@@ -404,7 +477,17 @@ export interface ResultadoEstudo {
   problemas: ProblemaValidacao[]
   bloqueado: boolean
   demanda: DemandaCalculada
+  /** A fórmula da fase principal — é a que a tela abre por padrão. */
   formula: FormulaCalculada
+  /**
+   * Uma entrada por fase, com o peso que ela tem no volume total. Com uma fase
+   * só é uma entrada de peso 1, igual à `formula` acima.
+   */
+  formulasPorFase: FormulaDeFase[]
+  /** Média ponderada pelo volume — é ESTE o custo que entra na produção. */
+  custoIngredientesPonderadoPorKg: number
+  /** Todas as fases fecham 1.000 kg/t? É o que libera o estudo. */
+  formulasFechadas: boolean
   atual: CustoAtualCalculado
   producao: CustosProducaoCalculados
   comparacao: ComparacaoEconomia

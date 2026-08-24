@@ -16,7 +16,7 @@
  * inventada pro cliente.
  */
 import { Calculator } from 'lucide-react'
-import { nomeCategoria, nomeEspecie } from '@/lib/venda-racao/catalogo'
+import { nomeCategoria, nomeCategorias, nomeEspecie } from '@/lib/venda-racao/catalogo'
 import { brl, brlKg, kg, kgHora, meses, numero, pct, toneladas } from '@/lib/venda-racao/formato'
 import type { EstudoInput, ResultadoEstudo } from '@/lib/venda-racao/tipos'
 
@@ -90,7 +90,10 @@ function etapaDoCampo(campo: string, ehMilho: boolean): number {
 }
 
 export function ResumoAntesDeCalcular({ input, resultado, onCalcular }: Props) {
-  const { demanda, atual, producao, comparacao, dimensionamento, retorno, formula, problemas } = resultado
+  const {
+    demanda, atual, producao, comparacao, dimensionamento, retorno, formula, problemas,
+    formulasFechadas, formulasPorFase,
+  } = resultado
   const ident = input.identificacao
   const ehMilho = input.produto.especie === 'milho'
   const sug = dimensionamento.sugerido
@@ -123,7 +126,7 @@ export function ResumoAntesDeCalcular({ input, resultado, onCalcular }: Props) {
       // Espécie e categoria nascem escolhidas, então esta linha nunca dá traço.
       rotulo: 'Produto',
       valor: nomeEspecie(input.produto.especie),
-      detalhe: nomeCategoria(input.produto.especie, input.produto.categoria, input.produto.categoriaLivre),
+      detalhe: nomeCategorias(input.produto),
     },
     {
       rotulo: 'Necessidade mensal',
@@ -213,7 +216,13 @@ export function ResumoAntesDeCalcular({ input, resultado, onCalcular }: Props) {
   if (!atual.informado) {
     faltas.push({ etapa: 4, rotulo: 'Cenário atual', oQueFalta: explicar(4, 'Informe o custo de hoje.') })
   }
-  if (!(formula.fechada && (ehMilho || formula.linhas.length > 0))) {
+  // Ciclo completo: basta UMA fase aberta pra etapa não estar pronta — e o
+  // resumo tem que dizer qual, senão ele diverge do bloqueio que o motor emite.
+  if (!(formulasFechadas && (ehMilho || formula.linhas.length > 0))) {
+    const aberta = formulasPorFase.find(f => f.calc.linhas.length > 0 && !f.calc.fechada)
+    const nomeDaAberta = aberta && formulasPorFase.length > 1
+      ? ` (${nomeCategoria(input.produto.especie, aberta.categoria, input.produto.categoriaLivre)})`
+      : ''
     faltas.push({
       etapa: 5,
       rotulo: ehMilho ? 'Preço do milho' : 'Fórmula',
@@ -221,7 +230,7 @@ export function ResumoAntesDeCalcular({ input, resultado, onCalcular }: Props) {
         ? 'Informe o preço do milho.'
         : formula.linhas.length === 0
           ? 'Monte a fórmula ou selecione uma cadastrada.'
-          : 'Feche a fórmula em 1.000 kg.'),
+          : `Feche a fórmula em 1.000 kg${nomeDaAberta}.`),
     })
   }
   if (producao.custoTotalPorKg <= 0) {
