@@ -7,9 +7,10 @@
  * `dadosEstudo` é a única fonte que a apresentação e o texto do WhatsApp
  * consomem — se um campo não está neste objeto, não tem como vazar.
  */
-import { nomeCategoria, nomeEspecie } from './catalogo'
+import { plantelPorFase, totalAnimais } from './calculo'
+import { nomeCategoria, nomeCategorias, nomeEspecie } from './catalogo'
 import { anos, brl, brlKg, dataBR, kgHora, meses, numero, pct } from './formato'
-import type { EstudoInput, ResultadoEstudo } from './tipos'
+import type { EstudoInput, LinhaIngredienteCalculada, ResultadoEstudo } from './tipos'
 
 export interface LinhaPremissa {
   rotulo: string
@@ -108,7 +109,8 @@ export function dadosEstudo(
     vendedorNome: id.vendedorNome,
 
     produto: nomeEspecie(produto.especie),
-    categoria: nomeCategoria(produto.especie, produto.categoria, produto.categoriaLivre),
+    // todas as fases, não só a que a fórmula atende — o estudo cobre o volume delas
+    categoria: nomeCategorias(produto),
 
     consumoDiarioKg: r.demanda.diariaKg,
     consumoMensalKg: r.demanda.mensalKg,
@@ -160,21 +162,62 @@ export function dadosEstudo(
   }
 }
 
+/**
+ * A composição em uma linha, com os micro agrupados em "Núcleo".
+ *
+ * Mesmo agrupamento da tela do vendedor (a regra mora em `ehDoNucleo`): abrir
+ * premix de 0,1% e adsorvente de 0,2% pro cliente não informa nada, só faz a
+ * lista virar parede.
+ */
+export function resumirComposicao(linhas: LinhaIngredienteCalculada[]): string {
+  const macro = linhas.filter(l => !l.noNucleo)
+  const nucleo = linhas.filter(l => l.noNucleo)
+  const partes = macro.map(l => `${l.nome} ${numero(l.participacaoPct, 1)}%`)
+  if (nucleo.length > 0) {
+    const somaPct = nucleo.reduce((s, l) => s + l.participacaoPct, 0)
+    partes.push(
+      `Núcleo ${numero(somaPct, 2)}% (${nucleo.map(l => l.nome || 'sem nome').join(', ')})`,
+    )
+  }
+  return partes.join(' · ')
+}
+
 /** As contas por trás dos números — o cliente tem que poder conferir. */
 export function montarPremissas(input: EstudoInput, r: ResultadoEstudo): LinhaPremissa[] {
   const p: LinhaPremissa[] = []
   const q = input.necessidade
 
   if (q.modo === 'animais') {
-    p.push({
-      rotulo: 'Plantel considerado',
-      valor: `${numero(q.numeroAnimais)} ${nomeEspecie(input.produto.especie).toLowerCase().includes('aves') ? 'aves' : 'animais'}`,
-    })
-    p.push({
-      rotulo: 'Consumo por animal',
-      valor: `${numero(q.consumoPorAnimal, 3)} kg por ${q.baseConsumo === 'dia' ? 'dia' : q.baseConsumo === 'ciclo' ? 'ciclo' : 'mês'}`,
-      nota: q.consumoConfirmado ? 'Confirmado com o cliente.' : 'Valor de referência — não confirmado com o cliente.',
-    })
+    const palavraAnimal = nomeEspecie(input.produto.especie).toLowerCase().includes('aves') ? 'aves' : 'animais'
+    const porPeriodo = q.baseConsumo === 'dia' ? 'dia' : q.baseConsumo === 'ciclo' ? 'ciclo' : 'mês'
+    const notaConsumo = q.consumoConfirmado
+      ? 'Confirmado com o cliente.'
+      : 'Valor de referência — não confirmado com o cliente.'
+    const linhas = plantelPorFase(q)
+
+    if (q.fases && q.fases.length > 1) {
+      // Ciclo completo: o cliente tem que ver de onde saiu cada pedaço do volume.
+      p.push({
+        rotulo: 'Plantel considerado',
+        valor: `${numero(totalAnimais(q))} ${palavraAnimal} em ${q.fases.length} fases`,
+        nota: q.fases
+          .map(f => `${nomeCategoria(input.produto.especie, f.categoria, input.produto.categoriaLivre)}: `
+            + `${numero(f.numeroAnimais)} × ${numero(f.consumoPorAnimal, 3)} kg/${porPeriodo}`)
+          .join(' · '),
+      })
+      p.push({
+        rotulo: 'Consumo somado das fases',
+        valor: `${numero(linhas.reduce((s, l) => s + l.numeroAnimais * l.consumoPorAnimal, 0), 0)} kg por ${porPeriodo}`,
+        nota: notaConsumo,
+      })
+    } else {
+      p.push({ rotulo: 'Plantel considerado', valor: `${numero(q.numeroAnimais)} ${palavraAnimal}` })
+      p.push({
+        rotulo: 'Consumo por animal',
+        valor: `${numero(q.consumoPorAnimal, 3)} kg por ${porPeriodo}`,
+        nota: notaConsumo,
+      })
+    }
   } else {
     p.push({
       rotulo: 'Necessidade informada',
@@ -196,12 +239,26 @@ export function montarPremissas(input: EstudoInput, r: ResultadoEstudo): LinhaPr
   if (input.produto.especie === 'milho') {
     p.push({ rotulo: 'Preço do milho', valor: brlKg(r.formula.custoIngredientesPorKg, 4) })
   } else {
+    // Uma linha por fase: com ciclo completo, "a fórmula considerada" no
+    // singular esconderia as outras cinco rações que entram no custo.
+    for (const fase of r.formulasPorFase) {
+      const rotulo = r.formulasPorFase.length > 1
+        ? `Fórmula — ${nomeCategoria(input.produto.especie, fase.categoria, input.produto.categoriaLivre)}`
+        : 'Fórmula considerada'
+      p.push({
+        rotulo,
+        valor: `${fase.calc.linhas.length} ingredientes · ${numero(fase.calc.totalParticipacaoPct, 1)}%`
+          + (r.formulasPorFase.length > 1 ? ` · ${pct(fase.peso * 100, 0)} do volume` : ''),
+        nota: resumirComposicao(fase.calc.linhas),
+      })
+    }
     p.push({
-      rotulo: 'Fórmula considerada',
-      valor: `${r.formula.linhas.length} ingredientes · ${numero(r.formula.totalParticipacaoPct, 1)}%`,
-      nota: r.formula.linhas.map(l => `${l.nome} ${numero(l.participacaoPct, 1)}%`).join(' · '),
+      rotulo: 'Custo dos ingredientes',
+      valor: brlKg(r.custoIngredientesPonderadoPorKg, 4),
+      nota: r.formulasPorFase.length > 1
+        ? 'Média ponderada pelo volume de cada fase.'
+        : undefined,
     })
-    p.push({ rotulo: 'Custo dos ingredientes', valor: brlKg(r.formula.custoIngredientesPorKg, 4) })
   }
 
   p.push({ rotulo: 'Perda de produção', valor: pct(input.custos.perdaPct, 2) })

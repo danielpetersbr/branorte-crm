@@ -11,7 +11,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { mesclarConfig } from '@/lib/venda-racao/catalogo'
+import { fasesDoProduto, mesclarConfig } from '@/lib/venda-racao/catalogo'
 import type {
   ConfigEstudo, Especie, EstudoInput, EstudoRow, FormulaSalvaRow,
   IngredienteCatalogoRow, StatusEstudo,
@@ -290,9 +290,12 @@ function paraLinha(p: PayloadEstudo) {
     cliente_uf: id.clienteUf || null,
     cliente_telefone: id.clienteTelefone || null,
     especie: input.produto.especie,
-    categoria: input.produto.categoria === 'outro'
-      ? (input.produto.categoriaLivre || 'Outro')
-      : input.produto.categoria,
+    // Multi-fase salva todas as chaves juntas: a listagem tem que mostrar o
+    // estudo inteiro, não só a fase que a fórmula atende. O `dados` jsonb abaixo
+    // continua sendo a fonte completa.
+    categoria: fasesDoProduto(input.produto)
+      .map(c => (c === 'outro' ? (input.produto.categoriaLivre || 'Outro') : c))
+      .join('+'),
 
     // quantidade_kg fica igual ao mensal: no estudo não existe "pedido"
     quantidade_kg: resumo.consumoMensalKg,

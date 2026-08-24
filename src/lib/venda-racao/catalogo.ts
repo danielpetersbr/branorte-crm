@@ -14,7 +14,7 @@
  * Preço de ingrediente em **R$/kg**.
  */
 import type {
-  Cenarios, ConfigEstudo, Especie, IngredienteFormula, StatusEstudo, UnidadePreco,
+  Cenarios, ConfigEstudo, Especie, IngredienteFormula, Produto, StatusEstudo, UnidadePreco,
 } from './tipos'
 
 export const ESPECIES: Array<{
@@ -82,6 +82,34 @@ export const CATEGORIAS: Record<Especie, Categoria[]> = {
     { chave: 'granel',      nome: 'Milho triturado a granel', consumoMes: 0 },
     { chave: 'ensacado',    nome: 'Milho triturado ensacado', consumoMes: 0 },
     { chave: 'outro',       nome: 'Outro',                    consumoMes: 0 },
+  ],
+}
+
+/**
+ * Atalhos de "ciclo completo" — o que o produtor entende por tocar o ciclo
+ * inteiro. NÃO é fase nova: é um botão que marca várias fases de uma vez, e
+ * cada uma continua com plantel e consumo próprios na etapa da necessidade.
+ */
+export const CICLOS: Partial<Record<Especie, Array<{ nome: string; fases: string[] }>>> = {
+  bovinos: [
+    { nome: 'Ciclo completo (cria, recria e engorda)', fases: ['cria', 'recria', 'engorda'] },
+  ],
+  suinos: [
+    {
+      nome: 'Ciclo completo (matriz até terminação)',
+      fases: ['gestacao', 'lactacao', 'pre_inicial', 'inicial', 'crescimento', 'terminacao'],
+    },
+    { nome: 'Só terminação (crescimento e terminação)', fases: ['crescimento', 'terminacao'] },
+  ],
+  aves: [
+    {
+      nome: 'Frango de corte — ciclo completo',
+      fases: ['frango_inicial', 'frango_crescimento', 'frango_final'],
+    },
+    {
+      nome: 'Poedeiras — ciclo completo',
+      fases: ['poedeira_inicial', 'poedeira_crescimento', 'pre_postura', 'postura'],
+    },
   ],
 }
 
@@ -352,4 +380,26 @@ export function nomeEspecie(e: Especie): string {
 export function nomeCategoria(e: Especie, chave: string, livre?: string): string {
   if (chave === 'outro') return livre?.trim() || 'Outro'
   return CATEGORIAS[e]?.find(c => c.chave === chave)?.nome ?? chave
+}
+
+/**
+ * Fases marcadas, na ordem do catálogo e sempre com pelo menos uma. Estudo
+ * antigo (sem `categorias`) devolve só a fase principal — que é o que ele é.
+ */
+export function fasesDoProduto(p: Produto): string[] {
+  const marcadas = (p.categorias ?? []).filter(Boolean)
+  if (marcadas.length === 0) return [p.categoria]
+  const ordem = (CATEGORIAS[p.especie] ?? []).map(c => c.chave)
+  const ordenadas = ordem.filter(c => marcadas.includes(c))
+  // fase que não existe mais no catálogo (renomeada) não pode sumir do estudo
+  const orfas = marcadas.filter(c => !ordem.includes(c))
+  const todas = [...ordenadas, ...orfas]
+  return todas.includes(p.categoria) ? todas : [p.categoria, ...todas]
+}
+
+/** "Crescimento, Terminação" — todas as fases do estudo, pra cabeçalho e PDF. */
+export function nomeCategorias(p: Produto): string {
+  return fasesDoProduto(p)
+    .map(c => nomeCategoria(p.especie, c, p.categoriaLivre))
+    .join(', ')
 }
