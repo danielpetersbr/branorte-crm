@@ -764,7 +764,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
               {numeroExibido}
             </span>
           </div>
-          <div className="flex items-baseline gap-1">
+          {/* Sem flex aqui de proposito: o DOCX gerado via HTML nao respeita
+              display:flex e quebrava "DATA:" e a data em duas linhas. */}
+          <div>
             DATA:{' '}
             {!renderMode && onUpdateDataEmissao ? (
               <>
@@ -781,7 +783,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     type="button"
                     onClick={() => onUpdateDataEmissao('')}
                     title="Voltar pra data de hoje"
-                    className="text-[11px] font-normal text-gray-400 hover:text-emerald-600 underline"
+                    className="ml-1 text-[11px] font-normal text-gray-400 hover:text-emerald-600 underline"
                   >
                     hoje
                   </button>
