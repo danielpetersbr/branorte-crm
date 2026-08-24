@@ -135,6 +135,9 @@ export interface OrcamentoPreviewProps {
   // Render-mode overrides (opcional). Quando passados, usa em vez dos placeholders.
   numero?: string
   dataEmissao?: string
+  // Quando passado, a DATA do cabeçalho vira editável inline (input date).
+  // Recebe a data já no formato BR (DD/MM/AAAA); string vazia = volta pra hoje.
+  onUpdateDataEmissao?: (dataBr: string) => void
   cliente?: PreviewClienteDados
   terms?: PreviewTerms
   observacoesExtra?: string | null
@@ -355,12 +358,22 @@ export function findBreakNear(container: HTMLElement, idealY: number, tolerance:
   return bestBottom
 }
 
+// Conversao BR (DD/MM/AAAA) <-> ISO (AAAA-MM-DD) pro <input type="date"> do cabecalho.
+function dataBrToIso(br: string): string {
+  const m = br.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : ''
+}
+function dataIsoToBr(iso: string): string {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : ''
+}
+
 export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   const {
     carrinho, motoresAgrupados, voltagem,
     totalItems, totalMotores, totalEquip, totalGeral,
     acessorios, valorAcessorios,
-    numero, dataEmissao, cliente, terms, observacoesExtra, fotoPrincipal,
+    numero, dataEmissao, onUpdateDataEmissao, cliente, terms, observacoesExtra, fotoPrincipal,
     obsPorConta = null, onUpdateObsPorConta,
     renderMode = false,
     finameMode = false,
@@ -751,7 +764,33 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
               {numeroExibido}
             </span>
           </div>
-          <div>DATA: <span className="text-gray-700 font-bold">{hoje}</span></div>
+          <div className="flex items-baseline gap-1">
+            DATA:{' '}
+            {!renderMode && onUpdateDataEmissao ? (
+              <>
+                <input
+                  type="date"
+                  value={dataBrToIso(hoje)}
+                  onChange={e => onUpdateDataEmissao(e.target.value ? dataIsoToBr(e.target.value) : '')}
+                  title="Clique pra trocar a data do orçamento"
+                  className="bg-transparent border-b border-dashed border-gray-300 hover:border-emerald-500 focus:border-emerald-600 focus:outline-none px-1 text-[16px] font-bold text-gray-700 cursor-pointer"
+                />
+                {/* Voltar pra hoje — só aparece quando o vendedor trocou a data */}
+                {dataEmissao && dataEmissao !== new Date().toLocaleDateString('pt-BR') && (
+                  <button
+                    type="button"
+                    onClick={() => onUpdateDataEmissao('')}
+                    title="Voltar pra data de hoje"
+                    className="text-[11px] font-normal text-gray-400 hover:text-emerald-600 underline"
+                  >
+                    hoje
+                  </button>
+                )}
+              </>
+            ) : (
+              <span className="text-gray-700 font-bold">{hoje}</span>
+            )}
+          </div>
         </div>
 
         {/* CLIENTE | A/C | FONE */}

@@ -443,9 +443,11 @@ export function OrcamentoMontar() {
   const [busca, setBusca] = useState('')
   const [categoria, setCategoria] = useState<string | null>(null)
   const [voltagem, setVoltagem] = useState<Voltagem>('trifasico')
-  // Modo exportação: quando ligado, +10% em TODOS os valores (preview + orçamento gerado).
-  const [exportacao, setExportacao] = useState(false)
-  // Popup explicativo ao ATIVAR o Modo Exportação (só informa o que vai acontecer).
+  // Modo exportação: quando ligado, acrescenta um percentual (10% ou 20%) em TODOS
+  // os valores (preview + orçamento gerado). 0 = desligado.
+  const [exportPct, setExportPct] = useState<0 | 10 | 20>(0)
+  const exportacao = exportPct > 0
+  // Popup de escolha do percentual do Modo Exportação (abre ao clicar no botão).
   const [exportInfoOpen, setExportInfoOpen] = useState(false)
   // Modo FINAME: gera o orçamento no padrão FINAME (sem imagens, equipamentos com
   // nome+código FINAME, motor/acessórios embutidos no valor). NÃO-destrutivo: o
@@ -521,6 +523,11 @@ export function OrcamentoMontar() {
     base?: 'total' | 'equipamento'
     manterValorParcelas?: boolean
   } | null>(null)
+  // Data do CABEÇALHO do orçamento (DATA: dd/mm/aaaa). Vazio = usa hoje.
+  // Vendedor pode trocar clicando na data na prévia (ex.: refazer um orçamento
+  // com a data em que ele foi realmente combinado). Persiste em
+  // orcamentos_gerados.data_emissao e vai pro PDF/DOCX.
+  const [dataEmissaoTxt, setDataEmissaoTxt] = useState('')
   // Data da venda começa VAZIA ("a combinar") — vendedor só preenche se vender (roadmap #36)
   const [dataVendaTxt, setDataVendaTxt] = useState('')
   const [prazoEntregaTxt, setPrazoEntregaTxt] = useState('')
@@ -556,6 +563,7 @@ export function OrcamentoMontar() {
     tensaoMotores,
     marcaMotores,
     descontoCfg,
+    dataEmissaoTxt,
     dataVendaTxt,
     prazoEntregaTxt,
     formaPagamentoTxt,
@@ -571,7 +579,7 @@ export function OrcamentoMontar() {
     motorPrecoOverride,
   }), [
     carrinho, acessorios, voltagem, tensaoMotores, marcaMotores, descontoCfg,
-    dataVendaTxt, prazoEntregaTxt, formaPagamentoTxt, freteTipo, freteTxt, validadeDias,
+    dataEmissaoTxt, dataVendaTxt, prazoEntregaTxt, formaPagamentoTxt, freteTipo, freteTxt, validadeDias,
     parcelasPagamento, fotoPrincipal,
     componentesExtras, motoresAvulsos, balancaDispensada, obsPorConta,
     motorPrecoOverride,
@@ -629,6 +637,7 @@ export function OrcamentoMontar() {
     setTensaoMotores(prev.tensaoMotores ?? null)
     setMarcaMotores((prev as any).marcaMotores ?? null)
     setDescontoCfg(prev.descontoCfg ?? null)
+    setDataEmissaoTxt((prev as any).dataEmissaoTxt ?? '')
     setDataVendaTxt(prev.dataVendaTxt ?? '')
     setPrazoEntregaTxt(prev.prazoEntregaTxt ?? '')
     setFormaPagamentoTxt(prev.formaPagamentoTxt ?? '')
@@ -670,6 +679,7 @@ export function OrcamentoMontar() {
     setTensaoMotores(d.tensaoMotores ?? null)
     setMarcaMotores((d as any).marcaMotores ?? null)
     setDescontoCfg(d.descontoCfg ?? null)
+    setDataEmissaoTxt((d as any).dataEmissaoTxt ?? '')
     setDataVendaTxt(d.dataVendaTxt ?? '')
     setPrazoEntregaTxt(d.prazoEntregaTxt ?? '')
     setFormaPagamentoTxt(d.formaPagamentoTxt ?? '')
@@ -839,9 +849,9 @@ export function OrcamentoMontar() {
   )
   const totalGeral = totalEquip + totalMotores + totalComponentesExtras
 
-  // ── Modo EXPORTAÇÃO: +10% em todos os valores. fExp=1 quando desligado (zero efeito). ──
+  // ── Modo EXPORTAÇÃO: +10% ou +20% em todos os valores. fExp=1 quando desligado. ──
   // Aplica nas versões "*Exib" que alimentam o preview, o resumo e o orçamento gerado.
-  const fExp = exportacao ? 1.1 : 1
+  const fExp = 1 + exportPct / 100
   const carrinhoExib = useMemo(
     () => fExp === 1 ? carrinho : carrinho.map(c => ({
       ...c,
@@ -2445,6 +2455,13 @@ export function OrcamentoMontar() {
     // Array salvo = usa ele; null/ausente = cai no default histórico.
     if (Array.isArray((o as any).obs_por_conta)) setObsPorConta((o as any).obs_por_conta)
     else setObsPorConta(null)
+    // Data do cabeçalho: reabrir um orçamento mostra a data em que ele foi
+    // emitido, não a de hoje. Coluna é DATE (AAAA-MM-DD) → converte pra BR.
+    const de = (o as any).data_emissao
+    if (typeof de === 'string') {
+      const m = de.slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/)
+      if (m) setDataEmissaoTxt(`${m[3]}/${m[2]}/${m[1]}`)
+    }
     // Restaura termos inline no preview (forma de pagamento, prazo, data, parcelas)
     if (o.forma_pagamento) setFormaPagamentoTxt(o.forma_pagamento)
     if (o.prazo_entrega) setPrazoEntregaTxt(o.prazo_entrega)
@@ -2866,18 +2883,18 @@ export function OrcamentoMontar() {
                 Trif
               </button>
             </div>
-            {/* Modo Exportação: +10% em todos os valores (só quando ligado).
-                Ao ATIVAR, abre um popup explicando o que acontece. Desativar é direto. */}
+            {/* Modo Exportação: acréscimo de 10% ou 20% em todos os valores.
+                O clique abre o popup pra escolher o percentual (ou desligar). */}
             <button
-              onClick={() => { if (exportacao) setExportacao(false); else setExportInfoOpen(true) }}
+              onClick={() => setExportInfoOpen(true)}
               className={`text-[12px] px-3 py-1.5 rounded-md font-semibold transition-all min-h-[34px] border ${
                 exportacao
                   ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
                   : 'bg-surface text-ink-muted border-border hover:bg-surface-3'
               }`}
-              title="Modo Exportação: +10% em todos os valores (equipamentos, motores e acessórios). Componentes adicionais NÃO recebem o +10%."
+              title="Modo Exportação: acrescenta 10% ou 20% em todos os valores (equipamentos, motores e acessórios). Componentes adicionais NÃO recebem o acréscimo."
             >
-              {exportacao ? '🌎 Modo Exportação ✓' : '🌎 Modo Exportação'}
+              {exportacao ? `🌎 Modo Exportação +${exportPct}% ✓` : '🌎 Modo Exportação'}
             </button>
             {/* Modo FINAME: padrão FINAME (sem imagens, sem linha de motor/acessório,
                 nomes + códigos FINAME, motor/acessórios embutidos no valor). Não-destrutivo. */}
@@ -3221,6 +3238,8 @@ export function OrcamentoMontar() {
                 carrinho={carrinhoFinal}
                 finameMode={finameMode}
                 numero={editingId && orcamentoEditando ? orcamentoEditando.numero : undefined}
+                dataEmissao={dataEmissaoTxt || undefined}
+                onUpdateDataEmissao={setDataEmissaoTxt}
                 motoresAgrupados={motoresAgrupadosFinal}
                 voltagem={voltagem}
                 totalItems={totalItemsFinal}
@@ -3352,7 +3371,7 @@ export function OrcamentoMontar() {
         </Card>
       </div>
 
-      {/* Popup explicativo do Modo Exportação (abre ao ativar) */}
+      {/* Popup do Modo Exportação: escolhe o percentual (+10% / +20%) ou desliga */}
       {exportInfoOpen && (
         <div
           className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4"
@@ -3367,26 +3386,44 @@ export function OrcamentoMontar() {
               <div className="min-w-0">
                 <h3 className="text-[15px] font-bold text-ink">Modo Exportação</h3>
                 <p className="text-[13px] text-ink-muted mt-1 leading-snug">
-                  Ao ativar, o preview e o orçamento gerado mudam assim:
+                  Escolha o acréscimo. O preview e o orçamento gerado mudam assim:
                 </p>
                 <ul className="text-[13px] text-ink-muted mt-2 space-y-1.5 list-disc pl-5">
-                  <li>Cada valor (equipamentos, motores e acessórios) recebe <b className="text-ink">+10%</b>.</li>
-                  <li>O que você adicionar em <b className="text-ink">Componentes adicionais</b> <b className="text-ink">não</b> recebe o +10% (entra pelo valor cheio que você digitar).</li>
+                  <li>Cada valor (equipamentos, motores e acessórios) recebe o <b className="text-ink">percentual escolhido</b>.</li>
+                  <li>O que você adicionar em <b className="text-ink">Componentes adicionais</b> <b className="text-ink">não</b> recebe o acréscimo (entra pelo valor cheio que você digitar).</li>
                 </ul>
               </div>
             </div>
-            <div className="flex justify-end gap-2 mt-5">
+            {/* Escolha do percentual */}
+            <div className="grid grid-cols-2 gap-2 mt-4">
+              {([10, 20] as const).map(p => (
+                <button
+                  key={p}
+                  onClick={() => { setExportPct(p); setExportInfoOpen(false) }}
+                  className={`text-[14px] px-4 py-3 rounded-md font-bold transition-colors border ${
+                    exportPct === p
+                      ? 'bg-amber-500 border-amber-500 text-white'
+                      : 'bg-surface border-border text-ink hover:bg-surface-3'
+                  }`}
+                >
+                  +{p}%
+                </button>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              {exportacao && (
+                <button
+                  onClick={() => { setExportPct(0); setExportInfoOpen(false) }}
+                  className="text-[13px] px-3 py-2 rounded-md border border-border text-ink-muted hover:bg-surface-3 transition-colors mr-auto"
+                >
+                  Desligar
+                </button>
+              )}
               <button
                 onClick={() => setExportInfoOpen(false)}
                 className="text-[13px] px-3 py-2 rounded-md border border-border text-ink-muted hover:bg-surface-3 transition-colors"
               >
                 Cancelar
-              </button>
-              <button
-                onClick={() => { setExportacao(true); setExportInfoOpen(false) }}
-                className="text-[13px] px-4 py-2 rounded-md bg-amber-500 hover:bg-amber-600 text-white font-bold transition-colors"
-              >
-                Ativar +10%
               </button>
             </div>
           </div>
@@ -3493,6 +3530,8 @@ export function OrcamentoMontar() {
           totalGeral: totalGeralFinal,
           fotoPrincipal: finameMode ? null : fotoPrincipal,
           finameMode,
+          // Data do cabeçalho escolhida na prévia (BR). Vazio = modal usa hoje.
+          dataEmissao: dataEmissaoTxt || null,
           tensaoMotores,
           marcaMotores,
           desconto: descontoCfg,
