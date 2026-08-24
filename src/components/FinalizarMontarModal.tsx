@@ -92,6 +92,9 @@ export interface CarrinhoSnapshot {
   totalEquip: number          // itens + acessórios (= "VALOR TOTAL DE EQUIPAMENTOS")
   totalGeral: number          // totalEquip + totalMotores
   fotoPrincipal?: string | null
+  // Data do cabeçalho (DD/MM/AAAA) escolhida pelo vendedor na prévia.
+  // null/ausente = usa a data de hoje (comportamento legado).
+  dataEmissao?: string | null
   // Edições inline da preview — usadas pelo PDF/DOCX pra sair igual à preview.
   tensaoMotores?: 220 | 380 | 660 | null
   // #32: Marca dos motores (global). Texto livre.
@@ -619,7 +622,15 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
     setStep('Preparando orçamento...', 3)
     try {
       const hoje = new Date()
-      const dataEmissaoBR = hoje.toLocaleDateString('pt-BR')
+      // Data do cabeçalho: respeita a que o vendedor escolheu na prévia; se não
+      // mexeu, é hoje. Só aceita DD/MM/AAAA — qualquer outra coisa cai pra hoje.
+      const dataEscolhida = (snapshot.dataEmissao || '').trim()
+      const dataEmissaoBR = /^\d{2}\/\d{2}\/\d{4}$/.test(dataEscolhida)
+        ? dataEscolhida
+        : hoje.toLocaleDateString('pt-BR')
+      // Mesma data em ISO (AAAA-MM-DD) pra coluna DATE do banco
+      const [ddBR, mmBR, yyyyBR] = dataEmissaoBR.split('/')
+      const dataEmissaoISO = `${yyyyBR}-${mmBR}-${ddBR}`
 
       // 1) Número fresco NA HORA de gerar SEM varrer o Z:\.
       // A mutation `criar` já chama obterProximoNumero() (índice fresco da pasta +
@@ -751,6 +762,9 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         vendedor_nome: profile?.display_name?.toUpperCase() || 'DESCONHECIDO',
         cliente_nome: cliNome.trim(),
         cliente_dados: cliDados,
+        // Data do cabeçalho escolhida na prévia (ou hoje). Sem isso o PDF saía
+        // com a data trocada mas o banco/lista continuava com a data de hoje.
+        data_emissao: dataEmissaoISO,
         modelo_id: null,
         modelo_basename: 'PERSONALIZADO',
         voltagem: snapshot.voltagem,

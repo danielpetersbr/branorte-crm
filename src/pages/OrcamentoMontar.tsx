@@ -510,6 +510,11 @@ export function OrcamentoMontar() {
     base?: 'total' | 'equipamento'
     manterValorParcelas?: boolean
   } | null>(null)
+  // Data do CABEÇALHO do orçamento (DATA: dd/mm/aaaa). Vazio = usa hoje.
+  // Vendedor pode trocar clicando na data na prévia (ex.: refazer um orçamento
+  // com a data em que ele foi realmente combinado). Persiste em
+  // orcamentos_gerados.data_emissao e vai pro PDF/DOCX.
+  const [dataEmissaoTxt, setDataEmissaoTxt] = useState('')
   // Data da venda começa VAZIA ("a combinar") — vendedor só preenche se vender (roadmap #36)
   const [dataVendaTxt, setDataVendaTxt] = useState('')
   const [prazoEntregaTxt, setPrazoEntregaTxt] = useState('')
@@ -545,6 +550,7 @@ export function OrcamentoMontar() {
     tensaoMotores,
     marcaMotores,
     descontoCfg,
+    dataEmissaoTxt,
     dataVendaTxt,
     prazoEntregaTxt,
     formaPagamentoTxt,
@@ -560,7 +566,7 @@ export function OrcamentoMontar() {
     motorPrecoOverride,
   }), [
     carrinho, acessorios, voltagem, tensaoMotores, marcaMotores, descontoCfg,
-    dataVendaTxt, prazoEntregaTxt, formaPagamentoTxt, freteTipo, freteTxt, validadeDias,
+    dataEmissaoTxt, dataVendaTxt, prazoEntregaTxt, formaPagamentoTxt, freteTipo, freteTxt, validadeDias,
     parcelasPagamento, fotoPrincipal,
     componentesExtras, motoresAvulsos, balancaDispensada, obsPorConta,
     motorPrecoOverride,
@@ -618,6 +624,7 @@ export function OrcamentoMontar() {
     setTensaoMotores(prev.tensaoMotores ?? null)
     setMarcaMotores((prev as any).marcaMotores ?? null)
     setDescontoCfg(prev.descontoCfg ?? null)
+    setDataEmissaoTxt((prev as any).dataEmissaoTxt ?? '')
     setDataVendaTxt(prev.dataVendaTxt ?? '')
     setPrazoEntregaTxt(prev.prazoEntregaTxt ?? '')
     setFormaPagamentoTxt(prev.formaPagamentoTxt ?? '')
@@ -659,6 +666,7 @@ export function OrcamentoMontar() {
     setTensaoMotores(d.tensaoMotores ?? null)
     setMarcaMotores((d as any).marcaMotores ?? null)
     setDescontoCfg(d.descontoCfg ?? null)
+    setDataEmissaoTxt((d as any).dataEmissaoTxt ?? '')
     setDataVendaTxt(d.dataVendaTxt ?? '')
     setPrazoEntregaTxt(d.prazoEntregaTxt ?? '')
     setFormaPagamentoTxt(d.formaPagamentoTxt ?? '')
@@ -2434,6 +2442,13 @@ export function OrcamentoMontar() {
     // Array salvo = usa ele; null/ausente = cai no default histórico.
     if (Array.isArray((o as any).obs_por_conta)) setObsPorConta((o as any).obs_por_conta)
     else setObsPorConta(null)
+    // Data do cabeçalho: reabrir um orçamento mostra a data em que ele foi
+    // emitido, não a de hoje. Coluna é DATE (AAAA-MM-DD) → converte pra BR.
+    const de = (o as any).data_emissao
+    if (typeof de === 'string') {
+      const m = de.slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/)
+      if (m) setDataEmissaoTxt(`${m[3]}/${m[2]}/${m[1]}`)
+    }
     // Restaura termos inline no preview (forma de pagamento, prazo, data, parcelas)
     if (o.forma_pagamento) setFormaPagamentoTxt(o.forma_pagamento)
     if (o.prazo_entrega) setPrazoEntregaTxt(o.prazo_entrega)
@@ -3210,6 +3225,8 @@ export function OrcamentoMontar() {
                 carrinho={carrinhoFinal}
                 finameMode={finameMode}
                 numero={editingId && orcamentoEditando ? orcamentoEditando.numero : undefined}
+                dataEmissao={dataEmissaoTxt || undefined}
+                onUpdateDataEmissao={setDataEmissaoTxt}
                 motoresAgrupados={motoresAgrupadosFinal}
                 voltagem={voltagem}
                 totalItems={totalItemsFinal}
@@ -3500,6 +3517,8 @@ export function OrcamentoMontar() {
           totalGeral: totalGeralFinal,
           fotoPrincipal: finameMode ? null : fotoPrincipal,
           finameMode,
+          // Data do cabeçalho escolhida na prévia (BR). Vazio = modal usa hoje.
+          dataEmissao: dataEmissaoTxt || null,
           tensaoMotores,
           marcaMotores,
           desconto: descontoCfg,

@@ -500,6 +500,8 @@ export interface CriarOrcamentoInput {
   tensao_motores?: 220 | 380 | 660 | null
   marca_motores?: string | null
   parcelas?: any[] | null
+  // Data do cabeçalho (AAAA-MM-DD). Ausente = hoje. Vendedor troca na prévia.
+  data_emissao?: string | null
 }
 
 export function useCriarOrcamento() {
@@ -560,7 +562,7 @@ export function useCriarOrcamento() {
         numero,
         ano,
         sequencial,
-        data_emissao: new Date().toISOString().split('T')[0],
+        data_emissao: input.data_emissao || new Date().toISOString().split('T')[0],
         vendedor_nome: input.vendedor_nome,
         vendedor_id: input.vendedor_id ?? null,
         cliente_id,
@@ -650,7 +652,9 @@ export function useCriarAlteracao() {
         .select('data_emissao')
         .eq('id', parent_id)
         .single()
-      const dataEmissaoPedido = parentRow?.data_emissao ?? new Date().toISOString().split('T')[0]
+      // Exceção: se o vendedor trocou a data na prévia, essa escolha vence — o
+      // que ele vê na tela é o que sai no PDF e fica no banco (WYSIWYG).
+      const dataEmissaoPedido = rest.data_emissao || parentRow?.data_emissao || new Date().toISOString().split('T')[0]
 
       // Numero base (sem -ALTx) é sempre o do pai original
       const numeroBase = parent_numero_base || parent_numero
