@@ -101,6 +101,17 @@ const FALLBACK: Record<AssignableRole, Record<string, boolean>> = {
   vendor: {
     // Vendedor restrito: só Atendimentos, Consulta, Montar/Editar Orçamento e Mapa
     // de Visitas (este sem permKey, sempre visível). Demais menus ficam ocultos.
+    //
+    // ⚠️ ISTO NÃO É SÓ "O QUE VALE SE A LINHA NÃO EXISTIR" — É TAMBÉM O QUE VALE
+    // ENQUANTO A LINHA NÃO CHEGOU. `useCan()` faz `data?.find(...)` e cai aqui
+    // enquanto a query de role_permissions está no ar. Como o guard de rota do
+    // App.tsx roda a cada render e devolve <Navigate> na hora, uma chave que
+    // exista no BANCO mas falte AQUI vira redirect intermitente: o vendedor
+    // clica no item do menu e cai em /atendimentos, e recarregando funciona.
+    // Medido em 25/08/2026 dirigindo a tela: 1 em cada 2 cargas frias.
+    //
+    // REGRA: chave `true` pro papel `vendor` em role_permissions tem que estar
+    // AQUI TAMBÉM. As duas listas são a mesma verdade em momentos diferentes.
     'menu.atendimentos': true,
     'menu.orcamentos': true,
     'menu.projeto_3d': true,
@@ -109,6 +120,10 @@ const FALLBACK: Record<AssignableRole, Record<string, boolean>> = {
     'menu.roadmap': true,
     'menu.financeiro': true,
     'menu.ia_teste': true,
+    // Liberados no banco em 06/08 (contatos) e desde que a tela nasceu (ligações),
+    // e faltavam aqui — as duas rotas caíam em /atendimentos na carga fria.
+    'menu.contatos': true,
+    'menu.ligacoes': true,
     'orcamentos.criar': true,
     'due_diligence.consultar': true,
     'precos.consultar': true,

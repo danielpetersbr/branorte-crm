@@ -396,7 +396,24 @@ function AppRoutes() {
     // o que ela errou. Amarrado no can() pelo mesmo motivo do roadmap/contatos —
     // tirar a permissão fecha o acesso por URL junto.
     const iaTesteOk = p.startsWith('/ia-teste') && can('menu.ia_teste')
-    const allowed = freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || producaoPropriaOk || roadmapOk || contatosOk || financeiroOk || iaTesteOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
+    /*
+     * Ligações: a tela nasceu pra supervisão, mas o vendedor precisa da PRÓPRIA
+     * régua — quantas fez, quantas atenderam, quais chamadas de cliente ficaram
+     * sem retorno. Ela abre em modo pessoal pra ele (Ligacoes.tsx decide pelo
+     * papel): sem ranking de time, sem seletor de colega.
+     *
+     * ⚠️ `menu.ligacoes` JÁ estava `true` pro papel `vendor` em role_permissions
+     * desde que a tela nasceu — o item aparecia no menu dele e o clique caía aqui
+     * e voltava pra /atendimentos. Mesmo desencontro do /contatos em 06/08: a
+     * permissão liberada e o guard fechado, duas fontes de verdade discordando.
+     *
+     * O recorte "só as dele" NÃO depende deste guard nem do menu: quem decide é a
+     * RLS de wa_ligacoes (`is_admin() OR vendedor_nome = current_vendedor_nome()`),
+     * com as 3 RPCs em SECURITY INVOKER e as views em security_invoker=true. Este
+     * guard só escolhe a tela.
+     */
+    const ligacoesOk = p.startsWith('/ligacoes') && can('menu.ligacoes')
+    const allowed = freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || producaoPropriaOk || roadmapOk || contatosOk || financeiroOk || iaTesteOk || ligacoesOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
     if (!allowed) return <Navigate to="/atendimentos" replace />
   }
 

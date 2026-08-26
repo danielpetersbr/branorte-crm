@@ -224,12 +224,15 @@ export function LigacoesNoMes({ serie }: { serie: SerieDia[] }) {
 }
 
 // ── RESULTADO DAS LIGAÇÕES (donut) ──────────────────────────────────────────
-export function ResultadoLigacoes({ atendidas, perdidas, outras, video, atendidasRecebeu = 0 }: {
+export function ResultadoLigacoes({ atendidas, perdidas, outras, video, atendidasRecebeu = 0, pessoal }: {
   atendidas: number; perdidas: number; outras: number; video: number
   // ⚠️ O donut é SÓ do que o vendedor discou. As recebidas atendidas não entram na
   // rosca (senão a taxa dele misturaria mérito com sorte), mas precisam aparecer:
   // sem isso a tela mostrava 0% atendidas com o vendedor 14 minutos ao telefone.
   atendidasRecebeu?: number
+  // Modo pessoal (papel `vendor`): o dono da tela é o próprio sujeito da frase.
+  // "Resultado das ligações que ELE fez" na tela do IGOR pergunta "ele quem?".
+  pessoal?: boolean
 }) {
   const total = atendidas + perdidas + outras
   const pct = total > 0 ? Math.round((atendidas / total) * 100) : 0
@@ -241,8 +244,10 @@ export function ResultadoLigacoes({ atendidas, perdidas, outras, video, atendida
   ]
 
   return (
-    <Painel titulo="Resultado das ligações que ele fez" icone={PhoneMissed}
-      nota={'Só as que o vendedor discou — o que ele recebeu não entra nesta rosca. Atendidas inclui quem atendeu no celular. Desistiu antes = o vendedor desligou antes de o cliente atender.'}>
+    <Painel titulo={pessoal ? 'Resultado das ligações que você fez' : 'Resultado das ligações que ele fez'} icone={PhoneMissed}
+      nota={pessoal
+        ? 'Só as que você discou — o que você recebeu não entra nesta rosca. Atendidas inclui quem atendeu no celular. Desistiu antes = você desligou antes de o cliente atender.'
+        : 'Só as que o vendedor discou — o que ele recebeu não entra nesta rosca. Atendidas inclui quem atendeu no celular. Desistiu antes = o vendedor desligou antes de o cliente atender.'}>
       {total === 0 ? <Vazio msg="Nenhuma ligação feita no período selecionado." /> : (
         <div className="flex items-center gap-4 flex-wrap sm:flex-nowrap">
           <div className="relative w-[168px] h-[168px] shrink-0 mx-auto sm:mx-0">

@@ -12,6 +12,7 @@ import {
   EvolucaoLigacoes, LigacoesNoMes, ResultadoLigacoes, PorVendedor, TaxaPorVendedor,
   PorHorario, fmtDur,
 } from '@/components/ligacoes/GraficosLigacoes'
+import { useAuth } from '@/hooks/useAuth'
 
 // ============================================================================
 // CENTRAL DE PERFORMANCE DE LIGAÇÕES
@@ -33,6 +34,18 @@ import {
 //    misturaria o que ele controla com o que só acontece com ele.
 //  • Tempo ao telefone é PISO: o WhatsApp só registra duração de chamada
 //    atendida no próprio WhatsApp Web.
+//
+// MODO PESSOAL (papel `vendor`, desde 25/08/2026)
+// A mesma tela serve as duas pontas. Pro vendedor ela vira a régua DELE:
+//  • os dois blocos de ranking (PorVendedor, TaxaPorVendedor) somem — com a RLS
+//    ligada eles seriam um gráfico de barras com UMA barra, que não compara nada;
+//  • o seletor de vendedor some — a lista teria só o próprio nome;
+//  • o resumo perde as frases de comparação ("fulano foi quem mais ligou") e
+//    passa a falar na segunda pessoa;
+//  • a tabela abre já expandida, porque a lista das ligações dele é o que ele
+//    veio ver — pra ele não é "detalhe por vendedor", é a tela inteira.
+// ⚠️ Nada disso é segurança: quem recorta o dado é a RLS de wa_ligacoes, no
+// servidor. Isto aqui é só não mostrar moldura vazia.
 // ============================================================================
 
 const PERIODOS: Array<{ id: Periodo; label: string }> = [
@@ -173,6 +186,11 @@ function somar(linhas: LigacaoResumo[]) {
 }
 
 export function Ligacoes() {
+  const { profile } = useAuth()
+  // Papel `vendor` = a tela é a régua dele, não o painel do time. Ver o bloco
+  // MODO PESSOAL lá em cima.
+  const pessoal = profile?.role === 'vendor'
+
   const [periodo, setPeriodo] = useState<Periodo>('7d')
   const [custom, setCustom] = useState<Janela>({ from: null, to: null })
   const [vendedor, setVendedor] = useState<string | null>(null)
@@ -188,7 +206,10 @@ export function Ligacoes() {
 
   // A lista de vendedores do filtro tem que vir de FORA do filtro, senão escolher
   // um vendedor esvazia o próprio seletor e não dá pra voltar.
-  const { data: todos = [] } = useLigacoesResumo({ from: null, to: null }, null, true, false)
+  // ⚠️ No modo pessoal ela nem roda (`ativo=false`): o seletor não existe, e esta é a
+  // consulta mais cara da tela — janela ABERTA, varre a tabela inteira. Deixar ligada
+  // seria varrer tudo pra montar uma lista de um nome só que ninguém vê.
+  const { data: todos = [] } = useLigacoesResumo({ from: null, to: null }, null, !pessoal, false)
   const nomes = useMemo(() => todos.map(t => t.vendedor).sort(), [todos])
 
   const tot = useMemo(() => somar(linhas), [linhas])
@@ -223,10 +244,12 @@ export function Ligacoes() {
       <header className="flex items-start justify-between gap-3 mb-4 flex-wrap">
         <div className="min-w-0">
           <h1 className="text-xl lg:text-[28px] font-semibold text-ink tracking-tight flex items-center gap-2">
-            <PhoneCall className="h-5 w-5 lg:h-6 lg:w-6 text-accent" /> Ligações
+            <PhoneCall className="h-5 w-5 lg:h-6 lg:w-6 text-accent" /> {pessoal ? 'Minhas ligações' : 'Ligações'}
           </h1>
           <p className="text-[12px] lg:text-[12.5px] text-ink-faint mt-0.5 max-w-[560px]">
-            Acompanhe a atividade de ligações da equipe comercial e a evolução de cada vendedor.
+            {pessoal
+              ? 'Suas ligações no WhatsApp: quantas você fez, quantas atenderam, em que horário o cliente atende mais e quais chamadas ficaram sem retorno.'
+              : 'Acompanhe a atividade de ligações da equipe comercial e a evolução de cada vendedor.'}
           </p>
           {/* Sem este selo não dá pra saber se o número é de agora ou de quando a aba
               foi aberta — e a pergunta "isso atualiza sozinho?" volta toda vez. */}
@@ -245,15 +268,19 @@ export function Ligacoes() {
               </button>
             ))}
           </div>
-          <select
-            value={vendedor ?? ''}
-            onChange={e => { setVendedor(e.target.value || null); setAberto(null) }}
-            className="h-9 px-2.5 rounded-lg border border-border bg-surface text-[12.5px] text-ink outline-none focus:border-accent"
-            aria-label="Filtrar por vendedor"
-          >
-            <option value="">Todos os vendedores</option>
-            {nomes.map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
+          {/* No modo pessoal a lista teria só o próprio nome — seletor de um item é
+              moldura vazia. Some junto com a consulta que o alimentava. */}
+          {!pessoal && (
+            <select
+              value={vendedor ?? ''}
+              onChange={e => { setVendedor(e.target.value || null); setAberto(null) }}
+              className="h-9 px-2.5 rounded-lg border border-border bg-surface text-[12.5px] text-ink outline-none focus:border-accent"
+              aria-label="Filtrar por vendedor"
+            >
+              <option value="">Todos os vendedores</option>
+              {nomes.map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          )}
           {filtrando && (
             <button
               onClick={() => { setVendedor(null); setPeriodo('7d'); setCustom({ from: null, to: null }); setAberto(null) }}
@@ -307,7 +334,7 @@ export function Ligacoes() {
                  ? `${Math.round((tot.clientes_falados / tot.clientes_fez) * 100)}% dos que chamou` : undefined,
                tot.atendidas > 0 ? `${tot.atendidas} ligações atendidas no total` : undefined,
              ].filter(Boolean).join(' · ') || undefined} />
-        <Kpi icone={PhoneCall} cor="text-success" rotulo="Atendidas (que ele ligou)" valor={tot.atendidas_fez}
+        <Kpi icone={PhoneCall} cor="text-success" rotulo={pessoal ? 'Atendidas (que você ligou)' : 'Atendidas (que ele ligou)'} valor={tot.atendidas_fez}
              nota={[
                taxa !== null ? `${taxa.toFixed(1).replace('.', ',')}% de atendimento`
                              : tot.fez > 0 ? `de ${tot.fez} que ligou` : undefined,
@@ -338,7 +365,7 @@ export function Ligacoes() {
       </div>
 
       <ResumoInteligente linhas={linhas} tot={tot} totAnt={totAnt} horas={horas} serie={serie}
-                         rotuloAnterior={ROTULO_ANTERIOR[periodo]} />
+                         rotuloAnterior={ROTULO_ANTERIOR[periodo]} pessoal={pessoal} />
 
       {isError ? (
         <p className="text-[13px] text-danger py-10 text-center">Não consegui carregar as ligações.</p>
@@ -348,20 +375,26 @@ export function Ligacoes() {
         <div className="space-y-3 lg:space-y-4">
           <EvolucaoLigacoes serie={serie} truncado={truncado} />
 
+          {/* ⚠️ Os dois blocos de ranking (PorVendedor, TaxaPorVendedor) só fazem sentido
+              com o time na tela. No modo pessoal a RLS entrega UMA linha, e "ranking de
+              um" não é ranking — é um gráfico de barras com uma barra. Somem, e o
+              "melhor horário" sobe pro lado do donut pra fechar a fileira. */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4">
             <ResultadoLigacoes atendidas={tot.atendidas_fez} perdidas={tot.perdidas} outras={outras}
-                               video={tot.video_fez} atendidasRecebeu={atendidasRecebeu} />
-            <PorVendedor linhas={linhas} />
+                               video={tot.video_fez} atendidasRecebeu={atendidasRecebeu} pessoal={pessoal} />
+            {pessoal ? <PorHorario horas={horas} /> : <PorVendedor linhas={linhas} />}
           </div>
 
           <LigacoesNoMes serie={serie} />
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4">
-            <TaxaPorVendedor linhas={linhas} />
-            <PorHorario horas={horas} />
-          </div>
+          {!pessoal && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4">
+              <TaxaPorVendedor linhas={linhas} />
+              <PorHorario horas={horas} />
+            </div>
+          )}
 
-          <TabelaVendedores linhas={linhas} janela={janela} aberto={aberto} setAberto={setAberto} />
+          <TabelaVendedores linhas={linhas} janela={janela} aberto={aberto} setAberto={setAberto} pessoal={pessoal} />
         </div>
       )}
 
@@ -439,25 +472,37 @@ function Kpi({ icone: Icone, cor, rotulo, valor, nota, delta, rotuloDelta, inver
 // ── RESUMO INTELIGENTE ──────────────────────────────────────────────────────
 // Só frases que saem de conta objetiva sobre o dado da tela. Nada de leitura
 // que o número não sustenta.
-function ResumoInteligente({ linhas, tot, totAnt, horas, serie, rotuloAnterior }: {
+function ResumoInteligente({ linhas, tot, totAnt, horas, serie, rotuloAnterior, pessoal }: {
   linhas: LigacaoResumo[]
   tot: ReturnType<typeof somar>
   totAnt: ReturnType<typeof somar> | null
   horas: Array<{ hora: number; feitas: number; atenderam: number }>
   serie: Array<{ dia: string; feitas: number }>
   rotuloAnterior?: string
+  // Modo pessoal: as frases que ganham por comparação com colega não existem
+  // (só há uma linha), e as que sobram falam na segunda pessoa.
+  pessoal?: boolean
 }) {
   const frases = useMemo(() => {
     const f: string[] = []
     if (tot.fez === 0) return f
 
-    const maisLigou = [...linhas].sort((a, b) => b.fez - a.fez)[0]
-    if (maisLigou?.fez > 0) f.push(`${maisLigou.vendedor} fez o maior número de ligações no período: ${maisLigou.fez}.`)
+    // ⚠️ "Fulano foi quem mais ligou" com UMA linha na tela vira "você foi quem mais
+    // ligou entre você" — frase que se auto-elogia e não informa nada. No modo
+    // pessoal as duas comparativas caem fora em vez de virarem texto sem sentido.
+    if (!pessoal) {
+      const maisLigou = [...linhas].sort((a, b) => b.fez - a.fez)[0]
+      if (maisLigou?.fez > 0) f.push(`${maisLigou.vendedor} fez o maior número de ligações no período: ${maisLigou.fez}.`)
 
-    const comTaxa = linhas.filter(r => r.fez >= MIN_LIGACOES_TAXA)
-      .map(r => ({ v: r.vendedor, t: Math.round((r.atendidas_fez / r.fez) * 100) }))
-      .sort((a, b) => b.t - a.t)
-    if (comTaxa.length > 1) f.push(`${comTaxa[0].v} teve a maior taxa de atendimento: ${comTaxa[0].t}%.`)
+      const comTaxa = linhas.filter(r => r.fez >= MIN_LIGACOES_TAXA)
+        .map(r => ({ v: r.vendedor, t: Math.round((r.atendidas_fez / r.fez) * 100) }))
+        .sort((a, b) => b.t - a.t)
+      if (comTaxa.length > 1) f.push(`${comTaxa[0].v} teve a maior taxa de atendimento: ${comTaxa[0].t}%.`)
+    } else if (tot.fez >= MIN_LIGACOES_TAXA) {
+      // A taxa dele sozinha, sem colega pra comparar. Vale como número absoluto —
+      // é o que ele consegue mexer ligando em outro horário ou insistindo mais.
+      f.push(`Sua taxa de atendimento no período foi de ${Math.round((tot.atendidas_fez / tot.fez) * 100)}%: ${tot.atendidas_fez} atendidas de ${tot.fez} que você ligou.`)
+    }
 
     const hs = horas.filter(h => h.feitas >= 5).map(h => ({ h: h.hora, t: h.atenderam / h.feitas }))
     if (hs.length > 2) {
@@ -468,7 +513,7 @@ function ResumoInteligente({ linhas, tot, totAnt, horas, serie, rotuloAnterior }
     if (totAnt && totAnt.fez > 0) {
       const d = ((tot.fez - totAnt.fez) / totAnt.fez) * 100
       if (Math.abs(d) >= 5) {
-        f.push(`A equipe ligou ${Math.abs(d).toFixed(0)}% ${d > 0 ? 'mais' : 'menos'} que ${(rotuloAnterior || 'no período anterior').replace('vs ', '')}.`)
+        f.push(`${pessoal ? 'Você ligou' : 'A equipe ligou'} ${Math.abs(d).toFixed(0)}% ${d > 0 ? 'mais' : 'menos'} que ${(rotuloAnterior || 'no período anterior').replace('vs ', '')}.`)
       }
     }
 
@@ -482,7 +527,9 @@ function ResumoInteligente({ linhas, tot, totAnt, horas, serie, rotuloAnterior }
       .sort((a, b) => (b.p - b.dev) - (a.p - a.dev))
     if (perdendo.length && perdendo[0].p > 0) {
       const q = perdendo[0]
-      f.push(`${q.v} deixou ${q.p} chamada${q.p > 1 ? 's' : ''} de cliente sem atender (${q.pct}% das que recebeu) e devolveu ${q.dev} — ${q.p - q.dev} ficaram sem retorno nenhum.`)
+      f.push(pessoal
+        ? `Você deixou ${q.p} chamada${q.p > 1 ? 's' : ''} de cliente sem atender (${q.pct}% das que recebeu) e devolveu ${q.dev} — ${q.p - q.dev} ficaram sem retorno nenhum.`
+        : `${q.v} deixou ${q.p} chamada${q.p > 1 ? 's' : ''} de cliente sem atender (${q.pct}% das que recebeu) e devolveu ${q.dev} — ${q.p - q.dev} ficaram sem retorno nenhum.`)
     }
 
     const melhorDia = [...serie].sort((a, b) => b.feitas - a.feitas)[0]
@@ -491,7 +538,7 @@ function ResumoInteligente({ linhas, tot, totAnt, horas, serie, rotuloAnterior }
       f.push(`O dia de maior volume foi ${dd}/${m}, com ${melhorDia.feitas} ligações.`)
     }
     return f
-  }, [linhas, tot, totAnt, horas, serie, rotuloAnterior])
+  }, [linhas, tot, totAnt, horas, serie, rotuloAnterior, pessoal])
 
   if (frases.length === 0) return null
   return (
@@ -523,18 +570,34 @@ function Esqueleto() {
 }
 
 // ── TABELA DOS VENDEDORES ───────────────────────────────────────────────────
-function TabelaVendedores({ linhas, janela, aberto, setAberto }: {
+function TabelaVendedores({ linhas, janela, aberto, setAberto, pessoal }: {
   linhas: LigacaoResumo[]; janela: Janela; aberto: string | null; setAberto: (v: string | null) => void
+  pessoal?: boolean
 }) {
   const maxFez = Math.max(1, ...linhas.map(r => r.fez))
+
+  /*
+   * No modo pessoal a lista das ligações É a tela — não é "detalhe", é o que ele
+   * veio ver. Abre expandida em vez de exigir um clique num acordeão de uma linha
+   * só, que parece bug ("cadê minhas ligações?").
+   *
+   * ⚠️ Derivado, não `useEffect` com `setAberto`: um efeito que escreve estado no
+   * primeiro render reabriria a linha toda vez que ele fechasse. Aqui fechar
+   * funciona — `aberto` vira '' (string vazia, ≠ null) e o `?? ` não repõe.
+   */
+  const abertoEfetivo = pessoal && aberto === null ? (linhas[0]?.vendedor ?? null) : aberto
 
   return (
     <section className="rounded-2xl border border-border bg-surface overflow-hidden">
       <div className="px-4 lg:px-5 pt-4 pb-3">
         <h2 className="text-[14px] font-semibold text-ink flex items-center gap-2">
-          <Users className="h-4 w-4 text-accent" /> Detalhe por vendedor
+          {/* ⚠️ No modo pessoal NÃO repetir "Minhas ligações" — é o mesmo texto do <h1>
+              lá em cima, e a tela ficava com o título duplicado no meio dela. */}
+          <Users className="h-4 w-4 text-accent" /> {pessoal ? 'Ligação por ligação' : 'Detalhe por vendedor'}
         </h2>
-        <p className="text-[11px] text-ink-faint mt-0.5">Clique num vendedor pra ver as ligações dele.</p>
+        <p className="text-[11px] text-ink-faint mt-0.5">
+          {pessoal ? 'As mais recentes do período, com quem era e como terminou.' : 'Clique num vendedor pra ver as ligações dele.'}
+        </p>
       </div>
 
       {/* ⚠️ A CONTA DE COLUNAS TEM QUE BATER COM AS CÉLULAS. Estava `repeat(7)` com NOVE
@@ -561,7 +624,7 @@ function TabelaVendedores({ linhas, janela, aberto, setAberto }: {
         <p className="text-[12.5px] text-ink-muted py-10 text-center">Nenhuma ligação no período.</p>
       ) : linhas.map(r => (
         <LinhaVendedor key={r.vendedor} r={r} maxFez={maxFez} janela={janela}
-          aberto={aberto === r.vendedor} onToggle={() => setAberto(aberto === r.vendedor ? null : r.vendedor)} />
+          aberto={abertoEfetivo === r.vendedor} onToggle={() => setAberto(abertoEfetivo === r.vendedor ? '' : r.vendedor)} />
       ))}
     </section>
   )
