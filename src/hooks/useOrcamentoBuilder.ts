@@ -242,13 +242,26 @@ export function useOrcamentoModelos() {
   })
 }
 
-// Lista clientes recentes para autocomplete
+// Lista clientes recentes para autocomplete.
+// Busca por NOME, TELEFONE ou CPF/CNPJ: o vendedor lembra do numero do zap com
+// mais frequencia do que do nome exato como digitou da outra vez.
 export function useClientesOrcamento(search: string) {
   return useQuery({
     queryKey: ['orcamento-clientes', search],
     queryFn: async (): Promise<OrcamentoCliente[]> => {
       let q = supabase.from('orcamento_clientes').select('*').limit(20)
-      if (search.trim()) q = q.ilike('nome', `%${search.trim()}%`)
+      const termo = search.trim()
+      if (termo) {
+        const digitos = termo.replace(/\D/g, '')
+        const alvos = [`nome.ilike.%${termo}%`]
+        // >=4 digitos: procura tambem pelo pedaco do telefone/documento. Menos
+        // que isso casaria com meio banco e nao ajuda ninguem.
+        if (digitos.length >= 4) {
+          alvos.push(`fone_canon.ilike.%${digitos}%`)
+          alvos.push(`doc_canon.ilike.%${digitos}%`)
+        }
+        q = q.or(alvos.join(','))
+      }
       const { data, error } = await q.order('updated_at', { ascending: false })
       if (error) throw error
       return (data ?? []) as OrcamentoCliente[]
@@ -256,6 +269,25 @@ export function useClientesOrcamento(search: string) {
     enabled: true,
     staleTime: 30_000,
   })
+}
+
+// Salva o cliente na agenda RECONHECENDO quem ja existe (por CPF/CNPJ, ou
+// telefone+nome). Antes daqui o codigo dava INSERT cego e a agenda tinha 1.469
+// linhas pra 795 clientes de verdade -- o mesmo cliente aparecia 2x com 8min de
+// diferenca, e nenhuma das duas linhas ficava completa.
+// Nunca apaga campo ja preenchido: quem tem endereco e recebe um orcamento novo
+// sem endereco mantem o endereco.
+export async function salvarClienteNaAgenda(
+  nome: string,
+  dados: ClienteDados,
+): Promise<number | null> {
+  const limpo = (nome || '').trim()
+  if (!limpo) return null
+  const { data, error } = await supabase.rpc('fn_upsert_cliente_orcamento', {
+    p: { nome: limpo, ...dados },
+  })
+  if (error) throw error
+  return (data as number | null) ?? null
 }
 
 // Carrega 1 orçamento pelo id (pra modo edição)
@@ -533,26 +565,16 @@ export function useCriarOrcamento() {
         numero = `${ano} - ${String(sequencial).padStart(4, '0')}`
       }
 
-      // Cria/atualiza cliente se tiver nome
+      // Salva/atualiza o cliente na agenda. Reconhece quem ja existe em vez de
+      // criar linha nova a cada orcamento (ver salvarClienteNaAgenda).
       let cliente_id = input.cliente_id ?? null
-      if (!cliente_id && input.cliente_nome.trim()) {
-        const { data: cli } = await supabase
-          .from('orcamento_clientes')
-          .insert({
-            nome: input.cliente_nome.trim(),
-            ac: input.cliente_dados.ac ?? null,
-            fone: input.cliente_dados.fone ?? null,
-            cidade: input.cliente_dados.cidade ?? null,
-            bairro: input.cliente_dados.bairro ?? null,
-            endereco: input.cliente_dados.endereco ?? null,
-            cep: input.cliente_dados.cep ?? null,
-            cnpj: input.cliente_dados.cnpj ?? null,
-            ie: input.cliente_dados.ie ?? null,
-            email: input.cliente_dados.email ?? null,
-          })
-          .select('id')
-          .single()
-        cliente_id = cli?.id ?? null
+      if (input.cliente_nome.trim()) {
+        try {
+          cliente_id = (await salvarClienteNaAgenda(input.cliente_nome, input.cliente_dados)) ?? cliente_id
+        } catch (e) {
+          // Agenda e conveniencia: falhar aqui NAO pode impedir de salvar o orcamento.
+          console.error('[agenda] falhou ao salvar cliente', e)
+        }
       }
 
       // Fix #21: sufixa voltagem nos nomes dos itens (quando há motores).
@@ -660,26 +682,14 @@ export function useCriarAlteracao() {
       const numeroBase = parent_numero_base || parent_numero
       const numero = `${numeroBase}-ALT${nextAlt}`
 
-      // Cria/atualiza cliente se tiver nome
+      // Mesma agenda do salvar normal (reconhece quem ja existe).
       let cliente_id = rest.cliente_id ?? null
-      if (!cliente_id && rest.cliente_nome?.trim()) {
-        const { data: cli } = await supabase
-          .from('orcamento_clientes')
-          .insert({
-            nome: rest.cliente_nome.trim(),
-            ac: rest.cliente_dados?.ac ?? null,
-            fone: rest.cliente_dados?.fone ?? null,
-            cidade: rest.cliente_dados?.cidade ?? null,
-            bairro: rest.cliente_dados?.bairro ?? null,
-            endereco: rest.cliente_dados?.endereco ?? null,
-            cep: rest.cliente_dados?.cep ?? null,
-            cnpj: rest.cliente_dados?.cnpj ?? null,
-            ie: rest.cliente_dados?.ie ?? null,
-            email: rest.cliente_dados?.email ?? null,
-          })
-          .select('id')
-          .single()
-        cliente_id = cli?.id ?? null
+      if (rest.cliente_nome?.trim()) {
+        try {
+          cliente_id = (await salvarClienteNaAgenda(rest.cliente_nome, rest.cliente_dados ?? {})) ?? cliente_id
+        } catch (e) {
+          console.error('[agenda] falhou ao salvar cliente', e)
+        }
       }
 
       // Usa ano/sequencial do pai (ALTs não consomem sequencial novo)

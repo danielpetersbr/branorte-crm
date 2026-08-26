@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { X, Search, Loader2, Check, Building2, User, Tractor, ClipboardPaste } from 'lucide-react'
+import { X, Search, Loader2, Check, Building2, User, Tractor, ClipboardPaste, BookUser } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
+import { useClientesOrcamento, salvarClienteNaAgenda, type OrcamentoCliente } from '@/hooks/useOrcamentoBuilder'
 import type { PreviewClienteDados } from './OrcamentoPreview'
 import { parseClienteText, titleCasePtBr } from '@/lib/parse-cliente-text'
 import {
@@ -55,6 +56,15 @@ function fmtDocumento(v: string): string {
 // digito comido. Agora depende do DDI escolhido.
 function fmtFone(v: string): string {
   return formatarFone(v, DDI_BRASIL)
+}
+
+// "Campos Novos - SC" -> { cidade: 'Campos Novos', uf: 'SC' }.
+// O orcamento grava cidade e UF grudadas num campo so; a tela tem dois campos.
+function separarCidadeUf(v?: string | null): { cidade: string; uf: string } {
+  const s = (v || '').trim()
+  const m = s.match(/^(.+)\s-\s([A-Za-z]{2})$/)
+  if (m) return { cidade: m[1].trim(), uf: m[2].toUpperCase() }
+  return { cidade: s, uf: '' }
 }
 
 // Formata CEP: 88890-000
@@ -247,8 +257,9 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
     setAc(cliente.ac || '')
     // Reabrir orcamento de cliente estrangeiro tem que voltar no pais certo.
     { const sep = separarFone(cliente.fone); setDdi(sep.ddi); setFone(sep.numero) }
-    setCidade(cliente.cidade || '')
-    setUf('')
+    // O orcamento guarda cidade como "Campos Novos - SC". Antes daqui, reabrir
+    // o modal jogava a string inteira no campo Cidade e deixava a UF em branco.
+    { const c = separarCidadeUf(cliente.cidade); setCidade(c.cidade); setUf(c.uf) }
     setBairro(cliente.bairro || '')
     setEndereco(cliente.endereco || '')
     setCep(cliente.cep || '')
@@ -266,6 +277,46 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
   }, [open, cliente])
 
   const [sucessoBusca, setSucessoBusca] = useState<string | null>(null)
+
+  // ---- Agenda de clientes -------------------------------------------------
+  // Todo cliente aplicado num orcamento fica gravado. Aqui o vendedor puxa de
+  // volta quem ja atendeu, sem redigitar nada.
+  const [agendaAberta, setAgendaAberta] = useState(false)
+  const [buscaAgenda, setBuscaAgenda] = useState('')
+  const [buscaAgendaDeb, setBuscaAgendaDeb] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => setBuscaAgendaDeb(buscaAgenda), 250)
+    return () => clearTimeout(t)
+  }, [buscaAgenda])
+  const { data: clientesSalvos, isFetching: buscandoAgenda } = useClientesOrcamento(buscaAgendaDeb)
+
+  // Fecha a agenda ao reabrir o modal, senao ela volta aberta com a busca velha.
+  useEffect(() => {
+    if (!open) { setAgendaAberta(false); setBuscaAgenda(''); setBuscaAgendaDeb('') }
+  }, [open])
+
+  function aplicarClienteSalvo(c: OrcamentoCliente) {
+    setNome(c.nome || '')
+    setAc(c.ac || '')
+    { const sep = separarFone(c.fone); setDdi(sep.ddi); setFone(sep.numero) }
+    // Linha antiga da agenda pode ter a UF grudada na cidade.
+    { const cid = separarCidadeUf(c.cidade); setCidade(cid.cidade); setUf((c.uf || cid.uf || '').toUpperCase()) }
+    setBairro(c.bairro || '')
+    setEndereco(c.endereco || '')
+    setCep(c.cep || '')
+    setCnpj(c.cnpj || '')
+    setIe(c.ie || '')
+    setIeTipo(
+      (c.ie_tipo as IeTipo | undefined)
+        || (/^isento$/i.test((c.ie || '').trim()) ? 'isento' : 'estadual')
+    )
+    setEmail(c.email || '')
+    setAgendaAberta(false)
+    setBuscaAgenda('')
+    setErroBusca(null)
+    setErroSalvar(null)
+    setSucessoBusca(`✓ Dados de "${c.nome}" carregados da sua agenda de clientes`)
+  }
 
   // Detecta tipo do documento pelo conteúdo
   type DocTipo = 'cpf' | 'cnpj' | 'ie'
@@ -455,6 +506,26 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
     // Isento → grava "ISENTO" no valor pra aparecer em todos os formatos (PDF/DOCX);
     // os demais gravam o número digitado.
     const ieFinal = ieTipo === 'isento' ? 'ISENTO' : (ie.trim() || null)
+
+    // AGENDA: grava o cliente assim que ele e aplicado no orcamento -- nao
+    // espera o orcamento ser finalizado. Se o vendedor montar e nao fechar, os
+    // dados ficam gravados do mesmo jeito pro proximo orcamento dele.
+    // Fire-and-forget: a agenda e conveniencia, nao pode segurar a tela nem
+    // impedir de aplicar os dados se o banco estiver fora.
+    salvarClienteNaAgenda(nome, {
+      ac: ac.trim() || undefined,
+      fone: montarFone(fone, ddi) || undefined,
+      cidade: cidade.trim() || undefined,
+      uf: uf.trim().toUpperCase() || undefined,
+      bairro: bairro.trim() || undefined,
+      endereco: endereco.trim() || undefined,
+      cep: cep.trim() || undefined,
+      cnpj: cnpj.trim() || undefined,
+      ie: ieFinal || undefined,
+      ie_tipo: ieTipo,
+      email: email.trim() || undefined,
+    }).catch(e => console.error('[agenda] falhou ao salvar cliente', e))
+
     onSave({
       nome: nome.trim() || undefined,
       ac: ac.trim() || null,
@@ -511,7 +582,19 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setColando(!colando)}
+              onClick={() => { setAgendaAberta(a => !a); setColando(false) }}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold transition ${
+                agendaAberta
+                  ? 'bg-accent text-white'
+                  : 'bg-surface-2 text-ink-muted hover:bg-accent/10 hover:text-accent border border-border'
+              }`}
+              title="Puxar dados de um cliente que você já atendeu"
+            >
+              <BookUser className="w-3.5 h-3.5" />
+              Meus clientes
+            </button>
+            <button
+              onClick={() => { setColando(!colando); setAgendaAberta(false) }}
               className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold transition ${
                 colando
                   ? 'bg-accent text-white'
@@ -525,6 +608,48 @@ export function ClienteEditModal({ open, cliente, onClose, onSave }: Props) {
             <button onClick={onClose} className="text-ink-faint hover:text-ink p-1"><X className="w-4 h-4" /></button>
           </div>
         </div>
+
+        {/* Agenda: clientes já atendidos (todo orçamento grava aqui) */}
+        {agendaAberta && (
+          <div className="px-5 py-3 bg-accent/5 border-b border-border">
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <Input
+                  autoFocus
+                  value={buscaAgenda}
+                  onChange={e => setBuscaAgenda(e.target.value)}
+                  placeholder="Buscar por nome, telefone ou CNPJ/CPF..."
+                />
+              </div>
+              {buscandoAgenda && <Loader2 className="w-4 h-4 animate-spin text-ink-faint shrink-0" />}
+            </div>
+            <div className="mt-2 max-h-56 overflow-y-auto border border-border rounded-md bg-surface-2">
+              {(clientesSalvos?.length ?? 0) === 0 ? (
+                <p className="text-[11px] text-ink-faint px-3 py-3">
+                  {buscaAgenda.trim()
+                    ? 'Nenhum cliente com esse nome, telefone ou documento.'
+                    : 'Nenhum cliente salvo ainda.'}
+                </p>
+              ) : clientesSalvos!.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => aplicarClienteSalvo(c)}
+                  className="block w-full text-left px-3 py-2 hover:bg-surface-3 border-b border-border last:border-0 transition"
+                >
+                  <div className="text-[12px] font-medium text-ink">{c.nome}</div>
+                  <div className="text-[10px] text-ink-faint flex flex-wrap gap-x-2">
+                    {c.fone && <span>{c.fone}</span>}
+                    {c.cidade && <span>{c.cidade}{c.uf ? ` - ${c.uf}` : ''}</span>}
+                    {c.cnpj && <span>{c.cnpj}</span>}
+                  </div>
+                </button>
+              ))}
+            </div>
+            {!buscaAgenda.trim() && (clientesSalvos?.length ?? 0) > 0 && (
+              <p className="text-[10px] text-ink-faint mt-1.5">Mostrando os últimos atendidos — digite pra procurar outro.</p>
+            )}
+          </div>
+        )}
 
         {/* Área de colar texto */}
         {colando && (

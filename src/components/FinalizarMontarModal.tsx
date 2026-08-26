@@ -498,12 +498,15 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       ac: c.ac ?? undefined,
       fone: c.fone ?? undefined,
       cidade: c.cidade ?? undefined,
-      uf: (c as any).uf ?? undefined,
+      uf: c.uf ?? undefined,
       bairro: c.bairro ?? undefined,
       endereco: c.endereco ?? undefined,
       cep: c.cep ?? undefined,
       cnpj: c.cnpj ?? undefined,
       ie: c.ie ?? undefined,
+      // Sem o ie_tipo o cliente marcado como Produtor Rural / Isento voltava da
+      // agenda como "Estadual" e o rotulo saia errado no orcamento.
+      ie_tipo: c.ie_tipo ?? undefined,
       email: c.email ?? undefined,
     })
     setSearchCli('')
