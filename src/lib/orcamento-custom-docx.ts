@@ -83,6 +83,8 @@ export interface GerarCustomDocxOpts {
   obsPorConta?: string[] | null
   vendedorNome?: string
   fotoPrincipal?: string | null
+  // Foto/rascunho do bloco "Observações" (URL pública). Opcional.
+  observacoesFoto?: string | null
   componentesExtras?: Array<{ nome: string; valor: number }>
   desconto?: { tipo: 'pct' | 'valor'; valor: number; base?: 'total' | 'equipamento'; manterValorParcelas?: boolean } | null
   parcelas?: CustomDocxParcela[]
@@ -1312,14 +1314,25 @@ export async function gerarOrcamentoCustomDocx(opts: GerarCustomDocxOpts): Promi
   blocos.push(sectionHeader('Garantia'))
   blocos.push(...buildGarantia())
 
-  // Observações livres do vendedor (se preencheu)
-  if (opts.observacoes && opts.observacoes.trim()) {
-    blocos.push(sectionHeader('Observações'))
-    blocos.push(new Paragraph({
-      alignment: AlignmentType.JUSTIFIED,
-      spacing: { after: 100 },
-      children: [r(opts.observacoes, { size: 17, color: '374151' })],
-    }))
+  // Observações livres do vendedor — texto e/ou foto (rascunho/croqui). Se não
+  // preencheu nenhum dos dois, a seção nem aparece no documento.
+  {
+    const temTextoObs = !!opts.observacoes && opts.observacoes.trim().length > 0
+    if (temTextoObs || opts.observacoesFoto) {
+      blocos.push(sectionHeader('Observações'))
+      if (opts.observacoesFoto) {
+        // Reusa o mesmo construtor da foto principal (moldura + centralizada).
+        // Imagem inacessível devolve vazio: a seção sai só com o texto.
+        blocos.push(...await buildFotoPrincipal(opts.observacoesFoto))
+      }
+      if (temTextoObs) {
+        blocos.push(new Paragraph({
+          alignment: AlignmentType.JUSTIFIED,
+          spacing: { after: 100 },
+          children: [r(opts.observacoes!, { size: 17, color: '374151' })],
+        }))
+      }
+    }
   }
 
   // Assinaturas

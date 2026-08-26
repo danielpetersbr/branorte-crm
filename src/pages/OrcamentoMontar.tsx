@@ -501,6 +501,10 @@ export function OrcamentoMontar() {
   const [waPromptValue, setWaPromptValue] = useState('')
   const [waPromptResolve, setWaPromptResolve] = useState<((v: string | null) => void) | null>(null)
   const [fotoPrincipal, setFotoPrincipal] = useState<string | null>(null)
+  // Bloco "Observações" da proposta (opcional): texto livre + 1 foto/rascunho.
+  // Editado inline na prévia, logo acima de "Nossas Redes Sociais".
+  const [observacoesTxt, setObservacoesTxt] = useState('')
+  const [observacoesFoto, setObservacoesFoto] = useState<string | null>(null)
   // Desconto + termos editáveis inline no preview
   // tipo/valor sempre; motivo/base/manterValorParcelas opcionais (default: base='total').
   const [descontoCfg, setDescontoCfg] = useState<{
@@ -559,6 +563,8 @@ export function OrcamentoMontar() {
     validadeDias,
     parcelasPagamento,
     fotoPrincipal,
+    observacoesTxt,
+    observacoesFoto,
     componentesExtras,
     motoresAvulsos,
     balancaDispensada,
@@ -567,7 +573,7 @@ export function OrcamentoMontar() {
   }), [
     carrinho, acessorios, voltagem, tensaoMotores, marcaMotores, descontoCfg,
     dataEmissaoTxt, dataVendaTxt, prazoEntregaTxt, formaPagamentoTxt, freteTipo, freteTxt, validadeDias,
-    parcelasPagamento, fotoPrincipal,
+    parcelasPagamento, fotoPrincipal, observacoesTxt, observacoesFoto,
     componentesExtras, motoresAvulsos, balancaDispensada, obsPorConta,
     motorPrecoOverride,
   ])
@@ -633,6 +639,8 @@ export function OrcamentoMontar() {
     setValidadeDias((prev as any).validadeDias ?? 10)
     setParcelasPagamento(prev.parcelasPagamento ?? [])
     setFotoPrincipal(prev.fotoPrincipal ?? null)
+    setObservacoesTxt((prev as any).observacoesTxt ?? '')
+    setObservacoesFoto((prev as any).observacoesFoto ?? null)
     setComponentesExtras(prev.componentesExtras ?? [])
     setMotoresAvulsos((prev as any).motoresAvulsos ?? [])
     setBalancaDispensada((prev as any).balancaDispensada ?? false)
@@ -675,6 +683,8 @@ export function OrcamentoMontar() {
     setValidadeDias((d as any).validadeDias ?? 10)
     setParcelasPagamento(d.parcelasPagamento ?? [])
     setFotoPrincipal(d.fotoPrincipal ?? null)
+    setObservacoesTxt((d as any).observacoesTxt ?? '')
+    setObservacoesFoto((d as any).observacoesFoto ?? null)
     setComponentesExtras(d.componentesExtras ?? [])
     setMotoresAvulsos((d as any).motoresAvulsos ?? [])
     setBalancaDispensada((d as any).balancaDispensada ?? false)
@@ -2475,6 +2485,9 @@ export function OrcamentoMontar() {
       forma_pagamento: o.forma_pagamento ?? null,
       prazo_entrega: o.prazo_entrega ?? null,
     })
+    // Bloco "Observações" da proposta: volta com texto e foto ao reabrir pra editar.
+    setObservacoesTxt(o.observacoes ?? '')
+    setObservacoesFoto((o as any).observacoes_foto_url ?? null)
     // Preenche dados do cliente no preview (cabeçalho do orçamento)
     if (o.cliente_dados) {
       setClienteDados({ nome: o.cliente_nome, ...o.cliente_dados } as PreviewClienteDados)
@@ -3236,6 +3249,10 @@ export function OrcamentoMontar() {
                 acessorios={acessoriosFinal}
                 valorAcessorios={valorAcessoriosFinal}
                 fotoPrincipal={finameMode ? null : fotoPrincipal}
+                observacoesExtra={observacoesTxt || null}
+                observacoesFoto={finameMode ? null : observacoesFoto}
+                onUpdateObservacoes={(t) => setObservacoesTxt(t)}
+                onUpdateObservacoesFoto={(f) => setObservacoesFoto(f)}
                 onAddAcessorios={finameMode ? undefined : () => setAcessoriosOpen(true)}
                 onAddItem={finameMode ? undefined : () => {
                   // Mobile: alterna pro tab Catálogo (que tava escondido)
@@ -3516,6 +3533,8 @@ export function OrcamentoMontar() {
           totalEquip: totalEquipFinal,
           totalGeral: totalGeralFinal,
           fotoPrincipal: finameMode ? null : fotoPrincipal,
+          observacoesExtra: observacoesTxt.trim() || null,
+          observacoesFoto: finameMode ? null : observacoesFoto,
           finameMode,
           // Data do cabeçalho escolhida na prévia (BR). Vazio = modal usa hoje.
           dataEmissao: dataEmissaoTxt || null,

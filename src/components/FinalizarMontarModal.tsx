@@ -93,6 +93,9 @@ export interface CarrinhoSnapshot {
   totalEquip: number          // itens + acessórios (= "VALOR TOTAL DE EQUIPAMENTOS")
   totalGeral: number          // totalEquip + totalMotores
   fotoPrincipal?: string | null
+  // Bloco "Observações" escrito na PRÉVIA enquanto monta (texto livre + 1 foto/rascunho).
+  observacoesExtra?: string | null
+  observacoesFoto?: string | null   // dataURL enquanto monta; vira URL pública ao salvar
   // Data do cabeçalho (DD/MM/AAAA) escolhida pelo vendedor na prévia.
   // null/ausente = usa a data de hoje (comportamento legado).
   dataEmissao?: string | null
@@ -374,6 +377,15 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       setPgCustom(initialModal.forma_pagamento)
     }
   }, [open, initialModal])
+
+  // Observações escritas na PRÉVIA (bloco "Observações", enquanto monta) mandam no modal.
+  // Roda DEPOIS do efeito do initialModal de propósito: o que o vendedor acabou de digitar
+  // na tela vale mais que o texto que veio do orçamento salvo.
+  useEffect(() => {
+    if (!open) return
+    if (snapshot.observacoesExtra != null) setObservacoes(snapshot.observacoesExtra)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   // Reseta número quando modal abre (pra não reusar número de abertura anterior)
   useEffect(() => {
@@ -726,6 +738,34 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         }
       }
 
+      // Upload da foto do bloco "Observações" (mesmo caminho da foto principal).
+      // Falha no upload NÃO derruba o orçamento: a proposta sai sem a imagem.
+      let observacoesFotoUrl: string | null = null
+      if (snapshot.observacoesFoto) {
+        if (snapshot.observacoesFoto.startsWith('data:')) {
+          try {
+            setStep('Subindo foto das observações...', 9)
+            const res = await fetch(snapshot.observacoesFoto)
+            const blob = await res.blob()
+            const ext = blob.type.includes('png') ? 'png' : 'jpg'
+            const storagePath = `orcamentos/observacoes-${Date.now()}.${ext}`
+            const { error: upErr } = await supabase.storage
+              .from('catalogo-fotos')
+              .upload(storagePath, blob, { contentType: blob.type, upsert: true })
+            if (upErr) {
+              console.warn('Falha upload foto observações:', upErr.message)
+            } else {
+              const { data: pubData } = supabase.storage.from('catalogo-fotos').getPublicUrl(storagePath)
+              observacoesFotoUrl = pubData?.publicUrl ?? null
+            }
+          } catch (e) {
+            console.warn('Falha upload foto observações:', (e as Error).message)
+          }
+        } else {
+          observacoesFotoUrl = snapshot.observacoesFoto
+        }
+      }
+
       const stepLabel = saveMode === 'alt' ? 'Criando alteração...' : saveMode === 'update' && editingId ? 'Atualizando orçamento no banco...' : 'Salvando orçamento no banco...'
       setStep(stepLabel, 10)
       // Modo edição vs criação: 'update'+editingId → UPDATE (mantém numero/sequencial), 'alt' → ALT, senão INSERT
@@ -760,6 +800,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         // null = cai no default histórico (5 linhas) na hora de renderizar
         obs_por_conta: snapshot.obsPorConta ?? null,
         foto_principal_url: fotoPrincipalUrl,
+        observacoes_foto_url: observacoesFotoUrl,
         // Persistência (migration 2026-06-10): frete, desconto, tensão e marca dos
         // motores agora sobrevivem ao reabrir/editar (antes só viviam no rascunho local).
         frete_tipo: snapshot.termsInline?.freteTipo ?? null,
@@ -847,6 +888,9 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           validadeDias: snapshot.termsInline?.validadeDias ?? null,
         },
         observacoesExtra: observacoes.trim() || null,
+        // Foto do bloco "Observações": já subiu pro Storage, usa a URL pública (o dataURL
+        // inteiro no HTML deixaria o Puppeteer/DOCX pesados à toa).
+        observacoesFoto: observacoesFotoUrl ?? snapshot.observacoesFoto ?? null,
         obsPorConta: snapshot.obsPorConta ?? null,
         fotoPrincipal: snapshot.fotoPrincipal ?? null,
         // Edições inline da preview — mantém PDF/DOCX idênticos à preview
@@ -912,6 +956,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           dataVenda: snapshot.termsInline?.dataVenda || (pgDataVenda ? formaPgOut.data_venda : null) || null,
           prazoEntrega: snapshot.termsInline?.prazoEntrega || prazoEntrega.trim() || null,
           observacoes: observacoes.trim() || null,
+          observacoesFoto: observacoesFotoUrl ?? null,   // URL pública (já subiu pro Storage)
           obsPorConta: snapshot.obsPorConta ?? null,
           vendedorNome: profile?.display_name || 'Vendedor',
           // Componentes adicionais (painel, frete, Difal): entram no totalProposta,

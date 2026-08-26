@@ -155,6 +155,13 @@ export interface OrcamentoPreviewProps {
   onUpdateObsPorConta?: (linhas: string[]) => void
   fotoPrincipal?: string | null  // dataURL ou URL — renderiza foto grande antes dos items
 
+  // Bloco "Observações" (opcional) — texto livre + UMA foto (rascunho, croqui, foto do
+  // local). Fica logo ACIMA de "Nossas Redes Sociais" e SAI na proposta do cliente.
+  // Vazio (sem texto e sem foto) = a seção inteira some do documento.
+  observacoesFoto?: string | null            // dataURL (enquanto monta) ou URL pública (salvo)
+  onUpdateObservacoes?: (texto: string) => void
+  onUpdateObservacoesFoto?: (dataUrlOuNull: string | null) => void
+
   // Modo render: esconde botões interativos (pra capturar pra PDF limpo)
   renderMode?: boolean
 
@@ -383,6 +390,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     acessorios, valorAcessorios,
     numero, dataEmissao, onUpdateDataEmissao, cliente, terms, observacoesExtra, fotoPrincipal,
     obsPorConta = null, onUpdateObsPorConta,
+    observacoesFoto = null, onUpdateObservacoes, onUpdateObservacoesFoto,
     renderMode = false,
     finameMode = false,
     finameSomaItens, onFinameAceitarTotal,
@@ -2913,6 +2921,85 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             })()}
           </div>
 
+          {/* OBSERVAÇÕES — anotação livre desta proposta + UMA foto (rascunho/croqui/foto do
+              local). Some inteira do documento quando não tem texto nem foto: é opcional. */}
+          {(() => {
+            const podeEditarObs = !renderMode && (!!onUpdateObservacoes || !!onUpdateObservacoesFoto)
+            const temTexto = !!observacoesExtra && observacoesExtra.trim().length > 0
+            if (!temTexto && !observacoesFoto && !podeEditarObs) return null
+            const escolherFoto = () => {
+              const inp = document.createElement('input')
+              inp.type = 'file'
+              inp.accept = 'image/*'
+              inp.onchange = () => {
+                const f = inp.files?.[0]
+                if (!f) return
+                const r = new FileReader()
+                r.onload = () => onUpdateObservacoesFoto?.(r.result as string)
+                r.readAsDataURL(f)
+              }
+              inp.click()
+            }
+            return (
+              <div data-no-break>
+                <SectionHeader>Observações</SectionHeader>
+
+                {observacoesFoto && (
+                  <div className="relative group/obsfoto mb-2 inline-block max-w-full">
+                    <img
+                      src={observacoesFoto}
+                      alt="Observações desta proposta"
+                      className="max-h-[420px] w-auto max-w-full rounded border border-gray-200 object-contain"
+                    />
+                    {podeEditarObs && onUpdateObservacoesFoto && (
+                      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover/obsfoto:opacity-100 transition print:hidden">
+                        <button
+                          type="button"
+                          onClick={escolherFoto}
+                          className="text-[12px] bg-emerald-600/90 text-white px-2 py-1 rounded shadow hover:bg-emerald-700"
+                        >
+                          Trocar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onUpdateObservacoesFoto(null)}
+                          className="text-[12px] bg-red-600/90 text-white px-2 py-1 rounded shadow hover:bg-red-700"
+                        >
+                          ✕ Remover
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {podeEditarObs && onUpdateObservacoes ? (
+                  <textarea
+                    key={observacoesExtra ?? ''}
+                    defaultValue={observacoesExtra ?? ''}
+                    onBlur={(e) => onUpdateObservacoes(e.target.value)}
+                    rows={temTexto ? Math.min(10, observacoesExtra!.split('\n').length + 1) : 2}
+                    placeholder="Anotação desta proposta (opcional) — se ficar vazio, a seção some do orçamento"
+                    className="w-full bg-transparent border border-dashed border-gray-300 hover:border-emerald-500 focus:border-emerald-600 focus:bg-yellow-50 rounded px-2 py-1 text-[14.5px] text-gray-800 leading-snug outline-none resize-y print:hidden"
+                  />
+                ) : temTexto ? (
+                  <div className="text-[14.5px] text-gray-800 leading-snug whitespace-pre-wrap">
+                    {observacoesExtra}
+                  </div>
+                ) : null}
+
+                {podeEditarObs && !observacoesFoto && onUpdateObservacoesFoto && (
+                  <button
+                    type="button"
+                    onClick={escolherFoto}
+                    className="mt-1 block w-full py-2 text-center border border-dashed border-emerald-300 rounded text-emerald-700 hover:bg-emerald-50 hover:border-emerald-500 transition cursor-pointer text-[14px] font-semibold print:hidden"
+                  >
+                    📷 + Anexar foto / rascunho (opcional)
+                  </button>
+                )}
+              </div>
+            )
+          })()}
+
           <div data-no-break>
             <SectionHeader>Nossas Redes Sociais</SectionHeader>
             <div className="text-[14.5px] text-gray-800 space-y-0.5">
@@ -3054,14 +3141,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             </div>
           </div>
 
-          {observacoesExtra && observacoesExtra.trim() && (
-            <div data-no-break>
-              <SectionHeader>Observações</SectionHeader>
-              <div className="text-[14.5px] text-gray-800 leading-snug whitespace-pre-wrap">
-                {observacoesExtra}
-              </div>
-            </div>
-          )}
+          {/* (Observações subiu pra ANTES de "Nossas Redes Sociais" — com foto junto.) */}
 
           <div data-no-break>
             <SectionHeader>Tributos</SectionHeader>
