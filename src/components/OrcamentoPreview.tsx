@@ -84,6 +84,14 @@ export interface PreviewClienteDados {
   email?: string | null
 }
 
+// Prazo de entrega "pronta entrega": o equipamento já está pronto, não há
+// contagem de dias. É gravado como TEXTO no mesmo campo prazo_entrega (que já é
+// texto livre), pra não precisar de coluna nova nem migração.
+export const PRONTA_ENTREGA_TXT = 'Pronta entrega'
+export function ehProntaEntrega(txt?: string | null): boolean {
+  return /pronta\s*entrega/i.test(txt || '')
+}
+
 export interface PreviewTerms {
   dataVenda?: string | null
   prazoEntrega?: string | null
@@ -2337,40 +2345,51 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       />
                     )
                   }
-                  // prazoEntrega → input numérico de dias + select úteis/corridos
+                  // prazoEntrega → input numérico de dias + select úteis/corridos/pronta entrega
                   if (key === 'prazoEntrega') {
                     // Parse: "90 dias (úteis)" → { dias: 90, tipo: 'uteis' }
                     const m = (valor || '').match(/^\s*(\d+)\s*dias?\s*\(\s*(úteis|uteis|corridos)\s*\)\s*$/i)
                     const dias = m ? parseInt(m[1], 10) : (valor && valor.trim() ? 0 : 90)
-                    const tipo: 'uteis' | 'corridos' = m && /corrido/i.test(m[2]) ? 'corridos' : 'uteis'
+                    // Pronta entrega não tem contagem de dias: o equipamento já
+                    // está pronto. Vira uma opção do MESMO seletor pra não sobrar
+                    // um "0 dias" sem sentido na proposta.
+                    const ehPronta = ehProntaEntrega(valor)
+                    const tipo: 'uteis' | 'corridos' | 'pronta' =
+                      ehPronta ? 'pronta' : (m && /corrido/i.test(m[2]) ? 'corridos' : 'uteis')
                     const tipoLabel = tipo === 'uteis' ? 'úteis' : 'corridos'
-                    const writeBack = (d: number, t: 'uteis' | 'corridos') => {
+                    const writeBack = (d: number, t: 'uteis' | 'corridos' | 'pronta') => {
+                      if (t === 'pronta') { onUpdateTerm(key, PRONTA_ENTREGA_TXT); return }
                       const tl = t === 'uteis' ? 'úteis' : 'corridos'
                       onUpdateTerm(key, `${d} dias (${tl})`)
                     }
                     return (
                       <span className="inline-flex items-center gap-1 align-baseline">
-                        <input
-                          type="number"
-                          min={1}
-                          max={365}
-                          value={dias || ''}
-                          onChange={e => {
-                            const d = parseInt(e.target.value, 10)
-                            if (!isNaN(d) && d > 0) writeBack(d, tipo)
-                          }}
-                          placeholder="90"
-                          className="bg-transparent border-b border-dashed border-gray-300 hover:border-emerald-500 focus:border-emerald-600 focus:outline-none px-1 w-[55px] text-center text-gray-800 tabular-nums"
-                        />
-                        <span className="text-gray-600">dias</span>
+                        {!ehPronta && (
+                          <>
+                            <input
+                              type="number"
+                              min={1}
+                              max={365}
+                              value={dias || ''}
+                              onChange={e => {
+                                const d = parseInt(e.target.value, 10)
+                                if (!isNaN(d) && d > 0) writeBack(d, tipo)
+                              }}
+                              placeholder="90"
+                              className="bg-transparent border-b border-dashed border-gray-300 hover:border-emerald-500 focus:border-emerald-600 focus:outline-none px-1 w-[55px] text-center text-gray-800 tabular-nums"
+                            />
+                            <span className="text-gray-600">dias</span>
+                          </>
+                        )}
                         <select
                           value={tipo}
-                          onChange={e => writeBack(dias || 90, e.target.value as 'uteis' | 'corridos')}
+                          onChange={e => writeBack(dias || 90, e.target.value as 'uteis' | 'corridos' | 'pronta')}
                           className="bg-transparent border border-gray-300 hover:border-emerald-500 focus:border-emerald-600 focus:outline-none rounded px-1.5 py-0 text-gray-800 cursor-pointer"
                           title="Tipo de contagem"
                         >
                           <option value="uteis">(úteis)</option>
                           <option value="corridos">(corridos)</option>
+                          <option value="pronta">{PRONTA_ENTREGA_TXT}</option>
                         </select>
                         {!valor && <span className="text-gray-400 italic text-xs ml-1">default: 90 dias {tipoLabel}</span>}
                       </span>
@@ -2510,6 +2529,10 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     }
                     // Extrai número de dias do prazo de entrega ("90 dias (úteis)" → 90)
                     function parsePrazoDias(txt: string): number {
+                      // Pronta entrega = zero dias. Sem esta linha o fallback de 90
+                      // valeria (não há dígito no texto) e a data da NF sairia 3
+                      // meses à frente num orçamento de entrega imediata.
+                      if (ehProntaEntrega(txt)) return 0
                       const m = (txt || '').match(/(\d+)\s*dias?/i)
                       return m ? parseInt(m[1], 10) : 90
                     }

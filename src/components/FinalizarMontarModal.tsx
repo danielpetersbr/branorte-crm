@@ -25,6 +25,7 @@ import { startGeneration, updateGeneration, finishGeneration } from '@/lib/gener
 import { supabase } from '@/lib/supabase'
 import { parseClienteText, titleCasePtBr } from '@/lib/parse-cliente-text'
 import { uploadOrcamentoViaServer } from '@/lib/orcamento-upload'
+import { nomeBase, nomeBaseWhatsApp, sanitizeNomeArquivo, MAX_DESCRICAO } from '@/lib/orcamento-nome-arquivo'
 
 // Envolve uma promise num timeout que REJEITA se estourar. Usado nas operações de
 // File System Access sobre o Z:\ (Google Drive File Stream): num PC com o drive
@@ -166,38 +167,6 @@ interface Props {
 
 function formatBRL(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
-}
-
-function sanitizeNomeArquivo(s: string): string {
-  // Sanitize: remove acentos/cedilha + chars proibidos.
-  // Por que normalizar acentos: Supabase Storage rejeita URLs com chars
-  // unicode no path (fastify quebra com FST_ERR_BAD_URL: "is not a valid url
-  // component"). "GRÃOS" → "GRAOS". Mantém o nome do cliente legível no DB
-  // (esse sanitize só afeta o NOME DO ARQUIVO no storage/pasta Z:\).
-  return s.normalize('NFD').replace(/[̀-ͯ]/g, '')  // strip diacritics
-   .replace(/[<>:"/\\|?*]/g, '')                       // chars proibidos Windows/Storage
-   .slice(0, 80).trim()
-}
-
-function nomeBase(numero: string, cliente: string, descricao: string, isTest = false): string {
-  const desc = sanitizeNomeArquivo(descricao || 'Personalizado').slice(0, 100) || 'Personalizado'
-  if (isTest) {
-    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(11, 19)
-    return `TESTE-${ts}-${sanitizeNomeArquivo(cliente || 'cliente')} (${numero})`
-  }
-  // Se numero contém -ALT, move o ALT pro final do nome do arquivo
-  const altMatch = numero.match(/(-ALT\d*)$/)
-  if (altMatch) {
-    const numSemAlt = numero.replace(altMatch[0], '')
-    return `${numSemAlt} - ${sanitizeNomeArquivo(cliente || 'Sem cliente')} (${desc})${altMatch[0]}`
-  }
-  return `${numero} - ${sanitizeNomeArquivo(cliente || 'Sem cliente')} (${desc})`
-}
-
-// Nome curto pro filename enviado no WhatsApp: só numero + cliente (sem descricao).
-// O arquivo salvo localmente em Z:\ mantém o nome completo via nomeBase().
-function nomeBaseWhatsApp(numero: string, cliente: string): string {
-  return `${numero} - ${sanitizeNomeArquivo(cliente || 'Sem cliente')}`
 }
 
 // Auto-sugere descrição curta a partir dos itens do carrinho.
@@ -1429,7 +1398,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
               value={descricao}
               onChange={e => { setDescricao(e.target.value); setDescricaoTocada(true) }}
               placeholder={`Sugestão: ${sugestao} (clique pra usar)`}
-              maxLength={100}
+              maxLength={MAX_DESCRICAO}
               onClick={() => {
                 // Click no input vazio: se nao digitou nada ainda, oferece preencher
                 // com a sugestao sem precisar digitar.
@@ -1440,7 +1409,10 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
               }}
             />
             <div className="text-[10px] text-ink-faint mt-1">
-              Vai pro nome do arquivo: <span className="font-mono text-ink-muted">{numeroAtual || '...'} - {cliNome || 'Cliente'} ({descricao.trim() || sugestao})</span>
+              {/* Mostra o nome REAL (mesma funcao que grava o arquivo). Antes esta
+                  linha montava a string na mao — sem sanitizar e sem cortar —,
+                  entao prometia um nome que o arquivo nao ia ter. */}
+              Vai pro nome do arquivo: <span className="font-mono text-ink-muted">{nomeBase(numeroAtual || '...', cliNome || 'Cliente', descricao.trim() || sugestao)}</span>
               {!descricao.trim() && (
                 <span className="block text-warn mt-0.5">⚠ Vazio — vai perguntar na hora de salvar</span>
               )}
