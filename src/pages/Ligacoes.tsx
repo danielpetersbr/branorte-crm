@@ -1,12 +1,13 @@
 import { useState, useMemo } from 'react'
 import {
   PhoneCall, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, Users, UserCheck, ChevronDown, Video,
-  ArrowUp, ArrowDown, Minus, Sparkles, X, Filter,
+  ArrowUp, ArrowDown, Minus, Sparkles, X, Filter, Headphones,
 } from 'lucide-react'
 import {
   useLigacoesResumo, useLigacoesSerie, useLigacoesPorHora, useLigacoesDe,
+  useGravacoesDe, urlDoAudio,
   janelaDoPeriodo, janelaAnterior,
-  type Periodo, type LigacaoResumo, type Janela,
+  type Periodo, type LigacaoResumo, type Janela, type Ligacao, type Gravacao,
 } from '@/hooks/useLigacoes'
 import {
   EvolucaoLigacoes, LigacoesNoMes, ResultadoLigacoes, PorVendedor, TaxaPorVendedor,
@@ -557,6 +558,93 @@ function ResumoInteligente({ linhas, tot, totAnt, horas, serie, rotuloAnterior, 
   )
 }
 
+// ── UMA LIGAÇÃO NA LISTA ────────────────────────────────────────────────────
+// Quando existe gravação, a linha ganha o botão de ouvir e o texto do que foi
+// dito. Sem gravação ela fica EXATAMENTE como era — nada de espaço reservado
+// nem ícone apagado: a gravação nasce desligada, então "sem áudio" é o normal,
+// não uma falha a ser sinalizada.
+function LinhaLigacao({ l, gravacao }: { l: Ligacao; gravacao?: Gravacao }) {
+  const d = desfecho(l.estado, l.outgoing)
+  const [aberto, setAberto] = useState(false)
+  const [url, setUrl] = useState<string | null>(null)
+  const [erro, setErro] = useState(false)
+
+  const temTexto = !!(gravacao?.transcricao || '').trim()
+  const temAudio = !!gravacao?.caminho_audio
+  const temAlgo = temTexto || temAudio
+
+  async function abrir() {
+    const vaiAbrir = !aberto
+    setAberto(vaiAbrir)
+    // ⚠️ A URL assinada só é pedida no clique, e uma vez. Assinar as 300 da
+    // lista de saída seriam 300 requisições pra mostrar um ícone — e a maioria
+    // nunca é ouvida.
+    if (vaiAbrir && temAudio && !url && !erro) {
+      const u = await urlDoAudio(gravacao!.caminho_audio!)
+      if (u) setUrl(u); else setErro(true)
+    }
+  }
+
+  return (
+    <div className="text-[12px]">
+      <div className="flex items-center gap-x-2 gap-y-1 px-3 py-2 flex-wrap">
+        {l.outgoing
+          ? <PhoneOutgoing className="h-3.5 w-3.5 text-accent shrink-0" />
+          : <PhoneIncoming className="h-3.5 w-3.5 text-info shrink-0" />}
+        {l.is_video && <Video className="h-3.5 w-3.5 text-info shrink-0" />}
+        <span className="text-ink font-medium">{quemE(l)}</span>
+        {l.cliente_nome && l.cliente_fone && (
+          <span className="hidden sm:inline text-ink-faint tabular-nums">{fmtFone(l.cliente_fone)}</span>
+        )}
+        <span title={d.titulo} className={`text-[10px] px-1.5 py-0.5 rounded-full border ${d.cls} ${d.titulo ? 'cursor-help' : ''}`}>{d.label}</span>
+        {l.duracao_seg ? <span className="text-ink-muted tabular-nums">{fmtDur(l.duracao_seg)}</span> : null}
+        {temAlgo && (
+          <button
+            onClick={abrir}
+            className="inline-flex items-center gap-1 text-[10.5px] px-1.5 py-0.5 rounded-full border border-accent/30 text-accent hover:bg-accent/10 transition-colors"
+            title={temTexto ? 'Ouvir e ler o que foi dito' : 'Ouvir a ligação'}
+          >
+            <Headphones className="h-3 w-3" />
+            {temTexto ? 'gravada' : 'áudio'}
+            <ChevronDown className={`h-3 w-3 transition-transform ${aberto ? 'rotate-180' : ''}`} />
+          </button>
+        )}
+        <span className="flex-1" />
+        <span className="text-ink-faint tabular-nums shrink-0 hidden sm:inline">{fmtQuando(l.offer_time)}</span>
+        <span className="text-ink-faint tabular-nums shrink-0 sm:hidden">{fmtHora(l.offer_time)}</span>
+      </div>
+
+      {aberto && temAlgo && (
+        <div className="px-3 pb-3 -mt-0.5 space-y-2">
+          {temAudio && (
+            erro
+              ? <p className="text-[11px] text-ink-faint">Não consegui abrir o áudio desta ligação.</p>
+              : url
+                ? <audio controls preload="none" src={url} className="w-full h-8" />
+                : <p className="text-[11px] text-ink-faint">Abrindo o áudio…</p>
+          )}
+          {temTexto && (
+            <div className="rounded-lg border border-border/60 bg-surface-2/40 p-2.5">
+              <p className="text-[10px] uppercase tracking-wide text-ink-faint mb-1">O que foi dito</p>
+              {/* ⚠️ Não é ata: é transcrição automática, com os erros dela. O
+                  rótulo abaixo existe pra ninguém tratar isso como prova. */}
+              <p className="text-[12px] text-ink-muted leading-relaxed whitespace-pre-wrap">
+                {gravacao!.transcricao}
+              </p>
+              <p className="text-[10px] text-ink-faint mt-1.5">
+                Transcrição automática — pode conter erros. O áudio é a fonte.
+              </p>
+            </div>
+          )}
+          {temAudio && !temTexto && (
+            <p className="text-[11px] text-ink-faint">Transcrição ainda não ficou pronta.</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Esqueleto() {
   return (
     <div className="space-y-3 animate-pulse">
@@ -635,6 +723,7 @@ function LinhaVendedor({ r, maxFez, janela, aberto, onToggle }: {
 }) {
   const [direcao, setDirecao] = useState<'tudo' | 'fez' | 'recebeu'>('tudo')
   const { data: bruta = [], isLoading } = useLigacoesDe(aberto ? r.vendedor : null, janela)
+  const { data: gravacoes = {} } = useGravacoesDe(aberto ? r.vendedor : null, janela)
   const lista = useMemo(() => bruta.filter(l =>
     direcao === 'tudo' || (direcao === 'fez' ? l.outgoing === true : l.outgoing === false)), [bruta, direcao])
   const taxa = r.fez >= MIN_LIGACOES_TAXA ? Math.round((r.atendidas_fez / r.fez) * 100) : null
@@ -742,26 +831,9 @@ function LinhaVendedor({ r, maxFez, janela, aberto, onToggle }: {
             <p className="text-[11.5px] text-ink-faint py-2">Nenhuma ligação no período.</p>
           ) : (
             <div className="rounded-xl border border-border/60 bg-surface divide-y divide-border/40 max-h-[420px] overflow-y-auto">
-              {lista.map(l => {
-                const d = desfecho(l.estado, l.outgoing)
-                return (
-                  <div key={l.call_id} className="flex items-center gap-x-2 gap-y-1 px-3 py-2 text-[12px] flex-wrap">
-                    {l.outgoing
-                      ? <PhoneOutgoing className="h-3.5 w-3.5 text-accent shrink-0" />
-                      : <PhoneIncoming className="h-3.5 w-3.5 text-info shrink-0" />}
-                    {l.is_video && <Video className="h-3.5 w-3.5 text-info shrink-0" />}
-                    <span className="text-ink font-medium">{quemE(l)}</span>
-                    {l.cliente_nome && l.cliente_fone && (
-                      <span className="hidden sm:inline text-ink-faint tabular-nums">{fmtFone(l.cliente_fone)}</span>
-                    )}
-                    <span title={d.titulo} className={`text-[10px] px-1.5 py-0.5 rounded-full border ${d.cls} ${d.titulo ? 'cursor-help' : ''}`}>{d.label}</span>
-                    {l.duracao_seg ? <span className="text-ink-muted tabular-nums">{fmtDur(l.duracao_seg)}</span> : null}
-                    <span className="flex-1" />
-                    <span className="text-ink-faint tabular-nums shrink-0 hidden sm:inline">{fmtQuando(l.offer_time)}</span>
-                    <span className="text-ink-faint tabular-nums shrink-0 sm:hidden">{fmtHora(l.offer_time)}</span>
-                  </div>
-                )
-              })}
+              {lista.map(l => (
+                <LinhaLigacao key={l.call_id} l={l} gravacao={gravacoes[l.call_id]} />
+              ))}
               {lista.length >= 300 && (
                 <p className="px-3 py-2 text-[11px] text-ink-faint">Mostrando as 300 mais recentes do período.</p>
               )}

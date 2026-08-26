@@ -194,6 +194,60 @@ export function useLigacoesPorHora(j: Janela, vendedor: string | null) {
   })
 }
 
+// ── Gravações ───────────────────────────────────────────────────────────────
+// O áudio da chamada, quando a extensão gravou. Nasce DESLIGADO (tabela
+// `ligacao_gravacao_config`), então na maioria das contas isto volta vazio —
+// e a tela tem que ficar igualzinha nesse caso, sem moldura de recurso ausente.
+
+export interface Gravacao {
+  call_id: string
+  vendedor_nome: string
+  duracao_seg: number | null
+  status: string
+  transcricao: string | null
+  caminho_audio: string | null
+}
+
+// ⚠️ Uma consulta pro vendedor inteiro, não uma por ligação. A lista mostra até
+// 300 chamadas; 300 consultas seria uma tempestade de requisições pra mostrar
+// um ícone de fone.
+export function useGravacoesDe(vendedor: string | null, j: Janela) {
+  return useQuery({
+    queryKey: ['ligacoes-gravacoes', vendedor, j.from, j.to],
+    enabled: !!vendedor,
+    queryFn: async (): Promise<Record<string, Gravacao>> => {
+      let q = supabase
+        .from('wa_ligacoes_gravacao')
+        .select('call_id,vendedor_nome,duracao_seg,status,transcricao,caminho_audio')
+        .eq('vendedor_nome', vendedor as string)
+        .limit(500)
+      if (j.from) q = q.gte('criado_em', j.from)
+      if (j.to) q = q.lt('criado_em', j.to)
+      const { data, error } = await q
+      // ⚠️ Não propaga erro: gravação é EXTRA. Se a tabela/RLS negar por
+      // qualquer motivo, a tela de ligações continua funcionando inteira — só
+      // sem os fones. Quebrar a régua do vendedor por causa de um adorno seria
+      // trocar o essencial pelo acessório.
+      if (error) return {}
+      const mapa: Record<string, Gravacao> = {}
+      for (const g of (data ?? []) as Gravacao[]) mapa[g.call_id] = g
+      return mapa
+    },
+    staleTime: 60_000,
+  })
+}
+
+// URL assinada, criada só quando alguém clica em ouvir.
+// ⚠️ O bucket é PRIVADO e a RLS do storage recorta por pasta do vendedor: quem
+// não é dono nem admin recebe erro aqui, e é assim que tem que ser.
+export async function urlDoAudio(caminho: string): Promise<string | null> {
+  const { data, error } = await supabase.storage
+    .from('ligacoes-audio')
+    .createSignedUrl(caminho, 60 * 60)   // 1h: o suficiente pra ouvir sem virar link eterno
+  if (error || !data?.signedUrl) return null
+  return data.signedUrl
+}
+
 // Lista detalhada de um vendedor. Só carrega quando alguém abre a linha — são
 // milhares de registros no total e ninguém olha todos de uma vez.
 export function useLigacoesDe(vendedor: string | null, j: Janela) {
