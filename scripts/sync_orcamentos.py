@@ -179,14 +179,20 @@ def extract_date(path):
 
 def extract_description(fname):
     base = re.sub(r'\.(docx?|pdf|txt)$', '', fname, flags=re.IGNORECASE)
-    base = re.sub(r'^\d{4}\s*[-–—]\s*\d{1,4}\s*[-–—]\s*', '', base)
+    # `\d{1,5}` pelo mesmo motivo do regex de oid: com 4 fixos, o nome de um
+    # orcamento de 5 digitos nao casava e o prefixo '2026 - 91927 - ' ficava
+    # COLADO no nome do equipamento/cliente.
+    base = re.sub(r'^\d{4}\s*[-–—]\s*\d{1,5}\s*[-–—]\s*', '', base)
     base = re.sub(r'\s*\(\d+\)\s*$', '', base)
     return base.strip() or None
 
 
 def extract_name(fname):
     base = re.sub(r'\.(docx?|pdf|txt)$', '', fname, flags=re.IGNORECASE)
-    base = re.sub(r'^\d{4}\s*[-–—]\s*\d{1,4}\s*[-–—]\s*', '', base)
+    # `\d{1,5}` pelo mesmo motivo do regex de oid: com 4 fixos, o nome de um
+    # orcamento de 5 digitos nao casava e o prefixo '2026 - 91927 - ' ficava
+    # COLADO no nome do equipamento/cliente.
+    base = re.sub(r'^\d{4}\s*[-–—]\s*\d{1,5}\s*[-–—]\s*', '', base)
     base = re.sub(r'\s*\(.*', '', base)
     base = re.sub(r'\s+(trifásico|monofásico|trifasico|monofasico|Código Finame|codigo finame).*', '', base, flags=re.IGNORECASE)
     return base.strip() or None
@@ -271,7 +277,25 @@ def main():
             # vendedor no nome do arquivo (ex: "Jardel.txt", "- Gustavo.docx")
             docx_fnames_map = {}
             for fname in files:
-                m = re.match(r'^(\d{4})\s*[-–—]\s*(\d{1,4})', fname)
+                # ⚠️ `(?!\d)` NAO E ENFEITE — sem ele o regex trunca em silencio.
+                #
+                # Era `(\d{1,4})` SEM limite depois. Em "2026 - 91927 - Rio Bandeira..."
+                # ele casava so "9192" e montava o oid "2026-9192". Pior: 91927, 91928 e
+                # 91929 colapsavam TODOS no mesmo oid, e 91930/91931/91932/91933 noutro —
+                # sete orcamentos virando duas entradas, sem erro nenhum. (Medido em
+                # 26/08/2026 contra os 7.251 arquivos reais da pasta de 2026.)
+                #
+                # ⚠️ Nao usar `[-–—]` como limite: existe arquivo real sem traco depois
+                # do numero ("2026 - 0081 EJCG Agropecuaria LTDA (...)"), so espaco —
+                # exigir traco fazia ele PARAR de ser indexado. Testado: com `(?!\d)`
+                # sao 0 regressoes e o EJCG volta a entrar.
+                #
+                # ⚠️ Este indexador NAO alimenta a numeracao (nao escreve
+                # pasta_orcamento_index, e ninguem le orcamentos_files pra calcular
+                # numero novo) — conferido. Por isso ele PODE aceitar 5 digitos: o
+                # proposito dele e nao perder arquivo de vista. Quem barra numero
+                # absurdo e o CHECK chk_sequencial_faixa + os tetos no app.
+                m = re.match(r'^(\d{4})\s*[-–—]\s*(\d{1,5})(?!\d)', fname)
                 if not m:
                     continue
                 oid = f"{m.group(1)}-{m.group(2).zfill(4)}"
