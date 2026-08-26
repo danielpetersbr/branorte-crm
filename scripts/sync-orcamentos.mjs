@@ -200,7 +200,22 @@ async function scanPastaUpdateIndex() {
 
   // Estrutura real: Orçamentos YYYY/<M - NomeMes>/<arquivos>.pdf|docx
   // Varre TODAS as subpastas de mes (1 - Janeiro até 12 - Dezembro).
-  const re = new RegExp(`^${ano}\\s*-?\\s*(\\d{3,5})\\b`)
+  //
+  // ⚠️ ERA `(\d{3,5})` — teto 99999 — e ESTE regex era o único componente do sistema
+  // capaz de produzir um número de orçamento de 5 dígitos. Em 26/08/2026 um nome de
+  // arquivo fez este scan gravar 91926 no `pasta_orcamento_index`; o app usa esse
+  // índice como base do próximo número, e o `MAX+1` propagou o erro por 5 orçamentos
+  // (~R$ 710 mil) que já foram enviados a clientes.
+  //
+  // O leitor equivalente do navegador (src/lib/orcamento-folder-scan.ts) sempre usou
+  // 4 dígitos. Os dois discordavam, e a discordância era o buraco.
+  //
+  // 4 dígitos é o formato real: o nome do arquivo é gerado com padStart(4), e em
+  // 1.441 orçamentos de 2026 o maior legítimo é 2300.
+  const re = new RegExp(`^${ano}\\s*-?\\s*(\\d{3,4})\\b`)
+  // Cinto e suspensório: mesmo com o regex certo, nada acima disto entra no índice.
+  // Um número absurdo aqui não atrasa um orçamento — ele corrompe TODOS os próximos.
+  const SEQ_ABSURDO = 10000
   let maxSeq = 0
   let maxArq = ''
   const seqsNoZ = []
@@ -217,6 +232,12 @@ async function scanPastaUpdateIndex() {
       const m = f.match(re)
       if (m) {
         const n = parseInt(m[1], 10)
+        // Arquivo com número fora da faixa não entra NEM no índice NEM na marcação de
+        // entregue_z: ele não representa um orçamento nosso.
+        if (!Number.isFinite(n) || n <= 0 || n >= SEQ_ABSURDO) {
+          log(`scan: IGNORANDO numero fora da faixa (${n}) em ${sub}/${f}`)
+          continue
+        }
         seqsNoZ.push(n)
         if (n > maxSeq) { maxSeq = n; maxArq = `${sub}/${f}` }
       }

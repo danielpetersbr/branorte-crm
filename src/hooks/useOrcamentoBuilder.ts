@@ -127,6 +127,8 @@ export interface OrcamentoGerado {
   total_motores: number
   total_proposta: number
   componentes_extras: Array<{ id: string; nome: string; valor: number }> | null
+  // Bloco de montagem (roadmap #69). O "valor" SOMA no total_proposta.
+  montagem: { titulo: string; itens: string[]; valor: number; tituloCliente: string; itensCliente: string[] } | null
   // Motores avulsos (sem equipamento host) — migration 2026-07-07
   motores_avulsos: Array<{ id: string; cv: number; polos: number; qtd: number; por_conta_cliente?: boolean }> | null
   balanca_dispensada: boolean | null
@@ -368,6 +370,35 @@ export function useOrcamentosGerados(filters?: { vendedor_nome?: string; status?
   })
 }
 
+/*
+ * TETO DE SANIDADE DO NÚMERO DE ORÇAMENTO
+ *
+ * Em 26/08/2026 a numeração pulou de `2026 - 2300` para `2026 - 91927` e seguiu
+ * subindo. Cinco propostas (~R$ 710 mil) saíram pro cliente com número errado.
+ *
+ * O mecanismo: o número novo é `maior(índice da pasta, MAX do banco) + 1`. Isso
+ * significa que UM número errado envenena todos os seguintes PRA SEMPRE — não há
+ * como o sistema se recuperar sozinho.
+ *
+ * De onde veio: dois leitores de nome de arquivo com regex DIFERENTES.
+ *   • `src/lib/orcamento-folder-scan.ts` (navegador) aceita 4 dígitos  → teto 9999
+ *   • `scripts/sync-orcamentos.mjs`      (servidor)  aceitava 3 a 5    → teto 99999
+ * O do servidor é quem escreve `pasta_orcamento_index`. Era o único componente do
+ * sistema capaz de produzir um número de 5 dígitos.
+ *
+ * ⚠️ Por que 10.000 e não outro valor: o formato do arquivo é `padStart(4)` desde
+ * sempre, e em 1.441 orçamentos de 2026 o maior legítimo é 2300 — NENHUM orçamento
+ * verdadeiro da história passou de 4 dígitos. Um ano precisaria de 10 mil propostas
+ * pra encostar aqui; hoje fazemos ~2,3 mil. E a numeração ZERA na virada do ano,
+ * então o teto não acumula.
+ *
+ * ⚠️ Isto NÃO corrige os 5 já emitidos, e é de propósito: eles já foram enviados ao
+ * cliente com o número impresso no PDF. Renumerar criaria divergência entre o nosso
+ * registro e o documento que o cliente tem na mão — pior que o buraco na sequência.
+ * Eles ficam como estão e passam a ser ignorados no cálculo do próximo.
+ */
+export const SEQ_ABSURDO = 10000
+
 // Busca proximo numero (lê do banco e calcula 2026 - XXXX)
 export async function obterProximoNumero(): Promise<{ ano: number; sequencial: number; numero: string }> {
   const ano = new Date().getFullYear()
@@ -382,16 +413,22 @@ export async function obterProximoNumero(): Promise<{ ano: number; sequencial: n
       .eq('ano', ano)
       .maybeSingle(),
     // Lê o MAX sequencial do banco (fonte autoritativa)
+    // ⚠️ `.lt(SEQ_ABSURDO)` ignora linhas corrompidas: sem isto, os 5 orçamentos de
+    // 26/08 (91927-91931) seriam eternamente o "maior do banco" e todo orçamento
+    // novo continuaria na casa dos 91 mil.
     supabase
       .from('orcamentos_gerados')
       .select('sequencial')
       .eq('ano', ano)
+      .lt('sequencial', SEQ_ABSURDO)
       .order('sequencial', { ascending: false })
       .limit(1)
       .maybeSingle(),
   ])
 
-  const seqPasta = Number(pastaResult.data?.ultimo_sequencial ?? 0)
+  // O índice da pasta também passa pelo teto — foi por ele que o veneno entrou.
+  const seqPastaBruto = Number(pastaResult.data?.ultimo_sequencial ?? 0)
+  const seqPasta = seqPastaBruto < SEQ_ABSURDO ? seqPastaBruto : 0
   const seqDb = Number(dbResult.data?.sequencial ?? 0)
   const seq = Math.max(seqPasta, seqDb) + 1
 
@@ -517,6 +554,7 @@ export interface CriarOrcamentoInput {
   componentes_extras?: Array<{ id: string; nome: string; valor: number }> | null
   // Motores avulsos (sem equipamento host) — migration 2026-07-07
   motores_avulsos?: Array<{ id: string; cv: number; polos: number; qtd: number; por_conta_cliente?: boolean }> | null
+  montagem?: { titulo: string; itens: string[]; valor: number; tituloCliente: string; itensCliente: string[] } | null
   // Vendedor dispensou a balança auto-adicionada pela Caçamba de Pesagem.
   balanca_dispensada?: boolean | null
   // Foto principal do orçamento (URL pública no Storage após upload)
@@ -548,18 +586,24 @@ export function useCriarOrcamento() {
       const fromBank = await obterProximoNumero()
       const fromOverride = input.numero_override
       let ano = fromOverride?.ano ?? fromBank.ano
-      let sequencial = Math.max(
-        fromOverride?.sequencial ?? 0,
-        fromBank.sequencial,
-      )
+      // ⚠️ O override vem do scan da PASTA LOCAL do vendedor (botão "Sincronizar com
+      // pasta"). Uma pasta com arquivo de nome estranho não pode ditar o número —
+      // passa pelo mesmo teto. Ver SEQ_ABSURDO.
+      const seqOverride = (fromOverride?.sequencial ?? 0) < SEQ_ABSURDO
+        ? (fromOverride?.sequencial ?? 0) : 0
+      let sequencial = Math.max(seqOverride, fromBank.sequencial)
       let numero = `${ano} - ${String(sequencial).padStart(4, '0')}`
 
       // Resolve conflito: 1 query pra pegar o MAX real do banco e pular colisões
+      // ⚠️ `.lt(SEQ_ABSURDO)` junto com o `.gte`: sem ele, esta query enxergava as
+      // linhas corrompidas e o "pula pro próximo livre" pulava PRA CIMA DELAS —
+      // era este o passo que propagava o erro de um orçamento pro seguinte.
       const { data: maxRow } = await supabase
         .from('orcamentos_gerados')
         .select('sequencial')
         .eq('ano', ano)
         .gte('sequencial', sequencial)
+        .lt('sequencial', SEQ_ABSURDO)
         .order('sequencial', { ascending: false })
         .limit(1)
         .maybeSingle()
@@ -610,6 +654,7 @@ export function useCriarOrcamento() {
         motores_avulsos: input.motores_avulsos ?? null,
         balanca_dispensada: input.balanca_dispensada ?? false,
         obs_por_conta: input.obs_por_conta ?? null,
+        montagem: input.montagem ?? null,
         foto_principal_url: input.foto_principal_url ?? null,
         observacoes_foto_url: input.observacoes_foto_url ?? null,
         // Termos inline (fix: antes sumiam no INSERT — só o UPDATE salvava).
