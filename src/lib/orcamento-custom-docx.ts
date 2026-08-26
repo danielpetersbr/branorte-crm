@@ -83,7 +83,11 @@ export interface GerarCustomDocxOpts {
   obsPorConta?: string[] | null
   vendedorNome?: string
   fotoPrincipal?: string | null
+  // Foto/rascunho do bloco "Observações" (URL pública). Opcional.
+  observacoesFoto?: string | null
   componentesExtras?: Array<{ nome: string; valor: number }>
+  // Bloco de montagem (roadmap #69). O valor ja vem somado no totalProposta.
+  montagem?: { titulo: string; itens: string[]; valor: number; tituloCliente: string; itensCliente: string[] } | null
   desconto?: { tipo: 'pct' | 'valor'; valor: number; base?: 'total' | 'equipamento'; manterValorParcelas?: boolean } | null
   parcelas?: CustomDocxParcela[]
   vendedoresContato?: Array<{ nome: string; telefone: string }>
@@ -632,6 +636,53 @@ function buildComponentesExtras(componentes: Array<{ nome: string; valor: number
         })],
       }),
     ],
+  })
+}
+
+// MONTAGEM DOS ITENS ORÇADOS (roadmap #69). Um quadro por bloco: o do
+// fabricante leva "Valor total" (que já está somado no total da proposta); o do
+// cliente é só a lista do que fica por conta dele.
+function buildMontagemQuadro(titulo: string, itens: string[], valor: number | null): Table {
+  const cabecalho = new Paragraph({
+    spacing: { after: 100 },
+    children: [r(`MONTAGEM DOS ITENS ORÇADOS ACIMA: (${titulo})`, { bold: true, size: 20, color: '111827' })],
+  })
+  const linhas: Paragraph[] = itens
+    .filter(t => (t || '').trim())
+    .map(t => new Paragraph({
+      spacing: { after: 40 },
+      children: [r(`- ${t.trim()}`, { size: 20, color: '374151' })],
+    }))
+  const filhos: Paragraph[] = [cabecalho, ...linhas]
+  if (valor != null) {
+    filhos.push(new Paragraph({
+      tabStops: [{ type: TabStopType.RIGHT, position: 9600 }],
+      spacing: { before: 100, after: 20 },
+      border: { top: { style: BorderStyle.SINGLE, size: 6, color: 'D1D5DB', space: 4 } },
+      children: [
+        r('Valor total', { bold: true, size: 20, color: '111827' }),
+        new TextRun({ text: '\t', size: 20 }),
+        r(`R$ ${formatBRL(valor)}`, { bold: true, size: 20, color: '111827' }),
+      ],
+    }))
+  }
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: {
+      top: { style: BorderStyle.SINGLE, size: 8, color: '374151' },
+      bottom: { style: BorderStyle.SINGLE, size: 8, color: '374151' },
+      left: { style: BorderStyle.SINGLE, size: 8, color: '374151' },
+      right: { style: BorderStyle.SINGLE, size: 8, color: '374151' },
+      insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+      insideVertical: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+    },
+    rows: [new TableRow({
+      cantSplit: true,
+      children: [new TableCell({
+        margins: { top: 140, bottom: 140, left: 200, right: 200 },
+        children: filhos,
+      })],
+    })],
   })
 }
 
@@ -1261,6 +1312,12 @@ export async function gerarOrcamentoCustomDocx(opts: GerarCustomDocxOpts): Promi
   }
 
   // Componentes extras
+  if (opts.montagem) {
+    blocos.push(buildMontagemQuadro(opts.montagem.titulo, opts.montagem.itens, Number(opts.montagem.valor) || 0))
+    if (opts.montagem.itensCliente?.some(t => (t || '').trim())) {
+      blocos.push(buildMontagemQuadro(opts.montagem.tituloCliente, opts.montagem.itensCliente, null))
+    }
+  }
   if (opts.componentesExtras && opts.componentesExtras.length > 0) {
     blocos.push(buildComponentesExtras(opts.componentesExtras))
     blocos.push(paragrafoVazio(80))
@@ -1312,14 +1369,25 @@ export async function gerarOrcamentoCustomDocx(opts: GerarCustomDocxOpts): Promi
   blocos.push(sectionHeader('Garantia'))
   blocos.push(...buildGarantia())
 
-  // Observações livres do vendedor (se preencheu)
-  if (opts.observacoes && opts.observacoes.trim()) {
-    blocos.push(sectionHeader('Observações'))
-    blocos.push(new Paragraph({
-      alignment: AlignmentType.JUSTIFIED,
-      spacing: { after: 100 },
-      children: [r(opts.observacoes, { size: 17, color: '374151' })],
-    }))
+  // Observações livres do vendedor — texto e/ou foto (rascunho/croqui). Se não
+  // preencheu nenhum dos dois, a seção nem aparece no documento.
+  {
+    const temTextoObs = !!opts.observacoes && opts.observacoes.trim().length > 0
+    if (temTextoObs || opts.observacoesFoto) {
+      blocos.push(sectionHeader('Observações'))
+      if (opts.observacoesFoto) {
+        // Reusa o mesmo construtor da foto principal (moldura + centralizada).
+        // Imagem inacessível devolve vazio: a seção sai só com o texto.
+        blocos.push(...await buildFotoPrincipal(opts.observacoesFoto))
+      }
+      if (temTextoObs) {
+        blocos.push(new Paragraph({
+          alignment: AlignmentType.JUSTIFIED,
+          spacing: { after: 100 },
+          children: [r(opts.observacoes!, { size: 17, color: '374151' })],
+        }))
+      }
+    }
   }
 
   // Assinaturas

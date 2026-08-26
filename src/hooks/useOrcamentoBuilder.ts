@@ -127,6 +127,8 @@ export interface OrcamentoGerado {
   total_motores: number
   total_proposta: number
   componentes_extras: Array<{ id: string; nome: string; valor: number }> | null
+  // Bloco de montagem (roadmap #69). O "valor" SOMA no total_proposta.
+  montagem: { titulo: string; itens: string[]; valor: number; tituloCliente: string; itensCliente: string[] } | null
   // Motores avulsos (sem equipamento host) — migration 2026-07-07
   motores_avulsos: Array<{ id: string; cv: number; polos: number; qtd: number; por_conta_cliente?: boolean }> | null
   balanca_dispensada: boolean | null
@@ -145,6 +147,7 @@ export interface OrcamentoGerado {
   status: 'rascunho' | 'enviado' | 'aprovado' | 'perdido'
   pdf_url: string | null
   foto_principal_url: string | null
+  observacoes_foto_url: string | null
   enviado_em: string | null
   created_at: string
   updated_at: string
@@ -516,10 +519,13 @@ export interface CriarOrcamentoInput {
   componentes_extras?: Array<{ id: string; nome: string; valor: number }> | null
   // Motores avulsos (sem equipamento host) — migration 2026-07-07
   motores_avulsos?: Array<{ id: string; cv: number; polos: number; qtd: number; por_conta_cliente?: boolean }> | null
+  montagem?: { titulo: string; itens: string[]; valor: number; tituloCliente: string; itensCliente: string[] } | null
   // Vendedor dispensou a balança auto-adicionada pela Caçamba de Pesagem.
   balanca_dispensada?: boolean | null
   // Foto principal do orçamento (URL pública no Storage após upload)
   foto_principal_url?: string | null
+  // Foto/rascunho do bloco "Observações" da proposta (URL pública, opcional)
+  observacoes_foto_url?: string | null
   // Seção "Observação — por conta do cliente" editável (null = default histórico)
   obs_por_conta?: string[] | null
   // Termos inline da preview (migration 2026-06-10). ANTES eram DROPADOS no INSERT
@@ -607,7 +613,9 @@ export function useCriarOrcamento() {
         motores_avulsos: input.motores_avulsos ?? null,
         balanca_dispensada: input.balanca_dispensada ?? false,
         obs_por_conta: input.obs_por_conta ?? null,
+        montagem: input.montagem ?? null,
         foto_principal_url: input.foto_principal_url ?? null,
+        observacoes_foto_url: input.observacoes_foto_url ?? null,
         // Termos inline (fix: antes sumiam no INSERT — só o UPDATE salvava).
         frete_tipo: input.frete_tipo ?? null,
         frete_txt: input.frete_txt ?? null,
@@ -728,6 +736,7 @@ export function useCriarAlteracao() {
         balanca_dispensada: rest.balanca_dispensada ?? false,
         obs_por_conta: rest.obs_por_conta ?? null,
         foto_principal_url: rest.foto_principal_url ?? null,
+        observacoes_foto_url: rest.observacoes_foto_url ?? null,
         // Termos inline (fix: antes sumiam no INSERT da ALT também).
         frete_tipo: rest.frete_tipo ?? null,
         frete_txt: rest.frete_txt ?? null,

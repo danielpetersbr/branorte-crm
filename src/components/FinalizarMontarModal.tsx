@@ -26,6 +26,7 @@ import { supabase } from '@/lib/supabase'
 import { parseClienteText, titleCasePtBr } from '@/lib/parse-cliente-text'
 import { uploadOrcamentoViaServer } from '@/lib/orcamento-upload'
 import { nomeBase, nomeBaseWhatsApp, sanitizeNomeArquivo, MAX_DESCRICAO } from '@/lib/orcamento-nome-arquivo'
+import type { PreviewMontagem } from '@/components/OrcamentoPreview'
 
 // Envolve uma promise num timeout que REJEITA se estourar. Usado nas operações de
 // File System Access sobre o Z:\ (Google Drive File Stream): num PC com o drive
@@ -93,6 +94,9 @@ export interface CarrinhoSnapshot {
   totalEquip: number          // itens + acessórios (= "VALOR TOTAL DE EQUIPAMENTOS")
   totalGeral: number          // totalEquip + totalMotores
   fotoPrincipal?: string | null
+  // Bloco "Observações" escrito na PRÉVIA enquanto monta (texto livre + 1 foto/rascunho).
+  observacoesExtra?: string | null
+  observacoesFoto?: string | null   // dataURL enquanto monta; vira URL pública ao salvar
   // Data do cabeçalho (DD/MM/AAAA) escolhida pelo vendedor na prévia.
   // null/ausente = usa a data de hoje (comportamento legado).
   dataEmissao?: string | null
@@ -134,6 +138,8 @@ export interface CarrinhoSnapshot {
   balancaDispensada?: boolean
   // Seção "Observação — por conta do cliente" editável. null = default histórico.
   obsPorConta?: string[] | null
+  // Bloco de montagem (roadmap #69). O valor JA vem somado no totalGeral.
+  montagem?: PreviewMontagem | null
   // Modo FINAME ligado: os itens já vêm transformados (nomes FINAME, motor/acessórios
   // embutidos, sem foto), motoresAgrupados/acessorios/componentesExtras vazios. A flag
   // faz o PDF/DOCX MOSTRAR a linha "Código FINAME" (oculta em modo normal).
@@ -368,12 +374,22 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
     setCliDados(initialModal.cliente_dados ?? {})
     setObservacoes(initialModal.observacoes ?? '')
     setPrazoEntrega(initialModal.prazo_entrega ?? '')
+    // (o que o vendedor escreveu na PRÉVIA tem prioridade — efeito logo abaixo)
     // forma_pagamento vira free-text no campo custom (mais simples que tentar reverter pra TipoPagamento)
     if (initialModal.forma_pagamento) {
       setPgTipo('personalizado')
       setPgCustom(initialModal.forma_pagamento)
     }
   }, [open, initialModal])
+
+  // Observações escritas na PRÉVIA (bloco "Observações", enquanto monta) mandam no modal.
+  // Roda DEPOIS do efeito do initialModal de propósito: o que o vendedor acabou de digitar
+  // na tela vale mais que o texto que veio do orçamento salvo.
+  useEffect(() => {
+    if (!open) return
+    if (snapshot.observacoesExtra != null) setObservacoes(snapshot.observacoesExtra)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   // Reseta número quando modal abre (pra não reusar número de abertura anterior)
   useEffect(() => {
@@ -726,6 +742,34 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         }
       }
 
+      // Upload da foto do bloco "Observações" (mesmo caminho da foto principal).
+      // Falha no upload NÃO derruba o orçamento: a proposta sai sem a imagem.
+      let observacoesFotoUrl: string | null = null
+      if (snapshot.observacoesFoto) {
+        if (snapshot.observacoesFoto.startsWith('data:')) {
+          try {
+            setStep('Subindo foto das observações...', 9)
+            const res = await fetch(snapshot.observacoesFoto)
+            const blob = await res.blob()
+            const ext = blob.type.includes('png') ? 'png' : 'jpg'
+            const storagePath = `orcamentos/observacoes-${Date.now()}.${ext}`
+            const { error: upErr } = await supabase.storage
+              .from('catalogo-fotos')
+              .upload(storagePath, blob, { contentType: blob.type, upsert: true })
+            if (upErr) {
+              console.warn('Falha upload foto observações:', upErr.message)
+            } else {
+              const { data: pubData } = supabase.storage.from('catalogo-fotos').getPublicUrl(storagePath)
+              observacoesFotoUrl = pubData?.publicUrl ?? null
+            }
+          } catch (e) {
+            console.warn('Falha upload foto observações:', (e as Error).message)
+          }
+        } else {
+          observacoesFotoUrl = snapshot.observacoesFoto
+        }
+      }
+
       const stepLabel = saveMode === 'alt' ? 'Criando alteração...' : saveMode === 'update' && editingId ? 'Atualizando orçamento no banco...' : 'Salvando orçamento no banco...'
       setStep(stepLabel, 10)
       // Modo edição vs criação: 'update'+editingId → UPDATE (mantém numero/sequencial), 'alt' → ALT, senão INSERT
@@ -759,7 +803,9 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         balanca_dispensada: snapshot.balancaDispensada ?? false,
         // null = cai no default histórico (5 linhas) na hora de renderizar
         obs_por_conta: snapshot.obsPorConta ?? null,
+        montagem: snapshot.montagem ?? null,
         foto_principal_url: fotoPrincipalUrl,
+        observacoes_foto_url: observacoesFotoUrl,
         // Persistência (migration 2026-06-10): frete, desconto, tensão e marca dos
         // motores agora sobrevivem ao reabrir/editar (antes só viviam no rascunho local).
         frete_tipo: snapshot.termsInline?.freteTipo ?? null,
@@ -847,7 +893,11 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           validadeDias: snapshot.termsInline?.validadeDias ?? null,
         },
         observacoesExtra: observacoes.trim() || null,
+        // Foto do bloco "Observações": já subiu pro Storage, usa a URL pública (o dataURL
+        // inteiro no HTML deixaria o Puppeteer/DOCX pesados à toa).
+        observacoesFoto: observacoesFotoUrl ?? snapshot.observacoesFoto ?? null,
         obsPorConta: snapshot.obsPorConta ?? null,
+        montagem: snapshot.montagem ?? null,
         fotoPrincipal: snapshot.fotoPrincipal ?? null,
         // Edições inline da preview — mantém PDF/DOCX idênticos à preview
         tensaoMotores: snapshot.tensaoMotores ?? null,
@@ -912,7 +962,9 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           dataVenda: snapshot.termsInline?.dataVenda || (pgDataVenda ? formaPgOut.data_venda : null) || null,
           prazoEntrega: snapshot.termsInline?.prazoEntrega || prazoEntrega.trim() || null,
           observacoes: observacoes.trim() || null,
+          observacoesFoto: observacoesFotoUrl ?? null,   // URL pública (já subiu pro Storage)
           obsPorConta: snapshot.obsPorConta ?? null,
+          montagem: snapshot.montagem ?? null,
           vendedorNome: profile?.display_name || 'Vendedor',
           // Componentes adicionais (painel, frete, Difal): entram no totalProposta,
           // então PRECISAM aparecer no DOCX, senão o total não fecha com os itens.

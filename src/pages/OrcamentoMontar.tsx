@@ -15,7 +15,7 @@ import {
 } from '@/hooks/useCatalogo'
 import { valorPorVoltagem } from '@/lib/motor-do-preco'
 import { FinalizarMontarModal, type CarrinhoSnapshot } from '@/components/FinalizarMontarModal'
-import { OrcamentoPreview, type ParcelaPagamento, type PreviewClienteDados } from '@/components/OrcamentoPreview'
+import { OrcamentoPreview, type ParcelaPagamento, type PreviewClienteDados, type PreviewMontagem } from '@/components/OrcamentoPreview'
 import { montarItensFiname, aplicarAcrescimoFiname, FINAME_TIPOS, type FinameBloqueio } from '@/lib/finame'
 import { ResponsiveScaler } from '@/components/ResponsiveScaler'
 import { ClienteEditModal } from '@/components/ClienteEditModal'
@@ -501,6 +501,10 @@ export function OrcamentoMontar() {
   const [waPromptValue, setWaPromptValue] = useState('')
   const [waPromptResolve, setWaPromptResolve] = useState<((v: string | null) => void) | null>(null)
   const [fotoPrincipal, setFotoPrincipal] = useState<string | null>(null)
+  // Bloco "Observações" da proposta (opcional): texto livre + 1 foto/rascunho.
+  // Editado inline na prévia, logo acima de "Nossas Redes Sociais".
+  const [observacoesTxt, setObservacoesTxt] = useState('')
+  const [observacoesFoto, setObservacoesFoto] = useState<string | null>(null)
   // Desconto + termos editáveis inline no preview
   // tipo/valor sempre; motivo/base/manterValorParcelas opcionais (default: base='total').
   const [descontoCfg, setDescontoCfg] = useState<{
@@ -540,6 +544,9 @@ export function OrcamentoMontar() {
   // Seção "Observação — por conta do cliente" editável por orçamento.
   // null = usa OBS_POR_CONTA_DEFAULT (5 linhas históricas) na preview/PDF/DOCX.
   const [obsPorConta, setObsPorConta] = useState<string[] | null>(null)
+  // Bloco de MONTAGEM (roadmap #69): o que a montagem contempla e quem paga.
+  // null = orcamento sem montagem. O valor SOMA no total da proposta.
+  const [montagem, setMontagem] = useState<PreviewMontagem | null>(null)
 
   // Snapshot do estado p/ autosave. Inclui tudo que o vendedor pode ter mudado
   // (carrinho, acessorios, voltagem, termos, etc). Excluido: filtros de busca, modais.
@@ -559,16 +566,19 @@ export function OrcamentoMontar() {
     validadeDias,
     parcelasPagamento,
     fotoPrincipal,
+    observacoesTxt,
+    observacoesFoto,
     componentesExtras,
     motoresAvulsos,
     balancaDispensada,
     obsPorConta,
+    montagem,
     motorPrecoOverride,
   }), [
     carrinho, acessorios, voltagem, tensaoMotores, marcaMotores, descontoCfg,
     dataEmissaoTxt, dataVendaTxt, prazoEntregaTxt, formaPagamentoTxt, freteTipo, freteTxt, validadeDias,
-    parcelasPagamento, fotoPrincipal,
-    componentesExtras, motoresAvulsos, balancaDispensada, obsPorConta,
+    parcelasPagamento, fotoPrincipal, observacoesTxt, observacoesFoto,
+    componentesExtras, motoresAvulsos, balancaDispensada, obsPorConta, montagem,
     motorPrecoOverride,
   ])
 
@@ -633,10 +643,13 @@ export function OrcamentoMontar() {
     setValidadeDias((prev as any).validadeDias ?? 10)
     setParcelasPagamento(prev.parcelasPagamento ?? [])
     setFotoPrincipal(prev.fotoPrincipal ?? null)
+    setObservacoesTxt((prev as any).observacoesTxt ?? '')
+    setObservacoesFoto((prev as any).observacoesFoto ?? null)
     setComponentesExtras(prev.componentesExtras ?? [])
     setMotoresAvulsos((prev as any).motoresAvulsos ?? [])
     setBalancaDispensada((prev as any).balancaDispensada ?? false)
     setObsPorConta((prev as any).obsPorConta ?? null)
+    setMontagem((prev as any).montagem ?? null)
     setMotorPrecoOverride((prev as any).motorPrecoOverride ?? {})
     setHistoryStack(stack => stack.slice(0, -1))
   }
@@ -675,10 +688,13 @@ export function OrcamentoMontar() {
     setValidadeDias((d as any).validadeDias ?? 10)
     setParcelasPagamento(d.parcelasPagamento ?? [])
     setFotoPrincipal(d.fotoPrincipal ?? null)
+    setObservacoesTxt((d as any).observacoesTxt ?? '')
+    setObservacoesFoto((d as any).observacoesFoto ?? null)
     setComponentesExtras(d.componentesExtras ?? [])
     setMotoresAvulsos((d as any).motoresAvulsos ?? [])
     setBalancaDispensada((d as any).balancaDispensada ?? false)
     setObsPorConta((d as any).obsPorConta ?? null)
+    setMontagem((d as any).montagem ?? null)
     setMotorPrecoOverride((d as any).motorPrecoOverride ?? {})
     draft.dismissRecovered()
   }
@@ -834,7 +850,10 @@ export function OrcamentoMontar() {
     () => componentesExtras.reduce((s, c) => s + (Number(c.valor) || 0), 0),
     [componentesExtras],
   )
-  const totalGeral = totalEquip + totalMotores + totalComponentesExtras
+  // Montagem (roadmap #69) entra no total como os componentes extras: nao e
+  // equipamento nem motor, mas o cliente paga.
+  const totalMontagem = montagem ? (Number(montagem.valor) || 0) : 0
+  const totalGeral = totalEquip + totalMotores + totalComponentesExtras + totalMontagem
 
   // ── Modo EXPORTAÇÃO: +10% ou +20% em todos os valores. fExp=1 quando desligado. ──
   // Aplica nas versões "*Exib" que alimentam o preview, o resumo e o orçamento gerado.
@@ -860,7 +879,8 @@ export function OrcamentoMontar() {
   const totalEquipExib = totalItemsExib + valorAcessoriosExib
   // Componentes adicionais NÃO levam o +10% de exportação (são valores que o
   // vendedor já digita no preço final). Só equipamentos/motores/acessórios levam.
-  const totalGeralExib = totalEquipExib + totalMotoresExib + totalComponentesExtras
+  const totalMontagemExib = Math.round(totalMontagem * fExp)
+  const totalGeralExib = totalEquipExib + totalMotoresExib + totalComponentesExtras + totalMontagemExib
 
   // ─── MODO FINAME ──────────────────────────────────────────────────────────
   // Transformação NÃO-destrutiva derivada do estado atual (pós-exportação):
@@ -2442,6 +2462,8 @@ export function OrcamentoMontar() {
     // Array salvo = usa ele; null/ausente = cai no default histórico.
     if (Array.isArray((o as any).obs_por_conta)) setObsPorConta((o as any).obs_por_conta)
     else setObsPorConta(null)
+    // Montagem (roadmap #69) — round-trip ao reabrir/editar o orçamento salvo.
+    setMontagem((o as any).montagem ?? null)
     // Data do cabeçalho: reabrir um orçamento mostra a data em que ele foi
     // emitido, não a de hoje. Coluna é DATE (AAAA-MM-DD) → converte pra BR.
     const de = (o as any).data_emissao
@@ -2475,6 +2497,9 @@ export function OrcamentoMontar() {
       forma_pagamento: o.forma_pagamento ?? null,
       prazo_entrega: o.prazo_entrega ?? null,
     })
+    // Bloco "Observações" da proposta: volta com texto e foto ao reabrir pra editar.
+    setObservacoesTxt(o.observacoes ?? '')
+    setObservacoesFoto((o as any).observacoes_foto_url ?? null)
     // Preenche dados do cliente no preview (cabeçalho do orçamento)
     if (o.cliente_dados) {
       setClienteDados({ nome: o.cliente_nome, ...o.cliente_dados } as PreviewClienteDados)
@@ -3236,6 +3261,10 @@ export function OrcamentoMontar() {
                 acessorios={acessoriosFinal}
                 valorAcessorios={valorAcessoriosFinal}
                 fotoPrincipal={finameMode ? null : fotoPrincipal}
+                observacoesExtra={observacoesTxt || null}
+                observacoesFoto={finameMode ? null : observacoesFoto}
+                onUpdateObservacoes={(t) => setObservacoesTxt(t)}
+                onUpdateObservacoesFoto={(f) => setObservacoesFoto(f)}
                 onAddAcessorios={finameMode ? undefined : () => setAcessoriosOpen(true)}
                 onAddItem={finameMode ? undefined : () => {
                   // Mobile: alterna pro tab Catálogo (que tava escondido)
@@ -3263,6 +3292,8 @@ export function OrcamentoMontar() {
                 onAddSpec={finameMode ? undefined : adicionarSpec}
                 onRemoveSpec={finameMode ? undefined : removerSpec}
                 obsPorConta={obsPorConta}
+                montagem={montagem}
+                onUpdateMontagem={setMontagem}
                 onUpdateObsPorConta={setObsPorConta}
                 onUpdateValor={finameMode
                   ? (uid, v) => setFinameValorOverride(o => ({ ...o, [uid]: Math.max(0, Math.round(v)) }))
@@ -3516,6 +3547,8 @@ export function OrcamentoMontar() {
           totalEquip: totalEquipFinal,
           totalGeral: totalGeralFinal,
           fotoPrincipal: finameMode ? null : fotoPrincipal,
+          observacoesExtra: observacoesTxt.trim() || null,
+          observacoesFoto: finameMode ? null : observacoesFoto,
           finameMode,
           // Data do cabeçalho escolhida na prévia (BR). Vazio = modal usa hoje.
           dataEmissao: dataEmissaoTxt || null,
@@ -3536,6 +3569,7 @@ export function OrcamentoMontar() {
           motoresAvulsos: finameMode ? [] : motoresAvulsos,
           balancaDispensada,
           obsPorConta: obsPorConta,
+          montagem,
         } as CarrinhoSnapshot}
         onClose={() => { setFinalizarOpen(false); setAutoSubmitFromIA(false); }}
         onSuccess={info => {
