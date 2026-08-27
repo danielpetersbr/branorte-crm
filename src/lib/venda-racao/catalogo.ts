@@ -80,9 +80,13 @@ export const CATEGORIAS: Record<Especie, Categoria[]> = {
     { chave: 'outro',        nome: 'Outro',         consumoMes: 0 },
   ],
   aves: [
-    { chave: 'frango_inicial',      nome: 'Frango de corte — inicial',     consumoMes: 1.18, diasFase: 14, nota: '1 a 14 dias: ~0,55 kg por ave NA FASE (~39 g/dia).' },
-    { chave: 'frango_crescimento',  nome: 'Frango de corte — crescimento', consumoMes: 3.32, diasFase: 14, nota: '15 a 28 dias: ~1,55 kg por ave NA FASE (~111 g/dia).' },
-    { chave: 'frango_final',        nome: 'Frango de corte — final',       consumoMes: 5.79, diasFase: 14, nota: '29 a 42 dias: ~2,70 kg por ave NA FASE (~193 g/dia). Ciclo todo: 4,8 kg/ave.' },
+    // ⚠️ Valores DITADOS PELO DANIEL em 27/08/2026, em kg por ave NA FASE:
+    // 0,50 · 1,35 · 1,80 — ciclo de 3,65 kg/ave. Aqui ficam em kg/MÊS porque é
+    // a unidade do campo (0,50 kg em 14 dias = 36 g/dia = 1,07 kg/mês).
+    // Não mexer sem ele: é a realidade do cliente dele, não tabela de manual.
+    { chave: 'frango_inicial',      nome: 'Frango de corte — inicial',     consumoMes: 1.07, diasFase: 14, nota: '1 a 14 dias: 0,50 kg por ave NA FASE (~36 g/dia).' },
+    { chave: 'frango_crescimento',  nome: 'Frango de corte — crescimento', consumoMes: 2.89, diasFase: 14, nota: '15 a 28 dias: 1,35 kg por ave NA FASE (~96 g/dia).' },
+    { chave: 'frango_final',        nome: 'Frango de corte — final',       consumoMes: 3.86, diasFase: 14, nota: '29 a 42 dias: 1,80 kg por ave NA FASE (~129 g/dia). Ciclo todo: 3,65 kg/ave.' },
     { chave: 'poedeira_inicial',    nome: 'Poedeiras — inicial',           consumoMes: 0.9,  diasFase: 42, nota: 'Pintainha / cria (1–6 semanas).' },
     { chave: 'poedeira_crescimento',nome: 'Poedeiras — crescimento',       consumoMes: 1.95, diasFase: 77, nota: 'Recria / franga (7–17 semanas).' },
     { chave: 'pre_postura',         nome: 'Pré-postura',                   consumoMes: 2.7 },

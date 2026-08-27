@@ -68,9 +68,15 @@ export const CATEGORIAS: Record<Especie, Categoria[]> = {
     { chave: 'outro',        nome: 'Outro',         consumoMes: 0 },
   ],
   aves: [
-    { chave: 'frango_inicial',      nome: 'Frango de corte — inicial',     consumoMes: 2.7,  nota: '8–21 dias.' },
-    { chave: 'frango_crescimento',  nome: 'Frango de corte — crescimento', consumoMes: 3.0,  nota: 'Média do ciclo completo.' },
-    { chave: 'frango_final',        nome: 'Frango de corte — final',       consumoMes: 5.4,  nota: 'Fase de engorda (pico).' },
+    // ⚠️ MESMOS valores de lib/venda-racao/catalogo.ts, ditados pelo Daniel em
+    // 27/08/2026 (kg por ave NA FASE de 14 dias: 0,50 · 1,35 · 1,80 — ciclo de
+    // 3,65 kg/ave). São duas telas com catálogos separados, mas "quanto um
+    // frango come" é o MESMO fato: divergir aqui faria a proposta de venda e o
+    // estudo de produção própria darem números diferentes pro mesmo cliente.
+    // Mexeu num, mexe no outro.
+    { chave: 'frango_inicial',      nome: 'Frango de corte — inicial',     consumoMes: 1.07, nota: '1 a 14 dias: 0,50 kg por ave na fase (~36 g/dia).' },
+    { chave: 'frango_crescimento',  nome: 'Frango de corte — crescimento', consumoMes: 2.89, nota: '15 a 28 dias: 1,35 kg por ave na fase (~96 g/dia).' },
+    { chave: 'frango_final',        nome: 'Frango de corte — final',       consumoMes: 3.86, nota: '29 a 42 dias: 1,80 kg por ave na fase (~129 g/dia). Ciclo: 3,65 kg/ave.' },
     { chave: 'poedeira_inicial',    nome: 'Poedeiras — inicial',           consumoMes: 0.9,  nota: 'Pintainha / cria (1–6 sem).' },
     { chave: 'poedeira_crescimento',nome: 'Poedeiras — crescimento',       consumoMes: 1.95, nota: 'Recria / frangã (7–17 sem).' },
     { chave: 'pre_postura',         nome: 'Pré-postura',                   consumoMes: 2.7 },
