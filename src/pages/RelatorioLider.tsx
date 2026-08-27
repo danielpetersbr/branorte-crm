@@ -9,27 +9,29 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
-  TIMES, OBSTACULOS, MOTIVOS_PERDA, MOTIVOS_ABAIXO, DESVIOS_LEAD, PREVISOES,
-  usePainelTime, useSerieTime, useRelatorioDoDia, useSalvarRelatorio, useVendasTime,
-  META_LIGACOES_PESSOA_DIA, META_VENDA_TIME_MES, diasUteis, ANDAMENTOS,
+  TIMES,
+  usePainelTime, useSerieTime, useVendasTime, useAtencaoTime,
   useOrcamentosTime, useQuentesTime, useMarcarAndamento,
-  type TimeSlug, type VendedorPainel, type NegocioForm, type Periodo, type Andamento,
+  META_LIGACOES_PESSOA_DIA, META_VENDA_TIME_MES, diasUteis, ANDAMENTOS,
+  type TimeSlug, type VendedorPainel, type Periodo, type Andamento, type AtencaoLinha,
 } from '@/hooks/useRelatorioLider'
 
 // ============================================================================
-// /relatorio-lider — a tela que o líder da semana abre no fim do dia.
+// Painel do Time — a tela que o time abre pra se acompanhar.
 //
-// DUAS METADES, nesta ordem, de propósito:
-//   1. OS NÚMEROS DO TIME   → o líder vê o que os 3 fizeram hoje (e cobra)
-//   2. AS 5 PERGUNTAS       → ele conta o que o número não mostra (o motivo)
+// ⚠️ 27/08/2026 o MODELO MUDOU: acabou o líder fixo de time. Antes esta tela
+// tinha um formulário de 5 perguntas que UMA pessoa (o líder da semana)
+// respondia sobre os colegas. Sem líder, isso não se sustenta:
 //
-// O link vai com o time embutido: /relatorio-lider?time=caca-lead. Cada líder
-// recebe o link do time dele; quem é o líder da semana é o Daniel que define,
-// e o líder só confirma o próprio nome no topo.
+//   • o formulário diário SAIU — relatório sem dono não é preenchido;
+//   • a pergunta "quem ficou abaixo hoje?" virou o bloco PRECISA DE ATENÇÃO,
+//     apurado pelo banco. Pedir a um vendedor pra justificar o colega seria
+//     delação, e mataria a tela na primeira semana;
+//   • os 3 botões de andamento, que eram acessório, viraram o CENTRO: é
+//     literalmente "o time se acompanha e se ajuda".
 //
-// ⚠️ Nenhuma pergunta aqui pede número. Ligação, orçamento e mensagem já são
-// contados pelo sistema e aparecem na metade de cima. Perguntar de novo seria
-// gastar o tempo do líder pra ganhar um dado pior que o do banco.
+// O motivo de perda não morreu junto: mudou de gatilho e passou a ser
+// capturado na tela da reunião, quando o Daniel senta com o time.
 // ============================================================================
 
 // ⚠️ acima de 1 milhão precisa de "mi": no filtro de Mês o time passa de R$ 9 mi
@@ -231,104 +233,84 @@ function PainelLista({ titulo, subtitulo, onFechar, children }: {
   )
 }
 
-// ─── Formulário: componentes de resposta ────────────────────────────────────
+// ─── Precisa de atenção ─────────────────────────────────────────────────────
 
-function Pergunta({ n, titulo, ajuda, children }: {
-  n: number; titulo: string; ajuda?: string; children: React.ReactNode
-}) {
+const ICONE_ATENCAO: Record<string, React.ReactNode> = {
+  sem_resposta: <MessageSquare className="w-3.5 h-3.5" />,
+  orcamento_parado: <FileText className="w-3.5 h-3.5" />,
+  abaixo_meta: <Phone className="w-3.5 h-3.5" />,
+}
+
+/**
+ * O bloco que substituiu a pergunta "quem ficou abaixo hoje?".
+ *
+ * Com líder, um vendedor justificava o colega. Sem líder isso vira delação e
+ * mata a tela. Aqui NINGUÉM acusa ninguém: são três fatos apurados pelo banco
+ * — cliente sem resposta, orçamento sem andamento, ligação abaixo da meta.
+ * O time olha junto e resolve.
+ */
+function BlocoAtencao({ itens, carregando }: { itens: AtencaoLinha[]; carregando: boolean }) {
+  const [tudo, setTudo] = useState(false)
+  const altas = itens.filter(i => i.severidade === 'alta')
+  const mostrar = tudo ? itens : itens.slice(0, 7)
+
   return (
-    <section className="rounded-lg border border-border bg-surface p-4">
-      <div className="flex items-start gap-2.5 mb-3">
-        <span className="shrink-0 w-6 h-6 rounded-full bg-accent/15 text-accent text-[12px] font-bold grid place-items-center">
-          {n}
-        </span>
-        <div>
-          <h3 className="font-semibold text-[14px] text-ink leading-snug">{titulo}</h3>
-          {ajuda && <p className="text-[12px] text-ink-muted mt-0.5">{ajuda}</p>}
+    <div className={cn('rounded-lg border',
+      altas.length > 0 ? 'border-danger/40 bg-danger-bg/10' : 'border-border bg-surface')}>
+      <div className="flex items-center justify-between gap-2 p-3 border-b border-border">
+        <div className="flex items-center gap-2 min-w-0">
+          <AlertTriangle className={cn('w-4 h-4 shrink-0',
+            altas.length > 0 ? 'text-danger' : 'text-ink-muted')} />
+          <h2 className="text-[13px] font-bold uppercase tracking-wide text-ink-muted">
+            Precisa de atenção
+          </h2>
+          {itens.length > 0 && (
+            <span className="text-[11px] text-ink-muted truncate">
+              {itens.length}
+              {altas.length > 0 && <b className="text-danger"> · {altas.length} urgente{altas.length === 1 ? '' : 's'}</b>}
+            </span>
+          )}
         </div>
-      </div>
-      {children}
-    </section>
-  )
-}
-
-function Chips<T extends string>({ opcoes, valor, onChange, cols }: {
-  opcoes: readonly T[]; valor: T | null; onChange: (v: T | null) => void; cols?: string
-}) {
-  return (
-    <div className={cn('grid gap-1.5', cols ?? 'grid-cols-1 sm:grid-cols-2')}>
-      {opcoes.map(o => (
-        <button key={o} type="button" onClick={() => onChange(valor === o ? null : o)}
-          className={cn(
-            'text-left px-3 py-2 rounded-md border text-[13px] transition-colors min-h-[40px]',
-            valor === o
-              ? 'border-accent bg-accent/10 text-ink font-medium'
-              : 'border-border bg-surface-2/40 text-ink-muted hover:bg-surface-2',
-          )}>
-          {o}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-const inputCls =
-  'w-full min-h-[40px] rounded-md border border-border bg-surface px-3 text-[14px] sm:text-[13px] ' +
-  'text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent/40'
-
-/** Uma linha de negócio (P1 quente / P2 perdido). */
-function LinhaNegocio({ n, membros, onChange, onRemove }: {
-  n: NegocioForm; membros: string[]
-  onChange: (n: NegocioForm) => void; onRemove: () => void
-}) {
-  const quente = n.tipo === 'quente'
-  return (
-    <div className="rounded-md border border-border bg-surface-2/30 p-3 space-y-2.5">
-      <div className="flex gap-2">
-        <input className={inputCls} placeholder="Nome do cliente" value={n.cliente}
-          onChange={e => onChange({ ...n, cliente: e.target.value })} />
-        <button type="button" onClick={onRemove} title="Remover"
-          className="shrink-0 w-10 grid place-items-center rounded-md border border-border text-ink-muted hover:text-danger hover:border-danger/50">
-          <X className="w-4 h-4" />
-        </button>
+        {itens.length > 7 && (
+          <button onClick={() => setTudo(v => !v)}
+            className="shrink-0 text-[11px] text-accent hover:underline">
+            {tudo ? 'ver menos' : `ver todos (${itens.length})`}
+          </button>
+        )}
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <select className={inputCls} value={n.vendedor_nome}
-          onChange={e => onChange({ ...n, vendedor_nome: e.target.value })}>
-          <option value="">Vendedor…</option>
-          {membros.map(m => <option key={m} value={m}>{m}</option>)}
-        </select>
-        <input className={inputCls} inputMode="numeric" placeholder="Valor (R$)"
-          value={n.valor ?? ''}
-          onChange={e => onChange({ ...n, valor: e.target.value ? Number(e.target.value.replace(/\D/g, '')) : null })} />
-      </div>
-
-      {quente && (
-        <div className="flex flex-wrap gap-1.5">
-          {PREVISOES.map(p => (
-            <button key={p.v} type="button" onClick={() => onChange({ ...n, previsao: p.v })}
-              className={cn('px-2.5 py-1.5 rounded-md border text-[12px]',
-                n.previsao === p.v ? 'border-accent bg-accent/10 text-ink font-medium'
-                  : 'border-border text-ink-muted hover:bg-surface-2')}>
-              {p.label}
-            </button>
+      {carregando ? (
+        <div className="h-20 grid place-items-center text-ink-muted">
+          <Loader2 className="w-5 h-5 animate-spin" />
+        </div>
+      ) : itens.length === 0 ? (
+        <p className="text-[13px] text-ink-muted p-4 text-center">
+          Nada parado. Cliente respondido, orçamento acompanhado, meta em dia.
+        </p>
+      ) : (
+        <div className="divide-y divide-border">
+          {mostrar.map((a, i) => (
+            <div key={i} className="flex items-start gap-2.5 p-2.5">
+              <span className={cn('shrink-0 mt-0.5',
+                a.severidade === 'alta' ? 'text-danger' : 'text-warning')}>
+                {ICONE_ATENCAO[a.tipo]}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-[13px] text-ink truncate">
+                  {a.cliente ?? a.vendedor_nome}
+                  {a.cliente && <span className="text-ink-muted"> · {a.vendedor_nome}</span>}
+                </div>
+                <div className={cn('text-[11px]',
+                  a.severidade === 'alta' ? 'text-danger' : 'text-ink-muted')}>
+                  {a.detalhe}
+                </div>
+              </div>
+              {!!a.valor && (
+                <span className="shrink-0 text-[12px] font-semibold text-ink">{brl(a.valor)}</span>
+              )}
+            </div>
           ))}
         </div>
-      )}
-
-      <select className={inputCls}
-        value={(quente ? n.obstaculo : n.motivo) ?? ''}
-        onChange={e => onChange(quente
-          ? { ...n, obstaculo: e.target.value }
-          : { ...n, motivo: e.target.value, concorrente: e.target.value.includes('concorrente') ? n.concorrente : '' })}>
-        <option value="">{quente ? 'O que falta pra fechar…' : 'Por que morreu…'}</option>
-        {(quente ? OBSTACULOS : MOTIVOS_PERDA).map(o => <option key={o} value={o}>{o}</option>)}
-      </select>
-
-      {!quente && n.motivo?.includes('concorrente') && (
-        <input className={inputCls} placeholder="Qual concorrente? (obrigatório)"
-          value={n.concorrente ?? ''} onChange={e => onChange({ ...n, concorrente: e.target.value })} />
       )}
     </div>
   )
@@ -341,61 +323,32 @@ export function RelatorioLider() {
   const timeSlug = (params.get('time') as TimeSlug | null) ?? null
   const time = TIMES.find(t => t.slug === timeSlug) ?? null
 
-  // Período dos NÚMEROS. O formulário continua sempre do DIA — o relatório é
-  // diário; só o painel de cima muda de recorte.
   const [periodo, setPeriodo] = useState<Periodo>('dia')
-
   const { data: painel = [], isLoading } = usePainelTime(timeSlug, periodo)
   const { data: serie = [] } = useSerieTime(timeSlug, periodo === 'mes' ? 30 : 14)
   const { data: vendas } = useVendasTime(timeSlug)
-  // sempre do dia — a pergunta 3 é sobre HOJE, não sobre o filtro escolhido
-  const { data: painelDia = [] } = usePainelTime(timeSlug, 'dia')
-  const { data: jaSalvo } = useRelatorioDoDia(timeSlug)
-  const salvar = useSalvarRelatorio()
+  const { data: atencao = [], isLoading: carregandoAtencao } = useAtencaoTime(timeSlug)
 
-  const [lider, setLider] = useState('')
-  const [negocios, setNegocios] = useState<NegocioForm[]>([])
-  const [abaixoMotivo, setAbaixoMotivo] = useState<string | null>(null)
-  const [qualidade, setQualidade] = useState<'bons' | 'mistos' | 'ruins' | null>(null)
-  const [desvio, setDesvio] = useState<string | null>(null)
-  const [termometro, setTermometro] = useState<'verde' | 'amarelo' | 'vermelho' | null>(null)
-  const [obs, setObs] = useState('')
+  // Quem está mexendo — só pra assinar as marcações. NÃO é líder: o modelo de
+  // líder fixo acabou. Fica no localStorage pra não perguntar toda vez.
+  const [euSou, setEuSou] = useState(() => localStorage.getItem('painel-time-eu') ?? '')
+  const escolherEu = (n: string) => { setEuSou(n); localStorage.setItem('painel-time-eu', n) }
 
-  // Reabriu no mesmo dia? Carrega o que já respondeu, pra CORRIGIR e não refazer.
-  useEffect(() => {
-    if (!jaSalvo) return
-    const r = jaSalvo as Record<string, any>
-    setLider(r.lider_nome ?? '')
-    setAbaixoMotivo(r.abaixo_motivo ?? null)
-    setQualidade(r.qualidade_lead ?? null)
-    setDesvio(r.qualidade_lead_motivo ?? null)
-    setTermometro(r.termometro ?? null)
-    setObs(r.termometro_obs ?? '')
-    setNegocios((r.negocios ?? []).map((n: Record<string, any>) => ({
-      tipo: n.tipo, cliente: n.cliente, vendedor_nome: n.vendedor_nome ?? '',
-      valor: n.valor ? Number(n.valor) : null, previsao: n.previsao ?? undefined,
-      obstaculo: n.obstaculo ?? undefined, motivo: n.motivo ?? undefined,
-      concorrente: n.concorrente ?? undefined,
-    })))
-  }, [jaSalvo])
+  const [lista, setLista] = useState<'orcamentos' | 'quentes' | null>(null)
+  const { data: orcs = [], isLoading: carregandoOrcs } =
+    useOrcamentosTime(timeSlug, periodo, lista === 'orcamentos')
+  const { data: quentes = [] } = useQuentesTime(timeSlug)
+  const marcar = useMarcarAndamento()
 
-  // Quem ficou abaixo hoje: o sistema aponta, o líder só justifica.
-  // Régua: zerou orçamento E ficou abaixo de metade da média do time em
-  // conversa. Quem está sem sync fica FORA — zero sem sinal não é zero de
-  // trabalho, e acusar por falha de sync destrói a confiança na tela.
-  // ⚠️ SEMPRE em cima do DIA (painelDia), nunca do período selecionado.
-  // O relatório é diário: se o líder trocasse o filtro pra Mês, a pergunta
-  // "quem ficou abaixo HOJE" mudava de resposta — ou sumia, porque no acumulado
-  // do mês ninguém fica abaixo da metade da média. Foi o que aconteceu.
-  const abaixo = useMemo(() => {
-    const validos = painelDia.filter(v => v.sync_minutos !== null && v.sync_minutos <= 60)
-    if (validos.length < 2) return null
-    const media = validos.reduce((s, v) => s + v.clientes_respondidos, 0) / validos.length
-    const cand = validos
-      .filter(v => v.orcamentos === 0 && v.clientes_respondidos < media * 0.5)
-      .sort((a, b) => a.clientes_respondidos - b.clientes_respondidos)
-    return cand[0]?.vendedor_nome ?? null
-  }, [painelDia])
+  const marcarLinha = (
+    tipo: 'orcamento' | 'quente', chave: string, cliente: string,
+    vendedor: string, status: Andamento | null,
+  ) => marcar.mutate({
+    time_slug: time?.slug ?? '', tipo, chave, cliente,
+    vendedor_nome: vendedor, status, anotado_por: euSou || '(sem nome)',
+  })
+
+  const rotuloPeriodo = periodo === 'dia' ? 'hoje' : periodo === 'semana' ? 'na semana' : 'no mês'
 
   const totais = useMemo(() => painel.reduce((s, v) => ({
     ligacoes: s.ligacoes + v.ligacoes,
@@ -403,17 +356,11 @@ export function RelatorioLider() {
     orcamentos: s.orcamentos + v.orcamentos,
     valor: s.valor + v.orcamentos_valor,
     msgs: s.msgs + v.msgs_enviadas,
-    quentes: s.quentes + v.funil_quente,
-  }), { ligacoes: 0, feitas: 0, orcamentos: 0, valor: 0, msgs: 0, quentes: 0 }), [painel])
+  }), { ligacoes: 0, feitas: 0, orcamentos: 0, valor: 0, msgs: 0 }), [painel])
 
-  // Meta de ligação = 10 por pessoa × dia útil do PERÍODO FECHADO:
-  //   dia    → 1 dia          (3 pessoas = 30)
-  //   semana → 5 dias         (seg a sex, = 150)
-  //   mês    → dias úteis do mês inteiro
-  //
-  // Fechado, e não pró-rata pelos dias já corridos, pra bater com a régua da
-  // meta de VENDA, que é o mês inteiro. Duas metas lado a lado com escalas
-  // diferentes — uma proporcional e outra fechada — se leem errado.
+  // Meta de ligação = 10 por pessoa × dia útil do PERÍODO FECHADO (dia 1,
+  // semana 5, mês inteiro). Fechado pra bater com a régua da meta de VENDA,
+  // que já é o mês inteiro.
   const metaLigacoes = useMemo(() => {
     const pessoas = painel.length || 3
     const hoje = new Date()
@@ -426,36 +373,11 @@ export function RelatorioLider() {
     return META_LIGACOES_PESSOA_DIA * pessoas * dias
   }, [painel.length, periodo])
 
-  const rotuloPeriodo = periodo === 'dia' ? 'hoje' : periodo === 'semana' ? 'na semana' : 'no mês'
-
-  // Qual lista está aberta (null = nenhuma). Só busca quando abre.
-  const [lista, setLista] = useState<'orcamentos' | 'quentes' | null>(null)
-  const { data: orcs = [], isLoading: carregandoOrcs } =
-    useOrcamentosTime(timeSlug, periodo, lista === 'orcamentos')
-  // quentes carrega sempre: o tile mostra a contagem, e ela precisa bater com
-  // a lista que abre. Usar o funil_quente do diag daria número diferente do
-  // que a lista enumera (medido: IGOR 0 no diag, 3 em wa_chat_labels).
-  const { data: quentes = [], isLoading: carregandoQuentes } = useQuentesTime(timeSlug)
-  const marcar = useMarcarAndamento()
-
-  const marcarLinha = (
-    tipo: 'orcamento' | 'quente', chave: string, cliente: string,
-    vendedor: string, status: Andamento | null,
-  ) => marcar.mutate({
-    time_slug: time?.slug ?? '', tipo, chave, cliente,
-    vendedor_nome: vendedor, status, anotado_por: lider || '(sem nome)',
-  })
-
-  const podeSalvar = !!lider && !!termometro
-    && (termometro === 'verde' || obs.trim().length >= 5)
-    && (!abaixo || !!abaixoMotivo)
-
-  // ── Sem time no link: escolhe ─────────────────────────────────────────────
   if (!time) {
     return (
       <div className="max-w-lg mx-auto px-4 py-10">
-        <h1 className="text-[20px] font-bold text-ink mb-1">Relatório do Líder</h1>
-        <p className="text-[13px] text-ink-muted mb-5">Qual time você lidera esta semana?</p>
+        <h1 className="text-[20px] font-bold text-ink mb-1">Painel do Time</h1>
+        <p className="text-[13px] text-ink-muted mb-5">Qual time?</p>
         <div className="space-y-2">
           {TIMES.map(t => (
             <button key={t.slug} onClick={() => setParams({ time: t.slug })}
@@ -472,12 +394,7 @@ export function RelatorioLider() {
   const membros = time.membros as unknown as string[]
 
   return (
-    // Em tela grande vira DUAS COLUNAS: números à esquerda, perguntas à direita.
-    // Não é só estética — o líder responde "quem ficou abaixo" e "o que travou"
-    // olhando o número que motivou a pergunta, sem rolar pra cima e perder o
-    // contexto. Abaixo de xl empilha na ordem antiga (números primeiro).
-    <div className="max-w-[1700px] mx-auto px-3 sm:px-5 py-4 sm:py-6 pb-24">
-      {/* Cabeçalho + quem preenche, lado a lado quando cabe */}
+    <div className="max-w-[1700px] mx-auto px-3 sm:px-5 py-4 sm:py-6">
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
@@ -485,23 +402,20 @@ export function RelatorioLider() {
             <h1 className="text-[19px] sm:text-[24px] font-bold text-ink">{time.nome}</h1>
           </div>
           <p className="text-[13px] text-ink-muted">
-            Relatório de{' '}
-            {new Date().toLocaleDateString('pt-BR', {
-              weekday: 'long', day: '2-digit', month: 'long', timeZone: 'America/Sao_Paulo',
-            })}
-            {jaSalvo && <span className="text-success font-medium"> · já enviado (você pode corrigir)</span>}
+            {membros.join(' · ')} — o time se acompanha aqui
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <span className="text-[11px] uppercase tracking-wide text-ink-muted whitespace-nowrap">
-            Líder da semana
+            Sou eu
           </span>
           <div className="flex flex-wrap gap-1.5">
             {membros.map(m => (
-              <button key={m} onClick={() => setLider(m)}
+              <button key={m} onClick={() => escolherEu(m)}
+                title="Só pra assinar o que você marcar"
                 className={cn('px-3 py-2 rounded-md border text-[13px] font-medium transition-colors',
-                  lider === m ? 'border-accent bg-accent/10 text-ink' : 'border-border text-ink-muted hover:bg-surface-2')}>
+                  euSou === m ? 'border-accent bg-accent/10 text-ink' : 'border-border text-ink-muted hover:bg-surface-2')}>
                 {m}
               </button>
             ))}
@@ -509,15 +423,14 @@ export function RelatorioLider() {
         </div>
       </header>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_520px] gap-5 items-start">
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_460px] gap-5 items-start">
 
       {/* ═══ COLUNA 1: OS NÚMEROS ═══ */}
       <div className="space-y-5 min-w-0">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h2 className="text-[13px] font-bold uppercase tracking-wide text-ink-muted">
             {periodo === 'dia' ? 'Como o time foi hoje'
-              : periodo === 'semana' ? 'O time nesta semana'
-              : 'O time neste mês'}
+              : periodo === 'semana' ? 'O time nesta semana' : 'O time neste mês'}
           </h2>
           <div className="inline-flex rounded-md border border-border overflow-hidden">
             {([['dia', 'Dia'], ['semana', 'Semana'], ['mes', 'Mês']] as const).map(([v, l]) => (
@@ -530,8 +443,6 @@ export function RelatorioLider() {
           </div>
         </div>
 
-        {/* METAS — ligação escala com o período; venda é sempre do MÊS, porque a
-            meta de R$ 833 mil é mensal. Misturar as duas escalas confundiria. */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <BarraMeta
             titulo={`Ligações feitas · meta ${META_LIGACOES_PESSOA_DIA}/pessoa por dia`}
@@ -543,23 +454,18 @@ export function RelatorioLider() {
                 : `${painel.length || 3} pessoas × ${META_LIGACOES_PESSOA_DIA} × dias úteis do mês`} />
           <BarraMeta
             titulo="Vendas do mês · meta do time"
-            feito={vendas?.vendido ?? 0} meta={META_VENDA_TIME_MES}
-            fmt={brl}
+            feito={vendas?.vendido ?? 0} meta={META_VENDA_TIME_MES} fmt={brl}
             detalhe={vendas ? `${vendas.pedidos} pedido${vendas.pedidos === 1 ? '' : 's'} fechado${vendas.pedidos === 1 ? '' : 's'} no mês` : 'carregando…'} />
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
           <Tile label={periodo === 'dia' ? 'Ligações' : 'Ligações no período'} valor={String(totais.ligacoes)} />
-          <Tile label="Orçamentos" valor={String(totais.orcamentos)}
-            onClick={() => setLista('orcamentos')} />
-          <Tile label="Em proposta" valor={totais.valor > 0 ? brl(totais.valor) : '—'}
-            onClick={() => setLista('orcamentos')} />
+          <Tile label="Orçamentos" valor={String(totais.orcamentos)} onClick={() => setLista('orcamentos')} />
+          <Tile label="Em proposta" valor={totais.valor > 0 ? brl(totais.valor) : '—'} onClick={() => setLista('orcamentos')} />
           <Tile label="Mensagens" valor={String(totais.msgs)} />
-          {/* "agora" de propósito: funil é ESTOQUE, não tem recorte de período —
-              somar quentes da semana contaria o mesmo lead 5 vezes.
-              A contagem vem da LISTA (wa_chat_labels), pra bater com o que abre. */}
-          <Tile label="Quentes agora" valor={String(quentes.length)} destaque
-            onClick={() => setLista('quentes')} />
+          {/* "agora" de propósito: funil é ESTOQUE. A contagem vem da LISTA
+              (wa_chat_labels), pra bater com o que abre ao clicar. */}
+          <Tile label="Quentes agora" valor={String(quentes.length)} destaque onClick={() => setLista('quentes')} />
         </div>
 
         {isLoading ? (
@@ -569,165 +475,73 @@ export function RelatorioLider() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             {painel.map(v => (
-              <CardVendedor key={v.vendedor_nome} v={v} abaixo={v.vendedor_nome === abaixo} quando={rotuloPeriodo}
+              <CardVendedor key={v.vendedor_nome} v={v} abaixo={false} quando={rotuloPeriodo}
                 quentes={quentes.filter(q => q.vendedor_nome?.toUpperCase() === v.vendedor_nome.toUpperCase()).length} />
             ))}
           </div>
         )}
 
-      {/* Gráfico dos 14 dias */}
-      <div className="rounded-lg border border-border bg-surface p-3 sm:p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <TrendingUp className="w-4 h-4 text-ink-muted" />
-          <h2 className="text-[13px] font-bold uppercase tracking-wide text-ink-muted">
-            {periodo === 'mes' ? 'Últimos 30 dias do time' : 'Últimos 14 dias do time'}
-          </h2>
+        <div className="rounded-lg border border-border bg-surface p-3 sm:p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingUp className="w-4 h-4 text-ink-muted" />
+            <h2 className="text-[13px] font-bold uppercase tracking-wide text-ink-muted">
+              {periodo === 'mes' ? 'Últimos 30 dias do time' : 'Últimos 14 dias do time'}
+            </h2>
+          </div>
+          <div className="h-[260px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={serie} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis dataKey="dia" tickFormatter={fmtDia} tick={{ fontSize: 10 }} stroke="hsl(var(--ink-muted))" />
+                <YAxis yAxisId="l" tick={{ fontSize: 10 }} stroke="hsl(var(--ink-muted))" />
+                <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 10 }} stroke="hsl(var(--ink-muted))" />
+                <Tooltip
+                  labelFormatter={(label) => fmtDia(String(label))}
+                  contentStyle={{
+                    background: 'hsl(var(--surface))', border: '1px solid hsl(var(--border))',
+                    borderRadius: 8, fontSize: 12,
+                  }}
+                  formatter={(v, n) => [String(v), n === 'ligacoes' ? 'Ligações' : 'Orçamentos']} />
+                <Bar yAxisId="l" dataKey="ligacoes" fill={COR_LIGACAO} radius={[3, 3, 0, 0]} maxBarSize={22} />
+                <Line yAxisId="r" dataKey="orcamentos" stroke={COR_ORCAMENTO} strokeWidth={2} dot={{ r: 2.5, fill: COR_ORCAMENTO }} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+          <p className="text-[11px] text-ink-muted mt-1.5">
+            <span className="inline-flex items-center gap-1.5 mr-3">
+              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: COR_LIGACAO }} />
+              Barra = ligações do time
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full" style={{ background: COR_ORCAMENTO }} />
+              Linha = orçamentos emitidos
+            </span>
+          </p>
         </div>
-        <div className="h-[260px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={serie} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-              <XAxis dataKey="dia" tickFormatter={fmtDia} tick={{ fontSize: 10 }} stroke="hsl(var(--ink-muted))" />
-              <YAxis yAxisId="l" tick={{ fontSize: 10 }} stroke="hsl(var(--ink-muted))" />
-              <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 10 }} stroke="hsl(var(--ink-muted))" />
-              <Tooltip
-                labelFormatter={(label) => fmtDia(String(label))}
-                contentStyle={{
-                  background: 'hsl(var(--surface))', border: '1px solid hsl(var(--border))',
-                  borderRadius: 8, fontSize: 12,
-                }}
-                formatter={(v, n) => [String(v), n === 'ligacoes' ? 'Ligações' : 'Orçamentos']} />
-              <Bar yAxisId="l" dataKey="ligacoes" fill={COR_LIGACAO} radius={[3, 3, 0, 0]} maxBarSize={22} />
-              <Line yAxisId="r" dataKey="orcamentos" stroke={COR_ORCAMENTO} strokeWidth={2} dot={{ r: 2.5, fill: COR_ORCAMENTO }} />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
-        <p className="text-[11px] text-ink-muted mt-1.5">
-          Barra = ligações do time · Linha = orçamentos emitidos
+      </div>
+
+      {/* ═══ COLUNA 2: O QUE PRECISA DE ATENÇÃO ═══ */}
+      <div className="xl:sticky xl:top-4 space-y-2">
+        <BlocoAtencao itens={atencao} carregando={carregandoAtencao} />
+        <p className="text-[11px] text-ink-muted px-1">
+          Clique em <b className="text-ink">Orçamentos</b> ou <b className="text-ink">Quentes agora</b>{' '}
+          pra abrir a lista de clientes e marcar como está cada um.
         </p>
       </div>
-      </div>
 
-      {/* ═══ COLUNA 2: AS 5 PERGUNTAS ═══ */}
-      {/* sticky no xl: as perguntas acompanham a rolagem e continuam ao lado dos
-          números. Sem isso a coluna direita some quando o líder desce a página. */}
-      <div className="xl:sticky xl:top-4">
-        <h2 className="text-[13px] font-bold uppercase tracking-wide text-ink-muted mb-1">
-          O que os números não mostram
-        </h2>
-        <p className="text-[12px] text-ink-muted mb-3">
-          5 perguntas, 2 a 3 minutos. Só o que o sistema não sabe sozinho.
-        </p>
-
-        <div className="space-y-3">
-          <Pergunta n={1} titulo="Qual negócio está mais perto de fechar?"
-            ajuda="Até 2. Se nenhum, deixe vazio.">
-            <div className="space-y-2">
-              {negocios.filter(n => n.tipo === 'quente').map((n) => (
-                <LinhaNegocio key={negocios.indexOf(n)} n={n} membros={membros}
-                  onChange={u => setNegocios(negocios.map(x => x === n ? u : x))}
-                  onRemove={() => setNegocios(negocios.filter(x => x !== n))} />
-              ))}
-              {negocios.filter(n => n.tipo === 'quente').length < 2 && (
-                <button type="button"
-                  onClick={() => setNegocios([...negocios, {
-                    tipo: 'quente', cliente: '', vendedor_nome: '', valor: null, previsao: 'semana',
-                  }])}
-                  className="w-full py-2.5 rounded-md border border-dashed border-border text-[13px] text-ink-muted hover:border-accent hover:text-accent transition-colors">
-                  <Plus className="w-4 h-4 inline mr-1" /> Adicionar negócio quente
-                </button>
-              )}
-            </div>
-          </Pergunta>
-
-          <Pergunta n={2} titulo="Algum negócio esfriou ou foi perdido hoje?"
-            ajuda="É a pergunta mais valiosa. Sem ela, ninguém sabe por que o time vendeu menos.">
-            <div className="space-y-2">
-              {negocios.filter(n => n.tipo === 'perdido').map((n) => (
-                <LinhaNegocio key={negocios.indexOf(n)} n={n} membros={membros}
-                  onChange={u => setNegocios(negocios.map(x => x === n ? u : x))}
-                  onRemove={() => setNegocios(negocios.filter(x => x !== n))} />
-              ))}
-              <button type="button"
-                onClick={() => setNegocios([...negocios, {
-                  tipo: 'perdido', cliente: '', vendedor_nome: '', valor: null,
-                }])}
-                className="w-full py-2.5 rounded-md border border-dashed border-border text-[13px] text-ink-muted hover:border-danger hover:text-danger transition-colors">
-                <Plus className="w-4 h-4 inline mr-1" /> Registrar negócio perdido
-              </button>
-            </div>
-          </Pergunta>
-
-          {abaixo && (
-            <Pergunta n={3} titulo={`${abaixo} ficou abaixo hoje. O que aconteceu?`}
-              ajuda="O sistema apontou o nome — você só dá o motivo.">
-              <Chips opcoes={MOTIVOS_ABAIXO} valor={abaixoMotivo} onChange={setAbaixoMotivo} cols="grid-cols-1" />
-            </Pergunta>
-          )}
-
-          <Pergunta n={abaixo ? 4 : 3} titulo="Os leads que chegaram hoje eram bons?">
-            <div className="grid grid-cols-3 gap-1.5">
-              {([
-                ['bons', 'Bons', 'no perfil'],
-                ['mistos', 'Mistos', 'metade prestava'],
-                ['ruins', 'Ruins', 'fora do perfil'],
-              ] as const).map(([v, l, s]) => (
-                <button key={v} type="button"
-                  onClick={() => { setQualidade(v); if (v !== 'ruins') setDesvio(null) }}
-                  className={cn('px-2 py-2.5 rounded-md border text-center transition-colors',
-                    qualidade === v ? 'border-accent bg-accent/10' : 'border-border hover:bg-surface-2')}>
-                  <div className="text-[13px] font-medium text-ink">{l}</div>
-                  <div className="text-[10px] text-ink-muted">{s}</div>
-                </button>
-              ))}
-            </div>
-            {qualidade === 'ruins' && (
-              <div className="mt-2">
-                <Chips opcoes={DESVIOS_LEAD} valor={desvio} onChange={setDesvio} cols="grid-cols-1" />
-              </div>
-            )}
-          </Pergunta>
-
-          <Pergunta n={abaixo ? 5 : 4} titulo="Como estava o time hoje?">
-            <div className="grid grid-cols-3 gap-1.5">
-              {([
-                ['verde', '🟢 Normal'],
-                ['amarelo', '🟡 Algo fora do lugar'],
-                ['vermelho', '🔴 Problema real'],
-              ] as const).map(([v, l]) => (
-                <button key={v} type="button" onClick={() => setTermometro(v)}
-                  className={cn('px-2 py-2.5 rounded-md border text-[12px] font-medium transition-colors',
-                    termometro === v ? 'border-accent bg-accent/10 text-ink' : 'border-border text-ink-muted hover:bg-surface-2')}>
-                  {l}
-                </button>
-              ))}
-            </div>
-            {termometro && termometro !== 'verde' && (
-              <textarea value={obs} onChange={e => setObs(e.target.value.slice(0, 200))}
-                placeholder="Em 1 linha: o que aconteceu? (obrigatório)"
-                rows={2}
-                className={cn(inputCls, 'mt-2 py-2 resize-none',
-                  obs.trim().length < 5 && 'border-warning')} />
-            )}
-          </Pergunta>
-        </div>
-      </div>
-
-      </div>{/* fim do grid de 2 colunas */}
+      </div>{/* fim do grid */}
 
       {/* ═══ LISTA: ORÇAMENTOS ═══ */}
       {lista === 'orcamentos' && (
         <PainelLista onFechar={() => setLista(null)}
           titulo={`Orçamentos ${rotuloPeriodo} · ${orcs.length}`}
-          subtitulo="Marque como está cada um. Serve pra ver se o vendedor está mesmo em cima.">
+          subtitulo="Marque como está cada um — é assim que o time se acompanha.">
           {carregandoOrcs ? (
             <div className="h-24 grid place-items-center text-ink-muted">
               <Loader2 className="w-5 h-5 animate-spin" />
             </div>
           ) : orcs.length === 0 ? (
-            <p className="text-[13px] text-ink-muted p-4 text-center">
-              Nenhum orçamento {rotuloPeriodo}.
-            </p>
+            <p className="text-[13px] text-ink-muted p-4 text-center">Nenhum orçamento {rotuloPeriodo}.</p>
           ) : orcs.map(o => (
             <div key={o.id} className="rounded-md border border-border bg-surface-2/30 p-3">
               <div className="flex items-start justify-between gap-3 mb-1">
@@ -759,16 +573,11 @@ export function RelatorioLider() {
         <PainelLista onFechar={() => setLista(null)}
           titulo={`Leads quentes · ${quentes.length}`}
           subtitulo="“Cliente falou por último” = está esperando resposta.">
-          {carregandoQuentes ? (
-            <div className="h-24 grid place-items-center text-ink-muted">
-              <Loader2 className="w-5 h-5 animate-spin" />
-            </div>
-          ) : quentes.length === 0 ? (
+          {quentes.length === 0 ? (
             <p className="text-[13px] text-ink-muted p-4 text-center">
               Nenhum lead com etiqueta LEAD QUENTE neste time.
             </p>
           ) : quentes.map(q => {
-            // o sinal que interessa: cliente falou por último e ninguém respondeu
             const esperando = q.ultima_foi_minha === false
             const parado = (q.dias_parado ?? 0) >= 2
             return (
@@ -808,38 +617,6 @@ export function RelatorioLider() {
           })}
         </PainelLista>
       )}
-
-      {/* Barra de envio */}
-      <div className="fixed bottom-0 left-0 right-0 border-t border-border bg-surface/95 backdrop-blur px-3 py-2.5 z-20">
-        <div className="max-w-[1700px] mx-auto flex items-center gap-3">
-          <div className="flex-1 text-[11px] text-ink-muted leading-tight">
-            {!lider ? 'Escolha seu nome no topo.'
-              : !termometro ? 'Falta o termômetro do time.'
-              : termometro !== 'verde' && obs.trim().length < 5 ? 'Escreva 1 linha sobre o que aconteceu.'
-              : abaixo && !abaixoMotivo ? `Falta o motivo do ${abaixo}.`
-              : salvar.isSuccess ? '✅ Enviado. Obrigado.'
-              : 'Tudo pronto.'}
-          </div>
-          <button
-            disabled={!podeSalvar || salvar.isPending}
-            onClick={() => salvar.mutate({
-              time_slug: time.slug, lider_nome: lider,
-              abaixo_vendedor: abaixo, abaixo_motivo: abaixoMotivo,
-              qualidade_lead: qualidade, qualidade_lead_motivo: desvio,
-              termometro: termometro!, termometro_obs: obs.trim() || null,
-              negocios: negocios.filter(n => n.cliente.trim()),
-            })}
-            className={cn(
-              'px-5 py-2.5 rounded-md text-[14px] font-semibold transition-colors inline-flex items-center gap-2',
-              podeSalvar && !salvar.isPending
-                ? 'bg-accent text-accent-fg hover:opacity-90'
-                : 'bg-surface-2 text-ink-muted cursor-not-allowed',
-            )}>
-            {salvar.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-            {jaSalvo ? 'Corrigir' : 'Enviar'}
-          </button>
-        </div>
-      </div>
     </div>
   )
 }

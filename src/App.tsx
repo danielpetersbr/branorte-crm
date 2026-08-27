@@ -61,7 +61,7 @@ const Reunioes = lazy(() => import('@/pages/Reunioes').then(m => ({ default: m.R
 const Ligacoes = lazy(() => import('@/pages/Ligacoes').then(m => ({ default: m.Ligacoes })))
 const Agenda = lazy(() => import('@/pages/Agenda').then(m => ({ default: m.Agenda })))
 const RelatorioLider = lazy(() => import('@/pages/RelatorioLider').then(m => ({ default: m.RelatorioLider })))
-const RelatorioLiderGestao = lazy(() => import('@/pages/RelatorioLiderGestao').then(m => ({ default: m.RelatorioLiderGestao })))
+const ReuniaoTime = lazy(() => import('@/pages/ReuniaoTime').then(m => ({ default: m.ReuniaoTime })))
 const FreteCotacao = lazy(() => import('@/pages/FreteCotacao'))
 const FreteTransportadoras = lazy(() => import('@/pages/FreteTransportadoras'))
 const FreteHistorico = lazy(() => import('@/pages/FreteHistorico'))
@@ -537,8 +537,10 @@ function AppRoutes() {
             Fica AUTENTICADA de proposito: a P1 mostra nome de cliente e valor de
             orcamento — abrir pro anon repetiria o vazamento do schema auditoria. */}
         <Route path="/relatorio-lider" element={<RelatorioLider />} />
-        {/* Visao do GESTOR: o que os 3 lideres preencheram. A de cima e a de entrada. */}
-        <Route path="/relatorio-lider/gestao" element={<RelatorioLiderGestao />} />
+        {/* Reuniao do time — substituiu a tela de gestao do modelo com lider.
+            O link antigo /relatorio-lider/gestao segue funcionando. */}
+        <Route path="/reuniao-time" element={<ReuniaoTime />} />
+        <Route path="/relatorio-lider/gestao" element={<Navigate to="/reuniao-time" replace />} />
         {/* /funil = Kanban WhatsApp (espelho das etiquetas Wascript); o kanban
             manual antigo (status_vendedor) continua em /funil/manual */}
         <Route path="/funil" element={<FunilWhatsApp />} />
