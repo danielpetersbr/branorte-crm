@@ -1531,3 +1531,17 @@
 .vr .vr-plantel .lin .nm .dias-fase {
   font: 600 10px var(--vr-mono); color: var(--vr-ink40); white-space: nowrap;
 }
+
+/* "alterado (ref. X) ↺" — o consumo continua editável (o real varia com
+   genética, manejo e formulação), mas o vendedor precisa ENXERGAR que o número
+   saiu do catálogo e ter como voltar sem procurar o valor original. */
+.vr .vr-alterado {
+  font: 600 10px var(--vr-mono); color: #9a3412; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 3px;
+}
+.vr .vr-alterado button {
+  border: 1px solid #fdba74; background: #fff7ed; color: #9a3412;
+  border-radius: 5px; cursor: pointer; line-height: 1;
+  font: 700 11px inherit; padding: 1px 4px;
+}
+.vr .vr-alterado button:hover { background: #ffedd5; }
