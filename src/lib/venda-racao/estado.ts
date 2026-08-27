@@ -24,6 +24,40 @@ export function consumoSugerido(especie: Especie, categoria: string): number {
   return CATEGORIAS[especie]?.find(c => c.chave === categoria)?.consumoMes ?? 0
 }
 
+/**
+ * Converte um consumo por animal de uma base pra outra.
+ *
+ * ⚠️ ISTO FALTAVA, e era o defeito mais caro da tela. O catálogo dá o consumo
+ * em kg/MÊS (2,7 kg/mês de frango inicial = ~90 g por ave por dia, que confere
+ * com a realidade). Mas ao trocar "Unidade do consumo" para "kg por dia" o
+ * campo continuava com 2,7 — passando a significar 2,7 kg por ave POR DIA.
+ *
+ * Medido com o caso real do Daniel: 15.000 aves davam **1.665 t/mês** em vez
+ * de 55,5 t/mês. Trinta vezes maior. Um estudo assim dimensiona (e orça) uma
+ * fábrica absurdamente fora do que o cliente precisa.
+ *
+ * `dias` é a duração do ciclo, usada só quando alguma ponta é 'ciclo'.
+ */
+export function converterConsumo(
+  valor: number,
+  de: 'mes' | 'dia' | 'ciclo',
+  para: 'mes' | 'dia' | 'ciclo',
+  dias: number,
+): number {
+  if (de === para) return valor
+  const v = Number(valor) || 0
+  if (v <= 0) return v
+  const d = Number(dias) > 0 ? Number(dias) : 30
+
+  // normaliza pra kg/dia e volta pra base de destino
+  const porDia = de === 'dia' ? v : de === 'mes' ? v / 30 : v / d
+  const fim = para === 'dia' ? porDia : para === 'mes' ? porDia * 30 : porDia * d
+
+  // 3 casas: é a precisão que o campo mostra. Sem arredondar, trocar a unidade
+  // ida e volta acumulava dízima e o número "andava" sozinho.
+  return Math.round(fim * 1000) / 1000
+}
+
 export function novoEstudo(
   configBruta: Partial<ConfigEstudo> | null | undefined,
   especie: Especie = 'bovinos',
