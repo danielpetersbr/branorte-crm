@@ -2,10 +2,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 
 // ============================================================================
-// Relatório Diário do Líder de Time
+// Painel do Time (antes: Relatório Diário do Líder)
 //
-// 9 vendedores, 3 times, 1 líder por time por semana. O líder continua
-// vendendo — no fim do dia ele abre a tela, vê os números dos 3 e responde
+// ⚠️ 27/08/2026: ACABOU o líder fixo. O time se acompanha sozinho e o Daniel
+// chama cada time durante a semana pra analisar os números juntos. Por isso o
 // o que o BANCO NÃO SABE: motivo.
 //
 // Regra que desenhou tudo aqui: o sistema já conta volume sozinho (ligação,
@@ -281,95 +281,36 @@ export function useMarcarAndamento() {
   })
 }
 
-// ─── O relatório em si ──────────────────────────────────────────────────────
 
-export interface NegocioForm {
-  tipo: 'quente' | 'perdido'
-  cliente: string
-  vendedor_nome: string
+// ─── "Precisa de atenção": o sistema aponta, ninguém acusa ninguém ──────────
+
+/**
+ * Substitui a pergunta "quem ficou abaixo hoje?" do modelo com líder.
+ * Sem líder, pedir a um vendedor pra justificar o colega vira delação — e
+ * mata o preenchimento na primeira semana. Aqui tudo é FATO, apurado pelo
+ * banco: cliente sem resposta, orçamento sem andamento, ligação abaixo da meta.
+ */
+export interface AtencaoLinha {
+  severidade: 'alta' | 'media'
+  tipo: 'sem_resposta' | 'orcamento_parado' | 'abaixo_meta'
+  cliente: string | null
+  vendedor_nome: string | null
+  detalhe: string
   valor: number | null
-  previsao?: string
-  obstaculo?: string
-  motivo?: string
-  concorrente?: string
+  dias: number
 }
 
-export interface RelatorioForm {
-  time_slug: string
-  lider_nome: string
-  abaixo_vendedor: string | null
-  abaixo_motivo: string | null
-  qualidade_lead: 'bons' | 'mistos' | 'ruins' | null
-  qualidade_lead_motivo: string | null
-  termometro: 'verde' | 'amarelo' | 'vermelho'
-  termometro_obs: string | null
-  negocios: NegocioForm[]
-}
-
-/** Relatório de hoje daquele time, se já existir (o líder pode corrigir). */
-export function useRelatorioDoDia(time: TimeSlug | null, dia?: string) {
+export function useAtencaoTime(time: TimeSlug | null) {
   return useQuery({
-    queryKey: ['rel-lider-dia', time, dia ?? 'hoje'],
+    queryKey: ['painel-atencao', time],
     enabled: !!time,
-    staleTime: 30_000,
-    queryFn: async () => {
-      let q = supabase.from('relatorio_lider')
-        .select('*, negocios:relatorio_lider_negocio(*)')
-        .eq('time_slug', time!)
-      q = dia ? q.eq('dia', dia) : q.gte('dia', hojeSP())
-      const { data, error } = await q.maybeSingle()
+    staleTime: 60_000,
+    queryFn: async (): Promise<AtencaoLinha[]> => {
+      const { data, error } = await supabase.rpc('painel_time_atencao', { p_time: time })
       if (error) throw error
-      return data
-    },
-  })
-}
-
-export function hojeSP(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
-}
-
-export function useSalvarRelatorio() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (form: RelatorioForm) => {
-      // upsert por (time_slug, dia): reabrir a tela no mesmo dia CORRIGE o
-      // relatório em vez de criar um segundo. Dois relatórios do mesmo time
-      // no mesmo dia quebrariam o placar da semana.
-      const { data: rel, error: e1 } = await supabase
-        .from('relatorio_lider')
-        .upsert({
-          time_slug: form.time_slug,
-          dia: hojeSP(),
-          lider_nome: form.lider_nome,
-          abaixo_vendedor: form.abaixo_vendedor,
-          abaixo_motivo: form.abaixo_motivo,
-          qualidade_lead: form.qualidade_lead,
-          qualidade_lead_motivo: form.qualidade_lead_motivo,
-          termometro: form.termometro,
-          termometro_obs: form.termometro_obs,
-          atualizado_em: new Date().toISOString(),
-        }, { onConflict: 'time_slug,dia' })
-        .select('id')
-        .single()
-      if (e1) throw e1
-
-      // Negócios são reescritos por inteiro: mais simples e sem risco de
-      // duplicar quando o líder corrige. O volume é de 1 a 3 linhas por dia.
-      const { error: e2 } = await supabase
-        .from('relatorio_lider_negocio').delete().eq('relatorio_id', rel.id)
-      if (e2) throw e2
-
-      if (form.negocios.length) {
-        const { error: e3 } = await supabase.from('relatorio_lider_negocio').insert(
-          form.negocios.map(n => ({ ...n, relatorio_id: rel.id })),
-        )
-        if (e3) throw e3
-      }
-      return rel.id as number
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['rel-lider-dia'] })
-      qc.invalidateQueries({ queryKey: ['rel-lider-serie'] })
+      return (data ?? []).map((r: Record<string, unknown>) => ({
+        ...r, valor: r.valor == null ? null : Number(r.valor),
+      })) as AtencaoLinha[]
     },
   })
 }
