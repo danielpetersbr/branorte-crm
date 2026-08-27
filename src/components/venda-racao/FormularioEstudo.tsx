@@ -12,7 +12,9 @@ import {
   nomeCategoria, novoIdIngrediente, ORIGEM_CUSTOS, PESOS_SACO,
 } from '@/lib/venda-racao/catalogo'
 import { ehDoNucleo, itensDaFase } from '@/lib/venda-racao/calculo'
-import { aplicarFases, consumoSugerido, converterConsumo, usarFaseUnica } from '@/lib/venda-racao/estado'
+import {
+  aplicarFases, consumoSugeridoNaBase, converterConsumo, usarFaseUnica,
+} from '@/lib/venda-racao/estado'
 import { brl, brlKg, kg, kgHora, numero, pct, toneladas } from '@/lib/venda-racao/formato'
 import { temAlternativa } from '@/lib/nutricao/substituicao'
 import { SubstituirIngrediente } from './SubstituirIngrediente'
@@ -129,8 +131,8 @@ function ResumoPorAnimal({ animais, bruto, base, dias, especie, rotulo }: {
       {suspeito && (
         <p className="av">
           ⚠️ {numero(porAnimalDia, 3)} kg por {rotulo.replace(/s$/, '')} por dia está
-          acima do normal pra {especie}. Confira a <b>Unidade do consumo</b>: os valores de
-          referência das fases são o consumo da <b>fase inteira</b>, não por dia.
+          acima do normal pra {especie}. Confira a <b>Unidade do consumo</b>: a referencia do
+          catálogo é <b>kg por mês</b> — em "kg por dia" o número tem que ser ~30x menor.
         </p>
       )}
     </div>
@@ -218,7 +220,11 @@ export function FormularioEstudo({
         necessidade: {
           ...s.necessidade,
           // ainda não confirmado = é referência de catálogo, pode acompanhar a fase
-          consumoPorAnimal: consumoSugerido(s.produto.especie, chave) || s.necessidade.consumoPorAnimal,
+          // NA BASE do estudo: o catalogo e kg/mes, e entregar cru numa tela em
+          // "kg por dia" e o erro de 30x.
+          consumoPorAnimal: consumoSugeridoNaBase(
+            s.produto.especie, chave, s.necessidade.baseConsumo, s.necessidade.dias,
+          ) || s.necessidade.consumoPorAnimal,
           consumoConfirmado: false,
         },
       }
