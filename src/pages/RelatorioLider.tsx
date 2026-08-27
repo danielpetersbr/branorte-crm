@@ -69,8 +69,8 @@ function CardVendedor({ v, abaixo }: { v: VendedorPainel; abaixo: boolean }) {
           sub={`${v.ligacoes_feitas} feitas · ${v.ligacoes_recebidas} recebidas`} />
         <Metrica icone={<FileText className="w-3.5 h-3.5" />} label="Orçamentos" valor={v.orcamentos}
           sub={v.orcamentos_valor > 0 ? brl(v.orcamentos_valor) : '—'} />
-        <Metrica icone={<Users className="w-3.5 h-3.5" />} label="Clientes atendidos" valor={v.clientes_respondidos}
-          sub={semSync ? 'sem sync' : 'respondeu hoje'} />
+        <Metrica icone={<Users className="w-3.5 h-3.5" />} label="Atendidos" valor={v.clientes_respondidos}
+          sub={semSync ? 'sem sync' : 'clientes hoje'} />
         <Metrica icone={<MessageSquare className="w-3.5 h-3.5" />} label="Mensagens" valor={v.msgs_enviadas}
           sub="enviadas hoje" />
       </div>
