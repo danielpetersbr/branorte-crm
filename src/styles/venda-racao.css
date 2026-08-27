@@ -366,9 +366,19 @@
 }
 .vr .vr-plantel .cab span:not(:first-child) { text-align: right; }
 .vr .vr-plantel .lin { border-top: 1px solid var(--vr-hair); }
+/* ⚠️ DUAS LINHAS. Antes era uma só, com text-overflow: ellipsis — e tudo que
+   entrava aqui (dias da fase, kg/ave na fase, o botão de restaurar) era CORTADO
+   pelas reticências. O botão ficava invisível e o vendedor concluía que a
+   correção não tinha subido. Só o TÍTULO trunca; a linha de baixo, nunca. */
 .vr .vr-plantel .lin .nm {
   font: 600 12px inherit; color: var(--vr-ink);
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+}
+.vr .vr-plantel .lin .nm .titulo {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.vr .vr-plantel .lin .nm .meta {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 3px 6px;
 }
 .vr .vr-plantel .lin input {
   font: 700 12px var(--vr-mono); padding: 5px 6px; border: 1px solid var(--vr-hair);

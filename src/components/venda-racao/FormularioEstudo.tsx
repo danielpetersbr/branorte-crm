@@ -710,29 +710,38 @@ export function FormularioEstudo({
                   const cat = CATEGORIAS[produto.especie]?.find(c => c.chave === l.categoria)
                   return (
                     <div key={l.categoria} className="lin">
+                      {/* ⚠️ DUAS LINHAS. A célula do nome tem
+                          text-overflow: ellipsis — tudo que entrava aqui na
+                          mesma linha era CORTADO. O botão de restaurar ficava
+                          invisível atrás das reticências e o vendedor concluía
+                          que a correção não tinha subido. Título trunca (nome
+                          de fase é longo); a linha de baixo NUNCA trunca. */}
                       <span className="nm" title={cat?.nota ?? nome}>
-                        {nome}
-                        {cat?.diasFase ? (
-                          <b className="dias-fase">
-                            {' · '}{cat.diasFase} dias
-                            {/* kg por ave NA FASE — é assim que o produtor pensa
-                                ("meu frango come 4,8 kg até abater"), e é o número
-                                que dá pra conferir com ele. O campo ao lado está na
-                                unidade do estudo, que pode ser mês ou dia. */}
-                            {l.consumoPorAnimal > 0 && (
-                              <> · {numero(
-                                converterConsumo(l.consumoPorAnimal, nec.baseConsumo, 'dia', nec.dias)
-                                * cat.diasFase, 2)} kg/ave na fase</>
+                        <span className="titulo">{nome}</span>
+                        <span className="meta">
+                          {cat?.diasFase ? (
+                            <b className="dias-fase">
+                              {cat.diasFase} dias
+                              {/* kg por ave NA FASE — é assim que o produtor pensa
+                                  ("meu frango come 4,8 kg até abater") e é o número
+                                  que dá pra conferir com ele na hora. O campo ao
+                                  lado está na unidade do estudo, que pode ser
+                                  mês ou dia. */}
+                              {l.consumoPorAnimal > 0 && (
+                                <> · {numero(
+                                  converterConsumo(l.consumoPorAnimal, nec.baseConsumo, 'dia', nec.dias)
+                                  * cat.diasFase, 2)} kg/ave na fase</>
+                              )}
+                            </b>
+                          ) : null}
+                          <MarcaAlterado
+                            atual={l.consumoPorAnimal}
+                            referencia={consumoSugeridoNaBase(
+                              produto.especie, l.categoria, nec.baseConsumo, nec.dias,
                             )}
-                          </b>
-                        ) : null}
-                        <MarcaAlterado
-                          atual={l.consumoPorAnimal}
-                          referencia={consumoSugeridoNaBase(
-                            produto.especie, l.categoria, nec.baseConsumo, nec.dias,
-                          )}
-                          onRestaurar={v => alterarFase(l.categoria, { consumoPorAnimal: v })}
-                        />
+                            onRestaurar={v => alterarFase(l.categoria, { consumoPorAnimal: v })}
+                          />
+                        </span>
                       </span>
                       <CampoNumero
                         valor={l.numeroAnimais} casas={0} className="" aria-label={`Nº de animais em ${nome}`}
