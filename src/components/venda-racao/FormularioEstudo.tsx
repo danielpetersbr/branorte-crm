@@ -713,7 +713,18 @@ export function FormularioEstudo({
                       <span className="nm" title={cat?.nota ?? nome}>
                         {nome}
                         {cat?.diasFase ? (
-                          <b className="dias-fase"> · {cat.diasFase} dias</b>
+                          <b className="dias-fase">
+                            {' · '}{cat.diasFase} dias
+                            {/* kg por ave NA FASE — é assim que o produtor pensa
+                                ("meu frango come 4,8 kg até abater"), e é o número
+                                que dá pra conferir com ele. O campo ao lado está na
+                                unidade do estudo, que pode ser mês ou dia. */}
+                            {l.consumoPorAnimal > 0 && (
+                              <> · {numero(
+                                converterConsumo(l.consumoPorAnimal, nec.baseConsumo, 'dia', nec.dias)
+                                * cat.diasFase, 2)} kg/ave na fase</>
+                            )}
+                          </b>
                         ) : null}
                         <MarcaAlterado
                           atual={l.consumoPorAnimal}
