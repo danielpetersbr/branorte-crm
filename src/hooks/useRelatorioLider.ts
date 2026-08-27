@@ -196,6 +196,91 @@ export function useVendasTime(time: TimeSlug | null) {
   })
 }
 
+// ─── Listas clicáveis + acompanhamento ──────────────────────────────────────
+
+/** Os 3 botões que o líder aperta no cartão do cliente. */
+export const ANDAMENTOS = [
+  { v: 'negociando',        label: 'Negociando',      cor: 'info' },
+  { v: 'aguardando_cliente', label: 'Aguardando ele', cor: 'warning' },
+  { v: 'cliente_retornou',  label: 'Cliente voltou',  cor: 'success' },
+] as const
+
+export type Andamento = typeof ANDAMENTOS[number]['v']
+
+export interface OrcamentoLinha {
+  id: number; numero: string; cliente: string; vendedor_nome: string
+  valor: number; emitido_em: string; dias: number
+  status: Andamento | null; anotado_por: string | null; anotado_em: string | null
+}
+
+export interface QuenteLinha {
+  chat_id: string; cliente: string; telefone: string; vendedor_nome: string
+  ultima_msg: string | null
+  /** true = o VENDEDOR falou por último. false = o cliente falou e ninguém respondeu. */
+  ultima_foi_minha: boolean | null
+  dias_parado: number | null
+  status: Andamento | null; anotado_por: string | null; anotado_em: string | null
+}
+
+export function useOrcamentosTime(time: TimeSlug | null, periodo: Periodo, ligado: boolean) {
+  return useQuery({
+    queryKey: ['rel-lider-orcamentos', time, periodo],
+    enabled: !!time && ligado,
+    staleTime: 60_000,
+    queryFn: async (): Promise<OrcamentoLinha[]> => {
+      const { data, error } = await supabase.rpc('relatorio_lider_orcamentos', {
+        p_time: time, p_periodo: periodo,
+      })
+      if (error) throw error
+      return (data ?? []).map((r: Record<string, unknown>) => ({
+        ...r, valor: Number(r.valor ?? 0),
+      })) as OrcamentoLinha[]
+    },
+  })
+}
+
+export function useQuentesTime(time: TimeSlug | null, ligado = true) {
+  return useQuery({
+    queryKey: ['rel-lider-quentes', time],
+    enabled: !!time && ligado,
+    staleTime: 60_000,
+    queryFn: async (): Promise<QuenteLinha[]> => {
+      const { data, error } = await supabase.rpc('relatorio_lider_quentes', { p_time: time })
+      if (error) throw error
+      return (data ?? []) as QuenteLinha[]
+    },
+  })
+}
+
+/** Marca (ou desmarca, clicando de novo) o andamento de um cliente. */
+export function useMarcarAndamento() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (p: {
+      time_slug: string; tipo: 'orcamento' | 'quente'; chave: string
+      cliente: string; vendedor_nome: string; status: Andamento | null; anotado_por: string
+    }) => {
+      if (p.status === null) {
+        const { error } = await supabase.from('relatorio_lider_acompanhamento')
+          .delete().eq('tipo', p.tipo).eq('chave', p.chave)
+        if (error) throw error
+        return
+      }
+      const { error } = await supabase.from('relatorio_lider_acompanhamento')
+        .upsert({
+          time_slug: p.time_slug, tipo: p.tipo, chave: p.chave,
+          cliente: p.cliente, vendedor_nome: p.vendedor_nome,
+          status: p.status, anotado_por: p.anotado_por, anotado_em: new Date().toISOString(),
+        }, { onConflict: 'tipo,chave' })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['rel-lider-orcamentos'] })
+      qc.invalidateQueries({ queryKey: ['rel-lider-quentes'] })
+    },
+  })
+}
+
 // ─── O relatório em si ──────────────────────────────────────────────────────
 
 export interface NegocioForm {

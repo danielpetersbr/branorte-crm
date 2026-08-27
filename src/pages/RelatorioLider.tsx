@@ -5,14 +5,15 @@ import {
 } from 'recharts'
 import {
   Phone, FileText, MessageSquare, Users, Flame, AlertTriangle, WifiOff,
-  Check, Plus, X, TrendingUp, Trophy, Loader2,
+  Check, Plus, X, TrendingUp, Trophy, Loader2, ChevronRight, Clock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   TIMES, OBSTACULOS, MOTIVOS_PERDA, MOTIVOS_ABAIXO, DESVIOS_LEAD, PREVISOES,
   usePainelTime, useSerieTime, useRelatorioDoDia, useSalvarRelatorio, useVendasTime,
-  META_LIGACOES_PESSOA_DIA, META_VENDA_TIME_MES, diasUteis,
-  type TimeSlug, type VendedorPainel, type NegocioForm, type Periodo,
+  META_LIGACOES_PESSOA_DIA, META_VENDA_TIME_MES, diasUteis, ANDAMENTOS,
+  useOrcamentosTime, useQuentesTime, useMarcarAndamento,
+  type TimeSlug, type VendedorPainel, type NegocioForm, type Periodo, type Andamento,
 } from '@/hooks/useRelatorioLider'
 
 // ============================================================================
@@ -51,7 +52,7 @@ const COR_ORCAMENTO = 'hsl(var(--info))'   // azul
 // ─── Metade 1: os números ───────────────────────────────────────────────────
 
 /** Um cartão por vendedor. O "abaixo" é calculado aqui e alimenta a pergunta 3. */
-function CardVendedor({ v, abaixo, quando }: { v: VendedorPainel; abaixo: boolean; quando: string }) {
+function CardVendedor({ v, abaixo, quando, quentes }: { v: VendedorPainel; abaixo: boolean; quando: string; quentes: number }) {
   const semSync = v.sync_minutos === null || v.sync_minutos > 60
   return (
     <div className={cn(
@@ -85,7 +86,7 @@ function CardVendedor({ v, abaixo, quando }: { v: VendedorPainel; abaixo: boolea
 
       <div className="mt-3 pt-2.5 border-t border-border flex items-center gap-3 text-[11px] text-ink-muted">
         <span className="inline-flex items-center gap-1">
-          <Flame className="w-3 h-3 text-danger" /> {v.funil_quente} quente{v.funil_quente === 1 ? '' : 's'}
+          <Flame className="w-3 h-3 text-danger" /> {quentes} quente{quentes === 1 ? '' : 's'}
         </span>
         <span>{v.funil_followup} follow-up</span>
         <span>{v.funil_aberto} em aberto</span>
@@ -145,6 +146,69 @@ function BarraMeta({ titulo, feito, meta, sufixo, fmt, detalhe }: {
           style={{ width: `${pct}%` }} />
       </div>
       {detalhe && <p className="text-[10px] text-ink-muted mt-1">{detalhe}</p>}
+    </div>
+  )
+}
+
+// ─── Lista clicável de clientes (orçamentos / quentes) ──────────────────────
+
+/**
+ * Os 3 botões de andamento. Clicar no que já está marcado DESMARCA — sem isso
+ * o líder que erra o clique fica com a anotação errada pra sempre.
+ */
+function BotoesAndamento({ atual, onMarcar, salvando }: {
+  atual: Andamento | null; onMarcar: (s: Andamento | null) => void; salvando: boolean
+}) {
+  return (
+    <div className="flex gap-1 flex-wrap">
+      {ANDAMENTOS.map(a => {
+        const ativo = atual === a.v
+        return (
+          <button key={a.v} type="button" disabled={salvando}
+            onClick={() => onMarcar(ativo ? null : a.v)}
+            className={cn(
+              'px-2.5 py-1 rounded-md border text-[11px] font-medium transition-colors',
+              ativo && a.cor === 'info' && 'border-info bg-info-bg text-info',
+              ativo && a.cor === 'warning' && 'border-warning bg-warning-bg text-warning',
+              ativo && a.cor === 'success' && 'border-success bg-success-bg text-success',
+              !ativo && 'border-border text-ink-muted hover:bg-surface-2',
+              salvando && 'opacity-50',
+            )}>
+            {a.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Painel que abre ao clicar num número. Fecha no Esc e no clique fora. */
+function PainelLista({ titulo, subtitulo, onFechar, children }: {
+  titulo: string; subtitulo?: string; onFechar: () => void; children: React.ReactNode
+}) {
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onFechar() }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [onFechar])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-3 sm:p-6 bg-black/40 backdrop-blur-sm"
+      onClick={onFechar}>
+      <div onClick={e => e.stopPropagation()}
+        className="w-full max-w-3xl max-h-[88vh] flex flex-col rounded-lg border border-border bg-surface shadow-xl mt-4">
+        <div className="flex items-start justify-between gap-3 p-4 border-b border-border">
+          <div>
+            <h3 className="font-bold text-[16px] text-ink">{titulo}</h3>
+            {subtitulo && <p className="text-[12px] text-ink-muted mt-0.5">{subtitulo}</p>}
+          </div>
+          <button onClick={onFechar}
+            className="shrink-0 w-8 h-8 grid place-items-center rounded-md border border-border text-ink-muted hover:bg-surface-2">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="overflow-y-auto p-3 space-y-2">{children}</div>
+      </div>
     </div>
   )
 }
@@ -346,6 +410,24 @@ export function RelatorioLider() {
 
   const rotuloPeriodo = periodo === 'dia' ? 'hoje' : periodo === 'semana' ? 'na semana' : 'no mês'
 
+  // Qual lista está aberta (null = nenhuma). Só busca quando abre.
+  const [lista, setLista] = useState<'orcamentos' | 'quentes' | null>(null)
+  const { data: orcs = [], isLoading: carregandoOrcs } =
+    useOrcamentosTime(timeSlug, periodo, lista === 'orcamentos')
+  // quentes carrega sempre: o tile mostra a contagem, e ela precisa bater com
+  // a lista que abre. Usar o funil_quente do diag daria número diferente do
+  // que a lista enumera (medido: IGOR 0 no diag, 3 em wa_chat_labels).
+  const { data: quentes = [], isLoading: carregandoQuentes } = useQuentesTime(timeSlug)
+  const marcar = useMarcarAndamento()
+
+  const marcarLinha = (
+    tipo: 'orcamento' | 'quente', chave: string, cliente: string,
+    vendedor: string, status: Andamento | null,
+  ) => marcar.mutate({
+    time_slug: time?.slug ?? '', tipo, chave, cliente,
+    vendedor_nome: vendedor, status, anotado_por: lider || '(sem nome)',
+  })
+
   const podeSalvar = !!lider && !!termometro
     && (termometro === 'verde' || obs.trim().length >= 5)
     && (!abaixo || !!abaixoMotivo)
@@ -450,12 +532,16 @@ export function RelatorioLider() {
 
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
           <Tile label={periodo === 'dia' ? 'Ligações' : 'Ligações no período'} valor={String(totais.ligacoes)} />
-          <Tile label="Orçamentos" valor={String(totais.orcamentos)} />
-          <Tile label="Em proposta" valor={totais.valor > 0 ? brl(totais.valor) : '—'} />
+          <Tile label="Orçamentos" valor={String(totais.orcamentos)}
+            onClick={() => setLista('orcamentos')} />
+          <Tile label="Em proposta" valor={totais.valor > 0 ? brl(totais.valor) : '—'}
+            onClick={() => setLista('orcamentos')} />
           <Tile label="Mensagens" valor={String(totais.msgs)} />
           {/* "agora" de propósito: funil é ESTOQUE, não tem recorte de período —
-              somar quentes da semana contaria o mesmo lead 5 vezes. */}
-          <Tile label="Quentes agora" valor={String(totais.quentes)} destaque />
+              somar quentes da semana contaria o mesmo lead 5 vezes.
+              A contagem vem da LISTA (wa_chat_labels), pra bater com o que abre. */}
+          <Tile label="Quentes agora" valor={String(quentes.length)} destaque
+            onClick={() => setLista('quentes')} />
         </div>
 
         {isLoading ? (
@@ -465,7 +551,8 @@ export function RelatorioLider() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             {painel.map(v => (
-              <CardVendedor key={v.vendedor_nome} v={v} abaixo={v.vendedor_nome === abaixo} quando={rotuloPeriodo} />
+              <CardVendedor key={v.vendedor_nome} v={v} abaixo={v.vendedor_nome === abaixo} quando={rotuloPeriodo}
+                quentes={quentes.filter(q => q.vendedor_nome?.toUpperCase() === v.vendedor_nome.toUpperCase()).length} />
             ))}
           </div>
         )}
@@ -610,6 +697,96 @@ export function RelatorioLider() {
 
       </div>{/* fim do grid de 2 colunas */}
 
+      {/* ═══ LISTA: ORÇAMENTOS ═══ */}
+      {lista === 'orcamentos' && (
+        <PainelLista onFechar={() => setLista(null)}
+          titulo={`Orçamentos ${rotuloPeriodo} · ${orcs.length}`}
+          subtitulo="Marque como está cada um. Serve pra ver se o vendedor está mesmo em cima.">
+          {carregandoOrcs ? (
+            <div className="h-24 grid place-items-center text-ink-muted">
+              <Loader2 className="w-5 h-5 animate-spin" />
+            </div>
+          ) : orcs.length === 0 ? (
+            <p className="text-[13px] text-ink-muted p-4 text-center">
+              Nenhum orçamento {rotuloPeriodo}.
+            </p>
+          ) : orcs.map(o => (
+            <div key={o.id} className="rounded-md border border-border bg-surface-2/30 p-3">
+              <div className="flex items-start justify-between gap-3 mb-1">
+                <div className="min-w-0">
+                  <div className="font-medium text-[14px] text-ink truncate">{o.cliente}</div>
+                  <div className="text-[11px] text-ink-muted">
+                    {o.vendedor_nome} · {o.numero}
+                    {o.dias > 0 && <> · há {o.dias} dia{o.dias === 1 ? '' : 's'}</>}
+                  </div>
+                </div>
+                <span className="shrink-0 text-[14px] font-bold text-ink">{brl(o.valor)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2 flex-wrap mt-2">
+                <BotoesAndamento atual={o.status} salvando={marcar.isPending}
+                  onMarcar={s => marcarLinha('orcamento', String(o.id), o.cliente, o.vendedor_nome, s)} />
+                {o.anotado_por && (
+                  <span className="text-[10px] text-ink-muted">por {o.anotado_por}</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </PainelLista>
+      )}
+
+      {/* ═══ LISTA: LEADS QUENTES ═══ */}
+      {lista === 'quentes' && (
+        <PainelLista onFechar={() => setLista(null)}
+          titulo={`Leads quentes · ${quentes.length}`}
+          subtitulo="“Cliente falou por último” = está esperando resposta.">
+          {carregandoQuentes ? (
+            <div className="h-24 grid place-items-center text-ink-muted">
+              <Loader2 className="w-5 h-5 animate-spin" />
+            </div>
+          ) : quentes.length === 0 ? (
+            <p className="text-[13px] text-ink-muted p-4 text-center">
+              Nenhum lead com etiqueta LEAD QUENTE neste time.
+            </p>
+          ) : quentes.map(q => {
+            // o sinal que interessa: cliente falou por último e ninguém respondeu
+            const esperando = q.ultima_foi_minha === false
+            const parado = (q.dias_parado ?? 0) >= 2
+            return (
+              <div key={q.chat_id} className={cn('rounded-md border p-3',
+                esperando && parado ? 'border-danger/50 bg-danger-bg/15' : 'border-border bg-surface-2/30')}>
+                <div className="flex items-start justify-between gap-3 mb-1">
+                  <div className="min-w-0">
+                    <div className="font-medium text-[14px] text-ink truncate">{q.cliente}</div>
+                    <div className="text-[11px] text-ink-muted">{q.vendedor_nome}</div>
+                  </div>
+                  <span className={cn('shrink-0 inline-flex items-center gap-1 text-[11px] font-medium',
+                    esperando && parado ? 'text-danger' : 'text-ink-muted')}>
+                    <Clock className="w-3 h-3" />
+                    {q.dias_parado === null ? 'sem mensagem'
+                      : q.dias_parado === 0 ? 'hoje'
+                      : `${q.dias_parado} dia${q.dias_parado === 1 ? '' : 's'}`}
+                  </span>
+                </div>
+                <div className="text-[11px] mb-2">
+                  {esperando
+                    ? <span className="text-danger font-medium">cliente falou por último — esperando resposta</span>
+                    : q.ultima_foi_minha
+                      ? <span className="text-ink-muted">vendedor respondeu por último</span>
+                      : <span className="text-ink-muted">sem histórico de mensagem</span>}
+                </div>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <BotoesAndamento atual={q.status} salvando={marcar.isPending}
+                    onMarcar={s => marcarLinha('quente', q.chat_id, q.cliente, q.vendedor_nome, s)} />
+                  {q.anotado_por && (
+                    <span className="text-[10px] text-ink-muted">por {q.anotado_por}</span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </PainelLista>
+      )}
+
       {/* Barra de envio */}
       <div className="fixed bottom-0 left-0 right-0 border-t border-border bg-surface/95 backdrop-blur px-3 py-2.5 z-20">
         <div className="max-w-[1700px] mx-auto flex items-center gap-3">
@@ -645,12 +822,21 @@ export function RelatorioLider() {
   )
 }
 
-function Tile({ label, valor, destaque }: { label: string; valor: string; destaque?: boolean }) {
+function Tile({ label, valor, destaque, onClick }: {
+  label: string; valor: string; destaque?: boolean; onClick?: () => void
+}) {
+  const Comp = onClick ? 'button' : 'div'
   return (
-    <div className={cn('rounded-lg border p-2.5',
-      destaque ? 'border-danger/40 bg-danger-bg/20' : 'border-border bg-surface')}>
-      <div className="text-[10px] uppercase tracking-wide text-ink-muted">{label}</div>
+    <Comp onClick={onClick}
+      className={cn('rounded-lg border p-2.5 text-left w-full',
+        destaque ? 'border-danger/40 bg-danger-bg/20' : 'border-border bg-surface',
+        onClick && 'hover:border-accent cursor-pointer transition-colors')}>
+      <div className="text-[10px] uppercase tracking-wide text-ink-muted flex items-center gap-1">
+        {label}
+        {onClick && <ChevronRight className="w-3 h-3 opacity-60" />}
+      </div>
       <div className="text-[18px] font-bold text-ink leading-tight">{valor}</div>
-    </div>
+      {onClick && <div className="text-[9px] text-accent mt-0.5">ver clientes</div>}
+    </Comp>
   )
 }
