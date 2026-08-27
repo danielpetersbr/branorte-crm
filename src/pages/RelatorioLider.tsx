@@ -10,8 +10,9 @@ import {
 import { cn } from '@/lib/utils'
 import {
   TIMES, OBSTACULOS, MOTIVOS_PERDA, MOTIVOS_ABAIXO, DESVIOS_LEAD, PREVISOES,
-  usePainelTime, useSerieTime, useRelatorioDoDia, useSalvarRelatorio,
-  type TimeSlug, type VendedorPainel, type NegocioForm,
+  usePainelTime, useSerieTime, useRelatorioDoDia, useSalvarRelatorio, useVendasTime,
+  META_LIGACOES_PESSOA_DIA, META_VENDA_TIME_MES, diasUteis,
+  type TimeSlug, type VendedorPainel, type NegocioForm, type Periodo,
 } from '@/hooks/useRelatorioLider'
 
 // ============================================================================
@@ -37,13 +38,16 @@ const brl = (n: number) =>
 
 const fmtDia = (d: string) => { const [, m, dd] = d.split('-'); return `${dd}/${m}` }
 
-const AZUL = 'hsl(var(--accent))'
-const VERDE = 'hsl(var(--success))'
+// ⚠️ As duas séries saíam da MESMA cor: no tema Branorte --accent e --success
+// são os dois verdes, e no gráfico barra e linha viravam a mesma coisa.
+// Orçamento passou pro azul de --info (211°) contra o verde do accent (152°).
+const COR_LIGACAO = 'hsl(var(--accent))'   // verde Branorte
+const COR_ORCAMENTO = 'hsl(var(--info))'   // azul
 
 // ─── Metade 1: os números ───────────────────────────────────────────────────
 
 /** Um cartão por vendedor. O "abaixo" é calculado aqui e alimenta a pergunta 3. */
-function CardVendedor({ v, abaixo }: { v: VendedorPainel; abaixo: boolean }) {
+function CardVendedor({ v, abaixo, quando }: { v: VendedorPainel; abaixo: boolean; quando: string }) {
   const semSync = v.sync_minutos === null || v.sync_minutos > 60
   return (
     <div className={cn(
@@ -70,9 +74,9 @@ function CardVendedor({ v, abaixo }: { v: VendedorPainel; abaixo: boolean }) {
         <Metrica icone={<FileText className="w-3.5 h-3.5" />} label="Orçamentos" valor={v.orcamentos}
           sub={v.orcamentos_valor > 0 ? brl(v.orcamentos_valor) : '—'} />
         <Metrica icone={<Users className="w-3.5 h-3.5" />} label="Atendidos" valor={v.clientes_respondidos}
-          sub={semSync ? 'sem sync' : 'clientes hoje'} />
+          sub={semSync ? 'sem sync' : `clientes ${quando}`} />
         <Metrica icone={<MessageSquare className="w-3.5 h-3.5" />} label="Mensagens" valor={v.msgs_enviadas}
-          sub="enviadas hoje" />
+          sub={`enviadas ${quando}`} />
       </div>
 
       <div className="mt-3 pt-2.5 border-t border-border flex items-center gap-3 text-[11px] text-ink-muted">
@@ -98,6 +102,45 @@ function Metrica({ icone, label, valor, sub }: {
         {valor}
       </div>
       <div className="text-[10px] text-ink-muted truncate">{sub}</div>
+    </div>
+  )
+}
+
+// ─── Metas ──────────────────────────────────────────────────────────────────
+
+/**
+ * Barra de meta. `falta` é o que interessa pro líder cobrar — vem em destaque,
+ * não o percentual.
+ */
+function BarraMeta({ titulo, feito, meta, sufixo, fmt, detalhe }: {
+  titulo: React.ReactNode; feito: number; meta: number; sufixo?: string
+  fmt?: (n: number) => string; detalhe?: string
+}) {
+  const f = fmt ?? ((n: number) => n.toLocaleString('pt-BR'))
+  const pct = meta > 0 ? Math.min(100, (feito / meta) * 100) : 0
+  const falta = Math.max(0, meta - feito)
+  const bateu = falta === 0 && meta > 0
+  return (
+    <div className="rounded-lg border border-border bg-surface p-3">
+      <div className="flex items-baseline justify-between gap-2 mb-1.5">
+        <span className="text-[11px] uppercase tracking-wide text-ink-muted">{titulo}</span>
+        {bateu ? (
+          <span className="text-[11px] font-bold text-success">meta batida ✓</span>
+        ) : (
+          <span className="text-[11px] text-ink-muted">
+            faltam <b className="text-danger">{f(falta)}{sufixo}</b>
+          </span>
+        )}
+      </div>
+      <div className="flex items-baseline gap-1.5 mb-1.5">
+        <span className="text-[20px] font-bold text-ink leading-none">{f(feito)}{sufixo}</span>
+        <span className="text-[12px] text-ink-muted">de {f(meta)}{sufixo}</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-surface-2 overflow-hidden">
+        <div className={cn('h-full rounded-full transition-all', bateu ? 'bg-success' : 'bg-accent')}
+          style={{ width: `${pct}%` }} />
+      </div>
+      {detalhe && <p className="text-[10px] text-ink-muted mt-1">{detalhe}</p>}
     </div>
   )
 }
@@ -212,8 +255,13 @@ export function RelatorioLider() {
   const timeSlug = (params.get('time') as TimeSlug | null) ?? null
   const time = TIMES.find(t => t.slug === timeSlug) ?? null
 
-  const { data: painel = [], isLoading } = usePainelTime(timeSlug)
-  const { data: serie = [] } = useSerieTime(timeSlug, 14)
+  // Período dos NÚMEROS. O formulário continua sempre do DIA — o relatório é
+  // diário; só o painel de cima muda de recorte.
+  const [periodo, setPeriodo] = useState<Periodo>('dia')
+
+  const { data: painel = [], isLoading } = usePainelTime(timeSlug, periodo)
+  const { data: serie = [] } = useSerieTime(timeSlug, periodo === 'mes' ? 30 : 14)
+  const { data: vendas } = useVendasTime(timeSlug)
   const { data: jaSalvo } = useRelatorioDoDia(timeSlug)
   const salvar = useSalvarRelatorio()
 
@@ -259,11 +307,23 @@ export function RelatorioLider() {
 
   const totais = useMemo(() => painel.reduce((s, v) => ({
     ligacoes: s.ligacoes + v.ligacoes,
+    feitas: s.feitas + v.ligacoes_feitas,
     orcamentos: s.orcamentos + v.orcamentos,
     valor: s.valor + v.orcamentos_valor,
     msgs: s.msgs + v.msgs_enviadas,
     quentes: s.quentes + v.funil_quente,
-  }), { ligacoes: 0, orcamentos: 0, valor: 0, msgs: 0, quentes: 0 }), [painel])
+  }), { ligacoes: 0, feitas: 0, orcamentos: 0, valor: 0, msgs: 0, quentes: 0 }), [painel])
+
+  // Meta de ligação = 10 por pessoa por DIA ÚTIL. No dia são 30 (3 pessoas);
+  // na semana e no mês multiplica pelos dias úteis JÁ DECORRIDOS, não pelo mês
+  // inteiro — meta de mês fechado no dia 3 mostraria um buraco que não existe.
+  const metaLigacoes = useMemo(() => {
+    const hoje = new Date()
+    const de = painel[0]?.periodo_de ? new Date(painel[0].periodo_de + 'T12:00:00') : hoje
+    return META_LIGACOES_PESSOA_DIA * (painel.length || 3) * diasUteis(de, hoje)
+  }, [painel])
+
+  const rotuloPeriodo = periodo === 'dia' ? 'hoje' : periodo === 'semana' ? 'na semana' : 'no mês'
 
   const podeSalvar = !!lider && !!termometro
     && (termometro === 'verde' || obs.trim().length >= 5)
@@ -332,15 +392,46 @@ export function RelatorioLider() {
 
       {/* ═══ COLUNA 1: OS NÚMEROS ═══ */}
       <div className="space-y-5 min-w-0">
-        <h2 className="text-[13px] font-bold uppercase tracking-wide text-ink-muted mb-2.5">
-          Como o time foi hoje
-        </h2>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="text-[13px] font-bold uppercase tracking-wide text-ink-muted">
+            {periodo === 'dia' ? 'Como o time foi hoje'
+              : periodo === 'semana' ? 'O time nesta semana'
+              : 'O time neste mês'}
+          </h2>
+          <div className="inline-flex rounded-md border border-border overflow-hidden">
+            {([['dia', 'Dia'], ['semana', 'Semana'], ['mes', 'Mês']] as const).map(([v, l]) => (
+              <button key={v} onClick={() => setPeriodo(v)}
+                className={cn('px-3 py-1.5 text-[12px] font-medium transition-colors',
+                  periodo === v ? 'bg-accent text-accent-fg' : 'text-ink-muted hover:bg-surface-2')}>
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-3">
-          <Tile label="Ligações" valor={String(totais.ligacoes)} />
+        {/* METAS — ligação escala com o período; venda é sempre do MÊS, porque a
+            meta de R$ 833 mil é mensal. Misturar as duas escalas confundiria. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <BarraMeta
+            titulo={`Ligações feitas · meta ${META_LIGACOES_PESSOA_DIA}/pessoa por dia`}
+            feito={totais.feitas} meta={metaLigacoes}
+            detalhe={periodo === 'dia'
+              ? `${painel.length || 3} pessoas × ${META_LIGACOES_PESSOA_DIA} hoje`
+              : `${META_LIGACOES_PESSOA_DIA}/pessoa × dias úteis já corridos no período`} />
+          <BarraMeta
+            titulo="Vendas do mês · meta do time"
+            feito={vendas?.vendido ?? 0} meta={META_VENDA_TIME_MES}
+            fmt={brl}
+            detalhe={vendas ? `${vendas.pedidos} pedido${vendas.pedidos === 1 ? '' : 's'} fechado${vendas.pedidos === 1 ? '' : 's'} no mês` : 'carregando…'} />
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          <Tile label={periodo === 'dia' ? 'Ligações' : 'Ligações no período'} valor={String(totais.ligacoes)} />
           <Tile label="Orçamentos" valor={String(totais.orcamentos)} />
           <Tile label="Em proposta" valor={totais.valor > 0 ? brl(totais.valor) : '—'} />
           <Tile label="Mensagens" valor={String(totais.msgs)} />
+          {/* "agora" de propósito: funil é ESTOQUE, não tem recorte de período —
+              somar quentes da semana contaria o mesmo lead 5 vezes. */}
           <Tile label="Quentes agora" valor={String(totais.quentes)} destaque />
         </div>
 
@@ -351,7 +442,7 @@ export function RelatorioLider() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             {painel.map(v => (
-              <CardVendedor key={v.vendedor_nome} v={v} abaixo={v.vendedor_nome === abaixo} />
+              <CardVendedor key={v.vendedor_nome} v={v} abaixo={v.vendedor_nome === abaixo} quando={rotuloPeriodo} />
             ))}
           </div>
         )}
@@ -361,7 +452,7 @@ export function RelatorioLider() {
         <div className="flex items-center gap-2 mb-3">
           <TrendingUp className="w-4 h-4 text-ink-muted" />
           <h2 className="text-[13px] font-bold uppercase tracking-wide text-ink-muted">
-            Últimos 14 dias do time
+            {periodo === 'mes' ? 'Últimos 30 dias do time' : 'Últimos 14 dias do time'}
           </h2>
         </div>
         <div className="h-[260px]">
@@ -378,8 +469,8 @@ export function RelatorioLider() {
                   borderRadius: 8, fontSize: 12,
                 }}
                 formatter={(v, n) => [String(v), n === 'ligacoes' ? 'Ligações' : 'Orçamentos']} />
-              <Bar yAxisId="l" dataKey="ligacoes" fill={AZUL} radius={[3, 3, 0, 0]} maxBarSize={22} />
-              <Line yAxisId="r" dataKey="orcamentos" stroke={VERDE} strokeWidth={2} dot={{ r: 2.5 }} />
+              <Bar yAxisId="l" dataKey="ligacoes" fill={COR_LIGACAO} radius={[3, 3, 0, 0]} maxBarSize={22} />
+              <Line yAxisId="r" dataKey="orcamentos" stroke={COR_ORCAMENTO} strokeWidth={2} dot={{ r: 2.5, fill: COR_ORCAMENTO }} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
