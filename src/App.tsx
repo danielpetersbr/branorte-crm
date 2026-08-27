@@ -60,6 +60,7 @@ const IaTeste = lazy(() => import('@/pages/IaTeste').then(m => ({ default: m.IaT
 const Reunioes = lazy(() => import('@/pages/Reunioes').then(m => ({ default: m.Reunioes })))
 const Ligacoes = lazy(() => import('@/pages/Ligacoes').then(m => ({ default: m.Ligacoes })))
 const Agenda = lazy(() => import('@/pages/Agenda').then(m => ({ default: m.Agenda })))
+const RelatorioLider = lazy(() => import('@/pages/RelatorioLider').then(m => ({ default: m.RelatorioLider })))
 const FreteCotacao = lazy(() => import('@/pages/FreteCotacao'))
 const FreteTransportadoras = lazy(() => import('@/pages/FreteTransportadoras'))
 const FreteHistorico = lazy(() => import('@/pages/FreteHistorico'))
@@ -530,6 +531,11 @@ function AppRoutes() {
         <Route path="/ligacoes" element={<Ligacoes />} />
         {/* Placar das metas de comportamento (resgate, pós-orçamento, negócio grande) */}
         <Route path="/agenda" element={<Agenda />} />
+        {/* Relatorio diario do lider de time. O link vai com o time embutido
+            (/relatorio-lider?time=caca-lead); sem o param a tela pede o time.
+            Fica AUTENTICADA de proposito: a P1 mostra nome de cliente e valor de
+            orcamento — abrir pro anon repetiria o vazamento do schema auditoria. */}
+        <Route path="/relatorio-lider" element={<RelatorioLider />} />
         {/* /funil = Kanban WhatsApp (espelho das etiquetas Wascript); o kanban
             manual antigo (status_vendedor) continua em /funil/manual */}
         <Route path="/funil" element={<FunilWhatsApp />} />
