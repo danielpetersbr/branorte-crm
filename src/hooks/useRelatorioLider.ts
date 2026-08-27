@@ -123,8 +123,12 @@ export interface DiaSerie {
   orcamentos: number
   orcamentos_valor: number
   msgs_enviadas: number
-  termometro: 'verde' | 'amarelo' | 'vermelho' | null
 }
+// ⚠️ tinha um campo `termometro` aqui, que a RPC lia de public.relatorio_lider
+// pra pintar o gráfico. A tabela foi dropada junto com o relatório diário (não
+// há mais líder pra respondê-lo) e a RPC passou a estourar
+// "relation does not exist" EM TEMPO DE EXECUÇÃO: o gráfico vinha vazio, sem
+// erro na tela e sem erro no build. Só apareceu abrindo a página.
 
 export function useSerieTime(time: TimeSlug | null, dias = 14) {
   return useQuery({
