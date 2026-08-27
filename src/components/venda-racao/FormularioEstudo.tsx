@@ -171,8 +171,8 @@ function ResumoPorAnimal({ animais, bruto, base, dias, especie, rotulo }: {
       {suspeito && (
         <p className="av">
           ⚠️ {numero(porAnimalDia, 3)} kg por {rotulo.replace(/s$/, '')} por dia está
-          acima do normal pra {especie}. Confira a <b>Unidade do consumo</b>: a referencia do
-          catálogo é <b>kg por mês</b> — em "kg por dia" o número tem que ser ~30x menor.
+          acima do normal pra {especie}. O valor esperado por animal e bem menor — confira o
+          campo de consumo, que esta em <b>kg por mes</b> por animal.
         </p>
       )}
     </div>
@@ -794,43 +794,27 @@ export function FormularioEstudo({
             </div>
             )}
             <div className="vr-row2">
+              {/* ⚠️ UNIDADE TRAVADA EM kg/MÊS desde 27/08/2026.
+                  Aqui havia um seletor com mês/dia/ciclo, e ele era a origem do
+                  pior defeito desta tela: o catálogo é mensal, então escolher
+                  "kg por dia" mantinha 2,7 no campo e passava a significar 2,7 kg
+                  por ave POR DIA — 15.000 aves davam 1.665 t/mês em vez de 55,5.
+                  Cheguei a corrigir convertendo na troca, mas o Daniel pediu pra
+                  travar: opção que só serve pra errar não precisa existir.
+                  Quem sabe o volume por dia usa a aba "Quantidade direta", que
+                  tem dia/mês/ano e não passa por consumo por animal.
+                  ⚠️ Estudo salvo em dia/ciclo é convertido ao abrir, em
+                  migrarParaKgMes() — senão ficaria preso no número torto. */}
               <Campo label="Unidade do consumo">
-                <Selecao
-                  valor={nec.baseConsumo}
-                  opcoes={[
-                    { v: 'mes' as const, label: 'kg por mês' },
-                    { v: 'dia' as const, label: 'kg por dia' },
-                    { v: 'ciclo' as const, label: 'kg por ciclo' },
-                  ]}
-                  onChange={v => {
-                    // ⚠️ Trocar a unidade CONVERTE os valores. Sem isto o 2,7
-                    // kg/mês do catálogo virava 2,7 kg/DIA por ave e o estudo
-                    // saía 30x maior (15.000 aves = 1.665 t/mês).
-                    const de = nec.baseConsumo
-                    const conv = (x: number) => converterConsumo(x, de, v, nec.dias)
-                    setNec({
-                      baseConsumo: v,
-                      consumoPorAnimal: conv(nec.consumoPorAnimal),
-                      ...(nec.fases && nec.fases.length > 1
-                        ? { fases: nec.fases.map(f => ({ ...f, consumoPorAnimal: conv(f.consumoPorAnimal) })) }
-                        : {}),
-                    })
-                  }}
-                />
+                <div className="vr-fixo">
+                  kg por mês
+                  <span>por animal — referência do catálogo</span>
+                </div>
               </Campo>
-              <Campo
-                label={nec.baseConsumo === 'ciclo' ? 'Dias do ciclo' : 'Nº de dias'}
-                unidade={nec.baseConsumo === 'mes' ? 'não usado' : 'dias'}
-              >
-                <CampoNumero
-                  valor={nec.dias} casas={0} disabled={nec.baseConsumo === 'mes'}
-                  onChange={v => setNec({ dias: v })}
-                />
+              <Campo label="Margem de segurança" unidade="%">
+                <CampoNumero valor={nec.margemSegurancaPct} casas={2} onChange={v => setNec({ margemSegurancaPct: v })} />
               </Campo>
             </div>
-            <Campo label="Margem de segurança" unidade="%">
-              <CampoNumero valor={nec.margemSegurancaPct} casas={2} onChange={v => setNec({ margemSegurancaPct: v })} />
-            </Campo>
 
             <label className={`vr-check${nec.consumoConfirmado ? ' on' : ''}`}>
               <input

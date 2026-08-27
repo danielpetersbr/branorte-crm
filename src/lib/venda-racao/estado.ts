@@ -12,7 +12,7 @@ import {
 import { emDiasISO, hojeISO } from './formato'
 import type {
   AjusteCenario, ConfigEstudo, CustoOpcional, Especie, EstudoInput, FasePlantel,
-  IngredienteFormula,
+  IngredienteFormula, Necessidade,
 } from './tipos'
 
 export function categoriaPadrao(especie: Especie): string {
@@ -330,6 +330,30 @@ function mesclarAjuste(padrao: AjusteCenario, bruto: unknown): AjusteCenario {
   }
 }
 
+/**
+ * Converte um estudo salvo em "kg por dia"/"kg por ciclo" para kg/MÊS.
+ *
+ * O seletor de unidade saiu da tela em 27/08/2026: era a origem do erro de 30x
+ * (o catálogo é mensal, e escolher "kg por dia" mantinha o mesmo número no
+ * campo, virando 2,7 kg por ave POR DIA). Sem esta migração, todo estudo já
+ * salvo em dia/ciclo abriria com o número na unidade errada e SEM o seletor
+ * pra arrumar — ficaria preso no valor torto.
+ *
+ * Converte tanto o consumo principal quanto o de cada fase.
+ */
+export function migrarParaKgMes(n: Necessidade): Necessidade {
+  if (n.baseConsumo === 'mes') return n
+  const de = n.baseConsumo
+  const dias = n.dias
+  const conv = (v: number) => converterConsumo(v, de, 'mes', dias)
+  return {
+    ...n,
+    baseConsumo: 'mes',
+    consumoPorAnimal: conv(n.consumoPorAnimal),
+    fases: n.fases?.map(f => ({ ...f, consumoPorAnimal: conv(f.consumoPorAnimal) })),
+  }
+}
+
 /** Formato do módulo antigo de precificação (`/venda-racao` até 08/2026). */
 interface InputLegado {
   quantidade?: {
@@ -362,7 +386,7 @@ export function normalizarInput(
   // --- necessidade: campo novo, ou convertido do antigo `quantidade`
   let necessidade = base.necessidade
   if (s.necessidade) {
-    necessidade = { ...base.necessidade, ...s.necessidade }
+    necessidade = migrarParaKgMes({ ...base.necessidade, ...s.necessidade })
   } else if (s.quantidade) {
     const q = s.quantidade
     const pedidos = Number(q.pedidosPorMes) || 1
