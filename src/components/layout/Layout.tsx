@@ -110,6 +110,11 @@ const NAV_GROUPS: NavGroup[] = [
       // de verdade pro mesmo acesso — foi o que escondeu /contatos dos vendedores.
       { to: '/ligacoes', label: 'Controle de Ligações', icon: PhoneCall, permKey: 'menu.ligacoes' },
       { to: '/agenda', label: 'Agenda e Tarefas', icon: CalendarDays },
+      // Relatorio do lider da semana. SEM permKey de proposito, igual a Agenda:
+      // item com permKey E roles cria duas fontes de verdade pro mesmo acesso —
+      // foi o que escondeu /contatos dos 9 vendedores mesmo com a permissao ligada.
+      // Todo vendedor enxerga; quem preenche e quem recebeu o link do time na semana.
+      { to: '/relatorio-lider', label: 'Relatório do Líder', icon: ClipboardList },
       // SEM `roles` de proposito: quem manda aqui e `menu.contatos`, a permissao
       // que a tela de admin edita. A lista fixa ['admin','marketing'] existia
       // porque /contatos nao estava em VENDOR_PREFIXES e o vendedor era chutado
