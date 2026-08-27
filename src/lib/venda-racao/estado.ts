@@ -354,6 +354,33 @@ export function migrarParaKgMes(n: Necessidade): Necessidade {
   }
 }
 
+/**
+ * Repõe o consumo de REFERÊNCIA do catálogo em todas as linhas.
+ *
+ * ⚠️ Existe porque o campo virou SOMENTE LEITURA (27/08/2026). Sem isto, todo
+ * estudo salvo antes disso abriria exibindo o número velho — 81 kg/mês por ave,
+ * herdado do erro de unidade — e ninguém teria como corrigir, porque não há
+ * mais campo pra digitar nem botão de restaurar.
+ *
+ * Só mexe no que DIVERGE da referência, e só quando a categoria existe no
+ * catálogo: fase "outro" (texto livre, consumo 0 no catálogo) fica como está,
+ * senão zeraria o estudo de quem usa categoria própria.
+ */
+export function reporConsumoDoCatalogo(
+  especie: Especie, n: Necessidade, categoriaPrincipal: string,
+): Necessidade {
+  const ref = (chave: string) => consumoSugerido(especie, chave)
+  const rp = ref(categoriaPrincipal)
+  return {
+    ...n,
+    consumoPorAnimal: rp > 0 ? rp : n.consumoPorAnimal,
+    fases: n.fases?.map(f => {
+      const r = ref(f.categoria)
+      return r > 0 ? { ...f, consumoPorAnimal: r } : f
+    }),
+  }
+}
+
 /** Formato do módulo antigo de precificação (`/venda-racao` até 08/2026). */
 interface InputLegado {
   quantidade?: {
@@ -457,8 +484,17 @@ export function normalizarInput(
   // Estudo multi-fase salvo sem as linhas de plantel (ou com linha a menos)
   // reabriria mostrando 3 fases marcadas e calculando com uma só. Reconstrói.
   const marcadas = normalizado.produto.categorias ?? []
-  if (marcadas.length > 1 && (normalizado.necessidade.fases?.length ?? 0) !== marcadas.length) {
-    return aplicarFases(normalizado, marcadas)
+  const pronto = marcadas.length > 1 && (normalizado.necessidade.fases?.length ?? 0) !== marcadas.length
+    ? aplicarFases(normalizado, marcadas)
+    : normalizado
+
+  // ⚠️ POR ÚLTIMO: o consumo é somente leitura, então tem que ser o do catálogo.
+  // Sem isto, estudo salvo antes de 27/08/2026 abriria com o número velho e
+  // ninguém teria como corrigir — não há mais campo nem botão.
+  return {
+    ...pronto,
+    necessidade: reporConsumoDoCatalogo(
+      pronto.produto.especie, pronto.necessidade, pronto.produto.categoria,
+    ),
   }
-  return normalizado
 }

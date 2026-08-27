@@ -72,33 +72,6 @@ const UNIDADES_PRECO = [
 ]
 
 /**
- * Marca que o consumo daquela linha foi editado, e deixa voltar pra referência.
- *
- * O campo CONTINUA editável de propósito: consumo real varia muito com
- * genética, manejo, clima e formulação, e travar faria o estudo errar pro outro
- * lado — fábrica subdimensionada, que é pior que a de sobra. O que faltava era
- * o vendedor ENXERGAR que aquele número não é mais o do catálogo, e ter como
- * desfazer sem procurar o valor original.
- *
- * Tolerância de 0,0005: o campo mostra 3 casas e converterConsumo() arredonda
- * nessa mesma precisão. Sem a folga, trocar a unidade ida e volta acenderia
- * "alterado" sozinho, sem ninguém ter digitado nada.
- */
-function MarcaAlterado({ atual, referencia, onRestaurar }: {
-  atual: number; referencia: number; onRestaurar: (v: number) => void
-}) {
-  if (!(referencia > 0)) return null
-  if (Math.abs(Number(atual) - referencia) < 0.0005) return null
-  return (
-    <span className="vr-alterado">
-      · alterado (ref. {numero(referencia, 3)})
-      <button type="button" title={`Voltar pra ${numero(referencia, 3)} do catálogo`}
-        onClick={() => onRestaurar(referencia)}>↺</button>
-    </span>
-  )
-}
-
-/**
  * Média de consumo POR ANIMAL e o que o "Nº de dias" está fazendo com o total.
  *
  * Nasceu de duas queixas do Daniel na etapa 3, que têm a mesma raiz:
@@ -734,23 +707,22 @@ export function FormularioEstudo({
                               )}
                             </b>
                           ) : null}
-                          <MarcaAlterado
-                            atual={l.consumoPorAnimal}
-                            referencia={consumoSugeridoNaBase(
-                              produto.especie, l.categoria, nec.baseConsumo, nec.dias,
-                            )}
-                            onRestaurar={v => alterarFase(l.categoria, { consumoPorAnimal: v })}
-                          />
                         </span>
                       </span>
                       <CampoNumero
                         valor={l.numeroAnimais} casas={0} className="" aria-label={`Nº de animais em ${nome}`}
                         onChange={v => alterarFase(l.categoria, { numeroAnimais: v })}
                       />
-                      <CampoNumero
-                        valor={l.consumoPorAnimal} casas={3} className="" aria-label={`Consumo por animal em ${nome}`}
-                        onChange={v => alterarFase(l.categoria, { consumoPorAnimal: v })}
-                      />
+                      {/* ⚠️ SOMENTE LEITURA desde 27/08/2026, a pedido do Daniel.
+                          Era editável e eu defendi que continuasse. A decisão dele
+                          fecha o buraco de vez: o valor é SEMPRE o do catálogo, na
+                          unidade do catálogo, sem caminho pra alguém digitar um
+                          número na régua errada. Quem tem cliente com consumo
+                          atípico usa a aba "Quantidade direta", que informa o
+                          volume direto e não passa por consumo por animal. */}
+                      <span className="ro" title="Referência do catálogo — não editável">
+                        {numero(l.consumoPorAnimal, 3)}
+                      </span>
                       <span className="sub">
                         {numero(Math.max(0, l.numeroAnimais) * Math.max(0, l.consumoPorAnimal), 0)} kg
                       </span>
@@ -779,17 +751,11 @@ export function FormularioEstudo({
                 label="Consumo por animal"
                 unidade={unidadeConsumo}
               >
-                <CampoNumero
-                  valor={nec.consumoPorAnimal} casas={3}
-                  onChange={v => setNec({ consumoPorAnimal: v, consumoConfirmado: true })}
-                />
-                <MarcaAlterado
-                  atual={nec.consumoPorAnimal}
-                  referencia={consumoSugeridoNaBase(
-                    produto.especie, produto.categoria, nec.baseConsumo, nec.dias,
-                  )}
-                  onRestaurar={v => setNec({ consumoPorAnimal: v })}
-                />
+                {/* somente leitura, igual às fases — ver comentário lá em cima */}
+                <div className="vr-fixo">
+                  {numero(nec.consumoPorAnimal, 3)}
+                  <span>referência do catálogo — não editável</span>
+                </div>
               </Campo>
             </div>
             )}
