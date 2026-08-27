@@ -90,7 +90,20 @@ function ResumoPorAnimal({ animais, bruto, base, dias, especie, rotulo }: {
   animais: number; bruto: number; base: 'mes' | 'dia' | 'ciclo'
   dias: number; especie: Especie; rotulo: string
 }) {
-  if (animais <= 0 || bruto <= 0) return null
+  // ⚠️ NÃO esconder quando está vazio. Escondia, e o Daniel abriu a tela com o
+  // plantel zerado, não viu nada e concluiu que a mudança não tinha subido —
+  // sendo que estava lá. Bloco que só existe depois de preencher parece bloco
+  // que não existe. Vazio mostra o que vai aparecer.
+  if (animais <= 0 || bruto <= 0) {
+    return (
+      <div className="vr-media-animal">
+        <div className="l">
+          <span>Média por {rotulo.replace(/s$/, '')} e demanda do estudo</span>
+          <span className="eq">preencha o plantel acima pra ver</span>
+        </div>
+      </div>
+    )
+  }
 
   const d = Math.max(0, dias)
   const mensal = base === 'mes' ? bruto
