@@ -291,40 +291,47 @@ export function RelatorioLider() {
   const membros = time.membros as unknown as string[]
 
   return (
-    <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-5 pb-24">
-      {/* Cabeçalho */}
-      <header>
-        <div className="flex items-center gap-2 mb-1">
-          <Trophy className="w-5 h-5 text-accent" />
-          <h1 className="text-[19px] sm:text-[22px] font-bold text-ink">{time.nome}</h1>
+    // Em tela grande vira DUAS COLUNAS: números à esquerda, perguntas à direita.
+    // Não é só estética — o líder responde "quem ficou abaixo" e "o que travou"
+    // olhando o número que motivou a pergunta, sem rolar pra cima e perder o
+    // contexto. Abaixo de xl empilha na ordem antiga (números primeiro).
+    <div className="max-w-[1700px] mx-auto px-3 sm:px-5 py-4 sm:py-6 pb-24">
+      {/* Cabeçalho + quem preenche, lado a lado quando cabe */}
+      <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <Trophy className="w-5 h-5 text-accent" />
+            <h1 className="text-[19px] sm:text-[24px] font-bold text-ink">{time.nome}</h1>
+          </div>
+          <p className="text-[13px] text-ink-muted">
+            Relatório de{' '}
+            {new Date().toLocaleDateString('pt-BR', {
+              weekday: 'long', day: '2-digit', month: 'long', timeZone: 'America/Sao_Paulo',
+            })}
+            {jaSalvo && <span className="text-success font-medium"> · já enviado (você pode corrigir)</span>}
+          </p>
         </div>
-        <p className="text-[13px] text-ink-muted">
-          Relatório de{' '}
-          {new Date().toLocaleDateString('pt-BR', {
-            weekday: 'long', day: '2-digit', month: 'long', timeZone: 'America/Sao_Paulo',
-          })}
-          {jaSalvo && <span className="text-success font-medium"> · já enviado (você pode corrigir)</span>}
-        </p>
+
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] uppercase tracking-wide text-ink-muted whitespace-nowrap">
+            Líder da semana
+          </span>
+          <div className="flex flex-wrap gap-1.5">
+            {membros.map(m => (
+              <button key={m} onClick={() => setLider(m)}
+                className={cn('px-3 py-2 rounded-md border text-[13px] font-medium transition-colors',
+                  lider === m ? 'border-accent bg-accent/10 text-ink' : 'border-border text-ink-muted hover:bg-surface-2')}>
+                {m}
+              </button>
+            ))}
+          </div>
+        </div>
       </header>
 
-      {/* Quem está preenchendo */}
-      <div className="rounded-lg border border-border bg-surface p-3">
-        <label className="block text-[11px] uppercase tracking-wide text-ink-muted mb-1.5">
-          Líder da semana
-        </label>
-        <div className="flex flex-wrap gap-1.5">
-          {membros.map(m => (
-            <button key={m} onClick={() => setLider(m)}
-              className={cn('px-3 py-2 rounded-md border text-[13px] font-medium transition-colors',
-                lider === m ? 'border-accent bg-accent/10 text-ink' : 'border-border text-ink-muted hover:bg-surface-2')}>
-              {m}
-            </button>
-          ))}
-        </div>
-      </div>
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_520px] gap-5 items-start">
 
-      {/* ═══ METADE 1: OS NÚMEROS ═══ */}
-      <div>
+      {/* ═══ COLUNA 1: OS NÚMEROS ═══ */}
+      <div className="space-y-5 min-w-0">
         <h2 className="text-[13px] font-bold uppercase tracking-wide text-ink-muted mb-2.5">
           Como o time foi hoje
         </h2>
@@ -348,7 +355,6 @@ export function RelatorioLider() {
             ))}
           </div>
         )}
-      </div>
 
       {/* Gráfico dos 14 dias */}
       <div className="rounded-lg border border-border bg-surface p-3 sm:p-4">
@@ -358,7 +364,7 @@ export function RelatorioLider() {
             Últimos 14 dias do time
           </h2>
         </div>
-        <div className="h-[200px]">
+        <div className="h-[260px]">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={serie} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
@@ -381,9 +387,12 @@ export function RelatorioLider() {
           Barra = ligações do time · Linha = orçamentos emitidos
         </p>
       </div>
+      </div>
 
-      {/* ═══ METADE 2: AS 5 PERGUNTAS ═══ */}
-      <div className="pt-1">
+      {/* ═══ COLUNA 2: AS 5 PERGUNTAS ═══ */}
+      {/* sticky no xl: as perguntas acompanham a rolagem e continuam ao lado dos
+          números. Sem isso a coluna direita some quando o líder desce a página. */}
+      <div className="xl:sticky xl:top-4">
         <h2 className="text-[13px] font-bold uppercase tracking-wide text-ink-muted mb-1">
           O que os números não mostram
         </h2>
@@ -433,7 +442,7 @@ export function RelatorioLider() {
           {abaixo && (
             <Pergunta n={3} titulo={`${abaixo} ficou abaixo hoje. O que aconteceu?`}
               ajuda="O sistema apontou o nome — você só dá o motivo.">
-              <Chips opcoes={MOTIVOS_ABAIXO} valor={abaixoMotivo} onChange={setAbaixoMotivo} />
+              <Chips opcoes={MOTIVOS_ABAIXO} valor={abaixoMotivo} onChange={setAbaixoMotivo} cols="grid-cols-1" />
             </Pergunta>
           )}
 
@@ -455,7 +464,7 @@ export function RelatorioLider() {
             </div>
             {qualidade === 'ruins' && (
               <div className="mt-2">
-                <Chips opcoes={DESVIOS_LEAD} valor={desvio} onChange={setDesvio} />
+                <Chips opcoes={DESVIOS_LEAD} valor={desvio} onChange={setDesvio} cols="grid-cols-1" />
               </div>
             )}
           </Pergunta>
@@ -485,9 +494,11 @@ export function RelatorioLider() {
         </div>
       </div>
 
+      </div>{/* fim do grid de 2 colunas */}
+
       {/* Barra de envio */}
       <div className="fixed bottom-0 left-0 right-0 border-t border-border bg-surface/95 backdrop-blur px-3 py-2.5 z-20">
-        <div className="max-w-5xl mx-auto flex items-center gap-3">
+        <div className="max-w-[1700px] mx-auto flex items-center gap-3">
           <div className="flex-1 text-[11px] text-ink-muted leading-tight">
             {!lider ? 'Escolha seu nome no topo.'
               : !termometro ? 'Falta o termômetro do time.'
