@@ -1555,3 +1555,14 @@
   font: 700 11px inherit; padding: 1px 4px;
 }
 .vr .vr-alterado button:hover { background: #ffedd5; }
+
+/* Unidade travada em kg/mês — era um seletor e virou rótulo. O seletor era a
+   origem do erro de 30x (catálogo é mensal; "kg por dia" mantinha o número). */
+.vr .vr-fixo {
+  display: flex; flex-direction: column; gap: 1px;
+  padding: 7px 9px; border: 1px dashed var(--vr-hair); border-radius: 8px;
+  background: var(--vr-card-2); font: 700 13px var(--vr-mono); color: var(--vr-ink);
+}
+.vr .vr-fixo span {
+  font: 500 10px inherit; color: var(--vr-ink40); font-family: inherit;
+}
