@@ -43,6 +43,24 @@ const brl = (n: number) =>
 
 const fmtDia = (d: string) => { const [, m, dd] = d.split('-'); return `${dd}/${m}` }
 
+/**
+ * "hoje 14:21" / "há 3 dias" — a anotação de andamento precisa mostrar QUANDO
+ * foi feita. Sem isso o líder marca "Negociando" uma vez e a marcação envelhece
+ * invisível: seis dias depois a tela continua dizendo Negociando como se fosse
+ * notícia fresca.
+ */
+function quandoAnotado(iso: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const dias = Math.floor((Date.now() - d.getTime()) / 86_400_000)
+  if (dias === 0) {
+    return 'hoje ' + d.toLocaleTimeString('pt-BR', {
+      hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo',
+    })
+  }
+  return `há ${dias} dia${dias === 1 ? '' : 's'}`
+}
+
 // ⚠️ As duas séries saíam da MESMA cor: no tema Branorte --accent e --success
 // são os dois verdes, e no gráfico barra e linha viravam a mesma coisa.
 // Orçamento passou pro azul de --info (211°) contra o verde do accent (152°).
@@ -726,7 +744,9 @@ export function RelatorioLider() {
                 <BotoesAndamento atual={o.status} salvando={marcar.isPending}
                   onMarcar={s => marcarLinha('orcamento', String(o.id), o.cliente, o.vendedor_nome, s)} />
                 {o.anotado_por && (
-                  <span className="text-[10px] text-ink-muted">por {o.anotado_por}</span>
+                  <span className="text-[10px] text-ink-muted">
+                    por {o.anotado_por} · {quandoAnotado(o.anotado_em)}
+                  </span>
                 )}
               </div>
             </div>
@@ -778,7 +798,9 @@ export function RelatorioLider() {
                   <BotoesAndamento atual={q.status} salvando={marcar.isPending}
                     onMarcar={s => marcarLinha('quente', q.chat_id, q.cliente, q.vendedor_nome, s)} />
                   {q.anotado_por && (
-                    <span className="text-[10px] text-ink-muted">por {q.anotado_por}</span>
+                    <span className="text-[10px] text-ink-muted">
+                      por {q.anotado_por} · {quandoAnotado(q.anotado_em)}
+                    </span>
                   )}
                 </div>
               </div>
