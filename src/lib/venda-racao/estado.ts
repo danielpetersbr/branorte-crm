@@ -25,6 +25,22 @@ export function consumoSugerido(especie: Especie, categoria: string): number {
 }
 
 /**
+ * Consumo de referência do catálogo JÁ na unidade que o estudo está usando.
+ *
+ * O catálogo é sempre kg/MÊS. Entregar esse número cru numa tela configurada em
+ * "kg por dia" é o erro de 30x: 2,7 kg/mês de frango inicial vira "2,7 kg por
+ * ave por dia" e o estudo dimensiona uma fábrica que o cliente não precisa.
+ */
+export function consumoSugeridoNaBase(
+  especie: Especie,
+  categoria: string,
+  base: 'mes' | 'dia' | 'ciclo',
+  dias: number,
+): number {
+  return converterConsumo(consumoSugerido(especie, categoria), 'mes', base, dias)
+}
+
+/**
  * Converte um consumo por animal de uma base pra outra.
  *
  * ⚠️ ISTO FALTAVA, e era o defeito mais caro da tela. O catálogo dá o consumo
@@ -202,7 +218,17 @@ export function aplicarFases(s: EstudoInput, selecao: string[]): EstudoInput {
         consumoPorAnimal: s.necessidade.consumoPorAnimal,
       }
     }
-    return { categoria: chave, numeroAnimais: 0, consumoPorAnimal: consumoSugerido(especie, chave) }
+    // ⚠️ NA BASE DO ESTUDO, não em kg/mês cru. O catálogo é sempre mensal; se o
+    // vendedor já escolheu "kg por dia", jogar o 2,7 aqui faria a fase nascer
+    // significando 2,7 kg por ave POR DIA — o mesmo erro de 30x que a conversão
+    // da unidade corrige do outro lado.
+    return {
+      categoria: chave,
+      numeroAnimais: 0,
+      consumoPorAnimal: consumoSugeridoNaBase(
+        especie, chave, s.necessidade.baseConsumo, s.necessidade.dias,
+      ),
+    }
   })
 
   const produto = { ...s.produto, categoria: principal, categorias: chaves }
