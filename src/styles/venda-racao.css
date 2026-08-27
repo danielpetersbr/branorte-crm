@@ -1566,3 +1566,12 @@
 .vr .vr-fixo span {
   font: 500 10px inherit; color: var(--vr-ink40); font-family: inherit;
 }
+
+/* consumo da fase em SOMENTE LEITURA — o valor é sempre a referência do
+   catálogo (decisão do Daniel em 27/08/2026), então nada de input aqui. */
+.vr .vr-plantel .lin .ro {
+  font: 700 12px var(--vr-mono); color: var(--vr-ink);
+  text-align: right; padding: 5px 6px;
+  border: 1px dashed var(--vr-hair); border-radius: 7px;
+  background: var(--vr-card-2);
+}
