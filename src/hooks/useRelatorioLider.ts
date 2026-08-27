@@ -90,16 +90,21 @@ export interface VendedorPainel {
   /** null = a extensão daquele vendedor nunca reportou. Zero mensagem com sync
    *  morto NÃO é preguiça — a tela precisa saber separar as duas coisas. */
   sync_minutos: number | null
+  /** Faixa que a RPC de fato usou — a tela calcula a meta em cima dela. */
+  periodo_de: string
+  periodo_ate: string
 }
 
-export function usePainelTime(time: TimeSlug | null, dia?: string) {
+export type Periodo = 'dia' | 'semana' | 'mes'
+
+export function usePainelTime(time: TimeSlug | null, periodo: Periodo = 'dia') {
   return useQuery({
-    queryKey: ['rel-lider-painel', time, dia ?? 'hoje'],
+    queryKey: ['rel-lider-painel', time, periodo],
     enabled: !!time,
     staleTime: 60_000,
     queryFn: async (): Promise<VendedorPainel[]> => {
       const { data, error } = await supabase.rpc('relatorio_lider_painel', {
-        p_time: time, p_dia: dia ?? null,
+        p_time: time, p_periodo: periodo,
       })
       if (error) throw error
       return (data ?? []).map((r: Record<string, unknown>) => ({
@@ -135,6 +140,58 @@ export function useSerieTime(time: TimeSlug | null, dias = 14) {
         ...r,
         orcamentos_valor: Number(r.orcamentos_valor ?? 0),
       })) as DiaSerie[]
+    },
+  })
+}
+
+// ─── Metas ──────────────────────────────────────────────────────────────────
+
+/** Meta de ligação: 10 por pessoa, por dia útil. */
+export const META_LIGACOES_PESSOA_DIA = 10
+/** Meta de venda por time. Fixa aqui porque o ranking-vendas devolve meta 0 —
+ *  mesmo motivo pelo qual o placar_times_monitor.py também a carrega hardcoded. */
+export const META_VENDA_TIME_MES = 833_000
+
+/** Dias úteis (seg–sex) entre duas datas, inclusive. Feriado não é descontado:
+ *  não temos calendário de feriado no banco, e chutar erraria a meta pra baixo. */
+export function diasUteis(de: Date, ate: Date): number {
+  let n = 0
+  const d = new Date(de.getFullYear(), de.getMonth(), de.getDate())
+  const fim = new Date(ate.getFullYear(), ate.getMonth(), ate.getDate())
+  while (d <= fim) {
+    const dow = d.getDay()
+    if (dow !== 0 && dow !== 6) n++
+    d.setDate(d.getDate() + 1)
+  }
+  return Math.max(n, 1)
+}
+
+export interface VendasTime { vendido: number; pedidos: number }
+
+/**
+ * Vendido do mês por time. Fonte: edge `ranking-vendas` do projeto do
+ * pedido-de-venda (outro Supabase) — a MESMA que o Nova Venda e o Placar dos
+ * Times usam. É `pedidos_venda`, a única prova real de venda: etiqueta VENDIDO
+ * e contacts.status inflam.
+ */
+export function useVendasTime(time: TimeSlug | null) {
+  return useQuery({
+    queryKey: ['rel-lider-vendas', time],
+    enabled: !!time,
+    staleTime: 5 * 60_000,
+    queryFn: async (): Promise<VendasTime> => {
+      const r = await fetch('https://kfucuvwrnwrkshxpsmyq.supabase.co/functions/v1/ranking-vendas')
+      if (!r.ok) throw new Error('ranking-vendas ' + r.status)
+      const j = await r.json() as { ranking?: { vendedor: string; vendido: number; pedidos: number }[] }
+      const membros = (TIMES.find(t => t.slug === time)?.membros ?? []) as unknown as string[]
+      // casa pelo PRIMEIRO TOKEN, igual ao resolvedor do placar: o ranking manda
+      // "EDILSON JR" e o time também, mas nome completo em qualquer das pontas quebraria o ===.
+      const chave = (s: string) => s.trim().toUpperCase().split(' ')[0]
+      const meus = (j.ranking ?? []).filter(v => membros.some(m => chave(m) === chave(v.vendedor)))
+      return {
+        vendido: meus.reduce((s, v) => s + (v.vendido || 0), 0),
+        pedidos: meus.reduce((s, v) => s + (v.pedidos || 0), 0),
+      }
     },
   })
 }
