@@ -1508,3 +1508,26 @@
 .vr .vr-ing .frm.nuc.on {
   color: var(--vr-card); background: var(--vr-green); border-color: var(--vr-green);
 }
+
+/* Média por animal + o que o "Nº de dias" faz com o total (etapa Necessidade).
+   Nasceu de "mexo no campo de dias e não muda nada": mudava, mas o efeito só
+   aparecia no resultado final. Agora a conta fica embaixo da tabela de fases. */
+.vr .vr-media-animal {
+  border-top: 1px dashed var(--vr-hair); padding: 8px 9px;
+  display: grid; gap: 5px; background: var(--vr-card-2);
+}
+.vr .vr-media-animal .l {
+  display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap;
+  font: 500 11px inherit; color: var(--vr-ink40);
+}
+.vr .vr-media-animal .l b { font: 700 13px var(--vr-mono); color: var(--vr-ink); }
+.vr .vr-media-animal .l .eq { font: 500 10px var(--vr-mono); color: var(--vr-ink40); }
+.vr .vr-media-animal.alerta { background: #fff7ed; }
+.vr .vr-media-animal .av {
+  margin: 2px 0 0; font: 500 11px inherit; color: #9a3412; line-height: 1.45;
+}
+/* dias da fase, ao lado do nome — o vendedor precisa saber que período o
+   consumo de referência cobre antes de escolher a unidade */
+.vr .vr-plantel .lin .nm .dias-fase {
+  font: 600 10px var(--vr-mono); color: var(--vr-ink40); white-space: nowrap;
+}

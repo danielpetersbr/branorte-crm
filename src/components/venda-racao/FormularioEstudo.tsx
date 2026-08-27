@@ -12,7 +12,7 @@ import {
   nomeCategoria, novoIdIngrediente, ORIGEM_CUSTOS, PESOS_SACO,
 } from '@/lib/venda-racao/catalogo'
 import { ehDoNucleo, itensDaFase } from '@/lib/venda-racao/calculo'
-import { aplicarFases, consumoSugerido, usarFaseUnica } from '@/lib/venda-racao/estado'
+import { aplicarFases, consumoSugerido, converterConsumo, usarFaseUnica } from '@/lib/venda-racao/estado'
 import { brl, brlKg, kg, kgHora, numero, pct, toneladas } from '@/lib/venda-racao/formato'
 import { temAlternativa } from '@/lib/nutricao/substituicao'
 import { SubstituirIngrediente } from './SubstituirIngrediente'
@@ -68,6 +68,74 @@ const UNIDADES_PRECO = [
   { v: 'saco' as const, label: 'R$/saco' },
   { v: 't' as const, label: 'R$/t' },
 ]
+
+/**
+ * Média de consumo POR ANIMAL e o que o "Nº de dias" está fazendo com o total.
+ *
+ * Nasceu de duas queixas do Daniel na etapa 3, que têm a mesma raiz:
+ *
+ *   1. "mexo no campo de dias e não muda nada" — mudava, mas só no resultado
+ *      lá na frente. A etapa 3 mostrava o consumo cru (kg/dia) e nada dizia
+ *      que ele seria multiplicado por 30. Agora a conta aparece aqui.
+ *
+ *   2. "quero ver a média geral de consumo por animal" — e é justamente o
+ *      número que denuncia erro de unidade. Um frango de corte come ~5,5 kg no
+ *      CICLO INTEIRO; se a média por animal/dia der 11 kg, alguém escolheu
+ *      "kg por dia" com um consumo que é da fase toda. Antes esse erro só
+ *      aparecia lá no fim, como uma fábrica 40x maior do que precisava.
+ */
+function ResumoPorAnimal({ animais, bruto, base, dias, especie, rotulo }: {
+  animais: number; bruto: number; base: 'mes' | 'dia' | 'ciclo'
+  dias: number; especie: Especie; rotulo: string
+}) {
+  if (animais <= 0 || bruto <= 0) return null
+
+  const d = Math.max(0, dias)
+  const mensal = base === 'mes' ? bruto
+    : base === 'dia' ? bruto * (d > 0 ? d : 30)
+    : (d > 0 ? bruto / (d / 30) : bruto)
+
+  const porAnimal = bruto / animais          // na unidade escolhida
+  const porAnimalDia = base === 'mes' ? porAnimal / 30
+    : base === 'dia' ? porAnimal
+    : (d > 0 ? porAnimal / d : porAnimal)
+
+  // Teto de sanidade por espécie (kg de ração por animal por DIA). Serve só pra
+  // acender a luz — não trava nada, porque o consumo real varia muito.
+  const TETO: Record<string, number> = { aves: 0.35, suinos: 4, bovinos: 15 }
+  const teto = TETO[especie]
+  const suspeito = teto ? porAnimalDia > teto : false
+
+  return (
+    <div className={`vr-media-animal${suspeito ? ' alerta' : ''}`}>
+      <div className="l">
+        <span>Média por {rotulo.replace(/s$/, '')}</span>
+        <b>
+          {numero(porAnimal, 3)} kg
+          {base === 'mes' ? '/mês' : base === 'dia' ? '/dia' : '/ciclo'}
+        </b>
+        <span className="eq">≈ {numero(porAnimalDia, 3)} kg por dia</span>
+      </div>
+      <div className="l">
+        <span>Demanda do estudo</span>
+        <b>{numero(mensal, 0)} kg/mês</b>
+        <span className="eq">
+          {base === 'dia' ? `${numero(bruto, 0)} kg/dia × ${d > 0 ? d : 30} dias`
+            : base === 'ciclo' ? `${numero(bruto, 0)} kg/ciclo ÷ ${d > 0 ? (d / 30).toFixed(2) : '1,00'} mês`
+            : 'informado por mês'}
+          {' · '}{numero(mensal / 1000, 1)} t/mês
+        </span>
+      </div>
+      {suspeito && (
+        <p className="av">
+          ⚠️ {numero(porAnimalDia, 3)} kg por {rotulo.replace(/s$/, '')} por dia está
+          acima do normal pra {especie}. Confira a <b>Unidade do consumo</b>: os valores de
+          referência das fases são o consumo da <b>fase inteira</b>, não por dia.
+        </p>
+      )}
+    </div>
+  )
+}
 
 export function FormularioEstudo({
   largo,
@@ -589,9 +657,19 @@ export function FormularioEstudo({
                 </div>
                 {linhasPlantel.map(l => {
                   const nome = nomeCategoria(produto.especie, l.categoria, produto.categoriaLivre)
+                  // Dias da fase, do catálogo. Sem isto o vendedor não tinha como
+                  // saber que período o consumo de referência cobre — e escolher
+                  // "kg por dia" multiplicava por 30 um número que já é da fase
+                  // inteira, dimensionando a fábrica ~40x maior.
+                  const cat = CATEGORIAS[produto.especie]?.find(c => c.chave === l.categoria)
                   return (
                     <div key={l.categoria} className="lin">
-                      <span className="nm" title={nome}>{nome}</span>
+                      <span className="nm" title={cat?.nota ?? nome}>
+                        {nome}
+                        {cat?.diasFase ? (
+                          <b className="dias-fase"> · {cat.diasFase} dias</b>
+                        ) : null}
+                      </span>
                       <CampoNumero
                         valor={l.numeroAnimais} casas={0} className="" aria-label={`Nº de animais em ${nome}`}
                         onChange={v => alterarFase(l.categoria, { numeroAnimais: v })}
@@ -613,6 +691,11 @@ export function FormularioEstudo({
                     {nec.baseConsumo === 'mes' ? '/mês' : nec.baseConsumo === 'dia' ? '/dia' : '/ciclo'}
                   </span>
                 </div>
+                <ResumoPorAnimal
+                  animais={linhasPlantel.reduce((s, l) => s + Math.max(0, l.numeroAnimais), 0)}
+                  bruto={linhasPlantel.reduce((s, l) => s + Math.max(0, l.numeroAnimais) * Math.max(0, l.consumoPorAnimal), 0)}
+                  base={nec.baseConsumo} dias={nec.dias} especie={produto.especie}
+                  rotulo={especieMeta?.animal ?? 'animais'} />
               </div>
             ) : (
             <div className="vr-row2">
@@ -639,7 +722,20 @@ export function FormularioEstudo({
                     { v: 'dia' as const, label: 'kg por dia' },
                     { v: 'ciclo' as const, label: 'kg por ciclo' },
                   ]}
-                  onChange={v => setNec({ baseConsumo: v })}
+                  onChange={v => {
+                    // ⚠️ Trocar a unidade CONVERTE os valores. Sem isto o 2,7
+                    // kg/mês do catálogo virava 2,7 kg/DIA por ave e o estudo
+                    // saía 30x maior (15.000 aves = 1.665 t/mês).
+                    const de = nec.baseConsumo
+                    const conv = (x: number) => converterConsumo(x, de, v, nec.dias)
+                    setNec({
+                      baseConsumo: v,
+                      consumoPorAnimal: conv(nec.consumoPorAnimal),
+                      ...(nec.fases && nec.fases.length > 1
+                        ? { fases: nec.fases.map(f => ({ ...f, consumoPorAnimal: conv(f.consumoPorAnimal) })) }
+                        : {}),
+                    })
+                  }}
                 />
               </Campo>
               <Campo

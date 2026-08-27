@@ -38,6 +38,18 @@ export interface Categoria {
   /** kg por animal por mês — REFERÊNCIA editável. 0 = sem sugestão. */
   consumoMes: number
   nota?: string
+  /**
+   * Duração da fase em dias, quando ela TEM duração definida (aves e suínos
+   * têm; bovino de leite não).
+   *
+   * ⚠️ Existe porque o vendedor não tinha como saber que período o número de
+   * referência cobre. Em aves de corte `consumoMes` é, na prática, o consumo da
+   * FASE INTEIRA — 2,7 kg na inicial são os ~14 dias dela, não 2,7 kg/dia nem
+   * 2,7 kg/mês. Sem esse dado na tela, escolher "kg por dia" multiplicava por
+   * 30 e dimensionava a fábrica ~40× maior: 3.000 frangos viravam 333 t/mês
+   * quando o real é ~7,9 t/mês.
+   */
+  diasFase?: number
 }
 
 /**
@@ -68,14 +80,14 @@ export const CATEGORIAS: Record<Especie, Categoria[]> = {
     { chave: 'outro',        nome: 'Outro',         consumoMes: 0 },
   ],
   aves: [
-    { chave: 'frango_inicial',      nome: 'Frango de corte — inicial',     consumoMes: 2.7,  nota: '8–21 dias.' },
-    { chave: 'frango_crescimento',  nome: 'Frango de corte — crescimento', consumoMes: 3.0,  nota: 'Média do ciclo completo.' },
-    { chave: 'frango_final',        nome: 'Frango de corte — final',       consumoMes: 5.4,  nota: 'Fase de engorda (pico).' },
-    { chave: 'poedeira_inicial',    nome: 'Poedeiras — inicial',           consumoMes: 0.9,  nota: 'Pintainha / cria (1–6 sem).' },
-    { chave: 'poedeira_crescimento',nome: 'Poedeiras — crescimento',       consumoMes: 1.95, nota: 'Recria / frangã (7–17 sem).' },
+    { chave: 'frango_inicial',      nome: 'Frango de corte — inicial',     consumoMes: 2.7,  diasFase: 14, nota: 'Fase de ~1 a 14 dias. 2,7 kg/mes = ~90 g por ave por dia.' },
+    { chave: 'frango_crescimento',  nome: 'Frango de corte — crescimento', consumoMes: 3.0,  diasFase: 14, nota: 'Fase de ~15 a 28 dias. 3,0 kg/mes = ~100 g por ave por dia.' },
+    { chave: 'frango_final',        nome: 'Frango de corte — final',       consumoMes: 5.4,  diasFase: 14, nota: 'Fase de ~29 a 42 dias (engorda). 5,4 kg/mes = ~180 g por ave por dia.' },
+    { chave: 'poedeira_inicial',    nome: 'Poedeiras — inicial',           consumoMes: 0.9,  diasFase: 42, nota: 'Pintainha / cria (1–6 semanas).' },
+    { chave: 'poedeira_crescimento',nome: 'Poedeiras — crescimento',       consumoMes: 1.95, diasFase: 77, nota: 'Recria / franga (7–17 semanas).' },
     { chave: 'pre_postura',         nome: 'Pré-postura',                   consumoMes: 2.7 },
     { chave: 'postura',             nome: 'Postura',                       consumoMes: 3.4,  nota: 'Postura comercial (vermelha). Leve/branca ~3,0.' },
-    { chave: 'caipira',             nome: 'Caipira ou colonial',           consumoMes: 3.0,  nota: 'Frango caipira 85–90 dias; poedeira colonial ~3,75.' },
+    { chave: 'caipira',             nome: 'Caipira ou colonial',           consumoMes: 3.0,  diasFase: 88, nota: 'Frango caipira 85-90 dias; poedeira colonial ~3,75.' },
     { chave: 'outro',               nome: 'Outro',                         consumoMes: 0 },
   ],
   milho: [
