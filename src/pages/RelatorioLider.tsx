@@ -31,10 +31,14 @@ import {
 // gastar o tempo do líder pra ganhar um dado pior que o do banco.
 // ============================================================================
 
+// ⚠️ acima de 1 milhão precisa de "mi": no filtro de Mês o time passa de R$ 9 mi
+// e sem isto saía "R$ 9.315 mil", que ninguém lê como nove milhões.
 const brl = (n: number) =>
-  n >= 1000
-    ? `R$ ${(n / 1000).toLocaleString('pt-BR', { maximumFractionDigits: n >= 10000 ? 0 : 1 })} mil`
-    : `R$ ${n.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`
+  n >= 1_000_000
+    ? `R$ ${(n / 1_000_000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mi`
+    : n >= 1000
+      ? `R$ ${(n / 1000).toLocaleString('pt-BR', { maximumFractionDigits: n >= 10000 ? 0 : 1 })} mil`
+      : `R$ ${n.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`
 
 const fmtDia = (d: string) => { const [, m, dd] = d.split('-'); return `${dd}/${m}` }
 
@@ -262,6 +266,8 @@ export function RelatorioLider() {
   const { data: painel = [], isLoading } = usePainelTime(timeSlug, periodo)
   const { data: serie = [] } = useSerieTime(timeSlug, periodo === 'mes' ? 30 : 14)
   const { data: vendas } = useVendasTime(timeSlug)
+  // sempre do dia — a pergunta 3 é sobre HOJE, não sobre o filtro escolhido
+  const { data: painelDia = [] } = usePainelTime(timeSlug, 'dia')
   const { data: jaSalvo } = useRelatorioDoDia(timeSlug)
   const salvar = useSalvarRelatorio()
 
@@ -295,15 +301,19 @@ export function RelatorioLider() {
   // Régua: zerou orçamento E ficou abaixo de metade da média do time em
   // conversa. Quem está sem sync fica FORA — zero sem sinal não é zero de
   // trabalho, e acusar por falha de sync destrói a confiança na tela.
+  // ⚠️ SEMPRE em cima do DIA (painelDia), nunca do período selecionado.
+  // O relatório é diário: se o líder trocasse o filtro pra Mês, a pergunta
+  // "quem ficou abaixo HOJE" mudava de resposta — ou sumia, porque no acumulado
+  // do mês ninguém fica abaixo da metade da média. Foi o que aconteceu.
   const abaixo = useMemo(() => {
-    const validos = painel.filter(v => v.sync_minutos !== null && v.sync_minutos <= 60)
+    const validos = painelDia.filter(v => v.sync_minutos !== null && v.sync_minutos <= 60)
     if (validos.length < 2) return null
     const media = validos.reduce((s, v) => s + v.clientes_respondidos, 0) / validos.length
     const cand = validos
       .filter(v => v.orcamentos === 0 && v.clientes_respondidos < media * 0.5)
       .sort((a, b) => a.clientes_respondidos - b.clientes_respondidos)
     return cand[0]?.vendedor_nome ?? null
-  }, [painel])
+  }, [painelDia])
 
   const totais = useMemo(() => painel.reduce((s, v) => ({
     ligacoes: s.ligacoes + v.ligacoes,
@@ -314,14 +324,25 @@ export function RelatorioLider() {
     quentes: s.quentes + v.funil_quente,
   }), { ligacoes: 0, feitas: 0, orcamentos: 0, valor: 0, msgs: 0, quentes: 0 }), [painel])
 
-  // Meta de ligação = 10 por pessoa por DIA ÚTIL. No dia são 30 (3 pessoas);
-  // na semana e no mês multiplica pelos dias úteis JÁ DECORRIDOS, não pelo mês
-  // inteiro — meta de mês fechado no dia 3 mostraria um buraco que não existe.
+  // Meta de ligação = 10 por pessoa × dia útil do PERÍODO FECHADO:
+  //   dia    → 1 dia          (3 pessoas = 30)
+  //   semana → 5 dias         (seg a sex, = 150)
+  //   mês    → dias úteis do mês inteiro
+  //
+  // Fechado, e não pró-rata pelos dias já corridos, pra bater com a régua da
+  // meta de VENDA, que é o mês inteiro. Duas metas lado a lado com escalas
+  // diferentes — uma proporcional e outra fechada — se leem errado.
   const metaLigacoes = useMemo(() => {
+    const pessoas = painel.length || 3
     const hoje = new Date()
-    const de = painel[0]?.periodo_de ? new Date(painel[0].periodo_de + 'T12:00:00') : hoje
-    return META_LIGACOES_PESSOA_DIA * (painel.length || 3) * diasUteis(de, hoje)
-  }, [painel])
+    const dias = periodo === 'dia' ? 1
+      : periodo === 'semana' ? 5
+      : diasUteis(
+          new Date(hoje.getFullYear(), hoje.getMonth(), 1),
+          new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0),
+        )
+    return META_LIGACOES_PESSOA_DIA * pessoas * dias
+  }, [painel.length, periodo])
 
   const rotuloPeriodo = periodo === 'dia' ? 'hoje' : periodo === 'semana' ? 'na semana' : 'no mês'
 
@@ -416,8 +437,10 @@ export function RelatorioLider() {
             titulo={`Ligações feitas · meta ${META_LIGACOES_PESSOA_DIA}/pessoa por dia`}
             feito={totais.feitas} meta={metaLigacoes}
             detalhe={periodo === 'dia'
-              ? `${painel.length || 3} pessoas × ${META_LIGACOES_PESSOA_DIA} hoje`
-              : `${META_LIGACOES_PESSOA_DIA}/pessoa × dias úteis já corridos no período`} />
+              ? `${painel.length || 3} pessoas × ${META_LIGACOES_PESSOA_DIA} no dia`
+              : periodo === 'semana'
+                ? `${painel.length || 3} pessoas × ${META_LIGACOES_PESSOA_DIA} × 5 dias (seg a sex)`
+                : `${painel.length || 3} pessoas × ${META_LIGACOES_PESSOA_DIA} × dias úteis do mês`} />
           <BarraMeta
             titulo="Vendas do mês · meta do time"
             feito={vendas?.vendido ?? 0} meta={META_VENDA_TIME_MES}
