@@ -1342,6 +1342,22 @@ export function MapaVisitas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [movendo?.cliKey])
 
+  // O mapa tambem muda de largura sem o window disparar resize: quando o menu
+  // lateral colapsa/expande, ou quando o painel da viagem abre/fecha. Sem
+  // observar o proprio container o Leaflet fica com o tamanho antigo (faixa
+  // cinza / pinos deslocados).
+  useEffect(() => {
+    const el = divRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    let t: number | undefined
+    const ro = new ResizeObserver(() => {
+      window.clearTimeout(t)
+      t = window.setTimeout(() => mapRef.current?.invalidateSize(), 80)
+    })
+    ro.observe(el)
+    return () => { window.clearTimeout(t); ro.disconnect() }
+  }, [])
+
   // Celular: revalida o tamanho do mapa em resize/rotação (senão fica cinza/cortado).
   useEffect(() => {
     const onResize = () => mapRef.current?.invalidateSize()
@@ -2092,8 +2108,11 @@ export function MapaVisitas() {
 
         {/* Desktop: no modo viagem o painel lateral vira a viagem (§4 do spec).
             A sidebar de legenda/estados volta inteira ao sair — nada é perdido. */}
+        {/* Largura por faixa de tela: 400px so sobra em monitor grande. Em
+            notebook (1280-1440) o painel fixo espremia o mapa e, junto com o
+            menu lateral aberto, era o que fazia o roteiro cortar. */}
         {modoViagem && (
-          <div className="hidden md:flex w-[400px] shrink-0 rounded-xl border border-border bg-surface overflow-hidden">
+          <div className="hidden md:flex w-[320px] lg:w-[360px] xl:w-[400px] shrink-0 min-w-0 rounded-xl border border-border bg-surface overflow-hidden">
             <PainelViagem
               cfg={cfgViagem} setCfg={setCfgViagem}
               paradas={paradas} setParadas={setParadas}
