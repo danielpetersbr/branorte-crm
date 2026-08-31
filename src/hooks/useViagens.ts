@@ -178,6 +178,39 @@ export function useViagem(id: string | null | undefined) {
  * seria mais código pra manter e erraria toda vez que o otimizador reordenasse tudo.
  * Retorna o id da viagem (novo ou o mesmo).
  */
+/**
+ * Esta conta pode GRAVAR viagem?
+ *
+ * Pergunta a MESMA função que as policies usam (`viagem_pode_editar`), em vez de
+ * repetir a regra no navegador. Regra copiada é regra que envelhece: o dia em que
+ * alguém mexer na policy, uma cópia no front continuaria dizendo o contrário.
+ *
+ * ⚠️ Isto é conveniência de INTERFACE, não segurança. Quem barra de verdade é a
+ * RLS — e ela tem uma segunda trava (a policy RESTRICTIVE `bloqueia_papel_restrito`,
+ * que vale pros papéis 'mapa', 'consultor' e 'representante'). Por isso o retorno
+ * `true` aqui não é promessa de que o salvar vai passar; o `false` é que é certeza
+ * de que NÃO vai.
+ *
+ * Nasceu de um caso real (31/08/2026): uma conta de papel `mapa` montou 1.781 km e
+ * 25h de roteiro e só descobriu que não podia salvar no último clique — e o erro
+ * ainda por cima sumia, porque o único canal era um `window.alert` que o Chrome
+ * estava silenciando.
+ */
+export function usePodeSalvarViagem() {
+  return useQuery({
+    queryKey: ['viagem-pode-editar'],
+    queryFn: async (): Promise<boolean> => {
+      const { data, error } = await supabase.rpc('viagem_pode_editar')
+      if (error) throw error
+      return data === true
+    },
+    staleTime: 5 * 60_000,
+    // Sem permissão o valor não muda sozinho; e se a consulta falhar, quem decide
+    // continua sendo o banco no momento do salvar.
+    retry: 1,
+  })
+}
+
 export function useSalvarViagem() {
   const qc = useQueryClient()
   return useMutation<string, Error, SalvarViagemInput>({

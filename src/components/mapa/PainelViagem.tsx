@@ -34,6 +34,10 @@ interface Props {
    *  ser silenciado pelo usuário ("impedir que esta página crie caixas de diálogo")
    *  — e aí o erro sumia por completo e o botão parecia não fazer nada. */
   erroSalvar?: string | null
+  /** Esta conta pode gravar viagem? Vem de `viagem_pode_editar()` -- a MESMA
+   *  funcao que a RLS usa. Quando false, a tela avisa LOGO e nao deixa montar
+   *  o roteiro inteiro pra falhar no ultimo clique. */
+  podeSalvar?: boolean
   salvando: boolean
   salvoEm: string | null
   onPDF: () => void
@@ -138,6 +142,14 @@ export function PainelViagem(p: Props) {
         </div>
 
         {p.carregando && <div className="mt-1 text-[11px] text-ink-muted">Carregando viagem salva…</div>}
+
+        {p.podeSalvar === false && (
+          <div role="alert" className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-2 text-[11.5px] leading-snug text-amber-800">
+            <span className="font-semibold">Esta conta não grava viagem.</span> Dá pra montar e conferir o
+            roteiro, gerar o PDF e mandar o resumo — mas o Salvar não vai funcionar.
+            Entre com uma conta que tenha permissão, ou peça a liberação.
+          </div>
+        )}
 
         <div className="mt-1.5 flex items-center gap-1.5">
           <select
@@ -342,8 +354,11 @@ export function PainelViagem(p: Props) {
           </div>
         )}
         <div className="flex gap-1.5">
-          <button onClick={p.onSalvar} disabled={p.salvando || !p.cfg.nome.trim()}
-                  title={!p.cfg.nome.trim() ? 'Dê um nome à viagem primeiro' : 'Salvar no banco'}
+          <button onClick={p.onSalvar}
+                  disabled={p.salvando || !p.cfg.nome.trim() || p.podeSalvar === false}
+                  title={p.podeSalvar === false
+                    ? 'Sua conta não tem permissão pra gravar viagem'
+                    : !p.cfg.nome.trim() ? 'Dê um nome à viagem primeiro' : 'Salvar no banco'}
                   className="flex-1 h-8 rounded-lg bg-surface border border-border text-[12px] font-semibold text-ink disabled:opacity-50">
             {p.salvando ? 'Salvando…' : p.salvoEm ? '💾 Salvo' : '💾 Salvar'}
           </button>

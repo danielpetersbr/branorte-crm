@@ -11,7 +11,7 @@ import { useEtiquetas } from '@/hooks/useEtiquetas'
 import { useAuth } from '@/hooks/useAuth'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { PainelViagem, corDoDia } from '@/components/mapa/PainelViagem'
-import { useSalvarViagem, useSalvarLocalizacaoCliente, useViagem, type ViagemStatus } from '@/hooks/useViagens'
+import { useSalvarViagem, useSalvarLocalizacaoCliente, useViagem, usePodeSalvarViagem, type ViagemStatus } from '@/hooks/useViagens'
 import { ViagensSalvas } from '@/components/mapa/ViagensSalvas'
 import { supabase } from '@/lib/supabase'
 import {
@@ -416,6 +416,8 @@ export function MapaVisitas() {
   const { data: ufsVisiveis = [] } = useUfsVisiveis()
   const salvarMarc = useSalvarMarcacao()
   const salvarViagemMut = useSalvarViagem()
+  // A conta pode gravar viagem? Pergunta a mesma funcao que a RLS usa.
+  const { data: podeSalvarViagem = true } = usePodeSalvarViagem()
   const salvarLocalMut = useSalvarLocalizacaoCliente()
   const { profile } = useAuth()
   const geocodar = useGeocodarVisitas()
@@ -1174,6 +1176,13 @@ export function MapaVisitas() {
 
   async function salvarViagem() {
     if (!cfgViagem.nome.trim()) return
+    // Barra ANTES de escrever. Sem isto, o UPDATE e o DELETE sao engolidos pela
+    // RLS em silencio (0 linhas, sem erro) e so o INSERT das paradas estoura —
+    // com a mensagem crua do Postgres, que nao diz o que fazer.
+    if (!podeSalvarViagem) {
+      setErroSalvarViagem('Sua conta nao tem permissao pra gravar viagem. Entre com uma conta que tenha, ou peca a liberacao pro administrador.')
+      return
+    }
     setErroSalvarViagem(null)
     setSalvandoViagem(true)
     try {
@@ -2144,6 +2153,7 @@ export function MapaVisitas() {
               salvando={salvandoViagem}
               salvoEm={viagemSalvaEm}
               erroSalvar={erroSalvarViagem}
+              podeSalvar={podeSalvarViagem}
               onPDF={() => void gerarPdfViagem()}
               gerandoPdf={gerandoPdf}
               onConfirmarLocalizacao={setCorrigirLocal}
@@ -2362,6 +2372,7 @@ export function MapaVisitas() {
                 salvando={salvandoViagem}
                 salvoEm={viagemSalvaEm}
                 erroSalvar={erroSalvarViagem}
+                podeSalvar={podeSalvarViagem}
                 onPDF={() => void gerarPdfViagem()}
                 gerandoPdf={gerandoPdf}
                 onConfirmarLocalizacao={p => { setCorrigirLocal(p); setViagemSheet(false) }}
